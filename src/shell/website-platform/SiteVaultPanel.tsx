@@ -4,10 +4,10 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { AUTH_STATE_EVENT } from "../../lib/auth/client";
 import {
   createProjectVaultReference, deleteProjectVaultReference, deleteVaultBrowserBinding, getProjectVaultReferences,
-  getVault, safeVaultFingerprint, validVaultEnvName,
+  getVault, safeVaultFingerprint, validVaultEnvName, vaultMutationWasCommitted,
   type VaultEnvironment, type VaultReference, type VaultStatus,
 } from "../../lib/vault-api";
-import { useVaultText, vaultErrorText, vaultPurposeLabel } from "../../pages/settings/VaultSettingsSection";
+import { useVaultText, vaultCommittedNotice, vaultErrorText, vaultPurposeLabel, vaultReferenceSlotLabel } from "../../pages/settings/VaultSettingsSection";
 
 export type SiteVaultPanelProps = {
   projectId: string;
@@ -35,6 +35,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [committed, setCommitted] = useState(false);
   const [secretId, setSecretId] = useState("");
   const [envName, setEnvName] = useState("");
   const [environment, setEnvironment] = useState<VaultEnvironment>("preview");
@@ -60,7 +61,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       const controller = new AbortController();
       lifetime.current = controller;
       setVault(null); setReferences([]); setLoaded(false); setLoading(true);
-      setSecretId(""); setEnvName(""); setRemoving(null); setError(""); setNotice("");
+      setSecretId(""); setEnvName(""); setRemoving(null); setError(""); setNotice(""); setCommitted(false);
       operation.current = false; setBusy(false);
       if (!projectId) { setLoading(false); return; }
       void refresh(controller.signal).catch((cause: unknown) => {
@@ -72,6 +73,17 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
     return () => { lifetime.current?.abort(); window.removeEventListener(AUTH_STATE_EVENT, load); };
   }, [projectId, refresh]);
 
+  async function recoverCommitted(signal: AbortSignal) {
+    if (signal.aborted) return;
+    setCommitted(true); setNotice(""); setError("");
+    setVault(null); setReferences([]); setLoaded(false); setRemoving(null); setSecretId(""); setEnvName("");
+    try { await refresh(signal); }
+    catch { if (!signal.aborted) setError(latestText.current("授权变更已保存，暂时无法读取最新引用。请刷新。", "The grant change was saved, but current references are unavailable. Refresh to check.")); }
+    if (!signal.aborted) {
+      try { onChanged?.(); } catch { /* The committed notice still directs the owner to runtime status. */ }
+    }
+  }
+
   async function act(work: (signal: AbortSignal) => Promise<unknown>) {
     const signal = lifetime.current?.signal;
     if (operation.current || !signal || signal.aborted) return;
@@ -82,7 +94,10 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       await refresh(signal);
       if (!signal.aborted) onChanged?.();
     } catch (cause) {
-      if (!signal.aborted) { setError(vaultErrorText(cause, latestText.current)); setLoaded(false); }
+      if (!signal.aborted) {
+        if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+        else { setError(vaultErrorText(cause, latestText.current)); setLoaded(false); }
+      }
     } finally {
       if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); }
     }
@@ -114,15 +129,17 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
     {loading && <p role="status">{text("正在读取引用…", "Loading references…")}</p>}
     {error && <div role="alert" className="space-y-2 rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-950/30"><p>{error}</p><button type="button" disabled={busy || !projectId} className={BUTTON} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 p-3 text-[12px] dark:bg-neutral-800">{notice}</p>}
+    {committed && <div data-site-vault-committed="" role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><p>{vaultCommittedNotice(text)}</p><button type="button" disabled={busy} className={BUTTON} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {vault && !vault.enabled && <p role="status" className="rounded-xl border border-dashed border-neutral-200 p-4 dark:border-neutral-700">{text("当前服务尚未启用保险箱，暂时不能添加或移除引用。", "Vault is not enabled on this service. Adding and removing references are unavailable.")}</p>}
     {vault?.enabled && <>
       {loaded && !references.length && <p className="text-[12px] text-neutral-500">{text("此网站还没有密钥引用。", "This website has no secret references yet.")}</p>}
       <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
         {references.map((reference) => <li key={reference.id} data-vault-reference={reference.id} className="space-y-2 py-3">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1"><p className="break-words font-medium">{reference.secret_name}</p><p className="break-all text-[12px] text-neutral-500">{vaultPurposeLabel(reference, text)}{reference.env_name && <> · <code>{reference.env_name}</code></>}{reference.scope === "project" && <> · {reference.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>} · {text("版本", "Version")} {reference.version}</p>
+            <div className="min-w-0 space-y-1"><p className="break-words font-medium">{reference.secret_name}</p><p className="break-all text-[12px] text-neutral-500">{vaultPurposeLabel(reference, text)}{reference.env_name && <> · <code>{reference.env_name}</code></>}{reference.scope === "project_connector" && <> · {vaultReferenceSlotLabel(reference.slot, text)}</>}{(reference.scope === "project" || reference.scope === "project_connector") && <> · {reference.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>} · {text("版本", "Version")} {reference.version}</p>
               {reference.origin && <p className="break-all text-[12px] text-neutral-500"><code>{reference.origin}</code></p>}
-              {reference.scope === "browser" && <p className="break-words text-[12px] text-neutral-500">{text("用途", "Purpose")}: <code>{reference.purpose}</code></p>}
+              {reference.scope === "browser" && reference.purpose !== "supabase_provision_password" && <p className="break-words text-[12px] text-neutral-500">{text("用途", "Purpose")}: <code>{reference.purpose}</code></p>}
+              {reference.scope === "project_connector" && typeof reference.binding?.provider === "string" && <p className="text-[12px] text-neutral-500">{reference.binding.provider}</p>}
               {reference.scope === "connector" && <p className="text-[12px] text-neutral-500">{typeof reference.binding?.provider === "string" && <>{reference.binding.provider} · </>}{text("在设置 → 连接器中管理此账号连接。", "Manage this account connection in Settings → Connectors.")}</p>}
               {safeVaultFingerprint(reference.kind, reference.fingerprint) && <code className="block text-[12px] text-neutral-500">{safeVaultFingerprint(reference.kind, reference.fingerprint)}</code>}
             </div>
@@ -147,7 +164,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
             <option value="">{text("选择一个项目", "Select an item")}</option>{vault.secrets.map((secret) => <option key={secret.id} value={secret.id} disabled={secret.needs_reentry}>{secret.name}{secret.needs_reentry ? text("（需要重新输入）", " (re-entry required)") : ""}</option>)}
           </select></label>
           <label htmlFor={`${id}-env`} className="block space-y-1"><span>{text("环境变量名称", "Environment variable")}</span><input id={`${id}-env`} className={FIELD} value={envName} onChange={(event) => setEnvName(event.target.value)} maxLength={128} autoComplete="off" autoCapitalize="off" spellCheck={false} placeholder="SERVICE_API_KEY" aria-describedby={`${id}-env-hint`} required /></label>
-          <p id={`${id}-env-hint`} className="text-[12px] text-neutral-500">{text("使用大写字母、数字和下划线，以字母或下划线开头。不能使用系统变量、平台变量或会公开到网页的前缀（如 VITE_、NEXT_PUBLIC_）。", "Use uppercase letters, numbers and underscores, starting with a letter or underscore. System variables, platform variables and browser-public prefixes such as VITE_ or NEXT_PUBLIC_ are blocked.")}</p>
+          <p id={`${id}-env-hint`} className="text-[12px] text-neutral-500">{text("使用大写字母、数字和下划线，以字母或下划线开头。会公开到网页的名称，以及系统、进程、代理和加载配置均不可使用。Supabase 仅支持四个指定的服务端登录和存储变量。", "Use uppercase letters, numbers and underscores, starting with a letter or underscore. Browser-public names and system, process, proxy or loader settings are blocked. Supabase supports only four specific server-side sign-in and storage variables.")}</p>
           <label htmlFor={`${id}-environment`} className="block space-y-1"><span>{text("使用环境", "Environment")}</span><select id={`${id}-environment`} className={FIELD} value={environment} onChange={(event) => setEnvironment(event.target.value as VaultEnvironment)}><option value="preview">{text("预览", "Preview")}</option><option value="production">{text("生产", "Production")}</option></select></label>
           <p className="text-[12px] text-neutral-500">{text("预览和生产分别授权。如两边都需要，请分别添加引用。", "Preview and production are granted separately. Add a reference for each if both need access.")}</p>
           {duplicate && <p role="status" className="text-[12px] text-amber-700">{text("此环境已有同名引用，先移除旧引用再添加。", "This environment already has a reference with that name. Remove it before adding another.")}</p>}

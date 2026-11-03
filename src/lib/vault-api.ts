@@ -16,9 +16,10 @@ export type VaultSecret = {
 };
 export type VaultReference = {
   id: string; secret_id: string; secret_name: string; kind: VaultKind; fingerprint: string; version: number;
-  scope: "project" | "browser" | "connector"; project_id: string | null; env_name: string;
+  scope: "project" | "browser" | "connector" | "project_connector"; project_id: string | null; env_name: string;
   environment: VaultEnvironment; purpose: string; origin: string; created_at: string; updated_at: string;
   binding: Record<string, unknown>;
+  parent_ref_id?: string | null; slot?: "database" | "auth" | "storage" | "";
 };
 export type VaultManagedCredential = {
   id: string; label: string;
@@ -40,7 +41,7 @@ export type UpdateVaultSecret = Partial<Pick<CreateVaultSecret, "name" | "userna
 export type CreateVaultReference = {
   secret_id: string; purpose: "runtime_env"; env_name: string; environment: VaultEnvironment;
 };
-export type VaultErrorCode = "signed_out" | "reauth_required" | "disabled" | "unavailable" | "not_found" | "invalid" | "conflict" | "quota" | "rate_limited" | "network" | "forbidden";
+export type VaultErrorCode = "signed_out" | "reauth_required" | "disabled" | "unavailable" | "not_found" | "invalid" | "conflict" | "quota" | "rate_limited" | "network" | "forbidden" | "mutation_committed_runtime_unavailable";
 
 /** Never retain or render arbitrary transport text: it can contain submitted data. */
 export class VaultApiError extends Error {
@@ -48,6 +49,10 @@ export class VaultApiError extends Error {
     super(code);
     this.name = "VaultApiError";
   }
+}
+
+export function vaultMutationWasCommitted(cause: unknown): boolean {
+  return cause instanceof VaultApiError && cause.code === "mutation_committed_runtime_unavailable";
 }
 
 async function request<T>(path: string, method = "GET", body?: object, signal?: AbortSignal): Promise<T> {
@@ -63,6 +68,7 @@ async function request<T>(path: string, method = "GET", body?: object, signal?: 
     const status = typeof error?.status === "number" ? error.status : 0;
     const rawCode = typeof error?.code === "string" ? error.code : "";
     const code: VaultErrorCode = status === 401 ? "signed_out"
+      : rawCode === "vault_mutation_committed_runtime_unavailable" ? "mutation_committed_runtime_unavailable"
       : rawCode === "reauth_required" ? "reauth_required"
       : rawCode === "vault_disabled" ? "disabled"
       : status === 403 ? "forbidden"
@@ -98,6 +104,7 @@ export const getProjectVaultReferences = (projectId: string, signal?: AbortSigna
 export function createProjectVaultReference(projectId: string, input: CreateVaultReference, signal?: AbortSignal) {
   // Pick only binding metadata, even when a caller passes a wider JS object.
   const { secret_id, purpose, env_name, environment } = input;
+  if (!validVaultEnvName(env_name)) return Promise.reject(new VaultApiError("invalid", 400));
   return request<{ reference: VaultReference }>(projectPath(projectId), "POST", { secret_id, purpose, env_name, environment }, signal);
 }
 export const deleteProjectVaultReference = (projectId: string, id: string, signal?: AbortSignal) =>
@@ -112,8 +119,25 @@ export function safeVaultFingerprint(kind: VaultKind, fingerprint?: string): str
   return typeof fingerprint === "string" && /^(?:[^\s\x00-\x1f]{4}…[^\s\x00-\x1f]{4}|…[^\s\x00-\x1f]{2}|•{4})$/u.test(fingerprint) ? fingerprint : "••••";
 }
 
+// Mirror app.vault.client.runtime_env_name_allowed. The gateway remains the
+// authority; the sibling-source policy test detects changes to either side.
+export const VAULT_RUNTIME_ENV_DENIED = ["PORT", "PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "CDPATH", "IFS",
+  "USER", "LOGNAME", "PWD", "OLDPWD", "SHELLOPTS", "BASHOPTS", "BASH_XTRACEFD",
+  "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "FTP_PROXY", "RSYNC_PROXY",
+  "GCONV_PATH", "LOCPATH", "GLIBC_TUNABLES", "CLASSPATH", "JAVA_TOOL_OPTIONS",
+  "SSL_CERT_FILE", "SSL_CERT_DIR", "CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "KUBECONFIG",
+  "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE", "TMPDIR", "TMP", "TEMP", "FLASK_DEBUG",
+  "FLASK_ENV", "WERKZEUG_DEBUG_PIN", "DJANGO_SETTINGS_MODULE"] as const;
+export const VAULT_RUNTIME_ENV_DENIED_PREFIXES = ["OCEANLEO_", "VITE_", "NEXT_PUBLIC_", "PUBLIC_", "REACT_APP_", "NUXT_PUBLIC_",
+  "EXPO_PUBLIC_", "__VITE_", "LD_", "DYLD_", "PYTHON", "NODE_", "NPM_CONFIG_", "GIT_", "SSH_",
+  "DOCKER_", "SANDBOX_", "SITE_", "BASH_", "PERL", "RUBY", "JDK_", "JAVA_", "GCONV_",
+  "WATCHPACK_", "CHOKIDAR_", "WATCHFILES_", "UVICORN_", "SUPABASE_"] as const;
+export const VAULT_RUNTIME_ENV_PROVIDER_KEYS = ["SUPABASE_AUTH_URL", "SUPABASE_AUTH_SERVICE_ROLE_KEY",
+  "SUPABASE_STORAGE_URL", "SUPABASE_STORAGE_SERVICE_ROLE_KEY"] as const;
+
 export function validVaultEnvName(name: string): boolean {
-  return /^[A-Z_][A-Z0-9_]{0,127}$/.test(name)
-    && !/^(?:VITE_|NEXT_PUBLIC_|PUBLIC_|REACT_APP_|NUXT_PUBLIC_|EXPO_PUBLIC_|OCEANLEO_)/.test(name)
-    && !["PORT", "PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "NODE_OPTIONS", "NODE_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP"].includes(name);
+  return typeof name === "string" && /^[A-Z_][A-Z0-9_]{0,127}$/.test(name)
+    && (VAULT_RUNTIME_ENV_PROVIDER_KEYS.some((key) => name === key)
+      || (!VAULT_RUNTIME_ENV_DENIED.some((key) => name === key)
+        && !VAULT_RUNTIME_ENV_DENIED_PREFIXES.some((prefix) => name.startsWith(prefix))));
 }

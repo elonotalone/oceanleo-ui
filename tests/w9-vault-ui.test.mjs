@@ -257,6 +257,8 @@ test("disabled vaults show their actual state with no add forms", async () => {
   } finally { await main.close(); await site.close(); }
 });
 
+// UC-NONE
+// Pending-import presentation changes no browser trust, origin or database permissions.
 test("pending credential imports leave existing main items manageable", async () => {
   for (const reason of ["quota", "rate_limited"]) {
     const h = harness(); h.state.vault.migration_pending = reason;
@@ -401,6 +403,213 @@ test("managed personal connections remain visible when the main secret service i
     assert.match(section.textContent, /Saved MCP token/);
     assert.match(section.textContent, /Token \/ API key · Disabled/);
     assert.equal(view.host.querySelector("[data-vault-item]"), null);
+  } finally { await view.close(); }
+});
+
+// UC-NONE
+// Vault labels and metadata actions change no browser trust, origin or database permissions.
+test("project connector grants show service slots and environments, and provisioning credentials are not browser logins", async () => {
+  const h = harness();
+  h.state.references = [
+    ...["database", "auth", "storage"].map((slot, index) => reference({ id: `grant-${slot}`, scope: "project_connector", purpose: "user_connector", slot, parent_ref_id: "account-parent", environment: index === 1 ? "preview" : "production", env_name: "", binding: { provider: "supabase" } })),
+    reference({ id: "provision", scope: "browser", purpose: "supabase_provision_password", origin: "https://api.supabase.com", env_name: "" }),
+  ];
+  const main = await mount(h.VaultSettingsSection);
+  const site = await mount(h.SiteVaultPanel, { projectId: "project-1" });
+  try {
+    for (const [slot, label, environment] of [["database", "Database", "Production"], ["auth", "User sign-in", "Preview"], ["storage", "File storage", "Production"]]) {
+      for (const node of [main.host.querySelector(`[data-vault-used-by="grant-${slot}"]`), site.host.querySelector(`[data-vault-reference="grant-${slot}"]`)]) {
+        assert.match(node.textContent, /Website service grant/);
+        assert.equal(node.textContent.includes(label), true);
+        assert.equal(node.textContent.includes(environment), true);
+        assert.equal(node.textContent.includes("supabase"), true);
+        assert.equal(node.textContent.includes("Manage this account connection"), false);
+      }
+    }
+    for (const node of [main.host.querySelector('[data-vault-used-by="provision"]'), site.host.querySelector('[data-vault-reference="provision"]')]) {
+      assert.match(node.textContent, /Supabase service credential/);
+      assert.match(node.textContent, /https:\/\/api\.supabase\.com/);
+      assert.doesNotMatch(node.textContent, /supabase_provision_password|Browser sign-in/);
+    }
+    const grant = site.host.querySelector('[data-vault-reference="grant-auth"]');
+    await click(button(grant, "Remove"));
+    await click(button(grant, "Remove reference"));
+    assert.deepEqual(h.state.writes, [{ op: "unbind", projectId: "project-1", id: "grant-auth" }]);
+    assert.equal(h.state.vault.secrets.length, 1);
+  } finally { await main.close(); await site.close(); }
+});
+
+// UC-NONE
+// Runtime variable validation changes no browser trust, origin or database permissions.
+test("runtime picker blocks final process policies and admits only the exact Supabase server variables", async () => {
+  const h = harness();
+  const view = await mount(h.SiteVaultPanel, { projectId: "project-1" });
+  try {
+    await change(view.host.querySelector("select[id$='-secret']"), "secret-1");
+    for (const name of ["NODE_OPTIONS", "PYTHONINSPECT", "LD_AUDIT", "HTTPS_PROXY", "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY"]) {
+      await change(view.host.querySelector("input[id$='-env']"), name);
+      assert.equal(button(view.host, "Add reference").disabled, true, name);
+      await submit(view.host.querySelector("form"));
+    }
+    assert.equal(h.state.writes.length, 0);
+    for (const name of h.api.VAULT_RUNTIME_ENV_PROVIDER_KEYS) {
+      await change(view.host.querySelector("input[id$='-env']"), name);
+      assert.equal(button(view.host, "Add reference").disabled, false, name);
+    }
+  } finally { await view.close(); }
+});
+
+// UC-NONE
+// Committed-write recovery changes no browser trust, origin or database permissions.
+test("committed main create, rotation and deletion refresh metadata and never retain the old editor or confirmation", async () => {
+  for (const operation of ["create", "rotate", "delete"]) {
+    const h = harness();
+    const marker = randomUUID();
+    const error = new h.api.VaultApiError("mutation_committed_runtime_unavailable", 503);
+    error.message = marker;
+    const name = operation === "create" ? "createVaultSecret" : operation === "rotate" ? "updateVaultSecret" : "deleteVaultSecret";
+    const original = h.api[name];
+    h.api[name] = async (...args) => { await original(...args); throw error; };
+    const view = await mount(h.VaultSettingsSection);
+    try {
+      if (operation === "delete") {
+        await click(button(view.host, "Delete")); await click(button(view.host, "Delete item"));
+        assert.equal(view.host.querySelector("[data-vault-item]"), null);
+      } else {
+        await click(button(view.host, operation === "create" ? "Add item" : "Rotate"));
+        if (operation === "create") await change(view.host.querySelector("input[id$='-name']"), "Created service");
+        await change(view.host.querySelector("input[type='password']"), marker);
+        await submit(view.host.querySelector("form"));
+        assert.match(view.host.textContent, operation === "create" ? /Created service/ : /Version 2/);
+      }
+      assert.equal(view.host.querySelector("form"), null);
+      assert.equal(view.host.querySelector("input[type='password']"), null);
+      assert.equal(view.host.querySelector("[data-settings-pane='vault']").getAttribute("aria-busy"), "false");
+      assert.match(view.host.querySelector("[data-vault-committed]").textContent, /change was saved/);
+      assert.equal(view.host.textContent.includes(marker), false);
+      await click(view.host.querySelector("[data-vault-committed] button"));
+      assert.equal(h.state.writes.length, 1, "refresh must not retry the committed mutation");
+    } finally { await view.close(); }
+  }
+});
+
+// UC-NONE
+// Committed-write recovery changes no browser trust, origin or database permissions.
+test("committed rotation with failed metadata refresh hides stale items and keeps its notice for manual recovery", async () => {
+  const h = harness();
+  const initialRead = h.api.getVault;
+  const rotate = h.api.updateVaultSecret;
+  let failRead = false;
+  h.api.getVault = async (...args) => { if (failRead) throw new Error("private transport text"); return initialRead(...args); };
+  h.api.updateVaultSecret = async (...args) => { await rotate(...args); failRead = true; throw new h.api.VaultApiError("mutation_committed_runtime_unavailable", 503); };
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, "Rotate"));
+    await change(view.host.querySelector("input[type='password']"), randomUUID());
+    await submit(view.host.querySelector("form"));
+    assert.equal(view.host.querySelector("[data-vault-item]"), null);
+    assert.equal(view.host.querySelector("form"), null);
+    assert.equal(view.host.querySelector("[data-settings-pane='vault']").getAttribute("aria-busy"), "false");
+    assert.match(view.host.querySelector("[data-vault-committed]").textContent, /change was saved/);
+    assert.equal(view.host.textContent.includes("private transport text"), false);
+    failRead = false;
+    await click(view.host.querySelector("[data-vault-committed] button"));
+    assert.match(view.host.textContent, /Version 2/);
+    assert.equal(h.state.writes.length, 1);
+  } finally { await view.close(); }
+});
+
+// UC-NONE
+// Committed-write recovery changes no browser trust, origin or database permissions.
+test("committed project bind and service-grant removal refresh references and release busy state", async () => {
+  for (const operation of ["bind", "remove"]) {
+    const h = harness(); let changed = 0;
+    if (operation === "remove") h.state.references = [reference({ scope: "project_connector", purpose: "user_connector", slot: "database", env_name: "", parent_ref_id: "parent" })];
+    const name = operation === "bind" ? "createProjectVaultReference" : "deleteProjectVaultReference";
+    const original = h.api[name];
+    h.api[name] = async (...args) => { await original(...args); throw new h.api.VaultApiError("mutation_committed_runtime_unavailable", 503); };
+    const view = await mount(h.SiteVaultPanel, { projectId: "project-1", onChanged: () => { changed++; } });
+    try {
+      if (operation === "bind") {
+        await change(view.host.querySelector("select[id$='-secret']"), "secret-1");
+        await change(view.host.querySelector("input[id$='-env']"), "SAVED_KEY");
+        await submit(view.host.querySelector("form"));
+        assert.match(view.host.querySelector("[data-vault-reference]").textContent, /SAVED_KEY/);
+        assert.equal(view.host.querySelector("input[id$='-env']").value, "");
+      } else {
+        await click(button(view.host, "Remove")); await click(button(view.host, "Remove reference"));
+        assert.equal(view.host.querySelector("[data-vault-reference]"), null);
+      }
+      assert.match(view.host.querySelector("[data-site-vault-committed]").textContent, /change was saved/);
+      assert.equal(view.host.querySelector("[data-site-vault-panel]").getAttribute("aria-busy"), "false");
+      assert.equal(changed, 1);
+      assert.equal(h.state.writes.length, 1);
+    } finally { await view.close(); }
+  }
+});
+
+// UC-NONE
+// Committed-write recovery changes no browser trust, origin or database permissions.
+test("committed reference removal with failed metadata read keeps a retry and never shows the old grant", async () => {
+  const h = harness(); h.state.references = [reference()];
+  const originalRead = h.api.getProjectVaultReferences;
+  const originalDelete = h.api.deleteProjectVaultReference;
+  let failRead = false;
+  h.api.getProjectVaultReferences = async (...args) => { if (failRead) throw new Error("private backend failure"); return originalRead(...args); };
+  h.api.deleteProjectVaultReference = async (...args) => { await originalDelete(...args); failRead = true; throw new h.api.VaultApiError("mutation_committed_runtime_unavailable", 503); };
+  const view = await mount(h.SiteVaultPanel, { projectId: "project-1" });
+  try {
+    await click(button(view.host, "Remove")); await click(button(view.host, "Remove reference"));
+    assert.equal(view.host.querySelector("[data-vault-reference]"), null);
+    assert.equal(view.host.querySelector("[data-site-vault-panel]").getAttribute("aria-busy"), "false");
+    assert.match(view.host.querySelector("[data-site-vault-committed]").textContent, /change was saved/);
+    assert.equal(view.host.querySelector("fieldset").disabled, true);
+    assert.equal(view.host.textContent.includes("private backend failure"), false);
+    failRead = false; await click(view.host.querySelector("[data-site-vault-committed] button"));
+    assert.equal(view.host.querySelector("fieldset").disabled, false);
+    assert.equal(h.state.writes.length, 1);
+  } finally { await view.close(); }
+});
+
+// UC-NONE
+// Account lifetime isolation changes no browser trust, origin or database permissions.
+test("late committed recovery cannot update a newly signed-in account", async () => {
+  const h = harness(); const pending = deferred(); let reads = 0; let oldSignal;
+  const originalRead = h.api.getVault;
+  const originalDelete = h.api.deleteVaultSecret;
+  h.api.getVault = async (signal) => { reads++; if (reads === 2) { oldSignal = signal; return pending.promise; } return originalRead(signal); };
+  h.api.deleteVaultSecret = async (...args) => { await originalDelete(...args); throw new h.api.VaultApiError("mutation_committed_runtime_unavailable", 503); };
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, "Delete")); await click(button(view.host, "Delete item"));
+    h.state.uid = "owner-2"; h.state.vault.secrets = [item({ id: "new-owner-secret", name: "Other account secret" })];
+    await act(async () => { window.dispatchEvent(new Event("oceanleo:auth-state")); }); await flush();
+    assert.equal(oldSignal.aborted, true);
+    await act(async () => pending.resolve({ enabled: true, limits: h.state.vault.limits, secrets: [item({ name: "Old account secret" })], pending: [] })); await flush();
+    assert.match(view.host.textContent, /Other account secret/);
+    assert.equal(view.host.textContent.includes("Old account secret"), false);
+    assert.equal(view.host.querySelector("[data-vault-committed]"), null);
+    assert.equal(button(view.host, "Delete").disabled, false);
+  } finally { await view.close(); }
+});
+
+// UC-NONE
+// Project lifetime isolation changes no browser trust, origin or database permissions.
+test("late committed errors cannot clear or notify the newly opened project", async () => {
+  const h = harness(); const pending = deferred(); let oldSignal; let changed = 0;
+  h.state.references = [reference(), reference({ id: "new-ref", project_id: "new-project", secret_name: "New project service" })];
+  const originalDelete = h.api.deleteProjectVaultReference;
+  h.api.deleteProjectVaultReference = async (...args) => { oldSignal = args[2]; await pending.promise; await originalDelete(...args); throw new h.api.VaultApiError("mutation_committed_runtime_unavailable", 503); };
+  const view = await mount(h.SiteVaultPanel, { projectId: "project-1", onChanged: () => { changed++; } });
+  try {
+    await click(button(view.host, "Remove")); await click(button(view.host, "Remove reference"));
+    await view.render({ projectId: "new-project", onChanged: () => { changed++; } });
+    assert.equal(oldSignal.aborted, true);
+    await act(async () => pending.resolve()); await flush();
+    assert.match(view.host.textContent, /New project service/);
+    assert.equal(view.host.querySelector("[data-site-vault-committed]"), null);
+    assert.equal(changed, 0);
+    assert.equal(button(view.host, "Remove").disabled, false);
   } finally { await view.close(); }
 });
 

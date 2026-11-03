@@ -5,7 +5,7 @@ import { useLocale } from "../../i18n/useT.client";
 import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
   createVaultSecret, deleteVaultSecret, getVault, getVaultReferences, getVaultSealKey,
-  safeVaultFingerprint, updateVaultSecret, VaultApiError,
+  safeVaultFingerprint, updateVaultSecret, vaultMutationWasCommitted, VaultApiError,
   type VaultKind, type VaultManagedCredentials, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
 import { sealVaultValue } from "../../lib/vault-seal";
@@ -29,9 +29,18 @@ export function vaultPurposeLabel(reference: Pick<VaultReference, "purpose" | "s
     case "legacy_development": return text("旧版开发环境", "Legacy development environment");
     case "db_export": return text("数据库导出", "Database export");
     case "db_transfer": return text("数据库迁移", "Database transfer");
-    case "user_connector": return text("账号连接凭据", "Account connector credential");
+    case "user_connector": return reference.scope === "project_connector" ? text("网站服务授权", "Website service grant") : text("账号连接凭据", "Account connector credential");
+    case "supabase_provision_password": return text("Supabase 服务凭据", "Supabase service credential");
     default: return reference.scope === "browser" ? text("浏览器登录或表单填入", "Browser sign-in / form fill") : text("已授权用途", "Granted purpose");
   }
+}
+
+export function vaultReferenceSlotLabel(slot: VaultReference["slot"], text: (zh: string, en: string) => string): string {
+  return slot === "database" ? text("数据库", "Database") : slot === "auth" ? text("用户登录", "User sign-in") : slot === "storage" ? text("文件存储", "File storage") : text("服务", "Service");
+}
+
+export function vaultCommittedNotice(text: (zh: string, en: string) => string): string {
+  return text("保险箱变更已保存，但运行环境的恢复尚未确认。请检查网站运行状态，并刷新查看最新密钥或授权；不要重复提交这次变更。", "Your vault change was saved, but runtime recovery could not be confirmed. Check the website runtime status and refresh the current vault details; do not submit the change again.");
 }
 
 export function vaultErrorText(cause: unknown, text: (zh: string, en: string) => string): string {
@@ -46,6 +55,7 @@ export function vaultErrorText(cause: unknown, text: (zh: string, en: string) =>
     case "quota": return text("保险箱已达到容量上限。", "Your vault has reached its item limit.");
     case "rate_limited": return text("操作太频繁，请稍后重试。", "Too many requests. Try again shortly.");
     case "network": return text("暂时连不上保险箱，请检查网络后重试。", "Cannot reach the vault. Check your connection and try again.");
+    case "mutation_committed_runtime_unavailable": return vaultCommittedNotice(text);
     default: return text("保险箱操作未完成，请稍后重试。", "The vault operation could not be completed. Try again.");
   }
 }
@@ -83,6 +93,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [committed, setCommitted] = useState(false);
   const [editor, setEditor] = useState<{ secret?: VaultSecret } | null>(null);
   const [deleting, setDeleting] = useState<VaultSecret | null>(null);
   const active = useRef(true);
@@ -111,13 +122,26 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     return () => { active.current = false; controller.abort(); };
   }, [refresh]);
 
+  async function recoverCommitted(signal: AbortSignal) {
+    if (signal.aborted) return;
+    setCommitted(true); setNotice(""); setError("");
+    setEditor(null); setDeleting(null); setStatus(null); setReferences(null);
+    try { await refresh(signal); }
+    catch { if (!signal.aborted) setError(latestText.current("变更已保存，暂时无法读取最新保险箱。请刷新。", "The change was saved, but current vault details are unavailable. Refresh to check.")); }
+  }
+
   async function act(work: (signal: AbortSignal) => Promise<unknown>) {
     const signal = lifetime.current?.signal;
     if (operation.current || !signal || signal.aborted) return;
     operation.current = true;
     setBusy(true); setError(""); setNotice("");
     try { await work(signal); await refresh(signal); }
-    catch (cause) { if (!signal.aborted) setError(vaultErrorText(cause, latestText.current)); }
+    catch (cause) {
+      if (!signal.aborted) {
+        if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+        else setError(vaultErrorText(cause, latestText.current));
+      }
+    }
     finally { if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); } }
   }
 
@@ -133,6 +157,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
       <p>{error}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button>
     </div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">{notice}</p>}
+    {committed && <div data-vault-committed="" role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><p>{vaultCommittedNotice(text)}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {status?.migration_pending && <div role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
       <p>{status.migration_pending === "quota"
         ? text("保险箱已满，部分已连接的密钥还在等待迁入。现有项目仍可管理，移除不再需要的项目后可重试。", "Your vault is full, so some connected credentials are waiting to be imported. You can still manage existing items. Remove an unused item and retry.")
@@ -151,7 +176,12 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
           const signal = lifetime.current?.signal;
           setEditor(null);
           if (signal && !signal.aborted) await refresh(signal);
-        }} onError={(cause) => { if (active.current) setError(vaultErrorText(cause, text)); }} />}
+        }} onError={async (cause) => {
+          const signal = lifetime.current?.signal;
+          if (!active.current || !signal || signal.aborted) return;
+          if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+          else setError(vaultErrorText(cause, latestText.current));
+        }} />}
       {!status.secrets.length && !loading && <p className="rounded-2xl border border-dashed border-neutral-200 p-5 text-center text-neutral-500 dark:border-neutral-700">{text("还没有项目。先添加密钥，再从网站的小保险箱选择它。", "No items yet. Add a secret, then select it from a website’s small vault.")}</p>}
       <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
         {status.secrets.map((secret) => <article key={secret.id} data-vault-item={secret.id} className="space-y-3 py-4">
@@ -173,13 +203,14 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
             {references === null ? <p>{text("引用列表暂未确认，请刷新后查看。", "Usage references are not confirmed yet. Refresh to check.")}</p> : <>
               {!references.some((ref) => ref.secret_id === secret.id) && !secret.machines?.length && <p>{text("尚未授权给任何网站、应用或电脑。", "Not granted to any website, app or computer.")}</p>}
               <ul className="space-y-1">
-                {references.filter((ref) => ref.secret_id === secret.id).map((ref) => <li key={ref.id} className="break-all">
-                  {ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : text("网站 / 应用", "Website / app")} · {ref.project_id || text("账号", "Account")} · {vaultPurposeLabel(ref, text)}
+                {references.filter((ref) => ref.secret_id === secret.id).map((ref) => <li key={ref.id} data-vault-used-by={ref.id} className="break-all">
+                  {ref.purpose === "supabase_provision_password" ? text("服务", "Service") : ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : ref.scope === "project_connector" ? text("网站服务", "Website service") : text("网站 / 应用", "Website / app")} · {ref.project_id || text("账号", "Account")} · {vaultPurposeLabel(ref, text)}
                   {ref.origin && <> · <code>{ref.origin}</code></>}
-                  {ref.scope === "browser" && <> · {text("用途", "Purpose")}: <code>{ref.purpose}</code></>}
-                  {ref.scope === "connector" && typeof ref.binding?.provider === "string" && <> · {ref.binding.provider}</>}
+                  {ref.scope === "browser" && ref.purpose !== "supabase_provision_password" && <> · {text("用途", "Purpose")}: <code>{ref.purpose}</code></>}
+                  {(ref.scope === "connector" || ref.scope === "project_connector") && typeof ref.binding?.provider === "string" && <> · {ref.binding.provider}</>}
+                  {ref.scope === "project_connector" && <> · {vaultReferenceSlotLabel(ref.slot, text)}</>}
                   {ref.env_name && <> · <code>{ref.env_name}</code></>}
-                  {ref.scope === "project" && <> · {ref.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>}
+                  {(ref.scope === "project" || ref.scope === "project_connector") && <> · {ref.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>}
                 </li>)}
               </ul>
             </>}
@@ -249,7 +280,7 @@ function ManagedCredentialsSection({ summary }: { summary?: VaultManagedCredenti
 
 function SecretEditor({ uid, secret, maxValueBytes, accent, onClose, onSaved, onSaving, onError }: {
   uid: string; secret?: VaultSecret; maxValueBytes: number; accent?: string;
-  onClose: () => void; onSaved: () => Promise<void>; onSaving: (saving: boolean) => void; onError: (cause: unknown) => void;
+  onClose: () => void; onSaved: () => Promise<void>; onSaving: (saving: boolean) => void; onError: (cause: unknown) => Promise<void>;
 }) {
   const text = useVaultText();
   const id = useId();
@@ -298,7 +329,7 @@ function SecretEditor({ uid, secret, maxValueBytes, accent, onClose, onSaved, on
       else await createVaultSecret({ ...metadata, kind, sealed }, current.signal);
       if (!current.signal.aborted) await onSaved();
     } catch (cause) {
-      if (!current.signal.aborted) onError(cause);
+      if (!current.signal.aborted && mounted.current) await onError(cause);
     } finally {
       pendingValue = ""; saving.current = false; onSaving(false);
       if (mounted.current) setBusy(false);
