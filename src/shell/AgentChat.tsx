@@ -99,6 +99,7 @@ import {
   type StopState,
 } from "./cloud-computer/agent-dialog/reduce";
 import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./native-thread/merge";
+import { nativeDeliveryStatus, nativeLastActivity, nativeThinkingVisible } from "./native-chat-presentation";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -946,7 +947,7 @@ function AgentChatInner({
     if (settled === null) return IDLE_POLL_RESULT;
     const changed = settled !== serverMessagesRef.current;
     // A running task that produced output moves up in My Tasks (throttled).
-    if (changed && data.task?.status === "running") notifyHistoryActivity({ taskId: id });
+    if (changed && data.task?.status === "running") notifyHistoryActivity({ taskId: id, at: data.task?.last_activity_at });
     actionHistoryRef.current = settleActionHistory(
       actionHistoryRef.current,
       id,
@@ -3240,6 +3241,7 @@ function AgentChatInner({
     // One copy row per turn, under its last words; none while the turn is still running.
     const nativeTurnActions = agentTurnActionTargets(nativeRenderItems, nativePresentation.working || thread.running);
     const nativeTimeSeparators = agentMessageTimeSeparators(nativeMessages);
+    const autonomousTurns = new Set<string>();
     // Install / sign-in live in the composer pill's 账号 card: a send blocked for that reason opens it.
     const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
     // A prompt typed while the session is still opening waits in the queue: its bubble
@@ -3311,12 +3313,23 @@ function AgentChatInner({
       ) : null,
       items: (
         <>
-          {nativeRenderItems.map((item) =>
+          {nativeRenderItems.map((item) => {
+            const first = item.type === "progress" ? item.messages[0] : item.message;
+            const turnId = String(first?.meta?.native_turn_id ?? "");
+            const autonomous = Boolean(turnId && first?.meta?.native_turn_autonomous && !autonomousTurns.has(turnId));
+            if (autonomous) autonomousTurns.add(turnId);
+            return <div key={item.key} className="contents"
+              data-native-frame-seq={typeof first?.meta?.native_seq === "number" ? first.meta.native_seq : undefined}
+              data-native-turn-id={turnId || undefined}>
+              {autonomous && <div data-native-autonomous-turn={turnId}
+                className="pt-3 text-[12px] text-stone-500">{tt("agent 的后台工作")}</div>}
+              {
             item.type === "progress" ? (
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={nativeRunning && (item.messages.some((message) => message.meta?.native_turn_live === true) || item.key === nativeLiveProgressKey)}
+                running={nativeRunning && (item.messages.some((message) => message.meta?.native_turn_live === true) ||
+                  (!item.messages.some((message) => message.meta?.native_turn_id) && item.key === nativeLiveProgressKey))}
                 accent={accent}
               />
             ) : (
@@ -3343,10 +3356,11 @@ function AgentChatInner({
                 const id = String(item.message.meta!.native_message_id ?? "");
                 const failed = delivery.state === "unsent";
                 const cancelled = delivery.state === "cancelled";
+                const label = nativeDeliveryStatus(delivery.state);
+                if (!label && !delivery.uncertain) return null;
                 return <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500"
                   data-native-message-state={delivery.state} data-native-message-id={id} role="status">
-                  <span>{tt(failed ? "未发送" : cancelled ? "已撤回" :
-                    delivery.state === "sending" || delivery.state === "queued" ? "等待处理" : "已送入当前执行")}</span>
+                  {label && <span>{tt(label)}</span>}
                   {delivery.uncertain && <span>{tt("发送结果尚未确认，重试会核对原消息，避免重复执行。")}</span>}
                   {!nativeReadOnly && failed && <button type="button" onClick={() => void thread.retryMessage(id)}
                     className="text-stone-600 underline" disabled={!thread.live || thread.stopState === "stopping"}>{tt("重试")}</button>}
@@ -3355,12 +3369,13 @@ function AgentChatInner({
                 </div>;
               })()}
               </div>
-            ),
-          )}
+            )
+              }
+            </div>;
+          })}
           {/* Only until the turn's first entry: after that the process block / streaming text is the live signal. */}
-          {nativePresentation.thinking &&
-            !nativeMessages.slice(nativeLastUserIdx + 1).some((message) => message.role === "assistant") && (
-            <div className="flex items-center gap-2 text-[14px] text-stone-400">
+          {nativePresentation.thinking && nativeThinkingVisible(nativeMessages, thread.running, thread.live) && (
+            <div className="flex items-center gap-2 text-[14px] text-stone-400" data-native-thinking="">
               <span className="v-spinner" /> {tt("agent 正在思考…")}
             </div>
           )}
@@ -3721,16 +3736,16 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   // at the source; a user send always). The first look at a conversation —
   // the saved transcript or a replay — is a baseline, not activity.
   const activityTaskId = session?.task_id ?? "";
-  const lastMessage = thread.messages[thread.messages.length - 1];
-  const lastMessageKey = lastMessage ? `${lastMessage.id}:${lastMessage.role}:${String(lastMessage.content ?? "").length}` : "";
+  const activity = useMemo(() => nativeLastActivity(thread.messages), [thread.messages]);
+  const lastMessageKey = activity?.at ?? "";
   const activityBaselineRef = useRef<{ taskId: string; key: string } | null>(null);
   useEffect(() => {
     const baseline = activityBaselineRef.current;
     activityBaselineRef.current = { taskId: activityTaskId, key: lastMessageKey };
     if (!activityTaskId || !thread.live || !baseline || baseline.taskId !== activityTaskId) return;
     if (!lastMessageKey || baseline.key === lastMessageKey) return;
-    notifyHistoryActivity({ taskId: activityTaskId, user: lastMessage?.role === "user" });
-  }, [activityTaskId, lastMessageKey, thread.live, lastMessage?.role]);
+    notifyHistoryActivity({ taskId: activityTaskId, user: activity?.user, at: activity?.at });
+  }, [activityTaskId, lastMessageKey, thread.live, activity?.at, activity?.user]);
   // Header 「分享」 on a computer chat: the same select mode and action bar as the
   // OceanLeo conversation, over this chat's own messages. Text / image / document
   // are built from what is shown; the link names this session's cloud-saved copy.

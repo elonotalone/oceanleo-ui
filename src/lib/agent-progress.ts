@@ -227,6 +227,11 @@ export function buildAgentRenderItems(
       block = null;
     };
     const join = (message: AgentMessage, index: number) => {
+      // Native agents may start their own turns without another user message.
+      // Keep each turn's fold and live state independent, in stream order.
+      const turn = message.meta?.native_turn_id;
+      const previousTurn = block?.messages[block.messages.length - 1]?.meta?.native_turn_id;
+      if (block && turn !== previousTurn && (turn || previousTurn)) flush();
       if (!block) {
         block = {
           type: "progress",
