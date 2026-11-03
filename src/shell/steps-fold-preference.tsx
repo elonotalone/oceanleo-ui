@@ -48,6 +48,7 @@ function TaskStepsFoldPreference({ taskId, children }: { taskId: string | null; 
   const preference = stored.taskId === taskId ? stored.preference : null;
   const [blocks, setBlocks] = useState<HTMLDivElement[]>([]);
   const [latestBlocks, setLatestBlocks] = useState<ReadonlySet<HTMLDivElement>>(new Set());
+  const latestBlocksRef = useRef(latestBlocks);
   const registerBlock = useCallback((element: HTMLDivElement) => {
     setBlocks((current) => [...current, element]);
     return () => setBlocks((current) => current.filter((block) => block !== element));
@@ -65,7 +66,13 @@ function TaskStepsFoldPreference({ taskId, children }: { taskId: string | null; 
       if (!previous || (previous.compareDocumentPosition(block) & 4) !== 0) latestByStream.set(stream, block);
     }
     const next = new Set(latestByStream.values());
-    setLatestBlocks((current) => current.size === next.size && [...next].every((block) => current.has(block)) ? current : next);
+    const current = latestBlocksRef.current;
+    // Host hydration can commit fresh children repeatedly. Even a no-op
+    // dispatch from layout can extend that nested update chain; do not ask
+    // React to update when this conversation's physical block set is unchanged.
+    if (current.size === next.size && [...next].every((block) => current.has(block))) return;
+    latestBlocksRef.current = next;
+    setLatestBlocks(next);
   }, [blocks, children]);
 
   useEffect(() => {
