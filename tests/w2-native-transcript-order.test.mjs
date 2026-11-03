@@ -254,3 +254,43 @@ test("a text-only native replay on attach restates the saved turn once, and live
   }
   assert.deepEqual(contents.at(-1), ["U1", "A1", "U2", "A2 first", "U3", "A2 second"]);
 });
+
+test("a send before the gateway's history replay keeps the new message last and the saved turns single (V1 03:34 rejudge)", () => {
+  // V1 task 1aef6bb0: two saved turns; the user sends U3, then the gateway (restarted)
+  // replays the native session (text only), then U3's answer streams in.
+  const claude = () => ({ ...initialDialogState(), program: "claude", activeSession: "s" });
+  const at = (s, row) => applyDialog(s, { type: "frame", frame: { program: "claude", acp_session: "s", ...row } });
+  const savedRows = [
+    { t: "user_message", seq: 104903, created_at: "2026-11-03T18:52:10.000Z", message_id: "m1", turn_id: "t1", text: "U1" },
+    { t: "delta", seq: 104916, created_at: "2026-11-03T18:52:14.000Z", message_id: "m1", turn_id: "t1", text: "A1" },
+    { t: "done", seq: 104917, created_at: "2026-11-03T18:52:14.500Z", message_id: "m1", turn_id: "t1", stop_reason: "end_turn" },
+    { t: "user_message", seq: 104934, created_at: "2026-11-03T18:52:40.000Z", message_id: "m2", turn_id: "t2", text: "U2" },
+    { t: "delta", seq: 104943, created_at: "2026-11-03T18:52:44.000Z", message_id: "m2", turn_id: "t2", text: "A2" },
+    { t: "done", seq: 104944, created_at: "2026-11-03T18:52:44.500Z", message_id: "m2", turn_id: "t2", stop_reason: "end_turn" },
+  ];
+  const saved = savedRows.reduce((s, row) => at(s, { ...row, replay: true }), claude());
+  const replay = { t: "transcript", mode: "replace", live: false, frames: [
+    { t: "user_message", program: "claude", acp_session: "s", text: "U1", replay: true },
+    { t: "delta", program: "claude", acp_session: "s", text: "A1", replay: true },
+    { t: "user_message", program: "claude", acp_session: "s", text: "U2", replay: true },
+    { t: "delta", program: "claude", acp_session: "s", text: "A2", replay: true },
+  ] };
+  const cached = { t: "transcript", mode: "replace", live: false,
+    frames: savedRows.map(({ seq: _seq, created_at: _at, ...row }) => ({ program: "claude", acp_session: "s", ...row })) };
+  for (const copy of [replay, cached]) {
+    const steps = [
+      { t: "user_message", ts: "2026-11-03T19:19:40.000Z", message_id: "m3", turn_id: "t3", text: "U3" },
+      copy,
+      { t: "turn_start", message_id: "m3", turn_id: "t3" },
+      { t: "delta", message_id: "m3", turn_id: "t3", text: "A3" },
+      { t: "done", message_id: "m3", turn_id: "t3", stop: "end_turn" },
+    ];
+    let live = claude();
+    for (const step of steps) {
+      live = at(live, step);
+      const rows = dialogToAgentMessages(mergeNativeDialogPages(saved.messages, live.messages), { live: true }).map((m) => m.content);
+      assert.deepEqual(rows.slice(0, 5), ["U1", "A1", "U2", "A2", "U3"], `${copy === replay ? "replay" : "cached"} after ${step.t}: ${JSON.stringify(rows)}`);
+      assert.equal(new Set(rows).size, rows.length, `no duplicate rows: ${JSON.stringify(rows)}`);
+    }
+  }
+});

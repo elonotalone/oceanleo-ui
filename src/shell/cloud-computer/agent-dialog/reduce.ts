@@ -1356,7 +1356,7 @@ function reduceFrame(input: DialogState, frame: Record<string, unknown>): Dialog
       let prefix: DialogState = { ...state, messages: [], liveTurns: {}, busy: false, historyLoading: false };
       for (const raw of frames) {
         const item = asRecord(raw);
-        if (item) prefix = onFrame(prefix, item);
+        if (item) prefix = onFrame(prefix, { ...item, _native_snapshot: true });
       }
       return rememberSession({
         ...state,
@@ -1379,9 +1379,11 @@ function reduceFrame(input: DialogState, frame: Record<string, unknown>): Dialog
       hasOlder: frame.has_older === true || incomingOffset > 0,
       messages: [],
     };
+    // A transcript page restates history: its rows take no live arrival, or a message
+    // sent before the page arrived would sort above everything it restates (V1 2026-11-04).
     for (const raw of frames) {
       const item = asRecord(raw);
-      if (item) next = onFrame(next, item);
+      if (item) next = onFrame(next, { ...item, _native_snapshot: true });
     }
     // A transcript can be older than an already accepted local send. Replacing
     // the current view with that snapshot would erase the bubble until reload.

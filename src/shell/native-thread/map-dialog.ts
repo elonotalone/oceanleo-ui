@@ -381,12 +381,20 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
   // The gateway's text-only replay of the native session (session/load after a gateway
   // restart: no message/turn identity) restates saved rows; it never adds them again.
   let replayAnchor = false;
+  // Replayed history keeps its own place: a message sent before the replay arrived
+  // comes first in the live list, but the replay still restates the saved turns.
+  let replayCursor = -1;
+  const restated = new Set<number>();
   for (const row of live) {
     let index = out.findIndex((own) => own.kind === row.kind && (
       row.kind === "user" && own.kind === "user" && row.messageId ? own.messageId === row.messageId :
       row.kind === "turn" && own.kind === "turn" && row.turnId ? own.turnId === row.turnId : own.id === row.id));
+    if (index < 0 && row.kind === "user" && !row.messageId && row.replay === true) {
+      index = out.findIndex((own, at) => at > replayCursor && at < saved.length && !restated.has(at) && own.kind === "user" && own.text === row.text);
+      if (index >= 0) { replayCursor = index; restated.add(index); }
+    }
     if (index < 0 && row.kind === "user" && !row.messageId) {
-      index = out.findIndex((own, at) => at > userAnchor && own.kind === "user" && (!own.messageId || row.replay === true) && own.text === row.text &&
+      index = out.findIndex((own, at) => at > userAnchor && own.kind === "user" && !own.messageId && own.text === row.text &&
         (own.at == null || row.at == null || Math.abs(own.at - row.at) < 10_000));
     }
     if (index < 0 && row.kind === "turn" && !row.turnId && userAnchor >= 0) {
