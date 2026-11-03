@@ -33,6 +33,8 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
   const [notice, setNotice] = useState<string | null>(null);
   const [picker, setPicker] = useState<"default" | "shortcut" | null>(null);
   const busyRef = useRef(false);
+  const revokingRef = useRef(false);
+  const policyRequest = useRef<AbortController | null>(null);
   const revision = useRef(0);
   const lifetime = useRef<AbortController | null>(null);
 
@@ -50,8 +52,9 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     lifetime.current = controller;
+    busyRef.current = false; revokingRef.current = false; setBusy(false); setRevokingAgent(false);
     setSettings(null); setLoading(true); setError(null);
-    async function poll() { if (!document.hidden && !busyRef.current) await refresh(controller.signal); if (!controller.signal.aborted) timer = setTimeout(poll, 5000); }
+    async function poll() { if (!document.hidden && !busyRef.current && !revokingRef.current) await refresh(controller.signal); if (!controller.signal.aborted) timer = setTimeout(poll, 5000); }
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
     // The section keys this panel by account revision and selected device.
@@ -59,7 +62,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
   }, [device.device_id, client]);
 
   async function saveName() {
-    if (!name.trim() || busyRef.current) return;
+    if (!name.trim() || busyRef.current || revokingRef.current) return;
     busyRef.current = true; revision.current += 1; setBusy(true);
     const signal = lifetime.current!.signal;
     try {
@@ -69,7 +72,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     } finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); } }
   }
   async function revokeController(grant: DeviceControllerGrant) {
-    if (busyRef.current) return;
+    if (busyRef.current || revokingRef.current) return;
     const signal = lifetime.current!.signal;
     busyRef.current = true; revision.current += 1; setBusy(true);
     setError(null);
@@ -82,7 +85,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); } }
   }
   async function savePreferences(preferences: DevicePreferences) {
-    if (busyRef.current) return;
+    if (busyRef.current || revokingRef.current) return;
     const signal = lifetime.current!.signal;
     busyRef.current = true; revision.current += 1; setBusy(true);
     setError(null);
@@ -96,32 +99,58 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); } }
   }
   async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings, revokeOnly = false) {
-    if (busyRef.current) return;
-    const signal = lifetime.current!.signal;
+    if (revokeOnly) { await revokeAgentControl(); return; }
+    if (busyRef.current || revokingRef.current) return;
+    const parent = lifetime.current!.signal;
+    if (parent.aborted) return;
+    const controller = new AbortController();
+    policyRequest.current = controller;
+    const cancel = () => controller.abort();
+    parent.addEventListener("abort", cancel, { once: true });
+    const signal = controller.signal;
     busyRef.current = true; revision.current += 1; setBusy(true);
-    setRevokingAgent(revokeOnly); setError(null); setNotice(null);
+    setError(null); setNotice(null);
     try {
       const { enabled, input_allowed, agent_control_allowed, agent_always_ask } = remoteAccess;
-      const operation = revokeOnly ? { kind: "remote_access.update" as const, agent_control_allowed: false as const }
-        : { kind: "remote_access.update" as const, enabled, input_allowed, agent_control_allowed, agent_always_ask };
+      const operation = { kind: "remote_access.update" as const, enabled, input_allowed, agent_control_allowed, agent_always_ask };
       const result = await runDeviceSettingsOperation(client, device.device_id, operation, signal);
       if (signal.aborted) return;
       if (result.ok && result.data?.result && "remote_access" in result.data.result) {
         const saved = result.data.result.remote_access;
-        if (revokeOnly) {
-          const notice = deviceRevocationNotice(result.data);
-          if (notice) setNotice(notice);
-          else { setError(deviceSettingsErrorCopy("operation_failed")); return; }
-        }
         setSettings((current) => current ? { ...current, remote_access: { ...current.remote_access, ...saved } } : current);
       } else setError(deviceSettingsErrorCopy(result.error));
     } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
-    finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); setRevokingAgent(false); } }
+    finally {
+      parent.removeEventListener("abort", cancel);
+      if (policyRequest.current === controller) policyRequest.current = null;
+      if (!parent.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); }
+    }
+  }
+  async function revokeAgentControl() {
+    if (revokingRef.current) return;
+    const signal = lifetime.current!.signal;
+    if (signal.aborted) return;
+    revokingRef.current = true;
+    // Stop waiting for the superseded grant; its late ACK must never restore consent here.
+    policyRequest.current?.abort();
+    revision.current += 1; setRevokingAgent(true); setError(null); setNotice(null);
+    try {
+      const result = await runDeviceSettingsOperation(client, device.device_id, { kind: "remote_access.update", agent_control_allowed: false }, signal);
+      if (signal.aborted) return;
+      const notice = result.ok && result.data ? deviceRevocationNotice(result.data) : null;
+      if (notice && result.data?.result && "remote_access" in result.data.result) {
+        const saved = result.data.result.remote_access;
+        setSettings((current) => current ? { ...current, remote_access: { ...current.remote_access, ...saved } } : current);
+        setNotice(notice);
+      } else setError(deviceSettingsErrorCopy(result.error));
+    } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
+    finally { if (!signal.aborted) { revokingRef.current = false; revision.current += 1; setRevokingAgent(false); } }
   }
   const preferences = settings?.preferences;
   const remoteAccess: DeviceRemoteAccessSettings = { enabled: false, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true, ...(settings?.remote_access ?? {}) };
   const effectiveAvailability = availability === "unknown" ? settings?.availability ?? "unknown" : availability;
   const folderReady = effectiveAvailability === "online" && settings?.preferences_available;
+  const controlsBusy = busy || revokingAgent;
 
   return <div className="space-y-5" data-device-settings-panel={device.device_id}>
     <section className="flex flex-wrap items-center justify-between gap-4">
@@ -129,7 +158,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
         <div className="min-w-0">
           {editing ? <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void saveName(); }}>
             <input aria-label={tt("设备名称")} autoFocus maxLength={80} value={name} onInput={(event) => setName(event.currentTarget.value)} className="w-48 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-neutral-500" />
-            <button type="submit" disabled={busy || !name.trim()} className={PRIMARY}>{tt("保存")}</button><button type="button" onClick={() => setEditing(false)} className={QUIET}>{tt("取消")}</button>
+            <button type="submit" disabled={controlsBusy || !name.trim()} className={PRIMARY}>{tt("保存")}</button><button type="button" onClick={() => setEditing(false)} className={QUIET}>{tt("取消")}</button>
           </form> : <button type="button" onClick={() => { setName(device.device_name); setEditing(true); }} className="flex max-w-full items-center gap-2 text-left text-lg font-semibold" aria-label={tt("修改设备名称")}><span className="truncate">{device.device_name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden="true"><path d="m15 4 5 5-11 11H4v-5zM13 6l5 5" /></svg></button>}
           <div className="mt-1"><DeviceStatus availability={effectiveAvailability} /></div>
         </div>
@@ -139,30 +168,30 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
       </div>
     </section>
 
-    {error && <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)}<button type="button" className={QUIET} disabled={busy} onClick={() => void refresh(lifetime.current!.signal)}>{tt("重试")}</button></div>}
+    {error && <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)}<button type="button" className={QUIET} disabled={controlsBusy} onClick={() => void refresh(lifetime.current!.signal)}>{tt("重试")}</button></div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 px-3 py-2 text-[13px] text-neutral-600">{tt(notice)}</p>}
 
     {isComputer(device) && <section className={CARD} data-device-access-settings>
       <div className="flex flex-wrap items-center justify-between gap-3"><h3 className={CARD_TITLE}>{tt("访问与控制")}</h3>
-        <button type="button" className={`${QUIET} text-red-600`} data-revoke-agent-control disabled={busy || (settings !== null && !remoteAccess.agent_control_allowed)} onClick={() => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed: false }, true)}>{tt(revokingAgent ? "正在撤销…" : "撤销 Agent 控制")}</button>
+        <button type="button" className={`${QUIET} text-red-600`} data-revoke-agent-control disabled={revokingAgent} onClick={() => void revokeAgentControl()}>{tt(revokingAgent ? "正在撤销…" : "撤销 Agent 控制")}</button>
       </div>
       <p className={CARD_DESC}>{tt("自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。")}</p>
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 divide-y divide-neutral-100">
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程访问")}</p><p className={CARD_DESC}>{tt("自己的账号可以连接；其他人仍需这台电脑确认。")}</p></div>
-          <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={busy || effectiveAvailability !== "online"} onChange={(enabled) => void saveRemoteAccess({ ...remoteAccess, enabled })} />
+          <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(enabled) => void saveRemoteAccess({ ...remoteAccess, enabled })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <p className="text-[13px] font-medium">{tt("允许操作屏幕（查看、点击、输入）")}</p>
-          <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={busy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ ...remoteAccess, input_allowed })} />
+          <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={controlsBusy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ ...remoteAccess, input_allowed })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后撤销权限，离线设备会在重新连接后同步。")}</p></div>
-          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={busy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed }, !agent_control_allowed)} />
+          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed }, !agent_control_allowed)} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("每次询问")}</p><p className={CARD_DESC}>{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</p></div>
-          <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={busy || effectiveAvailability !== "online"} onChange={(agent_always_ask) => void saveRemoteAccess({ ...remoteAccess, agent_always_ask })} />
+          <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_always_ask) => void saveRemoteAccess({ ...remoteAccess, agent_always_ask })} />
         </div>
         {effectiveAvailability !== "online" && <p className="pt-3 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
       </div>}
@@ -174,7 +203,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
         <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{grant.label}</span>{grant.is_current && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] text-sky-600">{tt("当前设备")}</span>}</div>
           <p className="mt-1 text-xs text-neutral-500">{tt("最近使用：{time}", { time: formatDeviceTime(grant.last_used_at) })}<span className="mx-2" aria-hidden="true">·</span>{grant.expires_at ? tt("有效期至 {time}", { time: formatDeviceTime(grant.expires_at) }) : tt("永不过期")}</p>
         </div>
-        <button type="button" className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-red-600 hover:bg-red-50" disabled={busy} onClick={() => void revokeController(grant)}>{tt("撤销")}</button>
+        <button type="button" className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-red-600 hover:bg-red-50" disabled={controlsBusy} onClick={() => void revokeController(grant)}>{tt("撤销")}</button>
       </div>)}</div> : settings && <p className="rounded-2xl border border-dashed border-neutral-200 p-5 text-sm text-neutral-400">{tt("暂无已授权设备")}</p>}
     </section>
 
@@ -182,15 +211,15 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
       <h3 className="mb-4 text-sm font-semibold">{tt("默认任务文件夹")}</h3>
       <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-200 p-4"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"><FolderIcon /></span>
         <p className="min-w-0 flex-1 break-all text-sm text-neutral-600" data-device-default-folder>{loading ? tt("正在加载…") : !settings?.preferences_available ? "—" : preferences?.default_task_directory ?? tt("默认位置")}</p>
-        <button type="button" className={QUIET} disabled={busy || !folderReady || !preferences?.default_task_directory} onClick={() => { if (preferences) void savePreferences({ ...preferences, default_task_directory: null }); }}>{tt("恢复默认")}</button>
-        <button type="button" className={QUIET} disabled={busy || !folderReady} onClick={() => setPicker("default")}>{tt("修改")}</button>
+        <button type="button" className={QUIET} disabled={controlsBusy || !folderReady || !preferences?.default_task_directory} onClick={() => { if (preferences) void savePreferences({ ...preferences, default_task_directory: null }); }}>{tt("恢复默认")}</button>
+        <button type="button" className={QUIET} disabled={controlsBusy || !folderReady} onClick={() => setPicker("default")}>{tt("修改")}</button>
       </div>
       {!loading && settings && !folderReady && <p className="mt-2 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
     </section>
 
     <section className={CARD}>
-      <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("任务文件夹")}</h3><button type="button" className={QUIET} disabled={busy || !folderReady} onClick={() => setPicker("shortcut")}><span aria-hidden="true">＋</span>{tt("添加文件夹")}</button></div>
-      <div className="space-y-2">{preferences?.task_folders.map((path) => <div key={path} className="flex items-center gap-3 rounded-2xl border border-neutral-200 px-4 py-3"><FolderIcon /><span className="min-w-0 flex-1 break-all text-sm text-neutral-600">{path}</span><button type="button" className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-neutral-500 hover:bg-neutral-100" disabled={busy || !folderReady} onClick={() => void savePreferences({ ...preferences, task_folders: preferences.task_folders.filter((item) => item !== path) })}>{tt("移除")}</button></div>)}</div>
+      <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("任务文件夹")}</h3><button type="button" className={QUIET} disabled={controlsBusy || !folderReady} onClick={() => setPicker("shortcut")}><span aria-hidden="true">＋</span>{tt("添加文件夹")}</button></div>
+      <div className="space-y-2">{preferences?.task_folders.map((path) => <div key={path} className="flex items-center gap-3 rounded-2xl border border-neutral-200 px-4 py-3"><FolderIcon /><span className="min-w-0 flex-1 break-all text-sm text-neutral-600">{path}</span><button type="button" className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-neutral-500 hover:bg-neutral-100" disabled={controlsBusy || !folderReady} onClick={() => void savePreferences({ ...preferences, task_folders: preferences.task_folders.filter((item) => item !== path) })}>{tt("移除")}</button></div>)}</div>
       {settings && !preferences?.task_folders.length && <p className="py-2 text-sm text-neutral-400">{tt("暂无文件夹")}</p>}
     </section>
 

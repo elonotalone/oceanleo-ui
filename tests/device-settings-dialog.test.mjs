@@ -269,3 +269,66 @@ test("offline revoke remains usable when Settings cannot read the device policy"
     assert.equal(document.querySelectorAll('button[role="switch"]').length, 0, "missing own/input/Ask state is never invented");
   } finally { view.cleanup(); }
 });
+
+// UC-NONE: Owner device consent is tested without a UGC origin, cookie or frame boundary.
+test("a pending enable projected as effective false can still be cancelled from Settings", async () => {
+  const client = fakeClient();
+  let pendingEnable = true;
+  client.settings.remote_access.agent_control_allowed = false;
+  client.startOperation = async (id, operation) => {
+    client.calls.operations.push([id, operation]);
+    if (operation.kind === "remote_access.update" && operation.agent_control_allowed === false) pendingEnable = false;
+    return {ok: true, data: {state: "pending", operation_id: "cancel-pending-enable", revocation_effective: true, device_sync_pending: true, result: {remote_access: {agent_control_allowed: false, expires_at: null}}}};
+  };
+  const view = await mount(DeviceSettingsPanel, {device, availability: "offline", client, onControl() {}, onRename: async () => true, onRevoke() {}});
+  try {
+    assert.equal(pendingEnable, true);
+    const agentSwitch = document.querySelector('button[role="switch"][aria-label="允许远程 Agent 控制"]');
+    assert.equal(agentSwitch.getAttribute("aria-checked"), "false", "a pending increase is not effective consent");
+    assert.equal(view.button("撤销 Agent 控制").disabled, false);
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.deepEqual(client.calls.operations, [["mac-target", {kind: "remote_access.update", agent_control_allowed: false}]]);
+    assert.equal(pendingEnable, false);
+    assert.equal(agentSwitch.getAttribute("aria-checked"), "false");
+    assert.ok(view.text().includes("Agent 控制权限已撤销。设备重新连接后会同步。"));
+  } finally { view.cleanup(); }
+});
+
+// UC-NONE: This exercises cancellation of an owner policy request and its late ACK, without executing untrusted content.
+test("Settings revoke interrupts a pending enable wait and ignores its late successful ACK", async (t) => {
+  t.mock.timers.enable({apis: ["setTimeout"]});
+  const client = fakeClient();
+  let enablePolls = 0;
+  let enableAborted = false;
+  let lateEnableAck;
+  client.startOperation = async (id, operation) => {
+    client.calls.operations.push([id, operation]);
+    return {ok: true, data: operation.agent_control_allowed ? {state: "pending", operation_id: "enable-1"}
+      : {state: "pending", operation_id: "revoke-2", revocation_effective: true, device_sync_pending: true, result: {remote_access: {agent_control_allowed: false, expires_at: null}}}};
+  };
+  client.getOperation = (_id, operationId, signal) => {
+    assert.equal(operationId, "enable-1");
+    enablePolls += 1;
+    signal.addEventListener("abort", () => { enableAborted = true; }, {once: true});
+    return new Promise((resolve) => { lateEnableAck = resolve; });
+  };
+  const view = await mount(DeviceSettingsPanel, {device, availability: "online", client, onControl() {}, onRename: async () => true, onRevoke() {}});
+  try {
+    const agentSwitch = document.querySelector('button[role="switch"][aria-label="允许远程 Agent 控制"]');
+    await view.click(agentSwitch);
+    await act(async () => t.mock.timers.tick(750));
+    await flush();
+    assert.equal(enablePolls, 1);
+    assert.equal(agentSwitch.getAttribute("aria-checked"), "false");
+    assert.equal(view.button("撤销 Agent 控制").disabled, false, "the pending grant must not block its cancellation");
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.equal(enableAborted, true, "stop polling the permission increase after it is superseded");
+    assert.deepEqual(client.calls.operations[1], ["mac-target", {kind: "remote_access.update", agent_control_allowed: false}]);
+    assert.ok(view.text().includes("Agent 控制权限已撤销。设备重新连接后会同步。"));
+    await act(async () => lateEnableAck({ok: true, data: {state: "succeeded", operation_id: "enable-1", result: {remote_access: {...client.settings.remote_access, agent_control_allowed: true}}}}));
+    await flush();
+    assert.equal(agentSwitch.getAttribute("aria-checked"), "false");
+    assert.equal(client.calls.operations.length, 2, "cancel does not replay either policy mutation");
+    assert.equal(enablePolls, 1);
+  } finally { view.cleanup(); }
+});
