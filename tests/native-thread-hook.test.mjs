@@ -155,6 +155,22 @@ function session(overrides = {}) {
     native_session_id: "nat-1", created_at: "", updated_at: "", sync_status: "saved", ...overrides };
 }
 
+test("queued handoff identity is immutable, while distinct user actions may repeat the same text", async () => {
+  FakeSocket.sockets = [];
+  const own = session({ id: "w2-immutable-handoff", computer_id: "cc_w2-immutable-handoff" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [], saved_at: null, sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    await act(async () => assert.equal(await globalThis.__thread.dialog.send("same text", "queue-immutable-one"), true));
+    await act(async () => assert.equal(await globalThis.__thread.dialog.send("same text", "queue-immutable-one"), true));
+    assert.deepEqual(sent().filter((row) => row.t === "prompt").map((row) => row.message_id), ["queue-immutable-one"]);
+    await act(async () => assert.equal(await globalThis.__thread.dialog.send("same text", "queue-immutable-two"), true));
+    assert.deepEqual(sent().filter((row) => row.t === "prompt").map((row) => row.message_id), ["queue-immutable-one", "queue-immutable-two"]);
+    assert.equal(globalThis.__thread.messages.filter((row) => row.role === "user" && row.content === "same text").length, 2);
+  } finally { view.cleanup(); }
+});
+
 test("W2 follow-up: completed task hydrates its native binding from the saved session before sending", async () => {
   FakeSocket.sockets = [];
   const stale = session({ id: "w2-reopen-bound", computer_id: "cc_w2-reopen", native_session_id: null, run_status: "completed" });

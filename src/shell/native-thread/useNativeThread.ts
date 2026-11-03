@@ -127,6 +127,7 @@ export type NativePendingPrompt = {
 
 type PendingState = NativePendingPrompt & {
   key: number;
+  messageId: string;
   queuedAt: number;
   attachmentIds: string[];
   attachments: { name: string; mime: string }[];
@@ -139,6 +140,10 @@ type PendingState = NativePendingPrompt & {
 export const PENDING_PROMPT_CONNECT_MS = 45_000;
 /** The queued prompt's bubble id: below every id map-dialog hands out (-1 … -2147483647). */
 const PENDING_BUBBLE_ID = -2147483648;
+
+function pendingMessageId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
 
 type Archive = Awaited<ReturnType<typeof getComputerTaskTranscript>>;
 /** Earlier saved batches (oldest first) and the cursor for the next one. */
@@ -160,10 +165,6 @@ function terminalRun(session: ComputerTaskSession | null): boolean {
 
 function hasConversation(messages: AgentDialogMessage[]): boolean {
   return messages.some((message) => message.kind === "user" || message.kind === "turn");
-}
-
-function userCount(messages: AgentDialogMessage[]): number {
-  return messages.filter((message) => message.kind === "user").length;
 }
 
 function isImageFile(mime: string, name: string): boolean {
@@ -451,10 +452,10 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking || pendingDelivery) && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, messageId?: string) => {
     if (!ready) return false;
     try {
-      return (await dialog.send(text)) === true;
+      return (await dialog.send(text, messageId)) === true;
     } catch {
       return false;
     }
@@ -464,11 +465,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // bound, never handed back silently (unsent → a reason and a retry).
   const pendingKey = useRef(0);
   const sendingRef = useRef(0);
-  const sentBaseline = useRef(0);
   const attachmentsRef = useRef(dialog.attachments);
   attachmentsRef.current = dialog.attachments;
-  const dialogMessagesRef = useRef(dialog.messages);
-  dialogMessagesRef.current = dialog.messages;
   const queue = useCallback((text: string) => {
     const current = pendingRef.current;
     if (current && !current.unsent) return false;
@@ -479,7 +477,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     if (!clean && !files.length) return false;
     pendingKey.current += 1;
     const next: PendingState = {
-      key: pendingKey.current, text: clean, unsent: null, queuedAt: Date.now(),
+      key: pendingKey.current, messageId: pendingMessageId(), text: clean, unsent: null, queuedAt: Date.now(),
       attachmentIds: files.map((item) => item.id),
       attachments: files.map((item) => ({ name: item.name, mime: item.mime })),
     };
@@ -524,7 +522,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     const files = attachmentsRef.current.filter((item) => ids.includes(item.id) && item.state !== "error");
     pendingKey.current += 1;
     const next: PendingState = {
-      key: pendingKey.current, text: restored.text, unsent: ttRef.current("电脑重连时没有发出去"), queuedAt: Date.now(),
+      key: pendingKey.current, messageId: pendingMessageId(), text: restored.text, unsent: ttRef.current("电脑重连时没有发出去"), queuedAt: Date.now(),
       attachmentIds: files.map((item) => item.id),
       attachments: files.map((item) => ({ name: item.name, mime: item.mime })),
     };
@@ -538,14 +536,16 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // Only a known computer can be "offline"; null is still connecting.
   const blockedNow = computer && online ? blockedReason : null;
   useEffect(() => {
-    if (!pending || pending.unsent || sendingRef.current === pending.key) return;
-    const key = pending.key;
+    const current = pendingRef.current;
+    // Passive effects may still hold a committed old snapshot after an async
+    // handoff settles. Only the authoritative queue may claim a dispatch.
+    if (!pending || !current || current.key !== pending.key || current.unsent || sendingRef.current === current.key) return;
+    const key = current.key;
     if (ready) {
       sendingRef.current = key;
-      sentBaseline.current = userCount(dialogMessagesRef.current);
-      void send(pending.text).then((sent) => {
-        if (sendingRef.current === key) sendingRef.current = 0;
+      void send(current.text, current.messageId).then((sent) => {
         settlePending(key, sent ? null : tt("没能发出去，请重试。"));
+        if (sendingRef.current === key) sendingRef.current = 0;
       });
       return;
     }
@@ -637,7 +637,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
 
   // The queued prompt is the user's bubble until the real one (sent) arrives.
   const pendingShown = Boolean(pending) &&
-    !(sendingRef.current === pending?.key && userCount(dialog.messages) > sentBaseline.current);
+    !messages.some((message) => message.meta?.native_message_id === pending?.messageId);
   const threadMessages = useMemo(() => {
     if (!pending || !pendingShown) return messages;
     const attachments = pending.attachments.map((item) => ({
@@ -652,6 +652,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       meta: {
         native: true,
         native_pending: true,
+        native_message_id: pending.messageId,
         ...(pending.unsent ? { native_unsent: true } : {}),
         ...(attachments.length ? { attachments } : {}),
       },

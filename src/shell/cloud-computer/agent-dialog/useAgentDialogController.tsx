@@ -149,6 +149,8 @@ function unsentKeys(frame: Record<string, unknown>): string[] {
 // 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
 // W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
 export type AgentDialogControllerV2 = AgentDialogController & {
+  /** A queued user action supplies its immutable id across async view handoff. */
+  send: (override?: string, messageId?: string) => Promise<boolean>;
   attachmentFile: (id: string) => File | undefined;
   /** Retry explicitly; an uncertain send keeps its original ID for gateway deduplication. */
   withdrawLocalPrompt: (text: string, attachmentIds: string[]) => void;
@@ -1581,7 +1583,15 @@ export function useAgentDialog({
 
   // `override` lets a host composer (main chat LeoComposer) send its own text
   // without first round-tripping it through this controller's draft state.
-  const send = useCallback(async (override?: string): Promise<boolean> => {
+  const send = useCallback(async (override?: string, messageId?: string): Promise<boolean> => {
+    const handedOff = messageId ? retainedPromptsRef.current.get(messageId) : undefined;
+    if (handedOff) {
+      // A stale ready effect may repeat a completed handoff. Reuse the receipt;
+      // a retry of unsent/uncertain input goes through retryMessage explicitly.
+      return handedOff.text === (typeof override === "string" ? override : draftRef.current).trim() &&
+        handedOff.frame.program === stateRef.current.program &&
+        (handedOff.frame.task_session_id || "") === (taskSessionRef.current || "") && handedOff.state !== "unsent";
+    }
     if (abortSendGuardRef.current || preparingSendRef.current || stopRef.current.phase === "stopping") return false;
     const program = stateRef.current.program;
     if (program === "oceanleo" && !localOceanleoRef.current) return await sendOcean(override);
@@ -1624,7 +1634,7 @@ export function useAgentDialog({
         option.id !== "model" && option.category !== "model" && option.id !== current.mode?.id &&
         option.id !== "mode" && option.category !== "mode" && option.options.some((choice) => choice.value === String(option.current))
       ).map((option) => [option.id, option.current])), ...pendingConfig.current.get(origin) };
-      const id = newMessageId();
+      const id = messageId || newMessageId();
       const frame: Record<string, unknown> = { t: "prompt", program, text, message_id: id, intent: "normal",
         ...(managed ? { task_session_id: managed } : {}),
         ...(acpSession ? { acp_session: acpSession } : { ref, ...(current.selectedModel ? { model: current.selectedModel } : {}),
