@@ -1003,6 +1003,15 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         const renaming = renameFor === entry.id;
         const project = historyEntryProject(entry);
         const openEntry = () => {
+          if (mountedHistoryDetails > 0 && typeof window !== "undefined") {
+            const current = new URL(window.location.href);
+            const currentSelection = historySessionIdFromPath(current.pathname) ||
+              taskIdFromPath(current.pathname) || current.searchParams.get("task") || sel;
+            // Reselecting the shown task keeps its chosen conversation (native
+            // or cloud). A bare row URL would discard computerSession; the URL
+            // identity also prevents a stale sidebar selection blocking a switch.
+            if (historyEntryMatchesSelection(entry, currentSelection)) return;
+          }
           // Reads start before anything renders; the switch itself is client-only
           // while the detail is on this page (openHistoryHref).
           prefetchHistoryOpen(historyOpenHint(entry));

@@ -6,6 +6,7 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 globalThis.React = React;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.CustomEvent = window.CustomEvent;
 const reads = [];
 const sessionReads = [];
 const nativeReads = [];
@@ -20,6 +21,8 @@ globalThis.__detailReadSession = async (id) => {
   return { ok: true, data: { id, site_id: "oceanleo", app_id: "home-agent", task_id: `task-for-${id}`, status: "active", snapshot: {}, revision: 1, schema_version: 1 } };
 };
 globalThis.__detailNativeRead = (id) => nativeReads.push(id);
+const selection = await import(await compileModule("src/shell/WorkspaceSelection.tsx"));
+globalThis.__detailSelectionBridge = selection;
 const history = await import(await compileModule("src/shell/HistoryMasterDetail.tsx", {
   "../i18n/ui/useUI": dataModule("export function useUI(){return value=>value;}"),
   "next/navigation": dataModule(`
@@ -27,7 +30,7 @@ const history = await import(await compileModule("src/shell/HistoryMasterDetail.
     export function useSearchParams(){return globalThis.__detailSearchReady === false ? null : new URLSearchParams(window.location.search);}
     export function useRouter(){return globalThis.__detailRouter;}
   `),
-  "./WorkspaceSelection": dataModule("export function useWorkspaceSelection(){return [globalThis.__detailSelection || null, ()=>{}];}"),
+  "./WorkspaceSelection": dataModule("export const useWorkspaceSelection=globalThis.__detailSelectionBridge.useWorkspaceSelection;"),
   "./AgentChat": dataModule("export function AgentChat({taskId}){return globalThis.React.createElement('section',{'data-test-native-pane':taskId},taskId);}"),
   "./WorkspaceSession": dataModule("export function WorkspaceSessionProvider({children}){return children;}"),
   "./library-task-history": dataModule("export function LibraryTaskHistoryWorkspace(){return null;}"),
@@ -39,7 +42,7 @@ const history = await import(await compileModule("src/shell/HistoryMasterDetail.
   "../lib/auth/client": dataModule("export function browserClient(){return null;}"),
   "../lib/agent": dataModule(`
     export function getTask(id){return globalThis.__detailReadTask(id);}
-    export async function listTasks(){return {ok:true,data:{items:[]}};}
+    export async function listTasks(){return {ok:true,data:{items:globalThis.__detailTaskRows || []}};}
     export async function deleteTask(){return {ok:true};}
   `),
   "../lib/app-session": dataModule(`
@@ -50,7 +53,7 @@ const history = await import(await compileModule("src/shell/HistoryMasterDetail.
     export async function updateAppSessionMetadata(){return {ok:true};}
   `),
   "./task-open-cache": dataModule(`
-    export function prefetchHistoryOpen(){}
+    export function prefetchHistoryOpen(hint){globalThis.__detailPrefetches?.push(hint);}
     export async function readHistorySession(){return undefined;}
     export async function readTaskDetail(){return undefined;}
     export function openTaskFirstPage(id){return globalThis.__detailReadTask(id);}
@@ -65,7 +68,7 @@ const history = await import(await compileModule("src/shell/HistoryMasterDetail.
 }));
 globalThis.__detailRouter = { push(){}, replace(){}, prefetch(){} };
 
-async function mount(url) {
+async function mount(url, rows = false) {
   window.history.replaceState({}, "", url);
   reads.length = 0; sessionReads.length = 0; nativeReads.length = 0;
   const { createRoot } = await import("react-dom/client");
@@ -73,9 +76,16 @@ async function mount(url) {
   document.body.append(container);
   const root = createRoot(container);
   let rerender;
+  let forceSelection;
+  function SelectionSeed({children}) {
+    const [selected,setSelected] = selection.useWorkspaceSelection("history");
+    forceSelection = setSelected;
+    React.useEffect(() => {setSelected(globalThis.__detailSelection || null);}, []);
+    return React.createElement(React.Fragment,null,children,React.createElement("output",{"data-test-selected":true},selected));
+  }
   function Bed(){const [,bump]=React.useState(0);rerender=()=>bump(n=>n+1);return React.createElement(history.HistoryDetail,{siteId:"oceanleo"});}
-  await act(async () => root.render(React.createElement(Bed)));
-  return { container, async refresh(){await act(async()=>{rerender();});}, async unmount(){await act(async()=>root.unmount());container.remove();} };
+  await act(async () => root.render(React.createElement(selection.WorkspaceSelectionProvider,null,React.createElement(SelectionSeed,null,rows ? React.createElement(history.HistorySubNav,{siteId:"oceanleo"}) : null,React.createElement(Bed)))));
+  return { container, async select(id){await act(async()=>forceSelection(id));}, async refresh(){await act(async()=>{rerender();});}, async unmount(){await act(async()=>root.unmount());container.remove();} };
 }
 
 test("a query deep-link restores detail while auth and sidebar selection are still hydrating", async () => {
@@ -119,4 +129,61 @@ test("a dynamic session route keeps precedence over query and context selection"
     assert.equal(view.container.querySelector("[data-test-native-pane]")?.getAttribute("data-test-native-pane"), "task-for-path-session");
     assert.deepEqual(reads, []);
   } finally { await view.unmount(); }
+});
+
+const rowTasks = ["reselect-native-task", "different-native-task"].map((id) => ({
+  id, title: id, mode: "computer", status: "done", site_id: "oceanleo",
+  created_at: "2026-11-03T17:00:00Z", last_activity_at: "2026-11-03T17:00:00Z",
+}));
+
+for (const conversation of ["cts-selected-native", "cloud"]) {
+  test(`reselecting the current task preserves its ${conversation} conversation URL`, async () => {
+    globalThis.__detailTaskRows = rowTasks;
+    globalThis.__detailSelection = rowTasks[0].id;
+    globalThis.__detailPrefetches = [];
+    const url = `/history?task=${rowTasks[0].id}&computerSession=${conversation}&search=1#saved-position`;
+    const view = await mount(url, true);
+    try {
+      const initialUrl = window.location.href;
+      const initialHistoryLength = window.history.length;
+      const initialReads = [...reads];
+      const row = view.container.querySelector(`[data-history-row="${rowTasks[0].id}"]`);
+      assert.ok(Boolean(row), "the selected task is rendered");
+      for (let click = 0; click < 3; click++) await act(async () => row.click());
+      assert.equal(window.location.href, initialUrl, "reselection retains the chosen conversation and page state");
+      assert.equal(window.history.length, initialHistoryLength, "reselection adds no navigation entry");
+      assert.deepEqual(reads, initialReads, "the current detail is retained");
+      assert.deepEqual(globalThis.__detailPrefetches, [], "reselection does not restart a row open");
+      assert.equal(view.container.querySelector("[data-test-native-pane]")?.getAttribute("data-test-native-pane"), rowTasks[0].id);
+    } finally {
+      delete globalThis.__detailTaskRows;
+      delete globalThis.__detailPrefetches;
+      await view.unmount();
+    }
+  });
+}
+
+test("a different task opens without the prior conversation id, even with stale row selection", async () => {
+  globalThis.__detailTaskRows = rowTasks;
+  globalThis.__detailSelection = rowTasks[0].id;
+  globalThis.__detailPrefetches = [];
+  const view = await mount(`/history?task=${rowTasks[0].id}&computerSession=cts-first-task`, true);
+  try {
+    await view.select(rowTasks[1].id);
+    const second = view.container.querySelector(`[data-history-row="${rowTasks[1].id}"]`);
+    assert.ok(Boolean(second));
+    await act(async () => second.click());
+    assert.equal(window.location.pathname + window.location.search, `/history?task=${rowTasks[1].id}`);
+    assert.equal(view.container.querySelector("[data-test-native-pane]")?.getAttribute("data-test-native-pane"), rowTasks[1].id);
+    assert.equal(view.container.querySelector("[data-test-selected]")?.textContent, rowTasks[1].id);
+    const first = view.container.querySelector(`[data-history-row="${rowTasks[0].id}"]`);
+    await act(async () => first.click());
+    assert.equal(window.location.pathname + window.location.search, `/history?task=${rowTasks[0].id}`);
+    assert.equal(view.container.querySelector("[data-test-native-pane]")?.getAttribute("data-test-native-pane"), rowTasks[0].id);
+    assert.deepEqual(globalThis.__detailPrefetches.map((hint) => hint.id), [rowTasks[1].id, rowTasks[0].id]);
+  } finally {
+    delete globalThis.__detailTaskRows;
+    delete globalThis.__detailPrefetches;
+    await view.unmount();
+  }
 });
