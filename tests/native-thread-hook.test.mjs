@@ -60,6 +60,7 @@ class FakeSocket {
     if (frame.t === "sessions") reply({ t: "sessions", program: frame.program, sessions: [{ id: "srv-active", title: "Someone else's", updated_at: "2026-10-30" }], active: "srv-active" });
     if (frame.t === "open_session" && FakeSocket.holdOpen) {
       FakeSocket.heldOpen = { socket: this, frame };
+      FakeSocket.heldOpens?.push(FakeSocket.heldOpen);
       return;
     }
     if (frame.t === "open_session") {
@@ -864,23 +865,38 @@ test("a draft never adopts another view's session_opened; its first prompt is a 
 test("composer files follow the conversation's task session: put again under a new one, dropped on New Task", async () => {
   FakeSocket.sockets = [];
   globalThis.__inboxPuts = [];
-  globalThis.__taskApi = { async transcript(id) { return { session: session({ id, computer_id: "cc_sw" }), frames: [], saved_at: null, sync_status: "saved" }; } };
   const first = session({ id: "managed-a", computer_id: "cc_sw", native_session_id: "nat-a" });
+  const second = session({ id: "managed-b", computer_id: "cc_sw", native_session_id: null });
+  const archiveBindings = [];
+  globalThis.__taskApi = { async transcript(id) {
+    const saved = id === first.id ? first : id === second.id ? second : null;
+    assert.ok(saved, `unexpected managed transcript ${id}`);
+    archiveBindings.push({ id, nativeId: saved.native_session_id });
+    return { session: saved, frames: [], saved_at: null, sync_status: "saved" };
+  } };
   const view = await mount({ computer: { id: "cc_sw", name: "elon", node_online: true }, session: first, enabled: true });
   try {
-    await until(() => globalThis.__thread.ready, "ready on A");
+    await until(() => globalThis.__thread.ready, "ready on A").catch(error => {
+      error.message += " " + JSON.stringify({ activeSession: globalThis.__thread.dialog.activeSession,
+        propNativeId: first.native_session_id, archiveBindings, ready: globalThis.__thread.ready,
+        sessionLoading: globalThis.__thread.dialog.sessionLoading,
+        frames: sent().filter(row => row.t === "open_session" || row.t === "prompt").map(({ t, acp_session, task_session_id }) => ({ t, acp_session, task_session_id })) });
+      throw error;
+    });
+    assert.equal(globalThis.__thread.dialog.activeSession, first.native_session_id);
     const file = new window.File(["a"], "a.txt", { type: "text/plain" });
     await act(async () => globalThis.__thread.onAttachFiles([file]));
     await until(() => globalThis.__inboxPuts.length === 1 && !globalThis.__thread.composerAttachments[0]?.uploading, "uploaded under A");
     assert.deepEqual(globalThis.__inboxPuts, [{ name: "a.txt", task_session_id: "managed-a" }]);
 
-    await view.update({ session: session({ id: "managed-b", computer_id: "cc_sw", native_session_id: null }) });
+    await view.update({ session: second });
     await until(() => globalThis.__inboxPuts.length === 2, "put again under B");
     assert.deepEqual(globalThis.__inboxPuts[1], { name: "a.txt", task_session_id: "managed-b" });
     await until(() => globalThis.__thread.ready, "ready on B");
     assert.equal(await sendVia(globalThis.__thread, "with a"), true);
     const prompt = sent().filter((frame) => frame.t === "prompt").at(-1);
     assert.equal(prompt.task_session_id, "managed-b");
+    assert.equal(prompt.acp_session, undefined, "B is a new native conversation, never A's saved binding");
     assert.deepEqual(prompt.files.map((item) => item.name), ["a.txt"]);
 
     const stale = new window.File(["s"], "stale.txt", { type: "text/plain" });
@@ -889,6 +905,53 @@ test("composer files follow the conversation's task session: put again under a n
     await view.update({ session: null, program: "codex" });
     await until(() => globalThis.__thread.composerAttachments.length === 0, "New Task: the previous conversation's files are gone");
   } finally { view.cleanup(); }
+});
+
+test("canonical archive binding survives reordered replies to an earlier stale-prop open request", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.holdOpen = true;
+  FakeSocket.heldOpens = [];
+  const stale = session({ id: "w2-canonical-reordered", computer_id: "cc_w2-canonical-reordered", native_session_id: "stale-native" });
+  const canonical = { ...stale, native_session_id: "canonical-native" };
+  let releaseArchive;
+  globalThis.__taskApi = { transcript() { return new Promise(resolve => { releaseArchive = () => resolve({ session: canonical, frames: [
+    { t: "user_message", program: "codex", acp_session: "canonical-native", message_id: "canonical-user", text: "Canonical saved prompt", replay: true, seq: 1 },
+  ], sync_status: "saved" }); }); } };
+  const view = await mount({ computer: { id: stale.computer_id, name: "test", node_online: true }, session: stale, enabled: true });
+  try {
+    await until(() => FakeSocket.heldOpens.some(({ frame }) => frame.acp_session === "stale-native"), "stale prop open held");
+    await act(async () => releaseArchive());
+    await until(() => FakeSocket.heldOpens.some(({ frame }) => frame.acp_session === "canonical-native"), "canonical archive open held");
+    const staleReply = () => {
+      openSocket().server({ t: "session_opened", program: "codex", acp_session: "stale-native" });
+      openSocket().server({ t: "transcript", program: "codex", acp_session: "stale-native", live: false, frames: [
+        { t: "user_message", program: "codex", acp_session: "stale-native", message_id: "stale-user", text: "Wrong old binding", replay: true },
+      ] });
+    };
+    await act(async () => staleReply());
+    assert.equal(globalThis.__thread.dialog.activeSession, "canonical-native");
+    assert.equal(globalThis.__thread.ready, false, "an old open reply cannot complete the canonical open");
+    assert.equal(globalThis.__thread.dialog.sessionLoading, true);
+    await act(async () => assert.equal(await globalThis.__thread.dialog.send("not bound yet"), false));
+    assert.equal(sent().filter(row => row.t === "prompt").length, 0);
+    await act(async () => {
+      openSocket().server({ t: "session_opened", program: "codex", acp_session: "canonical-native" });
+      openSocket().server({ t: "transcript", program: "codex", acp_session: "canonical-native", live: false, frames: [
+        { t: "user_message", program: "codex", acp_session: "canonical-native", message_id: "canonical-user", text: "Canonical saved prompt", replay: true, seq: 1 },
+      ] });
+    });
+    await until(() => globalThis.__thread.ready, "canonical ready");
+    await act(async () => staleReply());
+    assert.equal(globalThis.__thread.dialog.activeSession, "canonical-native");
+    assert.equal(globalThis.__thread.ready, true);
+    assert.equal(globalThis.__thread.messages.some(row => row.content === "Wrong old binding"), false);
+    assert.equal(globalThis.__thread.messages.filter(row => row.content === "Canonical saved prompt").length, 1);
+    assert.equal(await sendVia(globalThis.__thread, "canonical followup"), true);
+    const prompts = sent().filter(row => row.t === "prompt");
+    assert.equal(prompts.length, 1);
+    assert.equal(prompts[0].acp_session, "canonical-native");
+    assert.equal(prompts[0].task_session_id, canonical.id);
+  } finally { FakeSocket.holdOpen = false; delete FakeSocket.heldOpens; view.cleanup(); }
 });
 
 test("an existing conversation is 'opening' (quiet spinner) only until its saved copy is read", async () => {
