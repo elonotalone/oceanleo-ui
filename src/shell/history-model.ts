@@ -173,13 +173,16 @@ function newestFirst(a?: string | null, b?: string | null): number {
  * - 活动时间：task.last_activity_at（网关的对话活动）‖ created_at；元数据更新时间不算。
  *   session 取自身 last_activity_at 与它挂着的 task 的活动时间中较新的；本页刚看到的
  *   活动（`localActivity`）只会把行往上提。
- * - 工作组内也按真实最后活动倒序，包含 agent 自主回合。
- * - 置顶（pinned）在 HistorySubNav 里再稳定地提到最前：置顶组、普通组各自保持本顺序。
+ * - 同一工作状态内置顶优先，其余按真实最后活动倒序，包含 agent 自主回合。
+ * - 置顶的闲置任务不能越过正在工作的任务。
  */
 export function compareHistoryEntries(a: HistoryListEntry, b: HistoryListEntry): number {
   const aWorking = isHistoryEntryWorking(a);
   const bWorking = isHistoryEntryWorking(b);
   if (aWorking !== bWorking) return aWorking ? -1 : 1;
+  const aPinned = a.kind === "session" ? Boolean(a.session.pinned) : Boolean(a.task.pinned);
+  const bPinned = b.kind === "session" ? Boolean(b.session.pinned) : Boolean(b.task.pinned);
+  if (aPinned !== bPinned) return aPinned ? -1 : 1;
   const byTime = newestFirst(historyEntryTimestamp(a), historyEntryTimestamp(b));
   if (byTime) return byTime;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;

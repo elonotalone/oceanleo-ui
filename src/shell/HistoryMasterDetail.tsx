@@ -68,6 +68,7 @@ import {
 import {
   bumpHistoryEntries,
   canDeleteHistoryEntry,
+  compareHistoryEntries,
   HISTORY_WORKING_POLL_MS,
   historyEntryTimestamp,
   historyPollDelayMs,
@@ -871,14 +872,8 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
     };
   }, []);
 
-  // 置顶的排在前面（稳定：仅把 pinned 提到前，保持原有顺序）。置顶是用户的明确意图，
-  // 所以仍压过「工作中优先」：置顶组、普通组内部各自是 mergeHistoryEntries 的顺序——
-  // 工作中的在前，其余按最近活动倒序（compareHistoryEntries）。
-  const orderedItems = useMemo(() => {
-    const pinnedOf = (e: HistoryListEntry) =>
-      e.kind === "session" ? Boolean(e.session.pinned) : Boolean(e.task.pinned);
-    return [...items].sort((a, b) => Number(pinnedOf(b)) - Number(pinnedOf(a)));
-  }, [items]);
+  // 工作中永远在前；同组置顶优先，再按真实最后活动倒序。乐观置顶也共用这个顺序。
+  const orderedItems = useMemo(() => [...items].sort(compareHistoryEntries), [items]);
 
   // URL 是任务选择的单一事实源。动态 session path 可刷新/复制；legacy task 暂以 query
   // 保留，因为它没有足够 app/snapshot 身份，不能伪装成完整 workspace。

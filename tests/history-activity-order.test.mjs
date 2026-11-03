@@ -110,13 +110,26 @@ test("本页刚看到的活动只把行往上提，刷新后仍保留（localAct
   assert.deepEqual(refreshed.map((entry) => entry.id), ["quiet", "newer"]);
 });
 
-test("侧栏接线：活动事件就地重排、比较含活动时间、置顶仍在最前、聊天流派发活动", () => {
+test("confirmed work stays ahead of pinned idle rows, with pins preferred inside each group", () => {
+  const entries = mergeHistoryEntries(
+    [session("pinned-idle", { pinned: true, last_activity_at: "2026-11-04T12:00:00Z" })],
+    [
+      task("working", { open_turn: true, last_activity_at: "2026-11-04T11:00:00Z" }),
+      task("pinned-working", { open_turn: true, pinned: true, last_activity_at: "2026-11-04T10:00:00Z" }),
+      task("newest-idle", { last_activity_at: "2026-11-04T13:00:00Z" }),
+      task("newest-working", { open_turn: true, last_activity_at: "2026-11-04T11:05:00Z" }),
+    ],
+  );
+  assert.deepEqual(entries.map((entry) => entry.id),
+    ["pinned-working", "newest-working", "working", "pinned-idle", "newest-idle"]);
+});
+
+test("侧栏接线：活动事件就地重排、比较含活动时间、聊天流派发真实活动", () => {
   assert.match(historySource, /HISTORY_ACTIVITY_EVENT/);
   assert.match(historySource, /bumpHistoryEntries\(prev/);
   assert.match(historySource, /localActivity: liveLocalActivity\(\)/);
   assert.match(historySource, /\(x\.activity_at \?\? null\) !== \(y\.activity_at \?\? null\)/);
   assert.match(historySource, /\(x\.task\.last_activity_at \?\? null\) !== \(y\.task\.last_activity_at \?\? null\)/);
-  assert.match(historySource, /Number\(pinnedOf\(b\)\) - Number\(pinnedOf\(a\)\)/);
   assert.match(chatSource, /notifyHistoryActivity\(\{[^}]*taskId: id,[^}]*at:/s);
   assert.match(chatSource, /notifyHistoryActivity\(\{[^}]*taskId: activityTaskId,[^}]*at:/s);
 });

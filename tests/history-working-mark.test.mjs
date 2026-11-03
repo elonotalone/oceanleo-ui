@@ -192,3 +192,30 @@ test("C-7: 只有在干活的行显示工作中动效；完成/失败/停止都�
     container.remove();
   }
 });
+
+test("working rows stay above pinned idle rows in the rendered sidebar", async () => {
+  const previousSessions = globalThis.__workingSessions;
+  const previousTasks = globalThis.__workingTasks;
+  globalThis.__workingSessions = [session("pinned-idle", "置顶旧任务", { pinned: true, last_activity_at: "2026-11-04T12:00:00Z" })];
+  globalThis.__workingTasks = [
+    task("working", "执行中", { mode: "computer", open_turn: true, last_activity_at: "2026-11-04T11:00:00Z" }),
+    task("pinned-working", "置顶执行中", { mode: "computer", open_turn: true, pinned: true, last_activity_at: "2026-11-04T10:00:00Z" }),
+    task("newest-idle", "刚结束", { last_activity_at: "2026-11-04T13:00:00Z" }),
+    task("newest-working", "最近执行中", { mode: "computer", open_turn: true, last_activity_at: "2026-11-04T11:05:00Z" }),
+  ];
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "working-pin-priority" })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    assert.deepEqual([...container.querySelectorAll("[data-history-row]")].map((node) => node.getAttribute("data-history-row")),
+      ["pinned-working", "newest-working", "working", "pinned-idle", "newest-idle"]);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    globalThis.__workingSessions = previousSessions;
+    globalThis.__workingTasks = previousTasks;
+  }
+});
