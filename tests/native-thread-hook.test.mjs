@@ -171,6 +171,25 @@ test("queued handoff identity is immutable, while distinct user actions may repe
   } finally { view.cleanup(); }
 });
 
+test("unrelated task-pane renders keep one archive read and the existing native connection", async () => {
+  FakeSocket.sockets = [];
+  let reads = 0;
+  const own = session({ id: "w2-rerender-archive", computer_id: "cc_w2-rerender" });
+  globalThis.__taskApi = { async transcript() { reads += 1; return { session: own, frames: [
+    { t: "user_message", program: "codex", acp_session: "nat-1", message_id: "saved-rerender", text: "Saved across renders", replay: true },
+  ], saved_at: "2026-11-04T00:00:00Z", sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready && globalThis.__thread.messages.some((row) => row.content === "Saved across renders"), "archive and connection ready");
+    const initialConnections = FakeSocket.sockets.length;
+    for (let index = 0; index < 30; index += 1) await view.update({});
+    assert.equal(reads, 1, "presentation rerenders do not refetch a loaded archive");
+    assert.equal(FakeSocket.sockets.length, initialConnections, "presentation rerenders do not reopen the socket");
+    assert.equal(globalThis.__thread.messages.filter((row) => row.content === "Saved across renders").length, 1);
+    assert.equal(globalThis.__thread.ready, true);
+  } finally { view.cleanup(); }
+});
+
 test("W2 follow-up: completed task hydrates its native binding from the saved session before sending", async () => {
   FakeSocket.sockets = [];
   const stale = session({ id: "w2-reopen-bound", computer_id: "cc_w2-reopen", native_session_id: null, run_status: "completed" });
