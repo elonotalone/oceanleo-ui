@@ -11,6 +11,7 @@ import {
 import {
   listCloudBrowserCheckpoints,
   listCloudBrowsers,
+  getCloudBrowserSession,
   type CloudBrowserCheckpoint,
   type CloudBrowserSession,
 } from "../lib/browser";
@@ -18,6 +19,7 @@ import type { UITranslate } from "../i18n/ui/useUI";
 
 type SessionDataOptions = {
   effectiveTaskId: string;
+  initialSessionId?: string;
   liveRequested: boolean;
   tt: UITranslate;
   setError: Dispatch<SetStateAction<string>>;
@@ -459,6 +461,7 @@ export function normalizeCloudBrowserCheckpoints(
 
 export function useCloudBrowserSessionData({
   effectiveTaskId,
+  initialSessionId = "",
   liveRequested,
   tt,
   setError,
@@ -472,7 +475,7 @@ export function useCloudBrowserSessionData({
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const [checkpointsError, setCheckpointsError] = useState("");
   const [deleteArmed, setDeleteArmed] = useState(false);
-  const taskScopeRef = useRef(effectiveTaskId);
+  const taskScopeRef = useRef({ effectiveTaskId, initialSessionId });
   const selectionExplicitRef = useRef(false);
   const reloadGenerationRef = useRef(0);
   const checkpointGenerationRef = useRef(0);
@@ -530,20 +533,45 @@ export function useCloudBrowserSessionData({
             ),
         ),
       ];
+      const requestedId =
+        preferredId ||
+        (!selectionExplicitRef.current ? initialSessionId : "");
+      const retainedId = requestedId || selectedIdRef.current;
+      // A Settings watch target may be older than the recent-history page.
+      // Resolve its owner-checked detail instead of selecting another browser.
+      if (retainedId && !items.some((item) => item.id === retainedId)) {
+        const detail = await getCloudBrowserSession(retainedId);
+        if (generation !== reloadGenerationRef.current) return;
+        if (detail.ok && detail.data?.session) {
+          items.unshift(detail.data.session);
+        } else if (requestedId) {
+          const issue = cloudBrowserLifecycleIssue(
+            { operation: "session_get", ...detail },
+            tt("浏览记录加载失败"),
+          );
+          setLifecycleIssue?.(issue);
+          setError(issue.message);
+        }
+      }
       setSessions(items);
       setSelectedId((current) => {
-        const next = resolveCloudBrowserSessionSelection({
-          sessions: items,
-          effectiveTaskId,
-          preferredId,
-          currentId: current,
-          keepCurrent: selectionExplicitRef.current,
-        });
+        const next = requestedId && !items.some((item) => item.id === requestedId)
+          ? ""
+          : resolveCloudBrowserSessionSelection({
+            sessions: items,
+            effectiveTaskId,
+            preferredId: requestedId,
+            currentId: current,
+            keepCurrent: selectionExplicitRef.current,
+          });
+        if (requestedId && next === requestedId) {
+          selectionExplicitRef.current = true;
+        }
         selectedIdRef.current = next;
         return next;
       });
     },
-    [effectiveTaskId, setError, setLifecycleIssue, tt],
+    [effectiveTaskId, initialSessionId, setError, setLifecycleIssue, tt],
   );
 
   const refreshCheckpoints = useCallback(async () => {
@@ -584,13 +612,16 @@ export function useCloudBrowserSessionData({
   }, [selectedId]);
 
   useEffect(() => {
-    if (taskScopeRef.current === effectiveTaskId) return;
-    taskScopeRef.current = effectiveTaskId;
+    if (
+      taskScopeRef.current.effectiveTaskId === effectiveTaskId &&
+      taskScopeRef.current.initialSessionId === initialSessionId
+    ) return;
+    taskScopeRef.current = { effectiveTaskId, initialSessionId };
     selectionExplicitRef.current = false;
     selectedIdRef.current = "";
     ++reloadGenerationRef.current;
     setSelectedId("");
-  }, [effectiveTaskId]);
+  }, [effectiveTaskId, initialSessionId]);
 
   useEffect(() => {
     if (liveRequested) return;
