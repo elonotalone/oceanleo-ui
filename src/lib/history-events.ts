@@ -9,8 +9,8 @@ export function notifyHistoryChanged(): void {
 }
 
 /**
- * A conversation on screen just moved (a native frame, a Leo reply, a user
- * send). My Tasks bumps that row locally at once instead of waiting for the
+ * A conversation has recorded activity (a native frame, a Leo reply, a user
+ * send). My Tasks uses that recorded time locally instead of waiting for the
  * next poll; the server's `last_activity_at` (migration 0313) catches up on
  * the following list refresh. Detail: {@link HistoryActivityDetail}.
  */
@@ -33,12 +33,14 @@ export function notifyHistoryActivity(input: {
   taskId?: string | null;
   sessionId?: string | null;
   user?: boolean;
+  /** The message/frame/server timestamp. Reading a conversation is not activity. */
+  at: string | null | undefined;
 }): void {
   if (typeof window === "undefined") return;
   const taskId = input.taskId || undefined;
   const sessionId = input.sessionId || undefined;
   const key = taskId || sessionId;
-  if (!key) return;
+  if (!key || !input.at || !Number.isFinite(Date.parse(input.at))) return;
   const now = Date.now();
   if (!input.user && now - (lastNotified.get(key) ?? 0) < HISTORY_ACTIVITY_THROTTLE_MS) return;
   if (lastNotified.size > 200) lastNotified.clear();
@@ -47,7 +49,7 @@ export function notifyHistoryActivity(input: {
     taskId,
     sessionId,
     ...(input.user ? { user: true } : {}),
-    at: new Date(now).toISOString(),
+    at: input.at,
   };
   window.dispatchEvent(new CustomEvent<HistoryActivityDetail>(HISTORY_ACTIVITY_EVENT, { detail }));
 }

@@ -21,6 +21,8 @@ import {
   deleteTask,
   getTask,
   type AgentMessage,
+  type AgentApiResult,
+  type AgentTask,
   type ArtifactMeta,
   type TaskDetail,
 } from "../lib/agent";
@@ -35,7 +37,8 @@ import {
 } from "../lib/app-session";
 import { ConfirmDialog } from "../ui";
 import { browserClient } from "../lib/auth/client";
-import { setCacheUser } from "../lib/user-scoped-cache";
+import { onUserScopedClear, setCacheUser } from "../lib/user-scoped-cache";
+import { readHistoryListSource } from "../lib/history-list-api";
 import {
   prefetchHistoryOpen,
   readHistorySession,
@@ -347,6 +350,8 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
  * 用户就不会看到列表被「加载…」清空一下又回来。
  */
 const historyListCache = new Map<string, HistoryListEntry[]>();
+type HistorySources = { sessions?: AppSession[]; tasks?: AgentTask[]; tasksTrusted?: boolean };
+const historySourceCache = new Map<string, HistorySources>();
 
 /**
  * Conversation activity this page saw before the gateway list caught up
@@ -358,6 +363,12 @@ const LOCAL_ACTIVITY_TTL_MS = 120_000;
 const localHistoryActivity = new Map<string, HistoryEntryActivity & { seen: number }>();
 /** task id → bound session id from the last task list, so a task-only event can bump its session row. */
 const historyTaskSession = new Map<string, string>();
+onUserScopedClear(() => {
+  historyListCache.clear();
+  historySourceCache.clear();
+  localHistoryActivity.clear();
+  historyTaskSession.clear();
+});
 
 function liveLocalActivity(): ReadonlyMap<string, HistoryEntryActivity> {
   const cutoff = Date.now() - LOCAL_ACTIVITY_TTL_MS;
@@ -370,9 +381,10 @@ function liveLocalActivity(): ReadonlyMap<string, HistoryEntryActivity> {
 function noteLocalActivity(key: string | undefined, detail: HistoryActivityDetail): void {
   if (!key) return;
   const prev = localHistoryActivity.get(key);
+  const newer = !prev?.at || Date.parse(detail.at) > Date.parse(prev.at);
   localHistoryActivity.set(key, {
-    at: detail.at,
-    userAt: detail.user ? detail.at : prev?.userAt,
+    at: newer ? detail.at : prev?.at,
+    userAt: detail.user && (!prev?.userAt || Date.parse(detail.at) > Date.parse(prev.userAt)) ? detail.at : prev?.userAt,
     seen: Date.now(),
   });
 }
@@ -399,6 +411,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   // that follows a refusal succeeds and clears `error`, which hid the reason.
   const [notice, setNotice] = useState<string | null>(null);
   const reloadGenerationRef = useRef(0);
+  const listReadRef = useRef<{ key: string; request: Promise<boolean>; controller: AbortController } | null>(null);
   const deletingRef = useRef(new Set<string>());
   const pollFailuresRef = useRef(0);
   // 登录提示走 ref：它的引用变化（父级重渲染）不得重建 reload、进而触发首屏式的
@@ -409,55 +422,57 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   // 每 8s 抽动 + 闪「加载…」。silent=false（首屏 / 站点切换）只在还没有任何数据时
   // 显示首次加载骨架。
   const reload = useCallback((silent = false) => {
+    const prior = listReadRef.current;
+    if (prior?.key === cacheKey) return prior.request;
+    prior?.controller.abort();
     const generation = ++reloadGenerationRef.current;
+    const controller = new AbortController();
     if (!silent && !loadedOnceRef.current) setLoading(true);
-    return Promise.all([
-      listAppSessions({
-        limit: 100,
-        siteId,
-        includeArchived: true,
-        surface: "all",
-        // D11（2026-10-24）：「我的任务」也列项目里建的任务，行上带项目标注。
-        // 网关列表本来就只返回本人（user_id = 调用者）的记录，项目里别人的任务不会进来。
-        projectScope: "all",
-      }),
-      listTasks(100, siteId, pending, "all", "all"),
-    ]).then(([sessionsResult, tasksResult]) => {
+    let sessionsResult: AgentApiResult<{ items: AppSession[] }> | undefined;
+    let tasksResult: AgentApiResult<{ items: AgentTask[] }> | undefined;
+    const publish = () => {
       if (generation !== reloadGenerationRef.current) return false;
-      const sessions = sessionsResult.ok
-        ? sessionsResult.data?.items || []
-        : null;
-      const tasks = tasksResult.ok ? tasksResult.data?.items || [] : null;
-      if (sessions === null && tasks === null) {
-        // 静默轮询失败不打断已有列表（只在首次加载时报错）。
-        if (!silent) {
-          setLoading(false);
-          const signedOut =
-            sessionsResult.status === 401 || tasksResult.status === 401;
-          setError(
-            signedOut
-              ? authMessageRef.current
-              : taskRequestFailureText(sessionsResult.error ? sessionsResult : tasksResult, "加载失败"),
-          );
-        }
+      if (sessionsResult?.status === 401 || tasksResult?.status === 401) {
+        historyListCache.delete(cacheKey);
+        historySourceCache.delete(cacheKey);
+        setItems([]);
+        setLoading(false);
+        setError(authMessageRef.current);
         return false;
       }
-      loadedOnceRef.current = true;
-      setLoading(false);
-      setError(null);
-      // session API 尚未部署时 sessions=null → 完整退回旧 task 列表。API 已部署时，
-      // session 置顶，并只保留未绑定 session 的旧 task。
-      for (const task of tasks || []) {
+      // A failed source keeps its last successful rows; it is never replaced
+      // with an invented empty response. Execution needs a fresh task read.
+      const sources = { ...historySourceCache.get(cacheKey) };
+      if (sessionsResult?.ok) sources.sessions = sessionsResult.data!.items;
+      if (tasksResult?.ok) {
+        sources.tasks = tasksResult.data!.items;
+        sources.tasksTrusted = true;
+      } else if (tasksResult) sources.tasksTrusted = false;
+      historySourceCache.set(cacheKey, sources);
+      const sessions = sources.sessions || [];
+      const tasks = sources.tasksTrusted === false
+        ? (sources.tasks || []).map((task) => ({ ...task, working: false, open_turn: false }))
+        : sources.tasks || [];
+      const complete = Boolean(sessionsResult && tasksResult);
+      const unavailable = Boolean(sessionsResult && !sessionsResult.ok && isAppSessionApiUnavailableStatus(sessionsResult.status));
+      const failure = [sessionsResult, tasksResult].find((result, index) =>
+        result && !result.ok && !(index === 0 && unavailable));
+      setError(failure ? taskRequestFailureText(failure, "加载失败") : null);
+      for (const task of tasks) {
         if (task.session_id) historyTaskSession.set(task.id, task.session_id);
       }
-      const next = mergeHistoryEntries(sessions || [], tasks || [], {
-        sessionApiUnavailable:
-          !sessionsResult.ok &&
-          isAppSessionApiUnavailableStatus(sessionsResult.status),
+      const next = mergeHistoryEntries(sessions, tasks, {
+        sessionApiUnavailable: unavailable,
+        sessionApiFailed: sessionsResult?.ok !== true,
         localActivity: liveLocalActivity(),
       }).filter(
         (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
       );
+      if (next.length || complete || loadedOnceRef.current) {
+        if (sessionsResult?.ok || tasksResult?.ok) loadedOnceRef.current = true;
+        setLoading(false);
+      }
+      if (!sources.sessions && !sources.tasks) return false;
       // The sidebar is the first live source to see native task auto-titles and
       // renames. Carry those row updates over the existing history channel so
       // an AgentChat mounted for the same task can update its header without a
@@ -482,9 +497,35 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }
       historyListCache.set(cacheKey, next);
       setItems((prev) => (sameHistory(prev, next) ? prev : next));
-      return true;
+      return Boolean(tasksResult?.ok && (sessionsResult?.ok || unavailable));
+    };
+    const request = Promise.all([
+      readHistoryListSource<AppSession>((signal) => listAppSessions({
+        limit: 100, siteId, includeArchived: true, surface: "all", projectScope: "all", signal,
+      }), { signal: controller.signal }).then((result) => {
+        sessionsResult = result;
+        publish();
+      }),
+      readHistoryListSource<AgentTask>((signal) => listTasks(100, siteId, pending, "all", "all", { signal }),
+        { signal: controller.signal }).then((result) => {
+        tasksResult = result;
+        publish();
+      }),
+    ]).then(publish).finally(() => {
+      if (listReadRef.current?.request === request) listReadRef.current = null;
     });
+    listReadRef.current = { key: cacheKey, request, controller };
+    return request;
   }, [cacheKey, siteId, pending]);
+  useEffect(() => onUserScopedClear(() => {
+    ++reloadGenerationRef.current;
+    listReadRef.current?.controller.abort();
+    listReadRef.current = null;
+    loadedOnceRef.current = false;
+    setItems([]);
+    setLoading(false);
+    setError(authMessageRef.current);
+  }), []);
   // 乐观删除/重命名后的列表也进缓存，重挂时不会先闪回已删掉的那行。
   const mountedKeyRef = useRef(cacheKey);
   useEffect(() => {
@@ -503,6 +544,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       setLoading(cached === undefined);
     }
     void reload(false);
+    return () => {
+      ++reloadGenerationRef.current;
+      listReadRef.current?.controller.abort();
+      listReadRef.current = null;
+    };
   }, [cacheKey, reload]);
   useEffect(() => {
     const refresh = () => {
@@ -518,7 +564,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   useEffect(() => {
     const onActivity = (event: Event) => {
       const detail = (event as CustomEvent<HistoryActivityDetail>).detail;
-      if (!detail?.at || (!detail.taskId && !detail.sessionId)) return;
+      if (!detail?.at || !Number.isFinite(Date.parse(detail.at)) || (!detail.taskId && !detail.sessionId)) return;
       const sessionId =
         detail.sessionId || (detail.taskId ? historyTaskSession.get(detail.taskId) : undefined);
       noteLocalActivity(detail.taskId, detail);
@@ -584,6 +630,8 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     if (!canDeleteHistoryEntry(entry)) return false;
     // Invalidate any older list request before applying the optimistic delete.
     ++reloadGenerationRef.current;
+    listReadRef.current?.controller.abort();
+    listReadRef.current = null;
     const deletionKey = `${entry.kind}:${entry.id}`;
     deletingRef.current.add(deletionKey);
     setNotice(null);
@@ -965,6 +1013,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
             key={`${entry.kind}:${entry.id}`}
             title={title}
             timestamp={timestamp}
+            working={isHistoryEntryWorking(entry)}
             disabled={renaming || menuFor === entry.id}
             className={`group relative flex items-center gap-1 rounded-lg px-3 py-2 text-[14px] leading-5 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] ${
               on

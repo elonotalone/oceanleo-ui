@@ -19,7 +19,7 @@ import {
   type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
-import { formatHistoryTime } from "./history-model";
+import { formatHistoryActivityTime } from "./history-model";
 
 export const HISTORY_BUBBLE_DELAY_MS = 300;
 const BUBBLE_GAP = 8;
@@ -40,10 +40,12 @@ function pageLocale(): string | undefined {
 export function useHistoryRowBubble({
   title,
   timestamp,
+  working = false,
   disabled = false,
 }: {
   title: string;
   timestamp: string;
+  working?: boolean;
   disabled?: boolean;
 }) {
   const id = `history-bubble-${useId().replace(/[^A-Za-z0-9_-]/g, "")}`;
@@ -98,7 +100,7 @@ export function useHistoryRowBubble({
   const bubble =
     open && anchor && typeof document !== "undefined"
       ? createPortal(
-          <HistoryRowBubble id={id} title={title} timestamp={timestamp} left={anchor.left} top={anchor.top} />,
+          <HistoryRowBubble id={id} title={title} timestamp={timestamp} working={working} left={anchor.left} top={anchor.top} />,
           document.body,
         )
       : null;
@@ -113,17 +115,19 @@ export function useHistoryRowBubble({
 export function HistoryRowFrame({
   title,
   timestamp,
+  working,
   disabled,
   className,
   children,
 }: {
   title: string;
   timestamp: string;
+  working?: boolean;
   disabled?: boolean;
   className: string;
   children: (describedBy: string | undefined) => ReactNode;
 }) {
-  const { rowProps, bubble, describedBy } = useHistoryRowBubble({ title, timestamp, disabled });
+  const { rowProps, bubble, describedBy } = useHistoryRowBubble({ title, timestamp, working, disabled });
   return (
     <div {...rowProps} className={className} data-history-row-frame="">
       {children(describedBy)}
@@ -136,16 +140,18 @@ export function HistoryRowBubble({
   id,
   title,
   timestamp,
+  working = false,
   left,
   top,
 }: {
   id: string;
   title: string;
   timestamp: string;
+  working?: boolean;
   left: number;
   top: number;
 }) {
-  const time = formatHistoryTime(timestamp, new Date(), pageLocale());
+  const time = formatHistoryActivityTime(timestamp, working, new Date(), pageLocale());
   const viewportWidth = typeof window !== "undefined" ? window.innerWidth : 0;
   const maxWidth = viewportWidth
     ? Math.max(160, Math.min(BUBBLE_MAX_WIDTH, viewportWidth - left - VIEWPORT_MARGIN))

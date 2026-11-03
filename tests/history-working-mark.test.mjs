@@ -152,10 +152,17 @@ test("C-7: 只有在干活的行显示工作中动效；完成/失败/停止都�
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
   try {
     for (const id of ["s-run", "s-idle", "s-native", "t-failed", "t-stopped"]) assert.ok(row(container, id), id);
-    assert.deepEqual(workingIds(container).sort(), ["s-native", "s-run"]);
+    assert.deepEqual(workingIds(container), ["s-run"]);
     const mark = row(container, "s-run").querySelector("[data-oceanleo-acp-pixel-run]");
     assert.equal(mark.getAttribute("aria-label"), "进行中");
     assert.match(mark.getAttribute("class"), /text-emerald-600/);
+    document.documentElement.lang = "en";
+    const runningFrame = row(container, "s-run").closest("[data-history-row-frame]");
+    await act(async () => runningFrame.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+    const shownTime = document.querySelector("[data-history-bubble-time]");
+    assert.equal(shownTime.textContent, "now");
+    assert.equal(shownTime.getAttribute("datetime"), "2026-09-22T00:00:00Z", "now does not overwrite recorded activity");
     // Idle rows keep an empty, same-width slot: titles stay aligned, nothing coloured shows.
     const idleSlot = row(container, "t-failed").firstElementChild;
     assert.equal(idleSlot.children.length, 0);
@@ -171,6 +178,7 @@ test("C-7: 只有在干活的行显示工作中动效；完成/失败/停止都�
       item.id === "t-run" ? { ...item, status: "done" } : item.id === "t-native" ? { ...item, computer_run_status: undefined } : item);
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 4_500)); });
     assert.deepEqual(workingIds(container), [], "the mark stops within a few seconds of the run ending");
+    assert.notEqual(document.querySelector("[data-history-bubble-time]")?.textContent, "now", "the hover stops saying now as execution ends");
 
     // A new run starts (history-changed event from send/continue): the mark comes back.
     globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "t-idle" ? { ...item, status: "running" } : item);

@@ -40,10 +40,10 @@ test("history poll backs off on consecutive failures and caps at 60s", () => {
   assert.equal(historyPollDelayMs(8), 60_000);
 });
 
-test("C-7: 只有在干活（云端 running / 电脑会话 running·waiting_user）才算工作中；session.active 不算", () => {
+test("只有确认在执行才算工作中；等待用户和 session.active 不算", () => {
   assert.equal(isTaskWorking({ status: "running" }), true);
-  assert.equal(isTaskWorking({ status: "done", computer_run_status: "running" }), true);
-  assert.equal(isTaskWorking({ status: "done", computer_run_status: "waiting_user" }), true);
+  assert.equal(isTaskWorking({ status: "done", computer_run_status: "running", open_turn: true }), true);
+  assert.equal(isTaskWorking({ status: "done", computer_run_status: "waiting_user" }), false);
   for (const status of ["done", "completed", "failed", "stopped", "active", "archived"]) {
     assert.equal(isTaskWorking({ status }), false, status);
   }
@@ -56,7 +56,7 @@ test("C-7: 只有在干活（云端 running / 电脑会话 running·waiting_user
     [
       { id: "t-run", status: "running", mode: "agent", session_id: "s-run" },
       { id: "t-idle", status: "done", mode: "agent", session_id: "s-idle" },
-      { id: "t-thread", status: "done", mode: "agent", computer_run_status: "running" },
+      { id: "t-thread", status: "done", mode: "agent", computer_run_status: "running", open_turn: true },
       { id: "t-legacy-run", status: "running", mode: "agent" },
       { id: "t-legacy-failed", status: "failed", mode: "agent" },
     ],
@@ -125,6 +125,7 @@ test("session 与未迁移旧 task 按同一活动时间轴排序", () => {
         status: "done",
         mode: "agent",
         updated_at: "2026-07-10T03:00:00Z",
+        last_activity_at: "2026-07-10T03:00:00Z",
       },
     ],
   );
@@ -288,7 +289,7 @@ test("我的任务包含 active 会话并实时接收新任务，离开历史页
   assert.match(historySource, /includeArchived:\s*true/);
   assert.match(historySource, /surface:\s*"all"/);
   // D11（2026-10-24，W11）：侧栏显式 project_scope=all，项目任务也列出（带项目标注）。
-  assert.match(historySource, /listTasks\(100, siteId, pending, "all", "all"\)/);
+  assert.match(historySource, /listTasks\(100, siteId, pending, "all", "all", \{ signal \}\)/);
   assert.doesNotMatch(historySource, /tt\("高级任务"\)/);
   assert.match(historySource, /historySessionHref\(entry\.id/);
   assert.doesNotMatch(historySource, /advancedFeatureHref/);
@@ -378,8 +379,8 @@ test("W11: open_turn overrides dirty master status; native tasks require executi
   }
   assert.equal(isTaskWorking({ status: "running", mode: "computer" }), false);
   assert.equal(isTaskWorking({ status: "running", computer_id: "paired" }), false);
-  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "running" }), true);
-  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "waiting_user" }), true);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "running" }), false);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "waiting_user" }), false);
   assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "running", open_turn: false }), false);
   assert.equal(isTaskWorking({ status: "running", mode: "agent" }), true);
   const entries = mergeHistoryEntries(

@@ -41,7 +41,7 @@ test("ordinary shared history keeps each consumer site; the sidebar lists the ca
     masterDetail,
     /listAppSessions\(\{[\s\S]*?siteId,[\s\S]*?projectScope: "all"/,
   );
-  assert.match(masterDetail, /listTasks\(100, siteId, pending, "all", "all"\)/);
+  assert.match(masterDetail, /listTasks\(100, siteId, pending, "all", "all", \{ signal \}\)/);
   assert.doesNotMatch(masterDetail, /project_id == null/);
   assert.doesNotMatch(masterDetail, /siteId\s*=\s*"oceanleo"/);
 

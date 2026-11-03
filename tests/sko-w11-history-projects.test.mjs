@@ -361,7 +361,7 @@ test("源码：不再按 project_id 过滤、不再有拦截页分支", () => {
   assert.doesNotMatch(masterDetail, /这条记录已归属项目/);
   assert.doesNotMatch(masterDetail, /safeProjectHref/);
   assert.match(masterDetail, /projectScope: "all"/);
-  assert.match(masterDetail, /listTasks\(100, siteId, pending, "all", "all"\)/);
+  assert.match(masterDetail, /listTasks\(100, siteId, pending, "all", "all", \{ signal \}\)/);
   // 换项目后的乐观标注只进本地列表；写库的 patch 只有 project_id。
   assert.match(masterDetail, /mutate\(entry, \{ project_id: null \}\)/);
   assert.match(masterDetail, /\{ project_id: projectId \}/);

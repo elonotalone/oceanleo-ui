@@ -112,15 +112,19 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
     export async function accessToken(){ return null; }
   `),
   "../lib/agent": dataModule(`
-    export async function listTasks(){ return { ok: true, data: { items: globalThis.__legacyItems || [] } }; }
+    export async function listTasks(...args){
+      if (globalThis.__historyTasksRead) return globalThis.__historyTasksRead(...args);
+      return { ok: true, data: { items: globalThis.__legacyItems || [] } };
+    }
     export async function deleteTask(){ return { ok: true }; }
     export async function getTask(){ globalThis.__cloudDetailCalls = (globalThis.__cloudDetailCalls || 0) + 1; return { ok: false, status: 404 }; }
     export function taskCostYuan(){ return 0; }
   `),
   "../lib/app-session": dataModule(`
     export function isAppSessionApiUnavailableStatus(status){ return status === 404 || status === 405 || status === 501; }
-    export async function listAppSessions(){
+    export async function listAppSessions(options){
       globalThis.__historyGate.listCalls += 1;
+      if (globalThis.__historySessionsRead) return globalThis.__historySessionsRead(options);
       if (globalThis.__historyGate.release) await globalThis.__historyGate.release;
       return { ok: true, data: { items: globalThis.__historyItems } };
     }
@@ -327,5 +331,84 @@ test("卸载重挂直接沿用上次列表，不回到「加载…」", async ()
     assert.match(second.text(), /第一条任务/);
   } finally {
     await second.unmount();
+  }
+});
+
+test("one stalled native task list cannot hide sessions that already loaded", async () => {
+  let signal;
+  globalThis.__historyTasksRead = (...args) => {
+    signal = args[5]?.signal;
+    return new Promise(() => {});
+  };
+  const panel = await mount("partial-stall");
+  try {
+    await settle(30);
+    assert.match(panel.text(), /第一条任务/);
+    assert.doesNotMatch(panel.text(), /加载…/);
+  } finally {
+    await panel.unmount();
+    delete globalThis.__historyTasksRead;
+  }
+  assert.equal(signal?.aborted, true, "unmount cancels the pending request");
+});
+
+test("partial failure retains cached sessions, shows available task rows and the real error", async () => {
+  const panel = await mount("partial-failure");
+  try {
+    await settle(20);
+    assert.match(panel.text(), /第一条任务/);
+    globalThis.__historySessionsRead = async () => ({ ok: false, status: 503, error: "session list unavailable" });
+    globalThis.__historyTasksRead = async () => ({ ok: true, data: { items: [{
+      id: "partial-task", title: "仍能读取的电脑任务", status: "completed", mode: "computer",
+      session_id: "session-not-returned", created_at: "2026-11-03T00:00:00Z",
+    }] } });
+    await act(async () => { window.dispatchEvent(new window.Event(HISTORY_CHANGED_EVENT)); });
+    await settle(30);
+    assert.match(panel.text(), /第一条任务/);
+    assert.match(panel.text(), /仍能读取的电脑任务/);
+    assert.match(panel.text(), /session list unavailable/);
+    assert.doesNotMatch(panel.text(), /加载…/);
+  } finally {
+    await panel.unmount();
+    delete globalThis.__historySessionsRead;
+    delete globalThis.__historyTasksRead;
+  }
+});
+
+test("a failed refresh preserves the task but cannot keep claiming it works now", async () => {
+  globalThis.__historyTasksRead = async () => ({ ok: true, data: { items: [{
+    id: "stale-working", title: "电脑任务", status: "running", mode: "computer", working: true,
+    created_at: "2026-11-03T00:00:00Z", last_activity_at: "2026-11-03T01:00:00Z",
+  }] } });
+  const panel = await mount("failed-working-refresh");
+  try {
+    await settle(20);
+    assert.ok(panel.container.querySelector('[data-history-row="stale-working"] [data-history-working]'));
+    globalThis.__historyTasksRead = async () => { throw new Error("native list unavailable"); };
+    await act(async () => { window.dispatchEvent(new window.Event(HISTORY_CHANGED_EVENT)); });
+    await settle(20);
+    assert.ok(panel.container.querySelector('[data-history-row="stale-working"]'));
+    assert.equal(panel.container.querySelector('[data-history-row="stale-working"] [data-history-working]'), null);
+    assert.match(panel.text(), /native list unavailable/);
+    assert.doesNotMatch(panel.text(), /加载…/);
+  } finally {
+    await panel.unmount();
+    delete globalThis.__historyTasksRead;
+  }
+});
+
+test("two rejected list APIs settle the first load with an error", async () => {
+  globalThis.__historyTasksRead = async () => { throw new Error("native list unavailable"); };
+  globalThis.__historySessionsRead = async () => { throw new Error("session list unavailable"); };
+  const panel = await mount("both-list-rejections");
+  try {
+    await settle(20);
+    assert.match(panel.text(), /session list unavailable/);
+    assert.doesNotMatch(panel.text(), /加载…/);
+    assert.doesNotMatch(panel.text(), /还没有任务/);
+  } finally {
+    await panel.unmount();
+    delete globalThis.__historyTasksRead;
+    delete globalThis.__historySessionsRead;
   }
 });

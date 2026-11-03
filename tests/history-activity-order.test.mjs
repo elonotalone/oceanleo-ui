@@ -45,16 +45,16 @@ test("我的任务：工作中的永远在最上面，其余按最近活动倒�
     [
       // Old task, still streaming: its frames moved last_activity_at, not updated_at.
       task("old-running", { status: "running", open_turn: true, last_activity_at: "2026-10-31T08:00:00Z" }),
-      task("native-running", { computer_run_status: "waiting_user", last_activity_at: "2026-10-30T00:00:00Z" }),
+      task("native-running", { open_turn: true, computer_run_status: "running", last_activity_at: "2026-10-30T00:00:00Z" }),
       task("newest-created", { created_at: "2026-10-30T12:00:00Z", updated_at: "2026-10-30T12:00:00Z", last_activity_at: "2026-10-30T12:00:00Z" }),
       task("resumed", { last_activity_at: "2026-10-31T10:00:00+00:00" }),
-      // Old gateway (no 0313): falls back to updated_at, then created_at.
+      // Metadata updates are not conversation activity, including on old gateways.
       task("legacy", { updated_at: "2026-10-31T09:30:00Z" }),
     ],
   );
   assert.deepEqual(
     entries.map((entry) => entry.id),
-    ["old-running", "native-running", "resumed", "legacy", "s-recent", "newest-created"],
+    ["old-running", "native-running", "resumed", "s-recent", "newest-created", "legacy"],
   );
   assert.equal(entries[0].working, true);
   assert.equal(entries[2].activity_at, "2026-10-31T10:00:00+00:00");
@@ -62,7 +62,7 @@ test("我的任务：工作中的永远在最上面，其余按最近活动倒�
   assert.equal(historyEntryTimestamp(entries[2]), "2026-10-31T10:00:00+00:00");
 });
 
-test("工作组内按用户最近发言排，流式输出不会让两条任务来回换位", () => {
+test("工作组内按真实最后活动排，自主回合和输出也会改变顺序", () => {
   const first = mergeHistoryEntries([], [
     task("a", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:00:00Z", last_activity_at: "2026-10-31T10:05:10Z" }),
     task("b", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:02:00Z", last_activity_at: "2026-10-31T10:05:00Z" }),
@@ -71,7 +71,7 @@ test("工作组内按用户最近发言排，流式输出不会让两条任务�
     task("a", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:00:00Z", last_activity_at: "2026-10-31T10:05:20Z" }),
     task("b", { status: "running", open_turn: true, last_user_message_at: "2026-10-31T10:02:00Z", last_activity_at: "2026-10-31T10:05:30Z" }),
   ]);
-  assert.deepEqual(first.map((entry) => entry.id), ["b", "a"]);
+  assert.deepEqual(first.map((entry) => entry.id), ["a", "b"]);
   assert.deepEqual(later.map((entry) => entry.id), ["b", "a"]);
   // Without a user-message time the activity time decides.
   const bare = mergeHistoryEntries([], [
@@ -117,6 +117,6 @@ test("侧栏接线：活动事件就地重排、比较含活动时间、置顶�
   assert.match(historySource, /\(x\.activity_at \?\? null\) !== \(y\.activity_at \?\? null\)/);
   assert.match(historySource, /\(x\.task\.last_activity_at \?\? null\) !== \(y\.task\.last_activity_at \?\? null\)/);
   assert.match(historySource, /Number\(pinnedOf\(b\)\) - Number\(pinnedOf\(a\)\)/);
-  assert.match(chatSource, /notifyHistoryActivity\(\{ taskId: id \}\)/);
-  assert.match(chatSource, /notifyHistoryActivity\(\{ taskId: activityTaskId, user:/);
+  assert.match(chatSource, /notifyHistoryActivity\(\{[^}]*taskId: id,[^}]*at:/s);
+  assert.match(chatSource, /notifyHistoryActivity\(\{[^}]*taskId: activityTaskId,[^}]*at:/s);
 });

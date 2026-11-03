@@ -1,5 +1,6 @@
 "use client";
 import { cloudComputerRequest, type Computer } from "./cloud-computer-api";
+import { boundedHistoryListRequest, HistoryListRequestError, validHistoryListRows } from "./history-list-api";
 import type { ExecutionTarget } from "./execution-target";
 import { cacheUser, onUserScopedClear, readUserJson, writeUserJson } from "./user-scoped-cache";
 export type ComputerTaskSession = {
@@ -27,16 +28,23 @@ export async function createComputerTaskSession(computerId: string, input: Creat
  */
 const SHARE_IN_FLIGHT_MS = 5_000;
 const sessionListsInFlight = new Map<string, {at: number; request: Promise<{sessions: ComputerTaskSession[]}>}>();
-export function listComputerTaskSessions(taskId: string, options: Options = {}) {
+export function listComputerTaskSessions(taskId: string, options: Options & { timeoutMs?: number } = {}) {
   const path = `/v1/computer-task-sessions?${new URLSearchParams({task_id:taskId})}`;
-  if (options.signal) return cloudComputerRequest<{sessions: ComputerTaskSession[]}>(path, options);
+  const read = () => boundedHistoryListRequest(
+    (signal) => cloudComputerRequest<{sessions: ComputerTaskSession[]}>(path, { signal }),
+    options,
+  ).then((result) => {
+    if (!validHistoryListRows(result?.sessions)) {
+      throw new HistoryListRequestError("加载失败", 502, "history_list_invalid_response");
+    }
+    for (const session of result.sessions) rememberComputerTaskSession(session);
+    rememberTaskSessionList(taskId, result.sessions);
+    return result;
+  });
+  if (options.signal) return read();
   const shared = sessionListsInFlight.get(taskId);
   if (shared && Date.now() - shared.at < SHARE_IN_FLIGHT_MS) return shared.request;
-  const request = cloudComputerRequest<{sessions: ComputerTaskSession[]}>(path).then((result) => {
-    for (const session of result?.sessions ?? []) rememberComputerTaskSession(session);
-    if (Array.isArray(result?.sessions)) rememberTaskSessionList(taskId, result.sessions);
-    return result;
-  }).finally(() => { if (sessionListsInFlight.get(taskId)?.request === request) sessionListsInFlight.delete(taskId); });
+  const request = read().finally(() => { if (sessionListsInFlight.get(taskId)?.request === request) sessionListsInFlight.delete(taskId); });
   sessionListsInFlight.set(taskId, {at: Date.now(), request});
   return request;
 }

@@ -54,3 +54,20 @@ test('computers: one shared read, remembered for the next page, watchers see new
  stop();shared.rememberComputer({id:'cc_w',name:'elon',node_online:true});
  assert.deepEqual(seen,[true,false],'unsubscribed');
 });
+
+const boundedApi = await import(await compileModule('src/lib/computer-task-api.ts', {
+ './cloud-computer-api': dataModule(`export async function cloudComputerRequest(path,init){return globalThis.__boundedNativeList(path,init);}`),
+}));
+test('native list deadline aborts a stalled request, releases shared retry, and rejects malformed lists', async () => {
+ let signal;
+ globalThis.__boundedNativeList = (_path, init) => { signal = init.signal; return new Promise(() => {}); };
+ await assert.rejects(boundedApi.listComputerTaskSessions('stalled', {timeoutMs:15}), error => error.status === 408);
+ assert.equal(signal.aborted, true);
+ globalThis.__boundedNativeList = async () => ({sessions:[]});
+ assert.deepEqual(await boundedApi.listComputerTaskSessions('stalled'), {sessions:[]});
+ globalThis.__boundedNativeList = async () => ({supported:false});
+ await assert.rejects(boundedApi.listComputerTaskSessions('partial'), error => error.status === 502);
+ globalThis.__boundedNativeList = async () => ({sessions:[null]});
+ await assert.rejects(boundedApi.listComputerTaskSessions('malformed-row'), error => error.status === 502);
+ delete globalThis.__boundedNativeList;
+});

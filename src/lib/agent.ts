@@ -924,6 +924,7 @@ export function listTasks(
   pending = false,
   surface: "app" | "advanced" | "all" = "app",
   projectScope: ProjectScope = "unassigned",
+  options: { signal?: AbortSignal } = {},
 ) {
   const params = new URLSearchParams({ limit: String(limit) });
   const site = (siteId || "").trim();
@@ -931,7 +932,7 @@ export function listTasks(
   if (pending) params.set("pending", "true");
   params.set("surface", surface);
   if (projectScope === "all") params.set("project_scope", "all");
-  return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?${params.toString()}`);
+  return authed<{ items: AgentTask[] }>(`/v1/agent/tasks?${params.toString()}`, options);
 }
 
 /** 永久删除一条会话（连带其消息 / 产出，后端 FK 级联）。 */
