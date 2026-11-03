@@ -172,6 +172,7 @@ const downloadListing = (id = "session-1") => ({
   items: [{ id: `file-${id}`, filename: `${id.replaceAll("/", "-")}.csv`, size_bytes: 7, status: "ready", created_at: "2026-11-04T00:00:00Z", url: "https://untrusted.example/file", path: "/untrusted/page/path" }, { id: `pending-${id}`, filename: "pending.csv", size_bytes: null, status: "pending", created_at: "2026-11-04T00:00:00Z" }],
   limits: { max_file_bytes: 1024, max_total_bytes: 4096, max_count: 4 },
 });
+const libraryReceipt = (name = "session-1.csv") => ({ ok: true, file: { artifact_id: "artifact-1", revision_id: "revision-1", name, media_type: "text/csv", size_bytes: 7 } });
 
 test("downloads use only owner-bound session/file routes, reject wrong sessions and never follow page URLs", async () => {
   await withFetch(call => call.url.endsWith("/downloads") ? json(downloadListing("session/id")) : new Response("a,b\n1,2"), async calls => {
@@ -198,13 +199,47 @@ test("downloads use only owner-bound session/file routes, reject wrong sessions 
   });
 });
 
+test("Library handoff confirms artifact and revision metadata without accepting URLs or incomplete writes", async () => {
+  const ready = downloadListing().items[0];
+  await withFetch(() => json({ ...libraryReceipt(), url: "https://untrusted.example/private", token: "do-not-render", file: { ...libraryReceipt().file, signed_url: "https://untrusted.example/private" } }), async calls => {
+    await assert.rejects(api.cloudBrowserFlowsApi.saveToLibrary("session-1", downloadListing().items[1]), error => error.code === "DOWNLOAD_NOT_READY");
+    assert.equal(calls.length, 0);
+    const saved = await api.cloudBrowserFlowsApi.saveToLibrary("session/id", { ...ready, id: "file/id" });
+    assert.deepEqual(saved, libraryReceipt().file);
+    assert.equal(calls[0].url, "https://gateway.test/v1/browser/parallel/sessions/session%2Fid/downloads/file%2Fid/library");
+    assert.equal(calls[0].method, "POST");
+    assert.equal(calls[0].body, undefined);
+    assert.equal(calls[0].init.headers.Authorization, "Bearer owner-token");
+    assert.equal(calls[0].init.credentials, "include");
+    assert.equal(JSON.stringify(saved).includes("https://"), false);
+  });
+  for (const response of [
+    { ...libraryReceipt(), ok: false },
+    { ok: true, file: { ...libraryReceipt().file, revision_id: "" } },
+    { ok: true, file: { ...libraryReceipt().file, artifact_id: "https://untrusted.example/file" } },
+    { ok: true, file: { ...libraryReceipt().file, size_bytes: 3 } },
+  ]) await withFetch(() => json(response), async () => {
+    await assert.rejects(api.cloudBrowserFlowsApi.saveToLibrary("session-1", ready), error => error.code === "INVALID_RESPONSE");
+  });
+  const svg = { ...ready, filename: "icon.svg", size_bytes: 64 };
+  await withFetch(() => json({ ok: true, file: { ...libraryReceipt().file, name: "icon.svg", media_type: "image/svg+xml", size_bytes: 80 } }), async () => {
+    const saved = await api.cloudBrowserFlowsApi.saveToLibrary("session-1", svg);
+    assert.equal(saved.size_bytes, 80);
+  });
+  for (const size of [0, 20 * 1024 * 1024 + 1]) await withFetch(() => json({ ok: true, file: { ...libraryReceipt().file, name: "icon.svg", media_type: "image/svg+xml", size_bytes: size } }), async () => {
+    await assert.rejects(api.cloudBrowserFlowsApi.saveToLibrary("session-1", svg), error => error.code === "INVALID_RESPONSE");
+  });
+});
+
 function fixture() {
-  const state = { flows: [flow()], sessions: [session()], calls: [], deleteFails: false, stopStatus: "saved", runStatus: "blocked", receiptStatus: "awaiting_approval", receiptNext: 1, capacityFails: false, parallelFails: false };
+  const state = { flows: [flow()], sessions: [session()], calls: [], deleteFails: false, libraryFails: false, stopStatus: "saved", runStatus: "blocked", receiptStatus: "awaiting_approval", receiptNext: 1, capacityFails: false, parallelFails: false };
   state.fetch = async call => {
     state.calls.push(call);
     if (call.url.endsWith("/parallel/capacity")) return state.capacityFails ? json({}, 503) : json(capacity());
     if (call.url.endsWith("/parallel/sessions")) return state.parallelFails ? json({}, 503) : json({ items: state.sessions });
     if (call.url.endsWith("/sessions?limit=50")) return json({ items: state.sessions });
+    const libraryMatch = call.url.match(/\/parallel\/sessions\/([^/]+)\/downloads\/([^/]+)\/library$/);
+    if (libraryMatch) return state.libraryFails ? json({ detail: { code: "LIBRARY_QUOTA_EXCEEDED" } }, 413) : json(libraryReceipt(`${decodeURIComponent(libraryMatch[1])}.csv`));
     const downloadMatch = call.url.match(/\/parallel\/sessions\/([^/]+)\/downloads(?:\/([^/]+))?$/);
     if (downloadMatch) return downloadMatch[2] ? new Response("a,b\n1,2") : json(downloadListing(decodeURIComponent(downloadMatch[1])));
     if (call.url.endsWith("/flows") && call.method === "GET") return json({ items: state.flows });
@@ -431,15 +466,29 @@ test("rendered downloads stay with their chosen session and private bytes become
       assert.equal(container.querySelector("[data-browser-session-downloads]").dataset.browserSessionDownloads, "session-1");
       assert.equal(Boolean(container.querySelector('[data-browser-download="file-session-1"]')), true);
       assert.equal(container.querySelector('[data-browser-download-file="pending-session-1"]').disabled, true);
+      assert.equal(container.querySelector('[data-browser-download-library="pending-session-1"]').disabled, true);
       await click(container, '[data-browser-download-file="file-session-1"]');
       assert.equal(blobs.length, 1);
       assert.equal(await blobs[0].text(), "a,b\n1,2");
       assert.deepEqual(saves, [{ href: "blob:private-download-test", filename: "session-1.csv" }]);
       assert.equal(container.textContent.includes("下载请求已交给浏览器。"), true);
+      state.libraryFails = true;
+      await click(container, '[data-browser-download-library="file-session-1"]');
+      assert.equal(container.querySelector("[data-browser-flow-error]").dataset.browserFlowErrorCode, "LIBRARY_QUOTA_EXCEEDED");
+      assert.equal(container.querySelector("[data-browser-download-library-saved]"), null);
+      assert.equal(container.querySelector('[data-browser-download-library="file-session-1"]').disabled, false);
+      state.libraryFails = false;
+      await click(container, '[data-browser-download-library="file-session-1"]');
+      assert.equal(container.querySelector('[data-browser-download-library="file-session-1"]').disabled, true);
+      assert.equal(container.querySelector("[data-browser-download-library-saved]").textContent.includes("session-1.csv"), true);
+      assert.equal(container.textContent.includes("已保存到我的库。"), true);
+      assert.equal(blobs.length, 1);
       await click(container, '[data-browser-downloads-open="session-2"]');
       assert.equal(container.querySelector("[data-browser-session-downloads]").dataset.browserSessionDownloads, "session-2");
       assert.equal(container.querySelector('[data-browser-download="file-session-1"]'), null);
       assert.equal(Boolean(container.querySelector('[data-browser-download="file-session-2"]')), true);
+      assert.equal(container.querySelector("[data-browser-download-library-saved]"), null);
+      assert.equal(container.querySelector('[data-browser-download-library="file-session-2"]').disabled, false);
       assert.equal(container.querySelector("[data-browser-teach-session]").value, "session-2");
     });
   } finally {

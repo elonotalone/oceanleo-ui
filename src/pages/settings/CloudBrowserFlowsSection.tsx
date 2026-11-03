@@ -16,6 +16,7 @@ import {
   type BrowserFlowSession,
   type BrowserFlowStep,
   type BrowserParallelCapacity,
+  type BrowserLibraryDownload,
   type BrowserSessionDownload,
   type BrowserSessionDownloads,
 } from "./cloud-browser-flows-api";
@@ -37,12 +38,12 @@ function errorCopy(error: unknown, tt: UITranslate): string {
   if (error.code === "INVALID_SITE_ORIGIN") return tt("网站范围只能填写网站来源，例如 https://example.com，不包含路径。");
   if (error.code === "INVALID_RESPONSE") return tt("服务器没有返回可确认的结果，请刷新后重试。");
   if (error.code === "DOWNLOAD_NOT_READY") return tt("文件还没有准备好，请刷新文件列表后重试。");
-  if (error.status === 413) return tt("文件超过当前下载大小限制。");
+  if (error.status === 413) return tt("文件超过当前空间或大小限制。");
   if (error.status === 401) return tt("登录状态已失效，请重新登录。");
   if (error.status === 403) return tt("你没有权限操作这个浏览器或流程。");
   if (error.status === 404) return tt("这条记录已不存在，请刷新后重试。");
-  if (error.status === 409) return tt("浏览器状态或流程版本已改变，请刷新后重试。");
-  if (error.status === 422) return tt("内容没有通过安全检查，请检查步骤和网站范围后重试。");
+  if (error.status === 409) return tt("浏览器、文件或流程状态已改变，请刷新后重试。");
+  if (error.status === 422) return tt("内容没有通过检查，请修改后重试。");
   if (error.status === 429) return tt("操作太频繁或浏览器名额已满，请稍后重试。");
   if (error.code === "NETWORK_OR_TIMEOUT") return tt("没有收到服务器结果。请刷新确认状态，再决定是否重试。");
   return tt("服务器没有完成这个操作，请稍后重试。");
@@ -161,6 +162,7 @@ export function CloudBrowserFlowsSection({ onWatchSession }: { onWatchSession?: 
   const [watched, setWatched] = useState<BrowserFlowSession | null>(null);
   const [downloadsSession, setDownloadsSession] = useState<BrowserFlowSession | null>(null);
   const [downloads, setDownloads] = useState<BrowserSessionDownloads | null>(null);
+  const [librarySaves, setLibrarySaves] = useState<Record<string, BrowserLibraryDownload>>({});
   const [busy, setBusy] = useState("");
   const [actionError, setActionError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
@@ -276,6 +278,17 @@ export function CloudBrowserFlowsSection({ onWatchSession }: { onWatchSession?: 
       if (!signal.aborted) { saveDownload(blob, file.filename); setNotice(tt("下载请求已交给浏览器。")); }
     });
   }
+  function saveToLibrary(file: BrowserSessionDownload) {
+    const list = downloads;
+    if (!list || librarySaves[JSON.stringify([list.session_id, file.id])]) return;
+    void execute(`library-${file.id}`, async signal => {
+      const saved = await cloudBrowserFlowsApi.saveToLibrary(list.session_id, file, signal);
+      if (!signal.aborted) {
+        setLibrarySaves(current => ({ ...current, [JSON.stringify([list.session_id, file.id])]: saved }));
+        setNotice(tt("已保存到我的库。"));
+      }
+    });
+  }
   function continueFlow(flow: BrowserFlow, receipt: BrowserFlowRunReceipt) {
     if (receipt.status !== "ready" || receipt.flow_id !== flow.id || receipt.flow_version !== flow.version) return;
     void execute(`continue-${flow.id}`, async signal => {
@@ -296,7 +309,10 @@ export function CloudBrowserFlowsSection({ onWatchSession }: { onWatchSession?: 
       {sessions === null && !loadErrors.sessions ? <p role="status" className={`${CARD_DESC} mt-3`}>{tt("正在读取浏览器任务…")}</p> : null}
       {sessions?.length === 0 && <p className={`${CARD_DESC} mt-3`}>{tt("还没有浏览器任务。先在任务中打开云端浏览器，再来演示流程。")}</p>}
       <ul className="mt-3 divide-y divide-neutral-100">{sessions?.map(session => <li key={session.id} data-browser-parallel-session={session.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div className="min-w-0"><p className="break-words text-[13px] font-medium text-neutral-900">{sessionLabel(session, tt)}</p><p className={CARD_DESC}>{tt(SESSION_LABELS[session.status] || "状态未知")}{session.sensitive_active ? ` · ${tt("正在处理敏感输入")}` : ""}</p></div><div className="flex flex-wrap gap-2"><button data-browser-session-watch={session.id} type="button" className={QUIET} disabled={!session.can_watch} onClick={() => watch(session)}>{tt("观看")}</button><button data-browser-downloads-open={session.id} type="button" className={QUIET} disabled={Boolean(busy)} aria-expanded={downloadsSession?.id === session.id} onClick={() => showDownloads(session)}>{tt("下载的文件")}</button></div></li>)}</ul>
-      {downloadsSession && <div data-browser-session-downloads={downloadsSession.id} className="mt-3 space-y-3 rounded-lg border border-neutral-200 p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-[13px] font-medium text-neutral-900">{tt("下载的文件")}</h4><p className={CARD_DESC}>{sessionLabel(downloadsSession, tt)}</p></div><div className="flex gap-2"><button data-browser-downloads-refresh type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => showDownloads(downloadsSession)}>{tt("刷新文件")}</button><button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => { setDownloadsSession(null); setDownloads(null); }}>{tt("收起文件")}</button></div></div>{downloads === null ? <p role="status" className={CARD_DESC}>{busy === "downloads-list" ? tt("正在读取这个浏览器的文件…") : tt("文件列表没有读取成功，请刷新文件后重试。")}</p> : <>{downloads.items.length === 0 && <p className={CARD_DESC}>{tt("这个浏览器还没有下载文件。")}</p>}<ul className="divide-y divide-neutral-100">{downloads.items.map(file => <li data-browser-download={file.id} key={file.id} className="flex flex-wrap items-center justify-between gap-3 py-2"><div className="min-w-0"><p className="break-all text-[13px] text-neutral-900">{file.filename}</p><p className={CARD_DESC}>{downloadSize(file.size_bytes, tt)}{" · "}{tt({ pending: "准备中", ready: "可下载", blocked: "下载被阻止", failed: "下载失败" }[file.status])}</p></div><button data-browser-download-file={file.id} type="button" className={QUIET} disabled={Boolean(busy) || file.status !== "ready"} onClick={() => downloadFile(file)}>{tt("下载文件")}</button></li>)}</ul>{downloads.limits.max_file_bytes !== null && <p className={CARD_DESC}>{tt("单个文件上限：{size}", { size: downloadSize(downloads.limits.max_file_bytes, tt) })}</p>}<p className={CARD_DESC}>{tt("文件仅通过当前账号的私有连接获取。")}</p></>}</div>}
+      {downloadsSession && <div data-browser-session-downloads={downloadsSession.id} className="mt-3 space-y-3 rounded-lg border border-neutral-200 p-3"><div className="flex flex-wrap items-start justify-between gap-3"><div><h4 className="text-[13px] font-medium text-neutral-900">{tt("下载的文件")}</h4><p className={CARD_DESC}>{sessionLabel(downloadsSession, tt)}</p></div><div className="flex gap-2"><button data-browser-downloads-refresh type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => showDownloads(downloadsSession)}>{tt("刷新文件")}</button><button type="button" className={QUIET} disabled={Boolean(busy)} onClick={() => { setDownloadsSession(null); setDownloads(null); }}>{tt("收起文件")}</button></div></div>{downloads === null ? <p role="status" className={CARD_DESC}>{busy === "downloads-list" ? tt("正在读取这个浏览器的文件…") : tt("文件列表没有读取成功，请刷新文件后重试。")}</p> : <>{downloads.items.length === 0 && <p className={CARD_DESC}>{tt("这个浏览器还没有下载文件。")}</p>}<ul className="divide-y divide-neutral-100">{downloads.items.map(file => {
+        const saved = librarySaves[JSON.stringify([downloads.session_id, file.id])];
+        return <li data-browser-download={file.id} key={file.id} className="flex flex-wrap items-center justify-between gap-3 py-2"><div className="min-w-0"><p className="break-all text-[13px] text-neutral-900">{file.filename}</p><p className={CARD_DESC}>{downloadSize(file.size_bytes, tt)}{" · "}{tt({ pending: "准备中", ready: "可下载", blocked: "下载被阻止", failed: "下载失败" }[file.status])}</p>{saved && <p data-browser-download-library-saved className={CARD_DESC}>{tt("库中的文件：{name}", { name: saved.name })}</p>}</div><div className="flex flex-wrap gap-2"><button data-browser-download-file={file.id} type="button" className={QUIET} disabled={Boolean(busy) || file.status !== "ready"} onClick={() => downloadFile(file)}>{tt("下载文件")}</button><button data-browser-download-library={file.id} type="button" className={QUIET} disabled={Boolean(busy) || file.status !== "ready" || Boolean(saved)} onClick={() => saveToLibrary(file)}>{tt(saved ? "已保存到我的库" : "保存到我的库")}</button></div></li>;
+      })}</ul>{downloads.limits.max_file_bytes !== null && <p className={CARD_DESC}>{tt("单个文件上限：{size}", { size: downloadSize(downloads.limits.max_file_bytes, tt) })}</p>}<p className={CARD_DESC}>{tt("文件仅通过当前账号的私有连接获取。")}</p></>}</div>}
     </section>
 
     <section className={CARD} aria-labelledby="browser-teaching-heading" data-browser-teaching>

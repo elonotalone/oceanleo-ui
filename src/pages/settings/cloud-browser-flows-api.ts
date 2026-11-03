@@ -93,6 +93,13 @@ export type BrowserSessionDownloads = {
   items: BrowserSessionDownload[];
   limits: { max_file_bytes: number | null; max_total_bytes: number | null; max_count: number | null };
 };
+export type BrowserLibraryDownload = {
+  artifact_id: string;
+  revision_id: string;
+  name: string;
+  media_type: string;
+  size_bytes: number;
+};
 
 export class BrowserFlowsApiError extends Error {
   constructor(public code: string, public status = 0) {
@@ -357,6 +364,18 @@ export const cloudBrowserFlowsApi = {
     if (maxBytes !== null && blob.size > maxBytes) throw new BrowserFlowsApiError("DOWNLOAD_TOO_LARGE", 413);
     if (file.size_bytes !== null && file.size_bytes !== blob.size) throw invalid();
     return blob;
+  },
+  async saveToLibrary(sessionId: string, file: BrowserSessionDownload, signal?: AbortSignal): Promise<BrowserLibraryDownload> {
+    if (file.status !== "ready") throw new BrowserFlowsApiError("DOWNLOAD_NOT_READY", 409);
+    const data = record(await request(`/parallel/sessions/${encodeURIComponent(sessionId)}/downloads/${encodeURIComponent(file.id)}/library`, "POST", undefined, signal, 120000));
+    const saved = record(data?.file);
+    const artifact = text(saved?.artifact_id, 300), revision = text(saved?.revision_id, 300);
+    const name = text(saved?.name, 255), media = text(saved?.media_type, 200), size = integer(saved?.size_bytes);
+    const safeId = (id: string | null) => id !== null && /^[A-Za-z0-9][A-Za-z0-9_:.-]{0,299}$/.test(id);
+    // Canonical Library upload sanitizes SVG; its durable size can differ from the original download.
+    const sanitizedSvg = media?.toLowerCase() === "image/svg+xml";
+    if (data?.ok !== true || !safeId(artifact) || !safeId(revision) || !name?.trim() || /[\x00-\x1f/\\]/.test(name) || !media || !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/i.test(media) || size === null || (sanitizedSvg ? size <= 0 || size > 20 * 1024 * 1024 : size !== file.size_bytes)) throw invalid();
+    return { artifact_id: artifact as string, revision_id: revision as string, name, media_type: media, size_bytes: size };
   },
   async startTeaching(sessionId: string, name: string, signal?: AbortSignal) {
     const data = record(await request(`/sessions/${encodeURIComponent(sessionId)}/teach/start`, "POST", { name: name.trim() }, signal));
