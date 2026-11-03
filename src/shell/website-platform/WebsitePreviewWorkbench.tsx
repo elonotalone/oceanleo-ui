@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { notifyHistoryChanged } from "../../lib/history-events";
 import { websiteRuntimeApi, type WebsiteRuntimeApi, type WebsiteRuntime, type WebsiteLogs } from "../../api/website-runtime";
@@ -9,22 +9,35 @@ import { appendRuntimeLogs, fitPreviewViewport, previewPathUrl, RUNTIME_STATES }
 import { WebsiteDashboard } from "./WebsiteDashboard";
 import { WebsiteConfiguration } from "./WebsiteConfiguration";
 import { WebsitePreviewPicker } from "./WebsitePreviewPicker";
+import { previewReferenceUrl } from "./website-preview-reference";
 import { useWebsiteUI } from "./website-preview-i18n";
 
 const EMPTY_LOGS: WebsiteLogs = { lines: [], cursor: null };
 type WebsiteView = "preview" | "dashboard" | "configuration";
 const VIEWS: Array<[WebsiteView, string]> = [["preview", "预览"], ["dashboard", "仪表盘"], ["configuration", "配置"]];
 
+/** A mounted document keeps its original URL; only a new document lifetime consumes the latest ticket. */
+function PreviewDocument({ initialUrl, frame, width, height, scale, title }: {
+  initialUrl: string; frame: RefObject<HTMLIFrameElement | null>; width: number; height: number; scale: number; title: string;
+}) {
+  const [documentUrl] = useState(() => initialUrl);
+  return <iframe ref={frame} src={documentUrl} title={title} className="absolute left-0 top-0 border-0" referrerPolicy="no-referrer" tabIndex={-1}
+    width={width} height={height} style={{ width, height, transform: `scale(${scale})`, transformOrigin: "top left", pointerEvents: "none" }}
+    sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts" />;
+}
+
 export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntimeApi, panelsApi = websitePanelsApi, connectorsApi = websiteConnectorsApi }: {
   projectId: string; runtimeApi?: WebsiteRuntimeApi; panelsApi?: WebsitePanelsApi; connectorsApi?: WebsiteConnectorsApi;
 }) {
   const tt = useWebsiteUI();
   const [view, setView] = useState<WebsiteView>("preview");
-  const [runtime, setRuntime] = useState<WebsiteRuntime | null>(null);
+  const [runtimeSnapshot, setRuntime] = useState<{ projectId: string; value: WebsiteRuntime } | null>(null);
+  const runtime = runtimeSnapshot?.projectId === projectId ? runtimeSnapshot.value : null;
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [pathDraft, setPathDraft] = useState("/");
   const [path, setPath] = useState("/");
+  const [navigation, setNavigation] = useState(0);
   const [phone, setPhone] = useState(false);
   const [logsOpen, setLogsOpen] = useState(false);
   const [logs, setLogs] = useState<WebsiteLogs>(EMPTY_LOGS);
@@ -65,11 +78,10 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
   useEffect(() => {
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
-    setError("");
     const poll = async () => {
       try {
         const next = await runtimeApi.get(projectId, controller.signal);
-        if (!controller.signal.aborted) { setRuntime(next); setError(""); }
+        if (!controller.signal.aborted) { setRuntime({ projectId, value: next }); setError(""); }
       } catch (caught) { if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : String(caught)); }
       finally { if (!controller.signal.aborted) timer = setTimeout(poll, 3000); }
     };
@@ -96,12 +108,15 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
 
   useEffect(() => {
     generation.current++;
-    setRuntime(null); setActionError(""); setTaskId(""); setTaskHost(null); setPath("/"); setPathDraft("/");
+    setRuntime(null); setError(""); setActionError(""); setTaskId(""); setTaskHost(null); setPath("/"); setPathDraft("/"); setNavigation(0);
     setPicking(false); setPending(false); setLogsOpen(false); setPhone(false); setView("preview"); busy.current = false;
     return () => { generation.current++; };
   }, [projectId]);
 
   const url = previewPathUrl(runtime?.preview_url, path);
+  // Source commits and ticket rotations keep the document alive for HMR. A new
+  // host/start, explicit navigation or actual unmount creates a fresh document.
+  const documentIdentity = JSON.stringify([projectId, previewReferenceUrl(runtime?.preview_url || ""), runtime?.node_id, runtime?.started_at, navigation]);
   useEffect(() => {
     const element = stage.current;
     if (!element || view !== "preview" || runtime?.state !== "running" || !url || error) return;
@@ -160,7 +175,7 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
       <form className="min-w-0 flex-1" onSubmit={event => {
         event.preventDefault();
         if (!previewPathUrl(runtime?.preview_url, pathDraft)) { setActionError(tt("路径须以 / 开头，且只能在当前网站内跳转。")); return; }
-        setActionError(""); setPath(pathDraft); setPicking(false);
+        setActionError(""); setPath(pathDraft); setNavigation(value => value + 1); setPicking(false);
       }}>
         <input aria-label={tt("预览路径")} value={pathDraft} onChange={event => setPathDraft(event.target.value)}
           className="h-7 w-full rounded border bg-transparent px-2" placeholder="/" />
@@ -187,10 +202,9 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
         : runtime?.state === "running" && url ? <>
           <div ref={stage} className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden" data-testid="website-preview-stage">
             <div className="relative shrink-0 overflow-hidden" style={{ width: viewport.displayWidth, height: viewport.displayHeight }} data-testid="website-preview-viewport">
-              <iframe ref={frame} src={url} title={tt("网站预览")} className="absolute left-0 top-0 border-0" referrerPolicy="no-referrer" tabIndex={-1}
-                width={viewport.width} height={viewport.height} style={{ width: viewport.width, height: viewport.height, transform: `scale(${viewport.scale})`, transformOrigin: "top left", pointerEvents: "none" }}
-                sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts" />
-              {picking && <WebsitePreviewPicker projectId={projectId} url={url} frame={frame} onClose={() => setPicking(false)} />}
+              <PreviewDocument key={documentIdentity} initialUrl={url} frame={frame} title={tt("网站预览")}
+                width={viewport.width} height={viewport.height} scale={viewport.scale} />
+              {picking && <WebsitePreviewPicker projectId={projectId} url={previewReferenceUrl(url)} frame={frame} onClose={() => setPicking(false)} />}
             </div>
           </div>
           <p className="shrink-0 px-3 py-1 text-center text-xs opacity-65">{tt(phone ? "手机" : "电脑")} · {Math.round(viewport.scale * 100)}% · {tt("预览仅用于查看，修改请交给 agent。")}</p>

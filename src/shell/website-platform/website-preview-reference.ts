@@ -3,9 +3,20 @@ export interface PreviewReference {
   projectId: string; url: string; x: number; y: number; width: number; height: number;
   text?: string; tag?: string; className?: string; selector?: string; screenshot?: File;
 }
+/** Agent references are locations, never owner capabilities or URL credentials. */
+export function previewReferenceUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return "";
+    url.username = ""; url.password = "";
+    // URLSearchParams decodes key names and removes every duplicate value.
+    url.searchParams.delete("__oceanleo_owner");
+    return url.href;
+  } catch { return ""; }
+}
 export function previewReferenceText(ref: PreviewReference): string {
   return "[Website preview reference]\n" + JSON.stringify({
-    project_id: ref.projectId, url: ref.url,
+    project_id: ref.projectId, url: previewReferenceUrl(ref.url),
     point: { x: Math.round(ref.x), y: Math.round(ref.y) },
     viewport: { width: Math.round(ref.width), height: Math.round(ref.height) },
     ...(ref.tag ? { tag: ref.tag, text: ref.text?.slice(0, 500), class: ref.className?.slice(0, 300), selector: ref.selector?.slice(0, 300) } : { dom: "unavailable_cross_origin" }),
