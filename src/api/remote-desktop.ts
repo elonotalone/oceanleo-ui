@@ -236,12 +236,12 @@ export interface RemoteDesktopClient {
   mediaQuality?(sessionId: string): RemoteMediaQualitySink | null;
 }
 
-/** The viewer's ARTC data channel to the computer (D4). `send` false/throw = unusable now. */
+/** false proves no write; a throw is ambiguous and must never replay the action on another lane. */
 export interface RemoteDesktopDataLane {
   send(payload: string): boolean;
 }
 
-/** A trusted data channel must show each send in `metrics.dc_input_seq` within this window. */
+/** Oldest pending peer write deadline; partial progress never restarts an older write's clock. */
 export const PEER_RECEIPT_MS = 1500;
 
 /** Contract D4 bound: one JSON message per input, at most 1 KB. */
@@ -260,11 +260,11 @@ export interface RemoteDesktopStream {
   acknowledgeFrame(sequence: number): void;
   acknowledgeMediaFrame?(): void;
   /**
-   * Input goes peer-to-peer while a lane is attached and the gateway path is drained; the
-   * WebSocket path stays the automatic fallback. `null` detaches (lane broke or video ended).
+   * Both lanes share one bounded ordered queue. A trusted peer pauses new WS writes until older
+   * gateway writes retire; fallback waits for earlier peer credits. `null` detaches the lane.
    */
   attachDataChannel?(lane: RemoteDesktopDataLane | null): void;
-  /** Which path the last input took (diagnostics/UI only). */
+  /** Which path the last written input took (diagnostics/UI only). */
   inputPath?(): "data_channel" | "websocket";
   /** Highest input seq used on this socket (both lanes): the floor for a re-attached stream. */
   lastSequence?(): number;
@@ -367,62 +367,38 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   /*
    * The data channel has no per-message reply, so it is used only once the computer proved it
    * receives it: a harmless `release_all` probe (sent only while nothing is held) must show up in
-   * the publisher's `metrics.dc_input_seq`. Afterwards every peer send must be confirmed within
-   * PEER_RECEIPT_MS, else the lane is dropped and input continues on the gateway path (unconfirmed
-   * peer input is never replayed). Without that metric the lane is never trusted: WS only.
+   * the publisher's `metrics.dc_input_seq`. Real writes then use a bounded shared scheduler window,
+   * credited by input_completed_seq when supported, or explicitly weaker legacy admission receipts.
+   * Unretired input cannot be overtaken on fallback or replayed on silence/ambiguous failure.
    * The lane opens when the viewer's data publish is up, which can be before the computer has
    * subscribed to it; those first messages are lost (2026-10-31 SDK probe: 3-5 messages). So an
    * unconfirmed probe is re-sent with a fresh seq after PEER_RECEIPT_MS instead of being waited on forever.
    */
-  let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, peerSent = 0, peerSentAt = 0;
+  let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, probeRequested = false;
   const diagnostics = new RemoteTransportDiagnostics(() => performance.now());
   let lastDiagnosticsAt = performance.now();
-  const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; };
+  const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; };
   const peerHealthy = (now: number) => {
-    if (peerTrusted && peerSent > peerReceipt && now - peerSentAt > PEER_RECEIPT_MS) dropLane();
+    const oldest = scheduler.oldestPeerPendingAt();
+    if (oldest !== undefined && now - oldest > PEER_RECEIPT_MS) fail("input_ack_unknown");
   };
-  const notePeerReceipt = (value: number | undefined) => {
-    if (value === undefined || value <= peerReceipt) return;
-    peerReceipt = value;
-    if (peerProbe && value >= peerProbe) peerTrusted = true;
-    peerSentAt = peerReceipt >= peerSent ? 0 : Date.now(); // progress restarts the window
+  const notePeerReceipt = (value: number | undefined, completed?: number) => {
+    if (value !== undefined) {
+      peerReceipt = Math.max(peerReceipt, value);
+      if (peerProbe && peerReceipt >= peerProbe) peerTrusted = true;
+    }
+    scheduler.observePeerProgress({ admissionSeq: value, completedSeq: completed });
   };
-  const writePeer = (seq: number, action: RemoteDesktopAction): boolean => {
-    const message = dataChannelMessage(sessionId, seq, action);
-    if (!message || !lane) return false;
-    try { if (lane.send(message)) { diagnostics.written("data_channel", seq); return true; } } catch { /* broken channel */ }
+  const probeDue = () => !!lane && !peerTrusted && probeRequested && (!peerProbe || Date.now() - peerProbeAt > PEER_RECEIPT_MS);
+  /** Probe only between retired writes and new queue writes, never inside a provisional write. */
+  const probePeer = () => {
+    if (ended || !ready || state !== "active" || !probeDue() || !lane || !scheduler.probeAllowed() || !scheduler.gatewayDrained() || !scheduler.peerDrained()) return;
+    peerProbe = scheduler.claimSequence();
+    peerProbeAt = Date.now();
+    probeRequested = false;
+    const message = dataChannelMessage(sessionId, peerProbe, { kind: "release_all" });
+    try { if (message && lane.send(message)) { diagnostics.written("data_channel", peerProbe); return; } } catch { /* no real action to replay */ }
     dropLane();
-    return false;
-  };
-  /** Peer path: no stop-and-wait, no gateway hop. Returns false when it cannot carry this action now. */
-  const sendPeer = (action: RemoteDesktopAction): boolean => {
-    peerHealthy(Date.now());
-    if (!lane || !scheduler.drained()) return false;
-    if (!peerTrusted) {
-      if (peerProbe && Date.now() - peerProbeAt > PEER_RECEIPT_MS) peerProbe = 0;
-      if (!peerProbe && !scheduler.holding()) {
-        peerProbe = scheduler.claimSequence();
-        peerProbeAt = Date.now();
-        if (!writePeer(peerProbe, { kind: "release_all" })) peerProbe = 0;
-      }
-      return false;
-    }
-    const seq = scheduler.claimSequence();
-    const message = dataChannelMessage(sessionId, seq, action);
-    let sent = false;
-    if (message) { try { sent = lane.send(message); } catch { sent = false; } }
-    if (!sent) {
-      // A refused/oversize message never reached the computer: its seq is just a gap.
-      // A broken channel is detached; this and later input take the gateway path.
-      if (message) dropLane();
-      return false;
-    }
-    diagnostics.written("data_channel", seq);
-    scheduler.noteSent(action);
-    if (peerSent <= peerReceipt) peerSentAt = Date.now();
-    peerSent = seq;
-    lastPath = "data_channel";
-    return true;
   };
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
@@ -473,10 +449,27 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   };
   const scheduler = new RemoteInputScheduler({
     now: Date.now,
-    write: (seq, action) => {
+    write: (seq, action, context) => {
+      if (!context?.emergency) {
+        // A late lane needs the same brief WS drain as trusted handover. Let queued releases,
+        // held input and explicit retries drain first; never claim the probe's seq here.
+        if (!context?.retry && !context?.barrier && probeDue() && scheduler.probeAllowed()) return false;
+        const message = lane && peerTrusted && !context?.retry && !context?.barrier ? dataChannelMessage(sessionId, seq, action) : null;
+        if (message && lane) {
+          // Queue admission is independent of lane readiness. Continuous input cannot refill WS
+          // while prior gateway writes drain; the same queued gesture/barriers later take DC.
+          if (!scheduler.gatewayDrained() || !scheduler.peerCreditReady()) return false;
+          try {
+            if (lane.send(message)) { diagnostics.written("data_channel", seq); lastPath = "data_channel"; return { lane: "data_channel" }; }
+          } catch { dropLane(); return "unknown"; }
+          dropLane(); // explicit false: this action was never written
+        }
+        // A definitely unwritten or oversized action may take WS only after older peer writes.
+        if (!scheduler.peerDrained()) return false;
+      }
       const written = send({ type: "input", seq, action });
-      if (written) { diagnostics.written("websocket", seq); timings.sent(seq); }
-      return written;
+      if (written) { diagnostics.written("websocket", seq); timings.sent(seq); lastPath = "websocket"; }
+      return !written && writeFailed ? "unknown" : written;
     },
     congestion: (busy) => handlers.congestion?.(busy),
     failure: fail,
@@ -495,9 +488,11 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     },
     finishHandoff() { if (!ended && state === "active") { scheduler.finishHandoff(); handoff = null; } },
     send(action) {
-      if (!ready || state !== "active") return false;
-      if (sendPeer(action)) return true;
-      lastPath = "websocket";
+      if (ended || !ready || state !== "active") return false;
+      peerHealthy(Date.now());
+      if (ended) return false;
+      if (lane && !peerTrusted) probeRequested = true;
+      probePeer();
       return scheduler.enqueue(action);
     },
     attachDataChannel(next) { if (next !== lane) { dropLane(); lane = ended ? null : next; } },
@@ -524,6 +519,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const inputPump = setInterval(() => {
     if (pendingFrameAck !== null && send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
     peerHealthy(Date.now());
+    probePeer();
     scheduler.tick();
     if (performance.now() - lastDiagnosticsAt >= 1000) { lastDiagnosticsAt = performance.now(); reportDiagnostics(); }
   }, 25);
@@ -580,6 +576,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if ("input_diagnostics" in data) {
       const input = parseRemoteInputDiagnostics(data.input_diagnostics);
       diagnostics.observe(input);
+      if (input) notePeerReceipt(undefined, input.input_completed_seq);
+      if (ended) return;
       if (input) { try { handlers.inputDiagnostics?.(input); } catch { /* measurement only */ } }
     }
     handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);
@@ -588,7 +586,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       if (data.media !== null && !media) { fail("response_malformed"); return; }
       const mediaStatus = parseRemoteMediaStatus(data.media_status);
       diagnostics.observe(mediaStatus?.metrics);
-      notePeerReceipt(mediaStatus?.metrics?.dc_input_seq);
+      notePeerReceipt(mediaStatus?.metrics?.dc_input_seq, mediaStatus?.metrics?.input_completed_seq);
+      if (ended) return;
       handlers.media?.(media, mediaStatus);
     }
     if (state === "closed") { dropLane(); dispose(); }

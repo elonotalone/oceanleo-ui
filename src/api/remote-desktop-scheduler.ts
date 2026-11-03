@@ -1,20 +1,20 @@
 import type { RemoteDesktopAction } from "./remote-desktop";
 import type { RemoteInputSchedulerDiagnostics } from "./remote-desktop-diagnostics";
 
-type Entry = { barrier?: boolean; action: RemoteDesktopAction; seq?: number };
+type Entry = { barrier?: boolean; action: RemoteDesktopAction; seq?: number; lane?: "websocket" | "data_channel"; sentAt?: number };
 const WINDOW = 8;
 const KEY_BACKLOG = 32;
 const SOFT = new Set(["move", "scroll"]);
 const RELEASE = new Set(["release_all", "pointer_up", "key_up"]);
 export interface RemoteInputSchedulerOptions {
-  /** false means nothing was written; never retry an ambiguous write. */
-  write(seq: number, action: RemoteDesktopAction): boolean;
+  /** false means definitely unwritten. An ambiguous write reserves its seq and fails without replay. */
+  write(seq: number, action: RemoteDesktopAction, context?: { retry: boolean; barrier: boolean; emergency?: boolean }): boolean | "unknown" | { lane: "websocket" | "data_channel" };
   now(): number;
   congestion(busy: boolean): void;
   failure(code: string): void;
 }
 
-/** Acceptance releases transport credit; explicit handback separately waits for release execution. */
+/** WS acceptance releases its credit; peer credit uses retirement (or weaker legacy admission). */
 export class RemoteInputScheduler {
   private queue: Entry[] = [];
   private outstanding = new Map<number, Entry>();
@@ -22,6 +22,14 @@ export class RemoteInputScheduler {
   private retryAt = 0;
   private sequence = 0;
   private executed = 0;
+  private gatewayWritten = 0;
+  /** Gateway writes above `executed` that were not refused; a refused seq never reaches acked_seq. */
+  private gatewayUnretired: number[] = [];
+  private peerWritten = 0;
+  private peerAdmission = 0;
+  private peerCompleted: number | undefined;
+  private peerUpgradeFence = 0;
+  private peerUpgradeAt = 0;
   private ended = false;
   private busy = false;
   private heldKeys = new Set<string>();
@@ -128,18 +136,57 @@ export class RemoteInputScheduler {
   }
 
   accepted(seq: number): void {
-    if (!this.outstanding.has(seq)) return;
+    if (!this.outstanding.has(seq) || this.outstanding.get(seq)?.lane === "data_channel") return;
     this.outstanding.delete(seq);
     this.tick();
   }
 
   /**
-   * Data-channel lane (D4): true only when every WebSocket input was written, accepted AND
-   * executed, so a faster peer-to-peer message can never overtake an older gateway one (the
-   * computer drops any seq at or below the last it ran).
+   * No queued action or pending credit; prior WS writes retired and prior peer writes reached
+   * the negotiated credit fence. Legacy peer admission remains weaker than retirement.
    */
   drained(): boolean {
-    return !this.ended && !this.handoff && !this.queue.length && !this.retries.length && !this.outstanding.size && this.executed >= this.sequence;
+    return !this.ended && !this.handoff && !this.queue.length && !this.outstanding.size && this.gatewayDrained() && this.peerDrained();
+  }
+
+  /** Ignore never-written queue entries when changing lanes; otherwise continuous input starves DC. */
+  gatewayDrained(): boolean {
+    return !this.ended && !this.retries.length && ![...this.outstanding.values()].some(entry => entry.lane !== "data_channel") && this.executed >= this.gatewayWritten;
+  }
+
+  /** Queued releases can clear desired held state before any release is written; drain them first. */
+  probeAllowed(): boolean {
+    return !this.ended && !this.handoff && !this.holding() && ![...this.queue, ...this.retries].some(entry => RELEASE.has(entry.action.kind));
+  }
+
+  /** Completion is preferred while the host reports it; legacy admission proves only native enqueue. */
+  peerDrained(): boolean { return (this.peerCompleted ?? this.peerAdmission) >= this.peerWritten; }
+  peerCreditReady(): boolean { return this.peerCompleted === undefined || this.peerCompleted >= this.peerUpgradeFence; }
+
+  observePeerProgress(value: { admissionSeq?: number; completedSeq?: number }): void {
+    const valid = (seq: unknown): seq is number => typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0;
+    // A valid report can race a resume floor. It cannot grant credits to future local writes;
+    // epoch/floor synchronization needs a fresh stream rather than silently accepting input here.
+    if ([value.admissionSeq, value.completedSeq].some(seq => valid(seq) && seq > this.sequence)) { this.fail("input_ack_unknown"); return; }
+    if (valid(value.admissionSeq)) this.peerAdmission = Math.max(this.peerAdmission, value.admissionSeq);
+    // A host report with admission but no completion means completion is not currently safe there
+    // (pending overflow, generation change): fall back to the weaker admission credit, never close.
+    if (valid(value.admissionSeq) && value.completedSeq === undefined && this.peerCompleted !== undefined) {
+      this.peerCompleted = undefined; this.peerUpgradeFence = 0;
+    }
+    if (valid(value.completedSeq)) {
+      if (this.peerCompleted === undefined) { this.peerUpgradeFence = this.peerWritten; this.peerUpgradeAt = this.options.now(); }
+      this.peerCompleted = Math.max(this.peerCompleted ?? 0, value.completedSeq);
+    }
+    const through = this.peerCompleted ?? this.peerAdmission;
+    for (const [seq, entry] of this.outstanding) if (entry.lane === "data_channel" && seq <= through) this.outstanding.delete(seq);
+    this.tick();
+  }
+
+  oldestPeerPendingAt(): number | undefined {
+    const pending = [...this.outstanding.values()].filter(entry => entry.lane === "data_channel").map(entry => entry.sentAt!);
+    if (!this.peerCreditReady()) pending.push(this.peerUpgradeAt);
+    return pending.length ? Math.min(...pending) : undefined;
   }
 
   /** Any key or button this session still holds (either lane). */
@@ -162,6 +209,7 @@ export class RemoteInputScheduler {
     if (!Number.isSafeInteger(sequence) || sequence <= this.sequence) return;
     this.sequence = sequence;
     this.executed = Math.max(this.executed, sequence);
+    this.gatewayWritten = Math.max(this.gatewayWritten, sequence);
   }
 
   /** Highest seq claimed so far (both lanes); the floor for a re-attached stream. */
@@ -186,8 +234,11 @@ export class RemoteInputScheduler {
 
   /** A final refusal (e.g. `input_not_allowed`: the computer allows viewing only). Never retried. */
   refused(seq: number): boolean {
-    if (!this.outstanding.has(seq)) return false;
+    if (!this.outstanding.has(seq) || this.outstanding.get(seq)?.lane === "data_channel") return false;
     this.outstanding.delete(seq);
+    // The gateway never executes a refused write, so it cannot be the retirement fence.
+    this.gatewayUnretired = this.gatewayUnretired.filter(written => written !== seq);
+    if (seq === this.gatewayWritten) this.gatewayWritten = Math.max(this.executed, this.gatewayUnretired.at(-1) ?? 0);
     this.tick();
     return true;
   }
@@ -195,12 +246,13 @@ export class RemoteInputScheduler {
   executedThrough(seq: number): void {
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > this.sequence) { this.fail("response_malformed"); return; }
     this.executed = Math.max(this.executed, seq);
+    this.gatewayUnretired = this.gatewayUnretired.filter(written => written > this.executed);
     this.completeHandoff();
   }
 
   rejected(seq: number, code: string, retryAfterMs: number): void {
     const entry = this.outstanding.get(seq);
-    if (!entry || !["input_queue_full", "rate_limited"].includes(code)) {
+    if (!entry || entry.lane === "data_channel" || !["input_queue_full", "rate_limited"].includes(code)) {
       this.fail("response_malformed"); return;
     }
     this.outstanding.delete(seq);
@@ -231,10 +283,15 @@ export class RemoteInputScheduler {
         action = { ...action, deltaX: dx, deltaY: dy };
         if (x !== dx || y !== dy) remainder = { ...head.action, deltaX: x - dx, deltaY: y - dy };
       }
-      if (!this.options.write(seq, action)) break;
+      const result = this.options.write(seq, action, { retry: head.seq !== undefined, barrier: head.barrier === true });
+      if (!result) break;
       this.sequence = Math.max(this.sequence, seq);
+      if (result === "unknown") { this.fail("input_ack_unknown"); return; }
+      const lane = result === true ? "websocket" : result.lane;
+      if (lane === "data_channel") this.peerWritten = Math.max(this.peerWritten, seq);
+      else { this.gatewayWritten = Math.max(this.gatewayWritten, seq); this.gatewayUnretired.push(seq); }
       if (head.barrier && this.handoff) this.handoff.seq = seq;
-      this.outstanding.set(seq, { action, seq, barrier: head.barrier });
+      this.outstanding.set(seq, { action, seq, barrier: head.barrier, lane, sentAt: now });
       if (this.retries.length) this.retries.shift(); else this.queue.shift();
       if (remainder) this.queue.unshift({ action: remainder });
     }
@@ -257,7 +314,7 @@ export class RemoteInputScheduler {
     if (this.ended) return;
     const seq = this.sequence > 0 ? this.sequence + 1 : 0;
     this.dispose();
-    if (seq) this.options.write(seq, { kind: "release_all" });
+    if (seq) this.options.write(seq, { kind: "release_all" }, { retry: false, barrier: false, emergency: true });
   }
 
   private report(busy: boolean): void {

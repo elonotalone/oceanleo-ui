@@ -78,7 +78,7 @@ test("an attached data channel carries input with the contract envelope and no g
   } finally { stream.close(); }
 });
 
-test("a broken or oversized peer message falls back to the gateway path with a higher seq, never reordered", async () => {
+test("an oversized peer message takes WS once and later peer input waits for its retirement", async () => {
   const { socket, stream } = await streamHarness();
   try {
     const peer = lane();
@@ -90,17 +90,12 @@ test("a broken or oversized peer message falls back to the gateway path with a h
     stream.send({ kind: "type", text: "长".repeat(400) });
     stream.send({ kind: "key_up", key: "Shift" });
     assert.deepEqual(peer.sent.map((m) => m.seq), [3]);
-    assert.deepEqual(inputs(socket).map((m) => [m.seq, m.action.kind]), [[5, "type"], [6, "key_up"]]);
-    socket.message({ type: "input_ack", seq: 5 }); socket.message({ type: "input_ack", seq: 6 });
-    socket.message({ type: "state", state: "active", acked_seq: 6 });
+    assert.deepEqual(inputs(socket).map((m) => [m.seq, m.action.kind]), [[4, "type"]]);
+    socket.message({ type: "input_ack", seq: 4 });
+    socket.message({ type: "state", state: "active", acked_seq: 4 });
     stream.send({ kind: "move", x: .5, y: .5 });
-    assert.deepEqual(peer.sent.at(-1).seq, 7, "drained gateway path hands back to the peer lane");
-    // A throwing channel is detached for good: input continues on the gateway.
-    peer.send = () => { throw new Error("closed"); };
-    stream.send({ kind: "move", x: .6, y: .6 });
-    assert.deepEqual(inputs(socket).at(-1).seq, 9);
-    assert.equal(peer.sent.length, 2);
-    assert.equal(stream.inputPath(), "websocket");
+    assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[3, "key_down"], [5, "key_up"], [6, "move"]]);
+    assert.equal(stream.inputPath(), "data_channel");
   } finally { stream.close(); }
 });
 
@@ -114,7 +109,7 @@ test("stop releases on both lanes; the gateway release has the higher seq", asyn
   assert.deepEqual(inputs(socket).map((m) => [m.seq, m.action.kind]), [[2, "move"], [5, "release_all"]]);
 });
 
-test("without a device receipt the lane is never trusted; a stalled receipt falls back to the gateway", async (t) => {
+test("without a device receipt the lane is never trusted; stalled trusted input fails without replay", async (t) => {
   const { socket, stream } = await streamHarness();
   try {
     const peer = lane();
@@ -132,10 +127,11 @@ test("without a device receipt the lane is never trusted; a stalled receipt fall
     second.stream.send({ kind: "key_down", key: "b" });
     assert.equal(peer.sent.at(-1).a.kind, "key_down");
     t.mock.timers.tick(1600);
-    second.stream.send({ kind: "key_up", key: "b" });
-    assert.equal(peer.sent.at(-1).a.kind, "key_down", "no receipt within 1.5 s: lane dropped");
-    assert.deepEqual(inputs(second.socket).at(-1).action, { kind: "key_up", key: "b" });
-    assert.equal(second.stream.inputPath(), "websocket");
+    assert.equal(second.stream.send({ kind: "key_up", key: "b" }), false);
+    assert.equal(inputs(second.socket).some((m) => m.action.kind === "key_up"), false, "no later key action overtakes unresolved peer input");
+    assert.deepEqual(second.log.errors, ["input_ack_unknown"]);
+    assert.equal(inputs(second.socket).at(-1).action.kind, "release_all");
+    assert.equal(second.socket.readyState, 3);
   } finally { t.mock.timers.reset(); second.stream.close(); }
 });
 
