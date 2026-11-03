@@ -448,7 +448,7 @@ test("device card revokes Agent control in one click and preserves the owner's r
   }});
   try {
     await view.click(view.button("撤销 Agent 控制"));
-    assert.deepEqual(operations, [["d-1", {kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: false, agent_always_ask: true}]]);
+    assert.deepEqual(operations, [["d-1", {kind: "remote_access.update", agent_control_allowed: false}]]);
     assert.ok(view.button("正在撤销…").disabled);
     assert.equal(document.querySelector('[data-testid="confirm-dialog"]'), null);
     await act(async () => reply({ok: true, data: {state: "succeeded", result: {remote_access: {enabled: true, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true}}}}));
@@ -456,6 +456,28 @@ test("device card revokes Agent control in one click and preserves the owner's r
     assert.ok(view.text().includes("Agent 控制已撤销。"));
     assert.deepEqual(client.calls.revoke, [], "revoking Agent consent never unpairs the computer");
     assert.ok(document.querySelector('[data-device-card="d-1"]'));
+  } finally { view.cleanup(); }
+});
+
+test("offline device-card revoke records durable permission removal without reading unknown policy", async () => {
+  const operations = [];
+  const view = await render(makeClient([makeDevice({availability: "offline"})]), {
+    remoteDesktopClient: {async getStatus() { return {ok: true, data: {supported: true, online: false, availability: "offline"}}; }},
+    settingsClient: {
+      getSettings() { throw new Error("offline revoke must not read or invent own/input/Ask policy"); },
+      async startOperation(id, operation) {
+        operations.push([id, operation]);
+        return {ok: true, data: {state: "pending", operation_id: "offline-revoke", revocation_effective: true, device_sync_pending: true, result: {remote_access: {agent_control_allowed: false, expires_at: null}}}};
+      },
+      getOperation() { throw new Error("durable revoke does not wait for a disconnected target"); },
+    },
+  });
+  try {
+    assert.equal(view.button("撤销 Agent 控制").disabled, false);
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.deepEqual(operations, [["d-1", {kind: "remote_access.update", agent_control_allowed: false}]]);
+    assert.ok(view.text().includes("Agent 控制权限已撤销。设备重新连接后会同步。"));
+    assert.ok(!view.text().includes("Agent 控制已撤销。"));
   } finally { view.cleanup(); }
 });
 

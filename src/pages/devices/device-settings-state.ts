@@ -42,6 +42,23 @@ function pause(ms: number, signal: AbortSignal) {
   });
 }
 
+function isMinimalAgentRevocation(operation: Parameters<DeviceSettingsClient["startOperation"]>[1]): boolean {
+  return operation.kind === "remote_access.update" && operation.agent_control_allowed === false
+    && Object.keys(operation).every((key) => key === "kind" || key === "agent_control_allowed");
+}
+
+function durableRevocation(operation: DeviceSettingsOperation): boolean {
+  return operation.state === "pending" && operation.revocation_effective === true && operation.device_sync_pending === true
+    && Boolean(operation.result && "remote_access" in operation.result && operation.result.remote_access.agent_control_allowed === false);
+}
+
+/** An offline durable fence is effective before the target applies its saved policy. */
+export function deviceRevocationNotice(operation: DeviceSettingsOperation): string | null {
+  if (durableRevocation(operation)) return "Agent 控制权限已撤销。设备重新连接后会同步。";
+  if (operation.state === "succeeded" && operation.device_sync_pending !== true && operation.result && "remote_access" in operation.result && operation.result.remote_access.agent_control_allowed === false) return "Agent 控制已撤销。";
+  return null;
+}
+
 /** Start once; poll the receipt, never replay a mutation after an unknown ACK. */
 export async function runDeviceSettingsOperation(
   client: DeviceSettingsClient,
@@ -51,19 +68,24 @@ export async function runDeviceSettingsOperation(
   { intervalMs = 750, timeoutMs = 45_000 } = {},
 ): Promise<DeviceApiResult<DeviceSettingsOperation>> {
   return runDeviceRequest(async (requestSignal) => {
+    const revokeOnly = isMinimalAgentRevocation(operation);
     let result = await client.startOperation(deviceId, operation, requestSignal);
     if (requestSignal.aborted) return { ok: false, error: "aborted" };
     if (!result.ok || !result.data) return result;
     const operationId = result.data.operation_id;
     while (result.data?.state === "pending") {
+      // Other policy fields still need the target ACK, even when Agent consent is already fenced.
+      if (revokeOnly && durableRevocation(result.data)) return result;
       if (!operationId) return { ok: false, error: "response_malformed" };
       await pause(intervalMs, requestSignal);
       if (requestSignal.aborted) return { ok: false, error: "aborted" };
       result = await client.getOperation(deviceId, operationId, requestSignal);
       if (requestSignal.aborted) return { ok: false, error: "aborted" };
       if (!result.ok || !result.data) return result;
+      if (result.data.operation_id && result.data.operation_id !== operationId) return { ok: false, error: "stale_operation" };
     }
     if (result.data?.state === "failed") return { ok: false, error: result.data.error || "operation_failed" };
+    if (revokeOnly && !deviceRevocationNotice(result.data!)) return { ok: false, error: "operation_failed" };
     return result;
   }, signal, timeoutMs);
 }

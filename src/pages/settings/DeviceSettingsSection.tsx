@@ -10,7 +10,7 @@ import { useUI } from "../../i18n/ui/useUI";
 import { DeviceIcon, DeviceStatus, isComputer, type DeviceAvailability } from "../devices/DeviceCard";
 import { DeviceFolderPicker, FolderIcon } from "../devices/DeviceFolderPicker";
 import { formatDeviceTime } from "../devices/DeviceTasksDialog";
-import { deviceSettingsErrorCopy, runDeviceRequest, runDeviceSettingsOperation } from "../devices/device-settings-state";
+import { deviceRevocationNotice, deviceSettingsErrorCopy, runDeviceRequest, runDeviceSettingsOperation } from "../devices/device-settings-state";
 import { readDeviceUser, readLocalDeviceId } from "../devices/local-device";
 
 export function DeviceSettingsPanel({ device, availability, client, isLocalDevice = false, onControl, onRename, onRevoke }: {
@@ -95,24 +95,25 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
     finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); } }
   }
-  async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings) {
+  async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings, revokeOnly = false) {
     if (busyRef.current) return;
     const signal = lifetime.current!.signal;
     busyRef.current = true; revision.current += 1; setBusy(true);
-    const revoking = settings?.remote_access.agent_control_allowed === true && !remoteAccess.agent_control_allowed;
-    setRevokingAgent(revoking); setError(null); setNotice(null);
+    setRevokingAgent(revokeOnly); setError(null); setNotice(null);
     try {
       const { enabled, input_allowed, agent_control_allowed, agent_always_ask } = remoteAccess;
-      const operation = { kind: "remote_access.update" as const, enabled, input_allowed, agent_control_allowed, agent_always_ask };
+      const operation = revokeOnly ? { kind: "remote_access.update" as const, agent_control_allowed: false as const }
+        : { kind: "remote_access.update" as const, enabled, input_allowed, agent_control_allowed, agent_always_ask };
       const result = await runDeviceSettingsOperation(client, device.device_id, operation, signal);
       if (signal.aborted) return;
       if (result.ok && result.data?.result && "remote_access" in result.data.result) {
         const saved = result.data.result.remote_access;
-        setSettings((current) => current ? { ...current, remote_access: saved } : current);
-        if (revoking) {
-          if (!saved.agent_control_allowed) setNotice("Agent 控制已撤销。");
-          else setError(deviceSettingsErrorCopy("operation_failed"));
+        if (revokeOnly) {
+          const notice = deviceRevocationNotice(result.data);
+          if (notice) setNotice(notice);
+          else { setError(deviceSettingsErrorCopy("operation_failed")); return; }
         }
+        setSettings((current) => current ? { ...current, remote_access: { ...current.remote_access, ...saved } } : current);
       } else setError(deviceSettingsErrorCopy(result.error));
     } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
     finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); setRevokingAgent(false); } }
@@ -143,7 +144,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
 
     {isComputer(device) && <section className={CARD} data-device-access-settings>
       <div className="flex flex-wrap items-center justify-between gap-3"><h3 className={CARD_TITLE}>{tt("访问与控制")}</h3>
-        <button type="button" className={`${QUIET} text-red-600`} data-revoke-agent-control disabled={busy || !settings || effectiveAvailability !== "online" || !remoteAccess.agent_control_allowed} onClick={() => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed: false })}>{tt(revokingAgent ? "正在撤销…" : "撤销 Agent 控制")}</button>
+        <button type="button" className={`${QUIET} text-red-600`} data-revoke-agent-control disabled={busy || (settings !== null && !remoteAccess.agent_control_allowed)} onClick={() => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed: false }, true)}>{tt(revokingAgent ? "正在撤销…" : "撤销 Agent 控制")}</button>
       </div>
       <p className={CARD_DESC}>{tt("自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。")}</p>
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 divide-y divide-neutral-100">
@@ -156,8 +157,8 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
           <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={busy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ ...remoteAccess, input_allowed })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
-          <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后立即停止 Agent 控制。")}</p></div>
-          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={busy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed })} />
+          <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后撤销权限，离线设备会在重新连接后同步。")}</p></div>
+          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={busy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed }, !agent_control_allowed)} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("每次询问")}</p><p className={CARD_DESC}>{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</p></div>

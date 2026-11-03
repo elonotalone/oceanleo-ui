@@ -181,7 +181,7 @@ test("Settings revoke is one click, preserves owner access, and rejects a pre-mu
     await flush();
     assert.equal(typeof staleReply, "function", "the old poll must be in flight before revoke");
     await view.click(view.button("撤销 Agent 控制"));
-    assert.deepEqual(client.calls.operations, [["mac-target", {kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: false, agent_always_ask: true}]]);
+    assert.deepEqual(client.calls.operations, [["mac-target", {kind: "remote_access.update", agent_control_allowed: false}]]);
     assert.ok(view.text().includes("Agent 控制已撤销。"));
     const agentSwitch = document.querySelector('button[role="switch"][aria-label="允许远程 Agent 控制"]');
     assert.equal(agentSwitch.getAttribute("aria-checked"), "false");
@@ -224,5 +224,48 @@ test("Settings ignores same-account token refresh and cancels private state on a
     await act(async () => lateReply({ok: true, data: {state: "succeeded", result: {remote_access: {...settingsClient.settings.remote_access, agent_control_allowed: false}}}}));
     await flush();
     assert.ok(!view.text().includes("Agent 控制已撤销。"), "the old account's reply cannot change the new account's pane");
+  } finally { view.cleanup(); }
+});
+
+test("offline Settings revoke merges only confirmed partial fields and keeps own/input/Ask values", async () => {
+  const client = fakeClient();
+  client.settings.remote_access = {enabled: true, input_allowed: false, agent_control_allowed: true, agent_always_ask: false, expires_at: 42};
+  client.startOperation = async (id, operation) => {
+    client.calls.operations.push([id, operation]);
+    return {ok: true, data: {state: "pending", operation_id: "offline-revoke", revocation_effective: true, device_sync_pending: true, result: {remote_access: {agent_control_allowed: false, expires_at: null}}}};
+  };
+  client.getOperation = () => { throw new Error("offline revoke must not wait for the target"); };
+  const view = await mount(DeviceSettingsPanel, {device, availability: "offline", client, onControl() {}, onRename: async () => true, onRevoke() {}});
+  try {
+    assert.equal(view.button("撤销 Agent 控制").disabled, false);
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.deepEqual(client.calls.operations, [["mac-target", {kind: "remote_access.update", agent_control_allowed: false}]]);
+    const checked = (label) => document.querySelector(`button[role="switch"][aria-label="${label}"]`).getAttribute("aria-checked");
+    assert.equal(checked("允许远程访问"), "true");
+    assert.equal(checked("允许操作屏幕（查看、点击、输入）"), "false");
+    assert.equal(checked("每次询问"), "false");
+    assert.equal(checked("允许远程 Agent 控制"), "false");
+    assert.ok(view.text().includes("Agent 控制权限已撤销。设备重新连接后会同步。"));
+    assert.ok(!view.text().includes("Agent 控制已撤销。"), "pending device sync is not presented as an applied target ACK");
+  } finally { view.cleanup(); }
+});
+
+test("offline revoke remains usable when Settings cannot read the device policy", async () => {
+  const operations = [];
+  let reads = 0;
+  const view = await mount(DeviceSettingsPanel, {device, availability: "offline", client: {
+    async getSettings() { reads += 1; return {ok: false, error: "device_offline"}; },
+    async startOperation(id, operation) {
+      operations.push([id, operation]);
+      return {ok: true, data: {state: "pending", operation_id: "offline-revoke", revocation_effective: true, device_sync_pending: true, result: {remote_access: {agent_control_allowed: false, expires_at: null}}}};
+    },
+  }, onControl() {}, onRename: async () => true, onRevoke() {}});
+  try {
+    assert.equal(view.button("撤销 Agent 控制").disabled, false);
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.equal(reads, 1, "revoke must not add a settings-read prerequisite");
+    assert.deepEqual(operations, [["mac-target", {kind: "remote_access.update", agent_control_allowed: false}]]);
+    assert.ok(view.text().includes("Agent 控制权限已撤销。设备重新连接后会同步。"));
+    assert.equal(document.querySelectorAll('button[role="switch"]').length, 0, "missing own/input/Ask state is never invented");
   } finally { view.cleanup(); }
 });

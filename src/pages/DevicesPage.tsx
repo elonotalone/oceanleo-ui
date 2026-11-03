@@ -17,7 +17,7 @@ import { DeviceCard, DeviceIcon, isComputer, type DeviceAvailability } from "./d
 import { DEVICE_BUTTON, DEVICE_PRIMARY_BUTTON, DeviceDialog } from "./devices/DeviceDialog";
 import { openSettingsModal } from "./settings/settings-tabs";
 import { readLocalDeviceId } from "./devices/local-device";
-import { deviceSettingsErrorCopy, runDeviceRequest, runDeviceSettingsOperation } from "./devices/device-settings-state";
+import { deviceRevocationNotice, deviceSettingsErrorCopy, runDeviceRequest, runDeviceSettingsOperation } from "./devices/device-settings-state";
 import { DeviceTasksDialog } from "./devices/DeviceTasksDialog";
 import { deviceCloudAgentClient, useDeviceCloudAgent, type DeviceCloudAgentClient } from "./devices/use-device-cloud-agent";
 
@@ -260,14 +260,10 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     const signal = lifetime.current!.signal;
     revokingAgent.current = true; setRevokingAgentId(device.device_id); setPageError(null); setPageNotice(null);
     try {
-      const settings = await runDeviceRequest((requestSignal) => settingsClient.getSettings(device.device_id, requestSignal), signal, requestTimeoutMs);
+      const result = await runDeviceSettingsOperation(settingsClient, device.device_id, { kind: "remote_access.update", agent_control_allowed: false }, signal);
       if (ticket !== generation.current) return;
-      if (!settings.ok || !settings.data) { setPageError(deviceSettingsErrorCopy(settings.error)); return; }
-      const { enabled, input_allowed, agent_always_ask } = settings.data.remote_access;
-      const result = await runDeviceSettingsOperation(settingsClient, device.device_id, { kind: "remote_access.update", enabled, input_allowed, agent_control_allowed: false, agent_always_ask }, signal);
-      if (ticket !== generation.current) return;
-      const remoteAccess = result.data?.result && "remote_access" in result.data.result ? result.data.result.remote_access : null;
-      if (result.ok && remoteAccess?.agent_control_allowed === false) setPageNotice("Agent 控制已撤销。");
+      const notice = result.ok && result.data ? deviceRevocationNotice(result.data) : null;
+      if (notice) setPageNotice(notice);
       else setPageError(deviceSettingsErrorCopy(result.error));
     } catch {
       if (ticket === generation.current) setPageError(deviceSettingsErrorCopy("network_error"));

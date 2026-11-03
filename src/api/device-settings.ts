@@ -26,7 +26,9 @@ export interface DeviceRemoteAccessSettings {
   agent_always_ask: boolean;
 }
 /** Consent remains active until switched off; legacy expiry is read-only. */
-export type DeviceRemoteAccessUpdate = Omit<DeviceRemoteAccessSettings, "expires_at">;
+export type DeviceRemoteAccessUpdate = Omit<DeviceRemoteAccessSettings, "expires_at"> | { agent_control_allowed: false };
+/** Durable offline revoke only reports fields the caller actually supplied. */
+export type DeviceRemoteAccessRevocation = Partial<DeviceRemoteAccessSettings> & { agent_control_allowed: false; expires_at: null };
 export interface DeviceSettings {
   controller_id: string;
   controllers: DeviceControllerGrant[];
@@ -56,7 +58,9 @@ export type DeviceCover = {
 export interface DeviceSettingsOperation {
   operation_id?: string;
   state: "pending" | "succeeded" | "failed";
-  result?: DeviceFolderListing | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings } | { cover: DeviceCover };
+  revocation_effective?: boolean;
+  device_sync_pending?: boolean;
+  result?: DeviceFolderListing | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings | DeviceRemoteAccessRevocation } | { cover: DeviceCover };
   error?: string;
 }
 export interface DeviceTaskSummary {
@@ -197,6 +201,26 @@ export function parseSettingsOperation(value: unknown): DeviceSettingsOperation 
   const operation: DeviceSettingsOperation = { state: value.state as DeviceSettingsOperation["state"] };
   if (typeof value.operation_id === "string") operation.operation_id = value.operation_id;
   if (typeof value.error === "string") operation.error = value.error;
+  for (const key of ["revocation_effective", "device_sync_pending"] as const) {
+    if (key in value) {
+      if (typeof value[key] !== "boolean") return null;
+      operation[key] = value[key];
+    }
+  }
+  if (operation.revocation_effective === true) {
+    if (operation.state === "failed" || operation.device_sync_pending !== (operation.state === "pending")) return null;
+    const remote = record(value.result) && record(value.result.remote_access) ? value.result.remote_access : null;
+    if (!remote || remote.agent_control_allowed !== false || remote.expires_at !== null) return null;
+    const partial: DeviceRemoteAccessRevocation = { agent_control_allowed: false, expires_at: null };
+    for (const key of ["enabled", "input_allowed", "agent_always_ask"] as const) {
+      if (key in remote) {
+        if (typeof remote[key] !== "boolean") return null;
+        partial[key] = remote[key];
+      }
+    }
+    operation.result = { remote_access: partial };
+    return operation;
+  }
   if (value.state === "succeeded") {
     const result = value.result;
     if (!record(result)) return null;
@@ -252,8 +276,11 @@ export const deviceSettingsClient: DeviceSettingsClient = {
     if (!registered.ok) return { ...registered, data: undefined };
     // Explicit fields keep legacy expiry/duration from older callers out of the wire contract.
     const body = operation.kind === "remote_access.update" ? {
-      kind: operation.kind, enabled: operation.enabled, input_allowed: operation.input_allowed,
-      agent_control_allowed: operation.agent_control_allowed, agent_always_ask: operation.agent_always_ask,
+      kind: operation.kind,
+      ...("enabled" in operation ? { enabled: operation.enabled } : {}),
+      ...("input_allowed" in operation ? { input_allowed: operation.input_allowed } : {}),
+      agent_control_allowed: operation.agent_control_allowed,
+      ...("agent_always_ask" in operation ? { agent_always_ask: operation.agent_always_ask } : {}),
     } : operation;
     const response = await request<unknown>(`${base(deviceId)}/settings/operations`, { method: "POST", body: JSON.stringify(body) }, signal);
     if (!response.ok) return { ...response, data: undefined };
