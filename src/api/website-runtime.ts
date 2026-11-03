@@ -12,6 +12,41 @@ export interface WebsiteRuntime {
 export interface WebsiteLogLine { ts: string; stream: "install" | "stdout" | "stderr" | "system"; text: string }
 export interface WebsiteLogs { lines: WebsiteLogLine[]; cursor: string | null }
 
+const REQUEST_ERROR_CODES = [
+  "invalid_connector_request", "connector_environment_mismatch", "unknown_connector_slot", "selected_connector_unavailable",
+  "connector_not_available_for_slot", "adapter_module_unavailable", "connector_migration_required",
+  "connector_rate_or_quota_exceeded", "connector_owner_mismatch", "connector_persistence_unavailable",
+  "connector_project_read_unavailable", "connector_change_update_unconfirmed", "connector_change_cancelled",
+  "connector_change_settlement_unconfirmed", "connector_change_preparation_failed", "connector_task_creation_failed",
+  "agent_task_creation_failed", "agent_task_dispatch_unconfirmed", "connector_response_unavailable",
+  "connector_task_link_unconfirmed", "connector_action_unconfirmed", "connector_action_link_unconfirmed",
+] as const;
+export type WebsiteRequestErrorCode = typeof REQUEST_ERROR_CODES[number];
+const SAFE_REQUEST_CODES = new Set<string>(REQUEST_ERROR_CODES);
+const RECEIPT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const record = (value: unknown): Record<string, unknown> | null =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+
+/** Keep only closed application codes and UUID references; never retain provider details. */
+export class WebsiteRequestError extends Error {
+  readonly status: number;
+  readonly code?: WebsiteRequestErrorCode;
+  readonly change_id?: string;
+  readonly task_id?: string;
+  constructor(status: number, body?: unknown) {
+    super("HTTP " + status);
+    this.name = "WebsiteRequestError";
+    this.status = status;
+    const envelope = record(body);
+    const receipt = record(envelope?.detail);
+    if (typeof receipt?.code === "string" && SAFE_REQUEST_CODES.has(receipt.code)) {
+      this.code = receipt.code as WebsiteRequestErrorCode;
+      if (typeof receipt.change_id === "string" && RECEIPT_ID.test(receipt.change_id)) this.change_id = receipt.change_id;
+      if (typeof receipt.task_id === "string" && RECEIPT_ID.test(receipt.task_id)) this.task_id = receipt.task_id;
+    }
+  }
+}
+
 /** Authenticated gateway calls only. Preview origins never receive this token. */
 export async function websiteRequest<T>(projectId: string, suffix: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
@@ -20,7 +55,11 @@ export async function websiteRequest<T>(projectId: string, suffix: string, init:
     headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: "Bearer " + token } : {}) },
   });
-  if (!response.ok) throw new Error("HTTP " + response.status);
+  if (!response.ok) {
+    let body: unknown;
+    try { body = await response.json(); } catch { /* An unreadable error body carries no safe receipt. */ }
+    throw new WebsiteRequestError(response.status, body);
+  }
   return response.json() as Promise<T>;
 }
 export const websiteRuntimeApi = {

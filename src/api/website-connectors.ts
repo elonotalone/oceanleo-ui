@@ -4,6 +4,7 @@ import { websiteRequest } from "./website-runtime";
 
 export type WebsiteConnectorProvider = "ours" | "on_behalf" | "own_account";
 export type WebsiteConnectorStatus = "not_connected" | "connected" | "error";
+export type WebsiteConnectorEnvironment = "preview" | "production";
 
 export interface WebsiteConnectorDetails {
   connector_id: string;
@@ -30,6 +31,7 @@ export interface WebsiteConnectorOption extends WebsiteConnectorDetails {
 
 export interface WebsiteConnectorSlot extends WebsiteConnectorDetails {
   slot: string;
+  environment: WebsiteConnectorEnvironment;
   status: WebsiteConnectorStatus;
   status_detail: string;
   status_detail_zh?: string;
@@ -61,6 +63,7 @@ export interface WebsiteConnectorChange {
 
 export interface WebsiteConnectorsSnapshot {
   project_id: string;
+  environment: WebsiteConnectorEnvironment;
   slots: WebsiteConnectorSlot[];
   catalog: WebsiteConnectorOption[];
   presets: WebsiteConnectorPreset[];
@@ -74,14 +77,14 @@ export type WebsiteConnectorMutation = WebsiteConnectorsSnapshot & {
 };
 
 export const websiteConnectorsApi = {
-  get: (id: string, signal?: AbortSignal) =>
-    websiteRequest<WebsiteConnectorsSnapshot>(id, "/connectors", { signal }),
-  select: (id: string, slot: string, connectorId: string) =>
-    websiteRequest<WebsiteConnectorMutation>(id, "/connectors/" + encodeURIComponent(slot), {
+  get: (id: string, environment: WebsiteConnectorEnvironment, signal?: AbortSignal) =>
+    websiteRequest<WebsiteConnectorsSnapshot>(id, "/connectors?" + new URLSearchParams({ environment }), { signal }),
+  select: (id: string, slot: string, connectorId: string, environment: WebsiteConnectorEnvironment) =>
+    websiteRequest<WebsiteConnectorMutation>(id, "/connectors/" + encodeURIComponent(slot) + "?" + new URLSearchParams({ environment }), {
       method: "PUT", body: JSON.stringify({ connector_id: connectorId }),
     }),
-  preset: (id: string, presetId: string) =>
-    websiteRequest<WebsiteConnectorMutation>(id, "/connectors/preset", {
+  preset: (id: string, presetId: string, environment: WebsiteConnectorEnvironment) =>
+    websiteRequest<WebsiteConnectorMutation>(id, "/connectors/preset?" + new URLSearchParams({ environment }), {
       method: "POST", body: JSON.stringify({ preset_id: presetId }),
     }),
 };
