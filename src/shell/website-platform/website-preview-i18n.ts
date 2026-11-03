@@ -5,6 +5,18 @@ import { useUI } from "../../i18n/ui/useUI";
 
 // Local additions stay in the website owner's boundary; shared dictionaries take precedence.
 export const WEBSITE_PREVIEW_EN: Record<string, string> = {
+  "下载网站文件": "Download website files", "下载源码 ZIP": "Download source ZIP", "下载数据库": "Download database",
+  "正在准备源码文件…": "Preparing source files…", "正在准备数据库文件…": "Preparing database file…",
+  "已开始下载源码文件。": "Source download started.", "已开始下载数据库文件。": "Database download started.",
+  "数据库下载仅含 public 应用数据与结构，不含服务商的认证、存储、系统数据、角色或平台设置。": "Database downloads contain only public application data and structure. Provider authentication, storage, system data, roles, and platform settings are excluded.",
+  "当前数据库连接器暂不支持下载。": "The current database connector does not support downloads.",
+  "数据库配置已变更或暂不可确认，请重新下载。": "The database configuration changed or could not be confirmed. Start a new download.",
+  "无法下载，请检查登录账号和当前环境的访问权限。": "Download unavailable. Check your account and access to this environment.",
+  "文件超过当前导出大小限制，无法下载。": "The file exceeds the current export size limit.",
+  "导出请求正在处理中或过于频繁，请稍后重试。": "An export is already running or requests are too frequent. Try again later.",
+  "收到的文件不完整或格式不正确，未开始下载。": "The returned file is incomplete or has the wrong format. No download was started.",
+  "当前环境的数据库暂时无法导出，请检查连接或稍后重试。": "This environment's database cannot be exported. Check its connection or try again later.",
+  "网站源码暂时无法导出，请确认源码已保存后重试。": "Source export is unavailable. Check that the source is saved and try again.",
   "已停止": "Stopped", "安装中": "Installing", "启动中": "Starting", "运行中": "Running",
   "运行失败": "Crashed", "休眠中": "Sleeping", "网站运行中": "Website running",
   "启动网站后可查看预览。": "Start the website to preview it.",

@@ -13,11 +13,17 @@ const runtimeModule = await compileModule("src/api/website-runtime.ts", {
   "../lib/auth/config": dataModule('export function gatewayBase(){return "https://gateway.invalid";}'),
 });
 const { WebsiteRequestError } = await import(runtimeModule);
+const filenameModule = await compileModule("src/shell/template-download.ts", {
+  "../lib/auth/client": dataModule('export async function accessToken(){return "fixture-token";}'),
+});
+const exportsModule = await compileModule("src/api/website-exports.ts", { "./website-runtime": runtimeModule, "../shell/template-download": filenameModule });
+const { WebsiteExportError } = await import(exportsModule);
 const { websiteConnectorsApi: realConnectorsApi } = await import(await compileModule("src/api/website-connectors.ts", { "./website-runtime": runtimeModule }));
 const { WebsiteConfiguration } = await import(await compileModule("src/shell/website-platform/WebsiteConfiguration.tsx", {
   "./website-preview-i18n": i18n,
   "../../api/website-connectors": dataModule("export const websiteConnectorsApi={};"),
   "../../api/website-runtime": runtimeModule,
+  "../../api/website-exports": exportsModule,
   "./SiteVaultPanel": dataModule("export function SiteVaultPanel({projectId}){globalThis.__w8VaultProject=projectId;return null;}"),
 }));
 const { createRoot } = await import("react-dom/client");
@@ -70,6 +76,30 @@ function scoped(snapshot, environment) {
 const environmentSelect = host => host.querySelector('[data-testid="website-connector-environment"]');
 const directAlerts = host => [...host.querySelector('[data-testid="website-configuration"]').children]
   .filter(node => node.getAttribute("role") === "alert").map(node => node.textContent).join("\n");
+function exportFixture(database = "ours_postgres", environment = "preview") {
+  const snapshot = fixture(environment), slot = snapshot.slots.find(item => item.slot === "database");
+  const previous = slot.connector_id;
+  slot.connector_id = database;
+  const option = snapshot.catalog.find(item => item.connector_id === previous);
+  option.connector_id = database;
+  snapshot.presets.forEach(preset => { preset.selections.database = database; });
+  return snapshot;
+}
+const zipExport = () => ({ filename: "website-code.zip", blob: new Blob([new Uint8Array([80, 75, 3, 4, 1, 2, 3])], { type: "application/zip" }) });
+const databaseExport = () => ({ filename: "website-database.dump", blob: new Blob(["PGDMP\u0001fixture"], { type: "application/octet-stream" }) });
+function exportSaveProbe() {
+  const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL, click: window.HTMLAnchorElement.prototype.click, timeout: window.setTimeout };
+  const objects = [], clicks = [], timers = [];
+  URL.createObjectURL = blob => { const url = "blob:https://oceanleo.com/config-export-" + objects.length; objects.push({ url, blob }); return url; };
+  URL.revokeObjectURL = () => {};
+  window.HTMLAnchorElement.prototype.click = function () { clicks.push({ href: this.href, filename: this.download }); };
+  window.setTimeout = callback => { timers.push(callback); return timers.length; };
+  return { objects, clicks, restore() {
+    timers.forEach(callback => callback());
+    URL.createObjectURL = original.create; URL.revokeObjectURL = original.revoke;
+    window.HTMLAnchorElement.prototype.click = original.click; window.setTimeout = original.timeout;
+  } };
+}
 
 test("Configuration exposes every slot and preset from first use with provider, cost, limits, interfaces and the project vault", async () => {
   const snapshot = fixture();
@@ -550,4 +580,175 @@ test("a trusted 4xx task refusal permits retry only after its actual failed reco
     assert.match(directAlerts(m.host), /无法创建配置任务，请重试/);
     assert.doesNotMatch(m.host.innerHTML, /raw-provider-private-value/);
   } finally { await m.destroy(); }
+});
+
+// UC-NONE: rendered owner download controls with synthetic APIs.
+// This checks selected scope, real blob handoff and unchanged configuration tasks without exercising server authorization.
+test("owner Configuration downloads code independently of DB health and uses the current managed database scope", async () => {
+  const probe = exportSaveProbe(), calls = [];
+  const m = await mount({ get: async (_id, environment) => exportFixture("ours_postgres", environment) }, { exportsApi: {
+    code: async (id, signal) => { calls.push(["code", id, signal]); return zipExport(); },
+    database: async (...args) => { calls.push(["database", ...args]); return databaseExport(); },
+  } });
+  try {
+    assert.equal(m.host.querySelector('[data-testid="website-connector-database"] [data-connection-status]').dataset.connectionStatus, "not_connected");
+    assert.equal(m.host.querySelector('[data-testid="website-export-code"]').disabled, false);
+    assert.equal(m.host.querySelectorAll("[data-connector-environment]").length, 9);
+    assert.equal(m.host.querySelector('select[aria-label="场景方案"]').options.length, 6);
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    await act(async () => m.host.querySelector('[data-testid="website-export-database"]').click());
+    assert.equal(calls[0][0], "code"); assert.equal(calls[0][1], "p-8"); assert.equal(calls[0][2].aborted, false);
+    assert.deepEqual(calls[1].slice(0, 4), ["database", "p-8", "managed", "preview"]);
+    await choose(environmentSelect(m.host), "production");
+    await act(async () => m.host.querySelector('[data-testid="website-export-database"]').click());
+    assert.deepEqual(calls[2].slice(0, 4), ["database", "p-8", "managed", "production"]);
+    assert.equal(probe.clicks.length, 3); assert.deepEqual(m.tasks, []);
+    assert.ok(probe.clicks.every(click => click.href.startsWith("blob:")));
+    assert.match(m.host.querySelector('[data-testid="website-export-status"]').textContent, /已开始下载数据库文件/);
+    assert.match(m.host.textContent, /不含服务商的认证、存储、系统数据、角色或平台设置/);
+  } finally { await m.destroy(); probe.restore(); }
+});
+
+// UC-NONE: rendered selected-database mapping.
+// Each supported Supabase choice must pass the current explicit scope without introducing another selector or provider operation.
+test("both selected Supabase connectors download their explicit Production environment", async () => {
+  const probe = exportSaveProbe();
+  try {
+    for (const connector of ["own_supabase", "supabase_on_behalf"]) {
+      const calls = [];
+      const m = await mount({ get: async (_id, environment) => exportFixture(connector, environment) }, { exportsApi: {
+        code: async () => zipExport(), database: async (...args) => { calls.push(args); return databaseExport(); },
+      } });
+      try {
+        await choose(environmentSelect(m.host), "production");
+        await act(async () => m.host.querySelector('[data-testid="website-export-database"]').click());
+        assert.deepEqual(calls[0].slice(0, 3), ["p-8", "supabase", "production"]);
+        assert.equal(calls[0][3].aborted, false); assert.deepEqual(m.tasks, []);
+      } finally { await m.destroy(); }
+    }
+    assert.equal(probe.clicks.length, 2);
+  } finally { probe.restore(); }
+});
+
+// UC-NONE: unsupported database presentation.
+// Unknown choices cannot silently select a different database, while the independent code path remains available.
+test("an unknown database disables only database download and never guesses a connection", async () => {
+  const probe = exportSaveProbe(); let databaseCalls = 0, codeCalls = 0;
+  const m = await mount({ get: async (_id, environment) => exportFixture("custom_database", environment) }, { exportsApi: {
+    code: async () => { codeCalls++; return zipExport(); }, database: async () => { databaseCalls++; return databaseExport(); },
+  } });
+  try {
+    assert.equal(m.host.querySelector('[data-testid="website-export-database"]').disabled, true);
+    assert.match(m.host.textContent, /当前数据库连接器暂不支持下载/);
+    await act(async () => m.host.querySelector('[data-testid="website-export-database"]').click());
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    assert.equal(databaseCalls, 0); assert.equal(codeCalls, 1); assert.equal(probe.clicks.length, 1);
+  } finally { await m.destroy(); probe.restore(); }
+});
+
+// UC-NONE: separate download and mutation feedback.
+// Matching task reconciliation must clear only the D5 uncertainty alert and retain an independent file-format failure.
+test("download failures stay separate when D5 reconciliation confirms a configuration task", async () => {
+  const probe = exportSaveProbe(); let writes = 0;
+  const m = await mount({ get: async (_id, environment) => writes ? changed(exportFixture("ours_postgres", environment), { database: "own_db" }, {
+    id: CHANGE_ID, task_id: TASK_ID, status: "completed", task_status: "completed",
+  }) : exportFixture("ours_postgres", environment), select: async () => {
+    writes++; throw new WebsiteRequestError(503, { detail: { code: "connector_response_unavailable", change_id: CHANGE_ID, task_id: TASK_ID } });
+  } }, { exportsApi: { code: async () => { throw new WebsiteExportError("invalid-file"); }, database: async () => databaseExport() } });
+  try {
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    const row = m.host.querySelector('[data-testid="website-connector-database"]');
+    await choose(row.querySelector("select"), "own_db"); await act(async () => row.querySelector("button").click());
+    assert.match(m.host.querySelector('[data-testid="website-export-status"]').textContent, /文件不完整或格式不正确/);
+    assert.doesNotMatch(directAlerts(m.host), /配置变更已提交，暂时无法读取结果/);
+    assert.equal(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'), null);
+    assert.deepEqual(m.tasks, [TASK_ID]); assert.equal(writes, 1); assert.equal(probe.clicks.length, 0);
+  } finally { await m.destroy(); probe.restore(); }
+});
+
+// UC-NONE: separate current validation and download feedback.
+// Starting a local file save must not reset the current configuration request's error state.
+test("a successful download preserves an unrelated configuration validation error", async () => {
+  const probe = exportSaveProbe();
+  const m = await mount({ get: async (_id, environment) => exportFixture("ours_postgres", environment), select: async () => {
+    throw new WebsiteRequestError(422, { detail: { code: "invalid_connector_request" } });
+  } }, { exportsApi: { code: async () => zipExport(), database: async () => databaseExport() } });
+  try {
+    const row = m.host.querySelector('[data-testid="website-connector-database"]');
+    await choose(row.querySelector("select"), "own_db"); await act(async () => row.querySelector("button").click());
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    assert.match(directAlerts(m.host), /配置请求无效，请刷新后重新选择/);
+    assert.match(m.host.querySelector('[data-testid="website-export-status"]').textContent, /已开始下载源码文件/);
+    assert.equal(probe.clicks.length, 1); assert.deepEqual(m.tasks, []);
+  } finally { await m.destroy(); probe.restore(); }
+});
+
+// UC-NONE: asynchronous download ownership.
+// Duplicate requests and a completion from an old inspection scope cannot create a local save.
+test("duplicate clicks are guarded and a late download from the old environment cannot save", async () => {
+  const probe = exportSaveProbe(), calls = [];
+  const m = await mount({ get: async (_id, environment) => exportFixture("ours_postgres", environment) }, { exportsApi: {
+    code: async (id, signal) => new Promise(resolve => { calls.push({ id, signal, resolve }); }), database: async () => databaseExport(),
+  } });
+  try {
+    const button = m.host.querySelector('[data-testid="website-export-code"]');
+    await act(async () => { button.click(); button.click(); });
+    assert.equal(calls.length, 1); assert.equal(button.disabled, true);
+    await choose(environmentSelect(m.host), "production");
+    assert.equal(calls[0].signal.aborted, true);
+    await act(async () => calls[0].resolve(zipExport()));
+    assert.equal(probe.clicks.length, 0); assert.equal(probe.objects.length, 0);
+    assert.equal(m.host.querySelector('[data-testid="website-export-status"]').textContent, "");
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    await act(async () => calls[1].resolve(zipExport()));
+    assert.equal(probe.clicks.length, 1); assert.equal(calls.length, 2);
+  } finally { await m.destroy(); probe.restore(); }
+});
+
+// UC-NONE: project/component download lifetime.
+// A response from a previous project or an unmounted view cannot create an anchor or overwrite feedback.
+test("project changes and unmount abort downloads and ignore late completions", async () => {
+  const probe = exportSaveProbe(), calls = [];
+  const m = await mount({ get: async (_id, environment) => exportFixture("ours_postgres", environment) }, { exportsApi: {
+    code: async (id, signal) => new Promise(resolve => { calls.push({ id, signal, resolve }); }), database: async () => databaseExport(),
+  } });
+  let unmounted = false;
+  try {
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    await act(async () => m.root.render(React.createElement(WebsiteConfiguration, { ...m.props, projectId: "other-project" })));
+    assert.equal(calls[0].signal.aborted, true);
+    await act(async () => calls[0].resolve(zipExport()));
+    assert.equal(probe.clicks.length, 0);
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    assert.equal(calls[1].id, "other-project");
+    await act(async () => m.root.unmount()); unmounted = true;
+    assert.equal(calls[1].signal.aborted, true);
+    await act(async () => calls[1].resolve(zipExport()));
+    assert.equal(probe.clicks.length, 0); assert.equal(probe.objects.length, 0);
+  } finally { if (!unmounted) await m.destroy(); else m.host.remove(); probe.restore(); }
+});
+
+// UC-NONE: selected-database download lifetime.
+// A changed database selection invalidates its pending dump while an independent source export may continue.
+test("database selection changes abort stale dumps without cancelling code export", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const probe = exportSaveProbe(), dumps = [], sources = [];
+  let database = "ours_postgres";
+  const m = await mount({ get: async (_id, environment) => exportFixture(database, environment) }, { exportsApi: {
+    code: async (_id, signal) => new Promise(resolve => { sources.push({ signal, resolve }); }),
+    database: async (_id, connection, environment, signal) => new Promise(resolve => { dumps.push({ connection, environment, signal, resolve }); }),
+  } });
+  try {
+    await act(async () => m.host.querySelector('[data-testid="website-export-database"]').click());
+    database = "own_supabase"; await act(async () => t.mock.timers.tick(5001));
+    assert.equal(dumps[0].signal.aborted, true);
+    await act(async () => dumps[0].resolve(databaseExport()));
+    assert.equal(probe.clicks.length, 0);
+    assert.match(m.host.querySelector('[data-testid="website-export-status"]').textContent, /数据库配置已变更/);
+    await act(async () => m.host.querySelector('[data-testid="website-export-code"]').click());
+    database = "supabase_on_behalf"; await act(async () => t.mock.timers.tick(5001));
+    assert.equal(sources[0].signal.aborted, false);
+    await act(async () => sources[0].resolve(zipExport()));
+    assert.equal(probe.clicks.length, 1);
+  } finally { await m.destroy(); probe.restore(); t.mock.timers.reset(); }
 });

@@ -48,11 +48,11 @@ export class WebsiteRequestError extends Error {
 }
 
 /** Authenticated gateway calls only. Preview origins never receive this token. */
-export async function websiteRequest<T>(projectId: string, suffix: string, init: RequestInit = {}): Promise<T> {
+export async function websiteResponse(projectId: string, suffix: string, init: RequestInit = {}, accept = "application/json"): Promise<Response> {
   const token = await accessToken();
   const response = await fetch(gatewayBase() + "/v1/website-projects/" + encodeURIComponent(projectId) + suffix, {
     ...init, credentials: "include", cache: "no-store",
-    headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}),
+    headers: { Accept: accept, ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: "Bearer " + token } : {}) },
   });
   if (!response.ok) {
@@ -60,6 +60,11 @@ export async function websiteRequest<T>(projectId: string, suffix: string, init:
     try { body = await response.json(); } catch { /* An unreadable error body carries no safe receipt. */ }
     throw new WebsiteRequestError(response.status, body);
   }
+  return response;
+}
+
+export async function websiteRequest<T>(projectId: string, suffix: string, init: RequestInit = {}): Promise<T> {
+  const response = await websiteResponse(projectId, suffix, init);
   return response.json() as Promise<T>;
 }
 export const websiteRuntimeApi = {
