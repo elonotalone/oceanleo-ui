@@ -22,6 +22,7 @@ import { mergeSavedAndLive, mergeTranscriptPages } from "./merge";
 import type { NativeProgram } from "./types";
 import { nativeModelPickerFor } from "./NativeModelPicker";
 import { peekTranscript, readTranscript, rememberTranscript, takeTranscriptPrefetch } from "./transcript-cache";
+import { originalForPreparedFile } from "../../lib/upload/image-preparation";
 
 export type NativeThreadInput = {
   computer: Computer | null;
@@ -180,7 +181,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   computerOnlineRef.current = online;
   // `live` below = "this hook keeps a connection"; the exported `live` also needs the link up.
   const live = Boolean(enabled && online && computer && program);
-  const nativeId = session?.native_session_id ?? "";
+  const [archive, setArchive] = useState<Archive | null>(null);
+  const savedSession = archive?.session?.id === session?.id ? archive?.session : null;
+  const nativeId = savedSession?.native_session_id || session?.native_session_id || "";
   const [archiveStatus, setArchiveStatus] = useState<"saved" | "pending" | "error" | null>(null);
 
   const dialog = useAgentDialog({
@@ -237,7 +240,6 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       return;
     }
     const key = `${sessionKey}:${nativeId}`;
-    if (openedRef.current === key) return;
     openedRef.current = key;
     dialog.openSession(nativeId);
   }, [live, program, dialog, dialog.program, dialog.activeSession, nativeId, sessionKey, session]);
@@ -273,7 +275,6 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
 
   // Cloud-saved transcript: the source while offline, and the fallback when an
   // online computer no longer has this conversation's native history.
-  const [archive, setArchive] = useState<Archive | null>(null);
   // Earlier saved batches, already reduced and kept as they are: a new batch is
   // prepended, so the messages already on screen keep their ids (no full re-render).
   const [olderArchive, setOlderArchive] = useState<OlderArchive | null>(null);
@@ -444,7 +445,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   if (!computer || !online) blockedReason = tt("这台电脑离线，只能查看已保存的对话。");
   else if (row && !row.installed) blockedReason = tt("这台电脑上还没有安装 {program}，请在设置里安装。", { program: name });
   else if (row && (row.logged_in === false || row.auth === "none")) blockedReason = tt("{program} 还没有登录，请在设置里登录。", { program: name });
-  const ready = live && !draft && !blockedReason && !stopping && !dialog.sessionLoading &&
+  const bindingReady = nativeId ? dialog.activeSession === nativeId : !terminalRun(session);
+  const ready = live && !draft && bindingReady && !blockedReason && !stopping && !dialog.sessionLoading &&
     !dialog.offline && dialog.occupancyLink === true &&
     (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking || pendingDelivery) && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
@@ -590,14 +592,14 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     if (!connected) return;
     const permission = message.meta?.native_permission as NativePermissionMeta | undefined;
     if (permission && typeof value === "string") {
-      if (permission.chosen) return;
+      if (permission.chosen || permission.actionable === false) return;
       const option = permission.options.find((item) => item.id === value);
       if (option) dialog.answerPermission(permission.permId, option.id, option.name);
       return;
     }
     const question = message.meta?.native_question as NativeQuestionMeta | undefined;
     if (question && value && typeof value === "object" && !Array.isArray(value)) {
-      if (question.submitted) return;
+      if (question.submitted || question.actionable === false) return;
       const values = Object.fromEntries(
         Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, String(item ?? "")]),
       );
@@ -609,10 +611,13 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const queuedFiles = pending?.attachmentIds;
   const composerAttachments = useMemo(() => dialog.attachments
     .filter((item) => item.state === "error" || !queuedFiles?.includes(item.id))
-    .map((item): ComposerAttachment => ({
+    .map((item): ComposerAttachment => {
+      const originalFile = originalForPreparedFile(dialog.attachmentFile(item.id));
+      return {
       id: item.id,
       name: item.state === "error" ? `${item.name} · ${tt("上传失败")}${item.error ? `（${item.error}）` : ""}` : item.name,
       mime: item.mime,
+      ...(originalFile ? { originalFile, uploadBytes: item.size } : {}),
       // Failed: the composer blocks the send and says why, with retry / remove (F3 2026-11-02).
       ...(item.state === "error" ? { failed: true, failedReason: item.error || tt("上传出错") } : {}),
       // A held file can create its session on send; it has no spinner or preview yet.
@@ -628,7 +633,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       ...(item.preview ? { previewUrl: item.preview, url: item.preview } : {}),
       // W6: its inbox copy (once uploaded under the session) opens any file type in the sidebar.
       ...(item.archive ? { nativeArchive: item.archive } : {}),
-    })), [dialog.attachments, queuedFiles, tt]);
+    }; }), [dialog.attachments, dialog.attachmentFile, queuedFiles, tt]);
 
   // The queued prompt is the user's bubble until the real one (sent) arrives.
   const pendingShown = Boolean(pending) &&

@@ -42,6 +42,8 @@ export type NativePermissionMeta = {
   options: PermissionOption[];
   chosen: string;
   auto: boolean;
+  actionable?: boolean;
+  requestState?: string;
 };
 
 export type NativeQuestionMeta = {
@@ -50,6 +52,8 @@ export type NativeQuestionMeta = {
   detail: string;
   questions: unknown;
   submitted: boolean;
+  actionable?: boolean;
+  requestState?: string;
 };
 
 import { toolRawValue } from "../../native-agent-core/tool-raw";
@@ -304,6 +308,8 @@ export function dialogToAgentMessages(
           options: item.options,
           chosen: item.chosen,
           auto: false,
+          actionable: !finished && item.actionable !== false && (!item.requestState || item.requestState === "waiting") && !item.chosen,
+          requestState: item.requestState || (finished ? "expired" : "waiting"),
         };
         const prompt = permissionPrompt(item, tt);
         push({
@@ -311,7 +317,7 @@ export function dialogToAgentMessages(
           role: "assistant",
           kind: "gate",
           content: prompt,
-          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_permission },
+          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_permission, native_actionable: native_permission.actionable },
         }, position);
         continue;
       }
@@ -322,6 +328,8 @@ export function dialogToAgentMessages(
           detail: item.detail,
           questions: item.questions,
           submitted: item.submitted,
+          actionable: !finished && item.actionable !== false && (!item.requestState || item.requestState === "waiting") && !item.submitted,
+          requestState: item.requestState || (finished ? "expired" : "waiting"),
         };
         const prompt = item.title.trim() || tt("需要你回答");
         push({
@@ -329,7 +337,7 @@ export function dialogToAgentMessages(
           role: "assistant",
           kind: "gate",
           content: prompt,
-          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_question },
+          meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), gate_prompt: prompt, native_question, native_actionable: native_question.actionable },
         }, position);
         continue;
       }
@@ -390,6 +398,7 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
         : row.attachments?.length ? row.attachments : own.attachments;
       out[index] = { ...own, ...row, ...mergeNativePosition(own, row),
         ...(row.arrivalSource ? { arrivalSource: row.arrivalSource, arrival: row.arrival, updatedArrival: row.updatedArrival } : {}),
+        turnId: row.delivery ? row.turnId ?? own.turnId : own.delivery ? own.turnId ?? row.turnId : row.turnId ?? own.turnId,
         id: own.id, delivery: row.delivery ?? own.delivery, attachments };
     } else if (row.kind === "turn" && own.kind === "turn") {
       const items = own.items.slice();

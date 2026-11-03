@@ -37,6 +37,7 @@ import { isCompletedStop, isRetriableStreamCancelText, sessionInterrupted } from
 import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
 import { createSessionRefresh } from "./session-refresh";
 import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
+import { copyImagePreparation } from "../../../lib/upload/image-preparation";
 import type { NativeMessageSnapshot, NativeDeliveryState } from "../../../native-agent-core/index";
 import type {
   AgentDialogController,
@@ -100,7 +101,9 @@ export function distinctName(name: string, taken: ReadonlySet<string>): string {
 
 function renamedFile(file: File, name: string): File {
   try {
-    return new File([file], name, { type: file.type, lastModified: file.lastModified });
+    const renamed = new File([file], name, { type: file.type, lastModified: file.lastModified });
+    copyImagePreparation(file, renamed);
+    return renamed;
   } catch {
     return file;
   }
@@ -146,6 +149,7 @@ function unsentKeys(frame: Record<string, unknown>): string[] {
 // 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
 // W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
 export type AgentDialogControllerV2 = AgentDialogController & {
+  attachmentFile: (id: string) => File | undefined;
   /** Retry explicitly; an uncertain send keeps its original ID for gateway deduplication. */
   withdrawLocalPrompt: (text: string, attachmentIds: string[]) => void;
   retryMessage: (messageId: string, snapshot?: NativeMessageSnapshot) => Promise<boolean>;
@@ -324,10 +328,13 @@ export function useAgentDialog({
 }): AgentDialogControllerV2 {
   const taskSessionRef = useRef(taskSessionId);
   taskSessionRef.current = taskSessionId;
+  const boundSessionRef = useRef(initialSessionId?.trim() ?? "");
+  boundSessionRef.current = initialSessionId?.trim() ?? "";
   const bindUploadsRef = useRef(bindUploadsToTaskSession);
   bindUploadsRef.current = bindUploadsToTaskSession;
   /** Managed threads: the bytes of each composer file (to upload or put again under the right session). */
   const uploadFilesRef = useRef(new Map<string, File>());
+  const attachmentFile = useCallback((id: string) => uploadFilesRef.current.get(id), []);
   /** A chip keeps the same server identity through automatic and manual retries. */
   const uploadIdsRef = useRef(new Map<string, string>());
   const uploadControllersRef = useRef(new Map<string, AbortController>());
@@ -1583,6 +1590,7 @@ export function useAgentDialog({
     const epoch = sendEpochRef.current;
     const managed = taskSessionRef.current || "";
     const initial = stateRef.current;
+    if (managed && boundSessionRef.current && initial.activeSession !== boundSessionRef.current) return false;
     if (initial.sessionLoading || initial.offline || initial.install.running || initial.login.pending) return false;
     const occupancyMode = composerOccupancy({ linkUp: initial.occupancyLink,
       occupancyAt: !initial.activeSession && initial.occupancyLink ? Date.now() : initial.occupancyAt,
@@ -1607,6 +1615,7 @@ export function useAgentDialog({
         (bindUploadsRef.current && uploadedForRef.current.get(file.id) !== managed))) return false;
       const files = selected.map((file) => ({ ...file! }));
       const current = stateRef.current; // Never overwrite output that arrived during upload.
+      if (managed && boundSessionRef.current && current.activeSession !== boundSessionRef.current) return false;
       if (current.sessionLoading || current.offline || current.install.running || current.login.pending) return false;
       const acpSession = current.activeSession;
       const ref = acpSession ? "" : clientRef(program);
@@ -1623,6 +1632,7 @@ export function useAgentDialog({
         ...(files.length ? { files: promptFiles(files) } : {}) };
       const socket = await ensureOpen();
       if (!socket || epoch !== sendEpochRef.current || origin !== viewKeyRef.current || managed !== (taskSessionRef.current || "")) return false;
+      if (managed && boundSessionRef.current && frame.acp_session !== boundSessionRef.current) return false;
       if (ids.some((fileId) => !attachmentsRef.current.some((file) => file.id === fileId && isInboxReady(file)))) return false;
       if (!sendJson(socket, frame)) return false;
       updateStop({ type: "reset" });
@@ -1709,11 +1719,19 @@ export function useAgentDialog({
       const epoch = sendEpochRef.current;
       const kept = await recoverSnapshot(id, snapshot);
       if (!kept || origin !== viewKeyRef.current || (kept.state !== "unsent" && kept.state !== "cancelled")) return false;
+      const managed = taskSessionRef.current;
+      if (managed && kept.frame.task_session_id && kept.frame.task_session_id !== managed) return false;
+      if (managed && boundSessionRef.current && stateRef.current.activeSession !== boundSessionRef.current) return false;
       const socket = await ensureOpen();
       if (!socket || origin !== viewKeyRef.current || epoch !== sendEpochRef.current) return false;
       // Unknown delivery reuses its ID: gateway lookup only, never duplicate execution.
       const messageId = kept.uncertain ? id : newMessageId();
       const frame: Record<string, unknown> = { ...kept.frame, message_id: messageId };
+      if (managed && boundSessionRef.current) {
+        if (stateRef.current.activeSession !== boundSessionRef.current) return false;
+        frame.acp_session = boundSessionRef.current;
+        delete frame.ref;
+      }
       if (!sendJson(socket, frame)) return false;
       const next: RetainedPrompt = { ...kept, frame, state: "sending", restored: false };
       kept.state = "sending"; // A double-click on the old failed row cannot create another retry.
@@ -2207,20 +2225,33 @@ export function useAgentDialog({
   }, [ensureOpen]);
 
   const answerPermission = useCallback((id: string, option: string, name: string) => {
+    const pending = () => stateRef.current.messages.some((message) => message.kind === "turn" && !message.stop && message.live === true &&
+      (!message.acpSession || message.acpSession === stateRef.current.activeSession) &&
+      message.items.some((item) => item.kind === "permission" && item.permId === id && !item.chosen && item.actionable !== false &&
+        (!item.requestState || item.requestState === "waiting") &&
+        item.options.some((choice) => choice.id === option)));
+    if (!pending()) return;
     void (async () => {
       const socket = await ensureOpen();
-      if (!socket) return;
+      if (!socket || !pending()) return;
       sendJson(socket, { t: "permission", id, option });
-      dispatch({ type: "permission-chose", id, name });
+      const event = { type: "permission-chose" as const, id, name };
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
     })();
   }, [ensureOpen]);
 
   const answerQuestion = useCallback((id: string, values: Record<string, string>) => {
+    const pending = () => stateRef.current.messages.some((message) => message.kind === "turn" && !message.stop && message.live === true &&
+      (!message.acpSession || message.acpSession === stateRef.current.activeSession) &&
+      message.items.some((item) => item.kind === "question" && item.questionId === id && !item.submitted && item.actionable !== false &&
+        (!item.requestState || item.requestState === "waiting")));
+    if (!pending()) return;
     void (async () => {
       const socket = await ensureOpen();
-      if (!socket) return;
+      if (!socket || !pending()) return;
       sendJson(socket, { t: "answer", id, values });
-      dispatch({ type: "question-submitted", id });
+      const event = { type: "question-submitted" as const, id };
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
     })();
   }, [ensureOpen]);
 
@@ -2538,6 +2569,7 @@ export function useAgentDialog({
     loadOlderHistory,
     newSession,
     attachments,
+    attachmentFile,
     addAttachments,
     retryAttachment,
     removeAttachment,

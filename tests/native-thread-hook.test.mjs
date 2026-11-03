@@ -155,6 +155,96 @@ function session(overrides = {}) {
     native_session_id: "nat-1", created_at: "", updated_at: "", sync_status: "saved", ...overrides };
 }
 
+test("W2 follow-up: completed task hydrates its native binding from the saved session before sending", async () => {
+  FakeSocket.sockets = [];
+  const stale = session({ id: "w2-reopen-bound", computer_id: "cc_w2-reopen", native_session_id: null, run_status: "completed" });
+  const native = "saved-native-session";
+  globalThis.__taskApi = { async transcript() { return { session: { ...stale, native_session_id: native }, frames: [
+    { t: "user_message", program: "codex", acp_session: native, message_id: "saved-user", text: "Saved task", replay: true },
+    { t: "delta", program: "codex", acp_session: native, turn_id: "saved-turn", text: "Completed reply", replay: true },
+    { t: "done", program: "codex", acp_session: native, turn_id: "saved-turn", stop: "end_turn", replay: true },
+  ], saved_at: "2026-11-04T00:00:00Z", sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: stale.computer_id, name: "test", node_online: true }, session: stale, enabled: true });
+  try {
+    await until(() => globalThis.__thread.messages.some((row) => row.content === "Completed reply"), "saved transcript");
+    await until(() => globalThis.__thread.ready, "bound readiness");
+    assert.equal(globalThis.__thread.dialog.activeSession, native);
+    assert.equal(await sendVia(globalThis.__thread, "continue this task"), true);
+    const prompt = sent().findLast((row) => row.t === "prompt");
+    assert.equal(prompt.acp_session, native);
+    assert.equal(prompt.task_session_id, stale.id);
+    assert.equal(prompt.ref, undefined);
+    await act(async () => globalThis.__thread.dialog.newSession());
+    await until(() => globalThis.__thread.dialog.activeSession === native && globalThis.__thread.ready, "binding restored after view reset");
+    assert.equal(sent().filter((row) => row.t === "prompt").length, 1, "restoring a binding never replays user input");
+  } finally { view.cleanup(); }
+});
+
+test("W2 follow-up: an explicit retry of a refused provisional send adopts the restored binding", async () => {
+  FakeSocket.sockets = [];
+  let release;
+  const own = session({ id: "w2-retry-binding", computer_id: "cc_w2-retry-binding", native_session_id: null, run_status: "pending" });
+  globalThis.__taskApi = { transcript() { return new Promise((resolve) => { release = () => resolve({ session: { ...own, native_session_id: "restored-native" }, frames: [], saved_at: null, sync_status: "saved" }); }); } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready && release, "new task ready");
+    assert.equal(await sendVia(globalThis.__thread, "retry this send"), true);
+    const original = sent().find((row) => row.t === "prompt");
+    await act(async () => openSocket().server({ t: "error", program: "codex", ref: original.ref,
+      message_id: original.message_id, code: "invalid_argument", detail: "prompt_not_sent" }));
+    await act(async () => release());
+    await until(() => globalThis.__thread.ready && globalThis.__thread.dialog.activeSession === "restored-native", "existing binding recovered");
+    await act(async () => assert.equal(await globalThis.__thread.retryMessage(original.message_id), true));
+    const retry = sent().findLast((row) => row.t === "prompt");
+    assert.equal(retry.acp_session, "restored-native");
+    assert.equal(retry.ref, undefined);
+    assert.equal(retry.task_session_id, own.id);
+  } finally { view.cleanup(); }
+});
+
+test("W2 follow-up: historical permission and question cannot send answers from an online completed task", async () => {
+  FakeSocket.sockets = [];
+  const own = session({ id: "w2-settled-gates", computer_id: "cc_w2-gates", run_status: "completed" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [
+    { t: "permission", program: "codex", acp_session: "nat-1", turn_id: "closed", id: "old-perm", title: "Read old file", options: [{ id: "yes", name: "Yes", kind: "allow_once" }], replay: true, actionable: false, request_state: "expired" },
+    { t: "question", program: "codex", acp_session: "nat-1", turn_id: "closed", id: "old-q", title: "Old question", replay: true, actionable: false, request_state: "expired" },
+    { t: "done", program: "codex", acp_session: "nat-1", turn_id: "closed", stop: "end_turn", replay: true },
+  ], saved_at: "2026-11-04T00:00:00Z", sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    await until(() => globalThis.__thread.messages.some((row) => row.meta?.native_permission?.permId === "old-perm"), "saved gate");
+    const permission = globalThis.__thread.messages.find((row) => row.meta?.native_permission?.permId === "old-perm");
+    const question = globalThis.__thread.messages.find((row) => row.meta?.native_question?.questionId === "old-q");
+    assert.equal(permission.meta.native_permission.actionable, false);
+    assert.equal(question.meta.native_question.actionable, false);
+    const before = sent().length;
+    await act(async () => { globalThis.__thread.answer(permission, "yes"); globalThis.__thread.answer(question, { text: "late" }); });
+    await act(async () => { globalThis.__thread.dialog.answerPermission("old-perm", "yes", "Yes"); globalThis.__thread.dialog.answerQuestion("old-q", { text: "late" }); });
+    assert.equal(sent().slice(before).some((row) => row.t === "permission" || row.t === "answer"), false);
+  } finally { view.cleanup(); }
+});
+
+test("W3 bridge: prepared images retain original choice through native filename deduplication", async () => {
+  const { rememberImagePreparation } = await import("../src/lib/upload/image-preparation.ts");
+  FakeSocket.sockets = [];
+  const own = session({ id: "w3-original-bridge", computer_id: "cc_w3-original" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [], saved_at: null, sync_status: "saved" }; } };
+  const original = new File(["original bytes"], "image.png", { type: "image/png" });
+  const upload = new File(["small"], "image.jpg", { type: "image/jpeg" });
+  rememberImagePreparation({ original, upload, compressed: true, originalBytes: original.size, uploadBytes: upload.size });
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    await act(async () => globalThis.__thread.onAttachFiles([upload, upload]));
+    await until(() => globalThis.__thread.composerAttachments.length === 2, "two image chips");
+    const chips = globalThis.__thread.composerAttachments;
+    assert.deepEqual(chips.map((row) => row.name), ["image.jpg", "image-2.jpg"]);
+    assert.ok(chips.every((row) => row.originalFile === original && row.uploadBytes === upload.size));
+    assert.equal(globalThis.__thread.dialog.attachmentFile(chips[1].id).name, "image-2.jpg");
+  } finally { view.cleanup(); }
+});
+
 test("W2: an acknowledged optimistic bubble stays visible while the computer reconnects", async () => {
   FakeSocket.sockets = [];
   const own = session({ id: "w2-offline-retention", computer_id: "cc_w2-retention" });

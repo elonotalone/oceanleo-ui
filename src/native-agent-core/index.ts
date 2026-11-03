@@ -167,6 +167,8 @@ export type TurnItem = NativeFramePosition & (
       toolTitle: string;
       chosen: string;
       auto: boolean;
+      actionable?: boolean;
+      requestState?: string;
     }
   | {
       kind: "question";
@@ -176,6 +178,8 @@ export type TurnItem = NativeFramePosition & (
       detail: string;
       questions: unknown;
       submitted: boolean;
+      actionable?: boolean;
+      requestState?: string;
     });
 
 export type DialogAttachmentState = "uploading" | "done" | "error";

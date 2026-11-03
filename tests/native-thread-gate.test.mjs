@@ -123,6 +123,30 @@ test("a chosen or read-only permission is not actionable", async () => {
   } finally { question.cleanup(); }
 });
 
+test("archived expired and waiting requests stay read-only even while the conversation is connected", async () => {
+  const calls = [];
+  for (const requestState of ["expired", "waiting"]) {
+    const permission = permissionMessage();
+    permission.meta.native_permission = { ...permission.meta.native_permission, actionable: false, requestState };
+    const view = await render({ message: permission, onNativeAnswer: (message, answer) => calls.push(answer) });
+    try {
+      const buttons = [...view.host.querySelectorAll("[data-native-permission-option]")];
+      assert.ok(buttons.length && buttons.every((button) => button.disabled));
+      await click(buttons[0]);
+      assert.equal(calls.length, 0);
+      assert.doesNotMatch(view.host.textContent, /需要你确认|已确认/);
+      assert.match(view.host.textContent, requestState === "expired" ? /已结束/ : /只读/);
+    } finally { view.cleanup(); }
+    const question = questionMessage({ questions: [{ id: "q", prompt: "Old choice", options: ["A"] }] });
+    question.meta.native_question = { ...question.meta.native_question, actionable: false, requestState };
+    const readOnly = await render({ message: question, onNativeAnswer: () => calls.push("question") });
+    try {
+      assert.ok(!readOnly.host.querySelector("form"));
+      assert.doesNotMatch(readOnly.host.textContent, /需要你确认|已确认/);
+    } finally { readOnly.cleanup(); }
+  }
+});
+
 test("native question with options submits field values in gate style", async () => {
   const calls = [];
   const message = questionMessage({ questions: [{ id: "color", prompt: "Pick a color", options: [{ id: "r", label: "Red" }, { id: "b", label: "Blue" }] }] });

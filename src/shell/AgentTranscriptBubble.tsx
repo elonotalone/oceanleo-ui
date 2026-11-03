@@ -540,9 +540,11 @@ function nativePermissionOf(message: AgentMessage): {
   permId: string;
   options: NativeGateOption[];
   chosen: string;
+  actionable: boolean;
+  requestState: string;
 } {
   const raw = message.meta?.native_permission as
-    | { permId?: unknown; options?: unknown; chosen?: unknown }
+    | { permId?: unknown; options?: unknown; chosen?: unknown; actionable?: unknown; requestState?: unknown }
     | undefined;
   const options = Array.isArray(raw?.options)
     ? raw.options.flatMap((item): NativeGateOption[] => {
@@ -561,6 +563,8 @@ function nativePermissionOf(message: AgentMessage): {
     permId: typeof raw?.permId === "string" ? raw.permId : "",
     options,
     chosen: typeof raw?.chosen === "string" ? raw.chosen : "",
+    actionable: raw?.actionable !== false && (!raw?.requestState || raw.requestState === "waiting"),
+    requestState: typeof raw?.requestState === "string" ? raw.requestState : "",
   };
 }
 
@@ -580,18 +584,20 @@ function GateFrame({
   highlightQuery,
   children,
   attributes,
+  inactiveLabel,
 }: {
   active: boolean;
   prompt: string;
   highlightQuery?: string;
   children?: ReactNode;
   attributes?: Record<string, string>;
+  inactiveLabel?: string;
 }) {
   const tt = useUI();
   return (
     <div className="min-w-0 rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-3" {...attributes}>
       <p className="text-[12px] font-semibold text-amber-800">
-        {active ? tt("需要你确认") : tt("已确认")}
+        {active ? tt("需要你确认") : tt(inactiveLabel ?? "已确认")}
       </p>
       <p className="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-amber-900 [overflow-wrap:anywhere]">
         <HighlightedText text={prompt} query={highlightQuery} />
@@ -616,7 +622,7 @@ function NativePermissionGate({
   // just holds the buttons until that record arrives (or a short wait ends).
   const pending = useLocalHold(permission.chosen);
   const chosen = permission.chosen;
-  const active = !chosen && Boolean(onAnswer);
+  const active = !chosen && permission.actionable && Boolean(onAnswer);
   const prompt =
     (message.meta?.gate_prompt as string) || message.content || tt("请确认后继续。");
   return (
@@ -625,6 +631,7 @@ function NativePermissionGate({
       prompt={prompt}
       highlightQuery={highlightQuery}
       attributes={{ "data-native-permission": permission.permId }}
+      inactiveLabel={chosen ? "已确认" : permission.requestState === "expired" ? "已结束" : "只读"}
     >
       {permission.options.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2">
@@ -734,13 +741,13 @@ function NativeQuestionGate({
 }) {
   const tt = useUI();
   const raw = message.meta?.native_question as
-    | { questionId?: unknown; detail?: unknown; questions?: unknown; submitted?: unknown }
+    | { questionId?: unknown; detail?: unknown; questions?: unknown; submitted?: unknown; actionable?: unknown; requestState?: unknown }
     | undefined;
   const [values, setValues] = useState<Record<string, string>>({});
   const [text, setText] = useState("");
   const submitted = raw?.submitted === true;
   const pending = useLocalHold(submitted ? "submitted" : "");
-  const active = !submitted && Boolean(onAnswer);
+  const active = !submitted && raw?.actionable !== false && (!raw?.requestState || raw.requestState === "waiting") && Boolean(onAnswer);
   const fields = nativeQuestionFields(raw?.questions);
   const detail = typeof raw?.detail === "string" ? raw.detail : "";
   const prompt =
@@ -761,6 +768,7 @@ function NativeQuestionGate({
       prompt={prompt}
       highlightQuery={highlightQuery}
       attributes={{ "data-native-question": questionId }}
+      inactiveLabel={submitted ? "已确认" : raw?.requestState === "expired" ? "已结束" : "只读"}
     >
       {detail && (
         <pre className="mt-1.5 max-h-40 overflow-y-auto overflow-x-hidden whitespace-pre-wrap break-words text-[12px] leading-relaxed text-amber-900/80 [overflow-wrap:anywhere]">

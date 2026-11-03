@@ -148,3 +148,27 @@ test("autonomous boundaries keep their own identity and do not close a newer tur
   s = frame(s, { t: "done", seq: 7, turn_id: "b", autonomous: true, stop_reason: "end_turn" });
   assert.equal(s.busy, false);
 });
+
+test("confirmed injection keeps the latest receipt turn when the provisional user frame replays later", () => {
+  let s = frame(start(), { t: "user_message", seq: 1, message_id: "injected", turn_id: "provisional", text: "follow up" });
+  s = frame(s, { t: "prompt_state", message_id: "injected", turn_id: "parent-turn", state: "injected" });
+  s = frame(s, { t: "user_message", seq: 1, message_id: "injected", turn_id: "provisional", text: "follow up", replay: true });
+  assert.equal(s.messages[0].turnId, "parent-turn");
+  assert.equal(mapped(s)[0].meta.native_seq, 1);
+  s = frame(s, { t: "transcript", frames: [{ t: "user_message", program: "claude", acp_session: "s", seq: 1,
+    message_id: "injected", turn_id: "provisional", text: "follow up", replay: true }], live: false });
+  assert.equal(s.messages[0].turnId, "parent-turn");
+});
+
+test("archive requests stay read-only until explicit gateway confirmation, including replayed pending requests", () => {
+  let s = frame(start(), { t: "permission", turn_id: "pending", id: "p", title: "Read", replay: true, actionable: false, request_state: "waiting", options: [{ id: "yes", name: "Yes", kind: "allow_once" }] });
+  s = frame(s, { t: "question", turn_id: "pending", id: "q", title: "Ask", replay: true, actionable: false, request_state: "waiting" });
+  assert.ok(mapped(s).every((m) => m.meta.native_actionable === false));
+  s = frame(s, { t: "permission", turn_id: "pending", id: "p", title: "Read", replay: true, actionable: true, request_state: "waiting", options: [{ id: "yes", name: "Yes", kind: "allow_once" }] });
+  s = frame(s, { t: "question", turn_id: "pending", id: "q", title: "Ask", replay: true, actionable: true, request_state: "waiting" });
+  assert.ok(mapped(s).every((m) => m.meta.native_actionable === true));
+  s = frame(s, { t: "done", turn_id: "pending", stop: "end_turn" });
+  assert.ok(mapped(s).every((m) => m.meta.native_actionable === false));
+  s = frame(s, { t: "permission", turn_id: "pending", id: "p", title: "Read", replay: true, actionable: true, request_state: "expired" });
+  assert.ok(mapped(s).every((m) => m.meta.native_actionable === false));
+});

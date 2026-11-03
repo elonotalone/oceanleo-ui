@@ -861,6 +861,11 @@ function onUsage(state: DialogState, frame: Record<string, unknown>): DialogStat
   });
 }
 
+function requestActionable(frame: Record<string, unknown>): boolean {
+  const status = str(frame.request_state);
+  return (!status || status === "waiting") && (frame.actionable === true || (frame.actionable !== false && frame.replay !== true));
+}
+
 function onPermission(state: DialogState, frame: Record<string, unknown>): DialogState {
   const permId = str(frame.id);
   if (!permId) return state;
@@ -870,6 +875,8 @@ function onPermission(state: DialogState, frame: Record<string, unknown>): Dialo
     options: parseOptions(frame.options),
     toolTitle: toolTitleOf(frame.tool),
     auto: frame.auto === true,
+    actionable: requestActionable(frame),
+    requestState: str(frame.request_state),
   };
   let found = false;
   const messages = state.messages.map((message) => {
@@ -877,14 +884,14 @@ function onPermission(state: DialogState, frame: Record<string, unknown>): Dialo
     const items = message.items.map((item) => {
       if (item.kind !== "permission" || item.permId !== permId) return item;
       found = true;
-      return { ...item, ...next, chosen: item.chosen };
+      return { ...item, ...next, chosen: str(frame.chosen) || item.chosen };
     });
     return { ...message, items };
   });
   if (found) return { ...state, messages };
   return mapOpenTurn({ ...state, messages }, (items) => [
     ...items,
-    { kind: "permission", id: nextId(), permId, chosen: "", ...next },
+    { kind: "permission", id: nextId(), permId, chosen: str(frame.chosen), ...next },
   ]);
 }
 
@@ -892,7 +899,9 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
   const questionId = str(frame.id);
   if (!questionId) return state;
   return mapOpenTurn(state, (items) => {
-    if (items.some((item) => item.kind === "question" && item.questionId === questionId)) return items;
+    const existing = items.findIndex((item) => item.kind === "question" && item.questionId === questionId);
+    const request = { actionable: requestActionable(frame), requestState: str(frame.request_state) };
+    if (existing >= 0) return items.map((item, index) => index === existing ? { ...item, ...request } : item);
     return [
       ...items,
       {
@@ -903,6 +912,7 @@ function onQuestion(state: DialogState, frame: Record<string, unknown>): DialogS
         detail: str(frame.detail),
         questions: frame.questions,
         submitted: false,
+        ...request,
       },
     ];
   });
@@ -1092,7 +1102,8 @@ function reduceFrame(input: DialogState, frame: Record<string, unknown>): Dialog
     const messages = index >= 0
       ? [...input.messages.slice(0, index), ...updated, ...input.messages.slice(index + 1)]
       : [...input.messages.slice(0, insertion), ...updated, ...input.messages.slice(insertion)];
-    const lateSettledOutput = previous?.stop && previous.stop !== "stopping" && frame.t !== "turn_start" && frame.t !== "done";
+    const confirmedRequest = frame.actionable === true && requestActionable(frame) && (frame.t === "permission" || frame.t === "question");
+    const lateSettledOutput = previous?.stop && previous.stop !== "stopping" && frame.t !== "turn_start" && frame.t !== "done" && !confirmedRequest;
     if (lateSettledOutput) {
       const closed = messages.map((m) => m.kind === "turn" && m.turnId === wireTurn ? { ...m, stop: previous.stop, live: false } : m);
       return { ...input, messages: closed };
@@ -1398,7 +1409,7 @@ function reduceFrame(input: DialogState, frame: Record<string, unknown>): Dialog
       const existing = index >= 0 ? state.messages[index] as Extract<AgentDialogMessage, { kind: "user" }> : undefined;
       const message: Extract<AgentDialogMessage, { kind: "user" }> = {
         ...existing, kind: "user", id: existing?.id ?? userFrameId(frame) ?? nextId(), messageId,
-        turnId: str(frame.turn_id) || existing?.turnId, text, ...frameTime(frame),
+        turnId: existing?.delivery ? existing.turnId || str(frame.turn_id) : str(frame.turn_id) || existing?.turnId, text, ...frameTime(frame),
         ...(sender ? { sender } : {}),
         ...(attachments.length ? { attachments: mergeLocalPreviews(attachments, existing?.attachments ?? []) } : {}),
         ...(frame.local === true ? { delivery: { state: "sending" } } : {}),
@@ -1460,8 +1471,10 @@ function reduceFrame(input: DialogState, frame: Record<string, unknown>): Dialog
   if (kind === "tool") return str(frame.id) ? armTurn(onTool(state, frame), frame) : state;
   if (kind === "plan") return armTurn(onPlan(state, frame), frame);
   if (kind === "usage") return onUsage(state, frame);
-  if (kind === "permission") return armTurn(onPermission(state, frame), frame);
-  if (kind === "question") return armTurn(onQuestion(state, frame), frame);
+  if (kind === "permission" || kind === "question") {
+    const next = kind === "permission" ? onPermission(state, frame) : onQuestion(state, frame);
+    return requestActionable(frame) ? armTurn(next, frame.actionable === true ? { ...frame, replay: false } : frame) : next;
+  }
   if (kind === "commands") return { ...state, commands: parseCommands(frame.commands) };
   if (kind === "done") return onDone(state, frame);
   if (kind === "error" || kind === "notice") return onError(state, frame);
