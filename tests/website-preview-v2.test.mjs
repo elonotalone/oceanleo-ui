@@ -13,7 +13,8 @@ const panelModule = await compileModule("src/shell/website-platform/WebsitePanel
 const { WebsitePanelView, WebsitePanelDataView } = await import(panelModule);
 const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/website-platform/WebsitePreviewWorkbench.tsx", {
   "./website-preview-i18n":i18n, "./WebsitePanelView":panelModule,
-  "../../api/website-runtime":dataModule("export const websiteRuntimeApi={};"),
+  // Publication route absent (404) keeps the Dashboard publication card hidden.
+  "../../api/website-runtime":dataModule("export const websiteRuntimeApi={}; export class WebsiteRequestError extends Error{constructor(s){super(\"HTTP \"+s);this.status=s;}} export async function websiteRequest(){throw new WebsiteRequestError(404);}"),
   "../../api/website-panels":dataModule("export const websitePanelsApi={};"),
   "../../api/website-connectors":dataModule("export const websiteConnectorsApi={};"),
   "./WebsiteConfiguration":dataModule("export function WebsiteConfiguration(){return null;}"),

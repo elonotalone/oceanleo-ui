@@ -11,7 +11,8 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const i18n = dataModule('const tt=(s,v)=>v?s.replace(/\\{(\\w+)\\}/g,(_,k)=>v[k]):s; export function useWebsiteUI(){return tt;}');
 const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/website-platform/WebsitePreviewWorkbench.tsx", {
   "./website-preview-i18n": i18n,
-  "../../api/website-runtime": dataModule("export const websiteRuntimeApi={};"),
+  // Publication route absent (404) keeps the Dashboard publication card hidden.
+  "../../api/website-runtime": dataModule("export const websiteRuntimeApi={}; export class WebsiteRequestError extends Error{constructor(s){super(\"HTTP \"+s);this.status=s;}} export async function websiteRequest(){throw new WebsiteRequestError(404);}"),
   "../../api/website-panels": dataModule("export const websitePanelsApi={};"),
   "../../api/website-connectors": dataModule("export const websiteConnectorsApi={};"),
   "./WebsiteConfiguration": dataModule("export function WebsiteConfiguration({projectId}){globalThis.__w8ConfigurationProject=projectId;return null;}"),
