@@ -298,6 +298,8 @@ const nativeThreadStub = dataModule(`
     const [pending, setPending] = React.useState(null);
     const [sent, setSent] = React.useState([]);
     const [files, setFiles] = React.useState([]);
+    const [phase, setPhase] = React.useState("idle");
+    if (input.enabled && input.session?.id) (globalThis.__threadPhaseSetters ||= new Map()).set(input.session.id, setPhase);
     const pendingRef = React.useRef(pending);
     pendingRef.current = pending;
     const live = Boolean(input.enabled && input.computer && input.computer.node_online);
@@ -313,7 +315,7 @@ const nativeThreadStub = dataModule(`
       ...(pending ? [{ id: -2147483648, role: "user", kind: "text", content: pending.text, meta: { native: true, native_pending: true } }] : []),
     ];
     return {
-      messages: bubbles, live, draft: !input.session, running: false, ready, offline: false, blockedReason: null,
+      messages: bubbles, live, draft: !input.session, running: phase !== "idle", finishing: phase === "finishing", ready, offline: false, blockedReason: null,
       async send() { return false; }, stop() {}, answer() {},
       composerAttachments: files.map((name) => ({ id: name, name })),
       onAttachFiles: live ? (added) => {
@@ -984,6 +986,26 @@ test("portal homepage native chat: in place, bubble before the session exists, p
     assert.equal(globalThis.__homeCreates[0].computerId, "cc_elon");
     assert.equal(globalThis.__homeCreates[0].input.kind, "acp");
     assert.equal(globalThis.__homeCreates[0].input.program, "codex");
+    const phase = globalThis.__threadPhaseSetters.get("cts_home1");
+    assert.equal(typeof phase, "function");
+    let phaseRefreshes = 0, activityEvents = 0;
+    const refresh = () => { phaseRefreshes += 1; };
+    const activity = () => { activityEvents += 1; };
+    window.addEventListener("oceanleo:history-changed", refresh);
+    window.addEventListener("oceanleo:history-activity", activity);
+    try {
+      await act(async () => phase("finishing"));
+      assert.equal(phaseRefreshes, 1, "finishing refreshes authoritative row state promptly");
+      assert.equal(activityEvents, 0, "a phase does not manufacture conversation activity");
+      await act(async () => phase("finishing"));
+      assert.equal(phaseRefreshes, 1, "unchanged phase does not trigger refresh loops");
+      await act(async () => phase("working"));
+      assert.equal(phaseRefreshes, 2, "new actual work refreshes the row again");
+      assert.equal(activityEvents, 0);
+    } finally {
+      window.removeEventListener("oceanleo:history-changed", refresh);
+      window.removeEventListener("oceanleo:history-activity", activity);
+    }
     for (let i = 0; i < 20 && !globalThis.__threadSent.length; i++) await settle(10);
     assert.deepEqual(globalThis.__threadSent, [{ session: "cts_home1", text: "看看日志" }], "sent once, on the warm thread, once the session is bound");
     assert.deepEqual(globalThis.__homeStashes, [], "no cross-page stash");

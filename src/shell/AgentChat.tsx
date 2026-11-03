@@ -180,7 +180,7 @@ import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAg
 import { useTaskLoadingReport } from "./task-loading-gate";
 import { placeConversationScroll, rememberConversationScroll, scrollPaneShown } from "./task-scroll-memory";
 import { isStaleTaskSeed } from "./history-detail-cache";
-import { HISTORY_CHANGED_EVENT, notifyHistoryActivity } from "../lib/history-events";
+import { HISTORY_CHANGED_EVENT, notifyHistoryActivity, notifyHistoryChanged } from "../lib/history-events";
 
 const HISTORY_TITLE_CHANGED_EVENT = "oceanleo:history-title-changed";
 import {
@@ -3754,6 +3754,17 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     if (!lastMessageKey || baseline.key === lastMessageKey) return;
     notifyHistoryActivity({ taskId: activityTaskId, user: activity?.user, at: activity?.at });
   }, [activityTaskId, lastMessageKey, thread.live, activity?.at, activity?.user]);
+  // A phase changes the row's state, not its activity time. Refresh from the
+  // gateway when it changes instead of keeping "now" until the next poll.
+  const nativePhase = thread.finishing ? "finishing" : thread.running ? "active" : "idle";
+  const phaseBaselineRef = useRef<{ sessionId: string; phase: string } | null>(null);
+  const phaseSessionId = session?.id ?? "";
+  useEffect(() => {
+    const baseline = phaseBaselineRef.current;
+    phaseBaselineRef.current = { sessionId: phaseSessionId, phase: nativePhase };
+    if (!phaseSessionId || !thread.live || !baseline || baseline.sessionId !== phaseSessionId || baseline.phase === nativePhase) return;
+    notifyHistoryChanged();
+  }, [phaseSessionId, nativePhase, thread.live]);
   // Header 「分享」 on a computer chat: the same select mode and action bar as the
   // OceanLeo conversation, over this chat's own messages. Text / image / document
   // are built from what is shown; the link names this session's cloud-saved copy.
