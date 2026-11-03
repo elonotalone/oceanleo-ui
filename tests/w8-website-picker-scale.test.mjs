@@ -15,6 +15,8 @@ const { WebsitePreviewPicker } = await import(await compileModule("src/shell/web
 }));
 const { createRoot } = await import("react-dom/client");
 
+// UC-NONE: coordinate scaling is a presentation regression.
+// This case checks geometry sent through the existing picker bridge; it does not change origin or message authorization.
 test("scaled desktop selection reports original page coordinates and viewport dimensions to the agent", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);

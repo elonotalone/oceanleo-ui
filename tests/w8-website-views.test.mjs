@@ -102,6 +102,8 @@ test("Dashboard loads wired platform and site panels, preserves error states and
   } finally { await m.destroy(); }
 });
 
+// UC-NONE: local lifecycle scheduling is a presentation regression.
+// This case checks exactly-once leave scheduling and tab visibility; the authenticated API boundary has separate coverage.
 test("leave checkpoints dedupe pagehide and unmount while sidebar tabs and hidden visibility do not checkpoint", async () => {
   const calls = [];
   const runtimeApi = { get: async () => ({ state: "running", preview_url: "https://p-8.ws.oceanleo.app/" }),
