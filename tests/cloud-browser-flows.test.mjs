@@ -366,6 +366,33 @@ test("rendered continuation is unavailable until the server receipt is ready and
   });
 });
 
+test("another browser stays watchable while a replay request is pending without changing its binding", async () => {
+  const state = fixture();
+  state.runStatus = "completed";
+  state.sessions.push({ ...session(), id: "session-2", title: "Other browser", task_id: "task-2" });
+  const original = state.fetch;
+  let finish;
+  const pending = new Promise(resolve => { finish = resolve; });
+  state.fetch = async call => {
+    if (call.url.endsWith("/run")) await pending;
+    return original(call);
+  };
+  await mounted(state, async container => {
+    try {
+      await change(container, "[data-browser-teach-session]", "session-1");
+      await click(container, "[data-browser-flow-run]");
+      assert.equal(container.querySelector('[data-browser-session-watch="session-2"]').disabled, false);
+      await click(container, '[data-browser-session-watch="session-2"]');
+      assert.equal(container.querySelector("[data-watch-initial]").dataset.watchInitial, "session-2");
+      await act(async () => finish());
+      await settle();
+      const replay = state.calls.find(call => call.url.endsWith("/run"));
+      assert.equal(replay.body.session_id, "session-1");
+      assert.equal(container.querySelector("[data-browser-flow-run-status]").textContent.includes("执行浏览器：Report task"), true);
+    } finally { finish(); }
+  });
+});
+
 test("rendered capacity keeps admission and total cost unknown; fallback failures remain visible", async () => {
   const state = fixture();
   state.parallelFails = true;
