@@ -470,6 +470,7 @@ export function CloudBrowserPanel({
 
         <CloudBrowserTrustPanel
           sessionId={session.selectedId}
+          taskId={session.selected?.task_id}
           liveRequested={liveRequested && transport.transportState === "streaming"}
           userTakeover={transport.driving}
         />

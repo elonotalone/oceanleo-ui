@@ -105,7 +105,7 @@ afterEach(async () => {
 test("approval card renders site, summary, reason and sends each exact approval scope or deny", async () => {
   for (const choice of ["once", "task", "site_action", "deny"]) {
     const api = runtime({ ...empty(), pending_approvals: [approval()] });
-    const { host } = await render(CloudBrowserTrustPanel, { sessionId: "session-1", liveRequested: true, userTakeover: false });
+    const { host } = await render(CloudBrowserTrustPanel, { sessionId: "session-1", taskId: "task-1", liveRequested: true, userTakeover: false });
     assert.equal(host.querySelector("[data-cloud-browser-trust-origin]")?.textContent, "https://shop.example");
     assert.equal(host.querySelector("[data-cloud-browser-trust-summary]")?.textContent, "支付订单 123");
     assert.equal(host.querySelector("[data-cloud-browser-trust-reason]")?.textContent, "付款后无法撤回");
@@ -117,6 +117,17 @@ test("approval card renders site, summary, reason and sends each exact approval 
     const mountedItem = mounted.pop();
     await act(async () => mountedItem.root.unmount()); mountedItem.host.remove();
   }
+});
+
+test("standalone browsers explain unavailable task scope while once and site-action remain usable", async () => {
+  const api = runtime({ ...empty(), pending_approvals: [approval()] });
+  const { host } = await render(CloudBrowserTrustPanel, { sessionId: "standalone", liveRequested: true, userTakeover: false });
+  assert.equal(host.querySelector('[data-cloud-browser-approval-scope="task"]')?.disabled, true);
+  assert.equal(host.querySelector('[data-cloud-browser-approval-scope="once"]')?.disabled, false);
+  assert.equal(host.querySelector('[data-cloud-browser-approval-scope="site_action"]')?.disabled, false);
+  assert.equal(host.querySelector("[data-cloud-browser-task-scope-unavailable]")?.textContent, "此浏览器未绑定任务，无法按任务授权。");
+  await click(host.querySelector('[data-cloud-browser-approval-scope="site_action"]'));
+  assert.deepEqual(api.calls.find(call => call.method === "approval").args.slice(0, 4), ["standalone", "request-1", "approve", "site_action"]);
 });
 
 test("save-login prompt saves or dismisses its candidate in the current browser only", async () => {

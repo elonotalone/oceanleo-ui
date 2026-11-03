@@ -29,8 +29,8 @@ export function browserTrustErrorCopy(status: number, tt: UITranslate): string {
 }
 
 export function CloudBrowserTrustPanel({
-  sessionId, liveRequested, userTakeover,
-}: { sessionId: string; liveRequested: boolean; userTakeover: boolean }) {
+  sessionId, taskId, liveRequested, userTakeover,
+}: { sessionId: string; taskId?: string | null; liveRequested: boolean; userTakeover: boolean }) {
   const tt = useUI();
   const headingId = useId();
   const ref = useRef<HTMLDivElement>(null);
@@ -56,10 +56,11 @@ export function CloudBrowserTrustPanel({
             <p className="text-[12px] leading-relaxed text-neutral-500" data-cloud-browser-trust-reason>{approval.reason || tt("此操作会向网站提交信息，执行后可能无法撤回。")}</p>
             <div className="flex flex-wrap gap-2">
               {(["once", "task", "site_action"] as const).map(scope => (
-                <button key={scope} type="button" className={button} disabled={trust.busy} data-cloud-browser-approval-scope={scope} onClick={() => void trust.decide("approval", approval.request_id, "approve", scope)}>{browserTrustScopeLabel(scope, tt)}</button>
+                <button key={scope} type="button" className={button} disabled={trust.busy || (scope === "task" && !taskId)} data-cloud-browser-approval-scope={scope} onClick={() => void trust.decide("approval", approval.request_id, "approve", scope)}>{browserTrustScopeLabel(scope, tt)}</button>
               ))}
               <button type="button" className={button} disabled={trust.busy} data-cloud-browser-approval-deny onClick={() => void trust.decide("approval", approval.request_id, "deny")}>{tt("拒绝")}</button>
             </div>
+            {!taskId && <p className="text-[12px] leading-relaxed text-neutral-500" data-cloud-browser-task-scope-unavailable>{tt("此浏览器未绑定任务，无法按任务授权。")}</p>}
           </> : login ? <>
             <p className="text-[12px] leading-relaxed text-neutral-500">{tt("保存后，下次可以继续使用这个网站的登录。你可以在设置中查看网站记录、删除登录或关闭保存。")}</p>
             <div className="flex flex-wrap gap-2">
