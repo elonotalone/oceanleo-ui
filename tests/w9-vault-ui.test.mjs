@@ -84,6 +84,12 @@ function harness() {
       state.references = state.references.filter((ref) => ref.id !== id);
       return { reference: removed };
     },
+    deleteVaultBrowserBinding: async (id) => {
+      state.writes.push({ op: "browser-unbind", id });
+      const removed = state.references.find((ref) => ref.id === id);
+      state.references = state.references.filter((ref) => ref.id !== id);
+      return { reference: removed };
+    },
   });
   const common = {
     "../../lib/auth/client": { AUTH_STATE_EVENT: "oceanleo:auth-state", getUserId: async () => state.uid },
@@ -247,6 +253,34 @@ test("disabled vaults show their actual state with no add forms", async () => {
   try {
     for (const view of [main, site]) { assert.match(view.host.textContent, /not enabled/); assert.equal(view.host.querySelector("form"), null); }
     assert.equal(h.state.writes.length, 0);
+  } finally { await main.close(); await site.close(); }
+});
+
+test("database, browser and connector usage is labelled with its purpose and target; browser revocation uses its own API", async () => {
+  const h = harness();
+  h.state.references = [
+    reference({ id: "db-export", purpose: "db_export", env_name: "", environment: "production" }),
+    reference({ id: "db-transfer", purpose: "db_transfer", env_name: "", environment: "production" }),
+    reference({ id: "browser-ref", scope: "browser", purpose: "login", origin: "https://login.example.test", env_name: "" }),
+    reference({ id: "connector-ref", scope: "connector", purpose: "user_connector", project_id: null, env_name: "", binding: { provider: "supabase" } }),
+  ];
+  const main = await mount(h.VaultSettingsSection);
+  const site = await mount(h.SiteVaultPanel, { projectId: "project-1" });
+  try {
+    for (const view of [main, site]) {
+      assert.match(view.host.textContent, /Database export/);
+      assert.match(view.host.textContent, /Database transfer/);
+      assert.match(view.host.textContent, /Browser sign-in \/ form fill/);
+      assert.match(view.host.textContent, /https:\/\/login\.example\.test/);
+      assert.match(view.host.textContent, /Purpose: login/);
+    }
+    assert.match(main.host.textContent, /Account connector credential/);
+    assert.match(main.host.textContent, /supabase/);
+    const browserRow = site.host.querySelector('[data-vault-reference="browser-ref"]');
+    await click(button(browserRow, "Remove"));
+    await click(button(browserRow, "Remove reference"));
+    assert.deepEqual(h.state.writes, [{ op: "browser-unbind", id: "browser-ref" }]);
+    assert.equal(site.host.querySelector('[data-vault-reference="browser-ref"]'), null);
   } finally { await main.close(); await site.close(); }
 });
 

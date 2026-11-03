@@ -22,7 +22,7 @@ test("shared UI envelopes interoperate with existing ECDH/HKDF/AES-GCM vault pro
   const context = { uid: randomUUID(), op: "create", name: "服务引用 🔐" };
   const value = `${randomBytes(32).toString("base64url")}\n私密文本`;
   const now = Date.now();
-  const rid = randomUUID();
+  const rid = randomBytes(16).toString("base64url");
   const sealed = await sealVaultValue(key, context, value, { now, rid, subtle });
   assert.equal(await decrypt(pair, sealed), value);
   assert.deepEqual(JSON.parse(decode(sealed.aad)), { v: 1, kid: key.kid, ...context, sid: "", ts: now, rid });

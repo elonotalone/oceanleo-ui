@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { AUTH_STATE_EVENT } from "../../lib/auth/client";
 import {
-  createProjectVaultReference, deleteProjectVaultReference, getProjectVaultReferences,
+  createProjectVaultReference, deleteProjectVaultReference, deleteVaultBrowserBinding, getProjectVaultReferences,
   getVault, safeVaultFingerprint, validVaultEnvName,
   type VaultEnvironment, type VaultReference, type VaultStatus,
 } from "../../lib/vault-api";
-import { useVaultText, vaultErrorText } from "../../pages/settings/VaultSettingsSection";
+import { useVaultText, vaultErrorText, vaultPurposeLabel } from "../../pages/settings/VaultSettingsSection";
 
 export type SiteVaultPanelProps = {
   projectId: string;
@@ -86,7 +86,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
   }
 
   const selected = vault?.secrets.find((secret) => secret.id === secretId);
-  const duplicate = references.some((reference) => reference.env_name === envName.trim() && reference.environment === environment);
+  const duplicate = references.some((reference) => reference.purpose === "runtime_env" && reference.env_name === envName.trim() && reference.environment === environment);
   const canBind = Boolean(projectId && loaded && vault?.enabled && selected && !selected.needs_reentry && validVaultEnvName(envName.trim()) && !duplicate && !busy && !loading);
 
   function submit(event: FormEvent<HTMLFormElement>) {
@@ -117,14 +117,18 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
         {references.map((reference) => <li key={reference.id} data-vault-reference={reference.id} className="space-y-2 py-3">
           <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0 space-y-1"><p className="break-words font-medium">{reference.secret_name}</p><p className="break-all text-[12px] text-neutral-500"><code>{reference.env_name}</code> · {reference.environment === "production" ? text("生产", "Production") : text("预览", "Preview")} · {text("版本", "Version")} {reference.version}</p>
+            <div className="min-w-0 space-y-1"><p className="break-words font-medium">{reference.secret_name}</p><p className="break-all text-[12px] text-neutral-500">{vaultPurposeLabel(reference, text)}{reference.env_name && <> · <code>{reference.env_name}</code></>}{reference.scope === "project" && <> · {reference.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>} · {text("版本", "Version")} {reference.version}</p>
+              {reference.origin && <p className="break-all text-[12px] text-neutral-500"><code>{reference.origin}</code></p>}
+              {reference.scope === "browser" && <p className="break-words text-[12px] text-neutral-500">{text("用途", "Purpose")}: <code>{reference.purpose}</code></p>}
+              {reference.scope === "connector" && <p className="text-[12px] text-neutral-500">{typeof reference.binding?.provider === "string" && <>{reference.binding.provider} · </>}{text("在设置 → 连接器中管理此账号连接。", "Manage this account connection in Settings → Connectors.")}</p>}
               {safeVaultFingerprint(reference.kind, reference.fingerprint) && <code className="block text-[12px] text-neutral-500">{safeVaultFingerprint(reference.kind, reference.fingerprint)}</code>}
             </div>
-            <button type="button" className={`${BUTTON} shrink-0 text-red-600`} disabled={busy} onClick={() => setRemoving(reference.id)}>{text("移除引用", "Remove")}</button>
+            {reference.scope !== "connector" && <button type="button" className={`${BUTTON} shrink-0 text-red-600`} disabled={busy} onClick={() => setRemoving(reference.id)}>{text("移除引用", "Remove")}</button>}
           </div>
           {removing === reference.id && <div role="alert" className="space-y-2 rounded-lg border border-red-200 p-3 text-[12px] dark:border-red-900"><p>{text("移除后，此网站将无法继续使用这项密钥；主保险箱项目和其他网站的引用会保留。", "Removing this reference revokes this website’s use of the secret. The main item and other websites’ references remain available.")}</p><div className="flex gap-2">
             <button type="button" disabled={busy} className={`${BUTTON} text-red-600`} onClick={() => void act(async (signal) => {
-              await deleteProjectVaultReference(projectId, reference.id, signal);
+              if (reference.scope === "browser") await deleteVaultBrowserBinding(reference.id, signal);
+              else await deleteProjectVaultReference(projectId, reference.id, signal);
               if (!signal.aborted) {
                 setReferences((current) => current.filter((item) => item.id !== reference.id));
                 setRemoving(null); setNotice(text("引用已移除，此网站的使用权限已撤销。", "Reference removed. This website’s access has been revoked."));

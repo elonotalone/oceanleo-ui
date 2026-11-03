@@ -37,16 +37,18 @@ test("main and project vault endpoints always use the shared per-call authentica
   await api.getProjectVaultReferences(projectId, signal);
   await api.createProjectVaultReference(projectId, { secret_id: secretId, purpose: "runtime_env", env_name: "SERVICE_KEY", environment: "production" }, signal);
   await api.deleteProjectVaultReference(projectId, referenceId, signal);
+  await api.deleteVaultBrowserBinding(referenceId, signal);
   assert.deepEqual(requests.map(({ method, path }) => [method, path]), [
     ["GET", "/v1/vault"], ["GET", "/v1/vault/seal-key"], ["POST", "/v1/vault/secrets"],
     ["PATCH", `/v1/vault/secrets/${secretId}`], ["DELETE", `/v1/vault/secrets/${secretId}`],
     ["GET", "/v1/vault/references"], ["GET", "/v1/website-projects/project%2Fone/vault/references"],
     ["POST", "/v1/website-projects/project%2Fone/vault/references"], ["DELETE", `/v1/website-projects/project%2Fone/vault/references/${referenceId}`],
+    ["DELETE", `/v1/vault/browser-bindings/${referenceId}`],
   ]);
   assert.ok(requests.every((request) => request.signal === signal));
   state.result = { references: [{ id: referenceId, version: 2 }] };
   assert.equal((await api.getProjectVaultReferences(projectId)).references[0].version, 2);
-  assert.equal(requests.length, 10, "metadata and authorization must be resolved afresh on every use");
+  assert.equal(requests.length, 11, "metadata and authorization must be resolved afresh on every use");
   assert.doesNotMatch(source, /\bfetch\(|localStorage|sessionStorage|new Map|setTimeout|access_token/);
 });
 
@@ -95,5 +97,5 @@ test("fingerprints never expose a malformed full value and runtime env names mat
   assert.equal(api.safeVaultFingerprint("password", randomUUID()), "••••••");
   assert.equal(api.safeVaultFingerprint("text", randomUUID()), "");
   for (const name of ["SERVICE_API_KEY", "_PRIVATE", "A".repeat(128)]) assert.equal(api.validVaultEnvName(name), true);
-  for (const name of ["", "lowercase", "A".repeat(129), "1KEY", "KEY-NAME", "VITE_KEY", "NEXT_PUBLIC_KEY", "PUBLIC_KEY", "REACT_APP_KEY", "NUXT_PUBLIC_KEY", "EXPO_PUBLIC_KEY", "OCEANLEO_KEY", "PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "NODE_OPTIONS", "NODE_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP"]) assert.equal(api.validVaultEnvName(name), false, name);
+  for (const name of ["", "lowercase", "A".repeat(129), "1KEY", "KEY-NAME", "VITE_KEY", "NEXT_PUBLIC_KEY", "PUBLIC_KEY", "REACT_APP_KEY", "NUXT_PUBLIC_KEY", "EXPO_PUBLIC_KEY", "OCEANLEO_KEY", "PORT", "PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "NODE_OPTIONS", "NODE_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP"]) assert.equal(api.validVaultEnvName(name), false, name);
 });

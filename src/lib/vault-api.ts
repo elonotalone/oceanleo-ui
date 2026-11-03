@@ -94,6 +94,8 @@ export function createProjectVaultReference(projectId: string, input: CreateVaul
 }
 export const deleteProjectVaultReference = (projectId: string, id: string, signal?: AbortSignal) =>
   request<{ reference: VaultReference }>(`${projectPath(projectId)}/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
+export const deleteVaultBrowserBinding = (id: string, signal?: AbortSignal) =>
+  request<{ reference: VaultReference }>(`/v1/vault/browser-bindings/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
 
 /** Do not accidentally display a raw value if a malformed response reaches the UI. */
 export function safeVaultFingerprint(kind: VaultKind, fingerprint?: string): string {
@@ -105,5 +107,5 @@ export function safeVaultFingerprint(kind: VaultKind, fingerprint?: string): str
 export function validVaultEnvName(name: string): boolean {
   return /^[A-Z_][A-Z0-9_]{0,127}$/.test(name)
     && !/^(?:VITE_|NEXT_PUBLIC_|PUBLIC_|REACT_APP_|NUXT_PUBLIC_|EXPO_PUBLIC_|OCEANLEO_)/.test(name)
-    && !["PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "NODE_OPTIONS", "NODE_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP"].includes(name);
+    && !["PORT", "PATH", "HOME", "SHELL", "ENV", "BASH_ENV", "NODE_OPTIONS", "NODE_PATH", "LD_PRELOAD", "LD_LIBRARY_PATH", "PYTHONPATH", "PYTHONSTARTUP"].includes(name);
 }

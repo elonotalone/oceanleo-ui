@@ -21,6 +21,19 @@ export function useVaultText() {
   return useCallback((zh: string, en: string) => chinese ? zh : en, [chinese]);
 }
 
+export function vaultPurposeLabel(reference: Pick<VaultReference, "purpose" | "scope">, text: (zh: string, en: string) => string): string {
+  switch (reference.purpose) {
+    case "runtime_env": return text("运行环境", "Runtime environment");
+    case "build_env": return text("构建环境", "Build environment");
+    case "provider_secret": return text("服务连接", "Service connection");
+    case "legacy_development": return text("旧版开发环境", "Legacy development environment");
+    case "db_export": return text("数据库导出", "Database export");
+    case "db_transfer": return text("数据库迁移", "Database transfer");
+    case "user_connector": return text("账号连接凭据", "Account connector credential");
+    default: return reference.scope === "browser" ? text("浏览器登录或表单填入", "Browser sign-in / form fill") : text("已授权用途", "Granted purpose");
+  }
+}
+
 export function vaultErrorText(cause: unknown, text: (zh: string, en: string) => string): string {
   switch (cause instanceof VaultApiError ? cause.code : "unavailable") {
     case "signed_out": return text("登录状态已失效，请重新登录。", "Your session has ended. Sign in again.");
@@ -152,7 +165,10 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
               {!references.some((ref) => ref.secret_id === secret.id) && !secret.machines?.length && <p>{text("尚未授权给任何网站、应用或电脑。", "Not granted to any website, app or computer.")}</p>}
               <ul className="space-y-1">
                 {references.filter((ref) => ref.secret_id === secret.id).map((ref) => <li key={ref.id} className="break-all">
-                  {ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : text("网站 / 应用", "Website / app")} · {ref.project_id || ref.origin || text("账号", "Account")}
+                  {ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : text("网站 / 应用", "Website / app")} · {ref.project_id || text("账号", "Account")} · {vaultPurposeLabel(ref, text)}
+                  {ref.origin && <> · <code>{ref.origin}</code></>}
+                  {ref.scope === "browser" && <> · {text("用途", "Purpose")}: <code>{ref.purpose}</code></>}
+                  {ref.scope === "connector" && typeof ref.binding?.provider === "string" && <> · {ref.binding.provider}</>}
                   {ref.env_name && <> · <code>{ref.env_name}</code></>}
                   {ref.scope === "project" && <> · {ref.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>}
                 </li>)}
