@@ -294,3 +294,32 @@ test("a send before the gateway's history replay keeps the new message last and 
     }
   }
 });
+
+test("a native replay without autonomous boundaries does not copy the autonomous reply into the prompt's turn (V1 03:55)", () => {
+  const claude = () => ({ ...initialDialogState(), program: "claude", activeSession: "s" });
+  const at = (s, row) => applyDialog(s, { type: "frame", frame: { program: "claude", acp_session: "s", ...row } });
+  const savedRows = [
+    { t: "user_message", seq: 10, created_at: "2026-11-03T18:54:00.000Z", message_id: "m1", turn_id: "t1", text: "U1" },
+    { t: "turn_start", seq: 11, created_at: "2026-11-03T18:54:01.000Z", message_id: "m1", turn_id: "t1" },
+    { t: "tool", seq: 12, created_at: "2026-11-03T18:54:02.000Z", message_id: "m1", turn_id: "t1", id: "bg-tool", title: "sleep 8 &", status: "completed" },
+    { t: "delta", seq: 13, created_at: "2026-11-03T18:54:03.000Z", message_id: "m1", turn_id: "t1", text: "FOREGROUND_DONE" },
+    { t: "done", seq: 14, created_at: "2026-11-03T18:54:04.000Z", message_id: "m1", turn_id: "t1", stop_reason: "end_turn" },
+    { t: "turn_start", seq: 20, created_at: "2026-11-03T18:54:12.000Z", turn_id: "auto", autonomous: true },
+    { t: "tool", seq: 21, created_at: "2026-11-03T18:54:13.000Z", turn_id: "auto", id: "fg-tool", title: "sleep 8", status: "completed" },
+    { t: "delta", seq: 22, created_at: "2026-11-03T18:54:21.000Z", turn_id: "auto", text: "AUTONOMOUS_DONE" },
+    { t: "done", seq: 23, created_at: "2026-11-03T18:54:22.000Z", turn_id: "auto", autonomous: true, stop_reason: "end_turn" },
+  ];
+  const saved = savedRows.reduce((s, row) => at(s, { ...row, replay: true }), claude());
+  const expected = dialogToAgentMessages(saved.messages, { live: false }).map((m) => [m.content, m.meta?.native_turn_id]);
+  let live = at(claude(), { t: "user_message", ts: "2026-11-03T19:40:00.000Z", message_id: "m2", turn_id: "t2", text: "U2" });
+  live = at(live, { t: "transcript", mode: "replace", live: false, frames: [
+    { t: "user_message", program: "claude", acp_session: "s", text: "U1", replay: true },
+    { t: "tool", program: "claude", acp_session: "s", id: "bg-tool", title: "sleep 8 &", status: "completed", replay: true },
+    { t: "delta", program: "claude", acp_session: "s", text: "FOREGROUND_DONE", replay: true },
+    { t: "tool", program: "claude", acp_session: "s", id: "fg-tool", title: "sleep 8", status: "completed", replay: true },
+    { t: "delta", program: "claude", acp_session: "s", text: "AUTONOMOUS_DONE", replay: true },
+  ] });
+  const rows = dialogToAgentMessages(mergeNativeDialogPages(saved.messages, live.messages), { live: true }).map((m) => [m.content, m.meta?.native_turn_id]);
+  assert.deepEqual(rows.slice(0, expected.length), expected, JSON.stringify(rows));
+  assert.deepEqual(rows.slice(expected.length).map(([content]) => content), ["U2"], JSON.stringify(rows));
+});

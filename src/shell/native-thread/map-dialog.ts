@@ -374,6 +374,21 @@ export function dialogToAgentMessages(
   }));
 }
 
+/** The same turn item on two pages (ids where both have them, else stored seq or text). */
+function sameTurnItem(old: TurnItem, item: TurnItem): boolean {
+  return old.kind === item.kind && (
+    old.id === item.id ||
+    (old.kind === "tool" && item.kind === "tool" && old.tool.id === item.tool.id) ||
+    (old.kind === "permission" && item.kind === "permission" && old.permId === item.permId) ||
+    (old.kind === "question" && item.kind === "question" && old.questionId === item.questionId) ||
+    old.kind === "plan" || old.kind === "usage" ||
+    ((old.kind === "assistant" || old.kind === "thought") && (item.kind === "assistant" || item.kind === "thought") &&
+      (old.seq !== undefined && item.seq !== undefined
+        ? old.seq === item.seq || (old.seq <= (item.updatedSeq ?? item.seq) && item.seq <= (old.updatedSeq ?? old.seq) &&
+          (old.text.includes(item.text) || item.text.includes(old.text)))
+        : old.text.includes(item.text) || item.text.includes(old.text))));
+}
+
 /** ID-aware union for the durable protocol. Legacy sessions still use the legacy merger. */
 export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], live: readonly AgentDialogMessage[]): AgentDialogMessage[] {
   const out = saved.slice();
@@ -417,22 +432,25 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
         id: own.id, delivery: row.delivery ?? own.delivery, attachments };
     } else if (row.kind === "turn" && own.kind === "turn") {
       const items = own.items.slice();
+      const replayed = replayAnchor && !row.turnId;
+      const siblings: Extract<AgentDialogMessage, { kind: "turn" }>[] = [];
+      if (replayed) {
+        for (let at = userAnchor + 1; at < out.length && out[at].kind !== "user"; at += 1) {
+          const turn = out[at];
+          if (at !== index && turn.kind === "turn") siblings.push(turn);
+        }
+      }
       for (const item of row.items) {
-        const at = items.findIndex((old) => old.kind === item.kind && (
-          old.id === item.id ||
-          (old.kind === "tool" && item.kind === "tool" && old.tool.id === item.tool.id) ||
-          (old.kind === "permission" && item.kind === "permission" && old.permId === item.permId) ||
-          (old.kind === "question" && item.kind === "question" && old.questionId === item.questionId) ||
-          old.kind === "plan" || old.kind === "usage" ||
-          ((old.kind === "assistant" || old.kind === "thought") && (item.kind === "assistant" || item.kind === "thought") &&
-            (old.seq !== undefined && item.seq !== undefined
-              ? old.seq === item.seq || (old.seq <= (item.updatedSeq ?? item.seq) && item.seq <= (old.updatedSeq ?? old.seq) &&
-                (old.text.includes(item.text) || item.text.includes(old.text)))
-              : old.text.includes(item.text) || item.text.includes(old.text)))));
-        if (at < 0) items.push(item);
-        else {
+        const at = items.findIndex((old) => sameTurnItem(old, item));
+        if (at < 0) {
+          // Already saved in a sibling turn (the native replay has no autonomous
+          // boundaries: an autonomous reply comes back inside the prompt's turn).
+          if (replayed && siblings.some((turn) => turn.items.some((old) => old.kind !== "plan" && old.kind !== "usage" && sameTurnItem(old, item)))) continue;
+          items.push(item);
+        } else {
           const old = items[at];
-          const kept = (old.kind === "assistant" || old.kind === "thought") &&
+          // A replay restates what is saved; the saved text stays.
+          const kept = replayed ? old : (old.kind === "assistant" || old.kind === "thought") &&
             (item.kind === "assistant" || item.kind === "thought") && old.text.length > item.text.length ? old : item;
           // Seen again on the newer page, an item keeps that page's arrival, as a user
           // does: later rows of that page then sort after it. With only the echoed user
