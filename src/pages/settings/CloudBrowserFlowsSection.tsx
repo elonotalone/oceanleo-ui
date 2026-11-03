@@ -81,7 +81,7 @@ function Capacity({ value, tt }: { value: BrowserParallelCapacity | null; tt: UI
   const status = capacity?.state === "available" ? tt("有可用容量") : capacity?.state === "saturated" ? tt("容量已用满") : tt("容量未知");
   return <div data-browser-parallel-capacity className="space-y-2 rounded-lg bg-neutral-50 p-3 text-[13px] text-neutral-600">
     <p className="font-medium text-neutral-900">{status}</p>
-    <p>{tt("运行中的浏览器：{count}", { count: count(capacity?.browser_slots.in_use) })}{" · "}{tt("可新增浏览器数：{count}", { count: count(capacity?.available_slots) })}</p>
+    <p>{tt("已占用或预留的浏览器名额：{count}", { count: count(capacity?.browser_slots.in_use) })}{" · "}{tt("可新增浏览器数：{count}", { count: count(capacity?.available_slots) })}</p>
     <p className="text-[12px]">{tt("容量取决于当前服务器的名额和内存，其他任务也会使用这些资源。每个浏览器使用独立的登录副本和下载目录。")}</p>
     <div data-browser-parallel-cost className="space-y-1 border-t border-neutral-200 pt-2">
       {!cost?.rates.length || cost.status === "unknown" ? <p>{tt("费用：未知")}</p> : <>

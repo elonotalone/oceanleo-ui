@@ -372,6 +372,7 @@ test("rendered capacity keeps admission and total cost unknown; fallback failure
   await mounted(state, async container => {
     const text = container.querySelector("[data-browser-parallel-capacity]").textContent;
     assert.equal(text.includes("容量未知"), true);
+    assert.equal(text.includes("已占用或预留的浏览器名额：1"), true);
     assert.equal(text.includes("可新增浏览器数：未知"), true);
     assert.equal(text.includes("可新增浏览器数：3"), false);
     assert.equal(text.includes("CNY 0.6233"), true);
