@@ -24,12 +24,15 @@ export {
 export class CloudComputerError extends Error {
   readonly code: string;
   readonly status: number;
+  /** Whole seconds from an integer detail.retry_after, when the server sent one. */
+  readonly retry_after?: number;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, retryAfter?: number) {
     super(message);
     this.name = "CloudComputerError";
     this.code = code;
     this.status = status;
+    if (retryAfter !== undefined) this.retry_after = retryAfter;
   }
 }
 
@@ -309,7 +312,9 @@ function errorFromPayload(status: number, payload: unknown): CloudComputerError 
     detail && typeof detail.message === "string" ? detail.message.trim() : "";
   const code = codeRaw || `client_http_${status}`;
   const message = messageRaw || code;
-  return new CloudComputerError(code, message, status);
+  const retryAfter = detail && Number.isInteger(detail.retry_after) && (detail.retry_after as number) >= 0
+    ? (detail.retry_after as number) : undefined;
+  return new CloudComputerError(code, message, status, retryAfter);
 }
 
 export async function cloudComputerRequest<T>(

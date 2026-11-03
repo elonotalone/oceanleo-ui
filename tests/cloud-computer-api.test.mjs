@@ -142,6 +142,19 @@ test("createByoComputer / catalog / 详情 / 改名 / 停机开机 / 删除 / �
   assert.deepEqual(JSON.parse(patch.init.body), { name: "new" });
 });
 
+test("integer detail.retry_after is copied onto the error; anything else is ignored", async () => {
+  for (const [retry, expected] of [[42, 42], [0, 0], [-1, undefined], [1.5, undefined], ["60", undefined], [undefined, undefined]]) {
+    installFetch(() => jsonResponse(503, { detail: { code: "vault_runtime_fence_settling", message: "m", ...(retry === undefined ? {} : { retry_after: retry }), extra: "x" } }));
+    await assert.rejects(() => getComputer("c1"), (err) => {
+      assert.ok(err instanceof CloudComputerError);
+      assert.equal(err.code, "vault_runtime_fence_settling");
+      assert.equal(err.retry_after, expected);
+      assert.equal("extra" in err, false);
+      return true;
+    });
+  }
+});
+
 test("错误从 detail.code 映射为 CloudComputerError", async () => {
   installFetch(() =>
     jsonResponse(409, {
