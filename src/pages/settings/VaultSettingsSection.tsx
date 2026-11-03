@@ -4,8 +4,8 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { useLocale } from "../../i18n/useT.client";
 import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
-  createVaultSecret, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, recoverVault,
-  safeVaultFingerprint, updateVaultSecret, vaultFenceState, vaultMutationWasCommitted, VaultApiError,
+  createVaultBrowserBinding, createVaultSecret, deleteVaultBrowserBinding, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, recoverVault,
+  normalizeVaultBrowserOrigin, safeVaultFingerprint, updateVaultSecret, vaultFenceState, vaultMutationWasCommitted, VaultApiError,
   type VaultFenceRow, type VaultKind, type VaultManagedCredentials, type VaultRecovery, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
 import { sealVaultValue } from "../../lib/vault-seal";
@@ -31,6 +31,7 @@ export function vaultPurposeLabel(reference: Pick<VaultReference, "purpose" | "s
     case "db_transfer": return text("数据库迁移", "Database transfer");
     case "user_connector": return reference.scope === "project_connector" ? text("网站服务授权", "Website service grant") : text("账号连接凭据", "Account connector credential");
     case "supabase_provision_password": return text("Supabase 服务凭据", "Supabase service credential");
+    case "browser_login": return text("浏览器登录", "Browser sign-in");
     default: return reference.scope === "browser" ? text("浏览器登录或表单填入", "Browser sign-in / form fill") : text("已授权用途", "Granted purpose");
   }
 }
@@ -177,16 +178,18 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   const [committed, setCommitted] = useState(false);
   const [editor, setEditor] = useState<{ secret?: VaultSecret } | null>(null);
   const [deleting, setDeleting] = useState<VaultSecret | null>(null);
+  const [browserGrant, setBrowserGrant] = useState<string | null>(null);
+  const [removingBrowser, setRemovingBrowser] = useState<string | null>(null);
   const active = useRef(true);
   const operation = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
   const { fence, checkFence, noteFence, settle } = useVaultFence();
 
-  const refresh = useCallback(async (signal: AbortSignal) => {
+  const refresh = useCallback(async (signal: AbortSignal, preserveReferences = false) => {
     const next = await getVault(signal);
     if (signal.aborted) return;
     setStatus(next);
-    setReferences(null);
+    if (!preserveReferences) setReferences(null);
     if (next.enabled) {
       const usage = await getVaultReferences(signal);
       if (signal.aborted) return;
@@ -215,20 +218,22 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   async function recoverCommitted(signal: AbortSignal) {
     if (signal.aborted) return;
     setCommitted(true); setNotice(""); setError("");
-    setEditor(null); setDeleting(null); setStatus(null); setReferences(null);
+    setEditor(null); setDeleting(null); setBrowserGrant(null); setRemovingBrowser(null); setStatus(null); setReferences(null);
     try { await refresh(signal); }
     catch { if (!signal.aborted) setError(latestText.current("变更已保存，暂时无法读取最新保险箱。请刷新。", "The change was saved, but current vault details are unavailable. Refresh to check.")); }
   }
 
-  async function act(work: (signal: AbortSignal) => Promise<unknown>) {
+  async function act(work: (signal: AbortSignal) => Promise<unknown>, preserveReferences = false) {
     const signal = lifetime.current?.signal;
     if (operation.current || !signal || signal.aborted) return;
     operation.current = true;
     setBusy(true); setError(""); setNotice("");
-    try { await work(signal); await refresh(signal); }
+    let saved = false;
+    try { await work(signal); saved = true; await refresh(signal, preserveReferences); }
     catch (cause) {
       if (!signal.aborted) {
-        if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+        if (saved && preserveReferences) setError(latestText.current("变更已保存，但暂时无法更新使用位置。请刷新查看。", "Your change was saved, but usage locations could not be refreshed. Refresh to check."));
+        else if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
         else if (vaultFenceState(cause)) await noteFence(cause, signal);
         else setError(vaultErrorText(cause, latestText.current));
       }
@@ -269,7 +274,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     {status?.enabled && <>
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[14px] font-medium text-neutral-900 dark:text-neutral-100">{text("保险箱项目", "Vault items")} <span className="font-normal text-neutral-500">{status.secrets.length}/{status.limits.max_secrets}</span></h3>
-        <button type="button" className={QUIET} disabled={busy || loading || !!editor || status.secrets.length >= status.limits.max_secrets} onClick={() => { setEditor({}); setDeleting(null); setError(""); }}>{text("添加", "Add item")}</button>
+        <button type="button" className={QUIET} disabled={busy || loading || !!editor || !!browserGrant || status.secrets.length >= status.limits.max_secrets} onClick={() => { setEditor({}); setDeleting(null); setRemovingBrowser(null); setError(""); }}>{text("添加", "Add item")}</button>
       </div>
       {status.secrets.length >= status.limits.max_secrets && <p role="status" className="text-neutral-500">{text("保险箱已达到容量上限。", "Your vault has reached its item limit.")}</p>}
       {editor && <SecretEditor key={editor.secret?.id || "new"} uid={uid} secret={editor.secret} accent={accent} maxValueBytes={status.limits.max_value_bytes}
@@ -294,12 +299,22 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
               {secret.kind === "password" && secret.username && <p className="break-all text-neutral-500">{text("用户名", "Username")}: {secret.username}</p>}
               {secret.description && <p className="break-words text-neutral-500">{secret.description}</p>}
             </div>
-            <div className="flex shrink-0 gap-2">
-              <button type="button" className={QUIET} disabled={busy || !!editor} onClick={() => { setEditor({ secret }); setDeleting(null); setError(""); }}>{text("更新密钥", "Rotate")}</button>
-              <button type="button" className={`${QUIET} text-red-600`} disabled={busy || !!editor} onClick={() => setDeleting(secret)}>{text("删除", "Delete")}</button>
+            <div className="flex shrink-0 flex-wrap gap-2">
+              <button type="button" className={QUIET} disabled={busy || !!editor || !!browserGrant || secret.needs_reentry} data-vault-browser-authorize={secret.id} onClick={() => { setBrowserGrant(secret.id); setDeleting(null); setRemovingBrowser(null); setError(""); setNotice(""); }}>{text("授权浏览器", "Authorize browser")}</button>
+              <button type="button" className={QUIET} disabled={busy || !!editor || !!browserGrant} onClick={() => { setEditor({ secret }); setDeleting(null); setRemovingBrowser(null); setError(""); }}>{text("更新密钥", "Rotate")}</button>
+              <button type="button" className={`${QUIET} text-red-600`} disabled={busy || !!editor || !!browserGrant} onClick={() => { setDeleting(secret); setRemovingBrowser(null); }}>{text("删除", "Delete")}</button>
             </div>
           </div>
           {secret.needs_reentry && <p role="status" className="text-amber-700">{text("此项目需要重新输入密钥，现有引用暂时不能使用。", "Re-enter this secret before its references can be used.")}</p>}
+          {browserGrant === secret.id && <BrowserGrantEditor secret={secret} references={references} busy={busy} accent={accent}
+            onClose={() => setBrowserGrant(null)} onGrant={(origin) => void act(async (signal) => {
+              const { reference } = await createVaultBrowserBinding({ secret_id: secret.id, purpose: "browser_login", origin }, signal);
+              if (signal.aborted) return;
+              // A successful write remains visible even if its follow-up read fails.
+              setReferences((current) => [...(current ?? []).filter((ref) => ref.id !== reference.id), reference]);
+              setBrowserGrant(null);
+              setNotice(latestText.current(`已授权 ${secret.name} 用于 ${reference.origin} 的浏览器登录。`, `${secret.name} is authorized for browser sign-in on ${reference.origin}.`));
+            }, true)} />}
           <div className="space-y-1 text-[12px] text-neutral-500">
             <p className="font-medium">{text("使用位置", "Used by")}</p>
             {references === null ? <p>{text("引用列表暂未确认，请刷新后查看。", "Usage references are not confirmed yet. Refresh to check.")}</p> : <>
@@ -313,6 +328,19 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
                   {ref.scope === "project_connector" && <> · {vaultReferenceSlotLabel(ref.slot, text)}</>}
                   {ref.env_name && <> · <code>{ref.env_name}</code></>}
                   {(ref.scope === "project" || ref.scope === "project_connector") && <> · {ref.environment === "production" ? text("生产", "Production") : text("预览", "Preview")}</>}
+                  {ref.scope === "browser" && ref.purpose !== "supabase_provision_password" && <>
+                    {" "}<button type="button" className={`${QUIET} text-red-600`} data-vault-browser-remove={ref.id} disabled={busy || !!editor || !!browserGrant} onClick={() => { setRemovingBrowser(ref.id); setDeleting(null); }}>{text("移除引用", "Remove")}</button>
+                    {removingBrowser === ref.id && <div data-vault-browser-remove-confirm={ref.id} className="mt-2 space-y-2 rounded-lg border border-neutral-200 p-3 dark:border-neutral-700">
+                      <p>{text(`移除此引用将撤销 ${ref.origin} 使用此项目的浏览器权限。`, `Removing this reference revokes browser access to this item on ${ref.origin}.`)}</p>
+                      <div className="flex gap-2"><button type="button" className={`${QUIET} text-red-600`} disabled={busy} onClick={() => void act(async (signal) => {
+                        await deleteVaultBrowserBinding(ref.id, signal);
+                        if (signal.aborted) return;
+                        setReferences((current) => current?.filter((item) => item.id !== ref.id) ?? null);
+                        setRemovingBrowser(null);
+                        setNotice(latestText.current(`已撤销 ${ref.origin} 的浏览器使用权限。`, `Browser access on ${ref.origin} has been revoked.`));
+                      }, true)}>{text("确认移除", "Remove reference")}</button><button type="button" className={QUIET} disabled={busy} onClick={() => setRemovingBrowser(null)}>{text("取消", "Cancel")}</button></div>
+                    </div>}
+                  </>}
                 </li>)}
               </ul>
             </>}
@@ -333,6 +361,36 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     </>}
     {status && <ManagedCredentialsSection summary={status.managed_credentials} />}
   </section>;
+}
+
+function BrowserGrantEditor({ secret, references, busy, accent, onClose, onGrant }: {
+  secret: VaultSecret; references: VaultReference[] | null; busy: boolean; accent?: string;
+  onClose: () => void; onGrant: (origin: string) => void;
+}) {
+  const text = useVaultText();
+  const id = useId();
+  const [origin, setOrigin] = useState("");
+  const [invalid, setInvalid] = useState(false);
+  const normalized = normalizeVaultBrowserOrigin(origin);
+  const duplicate = !!normalized && !!references?.some((ref) => ref.secret_id === secret.id && ref.scope === "browser"
+    && !ref.project_id && ref.purpose === "browser_login" && ref.origin === normalized);
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (busy || duplicate) return;
+    if (!normalized) { setInvalid(true); return; }
+    onGrant(normalized);
+  }
+  return <form data-vault-browser-grant={secret.id} aria-label={text("授权浏览器", "Authorize browser")} aria-busy={busy} noValidate autoComplete="off" onSubmit={submit} className="space-y-3 rounded-xl border border-neutral-200 p-4 dark:border-neutral-700">
+    <p className="font-medium">{text("授权项目", "Vault item")}: {secret.name}</p>
+    <fieldset disabled={busy} className="space-y-3">
+      <label htmlFor={`${id}-origin`} className="block space-y-1"><span>{text("网站（完整 HTTPS 地址）", "Website (exact HTTPS origin)")}</span><input id={`${id}-origin`} type="url" className={FIELD} value={origin} onChange={(event) => { setOrigin(event.target.value); setInvalid(false); }} placeholder="https://example.com" maxLength={300} autoCapitalize="off" spellCheck={false} aria-invalid={invalid} aria-describedby={`${id}-hint`} required /></label>
+      <p id={`${id}-hint`} className="text-[12px] leading-relaxed text-neutral-500">{text("只授权此网站的浏览器登录。填写 https:// 加网站域名，可含 HTTPS 端口；不要填写路径、查询参数、通配符或账号密码。仅保存引用，agent 无法看到密钥。", "Allow browser sign-in only on this website. Enter https:// and its hostname, with an HTTPS port if needed; omit paths, queries, wildcards and credentials. Only a reference is saved; agents cannot see the secret.")}</p>
+      {normalized && <p className="break-all" data-vault-browser-target="">{text("允许登录的网站", "Website allowed to sign in")}: <code>{normalized}</code></p>}
+      {invalid && <p role="alert" className="text-red-600">{text("请输入完整、有效的 HTTPS 网站地址，不含路径、查询参数、片段、通配符或账号密码。", "Enter a valid exact HTTPS origin without a path, query, fragment, wildcard or credentials.")}</p>}
+      {duplicate && <p role="status">{text("此项目已授权用于该网站的浏览器登录，可在使用位置中移除引用。", "This item is already authorized for browser sign-in on this website. Remove its reference under Used by to revoke access.")}</p>}
+      <div className="flex gap-2"><button type="submit" className={PRIMARY} style={accent ? { backgroundColor: accent } : undefined} disabled={busy || !origin || duplicate}>{busy ? text("授权中…", "Authorizing…") : text("确认授权", "Authorize login")}</button><button type="button" className={QUIET} disabled={busy} onClick={onClose}>{text("取消", "Cancel")}</button></div>
+    </fieldset>
+  </form>;
 }
 
 function ManagedCredentialsSection({ summary }: { summary?: VaultManagedCredentials }) {

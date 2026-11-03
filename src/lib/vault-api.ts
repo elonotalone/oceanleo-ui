@@ -41,6 +41,9 @@ export type UpdateVaultSecret = Partial<Pick<CreateVaultSecret, "name" | "userna
 export type CreateVaultReference = {
   secret_id: string; purpose: "runtime_env"; env_name: string; environment: VaultEnvironment;
 };
+export type CreateVaultBrowserBinding = {
+  secret_id: string; purpose: "browser_login"; origin: string;
+};
 export type VaultErrorCode = "signed_out" | "reauth_required" | "disabled" | "unavailable" | "not_found" | "invalid" | "conflict" | "quota" | "rate_limited" | "network" | "forbidden" | "mutation_committed_runtime_unavailable"
   | "fence_settling" | "fence_uncertain" | "fence_busy";
 export type VaultFenceRow = {
@@ -149,8 +152,35 @@ export function createProjectVaultReference(projectId: string, input: CreateVaul
 }
 export const deleteProjectVaultReference = (projectId: string, id: string, signal?: AbortSignal) =>
   request<{ reference: VaultReference }>(`${projectPath(projectId)}/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
+
+/** Exact website metadata only; the server still enforces ownership, auth and fences. */
+export function createVaultBrowserBinding(input: CreateVaultBrowserBinding, signal?: AbortSignal) {
+  const { secret_id, purpose, origin } = input;
+  const normalized = normalizeVaultBrowserOrigin(origin);
+  if (purpose !== "browser_login" || !normalized) return Promise.reject(new VaultApiError("invalid", 400));
+  return request<{ reference: VaultReference }>("/v1/vault/browser-bindings", "POST", { secret_id, purpose: "browser_login", origin: normalized }, signal);
+}
 export const deleteVaultBrowserBinding = (id: string, signal?: AbortSignal) =>
   request<{ reference: VaultReference }>(`/v1/vault/browser-bindings/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
+
+/**
+ * Match VaultService._origin's exact HTTPS boundary before POST. Check the raw
+ * form first: URL() otherwise removes dot paths, whitespace or empty delimiters.
+ * Canonical URL hosts (including IDNA/IPv6) are sent to the server unchanged;
+ * default 443 is omitted and other valid HTTPS ports remain part of the origin.
+ */
+export function normalizeVaultBrowserOrigin(origin: string): string | null {
+  if (typeof origin !== "string" || origin.length > 300 || /[\s\x00-\x20\x7f\\@*%?#]/u.test(origin)) return null;
+  const match = /^https:\/\/(\[[0-9a-f:.]+\]|[^:\/\[\]]+)(?::([0-9]+))?\/?$/i.exec(origin);
+  if (!match || (match[2] !== undefined && (Number(match[2]) < 1 || Number(match[2]) > 65535))) return null;
+  try {
+    const url = new URL(origin);
+    const host = url.hostname;
+    if (!host || host.endsWith(".")) return null;
+    if (!host.startsWith("[") && (host.length > 253 || !host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/i.test(label)))) return null;
+    return url.origin;
+  } catch { return null; }
+}
 
 /** `null` means unknown (an older gateway without fence reporting), never an error on its own. */
 export async function getVaultFenceStatus(signal?: AbortSignal): Promise<VaultFenceStatus | null> {
