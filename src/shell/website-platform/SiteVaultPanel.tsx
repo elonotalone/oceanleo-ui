@@ -4,10 +4,12 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { AUTH_STATE_EVENT } from "../../lib/auth/client";
 import {
   createProjectVaultReference, deleteProjectVaultReference, deleteVaultBrowserBinding, getProjectVaultReferences,
-  getVault, safeVaultFingerprint, validVaultEnvName, vaultMutationWasCommitted,
+  getVault, recoverVault, safeVaultFingerprint, validVaultEnvName, vaultFenceState, vaultMutationWasCommitted,
   type VaultEnvironment, type VaultReference, type VaultStatus,
 } from "../../lib/vault-api";
-import { useVaultText, vaultCommittedNotice, vaultErrorText, vaultPurposeLabel, vaultReferenceSlotLabel } from "../../pages/settings/VaultSettingsSection";
+import {
+  useVaultFence, useVaultText, vaultCommittedNotice, vaultErrorText, VaultFenceNotice, vaultPurposeLabel, vaultRecoveredNotice, vaultReferenceSlotLabel,
+} from "../../pages/settings/VaultSettingsSection";
 
 export type SiteVaultPanelProps = {
   projectId: string;
@@ -42,6 +44,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
   const [removing, setRemoving] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   const operation = useRef(false);
+  const { fence, setFence, checkFence, noteFence, settle } = useVaultFence(projectId);
 
   const refresh = useCallback(async (signal: AbortSignal) => {
     const status = await getVault(signal);
@@ -62,16 +65,19 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       lifetime.current = controller;
       setVault(null); setReferences([]); setLoaded(false); setLoading(true);
       setSecretId(""); setEnvName(""); setRemoving(null); setError(""); setNotice(""); setCommitted(false);
-      operation.current = false; setBusy(false);
+      operation.current = false; setBusy(false); setFence(null);
       if (!projectId) { setLoading(false); return; }
-      void refresh(controller.signal).catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(vaultErrorText(cause, latestText.current));
+      void checkFence(controller.signal);
+      void refresh(controller.signal).catch(async (cause: unknown) => {
+        if (controller.signal.aborted) return;
+        if (vaultFenceState(cause)) await noteFence(cause, controller.signal);
+        else setError(vaultErrorText(cause, latestText.current));
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     };
     load();
     window.addEventListener(AUTH_STATE_EVENT, load);
     return () => { lifetime.current?.abort(); window.removeEventListener(AUTH_STATE_EVENT, load); };
-  }, [projectId, refresh]);
+  }, [projectId, refresh, setFence, checkFence, noteFence]);
 
   async function recoverCommitted(signal: AbortSignal) {
     if (signal.aborted) return;
@@ -96,11 +102,21 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
     } catch (cause) {
       if (!signal.aborted) {
         if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+        else if (vaultFenceState(cause)) { setLoaded(false); await noteFence(cause, signal); }
         else { setError(vaultErrorText(cause, latestText.current)); setLoaded(false); }
       }
     } finally {
       if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); }
     }
+  }
+
+  function recover() {
+    void act(async (signal) => {
+      const { recovery } = await recoverVault(signal);
+      if (signal.aborted) return;
+      const restart = settle(recovery);
+      setNotice(vaultRecoveredNotice(restart, recovery.pending.some((row) => row.project_id === projectId), latestText.current, true));
+    });
   }
 
   const selected = vault?.secrets.find((secret) => secret.id === secretId);
@@ -129,6 +145,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
     {loading && <p role="status">{text("正在读取引用…", "Loading references…")}</p>}
     {error && <div role="alert" className="space-y-2 rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-950/30"><p>{error}</p><button type="button" disabled={busy || !projectId} className={BUTTON} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 p-3 text-[12px] dark:bg-neutral-800">{notice}</p>}
+    {fence && <VaultFenceNotice fence={fence} busy={busy || !projectId} site className={BUTTON} text={text} onRecover={recover} />}
     {committed && <div data-site-vault-committed="" role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><p>{vaultCommittedNotice(text)}</p><button type="button" disabled={busy} className={BUTTON} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {vault && !vault.enabled && <p role="status" className="rounded-xl border border-dashed border-neutral-200 p-4 dark:border-neutral-700">{text("当前服务尚未启用保险箱，暂时不能添加或移除引用。", "Vault is not enabled on this service. Adding and removing references are unavailable.")}</p>}
     {vault?.enabled && <>

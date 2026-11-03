@@ -4,9 +4,9 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { useLocale } from "../../i18n/useT.client";
 import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
-  createVaultSecret, deleteVaultSecret, getVault, getVaultReferences, getVaultSealKey,
-  safeVaultFingerprint, updateVaultSecret, vaultMutationWasCommitted, VaultApiError,
-  type VaultKind, type VaultManagedCredentials, type VaultReference, type VaultSecret, type VaultStatus,
+  createVaultSecret, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultReferences, getVaultSealKey, recoverVault,
+  safeVaultFingerprint, updateVaultSecret, vaultFenceState, vaultMutationWasCommitted, VaultApiError,
+  type VaultFenceRow, type VaultKind, type VaultManagedCredentials, type VaultRecovery, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
 import { sealVaultValue } from "../../lib/vault-seal";
 
@@ -43,6 +43,84 @@ export function vaultCommittedNotice(text: (zh: string, en: string) => string): 
   return text("保险箱变更已保存，但运行环境的恢复尚未确认。请检查网站运行状态，并刷新查看最新密钥或授权；不要重复提交这次变更。", "Your vault change was saved, but runtime recovery could not be confirmed. Check the website runtime status and refresh the current vault details; do not submit the change again.");
 }
 
+export function vaultFenceText(text: (zh: string, en: string) => string, site = false): string {
+  return site
+    ? text("上一次密钥变更还没有确认完成。为安全起见，此网站已暂停使用新密钥，系统会自动核对。", "Your last vault change has not been confirmed yet. For safety, this website is not using the new secret yet; the system is checking automatically.")
+    : text("上一次密钥变更还没有确认完成。为安全起见，相关网站已暂停使用新密钥，系统会自动核对。", "Your last vault change has not been confirmed yet. For safety, affected websites are not using the new secret yet; the system is checking automatically.");
+}
+
+/** `readyAt` is a local clock deadline; `null` means recovery may start now. */
+export type VaultFence = { state: "settling" | "uncertain"; readyAt: number | null };
+
+function fenceFromRows(rows: Array<Pick<VaultFenceRow, "state" | "retry_after">>): VaultFence | null {
+  if (!rows.length) return null;
+  const wait = Math.max(0, ...rows.map((row) => row.retry_after));
+  return { state: rows.some((row) => row.state === "uncertain") ? "uncertain" : "settling", readyAt: wait ? Date.now() + wait * 1000 : null };
+}
+
+/**
+ * Fence state for one owner (no projectId) or one website. Callers pass their
+ * own lifetime signal, so a label change never aborts or replaces a pending write.
+ */
+export function useVaultFence(projectId?: string) {
+  const [fence, setFenceState] = useState<VaultFence | null>(null);
+  const generation = useRef(0);
+  const relevant = useCallback((row: { scope?: string; project_id: string | null }) =>
+    projectId === undefined || row.scope === "owner" || row.project_id === projectId, [projectId]);
+  const setFence = useCallback((next: VaultFence | null) => { generation.current += 1; setFenceState(next); }, []);
+  // Status only ever adds a notice: an older gateway (404/503) or a failed read shows nothing extra.
+  const checkFence = useCallback(async (signal: AbortSignal) => {
+    const current = generation.current;
+    let rows: VaultFenceRow[] = [];
+    try { rows = (await getVaultFenceStatus(signal))?.fences.filter(relevant) ?? []; } catch { /* Unknown. */ }
+    if (!signal.aborted && current === generation.current && rows.length) setFence(fenceFromRows(rows));
+  }, [relevant, setFence]);
+  const noteFence = useCallback(async (cause: unknown, signal: AbortSignal) => {
+    const state = vaultFenceState(cause);
+    if (!state || signal.aborted) return;
+    const wait = cause instanceof VaultApiError ? cause.retryAfter : null;
+    setFence({ state, readyAt: wait ? Date.now() + wait * 1000 : null });
+    if (wait === null) await checkFence(signal);
+  }, [checkFence, setFence]);
+  /** Apply a recovery result; returns the restart count relevant to this surface. */
+  const settle = useCallback((recovery: VaultRecovery) => {
+    setFence(fenceFromRows(recovery.pending.filter((row) => relevant({ project_id: row.project_id }))
+      .map((row) => ({ state: "held" as const, retry_after: row.retry_after }))));
+    return new Set(recovery.runtime_restart_required.filter((id) => relevant({ project_id: id }))).size;
+  }, [relevant, setFence]);
+  return { fence, setFence, checkFence, noteFence, settle };
+}
+
+export function vaultRecoveredNotice(restart: number, pending: boolean, text: (zh: string, en: string) => string, site = false): string {
+  const done = pending ? "" : text("已恢复。", "Recovered.");
+  const rerun = !restart ? "" : site
+    ? text("此网站需要重新启动后才会使用最新密钥。", "Restart this website to use the latest secret.")
+    : text(`有 ${restart} 个网站需要重新启动后才会使用最新密钥。`, `${restart} ${restart === 1 ? "website needs" : "websites need"} a restart to use the latest secret.`);
+  return [done, rerun].filter(Boolean).join(text("", " "));
+}
+
+/** One countdown timer per notice; it is cleared on unmount or when the deadline changes. */
+export function VaultFenceNotice(props: { fence: VaultFence; busy: boolean; site?: boolean; className: string; onRecover: () => void; text: (zh: string, en: string) => string }) {
+  return <FenceNoticeBody key={props.fence.readyAt ?? 0} {...props} />;
+}
+
+function FenceNoticeBody({ fence, busy, site, className, onRecover, text }: Parameters<typeof VaultFenceNotice>[0]) {
+  const [now, setNow] = useState(() => Date.now());
+  const remaining = fence.readyAt === null ? 0 : Math.max(0, fence.readyAt - now);
+  useEffect(() => {
+    if (remaining <= 0) return;
+    // Wake when the displayed minute changes, or at the deadline.
+    const timer = window.setTimeout(() => setNow(Date.now()), remaining % 60000 || 60000);
+    return () => window.clearTimeout(timer);
+  }, [remaining]);
+  const minutes = Math.max(1, Math.ceil(remaining / 60000));
+  return <div data-vault-fence={fence.state} role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+    <p>{vaultFenceText(text, site)}</p>
+    {remaining > 0 && <p className="text-[12px]">{text(`约 ${minutes} 分钟后可恢复`, `Recovery available in about ${minutes} min`)}</p>}
+    <button type="button" disabled={busy || remaining > 0} className={className} onClick={onRecover}>{text("恢复", "Recover")}</button>
+  </div>;
+}
+
 export function vaultErrorText(cause: unknown, text: (zh: string, en: string) => string): string {
   switch (cause instanceof VaultApiError ? cause.code : "unavailable") {
     case "signed_out": return text("登录状态已失效，请重新登录。", "Your session has ended. Sign in again.");
@@ -56,6 +134,8 @@ export function vaultErrorText(cause: unknown, text: (zh: string, en: string) =>
     case "rate_limited": return text("操作太频繁，请稍后重试。", "Too many requests. Try again shortly.");
     case "network": return text("暂时连不上保险箱，请检查网络后重试。", "Cannot reach the vault. Check your connection and try again.");
     case "mutation_committed_runtime_unavailable": return vaultCommittedNotice(text);
+    case "fence_settling": case "fence_uncertain": return vaultFenceText(text);
+    case "fence_busy": return text("另一项保险箱变更正在进行，请稍后重试。", "Another vault change is in progress. Try again shortly.");
     default: return text("保险箱操作未完成，请稍后重试。", "The vault operation could not be completed. Try again.");
   }
 }
@@ -99,6 +179,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   const active = useRef(true);
   const operation = useRef(false);
   const lifetime = useRef<AbortController | null>(null);
+  const { fence, checkFence, noteFence, settle } = useVaultFence();
 
   const refresh = useCallback(async (signal: AbortSignal) => {
     const next = await getVault(signal);
@@ -116,11 +197,14 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     const controller = new AbortController();
     lifetime.current = controller;
     active.current = true;
-    void refresh(controller.signal).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(vaultErrorText(cause, latestText.current));
+    void checkFence(controller.signal);
+    void refresh(controller.signal).catch(async (cause: unknown) => {
+      if (controller.signal.aborted) return;
+      if (vaultFenceState(cause)) await noteFence(cause, controller.signal);
+      else setError(vaultErrorText(cause, latestText.current));
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { active.current = false; controller.abort(); };
-  }, [refresh]);
+  }, [refresh, checkFence, noteFence]);
 
   async function recoverCommitted(signal: AbortSignal) {
     if (signal.aborted) return;
@@ -139,10 +223,20 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     catch (cause) {
       if (!signal.aborted) {
         if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+        else if (vaultFenceState(cause)) await noteFence(cause, signal);
         else setError(vaultErrorText(cause, latestText.current));
       }
     }
     finally { if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); } }
+  }
+
+  function recover() {
+    void act(async (signal) => {
+      const { recovery } = await recoverVault(signal);
+      if (signal.aborted) return;
+      const restart = settle(recovery);
+      setNotice(vaultRecoveredNotice(restart, recovery.pending.length > 0, latestText.current));
+    });
   }
 
   function kindLabel(kind: VaultKind) {
@@ -157,6 +251,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
       <p>{error}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button>
     </div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 p-3 dark:bg-neutral-800">{notice}</p>}
+    {fence && <VaultFenceNotice fence={fence} busy={busy} className={QUIET} text={text} onRecover={recover} />}
     {committed && <div data-vault-committed="" role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><p>{vaultCommittedNotice(text)}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {status?.migration_pending && <div role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
       <p>{status.migration_pending === "quota"
@@ -180,6 +275,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
           const signal = lifetime.current?.signal;
           if (!active.current || !signal || signal.aborted) return;
           if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
+          else if (vaultFenceState(cause)) await noteFence(cause, signal);
           else setError(vaultErrorText(cause, latestText.current));
         }} />}
       {!status.secrets.length && !loading && <p className="rounded-2xl border border-dashed border-neutral-200 p-5 text-center text-neutral-500 dark:border-neutral-700">{text("还没有项目。先添加密钥，再从网站的小保险箱选择它。", "No items yet. Add a secret, then select it from a website’s small vault.")}</p>}

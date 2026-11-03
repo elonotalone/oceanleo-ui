@@ -41,11 +41,19 @@ export type UpdateVaultSecret = Partial<Pick<CreateVaultSecret, "name" | "userna
 export type CreateVaultReference = {
   secret_id: string; purpose: "runtime_env"; env_name: string; environment: VaultEnvironment;
 };
-export type VaultErrorCode = "signed_out" | "reauth_required" | "disabled" | "unavailable" | "not_found" | "invalid" | "conflict" | "quota" | "rate_limited" | "network" | "forbidden" | "mutation_committed_runtime_unavailable";
+export type VaultErrorCode = "signed_out" | "reauth_required" | "disabled" | "unavailable" | "not_found" | "invalid" | "conflict" | "quota" | "rate_limited" | "network" | "forbidden" | "mutation_committed_runtime_unavailable"
+  | "fence_settling" | "fence_uncertain" | "fence_busy";
+export type VaultFenceRow = {
+  scope: "owner" | "project"; project_id: string | null; state: "held" | "uncertain"; retry_after: number;
+};
+export type VaultFenceStatus = { fences: VaultFenceRow[] };
+export type VaultRecovery = {
+  recovered: number; runtime_restart_required: string[]; pending: Array<{ project_id: string; retry_after: number }>;
+};
 
 /** Never retain or render arbitrary transport text: it can contain submitted data. */
 export class VaultApiError extends Error {
-  constructor(readonly code: VaultErrorCode, readonly status: number) {
+  constructor(readonly code: VaultErrorCode, readonly status: number, readonly retryAfter: number | null = null) {
     super(code);
     this.name = "VaultApiError";
   }
@@ -53,6 +61,17 @@ export class VaultApiError extends Error {
 
 export function vaultMutationWasCommitted(cause: unknown): boolean {
   return cause instanceof VaultApiError && cause.code === "mutation_committed_runtime_unavailable";
+}
+
+/** A previous change has not been proven settled; the owner may run recovery. */
+export function vaultFenceState(cause: unknown): "settling" | "uncertain" | null {
+  if (!(cause instanceof VaultApiError)) return null;
+  return cause.code === "fence_settling" ? "settling" : cause.code === "fence_uncertain" ? "uncertain" : null;
+}
+
+// Whole seconds, bounded so a malformed value cannot disable recovery for long.
+function retrySeconds(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.min(Math.ceil(value), 86400) : null;
 }
 
 async function request<T>(path: string, method = "GET", body?: object, signal?: AbortSignal): Promise<T> {
@@ -64,11 +83,14 @@ async function request<T>(path: string, method = "GET", body?: object, signal?: 
     });
   } catch (cause) {
     if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
-    const error = cause as { code?: unknown; status?: unknown } | null;
+    const error = cause as { code?: unknown; status?: unknown; retry_after?: unknown; retryAfter?: unknown; detail?: { retry_after?: unknown } } | null;
     const status = typeof error?.status === "number" ? error.status : 0;
     const rawCode = typeof error?.code === "string" ? error.code : "";
     const code: VaultErrorCode = status === 401 ? "signed_out"
       : rawCode === "vault_mutation_committed_runtime_unavailable" ? "mutation_committed_runtime_unavailable"
+      : rawCode === "vault_runtime_fence_settling" ? "fence_settling"
+      : rawCode === "vault_runtime_fence_uncertain" ? "fence_uncertain"
+      : rawCode === "vault_runtime_fence_busy" ? "fence_busy"
       : rawCode === "reauth_required" ? "reauth_required"
       : rawCode === "vault_disabled" ? "disabled"
       : status === 403 ? "forbidden"
@@ -78,7 +100,8 @@ async function request<T>(path: string, method = "GET", body?: object, signal?: 
       : status === 429 ? "rate_limited"
       : status === 400 || status === 422 ? "invalid"
       : status === 0 ? "network" : "unavailable";
-    throw new VaultApiError(code, status);
+    // Keep only the numeric wait; the detail message is never retained.
+    throw new VaultApiError(code, status, retrySeconds(error?.retry_after ?? error?.retryAfter ?? error?.detail?.retry_after));
   }
 }
 
@@ -111,6 +134,33 @@ export const deleteProjectVaultReference = (projectId: string, id: string, signa
   request<{ reference: VaultReference }>(`${projectPath(projectId)}/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
 export const deleteVaultBrowserBinding = (id: string, signal?: AbortSignal) =>
   request<{ reference: VaultReference }>(`/v1/vault/browser-bindings/${encodeURIComponent(id)}`, "DELETE", undefined, signal);
+
+/** `null` means unknown (an older gateway without fence reporting), never an error on its own. */
+export async function getVaultFenceStatus(signal?: AbortSignal): Promise<VaultFenceStatus | null> {
+  let result: { fences?: unknown };
+  try { result = await request<{ fences?: unknown }>("/v1/vault/fence-status", "GET", undefined, signal); }
+  catch (cause) {
+    if (cause instanceof VaultApiError && (cause.status === 404 || cause.status === 503)) return null;
+    throw cause;
+  }
+  if (!Array.isArray(result?.fences)) return null;
+  const fences: VaultFenceRow[] = [];
+  for (const row of result.fences as Array<Partial<VaultFenceRow> | null>) {
+    if (!row || (row.scope !== "owner" && row.scope !== "project") || (row.state !== "held" && row.state !== "uncertain")) continue;
+    fences.push({ scope: row.scope, project_id: typeof row.project_id === "string" ? row.project_id : null, state: row.state, retry_after: retrySeconds(row.retry_after) ?? 0 });
+  }
+  return { fences };
+}
+
+export async function recoverVault(signal?: AbortSignal): Promise<{ recovery: VaultRecovery }> {
+  const result = await request<{ recovery?: Partial<VaultRecovery> }>("/v1/vault/recover", "POST", undefined, signal);
+  const recovery = result?.recovery;
+  return { recovery: {
+    recovered: typeof recovery?.recovered === "number" && Number.isFinite(recovery.recovered) ? recovery.recovered : 0,
+    runtime_restart_required: Array.isArray(recovery?.runtime_restart_required) ? recovery.runtime_restart_required.filter((id): id is string => typeof id === "string") : [],
+    pending: Array.isArray(recovery?.pending) ? recovery.pending.flatMap((row) => row && typeof row.project_id === "string" ? [{ project_id: row.project_id, retry_after: retrySeconds(row.retry_after) ?? 0 }] : []) : [],
+  } };
+}
 
 /** Do not accidentally display a raw value if a malformed response reaches the UI. */
 export function safeVaultFingerprint(kind: VaultKind, fingerprint?: string): string {
