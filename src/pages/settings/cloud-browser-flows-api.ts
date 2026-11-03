@@ -1,7 +1,7 @@
 "use client";
 
 import { accessToken } from "../../lib/auth/client";
-import { GATEWAY_BASE } from "../../lib/auth/config";
+import { gatewayBase } from "../../lib/auth/config";
 
 export type BrowserFlowAction = "navigate" | "click" | "fill" | "select" | "press" | "credential";
 export type BrowserFlowAnchor = { role?: string; name?: string; label?: string; test_id?: string };
@@ -274,7 +274,7 @@ async function requestResponse(path: string, method = "GET", body?: unknown, sig
   signal?.throwIfAborted();
   let response: Response;
   try {
-    response = await fetch(`${GATEWAY_BASE}/v1/browser${path}`, {
+    response = await fetch(`${gatewayBase()}/v1/browser${path}`, {
       method, cache: "no-store", credentials: "include", redirect: "error",
       headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       body: body === undefined ? undefined : JSON.stringify(body),

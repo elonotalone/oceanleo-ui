@@ -11,7 +11,7 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 const { createRoot } = await import("react-dom/client");
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const auth = dataModule(`export async function accessToken() { return globalThis.__browserFlowsSignedOut ? null : "owner-token"; }`);
-const config = dataModule(`export const GATEWAY_BASE = "https://gateway.test";`);
+const config = dataModule(`export const GATEWAY_BASE = "https://gateway.test"; export function gatewayBase() { return GATEWAY_BASE; }`);
 const apiUrl = await compileModule("src/pages/settings/cloud-browser-flows-api.ts", {
   "../../lib/auth/client": auth, "../../lib/auth/config": config,
 });
@@ -50,6 +50,45 @@ async function withFetch(handler, run) {
   try { return await run(calls); }
   finally { globalThis.fetch = previous; delete globalThis.__browserFlowsSignedOut; }
 }
+
+test("authenticated requests follow trusted desktop and mobile host injection after the helper has loaded", async () => {
+  const host = await import("../src/contracts/client-host-config.ts");
+  const previousHost = host.getClientHostConfig();
+  host.resetClientHostConfigForTests();
+  try {
+    const actualConfigUrl = await compileModule("src/lib/auth/config.ts");
+    const actualConfig = await import(actualConfigUrl);
+    const loadedBeforeInjection = await import(await compileModule("src/pages/settings/cloud-browser-flows-api.ts", {
+      "../../lib/auth/client": auth, "../../lib/auth/config": actualConfigUrl,
+    }));
+    const initialGateway = actualConfig.gatewayBase();
+    const desktopGateway = initialGateway === "https://api.oceanbizs.com" ? "https://api.dev.oceanleo.com" : "https://api.oceanbizs.com";
+    const mobileGateway = desktopGateway === "https://api.oceanbizs.com" ? "https://api.dev.oceanleo.com" : "https://api.oceanbizs.com";
+    const inject = (platform, gatewayOrigin) => host.configureClientHost({
+      family: gatewayOrigin === "https://api.oceanbizs.com" ? "ws" : "com",
+      portalOrigin: gatewayOrigin === "https://api.oceanbizs.com" ? "https://oceanbizs.com" : "https://oceanleo.com",
+      gatewayOrigin, identityOrigin: "https://auth.oceanleo.com", identityAnonKey: "synthetic-anon",
+      locale: "en", platform, capabilities: [],
+    });
+    await withFetch(() => json({ items: [] }), async calls => {
+      await loadedBeforeInjection.cloudBrowserFlowsApi.flows();
+      inject("desktop", desktopGateway);
+      assert.equal(actualConfig.GATEWAY_BASE, initialGateway);
+      assert.equal(actualConfig.gatewayBase(), desktopGateway);
+      await loadedBeforeInjection.cloudBrowserFlowsApi.flows();
+      inject("ios", mobileGateway);
+      await loadedBeforeInjection.cloudBrowserFlowsApi.flows();
+      assert.deepEqual(calls.map(call => call.url), [initialGateway, desktopGateway, mobileGateway].map(origin => `${origin}/v1/browser/flows`));
+      for (const call of calls) {
+        assert.equal(call.init.headers.Authorization, "Bearer owner-token");
+        assert.equal(call.init.credentials, "include");
+      }
+    });
+  } finally {
+    host.resetClientHostConfigForTests();
+    if (previousHost) host.configureClientHost(previousHost);
+  }
+});
 
 test("safe structured steps preserve vault refs and reject executable or sensitive plaintext", () => {
   const safe = api.parseBrowserFlow(flow());
