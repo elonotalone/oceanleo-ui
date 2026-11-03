@@ -11,7 +11,7 @@ export function WebsitePanelView({ panel, data, loading, error, pending, onWire 
   pending?: boolean; onWire: () => void;
 }) {
   const tt = useWebsiteUI();
-  return <section className="h-full overflow-auto p-4" data-testid="website-panel">
+  return <section className="overflow-auto p-4" data-testid="website-panel" data-panel-source={panel.source}>
     <h2 className="mb-3 text-sm font-semibold">{panel.title} · {tt(PANEL_STATE_LABEL[panel.state])}</h2>
     {panel.state === "error" || error ? <p role="alert">{panel.error || error || tt("看板数据暂不可用。")}</p>
       : panel.state === "not_wired" ? <div data-testid="website-panel-not-wired">

@@ -15,6 +15,8 @@ const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/
   "./website-preview-i18n":i18n, "./WebsitePanelView":panelModule,
   "../../api/website-runtime":dataModule("export const websiteRuntimeApi={};"),
   "../../api/website-panels":dataModule("export const websitePanelsApi={};"),
+  "../../api/website-connectors":dataModule("export const websiteConnectorsApi={};"),
+  "./WebsiteConfiguration":dataModule("export function WebsiteConfiguration(){return null;}"),
   "./WebsitePreviewPicker":dataModule("export function WebsitePreviewPicker(){return null;}"),
   "../../lib/history-events":dataModule("export function notifyHistoryChanged(){}"),
 }));
@@ -74,6 +76,13 @@ test("UC-3 preview keeps scripts without same-origin, no frame messaging or inli
   const source=readFileSync("src/shell/website-platform/WebsitePreviewWorkbench.tsx","utf8");
   assert.match(source,/sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts"/);
   assert.doesNotMatch(source,/allow-same-origin|postMessage|contentEditable|dangerouslySetInnerHTML/);
+  // UC-3: calibrate the assertion against an unsafe in-memory mutation; never loosen a live iframe.
+  const locked = text => {
+    assert.match(text,/sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts"/);
+    assert.doesNotMatch(text,/allow-same-origin/);
+  };
+  locked(source);
+  assert.throws(() => locked(source.replace('allow-scripts"', 'allow-scripts allow-same-origin"')));
   const shell=readFileSync("src/shell/InlineAdvancedWorkbenchShell.tsx","utf8");
   assert.match(shell,/editBarSuppressed = websitePreviewOnly \|\|/);
 });
@@ -97,7 +106,9 @@ test("runtime logs use cursor and fix shows returned task next to the composer",
   const root=createRoot(host); const cursors=[];
   const runtimeApi={get:async()=>({state:"crashed",preview_url:null,last_error:"bad command"}),logs:async(_id,cursor)=>{cursors.push(cursor);return {lines:[{ts:"now",stream:"stderr",text:"failure details"}],cursor:"cursor-1"};},fix:async()=>({task_id:"task-fixed"})};
   await act(async()=>root.render(React.createElement(WebsitePreviewWorkbench,{projectId:"p",runtimeApi,panelsApi:{list:async()=>[]}})));
-  await act(async()=>host.querySelector('button[title="查看运行日志"]').click());
+  assert.equal(host.querySelector('button[title="查看运行日志"]'), null);
+  await act(async()=>host.querySelector('[data-testid="website-view-dashboard"]').click());
+  await act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="运行日志").click());
   assert.deepEqual(cursors,[null]); assert.match(host.querySelector('[role="log"]').textContent,/failure details/);
   await act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="让 agent 修复").click());
   assert.equal(composer.querySelector("a").getAttribute("href"),"/tasks/task-fixed");
@@ -127,6 +138,10 @@ test("C3 and C7 clients encode ids and log cursors, use gateway auth and preserv
     assert.equal(JSON.parse(calls[3].init.body).prompt,"Write run manifest");
     assert.match(calls[5].url,/\/panels\/users%2Fall\/data$/);
     assert.match(calls[6].url,/\/panels\/users%2Fall\/wire$/);
+    await websiteRuntimeApi.checkpoint("id/one");
+    assert.equal(calls[7].url,"https://gateway.invalid/v1/website-projects/id%2Fone/runtime/checkpoint");
+    assert.equal(calls[7].init.method,"POST"); assert.equal(calls[7].init.keepalive,true);
+    assert.deepEqual(JSON.parse(calls[7].init.body),{reason:"leave"});
     for(const call of calls) {assert.equal(call.init.headers.Authorization,"Bearer test-only");assert.equal(call.init.cache,"no-store");}
   } finally {globalThis.fetch=original;}
 });
@@ -140,7 +155,7 @@ test("English preview vocabulary covers every runtime state, panel state and int
 });
 // UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
 // C7 wiring UI dispatches a panel task and shows its returned id; the mocked API does not test authorization or content isolation.
-test("C7 not_wired dropdown invokes wire and exposes the returned task",async()=>{
+test("C7 not_wired website dashboard panel invokes wire and exposes the returned task",async()=>{
   const host=document.createElement("div"); document.body.append(host);
   const root=createRoot(host); const wired=[];
   const panelsApi={
@@ -148,7 +163,7 @@ test("C7 not_wired dropdown invokes wire and exposes the returned task",async()=
     wire:async(id,panel)=>{wired.push([id,panel]);return {task_id:"wire-task"};}
   };
   await act(async()=>root.render(React.createElement(WebsitePreviewWorkbench,{projectId:"p",runtimeApi:{get:async()=>({state:"running",preview_url:"https://p.ws.oceanleo.app/"})},panelsApi})));
-  await act(async()=>{const select=host.querySelector("select");select.value="users";select.dispatchEvent(new window.Event("change",{bubbles:true}));});
+  await act(async()=>host.querySelector('[data-testid="website-view-dashboard"]').click());
   assert.match(host.textContent,/未接线/);
   await act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="让 agent 配置此看板").click());
   assert.deepEqual(wired,[["p","users"]]); assert.equal(host.querySelector('[data-testid="website-agent-task"] a').getAttribute("href"),"/tasks/wire-task");

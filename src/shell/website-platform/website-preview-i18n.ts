@@ -40,11 +40,48 @@ export const WEBSITE_PREVIEW_EN: Record<string, string> = {
   "跨域预览仅记录点击坐标，不读取页面 DOM。": "Cross-origin previews record coordinates without reading the page DOM.",
   "截图": "Screenshot", "截图失败，可继续发送位置引用。": "Screenshot failed. You can still send a location reference.",
   "添加截图": "Add screenshot", "请使用当前标签页截图，以便坐标对应预览。": "Capture the current tab so coordinates match the preview.",
+  "网站视图": "Website views", "仪表盘": "Dashboard", "配置": "Configuration",
+  "网站运行": "Website runtime", "状态暂不可用": "Status unavailable", "查看仪表盘": "View dashboard",
+  "预览仅用于查看，修改请交给 agent。": "Preview only. Ask the agent to make changes.",
+  "访问量": "Visits", "注册用户": "Registered users", "运行与费用": "Runtime and cost", "域名": "Domain",
+  "平台看板": "Platform panels", "网站看板": "Website panels", "暂无网站看板": "No website panels yet",
+  "平台维护的数据看板，agent 无法修改。": "These data panels are maintained by the platform and cannot be edited by agents.",
+  "由你的网站声明，可让 agent 添加或配置。": "Declared by your website. Ask the agent to add or configure panels.",
+  "网站配置": "Website configuration",
+  "所有服务均可单独选择。应用选择后，agent 会创建迁移或部署任务。": "Choose each service individually. Applying a choice creates an agent task for migration or deployment.",
+  "连接状态来自实际服务检查，保存选择不代表已连接。费用按成本计算，不加价。": "Connection status comes from service checks. Saving a choice does not establish a connection. Services are charged at cost, without markup.",
+  "配置存储尚未就绪，当前显示默认选择，暂时无法保存。": "Configuration storage is not ready. Default choices are shown; saving is unavailable.",
+  "服务未返回 agent 任务，变更尚未确认。": "The service did not return an agent task. The change is not confirmed.",
+  "OceanLeo 提供": "Provided by OceanLeo", "代你购买": "Purchased on your behalf", "你自己的账户": "Your own account",
+  "未连接": "Not connected", "已连接": "Connected", "连接错误": "Connection error",
+  "等待处理": "Pending", "已排队": "Queued", "执行中": "Running", "已完成": "Completed", "失败": "Failed",
+  "已取消": "Cancelled", "等待审核": "Awaiting review", "等待批准": "Awaiting approval",
+  "开发与运行服务": "Development and runtime", "代码仓库": "Code repository", "数据库": "Database",
+  "登录与认证": "Login and authentication", "文件存储": "File storage", "网站托管": "Hosting",
+  "访问统计": "Analytics", "定时任务": "Scheduled tasks",
+  "提供方式": "Provider", "费用依据": "Cost basis", "费率来源": "Rate source", "限制": "Limits", "标准接口": "Standard interfaces",
+  "尚无费用依据": "Cost basis unavailable", "尚无费率来源": "Rate source unavailable",
+  "未声明额外限制": "No additional limits declared", "尚未声明接口": "No interfaces declared",
+  "默认选择": "Default choice", "已保存选择": "Saved choice", "{slot}连接器": "{slot} connector",
+  "应用": "Apply", "可用连接器（{count}）": "Available connectors ({count})",
+  "场景方案": "Scenario presets", "选择场景方案": "Choose a preset", "应用方案": "Apply preset",
+  "方案会填写各项服务，之后仍可逐项更改。": "Presets fill the service choices. Every choice remains editable.",
+  "方案变更": "Preset change", "连接器变更": "Connector change", "任务状态：{state}": "Task status: {state}",
+  "配置任务": "Configuration tasks", "尚无配置变更任务": "No configuration tasks yet",
+  "暂不可用": "Unavailable", "此连接器暂不可用，请选择其他服务。": "This connector is unavailable. Choose another service.",
+  "该方案包含暂不可用的服务，可逐项选择其他连接器。": "This preset includes unavailable services. You can choose other connectors individually.",
+  "任务不存在": "Task not found", "无法创建配置任务，请重试。": "Could not create a configuration task. Please retry.",
+  "暂时无法读取任务状态，请稍后重试。": "Task status is unavailable. Please try again later.",
+  "配置任务不存在，请重试。": "The configuration task was not found. Please retry.",
+  "配置任务执行失败，请打开任务查看原因。": "The configuration task failed. Open the task for details.",
+  "配置任务已取消。": "The configuration task was cancelled.",
 };
+export function useWebsiteLanguage() {
+  try { return useLocale(); } catch { return "zh"; /* standalone legacy host */ }
+}
 export function useWebsiteUI() {
   const tt = useUI();
-  let locale = "zh";
-  try { locale = useLocale(); } catch { /* standalone legacy host */ }
+  const locale = useWebsiteLanguage();
   return useCallback((text: string, vars?: Record<string, string | number>) => {
     const translated = tt(text, vars);
     const fallback = !locale.startsWith("zh") && WEBSITE_PREVIEW_EN[text];

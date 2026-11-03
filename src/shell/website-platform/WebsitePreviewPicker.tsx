@@ -77,10 +77,15 @@ export function WebsitePreviewPicker({ projectId, url, frame, onClose }: {
     <button type="button" disabled={pending || capturing} className="absolute inset-0 cursor-crosshair bg-blue-500/5" aria-label={tt("点选元素")} onClick={async event => {
       if (inserting.current) return;
       const rect = frame.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
       const selectedOperation = ++operation.current;
       inserting.current = true; setPending(true); setRetryReference(null);
-      const ref: PreviewReference = { projectId, url, x: event.clientX - rect.left, y: event.clientY - rect.top, width: rect.width, height: rect.height };
+      // The frame keeps its desktop/phone viewport while CSS scales its visible rectangle.
+      const width = frame.current?.clientWidth || rect.width;
+      const height = frame.current?.clientHeight || rect.height;
+      const ref: PreviewReference = { projectId, url,
+        x: (event.clientX - rect.left) * width / rect.width,
+        y: (event.clientY - rect.top) * height / rect.height, width, height };
       // Normally inaccessible: keep sandbox isolation rather than granting same-origin.
       try {
         const el = frame.current?.contentDocument?.elementFromPoint(ref.x, ref.y);

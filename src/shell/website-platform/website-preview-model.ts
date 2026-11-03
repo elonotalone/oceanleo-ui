@@ -1,4 +1,19 @@
 import type { WebsiteLogs, WebsiteRuntimeState } from "../../api/website-runtime";
+
+export const PREVIEW_VIEWPORTS = {
+  desktop: { width: 1440, height: 900 },
+  phone: { width: 390, height: 844 },
+} as const;
+
+/** Fit a real desktop/phone viewport without turning the site into a narrow layout. */
+export function fitPreviewViewport(width: number, height: number, phone = false) {
+  const viewport = phone ? PREVIEW_VIEWPORTS.phone : PREVIEW_VIEWPORTS.desktop;
+  const availableWidth = Number.isFinite(width) ? Math.max(0, width) : 0;
+  const availableHeight = Number.isFinite(height) ? Math.max(0, height) : 0;
+  const scale = Math.min(1, availableWidth / viewport.width, availableHeight / viewport.height);
+  return { ...viewport, scale, displayWidth: viewport.width * scale, displayHeight: viewport.height * scale };
+}
+
 export const RUNTIME_STATES: Record<WebsiteRuntimeState, { label: string; color: string; progress?: number; description: string }> = {
   stopped: { label: "已停止", color: "#737373", description: "启动网站后可查看预览。" },
   installing: { label: "安装中", color: "#d97706", progress: 30, description: "正在安装项目依赖，可打开日志查看进度。" },

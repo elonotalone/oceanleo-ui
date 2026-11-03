@@ -32,5 +32,9 @@ export const websiteRuntimeApi = {
   fix: (id: string, prompt?: string) => websiteRequest<{ task_id: string }>(id, "/runtime/fix", {
     method: "POST", ...(prompt ? { body: JSON.stringify({ prompt }) } : {}),
   }),
+  checkpoint: (id: string, reason: "leave" | "turn_end" | "on_demand" = "leave", message?: string) =>
+    websiteRequest<unknown>(id, "/runtime/checkpoint", {
+      method: "POST", keepalive: true, body: JSON.stringify({ reason, ...(message ? { message } : {}) }),
+    }),
 };
 export type WebsiteRuntimeApi = typeof websiteRuntimeApi;
