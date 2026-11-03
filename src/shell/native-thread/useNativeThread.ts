@@ -11,12 +11,13 @@ import type { Computer } from "../../lib/cloud-computer-api";
 import { getComputerTaskTranscript, type ComputerTaskSession } from "../../lib/computer-task-api";
 import { useUI } from "../../i18n/ui/useUI";
 import type { ComposerAttachment } from "../LeoComposer";
-import { composerOccupancy, pendingUnsentReason } from "../cloud-computer/agent-dialog/occupancy";
+import { composerOccupancy, liveTurnOpen, pendingUnsentReason } from "../cloud-computer/agent-dialog/occupancy";
 import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL, type AgentDialogMessage, type WsProgram } from "../cloud-computer/agent-dialog/types";
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
 import { useAgentDialog, type AgentDialogControllerV2 } from "../cloud-computer/agent-dialog/useAgentDialogController";
 import { dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
+import { mergeSavedAndLive, mergeTranscriptPages } from "./merge";
 import type { NativeProgram } from "./types";
 import { nativeModelPickerFor } from "./NativeModelPicker";
 import { peekTranscript, readTranscript, rememberTranscript, takeTranscriptPrefetch } from "./transcript-cache";
@@ -47,11 +48,19 @@ export type NativeThread = {
   live: boolean;
   /** No managed session yet (draft): status/models only, nothing can be sent. */
   draft: boolean;
-  /** The program is working on this conversation (show Stop / progress). */
+  /**
+   * The program is working on this conversation. The ONE source for the
+   * composer's Stop, the step-row spinner and can-send (2026-11-02): a stop on
+   * its way counts as running, so "steps spinning + send arrow" cannot happen.
+   */
   running: boolean;
+  /** `stopping` from the Stop click until its outcome; `error` = it did not take effect (see stopError). */
+  stopState: "idle" | "stopping" | "stopped" | "error";
+  /** Localized reason the last Stop did not take effect (shown next to the composer), else null. */
+  stopError: string | null;
   /** A send right now would go out (always false in draft mode). */
   ready: boolean;
-  /** The computer is offline: messages are the cloud-saved transcript, composer read-only. */
+  /** The computer is offline: saved messages stay visible and new prompts queue until reconnect. */
   offline: boolean;
   /** One plain-language line when sending is not possible, else null. */
   blockedReason: string | null;
@@ -67,6 +76,8 @@ export type NativeThread = {
   composerAttachments: ComposerAttachment[];
   onAttachFiles: ((files: File[]) => void) | undefined;
   onRemoveAttachment: (id: string) => void;
+  /** Put a failed attachment into the inbox again. */
+  onRetryAttachment?: (id: string) => void;
   modelPicker: ReactNode | null;
   hasOlder: boolean;
   /** Reads ONE more batch of earlier messages and prepends it (never re-reads the whole conversation). */
@@ -103,6 +114,11 @@ export type NativePendingPrompt = {
   text: string;
   /** null while it is waiting to go out; the plain reason once it could not be sent. */
   unsent: string | null;
+  /**
+   * While it waits for the computer to come back (reconnecting after a drop or a
+   * gateway swap): the plain line said under its bubble, else null (2026-11-02 F2).
+   */
+  waiting?: string | null;
 };
 
 type PendingState = NativePendingPrompt & {
@@ -152,6 +168,8 @@ function isImageFile(mime: string, name: string): boolean {
 
 export function useNativeThread({ computer, session, enabled, onNativeSessionChange, program: draftProgram }: NativeThreadInput): NativeThread {
   const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
   const draft = !session;
   const program = session ? nativeProgramOf(session) : isWsProgram(draftProgram) ? draftProgram : null;
   const online = computer?.node_online === true;
@@ -256,6 +274,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // Earlier saved batches, already reduced and kept as they are: a new batch is
   // prepended, so the messages already on screen keep their ids (no full re-render).
   const [olderArchive, setOlderArchive] = useState<OlderArchive | null>(null);
+  // The newest saved page read again after the link re-attached (gateway swap, reconnect):
+  // joined onto what was read before, so the gap is on screen even without a live replay.
+  const [archiveTail, setArchiveTail] = useState<Archive | null>(null);
   const [archiveLoading, setArchiveLoading] = useState(false);
   /** The session whose saved copy has been read (or could not be): until then an empty view is "opening". */
   const [archiveReadFor, setArchiveReadFor] = useState("");
@@ -281,6 +302,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       setArchive(kept ?? null);
       if (kept) setArchiveReadFor(sessionKey);
       setOlderArchive(null);
+      setArchiveTail(null);
       olderLoaded.current = false;
       olderInFlight.current = false;
       archiveFresh.current = "";
@@ -316,6 +338,25 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     return () => controller.abort();
   }, [enabled, sessionKey, session?.kind, waitsForOffline]);
 
+  // Link re-attached (B2 status `link:"attached"`, an adopted session without replay, a
+  // socket reopen): read the newest saved page again and join it onto what is shown.
+  const reattachSeq = dialog.reattachSeq ?? 0;
+  const reattachSeen = useRef(reattachSeq);
+  useEffect(() => {
+    if (reattachSeen.current === reattachSeq) return;
+    reattachSeen.current = reattachSeq;
+    if (!enabled || !session || session.kind !== "acp") return;
+    const id = session.id;
+    void getComputerTaskTranscript(id)
+      .then((next) => {
+        if (archiveFor.current !== id) return;
+        rememberTranscript(id, next);
+        setArchiveTail(next);
+        setArchiveReadFor(id);
+      })
+      .catch(() => undefined);
+  }, [reattachSeq, enabled, session]);
+
   const reduceArchive = useCallback((page: Archive): AgentDialogMessage[] => {
     type State = ReturnType<typeof initialDialogState>;
     const start: State = { ...initialDialogState(), program: program ?? session?.program ?? null, activeSession: page.session?.native_session_id ?? nativeId };
@@ -325,26 +366,31 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     () => (archive ? reduceArchive(archive) : ([] as AgentDialogMessage[])),
     [archive, reduceArchive],
   );
-  const archiveDialog = useMemo(
-    () => (olderArchive?.dialog.length ? [...olderArchive.dialog, ...newestArchiveDialog] : newestArchiveDialog),
-    [olderArchive, newestArchiveDialog],
+  const tailArchiveDialog = useMemo(
+    () => (archiveTail ? reduceArchive(archiveTail) : null),
+    [archiveTail, reduceArchive],
   );
+  const archiveDialog = useMemo(() => {
+    const pages = olderArchive?.dialog.length ? [...olderArchive.dialog, ...newestArchiveDialog] : newestArchiveDialog;
+    return tailArchiveDialog ? mergeTranscriptPages(pages, tailArchiveDialog) : pages;
+  }, [olderArchive, newestArchiveDialog, tailArchiveDialog]);
 
-  const liveHasConversation = live && hasConversation(dialog.messages);
-  // While the computer is still opening the session (sessionLoading), or a
-  // running turn's live replay has not arrived yet, the cloud-saved transcript
-  // is shown instead of an empty view; the live replay replaces it the moment
-  // it arrives (2026-10-31 D: a busy session no longer hides the saved copy).
-  const showArchive = !live || (!liveHasConversation && hasConversation(archiveDialog));
-  const messages = useMemo(() => {
-    if (!showArchive) return dialogToAgentMessages(dialog.messages, { live: true, tt, engine: program ?? undefined });
-    const saved = dialogToAgentMessages(archiveDialog, { live: false, tt, engine: program ?? undefined });
-    if (!live) return saved;
-    // Online fallback: keep live notices (e.g. a failed reopen) under the saved transcript.
-    const notices = dialogToAgentMessages(dialog.messages.filter((message) => message.kind === "notice"), { live: true, tt, engine: program ?? undefined });
-    const used = new Set(saved.map((message) => message.id));
-    return [...saved, ...notices.filter((message) => !used.has(message.id))];
-  }, [showArchive, live, dialog.messages, archiveDialog, tt, program]);
+  // Saved transcript + live messages are MERGED, never switched (2026-11-02 F2): after a
+  // gateway swap the live side adopts a running turn without replaying history, and the
+  // old either/or hid everything said before it. A live replay the gateway vouches for
+  // (`history replay:true`) takes over only once it covers what is saved (merge.ts).
+  const replayKey = program ? `${program}::${dialog.activeSession || nativeId}` : "";
+  const liveReplay = replayKey ? dialog.historyReplay?.[replayKey] ?? null : null;
+  const merged = useMemo(
+    () => (live ? mergeSavedAndLive(archiveDialog, dialog.messages, { replay: liveReplay }) : { messages: archiveDialog, source: "saved" as const }),
+    [live, archiveDialog, dialog.messages, liveReplay],
+  );
+  // Older batches come from the saved copy whenever it is part of what is shown.
+  const showArchive = !live || (merged.source !== "live" && hasConversation(archiveDialog));
+  const messages = useMemo(
+    () => dialogToAgentMessages(merged.messages, { live, tt, engine: program ?? undefined }),
+    [merged, live, tt, program],
+  );
 
   // A brand-new conversation (no native session yet) cannot be busy on the
   // computer: once the link is up it never waits for an occupancy reply.
@@ -364,7 +410,15 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // A reconnect/error frame can leave the controller's old live-turn bit set;
   // without this guard the composer keeps showing Stop forever and cancel has
   // nothing live left to cancel (the exact failure seen on task history pages).
-  const running = live && (occupancyMode === "working" || (dialog.busy && !terminalRun(session)));
+  // 2026-11-02 stop contract: a live turn on screen is work too (Stop is shown and
+  // always ends in an outcome), and a stop on its way counts as running.
+  const viewSession = dialog.activeSession || dialog.draftRef || "";
+  const stopping = dialog.stopState === "stopping";
+  const running = stopping || (live && (
+    occupancyMode === "working"
+    || liveTurnOpen(dialog.messages, viewSession)
+    || (dialog.busy && !terminalRun(session))
+  ));
 
   const row = program ? dialog.programs.find((item) => item.id === program) : undefined;
   const name = program ? PROGRAM_LABEL[program] : "";
@@ -372,7 +426,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   if (!computer || !online) blockedReason = tt("这台电脑离线，只能查看已保存的对话。");
   else if (row && !row.installed) blockedReason = tt("这台电脑上还没有安装 {program}，请在设置里安装。", { program: name });
   else if (row && (row.logged_in === false || row.auth === "none")) blockedReason = tt("{program} 还没有登录，请在设置里登录。", { program: name });
-  const ready = live && !draft && !blockedReason && occupancyMode === "idle" && dialog.program === program;
+  const ready = live && !draft && !blockedReason && occupancyMode === "idle" && !running && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
   const send = useCallback(async (text: string) => {
@@ -396,6 +450,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const queue = useCallback((text: string) => {
     const current = pendingRef.current;
     if (current && !current.unsent) return false;
+    // Text and its files go together: a failed file is retried or removed first (F3).
+    if (attachmentsRef.current.some((item) => item.state === "error")) return false;
     const clean = text.trim();
     const files = attachmentsRef.current.filter((item) => item.state !== "error");
     if (!clean && !files.length) return false;
@@ -427,8 +483,38 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     pendingRef.current = next;
     setPending(next);
   }, []);
+  // B2 prompt-not-sent (2026-11-02 F2): the gateway says a prompt never reached the
+  // agent (link dropped / gateway swapped). It becomes this conversation's unsent
+  // bubble with a resend (「未发送 · 重试」), never a silent loss. Decided once per
+  // restore; when another prompt is already waiting, the text goes back to the composer.
+  const restored = dialog.restoredDraft ?? null;
+  const restoreDecision = useRef<{ seq: number; bubble: boolean } | null>(null);
+  if (restored?.unsent && restoreDecision.current?.seq !== restored.seq) {
+    const waiting = pendingRef.current;
+    restoreDecision.current = { seq: restored.seq, bubble: !(waiting && !waiting.unsent) };
+  }
+  const restoreAsBubble = Boolean(restored?.unsent && restoreDecision.current?.seq === restored.seq && restoreDecision.current.bubble);
+  const bubbledSeq = useRef(0);
+  useEffect(() => {
+    if (!restored || !restoreAsBubble || bubbledSeq.current === restored.seq) return;
+    bubbledSeq.current = restored.seq;
+    const ids = restored.fileIds ?? [];
+    const files = attachmentsRef.current.filter((item) => ids.includes(item.id) && item.state !== "error");
+    pendingKey.current += 1;
+    const next: PendingState = {
+      key: pendingKey.current, text: restored.text, unsent: ttRef.current("电脑重连时没有发出去"), queuedAt: Date.now(),
+      attachmentIds: files.map((item) => item.id),
+      attachments: files.map((item) => ({ name: item.name, mime: item.mime })),
+    };
+    pendingRef.current = next;
+    setPending(next);
+  }, [restored, restoreAsBubble]);
+  const restoredForComposer = useMemo(
+    () => (restored && !restoreAsBubble ? { seq: restored.seq, text: restored.text } : null),
+    [restored, restoreAsBubble],
+  );
   // Only a known computer can be "offline"; null is still connecting.
-  const blockedNow = computer ? blockedReason : null;
+  const blockedNow = computer && online ? blockedReason : null;
   useEffect(() => {
     if (!pending || pending.unsent || sendingRef.current === pending.key) return;
     const key = pending.key;
@@ -452,6 +538,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       sessionLoading: dialog.sessionLoading,
       messages: dialog.messages,
       sessionId: dialog.activeSession || dialog.draftRef || "",
+      // "Stop it first" only while Stop is actually on screen.
+      running,
     });
     const reasonText = reason === "connect"
       ? tt("暂时连不上这台电脑，请稍后重试。")
@@ -464,11 +552,20 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       Math.max(0, pending.queuedAt + PENDING_PROMPT_CONNECT_MS - Date.now()));
     return () => clearTimeout(timer);
   }, [pending, ready, blockedNow, send, settlePending, tt, dialog.occupancyLink, dialog.offline,
-    occupancyMode, dialog.sessionLoading, dialog.messages, dialog.activeSession, dialog.draftRef]);
+    occupancyMode, dialog.sessionLoading, dialog.messages, dialog.activeSession, dialog.draftRef, running]);
 
+  // Never a silent no-op: not connected → the controller says the stop could not be sent.
   const stop = useCallback(() => {
-    if (live) dialog.abort();
-  }, [live, dialog]);
+    const queued = pendingRef.current;
+    // Stop while the first task/session is still being created also withdraws
+    // its local queue. Otherwise that prompt would start the agent after Stop
+    // answered not_running. A follow-up queued behind a running turn stays queued.
+    if (queued && !queued.unsent && !dialog.busy && occupancyMode !== "working" &&
+        !liveTurnOpen(dialog.messages, dialog.activeSession || dialog.draftRef || "")) {
+      settlePending(queued.key, tt("已停止生成"));
+    }
+    dialog.abort();
+  }, [dialog, occupancyMode, settlePending, tt]);
 
   const answer = useCallback((message: AgentMessage, value: unknown) => {
     if (!connected) return;
@@ -492,11 +589,13 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // Files that went into the queued prompt ride on its bubble, not in the composer.
   const queuedFiles = pending?.attachmentIds;
   const composerAttachments = useMemo(() => dialog.attachments
-    .filter((item) => !queuedFiles?.includes(item.id))
+    .filter((item) => item.state === "error" || !queuedFiles?.includes(item.id))
     .map((item): ComposerAttachment => ({
       id: item.id,
-      name: item.state === "error" ? `${item.name} · ${tt("上传失败")}` : item.name,
+      name: item.state === "error" ? `${item.name} · ${tt("上传失败")}${item.error ? `（${item.error}）` : ""}` : item.name,
       mime: item.mime,
+      // Failed: the composer blocks the send and says why, with retry / remove (F3 2026-11-02).
+      ...(item.state === "error" ? { failed: true, failedReason: item.error || tt("上传出错") } : {}),
       // A file held until the session exists is ready from the user's side (no spinner).
       uploading: item.state === "uploading" && !item.deferred,
       // The tile thumbnail: the local `blob:` preview of an image picked in this tab.
@@ -532,8 +631,13 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // "opening" only until its saved copy has been read.
   const opening = Boolean(enabled && session && session.kind === "acp") && threadMessages.length === 0 &&
     archiveReadFor !== sessionKey && !(bornHere.current === sessionKey && online);
+  // Waiting through a reconnect is said under the bubble: it goes out by itself once connected.
+  const everLinked = useRef(false);
+  if (dialog.occupancyLink === true) everLinked.current = true;
+  const reconnecting = Boolean(computer) && (!online || dialog.offline || (everLinked.current && dialog.occupancyLink !== true));
+  const waitingLine = pending && !pending.unsent && !ready && reconnecting ? tt("电脑重连中，连上后自动发送") : null;
   const pendingPublic = useMemo<NativePendingPrompt | null>(
-    () => (pending ? { text: pending.text, unsent: pending.unsent } : null), [pending]);
+    () => (pending ? { text: pending.text, unsent: pending.unsent, ...(waitingLine ? { waiting: waitingLine } : {}) } : null), [pending, waitingLine]);
 
   // Composer controls (model · mode · fast · effort). Drafts count: shown as
   // soon as the program reports them; "正在读取…" while the computer or the
@@ -583,6 +687,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     live: connected,
     draft,
     running,
+    stopState: dialog.stopState ?? "idle",
+    stopError: dialog.stopError ?? null,
     ready,
     offline: !online,
     blockedReason,
@@ -593,6 +699,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     composerAttachments,
     onAttachFiles: live ? dialog.addAttachments : undefined,
     onRemoveAttachment: dialog.removeAttachment,
+    onRetryAttachment: dialog.retryAttachment,
     modelPicker,
     hasOlder: showArchive ? archiveHasOlder(olderArchive ?? archive) : dialog.hasOlder,
     loadOlder,
@@ -603,6 +710,6 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     queue,
     markUnsent,
     retry,
-    restoredDraft: dialog.restoredDraft ?? null,
+    restoredDraft: restoredForComposer,
   };
 }

@@ -42,6 +42,7 @@ import { PuzzleIcon } from "./icons/PuzzleIcon";
 import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";
 import { ComposerLibraryPicker } from "./ComposerLibraryPicker";
+import { attachmentFailureText, failedAttachments, stopClickAllowed, stopPressArmed } from "./composer-send-guard";
 import {
   composerSlashAdapter,
   useComposerSkillSlash,
@@ -110,6 +111,8 @@ export interface ComposerAttachment {
   uploading?: boolean;
   /** 上传失败但仍保留在输入框里：方块右下角红色小徽章（配 onRetryAttachment 即重试键）。 */
   failed?: boolean;
+  /** 失败原因（短句，已本地化）：失败时输入框上方写明，发送被挡住直到重试或移除（F3 2026-11-02）。 */
+  failedReason?: string;
   /** 点击方块时打开用的文件地址与类型（本地 blob 优先）。 */
   url?: string;
   mime?: string;
@@ -162,6 +165,14 @@ export interface LeoComposerProps {
    * 变成可点击的「停止」键（■），点击即中止当前任务。不传则保持旧行为（转圈禁用）。
    */
   onStop?: () => void;
+  /**
+   * A stop is on its way (2026-11-02 stop contract): the Stop key shows a spinner,
+   * reads 「正在停止」 and cannot be pressed again until the stop has its outcome.
+   * Counts as loading (no send while stopping).
+   */
+  stopping?: boolean;
+  /** Why the last stop did not take effect (localized); shown above the toolbar. Stop stays pressable. */
+  stopError?: string | null;
   /** 是否显示「leo」按钮（仅与 AI 生成有关的输入框传 true） */
   leoSuggest?: boolean;
   /**
@@ -321,8 +332,10 @@ export function LeoComposer({
   onChange,
   onSubmit,
   placeholder,
-  loading = false,
+  loading: loadingProp = false,
   onStop,
+  stopping = false,
+  stopError = null,
   leoSuggest = false,
   leoContext,
   leftSlot,
@@ -369,6 +382,8 @@ export function LeoComposer({
   skillSlash,
 }: LeoComposerProps) {
   const tt = useUI();
+  // A stop on its way is still work in progress: Stop stays on screen, nothing is sent.
+  const loading = loadingProp || stopping;
   const placeholderText = placeholder ?? tt("给 OceanLeo 布置一个任务...");
   // 命令式重灌 nonce（v20）：优先用 context（FunctionAgentChat 每次点导航/起手卡自增，站点
   // 零改动即生效）；站点也可显式传 fillNonce 叠加。两源相加 → 任一自增都触发 TemplateFillArea
@@ -408,7 +423,8 @@ export function LeoComposer({
   // 选择 / 拖拽 / 粘贴 / 手机拍照——四条来路进同一个 `emit`（W08 P3+P4）。
   // 它顺带做两件本组件自己做不到的事：图片压缩，以及从进度总线上把「业务正在传
   // 我刚交出去的那几个文件」的真读数捞回来（本组件按契约不负责上传）。
-  const intake = useAttachmentIntake(onAttachFiles);
+  const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles });
+  const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined);
   // 手机原生宿主下，「＋」菜单里的「从本地添加文件」换成「拍照 / 从相册选择 / 选择文件」
   // 三项；普通浏览器里它恒为空数组，菜单与今天逐字相同。拿到的文件走的是下面同一条
   // `onAttachFiles` 通路，附件缩略条 / 上传中转圈 / 发送键可用性全部照旧。
@@ -426,8 +442,6 @@ export function LeoComposer({
     : nativeAttachActions;
   // 任务跑完推一条系统通知（手机后台/息屏时才推）。浏览器里是空操作。
   useNativeTaskNotifications();
-  // 刷新不丢（A1）：draftKey 不传时这个 hook 什么都不做。
-  const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment });
   // 最高约占视口 30%（仿 Manus），`maxHeight` 是绝对上限；再多在框内滚动。
   const editorMaxHeight = useComposerMaxHeight(maxHeight);
   // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
@@ -450,13 +464,26 @@ export function LeoComposer({
     if (autoFocus) currentTextarea()?.focus();
   }, [autoFocus, currentTextarea]);
 
+  // 文字和附件一起走（F3 2026-11-02）：有附件失败就不发，文字留着，写明原因 + 重试 / 移除。
+  const failedFiles = failedAttachments(attachments);
+  const attachmentFailure = attachmentFailureText(tt, attachments);
   const canSend =
     Boolean(value.trim() || attachments?.length) &&
     !attachments?.some((attachment) => attachment.uploading) &&
+    failedFiles.length === 0 &&
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
     !intake.compressing &&
     !loading &&
     !disabled && (boundExecutionTarget !== null || nativeConversation);
+  // 误触停止（F3 2026-11-02）：发送键原地变成停止键，双击「发送」的第二下曾把刚开始的
+  // 任务停掉。停止键出现 800ms 内不认，且只认从停止键本身按下去的那一下（键盘不受后者限）。
+  const stopShown = Boolean(onSubmit && loading && onStop);
+  const stopShownAt = useRef(0);
+  const stopPressOk = useRef(false);
+  useEffect(() => {
+    stopShownAt.current = stopShown ? Date.now() : 0;
+    stopPressOk.current = false;
+  }, [stopShown]);
   const hasAttachMenu =
     Boolean(onAttachFiles) ||
     Boolean(recentFiles && onPickRecent) ||
@@ -464,6 +491,11 @@ export function LeoComposer({
     Boolean(attachMenuExtra && attachMenuExtra.length);
 
   function handleKeyDown(e: KeyboardEvent<HTMLElement>) {
+    if (e.key === "Escape" && loading && onStop && !stopping) {
+      e.preventDefault();
+      onStop();
+      return;
+    }
     if (skillSlashUi.onKeyDown(e)) return;
     if (
       onSubmit &&
@@ -624,6 +656,30 @@ export function LeoComposer({
         <div className="px-4 pb-2">{nativeHandoff.panel}</div>
       )}
 
+      {/* 附件没传上：不发送，文字留着；写明原因，就地重试 / 移除（F3 2026-11-02）。 */}
+      {attachmentFailure && (
+        <div role="alert" className="flex flex-wrap items-center gap-2 px-4 pb-1 text-[12px] text-rose-600" data-composer-upload-failed="">
+          <span>{attachmentFailure}</span>
+          {onRetryAttachment && (
+            <button type="button" className="font-medium underline-offset-2 hover:underline"
+              onClick={() => failedFiles.forEach((item) => onRetryAttachment(item.id))}>
+              {tt("重试")}
+            </button>
+          )}
+          {onRemoveAttachment && (
+            <button type="button" className="font-medium underline-offset-2 hover:underline"
+              onClick={() => failedFiles.forEach((item) => onRemoveAttachment(item.id))}>
+              {tt("移除")}
+            </button>
+          )}
+        </div>
+      )}
+      {/* 停止没生效：写明原因（电脑离线 / 没能停下 / 没有回应），停止键仍可再点。 */}
+      {stopError && (
+        <p role="alert" className="px-4 pb-1 text-[12px] text-rose-600" data-composer-stop-error="">
+          {stopError}
+        </p>
+      )}
       <div className="flex items-center justify-between px-4 pb-3.5" data-composer-bottom-toolbar>
         <div className="flex flex-wrap items-center gap-2">
           {hasAttachMenu && (
@@ -720,14 +776,33 @@ export function LeoComposer({
           {onSubmit && (
             loading && onStop ? (
               // AI 工作中 + 支持中止 → 发送键变「停止」键（黑底白■，可点击随时中止）。
+              // 停止指令在路上（stopping）：转圈、「正在停止」、不可再点，直到有结果。
               <button
                 type="button"
-                onClick={onStop}
-                aria-label={tt("停止")}
-                title={tt("停止")}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:scale-105 hover:bg-neutral-800 active:scale-95"
+                onPointerDown={() => {
+                  stopPressOk.current = stopPressArmed(stopShownAt.current, Date.now());
+                }}
+                onClick={(event) => {
+                  if (stopping) return;
+                  const allowed = stopClickAllowed({
+                    shownAt: stopShownAt.current,
+                    now: Date.now(),
+                    keyboard: event.detail === 0,
+                    pressArmed: stopPressOk.current,
+                  });
+                  stopPressOk.current = false;
+                  if (allowed) onStop?.();
+                }}
+                disabled={stopping}
+                aria-busy={stopping || undefined}
+                aria-label={stopping ? tt("正在停止") : tt("停止")}
+                title={stopping ? tt("正在停止") : tt("停止")}
+                data-composer-stop={stopping ? "stopping" : "ready"}
+                className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
+                  stopping ? "cursor-wait opacity-80" : "hover:scale-105 hover:bg-neutral-800 active:scale-95"
+                }`}
               >
-                <StopGlyph />
+                {stopping ? <span className="v-spinner text-[12px]" aria-hidden="true" /> : <StopGlyph />}
               </button>
             ) : (
               <button

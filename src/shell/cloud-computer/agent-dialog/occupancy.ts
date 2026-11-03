@@ -113,9 +113,14 @@ export function pendingUnsentReason(input: {
   sessionLoading?: boolean;
   messages?: readonly AgentDialogMessage[];
   sessionId?: string;
+  /**
+   * Whether the host shows the conversation as running (Stop on screen). "Stop it
+   * first" is only said while there is a Stop to press (2026-11-02); omitted = unknown.
+   */
+  running?: boolean;
 }): PendingUnsentReason {
   if (input.offline || !input.linkUp) return "connect";
-  if (input.occupancyMode === "working" || liveTurnOpen(input.messages, input.sessionId ?? "")) return "busy";
+  if (input.running !== false && (input.occupancyMode === "working" || liveTurnOpen(input.messages, input.sessionId ?? ""))) return "busy";
   if (input.sessionLoading) return "loading";
   return "generic";
 }

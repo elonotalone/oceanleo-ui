@@ -494,8 +494,8 @@ test("a computer whose state is not known yet does not mark a queued prompt unse
 
 // W3 2026-10-31: while the computer is still opening the session (cold ACP start,
 // session/load) the pane shows the cloud-saved transcript instead of an empty
-// 「正在打开对话…」, and swaps to the live replay the moment it arrives.
-test("online, session still opening: the cloud-saved transcript shows; the live replay replaces it", async () => {
+// 「正在打开对话…」. A reconnect's partial replay joins it; it cannot erase saved history (F2).
+test("online, session still opening: saved transcript stays when the live replay does not cover it", async () => {
   FakeSocket.sockets = [];
   FakeSocket.holdOpen = true;
   FakeSocket.heldOpen = null;
@@ -524,7 +524,8 @@ test("online, session still opening: the cloud-saved transcript shows; the live 
       ] });
     });
     await until(() => globalThis.__thread.messages.some((m) => m.content === "Earlier answer"), "live replay");
-    assert.equal(globalThis.__thread.messages.some((m) => m.content === "Saved answer"), false, "the live replay replaced the saved copy");
+    assert.deepEqual(globalThis.__thread.messages.filter((m) => m.role === "user" || m.role === "assistant").map((m) => m.content),
+      ["Saved question", "Saved answer", "Earlier", "Earlier answer"], "a partial replay joins saved history without hiding any of it");
   } finally { FakeSocket.holdOpen = false; FakeSocket.heldOpen = null; view.cleanup(); }
 });
 

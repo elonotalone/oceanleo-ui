@@ -518,10 +518,11 @@ test("LeoComposer：skillSlash 是可选 prop，逻辑在 composer-skill-slash.t
   assert.match(composerSource, /from "\.\/composer-skill-slash";/);
   assert.equal((composerSource.match(/skillSlash/g) || []).length >= 3, true);
   assert.match(composerSource, /option: skillSlash,\n    templateActive: effectiveHighlightTemplate != null,/);
-  // handleKeyDown 只多了第一行；原来的回车发送分支逐字保留。
+  // Stop's explicit Escape handler precedes slash handling (F3); Enter still
+  // passes through the slash handler before submitting, including the IME guard.
   assert.match(
     composerSource,
-    /function handleKeyDown\(e: KeyboardEvent<HTMLElement>\) \{\n    if \(skillSlashUi\.onKeyDown\(e\)\) return;\n    if \(\n      onSubmit &&\n      e\.key === "Enter" &&\n      !e\.shiftKey &&\n      !e\.nativeEvent\.isComposing\n    \) \{\n      e\.preventDefault\(\);\n      if \(canSend\) submitPrompt\(\);\n    \}\n  \}/,
+    /function handleKeyDown\(e: KeyboardEvent<HTMLElement>\) \{[\s\S]*?if \(skillSlashUi\.onKeyDown\(e\)\) return;\n    if \(\n      onSubmit &&\n      e\.key === "Enter" &&\n      !e\.shiftKey &&\n      !e\.nativeEvent\.isComposing\n    \) \{\n      e\.preventDefault\(\);\n      if \(canSend\) submitPrompt\(\);\n    \}\n  \}/,
   );
   // 浮层渲染在编辑器之前（同一个 relative 卡片里），编辑器的 props 一行没变。
   assert.match(

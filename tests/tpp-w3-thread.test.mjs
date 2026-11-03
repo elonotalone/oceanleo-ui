@@ -100,7 +100,9 @@ test("both chats wire shared working and thinking and retain stopped history", a
   for (const path of ["AgentChat.tsx", "FunctionAgentChat.tsx"]) {
     const source = await readFile(new URL(path, root), "utf8");
     assert.match(source, /threadPresentation\(messages, status, \{[^}]*activeProgress: Boolean\(activeProgressKey\)/);
-    assert.match(source, /running=\{presentation\.working && item\.key === liveProgressKey\}/);
+    assert.match(source, path === "AgentChat.tsx"
+      ? /running=\{running && item\.key === liveProgressKey\}/
+      : /running=\{presentation\.working && item\.key === liveProgressKey\}/);
     assert.match(source, /const liveProgressKey = liveAgentProgressKey\(renderItems, messages\)/);
     assert.match(source, /\{presentation\.thinking && \(\s*<div/);
     const stoppedProp = source.match(/stopped=\{([\s\S]*?)\}\s*onArtifactOpen=/)?.[1] || "";

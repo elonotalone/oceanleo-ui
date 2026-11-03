@@ -1,25 +1,10 @@
 "use client";
 
-// ============================================================================
-// @oceanleo/ui — 输入框草稿：刷新不丢文字、不丢附件（2026-10-31 A1）
-// ----------------------------------------------------------------------------
-// 操作员：「首页输入文字或上传文件后，刷新页面不丢文字、不丢文件。」
-//
-// 宿主给 LeoComposer 传 `draftKey`（如 "home" / `task:<id>`）即生效，不传零行为变化。
-//   - 存 sessionStorage（同一个标签页刷新还在；不跨标签、不跨窗口互相覆盖）。
-//   - 文字：原样存。
-//   - 附件：只存**已上传完成的私有 Library 引用**（artifactId + revisionId）和名字 /
-//     mime / 媒体大类。不存字节、不存任何 URL（blob: 刷新即失效；签名地址不留长期副本）。
-//     恢复时按引用向网关重新取一次 typed LibraryItem（新的短期缩略图地址、右侧栏可打开）；
-//     网关说没有 / 无权（404/403/410）的直接不恢复。
-//   - 上传中途刷新的文件：字节已经没了，**不恢复**（不假装还在传）。上传失败的方块同理。
-//   - 电脑对话（Claude Code / Codex）的附件进的是那台电脑的 inbox，没有 Library 引用，
-//     天然不在可存范围内，不恢复。
-//   - 发送：点发送后，若输入框随即被宿主清空 → 草稿跟着清；若输入框原样卸载（首页
-//     切到任务对话）→ 卸载时清。发送失败宿主把文字还回来 → 照常继续存。
-// ============================================================================
+// Composer drafts: text and private Library references keep their existing tab /
+// server sync. Local file bytes live in IndexedDB under the same draft key, so
+// uploading, failed and computer-inbox tiles can be restored through the host.
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { attachmentRef } from "../lib/attachment-url";
 import { getComposerDrafts, putComposerDraft, type ComposerDraftServerRecord } from "../lib/composer-drafts-api";
 import { useImConnection, useImEvent } from "./messages/realtime/hooks";
@@ -204,6 +189,148 @@ export async function rehydrateDraftAttachments(
   return restored.filter((item): item is ComposerAttachment => item !== null);
 }
 
+export const COMPOSER_DRAFT_FILE_LIMIT = 20;
+export const COMPOSER_DRAFT_BYTES_LIMIT = 100 * 1024 * 1024;
+
+export interface ComposerDraftFile {
+  draftFileId: string;
+  name: string;
+  type: string;
+  size: number;
+  lastModified: number;
+  blob: Blob;
+  tileId?: string;
+  artifactId?: string;
+  revisionId?: string;
+}
+
+export type ComposerDraftFileNotice = "limit" | "storage_unavailable" | null;
+
+// Reuse the old home-only database: old File[] rows are migrated on read.
+async function fileStore<T>(mode: IDBTransactionMode, run: (store: IDBObjectStore) => IDBRequest<T>): Promise<{ ok: boolean; value?: T }> {
+  if (typeof indexedDB === "undefined") return { ok: false };
+  return new Promise((resolve) => {
+    let db: IDBDatabase | undefined;
+    let finished = false;
+    const finish = (ok: boolean, value?: T) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      db?.close();
+      resolve({ ok, value });
+    };
+    // Blocked/private-mode opens must not prevent the user attaching a file.
+    const timer = setTimeout(() => finish(false), 1500);
+    try {
+      const request = indexedDB.open("oceanleo-native-draft-files", 1);
+      request.onupgradeneeded = () => { request.result.createObjectStore("drafts"); };
+      request.onerror = request.onblocked = () => finish(false);
+      request.onsuccess = () => {
+        db = request.result;
+        if (finished) { db.close(); return; }
+        try {
+          const tx = db.transaction("drafts", mode);
+          const req = run(tx.objectStore("drafts"));
+          tx.oncomplete = () => finish(true, req.result);
+          tx.onerror = tx.onabort = () => finish(false);
+        } catch { finish(false); }
+      };
+    } catch { finish(false); }
+  });
+}
+
+function storedFile(file: File): ComposerDraftFile {
+  return { draftFileId: `df-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`, name: file.name, type: file.type,
+    size: file.size, lastModified: file.lastModified, blob: file };
+}
+
+export function composerDraftFileToFile(row: ComposerDraftFile): File {
+  return new File([row.blob], row.name, { type: row.type, lastModified: row.lastModified });
+}
+
+export async function readComposerDraftFiles(key: string): Promise<ComposerDraftFile[]> {
+  const result = await fileStore<unknown>("readonly", (store) => store.get(key));
+  if (!Array.isArray(result.value)) return [];
+  return result.value.flatMap((value): ComposerDraftFile[] => {
+    if (value instanceof Blob && typeof (value as File).name === "string") return [storedFile(value as File)];
+    if (!value || typeof value !== "object" || !(value.blob instanceof Blob) || typeof value.name !== "string" ||
+      typeof value.draftFileId !== "string") return [];
+    return [{ ...value, type: value.type || "", size: value.blob.size, lastModified: value.lastModified || 0 }];
+  });
+}
+
+export function limitComposerDraftFiles(files: readonly ComposerDraftFile[]): ComposerDraftFile[] {
+  let bytes = 0;
+  const kept: ComposerDraftFile[] = [];
+  for (let i = files.length - 1; i >= 0; i -= 1) {
+    const file = files[i];
+    if (kept.length >= COMPOSER_DRAFT_FILE_LIMIT || bytes + file.size > COMPOSER_DRAFT_BYTES_LIMIT) continue;
+    bytes += file.size;
+    kept.unshift(file);
+  }
+  return kept;
+}
+
+// Queue writes per key so a late attach write can never resurrect a removed or
+// sent draft. Reads also wait for writes from an instance that just unmounted.
+const draftFileWrites = new Map<string, Promise<boolean>>();
+export function writeComposerDraftFiles(key: string, files: readonly ComposerDraftFile[]): Promise<boolean> {
+  const snapshot = limitComposerDraftFiles(files);
+  const previous = draftFileWrites.get(key) ?? Promise.resolve(true);
+  const next = previous.then(async () => {
+    const result = snapshot.length
+      ? await fileStore("readwrite", (store) => store.put(snapshot, key))
+      : await fileStore("readwrite", (store) => store.delete(key));
+    return result.ok;
+  });
+  draftFileWrites.set(key, next);
+  void next.finally(() => { if (draftFileWrites.get(key) === next) draftFileWrites.delete(key); });
+  return next;
+}
+
+export function clearComposerDraftFiles(key: string): Promise<boolean> {
+  return writeComposerDraftFiles(key, []);
+}
+
+/** Library picks in computer chats need bytes for the computer inbox. */
+export async function libraryAttachmentFile(att: { name?: string; mime?: string; artifactId?: string; revisionId?: string }): Promise<File | null> {
+  if (!att.artifactId || !att.revisionId) return null;
+  try {
+    const { resolveAttachmentDisplayUrl } = await import("../lib/attachment-url");
+    const url = await resolveAttachmentDisplayUrl({ artifactId: att.artifactId, revisionId: att.revisionId }, "source");
+    if (!url) return null;
+    const result = await fetch(url);
+    if (!result.ok) return null;
+    const blob = await result.blob();
+    return new File([blob], att.name || "file", { type: att.mime || blob.type || "application/octet-stream" });
+  } catch { return null; }
+}
+
+type FileSession = {
+  key: string;
+  rows: ComposerDraftFile[];
+  ready: Promise<void>;
+  restored: boolean;
+  observed: Set<string>;
+  savedIds: Set<string>;
+  // Existing tiles must not absorb a newly attached same-name file.
+  excluded: Map<string, Set<string>>;
+};
+
+function fileMatches(row: ComposerDraftFile, att: ComposerAttachment): boolean {
+  const name = att.name || "";
+  const size = (att as ComposerAttachment & { size?: number }).size;
+  const basename = name.includes(" · ") ? name.slice(0, name.lastIndexOf(" · ")) : name;
+  const dot = row.name.lastIndexOf(".");
+  const stem = dot > 0 ? row.name.slice(0, dot) : row.name;
+  const extension = dot > 0 ? row.name.slice(dot) : "";
+  // Computer hosts disambiguate repeated names with -2, -3, ... .
+  const renamed = basename.startsWith(`${stem}-`) && basename.endsWith(extension) &&
+    /^\d+$/.test(basename.slice(stem.length + 1, extension ? -extension.length : undefined));
+  return (name === row.name || basename === row.name || renamed) && (size === undefined || size === row.size) &&
+    (!att.mime || !row.type || att.mime === row.type);
+}
+
 export interface UseComposerDraftOptions {
   draftKey?: string;
   value: string;
@@ -212,6 +339,8 @@ export interface UseComposerDraftOptions {
   /** 宿主把恢复出来的附件加回自己的状态。不传 = 只存文字。 */
   onAddAttachments?: (items: ComposerAttachment[]) => void;
   onRemoveAttachment?: (id: string) => void;
+  /** All local file intake goes through the returned attachFiles wrapper. */
+  onAttachFiles?: (files: File[]) => void;
   /** 测试注入；缺省按引用向网关取 LibraryItem。 */
   fetchItem?: FetchLibraryItem;
 }
@@ -219,6 +348,9 @@ export interface UseComposerDraftOptions {
 export interface ComposerDraftHandle {
   /** 点发送时调：输入框原样卸载（首页切到任务对话）即清掉草稿。 */
   markSubmitted: () => void;
+  attachFiles: (files: File[]) => void;
+  /** Bytes over the per-draft limit or unavailable local storage. */
+  fileNotice: ComposerDraftFileNotice;
 }
 
 function serverRecord(record: ComposerDraftServerRecord): ComposerDraftRecord {
@@ -240,13 +372,14 @@ export function useComposerDraft({
   attachments,
   onAddAttachments,
   onRemoveAttachment,
+  onAttachFiles,
   fetchItem,
 }: UseComposerDraftOptions): ComposerDraftHandle {
   const connection = useImConnection();
   const connectionRef = useRef(connection);
   connectionRef.current = connection;
-  const latest = useRef({ value, onChange, attachments, onAddAttachments, onRemoveAttachment, fetchItem });
-  latest.current = { value, onChange, attachments, onAddAttachments, onRemoveAttachment, fetchItem };
+  const latest = useRef({ value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles, fetchItem });
+  latest.current = { value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles, fetchItem };
   const keyRef = useRef(draftKey);
   keyRef.current = draftKey;
   const restoredKeyRef = useRef<string | undefined>(undefined);
@@ -262,6 +395,121 @@ export function useComposerDraft({
   const putTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const deviceIdRef = useRef<string>("");
   if (!deviceIdRef.current) deviceIdRef.current = composerDeviceId();
+
+  const libraryRestoreRef = useRef<Promise<ComposerAttachment[]>>(Promise.resolve([]));
+  const [fileNotice, setFileNotice] = useState<ComposerDraftFileNotice>(null);
+  const filesRef = useRef<FileSession | null>(null);
+  const aliveRef = useRef(false);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
+  const notice = (session: FileSession, value: ComposerDraftFileNotice) => {
+    if (aliveRef.current && filesRef.current === session) setFileNotice(value);
+  };
+  const persistFiles = (session: FileSession) => {
+    const kept = limitComposerDraftFiles(session.rows);
+    if (kept.length !== session.rows.length) notice(session, "limit");
+    session.rows = kept;
+    return writeComposerDraftFiles(session.key, kept).then((ok) => { if (!ok) notice(session, "storage_unavailable"); });
+  };
+  const reconcileFiles = (session: FileSession) => {
+    const shown = latest.current.attachments ?? [];
+    const used = new Set<string>();
+    const before = JSON.stringify(session.rows.map(({ blob: _blob, ...row }) => row));
+    session.rows = session.rows.filter((row) => {
+      let tile = row.tileId ? shown.find((att) => att.id === row.tileId && !used.has(att.id)) : undefined;
+      if (!tile && !row.tileId) tile = shown.find((att) => !used.has(att.id) &&
+        !session.excluded.get(row.draftFileId)?.has(att.id) && fileMatches(row, att));
+      if (!tile) return !session.observed.has(row.draftFileId);
+      session.observed.add(row.draftFileId);
+      used.add(tile.id);
+      row.tileId = tile.id;
+      const ref = attachmentRef(tile);
+      if (ref) { row.artifactId = ref.artifactId; row.revisionId = ref.revisionId; }
+      // Store the host's disambiguated name for a stable next restore.
+      if (tile.name && !tile.failed && !tile.name.includes(" · ")) row.name = tile.name;
+      return true;
+    });
+    if (before !== JSON.stringify(session.rows.map(({ blob: _blob, ...row }) => row))) void persistFiles(session);
+  };
+
+  // Initialize independently of reference hydration: a text-only draft may have
+  // file bytes, and an offline host may only supply its intake callback later.
+  useEffect(() => {
+    if (!draftKey) { filesRef.current = null; return; }
+    if (filesRef.current?.key === draftKey) return;
+    setFileNotice(null);
+    const session: FileSession = { key: draftKey, rows: [], ready: Promise.resolve(), restored: false, observed: new Set(), savedIds: new Set(), excluded: new Map() };
+    filesRef.current = session;
+    session.ready = (async () => {
+      await draftFileWrites.get(draftKey);
+      const saved = await readComposerDraftFiles(draftKey);
+      session.rows = limitComposerDraftFiles(saved);
+      session.savedIds = new Set(session.rows.map((row) => row.draftFileId));
+      if (saved.length !== session.rows.length) notice(session, "limit");
+    })();
+  }, [draftKey]);
+
+  useEffect(() => {
+    const session = filesRef.current;
+    if (!session || !onAttachFiles) return;
+    void session.ready.then(async () => {
+      // Let the reference restore finish first, then match each row at most once.
+      const pending = readComposerDraft(session.key)?.attachments ?? [];
+      const hydrated = pending.length && latest.current.onAddAttachments ? await libraryRestoreRef.current : [];
+      if (!aliveRef.current || filesRef.current !== session || session.restored || !latest.current.onAttachFiles) return;
+      session.restored = true;
+      const refs = latest.current.onAddAttachments ? draftAttachmentsOf([...(latest.current.attachments ?? []), ...hydrated]) : [];
+      const unused = [...new Map(refs.map((att) => [att.id, att])).values()];
+      const upload: File[] = [];
+      for (const row of session.rows) {
+        if (!session.savedIds.has(row.draftFileId)) continue;
+        const index = unused.findIndex((att) => row.artifactId && row.revisionId
+          ? att.artifactId === row.artifactId && att.revisionId === row.revisionId
+          : fileMatches(row, att));
+        if (index >= 0) {
+          row.tileId = unused.splice(index, 1)[0].id;
+        } else if ((latest.current.attachments ?? []).some((att) => att.id === row.tileId && fileMatches(row, att))) {
+          session.observed.add(row.draftFileId);
+        } else {
+          delete row.tileId;
+          session.excluded.set(row.draftFileId, new Set((latest.current.attachments ?? []).map((att) => att.id)));
+          upload.push(composerDraftFileToFile(row));
+        }
+      }
+      if (upload.length) latest.current.onAttachFiles?.(upload);
+    });
+  }, [draftKey, onAttachFiles]);
+
+  const fileSignature = JSON.stringify((attachments ?? []).map((att) => [att.id, att.name, att.mime, att.uploading, att.failed, attachmentRef(att)]));
+  useEffect(() => {
+    const session = filesRef.current;
+    if (!session) return;
+    void session.ready.then(() => {
+      if (!aliveRef.current || filesRef.current !== session) return;
+      if (submittedRef.current !== null && !(latest.current.attachments ?? []).length) {
+        session.rows = [];
+        void clearComposerDraftFiles(session.key);
+      } else reconcileFiles(session);
+    });
+  }, [draftKey, fileSignature]);
+
+  const attachFiles = useCallback((files: File[]) => {
+    const host = latest.current.onAttachFiles;
+    if (!host || !files.length) return;
+    const session = filesRef.current;
+    if (!session || !keyRef.current) { host(files); return; }
+    const excluded = new Set((latest.current.attachments ?? []).map((att) => att.id));
+    // Capture before calling the host; host uploads can finish synchronously.
+    const rows = files.map(storedFile);
+    // The host gets the files at once: a slow, full or missing IndexedDB must
+    // never keep a picked image out of the composer. The refresh copy is
+    // written alongside (tile association uses `excluded`, captured above).
+    host(files);
+    void session.ready.then(async () => {
+      for (const row of rows) session.excluded.set(row.draftFileId, excluded);
+      session.rows.push(...rows);
+      await persistFiles(session);
+    });
+  }, []);
 
   const saveable = onAddAttachments ? draftAttachmentsOf(attachments) : [];
   const signature = draftKey ? JSON.stringify([value, saveable]) : "";
@@ -281,8 +529,8 @@ export function useComposerDraft({
     if (record.text && !latest.current.value.trim()) latest.current.onChange(record.text);
     if (!record.attachments.length || !latest.current.onAddAttachments) return;
     pendingRestoreRef.current = record.attachments;
-    void rehydrateDraftAttachments(record.attachments, latest.current.fetchItem).then((items) => {
-      if (keyRef.current !== draftKey) return;
+    libraryRestoreRef.current = rehydrateDraftAttachments(record.attachments, latest.current.fetchItem).then((items) => {
+      if (keyRef.current !== draftKey) return [];
       pendingRestoreRef.current = [];
       const add = latest.current.onAddAttachments;
       const have = new Set((latest.current.attachments ?? []).map((att) => att.id));
@@ -293,6 +541,7 @@ export function useComposerDraft({
         const now = latest.current;
         writeComposerDraft(draftKey, now.value, now.onAddAttachments ? draftAttachmentsOf(now.attachments) : []);
       }
+      return items;
     });
   }, [draftKey]);
 
@@ -391,7 +640,11 @@ export function useComposerDraft({
   useEffect(() => {
     if (!draftKey) return;
     return () => {
-      if (submittedRef.current !== null) clearComposerDraft(draftKey);
+      if (submittedRef.current !== null) {
+        clearComposerDraft(draftKey);
+        const session = filesRef.current;
+        if (session?.key === draftKey) void session.ready.then(() => { session.rows = []; void clearComposerDraftFiles(draftKey); });
+      }
       submittedRef.current = null;
     };
   }, [draftKey]);
@@ -401,5 +654,5 @@ export function useComposerDraft({
     if (keyRef.current) queuePut(keyRef.current, "", []);
   }, [queuePut]);
 
-  return { markSubmitted };
+  return { markSubmitted, attachFiles, fileNotice };
 }

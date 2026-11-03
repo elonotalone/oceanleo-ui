@@ -89,6 +89,15 @@ import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
 import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
+import {
+  idleStop,
+  newStopId,
+  STOP_REPLY_TIMEOUT_MS,
+  stopErrorText,
+  stopMachine,
+  type StopEvent,
+  type StopState,
+} from "./cloud-computer/agent-dialog/reduce";
 import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./native-thread/merge";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
@@ -844,6 +853,25 @@ function AgentChatInner({
   // 有了它，本地判定优先，界面不会自己复活。
   const stoppedTaskRef = useRef("");
   const [stoppedTaskId, setStoppedTaskId] = useState("");
+  // The same stop state machine as the computer programs (2026-11-02):
+  // idle → stopping → (stopped | error). Stopping counts as running for display.
+  const [taskStop, setTaskStop] = useState<StopState>(idleStop);
+  const taskStopRef = useRef<StopState>(taskStop);
+  const taskStopRequestRef = useRef("");
+  const taskStopping = taskStop.phase === "stopping";
+  const taskStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const updateTaskStop = useCallback((event: StopEvent) => {
+    const next = stopMachine(taskStopRef.current, event);
+    if (next !== taskStopRef.current) {
+      taskStopRef.current = next;
+      setTaskStop(next);
+      if (next.phase !== "stopping" && taskStopTimerRef.current) {
+        clearTimeout(taskStopTimerRef.current);
+        taskStopTimerRef.current = null;
+      }
+    }
+    return next;
+  }, []);
   // 流式正文：只在宿主给了 agentStreamEndpoint 时才有值。轮询始终是真源，
   // 这里存的是「比轮询更早到的那一段」，用来让正文提前出现。
   const [streamText, setStreamText] = useState("");
@@ -1214,26 +1242,39 @@ function AgentChatInner({
   const sessions = useMemo(() => allSessions.filter(usableSession), [allSessions]);
   const sessionsLoaded = taskSessions.taskId === taskId && taskSessions.loaded;
   const sessionsFailed = Boolean(taskId) && taskSessions.taskId === taskId && taskSessions.failed;
-  const [archivedNativeSources, setArchivedNativeSources] = useState<NativeThreadSource[]>([]);
+  // Saved transcripts are fetched per session list only; translation is applied
+  // separately. Some hosts recreate `tt` on every render: with `tt` in the fetch
+  // effect every render re-read every transcript and, when the reads failed, set
+  // a fresh [] that rendered again — an endless loop (2026-11-03, homepage →
+  // task handoff).
+  type ArchivedFrames = { session: (typeof sessions)[number]; frames: Parameters<typeof mapNativeTranscript>[1] };
+  const [archivedNativeFrames, setArchivedNativeFrames] = useState<ArchivedFrames[]>([]);
   useEffect(() => {
     let alive = true;
     const nativeSessions = sessions.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
     if (!taskId || !nativeSessions.length) {
-      // Keep this cleanup idempotent. Some hosts recreate their translation
-      // function on each render; setting a fresh [] here would then make the
-      // effect render forever even though there are no archived sessions.
-      setArchivedNativeSources((current) => current.length ? [] : current);
+      setArchivedNativeFrames((current) => current.length ? [] : current);
       return () => { alive = false; };
     }
     void Promise.allSettled(nativeSessions.map(async (session) => {
       const transcript = await getComputerTaskTranscript(session.id);
-      return { session, messages: mapNativeTranscript(session, transcript.frames, tt) } satisfies NativeThreadSource;
+      // No frame list = an unreadable copy: left out, exactly like a failed read.
+      if (!Array.isArray(transcript?.frames)) throw new Error("transcript_unreadable");
+      return { session, frames: transcript.frames } satisfies ArchivedFrames;
     })).then((results) => {
       if (!alive) return;
-      setArchivedNativeSources(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
+      // Once per read (the effect no longer depends on `tt`, so this cannot loop).
+      setArchivedNativeFrames(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
     });
     return () => { alive = false; };
-  }, [taskId, sessions, tt]);
+  }, [taskId, sessions]);
+  const archivedNativeSources = useMemo<NativeThreadSource[]>(
+    () => archivedNativeFrames.flatMap(({ session, frames }) => {
+      // One malformed saved transcript must not take the whole page down.
+      try { return [{ session, messages: mapNativeTranscript(session, frames, tt) }]; } catch { return []; }
+    }),
+    [archivedNativeFrames, tt],
+  );
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
 
@@ -1688,10 +1729,12 @@ function AgentChatInner({
 
   /** 用户又开口了：清掉「已停止」，并回到跟随态。 */
   const beginUserTurn = useCallback(() => {
+    taskStopRequestRef.current = "";
+    updateTaskStop({ type: "reset" });
     stoppedTaskRef.current = "";
     setStoppedTaskId("");
     resumeFollowing();
-  }, [resumeFollowing]);
+  }, [resumeFollowing, updateTaskStop]);
 
   // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
   // 手上的消息还属于上一段对话时先不看，免得把新对话的历史当成刚说的话。
@@ -2048,8 +2091,9 @@ function AgentChatInner({
     // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
     // 免得留下「界面没有入口、提交路径却还认附件」的半开状态。
     const uploaded = toolsOn ? atts.ready() : [];
-    if ((!prompt && uploaded.length === 0) || busy || (toolsOn && atts.uploading))
+    if ((!prompt && uploaded.length === 0) || busy || (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))))
       return;
+    if (taskStopRef.current.phase === "stopping") return;
     if (readOnly) {
       setError(tt("这段对话只能查看。"));
       return;
@@ -2193,7 +2237,7 @@ function AgentChatInner({
   }
 
   // 「中止」：AI 工作中（任务 running / 请求在途）点停止键 → 停任务。
-  const controlLocal = useCallback(async (action: LocalAgentControl) => {
+  const controlLocal = useCallback(async (action: LocalAgentControl, options: { quiet?: boolean } = {}) => {
     if (readOnly || !taskId || !isLocalExecution || localControlInFlight.current) return false;
     if (!localAgentCanControl(localRun, action)) {
       void refresh(taskId);
@@ -2209,13 +2253,13 @@ function AgentChatInner({
         const next = parseLocalAgentRun(result.data);
         setLocalExecution(current => current.taskId === id ? {...current, run: newerLocalAgentRun(current.run, next)} : current);
       } else {
-        setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
+        if (!options.quiet) setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
       }
       void refresh(id);
       return result.ok;
     } catch {
       if (loadedTaskRef.current === id) {
-        setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
+        if (!options.quiet) setError(tt("没有收到电脑控制的确认，请核对最新状态；不会自动重复操作。"));
         void refresh(id);
       }
       return false;
@@ -2227,36 +2271,81 @@ function AgentChatInner({
 
   const stop = useCallback(async () => {
     if (readOnly) return;
+    // A stop on its way: the key already shows 「正在停止」; a second press is not lost silently.
+    if (taskStopRef.current.phase === "stopping") return;
     if (!taskId) {
-      setBusy(false);
+      const stopId = newStopId();
+      updateTaskStop({ type: "begin", stopId });
+      updateTaskStop({ type: "result", stopId, result: "failed" });
       return;
     }
-    if (isLocalExecution) {
-      await controlLocal("stop");
-      return;
+    const id = taskId;
+    const stopId = newStopId();
+    taskStopRequestRef.current = stopId;
+    updateTaskStop({ type: "begin", stopId });
+    // Bounded: no answer in 15 s → a written reason and Stop pressable again.
+    taskStopTimerRef.current = setTimeout(() => updateTaskStop({ type: "timeout", stopId }), STOP_REPLY_TIMEOUT_MS);
+    try {
+      if (isLocalExecution) {
+        if (!localAgentCanControl(localRun, "stop")) {
+          void refresh(id);
+          // A recorded stop intent is still in flight until the computer reports a terminal state.
+          if (localRun && !localAgentRunLive(localRun)) updateTaskStop({ type: "result", stopId, result: "not_running" });
+          else if (!localRun) updateTaskStop({ type: "result", stopId, result: "failed", detail: tt("电脑没有确认") });
+          return;
+        }
+        const ok = await controlLocal("stop", { quiet: true });
+        // The HTTP receipt only records intent; refresh/localRun below confirms the device ended it.
+        if (!ok) updateTaskStop({ type: "result", stopId, result: "failed", detail: tt("电脑没有确认") });
+        return;
+      }
+      // 真的把流掐断（AbortSignal 一路传到 fetch），不是拿到结果再丢掉。
+      // 已经收到的 streamText 原样留着——用户多半正在读它。
+      streamAbortRef.current?.abort();
+      // 停止键先变「正在停止」（立刻有反应），服务端确认后再落「已停止」。
+      const r = await stopTask(id);
+      if (loadedTaskRef.current !== id || taskStopRequestRef.current !== stopId) return;
+      if (r.ok) {
+        stoppedTaskRef.current = id;
+        setStoppedTaskId(id);
+        setStatus("stopped");
+        setBusy(false);
+        // Confirmed after the 15 s wait already said "no answer": the stop did land, drop that reason.
+        if (taskStopRef.current.phase === "error" && taskStopRef.current.error === "timeout") updateTaskStop({ type: "reset" });
+        updateTaskStop({ type: "result", stopId, result: "stopped" });
+        // 停下之前那一小段已经写进库、还没被轮询取回的正文要补齐——用户读到一半
+        // 的东西不能因为他按了停止就丢。`refresh` 里的停止判定会挡住状态被写回 running。
+        void refresh(id);
+        return;
+      }
+      // 没停成就得说清楚，不能让界面显示「已停止」而后台还在烧钱。
+      updateTaskStop({ type: "result", stopId, result: "failed", detail: r.error || "" });
+      void refresh(id);
+    } catch {
+      updateTaskStop({ type: "result", stopId, result: "failed", detail: "" });
+      void refresh(id);
     }
-    // 真的把流掐断（AbortSignal 一路传到 fetch），不是拿到结果再丢掉。
-    // 已经收到的 streamText 原样留着——用户多半正在读它。
-    streamAbortRef.current?.abort();
-    // 先落本地再等服务端。停止是用户唯一能踩的刹车，等一个来回（还可能失败）
-    // 才有反应，按下去就是「没反应」。
-    stoppedTaskRef.current = taskId;
-    setStoppedTaskId(taskId);
-    setStatus("stopped");
-    setBusy(false);
-    const r = await stopTask(taskId);
-    if (r.ok) {
-      // 停下之前那一小段已经写进库、还没被轮询取回的正文要补齐——用户读到一半
-      // 的东西不能因为他按了停止就丢。`refresh` 里的停止判定会挡住状态被写回 running。
-      void refresh(taskId);
-      return;
-    }
-    // 没停成就得说清楚，不能让界面显示「已停止」而后台还在烧钱。
-    stoppedTaskRef.current = "";
-    setStoppedTaskId("");
-    setError(r.error || tt("没能停下这次任务，它可能仍在运行。"));
-    void refresh(taskId);
-  }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal]);
+  }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
+  useEffect(() => {
+    if (!isLocalExecution || !localRun || localAgentRunLive(localRun)) return;
+    const state = taskStopRef.current;
+    if (state.phase === "stopping") updateTaskStop({ type: "result", stopId: state.stopId, result: "stopped" });
+    else if (state.phase === "error") updateTaskStop({ type: "reset" });
+  }, [isLocalExecution, localRun, updateTaskStop]);
+  useEffect(() => {
+    if (isLocalExecution || busy || !["done", "completed", "stopped", "cancelled", "failed", "error"].includes(status)) return;
+    const state = taskStopRef.current;
+    if (state.phase === "stopping") updateTaskStop({ type: "result", stopId: state.stopId, result: "stopped" });
+    else if (state.phase === "error") updateTaskStop({ type: "reset" });
+  }, [isLocalExecution, busy, status, taskStop.phase, updateTaskStop]);
+  useEffect(() => () => {
+    if (taskStopTimerRef.current) clearTimeout(taskStopTimerRef.current);
+  }, []);
+  // A new task (or a new turn) starts with no stale stop reason.
+  useEffect(() => {
+    taskStopRequestRef.current = "";
+    updateTaskStop({ type: "reset" });
+  }, [taskId, updateTaskStop]);
 
   // 记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
   // 回答后的追问 chip 已取消（操作员 2026-10-31），旧行的 meta.suggestions 不再渲染。
@@ -2277,7 +2366,7 @@ function AgentChatInner({
   // Only the block nothing visible follows yet is live; it folds once text starts after it.
   const liveProgressKey = liveAgentProgressKey(renderItems, messages);
   const presentation = threadPresentation(messages, status, {
-    busy, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
+    busy: busy || taskStopping, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
   const turnState = latestTurn(messages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
@@ -2494,7 +2583,8 @@ function AgentChatInner({
   );
   const latestArtifactMessage =
     artifactMessages[artifactMessages.length - 1] || null;
-  const running = status === "running" || busy;
+  // One running source for Stop, the step spinner and can-send: a stop on its way counts.
+  const running = status === "running" || busy || taskStopping;
   const activeGateId =
     status === "waiting_user"
       ? [...messages].reverse().find((message) => message.kind === "gate")?.id
@@ -2962,7 +3052,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={presentation.working && item.key === liveProgressKey}
+                running={running && item.key === liveProgressKey}
                 accent={accent}
               />
             ) : (
@@ -2970,7 +3060,7 @@ function AgentChatInner({
                 key={item.key}
                 message={messageForBubble(item)}
                 timeAbove={timeSeparators.get(item.index)}
-                streaming={presentation.working && item.index === lastAssistantIdx &&
+                streaming={running && item.index === lastAssistantIdx &&
                   item.index > lastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                 stopped={
@@ -3081,6 +3171,8 @@ function AgentChatInner({
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
+            stopping={taskStopping}
+            stopError={stopErrorText(tt, taskStop)}
             onOpenAttachment={openTaskAttachment}
             disabled={readOnly}
             leoSuggest
@@ -3138,7 +3230,8 @@ function AgentChatInner({
     const nativeRenderItems = buildAgentRenderItems(nativeMessages);
     const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
     const nativeLiveProgressKey = liveAgentProgressKey(nativeRenderItems, nativeMessages);
-    const nativePresentation = threadPresentation(nativeMessages, thread.running ? "running" : "", {
+    const nativeRunning = thread.running || (!session && conversationBusy);
+    const nativePresentation = threadPresentation(nativeMessages, nativeRunning ? "running" : "", {
       activeProgress: Boolean(nativeProgressKey),
     });
     const nativeLastUserIdx = nativeMessages.findLastIndex((message) => message.role === "user");
@@ -3153,6 +3246,9 @@ function AgentChatInner({
     // is the whole signal (no 「正在打开对话…」 line, 2026-10-31 D); a real reason
     // (offline, not installed / signed in) or a still-unknown computer is said.
     const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason;
+    // A known offline computer shows its saved conversation read-only. While
+    // its state is still being read (or an online link reconnects), Enter can queue.
+    const nativeReadOnly = readOnly || (!connecting && thread.offline);
     // The homepage created this chat's session itself (nativeLaunch): no second create here.
     const hostLaunch = !session && Boolean(nativeLaunch) && Boolean(pick) && pickChatKey(pick!) === launchKey;
     const notOpened = () => tt("没能打开这段对话，请稍后再试。");
@@ -3165,7 +3261,7 @@ function AgentChatInner({
     };
     const submit = async (value?: string) => {
       const text = (value ?? input).trim();
-      if (readOnly) return;
+      if (nativeReadOnly) return;
       // A first prompt on its way is already the user's bubble; one at a time.
       if (thread.pending && !thread.pending.unsent) return;
       // No session yet, or replacing an unsent first prompt: the bubble shows now and
@@ -3180,9 +3276,10 @@ function AgentChatInner({
       }
       if (!thread.ready) {
         if (blockedBySetup) { pane.requestSetup(); return; }
-        // Still opening (link / occupancy not read yet): never drop Enter. The prompt is
-        // the user's bubble now and goes out by itself once ready (unsent after 45 s).
-        if (thread.running || thread.offline) return;
+        // Not ready (still opening, reconnecting after a drop or a gateway swap, a turn
+        // still ending): never drop Enter (2026-11-02 F2). The prompt is the user's bubble
+        // now, says so while the computer reconnects, and goes out by itself once ready;
+        // a reason and a resend if it cannot (unsent after 45 s, or the gateway says so).
         if (thread.queue(text)) setInput("");
         return;
       }
@@ -3219,7 +3316,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={nativePresentation.working && item.key === nativeLiveProgressKey}
+                running={nativeRunning && item.key === nativeLiveProgressKey}
                 accent={accent}
               />
             ) : (
@@ -3227,7 +3324,7 @@ function AgentChatInner({
                 key={item.key}
                 message={item.message}
                 timeAbove={nativeTimeSeparators.get(item.index)}
-                streaming={nativePresentation.working && item.index === nativeLastAssistantIdx &&
+                streaming={nativeRunning && item.index === nativeLastAssistantIdx &&
                   item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                 stopped={item.message.meta?.stopped === true}
@@ -3254,6 +3351,12 @@ function AgentChatInner({
       tail: (
         <>
           {/* A first prompt that could not go out: said plainly under its bubble, with a retry (never handed back silently). */}
+          {/* Waiting through a reconnect: said under its bubble; it goes out by itself once connected. */}
+          {!thread.pending?.unsent && thread.pending?.waiting && (
+            <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500" data-native-pending-waiting="">
+              <span>{thread.pending.waiting}</span>
+            </div>
+          )}
           {thread.pending?.unsent && (
             <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500" data-native-unsent>
               <span>{tt("未发送：{reason}", { reason: thread.pending.unsent })}</span>
@@ -3283,16 +3386,18 @@ function AgentChatInner({
             value={input}
             onChange={setInput}
             onSubmit={(clean) => void submit(clean)}
-            loading={thread.running || (!session && conversationBusy)}
+            loading={nativeRunning}
             onStop={() => thread.stop()}
-            // Offline: read-only. Connecting, still opening, or setup-blocked stays usable
-            // (Send queues, or opens settings). Typing is never blocked by an unknown state.
-            disabled={readOnly || Boolean(session && !connecting && thread.offline)}
+            stopping={thread.stopState === "stopping"}
+            stopError={thread.stopError}
+            // Keep typing and Enter usable while an online computer reconnects.
+            disabled={nativeReadOnly}
             placeholder={placeholder ?? (toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问"))}
             rows={1}
             onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}
             attachments={toolsOn ? thread.composerAttachments : undefined}
             onRemoveAttachment={toolsOn ? thread.onRemoveAttachment : undefined}
+            onRetryAttachment={toolsOn ? thread.onRetryAttachment : undefined}
             // W6: a tile opens in this task's right sidebar through the shared Library detail.
             onOpenAttachment={openTaskAttachment}
             draftKey={taskId ? `task:${taskId}` : undefined}
@@ -3746,9 +3851,10 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     if (justPlacedRef.current === thread.messages) justPlacedRef.current = null;
     // Nothing placed yet (no messages, or hidden): nothing to follow.
     else if (el && active && placedRef.current && followRef.current) el.scrollTo({top: el.scrollHeight, behavior: scrollBehavior()});
-    // A short first batch that does not fill the pane cannot be scrolled up: read the next one.
+    // A short first batch that does not fill the pane cannot be scrolled up: read the next one
+    // (also when "there is more" is only known after the batch rendered, F2 2026-11-02).
     maybeLoadOlder(false);
-  }, [thread.messages, active, thread.olderLoading, maybeLoadOlder]);
+  }, [thread.messages, active, thread.olderLoading, thread.hasOlder, maybeLoadOlder]);
   return (
     <NativeSetupRequest.Provider value={setupRequest}>
       {render({ thread: displayThread, session, input, setInput, scrollRef, onScroll, connecting, share: paneShare, requestSetup })}

@@ -387,7 +387,9 @@ test("a gate key seen ready once is never covered again, even after the gate rem
 
 test("useNativeThread source: the transcript effect does not depend on `online`", () => {
   const source = readFileSync(new URL("../src/shell/native-thread/useNativeThread.ts", import.meta.url), "utf8");
-  const effect = source.slice(source.indexOf("const archiveFresh = useRef"), source.indexOf("const reduceArchive"));
+  // The initial read remains independent of online. F2 adds a separate,
+  // explicit reattachment read; do not accidentally inspect that effect's deps.
+  const effect = source.slice(source.indexOf("const archiveFresh = useRef"), source.indexOf("// Link re-attached (B2"));
   const deps = effect.match(/\}, \[([^\]]*)\]\);\s*$/)?.[1] ?? "";
   assert.ok(deps.includes("sessionKey"), deps);
   assert.equal(/\bonline\b/.test(deps), false, deps);

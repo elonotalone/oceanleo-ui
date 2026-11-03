@@ -248,6 +248,125 @@ function settleStoppingTurn(messages: DialogState["messages"], stop: string, ses
   return messages;
 }
 
+// ── Stop: one command, one bounded outcome (2026-11-02 stop-button contract) ──
+//
+// The page sends one `cancel` frame with a `stop_id`; the gateway answers it with
+// exactly one `cancel_result`. `stopped` / `not_running` end the turn here at
+// once; `offline` / `failed` / no answer in STOP_REPLY_TIMEOUT_MS restore the
+// turn as it was, with a written reason, and Stop is clickable again.
+
+export type CancelResult = "stopped" | "not_running" | "offline" | "failed";
+export type StopPhase = "idle" | "stopping" | "stopped" | "error";
+export type StopErrorReason = "offline" | "failed" | "timeout";
+export type StopState = {
+  phase: StopPhase;
+  /** The pending stop's id (echoed by `cancel_result`); empty when none is pending. */
+  stopId: string;
+  /** The session the stop was aimed at ('' when only a new-session ref was known). */
+  session: string;
+  error: StopErrorReason | null;
+  /** Gateway detail code for `failed` (short, may be empty). */
+  detail: string;
+};
+export type StopEvent =
+  | { type: "begin"; stopId: string; session?: string }
+  | { type: "result"; stopId: string; result: CancelResult; detail?: string }
+  | { type: "timeout"; stopId: string }
+  /** The stop could not be sent at all (computer not connected / socket would not open). */
+  | { type: "unreachable" }
+  | { type: "reset" };
+
+/** The page gives up waiting for `cancel_result` after this (the gateway promises ≤ 12 s). */
+export const STOP_REPLY_TIMEOUT_MS = 15_000;
+
+export function idleStop(): StopState {
+  return { phase: "idle", stopId: "", session: "", error: null, detail: "" };
+}
+
+export function isCancelResult(value: unknown): value is CancelResult {
+  return value === "stopped" || value === "not_running" || value === "offline" || value === "failed";
+}
+
+/** A stop id the gateway accepts: ≤ 64 of [A-Za-z0-9_-]. */
+export function newStopId(): string {
+  const random = Math.random().toString(36).slice(2, 12);
+  return `st_${Date.now().toString(36)}_${random}`.replace(/[^A-Za-z0-9_-]/g, "").slice(0, 64);
+}
+
+export function stopMachine(state: StopState, event: StopEvent): StopState {
+  switch (event.type) {
+    case "begin":
+      return { phase: "stopping", stopId: event.stopId, session: event.session ?? "", error: null, detail: "" };
+    case "result": {
+      // Only the reply to the pending stop counts; an old or foreign reply is ignored.
+      if (state.phase !== "stopping" || !event.stopId || event.stopId !== state.stopId) return state;
+      if (event.result === "stopped" || event.result === "not_running") {
+        return { ...state, phase: "stopped", stopId: "", error: null, detail: "" };
+      }
+      return {
+        ...state,
+        phase: "error",
+        stopId: "",
+        error: event.result === "offline" ? "offline" : "failed",
+        detail: event.result === "failed" ? (event.detail ?? "").slice(0, 80) : "",
+      };
+    }
+    case "timeout":
+      if (state.phase !== "stopping" || event.stopId !== state.stopId) return state;
+      return { ...state, phase: "error", stopId: "", error: "timeout", detail: "" };
+    case "unreachable":
+      return { ...state, phase: "error", stopId: "", error: "offline", detail: "" };
+    case "reset":
+      return state.phase === "idle" ? state : idleStop();
+    default:
+      return state;
+  }
+}
+
+type StopTranslate = (zh: string, vars?: Record<string, string | number>) => string;
+
+/** The one written reason a failed stop shows next to the composer, or null. */
+export function stopErrorText(tt: StopTranslate, state: Pick<StopState, "phase" | "error" | "detail">): string | null {
+  if (state.phase !== "error" || !state.error) return null;
+  if (state.error === "offline") return tt("电脑不在线，停止指令没有送到");
+  if (state.error === "timeout") return tt("电脑没有回应停止指令，可以再点一次");
+  return tt("没能停下这次任务（{detail}），可以再点一次停止", { detail: state.detail || tt("未知原因") });
+}
+
+/** `stopped` / `not_running`: end the stopped session's open turn here, now. Idempotent. */
+function endStoppedTurn(state: DialogState, program: string | null, session: string): DialogState {
+  const ended = session || state.activeSession || state.draftRef || "";
+  const messages = state.messages.map((row) => {
+    if (row.kind !== "turn") return row;
+    if (ended && row.acpSession && row.acpSession !== ended) return row;
+    if (row.stop === "stopping" || (row.live && !row.stop)) return { ...row, stop: "cancelled" };
+    return row;
+  });
+  const current = state.activeSession || state.draftRef || "";
+  const onView = !ended || ended === current;
+  const next = markTurn({
+    ...state,
+    messages,
+    // Only the stopped session's own "busy" refusal goes; another session's stays.
+    agentBusy: onView ? false : state.agentBusy,
+    occupancyPendingAt: onView ? null : state.occupancyPendingAt,
+    occupancyPendingSession: onView ? null : state.occupancyPendingSession,
+  }, program, ended, false);
+  return dropOccupancySession(next, ended);
+}
+
+/** `offline` / `failed` / timeout: the turn is as it was before the click. */
+function restoreStoppingTurn(state: DialogState, session: string): DialogState {
+  let changed = false;
+  const messages = state.messages.map((row) => {
+    if (row.kind !== "turn" || row.stop !== "stopping") return row;
+    if (session && row.acpSession && row.acpSession !== session) return row;
+    changed = true;
+    return { ...row, stop: "" };
+  });
+  return changed ? { ...state, messages } : state;
+}
+
 function blankInstall(): InstallState {
   return {
     open: false,
@@ -327,8 +446,15 @@ export type DialogEvent =
   | { type: "occupancy-link"; up: boolean }
   | { type: "user"; text: string; attachments?: { name: string; mime: string; preview?: string }[] }
   | { type: "cancel-local" }
+  /** The gateway's answer to this page's cancel frame (`cancel_result`). */
+  | { type: "cancel-result"; result: CancelResult; acpSession?: string; program?: string }
+  /** No answer within STOP_REPLY_TIMEOUT_MS, or the stop could not be sent: restore the turn. */
+  | { type: "cancel-failed"; acpSession?: string }
+  | { type: "prompt-not-sent"; program?: string; acpSession?: string }
   | { type: "server-settled" }
   | { type: "clear-offline" }
+  /** A live frame for another view of this computer arrived: the computer is connected (F2). */
+  | { type: "link-evidence" }
   | { type: "set-model"; id: string }
   | { type: "set-mode"; value: string }
   | { type: "set-config"; id: string; value: string | boolean }
@@ -373,6 +499,13 @@ export type DialogEvent =
       occupancyPendingAt?: number | null;
       occupancyPendingSession?: string | null;
     };
+
+/** Stable gateway identity when present; older adapters still fall back to prompt/time alignment. */
+function userFrameId(frame: Record<string, unknown>): string | null {
+  const value = frame.message_id ?? frame.seq;
+  if ((typeof value !== "string" || !value) && typeof value !== "number") return null;
+  return `frame:${str(frame.program)}:${str(frame.acp_session)}:${value}`;
+}
 
 /** A user frame's own send time (ISO or epoch), when the gateway includes one; saved frames without it stay untimed. */
 function frameTime(frame: Record<string, unknown>): { at?: number } {
@@ -847,8 +980,35 @@ function installMatches(state: DialogState, frame: Record<string, unknown>): boo
   return program === state.install.program;
 }
 
-function onFrame(state: DialogState, frame: Record<string, unknown>): DialogState {
+/**
+ * Frames only a connected computer produces (2026-11-02 F2). `offline` from
+ * `computer_reconnecting` / `computer_offline` used to clear only on `status`;
+ * after a gateway swap that frame was never guaranteed, so the page stayed
+ * "offline" while the agent was visibly working.
+ */
+const LINK_EVIDENCE = new Set([
+  "delta", "thought", "tool", "plan", "usage", "permission", "question",
+  "turn_start", "user_message", "done", "occupancy", "session_opened", "transcript",
+]);
+
+function isLinkNotice(message: AgentDialogMessage): boolean {
+  return message.kind === "notice" &&
+    (message.code === "computer_offline" || message.code === "computer_reconnecting" || message.code === "dialog_unreachable");
+}
+
+/** The computer is demonstrably connected again: not offline, its reconnect notices go. */
+function recoverLink(state: DialogState): DialogState {
+  if (!state.offline) return state;
+  return { ...state, offline: false, messages: state.messages.filter((message) => !isLinkNotice(message)) };
+}
+
+export function isLinkEvidenceFrame(frame: Record<string, unknown>): boolean {
+  return LINK_EVIDENCE.has(str(frame.t)) && frame.replay !== true;
+}
+
+function onFrame(input: DialogState, frame: Record<string, unknown>): DialogState {
   const kind = str(frame.t);
+  let state = kind === "status" || isLinkEvidenceFrame(frame) ? recoverLink(input) : input;
   if (kind === "status") return {
     ...state,
     programs: parsePrograms(frame.programs),
@@ -1120,7 +1280,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
     if (
       last &&
       last.kind === "user" &&
-      last.text === text
+      last.text === text && (!userFrameId(frame) || !last.id.startsWith("frame:") || last.id === userFrameId(frame))
     ) {
       // The gateway's copy (archive ids) supersedes the optimistic echo; the
       // echo's local thumbnails stay on the same files.
@@ -1128,11 +1288,12 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       if (attachments.length && (!last.attachments?.length || serverRows)) {
         return {
           ...state,
-          messages: state.messages.slice(0, -1).concat({ ...last, ...(sender ? { sender } : {}), attachments: mergeLocalPreviews(attachments, last.attachments) }),
+          messages: state.messages.slice(0, -1).concat({ ...last, id: userFrameId(frame) ?? last.id, ...frameTime(frame), ...(sender ? { sender } : {}), attachments: mergeLocalPreviews(attachments, last.attachments) }),
         };
       }
-      if (sender && !last.sender) {
-        return { ...state, messages: state.messages.slice(0, -1).concat({ ...last, sender }) };
+      if ((sender && !last.sender) || userFrameId(frame) || frameTime(frame).at !== undefined) {
+        return { ...state, messages: state.messages.slice(0, -1).concat({ ...last, id: userFrameId(frame) ?? last.id,
+          ...frameTime(frame), ...(sender ? { sender } : {}) }) };
       }
       return state;
     }
@@ -1140,7 +1301,7 @@ function onFrame(state: DialogState, frame: Record<string, unknown>): DialogStat
       ...state,
       messages: [
         ...state.messages,
-        { kind: "user", id: nextId(), text, replay: frame.replay === true, ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}), ...frameTime(frame) },
+        { kind: "user", id: userFrameId(frame) ?? nextId(), text, replay: frame.replay === true, ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}), ...frameTime(frame) },
       ],
     };
   }
@@ -1303,6 +1464,19 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         messages: stampOpenTurn(state.messages, "stopping"),
       };
     }
+    case "cancel-result": {
+      const session = event.acpSession ?? "";
+      if (event.result === "stopped" || event.result === "not_running") {
+        return endStoppedTurn(state, event.program || state.program, session);
+      }
+      return restoreStoppingTurn(state, session);
+    }
+    case "cancel-failed":
+      return restoreStoppingTurn(state, event.acpSession ?? "");
+    case "prompt-not-sent": {
+      const session = event.acpSession || state.activeSession || state.draftRef || "";
+      return dropOccupancySession(markTurn(state, event.program || state.program, session, false), session);
+    }
     case "server-settled": {
       const session = state.activeSession || state.draftRef || "";
       return markTurn({
@@ -1316,6 +1490,8 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
     case "clear-offline":
       // 已不在离线就原样返回：调用方可能在 effect 里每次挂载都发，别白造一帧渲染。
       return state.offline ? { ...state, offline: false } : state;
+    case "link-evidence":
+      return recoverLink(state);
     case "set-model":
       return {
         ...state,

@@ -12,8 +12,22 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { installDirPayload } from "./install-dir";
 import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
 import { isWsProgram } from "./parse";
-import { applyDialog, dropUnsentEcho, initialDialogState } from "./reduce";
+import {
+  applyDialog,
+  dropUnsentEcho,
+  idleStop,
+  initialDialogState,
+  isCancelResult,
+  isLinkEvidenceFrame,
+  newStopId,
+  STOP_REPLY_TIMEOUT_MS,
+  stopErrorText,
+  stopMachine,
+  type StopEvent,
+  type StopState,
+} from "./reduce";
 import { modelCatalogFrames, rememberModelCatalogFrame } from "./model-catalog-cache";
+import { isTransientUploadError, UPLOAD_TRIES, uploadFailureReason, uploadRetryDelay } from "../../composer-send-guard";
 import { setCacheUser } from "../../../lib/user-scoped-cache";
 import { nextReconnectDelay } from "./reconnect";
 import { isReconnectingNotice, UNSENT_RESTORED_COPY } from "./notice";
@@ -106,6 +120,11 @@ function frameTargetsCurrentView(frame: Record<string, unknown>, state: { active
   return session ? session === state.activeSession : true;
 }
 
+/** B2 prompt-not-sent: an error frame whose `detail` says the prompt never reached the agent. */
+export function isPromptNotSent(frame: Record<string, unknown>): boolean {
+  return frame.t === "error" && frame.detail === "prompt_not_sent";
+}
+
 function unsentKeys(frame: Record<string, unknown>): string[] {
   const keys: string[] = [];
   if (typeof frame.ref === "string" && frame.ref) keys.push(`ref:${frame.ref}`);
@@ -129,7 +148,29 @@ export type AgentDialogControllerV2 = AgentDialogController & {
    * owns its text (main chat `send(override)`) puts `text` back into its input
    * when `seq` changes.
    */
-  restoredDraft: { seq: number; text: string } | null;
+  restoredDraft: { seq: number; text: string; unsent?: boolean; fileIds?: string[] } | null;
+  /**
+   * B2 `history` frames (2026-11-02): per `program::acp_session`, whether the live
+   * transcript the gateway sent is a full replay (`true`) or not (`false`, e.g. a
+   * turn adopted after a gateway swap). No entry = unknown (assume no replay).
+   */
+  historyReplay: Readonly<Record<string, boolean>>;
+  /**
+   * Counts link re-attachments (B2 `status` with `link:"attached"`, an adopted
+   * session's `history replay:false`): hosts re-read the saved transcript then, so
+   * what was said during the gap is on screen even without a live replay.
+   */
+  reattachSeq: number;
+  /**
+   * The conversation's one stop state (2026-11-02): `stopping` from the click
+   * until the gateway's `cancel_result` (or 15 s); `error` keeps the turn as it
+   * was and `stopError` says why. Hosts show 「正在停止」 while stopping.
+   */
+  stopState: StopState["phase"];
+  /** Localized reason the last stop did not take effect, else null. */
+  stopError: string | null;
+  /** Put a failed attachment into the inbox again (F3 2026-11-02). */
+  retryAttachment: (id: string) => void;
 };
 
 const MAX_PROMPT_CHARS = 32000;
@@ -283,6 +324,8 @@ export function useAgentDialog({
   const openActiveSessionRef = useRef(openActiveSession);
   openActiveSessionRef.current = openActiveSession;
   const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
   const [mountProgram] = useState(() => initialProgram);
   const [mountRef] = useState(() => `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
   const [state, dispatch] = useReducer(
@@ -299,7 +342,10 @@ export function useAgentDialog({
   const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
   const inboxWaiters = useRef(new Map<string, Promise<void>>());
   const unsentRef = useRef(new Map<string, UnsentPrompt>());
-  const [restoredDraft, setRestoredDraft] = useState<{ seq: number; text: string } | null>(null);
+  const [restoredDraft, setRestoredDraft] = useState<AgentDialogControllerV2["restoredDraft"]>(null);
+  // B2 `history` frames and link re-attachments (see AgentDialogControllerV2).
+  const [historyReplay, setHistoryReplay] = useState<Readonly<Record<string, boolean>>>({});
+  const [reattachSeq, setReattachSeq] = useState(0);
   const sessionLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [fresh, setFresh] = useState(false);
   const [computerName, setComputerName] = useState("");
@@ -333,6 +379,7 @@ export function useAgentDialog({
     send: (program) => sendJson(socketRef.current, { t: "occupancy", program }),
   });
   const connectGen = useRef(0);
+  const connectedComputerRef = useRef("");
   const delayRef = useRef(1000);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const connectRef = useRef<() => Promise<WebSocket | null>>(async () => null);
@@ -463,9 +510,11 @@ export function useAgentDialog({
     if (kind !== "error") return frame;
     const code = String(frame.code ?? "");
     const spoken = typeof frame.text === "string" ? frame.text.trim() : "";
+    // B2 (2026-11-02): the gateway says this prompt itself never reached the agent.
+    const notSent = isPromptNotSent(frame);
     // A dropped link does not prove a refusal: the turn may still be running.
-    if (isReconnectingNotice(code) || code === "dialog_detached"
-      || isRetriableStreamCancelText(spoken) || isRetriableStreamCancelText(code)) return frame;
+    if (!notSent && (isReconnectingNotice(code) || code === "dialog_detached"
+      || isRetriableStreamCancelText(spoken) || isRetriableStreamCancelText(code))) return frame;
     let key = keys.find((item) => pending.has(item));
     if (!key && !keys.length) {
       // Early refusals (attachment outside the inbox, empty prompt…) carry no
@@ -475,16 +524,17 @@ export function useAgentDialog({
     const kept = key ? pending.get(key) : undefined;
     if (!key || !kept) return frame;
     pending.delete(key);
-    setAttachments((current) => {
-      const present = new Set(current.map((item) => item.id));
-      return [...kept.files.filter((item) => !present.has(item.id)), ...current].slice(0, 20);
-    });
+    const present = new Set(attachmentsRef.current.map((item) => item.id));
+    const restoredFiles = [...kept.files.filter((item) => !present.has(item.id)), ...attachmentsRef.current].slice(0, 20);
+    attachmentsRef.current = restoredFiles;
+    setAttachments(restoredFiles);
     if (kept.text && !draftRef.current.trim()) {
       draftRef.current = kept.text;
       setDraft(kept.text);
     }
     restoreSeqRef.current += 1;
-    setRestoredDraft({ seq: restoreSeqRef.current, text: kept.text });
+    // Not sent: hosts mark it on its own bubble (「没有发出去 · 重新发送」) instead of only refilling the composer.
+    setRestoredDraft({ seq: restoreSeqRef.current, text: kept.text, ...(notSent ? { unsent: true, fileIds: kept.files.map((item) => item.id) } : {}) });
     if (kept.echoed) {
       // The view the prompt was sent from may have been re-keyed by
       // session_opened since; drop the echo wherever it is the last user bubble.
@@ -503,8 +553,115 @@ export function useAgentDialog({
         if (messages !== view.messages) cached.views.set(viewKey, { ...view, messages });
       }
     }
+    if (notSent) {
+      // This prompt never started a turn. Release only its optimistic send mark,
+      // otherwise reconnect + idle occupancy would still leave Send blocked.
+      const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      const session = typeof frame.acp_session === "string" && frame.acp_session
+        ? frame.acp_session : typeof frame.ref === "string" && frame.ref ? `new:${frame.ref}` : "";
+      const event = { type: "prompt-not-sent" as const, program, acpSession: session };
+      stateRef.current = applyDialog(stateRef.current, event);
+      dispatch(event);
+    }
     // Prefer the gateway's own sentence; a bare gateway fault says the draft was kept.
     return !spoken && code === "gateway_error" ? { ...frame, text: UNSENT_RESTORED_COPY } : frame;
+  }, []);
+
+  // ── Stop (2026-11-02 contract): idle → stopping → (stopped | error) ──────────
+  const [stopState, setStopStateValue] = useState<StopState>(idleStop);
+  const stopRef = useRef<StopState>(idleStop());
+  const stopTargetRef = useRef<{ program: AgentProgram | null; session: string }>({ program: null, session: "" });
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** After a confirmed stop, the gateway's own late `done` (stop cancelled) for it is an echo. */
+  const stopEchoRef = useRef<{ key: string; until: number } | null>(null);
+  const updateStop = useCallback((event: StopEvent): StopState => {
+    const next = stopMachine(stopRef.current, event);
+    if (next === stopRef.current) return next;
+    stopRef.current = next;
+    setStopStateValue(next);
+    if (next.phase !== "stopping" && stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+    return next;
+  }, []);
+  useEffect(() => () => {
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+  }, []);
+
+  /** Apply a stop outcome to the view of the session it was aimed at (on screen or kept). */
+  const applyStopToView = useCallback((event: Parameters<typeof applyDialog>[1], program: AgentProgram | null, session: string) => {
+    const current = stateRef.current;
+    const onScreen = program === current.program && (!session || session === current.activeSession);
+    if (onScreen) {
+      stateRef.current = applyDialog(current, event);
+      dispatch(event);
+      return;
+    }
+    const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+    const key = `${program ?? ""}::${session}`;
+    const source = {
+      ...initialDialogState(), ...cached.views.get(key),
+      program, activeSession: session, liveTurns: current.liveTurns,
+    };
+    const next = applyDialog(source, event);
+    if (cached.views.has(key)) cached.views.set(key, viewSnapOf(next));
+    stateRef.current = applyDialog(stateRef.current, { type: "set-live-turns", liveTurns: next.liveTurns });
+    dispatch({ type: "set-live-turns", liveTurns: next.liveTurns });
+  }, []);
+
+  /** offline / failed / timeout / unsendable: the turn is as it was, Stop is clickable again. */
+  const failStop = useCallback((event: StopEvent) => {
+    const before = stopRef.current;
+    const next = updateStop(event);
+    if (next === before || next.phase !== "error") return;
+    const target = stopTargetRef.current;
+    applyStopToView({ type: "cancel-failed", acpSession: target.session }, target.program, target.session);
+  }, [applyStopToView, updateStop]);
+
+  /** stopped / not_running: end the open turn here at once (a later real `done` is harmless). */
+  const confirmStop = useCallback((stopId: string, result: "stopped" | "not_running", session: string) => {
+    const before = stopRef.current;
+    const next = updateStop({ type: "result", stopId, result });
+    if (next === before) return;
+    const target = stopTargetRef.current;
+    const ended = session || target.session;
+    const pendingKey = ended ? `s:${target.program ?? ""}::${ended}`
+      : `ref:${target.program ? newRefs.current.get(target.program) ?? "" : ""}`;
+    // This turn's not-yet-acknowledged send is over too. A later refusal must
+    // not resurrect its draft; queued prompts for the next turn stay separate.
+    unsentRef.current.delete(pendingKey);
+    if (ended) stopEchoRef.current = { key: `${target.program ?? ""}::${ended}`, until: Date.now() + 5_000 };
+    applyStopToView({ type: "cancel-result", result, acpSession: ended, program: target.program ?? undefined }, target.program, ended);
+  }, [applyStopToView, updateStop]);
+
+  const onCancelResult = useCallback((frame: Record<string, unknown>) => {
+    const stopId = typeof frame.stop_id === "string" ? frame.stop_id : "";
+    const result = frame.result;
+    if (!stopId || stopId !== stopRef.current.stopId || !isCancelResult(result)) return;
+    const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+    if (result === "stopped" || result === "not_running") {
+      confirmStop(stopId, result, session);
+      return;
+    }
+    failStop({ type: "result", stopId, result, detail: typeof frame.detail === "string" ? frame.detail : "" });
+  }, [confirmStop, failStop]);
+
+  /** True for the gateway's late `done` of a stop this page already settled (dropped as an echo). */
+  const isStopEcho = useCallback((frame: Record<string, unknown>): boolean => {
+    const echo = stopEchoRef.current;
+    if (!echo || frame.t !== "done" || frame.stop !== "cancelled") return false;
+    if (Date.now() > echo.until) {
+      stopEchoRef.current = null;
+      return false;
+    }
+    const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+    const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+    if (`${program}::${session}` !== echo.key) return false;
+    // A newer stop of this session is a real answer, never an echo.
+    if (stopRef.current.phase === "stopping") return false;
+    stopEchoRef.current = null;
+    return true;
   }, []);
 
   const ingest = useCallback((raw: string) => {
@@ -528,6 +685,48 @@ export function useAgentDialog({
       const status = frame.sync_status;
       if (status === "saved" || status === "pending" || status === "error") archiveStatusRef.current?.(status);
       return;
+    }
+    if (frame.t === "cancel_result") {
+      onCancelResult(frame);
+      return;
+    }
+    if (isStopEcho(frame)) return;
+    if (frame.t === "turn_start" && frame.replay !== true && stopEchoRef.current) {
+      const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+      // Once the next agent turn has actually started, its cancelled `done`
+      // (including a Stop from another page) is real and must never be hidden.
+      if (`${program}::${session}` === stopEchoRef.current.key) stopEchoRef.current = null;
+    }
+    // B2 no-replay frame: whether the live transcript for this session is a full replay.
+    if (frame.t === "history") {
+      const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+      const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      if (session && typeof frame.replay === "boolean") {
+        const key = `${program}::${session}`;
+        const replay = frame.replay;
+        setHistoryReplay((current) => (current[key] === replay ? current : { ...current, [key]: replay }));
+        // Adopted without history: what was said during the gap is only in the saved copy.
+        if (!replay) setReattachSeq((count) => count + 1);
+      }
+      return;
+    }
+    if (frame.t === "status" && frame.link === "attached") setReattachSeq((count) => count + 1);
+    if (isPromptNotSent(frame)) {
+      // That prompt's fate is on its bubble (settleUnsent above); the turn on screen is untouched.
+      // A reconnecting / offline code still says the computer is away right now.
+      const code = String(frame.code ?? "");
+      if (code === "computer_reconnecting" || code === "computer_offline") {
+        const event = { type: "frame" as const, frame: { t: "error", code, program: frame.program } };
+        stateRef.current = applyDialog(stateRef.current, event);
+        dispatch(event);
+      }
+      return;
+    }
+    // Any live frame proves the computer is connected, whichever view of it the frame is for.
+    if (stateRef.current.offline && isLinkEvidenceFrame(frame)) {
+      stateRef.current = applyDialog(stateRef.current, { type: "link-evidence" });
+      dispatch({ type: "link-evidence" });
     }
     const viewingSession = stateRef.current.activeSession;
     if (frame.t === "error" && isReconnectingNotice(String(frame.code))) {
@@ -677,7 +876,17 @@ export function useAgentDialog({
       else if (isCompletedStop(typeof frame.stop === "string" ? frame.stop : "")) addUnread(frameProgram, frameSession);
     }
     if (frame.t === "turn_start" && frameSession && frameProgram) clearUnread(frameProgram, frameSession);
-  }, [addUnread, clearTimer, clearUnread, initialSessionId, mountProgram, settleUnsent]);
+    // The stopped turn's own `done` already ended it here: the stop has its outcome even
+    // if this gateway predates `cancel_result` (whose late reply is then ignored by id).
+    if (frame.t === "done" && (stopRef.current.phase === "stopping" || stopRef.current.phase === "error")) {
+      const target = stopTargetRef.current;
+      if (frameProgram === (target.program ?? "") && (!target.session || !frameSession || frameSession === target.session)) {
+        // A failed stop's reason ("press Stop again") no longer applies once that turn ended anyway.
+        if (stopRef.current.phase === "error") updateStop({ type: "reset" });
+        else confirmStop(stopRef.current.stopId, "stopped", frameSession);
+      }
+    }
+  }, [addUnread, clearTimer, clearUnread, confirmStop, initialSessionId, isStopEcho, mountProgram, onCancelResult, settleUnsent, updateStop]);
 
   const scheduleReconnect = useCallback(() => {
     if (!enabledRef.current || !activeRef.current) return;
@@ -759,6 +968,8 @@ export function useAgentDialog({
             finish(null);
             return;
           }
+          const reopening = connectedComputerRef.current === computerIdRef.current;
+          connectedComputerRef.current = computerIdRef.current;
           sendJson(socket, { t: "status" });
           sessionsRefreshRef.current?.reset();
           occupancyProbeRef.current?.reset();
@@ -771,7 +982,13 @@ export function useAgentDialog({
             const acpSession = stateRef.current.activeSession;
             // The initial openSession caller sends its own request once the
             // first socket resolves. Only reattach on subsequent connections.
-            if (gen > 1 && acpSession) sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
+            if (gen > 1 && acpSession) {
+              sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
+              // Reopened after a drop: the saved copy is re-read so the gap stays on screen (F2).
+              // A cancelled pre-connect attempt also advances gen. Only a
+              // previously open socket is a reconnect requiring a second read.
+              if (reopening) setReattachSeq((count) => count + 1);
+            }
           }
           finish(socket);
         },
@@ -997,6 +1214,7 @@ export function useAgentDialog({
     if (inboxWaiters.current.size) {
       await Promise.all([...inboxWaiters.current.values()]);
     }
+    if (attachmentsRef.current.some((item) => item.state === "error")) return false;
     const pendingFiles = attachmentsRef.current.filter(isInboxReady);
     const text = (override ?? draftRef.current).trim();
     if (!text && pendingFiles.length === 0) return false;
@@ -1010,6 +1228,8 @@ export function useAgentDialog({
     // 与 WS send 同款乐观写：dispatch 到重渲染之间再按发送不能发出第二句。
     dispatch({ type: "send-began" });
     stateRef.current = applyDialog(stateRef.current, { type: "send-began" });
+    // A new prompt starts a new turn: an earlier stop's reason no longer applies.
+    updateStop({ type: "reset" });
     const named = userFileRows(pendingFiles);
     const fileNote = pendingFiles.length
       ? `${text ? "\n\n" : ""}` + pendingFiles.map((item) => `附件：${item.path}`).join("\n")
@@ -1245,6 +1465,9 @@ export function useAgentDialog({
     if (occupancyMode !== "idle") return false;
     const text = (typeof override === "string" ? override : draftRef.current).trim();
     await settleUploadsRef.current();
+    // A file that did not upload is not silently left behind: nothing goes out until it is
+    // retried or removed (the composer says why, F3 2026-11-02).
+    if (attachmentsRef.current.some((item) => item.state === "error")) return false;
     // A managed prompt carries only files archived under its own task session.
     const sendSession = taskSessionRef.current || "";
     const files = attachmentsRef.current.filter((item) => isInboxReady(item)
@@ -1255,6 +1478,7 @@ export function useAgentDialog({
       return false;
     }
     stateRef.current = applyDialog(current, { type: "send-began" });
+    updateStop({ type: "reset" });
     const model = current.selectedModel;
     const mode = current.selectedMode;
     const origin = viewKeyRef.current;
@@ -1324,7 +1548,26 @@ export function useAgentDialog({
   }, [ensureOpen, ingest]);
 
   const abort = useCallback(() => {
+    // A stop already on its way: the button shows 「正在停止」 and waits for its outcome.
+    if (stopRef.current.phase === "stopping") return;
     const program = stateRef.current.program;
+    const session = stateRef.current.activeSession;
+    const socketProgram = usesDialogSocket(program, localOceanleoRef.current);
+    // Not connected to the computer: nothing can be sent. Said, never a silent no-op.
+    if (socketProgram && !enabledRef.current) {
+      stopTargetRef.current = { program, session };
+      updateStop({ type: "unreachable" });
+      return;
+    }
+    const stopId = newStopId();
+    stopTargetRef.current = { program, session };
+    updateStop({ type: "begin", stopId, session });
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      stopTimerRef.current = null;
+      if (stopRef.current.stopId !== stopId) return;
+      failStop({ type: "timeout", stopId });
+    }, STOP_REPLY_TIMEOUT_MS);
     // Persist the requested state before a program/session switch can snapshot
     // this view. The request itself does not prove that the turn has ended.
     stateRef.current = applyDialog(stateRef.current, { type: "cancel-local" });
@@ -1335,44 +1578,62 @@ export function useAgentDialog({
       clearOceanWait();
       oceanSendRef.current = null;
       const taskId = oceanTaskRef.current;
-      if (taskId) {
-        const gen = oceanGen.current;
-        void stopTask(taskId).then(async () => {
-          if (gen !== oceanGen.current) return;
-          const detail = await getTask(taskId);
-          if (gen !== oceanGen.current) return;
-          if (!detail.ok || !detail.data) {
-            dispatch({ type: "occupancy-lost" });
-            void pollOcean(taskId, gen);
-            return;
-          }
-          applyOceanDetail(detail.data);
-          if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
-        }).catch(() => {
-          if (gen !== oceanGen.current) return;
+      if (!taskId) {
+        confirmStop(stopId, "not_running", "");
+        return;
+      }
+      const gen = oceanGen.current;
+      void stopTask(taskId).then(async (result) => {
+        if (gen !== oceanGen.current) return;
+        if (result && result.ok === false) {
+          failStop({ type: "result", stopId, result: "failed", detail: typeof result.error === "string" ? result.error : "" });
+          void pollOcean(taskId, gen);
+          return;
+        }
+        confirmStop(stopId, "stopped", "");
+        const detail = await getTask(taskId);
+        if (gen !== oceanGen.current) return;
+        if (!detail.ok || !detail.data) {
           dispatch({ type: "occupancy-lost" });
           void pollOcean(taskId, gen);
-        });
-      }
+          return;
+        }
+        applyOceanDetail(detail.data);
+        if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
+      }).catch(() => {
+        if (gen !== oceanGen.current) return;
+        failStop({ type: "result", stopId, result: "failed", detail: "" });
+        dispatch({ type: "occupancy-lost" });
+        void pollOcean(taskId, gen);
+      });
       return;
     }
-    if (usesDialogSocket(program, localOceanleoRef.current)) {
-      const frame: Record<string, unknown> = { t: "cancel", program };
-      if (stateRef.current.activeSession) frame.acp_session = stateRef.current.activeSession;
-      else frame.ref = newRefs.current.get(program);
-      // Stop must never be dropped just because the socket happened to be
-      // reconnecting when it was pressed: retry on a fresh connection.
-      if (!sendJson(socketRef.current, frame)) {
-        void (async () => {
-          try {
-            if (!sendJson(await ensureOpen(), frame)) dispatch({ type: "occupancy-lost" });
-          } catch {
-            dispatch({ type: "occupancy-lost" });
-          }
-        })();
-      }
+    if (!socketProgram) {
+      confirmStop(stopId, "not_running", session);
+      return;
     }
-  }, [applyOceanDetail, clearOceanWait, ensureOpen, pollOcean]);
+    const frame: Record<string, unknown> = { t: "cancel", program, stop_id: stopId };
+    if (session) frame.acp_session = session;
+    else frame.ref = newRefs.current.get(program);
+    if (taskSessionRef.current) frame.task_session_id = taskSessionRef.current;
+    // Stop must never be dropped just because the socket happened to be
+    // reconnecting when it was pressed: retry on a fresh connection.
+    if (!sendJson(socketRef.current, frame)) {
+      void (async () => {
+        let sent = false;
+        try {
+          const socket = await ensureOpen();
+          if (stopRef.current.stopId !== stopId) return;
+          sent = sendJson(socket, frame);
+        } catch {
+          sent = false;
+        }
+        if (sent) return;
+        dispatch({ type: "occupancy-lost" });
+        if (stopRef.current.stopId === stopId) failStop({ type: "unreachable" });
+      })();
+    }
+  }, [applyOceanDetail, clearOceanWait, confirmStop, ensureOpen, failStop, pollOcean, updateStop]);
 
   const closeProgram = useCallback((program: WsProgram) => {
     const sent = sendJson(socketRef.current, { t: "close", program });
@@ -1500,6 +1761,7 @@ export function useAgentDialog({
     if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
     if (stateRef.current.activeSession === acpSession && stateRef.current.sessionLoading) return;
     clearUnread(program ?? "", acpSession);
+    if (stopTargetRef.current.session !== acpSession) updateStop({ type: "reset" });
     const cache = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
     cache.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
     const cacheKey = `${program}::${acpSession}`;
@@ -1575,6 +1837,7 @@ export function useAgentDialog({
 
   const newSession = useCallback((cwd?: string) => {
     const program = stateRef.current.program;
+    updateStop({ type: "reset" });
     stateRef.current = {
       ...stateRef.current,
       activeSession: "",
@@ -1824,6 +2087,23 @@ export function useAgentDialog({
       settleWaiter();
     };
     finish({ state: "uploading", deferred: undefined, percent: 0, path: undefined, archive: undefined, error: undefined });
+    // A briefly busy / reconnecting computer (409 node_busy, network drop) is tried again by
+    // itself, a few times with a pause, before the failure is shown (F3 2026-11-02).
+    const putWithRetry = async () => {
+      for (let attempt = 1; ; attempt += 1) {
+        if (!attachmentsRef.current.some((item) => item.id === chip.id)) return null;
+        try {
+          return await put(computerId, file, (percent) => {
+            finish({ percent });
+          }, bound ? { task_session_id: bound } : undefined);
+        } catch (err) {
+          const kept = attachmentsRef.current.some((item) => item.id === chip.id);
+          if (!kept || attempt >= UPLOAD_TRIES || !isTransientUploadError(err)) throw err;
+          finish({ percent: 0 });
+          await new Promise((resolve) => setTimeout(resolve, uploadRetryDelay(attempt)));
+        }
+      }
+    };
     if (typeof put !== "function" || !computerId) {
       finish({
         state: "error",
@@ -1832,10 +2112,9 @@ export function useAgentDialog({
       done();
       return;
     }
-    void put(computerId, file, (percent) => {
-      finish({ percent });
-    }, bound ? { task_session_id: bound } : undefined)
+    void putWithRetry()
       .then((result) => {
+        if (!result) return;
         uploadedForRef.current.set(chip.id, bound);
         finish({
           state: "done",
@@ -1855,7 +2134,8 @@ export function useAgentDialog({
             : "";
         finish({
           state: "error",
-          error: message || "upload failed",
+          // The readable reason (busy / unreachable / network) the composer says next to the chip.
+          error: uploadFailureReason(ttRef.current, err) || message || "upload failed",
         });
       })
       .finally(done);
@@ -1937,7 +2217,8 @@ export function useAgentDialog({
     // gateway then refuses the first prompt ("附件还没存好", 2026-10-31 D).
     const holding = bindUploadsRef.current && !taskSessionRef.current;
     const chips = holding ? created.map((chip) => ({ ...chip, deferred: true })) : created;
-    if (bindUploadsRef.current) chips.forEach((chip, index) => uploadFilesRef.current.set(chip.id, accepted[index]));
+    // The bytes stay in this tab: a managed session re-binds them, a failed upload is put again (retry).
+    chips.forEach((chip, index) => uploadFilesRef.current.set(chip.id, accepted[index]));
     setAttachments((current) => [...current, ...chips].slice(0, 20));
     attachmentsRef.current = [...attachmentsRef.current, ...chips].slice(0, 20);
     if (holding) return;
@@ -1957,6 +2238,25 @@ export function useAgentDialog({
     setAttachments((current) => current.filter((item) => item.id !== id));
   }, []);
   removeAttachmentRef.current = removeAttachment;
+
+  /** Put a failed chip into the inbox again (composer 「重试」); its bytes are still in this tab. */
+  const retryAttachment = useCallback((id: string) => {
+    const item = attachmentsRef.current.find((entry) => entry.id === id);
+    if (!item || item.state !== "error") return;
+    const file = uploadFilesRef.current.get(id);
+    if (!file) {
+      removeAttachmentRef.current(id);
+      return;
+    }
+    if (bindUploadsRef.current && !taskSessionRef.current) {
+      const hold = (entry: DialogAttachment) => (entry.id === id
+        ? { ...entry, state: "uploading" as const, deferred: true, percent: 0, error: undefined } : entry);
+      attachmentsRef.current = attachmentsRef.current.map(hold);
+      setAttachments((current) => current.map(hold));
+      return;
+    }
+    startUpload(item, file);
+  }, [startUpload]);
 
   return {
     computerId,
@@ -2024,6 +2324,7 @@ export function useAgentDialog({
     newSession,
     attachments,
     addAttachments,
+    retryAttachment,
     removeAttachment,
     fresh,
     setFresh: setFreshValue,
@@ -2039,6 +2340,10 @@ export function useAgentDialog({
     cancelLogin,
     setLoginCodeDraft,
     restoredDraft,
+    historyReplay,
+    reattachSeq,
+    stopState: stopState.phase,
+    stopError: stopErrorText(tt, stopState),
     answerPermission,
     answerQuestion,
     openedPrograms: state.opened,

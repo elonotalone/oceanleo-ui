@@ -183,6 +183,7 @@ const authStub = dataModule(`
 `);
 const configStub = dataModule(`
   export const GATEWAY_BASE = "https://gw.test";
+  export function gatewayBase() { return GATEWAY_BASE; }
 `);
 const agentStub = dataModule(`
   export async function getTask() { return { ok: false, data: null }; }
