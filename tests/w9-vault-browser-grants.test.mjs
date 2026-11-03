@@ -116,8 +116,8 @@ async function change(node, value) {
 async function submit(form) { await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); }); await flush(); }
 async function open(view, id = secondId) { await click(view.host.querySelector(`[data-vault-browser-authorize="${id}"]`)); return view.host.querySelector(`[data-vault-browser-grant="${id}"]`); }
 
-// UC-NONE; vault K1, docs/architecture/oceanleo-security-regression-matrix.md.
-// Exact-origin metadata cannot create a plaintext route or extend cookie/CORS trust.
+// UC-NONE
+// Exact-origin metadata cannot create a plaintext route or extend cookie/CORS trust; vault K1 forbids value release (docs/architecture/oceanleo-security-regression-matrix.md).
 test("browser origin validation rejects URLs outside the exact HTTPS contract before a request", async () => {
   const h = harness();
   for (const [input, expected] of acceptedOrigins) assert.equal(h.api.normalizeVaultBrowserOrigin(input), expected, input);
@@ -128,7 +128,8 @@ test("browser origin validation rejects URLs outside the exact HTTPS contract be
   assert.equal(h.state.requests.length, 0);
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: exact normalized origins agree with the vault authority.
+// UC-NONE
+// Pure normalization checks compare exact origins with the vault authority; no value release or untrusted-content boundary changes (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("browser origin normalization agrees with the actual pure Python authority", (context) => {
   const h = harness();
   // Compare the actual pure Python authority without loading config, credentials or app code.
@@ -139,7 +140,8 @@ test("browser origin normalization agrees with the actual pure Python authority"
   assert.deepEqual([...acceptedOrigins.keys()].map((origin) => h.api.normalizeVaultBrowserOrigin(origin)), python);
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: no value leaves the vault.
+// UC-NONE
+// Closed browser-login metadata serialization lets no value leave the vault and changes no untrusted-content boundary (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("create helper whitelists the three browser-login fields and uses the current shared gateway signal", async () => {
   const h = harness(); const signal = new AbortController().signal;
   await h.api.createVaultBrowserBinding({ secret_id: secondId, purpose: "browser_login", origin: "https://EXAMPLE.test:443/", project_id: "unwanted-project", value: h.state.privateValue, ciphertext: h.state.privateValue, sealed: { ct: h.state.privateValue }, token: h.state.privateValue }, signal);
@@ -191,7 +193,8 @@ test("an owner explicitly grants the selected saved item, sees its origin under 
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: origin validation adds no network authority.
+// UC-NONE
+// Form origin validation adds no network authority and releases no value; it changes no untrusted-content boundary (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("invalid form origins show a correction without sending any grant", async () => {
   const h = harness(); const view = await mount(h);
   try {
@@ -205,7 +208,8 @@ test("invalid form origins show a correction without sending any grant", async (
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: duplicates do not create another grant.
+// UC-NONE
+// Duplicate owner metadata references do not create another grant or release values; no untrusted-content boundary changes (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("an existing same-item browser-login origin is shown honestly without a duplicate POST", async () => {
   const h = harness(); h.state.references = [reference({ secret_id: secondId, purpose: "browser_login", origin: "https://example.test" })];
   const view = await mount(h);
@@ -221,7 +225,8 @@ test("an existing same-item browser-login origin is shown honestly without a dup
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: pending consent cannot change target.
+// UC-NONE
+// Pending owner consent cannot change its item or origin; this metadata lifecycle releases no value and changes no untrusted-content boundary (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("a language rerender preserves a pending create's item, origin, controller and completion", async () => {
   const h = harness(); h.state.createGate = deferred(); const view = await mount(h);
   try {
@@ -248,7 +253,8 @@ test("a language rerender preserves a pending create's item, origin, controller 
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: only the explicitly selected reference is revoked.
+// UC-NONE
+// Only the explicitly selected owner reference is revoked; no value is released and no untrusted-content boundary changes (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("a language rerender during browser revocation preserves its controller and revokes only its selected origin", async () => {
   const h = harness();
   h.state.references = [reference({ secret_id: secondId, purpose: "browser_login", origin: "https://example.test" }), reference({ secret_id: secondId, purpose: "browser_login", origin: "https://example.test:8443" }, "browser-ref-2")];
@@ -274,7 +280,8 @@ test("a language rerender during browser revocation preserves its controller and
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: safe errors retain no submitted secret.
+// UC-NONE
+// Safe metadata-mutation errors retain no submitted secret and change no untrusted-content boundary (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("network, recent-auth, quota and fence refusals release controls and can be retried through existing recovery", async () => {
   for (const [raw, expected] of [
     [{ status: 0 }, /Cannot reach the vault/], [{ status: 403, code: "reauth_required" }, /Sign in again to confirm/],
@@ -303,7 +310,8 @@ test("network, recent-auth, quota and fence refusals release controls and can be
   }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: a confirmed reference is never rolled back by a read failure.
+// UC-NONE
+// A read failure never rolls back a confirmed metadata reference; no value release or untrusted-content boundary changes (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("a successful create stays visible and removable when the normal usage refresh fails", async () => {
   const h = harness(); h.state.failUsageAfterCommit = true; const view = await mount(h);
   try {
@@ -322,7 +330,8 @@ test("a successful create stays visible and removable when the normal usage refr
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: an already committed change must not be repeated.
+// UC-NONE
+// Already committed owner metadata changes must not be repeated; no value release or untrusted-content boundary changes (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("a committed-error response closes the grant form, reloads normal usage and keeps the existing saved-change notice", async () => {
   const h = harness(); h.state.committedError = true; const view = await mount(h);
   try {
@@ -337,7 +346,8 @@ test("a committed-error response closes the grant form, reloads normal usage and
   } finally { await view.close(); }
 });
 
-// UC-NONE; K1, docs/architecture/oceanleo-security-regression-matrix.md: account lifetime remains the consent boundary.
+// UC-NONE
+// Owner account lifetime remains the metadata-consent boundary; no value release or untrusted-content boundary changes (K1, docs/architecture/oceanleo-security-regression-matrix.md).
 test("signing out during a pending grant aborts its UI lifetime and never restores the old account form", async () => {
   const h = harness(); h.state.createGate = deferred(); const view = await mount(h);
   try {
