@@ -44,6 +44,8 @@ async function mount(Component, props) {
   };
 }
 
+// UC-NONE
+// Controller grant display and revocation are first-party device policy, outside the UGC browser and new-table isolation rules.
 test("target details show real controller/current-device/expiry and revoke persists before refresh", async () => {
   const client = fakeClient();
   let control = 0;
@@ -83,6 +85,8 @@ test("owner enables remote access with a Settings switch and no duration", async
   } finally { view.cleanup(); }
 });
 
+// UC-NONE
+// This protects native-controller consent from web-side extension; it does not assert a UGC origin boundary or a new database table's policy.
 test("controller expiry remains reported state with revoke, without a duration choice or grant widening", async () => {
   const client = fakeClient();
   client.settings.controllers[0].expires_at = "2026-12-25T12:00:00Z";
@@ -116,6 +120,8 @@ test("folder picker browses target's consented roots and saves target preference
   } finally { view.cleanup(); }
 });
 
+// UC-NONE
+// Native-device folder consent limits path selection; this is separate from UGC origin, iframe and database-table isolation.
 test("out-of-grant target path fails closed and cannot be selected", async () => {
   const client = fakeClient();
   const selected = [];
@@ -166,6 +172,8 @@ test("device controls render inside the existing Settings pane and device remova
   } finally { view.cleanup(); }
 });
 
+// UC-NONE
+// This fences stale first-party consent reads after owner revocation, without loading UGC or crossing a browser trust boundary.
 test("Settings revoke is one click, preserves owner access, and rejects a pre-mutation stale poll", async (t) => {
   t.mock.timers.enable({apis: ["setTimeout"]});
   const client = fakeClient();
@@ -227,6 +235,8 @@ test("Settings ignores same-account token refresh and cancels private state on a
   } finally { view.cleanup(); }
 });
 
+// UC-NONE
+// Partial offline consent receipts must preserve existing device preferences; no UGC origin or database schema is involved.
 test("offline Settings revoke merges only confirmed partial fields and keeps own/input/Ask values", async () => {
   const client = fakeClient();
   client.settings.remote_access = {enabled: true, input_allowed: false, agent_control_allowed: true, agent_always_ask: false, expires_at: 42};
@@ -250,6 +260,8 @@ test("offline Settings revoke merges only confirmed partial fields and keeps own
   } finally { view.cleanup(); }
 });
 
+// UC-NONE
+// An owner must revoke known-device consent despite an unavailable policy read; this does not exercise UGC rendering or table isolation.
 test("offline revoke remains usable when Settings cannot read the device policy", async () => {
   const operations = [];
   let reads = 0;
@@ -270,7 +282,8 @@ test("offline revoke remains usable when Settings cannot read the device policy"
   } finally { view.cleanup(); }
 });
 
-// UC-NONE: Owner device consent is tested without a UGC origin, cookie or frame boundary.
+// UC-NONE
+// Owner device consent is tested without a UGC origin, cookie or frame boundary.
 test("a pending enable projected as effective false can still be cancelled from Settings", async () => {
   const client = fakeClient();
   let pendingEnable = true;
@@ -294,7 +307,8 @@ test("a pending enable projected as effective false can still be cancelled from 
   } finally { view.cleanup(); }
 });
 
-// UC-NONE: This exercises cancellation of an owner policy request and its late ACK, without executing untrusted content.
+// UC-NONE
+// This exercises cancellation of an owner policy request and its late ACK, without executing untrusted content.
 test("Settings revoke interrupts a pending enable wait and ignores its late successful ACK", async (t) => {
   t.mock.timers.enable({apis: ["setTimeout"]});
   const client = fakeClient();
