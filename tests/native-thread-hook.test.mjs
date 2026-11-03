@@ -101,6 +101,7 @@ const stubs = {
     export const cloudComputerApi = {};
     export async function putComputerInbox(id, file, onProgress, options) {
       (globalThis.__inboxPuts ??= []).push({ name: file.name, task_session_id: options?.task_session_id ?? null });
+      if (globalThis.__holdInbox) return globalThis.__holdInbox({ id, file, onProgress, options });
       onProgress?.(100);
       return { path: "/home/elon/.oceanleo/inbox/" + file.name, name: file.name, mime: file.type || "text/plain", size: file.size };
     }
@@ -152,6 +153,32 @@ function session(overrides = {}) {
   return { id: "managed-1", task_id: "task", computer_id: "cc_1", computer_name: "elon", kind: "acp", program: "codex",
     native_session_id: "nat-1", created_at: "", updated_at: "", sync_status: "saved", ...overrides };
 }
+
+test("W2: native composer receives transfer percent and stays uploading until computer acknowledgement", async () => {
+  FakeSocket.sockets = [];
+  globalThis.__taskApi = { async transcript() { return { session: session(), frames: [], saved_at: null, sync_status: "saved" }; } };
+  let upload, complete;
+  globalThis.__holdInbox = (request) => {
+    upload = request;
+    return new Promise((resolve) => { complete = resolve; });
+  };
+  const view = await mount({ computer: { id: "cc_1", name: "elon", node_online: true }, session: session(), enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "ready");
+    await act(async () => globalThis.__thread.onAttachFiles([new window.File(["1234"], "progress.txt")]));
+    await until(() => upload, "upload started");
+    await act(async () => upload.onProgress(37));
+    assert.equal(globalThis.__thread.composerAttachments[0].progress.ratio, 0.37);
+    assert.equal(globalThis.__thread.composerAttachments[0].uploading, true);
+    await act(async () => upload.onProgress(100));
+    assert.equal(globalThis.__thread.composerAttachments[0].progress.done, false);
+    assert.equal(globalThis.__thread.composerAttachments[0].uploading, true);
+    await act(async () => complete({ path: "/home/inbox/progress.txt", archive: { state: "pending" } }));
+    assert.equal(globalThis.__thread.composerAttachments[0].uploading, false);
+    assert.equal(globalThis.__thread.composerAttachments[0].openingDisabled, false);
+    assert.equal(globalThis.__thread.composerAttachments[0].failed, undefined);
+  } finally { delete globalThis.__holdInbox; view.cleanup(); }
+});
 
 test("offline computer: cloud-saved transcript in the main stream, plain blocked reason, no socket, no send", async () => {
   FakeSocket.sockets = [];
@@ -423,6 +450,7 @@ test("queued first prompt: the bubble (with its files) shows at once in a draft,
     const file = new window.File(["png"], "shot.png", { type: "image/png" });
     await act(async () => globalThis.__thread.onAttachFiles([file]));
     await until(() => globalThis.__thread.composerAttachments.length === 1 && !globalThis.__thread.composerAttachments[0].uploading, "held, ready from the user's side");
+    assert.equal(globalThis.__thread.composerAttachments[0].openingDisabled, true, "deferred file cannot preview before its upload");
     // 2026-10-31 D: an inbox file put without the task session has no archive row and
     // the gateway refuses the first prompt (managed_attachment_not_saved). It waits.
     assert.deepEqual(globalThis.__inboxPuts, [], "nothing goes to the inbox before the task session exists");

@@ -64,6 +64,7 @@ function feedItem(kind, id, title) {
 }
 
 globalThis.__bay5 = {
+  family: "com",
   relatedCalls: [],
   relatedImpl: async () => ({ items: [], match: "none", q: "", site: null }),
   detailLast: null,
@@ -94,7 +95,8 @@ const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m,k)=> k in vars ? String(vars[k]) : m) : zh; }",
 );
 const familyStub = dataModule(`
-  export function currentDomainFamily() { return "com"; }
+  export function currentDomainFamily() { return globalThis.__bay5.family; }
+  export function domainFamilyFeatures() { return { bay: true, commerce: true, chat: true }; }
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
   export function currentFamilySubsiteOrigin(label) { return "https://" + label + ".oceanleo.com"; }
   export function familyForHost() { return "com"; }
@@ -192,6 +194,8 @@ const stubs = {
   "../supply": supplyStub,
   "../shell/use-bay-data": dataStub,
   "../needs/LibraryWorkPicker": pickerStub,
+  "../apps/BayAppShelf": dataModule(`export function BayAppShelf(){ return null; }`),
+  "../lessons/BayLessonShelf": dataModule(`export function BayLessonShelf(){ return null; }`),
   "../asset/BayAssetLibrary": dataModule(`
     const createElement = (...args) => globalThis.__bay5React.createElement(...args);
     export function BayAssetLibrary(){ return createElement("div", { "data-bay-asset-library": "1" }); }
@@ -457,4 +461,19 @@ test("先聊聊：openBayConversation 交给 onOpenConversation", async () => {
   bayState.openBayConversation("t1");
   assert.deepEqual(opened, ["talent:t1"]);
   await view.unmount();
+});
+
+test("境内版也渲染完整 LeoBay 侧栏，不因旧交易开关而消失", async () => {
+  globalThis.__bay5.family = "cn";
+  let view;
+  try {
+    resetRelated({ items: [], match: "none", q: "", site: null });
+    view = await mount(panelEl({ request: null, active: true }));
+    assert.ok(view.host.querySelector("[data-bay-panel-root]"));
+    assert.ok(view.host.querySelector("[data-bay-panel-search]"));
+    assert.ok(view.host.querySelector("[data-stub-feed]"));
+  } finally {
+    globalThis.__bay5.family = "com";
+    await view?.unmount();
+  }
 });

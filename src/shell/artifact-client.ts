@@ -31,6 +31,7 @@ import {
 } from "./artifact-contract";
 import { revisionPublishLocalRefusal } from "./doc-editors/artifact-save-contract";
 import { isHumanReadableMessage } from "./human-error-message";
+import { isolatedWebsitePreviewUrl } from "./website-inline-preview";
 import {
   artifactProjectionToLibraryItem,
   isDurableLibraryItem,
@@ -2382,6 +2383,14 @@ function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
       status: 422,
     };
   }
+  if (artifact.artifactType === "website" && !artifact.access.canExportSource) {
+    return {
+      visible: true, available: false,
+      reason: "没有权限下载这个网站的源码。",
+      purpose: null, mode: null, rendition: null,
+      code: "unauthorized", status: 403,
+    };
+  }
   if (!candidate) {
     const declaredProjectState =
       artifact.renditions.source ||
@@ -2408,7 +2417,9 @@ function artifactDownloadPlan(item: LibraryItem): ArtifactDownloadPlan {
       code = "unauthorized";
       status = 403;
     } else {
-      reason = declaredProjectState
+      reason = artifact.artifactType === "website"
+        ? "网站源码缺失，无法生成预览或下载源码。"
+        : declaredProjectState
         ? "当前 revision 没有符合能力合同的真实交付 rendition；project source/editor manifest 不是用户下载物，已拒绝降级为渲染图片。"
         : "当前 revision 缺少符合能力合同的真实交付 rendition。";
       code = "missing-source";
@@ -2498,6 +2509,104 @@ export function artifactDownloadTypeHint(item: LibraryItem): {
   };
 }
 
+export interface ArtifactWebsitePreview {
+  url: string;
+  expiresAt: string;
+  sourceFormat: string;
+}
+
+function websiteRevisionPath(item: LibraryItem, endpoint: string): string {
+  return `/v1/artifacts/${encodeURIComponent(item.artifactId || "")}/${endpoint}?revisionId=${encodeURIComponent(item.revisionId || "")}`;
+}
+
+/** Resolve this revision's executable page before consulting cover renditions. */
+export async function getArtifactWebsitePreview(
+  item: LibraryItem,
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<ArtifactWebsitePreview>> {
+  if (!isDurableLibraryItem(item) || item.artifactType !== "website") {
+    return { ok: false, code: "invalid-response", error: "无法打开网站预览，请重试。", retryable: false };
+  }
+  const result = await artifactRequest<Record<string, unknown>>(
+    websiteRevisionPath(item, "website-preview"), { signal },
+  );
+  if (!result.ok) return { ...result, data: undefined };
+  const url = isolatedWebsitePreviewUrl(result.data?.url);
+  const expiresAt = String(result.data?.expires_at || "");
+  const sourceFormat = String(result.data?.source_format || "").trim();
+  if (!url || !sourceFormat || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+    return { ok: false, status: result.status, code: "invalid-response", error: "无法打开网站预览，请重试。", retryable: true };
+  }
+  return { ok: true, status: result.status, data: { url, expiresAt, sourceFormat } };
+}
+
+/** Fetch the authenticated source closure, never a signed image or JSON entrypoint. */
+export async function getArtifactWebsiteSourceZip(
+  item: LibraryItem,
+  signal?: AbortSignal,
+): Promise<ArtifactApiResult<ArtifactDownloadResult>> {
+  if (!isDurableLibraryItem(item) || item.artifactType !== "website") {
+    return { ok: false, code: "invalid-response", error: "网站源码下载失败，请重试。", retryable: false };
+  }
+  const evidence = artifactDownloadPlan(item);
+  if (!evidence.available) {
+    return { ok: false, code: evidence.code, status: evidence.status, error: evidence.reason, retryable: false };
+  }
+  const controller = new AbortController();
+  const abort = () => controller.abort(signal?.reason);
+  if (signal?.aborted) abort();
+  else signal?.addEventListener("abort", abort, { once: true });
+  const timeout = setTimeout(() => controller.abort(), hostAwareLibraryTimeoutMs());
+  try {
+    const token = await accessToken();
+    if (!token) return { ok: false, code: "unauthorized", status: 401, error: "没有权限查看这个网站，请确认登录账号。", retryable: false };
+    const response = await fetch(`${GATEWAY_BASE}${websiteRevisionPath(item, "website-source.zip")}`, {
+      method: "GET",
+      headers: { Accept: "application/zip", Authorization: `Bearer ${token}` },
+      credentials: "include", cache: "no-store", signal: controller.signal,
+    });
+    if (!response.ok) {
+      const payload: unknown = await response.json().catch(() => null);
+      const code = apiErrorCode(payload, response.status);
+      return {
+        ok: false, status: response.status, code,
+        error: code === "unauthorized"
+          ? "没有权限下载这个网站的源码。"
+          : code === "missing-source"
+            ? "网站源码缺失，无法生成预览或下载源码。"
+            : "网站源码下载失败，请重试。",
+        retryable: response.status >= 500,
+      };
+    }
+    const mediaType = normalizedMediaType(response.headers.get("Content-Type"));
+    const blob = await response.blob();
+    const signature = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+    if (mediaType !== "application/zip" || signature[0] !== 0x50 || signature[1] !== 0x4b || signature[2] !== 0x03 || signature[3] !== 0x04) {
+      return { ok: false, status: response.status, code: "invalid-response", error: "网站源码下载失败，请重试。", retryable: false };
+    }
+    if (controller.signal.aborted) throw new Error("aborted");
+    const url = URL.createObjectURL(blob);
+    // Existing action surfaces consume a URL. Give the anchor time to start,
+    // then release the private bytes even when the caller has unmounted.
+    const revoke = setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    if (typeof revoke === "object") revoke.unref();
+    return {
+      ok: true, status: response.status,
+      data: {
+        artifactId: item.artifactId, revisionId: item.revisionId,
+        purpose: "source", mode: "source", url,
+        filename: attachmentFilename(item.title, "", "zip"), mediaType,
+        expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      },
+    };
+  } catch {
+    return { ok: false, code: "network-error", error: "网站源码下载失败，请重试。", retryable: !signal?.aborted };
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
 export async function getArtifactDownload(
   item: LibraryItem,
   signal?: AbortSignal,
@@ -2523,6 +2632,9 @@ export async function getArtifactDownload(
     };
   }
   const artifact = durable.data.artifact;
+  if (artifact.artifactType === "website") {
+    return getArtifactWebsiteSourceZip(durable.data, signal);
+  }
   const plan = artifactDownloadPlan(durable.data);
   const rendition = plan.rendition;
   const mode = plan.mode;

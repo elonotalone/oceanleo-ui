@@ -12,16 +12,16 @@
 // keeps its text, and the turn's last usage rides on its last process row.
 // Auto-allowed permissions are dropped; only real failures are `error` rows.
 
-import type { AgentAttachment, AgentMessage } from "../../lib/agent";
+import type { NativeAgentMessage as AgentMessage, NativeAgentAttachment } from "../../native-agent-core/index";
+export type { NativeAgentAttachment } from "../../native-agent-core/index";
 import { isReconnectingNotice, noticeCopy, visibleNoticeCopy } from "../cloud-computer/agent-dialog/notice";
 import type {
   AgentDialogMessage,
-  ArchivedAttachment,
   PermissionOption,
   ToolCard,
   TurnItem,
   UserMessageAttachment,
-} from "../cloud-computer/agent-dialog/types";
+} from "../../native-agent-core/index";
 
 export type MapTranslate = (zh: string, vars?: Record<string, string | number>) => string;
 
@@ -33,9 +33,6 @@ export type DialogMapOptions = {
   /** Program that authored this saved/live stream, used by cross-engine task views. */
   engine?: string;
 };
-
-/** Attachment as rendered on the user bubble; `native_archive` is the owner-checked cloud copy. */
-export type NativeAgentAttachment = AgentAttachment & { native_archive?: ArchivedAttachment };
 
 export type NativePermissionMeta = {
   permId: string;

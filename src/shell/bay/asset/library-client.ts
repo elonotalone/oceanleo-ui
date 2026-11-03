@@ -1,4 +1,6 @@
 import { GATEWAY_BASE } from "../../../lib/auth/config";
+import { bayGet } from "../../../lib/bay/http";
+import type { AssetActionContext } from "../../asset-detail/types";
 import { attachShelfPins, itemMatchesPin } from "./shelf-pins";
 
 export type BayAssetType =
@@ -48,6 +50,14 @@ export interface BayAsset {
   height: number | null;
   duration: number | null;
   format?: string;
+  mime_type?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  price_fen?: number | null;
+  currency?: string;
+  purchase_state?: "none" | "pending" | "settled" | "refunded";
+  free?: boolean;
+  action_context?: AssetActionContext;
   category?: string;
   author: string;
   source_url: string;
@@ -308,11 +318,11 @@ export async function listBaySeries(type?: BayAssetType): Promise<{ series: BayS
   return { series: Array.isArray(data.series) ? data.series : [] };
 }
 
-export async function fetchBayAssetById(id: string): Promise<BayAsset> {
+export async function fetchBayAssetById(id: string, options?: { signal?: AbortSignal }): Promise<BayAsset> {
   const raw = (id || "").trim();
   if (!raw) throw new Error("素材没读出来，请稍后再试。");
   const assetId = raw.includes(":") ? raw : `library:${raw}`;
-  return getJson<BayAsset>(`/v1/assets/detail?id=${encodeURIComponent(assetId)}`);
+  return bayGet<BayAsset>(`/v1/assets/detail?id=${encodeURIComponent(assetId)}`, { anonymous: true, signal: options?.signal });
 }
 
 export async function searchBayLive(params: {

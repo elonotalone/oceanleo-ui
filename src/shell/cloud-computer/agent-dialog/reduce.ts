@@ -37,7 +37,7 @@ import type {
   ToolCard,
   TurnItem,
   WsProgram,
-} from "./types";
+} from "../../../native-agent-core/index";
 
 const MAX_INSTALL_LINES = 400;
 

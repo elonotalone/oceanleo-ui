@@ -30,6 +30,9 @@ import {
   type TaskWorkspaceOpenItem,
   type TaskWorkspaceOpenState,
 } from "./ResultCanvas";
+import type { TaskWorkspaceOpenEntry, WorkspaceEntryOpenOptions } from "./result-canvas-entry-state";
+import type { AssetRef, AssetSurface } from "./asset-detail/types";
+import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import { editorCapabilityFor } from "./workbench-routes";
@@ -37,6 +40,7 @@ import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
 
 export type { TaskWorkspaceOpenItem, TaskWorkspaceOpenState } from "./ResultCanvas";
+export type { TaskWorkspaceOpenEntry, WorkspaceEntryOpenOptions } from "./result-canvas-entry-state";
 
 /** What a host hands a freshly mounted shell (e.g. the home's open item carried into the new task). */
 export interface TaskWorkspaceInitial {
@@ -44,6 +48,7 @@ export interface TaskWorkspaceInitial {
   tab?: string;
   action?: WorkspaceActionEnvelope | null;
   item?: TaskWorkspaceOpenItem | null;
+  entry?: TaskWorkspaceOpenEntry | null;
 }
 
 export interface TaskWorkspaceState {
@@ -55,6 +60,9 @@ export interface TaskWorkspaceState {
   setWorkspaceAction: Dispatch<SetStateAction<WorkspaceActionEnvelope | null>>;
   /** The last direct-open request (consumed once by ResultCanvas, by nonce). */
   openItem: TaskWorkspaceOpenItem | null;
+  openEntry: TaskWorkspaceOpenEntry | null;
+  openWorkspaceEntry: (entry: WorkspaceLibraryEntry, options?: WorkspaceEntryOpenOptions) => void;
+  openWorkspaceAsset: (ref: AssetRef, options?: { mode?: "preview" | "edit"; surface?: AssetSurface }) => void;
   /** Open the sidebar on this exact item, without waiting for any library list. */
   openWorkspaceItem: (
     item: LibraryItem,
@@ -78,15 +86,17 @@ export function useTaskWorkspaceState({
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(initial?.action ?? null);
   const [rightOpen, setRightOpen] = useState(
-    initial?.open ?? (initial?.item ? true : defaultOpen),
+    initial?.open ?? (initial?.item || initial?.entry ? true : defaultOpen),
   );
   const [openItem, setOpenItem] = useState<TaskWorkspaceOpenItem | null>(
     initial?.item ?? null,
   );
+  const [openEntry, setOpenEntry] = useState<TaskWorkspaceOpenEntry | null>(initial?.entry ?? null);
   const openWorkspaceItem = useCallback<TaskWorkspaceState["openWorkspaceItem"]>(
     (item, mode = "preview", options) => {
       openSeq += 1;
       setRightOpen(true);
+      setOpenEntry(null);
       setOpenItem({
         nonce: `open-item:${item.key}:${Date.now()}:${openSeq}`,
         item,
@@ -96,7 +106,20 @@ export function useTaskWorkspaceState({
     },
     [],
   );
+  const openWorkspaceEntry = useCallback<TaskWorkspaceState["openWorkspaceEntry"]>((entry, options = {}) => {
+    setRightOpen(true);
+    setOpenItem(null);
+    setOpenEntry({ nonce: `open-entry:${++openSeq}`, entry, mode: options.mode || "preview", actionContext: options.actionContext, bindTask: options.bindTask });
+  }, []);
+  const openWorkspaceAsset = useCallback<TaskWorkspaceState["openWorkspaceAsset"]>((ref, options = {}) => {
+    setRightOpen(true);
+    setOpenItem(null);
+    setOpenEntry({ nonce: `open-asset:${++openSeq}`, ref, mode: options.mode || "preview", surface: options.surface });
+  }, []);
   return {
+    openEntry,
+    openWorkspaceEntry,
+    openWorkspaceAsset,
     rightOpen,
     setRightOpen,
     libTab,
@@ -169,7 +192,7 @@ export interface TaskWorkspaceShellProps
   /** Everything ResultCanvas takes besides the state the shell owns. */
   canvas?: Omit<
     ResultCanvasProps,
-    "tabs" | "active" | "onChange" | "action" | "openItem" | "onOpenItemChange" | "renderBoundEditor"
+    "tabs" | "active" | "onChange" | "action" | "openItem" | "openEntry" | "onOpenItemChange" | "renderBoundEditor"
   >;
   /** Wrap (or replace) the canvas in the right pane, e.g. an error boundary + settings pane. */
   renderRight?: (canvas: ReactNode) => ReactNode;
@@ -215,6 +238,7 @@ export function TaskWorkspaceShell({
         onChange={state.setLibTab}
         action={state.workspaceAction}
         openItem={state.openItem}
+        openEntry={state.openEntry}
         onOpenItemChange={onOpenItemChange}
         renderBoundEditor={renderBoundTaskEditor}
       />

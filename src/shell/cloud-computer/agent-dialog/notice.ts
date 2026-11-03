@@ -1,4 +1,4 @@
-import type { DialogConfigOption, DialogModel } from "./types";
+import type { DialogConfigOption, DialogModel } from "../../../native-agent-core/index";
 // 错误帧按 code 换成用户能照着做的一句话。原文不进日志，这里也不拼用户说过的字。
 
 export type Translate = (zh: string, vars?: Record<string, string | number>) => string;

@@ -8,6 +8,7 @@
 import { useSyncExternalStore } from "react";
 import {
   currentDomainFamily,
+  domainFamilyFeatures,
   currentDomainProfile,
   currentFamilySubsiteOrigin,
 } from "../../../contracts/domain-family";
@@ -521,10 +522,10 @@ export function useBayTaskContext(): BayTaskContext | null {
 
 // ---- 境内、登录 -------------------------------------------------------------------
 
-/** 境内（域名家族 cn）为 false；不看登录（未登录也能逛 Bay）。 */
+/** 按域名家族能力开关判断；不看登录（未登录也能逛 Bay）。 */
 export function bayEnabledHere(): boolean {
   try {
-    return currentDomainFamily() !== "cn";
+    return domainFamilyFeatures(currentDomainFamily()).bay;
   } catch {
     return false;
   }

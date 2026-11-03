@@ -777,10 +777,20 @@ const { BayAssetLibrary } = await import(
     "./BayAssetLive": dataModule(`export function BayAssetLive(){ return null; }`),
     "./BayAssetSeries": dataModule(`export function BayAssetSeries(){ return null; }`),
     "./BayAssetDetail": dataModule(`export function BayAssetDetail(){ return null; }`),
-    "./BayArtifactDeepLink": dataModule(`export function BayArtifactDeepLink(){ return null; }`),
+    "./BayArtifactDeepLink": dataModule(`
+      export function BayArtifactDeepLink(){ return null; }
+      export function bayAssetRefForCard(asset){ return { kind: "listing", id: asset.id }; }
+      export function useBayAssetRoute(){ return { target: null, open(){}, close(){} }; }
+    `),
     "./BayLicensesView": dataModule(`export function BayLicensesView(){ return null; }`),
     "./BayAssetCard": dataModule(`export function BayAssetCard(){ return null; }`),
-    "../../../lib/auth/config": dataModule(`export const GATEWAY_BASE = ""; export function isLeoDevPreviewHost(){ return false; }`),
+    "../../../lib/auth/config": dataModule(`export const GATEWAY_BASE = ""; export function gatewayBase(){ return ""; } export function isLeoDevPreviewHost(){ return false; }`),
+    "../../../lib/auth/client": dataModule(`
+      export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+      export async function accessToken(){ return null; }
+      export function cachedAccessToken(){ return null; }
+      export async function getUserId(){ return null; }
+    `),
   })
 );
 
@@ -898,18 +908,19 @@ test("地址里钉住的来源优先于默认：view=owned 不被卖家在售抢
   await sellers.unmount();
 });
 
-test("境内没有交易市场：来源里没有「卖家在售」、不探测、地址里的 view=sellers 也不认", async () => {
-  resetLib({ bayOn: false });
+test("境内使用完整能力契约：保留卖家在售、探测与 view=sellers 深链", async () => {
+  const { domainFamilyFeatures } = await import("../src/contracts/domain-family.ts");
+  resetLib({ bayOn: domainFamilyFeatures("cn").bay });
   window.history.replaceState(window.history.state, "", "https://video.oceanleo.com/bay?kind=asset&view=sellers");
   const view = await mount(libraryEl());
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  assert.notEqual(originOf(view.host), "sellers");
-  assert.equal(view.host.querySelector("[data-bay-asset-sellers]"), null);
+  assert.equal(originOf(view.host), "sellers");
+  assert.ok(view.host.querySelector("[data-bay-asset-sellers]"));
   const { menu } = await openSelect(view.host, "view");
-  assert.deepEqual(optionValues(menu), ["owned", "mine", "stocked", "live"]);
-  assert.ok(lib.calls.every((call) => call.options?.enabled === false), "境内的探测是关着的");
+  assert.deepEqual(optionValues(menu), ["sellers", "owned", "mine", "stocked", "live"]);
+  assert.ok(lib.calls.some((call) => call.options?.limit === 1 && call.options?.enabled === true), "境内同样探测卖家在售");
   await view.unmount();
 });
 
@@ -1105,6 +1116,7 @@ test(
   async () => {
     const family = dataModule(`
       export function currentDomainFamily() { return "com"; }
+      export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
       export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
       export function currentFamilySubsiteOrigin(label) { return "https://" + label + ".oceanleo.com"; }
     `);

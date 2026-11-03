@@ -653,6 +653,10 @@ export {
   homeAppGroups,
 } from "./HomeAppCards";
 export type { HomeAppCardsProps } from "./HomeAppCards";
+// 2026-11-03: home asset cards (video / image / website / essay).
+export { HomeAssetCards } from "./HomeAssetCards";
+export type { HomeAssetCardsProps } from "./HomeAssetCards";
+export type { HomeAssetsResponse, HomeAssetSection, HomeAssetSectionId, HomeAssetCard, HomeAssetRef } from "./home-asset-cards-model";
 // 大卡片 = 多模板详情浮层（合同 §0.3，W2 产出）。文件名仍是 `ImageLightbox.tsx`，
 // 旧名 `ImageLightbox` 只是一层 `@deprecated` 兼容壳，新代码一律用 `TemplateShowcase`。
 export { ImageLightbox, TemplateShowcase } from "./ImageLightbox";

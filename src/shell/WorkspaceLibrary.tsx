@@ -51,14 +51,13 @@ import {
   artifactActionMatrix,
   type ArtifactTargetActionEvidence,
 } from "./ArtifactActions";
+import { AssetDetail } from "./asset-detail/AssetDetail";
 import { humanErrorMessage } from "./human-error-message";
 import {
-  libraryEditorLabel,
   normalizeLibraryCategory,
   translateLibraryTypeLabel,
 } from "./library-editor-category";
 import {
-  WORKSPACE_KIND_LABELS,
   filterWorkspaceLibraryEntries,
   visibleWorkspaceLibraryCategories,
   materialDeepLinkArtifactId,
@@ -76,7 +75,6 @@ import type { LibraryEntrySection } from "./deck-delivery-family";
 import {
   WorkspaceCard,
   WorkspaceLibraryEmpty,
-  WorkspaceLibraryEntryViewer,
   WorkspaceListRow,
 } from "./workspace-library-view";
 
@@ -841,13 +839,6 @@ export function WorkspaceLibrary({
 
   if (selected) {
     const kind = selected.kind || selected.libraryItem?.kind;
-    // 官方模板目录行的 `kind` 是**刻意**钉死的 `image`（卡片必须是图，这条是红线）。
-    // 详情的类型标签不能照抄它：详情已经按真实类型分派过了，游戏摆的是开玩面板、
-    // PPT 摆的是翻页外壳，头上却挂着「图片」，用户看到的是系统在自相矛盾。
-    // 详情插槽解析出来的 durable 投影带的才是真类型，有就用它。
-    // 只换这枚标签：下面的 `refreshable` 仍用 `kind`，那是另一条判据，不在本条范围内。
-    const detailKind = detailAppPlan.item?.kind || kind;
-    const detailLabelItem = detailAppPlan.item || selected.libraryItem;
     const externalUrl =
       selected.externalUrl ||
       selected.libraryItem?.url ||
@@ -885,73 +876,35 @@ export function WorkspaceLibrary({
       }
     };
     return (
-      <>
-      <div
+      <AssetDetail
         ref={detailRef}
-        className={`flex h-full min-h-0 flex-col ${plain ? "bg-transparent" : "bg-[var(--card,#fff)]"} ${className}`}
-      >
-        <header className="flex shrink-0 items-center gap-3 border-b border-[var(--border,#e7e5e4)] px-3 py-2.5">
-          <button
-            type="button"
-            onClick={() => {
-              const fullscreenElement = document.fullscreenElement;
-              if (
-                fullscreenElement &&
-                detailRef.current?.contains(fullscreenElement) &&
-                typeof document.exitFullscreen === "function"
-              ) {
-                void document.exitFullscreen();
-              }
-              clearLibraryCurrentIdentity(action?.nonce);
-              appliedIdentityRef.current = true;
-              setDetailSelection("");
-            }}
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[var(--border,#e7e5e4)] text-[var(--muted,#78716c)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,#fafaf9)] hover:text-[var(--fg,#292524)]"
-            aria-label={tt("返回列表")}
-            title={tt("返回列表")}
-          >
-            <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-              <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-[13px] font-semibold text-[var(--fg,#1c1917)]">
-                {selected.title}
-              </h3>
-              {detailKind && (
-                <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
-                  {translateLibraryTypeLabel(tt, detailLabelItem
-                    ? libraryEditorLabel(detailLabelItem)
-                    : WORKSPACE_KIND_LABELS[detailKind] || "内容")}
-                </span>
-              )}
-            </div>
-            {selected.description && (
-              <p className="mt-0.5 truncate text-[11px] text-[var(--muted,#a8a29e)]">
-                {tt(selected.description)}
-              </p>
-            )}
-            {storefront?.uploader ? (
-              <p data-library-uploader className="mt-0.5 text-[11px] text-[var(--muted,#a8a29e)]">
-                {tt("由 {seller} 于 {time} 上传", { seller: storefront.uploader, time: storefront.uploadedAt || tt("未知时间") })}
-              </p>
-            ) : null}
-            {/* 编辑按钮收成一颗之后，「这份素材还挂在别的 app 名下」这件事屏幕上
-                就没有别的地方讲了。这一行归属名单是那个说法的唯一出处，也是用户
-                理解「同一件素材为什么会在别的素材包里再出现一次」的依据。 */}
-            <MaterialOwningAppList plan={detailAppPlan} />
-          </div>
-          {storefront ? (
+        entry={selected}
+        typeItem={detailAppPlan.item}
+        accent={accent}
+        plain={plain}
+        className={className}
+        viewerRef={viewerRef}
+        viewerNonce={viewerNonce}
+        info={<MaterialOwningAppList plan={detailAppPlan} />}
+        onBack={() => {
+          const fullscreenElement = document.fullscreenElement;
+          if (
+            fullscreenElement &&
+            detailRef.current?.contains(fullscreenElement) &&
+            typeof document.exitFullscreen === "function"
+          ) {
+            void document.exitFullscreen();
+          }
+          clearLibraryCurrentIdentity(action?.nonce);
+          appliedIdentityRef.current = true;
+          setDetailSelection("");
+        }}
+        actions={<>
+          {storefront && !storefront.purchased && storefront.onPurchase ? (
             <div className="flex shrink-0 items-center gap-2" data-library-purchase>
-              <span className="text-[12px] font-semibold text-[var(--fg,#292524)]">
-                {storefront.official ? "0" : storefront.priceFen === 0 ? tt("免费") : `${(storefront.priceFen || 0) / 100} ${storefront.currency || "CNY"}`}
-              </span>
-              {!storefront.purchased && storefront.onPurchase ? (
-                <button type="button" onClick={() => void purchase()} disabled={purchasing} className="rounded-lg bg-[var(--accent,#0f766e)] px-2.5 py-1.5 text-[11px] font-medium text-white disabled:opacity-60">
-                  {purchasing ? tt("处理中…") : storefront.priceFen === 0 ? tt("获取") : tt("购买")}
-                </button>
-              ) : null}
+              <button type="button" onClick={() => void purchase()} disabled={purchasing} className="rounded-lg bg-[var(--accent,#0f766e)] px-2.5 py-1.5 text-[11px] font-medium text-white disabled:opacity-60">
+                {purchasing ? tt("处理中…") : storefront.priceFen === 0 ? tt("获取") : tt("购买")}
+              </button>
             </div>
           ) : null}
           <TaskAttachmentLibraryLink item={selected.libraryItem} />
@@ -962,10 +915,7 @@ export function WorkspaceLibrary({
             compact
           />
           {actionButtonsFor(
-            {
-              ...selected,
-              libraryItem: workbenchItem,
-            },
+            { ...selected, libraryItem: workbenchItem },
             true,
             () => detailRef.current,
           )}
@@ -978,19 +928,8 @@ export function WorkspaceLibrary({
               {tt("刷新")}
             </button>
           )}
-        </header>
-        <div
-          ref={viewerRef}
-          className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]"
-        >
-          <WorkspaceLibraryEntryViewer
-            entry={selected}
-            accent={accent}
-            viewerNonce={viewerNonce}
-          />
-        </div>
-      </div>
-      </>
+        </>}
+      />
     );
   }
 

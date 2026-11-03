@@ -673,7 +673,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       view.socket().server({ t: "session_opened", program: "cursor", acp_session: "s1", ref: prompt.ref });
       view.socket().server({ t: "turn_start", program: "cursor", acp_session: "s1", ref: prompt.ref });
       view.socket().server({ t: "thought", program: "cursor", text: "hmm" });
-      view.socket().server({ t: "delta", program: "cursor", text: "see `<img onerror=alert(1)>` " });
+      view.socket().server({ t: "delta", program: "cursor", text: "see `<img onerror=alert(1)>` and `<script>alert(1)</script>` " });
       view.socket().server({
         t: "delta",
         program: "cursor",
@@ -711,6 +711,7 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
     assert.equal(view.host.querySelector("img"), null);
     assert.equal(view.host.querySelector("script"), null);
     assert.match(view.host.textContent || "", /<img onerror/);
+    // Literal HTML in inline code stays visible; raw executable tags are removed.
     assert.match(view.host.textContent || "", /<script>/);
     assert.equal(view.host.querySelectorAll('[data-oceanleo-cc-tool="t1"]').length, 1);
     assert.match(view.host.textContent || "", /Edit file/);
@@ -740,10 +741,9 @@ test("程序行状态点、安装抽屉、登录卡、模型和一轮对话", as
       values: { text: "yes" },
     });
     await click(view.host.querySelector("[data-oceanleo-cc-stop]"));
-    assert.deepEqual(
-      view.socket().sent.find((frame) => frame.t === "cancel"),
-      { t: "cancel", program: "cursor", acp_session: "s1" },
-    );
+    const cancel = view.socket().sent.find((frame) => frame.t === "cancel");
+    assert.match(cancel?.stop_id || "", /^[A-Za-z0-9_-]{1,64}$/);
+    assert.deepEqual(cancel, { t: "cancel", program: "cursor", acp_session: "s1", stop_id: cancel.stop_id });
     // 决定 7：不显示「关掉会话」，程序闲置 30 分钟由网关回收。
     assert.equal(view.host.querySelector("[data-oceanleo-cc-close-session]"), null);
     assert.equal((view.host.textContent || "").includes("关掉会话"), false);

@@ -1,3 +1,4 @@
+import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -227,16 +228,18 @@ const bayIconsStubUrl = dataModule(`
 `);
 
 const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
+    ...W4_SIDEBAR_STUBS,
   react: reactUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./SplitWorkspace": splitStubUrl,
   "./guide-context": guideStubUrl,
   "./NavigatorGuide": panelStubUrl,
+  ...W4_SIDEBAR_STUBS,
   "./MaterialLibrary": panelStubUrl,
   "./MyLibrary": panelStubUrl,
   "./CloudBrowserPanel": panelStubUrl,
   "./WorkspaceLibrary": panelStubUrl,
-  "./workspace-actions": workspaceActionsStubUrl,
+
   "./workspace-runtime-hydration": hydrationStubUrl,
   "./workspace-session-context": sessionStubUrl,
   "./library-data": libraryDataStubUrl,
@@ -317,28 +320,22 @@ test("fixed right-panel slots preserve component instances and live tab state", 
   try {
     assert.deepEqual(globalThis.__resultCanvasMounts, {
       preview: 1,
-      materials: 1,
+      materials: 0,
       mine: 1,
       browser: 1,
     });
     const originalNodes = Object.fromEntries(
-      ["preview", "materials", "mine", "browser"].map((slot) => [
+      ["preview", "mine", "browser"].map((slot) => [
         slot,
         live(slot),
       ]),
     );
     assert.equal(panel("preview").hidden, false);
-    assert.equal(panel("materials").hidden, true);
-    assert.equal(panel("materials").getAttribute("aria-hidden"), "true");
+    assert.equal(panel("materials"), null, "standalone material panel was removed");
+    assert.equal(live("materials"), null, "MaterialLibrary is not mounted");
 
     await click(
       mounted.container.querySelector('[data-increment-panel="preview"]'),
-    );
-    await openSlot("materials");
-    assert.equal(panel("preview").hidden, true);
-    assert.equal(panel("materials").hidden, false);
-    await click(
-      mounted.container.querySelector('[data-increment-panel="materials"]'),
     );
     await openSlot("mine");
     await click(mounted.container.querySelector('[data-increment-panel="mine"]'));
@@ -349,7 +346,7 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     await openSlot("preview");
     await openSlot("browser");
 
-    for (const slot of ["preview", "materials", "mine", "browser"]) {
+    for (const slot of ["preview", "mine", "browser"]) {
       assert.equal(live(slot), originalNodes[slot], `${slot} DOM instance`);
       assert.equal(
         mounted.container.querySelector(`[data-panel-state="${slot}"]`)
@@ -360,7 +357,7 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     }
     assert.deepEqual(globalThis.__resultCanvasMounts, {
       preview: 1,
-      materials: 1,
+      materials: 0,
       mine: 1,
       browser: 1,
     });

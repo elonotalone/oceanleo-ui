@@ -1,3 +1,4 @@
+import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 // ============================================================================
 // W7 (2026-10-31): the task right sidebar as one shared shell.
 // ----------------------------------------------------------------------------
@@ -81,6 +82,8 @@ const panelStub = dataModule(`
   }
 `);
 const OVERRIDES = {
+  ...W4_SIDEBAR_STUBS,
+  "./artifact-client": dataModule("export async function prepareArtifactForAction(action,item){ return globalThis.__w4Prepare ? globalThis.__w4Prepare(action,item) : {ok:true,data:item}; }"),
   "../i18n/ui/useUI": uiStub,
   "./SplitWorkspace": dataModule(
     "export function useRightPaneSlot(){ return null; }\nexport function useWorkspacePane(){ return null; }\nexport function SplitWorkspace(){ return null; }\n",
@@ -284,4 +287,201 @@ test("AgentChat assembles its sidebar through TaskWorkspaceShell and opens uploa
   assert.match(src, /const openTaskAttachment = useTaskAttachmentOpener\(/);
   const index = readFileSync(new URL("../src/shell/index.ts", import.meta.url), "utf8");
   assert.match(index, /TaskWorkspaceShell,[\s\S]*?useTaskWorkspaceState,[\s\S]*?attachmentWorkspaceItem/);
+});
+
+
+const commerceContext = (extra = {}) => ({
+  surface: "home", ref: { kind: "listing", id: "seller-asset" }, owned: false,
+  rights: { canView: true, canEdit: false, canUseInTask: false, canAddToLibrary: false, canDownload: false, canDownloadSource: false },
+  commerce: { priceFen: 900, currency: "USD", free: false, purchaseState: "none", listingId: "seller-asset" },
+  ...extra,
+});
+const commerceEntry = (id = "asset") => ({ id, title: "Paid asset", kind: "image", libraryItem: item(id), provenance: { keep: "catalog/revision" } });
+
+test("W4 direct entry keeps the complete entry and commerce context in shared detail/actions and reports", async () => {
+  const entry = commerceEntry();
+  const actionContext = commerceContext();
+  const reports = [];
+  const use = () => {};
+  const m = await mount(React.createElement(ResultCanvas, { tabs: [], active: "home", openEntry: { nonce: "entry:1", entry, actionContext, mode: "preview" }, onUseWorkspaceEntry: use, onOpenItemChange: value => reports.push(value) }));
+  try {
+    assert.ok(m.container.querySelector('[data-shared-detail="asset"]'));
+    assert.equal(globalThis.__w4Detail.entry, entry);
+    assert.equal(globalThis.__w4Detail.actionContext, actionContext);
+    assert.equal(globalThis.__w4Actions.actionContext, actionContext);
+    assert.equal(globalThis.__w4Actions.onUseInTask, use);
+    assert.equal(reports.at(-1).entry, entry);
+    assert.equal(reports.at(-1).actionContext, actionContext);
+    const next = { entry: commerceEntry("claimed"), actionContext: commerceContext({ owned: true, commerce: { priceFen: 900, currency: "USD", free: false, purchaseState: "settled" } }) };
+    await act(async () => globalThis.__w4Actions.onResolved(next));
+    assert.equal(globalThis.__w4Detail.entry, next.entry);
+    assert.equal(globalThis.__w4Detail.actionContext, next.actionContext);
+    await act(async () => m.container.querySelector('[data-shared-back]').click());
+    assert.equal(m.container.querySelector('[data-shared-detail]'), null);
+    assert.equal(m.container.querySelector('[data-workspace-view]').getAttribute('data-workspace-view'), 'home');
+  } finally { await m.unmount(); }
+});
+
+test("W4 a denied Edit opens preview, and denied View shows a reason without exposing data", async () => {
+  const entry = { ...commerceEntry(), libraryItem: item("editable", { meta: { editable: true } }) };
+  const actionContext = commerceContext();
+  const el = context => React.createElement(ResultCanvas, { tabs: [], openEntry: { nonce: context.rights.canView ? "denied-edit" : "denied-view", entry, actionContext: context, mode: "edit" } });
+  const m = await mount(el(actionContext));
+  try {
+    assert.ok(m.container.querySelector('[data-shared-detail]'));
+    assert.equal(m.container.querySelector('[data-editor]'), null);
+    await m.render(el({ ...actionContext, rights: { ...actionContext.rights, canView: false } }));
+    assert.equal(m.container.querySelector('[data-workspace-entry-open]').getAttribute('data-workspace-entry-open'), 'error');
+    assert.match(m.container.textContent, /没有查看/);
+  } finally { await m.unmount(); }
+});
+
+test("W4 failed reference open explains missing data, retries, and closes once without replay", async () => {
+  const detail = { entry: commerceEntry(), actionContext: commerceContext() };
+  let calls = 0;
+  globalThis.__w4Resolve = async () => { calls += 1; if (calls === 1) throw Object.assign(new Error('internal-secret-receipt'), { status: 404 }); return detail; };
+  const request = { nonce: "ref-retry", ref: { kind: "platform", id: "p1" }, surface: "home", mode: "preview" };
+  const el = () => React.createElement(ResultCanvas, { tabs: [], active: "home", openEntry: request });
+  const m = await mount(el());
+  try {
+    assert.match(m.container.textContent, /已下架或不存在/);
+    assert.doesNotMatch(m.container.textContent, /internal-secret-receipt/);
+    await act(async () => [...m.container.querySelectorAll('button')].find(b=>b.textContent === '重试').click());
+    assert.equal(calls, 2);
+    assert.equal(globalThis.__w4Detail.entry, detail.entry);
+    await act(async () => m.container.querySelector('[data-shared-back]').click());
+    await m.render(el());
+    assert.equal(m.container.querySelector('[data-shared-detail]'), null);
+    assert.equal(calls, 2);
+  } finally { await m.unmount(); delete globalThis.__w4Resolve; }
+});
+
+test("W4 dismissing a failed request restores the existing view without replay", async () => {
+  globalThis.__w4Resolve = async () => { throw Object.assign(new Error(), { status: 403 }); };
+  const m = await mount(React.createElement(ResultCanvas, { tabs: [], active: "mine", openEntry: { nonce: "ref-denied", ref: { kind: "platform", id: "p" }, mode: "preview" } }));
+  try {
+    assert.match(m.container.textContent, /没有查看/);
+    await act(async () => [...m.container.querySelectorAll('[data-workspace-entry-open] button')].find(b=>b.textContent === '返回').click());
+    assert.equal(m.container.querySelector('[data-workspace-entry-open]'), null);
+    assert.equal(m.container.querySelector('[data-workspace-slot-panel="mine"]').hidden, false);
+  } finally { await m.unmount(); delete globalThis.__w4Resolve; }
+});
+
+test("W4 a later entry cancels an unresolved reference and a stale response cannot replace it", async () => {
+  let settle, signal;
+  globalThis.__w4Resolve = (_ref, options) => { signal = options.signal; return new Promise(resolve => { settle = resolve; }); };
+  const el = openEntry => React.createElement(ResultCanvas, { tabs: [], openEntry });
+  const m = await mount(el({ nonce: "slow", ref: { kind: "platform", id: "slow" }, mode: "preview" }));
+  try {
+    assert.equal(m.container.querySelector('[data-workspace-entry-open]').getAttribute('data-workspace-entry-open'), 'loading');
+    const entry = commerceEntry("new");
+    await m.render(el({ nonce: "fast", entry, actionContext: commerceContext(), mode: "preview" }));
+    assert.equal(signal.aborted, true);
+    await act(async () => settle({ entry: commerceEntry("old"), actionContext: commerceContext() }));
+    assert.equal(globalThis.__w4Detail.entry, entry);
+    assert.equal(m.container.querySelector('[data-workspace-entry-open]'), null);
+  } finally { await m.unmount(); delete globalThis.__w4Resolve; }
+});
+
+test("W4 switching away from an editor and returning preserves its mounted session", async () => {
+  globalThis.__editorMounts = 0;
+  const openItem = { nonce: "keep-edit", item: item("working", { meta: { editable: true } }), mode: "edit" };
+  const el = active => React.createElement(ResultCanvas, { tabs: [], active, openItem });
+  const m = await mount(el("preview"));
+  try {
+    const editor = m.container.querySelector('[data-editor]');
+    await m.render(el("browser"));
+    assert.equal(m.container.querySelector('[data-result-canvas-foreground]').hidden, true);
+    assert.equal(m.container.querySelector('[data-workspace-slot-panel="browser"]').hidden, false);
+    await m.render(el("preview"));
+    assert.equal(m.container.querySelector('[data-result-canvas-foreground]').hidden, false);
+    assert.equal(m.container.querySelector('[data-editor]'), editor);
+    assert.equal(globalThis.__editorMounts, 1);
+  } finally { await m.unmount(); }
+});
+
+test("W4 StrictMode does not leave an aborted first reference load permanently pending", async () => {
+  const requests = [];
+  globalThis.__w4Resolve = (_ref, options) => new Promise(resolve=>requests.push({ resolve, signal: options.signal }));
+  const m = await mount(React.createElement(React.StrictMode, null, React.createElement(ResultCanvas, { tabs: [], openEntry: { nonce: "strict", ref: { kind: "platform", id: "p" }, mode: "preview" } })));
+  try {
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].signal.aborted, true);
+    await act(async () => requests.at(-1).resolve({ entry: commerceEntry("strict"), actionContext: commerceContext() }));
+    assert.ok(m.container.querySelector('[data-shared-detail="strict"]'));
+  } finally { await m.unmount(); delete globalThis.__w4Resolve; }
+});
+
+test("W4 shell opens exact entries and references, preserving context and clearing older item requests", async () => {
+  let state;
+  function Host(){ state = useTaskWorkspaceState(); return React.createElement(TaskWorkspaceShell, { state, tabs: [], left: 'home', lazyRight: true }); }
+  const m = await mount(React.createElement(Host));
+  try {
+    const entry = commerceEntry();
+    const actionContext = commerceContext();
+    await act(async () => state.openWorkspaceEntry(entry, { mode: 'preview', actionContext }));
+    assert.equal(state.rightOpen, true);
+    assert.equal(globalThis.__canvasProps.openEntry.entry, entry);
+    assert.equal(globalThis.__canvasProps.openEntry.actionContext, actionContext);
+    assert.equal(globalThis.__canvasProps.openItem, null);
+    const ref = { kind: 'artifact', artifactId: 'root', revisionId: 'pinned' };
+    await act(async () => state.openWorkspaceAsset(ref, { surface: 'home' }));
+    assert.equal(globalThis.__canvasProps.openEntry.ref, ref);
+    await act(async () => state.openWorkspaceItem(item('attachment')));
+    assert.equal(globalThis.__canvasProps.openEntry, null);
+    assert.equal(globalThis.__canvasProps.openItem.item.id, 'attachment');
+  } finally { await m.unmount(); }
+});
+
+
+test("W4 explicit entry Edit prepares a writable revision and refreshes the fork's server context", async () => {
+  const original = { ...commerceEntry('template'), libraryItem: item('template', { artifactId: 'template-root', revisionId: 'template-r1', meta: { editable: true } }) };
+  const writable = item('mine', { artifactId: 'mine-root', revisionId: 'mine-r1', meta: { editable: true } });
+  const owned = { ...commerceEntry('mine'), libraryItem: writable };
+  const rights = { ...commerceContext().rights, canEdit: true };
+  const calls = [];
+  globalThis.__w4Prepare = async (action, source) => { calls.push({ action, source }); return { ok: true, data: writable }; };
+  globalThis.__w4Resolve = async ref => {
+    assert.deepEqual(ref, { kind: 'artifact', artifactId: 'mine-root', revisionId: 'mine-r1' });
+    return { entry: owned, actionContext: commerceContext({ owned: true, rights, ref }) };
+  };
+  const m = await mount(React.createElement(ResultCanvas, { tabs: [], openEntry: { nonce: 'edit-template', entry: original, actionContext: commerceContext({ rights }), mode: 'edit' } }));
+  try {
+    await act(async () => {
+      for (let attempt = 0; attempt < 50 && !calls.length; attempt += 1) await new Promise(resolve => setTimeout(resolve, 5));
+    });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].action, 'edit');
+    assert.equal(calls[0].source, original.libraryItem);
+    assert.ok(m.container.querySelector('[data-editor="mine"]'));
+  } finally { await m.unmount(); delete globalThis.__w4Prepare; delete globalThis.__w4Resolve; }
+});
+
+test("W4 a new legacy item request also cancels an unresolved typed entry", async () => {
+  let signal, settle;
+  globalThis.__w4Resolve = (_ref, options) => { signal = options.signal; return new Promise(resolve=>{settle=resolve;}); };
+  const m = await mount(React.createElement(ResultCanvas, { tabs: [], openEntry: { nonce: 'slow-typed', ref: { kind: 'platform', id: 'slow' }, mode: 'preview' } }));
+  try {
+    await m.render(React.createElement(ResultCanvas, { tabs: [], openItem: { nonce: 'new-attachment', item: item('attachment'), mode: 'preview' } }));
+    assert.equal(signal.aborted, true);
+    await act(async () => settle({ entry: commerceEntry('old'), actionContext: commerceContext() }));
+    assert.ok(m.container.querySelector('[data-entry-canvas="attachment"]'));
+    assert.equal(m.container.querySelector('[data-shared-detail]'), null);
+  } finally { await m.unmount(); delete globalThis.__w4Resolve; }
+});
+
+test("W4 an initial entry carries full server commerce data from home into a newly mounted task shell", async () => {
+  const entry = commerceEntry('carried');
+  const actionContext = commerceContext();
+  function Host(){
+    const state = useTaskWorkspaceState({ initial: { entry: { nonce: 'carried-entry', entry, actionContext, mode: 'preview' } } });
+    return React.createElement(TaskWorkspaceShell, { state, tabs: [], left: 'task', canvas: { taskId: 'new-task' } });
+  }
+  const m = await mount(React.createElement(Host));
+  try {
+    assert.equal(globalThis.__canvasProps.openEntry.entry, entry);
+    assert.equal(globalThis.__canvasProps.openEntry.actionContext, actionContext);
+    assert.equal(globalThis.__canvasProps.taskId, 'new-task');
+    assert.equal(m.container.querySelector('[data-workspace-pane="main"]').getAttribute('data-workspace-pane-state'), 'open');
+  } finally { await m.unmount(); }
 });

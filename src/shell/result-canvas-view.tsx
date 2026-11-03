@@ -10,7 +10,7 @@ import type { WorkspaceSlotId } from "./workspace-actions";
 export const WORKSPACE_SLOT_LABELS: Record<WorkspaceSlotId, string> = {
   template: "灵感",
   preview: "生成",
-  materials: "素材库",
+  materials: "LeoBay", // Legacy label only; this slot is no longer mounted.
   mine: "我的库",
   browser: "云端浏览器",
 };

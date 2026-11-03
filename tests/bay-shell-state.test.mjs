@@ -1,6 +1,8 @@
 // W03（oceanleo-bay）：Bay 深链解析、跨站地址、境内开关、目标栈、类目默认值、信息流请求。
 import test from "node:test";
 import assert from "node:assert/strict";
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -22,6 +24,7 @@ export function isLeoDevPreviewHost(host) {
 function familyStub(family) {
   return dataModule(`
 export function currentDomainFamily() { return ${JSON.stringify(family)}; }
+export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
 export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
 export function currentFamilySubsiteOrigin(label) { return "https://" + label + ".oceanleo.com"; }
 `);
@@ -199,12 +202,20 @@ test("跨站地址：子站按子域标签拼，门户与未知站落到门户",
   assert.equal(links.bayHrefWith("oceanleo", { kind: "service", id: "s1" }, stay), `${slot}/bay?bay=service:s1`);
 });
 
-test("境内 bayEnabledHere() 为 false；海外未登录为 true", async () => {
+test("境内与海外未登录都能逛 Bay", async () => {
   const cn = await loadState("cn");
-  assert.equal(cn.bayEnabledHere(), false);
+  assert.equal(cn.bayEnabledHere(), true);
   const com = await loadState("com");
   assert.equal(com.bayEnabledHere(), true);
+  const unknown = await loadState("unknown");
+  assert.equal(unknown.bayEnabledHere(), false);
   assert.equal(com.bayHrefOnSite("ppt", { kind: "demand", id: "d9" }), "https://slide.oceanleo.com/bay?bay=demand:d9");
+});
+
+test("CN SSR still starts with Bay disabled to keep hydration stable", async () => {
+  const state = await loadState("cn");
+  function Probe() { return React.createElement("span", null, String(state.useBayEnabled())); }
+  assert.equal(renderToStaticMarkup(React.createElement(Probe)), "<span>false</span>");
 });
 
 test("目标栈：打开详情、返回、回到信息流；任务上下文与站点", async () => {

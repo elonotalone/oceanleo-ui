@@ -31,6 +31,8 @@ export interface StripAttachment {
   url?: string;
   mime?: string;
   uploading?: boolean;
+  /** Deferred native files can be sent to create a session, but cannot open yet. */
+  openingDisabled?: boolean;
   /** 上传失败但宿主仍保留着它（等用户重试或移除）：方块右下角红色小徽章。 */
   failed?: boolean;
   /** 真上传读数；缺省时由总线读数（inFlight）按名配上，再缺省是不确定态小圈。 */
@@ -102,11 +104,8 @@ function StripTile({
   return <UploadTile {...tile} previewUrl={attachment.previewUrl || remote} />;
 }
 
-/** 正在压缩、还没交给宿主的文件：先画一块「上传中」方块，缩略图用本地 blob。 */
-function PendingFileTile({ file, onOpen }: {
-  file: File;
-  onOpen: (attachment: StripAttachment) => void;
-}) {
+/** 正在压缩、还没交给宿主的文件：缩略图用本地 blob，完成前不能打开。 */
+function PendingFileTile({ file }: { file: File }) {
   const tt = useUI();
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   useEffect(() => {
@@ -120,21 +119,9 @@ function PendingFileTile({ file, onOpen }: {
       name={file.name}
       mime={file.type}
       previewUrl={previewUrl}
-      state="uploading"
+      state="compressing"
       size={COMPOSER_TILE_SIZE}
       tt={tt}
-      onOpen={previewUrl ? () => {
-        // 查看器独立持有一个 URL，不受压缩占位块卸载/缩略图释放影响。
-        const url = URL.createObjectURL(file);
-        onOpen({
-          id: `pending:${url}`,
-          name: file.name,
-          mime: file.type || "image/unknown",
-          previewUrl: url,
-          url,
-          uploading: true,
-        });
-      } : undefined}
     />
   );
 }
@@ -166,42 +153,12 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
 }) {
   const tt = useUI();
   const [openId, setOpenId] = useState<string | null>(null);
-  const [pendingPreview, setPendingPreview] = useState<{
-    attachment: StripAttachment;
-    file: File;
-    existingIds: Set<string>;
-  } | null>(null);
-  useEffect(() => {
-    const url = pendingPreview?.attachment.previewUrl;
-    return () => {
-      if (url) URL.revokeObjectURL(url);
-    };
-  }, [pendingPreview?.attachment.previewUrl]);
   const opened = onOpenAttachment ? null :
-    attachments.find((a) => a.id === openId) ||
-    (pendingPreview?.attachment.id === openId ? pendingPreview.attachment : null);
+    attachments.find((a) => a.id === openId && !a.uploading && !a.failed && !a.openingDisabled) || null;
   useEffect(() => {
     if (openId && !opened) setOpenId(null);
   }, [openId, opened]);
   const pending = pendingFiles ?? [];
-  useEffect(() => {
-    if (!pendingPreview || pending.includes(pendingPreview.file)) return;
-    const original = pendingPreview.file.name;
-    // 压缩可能把 PNG 改成 JPEG；仅匹配本次点击之后新增的同名/同 stem 图片。
-    const stem = (name: string) => name.replace(/\.[^.]+$/, "");
-    const candidates = attachments.filter((a) =>
-      !pendingPreview.existingIds.has(a.id) &&
-      isImageTile(a.mime, a.name, a.previewUrl) &&
-      (a.name === original || stem(a.name || "") === stem(original)) &&
-      Boolean(a.previewUrl || a.url || a.libraryItem || (a.artifactId && a.revisionId)),
-    );
-    // 同名并发附件无法可靠区分：继续保留准确的本地原图，绝不切错文件。
-    if (candidates.length !== 1) return;
-    const attachment = candidates[0];
-    if (onOpenAttachment) onOpenAttachment(attachment);
-    else setOpenId(attachment.id);
-    setPendingPreview(null);
-  }, [attachments, pending, pendingPreview, onOpenAttachment]);
   if (attachments.length === 0 && pending.length === 0 && !opened) return null;
   const shown = withBusProgress(attachments, inFlight ?? []);
   const openedEntry = opened ? libraryEntryForAttachment(opened) : null;
@@ -222,12 +179,11 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
               size={COMPOSER_TILE_SIZE}
               tt={tt}
               onOpen={
-                a.uploading && !failed && !isImageTile(a.mime, a.name, a.previewUrl)
+                state !== "ready" || a.openingDisabled
                   ? undefined
                   : () => {
                       if (onOpenAttachment) onOpenAttachment(a);
                       else setOpenId((current) => (current === a.id ? null : a.id));
-                      setPendingPreview(null);
                     }
               }
               // A5：上传中也能删（宿主取消上传、迟到的结果不会把它加回来）。
@@ -240,12 +196,6 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
           <PendingFileTile
             key={`pending-${index}-${file.name}-${file.size}`}
             file={file}
-            onOpen={(attachment) => {
-              setPendingPreview({ attachment, file, existingIds: new Set(attachments.map((a) => a.id)) });
-              // pending 还没有宿主的 T 扩展字段，打开入口只消费 StripAttachment 字段。
-              if (onOpenAttachment) onOpenAttachment(attachment as T);
-              else setOpenId(attachment.id);
-            }}
           />
         ))}
       </div>
@@ -257,7 +207,6 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
             onDetailOpenChange={(open) => {
               if (!open) {
                 setOpenId(null);
-                setPendingPreview(null);
               }
             }}
             plain

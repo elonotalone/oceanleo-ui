@@ -132,6 +132,28 @@ export async function receiverStats(video: HTMLVideoElement, peers: Iterable<{ g
   return (await Promise.all(pending)).filter(Boolean);
 }
 
+/** Cumulative inbound counters, scoped to this screen's receivers (not RTCP or another call). */
+function inboundVideoProgress(reports: unknown[], previous: Map<string, number>): boolean {
+  let progressed = false;
+  for (const report of reports) {
+    if (!report || typeof (report as RTCStatsReport).forEach !== "function") continue;
+    (report as RTCStatsReport).forEach((entry) => {
+      const stat = entry as Record<string, unknown>;
+      if (stat.type !== "inbound-rtp" || (stat.kind !== "video" && stat.mediaType !== "video")) return;
+      for (const counter of ["bytesReceived", "packetsReceived", "framesReceived"] as const) {
+        const value = stat[counter];
+        if (typeof value !== "number" || !Number.isFinite(value) || value < 0) continue;
+        const key = `${stat.id ?? stat.ssrc ?? "video"}:${counter}`;
+        const before = previous.get(key);
+        // A replacement receiver may restart its counters. A zero snapshot is never traffic.
+        if (value > 0 && (before === undefined || value !== before)) progressed = true;
+        previous.set(key, value);
+      }
+    });
+  }
+  return progressed;
+}
+
 const PUBLISHER_ERROR_CODES: ReadonlySet<string> = new Set([
   "screen_permission_required", "screen_content_unavailable", "screen_content_timeout",
   "screen_display_mismatch", "screen_geometry_invalid", "screen_capture_output_failed",
@@ -202,9 +224,11 @@ export async function openRemoteMedia(
   let closed = false, joining = false, closePromise: Promise<void> | null = null;
   let refreshPromise: Promise<void> | null = null;
   let frameCallback: number | null = null;
-  let lastFrame = 0, lastTime = -1;
+  let lastFrame: number | null = null, lastTime = -1;
   let playing = false, renewal: ReturnType<typeof setTimeout> | undefined, expiry: ReturnType<typeof setTimeout> | undefined;
   const started = Date.now();
+  let lastInbound = started, statsPending = false;
+  const inboundCounters = new Map<string, number>();
   let watchdog: ReturnType<typeof setInterval> | undefined;
   let subscribeFailure: ReturnType<typeof setTimeout> | undefined;
   const violation = (event: Event) => {
@@ -247,6 +271,7 @@ export async function openRemoteMedia(
   const decodedFrame = () => {
     if (closed || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
     lastFrame = Date.now();
+    lastInbound = lastFrame;
     // Notify on every decoded frame so display-switch geometry can gate input even
     // when two displays happen to have identical encoded dimensions.
     handlers.frame(video.videoWidth, video.videoHeight);
@@ -329,11 +354,24 @@ export async function openRemoteMedia(
   on("authInfoWillExpire", () => { void renew(); });
   on("authInfoExpired", () => { void renew(); });
   on("bye", () => fail("media_session_closed"));
+  const checkLiveness = () => {
+    if (closed || (typeof document !== "undefined" && document.hidden)) return;
+    const elapsed = Date.now() - (lastFrame ?? started);
+    // Receiving bytes cannot hide a decoder that never produces a picture.
+    if (elapsed > 20_000) fail(lastFrame !== null ? "media_frame_timeout" : "media_first_frame_timeout");
+    else if (lastFrame !== null && Date.now() - lastInbound > 6000 && playing) { playing = false; handlers.state("reconnecting"); }
+  };
   watchdog = setInterval(() => {
     if (closed || (typeof document !== "undefined" && document.hidden)) return;
-    const elapsed = Date.now() - (lastFrame || started);
-    if (elapsed > 20_000) fail(lastFrame ? "media_frame_timeout" : "media_first_frame_timeout");
-    else if (lastFrame && elapsed > 5000 && playing) { playing = false; handlers.state("reconnecting"); }
+    // A stuck getStats must not hold up either the traffic deadline or the hard frame deadline.
+    if (statsPending || Date.now() - (lastFrame ?? started) > 20_000) { checkLiveness(); return; }
+    statsPending = true;
+    const sampledAt = Date.now();
+    void receiverStats(video).then((reports) => {
+      if (closed) return;
+      if (inboundVideoProgress(reports, inboundCounters)) lastInbound = Math.max(lastInbound, sampledAt);
+      checkLiveness();
+    }).catch(() => { checkLiveness(); }).finally(() => { statsPending = false; });
   }, 1000);
   try {
     handlers.state("joining");

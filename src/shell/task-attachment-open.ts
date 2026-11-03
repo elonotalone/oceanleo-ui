@@ -55,6 +55,8 @@ export interface NativeArchiveRef {
 declare module "./LeoComposer" {
   interface ComposerAttachment {
     nativeArchive?: NativeArchiveRef;
+    /** Held locally until a managed session exists; send can proceed, preview cannot. */
+    openingDisabled?: boolean;
   }
 }
 
@@ -66,6 +68,14 @@ export type TaskOpenableAttachment =
       nativeArchive?: NativeArchiveRef;
     })
   | (AgentAttachment & { native_archive?: NativeArchiveRef });
+
+/** Block every opening route while a composer file is still being prepared. */
+function attachmentPending(att: TaskOpenableAttachment): boolean {
+  const state = att as { uploading?: boolean; failed?: boolean; openingDisabled?: boolean; state?: string; id?: string };
+  return Boolean(state.uploading || state.failed || state.openingDisabled ||
+    (typeof state.id === "string" && state.id.startsWith("pending:")) ||
+    ["compressing", "uploading", "failed", "error"].includes(state.state || ""));
+}
 
 export interface TaskAttachmentTarget {
   item: LibraryItem;
@@ -198,6 +208,7 @@ export function immediateTaskAttachment(
   att: TaskOpenableAttachment,
   siteId = "oceanleo",
 ): TaskAttachmentTarget | null {
+  if (attachmentPending(att)) return null;
   const openable = taskOpenable(att);
   if (openable.libraryItem) {
     return { item: openable.libraryItem, mode: taskAttachmentMode(openable.libraryItem) };
@@ -256,6 +267,7 @@ export async function resolveTaskAttachment(
   siteId = "oceanleo",
   deps: TaskAttachmentDeps = {},
 ): Promise<TaskAttachmentTarget | null> {
+  if (attachmentPending(att)) return null;
   const immediate = immediateTaskAttachment(att, siteId);
   if (immediate) return immediate;
   const openable = taskOpenable(att);
@@ -311,6 +323,7 @@ export function useTaskAttachmentOpener(
   const seqRef = useRef(0);
   return useCallback(async (attachment: TaskOpenableAttachment) => {
     const seq = ++seqRef.current;
+    if (attachmentPending(attachment)) return false;
     const showTarget = (target: TaskAttachmentTarget) => {
       const action = taskAttachmentLibraryAction(attachment);
       showRef.current({

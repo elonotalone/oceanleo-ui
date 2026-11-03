@@ -7,14 +7,13 @@
 //   带扩展名            `tpl-material/image-poster-1.webp`
 //   带前缀带扩展名      `assets/image/tpl-material/image-poster-1.webp`
 //
-// 三者都能通过编译、都能塞进 `<img src>`，但经同一个拼链函数
-// （`src/lib/app-capability-image.ts`，全仓唯一实现）之后：第一种 200，后两种分别拼出
-// `.webp.thumb.webp` 与 `assets/image/assets/image/….webp.thumb.webp`，都是 404。
+// 三者都能通过编译、都能塞进 `<img src>`。旧拼链曾把后两种变成双扩展名或双前缀。
+// W2-C2 的统一交付层保留完整对象路径，不再制造这些 404；目录仍统一用裸 key。
 // W11 修的是后端那一侧（`b1022a1`），本文件守的是**这个包里写下的每一处取值**。
 //
-// 判据只比对**值**：把取值真的喂进拼链函数，数产出 URL 里 `assets/image/` 前缀与
-// `.webp` 扩展名各出现几次。比对类型是抓不到的，这正是它当初漏掉的原因。
+// 判据独立验证目录 key 的形状，再检查真实交付 URL，避免交付层兼容掩盖目录回归。
 import assert from "node:assert/strict";
+import { ASSET_CDN_ENABLED, PUBLIC_ASSET_ORIGIN } from "../src/lib/asset-delivery.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -27,16 +26,21 @@ import {
 } from "../src/lib/app-capability-image.ts";
 
 const REPO_ROOT = fileURLToPath(new URL("..", import.meta.url));
-const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
+const OSS = `${ASSET_CDN_ENABLED ? "https://assets.oceanleo.com" : PUBLIC_ASSET_ORIGIN}/assets/image`;
 
 // ── 判据：把取值喂进拼链函数，看产出的**值** ────────────────────────────────
 
 /**
  * 一条取值经拼链后的毛病清单；空数组 = 形状正确。
- * 只看拼出来的 URL 长什么样，不看取值本身像不像 key——因为「像不像」正是人眼漏掉的那步。
+ * 目录 key 形状和交付 URL 分开检查；兼容旧地址不放宽目录数据契约。
  */
 function chainedLinkProblems(rawKey) {
   const problems = [];
+  // The delivery resolver accepts object paths; catalogs still store short keys.
+  if (!/^https?:\/\//i.test(rawKey)) {
+    if (rawKey.startsWith("assets/image/")) problems.push("目录 key 带 assets/image/ 前缀");
+    if (/\.webp$/i.test(rawKey)) problems.push("目录 key 带 .webp 扩展名");
+  }
   for (const [label, url, tail] of [
     ["缩略图", capabilityImageThumbSrc(rawKey), ".thumb.webp"],
     ["大图", capabilityImagePreviewSrc(rawKey), ".webp"],
@@ -57,7 +61,7 @@ function chainedLinkProblems(rawKey) {
   return problems;
 }
 
-test("裸 key 是唯一能拼出可用直链的形状——三种取值按值钉死", () => {
+test("目录用裸 key；交付层也安全接受完整对象路径", () => {
   const key = "tpl-material/image-poster-1";
   assert.equal(capabilityImageThumbSrc(key), `${OSS}/${key}.thumb.webp`);
   assert.equal(capabilityImagePreviewSrc(key), `${OSS}/${key}.webp`);
@@ -66,23 +70,23 @@ test("裸 key 是唯一能拼出可用直链的形状——三种取值按值钉
   // 坏形状①：裸目录 + 带扩展名（W11 在 workspace-template-deeplink 的 fixture 里留下的那条）。
   assert.equal(
     capabilityImageThumbSrc("tpl-material/image-poster-1.webp"),
-    `${OSS}/tpl-material/image-poster-1.webp.thumb.webp`,
+    `${OSS}/tpl-material/image-poster-1.webp`,
   );
   // 坏形状②：带前缀 + 带扩展名（后端 list/detail 曾经的返回值）。
   assert.equal(
     capabilityImageThumbSrc("assets/image/tpl-material/image-poster-1.webp"),
-    `${OSS}/assets/image/tpl-material/image-poster-1.webp.thumb.webp`,
+    `${OSS}/tpl-material/image-poster-1.webp`,
   );
 });
 
 test("判据本身认得出这两种坏形状（不然全仓扫描只是空转）", () => {
   const withExtension = chainedLinkProblems("tpl-material/image-poster-1.webp");
   assert.ok(withExtension.length > 0, "带扩展名的取值必须被判为坏形状");
-  assert.ok(withExtension.some((line) => line.includes("2 次 .webp")));
+  assert.ok(withExtension.some((line) => line.includes("扩展名")));
 
   const withPrefix = chainedLinkProblems("assets/image/tpl-material/image-poster-1.webp");
-  assert.ok(withPrefix.some((line) => line.includes("2 次 assets/image/")));
-  assert.ok(withPrefix.some((line) => line.includes("2 次 .webp")));
+  assert.ok(withPrefix.some((line) => line.includes("前缀")));
+  assert.ok(withPrefix.some((line) => line.includes("扩展名")));
 
   // 完整 http(s) 直链是允许的第二种取值，拼链层原样透传，不得被扫描误判。
   assert.deepEqual(chainedLinkProblems(`${OSS}/tpl-material/image-poster-1.thumb.webp`), []);
@@ -125,7 +129,12 @@ const DOCUMENTED_BAD_SHAPES = new Map([
     [
       "tpl-material/image-poster-1.webp",
       "assets/image/tpl-material/image-poster-1.webp",
+      "tpl-material/../../secret",
     ],
+  ],
+  [
+    "tests/material-library-template-materials.test.mjs",
+    ["tpl-material/../../secret", "a:b/c", "../../etc/passwd", "javascript:alert(1)"],
   ],
 ]);
 
@@ -152,15 +161,35 @@ function keyLiteralsIn(source) {
       found.set(value, source.slice(0, index).split("\n").length);
     }
   };
-  for (const match of source.matchAll(KEY_LITERAL)) remember(match[1], match.index);
+  for (const match of source.matchAll(KEY_LITERAL)) {
+    // Bay's cover field stores a complete object key, not a catalog preview key.
+    if (match[1].startsWith("assets/") && /\bcover:\s*["']$/.test(source.slice(0, match.index))) continue;
+    remember(match[1], match.index);
+  }
   for (const match of source.matchAll(FIELD_LITERAL)) {
     const value = match[2].trim();
     // 空取值（无图）与完整 http(s) 直链都是合法的第二种写法。
     if (!value || /^https?:\/\//i.test(value)) continue;
+    // Attachment previews also use this field; blob/data URLs are not catalog keys.
+    if (match[1] === "previewUrl" && /^(?:blob|data):/i.test(value)) continue;
     remember(value, match.index);
   }
   return [...found].map(([value, line]) => ({ value, line }));
 }
+
+test("扫描区分目录 key、Bay 对象路径和附件预览，目录坏值仍被捕获", () => {
+  const literals = keyLiteralsIn([
+    'cover: "assets/image/tpl-material/image-poster-1.webp"',
+    'previewUrl: "blob:https://example.test/a"',
+    'previewUrl: "assets/image/tpl-material/image-poster-1.webp"',
+    'capabilityImage: "tpl-material/image-poster-1.webp"',
+  ].join("\n"));
+  assert.deepEqual(literals.map(({ value }) => value).sort(), [
+    "assets/image/tpl-material/image-poster-1.webp", "tpl-material/image-poster-1.webp",
+  ]);
+  assert.equal(literals.find(({ value }) => value.startsWith("assets/")).line, 3);
+  for (const { value } of literals) assert.ok(chainedLinkProblems(value).length > 0);
+});
 
 const scanned = scannedFiles().map((file) => ({
   file,

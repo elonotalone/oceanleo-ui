@@ -352,6 +352,10 @@ const viewerModuleUrl = await compileModule(
     "../i18n/ui/useUI": uiStubUrl,
     "./ArtifactRendition": renditionStubUrl,
     "../lib/media-proxy": mediaProxyStubUrl,
+    "./artifact-client": await compileModule("src/shell/artifact-client.ts", {
+      "../lib/auth/client": dataModule(`export async function accessToken() { return null; }`),
+      "../lib/auth/config": dataModule(`export const GATEWAY_BASE = "https://gateway.invalid";`),
+    }),
   },
 );
 const { WebsiteArtifactViewer } = await import(viewerModuleUrl);

@@ -47,6 +47,29 @@ import { getClientHostConfig } from "./client-host-config";
 
 export type DomainFamily = "com" | "cn" | "ws";
 
+/** Product availability is independent of regional payment/model providers. */
+export interface DomainFamilyFeatures {
+  readonly bay: boolean;
+  readonly commerce: boolean;
+  readonly chat: boolean;
+}
+
+const COMPLETE_FEATURES: DomainFamilyFeatures = Object.freeze({
+  bay: true,
+  commerce: true,
+  chat: true,
+});
+
+/** All editions ship the complete product; host trust and login stay separate. */
+export function domainFamilyFeatures(
+  family: DomainFamily = currentDomainFamily(),
+): DomainFamilyFeatures {
+  if (!DOMAIN_FAMILIES.includes(family)) {
+    throw new Error("Unknown domain family");
+  }
+  return COMPLETE_FEATURES;
+}
+
 export interface DomainFamilyProfile {
   family: DomainFamily;
   /** 共享会话的唯一可注册域（eTLD+1）。信任边界，不是可调参数。 */

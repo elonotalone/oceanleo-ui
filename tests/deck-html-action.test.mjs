@@ -322,6 +322,8 @@ async function mount(item) {
 }
 
 function button(container, label) {
+  const action = { 下载: "download", 收藏: "favorite", 已收藏: "favorite", 编辑: "edit" }[label];
+  if (action) return container.querySelector(`[data-artifact-action="${action}"]`);
   return [...container.querySelectorAll("button, a")].find(
     (node) => node.textContent.trim() === label,
   );
@@ -713,7 +715,7 @@ test("下载与收藏在加了网页版之后行为不变", async () => {
   }
 });
 
-test("下载与收藏不可用时仍可见、灰着，并各自保留原有理由", async () => {
+test("下载与收藏不可用时仍可见、灰着，并显示可操作的简短提示", async () => {
   const item = deckItem();
   delete item.artifact.renditions.full;
   item.artifact.access.canFavorite = false;
@@ -725,7 +727,7 @@ test("下载与收藏不可用时仍可见、灰着，并各自保留原有理�
     assert.equal(download.getAttribute("aria-disabled"), "true");
     assert.equal(
       download.getAttribute("title"),
-      "当前 revision 缺少符合能力合同的真实交付 rendition。",
+      "暂时无法下载，请刷新后重试。",
     );
 
     const favorite = button(mounted.container, "收藏");
@@ -734,17 +736,18 @@ test("下载与收藏不可用时仍可见、灰着，并各自保留原有理�
     assert.equal(favorite.getAttribute("aria-disabled"), "true");
     assert.equal(
       favorite.getAttribute("title"),
-      "当前主体没有收藏这个 artifact 的权限。",
+      "暂时无法收藏，请刷新后重试。",
     );
 
     assert.match(
       mounted.container.textContent || "",
-      /下载：当前 revision 缺少符合能力合同的真实交付 rendition。/,
+      /下载: 暂时无法下载，请刷新后重试。/,
     );
     assert.match(
       mounted.container.textContent || "",
-      /收藏：当前主体没有收藏这个 artifact 的权限。/,
+      /收藏: 暂时无法收藏，请刷新后重试。/,
     );
+    assert.doesNotMatch(mounted.container.innerHTML, /receipt|typed route|revision|rendition/);
   } finally {
     await mounted.unmount();
   }

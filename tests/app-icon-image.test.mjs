@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ASSET_CDN_ENABLED, PUBLIC_ASSET_ORIGIN } from "../src/lib/asset-delivery.ts";
 import test from "node:test";
 
 import { appIconImageKey, appIconThumbSrc } from "../src/lib/app-icon-image.ts";
@@ -15,7 +16,7 @@ test("appIconImageKey uses the same slug rules as capabilityImageKey", () => {
 test("appIconThumbSrc joins keys and passes absolute URLs through", () => {
   assert.equal(
     appIconThumbSrc("app-icon/make-tshirt"),
-    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/app-icon/make-tshirt.thumb.webp",
+    `${ASSET_CDN_ENABLED ? "https://assets.oceanleo.com" : PUBLIC_ASSET_ORIGIN}/assets/image/app-icon/make-tshirt.thumb.webp`,
   );
   assert.equal(appIconThumbSrc("https://cdn.example/icon.png"), "https://cdn.example/icon.png");
   assert.equal(appIconThumbSrc(""), "");

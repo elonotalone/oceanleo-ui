@@ -9,6 +9,7 @@ const state = await import(
   await compileModule("src/shell/bay/shell/bay-state.ts", {
     "../../../contracts/domain-family": dataModule(`
       export function currentDomainFamily() { return "com"; }
+      export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
       export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
       export function currentFamilySubsiteOrigin(label) { return "https://" + label + ".oceanleo.com"; }
     `),

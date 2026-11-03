@@ -3,13 +3,13 @@
 // 右侧栏里的 LeoBay（缩小版）。属性是合同 §3.2 定的，不许改；实现由第四波 W2 整份重写。
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
+import { domainFamilyFeatures } from "../../../contracts/domain-family";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { formatBayParam } from "../shell/bay-links";
 import {
   bayBack,
   closeBayDetails,
   registerBayPanel,
-  useBayEnabled,
   useBayState,
 } from "../shell/bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "../shell/BayDetail";
@@ -35,7 +35,7 @@ type PanelMode = "related" | "browse";
 
 export function BayPanel({ siteKey, active, request, onBackChange, onOpenConversation }: BayPanelProps): ReactElement | null {
   const tt = useUI();
-  const enabled = useBayEnabled();
+  const enabled = domainFamilyFeatures().bay;
   const { current } = useBayState();
   const inDetail = current.kind !== "feed";
   const [mode, setMode] = useState<PanelMode>(request ? "related" : "browse");

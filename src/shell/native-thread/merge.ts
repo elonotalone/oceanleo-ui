@@ -1,7 +1,6 @@
-import type { AgentMessage } from "../../lib/agent";
-import type { ComputerTaskSession } from "../../lib/computer-task-api";
+import type { NativeAgentMessage as AgentMessage, NativeTranscriptSession } from "../../native-agent-core/index";
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
-import type { AgentDialogMessage, TurnItem } from "../cloud-computer/agent-dialog/types";
+import type { AgentDialogMessage, TurnItem } from "../../native-agent-core/index";
 import { dialogToAgentMessages, type MapTranslate } from "./map-dialog";
 
 // ── Saved transcript + live conversation: merge, never switch (2026-11-02 F2) ──
@@ -283,12 +282,12 @@ export function mergeTranscriptPages(
 }
 
 export type NativeThreadSource = {
-  session: Pick<ComputerTaskSession, "id" | "program" | "created_at">;
+  session: Pick<NativeTranscriptSession, "id" | "program" | "created_at">;
   messages: AgentMessage[];
 };
 
 export function mapNativeTranscript(
-  session: Pick<ComputerTaskSession, "id" | "program" | "created_at" | "native_session_id">,
+  session: Pick<NativeTranscriptSession, "id" | "program" | "created_at" | "native_session_id">,
   frames: Record<string, unknown>[],
   tt?: MapTranslate,
 ): AgentMessage[] {

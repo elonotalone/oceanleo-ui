@@ -7,6 +7,7 @@
  *  - ImageRoute has a single mode (no Normal/Pro split, no iframe).
  */
 import assert from "node:assert/strict";
+import { ASSET_CDN_ENABLED, PUBLIC_ASSET_ORIGIN } from "../src/lib/asset-delivery.ts";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -195,7 +196,7 @@ test("text + shape + image + icon + chart-embed open, edit, save and reopen iden
 test("asset keys resolve only to the first-party bucket", () => {
   assert.equal(
     designAssetUrl("assets/image/a b.webp"),
-    "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image/a%20b.webp",
+    `${ASSET_CDN_ENABLED ? "https://assets.oceanleo.com" : PUBLIC_ASSET_ORIGIN}/assets/image/a%20b.webp`,
   );
   for (const bad of ["", "https://evil.test/x.png", "../x", "/abs", "a/../b", "javascript:1"]) {
     assert.equal(designAssetUrl(bad), "", bad);

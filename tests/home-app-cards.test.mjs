@@ -12,6 +12,7 @@
 // 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
+import { ASSET_CDN_ENABLED, PUBLIC_ASSET_ORIGIN } from "../src/lib/asset-delivery.ts";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -132,7 +133,7 @@ const {
 } = await import(controllerUrl);
 const { capabilityImagePreviewSrc } = await import(capabilityImageUrl);
 
-const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
+const OSS = `${ASSET_CDN_ENABLED ? "https://assets.oceanleo.com" : PUBLIC_ASSET_ORIGIN}/assets/image`;
 // 上一轮那批「渐变底 + 白色线框图标」封面（`thumb`）。它是**完整 URL** 形态——铺开窗口
 // 期内还没换掉功能图的站就长这样，拼链层必须对它原样透传。
 const THUMB = `${OSS}/cover-app/image-poster.thumb.webp`;
@@ -299,7 +300,7 @@ test("功能图 key 必须被拼成绝对 URL 才能进 <img src>（否则 30 �
     // 咬人点①：绝不允许原样 key 落进 src。
     assert.notEqual(src, CAPABILITY_KEY);
     // 咬人点②：必须是绝对 URL——相对路径（不以 http(s):// 开头）一律判红。
-    assert.match(src, /^https:\/\/oceanleo-assets\.oss-cn-guangzhou\.aliyuncs\.com\//);
+    assert.equal(new URL(src).origin, new URL(OSS).origin);
     // 咬人点③：拼出来的必须是 OSS 上真实存在的那个变体。`<key>.preview.webp` 是历史
     // 上踩过的 404 变体，出现即判红。
     assert.match(src, /\.thumb\.webp$/);

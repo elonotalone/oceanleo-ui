@@ -15,6 +15,7 @@ const clientStub = dataModule(`
   export class ImApiError extends Error {}
 `);
 const familyStub = dataModule(`
+  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return "com"; }
   export function currentFamilySubsiteOrigin(){ return undefined; }
 `);
@@ -155,14 +156,16 @@ test("请求拼装：读、发、已读、报价动作都走 talent 现有接口
   assert.deepEqual(calls.slice(3).map((c) => c.path), ["/v1/talent/offers/of1/accept", "/v1/talent/offers/of1/decline", "/v1/talent/offers/of1/withdraw"]);
 });
 
-test("交易会话地址是站内 Bay，境内不给链接", async () => {
+test("交易会话地址是站内 Bay，境内也保留 id 校验", async () => {
   assert.equal(api.talentThreadUrl("th1"), "/bay?bay=conversation:th1");
   const cnUrl = await compileModule("src/shell/messages/talent/talent-api.ts", {
     "../../../lib/im/client": clientStub,
-    "../../../contracts/domain-family": dataModule("export function currentDomainFamily(){ return \"cn\"; }"),
+    "../../../contracts/domain-family": dataModule(`export function currentDomainFamily(){ return "cn"; }
+      export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};`),
   });
   const cn = await import(cnUrl);
-  assert.equal(cn.talentThreadUrl("th1"), null);
+  assert.equal(cn.talentThreadUrl("th1"), "/bay?bay=conversation:th1");
+  for (const id of ["", "../evil", "a&b", "x".repeat(81), "<script>"]) assert.equal(cn.talentThreadUrl(id), null);
 });
 
 test("谁是「我」：从报价双方或消息里排除对方", () => {

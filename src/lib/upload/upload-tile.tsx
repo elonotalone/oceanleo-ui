@@ -27,7 +27,7 @@ export type ProgressTranslate = (
   vars?: Record<string, string | number>,
 ) => string;
 
-export type UploadTileState = "ready" | "uploading" | "failed";
+export type UploadTileState = "compressing" | "ready" | "uploading" | "failed";
 
 /** 这份读数值不值得画进度：有读数、还没结束。 */
 export function liveProgress(
@@ -170,8 +170,12 @@ export function UploadTile({
   const label = name || tt("附件");
   const image = isImageTile(mime, name, previewUrl) && Boolean(previewUrl) && !broken;
   const uploading = state === "uploading";
+  const busy = uploading || state === "compressing";
   const failed = state === "failed";
   const percent = uploading && liveProgress(progress) ? progressPercent(progress) : null;
+  const status = state === "compressing" ? tt("正在压缩…") : uploading
+    ? percent === 100 ? tt("等待电脑确认…") : percent !== null ? tt("正在上传 {percent}%", { percent }) : tt("正在上传…")
+    : failed ? tt("上传失败") : "";
   const box: CSSProperties = { width: size, height: size };
 
   const face = (
@@ -193,8 +197,8 @@ export function UploadTile({
           </span>
         </span>
       )}
-      {uploading ? (
-        <span className="absolute inset-0 flex items-center justify-center bg-black/30">
+      {busy ? (
+        <span className="absolute inset-0 flex items-center justify-center bg-black/30" aria-label={status} title={status}>
           <ProgressRing percent={percent} />
         </span>
       ) : failed ? (
@@ -210,7 +214,7 @@ export function UploadTile({
     <div
       className={`relative shrink-0 ${className}`}
       style={box}
-      title={label}
+      title={status ? `${label} · ${status}` : label}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onFocus={() => setHovered(true)}
@@ -220,7 +224,7 @@ export function UploadTile({
       data-upload-tile={state}
       data-upload-kind={image ? "image" : "file"}
     >
-      {onOpen ? (
+      {onOpen && state === "ready" ? (
         <button
           type="button"
           aria-label={label}

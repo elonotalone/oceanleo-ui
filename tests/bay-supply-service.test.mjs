@@ -77,7 +77,8 @@ const stubs = {
   "../form/BayImageGallery": dataModule(`export function BayImageStage(){ return null; } export function BayImageGallery(){ return null; }`),
   "../auth/config": dataModule(`export const GATEWAY_BASE = "https://api.example.test";`),
   "../../../lib/database": dataModule(`export async function uploadFile(){ return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } }; }`),
-  "../../../contracts/domain-family": dataModule(`export function currentDomainFamily(){ return "com"; }`),
+  "../../../contracts/domain-family": dataModule(`export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
+  export function currentDomainFamily(){ return "com"; }`),
   "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
   "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),
 };

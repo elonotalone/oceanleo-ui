@@ -15,6 +15,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkspaceLayer } from "./result-canvas-slot-state";
+import { workspaceMaterialAssetRef } from "./workspace-actions";
 import type {
   WorkspaceActionEnvelope,
   WorkspaceBayRequest,
@@ -31,7 +32,7 @@ export interface WorkspaceViewStateInput {
   setLayer: (layer: WorkspaceLayer) => void;
   panelAction: WorkspaceActionEnvelope | null;
   select: (slot: WorkspaceSlotId) => void;
-  /** 这两块在本站可不可用（境内都不可用）。不可用的那一块进不去，指向它的 action 被忽略。 */
+  /** Product availability; both China and overseas support LeoBay and LeoChat. */
   panels: { bay: boolean; leochat: boolean };
   /** 回到卡片时调：宿主把自己的受控值改成 `"home"`，之后它再切栏位才算一次变化。 */
   onHome?: () => void;
@@ -80,11 +81,14 @@ export function useWorkspaceViewState(
       nonce: panelAction.nonce,
       query: panelAction.action.query ?? "",
       ...(category ? { category } : {}),
+      ...(panelAction.action.view ? { view: panelAction.action.view } : {}),
+      ...(workspaceMaterialAssetRef(panelAction.action) ? { target: workspaceMaterialAssetRef(panelAction.action) } : {}),
+      ...(panelAction.action.intent ? { intent: panelAction.action.intent } : {}),
     });
     setLayer("bay");
   }, [bayOn, panelAction, setLayer]);
 
-  // 停在某一块上时它变得不可用了（登出、切到境内）：回到卡片。
+  // 停在某一块上时它变得不可用了（功能不可用）：回到卡片。
   useEffect(() => {
     if ((layer === "bay" && !bayOn) || (layer === "leochat" && !chatOn)) {
       setLayer("home");
@@ -102,6 +106,7 @@ export function useWorkspaceViewState(
   const openPanel = useCallback(
     (panel: WorkspacePanelId) => {
       if (panel === "bay" ? !bayOn : !chatOn) return;
+      if (panel === "bay") setBayRequest(null);
       setLayer(panel);
     },
     [bayOn, chatOn, setLayer],
@@ -123,7 +128,7 @@ export function useWorkspaceViewState(
     [chatOn, setLayer],
   );
 
-  const view: WorkspaceViewId = layer === "slot" ? selected : layer;
+  const view: WorkspaceViewId = layer === "slot" ? (selected === "materials" ? "bay" : selected) : layer;
   return {
     view,
     openSlot,

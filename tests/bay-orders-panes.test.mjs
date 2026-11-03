@@ -109,6 +109,7 @@ const termsStub = dataModule(`
 const tradeStub = dataModule("export async function openTradeThread(s){ globalThis.__w07panes.opened.push({ kind: \"trade\", ...s }); }");
 const familyStub = dataModule(`
   export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return undefined; }
   export function familyForHost(){ return undefined; }
   export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }

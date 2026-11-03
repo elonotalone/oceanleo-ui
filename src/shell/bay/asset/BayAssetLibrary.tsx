@@ -13,13 +13,13 @@ import { BaySignInPrompt } from "../shell/BayMine";
 import { BayFilterSelect, BayToolbarFilters, type BayFilterOption } from "../shell/BayFilterSelect";
 import { useBayFeed } from "../shell/use-bay-data";
 import { BayAssetCard } from "./BayAssetCard";
-import { WorkspaceLibrary } from "../../WorkspaceLibrary";
-import { bayAssetToLibraryEntry } from "./library-entry-adapter";
-import { purchaseBayAsset } from "../../../lib/bay/assets";
+import { canonicalArtifactContextId, type ArtifactContextRef } from "../../artifact-contract";
+import type { WorkspaceLibraryEntry } from "../../workspace-library-model";
 import { BayAssetLive } from "./BayAssetLive";
 import { BayAssetSeries } from "./BayAssetSeries";
 import { BayAssetSellerSite, BayAssetSellers } from "./BayAssetSellers";
-import { BayArtifactDeepLink } from "./BayArtifactDeepLink";
+import { BayArtifactDeepLink, bayAssetRefForCard, useBayAssetRoute } from "./BayArtifactDeepLink";
+import { BayWebsiteCatalog, BayWebsiteFilters, bayWebsiteSelection, type BayWebsiteSelection } from "./BayWebsiteCatalog";
 import { BayLicensesView } from "./BayLicensesView";
 import {
   BAY_OFFICIAL_PREVIEW_COUNT,
@@ -29,6 +29,7 @@ import {
   listBayOfficialTemplates,
   mergeOwnedAssets,
   templateArtifactTypeForBay,
+  type BayOfficialAsset,
 } from "./bay-template-shelf";
 import { buildPanelsFromCategories, categoryLabel, PPT_INDUSTRIES } from "./asset-taxonomy";
 import {
@@ -42,7 +43,6 @@ import {
   BAY_ASSET_TYPE_LABELS,
   BAY_ASSET_TYPE_ORDER,
   defaultAssetTypeForSite,
-  fetchBayAssetById,
   liveSearchAvailable,
   type BayAsset,
   type BayAssetType,
@@ -112,12 +112,7 @@ function initialCat(filter: BayFeedFilter, type: BayAssetType): string {
 
 function initialView(type: BayAssetType): TypeZone | null {
   const view = browseViewFor(type, parseAssetBrowseSearch(readSearch()));
-  // 「卖家在售」是交易市场的一部分，境内没有：地址里带着也当没有。
-  return view === "sellers" && !bayEnabledHere() ? null : view;
-}
-
-function initialAssetId(): string {
-  return parseAssetBrowseSearch(readSearch()).asset;
+  return view;
 }
 
 function initialSeries(): boolean {
@@ -129,32 +124,44 @@ export function BayAssetLibrary({
   siteKey,
   accent,
   view = "grid",
+  context: providedContext,
+  onEdit,
+  onUseInTask,
 }: {
   filter: BayFeedFilter;
   siteKey: string;
   accent?: string;
   view?: "grid" | "list";
+  context?: ArtifactContextRef;
+  onEdit?: (entry: WorkspaceLibraryEntry) => Promise<void> | void;
+  onUseInTask?: (entry: WorkspaceLibraryEntry) => Promise<void> | void;
 }) {
   const tt = useUI();
   const Items = view === "list" ? CollectionItemList : CollectionCardGrid;
   const signedIn = useBaySignedIn();
   const bayOn = bayEnabledHere();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const route = useBayAssetRoute(rootRef);
+  const appId = providedContext?.appId || appFromWindow();
+  const context = useMemo<ArtifactContextRef | undefined>(() => providedContext || (appId ? {
+    contextId: canonicalArtifactContextId(siteKey, appId), siteKey, appId,
+  } : undefined), [providedContext, siteKey, appId]);
+  const [websiteSelection, setWebsiteSelection] = useState(() => bayWebsiteSelection(readSearch()));
   const loadFailedText = tt("加载失败");
   const [type, setType] = useState<BayAssetType>(() => initialType(filter, siteKey));
   const [viewPinned, setViewPinned] = useState(() => initialView(initialType(filter, siteKey)) != null);
   const [zone, setZone] = useState<TypeZone>(() => initialView(initialType(filter, siteKey)) ?? "owned");
   const [cat, setCat] = useState(() => initialCat(filter, initialType(filter, siteKey)));
-  const [sellerSite, setSellerSite] = useState("");
+  const [sellerSite, setSellerSite] = useState(() => new URLSearchParams(readSearch()).get("sellerSite") || "");
   // 「卖家在售」只在刚进来、用户还没动过类型 / 来源时抢默认；之后换类型走原来的默认规则。
   const [sellersDefaultOk, setSellersDefaultOk] = useState(true);
   const [seriesOn, setSeriesOn] = useState(() => initialSeries());
-  const [industry, setIndustry] = useState("");
-  const [subtab, setSubtab] = useState("");
+  const [industry, setIndustry] = useState(() => new URLSearchParams(readSearch()).get("industry") || "");
+  const [subtab, setSubtab] = useState(() => new URLSearchParams(readSearch()).get("subtab") || "");
   const [index, setIndex] = useState<TypeOriginIndex | null>(null);
   const [indexError, setIndexError] = useState(false);
   const [reloadTick, setReloadTick] = useState(0);
   const [licensesOpen, setLicensesOpen] = useState(false);
-  const [active, setActive] = useState<BayAsset | null>(null);
   const [grid, setGrid] = useState<{
     key: string;
     items: BayAsset[];
@@ -171,7 +178,7 @@ export function BayAssetLibrary({
   const origin = zoneOrigin(zone);
   const officialCat = cat === OFFICIAL_TEMPLATE_CATEGORY;
   const [official, setOfficial] = useState<{
-    items: BayAsset[];
+    items: BayOfficialAsset[];
     total: number;
     hasMore: boolean;
     error: string;
@@ -241,8 +248,10 @@ export function BayAssetLibrary({
     }));
     listBayOfficialTemplates({
       type,
+      siteKey,
+      context,
       q: query,
-      limit: query ? undefined : all ? BAY_TEMPLATE_PAGE_SIZE : BAY_OFFICIAL_PREVIEW_COUNT,
+      limit: query || type === "website" ? undefined : all ? BAY_TEMPLATE_PAGE_SIZE : BAY_OFFICIAL_PREVIEW_COUNT,
       offset: 0,
     })
       .then((result) => {
@@ -267,7 +276,8 @@ export function BayAssetLibrary({
           page: 1,
         });
       });
-  }, [type, zone, officialCat, query, licensesOpen, seriesOn, reloadTick, loadFailedText]);
+    return () => { officialRef.current += 1; };
+  }, [type, zone, officialCat, query, licensesOpen, seriesOn, reloadTick, loadFailedText, siteKey, context]);
 
   useEffect(() => {
     if (zone !== "mine" || licensesOpen) return;
@@ -367,20 +377,43 @@ export function BayAssetLibrary({
     });
   }, [type, zone, cat, seriesOn, viewPinned, index]);
 
+  // Popstate restores the actual address, including refreshed/deep-linked filters.
   useEffect(() => {
-    const id = initialAssetId();
-    if (!id) return;
-    let alive = true;
-    fetchBayAssetById(id)
-      .then((asset) => {
-        if (alive && asset?.id) setActive(asset);
-      })
-      .catch(() => {
-        /* 深链件读不到就停在列表，不把整栏打成错误页 */
-      });
-    return () => {
-      alive = false;
+    const restore = () => {
+      const parsed = parseAssetBrowseSearch(readSearch());
+      const nextType = parsed.type || initialType(filter, siteKey);
+      setType(nextType);
+      setViewPinned(browseViewFor(nextType, parsed) !== null);
+      setZone(browseViewFor(nextType, parsed) || "owned");
+      setCat(parsed.cat);
+      setSeriesOn(parsed.series);
+      const params = new URLSearchParams(readSearch());
+      setIndustry(params.get("industry") || "");
+      setSubtab(params.get("subtab") || "");
+      setSellerSite(params.get("sellerSite") || "");
+      setWebsiteSelection(bayWebsiteSelection(readSearch()));
     };
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, [filter, siteKey]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(readSearch());
+    for (const [key, value] of Object.entries({ industry, subtab, sellerSite })) {
+      if (value) params.set(key, value); else params.delete(key);
+    }
+    const search = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
+  }, [industry, subtab, sellerSite]);
+
+  const changeWebsiteSelection = useCallback((next: BayWebsiteSelection) => {
+    setWebsiteSelection(next);
+    const params = new URLSearchParams(readSearch());
+    for (const [key, value] of Object.entries({ websiteIndustry: next.industry, websiteSub: next.sub, websiteShape: next.shape, websiteSkin: next.skin,
+      websiteVersions: Object.keys(next.variants).length ? JSON.stringify(next.variants) : "" })) {
+      if (value) params.set(key, value); else params.delete(key);
+    }
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params}${window.location.hash}`);
   }, []);
 
   const zoneCats = useMemo(
@@ -408,7 +441,7 @@ export function BayAssetLibrary({
     zone === "live" ||
     zone === "mine" ||
     officialCat ||
-    mode === "browse" ||
+    (mode === "browse" && !(type === "website" && zone === "owned")) ||
     !index ||
     !origin
       ? null
@@ -469,19 +502,8 @@ export function BayAssetLibrary({
   }, [searchKey, index, origin, type, zone, cat, subtab, industry, query, loadFailedText]);
 
   const openAsset = useCallback((asset: BayAsset) => {
-    const href = (asset.openHref || "").trim();
-    if (href && typeof window !== "undefined") {
-      window.location.assign(href);
-      return;
-    }
-    setActive(asset);
-    replaceBrowseUrl({ asset: asset.id });
-  }, []);
-
-  const closeAsset = useCallback(() => {
-    setActive(null);
-    replaceBrowseUrl({ asset: "" });
-  }, []);
+    route.open(bayAssetRefForCard(asset));
+  }, [route.open]);
 
   function changeType(next: string) {
     if (!next || next === type) return;
@@ -525,6 +547,9 @@ export function BayAssetLibrary({
     setOfficial((prev) => (prev ? { ...prev, error: "", loading: true } : prev));
     listBayOfficialTemplates({
       type,
+      siteKey,
+      context,
+      q: query,
       limit: BAY_TEMPLATE_PAGE_SIZE,
       offset,
     })
@@ -654,7 +679,7 @@ export function BayAssetLibrary({
     value: item,
     label: tt(BAY_ASSET_TYPE_LABELS[item]),
   }));
-  const originOptions: BayFilterOption[] = TYPE_ZONES.filter((item) => item !== "sellers" || bayOn).map((item) => {
+  const originOptions: BayFilterOption[] = TYPE_ZONES.map((item) => {
     const usable = item !== "live" || liveOk;
     const count =
       item === "owned"
@@ -728,10 +753,23 @@ export function BayAssetLibrary({
   const showCategory = !sellersZone && zone !== "live" && zone !== "mine" && !seriesOn;
   const showIndustry = !sellersZone && type === "ppt" && zone !== "live" && zone !== "mine" && !seriesOn;
   const showSeries = seriesAvailable && zone !== "mine" && !sellersZone;
+  const websiteCatalog = type === "website" && zone === "owned" && !seriesOn;
+  const websiteAssets = useMemo(() => mergeOwnedAssets(official?.items || [], officialCat ? [] : originItems), [official?.items, originItems, officialCat]);
 
   return (
-    <div data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
+    <div ref={rootRef} data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
+      <div hidden={Boolean(route.target)} className="min-h-0 flex-1" data-bay-asset-browse
+        onClickCapture={(event) => {
+          const target = event.target;
+          if (!(target instanceof Element) || !target.closest("button,a,[role=button]")) return;
+          const listing = target.closest<HTMLElement>("[data-bay-asset-seller-item]")?.dataset.bayAssetSellerItem;
+          if (!listing) return;
+          event.preventDefault();
+          event.stopPropagation();
+          route.open({ kind: "listing", id: listing });
+        }}>
       <BayToolbarFilters>
+        {!route.target ? <>
         {sellersZone ? null : (
           <BayFilterSelect
             name="type"
@@ -770,6 +808,7 @@ export function BayAssetLibrary({
             allLabel={tt("全部行业")}
           />
         ) : null}
+        {websiteCatalog ? <BayWebsiteFilters assets={websiteAssets} selection={websiteSelection} onChange={changeWebsiteSelection} /> : null}
         {showSeries ? (
           <BayFilterSelect
             name="series"
@@ -790,6 +829,7 @@ export function BayAssetLibrary({
             {tt("授权说明")}
           </button>
         )}
+        </> : null}
       </BayToolbarFilters>
 
       {licensesOpen && !sellersZone ? (
@@ -853,6 +893,14 @@ export function BayAssetLibrary({
               ) : null}
             </>
           )}
+        </div>
+      ) : websiteCatalog ? (
+        <div className="mt-5">
+          {official?.loading && !websiteAssets.length ? <p role="status">{tt("正在加载…")}</p> : null}
+          {official?.error ? <div role="status"><p>{tt("素材没读出来，请稍后再试。")}</p><button type="button" className="underline" onClick={() => setReloadTick((value) => value + 1)}>{tt("重试")}</button></div> : null}
+          <BayWebsiteCatalog assets={websiteAssets} selection={websiteSelection} onChange={changeWebsiteSelection} onOpen={openAsset} view={view} />
+          {!websiteAssets.length && !official?.loading ? <div data-bay-asset-empty /> : null}
+          {currentGrid?.hasMore ? <button type="button" disabled={currentGrid.loadingMore} onClick={loadMore} className="mt-5 text-sm underline">{tt("加载更多")}</button> : null}
         </div>
       ) : indexError && zone !== "live" && !(official && official.total > 0) ? (
         <div className="mt-8 flex flex-col items-center px-4 py-12 text-center" role="status" data-bay-asset-error>
@@ -1058,25 +1106,8 @@ export function BayAssetLibrary({
         </div>
       )}
 
-      {active ? (
-        <div className="fixed inset-0 z-[90] bg-black/50 p-4" data-bay-asset-detail>
-          <div className="mx-auto h-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <WorkspaceLibrary
-              entries={[bayAssetToLibraryEntry(active as never, async (assetId) => {
-                await purchaseBayAsset(assetId, { purchase_site: siteKey });
-              })]}
-              openEntryId={`bay:${active.id}`}
-              plain
-              hideToolbar
-              onDetailOpenChange={(open) => { if (!open) closeAsset(); }}
-              allowAdvanced={false}
-              emptyTitle={tt("暂时无法预览")}
-              emptyDescription={tt("这个条目还没有可显示的内容。")}
-            />
-          </div>
-        </div>
-      ) : null}
-      <BayArtifactDeepLink accent={accent} />
+      </div>
+      <BayArtifactDeepLink target={route.target} onBack={route.close} accent={accent} siteKey={siteKey} onEdit={onEdit} onUseInTask={onUseInTask} />
     </div>
   );
 }

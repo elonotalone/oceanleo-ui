@@ -141,6 +141,7 @@ const settingsStub = dataModule(`
 `);
 const domainStub = dataModule(`
   export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export { domainFamilyFeatures, runtimePageOrigin } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return undefined; }
   export function familyForHost(){ return undefined; }
   export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }

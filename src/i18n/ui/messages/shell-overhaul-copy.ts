@@ -83,6 +83,19 @@ import { SKO_W15_MESSAGES } from "./sko-w15-copy";
 import { SKO_W16_MESSAGES } from "./sko-w16-copy";
 import { SKO_W17_MESSAGES } from "./sko-w17-copy";
 import { REMOTE_DESKTOP_MESSAGES } from "./remote-desktop-copy";
+// 2026-11-03 build wave (registered by the parent as units land).
+import { RD_GATEWAY_MESSAGES } from "./rd-gateway-copy";
+import { LIBWEB_MESSAGES } from "./libweb-copy";
+import { ASSET_DETAIL_MESSAGES } from "./asset-detail-copy";
+import { CN_PARITY_MESSAGES } from "./cn-parity-copy";
+import { UPLOAD_UI_MESSAGES } from "./upload-ui-copy";
+import { ASSET_ACTIONS_MESSAGES } from "./asset-actions-copy";
+import { HOME_ASSET_CARDS_MESSAGES } from "./home-asset-cards-copy";
+import { W3_L5D_MESSAGES } from "./w3-l5d-copy";
+import { W2_CN2_MESSAGES } from "./w2-cn2-copy";
+import { W3_M3_MESSAGES } from "./w3-m3-copy";
+import { W4_SIDEBAR_MESSAGES } from "./w4-sidebar-copy";
+import { RD_SERVICE_STATUS_MESSAGES } from "./rd-service-status-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -166,6 +179,18 @@ const PARTS = [
   SKO_W16_MESSAGES,
   SKO_W17_MESSAGES,
   REMOTE_DESKTOP_MESSAGES,
+  RD_GATEWAY_MESSAGES,
+  LIBWEB_MESSAGES,
+  ASSET_DETAIL_MESSAGES,
+  CN_PARITY_MESSAGES,
+  UPLOAD_UI_MESSAGES,
+  ASSET_ACTIONS_MESSAGES,
+  HOME_ASSET_CARDS_MESSAGES,
+  W3_L5D_MESSAGES,
+  W2_CN2_MESSAGES,
+  W3_M3_MESSAGES,
+  W4_SIDEBAR_MESSAGES,
+  RD_SERVICE_STATUS_MESSAGES,
 ];
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =

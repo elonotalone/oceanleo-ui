@@ -102,6 +102,7 @@ const agentStub = dataModule(`export async function authed(){ return { ok: true,
 const domainStub = dataModule(`
   export function familyForHost(){ return undefined; }
   export const CONFIGURED_DOMAIN_FAMILY = undefined;
+  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return undefined; }
   export function domainProfileForHost(){ return undefined; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }

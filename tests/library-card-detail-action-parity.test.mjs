@@ -569,7 +569,7 @@ test("Edit shows only inline busy state and never claims a user edit occurred", 
   }
 });
 
-test("disabled action evidence is identical on all three shelf details", async () => {
+test("disabled actions show the same short user guidance on all three shelf details", async () => {
   for (const shelf of ["Current App", "More", "My Library"]) {
     const item = libraryItem(`${shelf} disabled`, {
       canEdit: false,
@@ -589,13 +589,14 @@ test("disabled action evidence is identical on all three shelf details", async (
       const edit = action(mounted.container, "编辑");
       const favorite = action(mounted.container, "收藏");
       assert.equal(edit?.disabled, true, shelf);
-      assert.match(edit?.getAttribute("title") || "", /没有编辑原 root/);
+      assert.match(edit?.getAttribute("title") || "", /这份内容暂时无法编辑，请刷新后重试/);
       assert.equal(favorite?.disabled, true, shelf);
       assert.match(
         favorite?.getAttribute("title") || "",
-        /没有收藏这个 artifact 的权限/,
+        /暂时无法收藏，请刷新后重试/,
       );
-      assert.match(mounted.container.textContent || "", /编辑：当前主体没有编辑/);
+      assert.match(mounted.container.textContent || "", /编辑: 这份内容暂时无法编辑，请刷新后重试/);
+      assert.doesNotMatch(mounted.container.innerHTML, /receipt|typed route|编辑原 root|收藏这个 artifact/);
     } finally {
       await mounted.unmount();
     }

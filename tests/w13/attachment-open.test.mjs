@@ -60,7 +60,6 @@ async function opener() {
 describe("W13 image attachment clicks", () => {
   test.each([
     ["input before upload", { id: "local", name: "shot.png", mime: "image/png", previewUrl: "blob:https://oceanbizs.com/local" }, false],
-    ["upload in progress", { id: "uploading", name: "shot.png", mime: "image/png", previewUrl: "blob:https://oceanbizs.com/uploading", uploading: true }, false],
     ["upload completed", { id: "uploaded", name: "shot.png", mime: "image/png", libraryItem: image }, true],
     ["sent private reference", { url: "", name: "shot.png", media_type: "image", artifact_id: ART, revision_id: REV }, true],
   ])("%s opens the image preview and only offers Library as an extra action", async (_state, attachment, hasLibrary) => {
@@ -80,16 +79,16 @@ describe("W13 image attachment clicks", () => {
     }
   });
 
-  test("the real uploading image tile remains clickable and forwards its identity", async () => {
+  test("uploading image tile has no preview click target and the opener rejects it", async () => {
     const attachment = { id: "inflight", name: "shot.png", mime: "image/png", previewUrl: "blob:https://oceanbizs.com/inflight", uploading: true };
     const { open, shown, library } = await opener();
     const { container } = await render(React.createElement(AttachmentStrip, { attachments: [attachment], onOpenAttachment: open }));
     const tile = container.querySelector('[data-upload-tile="uploading"]');
     expect(Boolean(tile)).toBe(true);
     const button = tile.querySelector('button[aria-label="shot.png"]');
-    expect(Boolean(button)).toBe(true);
-    await act(async () => button.click());
-    expect(shown.map((target) => [target.item.kind, target.mode, target.item.url])).toEqual([["image", "preview", attachment.previewUrl]]);
+    expect(Boolean(button)).toBe(false);
+    expect(await open(attachment)).toBe(false);
+    expect(shown).toEqual([]);
     expect(library).toEqual([]);
   });
 

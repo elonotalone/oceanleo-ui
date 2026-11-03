@@ -12,14 +12,14 @@ export type WorkspaceSlotId =
   | "mine"
   | "browser";
 
-/** 右侧栏里五个槽位之外的两块：LeoBay 缩小版、LeoChat。它们不是槽位，不进 `FIXED_WORKSPACE_SLOTS`。 */
+/** 右侧栏里可见槽位之外的两块：LeoBay 缩小版、LeoChat。它们不是槽位，不进 `FIXED_WORKSPACE_SLOTS`。 */
 export type WorkspacePanelId = "bay" | "leochat";
 
 /** 右侧栏此刻显示的是什么：卡片首页、某个槽位，或上面那两块之一。 */
 export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId;
 
 /**
- * 一条 action 能指向哪里：五个槽位，加上 `bay`（agent 的「找真人」工具让右侧栏显示相关服务）。
+ * 一条 action 能指向哪里：可见槽位及 materials 兼容输入，加上 `bay`（agent 的「找真人」工具让右侧栏显示相关服务）。
  * LeoChat 没有 agent 入口，所以不在这里。
  */
 export type WorkspaceActionTab = WorkspaceSlotId | "bay";
@@ -35,6 +35,8 @@ export type WorkspaceActionTab = WorkspaceSlotId | "bay";
  * must never silently become an editor launch.
  */
 export type WorkspaceActionIntent = "open" | "edit";
+
+import type { AssetRef } from "./asset-detail/types";
 
 const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
   "open",
@@ -52,6 +54,9 @@ export interface WorkspaceActionV1 {
   url?: string;
   browserSessionId?: string;
   intent?: WorkspaceActionIntent;
+  /** Compatibility materials requests land in LeoBay, preserving exact identities. */
+  view?: "materials";
+  revisionId?: string;
   /** Library collection filter on top of `category` (only `uploaded` exists). */
   filter?: WorkspaceLibraryFilter;
 }
@@ -71,6 +76,9 @@ export interface WorkspaceBayRequest {
   query: string;
   /** 站 key；不给就用当前所在的站。 */
   category?: string;
+  view?: "materials";
+  target?: AssetRef;
+  intent?: WorkspaceActionIntent;
 }
 
 /** 让右侧栏里的 LeoChat 停在某条会话（「先聊聊」带过来的）。`nonce` 变了才算一条新请求。 */
@@ -84,7 +92,6 @@ export const WORKSPACE_ACTION_EVENT = "oceanleo:workspace-action";
 export const FIXED_WORKSPACE_SLOTS: readonly WorkspaceSlotId[] = [
   "template",
   "preview",
-  "materials",
   "mine",
   "browser",
 ] as const;
@@ -94,9 +101,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelId[] = [
   "leochat",
 ] as const;
 
-/** action 的 `tab` 白名单：五个槽位 + `bay`。 */
+/** action 的 `tab` 白名单：可见槽位、兼容 materials 输入 + `bay`。 */
 export const WORKSPACE_ACTION_TABS: readonly WorkspaceActionTab[] = [
   ...FIXED_WORKSPACE_SLOTS,
+  "materials", // Accepted input only; normalized to the LeoBay material view.
   "bay",
 ] as const;
 
@@ -179,7 +187,9 @@ export function normalizeWorkspaceAction(
   const filter = clean("filter", 16) === "uploaded" ? "uploaded" as const : undefined;
   return {
     version: 1,
-    tab,
+    tab: tab === "materials" ? "bay" : tab,
+    ...(tab === "materials" || raw.view === "materials" ? { view: "materials" as const } : {}),
+    ...(clean("revisionId", 300) ? { revisionId: clean("revisionId", 300) } : {}),
     query: clean("query", 200),
     category: clean("category", 100),
     itemId: clean("itemId", 300),
@@ -189,6 +199,42 @@ export function normalizeWorkspaceAction(
     ...(intent ? { intent } : {}),
     ...(filter ? { filter } : {}),
   };
+}
+
+
+/** Legacy names remain recognizable while no longer owning a visible slot. */
+export function isLegacyMaterialsId(id: string | null | undefined): boolean {
+  return workspaceSlotForLegacyId(id || "") === "materials";
+}
+
+/** Unprefixed old item IDs are artifacts; a catalog entry ID is never an artifact ID. */
+export function workspaceMaterialAssetRef(action: WorkspaceActionV1): AssetRef | undefined {
+  const id = action.itemId;
+  if (id) {
+    for (const prefix of ["library:", "platform:", "platform_assets:"]) {
+      if (id.startsWith(prefix)) return { kind: "platform", id: id.slice(prefix.length) };
+    }
+    for (const prefix of ["template-material:", "template:"]) {
+      if (id.startsWith(prefix)) return { kind: "template", id: id.slice(prefix.length) };
+    }
+    if (id.startsWith("listing:")) return { kind: "listing", id: id.slice(8) };
+    if (/^(openverse|pexels|pixabay|unsplash|iconify|google-fonts):/.test(id)) return { kind: "platform", id };
+    const [artifactId, pinnedRevision] = id.replace(/^artifact:/, "").split(":");
+    return { kind: "artifact", artifactId, ...(action.revisionId || pinnedRevision ? { revisionId: action.revisionId || pinnedRevision } : {}) };
+  }
+  if (action.entryId) return { kind: "template", id: action.entryId.replace(/^template(?:-material)?:/, "") };
+  return undefined;
+}
+
+/** Older raw-asset bookmarks did not carry an artifact item or a catalog dispatcher. */
+export function workspaceMaterialsActionFromSearch(search: string): WorkspaceActionV1 | null {
+  const params = new URLSearchParams(search);
+  if (!isLegacyMaterialsId(params.get("tab"))) return null;
+  return normalizeWorkspaceAction({
+    version: 1, tab: "materials", query: params.get("q") || params.get("query"), category: params.get("category"),
+    itemId: params.get("item") || params.get("artifactId") || params.get("asset"), entryId: params.get("entryId"),
+    revisionId: params.get("revisionId") || params.get("revision"), intent: params.get("mode") === "edit" ? "edit" : "open",
+  });
 }
 
 export function dispatchWorkspaceAction(envelope: WorkspaceActionEnvelope) {

@@ -13,6 +13,7 @@
 // `node --test tests/app-directory-workspace-card.test.mjs` 跑。
 
 import assert from "node:assert/strict";
+import { ASSET_CDN_ENABLED, PUBLIC_ASSET_ORIGIN } from "../src/lib/asset-delivery.ts";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -39,7 +40,7 @@ const OVERRIDES = { "../i18n/ui/useUI": uiStubUrl, "react-dom": reactDomUrl };
 const appDirectoryUrl = await compileModule("src/shell/AppDirectory.tsx", OVERRIDES);
 const { AppDirectory } = await import(appDirectoryUrl);
 
-const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
+const OSS = `${ASSET_CDN_ENABLED ? "https://assets.oceanleo.com" : PUBLIC_ASSET_ORIGIN}/assets/image`;
 // 站点 catalog 里的 `capabilityImage` 存的是**纯 key**（合同 §3）。
 const CAPABILITY_KEY = "cap-app/image-poster";
 const CAPABILITY_THUMB = `${OSS}/cap-app/image-poster.thumb.webp`;
@@ -92,7 +93,7 @@ test("缩略图取 capabilityImage 并拼成绝对 URL；废弃的 thumb 一次�
     // 咬人点①：绝不允许原样 key 落进 src（浏览器会当相对路径请求 → 30 站卡片图全 404）。
     assert.notEqual(src, CAPABILITY_KEY);
     // 咬人点②：必须是绝对 URL。
-    assert.match(src, /^https:\/\/oceanleo-assets\.oss-cn-guangzhou\.aliyuncs\.com\//);
+    assert.equal(new URL(src).origin, new URL(OSS).origin);
     // 咬人点③：`<key>.preview.webp` 在 OSS 上不存在，出现即判红。
     assert.match(src, /\.thumb\.webp$/);
     assert.doesNotMatch(src, /\.preview\.webp/);

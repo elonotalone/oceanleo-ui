@@ -1,3 +1,4 @@
+import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 // ============================================================================
 // ResultCanvas 前台（编辑器 / 详情预览）一露出来就登记 workbenchOpen（plugin-chrome X4）
 // ----------------------------------------------------------------------------
@@ -223,11 +224,12 @@ const STUBS = {
   "../i18n/ui/useUI": uiStubUrl,
   "./guide-context": guideStubUrl,
   "./NavigatorGuide": panelStubUrl,
+  ...W4_SIDEBAR_STUBS,
   "./MaterialLibrary": panelStubUrl,
   "./MyLibrary": panelStubUrl,
   "./CloudBrowserPanel": panelStubUrl,
   "./WorkspaceLibrary": panelStubUrl,
-  "./workspace-actions": workspaceActionsStubUrl,
+
   "./workspace-runtime-hydration": hydrationStubUrl,
   "./workspace-session-context": sessionStubUrl,
   "./library-data": libraryDataStubUrl,
@@ -248,12 +250,14 @@ const STUBS = {
 };
 const { ResultCanvas } = await import(
   await compileModule("src/shell/ResultCanvas.tsx", {
+    ...W4_SIDEBAR_STUBS,
     ...STUBS,
     "./SplitWorkspace": splitStubUrl,
   })
 );
 const { ResultCanvas: StandaloneResultCanvas } = await import(
   await compileModule("src/shell/ResultCanvas.tsx", {
+    ...W4_SIDEBAR_STUBS,
     ...STUBS,
     "./SplitWorkspace": standaloneStubUrl,
   })

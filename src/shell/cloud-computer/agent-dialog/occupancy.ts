@@ -1,5 +1,5 @@
 import { isRetriableStreamCancelText } from "./session-status";
-import type { AgentDialogMessage } from "./types";
+import type { AgentDialogMessage } from "../../../native-agent-core/index";
 
 /** Probe of whether this ACP session is working. Absence of a reading is not idle. */
 

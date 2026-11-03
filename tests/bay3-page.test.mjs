@@ -164,6 +164,7 @@ const AUTH_SIGNED_OUT = dataModule(`
 const AUTH_CONFIG = dataModule(`export function isLeoDevPreviewHost() { return false; }`);
 const familyStub = dataModule(`
   export function currentDomainFamily() { return "com"; }
+  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
   export function currentFamilySubsiteOrigin(label) { return "https://" + label + ".oceanleo.com"; }
 `);

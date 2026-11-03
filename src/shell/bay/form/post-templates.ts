@@ -1,6 +1,9 @@
 // 发帖页「模板 / 我的post显示」：预制样例 + 本机保存的模板。
 // 选模板只帮填写的人看成品、套进表单，不改买家端那张统一详情页。
 
+import type { DomainFamily } from "../../../contracts/domain-family";
+import { resolvePublicAssetMedia } from "../../../lib/asset-delivery";
+
 export type BayPostKind = "digital" | "service" | "consult" | "app" | "lesson" | "need";
 export type BayBilling = "delivery" | "session" | "hour";
 export const DIGITAL_MATERIAL_KINDS = [
@@ -76,14 +79,6 @@ export type SavedPostTemplate = {
 
 export const POST_TEMPLATE_STORAGE_KEY = "oceanleo.bay.post-templates.v1";
 
-const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com";
-
-function ossCover(path: string): string {
-  const raw = path.trim();
-  if (raw.startsWith("https://")) return raw;
-  return `${OSS}/${raw.replace(/^\/+/, "")}`;
-}
-
 function digitalPreset(row: {
   kind: DigitalMaterialKind;
   title: string;
@@ -94,7 +89,7 @@ function digitalPreset(row: {
   license: "personal" | "commercial";
   categoryLabel: string;
 }): BayPostSnapshot {
-  const coverUrl = ossCover(row.cover);
+  const coverUrl = row.cover;
   return {
     id: `preset:digital:${row.kind}`,
     kind: "digital",
@@ -352,8 +347,12 @@ const PRESETS: BayPostSnapshot[] = [
   },
 ];
 
-export function builtinTemplates(kind: BayPostKind): BayPostSnapshot[] {
-  return PRESETS.filter((row) => row.kind === kind);
+export function builtinTemplates(kind: BayPostKind, family?: DomainFamily): BayPostSnapshot[] {
+  return PRESETS.filter((row) => row.kind === kind).map((row) => ({
+    ...row,
+    ...(row.coverUrl ? { coverUrl: resolvePublicAssetMedia(row.coverUrl, { purpose: "preview", family }) } : {}),
+    ...(row.coverUrls ? { coverUrls: row.coverUrls.map((url) => resolvePublicAssetMedia(url, { purpose: "preview", family })) } : {}),
+  }));
 }
 
 export function emptySnapshot(kind: BayPostKind): BayPostSnapshot {

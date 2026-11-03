@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import React, { act } from "react";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -50,7 +51,12 @@ const { CreateWebsiteEntry } = await import(
 );
 const { createRoot } = await import("react-dom/client");
 
-test("Library new website entry asks for one description and opens the created artifact", async () => {
+test("My Library has no website creation entry in any shared surface", () => {
+  const source = readFileSync("src/shell/MyLibrary.tsx", "utf8");
+  assert.doesNotMatch(source, /CreateWebsiteEntry|handleWebsiteCreated|create-website-entry|新建网站/);
+});
+
+test("task website creation still accepts a description and returns the created artifact", async () => {
   const host = document.createElement("div");
   document.body.append(host);
   const opened = [];
@@ -78,7 +84,7 @@ test("Library new website entry asks for one description and opens the created a
   });
   assert.equal(globalThis.__createdWebsiteDescription, "一个展示作品集的简洁网站");
   assert.equal(opened[0]?.artifactId, "a");
-  root.unmount();
+  await act(async () => root.unmount());
   host.remove();
 });
 

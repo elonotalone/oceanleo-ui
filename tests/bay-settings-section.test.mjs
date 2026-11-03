@@ -11,6 +11,7 @@ import React, { act } from "react";
 
 import { BAY_MONEY_MESSAGES } from "../src/i18n/ui/messages/bay-money-copy.ts";
 import { LBP_W05_MESSAGES } from "../src/i18n/ui/messages/lbp-w05-copy.ts";
+import { W2_CN2_MESSAGES } from "../src/i18n/ui/messages/w2-cn2-copy.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -102,11 +103,14 @@ function bench(routes = {}) {
 }
 
 async function loadSection() {
-  const url = await compileModule("src/shell/bay/settings/BaySettingsSection.tsx", {
+  const stubs = {
     "../../../lib/bay/http": httpStub,
     "../shell/bay-state": stateStub,
     "../../../i18n/ui/useUI": uiStub,
-  });
+  };
+  const url = await compileModule("src/shell/bay/settings/BaySettingsSection.tsx", stubs);
+  const payments = await import(await compileModule("src/lib/bay/payments.ts", stubs));
+  payments.invalidateBayPaymentConfig();
   return import(`${url}?case=${Math.random().toString(36).slice(2)}`);
 }
 
@@ -201,7 +205,7 @@ test("openBaySettings：不管传哪个 pane（或不传），都只是打开设
   assert.deepEqual(globalThis.__bayOpenSettings, ["bay", "bay", "bay", "bay"]);
 });
 
-test("境内：设置栏整块不渲染", async () => {
+test("能力开关关闭：设置栏整块不渲染", async () => {
   bench({ "GET /v1/talent/payments/config": DEV_CONFIG });
   globalThis.__bayEnabled = false;
   const { BaySettingsSection } = await loadSection();
@@ -209,6 +213,105 @@ test("境内：设置栏整块不渲染", async () => {
   assert.equal(host.querySelector("[data-bay-settings-section]"), null);
   root.unmount();
   host.remove();
+});
+
+function simulationBench(overrides = {}) {
+  const config = { ...DEV_CONFIG, provider: "cn_dev", edition: "cn", currency: "CNY", ...overrides };
+  bench({
+    "GET /v1/talent/payments/config": () => ({ ...config }),
+    "GET /v1/talent/payout-account": { edition: "cn", provider: "none", state: "none" },
+    "GET /v1/talent/paid-work-eligibility": { eligible: false, blockers: [] },
+    "GET /v1/talent/payment-method": { method: { brand: "cn_dev", last4: "0000", state: "ready" } },
+    "POST /v1/talent/payment-method/setup-session": { url: `/bay?setup=success&session_id=cn_dev_setup_${"a".repeat(48)}` },
+    "POST /v1/talent/payment-method/confirm": () => { config.buyer_ready = true; return {}; },
+    "POST /v1/talent/payout-account/start": { url: "/bay" },
+    "POST /v1/talent/payout-account/refresh": () => { config.seller_ready = true; return {}; },
+  });
+  return config;
+}
+
+async function click(host, selector) {
+  const button = host.querySelector(selector);
+  assert.ok(button, selector);
+  await act(async () => {
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
+}
+
+test("CN dev: existing billing cards set up/confirm a buyer and onboard/refresh a seller", async () => {
+  simulationBench();
+  const { BaySettingsSection } = await loadSection();
+  const { host, root } = await render(React.createElement(BaySettingsSection));
+  assert.match(host.textContent, /不会实际扣款或打款/);
+  assert.match(host.textContent, /无真实身份核验/);
+  assert.equal(host.querySelectorAll("[data-bay-money-card]").length, 2);
+  await click(host, '[data-bay-dev-buyer="setup"]');
+  assert.equal(globalThis.__bayBench.calls.filter(c => c.path.endsWith("/confirm")).length, 0);
+  await click(host, '[data-bay-dev-buyer="confirm"]');
+  assert.equal(host.querySelector("[data-bay-settings-section]").dataset.bayBuyerReady, "1");
+  assert.match(host.textContent, /模拟付款方式已就绪/);
+  await click(host, "[data-bay-dev-seller]");
+  assert.equal(host.querySelector("[data-bay-settings-section]").dataset.baySellerReady, "1");
+  assert.match(host.textContent, /模拟收款账户已就绪/);
+  assert.deepEqual(globalThis.__bayBench.calls.filter(c => c.method === "POST").map(c => c.path), [
+    "/v1/talent/payment-method/setup-session", "/v1/talent/payment-method/confirm",
+    "/v1/talent/payout-account/start", "/v1/talent/payout-account/refresh",
+  ]);
+  assert.deepEqual(globalThis.__bayBench.calls.find(c => c.path.endsWith("/confirm")).body,
+    { session_id: `cn_dev_setup_${"a".repeat(48)}` });
+  await act(async () => root.unmount()); host.remove();
+});
+
+test("CN dev: disabled/mismatched providers never render simulation controls", async () => {
+  for (const override of [{ enabled: false }, { edition: "intl" }, { provider: "stripe_connect" }, { currency: "USD" }]) {
+    simulationBench(override);
+    const { BaySettingsSection } = await loadSection();
+    const { host, root } = await render(React.createElement(BaySettingsSection));
+    assert.equal(host.querySelector("[data-bay-dev-buyer]"), null);
+    assert.equal(host.querySelector("[data-bay-dev-seller]"), null);
+    assert.equal(globalThis.__bayBench.calls.some(c => c.method === "POST"), false);
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+test("CN dev: errors are translated, do not claim success, and allow setup retry", async () => {
+  simulationBench();
+  globalThis.__bayTtTable = { ...BAY_MONEY_MESSAGES.en, ...LBP_W05_MESSAGES.en, ...W2_CN2_MESSAGES.en };
+  globalThis.__bayBench.routes["POST /v1/talent/payment-method/confirm"] = { __status: 409, message: "模拟付款会话已过期，请重新打开" };
+  const { BaySettingsSection } = await loadSection();
+  const { host, root } = await render(React.createElement(BaySettingsSection));
+  await click(host, '[data-bay-dev-buyer="setup"]');
+  await click(host, '[data-bay-dev-buyer="confirm"]');
+  assert.match(host.querySelector('[role="alert"]').textContent, /Simulation setup failed/);
+  assert.equal(host.querySelector("[data-bay-settings-section]").dataset.bayBuyerReady, "0");
+  assert.ok(host.querySelector('[data-bay-dev-buyer="setup"]'));
+  assert.equal(/[\u4e00-\u9fff]/.test(host.textContent), false, host.textContent);
+  await act(async () => root.unmount()); host.remove();
+});
+
+test("CN dev: guest is asked to sign in before simulation controls appear", async () => {
+  simulationBench();
+  globalThis.__bayBench.routes["GET /v1/talent/payout-account"] = { __status: 401 };
+  const { BaySettingsSection } = await loadSection();
+  const { host, root } = await render(React.createElement(BaySettingsSection));
+  assert.ok(host.querySelector("[data-bay-settings-guest]"));
+  assert.equal(host.querySelector("[data-bay-dev-buyer]"), null);
+  assert.equal(host.querySelector("[data-bay-dev-seller]"), null);
+  await act(async () => root.unmount()); host.remove();
+});
+
+test("CN dev copy has complete zh/en/zh-TW and English fallback for other locales", () => {
+  const keys = Object.keys(W2_CN2_MESSAGES.zh);
+  assert.equal(keys.length, 14);
+  for (const [locale, table] of Object.entries(W2_CN2_MESSAGES)) {
+    assert.deepEqual(Object.keys(table).sort(), [...keys].sort());
+    if (locale !== "zh" && locale !== "zh-TW") {
+      assert.deepEqual(table, W2_CN2_MESSAGES.en);
+      assert.equal(/[\u4e00-\u9fff]/.test(Object.values(table).join("")), false);
+    }
+  }
 });
 
 test("BayTermsGate：没同意先显示同意按钮；同意后才渲染 children", async () => {

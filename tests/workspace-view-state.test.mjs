@@ -159,7 +159,7 @@ async function withHarness(initial, run) {
 }
 
 test("action 协议：tab 多认一个 bay，别的值照旧不认；leochat 没有 agent 入口", () => {
-  assert.deepEqual([...WORKSPACE_ACTION_TABS], [...SLOTS, "bay"]);
+  assert.deepEqual([...WORKSPACE_ACTION_TABS].sort(), [...SLOTS, "bay"].sort());
   assert.deepEqual(normalizeWorkspaceAction({ version: 1, tab: "bay", query: " 海报 设计 ", category: "design" }), {
     version: 1,
     tab: "bay",
@@ -178,13 +178,13 @@ test("对话页（active=home）：先是卡片；点卡片进那一块；返回
   await withHarness({ active: "home" }, async (api) => {
     assert.equal(api.view, "home");
     await api.call(({ view }) => view.openSlot("materials"));
-    assert.equal(api.view, "materials");
-    assert.equal(api.selected, "materials");
+    assert.equal(api.view, "bay");
+    assert.equal(api.selected, "preview");
     await api.call(({ view }) => view.goHome());
     assert.equal(api.view, "home");
     assert.deepEqual(api.homeCalls, ["home"]);
     // 回到卡片不改槽位选中值：再进同一块时那一块的状态还在。
-    assert.equal(api.selected, "materials");
+    assert.equal(api.selected, "preview");
     await api.call(({ view }) => view.openPanel("bay"));
     assert.equal(api.view, "bay");
     await api.call(({ view }) => view.openPanel("leochat"));
@@ -206,7 +206,7 @@ test("操作台页（宿主自己管着标签）：先是它选中的那个槽�
 test("agent 的 action：总线与属性两条路都把人从卡片带到对应槽位", async () => {
   await withHarness({ active: "home" }, async (api) => {
     await api.dispatch("n1", { version: 1, tab: "materials", query: "海报" });
-    assert.equal(api.view, "materials");
+    assert.equal(api.view, "bay");
     await api.call(({ view }) => view.goHome());
     await api.set({ externalAction: { nonce: "n2", action: { version: 1, tab: "mine" } } });
     assert.equal(api.view, "mine");
@@ -232,7 +232,7 @@ test("tab=bay 的 action：进 LeoBay 那一块并交出请求，不动槽位选
   });
 });
 
-test("LeoBay 不可用（境内）：bay 的 action 被忽略，卡片进不去；LeoChat 同理", async () => {
+test("LeoBay 功能不可用（非地区规则）：bay 的 action 被忽略，卡片进不去；LeoChat 同理", async () => {
   await withHarness({ active: "home", panels: { bay: false, leochat: false } }, async (api) => {
     await api.set({ externalAction: { nonce: "x", action: { version: 1, tab: "bay", query: "q" } } });
     assert.equal(api.view, "home");
@@ -307,7 +307,7 @@ test("会话快照恢复只改槽位选中值：停在卡片上的人不被拉�
     assert.equal(api.view, "home");
     // 恢复那一轮过去之后，宿主自己切栏位才算请求。
     await api.set({ active: "materials" });
-    assert.equal(api.view, "materials");
+    assert.equal(api.view, "bay");
   });
 });
 
@@ -327,11 +327,11 @@ test("已经停在槽位上的宿主：action 之后宿主把受控值回显过�
   // 多出来的那一帧会让 actionFor() 提前变回 null（action 已被消费），按 id 取素材的那次请求就被取消了。
   await withHarness({ active: "browser", showTemplate: true }, async (api) => {
     await api.dispatch("deep:1", { version: 1, tab: "materials", itemId: "a1" });
-    assert.equal(api.view, "materials");
+    assert.equal(api.view, "bay");
     const after = api.commits;
     // 宿主收到 onChange("materials") 后把 active 改成同一个栏位。
     await api.set({ active: "materials" });
-    assert.equal(api.view, "materials");
+    assert.equal(api.view, "bay");
     assert.equal(api.commits, after + 1, "只有宿主自己那一次重渲染被提交，hook 没有再触发一次");
   });
 });
@@ -351,4 +351,66 @@ test("AgentChat：右侧栏从卡片开始；「找真人」的 action 把右侧
   assert.match(canvas, /setRightFrameless\(onHome\)/);
   assert.match(canvas, /setRightLabel\(onHome \? null : <WorkspaceViewHeader/);
   assert.doesNotMatch(canvas, /FixedWorkspaceTabs/);
+});
+
+test("W4 legacy material aliases open LeoBay material browsing without a standalone slot", async () => {
+  for (const active of ["materials", "material", "inspiration", "style"]) {
+    await withHarness({ active }, async api => {
+      assert.equal(api.view, "bay", active);
+      assert.equal(api.bayRequest.view, "materials");
+    });
+  }
+});
+
+test("W4 legacy material receipt preserves template/platform/artifact namespaces and pinned revisions", async () => {
+  const { workspaceMaterialAssetRef } = await import('../src/shell/workspace-actions.ts');
+  for (const [action, expected] of [
+    [{ itemId: 'library:same-id' }, { kind: 'platform', id: 'same-id' }],
+    [{ itemId: 'template-material:same-id' }, { kind: 'template', id: 'same-id' }],
+    [{ itemId: 'listing:same-id' }, { kind: 'listing', id: 'same-id' }],
+    [{ itemId: 'same-id', revisionId: 'historical' }, { kind: 'artifact', artifactId: 'same-id', revisionId: 'historical' }],
+    [{ entryId: 'same-id' }, { kind: 'template', id: 'same-id' }],
+    [{ itemId: 'openverse:original' }, { kind: 'platform', id: 'openverse:original' }],
+  ]) {
+    assert.deepEqual(workspaceMaterialAssetRef({ version: 1, tab: 'materials', ...action }), expected);
+    await withHarness({ active: 'home' }, async api => {
+      await api.dispatch(`legacy:${JSON.stringify(action)}`, { version: 1, tab: 'materials', ...action });
+      assert.equal(api.view, 'bay');
+      assert.equal(api.bayRequest.view, 'materials');
+      assert.deepEqual(api.bayRequest.target, expected);
+    });
+  }
+});
+
+test("W4 old material snapshots convert on console pages and never pull a home page out of its cards", async () => {
+  const hydration = makeHydration();
+  await withHarness({ active: 'home', runtimeHydration: hydration }, async api => {
+    hydration.rightTab = 'materials';
+    hydration.restoredSnapshot = true;
+    hydration.snapshotRestoreEpoch = 1;
+    await api.set({ active: 'materials' });
+    assert.equal(api.view, 'home');
+  });
+  const consoleHydration = makeHydration();
+  await withHarness({ active: undefined, showTemplate: true, runtimeHydration: consoleHydration }, async api => {
+    consoleHydration.rightTab = 'materials';
+    consoleHydration.restoredSnapshot = true;
+    consoleHydration.snapshotRestoreEpoch = 1;
+    await api.set({});
+    assert.equal(api.view, 'bay');
+    assert.equal(api.bayRequest.view, 'materials');
+  });
+});
+
+test("W4 late snapshot cannot override a legacy material target or its revision pin", async () => {
+  const hydration = makeHydration();
+  await withHarness({ active: 'home', runtimeHydration: hydration }, async api => {
+    await api.dispatch('pinned-template', { version: 1, tab: 'materials', itemId: 'art', revisionId: 'r1' });
+    hydration.rightTab = 'mine';
+    hydration.restoredSnapshot = true;
+    hydration.snapshotRestoreEpoch = 1;
+    await api.set({ active: 'mine' });
+    assert.equal(api.view, 'bay');
+    assert.deepEqual(api.bayRequest.target, { kind: 'artifact', artifactId: 'art', revisionId: 'r1' });
+  });
 });

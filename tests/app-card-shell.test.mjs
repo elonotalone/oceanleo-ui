@@ -10,6 +10,7 @@
 // 组件源码经 tests/helpers/module-bench.mjs 编出来再导入。
 
 import assert from "node:assert/strict";
+import { ASSET_CDN_ENABLED, PUBLIC_ASSET_ORIGIN } from "../src/lib/asset-delivery.ts";
 import { createRequire } from "node:module";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -40,7 +41,7 @@ const {
   AppCardThumb,
 } = await import(shellUrl);
 
-const OSS = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com/assets/image";
+const OSS = `${ASSET_CDN_ENABLED ? "https://assets.oceanleo.com" : PUBLIC_ASSET_ORIGIN}/assets/image`;
 const IMAGE = `${OSS}/cap-app/image-poster.thumb.webp`;
 
 const POSTER = {

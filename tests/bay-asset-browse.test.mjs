@@ -350,11 +350,11 @@ test("BayAssetLibrary 筛选进工具条下拉，不再出现 flex-wrap 筛选�
   assert.match(LIBRARY, /授权说明/);
   assert.match(LIBRARY, /BayLicensesView/);
   assert.match(LIBRARY, /BayAssetCard/);
-  assert.match(LIBRARY, /BayAssetDetail/);
+  assert.match(LIBRARY, /BayArtifactDeepLink/);
   assert.match(LIBRARY, /BayAssetSeries/);
   assert.match(LIBRARY, /BayAssetLive/);
   assert.match(LIBRARY, /history\.replaceState|replaceBrowseUrl/);
-  assert.match(LIBRARY, /fetchBayAssetById/);
+  assert.match(LIBRARY, /useBayAssetRoute/);
   assert.doesNotMatch(LIBRARY, /flex-wrap/);
   assert.doesNotMatch(LIBRARY, /data-bay-asset-types/);
   assert.doesNotMatch(LIBRARY, /data-bay-asset-zones/);

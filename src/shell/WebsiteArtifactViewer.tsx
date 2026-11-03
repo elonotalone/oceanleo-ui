@@ -8,6 +8,11 @@ import { fetchMediaBlob } from "../lib/media-proxy";
 import type { ArtifactRenditionPurpose } from "./artifact-contract";
 import { webViewerFrameSandbox } from "./editor-sandbox-origin";
 import {
+  getArtifactWebsitePreview,
+  type ArtifactWebsitePreview,
+  type ArtifactApiResult,
+} from "./artifact-client";
+import {
   TEMPLATE_MATERIAL_PREVIEW_META_KEY,
   templateMaterialIdForArtifact,
   templateMaterialPreviewManifestUrl,
@@ -25,9 +30,10 @@ import {
 } from "./website-inline-preview";
 
 /**
- * 网站素材的就地预览承载。
+ * Durable website details resolve their pinned revision's isolated preview.
+ * The rendition path below is retained for legacy entries without identity.
  *
- * 为什么不能沿用查看器默认的 rendition 顺序：`viewerRenditionOrder("website")`
+ * 为什么 legacy 路径不能沿用默认顺序：`viewerRenditionOrder("website")`
  * 是 `["preview","full"]`，而网站的 `preview` 是一张 webp 封面
  * （`artifact-contract.ts:2357-2376`）。那个顺序是**卡片**要的——卡片必须是位图，
  * 这条产品决定不动。详情要的是页面本身，所以这里显式先要 `full`。
@@ -269,7 +275,8 @@ function PageOutline({ outline }: { outline: WebsiteInlineOutline }) {
 }
 
 /** 出口本身在详情工具条上（那是动作条的面），这里只把它们指出来。 */
-const EXIT_HINT = "可用的出口：详情工具条上的「下载」拿到源文件，「编辑」在网站编辑器里打开它。";
+const EXIT_HINT =
+  "可用时，详情工具条上的「下载」保存完整网站源码 ZIP，「编辑」打开网站编辑器。";
 
 function StaticCover({ url, title }: { url: string; title: string }) {
   return (
@@ -286,6 +293,87 @@ function StaticCover({ url, title }: { url: string; title: string }) {
 }
 
 export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
+  return isDurableLibraryItem(item) ? (
+    <WebsiteRevisionPreview key={`${item.artifactId}:${item.revisionId}`} item={item} />
+  ) : (
+    <LegacyWebsiteArtifactViewer item={item} />
+  );
+}
+
+function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
+  const tt = useUI();
+  const [result, setResult] = useState<ArtifactApiResult<ArtifactWebsitePreview> | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    let renewal: ReturnType<typeof setTimeout> | undefined;
+    setResult(null);
+    void getArtifactWebsitePreview(item, controller.signal).then((next) => {
+      if (controller.signal.aborted) return;
+      setResult(next);
+      if (next.ok && next.data) {
+        renewal = setTimeout(
+          () => setAttempt((value) => value + 1),
+          Math.max(1_000, Date.parse(next.data.expiresAt) - Date.now() - 5_000),
+        );
+      }
+    });
+    return () => {
+      controller.abort();
+      clearTimeout(renewal);
+    };
+  }, [item.artifactId, item.revisionId, attempt]);
+
+  if (!result) {
+    return (
+      <Panel>
+        <p className="text-[13px] text-stone-400">{tt("正在打开网站页面…")}</p>
+      </Panel>
+    );
+  }
+  if (result.ok && result.data) {
+    return <SandboxedPage url={result.data.url} title={item.title} />;
+  }
+  const denied = result.code === "unauthorized" || result.status === 401 || result.status === 403;
+  const missing = result.code === "missing-source";
+  const pending = result.status === 409 || result.status === 425 || result.status === 503;
+  // A known public catalog template can use its existing anonymous endpoint
+  // when no session is present. An explicit 403 or missing source stays visible.
+  const allowPublicTemplate = !missing && (result.status === 401 || !denied);
+  const templateId = allowPublicTemplate ? templateMaterialPreviewId(item) : "";
+  if (templateId) return <TemplateMaterialPreview templateId={templateId} title={item.title} />;
+  const notice = denied
+    ? "没有权限查看这个网站，请确认登录账号。"
+    : missing
+      ? "网站源码缺失，无法生成预览或下载源码。"
+      : pending
+        ? "网站预览还没生成，请稍后重试。"
+        : "无法打开网站预览，请重试。";
+  return (
+    <Panel>
+      {!denied && (item.previewUrl || item.thumbUrl) && (
+        <StaticCover url={item.previewUrl || item.thumbUrl || ""} title={item.title} />
+      )}
+      <p role="status" className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
+        {tt(notice)}
+      </p>
+      {!denied && !missing && (
+        <p className="max-w-xl text-center text-[12px] leading-relaxed text-stone-500">
+          {tt(EXIT_HINT)}
+        </p>
+      )}
+      <button
+        type="button"
+        onClick={() => setAttempt((value) => value + 1)}
+        className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
+      >
+        {tt("重试")}
+      </button>
+    </Panel>
+  );
+}
+
+function LegacyWebsiteArtifactViewer({ item }: { item: LibraryItem }) {
   const tt = useUI();
   const rendition = useArtifactRendition(item, WEBSITE_PAGE_PURPOSES);
   const mediaType = rendition.rendition?.mediaType;

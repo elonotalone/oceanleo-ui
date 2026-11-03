@@ -596,8 +596,15 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       mime: item.mime,
       // Failed: the composer blocks the send and says why, with retry / remove (F3 2026-11-02).
       ...(item.state === "error" ? { failed: true, failedReason: item.error || tt("上传出错") } : {}),
-      // A file held until the session exists is ready from the user's side (no spinner).
+      // A held file can create its session on send; it has no spinner or preview yet.
       uploading: item.state === "uploading" && !item.deferred,
+      openingDisabled: item.state !== "done",
+      ...(item.state === "uploading" && !item.deferred ? { progress: {
+        loaded: item.size * Math.max(0, Math.min(100, item.percent ?? 0)) / 100,
+        total: item.size,
+        ratio: Math.max(0, Math.min(100, item.percent ?? 0)) / 100,
+        elapsedMs: 0, remainingMs: null, bytesPerSecond: 0, done: false, failed: false,
+      } } : {}),
       // The tile thumbnail: the local `blob:` preview of an image picked in this tab.
       ...(item.preview ? { previewUrl: item.preview, url: item.preview } : {}),
       // W6: its inbox copy (once uploaded under the session) opens any file type in the sidebar.

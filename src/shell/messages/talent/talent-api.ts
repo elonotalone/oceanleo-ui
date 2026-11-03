@@ -3,7 +3,7 @@
 // 本文件只做请求拼装、talent 消息行 → `ImMessage` 的映射（与后端 `app/im/talent_bridge.py` 同一口径）、
 // 以及交易会话在 Bay 里的地址；没有界面逻辑。
 
-import { currentDomainFamily } from "../../../contracts/domain-family";
+import { currentDomainFamily, domainFamilyFeatures } from "../../../contracts/domain-family";
 import { imFetch } from "../../../lib/im/client";
 import type { ImAttachment, ImCard, ImMessage, ImMessageKind, ImProfile } from "../../../lib/im/types";
 
@@ -143,12 +143,12 @@ export function offerActionsFor(offer: Pick<TalentOffer, "state" | "from_user_id
 
 // ---- 交易会话在 LeoBay 打开 ---------------------------------------------------------
 
-/** 站内 `/bay?bay=conversation:`；境内没有 Bay，不给链接。 */
+/** 能力允许时返回经过 id 校验的站内交易会话链接。 */
 export function talentThreadUrl(threadId: string): string | null {
   const id = (threadId || "").trim();
   if (!id || !/^[A-Za-z0-9_-]{1,80}$/.test(id)) return null;
   try {
-    if (currentDomainFamily() === "cn") return null;
+    if (!domainFamilyFeatures(currentDomainFamily()).bay) return null;
   } catch {
     return null;
   }

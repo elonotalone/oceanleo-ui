@@ -245,12 +245,21 @@ const mediaProxyStubUrl = dataModule(`
     return { text: async () => body };
   }
 `);
+const realClient = await compileModule("src/shell/artifact-client.ts", {
+  "../lib/auth/client": dataModule(`export async function accessToken() { return null; }`),
+  "../lib/auth/config": dataModule(`export const GATEWAY_BASE = "https://gateway.invalid";`),
+});
 const viewerModuleUrl = await compileModule(
   "src/shell/WebsiteArtifactViewer.tsx",
   {
     "../i18n/ui/useUI": uiStubUrl,
     "./ArtifactRendition": renditionStubUrl,
     "../lib/media-proxy": mediaProxyStubUrl,
+    // Keep the catalog's artifact->template cache shared with the fixtures.
+    "./material-library-template-source": new URL("../src/shell/material-library-template-source.ts", import.meta.url).href,
+    "./artifact-client": dataModule(`export * from ${JSON.stringify(realClient)}; export async function getArtifactWebsitePreview() {
+      return globalThis.__resolvedWebsitePreview || {ok:false, status:409};
+    }`),
   },
 );
 const { WebsiteArtifactViewer } = await import(viewerModuleUrl);
@@ -291,7 +300,8 @@ function catalogWebsiteItem() {
   return templateMaterialLibraryItem(normalizeTemplateMaterial(websiteRow()));
 }
 
-async function mountViewer({ item, rendition, body, manifest }) {
+async function mountViewer({ item, rendition, body, manifest, resolvedPreview }) {
+  globalThis.__resolvedWebsitePreview = resolvedPreview;
   globalThis.__rendition = {
     url: "",
     purpose: "full",
@@ -339,6 +349,7 @@ test("W04/5 匿名点开网站模板：屏幕上是站本身，不是那张封�
       rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
       body: null,
       manifest: { templateId: WEBSITE_TEMPLATE_ID, pages: [], pageCount: 1 },
+      resolvedPreview: { ok: false, status: 401, code: "unauthorized" },
     });
     try {
       const frame = mounted.container.querySelector("iframe");
@@ -507,18 +518,19 @@ test("W04/8 界线说明是内容下面的一行常驻文字，不是弹窗、�
   }
 });
 
-test("W04/9 登录态不退化：拿得到可读页面 rendition 就走原路，预览端点连问都不问", async () => {
+test("W04/9 durable website resolves a revision preview before looking at image or HTML renditions", async () => {
   normalizeTemplateMaterial(websiteRow());
   const mounted = await mountViewer({
     item: durableWebsiteItem(),
     rendition: { url: FULL_PAGE_URL, rendition: { mediaType: "text/html" } },
     body: SELF_PAINTING_HTML,
     manifest: { templateId: WEBSITE_TEMPLATE_ID, pages: [], pageCount: 1 },
+    resolvedPreview: { ok: true, data: { url: "https://revision.ws.oceanleo.app/", expiresAt: new Date(Date.now() + 300_000).toISOString(), sourceFormat: "website-source@1" } },
   });
   try {
     const frame = mounted.container.querySelector("iframe");
-    assert.equal(frame.getAttribute("src"), FULL_PAGE_URL, "登录态仍走 full");
-    assert.deepEqual(globalThis.__probeUrls, [FULL_PAGE_URL]);
+    assert.equal(frame.getAttribute("src"), "https://revision.ws.oceanleo.app/");
+    assert.deepEqual(globalThis.__probeUrls, []);
     assert.deepEqual(
       globalThis.__manifestUrls,
       [],

@@ -1,4 +1,4 @@
-import type { AgentDialogMessage } from "./types";
+import type { AgentDialogMessage } from "../../../native-agent-core/index";
 
 export const INTERRUPTED_STOPS = new Set([
   "cancelled",

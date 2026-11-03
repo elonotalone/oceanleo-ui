@@ -60,6 +60,7 @@ function stubFetch(handler) {
 test("Bay 类型映射到模板 artifactType 与原件货架 type", () => {
   const expected = {
     website: ["website", "website"],
+    image: ["single_file_image", "image"],
     ppt: ["deck", "ppt"],
     document: ["document", "document"],
     poster: ["composite_image", null],
@@ -79,7 +80,7 @@ test("Bay 类型映射到模板 artifactType 与原件货架 type", () => {
     assert.equal(originLibraryTypeForBay(bayType), originType, bayType);
     assert.equal(BAY_OWNED_ORIGIN_TYPE[bayType] || null, originType, bayType);
   }
-  assert.equal(templateArtifactTypeForBay("image"), null);
+  assert.equal(templateArtifactTypeForBay("image"), "single_file_image");
   assert.equal(originLibraryTypeForBay("image"), "image");
   assert.equal(mineArtifactTypeForBay("image"), "single_file_image");
   assert.equal(mineArtifactTypeForBay("ppt"), "deck");
@@ -234,7 +235,7 @@ test("owned 合并不去掉原件样例", () => {
   );
 });
 
-test("官方成品卡片只用 workspaceTemplatePreviewHref，Bay 内不调用 getArtifactEditDecision", () => {
+test("官方成品保留兼容 previewHref，Bay 卡片由宿主打开共享详情", () => {
   const material = {
     id: "web-1",
     title: "官方站",
@@ -261,7 +262,8 @@ test("官方成品卡片只用 workspaceTemplatePreviewHref，Bay 内不调用 g
   assert.doesNotMatch(SHELF, /getArtifactEditDecision/);
   assert.doesNotMatch(LIBRARY, /getArtifactEditDecision/);
   assert.doesNotMatch(CARD, /getArtifactEditDecision/);
-  assert.match(CARD, /openHref/);
+  assert.match(CARD, /onOpen\(asset\)/);
+  assert.doesNotMatch(CARD, /window\.location/);
   assert.match(LIBRARY, /官方成品/);
 });
 

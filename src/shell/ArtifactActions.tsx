@@ -29,6 +29,22 @@ import {
   libraryItemOffersDocumentFormats,
 } from "./library-document-export";
 import { editorCapabilityFor } from "./workbench-routes";
+import type { AssetActionContext } from "./asset-detail/types";
+
+// Internal eligibility evidence stays in the matrix for callers and diagnostics.
+// Only short, registered copy reaches labels, tooltips, live regions and failures.
+const ACTION_UNAVAILABLE: Record<ArtifactCardAction, string> = {
+  edit: "这份内容暂时无法编辑，请刷新后重试。",
+  preview: "暂时无法预览，请刷新后重试。",
+  insert: "暂时无法插入，请刷新后重试。",
+  replace: "暂时无法替换，请刷新后重试。",
+};
+export function artifactActionMessage(value: string, fallback: string): string {
+  if (!value) return "";
+  return /receipt|typed|transient|revision|artifact|rendition|root|幂等|临时\s*URL|editorCapability|完整性|身份|当前主体|服务端.*声明/i.test(value)
+    ? fallback
+    : humanErrorMessage(value, fallback);
+}
 
 const ACTION_ICON_PATHS = {
   share: "M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7",
@@ -128,6 +144,8 @@ function fullscreenContentEvidence(item: LibraryItem): {
 export interface ArtifactActionMatrixOptions {
   canOpenPreview?: boolean;
   canOpenEdit?: boolean;
+  /** Server rights from the shared detail resolver; absent preserves legacy Library behaviour. */
+  actionContext?: AssetActionContext;
   /** Library surfaces hide the Preview button; quiet preview is the detail page. */
   hidePreview?: boolean;
   insert?: ArtifactTargetActionEvidence;
@@ -362,9 +380,10 @@ export function artifactActionMatrix(
   const insertTarget = options.insert;
   const replaceTarget = options.replace;
   const hidePreview = options.hidePreview === true;
-  const editAvailable = edit.available && options.canOpenEdit !== false;
+  const editAllowed = !options.actionContext || options.actionContext.rights.canEdit && options.actionContext.owned && options.actionContext.commerce?.purchaseState !== "refunded" && options.actionContext.commerce?.purchaseState !== "pending";
+  const editAvailable = edit.available && options.canOpenEdit !== false && editAllowed;
   const editVisible =
-    options.materialEditRoute === "deep-link"
+    !editAllowed || options.canOpenEdit === false || options.materialEditRoute === "deep-link"
       ? false
       : options.materialEditRoute === "in-place"
         ? edit.visible && editAvailable
@@ -439,9 +458,11 @@ export function ArtifactActionButtons({
   accent = "#4f46e5",
   compact = false,
   editLabel = ACTION_LABEL.edit,
+  actionContext,
 }: {
   item: LibraryItem;
   matrix: Record<ArtifactCardAction, ArtifactActionState>;
+  actionContext?: AssetActionContext;
   onPreview?: (item: LibraryItem) => void | Promise<void>;
   onEdit?: (item: LibraryItem) => void | Promise<void>;
   onInsert?: (item: LibraryItem) => void | Promise<void>;
@@ -494,14 +515,14 @@ export function ArtifactActionButtons({
     setFavorite(item.favorite);
   }, [item.artifactId, item.favorite, item.revisionId]);
   const report = (message: string) => {
-    const translated = tt(message);
+    const translated = tt(artifactActionMessage(message, "操作未完成，请重试。"));
     setLiveStatus(translated);
     setFailure("");
     onStatus?.(translated);
   };
   // 进度与成功只给读屏；失败必须看得见，否则用户点了没反应也不知道为什么。
   const fail = (message: string) => {
-    const translated = tt(message);
+    const translated = tt(artifactActionMessage(message, "操作未完成，请重试。"));
     setLiveStatus("");
     setFailure(translated);
     onStatus?.(translated);
@@ -555,11 +576,13 @@ export function ArtifactActionButtons({
   const identityReason = identityPending
     ? "正在取这份素材的当前版本…"
     : identity?.reason || "没取到这份素材的当前版本，重试一次即可。";
-  const downloadVisible = downloadEvidence.visible || identityBlocked;
+  const contextOwned = !actionContext || actionContext.owned && actionContext.commerce?.purchaseState !== "refunded" && actionContext.commerce?.purchaseState !== "pending";
+  const sourceAllowed = !actionContext || actionContext.rights.canDownloadSource || downloadEvidence.purpose !== "source" && downloadEvidence.mode !== "source";
+  const downloadVisible = (downloadEvidence.visible || identityBlocked) && contextOwned && (!actionContext || actionContext.rights.canDownload) && sourceAllowed;
   const downloadReason = identityBlocked
-    ? identityReason
-    : downloadEvidence.reason;
-  const downloadAvailable = downloadEvidence.available && !identityBlocked;
+    ? artifactActionMessage(identityReason, "没取到这份素材的当前版本，重试一次即可。")
+    : artifactActionMessage(downloadEvidence.reason, "暂时无法下载，请刷新后重试。");
+  const downloadAvailable = downloadVisible && downloadEvidence.available && !identityBlocked;
   const favoriteVisible =
     Boolean(durableItem && durableItem.artifact.access.canRead) ||
     identityBlocked;
@@ -571,8 +594,8 @@ export function ArtifactActionButtons({
       durableItem.artifact.access.canFavorite,
   );
   const favoriteReason = identityBlocked
-    ? identityReason
-    : "当前主体没有收藏这个 artifact 的权限。";
+    ? artifactActionMessage(identityReason, "没取到这份素材的当前版本，重试一次即可。")
+    : "暂时无法收藏，请刷新后重试。";
   /**
    * 「网页版」是从稿子当场渲的，所以它跟着**稿子**在不在，而不是跟着 rendition 走。
    * 身份还没取回来时它与下载同口径：留在原地、按不动、说同一句话——那一刻我们连
@@ -586,7 +609,9 @@ export function ArtifactActionButtons({
     // 播放入口是隔离域的「查看」。这颗按钮仍然只服务于带结构稿的 PPTX 条目。
     visible: deckHtmlSource.visible && deckHtmlPlan.family !== "html",
     available: deckHtmlSource.available && !identityBlocked,
-    reason: identityBlocked ? identityReason : deckHtmlSource.reason,
+    reason: identityBlocked
+      ? artifactActionMessage(identityReason, "没取到这份素材的当前版本，重试一次即可。")
+      : artifactActionMessage(deckHtmlSource.reason, "暂时无法导出，请刷新后重试。"),
   };
   /**
    * HTML 演示的「查看」= 在**新窗口**打开隔离域播放页。
@@ -655,7 +680,7 @@ export function ArtifactActionButtons({
       return;
     }
     beginBusy("download");
-    report("正在准备固定 revision 的下载…");
+    report("正在准备下载…");
     try {
       const result = await getArtifactDownload(item);
       if (
@@ -762,7 +787,7 @@ export function ArtifactActionButtons({
   // Preview is hidden for library materials via matrix.hidePreview.
   const primaryActions = (
     ["edit", "preview"] as ArtifactCardAction[]
-  ).filter((action) => matrix[action].visible);
+  ).filter((action) => matrix[action].visible && (action !== "edit" || contextOwned && (!actionContext || actionContext.rights.canEdit)));
   const mutationActions = (
     ["insert", "replace"] as ArtifactCardAction[]
   ).filter((action) => matrix[action].visible);
@@ -775,15 +800,15 @@ export function ArtifactActionButtons({
         ...visible
           .map((action) => matrix[action])
           .filter((state) => !state.available && state.reason)
-          .map((state) => `${actionLabel(state.action)}：${state.reason}`),
+          .map((state) => `${tt(actionLabel(state.action))}: ${tt(ACTION_UNAVAILABLE[state.action])}`),
         ...(downloadVisible && !downloadAvailable && downloadReason
-          ? [`下载：${downloadReason}`]
+          ? [`${tt("下载")}: ${tt(downloadReason)}`]
           : []),
         ...(favoriteVisible && !favoriteAvailable && favoriteReason
-          ? [`收藏：${favoriteReason}`]
+          ? [`${tt("收藏")}: ${tt(favoriteReason)}`]
           : []),
         ...(deckHtml.visible && !deckHtml.available && deckHtml.reason
-          ? [`网页版：${deckHtml.reason}`]
+          ? [`${tt("网页版")}: ${tt(deckHtml.reason)}`]
           : []),
       ],
     ),
@@ -828,12 +853,8 @@ export function ArtifactActionButtons({
         aria-describedby={
           !state.available && state.reason ? reasonId : undefined
         }
-        aria-label={tt(
-          `${label}「${item.title}」${
-            state.reason ? `：${state.reason}` : ""
-          }`,
-        )}
-        title={tt(state.reason || label)}
+        aria-label={`${tt(label)}「${item.title}」`}
+        title={tt(state.available ? label : ACTION_UNAVAILABLE[action])}
         className={useIcon ? iconBtnClass : chipClass}
         style={useIcon ? iconStyle(state.available) : chipStyle(state.available)}
       >
@@ -894,9 +915,7 @@ export function ArtifactActionButtons({
               aria-haspopup={documentFormats ? "menu" : undefined}
               aria-expanded={documentFormats ? downloadMenuOpen : undefined}
               aria-describedby={!downloadAvailable ? reasonId : undefined}
-              aria-label={tt(
-                `下载「${item.title}」revision ${durableItem?.revisionId || ""}`,
-              )}
+              aria-label={`${tt("下载")}「${item.title}」`}
               title={tt(downloadAvailable ? "下载" : downloadReason)}
               className={iconBtnClass}
               style={iconStyle(downloadAvailable)}
@@ -940,9 +959,7 @@ export function ArtifactActionButtons({
             aria-disabled={!favoriteAvailable || isBusy("favorite")}
             aria-describedby={!favoriteAvailable ? reasonId : undefined}
             aria-pressed={favorite}
-            aria-label={tt(
-              `${favorite ? "取消收藏" : "收藏"}「${item.title}」revision ${item.revisionId}`,
-            )}
+            aria-label={`${tt(favorite ? "取消收藏" : "收藏")}「${item.title}」`}
             title={tt(
               favoriteAvailable
                 ? favorite
@@ -1031,7 +1048,7 @@ export function ArtifactActionButtons({
           className="mt-1 line-clamp-2 text-[9px] leading-snug text-[var(--muted,#a8a29e)]"
           role="note"
         >
-          {tt(unavailableReason)}
+          {unavailableReason}
         </p>
       )}
       {(failure || (identityFailed && identity?.failure)) && (
@@ -1040,7 +1057,7 @@ export function ArtifactActionButtons({
           role="alert"
           data-artifact-action-failure="true"
         >
-          {failure || tt(identity?.failure || "")}
+          {failure || tt(artifactActionMessage(identity?.failure || "", "操作未完成，请重试。"))}
         </p>
       )}
       <span className="sr-only" role="status" aria-live="polite">

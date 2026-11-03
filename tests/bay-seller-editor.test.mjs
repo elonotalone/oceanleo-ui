@@ -97,6 +97,7 @@ const stateStub = dataModule(`
 const supplyStub = dataModule(`export function ServiceCard({ item }) { globalThis.__bayPreview = item; return null; }`);
 const domainStub = dataModule(`
   export const CONFIGURED_DOMAIN_FAMILY = "com";
+  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return "com"; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.com/" }; }
   export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.com/" }; }

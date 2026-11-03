@@ -107,7 +107,7 @@ class FakeXhr {
   open(method, url) { this.method = method; this.url = url; }
   setRequestHeader(name, value) { this.headers[name] = value; }
   send(body) { this.body = body; }
-  abort() {}
+  abort() { this.aborted = true; this.onabort?.(); }
   succeed(payload) {
     this.status = 200;
     this.responseText = JSON.stringify(payload);
@@ -126,7 +126,7 @@ const authStub = dataModule(`
   export async function accessToken() { return "tok"; }
   export function cachedAccessToken() { return "tok"; }
 `);
-const configStub = dataModule(`export const GATEWAY_BASE = "https://gw.test";`);
+const configStub = dataModule(`export const GATEWAY_BASE = "https://gw.test"; export function gatewayBase(){return GATEWAY_BASE;}`);
 const agentStub = dataModule(`
   export async function getTask() { return { ok: false, data: null }; }
   export async function stopTask() { return { ok: false }; }
@@ -312,6 +312,81 @@ test("two files of one paste get distinct names", async () => {
   } finally {
     await view.unmount();
   }
+});
+
+test("W2: inbox progress, timeout, manual retry and pending archive keep one upload identity", async () => {
+  const view = await mount({ taskSessionId: "cts_w2", bindUploadsToTaskSession: true });
+  try {
+    await act(async () => view.box.latest.addAttachments([new File([new Uint8Array(4)], "retry.png", { type: "image/png" })]));
+    await until(() => FakeXhr.instances.length === 1, "first upload");
+    const first = FakeXhr.instances[0];
+    const query = new URL(first.url).searchParams;
+    const uploadId = query.get("upload_id");
+    assert.match(uploadId, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.equal(query.get("task_session_id"), "cts_w2");
+    assert.equal(first.timeout, 60_000);
+    await act(async () => first.upload.onprogress({ lengthComputable: true, loaded: 2, total: 4 }));
+    assert.equal(view.box.latest.attachments[0].percent, 50);
+    await act(async () => first.upload.onprogress({ lengthComputable: true, loaded: 4, total: 4 }));
+    assert.equal(view.box.latest.attachments[0].state, "uploading", "100% bytes still awaits the computer");
+    await act(async () => first.ontimeout());
+    assert.equal(view.box.latest.attachments[0].state, "error");
+    assert.equal(view.box.latest.attachments[0].error, "上传超时，请重试或移除文件。");
+    const id = view.box.latest.attachments[0].id;
+    await act(async () => view.box.latest.retryAttachment(id));
+    await until(() => FakeXhr.instances.length === 2, "manual retry");
+    const retry = FakeXhr.instances[1];
+    assert.equal(new URL(retry.url).searchParams.get("upload_id"), uploadId);
+    await act(async () => retry.succeed({ path: "/home/inbox/retry.png", name: "retry.png", upload_id: uploadId, archive: { state: "pending" } }));
+    assert.equal(view.box.latest.attachments[0].state, "done", "Library archiving does not hold the composer");
+    await act(async () => view.box.latest.setDraft("use file"));
+    let sent;
+    await act(async () => { sent = await view.box.latest.send(); });
+    assert.equal(sent, true);
+    assert.deepEqual(view.socket().sent.filter((frame) => frame.t === "prompt").at(-1).files.map((file) => file.path), ["/home/inbox/retry.png"]);
+  } finally { await view.unmount(); }
+});
+
+test("W2: automatic transient retry keeps the chip UUID; deleting aborts and ignores late events", async () => {
+  const view = await mount();
+  try {
+    await act(async () => view.box.latest.addAttachments([new File([new Uint8Array(4)], "auto.png", { type: "image/png" })]));
+    await until(() => FakeXhr.instances.length === 1, "first request");
+    const first = FakeXhr.instances[0];
+    const uploadId = new URL(first.url).searchParams.get("upload_id");
+    await act(async () => first.onerror());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 650)); });
+    await until(() => FakeXhr.instances.length === 2, "automatic retry");
+    const retry = FakeXhr.instances[1];
+    assert.equal(new URL(retry.url).searchParams.get("upload_id"), uploadId);
+    await act(async () => view.box.latest.removeAttachment(view.box.latest.attachments[0].id));
+    assert.equal(retry.aborted, true);
+    assert.deepEqual(view.box.latest.attachments, []);
+    await act(async () => {
+      retry.upload.onprogress({ lengthComputable: true, loaded: 4, total: 4 });
+      retry.succeed({ path: "/home/inbox/late.png" });
+    });
+    assert.deepEqual(view.box.latest.attachments, [], "a late result cannot restore a deleted chip");
+    await act(async () => view.box.latest.setDraft("text after remove"));
+    let sent;
+    await act(async () => { sent = await view.box.latest.send(); });
+    assert.equal(sent, true, "cancelled upload no longer blocks a send");
+  } finally { await view.unmount(); }
+});
+
+test("W2: removing during retry backoff prevents another PUT; unmount aborts live requests", async () => {
+  const view = await mount();
+  try {
+    await act(async () => view.box.latest.addAttachments([new File(["a"], "cancel.txt")]));
+    await until(() => FakeXhr.instances.length === 1, "first request");
+    await act(async () => FakeXhr.instances[0].onerror());
+    await act(async () => view.box.latest.removeAttachment(view.box.latest.attachments[0].id));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 650)); });
+    assert.equal(FakeXhr.instances.length, 1);
+    await act(async () => view.box.latest.addAttachments([new File(["b"], "unmount.txt")]));
+    await until(() => FakeXhr.instances.length === 2, "second file");
+  } finally { await view.unmount(); }
+  assert.equal(FakeXhr.instances[1].aborted, true);
 });
 
 test("open_session retries once after 20 s, then stops loading with a notice", async () => {

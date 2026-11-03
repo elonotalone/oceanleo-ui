@@ -1,3 +1,4 @@
+import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -129,11 +130,12 @@ const STUBS = {
   "../i18n/ui/useUI": uiStubUrl,
   "./guide-context": guideStubUrl,
   "./NavigatorGuide": panelStubUrl,
+  ...W4_SIDEBAR_STUBS,
   "./MaterialLibrary": panelStubUrl,
   "./MyLibrary": panelStubUrl,
   "./CloudBrowserPanel": panelStubUrl,
   "./WorkspaceLibrary": panelStubUrl,
-  "./workspace-actions": workspaceActionsStubUrl,
+
   "./workspace-runtime-hydration": hydrationStubUrl,
   "./workspace-session-context": sessionStubUrl,
   "./library-data": libraryDataStubUrl,
@@ -188,7 +190,7 @@ test("真实 ResultCanvas 重新设置底层返回行不清掉仍在的外壳", 
     assert.ok(mounted.container.querySelector('[data-pane-header] [data-claim-header="A"]'));
     await mounted.render(canvas("materials"));
     assert.equal(mounted.container.querySelector('[data-claim-header]'), null);
-    assert.match(mounted.container.querySelector('[data-workspace-pane="main"] [data-pane-header]').textContent, /素材库/);
+    assert.match(mounted.container.querySelector('[data-workspace-pane="main"] [data-pane-header]').textContent, /LeoBay/);
   } finally { await mounted.unmount(); }
 });
 

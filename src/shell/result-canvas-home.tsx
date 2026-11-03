@@ -149,7 +149,7 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
       aria-label={tt("工作区")}
       className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] content-start gap-3 p-3"
     >
-      {props.slots.map((id) => (
+      {props.slots.filter((id) => id !== "materials").map((id) => (
         <WorkspaceCard
           key={id}
           id={id}
@@ -164,7 +164,7 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
         <WorkspaceCard
           id="bay"
           title="LeoBay"
-          description={tt("找真人做事：逛服务、发需求")}
+          description={tt("找素材、逛服务、发需求")}
           icon={<BayIcon className="h-4 w-4" strokeWidth={1.8} />}
           count={0}
           onClick={() => props.onOpenPanel("bay")}

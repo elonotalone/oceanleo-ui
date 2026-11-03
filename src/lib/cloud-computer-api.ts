@@ -724,9 +724,12 @@ export async function putComputerInbox(
   computerId: string,
   file: File,
   onProgress?: (percent: number) => void,
-  options: { task_session_id?: string } = {},
+  options: { task_session_id?: string; upload_id?: string; signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<ComputerInboxFile> {
+  const aborted = () => new CloudComputerError("client_aborted", "Upload cancelled", 0);
+  if (options.signal?.aborted) throw aborted();
   const token = await accessToken();
+  if (options.signal?.aborted) throw aborted();
   if (!token) {
     throw new CloudComputerError("client_unauthorized", "未登录", 401);
   }
@@ -737,21 +740,31 @@ export async function putComputerInbox(
   const name = (file.name || "file").trim() || "file";
   const query = new URLSearchParams({ name });
   if (options.task_session_id) query.set("task_session_id", options.task_session_id);
+  if (options.upload_id) query.set("upload_id", options.upload_id);
   const url = `${gatewayBase()}/v1/computers/${encodeURIComponent(id)}/inbox?${query.toString()}`;
   return await new Promise<ComputerInboxFile>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let finished = false;
-    const fail = (error: CloudComputerError) => {
+    const cleanup = () => options.signal?.removeEventListener("abort", cancel);
+    const fail = (error: unknown) => {
       if (finished) return;
       finished = true;
+      cleanup();
       reject(error);
     };
+    const cancel = () => {
+      fail(aborted());
+      xhr.abort();
+    };
     xhr.open("PUT", url, true);
+    // One bounded attempt, including the wait for the computer's acknowledgement.
+    xhr.timeout = options.timeoutMs && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs : 60_000;
     xhr.withCredentials = true;
     xhr.setRequestHeader("Authorization", `Bearer ${token}`);
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (event) => {
-      if (finished || !event.lengthComputable || !onProgress) return;
+      if (finished || !event.lengthComputable || event.total <= 0 || !onProgress) return;
       onProgress(Math.round((event.loaded / event.total) * 100));
     };
     xhr.onload = () => {
@@ -776,6 +789,7 @@ export async function putComputerInbox(
         return;
       }
       finished = true;
+      cleanup();
       onProgress?.(100);
       resolve({
         ...(row.archive && typeof row.archive === "object" ? { archive: row.archive as ComputerInboxArchive } : {}),
@@ -791,7 +805,15 @@ export async function putComputerInbox(
     xhr.onerror = () => {
       fail(new CloudComputerError("client_network_error", "网络错误：无法连接到网关。", 0));
     };
-    xhr.send(file);
+    xhr.onabort = () => fail(aborted());
+    xhr.ontimeout = () => fail(new CloudComputerError("client_upload_timeout", "Upload timed out. Retry or remove the file.", 408));
+    options.signal?.addEventListener("abort", cancel, { once: true });
+    if (options.signal?.aborted) { cancel(); return; }
+    try {
+      xhr.send(file);
+    } catch (error) {
+      fail(error);
+    }
   });
 }
 

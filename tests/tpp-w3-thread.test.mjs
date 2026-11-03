@@ -91,8 +91,10 @@ test("all three surfaces import common polling and cloud has no local cadence co
   assert.match(functionChat, /stoppedTaskRef\.current = taskId/);
   assert.match(functionChat, /resolveTaskStatus\(\{ serverStatus, taskId: id, stoppedTaskId: stoppedTaskRef\.current \}\)/);
   const controller = await readFile(new URL("cloud-computer/agent-dialog/useAgentDialogController.tsx", root), "utf8");
-  assert.match(controller, /stoppedOceanTaskRef\.current = taskId/);
-  assert.match(controller, /resolveTaskStatus\(/);
+  // b349c9a5 replaced the controller's local task-id stop override with the
+  // acknowledged shared stop machine. The two chat surfaces still use rules.
+  assert.match(controller, /const next = stopMachine\(stopRef\.current, event\)/);
+  assert.match(controller, /applyStopToView\(\{ type: "cancel-result", result/);
 });
 
 test("both chats wire shared working and thinking and retain stopped history", async () => {

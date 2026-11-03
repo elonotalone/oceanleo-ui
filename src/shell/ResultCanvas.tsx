@@ -16,7 +16,13 @@ import { useUI } from "../i18n/ui/useUI";
 import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { useFunctionGuide } from "./guide-context";
 import { NavigatorGuide } from "./NavigatorGuide";
-import { MaterialLibrary, type MaterialItem } from "./MaterialLibrary";
+import type { MaterialItem } from "./MaterialLibrary";
+import { resolveAssetDetail } from "./asset-detail/resolve";
+import { AssetDetail } from "./asset-detail/AssetDetail";
+import { BayAssetActions } from "./asset-detail/BayAssetActions";
+import type { AssetActionContext } from "./asset-detail/types";
+import { useWorkspaceEntryRequest, type TaskWorkspaceOpenEntry } from "./result-canvas-entry-state";
+import { BayAssetLibrary } from "./bay/asset/BayAssetLibrary";
 import { MyLibrary } from "./MyLibrary";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
 import {
@@ -26,6 +32,7 @@ import {
 } from "./WorkspaceLibrary";
 import {
   workspaceSlotForLegacyId,
+  workspaceMaterialsActionFromSearch,
   type WorkspaceActionEnvelope,
   type WorkspaceSlotId,
 } from "./workspace-actions";
@@ -88,8 +95,6 @@ import {
 
 export { CanvasEmpty, CanvasSubTabs } from "./result-canvas-view";
 
-const EMPTY_MATERIALS: MaterialItem[] = [];
-
 export interface CanvasTab extends LegacyWorkspaceSurfaceTab {}
 
 /**
@@ -109,12 +114,14 @@ export interface TaskWorkspaceOpenItem {
 export interface TaskWorkspaceOpenState {
   item: LibraryItem;
   mode: "preview" | "edit";
+  entry?: WorkspaceLibraryEntry;
+  actionContext?: AssetActionContext;
 }
 
 export interface ResultCanvasProps {
   /**
    * Compatibility input. Existing pages can keep declaring their domain tabs;
-   * the shared shell classifies them into the five fixed product slots.
+   * legacy material tabs open the LeoBay material view.
    */
   tabs: CanvasTab[];
   active?: string;
@@ -143,6 +150,9 @@ export interface ResultCanvasProps {
   materialsEmptyCta?: ReactNode;
   /** Direct-open input (see TaskWorkspaceOpenItem). */
   openItem?: TaskWorkspaceOpenItem | null;
+  openEntry?: TaskWorkspaceOpenEntry | null;
+  /** Task host chooses how a server-authorized asset is attached/inserted. */
+  onUseWorkspaceEntry?: (entry: WorkspaceLibraryEntry) => Promise<void> | void;
   /** The foreground item (or null) whenever it changes, including saved revisions. */
   onOpenItemChange?: (open: TaskWorkspaceOpenState | null) => void;
   /**
@@ -213,19 +223,28 @@ export function ResultCanvas({
   empty,
   focusNonce,
   className = "",
-  materials = EMPTY_MATERIALS,
-  onSeeAllMaterials,
   action: externalAction,
   showTemplate = true,
   taskId,
   siteId = "",
   materialContext,
-  materialsEmptyCta,
   openItem,
+  openEntry,
+  onUseWorkspaceEntry,
   onOpenItemChange,
   renderBoundEditor,
 }: ResultCanvasProps) {
   const tt = useUI();
+  const [legacyLocationAction] = useState<WorkspaceActionEnvelope | null>(() => {
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    // Item bookmarks already go through the catalog dispatcher. Raw platform
+    // links predate it, so the sidebar itself supplies their material landing.
+    if (params.has("item")) return null;
+    const action = workspaceMaterialsActionFromSearch(window.location.search);
+    return action ? { nonce: `legacy-material-location:${window.location.search}`, action } : null;
+  });
+  const [legacyAssetLocation] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).has("asset"));
   const workspaceSession = useOptionalWorkspaceSession();
   const workspaceSessionRef = useRef(workspaceSession);
   workspaceSessionRef.current = workspaceSession;
@@ -242,14 +261,15 @@ export function ResultCanvas({
   const libraryPanelOwnerRef = useRef(
     `result-canvas-library:${libraryPanelInstanceId}`,
   );
-  const materialLibraryStoreRef = useRef<LiveWorkspaceNodeStore>(
-    createLiveWorkspaceNodeStore(),
-  );
   const myLibraryStoreRef = useRef<LiveWorkspaceNodeStore>(
     createLiveWorkspaceNodeStore(),
   );
   const [activeCanvasEntry, setActiveCanvasEntry] =
     useState<WorkspaceLibraryEntry | null>(null);
+  const currentViewRef = useRef<string>("home");
+  const foregroundOriginRef = useRef<string>("preview");
+  const [activeActionContext, setActiveActionContext] = useState<AssetActionContext | undefined>();
+  const [foregroundSuspended, setForegroundSuspended] = useState(false);
   const [activeCanvasMode, setActiveCanvasMode] =
     useState<"preview" | "edit">("preview");
   const [hasCommittedEditorRevision, setHasCommittedEditorRevision] =
@@ -290,6 +310,9 @@ export function ResultCanvas({
     (entry: WorkspaceLibraryEntry) => {
       // An explicit library card is a pinned artifact/revision identity.
       // Never replace a historical card with a locally saved head by root id.
+      setActiveActionContext(undefined);
+      foregroundOriginRef.current = currentViewRef.current === "home" ? "preview" : currentViewRef.current;
+      setForegroundSuspended(false);
       setActiveCanvasEntry(entry);
       setHasCommittedEditorRevision(false);
       setActiveCanvasMode("preview");
@@ -300,6 +323,9 @@ export function ResultCanvas({
   );
   const openCanvasItem = useCallback(
     (item: LibraryItem) => {
+      setActiveActionContext(undefined);
+      foregroundOriginRef.current = currentViewRef.current === "home" ? "preview" : currentViewRef.current;
+      setForegroundSuspended(false);
       setHasCommittedEditorRevision(false);
       setActiveCanvasMode("edit");
       setArtifactSaveError("");
@@ -308,6 +334,17 @@ export function ResultCanvas({
     },
     [],
   );
+  const openResolvedEntry = useCallback((detail: { entry: WorkspaceLibraryEntry; actionContext?: AssetActionContext }, mode: "preview" | "edit", bindTask: boolean) => {
+    foregroundOriginRef.current = currentViewRef.current === "home" ? "preview" : currentViewRef.current;
+    setActiveCanvasEntry(detail.entry);
+    setActiveActionContext(detail.actionContext);
+    setActiveCanvasMode(mode === "edit" && detail.entry.libraryItem && (!detail.actionContext || detail.actionContext.rights.canEdit) && editorCapabilityFor(detail.entry.libraryItem).available ? "edit" : "preview");
+    setHasCommittedEditorRevision(false);
+    setArtifactSaveError("");
+    setBindEditorToTask(bindTask);
+    setForegroundSuspended(false);
+  }, []);
+
   // Direct open (W7): the host already holds the exact item, so no library
   // list has to load and resolve an id first. One request per nonce.
   const consumedOpenNonceRef = useRef("");
@@ -333,18 +370,16 @@ export function ResultCanvas({
     consumedLibraryOpenNonceRef.current = nonce;
     const action = externalAction!.action;
     if (action.tab !== "mine" || (action.intent !== "open" && action.filter !== "uploaded")) return;
-    setActiveCanvasEntry(null);
-    setHasCommittedEditorRevision(false);
-    setArtifactSaveError("");
+    setForegroundSuspended(true);
   }, [externalAction]);
   const onOpenItemChangeRef = useRef(onOpenItemChange);
   onOpenItemChangeRef.current = onOpenItemChange;
-  const reportedItem = activeCanvasEntry?.libraryItem || null;
+  const reportedItem = !foregroundSuspended ? activeCanvasEntry?.libraryItem || null : null;
   useEffect(() => {
     onOpenItemChangeRef.current?.(
-      reportedItem ? { item: reportedItem, mode: activeCanvasMode } : null,
+      reportedItem ? { item: reportedItem, mode: activeCanvasMode, ...(activeActionContext && activeCanvasEntry ? { entry: activeCanvasEntry, actionContext: activeActionContext } : {}) } : null,
     );
-  }, [activeCanvasMode, reportedItem]);
+  }, [activeCanvasMode, reportedItem, activeActionContext, activeCanvasEntry]);
   const recordSavedEditorItem = useCallback((item: LibraryItem) => {
     const source = activeCanvasEntry?.libraryItem;
     const transition = source
@@ -376,6 +411,18 @@ export function ResultCanvas({
         : current,
     );
   }, [activeCanvasEntry?.libraryItem]);
+
+  useEffect(() => {
+    const item = activeCanvasEntry?.libraryItem;
+    const context = activeActionContext;
+    if (!item?.artifactId || !item.revisionId || !context || context.ref.kind !== "artifact" ||
+      (context.ref.artifactId === item.artifactId && context.ref.revisionId === item.revisionId)) return;
+    const controller = new AbortController();
+    resolveAssetDetail({ kind: "artifact", artifactId: item.artifactId, revisionId: item.revisionId }, { surface: context.surface, signal: controller.signal })
+      .then((next) => { if (!controller.signal.aborted) { setActiveCanvasEntry(next.entry); setActiveActionContext(next.actionContext); } })
+      .catch(() => { if (!controller.signal.aborted) setArtifactSaveError(tt("这份素材的权限未能刷新，请重新打开后再操作。")); });
+    return () => controller.abort();
+  }, [activeCanvasRevisionKey, activeActionContext]);
 
   const guideTab: CanvasTab | null = guide
     ? {
@@ -453,34 +500,6 @@ export function ResultCanvas({
     () => previewEntries.map((entry) => entry.id).join("|"),
     [previewEntries],
   );
-  const localMaterials = useMemo(
-    () => [
-      ...materials,
-      ...grouped.materials.flatMap((tab) => tab.materials || []),
-    ],
-    [materials, grouped.materials],
-  );
-  const materialPageEntries = useMemo(
-    () => [
-      ...grouped.materials
-        // The fixed slot already *is* Material Library. Turning a legacy
-        // “素材库” tab into an entry produced the reported library-inside-
-        // library card. Its actual materials are extracted above; the
-        // container tab itself must never become a card.
-        .filter(
-          (tab) =>
-            tab.role !== "container" &&
-            (tab.materials?.length || 0) === 0 &&
-            Boolean(tab.libraryItem),
-        )
-        .map((tab) => ({
-          ...legacyWorkspaceEntry(tab, { material: true }),
-          id: `material-page:${tab.id}`,
-          category: "本站精选",
-        })),
-    ],
-    [grouped.materials],
-  );
   const minePageEntries = useMemo(
     () =>
       grouped.mine
@@ -511,7 +530,7 @@ export function ResultCanvas({
     active,
     showTemplate,
     focusNonce,
-    externalAction,
+    externalAction: externalAction || legacyLocationAction,
     runtimeHydration,
     slotForId,
     callerIdForSlot,
@@ -525,13 +544,47 @@ export function ResultCanvas({
     selected, layer, setLayer, panelAction, select, panels,
     onHome: () => onChangeRef.current?.("home"),
   });
+  // Navigation hides a foreground editor instead of destroying its mounted session.
+  currentViewRef.current = view;
+  const previousNavigation = useRef({ view, nonce: externalAction?.nonce, focusNonce, active });
+  useEffect(() => {
+    const previous = previousNavigation.current;
+    previousNavigation.current = { view, nonce: externalAction?.nonce, focusNonce, active };
+    if (previous.view === view && previous.nonce === externalAction?.nonce && previous.focusNonce === focusNonce && previous.active === active) return;
+    setForegroundSuspended(view !== foregroundOriginRef.current || previous.nonce !== externalAction?.nonce);
+  }, [view, externalAction?.nonce, focusNonce, active]);
+  const legacyEntryRequest = useMemo<TaskWorkspaceOpenEntry | null>(() => bayRequest?.target && bayRequest.view === "materials" && !(legacyAssetLocation && bayRequest.nonce === legacyLocationAction?.nonce)
+    ? { nonce: bayRequest.nonce, ref: bayRequest.target, surface: "task", mode: bayRequest.intent === "edit" ? "edit" : "preview" }
+    : null, [bayRequest, legacyAssetLocation, legacyLocationAction]);
+  const latestEntryRequest = useRef<{ direct?: string; legacy?: string; item?: string; action?: string; view?: string; request: TaskWorkspaceOpenEntry | null }>({ request: null });
+  if (view !== latestEntryRequest.current.view) {
+    latestEntryRequest.current.view = view;
+    latestEntryRequest.current.request = null;
+  }
+  if (externalAction?.nonce !== latestEntryRequest.current.action) {
+    latestEntryRequest.current.action = externalAction?.nonce;
+    if (externalAction) latestEntryRequest.current.request = null;
+  }
+  if (bayRequest?.nonce !== latestEntryRequest.current.legacy) {
+    latestEntryRequest.current.legacy = bayRequest?.nonce;
+    latestEntryRequest.current.request = legacyEntryRequest;
+  }
+  if (openEntry?.nonce !== latestEntryRequest.current.direct) {
+    latestEntryRequest.current.direct = openEntry?.nonce;
+    if (openEntry) latestEntryRequest.current.request = openEntry;
+  }
+  if (openItem?.nonce !== latestEntryRequest.current.item) {
+    latestEntryRequest.current.item = openItem?.nonce;
+    if (openItem) latestEntryRequest.current.request = null;
+  }
+  const entryRequest = useWorkspaceEntryRequest(latestEntryRequest.current.request, openResolvedEntry);
   const bayBackRef = useRef<(() => void) | null>(null);
   const chatBackRef = useRef<(() => void) | null>(null);
   const handleBack = useCallback(() => {
-    const inner = view === "bay" ? bayBackRef.current : view === "leochat" ? chatBackRef.current : null;
+    const inner = view === "bay" ? (bayRequest?.view === "materials" ? null : bayBackRef.current) : view === "leochat" ? chatBackRef.current : null;
     if (inner) inner();
     else goHome();
-  }, [goHome, view]);
+  }, [goHome, view, bayRequest?.view]);
   const [bayVisited, setBayVisited] = useState(false);
   const [chatVisited, setChatVisited] = useState(false);
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
@@ -622,30 +675,7 @@ export function ResultCanvas({
         emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
       />
     ),
-    materials: (
-      <MaterialLibrary
-        materials={localMaterials}
-        featuredEntries={materialPageEntries}
-        accent={accent}
-        action={actionFor("materials")}
-        taskId={effectiveTaskId}
-        siteId={materialSiteId}
-        appId={materialAppId}
-        contextId={materialContextId}
-        functionId={materialContext?.functionId || ""}
-        onSeeAll={onSeeAllMaterials}
-        emptyCta={materialsEmptyCta}
-        onOpenItem={openCanvasItem}
-        materialActions={workbenchMaterials.actions}
-        onMaterialAction={workbenchMaterials.perform}
-        materialActionAvailable={workbenchMaterials.canPerform}
-        materialActionEvidence={workbenchMaterials.availability}
-        primaryMaterialAction={primaryMaterialAction}
-        draggableMaterials={Boolean(primaryMaterialAction)}
-        onMaterialDragStart={workbenchMaterials.beginMaterialDrag}
-        onMaterialDragEnd={workbenchMaterials.endMaterialDrag}
-      />
-    ),
+    materials: null, // Compatibility inputs are routed to LeoBay; there is no standalone mount.
     mine: (
       <div className="h-full min-h-0">
         <MyLibrary
@@ -670,37 +700,25 @@ export function ResultCanvas({
     browser: <div className="h-full min-h-0">{browserContent}</div>,
   };
 
-  const materialLibraryNode = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-hidden">{content.materials}</div>
-    </div>
-  );
   const myLibraryNode = (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="min-h-0 flex-1 overflow-hidden">{content.mine}</div>
     </div>
   );
-  materialLibraryStoreRef.current.node = materialLibraryNode;
   myLibraryStoreRef.current.node = myLibraryNode;
   useLayoutEffect(() => {
-    const stores = [materialLibraryStoreRef.current, myLibraryStoreRef.current];
+    const stores = [myLibraryStoreRef.current];
     stores.forEach((store) => {
       store.version += 1;
       store.listeners.forEach((listener) => listener());
     });
-  }, [materialLibraryNode, myLibraryNode]);
+  }, [myLibraryNode]);
 
   const registerLibraryPanel = workspacePane?.registerLibraryPanel;
   const unregisterLibraryPanel = workspacePane?.unregisterLibraryPanel;
   useLayoutEffect(() => {
     if (!registerLibraryPanel || !unregisterLibraryPanel) return;
     const ownerId = libraryPanelOwnerRef.current;
-    registerLibraryPanel("materials", {
-      ownerId,
-      id: "workspace-library:materials",
-      label: tt(WORKSPACE_SLOT_LABELS.materials),
-      content: <LiveWorkspaceNode store={materialLibraryStoreRef.current} />,
-    });
     registerLibraryPanel("mine", {
       ownerId,
       id: "workspace-library:mine",
@@ -708,7 +726,6 @@ export function ResultCanvas({
       content: <LiveWorkspaceNode store={myLibraryStoreRef.current} />,
     });
     return () => {
-      unregisterLibraryPanel("materials", ownerId);
       unregisterLibraryPanel("mine", ownerId);
     };
   }, [registerLibraryPanel, tt, unregisterLibraryPanel]);
@@ -760,7 +777,12 @@ export function ResultCanvas({
       : editorWorkbench;
   const viewerContent =
     activeCanvasEntry && activeCanvasMode === "preview" ? (
-      <WorkspaceLibrary
+      activeActionContext ? <AssetDetail entry={activeCanvasEntry} actionContext={activeActionContext} accent={accent} plain
+        onBack={() => { setActiveCanvasEntry(null); setActiveActionContext(undefined); }}
+        actions={<BayAssetActions entry={activeCanvasEntry} actionContext={activeActionContext}
+          onResolved={(next) => { setActiveCanvasEntry(next.entry); setActiveActionContext(next.actionContext); }}
+          onEdit={(entry) => openResolvedEntry({ entry, actionContext: activeActionContext }, "edit", bindEditorToTask)}
+          onUseInTask={onUseWorkspaceEntry} />} /> : <WorkspaceLibrary
         entries={
           previewEntries.some((entry) => entry.id === activeCanvasEntry.id)
             ? previewEntries.map((entry) =>
@@ -817,7 +839,8 @@ export function ResultCanvas({
     </div>
   ) : null;
   const foregroundContent = pluginContent || editorContent || viewerContent;
-  const foregroundVisible = Boolean(foregroundContent);
+  const foregroundVisible = Boolean(pluginContent) || (Boolean(editorContent || viewerContent) && !foregroundSuspended);
+  const openingEntry = entryRequest.status !== null;
   // 登记 workbenchOpen：右上角「模型组合」选择框据此让位，不再压在面板页签上。
   //   - 前台一露出来（编辑器 / 详情预览 / 插件模块）就登记；编辑器自己也会登记一份
   //     （AdvancedContentWorkbench），计数器语义下互不干扰，这里补的是详情预览与插件模块。
@@ -857,8 +880,11 @@ export function ResultCanvas({
         {panels.bay && bayVisited ? (
           <div data-workspace-panel="bay" data-workspace-panel-active={!foregroundVisible && view === "bay"}
                hidden={view !== "bay"} inert={view !== "bay" || undefined} className="h-full min-h-0 overflow-hidden">
-            <BayPanel siteKey={effectiveSiteId || "oceanleo"} active={!foregroundVisible && view === "bay"} request={bayRequest}
-                      onBackChange={(back) => { bayBackRef.current = back; }} onOpenConversation={openChat} />
+            {bayRequest?.view === "materials" ? <div className="h-full min-h-0 overflow-auto" data-workspace-bay-materials>
+              <BayAssetLibrary key={bayRequest.nonce} siteKey={materialSiteId} context={materialContext || { contextId: materialContextId, siteKey: materialSiteId, appId: materialAppId }}
+                filter={{ kind: "asset", q: bayRequest.query }} onEdit={(entry) => openResolvedEntry({ entry }, "edit", false)} onUseInTask={onUseWorkspaceEntry} />
+            </div> : <BayPanel siteKey={effectiveSiteId || "oceanleo"} active={!foregroundVisible && view === "bay"} request={bayRequest}
+                      onBackChange={(back) => { bayBackRef.current = back; }} onOpenConversation={openChat} />}
           </div>
         ) : null}
         {panels.leochat && chatVisited ? (
@@ -869,9 +895,16 @@ export function ResultCanvas({
           </div>
         ) : null}
       </div>
-      {foregroundVisible && (
+      {openingEntry && <div className="absolute inset-0 z-10 bg-white" data-workspace-entry-open={entryRequest.status}>
+        <CanvasEmpty title={entryRequest.status === "loading" ? "正在打开素材…" : "无法打开这份素材"}
+          description={entryRequest.status === "loading" ? "请稍候。" : entryRequest.reason}
+          action={<><button type="button" onClick={entryRequest.dismiss}>{tt("返回")}</button>{entryRequest.status === "error" && <button type="button" onClick={entryRequest.retry}>{tt("重试")}</button>}</>} />
+      </div>}
+      {foregroundContent && (
         <div
           data-result-canvas-foreground
+          hidden={!foregroundVisible || openingEntry}
+          inert={!foregroundVisible || openingEntry || undefined}
           className="absolute inset-0 min-h-0 overflow-hidden"
         >
           {foregroundContent}
@@ -888,10 +921,16 @@ export function ResultCanvas({
     </div>
   );
 
-  // Materials/My Library reuse these exact nodes when the fixed editor action
-  // bar opens them on the left. The right library itself never moves.
+  // My Library keeps its registered node for existing editor hosts. Material
+  // insertion drawers own their data/UI independently of this sidebar.
   useLayoutEffect(() => {
     if (!rightSlot) return;
+    if (foregroundSuspended && !activeCapability) {
+      rightSlot.setRightEditorHeader(false);
+      rightSlot.setRightFrameless(view === "home");
+      rightSlot.setRightLabel(view === "home" ? null : <WorkspaceViewHeader title={viewTitle} onBack={handleBack} />);
+      return () => { rightSlot.setRightLabel(null); rightSlot.setRightFrameless(false); };
+    }
     if (activeCapability) {
       rightSlot.setRightLabel(null);
       rightSlot.setRightEditorHeader(false);
@@ -924,6 +963,7 @@ export function ResultCanvas({
       rightSlot.setRightFrameless(false);
     };
   }, [
+    foregroundSuspended,
     activeCapability,
     activeCanvasEntry,
     activeCanvasMode,

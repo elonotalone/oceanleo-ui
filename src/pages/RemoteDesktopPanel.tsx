@@ -147,6 +147,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const panRef = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
   const [mediaNotice, setMediaNotice] = useState("");
   const [mediaReady, setMediaReady] = useState(false);
+  const mediaReadyRef = useRef(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const phaseRef = useRef<Phase>(phase);
   const frameRef = useRef(frame);
@@ -211,7 +212,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }, []);
 
   const canSend = useCallback(() => !handoffRef.current && !closedRef.current && !reconnectingRef.current && !viewOnlyRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
-    && (mediaModeRef.current !== "artc" || Boolean(mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
+    && (mediaModeRef.current !== "artc" || Boolean(mediaReadyRef.current && mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
 
   const pump = useCallback(async () => {
     const sessionId = sessionRef.current;
@@ -328,17 +329,21 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     mediaFrameGeometry.current = null;
     frameRef.current = null;
     setFrame(null);
+    mediaReadyRef.current = false;
     setMediaReady(false);
     setMediaNotice("已发出请求，等这台电脑显示画面…");
   }, [releaseInput]);
 
   const acceptMediaStatus = useCallback((status: RemoteMediaStatus | null) => {
-    const previous = mediaGeometryKey(mediaStatusRef.current);
+    const previous = mediaGeometryKey(mediaStatusRef.current) ?? mediaFrameGeometry.current;
     const next = mediaGeometryKey(status);
     mediaStatusRef.current = status;
     setMediaStatus(status);
-    if (mediaModeRef.current === "artc" && (!next || next !== previous)) invalidateMediaFrame();
-  }, [invalidateMediaFrame]);
+    if (mediaModeRef.current === "artc") {
+      if (next && next !== previous) invalidateMediaFrame();
+      else if (!next) { releaseInput(); mediaReadyRef.current = false; setMediaReady(false); setMediaNotice("已发出请求，等这台电脑显示画面…"); }
+    }
+  }, [invalidateMediaFrame, releaseInput]);
 
   const disconnect = useCallback(() => {
     if (closedRef.current) return;
@@ -373,6 +378,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     mediaModeRef.current = "legacy";
     mediaStatusRef.current = null;
     mediaFrameGeometry.current = null;
+    mediaReadyRef.current = false;
     setMediaMode("legacy"); setMediaReady(false); setMediaStatus(null); setDisplayId(undefined); setFit(true); setPanMode(false); setMediaNotice(""); setMessage("");
     viewOnlyRef.current = false; setAccess(null); setBilling(null); laneRef.current = null; setMediaDiagnostic(null);
     const acceptAccess = (value: RemoteDesktopAccess | null) => {
@@ -491,12 +497,13 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             setMessage("对方仅允许查看，输入没有发送。");
           },
         };
-        const adopt = (opened: RemoteDesktopApiResult<RemoteDesktopStream>): boolean => {
+        const adopt = (opened: RemoteDesktopApiResult<RemoteDesktopStream>, resuming = false): boolean => {
           if (abort.signal.aborted || closedRef.current) { opened.data?.close(); return true; }
           if (!opened.ok || !opened.data) return false;
           streamRef.current = opened.data; opened.data.attachDataChannel?.(laneRef.current);
           // Back on the same session: let go of anything held before the drop, first.
-          if (reconnectingRef.current) {
+          // openStream may deliver "active" synchronously before returning the replacement stream.
+          if (resuming || reconnectingRef.current) {
             opened.data.send({ kind: "release_all" });
             if (mediaFrameGeometry.current) opened.data.acknowledgeMediaFrame?.();
           }
@@ -525,7 +532,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             // Offline: wait for the browser's "online" (or the next backoff tick) before trying.
             if (typeof navigator === "undefined" || navigator.onLine !== false) {
               const opened = await client.openStream!(deviceId, sessionId, handlers, { signal: abort.signal, sequenceFloor: floor });
-              if (adopt(opened)) { reattaching = false; return; }
+              if (adopt(opened, true)) { reattaching = false; return; }
               if (!isNetworkFailure(opened.error)) { end(opened.error, opened.status); return; }
             }
             const left = recoveryWindow.current - (Date.now() - started);
@@ -669,7 +676,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }, [canSend, flushClick, releaseInput, send, sendText]);
 
   const point = (event: { clientX: number; clientY: number }, strict = true) => {
-    if (mediaModeRef.current === "artc" && (!mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return null;
+    if (mediaModeRef.current === "artc" && (!mediaReadyRef.current || !mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return null;
     const image = mediaModeRef.current === "artc" ? videoRef.current : imageRef.current, current = frameRef.current;
     if (!image || !current) return null;
     const rect = containedRect(image.getBoundingClientRect(), current.width, current.height);
@@ -843,8 +850,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
         /* D6: the controller's own OS cursor stays visible over the video; no remote cursor is drawn. */
         style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: panMode && !fit ? "grab" : "default", overflow: fit ? "hidden" : "auto" }}>
-        {mediaMode === "artc" && (active || phase === "connecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId}
-          fit={fit} width={frame?.width} height={frame?.height}
+        {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId}
+          fit={fit} width={frame?.width} height={frame?.height} showFrame={Boolean(frame)}
           onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
           onDiagnostic={setMediaDiagnostic}
           onFrame={(width, height) => {
@@ -857,11 +864,15 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             }
             if (mediaFrameGeometry.current !== geometry) streamRef.current?.acknowledgeMediaFrame?.();
             mediaFrameGeometry.current = geometry;
+            mediaReadyRef.current = true;
             setMediaReady(true);
+            setMediaNotice("");
           }}
           onState={(value, error, status) => {
-            if (value !== "playing") invalidateMediaFrame();
-            setMediaNotice(value === "playing" && mediaFrameGeometry.current ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
+            // Keep the last decoded picture and its geometry during a short media interruption.
+            // Input waits for a fresh frame; an SDK "playing" notification alone cannot enable it.
+            if (value !== "playing") { releaseInput(); mediaReadyRef.current = false; setMediaReady(false); }
+            setMediaNotice(value === "playing" && mediaReadyRef.current ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
             if (value === "error") { disconnect(); updatePhase(terminal(error)); setMessage(remoteDesktopErrorCopy(error, status)); revealToolbar(); }
           }}
           onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("「{name}」上的 OceanLeo 当前没有视频能力。"); }}
@@ -870,8 +881,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
           style={remoteFrameStyle(fit, frame.width, frame.height)} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
-        {reconnecting ? <div role="status" data-remote-reconnecting-notice style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090bcc", pointerEvents: "none" }}>{reconnectCopy}</div>
-          : mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", background: "#08090be8", pointerEvents: "none" }}>{tt(mediaNotice)}</div> : null}
+        {reconnecting || mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" data-remote-reconnecting-notice={reconnecting || undefined} data-remote-media-notice={!reconnecting || undefined}
+          style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>{reconnecting ? <>{tt("网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice)}</div> : null}
         <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />

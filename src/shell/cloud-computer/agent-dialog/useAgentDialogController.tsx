@@ -315,6 +315,13 @@ export function useAgentDialog({
   bindUploadsRef.current = bindUploadsToTaskSession;
   /** Managed threads: the bytes of each composer file (to upload or put again under the right session). */
   const uploadFilesRef = useRef(new Map<string, File>());
+  /** A chip keeps the same server identity through automatic and manual retries. */
+  const uploadIdsRef = useRef(new Map<string, string>());
+  const uploadControllersRef = useRef(new Map<string, AbortController>());
+  useEffect(() => () => {
+    for (const controller of uploadControllersRef.current.values()) controller.abort();
+    uploadControllersRef.current.clear();
+  }, []);
   /** Managed threads: the task session each composer file was put into the inbox under. */
   const uploadedForRef = useRef(new Map<string, string>());
   /** Before a send: every composer file uploaded (and, managed, under this send's task session). */
@@ -1540,6 +1547,7 @@ export function useAgentDialog({
     // composer with their session); only the oldest are forgotten.
     for (const id of [...uploadFilesRef.current.keys()].slice(0, Math.max(0, uploadFilesRef.current.size - 60))) {
       uploadFilesRef.current.delete(id);
+      uploadIdsRef.current.delete(id);
       uploadedForRef.current.delete(id);
     }
     setAttachments((current) => current.filter((item) => item.state === "error"));
@@ -2069,6 +2077,15 @@ export function useAgentDialog({
    * prompt of that same session may carry it).
    */
   const startUpload = useCallback((chip: DialogAttachment, file: File) => {
+    uploadControllersRef.current.get(chip.id)?.abort();
+    const controller = new AbortController();
+    uploadControllersRef.current.set(chip.id, controller);
+    // Also covers restored chips from a refused prompt.
+    let uploadId = uploadIdsRef.current.get(chip.id);
+    if (!uploadId) {
+      uploadId = crypto.randomUUID();
+      uploadIdsRef.current.set(chip.id, uploadId);
+    }
     const computerId = computerIdRef.current.trim();
     const bound = taskSessionRef.current || "";
     const put = computerApi.putComputerInbox;
@@ -2077,30 +2094,45 @@ export function useAgentDialog({
       settleWaiter = resolve;
     });
     inboxWaiters.current.set(chip.id, waiter);
+    const active = () => !controller.signal.aborted &&
+      uploadControllersRef.current.get(chip.id) === controller &&
+      attachmentsRef.current.some((item) => item.id === chip.id);
     const finish = (patch: Partial<DialogAttachment>) => {
+      if (!active()) return;
       const apply = (item: DialogAttachment) => (item.id === chip.id ? { ...item, ...patch } : item);
       attachmentsRef.current = attachmentsRef.current.map(apply);
       setAttachments((current) => current.map(apply));
     };
     const done = () => {
+      controller.signal.removeEventListener("abort", done);
+      if (uploadControllersRef.current.get(chip.id) === controller) uploadControllersRef.current.delete(chip.id);
       if (inboxWaiters.current.get(chip.id) === waiter) inboxWaiters.current.delete(chip.id);
       settleWaiter();
     };
+    controller.signal.addEventListener("abort", done, { once: true });
     finish({ state: "uploading", deferred: undefined, percent: 0, path: undefined, archive: undefined, error: undefined });
     // A briefly busy / reconnecting computer (409 node_busy, network drop) is tried again by
     // itself, a few times with a pause, before the failure is shown (F3 2026-11-02).
     const putWithRetry = async () => {
       for (let attempt = 1; ; attempt += 1) {
-        if (!attachmentsRef.current.some((item) => item.id === chip.id)) return null;
+        if (!active()) return null;
         try {
           return await put(computerId, file, (percent) => {
             finish({ percent });
-          }, bound ? { task_session_id: bound } : undefined);
+          }, { ...(bound ? { task_session_id: bound } : {}), upload_id: uploadId, signal: controller.signal });
         } catch (err) {
-          const kept = attachmentsRef.current.some((item) => item.id === chip.id);
-          if (!kept || attempt >= UPLOAD_TRIES || !isTransientUploadError(err)) throw err;
+          if (!active() || attempt >= UPLOAD_TRIES || !isTransientUploadError(err)) throw err;
           finish({ percent: 0 });
-          await new Promise((resolve) => setTimeout(resolve, uploadRetryDelay(attempt)));
+          await new Promise<void>((resolve) => {
+            const resume = () => {
+              clearTimeout(timer);
+              controller.signal.removeEventListener("abort", resume);
+              resolve();
+            };
+            const timer = setTimeout(resume, uploadRetryDelay(attempt));
+            controller.signal.addEventListener("abort", resume, { once: true });
+            if (controller.signal.aborted) resume();
+          });
         }
       }
     };
@@ -2114,7 +2146,7 @@ export function useAgentDialog({
     }
     void putWithRetry()
       .then((result) => {
-        if (!result) return;
+        if (!result || !active()) return;
         uploadedForRef.current.set(chip.id, bound);
         finish({
           state: "done",
@@ -2135,7 +2167,9 @@ export function useAgentDialog({
         finish({
           state: "error",
           // The readable reason (busy / unreachable / network) the composer says next to the chip.
-          error: uploadFailureReason(ttRef.current, err) || message || "upload failed",
+          error: err && typeof err === "object" && "code" in err && err.code === "client_upload_timeout"
+            ? ttRef.current("上传超时，请重试或移除文件。")
+            : uploadFailureReason(ttRef.current, err) || message || "upload failed",
         });
       })
       .finally(done);
@@ -2233,6 +2267,8 @@ export function useAgentDialog({
       try { URL.revokeObjectURL(gone.preview); } catch { /* already gone */ }
     }
     uploadFilesRef.current.delete(id);
+    uploadControllersRef.current.get(id)?.abort();
+    uploadIdsRef.current.delete(id);
     uploadedForRef.current.delete(id);
     attachmentsRef.current = attachmentsRef.current.filter((item) => item.id !== id);
     setAttachments((current) => current.filter((item) => item.id !== id));

@@ -713,7 +713,7 @@ for (const [label, attachProp] of [
       const original = imageFile("截图.png", 4096);
       await paste("textarea", [original]);
       assert.equal(batches.length, 0, "压缩还没完就交出去了");
-      assert.match(html(), /data-upload-tile="uploading"/, "压缩期间没有上传中方块");
+      assert.match(html(), /data-upload-tile="compressing"/, "压缩期间没有压缩中方块");
       assert.equal(/正在压缩图片/.test(html()), false, "不许再另起一行「正在压缩图片…」");
       delete globalThis.__compressGate;
       await act(async () => { release(); await Promise.resolve(); await Promise.resolve(); });

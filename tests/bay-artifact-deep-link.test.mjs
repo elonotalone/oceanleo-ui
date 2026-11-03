@@ -44,12 +44,12 @@ test("「在素材库中查看」生成的成品链接能被素材栏读回同�
   assert.deepEqual(target, { artifactId: "a1", revisionId: "r2" });
 });
 
-test("素材栏挂着成品链接的打开件；查看器按需加载、不进首包", () => {
+test("素材栏深链使用共享页内详情、服务端解析和购买动作；不再建弹窗", () => {
   const library = read("../src/shell/bay/asset/BayAssetLibrary.tsx");
   assert.match(library, /<BayArtifactDeepLink /);
   const source = read("../src/shell/bay/asset/BayArtifactDeepLink.tsx");
-  assert.match(source, /lazy\(\(\) => import\("\.\.\/\.\.\/library-viewers"\)/);
-  assert.doesNotMatch(source, /^import .*library-viewers/m);
-  assert.match(source, /getArtifactItem\(target\.artifactId, target\.revisionId/);
-  assert.match(source, /getCurrentArtifactItem\(target\.artifactId/);
+  assert.match(source, /<AssetDetail /);
+  assert.match(source, /<BayAssetActions /);
+  assert.match(source, /resolveAssetDetail/);
+  assert.doesNotMatch(source, /createPortal|fixed inset|document.body.style.overflow/);
 });

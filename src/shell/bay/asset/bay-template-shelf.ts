@@ -7,10 +7,12 @@
 import { assetPreviewUrl, assetThumbUrl } from "../../../lib/asset-thumb";
 import { listMyArtifacts } from "../../artifact-client";
 import type { ArtifactType } from "../../artifact-contract";
+import { artifactEntry } from "../../material-library-controller";
 import type { LibraryItem } from "../../library-data";
 import {
   listTemplateMaterials,
   templateMaterialEntryId,
+  templateMaterialEntry,
   type TemplateMaterialListing,
 } from "../../material-library-template-source";
 import {
@@ -25,6 +27,21 @@ import {
   workspaceAppHref,
 } from "../../workspace-route";
 import type { BayAsset, BayAssetLicense, BayAssetType } from "./library-client";
+
+import {
+  mergeBayOfficialAssets,
+  withOfficialCatalog,
+  type BayOfficialAsset,
+  type BayOfficialSource,
+} from "./catalog/official-catalog";
+import {
+  bayOfficialSiteKey,
+  listBayTypedMaterials,
+  type BayOfficialScope,
+  type BayTypedMaterial,
+} from "./catalog/typed-materials";
+export type { BayOfficialAsset, BayOfficialIdentity, BayOfficialSource } from "./catalog/official-catalog";
+export type { BayOfficialScope } from "./catalog/typed-materials";
 
 export const OFFICIAL_TEMPLATE_CATEGORY = "official-templates";
 export const BAY_OFFICIAL_PREVIEW_COUNT = 4;
@@ -50,11 +67,12 @@ const MINE_LICENSE: BayAssetLicense = {
   attribution_text: "",
 };
 
-/** Bay 类型 → 官方模板 artifactType。图片不并复合海报；贴纸/字体/Prompt 只走原件。 */
+/** Bay 类型 → 官方模板 artifactType。单文件图片不并复合海报；贴纸/字体/Prompt 只走原件。 */
 export const BAY_TEMPLATE_ARTIFACT_TYPE: Partial<
   Record<BayAssetType, ArtifactType>
 > = {
   website: "website",
+  image: "single_file_image",
   ppt: "deck",
   document: "document",
   poster: "composite_image",
@@ -199,10 +217,10 @@ function appIdFromLibraryItem(item: LibraryItem): string {
 export function templateMaterialToBayAsset(
   material: TemplateMaterialListing,
   bayType: BayAssetType,
-): BayAsset {
+): BayOfficialAsset {
   const preview = assetPreviewUrl(material.previewKey);
   const thumb = assetThumbUrl(material.previewKey) || preview;
-  return {
+  return withOfficialCatalog({
     id: templateMaterialEntryId(material),
     source: "oceanleo",
     type: bayType,
@@ -225,7 +243,17 @@ export function templateMaterialToBayAsset(
       material.siteKey,
     ),
     shelfKind: "official",
-  };
+  }, {
+    source: "template-materials",
+    catalogId: material.id,
+    artifactId: material.artifactId,
+    revisionId: null,
+    artifactType: material.artifactType,
+    siteKey: material.siteKey,
+    appId: material.appId,
+    context: null,
+    entry: templateMaterialEntry(material),
+  });
 }
 
 export function libraryItemToBayAsset(
@@ -279,39 +307,86 @@ function matchesQuery(asset: BayAsset, q: string): boolean {
   return hay.includes(q);
 }
 
-export async function listBayOfficialTemplates(options: {
+/** Public typed materials keep their projection, revision and permissions intact. */
+export function typedMaterialToBayAsset(
+  material: BayTypedMaterial,
+  bayType: BayAssetType,
+): BayOfficialAsset {
+  const item = material.item;
+  const artifact = item.artifact!;
+  const appId = material.context?.appId || artifact.owner.originAppId ||
+    appIdFromLibraryItem(item) || DEFAULT_APP_FOR_BAY_TYPE[bayType] || "";
+  const entry = artifactEntry(item);
+  return withOfficialCatalog({
+    ...libraryItemToBayAsset(item, bayType),
+    author: "OceanLeo",
+    license: OFFICIAL_LICENSE,
+    category: OFFICIAL_TEMPLATE_CATEGORY,
+    tags: entry.keywords,
+    openHref: officialTemplatePreviewHref(
+      appId,
+      `artifact:${artifact.artifactId}:${artifact.revisionId}`,
+      material.context?.siteKey || artifact.owner.originSiteKey || "",
+    ),
+    shelfKind: "official",
+  }, {
+    source: material.source,
+    catalogId: null,
+    artifactId: artifact.artifactId,
+    revisionId: artifact.revisionId,
+    artifactType: artifact.artifactType,
+    siteKey: material.context?.siteKey || artifact.owner.originSiteKey || "",
+    appId,
+    context: material.context,
+    entry,
+  });
+}
+
+export async function listBayOfficialTemplates(options: BayOfficialScope & {
   type: BayAssetType;
   q?: string;
   limit?: number;
   offset?: number;
   signal?: AbortSignal;
-}): Promise<{ items: BayAsset[]; total: number; hasMore: boolean }> {
+}): Promise<{
+  items: BayOfficialAsset[]; total: number; hasMore: boolean;
+  unavailableSources: BayOfficialSource[];
+}> {
   const artifactType = templateArtifactTypeForBay(options.type);
-  if (!artifactType) return { items: [], total: 0, hasMore: false };
+  if (!artifactType) return { items: [], total: 0, hasMore: false, unavailableSources: [] };
+  const siteKey = bayOfficialSiteKey(options);
   const q = (options.q || "").trim().toLowerCase();
-  // Do not pass limit/offset to the catalog. Until the gateway honors
-  // artifactType, a server page is a mixed-type window and filtering it
-  // looks like an empty shelf. One unpaged fetch is cached; we slice here.
-  const result = await listTemplateMaterials({
-    artifactType,
-    signal: options.signal,
-  });
-  if (!result.ok) {
-    throw new Error(result.error || "官方成品暂时无法加载。");
-  }
-  const materials = result.data || [];
-  let items = materials.map((material) =>
-    templateMaterialToBayAsset(material, options.type),
-  );
+  // Fetch all sources before slicing: a catalog-only page can hide typed materials.
+  // The global call remains compatible; wave 3 supplies siteKey/context for both old tabs.
+  const [result, typed] = await Promise.all([
+    listTemplateMaterials({
+      artifactType,
+      siteKey: siteKey || undefined,
+      appId: options.level === "primary" && options.context?.appId !== "default"
+        ? options.context?.appId : undefined,
+      signal: options.signal,
+    }),
+    listBayTypedMaterials({ ...options, artifactType }),
+  ]);
+  if (!result.ok) throw new Error(result.error || "官方成品暂时无法加载。");
+  const templates = (result.data || []).filter((material) =>
+    material.artifactType === artifactType && (!siteKey || material.siteKey === siteKey) &&
+    (options.level !== "primary" || options.context?.appId === "default" ||
+      material.appId === options.context?.appId)
+  ).map((material) => templateMaterialToBayAsset(material, options.type));
+  let items = mergeBayOfficialAssets([
+    templates,
+    typed.items.map((material) => typedMaterialToBayAsset(material, options.type)),
+  ], siteKey);
   if (q) items = items.filter((item) => matchesQuery(item, q));
   const total = items.length;
   const offset = Math.max(0, options.offset ?? 0);
   const limit = options.limit;
-  const page = limit != null ? items.slice(offset, offset + limit) : items;
+  const page = limit != null ? items.slice(offset, offset + limit) : items.slice(offset);
   return {
-    items: page,
-    total,
+    items: page, total,
     hasMore: limit != null && offset + page.length < total,
+    unavailableSources: typed.unavailableSources,
   };
 }
 

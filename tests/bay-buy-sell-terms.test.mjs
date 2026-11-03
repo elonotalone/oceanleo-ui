@@ -123,6 +123,7 @@ const peopleStub = dataModule(`
 `);
 const domainStub = dataModule(`
   export const CONFIGURED_DOMAIN_FAMILY = "com";
+  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return "com"; }
   export function currentDomainProfile(){ return { portalOrigin: "https://oceanleo.test/" }; }
   export function domainProfileForHost(){ return { portalOrigin: "https://oceanleo.test/" }; }

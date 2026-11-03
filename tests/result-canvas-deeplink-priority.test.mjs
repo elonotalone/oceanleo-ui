@@ -1,3 +1,4 @@
+import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 // ============================================================================
 // W2 —— 「预览&编辑」深链 vs 会话恢复的**优先级**（合同 D2 / 问题 2）
 // ----------------------------------------------------------------------------
@@ -89,6 +90,7 @@ const artifactClientStub = dataModule(
 );
 
 const OVERRIDES = {
+  ...W4_SIDEBAR_STUBS,
   "../i18n/ui/useUI": uiStub,
   "./SplitWorkspace": splitStub,
   "./guide-context": guideStub,
@@ -245,7 +247,7 @@ function activeSlot(container) {
   const active = container.querySelector(
     '[data-workspace-slot-panel][data-workspace-slot-active="true"]',
   );
-  return active?.getAttribute("data-workspace-slot-panel") || "";
+  return active?.getAttribute("data-workspace-slot-panel") || container.querySelector("[data-workspace-view]")?.getAttribute("data-workspace-view") || "";
 }
 
 /**
@@ -332,11 +334,11 @@ test("带深链进入：右栏停在素材库，且晚到的会话快照不得�
     intent: "open",
   });
 
-  assert.equal(afterDeepLink, "materials", "深链当帧就该切到素材库");
+  assert.equal(afterDeepLink, "bay", "legacy material links land in LeoBay");
   // 本条就是问题 2 的第二个成因：修复前这里会变成 "mine"（快照里的旧栏位）。
   assert.equal(
     afterRestore,
-    "materials",
+    "bay",
     "会话恢复不得覆盖用户此刻明确请求的深链落点",
   );
   // 落点还要能存活到下一次保存：否则用户一离开就被写回旧栏位，下次进来又跑偏。
@@ -418,4 +420,11 @@ test("普通 receipt 派发的栏位同样不该被晚到的快照覆盖", async
   });
   assert.equal(afterAction, "browser");
   assert.equal(afterRestore, "browser");
+});
+
+test("W4 legacy material preview dispatcher carries a historical revision into LeoBay", async () => {
+  const { dispatched, afterDeepLink, afterRestore } = await runTimeline({ search: `${previewSearch}&revisionId=historical-r1`, restoredRightTab: "mine" });
+  assert.equal(dispatched[0].action.revisionId, "historical-r1");
+  assert.equal(afterDeepLink, "bay");
+  assert.equal(afterRestore, "bay");
 });

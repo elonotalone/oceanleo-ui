@@ -83,7 +83,6 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { CreateWebsiteEntry } from "./website-platform/create-website-entry";
 
 const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
@@ -1856,34 +1855,6 @@ export function MyLibrary({
     void handleUpload(retryableUploadFiles, true);
   }, [handleUpload, retryableUploadFiles]);
 
-  const handleWebsiteCreated = useCallback(
-    (item: LibraryItem) => {
-      setOwnedItems((current) =>
-        dedupeDurableItems([
-          item,
-          ...current.filter(
-            (entry) => libraryItemIdentityKey(entry) !== libraryItemIdentityKey(item),
-          ),
-        ]),
-      );
-      if (typeof window !== "undefined") {
-        window.dispatchEvent(
-          new CustomEvent(ARTIFACT_LIBRARY_CHANGE_EVENT, {
-            detail: {
-              action: "create-website",
-              artifactId: item.artifactId,
-              revisionId: item.revisionId,
-              item,
-            },
-          }),
-        );
-      }
-      if (onOpenItem) onOpenItem(item);
-      else setStandaloneEditorItem(item);
-    },
-    [onOpenItem],
-  );
-
   const orderedItems = useMemo(
     () => sortLibraryItems(items, librarySort),
     [items, librarySort],
@@ -1942,10 +1913,6 @@ export function MyLibrary({
   const failureCopy = myLibraryFailure(failureStatus);
   const toolbar = (
     <div className="flex shrink-0 flex-wrap items-center gap-2">
-      <CreateWebsiteEntry
-        disabled={loading || authRequired || failed || !ownerPrincipalId}
-        onCreated={handleWebsiteCreated}
-      />
       <label
         className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
           uploading || loading || authRequired || failed || !ownerPrincipalId

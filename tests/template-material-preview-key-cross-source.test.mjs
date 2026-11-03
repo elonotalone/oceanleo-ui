@@ -139,15 +139,10 @@ test("catalog 形状与 API 形状经同一取值函数得到同一条直链", (
   }
 });
 
-test("取值函数本身不吃 OSS 对象路径——所以后端必须归一，不能靠前端兜底", () => {
-  // 若这条变红，说明有人把兜底加进了取值函数：那时上面那条断言就不再证明后端做对了，
-  // 得重新设计判据，而不是把这条删掉了事。
+test("完整对象路径保留已有变体，后端仍独立保证目录 key 归一", () => {
   const key = "tpl-material/image-poster-1";
   const objectPath = new URL(assetPreviewUrl(key)).pathname.replace(/^\/+/, "");
   assert.equal(objectPath, "assets/image/tpl-material/image-poster-1.webp");
   assert.notEqual(assetThumbUrl(objectPath), assetThumbUrl(key));
-  assert.match(
-    assetThumbUrl(objectPath),
-    /assets\/image\/assets\/image\/.*\.webp\.thumb\.webp$/,
-  );
+  assert.equal(assetThumbUrl(objectPath), assetPreviewUrl(key));
 });

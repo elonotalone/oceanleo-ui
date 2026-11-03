@@ -40,7 +40,7 @@ export function isLibraryDeepLinkSearch(
 ): boolean {
   const params = paramsOf(search);
   return (
-    params.get(LIBRARY_TAB_QUERY_KEY) === LIBRARY_TAB_VALUE ||
+    (params.get(LIBRARY_TAB_QUERY_KEY) === LIBRARY_TAB_VALUE || params.get(LIBRARY_TAB_QUERY_KEY) === "materials") ||
     params.has(LIBRARY_ITEM_QUERY_KEY)
   );
 }

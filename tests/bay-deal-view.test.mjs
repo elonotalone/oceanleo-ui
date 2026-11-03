@@ -424,8 +424,9 @@ test("talent-api.ts 原有导出一个不少", async () => {
   const mod = await import(
     await compileModule("src/shell/messages/talent/talent-api.ts", {
       "../../../lib/im/client": dataModule("export async function imFetch(){ throw new Error('stub'); }"),
-      // talent-api.ts 现在只问「是不是境内」（会话链接改成站内 /bay，见 talentThreadUrl）。
-      "../../../contracts/domain-family": dataModule('export function currentDomainFamily(){ return "com"; }'),
+      // Trade links use the same feature contract as the Bay shell.
+      "../../../contracts/domain-family": dataModule(`export function currentDomainFamily(){ return "com"; }
+        export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};`),
     })
   );
   for (const name of runtime) assert.ok(name in mod, `talent-api.ts 少了导出 ${name}`);

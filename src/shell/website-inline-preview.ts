@@ -316,7 +316,7 @@ export const WEBSITE_VIEWER_COPY: Record<WebsiteStaticNoticeReason, string> = {
   "script-bootstrapped":
     "这是一份要在浏览器里跑起来才成型的网站：页面结构由它自带的脚本在打开时现画。素材预览通道按平台隔离规则不执行脚本，所以这里给出它的封面与页面清单。",
   "cover-image-only":
-    "这一件在素材库里只存了一张封面图，没有随附可打开的页面文件。",
+    "当前预览文件是封面图，不能据此判断网站源码是否存在。",
   "opaque-bytes":
     "这一件存的是打包后的网站源码，不是可以直接打开的网页；要看到页面需要先把它构建出来。",
   "unreadable-bytes":
@@ -325,6 +325,22 @@ export const WEBSITE_VIEWER_COPY: Record<WebsiteStaticNoticeReason, string> = {
     "这一件在素材库里没有登记文件类型，内容也没能读回来核对；在确认它是一份能直接打开的网页之前，预览通道不会把它的内容放上屏幕。",
   "no-body": "这一件在素材库里没有可打开的文件。",
 };
+
+/** UC-1: only the isolated content domain may execute a resolved website preview. */
+export function isolatedWebsitePreviewUrl(value: unknown): string {
+  if (typeof value !== "string") return "";
+  try {
+    const url = new URL(value);
+    if (
+      url.protocol !== "https:" ||
+      !url.hostname.endsWith(".oceanleo.app") ||
+      url.username || url.password || url.port
+    ) return "";
+    return url.href;
+  } catch {
+    return "";
+  }
+}
 
 /**
  * 超限那一档的话要**说清楚是这一件太大**，而不是含糊地说"读不回来"：

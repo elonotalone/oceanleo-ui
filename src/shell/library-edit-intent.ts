@@ -64,6 +64,7 @@ export type LibraryPreviewSurface = "materials" | "mine";
 /** 合同 §3.1：库只读预览的意图形状，W3 生成链接、W5 复用。 */
 export interface LibraryPreviewIntent {
   artifactId: string;
+  revisionId?: string;
   mode: "preview";
   /**
    * 落点栏位；**缺省即 `mine`**。
@@ -147,10 +148,12 @@ export function libraryPreviewIntentFromSearch(
   if (!surface) return null;
   const artifactId = (params.get("item") || "").trim();
   if (!artifactId) return null;
+  const revisionId = (params.get("revisionId") || params.get("revision") || "").trim();
+  const pin = revisionId ? { revisionId } : {};
   // 缺省落点不写进意图，这样 `?tab=library` 解析出来的对象与本字段存在之前逐字相同。
   return surface === DEFAULT_LIBRARY_PREVIEW_SURFACE
-    ? { artifactId, mode: "preview" }
-    : { artifactId, mode: "preview", surface };
+    ? { artifactId, mode: "preview", ...pin }
+    : { artifactId, mode: "preview", surface, ...pin };
 }
 
 /**
@@ -175,6 +178,7 @@ export function libraryPreviewIntentAction(
         ? "materials"
         : DEFAULT_LIBRARY_PREVIEW_SURFACE,
     itemId: artifactId,
+    ...(intent.revisionId ? { revisionId: intent.revisionId } : {}),
     intent: "open",
   };
 }

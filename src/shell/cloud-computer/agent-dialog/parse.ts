@@ -17,8 +17,8 @@ import type {
   ToolLocation,
   ToolStatus,
   WsProgram,
-} from "./types";
-import { WS_PROGRAMS } from "./types";
+} from "../../../native-agent-core/index";
+import { WS_PROGRAMS } from "../../../native-agent-core/index";
 export { userAttachments as parseUserAttachments } from "./message-attachments";
 
 export function asRecord(value: unknown): Record<string, unknown> | null {

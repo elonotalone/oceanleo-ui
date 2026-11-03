@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { getClientHostConfig, onClientHostConfigChange, type ClientLocalTask } from "../contracts/client-host-config";
 import { useUI } from "../i18n/ui/useUI";
+import { RdServiceStatus } from "./RdServiceStatus";
 
 export function getLocalWorkspace() {
   const config = getClientHostConfig();
@@ -95,5 +96,6 @@ export function LocalComputerSettings({ onRequestClose }: { onRequestClose?: () 
     if (!target.current || !workspace) return;
     return workspace.mountSettings(target.current, { onRequestClose });
   }, [workspace, onRequestClose]);
-  return <div ref={target} data-local-computer-settings />;
+  if (!workspace) return null;
+  return <div className="space-y-6"><RdServiceStatus /><div ref={target} data-local-computer-settings /></div>;
 }

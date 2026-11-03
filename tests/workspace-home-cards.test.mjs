@@ -1,3 +1,4 @@
+import { W4_SIDEBAR_STUBS } from "./helpers/w4-sidebar-stubs.mjs";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -142,8 +143,9 @@ const surfaceModelStubUrl = dataModule(`
   }
 `);
 const bayStateStubUrl = dataModule(`
+  import { domainFamilyFeatures } from 'file:///root/projects/oceanleo-ui/src/contracts/domain-family.ts';
   export function useBayEnabled() {
-    return globalThis.__w1BayEnabled !== false;
+    return domainFamilyFeatures(globalThis.__w4Family || "com").bay && globalThis.__w1BayEnabled !== false;
   }
 `);
 const bayPanelStubUrl = dataModule(`
@@ -185,11 +187,13 @@ const bayIconsStubUrl = dataModule(`
 `);
 
 const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
+    ...W4_SIDEBAR_STUBS,
   react: reactUrl,
   "../i18n/ui/useUI": uiStubUrl,
   "./SplitWorkspace": splitStubUrl,
   "./guide-context": guideStubUrl,
   "./NavigatorGuide": panelStubUrl,
+  ...W4_SIDEBAR_STUBS,
   "./MaterialLibrary": panelStubUrl,
   "./MyLibrary": panelStubUrl,
   "./CloudBrowserPanel": panelStubUrl,
@@ -263,7 +267,6 @@ test("active=home shows visible slot cards then bay and leochat; showTemplate fa
     assert.deepEqual(cardIds(withTemplate.container), [
       "template",
       "preview",
-      "materials",
       "mine",
       "browser",
       "bay",
@@ -281,7 +284,6 @@ test("active=home shows visible slot cards then bay and leochat; showTemplate fa
   try {
     assert.deepEqual(cardIds(withoutTemplate.container), [
       "preview",
-      "materials",
       "mine",
       "browser",
       "bay",
@@ -301,15 +303,15 @@ test("opening a slot card shows that panel and back returns home", async () => {
     onChange: (id) => changes.push(id),
   });
   try {
-    await click(mounted.container.querySelector('[data-workspace-card="materials"]'));
-    const panel = mounted.container.querySelector('[data-workspace-slot-panel="materials"]');
-    assert.equal(panel.getAttribute("data-workspace-slot-active"), "true");
+    await click(mounted.container.querySelector('[data-workspace-card="bay"]'));
+    const panel = mounted.container.querySelector('[data-workspace-panel="bay"]');
+    assert.equal(panel.getAttribute("data-workspace-panel-active"), "true");
     const header = mounted.container.querySelector("[data-workspace-frame-header]");
     assert.ok(header);
     assert.ok(header.querySelector("[data-workspace-back]"));
     assert.equal(
       header.querySelector("[data-workspace-view-title]")?.textContent,
-      "素材库",
+      "LeoBay",
     );
     await click(header.querySelector("[data-workspace-back]"));
     assert.equal(
@@ -434,11 +436,43 @@ test("slot panels stay mounted on the home cards", async () => {
   });
   try {
     const panels = mounted.container.querySelectorAll("[data-workspace-slot-panel]");
-    assert.equal(panels.length, 5);
+    assert.equal(panels.length, 4);
     for (const panel of panels) {
       assert.equal(panel.getAttribute("data-workspace-slot-active"), "false");
     }
   } finally {
     await mounted.unmount();
   }
+});
+
+
+test("W4 CN has one LeoBay card that describes materials and no separate Asset library", async () => {
+  globalThis.__w4Family = 'cn';
+  globalThis.__w1BayEnabled = true;
+  const mounted = await createMounted({ tabs: [], active: 'home', showTemplate: false, siteId: 'oceanleo' });
+  try {
+    assert.equal(mounted.container.querySelectorAll('[data-workspace-card="bay"]').length, 1);
+    assert.equal(mounted.container.querySelector('[data-workspace-card="materials"]'), null);
+    assert.equal(mounted.container.querySelector('[data-workspace-slot-panel="materials"]'), null);
+    assert.match(mounted.container.querySelector('[data-workspace-card="bay"]').textContent, /找素材/);
+    await click(mounted.container.querySelector('[data-workspace-card="bay"]'));
+    assert.equal(mounted.container.querySelector('[data-workspace-panel="bay"]').hidden, false);
+  } finally { await mounted.unmount(); delete globalThis.__w4Family; }
+});
+
+
+test("W4 old platform material URL lands in LeoBay and leaves its detail/back routing to the shared Bay shelf", async () => {
+  const previous = window.location.href;
+  window.history.replaceState({}, '', '/workspace?tab=materials&asset=library%3Aplatform-id&q=poster');
+  globalThis.__w1BayEnabled = true;
+  const context = { contextId: 'server-context', siteKey: 'image', appId: 'poster', functionId: 'make' };
+  const mounted = await createMounted({ tabs: [], active: 'home', siteId: 'image', materialContext: context });
+  try {
+    assert.equal(mounted.container.querySelector('[data-workspace-view]').getAttribute('data-workspace-view'), 'bay');
+    assert.ok(mounted.container.querySelector('[data-workspace-bay-materials] [data-bay-material-shelf]'));
+    assert.equal(globalThis.__w4Shelf.context, context);
+    assert.equal(globalThis.__w4Shelf.filter.q, 'poster');
+    assert.equal(mounted.container.querySelector('[data-workspace-entry-open]'), null, 'no second resolver/detail over the shelf URL route');
+    assert.equal(new URLSearchParams(window.location.search).get('asset'), 'library:platform-id');
+  } finally { await mounted.unmount(); window.history.replaceState({}, '', previous); }
 });

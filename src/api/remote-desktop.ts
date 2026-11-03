@@ -99,7 +99,14 @@ export interface RemoteDesktopStatus {
   availability?: DeviceAvailability;
   access?: RemoteDesktopAccess | null;
   billing?: RemoteDesktopBilling | null;
+  /** 2026-11-03: last heartbeat the gateway saw (ISO), for "last seen" copy. */
+  last_seen_at?: string | null;
+  /** 2026-11-03: why no session can start right now (allowlisted gateway reasons only). */
+  reason?: RemoteDesktopStatusReason | null;
 }
+
+export type RemoteDesktopStatusReason = "remote_desktop_device_reconnecting" | "remote_desktop_unavailable" | "signed_out";
+const STATUS_REASONS: readonly RemoteDesktopStatusReason[] = ["remote_desktop_device_reconnecting", "remote_desktop_unavailable", "signed_out"];
 
 export interface RemoteDesktopSession {
   session_id: string;
@@ -677,6 +684,8 @@ function parseStatus(data: unknown): RemoteDesktopStatus | null {
     ...(["online", "signed_out", "offline"].includes(String(data.availability)) ? { availability: data.availability as DeviceAvailability } : {}),
     ...("access" in data ? { access: parseRemoteAccess(data.access) } : {}),
     ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
+    ...("last_seen_at" in data ? { last_seen_at: typeof data.last_seen_at === "string" && !Number.isNaN(Date.parse(data.last_seen_at)) ? data.last_seen_at : null } : {}),
+    ...("reason" in data ? { reason: STATUS_REASONS.includes(data.reason as RemoteDesktopStatusReason) ? data.reason as RemoteDesktopStatusReason : null } : {}),
   };
 }
 

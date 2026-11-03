@@ -116,56 +116,57 @@ describe("W13c attachment hit areas and pending preview", () => {
     expect(Boolean(app.container.querySelector('[data-upload-tile]'))).toBe(false);
   });
 
-  test.each([['fixture.png','image/png'],['fixture.PNG','']])("pending %s opens same task image viewer using original File", async (name,type) => {
+  // 2026-11-03 W2: the operator disallowed preview during compression/upload.
+  // The former local-preview/handoff tests deliberately required that old behavior.
+  test.each([['fixture.png','image/png'],['fixture.PNG','']])("compressing %s cannot open a viewer and releases its thumbnail", async (name,type) => {
     const original = file(name,type), shown = [], library = []; let open;
     function Host() {
       open = useTaskAttachmentOpener('oceanleo',target=>shown.push(target),action=>library.push(action));
       return h(AttachmentStrip,{attachments:[],pendingFiles:[original],onOpenAttachment:open});
     }
-    const app = await mount(h(Host)); const thumb = app.container.querySelector('img').getAttribute('src');
-    await click(face(app)); expect(shown).toHaveLength(1); expect(library).toEqual([]);
-    const target = shown[0]; expect([target.mode,target.item.kind]).toEqual(['preview','image']);
-    expect(urls.get(target.item.url)).toBe(original);
-    expect(target.item.url === thumb).toBe(false);
+    const app = await mount(h(Host));
+    expect(Boolean(app.container.querySelector('[data-upload-tile="compressing"]'))).toBe(true);
+    expect(face(app)).toBe(null);
+    expect(await open({id:'pending:blob:forged',name,type,previewUrl:'blob:forged'})).toBe(false);
+    expect(shown).toEqual([]); expect(library).toEqual([]);
     await app.close(); expect(urls.size).toBe(0);
   });
 
-  test("pending handoff keeps viewer URL alive during gaps and switches to exact formal attachment", async () => {
+  test("compression handoff never opens automatically; a ready tile opens by its stable identity", async () => {
     const original = file(), opened = [];
     const render = (attachments,pendingFiles) => h(AttachmentStrip,{attachments,pendingFiles,onOpenAttachment:att=>opened.push(att)});
-    const app = await mount(render([], [original])); await click(face(app));
-    const url = opened[0].url;
-    await app.render(render([], [])); expect(urls.has(url)).toBe(true);
-    const ready = {id:'ready',name:'fixture.jpg',mime:'image/jpeg',previewUrl:'blob:uploaded',uploading:true};
-    await app.render(render([ready], [])); expect(opened).toHaveLength(2);
-    expect(opened[1] === ready).toBe(true); expect(urls.has(url)).toBe(false);
-    await click(face(app)); expect(opened[2] === ready).toBe(true);
-    await app.close(); expect(urls.size).toBe(0);
+    const app = await mount(render([], [original]));
+    expect(face(app)).toBe(null);
+    const uploading = {id:'stable-chip',name:'fixture.jpg',mime:'image/jpeg',previewUrl:'blob:uploaded',uploading:true};
+    await app.render(render([uploading], []));
+    expect(face(app)).toBe(null); expect(opened).toEqual([]); expect(urls.size).toBe(0);
+    const ready = {...uploading, uploading:false};
+    await app.render(render([ready], []));
+    expect(opened).toEqual([]);
+    await click(face(app)); expect(opened).toEqual([ready]);
   });
 
-  test("same-name existing or ambiguous attachments never replace the chosen pending image", async () => {
+  test("same-name compression and upload chips never pick a preview by filename", async () => {
     const original = file(), opened = [];
     const old = {id:'old',name:'fixture.png',mime:'image/png',url:'blob:old'};
     const render = (attachments,pendingFiles) => h(AttachmentStrip,{attachments,pendingFiles,onOpenAttachment:att=>opened.push(att)});
     const app = await mount(render([old],[original]));
-    await click(app.container.querySelectorAll('[data-upload-tile] > button')[1]);
-    const url = opened[0].url;
-    await app.render(render([old],[])); expect(opened).toHaveLength(1); expect(urls.has(url)).toBe(true);
-    await app.render(render([old,{...old,id:'new1'},{...old,id:'new2'}],[]));
-    expect(opened).toHaveLength(1); expect(urls.has(url)).toBe(true);
-    await app.close(); expect(urls.size).toBe(0);
+    expect(app.container.querySelector('[data-upload-tile="compressing"] button')).toBe(null);
+    await app.render(render([old,{...old,id:'new1',uploading:true},{...old,id:'new2',uploading:true}],[]));
+    expect(opened).toEqual([]); expect(urls.size).toBe(0);
+    await click(face(app)); expect(opened).toEqual([old]);
   });
 
-  test("local shared viewer stays open after pending unmount and closes cleanly", async () => {
-    const original = file();
-    const app = await mount(h(AttachmentStrip,{attachments:[],pendingFiles:[original]}));
-    await click(face(app)); const url = app.container.querySelector('[data-local-viewer] img').getAttribute('src');
-    expect(urls.get(url)).toBe(original);
-    await app.render(h(AttachmentStrip,{attachments:[],pendingFiles:[]}));
+  test("local shared viewer cannot open while compressing; ready files retain the existing viewer", async () => {
+    const app = await mount(h(AttachmentStrip,{attachments:[],pendingFiles:[file()]}));
+    expect(face(app)).toBe(null);
+    expect(app.container.querySelector('[data-local-viewer]')).toBe(null);
+    await app.render(h(AttachmentStrip,{attachments:[{id:'ready',name:'fixture.png',mime:'image/png',url:'blob:ready'}]}));
+    await click(face(app));
     expect(Boolean(app.container.querySelector('[data-local-viewer]'))).toBe(true);
-    expect(urls.has(url)).toBe(true);
     await click(app.container.querySelector('[data-close]'));
-    expect(Boolean(app.container.querySelector('[data-local-viewer]'))).toBe(false); expect(urls.size).toBe(0);
+    expect(app.container.querySelector('[data-local-viewer]')).toBe(null);
+    expect(urls.size).toBe(0);
   });
 
   test("pending non-image remains a non-clickable placeholder", async () => {

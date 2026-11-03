@@ -90,7 +90,8 @@ test("stalled frames disable live state, then recover only after another decoded
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
   const h = harness(); const viewer = await h.start();
   h.decoded();
-  t.mock.timers.tick(6000);
+  // 2026-11-03 W1-RDVIEW: reconnecting needs > 6 s without inbound media (static screens send keyframes every 4 s).
+  t.mock.timers.tick(7000);
   assert.deepEqual(h.states.at(-1), ["reconnecting"]);
   h.decoded();
   assert.deepEqual(h.states.at(-1), ["playing"]);

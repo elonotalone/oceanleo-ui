@@ -485,6 +485,13 @@ const RENDERED_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = Object.freeze({
   fallbackMode: "export",
 });
 
+const WEBSITE_DOWNLOAD_RULE: AdvancedCapabilityDownloadRule = Object.freeze({
+  preferredPurpose: "source",
+  preferredMode: "source",
+  fallbackPurposes: Object.freeze([]),
+  fallbackMode: "export",
+});
+
 /**
  * The canonical shared capability plane. Feature identity, accepted typed
  * artifact bindings and adapter identity are declared here once; all runtime
@@ -524,7 +531,9 @@ export const ADVANCED_CAPABILITY_MATRIX: readonly AdvancedCapabilityContractEntr
             renderedSourceSubstitution: "forbidden",
           }),
           download:
-            row.openMode === "structured-project"
+            row.artifactType === "website"
+              ? WEBSITE_DOWNLOAD_RULE
+              : row.openMode === "structured-project"
               ? RENDERED_DOWNLOAD_RULE
               : SOURCE_DOWNLOAD_RULE,
         }),
@@ -2330,6 +2339,10 @@ export function artifactUserFacingDownloadHint(input: {
       .replace(/^\.+/, "")
       .slice(0, 160) || "artifact";
 
+  if (input.artifactType === "website") {
+    return { mediaType: "application/zip", extension: "zip", filename: `${stem}.zip` };
+  }
+
   const fromRendition = (
     rendition: ArtifactRendition | null | undefined,
   ): { mediaType: string; extension: string } | null => {
@@ -2475,6 +2488,7 @@ export function artifactDownloadPlanFor(
     }
     if (
       purpose === "source" &&
+      artifact.artifactType !== "website" &&
       (!capability ||
         artifact.sourceFormat.trim().toLowerCase() !==
           capability.sourceFormat)
@@ -2507,6 +2521,14 @@ export function artifactDownloadPlanFor(
       return value ? [value] : [];
     });
   };
+
+  // Website JSON is the entrypoint of a source closure. The client exports
+  // that closure as ZIP; a PNG full/preview is never a website download.
+  if (artifact.artifactType === "website") {
+    if (!artifact.access.canExportSource) return [];
+    const source = candidate("source", "source");
+    return source ? [source] : [];
+  }
 
   if (capability) {
     const rule = downloadRuleFor(artifact.artifactType, capability);

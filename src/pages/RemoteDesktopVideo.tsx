@@ -15,9 +15,9 @@ export function remoteFrameStyle(fit: boolean, width?: number, height?: number):
   return { width: `${width / ratio}px`, height: `${height / ratio}px`, maxWidth: "none", objectFit: "contain", display: "block", flex: "none" };
 }
 
-export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic, displayId, fit, width, height }: {
+export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic, displayId, fit, width, height, showFrame = true }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string;
-  videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; fit: boolean; width?: number; height?: number;
+  videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; fit: boolean; width?: number; height?: number; showFrame?: boolean;
   onDataChannel?(lane: RemoteDesktopDataLane | null): void;
   onDiagnostic?(detail: RemoteMediaDiagnostic): void;
   onState(value: RemoteMediaState, error?: string, status?: number): void;
@@ -77,5 +77,6 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
     };
   }, [client, deviceId, sessionId, videoRef, displayId]);
   // No canvas copy: the SDK attaches the decoded MediaStream to this element directly (D5).
-  return <video ref={videoRef} data-remote-video autoPlay muted playsInline style={remoteFrameStyle(fit, width, height)} />;
+  // Geometry changes hide obsolete pixels without detaching the decoder; stalls keep showFrame true.
+  return <video ref={videoRef} data-remote-video autoPlay muted playsInline style={{ ...remoteFrameStyle(fit, width, height), opacity: showFrame ? 1 : 0 }} />;
 }

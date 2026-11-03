@@ -23,6 +23,8 @@ import {
   type DesignDocumentProject,
 } from "./design-document-schema";
 import type { ImageEditorSnapshot } from "./image-document-contract";
+import type { DomainFamily } from "../../contracts/domain-family";
+import { PUBLIC_ASSET_ORIGIN, resolvePublicAssetMedia } from "../../lib/asset-delivery";
 
 export interface DesignSnapshotResult {
   snapshot: ImageEditorSnapshot;
@@ -38,7 +40,7 @@ const KNOWN_TYPES = new Set([
 ]);
 
 /** First-party asset bucket that serves `platform_assets.oss_key`. */
-export const DESIGN_ASSET_ORIGIN = "https://oceanleo-assets.oss-cn-guangzhou.aliyuncs.com";
+export const DESIGN_ASSET_ORIGIN = PUBLIC_ASSET_ORIGIN;
 
 export interface DesignAssetImage {
   /** Browser-loadable (canvas-safe) URL. */
@@ -62,12 +64,13 @@ export function designAssetRefs(
 }
 
 /** oss_key -> bucket URL; refuses anything that is not a plain object key. */
-export function designAssetUrl(assetId: string): string {
+export function designAssetUrl(assetId: string, family?: DomainFamily): string {
   const key = String(assetId || "").trim();
   if (!key || key.startsWith("/") || /^[a-z][a-z0-9+.-]*:/i.test(key) || key.split("/").includes("..")) {
     return "";
   }
-  return `${DESIGN_ASSET_ORIGIN}/${key.split("/").map(encodeURIComponent).join("/")}`;
+  const url = `${PUBLIC_ASSET_ORIGIN}/${key.split("/").map(encodeURIComponent).join("/")}`;
+  return resolvePublicAssetMedia(url, { purpose: "full", family });
 }
 
 const LAYER_NAMES: Record<string, string> = { "chart-embed": "图表", icon: "图标" };

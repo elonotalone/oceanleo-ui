@@ -1,4 +1,4 @@
-import type { ArchivedAttachment } from "./types";
+import type { ArchivedAttachment } from "../../../native-agent-core/index";
 export type UserAttachment = { archive?: ArchivedAttachment; name: string; mime: string; preview?: string; path?: string };
 
 function inboxPath(value: unknown): string | undefined {
