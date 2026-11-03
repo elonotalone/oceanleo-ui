@@ -199,10 +199,10 @@ test("working rows stay above pinned idle rows in the rendered sidebar", async (
   const previousTasks = globalThis.__workingTasks;
   globalThis.__workingSessions = [session("pinned-idle", "置顶旧任务", { pinned: true, last_activity_at: "2026-11-04T12:00:00Z" })];
   globalThis.__workingTasks = [
-    task("working", "执行中", { mode: "computer", open_turn: true, last_activity_at: "2026-11-04T11:00:00Z" }),
-    task("pinned-working", "置顶执行中", { mode: "computer", open_turn: true, pinned: true, last_activity_at: "2026-11-04T10:00:00Z" }),
+    task("working", "执行中", { mode: "computer", open_turn: true, working: true, last_activity_at: "2026-11-04T11:00:00Z" }),
+    task("pinned-working", "置顶执行中", { mode: "computer", open_turn: true, working: true, pinned: true, last_activity_at: "2026-11-04T10:00:00Z" }),
     task("newest-idle", "刚结束", { last_activity_at: "2026-11-04T13:00:00Z" }),
-    task("newest-working", "最近执行中", { mode: "computer", open_turn: true, last_activity_at: "2026-11-04T11:05:00Z" }),
+    task("newest-working", "最近执行中", { mode: "computer", open_turn: true, working: true, last_activity_at: "2026-11-04T11:05:00Z" }),
   ];
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
@@ -298,5 +298,51 @@ test("a failed session read cannot keep an unbound cached session working now", 
     globalThis.__workingSessions = previousSessions;
     globalThis.__workingTasks = previousTasks;
     delete globalThis.__workingSessionError;
+  }
+});
+
+test("finishing shows confirmation instead of now, preserves time and can resume real work", async () => {
+  const previousSessions = globalThis.__workingSessions;
+  const previousTasks = globalThis.__workingTasks;
+  const at = "2026-10-15T06:30:00Z";
+  globalThis.__workingSessions = [session("finishing-session", "正在确认的任务", { task_id: "finishing-root", pinned: true, last_activity_at: at })];
+  globalThis.__workingTasks = [
+    task("finishing-root", "正在确认的任务", { session_id: "finishing-session", mode: "computer", status: "running", working: true,
+      open_turn: true, activity_state: "finishing", computer_run_status: "finishing", last_activity_at: at }),
+    task("active-work", "实际工作", { mode: "computer", activity_state: "working", working: true, last_activity_at: at }),
+    task("still-stuck", "卡住的任务", { mode: "computer", activity_state: "stuck", working: true, open_turn: true, last_activity_at: at }),
+  ];
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    document.documentElement.lang = "en";
+    await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "finishing-state" })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    assert.equal(row(container, "finishing-session").querySelector("[data-history-finishing]")?.textContent, "正在确认结束");
+    assert.equal(row(container, "still-stuck").querySelector("[data-history-stuck]")?.textContent, "卡住");
+    assert.deepEqual(workingIds(container), ["active-work"]);
+    assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "active-work");
+    const frame = row(container, "finishing-session").closest("[data-history-row-frame]");
+    await act(async () => frame.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+    assert.equal(document.querySelector("[data-history-bubble-time]").getAttribute("datetime"), at);
+    assert.notEqual(document.querySelector("[data-history-bubble-time]").textContent, "now");
+    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "finishing-root"
+      ? { ...item, activity_state: "working", computer_run_status: "running" } : item);
+    await act(async () => {
+      window.dispatchEvent(new window.Event("oceanleo:history-changed"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    assert.equal(row(container, "finishing-session").querySelector("[data-history-finishing]"), null);
+    assert.deepEqual(workingIds(container), ["finishing-session", "active-work"]);
+    assert.equal(document.querySelector("[data-history-bubble-time]").getAttribute("datetime"), at);
+    assert.equal(document.querySelector("[data-history-bubble-time]").textContent, "now");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    globalThis.__workingSessions = previousSessions;
+    globalThis.__workingTasks = previousTasks;
   }
 });

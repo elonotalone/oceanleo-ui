@@ -1,5 +1,6 @@
 "use client";
 import { cloudComputerRequest, type Computer } from "./cloud-computer-api";
+import type { AgentTask } from "./agent";
 import { boundedHistoryListRequest, HistoryListRequestError, validHistoryListRows } from "./history-list-api";
 import type { ExecutionTarget } from "./execution-target";
 import { cacheUser, onUserScopedClear, readUserJson, writeUserJson } from "./user-scoped-cache";
@@ -10,7 +11,11 @@ export type ComputerTaskSession = {
   native_session_id: string | null; created_at: string; updated_at: string;
   saved_at?: string | null; sync_status: "saved" | "pending" | "error";
   /** Graphical sessions only; CLI/terminal stay "associated" (no observable agent turn). */
-  run_status?: "associated" | "running" | "waiting_user" | "completed" | "failed" | "cancelled";
+  run_status?: "associated" | "running" | "waiting_user" | "finishing" | "completed" | "failed" | "cancelled";
+  activity_state?: AgentTask["activity_state"];
+  working?: boolean;
+  /** Execution rights also cover pending input and unconfirmed finishing, not just work. */
+  open_turn?: boolean;
 };
 export type CreateComputerTaskSessionInput = Pick<ComputerTaskSession, "kind"> & {
   program?: ComputerTaskSession["program"]; task_id?: string; native_session_id?: string;

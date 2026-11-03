@@ -301,7 +301,7 @@ export interface AgentArtifact {
 export interface AgentTask {
   id: string;
   title?: string;
-  status: "running" | "done" | "failed" | "stopped" | string;
+  status: "running" | "finishing" | "done" | "failed" | "stopped" | string;
   mode: "agent" | "chat" | "skill" | string;
   plan?: unknown;
   favorite?: boolean;
@@ -337,12 +337,16 @@ export interface AgentTask {
   /** Cloud-computer id when this task is a Shell session (`mode === "shell"`). */
   computer_id?: string | null;
   /**
-   * 列表/详情附带：本任务挂着的电脑原生会话（Codex、Claude…）正在运行或等待确认。
+   * 列表/详情附带：本任务挂着的电脑原生会话（Codex、Claude…）的执行、等待或结束确认状态。
    * 只读投影，不改云端任务自身的 status；没有活动会话时省略。
    */
-  computer_run_status?: "running" | "waiting_user";
+  computer_run_status?: "running" | "waiting_user" | "finishing";
   /** Optional runtime projection; activity age alone never determines this state. */
-  activity_state?: "working" | "waiting_user" | "stuck" | "idle";
+  activity_state?: "working" | "waiting_user" | "finishing" | "stuck" | "idle";
+  /** True only for confirmed active work; finishing may still retain an open turn. */
+  working?: boolean;
+  /** Execution rights, including accepted pending input and finishing; never proof of work. */
+  open_turn?: boolean;
   /** 成品 app 身份；旧 task 可能缺失。 */
   app_id?: string | null;
   parent_task_id?: string | null;

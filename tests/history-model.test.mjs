@@ -42,7 +42,7 @@ test("history poll backs off on consecutive failures and caps at 60s", () => {
 
 test("只有确认在执行才算工作中；等待用户和 session.active 不算", () => {
   assert.equal(isTaskWorking({ status: "running" }), true);
-  assert.equal(isTaskWorking({ status: "done", computer_run_status: "running", open_turn: true }), true);
+  assert.equal(isTaskWorking({ status: "done", computer_run_status: "running", open_turn: true, working: true }), true);
   assert.equal(isTaskWorking({ status: "done", computer_run_status: "waiting_user" }), false);
   for (const status of ["done", "completed", "failed", "stopped", "active", "archived"]) {
     assert.equal(isTaskWorking({ status }), false, status);
@@ -56,7 +56,7 @@ test("只有确认在执行才算工作中；等待用户和 session.active 不�
     [
       { id: "t-run", status: "running", mode: "agent", session_id: "s-run" },
       { id: "t-idle", status: "done", mode: "agent", session_id: "s-idle" },
-      { id: "t-thread", status: "done", mode: "agent", computer_run_status: "running", open_turn: true },
+      { id: "t-thread", status: "done", mode: "agent", computer_run_status: "running", open_turn: true, working: true },
       { id: "t-legacy-run", status: "running", mode: "agent" },
       { id: "t-legacy-failed", status: "failed", mode: "agent" },
     ],
@@ -372,10 +372,11 @@ test("a session row is linked to its latest task so /tasks/<id> selects it", () 
   assert.equal(row.session.task_id, "t-new");
 });
 
-test("W11: open_turn overrides dirty master status; native tasks require execution evidence", () => {
+test("native execution rights do not prove work; explicit runtime projection overrides dirty master status", () => {
   for (const status of ["running", "completed", "failed", "stopped"]) {
-    assert.equal(isTaskWorking({ status, open_turn: false }), false);
-    assert.equal(isTaskWorking({ status, open_turn: true }), true);
+    assert.equal(isTaskWorking({ status, mode: "computer", open_turn: false }), false);
+    assert.equal(isTaskWorking({ status, mode: "computer", open_turn: true }), false);
+    assert.equal(isTaskWorking({ status, mode: "computer", open_turn: true, working: true }), true);
   }
   assert.equal(isTaskWorking({ status: "running", mode: "computer" }), false);
   assert.equal(isTaskWorking({ status: "running", computer_id: "paired" }), false);

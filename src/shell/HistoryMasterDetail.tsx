@@ -72,6 +72,7 @@ import {
   HISTORY_WORKING_POLL_MS,
   historyEntryTimestamp,
   historyPollDelayMs,
+  isHistoryEntryFinishing,
   isHistoryEntryStuck,
   isHistoryEntryWorking,
   isRestorableAppSession,
@@ -1083,6 +1084,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                     )}
                     <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>
                     {isHistoryEntryStuck(entry) && <span data-history-stuck="" className="shrink-0 text-[11px] text-neutral-500">{tt("卡住")}</span>}
+                    {isHistoryEntryFinishing(entry) && <span data-history-finishing="" className="shrink-0 text-[11px] text-neutral-500">{tt("正在确认结束")}</span>}
                     {entry.created_by === "leo" && <LeoCreatedMark />}
                     {favorite && (
                       <svg className="h-3 w-3 shrink-0 fill-yellow-500 text-yellow-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>

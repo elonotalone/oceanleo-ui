@@ -23,13 +23,16 @@ export type HistoryListEntry =
 
 function activityStateOf(record: unknown): AgentTask["activity_state"] {
   if (!record || typeof record !== "object") return undefined;
-  const state = (record as { activity_state?: unknown }).activity_state;
-  return state === "working" || state === "waiting_user" || state === "stuck" || state === "idle" ? state : undefined;
+  const value = record as { activity_state?: unknown; computer_run_status?: unknown; run_status?: unknown; status?: unknown };
+  const state = value.activity_state;
+  if (state === "waiting_user" || state === "finishing" || state === "stuck" || state === "idle") return state;
+  if (value.status === "finishing" || value.computer_run_status === "finishing" || value.run_status === "finishing") return "finishing";
+  return state === "working" ? state : undefined;
 }
 
 /**
- * 明确的卡住、等待用户和闲置状态不算执行，即使旧的运行标记尚未清理。
- * 其余优先采用 working，再核对等待用户和 open_turn；字段缺省时接受明确的 working 状态。
+ * 卡住、等待用户、确认结束和闲置不算执行，即使旧的运行标记尚未清理。
+ * 原生任务只接受明确的 working/活动状态；open_turn 也包含待处理输入和结束确认，只表示执行权限。
  * 旧网关的云端任务保留 status 回退，原生会话单凭 running 不算执行。
  * 完成、失败、停止、session 的 active/archived 本身都不表示正在工作。
  */
@@ -41,10 +44,10 @@ export function isTaskWorking(
     computer_id?: string | null;
   },
 ): boolean {
-  if (task.activity_state === "stuck" || task.activity_state === "waiting_user" || task.activity_state === "idle") return false;
+  if (task.status === "finishing" || task.computer_run_status === "finishing" || task.activity_state === "finishing" ||
+      task.activity_state === "stuck" || task.activity_state === "waiting_user" || task.activity_state === "idle") return false;
   if (typeof task.working === "boolean") return task.working;
   if (task.computer_run_status === "waiting_user") return false;
-  if (typeof task.open_turn === "boolean") return task.open_turn;
   if (task.activity_state === "working") return true;
   return task.status === "running" && task.mode !== "computer" && !task.computer_id && !task.computer_run_status;
 }
@@ -55,6 +58,10 @@ export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
 
 export function isHistoryEntryStuck(entry: HistoryListEntry): boolean {
   return !isHistoryEntryWorking(entry) && entry.activity_state === "stuck";
+}
+
+export function isHistoryEntryFinishing(entry: HistoryListEntry): boolean {
+  return !isHistoryEntryWorking(entry) && entry.activity_state === "finishing";
 }
 
 /** The time a row stands for: its last conversation activity (an old task without one: its creation). */
@@ -216,6 +223,8 @@ export function mergeHistoryEntries(
   // only active/archived and says nothing about a run).
   const workingSessionIds = new Set<string>();
   const workingTaskIds = new Set<string>();
+  const finishingSessionIds = new Set<string>();
+  const finishingTaskIds = new Set<string>();
   const local = options.localActivity;
   // Conversation activity per task (gateway last_activity_at + what this page
   // saw). A session's conversation runs in its bound task(s), so theirs is the
@@ -235,6 +244,10 @@ export function mergeHistoryEntries(
     if (isTaskWorking(task)) {
       workingTaskIds.add(task.id);
       if (task.session_id) workingSessionIds.add(task.session_id);
+    }
+    if (activityStateOf(task) === "finishing") {
+      finishingTaskIds.add(task.id);
+      if (task.session_id) finishingSessionIds.add(task.session_id);
     }
     const own = conversationOf(task);
     taskConversation.set(task.id, own);
@@ -298,7 +311,11 @@ export function mergeHistoryEntries(
         workingSessionIds.has(session.id) ||
         Boolean(session.task_id && workingTaskIds.has(session.task_id)) ||
         (!stateTask && isTaskWorking({ ...session, activity_state: ownState }));
-      const activity_state = working ? "working" : activityStateOf(stateTask) ?? ownState;
+      const selectedState = activityStateOf(stateTask);
+      const finishing = finishingSessionIds.has(session.id) || Boolean(session.task_id && finishingTaskIds.has(session.task_id));
+      const activity_state = working ? "working"
+        : selectedState === "stuck" || selectedState === "waiting_user" ? selectedState
+        : finishing ? "finishing" : selectedState ?? ownState;
       return {
         kind: "session",
         id: session.id,
