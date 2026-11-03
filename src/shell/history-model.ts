@@ -17,30 +17,44 @@ export type HistoryListEntry =
       created_by?: string | null;
       /** Present (true) only while the agent is working on this row; see `isTaskWorking`. */
       working?: true;
+      activity_state?: AgentTask["activity_state"];
     } & HistoryEntryTimes)
-  | ({ kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true } & HistoryEntryTimes);
+  | ({ kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true; activity_state?: AgentTask["activity_state"] } & HistoryEntryTimes);
+
+function activityStateOf(record: unknown): AgentTask["activity_state"] {
+  if (!record || typeof record !== "object") return undefined;
+  const state = (record as { activity_state?: unknown }).activity_state;
+  return state === "working" || state === "waiting_user" || state === "stuck" || state === "idle" ? state : undefined;
+}
 
 /**
- * 网关确认的 working 优先；旧网关只有实际 open_turn 才能证明原生会话在干活。
- * 等待用户不算执行；旧网关的云端任务保留 status 回退。
- * 完成、失败、停止、session 的 active/archived 都不算——侧栏对用户只分两种状态。
+ * 明确的卡住、等待用户和闲置状态不算执行，即使旧的运行标记尚未清理。
+ * 其余优先采用 working，再核对等待用户和 open_turn；字段缺省时接受明确的 working 状态。
+ * 旧网关的云端任务保留 status 回退，原生会话单凭 running 不算执行。
+ * 完成、失败、停止、session 的 active/archived 本身都不表示正在工作。
  */
 export function isTaskWorking(
-  task: Pick<AgentTask, "status" | "computer_run_status"> & {
+  task: Pick<AgentTask, "status" | "computer_run_status" | "activity_state"> & {
     open_turn?: boolean;
     working?: boolean;
     mode?: string;
     computer_id?: string | null;
   },
 ): boolean {
+  if (task.activity_state === "stuck" || task.activity_state === "waiting_user" || task.activity_state === "idle") return false;
   if (typeof task.working === "boolean") return task.working;
   if (task.computer_run_status === "waiting_user") return false;
   if (typeof task.open_turn === "boolean") return task.open_turn;
+  if (task.activity_state === "working") return true;
   return task.status === "running" && task.mode !== "computer" && !task.computer_id && !task.computer_run_status;
 }
 
 export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
   return entry.working === true;
+}
+
+export function isHistoryEntryStuck(entry: HistoryListEntry): boolean {
+  return !isHistoryEntryWorking(entry) && entry.activity_state === "stuck";
 }
 
 /** The time a row stands for: its last conversation activity (an old task without one: its creation). */
@@ -263,6 +277,7 @@ export function mergeHistoryEntries(
   // `task_id`, so link each session to its latest task here (2026-11-02: the
   // sidebar never showed the open task as selected).
   const latestTaskBySession = new Map<string, AgentTask>();
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
   for (const task of tasks) {
     if (!task.session_id || isShellTask(task)) continue;
     const prior = latestTaskBySession.get(task.session_id);
@@ -277,9 +292,13 @@ export function mergeHistoryEntries(
       const own = readCreatedBy(session);
       const created_by =
         own === "leo" || leoSessionIds.has(session.id) ? "leo" : own;
+      const stateTask = (session.task_id ? taskById.get(session.task_id) : undefined) || latestTaskBySession.get(session.id);
+      const ownState = activityStateOf(session);
       const working =
         workingSessionIds.has(session.id) ||
-        Boolean(session.task_id && workingTaskIds.has(session.task_id));
+        Boolean(session.task_id && workingTaskIds.has(session.task_id)) ||
+        (!stateTask && isTaskWorking({ ...session, activity_state: ownState }));
+      const activity_state = working ? "working" : activityStateOf(stateTask) ?? ownState;
       return {
         kind: "session",
         id: session.id,
@@ -289,6 +308,7 @@ export function mergeHistoryEntries(
             : session,
         created_by,
         ...(working ? { working: true as const } : {}),
+        ...(activity_state ? { activity_state } : {}),
         ...definedTimes(sessionTimes(session)),
       };
     }),
@@ -299,6 +319,7 @@ export function mergeHistoryEntries(
         task,
         created_by: task.created_by,
         ...(isTaskWorking(task) ? { working: true as const } : {}),
+        ...(activityStateOf(task) ? { activity_state: activityStateOf(task) } : {}),
         ...definedTimes(taskTimes(task)),
       }),
     ),

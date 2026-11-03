@@ -341,6 +341,8 @@ export interface AgentTask {
    * 只读投影，不改云端任务自身的 status；没有活动会话时省略。
    */
   computer_run_status?: "running" | "waiting_user";
+  /** Optional runtime projection; activity age alone never determines this state. */
+  activity_state?: "working" | "waiting_user" | "stuck" | "idle";
   /** 成品 app 身份；旧 task 可能缺失。 */
   app_id?: string | null;
   parent_task_id?: string | null;
@@ -354,7 +356,7 @@ export interface AgentTask {
    * 流式输出（≤15s 一次）、状态变化。「我的任务」按它排序；旧网关缺省。
    */
   last_activity_at?: string | null;
-  /** 列表附带：用户最近一次发言。工作中的任务按它排，不会随流式输出来回换位。 */
+  /** 列表附带：用户最近一次发言，用于对话活动协调。 */
   last_user_message_at?: string | null;
 }
 

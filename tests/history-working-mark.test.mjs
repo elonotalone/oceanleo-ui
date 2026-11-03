@@ -124,6 +124,7 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
       return status === 404 || status === 405 || status === 501;
     }
     export async function listAppSessions(){
+      if (globalThis.__workingSessionError) return { ok: false, status: 503, error: globalThis.__workingSessionError };
       return { ok: true, data: { items: globalThis.__workingSessions } };
     }
     export async function getAppSession(){ return { ok: false, status: 404 }; }
@@ -217,5 +218,85 @@ test("working rows stay above pinned idle rows in the rendered sidebar", async (
     container.remove();
     globalThis.__workingSessions = previousSessions;
     globalThis.__workingTasks = previousTasks;
+  }
+});
+
+test("explicit stuck state renders a marker instead of now and preserves the true hover time", async () => {
+  const previousSessions = globalThis.__workingSessions;
+  const previousTasks = globalThis.__workingTasks;
+  const at = "2026-10-15T06:30:00Z";
+  globalThis.__workingSessions = [session("stuck-session", "旧电脑任务", {
+    task_id: "stuck-root", pinned: true, last_activity_at: at,
+  })];
+  globalThis.__workingTasks = [
+    task("stuck-root", "旧电脑任务", { session_id: "stuck-session", mode: "computer", status: "running",
+      working: false, open_turn: false, activity_state: "idle", last_activity_at: at }),
+    task("actually-working", "真正执行中", { mode: "computer", working: true, open_turn: true,
+      activity_state: "working", last_activity_at: "2026-10-16T06:30:00Z" }),
+  ];
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    document.documentElement.lang = "en";
+    await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "explicit-stuck-state" })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    assert.equal(row(container, "stuck-session").querySelector("[data-history-stuck]"), null);
+    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "stuck-root" ? { ...item, activity_state: "stuck" } : item);
+    await act(async () => {
+      window.dispatchEvent(new window.Event("oceanleo:history-changed"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    assert.equal(row(container, "stuck-session").querySelector("[data-history-stuck]")?.textContent, "卡住");
+    assert.deepEqual(workingIds(container), ["actually-working"]);
+    assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "actually-working");
+    const frame = row(container, "stuck-session").closest("[data-history-row-frame]");
+    await act(async () => frame.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+    const time = document.querySelector("[data-history-bubble-time]");
+    assert.equal(time.getAttribute("datetime"), at);
+    assert.notEqual(time.textContent, "now");
+    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "stuck-root" ? { ...item, activity_state: "idle" } : item);
+    await act(async () => {
+      window.dispatchEvent(new window.Event("oceanleo:history-changed"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    assert.equal(row(container, "stuck-session").querySelector("[data-history-stuck]"), null, "state-only updates clear the marker without a time change");
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    globalThis.__workingSessions = previousSessions;
+    globalThis.__workingTasks = previousTasks;
+  }
+});
+
+test("a failed session read cannot keep an unbound cached session working now", async () => {
+  const previousSessions = globalThis.__workingSessions;
+  const previousTasks = globalThis.__workingTasks;
+  globalThis.__workingSessions = [session("unbound-working", "独立会话", { activity_state: "working" })];
+  globalThis.__workingTasks = [];
+  const { createRoot } = await import("react-dom/client");
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "unbound-session-state" })); });
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    assert.deepEqual(workingIds(container), ["unbound-working"]);
+    globalThis.__workingSessionError = "session state unavailable";
+    await act(async () => {
+      window.dispatchEvent(new window.Event("oceanleo:history-changed"));
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+    assert.ok(row(container, "unbound-working"));
+    assert.deepEqual(workingIds(container), []);
+    assert.match(container.textContent, /session state unavailable/);
+  } finally {
+    await act(async () => { root.unmount(); });
+    container.remove();
+    globalThis.__workingSessions = previousSessions;
+    globalThis.__workingTasks = previousTasks;
+    delete globalThis.__workingSessionError;
   }
 });

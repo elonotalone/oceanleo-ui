@@ -84,3 +84,41 @@ test("a failed session list keeps its task-backed conversations visible without 
   assert.equal(entries[0].id, "bound");
   assert.equal(canDeleteHistoryEntry(entries[0]), false);
 });
+
+test("explicit activity states keep stuck, user-waiting and idle out of working", () => {
+  for (const activity_state of ["stuck", "waiting_user", "idle"]) {
+    assert.equal(isTaskWorking({ status: "running", mode: "computer", working: true, open_turn: true, activity_state }), false, activity_state);
+  }
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "working" }), true);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "working", working: false, open_turn: true }), false);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "working", open_turn: false }), false);
+});
+
+test("activity state follows current bound work without resurrecting an old stuck run", () => {
+  const at = "2026-10-15T06:30:00Z";
+  const session = (id, extra = {}) => ({
+    id, site_id: "oceanleo", app_id: "home-agent", status: "active", title: id, snapshot: {},
+    schema_version: 1, revision: 1, created_at: "2026-10-01T00:00:00Z", last_activity_at: at, ...extra,
+  });
+  const entries = mergeHistoryEntries([
+    session("s-stuck", { task_id: "t-stuck" }),
+    session("s-idle", { task_id: "t-current" }),
+    session("s-active", { task_id: "t-stuck-root" }),
+    session("s-raw", { activity_state: "stuck" }),
+  ], [
+    task("t-stuck", { session_id: "s-stuck", activity_state: "stuck", working: true, open_turn: true, last_activity_at: at }),
+    task("t-old", { session_id: "s-idle", activity_state: "stuck", created_at: "2026-10-01T00:00:00Z" }),
+    task("t-current", { session_id: "s-idle", activity_state: "idle", created_at: "2026-10-02T00:00:00Z" }),
+    task("t-stuck-root", { session_id: "s-active", activity_state: "stuck" }),
+    task("t-active", { session_id: "s-active", activity_state: "working", working: true, last_activity_at: at }),
+  ]);
+  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  assert.equal(byId.get("s-stuck").activity_state, "stuck");
+  assert.equal(byId.get("s-stuck").working, undefined);
+  assert.equal(historyEntryTimestamp(byId.get("s-stuck")), at);
+  assert.equal(byId.get("s-idle").activity_state, "idle");
+  assert.equal(byId.get("s-active").activity_state, "working");
+  assert.equal(byId.get("s-active").working, true);
+  assert.equal(byId.get("s-raw").activity_state, "stuck");
+  assert.equal(entries[0].id, "s-active");
+});

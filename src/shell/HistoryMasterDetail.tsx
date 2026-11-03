@@ -72,6 +72,7 @@ import {
   HISTORY_WORKING_POLL_MS,
   historyEntryTimestamp,
   historyPollDelayMs,
+  isHistoryEntryStuck,
   isHistoryEntryWorking,
   isRestorableAppSession,
   isShellTask,
@@ -297,6 +298,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     if (x.kind !== y.kind || x.id !== y.id) return false;
     if ((x.created_by ?? null) !== (y.created_by ?? null)) return false;
     if (isHistoryEntryWorking(x) !== isHistoryEntryWorking(y)) return false;
+    if ((x.activity_state ?? null) !== (y.activity_state ?? null)) return false;
     if (
       (x.activity_at ?? null) !== (y.activity_at ?? null) ||
       (x.user_activity_at ?? null) !== (y.user_activity_at ?? null)
@@ -351,7 +353,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
  * 用户就不会看到列表被「加载…」清空一下又回来。
  */
 const historyListCache = new Map<string, HistoryListEntry[]>();
-type HistorySources = { sessions?: AppSession[]; tasks?: AgentTask[]; tasksTrusted?: boolean };
+type HistorySources = { sessions?: AppSession[]; sessionsTrusted?: boolean; tasks?: AgentTask[]; tasksTrusted?: boolean };
 const historySourceCache = new Map<string, HistorySources>();
 
 /**
@@ -444,13 +446,18 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       // A failed source keeps its last successful rows; it is never replaced
       // with an invented empty response. Execution needs a fresh task read.
       const sources = { ...historySourceCache.get(cacheKey) };
-      if (sessionsResult?.ok) sources.sessions = sessionsResult.data!.items;
+      if (sessionsResult?.ok) {
+        sources.sessions = sessionsResult.data!.items;
+        sources.sessionsTrusted = true;
+      } else if (sessionsResult) sources.sessionsTrusted = false;
       if (tasksResult?.ok) {
         sources.tasks = tasksResult.data!.items;
         sources.tasksTrusted = true;
       } else if (tasksResult) sources.tasksTrusted = false;
       historySourceCache.set(cacheKey, sources);
-      const sessions = sources.sessions || [];
+      const sessions = sources.sessionsTrusted === false
+        ? (sources.sessions || []).map((session) => ({ ...session, working: false, open_turn: false }))
+        : sources.sessions || [];
       const tasks = sources.tasksTrusted === false
         ? (sources.tasks || []).map((task) => ({ ...task, working: false, open_turn: false }))
         : sources.tasks || [];
@@ -1054,8 +1061,8 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 text-left"
                 data-history-row={entry.id}
               >
-                {/* Two states only: working → the walker (same mark as the computer
-                    conversation list); otherwise an empty slot so titles stay aligned.
+                {/* Confirmed work uses the conversation list's animated mark;
+                    other rows keep an empty slot so titles stay aligned.
                     The slot is as wide as a nav icon, so task names line up with the
                     nav labels above (no indent line). */}
                 <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined}>
@@ -1075,6 +1082,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                       </svg>
                     )}
                     <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>
+                    {isHistoryEntryStuck(entry) && <span data-history-stuck="" className="shrink-0 text-[11px] text-neutral-500">{tt("卡住")}</span>}
                     {entry.created_by === "leo" && <LeoCreatedMark />}
                     {favorite && (
                       <svg className="h-3 w-3 shrink-0 fill-yellow-500 text-yellow-500" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2" aria-label={tt("已收藏")}>
