@@ -41,6 +41,7 @@ import {
 } from "./cloud-browser-session-data";
 import { useCloudBrowserTransport } from "./cloud-browser-transport";
 import { cloudBrowserShouldShowViewportSpinner } from "./cloud-browser-spinner";
+import { CloudBrowserTrustPanel } from "./cloud-browser-trust";
 import { useOptionalWorkspaceSession } from "./WorkspaceSession";
 
 export { pointInContainedFrame } from "./cloud-browser-live";
@@ -52,9 +53,11 @@ export {
 
 export function CloudBrowserPanel({
   taskId,
+  initialSessionId,
   accent = "#4f46e5",
 }: {
   taskId?: string | null;
+  initialSessionId?: string;
   accent?: string;
 }) {
   const tt = useUI();
@@ -83,6 +86,7 @@ export function CloudBrowserPanel({
 
   const session = useCloudBrowserSessionData({
     effectiveTaskId,
+    initialSessionId,
     liveRequested,
     tt,
     setError,
@@ -463,6 +467,12 @@ export function CloudBrowserPanel({
             }
           />
         )}
+
+        <CloudBrowserTrustPanel
+          sessionId={session.selectedId}
+          liveRequested={liveRequested && transport.transportState === "streaming"}
+          userTakeover={transport.driving}
+        />
 
         {liveRequested && (
           <canvas
