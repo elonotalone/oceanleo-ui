@@ -1,7 +1,7 @@
 "use client";
 
 import { accessToken } from "./auth/client";
-import { GATEWAY_BASE } from "./auth/config";
+import { gatewayBase } from "./auth/config";
 import { authed, type AgentApiResult } from "./agent";
 
 export interface CloudBrowserSession {
@@ -737,7 +737,7 @@ export async function cloudBrowserScreenshot(
   if (!token) return { ok: false, error: "未登录", status: 401 };
   try {
     const response = await fetch(
-      `${GATEWAY_BASE}${base}/events/${eventId}/screenshot`,
+      `${gatewayBase()}${base}/events/${eventId}/screenshot`,
       {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
@@ -754,6 +754,6 @@ export async function cloudBrowserScreenshot(
 }
 
 export function cloudBrowserLiveUrl(sessionId: string): string {
-  const root = GATEWAY_BASE.replace(/^https:/, "wss:").replace(/^http:/, "ws:");
+  const root = gatewayBase().replace(/^https:/, "wss:").replace(/^http:/, "ws:");
   return `${root}${base}/sessions/${encodeURIComponent(sessionId)}/live`;
 }
