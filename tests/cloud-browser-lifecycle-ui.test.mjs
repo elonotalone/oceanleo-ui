@@ -886,9 +886,11 @@ test("invalid lifecycle and control states stay disabled and explicit", async ()
 });
 
 test("private first-view approvals and privacy notice work before any video frame", async () => {
-  for (const choice of ["once", "task", "site_action", "deny"]) {
+  const cases = ["awaiting_first_frame", "reconnecting", "failed"].flatMap(transportState =>
+    ["once", "task", "site_action", "deny"].map(choice => ({ transportState, choice })));
+  for (const { transportState, choice } of cases) {
     const state = testState([browserSession()]);
-    state.transportState = "awaiting_first_frame";
+    state.transportState = transportState;
     state.hasCanvasFrame = false;
     state.trust = {
       ...state.trust, privacy_active: true,
@@ -919,7 +921,7 @@ test("private first-view approvals and privacy notice work before any video fram
       assert.equal(mounted.container.querySelector("[data-cloud-browser-trust-prompt]"), null);
       assert.ok(mounted.container.querySelector('[data-cloud-browser-trust-privacy="active"]'), "consent does not bypass privacy");
       assert.equal(state.hasCanvasFrame, false);
-      assert.equal(state.transportState, "awaiting_first_frame", "metadata never fabricates a paint receipt");
+      assert.equal(state.transportState, transportState, "metadata never fabricates a paint receipt");
       assert.equal(state.calls.open.length, 1);
     } finally {
       await mounted.unmount();
