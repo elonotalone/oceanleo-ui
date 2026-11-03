@@ -11,14 +11,14 @@ import {
 export type Device = ApiDevice & { availability?: "online" | "signed_out" | "offline" };
 
 export interface DevicesFacade {
-  listDevices(): Promise<DeviceApiResult<Device[]>>;
-  pairDevice(code: string): Promise<DeviceApiResult<unknown>>;
-  renameDevice(deviceId: string, deviceName: string): Promise<DeviceApiResult<unknown>>;
-  revokeDevice(deviceId: string): Promise<DeviceApiResult<unknown>>;
+  listDevices(signal?: AbortSignal): Promise<DeviceApiResult<Device[]>>;
+  pairDevice(code: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
+  renameDevice(deviceId: string, deviceName: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
+  revokeDevice(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
 }
 
 export const devicesFacade: DevicesFacade = {
-  listDevices,
+  listDevices: (signal) => listDevices({}, signal),
   pairDevice,
   renameDevice,
   revokeDevice,

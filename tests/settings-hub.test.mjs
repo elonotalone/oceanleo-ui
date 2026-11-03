@@ -205,6 +205,9 @@ const hubUrl = await compileModule("src/pages/settings/SettingsHub.tsx", {
   // skills-overhaul W10：「技能」「连接器」两栏替身（真身拉进整套技能管理面板，与本文件无关）。
   "./SkillsSettingsPane": paneStub("SkillsSettingsPane", "pane-skills"),
   "./ConnectorsSettingsPane": paneStub("ConnectorsSettingsPane", "pane-connectors"),
+  "./DeviceSettingsSection": paneStub("DeviceSettingsSection", "pane-device-settings"),
+  "./VaultSettingsSection": paneStub("VaultSettingsSection", "pane-vault"),
+  "./CloudBrowserSettingsSection": paneStub("CloudBrowserSettingsSection", "pane-cloud-browser"),
   "./personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
   "./mail/MailSection": paneStub("MailSection", "pane-mail"),
   "./sections/AutomationSettingsSection": paneStub("AutomationSettingsSection", "pane-automation"),
@@ -250,6 +253,9 @@ const accountUrl = await compileModule("src/pages/AccountPage.tsx", {
   "./PluginsPage": paneStub("PluginsPage", "pane-plugins"),
   "./settings/SkillsSettingsPane": paneStub("SkillsSettingsPane", "pane-skills"),
   "./settings/ConnectorsSettingsPane": paneStub("ConnectorsSettingsPane", "pane-connectors"),
+  "./settings/DeviceSettingsSection": paneStub("DeviceSettingsSection", "pane-device-settings"),
+  "./settings/VaultSettingsSection": paneStub("VaultSettingsSection", "pane-vault"),
+  "./settings/CloudBrowserSettingsSection": paneStub("CloudBrowserSettingsSection", "pane-cloud-browser"),
   "./settings/personalization/PersonalizationSection": paneStub("PersonalizationSection", "pane-personalization"),
   "./settings/mail/MailSection": paneStub("MailSection", "pane-mail"),
   "./settings/sections/AutomationSettingsSection": paneStub("AutomationSettingsSection", "pane-automation"),
@@ -311,6 +317,18 @@ test("默认 /settings 渲染左列 3 个分组且右侧是通用", async () => 
   assert.ok(view.text().includes("语言与主题"));
   assert.equal(view.host.querySelector("[data-testid=security-panel]"), null);
   view.cleanup();
+});
+
+test("Settings mounts device, Vault and cloud-browser sections through their lazy contracts", async () => {
+  for (const [tab, id] of [["device-settings", "pane-device-settings"], ["vault", "pane-vault"], ["cloud-browser", "pane-cloud-browser"]]) {
+    const view = await render(React.createElement(SettingsHub, {initialTab: tab}), signedIn(), `/settings/${tab}`);
+    try {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+      assert.ok(view.host.querySelector(`[data-testid="${id}"]`), `${tab}: ${view.host.innerHTML.slice(-700)}`);
+      assert.ok(view.host.querySelector('[data-settings-group="settings"]'), "same Settings navigation group");
+      assert.equal(view.host.querySelector('[data-testid="pane-devices"]'), null, "the device list page is not embedded in Settings");
+    } finally { view.cleanup(); }
+  }
 });
 
 test("desktop local permissions mount in Settings even offline and dispose on close", async () => {

@@ -116,6 +116,15 @@ const SkillsSettingsPane = lazy(() =>
 const ConnectorsSettingsPane = lazy(() =>
   import("./ConnectorsSettingsPane").then((m) => ({ default: m.ConnectorsSettingsPane })),
 );
+const DeviceSettingsSection = lazy(() =>
+  import("./DeviceSettingsSection").then((m) => ({ default: m.DeviceSettingsSection })),
+);
+const VaultSettingsSection = lazy(() =>
+  import("./VaultSettingsSection").then((m) => ({ default: m.VaultSettingsSection })),
+);
+const CloudBrowserSettingsSection = lazy(() =>
+  import("./CloudBrowserSettingsSection").then((m) => ({ default: m.CloudBrowserSettingsSection })),
+);
 
 function PaneLoading() {
   return (
@@ -478,10 +487,28 @@ export function SettingsHub({
         ),
       },
       {
+        id: "device-settings",
+        group: "settings",
+        label: tt("设备设置"),
+        render: () => <Suspense fallback={<PaneLoading />}><DeviceSettingsSection /></Suspense>,
+      },
+      {
         id: "personalization",
         group: "settings",
         label: tt("个性化"),
         render: () => <PersonalizationSection />,
+      },
+      {
+        id: "vault",
+        group: "settings",
+        label: tt("密钥库"),
+        render: () => <Suspense fallback={<PaneLoading />}><VaultSettingsSection /></Suspense>,
+      },
+      {
+        id: "cloud-browser",
+        group: "settings",
+        label: tt("云端浏览器"),
+        render: () => <Suspense fallback={<PaneLoading />}><CloudBrowserSettingsSection /></Suspense>,
       },
       {
         id: "billing",

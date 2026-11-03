@@ -104,14 +104,17 @@ function errorCode(data: unknown, status: number): string {
  * 码用的是这条链上已有的词汇（`unauthorized` / `network_error`，见 `launcherErrorMessage`
  * 与 `handoffFailureMessage`），网关来的拒绝与客户端自己的失败因此说同一种话。
  */
-async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiResult<T>> {
+async function authed<T>(path: string, init?: RequestInit, signal?: AbortSignal): Promise<DeviceApiResult<T>> {
+  if (signal?.aborted) return { ok: false, error: "aborted", status: 0 };
   const token = await accessToken();
+  if (signal?.aborted) return { ok: false, error: "aborted", status: 0 };
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
 
   let response: Response;
   try {
     response = await fetch(`${GATEWAY_BASE}${path}`, {
       ...init,
+      signal,
       headers: {
         ...(init?.headers || {}),
         Authorization: `Bearer ${token}`,
@@ -121,7 +124,7 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
       credentials: "include",
     });
   } catch {
-    return { ok: false, error: "network_error", status: 0 };
+    return { ok: false, error: signal?.aborted ? "aborted" : "network_error", status: 0 };
   }
 
   let data: unknown = null;
@@ -151,9 +154,12 @@ async function authed<T>(path: string, init?: RequestInit): Promise<DeviceApiRes
  */
 export async function listDevices(
   options: ListDevicesOptions = {},
+  signal?: AbortSignal,
 ): Promise<DeviceApiResult<Device[]>> {
   const response = await authed<{ devices: Device[] }>(
     options.folders ? "/v1/devices?folders=true" : "/v1/devices",
+    undefined,
+    signal,
   );
   if (!response.ok) {
     return {
@@ -177,25 +183,26 @@ export async function listDevices(
   };
 }
 
-export function pairDevice(code: string): Promise<DeviceApiResult<unknown>> {
+export function pairDevice(code: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>> {
   return authed<unknown>("/v1/devices/pair", {
     method: "POST",
     body: JSON.stringify({ code }),
-  });
+  }, signal);
 }
 
 export function renameDevice(
   deviceId: string,
   deviceName: string,
+  signal?: AbortSignal,
 ): Promise<DeviceApiResult<unknown>> {
   return authed<unknown>(`/v1/devices/${encodeURIComponent(deviceId)}`, {
     method: "PATCH",
     body: JSON.stringify({ device_name: deviceName }),
-  });
+  }, signal);
 }
 
-export function revokeDevice(deviceId: string): Promise<DeviceApiResult<unknown>> {
+export function revokeDevice(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>> {
   return authed<unknown>(`/v1/devices/${encodeURIComponent(deviceId)}/revoke`, {
     method: "POST",
-  });
+  }, signal);
 }

@@ -221,6 +221,7 @@ async function render(client, props = {}) {
     cleanup() {
       act(() => root.unmount());
       host.remove();
+      window.history.replaceState(null, "", "/devices");
     },
   };
 }
@@ -287,12 +288,12 @@ test("known signout clears private dialogs and rejects late prior-account device
     return calls === 1 ? {ok: true, data: [makeDevice({device_name: "Old private computer"})]} : old;
   }}), {currentUser: async () => ({known: true, userId}), listIntervalMs: 5});
   try {
-    await view.click(view.button("设置"));
-    assert.ok(document.querySelector('[data-device-dialog="settings"]'));
+    await view.click(view.button("任务"));
+    assert.ok(document.querySelector('[data-device-dialog="tasks"]'));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 15)); });
     userId = null;
     await act(async () => { window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", {detail: {userId: null}})); });
-    assert.equal(document.querySelector('[data-device-dialog="settings"]'), null);
+    assert.equal(document.querySelector('[data-device-dialog="tasks"]'), null);
     assert.ok(view.text().includes("请先登录"));
     await act(async () => { resolveOld({ok: true, data: [makeDevice({device_name: "Late private computer"})]}); });
     await flush();
@@ -312,12 +313,12 @@ test("authoritative polling 401 removes previous device cards and private dialog
   const client = makeClient([], {async listDevices() { return denied ? {ok: false, status: 401, error: "unauthorized"} : {ok: true, data: [makeDevice()]}; }});
   const view = await render(client, {currentUser: async () => ({known: true, userId: "owner"}), listIntervalMs: 10});
   try {
-    await view.click(view.button("设置"));
-    assert.ok(document.querySelector('[data-device-dialog="settings"]'));
+    await view.click(view.button("任务"));
+    assert.ok(document.querySelector('[data-device-dialog="tasks"]'));
     denied = true;
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 30)); });
     await flush();
-    assert.equal(document.querySelector('[data-device-dialog="settings"]'), null);
+    assert.equal(document.querySelector('[data-device-dialog="tasks"]'), null);
     assert.equal(view.host.querySelector('[data-device-grid] article'), null);
     assert.ok(view.text().includes("请先登录"));
   } finally { view.cleanup(); }
@@ -349,15 +350,15 @@ test("a device read 401 closes an open remote viewer through its normal cleanup"
   } finally { view.cleanup(); window.history.replaceState(null, "", "/devices"); }
 });
 
-test("device Settings opens a target details dialog, never an inline accordion", async () => {
+test("device gear opens the shared Settings section with the selected target", async () => {
   const view = await render(makeClient([makeDevice()]));
   assert.equal(document.querySelector("#device-connect-form"), null);
   await view.click(view.button("设置"));
-  assert.ok(document.querySelector('[data-device-dialog="settings"]'));
-  assert.ok(view.text().includes("允许远程访问的设备"));
-  assert.ok(view.text().includes("默认任务文件夹"));
+  assert.equal(document.querySelector('[data-device-dialog="settings"]'), null);
   assert.equal(view.host.querySelector("[id^=device-manage]"), null);
-  assert.equal(window.location.pathname, "/devices");
+  assert.equal(window.location.pathname, "/settings/device-settings");
+  assert.equal(new URL(window.location.href).searchParams.get("device"), "d-1");
+  assert.equal(window.history.state.settingsReturnTo, "/devices");
   view.cleanup();
 });
 
@@ -434,22 +435,89 @@ test("pair_code_invalid 显示指定中文文案", async () => {
   view.cleanup();
 });
 
-test("撤销必须先显示后果说明，确认后才调用接口并刷新列表", async () => {
+test("device card revokes Agent control in one click and preserves the owner's remote access", async () => {
   const client = makeClient([makeDevice()]);
-  const view = await render(client);
-  await view.click(view.button("设置"));
-  await view.click(document.querySelector('button[aria-label="更多"]'));
-  await view.click(view.button("撤销设备"));
-  const dialog = view.host.querySelector('[data-testid="confirm-dialog"]');
-  assert.ok(dialog);
-  assert.ok(dialog.textContent.includes("撤销后这台电脑立刻不再接收任何任务，需要重新配对。"));
-  assert.deepEqual(client.calls.revoke, []);
+  const operations = [];
+  let reply;
+  const view = await render(client, { settingsClient: {
+    async getSettings() { return {ok: true, data: {remote_access: {enabled: true, input_allowed: true, expires_at: 42, agent_control_allowed: true, agent_always_ask: true}}}; },
+    startOperation(id, operation) {
+      if (operation.kind === "cover.read") return Promise.resolve({ok: true, data: {state: "succeeded", result: {cover: {state: "unavailable", reason: "unsupported", observed_at: Math.floor(Date.now()/1000)}}}});
+      operations.push([id, operation]); return new Promise((resolve) => { reply = resolve; });
+    },
+  }});
+  try {
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.deepEqual(operations, [["d-1", {kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: false, agent_always_ask: true}]]);
+    assert.ok(view.button("正在撤销…").disabled);
+    assert.equal(document.querySelector('[data-testid="confirm-dialog"]'), null);
+    await act(async () => reply({ok: true, data: {state: "succeeded", result: {remote_access: {enabled: true, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true}}}}));
+    await flush();
+    assert.ok(view.text().includes("Agent 控制已撤销。"));
+    assert.deepEqual(client.calls.revoke, [], "revoking Agent consent never unpairs the computer");
+    assert.ok(document.querySelector('[data-device-card="d-1"]'));
+  } finally { view.cleanup(); }
+});
 
-  await view.click(view.button("确认撤销"));
-  assert.deepEqual(client.calls.revoke, ["d-1"]);
-  assert.ok(client.calls.list >= 2);
-  assert.ok(view.text().includes("连接你的电脑"));
-  view.cleanup();
+test("device loading leaves the spinner and aborts a stalled list request at its deadline", async (t) => {
+  let aborted = 0;
+  let requests = 0;
+  const view = await render(makeClient([], { listDevices(signal) {
+    requests += 1;
+    signal.addEventListener("abort", () => { aborted += 1; }, {once: true});
+    return new Promise(() => {});
+  }}), { requestTimeoutMs: 20, listIntervalMs: 60_000 });
+  try {
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 45)); });
+    assert.equal(view.host.querySelector('[aria-label="正在加载设备"]'), null);
+    assert.ok(view.text().includes("请求已超时，请重试。"));
+    assert.equal(aborted, 1);
+    assert.equal(requests, 1, "a timeout cannot trigger an immediate polling storm");
+    t.diagnostic(`list deadline: requests=${requests}, transport aborts=${aborted}, spinner cleared`);
+  } finally { view.cleanup(); }
+});
+
+test("a status deadline aborts the request and removes previously online private status", async () => {
+  let reads = 0;
+  let aborted = 0;
+  const view = await render(makeClient([makeDevice({availability: "offline"})]), {
+    requestTimeoutMs: 20, remoteStatusIntervalMs: 5, listIntervalMs: 60_000,
+    remoteDesktopClient: {getStatus(_id, {signal}) {
+      reads += 1;
+      if (reads === 1) return Promise.resolve({ok: true, data: {supported: true, enabled: true, online: true, availability: "online"}});
+      signal.addEventListener("abort", () => { aborted += 1; }, {once: true});
+      return new Promise(() => {});
+    }},
+  });
+  try {
+    assert.ok(view.host.querySelector('[data-device-card="d-1"] [data-device-availability="online"]'));
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)); });
+    await flush();
+    assert.ok(aborted >= 1);
+    assert.ok(view.host.querySelector('[data-device-card="d-1"] [data-device-availability="offline"]'));
+  } finally { view.cleanup(); }
+});
+
+test("the devices facade forwards request cancellation to the HTTP transport", async () => {
+  const auth = dataModule('export async function accessToken() { return "owner-token"; }');
+  const config = dataModule('export const GATEWAY_BASE = "https://gateway.test";');
+  const {devicesFacade} = await import(await compileModule("src/facades/devices.ts", {
+    "../lib/auth/client": auth, "../lib/auth/config": config,
+  }));
+  const previousFetch = globalThis.fetch;
+  const controller = new AbortController();
+  let signal;
+  globalThis.fetch = async (_url, init) => {
+    signal = init.signal;
+    return new Promise((_resolve, reject) => init.signal.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {once: true}));
+  };
+  try {
+    const pending = devicesFacade.listDevices(controller.signal);
+    await Promise.resolve();
+    assert.equal(signal, controller.signal);
+    controller.abort();
+    assert.equal((await pending).error, "aborted");
+  } finally { globalThis.fetch = previousFetch; }
 });
 
 test("页面没有长篇设备权限说明", async () => {

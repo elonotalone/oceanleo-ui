@@ -6,7 +6,10 @@ import { portalHref } from "../../contracts/domain-family";
 export const SETTINGS_BUILTIN_TABS = [
   "general",
   "account",
+  "device-settings",
   "personalization",
+  "vault",
+  "cloud-browser",
   "billing",
   "bay",
   "messages",
@@ -310,7 +313,7 @@ export function captureSettingsReturnTo(
 }
 
 /** 打开设置卡片并把地址写成 `/settings/<tab>`。不从 Host 文件导出，避免把整窗拖进输入框模块图。 */
-export function openSettingsModal(tab = "general") {
+export function openSettingsModal(tab = "general", options?: { deviceId?: string }) {
   if (typeof window === "undefined") return;
   if (tab === "devices") {
     window.location.href = portalHref("/devices");
@@ -318,7 +321,9 @@ export function openSettingsModal(tab = "general") {
   }
   const billingView = billingViewFromRaw(tab);
   const resolved = canonicalSettingsTab(tab) || "general";
-  const next = settingsPath(resolved);
+  const nextUrl = new URL(settingsPath(resolved), window.location.href);
+  if (resolved === "device-settings" && options?.deviceId) nextUrl.searchParams.set("device", options.deviceId);
+  const next = `${nextUrl.pathname}${nextUrl.search}`;
   const prev = (window.history.state as SettingsHistoryState | null) || {};
   const state: SettingsHistoryState = {
     ...prev,

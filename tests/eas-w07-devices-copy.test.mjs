@@ -123,15 +123,13 @@ test("英文词典与页面上这三处都不是中文", async () => {
   const settings = host.querySelector('[data-device-settings="d-1"]');
   await act(async () => settings.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
   for (let i = 0; i < 5; i += 1) await act(async () => {});
-  const more = window.document.querySelector('button[aria-label="More"]');
-  await act(async () => more.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
-  const revoke = [...window.document.querySelectorAll("button")].find((node) => (node.textContent || "").trim() === UI_MESSAGES.en["撤销设备"]);
+  assert.equal(window.location.pathname, "/settings/device-settings");
+  assert.equal(new URL(window.location.href).searchParams.get("device"), "d-1");
+  const revoke = host.querySelector('[data-device-revoke-agent="d-1"]');
   assert.ok(revoke);
-  await act(async () => {
-    revoke.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
-  });
-  for (let i = 0; i < 3; i += 1) await act(async () => {});
-  const title = host.querySelector("[data-testid=confirm-dialog]")?.textContent || "";
+  assert.equal(revoke.textContent, "Revoke Agent control");
+  assert.equal(CJK.test(revoke.textContent), false);
+  const title = UI_MESSAGES.en["撤销「{name}」？"].replace("{name}", "This computer");
   assert.match(title, /Revoke/);
   assert.equal(CJK.test(title), false, `撤销确认标题不该是中文：${title}`);
 

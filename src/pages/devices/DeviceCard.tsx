@@ -29,7 +29,7 @@ export function isComputer(device: Device) {
 }
 
 /** Wallpaper comes from OS metadata; a card never requests a desktop frame. */
-export function DeviceCard({ device, availability, client = deviceSettingsClient, isLocalDevice = false, onSettings, onTasks, onControl }: {
+export function DeviceCard({ device, availability, client = deviceSettingsClient, isLocalDevice = false, onSettings, onTasks, onControl, onRevokeAgent, revokingAgent = false }: {
   device: Device;
   availability: DeviceAvailability;
   client?: DeviceSettingsClient;
@@ -37,6 +37,8 @@ export function DeviceCard({ device, availability, client = deviceSettingsClient
   onSettings: () => void;
   onTasks: () => void;
   onControl: () => void;
+  onRevokeAgent?: () => void;
+  revokingAgent?: boolean;
 }) {
   const tt = useUI();
   // The computer's own switch, mirrored by its heartbeat: tasks sent from the
@@ -61,5 +63,6 @@ export function DeviceCard({ device, availability, client = deviceSettingsClient
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" className="h-5 w-5" aria-hidden="true"><path d="m3 6 2 2 3-4M11 6h10M3 13l2 2 3-4M11 13h10M4 20h3M11 20h10" /></svg>{tt("任务")}
       </button>
     </div>
+    {isComputer(device) && onRevokeAgent && <button type="button" onClick={onRevokeAgent} disabled={revokingAgent || availability !== "online"} className="w-full border-t border-neutral-100 px-4 py-2.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-45" data-device-revoke-agent={device.device_id}>{tt(revokingAgent ? "正在撤销…" : "撤销 Agent 控制")}</button>}
   </article>;
 }

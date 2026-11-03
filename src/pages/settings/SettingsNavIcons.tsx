@@ -87,6 +87,15 @@ const ICONS: Record<string, ReactNode> = {
       <path d="M6 13.2h4M8 10.6v2.6" />
     </NavIcon>
   ),
+  "device-settings": (
+    <NavIcon><rect x="2.4" y="3.2" width="11.2" height="7.4" rx="1.2" /><path d="M6 13.2h4M8 10.6v2.6" /></NavIcon>
+  ),
+  vault: (
+    <NavIcon><rect x="3.1" y="6.3" width="9.8" height="7.3" rx="1.2" /><path d="M5.2 6.3V4.5a2.8 2.8 0 0 1 5.6 0v1.8M8 9.4v1.8" /></NavIcon>
+  ),
+  "cloud-browser": (
+    <NavIcon><rect x="2.1" y="2.8" width="11.8" height="10.4" rx="1.2" /><path d="M2.1 5.7h11.8M4.1 4.2h.1M6 4.2h.1" /></NavIcon>
+  ),
   org: (
     <NavIcon>
       <path d="M3.2 13.2V5.6L8 2.8l4.8 2.8v7.6" />

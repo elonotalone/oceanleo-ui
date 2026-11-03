@@ -1,6 +1,38 @@
 import type { DeviceApiResult } from "../../api/devices";
 import type { DeviceSettingsClient, DeviceSettingsOperation } from "../../api/device-settings";
 
+/** Bound the whole request, including a transport that never settles on abort. */
+export function runDeviceRequest<T>(
+  request: (signal: AbortSignal) => Promise<DeviceApiResult<T>>,
+  signal: AbortSignal,
+  timeoutMs = 15_000,
+): Promise<DeviceApiResult<T>> {
+  if (signal.aborted) return Promise.resolve({ ok: false, error: "aborted" });
+  return new Promise((resolve) => {
+    const controller = new AbortController();
+    let settled = false;
+    let expired = false;
+    const finish = (result: DeviceApiResult<T>) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", cancel);
+      controller.signal.removeEventListener("abort", aborted);
+      // Dispose request-scoped work on success too; do not retain a parent listener per poll.
+      controller.abort();
+      resolve(result);
+    };
+    const aborted = () => finish({ ok: false, error: expired ? "request_expired" : "aborted" });
+    const cancel = () => controller.abort();
+    const timer = setTimeout(() => { expired = true; controller.abort(); }, timeoutMs);
+    signal.addEventListener("abort", cancel, { once: true });
+    controller.signal.addEventListener("abort", aborted, { once: true });
+    try {
+      void request(controller.signal).then(finish, () => finish({ ok: false, error: "network_error" }));
+    } catch { finish({ ok: false, error: "network_error" }); }
+  });
+}
+
 function pause(ms: number, signal: AbortSignal) {
   return new Promise<void>((resolve) => {
     if (signal.aborted) return resolve();
@@ -18,22 +50,22 @@ export async function runDeviceSettingsOperation(
   signal: AbortSignal,
   { intervalMs = 750, timeoutMs = 45_000 } = {},
 ): Promise<DeviceApiResult<DeviceSettingsOperation>> {
-  const deadline = Date.now() + timeoutMs;
-  let result = await client.startOperation(deviceId, operation, signal);
-  if (signal.aborted) return { ok: false, error: "aborted" };
-  if (!result.ok || !result.data) return result;
-  const operationId = result.data.operation_id;
-  while (result.data?.state === "pending") {
-    if (!operationId) return { ok: false, error: "response_malformed" };
-    if (Date.now() >= deadline) return { ok: false, error: "request_expired" };
-    await pause(Math.min(intervalMs, Math.max(0, deadline - Date.now())), signal);
-    if (signal.aborted) return { ok: false, error: "aborted" };
-    result = await client.getOperation(deviceId, operationId, signal);
-    if (signal.aborted) return { ok: false, error: "aborted" };
+  return runDeviceRequest(async (requestSignal) => {
+    let result = await client.startOperation(deviceId, operation, requestSignal);
+    if (requestSignal.aborted) return { ok: false, error: "aborted" };
     if (!result.ok || !result.data) return result;
-  }
-  if (result.data?.state === "failed") return { ok: false, error: result.data.error || "operation_failed" };
-  return result;
+    const operationId = result.data.operation_id;
+    while (result.data?.state === "pending") {
+      if (!operationId) return { ok: false, error: "response_malformed" };
+      await pause(intervalMs, requestSignal);
+      if (requestSignal.aborted) return { ok: false, error: "aborted" };
+      result = await client.getOperation(deviceId, operationId, requestSignal);
+      if (requestSignal.aborted) return { ok: false, error: "aborted" };
+      if (!result.ok || !result.data) return result;
+    }
+    if (result.data?.state === "failed") return { ok: false, error: result.data.error || "operation_failed" };
+    return result;
+  }, signal, timeoutMs);
 }
 
 export function deviceSettingsErrorCopy(error?: string): string {

@@ -25,6 +25,8 @@ export interface DeviceRemoteAccessSettings {
   agent_control_allowed: boolean;
   agent_always_ask: boolean;
 }
+/** Consent remains active until switched off; legacy expiry is read-only. */
+export type DeviceRemoteAccessUpdate = Omit<DeviceRemoteAccessSettings, "expires_at">;
 export interface DeviceSettings {
   controller_id: string;
   controllers: DeviceControllerGrant[];
@@ -69,7 +71,7 @@ export interface DeviceSettingsClient {
   getSettings(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettings>>;
   revokeController(deviceId: string, grantId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
   shortenControllerExpiry(deviceId: string, grantId: string, expiresAt: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
-  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences) | ({ kind: "remote_access.update" } & DeviceRemoteAccessSettings & { duration_minutes?: number }), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
+  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences) | ({ kind: "remote_access.update" } & DeviceRemoteAccessUpdate), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   getOperation(deviceId: string, operationId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   listTasks(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceTaskSummary[]>>;
 }
@@ -248,9 +250,11 @@ export const deviceSettingsClient: DeviceSettingsClient = {
   async startOperation(deviceId, operation, signal) {
     const registered = await registerController(signal);
     if (!registered.ok) return { ...registered, data: undefined };
-    // `expires_at` is read-only state the device reports; the gateway rejects it as an extra field (422).
-    // The lease length travels as `duration_minutes`.
-    const body = operation.kind === "remote_access.update" ? (({ expires_at: _readOnly, ...rest }) => rest)(operation) : operation;
+    // Explicit fields keep legacy expiry/duration from older callers out of the wire contract.
+    const body = operation.kind === "remote_access.update" ? {
+      kind: operation.kind, enabled: operation.enabled, input_allowed: operation.input_allowed,
+      agent_control_allowed: operation.agent_control_allowed, agent_always_ask: operation.agent_always_ask,
+    } : operation;
     const response = await request<unknown>(`${base(deviceId)}/settings/operations`, { method: "POST", body: JSON.stringify(body) }, signal);
     if (!response.ok) return { ...response, data: undefined };
     const data = parseSettingsOperation(response.data);

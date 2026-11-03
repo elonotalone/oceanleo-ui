@@ -8,6 +8,7 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 window.scrollTo = () => {};
 const ui = dataModule(`export function useUI() { return (text, vars) => text.replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{"+key+"}")); }`);
 const { DeviceSettingsDialog } = await import(await compileModule("src/pages/devices/DeviceSettingsDialog.tsx", { "../../i18n/ui/useUI": ui }));
+const { DeviceSettingsSection, DeviceSettingsPanel } = await import(await compileModule("src/pages/settings/DeviceSettingsSection.tsx", { "../../i18n/ui/useUI": ui }));
 const { DeviceFolderPicker } = await import(await compileModule("src/pages/devices/DeviceFolderPicker.tsx", { "../../i18n/ui/useUI": ui }));
 
 const device = { device_id: "mac-target", device_name: "My Mac", platform: "macos", availability: "online", online: true, local_exec_enabled: false, granted_kinds: ["read"], last_seen_at: null };
@@ -21,7 +22,7 @@ function fakeClient() {
     async startOperation(id, op) {
       calls.operations.push([id, op]);
       if (op.kind === "preferences.update") { settings.preferences = { default_task_directory: op.default_task_directory ?? "/allowed/OceanLeo", task_folders: op.task_folders }; return { ok: true, data: { state: "succeeded", result: { preferences: structuredClone(settings.preferences) } } }; }
-      if (op.kind === "remote_access.update") { settings.remote_access = { ...settings.remote_access, ...op, expires_at: op.enabled ? Math.floor(Date.now() / 1000) + (op.duration_minutes * 60) : null }; delete settings.remote_access.kind; delete settings.remote_access.duration_minutes; return { ok: true, data: { state: "succeeded", result: { remote_access: structuredClone(settings.remote_access) } } }; }
+      if (op.kind === "remote_access.update") { settings.remote_access = { ...settings.remote_access, ...op, expires_at: null }; delete settings.remote_access.kind; return { ok: true, data: { state: "succeeded", result: { remote_access: structuredClone(settings.remote_access) } } }; }
       if (op.path === "/outside") return { ok: true, data: { state: "failed", error: "path_outside_grant" } };
       const listing = op.path === null ? { path: null, parent: null, entries: [{ name: "Allowed", path: "/allowed" }], roots: ["/allowed"] } : { path: op.path, parent: op.path === "/allowed" ? null : "/allowed", entries: op.path === "/allowed" ? [{ name: "Projects", path: "/allowed/Projects" }] : [], roots: ["/allowed"] };
       return { ok: true, data: { state: "succeeded", result: listing } };
@@ -64,34 +65,35 @@ test("device settings persist both Agent policy switches through the target oper
   const client = fakeClient();
   const view = await mount(DeviceSettingsDialog, { device, availability: "online", client, onClose() {}, onControl() {}, onRename: async () => true, onRevoke() {} });
   try {
-    const switches = [...document.querySelectorAll('input[role="switch"]')];
+    const switches = [...document.querySelectorAll('button[role="switch"]')];
     assert.equal(switches.length, 4);
     await view.click(switches[2]);
-    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", enabled: false, input_allowed: true, expires_at: null, agent_control_allowed: true, agent_always_ask: true }]);
+    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", enabled: false, input_allowed: true, agent_control_allowed: true, agent_always_ask: true }]);
   } finally { view.cleanup(); }
 });
 
-test("owner can enable remote access with a bounded duration and screen control", async () => {
+test("owner enables remote access with a Settings switch and no duration", async () => {
   const client = fakeClient();
   const view = await mount(DeviceSettingsDialog, { device, availability: "online", client, onClose() {}, onControl() {}, onRename: async () => true, onRevoke() {} });
   try {
-    await view.click([...document.querySelectorAll('input[role="switch"]')][0]);
-    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", enabled: true, input_allowed: true, expires_at: null, agent_control_allowed: false, agent_always_ask: true, duration_minutes: 240 }]);
+    await view.click([...document.querySelectorAll('button[role="switch"]')][0]);
+    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: false, agent_always_ask: true }]);
+    assert.equal(document.querySelector('input[type="checkbox"]'), null);
+    assert.equal(document.querySelector('select[aria-label="允许时长"]'), null);
   } finally { view.cleanup(); }
 });
 
-test("expiry only shortens through the real endpoint, never grants permanent access on web", async () => {
+test("controller expiry remains reported state with revoke, without a duration choice or grant widening", async () => {
   const client = fakeClient();
+  client.settings.controllers[0].expires_at = "2026-12-25T12:00:00Z";
   const view = await mount(DeviceSettingsDialog, { device, availability: "online", client, onClose() {}, onControl() {}, onRename: async () => true, onRevoke() {} });
   try {
-    await view.click(view.button("有效期"));
-    assert.ok(document.querySelector('[data-device-dialog="controller-expiry"]'));
+    assert.ok(view.text().includes("有效期至"));
+    assert.equal(view.button("有效期"), undefined);
     assert.equal(view.button("永久同意"), undefined);
-    await view.click(view.button("1 小时"));
-    assert.equal(client.calls.expiry[0][0], "mac-target");
-    assert.equal(client.calls.expiry[0][1], "grant-1");
-    assert.ok(Date.parse(client.calls.expiry[0][2]) > Date.now());
-    assert.equal(document.querySelector('[data-device-dialog="controller-expiry"]'), null);
+    assert.deepEqual(client.calls.expiry, []);
+    await view.click(view.button("撤销"));
+    assert.deepEqual(client.calls.revoke, [["mac-target", "grant-1"]]);
   } finally { view.cleanup(); }
 });
 
@@ -139,5 +141,88 @@ test("Escape closes only the nested folder picker and restores focus to target d
     assert.equal(document.querySelector('[data-device-dialog="folder-picker"]'), null);
     assert.ok(document.querySelector('[data-device-dialog="settings"]'));
     assert.equal(closed, 0);
+  } finally { view.cleanup(); }
+});
+
+test("device controls render inside the existing Settings pane and device removal keeps its confirmation", async () => {
+  const client = fakeClient();
+  const removals = [];
+  const view = await mount(DeviceSettingsSection, { client: {
+    async listDevices() { return {ok: true, data: [device]}; },
+    async revokeDevice(id) { removals.push(id); return {ok: true}; },
+  }, settingsClient: client });
+  try {
+    assert.ok(document.querySelector('[data-settings-pane="device-settings"]'));
+    assert.ok(document.querySelector('[data-device-settings-panel="mac-target"]'));
+    assert.equal(document.querySelector('[data-device-dialog="settings"]'), null);
+    assert.equal(document.querySelector('input[type="checkbox"]'), null);
+    assert.equal(document.querySelectorAll('button[role="switch"]').length, 4);
+    await view.click(view.button("撤销设备"));
+    assert.ok(view.text().includes("撤销后这台电脑立刻不再接收任何任务，需要重新配对。"));
+    assert.deepEqual(removals, []);
+    await view.click(view.button("确认撤销"));
+    assert.deepEqual(removals, ["mac-target"]);
+    assert.ok(view.text().includes("还没有连接设备。"));
+  } finally { view.cleanup(); }
+});
+
+test("Settings revoke is one click, preserves owner access, and rejects a pre-mutation stale poll", async (t) => {
+  t.mock.timers.enable({apis: ["setTimeout"]});
+  const client = fakeClient();
+  client.settings.remote_access.enabled = true;
+  client.settings.remote_access.agent_control_allowed = true;
+  let staleReply;
+  const read = client.getSettings;
+  client.getSettings = (...args) => client.calls.reads === 0 ? read(...args) : new Promise((resolve) => { staleReply = resolve; });
+  const view = await mount(DeviceSettingsPanel, {device, availability: "online", client, onControl() {}, onRename: async () => true, onRevoke() {}});
+  try {
+    const oldSettings = structuredClone(client.settings);
+    await act(async () => t.mock.timers.tick(5_000));
+    await flush();
+    assert.equal(typeof staleReply, "function", "the old poll must be in flight before revoke");
+    await view.click(view.button("撤销 Agent 控制"));
+    assert.deepEqual(client.calls.operations, [["mac-target", {kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: false, agent_always_ask: true}]]);
+    assert.ok(view.text().includes("Agent 控制已撤销。"));
+    const agentSwitch = document.querySelector('button[role="switch"][aria-label="允许远程 Agent 控制"]');
+    assert.equal(agentSwitch.getAttribute("aria-checked"), "false");
+    await act(async () => staleReply({ok: true, data: oldSettings}));
+    await flush();
+    assert.equal(agentSwitch.getAttribute("aria-checked"), "false", "a stale read cannot restore withdrawn consent");
+    assert.equal(client.settings.remote_access.enabled, true);
+  } finally { view.cleanup(); }
+});
+
+test("Settings ignores same-account token refresh and cancels private state on an account switch", async () => {
+  const settingsClient = fakeClient();
+  settingsClient.settings.remote_access.agent_control_allowed = true;
+  let userId = "owner-a";
+  let reads = 0;
+  let aborted = 0;
+  let lateReply;
+  settingsClient.startOperation = (_id, _operation, signal) => new Promise((resolve) => {
+    lateReply = resolve;
+    signal.addEventListener("abort", () => { aborted += 1; }, {once: true});
+  });
+  const view = await mount(DeviceSettingsSection, {
+    currentUser: async () => ({known: true, userId}),
+    client: {async listDevices() { reads += 1; return {ok: true, data: [{...device, device_id: userId, device_name: userId}]}; }},
+    settingsClient,
+  });
+  try {
+    await view.click(view.button("撤销 Agent 控制"));
+    await act(async () => window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", {detail: {userId}})));
+    await flush();
+    assert.equal(reads, 1, "token renewal must not restart device loading");
+    assert.equal(aborted, 0, "token renewal must not cancel a consent mutation");
+    assert.ok(document.querySelector('[data-device-settings-panel="owner-a"]'));
+    userId = "owner-b";
+    await act(async () => window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", {detail: {userId}})));
+    await flush();
+    assert.equal(aborted, 1);
+    assert.equal(document.querySelector('[data-device-settings-panel="owner-a"]'), null);
+    assert.ok(document.querySelector('[data-device-settings-panel="owner-b"]'));
+    await act(async () => lateReply({ok: true, data: {state: "succeeded", result: {remote_access: {...settingsClient.settings.remote_access, agent_control_allowed: false}}}}));
+    await flush();
+    assert.ok(!view.text().includes("Agent 控制已撤销。"), "the old account's reply cannot change the new account's pane");
   } finally { view.cleanup(); }
 });
