@@ -15,14 +15,14 @@ import { composerOccupancy, liveTurnOpen, pendingUnsentReason } from "../cloud-c
 import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL, type AgentDialogMessage, type WsProgram } from "../cloud-computer/agent-dialog/types";
 import type { NativeMessageSnapshot } from "../../native-agent-core/index";
-import { applyDialog, initialDialogState, restoreNativeMessages } from "../cloud-computer/agent-dialog/reduce";
+import { applyDialog, applyNativeTurnStates, initialDialogState, nativeActiveTurn, nativeTurnFinishing, restoreNativeMessages } from "../cloud-computer/agent-dialog/reduce";
 import { useAgentDialog, type AgentDialogControllerV2 } from "../cloud-computer/agent-dialog/useAgentDialogController";
 import { mergeNativeDialogPages, dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
 import { mergeSavedAndLive, mergeTranscriptPages } from "./merge";
 import type { NativeProgram } from "./types";
 import { nativeModelPickerFor } from "./NativeModelPicker";
 import { peekTranscript, readTranscript, rememberTranscript, takeTranscriptPrefetch } from "./transcript-cache";
-import { originalForPreparedFile } from "../../lib/upload/image-preparation";
+import { dimensionsForPreparedFile, originalForPreparedFile } from "../../lib/upload/image-preparation";
 
 export type NativeThreadInput = {
   computer: Computer | null;
@@ -51,11 +51,12 @@ export type NativeThread = {
   /** No managed session yet (draft): status/models only, nothing can be sent. */
   draft: boolean;
   /**
-   * The program is working on this conversation. The ONE source for the
-   * composer's Stop, the step-row spinner and can-send (2026-11-02): a stop on
-   * its way counts as running, so "steps spinning + send arrow" cannot happen.
+   * This conversation retains active native control, including confirming its
+   * end or a Stop on its way. Working affordances also check `finishing`.
    */
   running: boolean;
+  /** Server-confirmed end check; active native control remains available. */
+  finishing: boolean;
   /** `stopping` from the Stop click until its outcome; `error` = it did not take effect (see stopError). */
   stopState: "idle" | "stopping" | "stopped" | "error";
   /** Localized reason the last Stop did not take effect (shown next to the composer), else null. */
@@ -185,6 +186,17 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const [archive, setArchive] = useState<Archive | null>(null);
   const savedSession = archive?.session?.id === session?.id ? archive?.session : null;
   const nativeId = savedSession?.native_session_id || session?.native_session_id || "";
+  const publicSignature = JSON.stringify([session?.activity_state, session?.run_status, session?.open_turn, session?.working]);
+  const publicSource = useRef({ id: session?.id ?? "", signature: publicSignature, preferProp: false });
+  if (publicSource.current.id !== (session?.id ?? "")) {
+    publicSource.current = { id: session?.id ?? "", signature: publicSignature, preferProp: false };
+  } else if (publicSource.current.signature !== publicSignature) {
+    // Phase changes deliberately leave the activity clock untouched. A new
+    // public phase supersedes the initial saved snapshot on semantic arrival.
+    publicSource.current = { ...publicSource.current, signature: publicSignature, preferProp: true };
+  }
+  const publicSession = savedSession && !publicSource.current.preferProp ? savedSession : session;
+  const savedFinishing = publicSession?.activity_state ? publicSession.activity_state === "finishing" : publicSession?.run_status === "finishing";
   const [archiveStatus, setArchiveStatus] = useState<"saved" | "pending" | "error" | null>(null);
 
   const dialog = useAgentDialog({
@@ -195,6 +207,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     onArchiveStatus: setArchiveStatus,
     initialProgram: program ?? "cursor",
     initialSessionId: nativeId || undefined,
+    savedFinishing,
     oceanleoReady: false,
     localOceanleo: false,
     // Sessions are opened explicitly below; a draft never opens one.
@@ -403,9 +416,32 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   );
   // Older batches come from the saved copy whenever it is part of what is shown.
   const showArchive = !live || (merged.source !== "live" && hasConversation(archiveDialog));
+  const finishingSession = dialog.activeSession || nativeId;
+  const publicStatusSuperseded = terminalRun(publicSession) || dialog.stopState === "stopped";
+  const currentDialog = useMemo(() => applyNativeTurnStates(merged.messages, dialog.turnStates, program, sessionKey), [merged.messages, dialog.turnStates, program, sessionKey]);
+  const finishing = live && nativeTurnFinishing(
+    publicStatusSuperseded ? dialog.messages : currentDialog, finishingSession, savedFinishing && !publicStatusSuperseded,
+  );
+  const savedControl = !publicStatusSuperseded && savedFinishing && (Boolean(nativeActiveTurn(currentDialog, finishingSession, true)) ||
+    !currentDialog.some((message) => message.kind === "turn" && message.acpSession === finishingSession));
+  const retainedControl = finishing || savedControl;
+  const mappedDialog = useMemo(() => {
+    if (!retainedControl) return currentDialog;
+    // A public/ordered saved finishing state retains the existing open turn's
+    // control while live replay catches up. It never creates a transcript row.
+    for (let index = currentDialog.length - 1; index >= 0; index -= 1) {
+      const message = currentDialog[index];
+      if (message.kind !== "turn" || message.acpSession !== finishingSession) continue;
+      if (message.stop && message.stop !== "stopping") return currentDialog;
+      const next = currentDialog.slice();
+      next[index] = { ...message, live: true, finishing };
+      return next;
+    }
+    return currentDialog;
+  }, [currentDialog, retainedControl, finishing, finishingSession]);
   const messages = useMemo(
-    () => dialogToAgentMessages(merged.messages, { live, tt, engine: program ?? undefined }),
-    [merged, live, tt, program],
+    () => dialogToAgentMessages(mappedDialog, { live, tt, engine: program ?? undefined }),
+    [mappedDialog, live, tt, program],
   );
 
   // A brand-new conversation (no native session yet) cannot be busy on the
@@ -434,6 +470,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const pendingDelivery = dialog.messages.some((message) => message.kind === "user" &&
     (message.delivery?.state === "sending" || message.delivery?.state === "queued"));
   const running = stopping || (live && (
+    retainedControl ||
     protocolWorking ||
     occupancyMode === "working"
     || liveTurnOpen(dialog.messages, viewSession)
@@ -449,7 +486,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const bindingReady = nativeId ? dialog.activeSession === nativeId : !terminalRun(session);
   const ready = live && !draft && bindingReady && !blockedReason && !stopping && !dialog.sessionLoading &&
     !dialog.offline && dialog.occupancyLink === true &&
-    (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking || pendingDelivery) && dialog.program === program;
+    (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking || pendingDelivery || retainedControl) && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
   const send = useCallback(async (text: string, messageId?: string) => {
@@ -617,7 +654,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       id: item.id,
       name: item.state === "error" ? `${item.name} · ${tt("上传失败")}${item.error ? `（${item.error}）` : ""}` : item.name,
       mime: item.mime,
-      ...(originalFile ? { originalFile, uploadBytes: item.size } : {}),
+      ...(originalFile ? { originalFile, uploadBytes: item.size, preparedDimensions: dimensionsForPreparedFile(dialog.attachmentFile(item.id)) } : {}),
       // Failed: the composer blocks the send and says why, with retry / remove (F3 2026-11-02).
       ...(item.state === "error" ? { failed: true, failedReason: item.error || tt("上传出错") } : {}),
       // A held file can create its session on send; it has no spinner or preview yet.
@@ -719,6 +756,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     live: connected,
     draft,
     running,
+    finishing,
     stopState: dialog.stopState ?? "idle",
     stopError: dialog.stopError ?? null,
     ready,

@@ -19,6 +19,7 @@ import {
   initialDialogState,
   isCancelResult,
   isLinkEvidenceFrame,
+  nativeTurnFinishing,
   newStopId,
   STOP_REPLY_TIMEOUT_MS,
   stopErrorText,
@@ -149,6 +150,9 @@ function unsentKeys(frame: Record<string, unknown>): string[] {
 // 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
 // W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
 export type AgentDialogControllerV2 = AgentDialogController & {
+  /** The open native turn is confirming its end; Stop and steering remain available. */
+  finishing: boolean;
+  turnStates: NonNullable<ReturnType<typeof initialDialogState>["turnStates"]>;
   /** A queued user action supplies its immutable id across async view handoff. */
   send: (override?: string, messageId?: string) => Promise<boolean>;
   attachmentFile: (id: string) => File | undefined;
@@ -218,6 +222,7 @@ function usesDialogSocket(
 type Presentation = Pick<ReturnType<typeof initialDialogState>, "programs" | "sessions" | "sessionsSupported">;
 type ViewSnap = {
   messages: AgentDialogMessage[];
+  turnStates?: ReturnType<typeof initialDialogState>["turnStates"];
   activeSession: string;
   draftRef?: string;
   sessions: ReturnType<typeof initialDialogState>["sessions"];
@@ -251,6 +256,7 @@ function presentationFor(id: string) {
 function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
   return {
     messages: state.messages,
+    turnStates: state.turnStates,
     activeSession: state.activeSession,
     draftRef: state.draftRef,
     sessions: state.sessions,
@@ -297,6 +303,7 @@ export function useAgentDialog({
   active = true,
   initialProgram = "oceanleo",
   initialSessionId,
+  savedFinishing = false,
   oceanleoReady = true,
   taskSessionId,
   onArchiveStatus,
@@ -310,6 +317,8 @@ export function useAgentDialog({
   active?: boolean;
   initialProgram?: AgentProgram;
   initialSessionId?: string;
+  /** Persisted public status, used only until fresh turn evidence supersedes it. */
+  savedFinishing?: boolean;
   oceanleoReady?: boolean;
   taskSessionId?: string;
   onArchiveStatus?: (status: "saved" | "pending" | "error") => void;
@@ -332,6 +341,8 @@ export function useAgentDialog({
   taskSessionRef.current = taskSessionId;
   const boundSessionRef = useRef(initialSessionId?.trim() ?? "");
   boundSessionRef.current = initialSessionId?.trim() ?? "";
+  const savedFinishingRef = useRef(savedFinishing);
+  savedFinishingRef.current = savedFinishing;
   const bindUploadsRef = useRef(bindUploadsToTaskSession);
   bindUploadsRef.current = bindUploadsToTaskSession;
   /** Managed threads: the bytes of each composer file (to upload or put again under the right session). */
@@ -824,6 +835,7 @@ export function useAgentDialog({
       socketRef.current?.close();
       return;
     }
+    frame._native_binding = taskSessionRef.current || "";
     if (frame.t === "archive_status") {
       if (taskSessionRef.current && frame.task_session_id !== taskSessionRef.current) return;
       const status = frame.sync_status;
@@ -906,7 +918,7 @@ export function useAgentDialog({
     }
     const frameSession = typeof frame.acp_session === "string" ? frame.acp_session : "";
     const frameProgram = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
-    const related = new Set(["prompt_ack", "prompt_state", "user_message", "turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "session_path", "error"]);
+    const related = new Set(["prompt_ack", "prompt_state", "user_message", "turn_start", "turn_state", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "session_path", "error"]);
     if (related.has(String(frame.t)) && (isWsProgram(frameProgram) || frameProgram === "oceanleo")) {
       const ref = typeof frame.ref === "string" ? frame.ref : "";
       // A ref-less `session_opened` is another view's open on this computer:
@@ -1607,7 +1619,8 @@ export function useAgentDialog({
       occupancyBusy: initial.occupancyBusy, sessionId: initial.activeSession || initial.draftRef || "",
       messages: initial.messages, pendingAt: initial.occupancyPendingAt, pendingSession: initial.occupancyPendingSession,
       offline: initial.offline, sessionLoading: initial.sessionLoading });
-    if (occupancyMode !== "idle" && occupancyMode !== "working" && !initial.busy && !initial.messages.some((m) =>
+    if (occupancyMode !== "idle" && occupancyMode !== "working" && !initial.busy &&
+      !nativeTurnFinishing(initial.messages, initial.activeSession, savedFinishingRef.current && stopRef.current.phase !== "stopped") && !initial.messages.some((m) =>
       (m.kind === "turn" && m.live && !m.stop) ||
       (m.kind === "user" && (m.delivery?.state === "sending" || m.delivery?.state === "queued")))) return false;
     const text = (typeof override === "string" ? override : draftRef.current).trim();
@@ -2519,6 +2532,8 @@ export function useAgentDialog({
     draft,
     setDraft,
     busy: state.busy,
+    finishing: nativeTurnFinishing(state.messages, state.activeSession || boundSessionRef.current, savedFinishing && stopState.phase !== "stopped"),
+    turnStates: state.turnStates ?? {},
     occupancyLink: state.occupancyLink,
     occupancyAt: state.occupancyAt,
     occupancyBusy: state.occupancyBusy,

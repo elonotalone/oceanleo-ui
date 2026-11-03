@@ -64,7 +64,7 @@ class FakeSocket {
     }
     if (frame.t === "open_session") {
       reply({ t: "session_opened", program: frame.program, acp_session: frame.acp_session });
-      reply({ t: "transcript", program: frame.program, acp_session: frame.acp_session, live: false, frames: [
+      reply({ t: "transcript", program: frame.program, acp_session: frame.acp_session, live: false, frames: FakeSocket.openFrames ?? [
         { t: "user_message", program: frame.program, acp_session: frame.acp_session, text: "Earlier", replay: true },
         { t: "delta", program: frame.program, acp_session: frame.acp_session, text: "Earlier answer", replay: true },
       ] });
@@ -154,6 +154,83 @@ function session(overrides = {}) {
   return { id: "managed-1", task_id: "task", computer_id: "cc_1", computer_name: "elon", kind: "acp", program: "codex",
     native_session_id: "nat-1", created_at: "", updated_at: "", sync_status: "saved", ...overrides };
 }
+
+test("saved finishing hydrates before live replay; ordered working/done supersede the stale public state", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.openFrames = [];
+  const own = session({ id: "w2-finishing-reopen", computer_id: "cc_w2-finishing-reopen", run_status: "finishing", activity_state: "finishing" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [
+    { t: "turn_start", program: "codex", acp_session: "nat-1", turn_id: "finish-turn", seq: 101, replay: true, created_at: "2026-11-04T00:00:00Z" },
+    { t: "delta", program: "codex", acp_session: "nat-1", turn_id: "finish-turn", seq: 102, text: "Saved answer", replay: true, created_at: "2026-11-04T00:00:01Z" },
+    { t: "turn_state", program: "codex", acp_session: "nat-1", turn_id: "finish-turn", seq: 103, state: "finishing", replay: true, created_at: "2026-11-04T00:00:30Z" },
+  ], sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready && globalThis.__thread.messages.some(row => row.content === "Saved answer"), "saved finishing ready");
+    assert.equal(globalThis.__thread.finishing, true);
+    assert.equal(globalThis.__thread.running, true, "finishing retains active controls");
+    const saved = globalThis.__thread.messages.find(row => row.content === "Saved answer");
+    assert.equal(saved.meta.native_turn_finishing, true);
+    assert.equal(saved.meta.native_turn_live, true);
+    assert.equal(saved.meta.native_streaming, undefined);
+    const snapshot = { id: saved.id, created_at: saved.created_at, updated: saved.meta.native_updated_at, content: saved.content };
+    await act(async () => {
+      openSocket().server({ t: "turn_state", program: "codex", acp_session: "nat-1", turn_id: "finish-turn", state: "working", seq: 104, created_at: "2026-11-04T00:00:35Z" });
+    });
+    assert.equal(globalThis.__thread.dialog.messages.length, 0, "status before replay creates no live transcript row");
+    assert.equal(globalThis.__thread.finishing, false);
+    assert.equal(globalThis.__thread.running, true);
+    const working = globalThis.__thread.messages.find(row => row.content === "Saved answer");
+    assert.deepEqual({ id: working.id, created_at: working.created_at, updated: working.meta.native_updated_at, content: working.content }, snapshot);
+    assert.equal(working.meta.native_turn_finishing, false);
+    assert.equal(working.meta.native_turn_live, true);
+    await act(async () => {
+      openSocket().server({ t: "turn_start", program: "codex", acp_session: "nat-1", turn_id: "finish-turn", seq: 101 });
+      openSocket().server({ t: "done", program: "codex", acp_session: "nat-1", turn_id: "finish-turn", stop_reason: "end_turn", seq: 105 });
+    });
+    assert.equal(globalThis.__thread.finishing, false);
+    assert.equal(globalThis.__thread.running, false);
+  } finally { delete FakeSocket.openFrames; view.cleanup(); }
+});
+
+test("public finishing preserves Stop and steering while the transcript has no native rows yet", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.openFrames = [];
+  const own = session({ id: "w2-finishing-public", computer_id: "cc_w2-finishing-public", run_status: "finishing", activity_state: "finishing" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [], sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "public finishing connected");
+    assert.equal(globalThis.__thread.finishing, true);
+    assert.equal(globalThis.__thread.running, true);
+    assert.equal(globalThis.__thread.messages.length, 0, "public state creates no transcript row");
+    assert.equal(await sendVia(globalThis.__thread, "Steer while finishing"), true);
+    assert.equal(sent().filter(row => row.t === "prompt").length, 1);
+    await act(async () => globalThis.__thread.stop());
+    assert.equal(globalThis.__thread.stopState, "stopping");
+    assert.equal(globalThis.__thread.running, true);
+    assert.equal(sent().filter(row => row.t === "cancel").length, 1);
+    const cancel = sent().find(row => row.t === "cancel");
+    await act(async () => openSocket().server({ t: "cancel_result", program: "codex", acp_session: "nat-1", stop_id: cancel.stop_id, result: "stopped" }));
+    assert.equal(globalThis.__thread.finishing, false, "a confirmed stop overrides stale public finishing");
+    assert.equal(globalThis.__thread.running, false);
+  } finally { delete FakeSocket.openFrames; view.cleanup(); }
+});
+
+test("a newer public working snapshot supersedes saved finishing without changing the activity timestamp", async () => {
+  FakeSocket.sockets = [];
+  FakeSocket.openFrames = [];
+  const own = session({ id: "w2-finishing-public-refresh", computer_id: "cc_w2-finishing-public-refresh", run_status: "finishing", activity_state: "finishing", updated_at: "2026-11-04T00:00:01Z" });
+  globalThis.__taskApi = { async transcript() { return { session: own, frames: [], sync_status: "saved" }; } };
+  const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
+  try {
+    await until(() => globalThis.__thread.ready, "public finishing ready");
+    assert.equal(globalThis.__thread.finishing, true);
+    await view.update({ session: { ...own, run_status: "running", activity_state: "working" } });
+    assert.equal(globalThis.__thread.finishing, false, "status freshness does not depend on the activity clock");
+    assert.equal(globalThis.__thread.messages.length, 0);
+  } finally { delete FakeSocket.openFrames; view.cleanup(); }
+});
 
 test("queued handoff identity is immutable, while distinct user actions may repeat the same text", async () => {
   FakeSocket.sockets = [];
@@ -267,7 +344,8 @@ test("W3 bridge: prepared images retain original choice through native filename 
   globalThis.__taskApi = { async transcript() { return { session: own, frames: [], saved_at: null, sync_status: "saved" }; } };
   const original = new File(["original bytes"], "image.png", { type: "image/png" });
   const upload = new File(["small"], "image.jpg", { type: "image/jpeg" });
-  rememberImagePreparation({ original, upload, compressed: true, originalBytes: original.size, uploadBytes: upload.size });
+  const dimensions = { originalWidth: 4000, originalHeight: 3000, width: 1600, height: 1200 };
+  rememberImagePreparation({ original, upload, compressed: true, originalBytes: original.size, uploadBytes: upload.size, dimensions });
   const view = await mount({ computer: { id: own.computer_id, name: "test", node_online: true }, session: own, enabled: true });
   try {
     await until(() => globalThis.__thread.ready, "ready");
@@ -276,6 +354,7 @@ test("W3 bridge: prepared images retain original choice through native filename 
     const chips = globalThis.__thread.composerAttachments;
     assert.deepEqual(chips.map((row) => row.name), ["image.jpg", "image-2.jpg"]);
     assert.ok(chips.every((row) => row.originalFile === original && row.uploadBytes === upload.size));
+    assert.ok(chips.every((row) => row.preparedDimensions === dimensions), "renamed native files retain original and prepared image dimensions");
     assert.equal(globalThis.__thread.dialog.attachmentFile(chips[1].id).name, "image-2.jpg");
   } finally { view.cleanup(); }
 });

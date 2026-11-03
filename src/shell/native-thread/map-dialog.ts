@@ -181,6 +181,8 @@ export function dialogToAgentMessages(
   const tt = opts.tt ?? sourceText;
   const nextId = idAllocator();
   const out: AgentMessage[] = [];
+  const latestTurn = new Map<string, string>();
+  for (const message of messages) if (message.kind === "turn") latestTurn.set(message.acpSession, message.id);
   const push = (row: AgentMessage, position: NativeFramePosition) => out.push({
     ...row,
     ...(position.at !== undefined ? { created_at: new Date(position.at).toISOString() } : {}),
@@ -227,6 +229,7 @@ export function dialogToAgentMessages(
     const firstTurnRow = out.length;
     const finished =
       !opts.live || (Boolean(message.stop) && message.stop !== "stopping") || message.live !== true;
+    const finishing = !finished && message.finishing === true && latestTurn.get(message.acpSession) === message.id;
     const interrupted = INTERRUPTED.has(message.stop);
     let lastText = -1;
     let lastProcess = -1;
@@ -349,9 +352,10 @@ export function dialogToAgentMessages(
 
     if (message.turnId) {
       for (let index = firstTurnRow; index < out.length; index += 1) out[index] = { ...out[index], meta: { ...out[index].meta, native_turn_id: message.turnId, native_turn_live: !finished,
+        native_turn_finishing: finishing,
         ...(message.autonomous ? { native_turn_autonomous: true } : {}) } };
     }
-    if (!finished && lastText >= 0 && message.turnId) out[lastText] = { ...out[lastText], meta: { ...out[lastText].meta, native_streaming: true } };
+    if (!finished && !finishing && lastText >= 0 && message.turnId) out[lastText] = { ...out[lastText], meta: { ...out[lastText].meta, native_streaming: true } };
     // Usage is shown faintly in the folded process line of this turn.
     if (usage && lastProcess >= 0) {
       const row = out[lastProcess];
@@ -422,7 +426,12 @@ export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], liv
           items[at] = { ...kept, ...mergeNativePosition(old, item) };
         }
       }
-      out[index] = { ...own, ...row, ...mergeNativePosition(own, row), id: own.id, items: orderNativeFrames(items, (item) => item), stop: row.live ? row.stop : row.stop || own.stop };
+      const status = own.turnStateSeq !== undefined && row.turnStateSeq !== undefined && own.turnStateSeq > row.turnStateSeq
+        ? own : row.finishing !== undefined ? row : own;
+      out[index] = { ...own, ...row, ...mergeNativePosition(own, row),
+        ...(status.finishing !== undefined ? { finishing: status.finishing, turnStateSeq: status.turnStateSeq,
+          turnStateArrival: status.turnStateArrival, turnStateSource: status.turnStateSource, turnStateBinding: status.turnStateBinding } : {}),
+        id: own.id, items: orderNativeFrames(items, (item) => item), stop: row.live ? row.stop : row.stop || own.stop };
     }
   }
   const joined = out.map((message) => {

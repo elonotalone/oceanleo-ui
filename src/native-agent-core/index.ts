@@ -234,7 +234,9 @@ export type AgentDialogMessage = NativeFramePosition & (
   // at: epoch ms the user sent it, when known (a live send here, or a frame that carries a time); drives the chat time line.
   | { kind: "user"; id: string; messageId?: string; turnId?: string; delivery?: NativeMessageDelivery; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number; sender?: AgentMessageSender }
   // orphans: sub-agent tools whose Task/Agent tool has not arrived yet; adopted when it does, never shown on their own.
-  | { kind: "turn"; id: string; turnId?: string; autonomous?: boolean; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
+  | { kind: "turn"; id: string; turnId?: string; autonomous?: boolean; acpSession: string; stop: string; items: TurnItem[]; live?: boolean;
+      /** Ordered server status; separate from content positions and activity. */
+      finishing?: boolean; turnStateSeq?: number; turnStateArrival?: number; turnStateSource?: string; turnStateBinding?: string; orphans?: ToolCard[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string });
 
@@ -273,11 +275,18 @@ export type LoginState = {
   pending: boolean;
 };
 
+export type NativeTurnState = {
+  program: AgentProgram; acpSession: string; turnId: string; finishing: boolean;
+  seq?: number; arrival?: number; arrivalSource?: string; binding?: string;
+};
+
 export type DialogState = {
   frameCursor?: number;
   frameSource?: string;
   program: AgentProgram | null;
   messages: AgentDialogMessage[];
+  /** Bounded status-only receipts; an archive may arrive before its live turn replay. */
+  turnStates?: Record<string, NativeTurnState>;
   busy: boolean;
   agentBusy: boolean;
   offline: boolean;
@@ -359,7 +368,7 @@ export type NativeTranscriptSession = {
 };
 
 export {
-  applyDialog, initialDialogState, turnKey, isLiveTurn, busySessionsFor,
+  applyDialog, initialDialogState, turnKey, isLiveTurn, busySessionsFor, nativeActiveTurn, nativeTurnFinishing, applyNativeTurnStates,
   idleStop, isCancelResult, newStopId, stopMachine, stopErrorText,
   STOP_REPLY_TIMEOUT_MS, dropUnsentEcho, isLinkEvidenceFrame, restoreNativeMessages,
 } from "../shell/cloud-computer/agent-dialog/reduce";

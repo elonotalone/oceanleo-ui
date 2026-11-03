@@ -37,6 +37,7 @@ import type {
   NativeMessageSnapshot,
   NativeMessageDelivery,
   NativeFramePosition,
+  NativeTurnState,
   InstallState,
   LoginState,
   ToolCard,
@@ -73,6 +74,63 @@ export function busySessionsFor(
   return Object.keys(liveTurns ?? {})
     .filter((key) => key.startsWith(prefix))
     .map((key) => key.slice(prefix.length));
+}
+
+function latestNativeTurn(messages: readonly AgentDialogMessage[], acpSession: string): TurnMessage | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.kind === "turn" && (!acpSession || message.acpSession === acpSession)) return message;
+  }
+  return undefined;
+}
+
+function turnStateKey(program: string | null, session: string, turn: string): string {
+  return `${turnKey(program, session)}::${turn}`;
+}
+
+/** Attach status to existing rows only, including an archive awaiting live replay. */
+export function applyNativeTurnStates(
+  messages: AgentDialogMessage[], states: Readonly<Record<string, NativeTurnState>> | undefined, program: string | null, binding?: string,
+): AgentDialogMessage[] {
+  let changed = false;
+  const next = messages.map((message) => {
+    if (message.kind !== "turn" || !message.turnId || (message.stop && message.stop !== "stopping")) return message;
+    const stored = states?.[turnStateKey(program, message.acpSession, message.turnId)];
+    const receipt = stored && (binding === undefined || stored.binding === undefined || stored.binding === binding) ? stored : undefined;
+    const foreign = binding !== undefined && message.turnStateBinding !== undefined && message.turnStateBinding !== binding;
+    const status = receipt && (foreign || !(message.turnStateSeq !== undefined && receipt.seq !== undefined && message.turnStateSeq > receipt.seq))
+      ? receipt : !foreign && message.finishing !== undefined ? { finishing: message.finishing, seq: message.turnStateSeq,
+        arrival: message.turnStateArrival, arrivalSource: message.turnStateSource, binding: message.turnStateBinding } : undefined;
+    if (!status) {
+      if (!foreign) return message;
+      changed = true;
+      return { ...message, finishing: undefined, turnStateSeq: undefined, turnStateArrival: undefined, turnStateSource: undefined, turnStateBinding: undefined };
+    }
+    const resumed = status.seq !== undefined && message.updatedSeq !== undefined ? message.updatedSeq > status.seq :
+      Boolean(status.arrivalSource && status.arrivalSource === message.arrivalSource && status.arrival !== undefined &&
+        message.updatedArrival !== undefined && message.updatedArrival > status.arrival);
+    const finishing = !resumed && status.finishing;
+    if (message.finishing === finishing && message.turnStateSeq === status.seq &&
+      message.turnStateArrival === status.arrival && message.turnStateSource === status.arrivalSource && message.turnStateBinding === status.binding) return message;
+    changed = true;
+    return { ...message, finishing, turnStateSeq: status.seq, turnStateArrival: status.arrival, turnStateSource: status.arrivalSource, turnStateBinding: status.binding };
+  });
+  return changed ? next : messages;
+}
+
+/** A newer settled turn fences any older live flag still retained in history. */
+export function nativeActiveTurn(messages: readonly AgentDialogMessage[], acpSession: string, includeSaved = false): TurnMessage | undefined {
+  const turn = latestNativeTurn(messages, acpSession);
+  return turn && (turn.live === true || includeSaved) && (!turn.stop || turn.stop === "stopping") ? turn : undefined;
+}
+
+/** Saved public state bridges hydration only until this turn has explicit or live evidence. */
+export function nativeTurnFinishing(messages: readonly AgentDialogMessage[], acpSession: string, savedFinishing = false): boolean {
+  const turn = latestNativeTurn(messages, acpSession);
+  if (!turn) return savedFinishing;
+  if (turn.stop && turn.stop !== "stopping") return false;
+  if (turn.finishing !== undefined) return turn.finishing;
+  return turn.live === true ? false : savedFinishing;
 }
 
 const TURN_END_ERRORS = new Set([
@@ -406,6 +464,7 @@ export function initialDialogState(): DialogState {
     // 合同 I6：OceanLeo agent 是对话框第一个程序，打开即选中。
     program: "oceanleo",
     messages: [],
+    turnStates: {},
     busy: false,
     agentBusy: false,
     offline: false,
@@ -485,6 +544,7 @@ export type DialogEvent =
   | {
       type: "restore-view";
       messages: AgentDialogMessage[];
+      turnStates?: DialogState["turnStates"];
       activeSession: string;
       draftRef?: string;
       sessions: DialogState["sessions"];
@@ -1046,8 +1106,15 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
   const source = typeof frame._native_source === "string" ? frame._native_source : input.frameSource ?? nextId();
   const arrival = typeof frame._native_arrival === "number" ? frame._native_arrival : (input.frameCursor ?? 0) + 1;
   const next = reduceFrame({ ...input, frameSource: source, frameCursor: arrival }, { ...frame, _native_source: source, _native_arrival: arrival });
+  const withStatus = (state: DialogState): DialogState => {
+    const messages = applyNativeTurnStates(state.messages, state.turnStates, state.program,
+      typeof frame._native_binding === "string" ? frame._native_binding : undefined);
+    return messages === state.messages ? state : { ...state, messages };
+  };
+  // A server quiet fallback confirms an end; its delay is not new activity.
+  if (frame.t === "done" && frame.reason === "native_quiet") return withStatus(next);
   // Delivery receipts update labels, not the conversation's activity clock.
-  if (!TURN_FRAMES.has(str(frame.t)) && frame.t !== "user_message" && frame.t !== "notice" && frame.t !== "error") return next;
+  if (!TURN_FRAMES.has(str(frame.t)) && frame.t !== "user_message" && frame.t !== "notice" && frame.t !== "error") return withStatus(next);
   const storedSeq = typeof frame.seq === "number" ? frame.seq : Number(frame.seq);
   const frameSeq = Number.isFinite(storedSeq) && frame.seq != null ? storedSeq : undefined;
   const at = frameTime(frame).at;
@@ -1062,7 +1129,7 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
   });
   const oldRows = new Map(input.messages.map((message) => [message.id, message]));
   const oldItems = new Map(input.messages.flatMap((message) => message.kind === "turn" ? message.items.map((item) => [item.id, item] as const) : []));
-  return { ...next, messages: next.messages.map((message) => {
+  return withStatus({ ...next, messages: next.messages.map((message) => {
     const old = oldRows.get(message.id);
     if (message === old) return message;
     const positioned = stamp(message, old);
@@ -1070,11 +1137,35 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
       const previous = oldItems.get(item.id);
       return item === previous ? item : stamp(item, previous);
     }) } : positioned;
-  }) };
+  }) });
 }
 
 function reduceFrame(input: DialogState, frame: Record<string, unknown>): DialogState {
   const wireTurn = str(frame.turn_id);
+  if (frame.t === "turn_state") {
+    const session = str(frame.acp_session);
+    const program = str(frame.program);
+    if (!wireTurn || !session || !input.program || program !== input.program || (frame.state !== "finishing" && frame.state !== "working")) return input;
+    const index = input.messages.findIndex((message) => message.kind === "turn" && message.turnId === wireTurn && message.acpSession === session);
+    const turn = index >= 0 ? input.messages[index] as TurnMessage : undefined;
+    if (turn && turn.stop && turn.stop !== "stopping") return input;
+    const key = turnStateKey(program, session, wireTurn);
+    const statusSeq = num(frame.seq);
+    const binding = typeof frame._native_binding === "string" ? frame._native_binding : undefined;
+    const previous = input.turnStates?.[key];
+    const previousSeq = (binding === undefined || previous?.binding === undefined || previous.binding === binding ? previous?.seq : undefined) ??
+      (binding === undefined || turn?.turnStateBinding === undefined || turn.turnStateBinding === binding ? turn?.turnStateSeq : undefined);
+    if (statusSeq !== undefined && previousSeq !== undefined && statusSeq <= previousSeq) return input;
+    const finishing = frame.state === "finishing";
+    const receipt: NativeTurnState = { program: input.program, acpSession: session, turnId: wireTurn, finishing,
+      ...(statusSeq !== undefined ? { seq: statusSeq } : {}),
+      ...(binding !== undefined ? { binding } : {}),
+      arrival: num(frame._native_arrival), arrivalSource: str(frame._native_source) };
+    const turnStates = Object.fromEntries([...Object.entries(input.turnStates ?? {}).filter(([own, status]) => own !== key &&
+      (receipt.binding === undefined || status.binding === undefined || status.binding === receipt.binding)), [key, receipt]].slice(-128));
+    // Status never arms a turn, changes its origin, or stamps transcript activity.
+    return { ...input, turnStates };
+  }
   if (wireTurn && TURN_FRAMES.has(str(frame.t))) {
     // Run the existing per-turn parser against only the addressed turn. A new
     // user message must never cut off the old turn's remaining deltas/tools.
@@ -1513,6 +1604,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
         hasOlder: false,
         historyLoading: false,
         busy: false,
+        turnStates: {},
         agentBusy: false,
         busySession: "",
         ...blankOccupancy(),
@@ -1521,6 +1613,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
       const next = {
         ...state,
         messages: event.messages,
+        turnStates: event.turnStates ?? {},
         activeSession: event.activeSession,
         draftRef: event.draftRef,
         sessions: event.sessions,
@@ -1659,6 +1752,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
     case "session-loading":
       return {
         ...state,
+        turnStates: Object.fromEntries(Object.entries(state.turnStates ?? {}).filter(([, status]) => status.program === state.program && status.acpSession === event.id)),
         activeSession: event.id,
         sessionLoading: true,
         historyOffset: 0,
@@ -1753,6 +1847,7 @@ export function applyDialog(state: DialogState, event: DialogEvent): DialogState
     case "close-session": {
       const closed = {
         ...state,
+        turnStates: Object.fromEntries(Object.entries(state.turnStates ?? {}).filter(([, status]) => status.program !== event.program)),
         opened: state.opened.filter((id) => id !== event.program),
         programs: state.programs.map((row) =>
           row.id === event.program ? { ...row, running: false } : row,
