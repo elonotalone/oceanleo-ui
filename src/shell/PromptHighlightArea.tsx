@@ -296,11 +296,11 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
           }
           return false;
         },
-        // ProseMirror's Enter keymap runs before React's bubbling handler and
-        // would split the paragraph first. Give the host first refusal here so
-        // homepage Enter submits without ever creating a transient second line.
+        // ProseMirror handles Enter and Escape before React's bubbling handler.
+        // Give the host first refusal so Enter submits without a second paragraph
+        // and Escape reaches the composer's Stop action before being consumed.
         handleKeyDown: (_view, event) => {
-          if (event.key !== "Enter" || event.isComposing) return false;
+          if ((event.key !== "Enter" && event.key !== "Escape") || event.isComposing) return false;
           const handler = onKeyDownRef.current;
           if (!handler) return false;
           const compat = {
