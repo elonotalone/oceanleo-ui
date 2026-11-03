@@ -164,6 +164,11 @@ function terminalRun(session: ComputerTaskSession | null): boolean {
   return session?.run_status === "completed" || session?.run_status === "failed" || session?.run_status === "cancelled";
 }
 
+/** Rows carrying stored order or protocol identity (merged by identity, not by text). */
+function durable(rows: readonly AgentDialogMessage[]): boolean {
+  return rows.some((m) => m.seq !== undefined || (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId));
+}
+
 function hasConversation(messages: AgentDialogMessage[]): boolean {
   return messages.some((message) => message.kind === "user" || message.kind === "turn");
 }
@@ -407,8 +412,11 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // (`history replay:true`) takes over only once it covers what is saved (merge.ts).
   const replayKey = program ? `${program}::${dialog.activeSession || nativeId}` : "";
   const liveReplay = replayKey ? dialog.historyReplay?.[replayKey] ?? null : null;
+  // A durable saved copy (stored seq / ids) is merged by identity even while the live
+  // side is only the native replay (no ids yet): the legacy merger restated replayed
+  // steps next to their saved rows and dropped the users' stored seq (V1 2026-11-04).
   const merged = useMemo(
-    () => (dialog.messages.some((m) => m.seq !== undefined || (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId))
+    () => (durable(dialog.messages) || durable(archiveDialog)
       ? { messages: mergeNativeDialogPages(archiveDialog, dialog.messages), source: "merged" as const }
       : mergeSavedAndLive(archiveDialog, dialog.messages, { replay: liveReplay })
     ),

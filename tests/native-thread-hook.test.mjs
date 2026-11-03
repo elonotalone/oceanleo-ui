@@ -1194,3 +1194,41 @@ test('N3: older transcript pages do not append the recent delivery snapshot list
     assert.deepEqual(globalThis.__thread.messages.filter(m=>m.role==='user').map(m=>m.content),['older text','recent pending']);
   } finally {view.cleanup();}
 });
+
+test("W2 V1 03:55: a durable saved copy plus a text-only native replay (no send yet) shows each saved row once, with its stored seq", async () => {
+  FakeSocket.sockets = [];
+  const durable = session({ id: "managed-auto", computer_id: "cc_auto", native_session_id: "nat-auto" });
+  const f = (fields) => ({ program: "codex", acp_session: "nat-auto", replay: true, ...fields });
+  globalThis.__taskApi = { async transcript() {
+    return { session: durable, frames: [
+      f({ t: "user_message", seq: 10, created_at: "2026-11-03T18:54:00Z", message_id: "m1", turn_id: "t1", text: "Start background work" }),
+      f({ t: "turn_start", seq: 11, created_at: "2026-11-03T18:54:01Z", message_id: "m1", turn_id: "t1" }),
+      f({ t: "tool", seq: 12, created_at: "2026-11-03T18:54:02Z", turn_id: "t1", id: "bg-tool", title: "sleep 8 &", status: "completed" }),
+      f({ t: "delta", seq: 13, created_at: "2026-11-03T18:54:03Z", turn_id: "t1", text: "FOREGROUND_DONE" }),
+      f({ t: "done", seq: 14, created_at: "2026-11-03T18:54:04Z", turn_id: "t1", stop_reason: "end_turn" }),
+      f({ t: "turn_start", seq: 20, created_at: "2026-11-03T18:54:12Z", turn_id: "auto", autonomous: true }),
+      f({ t: "tool", seq: 21, created_at: "2026-11-03T18:54:13Z", turn_id: "auto", id: "fg-tool", title: "sleep 8", status: "completed" }),
+      f({ t: "delta", seq: 22, created_at: "2026-11-03T18:54:21Z", turn_id: "auto", text: "AUTONOMOUS_DONE" }),
+      f({ t: "done", seq: 23, created_at: "2026-11-03T18:54:22Z", turn_id: "auto", autonomous: true, stop_reason: "end_turn" }),
+    ], saved_at: "now", sync_status: "saved", has_older: false, next_before: null };
+  } };
+  FakeSocket.openFrames = [
+    f({ t: "user_message", text: "Start background work" }),
+    f({ t: "tool", id: "bg-tool", title: "sleep 8 &", status: "completed" }),
+    f({ t: "delta", text: "FOREGROUND_DONE" }),
+    f({ t: "tool", id: "fg-tool", title: "sleep 8", status: "completed" }),
+    f({ t: "delta", text: "AUTONOMOUS_DONE" }),
+  ];
+  const view = await mount({ computer: { id: "cc_auto", name: "elon", node_online: true }, session: durable, enabled: true });
+  try {
+    await until(() => FakeSocket.sockets.some((socket) => socket.sent.some((frame) => frame.t === "open_session")), "native session opened");
+    await until(() => globalThis.__thread.messages.some((m) => m.content === "AUTONOMOUS_DONE"), "saved copy shown");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const rows = globalThis.__thread.messages.map((m) => [m.content, m.meta?.native_seq]);
+    const texts = rows.map(([content]) => content);
+    assert.equal(texts.filter((text) => text === "AUTONOMOUS_DONE").length, 1, JSON.stringify(rows));
+    assert.equal(texts.filter((text) => text === "FOREGROUND_DONE").length, 1, JSON.stringify(rows));
+    assert.equal(texts.filter((text) => text === "Start background work").length, 1, JSON.stringify(rows));
+    assert.ok(rows.every(([, seq]) => Number.isFinite(seq)), `every saved row keeps its stored seq: ${JSON.stringify(rows)}`);
+  } finally { FakeSocket.openFrames = undefined; view.cleanup(); }
+});
