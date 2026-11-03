@@ -49,6 +49,8 @@ export type NativeQuestionMeta = {
   submitted: boolean;
 };
 
+import { toolRawValue } from "../../native-agent-core/tool-raw";
+
 const INTERRUPTED = new Set(["cancelled", "canceled", "stopped"]);
 
 type ToolCardMeta = {
@@ -56,6 +58,10 @@ type ToolCardMeta = {
   kind: string;
   title: string;
   status: string;
+  rawInput?: unknown;
+  rawOutput?: unknown;
+  raw_input?: unknown;
+  raw_output?: unknown;
   content: ToolCard["content"];
   locations: ToolCard["locations"];
   /** A Task/Agent step's background sub-agent steps, nested the same way. */
@@ -68,6 +74,8 @@ function toolCardMeta(tool: ToolCard): ToolCardMeta {
     kind: tool.kind,
     title: tool.title,
     status: tool.status,
+    ...(toolRawValue(tool, "input") !== undefined ? { rawInput: toolRawValue(tool, "input"), raw_input: toolRawValue(tool, "input") } : {}),
+    ...(toolRawValue(tool, "output") !== undefined ? { rawOutput: toolRawValue(tool, "output"), raw_output: toolRawValue(tool, "output") } : {}),
     content: tool.content ?? [],
     locations: tool.locations ?? [],
     ...(tool.children?.length ? { children: tool.children.map(toolCardMeta) } : {}),
@@ -177,7 +185,7 @@ export function dialogToAgentMessages(
         role: sender ? "assistant" : "user",
         kind: "text",
         content: message.text,
-        meta: { native: true, ...(opts.engine ? { engine: opts.engine } : {}), ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}) },
+        meta: { native: true, ...(message.messageId ? { native_message_id: message.messageId } : {}), ...(message.turnId ? { native_turn_id: message.turnId } : {}), ...(message.delivery ? { native_delivery: message.delivery } : {}), ...(opts.engine ? { engine: opts.engine } : {}), ...(sender ? { sender } : {}), ...(attachments.length ? { attachments } : {}) },
         ...(typeof message.at === "number" ? { created_at: new Date(message.at).toISOString() } : {}),
       });
       continue;
@@ -197,6 +205,7 @@ export function dialogToAgentMessages(
       continue;
     }
 
+    const firstTurnRow = out.length;
     const finished =
       !opts.live || (Boolean(message.stop) && message.stop !== "stopping") || message.live !== true;
     const interrupted = INTERRUPTED.has(message.stop);
@@ -312,6 +321,10 @@ export function dialogToAgentMessages(
       }
     }
 
+    if (message.turnId) {
+      for (let index = firstTurnRow; index < out.length; index += 1) out[index] = { ...out[index], meta: { ...out[index].meta, native_turn_id: message.turnId, native_turn_live: !finished } };
+    }
+    if (!finished && lastText >= 0 && message.turnId) out[lastText] = { ...out[lastText], meta: { ...out[lastText].meta, native_streaming: true } };
     // Usage is shown faintly in the folded process line of this turn.
     if (usage && lastProcess >= 0) {
       const row = out[lastProcess];
@@ -321,6 +334,55 @@ export function dialogToAgentMessages(
     if (finished && lastText >= 0) {
       const last = out[lastText];
       out[lastText] = { ...last, meta: { ...last.meta, final: true, ...(interrupted ? { stopped: true } : {}) } };
+    }
+  }
+  return out;
+}
+
+/** ID-aware union for the durable protocol. Legacy sessions still use the legacy merger. */
+export function mergeNativeDialogPages(saved: readonly AgentDialogMessage[], live: readonly AgentDialogMessage[]): AgentDialogMessage[] {
+  const out = saved.slice();
+  let userAnchor = -1;
+  for (const row of live) {
+    let index = out.findIndex((own) => own.kind === row.kind && (
+      row.kind === "user" && own.kind === "user" && row.messageId ? own.messageId === row.messageId :
+      row.kind === "turn" && own.kind === "turn" && row.turnId ? own.turnId === row.turnId : own.id === row.id));
+    if (index < 0 && row.kind === "user" && !row.messageId) {
+      index = out.findIndex((own, at) => at > userAnchor && own.kind === "user" && !own.messageId && own.text === row.text &&
+        (own.at == null || row.at == null || Math.abs(own.at - row.at) < 10_000));
+    }
+    if (index < 0 && row.kind === "turn" && !row.turnId && userAnchor >= 0) {
+      for (let at = userAnchor + 1; at < out.length; at += 1) {
+        const candidate = out[at];
+        if (candidate.kind === "user") break;
+        if (candidate.kind === "turn" && !candidate.turnId) { index = at; break; }
+      }
+    }
+    if (index < 0) { out.push(row); if (row.kind === "user") userAnchor = out.length - 1; continue; }
+    if (row.kind === "user") userAnchor = index;
+    const own = out[index];
+    if (row.kind === "user" && own.kind === "user") {
+      out[index] = { ...own, ...row, id: own.id, delivery: row.delivery ?? own.delivery,
+        attachments: row.attachments?.length ? row.attachments : own.attachments };
+    } else if (row.kind === "turn" && own.kind === "turn") {
+      const items = own.items.slice();
+      for (const item of row.items) {
+        const at = items.findIndex((old) => old.kind === item.kind && (
+          old.id === item.id ||
+          (old.kind === "tool" && item.kind === "tool" && old.tool.id === item.tool.id) ||
+          (old.kind === "permission" && item.kind === "permission" && old.permId === item.permId) ||
+          (old.kind === "question" && item.kind === "question" && old.questionId === item.questionId) ||
+          old.kind === "plan" || old.kind === "usage" ||
+          ((old.kind === "assistant" || old.kind === "thought") && (item.kind === "assistant" || item.kind === "thought") &&
+            (old.text.includes(item.text) || item.text.includes(old.text)))));
+        if (at < 0) items.push(item);
+        else {
+          const old = items[at];
+          items[at] = (old.kind === "assistant" || old.kind === "thought") &&
+            (item.kind === "assistant" || item.kind === "thought") && old.text.length > item.text.length ? old : item;
+        }
+      }
+      out[index] = { ...own, ...row, id: own.id, items, stop: row.live ? row.stop : row.stop || own.stop };
     }
   }
   return out;

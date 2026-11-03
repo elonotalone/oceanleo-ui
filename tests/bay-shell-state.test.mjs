@@ -460,3 +460,27 @@ test("closeBayDetails：只收起详情，不跳页、不写地址", async () =>
     delete globalThis.window;
   }
 });
+
+// 2026-11-03: shared/legacy LeoBay links carry no `kind`; they must open the asset browser, never human services.
+test("legacy asset link /bay?type=image&view=owned&asset=library:<id> selects the asset browser", async () => {
+  const state = await loadState("com");
+  const location = {
+    pathname: "/bay",
+    search: "?type=image&view=owned&asset=library:fd99ee4c-e474-4c3b-82d3-fbc34f2e7578",
+    hash: "",
+    origin: "https://oceanleo.com",
+    href: "https://oceanleo.com/bay?type=image&view=owned&asset=library:fd99ee4c-e474-4c3b-82d3-fbc34f2e7578",
+    assign() {},
+  };
+  globalThis.window = {
+    location,
+    history: { state: {}, replaceState() {}, pushState() {} },
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  const off = state.registerBayPage();
+  function Probe() { return React.createElement("span", null, String(state.useBayFilter().kind)); }
+  assert.equal(renderToStaticMarkup(React.createElement(Probe)), "<span>asset</span>");
+  off();
+  delete globalThis.window;
+});

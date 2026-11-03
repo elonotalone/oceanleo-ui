@@ -12,12 +12,16 @@ import type {
   ProgramProvider,
   ProgramStatus,
   ToolCard,
+  RawToolCard,
   ToolContent,
   ToolKind,
   ToolLocation,
   ToolStatus,
   WsProgram,
 } from "../../../native-agent-core/index";
+export type { RawToolCard } from "../../../native-agent-core/index";
+export { toolRawValue, toolPayloadText, TOOL_PAYLOAD_LIMIT } from "../../../native-agent-core/tool-raw";
+import { toolRawValue, mergeToolRaw } from "../../../native-agent-core/tool-raw";
 import { WS_PROGRAMS } from "../../../native-agent-core/index";
 export { userAttachments as parseUserAttachments } from "./message-attachments";
 
@@ -312,9 +316,11 @@ export function parseLocations(raw: unknown): ToolLocation[] {
   return out;
 }
 
-export function parseTool(frame: Record<string, unknown>, prev?: ToolCard): ToolCard {
+export function parseTool(frame: Record<string, unknown>, prev?: ToolCard): RawToolCard {
   const kind = frame.kind;
   const status = frame.status;
+  const rawInput = mergeToolRaw(toolRawValue(prev, "input"), toolRawValue(frame, "input"));
+  const rawOutput = mergeToolRaw(toolRawValue(prev, "output"), toolRawValue(frame, "output"));
   return {
     id: str(frame.id) || prev?.id || "",
     kind: typeof kind === "string" && TOOL_KINDS.has(kind as ToolKind) ? (kind as ToolKind) : prev?.kind ?? "other",
@@ -325,6 +331,8 @@ export function parseTool(frame: Record<string, unknown>, prev?: ToolCard): Tool
         : prev?.status ?? "pending",
     content: frame.content === undefined ? prev?.content ?? [] : parseContent(frame.content),
     locations: frame.locations === undefined ? prev?.locations ?? [] : parseLocations(frame.locations),
+    ...(rawInput !== undefined ? { rawInput } : {}),
+    ...(rawOutput !== undefined ? { rawOutput } : {}),
     // A later update can lose the sub-agent stamp; the first one sticks.
     ...(prev?.parent || str(frame.parent) ? { parent: prev?.parent || str(frame.parent).slice(0, 160) } : {}),
     ...(prev?.children ? { children: prev.children } : {}),

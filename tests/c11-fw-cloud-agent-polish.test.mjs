@@ -34,7 +34,7 @@ const { loadUiMessages } = await import("../src/i18n/ui/messages/load.ts");
 const authStub = dataModule('export async function getUserId(){return "owner"} export async function accessToken(){return "test"} export function cachedAccessToken(){return "test"}');
 const transport = await import(await compileModule("src/lib/agent.ts", {
   "./auth/client": authStub,
-  "./auth/config": dataModule('export const GATEWAY_BASE="https://api.dev.oceanleo.com";'),
+  "./auth/config": dataModule('export const GATEWAY_BASE="https://api.dev.oceanleo.com"; export function gatewayBase() { return GATEWAY_BASE; }'),
   "./history-events": dataModule("export function notifyHistoryChanged(){}"),
 }));
 

@@ -35,7 +35,7 @@ const authStub = dataModule(`
   export function cachedAccessToken(){ return "tok"; }
   export async function getUserId(){ return "payer-test-user"; }
 `);
-const gatewayStub = dataModule(`export const GATEWAY_BASE = "https://api.oceanleo.com";`);
+const gatewayStub = dataModule(`export const GATEWAY_BASE = "https://api.oceanleo.com"; export function gatewayBase() { return GATEWAY_BASE; }`);
 const historyStub = dataModule(`export function notifyHistoryChanged(){}`);
 const fnAgentStub = dataModule(`export {};`);
 

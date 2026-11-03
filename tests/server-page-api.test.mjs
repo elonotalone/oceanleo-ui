@@ -9,7 +9,7 @@ const api = await import(
       export async function accessToken() { return "tok_server_page"; }
     `),
     "./auth/config": dataModule(`
-      export const GATEWAY_BASE = "https://api.example.test";
+      export const GATEWAY_BASE = "https://api.example.test"; export function gatewayBase() { return GATEWAY_BASE; }
     `),
   })
 );

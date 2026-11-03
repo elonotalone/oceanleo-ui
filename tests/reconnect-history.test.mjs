@@ -346,12 +346,14 @@ test("Stop while a first session is being created withdraws its queued prompt in
   try {
     await until(() => openSocket(), "draft socket");
     await act(async () => { globalThis.__thread.queue("do not start after Stop"); globalThis.__thread.stop(); });
-    assert.equal(globalThis.__thread.pending.unsent, "已停止生成");
+    assert.equal(globalThis.__thread.pending, null);
+    assert.equal(globalThis.__thread.restoredDraft.text, "do not start after Stop");
     const cancel = sent().find((frame) => frame.t === "cancel");
     await act(async () => openSocket().server({ t: "cancel_result", program: "codex", stop_id: cancel.stop_id, result: "not_running" }));
     await view.update({ session: session({ id: "created-after-stop", computer_id: computer.id, native_session_id: null }) });
     assert.equal(sent().some((frame) => frame.t === "prompt"), false);
-    assert.equal(globalThis.__thread.pending.unsent, "已停止生成", "text stays available for an explicit retry");
+    assert.equal(globalThis.__thread.pending, null, "withdrawn text cannot auto-send");
+    assert.equal(globalThis.__thread.restoredDraft.text, "do not start after Stop", "withdrawn text is restored to the composer");
   } finally { view.cleanup(); }
 });
 

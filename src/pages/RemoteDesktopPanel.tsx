@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
+import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopBrokerClient, type RemoteDesktopBrokerStatus, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
 import { isNetworkFailure, newRequestId } from "../api/remote-desktop-retry";
 import { RemoteDesktopVideo, remoteFrameStyle } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
@@ -11,6 +11,7 @@ import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDeskt
 import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
 import { RemoteDesktopQualityHub } from "../api/remote-desktop-quality";
+import { RD_BROKER_COPY, rdBrokerErrorCopy, rdBrokerStatusCopy } from "../i18n/ui/messages/rd-broker-copy";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 export { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
@@ -116,6 +117,13 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   useEffect(() => { if (requested) setTicket(requested); }, [requested]);
   const [phase, setPhase] = useState<Phase>(() => ticket && !ticket.spent ? "starting" : "idle");
   const [frame, setFrame] = useState<RemoteDesktopFrameData | null>(null);
+  const [brokerStatus, setBrokerStatus] = useState<RemoteDesktopBrokerStatus | null>(null);
+  const [brokerMode, setBrokerMode] = useState(false);
+  const [brokerDecoded, setBrokerDecoded] = useState(false);
+  const brokerModeRef = useRef(false);
+  const brokerFrameReady = useRef(false);
+  const brokerDecodedImage = useRef<{ image: string; width: number; height: number } | null>(null);
+  const sessionClientRef = useRef<RemoteDesktopClient | RemoteDesktopBrokerClient>(client);
   const [message, setMessage] = useState("");
   const [handingBack, setHandingBack] = useState(false);
   const [handoffFrozen, setHandoffFrozen] = useState(false);
@@ -212,6 +220,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }, []);
 
   const canSend = useCallback(() => !handoffRef.current && !closedRef.current && !reconnectingRef.current && !viewOnlyRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
+    && (!brokerModeRef.current || brokerFrameReady.current)
     && (mediaModeRef.current !== "artc" || Boolean(mediaReadyRef.current && mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
 
   const pump = useCallback(async () => {
@@ -222,9 +231,16 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     try {
       while (queueRef.current.length && !closedRef.current && !signal.aborted && sessionRef.current === sessionId) {
         const action = queueRef.current.shift()!;
-        const result = await client.sendInput(deviceId, sessionId, ++sequenceRef.current, action, { signal });
+        const result = await sessionClientRef.current.sendInput(deviceId, sessionId, ++sequenceRef.current, action, { signal });
         if (signal.aborted || sessionRef.current !== sessionId) return;
         if (!result.ok) {
+          if (brokerModeRef.current && ["broker_input_unsupported", "broker_input_not_allowed"].includes(result.error ?? "")) {
+            setMessage(rdBrokerErrorCopy(result.error)!);
+            if (result.error === "broker_input_unsupported") continue;
+            queueRef.current = [];
+            viewOnlyRef.current = true; setAccess({ input_allowed: false, audio: false });
+            break;
+          }
           // HTTP-v1 is only a compatibility path. A lost move reply has an unknown
           // outcome, so never replay that sequence; discard it and keep the newest
           // pointer position flowing instead of freezing the whole queue.
@@ -235,8 +251,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           queueRef.current = [];
           updatePhase(terminal(result.error));
           setFrame(null);
-          setMessage(remoteDesktopErrorCopy(result.error, result.status));
-          if (sessionRef.current) void client.closeSession(deviceId, sessionRef.current).catch(() => {});
+          setMessage(rdBrokerErrorCopy(result.error) ?? remoteDesktopErrorCopy(result.error, result.status));
+          if (sessionRef.current) void sessionClientRef.current.closeSession(deviceId, sessionRef.current).catch(() => {});
           break;
         }
       }
@@ -245,6 +261,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
 
   const send = useCallback((action: RemoteDesktopAction) => {
     if (!canSend()) return;
+    if (brokerModeRef.current && !["move", "pointer_down", "pointer_up", "key_down", "key_up", "release_all"].includes(action.kind)) {
+      setMessage(RD_BROKER_COPY.unsupportedInput); return;
+    }
     if (streamModeRef.current) {
       if (streamRef.current?.send(action) && action.kind !== "release_all") { completedHandoff.current = null; setHandoffDone(false); }
       return;
@@ -294,7 +313,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const releaseInput = useCallback(() => {
     clearLocalInput();
     if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
-  }, [clearLocalInput]);
+    else if (brokerModeRef.current && sessionRef.current && !closedRef.current) {
+      queueRef.current = [{ kind: "release_all" }]; void pump();
+    }
+  }, [clearLocalInput, pump]);
 
   const handBack = useCallback(async () => {
     const original = agentRef.current, stream = streamRef.current;
@@ -358,7 +380,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     if (sessionRef.current) {
       const sessionId = sessionRef.current;
       sessionRef.current = null;
-      previousCloseRef.current = client.closeSession(deviceId, sessionId).catch(() => {});
+      previousCloseRef.current = sessionClientRef.current.closeSession(deviceId, sessionId).catch(() => {});
     }
   }, [client, deviceId, releaseInput]);
 
@@ -369,6 +391,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     closedRef.current = false;
     handoffRef.current = null; completedHandoff.current = null; setHandoffDone(false); setHandingBack(false); setHandoffFrozen(false);
     sessionRef.current = null;
+    sessionClientRef.current = client;
+    brokerModeRef.current = false; brokerFrameReady.current = false; brokerDecodedImage.current = null; setBrokerDecoded(false); setBrokerMode(false); setBrokerStatus(null);
     streamRef.current = null;
     streamModeRef.current = false;
     sequenceRef.current = 0;
@@ -411,7 +435,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       setFrame(null);
       reconnectingRef.current = false; setReconnecting(false); setReconnectDeadline(null); setIdleDeadline(null);
       updatePhase(terminal(error));
-      setMessage(remoteDesktopErrorCopy(error, status));
+      setMessage(rdBrokerErrorCopy(error) ?? remoteDesktopErrorCopy(error, status));
       revealToolbar();
     };
     const connect = async () => {
@@ -419,10 +443,32 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       await Promise.race([previousCloseRef.current, wait(1500, abort.signal)]);
       if (abort.signal.aborted) return;
       mark("request");
+      let sessionClient: RemoteDesktopClient | RemoteDesktopBrokerClient = client;
+      let brokerBinding: RemoteDesktopBrokerStatus | null = null;
+      if (client.broker && !agentRequest) {
+        const response = await client.broker.getStatus(deviceId, { signal: abort.signal });
+        if (abort.signal.aborted) return;
+        if (response.ok && response.data) {
+          const snapshot = response.data;
+          setBrokerStatus(snapshot);
+          if (snapshot.online && ["locked", "loggedOut", "preBoot"].includes(snapshot.state)) {
+            if (!snapshot.enabled || !snapshot.controlSupported || snapshot.state === "preBoot") {
+              disconnect(); updatePhase("error"); setMessage(rdBrokerStatusCopy(snapshot)); return;
+            }
+            brokerModeRef.current = true; setBrokerMode(true);
+            sessionClient = client.broker;
+            brokerBinding = snapshot;
+          }
+        } else if ([401, 403].includes(response.status ?? 0) && !["broker_not_approved", "broker_disabled"].includes(response.error ?? "")) {
+          end(response.error, response.status); return;
+        }
+        // An older/unprovisioned gateway or a signed-in/unknown device keeps the ordinary path.
+      }
+      sessionClientRef.current = sessionClient;
       // One id per click; the client retries a lost reply with it (same session back).
-      const result = await client.createSession(deviceId, { signal: abort.signal, requestId: newRequestId(), ownerDirect: !agentRequest });
+      const result = await sessionClient.createSession(deviceId, { signal: abort.signal, requestId: newRequestId(), ownerDirect: !agentRequest });
       if (abort.signal.aborted) {
-        if (result.ok && result.data) void client.closeSession(deviceId, result.data.session_id).catch(() => {});
+        if (result.ok && result.data) void sessionClient.closeSession(deviceId, result.data.session_id).catch(() => {});
         return;
       }
       if (!result.ok || !result.data) { end(result.error, result.status); return; }
@@ -556,10 +602,34 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       }
       streamModeRef.current = false;
       let failureStarted: number | null = null;
+      let nextStatusAt = 0;
       while (!abort.signal.aborted && !closedRef.current) {
-        const response = await client.getFrame(deviceId, result.data.session_id, { signal: abort.signal });
+        if (brokerModeRef.current && client.broker && Date.now() >= nextStatusAt) {
+          const status = await client.broker.getStatus(deviceId, { signal: abort.signal });
+          if (abort.signal.aborted) break;
+          nextStatusAt = Date.now() + 1500;
+          if (status.ok && status.data) {
+            setBrokerStatus(status.data);
+            if (!status.data.online || !status.data.controlSupported || status.data.generation !== brokerBinding?.generation || status.data.state !== brokerBinding?.state) {
+              if (!status.data.online || !status.data.controlSupported && status.data.state !== "loggedIn") {
+                end("broker_state_unavailable"); setMessage(rdBrokerStatusCopy(status.data));
+              } else end(status.data.generation !== brokerBinding?.generation ? "broker_generation_stale" : "broker_handoff");
+              break;
+            }
+          } else {
+            setBrokerStatus(null); releaseInput();
+            if ([401, 403, 404, 410].includes(status.status ?? 0)) { end(status.error, status.status); break; }
+            failureStarted ??= Date.now();
+            if (Date.now() - failureStarted >= recoveryWindow.current) { end("link_lost"); break; }
+            reconnectingRef.current = true; setReconnecting(true);
+            await wait(1000, abort.signal); nextStatusAt = 0; continue;
+          }
+        }
+        const response = await sessionClient.getFrame(deviceId, result.data.session_id, { signal: abort.signal });
         if (abort.signal.aborted) break;
         if (!response.ok || !response.data) {
+          if (brokerModeRef.current) { setBrokerStatus(null); nextStatusAt = 0; }
+          if (brokerModeRef.current && response.error?.startsWith("broker_")) { end(response.error, response.status); break; }
           if ([401, 403, 404, 410].includes(response.status || 0)) { end(response.error, response.status); break; }
           if (failureStarted === null) {
             failureStarted = Date.now();
@@ -577,7 +647,17 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           const previous = frameRef.current;
           if (value.state !== "active" || !value.frame || (previous && (previous.width !== value.frame.width || previous.height !== value.frame.height))) releaseInput();
           updatePhase(value.state === "pending_consent" ? "waiting" : value.state);
-          setFrame(value.state === "active" ? value.frame : null);
+          // A brief broker capture/lease gap retains pixels; input waits for fresh decoded geometry.
+          if (brokerModeRef.current) {
+            if (value.state !== "active" || !value.frame) { brokerFrameReady.current = false; setBrokerDecoded(false); }
+            if (value.frame && value.state === "active") {
+              const decoded = brokerDecodedImage.current;
+              const sameDecoded = decoded?.image === value.frame.image && decoded.width === value.frame.width && decoded.height === value.frame.height;
+              brokerFrameReady.current = (brokerFrameReady.current || sameDecoded) && previous?.width === value.frame.width && previous?.height === value.frame.height;
+              setBrokerDecoded(brokerFrameReady.current);
+              setFrame(value.frame);
+            }
+          } else setFrame(value.state === "active" ? value.frame : null);
         }
         await wait(failureStarted === null ? frameIntervalMs : Math.max(1000, frameIntervalMs), abort.signal);
       }
@@ -685,16 +765,18 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   };
 
   function syncModifiers(event: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }, exclude?: string) {
-    if (!streamModeRef.current || !canSend()) return;
+    if ((!streamModeRef.current && !brokerModeRef.current) || !canSend()) return;
     for (const [name, pressed] of [["Control", event.ctrlKey], ["Shift", event.shiftKey], ["Alt", event.altKey], ["Meta", event.metaKey]] as const) {
       if (exclude === name) continue;
       const matches = [...heldKeys.current].filter(([, key]) => key === name);
       if (pressed && !matches.length) {
         heldKeys.current.set(`modifier:${name}`, name);
-        send({ kind: "key_down", key: name });
+        send({ kind: "key_down", key: name, ...(brokerModeRef.current ? { code: `${name}Left` } : {}) });
       } else if (!pressed && matches.length) {
         for (const [id] of matches) heldKeys.current.delete(id);
-        send({ kind: "key_up", key: name });
+        if (brokerModeRef.current) {
+          for (const [id] of matches) send({ kind: "key_up", key: name, code: id.startsWith("modifier:") ? `${name}Left` : id });
+        } else send({ kind: "key_up", key: name });
       }
     }
   }
@@ -717,7 +799,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     flushMove();
     syncModifiers(event);
     pointerRef.current = { id: event.pointerId, pointerType: event.pointerType, ...p, button, buttons: new Set([button]) };
-    if (streamModeRef.current) send({ kind: "pointer_down", ...p, button });
+    if (streamModeRef.current || brokerModeRef.current) send({ kind: "pointer_down", ...p, button });
   }
 
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
@@ -729,7 +811,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       return;
     }
     if (panModeRef.current) return;
-    if (!streamModeRef.current || phaseRef.current !== "active") return;
+    if ((!streamModeRef.current && !brokerModeRef.current) || phaseRef.current !== "active") return;
     if (event.pointerType === "touch" && !pointerRef.current) return;
     const p = point(event, !pointerRef.current);
     if (!p) return;
@@ -755,7 +837,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     const p = point(event, false);
     flushMove();
     if (p) {
-      if (streamModeRef.current) for (const button of down.buttons) send({ kind: "pointer_up", ...p, button });
+      if (streamModeRef.current || brokerModeRef.current) for (const button of down.buttons) send({ kind: "pointer_up", ...p, button });
       else {
         const current = frameRef.current;
         const image = imageRef.current;
@@ -782,6 +864,14 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape" && event.ctrlKey && event.altKey && event.shiftKey) { event.preventDefault(); releaseInput(); revealToolbar(); return; }
     if (!canSend() || composing.current || event.nativeEvent.isComposing || event.keyCode === 229 || ["Process", "Dead", "Unidentified"].includes(event.key)) return;
+    if (brokerModeRef.current) {
+      event.preventDefault();
+      if (!event.code || event.key === "Delete" && event.ctrlKey && event.altKey) { setMessage(RD_BROKER_COPY.unsupportedInput); return; }
+      flushMove(); syncModifiers(event, event.key);
+      heldKeys.current.set(event.code, event.key);
+      send({ kind: "key_down", key: event.key, code: event.code });
+      return;
+    }
     // Paste must reach the browser clipboard event so its text travels naturally.
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") return;
     flushMove();
@@ -805,6 +895,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   function keyUp(event: KeyboardEvent<HTMLDivElement>) {
     const id = event.code || event.key, key = heldKeys.current.get(id);
     if (!key) { syncModifiers(event); return; }
+    if (brokerModeRef.current) {
+      event.preventDefault(); flushMove(); heldKeys.current.delete(id);
+      send({ kind: "key_up", key, code: event.code }); syncModifiers(event); return;
+    }
     event.preventDefault();
     flushMove();
     heldKeys.current.delete(id);
@@ -841,6 +935,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const status = reconnecting ? reconnectCopy : phase === "idle" ? CLOUD_AGENT_COPY.remoteIdle : phase === "starting" ? "正在请求这台电脑…" : phase === "waiting" ? waiting : phase === "connecting" ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : message || "远程会话已结束。";
   return createPortal(
     <div data-oceanleo-remote-desktop data-remote-phase={phase} data-remote-media={mediaMode} data-remote-video-ready={mediaReady}
+      data-remote-transport={brokerMode ? "secure-broker-http-v1" : undefined} data-remote-device-state={brokerStatus?.state}
       data-remote-reconnecting={reconnecting || undefined} data-remote-connect-timing={connectTiming || undefined}
       data-remote-media-blocked-host={mediaDiagnostic?.blocked_host} data-remote-media-sdk-error={mediaDiagnostic?.sdk_error} style={{ position: "fixed", inset: 0, zIndex: 2147483647, background: "#08090b", color: "#fff", width: "100%", height: "100dvh", overflow: "hidden" }}>
       <div ref={stageRef} data-remote-stage tabIndex={0} aria-label={tt("远程桌面")}
@@ -876,17 +971,23 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             if (value === "error") { disconnect(); updatePhase(terminal(error)); setMessage(remoteDesktopErrorCopy(error, status)); revealToolbar(); }
           }}
           onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("「{name}」上的 OceanLeo 当前没有视频能力。"); }}
-          onStatus={acceptMediaStatus} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
-          onLoad={() => streamRef.current?.acknowledgeFrame(frame.sequence)}
+          onStatus={acceptMediaStatus} /> : frame && (active || brokerMode && ["connecting", "reconnecting"].includes(phase)) ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
+          onLoad={() => {
+            streamRef.current?.acknowledgeFrame(frame.sequence);
+            if (brokerModeRef.current) { brokerDecodedImage.current = { image: frame.image, width: frame.width, height: frame.height }; brokerFrameReady.current = true; setBrokerDecoded(true); }
+          }}
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
           style={remoteFrameStyle(fit, frame.width, frame.height)} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
         {reconnecting || mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" data-remote-reconnecting-notice={reconnecting || undefined} data-remote-media-notice={!reconnecting || undefined}
           style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>{reconnecting ? <>{tt("网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice)}</div> : null}
-        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
+        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || brokerMode && !brokerDecoded || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />
       </div>
+      {brokerStatus || brokerMode ? <div role="status" data-remote-broker-status style={{ position: "absolute", top: 68, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>
+        {tt(brokerStatus ? rdBrokerStatusCopy(brokerStatus) : RD_BROKER_COPY.unknown)}{brokerMode ? <> · {tt(RD_BROKER_COPY.limits)}</> : null}
+      </div> : null}
       <div onPointerEnter={revealToolbar} onFocus={revealToolbar} style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: `translate(-50%, ${toolbar || !active ? "0" : "-150%"})`, transition: "transform .18s", display: "flex", alignItems: "center", gap: 16, padding: "9px 14px", borderRadius: 12, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deviceName}</span>
         <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(reconnecting ? reconnectCopy : active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : ended ? "已断开" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
@@ -917,17 +1018,17 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         <span>{tt(agent.text)}</span>
         {agent.note ? <span data-remote-agent-note style={{ opacity: .75 }}>{tt(agent.note)}</span> : null}
         {/* Let go of anything this viewer still holds first: the computer resumes the AI only once no person holds input. */}
-        {agent.handBack ? <button type="button" data-remote-agent-hand-back disabled={agent.busy || handingBack || handoffFrozen || (handoffDone && (agent.handoffKey ? completedHandoff.current?.key === agent.handoffKey : completedHandoff.current?.callback === agent.onHandBack))} onClick={() => { void handBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
+        {agent.handBack && !brokerMode ? <button type="button" data-remote-agent-hand-back disabled={agent.busy || handingBack || handoffFrozen || (handoffDone && (agent.handoffKey ? completedHandoff.current?.key === agent.handoffKey : completedHandoff.current?.callback === agent.onHandBack))} onClick={() => { void handBack(); }} style={{ whiteSpace: "nowrap" }}>{tt(CLOUD_AGENT_COPY.handBack)}</button> : null}
       </div> : null}
       {active && idleSeconds !== null ? <div role="alertdialog" aria-label={tt("仍在使用吗？")} data-remote-idle-confirm style={{ position: "absolute", top: "20%", left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: 20, borderRadius: 8 }}>
         <p>{tt("仍在使用吗？")}</p>
         <p>{tt("长时间没有输入，{seconds} 秒后将结束会话。", { seconds: String(idleSeconds) })}</p>
-        <button type="button" onClick={() => {
+        {brokerMode ? <p>{tt(access?.input_allowed === false ? RD_BROKER_COPY.idleViewOnly : RD_BROKER_COPY.idleInput)}</p> : <button type="button" onClick={() => {
           // An explicit confirmation releases held input, on either existing transport.
           // Only the computer's execution receipt clears the server's idle prompt.
           if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
           else if (sessionRef.current) { queueRef.current.push({ kind: "release_all" }); void pump(); }
-        }}>{tt("仍在使用")}</button>
+        }}>{tt("仍在使用")}</button>}
       </div> : null}
       {active && (message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(message || mediaNotice, { name: deviceName })}</div> : null}
     </div>, portal,

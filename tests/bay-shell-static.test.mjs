@@ -98,7 +98,9 @@ function classTokens(text) {
       const end = text.indexOf(quote, i + 1);
       expr = text.slice(i, end + 1);
     }
-    for (const body of stringsIn(expr)) {
+    // A conditional compares layout names; only its result strings are classes.
+    const classExpr = expr.replace(/(?:===|!==|==|!=)\s*(['"])[^'"]*\1/g, "");
+    for (const body of stringsIn(classExpr)) {
       for (const token of body.split(/\s+/)) if (token) tokens.add(token);
     }
   }

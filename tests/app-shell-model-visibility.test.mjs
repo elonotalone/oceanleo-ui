@@ -99,6 +99,8 @@ const presenceStubUrl = dataModule(`
   export function usePresenceHeartbeat() {}
 `);
 const appShellUrl = await compileModule("src/shell/AppShell.tsx", {
+  "./messages/MessagesHost": dataModule(`export function MessagesHost(){return null;}`),
+  "./messages/call/ui/video-pool": dataModule(`export function releaseAllVideos() {} export function acquireVideo(){ return null; } export function releaseVideos() {} export function resumeIfPaused() {}`),
   "next/link": linkStubUrl,
   "next/navigation": navigationStubUrl,
   "./ModelPicker": modelPickerUrl,

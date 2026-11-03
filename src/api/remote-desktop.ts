@@ -147,6 +147,8 @@ export type RemoteDesktopButton = "left" | "right" | "middle";
 
 export interface RemoteDesktopAction {
   kind: RemoteDesktopStreamInputKind;
+  /** Physical KeyboardEvent.code; used only by the Windows secure broker. */
+  code?: string;
   x?: number;
   y?: number;
   toX?: number;
@@ -191,6 +193,8 @@ export const CREATE_RETRY_WINDOW_MS = 30_000;
 export { isNetworkFailure, newRequestId };
 
 export interface RemoteDesktopClient {
+  /** Optional boot/lock-screen owner path. Never uses device or restricted credentials in the browser. */
+  broker?: RemoteDesktopBrokerClient;
   negotiateMedia?(deviceId: string, sessionId: string, displayId?: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteMediaResponse>>;
   openStream?(
     deviceId: string, sessionId: string, handlers: RemoteDesktopStreamHandlers,
@@ -721,7 +725,127 @@ export function parseFrame(data: unknown): RemoteDesktopFrame | null {
   return out;
 }
 
+export type RemoteDesktopBrokerState = "loggedIn" | "locked" | "loggedOut" | "preBoot" | "unknown";
+export interface RemoteDesktopBrokerStatus {
+  deviceId: string;
+  generation: number;
+  online: boolean;
+  enabled: boolean;
+  state: RemoteDesktopBrokerState;
+  role: "broker" | "userAgent";
+  controlSupported: boolean;
+  captureVerified: boolean;
+  inputVerified: boolean;
+  reason: string | null;
+}
+export interface RemoteDesktopBrokerClient extends Pick<RemoteDesktopClient, "getFrame" | "sendInput" | "closeSession"> {
+  getStatus(deviceId: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteDesktopBrokerStatus>>;
+  createSession(deviceId: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<Omit<RemoteDesktopSession, "transport"> & { transport: "secure-broker-http-v1" }>>;
+}
+
+const BROKER_STATES = ["loggedIn", "locked", "loggedOut", "preBoot", "unknown"] as const;
+const BROKER_REASONS = ["broker_unavailable", "macos_loginwindow_not_supported", "broker_state_unavailable", "broker_device_verification_required", "os_not_running"];
+export function parseBrokerStatus(value: unknown, deviceId: string): RemoteDesktopBrokerStatus | null {
+  if (!isRecord(value) || value.deviceId !== deviceId || !Number.isSafeInteger(value.generation) || Number(value.generation) < 1
+    || !BROKER_STATES.includes(value.state as RemoteDesktopBrokerState) || !["broker", "userAgent"].includes(String(value.role))
+    || ["online", "enabled", "controlSupported", "captureVerified", "inputVerified"].some(key => typeof value[key] !== "boolean")) return null;
+  const online = value.online === true;
+  const supported = online && value.enabled === true && value.role === "broker" && ["locked", "loggedOut"].includes(String(value.state)) && value.controlSupported === true;
+  return { deviceId, generation: value.generation as number, online, enabled: value.enabled as boolean,
+    state: online ? value.state as RemoteDesktopBrokerState : "unknown", role: value.role as RemoteDesktopBrokerStatus["role"],
+    controlSupported: supported, captureVerified: supported && value.captureVerified === true,
+    inputVerified: supported && value.captureVerified === true && value.inputVerified === true,
+    reason: typeof value.reason === "string" && BROKER_REASONS.includes(value.reason) ? value.reason : null };
+}
+
+type BrokerEvent = { kind: "pointer"; x: number; y: number } | { kind: "button"; button: number; down: boolean }
+  | { kind: "key"; scan: number; extended: boolean; down: boolean };
+// Windows set-1 scan codes. Browser key text/layout never becomes a privileged command.
+const BROKER_KEYS: Record<string, [number, boolean?]> = {
+  Escape: [1], Digit1: [2], Digit2: [3], Digit3: [4], Digit4: [5], Digit5: [6], Digit6: [7], Digit7: [8], Digit8: [9], Digit9: [10], Digit0: [11],
+  Minus: [12], Equal: [13], Backspace: [14], Tab: [15], KeyQ: [16], KeyW: [17], KeyE: [18], KeyR: [19], KeyT: [20], KeyY: [21], KeyU: [22], KeyI: [23], KeyO: [24], KeyP: [25],
+  BracketLeft: [26], BracketRight: [27], Enter: [28], ControlLeft: [29], KeyA: [30], KeyS: [31], KeyD: [32], KeyF: [33], KeyG: [34], KeyH: [35], KeyJ: [36], KeyK: [37], KeyL: [38],
+  Semicolon: [39], Quote: [40], Backquote: [41], ShiftLeft: [42], Backslash: [43], KeyZ: [44], KeyX: [45], KeyC: [46], KeyV: [47], KeyB: [48], KeyN: [49], KeyM: [50],
+  Comma: [51], Period: [52], Slash: [53], ShiftRight: [54], AltLeft: [56], Space: [57], CapsLock: [58], F1: [59], F2: [60], F3: [61], F4: [62], F5: [63], F6: [64], F7: [65], F8: [66], F9: [67], F10: [68],
+  NumLock: [69], ScrollLock: [70], Numpad7: [71], Numpad8: [72], Numpad9: [73], NumpadSubtract: [74], Numpad4: [75], Numpad5: [76], Numpad6: [77], NumpadAdd: [78], Numpad1: [79], Numpad2: [80], Numpad3: [81], Numpad0: [82], NumpadDecimal: [83],
+  F11: [87], F12: [88], NumpadEnter: [28, true], ControlRight: [29, true], NumpadDivide: [53, true], AltRight: [56, true], Home: [71, true], ArrowUp: [72, true], PageUp: [73, true], ArrowLeft: [75, true], ArrowRight: [77, true], End: [79, true], ArrowDown: [80, true], PageDown: [81, true], Insert: [82, true], Delete: [83, true], MetaLeft: [91, true], MetaRight: [92, true], ContextMenu: [93, true],
+};
+export function brokerInputEvents(action: RemoteDesktopAction): BrokerEvent[] | null {
+  if (action.kind === "move" || action.kind === "pointer_down" || action.kind === "pointer_up") {
+    if (typeof action.x !== "number" || typeof action.y !== "number" || !Number.isFinite(action.x) || !Number.isFinite(action.y) || action.x < 0 || action.x > 1 || action.y < 0 || action.y > 1) return null;
+    const events: BrokerEvent[] = [{ kind: "pointer", x: Math.round(action.x * 65535), y: Math.round(action.y * 65535) }];
+    if (action.kind !== "move") {
+      const button = ["left", "right", "middle"].indexOf(action.button ?? "left");
+      if (button < 0) return null;
+      events.push({ kind: "button", button, down: action.kind === "pointer_down" });
+    }
+    return events;
+  }
+  if (action.kind === "key_down" || action.kind === "key_up") {
+    const key = BROKER_KEYS[action.code ?? ""];
+    return key ? [{ kind: "key", scan: key[0], extended: key[1] === true, down: action.kind === "key_down" }] : null;
+  }
+  return null;
+}
+
+const brokerBase = (id: string) => `/v1/secure-broker/devices/${encodeURIComponent(id)}`;
+const brokerInputs = new Map<string, { sequence: number; held: Map<string, BrokerEvent> }>();
+const brokerInputKey = (device: string, session: string) => JSON.stringify([device, session]);
+const heldId = (event: BrokerEvent) => event.kind === "key" ? `k:${event.scan}:${event.extended}` : event.kind === "button" ? `b:${event.button}` : "";
+const brokerClient: RemoteDesktopBrokerClient = {
+  async getStatus(deviceId, options) {
+    const result = await authed<unknown>(`${brokerBase(deviceId)}/status`, {}, options?.signal, 2000);
+    if (!result.ok) return result as RemoteDesktopApiResult<RemoteDesktopBrokerStatus>;
+    const data = parseBrokerStatus(result.data, deviceId);
+    return data ? { ...result, data } : { ok: false, error: "response_malformed", status: result.status };
+  },
+  async createSession(deviceId, options) {
+    const registered = await registerController(options?.signal);
+    if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
+    const body = JSON.stringify({ requestId: options?.requestId ?? newRequestId() });
+    let result = await authed<unknown>(`${brokerBase(deviceId)}/sessions`, { method: "POST", body }, options?.signal, 2000);
+    // One safe retry of a lost create reply: the same owner/controller/requestId replays its session.
+    if (!result.ok && isNetworkFailure(result.error) && !options?.signal?.aborted) {
+      result = await authed<unknown>(`${brokerBase(deviceId)}/sessions`, { method: "POST", body }, options?.signal, 2000);
+    }
+    if (!result.ok) return { ok: false, error: result.error, status: result.status };
+    const data = result.data;
+    // API v1's early replay returns the legacy HTTP marker; this authenticated route fixes transport.
+    if (!isRecord(data) || typeof data.session_id !== "string" || !data.session_id || !["connecting", "pending_consent"].includes(String(data.state))
+      || (data.transport !== undefined && !["secure-broker-http-v1", "http-v1"].includes(String(data.transport)))) return { ok: false, error: "response_malformed", status: result.status };
+    const key = brokerInputKey(deviceId, data.session_id);
+    if (!brokerInputs.has(key)) brokerInputs.set(key, { sequence: 0, held: new Map() });
+    return { ok: true, status: result.status, data: { session_id: data.session_id, state: data.state as RemoteDesktopSession["state"], expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
+      transport: "secure-broker-http-v1", ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}) } };
+  },
+  async getFrame(deviceId, sessionId, options) {
+    const result = await authed<unknown>(`${brokerBase(deviceId)}/sessions/${encodeURIComponent(sessionId)}/frame`, {}, options?.signal, 2000);
+    if (!result.ok) return { ok: false, error: result.error, status: result.status };
+    const data = parseFrame(result.data);
+    return data ? { ok: true, data, status: result.status } : { ok: false, error: "response_malformed", status: result.status };
+  },
+  async sendInput(deviceId, sessionId, seq, action, options) {
+    const input = brokerInputs.get(brokerInputKey(deviceId, sessionId));
+    if (!input) return { ok: false, error: "session_not_found", status: 404 };
+    const events = action.kind === "release_all" ? [...input.held.values()].map(event => ({ ...event, down: false }) as BrokerEvent) : brokerInputEvents(action);
+    if (!events) return { ok: false, error: "broker_input_unsupported", status: 422 };
+    for (const event of events) {
+      const sequence = input.sequence = Math.max(input.sequence + 1, seq);
+      const result = await authed<unknown>(`${brokerBase(deviceId)}/sessions/${encodeURIComponent(sessionId)}/input`, { method: "POST", body: JSON.stringify({ sequence, event }) }, options?.signal, INPUT_REQUEST_TIMEOUT_MS);
+      if (!result.ok) return { ok: false, error: result.error, status: result.status };
+      if (!isRecord(result.data) || result.data.accepted !== true || result.data.sequence !== sequence) return { ok: false, error: "response_malformed", status: result.status };
+      if (event.kind !== "pointer") { if (event.down) input.held.set(heldId(event), event); else input.held.delete(heldId(event)); }
+    }
+    return { ok: true, data: { accepted: true, seq } };
+  },
+  async closeSession(deviceId, sessionId) {
+    brokerInputs.delete(brokerInputKey(deviceId, sessionId));
+    return authed<{ closed: true }>(`${brokerBase(deviceId)}/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", keepalive: true }, undefined, 2000);
+  },
+};
+
 export const remoteDesktopClient: RemoteDesktopClient = {
+  broker: brokerClient,
   openStream,
   async negotiateMedia(deviceId, sessionId, displayId, options) {
     const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport: "artc-v1", ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);

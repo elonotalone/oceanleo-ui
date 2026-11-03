@@ -2850,7 +2850,8 @@ test("rendered missing context stays empty without issuing a Primary request", a
     const description =
       mounted.container.querySelector("[data-empty-description]")
         ?.textContent || "";
-    assert.match(description, /当前 App 暂未提供可用素材/);
+    // The shared shelf now uses the same friendly empty copy for every app.
+    assert.match(description, /暂时没有可用素材/);
     assert.doesNotMatch(description, /缺少精确 contextId|响应无效/);
   } finally {
     await mounted.unmount();

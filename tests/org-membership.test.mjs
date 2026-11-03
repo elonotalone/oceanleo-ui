@@ -67,8 +67,10 @@ const { createRoot } = await import("react-dom/client");
 
 // 判据 5：组织侧不许自建 fetch。整份测试里 fetch 被叫一次就红。
 let fetchCalls = 0;
-globalThis.fetch = async () => {
+const unexpectedFetchUrls = [];
+globalThis.fetch = async (url) => {
   fetchCalls += 1;
+  unexpectedFetchUrls.push(String(url));
   throw new Error("OrgMembership must not call fetch directly");
 };
 
@@ -82,9 +84,10 @@ const uiStubUrl = dataModule(`
 `);
 
 // org-api 替身：每个测试用 globalThis.__W13 换场景；调用计数进 calls。
-// WITH_PREVIEW=false 时不导出 getInvitePreview，模拟 W11 A13 还没落地的盘面。
+// WITH_PREVIEW=false 时用 undefined 覆盖继承的 getInvitePreview，模拟旧网关。
 const orgApiStub = (withPreview) =>
   dataModule(`
+  export * from ${JSON.stringify(new URL("../src/lib/org-api.ts", import.meta.url).href)};
   const g = () => globalThis.__W13;
   const count = (name) => { g().calls.push(name); };
   export class OrgApiError extends Error {
@@ -116,7 +119,7 @@ const orgApiStub = (withPreview) =>
   export async function setMemberCap() {}
   export async function setMemberPermission() {}
   export async function updateOrg() {}
-  ${withPreview ? `export async function getInvitePreview(code) { count("getInvitePreview:" + code); return g().getInvitePreview(code); }` : ""}
+  ${withPreview ? `export async function getInvitePreview(code) { count("getInvitePreview:" + code); return g().getInvitePreview(code); }` : "export const getInvitePreview = undefined;"}
 `);
 
 const orgApiWithPreview = orgApiStub(true);
@@ -205,7 +208,7 @@ test("面板三段齐全：我的团队 / 加入团队 / 谁看过我；空列�
   assert.ok(view.text().includes("成员"), "角色要说成人话");
   assert.ok(view.q('[data-org-views-empty="1"]'));
   assert.ok(view.text().includes("还没有人看过"));
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls, 0, unexpectedFetchUrls.join(", "));
   view.cleanup();
 });
 
@@ -534,11 +537,14 @@ test("建团队：422 agreement_required 显示人话", async () => {
 /* ---------- ⑦ AccountPage 无组织零差异 ---------- */
 
 const authStubUrl = dataModule(`
+  export * from ${JSON.stringify(new URL("../src/lib/auth/index.ts", import.meta.url).href)};
   const s = () => globalThis.__authStub;
   const emptyByok = { enabled: false, providers: [], limits: { max_providers: 0 } };
   export function oceanleoConfigured() { return true; }
   export function browserClient() { return s().client; }
   export async function getUserEmail() { return s().email; }
+  export async function getUserId() { return "account-user"; }
+  export async function getAccountProfile() { return { userId: "account-user", email: s().email, displayName: "Designer" }; }
   export async function getCredits() { return { ok: true, data: { balance_yuan: 12.5 } }; }
   export async function getCreditHistory() { return { ok: true, data: { events: [] } }; }
   export async function getUsageBySite() { return { ok: true, data: { total: { requests: 0 } } }; }
@@ -579,8 +585,14 @@ const { AccountPage } = await import(
     "next/link": linkStubUrl,
     "./AccountSecurityPage": stubComponent("AccountSecurityPage", "security"),
     "./PasswordResetPage": stubComponent("PasswordResetPage", "reset"),
-    "./AuthDialog": stubComponent("AuthDialog", "auth"),
-    "../ui": stubComponent("ConfirmDialog", "confirm"),
+    "./AuthDialog": dataModule(`
+      export * from ${JSON.stringify(await compileModule("src/pages/AuthDialog.tsx"))};
+      export { AuthDialog } from ${JSON.stringify(stubComponent("AuthDialog", "auth"))};
+    `),
+    "../ui": dataModule(`
+      export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+      export { ConfirmDialog } from ${JSON.stringify(stubComponent("ConfirmDialog", "confirm"))};
+    `),
     "./PageHeader": pageHeaderStubUrl,
     "../lib/auth": authStubUrl,
     "../i18n/ui/useUI": uiStubUrl,
@@ -650,5 +662,5 @@ test("AccountPage：org-api 整条路 404（路由未上线）时团队栏安静
 });
 
 test("整份测试没有一次直接 fetch（判据 5：/v1/orgs 只走 org-api）", () => {
-  assert.equal(fetchCalls, 0);
+  assert.equal(fetchCalls, 0, unexpectedFetchUrls.join(", "));
 });

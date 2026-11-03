@@ -198,7 +198,9 @@ test("website catalog requests the full scoped set and retains filters/version c
 });
 
 
-test("all website facet/version/loading copy has Chinese, Traditional Chinese and non-Chinese fallbacks",()=>{
+test("all website facet/version/loading copy has Chinese, Traditional Chinese and non-Chinese fallbacks",async()=>{
  const labels=[...Object.values(MATERIAL_INDUSTRY_SUB_LABELS),...Object.values(MATERIAL_SHAPE_LABELS),...Object.values(MATERIAL_SKIN_LABELS),"全部子类","全部行业","全部页数","全部外观","换一个版本","看第 {n} 个版本，共 {total} 个","正在打开这份素材…"];
- for(const [locale,dictionary] of Object.entries(W3_L5D_MESSAGES))for(const label of labels){assert.ok(dictionary[label],`${locale}: ${label}`);if(!locale.startsWith("zh"))assert.doesNotMatch(dictionary[label],/[\u3400-\u9fff]/);}
+ // Industry names come from the base dictionary (all 17 locales); this table only adds the website-facet labels.
+ for(const [locale,dictionary] of Object.entries(W3_L5D_MESSAGES)){const base=(await import(`../src/i18n/ui/messages/${locale}.ts`)).default;for(const label of labels){const text=dictionary[label]??base[label]??(locale==="zh"?label:undefined);assert.ok(text,`${locale}: ${label}`);// Japanese legitimately writes many of these names in kanji (学校, 広告), so only other locales must be CJK-free.
+ if(!locale.startsWith("zh")&&locale!=="ja")assert.doesNotMatch(text,/[\u3400-\u9fff]/);}}
 });

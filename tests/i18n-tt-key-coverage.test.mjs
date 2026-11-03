@@ -595,6 +595,9 @@ test("日韩档不许整条照抄中文原文（短的共用汉字词除外）",
  * extracted 插件，不顺手翻完这一片。但新加的中文一律要有译文——**新键落不进这张表**，
  * 缺了当场红。
  */
+// W6 2026-11-03: remove five now fully translated keys (including 已置顶),
+// plus 当前 App (renamed to 所有素材 in 6bc474ee) and 打开原始页面 (removed in bc511644).
+// The new 所有素材 wording remains subject to the strict missing-translation gate; no exemption was added.
 const PRE_EXISTING_GAPS = new Set([
   "0 = 一分都不许花",
   "3D checkpoint 正在保存，请稍后重试",
@@ -752,7 +755,6 @@ const PRE_EXISTING_GAPS = new Set([
   "已添加「{title}」",
   "已用",
   "已由人复核于 {at}",
-  "已置顶",
   "已自动放行",
   "已选中，点一下取消",
   "平行光",
@@ -760,7 +762,6 @@ const PRE_EXISTING_GAPS = new Set([
   "开玩",
   "归属 app",
   "当前",
-  "当前 App",
   "当前展示已验证的模型预览；编辑时会加载固定 revision 的完整模型。",
   "当前帧尚未解码完成，请稍后再试",
   "当前操作台状态无法保存为工作会话。",
@@ -778,7 +779,6 @@ const PRE_EXISTING_GAPS = new Set([
   "截图到我的库",
   "截图已上传，但登记到我的库失败",
   "打开 {name}",
-  "打开原始页面",
   "打开原文件",
   "打开原素材",
   "打开完整素材库",
@@ -788,7 +788,6 @@ const PRE_EXISTING_GAPS = new Set([
   "拖节点四周圆点连到另一个节点 · 点节点看 prompt/工作 · 加成员点右上",
   "按对象存储真实字节重新数一遍，比较慢",
   "换一个关键词或分类试试。",
-  "换一个版本",
   "换成圆形",
   "换成方形",
   "授权公共素材库",
@@ -853,7 +852,6 @@ const PRE_EXISTING_GAPS = new Set([
   "正在加载真实封面",
   "正在取消导出…",
   "正在处理音频…",
-  "正在打开这份素材…",
   "正在扣款…",
   "正在改…",
   "正在核对…",
@@ -903,7 +901,6 @@ const PRE_EXISTING_GAPS = new Set([
   "登录后即可使用我的库。",
   "登录后才能设置 agent 能不能替你请人。",
   "相机光圈语义会保留，但当前运行时无法渲染景深：",
-  "看第 {n} 个版本，共 {total} 个",
   "矢量",
   "确定从「我的应用」移除",
   "移动到项目",
@@ -921,7 +918,6 @@ const PRE_EXISTING_GAPS = new Set([
   "素材场景分区",
   "素材导入失败",
   "素材应用失败",
-  "素材操作",
   "纹理上传失败",
   "纹理只支持 PNG 或 JPEG，以确保 GLB 可安全导出",
   "纹理替换失败",

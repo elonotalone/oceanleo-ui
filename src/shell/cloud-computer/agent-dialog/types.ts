@@ -1,10 +1,10 @@
 // Browser controller contract. Pure protocol types live in the shared core.
 // Preserve existing web imports while keeping browser types out of the core.
-export { WS_PROGRAMS, PROGRAM_LABEL } from "../../../native-agent-core/index";
+export { WS_PROGRAMS, PROGRAM_LABEL, toolRawValue } from "../../../native-agent-core/index";
 export type {
   WsProgram, AgentProgram, DirCapability, ProgramAuth, ProgramStatus, ProgramProvider,
   DialogModel, DialogCommand, DialogSession, DialogConfigOption,
-  ToolKind, ToolStatus, ToolContent, ToolLocation, ToolCard, PlanEntry,
+  ToolKind, ToolStatus, ToolContent, ToolLocation, ToolCard, RawToolCard, PlanEntry,
   PermissionOption, TurnItem, DialogAttachmentState, ArchivedAttachment,
   DialogAttachment, UserMessageAttachment, AgentMessageSender, AgentDialogMessage,
   ModeOption, InstallState, LoginPhase, LoginState, DialogState,

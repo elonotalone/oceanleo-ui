@@ -11,6 +11,8 @@ import { normalizeQuestions } from "./questions";
 import { ArchivedAttachmentLink } from "./ArchivedAttachment";
 import { normalizeUserMessage } from "./message-attachments";
 import { AgentText } from "./text";
+import { ToolRawFolds } from "./ToolRawFolds";
+export { ToolPayloadView } from "./ToolRawFolds";
 import type { AgentDialogController, AgentDialogMessage, ToolCard, TurnItem } from "./types";
 
 function toolMark(kind: string): string {
@@ -96,7 +98,7 @@ function ThoughtView({ text }: { text: string }) {
   );
 }
 
-function ToolView({ tool }: { tool: ToolCard }) {
+export function ToolView({ tool }: { tool: ToolCard }) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
   return (
@@ -120,6 +122,7 @@ function ToolView({ tool }: { tool: ToolCard }) {
           className="mt-1 cursor-pointer space-y-2 pl-4"
           onClick={() => collapseUnlessSelecting(() => setOpen(false))}
         >
+          <ToolRawFolds tool={tool} />
           {tool.content.map((part, index) => {
             if (part.type === "diff") {
               return (

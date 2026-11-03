@@ -78,7 +78,7 @@ import {
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
 import { adoptSavedEditorItem } from "./advanced-session";
-import { MaterialStandaloneEditor } from "./material-library-standalone";
+import { MaterialStandaloneEditor } from "./library-standalone-editor-host";
 import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";

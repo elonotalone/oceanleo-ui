@@ -14,6 +14,8 @@ import { stripJsComments } from "./helpers/strip-js-comments.mjs";
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const { BAY_NEEDS_MESSAGES } = await import("../src/i18n/ui/messages/bay-needs-copy.ts");
 const { BAY_MESSAGES } = await import("../src/i18n/ui/messages/bay-copy.ts");
+// 2026-11-03: shared words can come from any registered table (游戏 lives in the settings table); check the final dictionary tt() reads.
+const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 
 const LOCALES = ["zh-TW", "en", "ja", "ko", "fr", "de", "it", "es", "es-419", "pt-BR", "pt-PT", "ar", "hi", "th", "tr", "vi"];
 const HAN = /[\u4e00-\u9fff]/;
@@ -88,7 +90,7 @@ test("needs 与叫真人源码里的每句中文都有 16 语译文（分表或�
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {
-      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key)) continue;
+      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key) || UI_MESSAGES[locale]?.[key]) continue;
       missing.push(`${locale}: ${key}`);
     }
   }

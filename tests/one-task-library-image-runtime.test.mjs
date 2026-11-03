@@ -162,6 +162,7 @@ const imageContextToolbarStub = dataModule(`${jsx}
   }
 `);
 const visualControlsStub = dataModule(`${jsx}
+  export function FabricImageInsertPanel(){ return null; }
   export function FabricImageControls(){ return null; }
   export function FabricImageFilterPanel(){ return null; }
   export function FabricImageFontPanel(){ return null; }

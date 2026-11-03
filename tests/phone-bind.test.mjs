@@ -125,6 +125,8 @@ const securityUrl = await compileModule("src/pages/AccountSecurityPage.tsx", {
   `),
   "../contracts/domain-family": familyStubUrl,
   "../ui": dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+
     export function ButtonSpinner({ label }) { return label; }
     export function ConfirmDialog() { return null; }
   `),
@@ -139,9 +141,13 @@ const supabaseStubUrl = dataModule(`
   export function createBrowserClient() { return globalThis.__SUPA__; }
 `);
 const configStubUrl = dataModule(`
+  export const COM_AUTH_COOKIE_KEY = "sb-com-auth-token";
+  export const CN_AUTH_COOKIE_KEY = "sb-cn-auth-token";
+  export const currentIdentityUrl = () => SUPABASE_URL;
+  export const currentIdentityAnonKey = () => SUPABASE_ANON_KEY;
   export const SUPABASE_URL = "https://example.supabase.co";
   export const SUPABASE_ANON_KEY = "anon";
-  export const GATEWAY_BASE = "https://api.example";
+  export const GATEWAY_BASE = "https://api.example"; export function gatewayBase() { return GATEWAY_BASE; }
   export function cookieOptions() { return {}; }
   export function configured() { return true; }
   export function isLeoDevPreviewHost() { return false; }
@@ -150,7 +156,7 @@ const realClientUrl = await compileModule("src/lib/auth/client.ts", {
   "@supabase/ssr": supabaseStubUrl,
   "./config": configStubUrl,
   "./auth-fetch": dataModule("export const authFetch = fetch;"),
-  "./preview-cookies": dataModule("export function createLeoDevPreviewCookieJar() { return null; }"),
+  "./preview-cookies": dataModule("export function createLeoDevPreviewCookieJar() { return null; } export function writePreviewGuestLatch() {}"),
   "./captcha": dataModule(`
     export async function getCaptchaToken() { return null; }
     export function mapCaptchaError(raw) { return raw == null ? undefined : String(raw); }

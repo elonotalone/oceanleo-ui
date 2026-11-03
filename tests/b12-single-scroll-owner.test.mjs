@@ -11,8 +11,9 @@ async function source(path) {
 test("设置窗 pane 页面不再创建第二个滚动容器", async () => {
   for (const file of ["pages/ApiPage.tsx", "pages/PluginsPage.tsx", "pages/DevicesPage.tsx"]) {
     const text = await source(file);
-    assert.match(text, /pane \? "min-h-0"/);
-    assert.doesNotMatch(text, /pane \? "[^"]*overflow-y-auto/);
+    // Devices compares variant directly; the other panes use a local boolean.
+    assert.match(text, /(?:pane|variant === "pane") \? "min-h-0"/);
+    assert.doesNotMatch(text, /(?:pane|variant === "pane") \? "[^"]*overflow-y-auto/);
   }
 });
 

@@ -8,8 +8,8 @@ let notifications = 0;
 const history = dataModule(`export function notifyHistoryChanged(){globalThis.__sessionReceiptNotify();}`);
 globalThis.__sessionReceiptNotify = () => notifications++;
 const agent = await compileModule("src/lib/agent.ts", {
-  "./auth/client": dataModule(`export async function accessToken(){return "test";}export function cachedAccessToken(){return "test";}`),
-  "./auth/config": dataModule(`export const GATEWAY_BASE="https://gateway.invalid";`),
+  "./auth/client": dataModule(`export async function getUserId(){return "session-owner";}export async function accessToken(){return "test";}export function cachedAccessToken(){return "test";}`),
+  "./auth/config": dataModule(`export const GATEWAY_BASE="https://gateway.invalid"; export function gatewayBase() { return GATEWAY_BASE; }`),
   "./history-events": history,
   "./cloud-computer-api": dataModule(`export function computerIdRequestField(){return {};}`),
 });

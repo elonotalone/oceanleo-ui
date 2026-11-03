@@ -101,7 +101,12 @@ test("user bubble has a human icon and larger text; each agent turn has one avat
     assert.equal(host.querySelector('[data-oceanleo-cc-agent-avatar]').textContent, mark);
   }
   await render({ messages: [{ kind: 'notice', id: 'n1', code: 'computer_offline', program: 'oceanleo' }] });
-  assert.ok(host.querySelector('[data-oceanleo-cc-notice]').classList.contains('text-amber-700'));
+  // Offline notices now show the shared reconnecting status rather than an amber failure.
+  const reconnecting = host.querySelector('[data-oceanleo-cc-notice]');
+  assert.ok(reconnecting.classList.contains('text-zinc-500'));
+  assert.equal(reconnecting.getAttribute('role'), 'status');
+  assert.equal(reconnecting.getAttribute('data-oceanleo-cc-reconnecting'), '');
+  assert.match(reconnecting.textContent, /正在重新连接这台电脑/);
   assert.equal(host.querySelector('[data-oceanleo-cc-agent-avatar]'), null);
 });
 

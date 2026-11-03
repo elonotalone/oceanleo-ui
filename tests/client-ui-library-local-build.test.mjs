@@ -28,6 +28,8 @@ const localeStubUrl = dataModule(`
   export function useLocale() { return "zh"; }
 `);
 const authClientStubUrl = dataModule(`
+  export async function getUserIdSnapshot(){return {available:true,userId:null};}
+  export async function getUserId(){return null;}
   export function browserClient() { return null; }
   export async function accessToken() { return null; }
   export const AUTH_STATE_EVENT = "oceanleo-auth-state";
@@ -64,7 +66,8 @@ test("local memory host renders the real My Library page, not a mock", () => {
   );
   assert.match(markup, /我的库/);
   assert.match(markup, /正在加载我的库/);
-  assert.match(markup, /搜索我的作品、收藏素材、网站、交付物和上传文件/);
+  // My Library now uses the common collection toolbar and its search translation key.
+  assert.match(markup, /type="search" placeholder="search" aria-label="search" data-collection-search/);
   assert.equal(markup.includes("data-advanced-stub"), false);
   assert.equal(markup.includes("mock-library"), false);
   assert.ok(markup.length > 500, `real library markup should be substantial, got ${markup.length}`);

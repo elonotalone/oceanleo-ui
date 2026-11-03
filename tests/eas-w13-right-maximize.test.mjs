@@ -97,6 +97,7 @@ const buttonStubUrl = dataModule(`
   }
 `);
 const popoverStubUrl = dataModule(`
+  export function runAfterOverlayExit(callback) { callback(); }
   export function AnchoredPopover() { return null; }
 `);
 const themeStubUrl = dataModule(`
@@ -457,22 +458,15 @@ test("showDetail 与 openLibraryPanel 自动退出右侧全屏", async () => {
   }
 });
 
-test("编辑器打开期间右栏标题行没有关闭 ✕", async () => {
+test("库标题行能收起；编辑器自己的标题接管后不重复关闭按钮", async () => {
   const mounted = await mountSplit();
   try {
-    assert.equal(
-      closeXInRightHeader(mounted.container),
-      null,
-      "库标题行还留着关掉整栏的 ✕",
-    );
+    // Shelves have close/open controls; editor chrome takes over its own actions.
+    assert.equal(closeXInRightHeader(mounted.container)?.getAttribute("aria-label"), "关闭右侧面板");
     await act(async () =>
       mounted.container.querySelector("[data-probe-header]").click(),
     );
-    assert.equal(
-      closeXInRightHeader(mounted.container),
-      null,
-      "编辑器打开后右栏里又冒出关闭 ✕",
-    );
+    assert.equal(closeXInRightHeader(mounted.container), null, "editor chrome owns the close action");
   } finally {
     await mounted.unmount();
   }
@@ -481,11 +475,8 @@ test("编辑器打开期间右栏标题行没有关闭 ✕", async () => {
 test("顶栏 maximize 槽的 aria-pressed 跟真实 SplitWorkspace 状态走", async () => {
   const mounted = await mountActionBar(true);
   try {
-    assert.equal(
-      mounted.container.querySelector('[data-global-row-slot="close"]'),
-      null,
-      "顶栏还在画 close 槽",
-    );
+    // Closing the editor and maximizing the sidebar are separate supported actions.
+    assert.equal(mounted.container.querySelectorAll('[data-global-row-slot="close"]').length, 1);
     const slotNode = mounted.container.querySelector(
       '[data-global-row-slot="maximize"]',
     );

@@ -5,7 +5,7 @@ import {compileModule, dataModule} from "./helpers/module-bench.mjs";
 const model = await import(await compileModule("src/lib/local-agent-task.ts"));
 const transport = await import(await compileModule("src/lib/agent.ts", {
   "./auth/client": dataModule('export async function getUserId(){return "owner"} export async function accessToken(){return "test"} export function cachedAccessToken(){return "test"}'),
-  "./auth/config": dataModule('export const GATEWAY_BASE="https://api.dev.oceanleo.com";'),
+  "./auth/config": dataModule('export const GATEWAY_BASE="https://api.dev.oceanleo.com"; export function gatewayBase() { return GATEWAY_BASE; }'),
   "./history-events": dataModule('export function notifyHistoryChanged(){}'),
 }));
 const wire = (fields={}) => ({run_id:"run-1",device_id:"dev-1",state:"running",desired_state:"run",control_revision:3,report_seq:4,...fields});

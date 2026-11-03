@@ -640,6 +640,7 @@ const panelsUrl = await compileModule("src/shell/use-inline-advanced-panels.tsx"
     export function PluginThemeScope({ children }) { return children; }
   `),
   "./inline-advanced-shell-helpers": dataModule(`
+    export function resolveEditBarDrawers() { return []; }
     export function resolveInlineAdvancedDrawers() { return []; }
     export function resolveActiveMaterialAction() { return undefined; }
   `),

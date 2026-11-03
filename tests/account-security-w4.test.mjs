@@ -65,6 +65,8 @@ const clientStubUrl = dataModule(`
   export const sendPhoneOtp = (...a) => g().sendPhoneOtp(...a);
   export const verifyPhoneOtp = (...a) => g().verifyPhoneOtp(...a);
   export const wechatLoginUrl = (...a) => g().wechatLoginUrl(...a);
+  export const desktopBrowserLoginAvailable = () => false;
+  export const startDesktopBrowserSignIn = (...a) => g().startDesktopBrowserSignIn?.(...a) ?? {};
   export const startOauthSignIn = (...a) => g().startOauthSignIn(...a);
   export const normalizeCnPhone = (v) => (/^1[3-9]\\d{9}$/.test(String(v||"").replace(/\\s/g,"")) ? "+86" + String(v).replace(/\\s/g,"") : "");
   export const sendPasswordReset = (...a) => g().sendPasswordReset(...a);

@@ -25,6 +25,7 @@ const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 
 const ARTIFACT_CLIENT = dataModule(`
+  export async function getArtifactWebsitePreview() { return {ok: false, status: 404}; }
   export const ARTIFACT_LIBRARY_CHANGE_EVENT = "oceanleo:artifact-library-change";
   export function artifactDownloadEvidence(){
     return { visible: true, available: true, reason: "", purpose: "source", mode: "attachment" };

@@ -74,6 +74,7 @@ const iconsStubUrl = dataModule(`
   export function IconCompress(props) { return Icon({ name: "compress", ...props }); }
 `);
 const workspaceActionsStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/shell/workspace-actions.ts"))};
   export const FIXED_WORKSPACE_SLOTS = [
     "template", "preview", "materials", "mine", "browser"
   ];
@@ -145,9 +146,12 @@ const sessionStubUrl = dataModule(`
   }
 `);
 const libraryDataStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/shell/library-data.ts"))};
   export function libraryItemIdentityKey(item) { return item?.id || ""; }
 `);
 const artifactStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/shell/artifact-contract.ts"))};
+
   export function canonicalArtifactContextId(siteId, appId) {
     return "olctx:v1:" + siteId + ":" + appId;
   }
@@ -230,7 +234,8 @@ const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
   "./result-canvas-view": resultViewStubUrl,
-  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; }`),
+  "./bay/shell/bay-state": dataModule(`export function openBay() {} export function useBayEnabled(){ return true; }`),
+  "./bay/asset/BayAssetLibrary": dataModule(`export function BayAssetLibrary(){return null;}`),
   "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
   "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
   "../lib/im/client": dataModule(`export function useImEnabled(){ return false; }`),
@@ -420,8 +425,10 @@ test("模块按钮直达右栏，host 读到 app 数据并能原样保存回读"
     );
     assert.ok(rightPane.contains(host), "模块 host 必须属于右栏");
     assert.ok(host.classList.contains("h-full"));
+    // The frameless module keeps window actions but no Library title row.
+    assert.ok(rightPane.querySelector("[data-right-pane-window-header]"));
     assert.equal(
-      rightPane.querySelector("[data-pane-header]"),
+      rightPane.querySelector("[data-pane-header]:not([data-right-pane-window-header])"),
       null,
       "模块打开后应占满右栏，不保留固定槽位标题条",
     );

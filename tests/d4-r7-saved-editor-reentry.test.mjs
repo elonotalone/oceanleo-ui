@@ -96,7 +96,13 @@ const panelStubUrl = dataModule(`
   export function MaterialLibrary() { return jsx("div", { "data-live-panel": "materials" }); }
   export function MyLibrary() { return jsx("div", { "data-live-panel": "mine" }); }
   export function CloudBrowserPanel() { return jsx("div", { "data-live-panel": "browser" }); }
-  export function WorkspaceLibrary({ onOpenEntry, onOpenItem }) {
+  export function WorkspaceLibrary({ onOpenEntry, onOpenItem, entries = [], openEntryId, onDetailOpenChange }) {
+    // ResultCanvas now presents saved previews through the shared Library detail.
+    const opened = entries.find(entry => entry.id === openEntryId);
+    if (opened) return jsxs("div", {children: [
+      jsx("button", {"data-fake-viewer": opened.libraryItem.revisionId, onClick: () => onDetailOpenChange(false), children: "return to library"}),
+      jsx("button", {onClick: () => onOpenItem(opened.libraryItem), children: "编辑"})
+    ]});
     return jsxs("div", {
       "data-live-panel": "preview",
       children: [
@@ -134,6 +140,7 @@ const panelStubUrl = dataModule(`
 
 `);
 const workspaceActionsStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/shell/workspace-actions.ts"))};
   export const FIXED_WORKSPACE_SLOTS = ["template", "preview", "materials", "mine", "browser"];
   export const WORKSPACE_ACTION_EVENT = "oceanleo:test-workspace-action";
   export function normalizeWorkspaceAction() { return null; }
@@ -151,9 +158,12 @@ const sessionStubUrl = dataModule(`
   export function useOptionalWorkspaceSession() { return null; }
 `);
 const libraryDataStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/shell/library-data.ts"))};
   export function libraryItemIdentityKey(item) { return item ? String(item.id || "") : ""; }
 `);
 const artifactStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/shell/artifact-contract.ts"))};
+
   export function canonicalArtifactContextId(siteId, appId) { return "olctx:v1:" + siteId + ":" + appId; }
 `);
 const routeStubUrl = dataModule(`
@@ -212,8 +222,9 @@ const STUBS = {
   "./workbench-material-provider": materialActionsStubUrl,
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
-  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; }`),
-  "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
+  "./bay/shell/bay-state": dataModule(`export function openBay() {} export function useBayEnabled(){ return true; }`),
+  "./bay/asset/BayAssetLibrary": dataModule(`export function BayAssetLibrary(){return null;}`),
+ "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
   "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
   "../lib/im/client": dataModule(`export function useImEnabled(){ return false; }`),
   "./messages/realtime/hooks": dataModule(`export function useImUnread(){ return null; }`),

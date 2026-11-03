@@ -388,7 +388,11 @@ const uiStub = dataModule("export function useUI(){ return (zh) => zh; }");
 // host.ts 只要 accessToken；LeoComposer → guide-context → workflows 还要
 // browserClient。同一份桩按解析后的路径套到整张图上，缺一个具名导出就会在
 // 加载期打哑后面所有 DOM 例（父 agent 实测 15 里那 1 红就是这条）。
-const authClientStub = authClientStubUrl;
+const authClientStub = dataModule(`
+  export * from ${JSON.stringify(authClientStubUrl)};
+  export function desktopBrowserLoginAvailable(){return false;}
+  export async function startDesktopBrowserSignIn(){return {};}
+`);
 const OVERRIDES = {
   "../../i18n/ui/useUI": uiStub,
   "../i18n/ui/useUI": uiStub,

@@ -468,7 +468,13 @@ function writePageFilter(filter: BayFeedFilter): void {
 }
 
 function readPageKind(search: string): BayFeedFilter["kind"] | null {
-  const raw = new URLSearchParams(search || "").get(BAY_KIND_PARAM);
+  const params = new URLSearchParams(search || "");
+  const raw = params.get(BAY_KIND_PARAM);
+  if (!raw && (params.has("asset") || (params.has("type") && params.has("view")))) {
+    // 2026-11-03: legacy/shared asset links (`/bay?type=image&view=owned&asset=library:<id>`) carry no `kind`;
+    // they still mean the asset browser and must open that item, never fall back to human services.
+    return "asset";
+  }
   return normalizeBayFeedKind(raw);
 }
 

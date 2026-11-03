@@ -323,7 +323,7 @@ test("a seed for another task is ignored", async () => {
   } finally { await view.unmount(); }
 });
 
-test("a refused native send puts its text back into an empty composer, once per restore", async () => {
+test("a refused native send restores each message once and preserves the current draft", async () => {
   const task = { task: { id: "t1", status: "completed", title: "elon · codex", mode: "computer", plan: { computer_workspace: { version: 1 } } }, messages: [], artifacts: [] };
   const sessions = [{ id: "cts_codex", task_id: "t1", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "codex",
     native_session_id: "nat-1", created_at: "", updated_at: "2026-10-30T11:00:00Z", sync_status: "saved" }];
@@ -338,9 +338,11 @@ test("a refused native send puts its text back into an empty composer, once per 
     await act(async () => { view.composer("native").__props.onChange("新内容"); });
     await view.rerender({ taskId: "t1" });
     assert.equal(view.composer("native").__props.value, "新内容");
-    // A new restore never overwrites what is typed.
+    // Native draft recovery now appends the refused message, preserving typed text.
     globalThis.__thread = { messages: [], restoredDraft: { seq: 2, text: "第二次" } };
     await view.rerender({ taskId: "t1" });
-    assert.equal(view.composer("native").__props.value, "新内容");
+    assert.equal(view.composer("native").__props.value, "新内容\n\n第二次");
+    await view.rerender({ taskId: "t1" });
+    assert.equal(view.composer("native").__props.value, "新内容\n\n第二次");
   } finally { await view.unmount(); globalThis.__thread = null; }
 });

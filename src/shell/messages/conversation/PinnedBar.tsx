@@ -39,7 +39,7 @@ export function PinnedBar({
           onClick={() => onJump(latest)}
           className="min-w-0 flex-1 truncate text-left text-neutral-700 hover:text-neutral-900"
         >
-          <span className="mr-1.5 font-medium text-neutral-500">{tt("置顶")}</span>
+          <span className="mr-1.5 font-medium text-neutral-500">{tt("已置顶")}</span>
           {previewOf(latest, fallback)}
         </button>
         {pins.length > 1 ? (

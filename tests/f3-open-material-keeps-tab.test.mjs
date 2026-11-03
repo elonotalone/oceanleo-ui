@@ -22,6 +22,7 @@ else delete require.cache[canvasEntry];
 const actionsUrl = dataModule(`
   export const FIXED_WORKSPACE_SLOTS = ["template", "preview", "materials", "mine", "browser"];
   export const WORKSPACE_ACTION_EVENT = "f3-workspace-action";
+  export function isLegacyMaterialsId(value) { return value === "materials"; }
   export function normalizeWorkspaceAction() { return null; }
   export function isWorkspaceActionConsumed() { return false; }
 `);
@@ -108,11 +109,15 @@ test("已选定素材库时，快照把宿主受控值带回 browser 也不跳�
     await render("materials");
     changes.length = 0;
     await restore("browser", "browser");
-    assert.equal(state().selected, "materials");
+    // Legacy Materials requests now keep LeoBay open above the selected slot.
+    assert.equal(state().layer, "bay");
+    assert.equal(state().panelAction.action.view, "materials");
     assert.equal(hydration.rightTab, "materials");
     assert.deepEqual(changes, ["materials"]);
     await render("materials");
-    assert.equal(state().selected, "materials");
+    // Legacy Materials requests now keep LeoBay open above the selected slot.
+    assert.equal(state().layer, "bay");
+    assert.equal(state().panelAction.action.view, "materials");
     assert.deepEqual(changes, ["materials"]);
   });
 });

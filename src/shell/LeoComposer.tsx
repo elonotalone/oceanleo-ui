@@ -160,6 +160,8 @@ export interface LeoComposerProps {
   placeholder?: string;
   /** 提交中：发送键转圈 + 禁用 */
   loading?: boolean;
+  /** Native conversations accept follow-ups while their agent works; Stop stays available. */
+  allowSendWhileRunning?: boolean;
   /**
    * AI 正在工作时的「中止」回调（操作员 2026-07-02）：传了它，loading 期间发送键
    * 变成可点击的「停止」键（■），点击即中止当前任务。不传则保持旧行为（转圈禁用）。
@@ -333,6 +335,7 @@ export function LeoComposer({
   onSubmit,
   placeholder,
   loading: loadingProp = false,
+  allowSendWhileRunning = false,
   onStop,
   stopping = false,
   stopError = null,
@@ -473,7 +476,7 @@ export function LeoComposer({
     failedFiles.length === 0 &&
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
     !intake.compressing &&
-    !loading &&
+    (!loading || (allowSendWhileRunning && !stopping)) &&
     !disabled && (boundExecutionTarget !== null || nativeConversation);
   // 误触停止（F3 2026-11-02）：发送键原地变成停止键，双击「发送」的第二下曾把刚开始的
   // 任务停掉。停止键出现 800ms 内不认，且只认从停止键本身按下去的那一下（键盘不受后者限）。
@@ -773,8 +776,7 @@ export function LeoComposer({
           {onVoiceTranscript && (
             <VoiceButton lang={voiceLang} onTranscript={onVoiceTranscript} disabled={disabled} />
           )}
-          {onSubmit && (
-            loading && onStop ? (
+          {onSubmit && loading && onStop && (
               // AI 工作中 + 支持中止 → 发送键变「停止」键（黑底白■，可点击随时中止）。
               // 停止指令在路上（stopping）：转圈、「正在停止」、不可再点，直到有结果。
               <button
@@ -804,7 +806,8 @@ export function LeoComposer({
               >
                 {stopping ? <span className="v-spinner text-[12px]" aria-hidden="true" /> : <StopGlyph />}
               </button>
-            ) : (
+          )}
+          {onSubmit && (!loading || !onStop || allowSendWhileRunning) && (
               <button
                 type="button"
                 onClick={() => canSend && submitPrompt()}
@@ -816,9 +819,8 @@ export function LeoComposer({
  : "cursor-not-allowed bg-neutral-300"
  }`}
               >
-                {loading ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
+                {loading && !allowSendWhileRunning ? <span className="v-spinner text-[12px]" /> : <ArrowUp />}
               </button>
-            )
           )}
         </div>
       </div>

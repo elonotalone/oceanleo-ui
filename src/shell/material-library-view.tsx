@@ -15,7 +15,7 @@ import { deckDeliverySections } from "./deck-delivery-family";
 import { isAdvancedEditableShelfItem } from "./advanced-features";
 import { adoptSavedEditorItem } from "./advanced-session";
 import { libraryIdentityAction } from "./library-current-identity";
-import { MaterialStandaloneEditor } from "./material-library-standalone";
+import { MaterialStandaloneEditor } from "./library-standalone-editor-host";
 import { useMaterialLibraryOpenItem } from "./material-library-open";
 import {
   ExplorePlayableSurface,

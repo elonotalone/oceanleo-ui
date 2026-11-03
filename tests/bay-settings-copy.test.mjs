@@ -11,6 +11,8 @@ import { stripJsComments } from "./helpers/strip-js-comments.mjs";
 const REPO = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 const { BAY_MONEY_MESSAGES } = await import("../src/i18n/ui/messages/bay-money-copy.ts");
 const { BAY_MESSAGES } = await import("../src/i18n/ui/messages/bay-copy.ts");
+// 2026-11-03: copy can also come from any registered table (e.g. W2-CN2, settings); check the final dictionary tt() reads.
+const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
 
 const LOCALES = ["zh-TW", "en", "ja", "ko", "fr", "de", "it", "es", "es-419", "pt-BR", "pt-PT", "ar", "hi", "th", "tr", "vi"];
 const HAN = /[\u4e00-\u9fff]/;
@@ -85,7 +87,7 @@ test("设置目录里的每句中文都有 16 语译文（分表或基础词典�
   const missing = [];
   for (const key of keys) {
     for (const locale of LOCALES) {
-      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key) || lbpHas(locale, key)) continue;
+      if (BAY_MESSAGES[locale]?.[key] || baseHas(locale, key) || lbpHas(locale, key) || UI_MESSAGES[locale]?.[key]) continue;
       missing.push(`${locale}: ${key}`);
     }
   }

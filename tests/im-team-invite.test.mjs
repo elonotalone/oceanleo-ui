@@ -54,6 +54,8 @@ const orgApiStub = dataModule(`
 const nullComponentStub = (name) => dataModule(`export function ${name}() { return null; }`);
 
 const uiPrimitivesStub = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+
   import React from ${JSON.stringify(reactUrl)};
   const h = React.createElement;
   export function Modal({ children }) { return h("div", { role: "dialog", "data-modal": "" }, children); }
@@ -68,6 +70,8 @@ const imClientStub = dataModule(`
 `);
 // 本家门户固定为 https://oceanleo.com（不依赖运行环境的域名配置）。
 const domainFamilyStub = dataModule(`
+  export function runtimePageOrigin() { return globalThis.window?.location.origin || "https://oceanleo.com"; }
+
   export function currentDomainProfile() { return { portalOrigin: "https://oceanleo.com" }; }
   export function portalHref(path) { return globalThis.__RELATIVE_PORTAL ? path : "https://oceanleo.com" + path; }
 `);

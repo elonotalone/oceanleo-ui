@@ -1401,10 +1401,11 @@ test("会话栏：列表、回放渲染成历史、回放后接着发的 prompt 
     assert.equal(view.$("[data-oceanleo-acp-command-completions]"), null);
     await pressEnter(view.$("[data-oceanleo-cc-dialog-input]"));
     await until(() => sentFrames().some((frame) => frame.t === "prompt"), "prompt");
-    assert.deepEqual(
-      sentFrames().find((frame) => frame.t === "prompt"),
-      { t: "prompt", program: "cursor", text: "继续", acp_session: "s-old" },
-    );
+    // Native mid-turn delivery adds a durable message identity and explicit intent.
+    const continued = sentFrames().find((frame) => frame.t === "prompt");
+    assert.match(continued.message_id, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(continued,
+      { t: "prompt", program: "cursor", text: "继续", acp_session: "s-old", message_id: continued.message_id, intent: "normal" });
 
     await server({ t: "turn_start", program: "cursor", acp_session: "s-old" });
     for (let index = 0; index < 8; index += 1) {
@@ -1783,7 +1784,7 @@ test("过去的会话列表自动刷新：新会话开出来、窗口重新获�
 });
 
 const OCCUPANCY_PROGRAMS = ["cursor", "claude", "codex", "hermes"];
-test("controller send refuses contradictory live work even when called directly", async () => {
+test("controller accepts an identified follow-up during live work without duplicating a cleared draft", async () => {
   let dialog;
   function Controller({ computer }) {
     dialog = useAgentDialog({ computerId: computer.id, initialProgram: "codex", enabled: true, active: true });
@@ -1798,7 +1799,13 @@ test("controller send refuses contradictory live work even when called directly"
     await act(async () => dialog.setDraft("next"));
     const before = sentFrames().filter(frame => frame.t === "prompt").length;
     await act(async () => dialog.send());
-    assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before);
+    // W3-N3 accepts mid-turn messages; the gateway chooses inject or queue.
+    assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before + 1);
+    const followup = sentFrames().filter(frame => frame.t === "prompt").at(-1);
+    assert.equal(followup.text, "next");
+    assert.equal(followup.acp_session, "live");
+    assert.equal(followup.intent, "normal");
+    assert.match(followup.message_id, /^[0-9a-f-]{36}$/);
     await server({ t: "done", program: "codex", stop: "end_turn" });
     await act(async () => dialog.send());
     assert.equal(sentFrames().filter(frame => frame.t === "prompt").length, before + 1);

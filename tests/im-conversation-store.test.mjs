@@ -2,7 +2,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
+// Namespace loading keeps the other store regressions running when a named export regresses.
+import * as conversationStoreModule from "../src/shell/messages/conversation/conversation-store.ts";
+const {
   ConversationStore,
   applyReactionLocal,
   clearConversationStores,
@@ -11,7 +13,7 @@ import {
   buildRows,
   unreadBoundary,
   GROUP_WINDOW_MS,
-} from "../src/shell/messages/conversation/conversation-store.ts";
+} = conversationStoreModule;
 
 const CONV = "c1";
 const ME = "me";

@@ -18,6 +18,7 @@ else delete require.cache[canvasEntry];
 const actionsUrl = dataModule(`
   export const FIXED_WORKSPACE_SLOTS = ["template", "preview", "materials", "mine", "browser"];
   export const WORKSPACE_ACTION_EVENT = "b14-workspace-action";
+  export function isLegacyMaterialsId(value) { return value === "materials"; }
   export function normalizeWorkspaceAction() { return null; }
   export function isWorkspaceActionConsumed() { return false; }
 `);
@@ -81,7 +82,7 @@ async function runScenario({ pinIdentity, restoredTab, identityAfter = pinIdenti
     hydration.restoredSnapshot = true;
     hydration.snapshotRestoreEpoch = 1;
     await act(async () => expose.rerender());
-    return expose.state.selected;
+    return { selected: expose.state.selected, layer: expose.state.layer, materialView: expose.state.panelAction?.action.view };
   } finally {
     await act(async () => root.unmount());
     dom.window.close();
@@ -95,18 +96,19 @@ async function runScenario({ pinIdentity, restoredTab, identityAfter = pinIdenti
 
 test("identity 建立前 pin 在 browser/mine/template 恢复后仍保持用户页签", async () => {
   for (const restoredTab of ["browser", "mine", "template"]) {
-    assert.equal(await runScenario({ pinIdentity: "", identityAfter: "session-a", restoredTab }), "materials");
+    // Materials now opens LeoBay; the saved underlying slot stays behind that view.
+    assert.deepEqual(await runScenario({ pinIdentity: "", identityAfter: "session-a", restoredTab }), {selected: "template", layer: "bay", materialView: "materials"});
   }
 });
 
 test("identity 建立后 pin 仍优先，且无 pin 时应用快照", async () => {
-  assert.equal(await runScenario({ pinIdentity: "session-a", restoredTab: "browser" }), "materials");
-  assert.equal(await runScenario({ pinIdentity: null, restoredTab: "browser" }), "browser");
+  assert.deepEqual(await runScenario({ pinIdentity: "session-a", restoredTab: "browser" }), {selected: "template", layer: "bay", materialView: "materials"});
+  assert.equal((await runScenario({ pinIdentity: null, restoredTab: "browser" })).selected, "browser");
 });
 
 test("切换会话后旧 pin 不阻挡新会话快照", async () => {
   assert.equal(
-    await runScenario({ pinIdentity: "session-a", restoredTab: "mine", switchIdentity: "session-b" }),
+    (await runScenario({ pinIdentity: "session-a", restoredTab: "mine", switchIdentity: "session-b" })).selected,
     "mine",
   );
 });
@@ -151,7 +153,9 @@ test("外部 active 改变只同步内部页签，不回调 onChange", async () 
   try {
     await act(async () => root.render(React.createElement(Harness, { active: "preview" })));
     await act(async () => root.render(React.createElement(Harness, { active: "materials" })));
-    assert.equal(expose.state.selected, "materials");
+    assert.equal(expose.state.selected, "preview");
+    assert.equal(expose.state.layer, "bay");
+    assert.equal(expose.state.panelAction.action.view, "materials");
     assert.equal(changes, 0);
   } finally {
     await act(async () => root.unmount());

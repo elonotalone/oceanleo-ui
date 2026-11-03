@@ -489,6 +489,8 @@ test("W3-r3: /library 点乙份时舞台切到乙，脏稿先 handOff，同条�
       dispatchWorkspaceAction(editEnvelope(ITEM_A.artifactId, "open-a"));
     });
     await waitFor(find, `[data-library-standalone-editor="${ITEM_A.artifactId}"]`);
+    // The shelf shell mounts before its deferred editor chunk. Wait for the actual stage.
+    await waitFor(find, `[data-standalone-editor-item="${ITEM_A.artifactId}"]`);
     assert.equal(
       find("[data-standalone-editor-item]").getAttribute(
         "data-standalone-editor-item",
@@ -500,6 +502,7 @@ test("W3-r3: /library 点乙份时舞台切到乙，脏稿先 handOff，同条�
     await waitFor(find, `[data-inline-editor-mine-item="${ITEM_B.artifactId}"]`);
     await click(find(`[data-inline-editor-mine-item="${ITEM_B.artifactId}"]`));
     await waitFor(find, `[data-library-standalone-editor="${ITEM_B.artifactId}"]`);
+    await waitFor(find, `[data-standalone-editor-item="${ITEM_B.artifactId}"]`);
     assert.equal(
       find("[data-standalone-editor-item]").getAttribute(
         "data-standalone-editor-item",

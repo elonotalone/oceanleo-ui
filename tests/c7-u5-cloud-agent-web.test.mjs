@@ -20,7 +20,7 @@ const HAN = /[一-鿿]/;
 const target = await import(await compileModule("src/lib/execution-target.ts"));
 const model = await import(await compileModule("src/lib/local-agent-task.ts"));
 const authStub = dataModule('export async function getUserId(){return "owner"} export async function accessToken(){return Object.hasOwn(globalThis, "__u5Token") ? globalThis.__u5Token : "test"} export function cachedAccessToken(){return "test"}');
-const configStub = dataModule('export const GATEWAY_BASE="https://api.dev.oceanleo.com";');
+const configStub = dataModule('export const GATEWAY_BASE="https://api.dev.oceanleo.com"; export function gatewayBase() { return GATEWAY_BASE; }');
 const transport = await import(await compileModule("src/lib/agent.ts", {
   "./auth/client": authStub,
   "./auth/config": configStub,

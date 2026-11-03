@@ -92,6 +92,7 @@ const appMarketStubUrl = dataModule(`
 
 /** 两次 `compileModule` 必须拿到同一张桩表，否则上下文分叉、store 也就分叉。 */
 const STUBS = {
+  "./messages/MessagesHost": dataModule(`export function MessagesHost(){return null;}`),
   "next/link": linkStubUrl,
   "next/navigation": navigationStubUrl,
   "./ModelPicker": modelPickerStubUrl,

@@ -65,6 +65,7 @@ const uiStubUrl = dataModule(`
   }; }
 `);
 const domainStubUrl = dataModule(`
+  export function sharedCookieDomainFor() { return undefined; }
   export function currentDomainFamily() { return globalThis.__serverDomain || "com"; }
   export function currentDomainProfile() {
     const family = globalThis.__serverDomain || "com";

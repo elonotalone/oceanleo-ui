@@ -70,6 +70,7 @@ const authStub = dataModule(`
   export function loginUnavailableNotice() { return null; }
   export function browserClient() {
     return { auth: {
+      getSession: async () => ({ data: { session: { user } } }),
       getUser: async () => ({ data: { user } }),
       onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     } };
@@ -96,6 +97,8 @@ const marketStub = dataModule(`
   }
 `);
 const confirmStub = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+
   import React from ${JSON.stringify(reactUrl)};
   export function ConfirmDialog({ title }) { return React.createElement("div", { "data-stub": "confirm" }, title); }
 `);
@@ -138,11 +141,21 @@ const devicesClient = {
   },
 };
 
+const activeRoots = new Set();
+test.afterEach(async () => {
+  for (const entry of activeRoots) {
+    await act(async () => entry.root.unmount());
+    entry.host.remove();
+  }
+  activeRoots.clear();
+});
 async function render(element, path) {
   window.history.replaceState(null, "", path);
   const host = window.document.createElement("div");
   window.document.body.append(host);
   const root = createRoot(host);
+  const entry = { root, host };
+  activeRoots.add(entry);
   await act(async () => root.render(element));
   for (let i = 0; i < 6; i += 1) await act(async () => {});
   return {
@@ -154,6 +167,7 @@ async function render(element, path) {
     async cleanup() {
       await act(async () => root.unmount());
       host.remove();
+      activeRoots.delete(entry);
     },
   };
 }
@@ -175,6 +189,7 @@ const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 <button type="button" role="tab" data-api-settings-tab="selection" aria-selected="true" class="rounded-lg px-3 py-2 text-[13px] font-medium bg-neutral-900 text-white">模型选择</button>
 <button type="button" role="tab" data-api-settings-tab="byok" aria-selected="false" class="rounded-lg px-3 py-2 text-[13px] font-medium text-neutral-600 hover:bg-neutral-100">自带 API key（BYOK）</button>
 </div>
+<div>
 <div class="space-y-8" data-api-selection="">
 <div data-stub="model-groups" data-user="true">
 </div>
@@ -203,92 +218,99 @@ const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 </section>
 </div>
 </div>
+<div hidden="">
+</div>
+</div>
 </div>`;
 
-const DEVICES_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6" data-oceanleo-devices-page="true">
-<div class="relative flex items-center justify-center py-1">
-<button type="button" aria-label="返回" title="返回" class="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95">
-<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-<path d="M15 18l-6-6 6-6" stroke-linecap="round" stroke-linejoin="round">
+// The current Devices page uses the shared computer cards; keep a complete HTML fixture.
+const DEVICES_PAGE_SNAPSHOT = String.raw`<div class="mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8" data-oceanleo-devices-page="true">
+<header class="flex items-center justify-between gap-4">
+<div>
+<h1 class="text-2xl font-semibold tracking-tight text-neutral-900">我的设备</h1>
+<p class="mt-2 text-sm text-neutral-500">你的电脑与云电脑</p>
+</div>
+<button type="button" class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45">
+<span aria-hidden="true">＋</span>添加设备</button>
+</header>
+<div class="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid="true" data-all-offline="true">
+<article class="min-w-0 overflow-hidden rounded-[20px] border border-neutral-200 bg-white" data-device-card="d-2">
+<div class="relative flex aspect-[16/10] min-h-[180px] items-center justify-center overflow-hidden bg-neutral-100" data-device-cover="true" data-device-cover-state="unavailable">
+<span class="px-5 text-center text-xs text-neutral-400" role="status">暂无桌面壁纸</span>
+<button type="button" data-remote-device-icon="d-2" aria-label="公司笔记本 · 进入桌面" class="absolute bottom-4 left-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">进入桌面</button>
+</div>
+<div class="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
+<div class="flex min-w-0 items-start gap-3">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" aria-hidden="true" data-device-kind="computer">
+<path d="M5 4h14v12H5zM5 16l-3 4h20l-3-4">
+</path>
+<path d="M9 20h6">
 </path>
 </svg>
-</button>
-<h1 class="text-[22px] font-semibold tracking-tight text-neutral-900">我的设备</h1>
-</div>
-<div class="mx-auto mt-7 max-w-3xl space-y-6">
-<section class="rounded-2xl border border-neutral-200 bg-white p-5" data-oceanleo-devices-phones="true">
-<h2 class="text-[15px] font-semibold text-neutral-900">连接一台电脑</h2>
-<p class="mt-1 text-[12px] leading-relaxed text-neutral-500">下载客户端后，客户端会显示一个配对码。请在下面输入该 8 位配对码。</p>
-<form class="mt-4 flex flex-col gap-2 sm:flex-row">
-<input aria-label="8 位配对码" autocomplete="one-time-code" inputmode="text" maxlength="8" placeholder="输入 8 位配对码" class="min-w-0 flex-1 rounded-xl border border-neutral-200 bg-white px-3.5 py-2.5 font-mono text-[15px] tracking-[0.18em] text-neutral-900 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-neutral-400" value="">
-<button type="submit" disabled="" class="rounded-xl bg-neutral-900 px-5 py-2.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50">连接设备</button>
-</form>
-</section>
-<section>
-<div class="mb-3 flex items-center justify-between">
-<h2 class="text-[15px] font-semibold text-neutral-900">我的电脑与手机</h2>
-<span class="text-[12px] text-neutral-400">1 台在线</span>
-</div>
-<div class="space-y-3" data-all-offline="false">
-<article class="rounded-2xl border border-neutral-200 bg-white p-5">
-<div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-<div class="min-w-0 flex-1">
-<div class="flex items-center gap-2">
-<h3 class="truncate text-[15px] font-semibold text-neutral-900">家里的电脑</h3>
-<span class="rounded-full px-2 py-0.5 text-[11px] font-medium bg-emerald-50 text-emerald-700">在线</span>
-</div>
-<p class="mt-1 text-[12px] text-neutral-500">Windows</p>
-</div>
-<div class="flex shrink-0 gap-2">
-<button type="button" class="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50">改名</button>
-<button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-[12px] text-red-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-red-50">撤销设备</button>
+<div class="min-w-0">
+<h3 class="truncate text-sm font-semibold text-neutral-900">公司笔记本</h3>
+<p class="mt-1 text-xs text-neutral-500">macOS</p>
+<p class="mt-1.5 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700" data-local-exec-off="d-2" title="这台电脑没有开启本机执行，交给它的任务不会运行。请在这台电脑的 OceanLeo「设备与授权」里打开「允许云端下发本机任务」，或改用云端。 远程桌面仍可单独连接，并由这台电脑确认授权。">本机 AI 执行已关闭</p>
 </div>
 </div>
-<dl class="mt-4 grid gap-3 text-[12px] sm:grid-cols-2">
-<div class="rounded-xl bg-neutral-50 px-3 py-2.5">
-<dt class="text-neutral-400">允许云端下发</dt>
-<dd class="mt-0.5 font-medium text-neutral-800">开着</dd>
+<span class="inline-flex items-center gap-1.5 text-sm text-neutral-500" data-device-availability="unknown">
+<span class="h-2 w-2 rounded-full bg-neutral-400" aria-hidden="true">
+</span>状态未知</span>
 </div>
-<div class="rounded-xl bg-neutral-50 px-3 py-2.5">
-<dt class="text-neutral-400">已授权类别</dt>
-<dd class="mt-0.5 font-medium text-neutral-800">读取、写入</dd>
+<div class="grid grid-cols-2 border-t border-neutral-100 py-1.5">
+<button type="button" class="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50" data-device-settings="d-2">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5" aria-hidden="true">
+<path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-2 1-3 3-1 1-4-3-1-2-3-3 1-2-2z">
+</path>
+<circle cx="12" cy="11" r="3">
+</circle>
+</svg>设置</button>
+<button type="button" class="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50" data-device-tasks="d-2">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5" aria-hidden="true">
+<path d="m3 6 2 2 3-4M11 6h10M3 13l2 2 3-4M11 13h10M4 20h3M11 20h10">
+</path>
+</svg>任务</button>
 </div>
-</dl>
 </article>
-<article class="rounded-2xl border border-neutral-200 bg-white p-5">
-<div class="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-<div class="min-w-0 flex-1">
-<div class="flex items-center gap-2">
-<h3 class="truncate text-[15px] font-semibold text-neutral-900">公司笔记本</h3>
-<span class="rounded-full px-2 py-0.5 text-[11px] font-medium bg-neutral-100 text-neutral-500">离线</span>
+<article class="min-w-0 overflow-hidden rounded-[20px] border border-neutral-200 bg-white" data-device-card="d-1">
+<div class="relative flex aspect-[16/10] min-h-[180px] items-center justify-center overflow-hidden bg-neutral-100" data-device-cover="true" data-device-cover-state="unavailable">
+<span class="px-5 text-center text-xs text-neutral-400" role="status">暂无桌面壁纸</span>
+<button type="button" data-remote-device-icon="d-1" aria-label="家里的电脑 · 进入桌面" class="absolute bottom-4 left-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">进入桌面</button>
 </div>
-<p class="mt-1 text-[12px] text-neutral-500">macOS</p>
+<div class="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
+<div class="flex min-w-0 items-start gap-3">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" class="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" aria-hidden="true" data-device-kind="computer">
+<path d="M5 4h14v12H5zM5 16l-3 4h20l-3-4">
+</path>
+<path d="M9 20h6">
+</path>
+</svg>
+<div class="min-w-0">
+<h3 class="truncate text-sm font-semibold text-neutral-900">家里的电脑</h3>
+<p class="mt-1 text-xs text-neutral-500">Windows</p>
 </div>
-<div class="flex shrink-0 gap-2">
-<button type="button" class="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-50">改名</button>
-<button type="button" class="rounded-lg border border-red-200 px-3 py-1.5 text-[12px] text-red-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-red-50">撤销设备</button>
 </div>
+<span class="inline-flex items-center gap-1.5 text-sm text-neutral-500" data-device-availability="unknown">
+<span class="h-2 w-2 rounded-full bg-neutral-400" aria-hidden="true">
+</span>状态未知</span>
 </div>
-<dl class="mt-4 grid gap-3 text-[12px] sm:grid-cols-2">
-<div class="rounded-xl bg-neutral-50 px-3 py-2.5">
-<dt class="text-neutral-400">允许云端下发</dt>
-<dd class="mt-0.5 font-medium text-neutral-800">关着</dd>
+<div class="grid grid-cols-2 border-t border-neutral-100 py-1.5">
+<button type="button" class="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50" data-device-settings="d-1">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5" aria-hidden="true">
+<path d="m9 3-1 3-3 1-2 3 2 2-1 3 3 2 3-1 2 2 3-2 1-3 3-1 1-4-3-1-2-3-3 1-2-2z">
+</path>
+<circle cx="12" cy="11" r="3">
+</circle>
+</svg>设置</button>
+<button type="button" class="flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50" data-device-tasks="d-1">
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" class="h-5 w-5" aria-hidden="true">
+<path d="m3 6 2 2 3-4M11 6h10M3 13l2 2 3-4M11 13h10M4 20h3M11 20h10">
+</path>
+</svg>任务</button>
 </div>
-<div class="rounded-xl bg-neutral-50 px-3 py-2.5">
-<dt class="text-neutral-400">已授权类别</dt>
-<dd class="mt-0.5 font-medium text-neutral-800">无</dd>
-</div>
-</dl>
-<p class="mt-3 rounded-xl bg-amber-50 px-3 py-2.5 text-[12px] leading-relaxed text-amber-800">公司笔记本现在离线，需要它执行的步骤会排队等它上线</p>
 </article>
-</div>
-</section>
 <div data-stub="cloud" data-autofocus="false">
 </div>
-<details class="rounded-2xl border border-neutral-200 bg-neutral-50 px-5 py-4">
-<summary class="cursor-pointer text-[13px] font-medium text-neutral-800">设备权限如何保护你</summary>
-<p class="mt-3 text-[12px] leading-relaxed text-neutral-600">网页端只能给设备下单。打开开关、放宽授权目录、配对新设备，这三件事只能在那台电脑上做。即使有人拿到你的账号，也改不了这三样，而且那台电脑上会留下记录。</p>
-</details>
 </div>
 </div>`;
 
@@ -336,7 +358,7 @@ test("ApiPage pane 形态：没有页头与整页外边距，正文与独立页�
 
 test("DevicesPage pane 形态：没有页头与整页外边距，正文与独立页逐字相同", async () => {
   const page = await render(React.createElement(DevicesPage, { client: devicesClient }), "/agent");
-  const pageBody = bodyOf(page, "div.max-w-3xl");
+  const pageBody = bodyOf(page, "[data-device-grid]");
   await page.cleanup();
 
   const pane = await render(React.createElement(DevicesPage, { client: devicesClient, variant: "pane" }), "/agent");
@@ -346,7 +368,7 @@ test("DevicesPage pane 形态：没有页头与整页外边距，正文与独立
   const rootClass = pane.rootClass();
   assert.doesNotMatch(rootClass, /\bpx-8\b|\bpy-6\b|h-screen/, `pane 根节点不该带整页外边距或整屏高度：${rootClass}`);
   assert.match(rootClass, /\bmin-h-0\b/, `pane 根节点要能在面板区里收缩：${rootClass}`);
-  assert.equal(bodyOf(pane, "div.max-w-3xl"), pageBody, "pane 的正文要与独立页逐字相同");
+  assert.equal(bodyOf(pane, "[data-device-grid]"), pageBody, "pane 的正文要与独立页逐字相同");
   await pane.cleanup();
 });
 

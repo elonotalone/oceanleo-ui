@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import test from "node:test";
 import ts from "typescript";
+import * as uploadIdempotency from "../src/lib/upload/idempotency.ts";
 
 
 /**
@@ -65,6 +66,8 @@ function loadDatabase({ token = "token", fetchImpl }) {
           writeResumeTicket: notCalled("writeResumeTicket"),
         };
       }
+      // Shared upload error normalization is also used by creation failures.
+      if (specifier === "./upload/idempotency") return uploadIdempotency;
       // 这条 throw 是刻意留着的：再有新 import 进来仍旧当场红，
       // 而不是让这份桩慢慢漂成一个谁也不知道在测什么的假环境。
       throw new Error(`unexpected import: ${specifier}`);

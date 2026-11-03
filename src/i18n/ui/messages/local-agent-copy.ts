@@ -1,9 +1,9 @@
 import { LOCALES, type Locale } from "../../config";
-import { CLOUD_AGENT_COPY, LOCAL_AGENT_COPY, type CloudAgentCopyKey, type LocalAgentCopyKey } from "../../../lib/local-agent-task";
+import { CLOUD_AGENT_COPY, LOCAL_AGENT_COPY, type CloudAgentCopyKey, type LocalAgentCopyKey } from "./local-agent-source";
 import { CLOUD_AGENT_TRANSLATIONS } from "./cloud-agent-copy";
 
 /**
- * Translations of `LOCAL_AGENT_COPY` (src/lib/local-agent-task.ts): what the user
+ * Translations of `LOCAL_AGENT_COPY` (./local-agent-source.ts): what the user
  * reads when a task aimed at a paired computer is refused or unconfirmed, and
  * the "local execution off" hint on the device card and the target picker.
  *

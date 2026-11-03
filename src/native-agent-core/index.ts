@@ -105,7 +105,12 @@ export type ToolContent =
 
 export type ToolLocation = { path: string; line?: number };
 
+export { toolRawValue, toolPayloadText, TOOL_PAYLOAD_LIMIT } from "./tool-raw";
+
 export type ToolCard = {
+  /** Gateway-filtered raw payloads; absent fields retain previous stream values. */
+  rawInput?: unknown;
+  rawOutput?: unknown;
   id: string;
   kind: ToolKind;
   title: string;
@@ -117,6 +122,9 @@ export type ToolCard = {
   /** Sub-agent steps of this Task/Agent tool; they never enter the main timeline. */
   children?: ToolCard[];
 };
+
+/** Compatibility name for callers of the raw-field parser. */
+export type RawToolCard = ToolCard;
 
 export type PlanEntry = {
   content: string;
@@ -201,11 +209,21 @@ export type AgentMessageSender = {
   task_id: string | null;
 };
 
+export const NATIVE_DELIVERY_STATES = ["sending", "queued", "injected", "replaced", "started_new_turn", "unsent", "cancelled"] as const;
+export type NativeDeliveryState = (typeof NATIVE_DELIVERY_STATES)[number];
+export type NativeMessageDelivery = { state: NativeDeliveryState; uncertain?: boolean; reason?: string; intent?: "normal" | "send_now" };
+export type NativeMessageSnapshot = {
+  message_id: string; turn_id?: string; state: NativeDeliveryState; uncertain?: boolean; reason?: string;
+  intent?: "normal" | "send_now"; created_at?: string;
+  payload: { text: string; attachments?: UserMessageAttachment[]; files?: Record<string, unknown>[] };
+  snapshot_available?: boolean;
+};
+
 export type AgentDialogMessage =
   // at: epoch ms the user sent it, when known (a live send here, or a frame that carries a time); drives the chat time line.
-  | { kind: "user"; id: string; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number; sender?: AgentMessageSender }
+  | { kind: "user"; id: string; messageId?: string; turnId?: string; delivery?: NativeMessageDelivery; text: string; replay?: boolean; attachments?: UserMessageAttachment[]; at?: number; sender?: AgentMessageSender }
   // orphans: sub-agent tools whose Task/Agent tool has not arrived yet; adopted when it does, never shown on their own.
-  | { kind: "turn"; id: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
+  | { kind: "turn"; id: string; turnId?: string; acpSession: string; stop: string; items: TurnItem[]; live?: boolean; orphans?: ToolCard[] }
   // notice 的 text 是错误帧原文透传（reduce 按帧带上、MessageList 优先显示）；无 text 时走 notice.ts 词典。
   | { kind: "notice"; id: string; code: string; program: string; text?: string; provider?: string; model?: string };
 
@@ -330,12 +348,12 @@ export type NativeTranscriptSession = {
 export {
   applyDialog, initialDialogState, turnKey, isLiveTurn, busySessionsFor,
   idleStop, isCancelResult, newStopId, stopMachine, stopErrorText,
-  STOP_REPLY_TIMEOUT_MS, dropUnsentEcho, isLinkEvidenceFrame,
+  STOP_REPLY_TIMEOUT_MS, dropUnsentEcho, isLinkEvidenceFrame, restoreNativeMessages,
 } from "../shell/cloud-computer/agent-dialog/reduce";
 export type {
   DialogEvent, CancelResult, StopPhase, StopErrorReason, StopState, StopEvent,
 } from "../shell/cloud-computer/agent-dialog/reduce";
-export { dialogToAgentMessages, isNeutralNotice } from "../shell/native-thread/map-dialog";
+export { mergeNativeDialogPages, dialogToAgentMessages, isNeutralNotice } from "../shell/native-thread/map-dialog";
 export type {
   MapTranslate, DialogMapOptions, NativePermissionMeta, NativeQuestionMeta,
 } from "../shell/native-thread/map-dialog";

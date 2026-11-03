@@ -151,3 +151,31 @@ for (const [flag, module] of [[false, disabledModule], [true, enabledModule]]) {
     }
   });
 }
+
+// UC-1/UC-7: docs/architecture/oceanleo-untrusted-content-isolation.md.
+for (const family of ["com", "ws", "cn"]) {
+  test(`audited on-demand previews keep exact paths and select the ${family} host`, () => {
+    const origin = family === "cn" ? OSS : CDN;
+    for (const kind of ["ecommerce", "flowchart", "poster", "resume"]) {
+      const key = `ondemand/oceanleo-${kind}-wash/ab/${"a".repeat(64)}.preview.png`;
+      for (const purpose of ["thumb", "preview", "full"]) {
+        assert.equal(enabled.resolvePublicAssetMedia(key, { purpose, family }), `${origin}/${key}`);
+        assert.equal(enabled.resolvePublicAssetMedia(`${OSS}/${key}`, { purpose, family }), `${origin}/${key}`);
+        assert.equal(disabled.resolvePublicAssetMedia(key, { purpose, family }), `${OSS}/${key}`);
+        assert.equal(enabled.resolvePublicAssetMedia(`${OSS}/${key}?x-oss-process=image/resize,w_300`, { purpose, family }), `${origin}/${key}?x-oss-process=image/resize,w_300`);
+      }
+    }
+  });
+}
+test("on-demand source expansion refuses private, signed, unknown and executable media", () => {
+  for (const key of [
+    "ondemand/user/a.png", "ondemand/met/a.png", "ondemand/oceanleo-resume-wash-evil/a.png",
+    "ondemand/oceanleo-resume-wash/a.docx", "ondemand/oceanleo-resume-wash/a.html",
+    "ondemand/oceanleo-resume-wash/a.svg", "ondemand/oceanleo-resume-wash/private/a.png",
+    "ondemand/oceanleo-resume-wash/a.png?token=secret",
+  ]) {
+    assert.equal(enabled.resolvePublicAssetMedia(key, { purpose: "preview", family: "com" }), key);
+    const url = `${OSS}/${key}`;
+    assert.equal(enabled.resolvePublicAssetMedia(url, { purpose: "preview", family: "ws" }), url);
+  }
+});

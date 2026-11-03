@@ -1,4 +1,5 @@
 import type { AgentMessage } from "./agent";
+import { toolRawValue, type ToolCard } from "../shell/cloud-computer/agent-dialog/types";
 
 
 export interface AgentMessageRenderItem {
@@ -39,7 +40,7 @@ export interface ProcessPlanItem {
   priority: "high" | "medium" | "low" | "";
 }
 
-export interface ProcessToolEntry {
+export interface ProcessToolEntry extends Pick<ToolCard, "rawInput" | "rawOutput"> {
   type: "tool";
   key: string;
   title: string;
@@ -402,7 +403,7 @@ function guessToolKind(name: string): string {
   return "other";
 }
 
-type ToolCardFields = {
+type ToolCardFields = Pick<ProcessToolEntry, "rawInput" | "rawOutput"> & {
   kind: string;
   title: string;
   content: ProcessToolContent[];
@@ -438,6 +439,8 @@ function childEntries(raw: unknown, parentKey: string): ProcessToolEntry[] {
       args: "",
       result: "",
       error: "",
+      ...(card.rawInput !== undefined ? { rawInput: card.rawInput } : {}),
+      ...(card.rawOutput !== undefined ? { rawOutput: card.rawOutput } : {}),
       ...(card.children.length ? { children: card.children } : {}),
     });
   });
@@ -477,7 +480,13 @@ function parseToolCard(card: unknown, key = ""): ToolCardFields | null {
     locations.push(typeof row.line === "number" ? { path, line: row.line } : { path });
   }
   const children = childEntries(raw.children, `${key}/${text(raw.id)}`);
-  return { kind: text(raw.kind) || "other", title: text(raw.title), content, locations, children };
+  const rawInput = toolRawValue(raw, "input");
+  const rawOutput = toolRawValue(raw, "output");
+  return {
+    kind: text(raw.kind) || "other", title: text(raw.title), content, locations, children,
+    ...(rawInput !== undefined ? { rawInput } : {}),
+    ...(rawOutput !== undefined ? { rawOutput } : {}),
+  };
 }
 
 function planItems(message: AgentMessage): ProcessPlanItem[] {
@@ -541,6 +550,8 @@ export function buildProcessEntries(messages: AgentMessage[]): ProcessEntry[] {
         args: text(message.meta?.args_preview),
         result: text(message.meta?.result_preview),
         error: text(message.meta?.error).trim(),
+        ...(card?.rawInput !== undefined ? { rawInput: card.rawInput } : {}),
+        ...(card?.rawOutput !== undefined ? { rawOutput: card.rawOutput } : {}),
         ...(card?.children.length ? { children: card.children } : {}),
       });
       return;

@@ -14,9 +14,10 @@ import type { ComposerAttachment } from "../LeoComposer";
 import { composerOccupancy, liveTurnOpen, pendingUnsentReason } from "../cloud-computer/agent-dialog/occupancy";
 import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL, type AgentDialogMessage, type WsProgram } from "../cloud-computer/agent-dialog/types";
-import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
+import type { NativeMessageSnapshot } from "../../native-agent-core/index";
+import { applyDialog, initialDialogState, restoreNativeMessages } from "../cloud-computer/agent-dialog/reduce";
 import { useAgentDialog, type AgentDialogControllerV2 } from "../cloud-computer/agent-dialog/useAgentDialogController";
-import { dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
+import { mergeNativeDialogPages, dialogToAgentMessages, type NativePermissionMeta, type NativeQuestionMeta } from "./map-dialog";
 import { mergeSavedAndLive, mergeTranscriptPages } from "./merge";
 import type { NativeProgram } from "./types";
 import { nativeModelPickerFor } from "./NativeModelPicker";
@@ -72,6 +73,8 @@ export type NativeThread = {
   /** Resolves true only when the prompt actually went out. Empty text with ready attachments is a valid send. */
   send(text: string): Promise<boolean>;
   stop(): void;
+  retryMessage(messageId: string): Promise<boolean>;
+  restoreMessage(messageId: string): Promise<boolean>;
   answer(message: AgentMessage, optionIdOrAnswers: unknown): void;
   composerAttachments: ComposerAttachment[];
   onAttachFiles: ((files: File[]) => void) | undefined;
@@ -107,7 +110,7 @@ export type NativeThread = {
    * `restoredDraft`); `seq` changes once per restore. Hosts put `text` back into
    * an empty composer.
    */
-  restoredDraft: { seq: number; text: string } | null;
+  restoredDraft: { seq: number; text: string; entries?: { seq: number; text: string }[] } | null;
 };
 
 export type NativePendingPrompt = {
@@ -357,10 +360,13 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       .catch(() => undefined);
   }, [reattachSeq, enabled, session]);
 
-  const reduceArchive = useCallback((page: Archive): AgentDialogMessage[] => {
+  const reduceArchive = useCallback((page: Archive, includeMissing = true): AgentDialogMessage[] => {
     type State = ReturnType<typeof initialDialogState>;
     const start: State = { ...initialDialogState(), program: program ?? session?.program ?? null, activeSession: page.session?.native_session_id ?? nativeId };
-    return page.frames.reduce<State>((state, frame) => applyDialog(state, { type: "frame", frame }), start).messages;
+    const reduced = page.frames.reduce<State>((state, frame) => applyDialog(state, { type: "frame", frame }), start);
+    const rows = (page as Archive & { messages?: NativeMessageSnapshot[] }).messages ?? [];
+    return restoreNativeMessages(reduced, includeMissing ? rows : rows.filter((row) =>
+      reduced.messages.some((message) => message.kind === "user" && message.messageId === row.message_id))).messages;
   }, [program, nativeId]);
   const newestArchiveDialog = useMemo(
     () => (archive ? reduceArchive(archive) : ([] as AgentDialogMessage[])),
@@ -371,8 +377,13 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     [archiveTail, reduceArchive],
   );
   const archiveDialog = useMemo(() => {
-    const pages = olderArchive?.dialog.length ? [...olderArchive.dialog, ...newestArchiveDialog] : newestArchiveDialog;
-    return tailArchiveDialog ? mergeTranscriptPages(pages, tailArchiveDialog) : pages;
+    const pages = olderArchive?.dialog.length
+      ? newestArchiveDialog.some((m) => (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId))
+        ? mergeNativeDialogPages(olderArchive.dialog, newestArchiveDialog)
+        : [...olderArchive.dialog, ...newestArchiveDialog]
+      : newestArchiveDialog;
+    return tailArchiveDialog ? tailArchiveDialog.some((m) => (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId))
+      ? mergeNativeDialogPages(pages, tailArchiveDialog) : mergeTranscriptPages(pages, tailArchiveDialog) : pages;
   }, [olderArchive, newestArchiveDialog, tailArchiveDialog]);
 
   // Saved transcript + live messages are MERGED, never switched (2026-11-02 F2): after a
@@ -382,7 +393,10 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const replayKey = program ? `${program}::${dialog.activeSession || nativeId}` : "";
   const liveReplay = replayKey ? dialog.historyReplay?.[replayKey] ?? null : null;
   const merged = useMemo(
-    () => (live ? mergeSavedAndLive(archiveDialog, dialog.messages, { replay: liveReplay }) : { messages: archiveDialog, source: "saved" as const }),
+    () => (live ? dialog.messages.some((m) => (m.kind === "user" && m.messageId) || (m.kind === "turn" && m.turnId))
+      ? { messages: mergeNativeDialogPages(archiveDialog, dialog.messages), source: "merged" as const }
+      : mergeSavedAndLive(archiveDialog, dialog.messages, { replay: liveReplay })
+      : { messages: archiveDialog, source: "saved" as const }),
     [live, archiveDialog, dialog.messages, liveReplay],
   );
   // Older batches come from the saved copy whenever it is part of what is shown.
@@ -414,7 +428,11 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // always ends in an outcome), and a stop on its way counts as running.
   const viewSession = dialog.activeSession || dialog.draftRef || "";
   const stopping = dialog.stopState === "stopping";
+  const protocolWorking = dialog.messages.some((message) =>
+    (message.kind === "turn" && message.live && !message.stop) ||
+    (message.kind === "user" && (message.delivery?.state === "sending" || message.delivery?.state === "queued")));
   const running = stopping || (live && (
+    protocolWorking ||
     occupancyMode === "working"
     || liveTurnOpen(dialog.messages, viewSession)
     || (dialog.busy && !terminalRun(session))
@@ -426,7 +444,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   if (!computer || !online) blockedReason = tt("这台电脑离线，只能查看已保存的对话。");
   else if (row && !row.installed) blockedReason = tt("这台电脑上还没有安装 {program}，请在设置里安装。", { program: name });
   else if (row && (row.logged_in === false || row.auth === "none")) blockedReason = tt("{program} 还没有登录，请在设置里登录。", { program: name });
-  const ready = live && !draft && !blockedReason && occupancyMode === "idle" && !running && dialog.program === program;
+  const ready = live && !draft && !blockedReason && !stopping && !dialog.sessionLoading &&
+    !dialog.offline && dialog.occupancyLink === true &&
+    (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking) && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
   const send = useCallback(async (text: string) => {
@@ -510,7 +530,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     setPending(next);
   }, [restored, restoreAsBubble]);
   const restoredForComposer = useMemo(
-    () => (restored && !restoreAsBubble ? { seq: restored.seq, text: restored.text } : null),
+    () => (restored && !restoreAsBubble ? { seq: restored.seq, text: restored.text, ...(restored.entries ? { entries: restored.entries } : {}) } : null),
     [restored, restoreAsBubble],
   );
   // Only a known computer can be "offline"; null is still connecting.
@@ -544,7 +564,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     const reasonText = reason === "connect"
       ? tt("暂时连不上这台电脑，请稍后重试。")
       : reason === "busy"
-        ? tt("这段对话还在执行上一步，先停止它再发送。")
+        ? tt("没能发出去，请重试。")
         : reason === "loading"
           ? tt("这段对话还在打开，请稍后重试。")
           : tt("没能发出去，请重试。");
@@ -557,12 +577,11 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   // Never a silent no-op: not connected → the controller says the stop could not be sent.
   const stop = useCallback(() => {
     const queued = pendingRef.current;
-    // Stop while the first task/session is still being created also withdraws
-    // its local queue. Otherwise that prompt would start the agent after Stop
-    // answered not_running. A follow-up queued behind a running turn stays queued.
-    if (queued && !queued.unsent && !dialog.busy && occupancyMode !== "working" &&
-        !liveTurnOpen(dialog.messages, dialog.activeSession || dialog.draftRef || "")) {
-      settlePending(queued.key, tt("已停止生成"));
+    // Withdraw the local first-message queue too; it must never auto-send after Stop.
+    if (queued) {
+      pendingRef.current = null;
+      setPending(null);
+      dialog.withdrawLocalPrompt(queued.text, queued.attachmentIds);
     }
     dialog.abort();
   }, [dialog, occupancyMode, settlePending, tt]);
@@ -673,7 +692,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       .then((older) => {
         if (archiveFor.current !== id) return;
         olderLoaded.current = true;
-        const batch = reduceArchive(older);
+        const batch = reduceArchive(older, false);
         setOlderArchive((current) => ({
           dialog: current ? [...batch, ...current.dialog] : batch,
           has_older: older.has_older,
@@ -702,6 +721,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     opening,
     send,
     stop,
+    retryMessage: (messageId) => dialog.retryMessage(messageId),
+    restoreMessage: (messageId) => dialog.restoreMessage(messageId),
     answer,
     composerAttachments,
     onAttachFiles: live ? dialog.addAttachments : undefined,

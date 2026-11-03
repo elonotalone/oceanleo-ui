@@ -64,6 +64,8 @@ const pageHeaderStubUrl = dataModule(`
   }
 `);
 const confirmDialogStubUrl = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+
   import React from ${JSON.stringify(reactUrl)};
   export function ConfirmDialog({ title, body, confirmLabel, onConfirm, onCancel }) {
     return React.createElement(

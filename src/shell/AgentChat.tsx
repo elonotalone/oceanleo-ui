@@ -3316,17 +3316,18 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={nativeRunning && item.key === nativeLiveProgressKey}
+                running={nativeRunning && (item.messages.some((message) => message.meta?.native_turn_live === true) || item.key === nativeLiveProgressKey)}
                 accent={accent}
               />
             ) : (
+              <div key={item.key} className="contents">
               <AgentTranscriptBubble
-                key={item.key}
                 message={item.message}
                 timeAbove={nativeTimeSeparators.get(item.index)}
-                streaming={nativeRunning && item.index === nativeLastAssistantIdx &&
-                  item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
-                  item.message.meta?.final !== true && item.message.meta?.stopped !== true}
+                streaming={nativeRunning && (item.message.meta?.native_turn_id
+                  ? item.message.meta.native_streaming === true
+                  : item.index === nativeLastAssistantIdx && item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
+                    item.message.meta?.final !== true && item.message.meta?.stopped !== true)}
                 stopped={item.message.meta?.stopped === true}
                 turnCopyText={nativeTurnActions.get(item.key) ?? null}
                 taskRunning={thread.running}
@@ -3337,6 +3338,23 @@ function AgentChatInner({
                 selected={nativeShare.selectedIds.has(item.message.id)}
                 onSelectToggle={() => nativeShare.toggle(item.message.id)}
               />
+              {item.message.role === "user" && Boolean(item.message.meta?.native_delivery) && (() => {
+                const delivery = item.message.meta!.native_delivery as { state: string; uncertain?: boolean };
+                const id = String(item.message.meta!.native_message_id ?? "");
+                const failed = delivery.state === "unsent";
+                const cancelled = delivery.state === "cancelled";
+                return <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500"
+                  data-native-message-state={delivery.state} data-native-message-id={id} role="status">
+                  <span>{tt(failed ? "未发送" : cancelled ? "已撤回" :
+                    delivery.state === "sending" || delivery.state === "queued" ? "等待处理" : "已送入当前执行")}</span>
+                  {delivery.uncertain && <span>{tt("发送结果尚未确认，重试会核对原消息，避免重复执行。")}</span>}
+                  {!nativeReadOnly && failed && <button type="button" onClick={() => void thread.retryMessage(id)}
+                    className="text-stone-600 underline" disabled={!thread.live || thread.stopState === "stopping"}>{tt("重试")}</button>}
+                  {!nativeReadOnly && cancelled && <button type="button" onClick={() => void thread.restoreMessage(id)}
+                    className="text-stone-600 underline">{tt("恢复草稿")}</button>}
+                </div>;
+              })()}
+              </div>
             ),
           )}
           {/* Only until the turn's first entry: after that the process block / streaming text is the live signal. */}
@@ -3387,6 +3405,7 @@ function AgentChatInner({
             onChange={setInput}
             onSubmit={(clean) => void submit(clean)}
             loading={nativeRunning}
+            allowSendWhileRunning
             onStop={() => thread.stop()}
             stopping={thread.stopState === "stopping"}
             stopError={thread.stopError}
@@ -3744,9 +3763,11 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
   const restoredSeqRef = useRef(restored?.seq ?? 0);
   useEffect(() => {
     if (!restored || restored.seq === restoredSeqRef.current) return;
+    const text = restored.entries
+      ? restored.entries.filter((entry) => entry.seq > restoredSeqRef.current).map((entry) => entry.text).filter(Boolean).join("\n\n")
+      : restored.text;
     restoredSeqRef.current = restored.seq;
-    const text = restored.text;
-    if (text) setInput((current) => (current.trim() ? current : text));
+    if (text) setInput((current) => (current.trim() ? `${current}\n\n${text}` : text));
   }, [restored]);
   const [setupRequest, setSetupRequest] = useState(0);
   const requestSetup = useCallback(() => setSetupRequest((count) => count + 1), []);

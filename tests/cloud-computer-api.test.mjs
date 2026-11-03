@@ -14,7 +14,7 @@ const { CloudComputerError, listComputers, createAliyunComputer, createByoComput
         export async function accessToken() { return "tok_test"; }
       `),
       "./auth/config": dataModule(`
-        export const GATEWAY_BASE = "https://api.example.test";
+        export const GATEWAY_BASE = "https://api.example.test"; export function gatewayBase() { return GATEWAY_BASE; }
       `),
     })
   );
@@ -168,7 +168,7 @@ test("未登录映射 client_unauthorized", async () => {
           export async function accessToken() { return ""; }
         `),
         "./auth/config": dataModule(`
-          export const GATEWAY_BASE = "https://api.example.test";
+          export const GATEWAY_BASE = "https://api.example.test"; export function gatewayBase() { return GATEWAY_BASE; }
         `),
       })
     );

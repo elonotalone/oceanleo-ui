@@ -11,6 +11,15 @@ export interface PublicAssetMediaOptions {
   family?: DomainFamily;
 }
 
+const EXTRA_PUBLIC_MEDIA_PREFIXES = [
+  "ondemand/oceanleo-ecommerce-wash/", "ondemand/oceanleo-flowchart-wash/",
+  "ondemand/oceanleo-poster-wash/", "ondemand/oceanleo-resume-wash/",
+];
+function extraPublicMedia(path: string): boolean {
+  return EXTRA_PUBLIC_MEDIA_PREFIXES.some((prefix) => path.startsWith(prefix)) &&
+    /\.(?:webp|png|jpe?g|gif|avif|mp4|webm|mp3|wav|ogg)$/i.test(path);
+}
+
 const PRIVATE_SEGMENT = /^(?:project-assets|media-uploads|private|library|uploads|user-content|storage|v1)$/i;
 
 function publicSegments(path: string): string[] | undefined {
@@ -47,7 +56,7 @@ export function resolvePublicAssetMedia(
       if (!parts || ![PUBLIC_ASSET_ORIGIN, `${PUBLIC_ASSET_ORIGIN}:443`].includes(parts[1].toLowerCase())) return raw;
       const path = parts[2].slice(1);
       const segments = publicSegments(path);
-      if (!path.startsWith("assets/") || !segments || segments.some((part) => PRIVATE_SEGMENT.test(part))) return raw;
+      if ((!path.startsWith("assets/") && !extraPublicMedia(path)) || !segments || segments.some((part) => PRIVATE_SEGMENT.test(part))) return raw;
       // Replace the origin only: escaping, transforms, fragments and variants survive.
       return origin + parts[2] + parts[3];
     } catch {
@@ -61,6 +70,10 @@ export function resolvePublicAssetMedia(
   const segments = publicSegments(path);
   if (!segments) return "";
   if (segments.some((part) => PRIVATE_SEGMENT.test(part))) return raw;
+  if (segments[0] === "ondemand") {
+    // Unknown sources and document/code originals never become catalog shorthand.
+    return extraPublicMedia(path) ? `${origin}/${segments.map(encodeURIComponent).join("/")}` : raw;
+  }
   const encoded = segments.map(encodeURIComponent).join("/");
   const objectPath = segments[0] === "assets" ? encoded : `assets/image/${encoded}`;
   const hasExtension = /\.[^/.]+$/.test(segments[segments.length - 1]);

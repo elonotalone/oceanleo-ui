@@ -200,6 +200,8 @@ const toastStub = dataModule(`
   export function useToast(){ return { error(title){ (globalThis.__W08_TOASTS ??= []).push(title); }, success(){}, info(){} }; }
 `);
 const confirmStub = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+
   import React from ${JSON.stringify(reactUrl)};
   export function ConfirmDialog({ title, confirmLabel, onConfirm, onCancel }){
     return React.createElement("div", { "data-confirm": title },

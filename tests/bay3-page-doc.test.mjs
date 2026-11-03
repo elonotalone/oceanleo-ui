@@ -305,7 +305,9 @@ test("returning to the original section order or theme is clean again", () => {
 
 test("all profile builder copy is registered as complete dictionaries for all 17 locales", () => {
   const keys = Object.keys(UI_FOLLOWUP_PROFILE_MESSAGES.zh);
-  assert.equal(keys.length, 28);
+  // 2026-11-03: 个人资料 / 继续编辑 left this table; the base dictionary translates them in all 17 locales
+  // (the table had silently changed their site-wide English).
+  assert.equal(keys.length, 26);
   for (const locale of LOCALES) {
     const messages = UI_FOLLOWUP_PROFILE_MESSAGES[locale];
     assert.deepEqual(Object.keys(messages), keys);

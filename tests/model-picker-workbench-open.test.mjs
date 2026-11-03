@@ -151,6 +151,7 @@ const themeStubUrl = dataModule(`export function ThemeSwitcher() { return null; 
 const languageStubUrl = dataModule(`export function LanguageSwitcher() { return null; }`);
 const presenceStubUrl = dataModule(`export function usePresenceHeartbeat() {}`);
 const appShellUrl = await compileModule("src/shell/AppShell.tsx", {
+  "./messages/MessagesHost": dataModule(`export function MessagesHost(){return null;}`),
   "next/link": linkStubUrl,
   "next/navigation": navigationStubUrl,
   "./ModelPicker": modelPickerUrl,

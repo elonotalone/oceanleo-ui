@@ -29,7 +29,7 @@ for (const file of ["ConfigDialogShell.tsx", "ConfigToolbar.tsx", "kit-icons.tsx
   kitUrls.push(await compileModule(`src/shell/skills/kit/${file}`, { "../../../i18n/ui/useUI": useUIStub }));
 }
 const shellUrl = dataModule(
-  [workspaceUrl, ...kitUrls].map((url) => `export * from ${JSON.stringify(url)};`).join("\n"),
+  [workspaceUrl, await compileModule("src/shell/collection-chrome.tsx", { "../i18n/ui/useUI": useUIStub }), ...kitUrls].map((url) => `export * from ${JSON.stringify(url)};`).join("\n"),
 );
 const framedTab = (attr) => dataModule(`import React from ${JSON.stringify(reactUrl)};
   export function Tab(props) {

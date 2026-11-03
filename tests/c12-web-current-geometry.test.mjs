@@ -15,6 +15,7 @@ const { RemoteDesktopPanel } = await import(await compileModule("src/pages/Remot
   "../i18n/ui/useUI": dataModule("export function useUI(){ return value => value; }"),
   "./RemoteDesktopVideo": dataModule(`
     import React from ${JSON.stringify(reactUrl)};
+    export { remoteFrameStyle } from ${JSON.stringify(await compileModule("src/pages/RemoteDesktopVideo.tsx"))};
     export function RemoteDesktopVideo(props) {
       globalThis.__currentGeometryVideo = props;
       return React.createElement("video", { ref: props.videoRef, "data-remote-video": true });

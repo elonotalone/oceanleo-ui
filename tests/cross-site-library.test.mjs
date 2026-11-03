@@ -74,14 +74,9 @@ test("works and task artifacts never use a matching URL as identity", () => {
   assert.equal(artifact.favorite, true);
 });
 
-test("legacy pages normalize into exactly five fixed workspace slots", () => {
-  assert.deepEqual(FIXED_WORKSPACE_SLOTS, [
-    "template",
-    "preview",
-    "materials",
-    "mine",
-    "browser",
-  ]);
+test("legacy pages normalize into four visible slots and a LeoBay materials view", () => {
+  // Materials remains a legacy input and opens LeoBay instead of a fifth slot.
+  assert.deepEqual(FIXED_WORKSPACE_SLOTS, ["template", "preview", "mine", "browser"]);
   assert.equal(workspaceSlotForLegacyId("__guide"), "template");
   assert.equal(workspaceSlotForLegacyId("result"), "preview");
   assert.equal(workspaceSlotForLegacyId("material"), "materials");
@@ -103,7 +98,7 @@ test("dynamic plus/minus libraries are removed from the right workspace", () => 
   ]);
   assert.deepEqual(
     FIXED_WORKSPACE_SLOTS.map((slot) => model.groups[slot][0]?.id),
-    ["__guide", "result", "materials", "files", "browser"],
+    ["__guide", "result", "files", "browser"],
   );
   assert.equal(model.byId.get("__guide").displayLabel, "灵感");
   assert.equal(model.byId.get("materials").role, "container");
@@ -210,7 +205,8 @@ test("workspace actions are versioned, bounded and reject unsafe URLs", () => {
     }),
     {
       version: 1,
-      tab: "materials",
+      tab: "bay",
+      view: "materials",
       query: "小红书模板",
       category: undefined,
       itemId: "asset:library:123",

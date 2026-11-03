@@ -11,6 +11,8 @@ import {
 } from "../../lib/website-platform-api";
 import { WebsitePreviewWorkbench } from "./WebsitePreviewWorkbench";
 import { useUI } from "../../i18n/ui/useUI";
+import { currentDomainFamily } from "../../contracts/domain-family";
+import { CnHostingPanel } from "./CnHostingPanel";
 
 type Panel =
   | "preview"
@@ -549,6 +551,17 @@ function DatabasePanel({
 }
 
 function PublishPanel({
+  projectId,
+  api,
+}: {
+  projectId: string;
+  commit?: string;
+  api: WebsitePlatformApi;
+}) {
+  return currentDomainFamily() === "cn" ? <CnHostingPanel projectId={projectId} api={api} /> : <PlatformPublishPanel projectId={projectId} api={api} />;
+}
+
+function PlatformPublishPanel({
   projectId,
   api,
 }: {

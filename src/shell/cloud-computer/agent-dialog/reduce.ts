@@ -32,6 +32,8 @@ import type {
   AgentProgram,
   DialogState,
   AgentMessageSender,
+  NativeMessageSnapshot,
+  NativeMessageDelivery,
   InstallState,
   LoginState,
   ToolCard,
@@ -502,7 +504,8 @@ export type DialogEvent =
 
 /** Stable gateway identity when present; older adapters still fall back to prompt/time alignment. */
 function userFrameId(frame: Record<string, unknown>): string | null {
-  const value = frame.message_id ?? frame.seq;
+  if (typeof frame.message_id === "string" && frame.message_id) return `frame:${str(frame.program)}:${frame.message_id}`;
+  const value = frame.seq;
   if ((typeof value !== "string" || !value) && typeof value !== "number") return null;
   return `frame:${str(frame.program)}:${str(frame.acp_session)}:${value}`;
 }
@@ -1006,7 +1009,63 @@ export function isLinkEvidenceFrame(frame: Record<string, unknown>): boolean {
   return LINK_EVIDENCE.has(str(frame.t)) && frame.replay !== true;
 }
 
+/** Recover message metadata even when its archived user frame has not flushed yet. */
+export function restoreNativeMessages(state: DialogState, rows: readonly NativeMessageSnapshot[]): DialogState {
+  for (const row of [...rows].reverse()) {
+    if (!row.message_id || !row.payload) continue;
+    state = onFrame(state, { t: "user_message", program: state.program, acp_session: state.activeSession,
+      message_id: row.message_id, turn_id: row.turn_id, text: row.payload.text,
+      attachments: row.payload.attachments, created_at: row.created_at, replay: true });
+    state = onFrame(state, { t: "prompt_state", message_id: row.message_id, turn_id: row.turn_id,
+      state: row.state, uncertain: row.uncertain, reason: row.reason, intent: row.intent });
+  }
+  return state;
+}
+
+const TURN_FRAMES = new Set(["turn_start", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done"]);
+
 function onFrame(input: DialogState, frame: Record<string, unknown>): DialogState {
+  const wireTurn = str(frame.turn_id);
+  if (wireTurn && TURN_FRAMES.has(str(frame.t))) {
+    // Run the existing per-turn parser against only the addressed turn. A new
+    // user message must never cut off the old turn's remaining deltas/tools.
+    const index = input.messages.findIndex((m) => m.kind === "turn" && m.turnId === wireTurn);
+    const previous = index >= 0 ? input.messages[index] as TurnMessage : undefined;
+    const turn: TurnMessage = previous ?? { kind: "turn", id: `turn:${wireTurn}`, turnId: wireTurn,
+      acpSession: str(frame.acp_session) || input.activeSession, stop: "", items: [] };
+    const { turn_id: ignored, ...legacy } = frame;
+    const next = str(frame.t) === "turn_start" && previous
+      ? armTurn({ ...input, messages: [turn] }, legacy)
+      : onFrame({ ...input, messages: str(frame.t) === "turn_start" ? [] : [{ ...turn, stop: "" }] }, legacy);
+    const updated = next.messages.map((m) => m.kind === "turn" ? { ...m, id: turn.id, turnId: wireTurn } : m);
+    const ownerIndex = input.messages.findIndex((m) => m.kind === "user" && m.turnId === wireTurn);
+    const nextUser = ownerIndex < 0 ? -1 : input.messages.findIndex((m, i) => i > ownerIndex && m.kind === "user");
+    const insertion = nextUser < 0 ? input.messages.length : nextUser;
+    const messages = index >= 0
+      ? [...input.messages.slice(0, index), ...updated, ...input.messages.slice(index + 1)]
+      : [...input.messages.slice(0, insertion), ...updated, ...input.messages.slice(insertion)];
+    const lateSettledOutput = previous?.stop && previous.stop !== "stopping" && frame.t !== "turn_start" && frame.t !== "done";
+    if (lateSettledOutput) {
+      const closed = messages.map((m) => m.kind === "turn" && m.turnId === wireTurn ? { ...m, stop: previous.stop, live: false } : m);
+      return { ...input, messages: closed };
+    }
+    const result = { ...next, messages };
+    if (frame.t === "done" && messages.some((m) =>
+      (m.kind === "turn" && m.turnId !== wireTurn && !m.stop) ||
+      (m.kind === "user" && (m.delivery?.state === "queued" || m.delivery?.state === "sending")))) {
+      return markTurn(result, str(frame.program) || input.program, str(frame.acp_session) || input.activeSession || input.draftRef || "", true);
+    }
+    return result;
+  }
+  if (frame.t === "prompt_ack" || frame.t === "prompt_state") {
+    const messageId = str(frame.message_id);
+    if (!messageId) return input;
+    const delivery: NativeMessageDelivery = { state: frame.state as NativeMessageDelivery["state"],
+      uncertain: frame.uncertain === true, reason: str(frame.reason), intent: frame.intent === "send_now" ? "send_now" : "normal" };
+    if (!["sending", "queued", "injected", "replaced", "started_new_turn", "unsent", "cancelled"].includes(delivery.state)) return input;
+    return { ...input, messages: input.messages.map((m) => m.kind === "user" && m.messageId === messageId
+      ? { ...m, turnId: str(frame.turn_id) || m.turnId, delivery } : m) };
+  }
   const kind = str(frame.t);
   let state = kind === "status" || isLinkEvidenceFrame(frame) ? recoverLink(input) : input;
   if (kind === "status") return {
@@ -1276,6 +1335,21 @@ function onFrame(input: DialogState, frame: Record<string, unknown>): DialogStat
         }
       : undefined;
     if (!text && attachments.length === 0) return state;
+    const messageId = str(frame.message_id);
+    if (messageId) {
+      const index = state.messages.findIndex((m) => m.kind === "user" && m.messageId === messageId);
+      const existing = index >= 0 ? state.messages[index] as Extract<AgentDialogMessage, { kind: "user" }> : undefined;
+      const message: Extract<AgentDialogMessage, { kind: "user" }> = {
+        ...existing, kind: "user", id: existing?.id ?? userFrameId(frame) ?? nextId(), messageId,
+        turnId: str(frame.turn_id) || existing?.turnId, text, ...frameTime(frame),
+        ...(sender ? { sender } : {}),
+        ...(attachments.length ? { attachments: mergeLocalPreviews(attachments, existing?.attachments ?? []) } : {}),
+        ...(frame.local === true ? { delivery: { state: "sending" } } : {}),
+      };
+      const messages = state.messages.slice();
+      if (index >= 0) messages[index] = message; else messages.push(message);
+      return { ...state, messages };
+    }
     const last = state.messages[state.messages.length - 1];
     if (
       last &&

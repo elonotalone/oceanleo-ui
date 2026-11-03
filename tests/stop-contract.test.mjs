@@ -104,7 +104,7 @@ test("both hosts wire Stop, step spinners and send to the same running value; of
   assert.match(source, /loading=\{running\}/);
   assert.match(source, /running=\{running && item.key === liveProgressKey\}/);
   assert.match(source, /loading=\{nativeRunning\}/);
-  assert.match(source, /running=\{nativeRunning && item.key === nativeLiveProgressKey\}/);
+  assert.match(source, /running=\{nativeRunning && \(item.messages.some/);
   const native = source.slice(source.indexOf("const renderNativePane"), source.indexOf("const renderNativePane") + 15500);
   assert.doesNotMatch(native, /disabled=\{[^\n]*thread.offline/);
   assert.doesNotMatch(native, /if \(thread.running \|\| thread.offline\) return/);
@@ -308,4 +308,24 @@ test("cloud Stop confirms its HTTP result and never applies an old success to a 
     assert.equal(late.status, "running");
     assert.equal(late.state.phase, "idle");
   } finally { stopped.cleanup(); late.cleanup(); }
+});
+
+test('N3 composer: native Enter/click sends while working and keeps Stop; stopping still blocks sends', async () => {
+  let submits=0, stops=0;
+  const view=await composer({loading:true,allowSendWhileRunning:true,onStop(){stops++;},onSubmit(){submits++;}});
+  try {
+    const send=()=>view.host.querySelector('[aria-label="发送"]');
+    assert.equal(send().disabled,false);
+    assert.ok(view.host.querySelector('[data-composer-stop]'));
+    await act(async()=>send().click());
+    await act(async()=>view.host.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})));
+    assert.equal(submits,2);
+    assert.equal(stops,0,'Send can never become an accidental Stop');
+    await view.update({stopping:true});
+    assert.equal(send().disabled,true);
+    await act(async()=>view.host.querySelector('textarea').dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true})));
+    assert.equal(submits,2);
+    await view.update({stopping:false,allowSendWhileRunning:false});
+    assert.equal(send(),null,'existing non-native loading composer keeps its original Stop-only UI');
+  } finally {view.cleanup();}
 });

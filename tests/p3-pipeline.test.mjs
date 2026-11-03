@@ -14,6 +14,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import React, { act } from "react";
 
+import { resetBackgroundSaverForTests } from "../src/shell/advanced-background-saver.ts";
 import { bindAdvancedDraftGate } from "../src/shell/advanced-draft-gates.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -58,6 +59,9 @@ for (const [name, value] of Object.entries({
   });
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+// A deliberately failed flush remains queued after unmount; release that test job.
+test.afterEach(() => resetBackgroundSaverForTests());
+test.after(() => dom.window.close());
 
 const handoff = await import(
   await compileModule("src/shell/advanced-routes/editor-handoff.ts", {

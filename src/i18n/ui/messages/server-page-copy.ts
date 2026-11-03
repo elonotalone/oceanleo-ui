@@ -2,7 +2,6 @@
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
-  aiChat: "AI 对话",
   aiCli: "AI 命令行",
   terminal: "终端",
   chooseAction: "选择工作方式",
@@ -31,7 +30,6 @@ const SOURCE = {
 
 export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
   en: {
-    aiChat: "AI chat",
     aiCli: "AI command line",
     terminal: "Terminal",
     chooseAction: "Choose a workspace",
@@ -58,7 +56,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Could not start the server. Try again later.",
   },
   de: {
-    aiChat: "AI-Dialog",
     aiCli: "AI-Befehlszeile",
     terminal: "Terminal",
     chooseAction: "Arbeitsweise wählen",
@@ -85,7 +82,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Server konnte nicht eingeschaltet werden. Versuchen Sie es später erneut.",
   },
   es: {
-    aiChat: "Chat con IA",
     aiCli: "Línea de comandos de IA",
     terminal: "Terminal",
     chooseAction: "Elige un espacio de trabajo",
@@ -112,7 +108,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "No se pudo encender el servidor. Inténtalo más tarde.",
   },
   "es-419": {
-    aiChat: "Chat con IA",
     aiCli: "Línea de comandos de IA",
     terminal: "Terminal",
     chooseAction: "Elige un espacio de trabajo",
@@ -139,7 +134,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "No se pudo encender el servidor. Inténtalo más tarde.",
   },
   fr: {
-    aiChat: "Dialogue IA",
     aiCli: "Ligne de commande IA",
     terminal: "Terminal",
     chooseAction: "Choisir un espace de travail",
@@ -166,7 +160,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Impossible de démarrer le serveur. Réessayez plus tard.",
   },
   it: {
-    aiChat: "Chat IA",
     aiCli: "Riga di comando IA",
     terminal: "Terminale",
     chooseAction: "Scegli un’area di lavoro",
@@ -193,7 +186,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Impossibile accendere il server. Riprova più tardi.",
   },
   "pt-BR": {
-    aiChat: "Conversa com IA",
     aiCli: "Linha de comando de IA",
     terminal: "Terminal",
     chooseAction: "Escolha um espaço de trabalho",
@@ -220,7 +212,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Não foi possível ligar o servidor. Tente novamente mais tarde.",
   },
   "pt-PT": {
-    aiChat: "Conversa com IA",
     aiCli: "Linha de comandos de IA",
     terminal: "Terminal",
     chooseAction: "Escolha um espaço de trabalho",
@@ -247,7 +238,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Não foi possível ligar o servidor. Tente novamente mais tarde.",
   },
   vi: {
-    aiChat: "Trò chuyện AI",
     aiCli: "Dòng lệnh AI",
     terminal: "Thiết bị đầu cuối",
     chooseAction: "Chọn không gian làm việc",
@@ -274,7 +264,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Không thể bật máy chủ. Hãy thử lại sau.",
   },
   tr: {
-    aiChat: "AI sohbeti",
     aiCli: "AI komut satırı",
     terminal: "Terminal",
     chooseAction: "Çalışma alanı seçin",
@@ -301,7 +290,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "Sunucu açılamadı. Daha sonra tekrar deneyin.",
   },
   "zh-TW": {
-    aiChat: "AI 對話",
     aiCli: "AI 命令列",
     terminal: "終端機",
     chooseAction: "選擇工作方式",
@@ -328,7 +316,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "開機失敗，請稍後再試。",
   },
   ja: {
-    aiChat: "AI チャット",
     aiCli: "AI コマンドライン",
     terminal: "ターミナル",
     chooseAction: "ワークスペースを選択",
@@ -355,7 +342,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "サーバーを起動できませんでした。後でもう一度お試しください。",
   },
   ko: {
-    aiChat: "AI 대화",
     aiCli: "AI 명령줄",
     terminal: "터미널",
     chooseAction: "작업 방식 선택",
@@ -382,7 +368,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "서버를 켤 수 없습니다. 나중에 다시 시도하세요.",
   },
   ar: {
-    aiChat: "محادثة الذكاء الاصطناعي",
     aiCli: "سطر أوامر الذكاء الاصطناعي",
     terminal: "الطرفية",
     chooseAction: "اختر مساحة عمل",
@@ -409,7 +394,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "تعذر تشغيل الخادم. حاول مرة أخرى لاحقًا.",
   },
   th: {
-    aiChat: "แชต AI",
     aiCli: "บรรทัดคำสั่ง AI",
     terminal: "เทอร์มินัล",
     chooseAction: "เลือกพื้นที่ทำงาน",
@@ -436,7 +420,6 @@ export const SERVER_PAGE_MESSAGES = assembleCopy(SOURCE, {
     powerFailed: "เปิดเซิร์ฟเวอร์ไม่สำเร็จ โปรดลองอีกครั้งภายหลัง",
   },
   hi: {
-    aiChat: "AI चैट",
     aiCli: "AI कमांड लाइन",
     terminal: "टर्मिनल",
     chooseAction: "वर्कस्पेस चुनें",

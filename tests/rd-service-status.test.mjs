@@ -75,8 +75,10 @@ test("settings initial rendering explains unlocked, locked and signed-out capabi
   const html = renderToStaticMarkup(React.createElement(RdServiceStatus));
   assert.match(html, /Checking background service/);
   assert.match(html, /Signed in and unlocked/);
-  assert.match(html, /Locked: this version does not provide screen capture/);
-  assert.match(html, /Signed out or before login: unsupported/);
+  assert.match(html, /data-rd-state="locked"/);
+  assert.match(html, /Signed out or before login/);
+  assert.match(html, /Before the operating system starts/);
+  assert.match(html, /Unverified/);
   assert.match(html, /does not confirm a remote screen connection/);
   assert.doesNotMatch(html, /\p{Script=Han}/u);
 });

@@ -99,6 +99,7 @@ const stubs = {
     export function agentDialogWsUrl(id) { return "ws://example.test/v1/computers/" + id + "/agent-dialog"; }
     // The composer pill's computer sections default to this client (never called here).
     export const cloudComputerApi = {};
+    export async function cloudComputerRequest(path) { return globalThis.__nativeSnapshot(path); }
     export async function putComputerInbox(id, file, onProgress, options) {
       (globalThis.__inboxPuts ??= []).push({ name: file.name, task_session_id: options?.task_session_id ?? null });
       if (globalThis.__holdInbox) return globalThis.__holdInbox({ id, file, onProgress, options });
@@ -360,9 +361,10 @@ test("send reports the controller's outcome; attachment-only sends go out with f
     assert.equal(prompt.text, "");
     assert.deepEqual(prompt.files, [{ name: "notes.txt", mime: "text/plain", path: "/home/elon/.oceanleo/inbox/notes.txt" }]);
     await until(() => globalThis.__thread.composerAttachments.length === 0, "attachments cleared");
-    await until(() => !globalThis.__thread.ready, "busy after send");
-    assert.equal(await sendVia(globalThis.__thread, "again"), false, "a send while the turn is pending is refused");
-    assert.equal(sent().filter((frame) => frame.t === "prompt").length, 1);
+    assert.equal(globalThis.__thread.running, true, "Stop remains available after send");
+    assert.equal(globalThis.__thread.ready, true, "follow-up input remains sendable");
+    assert.equal(await sendVia(globalThis.__thread, "again"), true);
+    assert.equal(sent().filter((frame) => frame.t === "prompt").length, 2);
   } finally { view.cleanup(); }
 });
 
@@ -433,8 +435,11 @@ test("a brand-new session is ready once the link is up, without waiting for an o
     assert.equal(globalThis.__thread.dialog.occupancyAt ?? null, null, "no occupancy reply was ever received");
     assert.equal(await sendVia(globalThis.__thread, "Go"), true, "the controller sends too");
     assert.equal(sent().filter((frame) => frame.t === "prompt").length, 1);
-    await until(() => !globalThis.__thread.ready, "a pending send still holds the new conversation");
-    assert.equal(await sendVia(globalThis.__thread, "Again"), false, "no double send into the same new conversation");
+    assert.equal(globalThis.__thread.running, true, "pending message keeps Stop");
+    assert.equal(await sendVia(globalThis.__thread, "Again"), true, "a distinct message can follow a pending one");
+    const prompts = sent().filter((frame) => frame.t === "prompt");
+    assert.equal(prompts[0].ref, prompts[1].ref, "same provisional session executor");
+    assert.notEqual(prompts[0].message_id, prompts[1].message_id, "distinct inputs have distinct IDs");
   } finally { view.cleanup(); FakeSocket.silentOccupancy = false; }
 });
 
@@ -684,4 +689,219 @@ test("an existing conversation is 'opening' (quiet spinner) only until its saved
     await until(() => globalThis.__thread.messages.some((m) => m.content === "Hello"), "saved copy shown while the live open is pending");
     assert.equal(globalThis.__thread.opening, false);
   } finally { FakeSocket.holdOpen = false; FakeSocket.heldOpen = null; view.cleanup(); }
+});
+
+// W3-N3 durable delivery: all cases exercise the real hook + controller + reducer.
+let midturnComputer = 0;
+async function midturnView() {
+  FakeSocket.sockets=[];
+  globalThis.__taskApi={async transcript(){return {session:session(),frames:[],sync_status:'saved'};}};
+  const view=await mount({computer:{id:`cc_midturn_${++midturnComputer}`,name:'elon',node_online:true},session:session(),enabled:true});
+  await until(()=>globalThis.__thread.ready,'midturn ready');
+  return view;
+}
+const messageById=id=>globalThis.__thread.messages.find(m=>m.meta?.native_message_id===id);
+const serverFrame=async frame=>act(async()=>openSocket().server({program:'codex',acp_session:'nat-1',...frame}));
+
+test('N3: consecutive messages while working/permission waiting retain distinct IDs and statuses',async()=>{
+  const view=await midturnView();
+  try {
+    await serverFrame({t:'turn_start',turn_id:'old'});
+    await serverFrame({t:'permission',turn_id:'old',id:'perm',title:'Allow',options:[{id:'yes',name:'Allow'}]});
+    assert.equal(globalThis.__thread.running,true);
+    assert.equal(globalThis.__thread.ready,true);
+    assert.equal(await sendVia(globalThis.__thread,'one'),true);
+    assert.equal(await sendVia(globalThis.__thread,'two'),true);
+    const [one,two]=sent().filter(f=>f.t==='prompt');
+    assert.notEqual(one.message_id,two.message_id);
+    assert.equal(one.intent,'normal');
+    await serverFrame({t:'prompt_ack',message_id:one.message_id,state:'queued',turn_id:'next'});
+    await serverFrame({t:'prompt_state',message_id:two.message_id,state:'injected',turn_id:'old'});
+    assert.equal(messageById(one.message_id).meta.native_delivery.state,'queued');
+    assert.equal(messageById(two.message_id).meta.native_delivery.state,'injected');
+    await serverFrame({t:'delta',turn_id:'old',text:'late original output'});
+    await serverFrame({t:'done',turn_id:'old',stop:'end_turn'});
+    assert.equal(globalThis.__thread.running,true,'waiting message survives earlier completion');
+    assert.equal(globalThis.__thread.messages.find(m=>m.content==='late original output').meta.native_turn_id,'old');
+  } finally {view.cleanup();}
+});
+
+test('N3: upload snapshot tolerates a turn ending during upload and excludes files added after submission',async()=>{
+  const view=await midturnView();
+  let complete;
+  globalThis.__holdInbox=({file})=>file.name==='first.txt'?new Promise(resolve=>complete=resolve):Promise.resolve({path:'/home/inbox/'+file.name});
+  try {
+    await serverFrame({t:'turn_start',turn_id:'old'});
+    await act(async()=>globalThis.__thread.onAttachFiles([new window.File(['a'],'first.txt')]));
+    await until(()=>complete,'first upload');
+    let sending;
+    await act(async()=>{sending=globalThis.__thread.send('with first');});
+    await act(async()=>globalThis.__thread.onAttachFiles([new window.File(['b'],'second.txt')]));
+    await serverFrame({t:'delta',turn_id:'old',text:'kept while uploading'});
+    await serverFrame({t:'done',turn_id:'old',stop:'end_turn'});
+    await act(async()=>complete({path:'/home/inbox/first.txt'}));
+    await act(async()=>assert.equal(await sending,true));
+    const prompt=sent().filter(f=>f.t==='prompt').at(-1);
+    assert.deepEqual(prompt.files.map(f=>f.name),['first.txt']);
+    assert.deepEqual(globalThis.__thread.composerAttachments.map(f=>f.name),['second.txt']);
+    assert.ok(globalThis.__thread.messages.some(m=>m.content==='kept while uploading'),'upload completion never writes stale reducer state');
+  } finally {delete globalThis.__holdInbox;view.cleanup();}
+});
+
+test('N3: failed or removed snapshot file prevents text-only delivery and preserves the draft',async()=>{
+  const view=await midturnView();
+  let complete;
+  globalThis.__holdInbox=()=>new Promise(resolve=>complete=resolve);
+  try {
+    await act(async()=>globalThis.__thread.onAttachFiles([new window.File(['a'],'failed.txt')]));
+    await until(()=>complete,'upload starts');
+    let sending;
+    await act(async()=>{sending=globalThis.__thread.send('never lose text');});
+    const id=globalThis.__thread.composerAttachments[0].id;
+    await act(async()=>globalThis.__thread.onRemoveAttachment(id));
+    await act(async()=>assert.equal(await sending,false));
+    await act(async()=>complete({path:'/home/inbox/late.txt'}));
+    assert.equal(sent().some(f=>f.t==='prompt'),false);
+    assert.equal(globalThis.__thread.composerAttachments.length,0,'removed file never resurrects');
+  } finally {delete globalThis.__holdInbox;view.cleanup();}
+});
+
+test('N3: Stop fences a submission still waiting for uploads; no late prompt can restart the agent',async()=>{
+  const view=await midturnView();let complete;
+  globalThis.__holdInbox=()=>new Promise(resolve=>complete=resolve);
+  try {
+    await act(async()=>globalThis.__thread.onAttachFiles([new window.File(['a'],'stop.txt')]));
+    await until(()=>complete,'upload starts');
+    let sending;
+    await act(async()=>{sending=globalThis.__thread.send('keep this text');});
+    await act(async()=>globalThis.__thread.stop());
+    await act(async()=>complete({path:'/home/inbox/stop.txt'}));
+    await act(async()=>assert.equal(await sending,false));
+    assert.equal(sent().some(f=>f.t==='prompt'),false);
+    assert.equal(globalThis.__thread.composerAttachments[0].name,'stop.txt');
+  } finally {delete globalThis.__holdInbox;view.cleanup();}
+});
+
+test('N3: Stop withdraws all accepted pending messages and restores their text/files once',async()=>{
+  const view=await midturnView();
+  try {
+    await act(async()=>globalThis.__thread.onAttachFiles([new window.File(['a'],'attached.txt')]));
+    await until(()=>!globalThis.__thread.composerAttachments[0].uploading,'uploaded');
+    await sendVia(globalThis.__thread,'first draft');
+    await sendVia(globalThis.__thread,'second draft');
+    const prompts=sent().filter(f=>f.t==='prompt');
+    for (const prompt of prompts) await serverFrame({t:'prompt_ack',message_id:prompt.message_id,state:'queued'});
+    await act(async()=>globalThis.__thread.stop());
+    const cancel=sent().find(f=>f.t==='cancel');
+    await act(async()=>{
+      for (const prompt of prompts) {
+        openSocket().server({t:'prompt_state',program:'codex',acp_session:'nat-1',message_id:prompt.message_id,state:'cancelled'});
+        await Promise.resolve(); // Separate restoration microtasks can still share one React render.
+      }
+      openSocket().server({t:'cancel_result',program:'codex',acp_session:'nat-1',stop_id:cancel.stop_id,result:'stopped'});
+    });
+    assert.equal(globalThis.__thread.restoredDraft.entries.map(entry=>entry.text).join('\n\n'),'first draft\n\nsecond draft');
+    assert.equal(globalThis.__thread.composerAttachments[0].name,'attached.txt');
+    assert.equal(globalThis.__thread.running,false);
+    const seq=globalThis.__thread.restoredDraft.seq;
+    await serverFrame({t:'prompt_state',message_id:prompts[0].message_id,state:'cancelled'});
+    assert.equal(globalThis.__thread.restoredDraft.seq,seq,'duplicate withdrawal never restores twice');
+    assert.equal(sent().filter(f=>f.t==='prompt').length,2,'withdrawal never auto-sends');
+  } finally {view.cleanup();}
+});
+
+test('N3: lost acknowledgement becomes uncertain without resend; explicit retry reuses message ID and full snapshot',async(t)=>{
+  const view=await midturnView();
+  const realTimeout=globalThis.setTimeout;let expire;
+  t.mock.method(globalThis,'setTimeout',(fn,ms,...args)=>{if(ms===15_000)expire=fn;return realTimeout(fn,ms,...args);});
+  try {
+    await sendVia(globalThis.__thread,'maybe delivered');
+    const prompt=sent().find(f=>f.t==='prompt');
+    assert.equal(typeof expire,'function');
+    await act(async()=>expire());
+    assert.equal(messageById(prompt.message_id).meta.native_delivery.state,'unsent');
+    assert.equal(messageById(prompt.message_id).meta.native_delivery.uncertain,true);
+    assert.equal(sent().filter(f=>f.t==='prompt').length,1,'no automatic resend');
+    await act(async()=>assert.equal(await globalThis.__thread.retryMessage(prompt.message_id),true));
+    const retry=sent().filter(f=>f.t==='prompt').at(-1);
+    assert.deepEqual(retry,prompt,'lookup uses the exact original ID and payload');
+    await serverFrame({t:'prompt_ack',message_id:prompt.message_id,state:'injected',duplicate:true,turn_id:'old'});
+    assert.equal(messageById(prompt.message_id).meta.native_delivery.state,'injected');
+    assert.equal(globalThis.__thread.messages.filter(m=>m.meta?.native_message_id===prompt.message_id).length,1);
+  } finally {view.cleanup();t.mock.restoreAll();}
+});
+
+test('N3: reloaded message states recover from durable snapshots and retry includes private inline bytes',async()=>{
+  FakeSocket.sockets=[];
+  const row={message_id:'reloaded',state:'unsent',uncertain:true,turn_id:'t-old',payload:{text:'saved text',attachments:[{name:'old.txt',mime:'text/plain'}]}};
+  globalThis.__taskApi={async transcript(){return {session:session(),frames:[],messages:[row],sync_status:'saved'};}};
+  const calls=[];
+  globalThis.__nativeSnapshot=async path=>{calls.push(path);return {...row,payload:{...row.payload,files:[{name:'old.txt',mime:'text/plain',data:'YWJj'}]}};};
+  const view=await mount({computer:{id:'cc_reload',name:'elon',node_online:true},session:session(),enabled:true});
+  try {
+    await until(()=>messageById('reloaded'),'saved message');
+    assert.equal(messageById('reloaded').meta.native_delivery.state,'unsent');
+    await until(()=>globalThis.__thread.live,'live');
+    await act(async()=>assert.equal(await globalThis.__thread.retryMessage('reloaded'),true));
+    assert.match(calls[0],/computer-task-sessions\/managed-1\/messages\/reloaded$/);
+    const retry=sent().find(f=>f.t==='prompt');
+    assert.equal(retry.message_id,'reloaded');
+    assert.equal(retry.files[0].data,'YWJj','history metadata is never used as a partial attachment snapshot');
+    assert.equal(messageById('reloaded').meta.native_delivery.state,'sending');
+  } finally {delete globalThis.__nativeSnapshot;view.cleanup();}
+});
+
+test('N3: a known unsent retry keeps its attachment snapshot and double retry dispatches once',async()=>{
+  const view=await midturnView();
+  try {
+    await act(async()=>globalThis.__thread.onAttachFiles([new window.File(['a'],'retry.txt')]));
+    await until(()=>!globalThis.__thread.composerAttachments[0].uploading,'uploaded');
+    await sendVia(globalThis.__thread,'retry exactly this');
+    const original=sent().find(f=>f.t==='prompt');
+    await serverFrame({t:'prompt_state',message_id:original.message_id,state:'unsent',uncertain:false});
+    let results;
+    await act(async()=>{results=await Promise.all([globalThis.__thread.retryMessage(original.message_id),globalThis.__thread.retryMessage(original.message_id)]);});
+    assert.deepEqual(results,[true,false]);
+    const prompts=sent().filter(f=>f.t==='prompt');
+    assert.equal(prompts.length,2);
+    assert.notEqual(prompts[1].message_id,original.message_id,'known non-delivery gets a fresh gateway attempt');
+    assert.deepEqual(prompts[1].files,original.files);
+    assert.equal(prompts[1].text,original.text);
+    await act(async()=>assert.equal(await globalThis.__thread.retryMessage(original.message_id),false,'old retry link cannot dispatch a second attempt'));
+  } finally {view.cleanup();}
+});
+
+test('N3: reloaded withdrawn inline attachment is restored through the private inbox upload path',async()=>{
+  FakeSocket.sockets=[];
+  const row={message_id:'withdrawn-inline',state:'cancelled',payload:{text:'recovered draft',attachments:[{name:'restored.txt',mime:'text/plain'}]}};
+  globalThis.__taskApi={async transcript(){return {session:session(),frames:[],messages:[row],sync_status:'saved'};}};
+  globalThis.__nativeSnapshot=async()=>({...row,payload:{...row.payload,files:[{name:'restored.txt',mime:'text/plain',data:'YWJj'}]}});
+  globalThis.__inboxPuts=[];
+  const view=await mount({computer:{id:'cc_restore_inline',name:'elon',node_online:true},session:session(),enabled:true});
+  try {
+    await until(()=>messageById(row.message_id),'cancelled history row');
+    await act(async()=>assert.equal(await globalThis.__thread.restoreMessage(row.message_id),true));
+    assert.equal(globalThis.__thread.restoredDraft.text,'recovered draft');
+    await until(()=>globalThis.__thread.composerAttachments.length===1&&!globalThis.__thread.composerAttachments[0].uploading,'restored upload ready');
+    assert.equal(globalThis.__thread.composerAttachments[0].name,'restored.txt');
+    assert.deepEqual(globalThis.__inboxPuts,[{name:'restored.txt',task_session_id:'managed-1'}]);
+    assert.equal(sent().some(f=>f.t==='prompt'),false,'recovered draft never automatically executes');
+  } finally {delete globalThis.__nativeSnapshot;view.cleanup();}
+});
+
+test('N3: older transcript pages do not append the recent delivery snapshot list repeatedly',async()=>{
+  FakeSocket.sockets=[];
+  const latest={message_id:'recent-pending',state:'queued',turn_id:'future',payload:{text:'recent pending'}};
+  globalThis.__taskApi={async transcript(id,options){
+    return options.before?{session:session(),frames:[{t:'user_message',program:'codex',acp_session:'nat-1',message_id:'older-user',text:'older text'}],messages:[latest],sync_status:'saved',has_older:false}:
+      {session:session(),frames:[],messages:[latest],sync_status:'saved',has_older:true,next_before:100};
+  }};
+  const view=await mount({computer:{id:'cc_snapshot_paging',name:'elon',node_online:false},session:session(),enabled:true});
+  try {
+    await until(()=>globalThis.__thread.hasOlder,'older available');
+    await act(async()=>globalThis.__thread.loadOlder());
+    await until(()=>globalThis.__thread.messages.some(m=>m.content==='older text'),'older loaded');
+    assert.equal(globalThis.__thread.messages.filter(m=>m.meta?.native_message_id==='recent-pending').length,1);
+    assert.deepEqual(globalThis.__thread.messages.filter(m=>m.role==='user').map(m=>m.content),['older text','recent pending']);
+  } finally {view.cleanup();}
 });

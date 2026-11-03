@@ -313,6 +313,11 @@ const CLASS_ATTRS = [...SHELL_CODE.matchAll(/className=(?:"([^"]*)"|\{`([^`]*)`\
   (m) => (m[1] ?? m[2]).replace(/\s+/g, " "),
 );
 
+// The sidebar now composes its fixed classes with an array plus join.
+for (const match of SHELL_CODE.matchAll(/className=\{\[\s*"([^"]*)"/g)) {
+  CLASS_ATTRS.push(match[1].replace(/\s+/g, " "));
+}
+
 // 外壳自己渲的每一个可点元素的开标签。`<button[^>]*>` 在 JSX 里不管用：
 // `onClick={() => …}` 里的那个 `>` 会把标签提前截断，className 就漏掉了。
 // 所以按花括号 / 引号深度扫到真正结束这个开标签的 `>`。

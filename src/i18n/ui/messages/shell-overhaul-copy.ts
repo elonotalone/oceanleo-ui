@@ -96,6 +96,17 @@ import { W2_CN2_MESSAGES } from "./w2-cn2-copy";
 import { W3_M3_MESSAGES } from "./w3-m3-copy";
 import { W4_SIDEBAR_MESSAGES } from "./w4-sidebar-copy";
 import { RD_SERVICE_STATUS_MESSAGES } from "./rd-service-status-copy";
+import { NATIVE_MIDTURN_MESSAGES } from "./native-midturn-copy";
+import { W3_M4_MESSAGES } from "./w3-m4-copy";
+import { CN_HOST_MESSAGES } from "./cn-host-copy";
+import { RDLOGIN_MESSAGES } from "./rdlogin-copy";
+import { RD_BROKER_MESSAGES } from "./rd-broker-copy";
+import { TOOLUI_MESSAGES } from "./toolui-copy";
+import { W4_M5_MESSAGES } from "./w4-m5-copy";
+import { MOBILE_MIDTURN_MESSAGES } from "./mobile-midturn-copy";
+import { PUSH_NATIVE_MESSAGES } from "./push-native-copy";
+import { BUILD_1103_GAP_MESSAGES } from "./build-1103-gap-copy";
+import { RDLOGIN_ACT_MESSAGES } from "./rdlogin-act-copy";
 
 const PARTS = [
   SHELL_OVERHAUL_DOCK_MESSAGES,
@@ -191,12 +202,35 @@ const PARTS = [
   W3_M3_MESSAGES,
   W4_SIDEBAR_MESSAGES,
   RD_SERVICE_STATUS_MESSAGES,
+  NATIVE_MIDTURN_MESSAGES,
+  W3_M4_MESSAGES,
+  CN_HOST_MESSAGES,
+  RDLOGIN_MESSAGES,
+  RD_BROKER_MESSAGES,
+  TOOLUI_MESSAGES,
+  W4_M5_MESSAGES,
+  MOBILE_MIDTURN_MESSAGES,
+  PUSH_NATIVE_MESSAGES,
+  BUILD_1103_GAP_MESSAGES,
+  RDLOGIN_ACT_MESSAGES,
 ];
+
+// 2026-11-03: shared words the base dictionary (or, for 任务, the enterprise table) already translates in every locale. Several 2026-11-03 tables
+// re-registered them with English for every non-Chinese locale (重试 became "Retry" on the French site), so the
+// base dictionary wins here. Components that read their own table directly keep their own wording.
+const BASE_DICTIONARY_WORDS = new Set([
+  "授权说明", "价格", "免费", "下载", "编辑", "重试", "云端", "在线", "离线", "发送", "失败", "停止",
+  "输入", "输出", "展开", "收起", "添加附件", "文件", "进行中", "已完成", "任务",
+]);
+
+function withoutBaseWords(dictionary: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(dictionary).filter(([key]) => !BASE_DICTIONARY_WORDS.has(key)));
+}
 
 export const SHELL_OVERHAUL_MESSAGES: Record<Locale, Record<string, string>> =
   Object.fromEntries(
     LOCALES.map((locale) => [
       locale,
-      Object.assign({}, ...PARTS.map((part) => part[locale] ?? {})),
+      Object.assign({}, ...PARTS.map((part) => withoutBaseWords(part[locale] ?? {}))),
     ]),
   ) as Record<Locale, Record<string, string>>;

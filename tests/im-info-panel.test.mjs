@@ -47,6 +47,8 @@ const uiHookStub = dataModule(`
 
 // 外壳原语的替身：Modal 就地渲染，Switch / ConfirmDialog 保留可点的按钮。
 const uiPrimitivesStub = dataModule(`
+  export function SkeletonCard() { return null; }
+  export function SkeletonLine() { return null; }
   import React from ${JSON.stringify(reactUrl)};
   const h = React.createElement;
   export function Modal({ children, onClose }) { return h("div", { role: "dialog", "data-modal": "" }, children); }
@@ -510,6 +512,7 @@ test("聊天列表右键：置顶、未读、免打扰、隐藏分别调用对�
     for (const action of ["pin", "unread", "mute", "hide"]) {
       await context();
       assert.ok(view.q("[data-inbox-context-menu]"));
+      assert.equal(view.q('[data-inbox-action="pin"]').textContent, "置顶聊天");
       assert.equal(view.qa('[data-inbox-context-menu] [role="separator"]').length, 2, "conversation actions are grouped, with deletion visually separated");
       await view.click(view.q(`[data-inbox-action="${action}"]`));
     }

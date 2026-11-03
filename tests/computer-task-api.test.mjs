@@ -14,7 +14,7 @@ test('offline discovery, bounded transcript and one-time native binding use stab
  await api.getComputerTaskTranscript('s/',{before:12,limit:100,signal:controller.signal});assert.equal(calls.at(-1).path,'/v1/computer-task-sessions/s%2F/transcript?before=12&limit=100');assert.equal(calls.at(-1).init.signal,controller.signal);
  await api.bindComputerTaskSession('s/','native');assert.equal(calls.at(-1).init.method,'PATCH');assert.deepEqual(JSON.parse(calls.at(-1).init.body),{native_session_id:'native'});
 });
-const realCloud=await compileModule('src/lib/cloud-computer-api.ts',{'./auth/client':dataModule('export async function accessToken(){return "owner-token"}'),'./auth/config':dataModule('export const GATEWAY_BASE="https://gateway.example";')});
+const realCloud=await compileModule('src/lib/cloud-computer-api.ts',{'./auth/client':dataModule('export async function accessToken(){return "owner-token"}'),'./auth/config':dataModule('export const GATEWAY_BASE="https://gateway.example"; export function gatewayBase() { return GATEWAY_BASE; }')});
 const realApi=await import(await compileModule('src/lib/computer-task-api.ts',{'./cloud-computer-api':realCloud}));
 test('actual authenticated gateway client sends managed HTTP and surfaces storage errors',async()=>{
  const old=globalThis.fetch;const fetched=[];

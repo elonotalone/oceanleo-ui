@@ -5,6 +5,10 @@ import { useLocale } from "next-intl";
 import { normalizeLocale } from "../i18n/config";
 import { RD_SERVICE_STATUS_MESSAGES, RD_SERVICE_STATUS_SOURCE as COPY } from "../i18n/ui/messages/rd-service-status-copy";
 
+import { RDLOGIN_MESSAGES, RDLOGIN_SOURCE as LOGIN } from "../i18n/ui/messages/rdlogin-copy";
+
+import { RDLOGIN_ACT_MESSAGES, RDLOGIN_ACT_SOURCE as ACT } from "../i18n/ui/messages/rdlogin-act-copy";
+
 type Pane = "background" | "screen" | "accessibility";
 type NativeInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
 type Status = {
@@ -24,6 +28,7 @@ export function rdServicePort(scope: unknown) {
   const invoke = core?.invoke?.bind(core) ?? host?.__TAURI__?.invoke?.bind(host.__TAURI__);
   return invoke ? {
     status: () => invoke("background_service_status") as Promise<Status>,
+    capabilities: () => invoke("remote_secure_desktop_status"),
     settings: (pane: Pane) => invoke("background_service_open_settings", { pane }),
   } : null;
 }
@@ -47,13 +52,50 @@ export function rdServiceView(status: Status | null, now = Date.now() / 1000) {
   };
 }
 
+export function rdActivationView(value: unknown) {
+  const snapshot = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const state = snapshot.activation && typeof snapshot.activation === "object" ? snapshot.activation as Record<string, unknown> : {};
+  return {
+    signing: state.signing === "configured" ? ACT.signingConfigured : state.signing === "notSupported" ? ACT.unsupported : ACT.signingRequired,
+    elevation: state.elevation === "ready" && state.signing === "configured" ? ACT.elevationReady
+      : state.elevation === "requiresApproval" ? ACT.approvalRequired : state.elevation === "notSupported" ? ACT.unsupported : ACT.elevationUnavailable,
+    owner: state.owner === "approved" && state.elevation === "ready" && state.signing === "configured" ? ACT.ownerApproved : ACT.ownerUnknown,
+    error: typeof state.error === "string" && state.error.length > 0 ? ACT.operationFailed : null,
+  };
+}
+
+export function rdCapabilityView(value: unknown) {
+  const snapshot = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const rows = Array.isArray(snapshot.capabilities) ? snapshot.capabilities : [];
+  const plan = snapshot.installPlan && typeof snapshot.installPlan === "object"
+    ? snapshot.installPlan as Record<string, unknown> : {};
+  const reason = (key: unknown) => typeof key === "string" && Object.hasOwn(LOGIN, key)
+    ? LOGIN[key as keyof typeof LOGIN] : LOGIN.deviceVerificationRequired;
+  return {
+    message: plan.state === "integrationRequired" ? reason(plan.message)
+      : plan.state === "notSupported" ? LOGIN.platformNotSupported : null,
+    rows: (["loggedIn", "locked", "loggedOut", "preBoot"] as const).map((state) => {
+      // Duplicate or malformed rows are not evidence. A loaded job and online heartbeat
+      // do not verify screen capture or input; only the native capability proof does.
+      const candidates = rows.filter((row) => row && typeof row === "object" && row.state === state);
+      const row = candidates.length === 1 ? candidates[0] as Record<string, unknown> : {};
+      const verified = snapshot.helperVerified === true && row.verified === true;
+      const capability = (field: string) => state === "preBoot" || row[field] === "unavailable"
+        ? LOGIN.unavailable : verified && row[field] === "available" ? LOGIN.available : LOGIN.unverified;
+      return { state, label: LOGIN[state], presence: capability("presence"), capture: capability("capture"), input: capability("input"),
+        reason: state === "preBoot" ? LOGIN.osNotRunning : reason(row.reason) };
+    }),
+  };
+}
+
 export function RdServiceStatus() {
   let locale = normalizeLocale("en");
   try { locale = normalizeLocale(useLocale()); } catch { /* Standalone native settings use English until locale context is ready. */ }
   // Local lookup also keeps the component translated before the parent merges the registry.
-  const tt = (source: string, time?: string) => (RD_SERVICE_STATUS_MESSAGES[locale][source] ?? RD_SERVICE_STATUS_MESSAGES.en[source] ?? source)
+  const tt = (source: string, time?: string) => (RDLOGIN_ACT_MESSAGES[locale][source] ?? RDLOGIN_MESSAGES[locale][source] ?? RD_SERVICE_STATUS_MESSAGES[locale][source] ?? RDLOGIN_MESSAGES.en[source] ?? RD_SERVICE_STATUS_MESSAGES.en[source] ?? source)
     .replace("{time}", time ?? "");
   const [status, setStatus] = useState<Status | null>(null);
+  const [capabilities, setCapabilities] = useState<unknown>(null);
   const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [settingsFailed, setSettingsFailed] = useState(false);
@@ -65,10 +107,14 @@ export function RdServiceStatus() {
     const refresh = async () => {
       try {
         if (!port) throw new Error("native_status_unavailable");
-        const next = await port.status();
-        if (active) { setStatus(next); setFailed(false); }
+        const [service, secure] = await Promise.allSettled([port.status(), port.capabilities()]);
+        if (active) {
+          setStatus(service.status === "fulfilled" ? service.value : null);
+          setFailed(service.status === "rejected");
+          setCapabilities(secure.status === "fulfilled" ? secure.value : null);
+        }
       } catch {
-        if (active) { setStatus(null); setFailed(true); }
+        if (active) { setStatus(null); setCapabilities(null); setFailed(true); }
       } finally {
         if (active) { setLoading(false); timer = setTimeout(refresh, 5000); }
       }
@@ -77,6 +123,8 @@ export function RdServiceStatus() {
     return () => { active = false; clearTimeout(timer); };
   }, [revision]);
   const view = rdServiceView(status);
+  const capability = rdCapabilityView(capabilities);
+  const activation = rdActivationView(capabilities);
   const openSettings = async (pane: Pane) => {
     setSettingsFailed(false);
     try {
@@ -105,7 +153,20 @@ export function RdServiceStatus() {
     </div>
     <div className="space-y-2 text-sm text-neutral-500">
       <h4 className="font-medium">{tt(COPY.capabilities)}</h4>
-      <p>{tt(COPY.loggedIn)}</p><p>{tt(COPY.locked)}</p><p>{tt(COPY.loggedOut)}</p>
+      {capability.message && <p>{tt(capability.message)}</p>}
+      <dl className="space-y-3" data-rd-activation>
+        <div><dt className="font-medium">{tt(ACT.signing)}</dt><dd>{tt(activation.signing)}</dd></div>
+        <div><dt className="font-medium">{tt(ACT.elevation)}</dt><dd>{tt(activation.elevation)}</dd></div>
+        <div><dt className="font-medium">{tt(ACT.owner)}</dt><dd>{tt(activation.owner)}</dd></div>
+      </dl>
+      {activation.error && <p role="alert">{tt(activation.error)}</p>}
+      <dl className="space-y-3">
+        {capability.rows.map((row) => <div key={row.state} data-rd-state={row.state}>
+          <dt className="font-medium">{tt(row.label)}</dt>
+          <dd>{tt(LOGIN.presence)}: {tt(row.presence)} · {tt(LOGIN.capture)}: {tt(row.capture)} · {tt(LOGIN.input)}: {tt(row.input)}</dd>
+          <dd>{tt(row.reason)}</dd>
+        </div>)}
+      </dl>
       <p>{tt(COPY.notProof)}</p>
     </div>
     <button type="button" className="text-sm underline" onClick={() => setRevision((v) => v + 1)}>{tt(COPY.retry)}</button>

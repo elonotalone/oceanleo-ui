@@ -230,7 +230,8 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
     "export async function createRichDocDeliveryFile",
     "async function defaultRefreshGoneUrl",
   );
-  assert.match(richDocDelivery, /await tiptapJsonToDocxBlob\(input\.title, json\)/);
+  // The DOCX renderer now receives the generated-document formatting option.
+  assert.match(richDocDelivery, /await tiptapJsonToDocxBlob\(input\.title, json, \{ generated \}\)/);
   assert.match(richDocDelivery, /new File\(\[blob\], `\$\{stem\}\.docx`/);
   for (const [path, end, exporter, extension, start] of [
     [

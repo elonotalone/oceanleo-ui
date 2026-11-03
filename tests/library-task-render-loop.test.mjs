@@ -69,6 +69,7 @@ const noop = dataModule(`
  export function BayPanel(){return null;}
  export function LeoChatPanel(){return null;}
  export function MaterialStandaloneEditor(){return null;}
+ export function openBay() {}
  export function useBayEnabled(){return false;}
  export function useFunctionGuide(){return null;}
  export function useWorkspaceRuntimeHydration(){return null;}
@@ -84,6 +85,7 @@ const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
  "./artifact-client": api,
  "../lib/auth/client": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/auth/client.ts",import.meta.url).href)};export const AUTH_STATE_EVENT='oceanleo:auth-state';export async function accessToken(){return 'test';}export async function getUserIdSnapshot(){return {available:true,userId:'user-1'};} export async function getUserId(){return 'user-1';}`),
  "./CloudBrowserPanel": noop, "./NavigatorGuide": noop, "./MaterialLibrary": noop,
+ "./bay/asset/BayAssetLibrary": dataModule(`export function BayAssetLibrary(){return null;}`),
  "./bay/panel": noop, "./leochat/LeoChatPanel": noop, "./bay/shell/bay-state": noop,
  "./guide-context": noop, "./workspace-runtime-hydration": noop,
  "./workspace-session-context": noop, "./material-library-standalone": noop,
@@ -100,10 +102,12 @@ const { SplitWorkspace } = await import(splitUrl);
 // branch in this non-browser harness too. The left chat itself is real; only
 // network/editor integrations unrelated to the render lifecycle are stubbed.
 const agentLib = dataModule(`
+ export async function authed(){return {ok:false,status:503,error:"not part of this fixture"};}
  export async function getTask(id){return {ok:true,data:{task:{id,status:'done',site_id:'oceanleo',mode:'agent',title:'hi',session_id:null,project_id:null},messages:globalThis.__renderLoopHistoryMessages,artifacts:[]}};}
  export async function createTask(){throw new Error('unexpected write');}
  export async function branchTask(){throw new Error('unexpected write');}
  export async function followUp(){throw new Error('unexpected write');}
+ export async function controlLocalAgentTask(){throw new Error("unexpected local-agent write");}
  export async function stopTask(){return {ok:true};}
 `);
 const markdownUrl = await compileModule("src/shell/Markdown.tsx", {
@@ -117,6 +121,7 @@ const transcriptUrl = await compileModule("src/shell/AgentTranscriptBubble.tsx",
  "./ApprovalCard": dataModule(`export function ApprovalCard(){return null;} export function parseApprovalMessage(){return null;}`),
 });
 const agentNoop = dataModule(`
+ export * from ${JSON.stringify(await compileModule("src/shell/icons.tsx"))};
  import { createElement, forwardRef } from ${JSON.stringify(reactUrl)};
  export function AgentTranscriptBubble(){return null;}
  export function agentArtifactLabels(){return {};}
@@ -168,7 +173,8 @@ const workspaceSessionStub = dataModule(`
 `);
 const agentChatUrl = await compileModule("src/shell/AgentChat.tsx", {
   "../i18n/ui/useUI": uiStubUrl,
-  "next/navigation": dataModule(`export function useRouter(){return {push(){},replace(){}};} export function usePathname(){return '/history';}`),
+  "next/navigation": dataModule(`export function useRouter(){return {push(){},replace(){}};} export function useSearchParams(){return new URLSearchParams(globalThis.window.location.search);}
+ export function usePathname(){return '/history';}`),
   "./SplitWorkspace": splitUrl,
   "./ResultCanvas": resultCanvasUrl,
   "./WorkspaceSession": workspaceSessionStub,
@@ -208,6 +214,7 @@ const historyApi = dataModule(`
  export async function updateAppSessionMetadata(){return {ok:true};}
 `);
 const historyAgentApi = dataModule(`
+ export async function authed(){return {ok:false,status:503,error:"not part of this fixture"};}
  export async function getTask(id){return {ok:true,data:{task:{id,status:'done',site_id:'oceanleo',mode:'agent',tier:'lite',title:'hi',session_id:null,project_id:null,root_task_id:null,parent_task_id:null,branch_message_id:null},messages:globalThis.__renderLoopHistoryMessages,artifacts:[]}};}
  export async function listTasks(){return {ok:true,data:{items:[]}};}
  export async function deleteTask(){return {ok:true};}
@@ -215,10 +222,14 @@ const historyAgentApi = dataModule(`
  export async function createTask(){throw new Error('unexpected write');}
  export async function branchTask(){throw new Error('unexpected write');}
  export async function followUp(){throw new Error('unexpected write');}
+ export async function controlLocalAgentTask(){throw new Error("unexpected local-agent write");}
  export async function stopTask(){return {ok:true};}
 `);
-const historyNoop = dataModule(`export function ConfirmDialog(){return null;} export function HistoryRowMenu(){return null;} export function MoveTaskProjectDialog(){return null;} export function ShellTaskView(){return null;}`);
+const historyNoop = dataModule(`
+  export * from ${JSON.stringify(await compileModule("src/ui/index.tsx"))};
+export function ConfirmDialog(){return null;} export function HistoryRowMenu(){return null;} export function MoveTaskProjectDialog(){return null;} export function ShellTaskView(){return null;}`);
 const historyModel = dataModule(`
+ export * from ${JSON.stringify(new URL("../src/shell/history-model.ts", import.meta.url).href)};
  export function canDeleteHistoryEntry(){return false;}
  export function historyPollDelayMs(){return 60000;}
  export const HISTORY_WORKING_POLL_MS=3000;
@@ -231,12 +242,14 @@ const historyModel = dataModule(`
  export function withLinkedAgentTask(session){return session;}
 `);
 const historyRoutes = dataModule(`
+ export * from ${JSON.stringify(new URL("../src/shell/workspace-route.ts", import.meta.url).href)};
  export function historySessionHref(){return '/history';}
  export function historySessionIdFromPath(){return null;}
  export function withFusionMountPrefix(path){return path;}
 `);
 const historyNavigation = dataModule(`
  const router={push(){},replace(){}};
+ export function useSearchParams(){return new URLSearchParams(globalThis.window.location.search);}
  export function usePathname(){return '/history';}
  export function useRouter(){return router;}
 `);
@@ -254,11 +267,11 @@ const historyDetailUrl = await compileModule("src/shell/HistoryMasterDetail.tsx"
   "../i18n/ui/useUI": uiStubUrl,
   "./WorkspaceSession": workspaceSessionStub,
   "./cloud-computer/ShellTaskView": historyNoop,
-  "../lib/computer-task-api": dataModule(`export async function listComputerTaskSessions(){return {sessions:[]};}`),
+  "../lib/computer-task-api": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/computer-task-api.ts", import.meta.url).href)}; export async function listComputerTaskSessions(){return {sessions:[]};} export async function getComputerTaskTranscript(){return {ok:false,status:404};}`),
   "./history-model": historyModel,
   "./workspace-route": historyRoutes,
-  "../lib/history-events": dataModule(`export const HISTORY_CHANGED_EVENT='history-changed';`),
-  "../lib/money": dataModule(`export function formatMoney(){return '';} export function useLedgerCurrency(){return 'CNY';}`),
+  "../lib/history-events": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/history-events.ts", import.meta.url).href)};export const HISTORY_CHANGED_EVENT='history-changed';`),
+  "../lib/money": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/money.ts", import.meta.url).href)};export function formatMoney(){return '';} export function useLedgerCurrency(){return 'CNY';}`),
   "./HistoryRowActions": historyNoop,
 }, { missingPackageStub: dataModule(`const noop=()=>null; export default new Proxy(noop,{get:()=>noop}); export const __stub=true;`) });
 const { HistoryDetail } = await import(historyDetailUrl);

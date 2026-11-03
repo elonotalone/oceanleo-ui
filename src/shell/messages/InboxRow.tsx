@@ -165,8 +165,8 @@ export function InboxRow({
               </span>
             ) : null}
             {item.pinned ? (
-              <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35" title={tt("置顶")}>
-                {tt("置顶")}
+              <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35" title={tt("已置顶")}>
+                {tt("已置顶")}
               </span>
             ) : null}
             {item.has_external ? (

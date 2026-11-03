@@ -9,7 +9,7 @@ const transport = await import(await compileModule("src/lib/agent.ts", {
     export async function accessToken() { return "test-access"; }
     export function cachedAccessToken() { return "test-access"; }
   `),
-  "./auth/config": dataModule('export const GATEWAY_BASE = "https://api.dev.oceanleo.com";'),
+  "./auth/config": dataModule('export const GATEWAY_BASE = "https://api.dev.oceanleo.com"; export function gatewayBase() { return GATEWAY_BASE; }'),
   "./history-events": dataModule("export function notifyHistoryChanged() {}"),
 }));
 

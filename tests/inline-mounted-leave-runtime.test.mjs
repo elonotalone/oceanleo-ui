@@ -26,7 +26,7 @@ const stubs = {
   "./advanced-session-context": dataModule('export function useAdvancedSession(){return null;}'),
   "./workbench-material-provider": dataModule('export function useWorkbenchMaterials(){return null;}'),
   "./SplitWorkspace": dataModule('export function useRightPaneSlot(){return null;}export function useWorkspacePane(){return null;}'),
-  "./plugin-theme": dataModule(`import {createContext} from ${JSON.stringify(react)};export const PluginThemePortalContext=createContext(null);export function pluginThemeIdForAdapter(){return null;}export function pluginWorkbenchStyle(){return {};}const theme={};export function usePluginTheme(){return theme;}`),
+  "./plugin-theme": dataModule(`import {createContext} from ${JSON.stringify(react)};export const PluginThemePortalContext=createContext(null);export function usePluginThemePortal(){return null;}export function pluginThemeIdForAdapter(){return null;}export function pluginWorkbenchStyle(){return {};}const theme={};export function usePluginTheme(){return theme;}`),
   "./plugin-chrome/EditBarDocumentSegment": noop("EditBarDocumentSegment"),
   "./plugin-chrome/plugin-pages": dataModule('export function editBarVisibleOnPage(){return false;}'),
   "./plugin-chrome/plugin-page-store": dataModule('const page={pageId:"normal"};export function usePluginPage(){return page;}'),

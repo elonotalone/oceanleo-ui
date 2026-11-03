@@ -28,6 +28,7 @@ import {
   type ProcessToolStatus,
 } from "../lib/agent-progress";
 import { lineDiff } from "./cloud-computer/agent-dialog/diff-lines";
+import { ToolRawFolds } from "./cloud-computer/agent-dialog/ToolRawFolds";
 import { AgentStepMark, agentStepState } from "./AgentStepMark";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
@@ -330,6 +331,7 @@ function ToolView({
           onClick={() => collapseUnlessSelecting(() => setOpen(false))}
         >
           <p className={`whitespace-pre-wrap text-stone-600 ${WRAP}`}>{title}</p>
+          <ToolRawFolds tool={entry} />
           {entry.content.map((part, index) => {
             if (part.type === "diff") {
               return (

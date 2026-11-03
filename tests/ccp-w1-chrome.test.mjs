@@ -65,6 +65,7 @@ const uiStubUrl = dataModule(`
   }; }
 `);
 const domainStubUrl = dataModule(`
+  export function sharedCookieDomainFor() { return undefined; }
   export function currentDomainFamily() { return globalThis.__serverDomain || "com"; }
   export function currentDomainProfile() {
     const family = globalThis.__serverDomain || "com";
@@ -353,7 +354,9 @@ test("program strip wraps, collapses accessibly, persists and keeps selected ite
     return 0;
   } });
   Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get() {
-    return availableWidth - (host.querySelector('[aria-label="上移"]') ? 80 : 0);
+    // ProgramStrip measures natural wrapping with the controls temporarily hidden.
+    const controls = host.querySelector('[aria-label="上移"]')?.parentElement;
+    return availableWidth - (controls && controls.style.display !== "none" ? 80 : 0);
   } });
   Object.defineProperty(HTMLElement.prototype, "offsetTop", { configurable: true, get() {
     if (!this.dataset.programId) return 0;
