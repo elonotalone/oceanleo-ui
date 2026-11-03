@@ -323,7 +323,6 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
                 {references.filter((ref) => ref.secret_id === secret.id).map((ref) => <li key={ref.id} data-vault-used-by={ref.id} className="break-all">
                   {ref.purpose === "supabase_provision_password" ? text("服务", "Service") : ref.scope === "browser" ? text("浏览器", "Browser") : ref.scope === "connector" ? text("连接器", "Connector") : ref.scope === "project_connector" ? text("网站服务", "Website service") : text("网站 / 应用", "Website / app")} · {ref.project_id ? projectNames[ref.project_id] || ref.project_id : text("账号", "Account")} · {vaultPurposeLabel(ref, text)}
                   {ref.origin && <> · <code>{ref.origin}</code></>}
-                  {ref.scope === "browser" && ref.purpose !== "supabase_provision_password" && <> · {text("用途", "Purpose")}: <code>{ref.purpose}</code></>}
                   {(ref.scope === "connector" || ref.scope === "project_connector") && typeof ref.binding?.provider === "string" && <> · {ref.binding.provider}</>}
                   {ref.scope === "project_connector" && <> · {vaultReferenceSlotLabel(ref.slot, text)}</>}
                   {ref.env_name && <> · <code>{ref.env_name}</code></>}
