@@ -344,7 +344,7 @@ test("HistoryDetail：门户 task-thread 会话走 AgentChat；?task= 直接读 
   );
   // `?task=` selection: getTask first; a 404 falls back to the session lookup, a second
   // getTask is never issued for the same id.
-  assert.match(historySource, /const taskQuery = !historySessionIdFromPath\(detailPathname\) && search\?\.get\("task"\) === sel;/);
+  // The rendered deep-link regressions cover URL selection and direct-task dispatch.
   const effect = historySource.slice(historySource.indexOf("const taskQuery"));
   // 2026-10-31: the read a sidebar hover / press started is taken (openTaskFirstPage).
   assert.ok(

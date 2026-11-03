@@ -1258,10 +1258,12 @@ export function HistoryDetail({
   const [selected, setSelected] = useWorkspaceSelection("history");
   const router = useRouter();
   const detailPathname = usePathname() || "";
-  // 动态路由本身必须足以恢复详情：刷新 `/history/<sessionId>` 时不能依赖侧栏 effect
-  // 先把 id 抄进跨树 selection context。
+  const detailSearchParams = useSearchParams();
+  const detailSearch = typeof window !== "undefined" ? window.location.search : detailSearchParams?.toString() || "";
+  const detailTaskQuery = new URLSearchParams(detailSearch).get("task");
+  // URL 本身必须足以恢复详情，包括 query 深链和认证恢复期间尚未同步的侧栏选中态。
   const sel =
-    historySessionIdFromPath(detailPathname) || selected;
+    historySessionIdFromPath(detailPathname) || taskIdFromPath(detailPathname) || detailTaskQuery || selected;
   const localTask = (!siteId || siteId === "oceanleo")
     ? local.tasks.find((task) => sel === `local:${task.id}` || (sel === task.remoteTaskId && (task.canCancel || task.stage === "waiting_for_network")))
     : undefined;
@@ -1326,7 +1328,8 @@ export function HistoryDetail({
       typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     // `?task=<id>` names a task (historyHrefFor / onTaskCreated write it): read the
     // task directly instead of two serial app_session 404s first.
-    const taskQuery = !historySessionIdFromPath(detailPathname) && search?.get("task") === sel;
+    const taskQuery = !historySessionIdFromPath(detailPathname) &&
+      Boolean(taskIdFromPath(detailPathname) || detailTaskQuery === sel);
     // A named computer session reads its list alongside the task; AgentChat then
     // finds the session already known (its first paint needs no list round trip).
     if (taskQuery && search?.get("computerSession")) {
@@ -1447,7 +1450,7 @@ export function HistoryDetail({
     return () => {
       alive = false;
     };
-  }, [router, sel, siteId, localSelection]);
+  }, [router, sel, siteId, localSelection, detailPathname, detailTaskQuery]);
 
   // 仅用于 legacy task / 不完整 session 的明确降级。完整 session 的右栏完全由站点 runtime
   // 提供，不再用 AgentChat 的通用 libraryTabs 模拟。

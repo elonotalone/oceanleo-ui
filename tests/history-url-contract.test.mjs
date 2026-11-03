@@ -33,7 +33,7 @@ test("HistoryDetail 刷新动态路由时直接从 pathname 恢复，不依赖�
   assert.match(source, /const detailPathname = usePathname\(\) \|\| ""/);
   assert.match(
     source,
-    /const sel =\s*historySessionIdFromPath\(detailPathname\) \|\| selected/,
+    /const sel =\s*historySessionIdFromPath\(detailPathname\) \|\| taskIdFromPath\(detailPathname\) \|\| detailTaskQuery \|\| selected/,
   );
   assert.match(source, /siteId && session\.site_id !== siteId/);
 });
