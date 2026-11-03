@@ -83,11 +83,15 @@ test("UploadTile independently blocks onOpen during compression, uploading and f
 test("optimized tiles visibly offer the exact original without opening the pending image", async () => {
   const original = new File(["exact original"], "phone.jpg", { type: "image/jpeg" });
   const replaced = [], opened = [];
-  const attachment = { id: "exact-id", name: "phone.jpg", mime: original.type, previewUrl: "blob:prepared", uploading: true, originalFile: original, uploadBytes: 4 };
+  const attachment = { id: "exact-id", name: "phone.jpg", mime: original.type, previewUrl: "blob:prepared", uploading: true, originalFile: original, uploadBytes: 4,
+    preparedDimensions: { originalWidth: 4032, originalHeight: 3024, width: 2560, height: 1920 } };
   await render(h(AttachmentStrip, { attachments: [attachment], onUseOriginal: (item) => replaced.push(item), onOpenAttachment: (item) => opened.push(item) }), async (container) => {
     const button = container.querySelector('[data-upload-original]');
     assert.ok(button);
-    assert.equal(button.textContent, "用原图");
+    assert.equal(button.getAttribute("aria-label"), "用原图");
+    assert.equal(button.querySelector('[data-upload-dimensions]').textContent, "2560×1920");
+    assert.match(button.title, /4032×3024 → 2560×1920/);
+    assert.match(button.title, /已压缩/);
     assert.equal(container.querySelector('button[aria-label="phone.jpg"]'), null);
     await act(async () => button.click());
     assert.equal(replaced[0], attachment);

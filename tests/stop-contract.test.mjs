@@ -140,7 +140,7 @@ const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.
   "./mobile-native-actions": dataModule(`export function useNativeAttachActions(){return [];}
     export function useNativeHandoffEntry(){return {action:null,panel:null};}
     export function useNativeTaskNotifications(){} export function requestTaskNotificationsOnce(){}`),
-  "../lib/upload/use-attachment-intake": dataModule("export function useAttachmentIntake(){return globalThis.__composerIntake || {compressing:false,pending:[],inFlight:[],emit(){},handlePaste(){}};}"),
+  "../lib/upload/use-attachment-intake": dataModule("export function useAttachmentIntake(_onFiles,options){globalThis.__composerIntakeOptions=options;return globalThis.__composerIntake || {compressing:false,pending:[],inFlight:[],emit(){},handlePaste(){}};}"),
   "./workspace-runtime-hydration": dataModule("export function useWorkspaceRuntimeHydration(){return null;}"),
   "./composer-draft": dataModule("export function useComposerDraft(){return {markSubmitted(){}};}"),
   "./composer-max-height": dataModule("export function useComposerMaxHeight(){return 300;}"),
@@ -437,4 +437,36 @@ for (const kind of ["oceanleo", "native"]) test(`composer ${kind}: original remo
     await view.update({ disabled: false, stopping: true });
     assert.equal(view.host.querySelector('[data-test-original]'), null);
   } finally { delete globalThis.__composerIntake; view.cleanup(); }
+});
+
+test("image optimization requires an explicit host opt-in and an exact-original recovery path", async () => {
+  const view = await composer({ attachments: [], onAttachFiles() {}, onRemoveAttachment() {} });
+  try {
+    assert.equal(globalThis.__composerIntakeOptions.byteAwareJpeg, false, "custom hosts keep the legacy policy by default");
+    await view.update({ optimizeImages: true });
+    assert.equal(globalThis.__composerIntakeOptions.byteAwareJpeg, true);
+    await view.update({ onRemoveAttachment: undefined });
+    assert.equal(globalThis.__composerIntakeOptions.byteAwareJpeg, false);
+    await view.update({ onRemoveAttachment() {}, attachments: undefined });
+    assert.equal(globalThis.__composerIntakeOptions.byteAwareJpeg, false);
+  } finally { delete globalThis.__composerIntakeOptions; view.cleanup(); }
+});
+
+const { HomeIntro } = await import(await compileModule("src/shell/HomeIntro.tsx", {
+  "./LeoComposer": dataModule("export function LeoComposer(props){globalThis.__homeIntroComposerProps=props;return null;}"),
+  "./HomeCards": noopComponent("HomePromptCards"),
+  "./HomeAppCards": dataModule("export const HOME_APP_FEATURED_LIMIT=12;export function HomeAppCards(){return null;}"),
+  "./useAttachments": dataModule("export function useAttachments(){return {composerAttachments:[],handleAttachFiles(){},addComposerAttachments(){},removeAttachment(){},retryAttachment(){},ready(){return [];},clear(){}};}"),
+  "../lib/database": dataModule("export async function listFiles(){return {ok:true,data:{items:[]}};}"),
+  "../i18n/ui/useUI": dataModule(`export function useUI(){return ${tt.toString()};}`),
+}));
+
+test("shared home opts in only while its supported attachment tools are enabled", async () => {
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(React.createElement(HomeIntro,{siteName:"Test",siteId:"test",onStart(){}})));
+    assert.equal(globalThis.__homeIntroComposerProps.optimizeImages,true);
+    await act(async()=>root.render(React.createElement(HomeIntro,{siteName:"Test",siteId:"test",enableInputTools:false,onStart(){}})));
+    assert.equal(globalThis.__homeIntroComposerProps.optimizeImages,false);
+  } finally {await act(async()=>root.unmount());host.remove();delete globalThis.__homeIntroComposerProps;}
 });

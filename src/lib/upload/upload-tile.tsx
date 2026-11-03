@@ -18,6 +18,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 
 import type { UploadProgressSnapshot } from "./progress";
+import type { PreparedImageDimensions } from "./image-compress";
 import { formatBytes, progressPercent } from "./progress";
 import type { UploadInFlight } from "./use-attachment-intake";
 
@@ -150,6 +151,7 @@ export interface UploadTileProps {
   originalBytes?: number;
   uploadBytes?: number;
   originalDisabledReason?: string;
+  preparedDimensions?: PreparedImageDimensions;
   tt: ProgressTranslate;
   className?: string;
 }
@@ -169,6 +171,7 @@ export function UploadTile({
   originalBytes,
   uploadBytes,
   originalDisabledReason,
+  preparedDimensions,
   tt,
   className = "",
 }: UploadTileProps) {
@@ -186,6 +189,11 @@ export function UploadTile({
     ? percent === 100 ? tt("等待电脑确认…") : percent !== null ? tt("正在上传 {percent}%", { percent }) : tt("正在上传…")
     : failed ? tt("上传失败") : "";
   const box: CSSProperties = { width: size, height: size };
+  const dimensionLabel = preparedDimensions ? `${preparedDimensions.width}×${preparedDimensions.height}` : null;
+  const originalTitle = [tt("已压缩：{before} → {after}", {
+    before: formatBytes(originalBytes ?? 0), after: formatBytes(uploadBytes ?? 0),
+  }), preparedDimensions ? `${preparedDimensions.originalWidth}×${preparedDimensions.originalHeight} → ${dimensionLabel}` : null,
+  originalDisabledReason].filter(Boolean).join(" · ");
 
   const face = (
     <>
@@ -282,14 +290,12 @@ export function UploadTile({
           type="button"
           aria-label={tt("用原图")}
           disabled={Boolean(originalDisabledReason)}
-          title={originalDisabledReason || tt("已压缩：{before} → {after}", {
-            before: formatBytes(originalBytes ?? 0),
-            after: formatBytes(uploadBytes ?? 0),
-          })}
+          title={originalTitle}
           data-upload-original=""
           onClick={onUseOriginal}
-          className="flex h-11 w-full items-center justify-center rounded text-[10px] text-neutral-600 hover:bg-neutral-100"
+          className="flex h-11 w-full flex-col items-center justify-center rounded text-[10px] text-neutral-600 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent"
         >
+          {dimensionLabel ? <span data-upload-dimensions="" className="text-[9px]">{dimensionLabel}</span> : null}
           {tt("用原图")}
         </button>
       ) : null}

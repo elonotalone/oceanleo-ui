@@ -286,7 +286,8 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
     await act(async () => root.render(React.createElement(Probe)));
     const file = new File([new Uint8Array(4)], "a.png", { type: "image/png" });
     const original = new File(["exact original image bytes"], file.name, { type: file.type });
-    rememberImagePreparation({ original, upload: file, compressed: true, originalBytes: original.size, uploadBytes: file.size, skippedReason: null });
+    const dimensions = { originalWidth: 4032, originalHeight: 3024, width: 2560, height: 1920 };
+    rememberImagePreparation({ original, upload: file, compressed: true, originalBytes: original.size, uploadBytes: file.size, dimensions, skippedReason: null });
     await act(async () => hook.handleAttachFiles([file]));
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
 
@@ -295,6 +296,7 @@ test("useAttachments: failed upload stays as a failed tile and retry re-uploads 
     assert.equal(hook.composerAttachments[0].failedReason, "网络错误");
     assert.equal(hook.composerAttachments[0].originalFile, original);
     assert.equal(hook.composerAttachments[0].uploadBytes, file.size);
+    assert.deepEqual(hook.composerAttachments[0].preparedDimensions, dimensions);
     assert.equal(hook.uploading, false);
     assert.deepEqual(hook.ready(), [], "a failed tile is never sent");
     assert.deepEqual(errors, ["网络错误"]);

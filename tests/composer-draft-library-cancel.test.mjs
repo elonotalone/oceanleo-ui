@@ -149,7 +149,8 @@ async function flush(count = 6) {
 
 test("A1: only finished private references are stored, without any URL", () => {
   const stored = draftAttachmentsOf([
-    { id: "a", name: "a.png", mime: "image/png", previewUrl: "blob:https://x/1", url: "blob:https://x/1", artifactId: ART, revisionId: REV, mediaType: "image", libraryItem: { url: "https://gateway.test/x" }, originalFile: new File(["private original bytes"], "private.jpg"), uploadBytes: 3 },
+    { id: "a", name: "a.png", mime: "image/png", previewUrl: "blob:https://x/1", url: "blob:https://x/1", artifactId: ART, revisionId: REV, mediaType: "image", libraryItem: { url: "https://gateway.test/x" }, originalFile: new File(["private original bytes"], "private.jpg"), uploadBytes: 3,
+      preparedDimensions: { originalWidth: 4032, originalHeight: 3024, width: 2560, height: 1920 } },
     { id: "b", name: "b.png", uploading: true },
     { id: "c", name: "c.png", failed: true, artifactId: ART2, revisionId: REV2 },
     { id: "d", name: "inbox.txt", mime: "text/plain", previewUrl: "blob:https://x/2" },

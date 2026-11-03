@@ -1,4 +1,4 @@
-import type { CompressionOutcome } from "./image-compress";
+import type { CompressionOutcome, PreparedImageDimensions } from "./image-compress";
 
 // Local file bytes only. Nothing in this registry is serialized or sent to the server.
 const preparations = new WeakMap<File, CompressionOutcome>();
@@ -10,6 +10,13 @@ export function rememberImagePreparation(outcome: CompressionOutcome): void {
 
 export function originalForPreparedFile(file: File | null | undefined): File | undefined {
   return file ? preparations.get(file)?.original : undefined;
+}
+
+export function dimensionsForPreparedFile(file: File | null | undefined): PreparedImageDimensions | undefined {
+  const dimensions = file ? preparations.get(file)?.dimensions : undefined;
+  if (!dimensions) return undefined;
+  return [dimensions.originalWidth, dimensions.originalHeight, dimensions.width, dimensions.height]
+    .every((value) => Number.isInteger(value) && value > 0) ? dimensions : undefined;
 }
 
 /** Native inbox filename deduplication clones the same bytes; keep its original choice. */

@@ -23,6 +23,8 @@ export {
   type ComposerPrivateUpload,
   type ComposerUploadResult,
 } from "./composer-upload";
+export { originalForPreparedFile, dimensionsForPreparedFile } from "../lib/upload/image-preparation";
+export type { PreparedImageDimensions } from "../lib/upload/image-compress";
 export { listMyArtifacts } from "./artifact-client";
 
 // 2026-07-03：全家桶站点几何图标（单一事实源，从主站 SITES 移植）。playground /

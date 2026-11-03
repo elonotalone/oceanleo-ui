@@ -15,6 +15,7 @@
 
 import { useEffect, useState } from "react";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import type { PreparedImageDimensions } from "../lib/upload/image-compress";
 import { UploadTile, isImageTile, withBusProgress, type UploadTileProps } from "../lib/upload/upload-tile";
 import { PRIVATE_ATTACHMENT_TOO_LARGE, useAttachmentDisplayUrl } from "../lib/attachment-url";
 import type { UploadInFlight } from "../lib/upload/use-attachment-intake";
@@ -44,6 +45,7 @@ export interface StripAttachment {
   libraryItem?: LibraryItem;
   originalFile?: File;
   uploadBytes?: number;
+  preparedDimensions?: PreparedImageDimensions;
 }
 
 /** 输入框里方块的边长（px）。 */
@@ -203,6 +205,7 @@ export function AttachmentStrip<T extends StripAttachment = StripAttachment>({
               onUseOriginal={a.originalFile && onUseOriginal ? () => onUseOriginal(a) : undefined}
               originalBytes={a.originalFile?.size}
               uploadBytes={a.uploadBytes}
+              preparedDimensions={a.preparedDimensions}
               originalDisabledReason={a.originalFile && originalMaxBytes !== undefined && a.originalFile.size > originalMaxBytes
                 ? tt(PRIVATE_ATTACHMENT_TOO_LARGE) : undefined}
             />

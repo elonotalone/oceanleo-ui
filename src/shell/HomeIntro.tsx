@@ -265,6 +265,7 @@ export function HomeIntro({
           accentColor={accent}
           className={withCards ? "shadow-md" : ""}
           onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
+          optimizeImages={toolsOn}
           accept={toolsOn ? accept : undefined}
           recentFiles={toolsOn ? recentFiles : undefined}
           onPickRecent={toolsOn ? pickRecent : undefined}

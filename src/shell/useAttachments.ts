@@ -21,7 +21,7 @@ import {
 } from "../lib/attachment-url";
 import type { ComposerAttachment } from "./LeoComposer";
 import { uploadComposerFile } from "./composer-upload";
-import { originalForPreparedFile } from "../lib/upload/image-preparation";
+import { dimensionsForPreparedFile, originalForPreparedFile } from "../lib/upload/image-preparation";
 import type { LibraryItem } from "./library-data";
 
 /** 附件在组件内的状态：上传中 → 上传成功（带可交付的 attachment）。 */
@@ -37,6 +37,7 @@ export interface PendingAttachment {
   failedReason?: string;
   originalFile?: File;
   uploadBytes?: number;
+  preparedDimensions?: ComposerAttachment["preparedDimensions"];
   attachment?: AgentAttachment;
   /** Private Library identity of a finished upload (contract C2). */
   artifactId?: string;
@@ -148,7 +149,8 @@ export function useAttachments(
         setAttachments((prev) => [
           ...prev,
           { id, name: file.name, previewUrl, url: localUrl, mime: file.type, uploading: true,
-            ...(originalFile ? { originalFile, uploadBytes: file.size } : {}) },
+            ...(originalFile ? { originalFile, uploadBytes: file.size,
+              preparedDimensions: dimensionsForPreparedFile(file) } : {}) },
         ]);
         startUpload(id, file);
       }
@@ -267,7 +269,8 @@ export function useAttachments(
         uploading: a.uploading,
         ...(a.failed ? { failed: true } : {}),
         ...(a.failedReason ? { failedReason: a.failedReason } : {}),
-        ...(a.originalFile ? { originalFile: a.originalFile, uploadBytes: a.uploadBytes } : {}),
+        ...(a.originalFile ? { originalFile: a.originalFile, uploadBytes: a.uploadBytes,
+          preparedDimensions: a.preparedDimensions } : {}),
         ...(a.artifactId ? { artifactId: a.artifactId } : {}),
         ...(a.revisionId ? { revisionId: a.revisionId } : {}),
         ...(a.libraryItem ? { libraryItem: a.libraryItem } : {}),

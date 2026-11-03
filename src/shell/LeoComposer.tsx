@@ -26,6 +26,7 @@ import {
 } from "./mobile-native-actions";
 import { filesFromTransfer } from "../lib/upload/intake";
 import type { UploadProgressSnapshot } from "../lib/upload/progress";
+import type { PreparedImageDimensions } from "../lib/upload/image-compress";
 import { PRIVATE_ATTACHMENT_MAX_BYTES } from "../lib/attachment-url";
 import { AttachmentStrip } from "./AttachmentStrip";
 import { useAttachmentIntake } from "../lib/upload/use-attachment-intake";
@@ -125,6 +126,7 @@ export interface ComposerAttachment {
   /** Local-only exact original of a visibly optimized image; never stored in drafts or sent. */
   originalFile?: File;
   uploadBytes?: number;
+  preparedDimensions?: PreparedImageDimensions;
 }
 
 /** 「＋」菜单里调用方注入的额外项（如「使用技能」）。 */
@@ -227,6 +229,8 @@ export interface LeoComposerProps {
   // --- 「＋」附件菜单（2026-06-26） ---
   /** 传它才出现「＋」键 +「从本地添加文件」。收到用户选/拖进来的文件。 */
   onAttachFiles?: (files: File[]) => void;
+  /** Opt in only when the host retains preparation metadata and supports exact-original replacement. */
+  optimizeImages?: boolean;
   /** input accept，如 "image/*"；默认任意。 */
   accept?: string;
   /** 是否可多选，默认 true。 */
@@ -356,6 +360,7 @@ export function LeoComposer({
   fillNonce,
   accentColor,
   onAttachFiles,
+  optimizeImages = false,
   accept,
   multiple = true,
   recentFiles,
@@ -434,7 +439,7 @@ export function LeoComposer({
   const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles });
   const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined, {
     deliverAsReady: true,
-    byteAwareJpeg: Boolean(onRemoveAttachment && attachments),
+    byteAwareJpeg: optimizeImages && Boolean(onRemoveAttachment && attachments),
   });
   const replacedOriginalsRef = useRef(new Set<string>());
   // 手机原生宿主下，「＋」菜单里的「从本地添加文件」换成「拍照 / 从相册选择 / 选择文件」

@@ -37,6 +37,9 @@ export const DEFAULT_QUALITY = 0.82;
 /** Only the explicit, reversible composer policy opts into these JPEG settings. */
 export const BYTE_AWARE_JPEG_MIN_BYTES = 1024 * 1024;
 export const BYTE_AWARE_JPEG_QUALITY = 0.92;
+export const BYTE_HEAVY_JPEG_MIN_BYTES = 3_000_000;
+export const BYTE_HEAVY_JPEG_MAX_EDGE = 2560;
+export const BYTE_HEAVY_JPEG_QUALITY = 0.85;
 export const BYTE_AWARE_MIN_SAVED_BYTES = 256 * 1024;
 export const BYTE_AWARE_MIN_SAVED_RATIO = 0.2;
 
@@ -49,6 +52,13 @@ const COMPRESSIBLE_MIME = new Set([
   "image/bmp",
 ]);
 
+export interface PreparedImageDimensions {
+  readonly originalWidth: number;
+  readonly originalHeight: number;
+  readonly width: number;
+  readonly height: number;
+}
+
 /** 一次压缩尝试的结果。**永远同时带着原图。** */
 export interface CompressionOutcome {
   /** 用户选的那个文件（原图）。 */
@@ -59,6 +69,7 @@ export interface CompressionOutcome {
   compressed: boolean;
   originalBytes: number;
   uploadBytes: number;
+  dimensions?: PreparedImageDimensions;
   /**
    * 没压的原因，压了则为 `null`。给 UI 用来解释「为什么这张没压」，
    * 也给测试用来钉住「哪些类型不许被碰」。
@@ -80,7 +91,7 @@ export interface CompressOptions {
   maxEdge?: number;
   quality?: number;
   minBytes?: number;
-  /** Large JPEGs may be recompressed at the same dimensions; caller must expose the original choice. */
+  /** Explicit reversible JPEG policy; byte-heavy photos use a disclosed 2560px profile. */
   byteAwareJpeg?: boolean;
 }
 
@@ -258,14 +269,17 @@ export async function compressImageFile(
   if (file.size < minBytes) return skip(file, "already-small");
   const byteAwareJpeg = options.byteAwareJpeg === true &&
     (sourceType === "image/jpeg" || sourceType === "image/jpg") && file.size >= BYTE_AWARE_JPEG_MIN_BYTES;
+  const byteHeavyJpeg = byteAwareJpeg && file.size >= BYTE_HEAVY_JPEG_MIN_BYTES;
 
   const decoded = await decode(file);
   if (!decoded) return skip(file, "canvas-unavailable");
 
   try {
-    const target = scaleToMaxEdge(decoded.width, decoded.height, maxEdge);
+    const target = scaleToMaxEdge(decoded.width, decoded.height,
+      byteHeavyJpeg ? Math.min(maxEdge, BYTE_HEAVY_JPEG_MAX_EDGE) : maxEdge);
     const byteAwareSameSize = byteAwareJpeg && !target.scaled;
-    const quality = options.quality ?? (byteAwareSameSize ? BYTE_AWARE_JPEG_QUALITY : DEFAULT_QUALITY);
+    const quality = options.quality ?? (byteHeavyJpeg ? BYTE_HEAVY_JPEG_QUALITY :
+      byteAwareSameSize ? BYTE_AWARE_JPEG_QUALITY : DEFAULT_QUALITY);
     // Legacy callers only resize oversized images; the reversible JPEG policy also targets bytes.
     if (!target.scaled && !byteAwareJpeg) return skip(file, "within-max-edge");
 
@@ -273,7 +287,7 @@ export async function compressImageFile(
     const blob = await encode(decoded, target.width, target.height, type, quality);
     if (!blob || blob.size === 0) return skip(file, "encode-failed");
     if (blob.size >= file.size) return skip(file, "not-smaller");
-    if (byteAwareSameSize && (file.size - blob.size < BYTE_AWARE_MIN_SAVED_BYTES ||
+    if ((byteHeavyJpeg || byteAwareSameSize) && (file.size - blob.size < BYTE_AWARE_MIN_SAVED_BYTES ||
       (file.size - blob.size) / file.size < BYTE_AWARE_MIN_SAVED_RATIO)) return skip(file, "not-smaller");
 
     const compressed = new File([blob], outputName(file.name, type), {
@@ -286,6 +300,8 @@ export async function compressImageFile(
       compressed: true,
       originalBytes: file.size,
       uploadBytes: compressed.size,
+      dimensions: { originalWidth: decoded.width, originalHeight: decoded.height,
+        width: target.width, height: target.height },
       skippedReason: null,
     };
   } catch {
