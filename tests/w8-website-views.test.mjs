@@ -102,6 +102,29 @@ test("Dashboard loads wired platform and site panels, preserves error states and
   } finally { await m.destroy(); }
 });
 
+// UC-NONE: this exercises visible catalog availability errors with controlled descriptors.
+// No untrusted site executes; the backend separately checks catalog origin, schema and private transport.
+test("Dashboard explains a rejected site catalog without hiding platform panels or offering an unwired action", async () => {
+  const calls = [];
+  const panelsApi = {
+    list: async () => [{ id: "catalog", title: "应用看板清单", kind: "metric", source: "app", state: "error", error: "app_catalog_invalid_manifest" }],
+    data: async (...args) => { calls.push(["data", ...args]); },
+    wire: async (...args) => { calls.push(["wire", ...args]); },
+  };
+  const m = await mount({ panelsApi });
+  try {
+    await act(async () => m.host.querySelector('[data-testid="website-view-dashboard"]').click());
+    const card = m.host.querySelector('[data-testid="website-dashboard-catalog"]');
+    assert.match(card.querySelector('[role="alert"]').textContent, /网站看板清单格式不正确，请让 agent 修复/);
+    assert.doesNotMatch(card.textContent, /app_catalog_/);
+    assert.equal(card.querySelector("button"), null);
+    for (const id of ["visits", "users", "runtime_cost", "domain", "errors"]) {
+      assert.ok(m.host.querySelector(`[data-testid="website-dashboard-${id}"] [data-panel-source="platform"]`));
+    }
+    assert.deepEqual(calls, []);
+  } finally { await m.destroy(); }
+});
+
 // UC-NONE: local lifecycle scheduling is a presentation regression.
 // This case checks exactly-once leave scheduling and tab visibility; the authenticated API boundary has separate coverage.
 test("leave checkpoints dedupe pagehide and unmount while sidebar tabs and hidden visibility do not checkpoint", async () => {

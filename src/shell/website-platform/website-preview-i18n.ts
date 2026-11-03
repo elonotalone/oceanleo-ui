@@ -23,6 +23,12 @@ export const WEBSITE_PREVIEW_EN: Record<string, string> = {
   "让 agent 配置此看板": "Ask agent to configure this panel",
   "该看板尚未接线。": "This panel is not wired yet.",
   "看板数据暂不可用。": "Panel data is unavailable.",
+  "应用看板清单": "Site panel catalog",
+  "网站看板清单格式不正确，请让 agent 修复。": "The site panel catalog is invalid. Ask the agent to fix it.",
+  "读取网站看板清单超时，请重试。": "Loading the site panel catalog timed out. Try again.",
+  "网站看板清单暂不可访问，请检查服务连接。": "The site panel catalog is not accessible. Check its service connection.",
+  "网站看板地址未通过安全检查。": "The site panel address failed its security check.",
+  "暂时无法读取网站看板清单，请重试。": "The site panel catalog is unavailable. Try again.",
   "共 {total} 条": "{total} rows", "无数据": "No data",
   "预览地址尚不可用。": "Preview URL is not available yet.",
   "路径须以 / 开头，且只能在当前网站内跳转。": "Paths must start with / and stay within this website.",
@@ -75,6 +81,13 @@ export const WEBSITE_PREVIEW_EN: Record<string, string> = {
   "配置任务不存在，请重试。": "The configuration task was not found. Please retry.",
   "配置任务执行失败，请打开任务查看原因。": "The configuration task failed. Open the task for details.",
   "配置任务已取消。": "The configuration task was cancelled.",
+  "暂时无法准备配置变更，请重试。": "Could not prepare the configuration change. Try again.",
+  "任务提交结果尚未确认，请在“我的任务”查看，勿重复提交。": "Task submission is unconfirmed. Check My tasks before submitting again.",
+  "配置变更已提交，暂时无法读取结果，请稍后查看。": "The configuration change was submitted. Its result is unavailable; check again later.",
+  "任务已创建，关联结果尚未确认，请稍后查看。": "The task was created. Its link is unconfirmed; check again later.",
+  "配置变更状态尚未确认，请稍后检查。": "The configuration change status is unconfirmed. Check again later.",
+  "服务操作结果尚未确认，请检查连接状态，勿重复提交。": "The service operation is unconfirmed. Check its connection before submitting again.",
+  "服务操作已执行，暂时无法关联结果，请稍后检查，勿重复提交。": "The service operation ran. Its result link is unavailable; check again later before submitting again.",
 };
 export function useWebsiteLanguage() {
   try { return useLocale(); } catch { return "zh"; /* standalone legacy host */ }

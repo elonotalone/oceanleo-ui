@@ -23,6 +23,13 @@ const TASK_ERRORS: Record<string, string> = {
   task_not_found: "配置任务不存在，请重试。",
   agent_task_failed: "配置任务执行失败，请打开任务查看原因。",
   agent_task_cancelled: "配置任务已取消。",
+  connector_change_preparation_failed: "暂时无法准备配置变更，请重试。",
+  agent_task_dispatch_unconfirmed: "任务提交结果尚未确认，请在“我的任务”查看，勿重复提交。",
+  connector_response_unavailable: "配置变更已提交，暂时无法读取结果，请稍后查看。",
+  connector_task_link_unconfirmed: "任务已创建，关联结果尚未确认，请稍后查看。",
+  connector_change_settlement_unconfirmed: "配置变更状态尚未确认，请稍后检查。",
+  connector_action_unconfirmed: "服务操作结果尚未确认，请检查连接状态，勿重复提交。",
+  connector_action_link_unconfirmed: "服务操作已执行，暂时无法关联结果，请稍后检查，勿重复提交。",
 };
 const SLOT_LABELS: Record<string, string> = {
   dev_runtime: "开发与运行服务", code: "代码仓库", database: "数据库", auth: "登录与认证",

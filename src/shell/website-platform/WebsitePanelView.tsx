@@ -3,6 +3,13 @@ import type { WebsitePanel, WebsitePanelData } from "../../api/website-panels";
 import { useWebsiteUI } from "./website-preview-i18n";
 
 export const PANEL_STATE_LABEL = { not_wired: "未接线", wired: "已接线", error: "错误" } as const;
+const CATALOG_ERRORS = new Map([
+  ["app_catalog_invalid_manifest", "网站看板清单格式不正确，请让 agent 修复。"],
+  ["app_catalog_timeout", "读取网站看板清单超时，请重试。"],
+  ["app_catalog_access_denied", "网站看板清单暂不可访问，请检查服务连接。"],
+  ["app_catalog_unsafe_origin", "网站看板地址未通过安全检查。"],
+  ["app_catalog_unavailable", "暂时无法读取网站看板清单，请重试。"],
+]);
 const colors = ["#2563eb", "#16a34a", "#d97706", "#9333ea", "#dc2626"];
 const cell = (value: unknown) => value == null ? "" : typeof value === "object" ? JSON.stringify(value) : String(value);
 
@@ -11,9 +18,11 @@ export function WebsitePanelView({ panel, data, loading, error, pending, onWire 
   pending?: boolean; onWire: () => void;
 }) {
   const tt = useWebsiteUI();
+  const catalogError = panel.source === "app" && panel.id === "catalog" && panel.state === "error"
+    ? CATALOG_ERRORS.get(panel.error || "") : undefined;
   return <section className="overflow-auto p-4" data-testid="website-panel" data-panel-source={panel.source}>
-    <h2 className="mb-3 text-sm font-semibold">{panel.title} · {tt(PANEL_STATE_LABEL[panel.state])}</h2>
-    {panel.state === "error" || error ? <p role="alert">{panel.error || error || tt("看板数据暂不可用。")}</p>
+    <h2 className="mb-3 text-sm font-semibold">{catalogError ? tt("应用看板清单") : panel.title} · {tt(PANEL_STATE_LABEL[panel.state])}</h2>
+    {panel.state === "error" || error ? <p role="alert">{catalogError ? tt(catalogError) : panel.error || error || tt("看板数据暂不可用。")}</p>
       : panel.state === "not_wired" ? <div data-testid="website-panel-not-wired">
         <p>{tt("该看板尚未接线。")}</p>
         {panel.source === "app" && <button type="button" disabled={pending} onClick={onWire}>{tt("让 agent 配置此看板")}</button>}
