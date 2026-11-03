@@ -468,10 +468,12 @@ export function CloudBrowserPanel({
           />
         )}
 
+        {/* Privacy can prevent the first frame. Owner-only trust metadata must
+            remain available so the user can approve and continue privately. */}
         <CloudBrowserTrustPanel
           sessionId={session.selectedId}
           taskId={session.selected?.task_id}
-          liveRequested={liveRequested && transport.transportState === "streaming"}
+          liveRequested={liveRequested}
           userTakeover={transport.driving}
         />
 

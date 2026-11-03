@@ -341,6 +341,36 @@ const powerPromptModuleUrl = await compileComponent(
     "./cloud-browser-controls": controlsStubUrl,
   },
 );
+const trustApiStubUrl = dataModule(`
+  export const cloudBrowserTrustApi = {
+    async session(sessionId, signal) {
+      const current = globalThis.__cloudBrowserLifecycleTest;
+      current.calls.trustReads.push({ sessionId, signal });
+      return { ok: true, data: current.trust };
+    },
+    async decideApproval(sessionId, requestId, decision, scope, signal) {
+      const current = globalThis.__cloudBrowserLifecycleTest;
+      current.calls.trustDecisions.push({ sessionId, requestId, decision, scope, signal });
+      current.trust = { ...current.trust, pending_approvals: [] };
+      return { ok: true, data: { ok: true } };
+    },
+    async decideLogin(sessionId, candidateId, save, signal) {
+      const current = globalThis.__cloudBrowserLifecycleTest;
+      current.calls.trustDecisions.push({ sessionId, candidateId, save, signal });
+      current.trust = { ...current.trust, login_candidates: [] };
+      return { ok: true, data: { ok: true } };
+    },
+  };
+`);
+const trustStateModuleUrl = await compileModule(
+  "src/shell/cloud-browser-trust-state.tsx",
+  { "../lib/browser-trust": trustApiStubUrl },
+);
+const trustPanelModuleUrl = await compileComponent(
+  "src/shell/cloud-browser-trust.tsx",
+  { "./cloud-browser-trust-state": trustStateModuleUrl },
+);
+COMPONENT_STUBS["./cloud-browser-trust"] ??= trustPanelModuleUrl;
 const panelModuleUrl = await compileComponent(
   "src/shell/CloudBrowserPanel.tsx",
   {
@@ -390,6 +420,12 @@ function testState(sessions, selectedId = sessions[0]?.id || "") {
       remove: [],
       open: [],
       stop: 0,
+      trustReads: [],
+      trustDecisions: [],
+    },
+    trust: {
+      pending_approvals: [], login_candidates: [],
+      privacy_active: false, can_offer_login: false,
     },
     transportState: "streaming",
     driving: false,
@@ -848,3 +884,68 @@ test("invalid lifecycle and control states stay disabled and explicit", async ()
     await act(async () => root.unmount());
   }
 });
+
+test("private first-view approvals and privacy notice work before any video frame", async () => {
+  for (const choice of ["once", "task", "site_action", "deny"]) {
+    const state = testState([browserSession()]);
+    state.transportState = "awaiting_first_frame";
+    state.hasCanvasFrame = false;
+    state.trust = {
+      ...state.trust, privacy_active: true,
+      pending_approvals: [{
+        request_id: "private-submit", origin: "https://login.example",
+        action_kind: "submit", summary: "Submit login", reason: "Approval required",
+      }],
+    };
+    const mounted = await mountPanel(state);
+    try {
+      assert.equal(state.calls.trustReads.length, 0, "closed viewer does not poll");
+      await click(mounted.container.querySelector("[data-cloud-browser-open-history]"));
+      await click(document.body.querySelector("[data-cloud-browser-open-session]"));
+      assert.equal(state.calls.trustReads.length, 1, "metadata does not wait for video");
+      assert.equal(mounted.container.querySelectorAll('[data-cloud-browser-trust-prompt="approval"]').length, 1);
+      const privacy = mounted.container.querySelector('[data-cloud-browser-trust-privacy="active"]');
+      assert.match(privacy?.textContent, /画面采集与录制已暂停/);
+      assert.equal(state.calls.trustDecisions.length, 0, "rendering never approves");
+      await click(mounted.container.querySelector(choice === "deny"
+        ? "[data-cloud-browser-approval-deny]"
+        : `[data-cloud-browser-approval-scope="${choice}"]`));
+      const [decision] = state.calls.trustDecisions;
+      assert.equal(decision.sessionId, "session-active");
+      assert.equal(decision.requestId, "private-submit");
+      assert.equal(decision.decision, choice === "deny" ? "deny" : "approve");
+      assert.equal(decision.scope, choice === "deny" ? "once" : choice);
+      assert.equal(state.calls.trustDecisions.length, 1);
+      assert.equal(mounted.container.querySelector("[data-cloud-browser-trust-prompt]"), null);
+      assert.ok(mounted.container.querySelector('[data-cloud-browser-trust-privacy="active"]'), "consent does not bypass privacy");
+      assert.equal(state.hasCanvasFrame, false);
+      assert.equal(state.transportState, "awaiting_first_frame", "metadata never fabricates a paint receipt");
+      assert.equal(state.calls.open.length, 1);
+    } finally {
+      await mounted.unmount();
+    }
+  }
+});
+
+test("login save confirmation is reachable before first paint without saving automatically", async () => {
+  const state = testState([browserSession()]);
+  state.transportState = "awaiting_first_frame";
+  state.hasCanvasFrame = false;
+  state.trust.login_candidates = [{ id: "private-login", origin: "https://login.example" }];
+  const mounted = await mountPanel(state);
+  try {
+    await click(mounted.container.querySelector("[data-cloud-browser-open-history]"));
+    await click(document.body.querySelector("[data-cloud-browser-open-session]"));
+    assert.ok(mounted.container.querySelector('[data-cloud-browser-trust-prompt="login"]'));
+    assert.equal(state.calls.trustDecisions.length, 0);
+    await click(mounted.container.querySelector("[data-cloud-browser-login-save]"));
+    assert.equal(state.calls.trustDecisions.length, 1);
+    assert.equal(state.calls.trustDecisions[0].sessionId, "session-active");
+    assert.equal(state.calls.trustDecisions[0].candidateId, "private-login");
+    assert.equal(state.calls.trustDecisions[0].save, true);
+    assert.equal(state.hasCanvasFrame, false);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
