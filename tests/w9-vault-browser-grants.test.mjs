@@ -172,6 +172,7 @@ test("an owner explicitly grants the selected saved item, sees its origin under 
     assert.equal(Boolean(view.host.querySelector("form")), false);
     const usage = view.host.querySelector(`[data-vault-item="${secondId}"] [data-vault-used-by]`);
     assert.ok(usage); assert.match(usage.textContent, /Browser sign-in.*https:\/\/example.test:8443/);
+    assert.doesNotMatch(usage.textContent, /browser_login/, "current login grants show their readable purpose without the backend enum");
     assert.equal(Boolean(view.host.querySelector(`[data-vault-item="${firstId}"] [data-vault-used-by]`)), false);
     assert.match(view.host.textContent, /Second login is authorized for browser sign-in on https:\/\/example.test:8443/);
     assert.equal(view.host.innerHTML.includes(h.state.privateValue), false);
