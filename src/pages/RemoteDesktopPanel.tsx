@@ -12,9 +12,15 @@ import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
 import { RemoteDesktopQualityHub } from "../api/remote-desktop-quality";
 import { RD_BROKER_COPY, rdBrokerErrorCopy, rdBrokerStatusCopy } from "../i18n/ui/messages/rd-broker-copy";
+import type { RemoteDesktopTransportDiagnostics, RemoteInputDiagnostics } from "../api/remote-desktop-diagnostics";
+import type { RemoteMediaDiagnosticSnapshot, RemoteMediaStartupTimings } from "./remote-desktop-media";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 export { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
+type PanelTimingStep = "effect" | "request" | "session" | "consented" | "active" | "stream" | "stream_failed" | "gateway" | "first_frame" | "frame_accepted" | "frame_ready_commit";
+export type RemoteDesktopPanelTiming = { v: 1; kind: 5; at_ms: number; click_ms: number } & Partial<Record<`${PanelTimingStep}_ms`, number>>;
+export type RemoteDesktopDiagnosticSample = RemoteDesktopTransportDiagnostics | RemoteMediaDiagnosticSnapshot | RemoteMediaStartupTimings
+  | ({ v: 1; kind: 4; at_ms: number } & RemoteInputDiagnostics) | RemoteDesktopPanelTiming;
 
 export interface RemoteDesktopPanelProps {
   deviceId: string;
@@ -48,6 +54,8 @@ export interface RemoteDesktopPanelProps {
    * the panel was mounted by a click and connects once for this mount.
    */
   ticket?: RemoteDesktopTicket | null;
+  /** Optional selector-free profiling hook. Fixed numeric fields only; exceptions are swallowed. */
+  onDiagnostics?(value: RemoteDesktopDiagnosticSample): void;
 }
 
 export interface RemoteDesktopAgentBanner {
@@ -101,8 +109,10 @@ function mediaFrameMatches(status: RemoteMediaStatus | null, width: number, heig
     && Math.abs(width * geometry.height - height * geometry.width) <= Math.max(geometry.width, geometry.height));
 }
 
-export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, agentRequest = false, consent, ticket: requested }: RemoteDesktopPanelProps) {
+export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, agentRequest = false, consent, ticket: requested, onDiagnostics }: RemoteDesktopPanelProps) {
   const tt = useUI();
+  const diagnosticsRef = useRef(onDiagnostics); diagnosticsRef.current = onDiagnostics;
+  const reportDiagnostics = useCallback((value: RemoteDesktopDiagnosticSample) => { try { diagnosticsRef.current?.(value); } catch { /* measurement only */ } }, []);
   // Anonymous per-session quality report: the wrapper measures the client calls; control flow is unchanged.
   const qualityRef = useRef<RemoteDesktopQualityHub | null>(null);
   const client = useMemo(() => {
@@ -191,7 +201,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const reconnectingRef = useRef(false);
   /** Click -> first picture step timings (ms), client and gateway side; shown on the root element. */
   const [connectTiming, setConnectTiming] = useState("");
-  const markRef = useRef<((name: string) => void) | null>(null);
+  const markRef = useRef<((name: PanelTimingStep) => void) | null>(null);
   const queueRef = useRef<RemoteDesktopAction[]>([]);
   const pumpingRef = useRef<AbortSignal | null>(null);
   const sequenceRef = useRef(0);
@@ -416,15 +426,21 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     setCoarse(Boolean(window.matchMedia?.("(pointer: coarse)").matches));
     setReconnecting(false); reconnectingRef.current = false; setReconnectDeadline(null); setIdleDeadline(null); setConnectTiming("");
     // Step timings of this connection (ms since the click started it). Diagnostics only.
-    const clickedAt = performance.now();
+    const clickedAt = typeof ticket?.at === "number" && Number.isFinite(ticket.at) ? ticket.at : performance.now();
     const marks: Record<string, number> = {};
     let gatewayTiming: Record<string, number> = {};
-    const mark = (name: string) => {
+    const publishTiming = () => {
+      setConnectTiming([...Object.entries(marks), ...Object.entries(gatewayTiming).map(([key, value]) => [`gw_${key}`, value])].map(([key, value]) => `${key}=${Math.round(Number(value))}`).join(" "));
+    };
+    const mark = (name: PanelTimingStep) => {
       if (name in marks) return;
-      marks[name] = Math.max(0, Math.round(performance.now() - clickedAt));
-      setConnectTiming([...Object.entries(marks), ...Object.entries(gatewayTiming).map(([key, value]) => [`gw_${key}`, value])].map(([key, value]) => `${key}=${value}`).join(" "));
+      marks[name] = Math.max(0, performance.now() - clickedAt);
+      publishTiming();
+      reportDiagnostics({ v: 1, kind: 5, at_ms: performance.now(), click_ms: clickedAt,
+        ...Object.fromEntries(Object.entries(marks).map(([key, value]) => [`${key}_ms`, clickedAt + value])) });
     };
     markRef.current = mark;
+    mark("effect");
     let wakeRetry: (() => void) | null = null;
     const online = () => wakeRetry?.();
     window.addEventListener("online", online);
@@ -481,6 +497,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         const sessionId = result.data.session_id;
         const handlers: RemoteDesktopStreamHandlers = {
           activity: acceptActivity,
+          diagnostics: reportDiagnostics,
+          inputDiagnostics: (value) => reportDiagnostics({ v: 1, kind: 4, at_ms: performance.now(), ...value }),
           state(state, error) {
             if (abort.signal.aborted) return;
             if (state === "closed") end(error || "session_closed");
@@ -503,7 +521,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
               updatePhase(state === "pending_consent" ? "waiting" : state);
             }
           },
-          serverTiming(timing) { gatewayTiming = timing; if (!abort.signal.aborted) mark("gateway"); },
+          serverTiming(timing) { gatewayTiming = timing; if (!abort.signal.aborted) { mark("gateway"); publishTiming(); } },
           frame(value) {
             if (abort.signal.aborted || phaseRef.current !== "active") return;
             if (mediaModeRef.current === "artc") { streamRef.current?.acknowledgeFrame(value.sequence); return; }
@@ -684,7 +702,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       document.body.style.overflow = previousOverflow;
       releaseRemoteDesktopFullscreen();
     };
-  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, ticket, acceptMediaStatus]);
+  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, ticket, acceptMediaStatus, reportDiagnostics]);
+
+  useEffect(() => { if (mediaReady) markRef.current?.("frame_ready_commit"); }, [mediaReady]);
 
   useEffect(() => {
     if (phase === "active") {
@@ -949,11 +969,14 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           fit={fit} width={frame?.width} height={frame?.height} showFrame={Boolean(frame)}
           onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
           onDiagnostic={setMediaDiagnostic}
+          onDiagnostics={reportDiagnostics}
+          onTiming={reportDiagnostics}
           onFrame={(width, height) => {
             markRef.current?.("first_frame");
             const status = mediaStatusRef.current;
             const geometry = mediaGeometryKey(status);
             if (!geometry || (displayId && status?.geometry?.display_id !== displayId) || !mediaFrameMatches(status, width, height)) return;
+            markRef.current?.("frame_accepted");
             if (mediaFrameGeometry.current !== geometry || !frameRef.current || frameRef.current.width !== width || frameRef.current.height !== height) {
               const next = { image: "", width, height, sequence: 0 }; frameRef.current = next; setFrame(next);
             }

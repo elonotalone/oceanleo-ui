@@ -2,7 +2,7 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { CSSProperties } from "react";
 import type { RemoteDesktopClient, RemoteDesktopDataLane, RemoteMediaStatus } from "../api/remote-desktop";
-import { openRemoteMedia, RemotePublisherStatusError, type RemoteMediaDiagnostic, type RemoteMediaState, type RemoteMediaViewer } from "./remote-desktop-media";
+import { openRemoteMedia, RemotePublisherStatusError, type RemoteMediaDiagnostic, type RemoteMediaState, type RemoteMediaViewer, type RemoteMediaDiagnosticSnapshot, type RemoteMediaStartupTimings } from "./remote-desktop-media";
 import { videoStatSample } from "../api/remote-desktop-quality";
 
 /** Anonymous quality report cadence for the receiver's getStats (diagnostics only). */
@@ -15,26 +15,34 @@ export function remoteFrameStyle(fit: boolean, width?: number, height?: number):
   return { width: `${width / ratio}px`, height: `${height / ratio}px`, maxWidth: "none", objectFit: "contain", display: "block", flex: "none" };
 }
 
-export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic, displayId, fit, width, height, showFrame = true }: {
+export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic, onDiagnostics, onTiming, displayId, fit, width, height, showFrame = true }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string;
   videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; fit: boolean; width?: number; height?: number; showFrame?: boolean;
   onDataChannel?(lane: RemoteDesktopDataLane | null): void;
   onDiagnostic?(detail: RemoteMediaDiagnostic): void;
+  onDiagnostics?(value: RemoteMediaDiagnosticSnapshot): void;
+  onTiming?(value: RemoteMediaStartupTimings): void;
   onState(value: RemoteMediaState, error?: string, status?: number): void;
   onFrame(width: number, height: number): void;
   onLegacy(): void;
   onStatus(status: RemoteMediaStatus | null): void;
 }) {
-  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic });
-  callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic };
+  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic, onDiagnostics, onTiming });
+  callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel, onDiagnostic, onDiagnostics, onTiming };
   const previousClose = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     const abort = new AbortController();
     let viewer: RemoteMediaViewer | undefined;
     const quality = client.mediaQuality?.(sessionId) ?? null;
     let statsTimer: ReturnType<typeof setInterval> | undefined;
+    let negotiated = false;
+    const timing = (step: "media_negotiate_started_ms" | "media_negotiated_ms") => {
+      try { callbacks.current.onTiming?.({ v: 1, kind: 3, at_ms: performance.now(), [step]: performance.now() }); } catch { /* measurement only */ }
+    };
     const negotiate = async () => {
+      if (!negotiated) timing("media_negotiate_started_ms");
       const response = await client.negotiateMedia!(deviceId, sessionId, displayId, { signal: abort.signal });
+      if (!negotiated) { negotiated = true; timing("media_negotiated_ms"); }
       if (abort.signal.aborted) throw new Error("aborted");
       if (!response.ok || !response.data) throw Object.assign(new Error(response.error || "media_unavailable"), { status: response.status });
       callbacks.current.onStatus(response.data.media_status);
@@ -55,6 +63,8 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, onSt
         renew: negotiate,
         dataChannel: (lane) => { callbacks.current.onDataChannel?.(abort.signal.aborted ? null : lane); },
         diagnostic: (detail) => { if (!abort.signal.aborted) callbacks.current.onDiagnostic?.(detail); },
+        timing: (value) => { callbacks.current.onTiming?.(value); },
+        diagnostics: (value) => { callbacks.current.onDiagnostics?.(value); },
       }, abort.signal);
       const opened = viewer;
       if (quality && opened?.stats && !abort.signal.aborted) {

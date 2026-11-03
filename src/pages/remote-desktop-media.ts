@@ -1,6 +1,7 @@
 import { prepareEngine, PUBLISH_STATE, type ArtcEngine } from "../shell/messages/call/engine/sdk";
 import { loadRemoteArtcSdk, type RemoteArtcSdk } from "./remote-desktop-sdk";
 import type { RemoteDesktopDataLane, RemoteMediaCredentials } from "../api/remote-desktop";
+import { videoStatSample } from "../api/remote-desktop-quality";
 
 /** A remote viewer owns a separate receive-only engine; never reuse the call singleton. */
 export type RemoteMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
@@ -8,6 +9,7 @@ export interface RemoteMediaViewer {
   close(): Promise<void>;
   /** getStats of this <video>'s screen receiver(s), for the anonymous quality report only. */
   stats?(): Promise<unknown[]>;
+  diagnostics?(): RemoteMediaDiagnosticSnapshot;
 }
 export interface RemoteMediaHandlers {
   state(value: RemoteMediaState, error?: string, status?: number): void;
@@ -17,9 +19,30 @@ export interface RemoteMediaHandlers {
   dataChannel?(lane: RemoteDesktopDataLane | null): void;
   /** Why media setup failed, before the matching `state("error")`; host names and numeric SDK codes only. */
   diagnostic?(detail: RemoteMediaDiagnostic): void;
+  /** Optional measurement hooks; never credentials, tracks, SDP or candidate addresses. */
+  timing?(value: RemoteMediaStartupTimings): void;
+  diagnostics?(value: RemoteMediaDiagnosticSnapshot): void;
 }
 
 export interface RemoteMediaDiagnostic { blocked_host?: string; sdk_error?: number }
+export type RemoteMediaStartupStep = "media_negotiate_started_ms" | "media_negotiated_ms" | "media_open_ms" | "sdk_load_started_ms" | "sdk_loaded_ms" | "engine_created_ms"
+  | "prepare_started_ms" | "prepared_ms" | "publish_disabled_ms" | "join_started_ms" | "joined_ms"
+  | "synthetic_started_ms" | "synthetic_ready_ms" | "synthetic_failed_ms" | "synthetic_skipped_ms"
+  | "first_decoded_frame_ms" | "close_started_ms" | "closed_ms";
+/** Milestones are absolute performance.now() values on the same viewer clock, not host clocks. */
+export type RemoteMediaStartupTimings = { v: 1; kind: 3; at_ms: number; viewer_instance?: number } & Partial<Record<RemoteMediaStartupStep, number>>;
+export interface RemoteMediaDiagnosticSnapshot {
+  v: 1; kind: 2; viewer_instance: number; at_ms: number; elapsed_ms: number; decoded_frame_count: number; last_frame_age_ms: number;
+  stats_calls_total: number; stats_finished_total: number; stats_inflight_count: number; stats_inflight_high_water: number;
+  stats_duration_max_ms: number; last_stats_age_ms: number;
+  /** Recorder scope can include other calls; these are not a count of this viewer's engines. */
+  recorded_peer_count: number; recorded_closed_peer_count: number; screen_track_count: number;
+  video_ready_state: number; video_width: number; video_height: number; video_time_ms: number;
+  rtc_fps?: number; rtc_frames_decoded?: number; rtc_frames_dropped?: number;
+  rtc_packets_received?: number; rtc_packets_lost?: number; rtc_nack_count?: number; rtc_pli_count?: number; rtc_fir_count?: number;
+  rtc_freeze_count?: number; rtc_freeze_ms?: number; rtc_jitter_buffer_delay_ms?: number; rtc_jitter_buffer_emitted_count?: number;
+  rtc_rtt_ms?: number; rtc_relay?: 0 | 1;
+}
 
 /**
  * ARTC media signalling hosts (scheduler/room `*.rtn.aliyuncs.com`, RTS edges `*.alivecdn.com`).
@@ -74,6 +97,7 @@ export function syntheticScreenTrack(): { track: MediaStreamTrack; stop(): void 
  * 18+/WKWebView) or the older `playoutDelayHint = 0`. Other calls' receivers are never touched.
  */
 const recordedPeers = new Set<RTCPeerConnection>();
+let viewerInstances = 0;
 let recorders = 0;
 let originalSetRemote: RTCPeerConnection["setRemoteDescription"] | null = null;
 function recordPeers(): () => void {
@@ -198,9 +222,21 @@ export async function openRemoteMedia(
   sdkLoader: () => Promise<RemoteArtcSdk> = loadRemoteArtcSdk,
   inputTrack: typeof syntheticScreenTrack = syntheticScreenTrack,
 ): Promise<RemoteMediaViewer> {
+  const now = () => performance.now();
+  const instance = ++viewerInstances;
+  const openedAt = now();
+  const milestones: Partial<Record<RemoteMediaStartupStep, number>> = {};
+  const mark = (step: RemoteMediaStartupStep) => {
+    if (milestones[step] !== undefined) return;
+    milestones[step] = now();
+    try { handlers.timing?.({ v: 1, kind: 3, viewer_instance: instance, at_ms: now(), ...milestones }); } catch { /* measurement only */ }
+  };
+  mark("media_open_ms"); mark("sdk_load_started_ms");
   const sdk = await sdkLoader();
+  mark("sdk_loaded_ms");
   if (signal.aborted) throw new Error("aborted");
   const engine = sdk.createEngine() as DataChannelEngine;
+  mark("engine_created_ms");
   const releasePeers = recordPeers();
   // Peer input only when the gateway granted it for this controller and the SDK can carry it.
   const wantsDataChannel = credentials.data_channel_input === true && typeof sdk.dataChannelMessage === "function"
@@ -228,6 +264,43 @@ export async function openRemoteMedia(
   let playing = false, renewal: ReturnType<typeof setTimeout> | undefined, expiry: ReturnType<typeof setTimeout> | undefined;
   const started = Date.now();
   let lastInbound = started, statsPending = false;
+  let statsCalls = 0, statsFinished = 0, statsInFlight = 0, statsHighWater = 0, statsMaxMs = 0;
+  let lastStatsAt: number | null = null, lastDecodedAt: number | null = null, decodedFrames = 0;
+  let rtc: Partial<RemoteMediaDiagnosticSnapshot> = {};
+  const readStats = (): Promise<unknown[]> => {
+    statsCalls++; statsInFlight++; statsHighWater = Math.max(statsHighWater, statsInFlight);
+    const sampledAt = now();
+    return receiverStats(video).then((reports) => {
+      try {
+        const sample = videoStatSample(reports as Parameters<typeof videoStatSample>[0]);
+        if (sample) {
+          const fields = { rtc_fps: sample.fps, rtc_frames_decoded: sample.framesDecoded, rtc_frames_dropped: sample.framesDropped,
+            rtc_packets_received: sample.packetsReceived, rtc_packets_lost: sample.packetsLost, rtc_nack_count: sample.nackCount,
+            rtc_pli_count: sample.pliCount, rtc_fir_count: sample.firCount, rtc_freeze_count: sample.freezeCount,
+            rtc_freeze_ms: sample.totalFreezesDuration === undefined ? undefined : sample.totalFreezesDuration * 1000,
+            rtc_jitter_buffer_delay_ms: sample.jitterBufferDelay === undefined ? undefined : sample.jitterBufferDelay * 1000,
+            rtc_jitter_buffer_emitted_count: sample.jitterBufferEmittedCount, rtc_rtt_ms: sample.rttMs,
+            rtc_relay: sample.relay === undefined ? undefined : sample.relay ? 1 : 0 };
+          rtc = Object.fromEntries(Object.entries(fields).filter(([, value]) => typeof value === "number" && Number.isFinite(value) && value >= 0));
+        }
+      } catch { /* telemetry must not turn a successful stats read into a media failure */ }
+      return reports;
+    }).finally(() => { statsFinished++; statsInFlight--; lastStatsAt = now(); statsMaxMs = Math.max(statsMaxMs, lastStatsAt - sampledAt); });
+  };
+  const diagnosticSnapshot = (): RemoteMediaDiagnosticSnapshot => {
+    const at = now();
+    let closedPeers = 0;
+    for (const peer of recordedPeers) if (peer.connectionState === "closed") closedPeers++;
+    const tracks = video.srcObject as { getVideoTracks?(): MediaStreamTrack[] } | null;
+    return { ...rtc, v: 1, kind: 2, viewer_instance: instance, at_ms: at, elapsed_ms: Math.max(0, at - openedAt), decoded_frame_count: decodedFrames,
+      last_frame_age_ms: Math.max(0, at - (lastDecodedAt ?? openedAt)), stats_calls_total: statsCalls,
+      stats_finished_total: statsFinished, stats_inflight_count: statsInFlight, stats_inflight_high_water: statsHighWater,
+      stats_duration_max_ms: statsMaxMs, last_stats_age_ms: Math.max(0, at - (lastStatsAt ?? openedAt)),
+      recorded_peer_count: recordedPeers.size, recorded_closed_peer_count: closedPeers, screen_track_count: tracks?.getVideoTracks?.().length ?? 0,
+      video_ready_state: video.readyState, video_width: video.videoWidth, video_height: video.videoHeight,
+      video_time_ms: Number.isFinite(video.currentTime) ? video.currentTime * 1000 : 0 };
+  };
+  const reportDiagnostics = () => { try { handlers.diagnostics?.(diagnosticSnapshot()); } catch { /* measurement only */ } };
   const inboundCounters = new Map<string, number>();
   let watchdog: ReturnType<typeof setInterval> | undefined;
   let subscribeFailure: ReturnType<typeof setTimeout> | undefined;
@@ -241,6 +314,7 @@ export async function openRemoteMedia(
   const on = (name: string, fn: (...args: any[]) => void) => { listeners.push([name, fn]); engine.on(name, fn); };
   const close = (): Promise<void> => {
     if (closePromise) return closePromise;
+    mark("close_started_ms"); reportDiagnostics();
     setLane(false);
     closed = true;
     releasePeers();
@@ -258,6 +332,7 @@ export async function openRemoteMedia(
       // join may still resolve after cancellation. The startup path leaves again then.
       if (joining) await boundedCleanup(() => engine.leaveChannel());
       await boundedCleanup(() => engine.destroy());
+      mark("closed_ms");
     })();
     return closePromise;
   };
@@ -270,6 +345,7 @@ export async function openRemoteMedia(
   };
   const decodedFrame = () => {
     if (closed || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
+    decodedFrames++; lastDecodedAt = now(); mark("first_decoded_frame_ms");
     lastFrame = Date.now();
     lastInbound = lastFrame;
     // Notify on every decoded frame so display-switch geometry can gate input even
@@ -363,11 +439,12 @@ export async function openRemoteMedia(
   };
   watchdog = setInterval(() => {
     if (closed || (typeof document !== "undefined" && document.hidden)) return;
+    reportDiagnostics();
     // A stuck getStats must not hold up either the traffic deadline or the hard frame deadline.
     if (statsPending || Date.now() - (lastFrame ?? started) > 20_000) { checkLiveness(); return; }
     statsPending = true;
     const sampledAt = Date.now();
-    void receiverStats(video).then((reports) => {
+    void readStats().then((reports) => {
       if (closed) return;
       if (inboundVideoProgress(reports, inboundCounters)) lastInbound = Math.max(lastInbound, sampledAt);
       checkLiveness();
@@ -376,7 +453,9 @@ export async function openRemoteMedia(
   try {
     handlers.state("joining");
     scheduleRenew(credentials.expires_at);
+    mark("prepare_started_ms");
     await untilAborted(prepareEngine(engine, { autoSubscribeAudio: false }), lifetime.signal);
+    mark("prepared_ms");
     // index.d.ts ParameterData: documented publisher-side data channel; it rides the synthetic track below.
     let dataChannelEnabled = false;
     if (wantsDataChannel) {
@@ -386,31 +465,37 @@ export async function openRemoteMedia(
     await untilAborted(engine.publishLocalAudioStream(false), lifetime.signal);
     await untilAborted(engine.publishLocalVideoStream(false), lifetime.signal);
     await untilAborted(engine.publishLocalScreenShareStream?.(false), lifetime.signal);
+    mark("publish_disabled_ms");
     if (closed) throw new Error("aborted");
     joining = true;
+    mark("join_started_ms");
     const join = Promise.resolve(engine.joinChannel(credentials.token, "Remote desktop viewer"));
     void join.then(() => { if (closed) void boundedCleanup(() => engine.leaveChannel()); }, () => {});
     await untilAborted(join, lifetime.signal);
+    mark("joined_ms");
     if (closed) throw new Error("aborted");
     if (!playing) handlers.state("waiting_frame");
     for (const uid of engine.getOnlineRemoteUsers?.() ?? []) subscribe(uid);
     if (dataChannelEnabled) {
       // The custom track first, then publish: with a local screen stream present the SDK never
       // falls back to getDisplayMedia. Any failure leaves input on the gateway path; video is unaffected.
+      mark("synthetic_started_ms");
       synthetic = inputTrack();
       if (synthetic) {
         try {
           await untilAborted(engine.startScreenShare({ audio: false, videoTrack: synthetic.track }), lifetime.signal);
           await untilAborted(engine.publishLocalScreenShareStream?.(true), lifetime.signal);
+          mark("synthetic_ready_ms");
         } catch (error) {
           if (closed) throw error;
+          mark("synthetic_failed_ms");
           synthetic.stop(); synthetic = null;
           void Promise.resolve().then(() => engine.stopScreenShare()).catch(() => {});
         }
-      }
-    }
+      } else mark("synthetic_skipped_ms");
+    } else mark("synthetic_skipped_ms");
     scheduleRenew(credentials.expires_at);
-    return { close, stats: () => closed ? Promise.resolve([]) : receiverStats(video) };
+    return { close, stats: () => closed ? Promise.resolve([]) : readStats(), diagnostics: diagnosticSnapshot };
   } catch (error) {
     await close();
     throw error;

@@ -1,4 +1,5 @@
 import type { RemoteDesktopAction } from "./remote-desktop";
+import type { RemoteInputSchedulerDiagnostics } from "./remote-desktop-diagnostics";
 
 type Entry = { barrier?: boolean; action: RemoteDesktopAction; seq?: number };
 const WINDOW = 8;
@@ -165,6 +166,13 @@ export class RemoteInputScheduler {
 
   /** Highest seq claimed so far (both lanes); the floor for a re-attached stream. */
   lastSequence(): number { return this.sequence; }
+
+  /** Numeric observation only; reading it never pumps, releases credit or mutates input. */
+  diagnostics(): RemoteInputSchedulerDiagnostics {
+    return { queued_count: this.queue.length, queued_soft_count: this.queue.filter((entry) => SOFT.has(entry.action.kind)).length,
+      outstanding_count: this.outstanding.size, retry_count: this.retries.length, last_seq: this.sequence,
+      execution_watermark: this.executed, held_key_count: this.heldKeys.size, held_button_count: this.heldButtons.size };
+  }
 
   /** Track press state of input sent on the other lane so emergency release stays complete. */
   noteSent(action: RemoteDesktopAction): void {

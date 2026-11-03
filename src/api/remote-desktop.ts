@@ -16,6 +16,9 @@ import { RemoteInputScheduler } from "./remote-desktop-scheduler";
 import { isNetworkFailure, newRequestId } from "./remote-desktop-retry";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
 import type { RemoteDesktopQualityReport, RemoteMediaQualitySink } from "./remote-desktop-quality";
+import { REMOTE_INPUT_METRICS, RemoteTransportDiagnostics, parseRemoteInputDiagnostics, type RemoteInputDiagnostics, type RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
+export { parseRemoteInputDiagnostics } from "./remote-desktop-diagnostics";
+export type { RemoteInputDiagnostics, RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
 export interface RemoteMediaCredentials {
   provider: "artc";
   transport: "artc-v1";
@@ -67,7 +70,7 @@ export interface RemoteMediaStatus {
 }
 const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_frames", "capture_idle", "capture_errors", "capture_us", "capture_max_us", "capture_lock_wait_us", "capture_lock_max_us", "last_capture_age_ms", "pushes", "push_errors", "repeated_pushes", "empty_ticks", "push_us", "push_max_us", "push_lock_wait_us", "push_lock_max_us", "sdk_samples", "sdk_age_ms", "sdk_capture_fps", "sdk_encode_fps", "sdk_sent_fps", "sdk_sent_kbps", "sdk_rtt_ms", "sdk_send_bytes", "first_capture_ms", "first_push_ms", "joined_ms", "first_encoded_stats_ms",
   // D4 receipt: highest data-channel seq the computer accepted (R1a/R1b publish it; absent = unproven lane).
-  "dc_input_seq"] as const;
+  "dc_input_seq", ...REMOTE_INPUT_METRICS] as const;
 /** Optional fixed numeric diagnostics only; never publisher tokens or arbitrary text. */
 export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
@@ -95,6 +98,7 @@ export interface RemoteDesktopStatus {
   enabled: boolean;
   online: boolean;
   session_id: string | null;
+  input_diagnostics?: RemoteInputDiagnostics | null;
   /** Absence means legacy/unknown, not proof of a signed-in device. */
   availability?: DeviceAvailability;
   access?: RemoteDesktopAccess | null;
@@ -262,6 +266,8 @@ export interface RemoteDesktopStream {
   inputPath?(): "data_channel" | "websocket";
   /** Highest input seq used on this socket (both lanes): the floor for a re-attached stream. */
   lastSequence?(): number;
+  /** Current bounded numeric measurement interval; reading it never changes transport state. */
+  diagnostics?(): RemoteDesktopTransportDiagnostics;
   close(): void;
 }
 
@@ -269,6 +275,9 @@ export interface RemoteDesktopStreamHandlers {
   activity?(activity: RemoteDesktopActivity | null): void;
   /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
   controlTiming?(sample: RemoteControlTiming): void;
+  /** Optional numeric samples at a one-second cadence using the existing input pump. */
+  diagnostics?(sample: RemoteDesktopTransportDiagnostics): void;
+  inputDiagnostics?(sample: RemoteInputDiagnostics): void;
   media?(media: RemoteMediaCredentials | null, status: RemoteMediaStatus | null): void;
   state(state: RemoteDesktopSessionState, error?: string): void;
   frame(frame: RemoteDesktopFrameData): void;
@@ -364,6 +373,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
    * unconfirmed probe is re-sent with a fresh seq after PEER_RECEIPT_MS instead of being waited on forever.
    */
   let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, peerSent = 0, peerSentAt = 0;
+  const diagnostics = new RemoteTransportDiagnostics(() => performance.now());
+  let lastDiagnosticsAt = performance.now();
   const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; };
   const peerHealthy = (now: number) => {
     if (peerTrusted && peerSent > peerReceipt && now - peerSentAt > PEER_RECEIPT_MS) dropLane();
@@ -377,7 +388,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const writePeer = (seq: number, action: RemoteDesktopAction): boolean => {
     const message = dataChannelMessage(sessionId, seq, action);
     if (!message || !lane) return false;
-    try { if (lane.send(message)) return true; } catch { /* broken channel */ }
+    try { if (lane.send(message)) { diagnostics.written("data_channel", seq); return true; } } catch { /* broken channel */ }
     dropLane();
     return false;
   };
@@ -404,6 +415,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       if (message) dropLane();
       return false;
     }
+    diagnostics.written("data_channel", seq);
     scheduler.noteSent(action);
     if (peerSent <= peerReceipt) peerSentAt = Date.now();
     peerSent = seq;
@@ -412,10 +424,20 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   };
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
-  const timings = new RemoteControlTimings(() => performance.now(), sample => handlers.controlTiming?.(sample));
+  const timings = new RemoteControlTimings(() => performance.now(), sample => { diagnostics.control(sample); handlers.controlTiming?.(sample); });
+  const diagnosticSnapshot = (finishInterval = false) => diagnostics.snapshot(scheduler.diagnostics?.() ?? {
+    queued_count: 0, queued_soft_count: 0, outstanding_count: 0, retry_count: 0, last_seq: scheduler.lastSequence(),
+    execution_watermark: 0, held_key_count: 0, held_button_count: 0,
+  }, socket.bufferedAmount, finishInterval);
+  const reportDiagnostics = () => {
+    if (!handlers.diagnostics) return;
+    try { handlers.diagnostics(diagnosticSnapshot(true)); } catch { /* measurement cannot affect input */ }
+  };
   const dispose = () => {
+    if (!ended) reportDiagnostics();
     ended = true;
     timings.dispose();
+    diagnostics.dispose();
     clearInterval(heartbeat);
     clearInterval(refresh);
     clearInterval(inputPump);
@@ -451,7 +473,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     now: Date.now,
     write: (seq, action) => {
       const written = send({ type: "input", seq, action });
-      if (written) timings.sent(seq);
+      if (written) { diagnostics.written("websocket", seq); timings.sent(seq); }
       return written;
     },
     congestion: (busy) => handlers.congestion?.(busy),
@@ -479,6 +501,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     attachDataChannel(next) { if (next !== lane) { dropLane(); lane = ended ? null : next; } },
     inputPath: () => lastPath,
     lastSequence: () => scheduler.lastSequence(),
+    diagnostics: () => diagnosticSnapshot(),
     acknowledgeMediaFrame() { send({ type: "media_ready" }); },
     acknowledgeFrame(value) {
       if (decoding?.sequence === value) decoding = null;
@@ -491,7 +514,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const peerRelease = () => {
     if (!lane || ended) return;
     const message = dataChannelMessage(sessionId, scheduler.claimSequence(), { kind: "release_all" });
-    try { if (message) lane.send(message); } catch { /* the gateway release still follows */ }
+    try { if (message && lane.send(message)) diagnostics.written("data_channel", scheduler.lastSequence()); } catch { /* the gateway release still follows */ }
     dropLane();
   };
   const abort = () => { if (!ended) { peerRelease(); scheduler.emergencyRelease(); dispose(); settle!({ ok: false, error: "aborted" }); } };
@@ -500,6 +523,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (pendingFrameAck !== null && send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
     peerHealthy(Date.now());
     scheduler.tick();
+    if (performance.now() - lastDiagnosticsAt >= 1000) { lastDiagnosticsAt = performance.now(); reportDiagnostics(); }
   }, 25);
   const heartbeat = setInterval(() => {
     if (decoding && Date.now() - decoding.started > 10_000) { fail("frame_decode_timeout"); return; }
@@ -551,11 +575,17 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if ("access" in data || "billing" in data) handlers.session?.({ access: parseRemoteAccess(data.access), billing: parseRemoteBilling(data.billing) });
     if (isRecord(data.timing)) handlers.serverTiming?.(Object.fromEntries(Object.entries(data.timing).filter(([, value]) => typeof value === "number" && Number.isSafeInteger(value) && value >= 0)) as Record<string, number>);
     if ("activity" in data) handlers.activity?.(parseRemoteDesktopActivity(data.activity));
+    if ("input_diagnostics" in data) {
+      const input = parseRemoteInputDiagnostics(data.input_diagnostics);
+      diagnostics.observe(input);
+      if (input) { try { handlers.inputDiagnostics?.(input); } catch { /* measurement only */ } }
+    }
     handlers.state(state, data.error === "stream_failed" ? "network_error" : typeof data.error === "string" ? data.error : undefined);
     if ("media" in data) {
       const media = data.media === null ? null : parseRemoteMedia(data.media);
       if (data.media !== null && !media) { fail("response_malformed"); return; }
       const mediaStatus = parseRemoteMediaStatus(data.media_status);
+      diagnostics.observe(mediaStatus?.metrics);
       notePeerReceipt(mediaStatus?.metrics?.dc_input_seq);
       handlers.media?.(media, mediaStatus);
     }
@@ -685,6 +715,7 @@ function parseStatus(data: unknown): RemoteDesktopStatus | null {
     enabled: data.enabled,
     online: data.online,
     session_id: sessionId,
+    ...("input_diagnostics" in data ? { input_diagnostics: parseRemoteInputDiagnostics(data.input_diagnostics) } : {}),
     ...(["online", "signed_out", "offline"].includes(String(data.availability)) ? { availability: data.availability as DeviceAvailability } : {}),
     ...("access" in data ? { access: parseRemoteAccess(data.access) } : {}),
     ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
