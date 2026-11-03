@@ -227,10 +227,11 @@ export function useAttachmentIntake(
             if (!aliveRef.current || !pendingJobsRef.current.has(job)) continue;
             recordCompressionTiming(job.file, upload, uploadTimingNow() - startedAt);
             if (streamPrepared) {
+              // The host accepts its local tile synchronously, before this owner
+              // releases pending. Its returned promise may include the whole upload.
+              deliver([upload]);
               pendingJobsRef.current.delete(job);
               setPending(Array.from(pendingJobsRef.current, (entry) => entry.file));
-              // Start this upload while the next image is being prepared.
-              deliver([upload]);
             } else prepared.push({ job, upload });
           }
           if (!streamPrepared && aliveRef.current) {

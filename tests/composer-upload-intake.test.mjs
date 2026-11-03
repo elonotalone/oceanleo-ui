@@ -66,6 +66,22 @@ test("a ready image starts uploading before the next image finishes preparation"
   } finally { await view.unmount(); }
 });
 
+test("stream handoff does not await a host's whole network promise", async () => {
+  const files = [photo("first.jpg"), photo("second.jpg")], network = gate(), accepted = [];
+  globalThis.__w3Prepare = async (file) => outcome(file);
+  let view;
+  view = await mounted((batch) => {
+    accepted.push(batch);
+    return network.promise;
+  }, { deliverAsReady: true });
+  try {
+    await act(async () => view.api.emit(files));
+    assert.deepEqual(accepted, [[files[0]], [files[1]]]);
+    assert.deepEqual(view.api.pending, [], "handoff does not wait for either whole upload promise");
+    assert.equal(view.api.compressing, false);
+  } finally { network.resolve(); await view.unmount(); }
+});
+
 test("overlapping picks stay pending and removing an active or queued file prevents its upload", async () => {
   const first = photo("first.jpg"), second = photo("second.jpg"), third = photo("third.jpg");
   const firstGate = gate(), secondGate = gate();
