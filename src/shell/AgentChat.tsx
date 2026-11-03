@@ -1290,7 +1290,7 @@ function AgentChatInner({
     const url = new URL(window.location.href);
     if (id) url.searchParams.set("computerSession", id);
     else url.searchParams.delete("computerSession");
-    lastParamRef.current = id ?? "cloud";
+    lastParamRef.current = id ?? "";
     window.history.replaceState(window.history.state, "", url);
   }, []);
   const [, setLocationTick] = useState(0);
@@ -1301,11 +1301,14 @@ function AgentChatInner({
   }, []);
   useEffect(() => {
     const param = new URL(window.location.href).searchParams.get("computerSession") || "";
-    const normalizedParam = param || "cloud";
+    const normalizedParam = param;
     if (lastParamRef.current === null || lastParamRef.current === normalizedParam) { lastParamRef.current = normalizedParam; return; }
     lastParamRef.current = normalizedParam;
     // Not decided yet for this task: the resolution below reads the URL itself.
     if (!taskId || selectedSession.taskId !== taskId || !selectedSession.resolved) return;
+    // A basic task link carries no conversation choice. Preserve the resolved
+    // pane when another view canonicalizes the same task's URL.
+    if (!param) return;
     if (param && param !== "cloud") {
       const named = sessions.find((session) => session.id === param);
       if (named) { setPickedChat(null); setSelectedSession({taskId, id: named.id, resolved: true}); }

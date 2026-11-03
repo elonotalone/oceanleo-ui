@@ -1015,6 +1015,24 @@ test("portal homepage native chat: in place, bubble before the session exists, p
     assert.ok(globalThis.__threadInputs.some((input) => !input.enabled && input.session?.id === "cts_home1"), "the page's own thread for it stays off");
     assert.equal(globalThis.__ccCalls.some((call) => String(call).startsWith("/v1/computer-task-sessions?")), false, "no session list read for the task just created");
     assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "nothing goes to the cloud");
+    const nativePane = () => host.querySelector('[data-native-chat="cts_home1"]');
+    assert.equal(nativePane()?.hidden, false);
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_home1");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    assert.equal(nativePane()?.hidden, false, "a bare same-task URL does not request the cloud conversation");
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_home1?computerSession=cloud");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    assert.equal(nativePane()?.hidden, true, "an explicit cloud conversation choice still works");
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_home1?computerSession=cts_home1");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    assert.equal(nativePane()?.hidden, false, "an explicit native conversation restores that existing pane");
+    assert.equal(globalThis.__threadSent.length, 1, "row/navigation changes never resend input");
   } finally {
     release();
     globalThis.__homeCreateGate = null;
