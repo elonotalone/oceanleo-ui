@@ -114,7 +114,7 @@ test("remote_access.update sends no duration or legacy expiry even from an old c
   const receipt = await api.deviceSettingsClient.startOperation("mac", { kind: "remote_access.update", enabled: true, input_allowed: true, expires_at: 1793525287, agent_control_allowed: true, agent_always_ask: false, duration_minutes: 240 });
   assert.equal(receipt.ok, true);
   const post = calls.find(({ url }) => url.endsWith("/mac/settings/operations"));
-  assert.deepEqual(JSON.parse(post.init.body), { kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: true, agent_always_ask: false });
+  assert.deepEqual(JSON.parse(post.init.body), { kind: "remote_access.update", agent_control_allowed: true });
   assert.equal("duration_minutes" in JSON.parse(post.init.body), false);
   assert.equal("expires_at" in JSON.parse(post.init.body), false);
 });

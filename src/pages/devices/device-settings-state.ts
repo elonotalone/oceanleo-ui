@@ -1,5 +1,5 @@
 import type { DeviceApiResult } from "../../api/devices";
-import type { DeviceSettingsClient, DeviceSettingsOperation } from "../../api/device-settings";
+import { parseSettingsOperation, type DeviceSettingsClient, type DeviceSettingsOperation } from "../../api/device-settings";
 
 /** Bound the whole request, including a transport that never settles on abort. */
 export function runDeviceRequest<T>(
@@ -49,13 +49,13 @@ function isMinimalAgentRevocation(operation: Parameters<DeviceSettingsClient["st
 
 function durableRevocation(operation: DeviceSettingsOperation): boolean {
   return operation.state === "pending" && operation.revocation_effective === true && operation.device_sync_pending === true
-    && Boolean(operation.result && "remote_access" in operation.result && operation.result.remote_access.agent_control_allowed === false);
+    && Boolean(operation.result && "remote_access" in operation.result && "agent_control_allowed" in operation.result.remote_access && operation.result.remote_access.agent_control_allowed === false);
 }
 
 /** An offline durable fence is effective before the target applies its saved policy. */
 export function deviceRevocationNotice(operation: DeviceSettingsOperation): string | null {
   if (durableRevocation(operation)) return "Agent 控制权限已撤销。设备重新连接后会同步。";
-  if (operation.state === "succeeded" && operation.device_sync_pending !== true && operation.result && "remote_access" in operation.result && operation.result.remote_access.agent_control_allowed === false) return "Agent 控制已撤销。";
+  if (operation.state === "succeeded" && operation.device_sync_pending !== true && operation.result && "remote_access" in operation.result && "agent_control_allowed" in operation.result.remote_access && operation.result.remote_access.agent_control_allowed === false) return "Agent 控制已撤销。";
   return null;
 }
 
@@ -69,7 +69,12 @@ export async function runDeviceSettingsOperation(
 ): Promise<DeviceApiResult<DeviceSettingsOperation>> {
   return runDeviceRequest(async (requestSignal) => {
     const revokeOnly = isMinimalAgentRevocation(operation);
-    let result = await client.startOperation(deviceId, operation, requestSignal);
+    const checked = (result: DeviceApiResult<DeviceSettingsOperation>): DeviceApiResult<DeviceSettingsOperation> => {
+      if (operation.kind !== "remote_access.preferences.update" || !result.ok || !result.data) return result;
+      const data = parseSettingsOperation(result.data, operation);
+      return data ? { ...result, data } : { ok: false, error: "response_malformed" };
+    };
+    let result = checked(await client.startOperation(deviceId, operation, requestSignal));
     if (requestSignal.aborted) return { ok: false, error: "aborted" };
     if (!result.ok || !result.data) return result;
     const operationId = result.data.operation_id;
@@ -79,7 +84,7 @@ export async function runDeviceSettingsOperation(
       if (!operationId) return { ok: false, error: "response_malformed" };
       await pause(intervalMs, requestSignal);
       if (requestSignal.aborted) return { ok: false, error: "aborted" };
-      result = await client.getOperation(deviceId, operationId, requestSignal);
+      result = checked(await client.getOperation(deviceId, operationId, requestSignal));
       if (requestSignal.aborted) return { ok: false, error: "aborted" };
       if (!result.ok || !result.data) return result;
       if (result.data.operation_id && result.data.operation_id !== operationId) return { ok: false, error: "stale_operation" };

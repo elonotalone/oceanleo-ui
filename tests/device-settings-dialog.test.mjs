@@ -23,6 +23,7 @@ function fakeClient() {
       calls.operations.push([id, op]);
       if (op.kind === "preferences.update") { settings.preferences = { default_task_directory: op.default_task_directory ?? "/allowed/OceanLeo", task_folders: op.task_folders }; return { ok: true, data: { state: "succeeded", result: { preferences: structuredClone(settings.preferences) } } }; }
       if (op.kind === "remote_access.update") { settings.remote_access = { ...settings.remote_access, ...op, expires_at: null }; delete settings.remote_access.kind; return { ok: true, data: { state: "succeeded", result: { remote_access: structuredClone(settings.remote_access) } } }; }
+      if (op.kind === "remote_access.preferences.update") { const {kind: _kind, ...fields} = op; settings.remote_access = {...settings.remote_access, ...fields}; return {ok: true, data: {state: "succeeded", result: {remote_access: structuredClone(fields)}}}; }
       if (op.path === "/outside") return { ok: true, data: { state: "failed", error: "path_outside_grant" } };
       const listing = op.path === null ? { path: null, parent: null, entries: [{ name: "Allowed", path: "/allowed" }], roots: ["/allowed"] } : { path: op.path, parent: op.path === "/allowed" ? null : "/allowed", entries: op.path === "/allowed" ? [{ name: "Projects", path: "/allowed/Projects" }] : [], roots: ["/allowed"] };
       return { ok: true, data: { state: "succeeded", result: listing } };
@@ -70,7 +71,7 @@ test("device settings persist both Agent policy switches through the target oper
     const switches = [...document.querySelectorAll('button[role="switch"]')];
     assert.equal(switches.length, 4);
     await view.click(switches[2]);
-    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", enabled: false, input_allowed: true, agent_control_allowed: true, agent_always_ask: true }]);
+    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", agent_control_allowed: true }]);
   } finally { view.cleanup(); }
 });
 
@@ -79,7 +80,7 @@ test("owner enables remote access with a Settings switch and no duration", async
   const view = await mount(DeviceSettingsDialog, { device, availability: "online", client, onClose() {}, onControl() {}, onRename: async () => true, onRevoke() {} });
   try {
     await view.click([...document.querySelectorAll('button[role="switch"]')][0]);
-    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.update", enabled: true, input_allowed: true, agent_control_allowed: false, agent_always_ask: true }]);
+    assert.deepEqual(client.calls.operations.at(-1), ["mac-target", { kind: "remote_access.preferences.update", enabled: true }]);
     assert.equal(document.querySelector('input[type="checkbox"]'), null);
     assert.equal(document.querySelector('select[aria-label="允许时长"]'), null);
   } finally { view.cleanup(); }

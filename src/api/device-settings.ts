@@ -26,7 +26,15 @@ export interface DeviceRemoteAccessSettings {
   agent_always_ask: boolean;
 }
 /** Consent remains active until switched off; legacy expiry is read-only. */
-export type DeviceRemoteAccessUpdate = Omit<DeviceRemoteAccessSettings, "expires_at"> | { agent_control_allowed: false };
+export type DeviceRemoteAccessUpdate = Pick<DeviceRemoteAccessSettings, "agent_control_allowed">;
+type RemotePreferences = Pick<DeviceRemoteAccessSettings, "enabled" | "input_allowed" | "agent_always_ask">;
+export type DeviceRemotePreferencesUpdate = {
+  [K in keyof RemotePreferences]: Pick<RemotePreferences, K> & Partial<Omit<RemotePreferences, K>>
+}[keyof RemotePreferences];
+export type DeviceRemoteSettingsOperation = ({ kind: "remote_access.update" } & DeviceRemoteAccessUpdate)
+  | ({ kind: "remote_access.preferences.update" } & DeviceRemotePreferencesUpdate);
+export type DeviceSettingsOperationRequest = { kind: "cover.read" } | { kind: "folders.list"; path: string | null }
+  | ({ kind: "preferences.update" } & DevicePreferences) | DeviceRemoteSettingsOperation;
 /** Durable offline revoke only reports fields the caller actually supplied. */
 export type DeviceRemoteAccessRevocation = Partial<DeviceRemoteAccessSettings> & { agent_control_allowed: false; expires_at: null };
 export interface DeviceSettings {
@@ -60,7 +68,7 @@ export interface DeviceSettingsOperation {
   state: "pending" | "succeeded" | "failed";
   revocation_effective?: boolean;
   device_sync_pending?: boolean;
-  result?: DeviceFolderListing | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings | DeviceRemoteAccessRevocation } | { cover: DeviceCover };
+  result?: DeviceFolderListing | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings | DeviceRemoteAccessRevocation | DeviceRemotePreferencesUpdate } | { cover: DeviceCover };
   error?: string;
 }
 export interface DeviceTaskSummary {
@@ -75,7 +83,7 @@ export interface DeviceSettingsClient {
   getSettings(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettings>>;
   revokeController(deviceId: string, grantId: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
   shortenControllerExpiry(deviceId: string, grantId: string, expiresAt: string, signal?: AbortSignal): Promise<DeviceApiResult<unknown>>;
-  startOperation(deviceId: string, operation: { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | ({ kind: "preferences.update" } & DevicePreferences) | ({ kind: "remote_access.update" } & DeviceRemoteAccessUpdate), signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
+  startOperation(deviceId: string, operation: DeviceSettingsOperationRequest, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   getOperation(deviceId: string, operationId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceSettingsOperation>>;
   listTasks(deviceId: string, signal?: AbortSignal): Promise<DeviceApiResult<DeviceTaskSummary[]>>;
 }
@@ -196,8 +204,17 @@ export function parseDeviceSettings(value: unknown): DeviceSettings | null {
   return { controller_id: value.controller_id, controllers, preferences: { default_task_directory: preferences.default_task_directory, task_folders: preferences.task_folders }, remote_access: { enabled: remoteAccess.enabled, input_allowed: remoteAccess.input_allowed, expires_at: remoteAccess.expires_at === null ? null : Number(remoteAccess.expires_at), agent_control_allowed: remoteAccess.agent_control_allowed, agent_always_ask: remoteAccess.agent_always_ask }, roots: value.roots, availability: value.availability as DeviceAvailability, preferences_available: value.preferences_available };
 }
 
-export function parseSettingsOperation(value: unknown): DeviceSettingsOperation | null {
+function remotePreferences(value: unknown, requested?: DeviceRemotePreferencesUpdate): DeviceRemotePreferencesUpdate | null {
+  if (!record(value)) return null;
+  const keys = Object.keys(value);
+  if (!keys.length || keys.some((key) => !["enabled", "input_allowed", "agent_always_ask"].includes(key) || typeof value[key] !== "boolean")) return null;
+  if (requested && (keys.length !== Object.keys(requested).length || keys.some((key) => !Object.prototype.hasOwnProperty.call(requested, key)))) return null;
+  return { ...value } as DeviceRemotePreferencesUpdate;
+}
+
+export function parseSettingsOperation(value: unknown, intent?: DeviceSettingsOperationRequest): DeviceSettingsOperation | null {
   if (!record(value) || !["pending", "succeeded", "failed"].includes(String(value.state))) return null;
+  if ("operation_expires_at" in value || (record(value.result) && ("operation_expires_at" in value.result || (record(value.result.remote_access) && "operation_expires_at" in value.result.remote_access)))) return null;
   const operation: DeviceSettingsOperation = { state: value.state as DeviceSettingsOperation["state"] };
   if (typeof value.operation_id === "string") operation.operation_id = value.operation_id;
   if (typeof value.error === "string") operation.error = value.error;
@@ -206,6 +223,18 @@ export function parseSettingsOperation(value: unknown): DeviceSettingsOperation 
       if (typeof value[key] !== "boolean") return null;
       operation[key] = value[key];
     }
+  }
+  if (intent?.kind === "remote_access.preferences.update") {
+    if (operation.revocation_effective || operation.device_sync_pending) return null;
+    const { kind: _kind, ...requested } = intent;
+    if (!remotePreferences(requested)) return null;
+    if (value.state === "succeeded" || "result" in value) {
+      if (!record(value.result)) return null;
+      const scoped = remotePreferences(value.result.remote_access, requested);
+      if (!scoped) return null;
+      operation.result = { remote_access: scoped };
+    }
+    return operation;
   }
   if (operation.revocation_effective === true) {
     if (operation.state === "failed" || operation.device_sync_pending !== (operation.state === "pending")) return null;
@@ -230,10 +259,12 @@ export function parseSettingsOperation(value: unknown): DeviceSettingsOperation 
       operation.result = { cover };
     } else if (record(result.preferences) && nullableString(result.preferences.default_task_directory) && strings(result.preferences.task_folders)) {
       operation.result = { preferences: { default_task_directory: result.preferences.default_task_directory, task_folders: result.preferences.task_folders } };
-    } else if (record(result.remote_access) && typeof result.remote_access.agent_control_allowed === "boolean" && typeof result.remote_access.agent_always_ask === "boolean") {
-      const remoteAccess = { enabled: typeof result.remote_access.enabled === "boolean" ? result.remote_access.enabled : false, input_allowed: typeof result.remote_access.input_allowed === "boolean" ? result.remote_access.input_allowed : true, expires_at: nullableNumber(result.remote_access.expires_at) ? result.remote_access.expires_at : null, agent_control_allowed: result.remote_access.agent_control_allowed, agent_always_ask: result.remote_access.agent_always_ask };
-      if (typeof remoteAccess.enabled !== "boolean" || typeof remoteAccess.input_allowed !== "boolean" || !nullableNumber(remoteAccess.expires_at)) return null;
-      operation.result = { remote_access: { enabled: remoteAccess.enabled, input_allowed: remoteAccess.input_allowed, expires_at: remoteAccess.expires_at === null ? null : Number(remoteAccess.expires_at), agent_control_allowed: remoteAccess.agent_control_allowed, agent_always_ask: remoteAccess.agent_always_ask } };
+    } else if (record(result.remote_access) && typeof result.remote_access.agent_control_allowed === "boolean") {
+      const remote = result.remote_access;
+      if (!["enabled", "input_allowed", "agent_control_allowed", "agent_always_ask"].every((key) => typeof remote[key] === "boolean") || remote.expires_at !== null) return null;
+      operation.result = { remote_access: { enabled: remote.enabled as boolean, input_allowed: remote.input_allowed as boolean, agent_control_allowed: remote.agent_control_allowed as boolean, agent_always_ask: remote.agent_always_ask as boolean, expires_at: null } };
+    } else if (remotePreferences(result.remote_access)) {
+      operation.result = { remote_access: remotePreferences(result.remote_access)! };
     } else if (nullableString(result.path) && nullableString(result.parent) && strings(result.roots) && Array.isArray(result.entries) && result.entries.every((item) => record(item) && typeof item.name === "string" && typeof item.path === "string")) {
       operation.result = result as unknown as DeviceFolderListing;
     } else return null;
@@ -272,19 +303,21 @@ export const deviceSettingsClient: DeviceSettingsClient = {
     return request(`${base(deviceId)}/controllers/${encodeURIComponent(grantId)}`, { method: "PATCH", body: JSON.stringify({ expires_at: expiresAt }) }, signal);
   },
   async startOperation(deviceId, operation, signal) {
+    if ("operation_expires_at" in operation) return { ok: false, error: "request_invalid" };
+    if (operation.kind === "remote_access.preferences.update") {
+      const { kind: _kind, ...fields } = operation;
+      if (!remotePreferences(fields)) return { ok: false, error: "request_invalid" };
+    }
     const registered = await registerController(signal);
     if (!registered.ok) return { ...registered, data: undefined };
     // Explicit fields keep legacy expiry/duration from older callers out of the wire contract.
     const body = operation.kind === "remote_access.update" ? {
       kind: operation.kind,
-      ...("enabled" in operation ? { enabled: operation.enabled } : {}),
-      ...("input_allowed" in operation ? { input_allowed: operation.input_allowed } : {}),
       agent_control_allowed: operation.agent_control_allowed,
-      ...("agent_always_ask" in operation ? { agent_always_ask: operation.agent_always_ask } : {}),
     } : operation;
     const response = await request<unknown>(`${base(deviceId)}/settings/operations`, { method: "POST", body: JSON.stringify(body) }, signal);
     if (!response.ok) return { ...response, data: undefined };
-    const data = parseSettingsOperation(response.data);
+    const data = parseSettingsOperation(response.data, operation);
     return data ? { ...response, data } : malformed(response);
   },
   async getOperation(deviceId, operationId, signal) {

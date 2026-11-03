@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { deviceSettingsClient as defaultSettingsClient, type DeviceControllerGrant, type DevicePreferences, type DeviceRemoteAccessSettings, type DeviceSettings, type DeviceSettingsClient } from "../../api/device-settings";
+import { deviceSettingsClient as defaultSettingsClient, type DeviceControllerGrant, type DevicePreferences, type DeviceRemoteAccessSettings, type DeviceRemoteSettingsOperation, type DeviceSettings, type DeviceSettingsClient } from "../../api/device-settings";
 import { devicesFacade, type Device, type DevicesFacade } from "../../facades/devices";
 import { portalHref } from "../../contracts/domain-family";
 import { Switch, ConfirmDialog } from "../../ui";
@@ -98,8 +98,8 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     } catch { if (!signal.aborted) setError(deviceSettingsErrorCopy("network_error")); }
     finally { if (!signal.aborted) { busyRef.current = false; revision.current += 1; setBusy(false); } }
   }
-  async function saveRemoteAccess(remoteAccess: DeviceRemoteAccessSettings, revokeOnly = false) {
-    if (revokeOnly) { await revokeAgentControl(); return; }
+  async function saveRemoteAccess(operation: DeviceRemoteSettingsOperation) {
+    if (operation.kind === "remote_access.update" && !operation.agent_control_allowed) { await revokeAgentControl(); return; }
     if (busyRef.current || revokingRef.current) return;
     const parent = lifetime.current!.signal;
     if (parent.aborted) return;
@@ -111,8 +111,6 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     busyRef.current = true; revision.current += 1; setBusy(true);
     setError(null); setNotice(null);
     try {
-      const { enabled, input_allowed, agent_control_allowed, agent_always_ask } = remoteAccess;
-      const operation = { kind: "remote_access.update" as const, enabled, input_allowed, agent_control_allowed, agent_always_ask };
       const result = await runDeviceSettingsOperation(client, device.device_id, operation, signal);
       if (signal.aborted) return;
       if (result.ok && result.data?.result && "remote_access" in result.data.result) {
@@ -179,19 +177,19 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 divide-y divide-neutral-100">
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程访问")}</p><p className={CARD_DESC}>{tt("自己的账号可以连接；其他人仍需这台电脑确认。")}</p></div>
-          <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(enabled) => void saveRemoteAccess({ ...remoteAccess, enabled })} />
+          <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(enabled) => void saveRemoteAccess({ kind: "remote_access.preferences.update", enabled })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <p className="text-[13px] font-medium">{tt("允许操作屏幕（查看、点击、输入）")}</p>
-          <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={controlsBusy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ ...remoteAccess, input_allowed })} />
+          <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={controlsBusy || effectiveAvailability !== "online" || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ kind: "remote_access.preferences.update", input_allowed })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后撤销权限，离线设备会在重新连接后同步。")}</p></div>
-          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ ...remoteAccess, agent_control_allowed }, !agent_control_allowed)} />
+          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ kind: "remote_access.update", agent_control_allowed })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("每次询问")}</p><p className={CARD_DESC}>{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</p></div>
-          <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_always_ask) => void saveRemoteAccess({ ...remoteAccess, agent_always_ask })} />
+          <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_always_ask) => void saveRemoteAccess({ kind: "remote_access.preferences.update", agent_always_ask })} />
         </div>
         {effectiveAvailability !== "online" && <p className="pt-3 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
       </div>}
