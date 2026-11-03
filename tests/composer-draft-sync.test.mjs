@@ -103,3 +103,34 @@ test("remote text-only edit leaves local computer inbox attachments in place", a
   await act(async () => realtime.handler({ type: "composer_draft", key: "task:t1", text: "after", attachments: [], rev: 2, device_id: "other", updated_at: "now" })); await tick();
   assert.equal(m.value, "after"); assert.equal(m.container.querySelector("textarea")?.value, "after"); await m.unmount();
 });
+
+const storedDraft = (key = "task:t1") => window.sessionStorage.getItem(`oceanleo_composer_draft:v1:${key}`);
+
+test("sent text is cleared locally when the mount applied an empty server tombstone first", async () => {
+  // V1 2026-11-04: the tombstone of an earlier send armed the echo guard, which then
+  // swallowed this send's text → empty transition and left the sent text in storage.
+  reset(); api.records.set("task:t1", { key: "task:t1", text: "", attachments: [], rev: 7, device_id: "other", updated_at: "now" });
+  const m = mount(); await m.render(); await advance(25); assert.equal(api.gets.length, 1);
+  await m.setText("sent once"); await advance(350);
+  assert.equal(api.puts.at(-1).body.text, "sent once"); assert.match(storedDraft() || "", /sent once/);
+  m.handle.markSubmitted(); await m.setText(""); await advance(350);
+  assert.equal(storedDraft(), null, "the page-reload copy is gone once the composer is empty");
+  assert.equal(api.records.get("task:t1").text, "");
+  await m.unmount();
+});
+
+test("a newer server copy supersedes the restored local text and its queued write", async () => {
+  // V1 2026-11-04: reload restored stale text, its PUT waited for the socket, the
+  // server tombstone emptied the composer, then reconnect PUT the stale text back.
+  reset(); window.sessionStorage.setItem("oceanleo_composer_draft:v1:task:t1", JSON.stringify({ text: "already sent", attachments: [] }));
+  api.records.set("task:t1", { key: "task:t1", text: "", attachments: [], rev: 7, device_id: "web-same", updated_at: "now" });
+  realtime.connection = "connecting";
+  const m = mount(); await m.render(); await advance(350);
+  assert.equal(m.value, "", "the newer server tombstone wins over the restored text");
+  assert.equal(api.puts.length, 0);
+  realtime.connection = "open"; await m.render(); await advance(350);
+  assert.equal(api.puts.length, 0, "no stale write after the socket opens");
+  assert.equal(api.records.get("task:t1").text, ""); assert.equal(api.records.get("task:t1").rev, 7);
+  assert.equal(storedDraft(), null, "this tab's copy follows the shown (server) state");
+  await m.unmount();
+});

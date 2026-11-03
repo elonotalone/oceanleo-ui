@@ -548,6 +548,10 @@ export function useComposerDraft({
   const applyRemote = useCallback((event: Extract<import("../lib/im/types").ImEvent, { type: "composer_draft" }>, allowOwn = false) => {
     if (!draftKey || event.key !== draftKey || (!allowOwn && event.device_id === deviceIdRef.current) || event.rev <= revRef.current) return;
     revRef.current = event.rev;
+    // The newer server copy wins: a local write still waiting (offline, debounce)
+    // is superseded and must not overwrite it on reconnect.
+    pendingPutRef.current = null;
+    if (putTimerRef.current) { clearTimeout(putTimerRef.current); putTimerRef.current = null; }
     const now = latest.current;
     if (event.text !== now.value) {
       const active = typeof document !== "undefined" ? document.activeElement : null;
@@ -562,7 +566,10 @@ export function useComposerDraft({
         });
       }
     }
-    remoteSignatureRef.current = JSON.stringify([event.text, event.attachments]);
+    // Arm the echo guard only when this apply changes what is shown; an armed guard
+    // that never fires would swallow a later real edit (sent text → empty).
+    const remoteSignature = JSON.stringify([event.text, event.attachments]);
+    remoteSignatureRef.current = remoteSignature === signatureRef.current ? null : remoteSignature;
     const remoteIds = new Set(event.attachments.map((item) => item.id));
     for (const item of now.attachments ?? []) {
       const ref = draftAttachmentsOf([item])[0];
@@ -621,17 +628,19 @@ export function useComposerDraft({
       return;
     }
     lastSeenRef.current = signature;
+    const now = latest.current;
+    const shown = now.onAddAttachments ? draftAttachmentsOf(now.attachments) : [];
+    const pending = pendingRestoreRef.current.filter((item) => !shown.some((att) => att.id === item.id));
     if (remoteSignatureRef.current === signature) {
       remoteSignatureRef.current = null;
+      // A remote echo is not written back, but this tab's copy still follows it.
+      writeComposerDraft(draftKey, now.value, [...shown, ...pending]);
       return;
     }
     if (submittedRef.current !== null) {
       if (submittedRef.current === signature) return;
       submittedRef.current = null;
     }
-    const now = latest.current;
-    const shown = now.onAddAttachments ? draftAttachmentsOf(now.attachments) : [];
-    const pending = pendingRestoreRef.current.filter((item) => !shown.some((att) => att.id === item.id));
     writeComposerDraft(draftKey, now.value, [...shown, ...pending]);
     queuePut(draftKey, now.value, [...shown, ...pending]);
   }, [draftKey, signature]);
