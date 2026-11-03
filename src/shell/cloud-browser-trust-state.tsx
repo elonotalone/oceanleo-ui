@@ -34,7 +34,7 @@ type TrustState = {
   errorStatus: number | null;
   busy: boolean;
 };
-type Lifetime = { sessionId: string; controller: AbortController; revision: number; busy: boolean };
+type Lifetime = { sessionId: string; controller: AbortController; revision: number; busy: boolean; data: BrowserSessionTrust | null };
 
 export function useCloudBrowserTrust({ sessionId, active }: { sessionId: string; active: boolean }) {
   const [state, setState] = useState<TrustState>({ sessionId: "", data: null, errorStatus: null, busy: false });
@@ -44,7 +44,7 @@ export function useCloudBrowserTrust({ sessionId, active }: { sessionId: string;
   useEffect(() => {
     setState({ sessionId, data: null, errorStatus: null, busy: false });
     if (!sessionId || !active) return;
-    const current: Lifetime = { sessionId, controller: new AbortController(), revision: 0, busy: false };
+    const current: Lifetime = { sessionId, controller: new AbortController(), revision: 0, busy: false, data: null };
     lifetime.current = current;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let failures = 0;
@@ -55,10 +55,11 @@ export function useCloudBrowserTrust({ sessionId, active }: { sessionId: string;
         const result = await cloudBrowserTrustApi.session(sessionId, current.controller.signal);
         if (current.controller.signal.aborted || lifetime.current !== current) return;
         if (revision === current.revision && !current.busy) {
+          current.data = result.ok && result.data ? result.data
+            : [401, 403, 404].includes(result.status ?? 0) ? null : current.data;
           setState(previous => ({
             ...previous,
-            data: result.ok && result.data ? result.data
-              : [401, 403, 404].includes(result.status ?? 0) ? null : previous.data,
+            data: current.data,
             errorStatus: result.ok ? null : result.status ?? 0,
           }));
           failures = result.ok ? 0 : failures + 1;
@@ -75,32 +76,46 @@ export function useCloudBrowserTrust({ sessionId, active }: { sessionId: string;
     };
   }, [sessionId, active, retryCount]);
 
-  const decide = useCallback(async (
-    kind: "login" | "approval", id: string, decision: boolean | BrowserApprovalDecision,
+  const mutate = useCallback(async (
+    kind: "login" | "approval" | "offer", id: string, decision: boolean | BrowserApprovalDecision,
     scope: BrowserApprovalScope = "once",
   ) => {
     const current = lifetime.current;
     if (!active || !current || current.sessionId !== sessionId || current.busy || current.controller.signal.aborted) return;
+    if (kind === "offer" && (!current.data?.can_offer_login || current.data.privacy_active ||
+      current.data.pending_approvals.length || current.data.login_candidates.length)) return;
     current.busy = true;
     current.revision++;
     setState(previous => ({ ...previous, busy: true, errorStatus: null }));
-    const result = kind === "login"
+    const result = kind === "offer"
+      ? await cloudBrowserTrustApi.offerLogin(sessionId, current.controller.signal)
+      : kind === "login"
       ? await cloudBrowserTrustApi.decideLogin(sessionId, id, decision === true, current.controller.signal)
       : await cloudBrowserTrustApi.decideApproval(sessionId, id, decision === "approve" ? "approve" : "deny", scope, current.controller.signal);
     if (current.controller.signal.aborted || lifetime.current !== current) return;
+    let errorStatus = result.ok ? null : result.status ?? 0;
+    if (kind === "offer" && result.ok) {
+      // The offer never saves. Only owner-checked metadata may open the same
+      // existing confirmation prompt, and the read shares this mutation fence.
+      const refreshed = await cloudBrowserTrustApi.session(sessionId, current.controller.signal);
+      if (current.controller.signal.aborted || lifetime.current !== current) return;
+      current.data = refreshed.ok && refreshed.data ? refreshed.data : null;
+      errorStatus = refreshed.ok ? null : refreshed.status ?? 0;
+    } else if (result.ok && current.data) {
+      current.data = {
+        ...current.data,
+        pending_approvals: kind === "approval"
+          ? current.data.pending_approvals.filter(item => item.request_id !== id)
+          : current.data.pending_approvals,
+        login_candidates: kind === "login"
+          ? current.data.login_candidates.filter(item => item.id !== id)
+          : current.data.login_candidates,
+      };
+    }
     current.busy = false;
     current.revision++;
     setState(previous => ({
-      ...previous, busy: false, errorStatus: result.ok ? null : result.status ?? 0,
-      data: !result.ok || !previous.data ? previous.data : {
-        ...previous.data,
-        pending_approvals: kind === "approval"
-          ? previous.data.pending_approvals.filter(item => item.request_id !== id)
-          : previous.data.pending_approvals,
-        login_candidates: kind === "login"
-          ? previous.data.login_candidates.filter(item => item.id !== id)
-          : previous.data.login_candidates,
-      },
+      ...previous, busy: false, errorStatus, data: current.data,
     }));
   }, [active, sessionId]);
 
@@ -108,7 +123,8 @@ export function useCloudBrowserTrust({ sessionId, active }: { sessionId: string;
     data: active && state.sessionId === sessionId ? state.data : null,
     errorStatus: active && state.sessionId === sessionId ? state.errorStatus : null,
     busy: state.sessionId === sessionId && state.busy,
-    decide,
+    decide: (kind: "login" | "approval", id: string, decision: boolean | BrowserApprovalDecision, scope: BrowserApprovalScope = "once") => mutate(kind, id, decision, scope),
+    offerLogin: () => mutate("offer", "", false),
     retry: () => setRetryCount(count => count + 1),
   };
 }

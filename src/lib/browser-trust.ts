@@ -31,6 +31,7 @@ export type BrowserSessionTrust = {
   pending_approvals: BrowserPendingApproval[];
   login_candidates: BrowserLoginCandidate[];
   privacy_active: boolean;
+  can_offer_login: boolean;
 };
 
 export type BrowserTrustRequest = <T>(
@@ -124,6 +125,7 @@ export function projectBrowserSessionTrust(value: unknown): BrowserSessionTrust 
   });
   return pending_approvals && login_candidates ? {
     pending_approvals, login_candidates, privacy_active: row.privacy_active,
+    can_offer_login: row.can_offer_login === true,
   } : null;
 }
 
@@ -182,6 +184,8 @@ export function createCloudBrowserTrustClient(request: BrowserTrustRequest = aut
       call(root + "/approvals", acknowledged, "DELETE", undefined, signal),
     session: (id: string, signal?: AbortSignal) =>
       call(sessionRoot(id), projectBrowserSessionTrust, "GET", undefined, signal),
+    offerLogin: (id: string, signal?: AbortSignal) =>
+      call(sessionRoot(id) + "/login-offer", acknowledged, "POST", {}, signal),
     decideLogin: (id: string, candidate_id: string, save: boolean, signal?: AbortSignal) =>
       call(sessionRoot(id) + "/logins", acknowledged, "POST", { candidate_id, save }, signal),
     decideApproval: (

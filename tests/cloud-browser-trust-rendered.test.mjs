@@ -54,7 +54,7 @@ globalThis.IntersectionObserver = class {
 const approval = (id = "request-1", origin = "https://shop.example") => ({
   request_id: id, origin, action_kind: "payment", summary: "支付订单 123", reason: "付款后无法撤回",
 });
-const empty = () => ({ pending_approvals: [], login_candidates: [], privacy_active: false });
+const empty = () => ({ pending_approvals: [], login_candidates: [], privacy_active: false, can_offer_login: false });
 const timestamp = "2026-11-04T00:00:00.000Z";
 
 function runtime(status = empty()) {
@@ -64,6 +64,11 @@ function runtime(status = empty()) {
     savedLogins: [1, 2].map(id => ({ id: `login-${id}`, origin: `https://site${id}.example`, saved_at: timestamp, last_used_at: null })),
     grants: [1, 2].map(id => ({ id: `grant-${id}`, origin: `https://site${id}.example`, action_kind: "payment", scope: "site_action", task_id: null, created_at: timestamp })),
     session: async (id, signal) => { calls.push({ method: "session", id, signal }); return { ok: true, data: value.status }; },
+    offerLogin: async (id, signal) => {
+      calls.push({ method: "offer", id, signal });
+      value.status = { ...value.status, can_offer_login: false, login_candidates: [{ id: "offered-1", origin: "https://sso.example" }] };
+      return { ok: true, data: { ok: true } };
+    },
     decideApproval: async (...args) => { calls.push({ method: "approval", args }); value.status.pending_approvals = value.status.pending_approvals.filter(row => row.request_id !== args[1]); return { ok: true, data: { ok: true } }; },
     decideLogin: async (...args) => { calls.push({ method: "login", args }); value.status.login_candidates = value.status.login_candidates.filter(row => row.id !== args[1]); return { ok: true, data: { ok: true } }; },
     settings: async () => ({ ok: true, data: value.preferences }),
@@ -155,16 +160,121 @@ test("privacy status only claims capture has stopped after server confirmation",
   assert.equal(host.textContent.includes("画面采集与录制已暂停"), true);
 });
 
+test("explicit login offers under ordinary takeover reuse the same site's save or dismiss prompt without saving silently", async () => {
+  for (const save of [true, false]) {
+    const api = runtime({ ...empty(), can_offer_login: true });
+    const { host } = await render(CloudBrowserTrustPanel, { sessionId: "session-sso", liveRequested: true, userTakeover: true });
+    const offer = host.querySelector("[data-cloud-browser-login-offer]");
+    assert.equal(offer?.textContent, "保存此网站的登录");
+    assert.equal(host.querySelector("[data-cloud-browser-trust-privacy]")?.getAttribute("data-cloud-browser-trust-privacy"), "takeover");
+    assert.equal(host.textContent.includes("画面采集与录制已暂停"), false);
+    await click(offer);
+    assert.equal(api.calls.filter(call => call.method === "offer").length, 1);
+    assert.equal(api.calls.find(call => call.method === "offer").id, "session-sso");
+    assert.equal(api.calls.filter(call => call.method === "login").length, 0);
+    assert.equal(host.querySelector("h3")?.textContent, "保存这个网站的登录吗？");
+    assert.equal(host.querySelector("[data-cloud-browser-trust-origin]")?.textContent, "https://sso.example");
+    assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), false);
+    await click(host.querySelector(save ? "[data-cloud-browser-login-save]" : "[data-cloud-browser-login-dismiss]"));
+    assert.deepEqual(api.calls.find(call => call.method === "login").args.slice(0, 3), ["session-sso", "offered-1", save]);
+    const mountedItem = mounted.pop();
+    await act(async () => mountedItem.root.unmount()); mountedItem.host.remove();
+  }
+});
+
+test("login-offer fallback stays hidden for old gateways, server-disabled saving, sensitive entry and existing prompts", async () => {
+  const { can_offer_login: _missing, ...legacyStatus } = empty();
+  for (const status of [
+    legacyStatus,
+    { ...empty(), can_offer_login: false }, // The backend folds save_logins into this closed flag.
+    { ...empty(), can_offer_login: true, privacy_active: true },
+    { ...empty(), can_offer_login: true, pending_approvals: [approval()] },
+    { ...empty(), can_offer_login: true, login_candidates: [{ id: "already-offered", origin: "https://sso.example" }] },
+  ]) {
+    const api = runtime(status);
+    const { host } = await render(CloudBrowserTrustPanel, { sessionId: "session-1", liveRequested: true, userTakeover: true });
+    assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), false);
+    assert.equal(api.calls.some(call => call.method === "offer"), false);
+    const mountedItem = mounted.pop();
+    await act(async () => mountedItem.root.unmount()); mountedItem.host.remove();
+  }
+});
+
+test("duplicate offer clicks submit once and a pre-offer poll cannot erase the confirmation", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const api = runtime({ ...empty(), can_offer_login: true });
+  let resolvePoll;
+  let resolveOffer;
+  let reads = 0;
+  api.session = (id, signal) => {
+    api.calls.push({ method: "session", id, signal });
+    return ++reads === 2 ? new Promise(resolve => { resolvePoll = resolve; }) : Promise.resolve({ ok: true, data: api.status });
+  };
+  api.offerLogin = (id, signal) => {
+    api.calls.push({ method: "offer", id, signal });
+    return new Promise(resolve => { resolveOffer = resolve; });
+  };
+  const { host } = await render(CloudBrowserTrustPanel, { sessionId: "session-1", liveRequested: true, userTakeover: false });
+  await act(async () => { t.mock.timers.tick(2_000); });
+  const offer = host.querySelector("[data-cloud-browser-login-offer]");
+  await act(async () => {
+    offer.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    offer.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  });
+  assert.equal(api.calls.filter(call => call.method === "offer").length, 1);
+  assert.equal(offer.disabled, true);
+  assert.equal(host.textContent.includes("正在请求保存确认…"), true);
+  api.status = { ...empty(), login_candidates: [{ id: "offered-1", origin: "https://sso.example" }] };
+  await act(async () => { resolveOffer({ ok: true }); });
+  await act(async () => { resolvePoll({ ok: true, data: { ...empty(), can_offer_login: true } }); });
+  assert.equal(host.querySelector("[data-cloud-browser-trust-origin]")?.textContent, "https://sso.example");
+  assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), false);
+  assert.equal(api.calls.some(call => call.method === "login"), false);
+});
+
+test("late login-offer completion or follow-up reads cannot insert another session's login", async () => {
+  for (const lateStage of ["offer", "read"]) {
+    const api = runtime({ ...empty(), can_offer_login: true });
+    let resolveLate;
+    let oldReads = 0;
+    api.session = (id, signal) => {
+      api.calls.push({ method: "session", id, signal });
+      if (id === "new") return Promise.resolve({ ok: true, data: { ...empty(), login_candidates: [{ id: "new-login", origin: "https://new.example" }] } });
+      if (++oldReads > 1) return new Promise(resolve => { resolveLate = resolve; });
+      return Promise.resolve({ ok: true, data: api.status });
+    };
+    api.offerLogin = (id, signal) => {
+      api.calls.push({ method: "offer", id, signal });
+      return lateStage === "offer" ? new Promise(resolve => { resolveLate = resolve; }) : Promise.resolve({ ok: true });
+    };
+    const props = { sessionId: "old", liveRequested: true, userTakeover: false };
+    const { host, rerender } = await render(CloudBrowserTrustPanel, props);
+    await click(host.querySelector("[data-cloud-browser-login-offer]"));
+    await rerender({ ...props, sessionId: "new" });
+    await act(async () => { resolveLate({ ok: true, data: { ...empty(), login_candidates: [{ id: "old-login", origin: "https://old.example" }] } }); });
+    assert.equal(api.calls.find(call => call.method === "offer").signal.aborted, true);
+    assert.equal(host.querySelector("[data-cloud-browser-trust-origin]")?.textContent, "https://new.example");
+    assert.equal(host.textContent.includes("https://old.example"), false);
+    assert.equal(oldReads, lateStage === "offer" ? 1 : 2);
+    assert.equal(api.calls.some(call => call.method === "login"), false);
+    const mountedItem = mounted.pop();
+    await act(async () => mountedItem.root.unmount()); mountedItem.host.remove();
+  }
+});
+
 test("hidden and inactive panels do not poll, and hiding aborts the current selected-session request", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
-  const api = runtime();
+  const api = runtime({ ...empty(), can_offer_login: true });
   const props = { sessionId: "session-1", liveRequested: false, userTakeover: false };
-  const { rerender } = await render(CloudBrowserTrustPanel, props);
+  const { host, rerender } = await render(CloudBrowserTrustPanel, props);
   assert.equal(api.calls.length, 0);
+  assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), false);
   await rerender({ ...props, liveRequested: true });
   assert.equal(api.calls.length, 1);
+  assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), true);
   await act(async () => { observers.at(-1).emit(false); });
   assert.equal(api.calls[0].signal.aborted, true);
+  assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), false);
   await act(async () => { t.mock.timers.tick(20_000); });
   assert.equal(api.calls.length, 1);
   await act(async () => { observers.at(-1).emit(true); });
@@ -174,6 +284,7 @@ test("hidden and inactive panels do not poll, and hiding aborts the current sele
     document.dispatchEvent(new window.Event("visibilitychange"));
   });
   assert.equal(api.calls[1].signal.aborted, true);
+  assert.equal(Boolean(host.querySelector("[data-cloud-browser-login-offer]")), false);
   await act(async () => { t.mock.timers.tick(20_000); });
   assert.equal(api.calls.length, 2);
 });

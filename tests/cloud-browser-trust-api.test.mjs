@@ -33,8 +33,26 @@ test("trust metadata projects safe origins and excludes profile/action secrets",
     pending_approvals: [{ request_id: "request/1", origin: "https://shop.example", action_kind: "payment", summary: "支付订单 123", reason: "付款后无法撤回" }],
     login_candidates: [{ id: "candidate/1", origin: "https://mail.example" }],
     privacy_active: true,
+    can_offer_login: false,
   });
   assert.equal(JSON.stringify(result).includes("never-in-state"), false);
+});
+
+test("explicit login offers post only an empty body to the selected session and retain no profile bytes", async () => {
+  const { client, calls } = harness({ ok: true, cookies: "never-in-state", candidate: { origin: "https://other.example" } });
+  const result = await client.offerLogin("session/1");
+  assert.deepEqual(result, { ok: true, data: { ok: true } });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].path, "/v1/browser/sessions/session%2F1/trust/login-offer");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body), {});
+  assert.ok(calls[0].init.signal instanceof AbortSignal);
+});
+
+test("only an explicit true login-offer flag enables the fallback; old gateways default to false", () => {
+  assert.equal(projectBrowserSessionTrust(pending).can_offer_login, false);
+  assert.equal(projectBrowserSessionTrust({ ...pending, can_offer_login: true }).can_offer_login, true);
+  assert.equal(projectBrowserSessionTrust({ ...pending, can_offer_login: "true" }).can_offer_login, false);
 });
 
 test("trust settings/logins/grants use only the owner-scoped collection endpoints", async () => {

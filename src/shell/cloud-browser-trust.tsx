@@ -38,6 +38,8 @@ export function CloudBrowserTrustPanel({
   const trust = useCloudBrowserTrust({ sessionId, active: liveRequested && visible });
   const approval = trust.data?.pending_approvals[0];
   const login = !approval ? trust.data?.login_candidates[0] : undefined;
+  const canOfferLogin = liveRequested && visible && trust.data?.can_offer_login === true &&
+    !trust.data.privacy_active && !approval && !login;
   return (
     <div ref={ref} className="pointer-events-none absolute inset-x-3 top-3 z-30 space-y-2" data-cloud-browser-trust>
       {liveRequested && (userTakeover || trust.data?.privacy_active) && (
@@ -46,6 +48,12 @@ export function CloudBrowserTrustPanel({
             ? tt("隐私输入中：画面采集与录制已暂停。密码和付款信息只由你亲自输入，Agent 无法查看。")
             : tt("你正在接管浏览器。密码和付款信息只由你亲自输入；敏感输入期间会暂停画面采集与录制。")}
         </p>
+      )}
+      {canOfferLogin && (
+        <div className="pointer-events-auto flex flex-col items-end gap-1">
+          <button type="button" disabled={trust.busy} aria-busy={trust.busy} data-cloud-browser-login-offer onClick={() => void trust.offerLogin()} className="rounded-lg bg-stone-900/90 px-3 py-1.5 text-[12px] text-stone-200 outline-none transition-colors hover:bg-stone-800 focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-50">{tt("保存此网站的登录")}</button>
+          {trust.busy && <p role="status" className="rounded-lg bg-stone-900/90 px-2 py-1 text-[11px] text-stone-200">{tt("正在请求保存确认…")}</p>}
+        </div>
       )}
       {(approval || login) && (
         <section aria-labelledby={headingId} className="pointer-events-auto mx-auto max-h-[60vh] max-w-lg space-y-3 overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 text-neutral-900 shadow-xl" data-cloud-browser-trust-prompt={approval ? "approval" : "login"}>
