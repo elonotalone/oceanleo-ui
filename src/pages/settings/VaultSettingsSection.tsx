@@ -75,6 +75,8 @@ export function VaultSettingsSection({ accent }: { accent?: string } = {}) {
 
 function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   const text = useVaultText();
+  const latestText = useRef(text);
+  latestText.current = text;
   const [status, setStatus] = useState<VaultStatus | null>(null);
   const [references, setReferences] = useState<VaultReference[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -98,15 +100,16 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     } else setReferences([]);
   }, []);
 
+  // A label change must not replace the controller of a pending vault write.
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
     active.current = true;
     void refresh(controller.signal).catch((cause: unknown) => {
-      if (!controller.signal.aborted) setError(vaultErrorText(cause, text));
+      if (!controller.signal.aborted) setError(vaultErrorText(cause, latestText.current));
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { active.current = false; controller.abort(); };
-  }, [refresh, text]);
+  }, [refresh]);
 
   async function act(work: (signal: AbortSignal) => Promise<unknown>) {
     const signal = lifetime.current?.signal;
@@ -114,7 +117,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     operation.current = true;
     setBusy(true); setError(""); setNotice("");
     try { await work(signal); await refresh(signal); }
-    catch (cause) { if (!signal.aborted) setError(vaultErrorText(cause, text)); }
+    catch (cause) { if (!signal.aborted) setError(vaultErrorText(cause, latestText.current)); }
     finally { if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); } }
   }
 

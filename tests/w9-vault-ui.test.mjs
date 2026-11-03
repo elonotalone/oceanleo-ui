@@ -256,6 +256,55 @@ test("disabled vaults show their actual state with no add forms", async () => {
   } finally { await main.close(); await site.close(); }
 });
 
+test("changing language during main-vault deletion preserves the request and releases busy state", async () => {
+  const h = harness(); const pending = deferred(); let requestSignal;
+  h.api.deleteVaultSecret = async (id, signal) => {
+    requestSignal = signal;
+    h.state.writes.push({ op: "delete", id });
+    await pending.promise;
+    h.state.vault.secrets = h.state.vault.secrets.filter((secret) => secret.id !== id);
+    return { deleted: true, removing: 0 };
+  };
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, "Delete"));
+    await click(button(view.host, "Delete item"));
+    assert.equal(view.host.querySelector("[data-settings-pane='vault']").getAttribute("aria-busy"), "true");
+    h.state.locale = "zh"; await view.render({});
+    assert.equal(requestSignal.aborted, false, "changing labels must not abort an owner mutation");
+    await act(async () => pending.resolve()); await flush();
+    assert.equal(view.host.querySelector("[data-settings-pane='vault']").getAttribute("aria-busy"), "false");
+    assert.equal(button(view.host, "添加").disabled, false);
+    assert.equal(view.host.textContent.includes("Mail service"), false);
+    assert.equal(h.state.writes.length, 1);
+  } finally { await view.close(); }
+});
+
+test("changing language during project-reference removal keeps its completion and callback", async () => {
+  const h = harness(); const pending = deferred(); let requestSignal; let changed = 0;
+  h.state.references = [reference()];
+  h.api.deleteProjectVaultReference = async (projectId, id, signal) => {
+    requestSignal = signal;
+    h.state.writes.push({ op: "unbind", projectId, id });
+    await pending.promise;
+    h.state.references = [];
+    return { reference: reference() };
+  };
+  const props = { projectId: "project-1", onChanged: () => { changed += 1; } };
+  const view = await mount(h.SiteVaultPanel, props);
+  try {
+    await click(button(view.host, "Remove"));
+    await click(button(view.host, "Remove reference"));
+    h.state.locale = "zh"; await view.render(props);
+    assert.equal(requestSignal.aborted, false, "changing labels must not lose a reference mutation");
+    await act(async () => pending.resolve()); await flush();
+    assert.equal(view.host.querySelector("[data-site-vault-panel]").getAttribute("aria-busy"), "false");
+    assert.equal(view.host.querySelector("[data-vault-reference]"), null);
+    assert.equal(changed, 1);
+    assert.equal(h.state.writes.length, 1);
+  } finally { await view.close(); }
+});
+
 test("database, browser and connector usage is labelled with its purpose and target; browser revocation uses its own API", async () => {
   const h = harness();
   h.state.references = [

@@ -25,6 +25,8 @@ export function SiteVaultPanel(props: SiteVaultPanelProps) {
 
 function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: SiteVaultPanelProps) {
   const text = useVaultText();
+  const latestText = useRef(text);
+  latestText.current = text;
   const id = useId();
   const [vault, setVault] = useState<VaultStatus | null>(null);
   const [references, setReferences] = useState<VaultReference[]>([]);
@@ -51,6 +53,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
     if (!signal.aborted) setLoaded(true);
   }, [projectId]);
 
+  // Keep pending mutations attached to the project when only the locale changes.
   useEffect(() => {
     const load = () => {
       lifetime.current?.abort();
@@ -61,13 +64,13 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       operation.current = false; setBusy(false);
       if (!projectId) { setLoading(false); return; }
       void refresh(controller.signal).catch((cause: unknown) => {
-        if (!controller.signal.aborted) setError(vaultErrorText(cause, text));
+        if (!controller.signal.aborted) setError(vaultErrorText(cause, latestText.current));
       }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     };
     load();
     window.addEventListener(AUTH_STATE_EVENT, load);
     return () => { lifetime.current?.abort(); window.removeEventListener(AUTH_STATE_EVENT, load); };
-  }, [projectId, refresh, text]);
+  }, [projectId, refresh]);
 
   async function act(work: (signal: AbortSignal) => Promise<unknown>) {
     const signal = lifetime.current?.signal;
@@ -79,7 +82,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       await refresh(signal);
       if (!signal.aborted) onChanged?.();
     } catch (cause) {
-      if (!signal.aborted) { setError(vaultErrorText(cause, text)); setLoaded(false); }
+      if (!signal.aborted) { setError(vaultErrorText(cause, latestText.current)); setLoaded(false); }
     } finally {
       if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); }
     }
