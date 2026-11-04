@@ -110,7 +110,7 @@ export function openTaskTimeline(
       url = await taskTimelineWsUrl(taskId, cursor);
     } catch (error) {
       if (current !== generation || closed) return;
-      reportError(error instanceof Event ? error : undefined);
+      reportError(typeof Event !== "undefined" && error instanceof Event ? error : undefined);
       schedule();
       return;
     }
@@ -120,7 +120,7 @@ export function openTaskTimeline(
       next = new WebSocket(url);
     } catch (error) {
       if (current !== generation || closed) return;
-      reportError(error instanceof Event ? error : undefined);
+      reportError(typeof Event !== "undefined" && error instanceof Event ? error : undefined);
       schedule();
       return;
     }
