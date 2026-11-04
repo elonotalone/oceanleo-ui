@@ -28,6 +28,9 @@ const pickerUrl = await compileModule("src/shell/ComposerLibraryPicker.tsx", {
   "./artifact-client": dataModule("export async function listMyArtifacts(options){ return globalThis.__pickerLoad(options); }"),
 });
 const { ComposerLibraryPicker, loadComposerLibraryFiles } = await import(pickerUrl);
+const popoverUrl = await compileModule("src/shell/anchored-popover.tsx", {
+  "./plugin-theme": dataModule("export function pluginWorkbenchStyle(){ return {}; } export function usePluginTheme(){ return {}; } export function usePluginThemePortal(){ return null; }"),
+});
 const composerUrl = await compileModule("src/shell/LeoComposer.tsx", {
   "../i18n/ui/useUI": ui,
   "./LeoEntryButton": nil("LeoEntryButton"),
@@ -58,6 +61,7 @@ const composerUrl = await compileModule("src/shell/LeoComposer.tsx", {
   "./composer-draft": dataModule("export function useComposerDraft(props){ return { attachFiles: props.onAttachFiles, markSubmitted(){} }; }"),
   "./composer-max-height": dataModule("export function useComposerMaxHeight(height){ return height; }"),
   "./ComposerLibraryPicker": pickerUrl,
+  "./anchored-popover": popoverUrl,
   "./composer-skill-slash": dataModule("export function composerSlashAdapter(){} export function useComposerSkillSlash(){ return { onKeyDown(){ return false; }, popover: null }; }"),
 });
 const { LeoComposer } = await import(composerUrl);
@@ -88,10 +92,20 @@ async function mount(component, props) {
   const root = createRoot(container);
   await act(async () => root.render(React.createElement(component, props)));
   await flush();
+  const scopes = () => {
+    const nodes = [container];
+    for (let index = 0; index < nodes.length; index++) {
+      for (const trigger of nodes[index].querySelectorAll("[aria-controls]")) {
+        const panel = document.getElementById(trigger.getAttribute("aria-controls"));
+        if (panel && !panel.hidden && !nodes.includes(panel)) nodes.push(panel);
+      }
+    }
+    return nodes;
+  };
   return {
     container,
-    q: (selector) => container.querySelector(selector),
-    qa: (selector) => [...container.querySelectorAll(selector)],
+    q: (selector) => scopes().map((node) => node.matches(selector) ? node : node.querySelector(selector)).find(Boolean) ?? null,
+    qa: (selector) => [...new Set(scopes().flatMap((node) => [...(node.matches(selector) ? [node] : []), ...node.querySelectorAll(selector)]))],
     async click(node) {
       assert.ok(node, "expected control");
       await act(async () => node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
@@ -106,7 +120,8 @@ const composerProps = (extra = {}) => ({
   showPayerSelector: false, showAppsBar: false, ...extra,
 });
 const help = [{ id: "get-help", label: "找人帮忙", onClick() {} }];
-const labels = (view) => [...view.q('[aria-label="添加附件"]').parentElement.querySelectorAll(".v-fade-up button")].map((button) => button.textContent.trim());
+const sourceMenu = (view) => view.q("[data-composer-attachment-sources]") ?? view.q('[aria-label="添加附件"]').parentElement.querySelector(".v-fade-up");
+const labels = (view) => [...sourceMenu(view).querySelectorAll(":scope > button, :scope > div.relative > button")].map((button) => button.textContent.trim());
 const button = (view, label) => view.qa("button").find((node) => node.textContent.trim() === label);
 
 test.beforeEach(() => {
@@ -232,7 +247,7 @@ test("canonical Recent takes precedence over legacy host files and callbacks", a
   try {
     await openRecent(view);
     await waitFor(() => rows(view).length === 1);
-    assert.doesNotMatch(view.container.textContent, /old-public/);
+    assert.doesNotMatch(view.q("[data-composer-library-picker]").textContent, /old-public/);
     await view.click(rows(view)[0]);
     assert.equal(picked.length, 1);
     assert.deepEqual(legacy, []);
@@ -260,10 +275,10 @@ test("Recent shows loading then its empty state; a returned failure and a thrown
   const view = await mount(LeoComposer, composerProps());
   try {
     await openRecent(view);
-    assert.match(view.container.textContent, /加载中…/);
+    assert.match(view.q("[data-composer-library-picker]").textContent, /加载中…/);
     await act(async () => pending.resolve(result([])));
-    await waitFor(() => view.container.textContent.includes("还没有最近文件"));
-    assert.match(view.container.textContent, /还没有最近文件/);
+    await waitFor(() => view.q("[data-composer-library-picker]").textContent.includes("还没有最近文件"));
+    assert.match(view.q("[data-composer-library-picker]").textContent, /还没有最近文件/);
     assert.equal(view.q('[role="alert"]'), null);
   } finally { await view.unmount(); }
   for (const failure of [async () => ({ ok: false }), async () => { throw new Error("private library offline"); }]) {
@@ -296,7 +311,7 @@ test("Recent filters and deduplicates before limiting to twelve in private Libra
     await waitFor(() => rows(view).length === 12);
     assert.deepEqual(rows(view).map((row) => row.getAttribute("data-composer-library-item")), privateFiles.slice(0, 12).map((file) => file.artifactId));
     assert.match(rows(view)[0].textContent, /photo-1.png/);
-    assert.doesNotMatch(view.container.textContent, /older duplicate/);
+    assert.doesNotMatch(view.q("[data-composer-library-picker]").textContent, /older duplicate/);
   } finally { await view.unmount(); }
 });
 
@@ -332,7 +347,7 @@ for (const cancel of ["back", "trigger", "outside"]) {
       assert.equal(loads[0].signal.aborted, false);
       if (cancel === "back") await view.click(view.q('[aria-label="返回"]'));
       else if (cancel === "trigger") await view.click(view.q('[aria-label="添加附件"]'));
-      else await act(async () => document.body.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true })));
+      else await act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true })));
       assert.equal(loads[0].signal.aborted, true);
       await act(async () => pending.resolve(result([item(1)])));
       await flush();
@@ -360,6 +375,90 @@ test("native mobile sources retain their local actions, followed by Library and 
     assert.equal(calls, 1);
     assert.equal(view.q('[aria-label="添加附件"]').getAttribute("aria-expanded"), "false");
   } finally { await view.unmount(); }
+});
+
+test("viewport: tall file pickers stay visible at Home, task-bottom, scroll and narrow resize positions", async () => {
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect;
+  const originalHeight = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, "scrollHeight");
+  const originalWidth = Object.getOwnPropertyDescriptor(window.HTMLElement.prototype, "scrollWidth");
+  const originalViewport = Object.getOwnPropertyDescriptor(window, "visualViewport");
+  const originalObserver = globalThis.ResizeObserver;
+  const viewport = new window.EventTarget();
+  Object.assign(viewport, { width: 1440, height: 1000, offsetLeft: 0, offsetTop: 0 });
+  Object.defineProperty(window, "visualViewport", { configurable: true, value: viewport });
+  let anchor = { left: 506, top: 241, width: 28, height: 28 };
+  const rect = (left, top, width, height) => ({ left, top, right: left + width, bottom: top + height, x: left, y: top, width, height, toJSON() { return this; } });
+  const panel = (node) => node.hasAttribute("data-composer-attachment-menu") || (node.classList.contains("v-fade-up") && node.querySelector("[data-composer-library-picker]"));
+  const natural = (node) => ({ width: node.querySelector("[data-composer-library-picker]") ? 288 : 224, height: node.querySelector("[data-composer-library-picker]") ? 312 : 124 });
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    if (this.getAttribute("aria-label") === "添加附件") return rect(anchor.left, anchor.top, anchor.width, anchor.height);
+    if (panel(this)) {
+      const size = natural(this);
+      if (this.style.position !== "fixed") return rect(anchor.left, anchor.top - 8 - size.height, size.width, size.height);
+      return rect(parseFloat(this.style.left) || 0, parseFloat(this.style.top) || 0,
+        Math.min(size.width, parseFloat(this.style.maxWidth) || size.width), Math.min(size.height, parseFloat(this.style.maxHeight) || size.height));
+    }
+    if (this.getAttribute("aria-label") === "返回") {
+      const outer = this.closest("[data-anchored-popover], .v-fade-up");
+      const box = outer.getBoundingClientRect(); return rect(box.left + 6, box.top + 6, 28, 28);
+    }
+    return originalRect.call(this);
+  };
+  Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return panel(this) ? natural(this).height : 0; } });
+  Object.defineProperty(window.HTMLElement.prototype, "scrollWidth", { configurable: true, get() { return panel(this) ? natural(this).width : 0; } });
+  class LayoutObserver {
+    static all = new Set();
+    constructor(callback) { this.callback = callback; LayoutObserver.all.add(this); }
+    observe() {}
+    disconnect() { LayoutObserver.all.delete(this); }
+    static flush() { for (const observer of LayoutObserver.all) observer.callback([]); }
+  }
+  globalThis.ResizeObserver = LayoutObserver;
+  globalThis.__pickerLoad = async () => result(Array.from({ length: 15 }, (_, index) => item(index + 1)));
+  let view;
+  const visiblePanel = () => view.q("[data-composer-attachment-menu]") ?? view.q(".v-fade-up");
+  const withinViewport = (label) => {
+    const box = visiblePanel().getBoundingClientRect();
+    const back = view.q('[aria-label="返回"]').getBoundingClientRect();
+    assert.ok(box.top >= viewport.offsetTop + 8, `${label}: picker must not extend above the viewport`);
+    assert.ok(box.bottom <= viewport.offsetTop + viewport.height - 8, `${label}: picker must not extend below the viewport`);
+    assert.ok(box.left >= viewport.offsetLeft + 8 && box.right <= viewport.offsetLeft + viewport.width - 8, `${label}: no horizontal overflow`);
+    assert.ok(back.top >= viewport.offsetTop + 8 && back.bottom <= viewport.offsetTop + viewport.height - 8, `${label}: Back must remain reachable`);
+    assert.equal(visiblePanel().style.position, "fixed", "the picker escapes clipping ancestors through the shared portal");
+    assert.equal(visiblePanel().parentElement, document.body);
+  };
+  try {
+    view = await mount(LeoComposer, composerProps());
+    await openRecent(view); await waitFor(() => rows(view).length === 12);
+    await act(async () => LayoutObserver.flush());
+    withinViewport("Home tall Recent");
+    assert.equal(visiblePanel().getAttribute("data-anchored-placement"), "below", "Home's short menu can open above, then the taller list chooses below");
+    await view.click(view.q('[aria-label="返回"]'));
+    assert.deepEqual(labels(view), ["从本地添加文件", "从资料库添加文件", "最近文件"]);
+    await view.click(button(view, "从资料库添加文件")); await waitFor(() => rows(view).length === 15);
+    await act(async () => LayoutObserver.flush()); withinViewport("Home Library");
+    anchor = { left: 506, top: 940, width: 28, height: 28 };
+    await act(async () => window.dispatchEvent(new window.Event("scroll")));
+    withinViewport("task-bottom Library");
+    assert.equal(visiblePanel().getAttribute("data-anchored-placement"), "above");
+    Object.assign(viewport, { width: 220, height: 240 });
+    anchor = { left: 180, top: 110, width: 28, height: 28 };
+    await act(async () => viewport.dispatchEvent(new window.Event("resize")));
+    withinViewport("narrow resize");
+    assert.ok(parseFloat(visiblePanel().style.maxHeight) < 312, "the available height caps a scrolling list");
+    await view.click(view.q('[aria-label="返回"]'));
+    await view.click(button(view, "最近文件")); await waitFor(() => rows(view).length === 12);
+    await act(async () => LayoutObserver.flush()); withinViewport("narrow Recent");
+    await view.click(view.q('[aria-label="返回"]'));
+    assert.deepEqual(labels(view), ["从本地添加文件", "从资料库添加文件", "最近文件"]);
+  } finally {
+    if (view) await view.unmount();
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect;
+    if (originalHeight) Object.defineProperty(window.HTMLElement.prototype, "scrollHeight", originalHeight); else delete window.HTMLElement.prototype.scrollHeight;
+    if (originalWidth) Object.defineProperty(window.HTMLElement.prototype, "scrollWidth", originalWidth); else delete window.HTMLElement.prototype.scrollWidth;
+    if (originalViewport) Object.defineProperty(window, "visualViewport", originalViewport); else delete window.visualViewport;
+    if (originalObserver) globalThis.ResizeObserver = originalObserver; else delete globalThis.ResizeObserver;
+  }
 });
 
 test("legacy hosts without private-add retain their Recent callback and custom attachment menu entries", async () => {

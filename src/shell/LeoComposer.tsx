@@ -5,8 +5,10 @@ import {
   type DragEvent as ReactDragEvent,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
+  useId,
   useRef,
   useState,
 } from "react";
@@ -44,6 +46,7 @@ import { PuzzleIcon } from "./icons/PuzzleIcon";
 import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";
 import { ComposerLibraryPicker } from "./ComposerLibraryPicker";
+import { AnchoredPopover } from "./anchored-popover";
 import { attachmentFailureText, failedAttachments, stopClickAllowed, stopPressArmed } from "./composer-send-guard";
 import {
   composerSlashAdapter,
@@ -914,26 +917,16 @@ function AttachMenu({
   const [recentOpen, setRecentOpen] = useState(false);
   // 资料库 / 最近文件共用私有引用列表；同一张浮层原地切换，手机无需悬停。
   const [libraryView, setLibraryView] = useState<"library" | "recent" | null>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function onDoc(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-        setRecentOpen(false);
-        setLibraryView(null);
-      }
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, [open]);
+  const menuId = useId();
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const recentAnchorRef = useRef<HTMLButtonElement>(null);
 
   const showRecent = Boolean(onAddAttachments || (recentFiles && onPickRecent));
 
   return (
-    <div ref={rootRef} className="relative">
+    <div className="relative">
       <button
+        ref={anchorRef}
         type="button"
         onClick={() => {
           setOpen((v) => !v);
@@ -942,6 +935,8 @@ function AttachMenu({
         }}
         aria-label={tt("添加附件")}
         aria-expanded={open}
+        aria-controls={menuId}
+        aria-haspopup="dialog"
         className={`flex h-7 w-7 items-center justify-center rounded-full border transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-95 ${
  open
  ? "border-neutral-300 bg-neutral-100 text-neutral-800"
@@ -951,8 +946,26 @@ function AttachMenu({
         <PlusGlyph />
       </button>
 
-      {open && libraryView && onAddAttachments && (
-        <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
+      <AnchoredPopover
+        open={open}
+        id={menuId}
+        anchorRef={anchorRef}
+        onClose={() => {
+          setOpen(false);
+          setRecentOpen(false);
+          setLibraryView(null);
+        }}
+        role="dialog"
+        ariaLabel={tt("添加附件")}
+        preferredPlacement="above"
+        initialFocusSelector={false}
+        trapFocus={false}
+        lockScroll={false}
+        className="z-50 flex min-w-0 flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg"
+        style={{ width: libraryView ? 288 : 224 }}
+        attributes={{ "data-composer-attachment-menu": "" }}
+      >
+        {libraryView && onAddAttachments && (
           <ComposerLibraryPicker
             key={libraryView}
             mode={libraryView}
@@ -965,11 +978,10 @@ function AttachMenu({
               setLibraryView(null);
             }}
           />
-        </div>
-      )}
+        )}
 
-      {open && !libraryView && (
-        <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
+      {!libraryView && (
+        <div className="min-h-0 overflow-y-auto" data-composer-attachment-sources="">
           {/* 手机上「从本地添加文件」被这三项取代 —— 手机里「本地」本来就分成
               相机、相册、文件三处，一颗笼统的「本地」既到不了相机，也让相册要多绕
               两步。三项走的还是同一条 onAttachFiles 通路。浏览器里 nativeActions
@@ -1028,16 +1040,31 @@ function AttachMenu({
             <div
               className="relative"
               onMouseEnter={() => setRecentOpen(true)}
-              onMouseLeave={() => setRecentOpen(false)}
             >
               <MenuRow
+                buttonRef={recentAnchorRef}
+                ariaControls={`${menuId}-recent`}
+                ariaExpanded={recentOpen}
                 icon={<DocGlyph />}
                 label={tt("最近文件")}
                 chevron
                 onClick={() => setRecentOpen((v) => !v)}
               />
-              {recentOpen && (
-                <div className="absolute bottom-0 left-full z-50 ml-1 max-h-[260px] min-w-[240px] overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
+              <AnchoredPopover
+                open={open && recentOpen}
+                id={`${menuId}-recent`}
+                anchorRef={recentAnchorRef}
+                onClose={() => setRecentOpen(false)}
+                side="right"
+                role="dialog"
+                ariaLabel={tt("最近文件")}
+                initialFocusSelector={false}
+                trapFocus={false}
+                lockScroll={false}
+                maxHeight={260}
+                style={{ width: 240 }}
+                className="z-50 overflow-y-auto rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg"
+              >
                   {recentLoading ? (
                     <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载中…")}</p>
                   ) : (recentFiles || []).length === 0 ? (
@@ -1066,8 +1093,7 @@ function AttachMenu({
                       </button>
                     ))
                   )}
-                </div>
-              )}
+              </AnchoredPopover>
             </div>
           )}
 
@@ -1086,6 +1112,7 @@ function AttachMenu({
           ))}
         </div>
       )}
+      </AnchoredPopover>
     </div>
   );
 }
@@ -1095,15 +1122,24 @@ function MenuRow({
   label,
   chevron,
   onClick,
+  buttonRef,
+  ariaControls,
+  ariaExpanded,
 }: {
   icon: ReactNode;
   label: string;
   chevron?: boolean;
   onClick: () => void;
+  buttonRef?: RefObject<HTMLButtonElement | null>;
+  ariaControls?: string;
+  ariaExpanded?: boolean;
 }) {
   return (
     <button
       type="button"
+      ref={buttonRef}
+      aria-controls={ariaControls}
+      aria-expanded={ariaExpanded}
       onClick={onClick}
       className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] text-neutral-700 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100"
     >

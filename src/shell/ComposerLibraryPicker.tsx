@@ -90,8 +90,8 @@ export function ComposerLibraryPicker({
   const attached = new Set(attachedIds ?? []);
 
   return (
-    <div data-composer-library-picker="" data-composer-file-source={mode}>
-      <div className="flex items-center gap-1.5 px-2 pb-1.5">
+    <div className="flex min-h-0 min-w-0 flex-col" data-composer-library-picker="" data-composer-file-source={mode}>
+      <div className="flex shrink-0 items-center gap-1.5 px-2 pb-1.5">
         <button
           type="button"
           onClick={onBack}
@@ -115,7 +115,7 @@ export function ComposerLibraryPicker({
           />
         )}
       </div>
-      <div className="max-h-[260px] min-w-[260px] overflow-y-auto">
+      <div className="max-h-[260px] min-h-0 min-w-0 overflow-y-auto">
         {failed ? (
           <p role="alert" className="px-3 py-2 text-[12px] text-red-600">{tt("资料库加载失败，请稍后重试")}</p>
         ) : files === null ? (
