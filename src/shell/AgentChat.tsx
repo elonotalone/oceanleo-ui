@@ -192,6 +192,7 @@ import {
 import { RoutePageSkeleton } from "./nav-source/route-boundary";
 import {
   answerTaskRequest as answerTimelineRequest,
+  removeQueued as removeTimelineQueued,
   sendTaskMessage as sendTimelineMessage,
   stopTask as stopTimelineTask,
 } from "../lib/task-timeline-api";
@@ -669,6 +670,23 @@ function pickChatKey(conversation: {computerId: string; program: string}): strin
   return `pick:${conversation.computerId}:${conversation.program}`;
 }
 
+/** The composer selection owns the recipient for the next task turn. */
+export function taskTimelineRecipientProgram(
+  conversation: ConversationTarget | undefined,
+  current: TaskProgram | null | undefined,
+): TaskProgram {
+  return conversation?.kind === "native" ? conversation.program : (current || "oceanleo");
+}
+
+/** Keep the same idempotency key when a failed submission is restored for retry. */
+export function taskSubmissionClientMessageId(
+  previous: { key: string; id: string } | null | undefined,
+  key: string,
+  createId: () => string,
+): { key: string; id: string } {
+  return previous?.key === key ? previous : { key, id: createId() };
+}
+
 /** Same cadence as the computer views (`useCloudComputers` CC_POLL_MS). */
 const COMPUTER_REFRESH_MS = 15_000;
 
@@ -826,6 +844,7 @@ function AgentChatInner({
   const [taskTitle, setTaskTitle] = useState<string>(
     () => String(initialTask?.task?.title || initialTitle || ""),
   );
+  const [removedQueuedIds, setRemovedQueuedIds] = useState<Set<string>>(new Set());
   const [input, setInput] = useState("");
   const [gateBusy, setGateBusy] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
@@ -837,6 +856,8 @@ function AgentChatInner({
   const startedRef = useRef(false);
   const freshSessionStartedRef = useRef(false);
   const loadedTaskRef = useRef("");
+  /** A retry of the same task-level submission must reuse its idempotency key. */
+  const pendingTaskSubmissionRef = useRef<{ key: string; id: string } | null>(null);
   const initialTaskRef = useRef(initialTask);
   initialTaskRef.current = initialTask;
   useEffect(() => {
@@ -937,6 +958,11 @@ function AgentChatInner({
   useEffect(() => {
     setBranchTaskId(null);
   }, [explicitTaskId, workspace?.sessionId]);
+
+  useEffect(() => {
+    setRemovedQueuedIds(new Set());
+    pendingTaskSubmissionRef.current = null;
+  }, [taskId]);
 
   const handleVoiceTranscript = useCallback((text: string) => {
     setInput((v) => (v ? v + " " : "") + text);
@@ -1438,10 +1464,30 @@ function AgentChatInner({
     }
   }, [activeSession]);
   const conversationComputer = conversation && conversation.kind !== "oceanleo" ? computerFor(conversation.computerId) : null;
-  const timelineProgram: TaskProgram = (timeline.state?.program || (conversation?.kind === "native" ? conversation.program : null) || "oceanleo") as TaskProgram;
-  const timelineComputerId = timeline.state?.computer.id || (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : undefined);
+  // The dock's conversation is the recipient for the next turn. A pending pick
+  // is deliberately kept in `conversation` while the shared task timeline stays
+  // mounted, so choosing Codex/Claude cannot replace or clear the record.
+  const pickedProgram = conversation?.kind === "native" ? conversation.program : null;
+  const currentProgram = (timeline.state?.program || pickedProgram || "oceanleo") as TaskProgram;
+  const timelineProgram = taskTimelineRecipientProgram(conversation, timeline.state?.program);
+  const timelineComputerId = (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : null)
+    || timeline.state?.computer.id
+    || undefined;
   const timelineMessages = computerTask
-    ? timeline.items.map((message) => ({ ...message, content: message.content || (message.meta?.queued ? tt("已排队，等待当前步骤完成") : message.content) }))
+    ? timeline.items
+      .filter((message) => !(
+        message.meta?.task_timeline_queued === true &&
+        removedQueuedIds.has(String(message.meta?.client_message_id || ""))
+      ))
+      .map((message) => {
+        if (message.meta?.task_timeline_queued !== true) return message;
+        const recipient = String(message.meta?.engine_label || message.meta?.engine || "");
+        const sender = PROGRAM_LABEL[currentProgram] || currentProgram;
+        return {
+          ...message,
+          content: tt("queuedMessageHint", { from: sender, to: recipient }),
+        };
+      })
     : messages;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
@@ -2118,6 +2164,21 @@ function AgentChatInner({
     workspace?.availability,
   ]);
 
+  const removeQueuedMessage = useCallback(async (clientMessageId: string) => {
+    if (!taskId || readOnly || !clientMessageId) return;
+    try {
+      await removeTimelineQueued(taskId, clientMessageId);
+      setRemovedQueuedIds((current) => {
+        if (current.has(clientMessageId)) return current;
+        const next = new Set(current);
+        next.add(clientMessageId);
+        return next;
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    }
+  }, [readOnly, taskId]);
+
   async function send(orgId?: string, executionTarget?: ExecutionTarget) {
     const prompt = input.trim();
     // Allow send when there's an attachment even if the text is empty. But block
@@ -2152,6 +2213,21 @@ function AgentChatInner({
     if (computerTask) {
       setBusy(true);
       let ok = false;
+      const submissionKey = `${taskId}\u0000${effectivePrompt}\u0000${uploaded.map((attachment) => [
+        attachment.artifact_id,
+        attachment.revision_id,
+        attachment.url,
+        attachment.name,
+        attachment.mime,
+      ].map((part) => String(part || "")).join("\u0001")).join("\u0002")}`;
+      const pending = pendingTaskSubmissionRef.current;
+      const submission = taskSubmissionClientMessageId(pending, submissionKey, () =>
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? crypto.randomUUID()
+          : `${taskId}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      );
+      const clientMessageId = submission.id;
+      pendingTaskSubmissionRef.current = submission;
       try {
         const result = await sendTimelineMessage(taskId, {
           program: timelineProgram,
@@ -2159,13 +2235,14 @@ function AgentChatInner({
           text: effectivePrompt,
           attachments: uploaded,
           mode,
-          client_message_id: `${taskId}:${Date.now()}`,
+          client_message_id: clientMessageId,
         });
         ok = result.ok !== false;
       } catch (caught) {
         setError(caught instanceof Error ? caught.message : String(caught));
       }
       setBusy(false);
+      if (ok) pendingTaskSubmissionRef.current = null;
       if (!ok) restoreSubmission();
       return;
     }
@@ -3130,58 +3207,74 @@ function AgentChatInner({
                 accent={accent}
               />
             ) : (
-              <AgentTranscriptBubble
-                key={item.key}
-                message={messageForBubble(item)}
-                timeAbove={timeSeparators.get(item.index)}
-                streaming={timelineRunning && item.index === lastAssistantIdx &&
-                  item.index > lastUserIdx && item.message.meta?.done !== true &&
-                  item.message.meta?.final !== true && item.message.meta?.stopped !== true}
-                stopped={
-                  item.message.meta?.stopped === true ||
-                  ((Boolean(stoppedTaskId) && stoppedTaskId === (taskId || "")) &&
-                    item.index === lastAssistantIdx)
-                }
-                onArtifactOpen={
-                  item.message.meta?.artifact &&
-                  visibleArtifactMessageIds.has(item.message.id)
-                    ? () => openArtifactMessage(item.message)
-                    : undefined
-                }
-                onOpenAttachment={openTaskAttachment}
-                onBranch={
-                  !timelineRunning &&
-                  !readOnly &&
-                  item.message.role === "user" &&
-                  item.message.id > 0
-                    ? () => {
-                        setBranchFromMessageId(item.message.id);
-                        setInput(item.message.content);
-                      }
-                    : undefined
-                }
-                gateActive={item.message.id === activeGateId}
-                gateBusy={gateBusy}
-                onGate={onGate ? handleGate : undefined}
-                taskRunning={timelineRunning}
-                onContinue={
-                  readOnly
-                    ? undefined
-                    : () => {
-                        void sendSuggestion(tt("已确认，请继续刚才的操作"));
-                      }
-                }
-                selectMode={share.active}
-                selected={share.selectedIds.has(item.message.id)}
-                onSelectToggle={() => share.toggle(item.message.id)}
-                onRegenerate={
-                  !readOnly && item.message.role === "assistant"
-                    ? () => regenerateFrom(item.message.id)
-                    : undefined
-                }
-                turnCopyText={turnActions.get(item.key) ?? null}
-                highlightQuery={highlightQuery || undefined}
-              />
+              <div key={item.key} className="contents">
+                <AgentTranscriptBubble
+                  message={messageForBubble(item)}
+                  timeAbove={timeSeparators.get(item.index)}
+                  streaming={timelineRunning && item.index === lastAssistantIdx &&
+                    item.index > lastUserIdx && item.message.meta?.done !== true &&
+                    item.message.meta?.final !== true && item.message.meta?.stopped !== true}
+                  stopped={
+                    item.message.meta?.stopped === true ||
+                    ((Boolean(stoppedTaskId) && stoppedTaskId === (taskId || "")) &&
+                      item.index === lastAssistantIdx)
+                  }
+                  onArtifactOpen={
+                    item.message.meta?.artifact &&
+                    visibleArtifactMessageIds.has(item.message.id)
+                      ? () => openArtifactMessage(item.message)
+                      : undefined
+                  }
+                  onOpenAttachment={openTaskAttachment}
+                  onBranch={
+                    !timelineRunning &&
+                    !readOnly &&
+                    item.message.role === "user" &&
+                    item.message.id > 0
+                      ? () => {
+                          setBranchFromMessageId(item.message.id);
+                          setInput(item.message.content);
+                        }
+                      : undefined
+                  }
+                  gateActive={item.message.id === activeGateId}
+                  gateBusy={gateBusy}
+                  onGate={onGate ? handleGate : undefined}
+                  taskRunning={timelineRunning}
+                  onContinue={
+                    readOnly
+                      ? undefined
+                      : () => {
+                          void sendSuggestion(tt("已确认，请继续刚才的操作"));
+                        }
+                  }
+                  selectMode={share.active}
+                  selected={share.selectedIds.has(item.message.id)}
+                  onSelectToggle={() => share.toggle(item.message.id)}
+                  onRegenerate={
+                    !readOnly && item.message.role === "assistant"
+                      ? () => regenerateFrom(item.message.id)
+                      : undefined
+                  }
+                  turnCopyText={turnActions.get(item.key) ?? null}
+                  highlightQuery={highlightQuery || undefined}
+                />
+                {computerTask && item.message.meta?.task_timeline_queued === true && (() => {
+                  const clientMessageId = String(item.message.meta?.client_message_id || "");
+                  return clientMessageId ? (
+                    <div className="flex justify-end px-1 text-[12px] text-stone-500" data-task-queued-actions={clientMessageId}>
+                      <button
+                        type="button"
+                        className="underline underline-offset-2"
+                        onClick={() => void removeQueuedMessage(clientMessageId)}
+                        disabled={readOnly}
+                      >
+                        {tt("removeQueued")}
+                      </button>
+                    </div>
+                  ) : null;
+                })()}
+              </div>
             ),
           )}
           {presentation.thinking && !computerTask && (
