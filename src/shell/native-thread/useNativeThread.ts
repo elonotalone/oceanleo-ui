@@ -23,6 +23,7 @@ import type { NativeProgram } from "./types";
 import { nativeModelPickerFor } from "./NativeModelPicker";
 import { peekTranscript, readTranscript, rememberTranscript, takeTranscriptPrefetch } from "./transcript-cache";
 import { dimensionsForPreparedFile, originalForPreparedFile } from "../../lib/upload/image-preparation";
+import { useNativeLibraryIntake } from "../native-library-intake";
 
 export type NativeThreadInput = {
   computer: Computer | null;
@@ -80,6 +81,8 @@ export type NativeThread = {
   answer(message: AgentMessage, optionIdOrAnswers: unknown): void;
   composerAttachments: ComposerAttachment[];
   onAttachFiles: ((files: File[]) => void) | undefined;
+  /** Private source picks register a pending tile before reading; optional handoff retains host byte drafts. */
+  onAddAttachments: (items: ComposerAttachment[], handoff?: (files: File[]) => void) => Promise<boolean>;
   onRemoveAttachment: (id: string) => void;
   /** Put a failed attachment into the inbox again. */
   onRetryAttachment?: (id: string) => void;
@@ -221,6 +224,14 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     // held in a draft until the session exists (homepage launch, a picked
     // chat's first send), never sent under another task's session.
     bindUploadsToTaskSession: true,
+  });
+  const libraryIntake = useNativeLibraryIntake({
+    scopeKey: `${computer?.id ?? ""}:${program ?? ""}:${session?.id ?? "draft"}`,
+    attachments: dialog.attachments,
+    attachmentFile: dialog.attachmentFile,
+    addFiles: dialog.addAttachments,
+    removeFile: dialog.removeAttachment,
+    errorText: tt("附件读取失败"),
   });
 
   // Keep the controller on this session's program (never a program strip).
@@ -492,19 +503,19 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   else if (row && !row.installed) blockedReason = tt("这台电脑上还没有安装 {program}，请在设置里安装。", { program: name });
   else if (row && (row.logged_in === false || row.auth === "none")) blockedReason = tt("{program} 还没有登录，请在设置里登录。", { program: name });
   const bindingReady = nativeId ? dialog.activeSession === nativeId : !terminalRun(session);
-  const ready = live && !draft && bindingReady && !blockedReason && !stopping && !dialog.sessionLoading &&
+  const ready = live && !draft && bindingReady && !blockedReason && !libraryIntake.blocked() && !stopping && !dialog.sessionLoading &&
     !dialog.offline && dialog.occupancyLink === true &&
     (occupancyMode === "idle" || occupancyMode === "working" || dialog.busy || protocolWorking || pendingDelivery || retainedControl) && dialog.program === program;
   const connected = live && dialog.occupancyLink === true && !dialog.offline;
 
   const send = useCallback(async (text: string, messageId?: string) => {
-    if (!ready) return false;
+    if (!ready || libraryIntake.blocked()) return false;
     try {
       return (await dialog.send(text, messageId)) === true;
     } catch {
       return false;
     }
-  }, [ready, dialog]);
+  }, [ready, dialog, libraryIntake.blocked]);
 
   // Queued first prompt: shown now, sent the moment the session and link are
   // bound, never handed back silently (unsent → a reason and a retry).
@@ -513,6 +524,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const attachmentsRef = useRef(dialog.attachments);
   attachmentsRef.current = dialog.attachments;
   const queue = useCallback((text: string) => {
+    if (libraryIntake.blocked()) return false;
     const current = pendingRef.current;
     if (current && !current.unsent) return false;
     // Text and its files go together: a failed file is retried or removed first (F3).
@@ -529,7 +541,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     pendingRef.current = next;
     setPending(next);
     return true;
-  }, []);
+  }, [libraryIntake.blocked]);
   const settlePending = useCallback((key: number, unsent: string | null) => {
     const current = pendingRef.current;
     if (!current || current.key !== key) return;
@@ -654,7 +666,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
 
   // Files that went into the queued prompt ride on its bubble, not in the composer.
   const queuedFiles = pending?.attachmentIds;
-  const composerAttachments = useMemo(() => dialog.attachments
+  const nativeComposerAttachments = useMemo(() => dialog.attachments
     .filter((item) => item.state === "error" || !queuedFiles?.includes(item.id))
     .map((item): ComposerAttachment => {
       const originalFile = originalForPreparedFile(dialog.attachmentFile(item.id));
@@ -679,6 +691,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       // W6: its inbox copy (once uploaded under the session) opens any file type in the sidebar.
       ...(item.archive ? { nativeArchive: item.archive } : {}),
     }; }), [dialog.attachments, dialog.attachmentFile, queuedFiles, tt]);
+  const composerAttachments = libraryIntake.merge(nativeComposerAttachments);
 
   // The queued prompt is the user's bubble until the real one (sent) arrives.
   const pendingShown = Boolean(pending) &&
@@ -778,8 +791,9 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     answer,
     composerAttachments,
     onAttachFiles: live ? dialog.addAttachments : undefined,
-    onRemoveAttachment: dialog.removeAttachment,
-    onRetryAttachment: dialog.retryAttachment,
+    onAddAttachments: libraryIntake.add,
+    onRemoveAttachment: (id) => { if (!libraryIntake.remove(id)) dialog.removeAttachment(id); },
+    onRetryAttachment: (id) => { if (!libraryIntake.retry(id)) dialog.retryAttachment?.(id); },
     modelPicker,
     hasOlder: showArchive ? archiveHasOlder(olderArchive ?? archive) : dialog.hasOlder,
     loadOlder,
