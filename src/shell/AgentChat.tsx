@@ -1298,7 +1298,7 @@ function AgentChatInner({
   useEffect(() => {
     let alive = true;
     const nativeSessions = sessionsRef.current.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
-    if (!taskId || !nativeSessions.length) {
+    if ((taskMode.taskId === taskId && taskMode.computer) || !taskId || !nativeSessions.length) {
       setArchivedNativeFrames((current) => current.length ? [] : current);
       return () => { alive = false; };
     }
@@ -1313,7 +1313,7 @@ function AgentChatInner({
       setArchivedNativeFrames(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
     });
     return () => { alive = false; };
-  }, [taskId, nativeArchiveKey]);
+  }, [taskId, nativeArchiveKey, taskMode.taskId, taskMode.computer]);
   const archivedNativeSources = useMemo<NativeThreadSource[]>(
     () => archivedNativeFrames.flatMap(({ session: read, frames }) => {
       // The row as known now (a native id learned since the read), same saved frames.

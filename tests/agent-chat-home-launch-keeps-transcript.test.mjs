@@ -1330,10 +1330,10 @@ test("resolved upload errors clear only their own current message and preserve t
   } finally { await act(async () => root.unmount());host.remove();delete globalThis.__uploadErrorHooks; }
 });
 
-test("saved native transcripts are read once per saved copy, not on every session-list identity change", async () => {
-  // V2/W2 2026-11-03: one open native task re-read its saved transcript on every
-  // new session-list array (native id report, list re-read) — 7 reads in 3 s with
-  // nothing new saved, and 2572 reads in the worst trace.
+test("computer task timeline does not reread hidden native transcripts on session-list changes", async () => {
+  // D5/I1: a computer task renders the server-owned task timeline. Its native
+  // session rows remain auxiliary metadata, so the hidden native panes must not
+  // fetch per-session transcripts on every list identity change.
   const backend = makeBackend();
   backend.api.getTask = async (id) => ({ ok: true, data: { task: { id, status: "completed", title: "saved native", site_id: "excel", mode: "computer", session_id: null }, messages: [], artifacts: [] } });
   globalThis.__backend = backend;
@@ -1353,17 +1353,8 @@ test("saved native transcripts are read once per saved copy, not on every sessio
   window.history.replaceState(null, "", "/tasks/t_arch");
   const view = await mountHome({ taskId: "t_arch", initialPrompt: undefined });
   try {
-    for (let i = 0; i < 40 && !transcriptReads(); i++) await settle(20);
     await settle(80);
-    assert.equal(transcriptReads(), 1, "the saved copy is read once on open");
-    const report = () => globalThis.__threadInputs.filter((input) => input.session?.id === "cts_arch").at(-1)?.onNativeSessionChange;
-    assert.equal(typeof report(), "function");
-    // The open conversation learns (and re-reports) its native id: same saved copy.
-    await act(async () => report()("cts_arch", "nat-2"));
-    await settle(60);
-    await act(async () => report()("cts_arch", "nat-2"));
-    await settle(60);
-    assert.equal(transcriptReads(), 1, "a native id report does not re-read the saved copy");
+    assert.equal(transcriptReads(), 0, "the task timeline owns the saved copy");
     // The list is read again (an unknown conversation link) and nothing new was saved.
     const listsBefore = listReads();
     await act(async () => {
@@ -1373,8 +1364,8 @@ test("saved native transcripts are read once per saved copy, not on every sessio
     for (let i = 0; i < 40 && listReads() === listsBefore; i++) await settle(20);
     await settle(80);
     assert.ok(listReads() > listsBefore, "the list was really read again");
-    assert.equal(transcriptReads(), 1, "an identical list re-read does not re-read the saved copy");
-    // Something new was saved: the next list read brings exactly one fresh read.
+    assert.equal(transcriptReads(), 0, "an identical list re-read does not open a hidden native pane");
+    // Something new was saved: the task timeline still owns the copy.
     savedAt = "2026-11-03T10:05:00.000Z";
     const listsAgain = listReads();
     await act(async () => {
@@ -1382,9 +1373,8 @@ test("saved native transcripts are read once per saved copy, not on every sessio
       window.dispatchEvent(new window.Event("popstate"));
     });
     for (let i = 0; i < 40 && listReads() === listsAgain; i++) await settle(20);
-    for (let i = 0; i < 40 && transcriptReads() < 2; i++) await settle(20);
     await settle(80);
-    assert.equal(transcriptReads(), 2, "a newer saved copy is read once");
+    assert.equal(transcriptReads(), 0, "a newer saved copy remains server-timeline data");
   } finally {
     globalThis.__ccRespond = undefined;
     await view.unmount();
