@@ -44,7 +44,7 @@ test("an unknown/invalid event time cannot stamp a conversation now", () => {
   }
 });
 
-test("only confirmed execution is working; waiting and stuck are never now", () => {
+test("only confirmed execution is working; waiting and failed are never now", () => {
   assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "running" }), false);
   assert.equal(isTaskWorking({ status: "running", mode: "computer", computer_run_status: "waiting_user", open_turn: true }), false);
   assert.equal(isTaskWorking({ status: "running", mode: "computer", open_turn: true, working: false }), false);
@@ -85,8 +85,8 @@ test("a failed session list keeps its task-backed conversations visible without 
   assert.equal(canDeleteHistoryEntry(entries[0]), false);
 });
 
-test("explicit activity states keep stuck, user-waiting and idle out of working", () => {
-  for (const activity_state of ["stuck", "waiting_user", "finishing", "idle"]) {
+test("explicit activity states keep failed, user-waiting and idle out of working", () => {
+  for (const activity_state of ["failed", "waiting_user", "finishing", "idle"]) {
     assert.equal(isTaskWorking({ status: "running", mode: "computer", working: true, open_turn: true, activity_state }), false, activity_state);
   }
   assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "working" }), true);
@@ -94,32 +94,32 @@ test("explicit activity states keep stuck, user-waiting and idle out of working"
   assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "working", open_turn: false }), true);
 });
 
-test("activity state follows current bound work without resurrecting an old stuck run", () => {
+test("activity state follows current bound work without resurrecting an old failed run", () => {
   const at = "2026-10-15T06:30:00Z";
   const session = (id, extra = {}) => ({
     id, site_id: "oceanleo", app_id: "home-agent", status: "active", title: id, snapshot: {},
     schema_version: 1, revision: 1, created_at: "2026-10-01T00:00:00Z", last_activity_at: at, ...extra,
   });
   const entries = mergeHistoryEntries([
-    session("s-stuck", { task_id: "t-stuck" }),
+    session("s-failed", { task_id: "t-failed" }),
     session("s-idle", { task_id: "t-current" }),
     session("s-active", { task_id: "t-stuck-root" }),
-    session("s-raw", { activity_state: "stuck" }),
+    session("s-raw", { activity_state: "failed" }),
   ], [
-    task("t-stuck", { session_id: "s-stuck", activity_state: "stuck", working: true, open_turn: true, last_activity_at: at }),
-    task("t-old", { session_id: "s-idle", activity_state: "stuck", created_at: "2026-10-01T00:00:00Z" }),
+    task("t-failed", { session_id: "s-failed", activity_state: "failed", working: true, open_turn: true, last_activity_at: at }),
+    task("t-old", { session_id: "s-idle", activity_state: "failed", created_at: "2026-10-01T00:00:00Z" }),
     task("t-current", { session_id: "s-idle", activity_state: "idle", created_at: "2026-10-02T00:00:00Z" }),
-    task("t-stuck-root", { session_id: "s-active", activity_state: "stuck" }),
+    task("t-failed-root", { session_id: "s-active", activity_state: "failed" }),
     task("t-active", { session_id: "s-active", activity_state: "working", working: true, last_activity_at: at }),
   ]);
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
-  assert.equal(byId.get("s-stuck").activity_state, "stuck");
-  assert.equal(byId.get("s-stuck").working, undefined);
-  assert.equal(historyEntryTimestamp(byId.get("s-stuck")), at);
+  assert.equal(byId.get("s-failed").activity_state, "failed");
+  assert.equal(byId.get("s-failed").working, undefined);
+  assert.equal(historyEntryTimestamp(byId.get("s-failed")), at);
   assert.equal(byId.get("s-idle").activity_state, "idle");
   assert.equal(byId.get("s-active").activity_state, "working");
   assert.equal(byId.get("s-active").working, true);
-  assert.equal(byId.get("s-raw").activity_state, "stuck");
+  assert.equal(byId.get("s-raw").activity_state, "failed");
   assert.equal(entries[0].id, "s-active");
 });
 
@@ -139,13 +139,13 @@ test("finishing retains an open turn without working or moving its activity time
   assert.equal(formatHistoryActivityTime(at, Boolean(finishing.working), new Date("2026-11-04T00:00:00Z"), "en"), "Oct 15");
 });
 
-test("bound finishing is visible over selected idle but preserves selected stuck or waiting attention", () => {
+test("bound finishing is visible over selected idle but preserves selected failed or waiting attention", () => {
   const at = "2026-10-15T06:30:00Z";
-  const sessions = ["idle", "stuck", "waiting_user"].map((state) => ({
+  const sessions = ["idle", "failed", "waiting_user"].map((state) => ({
     id: `session-${state}`, task_id: `selected-${state}`, site_id: "oceanleo", app_id: "home-agent", status: "active",
     schema_version: 1, revision: 1, created_at: "2026-10-01T00:00:00Z", last_activity_at: at,
   }));
-  const tasks = ["idle", "stuck", "waiting_user"].flatMap((state) => [
+  const tasks = ["idle", "failed", "waiting_user"].flatMap((state) => [
     task(`older-${state}`, { session_id: `session-${state}`, activity_state: "finishing", working: false, open_turn: true,
       created_at: "2026-10-01T00:00:00Z", last_activity_at: at }),
     task(`selected-${state}`, { session_id: `session-${state}`, activity_state: state, working: false,
@@ -153,7 +153,7 @@ test("bound finishing is visible over selected idle but preserves selected stuck
   ]);
   const byId = new Map(mergeHistoryEntries(sessions, tasks).map((entry) => [entry.id, entry]));
   assert.equal(byId.get("session-idle").activity_state, "finishing");
-  assert.equal(byId.get("session-stuck").activity_state, "stuck");
+  assert.equal(byId.get("session-failed").activity_state, "failed");
   assert.equal(byId.get("session-waiting_user").activity_state, "waiting_user");
   for (const entry of byId.values()) {
     assert.equal(entry.working, undefined);

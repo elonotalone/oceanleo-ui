@@ -221,15 +221,15 @@ test("working rows stay above pinned idle rows in the rendered sidebar", async (
   }
 });
 
-test("explicit stuck state renders a marker instead of now and preserves the true hover time", async () => {
+test("explicit failed state has no stuck marker and preserves the true hover time", async () => {
   const previousSessions = globalThis.__workingSessions;
   const previousTasks = globalThis.__workingTasks;
   const at = "2026-10-15T06:30:00Z";
-  globalThis.__workingSessions = [session("stuck-session", "旧电脑任务", {
-    task_id: "stuck-root", pinned: true, last_activity_at: at,
+  globalThis.__workingSessions = [session("failed-session", "旧电脑任务", {
+    task_id: "failed-root", pinned: true, last_activity_at: at,
   })];
   globalThis.__workingTasks = [
-    task("stuck-root", "旧电脑任务", { session_id: "stuck-session", mode: "computer", status: "running",
+    task("failed-root", "旧电脑任务", { session_id: "failed-session", mode: "computer", status: "running",
       working: false, open_turn: false, activity_state: "idle", last_activity_at: at }),
     task("actually-working", "真正执行中", { mode: "computer", working: true, open_turn: true,
       activity_state: "working", last_activity_at: "2026-10-16T06:30:00Z" }),
@@ -242,27 +242,27 @@ test("explicit stuck state renders a marker instead of now and preserves the tru
     document.documentElement.lang = "en";
     await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "explicit-stuck-state" })); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    assert.equal(row(container, "stuck-session").querySelector("[data-history-stuck]"), null);
-    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "stuck-root" ? { ...item, activity_state: "stuck" } : item);
+    assert.equal(row(container, "failed-session").querySelector("[data-history-stuck]"), null);
+    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "failed-root" ? { ...item, activity_state: "failed" } : item);
     await act(async () => {
       window.dispatchEvent(new window.Event("oceanleo:history-changed"));
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
-    assert.equal(row(container, "stuck-session").querySelector("[data-history-stuck]")?.textContent, "卡住");
+    assert.equal(row(container, "failed-session").querySelector("[data-history-stuck]"), null);
     assert.deepEqual(workingIds(container), ["actually-working"]);
     assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "actually-working");
-    const frame = row(container, "stuck-session").closest("[data-history-row-frame]");
+    const frame = row(container, "failed-session").closest("[data-history-row-frame]");
     await act(async () => frame.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
     const time = document.querySelector("[data-history-bubble-time]");
     assert.equal(time.getAttribute("datetime"), at);
     assert.notEqual(time.textContent, "now");
-    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "stuck-root" ? { ...item, activity_state: "idle" } : item);
+    globalThis.__workingTasks = globalThis.__workingTasks.map((item) => item.id === "failed-root" ? { ...item, activity_state: "idle" } : item);
     await act(async () => {
       window.dispatchEvent(new window.Event("oceanleo:history-changed"));
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
-    assert.equal(row(container, "stuck-session").querySelector("[data-history-stuck]"), null, "state-only updates clear the marker without a time change");
+    assert.equal(row(container, "failed-session").querySelector("[data-history-stuck]"), null, "state-only updates preserve the no-stuck contract without a time change");
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
@@ -310,7 +310,7 @@ test("finishing shows confirmation instead of now, preserves time and can resume
     task("finishing-root", "正在确认的任务", { session_id: "finishing-session", mode: "computer", status: "running", working: true,
       open_turn: true, activity_state: "finishing", computer_run_status: "finishing", last_activity_at: at }),
     task("active-work", "实际工作", { mode: "computer", activity_state: "working", working: true, last_activity_at: at }),
-    task("still-stuck", "卡住的任务", { mode: "computer", activity_state: "stuck", working: true, open_turn: true, last_activity_at: at }),
+    task("still-failed", "失败的任务", { mode: "computer", activity_state: "failed", working: true, open_turn: true, last_activity_at: at }),
   ];
   const { createRoot } = await import("react-dom/client");
   const container = document.createElement("div");
@@ -321,7 +321,7 @@ test("finishing shows confirmation instead of now, preserves time and can resume
     await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "finishing-state" })); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     assert.equal(row(container, "finishing-session").querySelector("[data-history-finishing]")?.textContent, "正在确认结束");
-    assert.equal(row(container, "still-stuck").querySelector("[data-history-stuck]")?.textContent, "卡住");
+    assert.equal(row(container, "still-failed").querySelector("[data-history-stuck]"), null);
     assert.deepEqual(workingIds(container), ["active-work"]);
     assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "active-work");
     const frame = row(container, "finishing-session").closest("[data-history-row-frame]");
