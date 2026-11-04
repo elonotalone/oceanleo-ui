@@ -3745,14 +3745,14 @@ function AgentChatInner({
   const surfaceSessions = surfaceIds
     .map((id) => sessions.find((session) => session.id === id))
     .filter((session): session is ComputerTaskSession => Boolean(session));
-  const cloudShown = !conversation || conversation.kind === "oceanleo";
+  const cloudShown = computerTask || !conversation || conversation.kind === "oceanleo";
   const leftPane = (
     <div className="flex h-full min-h-0 flex-col">
       <div className={cloudShown ? "relative min-h-0 flex-1" : "hidden"} hidden={!cloudShown}>{stream}</div>
-      {nativeStream && (
+      {nativeStream && !computerTask && (
         <div className={nativeChat ? "flex min-h-0 flex-1 flex-col" : "hidden"} hidden={!nativeChat}>{nativeStream}</div>
       )}
-      {surfaceSessions.map((session) => {
+      {!computerTask && surfaceSessions.map((session) => {
         const active = surfaceActive && activeSession?.id === session.id;
         return (
           <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-computer-surface={session.id}>
@@ -3765,7 +3765,7 @@ function AgentChatInner({
           </div>
         );
       })}
-      {surfaceActive && (
+      {!computerTask && surfaceActive && (
         <div className="shrink-0 border-t border-stone-100">
           <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
             {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}
