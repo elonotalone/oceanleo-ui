@@ -1,6 +1,7 @@
 "use client";
 
-import { accessToken, gatewayBase } from "./auth/index.ts";
+import { accessToken } from "./auth/client";
+import { gatewayBase } from "./auth/config";
 import { cloudComputerRequest } from "./cloud-computer-api";
 
 export type TaskProgram = "claude" | "codex" | "cursor" | "hermes" | "oceanleo";
