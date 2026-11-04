@@ -73,7 +73,6 @@ import {
   historyEntryTimestamp,
   historyPollDelayMs,
   isHistoryEntryFinishing,
-  isHistoryEntryStuck,
   isHistoryEntryWorking,
   isRestorableAppSession,
   isShellTask,
@@ -1136,7 +1135,6 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                       </svg>
                     )}
                     <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>
-                    {isHistoryEntryStuck(entry) && <span data-history-stuck="" className="shrink-0 text-[11px] text-neutral-500">{tt("卡住")}</span>}
                     {isHistoryEntryFinishing(entry) && <span data-history-finishing="" className="shrink-0 text-[11px] text-neutral-500">{tt("正在确认结束")}</span>}
                     {entry.created_by === "leo" && <LeoCreatedMark />}
                     {favorite && (
