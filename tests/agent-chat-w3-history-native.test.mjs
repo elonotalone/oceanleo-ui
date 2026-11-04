@@ -257,7 +257,8 @@ async function settle(ms = 40) {
 }
 
 async function mount(props, { task = null, sessions = [] } = {}) {
-  window.history.replaceState(null, "", "/history?task=t1");
+  const query = props.computerSession ? `&computerSession=${encodeURIComponent(props.computerSession)}` : "";
+  window.history.replaceState(null, "", `/history?task=t1${query}`);
   globalThis.__task = task;
   globalThis.__sessions = sessions;
   globalThis.__listFails = 0;
@@ -267,7 +268,8 @@ async function mount(props, { task = null, sessions = [] } = {}) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  await act(async () => { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...props })); });
+  const { computerSession: _computerSession, ...agentProps } = props;
+  await act(async () => { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...agentProps })); });
   // Longer than the first poll (POLL_FIRST_MS = 120): a finished seeded task is never polled.
   await settle(200);
   return {
@@ -324,11 +326,11 @@ test("a seed for another task is ignored", async () => {
 });
 
 test("a refused native send restores each message once and preserves the current draft", async () => {
-  const task = { task: { id: "t1", status: "completed", title: "elon · codex", mode: "computer", plan: { computer_workspace: { version: 1 } } }, messages: [], artifacts: [] };
+  const task = { task: { id: "t1", status: "completed", title: "elon · codex", mode: "agent", plan: {} }, messages: [], artifacts: [] };
   const sessions = [{ id: "cts_codex", task_id: "t1", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "codex",
     native_session_id: "nat-1", created_at: "", updated_at: "2026-10-30T11:00:00Z", sync_status: "saved" }];
   globalThis.__thread = { messages: [], restoredDraft: null };
-  const view = await mount({ taskId: "t1" }, { task, sessions });
+  const view = await mount({ taskId: "t1", computerSession: "cts_codex" }, { task, sessions });
   try {
     assert.ok(view.composer("native"), "the native composer is shown");
     globalThis.__thread = { messages: [], restoredDraft: { seq: 1, text: "我刚打的字" } };
