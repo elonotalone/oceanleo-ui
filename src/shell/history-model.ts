@@ -25,13 +25,13 @@ function activityStateOf(record: unknown): AgentTask["activity_state"] {
   if (!record || typeof record !== "object") return undefined;
   const value = record as { activity_state?: unknown; computer_run_status?: unknown; run_status?: unknown; status?: unknown };
   const state = value.activity_state;
-  if (state === "waiting_user" || state === "finishing" || state === "stuck" || state === "idle") return state;
+  if (state === "waiting_user" || state === "finishing" || state === "failed" || state === "offline" || state === "idle") return state;
   if (value.status === "finishing" || value.computer_run_status === "finishing" || value.run_status === "finishing") return "finishing";
   return state === "working" ? state : undefined;
 }
 
 /**
- * 卡住、等待用户、确认结束和闲置不算执行，即使旧的运行标记尚未清理。
+ * 失败、离线、等待用户、确认结束和闲置不算执行，即使旧的运行标记尚未清理。
  * 原生任务只接受明确的 working/活动状态；open_turn 也包含待处理输入和结束确认，只表示执行权限。
  * 旧网关的云端任务保留 status 回退，原生会话单凭 running 不算执行。
  * 完成、失败、停止、session 的 active/archived 本身都不表示正在工作。
@@ -45,7 +45,7 @@ export function isTaskWorking(
   },
 ): boolean {
   if (task.status === "finishing" || task.computer_run_status === "finishing" || task.activity_state === "finishing" ||
-      task.activity_state === "stuck" || task.activity_state === "waiting_user" || task.activity_state === "idle") return false;
+      task.activity_state === "failed" || task.activity_state === "offline" || task.activity_state === "waiting_user" || task.activity_state === "idle") return false;
   if (typeof task.working === "boolean") return task.working;
   if (task.computer_run_status === "waiting_user") return false;
   if (task.activity_state === "working") return true;
@@ -56,8 +56,12 @@ export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
   return entry.working === true;
 }
 
-export function isHistoryEntryStuck(entry: HistoryListEntry): boolean {
-  return !isHistoryEntryWorking(entry) && entry.activity_state === "stuck";
+export function isHistoryEntryFailed(entry: HistoryListEntry): boolean {
+  return !isHistoryEntryWorking(entry) && (entry.activity_state === "failed" || entry.activity_state === "offline");
+}
+
+export function isHistoryEntryOffline(entry: HistoryListEntry): boolean {
+  return !isHistoryEntryWorking(entry) && entry.activity_state === "offline";
 }
 
 export function isHistoryEntryFinishing(entry: HistoryListEntry): boolean {
@@ -314,7 +318,7 @@ export function mergeHistoryEntries(
       const selectedState = activityStateOf(stateTask);
       const finishing = finishingSessionIds.has(session.id) || Boolean(session.task_id && finishingTaskIds.has(session.task_id));
       const activity_state = working ? "working"
-        : selectedState === "stuck" || selectedState === "waiting_user" ? selectedState
+        : selectedState === "failed" || selectedState === "offline" || selectedState === "waiting_user" ? selectedState
         : finishing ? "finishing" : selectedState ?? ownState;
       return {
         kind: "session",

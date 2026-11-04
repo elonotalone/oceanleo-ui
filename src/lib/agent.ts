@@ -342,7 +342,7 @@ export interface AgentTask {
    */
   computer_run_status?: "running" | "waiting_user" | "finishing";
   /** Optional runtime projection; activity age alone never determines this state. */
-  activity_state?: "working" | "waiting_user" | "finishing" | "stuck" | "idle";
+  activity_state?: "working" | "waiting_user" | "finishing" | "failed" | "offline" | "idle";
   /** True only for confirmed active work; finishing may still retain an open turn. */
   working?: boolean;
   /** Execution rights, including accepted pending input and finishing; never proof of work. */

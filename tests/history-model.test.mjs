@@ -7,6 +7,8 @@ import {
   HISTORY_WORKING_POLL_MS,
   historyPollDelayMs,
   isHistoryEntryWorking,
+  isHistoryEntryFailed,
+  isHistoryEntryOffline,
   isRestorableAppSession,
   isTaskWorking,
   mergeHistoryEntries,
@@ -73,6 +75,26 @@ test("只有确认在执行才算工作中；等待用户和 session.active 不�
   // Idle rows carry no extra key, so list equality / snapshots stay as before.
   assert.equal("working" in entries.find((entry) => entry.id === "s-idle"), false);
   assert.ok(HISTORY_WORKING_POLL_MS <= 5_000, "the mark stops within a few seconds of the run ending");
+});
+
+test("managed session failures remain actionable states and never use the removed stuck vocabulary", () => {
+  const entries = mergeHistoryEntries(
+    [
+      { ...baseSession, id: "failed-session", activity_state: "failed", reason: "dialog_detached" },
+      { ...baseSession, id: "offline-session", activity_state: "offline", reason: "computer_offline" },
+    ],
+    [],
+  );
+  const failed = entries.find((entry) => entry.id === "failed-session");
+  const offline = entries.find((entry) => entry.id === "offline-session");
+  assert.ok(failed && offline);
+  assert.equal(isHistoryEntryFailed(failed), true);
+  assert.equal(isHistoryEntryOffline(failed), false);
+  assert.equal(isHistoryEntryFailed(offline), true);
+  assert.equal(isHistoryEntryOffline(offline), true);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "failed" }), false);
+  assert.equal(isTaskWorking({ status: "running", mode: "computer", activity_state: "offline" }), false);
+  assert.doesNotMatch(JSON.stringify(entries), /stuck/);
 });
 
 test("C-7: 侧栏任务行只有工作中动效，不再有红黄绿灰状态点；工作状态变化会刷新列表", () => {
