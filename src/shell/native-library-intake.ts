@@ -166,14 +166,16 @@ export function useNativeLibraryIntake(options: {
     publish(); read(entry); return true;
   }, [publish, read]);
   const merge = (native: ComposerAttachment[]): ComposerAttachment[] => {
-    const owned = new Set(entries.current.flatMap((entry) => entry.nativeIds.length ? entry.nativeIds : nativeIds(entry)));
-    const picked = entries.current.flatMap((entry): ComposerAttachment[] => {
+    const cancelled = new Set(entries.current.filter((entry) => entry.cancelled).flatMap((entry) => entry.nativeIds.length ? entry.nativeIds : nativeIds(entry)));
+    const pending = entries.current.flatMap((entry): ComposerAttachment[] => {
       if (entry.cancelled) return [];
       const ids = entry.nativeIds.length ? entry.nativeIds : nativeIds(entry);
-      if (entry.phase === "registered" || (entry.phase === "handoff" && ids.length)) return native.filter((item) => ids.includes(item.id));
+      if (entry.phase === "registered" || (entry.phase === "handoff" && ids.length)) return [];
       return [{ ...entry.display, id: entry.id, uploading: entry.phase !== "failed", ...(entry.phase === "failed" ? { failed: true, failedReason: latest.current.errorText } : {}), openingDisabled: true }];
     });
-    return [...native.filter((item) => !owned.has(item.id)), ...picked];
+    // Native registration order is also prompt order. Source selection order
+    // only determines the temporary placeholders that have not registered yet.
+    return [...native.filter((item) => !cancelled.has(item.id)), ...pending];
   };
   return { add, blocked, remove, retry, merge };
 }

@@ -266,3 +266,54 @@ test("a concurrent local add can consume slot20 before its commit; a fresh full 
     assert.equal(view.send.disabled,false);assert.deepEqual(globalThis.__nlRemoved,['native-20']);
   }finally{held.resolve(bytes('selected.txt'));await view.unmount();}
 });
+
+test("ready order matches native prompt order after a partial failure and retry",async()=>{
+  // UC-NONE: ready attachment presentation order; no authorization or storage boundary is asserted.
+  const failedRead=gate(),retryRead=gate();let reads=0;
+  globalThis.__nlRead=item=>item.artifactId==='a'?(++reads===1?failedRead.promise:retryRead.promise):Promise.resolve(bytes('B.txt'));
+  const view=await mount();try{
+    let selected;await act(async()=>{selected=pick(view,[source('a','ra','A.txt'),source('b','rb','B.txt')]);});
+    await act(async()=>failedRead.reject(Error('A unavailable')));await until(()=>globalThis.__nlNative.length===1);await complete('native-1');
+    assert.equal(await selected,false);assert.equal(view.send.disabled,true,'failed sibling stays fenced');
+    const failed=view.thread.composerAttachments.find(item=>item.failed);assert.equal(failed.name,'A.txt');
+    await act(async()=>view.thread.onRetryAttachment(failed.id));assert.equal(view.send.disabled,true,'retry stays fenced');
+    await act(async()=>retryRead.resolve(bytes('A.txt')));await until(()=>globalThis.__nlNative.length===2);await complete('native-2');
+    assert.equal(view.send.disabled,false,'ordering assertion covers ready/send-enabled state');
+    assert.deepEqual(globalThis.__nlNative.map(item=>item.name),['B.txt','A.txt'],'controller append order is left unchanged');
+    assert.deepEqual(view.thread.composerAttachments.map(item=>item.id),globalThis.__nlNative.map(item=>item.id),'ready order must match controller attachment order after partial retry');
+    assert.equal(globalThis.__nlSends,0,'no model prompt is sent for this source proof');
+  }finally{failedRead.resolve(bytes('A.txt'));retryRead.resolve(bytes('A.txt'));await view.unmount();}
+});
+
+test("ready order preserves local and Library interleaving from the native array",async()=>{
+  // UC-NONE: UI merge order within one authorized composer, not an RLS/owner assertion.
+  const view=await mount();try{
+    const localBefore=bytes('local-before.txt'),localAfter=bytes('local-after.txt');
+    await act(async()=>view.thread.onAttachFiles([localBefore]));await complete('native-1');
+    let first;await act(async()=>{first=pick(view,[source('a','ra','A.txt')]);});await until(()=>globalThis.__nlNative.length===2);await complete('native-2');assert.equal(await first,true);
+    await act(async()=>view.thread.onAttachFiles([localAfter]));await complete('native-3');
+    let second;await act(async()=>{second=pick(view,[source('b','rb','B.txt')]);});await until(()=>globalThis.__nlNative.length===4);await complete('native-4');assert.equal(await second,true);
+    assert.equal(view.send.disabled,false,'ordering assertion covers ready/send-enabled state');
+    assert.deepEqual(globalThis.__nlNative.map(item=>item.name),['local-before.txt','A.txt','local-after.txt','B.txt'],'test never sorts controller attachments');
+    assert.deepEqual(view.thread.composerAttachments.map(item=>item.id),globalThis.__nlNative.map(item=>item.id),'ready order must preserve local/Library native interleaving');
+    assert.equal(globalThis.__nlFiles.get('native-1'),localBefore);assert.equal(globalThis.__nlFiles.get('native-3'),localAfter);assert.equal(globalThis.__nlSends,0);
+  }finally{await view.unmount();}
+});
+
+test("ready order keeps cancelled handoff suppressed without regrouping surviving native files",async()=>{
+  // UC-NONE: merge/cancellation presentation invariants; no backend permission boundary changes.
+  const view=await mount();try{
+    await act(async()=>view.thread.onAttachFiles([bytes('before.txt')]));await complete('native-1');
+    let kept;await act(async()=>{kept=pick(view,[source('kept','revision-kept','kept.txt')]);});await until(()=>globalThis.__nlNative.length===2);await complete('native-2');assert.equal(await kept,true);
+    await act(async()=>view.thread.onAttachFiles([bytes('after.txt')]));await complete('native-3');
+    globalThis.__nlHoldCommit=true;
+    let cancelled;await act(async()=>{cancelled=pick(view,[source('cancelled','revision-cancelled','cancelled.txt')]);});await until(()=>globalThis.__nlNative.length===4);
+    const placeholder=view.thread.composerAttachments.find(item=>item.name==='cancelled.txt');const from=globalThis.__nlFrames.length;
+    await act(async()=>view.thread.onRemoveAttachment(placeholder.id));assert.equal(await cancelled,false);
+    await act(async()=>globalThis.__nlCommit());await until(()=>globalThis.__nlNative.length===3);
+    assert.deepEqual(globalThis.__nlRemoved,['native-4'],'only the cancelled intake-owned native file is removed');
+    assert.ok(globalThis.__nlFrames.slice(from).every(frame=>frame.attachments.every(item=>item.id!=='native-4')),'cancelled native tile never reappears in a committed composer frame');
+    assert.deepEqual(view.thread.composerAttachments.map(item=>item.id),globalThis.__nlNative.map(item=>item.id),'ready order must not regroup surviving local and Library files');
+    assert.equal(view.send.disabled,false);assert.equal(globalThis.__nlSends,0);
+  }finally{await view.unmount();}
+});
