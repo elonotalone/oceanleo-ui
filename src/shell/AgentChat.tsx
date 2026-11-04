@@ -2589,7 +2589,7 @@ function AgentChatInner({
   // Only the block nothing visible follows yet is live; it folds once text starts after it.
   const liveProgressKey = liveAgentProgressKey(renderItems, timelineMessages);
   const presentation = threadPresentation(timelineMessages, computerTask ? (timeline.state?.status || "") : status, {
-    busy: busy || taskStopping || (computerTask && timelineRunning), taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
+    busy: busy || taskStopping || (computerTask && Boolean(timeline.state && ["working", "waiting_user", "stopping", "queued"].includes(timeline.state.status))), taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
   const turnState = latestTurn(timelineMessages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
