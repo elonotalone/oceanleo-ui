@@ -104,7 +104,7 @@ test("failed file blocks the text with its actual reason; transient uploads use 
 test("both hosts keep active controls; native finishing suppresses step spinners and offline input stays editable", () => {
   const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
   assert.match(source, /loading=\{running\}/);
-  assert.match(source, /running=\{running && item.key === liveProgressKey\}/);
+  assert.match(source, /running=\{timelineRunning && item.key === liveProgressKey\}/);
   assert.match(source, /loading=\{nativeRunning\}/);
   assert.match(source, /running=\{nativeRunning && !thread.finishing && \(item.messages.some/);
   const native = source.slice(source.indexOf("const renderNativePane"), source.indexOf("const renderNativePane") + 15500);
@@ -285,7 +285,7 @@ const hostHarnessSource = ts.transpileModule(`
   export function hostStop(options={}) {
     const taskStopRef={current:idleStop()}, taskStopTimerRef={current:null}, taskStopRequestRef={current:""};
     const loadedTaskRef={current:"task"}, stoppedTaskRef={current:""}, streamAbortRef={current:{abort(){}}};
-    const taskId="task", readOnly=false, isLocalExecution=!!options.local;
+    const taskId="task", readOnly=false, isLocalExecution=!!options.local, computerTask=false;
     let localRun=options.run, status="running", busy=true, terminal;
     const refresh=async()=>{}, tt=x=>x, useCallback=fn=>fn, useEffect=fn=>{terminal=fn;};
     const setStoppedTaskId=()=>{}, setStatus=value=>{status=value;}, setBusy=value=>{busy=value;};
