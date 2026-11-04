@@ -42,10 +42,8 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
  */
 const UNRELEASED_EXPORTS = Object.freeze([
   // v0.233.26（2026-10-08）已把此前登记的 ./bay/public、./bay/public-views、./shell/EmbedChrome 发出去了，登记清空。
-  // 2026-10-22 editor repair: Design's shared strict source adapter is verified
-  // through linked LeoDev slots. No package/twin/product distribution authorized;
-  // keep this explicit until an operator-requested release includes the entry.
-  "./shell/design-document",
+  // The latest tag already contains the design-document entry; no unreleased
+  // export debt remains in this checkout.
 ]);
 
 function git(...args) {
