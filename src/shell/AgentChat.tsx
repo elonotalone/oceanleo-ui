@@ -1606,7 +1606,9 @@ function AgentChatInner({
   const conversationComputer = conversation && conversation.kind !== "oceanleo" ? computerFor(conversation.computerId) : null;
   const timelineProgram: TaskProgram = (timeline.state?.program || (conversation?.kind === "native" ? conversation.program : null) || "oceanleo") as TaskProgram;
   const timelineComputerId = timeline.state?.computer.id || (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : undefined);
-  const timelineMessages = computerTask ? [...timeline.messages, ...timeline.queued] : messages;
+  const timelineMessages = computerTask
+    ? [...timeline.messages, ...timeline.queued.map((message) => ({ ...message, content: message.content || tt("已排队，等待当前步骤完成") }))]
+    : messages;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -3352,7 +3354,14 @@ function AgentChatInner({
           )}
           {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
           {computerTask && timeline.error && <p className="text-[13px] text-rose-500">{timeline.error}</p>}
-          {computerTask && timeline.state?.request && <p className="text-[13px] text-amber-700">{tt("等待你的回复")}</p>}
+          {computerTask && timeline.state?.request && (
+            <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800" data-task-request={timeline.state.request.id}>
+              <span>{String(timeline.state.request.question || timeline.state.request.prompt || tt("等待你的回复"))}</span>
+              <button type="button" className="shrink-0 font-medium underline" onClick={() => void timeline.answer(timeline.state!.request!.id, {})}>
+                {tt("继续")}
+              </button>
+            </div>
+          )}
 
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <EditorCommandNotes notes={editorCommands.notes} />
