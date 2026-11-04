@@ -3219,7 +3219,7 @@ function AgentChatInner({
             draftKey={taskId ? `task:${taskId}` : undefined}
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
             onVoiceTranscript={handleVoiceTranscript}
-            attachMenuExtra={getHelpMenu}
+            contextActions={getHelpMenu}
             {...conversationProps}
           />
             </>
