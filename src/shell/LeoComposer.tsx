@@ -62,8 +62,8 @@ import {
 // 不传对应回调就不渲染，老用法零影响：
 //   1. 「＋」附件键：点开弹出菜单——「从本地添加文件」/「最近文件」（用户在
 //      oceanleo 上最近上传的文件）/ 调用方可注入的额外项（如「使用技能」）。
-//      传 onAttachFiles 才出现「从本地」；传 recentFiles+onPickRecent 才出现
-//      「最近文件」子菜单；attachMenuExtra 注入任意额外项。
+//      传 onAttachFiles 才出现「从本地」；onAddAttachments 提供私有资料库与最近文件；
+//      recentFiles+onPickRecent 兼容旧宿主；attachMenuExtra 注入任意额外项。
 //   2. 语音输入：传 onVoiceTranscript 才出现麦克风键，用浏览器原生
 //      SpeechRecognition（Web Speech API）边说边转写，回调把结果交给调用方。
 //   3. 附件缩略条：attachments + onRemoveAttachment（业务持有状态，本组件只展示）。
@@ -235,7 +235,7 @@ export interface LeoComposerProps {
   accept?: string;
   /** 是否可多选，默认 true。 */
   multiple?: boolean;
-  /** 用户最近上传的文件（调用方从文件库取）。传它才出现「最近文件」子菜单。 */
+  /** 旧宿主提供的最近文件；有 onAddAttachments 时统一使用私有资料库最近文件。 */
   recentFiles?: ComposerRecentFile[];
   /** 点某个最近文件。 */
   onPickRecent?: (file: ComposerRecentFile) => void;
@@ -243,9 +243,11 @@ export interface LeoComposerProps {
   recentLoading?: boolean;
   /** 「＋」菜单里追加的额外项（如「使用技能」）。 */
   attachMenuExtra?: ComposerMenuItem[];
+  /** 上下文操作（如任务「找人帮忙」）：在现有工具栏显示带文字的按钮，不混入附件来源。 */
+  contextActions?: ComposerMenuItem[];
   /**
    * 把已在私有 Library 里的文件加成附件（ready 态，带 artifactId/revisionId/libraryItem）。
-   * 传它才出现「从资料库添加文件」；`draftKey` 恢复附件也走它。宿主按 id 去重即可。
+   * 传它才出现「从资料库添加文件」与「最近文件」；`draftKey` 恢复附件也走它。宿主按 id 去重即可。
    */
   onAddAttachments?: (items: ComposerAttachment[]) => void;
   /**
@@ -367,6 +369,7 @@ export function LeoComposer({
   onPickRecent,
   recentLoading = false,
   attachMenuExtra,
+  contextActions,
   onAddAttachments,
   draftKey,
   attachments,
@@ -723,6 +726,19 @@ export function LeoComposer({
               extra={attachMenuExtra}
             />
           )}
+          {contextActions?.map((action) => (
+            <button
+              key={action.id}
+              type="button"
+              disabled={disabled}
+              onClick={action.onClick}
+              data-composer-context-action={action.id}
+              className="flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+            >
+              {action.icon && <span className="shrink-0">{action.icon}</span>}
+              <span>{action.label}</span>
+            </button>
+          ))}
           {showComputerDock && (
             <ComputerDock
               key={targetDraftRevision}
@@ -896,8 +912,8 @@ function AttachMenu({
   const tt = useUI();
   const [open, setOpen] = useState(false);
   const [recentOpen, setRecentOpen] = useState(false);
-  // 「从资料库添加文件」：同一张浮层原地换成资料库列表（手机上也够得着，不靠悬停）。
-  const [libraryOpen, setLibraryOpen] = useState(false);
+  // 资料库 / 最近文件共用私有引用列表；同一张浮层原地切换，手机无需悬停。
+  const [libraryView, setLibraryView] = useState<"library" | "recent" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -906,14 +922,14 @@ function AttachMenu({
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
         setRecentOpen(false);
-        setLibraryOpen(false);
+        setLibraryView(null);
       }
     }
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open]);
 
-  const showRecent = Boolean(recentFiles && onPickRecent);
+  const showRecent = Boolean(onAddAttachments || (recentFiles && onPickRecent));
 
   return (
     <div ref={rootRef} className="relative">
@@ -921,7 +937,8 @@ function AttachMenu({
         type="button"
         onClick={() => {
           setOpen((v) => !v);
-          setLibraryOpen(false);
+          setRecentOpen(false);
+          setLibraryView(null);
         }}
         aria-label={tt("添加附件")}
         aria-expanded={open}
@@ -934,22 +951,24 @@ function AttachMenu({
         <PlusGlyph />
       </button>
 
-      {open && libraryOpen && onAddAttachments && (
+      {open && libraryView && onAddAttachments && (
         <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
           <ComposerLibraryPicker
-            onBack={() => setLibraryOpen(false)}
+            key={libraryView}
+            mode={libraryView}
+            onBack={() => setLibraryView(null)}
             attachedIds={attachedIds}
             fileIcon={(file) => <MediaGlyph mediaType={file.mediaType} />}
             onPick={(file) => {
               onAddAttachments([file]);
               setOpen(false);
-              setLibraryOpen(false);
+              setLibraryView(null);
             }}
           />
         </div>
       )}
 
-      {open && !libraryOpen && (
+      {open && !libraryView && (
         <div className="v-fade-up absolute bottom-9 left-0 z-50 min-w-[208px] rounded-xl border border-neutral-200 bg-white py-1.5 shadow-lg">
           {/* 手机上「从本地添加文件」被这三项取代 —— 手机里「本地」本来就分成
               相机、相册、文件三处，一颗笼统的「本地」既到不了相机，也让相册要多绕
@@ -988,12 +1007,24 @@ function AttachMenu({
               chevron
               onClick={() => {
                 setRecentOpen(false);
-                setLibraryOpen(true);
+                setLibraryView("library");
               }}
             />
           )}
 
-          {showRecent && (
+          {showRecent && onAddAttachments && (
+            <MenuRow
+              icon={<DocGlyph />}
+              label={tt("最近文件")}
+              chevron
+              onClick={() => {
+                setRecentOpen(false);
+                setLibraryView("recent");
+              }}
+            />
+          )}
+
+          {showRecent && !onAddAttachments && (
             <div
               className="relative"
               onMouseEnter={() => setRecentOpen(true)}

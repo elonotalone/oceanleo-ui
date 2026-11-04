@@ -47,6 +47,7 @@ export function ComposerLibraryPicker({
   attachedIds,
   load,
   fileIcon,
+  mode = "library",
 }: {
   onBack: () => void;
   onPick: (file: ComposerAttachment) => void;
@@ -56,6 +57,8 @@ export function ComposerLibraryPicker({
   load?: LoadLibrary;
   /** 非图片项的图标（沿用「最近文件」的那枚）。 */
   fileIcon?: (file: ComposerAttachment) => ReactNode;
+  /** 最近文件沿用私有资料库的时间顺序，只显示最近 12 个可附加文件。 */
+  mode?: "library" | "recent";
 }) {
   const tt = useUI();
   const [files, setFiles] = useState<ComposerAttachment[] | null>(null);
@@ -64,6 +67,8 @@ export function ComposerLibraryPicker({
 
   useEffect(() => {
     const controller = new AbortController();
+    setFiles(null);
+    setFailed(false);
     void loadComposerLibraryFiles(controller.signal, load)
       .then((list) => {
         if (controller.signal.aborted) return;
@@ -79,12 +84,13 @@ export function ComposerLibraryPicker({
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!files) return [];
-    return q ? files.filter((file) => (file.name || "").toLowerCase().includes(q)) : files;
-  }, [files, query]);
+    const available = mode === "recent" ? files.slice(0, 12) : files;
+    return q ? available.filter((file) => (file.name || "").toLowerCase().includes(q)) : available;
+  }, [files, query, mode]);
   const attached = new Set(attachedIds ?? []);
 
   return (
-    <div data-composer-library-picker="">
+    <div data-composer-library-picker="" data-composer-file-source={mode}>
       <div className="flex items-center gap-1.5 px-2 pb-1.5">
         <button
           type="button"
@@ -96,22 +102,26 @@ export function ComposerLibraryPicker({
             <path d="M15 6l-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder={tt("搜索资料库")}
-          aria-label={tt("搜索资料库")}
-          autoFocus
-          className="min-w-0 flex-1 rounded-lg bg-neutral-100/80 px-2.5 py-1.5 text-[13px] text-neutral-800 focus:outline-none"
-        />
+        {mode === "recent" ? (
+          <span className="px-1 text-[13px] text-neutral-700">{tt("最近文件")}</span>
+        ) : (
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder={tt("搜索资料库")}
+            aria-label={tt("搜索资料库")}
+            autoFocus
+            className="min-w-0 flex-1 rounded-lg bg-neutral-100/80 px-2.5 py-1.5 text-[13px] text-neutral-800 focus:outline-none"
+          />
+        )}
       </div>
       <div className="max-h-[260px] min-w-[260px] overflow-y-auto">
         {failed ? (
-          <p className="px-3 py-2 text-[12px] text-red-600">{tt("资料库加载失败，请稍后重试")}</p>
+          <p role="alert" className="px-3 py-2 text-[12px] text-red-600">{tt("资料库加载失败，请稍后重试")}</p>
         ) : files === null ? (
           <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载中…")}</p>
         ) : files.length === 0 ? (
-          <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("资料库里还没有文件")}</p>
+          <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(mode === "recent" ? "还没有最近文件" : "资料库里还没有文件")}</p>
         ) : shown.length === 0 ? (
           <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("没有找到文件")}</p>
         ) : (
