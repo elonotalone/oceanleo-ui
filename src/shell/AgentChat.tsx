@@ -60,7 +60,6 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // Codex/Claude/Cursor/Hermes conversation renders through this same stream and
 // LeoComposer; CLI/terminal show the host-styled surface with the same dock below.
 import { NativeSetupRequest, useNativeThread, type NativeThread } from "./native-thread";
-import { libraryAttachmentFile } from "./native-draft-files";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
 import { NativeTerminalSurface } from "./cloud-computer/native-surface";
@@ -3467,13 +3466,7 @@ function AgentChatInner({
             onOpenAttachment={openTaskAttachment}
             draftKey={taskId ? `task:${taskId}` : undefined}
             // A computer's inbox takes bytes: a Library pick is read once and attached as a file.
-            onAddAttachments={toolsOn && thread.onAttachFiles ? (items) => {
-              const attach = thread.onAttachFiles;
-              void Promise.all(items.map((item) => libraryAttachmentFile(item))).then((files) => {
-                const ok = files.filter((file): file is File => Boolean(file));
-                if (ok.length && attach) attach(ok);
-              });
-            } : undefined}
+            onAddAttachments={toolsOn && thread.onAttachFiles ? thread.onAddAttachments : undefined}
             onVoiceTranscript={(text: string) => setInput((current) => (current ? current + " " : "") + text)}
             // Controls that do nothing for a native send are not shown.
             showPlugins={false}
