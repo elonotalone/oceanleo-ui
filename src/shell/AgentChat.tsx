@@ -1465,6 +1465,7 @@ function AgentChatInner({
   );
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
+  const timeline = useTaskTimeline(taskId || undefined, computerTask);
 
   // The URL names the conversation; a change from outside (back/forward, a link
   // to another `computerSession` of this task) switches it.
@@ -1603,6 +1604,12 @@ function AgentChatInner({
     }
   }, [activeSession]);
   const conversationComputer = conversation && conversation.kind !== "oceanleo" ? computerFor(conversation.computerId) : null;
+  const timelineProgram: TaskProgram = (timeline.state?.program || (conversation?.kind === "native" ? conversation.program : null) || "oceanleo") as TaskProgram;
+  const timelineComputerId = timeline.state?.computer.id || (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : undefined);
+  const timelineMessages = computerTask ? [...timeline.messages, ...timeline.queued] : messages;
+  const timelineRunning = computerTask && timeline.state
+    ? ["working", "waiting_user", "stopping", "queued"].includes(timeline.state.status)
+    : running;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -2309,6 +2316,20 @@ function AgentChatInner({
       if (!started) restoreSubmission();
       return;
     }
+    if (computerTask) {
+      setBusy(true);
+      const ok = await timeline.send({
+        program: timelineProgram,
+        computer_id: timelineComputerId || undefined,
+        text: effectivePrompt,
+        attachments: uploaded,
+        mode,
+        client_message_id: `${taskId}:${Date.now()}`,
+      });
+      setBusy(false);
+      if (!ok) restoreSubmission();
+      return;
+    }
     setBusy(true);
     if (branchFromMessageId) {
       if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
@@ -2480,6 +2501,17 @@ function AgentChatInner({
     // Bounded: no answer in 15 s → a written reason and Stop pressable again.
     taskStopTimerRef.current = setTimeout(() => updateTaskStop({ type: "timeout", stopId }), STOP_REPLY_TIMEOUT_MS);
     try {
+      if (computerTask) {
+        const ok = await timeline.stop();
+        if (loadedTaskRef.current === id && taskStopRequestRef.current === stopId) {
+          if (ok) {
+            setStatus("stopped");
+            setBusy(false);
+            updateTaskStop({ type: "result", stopId, result: "stopped" });
+          } else updateTaskStop({ type: "result", stopId, result: "failed", detail: tt("电脑没有确认") });
+        }
+        return;
+      }
       if (isLocalExecution) {
         if (!localAgentCanControl(localRun, "stop")) {
           void refresh(id);
@@ -2544,25 +2576,25 @@ function AgentChatInner({
   // 记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
   // 回答后的追问 chip 已取消（操作员 2026-10-31），旧行的 meta.suggestions 不再渲染。
   let lastAssistantIdx = -1;
-  const lastUserIdx = messages.findLastIndex((message) => message.role === "user");
-  for (let i = messages.length - 1; i >= 0; i--) {
+  const lastUserIdx = timelineMessages.findLastIndex((message) => message.role === "user");
+  for (let i = timelineMessages.length - 1; i >= 0; i--) {
     if (
-      messages[i].role === "assistant" &&
-      (messages[i].kind === "text" || !messages[i].kind) &&
-      messages[i].meta?.interim !== true
+      timelineMessages[i].role === "assistant" &&
+      (timelineMessages[i].kind === "text" || !timelineMessages[i].kind) &&
+      timelineMessages[i].meta?.interim !== true
     ) {
       lastAssistantIdx = i;
       break;
     }
   }
-  const renderItems = buildAgentRenderItems(messages);
-  const activeProgressKey = activeAgentProgressKey(renderItems, messages);
+  const renderItems = buildAgentRenderItems(timelineMessages);
+  const activeProgressKey = activeAgentProgressKey(renderItems, timelineMessages);
   // Only the block nothing visible follows yet is live; it folds once text starts after it.
-  const liveProgressKey = liveAgentProgressKey(renderItems, messages);
-  const presentation = threadPresentation(messages, status, {
-    busy: busy || taskStopping, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
+  const liveProgressKey = liveAgentProgressKey(renderItems, timelineMessages);
+  const presentation = threadPresentation(timelineMessages, computerTask ? (timeline.state?.status || "") : status, {
+    busy: busy || taskStopping || (computerTask && timelineRunning), taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
-  const turnState = latestTurn(messages);
+  const turnState = latestTurn(timelineMessages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
   const showThinkingTicker = Boolean(
     presentation.thinking && !turnState.visible && sentAt !== null,
@@ -3139,7 +3171,7 @@ function AgentChatInner({
   // 动效走既有的 `.v-fade-up`（token 化，且 reduced-motion 下自动 animation:none），
   // 不新写一条曲线。
   const backToLatest =
-    !following && messages.length > 0 ? (
+    !following && timelineMessages.length > 0 ? (
       <button
         type="button"
         onClick={resumeFollowing}
@@ -3161,9 +3193,9 @@ function AgentChatInner({
     ) : null;
 
   // 复制 / 重做 / 分享：一轮只在最后一段话底下出现一次（操作员 2026-10-31），跑着的这一轮不出现。
-  const turnActions = agentTurnActionTargets(renderItems, running || presentation.working);
+  const turnActions = agentTurnActionTargets(renderItems, timelineRunning || presentation.working);
   // W4 2026-10-31: the small time above user bubbles (first one, then after a 5-minute gap).
-  const timeSeparators = agentMessageTimeSeparators(messages);
+  const timeSeparators = agentMessageTimeSeparators(timelineMessages);
 
   /** 把上面那条裁决接到实际渲染的那条消息上。 */
   const messageForBubble = (item: {
@@ -3234,7 +3266,7 @@ function AgentChatInner({
     onScroll: handleStreamScroll,
     top: isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />,
     // A computer task whose conversation is not decided yet shows nothing rather than a cloud empty page.
-    empty: messages.length === 0 && !running && conversationResolved ? (
+    empty: timelineMessages.length === 0 && !timelineRunning && conversationResolved ? (
       <div className="py-10 text-center text-[15px] text-stone-400">
         {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
       </div>
@@ -3246,7 +3278,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={running && item.key === liveProgressKey}
+                running={timelineRunning && item.key === liveProgressKey}
                 accent={accent}
               />
             ) : (
@@ -3254,7 +3286,7 @@ function AgentChatInner({
                 key={item.key}
                 message={messageForBubble(item)}
                 timeAbove={timeSeparators.get(item.index)}
-                streaming={running && item.index === lastAssistantIdx &&
+                streaming={timelineRunning && item.index === lastAssistantIdx &&
                   item.index > lastUserIdx && item.message.meta?.done !== true &&
                   item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                 stopped={
@@ -3270,7 +3302,7 @@ function AgentChatInner({
                 }
                 onOpenAttachment={openTaskAttachment}
                 onBranch={
-                  !running &&
+                  !timelineRunning &&
                   !readOnly &&
                   item.message.role === "user" &&
                   item.message.id > 0
@@ -3283,7 +3315,7 @@ function AgentChatInner({
                 gateActive={item.message.id === activeGateId}
                 gateBusy={gateBusy}
                 onGate={onGate ? handleGate : undefined}
-                taskRunning={running}
+                taskRunning={timelineRunning}
                 onContinue={
                   readOnly
                     ? undefined
@@ -3304,7 +3336,7 @@ function AgentChatInner({
               />
             ),
           )}
-          {presentation.thinking && (
+          {presentation.thinking && !computerTask && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {thinkingText}
             </div>
@@ -3313,6 +3345,15 @@ function AgentChatInner({
     ),
     tail: (
       <>
+          {computerTask && timeline.hasOlder && (
+            <button type="button" className="mx-auto block text-[12px] text-stone-500 underline" onClick={() => void timeline.loadOlder()} disabled={timeline.loading}>
+              {timeline.loading ? tt("正在读取…") : tt("读取更早消息")}
+            </button>
+          )}
+          {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
+          {computerTask && timeline.error && <p className="text-[13px] text-rose-500">{timeline.error}</p>}
+          {computerTask && timeline.state?.request && <p className="text-[13px] text-amber-700">{tt("等待你的回复")}</p>}
+
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <EditorCommandNotes notes={editorCommands.notes} />
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
