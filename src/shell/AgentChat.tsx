@@ -192,18 +192,10 @@ import {
 import { RoutePageSkeleton } from "./nav-source/route-boundary";
 import {
   answerTaskRequest as answerTimelineRequest,
-  getTaskTimeline,
-  openTaskTimeline,
-  removeQueued as removeTimelineQueued,
   sendTaskMessage as sendTimelineMessage,
   stopTask as stopTimelineTask,
-  type TaskLiveEvent,
-  type TaskMessageInput,
-  type TaskProgram,
-  type TaskState,
-  type TaskTimelineEntry,
 } from "../lib/task-timeline-api";
-import { mapTaskState, mapTaskTimelineEntries, queuedTaskMessages, type TaskUiState } from "./task-timeline/map";
+import { useTaskTimeline, type TaskProgram } from "./task-timeline";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -698,164 +690,6 @@ function sessionConversation(session: ComputerTaskSession): ConversationTarget {
   }
   return {kind: "native", computerId: session.computer_id, computerName: session.computer_name, program: session.program as NativeProgram,
     view: session.kind === "cli" ? "cli" : "chat", sessionId: session.id};
-}
-
-type TaskTimelineView = {
-  messages: AgentMessage[];
-  queued: AgentMessage[];
-  state: TaskUiState | null;
-  loading: boolean;
-  error: string | null;
-  hasOlder: boolean;
-  loadOlder: () => Promise<void>;
-  send: (input: TaskMessageInput) => Promise<boolean>;
-  stop: () => Promise<boolean>;
-  answer: (requestId: string, answer: { option_id?: string; answers?: Record<string, string> }) => Promise<boolean>;
-  removeQueued: (clientMessageId: string) => Promise<boolean>;
-};
-
-function useTaskTimeline(taskId: string | undefined, enabled: boolean): TaskTimelineView {
-  const [entries, setEntries] = useState<TaskTimelineEntry[]>([]);
-  const [state, setState] = useState<TaskState | null>(null);
-  const [hasOlder, setHasOlder] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const generationRef = useRef(0);
-  const entriesRef = useRef(entries);
-  entriesRef.current = entries;
-
-  const merge = useCallback((incoming: TaskTimelineEntry[], replace = false) => {
-    setEntries((current) => {
-      const next = replace ? incoming : [...current, ...incoming];
-      const seen = new Set<string>();
-      return next.filter((entry) => {
-        if (!entry || typeof entry.cursor !== "string" || seen.has(entry.cursor)) return false;
-        seen.add(entry.cursor);
-        return true;
-      }).sort((a, b) => a.cursor.localeCompare(b.cursor));
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!enabled || !taskId) {
-      generationRef.current += 1;
-      setEntries([]);
-      setState(null);
-      setHasOlder(false);
-      setError(null);
-      setLoading(false);
-      return;
-    }
-    const generation = ++generationRef.current;
-    const controller = new AbortController();
-    setEntries([]);
-    setState(null);
-    setHasOlder(false);
-    setError(null);
-    setLoading(true);
-    void getTaskTimeline(taskId, { limit: 200, signal: controller.signal }).then((page) => {
-      if (generation !== generationRef.current) return;
-      merge(page.entries, true);
-      setState(page.state);
-      setHasOlder(page.has_older);
-      setLoading(false);
-    }).catch((caught) => {
-      if (controller.signal.aborted || generation !== generationRef.current) return;
-      setError(caught instanceof Error ? caught.message : String(caught));
-      setLoading(false);
-    });
-    return () => controller.abort();
-  }, [enabled, merge, taskId]);
-
-  useEffect(() => {
-    if (!enabled || !taskId) return;
-    let alive = true;
-    const live = openTaskTimeline(taskId, entriesRef.current.at(-1)?.cursor, (event: TaskLiveEvent) => {
-      if (!alive) return;
-      if (event.type === "entries") merge(event.entries);
-      else if (event.type === "state") setState(event.state);
-      else if (event.type === "reset") {
-        setEntries([]);
-        setHasOlder(false);
-        void getTaskTimeline(taskId, { limit: 200 }).then((page) => {
-          if (!alive) return;
-          merge(page.entries, true);
-          setState(page.state);
-          setHasOlder(page.has_older);
-        }).catch(() => undefined);
-      }
-    }, () => {
-      if (alive) setError((current) => current || "timeline_live_unavailable");
-    });
-    return () => { alive = false; live.close(); };
-  }, [enabled, merge, taskId]);
-
-  const loadOlder = useCallback(async () => {
-    if (!enabled || !taskId || !hasOlder || loading) return;
-    const before = entriesRef.current[0]?.cursor;
-    if (!before) return;
-    setLoading(true);
-    try {
-      const page = await getTaskTimeline(taskId, { before, limit: 200 });
-      merge(page.entries);
-      setHasOlder(page.has_older);
-      setState(page.state);
-      setError(null);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled, hasOlder, loading, merge, taskId]);
-
-  const send = useCallback(async (input: TaskMessageInput) => {
-    if (!taskId) return false;
-    try {
-      const result = await sendTimelineMessage(taskId, input);
-      if (result.state) setState(result.state);
-      return result.ok !== false;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      return false;
-    }
-  }, [taskId]);
-  const stop = useCallback(async () => {
-    if (!taskId) return false;
-    try {
-      const result = await stopTimelineTask(taskId);
-      if (result.state) setState(result.state);
-      return true;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      return false;
-    }
-  }, [taskId]);
-  const answer = useCallback(async (requestId: string, answerValue: { option_id?: string; answers?: Record<string, string> }) => {
-    if (!taskId) return false;
-    try {
-      await answerTimelineRequest(taskId, requestId, answerValue);
-      return true;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      return false;
-    }
-  }, [taskId]);
-  const removeQueued = useCallback(async (clientMessageId: string) => {
-    if (!taskId) return false;
-    try {
-      await removeTimelineQueued(taskId, clientMessageId);
-      setState((current) => current ? { ...current, queued: current.queued.filter((item) => item.client_message_id !== clientMessageId) } : current);
-      return true;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-      return false;
-    }
-  }, [taskId]);
-
-  const mappedState = useMemo(() => state ? mapTaskState(state) : null, [state]);
-  const messages = useMemo(() => mapTaskTimelineEntries(entries), [entries]);
-  const queued = useMemo(() => state ? queuedTaskMessages(state) : [], [state]);
-  return { messages, queued, state: mappedState, loading, error, hasOlder, loadOlder, send, stop, answer, removeQueued };
 }
 
 function AgentChatInner({
@@ -1465,7 +1299,7 @@ function AgentChatInner({
   );
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
-  const timeline = useTaskTimeline(taskId || undefined, computerTask);
+  const timeline = useTaskTimeline(taskId || undefined, { enabled: computerTask, limit: 200 });
 
   // The URL names the conversation; a change from outside (back/forward, a link
   // to another `computerSession` of this task) switches it.
@@ -1607,7 +1441,7 @@ function AgentChatInner({
   const timelineProgram: TaskProgram = (timeline.state?.program || (conversation?.kind === "native" ? conversation.program : null) || "oceanleo") as TaskProgram;
   const timelineComputerId = timeline.state?.computer.id || (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : undefined);
   const timelineMessages = computerTask
-    ? [...timeline.messages, ...timeline.queued.map((message) => ({ ...message, content: message.content || tt("已排队，等待当前步骤完成") }))]
+    ? timeline.items.map((message) => ({ ...message, content: message.content || (message.meta?.queued ? tt("已排队，等待当前步骤完成") : message.content) }))
     : messages;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
@@ -2317,14 +2151,20 @@ function AgentChatInner({
     }
     if (computerTask) {
       setBusy(true);
-      const ok = await timeline.send({
-        program: timelineProgram,
-        computer_id: timelineComputerId || undefined,
-        text: effectivePrompt,
-        attachments: uploaded,
-        mode,
-        client_message_id: `${taskId}:${Date.now()}`,
-      });
+      let ok = false;
+      try {
+        const result = await sendTimelineMessage(taskId, {
+          program: timelineProgram,
+          computer_id: timelineComputerId || undefined,
+          text: effectivePrompt,
+          attachments: uploaded,
+          mode,
+          client_message_id: `${taskId}:${Date.now()}`,
+        });
+        ok = result.ok !== false;
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
       setBusy(false);
       if (!ok) restoreSubmission();
       return;
@@ -2501,7 +2341,13 @@ function AgentChatInner({
     taskStopTimerRef.current = setTimeout(() => updateTaskStop({ type: "timeout", stopId }), STOP_REPLY_TIMEOUT_MS);
     try {
       if (computerTask) {
-        const ok = await timeline.stop();
+        let ok = false;
+        try {
+          await stopTimelineTask(id);
+          ok = true;
+        } catch (caught) {
+          setError(caught instanceof Error ? caught.message : String(caught));
+        }
         if (loadedTaskRef.current === id && taskStopRequestRef.current === stopId) {
           if (ok) {
             setStatus("stopped");
@@ -3353,11 +3199,11 @@ function AgentChatInner({
             </button>
           )}
           {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
-          {computerTask && timeline.error && <p className="text-[13px] text-rose-500">{timeline.error}</p>}
+          {computerTask && timeline.error && <p className="text-[13px] text-rose-500">{timeline.error.message}</p>}
           {computerTask && timeline.state?.request && (
             <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800" data-task-request={timeline.state.request.id}>
               <span>{String(timeline.state.request.question || timeline.state.request.prompt || tt("等待你的回复"))}</span>
-              <button type="button" className="shrink-0 font-medium underline" onClick={() => void timeline.answer(timeline.state!.request!.id, {})}>
+              <button type="button" className="shrink-0 font-medium underline" onClick={() => void answerTimelineRequest(taskId!, timeline.state!.request!.id, {}).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))}>
                 {tt("继续")}
               </button>
             </div>
