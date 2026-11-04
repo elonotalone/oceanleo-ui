@@ -163,6 +163,19 @@ test("owner-direct sessions carry an explicit owner bit; ordinary and agent requ
   assert.equal(JSON.parse(calls.filter((call) => call.url.endsWith("/sessions")).at(-1).init.body).owner_direct, undefined);
 });
 
+test("the owner-handshake marker is kept only on a pending create reply", async () => {
+  let reply = { session_id: "s-owner", state: "pending_consent", transport: "websocket-v2", owner_handshake: true };
+  mockFetch((url) => url.endsWith("/controllers") ? { status: 200, body: { controller_id: "viewer-1" } } : { status: 200, body: reply });
+  const pending = await api.remoteDesktopClient.createSession("device-1", { ownerDirect: true, requestId: "owner_5678" });
+  assert.equal(pending.data.owner_handshake, true);
+  reply = { ...reply, state: "connecting" };
+  const live = await api.remoteDesktopClient.createSession("device-1", { ownerDirect: true, requestId: "owner_5679" });
+  assert.equal("owner_handshake" in live.data, false);
+  reply = { ...reply, state: "pending_consent", owner_handshake: "yes" };
+  const odd = await api.remoteDesktopClient.createSession("device-1", { ownerDirect: true, requestId: "owner_5680" });
+  assert.equal("owner_handshake" in odd.data, false);
+});
+
 test("HTTP 失败解出码；detail 对象 / 字符串 / 顶层 code 都认；409 保留状态", async () => {
   mockFetch(() => ({ status: 409, body: { detail: { code: "session_active" } } }));
   let result = await api.remoteDesktopClient.createSession("d1");

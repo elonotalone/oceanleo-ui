@@ -251,6 +251,20 @@ test("first frame chain: video negotiation starts with the stream socket and is 
   assert.ok(view.mediaCallbacks(), "the video joined with the early credentials");
 });
 
+test("the owner's idle-computer handshake negotiates video early, once, before the computer answers", async () => {
+  const calls = [];
+  const view = await mount({ pending: true, overrides: {
+    async createSession() { return { ok: true, data: { session_id: "session-stream", state: "pending_consent", expires_at: "", transport: "websocket-v2", owner_handshake: true } }; },
+    async negotiateMedia() { calls.push(Boolean(document.querySelector("[data-oceanleo-remote-desktop] video"))); return { ok: true, data: { media, media_status: { state: "publishing" } } }; },
+  } });
+  await settle();
+  assert.deepEqual(calls, [false], "negotiated from session create while consent was still pending");
+  await act(async () => view.handlers().state("active"));
+  await settle();
+  assert.deepEqual(calls, [false], "the video reused the early credentials instead of negotiating again");
+  assert.ok(view.mediaCallbacks(), "the video joined with the early credentials");
+});
+
 test("a consent-pending session does not negotiate video early", async () => {
   const view = await mount({ pending: true });
   await settle();

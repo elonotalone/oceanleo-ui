@@ -494,8 +494,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       if (result.data.billing) setBilling(result.data.billing);
       updatePhase(result.data.state === "pending_consent" ? "waiting" : "connecting");
       // First-frame chain: negotiate video while the stream socket is still opening (cold TLS from the
-      // controller's network). The gateway refuses media while consent is pending, so only for a live session.
-      earlyMediaRef.current = result.data.state === "connecting" && client.openStream && client.negotiateMedia && result.data.transport === "websocket-v2"
+      // controller's network). The gateway refuses media while consent is pending, so only for a live session
+      // or the owner's own idle-computer handshake (the computer still publishes only after it answers).
+      earlyMediaRef.current = (result.data.state === "connecting" || result.data.owner_handshake === true) && client.openStream && client.negotiateMedia && result.data.transport === "websocket-v2"
         ? { sessionId: result.data.session_id, response: client.negotiateMedia(deviceId, result.data.session_id, undefined, { signal: abort.signal }).catch(() => ({ ok: false, error: "media_unavailable" })) }
         : null;
       if (client.openStream && result.data.transport === "websocket-v2") {

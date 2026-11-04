@@ -120,6 +120,8 @@ export interface RemoteDesktopSession {
   expires_at: string;
   transport?: "websocket-v2" | "http-v1";
   billing?: RemoteDesktopBilling | null;
+  /** Owner request waiting only for an idle computer's own answer; its video may be negotiated now. */
+  owner_handshake?: true;
 }
 
 export interface RemoteDesktopFrameData {
@@ -948,6 +950,7 @@ export const remoteDesktopClient: RemoteDesktopClient = {
         expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
         ...(data.transport === "websocket-v2" || data.transport === "http-v1" ? { transport: data.transport } : {}),
         ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
+        ...(data.state === "pending_consent" && data.owner_handshake === true ? { owner_handshake: true as const } : {}),
       },
       status: result.status,
     };
