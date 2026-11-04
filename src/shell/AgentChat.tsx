@@ -1001,7 +1001,12 @@ function AgentChatInner({
       const computer = isComputerWorkspaceTask(data.task);
       return current.taskId === id && current.computer === computer ? current : {taskId: id, computer};
     });
-    setBoundTarget({taskId: id, target: taskExecutionTarget(data.task)});
+    const nextBoundTarget = taskExecutionTarget(data.task);
+    setBoundTarget((current) => (
+      current.taskId === id && JSON.stringify(current.target) === JSON.stringify(nextBoundTarget)
+        ? current
+        : {taskId: id, target: nextBoundTarget}
+    ));
     const local = taskLocalAgentState(data.task);
     const artifacts = localTaskArtifacts(data.task.plan);
     setLocalArtifacts(current => current.taskId === id && JSON.stringify(current.items) === JSON.stringify(artifacts) ? current : {taskId: id, items: artifacts});
