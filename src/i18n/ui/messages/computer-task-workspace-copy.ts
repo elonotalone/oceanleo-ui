@@ -98,6 +98,18 @@ export const COMPUTER_TASK_WORKSPACE_SOURCE = {
   "savedLocallyNotSynced": "已保存到本机（未同步到云端）",
   "localAndPermissions": "本机与权限",
   "deviceTask": "设备任务",
+  "taskStateWorking": "正在执行",
+  "taskStateWaitingUser": "等待你处理",
+  "taskStateQueued": "排队中",
+  "taskStateStopping": "正在停止",
+  "taskStateStopped": "已停止",
+  "taskStateFailed": "执行失败：{reason}",
+  "taskStateOffline": "电脑离线，连上后结束",
+  "taskStateIdle": "等待开始",
+  "taskStateSavingDelayed": "保存延迟",
+  "queuedMessageHint": "{from} 做完这一轮后交给 {to}；要立刻换，先按停止",
+  "removeQueued": "移除排队消息",
+  "answerRequest": "提交回答",
 } as const;
 
 const COPY_en = {
@@ -193,6 +205,18 @@ const COPY_en = {
   "savedLocallyNotSynced": "Saved to this device (not synced to the cloud)",
   "localAndPermissions": "This device and permissions",
   "deviceTask": "Device task",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_zh_TW = {
@@ -288,6 +312,18 @@ const COPY_zh_TW = {
   "savedLocallyNotSynced": "已儲存到本機（未同步到雲端）",
   "localAndPermissions": "本機與權限",
   "deviceTask": "裝置任務",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_de = {
@@ -383,6 +419,18 @@ const COPY_de = {
   "savedLocallyNotSynced": "Auf diesem Gerät gespeichert (nicht mit der Cloud synchronisiert)",
   "localAndPermissions": "Dieses Gerät und Berechtigungen",
   "deviceTask": "Geräteaufgabe",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_es = {
@@ -478,6 +526,18 @@ const COPY_es = {
   "savedLocallyNotSynced": "Guardado en este dispositivo (sin sincronizar con la nube)",
   "localAndPermissions": "Este dispositivo y permisos",
   "deviceTask": "Tarea del dispositivo",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_fr = {
@@ -573,6 +633,18 @@ const COPY_fr = {
   "savedLocallyNotSynced": "Enregistré sur cet appareil (non synchronisé avec le cloud)",
   "localAndPermissions": "Cet appareil et autorisations",
   "deviceTask": "Tâche de l'appareil",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_it = {
@@ -668,6 +740,18 @@ const COPY_it = {
   "savedLocallyNotSynced": "Salvato su questo dispositivo (non sincronizzato con il cloud)",
   "localAndPermissions": "Questo dispositivo e autorizzazioni",
   "deviceTask": "Attività del dispositivo",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_pt_BR = {
@@ -763,6 +847,18 @@ const COPY_pt_BR = {
   "savedLocallyNotSynced": "Salvo neste dispositivo (não sincronizado com a nuvem)",
   "localAndPermissions": "Este dispositivo e permissões",
   "deviceTask": "Tarefa do dispositivo",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_vi = {
@@ -858,6 +954,18 @@ const COPY_vi = {
   "savedLocallyNotSynced": "Đã lưu vào thiết bị này (chưa đồng bộ lên đám mây)",
   "localAndPermissions": "Thiết bị này và quyền",
   "deviceTask": "Nhiệm vụ thiết bị",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_tr = {
@@ -953,6 +1061,18 @@ const COPY_tr = {
   "savedLocallyNotSynced": "Bu cihaza kaydedildi (buluta eşitlenmedi)",
   "localAndPermissions": "Bu cihaz ve izinler",
   "deviceTask": "Cihaz görevi",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_ja = {
@@ -1048,6 +1168,18 @@ const COPY_ja = {
   "savedLocallyNotSynced": "このデバイスに保存しました（クラウドとは未同期）",
   "localAndPermissions": "このデバイスと権限",
   "deviceTask": "デバイスのタスク",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_ko = {
@@ -1143,6 +1275,18 @@ const COPY_ko = {
   "savedLocallyNotSynced": "이 기기에 저장됨 (클라우드와 동기화되지 않음)",
   "localAndPermissions": "이 기기와 권한",
   "deviceTask": "기기 작업",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_ar = {
@@ -1238,6 +1382,18 @@ const COPY_ar = {
   "savedLocallyNotSynced": "تم الحفظ على هذا الجهاز (لم تتم المزامنة مع السحابة)",
   "localAndPermissions": "هذا الجهاز والأذونات",
   "deviceTask": "مهمة الجهاز",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_th = {
@@ -1333,6 +1489,18 @@ const COPY_th = {
   "savedLocallyNotSynced": "บันทึกลงอุปกรณ์นี้แล้ว (ยังไม่ซิงก์กับคลาวด์)",
   "localAndPermissions": "อุปกรณ์นี้และสิทธิ์",
   "deviceTask": "งานของอุปกรณ์",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_hi = {
@@ -1428,6 +1596,18 @@ const COPY_hi = {
   "savedLocallyNotSynced": "इस डिवाइस पर सहेजा गया (क्लाउड से सिंक नहीं हुआ)",
   "localAndPermissions": "यह डिवाइस और अनुमतियाँ",
   "deviceTask": "डिवाइस टास्क",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_es_419 = {
@@ -1523,6 +1703,18 @@ const COPY_es_419 = {
   "savedLocallyNotSynced": "Guardado en este dispositivo (sin sincronizar con la nube)",
   "localAndPermissions": "Este dispositivo y permisos",
   "deviceTask": "Tarea del dispositivo",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 const COPY_pt_PT = {
@@ -1618,6 +1810,18 @@ const COPY_pt_PT = {
   "savedLocallyNotSynced": "Guardado neste dispositivo (não sincronizado com a nuvem)",
   "localAndPermissions": "Este dispositivo e permissões",
   "deviceTask": "Tarefa do dispositivo",
+  "taskStateWorking": "Working",
+  "taskStateWaitingUser": "Waiting for you",
+  "taskStateQueued": "Queued",
+  "taskStateStopping": "Stopping",
+  "taskStateStopped": "Stopped",
+  "taskStateFailed": "Failed: {reason}",
+  "taskStateOffline": "Computer offline; it will finish when it reconnects",
+  "taskStateIdle": "Ready to start",
+  "taskStateSavingDelayed": "Saving delayed",
+  "queuedMessageHint": "After {from} finishes this turn, send it to {to}; press Stop to switch now",
+  "removeQueued": "Remove queued message",
+  "answerRequest": "Submit answer",
 };
 
 export const COMPUTER_TASK_WORKSPACE_MESSAGES = assembleCopy(COMPUTER_TASK_WORKSPACE_SOURCE, {
