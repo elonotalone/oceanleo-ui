@@ -1607,9 +1607,6 @@ function AgentChatInner({
   const timelineProgram: TaskProgram = (timeline.state?.program || (conversation?.kind === "native" ? conversation.program : null) || "oceanleo") as TaskProgram;
   const timelineComputerId = timeline.state?.computer.id || (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : undefined);
   const timelineMessages = computerTask ? [...timeline.messages, ...timeline.queued] : messages;
-  const timelineRunning = computerTask && timeline.state
-    ? ["working", "waiting_user", "stopping", "queued"].includes(timeline.state.status)
-    : running;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -2811,6 +2808,9 @@ function AgentChatInner({
     artifactMessages[artifactMessages.length - 1] || null;
   // One running source for Stop, the step spinner and can-send: a stop on its way counts.
   const running = status === "running" || busy || taskStopping;
+  const timelineRunning = computerTask && timeline.state
+    ? ["working", "waiting_user", "stopping", "queued"].includes(timeline.state.status)
+    : running;
   const activeGateId =
     status === "waiting_user"
       ? [...messages].reverse().find((message) => message.kind === "gate")?.id
