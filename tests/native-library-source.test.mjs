@@ -49,19 +49,21 @@ test("exact digest/size match is accepted and encoded Content-Length is not conf
   globalThis.fetch=async()=>new Response('bytes',{headers:{'content-length':'2','content-encoding':'gzip'}});
   const file=await readNativeLibraryFile(source({byteSize:5,digest:createHash('sha256').update('bytes').digest('hex')}));assert.equal(await file.text(),'bytes');
 });
+// UC-NONE: matches none of the seven untrusted-content rules.
+// It only proves cancellation ownership without changing shared grants or backend authorization.
 test("cancelled shared grant lookup never starts an owned byte fetch",async()=>{
-  // UC-NONE: matches none of the seven untrusted-content rules.
-  // It only proves cancellation ownership without changing shared grants or backend authorization.
   const held=gate();globalThis.__nlsGrant=()=>held.promise;const controller=new AbortController();const selected=readNativeLibraryFile(source(),{signal:controller.signal});controller.abort();held.resolve('https://gateway.test/v1/artifact-renditions/access/grant');
   await assert.rejects(selected,error=>error.name==='AbortError');assert.equal(globalThis.__nlsFetches.length,0);
 });
+// UC-NONE: matches none of the seven untrusted-content rules.
+// It only proves transport lifecycle cancellation, not RLS or domain isolation coverage.
 test("cancelled held byte read ignores late bytes even if a transport does not honor AbortSignal",async()=>{
-  // UC-NONE: transport lifecycle cancellation, not RLS or domain isolation coverage.
   const held=gate();globalThis.fetch=async()=>({ok:true,status:200,headers:new Headers(),blob:()=>held.promise});const controller=new AbortController();
   const selected=readNativeLibraryFile(source(),{signal:controller.signal});await Promise.resolve();await Promise.resolve();controller.abort();held.resolve(new Blob(['bytes']));await assert.rejects(selected,error=>error.name==='AbortError');
 });
+// UC-NONE: matches none of the seven untrusted-content rules.
+// It only proves network error classification/UX, no security boundary is asserted.
 test("body read and network errors retain a typed source failure",async()=>{
-  // UC-NONE: network error classification/UX, no security boundary is asserted.
   globalThis.fetch=async()=>{throw Error('network unavailable');};await assert.rejects(readNativeLibraryFile(source()),error=>error.code==='source-unavailable');
   globalThis.fetch=async()=>({ok:true,status:200,headers:new Headers(),async blob(){throw Error('body cut short');}});await assert.rejects(readNativeLibraryFile(source()),error=>error.code==='source-read-error');
 });
