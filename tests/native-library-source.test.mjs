@@ -50,7 +50,8 @@ test("exact digest/size match is accepted and encoded Content-Length is not conf
   const file=await readNativeLibraryFile(source({byteSize:5,digest:createHash('sha256').update('bytes').digest('hex')}));assert.equal(await file.text(),'bytes');
 });
 test("cancelled shared grant lookup never starts an owned byte fetch",async()=>{
-  // UC-NONE: cancellation ownership, without changing shared grants or backend authorization.
+  // UC-NONE: matches none of the seven untrusted-content rules.
+  // It only proves cancellation ownership without changing shared grants or backend authorization.
   const held=gate();globalThis.__nlsGrant=()=>held.promise;const controller=new AbortController();const selected=readNativeLibraryFile(source(),{signal:controller.signal});controller.abort();held.resolve('https://gateway.test/v1/artifact-renditions/access/grant');
   await assert.rejects(selected,error=>error.name==='AbortError');assert.equal(globalThis.__nlsFetches.length,0);
 });
