@@ -487,7 +487,7 @@ test("in a task, a conversation without a session is created with the task id an
 
 test("a send blocked because the program needs setup opens the composer pill's 账号 card instead of sending", async () => {
   globalThis.__thread = { messages: [], blockedReason: "这台电脑上还没有安装 Codex，请在设置里安装。" };
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")], url: "/tasks/t1?computerSession=cts_codex" });
   try {
     const composer = view.composer("native");
     assert.equal(composer.__props.disabled, false, "setup-blocked composer stays usable so Send leads to settings");
@@ -503,7 +503,7 @@ test("a send blocked because the program needs setup opens the composer pill's �
 test("re-entry while the session is still opening: the composer is usable and Enter queues (the bubble is the only signal), then sends once", async () => {
   // Known computer (no 正在连接…) but the link / occupancy is not read yet: not ready, not blocked.
   globalThis.__thread = { messages: NATIVE_MESSAGES, ready: false };
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")], url: "/tasks/t1?computerSession=cts_codex" });
   try {
     const composer = view.composer("native");
     assert.equal(composer.__props.disabled, false, "typing is never blocked by an unknown state");
@@ -529,7 +529,7 @@ test("re-entry while the session is still opening: the composer is usable and En
 
 test("opening an existing conversation never says 正在打开对话…: quiet spinner until its saved copy is read, then the plain hint", async () => {
   globalThis.__thread = { messages: [], opening: true };
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")] });
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions: [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")], url: "/tasks/t1?computerSession=cts_codex" });
   try {
     const pane = view.host.querySelector('[data-agent-stream="native"]');
     assert.ok(pane.querySelector("[data-native-opening]"), "quiet spinner while the saved copy is on its way");
