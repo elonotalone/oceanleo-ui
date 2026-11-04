@@ -156,8 +156,9 @@ test("partial success keeps source order, separate identities and the failed sib
   }finally{first.resolve(bytes('A.txt'));second.resolve(bytes('B.txt'));await view.unmount();}
 });
 
+// UC-NONE
+// In-tab cancellation ownership; this does not assert an RLS/cross-user boundary.
 test("a retained source retry/remove cannot abort another native local file",async()=>{
-  // UC-NONE: in-tab cancellation ownership; this does not assert an RLS/cross-user boundary.
   const pending=gate();globalThis.__nlRead=()=>pending.promise;const view=await mount();try{
     await act(async()=>view.thread.onAttachFiles([bytes('local.txt')]));await complete('native-1');
     await act(async()=>{void pick(view,[source()]);});const pendingId=view.thread.composerAttachments.find(a=>a.uploading).id;
@@ -166,8 +167,9 @@ test("a retained source retry/remove cannot abort another native local file",asy
   }finally{pending.resolve(bytes());await view.unmount();}
 });
 
+// UC-NONE
+// Existing uploader lifecycle delegation, with no authorization grant changes.
 test("native inbox failure delegates retry to its existing byte uploader",async()=>{
-  // UC-NONE: existing uploader lifecycle delegation, no authorization grant changes.
   const view=await mount();try{
     await act(async()=>{void pick(view,[source()]);});await until(()=>globalThis.__nlNative.length===1);await complete('native-1','error','inbox rejected');
     assert.equal(view.send.disabled,true);await act(async()=>view.thread.onRetryAttachment('native-1'));assert.deepEqual(globalThis.__nlRetries,['native-1']);
@@ -197,8 +199,9 @@ test("an existing same-name/size file cannot acknowledge a newly held Library ha
   }finally{await view.unmount();}
 });
 
+// UC-NONE
+// This 20-tile client capacity is not a database/storage hard quota or RLS proof.
 test("19 existing files plus two resolved Library picks reserves the final inbox slot and shows rejection",async()=>{
-  // UC-NONE: this 20-tile client capacity is not a database/storage hard quota or RLS proof.
   const view=await mount();try{
     await act(async()=>view.thread.onAttachFiles(Array.from({length:19},(_,n)=>bytes('local-'+n+'.txt'))));
     await act(async()=>{globalThis.__nlNative=globalThis.__nlNative.map(a=>({...a,state:'done'}));globalThis.__nlCommit();});
@@ -285,8 +288,9 @@ test("ready order matches native prompt order after a partial failure and retry"
   }finally{failedRead.resolve(bytes('A.txt'));retryRead.resolve(bytes('A.txt'));await view.unmount();}
 });
 
+// UC-NONE
+// UI merge order within one authorized composer, without an RLS/owner assertion.
 test("ready order preserves local and Library interleaving from the native array",async()=>{
-  // UC-NONE: UI merge order within one authorized composer, not an RLS/owner assertion.
   const view=await mount();try{
     const localBefore=bytes('local-before.txt'),localAfter=bytes('local-after.txt');
     await act(async()=>view.thread.onAttachFiles([localBefore]));await complete('native-1');
