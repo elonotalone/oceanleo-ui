@@ -265,6 +265,30 @@ test("Copy Link 只把选中的 message_ids 交给后端，复制回来的是分
   view.unmount();
 });
 
+test("computer timeline share selects every turn and creates a session-scoped link", async () => {
+  globalThis.__clipboard = [];
+  globalThis.__shareCalls = [];
+  const view = mountShare({
+    messages: [
+      { id: -1, role: "user", kind: "text", content: "请检查任务", meta: { task_timeline_session_id: "cts-1" } },
+      { id: -2, role: "assistant", kind: "text", content: "任务完成", meta: { task_timeline_session_id: "cts-1" } },
+    ],
+    taskId: "task-computer",
+    native: { sessionId: "cts-1", hasOlder: false },
+  });
+  act(() => view.get().enter("all"));
+  assert.equal(view.get().selectedCount, 2);
+  await act(async () => { await view.get().copyLink(); });
+  assert.deepEqual(globalThis.__shareCalls, [{
+    taskId: "task-computer",
+    computerTaskSessionId: "cts-1",
+    userTurns: [0],
+    replyTurns: [0],
+  }]);
+  assert.equal(globalThis.__clipboard[0], "https://leoimage.oceanleo.com/share/abc123");
+  view.unmount();
+});
+
 // 2026-10-31: the header 「分享」 on a Computers chat. Native bubbles have local
 // negative ids; the link names the session's cloud copy by turns.
 const nativeMessages = [

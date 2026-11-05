@@ -2723,8 +2723,8 @@ function AgentChatInner({
   const shareAvailable = (computerTask || cloudPaneShown) && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
-    if (!cloudPaneShown && share.active) exitShare();
-  }, [cloudPaneShown, share.active, exitShare]);
+    if (!computerTask && !cloudPaneShown && share.active) exitShare();
+  }, [computerTask, cloudPaneShown, share.active, exitShare]);
   // ---------------------------------------------------------------------
   // 对话内搜索（操作员 2026-09-07，图 662b8bb0）
   // ---------------------------------------------------------------------

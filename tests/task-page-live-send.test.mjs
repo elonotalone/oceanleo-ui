@@ -74,3 +74,9 @@ test("computer recipients use a neutral follow-up placeholder", () => {
   assert.doesNotMatch(agentChat, /computerTask[\s\S]{0,120}给 OceanLeo 布置/);
 });
 
+test("computer task share mode is not cleared by the hidden OceanLeo pane", () => {
+  assert.match(agentChat, /if \(!computerTask && !cloudPaneShown && share\.active\) exitShare\(\)/);
+  assert.match(agentChat, /messages: computerTask \? timelineMessages : messages/);
+  assert.match(agentChat, /computerTask \? \{ sessionId: timelineShareSessionId, hasOlder: timeline\.hasOlder \}/);
+});
+
