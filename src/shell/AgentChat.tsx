@@ -196,7 +196,7 @@ import {
   sendTaskMessage as sendTimelineMessage,
   stopTask as stopTimelineTask,
 } from "../lib/task-timeline-api";
-import { useTaskTimeline, type TaskProgram } from "./task-timeline";
+import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -697,6 +697,14 @@ export function taskSubmissionClientMessageId(
   createId: () => string,
 ): { key: string; id: string } {
   return previous?.key === key ? previous : { key, id: createId() };
+}
+
+/** A task-send failure is shown under the user's bubble, never as a gateway code. */
+function taskTimelineFailureText(tt: (text: string, vars?: Record<string, unknown>) => string, caught?: unknown): string {
+  const status = Number((caught as { status?: unknown } | null)?.status || 0);
+  if (status === 401) return tt("请先登录 OceanLeo 账号，再发送消息。");
+  if (status === 429) return tt("发送得太快了，请稍后重试。");
+  return tt("这条消息没有发送，请重试。");
 }
 
 /** Same cadence as the computer views (`useCloudComputers` CC_POLL_MS). */
