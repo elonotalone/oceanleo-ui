@@ -3,6 +3,7 @@
 import { accessToken } from "./auth/client";
 import { gatewayBase } from "./auth/config";
 import { cloudComputerRequest } from "./cloud-computer-api";
+import type { AgentAttachment } from "./agent";
 
 export type TaskProgram = "claude" | "codex" | "cursor" | "hermes" | "oceanleo";
 export type TaskTimelineFrame = Record<string, unknown>;
@@ -14,6 +15,27 @@ export type TaskTimelineEntry = {
   created_at: string;
   frame?: TaskTimelineFrame;
   message?: Record<string, unknown>;
+};
+export type TaskTimelineInflightEntry = {
+  session_id: string;
+  program: TaskProgram;
+  epoch: string;
+  s: number;
+  frame: TaskTimelineFrame;
+  at: string;
+};
+export type TaskTimelineCoverage = {
+  session_id: string;
+  epoch: string;
+  through: number;
+};
+export type TaskAcceptedMessage = {
+  client_message_id: string;
+  session_id: string;
+  program: TaskProgram;
+  text: string;
+  attachments?: AgentAttachment[];
+  created_at: string;
 };
 export type TaskSessionSummary = { id: string; program: TaskProgram | null; run_status: string; created_at: string };
 export type TaskRequest = { id: string; kind: "permission" | "question"; [key: string]: unknown };
@@ -57,6 +79,9 @@ export function getTaskTimeline(taskId: string, options: { before?: string; limi
 
 export type TaskLiveEvent =
   | { type: "entries"; entries: TaskTimelineEntry[] }
+  | { type: "inflight"; entries: TaskTimelineInflightEntry[] }
+  | { type: "covered"; covers: TaskTimelineCoverage[] }
+  | { type: "accepted"; message: TaskAcceptedMessage }
   | { type: "state"; state: TaskState }
   | { type: "reset" }
   | { type: "ping" };
@@ -83,6 +108,7 @@ export function openTaskTimeline(
   after: string | undefined,
   onEvent: (event: TaskLiveEvent) => void,
   onError?: (error: Event) => void,
+  onOpen?: () => void,
 ): TaskTimelineLiveConnection {
   let socket: WebSocket | null = null;
   let closed = false;
@@ -129,6 +155,7 @@ export function openTaskTimeline(
     next.onopen = () => {
       if (current !== generation || closed) return next.close();
       reconnectDelay = 1_000;
+      onOpen?.();
     };
     next.onmessage = (event) => {
       if (current !== generation || closed) return;
