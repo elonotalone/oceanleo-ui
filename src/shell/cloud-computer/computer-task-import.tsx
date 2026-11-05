@@ -3,9 +3,6 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUI } from "../../i18n/ui/useUI";
 import { portalHref } from "../../contracts/domain-family";
-import { getUserId } from "../../lib/auth/client";
-import { getComputer } from "../../lib/cloud-computer-api";
-import { writeExecutionTarget } from "../../lib/execution-target";
 import { createComputerTaskSession, type ComputerTaskSession } from "../../lib/computer-task-api";
 
 const NATIVE_PROGRAMS = ["cursor", "claude", "codex", "hermes"];
@@ -52,14 +49,16 @@ export function ComputerTaskImport({ computerId, taskId, nativeSessionId, kind, 
     const nativeProgram = NATIVE_PROGRAMS.includes(raw) ? raw as ComputerTaskSession["program"] : null;
     const native = nativeSessionId || params.get("session") || undefined;
     if (chosenKind !== "terminal" && !nativeProgram) {
-      // The OceanLeo conversation on this computer: the existing computer target, no native session.
-      void (async () => {
-        if (taskId) { router.replace(`/tasks/${encodeURIComponent(taskId)}`); return; }
-        const [owner, computer] = await Promise.all([getUserId().catch(() => null), getComputer(computerId).catch(() => null)]);
-        if (!owner || !computer) { setFailed(true); return; }
-        writeExecutionTarget(owner, { kind: "computer", id: computer.id, name: computer.name || computer.id });
-        router.replace("/");
-      })();
+      // The per-computer OceanLeo conversation was removed. A legacy link
+      // without a named native session belongs on device management.
+      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImport=missing-session`);
+      return;
+    }
+    if (!taskId && !native) {
+      // A card without a managed task or native session has nothing safe to
+      // import; keep the user on the device detail instead of creating a new
+      // conversation or enumerating history.
+      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImport=missing-session`);
       return;
     }
     const chosenProgram = chosenKind === "terminal" ? null : nativeProgram;
