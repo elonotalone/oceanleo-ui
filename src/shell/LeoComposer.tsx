@@ -736,10 +736,14 @@ export function LeoComposer({
               disabled={disabled}
               onClick={action.onClick}
               data-composer-context-action={action.id}
-              className="flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+              aria-label={action.id === "get-help" ? action.label : undefined}
+              title={action.id === "get-help" ? action.label : undefined}
+              className={action.id === "get-help"
+                ? "flex h-7 w-7 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"
+                : "flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"}
             >
               {action.icon && <span className="shrink-0">{action.icon}</span>}
-              <span>{action.label}</span>
+              {action.id !== "get-help" && <span>{action.label}</span>}
             </button>
           ))}
           {showComputerDock && (

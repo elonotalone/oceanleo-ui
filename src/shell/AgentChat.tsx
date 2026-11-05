@@ -125,7 +125,7 @@ import { HumanHandoffStatus } from "./HumanHandoffStatus";
 import { LocalAgentTaskStatus } from "./LocalAgentTaskStatus";
 import { taskLocalAgentState, parseLocalAgentRun, newerLocalAgentRun, localAgentCanControl, localAgentRunLive, localTaskArtifacts, localAgentRefusalText, localAgentFailure, type LocalTaskArtifact, type LocalAgentRun, type LocalAgentControl } from "../lib/local-agent-task";
 import { CallHumanIcon } from "./bay/shell/bay-icons";
-import { openBay, setBayTaskContext, useBayEnabled } from "./bay/shell/bay-state";
+import { setBayTaskContext, useBayEnabled } from "./bay/shell/bay-state";
 import {
   createTask,
   branchTask,
@@ -1104,11 +1104,17 @@ function AgentChatInner({
               id: "get-help",
               label: tt("找人帮忙"),
               icon: <CallHumanIcon className="h-4 w-4" />,
-              onClick: () => openBay({ kind: "call-human" }),
+              onClick: () => {
+                setRightOpen(true);
+                setWorkspaceAction({
+                  nonce: `get-help:${taskId}:${Date.now()}`,
+                  action: { version: 1, tab: "bay" },
+                });
+              },
             },
           ]
         : undefined,
-    [bayEnabled, taskId, readOnly, tt],
+    [bayEnabled, taskId, readOnly, setRightOpen, setWorkspaceAction, tt],
   );
 
   // Provider 可能先返回 session、随后才异步算出 task_id。task 真源变化时主动 refresh，
@@ -1478,6 +1484,12 @@ function AgentChatInner({
   const timelineComputerId = (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : null)
     || timeline.state?.computer.id
     || undefined;
+  const taskNativeThread = useNativeThread({
+    computer: computerTask && conversationComputer ? conversationComputer : null,
+    session: computerTask && activeSession?.kind === "acp" ? activeSession : null,
+    program: timelineProgram !== "oceanleo" ? timelineProgram as NativeProgram : null,
+    enabled: computerTask && timelineProgram !== "oceanleo",
+  });
   const timelineMessages = computerTask
     ? timeline.items
       .filter((message) => !(
@@ -3385,6 +3397,7 @@ function AgentChatInner({
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
             onVoiceTranscript={handleVoiceTranscript}
             contextActions={getHelpMenu}
+            modelPickerSlot={computerTask && timelineProgram !== "oceanleo" ? taskNativeThread.modelPicker : undefined}
             {...conversationProps}
           />
             </>
@@ -3705,7 +3718,7 @@ function AgentChatInner({
       {nativeStream && !computerTask && (
         <div className={nativeChat ? "flex min-h-0 flex-1 flex-col" : "hidden"} hidden={!nativeChat}>{nativeStream}</div>
       )}
-      {!computerTask && surfaceSessions.map((session) => {
+      {surfaceSessions.map((session) => {
         const active = surfaceActive && activeSession?.id === session.id;
         return (
           <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-computer-surface={session.id}>
@@ -3718,7 +3731,7 @@ function AgentChatInner({
           </div>
         );
       })}
-      {!computerTask && surfaceActive && (
+      {surfaceActive && (
         <div className="shrink-0 border-t border-stone-100">
           <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
             {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}

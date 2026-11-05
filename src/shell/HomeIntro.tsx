@@ -28,7 +28,7 @@
 // ============================================================================
 
 import { useCallback, useState, type ReactNode } from "react";
-import { LeoComposer, type ComposerPayer, type ComposerSubmitContext } from "./LeoComposer";
+import { LeoComposer, type ComposerMenuItem, type ComposerPayer, type ComposerSubmitContext } from "./LeoComposer";
 import type { ExecutionTarget } from "../lib/execution-target";
 import { HomePromptCards } from "./HomeCards";
 import { HomeAppCards, HOME_APP_FEATURED_LIMIT } from "./HomeAppCards";
@@ -105,6 +105,10 @@ export interface HomeIntroProps {
   apps?: GoalApp[];
   /** 首页精选卡片张数上限（合同 §0 第 10 条：8–12 张），默认 12。 */
   featuredLimit?: number;
+  /** Optional context actions (for example localized Get help) shown in the home composer. */
+  contextActions?: ComposerMenuItem[];
+  /** Native model/account controls supplied by a host when the home target is a computer. */
+  modelPickerSlot?: ReactNode;
 }
 
 export function HomeIntro({
@@ -126,6 +130,8 @@ export function HomeIntro({
   markupPct: _markupPct,
   apps,
   featuredLimit = HOME_APP_FEATURED_LIMIT,
+  contextActions,
+  modelPickerSlot,
 }: HomeIntroProps) {
   void _markupPct;
   void _intro;
@@ -218,6 +224,8 @@ export function HomeIntro({
           onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
           onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
           onVoiceTranscript={toolsOn ? appendVoice : undefined}
+          contextActions={contextActions}
+          modelPickerSlot={modelPickerSlot}
           voiceLang={voiceLang}
         />
       </div>
