@@ -1,6 +1,8 @@
 import type { AgentAttachment, AgentMessage } from "../../lib/agent";
 import type {
+  TaskAcceptedMessage,
   TaskState,
+  TaskLocalMessageInput,
   TaskTimelineEntry,
   TaskTimelineInflightEntry,
   TaskProgram,
@@ -60,6 +62,8 @@ export type TaskTimelineMapOptions = {
   inflight?: readonly TaskTimelineInflightEntry[];
   cache?: TaskTimelineProjectionCache;
 };
+
+export type TaskLocalDelivery = "sending" | "sent" | "unsent";
 
 export function createTaskTimelineProjectionCache(): TaskTimelineProjectionCache {
   return { sessions: new Map() };
@@ -179,6 +183,85 @@ function mapLeoEntry(entry: TaskTimelineEntry): AgentMessage[] {
     ...annotate(row, entry, entry.program, String(row.id)),
     ...(entry.created_at && !row.created_at ? { created_at: entry.created_at } : {}),
   }];
+}
+
+export function localTaskMessage(
+  input: TaskLocalMessageInput,
+  delivery: TaskLocalDelivery = "sending",
+  reason?: string,
+  createdAt = new Date().toISOString(),
+): AgentMessage {
+  return {
+    id: stableNegativeId(`user:${input.clientMessageId}`),
+    role: "user",
+    kind: "text",
+    content: input.text,
+    created_at: createdAt,
+    meta: {
+      task_timeline_local: true,
+      client_message_id: input.clientMessageId,
+      delivery,
+      ...(reason ? { unsent_reason: reason } : {}),
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+      engine: input.program,
+      engine_label: engineLabel(input.program),
+    },
+  };
+}
+
+export function acceptedTaskMessage(message: TaskAcceptedMessage): AgentMessage {
+  const input: TaskLocalMessageInput = {
+    clientMessageId: message.client_message_id,
+    text: message.text,
+    attachments: message.attachments ?? [],
+    program: message.program,
+  };
+  const row = localTaskMessage(input, "sent", undefined, message.created_at);
+  return {
+    ...row,
+    meta: {
+      ...(row.meta ?? {}),
+      task_timeline_local: false,
+      task_timeline_accepted: true,
+      task_timeline_session_id: message.session_id,
+    },
+  };
+}
+
+function taskTimelineUserPriority(row: AgentMessage): number {
+  return row.meta?.task_timeline_committed ? 5
+    : row.meta?.task_timeline_inflight ? 4
+      : row.meta?.task_timeline_accepted ? 3
+        : row.meta?.task_timeline_queued ? 2
+          : row.meta?.task_timeline_local ? 1 : 0;
+}
+
+/** Merge the five D8 user-row sources while retaining the first row position/id. */
+export function mergeTaskTimelineUserRows(rows: readonly AgentMessage[]): AgentMessage[] {
+  const selected = new Map<string, { row: AgentMessage; priority: number; position: number }>();
+  const order: AgentMessage[] = [];
+  for (const row of rows) {
+    if (row.role !== "user") {
+      order.push(row);
+      continue;
+    }
+    const id = typeof row.meta?.client_message_id === "string" ? row.meta.client_message_id : "";
+    if (!id) {
+      order.push(row);
+      continue;
+    }
+    const priority = taskTimelineUserPriority(row);
+    const previous = selected.get(id);
+    if (!previous) {
+      selected.set(id, { row, priority, position: order.length });
+      order.push(row);
+    } else if (priority >= previous.priority) {
+      const replacement = { ...row, id: previous.row.id };
+      selected.set(id, { ...previous, row: replacement, priority });
+      order[previous.position] = replacement;
+    }
+  }
+  return order;
 }
 
 /** Drop repeated cursors while retaining the server's total order. */

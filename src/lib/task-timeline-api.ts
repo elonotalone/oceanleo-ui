@@ -37,6 +37,12 @@ export type TaskAcceptedMessage = {
   attachments?: AgentAttachment[];
   created_at: string;
 };
+export type TaskLocalMessageInput = {
+  clientMessageId: string;
+  text: string;
+  attachments: AgentAttachment[];
+  program: TaskProgram;
+};
 export type TaskSessionSummary = { id: string; program: TaskProgram | null; run_status: string; created_at: string };
 export type TaskRequest = { id: string; kind: "permission" | "question"; [key: string]: unknown };
 export type TaskState = {
