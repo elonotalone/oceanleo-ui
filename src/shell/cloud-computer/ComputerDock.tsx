@@ -18,6 +18,7 @@ import { computerDisplayState, isConnectedComputer } from "./computer-state";
 import { readRememberedConversation, resolveRememberedConversation, writeRememberedConversation } from "./remembered-conversation";
 
 const DESKTOP_PLATFORMS = ["windows", "macos", "linux"];
+const DOCK_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000] as const;
 /** Menu order of the programs a connected computer can talk through. */
 const NATIVE_PROGRAMS: NativeProgram[] = ["codex", "claude", "cursor", "hermes"];
 /** Only an explicit `false` from the gateway counts; an older gateway's missing field says nothing. */
@@ -215,21 +216,75 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   useEffect(() => {
     if (!open || !owner) return;
     let alive = true;
-    setLoading(true); setError(false);
-    void Promise.allSettled([supplied ? Promise.resolve({ items: supplied }) : client.listComputers(), listDevices(), listCloudAgentAvailability()])
-      .then(([cloudResult, localResult, agentResult]) => {
-        if (!alive) return;
-        const local = localResult.status === "fulfilled" ? localResult.value : null;
-        const listed = local?.ok && local.data ? local.data.filter((d) => DESKTOP_PLATFORMS.includes(d.platform)) : [];
-        setComputers(cloudResult.status === "fulfilled" ? cloudResult.value.items || [] : []);
-        setDevices(listed);
-        if (local?.ok) setSelectedDevice((current) => current && (listed.find((d) => d.device_id === current.device_id) ?? null));
-        if (agentResult.status === "fulfilled") setCloudAgent((current) => nextCloudAgentState(current, agentResult.value));
-        setError(cloudResult.status === "rejected" || !local?.ok);
-      })
-      .catch(() => { if (alive) setError(true); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    let active = false;
+    let retryTimer: number | null = null;
+    let retryAttempt = 0;
+    const clearRetry = () => {
+      if (retryTimer === null) return;
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+    const scheduleRetry = () => {
+      if (!alive || retryTimer !== null || retryAttempt >= DOCK_RETRY_DELAYS_MS.length) return;
+      const delay = DOCK_RETRY_DELAYS_MS[retryAttempt++];
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void load();
+      }, delay);
+    };
+    const load = async () => {
+      if (!alive || active) return;
+      active = true;
+      setLoading(true);
+      setError(false);
+      const results = await Promise.allSettled([
+        supplied ? Promise.resolve({ items: supplied }) : client.listComputers(),
+        listDevices(),
+        listCloudAgentAvailability(),
+      ]);
+      if (!alive) {
+        active = false;
+        return;
+      }
+      const [cloudResult, localResult, agentResult] = results;
+      const local = localResult.status === "fulfilled" ? localResult.value : null;
+      const listed = local?.ok && local.data ? local.data.filter((d) => DESKTOP_PLATFORMS.includes(d.platform)) : [];
+      setComputers(cloudResult.status === "fulfilled" ? cloudResult.value.items || [] : []);
+      setDevices(listed);
+      if (local?.ok) setSelectedDevice((current) => current && (listed.find((d) => d.device_id === current.device_id) ?? null));
+      if (agentResult.status === "fulfilled") setCloudAgent((current) => nextCloudAgentState(current, agentResult.value));
+      const failed = cloudResult.status === "rejected" || !local?.ok || agentResult.status === "rejected";
+      setError(cloudResult.status === "rejected" || !local?.ok);
+      if (failed) scheduleRetry();
+      else {
+        retryAttempt = 0;
+        clearRetry();
+      }
+      setLoading(false);
+      active = false;
+    };
+    const retryNow = () => {
+      if (!alive || active) return;
+      clearRetry();
+      retryAttempt = 0;
+      void load();
+    };
+    const onOnline = () => retryNow();
+    const onFocus = () => retryNow();
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") retryNow();
+    };
+    void load();
+    window.addEventListener("online", onOnline);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      clearRetry();
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [open, owner, client, supplied]);
 
   // Install / sign-in state of the programs on the computer being browsed.

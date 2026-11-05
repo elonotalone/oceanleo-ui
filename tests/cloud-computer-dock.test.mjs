@@ -403,6 +403,27 @@ test("cloud list failure still shows actual local devices and preserves a select
   } finally { view.cleanup(); }
 });
 
+test("picker retries a transient cloud list failure while it stays open", async () => {
+  let calls = 0;
+  const view = await render(undefined, {
+    async listComputers() {
+      calls += 1;
+      if (calls === 1) throw new Error("unavailable");
+      return { items: [pc()] };
+    },
+  });
+  try {
+    await openDock(view);
+    assert.equal(calls, 1);
+    assert.match(view.text(), /设备列表暂不可用/);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await flush();
+    assert.equal(calls, 2);
+    assert.doesNotMatch(view.text(), /设备列表暂不可用/);
+    assert.ok(view.host.querySelector('[data-oceanleo-cc-switch-item="cc_1"]'));
+  } finally { view.cleanup(); }
+});
+
 test("CN family has the same two-group execution choice and Manage entry", async () => {
   globalThis.__ccDomainFamily = "cn";
   const view = await render([]);
