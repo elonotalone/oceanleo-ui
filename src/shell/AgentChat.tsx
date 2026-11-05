@@ -1562,12 +1562,6 @@ function AgentChatInner({
   const timelineComputerId = (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : null)
     || timeline.state?.computer.id
     || undefined;
-  const taskNativeThread = useNativeThread({
-    computer: computerTask && conversationComputer ? conversationComputer : null,
-    session: computerTask && activeSession?.kind === "acp" ? activeSession : null,
-    program: timelineProgram !== "oceanleo" ? timelineProgram as NativeProgram : null,
-    enabled: computerTask && timelineProgram !== "oceanleo",
-  });
   const timelineMessages = computerTask
     ? timeline.items
       .filter((message) => !(
@@ -3662,9 +3656,6 @@ function AgentChatInner({
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
             onVoiceTranscript={handleVoiceTranscript}
             contextActions={getHelpMenu}
-            {...(computerTask && timelineProgram !== "oceanleo"
-              ? { nativeModelPickerSlot: taskNativeThread.modelPicker }
-              : {})}
             {...conversationProps}
           />
             </>
