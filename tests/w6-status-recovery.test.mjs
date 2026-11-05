@@ -63,13 +63,13 @@ const page = { items: [], next_cursor: null };
 test("agent dialog link evidence removes a stale reconnect notice immediately", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "claude" });
-  state = applyDialog(state, { type: "frame", frame: { t: "error", code: "dialog_unreachable", program: "claude" } });
+  state = applyDialog(state, { type: "frame", frame: { t: "error", code: "computer_offline", program: "claude" } });
   assert.equal(state.offline, true);
-  assert.equal(state.messages.some((message) => message.kind === "notice" && message.code === "dialog_unreachable"), true);
+  assert.equal(state.messages.some((message) => message.kind === "notice" && message.code === "computer_offline"), true);
 
   state = applyDialog(state, { type: "link-evidence" });
   assert.equal(state.offline, false);
-  assert.equal(state.messages.some((message) => message.kind === "notice" && message.code === "dialog_unreachable"), false);
+  assert.equal(state.messages.some((message) => message.kind === "notice" && message.code === "computer_offline"), false);
 });
 
 test("failed first inbox load retries and clears its error after recovery", async () => {
