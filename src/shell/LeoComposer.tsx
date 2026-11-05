@@ -331,6 +331,8 @@ export interface LeoComposerProps {
   taskSessions?: ComputerTaskSession[];
   /** Replaces the model picker (e.g. a native program's model control); null hides it. */
   modelPickerSlot?: ReactNode;
+  /** Native program controls mounted alongside the task composer without changing its host identity. */
+  nativeModelPickerSlot?: ReactNode;
   /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
   boundExecutionTarget?: ExecutionTarget | null;
 
@@ -394,6 +396,7 @@ export function LeoComposer({
   oceanleoDisabledReason,
   taskSessions,
   modelPickerSlot,
+  nativeModelPickerSlot,
   boundExecutionTarget,
   appsHost,
   onOpenPlugins,
@@ -743,7 +746,7 @@ export function LeoComposer({
                 : "flex h-7 items-center gap-1.5 rounded-full px-2 text-[12px] text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-700 disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent"}
             >
               {action.icon && <span className="shrink-0">{action.icon}</span>}
-              {action.id !== "get-help" && <span>{action.label}</span>}
+              {action.id === "get-help" ? <span className="sr-only">{action.label}</span> : <span>{action.label}</span>}
             </button>
           ))}
           {showComputerDock && (
@@ -806,8 +809,8 @@ export function LeoComposer({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {modelPickerSlot !== undefined
-            ? modelPickerSlot
+          {modelPickerSlot !== undefined || nativeModelPickerSlot !== undefined
+            ? (modelPickerSlot ?? nativeModelPickerSlot)
             : showModelPicker && !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" />}
           {onMeetingRecording && (
             <button

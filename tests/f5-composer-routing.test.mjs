@@ -17,5 +17,7 @@ test('task composer retries reuse the same client message id and queued rows can
   assert.match(source, /client_message_id: clientMessageId/);
   assert.match(source, /removeTimelineQueued\(taskId, clientMessageId\)/);
   assert.match(source, /data-task-queued-actions=/);
-  assert.match(source, /tt\("queuedMessageHint", \{ from: sender, to: recipient \}\)/);
+  assert.doesNotMatch(source, /tt\("queuedMessageHint/);
+  assert.match(source, /已排队，等 \{to\} 完成这一轮后发送/);
+  assert.match(source, /\{from\} 做完这一轮后交给 \{to\}/);
 });

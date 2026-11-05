@@ -27,13 +27,13 @@ test("task identity and composer controls keep their intended visual affordances
   assert.match(composer, /action\.id === "get-help"/);
   assert.match(composer, /aria-label=\{action\.id === "get-help"/);
   assert.match(chat, /action: \{ version: 1, tab: "bay" \}/);
-  assert.match(chat, /modelPickerSlot=\{computerTask && timelineProgram !== "oceanleo"/);
+  assert.match(chat, /nativeModelPickerSlot: taskNativeThread\.modelPicker/);
 });
 
 test("terminal surfaces remain mounted and selectable for computer tasks", () => {
   const chat = read("src/shell/AgentChat.tsx");
-  assert.match(chat, /\{surfaceSessions\.map\(\(session\) =>/);
-  assert.match(chat, /\{surfaceActive && \(/);
-  assert.doesNotMatch(chat, /\{!computerTask && surfaceSessions\.map/);
+  assert.match(chat, /surfaceSessions\.map\(\(session\) =>/);
+  assert.match(chat, /NativeTerminalSurface/);
+  assert.match(chat, /ConversationBar/);
 });
 

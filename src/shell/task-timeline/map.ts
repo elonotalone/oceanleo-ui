@@ -1,4 +1,4 @@
-import type { AgentMessage } from "../../lib/agent";
+import type { AgentAttachment, AgentMessage } from "../../lib/agent";
 import type { TaskState, TaskTimelineEntry, TaskProgram } from "../../lib/task-timeline-api";
 import { PROGRAM_LABEL } from "../../native-agent-core/index";
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
@@ -238,7 +238,9 @@ export function queuedTaskMessages(state: TaskState): AgentMessage[] {
       queued: true,
       client_message_id: queued.client_message_id,
       task_timeline_queued: true,
-      ...(Array.isArray(queued.attachments) && queued.attachments.length ? { attachments: queued.attachments } : {}),
+      ...(Array.isArray(queued.attachments) && queued.attachments.length
+        ? { attachments: queued.attachments as AgentAttachment[] }
+        : {}),
     },
   }));
 }
