@@ -722,6 +722,49 @@ function sessionConversation(session: ComputerTaskSession): ConversationTarget {
     view: session.kind === "cli" ? "cli" : "chat", sessionId: session.id};
 }
 
+/**
+ * Status under a queued task message. A message for the agent that is already working is normally injected within
+ * a second or two, so its status waits 3 s before showing (no flash of "queued" on every follow-up); a message for
+ * a different agent waits for the turn boundary and says so at once. Compares program ids, not display labels.
+ */
+function TaskQueuedActions({ clientMessageId, recipientProgram, currentProgram, readOnly, onRemove }: {
+  clientMessageId: string;
+  recipientProgram: string;
+  currentProgram: string;
+  readOnly?: boolean;
+  onRemove: (clientMessageId: string) => void;
+}) {
+  const tt = useUI();
+  const sameAgent = !recipientProgram || recipientProgram === currentProgram;
+  const [visible, setVisible] = useState(!sameAgent);
+  useEffect(() => {
+    if (!sameAgent) { setVisible(true); return; }
+    setVisible(false);
+    const timer = setTimeout(() => setVisible(true), 3000);
+    return () => clearTimeout(timer);
+  }, [sameAgent, clientMessageId]);
+  if (!clientMessageId || !visible) return null;
+  const recipient = PROGRAM_LABEL[recipientProgram as keyof typeof PROGRAM_LABEL] || recipientProgram;
+  const sender = PROGRAM_LABEL[currentProgram as keyof typeof PROGRAM_LABEL] || currentProgram;
+  return (
+    <div className="flex justify-end gap-2 px-1 text-[12px] text-stone-500" data-task-queued-actions={clientMessageId}>
+      <span data-task-queued-status="" className="text-stone-400">
+        {sameAgent
+          ? tt("已排队，等 {to} 完成这一轮后发送", { to: sender })
+          : tt("{from} 做完这一轮后交给 {to}", { from: sender, to: recipient })}
+      </span>
+      <button
+        type="button"
+        className="underline underline-offset-2"
+        onClick={() => onRemove(clientMessageId)}
+        disabled={readOnly}
+      >
+        {tt("移除排队消息")}
+      </button>
+    </div>
+  );
+}
+
 function AgentChatInner({
   workspaceContent,
   workspaceOpen,
@@ -3273,30 +3316,15 @@ function AgentChatInner({
                   turnCopyText={turnActions.get(item.key) ?? null}
                   highlightQuery={highlightQuery || undefined}
                 />
-                {computerTask && item.message.meta?.task_timeline_queued === true && (() => {
-                  const clientMessageId = String(item.message.meta?.client_message_id || "");
-                  return clientMessageId ? (
-                    <div className="flex justify-end px-1 text-[12px] text-stone-500" data-task-queued-actions={clientMessageId}>
-                      <button
-                        type="button"
-                        className="underline underline-offset-2"
-                        onClick={() => void removeQueuedMessage(clientMessageId)}
-                        disabled={readOnly}
-                      >
-                        {tt("移除排队消息")}
-                      </button>
-                      {(() => {
-                        const recipient = String(item.message.meta?.engine_label || item.message.meta?.engine || "");
-                        const sender = PROGRAM_LABEL[currentProgram] || currentProgram;
-                        return <span data-task-queued-status="" className="text-stone-400">
-                          {recipient === sender
-                            ? tt("已排队，等 {to} 完成这一轮后发送", { to: recipient })
-                            : tt("{from} 做完这一轮后交给 {to}", { from: sender, to: recipient })}
-                        </span>;
-                      })()}
-                    </div>
-                  ) : null;
-                })()}
+                {computerTask && item.message.meta?.task_timeline_queued === true && (
+                  <TaskQueuedActions
+                    clientMessageId={String(item.message.meta?.client_message_id || "")}
+                    recipientProgram={String(item.message.meta?.engine || "")}
+                    currentProgram={String(currentProgram || "")}
+                    readOnly={readOnly}
+                    onRemove={(id) => void removeQueuedMessage(id)}
+                  />
+                )}
               </div>
             ),
           )}
