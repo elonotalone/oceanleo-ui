@@ -12,6 +12,12 @@ export function legacyImportErrorCode(status: number | undefined): LegacyImportE
   return "try-again";
 }
 
+/** Build the query used when a legacy computer link resolves to devices. */
+export function legacyComputerQuery(computerId: string, known: boolean, status?: number): string {
+  const query = `?computer=${encodeURIComponent(computerId)}`;
+  return known ? query : `${query}&legacyImportError=${legacyImportErrorCode(status)}`;
+}
+
 export function legacyImportErrorCopy(code: LegacyImportErrorCode): string {
   switch (code) {
     case "forbidden": return "你无权访问这台电脑或会话。";

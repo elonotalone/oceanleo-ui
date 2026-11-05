@@ -4,8 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useUI } from "../../i18n/ui/useUI";
 import { portalHref } from "../../contracts/domain-family";
 import { CloudComputerError } from "../../lib/cloud-computer-api";
-import { createComputerTaskSession, type ComputerTaskSession } from "../../lib/computer-task-api";
-import { legacyImportErrorCode, shouldRetryLegacyImport } from "../../lib/computer-task-import-state";
+import { createComputerTaskSession, loadComputer, type ComputerTaskSession } from "../../lib/computer-task-api";
+import { legacyComputerQuery, legacyImportErrorCode, shouldRetryLegacyImport } from "../../lib/computer-task-import-state";
 
 const NATIVE_PROGRAMS = ["cursor", "claude", "codex", "hermes"];
 
@@ -41,6 +41,16 @@ async function createLegacyTaskSessionWithRetry(computerId: string, input: Param
   }
 }
 
+async function loadLegacyComputerWithRetry(computerId: string) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await loadComputer(computerId);
+    } catch (error) {
+      if (!shouldRetryLegacyImport(statusOf(error), attempt)) throw error;
+    }
+  }
+}
+
 /**
  * Legacy deep links (`/computers/<id>?card=…&program=…&session=…`, old `shell`
  * tasks) import only the native session they name into a task, then forward
@@ -65,16 +75,17 @@ export function ComputerTaskImport({ computerId, taskId, nativeSessionId, kind, 
     const raw = program || params.get("program") || "";
     const nativeProgram = NATIVE_PROGRAMS.includes(raw) ? raw as ComputerTaskSession["program"] : null;
     const native = nativeSessionId || params.get("session") || undefined;
-    if (chosenKind !== "terminal" && !nativeProgram) {
-      // The per-computer OceanLeo conversation was removed. A legacy link
-      // without a named native session belongs on device management.
-      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImportError=not-found`);
+    if (!taskId && !native) {
+      // Verify ownership first. Known computers have a clean device link;
+      // foreign or missing ids retain the explicit error state.
+      void loadLegacyComputerWithRetry(computerId)
+        .then(() => router.replace(`${portalHref("/devices")}${legacyComputerQuery(computerId, true)}`))
+        .catch((error: unknown) => {
+          router.replace(`${portalHref("/devices")}${legacyComputerQuery(computerId, false, statusOf(error))}`);
+        });
       return;
     }
-    if (!taskId && !native) {
-      // A card without a managed task or native session has nothing safe to
-      // import; keep the user on the device detail instead of creating a new
-      // conversation or enumerating history.
+    if (chosenKind !== "terminal" && !nativeProgram) {
       router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImportError=not-found`);
       return;
     }
