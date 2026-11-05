@@ -54,6 +54,8 @@ test('I3 state mapping keeps offline and pending-stop facts explicit', () => {
   assert.equal(mapTaskState({...base, status: 'offline', pending_stop: true}).status, 'offline');
   assert.equal(mapTaskState({...base, status: 'failed', reason: 'runner failed'}).reason, 'runner failed');
   assert.equal(mapTaskState({...base, status: 'idle', reason: 'saving delayed'}).status, 'saving_delayed');
+  assert.equal(mapTaskState({...base, status: 'working', saving_delayed: true}).savingDelayed, true);
+  assert.equal(mapTaskState({...base, status: 'working'}).savingDelayed, false);
 });
 
 test('queued prompts carry immutable ids and the recipient engine label', () => {

@@ -290,6 +290,12 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
             setLive((current) => mergeLiveFrame(entriesRef.current, current, event));
           } else if (event.type === "state") {
             setTaskState(event.state);
+          } else if (event.type === "error" && event.code === "storage_unavailable") {
+            // Storage delay is a degraded stream state. Keep the live socket and
+            // committed read healthy; W14 will clear this with the next state.
+            setTaskState((current) => current
+              ? { ...current, saving_delayed: true, reason: current.reason ?? event.code ?? "storage_unavailable" }
+              : current);
           } else if (event.type === "reset") {
             setReloadNonce((value) => value + 1);
           }
