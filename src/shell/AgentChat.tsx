@@ -921,6 +921,12 @@ function AgentChatInner({
   const loadedTaskRef = useRef("");
   /** A retry of the same task-level submission must reuse its idempotency key. */
   const pendingTaskSubmissionRef = useRef<{ key: string; id: string } | null>(null);
+  /** A home-page computer send is stashed until the task timeline mounts. */
+  const pendingHomeTimelineRef = useRef<{
+    taskId: string;
+    clientMessageId: string;
+    outcome: { ok: true } | { ok: false; reason: string };
+  } | null>(null);
   const initialTaskRef = useRef(initialTask);
   initialTaskRef.current = initialTask;
   useEffect(() => {
@@ -1394,6 +1400,12 @@ function AgentChatInner({
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
   const timeline = useTaskTimeline(taskId || undefined, { enabled: computerTask, limit: 200 });
+  useEffect(() => {
+    const pending = pendingHomeTimelineRef.current;
+    if (!pending || pending.taskId !== taskId || !computerTask) return;
+    pendingHomeTimelineRef.current = null;
+    timeline.settleLocal(pending.clientMessageId, pending.outcome);
+  }, [computerTask, taskId, timeline.settleLocal]);
 
   // The URL names the conversation; a change from outside (back/forward, a link
   // to another `computerSession` of this task) switches it.
@@ -1908,6 +1920,9 @@ function AgentChatInner({
       // first await. A file switch while a new session is being prepared must not
       // silently change which file this user turn refers to.
       const turn = capturedTurn || captureEditorTurn(prompt);
+      const homeClientMessageId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : `home:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       setBusy(true);
       setError(null);
       noteUserTurn(turn.filePin);
@@ -2032,6 +2047,22 @@ function AgentChatInner({
       if (unconfirmed) {
         setMessages((current) => current.filter((message) => message.id !== -1));
         setError(unconfirmed.text);
+      }
+      const createdTarget = result.executionTarget ?? executionTarget;
+      if (createdTarget && createdTarget.kind !== "cloud") {
+        stashLocalForTask(createdTaskId, {
+          clientMessageId: homeClientMessageId,
+          text: prompt,
+          attachments: uploaded || [],
+          program: "oceanleo",
+        });
+        pendingHomeTimelineRef.current = {
+          taskId: createdTaskId,
+          clientMessageId: homeClientMessageId,
+          outcome: unconfirmed
+            ? { ok: false, reason: unconfirmed.text }
+            : { ok: true },
+        };
       }
       // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
       noteOwnEditorTask(createdTaskId);
