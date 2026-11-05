@@ -445,6 +445,18 @@ test("新 nonce 回到 related、清空目标栈、重新请求", async () => {
   await view.unmount();
 });
 
+test("没有关键词的请求（输入框的 Get help）直接打开服务栏，不显示空的相关服务", async () => {
+  resetRelated({ items: [], match: "none", q: "", site: null });
+  const view = await mount(panelEl({ active: true, request: { nonce: "help-1", query: "" } }));
+  await waitFor(() => {
+    assert.equal(view.host.querySelector("[data-bay-panel-root]").getAttribute("data-bay-panel-mode"), "browse");
+    assert.equal(view.host.querySelector("[data-bay-related-title]"), null);
+    assert.equal(bayState.bayStateSnapshot().filter?.kind ?? "service", "service");
+  });
+  assert.equal(globalThis.__bay5.relatedCalls.length, 0);
+  await view.unmount();
+});
+
 test("先聊聊：openBayConversation 交给 onOpenConversation", async () => {
   const opened = [];
   resetRelated({ items: [], match: "none", q: "", site: null });

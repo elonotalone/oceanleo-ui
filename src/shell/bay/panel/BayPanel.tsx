@@ -10,6 +10,7 @@ import {
   bayBack,
   closeBayDetails,
   registerBayPanel,
+  setBayFilter,
   useBayState,
 } from "../shell/bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "../shell/BayDetail";
@@ -38,7 +39,10 @@ export function BayPanel({ siteKey, active, request, onBackChange, onOpenConvers
   const enabled = domainFamilyFeatures().bay;
   const { current } = useBayState();
   const inDetail = current.kind !== "feed";
-  const [mode, setMode] = useState<PanelMode>(request ? "related" : "browse");
+  // A request with no keywords and no category (the composer's Get help icon) has nothing to match: open the
+  // services feed instead of an empty "related services" heading (operator report 2026-11-05).
+  const related = request && (request.query.trim() || request.category) ? request : null;
+  const [mode, setMode] = useState<PanelMode>(related ? "related" : "browse");
   const openConversationRef = useRef(onOpenConversation);
   openConversationRef.current = onOpenConversation;
   const onBackChangeRef = useRef(onBackChange);
@@ -55,9 +59,14 @@ export function BayPanel({ siteKey, active, request, onBackChange, onOpenConvers
     if (!enabled) return;
     const nonce = request?.nonce;
     if (!nonce) return;
-    setMode("related");
+    if (related) {
+      setMode("related");
+    } else {
+      setMode("browse");
+      setBayFilter({ kind: "service" });
+    }
     closeBayDetails();
-  }, [enabled, request?.nonce]);
+  }, [enabled, request?.nonce, related]);
 
   useEffect(() => {
     const notify = onBackChangeRef.current;
@@ -69,7 +78,7 @@ export function BayPanel({ siteKey, active, request, onBackChange, onOpenConvers
     }
     if (inDetail) {
       notify?.(() => bayBack());
-    } else if (mode === "browse" && request) {
+    } else if (mode === "browse" && related) {
       notify?.(() => setMode("related"));
     } else {
       notify?.(null);
@@ -77,7 +86,7 @@ export function BayPanel({ siteKey, active, request, onBackChange, onOpenConvers
     return () => {
       onBackChangeRef.current?.(null);
     };
-  }, [enabled, inDetail, mode, request?.nonce]);
+  }, [enabled, inDetail, mode, request?.nonce, related]);
 
   if (!enabled) return null;
 
@@ -96,8 +105,8 @@ export function BayPanel({ siteKey, active, request, onBackChange, onOpenConvers
             <BayDetailPane target={current} layout="docked" siteKey={siteKey} />
           </div>
         </div>
-      ) : mode === "related" && request ? (
-        <RelatedServices siteKey={siteKey} request={request} active={active} onBrowseAll={() => setMode("browse")} />
+      ) : mode === "related" && related ? (
+        <RelatedServices siteKey={siteKey} request={related} active={active} onBrowseAll={() => setMode("browse")} />
       ) : (
         <PanelBrowse siteKey={siteKey} />
       )}
