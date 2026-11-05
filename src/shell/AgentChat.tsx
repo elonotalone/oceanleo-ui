@@ -2275,6 +2275,39 @@ function AgentChatInner({
     }
   }, [readOnly, taskId]);
 
+  const retryTimelineMessage = useCallback(async (clientMessageId: string) => {
+    if (!taskId || readOnly || busy || !clientMessageId) return;
+    const retry = timeline.retryLocal(clientMessageId);
+    if (!retry) return;
+    setBusy(true);
+    setError(null);
+    let ok = false;
+    let delivery: "started" | "injected" | "queued" | undefined;
+    let failureReason = "";
+    try {
+      const result = await sendTimelineMessage(taskId, {
+        program: retry.program,
+        computer_id: timelineComputerId || undefined,
+        text: retry.text,
+        attachments: retry.attachments,
+        mode,
+        client_message_id: clientMessageId,
+      });
+      ok = result.ok !== false && result.accepted !== false;
+      delivery = result.delivery;
+    } catch (caught) {
+      failureReason = taskTimelineFailureText(tt, caught);
+    }
+    if (ok) {
+      timeline.settleLocal(clientMessageId, delivery ? { ok: true, delivery } : { ok: true });
+    } else {
+      const reason = failureReason || tt("这条消息没有发送，请重试。");
+      timeline.settleLocal(clientMessageId, { ok: false, reason });
+      setError(reason);
+    }
+    setBusy(false);
+  }, [busy, mode, readOnly, taskId, timeline.retryLocal, timeline.settleLocal, timelineComputerId, tt]);
+
   async function send(orgId?: string, executionTarget?: ExecutionTarget) {
     const prompt = input.trim();
     // Allow send when there's an attachment even if the text is empty. But block
@@ -2309,6 +2342,8 @@ function AgentChatInner({
     if (computerTask) {
       setBusy(true);
       let ok = false;
+      let delivery: "started" | "injected" | "queued" | undefined;
+      let failureReason = "";
       const submissionKey = `${taskId}\u0000${effectivePrompt}\u0000${uploaded.map((attachment) => [
         attachment.artifact_id,
         attachment.revision_id,
@@ -2324,6 +2359,12 @@ function AgentChatInner({
       );
       const clientMessageId = submission.id;
       pendingTaskSubmissionRef.current = submission;
+      timeline.sendLocal({
+        clientMessageId,
+        text: effectivePrompt,
+        attachments: uploaded,
+        program: timelineProgram,
+      });
       try {
         const result = await sendTimelineMessage(taskId, {
           program: timelineProgram,
@@ -2333,13 +2374,20 @@ function AgentChatInner({
           mode,
           client_message_id: clientMessageId,
         });
-        ok = result.ok !== false;
+        ok = result.ok !== false && result.accepted !== false;
+        delivery = result.delivery;
       } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+        failureReason = taskTimelineFailureText(tt, caught);
+      }
+      if (ok) {
+        timeline.settleLocal(clientMessageId, delivery ? { ok: true, delivery } : { ok: true });
+      } else {
+        const reason = failureReason || tt("这条消息没有发送，请重试。");
+        timeline.settleLocal(clientMessageId, { ok: false, reason });
+        setError(reason);
       }
       setBusy(false);
-      if (ok) pendingTaskSubmissionRef.current = null;
-      if (!ok) restoreSubmission();
+      pendingTaskSubmissionRef.current = null;
       return;
     }
     setBusy(true);
@@ -2702,18 +2750,22 @@ function AgentChatInner({
   // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
   const shareSiteLabel =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined;
+  const timelineShareSessionId = computerTask
+    ? activeSession?.id || String(timelineMessages.find((message) => message.meta?.task_timeline_session_id)?.meta?.task_timeline_session_id || "") || null
+    : null;
   const share = useShareMode({
-    messages,
+    messages: computerTask ? timelineMessages : messages,
     taskId,
     title: taskTitle,
     siteLabel: shareSiteLabel,
+    native: computerTask ? { sessionId: timelineShareSessionId, hasOlder: timeline.hasOlder } : undefined,
   });
   // W5 share fix (2026-10-31): the select mode lives in the OceanLeo conversation's
   // own stream (its footer becomes the action bar). With a computer conversation in
   // front that stream is hidden: entering there looked like "the button vanished,
   // nothing happened". So the OceanLeo select mode ends when that conversation is
   // not shown; a computer chat in front has its own (below).
-  const shareAvailable = cloudPaneShown && share.selectable.length > 0;
+  const shareAvailable = (computerTask || cloudPaneShown) && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
     if (!cloudPaneShown && share.active) exitShare();
@@ -3092,7 +3144,12 @@ function AgentChatInner({
       {/* Stays in place while selecting (pressed; a second click leaves). It used to be
           unmounted on click, so the header looked like it lost the button. Entering
           from here selects every message: 「复制链接」 works straight away. */}
-      {nativeChat ? (
+      {computerTask ? (
+        <ShareEntryButton
+          active={share.active}
+          onClick={() => (share.active ? share.exit() : share.enter("all"))}
+        />
+      ) : nativeChat ? (
         <ShareEntryButton
           active={nativeShareOn}
           onClick={() => setNativeShareOn((on) => !on)}
