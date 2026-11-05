@@ -6,9 +6,42 @@ import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { useImEnabled } from "../../lib/im/client";
 import { attachBayDeepLinks, useBayEnabled } from "../bay/shell/bay-state";
-import { hostState, useMessagesHost } from "../messages/host-state";
+import { useMessagesHost } from "../messages/host-state";
 import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
+import { dispatchWorkspaceAction } from "../workspace-actions";
+
+/** Button-to-canvas request. The mounted ResultCanvas marks it handled synchronously. */
+export const LEOCHAT_PANEL_REQUEST_EVENT = "oceanleo:leochat-panel-request";
+
+export interface LeoChatPanelRequestDetail {
+  handled: boolean;
+}
+
+function requestLeoChatPanel(): boolean {
+  if (typeof window === "undefined") return false;
+  // SplitWorkspace already listens for this trusted action and opens a collapsed
+  // right pane. ResultCanvas then selects the LeoChat view in the same click.
+  dispatchWorkspaceAction({
+    nonce: `leochat-button:${Date.now()}`,
+    action: { version: 1, tab: "preview" },
+  });
+  const detail: LeoChatPanelRequestDetail = { handled: false };
+  window.dispatchEvent(
+    new CustomEvent<LeoChatPanelRequestDetail>(LEOCHAT_PANEL_REQUEST_EVENT, { detail }),
+  );
+  return detail.handled;
+}
+
+function isLeoChatPage(): boolean {
+  if (typeof window === "undefined") return false;
+  const pathname = window.location.pathname.replace(/\/+$/, "");
+  return pathname === "/leochat" || pathname.endsWith("/leochat");
+}
+
+function openLeoChatPage(): void {
+  if (typeof window !== "undefined") window.location.assign("/leochat");
+}
 
 export function LeoChatGlyph({ className = "h-[18px] w-[18px]" }: { className?: string }) {
   return (
@@ -35,6 +68,7 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
   const unread = useLeoChatUnread(imOn);
   const { open, surface } = useMessagesHost();
   const count = imOn ? unread.total : 0;
+  const surfaceOpen = open && surface !== "window";
 
   // 别的页面上的 `?bay=` 深链由 LeoBay 自己接（跳到 /bay），这里顺手挂上监听：每个页面都有这个图标。
   useEffect(() => (bayOn ? attachBayDeepLinks() : undefined), [bayOn]);
@@ -50,12 +84,15 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
     <div className={`relative ${className}`} data-leochat-button>
       <button
         type="button"
-        onClick={() => hostState().toggleWindow()}
+        onClick={() => {
+          if (isLeoChatPage()) return;
+          if (!requestLeoChatPanel()) openLeoChatPage();
+        }}
         aria-label={label}
-        aria-pressed={open}
+        aria-pressed={surfaceOpen}
         title={label}
-        data-leochat-open={open ? "true" : "false"}
-        data-leochat-surface={open ? surface : "none"}
+        data-leochat-open={surfaceOpen ? "true" : "false"}
+        data-leochat-surface={surfaceOpen ? surface : "none"}
         className="leo-tap-target relative flex items-center justify-center rounded-lg text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800"
       >
         <LeoChatGlyph />

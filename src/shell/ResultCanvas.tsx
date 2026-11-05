@@ -40,8 +40,13 @@ import {
 import { useWorkspaceSlotState } from "./result-canvas-slot-state";
 import { useWorkspaceViewState } from "./result-canvas-view-state";
 import { useBayEnabled } from "./bay/shell/bay-state";
+import { useImEnabled } from "../lib/im/client";
 import { BayPanel } from "./bay/panel";
 import { LeoChatPanel } from "./leochat/LeoChatPanel";
+import {
+  LEOCHAT_PANEL_REQUEST_EVENT,
+  type LeoChatPanelRequestDetail,
+} from "./leochat/LeoChatButton";
 import { WorkspaceHome, WorkspaceViewHeader } from "./result-canvas-home";
 import {
   useActiveAppCapability,
@@ -538,13 +543,30 @@ export function ResultCanvas({
     onChange,
   });
   const bayOn = useBayEnabled();
-  const panels = useMemo(() => ({ bay: bayOn, leochat: bayOn }), [bayOn]);
+  const imOn = useImEnabled();
+  const panels = useMemo(() => ({ bay: bayOn, leochat: imOn }), [bayOn, imOn]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat } = useWorkspaceViewState({
     selected, layer, setLayer, panelAction, select, panels,
     onHome: () => onChangeRef.current?.("home"),
   });
+  useEffect(() => {
+    if (typeof window === "undefined" || !imOn) return undefined;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<LeoChatPanelRequestDetail>).detail;
+      if (!detail || detail.handled) return;
+      detail.handled = true;
+      if (view === "leochat") {
+        if (rightSlot?.closeRightPane) rightSlot.closeRightPane();
+        else goHome();
+        return;
+      }
+      openPanel("leochat");
+    };
+    window.addEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
+    return () => window.removeEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
+  }, [goHome, imOn, openPanel, rightSlot, view]);
   // Navigation hides a foreground editor instead of destroying its mounted session.
   currentViewRef.current = view;
   const previousNavigation = useRef({ view, nonce: externalAction?.nonce, focusNonce, active });
