@@ -198,6 +198,14 @@ import {
 } from "../lib/task-timeline-api";
 import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
 
+type TaskTimelineStatusSurface = ReturnType<typeof useTaskTimeline> & {
+  liveStatus?: "connecting" | "connected" | "reconnecting";
+  liveNotice?: boolean;
+  retry?: () => void;
+  olderError?: Error | null;
+  retryOlder?: () => void;
+};
+
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
  * 判据（按 meta.worker=agent_id 聚合）：出过 kind="report" → done（已回复）；否则若整体
@@ -1400,6 +1408,7 @@ function AgentChatInner({
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
   const computerTask = taskMode.taskId === taskId && taskMode.computer;
   const timeline = useTaskTimeline(taskId || undefined, { enabled: computerTask, limit: 200 });
+  const timelineStatus = timeline as TaskTimelineStatusSurface;
   useEffect(() => {
     const pending = pendingHomeTimelineRef.current;
     if (!pending || pending.taskId !== taskId || !computerTask) return;
@@ -1808,9 +1817,10 @@ function AgentChatInner({
   const placedHoldRef = useRef<(() => void) | null>(null);
   const scrollKeyRef = useRef("");
   const timelineOlderAnchor = useRef<OlderScrollAnchor | null>(null);
+  const timelineOlderLoadAttempted = useRef(false);
   const timelineLastScrollTop = useRef(0);
-  const timelineRef = useRef(timeline);
-  timelineRef.current = timeline;
+  const timelineRef = useRef<TaskTimelineStatusSurface>(timelineStatus);
+  timelineRef.current = timelineStatus;
   scrollKeyRef.current = taskId ? `task:${taskId}` : "";
   const cloudPaneShown = !conversation || conversation.kind === "oceanleo";
   useLayoutEffect(() => {
@@ -1847,6 +1857,7 @@ function AgentChatInner({
       sawLoading: false,
       at: Date.now(),
     };
+    timelineOlderLoadAttempted.current = true;
     void current.loadOlder();
   }, [computerTask, timelineMessages]);
 
@@ -1896,6 +1907,31 @@ function AgentChatInner({
   }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading]);
 
   useEffect(() => {
+    if (!computerTask || timeline.olderLoading) return;
+    if (!timelineStatus.error && !timelineStatus.olderError) {
+      timelineOlderLoadAttempted.current = false;
+    }
+  }, [computerTask, timeline.olderLoading, timelineStatus.error, timelineStatus.olderError]);
+
+  const retryTimelineRead = useCallback(() => {
+    timelineStatus.retry?.();
+  }, [timelineStatus.retry]);
+
+  const retryTimelineOlder = useCallback(() => {
+    timelineOlderLoadAttempted.current = true;
+    if (timelineStatus.retryOlder) {
+      timelineStatus.retryOlder();
+      return;
+    }
+    void timelineStatus.loadOlder();
+  }, [timelineStatus.loadOlder, timelineStatus.retryOlder]);
+
+  const timelineOlderError = timelineStatus.olderError ?? (
+    timelineOlderLoadAttempted.current && !timelineStatus.olderLoading ? timelineStatus.error : null
+  );
+  const timelineReadError = timelineStatus.error && !timelineOlderError ? timelineStatus.error : null;
+
+  useEffect(() => {
     if (!computerTask) return;
     maybeLoadTimelineOlder(false);
   }, [computerTask, maybeLoadTimelineOlder, timeline.hasOlder, timeline.olderLoading, timelineMessages]);
@@ -1929,6 +1965,7 @@ function AgentChatInner({
     setStreamNotice("");
     seenMessageCountRef.current = 0;
     timelineOlderAnchor.current = null;
+    timelineOlderLoadAttempted.current = false;
     timelineLastScrollTop.current = 0;
     followingRef.current = true;
     setFollowing(true);
@@ -3396,9 +3433,17 @@ function AgentChatInner({
     top: (
       <>
         {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />}
-        {computerTask && timeline.olderLoading && (
-          <div className="flex shrink-0 justify-center px-4 pt-2" role="status" aria-label={tt("正在读取…")} data-native-older-loading="">
-            <span className="v-spinner" />
+        {computerTask && (timeline.olderLoading || timelineOlderError) && (
+          <div className="flex shrink-0 items-center justify-center gap-2 px-4 pt-2 text-[13px] text-stone-500" role="status" data-native-older-loading="">
+            {timeline.olderLoading && <span className="v-spinner" aria-label={tt("正在读取…")} />}
+            {timelineOlderError && (
+              <>
+                <span>{tt(timelineOlderError.message || "读取更早消息失败")}</span>
+                <button type="button" className="font-medium underline" onClick={retryTimelineOlder}>
+                  {tt("重试")}
+                </button>
+              </>
+            )}
           </div>
         )}
       </>
@@ -3517,7 +3562,15 @@ function AgentChatInner({
     tail: (
       <>
           {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
-          {computerTask && timeline.error && <p className="text-[13px] text-rose-500">{timeline.error.message}</p>}
+          {computerTask && timelineStatus.liveNotice && <p className="text-[13px] text-stone-400">{tt("正在重新连接…")}</p>}
+          {computerTask && timelineReadError && (
+            <p className="flex flex-wrap items-center gap-2 text-[13px] text-stone-500" role="status">
+              <span>{tt(timelineReadError.message || "读取任务消息失败")}</span>
+              <button type="button" className="font-medium underline" onClick={retryTimelineRead}>
+                {tt("重试")}
+              </button>
+            </p>
+          )}
           {computerTask && timeline.state?.request && (
             <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800" data-task-request={timeline.state.request.id}>
               <span>{String(timeline.state.request.question || timeline.state.request.prompt || tt("等待你的回复"))}</span>
@@ -3589,11 +3642,13 @@ function AgentChatInner({
             leoContext={{ page: "task", taskId: taskId || undefined }}
             inlineSlot={inlineSlot}
             placeholder={
-              placeholder ??
-              (toolsOn
-                ? tt("继续追问，或上传文件让 agent 分析…")
-                : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
-                  tt("继续追问"))
+              computerTask
+                ? tt("继续追问")
+                : placeholder ??
+                  (toolsOn
+                    ? tt("继续追问，或上传文件让 agent 分析…")
+                    : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
+                      tt("继续追问"))
             }
             rows={1}
             onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
