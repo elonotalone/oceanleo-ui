@@ -351,7 +351,7 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
   const committedBySession = new Map<string, TaskTimelineEntry[]>();
   const liveBySession = new Map<string, InternalTimelineEntry[]>();
   for (const entry of orderedCommitted) {
-    if (entry.source !== "native" || !entry.session_id) continue;
+    if (entry.source !== "native") continue;
     const key = nativeKey(entry);
     const list = committedBySession.get(key) ?? [];
     list.push(entry);
