@@ -13,29 +13,18 @@ export type TaskTimelineEntry = {
   program: TaskProgram;
   session_id: string | null;
   created_at: string;
+  /** Number range assigned by the session archive writer (null on legacy rows). */
+  no_from?: number | null;
+  no_to?: number | null;
   frame?: TaskTimelineFrame;
   message?: Record<string, unknown>;
 };
-export type TaskTimelineInflightEntry = {
+export type TaskTimelineLiveFrame = {
   session_id: string;
   program: TaskProgram;
-  epoch: string;
-  s: number;
+  no: number;
   frame: TaskTimelineFrame;
   at: string;
-};
-export type TaskTimelineCoverage = {
-  session_id: string;
-  epoch: string;
-  through: number;
-};
-export type TaskAcceptedMessage = {
-  client_message_id: string;
-  session_id: string;
-  program: TaskProgram;
-  text: string;
-  attachments?: AgentAttachment[];
-  created_at: string;
 };
 export type TaskLocalMessageInput = {
   clientMessageId: string;
@@ -85,12 +74,12 @@ export function getTaskTimeline(taskId: string, options: { before?: string; limi
 
 export type TaskLiveEvent =
   | { type: "entries"; entries: TaskTimelineEntry[] }
-  | { type: "inflight"; entries: TaskTimelineInflightEntry[] }
-  | { type: "covered"; covers: TaskTimelineCoverage[] }
-  | { type: "accepted"; message: TaskAcceptedMessage }
+  | ({ type: "live" } & TaskTimelineLiveFrame)
   | { type: "state"; state: TaskState }
   | { type: "reset" }
   | { type: "ping" };
+
+export type TaskTimelineLiveStatus = "connecting" | "connected" | "reconnecting";
 
 /** Auth matches agent-dialog: bearer token in the WebSocket query string. */
 export async function taskTimelineWsUrl(taskId: string, after?: string): Promise<string> {
@@ -115,6 +104,7 @@ export function openTaskTimeline(
   onEvent: (event: TaskLiveEvent) => void,
   onError?: (error: Event) => void,
   onOpen?: () => void,
+  onStatus?: (status: TaskTimelineLiveStatus) => void,
 ): TaskTimelineLiveConnection {
   let socket: WebSocket | null = null;
   let closed = false;
@@ -144,6 +134,7 @@ export function openTaskTimeline(
     } catch (error) {
       if (current !== generation || closed) return;
       reportError(typeof Event !== "undefined" && error instanceof Event ? error : undefined);
+      onStatus?.("reconnecting");
       schedule();
       return;
     }
@@ -154,6 +145,7 @@ export function openTaskTimeline(
     } catch (error) {
       if (current !== generation || closed) return;
       reportError(typeof Event !== "undefined" && error instanceof Event ? error : undefined);
+      onStatus?.("reconnecting");
       schedule();
       return;
     }
@@ -161,6 +153,7 @@ export function openTaskTimeline(
     next.onopen = () => {
       if (current !== generation || closed) return next.close();
       reconnectDelay = 1_000;
+      onStatus?.("connected");
       onOpen?.();
     };
     next.onmessage = (event) => {
@@ -179,14 +172,17 @@ export function openTaskTimeline(
     next.onerror = (event) => {
       if (current !== generation || closed) return;
       reportError(event);
+      onStatus?.("reconnecting");
     };
     next.onclose = (event) => {
       if (current !== generation || closed) return;
       socket = null;
       reportError(event);
+      onStatus?.("reconnecting");
       schedule();
     };
   };
+  onStatus?.("connecting");
   void connect();
   return {
     close: () => {
