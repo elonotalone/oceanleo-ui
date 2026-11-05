@@ -152,7 +152,7 @@ test("按钮请求 leochat 面板；第二次关闭；从不打开浮窗", async
   removeCanvas();
 });
 
-test("没有右侧栏时进入整页；整页上的按钮不改变页面", async () => {
+test("没有右侧栏时保持当前页面；整页上的按钮不改变页面", async () => {
   resetState();
   const originalLocation = window.location;
   let assigned = null;
@@ -162,10 +162,12 @@ test("没有右侧栏时进入整页；整页上的按钮不改变页面", async
   });
   let view = await mount(React.createElement(LeoChatButton));
   await view.click();
-  assert.equal(assigned, "/leochat");
+  assert.equal(assigned, null);
+  assert.equal(globalThis.__w5Button.workspaceOpenRequests, 1);
   await view.unmount();
 
   assigned = null;
+  globalThis.__w5Button.workspaceOpenRequests = 0;
   Object.defineProperty(window, "location", {
     configurable: true,
     value: { pathname: "/leochat", assign: (href) => { assigned = href; } },
@@ -173,15 +175,20 @@ test("没有右侧栏时进入整页；整页上的按钮不改变页面", async
   view = await mount(React.createElement(LeoChatButton));
   await view.click();
   assert.equal(assigned, null);
-  assert.equal(globalThis.__w5Button.workspaceOpenRequests, 1);
+  assert.equal(globalThis.__w5Button.workspaceOpenRequests, 0);
   await view.unmount();
   Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
 });
 
-test("面板入口跟随 IM 开关；ResultCanvas 使用同一请求并按 IM 提供 LeoChat", () => {
+test("首页和任务页都有右侧栏宿主；按钮不再导航；面板入口跟随 IM", () => {
   resetState();
   globalThis.__w5Button.imOn = false;
   assert.match(src("shell/leochat/LeoChatButton.tsx"), /if \(!imOn\) return null/);
+  assert.doesNotMatch(src("shell/leochat/LeoChatButton.tsx"), /openLeoChatPage|location\.assign/);
+  assert.match(src("shell/AppShell.tsx"), /data-home-leochat-host/);
+  assert.match(src("shell/AppShell.tsx"), /<TaskWorkspaceShell/);
+  assert.ok(src("shell/AppShell.tsx").includes('const homeRoute = pathname === "/"'));
+  assert.match(src("shell/AgentChat.tsx"), /<TaskWorkspaceShell/);
   assert.match(src("shell/ResultCanvas.tsx"), /const panels = useMemo\(\(\) => \(\{ bay: bayOn, leochat: imOn \}\)/);
   assert.match(src("shell/ResultCanvas.tsx"), /LEOCHAT_PANEL_REQUEST_EVENT/);
   assert.match(src("shell/ResultCanvas.tsx"), /closeRightPane/);

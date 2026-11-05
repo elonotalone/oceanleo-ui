@@ -11,7 +11,7 @@ import { ensureMessagesSurfaceStyles } from "../messages/messages-surface";
 import { useLeoChatUnread } from "../messages/notices/use-notices";
 import { dispatchWorkspaceAction } from "../workspace-actions";
 
-/** Button-to-canvas request. The mounted ResultCanvas marks it handled synchronously. */
+/** Button-to-canvas request. A mounted ResultCanvas marks it handled synchronously. */
 export const LEOCHAT_PANEL_REQUEST_EVENT = "oceanleo:leochat-panel-request";
 
 export interface LeoChatPanelRequestDetail {
@@ -37,10 +37,6 @@ function isLeoChatPage(): boolean {
   if (typeof window === "undefined") return false;
   const pathname = window.location.pathname.replace(/\/+$/, "");
   return pathname === "/leochat" || pathname.endsWith("/leochat");
-}
-
-function openLeoChatPage(): void {
-  if (typeof window !== "undefined") window.location.assign("/leochat");
 }
 
 export function LeoChatGlyph({ className = "h-[18px] w-[18px]" }: { className?: string }) {
@@ -86,7 +82,7 @@ export function LeoChatButton({ className = "" }: { className?: string }) {
         type="button"
         onClick={() => {
           if (isLeoChatPage()) return;
-          if (!requestLeoChatPanel()) openLeoChatPage();
+          requestLeoChatPanel();
         }}
         aria-label={label}
         aria-pressed={surfaceOpen}

@@ -42,6 +42,7 @@ import { SidebarRailTipLayer } from "./sidebar-rail-tip";
 import { SettingsModalHost, openSettingsModal } from "./account/SettingsModalHost";
 import { setBaySiteKey } from "./bay/shell/bay-state";
 import { MessagesHost } from "./messages/MessagesHost";
+import { TaskWorkspaceShell, useTaskWorkspaceState } from "./TaskWorkspaceShell";
 import { LeoShellMount } from "./leo/LeoShellMount";
 import { WorkspaceSelectionProvider } from "./WorkspaceSelection";
 import { ThemeSwitcher } from "../theme";
@@ -405,6 +406,23 @@ function AppShellInner({
   );
   const leoShell = <LeoShellMount siteKey={shellSiteKey} />;
   const pathname = stripLocale ? stripLocale(rawPathname) : rawPathname;
+  const homeWorkspace = useTaskWorkspaceState({
+    defaultOpen: false,
+    defaultTab: "home",
+  });
+  const homeRoute = pathname === "/" || pathname === "";
+  const routeChildren = homeRoute ? (
+    <div data-home-leochat-host className="contents">
+      <TaskWorkspaceShell
+        state={homeWorkspace}
+        left={children}
+        tabs={[]}
+        canvas={{ showTemplate: false, siteId }}
+        accent={brand.accent}
+        plainWhenClosed
+      />
+    </div>
+  ) : children;
   const mountNavPath = fusionMountPrefix(rawPathname) ? rawPathname : pathname;
   const shellHref = (href: string) =>
     withFusionMountPrefix(href, rawPathname);
@@ -1140,7 +1158,7 @@ function AppShellInner({
 
         <main className="leo-safe-main min-w-0 flex-1">
           <div data-oceanleo-route-surface className="contents">
-            {children}
+            {routeChildren}
           </div>
         </main>
         <SettingsModalHost />
@@ -1252,7 +1270,7 @@ function AppShellInner({
               to replay a page animation; the app-level console owns its one
               intentional entrance animation. */}
           <div data-oceanleo-route-surface className="contents">
-            {children}
+            {routeChildren}
           </div>
         </main>
       </div>
