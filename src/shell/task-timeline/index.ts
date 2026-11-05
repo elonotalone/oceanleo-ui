@@ -8,7 +8,6 @@ export {
   stopTask,
   taskTimelineWsUrl,
   type TaskCommandResponse,
-  type TaskAcceptedMessage,
   type TaskLiveEvent,
   type TaskLocalMessageInput,
   type TaskMessageInput,
@@ -17,12 +16,12 @@ export {
   type TaskSessionSummary,
   type TaskState,
   type TaskTimelineEntry,
-  type TaskTimelineInflightEntry,
+  type TaskTimelineLiveFrame,
+  type TaskTimelineLiveStatus,
   type TimelinePage,
 } from "../../lib/task-timeline-api";
 export {
   mapQueuedItems,
-  acceptedTaskMessage,
   createTaskTimelineProjectionCache,
   localTaskMessage,
   mapTaskState,

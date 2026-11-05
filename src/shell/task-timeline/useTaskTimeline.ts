@@ -5,16 +5,15 @@ import type { AgentMessage } from "../../lib/agent";
 import {
   getTaskTimeline,
   openTaskTimeline,
-  type TaskAcceptedMessage,
   type TaskLiveEvent,
   type TaskLocalMessageInput,
   type TaskSessionSummary,
   type TaskState,
+  type TaskTimelineLiveFrame,
+  type TaskTimelineLiveStatus,
   type TaskTimelineEntry,
-  type TaskTimelineInflightEntry,
 } from "../../lib/task-timeline-api";
 import {
-  acceptedTaskMessage,
   createTaskTimelineProjectionCache,
   localTaskMessage,
   mapTaskState,
@@ -43,6 +42,9 @@ export type TaskTimelineResult = {
   olderLoading: boolean;
   error: Error | null;
   sessions: TaskSessionSummary[];
+  liveStatus: TaskTimelineLiveStatus;
+  liveNotice: boolean;
+  retry: () => void;
   sendLocal: (input: TaskLocalMessageInput) => void;
   settleLocal: (clientMessageId: string, outcome: TaskLocalSettleOutcome) => void;
   retryLocal: (clientMessageId: string) => TaskLocalMessageInput | null;
@@ -114,23 +116,42 @@ function newestCursor(entries: readonly TaskTimelineEntry[]): string | undefined
   return entries.length ? entries[entries.length - 1].cursor : undefined;
 }
 
-function inflightKey(entry: Pick<TaskTimelineInflightEntry, "session_id" | "epoch" | "s">): string {
-  return `${entry.session_id}:${entry.epoch}:${entry.s}`;
+export function committedThrough(entries: readonly TaskTimelineEntry[], sessionId: string): number {
+  let through = 0;
+  for (const entry of entries) {
+    if (entry.source !== "native" || entry.session_id !== sessionId || !Number.isFinite(entry.no_to)) continue;
+    through = Math.max(through, entry.no_to as number);
+  }
+  return through;
 }
 
-function coverageKey(entry: Pick<TaskTimelineInflightEntry, "session_id" | "epoch">): string {
-  return `${entry.session_id}:${entry.epoch}`;
+export function filterLiveFrames(
+  entries: readonly TaskTimelineEntry[],
+  live: readonly TaskTimelineLiveFrame[],
+): TaskTimelineLiveFrame[] {
+  const seen = new Set<string>();
+  return [...live]
+    .filter((frame) => {
+      if (!frame || typeof frame.session_id !== "string" || !Number.isSafeInteger(frame.no)) return false;
+      if (frame.no <= committedThrough(entries, frame.session_id)) return false;
+      const key = `${frame.session_id}:${frame.no}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.session_id.localeCompare(b.session_id) || a.no - b.no);
 }
 
-function sortInflight(entries: Iterable<TaskTimelineInflightEntry>): TaskTimelineInflightEntry[] {
-  return [...entries].sort((a, b) => a.session_id.localeCompare(b.session_id) || a.epoch.localeCompare(b.epoch) || a.s - b.s);
-}
-
-export function filterCoveredInflight(
-  entries: readonly TaskTimelineInflightEntry[],
-  covers: ReadonlyMap<string, number>,
-): TaskTimelineInflightEntry[] {
-  return sortInflight(entries.filter((entry) => entry.s > (covers.get(coverageKey(entry)) ?? 0)));
+export function mergeLiveFrame(
+  entries: readonly TaskTimelineEntry[],
+  current: readonly TaskTimelineLiveFrame[],
+  frame: TaskTimelineLiveFrame,
+): TaskTimelineLiveFrame[] {
+  if (!frame || typeof frame.session_id !== "string" || !Number.isSafeInteger(frame.no)) return [...current];
+  if (frame.no <= committedThrough(entries, frame.session_id)) return filterLiveFrames(entries, current);
+  const next = new Map(filterLiveFrames(entries, current).map((item) => [`${item.session_id}:${item.no}`, item]));
+  next.set(`${frame.session_id}:${frame.no}`, frame);
+  return [...next.values()].sort((a, b) => a.session_id.localeCompare(b.session_id) || a.no - b.no);
 }
 
 function serverMessageIds(rows: readonly AgentMessage[]): Set<string> {
@@ -150,9 +171,7 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   localRecordsRef.current = localRecords;
   const localTaskRef = useRef(taskId);
   const [entries, setEntries] = useState<TaskTimelineEntry[]>([]);
-  const [inflight, setInflight] = useState<TaskTimelineInflightEntry[]>([]);
-  const [coverage, setCoverage] = useState<Map<string, number>>(new Map());
-  const [accepted, setAccepted] = useState<Map<string, TaskAcceptedMessage>>(new Map());
+  const [live, setLive] = useState<TaskTimelineLiveFrame[]>([]);
   const [taskState, setTaskState] = useState<TaskState | null>(null);
   const [sessions, setSessions] = useState<TaskSessionSummary[]>([]);
   const [nextBefore, setNextBefore] = useState<string | null>(null);
@@ -160,6 +179,8 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   const [loading, setLoading] = useState(enabled);
   const [olderLoading, setOlderLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [liveStatus, setLiveStatus] = useState<TaskTimelineLiveStatus>(enabled ? "connecting" : "connected");
+  const [liveNotice, setLiveNotice] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const socketRef = useRef<{ close: () => void } | null>(null);
   const taskRef = useRef(taskId);
@@ -167,8 +188,9 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   const nextBeforeRef = useRef(nextBefore);
   nextBeforeRef.current = nextBefore;
   const olderLoadingRef = useRef(false);
-  const coverageRef = useRef(coverage);
-  coverageRef.current = coverage;
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const liveNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mappingCacheRef = useRef<TaskTimelineProjectionCache>(createTaskTimelineProjectionCache());
 
   const updateLocals = useCallback((update: (current: Map<string, LocalRecord>) => Map<string, LocalRecord>) => {
@@ -180,10 +202,23 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   }, []);
 
   const clearLive = useCallback(() => {
-    coverageRef.current = new Map();
-    setCoverage(new Map());
-    setInflight([]);
-    setAccepted(new Map());
+    setLive([]);
+  }, []);
+
+  const updateLiveStatus = useCallback((status: TaskTimelineLiveStatus) => {
+    setLiveStatus(status);
+    if (status === "reconnecting") {
+      if (liveNoticeTimerRef.current === null) {
+        liveNoticeTimerRef.current = setTimeout(() => {
+          liveNoticeTimerRef.current = null;
+          setLiveNotice(true);
+        }, 3_000);
+      }
+      return;
+    }
+    if (liveNoticeTimerRef.current !== null) clearTimeout(liveNoticeTimerRef.current);
+    liveNoticeTimerRef.current = null;
+    setLiveNotice(false);
   }, []);
 
   useEffect(() => {
@@ -195,7 +230,11 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   }, [taskId]);
 
   const applyPage = useCallback((page: Awaited<ReturnType<typeof getTaskTimeline>>, prepend = false) => {
-    setEntries((current) => prepend ? mergeAtCursor(current, page.entries, true) : mergeAtCursor(current, page.entries));
+    setEntries((current) => {
+      const next = prepend ? mergeAtCursor(current, page.entries, true) : mergeAtCursor(current, page.entries);
+      entriesRef.current = next;
+      return next;
+    });
     setTaskState(page.state);
     setSessions(page.sessions);
     setHasOlder(page.has_older === true && page.next_before != null);
@@ -207,7 +246,9 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     socketRef.current = null;
     mappingCacheRef.current = createTaskTimelineProjectionCache();
     clearLive();
+    updateLiveStatus(enabled ? "connecting" : "connected");
     setEntries([]);
+    entriesRef.current = [];
     setTaskState(null);
     setSessions([]);
     setNextBefore(null);
@@ -216,68 +257,82 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     setLoading(enabled);
     setOlderLoading(false);
     olderLoadingRef.current = false;
-    if (!enabled || !taskId) return;
-    const controller = new AbortController();
     let cancelled = false;
-    void getTaskTimeline(taskId, { limit, signal: controller.signal }).then((page) => {
-      if (cancelled) return;
-      applyPage(page);
-      setLoading(false);
-      socketRef.current = openTaskTimeline(taskId, newestCursor(page.entries), (event: TaskLiveEvent) => {
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    let retryAttempt = 0;
+    let reading = false;
+    let loaded = false;
+    const retryDelays = [1_000, 2_000, 5_000, 10_000, 15_000];
+    const clearRetry = () => {
+      if (retryTimer !== null) clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+    const runRead = async (): Promise<void> => {
+      if (cancelled || !taskId || reading || loaded) return;
+      reading = true;
+      const controller = new AbortController();
+      try {
+        const page = await getTaskTimeline(taskId, { limit, signal: controller.signal });
         if (cancelled) return;
-        if (event.type === "entries") {
-          setEntries((current) => mergeAtCursor(current, event.entries));
-        } else if (event.type === "inflight") {
-          setInflight((current) => {
-            const next = new Map(current.map((entry) => [inflightKey(entry), entry]));
-            for (const entry of event.entries) {
-              const through = coverageRef.current.get(coverageKey(entry)) ?? 0;
-              if (entry.s > through) next.set(inflightKey(entry), entry);
-            }
-            return filterCoveredInflight([...next.values()], coverageRef.current);
-          });
-        } else if (event.type === "covered") {
-          const nextCoverage = new Map(coverageRef.current);
-          for (const cover of event.covers) {
-            const key = coverageKey(cover);
-            nextCoverage.set(key, Math.max(nextCoverage.get(key) ?? 0, cover.through));
-          }
-          coverageRef.current = nextCoverage;
-          setCoverage(nextCoverage);
-          setInflight((current) => filterCoveredInflight(current, nextCoverage));
-        } else if (event.type === "accepted") {
-          const message = event.message;
-          if (message?.client_message_id) {
-            setAccepted((current) => {
-              const next = new Map(current);
-              next.set(message.client_message_id, message);
-              return next;
-            });
-          }
-        } else if (event.type === "state") {
-          setTaskState(event.state);
-        } else if (event.type === "reset") {
-          setReloadNonce((value) => value + 1);
-        }
-      }, (event) => {
-        if (!cancelled) setError((current) => current ?? new Error(`任务实时连接已断开${event?.type ? `（${event.type}）` : ""}，正在重连`));
-      }, () => {
-        if (cancelled) return;
-        clearLive();
+        loaded = true;
+        clearRetry();
+        applyPage(page);
+        setLoading(false);
         setError(null);
-      });
-    }).catch((caught) => {
-      if (cancelled || controller.signal.aborted) return;
-      setError(asError(caught));
-      setLoading(false);
-    });
+        socketRef.current = openTaskTimeline(taskId, newestCursor(page.entries), (event: TaskLiveEvent) => {
+          if (cancelled) return;
+          if (event.type === "entries") {
+            const next = mergeAtCursor(entriesRef.current, event.entries);
+            entriesRef.current = next;
+            setEntries(next);
+            setLive((current) => filterLiveFrames(next, current));
+          } else if (event.type === "live") {
+            setLive((current) => mergeLiveFrame(entriesRef.current, current, event));
+          } else if (event.type === "state") {
+            setTaskState(event.state);
+          } else if (event.type === "reset") {
+            setReloadNonce((value) => value + 1);
+          }
+        }, undefined, () => {
+          if (cancelled) return;
+          clearLive();
+        }, updateLiveStatus);
+      } catch (caught) {
+        if (cancelled) return;
+        setError(asError(caught));
+        setLoading(false);
+        const delay = retryDelays[Math.min(retryAttempt, retryDelays.length - 1)];
+        retryAttempt += 1;
+        clearRetry();
+        retryTimer = setTimeout(() => {
+          retryTimer = null;
+          void runRead();
+        }, delay);
+      } finally {
+        reading = false;
+      }
+    };
+    const retryFromNetwork = () => {
+      if (cancelled || loaded || reading) return;
+      clearRetry();
+      void runRead();
+    };
+    if (enabled && taskId) {
+      void runRead();
+      if (typeof window !== "undefined") window.addEventListener("online", retryFromNetwork);
+      if (typeof document !== "undefined") document.addEventListener("visibilitychange", retryFromNetwork);
+    }
     return () => {
       cancelled = true;
-      controller.abort();
+      clearRetry();
+      if (typeof window !== "undefined") window.removeEventListener("online", retryFromNetwork);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", retryFromNetwork);
       socketRef.current?.close();
       socketRef.current = null;
+      if (liveNoticeTimerRef.current !== null) clearTimeout(liveNoticeTimerRef.current);
+      liveNoticeTimerRef.current = null;
     };
-  }, [applyPage, clearLive, enabled, limit, taskId, reloadNonce]);
+  }, [applyPage, clearLive, enabled, limit, taskId, reloadNonce, updateLiveStatus]);
 
   const loadOlder = useCallback(async () => {
     const id = taskRef.current;
@@ -349,9 +404,9 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
 
   const state = useMemo(() => taskState ? mapTaskState(taskState) : null, [taskState]);
   const mapped = useMemo(() => mapTaskTimelineEntries(entries, {
-    inflight,
+    live,
     cache: mappingCacheRef.current,
-  }), [entries, inflight]);
+  }), [entries, live]);
   const queued = useMemo(() => taskState ? queuedTaskMessages(taskState) : [], [taskState]);
   const queuedIds = useMemo(() => serverMessageIds(queued), [queued]);
   const mappedIds = useMemo(() => serverMessageIds(mapped), [mapped]);
@@ -360,14 +415,6 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   useEffect(() => {
     if (!serverIds.size) return;
     updateLocals((current) => {
-      let changed = false;
-      const next = new Map(current);
-      for (const id of serverIds) {
-        if (next.delete(id)) changed = true;
-      }
-      return changed ? next : current;
-    });
-    setAccepted((current) => {
       let changed = false;
       const next = new Map(current);
       for (const id of serverIds) {
@@ -393,12 +440,11 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
         },
       } : row;
     });
-    const acceptedRows = [...accepted.values()].map(acceptedTaskMessage);
     const localRows = [...localRecords.values()]
       .sort((a, b) => a.order - b.order)
       .map((record) => localTaskMessage(record.input, record.delivery, record.reason, record.createdAt));
-    return mergeTaskTimelineUserRows([...marked, ...queued, ...acceptedRows, ...localRows]);
-  }, [accepted, localRecords, mapped, queued, queuedIds]);
+    return mergeTaskTimelineUserRows([...marked, ...queued, ...localRows]);
+  }, [localRecords, mapped, queued, queuedIds]);
 
   return {
     items,
@@ -409,6 +455,9 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     olderLoading,
     error,
     sessions,
+    liveStatus,
+    liveNotice,
+    retry: () => setReloadNonce((value) => value + 1),
     sendLocal,
     settleLocal,
     retryLocal,
