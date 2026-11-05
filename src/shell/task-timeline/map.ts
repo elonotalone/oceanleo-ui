@@ -23,7 +23,7 @@ export type TaskUiState = {
   request: TaskState["request"];
   pendingStop: boolean;
   computer: TaskState["computer"];
-  savingDelayed?: boolean;
+  savingDelayed: boolean;
 };
 
 export type TaskTimelineProjectionCache = { sessions: Map<string, unknown> };
