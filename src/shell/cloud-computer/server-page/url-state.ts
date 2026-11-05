@@ -8,7 +8,7 @@ export type ServerPageUrlPatch = {
 };
 
 /**
- * Rewrites `/computers/<id>?card&program&session` in place with
+ * Rewrites the device detail query with
  * `history.replaceState`. Next's App Router keeps `useSearchParams()` in sync
  * with native history calls, so this never triggers a server round trip or a
  * remount the way `router.replace` does.
@@ -19,9 +19,11 @@ export function replaceServerPageUrl(
 ): void {
   if (typeof window === "undefined" || !computerId) return;
   const url = new URL(window.location.href);
-  const path = `/computers/${encodeURIComponent(computerId)}`;
+  const path = "/devices";
+  url.searchParams.set("computer", computerId);
   if (url.pathname !== path) url.pathname = path;
-  if (patch.card) url.searchParams.set("card", patch.card);
+  if (patch.card) url.searchParams.set("view", patch.card);
+  else url.searchParams.delete("view");
   for (const key of ["program", "session"] as const) {
     const value = patch[key];
     if (value === undefined) continue;
