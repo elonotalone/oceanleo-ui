@@ -16,7 +16,7 @@
 //   dropped on sign-out): a task opened before paints from it at once and the
 //   page reads it again in the background. Only the newest messages / first
 //   transcript page are kept on disk.
-// * Transcripts: task-native/transcript-cache (same rules).
+// * Transcripts: timeline archive cache (same rules).
 // * The first task read asks for the newest `TASK_FIRST_PAGE_MESSAGES` messages
 //   (`message_limit`). A reply that may be cut (as many messages as asked for)
 //   is a partial seed: AgentChat shows it and then reads the whole thread.
@@ -41,7 +41,6 @@ import {
   takeRead,
   type SharedRead,
 } from "./open-cache-core";
-import { prefetchTranscript, readTranscript } from "./task-native/transcript-cache";
 
 export { PREFETCH_FRESH_MS } from "./open-cache-core";
 
@@ -211,16 +210,12 @@ export function prefetchHistoryOpen(hint: HistoryOpenHint): void {
   if (hint.mode !== "computer") return;
   const known = hint.computerSessionId || transcriptSession(knownComputerTaskSessions(taskId))?.id || "";
   if (known) {
-    void readTranscript(known).catch(swallow);
-    prefetchTranscript(known).catch(swallow);
   }
   const user = cacheUser();
   listComputerTaskSessions(taskId).then((result) => {
     if (cacheUser() !== user) return;
     const latest = transcriptSession(result?.sessions);
     if (latest && latest.id !== known) {
-      void readTranscript(latest.id).catch(swallow);
-      prefetchTranscript(latest.id).catch(swallow);
     }
   }, swallow);
 }

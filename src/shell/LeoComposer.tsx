@@ -41,7 +41,7 @@ import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
 import type { ExecutionTarget } from "../lib/execution-target";
 import type { ComputerTaskSession } from "../lib/computer-task-api";
-import type { ConversationTarget } from "./task-native/types";
+import type { ConversationTarget } from "../lib/native-programs";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
 import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";
@@ -332,7 +332,6 @@ export interface LeoComposerProps {
   /** Replaces the model picker (e.g. a native program's model control); null hides it. */
   modelPickerSlot?: ReactNode;
   /** Native program controls mounted alongside the task composer without changing its host identity. */
-  nativeModelPickerSlot?: ReactNode;
   /** undefined=new draft; null=existing task still loading; otherwise immutable task target. */
   boundExecutionTarget?: ExecutionTarget | null;
 
@@ -396,7 +395,6 @@ export function LeoComposer({
   oceanleoDisabledReason,
   taskSessions,
   modelPickerSlot,
-  nativeModelPickerSlot,
   boundExecutionTarget,
   appsHost,
   onOpenPlugins,
@@ -809,8 +807,8 @@ export function LeoComposer({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {modelPickerSlot !== undefined || nativeModelPickerSlot !== undefined
-            ? (modelPickerSlot ?? nativeModelPickerSlot)
+          {modelPickerSlot !== undefined
+            ? modelPickerSlot
             : showModelPicker && !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" />}
           {onMeetingRecording && (
             <button

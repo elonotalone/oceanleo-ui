@@ -1,5 +1,5 @@
 import type { AgentMessage } from "./agent";
-import { toolRawValue, type ToolCard } from "../shell/cloud-computer/legacy-dialog/types";
+import { toolRawValue, type ToolCard } from "../native-agent-core/index";
 
 
 export interface AgentMessageRenderItem {

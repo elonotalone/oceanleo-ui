@@ -11,7 +11,7 @@ import {
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { UploadTile } from "../lib/upload/upload-tile";
 import { attachmentRef, useAttachmentDisplayUrl } from "../lib/attachment-url";
-import { archivedImageEligible, NativeArchivedImage } from "./task-native/NativeArchivedImage";
+import { archivedImageEligible, NativeArchivedImage } from "./task-timeline/NativeArchivedImage";
 import { HighlightedText, Markdown, TypewriterMarkdown } from "./Markdown";
 import { ShareCheckbox } from "./share/ShareActionBar";
 import { writeClipboardText } from "./share/share-clipboard";
@@ -693,7 +693,7 @@ type NativeQuestionField = {
   allowMultiple: boolean;
 };
 
-/** 同 legacy-dialog/questions.ts：认得出「标题 + 选项」就逐项渲染，否则退成一个文本框。 */
+/** 同 task timeline/questions.ts：认得出「标题 + 选项」就逐项渲染，否则退成一个文本框。 */
 function nativeQuestionFields(raw: unknown): NativeQuestionField[] | null {
   const list = Array.isArray(raw)
     ? raw
@@ -1067,7 +1067,7 @@ function FileGlyph() {
 
 /**
  * 原生对话里存到云端的附件：路径只指向本人可读的路由，点了才换一次性下载地址
- * （同 legacy-dialog/ArchivedAttachment），不预取、不内联。
+ * （同 task timeline/ArchivedAttachment），不预取、不内联。
  */
 function NativeArchivedAttachment({ name, path, onOpen }: {
   name: string;

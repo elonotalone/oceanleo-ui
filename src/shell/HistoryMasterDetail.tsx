@@ -53,7 +53,7 @@ import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { LibraryTaskHistoryWorkspace } from "./library-task-history";
 import { LocalTaskDetail, LocalTaskRows, useLocalTasks } from "./LocalWorkspace";
 import { ShellTaskView } from "./cloud-computer/ShellTaskView";
-import { SessionRunningIcon } from "./cloud-computer/legacy-dialog/SessionRunningIcon";
+import { SessionRunningIcon } from "./task-timeline/SessionRunningIcon";
 import {
   knownComputerTaskSessions,
   latestComputerTaskSession,

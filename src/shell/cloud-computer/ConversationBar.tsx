@@ -3,9 +3,8 @@
 import type { CloudComputerClient, Computer } from "../../lib/cloud-computer-api";
 import type { ComputerTaskSession } from "../../lib/computer-task-api";
 import type { ExecutionTarget } from "../../lib/execution-target";
-import type { ConversationTarget } from "../task-native/types";
+import type { ConversationTarget } from "../../lib/native-programs";
 import { ComputerDock } from "./ComputerDock";
-import { ComputerConversationSettings } from "./native-surface/computer-settings-rows";
 
 export type ConversationBarProps = {
   conversation: ConversationTarget;
@@ -34,8 +33,5 @@ export function ConversationBar({ conversation, onConversationChange, taskSessio
       <ComputerDock conversation={conversation} onConversationChange={onConversationChange} taskSessions={taskSessions} boundTarget={boundTarget} oceanleoDisabledReason={oceanleoDisabledReason}
         {...(client ? { client } : {})} {...(computers ? { computers } : {})} />
     </div>
-    {(conversation.kind === "terminal" || (conversation.kind === "native" && conversation.view === "cli")) && (
-      <ComputerConversationSettings computer={computer} conversation={conversation} {...(client ? { client } : {})} />
-    )}
   </div>;
 }

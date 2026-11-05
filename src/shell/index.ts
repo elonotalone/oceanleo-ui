@@ -549,9 +549,7 @@ export { Markdown } from "./Markdown";
 // 全站 agent 共用：规划 + 执行步骤 + 自动折叠分析/代码。
 export { AgentProgress } from "./AgentProgress";
 // agent 工作界面（左推导 / 右固定五槽位，真实调 /v1/agent/tasks）。
-export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentChatNativeLaunch, type AgentLibraryTabs } from "./AgentChat";
-// Homepage native chat: the composer's prewarmed thread is handed to AgentChat (nativeLaunch).
-export { useNativeThread, type NativeThread } from "./task-native";
+export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentLibraryTabs } from "./AgentChat";
 // Homepage native chat: files held before the session exists survive a refresh (IndexedDB).
 export { useNativeDraftFiles, clearNativeDraftFiles, libraryAttachmentFile, type NativeDraftFilesHandle } from "./native-draft-files";
 // 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
@@ -761,7 +759,6 @@ export type { ArtifactLibraryProps, ArtifactFilter, ArtifactItem } from "./Artif
 // 历史记录页。
 export { HistoryPage, type HistoryPageProps } from "./HistoryPage";
 export { ShellTaskView, type ShellTaskViewProps } from "./cloud-computer/ShellTaskView";
-export { ServerPage, serverPageHref, type ServerPageProps, type ServerPageCard, type ServerPageHrefOptions } from "./cloud-computer/server-page";
 // 站级四页范式帮助器（首页/工作台/文件库/历史记录 的 nav + 路由）。
 export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";

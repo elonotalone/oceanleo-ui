@@ -1,4 +1,3 @@
-export { ServerPage, type ServerPageProps } from "./ServerPage";
 export {
   serverPageHref,
   type ServerPageCard,
