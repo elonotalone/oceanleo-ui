@@ -234,7 +234,14 @@ function MessagesOverlay() {
   const showConversation = Boolean(state.conversationId) && (state.view === "inbox" || state.layout === "full");
   let detail: ReactNode = null;
   if (subView) {
-    detail = <MessagesSubView view={state.view} caseId={state.caseId} onSelectView={setView} />;
+    detail = (
+      <MessagesSubView
+        view={state.view}
+        caseId={state.caseId}
+        noticeId={state.noticeId}
+        onSelectView={setView}
+      />
+    );
   } else if (showConversation && state.conversationId) {
     const conversation = talent ? (
       <DealConversationView
