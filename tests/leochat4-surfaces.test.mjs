@@ -225,6 +225,7 @@ const { LeoChatButton } = await import(
     "../messages/host-state": hostStub,
     "../messages/messages-surface": stylesStub,
     "../messages/notices/use-notices": noticesStub,
+    "../workspace-actions": dataModule(`export function dispatchWorkspaceAction(){}`),
   })
 );
 const { MessagesHost } = await import(
@@ -505,12 +506,14 @@ test("MessagesHost 小窗：page/panel 时不画，window 且 open 时画", asyn
   await winView.unmount();
 });
 
-test("LeoChatButton：点一下调 toggleWindow；整页认领着时 pressed 且 surface=page", async () => {
+test("LeoChatButton：点一下请求右侧栏；整页认领着时 pressed 且 surface=page", async () => {
   const host = resetHost();
+  const consume = (event) => { event.detail.handled = true; };
+  window.addEventListener("oceanleo:leochat-panel-request", consume);
   const view = await mount(React.createElement(LeoChatButton));
   assert.equal(view.host.querySelector("[data-leochat-open]")?.getAttribute("data-leochat-surface"), "none");
   await view.click("[data-leochat-open]");
-  assert.equal(host.getSnapshot().open, true);
+  assert.equal(host.getSnapshot().open, false);
   assert.equal(host.getSnapshot().surface, "window");
   await view.unmount();
 
@@ -523,6 +526,7 @@ test("LeoChatButton：点一下调 toggleWindow；整页认领着时 pressed 且
   await pageView.click("[data-leochat-open]");
   assert.equal(pageHost.getSnapshot().surface, "page");
   await pageView.unmount();
+  window.removeEventListener("oceanleo:leochat-panel-request", consume);
 });
 
 test("workspaceNav：境内外都有 LeoChat（紧跟 LeoBay 那一项）；withMessages:false 没有", () => {

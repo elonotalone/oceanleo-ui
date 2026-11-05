@@ -1,6 +1,6 @@
 "use client";
 
-// 左下角的 LeoChat 图标。LeoChat 还能从左侧边栏整页、对话右侧栏打开；一次只显示一处（host-state.toggleWindow）。
+// 左下角的 LeoChat 图标。LeoChat 还能从左侧边栏整页、对话右侧栏打开；一次只显示一处。
 // 未登录不出现；境内外一样。角标 = 会话未读 + 平台通知未读（notices/notice-unread.ts 的合计规则）。
 import { useEffect } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -28,7 +28,7 @@ function requestLeoChatPanel(): boolean {
   });
   const detail: LeoChatPanelRequestDetail = { handled: false };
   window.dispatchEvent(
-    new CustomEvent<LeoChatPanelRequestDetail>(LEOCHAT_PANEL_REQUEST_EVENT, { detail }),
+    new window.CustomEvent<LeoChatPanelRequestDetail>(LEOCHAT_PANEL_REQUEST_EVENT, { detail }),
   );
   return detail.handled;
 }

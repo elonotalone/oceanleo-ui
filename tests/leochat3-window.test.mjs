@@ -54,7 +54,7 @@ const { LeoChatTabs } = await import(
   }),
 );
 
-globalThis.__leoChat3 = { imOn: true, open: false, surface: "window", toggles: 0, unread: 0 };
+globalThis.__leoChat3 = { imOn: true, open: false, surface: "window", toggles: 0, unread: 0, workspaceRequests: 0 };
 const { LeoChatButton } = await import(
   await compileModule("src/shell/leochat/LeoChatButton.tsx", {
     "../../i18n/ui/useUI": uiStub,
@@ -77,6 +77,9 @@ const { LeoChatButton } = await import(
       }
       export function openMessages(){ globalThis.__leoChat3.open = true; globalThis.__leoChat3.toggles += 1; }
       export function closeMessages(){ globalThis.__leoChat3.open = false; globalThis.__leoChat3.toggles += 1; }
+    `),
+    "../workspace-actions": dataModule(`
+      export function dispatchWorkspaceAction(){ globalThis.__leoChat3.workspaceRequests += 1; }
     `),
     // 入口角标 = 会话未读 + 平台通知未读（W08）；这里只给会话那一份，通知那份在 tests/lbp-w08-notices.test.mjs。
     "../messages/notices/use-notices": dataModule(`
@@ -214,7 +217,7 @@ test("栏目只有聊天、联系人", () => {
   assert.doesNotMatch(tabs, /id: "bay"/);
 });
 
-test("LeoChatButton：未登录不渲染；点一下开再点一下关", async () => {
+test("LeoChatButton：未登录不渲染；按钮请求右侧栏，不打开浮窗", async () => {
   globalThis.__leoChat3.imOn = false;
   globalThis.__leoChat3.open = false;
   globalThis.__leoChat3.toggles = 0;
@@ -223,17 +226,16 @@ test("LeoChatButton：未登录不渲染；点一下开再点一下关", async (
   await hidden.unmount();
 
   globalThis.__leoChat3.imOn = true;
+  const consume = (event) => { event.detail.handled = true; };
+  window.addEventListener("oceanleo:leochat-panel-request", consume);
   const view = await mount(React.createElement(LeoChatButton));
   assert.ok(view.host.querySelector("[data-leochat-button]"));
   await view.click("[data-leochat-open]");
-  assert.equal(globalThis.__leoChat3.open, true);
-  await view.unmount();
-  const again = await mount(React.createElement(LeoChatButton));
-  assert.equal(again.host.querySelector("[data-leochat-open]").getAttribute("data-leochat-open"), "true");
-  await again.click("[data-leochat-open]");
   assert.equal(globalThis.__leoChat3.open, false);
-  assert.equal(globalThis.__leoChat3.toggles, 2);
-  await again.unmount();
+  assert.equal(globalThis.__leoChat3.toggles, 0);
+  assert.equal(globalThis.__leoChat3.workspaceRequests, 1);
+  await view.unmount();
+  window.removeEventListener("oceanleo:leochat-panel-request", consume);
 });
 
 test("放大后联系人栏在左、当前会话仍在右", async () => {
@@ -255,7 +257,7 @@ test("放大后联系人栏在左、当前会话仍在右", async () => {
   await view.unmount();
 });
 
-test("源码：放大后切到联系人也不收走当前会话；按钮调 toggleWindow；小窗只在 surface === window 时画", () => {
+test("源码：放大后切到联系人也不收走当前会话；按钮请求侧栏；小窗只在 surface === window 时画", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /state\.view === "inbox" \|\| state\.layout === "full"/);
   assert.match(host, /windowOpen = state\.open && state\.surface === "window"/);
@@ -267,7 +269,9 @@ test("源码：放大后切到联系人也不收走当前会话；按钮调 togg
   assert.doesNotMatch(layout, /data-leochat-open-page/);
   const button = src("shell/leochat/LeoChatButton.tsx");
   assert.match(button, /if \(!imOn\) return null/);
-  assert.match(button, /hostState\(\)\.toggleWindow\(\)/);
+  assert.doesNotMatch(button, /toggleWindow/);
+  assert.match(button, /LEOCHAT_PANEL_REQUEST_EVENT/);
+  assert.match(button, /dispatchWorkspaceAction/);
 });
 
 test("源码：记住放大状态；默认高度 660、顶栏 52、圆角 22", () => {
