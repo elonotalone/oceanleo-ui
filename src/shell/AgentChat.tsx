@@ -1807,6 +1807,10 @@ function AgentChatInner({
   const justPlacedRef = useRef<AgentMessage[] | null>(null);
   const placedHoldRef = useRef<(() => void) | null>(null);
   const scrollKeyRef = useRef("");
+  const timelineOlderAnchor = useRef<OlderScrollAnchor | null>(null);
+  const timelineLastScrollTop = useRef(0);
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
   scrollKeyRef.current = taskId ? `task:${taskId}` : "";
   const cloudPaneShown = !conversation || conversation.kind === "oceanleo";
   useLayoutEffect(() => {
@@ -1824,6 +1828,28 @@ function AgentChatInner({
   }, [messages, messagesTaskId, taskId, cloudPaneShown]);
   useEffect(() => () => placedHoldRef.current?.(), []);
 
+  const maybeLoadTimelineOlder = useCallback((movingUp: boolean) => {
+    const el = scrollRef.current;
+    const current = timelineRef.current;
+    if (!el || !computerTask) return;
+    if (timelineOlderAnchor.current && Date.now() - timelineOlderAnchor.current.at > OLDER_ANCHOR_STALE_MS) {
+      timelineOlderAnchor.current = null;
+    }
+    if (timelineOlderAnchor.current) return;
+    if (!shouldLoadOlder(scrollMetricsOf(el), {
+      hasOlder: current.hasOlder,
+      loading: current.olderLoading,
+      movingUp,
+    })) return;
+    timelineOlderAnchor.current = {
+      scrollHeight: el.scrollHeight,
+      firstId: timelineMessages[0]?.id ?? null,
+      sawLoading: false,
+      at: Date.now(),
+    };
+    void current.loadOlder();
+  }, [computerTask, timelineMessages]);
+
   // W5: one loading look per task switch. This conversation is ready to be shown
   // once the task's first read is in and the page decided which conversation is
   // in front (a native chat then reports its own saved copy). No-op without a
@@ -1837,19 +1863,42 @@ function AgentChatInner({
   const handleStreamScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
+    const metrics = scrollMetricsOf(el);
+    const movingUp = metrics.scrollTop < timelineLastScrollTop.current;
+    timelineLastScrollTop.current = metrics.scrollTop;
     const atBottom = isNearBottom({
-      scrollTop: el.scrollTop,
-      scrollHeight: el.scrollHeight,
-      clientHeight: el.clientHeight,
+      ...metrics,
     });
     if (placedTaskRef.current && scrollKeyRef.current === `task:${placedTaskRef.current}`) {
       rememberConversationScroll(scrollKeyRef.current, el.scrollTop, atBottom);
     }
-    if (followingRef.current === atBottom) return;
-    followingRef.current = atBottom;
-    setFollowing(atBottom);
-    if (atBottom) setUnread(0);
-  }, []);
+    if (followingRef.current !== atBottom) {
+      followingRef.current = atBottom;
+      setFollowing(atBottom);
+      if (atBottom) setUnread(0);
+    }
+    maybeLoadTimelineOlder(movingUp);
+  }, [maybeLoadTimelineOlder]);
+
+  const timelineFirstMessageId = timelineMessages[0]?.id ?? null;
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    const anchor = timelineOlderAnchor.current;
+    if (!el || !anchor || !computerTask) return;
+    if (timelineFirstMessageId !== anchor.firstId) {
+      el.scrollTop += el.scrollHeight - anchor.scrollHeight;
+      timelineLastScrollTop.current = el.scrollTop;
+      timelineOlderAnchor.current = null;
+      return;
+    }
+    if (timeline.olderLoading) anchor.sawLoading = true;
+    else if (anchor.sawLoading || !timeline.hasOlder) timelineOlderAnchor.current = null;
+  }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading]);
+
+  useEffect(() => {
+    if (!computerTask) return;
+    maybeLoadTimelineOlder(false);
+  }, [computerTask, maybeLoadTimelineOlder, timeline.hasOlder, timeline.olderLoading, timelineMessages]);
 
   useEffect(() => {
     // 未读记的是**新消息条数**，不是渲染次数：流式期间最后一条会一直长，
@@ -1879,6 +1928,8 @@ function AgentChatInner({
     setStreamText("");
     setStreamNotice("");
     seenMessageCountRef.current = 0;
+    timelineOlderAnchor.current = null;
+    timelineLastScrollTop.current = 0;
     followingRef.current = true;
     setFollowing(true);
     setUnread(0);
@@ -3342,7 +3393,16 @@ function AgentChatInner({
     pane: "cloud",
     scrollRef,
     onScroll: handleStreamScroll,
-    top: isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />,
+    top: (
+      <>
+        {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />}
+        {computerTask && timeline.olderLoading && (
+          <div className="flex shrink-0 justify-center px-4 pt-2" role="status" aria-label={tt("正在读取…")} data-native-older-loading="">
+            <span className="v-spinner" />
+          </div>
+        )}
+      </>
+    ),
     // A computer task whose conversation is not decided yet shows nothing rather than a cloud empty page.
     empty: timelineMessages.length === 0 && !timelineRunning && conversationResolved ? (
       <div className="py-10 text-center text-[15px] text-stone-400">
@@ -3421,6 +3481,29 @@ function AgentChatInner({
                     onRemove={(id) => void removeQueuedMessage(id)}
                   />
                 )}
+                {computerTask && item.message.role === "user" && item.message.meta?.delivery === "unsent" && (() => {
+                  const clientMessageId = String(item.message.meta?.client_message_id || "");
+                  const reason = String(item.message.meta?.unsent_reason || tt("这条消息没有发送，请重试。"));
+                  return (
+                    <div
+                      className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500"
+                      data-task-timeline-unsent={clientMessageId}
+                      role="status"
+                    >
+                      <span>{tt("未发送：{reason}", { reason })}</span>
+                      {!readOnly && clientMessageId && (
+                        <button
+                          type="button"
+                          onClick={() => void retryTimelineMessage(clientMessageId)}
+                          className="rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
+                          disabled={busy}
+                        >
+                          {tt("重试")}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ),
           )}
@@ -3433,11 +3516,6 @@ function AgentChatInner({
     ),
     tail: (
       <>
-          {computerTask && timeline.hasOlder && (
-            <button type="button" className="mx-auto block text-[12px] text-stone-500 underline" onClick={() => void timeline.loadOlder()} disabled={timeline.loading}>
-              {timeline.loading ? tt("正在读取…") : tt("读取更早消息")}
-            </button>
-          )}
           {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
           {computerTask && timeline.error && <p className="text-[13px] text-rose-500">{timeline.error.message}</p>}
           {computerTask && timeline.state?.request && (
