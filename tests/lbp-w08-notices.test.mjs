@@ -100,10 +100,11 @@ function openHost(url) {
 // 1 视图与深链（I-4）
 // ---------------------------------------------------------------------------
 
-test("四个视图：常驻标签只有 聊天 / 联系人；通知与内容处置是二级视图，标签仍停在「聊天」", () => {
-  assert.deepEqual([...MESSAGES_VIEWS], ["inbox", "people", "notices", "cases"]);
+test("五个视图：常驻标签只有 聊天 / 联系人；通知、通知详情与内容处置是二级视图，标签仍停在「聊天」", () => {
+  assert.deepEqual([...MESSAGES_VIEWS], ["inbox", "people", "notices", "cases", "notice-detail"]);
   assert.equal(isSubView("notices"), true);
   assert.equal(isSubView("cases"), true);
+  assert.equal(isSubView("notice-detail"), true);
   assert.equal(isSubView("inbox"), false);
   assert.equal(isSubView("people"), false);
   assert.equal(tabOfView("inbox"), "inbox");
@@ -1116,7 +1117,7 @@ const noticesViewStubs = {
   `),
   "./open-notice": dataModule(`
     export function noticeActionable(item){ return Boolean(item.link); }
-    export function openNotice(item){ globalThis.__w08.calls.opened.push(item.id); }
+    export function openNoticeDetail(item){ globalThis.__w08.calls.opened.push(item.id); }
   `),
   "./use-notices": noticesHookStub,
 };
@@ -1144,7 +1145,7 @@ test("只有真实案件才显示找回入口，旧通知已不在最近列表�
   delete globalThis.__w08Cases;
 });
 
-test("通知视图：标题、正文、时间、已读 / 未读；点一条走 openNotice；全部标记已读；返回", async () => {
+test("通知视图：标题、正文、时间、已读 / 未读；点一条进详情；全部标记已读；返回", async () => {
   const w = resetW08();
   const backs = [];
   w.notices = noticeState({
@@ -1258,6 +1259,13 @@ const { MessagesSubView } = await import(
         return React.createElement("button", { type: "button", "data-stub": "NoticesView", onClick: () => props.onBack() }, "通知视图");
       }
     `),
+    "./NoticeDetailView": dataModule(`
+      import React from ${JSON.stringify(reactUrl)};
+      export function NoticeDetailView(props){
+        globalThis.__w08Sub.noticeDetail = props;
+        return React.createElement("button", { type: "button", "data-stub": "NoticeDetailView", onClick: () => props.onBack() }, "通知详情");
+      }
+    `),
     "../cases/MessagesContentCases": dataModule(`
       import React from ${JSON.stringify(reactUrl)};
       export function MessagesContentCases(props){
@@ -1268,7 +1276,7 @@ const { MessagesSubView } = await import(
   })
 );
 
-test("二级视图挂载：notices → 通知列表（返回 = 聊天）；cases → MessagesContentCases 带 caseId 与 onBack（返回 = 通知）；别的视图什么都不画", async () => {
+test("二级视图挂载：notices → 通知列表；通知详情带 noticeId 且返回通知；cases → 内容处置；别的视图什么都不画", async () => {
   const picked = [];
   const sub = (props) => React.createElement(MessagesSubView, { onSelectView: (view) => picked.push(view), caseId: null, ...props });
 
@@ -1278,12 +1286,19 @@ test("二级视图挂载：notices → 通知列表（返回 = 聊天）；cases
   assert.deepEqual(picked, ["inbox"]);
   await notices.unmount();
 
+  const detail = await mount(sub({ view: "notice-detail", noticeId: "notice-7" }));
+  assert.ok(detail.$('[data-leochat-subview="notice-detail"] [data-stub="NoticeDetailView"]'));
+  assert.equal(globalThis.__w08Sub.noticeDetail.noticeId, "notice-7");
+  await detail.click('[data-stub="NoticeDetailView"]');
+  assert.deepEqual(picked, ["inbox", "notices"]);
+  await detail.unmount();
+
   const cases = await mount(sub({ view: "cases", caseId: "case-42" }));
   assert.ok(cases.$('[data-leochat-subview="cases"] [data-stub="MessagesContentCases"]'));
   assert.equal(globalThis.__w08Sub.cases.caseId, "case-42", "?im=cases:<id> 的 id 原样交给内容处置");
   assert.equal(typeof globalThis.__w08Sub.cases.onBack, "function");
   await cases.click('[data-stub="MessagesContentCases"]');
-  assert.deepEqual(picked, ["inbox", "notices"]);
+  assert.deepEqual(picked, ["inbox", "notices", "notices"]);
   await cases.unmount();
 
   const all = await mount(sub({ view: "cases", caseId: null }));
@@ -2161,6 +2176,8 @@ const casesNetworkStubs = {
   "../../../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT = "oceanleo:auth-state";
     export async function accessToken(){ return "t"; }
+    export function cachedAccessToken(){ return "t"; }
+    export function getUserId(){ return "user-1"; }
   `),
   "../../../lib/agent": dataModule(`
     export async function authed(path, init){ return globalThis.__w08CasesAuthed(path, init); }

@@ -109,3 +109,12 @@ export function openNotice(
   runNoticeTarget(target, actions);
   return target;
 }
+
+/** 点一条通知只进入 LeoChat 详情：先标已读，不执行通知携带的链接。 */
+export function openNoticeDetail(
+  item: NotificationItem,
+  store: Pick<ReturnType<typeof noticeStore>, "markRead"> = noticeStore(),
+): void {
+  if (!item.read_at) void store.markRead([item.id]);
+  hostState().open({ view: "notice-detail", noticeId: item.id });
+}

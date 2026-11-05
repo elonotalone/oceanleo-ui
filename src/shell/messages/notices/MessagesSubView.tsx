@@ -7,20 +7,30 @@
 import type { ReactElement } from "react";
 import { MessagesContentCases } from "../cases/MessagesContentCases";
 import type { MessagesView } from "../host-state";
+import { NoticeDetailView } from "./NoticeDetailView";
 import { NoticesView } from "./NoticesView";
 
 export interface MessagesSubViewProps {
   view: MessagesView;
   /** `view === "cases"` 时要直接展开的那一件。 */
   caseId: string | null;
+  /** `view === "notice-detail"` 时要展开的通知。 */
+  noticeId: string | null;
   onSelectView: (view: MessagesView) => void;
 }
 
-export function MessagesSubView({ view, caseId, onSelectView }: MessagesSubViewProps): ReactElement | null {
+export function MessagesSubView({ view, caseId, noticeId, onSelectView }: MessagesSubViewProps): ReactElement | null {
   if (view === "notices") {
     return (
       <div className="flex min-h-0 flex-1 flex-col" data-leochat-subview="notices">
         <NoticesView onBack={() => onSelectView("inbox")} onCases={() => onSelectView("cases")} />
+      </div>
+    );
+  }
+  if (view === "notice-detail") {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col" data-leochat-subview="notice-detail">
+        <NoticeDetailView noticeId={noticeId} onBack={() => onSelectView("notices")} />
       </div>
     );
   }

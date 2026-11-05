@@ -64,6 +64,7 @@ export function LeoChatPanel({ active, request, onBackChange, onEvicted }: LeoCh
     // 会话 → 回列表；内容处置 → 回通知；通知 → 回聊天列表；列表本身没有上一层（退到头交 null）。
     let back: (() => void) | null = null;
     if (threadOpen) back = () => hostState().showConversation(null);
+    else if (view === "notice-detail") back = () => hostState().setView("notices");
     else if (view === "cases") back = () => hostState().setView("notices");
     else if (view === "notices") back = () => hostState().setView("inbox");
     onBackChangeRef.current?.(back);

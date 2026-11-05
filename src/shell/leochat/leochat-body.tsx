@@ -55,7 +55,14 @@ export function LeoChatBody({ wide }: LeoChatBodyProps): ReactElement {
   const talent = state.conversationId ? state.conversationId.startsWith("talent:") : false;
   let thread: ReactNode = null;
   if (subView) {
-    thread = <MessagesSubView view={state.view} caseId={state.caseId} onSelectView={(view) => host.setView(view)} />;
+    thread = (
+      <MessagesSubView
+        view={state.view}
+        caseId={state.caseId}
+        noticeId={state.noticeId}
+        onSelectView={(view) => host.setView(view)}
+      />
+    );
   } else if (state.conversationId) {
     const conversation = talent ? (
       <DealConversationView

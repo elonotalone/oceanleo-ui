@@ -8,6 +8,7 @@ import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
   noticesError: "通知暂时打不开",
+  noticeDetailTitle: "通知详情",
   noticesEmptyHint: "订单、任务、账单和内容处置等平台消息会出现在这里。",
   unreadCount: "未读 {count} 条",
 } as const;
@@ -15,90 +16,106 @@ const SOURCE = {
 const NOTICE_MESSAGES = assembleCopy(SOURCE, {
   "zh-TW": {
     noticesError: "通知暫時打不開",
+    noticeDetailTitle: "通知詳情",
     noticesEmptyHint: "訂單、任務、帳單和內容處置等平台訊息會出現在這裡。",
     unreadCount: "未讀 {count} 則",
   },
   en: {
     noticesError: "Couldn't open your notifications right now",
+    noticeDetailTitle: "Notification details",
     noticesEmptyHint: "Platform messages about orders, tasks, billing and content actions appear here.",
     unreadCount: "{count} unread",
   },
   ja: {
     noticesError: "通知をいま開けません",
+    noticeDetailTitle: "通知の詳細",
     noticesEmptyHint: "注文、タスク、請求、コンテンツ対応などのプラットフォームからのお知らせがここに表示されます。",
     unreadCount: "未読 {count} 件",
   },
   ko: {
     noticesError: "지금은 알림을 열 수 없습니다",
+    noticeDetailTitle: "알림 세부정보",
     noticesEmptyHint: "주문, 작업, 청구, 콘텐츠 조치 등 플랫폼 메시지가 여기에 표시됩니다.",
     unreadCount: "읽지 않음 {count}",
   },
   fr: {
     noticesError: "Impossible d'ouvrir vos notifications pour le moment",
+    noticeDetailTitle: "Détails de la notification",
     noticesEmptyHint:
       "Les messages de la plateforme (commandes, tâches, facturation, mesures sur le contenu…) apparaissent ici.",
     unreadCount: "{count} non lus",
   },
   de: {
     noticesError: "Deine Benachrichtigungen lassen sich gerade nicht öffnen",
+    noticeDetailTitle: "Benachrichtigungsdetails",
     noticesEmptyHint:
       "Hier erscheinen Plattformmeldungen zu Bestellungen, Aufgaben, Abrechnung und Inhaltsmassnahmen.",
     unreadCount: "{count} ungelesen",
   },
   it: {
     noticesError: "Al momento non è possibile aprire le tue notifiche",
+    noticeDetailTitle: "Dettagli della notifica",
     noticesEmptyHint:
       "Qui compaiono i messaggi della piattaforma su ordini, attività, fatturazione e provvedimenti sul contenuto.",
     unreadCount: "{count} non letti",
   },
   es: {
     noticesError: "No se pueden abrir tus notificaciones ahora mismo",
+    noticeDetailTitle: "Detalles de la notificación",
     noticesEmptyHint:
       "Aquí aparecerán los mensajes de la plataforma sobre pedidos, tareas, facturación y medidas sobre el contenido.",
     unreadCount: "{count} sin leer",
   },
   "es-419": {
     noticesError: "No se pueden abrir tus notificaciones por ahora",
+    noticeDetailTitle: "Detalles de la notificación",
     noticesEmptyHint:
       "Aquí aparecerán los mensajes de la plataforma sobre pedidos, tareas, facturación y medidas sobre el contenido.",
     unreadCount: "{count} sin leer",
   },
   "pt-BR": {
     noticesError: "Não foi possível abrir suas notificações agora",
+    noticeDetailTitle: "Detalhes da notificação",
     noticesEmptyHint:
       "As mensagens da plataforma sobre pedidos, tarefas, cobrança e medidas sobre o conteúdo aparecem aqui.",
     unreadCount: "{count} não lidas",
   },
   "pt-PT": {
     noticesError: "Não foi possível abrir as suas notificações neste momento",
+    noticeDetailTitle: "Detalhes da notificação",
     noticesEmptyHint:
       "As mensagens da plataforma sobre pedidos, tarefas, faturação e medidas sobre o conteúdo aparecem aqui.",
     unreadCount: "{count} por ler",
   },
   ar: {
     noticesError: "تعذّر فتح الإشعارات الآن",
+    noticeDetailTitle: "تفاصيل الإشعار",
     noticesEmptyHint: "ستظهر هنا رسائل المنصة المتعلقة بالطلبات والمهام والفوترة وإجراءات المحتوى.",
     unreadCount: "{count} غير مقروءة",
   },
   hi: {
     noticesError: "अभी सूचनाएँ नहीं खुल पा रहीं",
+    noticeDetailTitle: "सूचना विवरण",
     noticesEmptyHint: "ऑर्डर, कार्य, बिलिंग और सामग्री कार्रवाई जैसे प्लेटफ़ॉर्म संदेश यहाँ दिखाई देंगे।",
     unreadCount: "{count} अपठित",
   },
   th: {
     noticesError: "ตอนนี้ยังเปิดการแจ้งเตือนไม่ได้",
+    noticeDetailTitle: "รายละเอียดการแจ้งเตือน",
     noticesEmptyHint:
       "ข้อความจากแพลตฟอร์มเกี่ยวกับคำสั่งซื้อ งาน การเรียกเก็บเงิน และการจัดการเนื้อหาจะแสดงที่นี่",
     unreadCount: "ยังไม่อ่าน {count}",
   },
   vi: {
     noticesError: "Hiện chưa mở được thông báo",
+    noticeDetailTitle: "Chi tiết thông báo",
     noticesEmptyHint:
       "Tin nhắn từ nền tảng về đơn hàng, tác vụ, thanh toán và xử lý nội dung sẽ hiện ở đây.",
     unreadCount: "{count} chưa đọc",
   },
   tr: {
     noticesError: "Bildirimleriniz şu anda açılamıyor",
+    noticeDetailTitle: "Bildirim ayrıntıları",
     noticesEmptyHint:
       "Siparişler, görevler, faturalama ve içerik işlemleriyle ilgili platform mesajları burada görünür.",
     unreadCount: "{count} okunmamış",

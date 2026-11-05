@@ -9,7 +9,7 @@ import { ImBackIcon } from "../messages-surface";
 import { useOwnerCases } from "../cases/use-owner-cases";
 import { NoticeBellIcon, NoticeChevronIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
-import { noticeActionable, openNotice } from "./open-notice";
+import { noticeActionable, openNoticeDetail } from "./open-notice";
 import { noticeStore, useNoticeState } from "./use-notices";
 
 export interface NoticesViewProps {
@@ -108,7 +108,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                   data-notice-id={item.id}
                   data-notice-kind={item.kind}
                   data-notice-unread={unread ? "true" : "false"}
-                  onClick={() => openNotice(item)}
+                  onClick={() => openNoticeDetail(item)}
                   className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                 >
                   <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-white/10 dark:text-amber-400">
