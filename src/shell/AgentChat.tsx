@@ -620,6 +620,18 @@ type AgentChatInnerProps = AgentChatProps & {
   launchOnceRef?: MutableRefObject<boolean>;
 };
 
+function openTaskHelpSidebar(
+  taskId: string,
+  setRightOpen: (open: boolean) => void,
+  setWorkspaceAction: (action: { nonce: string; action: { version: 1; tab: "bay" } }) => void,
+) {
+  setRightOpen(true);
+  setWorkspaceAction({
+    nonce: `get-help:${taskId}:${Date.now()}`,
+    action: { version: 1, tab: "bay" },
+  });
+}
+
 export function AgentChat(props: AgentChatProps) {
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const router = useRouter();
@@ -1104,13 +1116,7 @@ function AgentChatInner({
               id: "get-help",
               label: tt("找人帮忙"),
               icon: <CallHumanIcon className="h-4 w-4" />,
-              onClick: () => {
-                setRightOpen(true);
-                setWorkspaceAction({
-                  nonce: `get-help:${taskId}:${Date.now()}`,
-                  action: { version: 1, tab: "bay" },
-                });
-              },
+              onClick: () => openTaskHelpSidebar(taskId, setRightOpen, setWorkspaceAction),
             },
           ]
         : undefined,
