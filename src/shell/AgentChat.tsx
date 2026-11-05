@@ -708,7 +708,7 @@ export function taskSubmissionClientMessageId(
 }
 
 /** A task-send failure is shown under the user's bubble, never as a gateway code. */
-function taskTimelineFailureText(tt: (text: string, vars?: Record<string, unknown>) => string, caught?: unknown): string {
+function taskTimelineFailureText(tt: (text: string, vars?: Record<string, string | number>) => string, caught?: unknown): string {
   const status = Number((caught as { status?: unknown } | null)?.status || 0);
   if (status === 401) return tt("请先登录 OceanLeo 账号，再发送消息。");
   if (status === 429) return tt("发送得太快了，请稍后重试。");
