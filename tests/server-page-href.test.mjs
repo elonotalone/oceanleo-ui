@@ -3,11 +3,11 @@ import test from "node:test";
 
 import { serverPageHref } from "../src/shell/cloud-computer/server-page/href.ts";
 
-test("serverPageHref 编码服务器并按合同组合 card/program/session", () => {
-  assert.equal(serverPageHref("cc /1"), "/computers/cc%20%2F1");
+test("serverPageHref routes computer views through the device portal", () => {
+  assert.equal(serverPageHref("cc /1"), "/devices?computer=cc+%2F1");
   assert.equal(
     serverPageHref("cc /1", { card: "acp" }),
-    "/computers/cc%20%2F1?card=acp",
+    "/devices?computer=cc+%2F1&view=acp",
   );
   assert.equal(
     serverPageHref("cc /1", {
@@ -15,10 +15,10 @@ test("serverPageHref 编码服务器并按合同组合 card/program/session", ()
       program: "claude code",
       session: "chat /2",
     }),
-    "/computers/cc%20%2F1?card=cli&program=claude+code&session=chat+%2F2",
+    "/devices?computer=cc+%2F1&view=cli&program=claude+code&session=chat+%2F2",
   );
   assert.equal(
     serverPageHref("cc /1", { program: "cursor", session: "chat /2" }),
-    "/computers/cc%20%2F1?program=cursor&session=chat+%2F2",
+    "/devices?computer=cc+%2F1&program=cursor&session=chat+%2F2",
   );
 });
