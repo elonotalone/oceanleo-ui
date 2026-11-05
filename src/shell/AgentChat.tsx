@@ -3643,7 +3643,9 @@ function AgentChatInner({
             inlineSlot={inlineSlot}
             placeholder={
               computerTask
-                ? tt("继续追问")
+                ? placeholder && !/oceanleo/i.test(placeholder)
+                  ? placeholder
+                  : tt("继续追问")
                 : placeholder ??
                   (toolsOn
                     ? tt("继续追问，或上传文件让 agent 分析…")

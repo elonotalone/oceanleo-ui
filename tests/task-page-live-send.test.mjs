@@ -64,7 +64,7 @@ test("task timeline status clears itself and keeps reconnects quiet", () => {
 });
 
 test("computer recipients use a neutral follow-up placeholder", () => {
-  assert.match(agentChat, /computerTask\s*\n\s*\? tt\("继续追问"\)/);
+  assert.match(agentChat, /computerTask[\s\S]{0,180}tt\("继续追问"\)/);
   assert.doesNotMatch(agentChat, /computerTask[\s\S]{0,120}给 OceanLeo 布置/);
 });
 
