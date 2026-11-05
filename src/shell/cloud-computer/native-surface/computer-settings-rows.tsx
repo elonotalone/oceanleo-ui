@@ -28,6 +28,7 @@ import { HOST_PANEL_SKIN } from "./host-style";
 import { InstallFlow, KeyForm, LoginFlow, programAccessState, type NativeDialog } from "./ProgramAccess";
 
 const DEFAULT_SETTINGS: AgentSettings = { confirm_dangerous: true, oceanleo_tools: true, billing_paused: false };
+const SETTINGS_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000] as const;
 
 /** Whole-computer agent settings; read only once `enabled` (the menu was opened, the computer is online). */
 export function useMachineSettings(computerId: string, client: CloudComputerClient = cloudComputerApi, enabled = true) {
@@ -40,12 +41,64 @@ export function useMachineSettings(computerId: string, client: CloudComputerClie
   useEffect(() => {
     if (!enabled || !computerId) return;
     const current = (generation.current += 1);
-    setLoaded(false);
-    void client.getAgentSettings(computerId)
-      .then((next) => { if (current === generation.current) setSettings(next); })
-      .catch(() => { if (current === generation.current) setError(tt("设置读取失败，请稍后重试。")); })
-      .finally(() => { if (current === generation.current) setLoaded(true); });
-    return () => { generation.current += 1; };
+    let disposed = false;
+    let active = false;
+    let retryTimer: number | null = null;
+    let retryAttempt = 0;
+    const clearRetry = () => {
+      if (retryTimer === null) return;
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+    const scheduleRetry = () => {
+      if (disposed || retryTimer !== null || retryAttempt >= SETTINGS_RETRY_DELAYS_MS.length) return;
+      const delay = SETTINGS_RETRY_DELAYS_MS[retryAttempt++];
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void load();
+      }, delay);
+    };
+    const load = async () => {
+      if (disposed || active) return;
+      active = true;
+      setLoaded(false);
+      try {
+        const next = await client.getAgentSettings(computerId);
+        if (disposed || current !== generation.current) return;
+        setSettings(next);
+        setError("");
+        setLoaded(true);
+        retryAttempt = 0;
+        clearRetry();
+      } catch {
+        if (disposed || current !== generation.current) return;
+        setError(tt("设置读取失败，请稍后重试。"));
+        setLoaded(false);
+        scheduleRetry();
+      } finally {
+        active = false;
+      }
+    };
+    const retryNow = () => {
+      if (disposed || active) return;
+      clearRetry();
+      retryAttempt = 0;
+      void load();
+    };
+    const onOnline = () => retryNow();
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") retryNow();
+    };
+    void load();
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      disposed = true;
+      generation.current += 1;
+      clearRetry();
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [client, computerId, enabled]);
   const change = useCallback(async (key: keyof AgentSettings, value: boolean) => {
@@ -197,17 +250,75 @@ export function useCliProgramRows({ computerId, programId, programLabel, enabled
   useEffect(() => {
     if (!enabled || !programId) return;
     let alive = true;
-    setFailed(false);
-    void client.listCliPrograms(computerId)
-      .then((result) => { if (alive) setProgram((result.programs || []).find((item) => item.id === programId) ?? null); })
-      .catch(() => { if (alive) setFailed(true); });
-    void client.getAgentSettings(computerId)
-      .then((next) => { if (alive) setServerConfirm(next.confirm_dangerous); })
-      .catch(() => undefined);
-    void client.getCliTools(computerId)
-      .then((result) => { if (alive) setTools(result.programs); })
-      .catch(() => undefined);
-    return () => { alive = false; };
+    let active = false;
+    let retryTimer: number | null = null;
+    let retryAttempt = 0;
+    const clearRetry = () => {
+      if (retryTimer === null) return;
+      window.clearTimeout(retryTimer);
+      retryTimer = null;
+    };
+    const scheduleRetry = () => {
+      if (!alive || retryTimer !== null || retryAttempt >= SETTINGS_RETRY_DELAYS_MS.length) return;
+      const delay = SETTINGS_RETRY_DELAYS_MS[retryAttempt++];
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        void load();
+      }, delay);
+    };
+    const load = async () => {
+      if (!alive || active) return;
+      active = true;
+      setFailed(false);
+      const results = await Promise.allSettled([
+        client.listCliPrograms(computerId),
+        client.getAgentSettings(computerId),
+        client.getCliTools(computerId),
+      ]);
+      if (!alive) {
+        active = false;
+        return;
+      }
+      let retry = false;
+      const programs = results[0];
+      if (programs.status === "fulfilled") {
+        setProgram((programs.value.programs || []).find((item) => item.id === programId) ?? null);
+      } else {
+        setFailed(true);
+        retry = true;
+      }
+      const agentSettings = results[1];
+      if (agentSettings.status === "fulfilled") setServerConfirm(agentSettings.value.confirm_dangerous);
+      else retry = true;
+      const cliTools = results[2];
+      if (cliTools.status === "fulfilled") setTools(cliTools.value.programs);
+      else retry = true;
+      if (retry) scheduleRetry();
+      else {
+        retryAttempt = 0;
+        clearRetry();
+      }
+      active = false;
+    };
+    const retryNow = () => {
+      if (!alive || active) return;
+      clearRetry();
+      retryAttempt = 0;
+      void load();
+    };
+    const onOnline = () => retryNow();
+    const onVisibility = () => {
+      if (document.visibilityState !== "hidden") retryNow();
+    };
+    void load();
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      alive = false;
+      clearRetry();
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [client, computerId, enabled, programId]);
 
   const save = (next: CliProgramSettings) => setSettings(writeCliProgramSettings(computerId, programId, next));
