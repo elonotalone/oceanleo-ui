@@ -81,7 +81,7 @@ export type TaskLiveEvent =
 
 export type TaskTimelineLiveStatus = "connecting" | "connected" | "reconnecting";
 
-/** Auth matches agent-dialog: bearer token in the WebSocket query string. */
+/** Auth matches legacy-dialog: bearer token in the WebSocket query string. */
 export async function taskTimelineWsUrl(taskId: string, after?: string): Promise<string> {
   const token = await accessToken();
   if (!token) throw new Error("未登录");

@@ -1,7 +1,7 @@
 "use client";
 
 // ============================================================================
-// Shared pieces of the open caches (task-open-cache, native-thread/transcript-cache)
+// Shared pieces of the open caches (task-open-cache, task-native/transcript-cache)
 // ----------------------------------------------------------------------------
 // A small memory LRU, a debounced write of the browser copy (IndexedDB, through
 // the user-scoped cache), and "one read in flight per thing, handed once to the

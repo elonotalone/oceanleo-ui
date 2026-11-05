@@ -6878,7 +6878,7 @@
           "kind": "named",
           "name": "useNativeThread",
           "importedName": "useNativeThread",
-          "source": "./native-thread"
+          "source": "./task-native"
         },
         {
           "kind": "named",
@@ -7546,7 +7546,7 @@
           "kind": "type",
           "name": "NativeThread",
           "importedName": "NativeThread",
-          "source": "./native-thread"
+          "source": "./task-native"
         },
         {
           "kind": "type",

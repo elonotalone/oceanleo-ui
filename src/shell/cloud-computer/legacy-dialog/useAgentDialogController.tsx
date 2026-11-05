@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
-import { agentDialogWsUrl } from "../../../lib/cloud-computer-api";
+import { legacyDialogWsUrl } from "../../../lib/cloud-computer-api";
 import * as computerApi from "../../../lib/cloud-computer-api";
 import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -1092,7 +1092,7 @@ export function useAgentDialog({
 
     let socket: WebSocket;
     try {
-      socket = new WebSocket(agentDialogWsUrl(computerIdRef.current, sessionIdRef.current, token));
+      socket = new WebSocket(legacyDialogWsUrl(computerIdRef.current, sessionIdRef.current, token));
     } catch {
       dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
       scheduleReconnect();

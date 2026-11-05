@@ -21,8 +21,8 @@ import { isModelFamilyConfig } from "./notice";
 import { mergeLocalPreviews, normalizeUserMessage } from "./message-attachments";
 import { blankOccupancy } from "./occupancy";
 import { chatTimeMs } from "../../chat-time-separators";
-import { orderNativeFrames } from "../../native-thread/order";
-import { mergeNativeDialogPages } from "../../native-thread/map-dialog";
+import { orderNativeFrames } from "../../task-native/order";
+import { mergeNativeDialogPages } from "../../task-native/map-dialog";
 import {
   hasOpenTurn,
   isRetriableStreamCancelText,
@@ -1572,7 +1572,7 @@ function reduceFrame(input: DialogState, frame: Record<string, unknown>): Dialog
   if (kind === "done") return onDone(state, frame);
   if (kind === "error" || kind === "notice") return onError(state, frame);
   // 未知帧：忽略并留一条 debug，不许当成「对话连不上」报错（P7 整面复核）。
-  if (kind) console.debug("[agent-dialog] unknown frame ignored:", kind);
+  if (kind) console.debug("[legacy-dialog] unknown frame ignored:", kind);
   return state;
 }
 

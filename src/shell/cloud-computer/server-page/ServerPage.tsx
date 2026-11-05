@@ -10,7 +10,7 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
-import { AcpCard } from "../agent-dialog/AcpCard";
+import { AcpCard } from "../legacy-dialog/AcpCard";
 import {
   computerDisplayState,
   isConnectedComputer,

@@ -41,7 +41,7 @@ import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
 import type { ExecutionTarget } from "../lib/execution-target";
 import type { ComputerTaskSession } from "../lib/computer-task-api";
-import type { ConversationTarget } from "./native-thread/types";
+import type { ConversationTarget } from "./task-native/types";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
 import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";

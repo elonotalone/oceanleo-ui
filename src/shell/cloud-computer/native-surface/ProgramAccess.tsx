@@ -7,12 +7,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { HERMES_PROVIDERS } from "../agent-dialog/KeySheet";
-import { LOGIN_OPENING_TIMEOUT_MS } from "../agent-dialog/LoginCard";
-import { keyErrorCopy, providerLabel } from "../agent-dialog/notice";
-import { ProgramKeyError, removeProgramKey, saveProgramKey } from "../agent-dialog/program-key-api";
-import { PROGRAM_LABEL, type LoginPhase, type LoginState, type ProgramStatus, type WsProgram } from "../agent-dialog/types";
-import type { useAgentDialog } from "../agent-dialog/useAgentDialogController";
+import { HERMES_PROVIDERS } from "../legacy-dialog/KeySheet";
+import { LOGIN_OPENING_TIMEOUT_MS } from "../legacy-dialog/LoginCard";
+import { keyErrorCopy, providerLabel } from "../legacy-dialog/notice";
+import { ProgramKeyError, removeProgramKey, saveProgramKey } from "../legacy-dialog/program-key-api";
+import { PROGRAM_LABEL, type LoginPhase, type LoginState, type ProgramStatus, type WsProgram } from "../legacy-dialog/types";
+import type { useAgentDialog } from "../legacy-dialog/useAgentDialogController";
 import { HOST } from "./host-style";
 
 export type NativeDialog = ReturnType<typeof useAgentDialog>;

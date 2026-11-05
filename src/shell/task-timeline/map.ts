@@ -7,8 +7,8 @@ import type {
   TaskProgram,
 } from "../../lib/task-timeline-api";
 import { PROGRAM_LABEL } from "../../native-agent-core/index";
-import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
-import { dialogToAgentMessages } from "../native-thread/map-dialog";
+import { applyDialog, initialDialogState } from "../cloud-computer/legacy-dialog/reduce";
+import { dialogToAgentMessages } from "../task-native/map-dialog";
 import type { AgentDialogMessage, DialogState } from "../../native-agent-core/index";
 
 /** The small state vocabulary the task page renders. `stuck` is intentionally absent. */

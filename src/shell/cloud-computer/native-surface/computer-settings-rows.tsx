@@ -18,8 +18,8 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI, type UITranslate } from "../../../i18n/ui/useUI";
 import { ComposerSettingsMenu, type ComposerSettingChoice, type ComposerSettingRow } from "../../composer-settings-menu";
-import type { ConversationTarget } from "../../native-thread/types";
-import { PROGRAM_LABEL, type WsProgram } from "../agent-dialog/types";
+import type { ConversationTarget } from "../../task-native/types";
+import { PROGRAM_LABEL, type WsProgram } from "../legacy-dialog/types";
 import { AppearancePanel } from "../terminal-card/AppearancePanel";
 import { useTerminalAppearance } from "../terminal-card/appearance";
 import { isCliToolProgram, type CliToolProgram } from "../terminal-card/CliSettingsPanel";

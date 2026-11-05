@@ -1,5 +1,5 @@
 import type { NativeAgentMessage as AgentMessage, NativeTranscriptSession } from "../../native-agent-core/index";
-import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
+import { applyDialog, initialDialogState } from "../cloud-computer/legacy-dialog/reduce";
 import type { AgentDialogMessage, TurnItem } from "../../native-agent-core/index";
 import { dialogToAgentMessages, type MapTranslate } from "./map-dialog";
 import { orderNativeFrames } from "./order";

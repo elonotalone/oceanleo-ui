@@ -3,7 +3,7 @@
 import type { CloudComputerClient, Computer } from "../../lib/cloud-computer-api";
 import type { ComputerTaskSession } from "../../lib/computer-task-api";
 import type { ExecutionTarget } from "../../lib/execution-target";
-import type { ConversationTarget } from "../native-thread/types";
+import type { ConversationTarget } from "../task-native/types";
 import { ComputerDock } from "./ComputerDock";
 import { ComputerConversationSettings } from "./native-surface/computer-settings-rows";
 

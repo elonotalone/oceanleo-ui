@@ -414,7 +414,7 @@ export function terminalWsUrl(
 }
 
 /** Same auth query as `terminalWsUrl`; path is the shell agent dialog. */
-export function agentDialogWsUrl(
+export function legacyDialogWsUrl(
   id: string,
   sessionId: string | undefined,
   token: string,
@@ -422,7 +422,7 @@ export function agentDialogWsUrl(
   const wsBase = gatewayBase().replace(/^http/i, "ws");
   const query = new URLSearchParams({ token });
   if (sessionId) query.set("session_id", sessionId);
-  return `${wsBase}/v1/computers/${encodeURIComponent(id)}/agent-dialog?${query.toString()}`;
+  return `${wsBase}/v1/computers/${encodeURIComponent(id)}/legacy-dialog?${query.toString()}`;
 }
 
 export function nodeWsUrl(): string {
