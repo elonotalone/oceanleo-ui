@@ -14,9 +14,15 @@ test("task picker uses I-7a REST options and Claude operations", async () => {
   assert.match(api, /\/login\/cancel/);
   assert.match(api, /program-operations/);
   assert.match(api, /waitProgramOperation/);
+  assert.match(api, /isProgramOperationTerminal/);
   assert.match(picker, /getProgramOptions/);
   assert.match(picker, /startProgramInstall/);
   assert.match(picker, /startProgramLogin/);
+  assert.match(picker, /waitProgramOperation/);
+  assert.match(picker, /submitProgramLoginCode/);
+  assert.match(picker, /cancelProgramOperation/);
+  for (const state of ["needs_code", "failed", "cancelled", "succeeded"]) assert.match(`${api}\n${picker}`, new RegExp(state));
+  assert.match(picker, /refreshOptions/);
   assert.match(chat, /model: taskPreferences\.model/);
   assert.match(chat, /effort: taskPreferences\.effort/);
   assert.match(chat, /fast: taskPreferences\.fast/);

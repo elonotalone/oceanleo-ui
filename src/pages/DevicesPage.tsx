@@ -20,6 +20,7 @@ import { readLocalDeviceId } from "./devices/local-device";
 import { deviceRevocationNotice, deviceSettingsErrorCopy, runDeviceRequest, runDeviceSettingsOperation } from "./devices/device-settings-state";
 import { DeviceTasksDialog } from "./devices/DeviceTasksDialog";
 import { deviceCloudAgentClient, useDeviceCloudAgent, type DeviceCloudAgentClient } from "./devices/use-device-cloud-agent";
+import { legacyImportErrorCopy, type LegacyImportErrorCode } from "../lib/computer-task-import-state";
 
 export type DevicesPageTab = "devices" | "cloud";
 export interface DevicesPageProps {
@@ -51,6 +52,12 @@ function desktopFromLocation(): string | null {
   if (typeof window === "undefined") return null;
   const id = new URLSearchParams(window.location.search).get("desktop");
   return id && /^[A-Za-z0-9_-]{1,128}$/.test(id) ? id : null;
+}
+
+function legacyImportErrorFromLocation(): LegacyImportErrorCode | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location.search).get("legacyImportError");
+  return value === "forbidden" || value === "not-found" || value === "try-again" ? value : null;
 }
 
 /** The desktop host exposes its own device id through a read-only bridge status.
@@ -93,9 +100,10 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   remoteDesktopClient = defaultRemoteDesktopClient, cloudAgentClient = deviceCloudAgentClient, remoteStatusIntervalMs = 10_000,
   listIntervalMs = 15_000, requestTimeoutMs = 15_000, currentUser = signedInUser, initialTab, variant = "page" }: DevicesPageProps) {
   const tt = useUI();
+  const [legacyImportError] = useState<LegacyImportErrorCode | null>(legacyImportErrorFromLocation);
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(() => legacyImportError ? legacyImportErrorCopy(legacyImportError) : null);
   const [pageNotice, setPageNotice] = useState<string | null>(null);
   const [loginRequired, setLoginRequired] = useState(false);
   const loginRequiredRef = useRef(false);
@@ -146,9 +154,9 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   }
   function applyDeviceResult(result: Awaited<ReturnType<DevicesFacade["listDevices"]>>) {
     if (!result.ok && (result.status === 401 || (!result.status && result.error === "unauthorized"))) {
-      clearPrivateViews(); loginRequiredRef.current = true; setLoginRequired(true); setPageError(null);
+      clearPrivateViews(); loginRequiredRef.current = true; setLoginRequired(true); setPageError(legacyImportError ? legacyImportErrorCopy(legacyImportError) : null);
     } else if (result.ok && result.data) {
-      showDevices(result.data); loginRequiredRef.current = false; setLoginRequired(false); setPageError(null);
+      showDevices(result.data); loginRequiredRef.current = false; setLoginRequired(false); setPageError(legacyImportError ? legacyImportErrorCopy(legacyImportError) : null);
     } else setPageError(result.error === "request_expired" ? deviceSettingsErrorCopy(result.error) : deviceErrorCopy(result.error, { limit: result.limit }));
   }
 
@@ -189,7 +197,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
     function reset(signedOut = false) {
       loadTicket += 1;
       clearTimeout(timer);
-      clearPrivateViews(); setShowAuth(false); setPageError(null); loginRequiredRef.current = signedOut; setLoginRequired(signedOut); setLoading(!signedOut);
+      clearPrivateViews(); setShowAuth(false); setPageError(legacyImportError ? legacyImportErrorCopy(legacyImportError) : null); loginRequiredRef.current = signedOut; setLoginRequired(signedOut); setLoading(!signedOut);
       if (!signedOut) void load();
     }
     function settle(userId: string | null) {
@@ -300,7 +308,7 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   return <div className={variant === "pane" ? "min-h-0" : "mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8"} data-oceanleo-devices-page data-devices-pane={variant === "pane" ? "" : undefined}>
     <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div>{!loginRequired && <button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button>}</header>
     {loginRequired && <div role="status" className="mt-5 flex items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm"><span>{tt("请先登录")}</span><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setShowAuth(true)}>{tt("登录")}</button></div>}
-    {pageError && <p role="alert" className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(pageError)}</p>}
+    {pageError && <p role="alert" data-device-import-error={legacyImportError || undefined} className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(pageError)}</p>}
     {pageNotice && <p role="status" className="mt-5 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600">{tt(pageNotice)}</p>}
     {remoteOpenId && !selectedRemote && !loading && !loginRequired && !pageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
     <div className="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>

@@ -950,3 +950,17 @@ test("源码没有生成配对码、远程改总开关或请求设备密钥的�
   assert.ok(!source.includes("JSON.stringify({ granted_kinds"));
   assert.ok(!source.includes("/pair-code"));
 });
+
+test("legacy computer import errors remain visible on the device page", async () => {
+  for (const [code, copy] of [["forbidden", "无权"], ["not-found", "不存在"], ["try-again", "重试"]]) {
+    window.history.replaceState(null, "", `/devices?computer=foreign&legacyImportError=${code}`);
+    const view = await render(makeClient([]));
+    try {
+      const alert = view.host.querySelector(`[data-device-import-error="${code}"]`);
+      assert.ok(alert, `missing ${code} device error`);
+      assert.match(alert.textContent || "", new RegExp(copy));
+    } finally {
+      view.cleanup();
+    }
+  }
+});

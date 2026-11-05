@@ -24,6 +24,10 @@ export type ProgramOperation = {
   progress?: number;
 };
 
+export function isProgramOperationTerminal(state: ProgramOperation["state"]): boolean {
+  return state !== "running";
+}
+
 const base = (computerId: string, program: NativeProgram) => `/v1/computers/${encodeURIComponent(computerId)}/programs/${encodeURIComponent(program)}`;
 export function getProgramOptions(computerId: string, program: NativeProgram, signal?: AbortSignal) {
   return cloudComputerRequest<ProgramOptions>(`${base(computerId, program)}/options`, { signal });
@@ -46,7 +50,7 @@ export function getProgramOperation(computerId: string, program: NativeProgram, 
 export async function waitProgramOperation(computerId: string, program: NativeProgram, operationId: string, signal?: AbortSignal, pollMs = 1_000): Promise<ProgramOperation> {
   for (;;) {
     const operation = await getProgramOperation(computerId, program, operationId, signal);
-    if (["succeeded", "failed", "cancelled", "needs_code"].includes(operation.state)) return operation;
+    if (isProgramOperationTerminal(operation.state)) return operation;
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(resolve, pollMs);
       signal?.addEventListener("abort", () => { clearTimeout(timer); reject(new DOMException("Aborted", "AbortError")); }, { once: true });

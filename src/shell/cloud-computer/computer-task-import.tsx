@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useUI } from "../../i18n/ui/useUI";
 import { portalHref } from "../../contracts/domain-family";
+import { CloudComputerError } from "../../lib/cloud-computer-api";
 import { createComputerTaskSession, type ComputerTaskSession } from "../../lib/computer-task-api";
+import { legacyImportErrorCode, shouldRetryLegacyImport } from "../../lib/computer-task-import-state";
 
 const NATIVE_PROGRAMS = ["cursor", "claude", "codex", "hermes"];
 
@@ -23,6 +25,22 @@ export function legacyImportRequestId(parts: { computerId: string; kind: string;
   return `legacy-import-${parts.kind}-${a.toString(36)}${b.toString(36)}`;
 }
 
+function statusOf(error: unknown): number | undefined {
+  return error instanceof CloudComputerError || (typeof error === "object" && error !== null && "status" in error)
+    ? Number((error as { status?: unknown }).status) || undefined
+    : undefined;
+}
+
+async function createLegacyTaskSessionWithRetry(computerId: string, input: Parameters<typeof createComputerTaskSession>[1]) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await createComputerTaskSession(computerId, input);
+    } catch (error) {
+      if (!shouldRetryLegacyImport(statusOf(error), attempt)) throw error;
+    }
+  }
+}
+
 /**
  * Legacy deep links (`/computers/<id>?card=…&program=…&session=…`, old `shell`
  * tasks) import only the native session they name into a task, then forward
@@ -38,7 +56,6 @@ export function ComputerTaskImport({ computerId, taskId, nativeSessionId, kind, 
   const tt = useUI();
   const router = useRouter();
   const params = useSearchParams();
-  const [failed, setFailed] = useState(false);
   const started = useRef(false);
   useEffect(() => {
     if (started.current) return;
@@ -51,29 +68,30 @@ export function ComputerTaskImport({ computerId, taskId, nativeSessionId, kind, 
     if (chosenKind !== "terminal" && !nativeProgram) {
       // The per-computer OceanLeo conversation was removed. A legacy link
       // without a named native session belongs on device management.
-      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImport=missing-session`);
+      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImportError=not-found`);
       return;
     }
     if (!taskId && !native) {
       // A card without a managed task or native session has nothing safe to
       // import; keep the user on the device detail instead of creating a new
       // conversation or enumerating history.
-      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImport=missing-session`);
+      router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImportError=not-found`);
       return;
     }
     const chosenProgram = chosenKind === "terminal" ? null : nativeProgram;
-    void createComputerTaskSession(computerId, {
+    void createLegacyTaskSessionWithRetry(computerId, {
       kind: chosenKind, program: chosenProgram,
       ...(taskId ? { task_id: taskId } : {}), ...(native ? { native_session_id: native } : {}),
       request_id: legacyImportRequestId({ computerId, kind: chosenKind, program: chosenProgram, nativeSessionId: native, taskId }),
     }).then((result) => router.replace(`/tasks/${encodeURIComponent(result.task_id)}?computerSession=${encodeURIComponent(result.session.id)}`))
-      .catch(() => setFailed(true));
+      .catch((error: unknown) => {
+        const code = legacyImportErrorCode(statusOf(error));
+        router.replace(`${portalHref("/devices")}?computer=${encodeURIComponent(computerId)}&legacyImportError=${code}`);
+      });
   }, [computerId, params, router, taskId, nativeSessionId, kind, program]);
   return <div className="grid h-full place-items-center p-6" data-computer-task-import>
-    <div className="flex flex-col items-center gap-3 text-center text-[13px] text-stone-500" role={failed ? "alert" : "status"}>
-      <span>{failed ? tt("这段对话暂时打不开，请稍后再试。") : tt("正在打开对话…")}</span>
-      {failed ? <a href={portalHref("/devices")}
-        className="rounded-xl border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50">{tt("管理设备")}</a> : null}
+    <div className="flex flex-col items-center gap-3 text-center text-[13px] text-stone-500" role="status">
+      <span>{tt("正在打开对话…")}</span>
     </div>
   </div>;
 }
