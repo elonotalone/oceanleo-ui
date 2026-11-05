@@ -1130,6 +1130,10 @@ export function useAgentDialog({
           sessionsRefreshRef.current?.reset();
           occupancyProbeRef.current?.reset();
           dispatch({ type: "occupancy-link", up: true });
+          // Opening the socket is itself proof that the gateway path is back.
+          // Clear a stale reconnect notice immediately; waiting for the later
+          // status frame left a recovered dialog showing "reconnecting".
+          dispatch({ type: "link-evidence" });
           const program = stateRef.current.program;
           if (usesDialogSocket(program, localOceanleoRef.current)) {
             sessionsRefreshRef.current?.request(program);
