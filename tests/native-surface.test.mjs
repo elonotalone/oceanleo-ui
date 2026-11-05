@@ -346,6 +346,30 @@ test("native chat pill: this conversation, Codex on this computer and the whole 
   } finally { view.cleanup(); }
 });
 
+test("whole-computer settings recover after a transient read failure", async () => {
+  const api = client();
+  let settingsCalls = 0;
+  const readSettings = api.getAgentSettings;
+  api.getAgentSettings = async (...args) => {
+    settingsCalls += 1;
+    if (settingsCalls === 1) throw new Error("gateway unavailable");
+    return readSettings(...args);
+  };
+  globalThis.__api = api;
+  const { dialog } = fakeDialog();
+  const view = mount(Pill, { dialog });
+  try {
+    await view.render();
+    await click(view.$("[data-native-model-trigger]"));
+    assert.equal(settingsCalls, 1);
+    assert.match(view.text(), /设置读取失败，请稍后重试。/);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await flush();
+    assert.equal(settingsCalls, 2);
+    assert.doesNotMatch(view.text(), /设置读取失败，请稍后重试。/);
+  } finally { view.cleanup(); }
+});
+
 test("account card: sign out when signed in; the login flow renders inside the card", async () => {
   globalThis.__api = client();
   const signedIn = fakeDialog({ programs: [{ id: "codex", installed: true, path: "", version: "0.90.0", auth: "login", logged_in: true, dir_capability: "full", running: false }] });
@@ -425,6 +449,29 @@ test("CLI bar pill: the program's next-launch options, tools switch and the shar
     await click(view.$('[data-composer-setting-row="appearance"]'));
     assert.ok(view.$('[data-composer-settings-card="appearance"] [data-oceanleo-terminal-appearance]'));
     assert.doesNotMatch(view.host.innerHTML, /zinc-/);
+  } finally { view.cleanup(); }
+});
+
+test("CLI settings recover after a transient program-list failure", async () => {
+  const api = client();
+  let programCalls = 0;
+  const readPrograms = api.listCliPrograms;
+  api.listCliPrograms = async (...args) => {
+    programCalls += 1;
+    if (programCalls === 1) throw new Error("gateway unavailable");
+    return readPrograms(...args);
+  };
+  const view = mount(ComputerConversationSettings, { computer: COMPUTER, conversation: { kind: "native", computerId: "cc_1", computerName: "elon", program: "codex", view: "cli" }, client: api });
+  try {
+    await view.render();
+    await click(view.$("[data-conversation-settings-pill] > button"));
+    assert.equal(programCalls, 1);
+    assert.match(view.text(), /设置读取失败，请稍后重试。/);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
+    await flush();
+    assert.equal(programCalls, 2);
+    assert.doesNotMatch(view.text(), /设置读取失败，请稍后重试。/);
+    assert.ok(view.$('[data-composer-setting-row="cli:next-launch"]'));
   } finally { view.cleanup(); }
 });
 
