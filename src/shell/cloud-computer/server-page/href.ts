@@ -1,29 +1,9 @@
-import { portalHref as familyPortalHref } from "../../../contracts/domain-family";
+import { devicesCloudHref, portalHref } from "../../../lib/portal-href";
 
+export { devicesCloudHref, portalHref };
 export type ServerPageCard = "acp" | "cli" | "terminal";
-
 export type ServerPageHrefOptions = {
   card?: ServerPageCard;
   program?: string;
   session?: string;
 };
-
-/** 子站上指向门户；已经在门户 origin（含 LeoDev 预览 overlay）上则保持相对路径。 */
-export function portalHref(path: string): string {
-  return familyPortalHref(path);
-}
-
-export function devicesCloudHref(): string {
-  return portalHref("/devices");
-}
-
-export function serverPageHref(
-  computerId: string,
-  options: ServerPageHrefOptions = {},
-): string {
-  const query = new URLSearchParams({ computer: computerId });
-  if (options.card) query.set("view", options.card);
-  if (options.program) query.set("program", options.program);
-  if (options.session) query.set("session", options.session);
-  return portalHref(`/devices?${query.toString()}`);
-}

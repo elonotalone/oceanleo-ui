@@ -35,9 +35,9 @@ export function TaskProgramPicker({ computerId, program, value, onChange }: {
   ) : null;
   return <span className="inline-flex flex-wrap items-center gap-1" data-task-program-picker="rest">
     {!options.installed && <button type="button" onClick={() => void run("install")} className="rounded-md border border-stone-200 px-1.5 py-1 text-[11px] text-stone-600">install</button>}
-    {options.installed && options.auth !== "login" && <button type="button" onClick={() => void run("login")} className="rounded-md border border-stone-200 px-1.5 py-1 text-[11px] text-stone-600">login</button>}
+    {options.installed && options.login?.state !== "logged_in" && options.auth !== "login" && <button type="button" onClick={() => void run("login")} className="rounded-md border border-stone-200 px-1.5 py-1 text-[11px] text-stone-600">login</button>}
     {select("model", options.models)}{select("mode", options.modes)}{select("effort", options.efforts)}
-    {options.fast !== undefined && <label className="inline-flex items-center gap-1 text-[11px] text-stone-500"><input type="checkbox" checked={value.fast ?? options.fast} onChange={(event) => onChange({ ...value, fast: event.target.checked })} /> fast</label>}
+    {options.fast !== undefined && <label className="inline-flex items-center gap-1 text-[11px] text-stone-500"><input type="checkbox" checked={value.fast ?? (typeof options.fast === "object" ? options.fast.available : options.fast)} onChange={(event) => onChange({ ...value, fast: event.target.checked })} /> fast</label>}
     {operationMessage && <span role="status" className="max-w-40 truncate text-[11px] text-stone-500">{operationMessage}</span>}
   </span>;
 }

@@ -24,7 +24,7 @@ const bodyUrl = await compileModule("src/shell/messages/leo/LeoMessageBody.tsx",
   "../../../i18n/ui/useUI": useUiStub,
   "../../../lib/im/client": clientStub,
   "./client": clientStub,
-  "../../cloud-computer/server-page/href": hrefStub,
+  "../../../lib/portal-href": hrefStub,
 });
 const body = await import(bodyUrl);
 const { LeoMessageBody, LeoNoticeLine, leoDisplayText, leoCanStop, leoTriggerId } = body;

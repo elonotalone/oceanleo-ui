@@ -3407,6 +3407,7 @@ function AgentChatInner({
     tail: (
       <>
           {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
+          {computerTask && timeline.state?.savingDelayed && <p className="text-[13px] text-stone-500" data-task-saving-delayed>{tt("这段对话暂时没能保存到云端")}</p>}
           {computerTask && timelineStatus.liveNotice && <p className="text-[13px] text-stone-400">{tt("正在重新连接…")}</p>}
           {computerTask && timelineReadError && (
             <p className="flex flex-wrap items-center gap-2 text-[13px] text-stone-500" role="status">

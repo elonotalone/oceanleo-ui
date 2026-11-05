@@ -6492,12 +6492,6 @@
         },
         {
           "kind": "named",
-          "name": "serverPageHref",
-          "importedName": "serverPageHref",
-          "source": "./cloud-computer/server-page"
-        },
-        {
-          "kind": "named",
           "name": "setArtifactFavorite",
           "importedName": "setArtifactFavorite",
           "source": "./artifact-client"

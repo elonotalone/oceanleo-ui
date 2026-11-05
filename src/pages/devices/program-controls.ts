@@ -8,11 +8,12 @@ export type ProgramOptions = {
   program: NativeProgram;
   installed: boolean;
   version?: string | null;
+  login?: { state: "logged_in" | "logged_out" | "unknown"; account?: string | null };
   auth?: "login" | "key" | "none" | "unknown" | "malformed";
   models?: ProgramOption[];
   modes?: ProgramOption[];
   efforts?: ProgramOption[];
-  fast?: boolean;
+  fast?: boolean | { available: boolean };
 };
 export type ProgramOperation = {
   operation_id: string;
@@ -31,16 +32,16 @@ export function startProgramInstall(computerId: string, program: NativeProgram, 
   return cloudComputerRequest<ProgramOperation>(`${base(computerId, program)}/install`, { method: "POST", signal });
 }
 export function startProgramLogin(computerId: string, program: NativeProgram, signal?: AbortSignal) {
-  return cloudComputerRequest<ProgramOperation>(`${base(computerId, program)}/login`, { method: "POST", signal });
+  return cloudComputerRequest<ProgramOperation>(`${base(computerId, program)}/login`, { method: "POST", body: JSON.stringify({}), signal });
 }
 export function submitProgramLoginCode(computerId: string, program: NativeProgram, operationId: string, code: string, signal?: AbortSignal) {
-  return cloudComputerRequest<ProgramOperation>(`${base(computerId, program)}/login/${encodeURIComponent(operationId)}`, { method: "POST", body: JSON.stringify({ code }), signal });
+  return cloudComputerRequest<ProgramOperation>(`${base(computerId, program)}/login/code`, { method: "POST", body: JSON.stringify({ operation_id: operationId, code }), signal });
 }
 export function cancelProgramOperation(computerId: string, program: NativeProgram, operationId: string, signal?: AbortSignal) {
-  return cloudComputerRequest<{ ok: boolean }>(`${base(computerId, program)}/operations/${encodeURIComponent(operationId)}`, { method: "DELETE", signal });
+  return cloudComputerRequest<{ ok: boolean }>(`${base(computerId, program)}/login/cancel`, { method: "POST", body: JSON.stringify({ operation_id: operationId }), signal });
 }
 export function getProgramOperation(computerId: string, program: NativeProgram, operationId: string, signal?: AbortSignal) {
-  return cloudComputerRequest<ProgramOperation>(`${base(computerId, program)}/operations/${encodeURIComponent(operationId)}`, { signal });
+  return cloudComputerRequest<ProgramOperation>(`/v1/computers/${encodeURIComponent(computerId)}/program-operations/${encodeURIComponent(operationId)}`, { signal });
 }
 export async function waitProgramOperation(computerId: string, program: NativeProgram, operationId: string, signal?: AbortSignal, pollMs = 1_000): Promise<ProgramOperation> {
   for (;;) {

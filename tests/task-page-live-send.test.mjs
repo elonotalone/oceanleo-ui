@@ -53,6 +53,12 @@ test("the computer task page auto-loads older pages and preserves the reader anc
   assert.doesNotMatch(workspaceCopy, /loadEarlierMessages/);
 });
 
+test("saving delay is visible while the task timeline keeps streaming", () => {
+  assert.match(agentChat, /timeline\.state\?\.savingDelayed/);
+  assert.match(agentChat, /data-task-saving-delayed/);
+  assert.match(agentChat, /这段对话暂时没能保存到云端/);
+});
+
 test("task timeline status clears itself and keeps reconnects quiet", () => {
   assert.match(agentChat, /timelineStatus\.liveNotice/);
   assert.match(agentChat, /text-stone-400.*正在重新连接/);

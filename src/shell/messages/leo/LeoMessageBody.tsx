@@ -7,7 +7,7 @@ import type { ImMessage } from "../../../lib/im/types";
 import { cancelLeo, fetchMyUserId } from "../../../lib/im/leo-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { Markdown, TypewriterMarkdown } from "../../Markdown";
-import { portalHref } from "../../cloud-computer/server-page/href";
+import { portalHref } from "../../../lib/portal-href";
 
 export interface LeoMessageBodyProps {
   message: ImMessage;

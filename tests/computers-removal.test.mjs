@@ -32,8 +32,6 @@ test("device route href helper uses computer and view query parameters", async (
     resolve("src/shell/cloud-computer/server-page/href.ts"),
     "utf8",
   );
-  assert.match(source, /portalHref\(`\/devices\?/);
-  assert.match(source, /new URLSearchParams\(\{ computer: computerId \}\)/);
-  assert.match(source, /query\.set\("view", options\.card\)/);
+  assert.doesNotMatch(source, /serverPageHref/);
   assert.doesNotMatch(source, /`\/computers\//);
 });

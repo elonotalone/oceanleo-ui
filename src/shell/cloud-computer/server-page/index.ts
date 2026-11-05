@@ -1,5 +1,6 @@
 export {
-  serverPageHref,
+  devicesCloudHref,
+  portalHref,
   type ServerPageCard,
   type ServerPageHrefOptions,
 } from "./href";

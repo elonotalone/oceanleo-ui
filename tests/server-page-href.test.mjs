@@ -1,24 +1,16 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { devicesCloudHref, portalHref } from "../src/shell/cloud-computer/server-page/href.ts";
 
-import { serverPageHref } from "../src/shell/cloud-computer/server-page/href.ts";
+test("portal helpers keep device links under the device route", () => {
+  assert.equal(portalHref("/devices?computer=cc%20/1"), "/devices?computer=cc%20/1");
+  assert.equal(devicesCloudHref(), "/devices");
+});
 
-test("serverPageHref routes computer views through the device portal", () => {
-  assert.equal(serverPageHref("cc /1"), "/devices?computer=cc+%2F1");
-  assert.equal(
-    serverPageHref("cc /1", { card: "acp" }),
-    "/devices?computer=cc+%2F1&view=acp",
-  );
-  assert.equal(
-    serverPageHref("cc /1", {
-      card: "cli",
-      program: "claude code",
-      session: "chat /2",
-    }),
-    "/devices?computer=cc+%2F1&view=cli&program=claude+code&session=chat+%2F2",
-  );
-  assert.equal(
-    serverPageHref("cc /1", { program: "cursor", session: "chat /2" }),
-    "/devices?computer=cc+%2F1&program=cursor&session=chat+%2F2",
-  );
+test("terminal task links use the task conversation URL", async () => {
+  const source = await readFile("src/shell/cloud-computer/ShellTaskView.tsx", "utf8");
+  assert.match(source, /\/tasks\/\$\{encodeURIComponent\(taskId\)\}/);
+  assert.match(source, /computerSession/);
+  assert.doesNotMatch(source, /serverPageHref/);
 });

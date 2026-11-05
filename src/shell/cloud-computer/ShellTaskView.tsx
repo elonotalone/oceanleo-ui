@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { CloudComputerClient } from "../../lib/cloud-computer-api";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHELL_ENDED_ZH } from "../../i18n/ui/messages/shell-ended-copy";
-import { serverPageHref } from "./server-page/href";
+import { portalHref } from "../../lib/portal-href";
 import { tone } from "./server-page/tone";
 
 export type ShellTaskViewProps = {
@@ -29,12 +29,10 @@ export function ShellTaskView({
 }: ShellTaskViewProps) {
   const tt = useUI();
   const router = useRouter();
-  const target =
-    computerId && sessionId
-      ? serverPageHref(computerId, {
-          card: "terminal",
-          session: sessionId,
-        })
+  const target = taskId && sessionId
+    ? portalHref(`/tasks/${encodeURIComponent(taskId)}?computerSession=${encodeURIComponent(sessionId)}`)
+    : computerId
+      ? portalHref(`/devices?computer=${encodeURIComponent(computerId)}&view=terminal${sessionId ? `&session=${encodeURIComponent(sessionId)}` : ""}`)
       : null;
 
   useEffect(() => {

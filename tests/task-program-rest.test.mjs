@@ -10,7 +10,9 @@ test("task picker uses I-7a REST options and Claude operations", async () => {
   ]);
   assert.match(api, /\/options/);
   assert.match(api, /\/install/);
-  assert.match(api, /\/login/);
+  assert.match(api, /\/login\/code/);
+  assert.match(api, /\/login\/cancel/);
+  assert.match(api, /program-operations/);
   assert.match(api, /waitProgramOperation/);
   assert.match(picker, /getProgramOptions/);
   assert.match(picker, /startProgramInstall/);
