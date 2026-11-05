@@ -180,16 +180,17 @@ test("没有右侧栏时保持当前页面；整页上的按钮不改变页面",
   Object.defineProperty(window, "location", { configurable: true, value: originalLocation });
 });
 
-test("首页和任务页都有右侧栏宿主；按钮不再导航；面板入口跟随 IM", () => {
+test("首页和任务页的懒加载右栏保留 LeoChat 请求；按钮不再导航；面板入口跟随 IM", () => {
   resetState();
   globalThis.__w5Button.imOn = false;
   assert.match(src("shell/leochat/LeoChatButton.tsx"), /if \(!imOn\) return null/);
   assert.doesNotMatch(src("shell/leochat/LeoChatButton.tsx"), /openLeoChatPage|location\.assign/);
-  assert.match(src("shell/AppShell.tsx"), /data-home-leochat-host/);
-  assert.match(src("shell/AppShell.tsx"), /<TaskWorkspaceShell/);
-  assert.ok(src("shell/AppShell.tsx").includes('const homeRoute = pathname === "/"'));
+  assert.match(src("shell/TaskWorkspaceShell.tsx"), /WORKSPACE_ACTION_EVENT/);
+  assert.match(src("shell/TaskWorkspaceShell.tsx"), /leochat-button:/);
+  assert.match(src("shell/TaskWorkspaceShell.tsx"), /leoChatRequestNonce/);
   assert.match(src("shell/AgentChat.tsx"), /<TaskWorkspaceShell/);
   assert.match(src("shell/ResultCanvas.tsx"), /const panels = useMemo\(\(\) => \(\{ bay: bayOn, leochat: imOn \}\)/);
   assert.match(src("shell/ResultCanvas.tsx"), /LEOCHAT_PANEL_REQUEST_EVENT/);
+  assert.match(src("shell/ResultCanvas.tsx"), /workspaceOpen !== false/);
   assert.match(src("shell/ResultCanvas.tsx"), /closeRightPane/);
 });

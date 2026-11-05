@@ -147,6 +147,10 @@ export interface ResultCanvasProps {
   /** Advanced content workbench reuses this exact Agent thread. */
   taskId?: string | null;
   siteId?: string;
+  /** TaskWorkspaceShell state keeps a lazy LeoChat request until this canvas mounts. */
+  leoChatRequestNonce?: string | null;
+  /** Controlled right-pane visibility, used to distinguish open from closed LeoChat toggles. */
+  workspaceOpen?: boolean;
   /** Server-issued exact binding context for the Primary material shelf. */
   materialContext?: ArtifactContextRef;
   /**
@@ -233,6 +237,8 @@ export function ResultCanvas({
   showTemplate = true,
   taskId,
   siteId = "",
+  leoChatRequestNonce = null,
+  workspaceOpen,
   materialContext,
   openItem,
   openEntry,
@@ -557,7 +563,7 @@ export function ResultCanvas({
       const detail = (event as CustomEvent<LeoChatPanelRequestDetail>).detail;
       if (!detail || detail.handled) return;
       detail.handled = true;
-      if (view === "leochat") {
+      if (view === "leochat" && workspaceOpen !== false) {
         if (rightSlot?.closeRightPane) rightSlot.closeRightPane();
         else goHome();
         return;
@@ -566,7 +572,11 @@ export function ResultCanvas({
     };
     window.addEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
     return () => window.removeEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
-  }, [goHome, imOn, openPanel, rightSlot, view]);
+  }, [goHome, imOn, openPanel, rightSlot, view, workspaceOpen]);
+  useEffect(() => {
+    if (!imOn || !leoChatRequestNonce || view === "leochat") return;
+    openPanel("leochat");
+  }, [imOn, leoChatRequestNonce, openPanel, view]);
   // Navigation hides a foreground editor instead of destroying its mounted session.
   currentViewRef.current = view;
   const previousNavigation = useRef({ view, nonce: externalAction?.nonce, focusNonce, active });
@@ -870,6 +880,7 @@ export function ResultCanvas({
   //   - 没有 SplitWorkspace 时本组件自带返回行（StandaloneWorkspaceFrame）正好顶在
   //     右上角，同样是面板可见 → 登记。有 SplitWorkspace 时右栏显隐由它登记。
   useWorkbenchOpenClaim(foregroundVisible || !rightSlot);
+  const chatPanelActive = !foregroundVisible && view === "leochat" && workspaceOpen !== false;
   const rightMainContent = (
     <div className="relative h-full min-h-0 overflow-hidden" data-workspace-view={view}>
       <div
@@ -911,9 +922,9 @@ export function ResultCanvas({
           </div>
         ) : null}
         {panels.leochat && chatVisited ? (
-          <div data-workspace-panel="leochat" data-workspace-panel-active={!foregroundVisible && view === "leochat"}
-               hidden={view !== "leochat"} inert={view !== "leochat" || undefined} className="h-full min-h-0 overflow-hidden">
-            <LeoChatPanel active={!foregroundVisible && view === "leochat"} request={chatRequest}
+          <div data-workspace-panel="leochat" data-workspace-panel-active={chatPanelActive}
+               hidden={!chatPanelActive} inert={!chatPanelActive || undefined} className="h-full min-h-0 overflow-hidden">
+            <LeoChatPanel active={chatPanelActive} request={chatRequest}
                           onBackChange={(back) => { chatBackRef.current = back; }} onEvicted={goHome} />
           </div>
         ) : null}

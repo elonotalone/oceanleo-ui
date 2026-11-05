@@ -35,6 +35,7 @@ import type { TaskWorkspaceOpenEntry, WorkspaceEntryOpenOptions } from "./result
 import type { AssetRef, AssetSurface } from "./asset-detail/types";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
 import type { LibraryItem, LibraryKind } from "./library-data";
 import { editorCapabilityFor } from "./workbench-routes";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
@@ -60,6 +61,8 @@ export interface TaskWorkspaceState {
   setLibTab: Dispatch<SetStateAction<string>>;
   workspaceAction: WorkspaceActionEnvelope | null;
   setWorkspaceAction: Dispatch<SetStateAction<WorkspaceActionEnvelope | null>>;
+  /** LeoChat button requests survive a lazy right pane that has not mounted ResultCanvas yet. */
+  leoChatRequestNonce: string | null;
   /** The last direct-open request (consumed once by ResultCanvas, by nonce). */
   openItem: TaskWorkspaceOpenItem | null;
   openEntry: TaskWorkspaceOpenEntry | null;
@@ -87,6 +90,7 @@ export function useTaskWorkspaceState({
   const [libTab, setLibTab] = useState(initial?.tab ?? defaultTab);
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(initial?.action ?? null);
+  const [leoChatRequestNonce, setLeoChatRequestNonce] = useState<string | null>(null);
   const [rightOpen, setRightOpen] = useState(
     initial?.open ?? (initial?.item || initial?.entry ? true : defaultOpen),
   );
@@ -94,6 +98,17 @@ export function useTaskWorkspaceState({
     initial?.item ?? null,
   );
   const [openEntry, setOpenEntry] = useState<TaskWorkspaceOpenEntry | null>(initial?.entry ?? null);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const receive = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceActionEnvelope>).detail;
+      const nonce = String(detail?.nonce || "");
+      if (!nonce.startsWith("leochat-button:")) return;
+      setLeoChatRequestNonce(nonce);
+    };
+    window.addEventListener(WORKSPACE_ACTION_EVENT, receive);
+    return () => window.removeEventListener(WORKSPACE_ACTION_EVENT, receive);
+  }, []);
   const openWorkspaceItem = useCallback<TaskWorkspaceState["openWorkspaceItem"]>(
     (item, mode = "preview", options) => {
       openSeq += 1;
@@ -128,6 +143,7 @@ export function useTaskWorkspaceState({
     setLibTab,
     workspaceAction,
     setWorkspaceAction,
+    leoChatRequestNonce,
     openItem,
     openWorkspaceItem,
   };
@@ -241,6 +257,8 @@ export function TaskWorkspaceShell({
         action={state.workspaceAction}
         openItem={state.openItem}
         openEntry={state.openEntry}
+        leoChatRequestNonce={state.leoChatRequestNonce}
+        workspaceOpen={open}
         onOpenItemChange={onOpenItemChange}
         renderBoundEditor={renderBoundTaskEditor}
       />
