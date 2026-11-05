@@ -196,7 +196,8 @@ import {
   sendTaskMessage as sendTimelineMessage,
   stopTask as stopTimelineTask,
 } from "../lib/task-timeline-api";
-import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
+import { useTaskTimeline, type TaskProgram } from "./task-timeline";
+import { stashLocalForTask } from "./task-timeline/useTaskTimeline";
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
