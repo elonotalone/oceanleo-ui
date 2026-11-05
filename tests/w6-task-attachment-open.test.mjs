@@ -173,7 +173,7 @@ test("AgentChat: cloud and native panes (bubble + composer) open files through o
   for (const bubble of bubbles) assert.match(bubble, /onOpenAttachment=\{openTaskAttachment\}/);
   // A Library editor thread keeps its editor mounted while an opened file is shown.
   assert.match(src, /fileOverWorkspace \? "hidden" : "h-full"[\s\S]*?\{workspaceContent\}[\s\S]*?\{fileOverWorkspace && right\}/);
-  const thread = readFileSync(new URL("../src/shell/native-thread/useNativeThread.ts", import.meta.url), "utf8");
+  const thread = readFileSync(new URL("../src/shell/task-native/useNativeThread.ts", import.meta.url), "utf8");
   assert.match(thread, /item\.archive \? \{ nativeArchive: item\.archive \}/);
   const bubble = readFileSync(new URL("../src/shell/AgentTranscriptBubble.tsx", import.meta.url), "utf8");
   assert.match(bubble, /<NativeArchivedAttachment[\s\S]*?onOpen=\{onOpen \? \(\) => onOpen\(attachment\) : undefined\}/);

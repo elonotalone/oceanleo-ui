@@ -130,7 +130,7 @@ const { ServerPage } = await import(
     "../../../lib/cloud-computer-api": apiStubUrl,
     "../../../contracts/domain-family": domainStubUrl,
     "../../../i18n/ui/useUI": uiStubUrl,
-    "../agent-dialog/AcpCard": acpStubUrl,
+    "../legacy-dialog/AcpCard": acpStubUrl,
     "../terminal-card/CliCard": cliStubUrl,
     "../terminal-card/TerminalCard": terminalStubUrl,
     "../useCloudComputers": computersStubUrl,

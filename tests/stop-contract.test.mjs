@@ -8,8 +8,8 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import ts from "typescript";
 import {
   applyDialog, initialDialogState, idleStop, newStopId, STOP_REPLY_TIMEOUT_MS, stopMachine, stopErrorText,
-} from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { liveTurnOpen } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
+} from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
+import { liveTurnOpen } from "../src/shell/cloud-computer/legacy-dialog/occupancy.ts";
 import {
   attachmentFailureText, isTransientUploadError, stopClickAllowed, stopPressArmed, uploadRetryDelay,
 } from "../src/shell/composer-send-guard.ts";
@@ -280,7 +280,7 @@ const hostBody = hostAst.statements.find((node) => ts.isFunctionDeclaration(node
 const stopCallback = hostBody.statements.find((node) => ts.isVariableStatement(node) && node.declarationList.declarations.some((decl) => decl.name.getText(hostAst) === "stop")).getText(hostAst);
 const terminalEffect = hostBody.statements.find((node) => ts.isExpressionStatement(node) && node.getText(hostAst).includes("if (!isLocalExecution || !localRun || localAgentRunLive(localRun)) return;")).getText(hostAst);
 const hostHarnessSource = ts.transpileModule(`
-  import {idleStop,stopMachine,newStopId,STOP_REPLY_TIMEOUT_MS} from ${JSON.stringify(new URL("../src/shell/cloud-computer/agent-dialog/reduce.ts", import.meta.url).href)};
+  import {idleStop,stopMachine,newStopId,STOP_REPLY_TIMEOUT_MS} from ${JSON.stringify(new URL("../src/shell/cloud-computer/legacy-dialog/reduce.ts", import.meta.url).href)};
   import {localAgentCanControl,localAgentRunLive} from ${JSON.stringify(new URL("../src/lib/local-agent-task.ts", import.meta.url).href)};
   export function hostStop(options={}) {
     const taskStopRef={current:idleStop()}, taskStopTimerRef={current:null}, taskStopRequestRef={current:""};

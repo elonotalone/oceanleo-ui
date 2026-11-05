@@ -8,7 +8,7 @@ import { createRoot } from "react-dom/client";
 import { LOCALES } from "../src/i18n/config.ts";
 import { ACP_CARD_MESSAGES } from "../src/i18n/ui/messages/acp-card-copy.ts";
 import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
-import { isOpaqueDialogDidNotStart, noticeAction, noticeCopy, visibleNoticeCopy } from "../src/shell/cloud-computer/agent-dialog/notice.ts";
+import { isOpaqueDialogDidNotStart, noticeAction, noticeCopy, visibleNoticeCopy } from "../src/shell/cloud-computer/legacy-dialog/notice.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -64,12 +64,12 @@ const uiStub = dataModule(`
 `);
 
 const { InstallSheet } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/InstallSheet.tsx", {
+  await compileModule("src/shell/cloud-computer/legacy-dialog/InstallSheet.tsx", {
     "../../../i18n/ui/useUI": uiStub,
   })
 );
 const { MessageList } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", {
+  await compileModule("src/shell/cloud-computer/legacy-dialog/MessageList.tsx", {
     "../../../i18n/ui/useUI": uiStub,
   })
 );

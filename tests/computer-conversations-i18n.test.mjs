@@ -28,7 +28,7 @@ const HAN_SCRIPT = new Set(["zh-TW", "ja"]);
 const HOST_FILES = ["src/shell/AgentChat.tsx", "src/shell/AgentTranscriptBubble.tsx"];
 /** 每一条中文字面量都要有译文的文件 / 目录。 */
 const STRICT_ENTRIES = [
-  "src/shell/native-thread",
+  "src/shell/task-native",
   "src/shell/cloud-computer/native-surface",
   "src/shell/cloud-computer/ConversationBar.tsx",
   "src/shell/cloud-computer/ComputerDock.tsx",

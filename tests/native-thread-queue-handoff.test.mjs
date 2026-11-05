@@ -61,10 +61,10 @@ const controller = dataModule(`
     };
   }
 `);
-const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", {
+const { useNativeThread } = await import(await compileModule("src/shell/task-native/useNativeThread.ts", {
   react,
   "./NativeModelPicker": dataModule("export function nativeModelPickerFor(){return null;}"),
-  "../cloud-computer/agent-dialog/useAgentDialogController": controller,
+  "../cloud-computer/legacy-dialog/useAgentDialogController": controller,
   "../../i18n/ui/useUI": dataModule("export function useUI(){return text=>text;}"),
   "../../lib/computer-task-api": dataModule("export async function getComputerTaskTranscript(){return {frames:[],session:{id:'queue-task',native_session_id:'native'}};}"),
 }));

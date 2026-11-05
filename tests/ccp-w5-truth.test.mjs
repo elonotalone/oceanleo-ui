@@ -5,9 +5,9 @@ import test from "node:test";
 import { compileModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
-const parseUrl = await compileModule("src/shell/cloud-computer/agent-dialog/parse.ts");
-const noticeUrl = await compileModule("src/shell/cloud-computer/agent-dialog/notice.ts");
-const memoryUrl = await compileModule("src/shell/cloud-computer/agent-dialog/model-param-memory.ts");
+const parseUrl = await compileModule("src/shell/cloud-computer/legacy-dialog/parse.ts");
+const noticeUrl = await compileModule("src/shell/cloud-computer/legacy-dialog/notice.ts");
+const memoryUrl = await compileModule("src/shell/cloud-computer/legacy-dialog/model-param-memory.ts");
 const { parsePrograms, parseModels, parseConfigOptions } = await import(parseUrl);
 const { boolParamLabel, hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy, noticeAction } = await import(noticeUrl);
 const { mergeLiveParams, restoresForModel, tuningSummary } = await import(memoryUrl);

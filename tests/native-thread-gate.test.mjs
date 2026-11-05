@@ -41,7 +41,7 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
   "./share/share-clipboard": dataModule("export async function writeClipboardText() { return true; }"),
   "../lib/cloud-computer-api": dataModule("export async function cloudComputerRequest(path) { return globalThis.__archiveRequest(path); }"),
 }));
-const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
+const { dialogToAgentMessages } = await import("../src/shell/task-native/map-dialog.ts");
 
 function permissionMessage(chosen = "") {
   return dialogToAgentMessages([{ kind: "turn", id: "t", acpSession: "s", stop: "", live: true, items: [

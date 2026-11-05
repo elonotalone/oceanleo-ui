@@ -71,7 +71,7 @@ const configStub = dataModule(`
 `);
 
 const { ProgramRow } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/ProgramRow.tsx", {
+  await compileModule("src/shell/cloud-computer/legacy-dialog/ProgramRow.tsx", {
     "../../../i18n/ui/useUI": uiStub,
     "../../../lib/agent": agentStub,
     "../../../lib/auth/client": authStub,

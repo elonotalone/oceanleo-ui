@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {parseTool} from '../src/shell/cloud-computer/agent-dialog/parse.ts';
-import {applyDialog, initialDialogState} from '../src/shell/cloud-computer/agent-dialog/reduce.ts';
-import {dialogToAgentMessages} from '../src/shell/native-thread/map-dialog.ts';
-import {toolPayloadText, toolRawValue, TOOL_PAYLOAD_LIMIT} from '../src/shell/cloud-computer/agent-dialog/parse.ts';
+import {parseTool} from '../src/shell/cloud-computer/legacy-dialog/parse.ts';
+import {applyDialog, initialDialogState} from '../src/shell/cloud-computer/legacy-dialog/reduce.ts';
+import {dialogToAgentMessages} from '../src/shell/task-native/map-dialog.ts';
+import {toolPayloadText, toolRawValue, TOOL_PAYLOAD_LIMIT} from '../src/shell/cloud-computer/legacy-dialog/parse.ts';
 const tool = (extra = {}) => ({t: 'tool', id: 'read', title: 'Read file', kind: 'read', status: 'in_progress', ...extra});
 test('parse preserves structured input/output, null, false and empty strings', () => {
   for (const raw of [{path: 'a.txt'}, [1, 2], null, false, 0, '']) {

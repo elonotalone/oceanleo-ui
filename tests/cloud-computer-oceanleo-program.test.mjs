@@ -12,8 +12,8 @@ import test from "node:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
-import { mapTaskMessages, nextOceanleoPoll } from "../src/shell/cloud-computer/agent-dialog/oceanleo-program.ts";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { mapTaskMessages, nextOceanleoPoll } from "../src/shell/cloud-computer/legacy-dialog/oceanleo-program.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -158,10 +158,10 @@ const stubs = {
 };
 
 const { useAgentDialog } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx", stubs)
+  await compileModule("src/shell/cloud-computer/legacy-dialog/useAgentDialogController.tsx", stubs)
 );
 const { MessageList } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", stubs)
+  await compileModule("src/shell/cloud-computer/legacy-dialog/MessageList.tsx", stubs)
 );
 
 /** 默认桩：电脑在线、无在跑任务。各用例按需整体换掉。 */

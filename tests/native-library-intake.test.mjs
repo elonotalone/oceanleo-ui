@@ -47,8 +47,8 @@ const controller = dataModule(`
       async send(){globalThis.__nlSends++;return true;},setProgram(){},openSession(){},newSession(){},abort(){}};
   }
 `);
-const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", {
-  "../cloud-computer/agent-dialog/useAgentDialogController": controller,
+const { useNativeThread } = await import(await compileModule("src/shell/task-native/useNativeThread.ts", {
+  "../cloud-computer/legacy-dialog/useAgentDialogController": controller,
   "../../i18n/ui/useUI": ui,
   "./NativeModelPicker": nil("nativeModelPickerFor"),
   "../../lib/computer-task-api": dataModule("export async function getComputerTaskTranscript(id){ return {frames:[],session:{id,native_session_id:'native'}}; }"),

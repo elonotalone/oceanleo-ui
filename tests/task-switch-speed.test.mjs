@@ -133,7 +133,7 @@ const stubs = {
     export async function agentReset() { return { ok: true }; }
   `),
 };
-const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", stubs));
+const { useNativeThread } = await import(await compileModule("src/shell/task-native/useNativeThread.ts", stubs));
 
 function Probe(props) {
   globalThis.__thread = useNativeThread(props);
@@ -175,7 +175,7 @@ function session(overrides = {}) {
 
 
 const userCache = await import(pathToFileURL(new URL("../src/lib/user-scoped-cache.ts", import.meta.url).pathname).href);
-const catalog = await import(pathToFileURL(new URL("../src/shell/cloud-computer/agent-dialog/model-catalog-cache.ts", import.meta.url).pathname).href);
+const catalog = await import(pathToFileURL(new URL("../src/shell/cloud-computer/legacy-dialog/model-catalog-cache.ts", import.meta.url).pathname).href);
 
 const savedPage = (s, text) => ({ session: s, frames: [
   { t: "user_message", program: "codex", acp_session: s.native_session_id, text, replay: true },
@@ -386,7 +386,7 @@ test("a gate key seen ready once is never covered again, even after the gate rem
 });
 
 test("useNativeThread source: the transcript effect does not depend on `online`", () => {
-  const source = readFileSync(new URL("../src/shell/native-thread/useNativeThread.ts", import.meta.url), "utf8");
+  const source = readFileSync(new URL("../src/shell/task-native/useNativeThread.ts", import.meta.url), "utf8");
   // The initial read remains independent of online. F2 adds a separate,
   // explicit reattachment read; do not accidentally inspect that effect's deps.
   const effect = source.slice(source.indexOf("const archiveFresh = useRef"), source.indexOf("// Link re-attached (B2"));

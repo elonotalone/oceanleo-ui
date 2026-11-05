@@ -161,7 +161,7 @@ test("r2 表内数据库删除键、Acp 设置控件、LeoBoard 控件和云电�
   await act(async () => databaseRoot.unmount());
   databaseHost.remove();
 
-  const settings = await staticRender("src/shell/cloud-computer/agent-dialog/AcpSettings.tsx", "AcpSettings", {
+  const settings = await staticRender("src/shell/cloud-computer/legacy-dialog/AcpSettings.tsx", "AcpSettings", {
     open: true,
     computerId: "cc_1",
     program: "cursor",
@@ -187,7 +187,7 @@ test("r2 表内数据库删除键、Acp 设置控件、LeoBoard 控件和云电�
   assert.match(mode.className, /(?:^| )h-8(?: |$)/);
   assert.doesNotMatch(`${model.className} ${mode.className}`, /(?:^| )h-11(?: |$)/);
 
-  const acp = await staticRender("src/shell/cloud-computer/agent-dialog/AcpCard.tsx", "AcpCard", {
+  const acp = await staticRender("src/shell/cloud-computer/legacy-dialog/AcpCard.tsx", "AcpCard", {
     computer: { id: "cc_1", name: "测试机" },
     initialProgram: "cursor",
     active: false,

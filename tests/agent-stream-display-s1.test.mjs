@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { oceanMessageFingerprint } from "../src/shell/cloud-computer/agent-dialog/oceanleo-program.ts";
+import { oceanMessageFingerprint } from "../src/shell/cloud-computer/legacy-dialog/oceanleo-program.ts";
 
 test("stream polling fingerprint changes when an existing assistant row grows", () => {
   const before = oceanMessageFingerprint([

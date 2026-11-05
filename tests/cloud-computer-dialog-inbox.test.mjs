@@ -205,7 +205,7 @@ const { putComputerInbox } = await import(
   })
 );
 const { userAttachments, normalizeUserMessage } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/message-attachments.ts")
+  await compileModule("src/shell/cloud-computer/legacy-dialog/message-attachments.ts")
 );
 const controllerStubs = {
   "../../../i18n/ui/useUI": uiStub,
@@ -217,13 +217,13 @@ const controllerStubs = {
   "../../LeoEntryButton": leoEntryStub,
 };
 const { useAgentDialog } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx", controllerStubs)
+  await compileModule("src/shell/cloud-computer/legacy-dialog/useAgentDialogController.tsx", controllerStubs)
 );
 const { Composer } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/Composer.tsx", controllerStubs)
+  await compileModule("src/shell/cloud-computer/legacy-dialog/Composer.tsx", controllerStubs)
 );
 const { MessageList } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", controllerStubs)
+  await compileModule("src/shell/cloud-computer/legacy-dialog/MessageList.tsx", controllerStubs)
 );
 
 function bigFile() {

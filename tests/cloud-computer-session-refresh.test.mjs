@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSessionRefresh } from "../src/shell/cloud-computer/agent-dialog/session-refresh.ts";
+import { createSessionRefresh } from "../src/shell/cloud-computer/legacy-dialog/session-refresh.ts";
 
 function setup(t) {
   t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_000_000 });

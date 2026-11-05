@@ -6,12 +6,12 @@ import test from "node:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
-import { lineDiff } from "../src/shell/cloud-computer/agent-dialog/diff-lines.ts";
-import { installDirPayload } from "../src/shell/cloud-computer/agent-dialog/install-dir.ts";
-import { normalizeQuestions } from "../src/shell/cloud-computer/agent-dialog/questions.ts";
-import { parseModels } from "../src/shell/cloud-computer/agent-dialog/parse.ts";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { nextReconnectDelay } from "../src/shell/cloud-computer/agent-dialog/reconnect.ts";
+import { lineDiff } from "../src/shell/cloud-computer/legacy-dialog/diff-lines.ts";
+import { installDirPayload } from "../src/shell/cloud-computer/legacy-dialog/install-dir.ts";
+import { normalizeQuestions } from "../src/shell/cloud-computer/legacy-dialog/questions.ts";
+import { parseModels } from "../src/shell/cloud-computer/legacy-dialog/parse.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
+import { nextReconnectDelay } from "../src/shell/cloud-computer/legacy-dialog/reconnect.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
@@ -849,7 +849,7 @@ test("OceanLeo agent 恒在程序行第一项", async () => {
 });
 
 test("parsePrograms 解析 auth 并派生 logged_in，老帧按 logged_in 退化", async () => {
-  const { parsePrograms } = await import("../src/shell/cloud-computer/agent-dialog/parse.ts");
+  const { parsePrograms } = await import("../src/shell/cloud-computer/legacy-dialog/parse.ts");
   const rows = parsePrograms([
     { id: "cursor", installed: true, auth: "key" },
     { id: "hermes", installed: true, auth: "malformed" },
@@ -991,7 +991,7 @@ test("waiting 中取消：发 login_cancel 并立刻关卡", async () => {
 
 test("opening 超 20 s 无 login_url 自动转失败展示", async () => {
   const { LoginCard } = await import(
-    await compileModule("src/shell/cloud-computer/agent-dialog/LoginCard.tsx", {
+    await compileModule("src/shell/cloud-computer/legacy-dialog/LoginCard.tsx", {
       "../../../i18n/ui/useUI": uiStub,
     })
   );

@@ -53,7 +53,7 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
   "../lib/cloud-computer-api": dataModule("export async function cloudComputerRequest() { return {}; } export function computerIdRequestField() { return {}; }"),
 }));
 const { buildAgentRenderItems } = await import("../src/lib/agent-progress.ts");
-const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
+const { dialogToAgentMessages } = await import("../src/shell/task-native/map-dialog.ts");
 
 async function render(Component, props) {
   const host = document.createElement("div");

@@ -26,7 +26,7 @@ test("desktop history is account-wide while the web portal keeps main-site scope
 
 test("task history keeps native transcript and first-send race contracts wired", () => {
   const chat = source("src/shell/AgentChat.tsx");
-  const native = source("src/shell/native-thread/useNativeThread.ts");
+  const native = source("src/shell/task-native/useNativeThread.ts");
   assert.match(chat, /listComputerTaskSessions\(taskId\)/);
   assert.match(native, /getComputerTaskTranscript\(id/);
   assert.match(chat, /if \(workspace\.taskId\)/);

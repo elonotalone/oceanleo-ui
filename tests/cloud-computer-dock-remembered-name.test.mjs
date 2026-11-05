@@ -93,13 +93,13 @@ const apiStub = dataModule(`
 `);
 
 const { noticeCopy } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/notice.ts")
+  await compileModule("src/shell/cloud-computer/legacy-dialog/notice.ts")
 );
 const { applyDialog, initialDialogState } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/reduce.ts")
+  await compileModule("src/shell/cloud-computer/legacy-dialog/reduce.ts")
 );
 const { MessageList } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", {
+  await compileModule("src/shell/cloud-computer/legacy-dialog/MessageList.tsx", {
     "../../../i18n/ui/useUI": uiStub,
   })
 );

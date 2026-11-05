@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mergeNativeThreadMessages } from "../src/shell/native-thread/merge.ts";
+import { mergeNativeThreadMessages } from "../src/shell/task-native/merge.ts";
 
 const session = (id, program, created_at) => ({ id, program, created_at });
 const message = (id, created_at) => ({ id, role: "assistant", kind: "text", content: id, ...(created_at ? { created_at } : {}) });

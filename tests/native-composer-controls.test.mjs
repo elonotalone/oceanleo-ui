@@ -48,7 +48,7 @@ const popoverStub = dataModule(`
   }
 `);
 
-const picker = await import(await compileModule("src/shell/native-thread/NativeModelPicker.tsx", {
+const picker = await import(await compileModule("src/shell/task-native/NativeModelPicker.tsx", {
   "../../i18n/ui/useUI": uiStub,
   "../anchored-popover": popoverStub,
 }));
@@ -338,7 +338,7 @@ test("draft mode: the picker appears from the warm connection before any session
   globalThis.WebSocket = FakeSocket;
   window.WebSocket = FakeSocket;
   const hookUi = dataModule(`export function useUI() { return (value, vars) => value.replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{" + key + "}")); }`);
-  const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", {
+  const { useNativeThread } = await import(await compileModule("src/shell/task-native/useNativeThread.ts", {
     "../../lib/computer-task-api": dataModule(`export async function getComputerTaskTranscript() { throw new Error("no archive in draft"); }
       export function knownComputerTaskSessions() { return null; }
       export function latestComputerTaskSession() { return null; }

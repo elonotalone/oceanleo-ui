@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import * as core from '../src/native-agent-core/index.ts';
-import * as browser from '../src/shell/cloud-computer/agent-dialog/types.ts';
-import * as parser from '../src/shell/cloud-computer/agent-dialog/parse.ts';
+import * as browser from '../src/shell/cloud-computer/legacy-dialog/types.ts';
+import * as parser from '../src/shell/cloud-computer/legacy-dialog/parse.ts';
 
 test('legacy browser/parser raw helpers are the same pure core functions', () => {
   assert.equal(browser.toolRawValue, core.toolRawValue);

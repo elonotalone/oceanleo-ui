@@ -76,16 +76,16 @@ const stubs = {
   "../../../lib/cloud-computer-api": apiStub,
   "../../../i18n/ui/useUI": uiStub,
   "../TerminalPanel": terminalStub,
-  "../agent-dialog/program-key-api": keyApiStub,
+  "../legacy-dialog/program-key-api": keyApiStub,
   "../../anchored-popover": popoverStub,
 };
 const surface = await import(await compileModule("src/shell/cloud-computer/native-surface/index.ts", stubs));
 const { NativeTerminalSurface, ComputerConversationSettings } = surface;
-const picker = await import(await compileModule("src/shell/native-thread/NativeModelPicker.tsx", {
+const picker = await import(await compileModule("src/shell/task-native/NativeModelPicker.tsx", {
   "../../lib/cloud-computer-api": apiStub,
   "../../i18n/ui/useUI": uiStub,
   "../anchored-popover": popoverStub,
-  "../cloud-computer/agent-dialog/program-key-api": keyApiStub,
+  "../cloud-computer/legacy-dialog/program-key-api": keyApiStub,
 }));
 const { nativeModelPickerFor, NativeSetupRequest } = picker;
 

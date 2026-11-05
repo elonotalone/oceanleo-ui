@@ -5,10 +5,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const files = [
-  'src/shell/cloud-computer/agent-dialog/parse.ts',
-  'src/shell/cloud-computer/agent-dialog/types.ts',
-  'src/shell/cloud-computer/agent-dialog/MessageList.tsx',
-  'src/shell/native-thread/map-dialog.ts',
+  'src/shell/cloud-computer/legacy-dialog/parse.ts',
+  'src/shell/cloud-computer/legacy-dialog/types.ts',
+  'src/shell/cloud-computer/legacy-dialog/MessageList.tsx',
+  'src/shell/task-native/map-dialog.ts',
   'src/i18n/ui/messages/toolui-copy.ts',
 ].map(file => path.join(root, file));
 const config = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);

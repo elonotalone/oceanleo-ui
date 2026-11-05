@@ -28,7 +28,7 @@ const mod = await import(await compileModule("src/shell/task-attachment-open.ts"
 const { taskAttachmentLibraryAction, openTaskWorkspaceLibrary, useTaskAttachmentOpener, uploadLibraryCategory } = mod;
 const { isUploadedLibraryItem } = await import(await compileModule("src/shell/library-data.ts"));
 const { normalizeWorkspaceAction } = await import(await compileModule("src/shell/workspace-actions.ts"));
-const { safeArchivedAttachment } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/message-attachments.ts"));
+const { safeArchivedAttachment } = await import(await compileModule("src/shell/cloud-computer/legacy-dialog/message-attachments.ts"));
 
 const ART = "11111111-1111-4111-8111-111111111111";
 const REV = "22222222-2222-4222-8222-222222222222";

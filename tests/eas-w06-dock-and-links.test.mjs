@@ -200,7 +200,7 @@ const { ServerPage } = await import(
         return origin + path;
       }
     `),
-    "../agent-dialog/AcpCard": acpStub,
+    "../legacy-dialog/AcpCard": acpStub,
     "../terminal-card/CliCard": cliStub,
     "../terminal-card/TerminalCard": terminalStub,
     "../useCloudComputers": computersHookStub,

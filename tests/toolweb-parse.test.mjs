@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {buildProcessEntries} from '../src/lib/agent-progress.ts';
-import {applyDialog, initialDialogState} from '../src/shell/cloud-computer/agent-dialog/reduce.ts';
-import {dialogToAgentMessages} from '../src/shell/native-thread/map-dialog.ts';
+import {applyDialog, initialDialogState} from '../src/shell/cloud-computer/legacy-dialog/reduce.ts';
+import {dialogToAgentMessages} from '../src/shell/task-native/map-dialog.ts';
 
 const message = card => ({id: 1, role: 'assistant', kind: 'step', content: 'Read', meta: {tool_card: card}});
 const entry = card => buildProcessEntries([message(card)])[0];

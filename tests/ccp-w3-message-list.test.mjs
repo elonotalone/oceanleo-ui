@@ -25,7 +25,7 @@ globalThis.ResizeObserver = class {
   observe() {}
   disconnect() { resizeObservers.delete(this); }
 };
-const { MessageList } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", {
+const { MessageList } = await import(await compileModule("src/shell/cloud-computer/legacy-dialog/MessageList.tsx", {
   "../../../i18n/ui/useUI": dataModule('const tt = (s) => s; export function useUI() { return tt; }'),
 }));
 const user = (id = "u1") => ({ kind: "user", id, text: "Explain these lines\n" + "long".repeat(80) });

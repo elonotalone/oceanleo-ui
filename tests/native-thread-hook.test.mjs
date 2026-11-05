@@ -116,7 +116,7 @@ const stubs = {
     export async function agentReset() { return { ok: true }; }
   `),
 };
-const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", stubs));
+const { useNativeThread } = await import(await compileModule("src/shell/task-native/useNativeThread.ts", stubs));
 
 function Probe(props) {
   globalThis.__thread = useNativeThread(props);

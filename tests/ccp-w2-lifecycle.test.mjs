@@ -143,7 +143,7 @@ const stubs = {
 };
 
 const { useAgentDialog } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx", stubs)
+  await compileModule("src/shell/cloud-computer/legacy-dialog/useAgentDialogController.tsx", stubs)
 );
 
 let current;

@@ -6,9 +6,9 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const files = [
   'src/shell/LeoComposer.tsx', 'src/shell/AgentChat.tsx',
-  'src/shell/native-thread/useNativeThread.ts',
-  'src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx',
-  'src/shell/cloud-computer/agent-dialog/reduce.ts', 'src/shell/native-thread/map-dialog.ts',
+  'src/shell/task-native/useNativeThread.ts',
+  'src/shell/cloud-computer/legacy-dialog/useAgentDialogController.tsx',
+  'src/shell/cloud-computer/legacy-dialog/reduce.ts', 'src/shell/task-native/map-dialog.ts',
   'src/native-agent-core/index.ts', 'src/i18n/ui/messages/native-midturn-copy.ts',
 ].map(file => path.join(root, file));
 const config = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);

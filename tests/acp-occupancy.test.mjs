@@ -9,10 +9,10 @@ import {
   occupancyFresh,
   pendingUnsentReason,
   OCCUPANCY_STALE_MS,
-} from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
-import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { hasOpenTurn, isRetriableStreamCancelText, sessionListStatus, sessionWaitingWake, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
+} from "../src/shell/cloud-computer/legacy-dialog/occupancy.ts";
+import { createOccupancyProbe } from "../src/shell/cloud-computer/legacy-dialog/occupancy-probe.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
+import { hasOpenTurn, isRetriableStreamCancelText, sessionListStatus, sessionWaitingWake, turnStillRunning } from "../src/shell/cloud-computer/legacy-dialog/session-status.ts";
 
 const PROGRAMS = ["cursor", "claude", "codex", "hermes", "oceanleo"];
 

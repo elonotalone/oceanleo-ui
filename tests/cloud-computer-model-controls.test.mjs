@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileModule } from "./helpers/module-bench.mjs";
-const { modelControls } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/model-controls.ts"));
-const { visibleNoticeCopy } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/notice.ts"));
+const { modelControls } = await import(await compileModule("src/shell/cloud-computer/legacy-dialog/model-controls.ts"));
+const { visibleNoticeCopy } = await import(await compileModule("src/shell/cloud-computer/legacy-dialog/notice.ts"));
 const models = [
   { id: "gpt-example[low]", name: "Example (low)", default: false },
   { id: "gpt-example[high]", name: "Example (high)", default: true },

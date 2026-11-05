@@ -241,7 +241,7 @@ const historyModelStubUrl = dataModule(`
 `);
 
 const { Composer } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/Composer.tsx", {
+  await compileModule("src/shell/cloud-computer/legacy-dialog/Composer.tsx", {
     "../../../i18n/ui/useUI": uiStubUrl,
     "../../../lib/agent": agentStubUrl,
     "../../history-model": historyModelStubUrl,

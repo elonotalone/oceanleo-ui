@@ -67,9 +67,9 @@ test("the package export runs the shared reducer, mapper, merge and Stop without
       });
     }
     const core = await import("@oceanleo/ui/native-agent-core");
-    const { applyDialog } = await import("../src/shell/cloud-computer/agent-dialog/reduce.ts");
-    const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
-    const { mergeSavedAndLive } = await import("../src/shell/native-thread/merge.ts");
+    const { applyDialog } = await import("../src/shell/cloud-computer/legacy-dialog/reduce.ts");
+    const { dialogToAgentMessages } = await import("../src/shell/task-native/map-dialog.ts");
+    const { mergeSavedAndLive } = await import("../src/shell/task-native/merge.ts");
     assert.equal(core.applyDialog, applyDialog, "the phone and web use exactly the same reducer");
     assert.equal(core.dialogToAgentMessages, dialogToAgentMessages);
     assert.equal(core.mergeSavedAndLive, mergeSavedAndLive);
@@ -84,7 +84,7 @@ test("the package export runs the shared reducer, mapper, merge and Stop without
     assert.deepEqual(core.mapNativeTranscript(session, []), []);
     assert.equal(core.mergeNativeThreadMessages([{ session, messages: core.dialogToAgentMessages(messages, { live: false }) }]).length, 1);
     assert.equal(core.stopMachine(core.idleStop(), { type: "begin", stopId: core.newStopId(), session: "native" }).phase, "stopping");
-    const legacy = await import("../src/shell/cloud-computer/agent-dialog/types.ts");
+    const legacy = await import("../src/shell/cloud-computer/legacy-dialog/types.ts");
     assert.equal(legacy.WS_PROGRAMS, core.WS_PROGRAMS);
     assert.equal(legacy.PROGRAM_LABEL, core.PROGRAM_LABEL);
   } finally {

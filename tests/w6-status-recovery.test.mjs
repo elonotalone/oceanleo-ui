@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { createImStore } from "../src/shell/messages/realtime/store.ts";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
 
 function fakeSocket() {
   const listeners = new Set();

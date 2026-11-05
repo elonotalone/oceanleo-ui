@@ -56,8 +56,8 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
   "next/link": dataModule(`import React from ${JSON.stringify(reactUrl)}; export default function Link({ children, href, ...props }) { return React.createElement("a", { ...props, href }, children); }`),
 }));
 const { buildRows } = await import("../src/shell/messages/conversation/conversation-store.ts");
-const { dialogToAgentMessages } = await import("../src/shell/native-thread/map-dialog.ts");
-const { applyDialog, initialDialogState } = await import("../src/shell/cloud-computer/agent-dialog/reduce.ts");
+const { dialogToAgentMessages } = await import("../src/shell/task-native/map-dialog.ts");
+const { applyDialog, initialDialogState } = await import("../src/shell/cloud-computer/legacy-dialog/reduce.ts");
 
 async function render(Component, props) {
   const host = document.createElement("div");

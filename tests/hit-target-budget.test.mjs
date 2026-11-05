@@ -429,8 +429,8 @@ const FILE_BUDGET = new Map([
   ["src/shell/cloud-computer/terminal-card/CliSettingsPanel.tsx", 4],
   // 同一条 P10：设置弹窗关闭键、ACP 卡片与设置、Leo 看板改回 R06 放大之前的尺寸（G1，2026-09-25）。
   ["src/pages/settings/SettingsModal.tsx", 1],
-  ["src/shell/cloud-computer/agent-dialog/AcpCard.tsx", 1],
-  ["src/shell/cloud-computer/agent-dialog/AcpSettings.tsx", 3],
+  ["src/shell/cloud-computer/legacy-dialog/AcpCard.tsx", 1],
+  ["src/shell/cloud-computer/legacy-dialog/AcpSettings.tsx", 3],
   ["src/shell/leo/LeoBoard.tsx", 2],
   // W03 的面（`ui/index.tsx`）。W04 不许动，已写进 `signals/W04-request.md`。
   ["src/ui/index.tsx", 1],

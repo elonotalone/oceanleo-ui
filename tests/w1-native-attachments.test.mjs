@@ -13,10 +13,10 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
-import { GATEWAY_ERROR_COPY, noticeCopy, UNSENT_RESTORED_COPY } from "../src/shell/cloud-computer/agent-dialog/notice.ts";
-import { isLocalBlobPreview, mergeLocalPreviews, safeImagePreview, userAttachments } from "../src/shell/cloud-computer/agent-dialog/message-attachments.ts";
-import { dialogToAgentMessages } from "../src/shell/native-thread/map-dialog.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
+import { GATEWAY_ERROR_COPY, noticeCopy, UNSENT_RESTORED_COPY } from "../src/shell/cloud-computer/legacy-dialog/notice.ts";
+import { isLocalBlobPreview, mergeLocalPreviews, safeImagePreview, userAttachments } from "../src/shell/cloud-computer/legacy-dialog/message-attachments.ts";
+import { dialogToAgentMessages } from "../src/shell/task-native/map-dialog.ts";
 import { NATIVE_ATTACHMENTS_MESSAGES } from "../src/i18n/ui/messages/native-attachments-copy.ts";
 
 const require = createRequire(import.meta.url);
@@ -137,7 +137,7 @@ const computerAgentStub = dataModule(`
   export async function agentReset() { return { ok: false, error: "off" }; }
 `);
 const { useAgentDialog, distinctName, SESSION_LOAD_TIMEOUT_MS } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx", {
+  await compileModule("src/shell/cloud-computer/legacy-dialog/useAgentDialogController.tsx", {
     "../../../i18n/ui/useUI": uiStub,
     "../../../lib/auth/client": authStub,
     "./auth/client": authStub,
@@ -464,7 +464,7 @@ test("local blob thumbnails pass, other URLs do not; the main stream shows them 
 
 const signed = { url: "https://proj.supabase.co/storage/v1/object/sign/project-assets/u/x?token=t" };
 const thumbModule = await import(
-  await compileModule("src/shell/native-thread/NativeArchivedImage.tsx", {
+  await compileModule("src/shell/task-native/NativeArchivedImage.tsx", {
     "../../lib/cloud-computer-api": dataModule(`
       export async function cloudComputerRequest(path) {
         globalThis.__w1ThumbCalls = (globalThis.__w1ThumbCalls || 0) + 1;

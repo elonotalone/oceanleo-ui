@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dialogToAgentMessages } from "../src/shell/native-thread/map-dialog.ts";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { dialogToAgentMessages } from "../src/shell/task-native/map-dialog.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
 
 test("native transcript keeps text and tools in frame order after replay", () => {
   const frames = [

@@ -5,9 +5,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dialogToAgentMessages } from "../src/shell/native-thread/map-dialog.ts";
+import { dialogToAgentMessages } from "../src/shell/task-native/map-dialog.ts";
 import { buildAgentRenderItems, buildProcessEntries, summarizeProcess } from "../src/lib/agent-progress.ts";
-import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
+import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/legacy-dialog/reduce.ts";
 
 const base = { program: "claude", acp_session: "s" };
 

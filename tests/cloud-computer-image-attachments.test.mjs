@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { compileModule } from "./helpers/module-bench.mjs";
 
-const { normalizeUserMessage, safeImagePreview } = await import(await compileModule("src/shell/cloud-computer/agent-dialog/message-attachments.ts"));
+const { normalizeUserMessage, safeImagePreview } = await import(await compileModule("src/shell/cloud-computer/legacy-dialog/message-attachments.ts"));
 
 test("Codex replay link becomes an attachment without dumping a large photo into text", () => {
   const data = "a".repeat(974000);

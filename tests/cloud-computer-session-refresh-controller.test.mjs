@@ -58,7 +58,7 @@ class Socket {
 }
 globalThis.WebSocket = Socket;
 const { useAgentDialog } = await import(await compileModule(
-  "src/shell/cloud-computer/agent-dialog/useAgentDialogController.tsx", {
+  "src/shell/cloud-computer/legacy-dialog/useAgentDialogController.tsx", {
     "../../../i18n/ui/useUI": dataModule("export function useUI() { return (text) => text; }"),
     "../../../lib/cloud-computer-api": dataModule("export function agentDialogWsUrl() { return 'ws://example.test'; }"),
     "../../../lib/auth/client": dataModule("export async function accessToken() { return 'test'; }"),

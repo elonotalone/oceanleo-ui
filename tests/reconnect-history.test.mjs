@@ -116,7 +116,7 @@ const stubs = {
     export async function agentReset() { return { ok: true }; }
   `),
 };
-const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", stubs));
+const { useNativeThread } = await import(await compileModule("src/shell/task-native/useNativeThread.ts", stubs));
 
 function Probe(props) {
   globalThis.__thread = useNativeThread(props);
@@ -156,8 +156,8 @@ function session(overrides = {}) {
     native_session_id: "nat-1", created_at: "", updated_at: "", sync_status: "saved", ...overrides };
 }
 
-const { mergeSavedAndLive, mergeTranscriptPages } = await import("../src/shell/native-thread/merge.ts");
-const { applyDialog, initialDialogState } = await import("../src/shell/cloud-computer/agent-dialog/reduce.ts");
+const { mergeSavedAndLive, mergeTranscriptPages } = await import("../src/shell/task-native/merge.ts");
+const { applyDialog, initialDialogState } = await import("../src/shell/cloud-computer/legacy-dialog/reduce.ts");
 const promptRow = (text, id = text, at) => ({ kind: "user", id, text, ...(at !== undefined ? { at } : {}) });
 const turn = (text, extra = {}) => ({ kind: "turn", id: `turn-${text}`, acpSession: "s", stop: "end_turn",
   items: [{ kind: "assistant", id: `text-${text}`, text }], ...extra });

@@ -16,7 +16,7 @@ for (const [name, value] of Object.entries({window: dom.window, document: dom.wi
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const {createRoot} = await import('react-dom/client');
 globalThis.__tooluiCopied = [];
-const {ToolView} = await import(await compileModule('src/shell/cloud-computer/agent-dialog/MessageList.tsx', {
+const {ToolView} = await import(await compileModule('src/shell/cloud-computer/legacy-dialog/MessageList.tsx', {
   '../../../i18n/ui/useUI': dataModule('export function useUI(){return source => ({"参数":"Input","结果":"Output","展开":"Expand","收起":"Collapse","复制":"Copy","已复制":"Copied"}[source] || source)}'),
   '../../share/share-clipboard': dataModule('export async function writeClipboardText(text){globalThis.__tooluiCopied.push(text);return true}'),
 }));
