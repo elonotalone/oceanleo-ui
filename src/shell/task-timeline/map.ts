@@ -1,10 +1,9 @@
 import type { AgentAttachment, AgentMessage } from "../../lib/agent";
 import type {
-  TaskAcceptedMessage,
   TaskState,
   TaskLocalMessageInput,
+  TaskTimelineLiveFrame,
   TaskTimelineEntry,
-  TaskTimelineInflightEntry,
   TaskProgram,
 } from "../../lib/task-timeline-api";
 import { PROGRAM_LABEL } from "../../native-agent-core/index";
@@ -42,9 +41,8 @@ type NativeProjection = {
 };
 
 type InternalTimelineEntry = TaskTimelineEntry & {
-  __inflight?: boolean;
-  __epoch?: string;
-  __s?: number;
+  __live?: boolean;
+  __no?: number;
 };
 
 type SessionProjectionCache = {
@@ -59,7 +57,7 @@ export type TaskTimelineProjectionCache = {
 };
 
 export type TaskTimelineMapOptions = {
-  inflight?: readonly TaskTimelineInflightEntry[];
+  live?: readonly TaskTimelineLiveFrame[];
   cache?: TaskTimelineProjectionCache;
 };
 
@@ -117,7 +115,8 @@ function annotate(row: AgentMessage, entry: InternalTimelineEntry, program: Task
       task_timeline_cursor: entry.cursor,
       task_timeline_source: entry.source,
       ...(messageId ? { client_message_id: messageId } : {}),
-      ...(entry.__inflight ? { task_timeline_inflight: true } : { task_timeline_committed: true }),
+      task_timeline_server: true,
+      ...(entry.__live ? { task_timeline_live: true } : { task_timeline_committed: true }),
       ...(entry.session_id ? { task_timeline_session_id: entry.session_id } : {}),
     },
   };
@@ -164,8 +163,9 @@ function mapNativeEntry(entry: InternalTimelineEntry, nativeStates: Map<string, 
       meta: {
         ...(annotated.meta ?? {}),
         ...(prior.meta?.task_timeline_source ? { task_timeline_source: prior.meta.task_timeline_source } : {}),
+        ...(prior.meta?.task_timeline_server ? { task_timeline_server: true } : {}),
         ...(prior.meta?.task_timeline_committed ? { task_timeline_committed: true } : {}),
-        ...(prior.meta?.task_timeline_inflight ? { task_timeline_inflight: true } : {}),
+        ...(prior.meta?.task_timeline_live ? { task_timeline_live: true } : {}),
       },
     } : annotated);
   }
@@ -209,34 +209,13 @@ export function localTaskMessage(
   };
 }
 
-export function acceptedTaskMessage(message: TaskAcceptedMessage): AgentMessage {
-  const input: TaskLocalMessageInput = {
-    clientMessageId: message.client_message_id,
-    text: message.text,
-    attachments: message.attachments ?? [],
-    program: message.program,
-  };
-  const row = localTaskMessage(input, "sent", undefined, message.created_at);
-  return {
-    ...row,
-    meta: {
-      ...(row.meta ?? {}),
-      task_timeline_local: false,
-      task_timeline_accepted: true,
-      task_timeline_session_id: message.session_id,
-    },
-  };
-}
-
 function taskTimelineUserPriority(row: AgentMessage): number {
-  return row.meta?.task_timeline_committed ? 5
-    : row.meta?.task_timeline_inflight ? 4
-      : row.meta?.task_timeline_accepted ? 3
-        : row.meta?.task_timeline_queued ? 2
-          : row.meta?.task_timeline_local ? 1 : 0;
+  return row.meta?.task_timeline_server || row.meta?.task_timeline_committed || row.meta?.task_timeline_live ? 5
+    : row.meta?.task_timeline_queued ? 2
+      : row.meta?.task_timeline_local ? 1 : 0;
 }
 
-/** Merge the five D8 user-row sources while retaining the first row position/id. */
+/** Merge server, queued, and local user rows while retaining the first row position/id. */
 export function mergeTaskTimelineUserRows(rows: readonly AgentMessage[]): AgentMessage[] {
   const selected = new Map<string, { row: AgentMessage; priority: number; position: number }>();
   const order: AgentMessage[] = [];
@@ -286,18 +265,19 @@ function sameEntryPrefix(cached: readonly TaskTimelineEntry[], current: readonly
   return true;
 }
 
-function inflightEntry(entry: TaskTimelineInflightEntry): InternalTimelineEntry {
+function liveEntry(entry: TaskTimelineLiveFrame): InternalTimelineEntry {
   const frame = { ...(entry.frame ?? {}), program: entry.program, acp_session: entry.session_id };
   return {
-    cursor: `~inflight:${entry.epoch}:${entry.s}`,
+    cursor: `~live:${entry.session_id}:${entry.no}`,
     source: "native",
     program: entry.program,
     session_id: entry.session_id,
     created_at: entry.at,
     frame,
-    __inflight: true,
-    __epoch: entry.epoch,
-    __s: entry.s,
+    no_from: entry.no,
+    no_to: entry.no,
+    __live: true,
+    __no: entry.no,
   };
 }
 
@@ -318,8 +298,8 @@ function projectSession(
     const entry = committed[index] as InternalTimelineEntry;
     snapshots.set(timelineEntryKey(entry), mapNativeEntry(entry, new Map([[sessionKey, projection]])));
   }
-  // The committed baseline is cached independently. Coverage can remove the
-  // live tail without forcing a 7,801-frame session through the reducer again.
+  // The committed baseline is cached independently. Number coverage can remove
+  // the live tail without forcing a 7,801-frame session through the reducer again.
   if (cache) {
     cache.sessions.set(sessionKey, { entries: [...committed], projection: { state: projection.state, rows: projection.rows }, snapshots: new Map(snapshots) });
   }
@@ -343,10 +323,16 @@ export function resetTaskTimelineMapping(): void {
  */
 export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], options: TaskTimelineMapOptions = {}): AgentMessage[] {
   const orderedCommitted = uniqueTimelineEntries(entries);
-  const live = [...(options.inflight ?? [])]
-    .filter((entry) => entry && typeof entry.session_id === "string" && typeof entry.epoch === "string" && Number.isFinite(entry.s))
-    .sort((a, b) => a.session_id.localeCompare(b.session_id) || a.epoch.localeCompare(b.epoch) || a.s - b.s)
-    .map(inflightEntry);
+  const throughBySession = new Map<string, number>();
+  for (const entry of orderedCommitted) {
+    if (entry.source !== "native" || entry.session_id == null || !Number.isFinite(entry.no_to)) continue;
+    throughBySession.set(entry.session_id, Math.max(throughBySession.get(entry.session_id) ?? 0, entry.no_to as number));
+  }
+  const live = [...(options.live ?? [])]
+    .filter((entry) => entry && typeof entry.session_id === "string" && Number.isSafeInteger(entry.no))
+    .filter((entry) => entry.no > (throughBySession.get(entry.session_id) ?? 0))
+    .sort((a, b) => a.session_id.localeCompare(b.session_id) || a.no - b.no)
+    .map(liveEntry);
   const ordered: InternalTimelineEntry[] = [...orderedCommitted as InternalTimelineEntry[], ...live];
   const committedBySession = new Map<string, TaskTimelineEntry[]>();
   const liveBySession = new Map<string, InternalTimelineEntry[]>();
@@ -386,11 +372,9 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
   }
   const userRows = new Map<string, { row: AgentMessage; priority: number; at: number }>();
   const userPositions = new Map<string, number>();
-  const priorityOf = (row: AgentMessage): number => row.meta?.task_timeline_committed ? 5
-    : row.meta?.task_timeline_inflight ? 4
-      : row.meta?.task_timeline_accepted ? 3
-        : row.meta?.task_timeline_queued ? 2
-          : row.meta?.task_timeline_local ? 1 : 0;
+  const priorityOf = (row: AgentMessage): number => row.meta?.task_timeline_server || row.meta?.task_timeline_committed || row.meta?.task_timeline_live ? 5
+    : row.meta?.task_timeline_queued ? 2
+      : row.meta?.task_timeline_local ? 1 : 0;
   for (let index = 0; index < out.length; index += 1) {
     const row = out[index];
     if (row.role !== "user") continue;
