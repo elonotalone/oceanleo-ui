@@ -288,6 +288,9 @@ export interface StoreDeps {
   selfId(): Promise<string | null>;
   /** 桌面通知里「某人发来消息」之类的兜底标题。 */
   fallbackTitle(): string;
+  /** Testable scheduling for the first-load retry loop. */
+  setTimer?: (fn: () => void, ms: number) => unknown;
+  clearTimer?: (handle: unknown) => void;
 }
 
 type EventHandler = (event: ImEvent) => void;
@@ -312,6 +315,8 @@ export interface ImStore {
   refreshUnread(): Promise<void>;
   /** 本地立即清零某会话的未读（点开会话时；服务端以 read.updated 为准）。 */
   clearConversationUnread(conversationId: string): void;
+  /** Wake a failed first load after the browser regains reachability/focus. */
+  retryInboxNow?: () => void;
 }
 
 export function createImStore(deps: StoreDeps): ImStore {
@@ -331,6 +336,28 @@ export function createImStore(deps: StoreDeps): ImStore {
    * 而 LeoChat 整页 / 右侧栏里的列表和全局宿主不在一棵树里、不会跟着重挂——start() 据此自己补拉（V02 D1）。
    */
   let inboxWanted = false;
+  let inboxRetryTimer: unknown = null;
+  let inboxRetryAttempt = 0;
+  const retryDelays = [1_000, 2_000, 5_000, 10_000, 15_000];
+
+  const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
+  const clearTimer = deps.clearTimer ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+
+  function clearInboxRetry(): void {
+    if (inboxRetryTimer !== null) clearTimer(inboxRetryTimer);
+    inboxRetryTimer = null;
+  }
+
+  function scheduleInboxRetry(): void {
+    if (inboxRetryTimer !== null || inbox.loaded || inbox.loading || !inboxWanted) return;
+    const delay = retryDelays[Math.min(inboxRetryAttempt, retryDelays.length - 1)];
+    inboxRetryAttempt += 1;
+    inboxRetryTimer = setTimer(() => {
+      inboxRetryTimer = null;
+      if (!inboxWanted || inbox.loaded || inbox.loading) return;
+      void loadInbox(inbox.filter, { automaticRetry: true });
+    }, delay);
+  }
 
   function emit(): void {
     for (const listener of Array.from(listeners)) listener();
@@ -402,8 +429,12 @@ export function createImStore(deps: StoreDeps): ImStore {
     await loadInbox(inbox.filter);
   }
 
-  async function loadInbox(filter: string = inbox.filter): Promise<void> {
+  async function loadInbox(filter: string = inbox.filter, options: { automaticRetry?: boolean } = {}): Promise<void> {
     inboxWanted = true;
+    if (!options.automaticRetry) {
+      clearInboxRetry();
+      inboxRetryAttempt = 0;
+    }
     const mySeq = ++loadSeq;
     inbox = { ...(filter === inbox.filter ? inbox : emptyInbox(filter)), filter, loading: true, error: null };
     emit();
@@ -419,6 +450,8 @@ export function createImStore(deps: StoreDeps): ImStore {
         error: null,
         needsRefresh: false,
       };
+      clearInboxRetry();
+      inboxRetryAttempt = 0;
     } catch (error) {
       if (mySeq !== loadSeq) return;
       inbox = {
@@ -428,6 +461,7 @@ export function createImStore(deps: StoreDeps): ImStore {
         needsRefresh: false,
         error: error instanceof Error && error.message ? error.message : "load_failed",
       };
+      if (!inbox.loaded) scheduleInboxRetry();
     }
     emit();
   }
@@ -500,6 +534,8 @@ export function createImStore(deps: StoreDeps): ImStore {
       if (unsubscribeSocket) unsubscribeSocket();
       unsubscribeSocket = null;
       deps.socket.stop();
+      clearInboxRetry();
+      inboxRetryAttempt = 0;
       connection = "closed";
       unread = null;
       presence = {};
@@ -557,6 +593,12 @@ export function createImStore(deps: StoreDeps): ImStore {
       }
     },
     loadInbox,
+    retryInboxNow() {
+      if (!inboxWanted || inbox.loaded || inbox.loading) return;
+      clearInboxRetry();
+      inboxRetryAttempt = 0;
+      void loadInbox(inbox.filter, { automaticRetry: true });
+    },
     loadMoreInbox,
     refreshUnread,
     clearConversationUnread(conversationId) {

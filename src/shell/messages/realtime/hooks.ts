@@ -71,15 +71,20 @@ export function attachImRealtime(): () => void {
     socket.noteActivity();
   };
   const onVisibility = () => socket.noteVisibility();
+  const onNetworkBack = () => store.retryInboxNow?.();
   const onAuth = () => {
     void accessToken().then((token) => socket.tokenChanged(token));
   };
   for (const name of ACTIVITY_EVENTS) window.addEventListener(name, onActivity, { passive: true, capture: true });
   document.addEventListener("visibilitychange", onVisibility);
+  window.addEventListener("online", onNetworkBack);
+  document.addEventListener("visibilitychange", onNetworkBack);
   window.addEventListener(AUTH_STATE_EVENT, onAuth);
   return () => {
     for (const name of ACTIVITY_EVENTS) window.removeEventListener(name, onActivity, { capture: true });
     document.removeEventListener("visibilitychange", onVisibility);
+    window.removeEventListener("online", onNetworkBack);
+    document.removeEventListener("visibilitychange", onNetworkBack);
     window.removeEventListener(AUTH_STATE_EVENT, onAuth);
     bridge.detach();
     store.stop();
