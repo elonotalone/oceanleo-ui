@@ -138,9 +138,17 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   }, [applyPage, limit, loading, nextBefore]);
 
   const state = useMemo(() => taskState ? mapTaskState(taskState) : null, [taskState]);
-  const items = useMemo(() => [
-    ...mapTaskTimelineEntries(entries),
-    ...(taskState ? queuedTaskMessages(taskState) : []),
-  ], [entries, taskState]);
+  const items = useMemo(() => {
+    const mapped = mapTaskTimelineEntries(entries);
+    const queued = taskState ? queuedTaskMessages(taskState) : [];
+    const committedIds = new Set(mapped.map((row) => String(row.meta?.client_message_id || "")).filter(Boolean));
+    const marked = mapped.map((row) => {
+      const id = String(row.meta?.client_message_id || "");
+      if (!id || !queued.some((item) => String(item.meta?.client_message_id || "") === id)) return row;
+      const queuedRow = queued.find((item) => String(item.meta?.client_message_id || "") === id)!;
+      return { ...row, meta: { ...(row.meta ?? {}), task_timeline_queued: true, queued: true, client_message_id: id, ...(queuedRow.meta?.engine ? { engine: queuedRow.meta.engine } : {}) } };
+    });
+    return [...marked, ...queued.filter((item) => !committedIds.has(String(item.meta?.client_message_id || "")))];
+  }, [entries, taskState]);
   return { items, state, loadOlder, hasOlder, loading, error, sessions };
 }

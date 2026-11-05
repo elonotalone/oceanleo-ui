@@ -264,10 +264,12 @@ function TranscriptBody({
   const tt = useUI();
   const artifactLabels = agentArtifactLabels(tt);
 
-  const sender = message.meta?.sender as { kind?: unknown; label?: unknown; program?: unknown; task_id?: unknown } | undefined;
-  if (sender?.kind === "agent" && typeof sender.label === "string") {
+  const sender = message.meta?.sender as { kind?: unknown; label?: unknown; program?: unknown; task_id?: unknown; from_task?: unknown; source_task_id?: unknown } | undefined;
+  const sourceTask = sender && (sender.task_id || sender.from_task || sender.source_task_id || message.meta?.from_task || message.meta?.source_task_id);
+  if (sender?.kind === "agent" && typeof sender.label === "string" && (message.role !== "user" || Boolean(sourceTask))) {
     const label = sender.label;
     const labelContent = <span>{label}</span>;
+    const attachments = message.meta?.attachments || [];
     return (
       <div className="group flex max-w-full flex-col items-start gap-1.5" data-agent-sender="agent">
         {typeof sender.task_id === "string" && sender.task_id ? (
@@ -277,9 +279,12 @@ function TranscriptBody({
         ) : (
           <span className="inline-flex items-center gap-1 text-[12px] text-stone-500 dark:text-stone-400">{labelContent}</span>
         )}
-        <div className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-bl-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[15px] leading-relaxed text-sky-950 [overflow-wrap:anywhere] dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-100">
+        {attachments.length > 0 && <div className="flex max-w-[85%] flex-wrap gap-1.5" data-transcript-attachments="">
+          {attachments.map((attachment, index) => <TranscriptAttachment key={`${attachment.url || attachment.name || "attachment"}-${index}`} attachment={attachment} onOpen={onOpenAttachment} />)}
+        </div>}
+        {message.content && <div className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-bl-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[15px] leading-relaxed text-sky-950 [overflow-wrap:anywhere] dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-100">
           <HighlightedText text={message.content} query={highlightQuery} />
-        </div>
+        </div>}
       </div>
     );
   }

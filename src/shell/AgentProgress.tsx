@@ -121,6 +121,7 @@ export function AgentProgress({
   const tt = useUI();
   const entries = useMemo(() => buildProcessEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
+  const engineLabel = typeof messages[0]?.meta?.engine_label === "string" ? messages[0].meta.engine_label : "";
   const { elementRef, open, toggle, close } = useStepsFoldBlock(running, entries.length > 0);
   if (!entries.length) return null;
   let latestPlan = "";
@@ -134,6 +135,7 @@ export function AgentProgress({
       data-agent-process-state={running ? "running" : "done"}
       className={`my-1 max-w-full ${WRAP}`}
     >
+      {engineLabel && <div className="mb-0.5 text-[11px] font-medium text-stone-400" data-agent-process-engine="">{engineLabel}</div>}
       <button
         type="button"
         aria-expanded={open}

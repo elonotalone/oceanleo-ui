@@ -53,6 +53,12 @@ function engineLabel(program: TaskProgram): string {
   return PROGRAM_LABEL[program] ?? program;
 }
 
+function stripEngineLabel(meta: AgentMessage["meta"]): AgentMessage["meta"] | undefined {
+  if (!meta || !Object.prototype.hasOwnProperty.call(meta, "engine_label")) return meta;
+  const { engine_label: _engineLabel, ...rest } = meta;
+  return rest;
+}
+
 function annotate(row: AgentMessage, entry: TaskTimelineEntry, program: TaskProgram, id: string): AgentMessage {
   const label = engineLabel(program);
   return {
@@ -162,7 +168,28 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[]): A
       }
     }
   }
-  return out;
+  let currentEngine = "";
+  return out.map((row) => {
+    if (row.role === "user") {
+      return { ...row, meta: stripEngineLabel(row.meta) };
+    }
+    const sender = row.meta?.sender;
+    const engine = typeof row.meta?.engine === "string"
+      ? row.meta.engine
+      : sender && typeof sender === "object" && typeof (sender as Record<string, unknown>).program === "string"
+        ? String((sender as Record<string, unknown>).program)
+        : "";
+    if (!engine) return { ...row, meta: stripEngineLabel(row.meta) };
+    const showLabel = engine !== currentEngine;
+    currentEngine = engine;
+    return {
+      ...row,
+      meta: {
+        ...(stripEngineLabel(row.meta) ?? {}),
+        ...(showLabel ? { engine_label: engineLabel(engine as TaskProgram) } : {}),
+      },
+    };
+  });
 }
 
 export const mapTimelineEntries = mapTaskTimelineEntries;
@@ -203,7 +230,7 @@ export function queuedTaskMessages(state: TaskState): AgentMessage[] {
     id: stableNegativeId(`queued:${queued.client_message_id}`),
     role: "user",
     kind: "text",
-    content: "",
+    content: typeof queued.text === "string" ? queued.text : "",
     created_at: queued.created_at,
     meta: {
       engine: queued.program,
@@ -211,6 +238,7 @@ export function queuedTaskMessages(state: TaskState): AgentMessage[] {
       queued: true,
       client_message_id: queued.client_message_id,
       task_timeline_queued: true,
+      ...(Array.isArray(queued.attachments) && queued.attachments.length ? { attachments: queued.attachments } : {}),
     },
   }));
 }

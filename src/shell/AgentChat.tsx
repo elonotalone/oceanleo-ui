@@ -1484,15 +1484,6 @@ function AgentChatInner({
         message.meta?.task_timeline_queued === true &&
         removedQueuedIds.has(String(message.meta?.client_message_id || ""))
       ))
-      .map((message) => {
-        if (message.meta?.task_timeline_queued !== true) return message;
-        const recipient = String(message.meta?.engine_label || message.meta?.engine || "");
-        const sender = PROGRAM_LABEL[currentProgram] || currentProgram;
-        return {
-          ...message,
-          content: tt("queuedMessageHint", { from: sender, to: recipient }),
-        };
-      })
     : messages;
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
@@ -3274,8 +3265,17 @@ function AgentChatInner({
                         onClick={() => void removeQueuedMessage(clientMessageId)}
                         disabled={readOnly}
                       >
-                        {tt("removeQueued")}
+                        {tt("移除排队消息")}
                       </button>
+                      {(() => {
+                        const recipient = String(item.message.meta?.engine_label || item.message.meta?.engine || "");
+                        const sender = PROGRAM_LABEL[currentProgram] || currentProgram;
+                        return <span data-task-queued-status="" className="text-stone-400">
+                          {recipient === sender
+                            ? tt("已排队，等 {to} 完成这一轮后发送", { to: recipient })
+                            : tt("{from} 做完这一轮后交给 {to}", { from: sender, to: recipient })}
+                        </span>;
+                      })()}
                     </div>
                   ) : null;
                 })()}

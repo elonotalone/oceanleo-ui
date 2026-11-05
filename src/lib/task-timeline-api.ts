@@ -24,7 +24,7 @@ export type TaskState = {
   since: string | null;
   last_output_at: string | null;
   request: TaskRequest | null;
-  queued: { client_message_id: string; program: TaskProgram; created_at: string }[];
+  queued: { client_message_id: string; program: TaskProgram; created_at: string; text?: string; attachments?: unknown[] }[];
   reason: string | null;
   pending_stop: boolean;
   computer: { id: string | null; online: boolean };
