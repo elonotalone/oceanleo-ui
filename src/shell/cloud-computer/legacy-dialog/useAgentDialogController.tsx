@@ -1096,7 +1096,6 @@ export function useAgentDialog({
     scheduleReconnect();
     return null;
 
-    }
   }, [ingest, scheduleReconnect, markUnconfirmed]);
 
   connectRef.current = connect;
