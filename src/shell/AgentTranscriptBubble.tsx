@@ -292,7 +292,7 @@ function TranscriptBody({
   if (message.role === "user") {
     const attachments = message.meta?.attachments || [];
     return (
-      <div className="group flex flex-col items-end gap-1.5">
+      <div className="group flex flex-col items-end gap-1.5" data-testid="task-user-bubble">
         {attachments.length > 0 && (
           <div className="flex max-w-[85%] select-none flex-wrap justify-end gap-1.5" data-transcript-attachments="">
             {attachments.map((attachment, index) => (
