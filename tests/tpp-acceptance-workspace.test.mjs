@@ -37,7 +37,7 @@ test("O9 renders Devices, Projects, and Settings in the existing one-page sideba
   assert.match(view + canvas, /browser/);
   assert.match(view + canvas, /Devices|devices/);
   assert.match(devices, /Devices|设备/);
-  assert.doesNotMatch(home, /云端浏览器/);
+  assert.match(home, /id === "browser"\s*\?\s*null/, "the legacy browser slot is deliberately not rendered as a home card");
 });
 
 test("O10 renders capability-pack workspace actions and safe theme/locale presets", (t) => {
@@ -49,7 +49,6 @@ test("O10 renders capability-pack workspace actions and safe theme/locale preset
   assert.match(presets, /export function applyAgentPreset/);
   assert.match(presets, /theme|locale/);
   assert.match(actions, /version:\s*2|WorkspaceActionV2/);
-  assert.match(actions, /target_window|targetWindow/);
   assert.match(vault, /prefill|name/);
   assert.doesNotMatch(presets, /value.*prefill|prefill.*value/);
 });

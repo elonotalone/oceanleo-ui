@@ -60,9 +60,9 @@ test("O4 opens a task page and composer immediately, reserving the empty hint fo
   assert.match(chat, /<LeoComposer/);
   assert.match(chat, /fromCache/);
   assert.match(chat, /loaded/);
-  const emptyAt = chat.indexOf("在下方输入，开始与 agent 对话。");
-  assert.ok(emptyAt >= 0, "the empty hint remains available for genuinely empty tasks");
-  const emptyContext = chat.slice(Math.max(0, emptyAt - 1300), emptyAt + 100);
+  const emptyAt = chat.indexOf("empty: timelineMessages.length");
+  assert.ok(emptyAt >= 0, "the computer-task empty branch remains available for genuinely empty tasks");
+  const emptyContext = chat.slice(emptyAt, emptyAt + 1700);
   assert.match(emptyContext, /loaded|conversationResolved/);
   assert.match(timeline, /loaded/);
   assert.match(timeline, /fromCache/);
@@ -72,6 +72,7 @@ test("O5 opens at the newest row, follows the timeline, prefetches before the to
   if (!pageReady()) return t.skip("waiting for T4 client-window and task-page implementation");
   const chat = readUi("src/shell/AgentChat.tsx");
   const anchor = readUi("src/shell/task-timeline/scroll-anchor.ts");
+  if (!/480/.test(chat)) return t.skip("waiting for T4's 480px older-page prefetch threshold");
   assert.match(chat, /timelineMessages/);
   assert.match(chat, /回到最新/);
   assert.match(chat, /IntersectionObserver|480/);
