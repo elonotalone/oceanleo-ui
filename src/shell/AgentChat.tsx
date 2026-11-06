@@ -3478,7 +3478,10 @@ function AgentChatInner({
             value={input}
             onChange={setInput}
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
-            loading={running}
+            // Computer tasks are driven by the task timeline socket. The task
+            // detail status can still be idle while the native session is
+            // already working, which used to hide Stop on Claude turns.
+            loading={computerTask ? timelineRunning : running}
             onStop={() => void stop()}
             stopping={taskStopping}
             stopError={stopErrorText(tt, taskStop)}
