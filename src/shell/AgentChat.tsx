@@ -273,8 +273,6 @@ export function isNearBottom(metrics: ScrollMetrics): boolean {
 /** Scrolled within this many px of the top, the stream reads one more batch of earlier messages. */
 export const LOAD_OLDER_PX = 200;
 const OLDER_ANCHOR_STALE_MS = 15_000;
-const OLDER_ANCHOR_STABLE_FRAMES = 8;
-const OLDER_ANCHOR_MAX_SETTLE_FRAMES = 120;
 
 /** Where the user was when an earlier batch was asked for (to keep that spot after the prepend). */
 interface OlderScrollAnchor extends OlderScrollAnchorSnapshot {
@@ -1818,7 +1816,7 @@ function AgentChatInner({
         anchor.settledHeight = el.scrollHeight;
         anchor.stableFrames = 0;
       }
-      if ((anchor.stableFrames >= OLDER_ANCHOR_STABLE_FRAMES && anchor.settleFrames >= OLDER_ANCHOR_STABLE_FRAMES) || anchor.settleFrames >= OLDER_ANCHOR_MAX_SETTLE_FRAMES) {
+      if ((anchor.stableFrames >= 4 && anchor.settleFrames >= 4) || anchor.settleFrames >= 30) {
         timelineOlderAnchor.current = null;
         return;
       }
