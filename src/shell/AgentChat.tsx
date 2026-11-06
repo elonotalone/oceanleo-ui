@@ -279,9 +279,6 @@ interface OlderScrollAnchor extends OlderScrollAnchorSnapshot {
   firstId: number | null;
   sawLoading: boolean;
   at: number;
-  settledHeight: number;
-  stableFrames: number;
-  settleFrames: number;
 }
 
 function scrollMetricsOf(el: HTMLElement): ScrollMetrics {
@@ -1735,9 +1732,6 @@ function AgentChatInner({
       firstId: timelineMessages[0]?.id ?? null,
       sawLoading: false,
       at: Date.now(),
-      settledHeight: el.scrollHeight,
-      stableFrames: 0,
-      settleFrames: 0,
     };
     timelineOlderLoadAttempted.current = true;
     void current.loadOlder();
@@ -1787,42 +1781,28 @@ function AgentChatInner({
     // otherwise see the old scrollHeight and miss the prepend.
     let frame = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
-    const schedule = () => {
-      if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-        frame = window.requestAnimationFrame(settle);
-      } else {
-        timer = setTimeout(settle, 0);
-      }
-    };
     const settle = () => {
       if (timelineOlderAnchor.current !== anchor || timelineRef.current.olderLoading) return;
       if (timelineRef.current.olderError) {
         timelineOlderAnchor.current = null;
         return;
       }
-      // Compensate every rendered pixel. The first mapped row can be stable
-      // when the new page extends that row, so an id comparison alone is
-      // insufficient. Keep checking a few frames for late image/markdown
-      // layout; a late 48 px height change must move the same anchor too.
+      // Wait until the older request has settled, then compensate for every
+      // rendered pixel. The first mapped row can be stable when the new page
+      // extends that row, so an id comparison alone is insufficient.
       const delta = el.scrollHeight - anchor.scrollHeight;
       if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
         // Equivalent compensation: `el.scrollTop += el.scrollHeight - anchor.scrollHeight`.
         restoreOlderScrollAnchor(el, anchor);
         timelineLastScrollTop.current = el.scrollTop;
-      }
-      anchor.settleFrames += 1;
-      if (Math.abs(el.scrollHeight - anchor.settledHeight) < 0.5) anchor.stableFrames += 1;
-      else {
-        anchor.settledHeight = el.scrollHeight;
-        anchor.stableFrames = 0;
-      }
-      if ((anchor.stableFrames >= 4 && anchor.settleFrames >= 4) || anchor.settleFrames >= 30) {
         timelineOlderAnchor.current = null;
-        return;
       }
-      schedule();
     };
-    schedule();
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      frame = window.requestAnimationFrame(settle);
+    } else {
+      timer = setTimeout(settle, 0);
+    }
     return () => {
       if (frame && typeof window !== "undefined") window.cancelAnimationFrame(frame);
       if (timer !== null) clearTimeout(timer);
