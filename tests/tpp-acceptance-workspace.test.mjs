@@ -58,7 +58,7 @@ test("O11 exposes Memo in Library with server-backed text and artifact entries",
   const memoFiles = [
     "src/lib/library-memo-api.ts",
     "src/shell/MyLibrary.tsx",
-    ...["index.ts", "LibraryMemoPage.tsx"].map((name) => `src/shell/library-memo/${name}`),
+    "src/shell/library-memo/LibraryMemoPage.tsx",
   ];
   for (const file of memoFiles) {
     if (!existsSync(resolve(UI_ROOT, file))) return t.skip(`waiting for T8 file ${file}`);
@@ -75,7 +75,7 @@ test("O11 exposes Memo in Library with server-backed text and artifact entries",
 test("O12 presents connectors as one simple status/action list with deep-link support", (t) => {
   if (!workspaceReady()) return t.skip("waiting for T9 connector settings implementation");
   const pane = source("src/pages/settings/ConnectorsSettingsPane.tsx");
-  const connectorFiles = ["src/pages/settings/connectors/ConnectorList.tsx", "src/pages/settings/connectors/ConnectorRow.tsx"];
+  const connectorFiles = ["src/pages/settings/connectors/ConnectorRow.tsx"];
   for (const file of connectorFiles) {
     if (!existsSync(resolve(UI_ROOT, file))) return t.skip(`waiting for T9 file ${file}`);
   }
