@@ -11,11 +11,8 @@ import { useUI } from "../../i18n/ui/useUI";
 // 直接引 kit 的叶子文件，不经 kit/index（那里还挂着文件夹 API 与鉴权链，连接器页用不到）。
 import { AddMenu } from "../../shell/skills/kit/AddMenu";
 import { ConfigEmptyState } from "../../shell/skills/kit/ConfigEmptyState";
-import { ConfigItemCard } from "../../shell/skills/kit/ConfigItemCard";
-import { ConfigToolbar } from "../../shell/skills/kit/ConfigToolbar";
 import { usePluginsCatalog } from "../../shell/usePluginsCatalog";
 import { ConnectorCatalogDialog, OVER_CONFIG_DIALOG_Z } from "../plugins/ConnectorCatalogDialog";
-import { ConnectorIcon } from "../plugins/connector-icons";
 import {
   CUSTOM_CONNECTOR_ID,
   connectorIdFromLocationHash,
@@ -24,6 +21,7 @@ import {
 } from "../plugins/connector-logic";
 import { useConnectorController } from "../plugins/ConnectorsSection";
 import { MyBrowserPanel } from "./MyBrowserPanel";
+import { ConnectorList, ConnectorRow } from "./connectors/ConnectorRow";
 
 export interface ConnectorsSettingsPaneProps {
   /** 独立页（/plugins）上下排列两个 pane 时显示自己的标题；设置窗里标题由设置中心画。 */
@@ -64,87 +62,6 @@ function PlugIcon() {
   );
 }
 
-function MoreIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" aria-hidden="true">
-      <circle cx="5.5" cy="12" r="1.6" />
-      <circle cx="12" cy="12" r="1.6" />
-      <circle cx="18.5" cy="12" r="1.6" />
-    </svg>
-  );
-}
-
-/** 卡片右下「…」：重新连接、探活、断开。 */
-function ConnectorRowMenu({
-  label,
-  onReconnect,
-  onProbe,
-  onDisconnect,
-  probing,
-}: {
-  label: string;
-  onReconnect: () => void;
-  onProbe: () => void;
-  onDisconnect: () => void;
-  probing: boolean;
-}) {
-  const tt = useUI();
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
-    }
-    function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-  const item =
-    "block w-full rounded-lg px-3 py-2 text-left text-[13px] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 focus-visible:bg-neutral-100 focus-visible:outline-none dark:hover:bg-neutral-800";
-  const pick = (run: () => void) => () => {
-    setOpen(false);
-    run();
-  };
-  return (
-    <div ref={rootRef} className="relative" data-connector-row-menu>
-      <button
-        type="button"
-        aria-label={tt("更多操作：{name}", { name: label })}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
-        className="-my-2 -mr-2 inline-flex h-11 w-11 items-center justify-center rounded-xl text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-100 hover:text-neutral-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-neutral-800"
-      >
-        <MoreIcon />
-      </button>
-      {open ? (
-        <div
-          role="menu"
-          className="absolute bottom-10 right-0 z-20 w-44 rounded-xl border border-neutral-200 bg-white p-1 shadow-[0_12px_40px_rgba(0,0,0,0.14)] dark:border-neutral-700 dark:bg-neutral-900"
-        >
-          <button type="button" role="menuitem" data-connector-menu="reconnect" className={item} onClick={pick(onReconnect)}>
-            {tt("重新连接")}
-          </button>
-          <button type="button" role="menuitem" data-connector-menu="probe" disabled={probing} className={`${item} disabled:opacity-60`} onClick={pick(onProbe)}>
-            {probing ? tt("探活中…") : tt("探活")}
-          </button>
-          <div className="my-1 h-px bg-neutral-100 dark:bg-neutral-800" />
-          <button type="button" role="menuitem" data-connector-menu="disconnect" className={`${item} text-red-600`} onClick={pick(onDisconnect)}>
-            {tt("断开连接")}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export function ConnectorsSettingsPane({
   heading = false,
   initialConnectorId,
@@ -157,6 +74,8 @@ export function ConnectorsSettingsPane({
   });
   const market = usePluginsCatalog();
   const [q, setQ] = useState("");
+  const [highlightedId, setHighlightedId] = useState("");
+  const rowRefs = useRef(new Map<string, HTMLDivElement>());
 
   const rows = useMemo(
     () => myConnectorRows(controller.connections, controller.registry, q),
@@ -170,7 +89,14 @@ export function ConnectorsSettingsPane({
     const wanted =
       (initialConnectorId || "").trim() ||
       connectorIdFromLocationHash(typeof window !== "undefined" ? window.location.hash : "");
-    if (!wanted || controller.registryStatus !== "ready" || openedRef.current === wanted) return;
+    if (!wanted || controller.registryStatus !== "ready") return;
+    setHighlightedId(wanted);
+    const row = rowRefs.current.get(wanted);
+    if (row) {
+      row.scrollIntoView?.({ block: "nearest", behavior: "smooth" });
+      row.focus?.({ preventScroll: true });
+    }
+    if (openedRef.current === wanted) return;
     const found = controller.registry.find((c) => c.id === wanted);
     if (found) {
       openedRef.current = wanted;
@@ -207,76 +133,48 @@ export function ConnectorsSettingsPane({
     />
   );
 
-  const list =
-    controller.connections.length === 0 ? (
-      <div data-my-connectors-empty className="rounded-2xl border border-dashed border-neutral-300 bg-white/60 dark:border-neutral-700 dark:bg-neutral-900/40">
-        <ConfigEmptyState
-          icon={<PlugIcon />}
-          title={tt("还没有连接器")}
-          description={tt("连接应用与 API（MCP）后，Agent 在任务中可直接调用该服务的工具。")}
-          action={addMenu("primary")}
-        />
-      </div>
-    ) : rows.length === 0 ? (
-      <p className="py-10 text-center text-[13px] text-neutral-500">{tt("没有匹配的连接器")}</p>
-    ) : (
-      <div data-my-connectors className="grid grid-cols-1 gap-4 md:grid-cols-2">
+  const list = controller.connections.length === 0 ? (
+    <div data-my-connectors-empty className="rounded-xl border border-dashed border-neutral-300 bg-white/60 dark:border-neutral-700 dark:bg-neutral-900/40">
+      <ConfigEmptyState
+        icon={<PlugIcon />}
+        title={tt("还没有连接器")}
+        description={tt("连接应用与 API（MCP）后，Agent 在任务中可直接调用该服务的工具。")}
+        action={addMenu("primary")}
+      />
+    </div>
+  ) : rows.length === 0 ? (
+    <p className="py-10 text-center text-[13px] text-neutral-500">{tt("没有匹配的连接器")}</p>
+  ) : (
+    <div data-my-connectors>
+      <ConnectorList>
         {rows.map(({ connection, meta }) => {
           const id = connection.connector_id;
-          const name = meta ? tt(meta.name) : connection.label || id;
           const status = myConnectorStatus(connection, controller.staleIds.has(id));
           const open = () => {
             if (meta) controller.openConnector(meta);
           };
           return (
-            <div key={connection.id || id} data-my-connector={id} data-my-connector-status={status}>
-              <ConfigItemCard
-                title={
-                  <span className="flex min-w-0 items-center gap-2.5">
-                    <ConnectorIcon icon={meta?.icon} id={id} label={name} size="sm" />
-                    <span className="truncate">{connection.label && connection.label !== name ? connection.label : name}</span>
-                  </span>
-                }
-                description={meta ? tt(meta.desc) : connection.endpoint || undefined}
-                badge={
-                  <span
-                    className={
-                      status === "stale"
-                        ? "font-medium text-red-600"
-                        : status === "connected"
-                          ? "font-medium text-emerald-600"
-                          : "text-neutral-500"
-                    }
-                  >
-                    {status === "stale"
-                      ? tt("已失效")
-                      : status === "connected"
-                        ? tt("已连接 · {n} 工具", { n: connection.tools_count ?? 0 })
-                        : tt("已停用")}
-                  </span>
-                }
-                meta={meta ? tt(meta.category) : undefined}
-                toggle={{
-                  checked: connection.enabled,
-                  onChange: (next) => controller.toggle(id, next),
-                  label: connection.enabled ? tt("停用 {name}", { name }) : tt("启用 {name}", { name }),
-                }}
-                menu={
-                  <ConnectorRowMenu
-                    label={name}
-                    probing={controller.probingId === id}
-                    onReconnect={open}
-                    onProbe={() => controller.probe(id)}
-                    onDisconnect={() => controller.requestDisconnect(id)}
-                  />
-                }
-                onOpen={meta ? open : undefined}
-              />
-            </div>
+            <ConnectorRow
+              key={connection.id || id}
+              connection={connection}
+              meta={meta}
+              status={status}
+              highlighted={highlightedId === id}
+              probing={controller.probingId === id}
+              rowRef={(node) => {
+                if (node) rowRefs.current.set(id, node);
+                else rowRefs.current.delete(id);
+              }}
+              onOpen={open}
+              onProbe={() => controller.probe(id)}
+              onDisconnect={() => controller.requestDisconnect(id)}
+              onToggle={(next) => controller.toggle(id, next)}
+            />
           );
         })}
-      </div>
-    );
+      </ConnectorList>
+    </div>
+  );
 
   return (
     <section data-plugins-connectors data-settings-connectors-pane className="min-h-0 pb-10">
@@ -288,11 +186,18 @@ export function ConnectorsSettingsPane({
         </h2>
       ) : null}
       {controller.connections.length > 0 ? (
-        <div className="mb-5">
-          <ConfigToolbar
-            search={{ value: q, onChange: setQ, placeholder: tt("搜索我的连接器") }}
-            primary={addMenu("primary")}
-          />
+        <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">{tt("搜索我的连接器")}</span>
+            <input
+              value={q}
+              onChange={(event) => setQ(event.target.value)}
+              placeholder={tt("搜索我的连接器")}
+              className="h-10 w-full max-w-xs rounded-lg border border-neutral-200 bg-transparent px-3 text-[13px] text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20 dark:border-neutral-700 dark:text-neutral-100"
+              data-connector-search
+            />
+          </label>
+          <div className="shrink-0">{addMenu("primary")}</div>
         </div>
       ) : null}
       {list}
