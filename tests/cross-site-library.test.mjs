@@ -222,7 +222,9 @@ test("workspace actions are versioned, bounded and reject unsafe URLs", () => {
     })?.url,
     undefined,
   );
-  assert.equal(normalizeWorkspaceAction({ version: 2, tab: "preview" }), null);
+  // Version 2 (task-page-pack C4) adds the managed sidebar pages; any other version is refused.
+  assert.equal(normalizeWorkspaceAction({ version: 2, tab: "preview" })?.tab, "preview");
+  assert.equal(normalizeWorkspaceAction({ version: 3, tab: "preview" }), null);
 });
 
 test("function agents forward only verified persisted UI actions", () => {

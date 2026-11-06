@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -83,7 +85,8 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { LibraryMemoPage } from "./library-memo/LibraryMemoPage";
+// Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
+const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
 
 const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
@@ -1987,8 +1990,8 @@ export function MyLibrary({
     );
   }
 
-  if (action?.action.tab === "mine" && action.action.itemId === "memo") {
-    return <LibraryMemoPage className={className} />;
+  if (action?.action?.tab === "mine" && action.action.itemId === "memo") {
+    return <Suspense fallback={null}><LibraryMemoPage className={className} /></Suspense>;
   }
 
   return (

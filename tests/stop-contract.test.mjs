@@ -103,7 +103,8 @@ test("failed file blocks the text with its actual reason; transient uploads use 
 
 test("both hosts keep active controls; native finishing suppresses step spinners and offline input stays editable", () => {
   const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
-  assert.match(source, /loading=\{running\}/);
+  // A computer task follows its live timeline; other tasks keep the OceanLeo run state.
+  assert.match(source, /loading=\{computerTask \? timelineRunning : running\}/);
   assert.match(source, /running=\{timelineRunning && item.key === liveProgressKey\}/);
   assert.match(source, /loading=\{nativeRunning\}/);
   assert.match(source, /running=\{nativeRunning && !thread.finishing && \(item.messages.some/);

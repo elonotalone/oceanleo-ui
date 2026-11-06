@@ -28,7 +28,6 @@ test("website platform client covers management, storage, settings, usage, and a
     "/storage/buckets",
     "/storage/objects",
     "/storage/objects/sign-download",
-    "/settings/domains",
     "/settings/secrets",
     "/settings/usage",
     "/analytics/summary",

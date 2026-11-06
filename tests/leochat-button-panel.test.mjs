@@ -189,7 +189,7 @@ test("首页和任务页的懒加载右栏保留 LeoChat 请求；按钮不再�
   assert.match(src("shell/TaskWorkspaceShell.tsx"), /leochat-button:/);
   assert.match(src("shell/TaskWorkspaceShell.tsx"), /leoChatRequestNonce/);
   assert.match(src("shell/AgentChat.tsx"), /<TaskWorkspaceShell/);
-  assert.match(src("shell/ResultCanvas.tsx"), /const panels = useMemo\(\(\) => \(\{ bay: bayOn, leochat: imOn \}\)/);
+  assert.match(src("shell/ResultCanvas.tsx"), /const panels = useMemo\(\(\) => \(\{ bay: bayOn, leochat: imOn, devices: true, projects: true, settings: true \}\)/);
   assert.match(src("shell/ResultCanvas.tsx"), /LEOCHAT_PANEL_REQUEST_EVENT/);
   assert.match(src("shell/ResultCanvas.tsx"), /workspaceOpen !== false/);
   assert.match(src("shell/ResultCanvas.tsx"), /closeRightPane/);
