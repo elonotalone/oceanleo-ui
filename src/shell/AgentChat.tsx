@@ -197,6 +197,7 @@ import {
   stopTask as stopTimelineTask,
 } from "../lib/task-timeline-api";
 import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
+import { restoreOlderScrollAnchor, type OlderScrollAnchorSnapshot } from "./task-timeline/scroll-anchor";
 
 type TaskTimelineStatusSurface = ReturnType<typeof useTaskTimeline> & {
   liveStatus?: "connecting" | "connected" | "reconnecting";
@@ -271,8 +272,7 @@ export const LOAD_OLDER_PX = 200;
 const OLDER_ANCHOR_STALE_MS = 15_000;
 
 /** Where the user was when an earlier batch was asked for (to keep that spot after the prepend). */
-interface OlderScrollAnchor {
-  scrollHeight: number;
+interface OlderScrollAnchor extends OlderScrollAnchorSnapshot {
   firstId: number | null;
   sawLoading: boolean;
   at: number;
@@ -1852,6 +1852,7 @@ function AgentChatInner({
       movingUp,
     })) return;
     timelineOlderAnchor.current = {
+      scrollTop: el.scrollTop,
       scrollHeight: el.scrollHeight,
       firstId: timelineMessages[0]?.id ?? null,
       sawLoading: false,
@@ -1896,15 +1897,41 @@ function AgentChatInner({
     const el = scrollRef.current;
     const anchor = timelineOlderAnchor.current;
     if (!el || !anchor || !computerTask) return;
-    if (timelineFirstMessageId !== anchor.firstId) {
-      el.scrollTop += el.scrollHeight - anchor.scrollHeight;
-      timelineLastScrollTop.current = el.scrollTop;
-      timelineOlderAnchor.current = null;
+    if (timeline.olderLoading) {
+      anchor.sawLoading = true;
       return;
     }
-    if (timeline.olderLoading) anchor.sawLoading = true;
-    else if (anchor.sawLoading || !timeline.hasOlder) timelineOlderAnchor.current = null;
-  }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading]);
+    // Wait one paint after the request settles. React can commit the page and
+    // remove the spinner in one batch; measuring in the first layout effect can
+    // otherwise see the old scrollHeight and miss the prepend.
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settle = () => {
+      if (timelineOlderAnchor.current !== anchor || timelineRef.current.olderLoading) return;
+      if (timelineRef.current.olderError) {
+        timelineOlderAnchor.current = null;
+        return;
+      }
+      // Wait until the older request has settled, then compensate for every
+      // rendered pixel. The first mapped row can be stable when the new page
+      // extends that row, so an id comparison alone is insufficient.
+      const delta = el.scrollHeight - anchor.scrollHeight;
+      if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
+        restoreOlderScrollAnchor(el, anchor);
+        timelineLastScrollTop.current = el.scrollTop;
+        timelineOlderAnchor.current = null;
+      }
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      frame = window.requestAnimationFrame(settle);
+    } else {
+      timer = setTimeout(settle, 0);
+    }
+    return () => {
+      if (frame && typeof window !== "undefined") window.cancelAnimationFrame(frame);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading, timelineStatus.olderError]);
 
   useEffect(() => {
     if (!computerTask || timeline.olderLoading) return;
@@ -3398,10 +3425,8 @@ function AgentChatInner({
         ref={pane.scrollRef}
         onScroll={pane.onScroll}
         className="h-full overflow-y-auto overflow-x-hidden px-4 py-4"
+        style={{ overflowAnchor: "none" }}
         data-agent-stream-scroller=""
-        // Native: earlier batches are prepended and the position is restored by hand
-        // (NativeChatConversation); browser scroll anchoring would shift it a second time.
-        style={pane.pane === "native" ? { overflowAnchor: "none" } : undefined}
       >
         {/* 对话内容与下方输入框同宽、居中（宽度上限 = agent-conversation-layout 的
             AGENT_CONVERSATION_MAX_WIDTH_CLASS，比 Manus 比例略宽，W4 2026-10-31）。
