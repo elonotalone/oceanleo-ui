@@ -2571,7 +2571,7 @@ function AgentChatInner({
       updateTaskStop({ type: "result", stopId, result: "failed", detail: "" });
       void refresh(id);
     }
-  }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
+  }, [readOnly, taskId, computerTask, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
   useEffect(() => {
     if (!isLocalExecution || !localRun || localAgentRunLive(localRun)) return;
     const state = taskStopRef.current;
