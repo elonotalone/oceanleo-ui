@@ -1,13 +1,11 @@
 "use client";
 
-// Composer drafts: text and private Library references keep their existing tab /
-// server sync. Local file bytes live in IndexedDB under the same draft key, so
-// uploading, failed and computer-inbox tiles can be restored through the host.
+// Composer drafts stay on this device. Local file bytes live in IndexedDB under
+// the same draft key, so uploading, failed and computer-inbox tiles can be
+// restored through the host without cross-device propagation.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { attachmentRef } from "../lib/attachment-url";
-import { getComposerDrafts, putComposerDraft, type ComposerDraftServerRecord } from "../lib/composer-drafts-api";
-import { useImConnection, useImEvent } from "./messages/realtime/hooks";
 import type { ComposerAttachment } from "./LeoComposer";
 
 export const COMPOSER_DRAFT_PREFIX = "oceanleo_composer_draft:v1:";
@@ -26,17 +24,6 @@ export interface ComposerDraftRecord {
   text: string;
   attachments: ComposerDraftAttachment[];
   rev?: number;
-}
-
-function composerDeviceId(): string {
-  const fallback = `web-${Math.random().toString(36).slice(2)}-${Date.now().toString(36)}`;
-  if (typeof window === "undefined") return fallback;
-  try {
-    const existing = window.localStorage.getItem("oceanleo_composer_device_id");
-    if (existing) return existing;
-    window.localStorage.setItem("oceanleo_composer_device_id", fallback);
-  } catch { /* private mode */ }
-  return fallback;
 }
 
 function draftStorage(): Storage | null {
@@ -353,18 +340,6 @@ export interface ComposerDraftHandle {
   fileNotice: ComposerDraftFileNotice;
 }
 
-function serverRecord(record: ComposerDraftServerRecord): ComposerDraftRecord {
-  return { text: record.text || "", attachments: record.attachments || [], rev: record.rev };
-}
-
-function preserveCaretAfterRemoteText(previous: string, next: string, caret: number): number {
-  if (previous === next) return caret;
-  let prefix = 0;
-  const limit = Math.min(previous.length, next.length);
-  while (prefix < limit && previous[prefix] === next[prefix]) prefix += 1;
-  return prefix < caret ? next.length : caret;
-}
-
 export function useComposerDraft({
   draftKey,
   value,
@@ -375,9 +350,6 @@ export function useComposerDraft({
   onAttachFiles,
   fetchItem,
 }: UseComposerDraftOptions): ComposerDraftHandle {
-  const connection = useImConnection();
-  const connectionRef = useRef(connection);
-  connectionRef.current = connection;
   const latest = useRef({ value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles, fetchItem });
   latest.current = { value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles, fetchItem };
   const keyRef = useRef(draftKey);
@@ -389,12 +361,6 @@ export function useComposerDraft({
   const submittedRef = useRef<string | null>(null);
   // Restored references still being re-read: kept in storage until they land.
   const pendingRestoreRef = useRef<ComposerDraftAttachment[]>([]);
-  const remoteSignatureRef = useRef<string | null>(null);
-  const revRef = useRef(0);
-  const pendingPutRef = useRef<{ text: string; attachments: ComposerDraftAttachment[]; base_rev?: number } | null>(null);
-  const putTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const deviceIdRef = useRef<string>("");
-  if (!deviceIdRef.current) deviceIdRef.current = composerDeviceId();
 
   const libraryRestoreRef = useRef<Promise<ComposerAttachment[]>>(Promise.resolve([]));
   const [fileNotice, setFileNotice] = useState<ComposerDraftFileNotice>(null);
@@ -524,7 +490,6 @@ export function useComposerDraft({
     submittedRef.current = null;
     pendingRestoreRef.current = [];
     const record = readComposerDraft(draftKey);
-    if (record?.rev) revRef.current = record.rev;
     if (!record) return;
     if (record.text && !latest.current.value.trim()) latest.current.onChange(record.text);
     if (!record.attachments.length || !latest.current.onAddAttachments) return;
@@ -545,82 +510,6 @@ export function useComposerDraft({
     });
   }, [draftKey]);
 
-  const applyRemote = useCallback((event: Extract<import("../lib/im/types").ImEvent, { type: "composer_draft" }>, allowOwn = false) => {
-    if (!draftKey || event.key !== draftKey || (!allowOwn && event.device_id === deviceIdRef.current) || event.rev <= revRef.current) return;
-    revRef.current = event.rev;
-    // The newer server copy wins: a local write still waiting (offline, debounce)
-    // is superseded and must not overwrite it on reconnect.
-    pendingPutRef.current = null;
-    if (putTimerRef.current) { clearTimeout(putTimerRef.current); putTimerRef.current = null; }
-    const now = latest.current;
-    if (event.text !== now.value) {
-      const active = typeof document !== "undefined" ? document.activeElement : null;
-      const editable = active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement ? active : null;
-      const caret = editable && typeof editable.selectionStart === "number" ? editable.selectionStart : null;
-      const nextCaret = caret === null ? null : preserveCaretAfterRemoteText(now.value, event.text, caret);
-      now.onChange(event.text);
-      if (editable && nextCaret !== null) {
-        queueMicrotask(() => {
-          if (document.activeElement !== editable) return;
-          try { editable.setSelectionRange(nextCaret, nextCaret); } catch { /* non-text input */ }
-        });
-      }
-    }
-    // Arm the echo guard only when this apply changes what is shown; an armed guard
-    // that never fires would swallow a later real edit (sent text → empty).
-    const remoteSignature = JSON.stringify([event.text, event.attachments]);
-    remoteSignatureRef.current = remoteSignature === signatureRef.current ? null : remoteSignature;
-    const remoteIds = new Set(event.attachments.map((item) => item.id));
-    for (const item of now.attachments ?? []) {
-      const ref = draftAttachmentsOf([item])[0];
-      if (ref && !remoteIds.has(ref.id)) now.onRemoveAttachment?.(item.id);
-    }
-    if (now.onAddAttachments) {
-      void rehydrateDraftAttachments(event.attachments, now.fetchItem).then((items) => {
-        if (keyRef.current !== draftKey) return;
-        const existing = new Set((latest.current.attachments ?? []).map((item) => item.id));
-        const fresh = items.filter((item) => !existing.has(item.id));
-        if (fresh.length) latest.current.onAddAttachments?.(fresh);
-      });
-    }
-    // Attachments without Library refs (computer inbox files) are intentionally untouched.
-  }, [draftKey]);
-  useImEvent("composer_draft", applyRemote);
-
-  const queuePut = useCallback((key: string, text: string, attachments: ComposerDraftAttachment[]) => {
-    pendingPutRef.current = { text, attachments, ...(revRef.current ? { base_rev: revRef.current } : {}) };
-    if (putTimerRef.current) clearTimeout(putTimerRef.current);
-    putTimerRef.current = setTimeout(() => {
-      putTimerRef.current = null;
-      if (connectionRef.current !== "open") return;
-      const body = pendingPutRef.current;
-      if (!body) return;
-      void putComposerDraft(key, { ...body, device_id: deviceIdRef.current }).then((result) => {
-        revRef.current = Math.max(revRef.current, result.rev);
-        if (pendingPutRef.current === body) pendingPutRef.current = null;
-      }).catch(() => { /* retried on reconnect or next edit */ });
-    }, 300);
-  }, []);
-
-  useEffect(() => {
-    if (!draftKey || connection !== "open" || !pendingPutRef.current) return;
-    const body = pendingPutRef.current;
-    void putComposerDraft(draftKey, { ...body, device_id: deviceIdRef.current }).then((result) => {
-      revRef.current = Math.max(revRef.current, result.rev);
-      if (pendingPutRef.current === body) pendingPutRef.current = null;
-    }).catch(() => {});
-  }, [connection, draftKey]);
-
-  useEffect(() => {
-    if (!draftKey) return;
-    void getComposerDrafts([draftKey]).then(({ drafts }) => {
-      const remote = drafts[0];
-      if (!remote || remote.rev <= revRef.current) return;
-      // A newer server copy wins over this tab's restored text (rev-guarded inside).
-      applyRemote({ type: "composer_draft", ...serverRecord(remote), key: remote.key || draftKey, rev: remote.rev, device_id: remote.device_id, updated_at: remote.updated_at }, true);
-    }).catch(() => {});
-  }, [applyRemote, draftKey]);
-
   useEffect(() => {
     if (!draftKey) return;
     if (lastSeenRef.current === null || lastSeenRef.current === signature) {
@@ -631,18 +520,11 @@ export function useComposerDraft({
     const now = latest.current;
     const shown = now.onAddAttachments ? draftAttachmentsOf(now.attachments) : [];
     const pending = pendingRestoreRef.current.filter((item) => !shown.some((att) => att.id === item.id));
-    if (remoteSignatureRef.current === signature) {
-      remoteSignatureRef.current = null;
-      // A remote echo is not written back, but this tab's copy still follows it.
-      writeComposerDraft(draftKey, now.value, [...shown, ...pending]);
-      return;
-    }
     if (submittedRef.current !== null) {
       if (submittedRef.current === signature) return;
       submittedRef.current = null;
     }
     writeComposerDraft(draftKey, now.value, [...shown, ...pending]);
-    queuePut(draftKey, now.value, [...shown, ...pending]);
   }, [draftKey, signature]);
 
   // Sent and then unmounted unchanged (home → the task conversation): the draft is spent.
@@ -660,8 +542,7 @@ export function useComposerDraft({
 
   const markSubmitted = useCallback(() => {
     if (keyRef.current) submittedRef.current = signatureRef.current;
-    if (keyRef.current) queuePut(keyRef.current, "", []);
-  }, [queuePut]);
+  }, []);
 
   return { markSubmitted, attachFiles, fileNotice };
 }

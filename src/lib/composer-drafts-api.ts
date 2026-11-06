@@ -1,5 +1,3 @@
-import { imFetch } from "./im/client";
-
 export interface ComposerDraftAttachmentRef {
   id: string;
   artifactId: string;
@@ -24,16 +22,15 @@ export interface ComposerDraftPutResult {
 }
 
 export function getComposerDrafts(keys: string[]): Promise<{ drafts: ComposerDraftServerRecord[] }> {
-  const query = keys.filter(Boolean).slice(0, 50).map((key) => encodeURIComponent(key)).join(",");
-  return imFetch<{ drafts: ComposerDraftServerRecord[] }>(`/v1/composer-drafts?keys=${query}`);
+  void keys;
+  return Promise.reject(new Error("composer drafts are device-local"));
 }
 
 export function putComposerDraft(
   key: string,
   body: { text: string; attachments: ComposerDraftAttachmentRef[]; device_id: string; base_rev?: number },
 ): Promise<ComposerDraftPutResult> {
-  return imFetch<ComposerDraftPutResult>(`/v1/composer-drafts/${encodeURIComponent(key)}`, {
-    method: "PUT",
-    json: body,
-  });
+  void key;
+  void body;
+  return Promise.reject(new Error("composer drafts are device-local"));
 }

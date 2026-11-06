@@ -1,0 +1,16 @@
+export const libraryMemoCopy = {
+  title: "Memo",
+  description: "在所有设备共享的文字、图片和文件。",
+  addText: "添加文字",
+  addFile: "添加图片或文件",
+  save: "保存",
+  cancel: "取消",
+  copy: "复制",
+  open: "打开",
+  download: "下载",
+  delete: "删除",
+  empty: "Memo 还是空的",
+  copied: "已复制",
+  loading: "正在加载 Memo…",
+  error: "Memo 暂时无法加载，请重试。",
+} as const;

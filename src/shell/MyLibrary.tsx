@@ -83,6 +83,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { LibraryMemoPage } from "./library-memo/LibraryMemoPage";
 
 const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
@@ -1984,6 +1985,10 @@ export function MyLibrary({
         />
       </div>
     );
+  }
+
+  if (action?.action.tab === "mine" && action.action.itemId === "memo") {
+    return <LibraryMemoPage className={className} />;
   }
 
   return (
