@@ -22,6 +22,7 @@ export function DeviceFolderPicker({ deviceId, deviceName, title, client, onSele
   const [error, setError] = useState<string | null>(null);
   const [grantPath, setGrantPath] = useState<string | null>(null);
   const [granting, setGranting] = useState(false);
+  const inputPathRef = useRef("");
   const request = useRef<AbortController | null>(null);
 
   async function navigate(path: string | null, { offerGrant = true }: { offerGrant?: boolean } = {}) {
@@ -37,10 +38,12 @@ export function DeviceFolderPicker({ deviceId, deviceName, title, client, onSele
       if (controller.signal.aborted) return;
       if (result.ok && result.data?.result && "entries" in result.data.result) {
         setListing(result.data.result);
-        setInputPath(result.data.result.path ?? "");
+        const nextPath = result.data.result.path ?? "";
+        setInputPath(nextPath);
+        inputPathRef.current = nextPath;
         // An empty listing is still actionable: the caller may grant the path
         // and retry the same navigation. The root page has no candidate path.
-        const candidate = result.data.result.path ?? inputPath.trim();
+        const candidate = result.data.result.path ?? inputPathRef.current.trim();
         if (offerGrant && result.data.result.entries.length === 0 && candidate) setGrantPath(candidate);
       } else {
         const code = result.error;
@@ -103,7 +106,7 @@ export function DeviceFolderPicker({ deviceId, deviceName, title, client, onSele
       <button type="button" className={`${DEVICE_BUTTON} h-10 w-10 shrink-0 p-0`} aria-label={tt("上一级")} disabled={loading || !listing?.parent} onClick={() => { if (listing?.parent) void navigate(listing.parent); }}>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" className="h-5 w-5" aria-hidden="true"><path d="m5 11 7-7 7 7M12 4v17" /></svg>
       </button>
-      <input aria-label={tt("文件夹路径")} value={inputPath} onInput={(event) => { const value = event.currentTarget.value; setInputPath(value); if (listing?.entries.length === 0) setGrantPath(value.trim() || null); }} className="h-10 min-w-0 flex-1 rounded-xl bg-neutral-100 px-3 text-sm outline-none focus:ring-1 focus:ring-neutral-400" />
+      <input aria-label={tt("文件夹路径")} value={inputPath} onInput={(event) => { const value = event.currentTarget.value; inputPathRef.current = value; setInputPath(value); if (listing?.entries.length === 0) setGrantPath(value.trim() || null); }} className="h-10 min-w-0 flex-1 rounded-xl bg-neutral-100 px-3 text-sm outline-none focus:ring-1 focus:ring-neutral-400" />
       <button type="submit" className={DEVICE_BUTTON} disabled={loading || !inputPath.trim()}>{tt("前往")}</button>
     </form>
     <div className="min-h-[260px] rounded-2xl border border-neutral-200 bg-white p-2" aria-busy={loading || granting} data-device-folder-list>
