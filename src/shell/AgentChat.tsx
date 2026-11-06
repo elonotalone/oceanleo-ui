@@ -2705,7 +2705,7 @@ function AgentChatInner({
       updateTaskStop({ type: "result", stopId, result: "failed", detail: "" });
       void refresh(id);
     }
-  }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
+  }, [readOnly, taskId, computerTask, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
   useEffect(() => {
     if (!isLocalExecution || !localRun || localAgentRunLive(localRun)) return;
     const state = taskStopRef.current;
@@ -2856,8 +2856,8 @@ function AgentChatInner({
   const shareAvailable = (computerTask || cloudPaneShown) && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
-    if (!cloudPaneShown && share.active) exitShare();
-  }, [cloudPaneShown, share.active, exitShare]);
+    if (!computerTask && !cloudPaneShown && share.active) exitShare();
+  }, [computerTask, cloudPaneShown, share.active, exitShare]);
   // A computer chat in front (2026-10-31): the same header 「分享」 puts THAT chat's
   // stream in select mode (each NativeChatConversation owns its share state; this
   // only says "on" for the one in front). Switching conversations leaves it.
@@ -3562,6 +3562,7 @@ function AgentChatInner({
     tail: (
       <>
           {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
+          {computerTask && timeline.state?.savingDelayed && <p className="text-[13px] text-stone-500" data-task-saving-delayed>{tt("这段对话暂时没能保存到云端")}</p>}
           {computerTask && timelineStatus.liveNotice && <p className="text-[13px] text-stone-400">{tt("正在重新连接…")}</p>}
           {computerTask && timelineReadError && (
             <p className="flex flex-wrap items-center gap-2 text-[13px] text-stone-500" role="status">

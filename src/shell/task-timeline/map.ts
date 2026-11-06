@@ -33,6 +33,7 @@ export type TaskUiState = {
   request: TaskState["request"];
   pendingStop: boolean;
   computer: TaskState["computer"];
+  savingDelayed: boolean;
 };
 
 type NativeProjection = {
@@ -453,6 +454,7 @@ export function mapTaskState(state: TaskState): TaskUiState {
     request: state.request,
     pendingStop: state.pending_stop === true,
     computer: state.computer,
+    savingDelayed: state.saving_delayed === true || status === "saving_delayed",
   };
 }
 

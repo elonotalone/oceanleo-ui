@@ -836,10 +836,15 @@ const importModuleUrl = await compileModule("src/shell/cloud-computer/computer-t
       "export function useSearchParams(){ return new URLSearchParams(globalThis.__importParams || ''); }",
   ),
   "../../lib/auth/client": dataModule("export async function getUserId(){ return 'owner'; }"),
-  "../../lib/cloud-computer-api": dataModule("export async function getComputer(id){ return { id, name: 'elon' }; }"),
+  "../../lib/cloud-computer-api": dataModule(
+    "export class CloudComputerError extends Error {}\n" +
+    "export async function getComputer(id){ return { id, name: 'elon' }; }",
+  ),
   "../../lib/execution-target": dataModule("globalThis.__targets = [];\nexport function writeExecutionTarget(owner, target){ globalThis.__targets.push({ owner, target }); }"),
   "../../lib/computer-task-api": dataModule(
-    "globalThis.__imports = [];\nexport async function createComputerTaskSession(id, input){ globalThis.__imports.push({ id, input }); return { task_id: 'existing', session: { id: 'managed' } }; }",
+    "globalThis.__imports = [];\n" +
+    "export async function loadComputer(id){ return { id, name: 'elon' }; }\n" +
+    "export async function createComputerTaskSession(id, input){ globalThis.__imports.push({ id, input }); return { task_id: 'existing', session: { id: 'managed' } }; }",
   ),
 });
 const { ComputerTaskImport, legacyImportRequestId } = await import(importModuleUrl);
@@ -881,20 +886,19 @@ test("legacy deep link imports only its named native session, once, with a reque
   );
 });
 
-test("a computer link without a native program opens the OceanLeo conversation on that computer and creates no session", async () => {
+test("a computer link without a native program redirects to Devices and creates no session", async () => {
   globalThis.__imports.length = 0;
-  globalThis.__targets.length = 0;
   const view = await mountImport({ computerId: "cc_elon" }, "");
   try {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(globalThis.__imports.length, 0, "no oceanleo native session");
-    assert.deepEqual(globalThis.__targets, [{ owner: "owner", target: { kind: "computer", id: "cc_elon", name: "elon" } }]);
-    assert.equal(globalThis.__forward, "/");
+    assert.equal(globalThis.__forward, "/devices?computer=cc_elon");
   } finally { await view.unmount(); }
   const program = await mountImport({ computerId: "cc_elon" }, "program=oceanleo");
   try {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
     assert.equal(globalThis.__imports.length, 0);
+    assert.equal(globalThis.__forward, "/devices?computer=cc_elon");
   } finally { await program.unmount(); }
 });
 
