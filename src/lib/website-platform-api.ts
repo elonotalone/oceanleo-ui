@@ -199,6 +199,8 @@ export interface WebsiteAuthUser {
 export interface WebsitePlatformApi {
   project(projectId: string, signal?: AbortSignal): Promise<WebsiteProjectSummary>;
   capabilities(projectId: string, signal?: AbortSignal): Promise<WebsiteCapabilitySnapshot>;
+  websiteAccess(projectId: string, signal?: AbortSignal): Promise<{ published_site_access?: { desired_mode?: string; effective_mode?: string; enforcement_status?: string }; [key: string]: unknown }>;
+  setWebsiteAccess(projectId: string, desiredMode: "public" | "private" | "authenticated", signal?: AbortSignal): Promise<{ published_site_access?: Record<string, unknown>; [key: string]: unknown }>;
   history(projectId: string, signal?: AbortSignal): Promise<{ commits: WebsiteCommit[] }>;
   files(projectId: string, revisionId?: string, signal?: AbortSignal): Promise<{ files: WebsiteProjectFile[] }>;
   file(projectId: string, path: string, revisionId?: string, signal?: AbortSignal): Promise<WebsiteProjectFile>;
@@ -310,6 +312,15 @@ export const websitePlatformApi: WebsitePlatformApi = {
 
   capabilities: (projectId, signal) =>
     request(`/v1/website-projects/${segment(projectId)}/capabilities`, {}, signal),
+
+  websiteAccess: (projectId, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/access`, {}, signal),
+
+  setWebsiteAccess: (projectId, desiredMode, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/published-site-access`, {
+      method: "PATCH",
+      body: JSON.stringify({ desired_mode: desiredMode }),
+    }, signal),
 
   history: (projectId, signal) =>
     request(`/v1/website-projects/${segment(projectId)}/create-flow/history`, {}, signal),

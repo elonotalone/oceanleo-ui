@@ -69,18 +69,30 @@ function DomainPanel({ projectId, api }: { projectId: string; api: WebsitePlatfo
         {(domain.status === "pending" || domain.verification_status === "pending") && <button type="button" className="mt-2 underline" disabled={!!busy} onClick={() => void verify(domain)}>{busy === `verify:${domain.domain}` ? tt("验证中…") : tt("验证 DNS")}</button>}
       </div>)}</div>
     </PanelState>
-    <div className="mt-3 flex gap-2"><input aria-label={tt("域名")} className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs" value={draft} onChange={event => setDraft(event.target.value)} placeholder="example.com" /><button type="button" disabled={!draft.trim() || !!busy} className="rounded bg-[var(--awb-accent)] px-2 py-1 text-xs text-white" onClick={() => void add()}>{busy === "add" ? tt("添加中…") : tt("添加")}</button></div>
+    <div className="mt-3 flex gap-2"><input aria-label={tt("域名")} className="min-w-0 flex-1 rounded border bg-transparent px-2 py-1 text-xs" value={draft} onInput={event => setDraft(event.currentTarget.value)} placeholder="example.com" /><button type="button" disabled={!draft.trim() || !!busy} className="rounded bg-[var(--awb-accent)] px-2 py-1 text-xs text-white" onClick={() => void add()}>{busy === "add" ? tt("添加中…") : tt("添加")}</button></div>
     {notice && <p role="status" className="mt-2 text-xs">{notice}</p>}
   </section>;
 }
 
 function LoginPanel({ projectId, api }: { projectId: string; api: WebsitePlatformApi }) {
   const tt = useUI();
-  const state = usePanelData(signal => api.capabilities(projectId, signal), [api, projectId]);
+  const [reload, setReload] = useState(0);
+  const state = usePanelData(signal => api.websiteAccess(projectId, signal), [api, projectId, reload]);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState("");
+  const access = state.value?.published_site_access;
+  const enabled = access?.desired_mode === "authenticated" || access?.effective_mode === "authenticated";
+  const enable = async () => {
+    if (busy) return;
+    setBusy(true); setActionError("");
+    try { await api.setWebsiteAccess(projectId, "authenticated"); setReload(value => value + 1); }
+    catch (error) { setActionError(error instanceof Error ? error.message : String(error)); }
+    finally { setBusy(false); }
+  };
   return <section className="rounded border p-3" data-testid="website-management-login">
     <h3 className="font-medium">{tt("登录")}</h3>
     <p className="mt-1 text-xs opacity-70">{tt("使用网站配置中的托管后端认证服务。")}</p>
-    <PanelState {...state}><p className="mt-3 text-xs">{tt("登录与认证")}: {state.value?.permissions?.auth ? tt("已启用") : tt("请在配置中启用")}</p></PanelState>
+    <PanelState {...state}><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span>{tt("登录与认证")}: {enabled ? tt("已启用") : tt("未启用")}</span>{!enabled && <button type="button" disabled={busy} className="underline" onClick={() => void enable()}>{busy ? tt("启用中…") : tt("启用网站登录")}</button>}</div>{actionError && <p role="alert" className="mt-2 text-red-600">{actionError}</p>}</PanelState>
   </section>;
 }
 
