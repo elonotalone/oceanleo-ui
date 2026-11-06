@@ -63,8 +63,6 @@ export function restoreOlderScrollAnchor(
   anchor: OlderScrollAnchorSnapshot,
   visualAnchor?: TimelineVisualAnchor | null,
 ): number {
-  const heightDelta = element.scrollHeight - anchor.scrollHeight;
-  element.scrollTop = anchor.scrollTop + heightDelta;
   if (visualAnchor?.element || visualAnchor?.text) {
     const viewport = (element as HTMLElement).getBoundingClientRect();
     const current = visualAnchor.text
@@ -76,10 +74,12 @@ export function restoreOlderScrollAnchor(
     );
     const currentTop = currentRect ? currentRect.top - viewport.top : Number.NaN;
     if (Number.isFinite(currentTop) && Number.isFinite(visualAnchor.top)) {
-      const visualDelta = currentTop - visualAnchor.top;
-      element.scrollTop += visualDelta;
-      return heightDelta + visualDelta;
+      const delta = currentTop - visualAnchor.top;
+      element.scrollTop += delta;
+      return delta;
     }
   }
-  return heightDelta;
+  const delta = element.scrollHeight - anchor.scrollHeight;
+  element.scrollTop = anchor.scrollTop + delta;
+  return delta;
 }
