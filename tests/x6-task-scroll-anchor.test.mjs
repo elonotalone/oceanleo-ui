@@ -20,6 +20,8 @@ test("older transcript pages preserve the reader's scroll position by the render
 
 test("task transcript opts out of browser anchoring before applying its explicit compensation", () => {
   assert.match(agentChat, /style=\{\{ overflowAnchor: "none" \}\}/);
-  assert.match(agentChat, /restoreOlderScrollAnchor\(el, anchor\)/);
+  assert.match(agentChat, /restoreOlderScrollAnchor\(el, anchor, anchor\.visualAnchor\)/);
+  assert.match(agentChat, /captureTimelineVisualAnchor\(el\)/);
+  assert.match(agentChat, /data-task-timeline-item/);
   assert.match(agentChat, /timelineStatus\.olderError/);
 });
