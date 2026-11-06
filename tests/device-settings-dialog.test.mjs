@@ -131,8 +131,42 @@ test("out-of-grant target path fails closed and cannot be selected", async () =>
     await view.input(document.querySelector('input[aria-label="文件夹路径"]'), "/outside");
     await view.click(view.button("前往"));
     assert.ok(view.text().includes("这个文件夹未获授权。"));
+    assert.ok(view.button("授权这个文件夹"));
     assert.equal(view.button("使用此文件夹").disabled, true);
     assert.deepEqual(selected, []);
+  } finally { view.cleanup(); }
+});
+
+test("granting a typed folder retries Go and leaves the existing default-save action usable", async () => {
+  const operations = [];
+  let denied = true;
+  const client = {
+    async startOperation(id, operation) {
+      operations.push(operation);
+      if (operation.kind === "folders.grant") return { ok: true, data: { state: "succeeded", result: { grant: { path: "/outside" }, roots: ["/outside"] } } };
+      if (operation.kind === "folders.list" && operation.path === "/outside" && denied) {
+        denied = false;
+        return { ok: true, data: { state: "failed", error: "path_outside_grant" } };
+      }
+      const path = operation.path;
+      return { ok: true, data: { state: "succeeded", result: { path, parent: null, entries: [], roots: path ? [path] : [] } } };
+    },
+    async getOperation() { throw new Error("poll not expected for immediate receipts"); },
+  };
+  const selected = [];
+  const view = await mount(DeviceFolderPicker, { deviceId: "mac-target", deviceName: "My Mac", title: "Add folder", client, onSelect: (path) => selected.push(path), onClose() {} });
+  try {
+    await view.input(document.querySelector('input[aria-label="文件夹路径"]'), "/outside");
+    await view.click(view.button("前往"));
+    assert.ok(view.button("授权这个文件夹"));
+    await view.click(view.button("授权这个文件夹"));
+    assert.deepEqual(operations.slice(-2), [
+      { kind: "folders.grant", path: "/outside" },
+      { kind: "folders.list", path: "/outside" },
+    ]);
+    assert.equal(view.button("使用此文件夹").disabled, false);
+    await view.click(view.button("使用此文件夹"));
+    assert.deepEqual(selected, ["/outside"]);
   } finally { view.cleanup(); }
 });
 

@@ -101,6 +101,10 @@ export function deviceSettingsErrorCopy(error?: string): string {
     case "offline": case "device_offline": return "这台电脑不在线。";
     case "unauthorized": return "请先登录。";
     case "path_outside_grant": case "grant_missing": return "这个文件夹未获授权。";
+    case "path_invalid": return "请输入完整的文件夹路径。";
+    case "directory_unavailable": return "这台电脑上没有这个文件夹。";
+    case "path_denied": return "这个位置不能授权，请选一个具体的文件夹。";
+    case "grant_limit": return "授权的文件夹已达上限。";
     case "not_directory": case "path_not_directory": return "请选择文件夹。";
     case "path_not_found": return "找不到这个文件夹。";
     case "request_expired": case "operation_expired": return "请求已超时，请重试。";

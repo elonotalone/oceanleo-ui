@@ -33,7 +33,7 @@ export type DeviceRemotePreferencesUpdate = {
 }[keyof RemotePreferences];
 export type DeviceRemoteSettingsOperation = ({ kind: "remote_access.update" } & DeviceRemoteAccessUpdate)
   | ({ kind: "remote_access.preferences.update" } & DeviceRemotePreferencesUpdate);
-export type DeviceSettingsOperationRequest = { kind: "cover.read" } | { kind: "folders.list"; path: string | null }
+export type DeviceSettingsOperationRequest = { kind: "cover.read" } | { kind: "folders.list"; path: string | null } | { kind: "folders.grant"; path: string }
   | ({ kind: "preferences.update" } & DevicePreferences) | DeviceRemoteSettingsOperation;
 /** Durable offline revoke only reports fields the caller actually supplied. */
 export type DeviceRemoteAccessRevocation = Partial<DeviceRemoteAccessSettings> & { agent_control_allowed: false; expires_at: null };
@@ -68,7 +68,7 @@ export interface DeviceSettingsOperation {
   state: "pending" | "succeeded" | "failed";
   revocation_effective?: boolean;
   device_sync_pending?: boolean;
-  result?: DeviceFolderListing | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings | DeviceRemoteAccessRevocation | DeviceRemotePreferencesUpdate } | { cover: DeviceCover };
+  result?: DeviceFolderListing | { grant: { path: string }; roots: string[] } | { preferences: DevicePreferences } | { remote_access: DeviceRemoteAccessSettings | DeviceRemoteAccessRevocation | DeviceRemotePreferencesUpdate } | { cover: DeviceCover };
   error?: string;
 }
 export interface DeviceTaskSummary {
@@ -265,6 +265,8 @@ export function parseSettingsOperation(value: unknown, intent?: DeviceSettingsOp
       operation.result = { remote_access: { enabled: remote.enabled as boolean, input_allowed: remote.input_allowed as boolean, agent_control_allowed: remote.agent_control_allowed as boolean, agent_always_ask: remote.agent_always_ask as boolean, expires_at: null } };
     } else if (remotePreferences(result.remote_access)) {
       operation.result = { remote_access: remotePreferences(result.remote_access)! };
+    } else if (record(result.grant) && typeof result.grant.path === "string" && result.grant.path.length > 0 && strings(result.roots)) {
+      operation.result = { grant: { path: result.grant.path }, roots: result.roots };
     } else if (nullableString(result.path) && nullableString(result.parent) && strings(result.roots) && Array.isArray(result.entries) && result.entries.every((item) => record(item) && typeof item.name === "string" && typeof item.path === "string")) {
       operation.result = result as unknown as DeviceFolderListing;
     } else return null;

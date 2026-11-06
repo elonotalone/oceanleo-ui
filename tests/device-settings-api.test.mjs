@@ -48,6 +48,8 @@ test("settings/grant/expiry/target folder routes use the same owner-bound contro
   assert.equal(new Set(calls.map(({ init }) => init.headers["X-OceanLeo-Controller"])).size, 1);
   for (const { init } of calls) assert.equal(init.headers.Authorization, "Bearer owner-token");
   assert.deepEqual(JSON.parse(calls[4].init.body), { kind: "folders.list", path: "/allowed/work" });
+  const grant = api.parseSettingsOperation({ state: "succeeded", result: { grant: { path: "/allowed/work" }, roots: ["/allowed", "/allowed/work"] } }, { kind: "folders.grant", path: "/typed/work" });
+  assert.deepEqual(grant?.result, { grant: { path: "/allowed/work" }, roots: ["/allowed", "/allowed/work"] });
 });
 
 test("malformed settings/folders fail closed, missing auth/storage sends no request", async () => {
@@ -78,6 +80,13 @@ test("operations start once, poll only the receipt and preserve target failure/t
   assert.equal(polls, 2);
   const timedOut = await state.runDeviceSettingsOperation({ ...client, getOperation: async () => ({ ok: true, data: { state: "pending" } }) }, "mac", { kind: "folders.list", path: "/allowed" }, new AbortController().signal, { intervalMs: 1, timeoutMs: 2 });
   assert.equal(timedOut.error, "request_expired");
+});
+
+test("folder grant errors keep their plain Chinese device-settings copy", () => {
+  assert.equal(state.deviceSettingsErrorCopy("path_invalid"), "请输入完整的文件夹路径。");
+  assert.equal(state.deviceSettingsErrorCopy("directory_unavailable"), "这台电脑上没有这个文件夹。");
+  assert.equal(state.deviceSettingsErrorCopy("path_denied"), "这个位置不能授权，请选一个具体的文件夹。");
+  assert.equal(state.deviceSettingsErrorCopy("grant_limit"), "授权的文件夹已达上限。");
 });
 
 test("wallpaper uses the authenticated settings receipt with no pathname or public image route", async () => {

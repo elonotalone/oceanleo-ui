@@ -87,6 +87,8 @@ const EN: Record<string, string> = {
   "修改设备名称": "Rename computer",
   "设备信息": "Computer information",
   "使用此文件夹": "Use this folder",
+  "授权这个文件夹": "Grant this folder",
+  "正在授权这个文件夹…": "Granting this folder…",
   "上一级": "Up",
   "文件夹路径": "Folder path",
   "前往": "Go",
@@ -110,6 +112,11 @@ const EN: Record<string, string> = {
   "{device}尚未授权此操作。": "{device} hasn't allowed this operation.",
   "{device}尚未授权这类操作。": "{device} hasn't allowed this type of operation.",
   "所选目录未获授权。": "Access to this folder hasn't been allowed.",
+  "这个文件夹未获授权。": "Access to this folder hasn't been allowed.",
+  "请输入完整的文件夹路径。": "Enter a complete folder path.",
+  "这台电脑上没有这个文件夹。": "This folder doesn't exist on this computer.",
+  "这个位置不能授权，请选一个具体的文件夹。": "This location can't be granted. Choose a specific folder.",
+  "授权的文件夹已达上限。": "The folder grant limit has been reached.",
 };
 
 const AUTH: Partial<Record<Locale, readonly [string, string, string]>> = {
