@@ -272,7 +272,7 @@ export function isNearBottom(metrics: ScrollMetrics): boolean {
 }
 
 /** Scrolled within this many px of the top, the stream reads one more batch of earlier messages. */
-export const LOAD_OLDER_PX = 200;
+export const LOAD_OLDER_PX = 480;
 const OLDER_ANCHOR_STALE_MS = 15_000;
 
 /** Where the user was when an earlier batch was asked for (to keep that spot after the prepend). */
@@ -298,6 +298,32 @@ export function shouldLoadOlder(
   if (!state.hasOlder || state.loading) return false;
   if (metrics.scrollHeight <= metrics.clientHeight + LOAD_OLDER_PX) return true;
   return state.movingUp && metrics.scrollTop < LOAD_OLDER_PX;
+}
+
+/** Reconcile an acknowledged queued send when the timeline later shows it injected. */
+export function reconcileTimelineDelivery(
+  current: Record<string, "queued" | "injected">,
+  rows: readonly Pick<AgentMessage, "meta">[],
+): Record<string, "queued" | "injected"> {
+  const queuedIds = new Set(
+    rows
+      .filter((row) => row.meta?.task_timeline_queued === true)
+      .map((row) => String(row.meta?.client_message_id || ""))
+      .filter(Boolean),
+  );
+  const serverIds = new Set(
+    rows
+      .filter((row) => row.meta?.task_timeline_server === true)
+      .map((row) => String(row.meta?.client_message_id || ""))
+      .filter(Boolean),
+  );
+  let next = current;
+  for (const [id, delivery] of Object.entries(current)) {
+    if (delivery !== "queued" || !serverIds.has(id) || queuedIds.has(id)) continue;
+    if (next === current) next = { ...current };
+    next[id] = "injected";
+  }
+  return next;
 }
 
 function documentHidden(): boolean {
@@ -1576,6 +1602,10 @@ function AgentChatInner({
         removedQueuedIds.has(String(message.meta?.client_message_id || ""))
       ))
     : messages;
+  useEffect(() => {
+    if (!computerTask) return;
+    setTimelineDelivery((current) => reconcileTimelineDelivery(current, timeline.items));
+  }, [computerTask, timeline.items]);
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);

@@ -29,3 +29,10 @@ test("Leo and computer task sends include the per-window field", async () => {
   assert.match(chat, /client_window: getClientWindowId\(\)/);
   assert.match(chat, /followUp\([^\n]*getClientWindowId\(\)/);
 });
+
+test("task paging uses the reviewed 480px trigger and reconciles later injection", async () => {
+  const chat = await readFile(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
+  assert.match(chat, /LOAD_OLDER_PX = 480/);
+  assert.match(chat, /reconcileTimelineDelivery\(current, timeline\.items\)/);
+  assert.match(chat, /delivery !== "queued" \|\| !serverIds\.has\(id\) \|\| queuedIds\.has\(id\)/);
+});
