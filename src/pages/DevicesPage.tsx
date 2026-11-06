@@ -24,6 +24,8 @@ import { legacyImportErrorCopy, type LegacyImportErrorCode } from "../lib/comput
 
 export type DevicesPageTab = "devices" | "cloud";
 export interface DevicesPageProps {
+  /** Legacy `/computers/<id>` adapter result, supplied by a portal route when available. */
+  legacyImportError?: LegacyImportErrorCode | null;
   client?: DevicesFacade;
   cloudClient?: CloudComputerClient;
   settingsClient?: DeviceSettingsClient;
@@ -96,11 +98,13 @@ async function signedInUser(): Promise<{ known: boolean; userId: string | null }
   }
 }
 
-export function DevicesPage({ client = devicesFacade, cloudClient = cloudComputerApi, settingsClient = defaultSettingsClient,
+export function DevicesPage({ legacyImportError: legacyImportErrorProp, client = devicesFacade, cloudClient = cloudComputerApi, settingsClient = defaultSettingsClient,
   remoteDesktopClient = defaultRemoteDesktopClient, cloudAgentClient = deviceCloudAgentClient, remoteStatusIntervalMs = 10_000,
   listIntervalMs = 15_000, requestTimeoutMs = 15_000, currentUser = signedInUser, initialTab, variant = "page" }: DevicesPageProps) {
   const tt = useUI();
-  const [legacyImportError] = useState<LegacyImportErrorCode | null>(legacyImportErrorFromLocation);
+  const [legacyImportError, setLegacyImportError] = useState<LegacyImportErrorCode | null>(() =>
+    legacyImportErrorProp !== undefined ? legacyImportErrorProp : legacyImportErrorFromLocation(),
+  );
   const [devices, setDevices] = useState<Device[]>([]);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(() => legacyImportError ? legacyImportErrorCopy(legacyImportError) : null);
@@ -128,6 +132,14 @@ export function DevicesPage({ client = devicesFacade, cloudClient = cloudCompute
   const [createCloud, setCreateCloud] = useState(false);
   const [connectServer, setConnectServer] = useState(false);
   const [cloudRevision, setCloudRevision] = useState(0);
+  useEffect(() => {
+    // The `/computers/<id>` adapter uses router.replace, so this page can be
+    // retained across the client transition. Keep the visible error in sync
+    // with the route-provided value instead of reading location only at mount.
+    setLegacyImportError(
+      legacyImportErrorProp !== undefined ? legacyImportErrorProp : legacyImportErrorFromLocation(),
+    );
+  }, [legacyImportErrorProp]);
   const generation = useRef(0);
   const order = useRef<string[]>([]);
   /** Apply a fresh list in the page's stable card order. */
