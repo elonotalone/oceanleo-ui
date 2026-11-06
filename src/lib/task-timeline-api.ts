@@ -187,10 +187,22 @@ export function openTaskTimeline(
       schedule();
     };
   };
+  // The link is back (browser `online`): retry now instead of waiting out the doubled backoff
+  // (an 8 s drop left the reconnecting notice up ~7.5 s after recovery).
+  const reconnectNow = () => {
+    if (closed || reconnectTimer === null) return;
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+    reconnectDelay = 1_000;
+    void connect();
+  };
+  const onlineTarget = typeof window !== "undefined" && typeof window.addEventListener === "function" ? window : null;
+  onlineTarget?.addEventListener("online", reconnectNow);
   onStatus?.("connecting");
   void connect();
   return {
     close: () => {
+      onlineTarget?.removeEventListener("online", reconnectNow);
       closed = true;
       generation += 1;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);
