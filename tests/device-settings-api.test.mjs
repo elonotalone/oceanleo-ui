@@ -33,6 +33,7 @@ test("settings/grant/expiry/target folder routes use the same owner-bound contro
   await api.deviceSettingsClient.revokeController("mac/id", "grant/id");
   await api.deviceSettingsClient.shortenControllerExpiry("mac/id", "grant/id", "2026-10-25T12:00:00Z");
   await api.deviceSettingsClient.startOperation("mac/id", { kind: "folders.list", path: "/allowed/work" });
+  await api.deviceSettingsClient.startOperation("mac/id", { kind: "folders.grant", path: "/typed/work" });
   const listing = await api.deviceSettingsClient.getOperation("mac/id", "op/id");
   assert.equal(listing.data.result.path, "/allowed");
   assert.equal((await api.deviceSettingsClient.listTasks("mac/id")).data[0].task_id, "t-1");
@@ -42,12 +43,14 @@ test("settings/grant/expiry/target folder routes use the same owner-bound contro
     ["DELETE", "https://gateway.test/v1/devices/mac%2Fid/controllers/grant%2Fid"],
     ["PATCH", "https://gateway.test/v1/devices/mac%2Fid/controllers/grant%2Fid"],
     ["POST", "https://gateway.test/v1/devices/mac%2Fid/settings/operations"],
+    ["POST", "https://gateway.test/v1/devices/mac%2Fid/settings/operations"],
     ["GET", "https://gateway.test/v1/devices/mac%2Fid/settings/operations/op%2Fid"],
     ["GET", "https://gateway.test/v1/devices/mac%2Fid/tasks?limit=20"],
   ]);
   assert.equal(new Set(calls.map(({ init }) => init.headers["X-OceanLeo-Controller"])).size, 1);
   for (const { init } of calls) assert.equal(init.headers.Authorization, "Bearer owner-token");
   assert.deepEqual(JSON.parse(calls[4].init.body), { kind: "folders.list", path: "/allowed/work" });
+  assert.deepEqual(JSON.parse(calls[5].init.body), { kind: "folders.grant", path: "/typed/work" });
   const grant = api.parseSettingsOperation({ state: "succeeded", result: { grant: { path: "/allowed/work" }, roots: ["/allowed", "/allowed/work"] } }, { kind: "folders.grant", path: "/typed/work" });
   assert.deepEqual(grant?.result, { grant: { path: "/allowed/work" }, roots: ["/allowed", "/allowed/work"] });
 });
