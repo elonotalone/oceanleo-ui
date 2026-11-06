@@ -8,6 +8,8 @@ import { WebsitePanelView } from "./WebsitePanelView";
 import { WebsitePublicationCard } from "./WebsitePublicationCard";
 import type { WebsitePublicationApi } from "../../api/website-publication";
 import { useWebsiteUI } from "./website-preview-i18n";
+import { WebsiteManagementPanels } from "./WebsiteManagementPanels";
+import { websitePlatformApi, type WebsitePlatformApi } from "../../lib/website-platform-api";
 
 const PLATFORM_PANELS = [
   { id: "visits", title: "访问量", kind: "metric" },
@@ -47,9 +49,9 @@ function DashboardCard({ projectId, panel, api, pending, onWire }: {
   </div>;
 }
 
-export function WebsiteDashboard({ projectId, runtime, runtimeError, api = websitePanelsApi, publicationApi, pending = false, onWire, onLogs, onAction, onFix }: {
+export function WebsiteDashboard({ projectId, runtime, runtimeError, api = websitePanelsApi, publicationApi, pending = false, managementApi, onWire, onLogs, onAction, onFix }: {
   projectId: string; runtime: WebsiteRuntime | null; runtimeError?: string; api?: WebsitePanelsApi; publicationApi?: WebsitePublicationApi; pending?: boolean;
-  onWire: (panelId: string) => void; onLogs: () => void; onAction: (action: "start" | "stop" | "restart") => void; onFix: () => void;
+  managementApi?: WebsitePlatformApi; onWire: (panelId: string) => void; onLogs: () => void; onAction: (action: "start" | "stop" | "restart") => void; onFix: () => void;
 }) {
   const tt = useWebsiteUI();
   const [panels, setPanels] = useState<WebsitePanel[]>([]);
@@ -100,6 +102,7 @@ export function WebsiteDashboard({ projectId, runtime, runtimeError, api = websi
       </div>
     </div>
     <WebsitePublicationCard projectId={projectId} api={publicationApi} />
+    <WebsiteManagementPanels projectId={projectId} api={managementApi || websitePlatformApi} />
     <h2 className="font-semibold">{tt("平台看板")}</h2>
     <p className="mb-3 mt-1 text-xs opacity-65">{tt("平台维护的数据看板，agent 无法修改。")}</p>
     {error && <div role="alert" className="mb-3 text-xs text-red-600">{error} <button type="button" className="underline" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></div>}

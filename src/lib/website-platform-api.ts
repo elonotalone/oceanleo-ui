@@ -127,8 +127,11 @@ export interface WebsiteStorageObjects {
 export interface WebsiteDomain {
   id?: string;
   domain: string;
+  dns_records?: Array<{ type: string; name: string; value: string }>;
+  target?: string;
   provider?: string;
   status?: string;
+  verification_status?: string;
   verification?: unknown;
   certificate_status?: string;
   is_primary?: boolean;
@@ -184,6 +187,15 @@ export interface WebsiteAnalyticsSummary {
   [key: string]: unknown;
 }
 
+export interface WebsiteAuthUser {
+  id?: string;
+  email?: string;
+  created_at?: string;
+  last_sign_in_at?: string | null;
+  banned_until?: string | null;
+  [key: string]: unknown;
+}
+
 export interface WebsitePlatformApi {
   project(projectId: string, signal?: AbortSignal): Promise<WebsiteProjectSummary>;
   capabilities(projectId: string, signal?: AbortSignal): Promise<WebsiteCapabilitySnapshot>;
@@ -211,6 +223,7 @@ export interface WebsitePlatformApi {
   secrets(projectId: string, signal?: AbortSignal): Promise<{ secrets: WebsiteSecretReference[] }>;
   usageSettings(projectId: string, signal?: AbortSignal): Promise<WebsiteUsageSettings>;
   analytics(projectId: string, start?: string, end?: string, signal?: AbortSignal): Promise<WebsiteAnalyticsSummary>;
+  authUsers(projectId: string, signal?: AbortSignal): Promise<{ users?: WebsiteAuthUser[]; total?: number; [key: string]: unknown }>;
 }
 
 async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSignal): Promise<T> {
@@ -422,21 +435,21 @@ export const websitePlatformApi: WebsitePlatformApi = {
     }, signal),
 
   domains: async (projectId, signal) => {
-    const body = await request<{ items?: WebsiteDomain[]; domains?: WebsiteDomain[] }>(`/v1/website-projects/${segment(projectId)}/settings/domains`, {}, signal);
-    return { domains: body.domains || body.items || [] };
+    const body = await request<WebsiteDomain[] | { items?: WebsiteDomain[]; domains?: WebsiteDomain[] }>(`/v1/website-projects/${segment(projectId)}/domains`, {}, signal);
+    return { domains: Array.isArray(body) ? body : body.domains || body.items || [] };
   },
 
   addDomain: (projectId, domain, signal) =>
-    request(`/v1/website-projects/${segment(projectId)}/settings/domains`, { method: "POST", body: JSON.stringify({ domain }) }, signal),
+    request(`/v1/website-projects/${segment(projectId)}/domains`, { method: "POST", body: JSON.stringify({ domain }) }, signal),
 
   verifyDomain: (projectId, domain, signal) =>
-    request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}/verify`, { method: "POST" }, signal),
+    request(`/v1/website-projects/${segment(projectId)}/domains/${segment(domain)}/verify`, { method: "POST" }, signal),
 
   setPrimaryDomain: (projectId, domain, signal) =>
     request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}/primary`, { method: "PUT" }, signal),
 
   removeDomain: (projectId, domain, signal) =>
-    request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}`, { method: "DELETE" }, signal),
+    request(`/v1/website-projects/${segment(projectId)}/domains/${segment(domain)}`, { method: "DELETE" }, signal),
 
   secrets: async (projectId, signal) => {
     const body = await request<{ items?: WebsiteSecretReference[]; secrets?: WebsiteSecretReference[] }>(`/v1/website-projects/${segment(projectId)}/settings/secrets`, {}, signal);
@@ -453,4 +466,7 @@ export const websitePlatformApi: WebsitePlatformApi = {
     const suffix = query.toString() ? `?${query}` : "";
     return request(`/v1/website-projects/${segment(projectId)}/analytics/summary${suffix}`, {}, signal);
   },
+
+  authUsers: (projectId, signal) =>
+    request(`/v1/website-projects/${segment(projectId)}/database/auth/users`, {}, signal),
 };
