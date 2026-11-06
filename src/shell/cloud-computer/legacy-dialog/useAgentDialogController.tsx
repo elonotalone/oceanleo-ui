@@ -5,6 +5,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
+import { legacyDialogWsUrl } from "../../../lib/cloud-computer-api";
 import * as computerApi from "../../../lib/cloud-computer-api";
 import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -1089,13 +1090,95 @@ export function useAgentDialog({
       return null;
     }
 
-    // Per-computer dialog sockets were removed in §7. Task pages use the
-    // numbered task timeline; this legacy controller stays as a compatibility
-    // type seam for settings components and never opens a display socket.
-    dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
-    scheduleReconnect();
-    return null;
+    let socket: WebSocket;
+    try {
+      socket = new WebSocket(legacyDialogWsUrl(computerIdRef.current, sessionIdRef.current, token));
+    } catch {
+      dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+      scheduleReconnect();
+      return null;
+    }
+    if (gen !== connectGen.current) {
+      socket.close();
+      return null;
+    }
+    socketRef.current = socket;
 
+    return await new Promise<WebSocket | null>((resolve) => {
+      let settled = false;
+      const finish = (value: WebSocket | null) => {
+        if (settled) return;
+        settled = true;
+        resolve(value);
+      };
+      const timer = setTimeout(() => {
+        if (socket.readyState !== WebSocket.OPEN && socket.readyState !== WebSocket.CLOSED) {
+          socket.close();
+        }
+      }, 15000);
+      socket.addEventListener(
+        "open",
+        () => {
+          clearTimeout(timer);
+          if (gen !== connectGen.current) {
+            finish(null);
+            return;
+          }
+          const reopening = connectedComputerRef.current === computerIdRef.current;
+          connectedComputerRef.current = computerIdRef.current;
+          sendJson(socket, { t: "status" });
+          sessionsRefreshRef.current?.reset();
+          occupancyProbeRef.current?.reset();
+          dispatch({ type: "occupancy-link", up: true });
+          // Opening the socket is itself proof that the gateway path is back.
+          // Clear a stale reconnect notice immediately; waiting for the later
+          // status frame left a recovered dialog showing "reconnecting".
+          dispatch({ type: "link-evidence" });
+          const program = stateRef.current.program;
+          if (usesDialogSocket(program, localOceanleoRef.current)) {
+            sessionsRefreshRef.current?.request(program);
+            occupancyProbeRef.current?.request(program);
+            sendJson(socket, { t: "models", program });
+            const acpSession = stateRef.current.activeSession;
+            // The initial openSession caller sends its own request once the
+            // first socket resolves. Only reattach on subsequent connections.
+            if (gen > 1 && acpSession) {
+              sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
+              // Reopened after a drop: the saved copy is re-read so the gap stays on screen (F2).
+              // A cancelled pre-connect attempt also advances gen. Only a
+              // previously open socket is a reconnect requiring a second read.
+              if (reopening) setReattachSeq((count) => count + 1);
+            }
+          }
+          finish(socket);
+        },
+        { once: true },
+      );
+      socket.addEventListener("message", (event) => {
+        if (gen !== connectGen.current) return;
+        if (typeof event.data !== "string") return;
+        ingest(event.data);
+      });
+      socket.addEventListener("close", () => {
+        clearTimeout(timer);
+        if (socketRef.current === socket) socketRef.current = null;
+        if (gen !== connectGen.current) {
+          finish(null);
+          return;
+        }
+        sessionsRefreshRef.current?.reset();
+        occupancyProbeRef.current?.reset();
+        for (const [id, prompt] of retainedPromptsRef.current) if (prompt.state === "sending") markUnconfirmed(id);
+        dispatch({ type: "occupancy-lost" });
+        if (!stateRef.current.messages.some((message) => message.kind === "notice" && isReconnectingNotice(message.code))) {
+          dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+        }
+        finish(null);
+        if (!enabledRef.current) return;
+        scheduleReconnect();
+      });
+    });
+    }
   }, [ingest, scheduleReconnect, markUnconfirmed]);
 
   connectRef.current = connect;
