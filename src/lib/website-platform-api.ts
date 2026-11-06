@@ -218,7 +218,6 @@ export interface WebsitePlatformApi {
   domains(projectId: string, signal?: AbortSignal): Promise<{ domains: WebsiteDomain[] }>;
   addDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ domain: WebsiteDomain }>;
   verifyDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ domain: WebsiteDomain }>;
-  setPrimaryDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ domain: WebsiteDomain }>;
   removeDomain(projectId: string, domain: string, signal?: AbortSignal): Promise<{ deleted?: boolean }>;
   secrets(projectId: string, signal?: AbortSignal): Promise<{ secrets: WebsiteSecretReference[] }>;
   usageSettings(projectId: string, signal?: AbortSignal): Promise<WebsiteUsageSettings>;
@@ -444,9 +443,6 @@ export const websitePlatformApi: WebsitePlatformApi = {
 
   verifyDomain: (projectId, domain, signal) =>
     request(`/v1/website-projects/${segment(projectId)}/domains/${segment(domain)}/verify`, { method: "POST" }, signal),
-
-  setPrimaryDomain: (projectId, domain, signal) =>
-    request(`/v1/website-projects/${segment(projectId)}/settings/domains/${segment(domain)}/primary`, { method: "PUT" }, signal),
 
   removeDomain: (projectId, domain, signal) =>
     request(`/v1/website-projects/${segment(projectId)}/domains/${segment(domain)}`, { method: "DELETE" }, signal),
