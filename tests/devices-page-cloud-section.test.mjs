@@ -210,7 +210,7 @@ test("paired clients and real cloud rows use a single reference-style grid", asy
   assert.equal(pending.parentElement, connected.parentElement);
   assert.equal(connected.getAttribute("data-oceanleo-cc-display-state"), "ready");
   assert.equal(pending.getAttribute("data-oceanleo-cc-display-state"), "pending_install");
-  assert.ok(connected.querySelector('a[href="/computers/cc_1?card=acp"]'), "Tasks uses existing server ACP route");
+  assert.ok(connected.querySelector('a[href="/devices?computer=cc_1&view=tasks"]'), "Tasks opens the Devices task view (/computers page removed)");
   assert.doesNotMatch(connected.textContent, /进入桌面/, "a cloud node without desktop capability is not a native remote target");
   view.cleanup();
 });
