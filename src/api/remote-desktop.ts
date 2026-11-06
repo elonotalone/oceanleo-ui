@@ -384,6 +384,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let lane: RemoteDesktopDataLane | null = null;
   let lastPath: "data_channel" | "websocket" = "websocket";
   let lastPongAt = Date.now();
+  let pingId = 0;
   /*
    * The data channel has no per-message reply, so it is used only once the computer proved it
    * receives it: a harmless `release_all` probe (sent only while nothing is held) must show up in
@@ -561,7 +562,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const heartbeat = setInterval(() => {
     if (decoding && Date.now() - decoding.started > 10_000) { fail("frame_decode_timeout"); return; }
     if (ready && Date.now() - lastPongAt > 3_500) { fail("network_error"); return; }
-    send({ type: "ping" });
+    send({ type: "ping", id: ++pingId });
   }, 1000);
   const refresh = setInterval(() => {
     void accessToken().then((value) => { if (value) send({ type: "auth.refresh", token: value }); else fail("unauthorized"); }).catch(() => fail("unauthorized"));
@@ -583,7 +584,9 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     let data: Record<string, unknown>;
     try { data = JSON.parse(event.data); } catch { fail("response_malformed"); return; }
     if (!data || typeof data !== "object") { fail("response_malformed"); return; }
-    if (data.type === "pong") { lastPongAt = Date.now(); handlers.pong?.(); return; }
+    if (data.type === "pong" && Number.isSafeInteger(data.id) && Number(data.id) >= 1 && Number(data.id) <= pingId) {
+      lastPongAt = Date.now(); handlers.pong?.(); return;
+    }
     if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { timings.accepted(data.seq as number); scheduler.accepted(data.seq as number); return; }
     if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && data.error === "input_not_allowed") {
       // View-only computer: final, never retried; the session (and video) stays.
