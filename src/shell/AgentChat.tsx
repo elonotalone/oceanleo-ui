@@ -223,6 +223,23 @@ export { resolveTaskStatus } from "./agent-thread/rules";
 
 const IDLE_POLL_RESULT: TaskPollResult = { status: "", changed: false };
 
+type TaskRequestOption = { id: string; label: string };
+
+function taskRequestOptions(request: Record<string, unknown>): TaskRequestOption[] {
+  const raw = request.options;
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const option = item as Record<string, unknown>;
+    const id = typeof option.id === "string" ? option.id : "";
+    if (!id) return [];
+    const label = typeof option.name === "string" && option.name.trim()
+      ? option.name
+      : id;
+    return [{ id, label }];
+  });
+}
+
 /** 「粘底」判定阈值：离底不到这个距离就算用户还在追最新。 */
 const STICK_TO_BOTTOM_PX = 80;
 
@@ -3470,14 +3487,38 @@ function AgentChatInner({
               </button>
             </p>
           )}
-          {computerTask && timeline.state?.request && (
-            <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800" data-task-request={timeline.state.request.id}>
-              <span>{String(timeline.state.request.question || timeline.state.request.prompt || tt("等待你的回复"))}</span>
-              <button type="button" className="shrink-0 font-medium underline" onClick={() => void answerTimelineRequest(taskId!, timeline.state!.request!.id, {}).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))}>
-                {tt("继续")}
-              </button>
-            </div>
-          )}
+          {computerTask && timeline.state?.request && (() => {
+            const request = timeline.state.request as Record<string, unknown>;
+            const permission = request.kind === "permission";
+            const options = taskRequestOptions(request);
+            const title = String(request.title || request.question || request.prompt || tt("等待你的回复"));
+            const answer = (optionId?: string) => void answerTimelineRequest(
+              taskId!,
+              timeline.state!.request!.id,
+              optionId ? { option_id: optionId } : {},
+            ).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)));
+            return (
+              <div className="space-y-2 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800" data-task-request={timeline.state.request.id} data-task-permission-card={permission ? "true" : undefined}>
+                <div className="flex items-center justify-between gap-3">
+                  <span>{title}</span>
+                  {!permission && (
+                    <button type="button" className="shrink-0 font-medium underline" onClick={() => answer()}>
+                      {tt("继续")}
+                    </button>
+                  )}
+                </div>
+                {permission && (
+                  <div className="flex flex-wrap gap-2">
+                    {(options.length ? options : [{ id: "", label: tt("允许") }]).map((option) => (
+                      <button key={option.id || option.label} type="button" className="rounded-md bg-amber-100 px-2 py-1 font-medium underline" onClick={() => answer(option.id || undefined)}>
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <EditorCommandNotes notes={editorCommands.notes} />
