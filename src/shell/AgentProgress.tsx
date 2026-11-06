@@ -14,7 +14,7 @@
 // The left rail darkens on hover and a click on it folds the module.
 // Each entry also folds on its own; selecting text never collapses it.
 // Rendered with the host's own styling (stone palette, the AgentStepMark block); nothing here is
-// borrowed from task timeline components or server-page/tone.
+// borrowed from legacy-dialog components or server-page/tone.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AgentMessage } from "../lib/agent";
@@ -27,8 +27,8 @@ import {
   type ProcessSummary,
   type ProcessToolStatus,
 } from "../lib/agent-progress";
-import { lineDiff } from "./task-timeline/diff-lines";
-import { ToolRawFolds } from "./task-timeline/ToolRawFolds";
+import { lineDiff } from "./cloud-computer/legacy-dialog/diff-lines";
+import { ToolRawFolds } from "./cloud-computer/legacy-dialog/ToolRawFolds";
 import { AgentStepMark, agentStepState } from "./AgentStepMark";
 import { Markdown, TypewriterMarkdown } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";

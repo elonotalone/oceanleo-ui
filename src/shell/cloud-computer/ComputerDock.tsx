@@ -2,10 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { PROGRAM_LABEL } from "../../lib/native-programs";
+import { PROGRAM_LABEL } from "./legacy-dialog/types";
 import { cloudComputerApi, type CliProgram, type CloudComputerClient, type Computer, writeMountedComputerId, writeMountedComputerName } from "../../lib/cloud-computer-api";
 import type { ComputerTaskSession } from "../../lib/computer-task-api";
-import type { ConversationTarget, NativeProgram } from "../../lib/native-programs";
+import type { ConversationTarget, NativeProgram } from "../task-native/types";
 import { listDevices, type Device } from "../../api/devices";
 import { listCloudAgentAvailability, type CloudAgentAvailabilityResult } from "../../lib/cloud-agent-api";
 import { getUserId } from "../../lib/auth/client";

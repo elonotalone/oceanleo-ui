@@ -52,7 +52,7 @@ function engineLabel(program: TaskProgram): string {
 }
 export function taskProgramLabel(program: TaskProgram): string { return engineLabel(program); }
 
-function annotate(row: AgentMessage, entry: InternalEntry, rowKey: string): AgentMessage {
+function annotate(row: AgentMessage, entry: TaskTimelineEntry, rowKey: string): AgentMessage {
   const frame = record(entry.frame);
   const messageId = typeof frame?.message_id === "string" && frame.message_id ? frame.message_id : "";
   const id = row.role === "user" && messageId

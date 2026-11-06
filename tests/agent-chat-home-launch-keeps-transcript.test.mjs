@@ -1,0 +1,1383 @@
+// ============================================================================
+// 首页开聊后对话不许「突然变空白」（操作员 2026-09-07 图 f2dde413：LeoSheet 首页发完
+// 消息、回答已出现，几秒后整块对话区变成「新任务 / 在下方输入，开始与 agent 对话。」，
+// 而左栏「我的任务」里那条 hi 还在）。
+// ----------------------------------------------------------------------------
+// 挂**真的** AgentChat 首页路径：AgentChat → WorkspaceSessionProvider(home-agent,
+// resumeLatest=false) → AgentChatInner(startFreshSession)。后端换成内存假件：
+// 会话 API（list / ensure / get / archive / delete）与任务 API（createTask / getTask /
+// followUp / listTasks）都按真实合同应答，并把调用顺序记下来。
+//
+// 钉的是用户看得见的事实：
+//   1. 建任务时会话已经先建好（task 出生就绑在 session 上），而不是反过来；
+//   2. 回答落地后，无论 provider 之后怎么换 session / 重算 task_id，正文都还在；
+//   3. 任务结束（done / stopped）后正文还在，标题不退回「新任务」。
+// ============================================================================
+
+import assert from "node:assert/strict";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import test from "node:test";
+import { existsSync } from "node:fs";
+
+import React, { act } from "react";
+
+import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+
+const require = createRequire(import.meta.url);
+const fabricRequire = createRequire(require.resolve("fabric/node"));
+const canvasEntry = fabricRequire.resolve("canvas");
+const previousCanvasModule = require.cache[canvasEntry];
+require.cache[canvasEntry] = {
+  id: canvasEntry,
+  filename: canvasEntry,
+  loaded: true,
+  exports: {},
+};
+const { JSDOM } = await import(
+  pathToFileURL(fabricRequire.resolve("jsdom")).href
+);
+if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
+else delete require.cache[canvasEntry];
+
+const dom = new JSDOM("<!doctype html><html><body><main></main></body></html>", {
+  pretendToBeVisual: true,
+  url: "https://excel.oceanleo.com/",
+});
+const { window } = dom;
+const { document } = window;
+for (const [name, value] of Object.entries({
+  window,
+  document,
+  navigator: window.navigator,
+  HTMLElement: window.HTMLElement,
+  HTMLInputElement: window.HTMLInputElement,
+  HTMLButtonElement: window.HTMLButtonElement,
+  SVGElement: window.SVGElement,
+  Element: window.Element,
+  Node: window.Node,
+  Event: window.Event,
+  CustomEvent: window.CustomEvent,
+  KeyboardEvent: window.KeyboardEvent,
+  MouseEvent: window.MouseEvent,
+  PointerEvent: window.PointerEvent || window.MouseEvent,
+  localStorage: window.localStorage,
+  sessionStorage: window.sessionStorage,
+})) {
+  Object.defineProperty(globalThis, name, {
+    configurable: true,
+    writable: true,
+    value,
+  });
+}
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+window.HTMLElement.prototype.scrollTo = function scrollTo() {};
+window.HTMLElement.prototype.scrollIntoView = function scrollIntoView() {};
+
+const { createRoot } = await import("react-dom/client");
+
+const reactUrl = pathToFileURL(require.resolve("react")).href;
+const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
+
+const lazyStub = dataModule(
+  "const noop = () => undefined;\n" +
+    "export default new Proxy(noop, { get: () => noop });\n" +
+    "export const __stub = true;\n",
+);
+
+// ---------------------------------------------------------------------------
+// 内存后端（挂在 globalThis.__backend 上，替身模块从这里读写）
+// ---------------------------------------------------------------------------
+
+function makeBackend() {
+  const state = {
+    log: [],
+    sessions: new Map(),
+    tasks: new Map(),
+    nextSession: 1,
+    nextTask: 1,
+    nextMessage: 1,
+    // 每次 ensure 前的人为延迟（毫秒）；模拟真机上 3 秒才回来的 POST /sessions。
+    ensureDelayMs: 0,
+    // 前 N 次 ensure 直接失败（模拟接口抖动 / 并发被丢弃）。
+    ensureFailuresLeft: 0,
+  };
+  const now = () => new Date().toISOString();
+  const sessionRow = (s) => ({ ...s });
+  state.api = {
+    async listSessions(opts) {
+      state.log.push(`list-sessions app=${opts.appId}`);
+      const items = [...state.sessions.values()].filter(
+        (s) =>
+          s.site_id === opts.siteId &&
+          s.app_id === opts.appId &&
+          (opts.status ? s.status === opts.status : true),
+      );
+      return { ok: true, data: { items: items.map(sessionRow) } };
+    },
+    async getSession(id) {
+      state.log.push(`get-session ${id}`);
+      const s = state.sessions.get(id);
+      return s
+        ? { ok: true, data: sessionRow(s) }
+        : { ok: false, status: 404, error: "not found" };
+    },
+    async ensureSession(input) {
+      state.log.push(`ensure-session app=${input.appId}`);
+      if (state.ensureFailuresLeft > 0) {
+        state.ensureFailuresLeft -= 1;
+        state.log.push("ensure-session FAILED");
+        return { ok: false, status: 503, error: "会话服务暂时不可用" };
+      }
+      if (state.ensureDelayMs) {
+        await new Promise((r) => setTimeout(r, state.ensureDelayMs));
+      }
+      const existing = [...state.sessions.values()].find(
+        (s) =>
+          s.site_id === input.siteId &&
+          s.app_id === input.appId &&
+          s.status === "active",
+      );
+      if (existing) {
+        existing.last_activity_at = now();
+        return { ok: true, data: sessionRow(existing) };
+      }
+      const id = `s${state.nextSession++}`;
+      const row = {
+        id,
+        site_id: input.siteId,
+        app_id: input.appId,
+        surface: input.surface || "app",
+        title: input.title || "",
+        status: "active",
+        snapshot: {},
+        schema_version: 1,
+        revision: 0,
+        task_id: null,
+        created_at: now(),
+        updated_at: now(),
+        last_activity_at: now(),
+        archived_at: null,
+        first_output_at: null,
+      };
+      state.sessions.set(id, row);
+      return { ok: true, data: sessionRow(row) };
+    },
+    async archiveSession(id) {
+      state.log.push(`archive-session ${id}`);
+      const s = state.sessions.get(id);
+      if (!s) return { ok: false, status: 404, error: "not found" };
+      s.status = "archived";
+      s.archived_at = now();
+      return { ok: true, data: sessionRow(s) };
+    },
+    async deleteSession(id) {
+      state.log.push(`delete-session ${id}`);
+      state.sessions.delete(id);
+      return { ok: true };
+    },
+    async createTask(body) {
+      state.lastCreateBody = body;
+      const id = `t${state.nextTask++}`;
+      state.log.push(`create-task ${id} session=${body.sessionId || "-"}`);
+      const task = {
+        id,
+        status: "running",
+        title: body.prompt,
+        site_id: body.siteId,
+        session_id: body.sessionId || null,
+        mode: body.mode || "agent",
+        messages: [
+          { id: state.nextMessage++, role: "user", kind: "text", content: body.prompt },
+        ],
+      };
+      state.tasks.set(id, task);
+      if (body.sessionId && state.sessions.get(body.sessionId)) {
+        state.sessions.get(body.sessionId).task_id = id;
+      }
+      return { ok: true, data: { task_id: id, session_id: task.session_id } };
+    },
+    async getTask(id) {
+      const t = state.tasks.get(id);
+      if (!t) return { ok: false, status: 404, error: "no task" };
+      return {
+        ok: true,
+        data: {
+          task: {
+            id: t.id,
+            status: t.status,
+            title: t.title,
+            site_id: t.site_id,
+            session_id: t.session_id,
+          },
+          messages: t.messages.map((m) => ({ ...m })),
+          artifacts: [],
+        },
+      };
+    },
+    async followUp(id, prompt) {
+      state.log.push(`follow-up ${id}`);
+      const t = state.tasks.get(id);
+      if (!t) return { ok: false, status: 404, error: "no task" };
+      t.status = "running";
+      t.messages.push({ id: state.nextMessage++, role: "user", kind: "text", content: prompt });
+      return { ok: true, data: { task_id: id, status: "running" } };
+    },
+    async stopTask(id) {
+      state.log.push(`stop ${id}`);
+      const t = state.tasks.get(id);
+      if (t) t.status = "stopped";
+      return { ok: true };
+    },
+    async listTasks(_limit, siteId) {
+      state.log.push(`list-tasks site=${siteId}`);
+      return {
+        ok: true,
+        data: {
+          items: [...state.tasks.values()]
+            .filter((t) => !siteId || t.site_id === siteId)
+            .map((t) => ({ id: t.id, session_id: t.session_id, mode: t.mode })),
+        },
+      };
+    },
+  };
+  // 后台「agent 回完了」
+  state.answer = (id, text) => {
+    const t = state.tasks.get(id);
+    t.messages.push({
+      id: state.nextMessage++,
+      role: "assistant",
+      kind: "text",
+      content: text,
+      meta: { done: true },
+    });
+    t.status = "done";
+  };
+  return state;
+}
+
+const realAgentLibUrl = await compileModule("src/lib/agent.ts", {}, {
+  missingPackageStub: lazyStub,
+});
+const agentLibStub = dataModule(`
+  export * from ${JSON.stringify(realAgentLibUrl)};
+  const be = () => globalThis.__backend.api;
+  export function createTask(body) { return be().createTask(body); }
+  export function getTask(id) { return be().getTask(id); }
+  export function followUp(id, prompt) { return be().followUp(id, prompt); }
+  export function stopTask(id) { return be().stopTask(id); }
+  export function listTasks(limit, siteId) { return be().listTasks(limit, siteId); }
+  export async function branchTask() { return { ok: false, error: "stub" }; }
+  export function latestArtifact() { return null; }
+`);
+
+const realAppSessionUrl = await compileModule("src/lib/app-session.ts", {}, {
+  missingPackageStub: lazyStub,
+});
+const appSessionStub = dataModule(`
+  export * from ${JSON.stringify(realAppSessionUrl)};
+  const be = () => globalThis.__backend.api;
+  export function listAppSessions(opts) { return be().listSessions(opts || {}); }
+  export function getAppSession(id) { return be().getSession(id); }
+  export function ensureAppSession(input) { return be().ensureSession(input); }
+  export function archiveAppSession(id) { return be().archiveSession(id); }
+  export function deleteAppSession(id) { return be().deleteSession(id); }
+  export async function updateAppSession() { return { ok: false, status: 400, error: "stub" }; }
+  export async function updateAppSessionMetadata() { return { ok: false, status: 400, error: "stub" }; }
+`);
+
+const cloudComputerApiUrl = await compileModule("src/lib/cloud-computer-api.ts", {}, { missingPackageStub: lazyStub });
+const nativeThreadStub = dataModule(`
+  import React from ${JSON.stringify(reactUrl)};
+  globalThis.__threadInputs = []; globalThis.__threadSent = []; globalThis.__threadFiles = [];
+  export const NativeSetupRequest = React.createContext(0);
+  export function useNativeThread(input) {
+    globalThis.__threadInputs.push(input);
+    const [pending, setPending] = React.useState(null);
+    const [sent, setSent] = React.useState([]);
+    const [files, setFiles] = React.useState([]);
+    const [phase, setPhase] = React.useState("idle");
+    if (input.enabled && input.session?.id) (globalThis.__threadPhaseSetters ||= new Map()).set(input.session.id, setPhase);
+    const pendingRef = React.useRef(pending);
+    pendingRef.current = pending;
+    const live = Boolean(input.enabled && input.computer && input.computer.node_online);
+    const ready = live && Boolean(input.session);
+    React.useEffect(() => {
+      if (!pending || pending.unsent || !ready) return;
+      globalThis.__threadSent.push({ session: input.session.id, text: pending.text });
+      setSent((rows) => [...rows, pending.text]);
+      setPending(null);
+    }, [pending, ready]);
+    const bubbles = [
+      ...sent.map((text, index) => ({ id: -(100 + index), role: "user", kind: "text", content: text, meta: { native: true } })),
+      ...(pending ? [{ id: -2147483648, role: "user", kind: "text", content: pending.text, meta: { native: true, native_pending: true } }] : []),
+    ];
+    return {
+      messages: bubbles, live, draft: !input.session, running: phase !== "idle", finishing: phase === "finishing", ready, offline: false, blockedReason: null,
+      async send() { return false; }, stop() {}, answer() {},
+      composerAttachments: files.map((name) => ({ id: name, name })),
+      onAttachFiles: live ? (added) => {
+        globalThis.__threadFiles.push(...added.map((file) => file.name));
+        setFiles((current) => [...current, ...added.map((file) => file.name)]);
+      } : undefined,
+      onRemoveAttachment() {}, modelPicker: input.enabled && input.program ? "MODEL_PICKER:" + input.program : null,
+      hasOlder: false, loadOlder() {}, saveFailed: false, dialog: { activeSession: "", computerId: input.computer?.id ?? "" },
+      pending: pending ? { text: pending.text, unsent: pending.unsent } : null,
+      queue(text) {
+        if (pendingRef.current && !pendingRef.current.unsent) return false;
+        const next = { text, unsent: null };
+        pendingRef.current = next;
+        setPending(next);
+        return true;
+      },
+      markUnsent(reason) { setPending((current) => current ? { ...current, unsent: reason } : current); },
+      retry() { setPending((current) => current ? { ...current, unsent: null } : current); },
+    };
+  }
+`);
+
+const OVERRIDES = {
+  "../i18n/ui/useUI": dataModule(
+    "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
+  ),
+  "next/navigation": dataModule(
+    "export function useRouter(){ return { push(url){ (globalThis.__routerPushes ||= []).push(url); }, replace(){ globalThis.__routerReplace = (globalThis.__routerReplace||0)+1; }, refresh(){}, back(){} }; }\n" +
+      "export function useSearchParams(){ return new URLSearchParams(); }\n" +
+      "export function usePathname(){ return globalThis.__pathname || '/'; }",
+  ),
+  "../lib/agent": agentLibStub,
+  "../lib/app-session": appSessionStub,
+  "../lib/console-draft": dataModule(
+    "export async function loadConsoleDraft(){ return null; }\nexport async function saveConsoleDraft(){}\nexport async function clearConsoleDraft(){}",
+  ),
+  "./CloudBrowserPanel": dataModule("export function CloudBrowserPanel(){ return null; }"),
+  "./ResultCanvas": dataModule(
+    "export function ResultCanvas(props){ globalThis.__canvasProps = props; return null; }\nexport function CanvasEmpty(){ return null; }\nexport function CanvasSubTabs(){ return null; }",
+  ),
+  "./ArtifactRenderer": dataModule(
+    "export function ArtifactRenderer(){ return null; }\nexport function artifactToLibraryItem(){ return {}; }",
+  ),
+  "./MaterialLibrary": dataModule("export function MaterialLibrary(){ return null; }"),
+  "./HumanHandoffButton": dataModule("export function HumanHandoffButton(){ return null; }"),
+  "./HumanHandoffStatus": dataModule("export function HumanHandoffStatus(){ return null; }"),
+  "./quick-actions": dataModule("export function QuickActionChips(){ return null; }"),
+  "./LeoComposer": dataModule(`
+    import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+    export function LeoComposer(props) {
+      globalThis.__agentComposer = props;
+      return jsx("textarea", { "data-composer": true, placeholder: props.placeholder, readOnly: true, value: props.value ?? "" });
+    }
+  `),
+  "./FunctionAgentChat": dataModule(`
+    export function EditorCommandNotes(){ return null; }
+    export function useEditorCommandBridge(){
+      return { contextFor: () => "", captureContext: () => ({context:"",filePin:null}), pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
+    }
+  `),
+  "./agent-review": dataModule(`
+    export function AgentReviewPanel(){ return null; }
+    export function assembleAgentEditorContext(){ return ""; }
+    export function createReviewGatedReader(){ return null; }
+    export const hostReviewSession = {};
+    export function installAgentReviewGate(){}
+    export function installSelectionBridge(){}
+    export function readAgentSelection(){ return null; }
+    export function readMentionCatalog(){ return []; }
+    export function refreshAgentSelectionFromDom(){}
+    export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
+  `),
+  "./plugin-command": dataModule("export function currentPluginCommandSurface(){ return null; }"),
+  // Native chats (homepage launch): a thread stub with the real hook's queue/pending
+  // contract, shared with the portal's \`useNativeThread\` (same module instance).
+  "./native-thread": nativeThreadStub,
+  // No real gateway: computer reads and computer-task calls are recorded.
+  "../lib/cloud-computer-api": dataModule(`
+    export * from ${JSON.stringify(cloudComputerApiUrl)};
+    export async function getComputer(id) { (globalThis.__ccCalls ||= []).push("computer " + id); return { id, name: "elon", status: "active", node_online: true }; }
+    export async function cloudComputerRequest(path, init) {
+      (globalThis.__ccCalls ||= []).push(path);
+      const answer = globalThis.__ccRespond ? await globalThis.__ccRespond(path, init) : undefined;
+      if (answer !== undefined) return answer;
+      throw Object.assign(new Error("offline"), { status: 503 });
+    }
+  `),
+  "./PromptHighlightArea": dataModule(`
+    import { createElement, forwardRef } from "${reactUrl}";
+    export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){
+      return createElement("textarea", { placeholder: props.placeholder, readOnly: true });
+    });
+    export const TemplateFillArea = PromptHighlightArea;
+    export function templateSegments(){ return []; }
+    export function highlightSegments(){ return []; }
+    export function stripPromptPlaceholders(text){ return text; }
+  `),
+};
+
+const agentChatUrl = await compileModule("src/shell/AgentChat.tsx", OVERRIDES, { missingPackageStub: lazyStub });
+const { AgentChat } = await import(agentChatUrl);
+const { useConsoleAgentFocus } = await import(
+  await compileModule("src/shell/SplitWorkspace.tsx", OVERRIDES, { missingPackageStub: lazyStub })
+);
+
+async function settle(ms = 40) {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+}
+
+async function mountHome(props = {}) {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(
+      React.createElement(
+        globalThis.__strict ? React.StrictMode : React.Fragment,
+        null,
+        React.createElement(AgentChat, {
+          siteId: "excel",
+          initialPrompt: "hi",
+          mode: "agent",
+          onBack: () => {},
+          ...props,
+        }),
+      ),
+    );
+  });
+  return {
+    host,
+    header: () => host.querySelector("[data-oceanleo-pane-header]"),
+    text: () => host.textContent,
+    async unmount() {
+      await act(async () => root.unmount());
+      host.remove();
+    },
+  };
+}
+
+const ANSWER = "你好，我在。告诉我你想完成什么，我会直接开始。";
+
+async function launchAndAnswer(backend) {
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const view = await mountHome();
+  // 首页开聊：provider 先落地(ready) → start() → startNew → createTask → refresh
+  for (let i = 0; i < 40 && !backend.log.some((l) => l.startsWith("create-task")); i += 1) {
+    await settle(25);
+  }
+  const created = backend.log.find((l) => l.startsWith("create-task"));
+  assert.ok(created, `首页提交后必须建出任务；调用记录：${JSON.stringify(backend.log)}`);
+  const taskId = created.split(" ")[1];
+  // 后端回完
+  backend.answer(taskId, ANSWER);
+  for (let i = 0; i < 40 && !view.text().includes(ANSWER); i += 1) {
+    await settle(50);
+  }
+  assert.ok(view.text().includes(ANSWER), `回答应已出现在正文里：${view.text().slice(0, 300)}`);
+  return { view, taskId };
+}
+
+// ---------------------------------------------------------------------------
+// 1 会话先建、任务后建、task 出生就绑在会话上
+// ---------------------------------------------------------------------------
+
+test("首页开聊：会话先于任务建立，任务出生就带 session_id", async () => {
+  const backend = makeBackend();
+  const { view, taskId } = await launchAndAnswer(backend);
+  try {
+    const ensureIndex = backend.log.findIndex((l) => l.startsWith("ensure-session"));
+    const createIndex = backend.log.findIndex((l) => l.startsWith("create-task"));
+    assert.ok(ensureIndex >= 0, `没有建会话：${JSON.stringify(backend.log)}`);
+    assert.ok(
+      ensureIndex < createIndex,
+      `会话必须先于任务建立，实际顺序：${JSON.stringify(backend.log)}`,
+    );
+    assert.match(
+      backend.log[createIndex],
+      /session=s\d+/,
+      `任务出生时必须带 session_id：${backend.log[createIndex]}`,
+    );
+    assert.equal(backend.tasks.get(taskId).session_id, "s1");
+  } finally {
+    await view.unmount();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 2 回答出现之后，正文不许再变空白（等 provider 把 session / task_id 重算完）
+// ---------------------------------------------------------------------------
+
+test("回答出现后再等几秒，正文与标题都还在，不会退回「新任务」", async () => {
+  const backend = makeBackend();
+  const { view } = await launchAndAnswer(backend);
+  try {
+    // 给 provider 的 hydrateLinkedTask / applySession / touch 全部落地的时间
+    await settle(400);
+    const text = view.text();
+    assert.ok(text.includes(ANSWER), `正文被清空了：${text.slice(0, 300)}；调用记录：${JSON.stringify(backend.log)}`);
+    assert.ok(!text.includes("在下方输入，开始与 agent 对话"), "空态提示不该出现");
+    assert.ok(view.header().textContent.includes("hi"), `标题应是 task.title=hi，实际：${view.header().textContent}`);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("sidebar title updates reach a mounted chat header without remount", async () => {
+  const backend = makeBackend();
+  const { view, taskId } = await launchAndAnswer(backend);
+  try {
+    backend.tasks.get(taskId).title = "排查消息发送失败和加载bug";
+    await act(async () => {
+      window.dispatchEvent(new window.CustomEvent("oceanleo:history-title-changed", {
+        detail: { taskId, title: backend.tasks.get(taskId).title },
+      }));
+    });
+    assert.ok(view.header().textContent.includes("排查消息发送失败和加载bug"));
+  } finally {
+    await view.unmount();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 3 慢会话：POST /sessions 3 秒才回（真机日志里就是这样）——任务仍必须等它
+// ---------------------------------------------------------------------------
+
+test("会话接口很慢时，任务仍等会话建好再建，正文也不会因会话晚到而被清空", async () => {
+  const backend = makeBackend();
+  backend.ensureDelayMs = 300;
+  const { view, taskId } = await launchAndAnswer(backend);
+  try {
+    const ensureIndex = backend.log.findIndex((l) => l.startsWith("ensure-session"));
+    const createIndex = backend.log.findIndex((l) => l.startsWith("create-task"));
+    assert.ok(ensureIndex < createIndex, `顺序：${JSON.stringify(backend.log)}`);
+    assert.equal(backend.tasks.get(taskId).session_id, "s1");
+    await settle(600);
+    assert.ok(view.text().includes(ANSWER), `正文被清空了：${view.text().slice(0, 300)}`);
+  } finally {
+    await view.unmount();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 4 任务停止 / 结束后正文仍在
+// ---------------------------------------------------------------------------
+
+test("任务 stopped 后，正文与标题原样保留", async () => {
+  const backend = makeBackend();
+  const { view, taskId } = await launchAndAnswer(backend);
+  try {
+    backend.tasks.get(taskId).status = "stopped";
+    await settle(400);
+    assert.ok(view.text().includes(ANSWER), `正文被清空了：${view.text().slice(0, 300)}`);
+    assert.ok(view.header().textContent.includes("hi"));
+  } finally {
+    await view.unmount();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 5 真机复现（图 f2dde413）：建会话第一次失败 → 以前 task 无会话出生，随后 provider 一有
+//   动静（报错 / 会话补建）就把本地 task 覆盖成 null，正文全清。现在：补一次 ensure 让
+//   task 仍绑上会话；就算两次都失败，正文也必须留着。
+// ---------------------------------------------------------------------------
+
+test("建会话第一次失败：任务仍等到会话补建后再出生、带 session_id", async () => {
+  const backend = makeBackend();
+  backend.ensureFailuresLeft = 1;
+  const { view, taskId } = await launchAndAnswer(backend);
+  try {
+    assert.equal(
+      backend.tasks.get(taskId).session_id,
+      "s1",
+      `任务应绑在补建出来的会话上；调用记录：${JSON.stringify(backend.log)}`,
+    );
+    await settle(400);
+    assert.ok(view.text().includes(ANSWER), `正文被清空了：${view.text().slice(0, 300)}`);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("建会话连续失败、任务只能无会话出生：回答出现后 provider 报错/变化也不许清空正文", async () => {
+  const backend = makeBackend();
+  backend.ensureFailuresLeft = 5;
+  const { view } = await launchAndAnswer(backend);
+  try {
+    // provider 这时已经 reportFailure 过（context 值变了）；再给它几拍
+    await settle(400);
+    const text = view.text();
+    assert.ok(text.includes(ANSWER), `正文被清空了：${text.slice(0, 300)}；调用记录：${JSON.stringify(backend.log)}`);
+    assert.ok(!text.includes("在下方输入，开始与 agent 对话"), "空态提示不该出现");
+    assert.ok(view.header().textContent.includes("hi"), `标题退回了：${view.header().textContent}`);
+  } finally {
+    await view.unmount();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// 6 「新建」重挂载后，首页那条 initialPrompt 不许被再发一遍（真机 T3：自动多出一条 hi）
+// ---------------------------------------------------------------------------
+
+test("点「新建」重挂载对话后，不会把首页的 initialPrompt 自动再发一遍", async () => {
+  const backend = makeBackend();
+  const { view } = await launchAndAnswer(backend);
+  try {
+    const before = backend.log.filter((l) => l.startsWith("create-task")).length;
+    assert.equal(before, 1);
+    const restart = view.host.querySelector('button[aria-label="新建"]');
+    assert.ok(restart, "顶栏应有「新建」键");
+    await act(async () => {
+      restart.dispatchEvent(new window.MouseEvent("click", { bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    await settle(600);
+    const after = backend.log.filter((l) => l.startsWith("create-task")).length;
+    assert.equal(after, 1, `「新建」后不该自动再建任务；调用记录：${JSON.stringify(backend.log)}`);
+    assert.ok(!view.text().includes(ANSWER), "「新建」后对话应清空");
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("portal host owns task navigation and preserves project context", async () => {
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__routerReplace = 0;
+  let created = "";
+  const originalCreate = backend.api.createTask;
+  let submittedProject;
+  backend.api.createTask = async (body) => {
+    submittedProject = body.projectId;
+    return originalCreate(body);
+  };
+  const view = await mountHome({
+    projectId: "project-123",
+    navigateToSessionOnCreate: false,
+    onTaskCreated: (id) => { created = id; },
+  });
+  try {
+    for (let i = 0; i < 30 && !created; i++) await settle(20);
+    assert.ok(created);
+    assert.equal(submittedProject, "project-123");
+    assert.equal(globalThis.__routerReplace, 0, "host-owned live view must not route to a second session page");
+    assert.ok(view.text().includes("hi"));
+  } finally { await view.unmount(); }
+});
+
+test("Library editor uses real AgentChat split and survives opening and closing the agent", async () => {
+  globalThis.__backend = makeBackend();
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  let mounts = 0;
+  let unmounts = 0;
+  function Editor() {
+    const focus = useConsoleAgentFocus();
+    React.useEffect(() => { mounts++; return () => { unmounts++; }; }, []);
+    return React.createElement("div", null,
+      React.createElement("input", { "data-existing-editor": "", defaultValue: "unsaved work" }),
+      React.createElement("button", { "data-editor-ai": "", onClick: () => { assert.equal(focus?.focusAgent(), true); } }, "AI"),
+    );
+  }
+  let agentVisible = false;
+  function View() {
+    const [visible, setVisible] = React.useState(agentVisible);
+    return React.createElement(AgentChat, {
+      siteId: "excel", taskId: null,
+      workspaceContent: React.createElement(Editor), workspaceOpen: true,
+      workspaceAgentVisible: visible,
+      onWorkspaceAgentFocus: () => { agentVisible = true; setVisible(true); },
+    });
+  }
+  try {
+    await act(async () => root.render(React.createElement(View)));
+    const input = host.querySelector("[data-existing-editor]");
+    assert.ok(input);
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').getAttribute("data-workspace-pane-state"), "closed");
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').hasAttribute("inert"), true);
+    await act(async () => host.querySelector('[data-editor-ai]').click());
+    assert.equal(agentVisible, true);
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').getAttribute("data-workspace-pane-state"), "open");
+    assert.equal(host.querySelector('[data-workspace-pane="left"]').hasAttribute("inert"), false);
+    const maximize = host.querySelector('button[title="右侧全屏"]');
+    assert.ok(maximize);
+    await act(async () => maximize.click());
+    assert.equal(host.querySelector("[data-existing-editor]"), input);
+    assert.equal(mounts, 1);
+    assert.equal(unmounts, 0);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("a right-pane render loop stays contained and retry preserves the live conversation", async () => {
+  globalThis.__backend = makeBackend();
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host, { onCaughtError() {} });
+  let broken = true;
+  function Editor() {
+    const [value, setValue] = React.useState(0);
+    if (broken) setValue(value + 1);
+    return React.createElement("div", { "data-recovered-editor": "" }, "material restored");
+  }
+  const previousError = console.error;
+  const errors = [];
+  console.error = (...args) => errors.push(args);
+  try {
+    await act(async () => root.render(React.createElement(AgentChat, {
+      siteId: "excel", taskId: null, workspaceOpen: true,
+      workspaceContent: React.createElement(Editor), emptyHint: "conversation intact",
+    })));
+    assert.ok(host.querySelector("[data-workspace-pane-error]"));
+    assert.ok(host.textContent.includes("conversation intact"));
+    const composer = host.querySelector("[data-composer]");
+    assert.ok(composer);
+    assert.ok(errors.some(args => String(args[1]).includes("Too many re-renders")));
+    broken = false;
+    const retry = [...host.querySelectorAll("button")].find(button => button.textContent === "重试");
+    assert.ok(retry);
+    await act(async () => retry.click());
+    assert.ok(host.querySelector("[data-recovered-editor]"));
+    assert.equal(host.querySelector("[data-composer]"), composer);
+    assert.ok(host.textContent.includes("conversation intact"));
+  } finally {
+    console.error = previousError;
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+const HOME_CONTENT_URL = new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url);
+let homeContentModule = null;
+/** The real portal HomeContent with the real AgentChat; the computer-task lib calls are recorded. */
+async function loadHomeContent() {
+  if (homeContentModule) return homeContentModule;
+  // W7: the home hosts the real TaskWorkspaceShell (same SplitWorkspace/ResultCanvas instances as AgentChat).
+  const taskWorkspaceShellUrl = await compileModule("src/shell/TaskWorkspaceShell.tsx", OVERRIDES, { missingPackageStub: lazyStub });
+  const taskAttachmentOpenUrl = await compileModule("src/shell/task-attachment-open.ts", OVERRIDES, { missingPackageStub: lazyStub });
+  const portalShell = dataModule(`
+    import { createElement } from ${JSON.stringify(reactUrl)};
+    export { AgentChat } from ${JSON.stringify(agentChatUrl)};
+    export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
+    export { openTaskWorkspaceLibrary, taskAttachmentLibraryAction } from ${JSON.stringify(taskAttachmentOpenUrl)};
+    export { useNativeThread } from ${JSON.stringify(nativeThreadStub)};
+    // Native draft files (IndexedDB) are not under test here: attach passes straight through.
+    export function useNativeDraftFiles(input) {
+      return { attachFiles(files) { if (input.attach) input.attach(files); }, clear() {} };
+    }
+    export async function libraryAttachmentFile() { return null; }
+    export function LeoComposer(props) {
+      globalThis.__portalComposer = props;
+      return createElement("div", { "data-home-composer": "" }, props.value);
+    }
+    export function HomeAppCards(){ return null; }
+    // 2026-11-03 W4-HOME: the portal home now renders API-backed asset cards.
+    export function HomeAssetCards(){ return null; }
+    // W6: private composer uploads; results queued by the test.
+    globalThis.__homeUploads = []; globalThis.__homeUploadResults = [];
+    export async function uploadComposerFile(file, opts){
+      globalThis.__homeUploads.push({ name: file.name, opts });
+      return globalThis.__homeUploadResults.shift() || { ok: false, error: "x" };
+    }
+    export function originalForPreparedFile(){return undefined;}
+    export function dimensionsForPreparedFile(){return undefined;}
+    export async function listMyArtifacts(){ return { ok: true, data: { items: [] } }; }
+  `);
+  const portalOverrides = {
+    ...OVERRIDES,
+    "@oceanleo/ui/shell": portalShell,
+    "@oceanleo/ui/lib": dataModule(`
+      export async function uploadFile(){return {ok:false};}
+      export async function listFiles(){return {ok:true,data:{items:[]}};}
+      export const PRIVATE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+      export const PRIVATE_ATTACHMENT_TOO_LARGE = "文件超过 20MB，暂不支持";
+      const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      export function attachmentRef(a){ const x = a && (a.artifactId || a.artifact_id), y = a && (a.revisionId || a.revision_id); return UUID.test(x||"") && UUID.test(y||"") ? { artifactId: x, revisionId: y } : null; }
+      export function isRawStorageUrl(u){ return /supabase\.co/.test(String(u||"")); }
+      globalThis.__homeCreates = []; globalThis.__homeStashes = [];
+      export async function createComputerTaskSession(computerId, input){
+        globalThis.__homeCreates.push({ computerId, input });
+        if (globalThis.__homeCreateGate) await globalThis.__homeCreateGate;
+        if (globalThis.__homeCreateFails) throw new Error("没能打开这段对话，请稍后再试。");
+        const id = "cts_home" + globalThis.__homeCreates.length;
+        return { task_id: "t_home" + globalThis.__homeCreates.length, session: { id, task_id: "t_home" + globalThis.__homeCreates.length, computer_id: computerId,
+          computer_name: "elon", kind: input.kind, program: input.program ?? null, native_session_id: null, created_at: "", updated_at: "", sync_status: "saved" } };
+      }
+      export function stashPendingNativePrompt(sessionId, text){ globalThis.__homeStashes.push({ sessionId, text }); }
+      const watchers = new Map(); globalThis.__homeComputerLoads = [];
+      export function knownComputer(){ return null; }
+      export function lastKnownComputer(){ return null; }
+      export async function loadComputer(id){
+        globalThis.__homeComputerLoads.push(id);
+        const row = { id, name: "elon", status: "active", node_online: true };
+        for (const fn of watchers.get(id) || []) fn(row);
+        return row;
+      }
+      export function watchComputer(id, fn){ const set = watchers.get(id) || new Set(); set.add(fn); watchers.set(id, set); return () => set.delete(fn); }
+      export function rememberComputerTaskSession(){}
+    `),
+    "@oceanleo/ui/i18n": dataModule("const tr = (text) => text; export function useT(){return tr;} export function useUI(){return tr;}"),
+    "@/lib/oceanleo-ai": dataModule("export async function getUserId(){return globalThis.__portalOwner || 'owner-a';} export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};} export const GATEWAY_BASE = 'https://gateway.test'; const realFetch = globalThis.fetch; globalThis.fetch = async (url, init) => String(url).includes('/v1/home/assets') ? new Response(JSON.stringify({ sections: [] }), { status: 200, headers: { 'content-type': 'application/json' } }) : realFetch(url, init);"),
+    "@/lib/app-catalog": dataModule("export const OCEANLEO_APPS = [];"),
+    "./auth-modal": dataModule("export function AuthModal(){return null;}"),
+    "sonner": dataModule("globalThis.__toasts = []; export const toast = {error(text){ globalThis.__toasts.push(text); },loading(){},success(){}};"),
+  };
+  homeContentModule = await import(await compileModule("../oceanleo/app/_components/home-content.tsx", portalOverrides, { missingPackageStub: lazyStub }));
+  return homeContentModule;
+}
+
+test("portal homepage shows the real conversation before create settles and resets on New Task", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  window.history.replaceState(null, "", "/");
+  let release;
+  const delayed = new Promise(resolve => { release = resolve; });
+  const originalEnsure = backend.api.ensureSession;
+  backend.api.ensureSession = async input => { await delayed; return originalEnsure(input); };
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const requestedTarget = { kind: "device", id: "test-mac", name: "My Mac" };
+    await act(async () => { await globalThis.__portalComposer.onSubmit("马上开始分析", undefined, { executionTarget: requestedTarget }); });
+    assert.ok(host.textContent.includes("马上开始分析"), "submitted user message is visible while session creation is deferred");
+    assert.equal(host.querySelector("[data-home-composer]"), null);
+    assert.ok(!host.textContent.includes("正在打开任务"));
+    assert.equal(backend.log.some(line => line.startsWith("create-task")), false);
+    const liveComposer = host.querySelector("[data-composer]");
+    window.localStorage.setItem("oceanleo.execution-target.v1:other", JSON.stringify({ kind: "cloud" }));
+    release();
+    for (let i = 0; i < 40 && !window.location.pathname.startsWith("/tasks/"); i++) await settle(20);
+    assert.match(window.location.pathname, /^\/tasks\/t\d+$/);
+    assert.deepEqual(backend.lastCreateBody.executionTarget, requestedTarget, "session preparation preserves the submitted device snapshot");
+    const firstTaskPath = window.location.pathname;
+    globalThis.__pathname = window.location.pathname;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(host.querySelector("[data-composer]"), liveComposer, "canonical URL did not remount the conversation");
+    globalThis.__pathname = "/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.ok(host.querySelector("[data-home-composer]"), "New Task returns to the homepage composer");
+    assert.ok(!host.querySelector("[data-composer]"));
+    assert.equal(globalThis.__portalComposer.loading, false);
+    assert.equal(globalThis.__portalComposer.value, "");
+    assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 1);
+    await act(async () => globalThis.__portalComposer.onChange("native navigation draft"));
+    await act(async () => globalThis.__portalComposer.onBeforeComputerNavigate());
+    globalThis.__pathname = firstTaskPath;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    globalThis.__pathname = "/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(globalThis.__portalComposer.value,"native navigation draft","cached home restores only the explicitly preserved native-navigation draft");
+    globalThis.__portalOwner="owner-b";
+    globalThis.__pathname=firstTaskPath;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    globalThis.__pathname="/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(globalThis.__portalComposer.value,"","another owner cannot read the saved draft");
+    globalThis.__portalOwner="owner-a";
+    globalThis.__pathname = firstTaskPath;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    await settle(40);
+    assert.ok(host.querySelector("[data-composer]"), "Back to shallow task history restores an existing conversation");
+    assert.ok(host.textContent.includes("马上开始分析"));
+    assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 1);
+    globalThis.__pathname = "/";
+    await act(async () => root.render(React.createElement(HomeContent)));
+    await act(async () => { await globalThis.__portalComposer.onSubmit("第二个新任务"); });
+    for (let i = 0; i < 40 && backend.log.filter(line => line.startsWith("create-task")).length < 2; i++) await settle(20);
+    assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 2);
+    assert.ok(host.textContent.includes("第二个新任务"));
+  } finally {
+    release();
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("portal homepage W7: an uploaded tile opens the task sidebar in place and the same file stays open in the new task", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  window.history.replaceState(null, "", "/");
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  const pane = () => host.querySelector('[data-workspace-pane="main"]')?.getAttribute("data-workspace-pane-state");
+  try {
+    globalThis.__canvasProps = null;
+    await act(async () => root.render(React.createElement(HomeContent)));
+    assert.equal(host.querySelector("[data-home-workspace]")?.getAttribute("data-home-workspace"), "closed");
+    assert.equal(pane(), "closed", "collapsed by default");
+    assert.equal(globalThis.__canvasProps, null, "no canvas mounted before the first open");
+    assert.equal(typeof globalThis.__portalComposer.onOpenAttachment, "function", "C1 wired: the composer never renders its own PreviewPanel");
+    await act(async () => globalThis.__portalComposer.onOpenAttachment({ id: "up_1", name: "cat.png", mime: "image/png", url: "https://x.supabase.co/cat.png", previewUrl: "blob:https://oceanbizs.com/cat" }));
+    assert.equal(host.querySelector("[data-home-workspace]")?.getAttribute("data-home-workspace"), "open");
+    assert.equal(pane(), "open", "the task page's own right sidebar opened on the home");
+    assert.equal(globalThis.__canvasProps.openItem.item.url, "blob:https://oceanbizs.com/cat", "the local blob, never the storage URL");
+    assert.equal(globalThis.__canvasProps.openItem.mode, "preview");
+    assert.equal(globalThis.__canvasProps.taskId, null);
+    assert.ok(host.querySelector("[data-home-composer]"), "the home column stays in the left pane");
+    await act(async () => globalThis.__canvasProps.onOpenItemChange({ item: globalThis.__canvasProps.openItem.item, mode: "preview" }));
+    await act(async () => { await globalThis.__portalComposer.onSubmit("看看这张图"); });
+    assert.ok(host.querySelector("[data-composer]"), "the live task conversation replaced the home");
+    assert.equal(globalThis.__agentComposer.optimizeImages, true, "task chat opts into the reversible photo preparation UI");
+    assert.equal(pane(), "open", "the sidebar stays open in the new task");
+    assert.equal(globalThis.__canvasProps.openItem.item.key, "attachment:up_1", "with the same file");
+    assert.equal(globalThis.__canvasProps.openItem.bindTask, true, "its editor session binds to the new task");
+  } finally {
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("portal homepage native chat: in place, bubble before the session exists, prewarmed thread, no router push, URL replaced", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  globalThis.__routerPushes = [];
+  globalThis.__homeCreates.length = 0;
+  globalThis.__homeStashes.length = 0;
+  globalThis.__homeCreateFails = false;
+  globalThis.__threadInputs.length = 0;
+  globalThis.__threadSent.length = 0;
+  globalThis.__threadFiles.length = 0;
+  globalThis.__ccCalls = [];
+  window.history.replaceState(null, "", "/");
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  globalThis.__homeCreateGate = held;
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const codex = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" };
+    await act(async () => { globalThis.__portalComposer.onConversationChange(codex); await new Promise((r) => setTimeout(r, 0)); });
+    assert.deepEqual(globalThis.__homeCreates, [], "picking 对话 creates nothing");
+    assert.deepEqual(globalThis.__portalComposer.conversation, codex, "the Device label follows the pick");
+    // Prewarm: the picked program's thread is connected on the homepage (status + models start the agent).
+    const warm = globalThis.__threadInputs.at(-1);
+    assert.equal(warm.enabled, true);
+    assert.equal(warm.program, "codex");
+    assert.equal(warm.session, null);
+    assert.equal(warm.computer?.id, "cc_elon", "the computer is read on pick, not after Enter");
+    // Composer controls (C4) and attachments for the native chat.
+    const props = globalThis.__portalComposer;
+    assert.equal(props.showPayerSelector, false);
+    assert.equal(props.modelPickerSlot, "MODEL_PICKER:codex");
+    assert.equal(typeof props.onAttachFiles, "function", "paste / drop / picker stay available");
+    await act(async () => { props.onAttachFiles([new window.File(["png"], "shot.png", { type: "image/png" })]); });
+    assert.deepEqual(globalThis.__threadFiles, ["shot.png"], "files go to the computer through the warm thread, not the file library");
+    assert.deepEqual(globalThis.__portalComposer.attachments.map((item) => item.name), ["shot.png"]);
+    assert.equal(globalThis.__portalComposer.recentFiles, undefined, "library files cannot ride with a native prompt");
+
+    await act(async () => { await globalThis.__portalComposer.onSubmit("看看日志", undefined, { conversation: codex }); });
+    assert.equal(host.querySelector("[data-home-composer]"), null, "the homepage turned into the conversation");
+    assert.ok(host.querySelector('[data-agent-stream="native"]'), "native stream in front");
+    assert.equal(globalThis.__agentComposer.optimizeImages, true, "native chat opts in with original-photo recovery available");
+    assert.ok(host.textContent.includes("看看日志"), "the user's bubble shows before the session is created");
+    assert.equal(globalThis.__homeCreates.length, 1, "creation started in the background");
+    assert.deepEqual(globalThis.__routerPushes, [], "no page jump");
+    assert.equal(window.location.pathname, "/");
+    release();
+    for (let i = 0; i < 40 && !window.location.pathname.startsWith("/tasks/"); i++) await settle(20);
+    assert.equal(window.location.pathname + window.location.search, "/tasks/t_home1?computerSession=cts_home1", "replaceState names the task and its session");
+    assert.equal(globalThis.__homeCreates[0].computerId, "cc_elon");
+    assert.equal(globalThis.__homeCreates[0].input.kind, "acp");
+    assert.equal(globalThis.__homeCreates[0].input.program, "codex");
+    const phase = globalThis.__threadPhaseSetters.get("cts_home1");
+    assert.equal(typeof phase, "function");
+    let phaseRefreshes = 0, activityEvents = 0;
+    const refresh = () => { phaseRefreshes += 1; };
+    const activity = () => { activityEvents += 1; };
+    window.addEventListener("oceanleo:history-changed", refresh);
+    window.addEventListener("oceanleo:history-activity", activity);
+    try {
+      await act(async () => phase("finishing"));
+      assert.equal(phaseRefreshes, 1, "finishing refreshes authoritative row state promptly");
+      assert.equal(activityEvents, 0, "a phase does not manufacture conversation activity");
+      await act(async () => phase("finishing"));
+      assert.equal(phaseRefreshes, 1, "unchanged phase does not trigger refresh loops");
+      await act(async () => phase("working"));
+      assert.equal(phaseRefreshes, 2, "new actual work refreshes the row again");
+      assert.equal(activityEvents, 0);
+    } finally {
+      window.removeEventListener("oceanleo:history-changed", refresh);
+      window.removeEventListener("oceanleo:history-activity", activity);
+    }
+    for (let i = 0; i < 20 && !globalThis.__threadSent.length; i++) await settle(10);
+    assert.deepEqual(globalThis.__threadSent, [{ session: "cts_home1", text: "看看日志" }], "sent once, on the warm thread, once the session is bound");
+    assert.deepEqual(globalThis.__homeStashes, [], "no cross-page stash");
+    // A thread connects only when enabled with a known computer.
+    const connected = globalThis.__threadInputs.filter((input) => input.enabled && input.computer);
+    assert.ok(connected.every((input) => input.program === "codex" && input.computer?.id === "cc_elon"), "only the homepage thread connects");
+    assert.ok(globalThis.__threadInputs.some((input) => !input.enabled && input.session?.id === "cts_home1"), "the page's own thread for it stays off");
+    assert.equal(globalThis.__ccCalls.some((call) => String(call).startsWith("/v1/computer-task-sessions?")), false, "no session list read for the task just created");
+    assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "nothing goes to the cloud");
+    const nativePane = () => host.querySelector('[data-native-chat="cts_home1"]');
+    assert.equal(nativePane()?.hidden, false);
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_home1");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    assert.equal(nativePane()?.hidden, false, "a bare same-task URL does not request the cloud conversation");
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_home1?computerSession=cloud");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    assert.equal(nativePane()?.hidden, true, "an explicit cloud conversation choice still works");
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_home1?computerSession=cts_home1");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    assert.equal(nativePane()?.hidden, false, "an explicit native conversation restores that existing pane");
+    assert.equal(globalThis.__threadSent.length, 1, "row/navigation changes never resend input");
+  } finally {
+    release();
+    globalThis.__homeCreateGate = null;
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("portal homepage native chat: a failed create keeps the bubble, says 未发送 with a retry, and the retry sends once", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  globalThis.__backend = makeBackend();
+  globalThis.__pathname = "/";
+  globalThis.__routerPushes = [];
+  globalThis.__homeCreates.length = 0;
+  globalThis.__homeCreateFails = true;
+  globalThis.__threadSent.length = 0;
+  globalThis.__threadFiles.length = 0;
+  window.history.replaceState(null, "", "/");
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const claude = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "claude", view: "chat" };
+    await act(async () => { globalThis.__portalComposer.onConversationChange(claude); await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { await globalThis.__portalComposer.onSubmit("先跑测试", undefined, { conversation: claude }); });
+    await settle(20);
+    assert.ok(host.textContent.includes("先跑测试"), "the bubble stays");
+    const unsent = host.querySelector("[data-native-unsent]");
+    assert.ok(unsent, "a plain line under the bubble");
+    assert.match(unsent.textContent, /未发送：没能打开这段对话，请稍后再试。/);
+    assert.deepEqual(globalThis.__threadSent, []);
+    globalThis.__homeCreateFails = false;
+    await act(async () => { unsent.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
+    for (let i = 0; i < 40 && !globalThis.__threadSent.length; i++) await settle(20);
+    assert.equal(globalThis.__homeCreates.length, 2);
+    assert.equal(globalThis.__homeCreates[1].input.request_id, globalThis.__homeCreates[0].input.request_id, "same request id: never a second session");
+    assert.deepEqual(globalThis.__threadSent.map((row) => row.text), ["先跑测试"]);
+    assert.equal(host.querySelector("[data-native-unsent]"), null);
+    assert.deepEqual(globalThis.__routerPushes, []);
+  } finally {
+    globalThis.__homeCreateFails = false;
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("portal homepage: a failed 命令行 pick keeps the label and sends nothing to the cloud", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  const backend = makeBackend();
+  globalThis.__backend = backend;
+  globalThis.__pathname = "/";
+  globalThis.__routerPushes = [];
+  globalThis.__homeCreates.length = 0;
+  globalThis.__homeStashes.length = 0;
+  globalThis.__toasts.length = 0;
+  globalThis.__homeCreateFails = true;
+  window.history.replaceState(null, "", "/");
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const before = globalThis.__portalComposer.conversation;
+    const cli = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "cli" };
+    await act(async () => { globalThis.__portalComposer.onConversationChange(cli); await new Promise((resolve) => setTimeout(resolve, 0)); });
+    await settle(20);
+    assert.equal(globalThis.__homeCreates.length, 1, "命令行 opens on pick");
+    assert.deepEqual(globalThis.__portalComposer.conversation, before, "the label does not change after a failed pick");
+    assert.equal(globalThis.__portalComposer.loading, false, "the composer is usable again");
+    assert.ok(globalThis.__toasts.some((text) => String(text).includes("没能打开这段对话")), "the failure is said");
+    assert.deepEqual(globalThis.__routerPushes, []);
+    assert.deepEqual(globalThis.__homeStashes, []);
+    assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "the failed pick sent nothing to the cloud");
+  } finally {
+    globalThis.__homeCreateFails = false;
+    await act(async () => root.unmount()); host.remove();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// C5-T3a: a home task handed to a paired computer whose local execution is off
+// ---------------------------------------------------------------------------
+
+const { agentApiFailureFromPayload } = await import(realAgentLibUrl);
+const MAC = { kind: "device", id: "mac-1", name: "Mac" };
+
+async function untilLogged(backend, pattern) {
+  for (let i = 0; i < 60 && !backend.log.some((line) => pattern.test(line)); i += 1) await settle(25);
+  return backend.log.find((line) => pattern.test(line));
+}
+
+test("local execution off: clear words instead of the raw code, the typed task stays, the empty draft goes, a cloud resend works", async () => {
+  const backend = makeBackend();
+  const accept = backend.api.createTask;
+  backend.api.createTask = async (body) => {
+    if (body.executionTarget?.kind !== "device") return accept(body);
+    backend.log.push(`create-task REFUSED session=${body.sessionId || "-"}`);
+    return { ...agentApiFailureFromPayload(409, { detail: { code: "local_exec_disabled" } }), executionTarget: body.executionTarget };
+  };
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const prompt = "在 Mac 上把下载文件夹按类型整理";
+  const view = await mountHome({ initialPrompt: prompt, initialExecutionTarget: MAC });
+  try {
+    assert.ok(await untilLogged(backend, /^create-task REFUSED session=s1$/), JSON.stringify(backend.log));
+    assert.ok(await untilLogged(backend, /^delete-session s1$/), `refused draft must be discarded: ${JSON.stringify(backend.log)}`);
+    const error = view.host.querySelector("[data-agent-chat-error]")?.textContent || "";
+    assert.match(error, /允许云端下发本机任务/, error);
+    assert.match(error, /设备与授权/);
+    assert.match(error, /改成云端/);
+    assert.doesNotMatch(view.text(), /LOCAL_EXEC_DISABLED|local_exec_disabled/);
+    assert.equal(view.host.querySelector("[data-composer]").value, prompt, "the typed task goes back to the composer");
+    assert.equal(backend.tasks.size, 0, "nothing ran");
+    assert.equal(backend.sessions.size, 0, "no invisible draft session is left behind");
+    await settle(200);
+    assert.equal(backend.log.filter((line) => line.startsWith("create-task")).length, 1, "a refusal is never re-sent by itself");
+
+    await act(async () => { globalThis.__agentComposer.onSubmit(prompt, { org_id: "" }, { executionTarget: { kind: "cloud" } }); });
+    const created = await untilLogged(backend, /^create-task t\d+ /);
+    assert.match(created || "", /session=s2$/, `the resend is born on a fresh draft: ${JSON.stringify(backend.log)}`);
+    assert.equal(backend.lastCreateBody.prompt, prompt);
+    assert.equal(view.host.querySelector("[data-composer]").value, "");
+    assert.equal(view.host.querySelector("[data-agent-chat-error]"), null);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("a lost receipt for a computer task keeps the typed text, warns before resending, and keeps the draft", async () => {
+  const backend = makeBackend();
+  backend.api.createTask = async (body) => {
+    backend.log.push(`create-task LOST session=${body.sessionId || "-"}`);
+    return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0, executionTarget: body.executionTarget };
+  };
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const prompt = "在 Mac 上生成周报";
+  const view = await mountHome({ initialPrompt: prompt, initialExecutionTarget: MAC });
+  try {
+    assert.ok(await untilLogged(backend, /^create-task LOST/));
+    for (let i = 0; i < 40 && !view.host.querySelector("[data-agent-chat-error]"); i += 1) await settle(25);
+    assert.match(view.host.querySelector("[data-agent-chat-error]")?.textContent || "", /我的任务.*确认它没有开始/);
+    assert.equal(view.host.querySelector("[data-composer]").value, prompt);
+    await settle(150);
+    assert.ok(!backend.log.some((line) => line.startsWith("delete-session")), "an ambiguous outcome never deletes the draft (cascade)");
+    assert.equal(backend.sessions.size, 1);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("an unconfirmed handoff shows that same task, never a second dispatch, and the typed text is kept", async () => {
+  const backend = makeBackend();
+  const accept = backend.api.createTask;
+  backend.api.createTask = async (body) => {
+    const created = await accept(body);
+    return {
+      ...agentApiFailureFromPayload(503, { detail: { code: "local_agent_dispatch_unconfirmed", task_id: created.data.task_id, message: "本地任务转交结果尚未确认" } }),
+      executionTarget: body.executionTarget,
+    };
+  };
+  globalThis.__backend = backend;
+  globalThis.__strict = true;
+  const prompt = "在 Mac 上压缩照片";
+  const view = await mountHome({ initialPrompt: prompt, initialExecutionTarget: MAC });
+  try {
+    assert.ok(await untilLogged(backend, /^create-task t1 session=s1$/));
+    for (let i = 0; i < 40 && !view.host.querySelector("[data-agent-chat-error]"); i += 1) await settle(25);
+    assert.match(view.host.querySelector("[data-agent-chat-error]")?.textContent || "", /没有收到电脑的回执.*不要再次发送/);
+    assert.doesNotMatch(view.text(), /LOCAL_AGENT_DISPATCH_UNCONFIRMED/);
+    for (let i = 0; i < 40 && !view.text().includes(prompt); i += 1) await settle(25);
+    assert.ok(view.text().includes(prompt), "the reconciled task's own message is shown");
+    assert.equal(view.host.querySelector("[data-composer]").value, prompt);
+    assert.equal(backend.log.filter((line) => line.startsWith("create-task")).length, 1);
+    assert.ok(!backend.log.some((line) => line.startsWith("delete-session")));
+    assert.equal(backend.sessions.get("s1")?.task_id, "t1");
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("portal homepage W6: a failed private upload stays as a failed tile, retry re-uploads, send carries only the reference", {
+  skip: !existsSync(HOME_CONTENT_URL),
+}, async () => {
+  const { HomeContent } = await loadHomeContent();
+  globalThis.__backend = makeBackend();
+  globalThis.__pathname = "/";
+  window.history.replaceState(null, "", "/");
+  const ART = "11111111-2222-4333-8444-555555555555";
+  const REV = "66666666-7777-4888-9999-aaaaaaaaaaaa";
+  const previousCreate = URL.createObjectURL;
+  URL.createObjectURL = () => "blob:https://oceanbizs.com/local-1";
+  const host = document.createElement("div"); document.body.appendChild(host);
+  const root = createRoot(host);
+  try {
+    globalThis.__homeUploads.length = 0;
+    globalThis.__homeUploadResults.push(
+      { ok: false, error: "网络错误" },
+      { ok: true, upload: { artifactId: ART, revisionId: REV, name: "bill.pdf", mime: "application/pdf", mediaType: "doc",
+        libraryItem: { key: "lib-1" }, attachment: { url: "", artifact_id: ART, revision_id: REV, name: "bill.pdf" } } },
+    );
+    await act(async () => root.render(React.createElement(HomeContent)));
+    const file = new File(["%PDF"], "bill.pdf", { type: "application/pdf" });
+    await act(async () => { await globalThis.__portalComposer.onAttachFiles([file]); });
+    let tile = globalThis.__portalComposer.attachments[0];
+    assert.equal(globalThis.__portalComposer.attachments.length, 1, "a failed upload is not dropped");
+    assert.equal(tile.failed, true);
+    assert.equal(tile.uploading, false);
+    assert.equal(globalThis.__homeUploads[0].opts.siteId, "oceanleo");
+    assert.equal(typeof globalThis.__portalComposer.onRetryAttachment, "function");
+
+    await act(async () => { await globalThis.__portalComposer.onSubmit("分析账单"); });
+    assert.ok(host.querySelector("[data-home-composer]"), "a failed tile blocks sending");
+
+    await act(async () => { globalThis.__portalComposer.onRetryAttachment(tile.id); await Promise.resolve(); await Promise.resolve(); });
+    tile = globalThis.__portalComposer.attachments[0];
+    assert.equal(globalThis.__homeUploads.length, 2, "retry re-runs the private upload");
+    assert.equal(tile.failed, false);
+    assert.equal(tile.artifactId, ART);
+    assert.equal(tile.libraryItem.key, "lib-1");
+    assert.equal(tile.url, "blob:https://oceanbizs.com/local-1", "UI state holds the local blob, never a storage URL");
+
+    const stored = [];
+    // Storage instances intercept property writes as items: patch the prototype.
+    const proto = Object.getPrototypeOf(globalThis.sessionStorage);
+    const originalSet = proto.setItem;
+    proto.setItem = function (key, value) { if (key === "oceanleo_pending_task") stored.push(value); return originalSet.call(this, key, value); };
+    try {
+      await act(async () => { await globalThis.__portalComposer.onSubmit("分析账单"); });
+    } finally {
+      proto.setItem = originalSet;
+    }
+    assert.equal(stored.length, 1);
+    const pending = JSON.parse(stored[0]);
+    assert.deepEqual(pending.attachments, [
+      { url: "", artifact_id: ART, revision_id: REV, name: "bill.pdf", mime: "application/pdf", media_type: "doc" },
+    ]);
+  } finally {
+    URL.createObjectURL = previousCreate;
+    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
+    window.history.replaceState(null, "", "/");
+  }
+});
+
+test("resolved upload errors clear only their own current message and preserve task failures", async () => {
+  const uploadStub = dataModule(`
+    export function useAttachments(siteId, onError, onErrorResolved) {
+      globalThis.__uploadErrorHooks = { fail: onError, resolve: onErrorResolved };
+      return { attachments: [], composerAttachments: [], ready: () => [], uploading: false,
+        handleAttachFiles() {}, addReady() {}, addComposerAttachments() {}, restoreReady() {},
+        removeAttachment() {}, retryAttachment() {}, clear() {} };
+    }
+  `);
+  const { AgentChat: WithUploadEvents } = await import(await compileModule("src/shell/AgentChat.tsx", {
+    ...OVERRIDES, "./useAttachments": uploadStub,
+  }, { missingPackageStub: lazyStub }));
+  const backend = makeBackend();globalThis.__backend = backend;
+  backend.api.createTask = async () => {
+    backend.log.push("create-task upload-error-test");
+    return { ok: false, status: 500, error: "W2 independent task error" };
+  };
+  const host = document.createElement("div");document.body.appendChild(host);const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(WithUploadEvents, { siteId: "excel", mode: "agent" })));
+    await act(async () => globalThis.__uploadErrorHooks.fail("W2 upload old"));
+    assert.ok(host.textContent.includes("W2 upload old"));
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.("W2 upload old"));
+    assert.equal(host.textContent.includes("W2 upload old"), false, "retry success/removal resolution clears the upload's global error");
+
+    await act(async () => globalThis.__uploadErrorHooks.fail("W2 upload old"));
+    await act(async () => globalThis.__uploadErrorHooks.fail("W2 upload newer"));
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.("W2 upload old"));
+    assert.ok(host.textContent.includes("W2 upload newer"), "a late resolution cannot clear a newer upload error");
+    await act(async () => globalThis.__agentComposer.onChange("try task"));
+    await act(async () => globalThis.__agentComposer.onSubmit("try task", undefined, { executionTarget: { kind: "cloud" } }));
+    assert.ok(await untilLogged(backend, /^create-task upload-error-test$/), "the independent task failure was actually requested");
+    const taskError = host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent;
+    assert.ok(taskError, "the task failure is shown using its human-readable refusal text");
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.("W2 upload newer"));
+    assert.equal(host.textContent.includes("W2 upload newer"), false);
+    assert.equal(host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent, taskError, "upload resolution never clears task/send failure");
+
+    await act(async () => globalThis.__uploadErrorHooks.fail(taskError));
+    await act(async () => globalThis.__uploadErrorHooks.resolve?.(taskError));
+    assert.equal(host.querySelector("[data-agent-chat-upload-error]"), null);
+    assert.equal(host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent, taskError, "even equal text has independent error ownership");
+  } finally { await act(async () => root.unmount());host.remove();delete globalThis.__uploadErrorHooks; }
+});
+
+test("computer task timeline does not reread hidden native transcripts on session-list changes", async () => {
+  // D5/I1: a computer task renders the server-owned task timeline. Its native
+  // session rows remain auxiliary metadata, so the hidden native panes must not
+  // fetch per-session transcripts on every list identity change.
+  const backend = makeBackend();
+  backend.api.getTask = async (id) => ({ ok: true, data: { task: { id, status: "completed", title: "saved native", site_id: "excel", mode: "computer", session_id: null }, messages: [], artifacts: [] } });
+  globalThis.__backend = backend;
+  globalThis.__strict = false;
+  globalThis.__ccCalls = [];
+  globalThis.__threadInputs = [];
+  let savedAt = "2026-11-03T10:00:00.000Z";
+  const row = () => ({ id: "cts_arch", task_id: "t_arch", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "claude",
+    native_session_id: "nat-1", created_at: "2026-11-03T09:00:00.000Z", updated_at: savedAt, saved_at: savedAt, sync_status: "saved" });
+  globalThis.__ccRespond = (path) => {
+    if (path.startsWith("/v1/computer-task-sessions?")) return { sessions: [row()] };
+    if (path.startsWith("/v1/computer-task-sessions/cts_arch/transcript")) return { session: row(), frames: [], saved_at: savedAt, sync_status: "saved" };
+    return undefined;
+  };
+  const transcriptReads = () => globalThis.__ccCalls.filter((call) => String(call).startsWith("/v1/computer-task-sessions/cts_arch/transcript")).length;
+  const listReads = () => globalThis.__ccCalls.filter((call) => String(call).startsWith("/v1/computer-task-sessions?")).length;
+  window.history.replaceState(null, "", "/tasks/t_arch");
+  const view = await mountHome({ taskId: "t_arch", initialPrompt: undefined });
+  try {
+    await settle(80);
+    assert.equal(transcriptReads(), 0, "the task timeline owns the saved copy");
+    // The list is read again (an unknown conversation link) and nothing new was saved.
+    const listsBefore = listReads();
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_arch?computerSession=cts_unknown");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    for (let i = 0; i < 40 && listReads() === listsBefore; i++) await settle(20);
+    await settle(80);
+    assert.ok(listReads() > listsBefore, "the list was really read again");
+    assert.equal(transcriptReads(), 0, "an identical list re-read does not open a hidden native pane");
+    // Something new was saved: the task timeline still owns the copy.
+    savedAt = "2026-11-03T10:05:00.000Z";
+    const listsAgain = listReads();
+    await act(async () => {
+      window.history.replaceState(null, "", "/tasks/t_arch?computerSession=cts_unknown2");
+      window.dispatchEvent(new window.Event("popstate"));
+    });
+    for (let i = 0; i < 40 && listReads() === listsAgain; i++) await settle(20);
+    await settle(80);
+    assert.equal(transcriptReads(), 0, "a newer saved copy remains server-timeline data");
+  } finally {
+    globalThis.__ccRespond = undefined;
+    await view.unmount();
+    window.history.replaceState(null, "", "/");
+  }
+});

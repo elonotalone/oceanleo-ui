@@ -1,3 +1,4 @@
+export { ServerPage, type ServerPageProps } from "./ServerPage";
 export {
   devicesCloudHref,
   portalHref,

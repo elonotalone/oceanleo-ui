@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { useUI } from "../../i18n/ui/useUI";
-import { writeClipboardText } from "../share/share-clipboard";
-import { toolPayloadText } from "../../native-agent-core/index";
-import { toolRawValue, type ToolCard } from "../../native-agent-core/index";
+import { useUI } from "../../../i18n/ui/useUI";
+import { writeClipboardText } from "../../share/share-clipboard";
+import { toolPayloadText } from "./parse";
+import { toolRawValue, type ToolCard } from "./types";
 
 /** Gateway-filtered tool values, shared by the dialog and task timeline. */
 export function ToolPayloadView({ value, label }: { value: unknown; label: string }) {
@@ -29,7 +29,7 @@ export function ToolPayloadView({ value, label }: { value: unknown; label: strin
             aria-label={copied === text ? tt("工具内容已复制") : tt("复制工具内容")}
             className="text-[11px] text-stone-500 dark:text-stone-400"
             onClick={() => {
-              void writeClipboardText(text).then((ok: boolean) => setCopied(ok ? text : null));
+              void writeClipboardText(text).then((ok) => setCopied(ok ? text : null));
             }}
           >
             {copied === text ? tt("已复制") : tt("复制")}

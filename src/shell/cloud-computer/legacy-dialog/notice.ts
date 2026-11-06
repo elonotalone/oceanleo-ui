@@ -1,0 +1,205 @@
+import type { DialogConfigOption, DialogModel } from "../../../native-agent-core/index";
+// 错误帧按 code 换成用户能照着做的一句话。原文不进日志，这里也不拼用户说过的字。
+
+export type Translate = (zh: string, vars?: Record<string, string | number>) => string;
+
+export function isReconnectingNotice(code: string): boolean {
+  return code === "computer_offline" || code === "computer_reconnecting" || code === "dialog_unreachable";
+}
+
+const SESSION_NOT_OPENED = "程序没能开新会话。";
+/** A gateway fault, nothing was kept (not a prompt, or nothing to restore). */
+export const GATEWAY_ERROR_COPY = "服务器出错了，请稍后重试。";
+/** A prompt the gateway refused: its text and attachments are back in the composer. */
+export const UNSENT_RESTORED_COPY = "没发出去：服务器出错了。文字和附件已保留，可直接重试。";
+const SESSION_UNAVAILABLE = "这个程序现在开不了会话。";
+const OPAQUE_DIALOG_DID_NOT_START = new Set([
+  "对话没有启动。",
+  "The dialog did not start.",
+  "对话组件没有启动。请再发一次。",
+  "The dialog piece did not start. Send again.",
+]);
+
+export function isOpaqueDialogDidNotStart(text: string): boolean {
+  return OPAQUE_DIALOG_DID_NOT_START.has(text.trim());
+}
+
+export function visibleNoticeCopy(
+  tt: Translate,
+  code: string,
+  installed: boolean | null = null,
+  spoken = "",
+): string {
+  const trimmed = spoken.trim();
+  const translated = trimmed ? tt(trimmed) : "";
+  if (translated && !isOpaqueDialogDidNotStart(translated) && !isOpaqueDialogDidNotStart(trimmed)) {
+    return translated;
+  }
+  const fallback = noticeCopy(tt, code, installed);
+  if (isOpaqueDialogDidNotStart(fallback)) return tt(SESSION_NOT_OPENED);
+  return fallback;
+}
+
+export function noticeCopy(tt: Translate, code: string, installed: boolean | null = null, provider = "nous"): string {
+  switch (code) {
+    case "provider_needs_credits":
+      return tt("这个模型需要 {provider} 账户余额。请换一个可用模型，或前往该供应商充值。", { provider: providerLabel(provider) });
+    case "not_logged_in":
+      return tt("还没登录。点登录，在浏览器里完成后这里会变绿。");
+    case "program_missing":
+    case "missing_program":
+      return tt("这台电脑上没有这个程序。");
+    case "agent_busy":
+      return tt("上一轮还在跑，等它结束或先停止。");
+    case "computer_offline":
+    case "computer_reconnecting":
+    case "dialog_unreachable":
+      return tt("正在重新连接这台电脑。");
+    case "dialog_detached":
+      return tt("对话连接断了，进程还在。再发一句会接上。");
+    case "permission_lost":
+      return tt("这一步要你确认的权限请求在网关重启时失效了，已自动取消。需要的话再发一句让它重试。");
+    case "turn_interrupted":
+      return tt("网关重启时这一轮被中断了。再发一句，它会接着做。");
+    case "computer_not_confirmed":
+      return tt("这台电脑还没确认。");
+    case "not_owner":
+      return tt("这不是你的电脑。");
+    case "computer_not_found":
+      return tt("找不到这台电脑。");
+    case "session_not_found":
+      return tt("找不到这个 Shell 会话。");
+    case "invalid_argument":
+      return tt("这句话发不出去。");
+    case "node_error":
+      return tt("这台电脑上的程序出错了。");
+    case "gateway_error":
+      // The gateway itself failed (not the user's computer or its program).
+      return tt(GATEWAY_ERROR_COPY);
+    case "session_load_timeout":
+      return tt("这段对话打开得太久了，已重试过一次。请再点一下它，或稍后再试。");
+    case "feature_disabled":
+      return tt("这个功能在当前站点不可用。");
+    case "acp_start_failed":
+      return tt(SESSION_NOT_OPENED);
+    case "acp_exited":
+      return tt("这个程序的对话进程退出了，重新发一句会再启动。");
+    case "acp_unavailable":
+      return tt("这个程序的对话组件还没就绪。安装会一并补齐。");
+    case "runtime_missing":
+      return tt("运行这个程序还缺运行时。安装会一并补齐。");
+    case "invalid_dir":
+      return tt("这个目录不能用。换一个绝对路径后再试。");
+    case "install_failed":
+      return tt("安装没有完成。看说明后重试。");
+    case "login_failed":
+      return tt("登录没有完成。再点一次登录。");
+    case "permission_timeout":
+      return tt("没有人批准，已按取消处理。");
+    default:
+      return tt("对话连不上这台电脑。");
+  }
+}
+
+export function noticeAction(
+  code: string,
+  installed: boolean | null = null,
+): "login" | "install" | "retry" | null {
+  if (code === "acp_start_failed") return null;
+  if (code === "acp_exited") return null;
+  if (code === "acp_unavailable") return "install";
+  if (code === "not_logged_in") return "login";
+  if (code === "program_missing" || code === "missing_program" || code === "runtime_missing") {
+    return "install";
+  }
+  return null;
+}
+
+// Key 卡的错误文案也走这里：认识的后端码用同一句 notice 文案；
+// invalid_argument 带后端自己的说明（固定句，不是用户输入）；其余按存/取给一句实话。
+export function keyErrorCopy(
+  tt: Translate,
+  code: string,
+  op: "save" | "remove",
+  serverMessage = "",
+): string {
+  if (code === "invalid_argument" && serverMessage) return serverMessage;
+  if (
+    code === "computer_offline" ||
+    code === "computer_reconnecting" ||
+    code === "not_owner" ||
+    code === "computer_not_found" ||
+    code === "feature_disabled"
+  ) {
+    return noticeCopy(tt, code);
+  }
+  if (op === "save") return tt("Key 没存上。稍后再试。");
+  return tt("移除没成功。稍后再试。");
+}
+
+export function providerLabel(id: string): string {
+  const labels: Record<string, string> = { nous: "Nous Portal", deepseek: "DeepSeek", openrouter: "OpenRouter", anthropic: "Anthropic", openai: "OpenAI", xai: "xAI", cursor: "Cursor" };
+  return labels[id] || id;
+}
+
+export function modelGroups(models: DialogModel[]): { label: string; models: DialogModel[] }[] {
+  const groups = new Map<string, DialogModel[]>();
+  for (const model of models) {
+    if (model.usable === false) continue;
+    const label = model.provider_label || providerLabel(model.provider || "");
+    groups.set(label, [...(groups.get(label) || []), model]);
+  }
+  return Array.from(groups, ([label, models]) => ({ label, models }));
+}
+
+export function hiddenModelCopy(tt: Translate, models: DialogModel[]): string[] {
+  return [...new Set(models.filter((m) => m.usable === false).map((model) => {
+    const provider = model.provider_label || providerLabel(model.provider || "") || tt("供应商");
+    if (model.reason === "needs_credits") return tt("{provider} 的付费模型需要账户余额，已隐藏。", { provider });
+    if (model.reason === "no_credentials") return tt("{provider} 尚未认证，相关模型已隐藏。", { provider });
+    return tt("当前不可用的模型已隐藏。");
+  }))];
+}
+
+export function modelDisplayName(model: DialogModel): string {
+  const raw = model.name || model.id;
+  const match = raw.match(/^([^[]+)((?:\[[^\]]+\])+)$/);
+  if (!match) return raw;
+  const params = [...match[2].matchAll(/\[([^=\]]+)=([^\]]+)\]/g)].map(([, key, value]) => {
+    if (key === "fast") return value === "true" ? "fast" : value === "false" ? "standard" : value;
+    if (key === "effort" || key === "thought_level" || key === "thinking") return value;
+    return `${key}=${value}`;
+  }).filter(Boolean);
+  return params.length ? `${match[1].trim()} · ${params.join(" · ")}` : raw;
+}
+
+export function isModelFamilyConfig(option: DialogConfigOption, modeId?: string): boolean {
+  return option.id === "model" || option.category === "model" || option.id === modeId || option.category === "mode";
+}
+
+export function modelParamOptions(
+  options: DialogConfigOption[],
+  modeId?: string,
+): DialogConfigOption[] {
+  return options.filter((option) => {
+    if (!option.id || isModelFamilyConfig(option, modeId)) return false;
+    if (option.options.length < 2) return false;
+    const category = option.category.toLowerCase();
+    if (category === "model_config" || category === "thought_level") return true;
+    const hay = `${option.id} ${option.category} ${option.name}`.toLowerCase();
+    return /fast|effort|think|thought|reason|speed|variant|max.?mode/.test(hay);
+  });
+}
+
+export function boolParamLabel(
+  option: DialogConfigOption,
+  value: boolean,
+  tt: Translate,
+): string {
+  const wire = value ? "true" : "false";
+  const named = option.options.find((choice) => choice.value === wire)?.name;
+  if (named && named !== "true" && named !== "false") return named;
+  const hay = `${option.id} ${option.category}`.toLowerCase();
+  if (hay.includes("fast")) return value ? tt("fast") : tt("standard");
+  return value ? tt("开") : tt("关");
+}

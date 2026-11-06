@@ -21,10 +21,19 @@ test("retired computer display identifiers are absent from source", async () => 
   const matches = [];
   for (const path of files) {
     const text = await readFile(path, "utf8");
-    const forbidden = ["agentDialogWsUrl", ["agent", "dialog"].join("-")];
-    if (forbidden.some((needle) => text.includes(needle))) matches.push(path);
+    if (/agentDialogWsUrl|agent-dialog/.test(text)) matches.push(path);
   }
   assert.deepEqual(matches, []);
+});
+
+test("server page compatibility adapter forwards to device detail", async () => {
+  const source = await readFile(
+    resolve("src/shell/cloud-computer/server-page/ServerPage.tsx"),
+    "utf8",
+  );
+  assert.match(source, /router\.replace\(target\)/);
+  assert.match(source, /serverPageHref\(computerId\)/);
+  assert.doesNotMatch(source, /AcpCard|CliCard|TerminalCard|useCloudComputers/);
 });
 
 test("device route href helper uses computer and view query parameters", async () => {

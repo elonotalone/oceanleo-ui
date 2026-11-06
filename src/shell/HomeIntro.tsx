@@ -110,6 +110,7 @@ export interface HomeIntroProps {
   /** Native model/account controls supplied by a host when the home target is a computer. */
   modelPickerSlot?: ReactNode;
   /** Native program controls supplied by a host for a computer recipient. */
+  nativeModelPickerSlot?: ReactNode;
 }
 
 export function HomeIntro({
@@ -133,6 +134,7 @@ export function HomeIntro({
   featuredLimit = HOME_APP_FEATURED_LIMIT,
   contextActions,
   modelPickerSlot,
+  nativeModelPickerSlot,
 }: HomeIntroProps) {
   void _markupPct;
   void _intro;
@@ -227,6 +229,7 @@ export function HomeIntro({
           onVoiceTranscript={toolsOn ? appendVoice : undefined}
           contextActions={contextActions}
           modelPickerSlot={modelPickerSlot}
+          nativeModelPickerSlot={nativeModelPickerSlot}
           voiceLang={voiceLang}
         />
       </div>

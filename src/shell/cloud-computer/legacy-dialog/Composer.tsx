@@ -1,0 +1,609 @@
+"use client";
+
+import { useEffect, useRef, useState, type DragEvent, type ClipboardEvent } from "react";
+import { useUI } from "../../../i18n/ui/useUI";
+import { getTask } from "../../../lib/agent";
+import { shellSessionFromTask } from "../../history-model";
+import { LeoEntryButton, type LeoContext } from "../../LeoEntryButton";
+import { hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy } from "./notice";
+import {
+  coerceOptionValue,
+  mergeLiveParams,
+  optionChoiceName,
+  optionCurrentWire,
+  readModelParamMemory,
+  rememberModelParam,
+  restoresForModel,
+  writeModelParamMemory,
+} from "./model-param-memory";
+import { modelControls } from "./model-controls";
+import { composerOccupancy, OCCUPANCY_STALE_MS } from "./occupancy";
+import { tone } from "../server-page/tone";
+import type { AgentDialogController } from "./types";
+
+// ============================================================================
+// Shell 对话框输入框（合同 I7）：对**所有**程序渲染——OceanLeo agent 与
+// Cursor/Hermes/Claude Code/Codex 共用同一个消息列表、同一个输入框（含左下角
+// 同一颗 ✦ leo 按钮）。模型选择器在有目录时出现；Fast/effort 有目录就一直留着。
+// Enter 守 isComposing：中文输入法候选态按 Enter 是选字，不是发送（事实 D3）。
+// ============================================================================
+
+/** 合同 I5 的 Shell 页 leo 上下文（解析结果，缓存一次）。 */
+type ShellLeoInfo = {
+  taskId?: string;
+  computerId?: string;
+  shellSessionId?: string;
+  computerName?: string;
+};
+
+// 每个 Shell 任务只解析一次（模块级缓存）。做法与 ProgramRow.computerIdForThisShell
+// 相同：最近的 [data-oceanleo-cc-shell-task] 取任务 id，再 getTask 取电脑/会话。
+const shellLeoInfoCache = new Map<string, Promise<ShellLeoInfo>>();
+
+function resolveShellLeoInfo(): Promise<ShellLeoInfo> {
+  if (typeof document === "undefined") return Promise.resolve({});
+  const taskId =
+    document
+      .querySelector("[data-oceanleo-cc-shell-task]")
+      ?.getAttribute("data-oceanleo-cc-shell-task")
+      ?.trim() || "";
+  if (!taskId) return Promise.resolve({});
+  const cached = shellLeoInfoCache.get(taskId);
+  if (cached) return cached;
+  const pending = getTask(taskId)
+    .then((result): ShellLeoInfo => {
+      if (!result.ok || !result.data?.task) return { taskId };
+      const task = result.data.task;
+      const shell = shellSessionFromTask(task);
+      const computerId = (shell?.computerId || task.computer_id || "").trim();
+      return {
+        taskId,
+        computerId: computerId || undefined,
+        shellSessionId: shell?.sessionId || undefined,
+        computerName: shell?.computerName,
+      };
+    })
+    .catch((): ShellLeoInfo => ({ taskId }));
+  shellLeoInfoCache.set(taskId, pending);
+  return pending;
+}
+
+function commandText(name: string): string {
+  return name.startsWith("/") ? name : `/${name}`;
+}
+
+function ComposerTuningChip({
+  configId,
+  mode = false,
+  category,
+  current,
+  currentName,
+  options,
+  open,
+  onToggle,
+  onPick,
+}: {
+  configId?: string;
+  mode?: boolean;
+  category: string;
+  current: string;
+  currentName: string;
+  options: { value: string; name: string }[];
+  open: boolean;
+  onToggle: () => void;
+  onPick: (wire: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        data-oceanleo-cc-tuning-chip={mode ? "mode" : configId}
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        onClick={onToggle}
+        className={`rounded-lg px-2 py-1 text-[12px] ${open ? tone.chipActive : `${tone.muted} ${tone.hover}`}`}
+      >
+        {open ? category : currentName || current}
+      </button>
+      {open ? (
+        <div
+          className={`absolute bottom-full left-0 z-20 mb-1 min-w-28 overflow-hidden rounded-lg border py-1 shadow-xl ${tone.border} ${tone.panel}`}
+          data-oceanleo-cc-tuning-menu=""
+          role="listbox"
+        >
+          {options.map((choice) => (
+            <button
+              type="button"
+              key={choice.value}
+              role="option"
+              aria-selected={choice.value === current}
+              data-oceanleo-cc-tuning-choice={choice.value}
+              className={`block w-full px-3 py-1 text-left text-[12px] ${
+                choice.value === current ? tone.chipActive : tone.hover
+              }`}
+              onClick={() => onPick(choice.value)}
+            >
+              {choice.name}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <select
+        aria-hidden="true"
+        tabIndex={-1}
+        className="sr-only"
+        data-oceanleo-cc-mode={mode ? "" : undefined}
+        data-oceanleo-cc-config={mode ? undefined : configId}
+        value={current}
+        onChange={(event) => onPick(event.currentTarget.value)}
+      >
+        {options.map((choice) => (
+          <option key={choice.value} value={choice.value}>
+            {choice.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+export function Composer({
+  dialog,
+  context,
+  showFresh = true,
+}: {
+  dialog: AgentDialogController;
+  context?: LeoContext;
+  showFresh?: boolean;
+}) {
+  const tt = useUI();
+  const [shellInfo, setShellInfo] = useState<ShellLeoInfo>({});
+  useEffect(() => {
+    let alive = true;
+    void resolveShellLeoInfo().then((info) => {
+      if (alive) setShellInfo(info);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  const restoreKey = useRef("");
+  const catalogFor = useRef<{ model: string; options: typeof dialog.configOptions }>({ model: "", options: [] });
+  const tuningRef = useRef<HTMLDivElement>(null);
+  const [openTuning, setOpenTuning] = useState<string | null>(null);
+  useEffect(() => {
+    const program = dialog.program;
+    const model = dialog.selectedModel;
+    if (!program || !model || dialog.activeSession) return;
+    const params = (dialog.configOptions || []).filter((option) =>
+      option.id !== "model" && option.category !== "model");
+    if (!params.length) return;
+    // Fast/effort stay on screen across model switches. Do not write the
+    // previous model's catalog into the new model's memory before its own
+    // config frame arrives.
+    if (catalogFor.current.options === dialog.configOptions && catalogFor.current.model !== model) return;
+    catalogFor.current = { model, options: dialog.configOptions };
+    const computerId = dialog.computerId || shellInfo.computerId || "";
+    const memory = readModelParamMemory(computerId, program);
+    const merged = mergeLiveParams(memory[model], params);
+    const live = params.map((option) => `${option.id}:${optionCurrentWire(option)}`).join("|");
+    const key = `${computerId}:${program}:${model}:${live}:${JSON.stringify(merged)}`;
+    if (restoreKey.current === key) return;
+    restoreKey.current = key;
+    if (JSON.stringify(memory[model] || {}) !== JSON.stringify(merged)) {
+      memory[model] = merged;
+      writeModelParamMemory(computerId, program, memory);
+    }
+    for (const { option, wire } of restoresForModel(params, merged)) {
+      if (option.id === dialog.mode?.id) dialog.setMode(wire);
+      else dialog.setConfig(option.id, coerceOptionValue(option, wire));
+    }
+  }, [dialog.program, dialog.activeSession, dialog.selectedModel, dialog.configOptions, dialog.mode?.id, dialog.computerId, dialog.setConfig, shellInfo.computerId]);
+  useEffect(() => {
+    if (!openTuning) return;
+    const onPointer = (event: PointerEvent) => {
+      if (!tuningRef.current?.contains(event.target as Node)) setOpenTuning(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenTuning(null);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openTuning]);
+  const [occupancyNow, setOccupancyNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (dialog.occupancyAt == null) return;
+    const wait = OCCUPANCY_STALE_MS - (Date.now() - dialog.occupancyAt) + 25;
+    const timer = setTimeout(() => setOccupancyNow(Date.now()), Math.max(0, wait));
+    return () => clearTimeout(timer);
+  }, [dialog.occupancyAt]);
+  // Stop → Send swap mid-click submits the draft. Keep Stop under the pointer
+  // until this gesture ends, and ignore that click's submit.
+  const holdStopRef = useRef(false);
+  const suppressSendRef = useRef(false);
+  const [holdStop, setHoldStop] = useState(false);
+  const beginStopGesture = () => {
+    if (holdStopRef.current) return;
+    holdStopRef.current = true;
+    suppressSendRef.current = true;
+    setHoldStop(true);
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+      holdStopRef.current = false;
+      suppressSendRef.current = false;
+      setHoldStop(false);
+    };
+    const onClick = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      finish();
+    };
+    const onUp = () => {
+      window.setTimeout(finish, 0);
+    };
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  };
+  // 还没选程序时不渲染（合同 I6 起默认选中 OceanLeo agent，正常不会走到这里）。
+  if (!dialog.program) return null;
+  const lastMessage = dialog.messages[dialog.messages.length - 1];
+  const creditNotice = lastMessage?.kind === "notice" && lastMessage.code === "provider_needs_credits" ? lastMessage : null;
+  const alternative = dialog.models.find((model) => model.usable !== false && model.id !== creditNotice?.model && model.id !== dialog.selectedModel);
+  const controls = modelControls(dialog.program, dialog.models, dialog.configOptions || [], dialog.selectedModel,
+    readModelParamMemory(dialog.computerId || shellInfo.computerId || "", dialog.program));
+  const showModels = controls.models.length > 0;
+  const thisSessionId = dialog.activeSession || dialog.draftRef || "";
+  const occupancyMode = composerOccupancy({
+    linkUp: dialog.occupancyLink === true,
+    occupancyAt: dialog.occupancyAt ?? null,
+    occupancyBusy: dialog.occupancyBusy ?? [],
+    sessionId: thisSessionId,
+    messages: dialog.messages,
+    pendingAt: dialog.occupancyPendingAt ?? null,
+    pendingSession: dialog.occupancyPendingSession ?? null,
+    now: occupancyNow,
+    offline: dialog.offline,
+    sessionLoading: dialog.sessionLoading,
+  });
+  const showStop = occupancyMode === "working" || holdStop;
+  const tuningParams = modelParamOptions(dialog.configOptions || [], dialog.mode?.id);
+  const showTuning = tuningParams.length > 0 || Boolean(controls.effort) || Boolean(dialog.mode && dialog.mode.options.length > 0);
+  const tuningModeName = dialog.mode?.options.find((choice) => choice.value === dialog.selectedMode)?.name || dialog.selectedMode;
+  const leoContext: LeoContext = context ?? { page: "shell", ...shellInfo };
+  const commandQuery = dialog.draft.startsWith("/")
+    ? dialog.draft.slice(1).trimStart().toLocaleLowerCase()
+    : null;
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const canAttach = typeof dialog.addAttachments === "function";
+  const inboxBusy = (dialog.attachments || []).some((item) => item.state === "uploading");
+  const sendEnabled = occupancyMode === "idle" && !inboxBusy && !holdStop;
+  const requestSend = () => {
+    if (suppressSendRef.current || holdStopRef.current) return;
+    if (occupancyMode !== "idle" || inboxBusy) return;
+    void dialog.send();
+  };
+  const commandMatches = commandQuery === null
+    ? []
+    : dialog.commands.filter((command) => {
+        const name = command.name.replace(/^\//, "").toLocaleLowerCase();
+        return !commandQuery || name.includes(commandQuery) || command.description.toLocaleLowerCase().includes(commandQuery);
+      }).slice(0, 8);
+  return (
+    <form
+      className={`relative border-t p-3 ${tone.border}`}
+      data-oceanleo-cc-occupancy={occupancyMode}
+      onSubmit={(event) => {
+        event.preventDefault();
+        requestSend();
+      }}
+      onDragEnter={(event: DragEvent) => {
+        if (!canAttach || !event.dataTransfer?.types.includes("Files")) return;
+        event.preventDefault();
+        setDragOver(true);
+      }}
+      onDragOver={(event: DragEvent) => {
+        if (!canAttach) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+      }}
+      onDragLeave={(event: DragEvent) => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+        setDragOver(false);
+      }}
+      onDrop={(event: DragEvent) => {
+        if (!canAttach) return;
+        event.preventDefault();
+        setDragOver(false);
+        dialog.addAttachments(Array.from(event.dataTransfer?.files || []));
+      }}
+    >
+      {dragOver ? (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))] bg-[color-mix(in_srgb,var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))_8%,transparent)] text-sm">
+          {tt("松手即可添加文件")}
+        </div>
+      ) : null}
+      {creditNotice ? <div className={`mb-2 text-[12px] ${tone.muted}`} data-oceanleo-credit-recovery="">
+        <p>{noticeCopy(tt, creditNotice.code, null, creditNotice.provider)}</p>
+        {alternative ? <button type="button" className={`mt-1 h-11 rounded-lg px-2 text-[13px] ${tone.hover}`} onClick={() => dialog.setSelectedModel(alternative.id)}>{tt("换成 {model}", { model: alternative.name })}</button> : null}
+      </div> : null}
+      <div className="flex items-end gap-2">
+        <div className="relative flex min-w-0 flex-1 flex-col gap-2">
+          {dialog.attachments?.length ? (
+            <ul className="flex flex-wrap gap-1.5" data-oceanleo-cc-attachments="">
+              {dialog.attachments.map((item) => (
+                <li
+                  key={item.id}
+                  data-oceanleo-cc-attach-state={item.state || "done"}
+                  className={`flex min-w-[10rem] max-w-[18rem] flex-col gap-1 rounded-md border px-2 py-1 text-[11px] ${tone.border}`}
+                >
+                  <div className="flex items-center gap-1">
+                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                    <button type="button" className={tone.muted} onClick={() => dialog.removeAttachment(item.id)} aria-label={tt("移除文件")}>
+                      ×
+                    </button>
+                  </div>
+                  {item.state === "uploading" ? (
+                    <>
+                      <div className="h-1.5 w-full min-w-0 overflow-hidden rounded-full bg-zinc-100 dark:bg-neutral-800">
+                        <div
+                          className="h-full bg-zinc-900 transition-all dark:bg-neutral-200"
+                          style={{ width: `${item.percent ?? 0}%` }}
+                        />
+                      </div>
+                      <span className={tone.muted} data-oceanleo-cc-attach-percent={item.percent ?? 0}>
+                        {tt("正在上传 {pct}%", { pct: item.percent ?? 0 })}
+                      </span>
+                    </>
+                  ) : null}
+                  {item.state === "done" && item.path ? (
+                    <span className={`break-all ${tone.muted}`} data-oceanleo-cc-attach-path={item.path}>
+                      {item.path}
+                    </span>
+                  ) : null}
+                  {item.state === "error" ? (
+                    <span className="break-all text-red-600 dark:text-red-400" data-oceanleo-cc-attach-error="">
+                      {item.error}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <textarea
+            data-oceanleo-cc-dialog-input=""
+            value={dialog.draft}
+            onChange={(event) => dialog.setDraft(event.target.value)}
+            onPaste={(event: ClipboardEvent<HTMLTextAreaElement>) => {
+              const files = Array.from(event.clipboardData?.files || []);
+              if (!canAttach || !files.length) return;
+              event.preventDefault();
+              dialog.addAttachments(files);
+            }}
+            onKeyDown={(event) => {
+              if (
+                event.key === "Enter" &&
+                !event.shiftKey &&
+                !event.nativeEvent.isComposing
+              ) {
+                event.preventDefault();
+                requestSend();
+              }
+            }}
+            placeholder={tt("输入你想说的话")}
+            rows={3}
+            className={`min-h-[4.5rem] w-full resize-none rounded-lg border px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 disabled:opacity-50 ${tone.input}`}
+          />
+          {commandMatches.length > 0 ? (
+            <ul
+              className={`absolute bottom-[3.15rem] left-0 right-0 z-10 max-h-52 overflow-y-auto rounded-xl border p-1 shadow-xl ${tone.border} ${tone.panel}`}
+              data-oceanleo-acp-command-completions=""
+            >
+              {commandMatches.map((command) => (
+                <li key={command.name}>
+                  <button
+                    type="button"
+                    className={`flex w-full items-start gap-2 rounded-lg px-2 py-1.5 text-left text-xs ${tone.hover}`}
+                    data-oceanleo-acp-command={command.name}
+                    onClick={() => dialog.setDraft(`${commandText(command.name)} `)}
+                  >
+                    <span className="font-mono font-medium">{commandText(command.name)}</span>
+                    {command.description ? (
+                      <span className={`min-w-0 flex-1 truncate ${tone.muted}`}>{command.description}</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {canAttach ? (
+              <>
+                <button
+                  type="button"
+                  data-oceanleo-cc-attach=""
+                  aria-label={tt("添加文件")}
+                  title={tt("添加文件")}
+                  disabled={dialog.offline}
+                  onClick={() => fileRef.current?.click()}
+                  className={`flex size-8 items-center justify-center rounded-lg text-lg leading-none ${tone.muted} ${tone.hover} disabled:opacity-40`}
+                >
+                  +
+                </button>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  multiple
+                  hidden
+                  onChange={(event) => {
+                    dialog.addAttachments(Array.from(event.target.files || []));
+                    event.currentTarget.value = "";
+                  }}
+                />
+              </>
+            ) : null}
+            {/* 全站唯一的 leo 入口（合同 I5）：Shell 对话框左下角同一颗 ✦ leo
+                按钮，深色底用 tone="dark"；context 带这台电脑，leo 建的任务挂上来。 */}
+            <LeoEntryButton
+              tone="light"
+              context={leoContext}
+              className="dark:text-neutral-300 dark:hover:bg-neutral-800"
+            />
+            {showModels ? (
+              <label className={`flex items-center gap-1 text-[12px] ${tone.muted}`}>
+                {tt("模型")}
+                <select
+                  data-oceanleo-cc-model=""
+                  value={controls.models.some((m) => m.id === controls.selected && m.usable !== false) ? controls.selected : ""}
+                  onChange={(event) => dialog.setSelectedModel(event.target.value)}
+                  className={`rounded-lg border px-2 py-1 text-[12px] ${tone.input}`}
+                >
+                  {!controls.models.some((m) => m.id === controls.selected && m.usable !== false) ? <option value="" disabled>{tt("请选择可用模型")}</option> : null}
+                  {modelGroups(controls.models).map((group) => group.label ? (
+                    <optgroup key={group.label} label={group.label}>{group.models.map((model) => <option key={model.id} value={model.id}>{modelDisplayName(model)}</option>)}</optgroup>
+                  ) : group.models.map((model) => <option key={model.id} value={model.id}>{modelDisplayName(model)}</option>))}
+                </select>
+              </label>
+            ) : null}
+            {showTuning ? (
+              <div
+                ref={tuningRef}
+                className="flex flex-wrap items-center gap-1"
+                data-oceanleo-cc-tuning=""
+              >
+                {controls.effort ? (
+                  <ComposerTuningChip
+                    configId="reasoning_effort"
+                    category={tt("推理强度")}
+                    current={controls.effort.current}
+                    currentName={controls.effort.options.find((choice) => choice.value === controls.effort?.current)?.name || ""}
+                    options={controls.effort.options}
+                    open={openTuning === "reasoning_effort"}
+                    onToggle={() => setOpenTuning((id) => id === "reasoning_effort" ? null : "reasoning_effort")}
+                    onPick={(wire) => {
+                      setOpenTuning(null);
+                      const effort = controls.effort?.options.find((choice) => choice.value === wire)?.name;
+                      if (effort && dialog.program) rememberModelParam(dialog.computerId || shellInfo.computerId || "", dialog.program, controls.memoryModel, "reasoning_effort", effort);
+                      dialog.setSelectedModel(wire);
+                    }}
+                  />
+                ) : null}
+                {tuningParams.map((option) => {
+                  const current = optionCurrentWire(option);
+                  return (
+                    <ComposerTuningChip
+                      key={option.id}
+                      configId={option.id}
+                      category={option.id === "reasoning_effort" ? tt("推理强度") : option.name || option.id}
+                      current={current}
+                      currentName={optionChoiceName(option) || option.name || option.id}
+                      options={option.options}
+                      open={openTuning === option.id}
+                      onToggle={() => setOpenTuning((id) => (id === option.id ? null : option.id))}
+                      onPick={(raw) => {
+                        setOpenTuning(null);
+                        const program = dialog.program;
+                        if (program && dialog.selectedModel) {
+                          rememberModelParam(
+                            dialog.computerId || shellInfo.computerId || "",
+                            program,
+                            controls.memoryModel,
+                            option.id,
+                            raw,
+                          );
+                        }
+                        dialog.setConfig(option.id, coerceOptionValue(option, raw));
+                      }}
+                    />
+                  );
+                })}
+                {dialog.mode && dialog.mode.options.length > 0 ? (
+                  <ComposerTuningChip
+                    mode
+                    category={dialog.mode.name || tt("模式")}
+                    current={dialog.selectedMode}
+                    currentName={tuningModeName}
+                    options={dialog.mode.options}
+                    open={openTuning === "mode"}
+                    onToggle={() => setOpenTuning((id) => (id === "mode" ? null : "mode"))}
+                    onPick={(raw) => {
+                      setOpenTuning(null);
+                      dialog.setMode(raw);
+                    }}
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {showModels ? (
+              <>
+                {hiddenModelCopy(tt, dialog.models).map((copy) => <span key={copy} className={`block text-[12px] ${tone.muted}`} data-oceanleo-hidden-models="">{copy}</span>)}
+                {dialog.models.some((m) => m.id === dialog.selectedModel && m.usable === false) ? <span className={`block text-[12px] ${tone.muted}`}>{tt("当前模型不可用，请选择其他模型。")}</span> : null}
+              </>
+            ) : null}
+            {showFresh ? <button
+              type="button"
+              data-oceanleo-cc-fresh=""
+              aria-pressed={dialog.fresh}
+              onClick={() => dialog.setFresh(!dialog.fresh)}
+              className={`rounded-lg px-2 py-1 text-[11px] ${
+                dialog.fresh ? tone.chipActive : `${tone.muted} ${tone.hover}`
+              }`}
+            >
+              {tt("新对话")}
+            </button> : null}
+          </div>
+        </div>
+        {showStop ? (
+          <button
+            type="button"
+            data-oceanleo-cc-stop=""
+            onPointerDown={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              beginStopGesture();
+              dialog.armAbortSendGuard?.();
+              dialog.abort();
+            }}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (holdStopRef.current) return;
+              dialog.abort();
+            }}
+            className="rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-[12px] text-red-700 hover:bg-red-100 dark:border-red-800 dark:bg-red-950 dark:text-red-300 dark:hover:bg-red-900"
+          >
+            {tt("停止")}
+          </button>
+        ) : occupancyMode === "uncertain" ? (
+          <button
+            type="submit"
+            disabled
+            data-oceanleo-cc-send="uncertain"
+            className="cursor-not-allowed rounded-lg bg-zinc-300 px-3 py-2 text-[12px] font-medium text-zinc-500 dark:bg-neutral-700 dark:text-neutral-400"
+          >
+            {tt("发送")}
+          </button>
+        ) : (
+          <button
+            type="submit"
+            data-oceanleo-cc-send="idle"
+            disabled={!sendEnabled}
+            className={`rounded-lg px-3 py-2 text-[12px] font-medium disabled:opacity-40 ${tone.primary}`}
+          >
+            {tt("发送")}
+          </button>
+        )}
+      </div>
+    </form>
+  );
+}

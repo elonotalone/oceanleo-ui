@@ -1,0 +1,2550 @@
+"use client";
+
+// 对话面板的连接和发送。帧进 reduce，这里只负责何时连、何时重连、何时把哪一帧写出去。
+// 用户的话只出现在 JSON 帧里，不拼进任何命令字符串。
+
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { getTask, stopTask, type TaskDetail } from "../../../lib/agent";
+import * as computerApi from "../../../lib/cloud-computer-api";
+import { agentReset, agentState, agentTurn } from "../../../lib/cloud-computer-agent-api";
+import { useUI } from "../../../i18n/ui/useUI";
+import { installDirPayload } from "./install-dir";
+import { mapTaskMessages, nextOceanleoPoll, oceanMessageFingerprint } from "./oceanleo-program";
+import { isWsProgram } from "./parse";
+import {
+  applyDialog,
+  dropUnsentEcho,
+  idleStop,
+  initialDialogState,
+  isCancelResult,
+  isLinkEvidenceFrame,
+  nativeTurnFinishing,
+  newStopId,
+  STOP_REPLY_TIMEOUT_MS,
+  stopErrorText,
+  stopMachine,
+  type StopEvent,
+  type StopState,
+} from "./reduce";
+import { modelCatalogFrames, rememberModelCatalogFrame } from "./model-catalog-cache";
+import { isTransientUploadError, UPLOAD_TRIES, uploadFailureReason, uploadRetryDelay } from "../../composer-send-guard";
+import { setCacheUser } from "../../../lib/user-scoped-cache";
+import { nextReconnectDelay } from "./reconnect";
+import { isReconnectingNotice, UNSENT_RESTORED_COPY } from "./notice";
+import { composerOccupancy, confirmedBusySessions, confirmedWaitingSessions, occupancyBusyAfterFrame, occupancyFresh, OCCUPANCY_STALE_MS } from "./occupancy";
+import { createOccupancyProbe } from "./occupancy-probe";
+import { isCompletedStop, isRetriableStreamCancelText, sessionInterrupted } from "./session-status";
+import { readUnreadSessions, writeUnreadSessions } from "./session-unread";
+import { createSessionRefresh } from "./session-refresh";
+import { readProgramSelection, rememberProgramSelection, rememberModelParam } from "./model-param-memory";
+import { copyImagePreparation } from "../../../lib/upload/image-preparation";
+import type { NativeMessageSnapshot, NativeDeliveryState } from "../../../native-agent-core/index";
+import type {
+  AgentDialogController,
+  AgentDialogMessage,
+  AgentProgram,
+  DialogAttachment,
+  UserMessageAttachment,
+  WsProgram,
+} from "./types";
+
+function isInboxReady(item: DialogAttachment): item is DialogAttachment & { path: string } {
+  const path = (item.path ?? "").trim();
+  return item.state === "done" && path.startsWith("/") && !path.includes("://") && !path.includes("\0");
+}
+
+function promptFiles(items: DialogAttachment[]): Array<{ name: string; mime: string; path: string }> {
+  return items.filter(isInboxReady).map((item) => ({
+    name: item.name,
+    mime: item.mime,
+    path: item.path,
+  }));
+}
+
+function userFileRows(items: DialogAttachment[]): UserMessageAttachment[] {
+  return items.filter(isInboxReady).map((item) => ({
+    name: item.name,
+    mime: item.mime,
+    path: item.path,
+    ...(item.archive ? { archive: item.archive } : {}),
+    ...(item.preview ? { preview: item.preview } : {}),
+  }));
+}
+
+const RASTER_PREVIEW = /^image\/(?:png|jpeg|gif|webp)$/i;
+const MAX_PREVIEW_BYTES = 25 * 1024 * 1024;
+/** `open_session` with no answer: retry once after this, give up after twice this. */
+export const SESSION_LOAD_TIMEOUT_MS = 20_000;
+
+/** A local thumbnail for a picked image (`blob:` of this tab), or nothing. */
+function localPreview(file: File): string | undefined {
+  if (!RASTER_PREVIEW.test(file.type || "") || file.size > MAX_PREVIEW_BYTES) return undefined;
+  try {
+    return typeof URL.createObjectURL === "function" ? URL.createObjectURL(file) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `image.png` → `image-2.png`, `image-3.png`… until it is not in `taken`. */
+export function distinctName(name: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(name)) return name;
+  const dot = name.lastIndexOf(".");
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : "";
+  for (let n = 2; n < 1000; n += 1) {
+    const next = `${stem}-${n}${ext}`;
+    if (!taken.has(next)) return next;
+  }
+  return `${stem}-${Date.now().toString(36)}${ext}`;
+}
+
+function renamedFile(file: File, name: string): File {
+  try {
+    const renamed = new File([file], name, { type: file.type, lastModified: file.lastModified });
+    copyImagePreparation(file, renamed);
+    return renamed;
+  } catch {
+    return file;
+  }
+}
+
+/**
+ * A prompt that went out but the gateway has not acknowledged yet
+ * (`user_message` / `turn_start`). Its draft and attachments are kept here so
+ * a refusal puts them back in the composer instead of losing them.
+ */
+type RetainedPrompt = { text: string; files: DialogAttachment[]; frame: Record<string, unknown>;
+  viewKey: string; state: NativeDeliveryState; uncertain?: boolean; restored?: boolean;
+  timer?: ReturnType<typeof setTimeout>; inlineFiles?: File[] };
+export const PROMPT_ACK_TIMEOUT_MS = 15_000;
+function newMessageId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+}
+
+type UnsentPrompt = { text: string; files: DialogAttachment[]; echoed: boolean; viewKey: string };
+
+/** The error frame speaks for the view on screen (its session, or a new view with no session). */
+function frameTargetsCurrentView(frame: Record<string, unknown>, state: { activeSession: string; program: string | null }): boolean {
+  const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+  const program = typeof frame.program === "string" ? frame.program : "";
+  if (program && program !== (state.program ?? "")) return false;
+  return session ? session === state.activeSession : true;
+}
+
+/** B2 prompt-not-sent: an error frame whose `detail` says the prompt never reached the agent. */
+export function isPromptNotSent(frame: Record<string, unknown>): boolean {
+  return frame.t === "error" && frame.detail === "prompt_not_sent";
+}
+
+function unsentKeys(frame: Record<string, unknown>): string[] {
+  const keys: string[] = [];
+  if (typeof frame.ref === "string" && frame.ref) keys.push(`ref:${frame.ref}`);
+  if (typeof frame.acp_session === "string" && frame.acp_session && typeof frame.program === "string") {
+    keys.push(`s:${frame.program}::${frame.acp_session}`);
+  }
+  return keys;
+}
+
+// 合同 I3/I6 需要、W3 的 types.ts 尚未落地的控制器成员（见 signals/W6A-interface.md）。
+// W3 把这些成员并入 AgentDialogController 后，这个交叉类型删除、恢复用 types 里的。
+export type AgentDialogControllerV2 = AgentDialogController & {
+  /** The open native turn is confirming its end; Stop and steering remain available. */
+  finishing: boolean;
+  turnStates: NonNullable<ReturnType<typeof initialDialogState>["turnStates"]>;
+  /** A queued user action supplies its immutable id across async view handoff. */
+  send: (override?: string, messageId?: string) => Promise<boolean>;
+  attachmentFile: (id: string) => File | undefined;
+  /** Retry explicitly; an uncertain send keeps its original ID for gateway deduplication. */
+  withdrawLocalPrompt: (text: string, attachmentIds: string[]) => void;
+  retryMessage: (messageId: string, snapshot?: NativeMessageSnapshot) => Promise<boolean>;
+  restoreMessage: (messageId: string, snapshot?: NativeMessageSnapshot) => Promise<boolean>;
+  /** oceanleo 程序标题「OceanLeo agent · 电脑名」用；agentState 未回到前为空串。 */
+  computerName: string;
+  /** 登录卡贴码输入框的受控草稿（W3 的 LoginCard 也可以自己持局部 state）。 */
+  setLoginCodeDraft: (code: string) => void;
+  /**
+   * The text of the last prompt the gateway refused before acknowledging it
+   * (2026-10-31 W1). Its attachments are already back in `attachments` and
+   * this controller's own `draft` is refilled when empty. A host composer that
+   * owns its text (main chat `send(override)`) puts `text` back into its input
+   * when `seq` changes.
+   */
+  restoredDraft: { seq: number; text: string; unsent?: boolean; fileIds?: string[]; entries?: { seq: number; text: string }[] } | null;
+  /**
+   * B2 `history` frames (2026-11-02): per `program::acp_session`, whether the live
+   * transcript the gateway sent is a full replay (`true`) or not (`false`, e.g. a
+   * turn adopted after a gateway swap). No entry = unknown (assume no replay).
+   */
+  historyReplay: Readonly<Record<string, boolean>>;
+  /**
+   * Counts link re-attachments (B2 `status` with `link:"attached"`, an adopted
+   * session's `history replay:false`): hosts re-read the saved transcript then, so
+   * what was said during the gap is on screen even without a live replay.
+   */
+  reattachSeq: number;
+  /**
+   * The conversation's one stop state (2026-11-02): `stopping` from the click
+   * until the gateway's `cancel_result` (or 15 s); `error` keeps the turn as it
+   * was and `stopError` says why. Hosts show 「正在停止」 while stopping.
+   */
+  stopState: StopState["phase"];
+  /** Localized reason the last stop did not take effect, else null. */
+  stopError: string | null;
+  /** Put a failed attachment into the inbox again (F3 2026-11-02). */
+  retryAttachment: (id: string) => void;
+};
+
+const MAX_PROMPT_CHARS = 32000;
+// oceanleo turn 的上限 = 后端 TurnBody text max_length=8000（cloud_computer_agent_router.py），
+// 与 cloud-computer-agent-api.MAX_AGENT_TURN_CHARS 同数。这里本地持有一份而不 import：
+// W3 的测试桩按导出名单替身整份 agent-api 模块，控制器每多 import 一个命名导出，
+// 那份文件就在加载期炸一次（2026-09-23 实测）。同数改动时两处一起改。
+const MAX_OCEAN_PROMPT_CHARS = 8000;
+
+const SESSIONS_REFRESH_MS = 15_000;
+
+function sendJson(socket: WebSocket | null, frame: Record<string, unknown>): boolean {
+  if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+  socket.send(JSON.stringify(frame));
+  return true;
+}
+
+function usesDialogSocket(
+  program: AgentProgram | null,
+  localOceanleo: boolean,
+): program is AgentProgram {
+  return isWsProgram(program) || (program === "oceanleo" && localOceanleo);
+}
+
+// Only parsed presentation state is retained; authentication and socket URLs never enter this cache.
+type Presentation = Pick<ReturnType<typeof initialDialogState>, "programs" | "sessions" | "sessionsSupported">;
+type ViewSnap = {
+  messages: AgentDialogMessage[];
+  turnStates?: ReturnType<typeof initialDialogState>["turnStates"];
+  activeSession: string;
+  draftRef?: string;
+  sessions: ReturnType<typeof initialDialogState>["sessions"];
+  sessionsSupported: boolean | null;
+  sessionLoading: boolean;
+  historyOffset: number;
+  historyTotal: number;
+  hasOlder: boolean;
+  historyLoading: boolean;
+  sessionPath: string;
+  sessionPathResolved: boolean;
+  models: ReturnType<typeof initialDialogState>["models"];
+  modelSource: string;
+  selectedModel: string;
+  mode: ReturnType<typeof initialDialogState>["mode"];
+  selectedMode: string;
+  configOptions: ReturnType<typeof initialDialogState>["configOptions"];
+  commands: ReturnType<typeof initialDialogState>["commands"];
+  occupancyPendingAt: number | null;
+  occupancyPendingSession: string | null;
+};
+const presentationCache = new Map<string, { programs: Presentation["programs"]; sessions: Map<string, Pick<Presentation, "sessions" | "sessionsSupported">>; views: Map<string, ViewSnap>; last: Map<string, string> }>();
+function presentationFor(id: string) {
+  let cached = presentationCache.get(id);
+  if (!cached) {
+    cached = { programs: [], sessions: new Map(), views: new Map(), last: new Map() };
+    presentationCache.set(id, cached);
+  }
+  return cached;
+}
+function viewSnapOf(state: ReturnType<typeof initialDialogState>): ViewSnap {
+  return {
+    messages: state.messages,
+    turnStates: state.turnStates,
+    activeSession: state.activeSession,
+    draftRef: state.draftRef,
+    sessions: state.sessions,
+    sessionsSupported: state.sessionsSupported,
+    sessionLoading: state.sessionLoading,
+    historyOffset: state.historyOffset,
+    historyTotal: state.historyTotal,
+    hasOlder: state.hasOlder,
+    historyLoading: state.historyLoading,
+    sessionPath: state.sessionPath,
+    sessionPathResolved: state.sessionPathResolved,
+    models: state.models,
+    modelSource: state.modelSource,
+    selectedModel: state.selectedModel,
+    mode: state.mode,
+    selectedMode: state.selectedMode,
+    configOptions: state.configOptions,
+    commands: state.commands,
+    occupancyPendingAt: state.occupancyPendingAt,
+    occupancyPendingSession: state.occupancyPendingSession,
+  };
+}
+function hydratePresentation(id: string, state: ReturnType<typeof initialDialogState>, computerId = "") {
+  const cached = presentationFor(id);
+  const selection = readProgramSelection(id, state.program ?? "");
+  let next: ReturnType<typeof initialDialogState> = { ...state, programs: cached.programs, ...cached.sessions.get(state.program ?? ""),
+    ...(!state.activeSession ? { selectedModel: selection.model || state.selectedModel,
+      selectedMode: selection.mode || state.selectedMode } : {}) };
+  // A fresh view with no catalog yet: the last one this computer reported for the
+  // program (model-catalog-cache, per user + computer + program) goes through the
+  // same reducer as the live frames, so the model pill names the model at once
+  // instead of 「正在读取…」. The live `models` / `config` frames replace it.
+  if (computerId && next.program && !next.activeSession && !next.models.length && !next.configOptions.length) {
+    for (const frame of modelCatalogFrames(computerId, next.program)) next = applyDialog(next, { type: "frame", frame });
+  }
+  return next;
+}
+
+export function useAgentDialog({
+  computerId,
+  sessionId,
+  enabled,
+  localOceanleo = false,
+  active = true,
+  initialProgram = "oceanleo",
+  initialSessionId,
+  savedFinishing = false,
+  oceanleoReady = true,
+  taskSessionId,
+  onArchiveStatus,
+  openActiveSession = true,
+  bindUploadsToTaskSession = false,
+}: {
+  computerId: string;
+  sessionId?: string;
+  enabled: boolean;
+  localOceanleo?: boolean;
+  active?: boolean;
+  initialProgram?: AgentProgram;
+  initialSessionId?: string;
+  /** Persisted public status, used only until fresh turn evidence supersedes it. */
+  savedFinishing?: boolean;
+  oceanleoReady?: boolean;
+  taskSessionId?: string;
+  onArchiveStatus?: (status: "saved" | "pending" | "error") => void;
+  /**
+   * When the sessions list arrives, open the gateway's active (or the mount
+   * `initialSessionId`) conversation by itself. Hosts that open sessions
+   * explicitly (the main-chat native thread, including draft mode) pass false.
+   */
+  openActiveSession?: boolean;
+  /**
+   * Managed (task-session) threads: composer files are put into the inbox
+   * under the conversation's own task session, never without it or under a
+   * previous one. Files added before the session exists wait in this tab and
+   * are uploaded with it; a session change puts them again under the new one.
+   * The Computers page (no task sessions) leaves this off.
+   */
+  bindUploadsToTaskSession?: boolean;
+}): AgentDialogControllerV2 {
+  const taskSessionRef = useRef(taskSessionId);
+  taskSessionRef.current = taskSessionId;
+  const boundSessionRef = useRef(initialSessionId?.trim() ?? "");
+  boundSessionRef.current = initialSessionId?.trim() ?? "";
+  const savedFinishingRef = useRef(savedFinishing);
+  savedFinishingRef.current = savedFinishing;
+  const bindUploadsRef = useRef(bindUploadsToTaskSession);
+  bindUploadsRef.current = bindUploadsToTaskSession;
+  /** Managed threads: the bytes of each composer file (to upload or put again under the right session). */
+  const uploadFilesRef = useRef(new Map<string, File>());
+  const attachmentFile = useCallback((id: string) => uploadFilesRef.current.get(id), []);
+  /** A chip keeps the same server identity through automatic and manual retries. */
+  const uploadIdsRef = useRef(new Map<string, string>());
+  const uploadControllersRef = useRef(new Map<string, AbortController>());
+  useEffect(() => () => {
+    for (const controller of uploadControllersRef.current.values()) controller.abort();
+    uploadControllersRef.current.clear();
+  }, []);
+  /** Managed threads: the task session each composer file was put into the inbox under. */
+  const uploadedForRef = useRef(new Map<string, string>());
+  /** Before a send: every composer file uploaded (and, managed, under this send's task session). */
+  const settleUploadsRef = useRef<(ids?: string[]) => Promise<void>>(async () => {});
+  const archiveStatusRef = useRef(onArchiveStatus);
+  archiveStatusRef.current = onArchiveStatus;
+  const openActiveSessionRef = useRef(openActiveSession);
+  openActiveSessionRef.current = openActiveSession;
+  const tt = useUI();
+  const ttRef = useRef(tt);
+  ttRef.current = tt;
+  const [mountProgram] = useState(() => initialProgram);
+  const [mountRef] = useState(() => `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`);
+  const [state, dispatch] = useReducer(
+    (previous: ReturnType<typeof initialDialogState>, event: Parameters<typeof applyDialog>[1]) => {
+      const next = applyDialog(previous, event);
+      if (event.type === "reset") {
+        next.program = mountProgram;
+        next.draftRef = `new:${mountRef}`;
+      }
+      return event.type === "reset" || event.type === "program" ? hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, next, computerId) : next;
+    }, undefined, () => hydratePresentation(taskSessionId ? `${computerId}:${taskSessionId}` : computerId, { ...initialDialogState(), program: mountProgram, draftRef: `new:${mountRef}` }, computerId),
+  );
+  const [draft, setDraft] = useState("");
+  const [attachments, setAttachments] = useState<DialogAttachment[]>([]);
+  const inboxWaiters = useRef(new Map<string, Promise<void>>());
+  const unsentRef = useRef(new Map<string, UnsentPrompt>());
+  const retainedPromptsRef = useRef(new Map<string, RetainedPrompt>());
+  const sendEpochRef = useRef(0);
+  const preparingSendRef = useRef(false);
+  useEffect(() => () => {
+    sendEpochRef.current += 1;
+    for (const prompt of retainedPromptsRef.current.values()) if (prompt.timer) clearTimeout(prompt.timer);
+  }, []);
+  const [restoredDraft, setRestoredDraft] = useState<AgentDialogControllerV2["restoredDraft"]>(null);
+  // B2 `history` frames and link re-attachments (see AgentDialogControllerV2).
+  const [historyReplay, setHistoryReplay] = useState<Readonly<Record<string, boolean>>>({});
+  const [reattachSeq, setReattachSeq] = useState(0);
+  const sessionLoadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [fresh, setFresh] = useState(false);
+  const [computerName, setComputerName] = useState("");
+  const unreadRef = useRef<string[]>([]);
+  const [unreadSessions, setUnreadSessions] = useState<string[]>([]);
+
+  const stateRef = useRef(state);
+  const draftRef = useRef(draft);
+  const attachmentsRef = useRef(attachments);
+  const freshRef = useRef(fresh);
+  const openSessionRef = useRef<(id: string) => void>(() => {});
+  const enabledRef = useRef(enabled);
+  const activeRef = useRef(active);
+  const oceanleoReadyRef = useRef(oceanleoReady);
+  const computerIdRef = useRef(computerId);
+  const sessionIdRef = useRef(sessionId);
+  const localOceanleoRef = useRef(localOceanleo);
+  const socketRef = useRef<WebSocket | null>(null);
+  const sessionsRefreshRef = useRef<ReturnType<typeof createSessionRefresh> | null>(null);
+  if (!sessionsRefreshRef.current) sessionsRefreshRef.current = createSessionRefresh({
+    allowed: (program) => enabledRef.current && activeRef.current
+      && (typeof document === "undefined" || !document.hidden)
+      && (isWsProgram(program) || (program === "oceanleo" && localOceanleoRef.current)),
+    send: (program) => sendJson(socketRef.current, { t: "sessions", program }),
+  });
+  const occupancyProbeRef = useRef<ReturnType<typeof createOccupancyProbe> | null>(null);
+  if (!occupancyProbeRef.current) occupancyProbeRef.current = createOccupancyProbe({
+    allowed: (program) => enabledRef.current && activeRef.current
+      && (typeof document === "undefined" || !document.hidden)
+      && (isWsProgram(program) || (program === "oceanleo" && localOceanleoRef.current)),
+    send: (program) => sendJson(socketRef.current, { t: "occupancy", program }),
+  });
+  const connectGen = useRef(0);
+  const connectedComputerRef = useRef("");
+  const delayRef = useRef(1000);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectRef = useRef<() => Promise<WebSocket | null>>(async () => null);
+  // refreshOcean 经 tt 间接依赖 useUI 的返回函数；enable effect 只认 ref，
+  // tt 一旦不是 memo 稳定的（如测试桩），effect 也不会「渲染→dispatch→渲染」空转。
+  const refreshOceanRef = useRef<() => Promise<void>>(async () => {});
+  const inflightRef = useRef<Promise<WebSocket | null> | null>(null);
+  // OceanLeo agent 程序（合同 I6）：任务指针、刚发出去那句的落地判定基线、
+  // 轮询代际与可取消的等待器。代际一升，所有在飞的轮询/回放立即作废。
+  const oceanTaskRef = useRef("");
+  const oceanSendRef = useRef<{ baseUsers: number } | null>(null);
+  const oceanGen = useRef(0);
+  const oceanWaiterRef = useRef<{
+    timer: ReturnType<typeof setTimeout>;
+    resolve: (done: boolean) => void;
+  } | null>(null);
+  // 程序切换时消息列表按程序分开：切走前把当前列表存进缓存，切回来时恢复；
+  // oceanleo 的缓存只是过渡，进入时一律用 agentState/getTask 的服务端真相覆盖。
+  const messagesCacheRef = useRef(new Map<string, AgentDialogMessage[]>()); // REST OceanLeo only
+  const newRefs = useRef(new Map<AgentProgram, string>([[mountProgram, mountRef]]));
+  const pendingRefs = useRef(new Map<string, string>());
+  const viewKeyRef = useRef(`${mountProgram}::new:${mountRef}`);
+  const initialOpened = useRef(new Set<string>());
+  const pendingConfig = useRef(new Map<string, Record<string, string | boolean>>());
+  function clientRef(program: AgentProgram): string {
+    let ref = newRefs.current.get(program);
+    if (!ref) { ref = `new_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`; newRefs.current.set(program, ref); }
+    return ref;
+  }
+
+  stateRef.current = state;
+  if (state.program) {
+    const cached = presentationFor(taskSessionId ? `${computerId}:${taskSessionId}` : computerId);
+    cached.views.set(viewKeyRef.current, viewSnapOf(state));
+    cached.last.set(state.program, viewKeyRef.current);
+  }
+  draftRef.current = draft;
+  attachmentsRef.current = attachments;
+  freshRef.current = fresh;
+  enabledRef.current = enabled;
+  activeRef.current = active;
+  oceanleoReadyRef.current = oceanleoReady;
+  computerIdRef.current = computerId;
+  sessionIdRef.current = sessionId;
+  localOceanleoRef.current = localOceanleo;
+
+  // The computer is often known only after mount (its row is read in parallel):
+  // a fresh view still without a catalog then takes this computer's kept one
+  // (model-catalog-cache), as the mount would have. Live frames replace it.
+  useEffect(() => {
+    const current = stateRef.current;
+    if (!computerId || !current.program || current.activeSession || current.models.length || current.configOptions.length) return;
+    const frames = modelCatalogFrames(computerId, current.program);
+    if (!frames.length) return;
+    // The user's last pick on this computer (the mount read it under an unknown computer).
+    const picked = readProgramSelection(taskSessionRef.current ? `${computerId}:${taskSessionRef.current}` : computerId, current.program).model;
+    if (picked && picked !== current.selectedModel) {
+      stateRef.current = applyDialog(stateRef.current, { type: "set-model", id: picked });
+      dispatch({ type: "set-model", id: picked });
+    }
+    for (const frame of frames) {
+      stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
+      dispatch({ type: "frame", frame });
+    }
+  }, [computerId]);
+
+  const [occupancyClock, setOccupancyClock] = useState(() => Date.now());
+  useEffect(() => {
+    if (state.occupancyAt == null) return;
+    const wait = OCCUPANCY_STALE_MS - (Date.now() - state.occupancyAt) + 25;
+    const timer = setTimeout(() => setOccupancyClock(Date.now()), Math.max(0, wait));
+    return () => clearTimeout(timer);
+  }, [state.occupancyAt]);
+
+  const persistUnread = useCallback((program: string, ids: string[]) => {
+    writeUnreadSessions(computerIdRef.current, program, ids);
+    if (program === (stateRef.current.program ?? "")) {
+      unreadRef.current = ids;
+      setUnreadSessions(ids);
+    }
+  }, []);
+  const addUnread = useCallback((program: string, id: string) => {
+    if (!id || !program) return;
+    const current = program === (stateRef.current.program ?? "")
+      ? unreadRef.current
+      : readUnreadSessions(computerIdRef.current, program);
+    if (current.includes(id)) return;
+    persistUnread(program, [...current, id]);
+  }, [persistUnread]);
+  const clearUnread = useCallback((program: string, id: string) => {
+    if (!id || !program) return;
+    const current = program === (stateRef.current.program ?? "")
+      ? unreadRef.current
+      : readUnreadSessions(computerIdRef.current, program);
+    if (!current.includes(id)) return;
+    persistUnread(program, current.filter((item) => item !== id));
+  }, [persistUnread]);
+
+  useEffect(() => {
+    const ids = readUnreadSessions(computerId, state.program ?? "");
+    unreadRef.current = ids;
+    setUnreadSessions(ids);
+  }, [computerId, state.program]);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
+
+  const restoreSeqRef = useRef(0);
+  /**
+   * Settle the not-yet-acknowledged prompt a frame speaks for: the gateway's
+   * `user_message` / `turn_start` acknowledges it; an error before that is a
+   * refusal, so its text and attachments go back to the composer and its echo
+   * bubble goes away. Returns the frame to process.
+   */
+  const settleUnsent = useCallback((frame: Record<string, unknown>): Record<string, unknown> => {
+    const pending = unsentRef.current;
+    if (!pending.size || frame.replay === true) return frame;
+    const kind = String(frame.t ?? "");
+    const keys = typeof frame.message_id === "string" ? [`msg:${frame.message_id}`, ...unsentKeys(frame)] : unsentKeys(frame);
+    if (typeof frame.message_id === "string" && kind === "error") return frame;
+    if (kind === "user_message" || kind === "turn_start") {
+      for (const key of keys) pending.delete(key);
+      return frame;
+    }
+    if (kind !== "error") return frame;
+    const code = String(frame.code ?? "");
+    const spoken = typeof frame.text === "string" ? frame.text.trim() : "";
+    // B2 (2026-11-02): the gateway says this prompt itself never reached the agent.
+    const notSent = isPromptNotSent(frame);
+    // A dropped link does not prove a refusal: the turn may still be running.
+    if (!notSent && (isReconnectingNotice(code) || code === "dialog_detached"
+      || isRetriableStreamCancelText(spoken) || isRetriableStreamCancelText(code))) return frame;
+    let key = keys.find((item) => pending.has(item));
+    if (!key) {
+      // Early refusals (attachment outside the inbox, empty prompt…) carry no
+      // ref or session: they answer the latest prompt of the view on screen.
+      key = [...pending.entries()].reverse().find(([, item]) => item.viewKey === viewKeyRef.current)?.[0];
+    }
+    const kept = key ? pending.get(key) : undefined;
+    if (!key || !kept) return frame;
+    pending.delete(key);
+    const present = new Set(attachmentsRef.current.map((item) => item.id));
+    const restoredFiles = [...kept.files.filter((item) => !present.has(item.id)), ...attachmentsRef.current].slice(0, 20);
+    attachmentsRef.current = restoredFiles;
+    setAttachments(restoredFiles);
+    if (kept.text && !draftRef.current.trim()) {
+      draftRef.current = kept.text;
+      setDraft(kept.text);
+    }
+    restoreSeqRef.current += 1;
+    // Not sent: hosts mark it on its own bubble (「没有发出去 · 重新发送」) instead of only refilling the composer.
+    setRestoredDraft({ seq: restoreSeqRef.current, text: kept.text, ...(notSent ? { unsent: true, fileIds: kept.files.map((item) => item.id) } : {}) });
+    if (kept.echoed) {
+      // The view the prompt was sent from may have been re-keyed by
+      // session_opened since; drop the echo wherever it is the last user bubble.
+      const drop = { type: "drop-unsent" as const, text: kept.text };
+      const before = stateRef.current.messages;
+      const after = dropUnsentEcho(before, kept.text);
+      if (after !== before && (viewKeyRef.current === kept.viewKey || frameTargetsCurrentView(frame, stateRef.current))) {
+        stateRef.current = { ...stateRef.current, messages: after };
+        dispatch(drop);
+      }
+      const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+      for (const [viewKey, view] of cached.views) {
+        if (viewKey === viewKeyRef.current) continue;
+        if (viewKey !== kept.viewKey && !unsentKeys(frame).some((item) => item === `s:${viewKey}`)) continue;
+        const messages = dropUnsentEcho(view.messages, kept.text);
+        if (messages !== view.messages) cached.views.set(viewKey, { ...view, messages });
+      }
+    }
+    if (notSent) {
+      // This prompt never started a turn. Release only its optimistic send mark,
+      // otherwise reconnect + idle occupancy would still leave Send blocked.
+      const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      const session = typeof frame.acp_session === "string" && frame.acp_session
+        ? frame.acp_session : typeof frame.ref === "string" && frame.ref ? `new:${frame.ref}` : "";
+      const event = { type: "prompt-not-sent" as const, program, acpSession: session };
+      stateRef.current = applyDialog(stateRef.current, event);
+      dispatch(event);
+    }
+    // Prefer the gateway's own sentence; a bare gateway fault says the draft was kept.
+    return !spoken && code === "gateway_error" ? { ...frame, text: UNSENT_RESTORED_COPY } : frame;
+  }, []);
+
+  // Native message snapshots survive acknowledgements until delivery/withdrawal is known.
+  // Restoration batches frames arriving in one socket tick so no pending draft is lost.
+  const recoveredFilesRef = useRef<(files: File[]) => void>(() => {});
+  const restoreBatchRef = useRef<{ text: string[]; files: DialogAttachment[] } | null>(null);
+  const restoreRetained = useCallback((prompt: RetainedPrompt) => {
+    if (prompt.restored) return;
+    if (prompt.frame.program && (prompt.frame.program !== stateRef.current.program ||
+      (prompt.frame.acp_session && prompt.frame.acp_session !== stateRef.current.activeSession))) return;
+    prompt.restored = true;
+    if (prompt.inlineFiles?.length) recoveredFilesRef.current(prompt.inlineFiles);
+    const batch = restoreBatchRef.current;
+    if (batch) { batch.text.push(prompt.text); batch.files.push(...prompt.files); return; }
+    restoreBatchRef.current = { text: [prompt.text], files: [...prompt.files] };
+    queueMicrotask(() => {
+      const kept = restoreBatchRef.current;
+      restoreBatchRef.current = null;
+      if (!kept) return;
+      const ids = new Set(attachmentsRef.current.map((item) => item.id));
+      const files = [...attachmentsRef.current];
+      for (const item of kept.files) {
+        if (isInboxReady(item)) uploadedForRef.current.set(item.id, taskSessionRef.current || "");
+        if (!ids.has(item.id)) { ids.add(item.id); files.push(item); }
+      }
+      attachmentsRef.current = files;
+      setAttachments(files);
+      const text = kept.text.filter(Boolean).join("\n\n");
+      if (text) { draftRef.current = [draftRef.current, text].filter(Boolean).join("\n\n"); setDraft(draftRef.current); }
+      restoreSeqRef.current += 1;
+      const seq = restoreSeqRef.current;
+      // React may batch separate socket tasks. Keep every restoration until the
+      // host has seen its sequence, so the final state cannot hide an earlier draft.
+      setRestoredDraft((previous) => ({ seq, text,
+        entries: [...(previous?.entries ?? (previous && !previous.unsent ? [{ seq: previous.seq, text: previous.text }] : [])), { seq, text }],
+      }));
+    });
+  }, []);
+  useEffect(() => {
+    for (const prompt of retainedPromptsRef.current.values()) if (prompt.state === "cancelled" && !prompt.restored) restoreRetained(prompt);
+  }, [state.activeSession, state.program, restoreRetained]);
+  const deliveryFrame = useCallback((original: Record<string, unknown>): Record<string, unknown> => {
+    const id = typeof original.message_id === "string" ? original.message_id : "";
+    // Compatibility with old peers: their actual turn start is delivery evidence,
+    // never the local echo or a different session's event.
+    if (!id && original.replay !== true && (original.t === "turn_start" || original.t === "user_message")) {
+      const session = original.acp_session;
+      const candidate = [...retainedPromptsRef.current.entries()].find(([, prompt]) =>
+        (prompt.state === "sending" || prompt.state === "queued") && prompt.frame.program === original.program &&
+        (session ? prompt.frame.acp_session === session : prompt.viewKey === viewKeyRef.current) &&
+        (original.t !== "user_message" || prompt.text === original.text));
+      if (candidate) {
+        const [messageId, prompt] = candidate;
+        prompt.state = "injected";
+        if (prompt.timer) clearTimeout(prompt.timer);
+        prompt.timer = undefined;
+        unsentRef.current.delete(`msg:${messageId}`);
+        const event = { type: "frame" as const, frame: { t: "prompt_state", message_id: messageId, state: "injected" } };
+        stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+      }
+    }
+    const kept = retainedPromptsRef.current.get(id);
+    if (!kept || original.replay === true || original.local === true) return original;
+    const frame = { ...original };
+    if (!frame.ref && typeof kept.frame.ref === "string") frame.ref = kept.frame.ref;
+    if (frame.t === "prompt_ack" || frame.t === "prompt_state" || frame.t === "user_message" || frame.t === "error") {
+      if (kept.timer) clearTimeout(kept.timer);
+      kept.timer = undefined;
+      unsentRef.current.delete(`msg:${id}`);
+      if (frame.t === "prompt_ack" || frame.t === "prompt_state") {
+        kept.state = frame.state as NativeDeliveryState;
+        kept.uncertain = frame.uncertain === true;
+        if (frame.acp_session) kept.frame.acp_session = frame.acp_session;
+        if (kept.state === "cancelled") restoreRetained(kept);
+      } else if (frame.t === "error") {
+        kept.state = "unsent";
+        kept.uncertain = frame.detail !== "prompt_not_sent";
+        const event = { type: "frame" as const, frame: { t: "prompt_state", message_id: id,
+          state: "unsent", uncertain: kept.uncertain, program: frame.program, acp_session: frame.acp_session } };
+        stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+      }
+    }
+    return frame;
+  }, [restoreRetained]);
+  const markUnconfirmed = useCallback((id: string) => {
+    const prompt = retainedPromptsRef.current.get(id);
+    if (!prompt || prompt.state !== "sending") return;
+    prompt.state = "unsent"; prompt.uncertain = true;
+    if (prompt.timer) clearTimeout(prompt.timer);
+    prompt.timer = undefined;
+    const event = { type: "frame" as const, frame: { t: "prompt_state", message_id: id,
+      state: "unsent", uncertain: true, reason: "ack_lost" } };
+    if (prompt.viewKey === viewKeyRef.current || prompt.frame.acp_session === stateRef.current.activeSession) {
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+    }
+  }, []);
+
+  // ── Stop (2026-11-02 contract): idle → stopping → (stopped | error) ──────────
+  const [stopState, setStopStateValue] = useState<StopState>(idleStop);
+  const stopRef = useRef<StopState>(idleStop());
+  const stopTargetRef = useRef<{ program: AgentProgram | null; session: string }>({ program: null, session: "" });
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** After a confirmed stop, the gateway's own late `done` (stop cancelled) for it is an echo. */
+  const stopEchoRef = useRef<{ key: string; until: number } | null>(null);
+  const updateStop = useCallback((event: StopEvent): StopState => {
+    const next = stopMachine(stopRef.current, event);
+    if (next === stopRef.current) return next;
+    stopRef.current = next;
+    setStopStateValue(next);
+    if (next.phase !== "stopping" && stopTimerRef.current) {
+      clearTimeout(stopTimerRef.current);
+      stopTimerRef.current = null;
+    }
+    return next;
+  }, []);
+  useEffect(() => () => {
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+  }, []);
+
+  /** Apply a stop outcome to the view of the session it was aimed at (on screen or kept). */
+  const applyStopToView = useCallback((event: Parameters<typeof applyDialog>[1], program: AgentProgram | null, session: string) => {
+    const current = stateRef.current;
+    const onScreen = program === current.program && (!session || session === current.activeSession);
+    if (onScreen) {
+      stateRef.current = applyDialog(current, event);
+      dispatch(event);
+      return;
+    }
+    const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+    const key = `${program ?? ""}::${session}`;
+    const source = {
+      ...initialDialogState(), ...cached.views.get(key),
+      program, activeSession: session, liveTurns: current.liveTurns,
+    };
+    const next = applyDialog(source, event);
+    if (cached.views.has(key)) cached.views.set(key, viewSnapOf(next));
+    stateRef.current = applyDialog(stateRef.current, { type: "set-live-turns", liveTurns: next.liveTurns });
+    dispatch({ type: "set-live-turns", liveTurns: next.liveTurns });
+  }, []);
+
+  /** offline / failed / timeout / unsendable: the turn is as it was, Stop is clickable again. */
+  const failStop = useCallback((event: StopEvent) => {
+    const before = stopRef.current;
+    const next = updateStop(event);
+    if (next === before || next.phase !== "error") return;
+    const target = stopTargetRef.current;
+    applyStopToView({ type: "cancel-failed", acpSession: target.session }, target.program, target.session);
+  }, [applyStopToView, updateStop]);
+
+  /** stopped / not_running: end the open turn here at once (a later real `done` is harmless). */
+  const confirmStop = useCallback((stopId: string, result: "stopped" | "not_running", session: string) => {
+    const before = stopRef.current;
+    const next = updateStop({ type: "result", stopId, result });
+    if (next === before) return;
+    const target = stopTargetRef.current;
+    const ended = session || target.session;
+    const pendingKey = ended ? `s:${target.program ?? ""}::${ended}`
+      : `ref:${target.program ? newRefs.current.get(target.program) ?? "" : ""}`;
+    // This turn's not-yet-acknowledged send is over too. A later refusal must
+    // not resurrect its draft; queued prompts for the next turn stay separate.
+    unsentRef.current.delete(pendingKey);
+    for (const [id, prompt] of retainedPromptsRef.current) {
+      if (prompt.frame.program !== target.program || (ended ? prompt.frame.acp_session !== ended : prompt.frame.acp_session)) continue;
+      unsentRef.current.delete(`msg:${id}`);
+      if (prompt.state === "sending") {
+        // A legacy peer has no message-state frames. A confirmed Stop settles
+        // its optimistic busy marker; modern queued withdrawal is explicit.
+        prompt.state = "injected";
+        if (prompt.timer) clearTimeout(prompt.timer);
+        const event = { type: "frame" as const, frame: { t: "prompt_state", message_id: id, state: "injected" } };
+        applyStopToView(event, target.program, ended);
+      }
+    }
+    if (ended) stopEchoRef.current = { key: `${target.program ?? ""}::${ended}`, until: Date.now() + 5_000 };
+    applyStopToView({ type: "cancel-result", result, acpSession: ended, program: target.program ?? undefined }, target.program, ended);
+  }, [applyStopToView, updateStop]);
+
+  const onCancelResult = useCallback((frame: Record<string, unknown>) => {
+    const stopId = typeof frame.stop_id === "string" ? frame.stop_id : "";
+    const result = frame.result;
+    if (!stopId || stopId !== stopRef.current.stopId || !isCancelResult(result)) return;
+    const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+    if (result === "stopped" || result === "not_running") {
+      confirmStop(stopId, result, session);
+      return;
+    }
+    failStop({ type: "result", stopId, result, detail: typeof frame.detail === "string" ? frame.detail : "" });
+  }, [confirmStop, failStop]);
+
+  /** True for the gateway's late `done` of a stop this page already settled (dropped as an echo). */
+  const isStopEcho = useCallback((frame: Record<string, unknown>): boolean => {
+    const echo = stopEchoRef.current;
+    if (!echo || frame.t !== "done" || frame.stop !== "cancelled") return false;
+    if (Date.now() > echo.until) {
+      stopEchoRef.current = null;
+      return false;
+    }
+    const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+    const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+    if (`${program}::${session}` !== echo.key) return false;
+    // A newer stop of this session is a real answer, never an echo.
+    if (stopRef.current.phase === "stopping") return false;
+    stopEchoRef.current = null;
+    return true;
+  }, []);
+
+  const ingest = useCallback((raw: string) => {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      parsed = null;
+    }
+    const frame =
+      parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? settleUnsent(deliveryFrame(parsed as Record<string, unknown>))
+        : null;
+    if (!frame) {
+      dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+      socketRef.current?.close();
+      return;
+    }
+    frame._native_binding = taskSessionRef.current || "";
+    if (frame.t === "archive_status") {
+      if (taskSessionRef.current && frame.task_session_id !== taskSessionRef.current) return;
+      const status = frame.sync_status;
+      if (status === "saved" || status === "pending" || status === "error") archiveStatusRef.current?.(status);
+      return;
+    }
+    if (frame.t === "cancel_result") {
+      onCancelResult(frame);
+      return;
+    }
+    if (isStopEcho(frame)) return;
+    if (frame.t === "turn_start" && frame.replay !== true && stopEchoRef.current) {
+      const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+      // Once the next agent turn has actually started, its cancelled `done`
+      // (including a Stop from another page) is real and must never be hidden.
+      if (`${program}::${session}` === stopEchoRef.current.key) stopEchoRef.current = null;
+    }
+    // B2 no-replay frame: whether the live transcript for this session is a full replay.
+    if (frame.t === "history") {
+      const session = typeof frame.acp_session === "string" ? frame.acp_session : "";
+      const program = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      if (session && typeof frame.replay === "boolean") {
+        const key = `${program}::${session}`;
+        const replay = frame.replay;
+        setHistoryReplay((current) => (current[key] === replay ? current : { ...current, [key]: replay }));
+        // Adopted without history: what was said during the gap is only in the saved copy.
+        if (!replay) setReattachSeq((count) => count + 1);
+      }
+      return;
+    }
+    if (frame.t === "status" && frame.link === "attached") setReattachSeq((count) => count + 1);
+    if (isPromptNotSent(frame)) {
+      // That prompt's fate is on its bubble (settleUnsent above); the turn on screen is untouched.
+      // A reconnecting / offline code still says the computer is away right now.
+      const code = String(frame.code ?? "");
+      if (code === "computer_reconnecting" || code === "computer_offline") {
+        const event = { type: "frame" as const, frame: { t: "error", code, program: frame.program } };
+        stateRef.current = applyDialog(stateRef.current, event);
+        dispatch(event);
+      }
+      return;
+    }
+    // Any live frame proves the computer is connected, whichever view of it the frame is for.
+    if (stateRef.current.offline && isLinkEvidenceFrame(frame)) {
+      stateRef.current = applyDialog(stateRef.current, { type: "link-evidence" });
+      dispatch({ type: "link-evidence" });
+    }
+    const viewingSession = stateRef.current.activeSession;
+    if (frame.t === "error" && isReconnectingNotice(String(frame.code))) {
+      // A node reconnects after gateway replacement. Treat offline as a
+      // retryable connection loss, not a permanent stop requiring a click.
+      // Offline belongs to the computer, including when the focused view is
+      // an existing session and the gateway error carries no session id.
+      // A transport failure must not settle the running turn as a program
+      // failure. Keep the current view while the socket reconnects.
+      const event = frame.code === "dialog_unreachable"
+        ? { type: "notice" as const, code: "dialog_unreachable", program: stateRef.current.program ?? "" }
+        : { type: "frame" as const, frame };
+      stateRef.current = applyDialog(stateRef.current, event);
+      dispatch(event);
+      socketRef.current?.close();
+      return;
+    }
+    if (frame.t === "status") delayRef.current = 1000;
+    const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+    if (frame.t === "status") cached.programs = applyDialog(stateRef.current, { type: "frame", frame }).programs;
+    if (frame.t === "models" || frame.t === "config") {
+      const catalogProgram = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+      if (isWsProgram(catalogProgram)) rememberModelCatalogFrame(computerIdRef.current, catalogProgram, frame);
+    }
+    if (frame.t === "occupancy" && typeof frame.program === "string") {
+      occupancyProbeRef.current?.receive(frame.program);
+    }
+    if (frame.t === "sessions" && typeof frame.program === "string" && (isWsProgram(frame.program) || frame.program === "oceanleo")) {
+      sessionsRefreshRef.current?.receive(frame.program, JSON.stringify([frame.sessions, frame.active, frame.busy]), frame.supported !== false);
+      if (Array.isArray(frame.busy)) occupancyProbeRef.current?.receive(frame.program);
+      const parsed = applyDialog({ ...stateRef.current, program: frame.program }, { type: "frame", frame });
+      cached.sessions.set(frame.program, { sessions: parsed.sessions, sessionsSupported: parsed.sessionsSupported });
+    }
+    const frameSession = typeof frame.acp_session === "string" ? frame.acp_session : "";
+    const frameProgram = typeof frame.program === "string" ? frame.program : stateRef.current.program ?? "";
+    const related = new Set(["prompt_ack", "prompt_state", "user_message", "turn_start", "turn_state", "delta", "thought", "tool", "plan", "usage", "permission", "question", "done", "models", "config", "commands", "session_opened", "transcript", "session_path", "error"]);
+    if (related.has(String(frame.t)) && (isWsProgram(frameProgram) || frameProgram === "oceanleo")) {
+      const ref = typeof frame.ref === "string" ? frame.ref : "";
+      // A ref-less `session_opened` is another view's open on this computer:
+      // the gateway sends it to every page attached here (one shared shell
+      // scope). The Computers page follows it into its new view; a host that
+      // opens its sessions itself (task chats, the homepage draft) never
+      // adopts it, or a brand-new chat would turn into another task's
+      // conversation and its first prompt would land there (2026-10-31 D).
+      const adoptUnsolicited = openActiveSessionRef.current;
+      const pendingKey = ref ? pendingRefs.current.get(ref) : adoptUnsolicited && frame.t === "session_opened" && frameProgram === stateRef.current.program && !stateRef.current.activeSession ? viewKeyRef.current : undefined;
+      if (ref && !pendingKey && !frameSession) return;
+      let key = frameSession ? `${frameProgram}::${frameSession}` : `${frameProgram}::new`;
+      if (pendingKey && !frameSession) key = pendingKey;
+      // A model query may create a spare ACP session. It is metadata for the
+      // new view, not a user-selected history session.
+      if (!stateRef.current.activeSession && frameProgram === stateRef.current.program && ["models", "config", "commands"].includes(String(frame.t))) {
+        key = viewKeyRef.current;
+      }
+      if (pendingKey && frameSession && pendingKey !== key) {
+        const snapshot = cached.views.get(pendingKey);
+        if (snapshot) {
+          const pendingSession = snapshot.occupancyPendingSession
+            && (snapshot.occupancyPendingSession === snapshot.draftRef || snapshot.occupancyPendingSession.startsWith("new:"))
+            ? frameSession
+            : snapshot.occupancyPendingSession;
+          cached.views.set(key, {
+            ...snapshot,
+            activeSession: frameSession,
+            draftRef: undefined,
+            occupancyPendingSession: pendingSession ?? null,
+          });
+        }
+        if (viewKeyRef.current === pendingKey) {
+          viewKeyRef.current = key;
+          const pendingSession = stateRef.current.occupancyPendingSession
+            && (stateRef.current.occupancyPendingSession === stateRef.current.draftRef
+              || stateRef.current.occupancyPendingSession.startsWith("new:"))
+            ? frameSession
+            : stateRef.current.occupancyPendingSession;
+          stateRef.current = {
+            ...stateRef.current,
+            activeSession: frameSession,
+            draftRef: undefined,
+            occupancyPendingSession: pendingSession ?? null,
+          };
+          dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
+        }
+        cached.views.delete(pendingKey);
+        pendingRefs.current.set(ref, key);
+        const live = { ...stateRef.current.liveTurns };
+        if (live[`${frameProgram}::new:${ref}`]) live[`${frameProgram}::${frameSession}`] = true;
+        delete live[`${frameProgram}::new:${ref}`];
+        stateRef.current = { ...stateRef.current, liveTurns: live };
+        dispatch({ type: "set-live-turns", liveTurns: live });
+        sessionsRefreshRef.current?.request(frameProgram, "activity");
+      }
+      // Frames without a session belong only to a new view.
+      if (!frameSession && !pendingKey && stateRef.current.activeSession && frame.t !== "error") return;
+      const isCurrent = key === viewKeyRef.current || (!frameSession && !stateRef.current.activeSession && frameProgram === stateRef.current.program);
+      const source = isCurrent ? stateRef.current : {
+        ...initialDialogState(), ...cached.views.get(key),
+        program: frameProgram as AgentProgram, activeSession: frameSession,
+        liveTurns: stateRef.current.liveTurns,
+      };
+      const next = applyDialog(source, { type: "frame", frame });
+      cached.views.set(key, viewSnapOf(next));
+      if (isCurrent) {
+        stateRef.current = next;
+        dispatch({ type: "frame", frame });
+      } else {
+        stateRef.current = applyDialog(stateRef.current, { type: "set-live-turns", liveTurns: next.liveTurns });
+        dispatch({ type: "set-live-turns", liveTurns: next.liveTurns });
+        if (frameProgram === (stateRef.current.program ?? "")) {
+          const busy = occupancyBusyAfterFrame(stateRef.current.occupancyBusy, frame);
+          if (busy !== null) {
+            const occupancy = { t: "occupancy", program: frameProgram, busy };
+            stateRef.current = applyDialog(stateRef.current, { type: "frame", frame: occupancy });
+            dispatch({ type: "frame", frame: occupancy });
+          }
+        }
+      }
+    } else {
+      stateRef.current = applyDialog(stateRef.current, { type: "frame", frame });
+      dispatch({ type: "frame", frame });
+    }
+    if (openActiveSessionRef.current && frame.t === "sessions" && frameProgram === stateRef.current.program) {
+      const program = frameProgram as AgentProgram;
+      const listed = cached.sessions.get(program)?.sessions ?? [];
+      const target = program === mountProgram && initialSessionId ? initialSessionId : taskSessionRef.current ? "" : typeof frame.active === "string" ? frame.active.trim() : "";
+      if (
+        target
+        && listed.some((session) => session.id === target)
+        && !initialOpened.current.has(program)
+        && !stateRef.current.activeSession
+        && !stateRef.current.sessionLoading
+      ) {
+        initialOpened.current.add(program);
+        queueMicrotask(() => openSessionRef.current(target));
+      }
+    }
+    if (frame.t === "install_done" || frame.t === "login_done") {
+      sendJson(socketRef.current, { t: "status" });
+    }
+    // New sessions and fresh activity must show up in "Past sessions" without a manual refresh.
+    if ((frame.t === "done" || frame.t === "session_opened" || frame.t === "turn_start") && frameProgram) {
+      sessionsRefreshRef.current?.request(frameProgram, "activity");
+    }
+    if (frame.t === "done" && frameSession && frameProgram) {
+      const viewingThis = frameProgram === (stateRef.current.program ?? "") && frameSession === viewingSession;
+      if (viewingThis) clearUnread(frameProgram, frameSession);
+      else if (isCompletedStop(typeof frame.stop === "string" ? frame.stop : "")) addUnread(frameProgram, frameSession);
+    }
+    if (frame.t === "turn_start" && frameSession && frameProgram) clearUnread(frameProgram, frameSession);
+    // The stopped turn's own `done` already ended it here: the stop has its outcome even
+    // if this gateway predates `cancel_result` (whose late reply is then ignored by id).
+    if (frame.t === "done" && (stopRef.current.phase === "stopping" || stopRef.current.phase === "error")) {
+      const target = stopTargetRef.current;
+      if (frameProgram === (target.program ?? "") && (!target.session || !frameSession || frameSession === target.session)) {
+        // A failed stop's reason ("press Stop again") no longer applies once that turn ended anyway.
+        if (stopRef.current.phase === "error") updateStop({ type: "reset" });
+        else confirmStop(stopRef.current.stopId, "stopped", frameSession);
+      }
+    }
+  }, [addUnread, clearTimer, clearUnread, confirmStop, initialSessionId, isStopEcho, mountProgram, onCancelResult, settleUnsent, deliveryFrame, updateStop]);
+
+  const scheduleReconnect = useCallback(() => {
+    if (!enabledRef.current || !activeRef.current) return;
+    clearTimer();
+    const wait = delayRef.current;
+    delayRef.current = nextReconnectDelay(wait);
+    timerRef.current = setTimeout(() => {
+      timerRef.current = null;
+      void connectRef.current();
+    }, wait);
+  }, [clearTimer]);
+
+  const connect = useCallback((): Promise<WebSocket | null> => {
+    const open = socketRef.current;
+    if (open && open.readyState === WebSocket.OPEN) return Promise.resolve(open);
+    if (inflightRef.current) return inflightRef.current;
+    let run: Promise<WebSocket | null>;
+    run = openSocket().finally(() => {
+      if (inflightRef.current === run) inflightRef.current = null;
+    });
+    inflightRef.current = run;
+    return run;
+
+    async function openSocket(): Promise<WebSocket | null> {
+    if (!enabledRef.current) return null;
+    const gen = (connectGen.current += 1);
+    const previous = socketRef.current;
+    socketRef.current = null;
+    if (previous && previous.readyState !== WebSocket.CLOSED) previous.close();
+
+    let token = "";
+    try {
+      const client = await import("../../../lib/auth/client");
+      const value = typeof client.accessToken === "function" ? await client.accessToken() : "";
+      token = typeof value === "string" ? value : "";
+      // The model catalog this socket reports is kept for this user (model-catalog-cache).
+      if (token && typeof client.getUserId === "function") void client.getUserId().then(setCacheUser, () => undefined);
+    } catch {
+      token = "";
+    }
+    if (gen !== connectGen.current || !enabledRef.current) return null;
+    if (!token) {
+      dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+      scheduleReconnect();
+      return null;
+    }
+
+    // Per-computer dialog sockets were removed in §7. Task pages use the
+    // numbered task timeline; this legacy controller stays as a compatibility
+    // type seam for settings components and never opens a display socket.
+    dispatch({ type: "notice", code: "dialog_unreachable", program: stateRef.current.program ?? "" });
+    scheduleReconnect();
+    return null;
+
+    }
+  }, [ingest, scheduleReconnect, markUnconfirmed]);
+
+  connectRef.current = connect;
+
+  const ensureOpen = useCallback(() => connectRef.current(), []);
+
+  // --------------------------------------------------------------------- //
+  // OceanLeo agent 程序（合同 I6）：REST turn + getTask 轮询，不走 WS。
+  // --------------------------------------------------------------------- //
+
+  const clearOceanWait = useCallback(() => {
+    const waiter = oceanWaiterRef.current;
+    if (!waiter) return;
+    oceanWaiterRef.current = null;
+    clearTimeout(waiter.timer);
+    waiter.resolve(false);
+  }, []);
+
+  const oceanWait = useCallback(
+    (ms: number) =>
+      new Promise<boolean>((resolve) => {
+        oceanWaiterRef.current = {
+          timer: setTimeout(() => {
+            oceanWaiterRef.current = null;
+            resolve(true);
+          }, ms),
+          resolve,
+        };
+      }),
+    [],
+  );
+
+  const dispatchOceanOccupancy = useCallback((running: boolean) => {
+    const ids = [...new Set(
+      [stateRef.current.activeSession, stateRef.current.draftRef, oceanTaskRef.current, "oceanleo"]
+        .filter((id): id is string => Boolean(id)),
+    )];
+    dispatch({
+      type: "frame",
+      frame: { t: "occupancy", program: "oceanleo", busy: running ? ids : [] },
+    });
+  }, []);
+
+  /** 任务详情 → 消息列表。刚发的那句服务端还没落库时这一轮不替换（本地回显不闪没）。 */
+  const applyOceanDetail = useCallback(
+    (detail: TaskDetail) => {
+      const status = detail.task?.status || "";
+      const mapped = mapTaskMessages({ ...detail, task: { ...detail.task, status } }, { step: tt("步骤"), error: tt("出错") });
+      const pending = oceanSendRef.current;
+      if (pending) {
+        // 落地判定按用户消息计数、不按文本：重发同一句不算落地，服务端改写文本也不卡死。
+        // 任务已到终态则无条件应用——服务端真相优先，busy 不许因此卡住。
+        const userCount = mapped.reduce(
+          (count, message) => (message.kind === "user" ? count + 1 : count),
+          0,
+        );
+        const terminal = Boolean(status && status !== "running");
+        if (!terminal && userCount <= pending.baseUsers) return;
+        oceanSendRef.current = null;
+      }
+      messagesCacheRef.current.set("oceanleo", mapped);
+      if (stateRef.current.program === "oceanleo") {
+        dispatch({ type: "messages-replace", messages: mapped });
+        const running = status === "running";
+        if (running && !stateRef.current.busy) dispatch({ type: "send-began" });
+        if (!running) dispatch({ type: "server-settled" });
+        dispatchOceanOccupancy(running);
+      }
+    },
+    [dispatchOceanOccupancy, tt],
+  );
+
+  /** 轮询直到任务离开 running；代际变了（重进程序/复位/卸载）立即收手。 */
+  const pollOcean = useCallback(
+    async (taskId: string, gen: number) => {
+      let idleStep = -1;
+      let waitedMs = 0;
+      // Streaming assistant output updates one row repeatedly. Track a stable
+      // fingerprint of row ids/content, rather than only the row count, so a
+      // growing message is rendered on the next poll.
+      let lastFingerprint = "";
+      for (;;) {
+        if (gen !== oceanGen.current || !activeRef.current) return;
+        // 与 AgentChat 同语义：页面在后台这一轮不发请求，只留便宜定时器回来看。
+        const hidden = typeof document !== "undefined" && document.hidden === true;
+        if (hidden) {
+          const cadence = nextOceanleoPoll({ hidden: true, changed: false, idleStep, waitedMs });
+          idleStep = cadence.idleStep;
+          waitedMs = cadence.waitedMs;
+          if (!(await oceanWait(cadence.delayMs))) return;
+          continue;
+        }
+        const result = await getTask(taskId);
+        if (gen !== oceanGen.current) return;
+        if (!result.ok || !result.data) {
+          // 网络/权限抖动：不擦列表、不假装结束，按退避节奏再来。占用未知。
+          dispatch({ type: "occupancy-lost" });
+          const cadence = nextOceanleoPoll({ hidden: false, changed: false, idleStep, waitedMs });
+          idleStep = cadence.idleStep;
+          waitedMs = cadence.waitedMs;
+          if (!(await oceanWait(cadence.delayMs))) return;
+          continue;
+        }
+        const detail = result.data;
+        const fingerprint = oceanMessageFingerprint(detail.messages ?? []);
+        const changed = fingerprint !== lastFingerprint;
+        lastFingerprint = fingerprint;
+        applyOceanDetail(detail);
+        if (detail.task?.status !== "running") return;
+        const cadence = nextOceanleoPoll({ hidden: false, changed, idleStep, waitedMs });
+        idleStep = cadence.idleStep;
+        waitedMs = cadence.waitedMs;
+        if (!(await oceanWait(cadence.delayMs))) return;
+      }
+    },
+    [applyOceanDetail, oceanWait],
+  );
+
+  /** 进入 oceanleo 程序（或重试）：拉 agentState，回放当前任务的消息。 */
+  const refreshOcean = useCallback(async () => {
+    const computerId = computerIdRef.current;
+    if (!computerId || !enabledRef.current || !activeRef.current || !oceanleoReadyRef.current) return;
+    const gen = (oceanGen.current += 1);
+    clearOceanWait();
+    const result = await agentState(computerId);
+    if (gen !== oceanGen.current) return;
+    if (!result.ok || !result.data) {
+      setComputerName("");
+      oceanTaskRef.current = "";
+      dispatch({ type: "occupancy-lost" });
+      dispatch({
+        type: "frame",
+        frame: {
+          t: "error",
+          code: result.status === 0 ? "dialog_unreachable" : "node_error",
+          program: "oceanleo",
+        },
+      });
+      return;
+    }
+    const data = result.data;
+    setComputerName(data.computer?.name ?? "");
+    if (data.computer?.online !== true) {
+      // 电脑不在线：消息区只留一行实话，输入禁用（offline 语义与 WS 程序一致）。
+      oceanTaskRef.current = "";
+      oceanSendRef.current = null;
+      messagesCacheRef.current.set("oceanleo", []);
+      if (stateRef.current.program === "oceanleo") {
+        dispatch({ type: "messages-replace", messages: [] });
+      }
+      dispatch({ type: "frame", frame: { t: "error", code: "computer_offline", program: "oceanleo" } });
+      return;
+    }
+    if (stateRef.current.offline) dispatch({ type: "clear-offline" });
+    const taskId = typeof data.task_id === "string" ? data.task_id : "";
+    oceanTaskRef.current = taskId;
+    if (!taskId) {
+      messagesCacheRef.current.set("oceanleo", []);
+      if (stateRef.current.program === "oceanleo") {
+        dispatch({ type: "messages-replace", messages: [] });
+        dispatch({ type: "server-settled" });
+        dispatchOceanOccupancy(false);
+      }
+      return;
+    }
+    const detail = await getTask(taskId);
+    if (gen !== oceanGen.current) return;
+    if (!detail.ok || !detail.data) {
+      dispatch({ type: "occupancy-lost" });
+      return;
+    }
+    applyOceanDetail(detail.data);
+    if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
+  }, [applyOceanDetail, clearOceanWait, dispatchOceanOccupancy, pollOcean]);
+
+  refreshOceanRef.current = refreshOcean;
+
+  const sendOcean = useCallback(async (override?: string): Promise<boolean> => {
+    const computerId = computerIdRef.current;
+    if (!computerId) return false;
+    const ocean = stateRef.current;
+    const oceanMode = composerOccupancy({
+      linkUp: ocean.occupancyLink,
+      occupancyAt: ocean.occupancyAt,
+      occupancyBusy: ocean.occupancyBusy,
+      sessionId: ocean.activeSession || ocean.draftRef || oceanTaskRef.current || "oceanleo",
+      messages: ocean.messages,
+      pendingAt: ocean.occupancyPendingAt,
+      pendingSession: ocean.occupancyPendingSession,
+      offline: ocean.offline,
+      sessionLoading: ocean.sessionLoading,
+    });
+    if (oceanMode !== "idle") return false;
+    if (inboxWaiters.current.size) {
+      await Promise.all([...inboxWaiters.current.values()]);
+    }
+    if (attachmentsRef.current.some((item) => item.state === "error")) return false;
+    const pendingFiles = attachmentsRef.current.filter(isInboxReady);
+    const text = (override ?? draftRef.current).trim();
+    if (!text && pendingFiles.length === 0) return false;
+    // 后端 turn 上限 8000：超了明说，不静默截断（WS 程序的 32000 是另一条协议）。
+    if (text.length > MAX_OCEAN_PROMPT_CHARS) {
+      dispatch({ type: "notice", code: "invalid_argument", program: "oceanleo" });
+      return false;
+    }
+    const gen = (oceanGen.current += 1);
+    clearOceanWait();
+    // 与 WS send 同款乐观写：dispatch 到重渲染之间再按发送不能发出第二句。
+    dispatch({ type: "send-began" });
+    stateRef.current = applyDialog(stateRef.current, { type: "send-began" });
+    // A new prompt starts a new turn: an earlier stop's reason no longer applies.
+    updateStop({ type: "reset" });
+    const named = userFileRows(pendingFiles);
+    const fileNote = pendingFiles.length
+      ? `${text ? "\n\n" : ""}` + pendingFiles.map((item) => `附件：${item.path}`).join("\n")
+      : "";
+    const outgoing = `${text}${fileNote}`;
+    dispatch({ type: "user", text: outgoing, attachments: named });
+    setDraft("");
+    setAttachments((current) => current.filter((item) => item.state === "error"));
+    const freshTurn = freshRef.current;
+    setFresh(false);
+    if (freshTurn) {
+      // 「新对话」：先丢掉服务端任务指针，下一句必然新建任务。
+      await agentReset(computerId);
+      if (gen !== oceanGen.current) return false;
+      oceanTaskRef.current = "";
+      // 新任务从 0 条用户消息计起；旧缓存的计数会把落地判定永远挡住。
+      messagesCacheRef.current.set("oceanleo", []);
+    }
+    const baseUsers = (messagesCacheRef.current.get("oceanleo") ?? []).reduce(
+      (count, message) => (message.kind === "user" ? count + 1 : count),
+      0,
+    );
+    oceanSendRef.current = { baseUsers };
+    const result = await agentTurn(computerId, {
+      text: outgoing,
+      shell_session_id: sessionIdRef.current || undefined,
+    });
+    if (gen !== oceanGen.current) return true;
+    if (!result.ok || !result.data?.task_id) {
+      oceanSendRef.current = null;
+      if (result.status === 0) {
+        dispatch({ type: "send-failed" });
+      } else {
+        dispatch({
+          type: "frame",
+          frame: { t: "error", code: "node_error", program: "oceanleo" },
+        });
+      }
+      return false;
+    }
+    oceanTaskRef.current = result.data.task_id;
+    void pollOcean(result.data.task_id, gen);
+    return true;
+  }, [clearOceanWait, pollOcean]);
+
+  useEffect(() => {
+    dispatch({ type: "reset" });
+    setDraft("");
+    unsentRef.current.clear();
+    setFresh(false);
+    setComputerName("");
+    oceanGen.current += 1;
+    oceanTaskRef.current = "";
+    oceanSendRef.current = null;
+    messagesCacheRef.current.clear();
+    clearOceanWait();
+  }, [computerId, sessionId, clearOceanWait]);
+
+  useEffect(() => {
+    if (!enabled) {
+      sessionsRefreshRef.current?.reset();
+      connectGen.current += 1;
+      inflightRef.current = null;
+      clearTimer();
+      oceanGen.current += 1;
+      clearOceanWait();
+      const socket = socketRef.current;
+      socketRef.current = null;
+      if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
+      return;
+    }
+    dispatch({ type: "clear-offline" });
+    delayRef.current = 1000;
+    void connect();
+    // 默认程序就是 oceanleo（合同 I6）：打开对话框即拉 agentState 回放当前任务。
+    if (stateRef.current.program === "oceanleo" && !localOceanleoRef.current) {
+      dispatch({ type: "sessions-unavailable" });
+      void refreshOceanRef.current();
+    }
+    return () => {
+      sessionsRefreshRef.current?.reset();
+      connectGen.current += 1;
+      inflightRef.current = null;
+      clearTimer();
+      oceanGen.current += 1;
+      clearOceanWait();
+      const socket = socketRef.current;
+      socketRef.current = null;
+      if (socket && socket.readyState !== WebSocket.CLOSED) socket.close();
+    };
+  }, [enabled, computerId, sessionId, clearTimer, connect, clearOceanWait]);
+
+  const readySeenRef = useRef(oceanleoReady);
+  useEffect(() => {
+    const wasReady = readySeenRef.current;
+    readySeenRef.current = oceanleoReady;
+    if (!wasReady && oceanleoReady && !localOceanleo && stateRef.current.program === "oceanleo") {
+      void refreshOceanRef.current();
+    }
+  }, [oceanleoReady, localOceanleo]);
+
+  const previousActive = useRef(active);
+  useEffect(() => {
+    if (previousActive.current === active) return;
+    previousActive.current = active;
+    if (!active) {
+      clearTimer();
+      oceanGen.current += 1;
+      clearOceanWait();
+      return;
+    }
+    if (enabled) {
+      void connectRef.current();
+      if (stateRef.current.program === "oceanleo" && !localOceanleoRef.current) void refreshOceanRef.current();
+    }
+  }, [active, enabled, clearTimer, clearOceanWait]);
+
+  // 本地 OceanLeo agent 装上 / 卸掉时，正在看的 oceanleo 换到另一条通道（WS ↔ REST）。
+  const localSeenRef = useRef(localOceanleo);
+  useEffect(() => {
+    if (localSeenRef.current === localOceanleo) return;
+    localSeenRef.current = localOceanleo;
+    if (!enabled || stateRef.current.program !== "oceanleo" || stateRef.current.busy) return;
+    messagesCacheRef.current.delete("oceanleo");
+    dispatch({ type: "program", program: "oceanleo" });
+    dispatch({ type: "messages-replace", messages: [] });
+    if (!localOceanleo) {
+      dispatch({ type: "sessions-unavailable" });
+      void refreshOceanRef.current();
+      return;
+    }
+    oceanGen.current += 1;
+    clearOceanWait();
+    oceanTaskRef.current = "";
+    oceanSendRef.current = null;
+    void (async () => {
+      const socket = await connectRef.current();
+      sessionsRefreshRef.current?.request("oceanleo");
+      sendJson(socket, { t: "models", program: "oceanleo" });
+    })();
+  }, [enabled, localOceanleo, clearOceanWait]);
+
+  const setProgram = useCallback(
+    (next: AgentProgram) => {
+      // OceanLeo 本地安装后走同一条 ACP WS；没安装时保留既有 REST 云端 agent。
+      if (!isWsProgram(next) && next !== "oceanleo") return;
+      const prev = stateRef.current.program;
+      // 同一程序再选一次（如对话中点当前 agent 的齿轮）不能清掉模型、会话和消息。
+      if (prev === next) return;
+      const cached = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+      if (prev) {
+        cached.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
+        cached.last.set(prev, viewKeyRef.current);
+      }
+      const key = cached.last.get(next) ?? `${next}::new:${clientRef(next)}`;
+      const saved = cached.views.get(key);
+      viewKeyRef.current = key;
+      const switched = hydratePresentation(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, applyDialog(stateRef.current, { type: "program", program: next }), computerIdRef.current);
+      stateRef.current = saved ? applyDialog(switched, { type: "restore-view", ...saved }) : { ...switched, messages: [], draftRef: `new:${clientRef(next)}` };
+      dispatch({ type: "program", program: next });
+      dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
+      if (next === "oceanleo" && !localOceanleoRef.current) {
+        dispatch({ type: "sessions-unavailable" });
+        // 进入即拉服务端真相（覆盖上面的缓存过渡）；离开 oceanleo 则停掉轮询。
+        void refreshOcean();
+        return;
+      }
+      if (prev === "oceanleo" && !localOceanleoRef.current) {
+        oceanGen.current += 1;
+        clearOceanWait();
+      }
+      const socket = socketRef.current;
+      if (usesDialogSocket(next, localOceanleoRef.current) && socket && socket.readyState === WebSocket.OPEN) {
+        sessionsRefreshRef.current?.request(next);
+        sendJson(socket, { t: "models", program: next });
+      }
+    },
+    [clearOceanWait, refreshOcean],
+  );
+
+  const abortSendGuardRef = useRef(false);
+  const armAbortSendGuard = useCallback(() => {
+    if (abortSendGuardRef.current) return;
+    abortSendGuardRef.current = true;
+    let released = false;
+    const release = () => {
+      if (released) return;
+      released = true;
+      abortSendGuardRef.current = false;
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+    const onClick = (event: Event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      release();
+    };
+    const onUp = () => {
+      window.setTimeout(release, 0);
+    };
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+  }, []);
+
+  // `override` lets a host composer (main chat LeoComposer) send its own text
+  // without first round-tripping it through this controller's draft state.
+  const send = useCallback(async (override?: string, messageId?: string): Promise<boolean> => {
+    const handedOff = messageId ? retainedPromptsRef.current.get(messageId) : undefined;
+    if (handedOff) {
+      // A stale ready effect may repeat a completed handoff. Reuse the receipt;
+      // a retry of unsent/uncertain input goes through retryMessage explicitly.
+      return handedOff.text === (typeof override === "string" ? override : draftRef.current).trim() &&
+        handedOff.frame.program === stateRef.current.program &&
+        (handedOff.frame.task_session_id || "") === (taskSessionRef.current || "") && handedOff.state !== "unsent";
+    }
+    if (abortSendGuardRef.current || preparingSendRef.current || stopRef.current.phase === "stopping") return false;
+    const program = stateRef.current.program;
+    if (program === "oceanleo" && !localOceanleoRef.current) return await sendOcean(override);
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return false;
+    const origin = viewKeyRef.current;
+    const epoch = sendEpochRef.current;
+    const managed = taskSessionRef.current || "";
+    const initial = stateRef.current;
+    if (managed && boundSessionRef.current && initial.activeSession !== boundSessionRef.current) return false;
+    if (initial.sessionLoading || initial.offline || initial.install.running || initial.login.pending) return false;
+    const occupancyMode = composerOccupancy({ linkUp: initial.occupancyLink,
+      occupancyAt: !initial.activeSession && initial.occupancyLink ? Date.now() : initial.occupancyAt,
+      occupancyBusy: initial.occupancyBusy, sessionId: initial.activeSession || initial.draftRef || "",
+      messages: initial.messages, pendingAt: initial.occupancyPendingAt, pendingSession: initial.occupancyPendingSession,
+      offline: initial.offline, sessionLoading: initial.sessionLoading });
+    if (occupancyMode !== "idle" && occupancyMode !== "working" && !initial.busy &&
+      !nativeTurnFinishing(initial.messages, initial.activeSession, savedFinishingRef.current && stopRef.current.phase !== "stopped") && !initial.messages.some((m) =>
+      (m.kind === "turn" && m.live && !m.stop) ||
+      (m.kind === "user" && (m.delivery?.state === "sending" || m.delivery?.state === "queued")))) return false;
+    const text = (typeof override === "string" ? override : draftRef.current).trim();
+    const ids = attachmentsRef.current.map((file) => file.id);
+    if (!text && !ids.length) return false;
+    if (text.length > MAX_PROMPT_CHARS) { dispatch({ type: "notice", code: "invalid_argument", program }); return false; }
+    // Snapshot the chip identities before waiting. A removed/failed/rebound file
+    // fails the whole message; newly added files belong to the next message.
+    preparingSendRef.current = true;
+    try {
+      await settleUploadsRef.current(ids);
+      if (epoch !== sendEpochRef.current || origin !== viewKeyRef.current || managed !== (taskSessionRef.current || "")) return false;
+      const selected = ids.map((id) => attachmentsRef.current.find((file) => file.id === id));
+      if (selected.some((file) => !file || !isInboxReady(file) ||
+        (bindUploadsRef.current && uploadedForRef.current.get(file.id) !== managed))) return false;
+      const files = selected.map((file) => ({ ...file! }));
+      const current = stateRef.current; // Never overwrite output that arrived during upload.
+      if (managed && boundSessionRef.current && current.activeSession !== boundSessionRef.current) return false;
+      if (current.sessionLoading || current.offline || current.install.running || current.login.pending) return false;
+      const acpSession = current.activeSession;
+      const ref = acpSession ? "" : clientRef(program);
+      if (ref) pendingRefs.current.set(ref, origin);
+      const config = { ...Object.fromEntries(current.configOptions.filter((option) =>
+        option.id !== "model" && option.category !== "model" && option.id !== current.mode?.id &&
+        option.id !== "mode" && option.category !== "mode" && option.options.some((choice) => choice.value === String(option.current))
+      ).map((option) => [option.id, option.current])), ...pendingConfig.current.get(origin) };
+      const id = messageId || newMessageId();
+      const frame: Record<string, unknown> = { t: "prompt", program, text, message_id: id, intent: "normal",
+        ...(managed ? { task_session_id: managed } : {}),
+        ...(acpSession ? { acp_session: acpSession } : { ref, ...(current.selectedModel ? { model: current.selectedModel } : {}),
+          ...(current.selectedMode ? { mode: current.selectedMode } : {}), ...(Object.keys(config).length ? { config } : {}) }),
+        ...(files.length ? { files: promptFiles(files) } : {}) };
+      const socket = await ensureOpen();
+      if (!socket || epoch !== sendEpochRef.current || origin !== viewKeyRef.current || managed !== (taskSessionRef.current || "")) return false;
+      if (managed && boundSessionRef.current && frame.acp_session !== boundSessionRef.current) return false;
+      if (ids.some((fileId) => !attachmentsRef.current.some((file) => file.id === fileId && isInboxReady(file)))) return false;
+      if (!sendJson(socket, frame)) return false;
+      updateStop({ type: "reset" });
+      const event = { type: "send-began" as const };
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+      ingest(JSON.stringify({ t: "user_message", program, text, message_id: id, local: true,
+        ...(acpSession ? { acp_session: acpSession } : { ref }), attachments: userFileRows(files) }));
+      const kept: RetainedPrompt = { text, files, frame, state: "sending", viewKey: viewKeyRef.current };
+      retainedPromptsRef.current.set(id, kept);
+      kept.timer = setTimeout(() => markUnconfirmed(id), PROMPT_ACK_TIMEOUT_MS);
+      unsentRef.current.set(`msg:${id}`, { text, files, echoed: true, viewKey: viewKeyRef.current });
+      pendingConfig.current.delete(origin);
+      for (const fileId of [...uploadFilesRef.current.keys()].slice(0, Math.max(0, uploadFilesRef.current.size - 60))) {
+        uploadFilesRef.current.delete(fileId);
+        uploadIdsRef.current.delete(fileId);
+        uploadedForRef.current.delete(fileId);
+      }
+      if (managed) archiveStatusRef.current?.("pending");
+      draftRef.current = ""; setDraft("");
+      const remaining = attachmentsRef.current.filter((file) => !ids.includes(file.id));
+      attachmentsRef.current = remaining; setAttachments(remaining); setFresh(false);
+      return true;
+    } finally { preparingSendRef.current = false; }
+  }, [ensureOpen, ingest, markUnconfirmed, sendOcean, updateStop]);
+
+  const recoverSnapshot = useCallback(async (id: string, snapshot?: NativeMessageSnapshot): Promise<RetainedPrompt | null> => {
+    const known = retainedPromptsRef.current.get(id);
+    if (known) return known.frame.task_session_id && known.frame.task_session_id !== taskSessionRef.current ? null : known;
+    const managed = taskSessionRef.current;
+    if (!managed) return null;
+    // Always retrieve the complete owner-authenticated snapshot before a retry:
+    // the history list deliberately omits legacy inline bytes.
+    const row = await computerApi.cloudComputerRequest<NativeMessageSnapshot>(
+      `/v1/computer-task-sessions/${encodeURIComponent(managed)}/messages/${encodeURIComponent(id)}`);
+    if (!row?.payload || managed !== taskSessionRef.current) return null;
+    // The snapshot may be newer than the transcript list (delivery raced reload).
+    for (const frame of [
+      { t: "user_message", program: stateRef.current.program, acp_session: stateRef.current.activeSession,
+        message_id: id, turn_id: row.turn_id, text: row.payload.text, attachments: row.payload.attachments },
+      { t: "prompt_state", message_id: id, turn_id: row.turn_id, state: row.state, uncertain: row.uncertain },
+    ]) {
+      const event = { type: "frame" as const, frame };
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+    }
+    const inlineFiles: File[] = [];
+    const metadata = row.payload.attachments ?? [];
+    const source = row.payload.files?.length ? row.payload.files : metadata;
+    const files: DialogAttachment[] = [];
+    source.forEach((file, index) => {
+      const info = metadata.find((item) => item.name === file.name) ?? metadata[index];
+      const name = String(file.name || info?.name || "file");
+      const mime = String(file.mime || info?.mime || "application/octet-stream");
+      if ("data" in file && typeof file.data === "string") {
+        const decoded = atob(file.data);
+        const bytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
+        inlineFiles.push(new File([bytes], name, { type: mime }));
+      } else if (typeof file.path === "string" && file.path) {
+        const chipId = `recovered:${id}:${index}`;
+        files.push({ ...info, id: chipId, name, mime, path: file.path, size: info?.archive?.size ?? 0, state: "done" });
+        uploadedForRef.current.set(chipId, managed);
+      } else {
+        throw new Error("incomplete native message snapshot");
+      }
+    });
+    const kept: RetainedPrompt = { text: row.payload.text, files, inlineFiles, state: row.state, uncertain: row.uncertain,
+      viewKey: viewKeyRef.current, frame: { t: "prompt", program: stateRef.current.program,
+        acp_session: stateRef.current.activeSession, task_session_id: managed, message_id: id,
+        intent: row.intent ?? "normal", text: row.payload.text, files: row.payload.files?.length ? row.payload.files : promptFiles(files) } };
+    retainedPromptsRef.current.set(id, kept);
+    return kept;
+  }, []);
+  const restoreMessage = useCallback(async (id: string, snapshot?: NativeMessageSnapshot): Promise<boolean> => {
+    try {
+      const kept = await recoverSnapshot(id, snapshot);
+      if (!kept || kept.state !== "cancelled") return false;
+      restoreRetained(kept); return true;
+    } catch { return false; }
+  }, [recoverSnapshot, restoreRetained]);
+  const retryMessage = useCallback(async (id: string, snapshot?: NativeMessageSnapshot): Promise<boolean> => {
+    if (stopRef.current.phase === "stopping" || preparingSendRef.current) return false;
+    preparingSendRef.current = true;
+    try {
+      const origin = viewKeyRef.current;
+      const epoch = sendEpochRef.current;
+      const kept = await recoverSnapshot(id, snapshot);
+      if (!kept || origin !== viewKeyRef.current || (kept.state !== "unsent" && kept.state !== "cancelled")) return false;
+      const managed = taskSessionRef.current;
+      if (managed && kept.frame.task_session_id && kept.frame.task_session_id !== managed) return false;
+      if (managed && boundSessionRef.current && stateRef.current.activeSession !== boundSessionRef.current) return false;
+      const socket = await ensureOpen();
+      if (!socket || origin !== viewKeyRef.current || epoch !== sendEpochRef.current) return false;
+      // Unknown delivery reuses its ID: gateway lookup only, never duplicate execution.
+      const messageId = kept.uncertain ? id : newMessageId();
+      const frame: Record<string, unknown> = { ...kept.frame, message_id: messageId };
+      if (managed && boundSessionRef.current) {
+        if (stateRef.current.activeSession !== boundSessionRef.current) return false;
+        frame.acp_session = boundSessionRef.current;
+        delete frame.ref;
+      }
+      if (!sendJson(socket, frame)) return false;
+      const next: RetainedPrompt = { ...kept, frame, state: "sending", restored: false };
+      kept.state = "sending"; // A double-click on the old failed row cannot create another retry.
+      retainedPromptsRef.current.set(messageId, next);
+      ingest(JSON.stringify({ t: "user_message", program: frame.program, acp_session: frame.acp_session, ref: frame.ref,
+        text: kept.text, message_id: messageId, local: true, attachments: userFileRows(kept.files) }));
+      next.timer = setTimeout(() => markUnconfirmed(messageId), PROMPT_ACK_TIMEOUT_MS);
+      return true;
+    } catch { return false; }
+    finally { preparingSendRef.current = false; }
+  }, [ensureOpen, ingest, markUnconfirmed, recoverSnapshot]);
+
+  const abort = useCallback(() => {
+    sendEpochRef.current += 1; // Also fence a prompt still waiting for its attachment snapshot.
+    // A stop already on its way: the button shows 「正在停止」 and waits for its outcome.
+    if (stopRef.current.phase === "stopping") return;
+    const program = stateRef.current.program;
+    const session = stateRef.current.activeSession;
+    const socketProgram = usesDialogSocket(program, localOceanleoRef.current);
+    // Not connected to the computer: nothing can be sent. Said, never a silent no-op.
+    if (socketProgram && !enabledRef.current) {
+      stopTargetRef.current = { program, session };
+      updateStop({ type: "unreachable" });
+      return;
+    }
+    const stopId = newStopId();
+    stopTargetRef.current = { program, session };
+    updateStop({ type: "begin", stopId, session });
+    if (stopTimerRef.current) clearTimeout(stopTimerRef.current);
+    stopTimerRef.current = setTimeout(() => {
+      stopTimerRef.current = null;
+      if (stopRef.current.stopId !== stopId) return;
+      failStop({ type: "timeout", stopId });
+    }, STOP_REPLY_TIMEOUT_MS);
+    // Persist the requested state before a program/session switch can snapshot
+    // this view. The request itself does not prove that the turn has ended.
+    stateRef.current = applyDialog(stateRef.current, { type: "cancel-local" });
+    dispatch({ type: "cancel-local" });
+    if (program === "oceanleo" && !localOceanleoRef.current) {
+      // 「停止」真的停：停轮询、停服务端任务，再拉一次终态消息。
+      oceanGen.current += 1;
+      clearOceanWait();
+      oceanSendRef.current = null;
+      const taskId = oceanTaskRef.current;
+      if (!taskId) {
+        confirmStop(stopId, "not_running", "");
+        return;
+      }
+      const gen = oceanGen.current;
+      void stopTask(taskId).then(async (result) => {
+        if (gen !== oceanGen.current) return;
+        if (result && result.ok === false) {
+          failStop({ type: "result", stopId, result: "failed", detail: typeof result.error === "string" ? result.error : "" });
+          void pollOcean(taskId, gen);
+          return;
+        }
+        confirmStop(stopId, "stopped", "");
+        const detail = await getTask(taskId);
+        if (gen !== oceanGen.current) return;
+        if (!detail.ok || !detail.data) {
+          dispatch({ type: "occupancy-lost" });
+          void pollOcean(taskId, gen);
+          return;
+        }
+        applyOceanDetail(detail.data);
+        if (detail.data.task?.status === "running") void pollOcean(taskId, gen);
+      }).catch(() => {
+        if (gen !== oceanGen.current) return;
+        failStop({ type: "result", stopId, result: "failed", detail: "" });
+        dispatch({ type: "occupancy-lost" });
+        void pollOcean(taskId, gen);
+      });
+      return;
+    }
+    if (!socketProgram) {
+      confirmStop(stopId, "not_running", session);
+      return;
+    }
+    const frame: Record<string, unknown> = { t: "cancel", program, stop_id: stopId };
+    if (session) frame.acp_session = session;
+    else frame.ref = newRefs.current.get(program);
+    if (taskSessionRef.current) frame.task_session_id = taskSessionRef.current;
+    // Stop must never be dropped just because the socket happened to be
+    // reconnecting when it was pressed: retry on a fresh connection.
+    if (!sendJson(socketRef.current, frame)) {
+      void (async () => {
+        let sent = false;
+        try {
+          const socket = await ensureOpen();
+          if (stopRef.current.stopId !== stopId) return;
+          sent = sendJson(socket, frame);
+        } catch {
+          sent = false;
+        }
+        if (sent) return;
+        dispatch({ type: "occupancy-lost" });
+        if (stopRef.current.stopId === stopId) failStop({ type: "unreachable" });
+      })();
+    }
+  }, [applyOceanDetail, clearOceanWait, confirmStop, ensureOpen, failStop, pollOcean, updateStop]);
+
+  const closeProgram = useCallback((program: WsProgram) => {
+    const sent = sendJson(socketRef.current, { t: "close", program });
+    dispatch({ type: "close-session", program });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "close", program });
+    })();
+  }, [ensureOpen]);
+
+  const requestSessions = useCallback(() => {
+    const program = stateRef.current.program;
+    if (!usesDialogSocket(program, localOceanleoRef.current)) {
+      dispatch({ type: "sessions-unavailable" });
+      return;
+    }
+    sessionsRefreshRef.current?.request(program, "manual");
+    if (socketRef.current?.readyState === WebSocket.OPEN) return;
+    void (async () => {
+      await ensureOpen();
+      if (stateRef.current.program === program) sessionsRefreshRef.current?.request(program);
+    })();
+  }, [ensureOpen]);
+
+  // Sessions can also be created or renamed outside this view (CLI, another tab),
+  // so keep the list fresh while the dialog is on screen and when it regains focus.
+  useEffect(() => {
+    if (!enabled || !active) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const probeProgram = () => (
+      usesDialogSocket(stateRef.current.program, localOceanleoRef.current)
+        ? stateRef.current.program
+        : null
+    );
+    const refresh = (reason: "wake" | "poll" = "wake") => {
+      if (timer) clearTimeout(timer);
+      timer = undefined;
+      if (typeof document !== "undefined" && document.hidden) {
+        sessionsRefreshRef.current?.pause();
+        occupancyProbeRef.current?.stop();
+        return;
+      }
+      const program = stateRef.current.program;
+      if (usesDialogSocket(program, localOceanleoRef.current)) {
+        sessionsRefreshRef.current?.request(program, reason);
+        occupancyProbeRef.current?.request(program);
+        if (occupancyProbeRef.current?.stale(program)) dispatch({ type: "occupancy-lost" });
+        timer = setTimeout(() => refresh("poll"), SESSIONS_REFRESH_MS);
+      }
+    };
+    const wake = () => {
+      if (typeof document === "undefined" || !document.hidden) {
+        occupancyProbeRef.current?.start(probeProgram);
+      }
+      refresh();
+    };
+    refresh();
+    occupancyProbeRef.current?.start(probeProgram);
+    document.addEventListener("visibilitychange", wake);
+    window.addEventListener("focus", wake);
+    return () => {
+      if (timer) clearTimeout(timer);
+      sessionsRefreshRef.current?.pause();
+      occupancyProbeRef.current?.stop();
+      document.removeEventListener("visibilitychange", wake);
+      window.removeEventListener("focus", wake);
+    };
+  }, [enabled, active, state.program, localOceanleo]);
+
+  useEffect(() => {
+    if (!enabled || !active || !oceanleoReady) return;
+    if (state.program !== "oceanleo" || localOceanleo) return;
+    let alive = true;
+    const tick = async () => {
+      if (!alive || (typeof document !== "undefined" && document.hidden)) return;
+      const computerId = computerIdRef.current;
+      if (!computerId) return;
+      const result = await agentState(computerId);
+      if (!alive) return;
+      if (!result.ok || !result.data) {
+        dispatch({ type: "occupancy-lost" });
+        return;
+      }
+      if (result.data.computer?.online !== true) {
+        dispatch({ type: "frame", frame: { t: "error", code: "computer_offline", program: "oceanleo" } });
+        return;
+      }
+      const taskId = typeof result.data.task_id === "string" ? result.data.task_id : "";
+      if (!taskId) {
+        dispatchOceanOccupancy(false);
+        return;
+      }
+      const detail = await getTask(taskId);
+      if (!alive) return;
+      if (!detail.ok || !detail.data) {
+        dispatch({ type: "occupancy-lost" });
+        return;
+      }
+      dispatchOceanOccupancy(detail.data.task?.status === "running");
+    };
+    void tick();
+    const timer = setInterval(() => { void tick(); }, 2_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [dispatchOceanOccupancy, enabled, active, oceanleoReady, state.program, localOceanleo]);
+
+  const requestSessionPath = useCallback(() => {
+    const program = stateRef.current.program;
+    const acpSession = stateRef.current.activeSession.trim();
+    if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
+    const sent = sendJson(socketRef.current, { t: "session_path", program, acp_session: acpSession });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "session_path", program, acp_session: acpSession });
+    })();
+  }, [ensureOpen]);
+
+  const openSession = useCallback((id: string) => {
+    const acpSession = id.trim();
+    const program = stateRef.current.program;
+    if (!acpSession || !usesDialogSocket(program, localOceanleoRef.current)) return;
+    if (stateRef.current.activeSession === acpSession && stateRef.current.sessionLoading) return;
+    clearUnread(program ?? "", acpSession);
+    if (stopTargetRef.current.session !== acpSession) updateStop({ type: "reset" });
+    const cache = presentationFor(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current);
+    cache.views.set(viewKeyRef.current, viewSnapOf(stateRef.current));
+    const cacheKey = `${program}::${acpSession}`;
+    const saved = cache.views.get(cacheKey);
+    viewKeyRef.current = cacheKey;
+    initialOpened.current.add(program);
+    const restored = { ...initialDialogState(), ...saved, program, activeSession: acpSession, sessions: stateRef.current.sessions,
+      sessionsSupported: stateRef.current.sessionsSupported, liveTurns: stateRef.current.liveTurns, sessionLoading: true };
+    stateRef.current = { ...stateRef.current, ...viewSnapOf(restored) };
+    dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
+    const request = async (): Promise<boolean> => {
+      const socket = await ensureOpen();
+      return sendJson(socket, { t: "open_session", program, acp_session: acpSession, ...(taskSessionRef.current ? { task_session_id: taskSessionRef.current } : {}) });
+    };
+    // No answer in 20 s: ask once more; still nothing after another 20 s:
+    // stop "loading" and say so (2026-10-31 W1), never spin forever.
+    const arm = (attempt: number) => {
+      if (sessionLoadTimerRef.current) clearTimeout(sessionLoadTimerRef.current);
+      sessionLoadTimerRef.current = setTimeout(() => {
+        sessionLoadTimerRef.current = null;
+        const now = stateRef.current;
+        if (!now.sessionLoading || now.activeSession !== acpSession || now.program !== program) return;
+        if (attempt === 0) {
+          arm(1);
+          void request();
+          return;
+        }
+        const timeout = { type: "session-load-timeout" as const, acpSession };
+        stateRef.current = applyDialog(stateRef.current, timeout);
+        dispatch(timeout);
+      }, SESSION_LOAD_TIMEOUT_MS);
+    };
+    void (async () => {
+      if (!(await request())) {
+        if (sessionLoadTimerRef.current) clearTimeout(sessionLoadTimerRef.current);
+        sessionLoadTimerRef.current = null;
+        stateRef.current = applyDialog(stateRef.current, { type: "send-failed" });
+        dispatch({ type: "send-failed" });
+        return;
+      }
+      arm(0);
+    })();
+  }, [clearUnread, ensureOpen]);
+  useEffect(() => () => {
+    if (sessionLoadTimerRef.current) clearTimeout(sessionLoadTimerRef.current);
+  }, []);
+  openSessionRef.current = openSession;
+
+  const loadOlderHistory = useCallback(() => {
+    const current = stateRef.current;
+    const program = current.program;
+    const acpSession = current.activeSession.trim();
+    if (
+      !acpSession
+      || !current.hasOlder
+      || current.historyLoading
+      || current.sessionLoading
+      || current.historyOffset < 1
+      || !usesDialogSocket(program, localOceanleoRef.current)
+    ) return;
+    dispatch({ type: "history-loading" });
+    stateRef.current = applyDialog(stateRef.current, { type: "history-loading" });
+    const before = current.historyOffset;
+    void (async () => {
+      const socket = socketRef.current?.readyState === WebSocket.OPEN ? socketRef.current : await ensureOpen();
+      const sent = sendJson(socket, { t: "load_history", program, acp_session: acpSession, before });
+      if (!sent) {
+        dispatch({ type: "history-idle" });
+        stateRef.current = applyDialog(stateRef.current, { type: "history-idle" });
+      }
+    })();
+  }, [ensureOpen]);
+
+  const newSession = useCallback((cwd?: string) => {
+    const program = stateRef.current.program;
+    updateStop({ type: "reset" });
+    stateRef.current = {
+      ...stateRef.current,
+      activeSession: "",
+      sessionPath: "",
+      sessionPathResolved: false,
+      sessionLoading: false,
+      historyOffset: 0,
+      historyTotal: 0,
+      hasOlder: false,
+      historyLoading: false,
+      messages: [],
+      commands: [],
+      busy: false,
+      agentBusy: false,
+      occupancyPendingAt: null,
+      occupancyPendingSession: null,
+    };
+    if (program) {
+      newRefs.current.delete(program);
+      const ref = clientRef(program);
+      viewKeyRef.current = `${program}::new:${ref}`;
+      stateRef.current = { ...stateRef.current, draftRef: `new:${ref}` };
+      initialOpened.current.add(program);
+    }
+    dispatch({ type: "restore-view", ...viewSnapOf(stateRef.current) });
+    if (program === "oceanleo" && !localOceanleoRef.current) {
+      oceanGen.current += 1;
+      clearOceanWait();
+      oceanTaskRef.current = "";
+      oceanSendRef.current = null;
+      messagesCacheRef.current.set("oceanleo", []);
+      void agentReset(computerIdRef.current).finally(() => {
+        dispatch({
+          type: "frame",
+          frame: { t: "session_opened", program: "oceanleo", acp_session: "" },
+        });
+      });
+      return;
+    }
+    // New adapter sessions are created only with the first prompt, but the
+    // model/Fast/effort catalog must still be on this empty view.
+    if (usesDialogSocket(program, localOceanleoRef.current)) {
+      void (async () => {
+        const socket = await ensureOpen();
+        sendJson(socket, { t: "models", program });
+      })();
+    }
+    void cwd;
+  }, [clearOceanWait, ensureOpen]);
+
+  const openInstall = useCallback((program: WsProgram) => {
+    dispatch({ type: "open-install", program });
+  }, []);
+
+  const closeInstall = useCallback(() => {
+    dispatch({ type: "close-install" });
+  }, []);
+
+  const setInstallDir = useCallback((dir: string) => {
+    dispatch({ type: "set-install-dir", dir });
+  }, []);
+
+  const startInstall = useCallback(() => {
+    const current = stateRef.current;
+    const program = current.install.program;
+    if (!program || current.install.running) return;
+    const row = current.programs.find((item) => item.id === program);
+    const dir = installDirPayload(current.install.dir, row?.dir_capability ?? "full");
+    stateRef.current = {
+      ...current,
+      install: { ...current.install, running: true, lines: [], donePath: "", failedText: "" },
+    };
+    dispatch({ type: "install-began" });
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) {
+        dispatch({ type: "install-local-fail" });
+        return;
+      }
+      sendJson(socket, { t: "install", program, dir });
+    })();
+  }, [ensureOpen]);
+
+  const openLogin = useCallback((program: WsProgram) => {
+    dispatch({ type: "open-login", program });
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) return;
+      sendJson(socket, { t: "login", program });
+    })();
+  }, [ensureOpen]);
+
+  const closeLogin = useCallback(() => {
+    dispatch({ type: "close-login" });
+  }, []);
+
+  // 合同 I3：Claude 这类 needs_code 的程序，把浏览器给的码贴进登录进程 stdin。
+  const submitLoginCode = useCallback(
+    (program: WsProgram, code: string) => {
+      const trimmed = code.trim();
+      if (!trimmed) return;
+      dispatch({ type: "login-code-draft", code: "" });
+      void (async () => {
+        const socket = await ensureOpen();
+        if (!socket) return;
+        sendJson(socket, { t: "login_code", program, code: trimmed });
+      })();
+    },
+    [ensureOpen],
+  );
+
+  // 取消登录：告诉服务端杀登录进程，本地立刻关卡（服务端随后补 login_failed cancelled）。
+  const cancelLogin = useCallback((program: WsProgram) => {
+    dispatch({ type: "close-login" });
+    const sent = sendJson(socketRef.current, { t: "login_cancel", program });
+    if (sent) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      sendJson(socket, { t: "login_cancel", program });
+    })();
+    // ensureOpen 也失败就算了：卡片已关，进程侧 15 分钟超时自己收。
+  }, [ensureOpen]);
+
+  const setLoginCodeDraft = useCallback((code: string) => {
+    dispatch({ type: "login-code-draft", code });
+  }, []);
+
+  const setSelectedModel = useCallback((id: string) => {
+    const program = stateRef.current.program;
+    if (program) rememberProgramSelection(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, program, { model: id });
+    dispatch({ type: "set-model", id });
+    stateRef.current = applyDialog(stateRef.current, { type: "set-model", id });
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    const acpSession = stateRef.current.activeSession;
+    if (!acpSession) {
+      pendingConfig.current.delete(viewKeyRef.current);
+      return;
+    }
+    const modelOption = stateRef.current.configOptions.find(
+      (option) => option.id === "model" || option.category === "model",
+    );
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) return;
+      sendJson(socket, { t: "set_config", program, acp_session: acpSession, id: modelOption?.id || "model", value: id });
+    })();
+  }, [ensureOpen]);
+
+  const setConfig = useCallback((id: string, value: string | boolean) => {
+    const program = stateRef.current.program;
+    if (program && stateRef.current.selectedModel) {
+      rememberModelParam(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, program, stateRef.current.selectedModel, id, String(value));
+    }
+    if (program && (id === "mode" || id === stateRef.current.mode?.id)) {
+      rememberProgramSelection(taskSessionRef.current ? `${computerIdRef.current}:${taskSessionRef.current}` : computerIdRef.current, program, { mode: String(value) });
+    }
+    dispatch({ type: "set-config", id, value });
+    stateRef.current = applyDialog(stateRef.current, { type: "set-config", id, value });
+    if (!usesDialogSocket(program, localOceanleoRef.current)) return;
+    const acpSession = stateRef.current.activeSession;
+    if (!acpSession) {
+      if (id !== "mode" && id !== stateRef.current.mode?.id) {
+        pendingConfig.current.set(viewKeyRef.current, { ...pendingConfig.current.get(viewKeyRef.current), [id]: value });
+      }
+      return;
+    }
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) return;
+      sendJson(socket, { t: "set_config", program, acp_session: acpSession, id, value });
+    })();
+  }, [ensureOpen]);
+
+  const setMode = useCallback((value: string) => {
+    const id = stateRef.current.mode?.id || "mode";
+    dispatch({ type: "set-mode", value });
+    setConfig(id, value);
+  }, [setConfig]);
+
+  const logoutProgram = useCallback((program: WsProgram, provider?: string) => {
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket) return;
+      sendJson(socket, { t: "logout", program, ...(provider ? { provider } : {}) });
+      sendJson(socket, { t: "status" });
+    })();
+  }, [ensureOpen]);
+
+  const answerPermission = useCallback((id: string, option: string, name: string) => {
+    const pending = () => stateRef.current.messages.some((message) => message.kind === "turn" && !message.stop && message.live === true &&
+      (!message.acpSession || message.acpSession === stateRef.current.activeSession) &&
+      message.items.some((item) => item.kind === "permission" && item.permId === id && !item.chosen && item.actionable !== false &&
+        (!item.requestState || item.requestState === "waiting") &&
+        item.options.some((choice) => choice.id === option)));
+    if (!pending()) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket || !pending()) return;
+      sendJson(socket, { t: "permission", id, option });
+      const event = { type: "permission-chose" as const, id, name };
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+    })();
+  }, [ensureOpen]);
+
+  const answerQuestion = useCallback((id: string, values: Record<string, string>) => {
+    const pending = () => stateRef.current.messages.some((message) => message.kind === "turn" && !message.stop && message.live === true &&
+      (!message.acpSession || message.acpSession === stateRef.current.activeSession) &&
+      message.items.some((item) => item.kind === "question" && item.questionId === id && !item.submitted && item.actionable !== false &&
+        (!item.requestState || item.requestState === "waiting")));
+    if (!pending()) return;
+    void (async () => {
+      const socket = await ensureOpen();
+      if (!socket || !pending()) return;
+      sendJson(socket, { t: "answer", id, values });
+      const event = { type: "question-submitted" as const, id };
+      stateRef.current = applyDialog(stateRef.current, event); dispatch(event);
+    })();
+  }, [ensureOpen]);
+
+  const retryConnect = useCallback(() => {
+    // 「重试」对整个对话框一视同仁：WS 开着就重发 status（Key 保存后程序行靠它刷新，
+    // key 的 POST/DELETE 是纯 REST、后端不推 status），没开着就重连；
+    // oceanleo 额外再拉 agentState（REST 侧真相）。
+    delayRef.current = 1000;
+    dispatch({ type: "clear-offline" });
+    const socket = socketRef.current;
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      sendJson(socket, { t: "status" });
+    } else {
+      void connect();
+    }
+    if (stateRef.current.program === "oceanleo") void refreshOcean();
+  }, [connect, refreshOcean]);
+
+  const setFreshValue = useCallback((value: boolean) => {
+    setFresh(value);
+  }, []);
+
+  /**
+   * Put one chip's file into the computer's inbox under the conversation's
+   * CURRENT task session (the gateway archives it in that session and only a
+   * prompt of that same session may carry it).
+   */
+  const startUpload = useCallback((chip: DialogAttachment, file: File) => {
+    uploadControllersRef.current.get(chip.id)?.abort();
+    const controller = new AbortController();
+    uploadControllersRef.current.set(chip.id, controller);
+    // Also covers restored chips from a refused prompt.
+    let uploadId = uploadIdsRef.current.get(chip.id);
+    if (!uploadId) {
+      uploadId = crypto.randomUUID();
+      uploadIdsRef.current.set(chip.id, uploadId);
+    }
+    const computerId = computerIdRef.current.trim();
+    const bound = taskSessionRef.current || "";
+    const put = computerApi.putComputerInbox;
+    let settleWaiter: () => void = () => {};
+    const waiter = new Promise<void>((resolve) => {
+      settleWaiter = resolve;
+    });
+    inboxWaiters.current.set(chip.id, waiter);
+    const active = () => !controller.signal.aborted &&
+      uploadControllersRef.current.get(chip.id) === controller &&
+      attachmentsRef.current.some((item) => item.id === chip.id);
+    const finish = (patch: Partial<DialogAttachment>) => {
+      if (!active()) return;
+      const apply = (item: DialogAttachment) => (item.id === chip.id ? { ...item, ...patch } : item);
+      attachmentsRef.current = attachmentsRef.current.map(apply);
+      setAttachments((current) => current.map(apply));
+    };
+    const done = () => {
+      controller.signal.removeEventListener("abort", done);
+      if (uploadControllersRef.current.get(chip.id) === controller) uploadControllersRef.current.delete(chip.id);
+      if (inboxWaiters.current.get(chip.id) === waiter) inboxWaiters.current.delete(chip.id);
+      settleWaiter();
+    };
+    controller.signal.addEventListener("abort", done, { once: true });
+    finish({ state: "uploading", deferred: undefined, percent: 0, path: undefined, archive: undefined, error: undefined });
+    // A briefly busy / reconnecting computer (409 node_busy, network drop) is tried again by
+    // itself, a few times with a pause, before the failure is shown (F3 2026-11-02).
+    const putWithRetry = async () => {
+      for (let attempt = 1; ; attempt += 1) {
+        if (!active()) return null;
+        try {
+          return await put(computerId, file, (percent) => {
+            finish({ percent });
+          }, { ...(bound ? { task_session_id: bound } : {}), upload_id: uploadId, signal: controller.signal });
+        } catch (err) {
+          if (!active() || attempt >= UPLOAD_TRIES || !isTransientUploadError(err)) throw err;
+          finish({ percent: 0 });
+          await new Promise<void>((resolve) => {
+            const resume = () => {
+              clearTimeout(timer);
+              controller.signal.removeEventListener("abort", resume);
+              resolve();
+            };
+            const timer = setTimeout(resume, uploadRetryDelay(attempt));
+            controller.signal.addEventListener("abort", resume, { once: true });
+            if (controller.signal.aborted) resume();
+          });
+        }
+      }
+    };
+    if (typeof put !== "function" || !computerId) {
+      finish({
+        state: "error",
+        error: !computerId ? "missing computer" : "inbox upload unavailable",
+      });
+      done();
+      return;
+    }
+    void putWithRetry()
+      .then((result) => {
+        if (!result || !active()) return;
+        uploadedForRef.current.set(chip.id, bound);
+        finish({
+          state: "done",
+          percent: 100,
+          path: result.path,
+          archive: result.archive,
+          name: result.name || chip.name,
+          mime: result.mime || chip.mime,
+          size: typeof result.size === "number" ? result.size : chip.size,
+          error: undefined,
+        });
+      })
+      .catch((err: unknown) => {
+        const message =
+          err && typeof err === "object" && "message" in err
+            ? String((err as { message: unknown }).message || "").trim()
+            : "";
+        finish({
+          state: "error",
+          // The readable reason (busy / unreachable / network) the composer says next to the chip.
+          error: err && typeof err === "object" && "code" in err && err.code === "client_upload_timeout"
+            ? ttRef.current("上传超时，请重试或移除文件。")
+            : uploadFailureReason(ttRef.current, err) || message || "upload failed",
+        });
+      })
+      .finally(done);
+  }, []);
+
+  /**
+   * Managed threads only: every composer file must belong to the task session
+   * the next prompt goes out with. Files held while there was no session are
+   * uploaded now; files put under another session (the conversation was
+   * switched or started over) are put again under this one, or dropped when
+   * this tab no longer has their bytes. Without a session they wait.
+   */
+  const bindSessionUploads = useCallback(() => {
+    if (!bindUploadsRef.current) return;
+    const bound = taskSessionRef.current || "";
+    for (const item of attachmentsRef.current) {
+      if (item.state === "error") continue;
+      if (item.state === "uploading" && !item.deferred) continue;
+      const file = uploadFilesRef.current.get(item.id);
+      const stale = item.deferred || (item.state === "done" && (uploadedForRef.current.get(item.id) ?? "") !== bound);
+      if (!stale) continue;
+      if (!file) {
+        removeAttachmentRef.current(item.id);
+        continue;
+      }
+      if (!bound) {
+        if (item.deferred) continue;
+        const hold = (entry: DialogAttachment) => (entry.id === item.id
+          ? { ...entry, state: "uploading" as const, deferred: true, percent: 0, path: undefined, archive: undefined } : entry);
+        attachmentsRef.current = attachmentsRef.current.map(hold);
+        setAttachments((current) => current.map(hold));
+        continue;
+      }
+      startUpload(item, file);
+    }
+  }, [startUpload]);
+  const removeAttachmentRef = useRef<(id: string) => void>(() => {});
+  useEffect(() => {
+    bindSessionUploads();
+  }, [taskSessionId, bindSessionUploads]);
+  settleUploadsRef.current = async (ids) => {
+    // An upload that was in flight under a previous session finishes stale and
+    // is put again: a few rounds at most (bounded, never a loop on failures).
+    for (let round = 0; round < 3; round += 1) {
+      bindSessionUploads();
+      const waiters = ids ? ids.map((id) => inboxWaiters.current.get(id)).filter((waiter): waiter is Promise<void> => Boolean(waiter)) : [...inboxWaiters.current.values()];
+      if (!waiters.length) return;
+      await Promise.all(waiters);
+    }
+  };
+
+  const addAttachments = useCallback((files: File[]) => {
+    const room = Math.max(0, 20 - attachmentsRef.current.length);
+    // One paste of two screenshots is two files named image.png: give each a
+    // distinct name (image.png, image-2.png) so the chips, the inbox and the
+    // program can tell them apart.
+    const taken = new Set(attachmentsRef.current.map((item) => item.name));
+    const accepted = files.slice(0, room).map((file) => {
+      const name = distinctName(file.name || "file", taken);
+      taken.add(name);
+      return name === (file.name || "file") ? file : renamedFile(file, name);
+    });
+    if (!accepted.length) return;
+    const created: DialogAttachment[] = accepted.map((file) => {
+      const preview = localPreview(file);
+      return {
+        id: `a-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        name: file.name || "file",
+        mime: file.type || "application/octet-stream",
+        size: file.size,
+        percent: 0,
+        state: "uploading" as const,
+        ...(preview ? { preview } : {}),
+      };
+    });
+    // A managed conversation without its task session yet (homepage launch, a
+    // picked chat before its first send): the files wait in this tab and go
+    // to the inbox WITH the session once it exists (bindSessionUploads). An
+    // inbox file uploaded without the session has no archive row, and the
+    // gateway then refuses the first prompt ("附件还没存好", 2026-10-31 D).
+    const holding = bindUploadsRef.current && !taskSessionRef.current;
+    const chips = holding ? created.map((chip) => ({ ...chip, deferred: true })) : created;
+    // The bytes stay in this tab: a managed session re-binds them, a failed upload is put again (retry).
+    chips.forEach((chip, index) => uploadFilesRef.current.set(chip.id, accepted[index]));
+    setAttachments((current) => [...current, ...chips].slice(0, 20));
+    attachmentsRef.current = [...attachmentsRef.current, ...chips].slice(0, 20);
+    if (holding) return;
+    chips.forEach((chip, index) => startUpload(chip, accepted[index]));
+  }, [startUpload]);
+
+  recoveredFilesRef.current = addAttachments;
+
+  const removeAttachment = useCallback((id: string) => {
+    // Never sent from here (sent files leave the composer), so its local
+    // thumbnail is no longer shown anywhere.
+    const gone = attachmentsRef.current.find((item) => item.id === id);
+    if (gone?.preview) {
+      try { URL.revokeObjectURL(gone.preview); } catch { /* already gone */ }
+    }
+    uploadFilesRef.current.delete(id);
+    uploadControllersRef.current.get(id)?.abort();
+    uploadIdsRef.current.delete(id);
+    uploadedForRef.current.delete(id);
+    attachmentsRef.current = attachmentsRef.current.filter((item) => item.id !== id);
+    setAttachments((current) => current.filter((item) => item.id !== id));
+  }, []);
+  removeAttachmentRef.current = removeAttachment;
+
+  /** Put a failed chip into the inbox again (composer 「重试」); its bytes are still in this tab. */
+  const retryAttachment = useCallback((id: string) => {
+    const item = attachmentsRef.current.find((entry) => entry.id === id);
+    if (!item || item.state !== "error") return;
+    const file = uploadFilesRef.current.get(id);
+    if (!file) {
+      removeAttachmentRef.current(id);
+      return;
+    }
+    if (bindUploadsRef.current && !taskSessionRef.current) {
+      const hold = (entry: DialogAttachment) => (entry.id === id
+        ? { ...entry, state: "uploading" as const, deferred: true, percent: 0, error: undefined } : entry);
+      attachmentsRef.current = attachmentsRef.current.map(hold);
+      setAttachments((current) => current.map(hold));
+      return;
+    }
+    startUpload(item, file);
+  }, [startUpload]);
+
+  return {
+    computerId,
+    program: state.program,
+    setProgram,
+    computerName,
+    messages: state.messages,
+    draft,
+    setDraft,
+    busy: state.busy,
+    finishing: nativeTurnFinishing(state.messages, state.activeSession || boundSessionRef.current, savedFinishing && stopState.phase !== "stopped"),
+    turnStates: state.turnStates ?? {},
+    occupancyLink: state.occupancyLink,
+    occupancyAt: state.occupancyAt,
+    occupancyBusy: state.occupancyBusy,
+    occupancyPendingAt: state.occupancyPendingAt,
+    occupancyPendingSession: state.occupancyPendingSession,
+    busySessions: confirmedBusySessions(
+      state.occupancyBusy,
+      occupancyFresh({
+        linkUp: state.occupancyLink,
+        occupancyAt: state.occupancyAt,
+        now: occupancyClock,
+      }),
+    ),
+    waitingSessions: confirmedWaitingSessions(
+      state.occupancyWaiting,
+      occupancyFresh({
+        linkUp: state.occupancyLink,
+        occupancyAt: state.occupancyAt,
+        now: occupancyClock,
+      }),
+    ),
+    runningSessions: state.runningSessions,
+    interruptedSessions: [...presentationFor(taskSessionId ? `${computerId}:${taskSessionId}` : computerId).views.entries()]
+      .filter(([key, view]) => key.startsWith(`${state.program}::`) && view.activeSession && sessionInterrupted(view.messages))
+      .map(([, view]) => view.activeSession),
+    unreadSessions,
+    send,
+    retryMessage,
+    restoreMessage,
+    withdrawLocalPrompt: (text, ids) => restoreRetained({ text, files: attachmentsRef.current.filter((file) => ids.includes(file.id)),
+      frame: {}, state: "cancelled", viewKey: viewKeyRef.current }),
+    abort,
+    armAbortSendGuard,
+    programs: state.programs,
+    models: state.models,
+    modelSource: state.modelSource,
+    selectedModel: state.selectedModel,
+    setSelectedModel,
+    mode: state.mode,
+    selectedMode: state.selectedMode,
+    setMode,
+    configOptions: state.configOptions,
+    setConfig,
+    commands: state.commands,
+    sessions: state.sessions,
+    sessionsSupported: state.sessionsSupported,
+    activeSession: state.activeSession,
+    draftRef: state.draftRef,
+    sessionLoading: state.sessionLoading,
+    historyOffset: state.historyOffset,
+    hasOlder: state.hasOlder,
+    historyLoading: state.historyLoading,
+    requestSessions,
+    requestSessionPath,
+    sessionPath: state.sessionPath,
+    sessionPathResolved: state.sessionPathResolved,
+    openSession,
+    loadOlderHistory,
+    newSession,
+    attachments,
+    attachmentFile,
+    addAttachments,
+    retryAttachment,
+    removeAttachment,
+    fresh,
+    setFresh: setFreshValue,
+    install: state.install,
+    openInstall,
+    closeInstall,
+    setInstallDir,
+    startInstall,
+    login: state.login,
+    openLogin,
+    closeLogin,
+    submitLoginCode,
+    cancelLogin,
+    setLoginCodeDraft,
+    restoredDraft,
+    historyReplay,
+    reattachSeq,
+    stopState: stopState.phase,
+    stopError: stopErrorText(tt, stopState),
+    answerPermission,
+    answerQuestion,
+    openedPrograms: state.opened,
+    closeProgram,
+    logoutProgram,
+    retryConnect,
+    offline: state.offline,
+    agentBusy: state.agentBusy,
+  };
+}
