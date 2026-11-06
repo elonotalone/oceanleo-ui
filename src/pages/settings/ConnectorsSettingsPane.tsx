@@ -157,7 +157,7 @@ export function ConnectorsSettingsPane({
             <ConnectorRow
               key={connection.id || id}
               connection={connection}
-              meta={meta}
+              meta={meta ?? undefined}
               status={status}
               highlighted={highlightedId === id}
               probing={controller.probingId === id}

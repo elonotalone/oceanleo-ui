@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 
-import { useUI } from "../../../i18n/ui/useUI";
+import { useUI, type UITranslate } from "../../../i18n/ui/useUI";
 import { ConnectorIcon } from "../../plugins/connector-icons";
 import type { McpConnection, McpConnectorMeta } from "../../../lib/mcp-api";
 import { ConfigToggle } from "../../../shell/skills/kit/ConfigItemCard";
@@ -109,7 +109,7 @@ function ConnectorRowMenu({
   );
 }
 
-export function connectorDisplayName(connection: McpConnection, meta: McpConnectorMeta | undefined, tt: (text: string, vars?: Record<string, unknown>) => string) {
+export function connectorDisplayName(connection: McpConnection, meta: McpConnectorMeta | undefined, tt: UITranslate) {
   const name = meta ? tt(meta.name) : connection.label || connection.connector_id;
   return connection.label && connection.label !== name ? connection.label : name;
 }
@@ -117,7 +117,7 @@ export function connectorDisplayName(connection: McpConnection, meta: McpConnect
 export function connectorStatusLabel(
   status: ConnectorRowStatus,
   connection: McpConnection,
-  tt: (text: string, vars?: Record<string, unknown>) => string,
+  tt: UITranslate,
 ) {
   if (status === "stale") return tt("已失效 · 点击重试");
   if (status === "disabled") return tt("已停用");
