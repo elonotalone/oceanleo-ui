@@ -449,10 +449,16 @@ function mapColdSingleNativeSession(
     if (frame) projection.state = applyDialog(projection.state, { type: "frame", frame });
   }
   const mapped = dialogToAgentMessages(projection.state.messages, { live: live.length > 0, engine: first.program });
-  const anchor = live.at(-1) ?? committed.at(-1)!;
+  const anchor = committed.at(-1)!;
   const rows = mapped.map((row) => {
     const annotated = annotate(row, anchor as InternalTimelineEntry, first.program, String(row.id));
-    annotated.meta = { ...(annotated.meta ?? {}), task_timeline_row_id: String(row.id) };
+    annotated.meta = {
+      ...(annotated.meta ?? {}),
+      task_timeline_row_id: String(row.id),
+      ...(live.length && row.meta?.native_turn_live === true
+        ? { task_timeline_cursor: live.at(-1)?.cursor ?? annotated.meta?.task_timeline_cursor, task_timeline_live: true, task_timeline_committed: undefined }
+        : {}),
+    };
     return annotated;
   });
   projection.rows = rows;
