@@ -212,7 +212,7 @@ export function normalizeWorkspaceAction(
   const deviceId = version === 2 ? clean("deviceId", 300) : undefined;
   const prefill = version === 2 && raw.prefill && typeof raw.prefill === "object" && !Array.isArray(raw.prefill)
     ? Object.fromEntries(Object.entries(raw.prefill as Record<string, unknown>)
-      .filter(([key, item]) => /^[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(key) && typeof item === "string")
+      .filter(([key, item]) => ["name", "kind", "target"].includes(key) && typeof item === "string")
       .map(([key, item]) => [key, String(item).trim().slice(0, 300)])
       .filter(([, item]) => item))
     : undefined;
