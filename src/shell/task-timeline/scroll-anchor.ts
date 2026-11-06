@@ -65,6 +65,9 @@ export function restoreOlderScrollAnchor(
 ): number {
   const heightDelta = element.scrollHeight - anchor.scrollHeight;
   element.scrollTop = anchor.scrollTop + heightDelta;
+  if (typeof window !== "undefined") {
+    console.debug("[x6-scroll-anchor] baseline", { heightDelta, scrollTop: element.scrollTop, scrollHeight: element.scrollHeight });
+  }
   if (visualAnchor?.element || visualAnchor?.text) {
     const viewport = (element as HTMLElement).getBoundingClientRect();
     const current = visualAnchor.text
@@ -78,6 +81,9 @@ export function restoreOlderScrollAnchor(
     if (Number.isFinite(currentTop) && Number.isFinite(visualAnchor.top)) {
       const visualDelta = currentTop - visualAnchor.top;
       element.scrollTop += visualDelta;
+      if (typeof window !== "undefined") {
+        console.debug("[x6-scroll-anchor] visual", { currentTop, targetTop: visualAnchor.top, visualDelta, scrollTop: element.scrollTop, text: visualAnchor.text });
+      }
       return heightDelta + visualDelta;
     }
   }
