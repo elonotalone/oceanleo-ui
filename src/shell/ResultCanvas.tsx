@@ -48,7 +48,7 @@ import {
   type LeoChatPanelRequestDetail,
 } from "./leochat/LeoChatButton";
 import { WorkspaceHome, WorkspaceViewHeader } from "./result-canvas-home";
-import { DevicesWorkspacePanel, ProjectsWorkspacePanel, SettingsWorkspacePanel } from "./workspace-panels";
+import { DevicesWorkspacePanel, ProjectsWorkspacePanel, SettingsWorkspacePanel, getWorkspacePanel } from "./workspace-panels";
 import {
   useActiveAppCapability,
   useAppCapabilityControls,
@@ -654,9 +654,10 @@ export function ResultCanvas({
     <CloudBrowserPanel taskId={effectiveTaskId} accent={accent} />
   );
   const managedPageAction = pageAction?.action && "version" in pageAction.action && pageAction.action.version === 2 ? pageAction.action : null;
+  const RegisteredProjectsPanel = getWorkspacePanel("projects");
   const managedContent: Record<"devices" | "projects" | "settings", ReactNode> = {
     devices: <DevicesWorkspacePanel section={managedPageAction?.tab === "devices" ? managedPageAction.section : undefined} deviceId={managedPageAction?.deviceId} taskId={effectiveTaskId} />,
-    projects: <ProjectsWorkspacePanel />,
+    projects: RegisteredProjectsPanel ? <RegisteredProjectsPanel taskId={effectiveTaskId} /> : <ProjectsWorkspacePanel />,
     settings: <SettingsWorkspacePanel section={managedPageAction?.tab === "settings" ? managedPageAction.section : undefined} prefill={managedPageAction?.tab === "settings" ? managedPageAction.prefill : undefined} />,
   };
   const content: Record<WorkspaceSlotId, ReactNode> = {
