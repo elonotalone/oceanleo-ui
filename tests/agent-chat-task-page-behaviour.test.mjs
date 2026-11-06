@@ -136,9 +136,14 @@ test("empty state appears only after the first timeline page is loaded", async (
 });
 
 test("first placement uses the newest timeline row", async () => {
+  globalThis.__timelinePage = page({ entries: [leoEntry(3, "newest")], state: baseState("idle") });
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: computerSessions, settleMount: false });
+  assert.ok(stream(view));
   const el = { scrollTop: 0, scrollHeight: 1800, firstElementChild: null };
-  placeConversationScroll(el, "task:newest", () => true);
-  assert.equal(el.scrollTop, 1800);
+  try {
+    placeConversationScroll(el, "task:newest", () => true);
+    assert.equal(el.scrollTop, 1800);
+  } finally { await unmount(view); }
 });
 
 test("new timeline rows follow when the reader is at the bottom", async () => {
@@ -181,10 +186,15 @@ test("older-page prefetch starts within 480px of the top", async () => {
 });
 
 test("older-page anchor uses the reader's moved scrollTop during loading", async () => {
+  globalThis.__timelinePage = page({ entries: [leoEntry(9, "history")], state: baseState("idle"), has_older: true, next_before: "before-2" });
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: computerSessions, settleMount: false });
+  assert.ok(stream(view));
   const el = { scrollTop: 320, scrollHeight: 2400 };
-  const delta = restoreOlderScrollAnchor(el, { scrollTop: 400, scrollHeight: 2000, currentScrollTop: 320 });
-  assert.equal(delta, 400);
-  assert.equal(el.scrollTop, 720);
+  try {
+    const delta = restoreOlderScrollAnchor(el, { scrollTop: 400, scrollHeight: 2000, currentScrollTop: 320 });
+    assert.equal(delta, 400);
+    assert.equal(el.scrollTop, 720);
+  } finally { await unmount(view); }
 });
 
 test("timeline reset rereads rows without losing the current position", async () => {
