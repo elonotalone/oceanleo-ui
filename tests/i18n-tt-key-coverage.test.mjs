@@ -55,6 +55,9 @@ const { EDITOR_PANELS_COPY_SOURCE } = await import(
 const { FOLLOW_THROUGH_SOURCE } = await import(
   "../src/i18n/ui/messages/follow-through-copy.ts"
 );
+const { TASK_PAGE_PACK_SOURCE } = await import(
+  "../src/i18n/ui/messages/task-page-pack-copy.ts"
+);
 
 /**
  * 本波自己落的词典。下面三条结构自检（16 语齐全 / key 等于值 / 占位符不丢 /
@@ -69,6 +72,7 @@ const WAVE_DICTIONARIES = [
   ["plugin-chrome", PLUGIN_CHROME_COPY_SOURCE],
   ["editor-panels", EDITOR_PANELS_COPY_SOURCE],
   ["follow-through", FOLLOW_THROUGH_SOURCE],
+  ["task-page-pack", TASK_PAGE_PACK_SOURCE],
 ];
 
 /** zh 不算：中文站未命中时回退中文原文，本来就是对的，不构成缺口。 */

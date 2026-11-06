@@ -57,6 +57,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
   // 2026-10-05 work-chat：消息 / 多人同改 / 工作回放总表两边同时加。
   // 2026-10-23 编辑器整改波：editor-overhaul-copy 两边同时加（每位 owner 一册，聚合册归父）。
   // 2026-10-27 C5-T3a：local-agent-copy（交给电脑的任务被拒/未确认 + 本机执行未开启）两边同时加。
+  // 2026-11-06 task-page-pack：任务页、右侧栏卡片、Memo、连接器、网站管理（每位 owner 一册，聚合册归父）两边同时加。
   const [
     base,
     recent,
@@ -82,6 +83,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     localAgent,
     computerTaskWorkspace,
     nativeAttachments,
+    taskPagePack,
   ] = await Promise.all([
     BASE_MESSAGE_LOADERS[locale](),
     import("./recent-model-and-task-copy"),
@@ -107,6 +109,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./local-agent-copy"),
     import("./computer-task-workspace-copy"),
     import("./native-attachments-copy"),
+    import("./task-page-pack-copy"),
   ]);
   return {
     ...base.default,
@@ -138,5 +141,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...localAgent.LOCAL_AGENT_MESSAGES[locale],
     ...computerTaskWorkspace.COMPUTER_TASK_WORKSPACE_MESSAGES[locale],
     ...nativeAttachments.NATIVE_ATTACHMENTS_MESSAGES[locale],
+    ...taskPagePack.TASK_PAGE_PACK_MESSAGES[locale],
   };
 };

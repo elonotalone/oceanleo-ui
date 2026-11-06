@@ -22,7 +22,7 @@ const SLOT_DESC: Record<WorkspaceSlotId, string> = {
 const MANAGED_PAGE_DESC: Record<WorkspaceManagedPanelId, string> = {
   devices: "你的电脑、云电脑和云端浏览器",
   projects: "管理项目和任务归属",
-  settings: "偏好、保险箱和连接器",
+  settings: "偏好、密钥库和连接器",
 };
 
 function LineIcon({ children }: { children: ReactNode }): ReactElement {
