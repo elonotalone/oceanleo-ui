@@ -25,6 +25,9 @@ const SOURCE = {
   devices: '设备设置', myDevices: '去我的设备', noComputers: '还没有连接的服务器',
   connectHint: '接入之后会出现在这里。', missingComputer: '找不到这台服务器',
   backToList: '回列表再选一次。', terminalOutput: '终端输出',
+  install: '安装', installDetail: '在这台电脑上安装这个程序', logIn: '登录',
+  loginCode: '登录验证码', loginCodeHint: '输入电脑上显示的验证码', submitCode: '提交验证码',
+  cancelLogin: '取消登录', modeLabel: '模式：{label}', effortLabel: '思考档位：{label}', fast: '快速',
 } as const;
 
 const EN: CopyMessagesOf<typeof SOURCE> = {
@@ -49,6 +52,9 @@ const EN: CopyMessagesOf<typeof SOURCE> = {
   command: 'Enter a command', interrupt: 'Interrupt', retry: 'Retry', devices: 'Device settings',
   myDevices: 'My devices', noComputers: 'No connected servers yet', connectHint: 'Connected servers appear here.',
   missingComputer: 'Server not found', backToList: 'Return to the list and choose again.', terminalOutput: 'Terminal output',
+  install: 'Install', installDetail: 'Install this program on the computer', logIn: 'Log in',
+  loginCode: 'Login code', loginCodeHint: 'Enter the code shown on the computer', submitCode: 'Submit code',
+  cancelLogin: 'Cancel login', modeLabel: 'Mode: {label}', effortLabel: 'Effort: {label}', fast: 'Fast',
 };
 
 const TW: CopyMessagesOf<typeof SOURCE> = {
@@ -71,6 +77,9 @@ const TW: CopyMessagesOf<typeof SOURCE> = {
   interrupt: '中斷', retry: '重試', devices: '裝置設定', myDevices: '前往我的裝置',
   noComputers: '還沒有連接的伺服器', connectHint: '接入之後會出現在這裡。',
   missingComputer: '找不到這台伺服器', backToList: '返回列表再選一次。', terminalOutput: '終端機輸出',
+  install: '安裝', installDetail: '在這台電腦上安裝這個程式', logIn: '登入',
+  loginCode: '登入驗證碼', loginCodeHint: '輸入電腦上顯示的驗證碼', submitCode: '送出驗證碼',
+  cancelLogin: '取消登入', modeLabel: '模式：{label}', effortLabel: '思考檔位：{label}', fast: '快速',
 };
 
 export const W3_M3_MESSAGES = Object.fromEntries(LOCALES.map(locale => [locale,
