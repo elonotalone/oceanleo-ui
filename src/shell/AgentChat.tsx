@@ -4324,6 +4324,7 @@ function NativeChatConversation({ session, computer, external, active, onNativeS
     if (olderAnchor.current) return;
     if (!shouldLoadOlder(scrollMetricsOf(el), { hasOlder: current.hasOlder, loading: current.olderLoading === true, movingUp })) return;
     olderAnchor.current = {
+      scrollTop: el.scrollTop,
       scrollHeight: el.scrollHeight,
       firstId: current.messages[0]?.id ?? null, sawLoading: false, at: Date.now(),
     };
