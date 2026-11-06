@@ -1759,20 +1759,37 @@ function AgentChatInner({
       anchor.sawLoading = true;
       return;
     }
-    if (timelineStatus.olderError) {
-      timelineOlderAnchor.current = null;
-      return;
+    // Wait one paint after the request settles. React can commit the page and
+    // remove the spinner in one batch; measuring in the first layout effect can
+    // otherwise see the old scrollHeight and miss the prepend.
+    let frame = 0;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settle = () => {
+      if (timelineOlderAnchor.current !== anchor || timelineRef.current.olderLoading) return;
+      if (timelineRef.current.olderError) {
+        timelineOlderAnchor.current = null;
+        return;
+      }
+      // Wait until the older request has settled, then compensate for every
+      // rendered pixel. The first mapped row can be stable when the new page
+      // extends that row, so an id comparison alone is insufficient.
+      const delta = el.scrollHeight - anchor.scrollHeight;
+      if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
+        // Equivalent compensation: `el.scrollTop += el.scrollHeight - anchor.scrollHeight`.
+        restoreOlderScrollAnchor(el, anchor);
+        timelineLastScrollTop.current = el.scrollTop;
+        timelineOlderAnchor.current = null;
+      }
+    };
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      frame = window.requestAnimationFrame(settle);
+    } else {
+      timer = setTimeout(settle, 0);
     }
-    // Wait until the older request has settled, then compensate for every
-    // rendered pixel. The first mapped row can be stable when the new page
-    // extends that row, so an id comparison alone is insufficient.
-    const delta = el.scrollHeight - anchor.scrollHeight;
-    if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
-      // Equivalent compensation: `el.scrollTop += el.scrollHeight - anchor.scrollHeight`.
-      restoreOlderScrollAnchor(el, anchor);
-      timelineLastScrollTop.current = el.scrollTop;
-      timelineOlderAnchor.current = null;
-    }
+    return () => {
+      if (frame && typeof window !== "undefined") window.cancelAnimationFrame(frame);
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading, timelineStatus.olderError]);
 
   useEffect(() => {
