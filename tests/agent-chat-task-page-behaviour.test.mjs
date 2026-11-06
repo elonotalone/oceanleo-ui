@@ -8,8 +8,6 @@ import { compileModule } from "./helpers/module-bench.mjs";
 // dispatched calls; they do not inspect source text.
 await import("./agent-chat-conversations.test.mjs");
 const { mount, settle, session, computerTask, cloudTask } = globalThis.__agentChatHarness;
-const { placeConversationScroll } = await import(await compileModule("src/shell/task-scroll-memory.ts"));
-const { restoreOlderScrollAnchor } = await import(await compileModule("src/shell/task-timeline/scroll-anchor.ts"));
 let defaultScrollHeight = 0;
 let defaultClientHeight = 600;
 Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return this.__testScrollHeight ?? defaultScrollHeight; } });
@@ -135,15 +133,17 @@ test("empty state appears only after the first timeline page is loaded", async (
   } finally { await unmount(view); globalThis.__timelineHang = null; }
 });
 
-test("first placement uses the newest timeline row", async () => {
-  globalThis.__timelinePage = page({ entries: [leoEntry(3, "newest")], state: baseState("idle") });
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: computerSessions, settleMount: false });
-  assert.ok(stream(view));
-  const el = { scrollTop: 0, scrollHeight: 1800, firstElementChild: null };
+test("first placement opens the task at its newest timeline row", async () => {
+  // A task id of its own: the scroll memory is per task, and no earlier test may have left a spot for it.
+  const task = computerTask();
+  task.task.id = "t-place";
+  globalThis.__timelinePage = page({ entries: [leoEntry(3, "older row"), leoEntry(4, "newest row")], state: baseState("idle") });
+  defaultScrollHeight = 1800;
+  const view = await mount({ taskId: "t-place" }, { task, sessions: computerSessions, url: "/tasks/t-place" });
   try {
-    placeConversationScroll(el, "task:newest", () => true);
-    assert.equal(el.scrollTop, 1800);
-  } finally { await unmount(view); }
+    assert.match(view.host.textContent, /newest row/);
+    assert.equal(stream(view).scrollTop, 1800);
+  } finally { defaultScrollHeight = 0; await unmount(view); }
 });
 
 test("new timeline rows follow when the reader is at the bottom", async () => {
@@ -185,16 +185,30 @@ test("older-page prefetch starts within 480px of the top", async () => {
   } finally { await unmount(view); }
 });
 
-test("older-page anchor uses the reader's moved scrollTop during loading", async () => {
+test("an older page keeps the reader's place when they kept scrolling during the load", async () => {
+  const task = computerTask();
+  task.task.id = "t-anchor";
   globalThis.__timelinePage = page({ entries: [leoEntry(9, "history")], state: baseState("idle"), has_older: true, next_before: "before-2" });
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: computerSessions, settleMount: false });
-  assert.ok(stream(view));
-  const el = { scrollTop: 320, scrollHeight: 2400 };
+  defaultScrollHeight = 2000; // a full viewport: nothing loads before the reader scrolls
+  const view = await mount({ taskId: "t-anchor" }, { task, sessions: computerSessions, url: "/tasks/t-anchor" });
+  let releaseOlder;
+  globalThis.__olderDeferred = { promise: new Promise((resolve) => { releaseOlder = resolve; }) };
   try {
-    const delta = restoreOlderScrollAnchor(el, { scrollTop: 400, scrollHeight: 2000, currentScrollTop: 320 });
-    assert.equal(delta, 400);
-    assert.equal(el.scrollTop, 720);
-  } finally { await unmount(view); }
+    const el = stream(view);
+    setMetrics(el, { height: 2000, client: 600, top: 520 });
+    await act(async () => { el.dispatchEvent(new Event("scroll")); });
+    const readsBefore = globalThis.__taskTimelineCalls.filter((call) => call.method === "GET").length;
+    el.scrollTop = 400; // within 480 px of the top, moving up: the older page is requested
+    await act(async () => { el.dispatchEvent(new Event("scroll")); });
+    assert.equal(globalThis.__taskTimelineCalls.filter((call) => call.method === "GET").length, readsBefore + 1);
+    el.scrollTop = 320; // the reader keeps scrolling while it loads
+    await act(async () => { el.dispatchEvent(new Event("scroll")); });
+    setMetrics(el, { height: 2400, client: 600, top: 320 }); // the older page adds 400 px above
+    await act(async () => { releaseOlder(page({ entries: [leoEntry(8, "older history")], state: baseState("idle") })); });
+    await settle(); await settle();
+    assert.match(view.host.textContent, /older history/);
+    assert.equal(el.scrollTop, 720, "the rows the reader was looking at stay in place: 320 + 400");
+  } finally { defaultScrollHeight = 0; await unmount(view); }
 });
 
 test("timeline reset rereads rows without losing the current position", async () => {
