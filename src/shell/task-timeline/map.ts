@@ -164,7 +164,12 @@ function sameProjectedRow(previous: AgentMessage, next: AgentMessage): boolean {
   const nextMeta = withoutCursor(next.meta);
   const oldKeys = Object.keys(oldMeta);
   const nextKeys = Object.keys(nextMeta);
-  return oldKeys.length === nextKeys.length && nextKeys.every((name) => oldMeta[name] === nextMeta[name]);
+  return oldKeys.length === nextKeys.length && nextKeys.every((name) => {
+    if (oldMeta[name] === nextMeta[name]) return true;
+    // Attachment previews are reconstructed as fresh arrays by the dialog
+    // mapper even when the user row itself did not change.
+    return name === "attachments" && JSON.stringify(oldMeta[name]) === JSON.stringify(nextMeta[name]);
+  });
 }
 
 function dialogItemKey(item: { kind: string; id?: string; seq?: number; text?: string }): string {
@@ -366,6 +371,35 @@ function compactSnapshots(snapshots: Map<string, AgentMessage[]>): Map<string, A
   return compacted;
 }
 
+function normalizeDisplayRows(rows: readonly AgentMessage[]): AgentMessage[] {
+  let currentEngine = "";
+  return rows.map((row) => {
+    if (row.role === "user") {
+      const meta = stripEngineLabel(row.meta);
+      return meta === row.meta ? row : { ...row, meta };
+    }
+    const sender = row.meta?.sender;
+    const engine = typeof row.meta?.engine === "string"
+      ? row.meta.engine
+      : sender && typeof sender === "object" && typeof (sender as Record<string, unknown>).program === "string"
+        ? String((sender as Record<string, unknown>).program)
+        : "";
+    if (!engine) {
+      const meta = stripEngineLabel(row.meta);
+      return meta === row.meta ? row : { ...row, meta };
+    }
+    const showLabel = engine !== currentEngine;
+    currentEngine = engine;
+    return {
+      ...row,
+      meta: {
+        ...(stripEngineLabel(row.meta) ?? {}),
+        ...(showLabel ? { engine_label: engineLabel(engine as TaskProgram) } : {}),
+      },
+    };
+  });
+}
+
 function sameEntryPrefix(cached: readonly TaskTimelineEntry[], current: readonly TaskTimelineEntry[]): boolean {
   if (cached.length > current.length) return false;
   for (let index = 0; index < cached.length; index += 1) {
@@ -422,6 +456,17 @@ function mapColdSingleNativeSession(
     return annotated;
   });
   projection.rows = rows;
+  // Seed per-dialog-message mappings so the first post-hydration delta only
+  // maps its changed turn/item and can preserve every untouched row object.
+  const annotatedById = new Map(rows.map((row) => [row.id, row]));
+  for (const message of projection.state.messages) {
+    const key = `${message.kind}:${message.id}`;
+    const messageRows = dialogToAgentMessages([message], { live: live.length > 0, engine: first.program });
+    projection.mappedMessages.set(key, {
+      message,
+      rows: messageRows.map((row) => annotatedById.get(row.id) ?? row),
+    });
+  }
   if (cache) {
     const key = nativeKey(first);
     cache.sessions.set(key, {
@@ -430,7 +475,7 @@ function mapColdSingleNativeSession(
       snapshots: new Map([[timelineEntryKey(first), rows]]),
     });
   }
-  return rows;
+  return normalizeDisplayRows(rows);
 }
 
 function projectSession(
@@ -619,33 +664,7 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
     seenUsers.add(id);
     return true;
   });
-  let currentEngine = "";
-  const nextRendered = deduped.map((row) => {
-    if (row.role === "user") {
-      const meta = stripEngineLabel(row.meta);
-      return meta === row.meta ? row : { ...row, meta };
-    }
-    const sender = row.meta?.sender;
-    const engine = typeof row.meta?.engine === "string"
-      ? row.meta.engine
-      : sender && typeof sender === "object" && typeof (sender as Record<string, unknown>).program === "string"
-        ? String((sender as Record<string, unknown>).program)
-        : "";
-    if (!engine) {
-      const meta = stripEngineLabel(row.meta);
-      return meta === row.meta ? row : { ...row, meta };
-    }
-    const showLabel = engine !== currentEngine;
-    currentEngine = engine;
-    const next = {
-      ...row,
-      meta: {
-        ...(stripEngineLabel(row.meta) ?? {}),
-        ...(showLabel ? { engine_label: engineLabel(engine as TaskProgram) } : {}),
-      },
-    };
-    return next;
-  });
+  const nextRendered = normalizeDisplayRows(deduped);
   const previousRendered = options.cache?.rendered ?? [];
   const previousByKey = new Map<string, AgentMessage>();
   const timelineMeta = (meta: AgentMessage["meta"]): Record<string, unknown> => (meta ?? {}) as Record<string, unknown>;
