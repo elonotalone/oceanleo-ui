@@ -43,6 +43,8 @@ export type NativeThreadInput = {
    * Ignored when `session` is given (the session's program wins).
    */
   program?: NativeProgram | null;
+  /** Keep the ACP control/status connection without loading or projecting its transcript. */
+  statusOnly?: boolean;
 };
 
 export type NativeThread = {
@@ -180,7 +182,7 @@ function isImageFile(mime: string, name: string): boolean {
   return mime.startsWith("image/") || /\.(png|jpe?g|webp|gif)$/i.test(name);
 }
 
-export function useNativeThread({ computer, session, enabled, onNativeSessionChange, program: draftProgram }: NativeThreadInput): NativeThread {
+export function useNativeThread({ computer, session, enabled, onNativeSessionChange, program: draftProgram, statusOnly = false }: NativeThreadInput): NativeThread {
   const tt = useUI();
   const ttRef = useRef(tt);
   ttRef.current = tt;
@@ -252,7 +254,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   const sessionKey = session?.id ?? "";
   const previousSession = useRef(sessionKey);
   useEffect(() => {
-    if (!live || !program || dialog.program !== program || !session) return;
+    if (statusOnly || !live || !program || dialog.program !== program || !session) return;
     if (!nativeId) {
       // Switching from another managed session starts a fresh view. Coming
       // from a draft keeps the draft view (it already is fresh, and the host
@@ -272,7 +274,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     const key = `${sessionKey}:${nativeId}`;
     openedRef.current = key;
     dialog.openSession(nativeId);
-  }, [live, program, dialog, dialog.program, dialog.activeSession, nativeId, sessionKey, session]);
+  }, [live, program, statusOnly, dialog, dialog.program, dialog.activeSession, nativeId, sessionKey, session]);
 
   // The host started over (a session, then a draft again, e.g. the homepage's
   // New Task): a fresh view with nothing waiting; the next session is born here.
@@ -342,7 +344,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
       archiveFresh.current = "";
       archiveFor.current = sessionKey;
     }
-    if (!enabled || !session || session.kind !== "acp") return;
+    if (statusOnly || !enabled || !session || session.kind !== "acp") return;
     // A brand-new conversation reads its saved copy only once the computer is offline.
     if (bornHere.current === sessionKey && computerOnlineRef.current) return;
     const id = session.id;
@@ -370,7 +372,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
         if (!controller.signal.aborted && archiveFor.current === id) setArchiveReadFor(id);
       });
     return () => controller.abort();
-  }, [enabled, sessionKey, session?.kind, waitsForOffline]);
+  }, [enabled, sessionKey, session?.kind, statusOnly, waitsForOffline]);
 
   // Link re-attached (B2 status `link:"attached"`, an adopted session without replay, a
   // socket reopen): read the newest saved page again and join it onto what is shown.
@@ -379,7 +381,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   useEffect(() => {
     if (reattachSeen.current === reattachSeq) return;
     reattachSeen.current = reattachSeq;
-    if (!enabled || !session || session.kind !== "acp") return;
+    if (statusOnly || !enabled || !session || session.kind !== "acp") return;
     const id = session.id;
     void getComputerTaskTranscript(id)
       .then((next) => {
@@ -389,7 +391,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
         setArchiveReadFor(id);
       })
       .catch(() => undefined);
-  }, [reattachSeq, enabled, session]);
+  }, [reattachSeq, enabled, session, statusOnly]);
 
   const reduceArchive = useCallback((page: Archive, includeMissing = true): AgentDialogMessage[] => {
     type State = ReturnType<typeof initialDialogState>;
@@ -459,8 +461,8 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
     return currentDialog;
   }, [currentDialog, retainedControl, finishing, finishingSession]);
   const messages = useMemo(
-    () => dialogToAgentMessages(mappedDialog, { live, tt, engine: program ?? undefined }),
-    [mappedDialog, live, tt, program],
+    () => statusOnly ? [] : dialogToAgentMessages(mappedDialog, { live, tt, engine: program ?? undefined }),
+    [mappedDialog, live, statusOnly, tt, program],
   );
 
   // A brand-new conversation (no native session yet) cannot be busy on the
@@ -742,6 +744,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
   });
 
   const loadOlder = useCallback(() => {
+    if (statusOnly) return;
     if (!showArchive) {
       dialog.loadOlderHistory();
       return;
@@ -768,7 +771,7 @@ export function useNativeThread({ computer, session, enabled, onNativeSessionCha
         if (archiveFor.current === id) olderInFlight.current = false;
         setArchiveLoading(false);
       });
-  }, [showArchive, dialog, session, archive, olderArchive, reduceArchive]);
+  }, [showArchive, dialog, session, archive, olderArchive, reduceArchive, statusOnly]);
 
   const savedStatus = live ? archiveStatus : archive?.sync_status ?? session?.sync_status ?? null;
 

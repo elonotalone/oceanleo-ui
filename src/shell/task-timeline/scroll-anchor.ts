@@ -6,6 +6,8 @@
 export type OlderScrollAnchorSnapshot = {
   scrollTop: number;
   scrollHeight: number;
+  /** Updated while the reader keeps scrolling during the network request. */
+  currentScrollTop?: number;
 };
 
 export function restoreOlderScrollAnchor(
@@ -13,6 +15,6 @@ export function restoreOlderScrollAnchor(
   anchor: OlderScrollAnchorSnapshot,
 ): number {
   const delta = element.scrollHeight - anchor.scrollHeight;
-  element.scrollTop = anchor.scrollTop + delta;
+  element.scrollTop = (anchor.currentScrollTop ?? anchor.scrollTop) + delta;
   return delta;
 }

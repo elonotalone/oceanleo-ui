@@ -817,6 +817,7 @@ export function followUp(
   hiddenContext = "",
   orgId?: string,
   computerId?: string,
+  clientWindow?: string,
 ) {
   const backbone = followUpBackboneField();
   return authed<{ task_id: string; status: string }>(
@@ -831,6 +832,7 @@ export function followUp(
         ...payerRequestFields(orgId),
         ...leoRunRequestFields(),
         ...(computerId ? computerIdRequestField(computerId) : {}),
+        ...(clientWindow ? { client_window: clientWindow } : {}),
       }),
     },
   ).then((result) => {

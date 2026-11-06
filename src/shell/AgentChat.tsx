@@ -47,6 +47,7 @@ import {
   artifactToLibraryItem,
 } from "./ArtifactRenderer";
 import { normalizeWorkspaceAction, type WorkspaceActionV1 } from "./workspace-actions";
+import { applyAgentPreset, openWorkspacePage } from "./agent-ui-presets";
 import {
   AgentTranscriptBubble,
   agentArtifactLabels,
@@ -138,6 +139,7 @@ import {
   type ArtifactMeta,
   type TaskDetail,
 } from "../lib/agent";
+import { getClientWindowId } from "./client-window";
 import { deleteArtifact } from "../lib/database";
 import {
   decodeChatFrame,
@@ -200,6 +202,8 @@ import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-tim
 import { restoreOlderScrollAnchor, type OlderScrollAnchorSnapshot } from "./task-timeline/scroll-anchor";
 
 type TaskTimelineStatusSurface = ReturnType<typeof useTaskTimeline> & {
+  loaded?: boolean;
+  fromCache?: boolean;
   liveStatus?: "connecting" | "connected" | "reconnecting";
   liveNotice?: boolean;
   retry?: () => void;
@@ -739,44 +743,34 @@ function sessionConversation(session: ComputerTaskSession): ConversationTarget {
 }
 
 /**
- * Status under a queued task message. A message for the agent that is already working is normally injected within
- * a second or two, so its status waits 3 s before showing (no flash of "queued" on every follow-up); a message for
- * a different agent waits for the turn boundary and says so at once. Compares program ids, not display labels.
+ * Delivery under a task message. The queue state is read from the timeline's
+ * current server state, so the remove action disappears as soon as the prompt
+ * is injected. Compares program ids, not display labels.
  */
-function TaskQueuedActions({ clientMessageId, recipientProgram, currentProgram, readOnly, onRemove }: {
+function TaskQueuedActions({ clientMessageId, recipientProgram, currentProgram, queued, readOnly, onRemove }: {
   clientMessageId: string;
   recipientProgram: string;
   currentProgram: string;
+  queued: boolean;
   readOnly?: boolean;
   onRemove: (clientMessageId: string) => void;
 }) {
   const tt = useUI();
-  const sameAgent = !recipientProgram || recipientProgram === currentProgram;
-  const [visible, setVisible] = useState(!sameAgent);
-  useEffect(() => {
-    if (!sameAgent) { setVisible(true); return; }
-    setVisible(false);
-    const timer = setTimeout(() => setVisible(true), 3000);
-    return () => clearTimeout(timer);
-  }, [sameAgent, clientMessageId]);
-  if (!clientMessageId || !visible) return null;
   const recipient = PROGRAM_LABEL[recipientProgram as keyof typeof PROGRAM_LABEL] || recipientProgram;
-  const sender = PROGRAM_LABEL[currentProgram as keyof typeof PROGRAM_LABEL] || currentProgram;
+  if (!clientMessageId) return null;
   return (
     <div className="flex justify-end gap-2 px-1 text-[12px] text-stone-500" data-task-queued-actions={clientMessageId}>
       <span data-task-queued-status="" className="text-stone-400">
-        {sameAgent
-          ? tt("已排队，等 {to} 完成这一轮后发送", { to: sender })
-          : tt("{from} 做完这一轮后交给 {to}", { from: sender, to: recipient })}
+        {queued ? tt("已排队") : tt("{agent} 下一步会看到", { agent: recipient || currentProgram })}
       </span>
-      <button
-        type="button"
-        className="underline underline-offset-2"
-        onClick={() => onRemove(clientMessageId)}
-        disabled={readOnly}
-      >
-        {tt("移除排队消息")}
-      </button>
+      {queued && <button
+          type="button"
+          className="underline underline-offset-2"
+          onClick={() => onRemove(clientMessageId)}
+          disabled={readOnly}
+        >
+          {tt("移除排队消息")}
+        </button>}
     </div>
   );
 }
@@ -916,6 +910,7 @@ function AgentChatInner({
     () => String(initialTask?.task?.title || initialTitle || ""),
   );
   const [removedQueuedIds, setRemovedQueuedIds] = useState<Set<string>>(new Set());
+  const [timelineDelivery, setTimelineDelivery] = useState<Record<string, "queued" | "injected">>({});
   const [input, setInput] = useState("");
   const [gateBusy, setGateBusy] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
@@ -946,6 +941,8 @@ function AgentChatInner({
   const partialTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
+  const timelineActionBaselineRef = useRef("");
+  const timelineActionIdsRef = useRef<Set<number>>(new Set());
   const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 服务端那份消息的上一次快照。用来判断「这一轮轮询有没有拿到新东西」——
@@ -1038,6 +1035,7 @@ function AgentChatInner({
 
   useEffect(() => {
     setRemovedQueuedIds(new Set());
+    setTimelineDelivery({});
     pendingTaskSubmissionRef.current = null;
   }, [taskId]);
 
@@ -1567,9 +1565,12 @@ function AgentChatInner({
     session: computerTask && activeSession?.kind === "acp" ? activeSession : null,
     program: timelineProgram !== "oceanleo" ? timelineProgram as NativeProgram : null,
     enabled: computerTask && timelineProgram !== "oceanleo",
+    statusOnly: computerTask,
   });
+  const timelineActionMessages = computerTask ? timeline.items : messages;
   const timelineMessages = computerTask
     ? timeline.items
+      .filter((message) => message.kind !== "ui_action")
       .filter((message) => !(
         message.meta?.task_timeline_queued === true &&
         removedQueuedIds.has(String(message.meta?.client_message_id || ""))
@@ -1812,7 +1813,7 @@ function AgentChatInner({
   // (reload / first open). Placed while the loading cover is still on, so the
   // first visible frame is already in place.
   const placedTaskRef = useRef("");
-  /** The `messages` the first frame was placed for (that render needs no follow scroll). */
+  /** The rendered rows the first frame was placed for (that render needs no follow scroll). */
   const justPlacedRef = useRef<AgentMessage[] | null>(null);
   const placedHoldRef = useRef<(() => void) | null>(null);
   const scrollKeyRef = useRef("");
@@ -1825,17 +1826,17 @@ function AgentChatInner({
   const cloudPaneShown = !conversation || conversation.kind === "oceanleo";
   useLayoutEffect(() => {
     const el = scrollRef.current;
-    if (!el || !taskId || messagesTaskId !== taskId || placedTaskRef.current === taskId) return;
-    if (messages.length === 0 || !cloudPaneShown || !scrollPaneShown(el)) return;
+    if (!el || !taskId || placedTaskRef.current === taskId) return;
+    if (timelineMessages.length === 0 || (!computerTask && !cloudPaneShown) || !scrollPaneShown(el)) return;
     placedTaskRef.current = taskId;
-    seenMessageCountRef.current = messages.length;
+    seenMessageCountRef.current = timelineMessages.length;
     const placed = placeConversationScroll(el, `task:${taskId}`, () => followingRef.current);
     followingRef.current = placed.follow;
     setFollowing(placed.follow);
-    justPlacedRef.current = messages;
+    justPlacedRef.current = timelineMessages;
     placedHoldRef.current?.();
     placedHoldRef.current = placed.release;
-  }, [messages, messagesTaskId, taskId, cloudPaneShown]);
+  }, [computerTask, cloudPaneShown, taskId, timelineMessages]);
   useEffect(() => () => placedHoldRef.current?.(), []);
 
   const maybeLoadTimelineOlder = useCallback((movingUp: boolean) => {
@@ -1868,6 +1869,7 @@ function AgentChatInner({
   // TaskLoadingGate above (home page, workspace consoles).
   useTaskLoadingReport(
     !taskId ||
+      computerTask ||
       readFailedTaskId === taskId ||
       (messagesTaskId === taskId && (conversationResolved || sessionsFailed)),
   );
@@ -1878,6 +1880,7 @@ function AgentChatInner({
     const metrics = scrollMetricsOf(el);
     const movingUp = metrics.scrollTop < timelineLastScrollTop.current;
     timelineLastScrollTop.current = metrics.scrollTop;
+    if (timelineOlderAnchor.current) timelineOlderAnchor.current.currentScrollTop = metrics.scrollTop;
     const atBottom = isNearBottom({
       ...metrics,
     });
@@ -1966,10 +1969,10 @@ function AgentChatInner({
   useEffect(() => {
     // 未读记的是**新消息条数**，不是渲染次数：流式期间最后一条会一直长，
     // 那是同一条在变，不该让计数一路往上跳。
-    const added = Math.max(0, messages.length - seenMessageCountRef.current);
-    seenMessageCountRef.current = messages.length;
+    const added = Math.max(0, timelineMessages.length - seenMessageCountRef.current);
+    seenMessageCountRef.current = timelineMessages.length;
     // The first frame was just placed (instant): no smooth scroll from the top.
-    if (justPlacedRef.current === messages) {
+    if (justPlacedRef.current === timelineMessages) {
       justPlacedRef.current = null;
       return;
     }
@@ -1980,7 +1983,7 @@ function AgentChatInner({
       return;
     }
     if (added > 0) setUnread((current) => current + added);
-  }, [messages, scrollToLatest]);
+  }, [scrollToLatest, timelineMessages]);
 
   // 换对话：跟随、未读、停止判定、服务端快照全部归零，
   // 免得把上一段对话的滚动位置和「已停止」标记带到新对话上。
@@ -2299,7 +2302,7 @@ function AgentChatInner({
         setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
         return;
       }
-      const result = await followUp(id, effectivePrompt, uploaded, turn.context);
+      const result = await followUp(id, effectivePrompt, uploaded, turn.context, undefined, undefined, getClientWindowId());
       setBusy(false);
       if (!result.ok) {
         const failure = localAgentFailure(result, isLocalExecution);
@@ -2407,6 +2410,7 @@ function AgentChatInner({
         attachments: retry.attachments,
         mode,
         client_message_id: clientMessageId,
+        client_window: getClientWindowId(),
       });
       ok = result.ok !== false && result.accepted !== false;
       delivery = result.delivery;
@@ -2414,6 +2418,9 @@ function AgentChatInner({
       failureReason = taskTimelineFailureText(tt, caught);
     }
     if (ok) {
+      if (delivery === "queued" || delivery === "injected") {
+        setTimelineDelivery((current) => ({ ...current, [clientMessageId]: delivery }));
+      }
       timeline.settleLocal(clientMessageId, delivery ? { ok: true, delivery } : { ok: true });
     } else {
       const reason = failureReason || tt("这条消息没有发送，请重试。");
@@ -2488,6 +2495,7 @@ function AgentChatInner({
           attachments: uploaded,
           mode,
           client_message_id: clientMessageId,
+          client_window: getClientWindowId(),
         });
         ok = result.ok !== false && result.accepted !== false;
         delivery = result.delivery;
@@ -2495,6 +2503,9 @@ function AgentChatInner({
         failureReason = taskTimelineFailureText(tt, caught);
       }
       if (ok) {
+        if (delivery === "queued" || delivery === "injected") {
+          setTimelineDelivery((current) => ({ ...current, [clientMessageId]: delivery }));
+        }
         timeline.settleLocal(clientMessageId, delivery ? { ok: true, delivery } : { ok: true });
       } else {
         const reason = failureReason || tt("这条消息没有发送，请重试。");
@@ -2611,7 +2622,7 @@ function AgentChatInner({
       setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
       return;
     }
-    const r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId);
+    const r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId());
     setBusy(false);
     if (r.ok) kickAfterFollowUp(taskId);
     else {
@@ -2816,7 +2827,7 @@ function AgentChatInner({
         setError("保存文件关联期间右侧 Library 文件已切换；这条追问没有发送。");
         return;
       }
-      const r = await followUp(taskId, text, undefined, turn.context);
+      const r = await followUp(taskId, text, undefined, turn.context, undefined, undefined, getClientWindowId());
       setBusy(false);
       if (r.ok) kickAfterFollowUp(taskId);
       else {
@@ -3041,27 +3052,47 @@ function AgentChatInner({
 
   // Only signed tool receipts are persisted by the gateway as ui_action.
   // Assistant prose is deliberately never parsed for UI commands.
-  const latestActionMessage = [...messages]
+  const latestActionMessage = [...timelineActionMessages]
     .reverse()
     .find(
       (message) =>
         message.kind === "ui_action" && message.meta?.verified === true,
     );
   useEffect(() => {
+    if (!computerTask || !taskId || timelineStatus.loaded !== true || timelineActionBaselineRef.current === taskId) return;
+    timelineActionBaselineRef.current = taskId;
+    timelineActionIdsRef.current = new Set(
+      timelineActionMessages
+        .filter((message) => message.kind === "ui_action")
+        .map((message) => message.id),
+    );
+  }, [computerTask, taskId, timelineActionMessages, timelineStatus.loaded]);
+  useEffect(() => {
     if (
       !latestActionMessage ||
       latestActionMessage.id === seenActionRef.current ||
       !taskId ||
-      messagesTaskId !== taskId
+      (!computerTask && messagesTaskId !== taskId)
     )
       return;
+    const liveForTimeline = computerTask
+      ? timelineStatus.loaded === true && !timelineActionIdsRef.current.has(latestActionMessage.id)
+      : isLiveAction(actionHistoryRef.current, taskId, latestActionMessage);
+    if (!liveForTimeline) return;
+    const targetWindow = latestActionMessage.meta?.target_window;
+    if (typeof targetWindow === "string" && targetWindow !== getClientWindowId()) return;
     seenActionRef.current = latestActionMessage.id;
-    if (!isLiveAction(actionHistoryRef.current, taskId, latestActionMessage)) return;
+    timelineActionIdsRef.current.add(latestActionMessage.id);
+    const preset = latestActionMessage.meta?.ui_preset;
+    if (preset && typeof preset === "object") {
+      applyAgentPreset(preset);
+    }
     const action = normalizeWorkspaceAction(
       latestActionMessage.meta?.workspace_action ||
         latestActionMessage.meta?.ui_action,
     );
     if (!action) return;
+    openWorkspacePage(action);
     // 「找真人」的 action 不是槽位：不动受控值，把右侧栏打开，由右侧栏自己进到 LeoBay 那一块。
     if (action.tab === "bay") setRightOpen(true);
     else setLibTab(action.tab);
@@ -3069,7 +3100,7 @@ function AgentChatInner({
       nonce: `message:${latestActionMessage.id}`,
       action,
     });
-  }, [latestActionMessage, messagesTaskId, taskId]);
+  }, [computerTask, latestActionMessage, messagesTaskId, taskId, timelineActionMessages, timelineStatus.loaded]);
 
   // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
   // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
@@ -3474,7 +3505,9 @@ function AgentChatInner({
       </>
     ),
     // A computer task whose conversation is not decided yet shows nothing rather than a cloud empty page.
-    empty: timelineMessages.length === 0 && !timelineRunning && conversationResolved ? (
+    empty: timelineMessages.length === 0 && !timelineRunning && conversationResolved &&
+      (!computerTask || timelineStatus.loaded === true) &&
+      !(Boolean(!taskId && (initialPrompt?.trim() || initialAtts?.length))) ? (
       <div className="py-10 text-center text-[15px] text-stone-400">
         {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
       </div>
@@ -3542,11 +3575,15 @@ function AgentChatInner({
                   turnCopyText={turnActions.get(item.key) ?? null}
                   highlightQuery={highlightQuery || undefined}
                 />
-                {computerTask && item.message.meta?.task_timeline_queued === true && (
+                {computerTask && (item.message.meta?.task_timeline_queued === true ||
+                  item.message.meta?.delivery === "queued" || item.message.meta?.delivery === "injected" ||
+                  timelineDelivery[String(item.message.meta?.client_message_id || "")] !== undefined) && (
                   <TaskQueuedActions
                     clientMessageId={String(item.message.meta?.client_message_id || "")}
                     recipientProgram={String(item.message.meta?.engine || "")}
                     currentProgram={String(currentProgram || "")}
+                    queued={timelineDelivery[String(item.message.meta?.client_message_id || "")] === "queued" ||
+                      item.message.meta?.delivery === "queued" || item.message.meta?.task_timeline_queued === true}
                     readOnly={readOnly}
                     onRemove={(id) => void removeQueuedMessage(id)}
                   />
@@ -3658,7 +3695,7 @@ function AgentChatInner({
             value={input}
             onChange={setInput}
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
-            loading={running}
+            loading={computerTask ? timelineRunning : running}
             onStop={() => void stop()}
             stopping={taskStopping}
             stopError={stopErrorText(tt, taskStop)}
