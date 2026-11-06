@@ -1,8 +1,9 @@
 "use client";
 
 import { dispatchWorkspaceAction, normalizeWorkspaceAction, type WorkspaceAction, type WorkspaceActionV2, type WorkspaceActionEnvelope } from "./workspace-actions";
-import { appearanceToHtmlClass, allThemeClassNames, normalizeThemeMode, resolveThemeClass, type ThemeMode } from "../theme/theme-config";
+import { appearanceToHtmlClass, allThemeClassNames, normalizeThemeMode, resolveThemeClass, THEME_COOKIE, THEME_COOKIE_MAX_AGE, THEME_STORAGE_KEY, type ThemeMode } from "../theme/theme-config";
 import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, isLocale, normalizeLocale, type Locale } from "../i18n/config";
+import { sharedCookieDomainFor } from "../contracts/domain-family";
 
 export type AgentUiPreset =
   | { kind: "theme"; value: "dark" | "light" | "system" }
@@ -11,8 +12,9 @@ export type AgentUiPreset =
 function setTheme(mode: ThemeMode) {
   if (typeof window === "undefined" || typeof document === "undefined") return;
   const normalized = normalizeThemeMode(mode);
-  try { localStorage.setItem("oceanleo_theme", normalized); } catch { /* storage is optional */ }
-  document.cookie = `oceanleo_theme=${encodeURIComponent(normalized)}; path=/; max-age=31536000; samesite=lax`;
+  try { localStorage.setItem(THEME_STORAGE_KEY, normalized); } catch { /* storage is optional */ }
+  const domain = sharedCookieDomainFor(window.location.hostname);
+  document.cookie = `${THEME_COOKIE}=${encodeURIComponent(normalized)}; path=/; max-age=${THEME_COOKIE_MAX_AGE}; samesite=lax${domain ? `; domain=${domain}` : ""}`;
   const resolved = resolveThemeClass(normalized, window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false);
   const root = document.documentElement;
   root.classList.remove(...allThemeClassNames());
@@ -24,7 +26,8 @@ function setTheme(mode: ThemeMode) {
 function setLocale(value: string) {
   if (typeof window === "undefined" || typeof document === "undefined") return;
   const locale: Locale = isLocale(value) ? value : normalizeLocale(value);
-  document.cookie = `${LOCALE_COOKIE}=${encodeURIComponent(locale)}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax`;
+  const domain = sharedCookieDomainFor(window.location.hostname);
+  document.cookie = `${LOCALE_COOKIE}=${encodeURIComponent(locale)}; path=/; max-age=${LOCALE_COOKIE_MAX_AGE}; samesite=lax${domain ? `; domain=${domain}` : ""}`;
   document.documentElement.lang = locale;
   window.dispatchEvent(new CustomEvent("oceanleo:agent-locale", { detail: { locale } }));
 }
