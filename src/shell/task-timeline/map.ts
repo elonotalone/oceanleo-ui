@@ -39,6 +39,7 @@ export type TaskUiState = {
 type NativeProjection = {
   state: DialogState;
   rows: AgentMessage[];
+  mappedMessages: Map<string, { message: AgentDialogMessage; rows: AgentMessage[] }>;
 };
 
 type InternalTimelineEntry = TaskTimelineEntry & {
@@ -143,7 +144,7 @@ function projectionFor(entry: TaskTimelineEntry, nativeStates: Map<string, Nativ
   const existing = nativeStates.get(key);
   if (existing) return existing;
   const state = { ...initialDialogState(), program: entry.program };
-  const projection = { state, rows: [] };
+  const projection = { state, rows: [], mappedMessages: new Map() };
   nativeStates.set(key, projection);
   return projection;
 }
@@ -166,6 +167,29 @@ function sameProjectedRow(previous: AgentMessage, next: AgentMessage): boolean {
   return oldKeys.length === nextKeys.length && nextKeys.every((name) => oldMeta[name] === nextMeta[name]);
 }
 
+function dialogItemKey(item: { kind: string; id?: string; seq?: number; text?: string }): string {
+  return `${item.kind}:${item.seq ?? item.id ?? item.text ?? ""}`;
+}
+
+function mapDialogMessageIncremental(
+  message: AgentDialogMessage,
+  previous: { message: AgentDialogMessage; rows: AgentMessage[] } | undefined,
+  program: TaskProgram,
+): AgentMessage[] {
+  if (!previous || message.kind !== "turn" || previous.message.kind !== "turn") {
+    return dialogToAgentMessages([message], { live: false, engine: program });
+  }
+  const oldItems = new Map(previous.message.items.map((item) => [dialogItemKey(item), item]));
+  const changedItems = message.items.filter((item) => oldItems.get(dialogItemKey(item)) !== item);
+  if (!changedItems.length) return [];
+  const partial = { ...message, items: changedItems };
+  const mapped = dialogToAgentMessages([partial], { live: false, engine: program });
+  const stepOffset = previous.rows.reduce((max, row) => Math.max(max, typeof row.meta?.step_index === "number" ? row.meta.step_index : 0), 0);
+  return mapped.map((row) => typeof row.meta?.step_index === "number"
+    ? { ...row, meta: { ...(row.meta ?? {}), step_index: row.meta.step_index + stepOffset } }
+    : row);
+}
+
 function mapNativeEntry(entry: InternalTimelineEntry, nativeStates: Map<string, NativeProjection>): AgentMessage[] {
   const frame = record(entry.frame);
   if (!frame) return [];
@@ -182,7 +206,27 @@ function mapNativeEntry(entry: InternalTimelineEntry, nativeStates: Map<string, 
     return rows.filter((row) => previous.get(String(row.meta?.task_timeline_row_id ?? row.id)) !== row);
   }
   projection.state = applyDialog(projection.state, { type: "frame", frame });
-  const mapped = dialogToAgentMessages(projection.state.messages, { live: false, engine: entry.program });
+  const activeKeys = new Set<string>();
+  const mapped: AgentMessage[] = [];
+  for (const message of projection.state.messages) {
+    const key = `${message.kind}:${message.id}`;
+    activeKeys.add(key);
+    const previous = projection.mappedMessages.get(key);
+    const changedRows = previous?.message === message
+      ? []
+      : mapDialogMessageIncremental(message, previous, entry.program);
+    const rows = previous ? previous.rows.slice() : [];
+    for (const row of changedRows) {
+      const at = rows.findIndex((old) => old.id === row.id);
+      if (at >= 0) rows[at] = row;
+      else rows.push(row);
+    }
+    projection.mappedMessages.set(key, { message, rows });
+    mapped.push(...rows);
+  }
+  for (const key of projection.mappedMessages.keys()) {
+    if (!activeKeys.has(key)) projection.mappedMessages.delete(key);
+  }
   const previous = new Map(projection.rows.map((row) => [String(row.meta?.task_timeline_row_id ?? row.id), row]));
   const nextRows: AgentMessage[] = [];
   for (const row of mapped) {
@@ -346,6 +390,49 @@ function liveEntry(entry: TaskTimelineLiveFrame): InternalTimelineEntry {
   };
 }
 
+function mapColdSingleNativeSession(
+  committed: readonly TaskTimelineEntry[],
+  liveFrames: readonly TaskTimelineLiveFrame[],
+  cache?: TaskTimelineProjectionCache,
+): AgentMessage[] {
+  const first = committed[0];
+  if (!first) return [];
+  const projection: NativeProjection = {
+    state: { ...initialDialogState(), program: first.program },
+    rows: [],
+    mappedMessages: new Map(),
+  };
+  for (const entry of committed) {
+    const frame = record(entry.frame);
+    if (frame) projection.state = applyDialog(projection.state, { type: "frame", frame });
+  }
+  const live = liveFrames
+    .slice()
+    .sort((a, b) => a.no - b.no)
+    .map(liveEntry);
+  for (const entry of live) {
+    const frame = record(entry.frame);
+    if (frame) projection.state = applyDialog(projection.state, { type: "frame", frame });
+  }
+  const mapped = dialogToAgentMessages(projection.state.messages, { live: live.length > 0, engine: first.program });
+  const anchor = live.at(-1) ?? committed.at(-1)!;
+  const rows = mapped.map((row) => {
+    const annotated = annotate(row, anchor as InternalTimelineEntry, first.program, String(row.id));
+    annotated.meta = { ...(annotated.meta ?? {}), task_timeline_row_id: String(row.id) };
+    return annotated;
+  });
+  projection.rows = rows;
+  if (cache) {
+    const key = nativeKey(first);
+    cache.sessions.set(key, {
+      entries: [...committed],
+      projection,
+      snapshots: new Map([[timelineEntryKey(first), rows]]),
+    });
+  }
+  return rows;
+}
+
 function projectSession(
   committed: readonly TaskTimelineEntry[],
   live: readonly InternalTimelineEntry[],
@@ -359,15 +446,15 @@ function projectSession(
     return committed[at]?.cursor === entry.cursor;
   });
   const projection: NativeProjection = reusable
-    ? { state: cached.projection.state, rows: cached.projection.rows }
-    : { state: { ...initialDialogState(), program: committed[0]?.program ?? live[0]?.program ?? "oceanleo" }, rows: [] };
+    ? { state: cached.projection.state, rows: cached.projection.rows, mappedMessages: cached.projection.mappedMessages }
+    : { state: { ...initialDialogState(), program: committed[0]?.program ?? live[0]?.program ?? "oceanleo" }, rows: [], mappedMessages: new Map() };
   let snapshots = reusable ? new Map(cached.snapshots) : new Map<string, AgentMessage[]>();
   // Older turn pages arrive as a prefix. Re-project that prefix only and keep
   // the cached suffix snapshots (and their row objects) intact.
   const start = reusable ? cached.entries.length : cachedSuffix ? 0 : 0;
   const end = reusable ? committed.length : cachedSuffix ? committed.length - cached.entries.length : committed.length;
   const prefixProjection: NativeProjection = cachedSuffix && !reusable
-    ? { state: { ...initialDialogState(), program: committed[0]?.program ?? live[0]?.program ?? "oceanleo" }, rows: [] }
+    ? { state: { ...initialDialogState(), program: committed[0]?.program ?? live[0]?.program ?? "oceanleo" }, rows: [], mappedMessages: new Map() }
     : projection;
   for (let index = start; index < end; index += 1) {
     const entry = committed[index] as InternalTimelineEntry;
@@ -384,14 +471,18 @@ function projectSession(
       entries: [...committed],
       // Keep the already-complete suffix reducer as the append baseline. The
       // prefix snapshots are independent and need no replay of newer rows.
-      projection: { state: reusable ? projection.state : cachedSuffix ? cached.projection.state : prefixProjection.state, rows: reusable ? projection.rows : cachedSuffix ? cached.projection.rows : prefixProjection.rows },
+      projection: reusable
+        ? projection
+        : cachedSuffix
+          ? cached.projection
+          : prefixProjection,
       snapshots: new Map(snapshots),
     });
   }
   const liveProjection: NativeProjection = reusable
     ? projection
     : cachedSuffix
-      ? { state: cached.projection.state, rows: cached.projection.rows }
+      ? cached.projection
       : prefixProjection;
   for (const entry of live) {
     snapshots.set(timelineEntryKey(entry), mapNativeEntry(entry, new Map([[sessionKey, liveProjection]])));
@@ -439,6 +530,16 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
       cache.rendered = merged;
       return merged;
     }
+  }
+  const nativeKeys = new Set(orderedCommitted.filter((entry) => entry.source === "native").map(nativeKey));
+  if (orderedCommitted.length > 100 && nativeKeys.size === 1 && orderedCommitted.every((entry) => entry.source === "native") && !cache?.sessions.size) {
+    const rows = mapColdSingleNativeSession(orderedCommitted, options.live ?? [], cache);
+    if (cache) {
+      cache.rendered = rows;
+      cache.committedCursors = orderedCommitted.map((entry) => entry.cursor);
+      cache.liveSignature = liveSignature;
+    }
+    return rows;
   }
   const throughBySession = new Map<string, number>();
   for (const entry of orderedCommitted) {
