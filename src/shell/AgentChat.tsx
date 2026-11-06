@@ -1710,6 +1710,7 @@ function AgentChatInner({
       movingUp,
     })) return;
     timelineOlderAnchor.current = {
+      scrollTop: el.scrollTop,
       scrollHeight: el.scrollHeight,
       firstId: timelineMessages[0]?.id ?? null,
       sawLoading: false,
