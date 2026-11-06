@@ -183,7 +183,7 @@ import {
   stopTask as stopTimelineTask,
 } from "../lib/task-timeline-api";
 import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
-import { captureTimelineVisualAnchor, restoreOlderScrollAnchor, type OlderScrollAnchorSnapshot, type TimelineVisualAnchor } from "./task-timeline/scroll-anchor";
+import { restoreOlderScrollAnchor, type OlderScrollAnchorSnapshot } from "./task-timeline/scroll-anchor";
 
 type TaskTimelineStatusSurface = ReturnType<typeof useTaskTimeline> & {
   liveStatus?: "connecting" | "connected" | "reconnecting";
@@ -284,7 +284,6 @@ interface OlderScrollAnchor extends OlderScrollAnchorSnapshot {
   settledHeight: number;
   stableFrames: number;
   settleFrames: number;
-  visualAnchor: TimelineVisualAnchor | null;
 }
 
 function scrollMetricsOf(el: HTMLElement): ScrollMetrics {
@@ -1741,7 +1740,6 @@ function AgentChatInner({
       settledHeight: el.scrollHeight,
       stableFrames: 0,
       settleFrames: 0,
-      visualAnchor: captureTimelineVisualAnchor(el),
     };
     timelineOlderLoadAttempted.current = true;
     void current.loadOlder();
@@ -1811,7 +1809,7 @@ function AgentChatInner({
       const delta = el.scrollHeight - anchor.scrollHeight;
       if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
         // Equivalent compensation: `el.scrollTop += el.scrollHeight - anchor.scrollHeight`.
-        restoreOlderScrollAnchor(el, anchor, anchor.visualAnchor);
+        restoreOlderScrollAnchor(el, anchor);
         timelineLastScrollTop.current = el.scrollTop;
       }
       anchor.settleFrames += 1;
@@ -3380,7 +3378,7 @@ function AgentChatInner({
                 accent={accent}
               />
             ) : (
-              <div key={item.key} className="contents" data-task-timeline-item="">
+              <div key={item.key} className="contents">
                 <AgentTranscriptBubble
                   message={messageForBubble(item)}
                   timeAbove={timeSeparators.get(item.index)}
