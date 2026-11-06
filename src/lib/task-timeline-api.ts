@@ -66,14 +66,42 @@ export type TaskMessageInput = {
   effort?: string;
   fast?: boolean;
   client_message_id?: string;
+  /** Stable tab/window id used to route agent UI actions. */
+  client_window?: string;
 };
 export type TaskCommandResponse = { accepted?: boolean; delivery?: "started" | "injected" | "queued"; session_id?: string; entry_cursor?: string; task_id?: string; state?: TaskState; ok?: boolean };
 
-export function getTaskTimeline(taskId: string, options: { before?: string; limit?: number; signal?: AbortSignal } = {}): Promise<TimelinePage> {
+export type TaskTimelineReadOptions = {
+  before?: string;
+  /** Preferred paging unit. The gateway caps this at 100 turns. */
+  turns?: number;
+  /** Legacy fallback only; retained for callers that used frame paging. */
+  limit?: number;
+  signal?: AbortSignal;
+};
+
+function timelineReadPath(taskId: string, options: TaskTimelineReadOptions): string {
   const query = new URLSearchParams();
   if (options.before) query.set("before", options.before);
-  if (options.limit !== undefined) query.set("limit", String(Math.max(1, Math.min(500, options.limit))));
-  return cloudComputerRequest<TimelinePage>(`/v1/tasks/${encodeURIComponent(taskId)}/timeline${query.size ? `?${query}` : ""}`, { signal: options.signal });
+  if (options.turns !== undefined) query.set("turns", String(Math.max(1, Math.min(100, Math.floor(options.turns)))));
+  if (options.limit !== undefined) query.set("limit", String(Math.max(1, Math.min(500, Math.floor(options.limit)))));
+  return `/v1/tasks/${encodeURIComponent(taskId)}/timeline${query.size ? `?${query}` : ""}`;
+}
+
+/** Read a turn page, falling back silently for gateways predating C1. */
+export async function getTaskTimeline(taskId: string, options: TaskTimelineReadOptions = {}): Promise<TimelinePage> {
+  try {
+    return await cloudComputerRequest<TimelinePage>(timelineReadPath(taskId, options), { signal: options.signal });
+  } catch (error) {
+    if (options.turns === undefined || !error || typeof error !== "object" || !([400, 422] as number[]).includes((error as { status?: unknown }).status as number)) {
+      throw error;
+    }
+    return cloudComputerRequest<TimelinePage>(timelineReadPath(taskId, {
+      before: options.before,
+      limit: options.limit ?? 200,
+      signal: options.signal,
+    }), { signal: options.signal });
+  }
 }
 
 export type TaskLiveEvent =

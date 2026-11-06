@@ -23,9 +23,12 @@ import {
   type TaskTimelineProjectionCache,
   type TaskUiState,
 } from "./map";
+import { cacheUser } from "../../lib/user-scoped-cache";
+import { readTaskTailCache, scheduleTaskTailCache } from "./tail-cache";
 
 export type TaskTimelineOptions = {
   enabled?: boolean;
+  turns?: number;
   limit?: number;
 };
 
@@ -39,6 +42,8 @@ export type TaskTimelineResult = {
   loadOlder: () => Promise<void>;
   hasOlder: boolean;
   loading: boolean;
+  loaded: boolean;
+  fromCache: boolean;
   olderLoading: boolean;
   error: Error | null;
   sessions: TaskSessionSummary[];
@@ -162,6 +167,7 @@ function serverMessageIds(rows: readonly AgentMessage[]): Set<string> {
 
 export function useTaskTimeline(taskId: string | null | undefined, options: TaskTimelineOptions = {}): TaskTimelineResult {
   const enabled = options.enabled !== false && Boolean(taskId);
+  const turns = options.turns ?? 15;
   const limit = options.limit;
   const orderRef = useRef(0);
   const [localRecords, setLocalRecords] = useState<Map<string, LocalRecord>>(() =>
@@ -177,12 +183,15 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
   const [nextBefore, setNextBefore] = useState<string | null>(null);
   const [hasOlder, setHasOlder] = useState(false);
   const [loading, setLoading] = useState(enabled);
+  const [loaded, setLoaded] = useState(false);
+  const [cachedItems, setCachedItems] = useState<AgentMessage[]>(() => taskId ? readTaskTailCache(cacheUser(), taskId) : []);
+  const [fromCache, setFromCache] = useState(() => Boolean(taskId && readTaskTailCache(cacheUser(), taskId).length));
   const [olderLoading, setOlderLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [liveStatus, setLiveStatus] = useState<TaskTimelineLiveStatus>(enabled ? "connecting" : "connected");
   const [liveNotice, setLiveNotice] = useState(false);
-  const [reloadNonce, setReloadNonce] = useState(0);
   const socketRef = useRef<{ close: () => void } | null>(null);
+  const retryRef = useRef<() => void>(() => undefined);
   const taskRef = useRef(taskId);
   taskRef.current = taskId;
   const nextBeforeRef = useRef(nextBefore);
@@ -255,30 +264,41 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     setHasOlder(false);
     setError(null);
     setLoading(enabled);
+    const cached = taskId ? readTaskTailCache(cacheUser(), taskId) : [];
+    setCachedItems(cached);
+    setFromCache(cached.length > 0);
+    setLoaded(false);
     setOlderLoading(false);
     olderLoadingRef.current = false;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let retryAttempt = 0;
+    let serverLoaded = false;
     let reading = false;
-    let loaded = false;
     const retryDelays = [1_000, 2_000, 5_000, 10_000, 15_000];
     const clearRetry = () => {
       if (retryTimer !== null) clearTimeout(retryTimer);
       retryTimer = null;
     };
-    const runRead = async (): Promise<void> => {
-      if (cancelled || !taskId || reading || loaded) return;
+    const runRead = async (initial = true): Promise<void> => {
+      if (cancelled || !taskId || reading || (initial && serverLoaded)) return;
       reading = true;
       const controller = new AbortController();
       try {
-        const page = await getTaskTimeline(taskId, { limit, signal: controller.signal });
+        const page = await getTaskTimeline(taskId, { turns, limit, signal: controller.signal });
         if (cancelled) return;
-        loaded = true;
+        serverLoaded = true;
         clearRetry();
         applyPage(page);
-        setLoading(false);
+        setLoaded(true);
+        setFromCache(false);
+        setCachedItems([]);
+        if (initial) setLoading(false);
         setError(null);
+        if (!initial) {
+          setLive((current) => filterLiveFrames(page.entries, current));
+          return;
+        }
         socketRef.current = openTaskTimeline(taskId, newestCursor(page.entries), (event: TaskLiveEvent) => {
           if (cancelled) return;
           if (event.type === "entries") {
@@ -297,7 +317,7 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
               ? { ...current, saving_delayed: true, reason: current.reason ?? event.code ?? "storage_unavailable" }
               : current);
           } else if (event.type === "reset") {
-            setReloadNonce((value) => value + 1);
+            void runRead(false);
           }
         }, undefined, () => {
           if (cancelled) return;
@@ -312,16 +332,22 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
         clearRetry();
         retryTimer = setTimeout(() => {
           retryTimer = null;
-          void runRead();
+          void runRead(initial);
         }, delay);
       } finally {
         reading = false;
       }
     };
     const retryFromNetwork = () => {
-      if (cancelled || loaded || reading) return;
+      if (cancelled || serverLoaded || reading) return;
       clearRetry();
-      void runRead();
+      void runRead(true);
+    };
+    retryRef.current = () => {
+      if (cancelled || reading) return;
+      serverLoaded = false;
+      setError(null);
+      void runRead(true);
     };
     if (enabled && taskId) {
       void runRead();
@@ -338,7 +364,7 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
       if (liveNoticeTimerRef.current !== null) clearTimeout(liveNoticeTimerRef.current);
       liveNoticeTimerRef.current = null;
     };
-  }, [applyPage, clearLive, enabled, limit, taskId, reloadNonce, updateLiveStatus]);
+    }, [applyPage, clearLive, enabled, limit, taskId, turns, updateLiveStatus]);
 
   const loadOlder = useCallback(async () => {
     const id = taskRef.current;
@@ -347,7 +373,7 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     olderLoadingRef.current = true;
     setOlderLoading(true);
     try {
-      const page = await getTaskTimeline(id, { before, limit });
+      const page = await getTaskTimeline(id, { before, turns, limit });
       if (taskRef.current === id) {
         applyPage(page, true);
         setError(null);
@@ -358,7 +384,7 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
       olderLoadingRef.current = false;
       setOlderLoading(false);
     }
-  }, [applyPage, limit]);
+  }, [applyPage, limit, turns]);
 
   const sendLocal = useCallback((input: TaskLocalMessageInput) => {
     if (!input.clientMessageId) return;
@@ -430,8 +456,9 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     });
   }, [serverIds, updateLocals]);
 
+  const visibleMapped = mapped.length || loaded ? mapped : cachedItems;
   const items = useMemo(() => {
-    const marked = mapped.map((row) => {
+    const marked = visibleMapped.map((row) => {
       const id = String(row.meta?.client_message_id || "");
       if (!id || !queuedIds.has(id)) return row;
       const queuedRow = queued.find((item) => String(item.meta?.client_message_id || "") === id);
@@ -450,7 +477,13 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
       .sort((a, b) => a.order - b.order)
       .map((record) => localTaskMessage(record.input, record.delivery, record.reason, record.createdAt));
     return mergeTaskTimelineUserRows([...marked, ...queued, ...localRows]);
-  }, [localRecords, mapped, queued, queuedIds]);
+  }, [localRecords, queued, queuedIds, visibleMapped]);
+
+  useEffect(() => {
+    const userId = cacheUser();
+    if (!taskId || !mapped.length || !userId) return;
+    scheduleTaskTailCache(userId, taskId, mapped);
+  }, [mapped, taskId]);
 
   return {
     items,
@@ -458,12 +491,14 @@ export function useTaskTimeline(taskId: string | null | undefined, options: Task
     loadOlder,
     hasOlder,
     loading,
+    loaded,
+    fromCache,
     olderLoading,
     error,
     sessions,
     liveStatus,
     liveNotice,
-    retry: () => setReloadNonce((value) => value + 1),
+    retry: () => retryRef.current(),
     sendLocal,
     settleLocal,
     retryLocal,

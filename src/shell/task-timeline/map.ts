@@ -55,6 +55,9 @@ type SessionProjectionCache = {
 /** Reusable reducer memory for a task. A live delta only advances its session. */
 export type TaskTimelineProjectionCache = {
   sessions: Map<string, SessionProjectionCache>;
+  rendered?: AgentMessage[];
+  committedCursors?: string[];
+  liveSignature?: string;
 };
 
 export type TaskTimelineMapOptions = {
@@ -65,7 +68,7 @@ export type TaskTimelineMapOptions = {
 export type TaskLocalDelivery = "sending" | "sent" | "unsent";
 
 export function createTaskTimelineProjectionCache(): TaskTimelineProjectionCache {
-  return { sessions: new Map() };
+  return { sessions: new Map(), rendered: [] };
 }
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -100,12 +103,20 @@ function stripEngineLabel(meta: AgentMessage["meta"]): AgentMessage["meta"] | un
 function annotate(row: AgentMessage, entry: InternalTimelineEntry, program: TaskProgram, id: string): AgentMessage {
   const label = engineLabel(program);
   const frame = record(entry.frame);
-  const messageId = typeof frame?.message_id === "string" && frame.message_id
-    ? frame.message_id
-    : typeof row.meta?.native_message_id === "string" && row.meta.native_message_id
-      ? row.meta.native_message_id
-      : "";
-  const rowId = row.role === "user" && messageId ? stableNegativeId(`user:${messageId}`) : stableNegativeId(`${entry.source}:${entry.session_id ?? "leo"}:${id}`);
+  // A projected dialog contains rows from the whole turn. The frame currently
+  // being reduced may belong to a later assistant delta, so its message_id is
+  // not an identity for every row in `row`. Only a user row may inherit the
+  // current frame id, and only when its own mapper metadata has no id.
+  const ownMessageId = row.role === "user" && typeof row.meta?.native_message_id === "string" && row.meta.native_message_id
+    ? row.meta.native_message_id
+    : row.role === "user" && typeof row.meta?.client_message_id === "string" && row.meta.client_message_id
+      ? row.meta.client_message_id
+      : row.role === "user" && typeof frame?.message_id === "string" && frame.message_id
+        ? frame.message_id
+        : "";
+  const rowId = row.role === "user" && ownMessageId
+    ? stableNegativeId(`user:${ownMessageId}`)
+    : row.id;
   return {
     ...row,
     id: rowId,
@@ -115,7 +126,7 @@ function annotate(row: AgentMessage, entry: InternalTimelineEntry, program: Task
       engine_label: label,
       task_timeline_cursor: entry.cursor,
       task_timeline_source: entry.source,
-      ...(messageId ? { client_message_id: messageId } : {}),
+      ...(ownMessageId ? { client_message_id: ownMessageId } : {}),
       task_timeline_server: true,
       ...(entry.__live ? { task_timeline_live: true } : { task_timeline_committed: true }),
       ...(entry.session_id ? { task_timeline_session_id: entry.session_id } : {}),
@@ -141,13 +152,34 @@ function frameIsDialogMessage(frame: Record<string, unknown>): frame is Record<s
   return typeof frame.kind === "string" && (frame.kind === "user" || frame.kind === "turn" || frame.kind === "notice");
 }
 
+function sameProjectedRow(previous: AgentMessage, next: AgentMessage): boolean {
+  if (previous.id !== next.id || previous.role !== next.role || previous.kind !== next.kind || previous.content !== next.content || previous.created_at !== next.created_at) return false;
+  const withoutCursor = (meta: AgentMessage["meta"]): Record<string, unknown> => {
+    const out = { ...(meta ?? {}) };
+    delete out.task_timeline_cursor;
+    return out;
+  };
+  const oldMeta = withoutCursor(previous.meta);
+  const nextMeta = withoutCursor(next.meta);
+  const oldKeys = Object.keys(oldMeta);
+  const nextKeys = Object.keys(nextMeta);
+  return oldKeys.length === nextKeys.length && nextKeys.every((name) => oldMeta[name] === nextMeta[name]);
+}
+
 function mapNativeEntry(entry: InternalTimelineEntry, nativeStates: Map<string, NativeProjection>): AgentMessage[] {
   const frame = record(entry.frame);
   if (!frame) return [];
   const projection = projectionFor(entry, nativeStates);
   if (frameIsDialogMessage(frame)) {
     const mapped = dialogToAgentMessages([frame as unknown as AgentDialogMessage], { live: false, engine: entry.program });
-    return mapped.map((row) => annotate(row, entry, entry.program, String(row.id)));
+    const rows = mapped.map((row) => {
+      const annotated = annotate(row, entry, entry.program, String(row.id));
+      annotated.meta = { ...(annotated.meta ?? {}), task_timeline_row_id: String(row.id) };
+      return annotated;
+    });
+    const previous = new Map(projection.rows.map((row) => [String(row.meta?.task_timeline_row_id ?? row.id), row]));
+    projection.rows = [...rows, ...projection.rows.filter((row) => !rows.some((next) => String(next.meta?.task_timeline_row_id ?? next.id) === String(row.meta?.task_timeline_row_id ?? row.id)))];
+    return rows.filter((row) => previous.get(String(row.meta?.task_timeline_row_id ?? row.id)) !== row);
   }
   projection.state = applyDialog(projection.state, { type: "frame", frame });
   const mapped = dialogToAgentMessages(projection.state.messages, { live: false, engine: entry.program });
@@ -158,22 +190,27 @@ function mapNativeEntry(entry: InternalTimelineEntry, nativeStates: Map<string, 
     const prior = previous.get(rowKey);
     const annotated = annotate(row, entry, entry.program, rowKey);
     annotated.meta = { ...(annotated.meta ?? {}), task_timeline_row_id: rowKey };
-    nextRows.push(prior ? {
-      ...annotated,
-      id: prior.id,
-      meta: {
-        ...(annotated.meta ?? {}),
-        ...(prior.meta?.task_timeline_source ? { task_timeline_source: prior.meta.task_timeline_source } : {}),
-        ...(prior.meta?.task_timeline_server ? { task_timeline_server: true } : {}),
-        ...(prior.meta?.task_timeline_committed ? { task_timeline_committed: true } : {}),
-        ...(prior.meta?.task_timeline_live ? { task_timeline_live: true } : {}),
-      },
-    } : annotated);
+    if (prior && sameProjectedRow(prior, annotated)) {
+      nextRows.push(prior);
+    } else {
+      nextRows.push(prior ? {
+        ...annotated,
+        id: prior.id,
+        meta: {
+          ...(annotated.meta ?? {}),
+          ...(prior.meta?.task_timeline_source ? { task_timeline_source: prior.meta.task_timeline_source } : {}),
+          ...(prior.meta?.task_timeline_server ? { task_timeline_server: true } : {}),
+          ...(prior.meta?.task_timeline_committed ? { task_timeline_committed: true } : {}),
+          ...(prior.meta?.task_timeline_live ? { task_timeline_live: true } : {}),
+        },
+      } : annotated);
+    }
   }
-  projection.rows = nextRows;
+  const changedRows = nextRows.filter((row) => previous.get(String(row.meta?.task_timeline_row_id ?? row.id)) !== row);
+  projection.rows = [...nextRows, ...projection.rows.filter((row) => !nextRows.some((next) => String(next.meta?.task_timeline_row_id ?? next.id) === String(row.meta?.task_timeline_row_id ?? row.id)))];
   // A raw delta updates the existing row in place. The caller merges this
   // replacement by task_timeline_row_id, preserving Leo/native cursor order.
-  return nextRows;
+  return changedRows;
 }
 
 function mapLeoEntry(entry: TaskTimelineEntry): AgentMessage[] {
@@ -258,6 +295,33 @@ function timelineEntryKey(entry: TaskTimelineEntry): string {
   return entry.cursor;
 }
 
+function snapshotRowKey(row: AgentMessage): string {
+  const meta = (row.meta ?? {}) as Record<string, unknown>;
+  return `${row.role}:${meta.task_timeline_source ?? ""}:${meta.task_timeline_session_id ?? ""}:${meta.task_timeline_row_id ?? row.id}`;
+}
+
+/** Keep each row's first position and latest value, rather than every delta's text. */
+function compactSnapshots(snapshots: Map<string, AgentMessage[]>): Map<string, AgentMessage[]> {
+  const firstCursor = new Map<string, string>();
+  const latest = new Map<string, AgentMessage>();
+  for (const [cursor, rows] of snapshots) {
+    for (const row of rows) {
+      const key = snapshotRowKey(row);
+      if (!firstCursor.has(key)) firstCursor.set(key, cursor);
+      latest.set(key, row);
+    }
+  }
+  const compacted = new Map<string, AgentMessage[]>();
+  for (const [key, cursor] of firstCursor) {
+    const row = latest.get(key);
+    if (!row) continue;
+    const rows = compacted.get(cursor) ?? [];
+    rows.push(row);
+    compacted.set(cursor, rows);
+  }
+  return compacted;
+}
+
 function sameEntryPrefix(cached: readonly TaskTimelineEntry[], current: readonly TaskTimelineEntry[]): boolean {
   if (cached.length > current.length) return false;
   for (let index = 0; index < cached.length; index += 1) {
@@ -290,22 +354,47 @@ function projectSession(
 ): Map<string, AgentMessage[]> {
   const cached = cache?.sessions.get(sessionKey);
   const reusable = cached && sameEntryPrefix(cached.entries, committed);
+  const cachedSuffix = cached && cached.entries.length <= committed.length && cached.entries.every((entry, index) => {
+    const at = committed.length - cached.entries.length + index;
+    return committed[at]?.cursor === entry.cursor;
+  });
   const projection: NativeProjection = reusable
     ? { state: cached.projection.state, rows: cached.projection.rows }
     : { state: { ...initialDialogState(), program: committed[0]?.program ?? live[0]?.program ?? "oceanleo" }, rows: [] };
-  const snapshots = reusable ? new Map(cached.snapshots) : new Map<string, AgentMessage[]>();
-  const start = reusable ? cached.entries.length : 0;
-  for (let index = start; index < committed.length; index += 1) {
+  let snapshots = reusable ? new Map(cached.snapshots) : new Map<string, AgentMessage[]>();
+  // Older turn pages arrive as a prefix. Re-project that prefix only and keep
+  // the cached suffix snapshots (and their row objects) intact.
+  const start = reusable ? cached.entries.length : cachedSuffix ? 0 : 0;
+  const end = reusable ? committed.length : cachedSuffix ? committed.length - cached.entries.length : committed.length;
+  const prefixProjection: NativeProjection = cachedSuffix && !reusable
+    ? { state: { ...initialDialogState(), program: committed[0]?.program ?? live[0]?.program ?? "oceanleo" }, rows: [] }
+    : projection;
+  for (let index = start; index < end; index += 1) {
     const entry = committed[index] as InternalTimelineEntry;
-    snapshots.set(timelineEntryKey(entry), mapNativeEntry(entry, new Map([[sessionKey, projection]])));
+    snapshots.set(timelineEntryKey(entry), mapNativeEntry(entry, new Map([[sessionKey, prefixProjection]])));
   }
+  if (cachedSuffix && !reusable) {
+    for (const [cursor, rows] of cached.snapshots) snapshots.set(cursor, rows);
+  }
+  snapshots = compactSnapshots(snapshots);
   // The committed baseline is cached independently. Number coverage can remove
   // the live tail without forcing a 7,801-frame session through the reducer again.
   if (cache) {
-    cache.sessions.set(sessionKey, { entries: [...committed], projection: { state: projection.state, rows: projection.rows }, snapshots: new Map(snapshots) });
+    cache.sessions.set(sessionKey, {
+      entries: [...committed],
+      // Keep the already-complete suffix reducer as the append baseline. The
+      // prefix snapshots are independent and need no replay of newer rows.
+      projection: { state: reusable ? projection.state : cachedSuffix ? cached.projection.state : prefixProjection.state, rows: reusable ? projection.rows : cachedSuffix ? cached.projection.rows : prefixProjection.rows },
+      snapshots: new Map(snapshots),
+    });
   }
+  const liveProjection: NativeProjection = reusable
+    ? projection
+    : cachedSuffix
+      ? { state: cached.projection.state, rows: cached.projection.rows }
+      : prefixProjection;
   for (const entry of live) {
-    snapshots.set(timelineEntryKey(entry), mapNativeEntry(entry, new Map([[sessionKey, projection]])));
+    snapshots.set(timelineEntryKey(entry), mapNativeEntry(entry, new Map([[sessionKey, liveProjection]])));
   }
   return snapshots;
 }
@@ -324,6 +413,33 @@ export function resetTaskTimelineMapping(): void {
  */
 export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], options: TaskTimelineMapOptions = {}): AgentMessage[] {
   const orderedCommitted = uniqueTimelineEntries(entries);
+  const cache = options.cache;
+  const liveSignature = (options.live ?? []).map((frame) => `${frame.session_id}:${frame.no}`).join(",");
+  const cachedCursors = cache?.committedCursors ?? [];
+  // An older page is a prefix. Keep the already-rendered tail and project only
+  // that prefix; this avoids replaying thousands of native deltas on scroll-up.
+  if (cache?.rendered?.length && cachedCursors.length && liveSignature === cache.liveSignature &&
+    cachedCursors.length <= orderedCommitted.length && cachedCursors.every((cursor, index) => orderedCommitted[orderedCommitted.length - cachedCursors.length + index]?.cursor === cursor)) {
+    const prefix = orderedCommitted.slice(0, orderedCommitted.length - cachedCursors.length);
+    if (prefix.length) {
+      const prefixRows = mapTaskTimelineEntries(prefix);
+      const merged = prefixRows.slice();
+      const positions = new Map(merged.map((row, index) => [snapshotRowKey(row), index]));
+      for (const row of cache.rendered) {
+        const key = snapshotRowKey(row);
+        const at = positions.get(key);
+        if (at === undefined) { positions.set(key, merged.length); merged.push(row); }
+        else merged[at] = row;
+      }
+      cache.committedCursors = orderedCommitted.map((entry) => entry.cursor);
+      cache.sessions.forEach((session, key) => {
+        const sessionPrefix = prefix.filter((entry) => entry.source === "native" && nativeKey(entry) === key);
+        if (sessionPrefix.length) session.entries = [...sessionPrefix, ...session.entries];
+      });
+      cache.rendered = merged;
+      return merged;
+    }
+  }
   const throughBySession = new Map<string, number>();
   for (const entry of orderedCommitted) {
     if (entry.source !== "native" || entry.session_id == null || !Number.isFinite(entry.no_to)) continue;
@@ -384,7 +500,8 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
     const priority = priorityOf(row);
     const old = userRows.get(id);
     if (!old || priority >= old.priority) {
-      userRows.set(id, { row: { ...row, id: old?.row.id ?? row.id }, priority, at: index });
+      const stableRow = !old || old.row.id === row.id ? row : { ...row, id: old.row.id };
+      userRows.set(id, { row: stableRow, priority, at: index });
       if (!userPositions.has(id)) userPositions.set(id, index);
     }
   }
@@ -402,9 +519,10 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
     return true;
   });
   let currentEngine = "";
-  return deduped.map((row) => {
+  const nextRendered = deduped.map((row) => {
     if (row.role === "user") {
-      return { ...row, meta: stripEngineLabel(row.meta) };
+      const meta = stripEngineLabel(row.meta);
+      return meta === row.meta ? row : { ...row, meta };
     }
     const sender = row.meta?.sender;
     const engine = typeof row.meta?.engine === "string"
@@ -412,17 +530,47 @@ export function mapTaskTimelineEntries(entries: readonly TaskTimelineEntry[], op
       : sender && typeof sender === "object" && typeof (sender as Record<string, unknown>).program === "string"
         ? String((sender as Record<string, unknown>).program)
         : "";
-    if (!engine) return { ...row, meta: stripEngineLabel(row.meta) };
+    if (!engine) {
+      const meta = stripEngineLabel(row.meta);
+      return meta === row.meta ? row : { ...row, meta };
+    }
     const showLabel = engine !== currentEngine;
     currentEngine = engine;
-    return {
+    const next = {
       ...row,
       meta: {
         ...(stripEngineLabel(row.meta) ?? {}),
         ...(showLabel ? { engine_label: engineLabel(engine as TaskProgram) } : {}),
       },
     };
+    return next;
   });
+  const previousRendered = options.cache?.rendered ?? [];
+  const previousByKey = new Map<string, AgentMessage>();
+  const timelineMeta = (meta: AgentMessage["meta"]): Record<string, unknown> => (meta ?? {}) as Record<string, unknown>;
+  for (const row of previousRendered) {
+    const meta = timelineMeta(row.meta);
+    const key = `${row.role}:${meta.task_timeline_source ?? ""}:${meta.task_timeline_session_id ?? ""}:${meta.task_timeline_row_id ?? row.id}`;
+    previousByKey.set(key, row);
+  }
+  const rendered = nextRendered.map((row) => {
+    const meta = timelineMeta(row.meta);
+    const key = `${row.role}:${meta.task_timeline_source ?? ""}:${meta.task_timeline_session_id ?? ""}:${meta.task_timeline_row_id ?? row.id}`;
+    const prior = previousByKey.get(key);
+    if (!prior || prior.id !== row.id || prior.role !== row.role || prior.kind !== row.kind || prior.content !== row.content || prior.created_at !== row.created_at) return row;
+    const priorMeta = timelineMeta(prior.meta);
+    const nextMeta = meta;
+    const priorKeys = Object.keys(priorMeta);
+    const nextKeys = Object.keys(nextMeta);
+    if (priorKeys.length !== nextKeys.length || nextKeys.some((name) => priorMeta[name] !== nextMeta[name])) return row;
+    return prior;
+  });
+  if (options.cache) {
+    options.cache.rendered = rendered;
+    options.cache.committedCursors = orderedCommitted.map((entry) => entry.cursor);
+    options.cache.liveSignature = liveSignature;
+  }
+  return rendered;
 }
 
 export const mapTimelineEntries = mapTaskTimelineEntries;

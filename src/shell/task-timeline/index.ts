@@ -18,6 +18,7 @@ export {
   type TaskTimelineEntry,
   type TaskTimelineLiveFrame,
   type TaskTimelineLiveStatus,
+  type TaskTimelineReadOptions,
   type TimelinePage,
 } from "../../lib/task-timeline-api";
 export {
@@ -38,6 +39,16 @@ export {
   type TaskTimelineMapOptions,
   type TaskTimelineProjectionCache,
 } from "./map";
+export {
+  deserializeTaskTail,
+  readTaskTailCache,
+  scheduleTaskTailCache,
+  serializeTaskTail,
+  writeTaskTailCache,
+  TASK_TAIL_CACHE_ROWS,
+  TASK_TAIL_CACHE_TASKS,
+  TASK_TAIL_CACHE_TEXT,
+} from "./tail-cache";
 export {
   stashLocalForTask,
   useTaskTimeline,
