@@ -463,11 +463,8 @@ export type {
   WorkspaceActionV1,
   WorkspaceSlotId,
 } from "./workspace-actions";
-export {
-  getWorkspacePanel,
-  registerWorkspacePanel,
-  resetWorkspacePanelsForTests,
-} from "./workspace-panels";
+// The portal registers its Projects panel for the right sidebar (the test reset stays module-internal).
+export { registerWorkspacePanel } from "./workspace-panels";
 export type { WorkspacePanelComponent } from "./workspace-panels";
 // 宗旨 v22.1（2026-07-13）：可复用成品渲染器 + 真内容 viewer。Office 文件在浏览器本地
 // 解析（PPT/Excel/Word），不再依赖已废弃的 Office 公共 iframe。

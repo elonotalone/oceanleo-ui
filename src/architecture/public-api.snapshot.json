@@ -26,6 +26,7 @@
     "./lib/motion": "./src/lib/motion/index.ts",
     "./library": "./src/facades/library.ts",
     "./manifest": "./src/contracts/site-manifest.ts",
+    "./native-agent-core": "./src/native-agent-core/index.ts",
     "./org-canvas": "./src/shell/OrgCanvas.tsx",
     "./pages": "./src/pages/index.ts",
     "./session": "./src/facades/session.ts",
@@ -1913,6 +1914,10 @@
         },
         {
           "kind": "star",
+          "source": "./attachment-url"
+        },
+        {
+          "kind": "star",
           "source": "./auth"
         },
         {
@@ -2679,6 +2684,11 @@
         },
         {
           "kind": "named",
+          "name": "gatewayBase",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "isLeoDevPreviewHost",
           "source": ""
         },
@@ -3118,6 +3128,456 @@
         {
           "kind": "type",
           "name": "OceanLeoWorkspaceRouteContract",
+          "source": ""
+        }
+      ]
+    },
+    "./native-agent-core": {
+      "target": "./src/native-agent-core/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "applyDialog",
+          "importedName": "applyDialog",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "applyNativeTurnStates",
+          "importedName": "applyNativeTurnStates",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "busySessionsFor",
+          "importedName": "busySessionsFor",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "CancelResult",
+          "importedName": "CancelResult",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "DialogEvent",
+          "importedName": "DialogEvent",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "DialogMapOptions",
+          "importedName": "DialogMapOptions",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "dialogToAgentMessages",
+          "importedName": "dialogToAgentMessages",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "dropUnsentEcho",
+          "importedName": "dropUnsentEcho",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "idleStop",
+          "importedName": "idleStop",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "initialDialogState",
+          "importedName": "initialDialogState",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "isCancelResult",
+          "importedName": "isCancelResult",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "isLinkEvidenceFrame",
+          "importedName": "isLinkEvidenceFrame",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "isLiveTurn",
+          "importedName": "isLiveTurn",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "isNeutralNotice",
+          "importedName": "isNeutralNotice",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "mapNativeTranscript",
+          "importedName": "mapNativeTranscript",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "MapTranslate",
+          "importedName": "MapTranslate",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "mergeNativeDialogPages",
+          "importedName": "mergeNativeDialogPages",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "mergeNativeThreadMessages",
+          "importedName": "mergeNativeThreadMessages",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "mergeSavedAndLive",
+          "importedName": "mergeSavedAndLive",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "mergeTranscriptPages",
+          "importedName": "mergeTranscriptPages",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "NATIVE_DELIVERY_STATES",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "nativeActiveTurn",
+          "importedName": "nativeActiveTurn",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "NativeMergeResult",
+          "importedName": "NativeMergeResult",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "NativeMergeSource",
+          "importedName": "NativeMergeSource",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "NativePermissionMeta",
+          "importedName": "NativePermissionMeta",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "NativeQuestionMeta",
+          "importedName": "NativeQuestionMeta",
+          "source": "../shell/native-thread/map-dialog"
+        },
+        {
+          "kind": "named",
+          "name": "NativeThreadSource",
+          "importedName": "NativeThreadSource",
+          "source": "../shell/native-thread/merge"
+        },
+        {
+          "kind": "named",
+          "name": "nativeTurnFinishing",
+          "importedName": "nativeTurnFinishing",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "newStopId",
+          "importedName": "newStopId",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "PROGRAM_LABEL",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "restoreNativeMessages",
+          "importedName": "restoreNativeMessages",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "STOP_REPLY_TIMEOUT_MS",
+          "importedName": "STOP_REPLY_TIMEOUT_MS",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "StopErrorReason",
+          "importedName": "StopErrorReason",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "stopErrorText",
+          "importedName": "stopErrorText",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "StopEvent",
+          "importedName": "StopEvent",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "stopMachine",
+          "importedName": "stopMachine",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "StopPhase",
+          "importedName": "StopPhase",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "StopState",
+          "importedName": "StopState",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "TOOL_PAYLOAD_LIMIT",
+          "importedName": "TOOL_PAYLOAD_LIMIT",
+          "source": "./tool-raw"
+        },
+        {
+          "kind": "named",
+          "name": "toolPayloadText",
+          "importedName": "toolPayloadText",
+          "source": "./tool-raw"
+        },
+        {
+          "kind": "named",
+          "name": "toolRawValue",
+          "importedName": "toolRawValue",
+          "source": "./tool-raw"
+        },
+        {
+          "kind": "named",
+          "name": "turnKey",
+          "importedName": "turnKey",
+          "source": "../shell/cloud-computer/agent-dialog/reduce"
+        },
+        {
+          "kind": "named",
+          "name": "WS_PROGRAMS",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AgentDialogMessage",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AgentMessageSender",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AgentProgram",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ArchivedAttachment",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogAttachment",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogAttachmentState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogCommand",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogConfigOption",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogModel",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogSession",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DialogState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "DirCapability",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "InstallState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LoginPhase",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "LoginState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ModeOption",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeAgentAttachment",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeAgentMessage",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeDeliveryState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeFramePosition",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeMessageDelivery",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeMessageSnapshot",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeTranscriptSession",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "NativeTurnState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PermissionOption",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "PlanEntry",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProgramAuth",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProgramProvider",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProgramStatus",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "RawToolCard",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ToolCard",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ToolContent",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ToolKind",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ToolLocation",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ToolStatus",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "TurnItem",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "UserMessageAttachment",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "WsProgram",
           "source": ""
         }
       ]
@@ -3888,12 +4348,6 @@
       "declarations": [
         {
           "kind": "named",
-          "name": "AccountMenu",
-          "importedName": "AccountMenu",
-          "source": "./AccountMenu"
-        },
-        {
-          "kind": "named",
           "name": "ActiveAppCapability",
           "importedName": "ActiveAppCapability",
           "source": "./app-capability-context"
@@ -4260,18 +4714,6 @@
         },
         {
           "kind": "named",
-          "name": "ARTIFACT_PLAY_ORIGIN",
-          "importedName": "ARTIFACT_PLAY_ORIGIN",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
-          "name": "ARTIFACT_PLAY_ROUTE_PREFIX",
-          "importedName": "ARTIFACT_PLAY_ROUTE_PREFIX",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
           "name": "ArtifactActionButtons",
           "importedName": "ArtifactActionButtons",
           "source": "./ArtifactActions"
@@ -4332,12 +4774,6 @@
         },
         {
           "kind": "named",
-          "name": "artifactPlayHref",
-          "importedName": "artifactPlayHref",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
           "name": "ArtifactRenderer",
           "importedName": "ArtifactRenderer",
           "source": "./ArtifactRenderer"
@@ -4380,6 +4816,18 @@
         },
         {
           "kind": "named",
+          "name": "attachmentOpenMode",
+          "importedName": "attachmentOpenMode",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "named",
+          "name": "attachmentWorkspaceItem",
+          "importedName": "attachmentWorkspaceItem",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "named",
           "name": "BackButton",
           "importedName": "BackButton",
           "source": "./Playground"
@@ -4389,18 +4837,6 @@
           "name": "bindArtifactToContext",
           "importedName": "bindArtifactToContext",
           "source": "./artifact-client"
-        },
-        {
-          "kind": "named",
-          "name": "BRAND_PALETTE",
-          "importedName": "BRAND_PALETTE",
-          "source": "../lib/brand-color"
-        },
-        {
-          "kind": "named",
-          "name": "brandColorFor",
-          "importedName": "brandColorFor",
-          "source": "../lib/brand-color"
         },
         {
           "kind": "named",
@@ -4440,9 +4876,9 @@
         },
         {
           "kind": "named",
-          "name": "closeMessages",
-          "importedName": "closeMessages",
-          "source": "./messages/host-state"
+          "name": "clearNativeDraftFiles",
+          "importedName": "clearNativeDraftFiles",
+          "source": "./native-draft-files"
         },
         {
           "kind": "named",
@@ -4548,24 +4984,6 @@
         },
         {
           "kind": "named",
-          "name": "CollectionItemCard",
-          "importedName": "CollectionItemCard",
-          "source": "./collection-items"
-        },
-        {
-          "kind": "named",
-          "name": "CollectionItemList",
-          "importedName": "CollectionItemList",
-          "source": "./collection-items"
-        },
-        {
-          "kind": "named",
-          "name": "CollectionItemRow",
-          "importedName": "CollectionItemRow",
-          "source": "./collection-items"
-        },
-        {
-          "kind": "named",
           "name": "CollectionPageToolbar",
           "importedName": "CollectionPageToolbar",
           "source": "./collection-chrome"
@@ -4626,12 +5044,6 @@
         },
         {
           "kind": "named",
-          "name": "ComputerTaskImport",
-          "importedName": "ComputerTaskImport",
-          "source": "./cloud-computer/computer-task-import"
-        },
-        {
-          "kind": "named",
           "name": "ConsoleAgentFocusApi",
           "importedName": "ConsoleAgentFocusApi",
           "source": "./SplitWorkspace"
@@ -4665,30 +5077,6 @@
           "name": "ConsoleRunFinishArgs",
           "importedName": "ConsoleRunFinishArgs",
           "source": "./useConsoleRun"
-        },
-        {
-          "kind": "named",
-          "name": "CoverEvidence",
-          "importedName": "CoverEvidence",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
-          "name": "coverEvidenceOf",
-          "importedName": "coverEvidenceOf",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
-          "name": "CoverEvidenceReport",
-          "importedName": "CoverEvidenceReport",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
-          "name": "coverEvidenceReportOf",
-          "importedName": "coverEvidenceReportOf",
-          "source": "./workspace-library-cover"
         },
         {
           "kind": "named",
@@ -4812,24 +5200,6 @@
         },
         {
           "kind": "named",
-          "name": "EXPLORE_FEED_PLAY_LINK_ATTR",
-          "importedName": "EXPLORE_FEED_PLAY_LINK_ATTR",
-          "source": "./ExplorePlayableFeed"
-        },
-        {
-          "kind": "named",
-          "name": "EXPLORE_PLAYABLE_MAX_PAGES",
-          "importedName": "EXPLORE_PLAYABLE_MAX_PAGES",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
-          "name": "EXPLORE_PLAYABLE_PAGE_LIMIT",
-          "importedName": "EXPLORE_PLAYABLE_PAGE_LIMIT",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
           "name": "exploreAppHref",
           "importedName": "exploreAppHref",
           "source": "./site-catalog-controller"
@@ -4869,12 +5239,6 @@
           "name": "ExplorePageProps",
           "importedName": "ExplorePageProps",
           "source": "./ExplorePage"
-        },
-        {
-          "kind": "named",
-          "name": "ExplorePlayableSurface",
-          "importedName": "ExplorePlayableSurface",
-          "source": "./explore-shelf-dispatch"
         },
         {
           "kind": "named",
@@ -5112,6 +5476,48 @@
         },
         {
           "kind": "named",
+          "name": "HomeAssetCard",
+          "importedName": "HomeAssetCard",
+          "source": "./home-asset-cards-model"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAssetCards",
+          "importedName": "HomeAssetCards",
+          "source": "./HomeAssetCards"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAssetCardsProps",
+          "importedName": "HomeAssetCardsProps",
+          "source": "./HomeAssetCards"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAssetRef",
+          "importedName": "HomeAssetRef",
+          "source": "./home-asset-cards-model"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAssetSection",
+          "importedName": "HomeAssetSection",
+          "source": "./home-asset-cards-model"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAssetSectionId",
+          "importedName": "HomeAssetSectionId",
+          "source": "./home-asset-cards-model"
+        },
+        {
+          "kind": "named",
+          "name": "HomeAssetsResponse",
+          "importedName": "HomeAssetsResponse",
+          "source": "./home-asset-cards-model"
+        },
+        {
+          "kind": "named",
           "name": "HomeIntro",
           "importedName": "HomeIntro",
           "source": "./HomeIntro"
@@ -5172,12 +5578,6 @@
         },
         {
           "kind": "named",
-          "name": "imEnabledHere",
-          "importedName": "imEnabledHere",
-          "source": "../lib/im/client"
-        },
-        {
-          "kind": "named",
           "name": "ImportedProject",
           "importedName": "ImportedProject",
           "source": "./project-import"
@@ -5187,12 +5587,6 @@
           "name": "ImportPlan",
           "importedName": "ImportPlan",
           "source": "./project-import"
-        },
-        {
-          "kind": "named",
-          "name": "importWithChunkReload",
-          "importedName": "importWithChunkReload",
-          "source": "../lib/lazy-with-retry"
         },
         {
           "kind": "named",
@@ -5238,21 +5632,9 @@
         },
         {
           "kind": "named",
-          "name": "isPlayableGameLibraryItem",
-          "importedName": "isPlayableGameLibraryItem",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
-          "name": "isPlayableGameShelfEntry",
-          "importedName": "isPlayableGameShelfEntry",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
-          "name": "isSourceAliasRendition",
-          "importedName": "isSourceAliasRendition",
-          "source": "./workspace-library-cover"
+          "name": "isUploadedLibraryItem",
+          "importedName": "isUploadedLibraryItem",
+          "source": "./library-data"
         },
         {
           "kind": "named",
@@ -5349,6 +5731,12 @@
           "name": "LibraryArtifactRow",
           "importedName": "LibraryArtifactRow",
           "source": "./library-data"
+        },
+        {
+          "kind": "named",
+          "name": "libraryAttachmentFile",
+          "importedName": "libraryAttachmentFile",
+          "source": "./native-draft-files"
         },
         {
           "kind": "named",
@@ -5730,18 +6118,6 @@
         },
         {
           "kind": "named",
-          "name": "MessagesHost",
-          "importedName": "MessagesHost",
-          "source": "./messages/MessagesHost"
-        },
-        {
-          "kind": "named",
-          "name": "MessagesNavIcon",
-          "importedName": "MessagesNavIcon",
-          "source": "./messages/MessagesNavIcon"
-        },
-        {
-          "kind": "named",
           "name": "ModelCategory",
           "importedName": "ModelCategory",
           "source": "./ModelPicker"
@@ -5781,12 +6157,6 @@
           "name": "MyLibrary",
           "importedName": "MyLibrary",
           "source": "./MyLibrary"
-        },
-        {
-          "kind": "named",
-          "name": "navigateToArtifactPlay",
-          "importedName": "navigateToArtifactPlay",
-          "source": "./explore-artifact-class"
         },
         {
           "kind": "named",
@@ -5844,21 +6214,15 @@
         },
         {
           "kind": "named",
-          "name": "openArtifactPlay",
-          "importedName": "openArtifactPlay",
-          "source": "./explore-artifact-class"
-        },
-        {
-          "kind": "named",
           "name": "openLeoAssistant",
           "importedName": "openLeoAssistant",
           "source": "./LeoAssistant"
         },
         {
           "kind": "named",
-          "name": "openMessages",
-          "importedName": "openMessages",
-          "source": "./messages/host-state"
+          "name": "openTaskWorkspaceLibrary",
+          "importedName": "openTaskWorkspaceLibrary",
+          "source": "./task-attachment-open"
         },
         {
           "kind": "named",
@@ -6234,6 +6598,12 @@
         },
         {
           "kind": "named",
+          "name": "registerWorkspacePanel",
+          "importedName": "registerWorkspacePanel",
+          "source": "./workspace-panels"
+        },
+        {
+          "kind": "named",
           "name": "representativeFill",
           "importedName": "representativeFill",
           "source": "./app-catalog"
@@ -6309,12 +6679,6 @@
           "name": "runPluginCommand",
           "importedName": "runPluginCommand",
           "source": "./plugin-command"
-        },
-        {
-          "kind": "named",
-          "name": "safeArtifactPlayHref",
-          "importedName": "safeArtifactPlayHref",
-          "source": "./explore-artifact-class"
         },
         {
           "kind": "named",
@@ -6552,27 +6916,9 @@
         },
         {
           "kind": "named",
-          "name": "SITE_BRAND_COLOR",
-          "importedName": "SITE_BRAND_COLOR",
-          "source": "./site-icons"
-        },
-        {
-          "kind": "named",
-          "name": "SITE_ICONS",
-          "importedName": "SITE_ICONS",
-          "source": "./site-icons"
-        },
-        {
-          "kind": "named",
           "name": "SiteAppDirectory",
           "importedName": "SiteAppDirectory",
           "source": "./material-scene-axis"
-        },
-        {
-          "kind": "named",
-          "name": "siteBrandColorFor",
-          "importedName": "siteBrandColorFor",
-          "source": "./site-icons"
         },
         {
           "kind": "named",
@@ -6591,12 +6937,6 @@
           "name": "SiteDirectoryAppInput",
           "importedName": "SiteDirectoryAppInput",
           "source": "./material-scene-axis"
-        },
-        {
-          "kind": "named",
-          "name": "siteIconFor",
-          "importedName": "siteIconFor",
-          "source": "./site-icons"
         },
         {
           "kind": "named",
@@ -6660,9 +7000,21 @@
         },
         {
           "kind": "named",
-          "name": "TeamRosterModal",
-          "importedName": "TeamRosterModal",
-          "source": "./TeamRosterModal"
+          "name": "TASK_WORKSPACE_PLAIN_CLOSED_CLASS",
+          "importedName": "TASK_WORKSPACE_PLAIN_CLOSED_CLASS",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "named",
+          "name": "taskAttachmentLibraryAction",
+          "importedName": "taskAttachmentLibraryAction",
+          "source": "./task-attachment-open"
+        },
+        {
+          "kind": "named",
+          "name": "TaskWorkspaceShell",
+          "importedName": "TaskWorkspaceShell",
+          "source": "./TaskWorkspaceShell"
         },
         {
           "kind": "named",
@@ -6729,12 +7081,6 @@
           "name": "TemplateShowcaseProps",
           "importedName": "TemplateShowcaseProps",
           "source": "./ImageLightbox"
-        },
-        {
-          "kind": "named",
-          "name": "tintOf",
-          "importedName": "tintOf",
-          "source": "../lib/brand-color"
         },
         {
           "kind": "named",
@@ -6858,12 +7204,6 @@
         },
         {
           "kind": "named",
-          "name": "useImEnabled",
-          "importedName": "useImEnabled",
-          "source": "../lib/im/client"
-        },
-        {
-          "kind": "named",
           "name": "useLeftPaneSlot",
           "importedName": "useLeftPaneSlot",
           "source": "./SplitWorkspace"
@@ -6873,6 +7213,12 @@
           "name": "useLeoEnabled",
           "importedName": "useLeoEnabled",
           "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "useNativeDraftFiles",
+          "importedName": "useNativeDraftFiles",
+          "source": "./native-draft-files"
         },
         {
           "kind": "named",
@@ -6921,6 +7267,12 @@
           "name": "useShellChrome",
           "importedName": "useShellChrome",
           "source": "./ShellChrome"
+        },
+        {
+          "kind": "named",
+          "name": "useTaskWorkspaceState",
+          "importedName": "useTaskWorkspaceState",
+          "source": "./TaskWorkspaceShell"
         },
         {
           "kind": "named",
@@ -7068,30 +7420,6 @@
         },
         {
           "kind": "named",
-          "name": "workspaceCoverPlan",
-          "importedName": "workspaceCoverPlan",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
-          "name": "WorkspaceCoverPlan",
-          "importedName": "WorkspaceCoverPlan",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
-          "name": "WorkspaceCoverRenderer",
-          "importedName": "WorkspaceCoverRenderer",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
-          "name": "workspaceCoverRenditionPurposes",
-          "importedName": "workspaceCoverRenditionPurposes",
-          "source": "./workspace-library-cover"
-        },
-        {
-          "kind": "named",
           "name": "WorkspaceDesk",
           "importedName": "WorkspaceDesk",
           "source": "./WorkspaceDesk"
@@ -7143,6 +7471,12 @@
           "name": "WorkspacePage",
           "importedName": "WorkspacePage",
           "source": "./WorkspacePages"
+        },
+        {
+          "kind": "named",
+          "name": "WorkspacePanelComponent",
+          "importedName": "WorkspacePanelComponent",
+          "source": "./workspace-panels"
         },
         {
           "kind": "named",
@@ -7254,10 +7588,6 @@
         },
         {
           "kind": "star",
-          "source": "./account"
-        },
-        {
-          "kind": "star",
           "source": "./artifact-contract"
         },
         {
@@ -7286,7 +7616,7 @@
         },
         {
           "kind": "star",
-          "source": "./mobile-bridge-public"
+          "source": "./public-exports"
         },
         {
           "kind": "star",
@@ -7295,12 +7625,6 @@
         {
           "kind": "star",
           "source": "./video-editor/capabilities"
-        },
-        {
-          "kind": "type",
-          "name": "AccountMenuProps",
-          "importedName": "AccountMenuProps",
-          "source": "./AccountMenu"
         },
         {
           "kind": "type",
@@ -7391,12 +7715,6 @@
           "name": "CanvasTab",
           "importedName": "CanvasTab",
           "source": "./ResultCanvas"
-        },
-        {
-          "kind": "type",
-          "name": "CollectionItemProps",
-          "importedName": "CollectionItemProps",
-          "source": "./collection-items"
         },
         {
           "kind": "type",
@@ -7544,9 +7862,21 @@
         },
         {
           "kind": "type",
+          "name": "NativeDraftFilesHandle",
+          "importedName": "NativeDraftFilesHandle",
+          "source": "./native-draft-files"
+        },
+        {
+          "kind": "type",
           "name": "NativeThread",
           "importedName": "NativeThread",
           "source": "./native-thread"
+        },
+        {
+          "kind": "type",
+          "name": "OpenableAttachment",
+          "importedName": "OpenableAttachment",
+          "source": "./TaskWorkspaceShell"
         },
         {
           "kind": "type",
@@ -7706,9 +8036,33 @@
         },
         {
           "kind": "type",
-          "name": "TeamRosterModalProps",
-          "importedName": "TeamRosterModalProps",
-          "source": "./TeamRosterModal"
+          "name": "TaskWorkspaceInitial",
+          "importedName": "TaskWorkspaceInitial",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "type",
+          "name": "TaskWorkspaceOpenItem",
+          "importedName": "TaskWorkspaceOpenItem",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "type",
+          "name": "TaskWorkspaceOpenState",
+          "importedName": "TaskWorkspaceOpenState",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "type",
+          "name": "TaskWorkspaceShellProps",
+          "importedName": "TaskWorkspaceShellProps",
+          "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "type",
+          "name": "TaskWorkspaceState",
+          "importedName": "TaskWorkspaceState",
+          "source": "./TaskWorkspaceShell"
         },
         {
           "kind": "type",
@@ -7914,6 +8268,11 @@
           "source": ""
         },
         {
+          "kind": "named",
+          "name": "artifactActionMessage",
+          "source": ""
+        },
+        {
           "kind": "type",
           "name": "ArtifactActionMatrixOptions",
           "source": ""
@@ -8070,6 +8429,16 @@
         {
           "kind": "named",
           "name": "isTemplateMaterialDetailItem",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "isUploadedLibraryItem",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "LIBRARY_UPLOAD_ROLE",
           "source": ""
         },
         {
