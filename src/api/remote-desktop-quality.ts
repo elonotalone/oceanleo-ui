@@ -18,6 +18,18 @@ import type {
 import type { RemoteControlTiming } from "./remote-desktop-control-timing";
 
 export type QualityLane = "data_channel" | "websocket";
+/** K2 fixed viewer-to-device report. Unknown measurements are omitted. */
+export interface RemoteDesktopViewerReport {
+  t: "rd.viewer_report"; v: 1; seq: number;
+  edge_rtt_ms?: number; loss_pct?: number; nack_ps?: number; pli_ps?: number;
+  freeze_ms_2s?: number; fps_decoded?: number; jitter_ms?: number;
+  age_p50_ms?: number; age_p95_ms?: number;
+}
+/** K4 ten-second display window; publisher is fixed numeric data from the device. */
+export interface RemoteDesktopQualityWindow {
+  v: 1; device_id: string; session_id: string; window_start_ms: number;
+  viewer: RemoteDesktopViewerReport; publisher?: Record<string, number>;
+}
 export interface QualityPercentiles { n: number; p50?: number; p90?: number; p99?: number; max?: number }
 export interface QualityVideoSummary {
   samples: number; fps_p50?: number; fps_p10?: number; jitter_buffer_ms_avg?: number; rtt_p50_ms?: number; rtt_p90_ms?: number;
@@ -57,6 +69,14 @@ export function percentiles(values: readonly number[]): QualityPercentiles | und
   if (!data.length) return undefined;
   const at = (q: number) => data[Math.max(0, Math.min(data.length - 1, Math.ceil((q / 100) * data.length) - 1))];
   return { n: data.length, p50: at(50), p90: at(90), p99: at(99), max: data[data.length - 1] };
+}
+
+/** Nearest-rank percentile for frame-age samples, bounded to one hour. */
+export function agePercentile(values: readonly number[], q: number): number | undefined {
+  const data = values.filter((value) => Number.isFinite(value) && value >= 0).map((value) => Math.min(MAX_MS, Math.round(value))).sort((a, b) => a - b);
+  if (!data.length) return undefined;
+  const rank = Math.max(0, Math.min(data.length - 1, Math.ceil((Math.max(0, Math.min(100, q)) / 100) * data.length) - 1));
+  return data[rank];
 }
 
 /** Coarse families only. */

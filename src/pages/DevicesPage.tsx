@@ -244,7 +244,9 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
-      if (!document.hidden) await Promise.all(remoteTargetKey.split(",").map(async (deviceId) => {
+      // The live stream owns liveness while the desktop panel is open. Pausing the
+      // card/status poll removes a competing request loop from the connect path.
+      if (!remoteOpenId && !document.hidden) await Promise.all(remoteTargetKey.split(",").map(async (deviceId) => {
         try {
           const result = await runDeviceRequest((signal) => remoteDesktopClient.getStatus(deviceId, { signal }), controller.signal, requestTimeoutMs);
           if (controller.signal.aborted) return;
@@ -258,7 +260,7 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
     }
     void poll();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [remoteTargetKey, remoteDesktopClient, remoteStatusIntervalMs, requestTimeoutMs, authRevision]);
+  }, [remoteTargetKey, remoteDesktopClient, remoteStatusIntervalMs, requestTimeoutMs, authRevision, remoteOpenId]);
 
   async function pair(event: FormEvent) {
     event.preventDefault();

@@ -460,9 +460,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       await Promise.race([previousCloseRef.current, wait(1500, abort.signal)]);
       if (abort.signal.aborted) return;
       mark("request");
+      // Ordinary deployments leave brokerConfigured false, so no 403-producing
+      // preflight is made. A deployment that explicitly provisions the lock-screen
+      // broker retains its dedicated status/HTTP path.
       let sessionClient: RemoteDesktopClient | RemoteDesktopBrokerClient = client;
       let brokerBinding: RemoteDesktopBrokerStatus | null = null;
-      if (client.broker && !agentRequest) {
+      if (client.broker && client.brokerConfigured === true && !agentRequest) {
         const response = await client.broker.getStatus(deviceId, { signal: abort.signal });
         if (abort.signal.aborted) return;
         if (response.ok && response.data) {
@@ -479,7 +482,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         } else if ([401, 403].includes(response.status ?? 0) && !["broker_not_approved", "broker_disabled"].includes(response.error ?? "")) {
           end(response.error, response.status); return;
         }
-        // An older/unprovisioned gateway or a signed-in/unknown device keeps the ordinary path.
       }
       sessionClientRef.current = sessionClient;
       // One id per click; the client retries a lost reply with it (same session back).
@@ -496,8 +498,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       // First-frame chain: negotiate video while the stream socket is still opening (cold TLS from the
       // controller's network). The gateway refuses media while consent is pending, so only for a live session
       // or the owner's own idle-computer handshake (the computer still publishes only after it answers).
-      earlyMediaRef.current = (result.data.state === "connecting" || result.data.owner_handshake === true) && client.openStream && client.negotiateMedia && result.data.transport === "websocket-v2"
-        ? { sessionId: result.data.session_id, response: client.negotiateMedia(deviceId, result.data.session_id, undefined, { signal: abort.signal }).catch(() => ({ ok: false, error: "media_unavailable" })) }
+      earlyMediaRef.current = result.data.media
+        ? { sessionId: result.data.session_id, response: Promise.resolve({ ok: true, data: result.data.media }) }
+        : (result.data.state === "connecting" || result.data.owner_handshake === true) && client.openStream && client.negotiateMedia && result.data.transport === "websocket-v2"
+          ? { sessionId: result.data.session_id, response: client.negotiateMedia(deviceId, result.data.session_id, undefined, { signal: abort.signal }).catch(() => ({ ok: false, error: "media_unavailable" })) }
         : null;
       if (client.openStream && result.data.transport === "websocket-v2") {
         streamModeRef.current = true;
@@ -538,10 +542,10 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           media(media, status) {
             if (abort.signal.aborted) return;
             acceptMediaStatus(status);
-            if (status?.state === "failed") { end(status.error || "media_capture_or_publish_failed"); return; }
+            if (status?.state === "failed" && status.error !== "screen_locked") { end(status.error || "media_capture_or_publish_failed"); return; }
             // Video is fine but input cannot reach the target (admin window, lock screen): say so, keep the session.
             const notice = remoteDesktopNoticeCopy(status?.error);
-            setMessage((current) => notice ? notice : current && [remoteDesktopNoticeCopy("input_target_elevated"), remoteDesktopNoticeCopy("screen_locked")].includes(current) ? "" : current);
+            setMessage((current) => status?.state === "locked" || status?.error === "screen_locked" ? "已锁定 — 可以输入密码解锁" : notice ? notice : current && [remoteDesktopNoticeCopy("input_target_elevated"), remoteDesktopNoticeCopy("screen_locked")].includes(current) ? "" : current);
             // A missing descriptor before negotiation is normal. After activation it revokes video.
             if (media) mediaDescriptorSeen = true;
             else if (mediaDescriptorSeen) end("media_session_closed");
@@ -975,6 +979,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId} early={earlyMediaRef.current}
           fit={fit} width={frame?.width} height={frame?.height} showFrame={Boolean(frame)}
           onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
+          onViewerReport={(report) => { streamRef.current?.sendViewerReport(report); }}
+          onQualityWindow={(window) => { void client.reportQualityWindow?.(window).catch(() => {}); }}
+          publisher={mediaStatus?.metrics as Record<string, number> | undefined}
           onDiagnostic={setMediaDiagnostic}
           onDiagnostics={reportDiagnostics}
           onTiming={reportDiagnostics}

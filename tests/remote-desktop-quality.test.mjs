@@ -181,6 +181,8 @@ test("coarse environment families only", () => {
   assert.deepEqual(q.qualityEnvironment("Mozilla/5.0 (X11; Linux x86_64; rv:131.0) Gecko/20100101 Firefox/131.0", "localhost", false), { browser: "firefox", platform: "linux", site: "dev" });
   assert.equal(q.percentiles([]), undefined);
   assert.deepEqual(q.percentiles([5, 1, 3, 2, 4, 9_999_999]), { n: 6, p50: 3, p90: 600000, p99: 600000, max: 600000 });
+  assert.equal(q.agePercentile([100, 10, 50], 50), 50);
+  assert.equal(q.agePercentile([], 95), undefined);
 });
 
 const mounted = [];

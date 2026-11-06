@@ -15,7 +15,7 @@ import { controllerHeaders, registerController, type DeviceAvailability } from "
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
 import { isNetworkFailure, newRequestId } from "./remote-desktop-retry";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
-import type { RemoteDesktopQualityReport, RemoteMediaQualitySink } from "./remote-desktop-quality";
+import type { RemoteDesktopQualityReport, RemoteDesktopViewerReport, RemoteDesktopQualityWindow, RemoteMediaQualitySink } from "./remote-desktop-quality";
 import { REMOTE_INPUT_METRICS, RemoteTransportDiagnostics, parseRemoteInputDiagnostics, type RemoteInputDiagnostics, type RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
 export { parseRemoteInputDiagnostics } from "./remote-desktop-diagnostics";
 export type { RemoteInputDiagnostics, RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
@@ -62,7 +62,7 @@ export interface RemoteDesktopSessionInfo {
 }
 
 export interface RemoteMediaStatus {
-  state: "starting" | "publishing" | "failed";
+  state: "starting" | "publishing" | "locked" | "failed";
   error?: string;
   geometry?: { display_id: string; width: number; height: number };
   displays?: Array<{ display_id: string; label: string; width: number; height: number }>;
@@ -122,6 +122,8 @@ export interface RemoteDesktopSession {
   billing?: RemoteDesktopBilling | null;
   /** Owner request waiting only for an idle computer's own answer; its video may be negotiated now. */
   owner_handshake?: true;
+  /** K5 one-call media join descriptor when the device is already publishing. */
+  media?: RemoteMediaResponse;
 }
 
 export interface RemoteDesktopFrameData {
@@ -203,6 +205,8 @@ export { isNetworkFailure, newRequestId };
 export interface RemoteDesktopClient {
   /** Optional boot/lock-screen owner path. Never uses device or restricted credentials in the browser. */
   broker?: RemoteDesktopBrokerClient;
+  /** Explicit deployment opt-in; ordinary devices must not probe the broker route. */
+  brokerConfigured?: boolean;
   negotiateMedia?(deviceId: string, sessionId: string, displayId?: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteMediaResponse>>;
   openStream?(
     deviceId: string, sessionId: string, handlers: RemoteDesktopStreamHandlers,
@@ -234,6 +238,7 @@ export interface RemoteDesktopClient {
   ): Promise<RemoteDesktopApiResult<{ closed: true }>>;
   /** Anonymous end-of-session quality report (`remote-desktop-quality.ts`); keepalive, best effort. */
   reportQuality?(report: RemoteDesktopQualityReport): Promise<RemoteDesktopApiResult<{ stored: boolean }>>;
+  reportQualityWindow?(window: RemoteDesktopQualityWindow): Promise<RemoteDesktopApiResult<{ stored: boolean }>>;
   /** Set by `RemoteDesktopQualityHub.wrap`: the media-side quality hooks of a live session. */
   mediaQuality?(sessionId: string): RemoteMediaQualitySink | null;
 }
@@ -267,6 +272,8 @@ export interface RemoteDesktopStream {
   releaseForHandoff(): Promise<void>;
   finishHandoff(): void;
   send(action: RemoteDesktopAction): boolean;
+  /** K2: viewer telemetry uses the ARTC lane when present and the session WS otherwise. */
+  sendViewerReport(report: RemoteDesktopViewerReport): boolean;
   acknowledgeFrame(sequence: number): void;
   acknowledgeMediaFrame?(): void;
   /**
@@ -302,6 +309,8 @@ export interface RemoteDesktopStreamHandlers {
   serverTiming?(timing: Record<string, number>): void;
   /** The computer refused input because it allows viewing only (never retried). */
   inputRefused?(code: "input_not_allowed"): void;
+  /** The gateway answered an application-level ping. */
+  pong?(): void;
 }
 
 /**
@@ -374,6 +383,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let handoff: Promise<void> | null = null;
   let lane: RemoteDesktopDataLane | null = null;
   let lastPath: "data_channel" | "websocket" = "websocket";
+  let lastPongAt = Date.now();
   /*
    * The data channel has no per-message reply, so it is used only once the computer proved it
    * receives it: a harmless `release_all` probe (sent only while nothing is held) must show up in
@@ -512,6 +522,14 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       probePeer();
       return scheduler.enqueue(action);
     },
+    sendViewerReport(report) {
+      if (ended || !ready) return false;
+      const payload = JSON.stringify(report);
+      try {
+        if (lane && lane.send(payload)) return true;
+      } catch { /* report delivery is best effort */ }
+      return send({ type: "viewer_report", report });
+    },
     attachDataChannel(next) { if (next !== lane) { dropLane(); lane = ended ? null : next; } },
     inputPath: () => lastPath,
     lastSequence: () => scheduler.lastSequence(),
@@ -542,8 +560,9 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   }, 25);
   const heartbeat = setInterval(() => {
     if (decoding && Date.now() - decoding.started > 10_000) { fail("frame_decode_timeout"); return; }
+    if (ready && Date.now() - lastPongAt > 3_500) { fail("network_error"); return; }
     send({ type: "ping" });
-  }, 2000);
+  }, 1000);
   const refresh = setInterval(() => {
     void accessToken().then((value) => { if (value) send({ type: "auth.refresh", token: value }); else fail("unauthorized"); }).catch(() => fail("unauthorized"));
   }, 20_000);
@@ -564,6 +583,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     let data: Record<string, unknown>;
     try { data = JSON.parse(event.data); } catch { fail("response_malformed"); return; }
     if (!data || typeof data !== "object") { fail("response_malformed"); return; }
+    if (data.type === "pong") { lastPongAt = Date.now(); handlers.pong?.(); return; }
     if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { timings.accepted(data.seq as number); scheduler.accepted(data.seq as number); return; }
     if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && data.error === "input_not_allowed") {
       // View-only computer: final, never retried; the session (and video) stays.
@@ -633,6 +653,7 @@ async function authed<T>(
   init: RequestInit = {},
   signal?: AbortSignal,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  retried401 = false,
 ): Promise<RemoteDesktopApiResult<T>> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
@@ -676,6 +697,11 @@ async function authed<T>(
       if (timedOut || signal?.aborted) return failed();
     }
     if (!response.ok) {
+      // A token can expire between accessToken() and the request. Refresh once on
+      // the same idempotent request before surfacing an auth failure to the panel.
+      if (response.status === 401 && !retried401 && !signal?.aborted) {
+        return authed<T>(path, init, signal, timeoutMs, true);
+      }
       return { ok: false, error: errorCode(data, response.status), status: response.status };
     }
     return { ok: true, data: data as T, status: response.status };
@@ -701,7 +727,7 @@ export function parseRemoteMedia(data: unknown): RemoteMediaCredentials | null {
 }
 
 export function parseRemoteMediaStatus(data: unknown): RemoteMediaStatus | null {
-  if (!isRecord(data) || !["starting", "publishing", "failed"].includes(String(data.state))) return null;
+  if (!isRecord(data) || !["starting", "publishing", "locked", "failed"].includes(String(data.state))) return null;
   const dimensions = (value: unknown): value is { display_id: string; width: number; height: number } => isRecord(value) && typeof value.display_id === "string" && typeof value.width === "number" && Number.isFinite(value.width) && value.width > 0 && typeof value.height === "number" && Number.isFinite(value.height) && value.height > 0;
   const rawMetrics = data.metrics;
   const metrics: RemoteMediaMetrics | null = isRecord(rawMetrics) && rawMetrics.version === 1 ? {
@@ -895,6 +921,7 @@ const brokerClient: RemoteDesktopBrokerClient = {
 
 export const remoteDesktopClient: RemoteDesktopClient = {
   broker: brokerClient,
+  brokerConfigured: false,
   openStream,
   async negotiateMedia(deviceId, sessionId, displayId, options) {
     const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport: "artc-v1", ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);
@@ -951,6 +978,7 @@ export const remoteDesktopClient: RemoteDesktopClient = {
         ...(data.transport === "websocket-v2" || data.transport === "http-v1" ? { transport: data.transport } : {}),
         ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
         ...(data.state === "pending_consent" && data.owner_handshake === true ? { owner_handshake: true as const } : {}),
+        ...(isRecord(data.media) && parseRemoteMedia(data.media.media) ? { media: { media: parseRemoteMedia(data.media.media)!, media_status: parseRemoteMediaStatus(data.media.media_status) } } : {}),
       },
       status: result.status,
     };
@@ -988,5 +1016,8 @@ export const remoteDesktopClient: RemoteDesktopClient = {
   reportQuality(report) {
     // keepalive (not sendBeacon): it still leaves on pagehide and can carry the owner's bearer.
     return authed<{ stored: boolean }>("/v1/devices/remote-desktop/quality", { method: "POST", body: JSON.stringify(report), keepalive: true });
+  },
+  reportQualityWindow(window) {
+    return authed<{ stored: boolean }>("/v1/devices/remote-desktop/quality/windows", { method: "POST", body: JSON.stringify(window), keepalive: true });
   },
 };

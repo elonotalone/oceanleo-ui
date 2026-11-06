@@ -16,11 +16,18 @@ async function mount(state='locked',options={}){
     async sendInput(_d,_s,seq,action){log.inputs.push({seq,action});return options.inputError??{ok:true,data:{accepted:true,seq}}},
     async closeSession(_d,s){log.closes.push(s);return {ok:true,data:{closed:true}}},
   };
-  const view=await mountStream({pending:true,overrides:{broker,async createSession(){log.legacy++;return {ok:true,data:{session_id:'legacy',state:'connecting',transport:'websocket-v2'}}}}});
+  const view=await mountStream({pending:true,overrides:{broker,brokerConfigured:options.brokerConfigured !== false,async createSession(){log.legacy++;return {ok:true,data:{session_id:'legacy',state:'connecting',transport:'websocket-v2'}}}}});
   mounted.push(view);
   Object.assign(view,{brokerLog:log,async report(value){current=value;await settle(1550)},async response(value){nextFrame=value;await settle(20)},async decode(){const img=view.image();assert.ok(img);img.getBoundingClientRect=()=>({left:100,top:50,width:640,height:360});await view.fire(img,new window.Event('load'));}});
   return view;
 }
+
+test('ordinary devices skip the optional secure-broker preflight',async()=>{
+  const view=await mount('locked',{brokerConfigured:false});
+  assert.equal(view.brokerLog.status,0);
+  assert.equal(view.brokerLog.legacy,1);
+  await view.unmount();
+});
 
 test('locked state uses broker HTTP, attaches frame viewer first and waits for actual image decode before input',async()=>{
   const view=await mount();

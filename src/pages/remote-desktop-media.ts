@@ -13,7 +13,7 @@ export interface RemoteMediaViewer {
 }
 export interface RemoteMediaHandlers {
   state(value: RemoteMediaState, error?: string, status?: number): void;
-  frame(width: number, height: number): void;
+  frame(width: number, height: number, sample?: { presentation_time_ms?: number; media_time_ms?: number; rtp_timestamp_90?: number }): void;
   renew(): Promise<RemoteMediaCredentials>;
   /** D4: the viewer's published ARTC data channel, or null when it is (no longer) usable. */
   dataChannel?(lane: RemoteDesktopDataLane | null): void;
@@ -343,14 +343,14 @@ export async function openRemoteMedia(
     else handlers.state("error", code, status);
     void close();
   };
-  const decodedFrame = () => {
+  const decodedFrame = (sample?: { presentation_time_ms?: number; media_time_ms?: number; rtp_timestamp_90?: number }) => {
     if (closed || !video.videoWidth || !video.videoHeight || video.readyState < 2) return;
     decodedFrames++; lastDecodedAt = now(); mark("first_decoded_frame_ms");
     lastFrame = Date.now();
     lastInbound = lastFrame;
     // Notify on every decoded frame so display-switch geometry can gate input even
     // when two displays happen to have identical encoded dimensions.
-    handlers.frame(video.videoWidth, video.videoHeight);
+    handlers.frame(video.videoWidth, video.videoHeight, sample);
     if (!playing) { playing = true; clearTimeout(subscribeFailure); subscribeFailure = undefined; lowerPlayoutDelay(video); handlers.state("playing"); }
   };
   const fallbackFrame = () => {
@@ -358,9 +358,14 @@ export async function openRemoteMedia(
     lastTime = video.currentTime;
     decodedFrame();
   };
-  const watchFrame = () => {
+  const watchFrame = (_now?: number, metadata?: VideoFrameCallbackMetadata) => {
     if (closed) return;
-    decodedFrame();
+    const value = metadata as unknown as { presentationTime?: number; mediaTime?: number; rtpTimestamp?: number } | undefined;
+    decodedFrame(value && {
+      ...(Number.isFinite(value.presentationTime) ? { presentation_time_ms: value.presentationTime } : {}),
+      ...(value.mediaTime !== undefined && Number.isFinite(value.mediaTime) ? { media_time_ms: value.mediaTime * 1000 } : {}),
+      ...(Number.isFinite(value.rtpTimestamp) ? { rtp_timestamp_90: value.rtpTimestamp } : {}),
+    });
     frameCallback = video.requestVideoFrameCallback(watchFrame);
   };
   const scheduleRenew = (expires: string) => {
