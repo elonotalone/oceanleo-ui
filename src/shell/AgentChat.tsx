@@ -311,15 +311,14 @@ export function reconcileTimelineDelivery(
       .map((row) => String(row.meta?.client_message_id || ""))
       .filter(Boolean),
   );
-  const serverIds = new Set(
+  const visibleIds = new Set(
     rows
-      .filter((row) => row.meta?.task_timeline_server === true)
       .map((row) => String(row.meta?.client_message_id || ""))
       .filter(Boolean),
   );
   let next = current;
   for (const [id, delivery] of Object.entries(current)) {
-    if (delivery !== "queued" || !serverIds.has(id) || queuedIds.has(id)) continue;
+    if (delivery !== "queued" || !visibleIds.has(id) || queuedIds.has(id)) continue;
     if (next === current) next = { ...current };
     next[id] = "injected";
   }
@@ -3536,7 +3535,11 @@ function AgentChatInner({
     ),
     // A computer task whose conversation is not decided yet shows nothing rather than a cloud empty page.
     empty: timelineMessages.length === 0 && !timelineRunning && conversationResolved &&
-      (!computerTask || timelineStatus.loaded === true) &&
+      (!taskId || (
+        taskMode.taskId === taskId && taskMode.computer
+          ? timelineStatus.loaded === true
+          : taskMode.taskId === taskId && !taskMode.computer && messagesTaskId === taskId
+      )) &&
       !(Boolean(!taskId && (initialPrompt?.trim() || initialAtts?.length))) ? (
       <div className="py-10 text-center text-[15px] text-stone-400">
         {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}

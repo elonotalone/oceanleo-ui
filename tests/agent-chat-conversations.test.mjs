@@ -69,13 +69,20 @@ const lazyStub = dataModule(
 const realAgentLibUrl = await compileModule("src/lib/agent.ts", {}, { missingPackageStub: lazyStub });
 const agentLibStub = dataModule(`
   export * from ${JSON.stringify(realAgentLibUrl)};
-  globalThis.__task = null; globalThis.__stops = 0; globalThis.__followUps = [];
+  globalThis.__task = null; globalThis.__stops = 0; globalThis.__followUps = []; globalThis.__followUpBodies = [];
   export async function getTask() {
     return globalThis.__task ? { ok: true, data: globalThis.__task } : { ok: false, status: 404, error: "no task" };
   }
-  export async function createTask() { return { ok: false, error: "stub" }; }
+  export async function createTask(input) {
+    if (globalThis.__createTaskResult) return { ok: true, data: { task_id: "t_home" }, executionTarget: input.executionTarget };
+    return { ok: false, error: "stub" };
+  }
   export async function branchTask() { return { ok: false, error: "stub" }; }
-  export async function followUp(id, text) { globalThis.__followUps.push(text); return { ok: false, error: "stub" }; }
+  export async function followUp(id, text, attachments, hiddenContext, orgId, computerId, clientWindow) {
+    globalThis.__followUps.push(text);
+    globalThis.__followUpBodies.push({ id, text, client_window: clientWindow });
+    return { ok: false, error: "stub" };
+  }
   export async function stopTask() { globalThis.__stops++; return { ok: true }; }
   export function latestArtifact() { return null; }
 `);
@@ -113,15 +120,20 @@ const taskTimelineStub = dataModule(`
   globalThis.__taskTimelineCalls = [];
   const emptyState = { status: "idle", program: null, session_id: null, since: null, last_output_at: null,
     request: null, queued: [], reason: null, pending_stop: false, computer: { id: "cc_elon", online: true } };
-  export async function getTaskTimeline(taskId) {
+  export async function getTaskTimeline(taskId, options = {}) {
     globalThis.__taskTimelineCalls.push({ path: "/v1/tasks/" + taskId + "/timeline", method: "GET" });
+    if (globalThis.__timelineHang) return globalThis.__timelineHang.promise;
+    if (options.before && globalThis.__olderDeferred) return globalThis.__olderDeferred.promise;
     return globalThis.__timelinePage || { task_id: taskId, entries: [], has_older: false, next_before: null, state: emptyState, sessions: [] };
   }
-  export function openTaskTimeline() { return { close() {} }; }
+  export function openTaskTimeline(taskId, after, onEvent) {
+    globalThis.__taskTimelineEmit = onEvent;
+    return { close() { if (globalThis.__taskTimelineEmit === onEvent) globalThis.__taskTimelineEmit = null; } };
+  }
   export async function taskTimelineWsUrl() { return "ws://test.invalid/v1/tasks/live"; }
   export async function sendTaskMessage(taskId, input) {
     globalThis.__taskTimelineCalls.push({ path: "/v1/tasks/" + taskId + "/messages", method: "POST", body: input });
-    return { accepted: true, delivery: "started", session_id: "cts_task", entry_cursor: "task-1" };
+    return { accepted: true, delivery: globalThis.__nextDelivery || "started", session_id: "cts_task", entry_cursor: "task-1" };
   }
   export async function createTask(input) { globalThis.__taskTimelineCalls.push({ path: "/v1/tasks", method: "POST", body: input }); return { accepted: true }; }
   export async function stopTask(taskId) { globalThis.__taskTimelineCalls.push({ path: "/v1/tasks/" + taskId + "/stop", method: "POST" }); return { state: emptyState }; }
@@ -175,7 +187,9 @@ const OVERRIDES = {
     import React from ${reactUrl};
     export function LeoComposer(props) {
       const kind = "modelPickerSlot" in props ? "native" : "cloud";
-      return React.createElement("div", { "data-leo-composer": kind, ref: (node) => { if (node) node.__props = props; } },
+      return React.createElement("div", { "data-leo-composer": kind, tabIndex: 0,
+        onKeyDown: (event) => { if (event.key === "Escape" && props.loading) props.onStop?.(); },
+        ref: (node) => { if (node) node.__props = props; } },
         props.conversation ? (props.conversation.kind === "oceanleo"
           ? (props.conversation.target.kind === "cloud" ? "云端" : props.conversation.target.name)
           : props.conversation.computerName + " · " + (props.conversation.kind === "terminal" ? "终端" : props.conversation.program)) : "—",
@@ -303,7 +317,7 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true } = {}) {
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
   globalThis.__listHang = listHang;
@@ -315,7 +329,12 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   globalThis.__sessions = sessions;
   globalThis.__gateway.length = 0;
   globalThis.__taskTimelineCalls = [];
+  globalThis.__taskTimelineEmit = null;
+  globalThis.__nextDelivery = null;
+  globalThis.__olderDeferred = null;
+  globalThis.__timelineHang = null;
   globalThis.__sent.length = 0;
+  globalThis.__followUpBodies = [];
   globalThis.__pushed = [];
   globalThis.__stops = 0;
   globalThis.__threadStops = 0;
@@ -323,8 +342,10 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   document.body.appendChild(host);
   const root = createRoot(host);
   await act(async () => { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...props })); });
-  await settle();
-  await settle();
+  if (settleMount) {
+    await settle();
+    await settle();
+  }
   return {
     host,
     composer: (kind) => host.querySelector(`[data-leo-composer="${kind}"]`),
@@ -336,6 +357,7 @@ const visible = (node) => {
   for (let el = node; el; el = el.parentElement) if (el.hidden) return false;
   return Boolean(node);
 };
+globalThis.__agentChatHarness = { mount, settle, visible, session, computerTask, cloudTask, NATIVE_MESSAGES };
 async function changeConversation(view, kind, next) {
   await act(async () => { view.composer(kind).__props.onConversationChange(next); await new Promise((r) => setTimeout(r, 0)); });
   await settle();
