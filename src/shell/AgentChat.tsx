@@ -183,6 +183,7 @@ import {
   stopTask as stopTimelineTask,
 } from "../lib/task-timeline-api";
 import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
+import { restoreOlderScrollAnchor, type OlderScrollAnchorSnapshot } from "./task-timeline/scroll-anchor";
 
 type TaskTimelineStatusSurface = ReturnType<typeof useTaskTimeline> & {
   liveStatus?: "connecting" | "connected" | "reconnecting";
@@ -257,8 +258,7 @@ export const LOAD_OLDER_PX = 200;
 const OLDER_ANCHOR_STALE_MS = 15_000;
 
 /** Where the user was when an earlier batch was asked for (to keep that spot after the prepend). */
-interface OlderScrollAnchor {
-  scrollHeight: number;
+interface OlderScrollAnchor extends OlderScrollAnchorSnapshot {
   firstId: number | null;
   sawLoading: boolean;
   at: number;
@@ -1754,15 +1754,24 @@ function AgentChatInner({
     const el = scrollRef.current;
     const anchor = timelineOlderAnchor.current;
     if (!el || !anchor || !computerTask) return;
-    if (timelineFirstMessageId !== anchor.firstId) {
-      el.scrollTop += el.scrollHeight - anchor.scrollHeight;
-      timelineLastScrollTop.current = el.scrollTop;
+    if (timeline.olderLoading) {
+      anchor.sawLoading = true;
+      return;
+    }
+    if (timelineStatus.olderError) {
       timelineOlderAnchor.current = null;
       return;
     }
-    if (timeline.olderLoading) anchor.sawLoading = true;
-    else if (anchor.sawLoading || !timeline.hasOlder) timelineOlderAnchor.current = null;
-  }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading]);
+    // Wait until the older request has settled, then compensate for every
+    // rendered pixel. The first mapped row can be stable when the new page
+    // extends that row, so an id comparison alone is insufficient.
+    const delta = el.scrollHeight - anchor.scrollHeight;
+    if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
+      restoreOlderScrollAnchor(el, anchor);
+      timelineLastScrollTop.current = el.scrollTop;
+      timelineOlderAnchor.current = null;
+    }
+  }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading, timelineStatus.olderError]);
 
   useEffect(() => {
     if (!computerTask || timeline.olderLoading) return;
@@ -3246,6 +3255,7 @@ function AgentChatInner({
         ref={pane.scrollRef}
         onScroll={pane.onScroll}
         className="h-full overflow-y-auto overflow-x-hidden px-4 py-4"
+        style={{ overflowAnchor: "none" }}
         data-agent-stream-scroller=""
       >
         {/* 对话内容与下方输入框同宽、居中（宽度上限 = agent-conversation-layout 的
