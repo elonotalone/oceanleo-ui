@@ -1767,6 +1767,7 @@ function AgentChatInner({
     // extends that row, so an id comparison alone is insufficient.
     const delta = el.scrollHeight - anchor.scrollHeight;
     if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
+      // Equivalent compensation: `el.scrollTop += el.scrollHeight - anchor.scrollHeight`.
       restoreOlderScrollAnchor(el, anchor);
       timelineLastScrollTop.current = el.scrollTop;
       timelineOlderAnchor.current = null;
