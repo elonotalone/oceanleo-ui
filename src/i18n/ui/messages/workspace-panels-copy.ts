@@ -12,7 +12,7 @@ const SOURCE = {
 
 /** Parent registers this table in messages/index.ts; sparse locales fall back to zh. */
 export const WORKSPACE_PANELS_MESSAGES = emptyCopy();
-for (const locale of Object.keys(WORKSPACE_PANELS_MESSAGES)) {
+for (const locale of Object.keys(WORKSPACE_PANELS_MESSAGES) as Array<keyof typeof WORKSPACE_PANELS_MESSAGES>) {
   WORKSPACE_PANELS_MESSAGES[locale] = SOURCE;
 }
 
