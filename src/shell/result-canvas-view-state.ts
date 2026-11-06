@@ -21,6 +21,7 @@ import type {
   WorkspaceBayRequest,
   WorkspaceChatRequest,
   WorkspacePanelId,
+  WorkspaceManagedPanelId,
   WorkspaceSlotId,
   WorkspaceViewId,
 } from "./workspace-actions";
@@ -33,7 +34,7 @@ export interface WorkspaceViewStateInput {
   panelAction: WorkspaceActionEnvelope | null;
   select: (slot: WorkspaceSlotId) => void;
   /** Product availability; both China and overseas support LeoBay and LeoChat. */
-  panels: { bay: boolean; leochat: boolean };
+  panels: { bay: boolean; leochat: boolean; devices?: boolean; projects?: boolean; settings?: boolean };
   /** 回到卡片时调：宿主把自己的受控值改成 `"home"`，之后它再切栏位才算一次变化。 */
   onHome?: () => void;
 }
@@ -43,7 +44,7 @@ export interface WorkspaceViewState {
   /** 点某个槽位的卡片。 */
   openSlot: (slot: WorkspaceSlotId) => void;
   /** 点 LeoBay / LeoChat 的卡片。 */
-  openPanel: (panel: WorkspacePanelId) => void;
+  openPanel: (panel: WorkspacePanelId | WorkspaceManagedPanelId) => void;
   /** 「返回」：回到卡片首页。 */
   goHome: () => void;
   /** agent 的「找相关服务」请求；没有过就是 null。 */
@@ -104,12 +105,13 @@ export function useWorkspaceViewState(
   );
 
   const openPanel = useCallback(
-    (panel: WorkspacePanelId) => {
-      if (panel === "bay" ? !bayOn : !chatOn) return;
+    (panel: WorkspacePanelId | WorkspaceManagedPanelId) => {
+      const enabled = panel === "bay" ? bayOn : panel === "leochat" ? chatOn : panels[panel] !== false;
+      if (!enabled) return;
       if (panel === "bay") setBayRequest(null);
       setLayer(panel);
     },
-    [bayOn, chatOn, setLayer],
+    [bayOn, chatOn, panels, setLayer],
   );
 
   const goHome = useCallback(() => {

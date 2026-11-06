@@ -15,6 +15,7 @@ import {
   normalizeWorkspaceAction,
   isLegacyMaterialsId,
   type WorkspaceActionEnvelope,
+  type WorkspaceManagedPanelId,
   type WorkspacePanelId,
   type WorkspaceSlotId,
 } from "./workspace-actions";
@@ -32,7 +33,7 @@ export interface WorkspaceSlotStateInput {
 }
 
 /** 右侧栏此刻给人看的是哪一层。`slot` = 看 `selected`。 */
-export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId;
+export type WorkspaceLayer = "home" | "slot" | WorkspacePanelId | WorkspaceManagedPanelId;
 
 /** 受控 `active` 的这两个值表示「卡片首页」，不对应任何槽位。 */
 export function isWorkspaceHomeId(id: string | undefined): boolean {
@@ -55,6 +56,8 @@ export interface WorkspaceSlotState {
   setLayer: (layer: WorkspaceLayer) => void;
   /** Latest LeoBay request, including normalized legacy material inputs. */
   panelAction: WorkspaceActionEnvelope | null;
+  /** Last V2 managed-page action (settings section/prefill, device target, etc.). */
+  pageAction: WorkspaceActionEnvelope | null;
 }
 
 export function useWorkspaceSlotState({
@@ -103,6 +106,7 @@ export function useWorkspaceSlotState({
         ? { nonce: "legacy-materials:initial", action: { version: 1, tab: "bay", view: "materials" } }
         : null,
     );
+  const [pageAction, setPageAction] = useState<WorkspaceActionEnvelope | null>(null);
   // ── 显式请求 vs 会话恢复的优先级 ────────────────────────────────────────────
   // 深链在挂载那一刻**同步**派发（`useCatalogDeepLink` → 总线 → 下面的监听），可是会话
   // 快照是**异步**回来的（`FunctionAgentChat` 取到 session 才调 `restoreSharedUi`）。
@@ -295,6 +299,19 @@ export function useWorkspaceSlotState({
         setPanelAction(envelope);
         return;
       }
+      if (action.tab === "devices" || action.tab === "projects" || action.tab === "settings" || action.tab === "leochat") {
+        setPageAction(envelope);
+        setLayer(action.tab);
+        return;
+      }
+      // Legacy browser receipts now open Devices → cloud browser. The old
+      // standalone browser slot remains available to ordinary user navigation.
+      if (action.tab === "browser") {
+        const managed = { ...action, version: 2 as const, tab: "devices" as const, section: "cloud-browser" };
+        setPageAction({ nonce: envelope.nonce, action: managed });
+        setLayer("devices");
+        return;
+      }
       setWorkspaceAction(envelope);
       pinExplicitSlot(action.tab);
       applySelection(action.tab);
@@ -311,6 +328,16 @@ export function useWorkspaceSlotState({
     if (action.tab === "bay") {
       if (action.view === "materials") pinExplicitSlot("materials");
       setPanelAction({ nonce: externalAction.nonce, action });
+      return;
+    }
+    if (action.tab === "devices" || action.tab === "projects" || action.tab === "settings" || action.tab === "leochat") {
+      setPageAction({ nonce: externalAction.nonce, action });
+      setLayer(action.tab);
+      return;
+    }
+    if (action.tab === "browser") {
+      setPageAction({ nonce: externalAction.nonce, action: { ...action, version: 2 as const, tab: "devices" as const, section: "cloud-browser" } });
+      setLayer("devices");
       return;
     }
     setWorkspaceAction({ nonce: externalAction.nonce, action });
@@ -338,5 +365,6 @@ export function useWorkspaceSlotState({
     layer,
     setLayer,
     panelAction,
+    pageAction,
   };
 }

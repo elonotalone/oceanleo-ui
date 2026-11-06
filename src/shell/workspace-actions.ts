@@ -16,13 +16,14 @@ export type WorkspaceSlotId =
 export type WorkspacePanelId = "bay" | "leochat";
 
 /** 右侧栏此刻显示的是什么：卡片首页、某个槽位，或上面那两块之一。 */
-export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId;
+export type WorkspaceManagedPanelId = "devices" | "projects" | "settings";
+export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId | WorkspaceManagedPanelId;
 
 /**
  * 一条 action 能指向哪里：可见槽位及 materials 兼容输入，加上 `bay`（agent 的「找真人」工具让右侧栏显示相关服务）。
  * LeoChat 没有 agent 入口，所以不在这里。
  */
-export type WorkspaceActionTab = WorkspaceSlotId | "bay";
+export type WorkspaceActionTab = WorkspaceSlotId | "bay" | WorkspaceManagedPanelId | "leochat";
 
 /**
  * What the receiver should do with `itemId` once it resolves it.
@@ -44,7 +45,7 @@ const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
 ] as const;
 
 export interface WorkspaceActionV1 {
-  version: 1;
+  version: 1 | 2;
   tab: WorkspaceActionTab;
   query?: string;
   category?: string;
@@ -59,14 +60,31 @@ export interface WorkspaceActionV1 {
   revisionId?: string;
   /** Library collection filter on top of `category` (only `uploaded` exists). */
   filter?: WorkspaceLibraryFilter;
+  /** V2 capability-pack targets; absent on legacy receipts. */
+  section?: string;
+  prefill?: WorkspaceActionPrefill;
+  deviceId?: string;
 }
+
+export type WorkspaceActionPrefill = Readonly<Record<string, string>>;
+
+/** Version 2 adds the capability-pack page targets while keeping V1 fields. */
+export interface WorkspaceActionV2 extends Omit<WorkspaceActionV1, "version"> {
+  version: 2;
+  tab: WorkspaceActionTab;
+  section?: string;
+  prefill?: WorkspaceActionPrefill;
+  deviceId?: string;
+}
+
+export type WorkspaceAction = WorkspaceActionV1;
 
 /** `uploaded` = the Library "Uploaded" filter (files the user uploaded, any type). */
 export type WorkspaceLibraryFilter = "uploaded";
 
 export interface WorkspaceActionEnvelope {
   nonce: string;
-  action: WorkspaceActionV1;
+  action: WorkspaceAction;
 }
 
 /** agent 让右侧栏里的 LeoBay 找相关服务。`nonce` 变了才算一条新请求。 */
@@ -106,6 +124,10 @@ export const WORKSPACE_ACTION_TABS: readonly WorkspaceActionTab[] = [
   ...FIXED_WORKSPACE_SLOTS,
   "materials", // Accepted input only; normalized to the LeoBay material view.
   "bay",
+  "devices",
+  "projects",
+  "settings",
+  "leochat",
 ] as const;
 
 export function isWorkspaceSlotId(value: unknown): value is WorkspaceSlotId {
@@ -157,7 +179,8 @@ export function normalizeWorkspaceAction(
 ): WorkspaceActionV1 | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const raw = value as Record<string, unknown>;
-  if (Number(raw.version) !== 1) return null;
+  const version = Number(raw.version);
+  if (version !== 1 && version !== 2) return null;
   const tab = String(raw.tab || "") as WorkspaceActionTab;
   if (!WORKSPACE_ACTION_TABS.includes(tab)) return null;
   const clean = (key: string, max = 500) => {
@@ -185,8 +208,16 @@ export function normalizeWorkspaceAction(
       : undefined;
   const entryId = clean("entryId", 300);
   const filter = clean("filter", 16) === "uploaded" ? "uploaded" as const : undefined;
+  const section = version === 2 ? clean("section", 80) : undefined;
+  const deviceId = version === 2 ? clean("deviceId", 300) : undefined;
+  const prefill = version === 2 && raw.prefill && typeof raw.prefill === "object" && !Array.isArray(raw.prefill)
+    ? Object.fromEntries(Object.entries(raw.prefill as Record<string, unknown>)
+      .filter(([key, item]) => /^[A-Za-z][A-Za-z0-9_-]{0,40}$/.test(key) && typeof item === "string")
+      .map(([key, item]) => [key, String(item).trim().slice(0, 300)])
+      .filter(([, item]) => item))
+    : undefined;
   return {
-    version: 1,
+    version: version as 1 | 2,
     tab: tab === "materials" ? "bay" : tab,
     ...(tab === "materials" || raw.view === "materials" ? { view: "materials" as const } : {}),
     ...(clean("revisionId", 300) ? { revisionId: clean("revisionId", 300) } : {}),
@@ -198,7 +229,10 @@ export function normalizeWorkspaceAction(
     ...(entryId ? { entryId } : {}),
     ...(intent ? { intent } : {}),
     ...(filter ? { filter } : {}),
-  };
+    ...(section ? { section } : {}),
+    ...(prefill && Object.keys(prefill).length ? { prefill } : {}),
+    ...(deviceId ? { deviceId } : {}),
+  } as WorkspaceActionV1;
 }
 
 

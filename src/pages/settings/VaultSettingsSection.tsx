@@ -10,6 +10,8 @@ import {
 } from "../../lib/vault-api";
 import { sealVaultValue } from "../../lib/vault-seal";
 
+export type VaultPrefill = { name?: string; kind?: string; target?: string };
+
 const FIELD = "w-full rounded-lg border border-neutral-200 bg-transparent px-3 py-2 text-[13px] outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100 dark:border-neutral-700";
 const QUIET = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[13px] transition hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:hover:bg-neutral-800";
 const PRIMARY = "rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900";
@@ -141,7 +143,7 @@ export function vaultErrorText(cause: unknown, text: (zh: string, en: string) =>
   }
 }
 
-export function VaultSettingsSection({ accent }: { accent?: string } = {}) {
+export function VaultSettingsSection({ accent, prefill }: { accent?: string; prefill?: VaultPrefill } = {}) {
   const text = useVaultText();
   const [identity, setIdentity] = useState<{ loading: boolean; uid: string | null }>({ loading: true, uid: null });
   useEffect(() => {
@@ -161,10 +163,10 @@ export function VaultSettingsSection({ accent }: { accent?: string } = {}) {
   }, []);
   if (identity.loading) return <p role="status" className="text-[13px] text-neutral-500">{text("正在读取保险箱…", "Loading vault…")}</p>;
   if (!identity.uid) return <p role="status" className="text-[13px] text-neutral-500">{text("登录后可管理你的保险箱。", "Sign in to manage your vault.")}</p>;
-  return <SignedInVault key={identity.uid} uid={identity.uid} accent={accent} />;
+  return <SignedInVault key={identity.uid} uid={identity.uid} accent={accent} prefill={prefill} />;
 }
 
-function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
+function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string; prefill?: VaultPrefill }) {
   const text = useVaultText();
   const latestText = useRef(text);
   latestText.current = text;
@@ -176,7 +178,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [committed, setCommitted] = useState(false);
-  const [editor, setEditor] = useState<{ secret?: VaultSecret } | null>(null);
+  const [editor, setEditor] = useState<{ secret?: VaultSecret; prefill?: VaultPrefill } | null>(null);
   const [deleting, setDeleting] = useState<VaultSecret | null>(null);
   const [browserGrant, setBrowserGrant] = useState<string | null>(null);
   const [removingBrowser, setRemovingBrowser] = useState<string | null>(null);
@@ -214,6 +216,19 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { active.current = false; controller.abort(); };
   }, [refresh, checkFence, noteFence]);
+
+  // Capability actions can name an existing item or request a new one. Never
+  // accept a value in the action; the editor's password field remains empty.
+  const appliedPrefill = useRef("");
+  useEffect(() => {
+    if (!prefill || loading || !status?.enabled) return;
+    const key = `${prefill.name || ""}\u0000${prefill.kind || ""}\u0000${prefill.target || ""}`;
+    if (appliedPrefill.current === key) return;
+    appliedPrefill.current = key;
+    const existing = prefill.name ? status.secrets.find((item) => item.name === prefill.name) : undefined;
+    setEditor(existing ? { secret: existing } : { prefill });
+    setError("");
+  }, [loading, prefill, status]);
 
   async function recoverCommitted(signal: AbortSignal) {
     if (signal.aborted) return;
@@ -277,7 +292,7 @@ function SignedInVault({ uid, accent }: { uid: string; accent?: string }) {
         <button type="button" className={QUIET} disabled={busy || loading || !!editor || !!browserGrant || status.secrets.length >= status.limits.max_secrets} onClick={() => { setEditor({}); setDeleting(null); setRemovingBrowser(null); setError(""); }}>{text("添加", "Add item")}</button>
       </div>
       {status.secrets.length >= status.limits.max_secrets && <p role="status" className="text-neutral-500">{text("保险箱已达到容量上限。", "Your vault has reached its item limit.")}</p>}
-      {editor && <SecretEditor key={editor.secret?.id || "new"} uid={uid} secret={editor.secret} accent={accent} maxValueBytes={status.limits.max_value_bytes}
+      {editor && <SecretEditor key={editor.secret?.id || "new"} uid={uid} secret={editor.secret} prefill={editor.prefill} accent={accent} maxValueBytes={status.limits.max_value_bytes}
         onClose={() => setEditor(null)} onSaving={setBusy} onSaved={async () => {
           const signal = lifetime.current?.signal;
           setEditor(null);
@@ -438,14 +453,14 @@ function ManagedCredentialsSection({ summary }: { summary?: VaultManagedCredenti
   </section>;
 }
 
-function SecretEditor({ uid, secret, maxValueBytes, accent, onClose, onSaved, onSaving, onError }: {
-  uid: string; secret?: VaultSecret; maxValueBytes: number; accent?: string;
+function SecretEditor({ uid, secret, prefill, maxValueBytes, accent, onClose, onSaved, onSaving, onError }: {
+  uid: string; secret?: VaultSecret; prefill?: VaultPrefill; maxValueBytes: number; accent?: string;
   onClose: () => void; onSaved: () => Promise<void>; onSaving: (saving: boolean) => void; onError: (cause: unknown) => Promise<void>;
 }) {
   const text = useVaultText();
   const id = useId();
-  const [name, setName] = useState(secret?.name || "");
-  const [kind, setKind] = useState<VaultKind>(secret?.kind || "api_key");
+  const [name, setName] = useState(secret?.name || prefill?.name || "");
+  const [kind, setKind] = useState<VaultKind>(secret?.kind || (prefill?.kind === "password" || prefill?.kind === "text" ? prefill.kind : "api_key"));
   const [username, setUsername] = useState(secret?.username || "");
   const [description, setDescription] = useState(secret?.description || "");
   const [value, setValue] = useState("");
@@ -504,8 +519,9 @@ function SecretEditor({ uid, secret, maxValueBytes, accent, onClose, onSaved, on
         <option value="api_key">{text("API 密钥 / 令牌", "API key / token")}</option><option value="password">{text("密码", "Password")}</option><option value="text">{text("私密文本 / 服务引用", "Private text / service reference")}</option>
       </select></label>
       {kind === "password" && <label className="block space-y-1" htmlFor={`${id}-username`}><span>{text("用户名", "Username")}</span><input id={`${id}-username`} className={FIELD} autoComplete="off" value={username} maxLength={200} onChange={(event) => setUsername(event.target.value)} /></label>}
+      {prefill?.target && <label className="block space-y-1" htmlFor={`${id}-target`}><span>{text("授权目标", "Target")}</span><input id={`${id}-target`} data-vault-prefill-target value={prefill.target} className={FIELD} readOnly /></label>}
       <label className="block space-y-1" htmlFor={`${id}-value`}><span>{secret ? text("新密钥值", "New secret value") : text("密钥值", "Secret value")}</span>
-        <input id={`${id}-value`} type="password" className={FIELD} value={value} onChange={(event) => setValue(event.target.value)} autoComplete="new-password" autoCapitalize="off" spellCheck={false} aria-invalid={invalid} aria-describedby={`${id}-hint`} required />
+        <input id={`${id}-value`} type="password" className={FIELD} value={value} onChange={(event) => setValue(event.target.value)} autoFocus={!secret} autoComplete="new-password" autoCapitalize="off" spellCheck={false} aria-invalid={invalid} aria-describedby={`${id}-hint`} required />
       </label>
       <p id={`${id}-hint`} className="text-[12px] leading-relaxed text-neutral-500">{text("只在此输入，浏览器密封后保存；提交或取消后立即清空，保存后无法查看原值。", "Entered here only, sealed in your browser before saving, and cleared on submit or cancel. Saved values cannot be displayed.")}</p>
       {secret && <p className="text-[12px] text-neutral-500">{text("所有引用会使用更新后的版本，无需重新添加到各个网站。", "Every reference follows the new version; you do not need to add it to each website again.")}</p>}

@@ -3,7 +3,7 @@
 import type { ReactElement, ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { useImEnabled } from "../lib/im/client";
-import type { WorkspacePanelId, WorkspaceSlotId } from "./workspace-actions";
+import type { WorkspacePanelId, WorkspaceSlotId, WorkspaceManagedPanelId } from "./workspace-actions";
 import { WORKSPACE_SLOT_LABELS } from "./result-canvas-view";
 import { BayIcon } from "./bay/shell/bay-icons";
 import { useImUnread } from "./messages/realtime/hooks";
@@ -17,6 +17,12 @@ const SLOT_DESC: Record<WorkspaceSlotId, string> = {
   materials: "平台精选的模板和素材",
   mine: "你保存和上传的文件",
   browser: "看 AI 在浏览器里的操作",
+};
+
+const MANAGED_PAGE_DESC: Record<WorkspaceManagedPanelId, string> = {
+  devices: "你的电脑、云电脑和云端浏览器",
+  projects: "管理项目和任务归属",
+  settings: "偏好、保险箱和连接器",
 };
 
 function LineIcon({ children }: { children: ReactNode }): ReactElement {
@@ -133,7 +139,7 @@ export interface WorkspaceHomeProps {
   slots: readonly WorkspaceSlotId[];
   panels: { bay: boolean; leochat: boolean };
   onOpenSlot: (slot: WorkspaceSlotId) => void;
-  onOpenPanel: (panel: WorkspacePanelId) => void;
+  onOpenPanel: (panel: WorkspacePanelId | WorkspaceManagedPanelId) => void;
   previewCount?: number;
 }
 
@@ -150,6 +156,9 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
       className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] content-start gap-3 p-3"
     >
       {props.slots.filter((id) => id !== "materials").map((id) => (
+        // Browser is now a child of Devices. Keep the slot mounted for legacy
+        // receipts, but do not present a second card for it.
+        id === "browser" ? null : (
         <WorkspaceCard
           key={id}
           id={id}
@@ -158,6 +167,18 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
           icon={slotIcon(id)}
           count={id === "preview" ? previewCount : 0}
           onClick={() => props.onOpenSlot(id)}
+        />
+        )
+      ))}
+      {(Object.keys(MANAGED_PAGE_DESC) as WorkspaceManagedPanelId[]).map((id) => (
+        <WorkspaceCard
+          key={id}
+          id={id}
+          title={tt(id === "devices" ? "Devices" : id === "projects" ? "Projects" : "Settings")}
+          description={tt(MANAGED_PAGE_DESC[id])}
+          icon={<LineIcon><path d={id === "devices" ? "M4 6h16M4 12h16M4 18h16" : id === "projects" ? "M4 5h16v14H4zM8 9h8M8 13h5" : "M12 3.5l1.8 1.1 2.1-.2.8 2 1.8 1.2-.8 2 .8 2-1.8 1.2-.8 2-2.1-.2L12 21l-1.8-1.1-2.1.2-.8-2-1.8-1.2.8-2-.8-2 1.8-1.2.8-2 2.1.2z"} /></LineIcon>}
+          count={0}
+          onClick={() => props.onOpenPanel(id)}
         />
       ))}
       {props.panels.bay ? (

@@ -190,7 +190,7 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
   {
     id: "devices",
     href: "/devices",
-    labelKey: "我的设备",
+    labelKey: "Devices",
     labelSource: "ui",
     iconId: "device",
     placements: { portal: { order: 35 } },

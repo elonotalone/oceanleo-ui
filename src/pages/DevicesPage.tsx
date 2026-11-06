@@ -318,7 +318,7 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
   const accountGeneration = generation.current;
 
   return <div className={variant === "pane" ? "min-h-0" : "mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8"} data-oceanleo-devices-page data-devices-pane={variant === "pane" ? "" : undefined}>
-    <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("我的设备")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div>{!loginRequired && <button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button>}</header>
+    <header className="flex items-center justify-between gap-4"><div><h1 className="text-2xl font-semibold tracking-tight text-neutral-900">{tt("Devices")}</h1><p className="mt-2 text-sm text-neutral-500">{tt("你的电脑与云电脑")}</p></div>{!loginRequired && <button type="button" className={DEVICE_BUTTON} onClick={() => setAdding(true)}><span aria-hidden="true">＋</span>{tt("添加设备")}</button>}</header>
     {loginRequired && <div role="status" className="mt-5 flex items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm"><span>{tt("请先登录")}</span><button type="button" className={DEVICE_PRIMARY_BUTTON} onClick={() => setShowAuth(true)}>{tt("登录")}</button></div>}
     {pageError && <p role="alert" data-device-import-error={legacyImportError || undefined} className="mt-5 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(pageError)}</p>}
     {pageNotice && <p role="status" className="mt-5 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600">{tt(pageNotice)}</p>}

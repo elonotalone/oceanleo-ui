@@ -48,6 +48,7 @@ import {
   type LeoChatPanelRequestDetail,
 } from "./leochat/LeoChatButton";
 import { WorkspaceHome, WorkspaceViewHeader } from "./result-canvas-home";
+import { DevicesWorkspacePanel, ProjectsWorkspacePanel, SettingsWorkspacePanel } from "./workspace-panels";
 import {
   useActiveAppCapability,
   useAppCapabilityControls,
@@ -538,6 +539,7 @@ export function ResultCanvas({
     layer,
     setLayer,
     panelAction,
+    pageAction,
   } = useWorkspaceSlotState({
     active,
     showTemplate,
@@ -550,7 +552,7 @@ export function ResultCanvas({
   });
   const bayOn = useBayEnabled();
   const imOn = useImEnabled();
-  const panels = useMemo(() => ({ bay: bayOn, leochat: imOn }), [bayOn, imOn]);
+  const panels = useMemo(() => ({ bay: bayOn, leochat: imOn, devices: true, projects: true, settings: true }), [bayOn, imOn]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat } = useWorkspaceViewState({
@@ -622,7 +624,7 @@ export function ResultCanvas({
   const [chatVisited, setChatVisited] = useState(false);
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
   useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
-  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : tt(WORKSPACE_SLOT_LABELS[view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("Projects") : view === "settings" ? tt("Settings") : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -651,6 +653,12 @@ export function ResultCanvas({
   const browserContent = (
     <CloudBrowserPanel taskId={effectiveTaskId} accent={accent} />
   );
+  const managedPageAction = pageAction?.action && "version" in pageAction.action && pageAction.action.version === 2 ? pageAction.action : null;
+  const managedContent: Record<"devices" | "projects" | "settings", ReactNode> = {
+    devices: <DevicesWorkspacePanel section={managedPageAction?.tab === "devices" ? managedPageAction.section : undefined} deviceId={managedPageAction?.deviceId} taskId={effectiveTaskId} />,
+    projects: <ProjectsWorkspacePanel />,
+    settings: <SettingsWorkspacePanel section={managedPageAction?.tab === "settings" ? managedPageAction.section : undefined} prefill={managedPageAction?.tab === "settings" ? managedPageAction.prefill : undefined} />,
+  };
   const content: Record<WorkspaceSlotId, ReactNode> = {
     template: (
       <div className="flex h-full min-h-0 flex-col overflow-hidden p-3">
@@ -926,6 +934,11 @@ export function ResultCanvas({
                hidden={!chatPanelActive} inert={!chatPanelActive || undefined} className="h-full min-h-0 overflow-hidden">
             <LeoChatPanel active={chatPanelActive} request={chatRequest}
                           onBackChange={(back) => { chatBackRef.current = back; }} onEvicted={goHome} />
+          </div>
+        ) : null}
+        {(view === "devices" || view === "projects" || view === "settings") ? (
+          <div data-workspace-managed-panel={view} className="h-full min-h-0 overflow-auto">
+            {managedContent[view]}
           </div>
         ) : null}
       </div>

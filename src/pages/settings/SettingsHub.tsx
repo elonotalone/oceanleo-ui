@@ -49,6 +49,7 @@ import {
   type BillingPaneView,
 } from "./settings-tabs";
 import type { AccountSectionProfile } from "./sections/AccountSection";
+import type { VaultPrefill } from "./VaultSettingsSection";
 
 export type SettingsSection = {
   id: string;
@@ -86,6 +87,8 @@ export type SettingsHubProps = {
   onSignedOut?: () => void;
   currentHref?: string;
   guestPrompt?: "auth" | "notice";
+  /** Capability-pack request; value is deliberately not part of this shape. */
+  vaultPrefill?: VaultPrefill;
 };
 
 const SKIP_MENU_HREFS = new Set([
@@ -270,6 +273,7 @@ export function SettingsHub({
   onSignedOut,
   currentHref,
   guestPrompt = "auth",
+  vaultPrefill,
 }: SettingsHubProps) {
   const tt = useUI();
   const localWorkspace = useLocalWorkspace();
@@ -502,7 +506,7 @@ export function SettingsHub({
         id: "vault",
         group: "settings",
         label: tt("密钥库"),
-        render: () => <Suspense fallback={<PaneLoading />}><VaultSettingsSection /></Suspense>,
+        render: () => <Suspense fallback={<PaneLoading />}><VaultSettingsSection prefill={vaultPrefill} /></Suspense>,
       },
       {
         id: "cloud-browser",
@@ -631,6 +635,7 @@ export function SettingsHub({
     localWorkspace,
     variant,
     onClose,
+    vaultPrefill,
   ]);
 
   const groups = useMemo<SettingsNavGroup[]>(() => {
