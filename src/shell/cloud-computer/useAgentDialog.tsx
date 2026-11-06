@@ -4,7 +4,7 @@ export type {
   AgentProgram,
   AgentDialogController,
   AgentDialogMessage,
-} from "./legacy-dialog/types";
+} from "./agent-dialog/types";
 
-export { useAgentDialog, AgentDialogPane } from "./legacy-dialog";
-export type { AgentDialogControllerV2 } from "./legacy-dialog";
+export { useAgentDialog, AgentDialogPane } from "./agent-dialog";
+export type { AgentDialogControllerV2 } from "./agent-dialog";

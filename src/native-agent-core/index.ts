@@ -1,7 +1,7 @@
 /**
  * Shared native-agent protocol for web, React Native and Harmony.
  * Keep this entry and its complete dependency closure platform independent.
- * Browser controller contracts stay in legacy-dialog/types.ts.
+ * Browser controller contracts stay in agent-dialog/types.ts.
  */
 
 // Native-agent wire messages and conversation state shared by every client.
@@ -371,17 +371,17 @@ export {
   applyDialog, initialDialogState, turnKey, isLiveTurn, busySessionsFor, nativeActiveTurn, nativeTurnFinishing, applyNativeTurnStates,
   idleStop, isCancelResult, newStopId, stopMachine, stopErrorText,
   STOP_REPLY_TIMEOUT_MS, dropUnsentEcho, isLinkEvidenceFrame, restoreNativeMessages,
-} from "../shell/cloud-computer/legacy-dialog/reduce";
+} from "../shell/cloud-computer/agent-dialog/reduce";
 export type {
   DialogEvent, CancelResult, StopPhase, StopErrorReason, StopState, StopEvent,
-} from "../shell/cloud-computer/legacy-dialog/reduce";
-export { mergeNativeDialogPages, dialogToAgentMessages, isNeutralNotice } from "../shell/task-native/map-dialog";
+} from "../shell/cloud-computer/agent-dialog/reduce";
+export { mergeNativeDialogPages, dialogToAgentMessages, isNeutralNotice } from "../shell/native-thread/map-dialog";
 export type {
   MapTranslate, DialogMapOptions, NativePermissionMeta, NativeQuestionMeta,
-} from "../shell/task-native/map-dialog";
+} from "../shell/native-thread/map-dialog";
 export {
   mergeSavedAndLive, mergeTranscriptPages, mapNativeTranscript, mergeNativeThreadMessages,
-} from "../shell/task-native/merge";
+} from "../shell/native-thread/merge";
 export type {
   NativeMergeSource, NativeMergeResult, NativeThreadSource,
-} from "../shell/task-native/merge";
+} from "../shell/native-thread/merge";

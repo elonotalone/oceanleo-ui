@@ -29,7 +29,7 @@ export function AgentDialogPane({
   return (
     <div
       className={`relative flex min-h-0 flex-1 flex-col ${tone.page}`}
-      data-oceanleo-cc-legacy-dialog-pane=""
+      data-oceanleo-cc-agent-dialog-pane=""
       data-oceanleo-cc-reconnect={dialog.offline ? "retrying" : "on"}
     >
       <div className={`flex items-center justify-between gap-2 border-b px-3 py-2 ${tone.border}`}>

@@ -14,7 +14,7 @@
 
 import type { NativeAgentMessage as AgentMessage, NativeAgentAttachment } from "../../native-agent-core/index";
 export type { NativeAgentAttachment } from "../../native-agent-core/index";
-import { isReconnectingNotice, noticeCopy, visibleNoticeCopy } from "../cloud-computer/legacy-dialog/notice";
+import { isReconnectingNotice, noticeCopy, visibleNoticeCopy } from "../cloud-computer/agent-dialog/notice";
 import type {
   AgentDialogMessage,
   PermissionOption,
@@ -23,7 +23,7 @@ import type {
   UserMessageAttachment,
   NativeFramePosition,
 } from "../../native-agent-core/index";
-import { mergeLocalPreviews } from "../cloud-computer/legacy-dialog/message-attachments";
+import { mergeLocalPreviews } from "../cloud-computer/agent-dialog/message-attachments";
 import { mergeNativePosition, orderNativeFrames } from "./order";
 
 export type MapTranslate = (zh: string, vars?: Record<string, string | number>) => string;

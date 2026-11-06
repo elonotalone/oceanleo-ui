@@ -16,7 +16,7 @@
 //   dropped on sign-out): a task opened before paints from it at once and the
 //   page reads it again in the background. Only the newest messages / first
 //   transcript page are kept on disk.
-// * Transcripts: task-native/transcript-cache (same rules).
+// * Transcripts: native-thread/transcript-cache (same rules).
 // * The first task read asks for the newest `TASK_FIRST_PAGE_MESSAGES` messages
 //   (`message_limit`). A reply that may be cut (as many messages as asked for)
 //   is a partial seed: AgentChat shows it and then reads the whole thread.
@@ -41,7 +41,7 @@ import {
   takeRead,
   type SharedRead,
 } from "./open-cache-core";
-import { prefetchTranscript, readTranscript } from "./task-native/transcript-cache";
+import { prefetchTranscript, readTranscript } from "./native-thread/transcript-cache";
 
 export { PREFETCH_FRESH_MS } from "./open-cache-core";
 

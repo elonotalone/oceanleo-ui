@@ -2,7 +2,7 @@
 // 账号上一次选的「电脑 · 程序」对话显示，不再每次回到云端。只记电脑 + 程序：
 // 绝不记 session / task id —— 新任务不能接到旧对话上。选择失效（电脑删了、
 // 程序不在）时由调用方清掉并回落到 OceanLeo 目标（默认云端）。
-import type { ConversationTarget, NativeProgram } from "../task-native/types";
+import type { ConversationTarget, NativeProgram } from "../native-thread/types";
 
 export type RememberedNativeChat = {
   kind: "native";

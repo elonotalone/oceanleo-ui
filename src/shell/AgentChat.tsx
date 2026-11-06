@@ -59,8 +59,8 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // One UI system for computer conversations (redo 2026-10-30): a native
 // Codex/Claude/Cursor/Hermes conversation renders through this same stream and
 // LeoComposer; CLI/terminal show the host-styled surface with the same dock below.
-import { NativeSetupRequest, useNativeThread, type NativeThread } from "./task-native";
-import type { ConversationTarget, NativeProgram } from "./task-native/types";
+import { NativeSetupRequest, useNativeThread, type NativeThread } from "./native-thread";
+import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
 import { NativeTerminalSurface } from "./cloud-computer/native-surface";
 import type { Computer } from "../lib/cloud-computer-api";
@@ -87,7 +87,7 @@ import {
 import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
-import { PROGRAM_LABEL } from "./cloud-computer/legacy-dialog/types";
+import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
 import {
   idleStop,
   newStopId,
@@ -96,8 +96,8 @@ import {
   stopMachine,
   type StopEvent,
   type StopState,
-} from "./cloud-computer/legacy-dialog/reduce";
-import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./task-native/merge";
+} from "./cloud-computer/agent-dialog/reduce";
+import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./native-thread/merge";
 import { nativeDeliveryStatus, nativeFinishingItemKey, nativeLastActivity, nativeThinkingVisible } from "./native-chat-presentation";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。

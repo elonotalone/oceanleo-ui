@@ -6492,6 +6492,18 @@
         },
         {
           "kind": "named",
+          "name": "ServerPage",
+          "importedName": "ServerPage",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "named",
+          "name": "serverPageHref",
+          "importedName": "serverPageHref",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "named",
           "name": "setArtifactFavorite",
           "importedName": "setArtifactFavorite",
           "source": "./artifact-client"
@@ -6861,6 +6873,12 @@
           "name": "useLeoEnabled",
           "importedName": "useLeoEnabled",
           "source": "./LeoAssistant"
+        },
+        {
+          "kind": "named",
+          "name": "useNativeThread",
+          "importedName": "useNativeThread",
+          "source": "./native-thread"
         },
         {
           "kind": "named",
@@ -7298,6 +7316,12 @@
         },
         {
           "kind": "type",
+          "name": "AgentChatNativeLaunch",
+          "importedName": "AgentChatNativeLaunch",
+          "source": "./AgentChat"
+        },
+        {
+          "kind": "type",
           "name": "AgentChatProps",
           "importedName": "AgentChatProps",
           "source": "./AgentChat"
@@ -7520,6 +7544,12 @@
         },
         {
           "kind": "type",
+          "name": "NativeThread",
+          "importedName": "NativeThread",
+          "source": "./native-thread"
+        },
+        {
+          "kind": "type",
           "name": "OperatorConsoleProps",
           "importedName": "OperatorConsoleProps",
           "source": "./OperatorConsole"
@@ -7607,6 +7637,24 @@
           "name": "SelectionToolbarProps",
           "importedName": "SelectionToolbarProps",
           "source": "./SelectionToolbar"
+        },
+        {
+          "kind": "type",
+          "name": "ServerPageCard",
+          "importedName": "ServerPageCard",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "type",
+          "name": "ServerPageHrefOptions",
+          "importedName": "ServerPageHrefOptions",
+          "source": "./cloud-computer/server-page"
+        },
+        {
+          "kind": "type",
+          "name": "ServerPageProps",
+          "importedName": "ServerPageProps",
+          "source": "./cloud-computer/server-page"
         },
         {
           "kind": "type",

@@ -20,18 +20,18 @@ import {
   useMachineSettings,
 } from "../cloud-computer/native-surface/computer-settings-rows";
 import type { NativeDialog } from "../cloud-computer/native-surface/ProgramAccess";
-import { isWsProgram } from "../cloud-computer/legacy-dialog/parse";
-import { PROGRAM_LABEL } from "../cloud-computer/legacy-dialog/types";
-import { modelDisplayName, modelParamOptions, providerLabel } from "../cloud-computer/legacy-dialog/notice";
-import { modelControls } from "../cloud-computer/legacy-dialog/model-controls";
+import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
+import { PROGRAM_LABEL } from "../cloud-computer/agent-dialog/types";
+import { modelDisplayName, modelParamOptions, providerLabel } from "../cloud-computer/agent-dialog/notice";
+import { modelControls } from "../cloud-computer/agent-dialog/model-controls";
 import {
   coerceOptionValue,
   optionCurrentWire,
   readModelParamMemory,
   rememberModelParam,
   restoresForModel,
-} from "../cloud-computer/legacy-dialog/model-param-memory";
-import type { AgentDialogController, DialogConfigOption, DialogModel, ModeOption } from "../cloud-computer/legacy-dialog/types";
+} from "../cloud-computer/agent-dialog/model-param-memory";
+import type { AgentDialogController, DialogConfigOption, DialogModel, ModeOption } from "../cloud-computer/agent-dialog/types";
 
 export type NativeEffortChoices = { current: string; options: { value: string; name: string }[] };
 

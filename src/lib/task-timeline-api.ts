@@ -35,7 +35,7 @@ export type TaskLocalMessageInput = {
 export type TaskSessionSummary = { id: string; program: TaskProgram | null; run_status: string; created_at: string };
 export type TaskRequest = { id: string; kind: "permission" | "question"; [key: string]: unknown };
 export type TaskState = {
-  status: "idle" | "working" | "waiting_user" | "queued" | "stopping" | "stopped" | "failed" | "offline" | "saving_delayed";
+  status: "idle" | "working" | "waiting_user" | "queued" | "stopping" | "stopped" | "failed" | "offline";
   program: TaskProgram | null;
   session_id: string | null;
   since: string | null;
@@ -45,8 +45,6 @@ export type TaskState = {
   reason: string | null;
   pending_stop: boolean;
   computer: { id: string | null; online: boolean };
-  /** True while the gateway is streaming but has not durably saved the tail. */
-  saving_delayed?: boolean;
 };
 export type TimelinePage = {
   task_id: string;
@@ -63,8 +61,6 @@ export type TaskMessageInput = {
   attachments?: unknown[];
   model?: string;
   mode?: string;
-  effort?: string;
-  fast?: boolean;
   client_message_id?: string;
 };
 export type TaskCommandResponse = { accepted?: boolean; delivery?: "started" | "injected" | "queued"; session_id?: string; entry_cursor?: string; task_id?: string; state?: TaskState; ok?: boolean };
@@ -80,13 +76,12 @@ export type TaskLiveEvent =
   | { type: "entries"; entries: TaskTimelineEntry[] }
   | ({ type: "live" } & TaskTimelineLiveFrame)
   | { type: "state"; state: TaskState }
-  | { type: "error"; code?: string; message?: string; detail?: unknown }
   | { type: "reset" }
   | { type: "ping" };
 
 export type TaskTimelineLiveStatus = "connecting" | "connected" | "reconnecting";
 
-/** Auth matches task timeline: bearer token in the WebSocket query string. */
+/** Auth matches agent-dialog: bearer token in the WebSocket query string. */
 export async function taskTimelineWsUrl(taskId: string, after?: string): Promise<string> {
   const token = await accessToken();
   if (!token) throw new Error("未登录");
@@ -187,22 +182,10 @@ export function openTaskTimeline(
       schedule();
     };
   };
-  // The link is back (browser `online`): retry now instead of waiting out the doubled backoff
-  // (an 8 s drop left the reconnecting notice up ~7.5 s after recovery).
-  const reconnectNow = () => {
-    if (closed || reconnectTimer === null) return;
-    clearTimeout(reconnectTimer);
-    reconnectTimer = null;
-    reconnectDelay = 1_000;
-    void connect();
-  };
-  const onlineTarget = typeof window !== "undefined" && typeof window.addEventListener === "function" ? window : null;
-  onlineTarget?.addEventListener("online", reconnectNow);
   onStatus?.("connecting");
   void connect();
   return {
     close: () => {
-      onlineTarget?.removeEventListener("online", reconnectNow);
       closed = true;
       generation += 1;
       if (reconnectTimer !== null) clearTimeout(reconnectTimer);

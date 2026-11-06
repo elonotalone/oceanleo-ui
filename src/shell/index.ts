@@ -551,7 +551,7 @@ export { AgentProgress } from "./AgentProgress";
 // agent 工作界面（左推导 / 右固定五槽位，真实调 /v1/agent/tasks）。
 export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentChatNativeLaunch, type AgentLibraryTabs } from "./AgentChat";
 // Homepage native chat: the composer's prewarmed thread is handed to AgentChat (nativeLaunch).
-export { useNativeThread, type NativeThread } from "./task-native";
+export { useNativeThread, type NativeThread } from "./native-thread";
 // Homepage native chat: files held before the session exists survive a refresh (IndexedDB).
 export { useNativeDraftFiles, clearNativeDraftFiles, libraryAttachmentFile, type NativeDraftFilesHandle } from "./native-draft-files";
 // 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
