@@ -176,8 +176,12 @@ const leoChatPanelStubUrl = dataModule(`
     });
   }
 `);
+const leoChatButtonStubUrl = dataModule(`
+  export const LEOCHAT_PANEL_REQUEST_EVENT = "oceanleo:leochat-panel-request";
+  export function LeoChatButton() { return null; }
+`);
 const imClientStubUrl = dataModule(`
-  export function useImEnabled() { return false; }
+  export function useImEnabled() { return globalThis.__w1BayEnabled !== false; }
 `);
 const imUnreadStubUrl = dataModule(`
   export function useImUnread() { return null; }
@@ -212,6 +216,7 @@ const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   "./bay/shell/bay-state": bayStateStubUrl,
   "./bay/panel": bayPanelStubUrl,
   "./leochat/LeoChatPanel": leoChatPanelStubUrl,
+  "./leochat/LeoChatButton": leoChatButtonStubUrl,
   "../lib/im/client": imClientStubUrl,
   "./messages/realtime/hooks": imUnreadStubUrl,
   "./bay/shell/bay-icons": bayIconsStubUrl,
@@ -268,7 +273,9 @@ test("active=home shows visible slot cards then bay and leochat; showTemplate fa
       "template",
       "preview",
       "mine",
-      "browser",
+      "devices",
+      "projects",
+      "settings",
       "bay",
       "leochat",
     ]);
@@ -285,7 +292,9 @@ test("active=home shows visible slot cards then bay and leochat; showTemplate fa
     assert.deepEqual(cardIds(withoutTemplate.container), [
       "preview",
       "mine",
-      "browser",
+      "devices",
+      "projects",
+      "settings",
       "bay",
       "leochat",
     ]);

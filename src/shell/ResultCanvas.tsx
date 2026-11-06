@@ -2,6 +2,7 @@
 
 import {
   Component,
+  lazy,
   useCallback,
   useEffect,
   useId,
@@ -48,7 +49,7 @@ import {
   type LeoChatPanelRequestDetail,
 } from "./leochat/LeoChatButton";
 import { WorkspaceHome, WorkspaceViewHeader } from "./result-canvas-home";
-import { DevicesWorkspacePanel, ProjectsWorkspacePanel, SettingsWorkspacePanel, getWorkspacePanel } from "./workspace-panels";
+import { getWorkspacePanel } from "./workspace-panels/registry";
 import {
   useActiveAppCapability,
   useAppCapabilityControls,
@@ -101,6 +102,12 @@ import {
 } from "./result-canvas-view";
 
 export { CanvasEmpty, CanvasSubTabs } from "./result-canvas-view";
+
+// Keep the cards light: Devices/Settings pull substantial account and browser
+// code, so load those panels only after the user opens the page.
+const DevicesWorkspacePanel = lazy(() => import("./workspace-panels/DevicesWorkspacePanel").then((module) => ({ default: module.DevicesWorkspacePanel })));
+const ProjectsWorkspacePanel = lazy(() => import("./workspace-panels/ProjectsWorkspacePanel").then((module) => ({ default: module.ProjectsWorkspacePanel })));
+const SettingsWorkspacePanel = lazy(() => import("./workspace-panels/SettingsWorkspacePanel").then((module) => ({ default: module.SettingsWorkspacePanel })));
 
 export interface CanvasTab extends LegacyWorkspaceSurfaceTab {}
 

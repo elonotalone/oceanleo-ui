@@ -183,6 +183,10 @@ export function normalizeWorkspaceAction(
   if (version !== 1 && version !== 2) return null;
   const tab = String(raw.tab || "") as WorkspaceActionTab;
   if (!WORKSPACE_ACTION_TABS.includes(tab)) return null;
+  // Managed capability pages were introduced with V2. Keep the legacy V1
+  // parser's rejection behavior for those names while browser remains a V1
+  // compatibility route.
+  if (version === 1 && ["devices", "projects", "settings", "leochat"].includes(tab)) return null;
   const clean = (key: string, max = 500) => {
     const text = typeof raw[key] === "string" ? String(raw[key]).trim() : "";
     return text ? text.slice(0, max) : undefined;

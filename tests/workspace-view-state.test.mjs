@@ -158,8 +158,8 @@ async function withHarness(initial, run) {
   }
 }
 
-test("action 协议：tab 多认一个 bay，别的值照旧不认；leochat 没有 agent 入口", () => {
-  assert.deepEqual([...WORKSPACE_ACTION_TABS].sort(), [...SLOTS, "bay"].sort());
+test("action 协议：V2 接受 managed pages，V1 slots 与 bay 继续解析", () => {
+  assert.deepEqual([...WORKSPACE_ACTION_TABS].sort(), [...SLOTS, "bay", "devices", "projects", "settings", "leochat"].sort());
   assert.deepEqual(normalizeWorkspaceAction({ version: 1, tab: "bay", query: " 海报 设计 ", category: "design" }), {
     version: 1,
     tab: "bay",
@@ -169,9 +169,9 @@ test("action 协议：tab 多认一个 bay，别的值照旧不认；leochat 没
     url: undefined,
     browserSessionId: undefined,
   });
-  assert.equal(normalizeWorkspaceAction({ version: 1, tab: "leochat" }), null);
+  assert.equal(normalizeWorkspaceAction({ version: 2, tab: "leochat" }).tab, "leochat");
   assert.equal(normalizeWorkspaceAction({ version: 1, tab: "home" }), null);
-  assert.equal(normalizeWorkspaceAction({ version: 2, tab: "bay" }), null);
+  assert.equal(normalizeWorkspaceAction({ version: 2, tab: "devices" }).tab, "devices");
 });
 
 test("对话页（active=home）：先是卡片；点卡片进那一块；返回回到卡片并通知宿主", async () => {
