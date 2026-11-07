@@ -59,6 +59,7 @@ const LEGACY_ALIASES: Record<string, LibraryCategoryId> = {
 const FOLDER_ALIASES: Record<string, "folders"> = {
   folder: "folders",
   文件夹: "folders",
+  文件包: "folders",
 };
 
 export function libraryCategoryForFeature(feature: AdvancedFeatureId): LibraryCategoryId {
@@ -66,7 +67,8 @@ export function libraryCategoryForFeature(feature: AdvancedFeatureId): LibraryCa
 }
 
 /**
- * 「文件夹」类别（skills-overhaul D5，2026-10-24）：技能就是一个装着文件树的条目。
+ * 「文件包」类别（skills-overhaul D5，2026-10-24；2026-11-07 起对用户由「文件夹」改叫「文件包」，
+ * id 仍是 `folders`，旧名「文件夹」作为别名继续可用）：技能就是一个装着文件树的条目。
  * 它**不是**编辑器类别，不进能力矩阵（`ADVANCED_CAPABILITY_MATRIX` 一行不动），
  * 只作为额外类别追加在编辑器类别之后。数据另走 `/v1/folders`（`library-folders.tsx`），
  * `MyLibrary` 的条目永远不会落进这个类别。
@@ -76,8 +78,8 @@ export type LibraryFolderCategoryId = typeof LIBRARY_FOLDER_CATEGORY_ID;
 
 export const LIBRARY_FOLDER_CATEGORY = {
   value: LIBRARY_FOLDER_CATEGORY_ID,
-  label: "文件夹",
-  typeLabel: "文件夹",
+  label: "文件包",
+  typeLabel: "文件包",
   filter: LIBRARY_FOLDER_CATEGORY_ID,
 } as const;
 
@@ -87,7 +89,7 @@ export function isLibraryFolderCategory(value: string | null | undefined): boole
 
 /**
  * 菜单顺序跟能力矩阵走：视频、网站、演示文稿、文档、表格、图片、PDF、音频、视频画布、3D 模型、游戏，
- * 最后是不属于编辑器的「文件夹」。
+ * 最后是不属于编辑器的「文件包」。
  */
 export const LIBRARY_EDITOR_CATEGORIES: readonly {
   value: LibraryCategoryId | LibraryFolderCategoryId;

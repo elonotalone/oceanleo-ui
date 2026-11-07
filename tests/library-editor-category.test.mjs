@@ -20,11 +20,12 @@ const itemFor = (row, overrides = {}) => ({
 // D5（2026-10-23）：菜单是素材类别，顺序与名字由操作员定死。
 const MENU = ["视频", "网站", "演示文稿", "文档", "表格", "图片", "PDF", "音频", "视频画布", "3D 模型", "游戏"];
 
-// skills-overhaul W17（2026-10-24，合同 D5）：编辑器类别之后追加「文件夹」。它不是编辑器、
+// skills-overhaul W17（2026-10-24，合同 D5）：编辑器类别之后追加这个类别。它不是编辑器、
 // 不进能力矩阵，所以只追加在菜单末尾；上面 11 个的顺序与名字不变。
-const FOLDERS = "文件夹";
+// 2026-11-07 UX 波（LU-R）：对用户改叫「文件包」，id / 筛选值仍是 `folders`。
+const FOLDERS = "文件包";
 
-test("the Type menu lists the 11 material categories in order, then 文件夹, with no editor names", () => {
+test("the Type menu lists the 11 material categories in order, then 文件包, with no editor names", () => {
   const rows = taxonomy.LIBRARY_EDITOR_CATEGORIES;
   assert.deepEqual(rows.map((row) => row.typeLabel), [...MENU, FOLDERS]);
   assert.deepEqual(rows.map((row) => row.label), [...MENU, FOLDERS], "the menu label is the type name, never the editor name");
@@ -136,13 +137,14 @@ test("the folders category stays out of the capability matrix and never captures
   const rows = contract.ADVANCED_CAPABILITY_MATRIX;
   assert.equal(rows.length, 12, "folders is not a capability row");
   assert.equal(rows.some((row) => row.featureId === "folders"), false);
-  for (const alias of ["folders", "folder", "文件夹"]) {
+  for (const alias of ["folders", "folder", "文件夹", "文件包"]) {
     assert.equal(taxonomy.normalizeLibraryCategory(alias), "folders", alias);
     assert.equal(taxonomy.isLibraryFolderCategory(alias), true, alias);
   }
   assert.equal(taxonomy.isLibraryFolderCategory("images"), false);
   assert.equal(taxonomy.isLibraryFolderCategory(undefined), false);
-  assert.equal(taxonomy.libraryCategoryLabel("folders"), "文件夹");
+  assert.equal(taxonomy.libraryCategoryLabel("folders"), "文件包");
+  assert.equal(taxonomy.libraryCategoryLabel("文件夹"), "文件包", "the old name still lands on the renamed category");
   const entries = rows.map((row) => model.workspaceEntryFromLibraryItem(itemFor(row)));
   assert.deepEqual(model.filterWorkspaceLibraryEntries(entries, "", "folders"), []);
   assert.equal(model.filterWorkspaceLibraryEntries(entries, "", "all").length, entries.length);

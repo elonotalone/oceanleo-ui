@@ -313,7 +313,7 @@ function FileBody({ file, downloadUrl }: { file: FileContent; downloadUrl?: stri
       <div className="text-[13px] text-neutral-500 dark:text-neutral-400">
         {tt("这个文件无法预览")} · {formatBytes(file.size)}
       </div>
-      {downloadUrl ? <DownloadAction url={downloadUrl} label={tt("下载整个文件夹")} /> : null}
+      {downloadUrl ? <DownloadAction url={downloadUrl} label={tt("下载整个文件包")} /> : null}
     </div>
   );
 }
@@ -404,7 +404,7 @@ export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, roo
           {nodes.length ? (
             <TreeRows nodes={nodes} expanded={expanded} selected={selected} onToggle={onToggle} onSelect={onSelect} />
           ) : (
-            <p className="px-2 py-3 text-[13px] text-neutral-500">{tt("这个文件夹是空的")}</p>
+            <p className="px-2 py-3 text-[13px] text-neutral-500">{tt("这个文件包是空的")}</p>
           )}
         </div>
       </nav>

@@ -775,7 +775,7 @@ test("FolderTreeViewer：默认选中 SKILL.md；YAML 头成代码块；Markdown
   await click(host.querySelector('[data-tree-path="data.bin"]'));
   const bin = host.querySelector('[data-file-kind="binary"]');
   assert.match(bin.textContent, /4 KB/);
-  assert.match(bin.textContent, /下载整个文件夹/);
+  assert.match(bin.textContent, /下载整个文件包/);
 
   // 截断提示
   await click(host.querySelector('[data-tree-path="big.txt"]'));
@@ -808,7 +808,7 @@ test("FolderTreeViewer：读失败显示错误并可重试；initialPath 生效�
   await view.unmount();
 
   const empty = await mount(h(kit.FolderTreeViewer, { tree: [], loadFile: async () => null, rootLabel: "技能文件" }));
-  assert.match(empty.host.textContent, /这个文件夹是空的/);
+  assert.match(empty.host.textContent, /这个文件包是空的/);
   assert.match(empty.host.textContent, /技能文件/);
   await empty.unmount();
 });

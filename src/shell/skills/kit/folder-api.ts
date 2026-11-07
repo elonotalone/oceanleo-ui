@@ -24,7 +24,7 @@ import type {
 
 /** 回退文案（中文原文 = i18n key）。网关没给 message 时才用。 */
 export const FOLDER_ERROR_FALLBACKS: Record<string, string> = {
-  not_found: "找不到这个文件夹或技能",
+  not_found: "找不到这个文件包或技能",
   forbidden: "你没有权限执行此操作",
   invalid_zip: "压缩包无法读取，请确认是有效的 .zip 或 .skill 文件",
   zip_too_large: "压缩包太大：上限 20 MB，解压后不超过 50 MB、500 个文件",
@@ -32,7 +32,7 @@ export const FOLDER_ERROR_FALLBACKS: Record<string, string> = {
   not_a_skill: "没有找到 SKILL.md，这不是一个技能",
   github_unsupported: "只支持公开 GitHub 仓库的地址",
   github_fetch_failed: "从 GitHub 拉取失败，请稍后重试",
-  quota_exceeded: "已达到文件夹数量上限",
+  quota_exceeded: "已达到文件包数量上限",
   rate_limited: "操作太频繁，请稍后再试",
   invalid_skill: "技能格式不正确，请检查 SKILL.md 开头的信息",
   already_exists: "已经添加过了",
