@@ -356,7 +356,7 @@ function NativeChatSettings({ program, computerId, dialog, online, client = clou
  * remembered per program and computer and go out through the controller's own
  * setters (`setSelectedModel` / `setMode` / `setConfig`).
  */
-export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true }: {
+export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true, disabled = false }: {
   /** null = no picker (no program, or hidden). */
   program: string | null;
   computerId: string;
@@ -365,6 +365,8 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
   waiting: boolean;
   /** false = the computer is offline: the pill stays, every row read-only with the reason. */
   online?: boolean;
+  /** The pill shows its choices but does not open (the page cannot send right now). */
+  disabled?: boolean;
 }): ReactNode | null {
   if (!program) return null;
   const configOptions = dialog.configOptions || [];
@@ -403,6 +405,7 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
     remembered: memory[controls.memoryModel],
     fresh: !dialog.activeSession,
     loading: !known && online && waiting,
+    disabled,
   };
   return full
     ? <NativeChatSettings program={program} computerId={computerId} dialog={full} online={online} picker={picker} />

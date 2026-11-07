@@ -57,10 +57,21 @@ import { AGENT_CONVERSATION_MAX_WIDTH_CLASS } from "./agent-conversation-layout"
 import { agentMessageTimeSeparators } from "./chat-time-separators";
 import { LeoComposer, type ComposerMenuItem } from "./LeoComposer";
 import type { ExecutionTarget } from "../lib/execution-target";
-// One UI system for computer conversations (redo 2026-10-30): a native
-// Codex/Claude/Cursor/Hermes conversation renders through this same stream and
-// LeoComposer; CLI/terminal show the host-styled surface with the same dock below.
-import { NativeSetupRequest, useNativeThread, type NativeThread } from "./native-thread";
+// Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
+// gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
+// CLI/terminal show the host-styled surface with the same dock below.
+import { AcpTranscript, reduceRows } from "../acp";
+import {
+  acpErrorText,
+  answer as answerAcp,
+  close as closeAcp,
+  send as sendAcp,
+  stop as stopAcp,
+  stopTask as stopAcpTask,
+  switchProgram as switchAcpProgram,
+  type AcpSessionChoices,
+} from "../lib/acp-frames-api";
+import { changedChoices, useAcpCatalogPicker, useAcpFrames } from "./acp-task";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
 import { NativeTerminalSurface } from "./cloud-computer/native-surface";
@@ -73,22 +84,18 @@ import {
   findComputerTaskSession,
   latestComputerTaskSession,
   listComputerTaskSessions,
-  getComputerTaskTranscript,
-  hasPendingNativePrompt,
   knownComputer,
   knownComputerTaskSession,
   knownComputerTaskSessions,
   lastKnownComputer,
   rememberComputer,
   rememberComputerTaskSession,
-  takePendingNativePrompt,
   type ComputerTaskSession,
 } from "../lib/computer-task-api";
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
 import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
-import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
 import {
   idleStop,
   newStopId,
@@ -98,8 +105,6 @@ import {
   type StopEvent,
   type StopState,
 } from "./cloud-computer/agent-dialog/reduce";
-import { mapNativeTranscript, mergeNativeThreadMessages, type NativeThreadSource } from "./native-thread/merge";
-import { nativeDeliveryStatus, nativeFinishingItemKey, nativeLastActivity, nativeThinkingVisible } from "./native-chat-presentation";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -191,25 +196,6 @@ import {
   rememberTaskDetail,
   takeTaskPrefetch,
 } from "./task-open-cache";
-import { RoutePageSkeleton } from "./nav-source/route-boundary";
-import {
-  answerTaskRequest as answerTimelineRequest,
-  removeQueued as removeTimelineQueued,
-  sendTaskMessage as sendTimelineMessage,
-  stopTask as stopTimelineTask,
-} from "../lib/task-timeline-api";
-import { stashLocalForTask, useTaskTimeline, type TaskProgram } from "./task-timeline";
-import { restoreOlderScrollAnchor, type OlderScrollAnchorSnapshot } from "./task-timeline/scroll-anchor";
-
-type TaskTimelineStatusSurface = ReturnType<typeof useTaskTimeline> & {
-  loaded?: boolean;
-  fromCache?: boolean;
-  liveStatus?: "connecting" | "connected" | "reconnecting";
-  liveNotice?: boolean;
-  retry?: () => void;
-  olderError?: Error | null;
-  retryOlder?: () => void;
-};
 
 /**
  * 把对话流转成「组织节点实时状态」（doctrine 2026-07-09）：供宿主喂给 <OrgCanvas nodeStatus>。
@@ -271,58 +257,8 @@ export function isNearBottom(metrics: ScrollMetrics): boolean {
   return distanceFromBottom <= STICK_TO_BOTTOM_PX;
 }
 
-/** Scrolled within this many px of the top, the stream reads one more batch of earlier messages. */
-export const LOAD_OLDER_PX = 480;
-const OLDER_ANCHOR_STALE_MS = 15_000;
-
-/** Where the user was when an earlier batch was asked for (to keep that spot after the prepend). */
-interface OlderScrollAnchor extends OlderScrollAnchorSnapshot {
-  firstId: number | null;
-  sawLoading: boolean;
-  at: number;
-}
-
 function scrollMetricsOf(el: HTMLElement): ScrollMetrics {
   return { scrollTop: el.scrollTop, scrollHeight: el.scrollHeight, clientHeight: el.clientHeight };
-}
-
-/**
- * 上滑自动读更早的一批（操作员 2026-10-31：去掉「读取更早的对话」按键）。
- * 用户自己往上滑到离顶不足 `LOAD_OLDER_PX`，或这一批短到撑不满可视区（没法再往上滑）时，
- * 读下一批；正在读、或没有更早的了就不读。
- */
-export function shouldLoadOlder(
-  metrics: ScrollMetrics,
-  state: { hasOlder: boolean; loading: boolean; movingUp: boolean },
-): boolean {
-  if (!state.hasOlder || state.loading) return false;
-  if (metrics.scrollHeight <= metrics.clientHeight + LOAD_OLDER_PX) return true;
-  return state.movingUp && metrics.scrollTop < LOAD_OLDER_PX;
-}
-
-/** Reconcile an acknowledged queued send when the timeline later shows it injected. */
-export function reconcileTimelineDelivery(
-  current: Record<string, "queued" | "injected">,
-  rows: readonly Pick<AgentMessage, "meta">[],
-): Record<string, "queued" | "injected"> {
-  const queuedIds = new Set(
-    rows
-      .filter((row) => row.meta?.task_timeline_queued === true)
-      .map((row) => String(row.meta?.client_message_id || ""))
-      .filter(Boolean),
-  );
-  const visibleIds = new Set(
-    rows
-      .map((row) => String(row.meta?.client_message_id || ""))
-      .filter(Boolean),
-  );
-  let next = current;
-  for (const [id, delivery] of Object.entries(current)) {
-    if (delivery !== "queued" || !visibleIds.has(id) || queuedIds.has(id)) continue;
-    if (next === current) next = { ...current };
-    next[id] = "injected";
-  }
-  return next;
 }
 
 function documentHidden(): boolean {
@@ -459,15 +395,6 @@ export interface AgentChatProps {
   initialPrompt?: string;
   initialExecutionTarget?: ExecutionTarget;
   /**
-   * Homepage → native chat in place (no page jump). The host already owns the
-   * prewarmed thread (picked on its composer) with the first prompt queued in
-   * it (`thread.queue`), and creates the managed session in the background.
-   * This page shows that conversation at once through the same stream, adopts
-   * the task when `created` arrives (`onTaskCreated`), and never opens a
-   * second connection for it. Mutually exclusive with `initialPrompt`.
-   */
-  nativeLaunch?: AgentChatNativeLaunch;
-  /**
    * 初次提交随附的附件（用户在**首页输入框**「＋」上传 / 拖入的文件，已上传到文件库、
    * 拿到公网 url）。与 initialPrompt 一起自动创建首个任务——让 agent 从首页就带上来的
    * 文件（音频自动转写、其它文件按 url 分析）。宿主从 HomeIntro.onStart 的
@@ -562,7 +489,7 @@ export interface AgentChatProps {
    * 跨站一致性门禁的棘轮冲突。
    */
   enableInputTools?: boolean;
-  /** 空态提示（还没消息且未运行时显示，默认「在下方输入，开始与 agent 对话。」）。 */
+  /** 空态提示（还没消息且未运行时显示；不给就什么也不显示）。 */
   emptyHint?: React.ReactNode;
   /**
    * 「返回」回调（操作员 2026-07-06；2026-09-07 收进单行顶栏）。给了它 → 对话区那**唯一
@@ -617,19 +544,6 @@ export interface AgentChatProps {
    * its editor session bound to the task once it exists).
    */
   initialWorkspace?: TaskWorkspaceInitial | null;
-}
-
-/** See {@link AgentChatProps.nativeLaunch}. */
-export interface AgentChatNativeLaunch {
-  conversation: Extract<ConversationTarget, { kind: "native" }>;
-  /** The computer as the host knows it (null while it is being read). */
-  computer: Computer | null;
-  /** The host's live thread for this conversation (its first prompt already queued). */
-  thread: NativeThread;
-  /** The task and managed session, once the host has created them. */
-  created: { taskId: string; session: ComputerTaskSession } | null;
-  /** Creating the session failed: try again (the queued prompt is kept and retried with it). */
-  retry?: () => void;
 }
 
 /** agent 右栏多标签库配置（宗旨 v19）。 */
@@ -715,35 +629,6 @@ export function AgentChat(props: AgentChatProps) {
 
 const NO_TASK_SESSIONS: ComputerTaskSession[] = [];
 
-function pickChatKey(conversation: {computerId: string; program: string}): string {
-  return `pick:${conversation.computerId}:${conversation.program}`;
-}
-
-/** The composer selection owns the recipient for the next task turn. */
-export function taskTimelineRecipientProgram(
-  conversation: ConversationTarget | undefined,
-  current: TaskProgram | null | undefined,
-): TaskProgram {
-  return conversation?.kind === "native" ? conversation.program : (current || "oceanleo");
-}
-
-/** Keep the same idempotency key when a failed submission is restored for retry. */
-export function taskSubmissionClientMessageId(
-  previous: { key: string; id: string } | null | undefined,
-  key: string,
-  createId: () => string,
-): { key: string; id: string } {
-  return previous?.key === key ? previous : { key, id: createId() };
-}
-
-/** A task-send failure is shown under the user's bubble, never as a gateway code. */
-function taskTimelineFailureText(tt: (text: string, vars?: Record<string, string | number>) => string, caught?: unknown): string {
-  const status = Number((caught as { status?: unknown } | null)?.status || 0);
-  if (status === 401) return tt("请先登录 OceanLeo 账号，再发送消息。");
-  if (status === 429) return tt("发送得太快了，请稍后重试。");
-  return tt("这条消息没有发送，请重试。");
-}
-
 /** Same cadence as the computer views (`useCloudComputers` CC_POLL_MS). */
 const COMPUTER_REFRESH_MS = 15_000;
 
@@ -767,39 +652,6 @@ function sessionConversation(session: ComputerTaskSession): ConversationTarget {
     view: session.kind === "cli" ? "cli" : "chat", sessionId: session.id};
 }
 
-/**
- * Delivery under a task message. The queue state is read from the timeline's
- * current server state, so the remove action disappears as soon as the prompt
- * is injected. Compares program ids, not display labels.
- */
-function TaskQueuedActions({ clientMessageId, recipientProgram, currentProgram, queued, readOnly, onRemove }: {
-  clientMessageId: string;
-  recipientProgram: string;
-  currentProgram: string;
-  queued: boolean;
-  readOnly?: boolean;
-  onRemove: (clientMessageId: string) => void;
-}) {
-  const tt = useUI();
-  const recipient = PROGRAM_LABEL[recipientProgram as keyof typeof PROGRAM_LABEL] || recipientProgram;
-  if (!clientMessageId) return null;
-  return (
-    <div className="flex justify-end gap-2 px-1 text-[12px] text-stone-500" data-task-queued-actions={clientMessageId}>
-      <span data-task-queued-status="" className="text-stone-400">
-        {queued ? tt("已排队") : tt("{agent} 下一步会看到", { agent: recipient || currentProgram })}
-      </span>
-      {queued && <button
-          type="button"
-          className="underline underline-offset-2"
-          onClick={() => onRemove(clientMessageId)}
-          disabled={readOnly}
-        >
-          {tt("移除排队消息")}
-        </button>}
-    </div>
-  );
-}
-
 function AgentChatInner({
   workspaceContent,
   workspaceOpen,
@@ -811,7 +663,6 @@ function AgentChatInner({
   siteId = "",
   initialPrompt,
   initialExecutionTarget,
-  nativeLaunch,
   initialAttachments,
   taskId: explicitTaskId,
   initialTask,
@@ -886,17 +737,10 @@ function AgentChatInner({
   /** Draft (no task yet) only: the OceanLeo target picked in the dock; undefined = today's remembered target. */
   const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(undefined);
   /** A native chat picked for a program this task (or draft) has no session for: created by the first send. */
-  const [pickedChat, setPickedChat] = useState<{taskId: string; conversation: Extract<ConversationTarget, {kind: "native"}>} | null>(
-    () => nativeLaunch ? {taskId: "", conversation: nativeLaunch.conversation} : null);
-  // Computers already known in this tab (the homepage's pick, a page that just created a session) are not waited for.
-  const [computers, setComputers] = useState<Record<string, Computer>>(() => {
-    const known = nativeLaunch?.computer ?? (nativeLaunch ? knownComputer(nativeLaunch.conversation.computerId) : null);
-    return known ? {[known.id]: known} : {};
-  });
+  const [pickedChat, setPickedChat] = useState<{taskId: string; conversation: Extract<ConversationTarget, {kind: "native"}>} | null>(null);
+  const [computers, setComputers] = useState<Record<string, Computer>>({});
   const [conversationBusy, setConversationBusy] = useState(false);
   const [conversationError, setConversationError] = useState("");
-  /** Native chat sessions opened on this page; each keeps its thread mounted (hidden) so switching never kills a run. */
-  const [openedChats, setOpenedChats] = useState<string[]>([]);
   /** CLI / terminal surfaces opened on this page; kept mounted (hidden) so nothing restarts. */
   const [openedSurfaces, setOpenedSurfaces] = useState<string[]>([]);
   const [localTaskId, setLocalTaskId] = useState<string | null>(
@@ -908,6 +752,8 @@ function AgentChatInner({
     (explicitTaskId !== undefined
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
+  /** A `mode="computer"` task (its conversations run on the user's computer): known once its row is read. */
+  const computerTask = taskMode.taskId === taskId && taskMode.computer;
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   // 手上这份消息属于哪段对话。换对话时它先归零，等服务端那份到齐才跟上；
   // 编辑器指令只在两者一致时才看，否则会拿上一段对话的消息去对新对话记账。
@@ -934,8 +780,6 @@ function AgentChatInner({
   const [taskTitle, setTaskTitle] = useState<string>(
     () => String(initialTask?.task?.title || initialTitle || ""),
   );
-  const [removedQueuedIds, setRemovedQueuedIds] = useState<Set<string>>(new Set());
-  const [timelineDelivery, setTimelineDelivery] = useState<Record<string, "queued" | "injected">>({});
   const [input, setInput] = useState("");
   const [gateBusy, setGateBusy] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
@@ -947,14 +791,6 @@ function AgentChatInner({
   const startedRef = useRef(false);
   const freshSessionStartedRef = useRef(false);
   const loadedTaskRef = useRef("");
-  /** A retry of the same task-level submission must reuse its idempotency key. */
-  const pendingTaskSubmissionRef = useRef<{ key: string; id: string } | null>(null);
-  /** A home-page computer send is stashed until the task timeline mounts. */
-  const pendingHomeTimelineRef = useRef<{
-    taskId: string;
-    clientMessageId: string;
-    outcome: { ok: true } | { ok: false; reason: string };
-  } | null>(null);
   const initialTaskRef = useRef(initialTask);
   initialTaskRef.current = initialTask;
   useEffect(() => {
@@ -966,8 +802,6 @@ function AgentChatInner({
   const partialTaskRef = useRef("");
   const seenArtRef = useRef<number | null>(null);
   const seenActionRef = useRef<number | null>(null);
-  const timelineActionBaselineRef = useRef("");
-  const timelineActionIdsRef = useRef<Set<number>>(new Set());
   const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   // 服务端那份消息的上一次快照。用来判断「这一轮轮询有没有拿到新东西」——
@@ -1057,12 +891,6 @@ function AgentChatInner({
   useEffect(() => {
     setBranchTaskId(null);
   }, [explicitTaskId, workspace?.sessionId]);
-
-  useEffect(() => {
-    setRemovedQueuedIds(new Set());
-    setTimelineDelivery({});
-    pendingTaskSubmissionRef.current = null;
-  }, [taskId]);
 
   const handleVoiceTranscript = useCallback((text: string) => {
     setInput((v) => (v ? v + " " : "") + text);
@@ -1322,7 +1150,8 @@ function AgentChatInner({
   ]);
 
   // A computer run that is paused, stuck or stopping keeps refreshing until it is terminal.
-  useAgentThreadPolling(taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
+  // A computer task's conversation is its frames socket; only cloud tasks poll.
+  useAgentThreadPolling(computerTask ? null : taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
 
   // ---------------------------------------------------------------------
   // Computer conversations (redo 2026-10-30: one UI system)
@@ -1335,7 +1164,6 @@ function AgentChatInner({
   useEffect(() => {
     setConversationError("");
     setOpenedSurfaces([]);
-    setOpenedChats([]);
     sessionsRetryRef.current = 0;
   }, [taskId]);
   /** The task adopted in place (and the list epoch then): its list is not read again. */
@@ -1383,61 +1211,7 @@ function AgentChatInner({
   const sessions = useMemo(() => allSessions.filter(usableSession), [allSessions]);
   const sessionsLoaded = taskSessions.taskId === taskId && taskSessions.loaded;
   const sessionsFailed = Boolean(taskId) && taskSessions.taskId === taskId && taskSessions.failed;
-  // Saved transcripts are fetched per session list only; translation is applied
-  // separately. Some hosts recreate `tt` on every render: with `tt` in the fetch
-  // effect every render re-read every transcript and, when the reads failed, set
-  // a fresh [] that rendered again — an endless loop (2026-11-03, homepage →
-  // task handoff).
-  type ArchivedFrames = { session: (typeof sessions)[number]; frames: Parameters<typeof mapNativeTranscript>[1] };
-  const [archivedNativeFrames, setArchivedNativeFrames] = useState<ArchivedFrames[]>([]);
-  // Read again only when a saved copy can differ: another native session, or a newer
-  // `saved_at`. Every list read, native id report and local patch makes a new array
-  // with the same saved copies; keyed on that identity the page re-read every
-  // transcript each time (V2/W2 2026-11-03: 7 reads in 3 s with nothing new saved,
-  // 2572 in the worst trace).
-  const nativeArchiveKey = useMemo(() => JSON.stringify(sessions
-    .filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo")
-    .map((row) => [row.id, row.program, row.saved_at ?? null])), [sessions]);
-  const sessionsRef = useRef(sessions);
-  sessionsRef.current = sessions;
-  useEffect(() => {
-    let alive = true;
-    const nativeSessions = sessionsRef.current.filter((row) => row.kind === "acp" && row.program && row.program !== "oceanleo");
-    if ((taskMode.taskId === taskId && taskMode.computer) || !taskId || !nativeSessions.length) {
-      setArchivedNativeFrames((current) => current.length ? [] : current);
-      return () => { alive = false; };
-    }
-    void Promise.allSettled(nativeSessions.map(async (session) => {
-      const transcript = await getComputerTaskTranscript(session.id);
-      // No frame list = an unreadable copy: left out, exactly like a failed read.
-      if (!Array.isArray(transcript?.frames)) throw new Error("transcript_unreadable");
-      return { session, frames: transcript.frames } satisfies ArchivedFrames;
-    })).then((results) => {
-      if (!alive) return;
-      // Once per read (the effect no longer depends on `tt`, so this cannot loop).
-      setArchivedNativeFrames(results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []));
-    });
-    return () => { alive = false; };
-  }, [taskId, nativeArchiveKey, taskMode.taskId, taskMode.computer]);
-  const archivedNativeSources = useMemo<NativeThreadSource[]>(
-    () => archivedNativeFrames.flatMap(({ session: read, frames }) => {
-      // The row as known now (a native id learned since the read), same saved frames.
-      const session = sessions.find((row) => row.id === read.id) ?? read;
-      // One malformed saved transcript must not take the whole page down.
-      try { return [{ session, messages: mapNativeTranscript(session, frames, tt) }]; } catch { return []; }
-    }),
-    [archivedNativeFrames, sessions, tt],
-  );
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
-  const computerTask = taskMode.taskId === taskId && taskMode.computer;
-  const timeline = useTaskTimeline(taskId || undefined, { enabled: computerTask, limit: 200 });
-  const timelineStatus = timeline as TaskTimelineStatusSurface;
-  useEffect(() => {
-    const pending = pendingHomeTimelineRef.current;
-    if (!pending || pending.taskId !== taskId || !computerTask) return;
-    pendingHomeTimelineRef.current = null;
-    timeline.settleLocal(pending.clientMessageId, pending.outcome);
-  }, [computerTask, taskId, timeline.settleLocal]);
 
   // The URL names the conversation; a change from outside (back/forward, a link
   // to another `computerSession` of this task) switches it.
@@ -1465,39 +1239,27 @@ function AgentChatInner({
     // A basic task link carries no conversation choice. Preserve the resolved
     // pane when another view canonicalizes the same task's URL.
     if (!param) return;
-    if (param && param !== "cloud") {
-      const named = sessions.find((session) => session.id === param);
-      if (named) { setPickedChat(null); setSelectedSession({taskId, id: named.id, resolved: true}); }
-      else if (sessionsLoaded) setSessionsEpoch((epoch) => epoch + 1);
-    } else {
-      setPickedChat(null);
-      setSelectedSession({taskId, id: null, resolved: true});
-    }
+    const named = sessions.find((session) => session.id === param);
+    if (named) { setPickedChat(null); setSelectedSession({taskId, id: named.id, resolved: true}); }
+    else if (sessionsLoaded) setSessionsEpoch((epoch) => epoch + 1);
   });
 
   useEffect(() => {
     if (!taskId) return;
     if (selectedSession.taskId === taskId && selectedSession.resolved) return;
     const requested = new URL(window.location.href).searchParams.get("computerSession") || "";
-    const named = requested && requested !== "cloud" ? sessions.find((session) => session.id === requested) : undefined;
+    const named = requested ? sessions.find((session) => session.id === requested) : undefined;
     if (!named) {
       if (!taskModeKnown) return;
       // Until the list is read, a named session or a computer task waits (the URL is kept);
       // a cloud task opens its OceanLeo conversation right away.
-      if (!sessionsLoaded && (computerTask || (requested && requested !== "cloud"))) return;
+      if (!sessionsLoaded && (computerTask || requested)) return;
     }
-    // `computerSession=cloud` is also used as the explicit marker when the
-    // user switches a computer task to OceanLeo. On an initial deep link,
-    // however, it is the legacy "open this task" marker and should land on
-    // the newest native conversation once the session list arrives.
-    const chosen = named ?? (computerTask && (!requested || requested === "cloud")
-      ? latestComputerTaskSession(sessions) : null);
+    // A computer task without a named session opens on its newest one.
+    const chosen = named ?? (computerTask ? latestComputerTaskSession(sessions) : null);
     setSelectedSession({taskId, id: chosen?.id ?? null, resolved: true});
-    if (requested !== (chosen?.id ?? "")) {
-      // A legacy `computerSession=cloud` (or a stale id) is dropped instead of opening an empty page;
-      // a computer task opened on its latest session names it, so a reload lands on the same one.
-      writeSessionParam(chosen?.id ?? null);
-    }
+    // A stale id is dropped; a computer task opened on its latest session names it, so a reload lands on the same one.
+    if (requested !== (chosen?.id ?? "")) writeSessionParam(chosen?.id ?? null);
   }, [taskId, sessions, sessionsLoaded, selectedSession, taskModeKnown, computerTask, writeSessionParam]);
 
   const activeSession = selectedSession.taskId === (taskId || "") && selectedSession.id
@@ -1555,7 +1317,8 @@ function AgentChatInner({
       ? (frontComputer ? {kind: "computer", id: frontComputer.id, name: frontComputer.name || frontComputer.id}
         : sessionsLoaded ? computerTaskSessionsTarget(allSessions) : null)
       : taskBound;
-  const oceanleoDisabledReason = null;
+  // A computer task talks to the programs on its computer only (its stream is their ACP rows).
+  const oceanleoDisabledReason = computerTask ? tt("要换执行位置，请新建任务") : null;
   const conversation: ConversationTarget | undefined = activeSession
     ? sessionConversation(activeSession)
     : pick
@@ -1563,48 +1326,67 @@ function AgentChatInner({
       : taskId
         ? resolvedBoundTarget && conversationResolved ? {kind: "oceanleo", target: resolvedBoundTarget} : undefined
         : draftConversation;
-  const nativeChat = conversation?.kind === "native" && conversation.view === "chat";
   const surfaceActive = Boolean(activeSession && activeSession.kind !== "acp");
   useEffect(() => {
-    if (activeSession?.kind === "acp") {
-      const id = activeSession.id;
-      setOpenedChats((current) => current.includes(id) ? current : [...current, id]);
-    }
     if (activeSession && activeSession.kind !== "acp") {
       const id = activeSession.id;
       setOpenedSurfaces((current) => current.includes(id) ? current : [...current, id]);
     }
   }, [activeSession]);
   const conversationComputer = conversation && conversation.kind !== "oceanleo" ? computerFor(conversation.computerId) : null;
-  // The dock's conversation is the recipient for the next turn. A pending pick
-  // is deliberately kept in `conversation` while the shared task timeline stays
-  // mounted, so choosing Codex/Claude cannot replace or clear the record.
-  const pickedProgram = conversation?.kind === "native" ? conversation.program : null;
-  const currentProgram = (timeline.state?.program || pickedProgram || "oceanleo") as TaskProgram;
-  const timelineProgram = taskTimelineRecipientProgram(conversation, timeline.state?.program);
-  const timelineComputerId = (conversation && conversation.kind !== "oceanleo" ? conversation.computerId : null)
-    || timeline.state?.computer.id
-    || undefined;
-  const taskNativeThread = useNativeThread({
-    computer: computerTask && conversationComputer ? conversationComputer : null,
-    session: computerTask && activeSession?.kind === "acp" ? activeSession : null,
-    program: timelineProgram !== "oceanleo" ? timelineProgram as NativeProgram : null,
-    enabled: computerTask && timelineProgram !== "oceanleo",
-    statusOnly: computerTask,
+  // ---------------------------------------------------------------------
+  // The computer task's one stream (thin-gateway 2026-11-07, contract §2.4/§2.5)
+  // ---------------------------------------------------------------------
+  // Rows are the raw JSON-RPC lines the gateway stored, read over one socket per
+  // page; the page renders them and posts only what the user does (send, Stop,
+  // Close, an answer). Nothing is queued, resent or guessed here: while the socket
+  // is down the composer is disabled and one line says 「连接断开」.
+  // The newest chat session is the task's program (a switch adds a newer one).
+  const acpSession = useMemo(() => sessions
+    .filter((row) => row.kind === "acp")
+    .reduce<ComputerTaskSession | null>((latest, row) => !latest || row.created_at >= latest.created_at ? row : latest, null), [sessions]);
+  // The dock's choice is the recipient of the next message (another program = a switch).
+  const acpTarget = conversation?.kind === "native" && conversation.view === "chat" ? conversation : null;
+  const acpProgram = acpTarget?.program ?? acpSession?.program ?? null;
+  const acpComputerId = acpTarget?.computerId ?? acpSession?.computer_id ?? null;
+  const acpRowsProgram = acpSession?.program || acpProgram || "";
+  /** The left pane shows this stream (a computer task, or a draft whose dock picked a program's chat). */
+  const acpShown = computerTask || (!taskId && Boolean(acpTarget));
+  const frames = useAcpFrames(computerTask && taskId ? taskId : null);
+  const acpConnected = frames.state === "connected";
+  const acpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
+  const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
+  const acpComposerDisabled = readOnly || (taskId ? !acpConnected : acpDraftOffline);
+  const acpPicker = useAcpCatalogPicker({
+    computerId: acpComputerId,
+    program: acpProgram,
+    disabled: acpComposerDisabled,
+    // A program's catalog fills with its first session: read it again when the agent attaches.
+    reloadKey: frames.link,
   });
-  const timelineActionMessages = computerTask ? timeline.items : messages;
-  const timelineMessages = computerTask
-    ? timeline.items
-      .filter((message) => message.kind !== "ui_action")
-      .filter((message) => !(
-        message.meta?.task_timeline_queued === true &&
-        removedQueuedIds.has(String(message.meta?.client_message_id || ""))
-      ))
-    : messages;
+  const [acpBusy, setAcpBusy] = useState(false);
+  /** The gateway's own words for the last refused action (409 from send, a failed stop / close / answer). */
+  const [acpError, setAcpError] = useState<{ taskId: string; text: string } | null>(null);
+  const [acpStopping, setAcpStopping] = useState(false);
+  /** Choices this page already sent for the task: a later message carries only what changed. */
+  const acpSentRef = useRef<{ taskId: string; choices: AcpSessionChoices } | null>(null);
+  /** The same text sent again after a failure keeps its id (the gateway dedupes it). */
+  const acpMessageIdRef = useRef<{ key: string; id: string } | null>(null);
   useEffect(() => {
-    if (!computerTask) return;
-    setTimelineDelivery((current) => reconcileTimelineDelivery(current, timeline.items));
-  }, [computerTask, timeline.items]);
+    setAcpStopping(false);
+    acpMessageIdRef.current = null;
+  }, [taskId]);
+  // The stream follows new rows while the user is at the bottom; scrolled up, it stays put.
+  const acpScrollRef = useRef<HTMLDivElement>(null);
+  const acpFollowRef = useRef(true);
+  const onAcpScroll = useCallback(() => {
+    const el = acpScrollRef.current;
+    if (el) acpFollowRef.current = isNearBottom(scrollMetricsOf(el));
+  }, []);
+  useLayoutEffect(() => {
+    const el = acpScrollRef.current;
+    if (el && acpFollowRef.current) el.scrollTop = el.scrollHeight;
+  }, [frames.rows]);
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -1704,58 +1486,9 @@ function AgentChatInner({
     } finally {
       setConversationBusy(false);
     }
-  }, [adoptCreatedTask, computerTask, conversationBusy, sessions, showSession, taskId, tt, writeSessionParam]);
+  }, [adoptCreatedTask, conversationBusy, sessions, showSession, taskId, tt, writeSessionParam]);
   const onConversationChange = useCallback((next: ConversationTarget) => { void changeConversation(next); }, [changeConversation]);
 
-  // First send of a picked native chat: the text is already queued in its thread (the
-  // user's bubble shows at once); this creates the managed session (and, in a draft, the
-  // task) and the same thread sends it as soon as the session and link are bound. A
-  // failure is never silent: the caller marks the bubble unsent with a retry.
-  const chatKeysRef = useRef(new Map<string, string>());
-  /** One request id per picked chat until it is created, so a retry cannot make a second session. */
-  const pickRequestIds = useRef(new Map<string, string>());
-  const startNative = useCallback(async (text: string): Promise<boolean> => {
-    if (readOnly || conversationBusy || !pick) return false;
-    const requestTask = taskId;
-    const key = pickChatKey(pick);
-    let requestId = pickRequestIds.current.get(key);
-    if (!requestId) pickRequestIds.current.set(key, requestId = crypto.randomUUID());
-    setConversationBusy(true);
-    try {
-      const result = await createComputerTaskSession(pick.computerId, {
-        kind: "acp", program: pick.program, ...(requestTask ? {task_id: requestTask} : {}), request_id: requestId,
-      });
-      pickRequestIds.current.delete(key);
-      chatKeysRef.current.set(result.session.id, key);
-      if (requestTask) {
-        setTaskSessions((current) => current.taskId === requestTask ? {...current, items: [...current.items, result.session]} : current);
-        setPickedChat(null);
-        showSession(result.session.id);
-      } else await adoptCreatedTask(result.task_id, result.session, text);
-      return true;
-    } catch {
-      return false;
-    } finally {
-      setConversationBusy(false);
-    }
-  }, [adoptCreatedTask, conversationBusy, pick, readOnly, showSession, taskId]);
-
-  // Homepage launch (nativeLaunch): the host created the task; adopt it under the
-  // same chat entry key, so the host's thread carries over (no remount, no second socket).
-  const launchKey = nativeLaunch ? pickChatKey(nativeLaunch.conversation) : "";
-  const launchCreated = nativeLaunch?.created ?? null;
-  const launchPrompt = nativeLaunch?.thread.pending?.text;
-  const adoptedLaunchRef = useRef("");
-  useEffect(() => {
-    if (!launchCreated || adoptedLaunchRef.current === launchCreated.session.id) return;
-    adoptedLaunchRef.current = launchCreated.session.id;
-    chatKeysRef.current.set(launchCreated.session.id, launchKey);
-    void adoptCreatedTask(launchCreated.taskId, launchCreated.session, launchPrompt);
-  }, [launchCreated, launchKey, launchPrompt, adoptCreatedTask]);
-  const launchComputer = nativeLaunch?.computer ?? null;
-  useEffect(() => {
-    if (launchComputer) setComputers((current) => current[launchComputer.id] === launchComputer ? current : {...current, [launchComputer.id]: launchComputer});
-  }, [launchComputer]);
 
   // One plain line (with retry) while this task's computer conversations cannot be read.
   const sessionsNotice = sessionsFailed ? (
@@ -1846,51 +1579,22 @@ function AgentChatInner({
   const justPlacedRef = useRef<AgentMessage[] | null>(null);
   const placedHoldRef = useRef<(() => void) | null>(null);
   const scrollKeyRef = useRef("");
-  const timelineOlderAnchor = useRef<OlderScrollAnchor | null>(null);
-  const timelineOlderLoadAttempted = useRef(false);
-  const timelineLastScrollTop = useRef(0);
-  const timelineRef = useRef<TaskTimelineStatusSurface>(timelineStatus);
-  timelineRef.current = timelineStatus;
   scrollKeyRef.current = taskId ? `task:${taskId}` : "";
-  const cloudPaneShown = !conversation || conversation.kind === "oceanleo";
+  const cloudPaneShown = !acpShown && !surfaceActive;
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || !taskId || placedTaskRef.current === taskId) return;
-    if (timelineMessages.length === 0 || (!computerTask && !cloudPaneShown) || !scrollPaneShown(el)) return;
+    if (messages.length === 0 || !cloudPaneShown || !scrollPaneShown(el)) return;
     placedTaskRef.current = taskId;
-    seenMessageCountRef.current = timelineMessages.length;
+    seenMessageCountRef.current = messages.length;
     const placed = placeConversationScroll(el, `task:${taskId}`, () => followingRef.current);
     followingRef.current = placed.follow;
     setFollowing(placed.follow);
-    justPlacedRef.current = timelineMessages;
+    justPlacedRef.current = messages;
     placedHoldRef.current?.();
     placedHoldRef.current = placed.release;
-  }, [computerTask, cloudPaneShown, taskId, timelineMessages]);
+  }, [cloudPaneShown, taskId, messages]);
   useEffect(() => () => placedHoldRef.current?.(), []);
-
-  const maybeLoadTimelineOlder = useCallback((movingUp: boolean) => {
-    const el = scrollRef.current;
-    const current = timelineRef.current;
-    if (!el || !computerTask) return;
-    if (timelineOlderAnchor.current && Date.now() - timelineOlderAnchor.current.at > OLDER_ANCHOR_STALE_MS) {
-      timelineOlderAnchor.current = null;
-    }
-    if (timelineOlderAnchor.current) return;
-    if (!shouldLoadOlder(scrollMetricsOf(el), {
-      hasOlder: current.hasOlder,
-      loading: current.olderLoading,
-      movingUp,
-    })) return;
-    timelineOlderAnchor.current = {
-      scrollTop: el.scrollTop,
-      scrollHeight: el.scrollHeight,
-      firstId: timelineMessages[0]?.id ?? null,
-      sawLoading: false,
-      at: Date.now(),
-    };
-    timelineOlderLoadAttempted.current = true;
-    void current.loadOlder();
-  }, [computerTask, timelineMessages]);
 
   // W5: one loading look per task switch. This conversation is ready to be shown
   // once the task's first read is in and the page decided which conversation is
@@ -1906,13 +1610,7 @@ function AgentChatInner({
   const handleStreamScroll = useCallback(() => {
     const el = scrollRef.current;
     if (!el) return;
-    const metrics = scrollMetricsOf(el);
-    const movingUp = metrics.scrollTop < timelineLastScrollTop.current;
-    timelineLastScrollTop.current = metrics.scrollTop;
-    if (timelineOlderAnchor.current) timelineOlderAnchor.current.currentScrollTop = metrics.scrollTop;
-    const atBottom = isNearBottom({
-      ...metrics,
-    });
+    const atBottom = isNearBottom(scrollMetricsOf(el));
     if (placedTaskRef.current && scrollKeyRef.current === `task:${placedTaskRef.current}`) {
       rememberConversationScroll(scrollKeyRef.current, el.scrollTop, atBottom);
     }
@@ -1921,87 +1619,15 @@ function AgentChatInner({
       setFollowing(atBottom);
       if (atBottom) setUnread(0);
     }
-    maybeLoadTimelineOlder(movingUp);
-  }, [maybeLoadTimelineOlder]);
-
-  const timelineFirstMessageId = timelineMessages[0]?.id ?? null;
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const anchor = timelineOlderAnchor.current;
-    if (!el || !anchor || !computerTask) return;
-    if (timeline.olderLoading) {
-      anchor.sawLoading = true;
-      return;
-    }
-    // Wait one paint after the request settles. React can commit the page and
-    // remove the spinner in one batch; measuring in the first layout effect can
-    // otherwise see the old scrollHeight and miss the prepend.
-    let frame = 0;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const settle = () => {
-      if (timelineOlderAnchor.current !== anchor || timelineRef.current.olderLoading) return;
-      if (timelineRef.current.olderError) {
-        timelineOlderAnchor.current = null;
-        return;
-      }
-      // Wait until the older request has settled, then compensate for every
-      // rendered pixel. The first mapped row can be stable when the new page
-      // extends that row, so an id comparison alone is insufficient.
-      const delta = el.scrollHeight - anchor.scrollHeight;
-      if (delta !== 0 || anchor.sawLoading || timelineFirstMessageId !== anchor.firstId || !timeline.hasOlder) {
-        restoreOlderScrollAnchor(el, anchor);
-        timelineLastScrollTop.current = el.scrollTop;
-        timelineOlderAnchor.current = null;
-      }
-    };
-    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
-      frame = window.requestAnimationFrame(settle);
-    } else {
-      timer = setTimeout(settle, 0);
-    }
-    return () => {
-      if (frame && typeof window !== "undefined") window.cancelAnimationFrame(frame);
-      if (timer !== null) clearTimeout(timer);
-    };
-  }, [computerTask, timelineFirstMessageId, timeline.hasOlder, timeline.olderLoading, timelineStatus.olderError]);
-
-  useEffect(() => {
-    if (!computerTask || timeline.olderLoading) return;
-    if (!timelineStatus.error && !timelineStatus.olderError) {
-      timelineOlderLoadAttempted.current = false;
-    }
-  }, [computerTask, timeline.olderLoading, timelineStatus.error, timelineStatus.olderError]);
-
-  const retryTimelineRead = useCallback(() => {
-    timelineStatus.retry?.();
-  }, [timelineStatus.retry]);
-
-  const retryTimelineOlder = useCallback(() => {
-    timelineOlderLoadAttempted.current = true;
-    if (timelineStatus.retryOlder) {
-      timelineStatus.retryOlder();
-      return;
-    }
-    void timelineStatus.loadOlder();
-  }, [timelineStatus.loadOlder, timelineStatus.retryOlder]);
-
-  const timelineOlderError = timelineStatus.olderError ?? (
-    timelineOlderLoadAttempted.current && !timelineStatus.olderLoading ? timelineStatus.error : null
-  );
-  const timelineReadError = timelineStatus.error && !timelineOlderError ? timelineStatus.error : null;
-
-  useEffect(() => {
-    if (!computerTask) return;
-    maybeLoadTimelineOlder(false);
-  }, [computerTask, maybeLoadTimelineOlder, timeline.hasOlder, timeline.olderLoading, timelineMessages]);
+  }, []);
 
   useEffect(() => {
     // 未读记的是**新消息条数**，不是渲染次数：流式期间最后一条会一直长，
     // 那是同一条在变，不该让计数一路往上跳。
-    const added = Math.max(0, timelineMessages.length - seenMessageCountRef.current);
-    seenMessageCountRef.current = timelineMessages.length;
+    const added = Math.max(0, messages.length - seenMessageCountRef.current);
+    seenMessageCountRef.current = messages.length;
     // The first frame was just placed (instant): no smooth scroll from the top.
-    if (justPlacedRef.current === timelineMessages) {
+    if (justPlacedRef.current === messages) {
       justPlacedRef.current = null;
       return;
     }
@@ -2012,7 +1638,7 @@ function AgentChatInner({
       return;
     }
     if (added > 0) setUnread((current) => current + added);
-  }, [scrollToLatest, timelineMessages]);
+  }, [scrollToLatest, messages]);
 
   // 换对话：跟随、未读、停止判定、服务端快照全部归零，
   // 免得把上一段对话的滚动位置和「已停止」标记带到新对话上。
@@ -2023,9 +1649,6 @@ function AgentChatInner({
     setStreamText("");
     setStreamNotice("");
     seenMessageCountRef.current = 0;
-    timelineOlderAnchor.current = null;
-    timelineOlderLoadAttempted.current = false;
-    timelineLastScrollTop.current = 0;
     followingRef.current = true;
     setFollowing(true);
     setUnread(0);
@@ -2067,9 +1690,6 @@ function AgentChatInner({
       // first await. A file switch while a new session is being prepared must not
       // silently change which file this user turn refers to.
       const turn = capturedTurn || captureEditorTurn(prompt);
-      const homeClientMessageId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-        ? crypto.randomUUID()
-        : `home:${Date.now()}:${Math.random().toString(36).slice(2)}`;
       setBusy(true);
       setError(null);
       noteUserTurn(turn.filePin);
@@ -2194,22 +1814,6 @@ function AgentChatInner({
       if (unconfirmed) {
         setMessages((current) => current.filter((message) => message.id !== -1));
         setError(unconfirmed.text);
-      }
-      const createdTarget = result.executionTarget ?? executionTarget;
-      if (createdTarget && createdTarget.kind !== "cloud") {
-        stashLocalForTask(createdTaskId, {
-          clientMessageId: homeClientMessageId,
-          text: prompt,
-          attachments: uploaded || [],
-          program: "oceanleo",
-        });
-        pendingHomeTimelineRef.current = {
-          taskId: createdTaskId,
-          clientMessageId: homeClientMessageId,
-          outcome: unconfirmed
-            ? { ok: false, reason: unconfirmed.text }
-            : { ok: true },
-        };
       }
       // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
       noteOwnEditorTask(createdTaskId);
@@ -2407,57 +2011,82 @@ function AgentChatInner({
     workspace?.availability,
   ]);
 
-  const removeQueuedMessage = useCallback(async (clientMessageId: string) => {
-    if (!taskId || readOnly || !clientMessageId) return;
+  // A computer task's message: POST send (or switch, when the dock names another
+  // program). A draft creates its task first. A refusal (409: the program refused
+  // a setting, so no prompt went out) is shown in the gateway's words and the
+  // composer keeps the text; the user's own row arrives on the socket.
+  async function sendAcpMessage() {
+    const text = input.trim();
+    const uploaded = toolsOn ? atts.ready() : [];
+    if ((!text && uploaded.length === 0) || acpBusy || acpComposerDisabled || !acpProgram || !acpComputerId) return;
+    if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
+    const key = `${text}\u0000${uploaded.map((attachment) => attachment.url).join("\u0001")}`;
+    if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
+    const clientMessageId = acpMessageIdRef.current.id;
+    setAcpBusy(true);
+    setAcpError(null);
+    let id = taskId || "";
+    let created: { taskId: string; session: ComputerTaskSession } | null = null;
     try {
-      await removeTimelineQueued(taskId, clientMessageId);
-      setRemovedQueuedIds((current) => {
-        if (current.has(clientMessageId)) return current;
-        const next = new Set(current);
-        next.add(clientMessageId);
-        return next;
-      });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
-    }
-  }, [readOnly, taskId]);
-
-  const retryTimelineMessage = useCallback(async (clientMessageId: string) => {
-    if (!taskId || readOnly || busy || !clientMessageId) return;
-    const retry = timeline.retryLocal(clientMessageId);
-    if (!retry) return;
-    setBusy(true);
-    setError(null);
-    let ok = false;
-    let delivery: "started" | "injected" | "queued" | undefined;
-    let failureReason = "";
-    try {
-      const result = await sendTimelineMessage(taskId, {
-        program: retry.program,
-        computer_id: timelineComputerId || undefined,
-        text: retry.text,
-        attachments: retry.attachments,
-        mode,
-        client_message_id: clientMessageId,
-        client_window: getClientWindowId(),
-      });
-      ok = result.ok !== false && result.accepted !== false;
-      delivery = result.delivery;
-    } catch (caught) {
-      failureReason = taskTimelineFailureText(tt, caught);
-    }
-    if (ok) {
-      if (delivery === "queued" || delivery === "injected") {
-        setTimelineDelivery((current) => ({ ...current, [clientMessageId]: delivery }));
+      if (!id) {
+        const result = await createComputerTaskSession(acpComputerId, { kind: "acp", program: acpProgram, request_id: clientMessageId });
+        created = { taskId: result.task_id, session: result.session };
+        id = result.task_id;
       }
-      timeline.settleLocal(clientMessageId, delivery ? { ok: true, delivery } : { ok: true });
-    } else {
-      const reason = failureReason || tt("这条消息没有发送，请重试。");
-      timeline.settleLocal(clientMessageId, { ok: false, reason });
-      setError(reason);
+      const switching = Boolean(acpSession && acpSession.program !== acpProgram);
+      const sent = !switching && acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
+      const body = {
+        client_message_id: clientMessageId,
+        program: acpProgram,
+        computer_id: acpComputerId,
+        text,
+        ...(uploaded.length ? { attachments: uploaded } : {}),
+        ...changedChoices(acpPicker.choice, sent),
+      };
+      if (switching) await switchAcpProgram(id, body);
+      else await sendAcp(id, body);
+      acpSentRef.current = { taskId: id, choices: { ...sent, ...acpPicker.choice } };
+      acpMessageIdRef.current = null;
+      setInput("");
+      atts.clear();
+      acpFollowRef.current = true;
+      // A first message or a switch made a new session row: read the list for it.
+      if (switching || !acpSession) {
+        setPickedChat(null);
+        setSessionsEpoch((epoch) => epoch + 1);
+      }
+    } catch (caught) {
+      setAcpError({ taskId: id, text: acpErrorText(caught) });
+    } finally {
+      setAcpBusy(false);
+      if (created) await adoptCreatedTask(created.taskId, created.session, text);
     }
-    setBusy(false);
-  }, [busy, mode, readOnly, taskId, timeline.retryLocal, timeline.settleLocal, timelineComputerId, tt]);
+  }
+
+  /** Stop = `session/cancel` (the agent stays); its answer to the prompt ends the turn on the page. */
+  const stopAcpTurn = useCallback(async () => {
+    if (!taskId || readOnly) return;
+    setAcpStopping(true);
+    setAcpError(null);
+    try { await stopAcp(taskId); }
+    catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); }
+    finally { setAcpStopping(false); }
+  }, [readOnly, taskId]);
+  /** Close = `session/close`, then the computer ends the agent process. */
+  const closeAcpSession = useCallback(async () => {
+    if (!taskId || readOnly) return;
+    setAcpError(null);
+    try { await closeAcp(taskId); }
+    catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); }
+  }, [readOnly, taskId]);
+  const answerAcpRequest = useCallback((requestId: number | string, result: unknown) => {
+    if (!taskId || readOnly) return;
+    void answerAcp(taskId, requestId, result).catch((caught) => setAcpError({ taskId, text: acpErrorText(caught) }));
+  }, [readOnly, taskId]);
+  const stopAcpBackgroundTask = useCallback((ref: string) => {
+    if (!taskId || readOnly) return;
+    void stopAcpTask(taskId, ref).catch((caught) => setAcpError({ taskId, text: acpErrorText(caught) }));
+  }, [readOnly, taskId]);
 
   async function send(orgId?: string, executionTarget?: ExecutionTarget) {
     const prompt = input.trim();
@@ -2488,61 +2117,6 @@ function AgentChatInner({
     if (!taskId) {
       const started = await start(effectivePrompt, uploaded, orgId, turn, executionTarget);
       if (!started) restoreSubmission();
-      return;
-    }
-    if (computerTask) {
-      setBusy(true);
-      let ok = false;
-      let delivery: "started" | "injected" | "queued" | undefined;
-      let failureReason = "";
-      const submissionKey = `${taskId}\u0000${effectivePrompt}\u0000${uploaded.map((attachment) => [
-        attachment.artifact_id,
-        attachment.revision_id,
-        attachment.url,
-        attachment.name,
-        attachment.mime,
-      ].map((part) => String(part || "")).join("\u0001")).join("\u0002")}`;
-      const pending = pendingTaskSubmissionRef.current;
-      const submission = taskSubmissionClientMessageId(pending, submissionKey, () =>
-        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-          ? crypto.randomUUID()
-          : `${taskId}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
-      );
-      const clientMessageId = submission.id;
-      pendingTaskSubmissionRef.current = submission;
-      timeline.sendLocal({
-        clientMessageId,
-        text: effectivePrompt,
-        attachments: uploaded,
-        program: timelineProgram,
-      });
-      try {
-        const result = await sendTimelineMessage(taskId, {
-          program: timelineProgram,
-          computer_id: timelineComputerId || undefined,
-          text: effectivePrompt,
-          attachments: uploaded,
-          mode,
-          client_message_id: clientMessageId,
-          client_window: getClientWindowId(),
-        });
-        ok = result.ok !== false && result.accepted !== false;
-        delivery = result.delivery;
-      } catch (caught) {
-        failureReason = taskTimelineFailureText(tt, caught);
-      }
-      if (ok) {
-        if (delivery === "queued" || delivery === "injected") {
-          setTimelineDelivery((current) => ({ ...current, [clientMessageId]: delivery }));
-        }
-        timeline.settleLocal(clientMessageId, delivery ? { ok: true, delivery } : { ok: true });
-      } else {
-        const reason = failureReason || tt("这条消息没有发送，请重试。");
-        timeline.settleLocal(clientMessageId, { ok: false, reason });
-        setError(reason);
-      }
-      setBusy(false);
-      pendingTaskSubmissionRef.current = null;
       return;
     }
     setBusy(true);
@@ -2716,23 +2290,6 @@ function AgentChatInner({
     // Bounded: no answer in 15 s → a written reason and Stop pressable again.
     taskStopTimerRef.current = setTimeout(() => updateTaskStop({ type: "timeout", stopId }), STOP_REPLY_TIMEOUT_MS);
     try {
-      if (computerTask) {
-        let ok = false;
-        try {
-          await stopTimelineTask(id);
-          ok = true;
-        } catch (caught) {
-          setError(caught instanceof Error ? caught.message : String(caught));
-        }
-        if (loadedTaskRef.current === id && taskStopRequestRef.current === stopId) {
-          if (ok) {
-            setStatus("stopped");
-            setBusy(false);
-            updateTaskStop({ type: "result", stopId, result: "stopped" });
-          } else updateTaskStop({ type: "result", stopId, result: "failed", detail: tt("电脑没有确认") });
-        }
-        return;
-      }
       if (isLocalExecution) {
         if (!localAgentCanControl(localRun, "stop")) {
           void refresh(id);
@@ -2772,7 +2329,7 @@ function AgentChatInner({
       updateTaskStop({ type: "result", stopId, result: "failed", detail: "" });
       void refresh(id);
     }
-  }, [readOnly, taskId, computerTask, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
+  }, [readOnly, taskId, refresh, tt, isLocalExecution, controlLocal, localRun, updateTaskStop]);
   useEffect(() => {
     if (!isLocalExecution || !localRun || localAgentRunLive(localRun)) return;
     const state = taskStopRef.current;
@@ -2797,33 +2354,32 @@ function AgentChatInner({
   // 记录最新 assistant 文本条的 index，用于给它做流式打字机（其余条直接全量）。
   // 回答后的追问 chip 已取消（操作员 2026-10-31），旧行的 meta.suggestions 不再渲染。
   let lastAssistantIdx = -1;
-  const lastUserIdx = timelineMessages.findLastIndex((message) => message.role === "user");
-  for (let i = timelineMessages.length - 1; i >= 0; i--) {
+  const lastUserIdx = messages.findLastIndex((message) => message.role === "user");
+  for (let i = messages.length - 1; i >= 0; i--) {
     if (
-      timelineMessages[i].role === "assistant" &&
-      (timelineMessages[i].kind === "text" || !timelineMessages[i].kind) &&
-      timelineMessages[i].meta?.interim !== true
+      messages[i].role === "assistant" &&
+      (messages[i].kind === "text" || !messages[i].kind) &&
+      messages[i].meta?.interim !== true
     ) {
       lastAssistantIdx = i;
       break;
     }
   }
-  const renderItems = buildAgentRenderItems(timelineMessages);
-  const activeProgressKey = activeAgentProgressKey(renderItems, timelineMessages);
+  const renderItems = buildAgentRenderItems(messages);
+  const activeProgressKey = activeAgentProgressKey(renderItems, messages);
   // Only the block nothing visible follows yet is live; it folds once text starts after it.
-  const liveProgressKey = liveAgentProgressKey(renderItems, timelineMessages);
-  const presentation = threadPresentation(timelineMessages, computerTask ? (timeline.state?.status || "") : status, {
-    busy: busy || taskStopping || (computerTask && Boolean(timeline.state && ["working", "waiting_user", "stopping", "queued"].includes(timeline.state.status))), taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
+  const liveProgressKey = liveAgentProgressKey(renderItems, messages);
+  const presentation = threadPresentation(messages, status, {
+    busy: busy || taskStopping, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
-  const turnState = latestTurn(timelineMessages);
+  const turnState = latestTurn(messages);
   const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
   const showThinkingTicker = Boolean(
     presentation.thinking && !turnState.visible && sentAt !== null,
   );
   const thinkingSeconds = useThinkingSeconds(showThinkingTicker, sentAt);
-  const thinkingText = showThinkingTicker
-    ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars)
-    : tt("正在理解问题…");
+  // Before the ticker starts only the spinner shows (no 「正在理解问题…」 guess).
+  const thinkingText = showThinkingTicker ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars) : "";
 
   const sendSuggestion = useCallback(
     async (text: string) => {
@@ -2905,39 +2461,20 @@ function AgentChatInner({
   // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
   const shareSiteLabel =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined;
-  const timelineShareSessionId = computerTask
-    ? activeSession?.id || String(timelineMessages.find((message) => message.meta?.task_timeline_session_id)?.meta?.task_timeline_session_id || "") || null
-    : null;
   const share = useShareMode({
-    messages: computerTask ? timelineMessages : messages,
+    messages,
     taskId,
     title: taskTitle,
     siteLabel: shareSiteLabel,
-    native: computerTask ? { sessionId: timelineShareSessionId, hasOlder: timeline.hasOlder } : undefined,
   });
   // W5 share fix (2026-10-31): the select mode lives in the OceanLeo conversation's
-  // own stream (its footer becomes the action bar). With a computer conversation in
-  // front that stream is hidden: entering there looked like "the button vanished,
-  // nothing happened". So the OceanLeo select mode ends when that conversation is
-  // not shown; a computer chat in front has its own (below).
-  const shareAvailable = (computerTask || cloudPaneShown) && share.selectable.length > 0;
+  // own stream (its footer becomes the action bar). A computer task shows raw ACP
+  // rows, not messages: nothing to select there, so it has no 「分享」.
+  const shareAvailable = cloudPaneShown && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
-    if (!computerTask && !cloudPaneShown && share.active) exitShare();
-  }, [computerTask, cloudPaneShown, share.active, exitShare]);
-  // A computer chat in front (2026-10-31): the same header 「分享」 puts THAT chat's
-  // stream in select mode (each NativeChatConversation owns its share state; this
-  // only says "on" for the one in front). Switching conversations leaves it.
-  const [nativeShareOn, setNativeShareOn] = useState(false);
-  const frontChatKey = activeSession?.id ?? (pick ? pickChatKey(pick) : "");
-  useEffect(() => {
-    setNativeShareOn(false);
-  }, [frontChatKey]);
-  const endNativeShare = useCallback(() => setNativeShareOn(false), []);
-  const nativeShareInfo = useMemo(
-    () => ({ taskId, title: taskTitle, siteLabel: shareSiteLabel }),
-    [taskId, taskTitle, shareSiteLabel],
-  );
+    if (!cloudPaneShown && share.active) exitShare();
+  }, [cloudPaneShown, share.active, exitShare]);
 
   // ---------------------------------------------------------------------
   // 对话内搜索（操作员 2026-09-07，图 662b8bb0）
@@ -3036,9 +2573,6 @@ function AgentChatInner({
     artifactMessages[artifactMessages.length - 1] || null;
   // One running source for Stop, the step spinner and can-send: a stop on its way counts.
   const running = status === "running" || busy || taskStopping;
-  const timelineRunning = computerTask && timeline.state
-    ? ["working", "waiting_user", "stopping", "queued"].includes(timeline.state.status)
-    : running;
   const activeGateId =
     status === "waiting_user"
       ? [...messages].reverse().find((message) => message.kind === "gate")?.id
@@ -3081,37 +2615,24 @@ function AgentChatInner({
 
   // Only signed tool receipts are persisted by the gateway as ui_action.
   // Assistant prose is deliberately never parsed for UI commands.
-  const latestActionMessage = [...timelineActionMessages]
+  const latestActionMessage = [...messages]
     .reverse()
     .find(
       (message) =>
         message.kind === "ui_action" && message.meta?.verified === true,
     );
   useEffect(() => {
-    if (!computerTask || !taskId || timelineStatus.loaded !== true || timelineActionBaselineRef.current === taskId) return;
-    timelineActionBaselineRef.current = taskId;
-    timelineActionIdsRef.current = new Set(
-      timelineActionMessages
-        .filter((message) => message.kind === "ui_action")
-        .map((message) => message.id),
-    );
-  }, [computerTask, taskId, timelineActionMessages, timelineStatus.loaded]);
-  useEffect(() => {
     if (
       !latestActionMessage ||
       latestActionMessage.id === seenActionRef.current ||
       !taskId ||
-      (!computerTask && messagesTaskId !== taskId)
+      messagesTaskId !== taskId
     )
       return;
-    const liveForTimeline = computerTask
-      ? timelineStatus.loaded === true && !timelineActionIdsRef.current.has(latestActionMessage.id)
-      : isLiveAction(actionHistoryRef.current, taskId, latestActionMessage);
-    if (!liveForTimeline) return;
+    if (!isLiveAction(actionHistoryRef.current, taskId, latestActionMessage)) return;
     const targetWindow = latestActionMessage.meta?.target_window;
     if (typeof targetWindow === "string" && targetWindow !== getClientWindowId()) return;
     seenActionRef.current = latestActionMessage.id;
-    timelineActionIdsRef.current.add(latestActionMessage.id);
     const preset = latestActionMessage.meta?.ui_preset;
     if (preset && typeof preset === "object") {
       applyAgentPreset(preset);
@@ -3129,7 +2650,7 @@ function AgentChatInner({
       nonce: `message:${latestActionMessage.id}`,
       action,
     });
-  }, [computerTask, latestActionMessage, messagesTaskId, taskId, timelineActionMessages, timelineStatus.loaded]);
+  }, [latestActionMessage, messagesTaskId, taskId]);
 
   // 关键修（操作员 2026-07-09：「团队 app 一打开库是折叠的」）：团队对话的 renderOrgPanel
   // 往往是 **异步** 就绪的（宿主先 setSel({kind:"team"}) 建壳、再 await 拉成员补 members，
@@ -3319,17 +2840,18 @@ function AgentChatInner({
       {/* Stays in place while selecting (pressed; a second click leaves). It used to be
           unmounted on click, so the header looked like it lost the button. Entering
           from here selects every message: 「复制链接」 works straight away. */}
-      {computerTask ? (
-        <ShareEntryButton
-          active={share.active}
-          onClick={() => (share.active ? share.exit() : share.enter("all"))}
-        />
-      ) : nativeChat ? (
-        <ShareEntryButton
-          active={nativeShareOn}
-          onClick={() => setNativeShareOn((on) => !on)}
-        />
-      ) : (share.active || shareAvailable) && (
+      {/* A computer task's agent: Close = session/close, then the computer ends the process. */}
+      {computerTask ? (acpSession && !readOnly && (
+        <button
+          type="button"
+          onClick={() => void closeAcpSession()}
+          disabled={!acpConnected}
+          className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+          data-acp-close=""
+        >
+          {tt("关闭对话")}
+        </button>
+      )) : (share.active || shareAvailable) && (
         <ShareEntryButton
           active={share.active}
           onClick={() => (share.active ? share.exit() : share.enter("all"))}
@@ -3424,7 +2946,7 @@ function AgentChatInner({
   // 动效走既有的 `.v-fade-up`（token 化，且 reduced-motion 下自动 animation:none），
   // 不新写一条曲线。
   const backToLatest =
-    !following && timelineMessages.length > 0 ? (
+    !following && messages.length > 0 ? (
       <button
         type="button"
         onClick={resumeFollowing}
@@ -3446,9 +2968,9 @@ function AgentChatInner({
     ) : null;
 
   // 复制 / 重做 / 分享：一轮只在最后一段话底下出现一次（操作员 2026-10-31），跑着的这一轮不出现。
-  const turnActions = agentTurnActionTargets(renderItems, timelineRunning || presentation.working);
+  const turnActions = agentTurnActionTargets(renderItems, running || presentation.working);
   // W4 2026-10-31: the small time above user bubbles (first one, then after a 5-minute gap).
-  const timeSeparators = agentMessageTimeSeparators(timelineMessages);
+  const timeSeparators = agentMessageTimeSeparators(messages);
 
   /** 把上面那条裁决接到实际渲染的那条消息上。 */
   const messageForBubble = (item: {
@@ -3466,9 +2988,10 @@ function AgentChatInner({
   };
 
   // What the composer (and the bar under CLI/terminal) needs to show and switch conversations.
+  // A cloud task has no computer conversations (the dock only shows its target).
   const conversationProps = {
     conversation,
-    onConversationChange,
+    onConversationChange: taskId && !computerTask ? undefined : onConversationChange,
     taskSessions: sessions,
     oceanleoDisabledReason,
   };
@@ -3518,32 +3041,13 @@ function AgentChatInner({
     top: (
       <>
         {isLocalExecution && <LocalAgentTaskStatus key={taskId} run={localRun} artifacts={localArtifacts.taskId === taskId ? localArtifacts.items : []} busy={localControlBusy} readOnly={Boolean(readOnly)} onControl={controlLocal} />}
-        {computerTask && (timeline.olderLoading || timelineOlderError) && (
-          <div className="flex shrink-0 items-center justify-center gap-2 px-4 pt-2 text-[13px] text-stone-500" role="status" data-native-older-loading="">
-            {timeline.olderLoading && <span className="v-spinner" aria-label={tt("正在读取…")} />}
-            {timelineOlderError && (
-              <>
-                <span>{tt(timelineOlderError.message || "读取更早消息失败")}</span>
-                <button type="button" className="font-medium underline" onClick={retryTimelineOlder}>
-                  {tt("重试")}
-                </button>
-              </>
-            )}
-          </div>
-        )}
       </>
     ),
-    // A computer task whose conversation is not decided yet shows nothing rather than a cloud empty page.
-    empty: timelineMessages.length === 0 && !timelineRunning && conversationResolved &&
-      (!taskId || (
-        taskMode.taskId === taskId && taskMode.computer
-          ? timelineStatus.loaded === true
-          : taskMode.taskId === taskId && !taskMode.computer && messagesTaskId === taskId
-      )) &&
+    // Only a host's own hint (the `agent` site); without one an empty conversation shows nothing.
+    empty: emptyHint && messages.length === 0 && !running && conversationResolved &&
+      (!taskId || (taskMode.taskId === taskId && !taskMode.computer && messagesTaskId === taskId)) &&
       !(Boolean(!taskId && (initialPrompt?.trim() || initialAtts?.length))) ? (
-      <div className="py-10 text-center text-[15px] text-stone-400">
-        {emptyHint ?? tt("在下方输入，开始与 agent 对话。")}
-      </div>
+      <div className="py-10 text-center text-[15px] text-stone-400">{emptyHint}</div>
     ) : null,
     items: (
       <>
@@ -3552,7 +3056,7 @@ function AgentChatInner({
               <AgentProgress
                 key={item.key}
                 messages={item.messages}
-                running={timelineRunning && item.key === liveProgressKey}
+                running={running && item.key === liveProgressKey}
                 accent={accent}
               />
             ) : (
@@ -3560,7 +3064,7 @@ function AgentChatInner({
                 <AgentTranscriptBubble
                   message={messageForBubble(item)}
                   timeAbove={timeSeparators.get(item.index)}
-                  streaming={timelineRunning && item.index === lastAssistantIdx &&
+                  streaming={running && item.index === lastAssistantIdx &&
                     item.index > lastUserIdx && item.message.meta?.done !== true &&
                     item.message.meta?.final !== true && item.message.meta?.stopped !== true}
                   stopped={
@@ -3576,7 +3080,7 @@ function AgentChatInner({
                   }
                   onOpenAttachment={openTaskAttachment}
                   onBranch={
-                    !timelineRunning &&
+                    !running &&
                     !readOnly &&
                     item.message.role === "user" &&
                     item.message.id > 0
@@ -3589,7 +3093,7 @@ function AgentChatInner({
                   gateActive={item.message.id === activeGateId}
                   gateBusy={gateBusy}
                   onGate={onGate ? handleGate : undefined}
-                  taskRunning={timelineRunning}
+                  taskRunning={running}
                   onContinue={
                     readOnly
                       ? undefined
@@ -3608,46 +3112,10 @@ function AgentChatInner({
                   turnCopyText={turnActions.get(item.key) ?? null}
                   highlightQuery={highlightQuery || undefined}
                 />
-                {computerTask && (item.message.meta?.task_timeline_queued === true ||
-                  item.message.meta?.delivery === "queued" || item.message.meta?.delivery === "injected" ||
-                  timelineDelivery[String(item.message.meta?.client_message_id || "")] !== undefined) && (
-                  <TaskQueuedActions
-                    clientMessageId={String(item.message.meta?.client_message_id || "")}
-                    recipientProgram={String(item.message.meta?.engine || "")}
-                    currentProgram={String(currentProgram || "")}
-                    queued={timelineDelivery[String(item.message.meta?.client_message_id || "")] === "queued" ||
-                      item.message.meta?.delivery === "queued" || item.message.meta?.task_timeline_queued === true}
-                    readOnly={readOnly}
-                    onRemove={(id) => void removeQueuedMessage(id)}
-                  />
-                )}
-                {computerTask && item.message.role === "user" && item.message.meta?.delivery === "unsent" && (() => {
-                  const clientMessageId = String(item.message.meta?.client_message_id || "");
-                  const reason = String(item.message.meta?.unsent_reason || tt("这条消息没有发送，请重试。"));
-                  return (
-                    <div
-                      className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500"
-                      data-task-timeline-unsent={clientMessageId}
-                      role="status"
-                    >
-                      <span>{tt("未发送：{reason}", { reason })}</span>
-                      {!readOnly && clientMessageId && (
-                        <button
-                          type="button"
-                          onClick={() => void retryTimelineMessage(clientMessageId)}
-                          className="rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-                          disabled={busy}
-                        >
-                          {tt("重试")}
-                        </button>
-                      )}
-                    </div>
-                  );
-                })()}
               </div>
             ),
           )}
-          {presentation.thinking && !computerTask && (
+          {presentation.thinking && (
             <div className="flex items-center gap-2 text-[14px] text-stone-400">
               <span className="v-spinner" /> {thinkingText}
             </div>
@@ -3656,26 +3124,6 @@ function AgentChatInner({
     ),
     tail: (
       <>
-          {computerTask && timeline.state?.status === "offline" && <p className="text-[13px] text-stone-500">{tt("电脑离线；任务完成后会自动补齐")}</p>}
-          {computerTask && timeline.state?.savingDelayed && <p className="text-[13px] text-stone-500" data-task-saving-delayed>{tt("这段对话暂时没能保存到云端")}</p>}
-          {computerTask && timelineStatus.liveNotice && <p className="text-[13px] text-stone-400">{tt("正在重新连接…")}</p>}
-          {computerTask && timelineReadError && (
-            <p className="flex flex-wrap items-center gap-2 text-[13px] text-stone-500" role="status">
-              <span>{tt(timelineReadError.message || "读取任务消息失败")}</span>
-              <button type="button" className="font-medium underline" onClick={retryTimelineRead}>
-                {tt("重试")}
-              </button>
-            </p>
-          )}
-          {computerTask && timeline.state?.request && (
-            <div className="flex items-center justify-between gap-3 rounded-lg bg-amber-50 px-3 py-2 text-[13px] text-amber-800" data-task-request={timeline.state.request.id}>
-              <span>{String(timeline.state.request.question || timeline.state.request.prompt || tt("等待你的回复"))}</span>
-              <button type="button" className="shrink-0 font-medium underline" onClick={() => void answerTimelineRequest(taskId!, timeline.state!.request!.id, {}).catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))}>
-                {tt("继续")}
-              </button>
-            </div>
-          )}
-
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
           <EditorCommandNotes notes={editorCommands.notes} />
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
@@ -3728,7 +3176,7 @@ function AgentChatInner({
             value={input}
             onChange={setInput}
             onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
-            loading={computerTask ? timelineRunning : running}
+            loading={running}
             onStop={() => void stop()}
             stopping={taskStopping}
             stopError={stopErrorText(tt, taskStop)}
@@ -3738,15 +3186,11 @@ function AgentChatInner({
             leoContext={{ page: "task", taskId: taskId || undefined }}
             inlineSlot={inlineSlot}
             placeholder={
-              computerTask
-                ? placeholder && !/oceanleo/i.test(placeholder)
-                  ? placeholder
-                  : tt("继续追问")
-                : placeholder ??
-                  (toolsOn
-                    ? tt("继续追问，或上传文件让 agent 分析…")
-                    : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
-                      tt("继续追问"))
+              placeholder ??
+              (toolsOn
+                ? tt("继续追问，或上传文件让 agent 分析…")
+                : // 关闭态复用既有的已翻译词条，不新增 key（17 语都已有译文）。
+                  tt("继续追问"))
             }
             rows={1}
             onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
@@ -3758,9 +3202,6 @@ function AgentChatInner({
             onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
             onVoiceTranscript={handleVoiceTranscript}
             contextActions={getHelpMenu}
-            {...(computerTask && timelineProgram !== "oceanleo"
-              ? { nativeModelPickerSlot: taskNativeThread.modelPicker }
-              : {})}
             {...conversationProps}
           />
             </>
@@ -3778,294 +3219,71 @@ function AgentChatInner({
     ),
   });
 
-  // A native conversation through the SAME stream: no branch, regenerate, share,
-  // suggestions or quick-action chips; gates answer the computer's program.
-  // Each opened native chat is its own <NativeChatConversation> (one hook per
-  // session, kept mounted and connected while hidden); this function is its stream.
-  const renderNativePane = (pane: NativeChatPane): ReactNode => {
-    const { thread, session, input, setInput, scrollRef, onScroll, connecting, share: nativeShare } = pane;
-    let previousEngine = "";
-    const nativeMessages = thread.messages.map((message) => {
-      const engine = typeof message.meta?.engine === "string" ? message.meta.engine : "";
-      const showLabel = Boolean(engine && previousEngine && engine !== previousEngine && message.role === "assistant");
-      previousEngine = engine || previousEngine;
-      if (!showLabel) return message;
-      const label = PROGRAM_LABEL[engine as keyof typeof PROGRAM_LABEL] ?? engine;
-      return { ...message, meta: { ...message.meta, engine_label: label } };
-    });
-    const nativeRenderItems = buildAgentRenderItems(nativeMessages);
-    const nativeFinishingKey = nativeFinishingItemKey(nativeRenderItems, thread.finishing, thread.live);
-    const nativeProgressKey = activeAgentProgressKey(nativeRenderItems, nativeMessages);
-    const nativeLiveProgressKey = liveAgentProgressKey(nativeRenderItems, nativeMessages);
-    const nativeRunning = thread.running || (!session && conversationBusy);
-    const nativePresentation = threadPresentation(nativeMessages, thread.finishing ? "finishing" : nativeRunning ? "running" : "", {
-      activeProgress: Boolean(nativeProgressKey),
-    });
-    const nativeLastUserIdx = nativeMessages.findLastIndex((message) => message.role === "user");
-    const nativeLastAssistantIdx = nativeMessages.findLastIndex((message) =>
-      message.role === "assistant" && (message.kind === "text" || !message.kind) && message.meta?.interim !== true);
-    // One copy row per turn, under its last words; none while the turn is still running.
-    const nativeTurnActions = agentTurnActionTargets(nativeRenderItems, nativePresentation.working || thread.running);
-    const nativeTimeSeparators = agentMessageTimeSeparators(nativeMessages);
-    const autonomousTurns = new Set<string>();
-    // Install / sign-in live in the composer pill's 账号 card: a send blocked for that reason opens it.
-    const blockedBySetup = Boolean(!connecting && thread.blockedReason && !thread.offline);
-    // A prompt typed while the session is still opening waits in the queue: its bubble
-    // is the whole signal (no 「正在打开对话…」 line, 2026-10-31 D); a real reason
-    // (offline, not installed / signed in) or a still-unknown computer is said.
-    const blockedLine = connecting ? tt("正在连接…") : thread.blockedReason;
-    // A known offline computer shows its saved conversation read-only. While
-    // its state is still being read (or an online link reconnects), Enter can queue.
-    const nativeReadOnly = readOnly || (!connecting && thread.offline);
-    // The homepage created this chat's session itself (nativeLaunch): no second create here.
-    const hostLaunch = !session && Boolean(nativeLaunch) && Boolean(pick) && pickChatKey(pick!) === launchKey;
-    const notOpened = () => tt("没能打开这段对话，请稍后再试。");
-    const retryPending = () => {
-      const text = thread.pending?.text ?? "";
-      thread.retry();
-      if (session) { if (blockedBySetup) pane.requestSetup(); return; }
-      if (hostLaunch) nativeLaunch?.retry?.();
-      else if (!conversationBusy) void startNative(text).then((ok) => { if (!ok) thread.markUnsent(notOpened()); });
-    };
-    const submit = async (value?: string) => {
-      const text = (value ?? input).trim();
-      if (nativeReadOnly) return;
-      // A first prompt on its way is already the user's bubble; one at a time.
-      if (thread.pending && !thread.pending.unsent) return;
-      // No session yet, or replacing an unsent first prompt: the bubble shows now and
-      // goes out by itself once the session and link are bound (never handed back).
-      if (!session || thread.pending) {
-        if (!thread.queue(text)) return;
-        setInput("");
-        if (session) { if (blockedBySetup) pane.requestSetup(); return; }
-        if (hostLaunch) { nativeLaunch?.retry?.(); return; }
-        if (!(await startNative(text))) thread.markUnsent(notOpened());
-        return;
-      }
-      if (!thread.ready) {
-        if (blockedBySetup) { pane.requestSetup(); return; }
-        // Not ready (still opening, reconnecting after a drop or a gateway swap, a turn
-        // still ending): never drop Enter (2026-11-02 F2). The prompt is the user's bubble
-        // now, says so while the computer reconnects, and goes out by itself once ready;
-        // a reason and a resend if it cannot (unsent after 45 s, or the gateway says so).
-        if (thread.queue(text)) setInput("");
-        return;
-      }
-      // Attachment-only sends are allowed; the input clears only when the prompt really went out.
-      if (await thread.send(text)) setInput("");
-    };
-    return renderStream({
-      pane: "native",
-      scrollRef,
-      onScroll,
-      // No "load earlier" button: scrolling near the top reads one more batch by itself
-      // (NativeChatConversation.onScroll); only a small spinner while it is on its way.
-      top: thread.olderLoading ? (
-        <div className="flex shrink-0 justify-center px-4 pt-2" role="status" aria-label={tt("正在读取…")} data-native-older-loading="">
-          <span className="v-spinner" />
-        </div>
-      ) : null,
-      // An existing conversation shows its cloud-saved copy at once; only while that
-      // copy is still on its way is there the page-level skeleton (never 「正在打开对话…」).
-      empty: nativeMessages.length === 0 && !thread.running ? (
-        session && (connecting || thread.opening) ? (
-          // The same page-level skeleton as the task switch (W5): one loading look, no spinner.
-          <div data-native-opening="">
-            <RoutePageSkeleton variant="list" label={tt("正在读取…")} />
-          </div>
-        ) : (
-          <div className="py-10 text-center text-[15px] text-stone-400">{tt("在下方输入，开始与 agent 对话。")}</div>
-        )
-      ) : null,
-      items: (
-        <>
-          {nativeRenderItems.map((item) => {
-            const first = item.type === "progress" ? item.messages[0] : item.message;
-            const turnId = String(first?.meta?.native_turn_id ?? "");
-            const autonomous = Boolean(turnId && first?.meta?.native_turn_autonomous && !autonomousTurns.has(turnId));
-            if (autonomous) autonomousTurns.add(turnId);
-            return <div key={item.key} className="contents"
-              data-native-frame-seq={typeof first?.meta?.native_seq === "number" ? first.meta.native_seq : undefined}
-              data-native-message-role={first?.role}
-              data-native-message-key={first?.id}
-              data-native-turn-id={turnId || undefined}>
-              {autonomous && <div data-native-autonomous-turn={turnId}
-                className="pt-3 text-[12px] text-stone-500">{tt("agent 的后台工作")}</div>}
-              {
-            item.type === "progress" ? (
-              <AgentProgress
-                key={item.key}
-                messages={item.messages}
-                running={nativeRunning && !thread.finishing && (item.messages.some((message) => message.meta?.native_turn_live === true) ||
-                  (!item.messages.some((message) => message.meta?.native_turn_id) && item.key === nativeLiveProgressKey))}
-                accent={accent}
-              />
-            ) : (
-              <div key={item.key} className="contents">
-              <AgentTranscriptBubble
-                message={item.message}
-                timeAbove={nativeTimeSeparators.get(item.index)}
-                streaming={nativeRunning && !thread.finishing && (item.message.meta?.native_turn_id
-                  ? item.message.meta.native_streaming === true
-                  : item.index === nativeLastAssistantIdx && item.index > nativeLastUserIdx && item.message.meta?.done !== true &&
-                    item.message.meta?.final !== true && item.message.meta?.stopped !== true)}
-                stopped={item.message.meta?.stopped === true}
-                turnCopyText={nativeTurnActions.get(item.key) ?? null}
-                taskRunning={thread.running}
-                // Saved transcript (offline): gates are read-only.
-                onNativeAnswer={!readOnly && thread.live ? thread.answer : undefined}
-                onOpenAttachment={openTaskAttachment}
-                selectMode={nativeShare.active}
-                selected={nativeShare.selectedIds.has(item.message.id)}
-                onSelectToggle={() => nativeShare.toggle(item.message.id)}
-              />
-              {item.message.role === "user" && Boolean(item.message.meta?.native_delivery) && (() => {
-                const delivery = item.message.meta!.native_delivery as { state: string; uncertain?: boolean };
-                const id = String(item.message.meta!.native_message_id ?? "");
-                const failed = delivery.state === "unsent";
-                const cancelled = delivery.state === "cancelled";
-                const label = nativeDeliveryStatus(delivery.state);
-                if (!label && !delivery.uncertain) return null;
-                return <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500"
-                  data-native-message-state={delivery.state} data-native-message-id={id} role="status">
-                  {label && <span>{tt(label)}</span>}
-                  {delivery.uncertain && <span>{tt("发送结果尚未确认，重试会核对原消息，避免重复执行。")}</span>}
-                  {!nativeReadOnly && failed && <button type="button" onClick={() => void thread.retryMessage(id)}
-                    className="text-stone-600 underline" disabled={!thread.live || thread.stopState === "stopping"}>{tt("重试")}</button>}
-                  {!nativeReadOnly && cancelled && <button type="button" onClick={() => void thread.restoreMessage(id)}
-                    className="text-stone-600 underline">{tt("恢复草稿")}</button>}
-                </div>;
-              })()}
-              </div>
-            )
-              }
-              {item.key === nativeFinishingKey && (
-                <div className="text-[13px] text-stone-400" data-native-finishing="">{tt("正在确认结束")}</div>
-              )}
-            </div>;
-          })}
-          {/* Only until the turn's first entry: after that the process block / streaming text is the live signal. */}
-          {nativePresentation.thinking && nativeThinkingVisible(nativeMessages, thread.running, thread.live, thread.finishing) && (
-            <div className="flex items-center gap-2 text-[14px] text-stone-400" data-native-thinking="">
-              <span className="v-spinner" /> {tt("agent 正在思考…")}
-            </div>
-          )}
-        </>
-      ),
-      tail: (
-        <>
-          {/* A first prompt that could not go out: said plainly under its bubble, with a retry (never handed back silently). */}
-          {/* Waiting through a reconnect: said under its bubble; it goes out by itself once connected. */}
-          {!thread.pending?.unsent && thread.pending?.waiting && (
-            <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500" data-native-pending-waiting="">
-              <span>{thread.pending.waiting}</span>
-            </div>
-          )}
-          {thread.pending?.unsent && (
-            <div className="flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500" data-native-unsent>
-              <span>{tt("未发送：{reason}", { reason: thread.pending.unsent })}</span>
-              <button type="button" onClick={retryPending}
-                className="rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50">
-                {tt("重试")}
-              </button>
-            </div>
-          )}
-          {conversationNotice}
-        </>
-      ),
-      overlay: null,
-      // Select mode (header 「分享」): the same action bar as the OceanLeo conversation.
-      footer: nativeShare.active ? (
-        <ShareActionBar share={nativeShare} />
-      ) : (
-        <>
-          {session && blockedLine && (
-            <p className="px-1 text-[12px] text-stone-500" data-native-blocked>{blockedLine}</p>
-          )}
-          {thread.saveFailed && (
-            <p className="px-1 text-[12px] text-stone-400" data-native-save-failed>{tt("这段对话暂时没能保存到云端")}</p>
-          )}
-          <LeoComposer
-            optimizeImages
-            boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
-            value={input}
-            onChange={setInput}
-            onSubmit={(clean) => void submit(clean)}
-            loading={nativeRunning}
-            allowSendWhileRunning
-            onStop={() => thread.stop()}
-            stopping={thread.stopState === "stopping"}
-            stopError={thread.stopError}
-            // Keep typing and Enter usable while an online computer reconnects.
-            disabled={nativeReadOnly}
-            placeholder={placeholder ?? (toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问"))}
-            rows={1}
-            onAttachFiles={toolsOn ? thread.onAttachFiles : undefined}
-            attachments={toolsOn ? thread.composerAttachments : undefined}
-            onRemoveAttachment={toolsOn ? thread.onRemoveAttachment : undefined}
-            onRetryAttachment={toolsOn ? thread.onRetryAttachment : undefined}
-            // W6: a tile opens in this task's right sidebar through the shared Library detail.
-            onOpenAttachment={openTaskAttachment}
-            draftKey={taskId ? `task:${taskId}` : undefined}
-            // A computer's inbox takes bytes: a Library pick is read once and attached as a file.
-            onAddAttachments={toolsOn && thread.onAttachFiles ? thread.onAddAttachments : undefined}
-            onVoiceTranscript={(text: string) => setInput((current) => (current ? current + " " : "") + text)}
-            // Controls that do nothing for a native send are not shown.
-            showPlugins={false}
-            showPayerSelector={false}
-            showAppsBar={false}
-            modelPickerSlot={thread.modelPicker}
-            {...conversationProps}
-          />
-        </>
-      ),
-      after: nativeShare.preview ? (
-        <ShareCardPreview
-          images={nativeShare.preview}
-          fileBaseName="oceanleo-share"
-          onClose={nativeShare.closePreview}
+  // The computer task's stream: the same frame and composer, the program's own
+  // rows (AcpTranscript). The composer and its buttons work only while the
+  // socket is connected; a refusal is said under the composer in the gateway's words.
+  const acpErrorLine = acpError && acpError.taskId === (taskId || "") ? acpError.text : "";
+  const acpStream = acpShown ? renderStream({
+    pane: "acp",
+    scrollRef: acpScrollRef,
+    onScroll: onAcpScroll,
+    top: null,
+    empty: null,
+    items: (
+      <AcpTranscript
+        rows={frames.rows}
+        program={acpRowsProgram}
+        onAnswer={answerAcpRequest}
+        onStopTask={stopAcpBackgroundTask}
+      />
+    ),
+    tail: (
+      <>
+        {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
+        {conversationNotice}
+      </>
+    ),
+    overlay: null,
+    footer: (
+      <>
+        {taskId && !acpConnected && (
+          <p className="px-1 text-[12px] text-stone-500" role="status" data-acp-disconnected="">{tt("连接断开")}</p>
+        )}
+        <LeoComposer
+          optimizeImages
+          boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
+          value={input}
+          onChange={setInput}
+          onSubmit={() => void sendAcpMessage()}
+          loading={acpView.open}
+          allowSendWhileRunning
+          onStop={() => void stopAcpTurn()}
+          stopping={acpStopping}
+          onOpenAttachment={openTaskAttachment}
+          disabled={acpComposerDisabled || acpBusy}
+          placeholder={placeholder ?? (toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问"))}
+          rows={1}
+          onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
+          attachments={toolsOn ? atts.composerAttachments : undefined}
+          onRemoveAttachment={toolsOn ? atts.removeAttachment : undefined}
+          onRetryAttachment={toolsOn ? atts.retryAttachment : undefined}
+          draftKey={taskId ? `task:${taskId}` : undefined}
+          onAddAttachments={toolsOn ? atts.addComposerAttachments : undefined}
+          onVoiceTranscript={handleVoiceTranscript}
+          // Controls that do nothing for a computer program's message are not shown.
+          showPlugins={false}
+          showPayerSelector={false}
+          showAppsBar={false}
+          modelPickerSlot={acpPicker.picker}
+          {...conversationProps}
         />
-      ) : null,
-    });
-  };
-  const chatSessions = openedChats
-    .map((id) => sessions.find((session) => session.id === id))
-    .filter((session): session is ComputerTaskSession => Boolean(session));
-  if (activeSession?.kind === "acp" && !chatSessions.some((session) => session.id === activeSession.id)) chatSessions.push(activeSession);
-  // One keyed list: a picked chat and the session its first send creates share a key,
-  // so the same thread instance carries over (draft model choice included).
-  const chatEntries: {key: string; session: ComputerTaskSession | null; conversation: Extract<ConversationTarget, {kind: "native"}>; active: boolean}[] = [
-    ...chatSessions.map((session) => ({
-      key: chatKeysRef.current.get(session.id) ?? session.id,
-      session,
-      conversation: sessionConversation(session) as Extract<ConversationTarget, {kind: "native"}>,
-      active: activeSession?.id === session.id,
-    })),
-    ...(pick ? [{key: pickChatKey(pick), session: null, conversation: pick, active: true}] : []),
-  ];
-  const nativeStream = chatEntries.length ? (
-    <>
-      {chatEntries.map((entry) => (
-        <div key={entry.key} className={entry.active ? "relative min-h-0 flex-1" : "hidden"} hidden={!entry.active}
-          data-native-chat={entry.session?.id ?? "pick"}>
-          <NativeChatConversation
-            session={entry.session}
-            computer={computerFor(entry.conversation.computerId)}
-            // The homepage's prewarmed thread drives its launched chat (one connection).
-            external={nativeLaunch && entry.key === launchKey ? nativeLaunch.thread : undefined}
-            active={entry.active}
-            onNativeSessionChange={patchSession}
-            conversation={entry.conversation}
-            shareOn={nativeShareOn && entry.active}
-            onShareExit={endNativeShare}
-            shareInfo={nativeShareInfo}
-            archivedSources={archivedNativeSources}
-            render={renderNativePane}
-          />
-        </div>
-      ))}
-    </>
-  ) : null;
+        {acpErrorLine && (
+          <p className="whitespace-pre-wrap break-words px-1 text-[13px] text-rose-500 [overflow-wrap:anywhere]" role="alert" data-acp-error="">{acpErrorLine}</p>
+        )}
+      </>
+    ),
+    after: null,
+  }) : null;
 
   // CLI / terminal: the host-styled surface fills the pane, the same dock sits below it.
   // The active surface is mounted in the same render it is chosen (same key afterwards: no remount).
@@ -4074,14 +3292,12 @@ function AgentChatInner({
   const surfaceSessions = surfaceIds
     .map((id) => sessions.find((session) => session.id === id))
     .filter((session): session is ComputerTaskSession => Boolean(session));
-  const cloudShown = computerTask || !conversation || conversation.kind === "oceanleo";
   const leftPane = (
     <div className="flex h-full min-h-0 flex-col">
-      <div className={cloudShown ? "relative min-h-0 flex-1" : "hidden"} hidden={!cloudShown}>{stream}</div>
-      {nativeStream && !computerTask && (
-        <div className={nativeChat ? "flex min-h-0 flex-1 flex-col" : "hidden"} hidden={!nativeChat}>{nativeStream}</div>
-      )}
-      {!computerTask && surfaceSessions.map((session) => {
+      {acpShown
+        ? <div className={surfaceActive ? "hidden" : "relative min-h-0 flex-1"} hidden={surfaceActive} data-acp-stream-pane="">{acpStream}</div>
+        : <div className={surfaceActive ? "hidden" : "relative min-h-0 flex-1"} hidden={surfaceActive}>{stream}</div>}
+      {surfaceSessions.map((session) => {
         const active = surfaceActive && activeSession?.id === session.id;
         return (
           <div key={session.id} className={active ? "relative min-h-0 flex-1" : "hidden"} hidden={!active} data-computer-surface={session.id}>
@@ -4094,7 +3310,7 @@ function AgentChatInner({
           </div>
         );
       })}
-      {!computerTask && surfaceActive && (
+      {surfaceActive && (
         <div className="shrink-0 border-t border-stone-100">
           <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
             {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}
@@ -4234,256 +3450,13 @@ function AgentChatInner({
   );
 }
 
-/** What one native chat hands the host's stream renderer. */
-interface NativeChatPane {
-  thread: NativeThread;
-  /** null: a picked conversation whose session is created by the first send. */
-  session: ComputerTaskSession | null;
-  input: string;
-  setInput: (next: string | ((current: string) => string)) => void;
-  scrollRef: RefObject<HTMLDivElement | null>;
-  onScroll: () => void;
-  /** The computer's state is not known yet: "正在连接…", never "offline". */
-  connecting: boolean;
-  /** This chat's select mode (header 「分享」); its `exit` asks the host to end it. */
-  share: ShareModeState;
-  /** A send held back by install / sign-in: open the composer pill on its 账号 card. */
-  requestSetup: () => void;
-}
-
-/**
- * One native chat conversation: its own thread (a hook, so one component per
- * session), kept mounted AND connected while hidden so permission prompts and
- * progress keep arriving; switching never kills a run. A first prompt handed
- * over by link is queued in its thread (the user's bubble at once, sent once
- * connected, or marked unsent with a reason and a retry — never handed back
- * silently). It keeps its own draft text and scroll position; a send held back
- * by install / sign-in opens its composer pill on the 账号 card. With
- * `external` (the homepage's prewarmed thread) it renders that thread and
- * opens no connection of its own.
- */
-function NativeChatConversation({ session, computer, external, active, onNativeSessionChange, conversation, shareOn, onShareExit, shareInfo, archivedSources, render }: {
-  session: ComputerTaskSession | null;
-  computer: Computer | null;
-  external?: NativeThread;
-  active: boolean;
-  onNativeSessionChange: (sessionId: string, nativeId: string) => void;
-  conversation: Extract<ConversationTarget, { kind: "native" }>;
-  /** The header 「分享」 is on for this (front) chat. */
-  shareOn: boolean;
-  onShareExit: () => void;
-  shareInfo: { taskId?: string | null; title?: string; siteLabel?: string };
-  archivedSources?: NativeThreadSource[];
-  render: (pane: NativeChatPane) => ReactNode;
-}) {
-  const sessionId = session?.id ?? "";
-  const onNative = useCallback((nativeId: string) => {
-    if (sessionId) onNativeSessionChange(sessionId, nativeId);
-  }, [sessionId, onNativeSessionChange]);
-  // A picked (session-less) chat still connects for program status and models;
-  // it never opens or creates a session. A host-owned thread replaces this one
-  // (which then stays disconnected).
-  const own = useNativeThread({
-    computer, session, program: conversation.program,
-    enabled: !external,
-    onNativeSessionChange: onNative,
-  });
-  const thread = external ?? own;
-  const displayMessages = useMemo(() => {
-    if (!archivedSources?.length) return thread.messages;
-    const activeSource: NativeThreadSource = {
-      session: session ?? { id: "live", program: conversation.program, created_at: new Date(0).toISOString() },
-      messages: thread.messages,
-    };
-    return mergeNativeThreadMessages([activeSource, ...archivedSources.filter((source) => source.session.id !== session?.id)]);
-  }, [archivedSources, conversation.program, session, thread.messages]);
-  const displayThread = useMemo(() => ({ ...thread, messages: displayMessages }), [thread, displayMessages]);
-  // New messages in a live native chat move its row up in My Tasks (throttled
-  // at the source; a user send always). The first look at a conversation —
-  // the saved transcript or a replay — is a baseline, not activity.
-  const activityTaskId = session?.task_id ?? "";
-  const activity = useMemo(() => nativeLastActivity(thread.messages), [thread.messages]);
-  const lastMessageKey = activity?.at ?? "";
-  const activityBaselineRef = useRef<{ taskId: string; key: string } | null>(null);
-  useEffect(() => {
-    const baseline = activityBaselineRef.current;
-    activityBaselineRef.current = { taskId: activityTaskId, key: lastMessageKey };
-    if (!activityTaskId || !thread.live || !baseline || baseline.taskId !== activityTaskId) return;
-    if (!lastMessageKey || baseline.key === lastMessageKey) return;
-    notifyHistoryActivity({ taskId: activityTaskId, user: activity?.user, at: activity?.at });
-  }, [activityTaskId, lastMessageKey, thread.live, activity?.at, activity?.user]);
-  // A phase changes the row's state, not its activity time. Refresh from the
-  // gateway when it changes instead of keeping "now" until the next poll.
-  const nativePhase = thread.finishing ? "finishing" : thread.running ? "active" : "idle";
-  const phaseBaselineRef = useRef<{ sessionId: string; phase: string } | null>(null);
-  const phaseSessionId = session?.id ?? "";
-  useEffect(() => {
-    const baseline = phaseBaselineRef.current;
-    phaseBaselineRef.current = { sessionId: phaseSessionId, phase: nativePhase };
-    if (!phaseSessionId || !thread.live || !baseline || baseline.sessionId !== phaseSessionId || baseline.phase === nativePhase) return;
-    notifyHistoryChanged();
-  }, [phaseSessionId, nativePhase, thread.live]);
-  // Header 「分享」 on a computer chat: the same select mode and action bar as the
-  // OceanLeo conversation, over this chat's own messages. Text / image / document
-  // are built from what is shown; the link names this session's cloud-saved copy.
-  const share = useShareMode({
-    messages: displayMessages,
-    taskId: shareInfo.taskId,
-    title: shareInfo.title,
-    siteLabel: shareInfo.siteLabel,
-    assistantLabel: PROGRAM_LABEL[conversation.program],
-    native: { sessionId: session?.id ?? null, hasOlder: thread.hasOlder },
-  });
-  const shareModeRef = useRef(share);
-  shareModeRef.current = share;
-  useEffect(() => {
-    // Entering selects every message (「复制链接」 works straight away), as in OceanLeo.
-    if (shareOn) shareModeRef.current.enter("all");
-    else shareModeRef.current.exit();
-  }, [shareOn]);
-  const paneShare: ShareModeState = { ...share, exit: onShareExit };
-  // The host-owned thread reports its native id to its host; this page's row learns it here.
-  const externalNative = external?.dialog.activeSession ?? "";
-  useEffect(() => {
-    if (externalNative) onNative(externalNative);
-  }, [externalNative, onNative]);
-  const connecting = !computer && !external?.live;
-  const [input, setInput] = useState("");
-  // A send the computer refused hands its text back (thread.restoredDraft): it goes
-  // back into the composer when that is empty. Only restores after this mount count.
-  const restored = thread.restoredDraft ?? null;
-  const restoredSeqRef = useRef(restored?.seq ?? 0);
-  useEffect(() => {
-    if (!restored || restored.seq === restoredSeqRef.current) return;
-    const text = restored.entries
-      ? restored.entries.filter((entry) => entry.seq > restoredSeqRef.current).map((entry) => entry.text).filter(Boolean).join("\n\n")
-      : restored.text;
-    restoredSeqRef.current = restored.seq;
-    if (text) setInput((current) => (current.trim() ? `${current}\n\n${text}` : text));
-  }, [restored]);
-  const [setupRequest, setSetupRequest] = useState(0);
-  const requestSetup = useCallback(() => setSetupRequest((count) => count + 1), []);
-  const setupBlocked = Boolean(!connecting && thread.blockedReason && !thread.offline);
-  const queue = thread.queue;
-  useEffect(() => {
-    if (!active || !sessionId || !hasPendingNativePrompt(sessionId)) return;
-    // takePendingNativePrompt removes the entry before returning it: queued once, even under StrictMode.
-    const text = takePendingNativePrompt(sessionId);
-    if (text) queue(text);
-  }, [active, sessionId, queue]);
-  // A queued prompt held back by install / sign-in opens the pill's 账号 card once.
-  const unsent = thread.pending?.unsent ?? null;
-  useEffect(() => {
-    if (active && unsent && setupBlocked) requestSetup();
-  }, [active, unsent, setupBlocked, requestSetup]);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const followRef = useRef(true);
-  // Scroll-up history: near the top (or while the stream does not fill the pane)
-  // read ONE more batch; the anchor keeps what the user is reading in place once
-  // the batch is prepended. No button.
-  const olderAnchor = useRef<OlderScrollAnchor | null>(null);
-  const lastScrollTop = useRef(0);
-  const threadRef = useRef(thread);
-  threadRef.current = thread;
-  const maybeLoadOlder = useCallback((movingUp: boolean) => {
-    const el = scrollRef.current;
-    const current = threadRef.current;
-    if (!el || !active) return;
-    // A read that never started (or never answered) does not block the next try forever.
-    if (olderAnchor.current && Date.now() - olderAnchor.current.at > OLDER_ANCHOR_STALE_MS) olderAnchor.current = null;
-    if (olderAnchor.current) return;
-    if (!shouldLoadOlder(scrollMetricsOf(el), { hasOlder: current.hasOlder, loading: current.olderLoading === true, movingUp })) return;
-    olderAnchor.current = {
-      scrollTop: el.scrollTop,
-      scrollHeight: el.scrollHeight,
-      firstId: current.messages[0]?.id ?? null, sawLoading: false, at: Date.now(),
-    };
-    current.loadOlder();
-  }, [active]);
-  // W5: remembered per session for the life of the page (see task-scroll-memory).
-  const scrollKey = sessionId ? `native:${sessionId}` : "";
-  const placedRef = useRef(false);
-  const justPlacedRef = useRef<unknown>(null);
-  const placedHoldRef = useRef<(() => void) | null>(null);
-  const onScroll = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const metrics = scrollMetricsOf(el);
-    followRef.current = isNearBottom(metrics);
-    if (placedRef.current) rememberConversationScroll(scrollKey, metrics.scrollTop, followRef.current);
-    // Only the user's own scroll up reads more; the smooth follow-to-bottom from 0 never does.
-    const movingUp = metrics.scrollTop < lastScrollTop.current;
-    lastScrollTop.current = metrics.scrollTop;
-    maybeLoadOlder(movingUp);
-  }, [maybeLoadOlder, scrollKey]);
-  const firstMessageId = thread.messages[0]?.id ?? null;
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    const anchor = olderAnchor.current;
-    if (!el || !anchor) return;
-    if (firstMessageId !== anchor.firstId) {
-      // The earlier batch is in: grow scrollTop by exactly what was added above.
-      // (From where the user is now: they may have kept scrolling while it loaded.)
-      el.scrollTop += el.scrollHeight - anchor.scrollHeight;
-      lastScrollTop.current = el.scrollTop;
-      olderAnchor.current = null;
-      return;
-    }
-    if (thread.olderLoading) anchor.sawLoading = true;
-    // The read ended with nothing new (or never started): free the trigger again.
-    else if (anchor.sawLoading || !thread.hasOlder) olderAnchor.current = null;
-  }, [firstMessageId, thread.olderLoading, thread.hasOlder]);
-  // W5: the first frame each time this chat comes to the front is placed instantly:
-  // the remembered spot if the user had scrolled up, otherwise the latest message
-  // (never a smooth scroll down from the top). lastScrollTop follows, so the
-  // placement itself is never read as "scrolling up" (no older batch from it).
-  useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!active) {
-      placedRef.current = false;
-      return;
-    }
-    if (!el || placedRef.current || thread.messages.length === 0 || !scrollPaneShown(el)) return;
-    placedRef.current = true;
-    const placed = placeConversationScroll(el, scrollKey, () => followRef.current);
-    followRef.current = placed.follow;
-    lastScrollTop.current = el.scrollTop;
-    justPlacedRef.current = thread.messages;
-    placedHoldRef.current?.();
-    placedHoldRef.current = placed.release;
-  }, [active, thread.messages, scrollKey]);
-  useEffect(() => () => placedHoldRef.current?.(), []);
-  // Shown and its saved copy still on its way: the task's loading cover stays on.
-  // Never waits for the computer's state (2026-10-31): the saved transcript is read
-  // whatever the computer is doing and shows the moment it is in.
-  useTaskLoadingReport(
-    !(session && thread.messages.length === 0 && !thread.running && thread.opening),
-    active,
-  );
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (justPlacedRef.current === thread.messages) justPlacedRef.current = null;
-    // Nothing placed yet (no messages, or hidden): nothing to follow.
-    else if (el && active && placedRef.current && followRef.current) el.scrollTo({top: el.scrollHeight, behavior: scrollBehavior()});
-    // A short first batch that does not fill the pane cannot be scrolled up: read the next one
-    // (also when "there is more" is only known after the batch rendered, F2 2026-11-02).
-    maybeLoadOlder(false);
-  }, [thread.messages, active, thread.olderLoading, thread.hasOlder, maybeLoadOlder]);
-  return (
-    <NativeSetupRequest.Provider value={setupRequest}>
-      {render({ thread: displayThread, session, input, setInput, scrollRef, onScroll, connecting, share: paneShare, requestSetup })}
-    </NativeSetupRequest.Provider>
-  );
-}
-
-/** One stream pane: the OceanLeo conversation or a native computer conversation. */
 interface StreamPane {
-  pane: "cloud" | "native";
+  pane: "cloud" | "acp";
   scrollRef: RefObject<HTMLDivElement | null>;
   onScroll?: () => void;
   top: ReactNode;
   empty: ReactNode;
-  /** Progress cards, bubbles and the thinking line: AgentProgress / AgentTranscriptBubble for both panes. */
+  /** Progress cards, bubbles and the thinking line (cloud); the program's rows (acp). */
   items: ReactNode;
   tail: ReactNode;
   overlay: ReactNode;

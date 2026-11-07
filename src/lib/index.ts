@@ -49,3 +49,27 @@ export * from "./console-draft";
 export * from "./mcp-api";
 
 export * from "./computer-task-api";
+// Computer tasks' one conversation path (thin-gateway 2026-11-07): raw ACP rows + the user's own actions.
+// `stopTask` is the cloud agent's stop (`./agent`); the per-background-task stop is `stopAcpTask`.
+export {
+  AcpSendError,
+  acpErrorText,
+  answer,
+  close,
+  getCatalog,
+  getFrames,
+  openFrames,
+  send,
+  stop,
+  stopTask as stopAcpTask,
+  switchProgram,
+  type AcpCatalog,
+  type AcpFrames,
+  type AcpFramesEvent,
+  type AcpFramesState,
+  type AcpLinkState,
+  type AcpRpcError,
+  type AcpSendBody,
+  type AcpSendResult,
+  type AcpSessionChoices,
+} from "./acp-frames-api";
