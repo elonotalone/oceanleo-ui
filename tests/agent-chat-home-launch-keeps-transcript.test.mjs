@@ -289,54 +289,6 @@ const appSessionStub = dataModule(`
 `);
 
 const cloudComputerApiUrl = await compileModule("src/lib/cloud-computer-api.ts", {}, { missingPackageStub: lazyStub });
-const nativeThreadStub = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  globalThis.__threadInputs = []; globalThis.__threadSent = []; globalThis.__threadFiles = [];
-  export const NativeSetupRequest = React.createContext(0);
-  export function useNativeThread(input) {
-    globalThis.__threadInputs.push(input);
-    const [pending, setPending] = React.useState(null);
-    const [sent, setSent] = React.useState([]);
-    const [files, setFiles] = React.useState([]);
-    const [phase, setPhase] = React.useState("idle");
-    if (input.enabled && input.session?.id) (globalThis.__threadPhaseSetters ||= new Map()).set(input.session.id, setPhase);
-    const pendingRef = React.useRef(pending);
-    pendingRef.current = pending;
-    const live = Boolean(input.enabled && input.computer && input.computer.node_online);
-    const ready = live && Boolean(input.session);
-    React.useEffect(() => {
-      if (!pending || pending.unsent || !ready) return;
-      globalThis.__threadSent.push({ session: input.session.id, text: pending.text });
-      setSent((rows) => [...rows, pending.text]);
-      setPending(null);
-    }, [pending, ready]);
-    const bubbles = [
-      ...sent.map((text, index) => ({ id: -(100 + index), role: "user", kind: "text", content: text, meta: { native: true } })),
-      ...(pending ? [{ id: -2147483648, role: "user", kind: "text", content: pending.text, meta: { native: true, native_pending: true } }] : []),
-    ];
-    return {
-      messages: bubbles, live, draft: !input.session, running: phase !== "idle", finishing: phase === "finishing", ready, offline: false, blockedReason: null,
-      async send() { return false; }, stop() {}, answer() {},
-      composerAttachments: files.map((name) => ({ id: name, name })),
-      onAttachFiles: live ? (added) => {
-        globalThis.__threadFiles.push(...added.map((file) => file.name));
-        setFiles((current) => [...current, ...added.map((file) => file.name)]);
-      } : undefined,
-      onRemoveAttachment() {}, modelPicker: input.enabled && input.program ? "MODEL_PICKER:" + input.program : null,
-      hasOlder: false, loadOlder() {}, saveFailed: false, dialog: { activeSession: "", computerId: input.computer?.id ?? "" },
-      pending: pending ? { text: pending.text, unsent: pending.unsent } : null,
-      queue(text) {
-        if (pendingRef.current && !pendingRef.current.unsent) return false;
-        const next = { text, unsent: null };
-        pendingRef.current = next;
-        setPending(next);
-        return true;
-      },
-      markUnsent(reason) { setPending((current) => current ? { ...current, unsent: reason } : current); },
-      retry() { setPending((current) => current ? { ...current, unsent: null } : current); },
-    };
-  }
-`);
 
 const OVERRIDES = {
   "../i18n/ui/useUI": dataModule(
@@ -389,17 +341,12 @@ const OVERRIDES = {
     export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
   `),
   "./plugin-command": dataModule("export function currentPluginCommandSurface(){ return null; }"),
-  // Native chats (homepage launch): a thread stub with the real hook's queue/pending
-  // contract, shared with the portal's \`useNativeThread\` (same module instance).
-  "./native-thread": nativeThreadStub,
   // No real gateway: computer reads and computer-task calls are recorded.
   "../lib/cloud-computer-api": dataModule(`
     export * from ${JSON.stringify(cloudComputerApiUrl)};
     export async function getComputer(id) { (globalThis.__ccCalls ||= []).push("computer " + id); return { id, name: "elon", status: "active", node_online: true }; }
-    export async function cloudComputerRequest(path, init) {
+    export async function cloudComputerRequest(path) {
       (globalThis.__ccCalls ||= []).push(path);
-      const answer = globalThis.__ccRespond ? await globalThis.__ccRespond(path, init) : undefined;
-      if (answer !== undefined) return answer;
       throw Object.assign(new Error("offline"), { status: 503 });
     }
   `),
@@ -753,17 +700,15 @@ async function loadHomeContent() {
   // W7: the home hosts the real TaskWorkspaceShell (same SplitWorkspace/ResultCanvas instances as AgentChat).
   const taskWorkspaceShellUrl = await compileModule("src/shell/TaskWorkspaceShell.tsx", OVERRIDES, { missingPackageStub: lazyStub });
   const taskAttachmentOpenUrl = await compileModule("src/shell/task-attachment-open.ts", OVERRIDES, { missingPackageStub: lazyStub });
+  // The same frames client instance AgentChat uses: the home shows its refusals with it.
+  const acpFramesApiUrl = await compileModule("src/lib/acp-frames-api.ts", OVERRIDES, { missingPackageStub: lazyStub });
   const portalShell = dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
     export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
     export { openTaskWorkspaceLibrary, taskAttachmentLibraryAction } from ${JSON.stringify(taskAttachmentOpenUrl)};
-    export { useNativeThread } from ${JSON.stringify(nativeThreadStub)};
-    // Native draft files (IndexedDB) are not under test here: attach passes straight through.
-    export function useNativeDraftFiles(input) {
-      return { attachFiles(files) { if (input.attach) input.attach(files); }, clear() {} };
-    }
-    export async function libraryAttachmentFile() { return null; }
+    // A native chat's catalog pill; no case here picks a program for a chat.
+    export function useAcpCatalogPicker() { return { picker: null, choice: {} }; }
     export function LeoComposer(props) {
       globalThis.__portalComposer = props;
       return createElement("div", { "data-home-composer": "" }, props.value);
@@ -792,16 +737,18 @@ async function loadHomeContent() {
       const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       export function attachmentRef(a){ const x = a && (a.artifactId || a.artifact_id), y = a && (a.revisionId || a.revision_id); return UUID.test(x||"") && UUID.test(y||"") ? { artifactId: x, revisionId: y } : null; }
       export function isRawStorageUrl(u){ return /supabase\.co/.test(String(u||"")); }
-      globalThis.__homeCreates = []; globalThis.__homeStashes = [];
+      export { acpErrorText, AcpSendError } from ${JSON.stringify(acpFramesApiUrl)};
+      // A native chat's message (POST /v1/tasks/{id}/send) is recorded.
+      globalThis.__homeSends = [];
+      export async function send(taskId, body){ globalThis.__homeSends.push({ taskId, body }); return { row_id: 1 }; }
+      globalThis.__homeCreates = [];
       export async function createComputerTaskSession(computerId, input){
         globalThis.__homeCreates.push({ computerId, input });
-        if (globalThis.__homeCreateGate) await globalThis.__homeCreateGate;
         if (globalThis.__homeCreateFails) throw new Error("没能打开这段对话，请稍后再试。");
         const id = "cts_home" + globalThis.__homeCreates.length;
         return { task_id: "t_home" + globalThis.__homeCreates.length, session: { id, task_id: "t_home" + globalThis.__homeCreates.length, computer_id: computerId,
           computer_name: "elon", kind: input.kind, program: input.program ?? null, native_session_id: null, created_at: "", updated_at: "", sync_status: "saved" } };
       }
-      export function stashPendingNativePrompt(sessionId, text){ globalThis.__homeStashes.push({ sessionId, text }); }
       const watchers = new Map(); globalThis.__homeComputerLoads = [];
       export function knownComputer(){ return null; }
       export function lastKnownComputer(){ return null; }
@@ -812,7 +759,6 @@ async function loadHomeContent() {
         return row;
       }
       export function watchComputer(id, fn){ const set = watchers.get(id) || new Set(); set.add(fn); watchers.set(id, set); return () => set.delete(fn); }
-      export function rememberComputerTaskSession(){}
     `),
     "@oceanleo/ui/i18n": dataModule("const tr = (text) => text; export function useT(){return tr;} export function useUI(){return tr;}"),
     "@/lib/oceanleo-ai": dataModule("export async function getUserId(){return globalThis.__portalOwner || 'owner-a';} export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};} export const GATEWAY_BASE = 'https://gateway.test'; const realFetch = globalThis.fetch; globalThis.fetch = async (url, init) => String(url).includes('/v1/home/assets') ? new Response(JSON.stringify({ sections: [] }), { status: 200, headers: { 'content-type': 'application/json' } }) : realFetch(url, init);"),
@@ -831,6 +777,7 @@ test("portal homepage shows the real conversation before create settles and rese
   const backend = makeBackend();
   globalThis.__backend = backend;
   globalThis.__pathname = "/";
+  globalThis.__homeSends.length = 0;
   window.history.replaceState(null, "", "/");
   let release;
   const delayed = new Promise(resolve => { release = resolve; });
@@ -889,6 +836,7 @@ test("portal homepage shows the real conversation before create settles and rese
     for (let i = 0; i < 40 && backend.log.filter(line => line.startsWith("create-task")).length < 2; i++) await settle(20);
     assert.equal(backend.log.filter(line => line.startsWith("create-task")).length, 2);
     assert.ok(host.textContent.includes("第二个新任务"));
+    assert.deepEqual(globalThis.__homeSends, [], "an OceanLeo task never goes through a computer task's /send");
   } finally {
     release();
     await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
@@ -934,158 +882,6 @@ test("portal homepage W7: an uploaded tile opens the task sidebar in place and t
   }
 });
 
-test("portal homepage native chat: in place, bubble before the session exists, prewarmed thread, no router push, URL replaced", {
-  skip: !existsSync(HOME_CONTENT_URL),
-}, async () => {
-  const { HomeContent } = await loadHomeContent();
-  const backend = makeBackend();
-  globalThis.__backend = backend;
-  globalThis.__pathname = "/";
-  globalThis.__routerPushes = [];
-  globalThis.__homeCreates.length = 0;
-  globalThis.__homeStashes.length = 0;
-  globalThis.__homeCreateFails = false;
-  globalThis.__threadInputs.length = 0;
-  globalThis.__threadSent.length = 0;
-  globalThis.__threadFiles.length = 0;
-  globalThis.__ccCalls = [];
-  window.history.replaceState(null, "", "/");
-  let release;
-  const held = new Promise((resolve) => { release = resolve; });
-  globalThis.__homeCreateGate = held;
-  const host = document.createElement("div"); document.body.appendChild(host);
-  const root = createRoot(host);
-  try {
-    await act(async () => root.render(React.createElement(HomeContent)));
-    const codex = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" };
-    await act(async () => { globalThis.__portalComposer.onConversationChange(codex); await new Promise((r) => setTimeout(r, 0)); });
-    assert.deepEqual(globalThis.__homeCreates, [], "picking 对话 creates nothing");
-    assert.deepEqual(globalThis.__portalComposer.conversation, codex, "the Device label follows the pick");
-    // Prewarm: the picked program's thread is connected on the homepage (status + models start the agent).
-    const warm = globalThis.__threadInputs.at(-1);
-    assert.equal(warm.enabled, true);
-    assert.equal(warm.program, "codex");
-    assert.equal(warm.session, null);
-    assert.equal(warm.computer?.id, "cc_elon", "the computer is read on pick, not after Enter");
-    // Composer controls (C4) and attachments for the native chat.
-    const props = globalThis.__portalComposer;
-    assert.equal(props.showPayerSelector, false);
-    assert.equal(props.modelPickerSlot, "MODEL_PICKER:codex");
-    assert.equal(typeof props.onAttachFiles, "function", "paste / drop / picker stay available");
-    await act(async () => { props.onAttachFiles([new window.File(["png"], "shot.png", { type: "image/png" })]); });
-    assert.deepEqual(globalThis.__threadFiles, ["shot.png"], "files go to the computer through the warm thread, not the file library");
-    assert.deepEqual(globalThis.__portalComposer.attachments.map((item) => item.name), ["shot.png"]);
-    assert.equal(globalThis.__portalComposer.recentFiles, undefined, "library files cannot ride with a native prompt");
-
-    await act(async () => { await globalThis.__portalComposer.onSubmit("看看日志", undefined, { conversation: codex }); });
-    assert.equal(host.querySelector("[data-home-composer]"), null, "the homepage turned into the conversation");
-    assert.ok(host.querySelector('[data-agent-stream="native"]'), "native stream in front");
-    assert.equal(globalThis.__agentComposer.optimizeImages, true, "native chat opts in with original-photo recovery available");
-    assert.ok(host.textContent.includes("看看日志"), "the user's bubble shows before the session is created");
-    assert.equal(globalThis.__homeCreates.length, 1, "creation started in the background");
-    assert.deepEqual(globalThis.__routerPushes, [], "no page jump");
-    assert.equal(window.location.pathname, "/");
-    release();
-    for (let i = 0; i < 40 && !window.location.pathname.startsWith("/tasks/"); i++) await settle(20);
-    assert.equal(window.location.pathname + window.location.search, "/tasks/t_home1?computerSession=cts_home1", "replaceState names the task and its session");
-    assert.equal(globalThis.__homeCreates[0].computerId, "cc_elon");
-    assert.equal(globalThis.__homeCreates[0].input.kind, "acp");
-    assert.equal(globalThis.__homeCreates[0].input.program, "codex");
-    const phase = globalThis.__threadPhaseSetters.get("cts_home1");
-    assert.equal(typeof phase, "function");
-    let phaseRefreshes = 0, activityEvents = 0;
-    const refresh = () => { phaseRefreshes += 1; };
-    const activity = () => { activityEvents += 1; };
-    window.addEventListener("oceanleo:history-changed", refresh);
-    window.addEventListener("oceanleo:history-activity", activity);
-    try {
-      await act(async () => phase("finishing"));
-      assert.equal(phaseRefreshes, 1, "finishing refreshes authoritative row state promptly");
-      assert.equal(activityEvents, 0, "a phase does not manufacture conversation activity");
-      await act(async () => phase("finishing"));
-      assert.equal(phaseRefreshes, 1, "unchanged phase does not trigger refresh loops");
-      await act(async () => phase("working"));
-      assert.equal(phaseRefreshes, 2, "new actual work refreshes the row again");
-      assert.equal(activityEvents, 0);
-    } finally {
-      window.removeEventListener("oceanleo:history-changed", refresh);
-      window.removeEventListener("oceanleo:history-activity", activity);
-    }
-    for (let i = 0; i < 20 && !globalThis.__threadSent.length; i++) await settle(10);
-    assert.deepEqual(globalThis.__threadSent, [{ session: "cts_home1", text: "看看日志" }], "sent once, on the warm thread, once the session is bound");
-    assert.deepEqual(globalThis.__homeStashes, [], "no cross-page stash");
-    // A thread connects only when enabled with a known computer.
-    const connected = globalThis.__threadInputs.filter((input) => input.enabled && input.computer);
-    assert.ok(connected.every((input) => input.program === "codex" && input.computer?.id === "cc_elon"), "only the homepage thread connects");
-    assert.ok(globalThis.__threadInputs.some((input) => !input.enabled && input.session?.id === "cts_home1"), "the page's own thread for it stays off");
-    assert.equal(globalThis.__ccCalls.some((call) => String(call).startsWith("/v1/computer-task-sessions?")), false, "no session list read for the task just created");
-    assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "nothing goes to the cloud");
-    const nativePane = () => host.querySelector('[data-native-chat="cts_home1"]');
-    assert.equal(nativePane()?.hidden, false);
-    await act(async () => {
-      window.history.replaceState(null, "", "/tasks/t_home1");
-      window.dispatchEvent(new window.Event("popstate"));
-    });
-    assert.equal(nativePane()?.hidden, false, "a bare same-task URL does not request the cloud conversation");
-    await act(async () => {
-      window.history.replaceState(null, "", "/tasks/t_home1?computerSession=cloud");
-      window.dispatchEvent(new window.Event("popstate"));
-    });
-    assert.equal(nativePane()?.hidden, true, "an explicit cloud conversation choice still works");
-    await act(async () => {
-      window.history.replaceState(null, "", "/tasks/t_home1?computerSession=cts_home1");
-      window.dispatchEvent(new window.Event("popstate"));
-    });
-    assert.equal(nativePane()?.hidden, false, "an explicit native conversation restores that existing pane");
-    assert.equal(globalThis.__threadSent.length, 1, "row/navigation changes never resend input");
-  } finally {
-    release();
-    globalThis.__homeCreateGate = null;
-    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
-    window.history.replaceState(null, "", "/");
-  }
-});
-
-test("portal homepage native chat: a failed create keeps the bubble, says 未发送 with a retry, and the retry sends once", {
-  skip: !existsSync(HOME_CONTENT_URL),
-}, async () => {
-  const { HomeContent } = await loadHomeContent();
-  globalThis.__backend = makeBackend();
-  globalThis.__pathname = "/";
-  globalThis.__routerPushes = [];
-  globalThis.__homeCreates.length = 0;
-  globalThis.__homeCreateFails = true;
-  globalThis.__threadSent.length = 0;
-  globalThis.__threadFiles.length = 0;
-  window.history.replaceState(null, "", "/");
-  const host = document.createElement("div"); document.body.appendChild(host);
-  const root = createRoot(host);
-  try {
-    await act(async () => root.render(React.createElement(HomeContent)));
-    const claude = { kind: "native", computerId: "cc_elon", computerName: "elon", program: "claude", view: "chat" };
-    await act(async () => { globalThis.__portalComposer.onConversationChange(claude); await new Promise((r) => setTimeout(r, 0)); });
-    await act(async () => { await globalThis.__portalComposer.onSubmit("先跑测试", undefined, { conversation: claude }); });
-    await settle(20);
-    assert.ok(host.textContent.includes("先跑测试"), "the bubble stays");
-    const unsent = host.querySelector("[data-native-unsent]");
-    assert.ok(unsent, "a plain line under the bubble");
-    assert.match(unsent.textContent, /未发送：没能打开这段对话，请稍后再试。/);
-    assert.deepEqual(globalThis.__threadSent, []);
-    globalThis.__homeCreateFails = false;
-    await act(async () => { unsent.querySelector("button").click(); await new Promise((r) => setTimeout(r, 0)); });
-    for (let i = 0; i < 40 && !globalThis.__threadSent.length; i++) await settle(20);
-    assert.equal(globalThis.__homeCreates.length, 2);
-    assert.equal(globalThis.__homeCreates[1].input.request_id, globalThis.__homeCreates[0].input.request_id, "same request id: never a second session");
-    assert.deepEqual(globalThis.__threadSent.map((row) => row.text), ["先跑测试"]);
-    assert.equal(host.querySelector("[data-native-unsent]"), null);
-    assert.deepEqual(globalThis.__routerPushes, []);
-  } finally {
-    globalThis.__homeCreateFails = false;
-    await act(async () => root.unmount()); host.remove(); globalThis.__pathname = "/";
-    window.history.replaceState(null, "", "/");
-  }
-});
-
 test("portal homepage: a failed 命令行 pick keeps the label and sends nothing to the cloud", {
   skip: !existsSync(HOME_CONTENT_URL),
 }, async () => {
@@ -1095,7 +891,7 @@ test("portal homepage: a failed 命令行 pick keeps the label and sends nothing
   globalThis.__pathname = "/";
   globalThis.__routerPushes = [];
   globalThis.__homeCreates.length = 0;
-  globalThis.__homeStashes.length = 0;
+  globalThis.__homeSends.length = 0;
   globalThis.__toasts.length = 0;
   globalThis.__homeCreateFails = true;
   window.history.replaceState(null, "", "/");
@@ -1112,7 +908,7 @@ test("portal homepage: a failed 命令行 pick keeps the label and sends nothing
     assert.equal(globalThis.__portalComposer.loading, false, "the composer is usable again");
     assert.ok(globalThis.__toasts.some((text) => String(text).includes("没能打开这段对话")), "the failure is said");
     assert.deepEqual(globalThis.__routerPushes, []);
-    assert.deepEqual(globalThis.__homeStashes, []);
+    assert.deepEqual(globalThis.__homeSends, [], "nor anything to a task's /send");
     assert.equal(backend.log.some((line) => line.startsWith("create-task")), false, "the failed pick sent nothing to the cloud");
   } finally {
     globalThis.__homeCreateFails = false;
@@ -1328,56 +1124,4 @@ test("resolved upload errors clear only their own current message and preserve t
     assert.equal(host.querySelector("[data-agent-chat-upload-error]"), null);
     assert.equal(host.querySelector("[data-agent-chat-error]:not([data-agent-chat-upload-error])")?.textContent, taskError, "even equal text has independent error ownership");
   } finally { await act(async () => root.unmount());host.remove();delete globalThis.__uploadErrorHooks; }
-});
-
-test("computer task timeline does not reread hidden native transcripts on session-list changes", async () => {
-  // D5/I1: a computer task renders the server-owned task timeline. Its native
-  // session rows remain auxiliary metadata, so the hidden native panes must not
-  // fetch per-session transcripts on every list identity change.
-  const backend = makeBackend();
-  backend.api.getTask = async (id) => ({ ok: true, data: { task: { id, status: "completed", title: "saved native", site_id: "excel", mode: "computer", session_id: null }, messages: [], artifacts: [] } });
-  globalThis.__backend = backend;
-  globalThis.__strict = false;
-  globalThis.__ccCalls = [];
-  globalThis.__threadInputs = [];
-  let savedAt = "2026-11-03T10:00:00.000Z";
-  const row = () => ({ id: "cts_arch", task_id: "t_arch", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "claude",
-    native_session_id: "nat-1", created_at: "2026-11-03T09:00:00.000Z", updated_at: savedAt, saved_at: savedAt, sync_status: "saved" });
-  globalThis.__ccRespond = (path) => {
-    if (path.startsWith("/v1/computer-task-sessions?")) return { sessions: [row()] };
-    if (path.startsWith("/v1/computer-task-sessions/cts_arch/transcript")) return { session: row(), frames: [], saved_at: savedAt, sync_status: "saved" };
-    return undefined;
-  };
-  const transcriptReads = () => globalThis.__ccCalls.filter((call) => String(call).startsWith("/v1/computer-task-sessions/cts_arch/transcript")).length;
-  const listReads = () => globalThis.__ccCalls.filter((call) => String(call).startsWith("/v1/computer-task-sessions?")).length;
-  window.history.replaceState(null, "", "/tasks/t_arch");
-  const view = await mountHome({ taskId: "t_arch", initialPrompt: undefined });
-  try {
-    await settle(80);
-    assert.equal(transcriptReads(), 0, "the task timeline owns the saved copy");
-    // The list is read again (an unknown conversation link) and nothing new was saved.
-    const listsBefore = listReads();
-    await act(async () => {
-      window.history.replaceState(null, "", "/tasks/t_arch?computerSession=cts_unknown");
-      window.dispatchEvent(new window.Event("popstate"));
-    });
-    for (let i = 0; i < 40 && listReads() === listsBefore; i++) await settle(20);
-    await settle(80);
-    assert.ok(listReads() > listsBefore, "the list was really read again");
-    assert.equal(transcriptReads(), 0, "an identical list re-read does not open a hidden native pane");
-    // Something new was saved: the task timeline still owns the copy.
-    savedAt = "2026-11-03T10:05:00.000Z";
-    const listsAgain = listReads();
-    await act(async () => {
-      window.history.replaceState(null, "", "/tasks/t_arch?computerSession=cts_unknown2");
-      window.dispatchEvent(new window.Event("popstate"));
-    });
-    for (let i = 0; i < 40 && listReads() === listsAgain; i++) await settle(20);
-    await settle(80);
-    assert.equal(transcriptReads(), 0, "a newer saved copy remains server-timeline data");
-  } finally {
-    globalThis.__ccRespond = undefined;
-    await view.unmount();
-    window.history.replaceState(null, "", "/");
-  }
 });

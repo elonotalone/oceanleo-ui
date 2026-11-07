@@ -24,11 +24,9 @@ test("desktop history is account-wide while the web portal keeps main-site scope
   assert.match(page, /<HistoryDetail\s+siteId=\{historySiteId\}/);
 });
 
-test("task history keeps native transcript and first-send race contracts wired", () => {
+test("task history keeps the session list and first-send race contracts wired", () => {
   const chat = source("src/shell/AgentChat.tsx");
-  const native = source("src/shell/native-thread/useNativeThread.ts");
   assert.match(chat, /listComputerTaskSessions\(taskId\)/);
-  assert.match(native, /getComputerTaskTranscript\(id/);
   assert.match(chat, /if \(workspace\.taskId\)/);
   assert.match(chat, /if \(!local \|\| !sessionId \|\| workspace\.readOnly\) return/);
 });

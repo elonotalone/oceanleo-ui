@@ -160,7 +160,7 @@ test("opener: an immediate file shows at once; an unopenable earlier click repor
   await act(async () => root.unmount());
 });
 
-test("AgentChat: cloud and native panes (bubble + composer) open files through one opener", () => {
+test("AgentChat: task bubbles and composers open files through one opener", () => {
   const src = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
   assert.match(src, /const openTaskAttachment = useTaskAttachmentOpener\(/);
   const composers = src.match(/<LeoComposer\b[\s\S]*?\/>/g) || [];
@@ -169,12 +169,10 @@ test("AgentChat: cloud and native panes (bubble + composer) open files through o
     assert.match(composer, /onOpenAttachment=\{openTaskAttachment\}/, "no task composer falls back to AttachmentStrip's PreviewPanel");
   }
   const bubbles = src.match(/<AgentTranscriptBubble\b[\s\S]*?\/>/g) || [];
-  assert.ok(bubbles.length >= 2);
+  assert.ok(bubbles.length >= 1);
   for (const bubble of bubbles) assert.match(bubble, /onOpenAttachment=\{openTaskAttachment\}/);
   // A Library editor thread keeps its editor mounted while an opened file is shown.
   assert.match(src, /fileOverWorkspace \? "hidden" : "h-full"[\s\S]*?\{workspaceContent\}[\s\S]*?\{fileOverWorkspace && right\}/);
-  const thread = readFileSync(new URL("../src/shell/native-thread/useNativeThread.ts", import.meta.url), "utf8");
-  assert.match(thread, /item\.archive \? \{ nativeArchive: item\.archive \}/);
   const bubble = readFileSync(new URL("../src/shell/AgentTranscriptBubble.tsx", import.meta.url), "utf8");
   assert.match(bubble, /<NativeArchivedAttachment[\s\S]*?onOpen=\{onOpen \? \(\) => onOpen\(attachment\) : undefined\}/);
 });

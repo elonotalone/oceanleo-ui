@@ -101,18 +101,6 @@ test("failed file blocks the text with its actual reason; transient uploads use 
   assert.deepEqual([1, 2, 3].map(uploadRetryDelay), [600, 1200, 2400]);
 });
 
-test("both hosts keep active controls; native finishing suppresses step spinners and offline input stays editable", () => {
-  const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
-  // A computer task follows its live timeline; other tasks keep the OceanLeo run state.
-  assert.match(source, /loading=\{computerTask \? timelineRunning : running\}/);
-  assert.match(source, /running=\{timelineRunning && item.key === liveProgressKey\}/);
-  assert.match(source, /loading=\{nativeRunning\}/);
-  assert.match(source, /running=\{nativeRunning && !thread.finishing && \(item.messages.some/);
-  const native = source.slice(source.indexOf("const renderNativePane"), source.indexOf("const renderNativePane") + 15500);
-  assert.doesNotMatch(native, /disabled=\{[^\n]*thread.offline/);
-  assert.doesNotMatch(native, /if \(thread.running \|\| thread.offline\) return/);
-});
-
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
@@ -262,11 +250,11 @@ test("clearing follow-up text or the last file re-arms Stop while the same run c
   } finally { view.cleanup(); t.mock.timers.reset(); }
 });
 
-test("all Stop, reconnect and upload copy is translated in all 17 locales", async () => {
+test("all Stop and upload copy is translated in all 17 locales", async () => {
   const { AGENT_PROGRESS_MESSAGES } = await import("../src/i18n/ui/messages/agent-progress-copy.ts");
   assert.equal(Object.keys(AGENT_PROGRESS_MESSAGES).length, 17);
   const keys = ["正在停止", "电脑不在线，停止指令没有送到", "没能停下这次任务（{detail}），可以再点一次停止",
-    "电脑没有回应停止指令，可以再点一次", "电脑重连中，连上后自动发送", "电脑重连时没有发出去", "图片没有上传成功（{reason}）"];
+    "电脑没有回应停止指令，可以再点一次", "图片没有上传成功（{reason}）"];
   for (const [locale, dictionary] of Object.entries(AGENT_PROGRESS_MESSAGES)) for (const key of keys) {
     assert.ok(dictionary[key], `${locale}: ${key}`);
     assert.deepEqual(dictionary[key].match(/\{\w+\}/g), key.match(/\{\w+\}/g), `${locale}: placeholders`);

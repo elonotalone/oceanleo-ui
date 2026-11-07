@@ -2,9 +2,8 @@
 // A Codex / Claude Code conversation never shows the OceanLeo wallet or the
 // Lite/Pro/Max tier; its own picker shows model, effort, fast and modes (W7: as
 // setting rows behind a model-name pill, each opening a card of choices), with
-// fast explained when the current model lacks it, choices persisted per
-// program + computer and sent through the controller's setters, and a draft
-// (before the first send) shows the picker as soon as the program reports.
+// fast explained when the current model lacks it, and choices persisted per
+// program + computer and sent through the controller's setters.
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -295,99 +294,5 @@ test("nothing known yet stops spinning after the bounded wait", async (t) => {
     await act(async () => { t.mock.timers.tick(20_000); });
     assert.equal(m.q("[data-native-model-trigger]").textContent, "暂时读不到模型");
     assert.equal(m.q("[data-native-model-trigger]").disabled, false);
-  } finally { await m.unmount(); }
-});
-
-// ── Draft (homepage, before the first send) through the real hook ────────────
-
-class FakeSocket {
-  static sockets = [];
-  constructor(url) {
-    this.url = url; this.readyState = 0; this.sent = []; this.listeners = new Map();
-    FakeSocket.sockets.push(this);
-    queueMicrotask(() => { if (this.readyState === 3) return; this.readyState = 1; this.emit("open", {}); });
-  }
-  addEventListener(type, fn, options) {
-    const once = Boolean(options && options.once);
-    const wrapped = (event) => { if (once) this.removeEventListener(type, wrapped); fn(event); };
-    wrapped.original = fn;
-    this.listeners.set(type, [...(this.listeners.get(type) ?? []), wrapped]);
-  }
-  removeEventListener(type, fn) { this.listeners.set(type, (this.listeners.get(type) ?? []).filter((item) => item !== fn && item.original !== fn)); }
-  send(data) {
-    const frame = JSON.parse(data);
-    this.sent.push(frame);
-    const reply = (out) => queueMicrotask(() => { if (this.readyState === 1) this.emit("message", { data: JSON.stringify(out) }); });
-    if (frame.t === "status") reply({ t: "status", programs: [{ id: "claude", installed: true, path: "/cl", version: "1", auth: "login", logged_in: true, dir_capability: "full", running: false }] });
-    if (frame.t === "occupancy") reply({ t: "occupancy", program: frame.program, busy: [] });
-    if (frame.t === "sessions") reply({ t: "sessions", program: frame.program, sessions: [], active: "" });
-    if (frame.t === "models") {
-      reply({ t: "models", program: frame.program, models: [{ id: "opus", name: "Opus 4.x", default: true }, { id: "sonnet", name: "Sonnet 4.x" }] });
-      reply({ t: "config", program: frame.program, options: [
-        { id: "mode", name: "mode", category: "mode", current: "default", options: [{ value: "default", name: "Default" }, { value: "plan", name: "Plan Mode" }] },
-        { id: "fast_mode", name: "Fast mode", category: "model_config", current: false, options: [{ value: "true", name: "Fast" }, { value: "false", name: "Standard" }] },
-      ] });
-    }
-  }
-  close() { if (this.readyState === 3) return; this.readyState = 3; this.emit("close", {}); }
-  emit(type, event) { for (const fn of [...(this.listeners.get(type) ?? [])]) fn(event); }
-}
-FakeSocket.CONNECTING = 0; FakeSocket.OPEN = 1; FakeSocket.CLOSING = 2; FakeSocket.CLOSED = 3;
-
-test("draft mode: the picker appears from the warm connection before any session exists", async () => {
-  globalThis.WebSocket = FakeSocket;
-  window.WebSocket = FakeSocket;
-  const hookUi = dataModule(`export function useUI() { return (value, vars) => value.replace(/\\{(\\w+)\\}/g, (_, key) => String(vars?.[key] ?? "{" + key + "}")); }`);
-  const { useNativeThread } = await import(await compileModule("src/shell/native-thread/useNativeThread.ts", {
-    "../../lib/computer-task-api": dataModule(`export async function getComputerTaskTranscript() { throw new Error("no archive in draft"); }
-      export function knownComputerTaskSessions() { return null; }
-      export function latestComputerTaskSession() { return null; }
-      export async function listComputerTaskSessions() { return []; }`),
-    "../../i18n/ui/useUI": hookUi,
-    "../../../i18n/ui/useUI": hookUi,
-    "../anchored-popover": popoverStub,
-    "../../../lib/cloud-computer-api": dataModule(`
-      export function agentDialogWsUrl(id) { return "ws://example.test/v1/computers/" + id + "/agent-dialog"; }
-      export async function putComputerInbox() { throw new Error("unused"); }
-      export const cloudComputerApi = {};
-    `),
-    "../../../lib/auth/client": dataModule(`export async function accessToken() { return "tok"; }`),
-    "../../../lib/agent": dataModule(`export async function getTask() { return { ok: false }; } export async function stopTask() { return { ok: false }; }`),
-    "../../../lib/cloud-computer-agent-api": dataModule(`
-      export async function agentState() { return { ok: false, status: 0 }; }
-      export async function agentTurn() { return { ok: false, status: 0 }; }
-      export async function agentReset() { return { ok: true }; }
-    `),
-  }));
-  let thread = null;
-  function Host(props) {
-    thread = useNativeThread(props);
-    return React.createElement("div", null, thread.modelPicker);
-  }
-  const props = { computer: { id: "cc_1", name: "elon", node_online: true }, session: null, program: "claude", enabled: true };
-  const m = await mount(React.createElement(Host, { ...props, computer: null }));
-  try {
-    assert.equal(m.q("[data-native-model-trigger]")?.textContent, "正在读取…", "computer still loading: a waiting trigger, not nothing");
-    await m.rerender(React.createElement(Host, props));
-    for (let i = 0; i < 80 && !m.q("[data-native-model-summary]"); i += 1) {
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 5)); });
-    }
-    assert.equal(thread.draft, true);
-    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x");
-    await openRow(m, "mode");
-    assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["手动确认", "计划"]);
-    await openRow(m, "fast");
-    await m.click(m.q('[data-native-fast-option="on"]'));
-    assert.equal(thread.dialog.configOptions.find((option) => option.id === "fast_mode").current, true, "the controller's setConfig ran");
-    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x", "the pill stays the model name");
-    await m.click(m.q("[data-native-model-trigger]"));
-    assert.equal(rowValue(m, "fast"), "开");
-    assert.equal(FakeSocket.sockets.flatMap((socket) => socket.sent).some((frame) => ["open_session", "new_session", "prompt"].includes(frame.t)), false, "a draft never opens a session");
-    await m.rerender(React.createElement(Host, { ...props, computer: { ...props.computer, node_online: false } }));
-    // 2026-10-31 night: the gear is gone, so offline keeps the pill (its rows read-only, reason said).
-    assert.equal(m.q("[data-native-model-summary]").textContent, "Opus 4.x", "offline: the pill stays");
-    if (!m.q("[data-composer-settings-menu]")) await m.click(m.q("[data-native-model-trigger]"));
-    assert.ok(m.q("[data-oceanleo-native-settings-offline]"), "offline said once");
-    assert.equal(m.q('[data-composer-setting-row="model"]').disabled, true, "offline rows are read-only");
   } finally { await m.unmount(); }
 });
