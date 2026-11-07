@@ -63,23 +63,22 @@ test("Copy link uses the current site origin and selected message ids", async ()
   }
 });
 
-test("Copy link on a computer chat sends the session and turns, not message ids", async () => {
+test("Copy link on a computer task sends the picked messages' frame rows, not message ids", async () => {
   const seen = [];
-  await createShareLink({
+  const result = await createShareLink({
     taskId: "task-42",
-    messageIds: [-1, -2],
-    computerTaskSessionId: "cts_1",
-    userTurns: [0],
-    replyTurns: [0, -1],
+    messageIds: [7, 11],
+    acpMessages: [[3], [4, 5, 9]],
     origin: "https://oceanbizs.com",
     tokenImpl: async () => "test-token",
     fetchImpl: async (url, init) => {
-      seen.push(JSON.parse(init.body));
+      seen.push({ url, body: JSON.parse(init.body) });
       return { ok: true, status: 200, async json() { return { share_id: "ShareId_123456" }; }, async text() { return ""; } };
     },
   });
+  assert.equal(result.url, "https://oceanbizs.com/share/ShareId_123456");
   assert.deepEqual(seen, [
-    { task_id: "task-42", computer_task_session_id: "cts_1", user_turns: [0], reply_turns: [0, -1] },
+    { url: "https://api.dev.oceanleo.com/v1/share/task", body: { task_id: "task-42", acp_messages: [[3], [4, 5, 9]] } },
   ]);
 });
 

@@ -265,84 +265,62 @@ test("Copy Link 只把选中的 message_ids 交给后端，复制回来的是分
   view.unmount();
 });
 
-test("computer timeline share selects every turn and creates a session-scoped link", async () => {
-  globalThis.__clipboard = [];
-  globalThis.__shareCalls = [];
-  const view = mountShare({
-    messages: [
-      { id: -1, role: "user", kind: "text", content: "请检查任务", meta: { task_timeline_session_id: "cts-1" } },
-      { id: -2, role: "assistant", kind: "text", content: "任务完成", meta: { task_timeline_session_id: "cts-1" } },
-    ],
-    taskId: "task-computer",
-    native: { sessionId: "cts-1", hasOlder: false },
-  });
-  act(() => view.get().enter("all"));
-  assert.equal(view.get().selectedCount, 2);
-  await act(async () => { await view.get().copyLink(); });
-  assert.deepEqual(globalThis.__shareCalls, [{
-    taskId: "task-computer",
-    computerTaskSessionId: "cts-1",
-    userTurns: [0],
-    replyTurns: [0],
-  }]);
-  assert.equal(globalThis.__clipboard[0], "https://leoimage.oceanleo.com/share/abc123");
-  view.unmount();
-});
-
-// 2026-10-31: the header 「分享」 on a Computers chat. Native bubbles have local
-// negative ids; the link names the session's cloud copy by turns.
-const nativeMessages = [
-  { id: -9, role: "assistant", kind: "text", content: "上一轮的尾巴" },
-  { id: -1, role: "user", kind: "text", content: "第一问" },
-  { id: -2, role: "assistant", kind: "text", content: "**第一答：**内容" },
-  { id: -3, role: "user", kind: "text", content: "", meta: { attachments: [{ name: "a.png", url: "" }] } },
-  { id: -4, role: "assistant", kind: "text", content: "看了图" },
-  { id: -5, role: "user", kind: "text", content: "第二问" },
-  { id: -6, role: "assistant", kind: "text", content: "第二答" },
-  { id: -7, role: "user", kind: "text", content: "排队中", meta: { native_pending: true } },
+// UX wave 2026-11-07 (SH): a computer task's messages are its ACP frame rows. The link names the rows each picked
+// message is made of (`acpShareItems`); the server builds the shared text from them.
+const acpMessages = [
+  { id: 10, role: "user", kind: "text", content: "跑一下测试" },
+  { id: 11, role: "assistant", kind: "text", content: "全部通过", meta: { native: true } },
+  { id: 20, role: "user", kind: "text", content: "再看看覆盖率" },
+  { id: 22, role: "assistant", kind: "text", content: "覆盖率 91%", meta: { native: true } },
 ];
+const acpRowIds = new Map([[10, [10]], [11, [11, 12, 14]], [20, [20]], [22, [22, 23]]]);
 
-test("Copy Link on a computer chat: session + turns, never the local ids", async () => {
-  globalThis.__shareCalls = [];
-  const view = mountShare({
-    messages: nativeMessages, taskId: "task-1", title: "elon · claude",
-    native: { sessionId: "cts_1", hasOlder: false },
-  });
-  act(() => view.get().enter("all"));
-  await act(async () => { await view.get().copyLink(); });
-  // The attachment-only prompt is not mirrored: its reply belongs to turn 0; the
-  // queued prompt is not saved yet; the tail before the first prompt has no turn.
-  assert.deepEqual(globalThis.__shareCalls, [
-    { taskId: "task-1", computerTaskSessionId: "cts_1", userTurns: [0, 1], replyTurns: [0, 1] },
-  ]);
-  view.unmount();
-
-  // Older history not loaded: indexes count from the end, and the leading tail is turn -3.
-  globalThis.__shareCalls = [];
-  const older = mountShare({
-    messages: nativeMessages, taskId: "task-1",
-    native: { sessionId: "cts_1", hasOlder: true },
-  });
-  act(() => older.get().toggle(-9));
-  act(() => older.get().toggle(-6));
-  await act(async () => { await older.get().copyLink(); });
-  assert.deepEqual(globalThis.__shareCalls, [
-    { taskId: "task-1", computerTaskSessionId: "cts_1", userTurns: [], replyTurns: [-3, -1] },
-  ]);
-  older.unmount();
-});
-
-test("a computer chat not saved yet: text still copies, the link says so", async () => {
+test("Copy Link on a computer task sends each picked message's frame rows, never message ids", async () => {
   globalThis.__shareCalls = [];
   globalThis.__clipboard = [];
-  const view = mountShare({ messages: nativeMessages, taskId: "task-1", native: { sessionId: null, hasOlder: false } });
+  const view = mountShare({ messages: acpMessages, acpRowIds, taskId: "task-acp", title: "elon · claude", assistantLabel: "Claude Code" });
   act(() => view.get().enter("all"));
+  assert.equal(view.get().selectedCount, 4);
   await act(async () => { await view.get().copyLink(); });
-  assert.deepEqual(globalThis.__shareCalls, []);
-  assert.equal(view.get().notice.text, "这段对话还没保存，稍后再分享。");
+  assert.deepEqual(globalThis.__shareCalls, [
+    { taskId: "task-acp", acpMessages: [[10], [11, 12, 14], [20], [22, 23]] },
+  ]);
+  assert.equal(globalThis.__clipboard[0], "https://leoimage.oceanleo.com/share/abc123");
+  // Picking fewer: only those, in transcript order.
+  act(() => view.get().toggle(10));
+  act(() => view.get().toggle(20));
+  await act(async () => { await view.get().copyLink(); });
+  assert.deepEqual(globalThis.__shareCalls.at(-1), { taskId: "task-acp", acpMessages: [[11, 12, 14], [22, 23]] });
+  // Copy text speaks with the program's name.
   await act(async () => { await view.get().copyText(); });
-  assert.ok(globalThis.__clipboard[0].includes("第二答"));
+  assert.match(globalThis.__clipboard.at(-1), /Claude Code/);
+  assert.match(globalThis.__clipboard.at(-1), /覆盖率 91%/);
+  assert.doesNotMatch(globalThis.__clipboard.at(-1), /跑一下测试/);
   view.unmount();
+});
+
+test("a computer task's link is made again when a picked reply has grown; the same rows reuse it", async () => {
+  globalThis.__shareCalls = [];
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  let state = null;
+  // One component type across renders (harness() makes a new type each call, which would remount the hook).
+  function Live({ rowIds }) {
+    state = useShareMode({ messages: acpMessages, acpRowIds: rowIds, taskId: "task-acp" });
+    return null;
+  }
+  const render = (rowIds) => act(() => root.render(React.createElement(Live, { rowIds })));
+  render(acpRowIds);
+  act(() => state.enter(22));
+  await act(async () => { await state.copyLink(); });
+  await act(async () => { await state.copyLink(); });
+  assert.equal(globalThis.__shareCalls.length, 1, "same rows: the cached link");
+  render(new Map([...acpRowIds, [22, [22, 23, 25]]]));
+  await act(async () => { await state.copyLink(); });
+  assert.deepEqual(globalThis.__shareCalls.map((call) => call.acpMessages), [[[22, 23]], [[22, 23, 25]]]);
+  act(() => root.unmount());
+  host.remove();
 });
 
 test("没有勾选时四个动作都拒绝执行，并提示先勾选", async () => {

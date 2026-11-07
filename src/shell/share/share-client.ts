@@ -5,6 +5,7 @@
 // ----------------------------------------------------------------------------
 // 接口形状由合同 §4 I-2 定死，任何一方不得单方面改：
 //   POST /v1/share/task   { task_id, message_ids?: number[] }  → { share_id }
+//   电脑任务（2026-11-07）：{ task_id, acp_messages: number[][] }，每条消息是它的 acp_frames 行 id。
 //   GET  /v1/share/<id>                                        → { title, messages[] }
 // 后端（W04）还没上线时前端不许崩：一律翻译成一句能给用户看的话，由调用方提示。
 //
@@ -76,13 +77,10 @@ export interface CreateShareLinkInput {
   /** 只分享选中的这几条；不传 = 整段对话。 */
   messageIds?: readonly number[];
   /**
-   * 电脑上的原生对话（2026-10-31）：气泡是本地负数 id，链接改按这段对话的云端存档
-   * 取。`userTurns` / `replyTurns` 是轮次下标（一轮 = 一条用户消息 + 其后的回答；
-   * 负数从末尾数），分别选这一轮的提问 / 回答。给了它就不发 `messageIds`。
+   * A computer task (2026-11-07): one list per picked message, the `acp_frames` row ids it is made of
+   * (`acpShareItems`). The server builds the shared text from those rows. Given, `messageIds` is not sent.
    */
-  computerTaskSessionId?: string;
-  userTurns?: readonly number[];
-  replyTurns?: readonly number[];
+  acpMessages?: readonly (readonly number[])[];
   /** 注入点，只给测试用。 */
   fetchImpl?: typeof fetch;
   /** 注入点，只给测试用。 */
@@ -108,10 +106,8 @@ export async function createShareLink(
     throw new ShareLinkError(shareFailureMessage(401, ""), 401);
   }
   const body: Record<string, unknown> = { task_id: taskId };
-  if (input.computerTaskSessionId) {
-    body.computer_task_session_id = input.computerTaskSessionId;
-    body.user_turns = [...(input.userTurns ?? [])];
-    body.reply_turns = [...(input.replyTurns ?? [])];
+  if (input.acpMessages) {
+    body.acp_messages = input.acpMessages.map((rows) => [...rows]);
   } else if (input.messageIds && input.messageIds.length) {
     body.message_ids = [...input.messageIds];
   }

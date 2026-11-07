@@ -25,6 +25,8 @@ export type AcpTranscriptProps = {
    * already under way): the queued line shows without the button.
    */
   onStopAndSend?: (promptRowId: number) => void;
+  /** 「分享」's select mode: the pickable messages (`acpShareItems`) get the checkbox, nothing else does. */
+  select?: { pickable: ReadonlySet<number>; selected: ReadonlySet<number>; onToggle: (messageId: number) => void };
 };
 
 function answerFor(request: AcpPermission, answer: unknown): unknown {
@@ -93,7 +95,7 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
   );
 }
 
-export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQuery, onStopAndSend }: AcpTranscriptProps) {
+export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQuery, onStopAndSend, select }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => reduceRows(rows, program), [rows, program]);
   const labels: AcpLabels = useMemo(
@@ -115,6 +117,9 @@ export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQu
     }
     if (block.type === "raw-request") return <RawRequest key={block.key} request={block.request} />;
     const request = block.request;
+    const { id, kind } = block.message;
+    // A turn's error / stop notice carries its prompt's id: only text bubbles are words.
+    const pick = select && kind === "text" && select.pickable.has(id) ? select : null;
     return (
       <Fragment key={block.key}>
         <AgentTranscriptBubble
@@ -123,6 +128,9 @@ export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQu
           stopped={block.stopped}
           highlightQuery={highlightQuery}
           onNativeAnswer={request && onAnswer ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
+          selectMode={Boolean(pick)}
+          selected={pick ? pick.selected.has(id) : false}
+          onSelectToggle={pick ? () => pick.onToggle(id) : undefined}
         />
         {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
       </Fragment>
