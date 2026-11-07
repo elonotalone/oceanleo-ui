@@ -71,7 +71,8 @@ import {
   switchProgram as switchAcpProgram,
   type AcpSessionChoices,
 } from "../lib/acp-frames-api";
-import { changedChoices, useAcpCatalogPicker, useAcpFrames } from "./acp-task";
+import { changedChoices, useAcpCatalogPicker, useAcpFrames, usePending } from "./acp-task";
+import { PendingSendBubble, pendingAttachmentTiles, pendingConversation } from "./acp-task/PendingSendBubble";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
 import { NativeTerminalSurface } from "./cloud-computer/native-surface";
@@ -402,6 +403,11 @@ export interface AgentChatProps {
    * opts.attachments 透传进来即可。 */
   initialAttachments?: AgentAttachment[];
   /**
+   * The home's first message of a computer task (`putPending`, contract §2.5). Shown at once with
+   * the task composer; the task is adopted in place when the home's create returns it. No `taskId`.
+   */
+  pendingId?: string | null;
+  /**
    * 已有 agent task id（从历史记录点进来回看）；与 initialPrompt 二选一。
    * 省略时会复用最近的 WorkspaceSessionProvider.taskId；不在 Provider 内时保持旧行为。 */
   taskId?: string | null;
@@ -630,6 +636,11 @@ export function AgentChat(props: AgentChatProps) {
 
 const NO_TASK_SESSIONS: ComputerTaskSession[] = [];
 
+/** One message = one text with its files: the same pair sent again keeps its `client_message_id`. */
+function acpMessageKey(text: string, attachments: readonly AgentAttachment[]): string {
+  return `${text}\u0000${attachments.map((attachment) => attachment.url).join("\u0001")}`;
+}
+
 /** Same cadence as the computer views (`useCloudComputers` CC_POLL_MS). */
 const COMPUTER_REFRESH_MS = 15_000;
 
@@ -665,6 +676,7 @@ function AgentChatInner({
   initialPrompt,
   initialExecutionTarget,
   initialAttachments,
+  pendingId,
   taskId: explicitTaskId,
   initialTask,
   initialTitle,
@@ -735,8 +747,10 @@ function AgentChatInner({
   /** `id: null` = the OceanLeo conversation; `resolved: false` = not decided yet for this task. */
   const [selectedSession, setSelectedSession] = useState<{taskId: string; id: string | null; resolved: boolean}>({taskId: "", id: null, resolved: false});
   const [taskMode, setTaskMode] = useState<{taskId: string; computer: boolean}>({taskId: "", computer: false});
+  /** The home's message this view opened with (contract §2.5); null without one or after a reload. */
+  const pending = usePending(pendingId);
   /** Draft (no task yet) only: the OceanLeo target picked in the dock; undefined = today's remembered target. */
-  const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(undefined);
+  const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(() => pendingConversation(pending));
   /** A native chat picked for a program this task (or draft) has no session for: created by the first send. */
   const [pickedChat, setPickedChat] = useState<{taskId: string; conversation: Extract<ConversationTarget, {kind: "native"}>} | null>(null);
   const [computers, setComputers] = useState<Record<string, Computer>>({});
@@ -1441,6 +1455,8 @@ function AgentChatInner({
   const adoptCreatedTask = useCallback(async (task: string, session: ComputerTaskSession, prompt?: string) => {
     adoptedTaskRef.current = task;
     adoptedEpochRef.current = sessionsEpoch;
+    // A session's task is a computer task: its stream stays in front (no OceanLeo pane until the task row is read).
+    setTaskMode({taskId: task, computer: true});
     setTaskSessions({taskId: task, items: [session], loaded: true, failed: false});
     setSelectedSession({taskId: task, id: session.id, resolved: true});
     setPickedChat(null);
@@ -1452,6 +1468,38 @@ function AgentChatInner({
     }
     onTaskCreated?.(task, workspaceSessionId || undefined);
   }, [explicitTaskId, onTaskCreated, sessionsEpoch, workspace]);
+
+  // The home's message (contract §2.5). Its bubble is drawn from the local copy until the stream has
+  // a prompt row (a new task's first prompt is this message); its task is adopted here once created.
+  /** The user sent again from this composer: the earlier failure is no longer what is said. */
+  const [pendingRetried, setPendingRetried] = useState("");
+  const pendingTask = pending && (!taskId || taskId === pending.taskId || pendingRetried === pending.id);
+  const pendingShown = pending && pendingTask && acpView.turns.length === 0 ? pending : null;
+  const pendingInFlight = Boolean(pendingShown && pendingShown.error == null);
+  const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
+    // The program's own refusal is its row in the stream (under this bubble): said once, there.
+    && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
+  useEffect(() => {
+    if (!pending?.taskId || !pending.session || taskId) return;
+    void adoptCreatedTask(pending.taskId, pending.session, pending.text);
+  }, [pending?.taskId, pending?.session, taskId, adoptCreatedTask]);
+  // A failed create / send hands the text and files back to this composer; the user sends again.
+  // Same message id (the gateway dedupes it), except after a refusal: nothing went out, a new message.
+  const pendingRestoredRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!pending || pending.error == null || pendingRestoredRef.current === pending.error) return;
+    pendingRestoredRef.current = pending.error;
+    setInput(pending.text);
+    atts.restoreReady(pendingAttachmentTiles(pending.attachments));
+    acpMessageIdRef.current = refusedByAgent(pending.error) ? null
+      : {key: acpMessageKey(pending.text, pending.attachments), id: pending.clientMessageId};
+  }, [pending, atts.restoreReady]);
+  // The message went out with its choices: a later message carries only what changes.
+  useEffect(() => {
+    if (pending?.taskId && taskId === pending.taskId && acpView.turns.length > 0 && acpSentRef.current?.taskId !== taskId) {
+      acpSentRef.current = {taskId, choices: pending.choice};
+    }
+  }, [pending, taskId, acpView.turns.length]);
 
   const changeConversation = useCallback(async (next: ConversationTarget) => {
     setConversationError("");
@@ -2027,11 +2075,12 @@ function AgentChatInner({
   async function sendAcpMessage() {
     const text = input.trim();
     const uploaded = toolsOn ? atts.ready() : [];
-    if ((!text && uploaded.length === 0) || acpBusy || acpComposerDisabled || !acpProgram || !acpComputerId) return;
+    if ((!text && uploaded.length === 0) || acpBusy || pendingInFlight || acpComposerDisabled || !acpProgram || !acpComputerId) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
-    const key = `${text}\u0000${uploaded.map((attachment) => attachment.url).join("\u0001")}`;
+    const key = acpMessageKey(text, uploaded);
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
     const clientMessageId = acpMessageIdRef.current.id;
+    if (pendingShown) setPendingRetried(pendingShown.id);
     setAcpBusy(true);
     setAcpError(null);
     let id = taskId || "";
@@ -3257,6 +3306,8 @@ function AgentChatInner({
     top: null,
     empty: null,
     items: (
+      <>
+      {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} />}
       <AcpTranscript
         rows={frames.rows}
         program={acpRowsProgram}
@@ -3267,6 +3318,7 @@ function AgentChatInner({
         onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
         select={share.active ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle } : undefined}
       />
+      </>
     ),
     tail: (
       <>
@@ -3291,7 +3343,7 @@ function AgentChatInner({
           onStop={() => void stopAcpTurn()}
           stopping={acpStopping}
           onOpenAttachment={openTaskAttachment}
-          disabled={acpComposerDisabled || acpBusy}
+          disabled={acpComposerDisabled || acpBusy || pendingInFlight}
           // A host placeholder that names OceanLeo does not fit a Claude / Codex task.
           placeholder={placeholder && !/oceanleo/i.test(placeholder) ? placeholder : tt("继续追问")}
           rows={1}

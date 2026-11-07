@@ -707,8 +707,10 @@ async function loadHomeContent() {
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
     export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
     export { openTaskWorkspaceLibrary, taskAttachmentLibraryAction } from ${JSON.stringify(taskAttachmentOpenUrl)};
-    // A native chat's catalog pill; no case here picks a program for a chat.
+    // A native chat's catalog pill and its pending first message; no case here picks a program for a chat.
     export function useAcpCatalogPicker() { return { picker: null, choice: {} }; }
+    export function putPending() { throw new Error("no native chat in these cases"); }
+    export function settlePending() {}
     export function LeoComposer(props) {
       globalThis.__portalComposer = props;
       return createElement("div", { "data-home-composer": "" }, props.value);

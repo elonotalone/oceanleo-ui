@@ -334,7 +334,8 @@ async function changeConversation(view, kind, next) {
   await act(async () => { view.composer(kind).__props.onConversationChange(next); await new Promise((r) => setTimeout(r, 0)); });
   await settle();
 }
-globalThis.__agentChatHarness = { mount, settle, visible, session, computerTask, cloudTask, rows, socket, connect, deliver, posts, type, submit };
+globalThis.__agentChatHarness = { mount, settle, visible, session, computerTask, cloudTask, rows, socket, connect, deliver, posts, type, submit,
+  acpFrames: await import(acpFramesUrl) };
 const codexSessions = [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")];
 
 // ---------------------------------------------------------------------------

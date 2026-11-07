@@ -555,6 +555,8 @@ export { AgentProgress } from "./AgentProgress";
 export { AgentChat, orgStatusFromMessages, type AgentChatProps, type AgentLibraryTabs } from "./AgentChat";
 // Computer programs' model / mode / option pill from the gateway catalog (home composer and task page).
 export { useAcpCatalogPicker, type AcpCatalogPicker, type AcpCatalogPickerInput } from "./acp-task";
+// Home Send: the first message of a computer task, shown on its task view before the task exists (contract §2.5).
+export { putPending, readPending, settlePending, usePending, type PendingSend, type PendingSendInput, type PendingSettle } from "./acp-task";
 // Homepage native chat: files held before the session exists survive a refresh (IndexedDB).
 // 人才市场 v1：对话里卡住了「叫真人」。AgentChat 已经自带入口按钮与状态条，这四个
 // 单独导出是给别的场景（工作台、企业任务、设置页）复用同一套授权与闸门语义用的。
