@@ -471,6 +471,9 @@ test("a permission card answers through /answer with the option the user picked;
     await settle();
     assert.deepEqual(posts("/v1/tasks/t1/stop-task").map((call) => call.body), [{ task_ref: "bg-1" }]);
     assert.equal(posts("/stop").length, 0);
+    await act(async () => { socket().drop(); });
+    await settle();
+    assert.equal(view.host.querySelector("[data-acp-stop-task]"), null, "no per-task stop while the socket is down");
   } finally { await view.unmount(); }
 });
 

@@ -3245,7 +3245,8 @@ function AgentChatInner({
         rows={frames.rows}
         program={acpRowsProgram}
         onAnswer={answerAcpRequest}
-        onStopTask={stopAcpBackgroundTask}
+        // Buttons work only while the socket is connected (P4).
+        onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
       />
     ),
     tail: (
