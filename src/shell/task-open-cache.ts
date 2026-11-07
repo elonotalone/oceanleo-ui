@@ -8,15 +8,14 @@
 // transcript). Now:
 //
 // * Hover / focus / press on a sidebar row starts the reads at once, in
-//   parallel (task detail, and for a computer task its session list and the
-//   latest conversation's saved transcript). The pages take the in-flight
+//   parallel (task detail, and for a computer task its session list). The
+//   frames page reads its rows itself (no copy kept). The pages take the in-flight
 //   promise instead of starting their own (`take…Prefetch`, used once, young
 //   only).
 // * What was read is kept per task (memory LRU + IndexedDB, user-scoped,
 //   dropped on sign-out): a task opened before paints from it at once and the
 //   page reads it again in the background. Only the newest messages / first
 //   transcript page are kept on disk.
-// * Transcripts: native-thread/transcript-cache (same rules).
 // * The first task read asks for the newest `TASK_FIRST_PAGE_MESSAGES` messages
 //   (`message_limit`). A reply that may be cut (as many messages as asked for)
 //   is a partial seed: AgentChat shows it and then reads the whole thread.
@@ -24,12 +23,7 @@
 
 import { getTask, type TaskDetail } from "../lib/agent";
 import { getAppSession } from "../lib/app-session";
-import {
-  knownComputerTaskSessions,
-  latestComputerTaskSession,
-  listComputerTaskSessions,
-  type ComputerTaskSession,
-} from "../lib/computer-task-api";
+import { listComputerTaskSessions } from "../lib/computer-task-api";
 import { cacheUser, onUserScopedClear, readUserIdb } from "../lib/user-scoped-cache";
 import { markStaleTaskSeed } from "./history-detail-cache";
 import {
@@ -41,7 +35,6 @@ import {
   takeRead,
   type SharedRead,
 } from "./open-cache-core";
-import { prefetchTranscript, readTranscript } from "./native-thread/transcript-cache";
 
 export { PREFETCH_FRESH_MS } from "./open-cache-core";
 
@@ -179,12 +172,6 @@ export function takeAppSessionPrefetch(sessionId: string): Promise<AppSessionRes
   return takeRead(sessionReads, sessionId);
 }
 
-function transcriptSession(sessions: readonly ComputerTaskSession[] | null | undefined): ComputerTaskSession | null {
-  const latest = latestComputerTaskSession((sessions ?? []).filter((session) =>
-    session.kind !== "acp" || Boolean(session.program && session.program !== "oceanleo")));
-  return latest && latest.kind === "acp" ? latest : null;
-}
-
 /** What a sidebar row knows about the task it opens (all from the list row). */
 export interface HistoryOpenHint {
   /** `session` = an app_session id (`/history/<id>`); `task` = a task id (`?task=`). */
@@ -209,20 +196,8 @@ export function prefetchHistoryOpen(hint: HistoryOpenHint): void {
   void readTaskDetail(taskId).catch(swallow);
   prefetchTask(taskId).catch(swallow);
   if (hint.mode !== "computer") return;
-  const known = hint.computerSessionId || transcriptSession(knownComputerTaskSessions(taskId))?.id || "";
-  if (known) {
-    void readTranscript(known).catch(swallow);
-    prefetchTranscript(known).catch(swallow);
-  }
-  const user = cacheUser();
-  listComputerTaskSessions(taskId).then((result) => {
-    if (cacheUser() !== user) return;
-    const latest = transcriptSession(result?.sessions);
-    if (latest && latest.id !== known) {
-      void readTranscript(latest.id).catch(swallow);
-      prefetchTranscript(latest.id).catch(swallow);
-    }
-  }, swallow);
+  // A computer task's page picks its conversation from this list (shared read).
+  listComputerTaskSessions(taskId).catch(swallow);
 }
 
 /** Session-kind history details survive a reload too (the app_session row; small). */

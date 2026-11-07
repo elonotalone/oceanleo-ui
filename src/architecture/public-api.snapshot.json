@@ -1852,6 +1852,30 @@
       "declarations": [
         {
           "kind": "named",
+          "name": "acpErrorText",
+          "importedName": "acpErrorText",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "AcpSendError",
+          "importedName": "AcpSendError",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "answer",
+          "importedName": "answer",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "close",
+          "importedName": "close",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
           "name": "CLOUD_AGENT_COPY",
           "importedName": "CLOUD_AGENT_COPY",
           "source": "./local-agent-task"
@@ -1861,6 +1885,18 @@
           "name": "cloudDriverPreflight",
           "importedName": "cloudDriverPreflight",
           "source": "./cloud-agent-api"
+        },
+        {
+          "kind": "named",
+          "name": "getCatalog",
+          "importedName": "getCatalog",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "getFrames",
+          "importedName": "getFrames",
+          "source": "./acp-frames-api"
         },
         {
           "kind": "named",
@@ -1879,6 +1915,42 @@
           "name": "localAgentRefusalText",
           "importedName": "localAgentRefusalText",
           "source": "./local-agent-task"
+        },
+        {
+          "kind": "named",
+          "name": "openFrames",
+          "importedName": "openFrames",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "refusedByAgent",
+          "importedName": "refusedByAgent",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "send",
+          "importedName": "send",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "stop",
+          "importedName": "stop",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "stopAcpTask",
+          "importedName": "stopTask",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "switchProgram",
+          "importedName": "switchProgram",
+          "source": "./acp-frames-api"
         },
         {
           "kind": "star",
@@ -2003,6 +2075,60 @@
         {
           "kind": "star",
           "source": "./workflows"
+        },
+        {
+          "kind": "type",
+          "name": "AcpCatalog",
+          "importedName": "AcpCatalog",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpFrames",
+          "importedName": "AcpFrames",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpFramesEvent",
+          "importedName": "AcpFramesEvent",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpFramesState",
+          "importedName": "AcpFramesState",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpLinkState",
+          "importedName": "AcpLinkState",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpRpcError",
+          "importedName": "AcpRpcError",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpSendBody",
+          "importedName": "AcpSendBody",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpSendResult",
+          "importedName": "AcpSendResult",
+          "source": "./acp-frames-api"
+        },
+        {
+          "kind": "type",
+          "name": "AcpSessionChoices",
+          "importedName": "AcpSessionChoices",
+          "source": "./acp-frames-api"
         },
         {
           "kind": "type",
@@ -7120,6 +7246,12 @@
         },
         {
           "kind": "named",
+          "name": "useAcpCatalogPicker",
+          "importedName": "useAcpCatalogPicker",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "named",
           "name": "useActiveAppCapability",
           "importedName": "useActiveAppCapability",
           "source": "./app-capability-context"
@@ -7219,12 +7351,6 @@
           "name": "useNativeDraftFiles",
           "importedName": "useNativeDraftFiles",
           "source": "./native-draft-files"
-        },
-        {
-          "kind": "named",
-          "name": "useNativeThread",
-          "importedName": "useNativeThread",
-          "source": "./native-thread"
         },
         {
           "kind": "named",
@@ -7628,6 +7754,18 @@
         },
         {
           "kind": "type",
+          "name": "AcpCatalogPicker",
+          "importedName": "AcpCatalogPicker",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "type",
+          "name": "AcpCatalogPickerInput",
+          "importedName": "AcpCatalogPickerInput",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "type",
           "name": "AdvancedContentWorkbenchProps",
           "importedName": "AdvancedContentWorkbenchProps",
           "source": "./AdvancedContentWorkbench"
@@ -7637,12 +7775,6 @@
           "name": "AgentCardConfig",
           "importedName": "AgentCardConfig",
           "source": "./SiteCatalogConsole"
-        },
-        {
-          "kind": "type",
-          "name": "AgentChatNativeLaunch",
-          "importedName": "AgentChatNativeLaunch",
-          "source": "./AgentChat"
         },
         {
           "kind": "type",
@@ -7865,12 +7997,6 @@
           "name": "NativeDraftFilesHandle",
           "importedName": "NativeDraftFilesHandle",
           "source": "./native-draft-files"
-        },
-        {
-          "kind": "type",
-          "name": "NativeThread",
-          "importedName": "NativeThread",
-          "source": "./native-thread"
         },
         {
           "kind": "type",
