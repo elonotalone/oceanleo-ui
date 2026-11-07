@@ -165,6 +165,7 @@ function projection({
     bindings: [],
     integrity: { ok: true, code: "ok", reason: "" },
     createdAt: "2026-10-16T00:00:00.000Z",
+    librarySource: "creation",
   };
 }
 

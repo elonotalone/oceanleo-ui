@@ -369,6 +369,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export function sortLibraryItems(items){ return [...items]; }
     export const LIBRARY_UPLOAD_ROLE = "user_upload";
     export function isUploadedLibraryItem(){ return false; }
+    export function libraryItemSection(item){ return item?.artifact?.librarySource ?? null; }
   `),
   "./library-scope": dataModule(`
     import { createElement as h } from "${reactUrl}";
@@ -474,6 +475,7 @@ function item(artifactId, ownerId, title = artifactId, options = {}) {
       schema: "oceanleo.artifact.v1",
       artifactId,
       revisionId,
+      librarySource: options.librarySource ?? "creation",
       owner: { principalId: ownerId, visibility: "private" },
       renditions: {
         ...(options.sourceBytes === undefined ? {} : { source: { byteSize: options.sourceBytes } }),

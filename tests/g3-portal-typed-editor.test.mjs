@@ -121,6 +121,7 @@ function material(kind, artifactType, capability, format, siteId) {
       owner: { principalId: 'owner', visibility: 'private', originSiteKey: siteId },
       access: { canRead: true, canPreview: true, canEdit: true, canFork: false, canExportSource: true },
       integrity: { ok: true, reason: '' },
+      librarySource: 'creation',
       renditions: { source: { purpose: 'source', revisionId, url: `https://assets.test/${artifactId}.${format}`, digest: 'sha256:g3' },
         preview: { purpose: 'preview', revisionId, url: `https://assets.test/${artifactId}.png` } } } };
 }

@@ -902,6 +902,7 @@ function projection({
   ownerPrincipalId = "user-1",
   visibility = "private",
   artifactType = "single_file_image",
+  librarySource = "creation",
 } = {}) {
   const isComposite = artifactType === "composite_image";
   return {
@@ -909,6 +910,7 @@ function projection({
     artifact_id: id || "artifact-1",
     revision_id: revisionId,
     artifact_type: artifactType,
+    library_source: librarySource,
     roles: ["template"],
     title: title || "Artifact",
     favorite,
@@ -3430,7 +3432,8 @@ test("rendered My Library distinguishes authoritative empty, 401, 403 and 503", 
         invalidCount: 0,
         items: [],
       },
-      /生成作品/,
+      // 我的创作 is the default section (UX wave 2026-11-07).
+      /生成的作品/,
     ],
     [401, { detail: "login" }, /登录任意 OceanLeo/],
     [403, { detail: "denied" }, /当前账号暂时无法读取/],

@@ -323,6 +323,7 @@ const LIBRARY_ITEMS_SOURCE = `
         bindings: [],
         integrity: { ok: true, code: "ok", reason: "" },
         createdAt: "2026-08-01T00:00:00Z",
+        librarySource: "creation",
       },
     };
   });

@@ -77,6 +77,7 @@ function durableItem(overrides = {}) {
         canExportSource: true,
       },
       integrity: { ok: true, code: "ok", reason: "" },
+      librarySource: "creation",
       renditions: {},
       provenance: {
         id: `prov-${artifactId}`,
