@@ -15,7 +15,7 @@ export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
   program: string;
   /** Send `result` as the JSON-RPC response to the agent's request `requestId`. */
-  onAnswer: (requestId: JsonRpcId, result: unknown) => void;
+  onAnswer?: (requestId: JsonRpcId, result: unknown) => void;  // omitted while the page's socket is down: cards render, not clickable
   /** Stop one background task (Claude `asyncTaskId`). Absent: no per-task stop buttons. */
   onStopTask?: (ref: string) => void;
 };
@@ -92,7 +92,7 @@ export function AcpTranscript({ rows, program, onAnswer, onStopTask }: AcpTransc
         message={block.message}
         streaming={block.streaming}
         stopped={block.stopped}
-        onNativeAnswer={request ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
+        onNativeAnswer={request && onAnswer ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
       />
     );
   };
