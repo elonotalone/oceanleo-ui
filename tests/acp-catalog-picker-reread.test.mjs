@@ -29,8 +29,9 @@ const { useAcpCatalogPicker } = await import(await compileModule("src/shell/acp-
         setInstallDir(){}, startInstall(){}, openLogin(){}, closeLogin(){}, submitLoginCode(){}, cancelLogin(){}, setLoginCodeDraft(){}, retryConnect(){} };
     }
   `),
-  "../cloud-computer/agent-dialog/model-param-memory": dataModule(
-    "export function readProgramSelection(){ return {}; }\nexport function rememberProgramSelection(){}",
+  // The remembered choice (real memory module); its server store, where there is one (UX wave §2.1), holds nothing.
+  "../../lib/program-choice-api": dataModule(
+    "export function programChoiceFrom(){ return {}; }\nexport async function getProgramChoice(){ return {}; }\nexport async function putProgramChoice(){ return {}; }",
   ),
   "../native-thread/NativeModelPicker": dataModule(`
     import React from ${reactUrl};
