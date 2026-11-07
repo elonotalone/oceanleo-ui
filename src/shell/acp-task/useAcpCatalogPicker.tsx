@@ -22,7 +22,11 @@ export type AcpCatalogPickerInput = {
   computerId: string | null | undefined;
   program: string | null | undefined;
   disabled?: boolean;
-  /** Changing it reads the catalog again (the task page: when the agent link attaches). */
+  /**
+   * Changing it reads the catalog again (the task page: when the agent link attaches; the home: when
+   * the computer row changes). The program's access status changing and the first open of an empty
+   * pill read it again too (contract §2.2: no polling).
+   */
   reloadKey?: unknown;
 };
 
@@ -75,6 +79,11 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
   const tt = useUI();
   const access = useProgramAccess(computerId || "", isWsProgram(program) ? program : null);
   const key = computerId && program ? `${computerId}\u0000${program}` : "";
+  // Installed / signed in / upgraded: a program that just became ready may have reported its lists.
+  const accessKey = access.programs.map((row) => `${row.id}:${row.installed}:${row.logged_in}:${row.version}`).join(",");
+  /** The program whose pill was opened while its catalog was empty: read once more. */
+  const [openedEmpty, setOpenedEmpty] = useState("");
+  const reread = openedEmpty === key;
   const [read, setRead] = useState<{ key: string; catalog: AcpCatalog | null }>({ key: "", catalog: null });
   useEffect(() => {
     if (!key || !computerId || !program) return;
@@ -85,7 +94,7 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
       () => { if (alive) setRead({ key, catalog: {} }); },
     );
     return () => { alive = false; };
-  }, [key, computerId, program, reloadKey]);
+  }, [key, computerId, program, reloadKey, accessKey, reread]);
   const catalog = read.key === key ? read.catalog : null;
 
   // The remembered choice: read once per computer + program. A pick made before it arrives wins over it.
@@ -109,6 +118,8 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
     const parsed = parseConfigOptions(raw);
     return { models: catalogModels(catalog), configOptions: parsed, mode: catalogMode(catalog, raw) };
   }, [catalog]);
+  const empty = Boolean(lists && !lists.models.length && !lists.configOptions.length && !lists.mode?.options.length);
+  const onOpen = useCallback(() => { if (empty && key) setOpenedEmpty(key); }, [empty, key]);
 
   /** Shown at once and stored on the server; a failed store is said in the gateway's words (the pick still goes out). */
   const pick = useCallback((patch: ProgramChoice) => {
@@ -166,7 +177,7 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
         setMode,
         setConfig,
       };
-      picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled, notice: current.error })
+      picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled, notice: current.error, onOpen })
         ?? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} disabled fallbackSummary={tt("选择程序后加载")} />;
     }
   }

@@ -322,7 +322,7 @@ function NativeChatSettings({ program, computerId, dialog, online, client = clou
       {...picker}
       decorateRows={decorateRows}
       fallbackSummary={isWsProgram(program) ? PROGRAM_LABEL[program] : program}
-      onOpenChange={(open) => { if (open) setOpened(true); }}
+      onOpenChange={(open) => { if (open) { setOpened(true); picker.onOpenChange?.(open); } }}
       openRequest={setupRequest ? { nonce: setupRequest, row: "account" } : undefined}
     />
   );
@@ -336,7 +336,7 @@ function NativeChatSettings({ program, computerId, dialog, online, client = clou
  * out through the controller's own setters (`setSelectedModel` / `setMode` /
  * `setConfig`); the host remembers them (useAcpCatalogPicker: on the server).
  */
-export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true, disabled = false, notice }: {
+export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true, disabled = false, notice, onOpen }: {
   /** null = no picker (no program, or hidden). */
   program: string | null;
   computerId: string;
@@ -349,6 +349,8 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
   disabled?: boolean;
   /** The host's error for the last pick it could not store (verbatim). */
   notice?: string;
+  /** The menu was opened (the catalog picker reads an empty catalog again). */
+  onOpen?: () => void;
 }): ReactNode | null {
   if (!program) return null;
   const configOptions = dialog.configOptions || [];
@@ -377,6 +379,7 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
     notice,
     loading: !known && online && waiting,
     disabled,
+    ...(onOpen ? { onOpenChange: (open: boolean) => { if (open) onOpen(); } } : {}),
   };
   return full
     ? <NativeChatSettings program={program} computerId={computerId} dialog={full} online={online} picker={picker} />
