@@ -64,6 +64,24 @@
       "target": "./src/index.ts",
       "declarations": [
         {
+          "kind": "named",
+          "name": "AcpTranscript",
+          "importedName": "AcpTranscript",
+          "source": "./acp"
+        },
+        {
+          "kind": "named",
+          "name": "parseRow",
+          "importedName": "parseRow",
+          "source": "./acp"
+        },
+        {
+          "kind": "named",
+          "name": "reduceRows",
+          "importedName": "reduceRows",
+          "source": "./acp"
+        },
+        {
           "kind": "star",
           "source": "./lib"
         },
@@ -78,6 +96,60 @@
         {
           "kind": "star",
           "source": "./ui"
+        },
+        {
+          "kind": "type",
+          "name": "AcpBackgroundTask",
+          "importedName": "AcpBackgroundTask",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpEvent",
+          "importedName": "AcpEvent",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpFrameRow",
+          "importedName": "AcpFrameRow",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpItem",
+          "importedName": "AcpItem",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpPermission",
+          "importedName": "AcpPermission",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpToolCall",
+          "importedName": "AcpToolCall",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpTranscriptProps",
+          "importedName": "AcpTranscriptProps",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpTurn",
+          "importedName": "AcpTurn",
+          "source": "./acp"
+        },
+        {
+          "kind": "type",
+          "name": "AcpView",
+          "importedName": "AcpView",
+          "source": "./acp"
         }
       ]
     },
