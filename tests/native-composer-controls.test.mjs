@@ -2,8 +2,9 @@
 // A Codex / Claude Code conversation never shows the OceanLeo wallet or the
 // Lite/Pro/Max tier; its own picker shows model, effort, fast and modes (W7: as
 // setting rows behind a model-name pill, each opening a card of choices), with
-// fast explained when the current model lacks it, and choices persisted per
-// program + computer and sent through the controller's setters.
+// fast explained when the current model lacks it, and choices sent through the
+// controller's setters (the host remembers them on the server: UX wave
+// 2026-11-07, tests/ux-pm-u-program-choice.test.mjs).
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -163,7 +164,7 @@ test("pill shows the model only; rows per setting with current values; a row ope
     assert.equal(paid.disabled, true, "unusable model is disabled");
     assert.match(paid.textContent, /Anthropic 的付费模型需要账户余额。/, "with its reason on screen");
     await openRow(m, "mode");
-    assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["手动确认", "自动接受改动", "计划", "自动", "全部放行"]);
+    assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["手动确认", "自动接受改动", "计划", "自动", "不再询问（Bypass）"]);
     await openRow(m, "fast");
     await m.click(m.q('[data-native-fast-option="off"]'));
     assert.equal(m.q("[data-composer-settings-menu]"), null, "a pick closes the menu");
@@ -179,13 +180,14 @@ test("pill shows the model only; rows per setting with current values; a row ope
 
 test("Codex: no model list → the pill names the permission mode, in plain language", async () => {
   const mode = { id: "mode", name: "mode", current: "agent", options: [
-    { value: "read-only", name: "Read Only" }, { value: "agent", name: "Agent" }, { value: "agent-full-access", name: "Agent (full access)" },
+    { value: "read-only", name: "Read Only" }, { value: "workspace-write", name: "Workspace access" },
+    { value: "agent", name: "Agent" }, { value: "agent-full-access", name: "Agent (full access)" },
   ] };
   const m = await mount(React.createElement(NativeModelPicker, { program: "codex", models: [], selected: "", onSelect() {}, mode, selectedMode: "agent", onMode() {} }));
   try {
     assert.equal(m.q("[data-native-model-summary]").textContent, "代理");
     await openRow(m, "mode");
-    assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["只读", "代理", "完全访问"]);
+    assert.deepEqual(m.qa("[data-native-mode-option]").map((n) => n.textContent), ["只读", "可改工作区", "代理", "完全访问"]);
   } finally { await m.unmount(); }
 });
 
@@ -224,7 +226,7 @@ function fakeDialog(overrides = {}) {
   return {
     calls,
     models: MODELS.slice(0, 2), selectedModel: "opus", configOptions: [{ id: "model", name: "Model", category: "model", type: "select", current: "opus", options: [{ value: "opus", name: "Opus 4.x" }, { value: "sonnet", name: "Sonnet 4.x" }] }, FAST, EFFORT],
-    mode: CLAUDE_MODE, selectedMode: "plan", activeSession: "s1",
+    mode: CLAUDE_MODE, selectedMode: "plan",
     setSelectedModel: (id) => calls.push(["setSelectedModel", id]),
     setMode: (v) => calls.push(["setMode", v]),
     setConfig: (id, value) => calls.push(["setConfig", id, value]),
@@ -232,35 +234,38 @@ function fakeDialog(overrides = {}) {
   };
 }
 
-test("a choice goes through the controller's setter and is remembered per program and computer", async () => {
+test("a choice goes through the controller's setter; nothing is kept in this browser", async () => {
   const dialog = fakeDialog();
   const m = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "claude", computerId: "cc_1", dialog, waiting: true })));
   try {
+    assert.deepEqual(dialog.calls, [], "mounting replays nothing through the setters");
     await openRow(m, "fast");
     await m.click(m.q('[data-native-fast-option="off"]'));
     assert.deepEqual(dialog.calls, [["setConfig", "fast_mode", false]], "bool wire is coerced for the setter");
     await openRow(m, "param:reasoning_effort");
     await m.click(m.q('[data-native-param-option="reasoning_effort:high"]'));
     assert.deepEqual(dialog.calls.at(-1), ["setConfig", "reasoning_effort", "high"]);
-    const memory = JSON.parse(window.localStorage.getItem("oceanleo.acp.modelParams.cc_1.claude"));
-    assert.deepEqual(memory, { opus: { fast_mode: "false", reasoning_effort: "high" } });
+    assert.equal(window.localStorage.length, 0, "no localStorage memory");
   } finally { await m.unmount(); }
 });
 
-test("a fresh view (no native session yet) restores the remembered choices through the setter", async () => {
-  window.localStorage.setItem("oceanleo.acp.modelParams.cc_1.claude", JSON.stringify({ opus: { fast_mode: "false", reasoning_effort: "high" } }));
-  const dialog = fakeDialog({ activeSession: "" });
-  const m = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "claude", computerId: "cc_1", dialog, waiting: true })));
+test("the host's store error is one line under this conversation's rows, verbatim", async () => {
+  const m = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "claude", computerId: "cc_1", dialog: fakeDialog(), waiting: true, notice: "HTTP 503" })));
   try {
-    assert.deepEqual(dialog.calls, [["setConfig", "fast_mode", false], ["setConfig", "reasoning_effort", "high"]]);
+    await m.click(m.q("[data-native-model-trigger]"));
+    const note = m.q("[data-native-choice-error]");
+    assert.ok(note, "the error row is in the menu");
+    assert.equal(note.getAttribute("role"), "alert");
+    assert.match(note.textContent, /^HTTP 503$/);
   } finally { await m.unmount(); }
-  const open = fakeDialog({ activeSession: "s1" });
-  const m2 = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "claude", computerId: "cc_1", dialog: open, waiting: true })));
-  try { assert.deepEqual(open.calls, [], "an open session's own settings win"); }
-  finally { await m2.unmount(); }
+  const quiet = await mount(React.createElement("div", null, nativeModelPickerFor({ program: "claude", computerId: "cc_1", dialog: fakeDialog(), waiting: true })));
+  try {
+    await quiet.click(quiet.q("[data-native-model-trigger]"));
+    assert.equal(quiet.q("[data-native-choice-error]"), null);
+  } finally { await quiet.unmount(); }
 });
 
-test("Codex legacy effort-in-model-id catalogs: effort picks the variant id and is remembered", async () => {
+test("Codex legacy effort-in-model-id catalogs: effort picks the variant id through the model setter", async () => {
   const models = [
     { id: "gpt-5[low]", name: "GPT-5 (low)", default: false }, { id: "gpt-5[high]", name: "GPT-5 (high)", default: true },
   ];
@@ -270,7 +275,7 @@ test("Codex legacy effort-in-model-id catalogs: effort picks the variant id and 
     assert.ok(await openRow(m, "effort"));
     await m.click(m.q('[data-native-effort-option="gpt-5[low]"]'));
     assert.deepEqual(dialog.calls, [["setSelectedModel", "gpt-5[low]"]]);
-    assert.deepEqual(JSON.parse(window.localStorage.getItem("oceanleo.acp.modelParams.cc_1.codex")), { "gpt-5": { reasoning_effort: "low" } });
+    assert.equal(window.localStorage.length, 0, "no localStorage memory");
   } finally { await m.unmount(); }
 });
 

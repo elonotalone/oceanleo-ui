@@ -12,6 +12,7 @@ import { WEBSITE_MANAGEMENT_COPY } from "./website-management-copy";
 import { THIN_GATEWAY_PAGE_COPY } from "./thin-gateway-page-copy";
 import { UX_TS_COPY } from "./ux-ts-copy";
 import { UX_DU_COPY } from "./ux-du-copy";
+import { UX_PM_U_COPY } from "./ux-pm-u-copy";
 
 const PARTS: readonly TaskPagePackCopy[] = [
   TASK_PAGE_PACK_PARENT_COPY,
@@ -21,6 +22,7 @@ const PARTS: readonly TaskPagePackCopy[] = [
   THIN_GATEWAY_PAGE_COPY,
   UX_TS_COPY,
   UX_DU_COPY,
+  UX_PM_U_COPY,
 ];
 
 /** 本波全部中文原文（中文站 key 等于值）；i18n 判据按它逐条查 16 语。 */

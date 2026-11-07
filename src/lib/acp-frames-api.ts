@@ -76,7 +76,8 @@ export function acpErrorText(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+/** One gateway route call with the user's token; a refusal throws `AcpSendError` with the body as it came. */
+export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
   if (!token) throw new AcpSendError(401, "未登录", null, null);
   let res: Response;

@@ -6,7 +6,6 @@ export function modelControls(
   models: DialogModel[],
   options: DialogConfigOption[],
   selected: string,
-  remembered: Record<string, Record<string, string>> = {},
 ) {
   const config = options.find((option) => option.category === "model" || option.id === "model");
   if (config?.options.length) {
@@ -18,22 +17,21 @@ export function modelControls(
     const current = choices.some((model) => model.id === selected) ? selected
       : choices.find((model) => program === "codex" && selected.startsWith(`${model.id}[`))?.id
         || String(config.current || "");
-    return { models: choices, selected: current, memoryModel: current, effort: null };
+    return { models: choices, selected: current, effort: null };
   }
-  if (program !== "codex") return { models, selected, memoryModel: selected, effort: null };
+  if (program !== "codex") return { models, selected, effort: null };
   const variants = models.flatMap((model) => {
     const match = model.id.match(/^(.+)\[([^\[\]]+)\]$/);
     return match ? [{ model, base: match[1], effort: match[2] }] : [];
   });
   if (!variants.length || variants.length !== models.length) {
-    return { models, selected, memoryModel: selected, effort: null };
+    return { models, selected, effort: null };
   }
   const active = variants.find((variant) => variant.model.id === selected);
   const bases = [...new Set(variants.map((variant) => variant.base))];
   const choices = bases.map((base) => {
     const family = variants.filter((variant) => variant.base === base);
     const pick = family.find((variant) => variant.model.id === selected)
-      || family.find((variant) => variant.effort === remembered[base]?.reasoning_effort)
       || family.find((variant) => variant.effort === active?.effort)
       || family.find((variant) => variant.model.default) || family[0];
     return { ...pick.model, name: pick.model.name.replace(/\s*\([^()]+\)$/, "") };
@@ -41,7 +39,6 @@ export function modelControls(
   return {
     models: choices,
     selected: active ? choices.find((choice) => choice.id.startsWith(`${active.base}[`))?.id || selected : selected,
-    memoryModel: active?.base || selected,
     effort: active ? {
       current: selected,
       options: variants.filter((variant) => variant.base === active.base && variant.model.usable !== false)

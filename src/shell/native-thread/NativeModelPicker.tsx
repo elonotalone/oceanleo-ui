@@ -7,9 +7,10 @@
 // options, its modes, fast mode — and a row opens a card of choices beside it.
 // 2026-10-31 night: the gear + right-pane settings are gone; this menu also
 // carries 「这台电脑上的 <程序>」 (account: sign in / out, install, Key) and
-// 「整台电脑」 (two switches) under headed sections, read-only while offline.
+// 「整台电脑」 (the OceanLeo tools switch) under headed sections, read-only while
+// offline. 2026-11-07 (UX wave): permission is only the program's own mode row.
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { useUI, type UITranslate } from "../../i18n/ui/useUI";
 import { ComposerSettingsMenu, type ComposerSettingRow, type ComposerSettingsOpenRequest } from "../composer-settings-menu";
 import { cloudComputerApi, type CloudComputerClient } from "../../lib/cloud-computer-api";
@@ -24,13 +25,7 @@ import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL } from "../cloud-computer/agent-dialog/types";
 import { modelDisplayName, modelParamOptions, providerLabel } from "../cloud-computer/agent-dialog/notice";
 import { modelControls } from "../cloud-computer/agent-dialog/model-controls";
-import {
-  coerceOptionValue,
-  optionCurrentWire,
-  readModelParamMemory,
-  rememberModelParam,
-  restoresForModel,
-} from "../cloud-computer/agent-dialog/model-param-memory";
+import { coerceOptionValue, optionCurrentWire } from "../cloud-computer/agent-dialog/model-param-memory";
 import type { AgentDialogController, DialogConfigOption, DialogModel, ModeOption } from "../cloud-computer/agent-dialog/types";
 
 export type NativeEffortChoices = { current: string; options: { value: string; name: string }[] };
@@ -46,19 +41,15 @@ export type NativeModelPickerProps = {
   onMode?: (value: string) => void;
   /** Model parameters the program reports right now (fast, effort, …): `modelParamOptions`. */
   params?: DialogConfigOption[];
-  /** A parameter choice (wire value). The host remembers it and calls the controller's setter. */
+  /** A parameter choice (wire value), handed to the controller's setter. */
   onParam?: (option: DialogConfigOption, wire: string) => void;
   /** Codex catalogs that encode effort in model ids (`gpt-5[high]`): picking one selects that id. */
   effort?: NativeEffortChoices | null;
   onEffort?: (wire: string) => void;
   /** The program has fast mode for some models: say so when the current model lacks it. */
   fastSupported?: boolean;
-  /**
-   * Remembered parameter choices for the current model. Applied through
-   * `onParam` once per catalog while `fresh` (no native session open yet).
-   */
-  remembered?: Record<string, string>;
-  fresh?: boolean;
+  /** The host could not store the last pick: its error, verbatim, as a line under this conversation's rows. */
+  notice?: string;
   /** Nothing known yet: a disabled "正在读取…" trigger. */
   loading?: boolean;
   disabled?: boolean;
@@ -109,10 +100,11 @@ export function nativeModeLabel(program: string | undefined, choice: { value: st
       acceptEdits: tt("自动接受改动"),
       plan: tt("计划"),
       auto: tt("自动"),
-      bypassPermissions: tt("全部放行"),
+      bypassPermissions: tt("不再询问（Bypass）"),
     },
     codex: {
       "read-only": tt("只读"),
+      "workspace-write": tt("可改工作区"),
       agent: tt("代理"),
       "agent-full-access": tt("完全访问"),
     },
@@ -236,8 +228,7 @@ export function NativeModelPicker({
   effort = null,
   onEffort,
   fastSupported = false,
-  remembered,
-  fresh = false,
+  notice = "",
   loading = false,
   disabled = false,
   className = "",
@@ -258,23 +249,12 @@ export function NativeModelPicker({
   }, [loading]);
   const effectiveLoading = loading && !loadingTimedOut;
 
-  // Remembered fast / effort for this program and computer: a fresh view
-  // starts from the user's last choice for this model, sent through the same
-  // setter as a click.
-  const restoredFor = useRef("");
-  const onParamRef = useRef(onParam);
-  onParamRef.current = onParam;
-  useEffect(() => {
-    if (!fresh || !remembered || !onParamRef.current) return;
-    const key = `${selected}|${params.map((option) => `${option.id}:${optionCurrentWire(option)}`).join(",")}|${JSON.stringify(remembered)}`;
-    if (restoredFor.current === key) return;
-    restoredFor.current = key;
-    for (const { option, wire } of restoresForModel(params, remembered)) onParamRef.current(option, wire);
-  }, [fresh, remembered, params, selected]);
-
-  const own = effectiveLoading ? [] : nativeSettingRows({
-    program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
-  }, tt);
+  const own = effectiveLoading ? [] : [
+    ...nativeSettingRows({
+      program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
+    }, tt),
+    ...(notice ? [{ id: "notice", kind: "note" as const, label: notice, attrs: { role: "alert", "data-native-choice-error": "" } }] : []),
+  ];
   // The pill names the model only (operator 10-31: not `Opus 5.5 · Auto-accept edits`);
   // a program with no model list names its mode instead.
   const summary = own.find((row) => row.id === "model")?.value || own.find((row) => row.id === "mode")?.value || fallbackSummary || (loadingTimedOut ? tt("暂时读不到模型") : tt("模式"));
@@ -301,7 +281,7 @@ export function NativeModelPicker({
 
 export type NativePickerDialog = Pick<
   AgentDialogController,
-  "models" | "configOptions" | "selectedModel" | "setSelectedModel" | "mode" | "selectedMode" | "setMode" | "setConfig" | "activeSession"
+  "models" | "configOptions" | "selectedModel" | "setSelectedModel" | "mode" | "selectedMode" | "setMode" | "setConfig"
 >;
 
 /** The full controller (programs, login, install): the pill can carry the account section. */
@@ -352,11 +332,11 @@ function NativeChatSettings({ program, computerId, dialog, online, client = clou
  * The composer control for one native conversation (contract C4), built from
  * the headless controller. Shown as soon as the program reports models, modes
  * or options (a draft before the first send included). `waiting` = nothing is
- * known yet but it is on its way: a disabled "正在读取…" trigger. Choices are
- * remembered per program and computer and go out through the controller's own
- * setters (`setSelectedModel` / `setMode` / `setConfig`).
+ * known yet but it is on its way: a disabled "正在读取…" trigger. Choices go
+ * out through the controller's own setters (`setSelectedModel` / `setMode` /
+ * `setConfig`); the host remembers them (useAcpCatalogPicker: on the server).
  */
-export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true, disabled = false }: {
+export function nativeModelPickerFor({ program, computerId, dialog, waiting, online = true, disabled = false, notice }: {
   /** null = no picker (no program, or hidden). */
   program: string | null;
   computerId: string;
@@ -367,11 +347,12 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
   online?: boolean;
   /** The pill shows its choices but does not open (the page cannot send right now). */
   disabled?: boolean;
+  /** The host's error for the last pick it could not store (verbatim). */
+  notice?: string;
 }): ReactNode | null {
   if (!program) return null;
   const configOptions = dialog.configOptions || [];
-  const memory = readModelParamMemory(computerId, program);
-  const controls = modelControls(program, dialog.models, configOptions, dialog.selectedModel, memory);
+  const controls = modelControls(program, dialog.models, configOptions, dialog.selectedModel);
   const params = modelParamOptions(configOptions, dialog.mode?.id);
   const hasModes = Boolean(dialog.mode && dialog.mode.options.length > 0);
   const known = controls.models.length > 0 || hasModes || params.length > 0 || Boolean(controls.effort);
@@ -379,9 +360,6 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
   // Nothing known yet: a waiting trigger. A blocked program (not installed / signed
   // out) or an offline computer still gets the pill: its account and computer rows.
   if (!known && !full) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
-  const remember = (configId: string, wire: string) => {
-    if (controls.memoryModel) rememberModelParam(computerId, program, controls.memoryModel, configId, wire);
-  };
   const picker: NativeModelPickerProps = {
     program,
     models: controls.models,
@@ -391,19 +369,12 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
     selectedMode: dialog.selectedMode,
     onMode: dialog.setMode,
     params,
-    onParam: (option, wire) => {
-      remember(option.id, wire);
-      dialog.setConfig(option.id, coerceOptionValue(option, wire));
-    },
+    onParam: (option, wire) => dialog.setConfig(option.id, coerceOptionValue(option, wire)),
     effort: controls.effort,
-    onEffort: (wire) => {
-      const name = controls.effort?.options.find((choice) => choice.value === wire)?.name;
-      if (name) remember("reasoning_effort", name);
-      dialog.setSelectedModel(wire);
-    },
+    // Codex catalogs with effort in the model id: the effort pick is a model pick.
+    onEffort: dialog.setSelectedModel,
     fastSupported: programOffersFast(program),
-    remembered: memory[controls.memoryModel],
-    fresh: !dialog.activeSession,
+    notice,
     loading: !known && online && waiting,
     disabled,
   };

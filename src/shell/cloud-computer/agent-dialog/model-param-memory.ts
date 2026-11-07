@@ -1,152 +1,95 @@
+// The user's last choice for a program on a computer — model, permission mode,
+// options such as effort / fast — is kept by the gateway per user + computer +
+// program (UX wave 2026-11-07, contract §2.1), so it is the same in every
+// browser and on the phone. Before that wave this browser kept it in
+// localStorage; the first read that finds nothing on the server sends that old
+// copy up once and removes it.
+
+import { getProgramChoice, putProgramChoice, programChoiceFrom, type ProgramChoice } from "../../../lib/program-choice-api";
 import type { DialogConfigOption } from "./types";
 
-export type ModelParamMemory = Record<string, Record<string, string>>;
-
-const PREFIX = "oceanleo.acp.modelParams.";
+/** Before 2026-11-07: `{modelId: {configId: wire}}` in this browser. */
+const PARAMS_PREFIX = "oceanleo.acp.modelParams.";
+/** Before 2026-11-07: `{model?, mode?}` in this browser. */
 const SELECTION_PREFIX = "oceanleo.acp.selection.";
-
-export function readProgramSelection(computerId: string, program: string): { model?: string; mode?: string } {
-  try {
-    const raw = storage()?.getItem(`${SELECTION_PREFIX}${computerId || "local"}.${program}`);
-    const value = raw ? JSON.parse(raw) : null;
-    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-    return {
-      ...(typeof value.model === "string" ? { model: value.model } : {}),
-      ...(typeof value.mode === "string" ? { mode: value.mode } : {}),
-    };
-  } catch { return {}; }
-}
-
-export function rememberProgramSelection(computerId: string, program: string, patch: { model?: string; mode?: string }): void {
-  try {
-    storage()?.setItem(`${SELECTION_PREFIX}${computerId || "local"}.${program}`,
-      JSON.stringify({ ...readProgramSelection(computerId, program), ...patch }));
-  } catch { /* Storage may be unavailable. */ }
-}
-
-function storage(): Storage | null {
-  try {
-    if (typeof window === "undefined") return null;
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
-export function modelParamMemoryKey(computerId: string, program: string): string {
-  return `${PREFIX}${computerId || "local"}.${program}`;
-}
 
 export function optionCurrentWire(option: DialogConfigOption): string {
   return option.type === "bool" ? String(option.current === true) : String(option.current ?? "");
-}
-
-export function optionAllowsWire(option: DialogConfigOption, wire: string | undefined): boolean {
-  return Boolean(wire) && option.options.some((choice) => choice.value === wire);
-}
-
-export function optionChoiceName(option: DialogConfigOption): string {
-  const wire = optionCurrentWire(option);
-  return option.options.find((choice) => choice.value === wire)?.name || wire;
 }
 
 export function coerceOptionValue(option: DialogConfigOption, wire: string): string | boolean {
   return option.type === "bool" ? wire === "true" : wire;
 }
 
-export function readModelParamMemory(computerId: string, program: string): ModelParamMemory {
+/**
+ * A remembered option value in the setter's type when the program lists it
+ * now; `undefined` when it does not (a remembered "xhigh" the current model
+ * lacks is neither shown nor sent).
+ */
+export function listedConfigValue(option: DialogConfigOption, value: unknown): string | boolean | undefined {
+  const wire = typeof value === "boolean" ? String(value) : typeof value === "string" ? value : "";
+  return wire && option.options.some((choice) => choice.value === wire) ? coerceOptionValue(option, wire) : undefined;
+}
+
+export function hasProgramChoice(choice: ProgramChoice): boolean {
+  return Boolean(choice.model || choice.mode || Object.keys(choice.config ?? {}).length);
+}
+
+function storage(): Storage | null {
   try {
-    const raw = storage()?.getItem(modelParamMemoryKey(computerId, program));
-    if (!raw) return {};
-    const parsed = JSON.parse(raw) as unknown;
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
-    const out: ModelParamMemory = {};
-    for (const [modelId, params] of Object.entries(parsed as Record<string, unknown>)) {
-      if (!modelId || !params || typeof params !== "object" || Array.isArray(params)) continue;
-      const row: Record<string, string> = {};
-      for (const [configId, value] of Object.entries(params as Record<string, unknown>)) {
-        if (configId && typeof value === "string") row[configId] = value;
-        if (configId && typeof value === "boolean") row[configId] = String(value);
-      }
-      out[modelId] = row;
-    }
-    return out;
+    return typeof window === "undefined" ? null : window.localStorage;
   } catch {
-    return {};
+    return null;
   }
 }
 
-export function writeModelParamMemory(
-  computerId: string,
-  program: string,
-  memory: ModelParamMemory,
-): void {
+function storedObject(store: Storage, key: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(store.getItem(key) || "null") as unknown;
+    return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+/** This browser's old copy for a program on a computer, or null when it has none. */
+export function localProgramChoice(computerId: string, program: string): ProgramChoice | null {
+  const store = storage();
+  if (!store) return null;
+  const selection = storedObject(store, `${SELECTION_PREFIX}${computerId}.${program}`) ?? {};
+  const params = storedObject(store, `${PARAMS_PREFIX}${computerId}.${program}`) ?? {};
+  const model = typeof selection.model === "string" ? selection.model : "";
+  // Options were kept per model: the remembered model's (a Codex `gpt-5[high]` under `gpt-5`), else the only model's.
+  const family = model.replace(/\[[^[\]]+\]$/, "");
+  const models = Object.keys(params);
+  const owner = model && model in params ? model : family && family in params ? family : models.length === 1 ? models[0] : "";
+  const choice = programChoiceFrom({ model, mode: selection.mode, config: owner ? params[owner] : null });
+  return hasProgramChoice(choice) ? choice : null;
+}
+
+export function forgetLocalProgramChoice(computerId: string, program: string): void {
   const store = storage();
   if (!store) return;
   try {
-    store.setItem(modelParamMemoryKey(computerId, program), JSON.stringify(memory));
-  } catch {
-    /* Storage may be unavailable. */
+    store.removeItem(`${SELECTION_PREFIX}${computerId}.${program}`);
+    store.removeItem(`${PARAMS_PREFIX}${computerId}.${program}`);
+  } catch { /* Storage may be unavailable. */ }
+}
+
+/**
+ * The stored choice. When the server has none and this browser still has its
+ * old copy, that copy is stored once (PUT) and removed; when the server
+ * already has one, the old copy is just removed.
+ */
+export async function readProgramChoice(computerId: string, program: string): Promise<ProgramChoice> {
+  const stored = await getProgramChoice(computerId, program);
+  const local = localProgramChoice(computerId, program);
+  if (!local) return stored;
+  if (hasProgramChoice(stored)) {
+    forgetLocalProgramChoice(computerId, program);
+    return stored;
   }
-}
-
-export function rememberModelParam(
-  computerId: string,
-  program: string,
-  modelId: string,
-  configId: string,
-  wire: string,
-): void {
-  if (!modelId || !configId) return;
-  const memory = readModelParamMemory(computerId, program);
-  memory[modelId] = { ...memory[modelId], [configId]: wire };
-  writeModelParamMemory(computerId, program, memory);
-}
-
-export function mergeLiveParams(
-  remembered: Record<string, string> | undefined,
-  options: DialogConfigOption[],
-): Record<string, string> {
-  const next = { ...remembered };
-  for (const option of options) {
-    const current = optionCurrentWire(option);
-    const want = next[option.id];
-    if (!optionAllowsWire(option, want) && current) next[option.id] = current;
-  }
-  return next;
-}
-
-export function restoresForModel(
-  options: DialogConfigOption[],
-  remembered: Record<string, string> | undefined,
-): { option: DialogConfigOption; wire: string }[] {
-  if (!remembered) return [];
-  const out: { option: DialogConfigOption; wire: string }[] = [];
-  for (const option of options) {
-    const want = remembered[option.id];
-    if (!optionAllowsWire(option, want)) continue;
-    if (want === optionCurrentWire(option)) continue;
-    out.push({ option, wire: want });
-  }
-  return out;
-}
-
-export function clearModelParamMemory(): void {
-  const store = storage();
-  if (!store) return;
-  const keys: string[] = [];
-  for (let index = 0; index < store.length; index += 1) {
-    const key = store.key(index);
-    if (key?.startsWith(PREFIX) || key?.startsWith(SELECTION_PREFIX)) keys.push(key);
-  }
-  for (const key of keys) store.removeItem(key);
-}
-
-export function tuningSummary(
-  params: DialogConfigOption[],
-  modeName: string,
-): string {
-  const parts = params.map(optionChoiceName);
-  if (modeName) parts.push(modeName);
-  return parts.filter(Boolean).join(" · ");
+  await putProgramChoice(computerId, program, local);
+  forgetLocalProgramChoice(computerId, program);
+  return local;
 }

@@ -3,16 +3,18 @@
 // The model / mode / option pill for a computer program, fed by the gateway's
 // catalog (`GET /v1/computers/{cid}/programs/{program}/catalog`: what that
 // program's last session/new or session/load reported) and the user's own
-// remembered choice (model-param-memory). Same pill as before
-// (`nativeModelPickerFor`); a choice is only collected here and goes out with
-// the next message (`send` applies it with session/set_* before the prompt).
+// remembered choice, kept by the gateway per user + computer + program
+// (`…/programs/{program}/choice`, UX wave 2026-11-07 §2.1). Same pill as before
+// (`nativeModelPickerFor`); a pick is stored at once and goes out with the next
+// message (`send` applies it with session/set_* before the prompt).
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { getCatalog, type AcpCatalog, type AcpSessionChoices } from "../../lib/acp-frames-api";
+import { acpErrorText, getCatalog, type AcpCatalog, type AcpSessionChoices } from "../../lib/acp-frames-api";
+import { putProgramChoice, type ProgramChoice } from "../../lib/program-choice-api";
 import { isWsProgram, parseConfigOptions, parseMode } from "../cloud-computer/agent-dialog/parse";
 import { useProgramAccess } from "../cloud-computer/native-surface/useProgramAccess";
-import { readProgramSelection, rememberProgramSelection } from "../cloud-computer/agent-dialog/model-param-memory";
+import { listedConfigValue, readProgramChoice } from "../cloud-computer/agent-dialog/model-param-memory";
 import type { DialogConfigOption, DialogModel, ModeOption } from "../cloud-computer/agent-dialog/types";
 import { NativeModelPicker, nativeModelPickerFor, type NativePickerDialog } from "../native-thread/NativeModelPicker";
 
@@ -30,7 +32,23 @@ export type AcpCatalogPicker = {
   choice: AcpSessionChoices;
 };
 
-type Selection = { model?: string; mode?: string; config: Record<string, string | boolean> };
+/** The server's choice for this computer + program, the picks made since, and the last failed store. */
+type Memory = { key: string; stored: ProgramChoice; picked: ProgramChoice; error: string };
+
+function memoryFor(key: string): Memory {
+  return { key, stored: {}, picked: {}, error: "" };
+}
+
+const NO_MEMORY = memoryFor("");
+
+function mergeChoice(base: ProgramChoice, patch: ProgramChoice): ProgramChoice {
+  const config = { ...base.config, ...patch.config };
+  return {
+    ...(patch.model || base.model ? { model: patch.model || base.model } : {}),
+    ...(patch.mode || base.mode ? { mode: patch.mode || base.mode } : {}),
+    ...(Object.keys(config).length ? { config } : {}),
+  };
+}
 
 function catalogModels(catalog: AcpCatalog): DialogModel[] {
   const current = catalog.models?.currentModelId || "";
@@ -70,12 +88,20 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
   }, [key, computerId, program, reloadKey]);
   const catalog = read.key === key ? read.catalog : null;
 
-  const [selection, setSelection] = useState<{ key: string; value: Selection }>({ key: "", value: { config: {} } });
+  // The remembered choice: read once per computer + program. A pick made before it arrives wins over it.
+  const [memory, setMemory] = useState<Memory>(NO_MEMORY);
   useEffect(() => {
     if (!key || !computerId || !program) return;
-    setSelection({ key, value: { ...readProgramSelection(computerId, program), config: {} } });
+    let alive = true;
+    void readProgramChoice(computerId, program).then(
+      (stored) => { if (alive) setMemory((current) => ({ ...(current.key === key ? current : memoryFor(key)), stored })); },
+      // An unreadable choice is shown like none: the program's own defaults until the user picks.
+      () => undefined,
+    );
+    return () => { alive = false; };
   }, [key, computerId, program]);
-  const chosen = selection.key === key ? selection.value : { config: {} };
+  const current = memory.key === key ? memory : NO_MEMORY;
+  const chosen = useMemo(() => mergeChoice(current.stored, current.picked), [current.stored, current.picked]);
 
   const lists = useMemo(() => {
     if (!catalog) return null;
@@ -84,22 +110,20 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
     return { models: catalogModels(catalog), configOptions: parsed, mode: catalogMode(catalog, raw) };
   }, [catalog]);
 
-  const setModel = useCallback((id: string) => {
-    if (!computerId || !program) return;
-    rememberProgramSelection(computerId, program, { model: id });
-    setSelection((current) => ({ key, value: { ...(current.key === key ? current.value : { config: {} }), model: id } }));
-  }, [computerId, program, key]);
-  const setMode = useCallback((value: string) => {
-    if (!computerId || !program) return;
-    rememberProgramSelection(computerId, program, { mode: value });
-    setSelection((current) => ({ key, value: { ...(current.key === key ? current.value : { config: {} }), mode: value } }));
-  }, [computerId, program, key]);
-  const setConfig = useCallback((id: string, value: string | boolean) => {
-    setSelection((current) => {
-      const base = current.key === key ? current.value : { config: {} };
-      return { key, value: { ...base, config: { ...base.config, [id]: value } } };
+  /** Shown at once and stored on the server; a failed store is said in the gateway's words (the pick still goes out). */
+  const pick = useCallback((patch: ProgramChoice) => {
+    if (!key || !computerId || !program) return;
+    setMemory((before) => {
+      const base = before.key === key ? before : memoryFor(key);
+      return { ...base, picked: mergeChoice(base.picked, patch), error: "" };
     });
-  }, [key]);
+    void putProgramChoice(computerId, program, patch).catch((error: unknown) => {
+      setMemory((before) => before.key === key ? { ...before, error: acpErrorText(error) } : before);
+    });
+  }, [computerId, program, key]);
+  const setModel = useCallback((id: string) => pick({ model: id }), [pick]);
+  const setMode = useCallback((value: string) => pick({ mode: value }), [pick]);
+  const setConfig = useCallback((id: string, value: string | boolean) => pick({ config: { [id]: value } }), [pick]);
 
   // Only choices the program lists go out (a remembered model it no longer offers is not sent).
   const choice = useMemo<AcpSessionChoices>(() => {
@@ -110,8 +134,10 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
     ]);
     const model = chosen.model && modelIds.has(chosen.model) ? chosen.model : undefined;
     const mode = chosen.mode && lists.mode?.options.some((option) => option.value === chosen.mode) ? chosen.mode : undefined;
-    const config = Object.fromEntries(Object.entries(chosen.config)
-      .filter(([id]) => lists.configOptions.some((option) => option.id === id)));
+    const config = Object.fromEntries(lists.configOptions.flatMap((option) => {
+      const value = listedConfigValue(option, chosen.config?.[option.id]);
+      return value === undefined ? [] : [[option.id, value] as const];
+    }));
     return {
       ...(model ? { model } : {}),
       ...(mode ? { mode } : {}),
@@ -124,23 +150,23 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
     if (!lists) {
       picker = <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading />;
     } else {
-      // The pill shows the user's choice over what the program reported.
-      const configOptions: DialogConfigOption[] = lists.configOptions.map((option) =>
-        chosen.config[option.id] !== undefined ? { ...option, current: chosen.config[option.id] } : option);
+      // The pill shows the user's choice over what the program reported: the same choice that goes out.
+      const configOptions: DialogConfigOption[] = lists.configOptions.map((option) => {
+        const value = choice.config?.[option.id];
+        return value === undefined ? option : { ...option, current: value };
+      });
       const dialog: NativePickerDialog = {
         ...access,
         models: lists.models,
         configOptions,
-        selectedModel: chosen.model || lists.models.find((model) => model.default)?.id || "",
+        selectedModel: choice.model || lists.models.find((model) => model.default)?.id || "",
         setSelectedModel: setModel,
         mode: lists.mode,
-        selectedMode: chosen.mode || lists.mode?.current || "",
+        selectedMode: choice.mode || lists.mode?.current || "",
         setMode,
         setConfig,
-        // No session is bound to the pill: remembered options are applied once per catalog.
-        activeSession: "",
       };
-      picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled })
+      picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled, notice: current.error })
         ?? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} disabled fallbackSummary={tt("选择程序后加载")} />;
     }
   }

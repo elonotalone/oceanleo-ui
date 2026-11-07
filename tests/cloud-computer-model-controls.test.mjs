@@ -14,7 +14,6 @@ test("Codex model selector uses base config wires and effort remains an independ
   const controls = modelControls("codex", models, config, "gpt-example[high]");
   assert.deepEqual(controls.models.map(model => model.id), ["gpt-example", "gpt-next"]);
   assert.equal(controls.selected, "gpt-example");
-  assert.equal(controls.memoryModel, "gpt-example");
   assert.equal(controls.effort, null);
 });
 test("legacy Codex catalog is split without manufacturing model IDs or efforts", () => {
@@ -22,7 +21,6 @@ test("legacy Codex catalog is split without manufacturing model IDs or efforts",
   assert.deepEqual(controls.models.map(model => model.name), ["Example", "Next"]);
   assert.deepEqual(controls.effort.options, [{ value: "gpt-example[low]", name: "low" }, { value: "gpt-example[high]", name: "high" }]);
   assert.equal(controls.selected, "gpt-example[high]");
-  assert.equal(controls.memoryModel, "gpt-example");
 });
 test("other adapters preserve their exact parameterized model IDs", () => {
   const controls = modelControls("cursor", models, [], "gpt-example[high]");
@@ -35,10 +33,10 @@ test("Invalid params stays the original sentence", () => {
   assert.doesNotMatch(copy, /设置没有生效/);
   assert.doesNotMatch(copy, /OceanLeo/);
 });
-test("legacy model switches restore each model's advertised saved effort", () => {
+test("legacy model switches keep the current effort where the other model offers it", () => {
   const catalog = [...models, { id: "gpt-next[high]", name: "Next (high)", default: false }];
-  const controls = modelControls("codex", catalog, [], "gpt-example[low]", { "gpt-next": { reasoning_effort: "high" } });
-  assert.deepEqual(controls.models.map(model => model.id), ["gpt-example[low]", "gpt-next[high]"]);
-  const unsupported = modelControls("codex", catalog, [], "gpt-example[low]", { "gpt-next": { reasoning_effort: "ultra" } });
+  const controls = modelControls("codex", catalog, [], "gpt-example[high]");
+  assert.deepEqual(controls.models.map(model => model.id), ["gpt-example[high]", "gpt-next[high]"]);
+  const unsupported = modelControls("codex", catalog, [], "gpt-example[low]");
   assert.equal(unsupported.models[1].id, "gpt-next[medium]");
 });

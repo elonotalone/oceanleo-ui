@@ -10,7 +10,7 @@ const noticeUrl = await compileModule("src/shell/cloud-computer/agent-dialog/not
 const memoryUrl = await compileModule("src/shell/cloud-computer/agent-dialog/model-param-memory.ts");
 const { parsePrograms, parseModels, parseConfigOptions } = await import(parseUrl);
 const { boolParamLabel, hiddenModelCopy, modelDisplayName, modelGroups, modelParamOptions, noticeCopy, noticeAction } = await import(noticeUrl);
-const { mergeLiveParams, restoresForModel, tuningSummary } = await import(memoryUrl);
+const { listedConfigValue } = await import(memoryUrl);
 
 const tt = (value, vars) => value.replace(/\{(\w+)\}/g, (_, key) => String(vars?.[key] ?? `{${key}}`));
 
@@ -124,9 +124,7 @@ test("remembered extra high restores only while the live model still offers it",
       { value: "xhigh", name: "extra high" },
     ],
   }])[0];
-  const restored = restoresForModel([withXhigh], { thought_level: "xhigh" });
-  assert.equal(restored.length, 1);
-  assert.equal(restored[0].wire, "xhigh");
+  assert.equal(listedConfigValue(withXhigh, "xhigh"), "xhigh");
   const onlyHigh = parseConfigOptions([{
     id: "thought_level",
     name: "thinking",
@@ -134,8 +132,9 @@ test("remembered extra high restores only while the live model still offers it",
     current: "high",
     options: [{ value: "high", name: "high" }],
   }])[0];
-  assert.equal(restoresForModel([onlyHigh], { thought_level: "xhigh" }).length, 0);
-  assert.equal(mergeLiveParams({ thought_level: "xhigh", fast: "true" }, [onlyHigh]).fast, "true");
-  assert.equal(mergeLiveParams({ thought_level: "xhigh" }, [onlyHigh]).thought_level, "high");
-  assert.equal(tuningSummary([{ ...withXhigh, current: "xhigh" }], "Agent"), "extra high · Agent");
+  assert.equal(listedConfigValue(onlyHigh, "xhigh"), undefined, "not shown, not sent");
+  const fast = parseConfigOptions([{ id: "fast", type: "bool", current: false }])[0];
+  assert.equal(listedConfigValue(fast, "true"), true, "a remembered bool wire comes back as the setter's boolean");
+  assert.equal(listedConfigValue(fast, false), false);
+  assert.equal(listedConfigValue(fast, "maybe"), undefined);
 });
