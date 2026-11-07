@@ -24,6 +24,7 @@ import {
   type ImportProgress,
   type LocalProjectFile,
 } from "./project-import-client";
+import { readDroppedDirectories } from "../dropped-entries";
 
 export interface ProjectImportPanelProps {
   /**
@@ -398,62 +399,4 @@ export function ProjectImportPanel({
       </footer>
     </div>
   );
-}
-
-/**
- * Walk a dropped directory into a flat file list.
- *
- * Only the non-standard entry API can read a dropped folder, so this stays a
- * best-effort path: when it yields nothing the panel points at the folder button
- * instead of pretending the drop worked.
- */
-async function readDroppedDirectories(
-  transfer: DataTransfer | null,
-): Promise<LocalProjectFile[]> {
-  if (!transfer) return [];
-  const roots: FileSystemEntryLike[] = [];
-  for (const item of Array.from(transfer.items || [])) {
-    const entry = item.webkitGetAsEntry?.() as FileSystemEntryLike | null;
-    if (entry) roots.push(entry);
-  }
-  const output: LocalProjectFile[] = [];
-  const MAX_ENTRIES = 60_000;
-
-  async function walk(entry: FileSystemEntryLike, prefix: string): Promise<void> {
-    if (output.length >= MAX_ENTRIES) return;
-    const path = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isFile) {
-      const file = await new Promise<File | null>((resolve) => {
-        entry.file?.(resolve, () => resolve(null));
-      });
-      if (file) output.push({ path, file });
-      return;
-    }
-    if (!entry.isDirectory || !entry.createReader) return;
-    const reader = entry.createReader();
-    for (;;) {
-      const batch = await new Promise<FileSystemEntryLike[]>((resolve) => {
-        reader.readEntries(resolve, () => resolve([]));
-      });
-      if (!batch.length) break;
-      for (const child of batch) await walk(child, path);
-      if (output.length >= MAX_ENTRIES) return;
-    }
-  }
-
-  for (const root of roots) await walk(root, "");
-  return output;
-}
-
-interface FileSystemEntryLike {
-  name: string;
-  isFile: boolean;
-  isDirectory: boolean;
-  file?: (onSuccess: (file: File) => void, onError: () => void) => void;
-  createReader?: () => {
-    readEntries: (
-      onSuccess: (entries: FileSystemEntryLike[]) => void,
-      onError: () => void,
-    ) => void;
-  };
 }
