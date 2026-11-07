@@ -11,8 +11,9 @@
 //   - send → POST /send body; another program in the dock → POST /switch;
 //     a program's refusal (409 {"error"}) is not repeated under the composer,
 //     a gateway refusal is shown verbatim; the text stays either way;
-//   - Stop → /stop while a turn is open (from the rows), Close → /close,
-//     a permission answer → /answer, a background task stop → /stop-task;
+//   - Stop → /stop while a turn is open (from the rows), a permission
+//     answer → /answer, a background task stop → /stop-task (Close is not
+//     on the task page: the device panel ends programs, UX wave 2026-11-07);
 //   - CLI / terminal → the terminal surface + ConversationBar, no composer;
 //   - OceanLeo keeps its own stream (cloud task, or a computer task with no
 //     program session); no default empty copy anywhere;
@@ -433,7 +434,7 @@ test("a program's refusal (409 with its JSON-RPC error) is not repeated under th
   } finally { await view.unmount(); }
 });
 
-test("Stop shows while a prompt row has no response and posts /stop only; Escape stops too; Close posts /close", async () => {
+test("Stop shows while a prompt row has no response and posts /stop only; Escape stops too", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
     await connect();
@@ -448,11 +449,6 @@ test("Stop shows while a prompt row has no response and posts /stop only; Escape
     assert.equal(posts("/close").length, 0, "Stop never closes");
     await deliver(rows.done(3));
     assert.equal(view.composer("acp").__props.loading, false, "the agent's answer to the prompt ends the turn");
-    const close = view.host.querySelector("[data-acp-close]");
-    assert.equal(close.textContent, "关闭对话");
-    await act(async () => { close.click(); await new Promise((r) => setTimeout(r, 0)); });
-    await settle();
-    assert.equal(posts("/v1/tasks/t1/close").length, 1);
   } finally { await view.unmount(); }
 });
 

@@ -60,12 +60,11 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
 // gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
 // CLI/terminal show the host-styled surface with the same dock below.
-import { AcpTranscript, reduceRows, resendable } from "../acp";
+import { AcpTranscript, acpShareItems, reduceRows, resendable } from "../acp";
 import {
   acpErrorText,
   answer as answerAcp,
   refusedByAgent,
-  close as closeAcp,
   send as sendAcp,
   stop as stopAcp,
   stopTask as stopAcpTask,
@@ -106,6 +105,7 @@ import {
   type StopEvent,
   type StopState,
 } from "./cloud-computer/agent-dialog/reduce";
+import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
@@ -2113,13 +2113,6 @@ function AgentChatInner({
       finally { setAcpBusy(false); }
     })();
   }, [acpConnected, acpResend, acpView, taskId]);
-  /** Close = `session/close`, then the computer ends the agent process. */
-  const closeAcpSession = useCallback(async () => {
-    if (!taskId || readOnly) return;
-    setAcpError(null);
-    try { await closeAcp(taskId); }
-    catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); }
-  }, [readOnly, taskId]);
   const answerAcpRequest = useCallback((requestId: number | string, result: unknown) => {
     if (!taskId || readOnly) return;
     void answerAcp(taskId, requestId, result).catch((caught) => setAcpError({ taskId, text: acpErrorText(caught) }));
@@ -2502,20 +2495,26 @@ function AgentChatInner({
   // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
   const shareSiteLabel =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined;
+  // A computer task picks from its own rows: the prompts and the program's replies (UX wave 2026-11-07).
+  const acpSharePane = acpShown && Boolean(taskId);
+  const acpShare = useMemo(() => acpShareItems(acpView), [acpView]);
+  const acpPickable = useMemo(() => new Set(acpShare.messages.map((message) => message.id)), [acpShare]);
   const share = useShareMode({
-    messages,
+    messages: acpSharePane ? acpShare.messages : messages,
+    acpRowIds: acpSharePane ? acpShare.rowIds : undefined,
     taskId,
     title: taskTitle,
     siteLabel: shareSiteLabel,
+    assistantLabel: acpSharePane ? PROGRAM_LABEL[acpRowsProgram as keyof typeof PROGRAM_LABEL] || acpRowsProgram || undefined : undefined,
   });
-  // W5 share fix (2026-10-31): the select mode lives in the OceanLeo conversation's
-  // own stream (its footer becomes the action bar). A computer task shows raw ACP
-  // rows, not messages: nothing to select there, so it has no 「分享」.
-  const shareAvailable = cloudPaneShown && share.selectable.length > 0;
+  // W5 share fix (2026-10-31): the select mode lives in the shown conversation's
+  // own stream (its footer becomes the action bar).
+  const sharePaneShown = cloudPaneShown || acpSharePane;
+  const shareAvailable = sharePaneShown && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
-    if (!cloudPaneShown && share.active) exitShare();
-  }, [cloudPaneShown, share.active, exitShare]);
+    if (!sharePaneShown && share.active) exitShare();
+  }, [sharePaneShown, share.active, exitShare]);
 
   // ---------------------------------------------------------------------
   // 对话内搜索（操作员 2026-09-07，图 662b8bb0）
@@ -2882,18 +2881,7 @@ function AgentChatInner({
       {/* Stays in place while selecting (pressed; a second click leaves). It used to be
           unmounted on click, so the header looked like it lost the button. Entering
           from here selects every message: 「复制链接」 works straight away. */}
-      {/* A computer task's agent: Close = session/close, then the computer ends the process. */}
-      {nativeTask ? (acpSession && !readOnly && (
-        <button
-          type="button"
-          onClick={() => void closeAcpSession()}
-          disabled={!acpConnected}
-          className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
-          data-acp-close=""
-        >
-          {tt("关闭对话")}
-        </button>
-      )) : (share.active || shareAvailable) && (
+      {(share.active || shareAvailable) && (
         <ShareEntryButton
           active={share.active}
           onClick={() => (share.active ? share.exit() : share.enter("all"))}
@@ -3076,6 +3064,13 @@ function AgentChatInner({
     </div>
   );
 
+  const sharePreview = share.preview ? (
+    <ShareCardPreview
+      images={share.preview}
+      fileBaseName="oceanleo-share"
+      onClose={share.closePreview}
+    />
+  ) : null;
   const stream = renderStream({
     pane: "cloud",
     scrollRef,
@@ -3248,17 +3243,7 @@ function AgentChatInner({
           />
             </>
           ),
-    after: (
-      <>
-      {share.preview && (
-        <ShareCardPreview
-          images={share.preview}
-          fileBaseName="oceanleo-share"
-          onClose={share.closePreview}
-        />
-      )}
-      </>
-    ),
+    after: sharePreview,
   });
 
   // The computer task's stream: the same frame and composer, the program's own
@@ -3280,6 +3265,7 @@ function AgentChatInner({
         onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
         highlightQuery={highlightQuery || undefined}
         onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
+        select={share.active ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle } : undefined}
       />
     ),
     tail: (
@@ -3289,7 +3275,7 @@ function AgentChatInner({
       </>
     ),
     overlay: null,
-    footer: (
+    footer: share.active ? <ShareActionBar share={share} /> : (
       <>
         {taskId && !acpConnected && (
           <p className="px-1 text-[12px] text-stone-500" role="status" data-acp-disconnected="">{tt("连接断开")}</p>
@@ -3328,7 +3314,7 @@ function AgentChatInner({
         )}
       </>
     ),
-    after: null,
+    after: sharePreview,
   }) : null;
 
   // CLI / terminal: the host-styled surface fills the pane, the same dock sits below it.
