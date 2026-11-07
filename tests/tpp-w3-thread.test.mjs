@@ -79,22 +79,16 @@ test("in-place C1 meta updates count as new content", () => {
   assert.notEqual(agentMessageFingerprint(streaming), agentMessageFingerprint(completed));
 });
 
-test("all three surfaces import common polling and cloud has no local cadence constants", async () => {
+test("both chat surfaces import common polling; FunctionAgentChat keeps the shared stop override", async () => {
+  // The third surface (the cloud-computer OceanLeo program and its dialog controller) went with the agent-dialog card.
   const root = new URL("../src/shell/", import.meta.url);
-  for (const path of ["AgentChat.tsx", "FunctionAgentChat.tsx", "cloud-computer/agent-dialog/oceanleo-program.ts"]) {
+  for (const path of ["AgentChat.tsx", "FunctionAgentChat.tsx"]) {
     const source = await readFile(new URL(path, root), "utf8");
     assert.match(source, /agent-thread\//);
   }
-  const cloud = await readFile(new URL("cloud-computer/agent-dialog/oceanleo-program.ts", root), "utf8");
-  assert.doesNotMatch(cloud, /const POLL_(ACTIVE|FIRST_BYTE|IDLE_LADDER)/);
   const functionChat = await readFile(new URL("FunctionAgentChat.tsx", root), "utf8");
   assert.match(functionChat, /stoppedTaskRef\.current = taskId/);
   assert.match(functionChat, /resolveTaskStatus\(\{ serverStatus, taskId: id, stoppedTaskId: stoppedTaskRef\.current \}\)/);
-  const controller = await readFile(new URL("cloud-computer/agent-dialog/useAgentDialogController.tsx", root), "utf8");
-  // b349c9a5 replaced the controller's local task-id stop override with the
-  // acknowledged shared stop machine. The two chat surfaces still use rules.
-  assert.match(controller, /const next = stopMachine\(stopRef\.current, event\)/);
-  assert.match(controller, /applyStopToView\(\{ type: "cancel-result", result/);
 });
 
 test("both chats wire shared working and thinking and retain stopped history", async () => {

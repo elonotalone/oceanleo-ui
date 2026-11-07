@@ -54,6 +54,7 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const apiStubUrl = dataModule(`
   export const cloudComputerApi = globalThis.__serverDefaultClient;
+  export class CloudComputerError extends Error {}
 `);
 const uiStubUrl = dataModule(`
   export function useUI() { return (value, values) => {
@@ -95,16 +96,6 @@ const computersStubUrl = dataModule(`
     };
   }
 `);
-const acpStubUrl = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  export function AcpCard(props) {
-    return React.createElement("div", {
-      "data-test-acp-card": props.computer.id,
-      "data-program": props.initialProgram || "",
-      "data-session": props.initialSessionId || "",
-    });
-  }
-`);
 const cliStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function CliCard(props) {
@@ -130,7 +121,6 @@ const { ServerPage } = await import(
     "../../../lib/cloud-computer-api": apiStubUrl,
     "../../../contracts/domain-family": domainStubUrl,
     "../../../i18n/ui/useUI": uiStubUrl,
-    "../agent-dialog/AcpCard": acpStubUrl,
     "../terminal-card/CliCard": cliStubUrl,
     "../terminal-card/TerminalCard": terminalStubUrl,
     "../useCloudComputers": computersStubUrl,
@@ -255,16 +245,16 @@ async function click(node) {
   await act(async () => node.dispatchEvent(new MouseEvent("click", { bubbles: true })));
 }
 
-test("three cards stay mounted and switch through history with no router calls", async () => {
-  const view = await renderPage({ query: { card: "acp", program: "cursor", session: "s1" } });
-  const original = view.host.querySelector("[data-test-acp-card]");
+test("both cards stay mounted and switch through history with no router calls", async () => {
+  const view = await renderPage({ query: { card: "cli", program: "cursor", session: "s1" } });
+  const original = view.host.querySelector("[data-test-cli-card]");
   const replace = window.history.replaceState;
   let writes = 0;
   window.history.replaceState = function (...args) { writes++; return replace.apply(this, args); };
   try {
     const tab = (id) => view.host.querySelector(`[data-oceanleo-server-tab="${id}"]`);
-    assert.equal(tab("acp").textContent, "AI 对话");
-    assert.equal(tab("cli").textContent, "");
+    assert.equal(tab("acp"), null);
+    assert.equal(tab("cli").textContent, "AI 命令行");
     assert.equal(tab("terminal").textContent, "");
     await click(tab("terminal"));
     assert.equal(window.location.search, "?card=terminal");
@@ -274,14 +264,13 @@ test("three cards stay mounted and switch through history with no router calls",
     assert.ok(hidden.hasAttribute("inert"));
     assert.equal(hidden.getAttribute("aria-hidden"), "true");
     await click(tab("cli"));
-    await click(tab("acp"));
-    assert.equal(view.host.querySelector("[data-test-acp-card]"), original);
+    assert.equal(view.host.querySelector("[data-test-cli-card]"), original);
     assert.equal(original.getAttribute("data-session"), "s1");
-    assert.equal(view.host.querySelectorAll('[role="tabpanel"]').length, 3);
+    assert.equal(view.host.querySelectorAll('[role="tabpanel"]').length, 2);
     assert.deepEqual(view.pushes, []);
     assert.deepEqual(view.replaces, []);
-    assert.equal(writes, 3);
-    assert.equal(tab("acp").getAttribute("aria-selected"), "true");
+    assert.equal(writes, 2);
+    assert.equal(tab("cli").getAttribute("aria-selected"), "true");
     assert.equal(hidden.hasAttribute("inert"), false);
     assert.ok(view.host.querySelector("[data-oceanleo-server-program-row]"));
     assert.equal(view.host.querySelector("[data-oceanleo-server-card-tabs]"), null);
@@ -310,14 +299,14 @@ test("list polling does not repeat node probes or reset initial card parameters"
     probes++;
     return { version: "v1", latest_version: "v1", online: true, update_available: false, features: [] };
   } });
-  const view = await renderPage({ api, query: { card: "acp", program: "cursor", session: "initial" } });
+  const view = await renderPage({ api, query: { card: "cli", program: "cursor", session: "initial" } });
   try {
-    const original = view.host.querySelector("[data-test-acp-card]");
+    const original = view.host.querySelector("[data-test-cli-card]");
     assert.equal(probes, 1);
-    globalThis.__serverQuery = { card: "acp", program: "codex", session: "changed" };
+    globalThis.__serverQuery = { card: "cli", program: "codex", session: "changed" };
     await view.rerenderComputers([computer()]);
     assert.equal(probes, 1);
-    assert.equal(view.host.querySelector("[data-test-acp-card]"), original);
+    assert.equal(view.host.querySelector("[data-test-cli-card]"), original);
     assert.equal(original.getAttribute("data-program"), "cursor");
     assert.equal(original.getAttribute("data-session"), "initial");
     await view.rerenderComputers([computer({ node_version: "v2" })]);

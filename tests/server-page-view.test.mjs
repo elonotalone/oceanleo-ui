@@ -104,16 +104,6 @@ const computersStubUrl = dataModule(`
     };
   }
 `);
-const acpStubUrl = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  export function AcpCard(props) {
-    return React.createElement("div", {
-      "data-test-acp-card": props.computer.id,
-      "data-program": props.initialProgram || "",
-      "data-session": props.initialSessionId || "",
-    });
-  }
-`);
 const cliStubUrl = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
   export function CliCard(props) {
@@ -139,7 +129,6 @@ const { ServerPage } = await import(
     "../../../lib/cloud-computer-api": apiStubUrl,
     "../../../contracts/domain-family": domainStubUrl,
     "../../../i18n/ui/useUI": uiStubUrl,
-    "../agent-dialog/AcpCard": acpStubUrl,
     "../terminal-card/CliCard": cliStubUrl,
     "../terminal-card/TerminalCard": terminalStubUrl,
     "../useCloudComputers": computersStubUrl,
@@ -267,20 +256,20 @@ async function renderPage({
   };
 }
 
-test("服务器落地页按 AI 对话、AI 命令行、终端显示说明并进入对应 URL", async () => {
+test("服务器落地页按 AI 命令行、终端显示说明并进入对应 URL", async () => {
   const view = await renderPage();
   try {
     const choices = [...view.host.querySelectorAll("[data-oceanleo-server-card-choice]")];
     assert.deepEqual(
       choices.map((node) => node.getAttribute("data-oceanleo-server-card-choice")),
-      ["acp", "cli", "terminal"],
+      ["cli", "terminal"],
     );
     assert.deepEqual(
       choices.map((node) => (node.textContent || "").replace(/\s+/g, " ").trim()),
-      ["AI 对话", "AI 命令行", "终端"],
+      ["AI 命令行", "终端"],
     );
     await act(async () => {
-      choices[1].dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      choices[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     assert.deepEqual(view.pushes, []);
     assert.equal(window.location.search, "?card=cli");
@@ -289,12 +278,12 @@ test("服务器落地页按 AI 对话、AI 命令行、终端显示说明并进�
   }
 });
 
-test("卡片视图保留 program/session，并用浅地址在三张卡间切换", async () => {
+test("卡片视图保留 program/session，并用浅地址在两张卡间切换", async () => {
   const view = await renderPage({
-    query: { card: "acp", program: "cursor", session: "chat /1" },
+    query: { card: "cli", program: "cursor", session: "chat /1" },
   });
   try {
-    const card = view.host.querySelector("[data-test-acp-card]");
+    const card = view.host.querySelector("[data-test-cli-card]");
     assert.ok(card);
     assert.equal(card.getAttribute("data-program"), "cursor");
     assert.equal(card.getAttribute("data-session"), "chat /1");
@@ -310,12 +299,12 @@ test("卡片视图保留 program/session，并用浅地址在三张卡间切换"
   }
 });
 
-test("离线服务器的三张卡不可点，直接卡片 URL 也只显示原因", async () => {
+test("离线服务器的两张卡不可点，直接卡片 URL 也只显示原因", async () => {
   const offline = computer({ node_online: false });
   const picker = await renderPage({ computers: [offline] });
   try {
     const choices = [...picker.host.querySelectorAll("[data-oceanleo-server-card-choice]")];
-    assert.equal(choices.length, 3);
+    assert.equal(choices.length, 2);
     assert.equal(choices.every((node) => node.disabled), true);
     assert.match(picker.host.textContent || "", /这台服务器离线/);
   } finally {
@@ -567,7 +556,7 @@ test("名单里暂时没有这台机器时，按 id 再取一次仍打开原页"
   const row = computer();
   const view = await renderPage({
     computers: [],
-    query: { card: "acp", program: "claude" },
+    query: { card: "cli", program: "claude" },
     api: client({
       async getComputer(id) {
         assert.equal(id, "cc_1");
@@ -583,7 +572,7 @@ test("名单里暂时没有这台机器时，按 id 再取一次仍打开原页"
       "cc_1",
     );
     assert.equal(view.host.querySelector("[data-oceanleo-server-page-missing]"), null);
-    assert.ok(view.host.querySelector("[data-test-acp-card]"));
+    assert.ok(view.host.querySelector("[data-test-cli-card]"));
   } finally {
     view.cleanup();
   }
@@ -592,7 +581,7 @@ test("名单里暂时没有这台机器时，按 id 再取一次仍打开原页"
 test("已经打开的服务器页在名单被清空后仍留下，不闪成找不到", async () => {
   const view = await renderPage({
     computers: [computer()],
-    query: { card: "acp", program: "claude", session: "s1" },
+    query: { card: "cli", program: "claude", session: "s1" },
   });
   try {
     assert.ok(view.host.querySelector("[data-oceanleo-server-page]"));
@@ -611,7 +600,7 @@ test("已经打开的服务器页在名单被清空后仍留下，不闪成找�
       "cc_1",
     );
     assert.equal(view.host.querySelector("[data-oceanleo-server-page-missing]"), null);
-    assert.ok(view.host.querySelector("[data-test-acp-card]"));
+    assert.ok(view.host.querySelector("[data-test-cli-card]"));
   } finally {
     view.cleanup();
   }

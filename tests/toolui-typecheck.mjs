@@ -7,7 +7,6 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const files = [
   'src/shell/cloud-computer/agent-dialog/parse.ts',
   'src/shell/cloud-computer/agent-dialog/types.ts',
-  'src/shell/cloud-computer/agent-dialog/MessageList.tsx',
   'src/shell/native-thread/map-dialog.ts',
   'src/i18n/ui/messages/toolui-copy.ts',
 ].map(file => path.join(root, file));

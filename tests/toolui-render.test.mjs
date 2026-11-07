@@ -16,31 +16,28 @@ for (const [name, value] of Object.entries({window: dom.window, document: dom.wi
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const {createRoot} = await import('react-dom/client');
 globalThis.__tooluiCopied = [];
-const {ToolView} = await import(await compileModule('src/shell/cloud-computer/agent-dialog/MessageList.tsx', {
+// ToolView went with the deleted MessageList; the raw folds it rendered are ToolRawFolds (AgentProgress uses them).
+const {ToolRawFolds} = await import(await compileModule('src/shell/cloud-computer/agent-dialog/ToolRawFolds.tsx', {
   '../../../i18n/ui/useUI': dataModule('export function useUI(){return source => ({"参数":"Input","结果":"Output","展开":"Expand","收起":"Collapse","复制":"Copy","已复制":"Copied"}[source] || source)}'),
   '../../share/share-clipboard': dataModule('export async function writeClipboardText(text){globalThis.__tooluiCopied.push(text);return true}'),
 }));
 async function mount(card) {
   const host = document.createElement('div'); document.body.append(host); const root = createRoot(host);
-  await act(async () => root.render(React.createElement(ToolView, {tool: card})));
+  await act(async () => root.render(React.createElement(ToolRawFolds, {tool: card})));
   return {host, root, close() {act(() => root.unmount()); host.remove();}};
 }
 const card = {id: 'read', title: 'Read file', kind: 'read', status: 'completed', content: [], locations: [], rawInput: {path: 'a.txt'}, rawOutput: 'hello'};
 const click = async element => {assert.ok(element); await act(async () => element.click());};
-test('web card and each raw field start folded, use monospace and copy the displayed filtered value', async () => {
+test('each raw field starts folded, uses monospace and copies the displayed filtered value', async () => {
   const view = await mount(card);
   try {
-    assert.equal(view.host.querySelector('button').getAttribute('aria-expanded'), 'false');
-    assert.equal(view.host.querySelector('pre'), null);
-    await click(view.host.querySelector('button'));
     assert.equal(view.host.querySelectorAll('[data-tool-payload]').length, 2);
     assert.equal(view.host.querySelector('pre'), null);
     const input = view.host.querySelector('[data-tool-payload]'); await click(input.querySelector('button'));
     assert.match(input.querySelector('pre').className, /font-mono/); assert.match(input.textContent, /a.txt/);
     await click(input.querySelectorAll('button')[1]);
     assert.equal(globalThis.__tooluiCopied.at(-1), '{\n  "path": "a.txt"\n}');
-    assert.ok(view.host.querySelector('[data-oceanleo-cc-tool-expanded]'));
-    await act(async () => view.root.render(React.createElement(ToolView, {tool: {...card, rawInput: {path: 'b.txt'}}})));
+    await act(async () => view.root.render(React.createElement(ToolRawFolds, {tool: {...card, rawInput: {path: 'b.txt'}}})));
     assert.equal(input.querySelectorAll('button')[1].textContent, 'Copy');
     await click(input.querySelectorAll('button')[1]);
     assert.match(globalThis.__tooluiCopied.at(-1), /b.txt/);
@@ -49,7 +46,6 @@ test('web card and each raw field start folded, use monospace and copy the displ
 test('web raw output remains a text node and redacted envelopes cannot expose their content', async () => {
   const view = await mount({...card, rawInput: {redacted: true, original: 'synthetic-hidden'}, rawOutput: '<img src=x onerror=alert(1)>'});
   try {
-    await click(view.host.querySelector('button'));
     for (const payload of view.host.querySelectorAll('[data-tool-payload]')) await click(payload.querySelector('button'));
     assert.doesNotMatch(view.host.textContent, /synthetic-hidden/);
     assert.match(view.host.textContent, /REDACTED/); assert.equal(view.host.querySelector('img'), null);

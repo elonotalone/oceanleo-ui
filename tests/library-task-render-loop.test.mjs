@@ -267,7 +267,7 @@ const historyDetailUrl = await compileModule("src/shell/HistoryMasterDetail.tsx"
   "../i18n/ui/useUI": uiStubUrl,
   "./WorkspaceSession": workspaceSessionStub,
   "./cloud-computer/ShellTaskView": historyNoop,
-  "../lib/computer-task-api": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/computer-task-api.ts", import.meta.url).href)}; export async function listComputerTaskSessions(){return {sessions:[]};} export async function getComputerTaskTranscript(){return {ok:false,status:404};}`),
+  "../lib/computer-task-api": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/computer-task-api.ts", import.meta.url).href)}; export async function listComputerTaskSessions(){return {sessions:[]};}`),
   "./history-model": historyModel,
   "./workspace-route": historyRoutes,
   "../lib/history-events": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/history-events.ts", import.meta.url).href)};export const HISTORY_CHANGED_EVENT='history-changed';`),

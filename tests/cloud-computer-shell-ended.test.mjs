@@ -101,16 +101,6 @@ const stateStubUrl = dataModule(`
     return Boolean(computer && computer.node_online);
   }
 `);
-// 隔离 W6A 在途的 agent-dialog：ShellTaskView 只负责挂 pane，不管 pane 里面。
-const agentDialogStubUrl = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  export function useAgentDialog() {
-    return { messages: [], busy: false };
-  }
-  export function AgentDialogPane() {
-    return React.createElement("div", { "data-oceanleo-cc-agent-dialog-pane": "1" });
-  }
-`);
 const authStubUrl = dataModule(`
   export async function accessToken() {
     globalThis.__terminalTokenCalls = (globalThis.__terminalTokenCalls || 0) + 1;
@@ -168,7 +158,6 @@ const { ShellTaskView } = await import(
     "../../lib/cloud-computer-api": apiStubUrl,
     "./TerminalPanel": terminalStubUrl,
     "./computer-state": stateStubUrl,
-    "./useAgentDialog": agentDialogStubUrl,
     "next/navigation": navStubUrl,
   })
 );

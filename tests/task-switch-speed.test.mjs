@@ -1,14 +1,12 @@
 // ============================================================================
-// Task switch + model pill speed (2026-10-31)
+// Task switch speed (2026-10-31; the old dialog model-catalog cache went with the agent-dialog card)
 // ----------------------------------------------------------------------------
 // 1. user-scoped cache: values are kept per user; a different user or a sign-out
 //    drops them (localStorage keys and registered memory caches).
-// 2. model catalog: the last models/config frames per computer + program are
-//    kept (catalog fields only).
-// 3. task-open-cache: a sidebar row starts the task read and (computer task) the
+// 2. task-open-cache: a sidebar row starts the task read and (computer task) the
 //    session list in parallel, at once; the first read asks for the newest 60
 //    and a full page is a partial seed; prefetches are handed out once.
-// 4. TaskLoadingGate: a key seen ready once is never covered again, even after
+// 3. TaskLoadingGate: a key seen ready once is never covered again, even after
 //    the gate remounts.
 // ============================================================================
 import assert from "node:assert/strict";
@@ -40,7 +38,6 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const userCache = await import(pathToFileURL(new URL("../src/lib/user-scoped-cache.ts", import.meta.url).pathname).href);
-const catalog = await import(pathToFileURL(new URL("../src/shell/cloud-computer/agent-dialog/model-catalog-cache.ts", import.meta.url).pathname).href);
 
 test("user-scoped cache: kept per user, dropped for another user and on sign-out", () => {
   userCache.setCacheUser("user-a");
@@ -59,22 +56,6 @@ test("user-scoped cache: kept per user, dropped for another user and on sign-out
   assert.equal(userCache.cacheUser(), "");
   assert.equal(userCache.readUserJson("probe"), undefined, "nothing is read without a user");
   stop();
-});
-
-test("model catalog: catalog fields only, per computer + program, per user", () => {
-  userCache.setCacheUser("user-a");
-  catalog.rememberModelCatalogFrame("cc_m", "codex", { t: "models", program: "codex", acp_session: "spare", ref: "r1", models: [{ id: "gpt-x", name: "GPT X", default: true }] });
-  catalog.rememberModelCatalogFrame("cc_m", "codex", { t: "config", program: "codex", acp_session: "spare", options: [{ id: "model", name: "Model", category: "model", type: "select", current: "gpt-x", options: [{ value: "gpt-x", name: "GPT X" }] }] });
-  catalog.rememberModelCatalogFrame("cc_m", "codex", { t: "models", program: "codex", models: [] });
-  const frames = catalog.modelCatalogFrames("cc_m", "codex");
-  assert.deepEqual(frames.map((frame) => frame.t), ["models", "config"], "models first; an empty list never replaces a catalog");
-  assert.equal(frames.some((frame) => "acp_session" in frame || "ref" in frame), false);
-  assert.deepEqual(catalog.modelCatalogFrames("cc_other", "codex"), []);
-  assert.deepEqual(catalog.modelCatalogFrames("cc_m", "claude"), []);
-  catalog.clearModelCatalogMemory();
-  assert.equal(catalog.modelCatalogFrames("cc_m", "codex").length, 2, "survives a reload (localStorage)");
-  userCache.setCacheUser("user-b");
-  assert.deepEqual(catalog.modelCatalogFrames("cc_m", "codex"), [], "another user sees nothing");
 });
 
 // ---------------------------------------------------------------------------

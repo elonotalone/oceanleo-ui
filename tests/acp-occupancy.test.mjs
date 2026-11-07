@@ -10,7 +10,6 @@ import {
   pendingUnsentReason,
   OCCUPANCY_STALE_MS,
 } from "../src/shell/cloud-computer/agent-dialog/occupancy.ts";
-import { createOccupancyProbe } from "../src/shell/cloud-computer/agent-dialog/occupancy-probe.ts";
 import { applyDialog, initialDialogState } from "../src/shell/cloud-computer/agent-dialog/reduce.ts";
 import { hasOpenTurn, isRetriableStreamCancelText, sessionListStatus, sessionWaitingWake, turnStillRunning } from "../src/shell/cloud-computer/agent-dialog/session-status.ts";
 
@@ -384,28 +383,4 @@ test("remote task terminal detail clears a send pending before any running readi
   assert.equal(state.busy, false);
   assert.equal(state.occupancyPendingAt, null);
   assert.equal(composerOccupancy({ linkUp: state.occupancyLink, occupancyAt: state.occupancyAt, occupancyBusy: state.occupancyBusy, sessionId: "oceanleo", pendingAt: state.occupancyPendingAt, pendingSession: state.occupancyPendingSession }), "idle");
-});
-
-test("occupancy probe：2s 一轮，未应答算 stale", (t) => {
-  t.mock.timers.enable({ apis: ["setTimeout", "Date"], now: 1_000_000 });
-  const sent = [];
-  const probe = createOccupancyProbe({
-    allowed: () => true,
-    send: (program) => {
-      sent.push(program);
-      return true;
-    },
-  });
-  t.after(() => probe.reset());
-  probe.request("cursor");
-  assert.deepEqual(sent, ["cursor"]);
-  probe.request("cursor");
-  assert.equal(sent.length, 1, "in-flight occupancy does not overlap");
-  t.mock.timers.tick(6001);
-  assert.equal(probe.stale("cursor"), true);
-  probe.receive("cursor");
-  assert.equal(probe.stale("cursor"), false);
-  probe.start(() => "hermes");
-  t.mock.timers.tick(2000);
-  assert.ok(sent.includes("hermes"));
 });

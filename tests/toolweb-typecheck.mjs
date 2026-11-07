@@ -6,7 +6,6 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const files = [
   'src/lib/agent-progress.ts',
   'src/shell/AgentProgress.tsx',
-  'src/shell/cloud-computer/agent-dialog/MessageList.tsx',
   'src/shell/cloud-computer/agent-dialog/ToolRawFolds.tsx',
 ].map(file => path.join(root, file));
 const config = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);

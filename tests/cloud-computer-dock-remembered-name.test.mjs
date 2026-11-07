@@ -98,11 +98,6 @@ const { noticeCopy } = await import(
 const { applyDialog, initialDialogState } = await import(
   await compileModule("src/shell/cloud-computer/agent-dialog/reduce.ts")
 );
-const { MessageList } = await import(
-  await compileModule("src/shell/cloud-computer/agent-dialog/MessageList.tsx", {
-    "../../../i18n/ui/useUI": uiStub,
-  })
-);
 const { ComputerDock } = await import(
   await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
     "../../i18n/ui/useUI": uiStub,
@@ -179,7 +174,7 @@ test("acp_start_failed 的默认句是程序没能开新会话，不含请再发
   assert.equal(noticeCopy(tt, "acp_unavailable", false), STILL_NEEDS_INSTALL);
 });
 
-test("错误帧的 text 留在 notice 上，有 text 就显示这句", async () => {
+test("错误帧的 text 留在 notice 上", () => {
   let state = initialDialogState();
   // 合同 I6 起默认选中 oceanleo；本例考 cursor 的错误帧，先切过去（forCurrent 语义）。
   state = applyDialog(state, { type: "program", program: "cursor" });
@@ -189,43 +184,6 @@ test("错误帧的 text 留在 notice 上，有 text 就显示这句", async () 
   });
   const notice = state.messages.find((message) => message.kind === "notice");
   assert.equal(notice.text, UNSUPPORTED);
-
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host);
-  await act(async () => {
-    root.render(
-      React.createElement(MessageList, {
-        dialog: {
-          program: "cursor",
-          messages: [notice],
-          programs: [],
-          install: {
-            open: false,
-            program: null,
-            dir: "",
-            running: false,
-            lines: [],
-            donePath: "",
-            failedText: "",
-          },
-          openLogin() {},
-          openInstall() {},
-          retryConnect() {},
-        },
-      }),
-    );
-  });
-  try {
-    const node = host.querySelector("[data-oceanleo-cc-notice='acp_start_failed'] p");
-    assert.equal(node.textContent, UNSUPPORTED);
-    assert.equal((host.textContent || "").includes("请再发一次"), false);
-  } finally {
-    await act(async () => {
-      root.unmount();
-    });
-    host.remove();
-  }
 });
 
 test("remembered account target name is restored without waiting for a pending list", async () => {

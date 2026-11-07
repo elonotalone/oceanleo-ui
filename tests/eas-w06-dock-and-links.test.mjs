@@ -90,6 +90,7 @@ const linkStub = dataModule(`
 `);
 const apiStub = dataModule(`
   export const cloudComputerApi = globalThis.__w06DockApi;
+  export class CloudComputerError extends Error {}
   export function readMountedComputerId() { return globalThis.__w06Mounted || ""; }
   export function writeMountedComputerId(id) { globalThis.__w06Mounted = id || ""; }
   export function readMountedComputerName() { return ""; }
@@ -131,10 +132,6 @@ const computersHookStub = dataModule(`
       refresh: async () => {},
     };
   }
-`);
-const acpStub = dataModule(`
-  import React from ${JSON.stringify(reactUrl)};
-  export function AcpCard() { return null; }
 `);
 const cliStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
@@ -200,7 +197,6 @@ const { ServerPage } = await import(
         return origin + path;
       }
     `),
-    "../agent-dialog/AcpCard": acpStub,
     "../terminal-card/CliCard": cliStub,
     "../terminal-card/TerminalCard": terminalStub,
     "../useCloudComputers": computersHookStub,

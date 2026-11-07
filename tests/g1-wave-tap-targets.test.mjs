@@ -132,7 +132,7 @@ test("R06 点名的通用页、数据库卡片、表格输入和开关恢复紧�
 
 });
 
-test("r2 表内数据库删除键、Acp 设置控件、LeoBoard 控件和云电脑按钮由实际渲染检查", async () => {
+test("r2 表内数据库删除键、LeoBoard 控件和云电脑按钮由实际渲染检查", async () => {
   const database = await import(await compileModule("src/pages/MyDatabasePage.tsx", {
     "../lib/database": dataModule(`
       export const MEDIA_TYPE_LABEL={image:'图片'};
@@ -160,56 +160,6 @@ test("r2 表内数据库删除键、Acp 设置控件、LeoBoard 控件和云电�
   assert.doesNotMatch(deleteButton.className, /(?:^| )(?:h-11|w-11)(?: |$)/);
   await act(async () => databaseRoot.unmount());
   databaseHost.remove();
-
-  const settings = await staticRender("src/shell/cloud-computer/agent-dialog/AcpSettings.tsx", "AcpSettings", {
-    open: true,
-    computerId: "cc_1",
-    program: "cursor",
-    dialog: { models: [{ id: "m", name: "模型", usable: true }], selectedModel: "m", mode: { id: "mode", name: "模式", options: [{ value: "safe", name: "安全" }] }, selectedMode: "safe", configOptions: [], programs: [] },
-    oceanleoStatus: null,
-    onClose() {}, onRequestInstall() {}, onRequestLogin() {}, onRequestKey() {}, onOceanleoStatusChange() {},
-  }, {
-    "../../../lib/cloud-computer-api": dataModule("export async function getAgentSettings(){return {confirm_dangerous:true,oceanleo_tools:true,billing_paused:false}} export async function patchAgentSettings(){return {}} export async function uninstallOceanleoAgent(){return {}}"),
-    "../../../i18n/ui/useUI": uiStub,
-    "../../../ui": dataModule("export function ConfirmDialog(){return null}"),
-    "./notice": dataModule("export function hiddenModelCopy(){return []} export function modelGroups(models){return [{label:'',models}]}"),
-    "../server-page/tone": dataModule("export const tone={border:'',muted:'',input:'',hover:'',primary:'',danger:'',iconBtn:''}"),
-  });
-  const settingsHost = document.createElement("div");
-  settingsHost.innerHTML = settings;
-  const close = settingsHost.querySelector("[data-oceanleo-acp-settings-close]");
-  assert.ok(close);
-  assert.match(close.className, /(?:^| )h-8(?: |$)/);
-  assert.doesNotMatch(close.className, /(?:^| )h-11(?: |$)/);
-  const model = settingsHost.querySelector("[data-oceanleo-acp-settings-model]");
-  const mode = settingsHost.querySelector("[data-oceanleo-acp-settings-mode]");
-  assert.match(model.className, /(?:^| )h-8(?: |$)/);
-  assert.match(mode.className, /(?:^| )h-8(?: |$)/);
-  assert.doesNotMatch(`${model.className} ${mode.className}`, /(?:^| )h-11(?: |$)/);
-
-  const acp = await staticRender("src/shell/cloud-computer/agent-dialog/AcpCard.tsx", "AcpCard", {
-    computer: { id: "cc_1", name: "测试机" },
-    initialProgram: "cursor",
-    active: false,
-  }, {
-    "../../../lib/cloud-computer-api": dataModule("export async function getOceanleoAgent(){return null} export async function installOceanleoAgent(){return null}"),
-    "../../../i18n/ui/useUI": uiStub,
-    "../server-page/chrome-icons": dataModule("export function IconRefresh(){return null}"),
-    "../server-page/url-state": dataModule("export function replaceServerPageUrl(){}"),
-    "../server-page/ProgramStrip": dataModule("export function ProgramStrip(){return null}"),
-    "../server-page/server-page-chrome": dataModule("export function ServerPageStripPortal({children}){return children}"),
-    "../server-page/tone": dataModule("export const tone={border:'',muted:'',input:'',hover:'',primary:'',danger:'',iconBtn:''}"),
-    "./AcpSettings": dataModule("export function AcpSettings(){return null}"),
-    "./Composer": dataModule("export function Composer(){return null}"),
-    "./InstallSheet": dataModule("export function InstallSheet(){return null}"),
-    "./KeySheet": dataModule("export function KeySheet(){return null}"),
-    "./LoginCard": dataModule("export function LoginCard(){return null}"),
-    "./MessageList": dataModule("export function MessageList(){return null}"),
-    "./useAgentDialogController": dataModule("export function useAgentDialog(){return {programs:[],busy:false,configOptions:[],sessions:[],sessionsSupported:false,requestSessions(){},newSession(){},openSession(){}}}"),
-  });
-  const refreshClass = classes(acp, "[data-oceanleo-acp-sessions-refresh]");
-  assert.match(refreshClass, /(?:^| )size-7(?: |$)/);
-  assert.doesNotMatch(refreshClass, /(?:^| )size-11(?: |$)/);
 
   const { ComputerDock } = await import(await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
     "../../lib/cloud-computer-api": dataModule("export const cloudComputerApi={}; export function readMountedComputerName(){return ''}"),
