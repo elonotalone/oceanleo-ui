@@ -1327,13 +1327,19 @@ function AgentChatInner({
   // A computer task talks to the programs on its computer only (its stream is their ACP rows).
   // A native task talks to the programs on its computer only (no OceanLeo inside it).
   const oceanleoDisabledReason = nativeTask ? tt("要换执行位置，请新建任务") : null;
+  // The newest chat session is a native task's program (a switch adds a newer one).
+  const acpSession = useMemo(() => sessions
+    .filter((row) => row.kind === "acp")
+    .reduce<ComputerTaskSession | null>((latest, row) => !latest || row.created_at >= latest.created_at ? row : latest, null), [sessions]);
   const conversation: ConversationTarget | undefined = activeSession
     ? sessionConversation(activeSession)
     : pick
       ? pick
-      : taskId
-        ? resolvedBoundTarget && conversationResolved ? {kind: "oceanleo", target: resolvedBoundTarget} : undefined
-        : draftConversation;
+      : nativeTask && acpSession
+        ? sessionConversation(acpSession)
+        : taskId
+          ? resolvedBoundTarget && conversationResolved ? {kind: "oceanleo", target: resolvedBoundTarget} : undefined
+          : draftConversation;
   const surfaceActive = Boolean(activeSession && activeSession.kind !== "acp");
   useEffect(() => {
     if (activeSession && activeSession.kind !== "acp") {
@@ -1349,10 +1355,6 @@ function AgentChatInner({
   // page; the page renders them and posts only what the user does (send, Stop,
   // Close, an answer). Nothing is queued, resent or guessed here: while the socket
   // is down the composer is disabled and one line says 「连接断开」.
-  // The newest chat session is the task's program (a switch adds a newer one).
-  const acpSession = useMemo(() => sessions
-    .filter((row) => row.kind === "acp")
-    .reduce<ComputerTaskSession | null>((latest, row) => !latest || row.created_at >= latest.created_at ? row : latest, null), [sessions]);
   // The dock's choice is the recipient of the next message (another program = a switch).
   const acpTarget = conversation?.kind === "native" && conversation.view === "chat" ? conversation : null;
   const acpProgram = acpTarget?.program ?? acpSession?.program ?? null;
