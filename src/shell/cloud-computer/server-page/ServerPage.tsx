@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   cloudComputerApi,
+  CloudComputerError,
   type CloudComputerClient,
   type Computer,
   type NodeInfo,
@@ -60,7 +61,7 @@ function CardGlyph({ card }: { card: ServerPageCard }) {
   return <IconTerminal />;
 }
 
-type UpgradeState = "idle" | "running" | "complete" | "failed";
+type UpgradeState = "idle" | "running" | "complete" | "failed" | "confirm";
 type StartState = "idle" | "running" | "requested" | "failed";
 
 export type ServerPageProps = {
@@ -206,6 +207,8 @@ function ServerPageContent({
   const [nodeInfo, setNodeInfo] = useState<NodeInfo | null>(null);
   const [upgradeState, setUpgradeState] = useState<UpgradeState>("idle");
   const [confirmUpgrade, setConfirmUpgrade] = useState(false);
+  /** What the gateway said is running when it asked for confirmation (409 confirm_required). */
+  const [upgradeRunning, setUpgradeRunning] = useState<{ agents: number; terminals: number }>({ agents: 0, terminals: 0 });
   const [startState, setStartState] = useState<StartState>("idle");
 
   const isConnected = computer ? isConnectedComputer(computer) : false;
@@ -304,15 +307,27 @@ function ServerPageContent({
     }
   }, [client, computer, refresh, state]);
 
-  const upgrade = useCallback(async () => {
+  const upgrade = useCallback(async (confirm = false) => {
     if (!computer || !nodeInfo?.update_available || upgradeState === "running") {
       return;
     }
     setConfirmUpgrade(false);
     setUpgradeState("running");
     const previousVersion = nodeInfo.version;
+    let request: Awaited<ReturnType<CloudComputerClient["upgradeNode"]>>;
     try {
-      const request = await client.upgradeNode(computer.id);
+      request = await client.upgradeNode(computer.id, confirm ? { confirm: true } : {});
+    } catch (caught) {
+      const refusal = caught instanceof CloudComputerError && caught.status === 409 && caught.code === "confirm_required";
+      if (!refusal) { setUpgradeState("failed"); return; }
+      setUpgradeRunning({
+        agents: Number(caught.detail?.running_agents) || 0,
+        terminals: Number(caught.detail?.running_terminals) || 0,
+      });
+      setUpgradeState("confirm");
+      return;
+    }
+    try {
       const next = await waitForNodeUpgrade(
         client,
         computer.id,
@@ -447,18 +462,29 @@ function ServerPageContent({
                     : tone.muted
               }`}
               data-oceanleo-node-upgrade={upgradeState}
-              role={upgradeState === "failed" ? "alert" : "status"}
+              role={upgradeState === "failed" || upgradeState === "confirm" ? "alert" : "status"}
             >
-              <span className="sr-only sm:not-sr-only">
+              <span className={upgradeState === "confirm" ? undefined : "sr-only sm:not-sr-only"}>
                 {upgradeState === "running"
                   ? tt("正在更新节点…")
                   : upgradeState === "complete"
                     ? tt("节点更新完成")
                     : upgradeState === "failed"
                       ? tt("更新失败，请稍后重试。")
-                      : tt("节点有可用更新")}
+                      : upgradeState === "confirm"
+                        ? tt("有 {agents} 个 agent、{terminals} 个终端正在运行，更新会结束它们", upgradeRunning)
+                        : tt("节点有可用更新")}
               </span>
-              {nodeInfo?.update_available && upgradeState !== "complete" ? (
+              {upgradeState === "confirm" ? (
+                <button
+                  type="button"
+                  className="text-xs underline-offset-2 hover:underline"
+                  onClick={() => void upgrade(true)}
+                  data-oceanleo-node-upgrade-confirm
+                >
+                  {tt("仍然更新")}
+                </button>
+              ) : nodeInfo?.update_available && upgradeState !== "complete" ? (
                 <button
                   type="button"
                   className="text-xs underline-offset-2 hover:underline disabled:opacity-50"
@@ -590,7 +616,7 @@ function ServerPageContent({
           title="更新节点程序？"
           body="更新时这台服务器上正在运行的终端会被关掉，过去的记录会保留"
           confirmLabel="更新"
-          onConfirm={() => void upgrade()}
+          onConfirm={() => void upgrade(false)}
           onCancel={() => setConfirmUpgrade(false)}
         />
       ) : null}

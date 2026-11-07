@@ -26,13 +26,16 @@ export class CloudComputerError extends Error {
   readonly status: number;
   /** Whole seconds from an integer detail.retry_after, when the server sent one. */
   readonly retry_after?: number;
+  /** The gateway's error detail object as it came (e.g. node upgrade's running counts). */
+  readonly detail?: Record<string, unknown>;
 
-  constructor(code: string, message: string, status: number, retryAfter?: number) {
+  constructor(code: string, message: string, status: number, retryAfter?: number, detail?: Record<string, unknown>) {
     super(message);
     this.name = "CloudComputerError";
     this.code = code;
     this.status = status;
     if (retryAfter !== undefined) this.retry_after = retryAfter;
+    if (detail) this.detail = detail;
   }
 }
 
@@ -314,7 +317,7 @@ function errorFromPayload(status: number, payload: unknown): CloudComputerError 
   const message = messageRaw || code;
   const retryAfter = detail && Number.isInteger(detail.retry_after) && (detail.retry_after as number) >= 0
     ? (detail.retry_after as number) : undefined;
-  return new CloudComputerError(code, message, status, retryAfter);
+  return new CloudComputerError(code, message, status, retryAfter, detail ?? undefined);
 }
 
 export async function cloudComputerRequest<T>(
@@ -604,12 +607,17 @@ export function getNodeInfo(computerId: string) {
   );
 }
 
-export function upgradeNode(computerId: string) {
+/**
+ * With agents or terminals running the gateway answers 409 `confirm_required`
+ * (`detail.running_agents` / `detail.running_terminals`) and upgrades nothing;
+ * `confirm: true` is the user's 「仍然更新」 (it ends them).
+ */
+export function upgradeNode(computerId: string, options: { confirm?: boolean } = {}) {
   return cloudComputerRequest<{
     ok: boolean;
     from: string | null;
     to: string;
-  }>(`/v1/computers/${encodeURIComponent(computerId)}/node/upgrade`, {
+  }>(`/v1/computers/${encodeURIComponent(computerId)}/node/upgrade${options.confirm ? "?confirm=true" : ""}`, {
     method: "POST",
   });
 }

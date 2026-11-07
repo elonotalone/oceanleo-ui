@@ -59,6 +59,7 @@ test("终端记录与节点 I9 客户端使用合同路径和方法", async () =
   await api.deleteTerminalRecord("cc /1", "sid /2");
   await api.getNodeInfo("cc /1");
   await api.upgradeNode("cc /1");
+  await api.upgradeNode("cc /1", { confirm: true });
 
   assert.deepEqual(
     calls.map(({ url, init }) => [
@@ -76,6 +77,7 @@ test("终端记录与节点 I9 客户端使用合同路径和方法", async () =
       ["/v1/computers/cc%20%2F1/terminals/sid%20%2F2/record", "DELETE"],
       ["/v1/computers/cc%20%2F1/node", "GET"],
       ["/v1/computers/cc%20%2F1/node/upgrade", "POST"],
+      ["/v1/computers/cc%20%2F1/node/upgrade?confirm=true", "POST"],
     ],
   );
   assert.deepEqual(JSON.parse(calls[1].init.body), {

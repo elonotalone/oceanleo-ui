@@ -54,6 +54,15 @@ globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const apiStubUrl = dataModule(`
   export const cloudComputerApi = globalThis.__serverDefaultClient;
+  export class CloudComputerError extends Error {
+    constructor(code, message, status, retryAfter, detail) {
+      super(message);
+      this.code = code;
+      this.status = status;
+      if (detail) this.detail = detail;
+    }
+  }
+  globalThis.__CloudComputerError = CloudComputerError;
 `);
 const uiStubUrl = dataModule(`
   export function useUI() { return (value, values) => {
@@ -484,6 +493,56 @@ test("节点升级先确认，再请求升级并轮询到在线且版本变化",
       "complete",
     );
     assert.match(view.host.textContent || "", /节点更新完成/);
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("节点升级：有 agent / 终端在运行时网关要求确认，页面照说数量，「仍然更新」带 confirm 重发", async () => {
+  let nodeReads = 0;
+  const upgrades = [];
+  const api = client({
+    async getNodeInfo() {
+      nodeReads += 1;
+      const done = upgrades.length === 2 && nodeReads > 2;
+      return {
+        version: done ? "v2" : "v1",
+        latest_version: "v2",
+        update_available: !done,
+        features: ["records"],
+        online: true,
+      };
+    },
+    async upgradeNode(id, options = {}) {
+      upgrades.push({ id, confirm: options.confirm === true });
+      if (options.confirm !== true) {
+        throw new globalThis.__CloudComputerError("confirm_required", "confirm_required", 409, undefined, {
+          code: "confirm_required",
+          running_agents: 2,
+          running_terminals: 1,
+        });
+      }
+      return { ok: true, from: "v1", to: "v2" };
+    },
+  });
+  const view = await renderPage({ api });
+  try {
+    const action = view.host.querySelector("[data-oceanleo-node-upgrade-action]");
+    await act(async () => { action.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    const dialog = document.querySelector('[role="dialog"]');
+    const confirm = [...dialog.querySelectorAll("button")].find((button) => button.textContent === "更新");
+    await act(async () => { confirm.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await flush(6);
+    assert.deepEqual(upgrades, [{ id: "cc_1", confirm: false }]);
+    const status = view.host.querySelector("[data-oceanleo-node-upgrade]");
+    assert.equal(status?.getAttribute("data-oceanleo-node-upgrade"), "confirm");
+    assert.match(status?.textContent || "", /有 2 个 agent、1 个终端正在运行，更新会结束它们/);
+    const anyway = view.host.querySelector("[data-oceanleo-node-upgrade-confirm]");
+    assert.equal(anyway?.textContent, "仍然更新");
+    await act(async () => { anyway.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
+    await flush(10);
+    assert.deepEqual(upgrades, [{ id: "cc_1", confirm: false }, { id: "cc_1", confirm: true }]);
+    assert.equal(view.host.querySelector("[data-oceanleo-node-upgrade]")?.getAttribute("data-oceanleo-node-upgrade"), "complete");
   } finally {
     view.cleanup();
   }
