@@ -97,7 +97,7 @@ const acpFramesUrl = await compileModule("src/lib/acp-frames-api.ts", {
   "./auth/client": dataModule("export async function accessToken(){ return 'tok'; }"),
   "./auth/config": dataModule("export function gatewayBase(){ return 'https://gw.test'; }"),
 });
-const accessStub = dataModule("export function useProgramAccess(){ return {}; }");
+const accessStub = dataModule("export function useProgramAccess(){ return { programs: [] }; }");
 // The pill's presentation: records what the real hook hands it.
 const pickerStub = dataModule(`
   import React from ${reactUrl};
