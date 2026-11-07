@@ -477,6 +477,11 @@ test("a permission card answers through /answer with the option the user picked;
     await act(async () => { socket().drop(); });
     await settle();
     assert.equal(view.host.querySelector("[data-acp-stop-task]"), null, "no per-task stop while the socket is down");
+    await deliver(rows.permission(42));
+    assert.equal((view.host.querySelector("[data-acp-transcript]").textContent.match(/运行 npm test/g) || []).length, 2, "the new card renders");
+    const card = view.host.querySelectorAll('[data-native-permission-option="allow"]')[1];
+    if (card) { await act(async () => { card.click(); await new Promise((r) => setTimeout(r, 0)); }); await settle(); }
+    assert.equal(posts("/answer").length, 1, "a card is not answerable while the socket is down");
   } finally { await view.unmount(); }
 });
 

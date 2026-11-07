@@ -3244,8 +3244,8 @@ function AgentChatInner({
       <AcpTranscript
         rows={frames.rows}
         program={acpRowsProgram}
-        onAnswer={answerAcpRequest}
-        // Buttons work only while the socket is connected (P4).
+        // Buttons work only while the socket is connected (P4): cards still render, not clickable.
+        onAnswer={acpConnected && !readOnly ? answerAcpRequest : undefined}
         onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
       />
     ),
