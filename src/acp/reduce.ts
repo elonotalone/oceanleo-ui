@@ -139,8 +139,15 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     // Cursor: a prompt sent during a turn REPLACES it — Cursor answers the replaced prompt and the output that
     // follows belongs to the newer one.
     const turn = program === "cursor" ? open[open.length - 1] : open[0];
+    // Its first output: a queued prompt's turn has started.
+    if (turn) turn.queued = false;
     return (turn ?? view.turns[view.turns.length - 1])?.items ?? view.preamble;
   };
+  /**
+   * Programs that hold a prompt sent during a turn until that turn ends. Not Cursor (the new prompt replaces the
+   * running one) and not Hermes (it says itself what it did with the prompt, see HERMES_FOLLOWUP).
+   */
+  const queues = program !== "cursor" && program !== "hermes";
   const push = (item: AcpItem) => target().push(item);
 
   /** Scope of a chunk: "" for the main conversation, else the sub-agent that produced it. */
@@ -395,6 +402,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         if (parsed.sessionId) mainSessions.add(parsed.sessionId);
         // A prompt after an exit went to a process the gateway started again.
         view.exited = null;
+        const queued = queues && openTurns().some((turn) => turn.sessionId === parsed.sessionId);
         const turn: AcpTurn = {
           key: `turn-${row.id}`,
           rowId: row.id,
@@ -408,6 +416,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
           error: null,
           cancelRequested: false,
           exited: false,
+          queued,
         };
         view.turns.push(turn);
         clientRequests.set(idKey(parsed.id), { method: "session/prompt", params: null, turn });

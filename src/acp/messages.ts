@@ -17,7 +17,16 @@ function str(value: unknown): string {
 
 /** One thing on screen, in order. */
 export type AcpBlock =
-  | { type: "bubble"; key: string; message: AgentMessage; streaming?: boolean; stopped?: boolean; request?: AcpPermission }
+  | {
+      type: "bubble";
+      key: string;
+      message: AgentMessage;
+      streaming?: boolean;
+      stopped?: boolean;
+      request?: AcpPermission;
+      /** A user prompt the program holds until the running turn ends (`AcpTurn.queued`, still open). */
+      queued?: AcpTurn;
+    }
   /** Consecutive thoughts / tool steps / plans of one turn: one foldable `AgentProgress`. */
   | { type: "process"; key: string; messages: AgentMessage[]; running: boolean }
   /** An agent request this page has no form for, still waiting: method and params as sent. */
@@ -286,6 +295,13 @@ export function itemBlocks(items: readonly AcpItem[], live: boolean, labels: Acp
   return blocks;
 }
 
+/**
+ * The page can send a prompt again only as text: the rows keep a file's bytes, not the Library upload it came from.
+ */
+export function resendable(turn: AcpTurn): boolean {
+  return Boolean(turn.text.trim()) && turn.prompt.every((block) => block.type === "text");
+}
+
 /** The user's prompt, then the turn's output, then how the turn ended when that is something to see. */
 export function turnBlocks(turn: AcpTurn, live: boolean, labels: AcpLabels): AcpBlock[] {
   const files = attachments(turn.prompt);
@@ -293,6 +309,7 @@ export function turnBlocks(turn: AcpTurn, live: boolean, labels: AcpLabels): Acp
     type: "bubble",
     key: turn.key,
     message: { id: turn.rowId, role: "user", kind: "text", content: turn.text, ...(files.length ? { meta: { attachments: files } } : {}) },
+    ...(turn.open && turn.queued ? { queued: turn } : {}),
   };
   const blocks = [prompt, ...itemBlocks(turn.items, live, labels)];
   if (turn.error) blocks.push(bubble(`${turn.key}-error`, turn.rowId, "error", errorText(turn.error)));

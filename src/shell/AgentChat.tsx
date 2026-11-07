@@ -60,7 +60,7 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
 // gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
 // CLI/terminal show the host-styled surface with the same dock below.
-import { AcpTranscript, reduceRows } from "../acp";
+import { AcpTranscript, reduceRows, resendable } from "../acp";
 import {
   acpErrorText,
   answer as answerAcp,
@@ -2076,13 +2076,43 @@ function AgentChatInner({
 
   /** Stop = `session/cancel` (the agent stays); its answer to the prompt ends the turn on the page. */
   const stopAcpTurn = useCallback(async () => {
-    if (!taskId || readOnly) return;
+    if (!taskId || readOnly) return false;
     setAcpStopping(true);
     setAcpError(null);
-    try { await stopAcp(taskId); }
-    catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); }
+    try { await stopAcp(taskId); return true; }
+    catch (caught) { setAcpError({ taskId, text: acpErrorText(caught) }); return false; }
     finally { setAcpStopping(false); }
   }, [readOnly, taskId]);
+  // 「停止这一轮并发送」 under a queued prompt: Stop, and once the stop has ended every turn, the prompts that were
+  // queued go again as new prompts, in order. Claude Code's adapter ends every queued prompt `cancelled` on a cancel
+  // without running it (claude-agent-acp `cancelTurns`); a program that runs them after the cancel starts their
+  // turns, and nothing is sent.
+  const [acpResend, setAcpResend] = useState<{ taskId: string; rowIds: number[] } | null>(null);
+  const stopAndSendAcp = useCallback((rowId: number) => {
+    const held = acpView.turns.filter((turn) => turn.open && turn.queued);
+    if (!taskId || !held.some((turn) => turn.rowId === rowId)) return;
+    setAcpResend({ taskId, rowIds: held.map((turn) => turn.rowId) });
+    void stopAcpTurn().then((stopped) => { if (!stopped) setAcpResend(null); });
+  }, [acpView, stopAcpTurn, taskId]);
+  useEffect(() => {
+    if (!acpResend) return;
+    const held = acpView.turns.filter((turn) => acpResend.rowIds.includes(turn.rowId));
+    // Another task, or the socket went down: the click does not carry over (nothing is sent later on its own).
+    if (acpResend.taskId !== taskId || !acpConnected || held.length !== acpResend.rowIds.length) { setAcpResend(null); return; }
+    const ran = held.some((turn) => !turn.queued);
+    if (!ran && acpView.open) return;
+    setAcpResend(null);
+    if (ran) return;
+    const again = held.filter((turn) => turn.stopReason === "cancelled" && resendable(turn));
+    if (!again.length) return;
+    const id = acpResend.taskId;
+    setAcpBusy(true);
+    void (async () => {
+      try { for (const turn of again) await sendAcp(id, { client_message_id: crypto.randomUUID(), text: turn.text }); }
+      catch (caught) { if (!refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) }); }
+      finally { setAcpBusy(false); }
+    })();
+  }, [acpConnected, acpResend, acpView, taskId]);
   /** Close = `session/close`, then the computer ends the agent process. */
   const closeAcpSession = useCallback(async () => {
     if (!taskId || readOnly) return;
@@ -2519,7 +2549,8 @@ function AgentChatInner({
 
   useEffect(() => {
     if (!searchOpen) return;
-    const container = scrollRef.current;
+    // The pane on screen: a computer task's rows (AcpTranscript) or the OceanLeo conversation.
+    const container = acpShown ? acpScrollRef.current : scrollRef.current;
     if (!container) return;
     const hits = highlightQuery
       ? container.querySelectorAll<HTMLElement>("[data-leo-search-hit]")
@@ -2543,8 +2574,8 @@ function AgentChatInner({
     if (typeof target?.scrollIntoView === "function") {
       target.scrollIntoView({ block: "center", behavior: scrollBehavior() });
     }
-    // `messages` / `streamText` 在依赖里：气泡重渲后命中集合会变，要重数。
-  }, [searchOpen, highlightQuery, searchIndex, searchHitCount, messages, streamText]);
+    // `messages` / `streamText` / `frames.rows` 在依赖里：气泡重渲后命中集合会变，要重数。
+  }, [searchOpen, highlightQuery, searchIndex, searchHitCount, messages, streamText, acpShown, frames.rows]);
 
   /** 「重做」：把上一句用户的话原样再问一遍，让 agent 重新作答。 */
   const regenerateFrom = useCallback(
@@ -3247,6 +3278,8 @@ function AgentChatInner({
         // Buttons work only while the socket is connected (P4): cards still render, not clickable.
         onAnswer={acpConnected && !readOnly ? answerAcpRequest : undefined}
         onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
+        highlightQuery={highlightQuery || undefined}
+        onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
       />
     ),
     tail: (

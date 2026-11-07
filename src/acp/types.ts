@@ -239,6 +239,11 @@ export type AcpTurn = {
   cancelRequested: boolean;
   /** The agent process exited (node `exit` row) while this turn was open; no response can come any more. */
   exited: boolean;
+  /**
+   * Sent while an earlier prompt of the same session was still open, and no output of its own has arrived yet: the
+   * program holds it until that turn ends. Stays true when the prompt is answered without ever running.
+   */
+  queued: boolean;
 };
 
 export type AcpView = {

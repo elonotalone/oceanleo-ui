@@ -30,7 +30,7 @@ import {
 import { lineDiff } from "./cloud-computer/agent-dialog/diff-lines";
 import { ToolRawFolds } from "./cloud-computer/agent-dialog/ToolRawFolds";
 import { AgentStepMark, agentStepState } from "./AgentStepMark";
-import { Markdown, TypewriterMarkdown } from "./Markdown";
+import { HighlightedText, Markdown, TypewriterMarkdown, splitHighlights } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useStepsFoldBlock } from "./steps-fold-preference";
 
@@ -112,17 +112,26 @@ function summaryParts(tt: UITranslate, summary: ProcessSummary): ReactNode[] {
 export function AgentProgress({
   messages,
   running,
+  highlightQuery,
 }: {
   messages: AgentMessage[];
   running: boolean;
   /** Kept for callers; the timeline is neutral now (the step mark replaced the accent dot). */
   accent?: string;
+  /** The task page's search words: step titles wrap hits in `<mark data-leo-search-hit>`. */
+  highlightQuery?: string;
 }) {
   const tt = useUI();
   const entries = useMemo(() => buildProcessEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
   const engineLabel = typeof messages[0]?.meta?.engine_label === "string" ? messages[0].meta.engine_label : "";
-  const { elementRef, open, toggle, close } = useStepsFoldBlock(running, entries.length > 0);
+  const { elementRef, open: foldOpen, toggle, close } = useStepsFoldBlock(running, entries.length > 0);
+  // A folded block is not on the page: while a step title matches the search, the block stays open so the hit shows.
+  const searchHit = useMemo(
+    () => Boolean(highlightQuery) && entries.some((entry) => entry.type === "tool" && splitHighlights(entry.title, highlightQuery).some((part) => part.hit)),
+    [entries, highlightQuery],
+  );
+  const open = foldOpen || searchHit;
   if (!entries.length) return null;
   let latestPlan = "";
   for (const entry of entries) if (entry.type === "plan") latestPlan = entry.key;
@@ -171,7 +180,7 @@ export function AgentProgress({
               const live = running && (index === last || (entry.type === "thought" && entry.streaming));
               if (entry.type === "thought") return <ThoughtView key={entry.key} entry={entry} live={live} />;
               if (entry.type === "tool") {
-                return <ToolView key={entry.key} entry={entry} running={running} />;
+                return <ToolView key={entry.key} entry={entry} running={running} highlightQuery={highlightQuery} />;
               }
               return (
                 <PlanView
@@ -266,9 +275,11 @@ function prettyPreview(value: string): string {
 function ToolView({
   entry,
   running,
+  highlightQuery,
 }: {
   entry: ToolEntry;
   running: boolean;
+  highlightQuery?: string;
 }) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
@@ -290,7 +301,7 @@ function ToolView({
           className={`min-w-0 flex-1 break-words text-stone-500 ${WRAP}`}
           data-agent-process-tool-title=""
         >
-          {title}
+          <HighlightedText text={title} query={highlightQuery} />
         </span>
         {children.length > 0 && (
           <span className="shrink-0" data-agent-process-substeps={children.length}>

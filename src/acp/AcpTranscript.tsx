@@ -3,13 +3,13 @@
 // The task page as a standard ACP client (contract §2.5, P4): stored rows in, the conversation out.
 // Program differences live in reduce.ts / messages.ts; this file only renders. An empty row list renders nothing.
 
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
 import { useUI } from "../i18n/ui/useUI";
-import { cursorAnswerResult, isCursorQuestion, viewBlocks, type AcpBlock, type AcpLabels } from "./messages";
+import { cursorAnswerResult, isCursorQuestion, resendable, viewBlocks, type AcpBlock, type AcpLabels } from "./messages";
 import { reduceRows } from "./reduce";
-import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, JsonRpcId } from "./types";
+import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId } from "./types";
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
@@ -18,6 +18,13 @@ export type AcpTranscriptProps = {
   onAnswer?: (requestId: JsonRpcId, result: unknown) => void;  // omitted while the page's socket is down: cards render, not clickable
   /** Stop one background task (Claude `asyncTaskId`). Absent: no per-task stop buttons. */
   onStopTask?: (ref: string) => void;
+  /** The task page's search words: hits in user text, agent text and step titles are wrapped in `<mark data-leo-search-hit>`. */
+  highlightQuery?: string;
+  /**
+   * 「停止这一轮并发送」 on a queued prompt (`promptRowId` = its client prompt row). Absent (socket down, read-only, a stop
+   * already under way): the queued line shows without the button.
+   */
+  onStopAndSend?: (promptRowId: number) => void;
 };
 
 function answerFor(request: AcpPermission, answer: unknown): unknown {
@@ -66,7 +73,27 @@ function BackgroundTasks({ tasks, onStopTask }: { tasks: AcpBackgroundTask[]; on
   );
 }
 
-export function AcpTranscript({ rows, program, onAnswer, onStopTask }: AcpTranscriptProps) {
+/** Under a prompt the program is holding. The button only where the page can send the prompt again (`resendable`). */
+function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (promptRowId: number) => void }) {
+  const tt = useUI();
+  return (
+    <div data-acp-queued={turn.rowId} className="-mt-1.5 flex flex-wrap items-center justify-end gap-2 text-[12px] text-stone-500">
+      <span>{tt("排队中：这一轮做完后它会看到")}</span>
+      {onStopAndSend && resendable(turn) && (
+        <button
+          type="button"
+          data-acp-stop-and-send={turn.rowId}
+          onClick={() => onStopAndSend(turn.rowId)}
+          className="shrink-0 rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-50"
+        >
+          {tt("停止这一轮并发送")}
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQuery, onStopAndSend }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => reduceRows(rows, program), [rows, program]);
   const labels: AcpLabels = useMemo(
@@ -83,17 +110,22 @@ export function AcpTranscript({ rows, program, onAnswer, onStopTask }: AcpTransc
   const blocks = useMemo(() => viewBlocks(view, labels), [view, labels]);
   if (!rows.length) return null;
   const render = (block: AcpBlock) => {
-    if (block.type === "process") return <AgentProgress key={block.key} messages={block.messages} running={block.running} />;
+    if (block.type === "process") {
+      return <AgentProgress key={block.key} messages={block.messages} running={block.running} highlightQuery={highlightQuery} />;
+    }
     if (block.type === "raw-request") return <RawRequest key={block.key} request={block.request} />;
     const request = block.request;
     return (
-      <AgentTranscriptBubble
-        key={block.key}
-        message={block.message}
-        streaming={block.streaming}
-        stopped={block.stopped}
-        onNativeAnswer={request && onAnswer ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
-      />
+      <Fragment key={block.key}>
+        <AgentTranscriptBubble
+          message={block.message}
+          streaming={block.streaming}
+          stopped={block.stopped}
+          highlightQuery={highlightQuery}
+          onNativeAnswer={request && onAnswer ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
+        />
+        {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
+      </Fragment>
     );
   };
   return (
