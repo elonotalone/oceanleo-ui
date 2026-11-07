@@ -12,6 +12,11 @@ export interface ApprovalCardPayload {
   args_preview: string;
 }
 
+/** A change on the user's computer (`computer:<computer_id>`): asked every time, so only 允许这一次 / 拒绝. */
+export function isComputerApproval(payload: ApprovalCardPayload): boolean {
+  return payload.connector_id.startsWith("computer:");
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
@@ -206,6 +211,7 @@ export function ApprovalCard({
   const resultKey = resultCopyKey(state);
   const disabled = state.submitting;
   const showActions = pending;
+  const onceOnly = isComputerApproval(resolved);
 
   const decide = async (decision: "approve" | "deny", scope?: "once" | "task" | "always") => {
     apply({ type: "submit" });
@@ -268,29 +274,33 @@ export function ApprovalCard({
           >
             {tt("允许这一次")}
           </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => void decide("approve", "task")}
-            className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[12px] font-medium text-stone-700 disabled:opacity-50"
-          >
-            {tt("这个任务里都允许")}
-          </button>
-          <div className="flex min-w-0 max-w-full flex-col gap-1">
-            <button
-              type="button"
-              disabled={disabled}
-              onClick={() => void decide("approve", "always")}
-              className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[12px] font-medium text-stone-700 disabled:opacity-50"
-            >
-              {tt("以后都允许")}
-            </button>
-            <p className="max-w-full text-[11px] leading-relaxed text-stone-400">
-              {tt("以后「{app}」执行这个动作时不再询问", {
-                app: resolved.connector_label,
-              })}
-            </p>
-          </div>
+          {onceOnly ? null : (
+            <>
+              <button
+                type="button"
+                disabled={disabled}
+                onClick={() => void decide("approve", "task")}
+                className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[12px] font-medium text-stone-700 disabled:opacity-50"
+              >
+                {tt("这个任务里都允许")}
+              </button>
+              <div className="flex min-w-0 max-w-full flex-col gap-1">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => void decide("approve", "always")}
+                  className="rounded-lg border border-stone-200 bg-white px-3 py-1.5 text-[12px] font-medium text-stone-700 disabled:opacity-50"
+                >
+                  {tt("以后都允许")}
+                </button>
+                <p className="max-w-full text-[11px] leading-relaxed text-stone-400">
+                  {tt("以后「{app}」执行这个动作时不再询问", {
+                    app: resolved.connector_label,
+                  })}
+                </p>
+              </div>
+            </>
+          )}
           <button
             type="button"
             disabled={disabled}

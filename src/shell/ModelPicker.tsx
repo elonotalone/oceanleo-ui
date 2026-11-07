@@ -23,6 +23,7 @@ import { useWorkbenchOpen } from "./workbench-open-store";
 import { AnchoredPopover } from "./anchored-popover";
 import { ComposerSettingsMenu, type ComposerSettingRow } from "./composer-settings-menu";
 import { LEO_FAST_MODE_EVENT, readLeoFastMode, writeLeoFastMode } from "../lib/leo-run-options";
+import { oceanleoModeRow, useOceanleoMode } from "./oceanleo-mode";
 
 export type ModelCategory = "text" | "image" | "video" | "threed" | "audio";
 
@@ -85,6 +86,8 @@ export interface ModelGroupPickerProps {
   compact?: boolean;
   /** 弹出方向，默认 bottom（向下）；输入框内传 top（向上） */
   placement?: "top" | "bottom";
+  /** The computer the OceanLeo agent works on; adds its 权限模式 row (compact only). */
+  computerId?: string;
 }
 
 /**
@@ -114,6 +117,7 @@ function ModelGroupPickerBody({
   align = "right",
   compact = false,
   placement = "bottom",
+  computerId,
 }: ModelGroupPickerProps) {
   const tt = useUI();
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -187,6 +191,7 @@ function ModelGroupPickerBody({
         busy={!payload || Boolean(saving)}
         error={error ? tt(error) : !payload && !loading ? tt("登录后可切换并使用自定义模型组合。") : ""}
         apiHref={apiHref}
+        computerId={computerId}
         onActivate={(key) => {
           const group = groups.find((item) => item.key === key);
           if (group) void activate(group);
@@ -400,7 +405,7 @@ export function leoSettingRows({ groups, activeKey, busy, fast, onActivate, onFa
   ];
 }
 
-function LeoComposerSettings({ className, groups, activeKey, summary, busy, error, apiHref, onActivate }: {
+function LeoComposerSettings({ className, groups, activeKey, summary, busy, error, apiHref, computerId, onActivate }: {
   className: string;
   groups: ModelGroup[];
   activeKey: string;
@@ -408,6 +413,7 @@ function LeoComposerSettings({ className, groups, activeKey, summary, busy, erro
   busy: boolean;
   error: string;
   apiHref: string;
+  computerId?: string;
   onActivate: (key: string) => void;
 }) {
   const tt = useUI();
@@ -418,7 +424,9 @@ function LeoComposerSettings({ className, groups, activeKey, summary, busy, erro
     window.addEventListener(LEO_FAST_MODE_EVENT, onChanged);
     return () => window.removeEventListener(LEO_FAST_MODE_EVENT, onChanged);
   }, []);
+  const mode = useOceanleoMode(computerId);
   const rows = leoSettingRows({ groups, activeKey, busy, fast, onActivate, onFast: writeLeoFastMode, tt });
+  if (computerId) rows.push(oceanleoModeRow({ state: mode.state, onPick: mode.pick, tt }));
   return (
     <ComposerSettingsMenu
       className={className}

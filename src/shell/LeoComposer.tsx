@@ -428,6 +428,10 @@ export function LeoComposer({
   // A program on a computer (Codex / Claude Code / …) is not paid by an OceanLeo
   // wallet and has no Leo tier: never show either, even if a host forgets.
   const nativeProgramConversation = activeConversation?.kind === "native";
+  // The computer the OceanLeo agent works on (its 权限模式 row); never a device or the cloud.
+  const oceanleoComputerId = activeConversation?.kind === "oceanleo" && activeConversation.target.kind === "computer"
+    ? activeConversation.target.id
+    : !activeConversation && boundExecutionTarget?.kind === "computer" ? boundExecutionTarget.id : undefined;
   // 取当前输入元素 = 编辑器根 DOM（不再有第二套 textarea）。
   const currentTextarea = useCallback(
     (): HTMLElement | null => highlightRef.current?.el() ?? null,
@@ -811,7 +815,7 @@ export function LeoComposer({
         <div className="flex items-center gap-1.5">
           {modelPickerSlot !== undefined || nativeModelPickerSlot !== undefined
             ? (modelPickerSlot ?? nativeModelPickerSlot)
-            : showModelPicker && !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" />}
+            : showModelPicker && !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" computerId={oceanleoComputerId} />}
           {onMeetingRecording && (
             <button
               type="button"
