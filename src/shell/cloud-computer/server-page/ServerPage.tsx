@@ -11,7 +11,6 @@ import {
 } from "../../../lib/cloud-computer-api";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ConfirmDialog } from "../../../ui";
-import { AcpCard } from "../agent-dialog/AcpCard";
 import {
   computerDisplayState,
   isConnectedComputer,
@@ -27,7 +26,6 @@ import {
 } from "./href";
 import {
   IconBack,
-  IconChat,
   IconCli,
   IconTerminal,
 } from "./chrome-icons";
@@ -35,16 +33,12 @@ import { tone } from "./tone";
 import { replaceServerPageUrl } from "./url-state";
 import { ServerPageChromeContext } from "./server-page-chrome";
 
-const CARD_ORDER: readonly ServerPageCard[] = ["acp", "cli", "terminal"];
+const CARD_ORDER: readonly ServerPageCard[] = ["cli", "terminal"];
 
 const CARD_COPY: Record<
   ServerPageCard,
   { title: string; description: string }
 > = {
-  acp: {
-    title: "AI 对话",
-    description: "聊天代理",
-  },
   cli: {
     title: "AI 命令行",
     description: "原版 AI 命令行",
@@ -56,7 +50,6 @@ const CARD_COPY: Record<
 };
 
 function CardGlyph({ card }: { card: ServerPageCard }) {
-  if (card === "acp") return <IconChat />;
   if (card === "cli") return <IconCli />;
   return <IconTerminal />;
 }
@@ -545,14 +538,11 @@ function ServerPageContent({
                     <div key={item} id={`server-panel-${item}`} role="tabpanel" aria-labelledby={`server-tab-${item}`}
                       className={`absolute inset-0 min-h-0 pt-3 ${card === item ? "" : "invisible pointer-events-none"}`}
                       aria-hidden={card !== item} inert={card !== item} data-oceanleo-server-panel={item}>
-                      {item === "acp" ? <AcpCard computer={computer} active={card === item}
+                      {item === "cli" ? <CliCard computer={computer} active={card === item}
                         initialProgram={initial.card === item ? initial.program : undefined}
                         initialSessionId={initial.card === item ? initial.session : undefined} />
-                        : item === "cli" ? <CliCard computer={computer} active={card === item}
-                          initialProgram={initial.card === item ? initial.program : undefined}
-                          initialSessionId={initial.card === item ? initial.session : undefined} />
-                          : <TerminalCard computer={computer} active={card === item}
-                            initialSessionId={initial.card === item ? initial.session : undefined} />}
+                        : <TerminalCard computer={computer} active={card === item}
+                          initialSessionId={initial.card === item ? initial.session : undefined} />}
                     </div>
                   ))}
                 </div>

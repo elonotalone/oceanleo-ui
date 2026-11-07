@@ -1,21 +1,24 @@
 "use client";
 
-// 「这台电脑上的 <程序>」：安装 / 登录 / Key，宿主样式。
-// 逻辑与 Computers 页的 LoginCard / InstallSheet / KeySheet 相同（同一个 dialog 控制器、
-// 同一条 key 路由），只是换成宿主样式。2026-10-31 夜：右栏设置面板删除后，这些流程显示
-// 在输入框模型药丸菜单「账号」一行的卡片里（computer-settings-rows.tsx）。
+// 「这台电脑上的 <程序>」：安装 / 登录 / Key，宿主样式。状态与操作来自 useProgramAccess
+// （网关 REST 程序控制 + key 路由）。这些流程显示在输入框模型药丸菜单「账号」一行的卡片里
+// （computer-settings-rows.tsx）。
 
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { HERMES_PROVIDERS } from "../agent-dialog/KeySheet";
-import { LOGIN_OPENING_TIMEOUT_MS } from "../agent-dialog/LoginCard";
 import { keyErrorCopy, providerLabel } from "../agent-dialog/notice";
 import { ProgramKeyError, removeProgramKey, saveProgramKey } from "../agent-dialog/program-key-api";
 import { PROGRAM_LABEL, type LoginPhase, type LoginState, type ProgramStatus, type WsProgram } from "../agent-dialog/types";
-import type { useAgentDialog } from "../agent-dialog/useAgentDialogController";
+import type { NativePickerDialog } from "../../native-thread/NativeModelPicker";
 import { HOST } from "./host-style";
+import type { ProgramAccess } from "./useProgramAccess";
 
-export type NativeDialog = ReturnType<typeof useAgentDialog>;
+/** The pill's picker fields plus this program's install / login / key state. */
+export type NativeDialog = NativePickerDialog & ProgramAccess;
+
+// The five Hermes providers the gateway's key route accepts (backend HERMES_PROVIDERS).
+const HERMES_PROVIDERS = ["openrouter", "anthropic", "openai", "deepseek", "xai"] as const;
+const LOGIN_OPENING_TIMEOUT_MS = 20000;
 type Translate = ReturnType<typeof useUI>;
 
 function phaseOf(login: LoginState): LoginPhase {
@@ -52,7 +55,7 @@ function copyToClipboard(value: string, done: () => void) {
   void write.call(navigator.clipboard, value).then(done, () => undefined);
 }
 
-export function LoginFlow({ dialog, program }: { dialog: NativeDialog; program: WsProgram }) {
+export function LoginFlow({ dialog, program }: { dialog: ProgramAccess; program: WsProgram }) {
   const tt = useUI();
   const login = dialog.login;
   const phase = phaseOf(login);
@@ -156,7 +159,7 @@ function installDirCopy(tt: Translate, row: ProgramStatus | undefined): string {
   return tt("整个程序装到这个目录");
 }
 
-export function InstallFlow({ dialog, program }: { dialog: NativeDialog; program: WsProgram }) {
+export function InstallFlow({ dialog, program }: { dialog: ProgramAccess; program: WsProgram }) {
   const tt = useUI();
   const install = dialog.install;
   const logRef = useRef<HTMLPreElement>(null);
@@ -165,8 +168,7 @@ export function InstallFlow({ dialog, program }: { dialog: NativeDialog; program
     if (node) node.scrollTop = node.scrollHeight;
   }, [install.lines]);
   const row = dialog.programs.find((item) => item.id === program);
-  const componentMissing = (dialog.messages ?? []).some((message) => message.kind === "notice" && message.code === "acp_unavailable" && message.program === program);
-  const alreadyInstalled = row?.installed === true && !componentMissing && !install.running && !install.failedText && !install.donePath;
+  const alreadyInstalled = row?.installed === true && !install.running && !install.failedText && !install.donePath;
   const dirLocked = row?.dir_capability === "none" || install.running || alreadyInstalled;
   return (
     <div className="grid gap-2 rounded-xl border border-neutral-200 p-3" data-oceanleo-native-install={program}>
@@ -208,7 +210,7 @@ export function KeyForm({
   computerId: string;
   program: WsProgram;
   status: ProgramStatus | undefined;
-  dialog: NativeDialog;
+  dialog: ProgramAccess;
   onClose: () => void;
 }) {
   const tt = useUI();
@@ -262,9 +264,7 @@ export function KeyForm({
                   <span>{row.label || providerLabel(row.id)} · {row.auth === "key" ? tt("已存 Key") : tt("已登录")}</span>
                   {row.auth === "key" ? (
                     <button type="button" disabled={busy} className={HOST.quiet} onClick={() => void run("remove", row.id)}>{tt("移除")}</button>
-                  ) : (
-                    <button type="button" disabled={busy} className={HOST.quiet} onClick={() => dialog.logoutProgram(program, row.id)}>{tt("退出登录")}</button>
-                  )}
+                  ) : null}
                 </li>
               ))}
             </ul>

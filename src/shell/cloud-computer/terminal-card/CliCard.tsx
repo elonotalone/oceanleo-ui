@@ -15,6 +15,9 @@ import {
   IconPlus,
 } from "../server-page/chrome-icons";
 import { replaceServerPageUrl } from "../server-page/url-state";
+import { isWsProgram } from "../agent-dialog/parse";
+import { InstallFlow } from "../native-surface/ProgramAccess";
+import { useProgramAccess } from "../native-surface/useProgramAccess";
 import { ServerPageStripPortal } from "../server-page/server-page-chrome";
 import { ProgramStrip } from "../server-page/ProgramStrip";
 import { tone } from "../server-page/tone";
@@ -127,6 +130,8 @@ export function CliCard({
     () => [...running, ...ended].find((record) => record.id === selectedSessionId) ?? null,
     [running, ended, selectedSessionId],
   );
+  // Install for a program this computer does not have yet (same flow as the task page's account row).
+  const access = useProgramAccess(computer.id, selectedProgram && !selectedProgram.installed && isWsProgram(selectedProgram.id) ? selectedProgram.id : null);
 
   const showNotice = useCallback((message: string, kind: NoticeKind = "info") => {
     setNotice(message);
@@ -528,16 +533,18 @@ export function CliCard({
                 <p>
                   {tt("{program} 尚未安装", { program: selectedProgram.label })}
                 </p>
-                <button
-                  type="button"
-                  className="mt-3 text-xs underline-offset-2 hover:underline"
-                  data-oceanleo-cli-install={selectedProgram.id}
-                  onClick={() =>
-                    replaceServerPageUrl(computer.id, { card: "acp", program: selectedProgram.id, session: null })
-                  }
-                >
-                  {tt("安装")}
-                </button>
+                {isWsProgram(selectedProgram.id) && access.install.open ? (
+                  <div className="mt-3 text-left"><InstallFlow dialog={access} program={selectedProgram.id} /></div>
+                ) : (
+                  <button
+                    type="button"
+                    className="mt-3 text-xs underline-offset-2 hover:underline"
+                    data-oceanleo-cli-install={selectedProgram.id}
+                    onClick={() => { if (isWsProgram(selectedProgram.id)) access.openInstall(selectedProgram.id); }}
+                  >
+                    {tt("安装")}
+                  </button>
+                )}
               </div>
             </div>
           ) : selectedTerminal ? (

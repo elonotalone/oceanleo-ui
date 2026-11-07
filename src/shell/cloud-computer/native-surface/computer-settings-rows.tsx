@@ -25,7 +25,8 @@ import { useTerminalAppearance } from "../terminal-card/appearance";
 import { isCliToolProgram, type CliToolProgram } from "../terminal-card/CliSettingsPanel";
 import { readCliProgramSettings, writeCliProgramSettings, type CliOptionValue, type CliProgramSettings } from "../terminal-card/cli-settings";
 import { HOST_PANEL_SKIN } from "./host-style";
-import { InstallFlow, KeyForm, LoginFlow, programAccessState, type NativeDialog } from "./ProgramAccess";
+import { InstallFlow, KeyForm, LoginFlow, programAccessState } from "./ProgramAccess";
+import type { ProgramAccess } from "./useProgramAccess";
 
 const DEFAULT_SETTINGS: AgentSettings = { confirm_dangerous: true, oceanleo_tools: true, billing_paused: false };
 const SETTINGS_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000] as const;
@@ -144,13 +145,13 @@ export function machineSettingRows(machine: MachineSettings, tt: UITranslate): C
 
 /**
  * 「这台电脑上的 <程序>」: one 账号 row (status · version). Its card lists what
- * can be done now (安装 / 登录 / 退出登录 / Key) and shows the running flow
+ * can be done now (安装 / 登录 / Key) and shows the running flow
  * (InstallFlow / LoginFlow / KeyForm) under those choices.
  */
 export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyOpen, tt }: {
   computerId: string;
   program: WsProgram;
-  dialog: NativeDialog;
+  dialog: ProgramAccess;
   keyOpen: boolean;
   onKeyOpen: (open: boolean) => void;
   tt: UITranslate;
@@ -160,8 +161,6 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
   const choices: ComposerSettingChoice[] = [];
   if (state === "not_installed") {
     choices.push({ value: "install", label: tt("安装"), attrs: { "data-oceanleo-native-program-install": "" } });
-  } else if (state === "signed_in" && program !== "hermes" && status?.logged_in === true) {
-    choices.push({ value: "logout", label: tt("退出登录"), attrs: { "data-oceanleo-native-program-logout": "" } });
   } else if (state === "signed_out" || state === "unknown") {
     choices.push({ value: "login", label: tt("登录"), attrs: { "data-oceanleo-native-program-login": "" } });
   }
@@ -188,7 +187,6 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
     card,
     onPick: choices.length || card ? (value) => {
       if (value === "install") dialog.openInstall(program);
-      else if (value === "logout") dialog.logoutProgram(program);
       else if (value === "login") dialog.openLogin(program);
       else if (value === "key") onKeyOpen(!keyOpen);
     } : undefined,

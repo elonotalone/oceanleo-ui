@@ -54,7 +54,7 @@ globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
-const apiStubUrl = dataModule("export const cloudComputerApi = {};");
+const apiStubUrl = dataModule("export const cloudComputerApi = {}; export class CloudComputerError extends Error {} export async function cloudComputerRequest() { return { status: null }; }");
 const uiStubUrl = dataModule(`
   export function useUI() { return (value, values) => {
     if (!values) return value;

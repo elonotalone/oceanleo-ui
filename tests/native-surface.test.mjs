@@ -370,7 +370,7 @@ test("whole-computer settings recover after a transient read failure", async () 
   } finally { view.cleanup(); }
 });
 
-test("account card: sign out when signed in; the login flow renders inside the card", async () => {
+test("account card: signed in shows status and Key (no sign-out: the gateway has no logout route); the login flow renders inside the card", async () => {
   globalThis.__api = client();
   const signedIn = fakeDialog({ programs: [{ id: "codex", installed: true, path: "", version: "0.90.0", auth: "login", logged_in: true, dir_capability: "full", running: false }] });
   const view = mount(Pill, { dialog: signedIn.dialog });
@@ -379,8 +379,8 @@ test("account card: sign out when signed in; the login flow renders inside the c
     await click(view.$("[data-native-model-trigger]"));
     assert.equal(view.$('[data-composer-setting-row="account"] [data-composer-setting-value]').textContent, "已登录 · 0.90.0");
     await click(view.$('[data-composer-setting-row="account"]'));
-    await click(view.$("[data-oceanleo-native-program-logout]"));
-    assert.deepEqual(signedIn.calls.logout, ["codex"]);
+    assert.equal(view.$("[data-oceanleo-native-program-logout]"), null);
+    assert.ok(view.$("[data-oceanleo-native-program-key]"));
   } finally { view.cleanup(); }
 
   const waiting = fakeDialog({ login: { open: true, program: "codex", phase: "waiting", url: "https://auth.example/login", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false } });

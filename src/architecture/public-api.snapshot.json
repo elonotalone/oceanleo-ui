@@ -5074,12 +5074,6 @@
         },
         {
           "kind": "named",
-          "name": "clearNativeDraftFiles",
-          "importedName": "clearNativeDraftFiles",
-          "source": "./native-draft-files"
-        },
-        {
-          "kind": "named",
           "name": "CloudBrowserPanel",
           "importedName": "CloudBrowserPanel",
           "source": "./CloudBrowserPanel"
@@ -5929,12 +5923,6 @@
           "name": "LibraryArtifactRow",
           "importedName": "LibraryArtifactRow",
           "source": "./library-data"
-        },
-        {
-          "kind": "named",
-          "name": "libraryAttachmentFile",
-          "importedName": "libraryAttachmentFile",
-          "source": "./native-draft-files"
         },
         {
           "kind": "named",
@@ -7420,12 +7408,6 @@
         },
         {
           "kind": "named",
-          "name": "useNativeDraftFiles",
-          "importedName": "useNativeDraftFiles",
-          "source": "./native-draft-files"
-        },
-        {
-          "kind": "named",
           "name": "useOperatorRemark",
           "importedName": "useOperatorRemark",
           "source": "./OperatorRemark"
@@ -8063,12 +8045,6 @@
           "name": "MyLibraryProps",
           "importedName": "MyLibraryProps",
           "source": "./MyLibrary"
-        },
-        {
-          "kind": "type",
-          "name": "NativeDraftFilesHandle",
-          "importedName": "NativeDraftFilesHandle",
-          "source": "./native-draft-files"
         },
         {
           "kind": "type",

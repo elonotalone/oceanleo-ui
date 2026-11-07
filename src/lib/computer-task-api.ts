@@ -1,6 +1,5 @@
 "use client";
 import { cloudComputerRequest, type Computer } from "./cloud-computer-api";
-import type { AgentTask } from "./agent";
 import { boundedHistoryListRequest, HistoryListRequestError, validHistoryListRows } from "./history-list-api";
 import type { ExecutionTarget } from "./execution-target";
 import { cacheUser, onUserScopedClear, readUserJson, writeUserJson } from "./user-scoped-cache";
@@ -9,13 +8,6 @@ export type ComputerTaskSession = {
   kind: "acp" | "cli" | "terminal";
   program: "oceanleo" | "cursor" | "claude" | "codex" | "hermes" | null;
   native_session_id: string | null; created_at: string; updated_at: string;
-  saved_at?: string | null; sync_status: "saved" | "pending" | "error";
-  /** Graphical sessions only; CLI/terminal stay "associated" (no observable agent turn). */
-  run_status?: "associated" | "running" | "waiting_user" | "finishing" | "completed" | "failed" | "cancelled";
-  activity_state?: AgentTask["activity_state"];
-  working?: boolean;
-  /** Execution rights also cover pending input and unconfirmed finishing, not just work. */
-  open_turn?: boolean;
 };
 export type CreateComputerTaskSessionInput = Pick<ComputerTaskSession, "kind"> & {
   program?: ComputerTaskSession["program"]; task_id?: string; native_session_id?: string;
@@ -149,13 +141,6 @@ export function watchComputer(id: string, onChange: (computer: Computer) => void
     if (!watchers!.size && computerWatchers.get(id) === watchers) computerWatchers.delete(id);
   };
 }
-export function getComputerTaskTranscript(id: string, options: Options & {before?: number; limit?: number} = {}) {
-  const {before, limit, ...requestOptions} = options;
-  const query = new URLSearchParams();
-  if (before !== undefined) query.set("before", String(before));
-  if (limit !== undefined) query.set("limit", String(limit));
-  return cloudComputerRequest<{next_before?: number|null; has_older?: boolean; session: ComputerTaskSession; frames: Record<string,unknown>[]; saved_at: string|null; sync_status: ComputerTaskSession["sync_status"]}>(`/v1/computer-task-sessions/${encodeURIComponent(id)}/transcript${query.size ? `?${query}` : ""}`, requestOptions);
-}
 export async function bindComputerTaskSession(id: string, nativeSessionId: string, options: Options = {}) {
   const result = await cloudComputerRequest<{session: ComputerTaskSession}>(`/v1/computer-task-sessions/${encodeURIComponent(id)}`, {method:"PATCH",body:JSON.stringify({native_session_id:nativeSessionId}),...options});
   if (result?.session?.id) rememberComputerTaskSession(result.session);
@@ -183,45 +168,4 @@ export function findComputerTaskSession(sessions: readonly ComputerTaskSession[]
 export function computerTaskSessionsTarget(sessions: readonly ComputerTaskSession[]): ExecutionTarget | null {
   const session = latestComputerTaskSession(sessions);
   return session ? { kind: "computer", id: session.computer_id, name: session.computer_name || session.computer_id } : null;
-}
-
-const PENDING_PROMPT_PREFIX = "oceanleo.pending-native-prompt:";
-const PENDING_PROMPT_TTL_MS = 10 * 60 * 1000;
-/** Private-mode fallback only; sessionStorage is the shared handoff between pages. */
-const pendingPrompts = new Map<string, string>();
-/**
- * Cross-page handoff of a native chat's first message (the homepage now opens
- * native chats in place and no longer needs it; kept for links that still
- * carry one). The task page that opens `?computerSession=<id>` shows it as the
- * user's bubble at once and sends it once that conversation is connected;
- * {@link takePendingNativePrompt} removes the entry before returning it, so it
- * is handed out exactly once.
- */
-export function stashPendingNativePrompt(sessionId: string, text: string): void {
-  if (!sessionId || !text) return;
-  const value = JSON.stringify({ text, queued_at: Date.now() });
-  try { window.sessionStorage.setItem(PENDING_PROMPT_PREFIX + sessionId, value); }
-  catch { pendingPrompts.set(sessionId, value); }
-}
-/** Whether a first prompt is waiting for this session (does not consume it). */
-export function hasPendingNativePrompt(sessionId: string): boolean {
-  if (!sessionId) return false;
-  if (pendingPrompts.has(sessionId)) return true;
-  try { return window.sessionStorage.getItem(PENDING_PROMPT_PREFIX + sessionId) !== null; } catch { return false; }
-}
-export function takePendingNativePrompt(sessionId: string): string | null {
-  if (!sessionId) return null;
-  let raw: string | null = pendingPrompts.get(sessionId) ?? null;
-  pendingPrompts.delete(sessionId);
-  try {
-    raw ??= window.sessionStorage.getItem(PENDING_PROMPT_PREFIX + sessionId);
-    window.sessionStorage.removeItem(PENDING_PROMPT_PREFIX + sessionId);
-  } catch { /* private mode */ }
-  if (!raw) return null;
-  try {
-    const entry = JSON.parse(raw) as { text?: unknown; queued_at?: unknown };
-    if (typeof entry.text !== "string" || !entry.text) return null;
-    if (typeof entry.queued_at !== "number" || Date.now() - entry.queued_at > PENDING_PROMPT_TTL_MS) return null;
-    return entry.text;
-  } catch { return null; }
 }

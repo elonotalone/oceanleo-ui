@@ -7,9 +7,7 @@ import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 export const COMPUTER_TASK_WORKSPACE_SOURCE = {
   "commandLine": "命令行",
-  "invalidAttachmentUrl": "附件下载地址无效",
   "attachmentLoadFailed": "附件读取失败",
-  "getCloudAttachment": "获取云端附件",
   "nativeProviderNeedsBalance": "{provider} 的付费模型需要账户余额。",
   "nativeModelUnavailable": "这个模型现在不可用。",
   "nativeModelUnavailableQuiet": "暂时读不到模型",
@@ -93,9 +91,7 @@ export const COMPUTER_TASK_WORKSPACE_SOURCE = {
 
 const COPY_en = {
   "commandLine": "Command line",
-  "invalidAttachmentUrl": "Invalid attachment download URL",
   "attachmentLoadFailed": "Could not load attachment",
-  "getCloudAttachment": "Get cloud attachment",
   "nativeProviderNeedsBalance": "Paid {provider} models need an account balance.",
   "nativeModelUnavailable": "This model isn't available right now.",
   "nativeModelUnavailableQuiet": "Model temporarily unavailable",
@@ -179,9 +175,7 @@ const COPY_en = {
 
 const COPY_zh_TW = {
   "commandLine": "命令列",
-  "invalidAttachmentUrl": "附件下載網址無效",
   "attachmentLoadFailed": "附件讀取失敗",
-  "getCloudAttachment": "取得雲端附件",
   "nativeProviderNeedsBalance": "{provider} 的付費模型需要帳戶餘額。",
   "nativeModelUnavailable": "這個模型現在無法使用。",
   "nativeModelUnavailableQuiet": "暫時讀不到模型",
@@ -265,9 +259,7 @@ const COPY_zh_TW = {
 
 const COPY_de = {
   "commandLine": "Befehlszeile",
-  "invalidAttachmentUrl": "Ungültige Download-Adresse für den Anhang",
   "attachmentLoadFailed": "Anhang konnte nicht geladen werden",
-  "getCloudAttachment": "Cloud-Anhang abrufen",
   "nativeProviderNeedsBalance": "Kostenpflichtige Modelle von {provider} brauchen Guthaben im Konto.",
   "nativeModelUnavailable": "Dieses Modell ist gerade nicht verfügbar.",
   "nativeModelUnavailableQuiet": "Modell vorübergehend nicht verfügbar",
@@ -351,9 +343,7 @@ const COPY_de = {
 
 const COPY_es = {
   "commandLine": "Línea de comandos",
-  "invalidAttachmentUrl": "Dirección de descarga del adjunto no válida",
   "attachmentLoadFailed": "No se pudo cargar el adjunto",
-  "getCloudAttachment": "Obtener adjunto de la nube",
   "nativeProviderNeedsBalance": "Los modelos de pago de {provider} necesitan saldo en la cuenta.",
   "nativeModelUnavailable": "Este modelo no está disponible ahora.",
   "nativeModelUnavailableQuiet": "No se puede leer el modelo por ahora",
@@ -437,9 +427,7 @@ const COPY_es = {
 
 const COPY_fr = {
   "commandLine": "Ligne de commande",
-  "invalidAttachmentUrl": "Adresse de téléchargement de pièce jointe invalide",
   "attachmentLoadFailed": "Impossible de charger la pièce jointe",
-  "getCloudAttachment": "Obtenir la pièce jointe cloud",
   "nativeProviderNeedsBalance": "Les modèles payants de {provider} nécessitent un solde sur le compte.",
   "nativeModelUnavailable": "Ce modèle n'est pas disponible pour le moment.",
   "nativeModelUnavailableQuiet": "Modèle temporairement indisponible",
@@ -523,9 +511,7 @@ const COPY_fr = {
 
 const COPY_it = {
   "commandLine": "Riga di comando",
-  "invalidAttachmentUrl": "Indirizzo di download dell’allegato non valido",
   "attachmentLoadFailed": "Impossibile caricare l’allegato",
-  "getCloudAttachment": "Ottieni allegato dal cloud",
   "nativeProviderNeedsBalance": "I modelli a pagamento di {provider} richiedono credito sull'account.",
   "nativeModelUnavailable": "Questo modello non è disponibile al momento.",
   "nativeModelUnavailableQuiet": "Modello temporaneamente non disponibile",
@@ -609,9 +595,7 @@ const COPY_it = {
 
 const COPY_pt_BR = {
   "commandLine": "Linha de comando",
-  "invalidAttachmentUrl": "Endereço de download do anexo inválido",
   "attachmentLoadFailed": "Não foi possível carregar o anexo",
-  "getCloudAttachment": "Obter anexo da nuvem",
   "nativeProviderNeedsBalance": "Os modelos pagos de {provider} precisam de saldo na conta.",
   "nativeModelUnavailable": "Este modelo não está disponível agora.",
   "nativeModelUnavailableQuiet": "Modelo temporariamente indisponível",
@@ -695,9 +679,7 @@ const COPY_pt_BR = {
 
 const COPY_vi = {
   "commandLine": "Dòng lệnh",
-  "invalidAttachmentUrl": "Địa chỉ tải tệp đính kèm không hợp lệ",
   "attachmentLoadFailed": "Không thể tải tệp đính kèm",
-  "getCloudAttachment": "Lấy tệp đính kèm từ đám mây",
   "nativeProviderNeedsBalance": "Các mô hình trả phí của {provider} cần số dư tài khoản.",
   "nativeModelUnavailable": "Mô hình này hiện không khả dụng.",
   "nativeModelUnavailableQuiet": "Tạm thời không đọc được mô hình",
@@ -781,9 +763,7 @@ const COPY_vi = {
 
 const COPY_tr = {
   "commandLine": "Komut satırı",
-  "invalidAttachmentUrl": "Ek indirme adresi geçersiz",
   "attachmentLoadFailed": "Ek yüklenemedi",
-  "getCloudAttachment": "Bulut ekini al",
   "nativeProviderNeedsBalance": "{provider} ücretli modelleri için hesap bakiyesi gerekir.",
   "nativeModelUnavailable": "Bu model şu anda kullanılamıyor.",
   "nativeModelUnavailableQuiet": "Model şu anda okunamıyor",
@@ -867,9 +847,7 @@ const COPY_tr = {
 
 const COPY_ja = {
   "commandLine": "コマンドライン",
-  "invalidAttachmentUrl": "添付ファイルのダウンロード先が無効です",
   "attachmentLoadFailed": "添付ファイルを読み込めませんでした",
-  "getCloudAttachment": "クラウドの添付ファイルを取得",
   "nativeProviderNeedsBalance": "{provider} の有料モデルにはアカウント残高が必要です。",
   "nativeModelUnavailable": "このモデルは現在使用できません。",
   "nativeModelUnavailableQuiet": "モデルを一時的に読み取れません",
@@ -953,9 +931,7 @@ const COPY_ja = {
 
 const COPY_ko = {
   "commandLine": "명령줄",
-  "invalidAttachmentUrl": "첨부 파일 다운로드 주소가 올바르지 않습니다",
   "attachmentLoadFailed": "첨부 파일을 불러오지 못했습니다",
-  "getCloudAttachment": "클라우드 첨부 파일 가져오기",
   "nativeProviderNeedsBalance": "{provider} 유료 모델을 쓰려면 계정 잔액이 필요합니다.",
   "nativeModelUnavailable": "이 모델은 지금 사용할 수 없습니다.",
   "nativeModelUnavailableQuiet": "모델을 잠시 읽을 수 없습니다",
@@ -1039,9 +1015,7 @@ const COPY_ko = {
 
 const COPY_ar = {
   "commandLine": "سطر الأوامر",
-  "invalidAttachmentUrl": "عنوان تنزيل المرفق غير صالح",
   "attachmentLoadFailed": "تعذر تحميل المرفق",
-  "getCloudAttachment": "الحصول على المرفق السحابي",
   "nativeProviderNeedsBalance": "تحتاج نماذج {provider} المدفوعة إلى رصيد في الحساب.",
   "nativeModelUnavailable": "هذا النموذج غير متاح الآن.",
   "nativeModelUnavailableQuiet": "يتعذّر قراءة النموذج مؤقتًا",
@@ -1125,9 +1099,7 @@ const COPY_ar = {
 
 const COPY_th = {
   "commandLine": "บรรทัดคำสั่ง",
-  "invalidAttachmentUrl": "ที่อยู่ดาวน์โหลดไฟล์แนบไม่ถูกต้อง",
   "attachmentLoadFailed": "โหลดไฟล์แนบไม่สำเร็จ",
-  "getCloudAttachment": "รับไฟล์แนบจากคลาวด์",
   "nativeProviderNeedsBalance": "โมเดลแบบเสียเงินของ {provider} ต้องมียอดเงินในบัญชี",
   "nativeModelUnavailable": "ตอนนี้ใช้โมเดลนี้ไม่ได้",
   "nativeModelUnavailableQuiet": "อ่านโมเดลไม่ได้ชั่วคราว",
@@ -1211,9 +1183,7 @@ const COPY_th = {
 
 const COPY_hi = {
   "commandLine": "कमांड लाइन",
-  "invalidAttachmentUrl": "अटैचमेंट डाउनलोड पता अमान्य है",
   "attachmentLoadFailed": "अटैचमेंट लोड नहीं हो सका",
-  "getCloudAttachment": "क्लाउड अटैचमेंट प्राप्त करें",
   "nativeProviderNeedsBalance": "{provider} के सशुल्क मॉडल के लिए खाते में बैलेंस चाहिए।",
   "nativeModelUnavailable": "यह मॉडल अभी उपलब्ध नहीं है।",
   "nativeModelUnavailableQuiet": "मॉडल अभी उपलब्ध नहीं पढ़ा जा सका",
@@ -1297,9 +1267,7 @@ const COPY_hi = {
 
 const COPY_es_419 = {
   "commandLine": "Línea de comandos",
-  "invalidAttachmentUrl": "Dirección de descarga del adjunto no válida",
   "attachmentLoadFailed": "No se pudo cargar el adjunto",
-  "getCloudAttachment": "Obtener adjunto de la nube",
   "nativeProviderNeedsBalance": "Los modelos de pago de {provider} necesitan saldo en la cuenta.",
   "nativeModelUnavailable": "Este modelo no está disponible ahora.",
   "nativeModelUnavailableQuiet": "No se puede leer el modelo por ahora",
@@ -1383,9 +1351,7 @@ const COPY_es_419 = {
 
 const COPY_pt_PT = {
   "commandLine": "Linha de comando",
-  "invalidAttachmentUrl": "Endereço de transferência do anexo inválido",
   "attachmentLoadFailed": "Não foi possível carregar o anexo",
-  "getCloudAttachment": "Obter anexo da nuvem",
   "nativeProviderNeedsBalance": "Os modelos pagos de {provider} precisam de saldo na conta.",
   "nativeModelUnavailable": "Este modelo não está disponível agora.",
   "nativeModelUnavailableQuiet": "Não é possível ler o modelo agora",

@@ -10,7 +10,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { getCatalog, type AcpCatalog, type AcpSessionChoices } from "../../lib/acp-frames-api";
-import { parseConfigOptions, parseMode } from "../cloud-computer/agent-dialog/parse";
+import { isWsProgram, parseConfigOptions, parseMode } from "../cloud-computer/agent-dialog/parse";
+import { useProgramAccess } from "../cloud-computer/native-surface/useProgramAccess";
 import { readProgramSelection, rememberProgramSelection } from "../cloud-computer/agent-dialog/model-param-memory";
 import type { DialogConfigOption, DialogModel, ModeOption } from "../cloud-computer/agent-dialog/types";
 import { NativeModelPicker, nativeModelPickerFor, type NativePickerDialog } from "../native-thread/NativeModelPicker";
@@ -54,6 +55,7 @@ function catalogMode(catalog: AcpCatalog, options: unknown[]): ModeOption | null
 
 export function useAcpCatalogPicker({ computerId, program, disabled = false, reloadKey }: AcpCatalogPickerInput): AcpCatalogPicker {
   const tt = useUI();
+  const access = useProgramAccess(computerId || "", isWsProgram(program) ? program : null);
   const key = computerId && program ? `${computerId}\u0000${program}` : "";
   const [read, setRead] = useState<{ key: string; catalog: AcpCatalog | null }>({ key: "", catalog: null });
   useEffect(() => {
@@ -126,6 +128,7 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
       const configOptions: DialogConfigOption[] = lists.configOptions.map((option) =>
         chosen.config[option.id] !== undefined ? { ...option, current: chosen.config[option.id] } : option);
       const dialog: NativePickerDialog = {
+        ...access,
         models: lists.models,
         configOptions,
         selectedModel: chosen.model || lists.models.find((model) => model.default)?.id || "",
