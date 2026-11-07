@@ -6,6 +6,7 @@ import { deviceSettingsClient as defaultSettingsClient, type DeviceSettingsClien
 import { remoteDesktopClient as defaultRemoteDesktopClient, type RemoteDesktopClient, type RemoteDesktopStatus } from "../api/remote-desktop";
 import { devicesFacade, type Device, type DevicesFacade } from "../facades/devices";
 import { cloudComputerApi, type CloudComputerClient } from "../lib/cloud-computer-api";
+import type { ComputerActivityClient } from "../lib/computer-activity-api";
 import { useUI } from "../i18n/ui/useUI";
 import { CreateComputerDialog } from "../shell/cloud-computer/CreateComputerDialog";
 import { ConnectServerDialog } from "../shell/cloud-computer/ConnectServerDialog";
@@ -28,6 +29,8 @@ export interface DevicesPageProps {
   legacyImportError?: LegacyImportErrorCode | null;
   client?: DevicesFacade;
   cloudClient?: CloudComputerClient;
+  /** What runs on each computer (card line, device panel); the real gateway client when omitted. */
+  activityClient?: ComputerActivityClient;
   settingsClient?: DeviceSettingsClient;
   remoteDesktopClient?: RemoteDesktopClient;
   /** The cloud assistant's live session and takeover consent for the open remote desktop (C11 contracts §2, §4). */
@@ -98,7 +101,7 @@ async function signedInUser(): Promise<{ known: boolean; userId: string | null }
   }
 }
 
-export function DevicesPage({ legacyImportError: legacyImportErrorProp, client = devicesFacade, cloudClient = cloudComputerApi, settingsClient = defaultSettingsClient,
+export function DevicesPage({ legacyImportError: legacyImportErrorProp, client = devicesFacade, cloudClient = cloudComputerApi, activityClient, settingsClient = defaultSettingsClient,
   remoteDesktopClient = defaultRemoteDesktopClient, cloudAgentClient = deviceCloudAgentClient, remoteStatusIntervalMs = 10_000,
   listIntervalMs = 15_000, requestTimeoutMs = 15_000, currentUser = signedInUser, initialTab, variant = "page" }: DevicesPageProps) {
   const tt = useUI();
@@ -327,7 +330,7 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
     {remoteOpenId && !selectedRemote && !loading && !loginRequired && !pageError && <div role="status" className="mt-5 flex flex-wrap items-center gap-3 rounded-xl bg-neutral-100 px-4 py-3 text-sm text-neutral-600"><span>{tt("当前账号找不到这台电脑。")}</span><button type="button" onClick={closeDesktop} className="underline underline-offset-4">{tt("返回设备")}</button></div>}
     <div className="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid data-all-offline={devices.length > 0 && devices.every((item) => deviceAvailability(item, remoteStatus[item.device_id]) !== "online") ? "true" : "false"}>
       {loading ? <div className="min-h-[300px] animate-pulse rounded-[20px] bg-neutral-100" aria-label={tt("正在加载设备")} /> : devices.map((device) => <DeviceCard key={`${authRevision}-${device.device_id}`} device={device} client={settingsClient} isLocalDevice={device.device_id === localDeviceId} availability={deviceAvailability(device, remoteStatus[device.device_id])} onSettings={() => openSettingsModal("device-settings", { deviceId: device.device_id })} onTasks={() => setTasksId(device.device_id)} onControl={() => openDesktop(device.device_id)} onRevokeAgent={() => void revokeAgentControl(device)} revokingAgent={revokingAgentId === device.device_id} />)}
-      {!loading && !loginRequired && <CloudDeviceGrid key={`${authRevision}-${cloudRevision}`} client={cloudClient} onUnauthorized={() => { if (accountGeneration === generation.current) applyDeviceResult({ ok: false, status: 401 }); }} autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />}
+      {!loading && !loginRequired && <CloudDeviceGrid key={`${authRevision}-${cloudRevision}`} client={cloudClient} activityClient={activityClient} onUnauthorized={() => { if (accountGeneration === generation.current) applyDeviceResult({ ok: false, status: 401 }); }} autoFocus={initialTab === "cloud" || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("tab") === "cloud" || window.location.hash === "#cloud"))} />}
       {!loading && !loginRequired && devices.length === 0 && <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-neutral-200 px-5 py-10 text-center" data-device-connect-card>
         <DeviceIcon className="h-9 w-9 text-neutral-400" /><p className="mb-5 mt-4 text-base text-neutral-600">{tt(!loading && devices.length === 0 ? "连接你的电脑" : "添加设备")}</p>
         <button type="button" className={DEVICE_BUTTON} onClick={() => setConnecting(true)}>{tt("连接我的电脑")}</button>
