@@ -130,8 +130,8 @@ function client(overrides = {}) {
     calls,
     async openTerminalSession(id, body) { calls.open.push({ id, body }); return { session: record(`t-${calls.open.length}`) }; },
     async listCliPrograms() { calls.programs += 1; return { programs: overrides.programs ?? [{ id: "codex", label: "Codex", installed: true, version: "1", supports_resume: true, options: [] }] }; },
-    async getAgentSettings() { calls.settings += 1; return { confirm_dangerous: true, oceanleo_tools: true, billing_paused: false }; },
-    async patchAgentSettings(id, patch) { calls.patch.push({ id, patch }); return { confirm_dangerous: true, oceanleo_tools: true, billing_paused: false, ...patch }; },
+    async getAgentSettings() { calls.settings += 1; return { oceanleo_tools: true, billing_paused: false }; },
+    async patchAgentSettings(id, patch) { calls.patch.push({ id, patch }); return { oceanleo_tools: true, billing_paused: false, ...patch }; },
     async launchCli(id, body) { calls.launch.push({ id, body }); return { session: record(`cli-${calls.launch.length}`, { kind: "cli", program: body.program }) }; },
     async getCliTools() { calls.getTools += 1; return { programs: { cursor: false, claude: false, codex: false } }; },
     async setCliTools(id, program, enabled) { calls.tools.push({ id, program, enabled }); return { ok: true, program, enabled }; },
@@ -243,7 +243,8 @@ test("CLI surface launches the session program with stored options; missing prog
     await view.render();
     assert.equal(api.calls.launch.length, 1);
     assert.equal(api.calls.launch[0].body.program, "codex");
-    assert.equal(api.calls.launch[0].body.options.confirm_dangerous, true);
+    assert.deepEqual(api.calls.launch[0].body.options, {}, "only the program's own options; no confirm_dangerous");
+    assert.equal(api.calls.settings, 0, "no whole-computer settings read before a CLI launch");
     assert.deepEqual(binds, ["cli-1"]);
     assert.ok(view.$('[data-oceanleo-native-terminal-frame="cli-1"]'));
     assertHostChrome(view);
@@ -320,7 +321,9 @@ test("native chat pill: this conversation, Codex on this computer and the whole 
     assert.equal(api.calls.settings, 0, "nothing read until the menu opens");
     await click(view.$("[data-native-model-trigger]"));
     assert.deepEqual(sections(view), ["本对话", "这台电脑上的 Codex", "整台电脑（所有程序）"]);
-    assert.deepEqual(rowIds(view), ["model", "mode", "fast", "account", "computer:confirm_dangerous", "computer:oceanleo_tools"]);
+    assert.deepEqual(rowIds(view), ["model", "mode", "fast", "account", "computer:oceanleo_tools"]);
+    assert.deepEqual(rowIds(view).filter((id) => id.startsWith("computer:")), ["computer:oceanleo_tools"], "整台电脑 has only the tools switch");
+    assert.doesNotMatch(view.text(), /危险操作/);
     assert.equal(api.calls.settings, 1, "whole-computer settings read on first open");
     const account = view.$('[data-composer-setting-row="account"]');
     assert.equal(account.getAttribute("data-state"), "signed_out");
@@ -335,12 +338,13 @@ test("native chat pill: this conversation, Codex on this computer and the whole 
     await click(view.$("[data-oceanleo-native-program-login]"));
     assert.deepEqual(calls.login, ["codex"]);
     assert.ok(view.$("[data-composer-settings-menu]"), "an account action keeps the menu open");
-    const toggle = view.$('[data-oceanleo-native-setting="confirm_dangerous"]');
+    assert.equal(view.$('[data-oceanleo-native-setting="confirm_dangerous"]'), null);
+    const toggle = view.$('[data-oceanleo-native-setting="oceanleo_tools"]');
     assert.equal(toggle.getAttribute("role"), "menuitemcheckbox");
     assert.equal(toggle.getAttribute("aria-checked"), "true");
     await click(toggle);
-    assert.deepEqual(api.calls.patch, [{ id: "cc_1", patch: { confirm_dangerous: false } }]);
-    assert.equal(view.$('[data-oceanleo-native-setting="confirm_dangerous"]').getAttribute("aria-checked"), "false");
+    assert.deepEqual(api.calls.patch, [{ id: "cc_1", patch: { oceanleo_tools: false } }]);
+    assert.equal(view.$('[data-oceanleo-native-setting="oceanleo_tools"]').getAttribute("aria-checked"), "false");
     assert.match(view.text(), /下次打开时生效/);
     assert.doesNotMatch(view.host.innerHTML, /zinc-/);
   } finally { view.cleanup(); }
@@ -423,7 +427,7 @@ test("offline: the pill stays, every row read-only with the reason, nothing read
     await view.render();
     await click(view.$("[data-native-model-trigger]"));
     assert.ok(view.$("[data-oceanleo-native-settings-offline]"));
-    for (const id of ["model", "mode", "account", "computer:confirm_dangerous"]) {
+    for (const id of ["model", "mode", "account", "computer:oceanleo_tools"]) {
       const row = view.$(`[data-composer-setting-row="${id}"]`);
       assert.equal(row.disabled, true, id);
       assert.match(row.textContent, /这台电脑联网后可以修改。/, id);
@@ -442,7 +446,10 @@ test("CLI bar pill: the program's next-launch options, tools switch and the shar
     assert.equal(api.calls.programs, 0, "nothing read until opened");
     await click(trigger);
     assert.deepEqual(sections(view), ["这台电脑上的 Codex", "终端外观（命令行和终端共用）"]);
-    assert.deepEqual(rowIds(view), ["cli:next-launch", "cli:sandbox", "cli:confirm_dangerous", "cli:tools", "appearance"]);
+    assert.deepEqual(rowIds(view), ["cli:next-launch", "cli:sandbox", "cli:tools", "appearance"]);
+    assert.equal(view.$("[data-oceanleo-confirm-dangerous]"), null, "no 危险操作 row in the CLI pill");
+    assert.doesNotMatch(view.text(), /危险操作/);
+    assert.equal(api.calls.settings, 0, "the CLI pill never reads whole-computer settings");
     assert.match(view.text(), /这些设置将在下一次启动时生效。/);
     await click(view.$('[data-oceanleo-cli-tools="codex"]'));
     assert.deepEqual(api.calls.tools, [{ id: "cc_1", program: "codex", enabled: true }]);

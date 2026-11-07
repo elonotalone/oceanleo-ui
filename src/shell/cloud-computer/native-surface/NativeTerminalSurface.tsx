@@ -135,15 +135,9 @@ export function NativeTerminalSurface({
             setPhase("not_installed");
             return;
           }
-          let confirmDangerous = true;
-          try {
-            confirmDangerous = (await client.getAgentSettings(computerId)).confirm_dangerous;
-          } catch {
-            /* Safe default: ask before dangerous actions. */
-          }
           record = (await client.launchCli(computerId, {
             program: found.id,
-            options: cliLaunchOptions(found, readCliProgramSettings(computerId, found.id), confirmDangerous),
+            options: cliLaunchOptions(found, readCliProgramSettings(computerId, found.id)),
             cols: DEFAULT_PTY_COLS,
             rows: DEFAULT_PTY_ROWS,
           })).session;

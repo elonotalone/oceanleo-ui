@@ -4,7 +4,8 @@
 // 2026-10-31 夜：输入框下的齿轮「设置」和任务页右栏设置面板删除，全部设置并进药丸：
 //   本对话（模型 / 推理强度 / 权限模式 / 快速模式，NativeModelPicker 自己的行）
 //   这台电脑上的 <程序>：账号一行，卡片里是登录 / 退出登录 / 安装 / Key 和对应流程
-//   整台电脑（所有程序）：危险操作先问我、让它能用 OceanLeo 的工具（直接开关）
+//   整台电脑（所有程序）：让它能用 OceanLeo 的工具（直接开关）
+//   权限只用程序自己的模式（本对话的「权限模式」行），整台电脑没有权限开关。
 //   命令行：这个程序的启动选项；终端外观（命令行和终端共用）：一行，卡片里是外观表单。
 // 离线时这些行都置灰并写明原因；终端外观只存在本机，离线也能改。
 
@@ -28,7 +29,7 @@ import { HOST_PANEL_SKIN } from "./host-style";
 import { InstallFlow, KeyForm, LoginFlow, programAccessState } from "./ProgramAccess";
 import type { ProgramAccess } from "./useProgramAccess";
 
-const DEFAULT_SETTINGS: AgentSettings = { confirm_dangerous: true, oceanleo_tools: true, billing_paused: false };
+const DEFAULT_SETTINGS: AgentSettings = { oceanleo_tools: true, billing_paused: false };
 const SETTINGS_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000] as const;
 
 /** Whole-computer agent settings; read only once `enabled` (the menu was opened, the computer is online). */
@@ -122,23 +123,21 @@ export function useMachineSettings(computerId: string, client: CloudComputerClie
 
 export type MachineSettings = ReturnType<typeof useMachineSettings>;
 
-/** 「整台电脑（所有程序）」: two switches and the save error, if any. */
+/** 「整台电脑（所有程序）」: the OceanLeo tools switch and the save error, if any. */
 export function machineSettingRows(machine: MachineSettings, tt: UITranslate): ComposerSettingRow[] {
   const section = tt("整台电脑（所有程序）");
   const busy = !machine.loaded || machine.saving;
-  const toggle = (key: "confirm_dangerous" | "oceanleo_tools", label: string, hint: string): ComposerSettingRow => ({
-    id: `computer:${key}`,
-    section,
-    kind: "toggle",
-    label,
-    hint,
-    checked: machine.settings[key],
-    onToggle: busy ? undefined : (next) => void machine.change(key, next),
-    attrs: { "data-oceanleo-native-setting": key },
-  });
   return [
-    toggle("confirm_dangerous", tt("危险操作先问我"), tt("关掉后 AI 执行删除、覆盖等操作前不再问你")),
-    toggle("oceanleo_tools", tt("让它能用 OceanLeo 的工具"), tt("下次打开时生效")),
+    {
+      id: "computer:oceanleo_tools",
+      section,
+      kind: "toggle",
+      label: tt("让它能用 OceanLeo 的工具"),
+      hint: tt("下次打开时生效"),
+      checked: machine.settings.oceanleo_tools,
+      onToggle: busy ? undefined : (next) => void machine.change("oceanleo_tools", next),
+      attrs: { "data-oceanleo-native-setting": "oceanleo_tools" },
+    },
     ...(machine.error ? [{ id: "computer:error", section, kind: "note" as const, label: machine.error, attrs: { role: "alert" } }] : []),
   ];
 }
@@ -224,8 +223,7 @@ export function useAppearanceRow(): ComposerSettingRow {
 
 /**
  * A command-line program's launch options on this computer (same storage as
- * CliSettingsPanel), its per-program "ask before dangerous actions" override
- * and the OceanLeo tools switch. Read once `enabled`.
+ * CliSettingsPanel) and the OceanLeo tools switch. Read once `enabled`.
  */
 export function useCliProgramRows({ computerId, programId, programLabel, enabled, client = cloudComputerApi }: {
   computerId: string;
@@ -237,7 +235,6 @@ export function useCliProgramRows({ computerId, programId, programLabel, enabled
   const tt = useUI();
   const [program, setProgram] = useState<CliProgram | null>(null);
   const [failed, setFailed] = useState(false);
-  const [serverConfirm, setServerConfirm] = useState(true);
   const [tools, setTools] = useState<Partial<Record<CliToolProgram, boolean>>>({});
   const [toolsBusy, setToolsBusy] = useState(false);
   const [toolsError, setToolsError] = useState("");
@@ -270,7 +267,6 @@ export function useCliProgramRows({ computerId, programId, programLabel, enabled
       setFailed(false);
       const results = await Promise.allSettled([
         client.listCliPrograms(computerId),
-        client.getAgentSettings(computerId),
         client.getCliTools(computerId),
       ]);
       if (!alive) {
@@ -285,10 +281,7 @@ export function useCliProgramRows({ computerId, programId, programLabel, enabled
         setFailed(true);
         retry = true;
       }
-      const agentSettings = results[1];
-      if (agentSettings.status === "fulfilled") setServerConfirm(agentSettings.value.confirm_dangerous);
-      else retry = true;
-      const cliTools = results[2];
+      const cliTools = results[1];
       if (cliTools.status === "fulfilled") setTools(cliTools.value.programs);
       else retry = true;
       if (retry) scheduleRetry();
@@ -342,7 +335,6 @@ export function useCliProgramRows({ computerId, programId, programLabel, enabled
   if (!program) return [note("cli:reading", tt("正在读取…"))];
   const rows: ComposerSettingRow[] = [note("cli:next-launch", tt("这些设置将在下一次启动时生效。"))];
   for (const option of program.options) {
-    if (option.key === "confirm_dangerous") continue;
     const stored = settings.options[option.key];
     if (option.type === "bool") {
       rows.push({
@@ -364,12 +356,6 @@ export function useCliProgramRows({ computerId, programId, programLabel, enabled
       attrs: { "data-oceanleo-cli-option": option.key },
     });
   }
-  rows.push({
-    id: "cli:confirm_dangerous", section, kind: "toggle", label: tt("危险操作先问"), hint: tt("可以按程序覆盖服务器的默认设置。"),
-    checked: settings.confirmDangerous ?? serverConfirm,
-    onToggle: (next) => save({ ...settings, confirmDangerous: next }),
-    attrs: { "data-oceanleo-confirm-dangerous": "" },
-  });
   if (isCliToolProgram(programId)) {
     const enabledNow = tools[programId];
     rows.push({

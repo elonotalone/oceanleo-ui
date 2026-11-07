@@ -21,7 +21,6 @@ export function isCliToolProgram(program: string): program is CliToolProgram {
 export function CliSettingsPanel({
   computerId,
   program,
-  serverConfirmDangerous,
   toolsEnabled,
   toolsBusy = false,
   onToolsEnabledChange,
@@ -33,7 +32,6 @@ export function CliSettingsPanel({
   showAppearance?: boolean;
   computerId: string;
   program: CliProgram;
-  serverConfirmDangerous: boolean;
   toolsEnabled?: boolean;
   toolsBusy?: boolean;
   onToolsEnabledChange?: (enabled: boolean) => void;
@@ -58,9 +56,6 @@ export function CliSettingsPanel({
     });
   }
 
-  const confirmDangerous =
-    settings.confirmDangerous ?? serverConfirmDangerous;
-
   return (
     <div className="grid gap-3" data-oceanleo-cli-settings={program.id}>
       <section className={showAppearance ? `border-b pb-3 ${skin.border}` : ""}>
@@ -69,80 +64,58 @@ export function CliSettingsPanel({
           {tt("这些设置将在下一次启动时生效。")}
         </p>
         <div className={`mt-3 grid gap-3 divide-y ${skin.divide}`}>
-          {program.options
-            .filter((option) => option.key !== "confirm_dangerous")
-            .map((option) => {
-              const stored = settings.options[option.key];
-              if (option.type === "bool") {
-                const checked =
-                  typeof stored === "boolean"
-                    ? stored
-                    : typeof option.default === "boolean"
-                      ? option.default
-                      : false;
-                return (
-                  <label
-                    key={option.key}
-                    className="flex items-center justify-between gap-3 pt-2 text-[13px] first:pt-0"
-                  >
-                    <span>{option.label}</span>
-                    <input
-                      type="checkbox"
-                      className={skin.check}
-                      checked={checked}
-                      data-oceanleo-cli-option={option.key}
-                      onChange={(event) =>
-                        setOption(option.key, event.currentTarget.checked)
-                      }
-                    />
-                  </label>
-                );
-              }
-              const fallback =
-                typeof option.default === "string" ? option.default : "";
-              const value = typeof stored === "string" ? stored : fallback;
+          {program.options.map((option) => {
+            const stored = settings.options[option.key];
+            if (option.type === "bool") {
+              const checked =
+                typeof stored === "boolean"
+                  ? stored
+                  : typeof option.default === "boolean"
+                    ? option.default
+                    : false;
               return (
-                <label key={option.key} className="grid gap-1 pt-2 text-[13px] first:pt-0">
-                  <span className={skin.muted}>{option.label}</span>
-                  <select
-                    value={value}
-                    className={`h-8 rounded-md border px-2 text-[13px] ${skin.input}`}
+                <label
+                  key={option.key}
+                  className="flex items-center justify-between gap-3 pt-2 text-[13px] first:pt-0"
+                >
+                  <span>{option.label}</span>
+                  <input
+                    type="checkbox"
+                    className={skin.check}
+                    checked={checked}
                     data-oceanleo-cli-option={option.key}
                     onChange={(event) =>
-                      setOption(option.key, event.currentTarget.value)
+                      setOption(option.key, event.currentTarget.checked)
                     }
-                  >
-                    {(option.choices ?? []).map((choice) => (
-                      <option key={choice.value} value={choice.value}>
-                        {choice.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                 </label>
               );
-            })}
-          <label className="flex items-center justify-between gap-3 pt-2 text-[13px] first:pt-0">
-            <span>
-              <span className="block">{tt("危险操作先问")}</span>
-              <span className={`mt-0.5 block text-xs ${skin.muted}`}>
-                {tt("可以按程序覆盖服务器的默认设置。")}
-              </span>
-            </span>
-            <input
-              type="checkbox"
-                      className={skin.check}
-              checked={confirmDangerous}
-              data-oceanleo-confirm-dangerous=""
-              onChange={(event) =>
-                save({
-                  ...settings,
-                  confirmDangerous: event.currentTarget.checked,
-                })
-              }
-            />
-          </label>
+            }
+            const fallback =
+              typeof option.default === "string" ? option.default : "";
+            const value = typeof stored === "string" ? stored : fallback;
+            return (
+              <label key={option.key} className="grid gap-1 pt-2 text-[13px] first:pt-0">
+                <span className={skin.muted}>{option.label}</span>
+                <select
+                  value={value}
+                  className={`h-8 rounded-md border px-2 text-[13px] ${skin.input}`}
+                  data-oceanleo-cli-option={option.key}
+                  onChange={(event) =>
+                    setOption(option.key, event.currentTarget.value)
+                  }
+                >
+                  {(option.choices ?? []).map((choice) => (
+                    <option key={choice.value} value={choice.value}>
+                      {choice.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            );
+          })}
           {isCliToolProgram(program.id) && onToolsEnabledChange && (
-            <label className="flex items-center justify-between gap-3 pt-2 text-[13px]">
+            <label className="flex items-center justify-between gap-3 pt-2 text-[13px] first:pt-0">
               <span>
                 {tt("把 OceanLeo 工具装进 {program}", {
                   program: program.label,

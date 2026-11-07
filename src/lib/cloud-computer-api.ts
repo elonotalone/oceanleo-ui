@@ -253,7 +253,6 @@ export type NodeInfo = {
 };
 
 export type AgentSettings = {
-  confirm_dangerous: boolean;
   oceanleo_tools: boolean;
   billing_paused: boolean;
 };

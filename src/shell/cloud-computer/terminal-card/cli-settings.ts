@@ -4,9 +4,9 @@ export const CLI_SETTINGS_STORAGE_KEY = "oceanleo.cli.settings.v1";
 
 export type CliOptionValue = string | boolean;
 
+/** Per computer + program launch options. Older stored objects may carry other keys; they are dropped on read. */
 export type CliProgramSettings = {
   options: Record<string, CliOptionValue>;
-  confirmDangerous?: boolean;
 };
 
 type CliSettingsStore = Record<string, CliProgramSettings>;
@@ -41,10 +41,7 @@ function normalizeStored(value: unknown): CliProgramSettings {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { options: {} };
   }
-  const raw = value as {
-    options?: unknown;
-    confirmDangerous?: unknown;
-  };
+  const raw = value as { options?: unknown };
   const options: Record<string, CliOptionValue> = {};
   if (raw.options && typeof raw.options === "object" && !Array.isArray(raw.options)) {
     for (const [key, option] of Object.entries(raw.options)) {
@@ -53,12 +50,7 @@ function normalizeStored(value: unknown): CliProgramSettings {
       }
     }
   }
-  return {
-    options,
-    ...(typeof raw.confirmDangerous === "boolean"
-      ? { confirmDangerous: raw.confirmDangerous }
-      : {}),
-  };
+  return { options };
 }
 
 export function readCliProgramSettings(
@@ -120,15 +112,11 @@ function validProgramOptions(
   return result;
 }
 
+/** Launch options = only the options this program lists (the server rejects any other key). */
 export function cliLaunchOptions(
   program: CliProgram,
   settings: CliProgramSettings,
-  serverConfirmDangerous: boolean,
 ): Record<string, CliOptionValue> {
-  return {
-    ...validProgramOptions(program, settings.options),
-    confirm_dangerous:
-      settings.confirmDangerous ?? serverConfirmDangerous,
-  };
+  return validProgramOptions(program, settings.options);
 }
 

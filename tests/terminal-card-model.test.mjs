@@ -173,15 +173,12 @@ test("程序固定为 OceanLeo、Cursor、Claude Code、Codex、Hermes 顺序，
   );
 });
 
-test("CLI 设置按机器与程序隔离，并映射合法 options 与危险操作默认值", () => {
+test("CLI 设置按机器与程序隔离，启动 options 只含程序列出的选项", () => {
   const storage = memoryStorage();
   writeCliProgramSettings(
     "cc_1",
     "cursor",
-    {
-      options: { model: "pro", plan: true, ignored: 123 },
-      confirmDangerous: false,
-    },
+    { options: { model: "pro", plan: true, ignored: 123 } },
     storage,
   );
   assert.deepEqual(readCliProgramSettings("cc_2", "cursor", storage), {
@@ -193,7 +190,6 @@ test("CLI 设置按机器与程序隔离，并映射合法 options 与危险操�
   const saved = readCliProgramSettings("cc_1", "cursor", storage);
   assert.deepEqual(saved, {
     options: { model: "pro", plan: true },
-    confirmDangerous: false,
   });
   assert.ok(storage.raw());
 
@@ -212,13 +208,42 @@ test("CLI 设置按机器与程序隔离，并映射合法 options 与危险操�
       { key: "plan", label: "Plan", type: "bool", default: false },
     ],
   });
-  assert.deepEqual(cliLaunchOptions(cursor, saved, true), {
+  assert.deepEqual(cliLaunchOptions(cursor, saved), {
     model: "pro",
     plan: true,
-    confirm_dangerous: false,
   });
   assert.deepEqual(
-    cliLaunchOptions(cursor, { options: { model: "missing" } }, true),
-    { model: "auto", plan: false, confirm_dangerous: true },
+    cliLaunchOptions(cursor, { options: { model: "missing" } }),
+    { model: "auto", plan: false },
   );
+});
+
+test("CLI 设置：旧版本存过的 confirmDangerous 仍能读出，但被忽略，启动 options 里没有 confirm_dangerous", () => {
+  const storage = memoryStorage();
+  storage.setItem(
+    CLI_SETTINGS_STORAGE_KEY,
+    JSON.stringify({ "cc_1:cursor": { options: { model: "pro" }, confirmDangerous: false } }),
+  );
+  const saved = readCliProgramSettings("cc_1", "cursor", storage);
+  assert.deepEqual(saved, { options: { model: "pro" } });
+  const cursor = program({
+    options: [
+      {
+        key: "model",
+        label: "Model",
+        type: "select",
+        choices: [
+          { value: "auto", label: "Auto" },
+          { value: "pro", label: "Pro" },
+        ],
+        default: "auto",
+      },
+    ],
+  });
+  const options = cliLaunchOptions(cursor, saved);
+  assert.deepEqual(options, { model: "pro" });
+  assert.equal("confirm_dangerous" in options, false);
+  // Writing the old object back drops the stale key from storage too.
+  writeCliProgramSettings("cc_1", "cursor", { ...saved, confirmDangerous: true }, storage);
+  assert.doesNotMatch(storage.raw(), /confirmDangerous/);
 });

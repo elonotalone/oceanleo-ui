@@ -125,7 +125,7 @@ async function flush(count = 7) {
 }
 
 function createClient({ historySupported = true } = {}) {
-  const calls = { launch: [], setTools: [], close: [], programs: 0, terminals: 0, chats: [] };
+  const calls = { launch: [], setTools: [], close: [], programs: 0, terminals: 0, chats: [], settings: 0 };
   let records = [
     record(),
     record({ id: "claude-live", program: "claude" }),
@@ -196,11 +196,8 @@ function createClient({ historySupported = true } = {}) {
       };
     },
     async getAgentSettings() {
-      return {
-        confirm_dangerous: true,
-        oceanleo_tools: true,
-        billing_paused: false,
-      };
+      calls.settings++;
+      return { oceanleo_tools: true, billing_paused: false };
     },
     async getCliTools() {
       return { programs: { cursor: true, claude: false, codex: false } };
@@ -242,6 +239,7 @@ async function renderCard({ api, props = {} }) {
   window.localStorage.setItem(
     "oceanleo.cli.settings.v1",
     JSON.stringify({
+      // An object stored by an older version: its confirmDangerous is ignored.
       "cc_1:cursor": {
         options: { model: "pro" },
         confirmDangerous: false,
@@ -313,7 +311,7 @@ test("CLI 共享程序条、运行/历史列表、浅地址、续聊 options 与
       body: {
         program: "cursor",
         resume_id: "resume-new",
-        options: { model: "pro", confirm_dangerous: false },
+        options: { model: "pro" },
         cols: 80,
         rows: 24,
       },
@@ -352,6 +350,34 @@ test("CLI 共享程序条、运行/历史列表、浅地址、续聊 options 与
     assert.equal(window.location.search, "?card=acp&program=claude");
     assert.deepEqual(view.pushes, []);
     assert.deepEqual(view.replaces, []);
+  } finally {
+    view.cleanup();
+  }
+});
+
+test("CLI 启动 options 只含程序列出的选项（旧的 confirmDangerous 被忽略），设置面板没有危险操作覆盖，从不读整台电脑设置", async () => {
+  const api = createClient();
+  const view = await renderCard({ api });
+  try {
+    const resume = view.host.querySelector('[data-oceanleo-cli-chat="resume-new"]');
+    assert.ok(resume);
+    await act(async () => resume.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    assert.equal(api.calls.launch.length, 1);
+    assert.deepEqual(api.calls.launch[0].body.options, { model: "pro" });
+    assert.equal("confirm_dangerous" in api.calls.launch[0].body.options, false);
+
+    const settings = view.host.querySelector('[data-oceanleo-program-strip-settings="cursor"]');
+    assert.ok(settings);
+    await act(async () => settings.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    await flush();
+    const panel = view.host.querySelector('[data-oceanleo-cli-settings="cursor"]');
+    assert.ok(panel);
+    assert.ok(panel.querySelector('[data-oceanleo-cli-option="model"]'), "the program's own options stay");
+    assert.ok(panel.querySelector('[data-oceanleo-cli-tools="cursor"]'), "the tools switch stays");
+    assert.equal(panel.querySelector("[data-oceanleo-confirm-dangerous]"), null, "no per-program dangerous-action override");
+    assert.doesNotMatch(panel.textContent || "", /危险操作/);
+    assert.equal(api.calls.settings, 0, "the card never reads whole-computer settings, before or after a launch");
   } finally {
     view.cleanup();
   }

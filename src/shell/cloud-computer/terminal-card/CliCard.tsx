@@ -94,7 +94,6 @@ export function CliCard({
   const chats = chatLists.get(programId)?.sessions ?? [];
   const chatsSupported = chatLists.get(programId)?.supported ?? true;
   const [showSettings, setShowSettings] = useState(false);
-  const [serverConfirmDangerous, setServerConfirmDangerous] = useState(true);
   const [cliTools, setCliToolsState] = useState<
     Partial<Record<CliToolProgram, boolean>>
   >({});
@@ -203,10 +202,6 @@ export function CliCard({
     void refreshPrograms();
     void refreshTerminals();
     void client
-      .getAgentSettings(computer.id)
-      .then((settings) => setServerConfirmDangerous(settings.confirm_dangerous))
-      .catch(() => setServerConfirmDangerous(true));
-    void client
       .getCliTools(computer.id)
       .then((result) => setCliToolsState(result.programs))
       .catch(() => setCliToolsState({}));
@@ -247,11 +242,7 @@ export function CliCard({
         const result = await client.launchCli(computer.id, {
           program: selectedProgram.id,
           ...(resumeId ? { resume_id: resumeId } : {}),
-          options: cliLaunchOptions(
-            selectedProgram,
-            stored,
-            serverConfirmDangerous,
-          ),
+          options: cliLaunchOptions(selectedProgram, stored),
           cols: DEFAULT_PTY_COLS,
           rows: DEFAULT_PTY_ROWS,
         });
@@ -277,7 +268,6 @@ export function CliCard({
       refreshChats,
       refreshTerminals,
       selectedProgram,
-      serverConfirmDangerous,
       showNotice,
       tt,
     ],
@@ -378,7 +368,6 @@ export function CliCard({
               key={`${computer.id}:${selectedProgram.id}`}
               computerId={computer.id}
               program={selectedProgram}
-              serverConfirmDangerous={serverConfirmDangerous}
               toolsEnabled={
                 isCliToolProgram(selectedProgram.id)
                   ? cliTools[selectedProgram.id]

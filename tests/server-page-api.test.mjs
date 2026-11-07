@@ -93,7 +93,7 @@ test("终端记录与节点 I9 客户端使用合同路径和方法", async () =
 test("agent 设置、本地 agent 与 CLI I9 客户端覆盖全部合同端点", async () => {
   const calls = installFetch();
   await api.getAgentSettings("cc_1");
-  await api.patchAgentSettings("cc_1", { confirm_dangerous: false });
+  await api.patchAgentSettings("cc_1", { oceanleo_tools: false });
   await api.getOceanleoAgent("cc_1");
   await api.installOceanleoAgent("cc_1");
   await api.uninstallOceanleoAgent("cc_1");
@@ -128,7 +128,7 @@ test("agent 设置、本地 agent 与 CLI I9 客户端覆盖全部合同端点",
     ],
   );
   assert.deepEqual(JSON.parse(calls[1].init.body), {
-    confirm_dangerous: false,
+    oceanleo_tools: false,
   });
   assert.deepEqual(JSON.parse(calls[7].init.body), {
     program: "cursor",
