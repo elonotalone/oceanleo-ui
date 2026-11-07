@@ -57,6 +57,15 @@ function routeError(status: number, payload: unknown): AcpSendError {
   return new AcpSendError(status, message, rpc as AcpRpcError | null, payload);
 }
 
+/**
+ * The program itself refused (a `session/set_*` answered with an error, so no
+ * prompt went out): its error is already a row of the task (`{"error":…}` body,
+ * HTTP 409). Any other failure is the gateway's, with no row behind it.
+ */
+export function refusedByAgent(error: unknown): boolean {
+  return error instanceof AcpSendError && error.status === 409 && record(record(error.payload)?.error) !== null;
+}
+
 /** The text a refusal is shown with: the error's own message, then its `data` (never reworded). */
 export function acpErrorText(error: unknown): string {
   if (error instanceof AcpSendError) {

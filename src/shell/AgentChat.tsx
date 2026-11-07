@@ -64,6 +64,7 @@ import { AcpTranscript, reduceRows } from "../acp";
 import {
   acpErrorText,
   answer as answerAcp,
+  refusedByAgent,
   close as closeAcp,
   send as sendAcp,
   stop as stopAcp,
@@ -1149,9 +1150,6 @@ function AgentChatInner({
     workspace?.taskId,
   ]);
 
-  // A computer run that is paused, stuck or stopping keeps refreshing until it is terminal.
-  // A computer task's conversation is its frames socket; only cloud tasks poll.
-  useAgentThreadPolling(computerTask ? null : taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
 
   // ---------------------------------------------------------------------
   // Computer conversations (redo 2026-10-30: one UI system)
@@ -1211,6 +1209,15 @@ function AgentChatInner({
   const sessions = useMemo(() => allSessions.filter(usableSession), [allSessions]);
   const sessionsLoaded = taskSessions.taskId === taskId && taskSessions.loaded;
   const sessionsFailed = Boolean(taskId) && taskSessions.taskId === taskId && taskSessions.failed;
+  // One program per task (ANSWER TG-U2-1). A computer task made from a program's
+  // conversation (its sessions are Claude / Codex / Cursor / Hermes chats, CLI or a
+  // terminal) is a native task: its page is the frames stream. OceanLeo — in the
+  // cloud or on a computer — keeps its own stream; a computer-mode task with no
+  // native session is OceanLeo's. Until the list is read a computer task counts as native.
+  const nativeTask = computerTask && (!sessionsLoaded || sessions.length > 0);
+  // A computer run that is paused, stuck or stopping keeps refreshing until it is terminal.
+  // A native task's conversation is its frames socket; only OceanLeo's stream polls.
+  useAgentThreadPolling(nativeTask ? null : taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
   const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
 
   // The URL names the conversation; a change from outside (back/forward, a link
@@ -1318,7 +1325,8 @@ function AgentChatInner({
         : sessionsLoaded ? computerTaskSessionsTarget(allSessions) : null)
       : taskBound;
   // A computer task talks to the programs on its computer only (its stream is their ACP rows).
-  const oceanleoDisabledReason = computerTask ? tt("要换执行位置，请新建任务") : null;
+  // A native task talks to the programs on its computer only (no OceanLeo inside it).
+  const oceanleoDisabledReason = nativeTask ? tt("要换执行位置，请新建任务") : null;
   const conversation: ConversationTarget | undefined = activeSession
     ? sessionConversation(activeSession)
     : pick
@@ -1351,8 +1359,8 @@ function AgentChatInner({
   const acpComputerId = acpTarget?.computerId ?? acpSession?.computer_id ?? null;
   const acpRowsProgram = acpSession?.program || acpProgram || "";
   /** The left pane shows this stream (a computer task, or a draft whose dock picked a program's chat). */
-  const acpShown = computerTask || (!taskId && Boolean(acpTarget));
-  const frames = useAcpFrames(computerTask && taskId ? taskId : null);
+  const acpShown = nativeTask || (!taskId && Boolean(acpTarget));
+  const frames = useAcpFrames(nativeTask && taskId ? taskId : null);
   const acpConnected = frames.state === "connected";
   const acpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
   const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
@@ -2011,10 +2019,9 @@ function AgentChatInner({
     workspace?.availability,
   ]);
 
-  // A computer task's message: POST send (or switch, when the dock names another
-  // program). A draft creates its task first. A refusal (409: the program refused
-  // a setting, so no prompt went out) is shown in the gateway's words and the
-  // composer keeps the text; the user's own row arrives on the socket.
+  // A native task's message: POST send (or switch, when the dock names another
+  // program). A draft creates its task first. On a refusal (409) the composer keeps
+  // the text; the user's own row, and the program's error row, arrive on the socket.
   async function sendAcpMessage() {
     const text = input.trim();
     const uploaded = toolsOn ? atts.ready() : [];
@@ -2056,7 +2063,9 @@ function AgentChatInner({
         setSessionsEpoch((epoch) => epoch + 1);
       }
     } catch (caught) {
-      setAcpError({ taskId: id, text: acpErrorText(caught) });
+      // The program's own refusal is its error row in the transcript (shown once there);
+      // a gateway failure has no row and is said under the composer. The text stays either way.
+      if (!refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) });
     } finally {
       setAcpBusy(false);
       if (created) await adoptCreatedTask(created.taskId, created.session, text);
@@ -2841,7 +2850,7 @@ function AgentChatInner({
           unmounted on click, so the header looked like it lost the button. Entering
           from here selects every message: 「复制链接」 works straight away. */}
       {/* A computer task's agent: Close = session/close, then the computer ends the process. */}
-      {computerTask ? (acpSession && !readOnly && (
+      {nativeTask ? (acpSession && !readOnly && (
         <button
           type="button"
           onClick={() => void closeAcpSession()}
@@ -2988,10 +2997,10 @@ function AgentChatInner({
   };
 
   // What the composer (and the bar under CLI/terminal) needs to show and switch conversations.
-  // A cloud task has no computer conversations (the dock only shows its target).
+  // An OceanLeo task has no program conversations (the dock only shows its target).
   const conversationProps = {
     conversation,
-    onConversationChange: taskId && !computerTask ? undefined : onConversationChange,
+    onConversationChange: taskId && !nativeTask ? undefined : onConversationChange,
     taskSessions: sessions,
     oceanleoDisabledReason,
   };

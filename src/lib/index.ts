@@ -59,6 +59,7 @@ export {
   getCatalog,
   getFrames,
   openFrames,
+  refusedByAgent,
   send,
   stop,
   stopTask as stopAcpTask,
