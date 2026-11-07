@@ -143,7 +143,6 @@ const vi: Record<string, string> = {
   "在「充值 / 余额」处充值（支持人民币，按量计费）。": "Nạp tiền ở mục \"Nạp tiền / Số dư\" (hỗ trợ RMB, tính phí theo mức dùng).",
   "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。": "Tại \"Suy luận trực tuyến / Điểm truy cập\", tạo điểm truy cập cho mô hình mục tiêu để nhận ID điểm truy cập (dạng ep-xxxx).",
   "在「开通管理」开通所需模型（如豆包系列）。": "Tại \"Quản lý kích hoạt\", kích hoạt các mô hình cần thiết (như dòng Doubao).",
-  "在下方输入，开始与 agent 对话。": "Nhập ở bên dưới để bắt đầu trò chuyện với agent.",
   "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。": "Trong danh sách, \"Xem / Sao chép\" khóa bắt đầu bằng sk- và lưu giữ cẩn thận (chỉ xem được đầy đủ khi tạo).",
   "在右侧选择 app 或 agent 直接试玩，无需加入工作台。": "Chọn app hoặc agent ở bên phải để dùng thử ngay, không cần thêm vào bàn làm việc.",
   "在左侧选择一条历史记录，即可在此回看该次对话与产出。": "Chọn một nhiệm vụ bên trái để tiếp tục làm việc hoặc xem cuộc trò chuyện và kết quả.",

@@ -143,7 +143,6 @@ const ptBR: Record<string, string> = {
   "在「充值 / 余额」处充值（支持人民币，按量计费）。": "Adicione créditos em \"Créditos / Saldo\" (aceita RMB, cobrança por uso).",
   "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。": "Em \"Inferência online / Pontos de acesso\", crie um ponto de acesso para o modelo desejado e obtenha o ID do ponto de acesso (no formato ep-xxxx).",
   "在「开通管理」开通所需模型（如豆包系列）。": "Em \"Gerenciar ativação\", ative os modelos necessários (como a série Doubao).",
-  "在下方输入，开始与 agent 对话。": "Digite abaixo para começar a conversar com o agent.",
   "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。": "Na lista, use \"Ver / Copiar\" para a chave que começa com sk- e guarde-a com segurança (só é possível vê-la por inteiro no momento da criação).",
   "在右侧选择 app 或 agent 直接试玩，无需加入工作台。": "Selecione um app ou agent à direita para experimentar na hora, sem adicionar à bancada.",
   "在左侧选择一条历史记录，即可在此回看该次对话与产出。": "Selecione uma tarefa à esquerda para continuar trabalhando ou ver a conversa e os resultados.",

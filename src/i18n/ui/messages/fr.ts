@@ -143,7 +143,6 @@ const fr: Record<string, string> = {
   "在「充值 / 余额」处充值（支持人民币，按量计费）。": "Rechargez dans « Recharge / Solde » (prend en charge le yuan, facturation à l'usage).",
   "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。": "Créez un point d'accès pour le modèle cible dans « Inférence en ligne / Points d'accès » afin d'obtenir un ID de point d'accès (du type ep-xxxx).",
   "在「开通管理」开通所需模型（如豆包系列）。": "Activez les modèles nécessaires (comme la série Doubao) dans « Gestion des activations ».",
-  "在下方输入，开始与 agent 对话。": "Saisissez ci-dessous pour commencer à discuter avec l'agent.",
   "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。": "« Affichez / copiez » la clé commençant par sk- dans la liste et conservez-la précieusement (visible en entier uniquement lors de la création).",
   "在右侧选择 app 或 agent 直接试玩，无需加入工作台。": "Choisissez une app ou un agent à droite pour l'essayer directement, sans l'ajouter à l'espace de travail.",
   "在左侧选择一条历史记录，即可在此回看该次对话与产出。": "Sélectionnez une tâche à gauche pour continuer ou consulter la conversation et les résultats.",

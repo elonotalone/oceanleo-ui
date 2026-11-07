@@ -4,7 +4,6 @@ import type { TaskPagePackCopy } from "./task-page-pack-copy-types";
 export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   en: {
     "已排队": "Queued",
-    "{agent} 下一步会看到": "{agent} will see it at its next step",
     "创建项目、移动任务并查看项目进度。": "Create projects, move tasks into them and track their progress.",
     "打开项目列表": "Open project list",
     "你的电脑、云电脑和云端浏览器": "Your computers, cloud computers and cloud browser",
@@ -13,7 +12,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   de: {
     "已排队": "In der Warteschlange",
-    "{agent} 下一步会看到": "{agent} sieht es beim nächsten Schritt",
     "创建项目、移动任务并查看项目进度。": "Projekte erstellen, Aufgaben verschieben und den Projektfortschritt verfolgen.",
     "打开项目列表": "Projektliste öffnen",
     "你的电脑、云电脑和云端浏览器": "Ihre Computer, Cloud-Computer und der Cloud-Browser",
@@ -22,7 +20,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   es: {
     "已排队": "En cola",
-    "{agent} 下一步会看到": "{agent} lo verá en su próximo paso",
     "创建项目、移动任务并查看项目进度。": "Crea proyectos, mueve tareas a ellos y consulta su progreso.",
     "打开项目列表": "Abrir la lista de proyectos",
     "你的电脑、云电脑和云端浏览器": "Tus ordenadores, ordenadores en la nube y el navegador en la nube",
@@ -31,7 +28,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   "es-419": {
     "已排队": "En cola",
-    "{agent} 下一步会看到": "{agent} lo verá en su próximo paso",
     "创建项目、移动任务并查看项目进度。": "Crea proyectos, mueve tareas a ellos y consulta su progreso.",
     "打开项目列表": "Abrir la lista de proyectos",
     "你的电脑、云电脑和云端浏览器": "Tus computadoras, computadoras en la nube y el navegador en la nube",
@@ -40,7 +36,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   fr: {
     "已排队": "En file d'attente",
-    "{agent} 下一步会看到": "{agent} le verra à sa prochaine étape",
     "创建项目、移动任务并查看项目进度。": "Créez des projets, déplacez-y des tâches et suivez leur avancement.",
     "打开项目列表": "Ouvrir la liste des projets",
     "你的电脑、云电脑和云端浏览器": "Vos ordinateurs, ordinateurs cloud et le navigateur cloud",
@@ -49,7 +44,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   it: {
     "已排队": "In coda",
-    "{agent} 下一步会看到": "{agent} lo vedrà al prossimo passaggio",
     "创建项目、移动任务并查看项目进度。": "Crea progetti, spostaci le attività e segui l'avanzamento.",
     "打开项目列表": "Apri l'elenco dei progetti",
     "你的电脑、云电脑和云端浏览器": "I tuoi computer, i computer cloud e il browser cloud",
@@ -58,7 +52,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   "pt-BR": {
     "已排队": "Na fila",
-    "{agent} 下一步会看到": "{agent} vai ver no próximo passo",
     "创建项目、移动任务并查看项目进度。": "Crie projetos, mova tarefas para eles e acompanhe o progresso.",
     "打开项目列表": "Abrir lista de projetos",
     "你的电脑、云电脑和云端浏览器": "Seus computadores, computadores na nuvem e o navegador na nuvem",
@@ -67,7 +60,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   "pt-PT": {
     "已排队": "Na fila",
-    "{agent} 下一步会看到": "{agent} vai vê-lo no próximo passo",
     "创建项目、移动任务并查看项目进度。": "Crie projetos, mova tarefas para eles e acompanhe o progresso.",
     "打开项目列表": "Abrir lista de projetos",
     "你的电脑、云电脑和云端浏览器": "Os seus computadores, computadores na nuvem e o navegador na nuvem",
@@ -76,7 +68,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   vi: {
     "已排队": "Đang chờ",
-    "{agent} 下一步会看到": "{agent} sẽ thấy ở bước tiếp theo",
     "创建项目、移动任务并查看项目进度。": "Tạo dự án, chuyển tác vụ vào dự án và xem tiến độ.",
     "打开项目列表": "Mở danh sách dự án",
     "你的电脑、云电脑和云端浏览器": "Máy tính của bạn, máy tính đám mây và trình duyệt đám mây",
@@ -85,7 +76,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   tr: {
     "已排队": "Sırada",
-    "{agent} 下一步会看到": "{agent} bir sonraki adımda görecek",
     "创建项目、移动任务并查看项目进度。": "Proje oluşturun, görevleri projelere taşıyın ve ilerlemeyi izleyin.",
     "打开项目列表": "Proje listesini aç",
     "你的电脑、云电脑和云端浏览器": "Bilgisayarlarınız, bulut bilgisayarlar ve bulut tarayıcısı",
@@ -94,7 +84,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   "zh-TW": {
     "已排队": "已排隊",
-    "{agent} 下一步会看到": "{agent} 下一步會看到",
     "创建项目、移动任务并查看项目进度。": "建立專案、移動任務並查看專案進度。",
     "打开项目列表": "開啟專案清單",
     "你的电脑、云电脑和云端浏览器": "你的電腦、雲電腦和雲端瀏覽器",
@@ -103,7 +92,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   ja: {
     "已排队": "キューに追加済み",
-    "{agent} 下一步会看到": "{agent} が次のステップで確認します",
     "创建项目、移动任务并查看项目进度。": "プロジェクトを作成し、タスクを移動して進捗を確認できます。",
     "打开项目列表": "プロジェクト一覧を開く",
     "你的电脑、云电脑和云端浏览器": "あなたのパソコン、クラウドパソコン、クラウドブラウザ",
@@ -112,7 +100,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   ko: {
     "已排队": "대기 중",
-    "{agent} 下一步会看到": "다음 단계에서 {agent}에게 전달됩니다",
     "创建项目、移动任务并查看项目进度。": "프로젝트를 만들고 작업을 옮기며 진행 상황을 확인하세요.",
     "打开项目列表": "프로젝트 목록 열기",
     "你的电脑、云电脑和云端浏览器": "내 컴퓨터, 클라우드 컴퓨터, 클라우드 브라우저",
@@ -121,7 +108,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   ar: {
     "已排队": "في قائمة الانتظار",
-    "{agent} 下一步会看到": "سيراه {agent} في خطوته التالية",
     "创建项目、移动任务并查看项目进度。": "أنشئ مشاريع وانقل المهام إليها وتابع تقدّمها.",
     "打开项目列表": "فتح قائمة المشاريع",
     "你的电脑、云电脑和云端浏览器": "حواسيبك والحواسيب السحابية والمتصفح السحابي",
@@ -130,7 +116,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   th: {
     "已排队": "อยู่ในคิว",
-    "{agent} 下一步会看到": "{agent} จะเห็นในขั้นตอนถัดไป",
     "创建项目、移动任务并查看项目进度。": "สร้างโปรเจกต์ ย้ายงานเข้าโปรเจกต์ และดูความคืบหน้า",
     "打开项目列表": "เปิดรายการโปรเจกต์",
     "你的电脑、云电脑和云端浏览器": "คอมพิวเตอร์ของคุณ คอมพิวเตอร์คลาวด์ และเบราว์เซอร์คลาวด์",
@@ -139,7 +124,6 @@ export const TASK_PAGE_PACK_PARENT_COPY: TaskPagePackCopy = {
   },
   hi: {
     "已排队": "कतार में",
-    "{agent} 下一步会看到": "{agent} इसे अगले चरण में देखेगा",
     "创建项目、移动任务并查看项目进度。": "प्रोजेक्ट बनाएँ, उनमें कार्य ले जाएँ और प्रगति देखें।",
     "打开项目列表": "प्रोजेक्ट सूची खोलें",
     "你的电脑、云电脑和云端浏览器": "आपके कंप्यूटर, क्लाउड कंप्यूटर और क्लाउड ब्राउज़र",

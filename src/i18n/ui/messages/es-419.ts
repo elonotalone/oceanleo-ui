@@ -143,7 +143,6 @@ const es419: Record<string, string> = {
   "在「充值 / 余额」处充值（支持人民币，按量计费）。": "Recarga en «Recargar / Saldo» (admite yuanes, pago por consumo).",
   "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。": "En «Inferencia en línea / Puntos de acceso» crea un punto de acceso para el modelo deseado y obtén su ID (con el formato ep-xxxx).",
   "在「开通管理」开通所需模型（如豆包系列）。": "Activa los modelos que necesites (como la serie 豆包) en «Administración de activación».",
-  "在下方输入，开始与 agent 对话。": "Escribe abajo para empezar a conversar con el agent.",
   "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。": "En la lista, «ver / copiar» la clave que empieza con sk- y guárdala bien (solo se puede ver completa al crearla).",
   "在右侧选择 app 或 agent 直接试玩，无需加入工作台。": "Selecciona a la derecha un app o un agent para probarlo directamente, sin agregarlo al panel de trabajo.",
   "在左侧选择一条历史记录，即可在此回看该次对话与产出。": "Selecciona una tarea a la izquierda para seguir trabajando o ver la conversación y los resultados.",

@@ -147,7 +147,6 @@ const en: Record<string, string> = {
   "在「充值 / 余额」处充值（支持人民币，按量计费）。": "Top up under \"Top up / Balance\" (supports CNY, pay as you go).",
   "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。": "Create an endpoint for the target model under \"Online Inference / Endpoints\" to get an endpoint ID (like ep-xxxx).",
   "在「开通管理」开通所需模型（如豆包系列）。": "Enable the models you need (such as the Doubao series) under \"Access Management\".",
-  "在下方输入，开始与 agent 对话。": "Enter below to start chatting with the agent.",
   "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。": "\"View / copy\" the key starting with sk- from the list and store it safely (full view only at creation time).",
   "在右侧选择 app 或 agent 直接试玩，无需加入工作台。": "Pick an app or agent on the right to try it directly, no need to add to the workspace.",
   "在左侧选择一条历史记录，即可在此回看该次对话与产出。": "Select a task on the left to continue working or view its conversation and outputs.",

@@ -143,7 +143,6 @@ const tr: Record<string, string> = {
   "在「充值 / 余额」处充值（支持人民币，按量计费）。": "\"Bakiye yükle / Bakiye\" bölümünden bakiye yükle (RMB destekler, kullandıkça öde).",
   "在「在线推理 / 接入点」为目标模型创建接入点，得到接入点 ID（形如 ep-xxxx）。": "\"Çevrimiçi çıkarım / Erişim noktaları\"nda hedef model için bir erişim noktası oluştur ve erişim noktası kimliğini al (ep-xxxx biçiminde).",
   "在「开通管理」开通所需模型（如豆包系列）。": "\"Etkinleştirme yönetimi\"nden gerekli modelleri etkinleştir (örneğin Doubao serisi).",
-  "在下方输入，开始与 agent 对话。": "agent ile sohbete başlamak için aşağıya yaz.",
   "在列表中「查看 / 复制」以 sk- 开头的密钥，妥善保存（仅创建时可完整查看）。": "Listede sk- ile başlayan anahtarı \"Gör / Kopyala\" ile alıp güvenle sakla (yalnızca oluşturma anında tam olarak görülebilir).",
   "在右侧选择 app 或 agent 直接试玩，无需加入工作台。": "Sağdan bir app ya da agent seçip hemen dene; çalışma tezgahına eklemene gerek yok.",
   "在左侧选择一条历史记录，即可在此回看该次对话与产出。": "Çalışmaya devam etmek veya konuşmayı ve çıktıları görmek için soldan bir görev seç.",

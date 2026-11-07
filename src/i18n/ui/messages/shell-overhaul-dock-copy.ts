@@ -86,9 +86,6 @@ const SOURCE = {
   keySaveFailed: "Key 没存上。稍后再试。",
   keyRemoveFailed: "移除没成功。稍后再试。",
   acpExited: "这个程序的对话进程退出了，重新发一句会再启动。",
-  dialogDetached: "对话连接断了，进程还在。再发一句会接上。",
-  permissionLost: "这一步要你确认的权限请求在网关重启时失效了，已自动取消。需要的话再发一句让它重试。",
-  turnInterrupted: "网关重启时这一轮被中断了。再发一句，它会接着做。",
   alreadyInstalled: "这个程序已经装好了。",
 } as const;
 
@@ -175,9 +172,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "The key was not saved. Try again later.",
     keyRemoveFailed: "The key was not removed. Try again later.",
     acpExited: "This program’s chat process exited. Send another message to start it again.",
-    dialogDetached: "The dialog connection dropped. The process is still running. Send again to reconnect.",
-    permissionLost: "A permission request expired when the gateway restarted and was cancelled. Send again to retry.",
-    turnInterrupted: "This turn was interrupted when the gateway restarted. Send again to continue.",
     alreadyInstalled: "This program is already installed.",
   },
   de: {
@@ -262,9 +256,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Der Key wurde nicht gespeichert. Versuchen Sie es später erneut.",
     keyRemoveFailed: "Der Key wurde nicht entfernt. Versuchen Sie es später erneut.",
     acpExited: "Der Dialogprozess dieses Programms wurde beendet. Senden Sie erneut eine Nachricht, um ihn wieder zu starten.",
-    dialogDetached: "Die Dialogverbindung ist getrennt. Der Prozess läuft weiter. Senden Sie erneut, um wieder zu verbinden.",
-    permissionLost: "Eine Berechtigungsanfrage ist beim Neustart des Gateways verfallen und wurde abgebrochen. Senden Sie erneut, um es zu wiederholen.",
-    turnInterrupted: "Diese Runde wurde beim Neustart des Gateways unterbrochen. Senden Sie erneut, um fortzufahren.",
     alreadyInstalled: "Dieses Programm ist bereits installiert.",
   },
   es: {
@@ -349,9 +340,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La key no se guardó. Inténtalo más tarde.",
     keyRemoveFailed: "La key no se eliminó. Inténtalo más tarde.",
     acpExited: "El proceso de diálogo de este programa se cerró. Envía otro mensaje para iniciarlo de nuevo.",
-    dialogDetached: "La conexión del diálogo se cortó. El proceso sigue en marcha. Envía otra frase para reconectar.",
-    permissionLost: "Una solicitud de permiso caducó al reiniciarse el gateway y se canceló. Envía otra frase para reintentarlo.",
-    turnInterrupted: "Este turno se interrumpió al reiniciarse el gateway. Envía otra frase para continuar.",
     alreadyInstalled: "Este programa ya está instalado.",
   },
   "es-419": {
@@ -436,9 +424,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La key no se guardó. Intenta más tarde.",
     keyRemoveFailed: "La key no se eliminó. Intenta más tarde.",
     acpExited: "El proceso de diálogo de este programa se cerró. Envía otro mensaje para iniciarlo de nuevo.",
-    dialogDetached: "La conexión del diálogo se cortó. El proceso sigue en marcha. Envía otra frase para reconectar.",
-    permissionLost: "Una solicitud de permiso caducó al reiniciarse el gateway y se canceló. Envía otra frase para reintentarlo.",
-    turnInterrupted: "Este turno se interrumpió al reiniciarse el gateway. Envía otra frase para continuar.",
     alreadyInstalled: "Este programa ya está instalado.",
   },
   fr: {
@@ -523,9 +508,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La clé n’a pas été enregistrée. Réessayez plus tard.",
     keyRemoveFailed: "La clé n’a pas été supprimée. Réessayez plus tard.",
     acpExited: "Le processus de dialogue de ce programme s’est arrêté. Renvoyez un message pour le relancer.",
-    dialogDetached: "La connexion du dialogue s’est coupée. Le processus tourne encore. Renvoyez un message pour le reprendre.",
-    permissionLost: "Une demande d’autorisation a expiré au redémarrage de la passerelle et a été annulée. Renvoyez un message pour réessayer.",
-    turnInterrupted: "Ce tour a été interrompu au redémarrage de la passerelle. Renvoyez un message pour continuer.",
     alreadyInstalled: "Ce programme est déjà installé.",
   },
   it: {
@@ -610,9 +592,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "La key non è stata salvata. Riprova più tardi.",
     keyRemoveFailed: "La rimozione non è riuscita. Riprova più tardi.",
     acpExited: "Il processo di dialogo di questo programma è terminato. Invia un altro messaggio per riavviarlo.",
-    dialogDetached: "La connessione del dialogo si è interrotta. Il processo è ancora in esecuzione. Invia di nuovo per ricollegarti.",
-    permissionLost: "Una richiesta di autorizzazione è scaduta al riavvio del gateway ed è stata annullata. Invia di nuovo per riprovare.",
-    turnInterrupted: "Questo turno è stato interrotto al riavvio del gateway. Invia di nuovo per continuare.",
     alreadyInstalled: "Questo programma è già installato.",
   },
   "pt-BR": {
@@ -697,9 +676,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "A key não foi salva. Tente mais tarde.",
     keyRemoveFailed: "A remoção não funcionou. Tente mais tarde.",
     acpExited: "O processo de diálogo deste programa terminou. Envie outra mensagem para iniciá-lo de novo.",
-    dialogDetached: "A ligação do diálogo caiu. O processo continua a correr. Envie outra mensagem para voltar a ligar.",
-    permissionLost: "Uma solicitação de permissão expirou quando o gateway reiniciou e foi cancelada. Envie outra mensagem para tentar de novo.",
-    turnInterrupted: "Esta etapa foi interrompida quando o gateway reiniciou. Envie outra mensagem para continuar.",
     alreadyInstalled: "Este programa já está instalado.",
   },
   "pt-PT": {
@@ -784,9 +760,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "A key não foi guardada. Tente mais tarde.",
     keyRemoveFailed: "A remoção falhou. Tente mais tarde.",
     acpExited: "O processo de diálogo deste programa terminou. Envie outra mensagem para o iniciar de novo.",
-    dialogDetached: "A conexão do diálogo caiu. O processo continua em execução. Envie outra mensagem para reconectar.",
-    permissionLost: "Um pedido de permissão expirou quando o gateway reiniciou e foi cancelado. Envie outra mensagem para tentar de novo.",
-    turnInterrupted: "Esta etapa foi interrompida quando o gateway reiniciou. Envie outra mensagem para continuar.",
     alreadyInstalled: "Este programa já está instalado.",
   },
   vi: {
@@ -871,9 +844,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Chưa lưu được key. Thử lại sau.",
     keyRemoveFailed: "Chưa gỡ được. Thử lại sau.",
     acpExited: "Tiến trình hội thoại của chương trình này đã thoát, gửi thêm một câu sẽ khởi động lại.",
-    dialogDetached: "Kết nối hội thoại bị ngắt, tiến trình vẫn chạy. Gửi lại một câu sẽ nối tiếp.",
-    permissionLost: "Yêu cầu cấp quyền đã hết hiệu lực khi gateway khởi động lại và đã bị hủy. Gửi lại để thử lại.",
-    turnInterrupted: "Lượt này bị gián đoạn khi gateway khởi động lại. Gửi lại một câu để tiếp tục.",
     alreadyInstalled: "Chương trình này đã được cài.",
   },
   tr: {
@@ -958,9 +928,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key kaydedilemedi. Daha sonra tekrar deneyin.",
     keyRemoveFailed: "Kaldırma başarısız. Daha sonra tekrar deneyin.",
     acpExited: "Bu programın diyalog süreci kapandı. Yeniden başlatmak için bir mesaj daha gönderin.",
-    dialogDetached: "Diyalog bağlantısı koptu. Süreç hâlâ çalışıyor. Yeniden bağlanmak için tekrar gönderin.",
-    permissionLost: "Bir izin isteği ağ geçidi yeniden başlarken geçersiz oldu ve iptal edildi. Yeniden denemek için tekrar gönderin.",
-    turnInterrupted: "Bu tur ağ geçidi yeniden başlarken kesildi. Devam etmek için tekrar gönderin.",
     alreadyInstalled: "Bu program zaten kurulu.",
   },
   "zh-TW": {
@@ -1045,9 +1012,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key 沒存上。稍後再試。",
     keyRemoveFailed: "移除沒成功。稍後再試。",
     acpExited: "這個程式的對話處理程序結束了，重新發一句會再啟動。",
-    dialogDetached: "對話連線斷了，處理程序還在。再發一句會接上。",
-    permissionLost: "這一步要你確認的權限請求在閘道重啟時失效了，已自動取消。需要的話再發一句讓它重試。",
-    turnInterrupted: "閘道重啟時這一輪被中斷了。再發一句，它會接著做。",
     alreadyInstalled: "這個程式已經裝好了。",
   },
   ja: {
@@ -1132,9 +1096,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key を保存できませんでした。後でもう一度試してください。",
     keyRemoveFailed: "削除できませんでした。後でもう一度試してください。",
     acpExited: "このプログラムの対話プロセスが終了しました。もう一文送ると再起動します。",
-    dialogDetached: "対話の接続が切れましたが、プロセスは残っています。もう一文送るとつながります。",
-    permissionLost: "確認待ちだった権限リクエストはゲートウェイの再起動で無効になり、取り消されました。必要ならもう一度送ってください。",
-    turnInterrupted: "ゲートウェイの再起動でこのターンが中断されました。もう一文送ると続きから再開します。",
     alreadyInstalled: "このプログラムはすでにインストールされています。",
   },
   ko: {
@@ -1219,9 +1180,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key를 저장하지 못했습니다. 나중에 다시 시도하세요.",
     keyRemoveFailed: "제거하지 못했습니다. 나중에 다시 시도하세요.",
     acpExited: "이 프로그램의 대화 프로세스가 종료되었습니다. 다시 한 문장 보내면 다시 시작됩니다.",
-    dialogDetached: "대화 연결이 끊겼지만 프로세스는 살아 있습니다. 다시 한 문장 보내면 이어집니다.",
-    permissionLost: "확인을 기다리던 권한 요청이 게이트웨이 재시작으로 만료되어 취소되었습니다. 필요하면 다시 보내 주세요.",
-    turnInterrupted: "게이트웨이 재시작으로 이번 턴이 중단되었습니다. 다시 한 문장 보내면 이어서 진행합니다.",
     alreadyInstalled: "이 프로그램은 이미 설치되어 있습니다.",
   },
   ar: {
@@ -1306,9 +1264,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "لم يُحفظ المفتاح. حاول لاحقًا.",
     keyRemoveFailed: "لم تنجح الإزالة. حاول لاحقًا.",
     acpExited: "توقفت عملية الحوار لهذا البرنامج. أرسل رسالة أخرى لإعادة تشغيلها.",
-    dialogDetached: "انقطع اتصال الحوار، لكن العملية ما زالت تعمل. أرسل مرة أخرى لإعادة الوصل.",
-    permissionLost: "انتهت صلاحية طلب إذن عند إعادة تشغيل البوابة وأُلغي. أرسل مرة أخرى لإعادة المحاولة.",
-    turnInterrupted: "توقفت هذه الجولة عند إعادة تشغيل البوابة. أرسل مرة أخرى للمتابعة.",
     alreadyInstalled: "هذا البرنامج مثبت بالفعل.",
   },
   th: {
@@ -1393,9 +1348,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "บันทึก key ไม่สำเร็จ ลองใหม่ภายหลัง",
     keyRemoveFailed: "ลบไม่สำเร็จ ลองใหม่ภายหลัง",
     acpExited: "โปรเซสสนทนาของโปรแกรมนี้ปิดไปแล้ว ส่งข้อความอีกครั้งเพื่อเริ่มใหม่",
-    dialogDetached: "การเชื่อมต่อบทสนทนาขาด แต่โปรเซสยังทำงาน ส่งอีกครั้งเพื่อต่อใหม่",
-    permissionLost: "คำขอสิทธิ์หมดอายุเมื่อเกตเวย์รีสตาร์ตและถูกยกเลิกแล้ว ส่งอีกครั้งเพื่อลองใหม่",
-    turnInterrupted: "รอบนี้ถูกขัดจังหวะเมื่อเกตเวย์รีสตาร์ต ส่งอีกครั้งเพื่อทำต่อ",
     alreadyInstalled: "โปรแกรมนี้ติดตั้งอยู่แล้ว",
   },
   hi: {
@@ -1480,9 +1432,6 @@ export const SHELL_OVERHAUL_DOCK_MESSAGES = assembleCopy(SOURCE, {
     keySaveFailed: "Key सहेजी नहीं गई। बाद में फिर कोशिश करें।",
     keyRemoveFailed: "हटाया नहीं गया। बाद में फिर कोशिश करें।",
     acpExited: "इस प्रोग्राम की बातचीत प्रक्रिया बंद हो गई। फिर एक संदेश भेजने से वह फिर शुरू होगी।",
-    dialogDetached: "बातचीत का कनेक्शन टूट गया, प्रक्रिया अभी चल रही है। फिर से भेजने पर जुड़ जाएगी।",
-    permissionLost: "गेटवे के रीस्टार्ट होने पर अनुमति का अनुरोध समाप्त हो गया और रद्द कर दिया गया। फिर से कोशिश करने के लिए दोबारा भेजें।",
-    turnInterrupted: "गेटवे के रीस्टार्ट होने पर यह चरण बीच में रुक गया। जारी रखने के लिए दोबारा भेजें।",
     alreadyInstalled: "यह प्रोग्राम पहले से इंस्टॉल है।",
   },
 });

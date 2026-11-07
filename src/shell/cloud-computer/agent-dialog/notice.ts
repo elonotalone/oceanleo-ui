@@ -55,12 +55,6 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
     case "computer_reconnecting":
     case "dialog_unreachable":
       return tt("正在重新连接这台电脑。");
-    case "dialog_detached":
-      return tt("对话连接断了，进程还在。再发一句会接上。");
-    case "permission_lost":
-      return tt("这一步要你确认的权限请求在网关重启时失效了，已自动取消。需要的话再发一句让它重试。");
-    case "turn_interrupted":
-      return tt("网关重启时这一轮被中断了。再发一句，它会接着做。");
     case "computer_not_confirmed":
       return tt("这台电脑还没确认。");
     case "not_owner":
@@ -76,8 +70,6 @@ export function noticeCopy(tt: Translate, code: string, installed: boolean | nul
     case "gateway_error":
       // The gateway itself failed (not the user's computer or its program).
       return tt(GATEWAY_ERROR_COPY);
-    case "session_load_timeout":
-      return tt("这段对话打开得太久了，已重试过一次。请再点一下它，或稍后再试。");
     case "feature_disabled":
       return tt("这个功能在当前站点不可用。");
     case "acp_start_failed":
