@@ -3,8 +3,7 @@
 // ----------------------------------------------------------------------------
 // `initialTask` paints the conversation at once and AgentChat does not GET the
 // same task again (no mount fetch, no first poll for a finished task). A seed
-// for another task is ignored. A native send the computer refused puts its text
-// back into an empty composer (thread.restoredDraft). Harness: the same stubs as
+// for another task is ignored. Harness: the same stubs as
 // agent-chat-conversations.test.mjs, with getTask calls counted.
 // ============================================================================
 
@@ -171,58 +170,6 @@ const OVERRIDES = {
     export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
   `),
   "./plugin-command": dataModule("export function currentPluginCommandSurface(){ return null; }"),
-  // The thread stub keeps the real hook's pending contract: queue() shows the bubble at
-  // once, it goes out once ready, a blocked one is marked unsent (never handed back).
-  "./native-thread": dataModule(`
-    import React from ${reactUrl};
-    globalThis.__threadInputs = []; globalThis.__sent = []; globalThis.__threadStops = 0;
-    // A held-back send asks the composer pill to open its 账号 card (count of requests).
-    export const NativeSetupRequest = React.createContext(0);
-    export function useNativeThread(input) {
-      globalThis.__threadInputs.push(input);
-      const state = { ...(globalThis.__thread || {}) };
-      const live = Boolean(input.session && input.enabled && input.computer && input.computer.node_online && state.live !== false);
-      const ready = live && !state.blockedReason && state.ready !== false;
-      const blockedReason = input.session ? state.blockedReason || null : null;
-      const [pending, setPending] = React.useState(null);
-      const pendingRef = React.useRef(pending);
-      pendingRef.current = pending;
-      const send = async (text) => { globalThis.__sent.push({ session: input.session && input.session.id, text }); return state.sendResult ?? true; };
-      React.useEffect(() => {
-        if (!pending || pending.unsent || pending.sending) return;
-        if (ready) {
-          const sending = { ...pending, sending: true };
-          setPending(sending);
-          void send(pending.text).then((ok) => setPending((current) => current === sending ? (ok ? null : { ...pending, unsent: "没能发出去，请重试。" }) : current));
-        } else if (blockedReason && input.computer) setPending({ ...pending, unsent: blockedReason });
-      }, [pending, ready, blockedReason]);
-      const bubble = pending ? [{ id: -2147483648, role: "user", kind: "text", content: pending.text, meta: { native: true, native_pending: true, ...(pending.unsent ? { native_unsent: true } : {}) } }] : [];
-      return {
-        messages: [...(input.session ? (state.messages || []) : []), ...bubble], live, draft: !input.session, running: false,
-        ready,
-        offline: Boolean(input.computer && !input.computer.node_online),
-        blockedReason,
-        send,
-        stop() { globalThis.__threadStops++; },
-        answer(message, answer) { (globalThis.__answers ||= []).push({ id: message.id, answer }); },
-        composerAttachments: state.attachments || [], onAttachFiles: undefined, onRemoveAttachment() {},
-        modelPicker: null, hasOlder: false, loadOlder() {}, saveFailed: Boolean(state.saveFailed), dialog: { stub: true, activeSession: "" },
-        pending: pending ? { text: pending.text, unsent: pending.unsent ?? null } : null,
-        restoredDraft: state.restoredDraft ?? null,
-        queue(text) {
-          if (pendingRef.current && !pendingRef.current.unsent) return false;
-          if (!text && !(state.attachments || []).length) return false;
-          (globalThis.__queued ||= []).push(text);
-          const next = { text, unsent: null };
-          pendingRef.current = next;
-          setPending(next);
-          return true;
-        },
-        markUnsent(reason) { setPending((current) => current && !current.unsent ? { ...current, sending: false, unsent: reason } : current); },
-        retry() { setPending((current) => current && current.unsent ? { text: current.text, unsent: null } : current); },
-      };
-    }
-  `),
   "./cloud-computer/ConversationBar": dataModule(`
     import React from ${reactUrl};
     export function ConversationBar(props) {
@@ -323,28 +270,4 @@ test("a seed for another task is ignored", async () => {
   try {
     assert.ok(globalThis.__getTaskCalls.includes("t1"));
   } finally { await view.unmount(); }
-});
-
-test("a refused native send restores each message once and preserves the current draft", async () => {
-  const task = { task: { id: "t1", status: "completed", title: "elon · codex", mode: "agent", plan: {} }, messages: [], artifacts: [] };
-  const sessions = [{ id: "cts_codex", task_id: "t1", computer_id: "cc_elon", computer_name: "elon", kind: "acp", program: "codex",
-    native_session_id: "nat-1", created_at: "", updated_at: "2026-10-30T11:00:00Z", sync_status: "saved" }];
-  globalThis.__thread = { messages: [], restoredDraft: null };
-  const view = await mount({ taskId: "t1", computerSession: "cts_codex" }, { task, sessions });
-  try {
-    assert.ok(view.composer("native"), "the native composer is shown");
-    globalThis.__thread = { messages: [], restoredDraft: { seq: 1, text: "我刚打的字" } };
-    await view.rerender({ taskId: "t1" });
-    assert.equal(view.composer("native").__props.value, "我刚打的字");
-    // Typing something else, then a re-render with the same restore: nothing is overwritten.
-    await act(async () => { view.composer("native").__props.onChange("新内容"); });
-    await view.rerender({ taskId: "t1" });
-    assert.equal(view.composer("native").__props.value, "新内容");
-    // Native draft recovery now appends the refused message, preserving typed text.
-    globalThis.__thread = { messages: [], restoredDraft: { seq: 2, text: "第二次" } };
-    await view.rerender({ taskId: "t1" });
-    assert.equal(view.composer("native").__props.value, "新内容\n\n第二次");
-    await view.rerender({ taskId: "t1" });
-    assert.equal(view.composer("native").__props.value, "新内容\n\n第二次");
-  } finally { await view.unmount(); globalThis.__thread = null; }
 });
