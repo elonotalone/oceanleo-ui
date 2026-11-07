@@ -134,3 +134,14 @@ export function chatFileMatches(file: LibraryChatFile, filter: { query: string; 
   const category = filter.category && filter.category !== "all" ? normalizeLibraryCategory(filter.category) : "";
   return !category || chatFileCategory(file) === category;
 }
+
+/**
+ * A Library artifact the server put in 来自 LeoChat (`librarySource: "leochat"`): same search and type filter as a
+ * chat file, so the section reads as one list (ANSWER LU-1, 2026-11-07).
+ */
+export function libraryItemMatches(item: LibraryItem, filter: { query: string; category: string }): boolean {
+  const query = filter.query.trim().toLowerCase();
+  if (query && !item.title.toLowerCase().includes(query)) return false;
+  const category = filter.category && filter.category !== "all" ? normalizeLibraryCategory(filter.category) : "";
+  return !category || libraryEditorCategory(item) === category;
+}

@@ -9,7 +9,14 @@ import { SkeletonCard, timeAgo } from "../ui";
 import { COLLECTION_ACTION_BTN_PRIMARY, CollectionCardGrid, CollectionInfiniteSentinel } from "./collection-chrome";
 import { CollectionItemCard, CollectionItemList, CollectionItemRow } from "./collection-items";
 import { libraryEditorLabel, translateLibraryTypeLabel } from "./library-editor-category";
-import { chatFileLibraryItem, chatFileMatches, listLibraryChatFiles, type LibraryChatFile } from "./library-chat-files";
+import {
+  chatFileLibraryItem,
+  chatFileMatches,
+  libraryItemMatches,
+  listLibraryChatFiles,
+  type LibraryChatFile,
+} from "./library-chat-files";
+import type { LibraryItem } from "./library-data";
 import { formatBytes } from "./messages/conversation/AttachmentView";
 import { openMessages } from "./messages/host-state";
 import { WorkspaceKindIcon } from "./workspace-library-thumbnail";
@@ -20,6 +27,18 @@ export interface LibraryChatFilesProps {
   category: string;
   view: "grid" | "list";
   className?: string;
+  /** Library artifacts the server put in this section (`librarySource: "leochat"`); listed with the files, newest first. */
+  artifacts?: readonly LibraryItem[];
+  onOpenArtifact?: (item: LibraryItem) => void;
+}
+
+type ChatRow =
+  | { type: "file"; key: string; at: number; file: LibraryChatFile }
+  | { type: "artifact"; key: string; at: number; item: LibraryItem };
+
+function timeOf(value: string | null | undefined): number {
+  const at = Date.parse(value || "");
+  return Number.isFinite(at) ? at : 0;
 }
 
 /** 与服务端默认页大小一致（`library_chat_files.py` PAGE_DEFAULT）。 */
@@ -82,7 +101,14 @@ function openFile(file: LibraryChatFile) {
   window.open(file.url, "_blank", "noopener,noreferrer");
 }
 
-export function LibraryChatFiles({ query, category, view, className = "" }: LibraryChatFilesProps) {
+export function LibraryChatFiles({
+  query,
+  category,
+  view,
+  className = "",
+  artifacts = [],
+  onOpenArtifact,
+}: LibraryChatFilesProps) {
   const tt = useUI();
   const [items, setItems] = useState<LibraryChatFile[]>([]);
   const [next, setNext] = useState<string | null>(null);
@@ -115,7 +141,49 @@ export function LibraryChatFiles({ query, category, view, className = "" }: Libr
     return () => controllerRef.current?.abort();
   }, [load]);
 
-  const visible = useMemo(() => items.filter((file) => chatFileMatches(file, { query, category })), [items, query, category]);
+  // Files keep the server's order (newest message first); artifacts are merged in by time, newest first.
+  const visible = useMemo<ChatRow[]>(() => {
+    const files = items
+      .filter((file) => chatFileMatches(file, { query, category }))
+      .map((file): ChatRow => ({ type: "file", key: `file:${file.id}`, at: timeOf(file.created_at), file }));
+    const saved = artifacts
+      .filter((item) => libraryItemMatches(item, { query, category }))
+      .map((item): ChatRow => ({ type: "artifact", key: `artifact:${item.key}`, at: timeOf(item.createdAt), item }))
+      .sort((a, b) => b.at - a.at);
+    const rows: ChatRow[] = [];
+    let f = 0;
+    let a = 0;
+    while (f < files.length || a < saved.length) {
+      if (a >= saved.length || (f < files.length && files[f].at >= saved[a].at)) rows.push(files[f++]);
+      else rows.push(saved[a++]);
+    }
+    return rows;
+  }, [artifacts, items, query, category]);
+  const rowProps = (row: ChatRow, compact: boolean) =>
+    row.type === "file"
+      ? {
+          cover: <FileCover file={row.file} tt={tt} compact={compact} />,
+          title: row.file.name,
+          metadata: fileMetadata(row.file, tt),
+          onOpen: () => openFile(row.file),
+          actions: <FileActions file={row.file} tt={tt} />,
+          containerProps: { "data-library-chat-file": row.file.id },
+        }
+      : {
+          cover: (
+            <span className={`grid h-full w-full place-items-center ${compact ? "scale-90" : ""}`}>
+              <WorkspaceKindIcon
+                kind={row.item.kind}
+                accent={ACCENT}
+                label={translateLibraryTypeLabel(tt, libraryEditorLabel(row.item))}
+              />
+            </span>
+          ),
+          title: row.item.title,
+          metadata: row.item.createdAt ? timeAgo(row.item.createdAt, tt) : "",
+          onOpen: () => onOpenArtifact?.(row.item),
+          containerProps: { "data-library-chat-artifact": row.item.artifactId || row.item.id },
+        };
   const retry = error ? (
     <button type="button" data-library-chat-files-retry="" onClick={() => void load(error.cursor)} className={COLLECTION_ACTION_BTN_PRIMARY}>
       {tt("重试")}
@@ -123,7 +191,8 @@ export function LibraryChatFiles({ query, category, view, className = "" }: Libr
   ) : null;
 
   let shelf: ReactNode;
-  if (loading && items.length === 0) {
+  const nothingYet = items.length === 0 && artifacts.length === 0;
+  if (loading && nothingYet) {
     shelf = (
       <div role="status" aria-label={tt("正在加载…")} data-library-chat-files-loading="">
         {view === "list" ? (
@@ -137,11 +206,11 @@ export function LibraryChatFiles({ query, category, view, className = "" }: Libr
         )}
       </div>
     );
-  } else if (error && items.length === 0) {
+  } else if (error && nothingYet) {
     shelf = error.status === 401
       ? <WorkspaceLibraryEmpty title={tt("登录后查看 LeoChat 里的文件")} description="" />
       : <WorkspaceLibraryEmpty title={tt(error.message)} description="" cta={retry} />;
-  } else if (items.length === 0) {
+  } else if (nothingYet) {
     // 这一页全被跳过但后面还有页：不说「没有文件」，交给下面的哨兵接着读。
     shelf = next ? null : <WorkspaceLibraryEmpty title={tt("LeoChat 里还没有收发过文件")} description="" />;
   } else if (visible.length === 0) {
@@ -149,32 +218,16 @@ export function LibraryChatFiles({ query, category, view, className = "" }: Libr
   } else if (view === "list") {
     shelf = (
       <CollectionItemList>
-        {visible.map((file) => (
-          <CollectionItemRow
-            key={file.id}
-            cover={<FileCover file={file} tt={tt} compact />}
-            title={file.name}
-            metadata={fileMetadata(file, tt)}
-            onOpen={() => openFile(file)}
-            actions={<FileActions file={file} tt={tt} />}
-            containerProps={{ "data-library-chat-file": file.id }}
-          />
+        {visible.map((row) => (
+          <CollectionItemRow key={row.key} {...rowProps(row, true)} />
         ))}
       </CollectionItemList>
     );
   } else {
     shelf = (
       <CollectionCardGrid>
-        {visible.map((file) => (
-          <CollectionItemCard
-            key={file.id}
-            cover={<FileCover file={file} tt={tt} />}
-            title={file.name}
-            metadata={fileMetadata(file, tt)}
-            onOpen={() => openFile(file)}
-            actions={<FileActions file={file} tt={tt} />}
-            containerProps={{ "data-library-chat-file": file.id }}
-          />
+        {visible.map((row) => (
+          <CollectionItemCard key={row.key} {...rowProps(row, false)} />
         ))}
       </CollectionCardGrid>
     );
@@ -189,7 +242,7 @@ export function LibraryChatFiles({ query, category, view, className = "" }: Libr
           </p>
         ) : null}
         {shelf}
-        {items.length > 0 && error ? (
+        {!nothingYet && error ? (
           <div role="alert" className="flex items-center justify-center gap-3 py-3 text-[12px] text-[var(--fg-2,#57534e)]">
             <span>{tt(error.message)}</span>
             {retry}

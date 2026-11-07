@@ -121,8 +121,10 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   `),
   "./LibraryChatFiles": dataModule(`
     import { createElement as h } from "${reactUrl}";
-    export function LibraryChatFiles({query, category, view}){
-      return h("div", {"data-chat-files-stub": "", "data-query": query, "data-category": category, "data-view": view});
+    export function LibraryChatFiles({query, category, view, artifacts = [], onOpenArtifact}){
+      return h("div", {"data-chat-files-stub": "", "data-query": query, "data-category": category, "data-view": view,
+        "data-artifacts": artifacts.map((item) => item.artifactId).join(",")},
+        ...artifacts.map((item) => h("button", {key: item.artifactId, "data-open-artifact": item.artifactId, onClick: () => onOpenArtifact?.(item)})));
     }
   `),
   "./library-folder-upload": dataModule(`
@@ -329,6 +331,21 @@ test("来自 LeoChat shows the chat files view with the page's search, type and 
     assert.equal(chat.getAttribute("data-category"), "all");
     assert.equal(chat.getAttribute("data-view"), "grid");
     assert.equal(view.container.querySelector("[data-grid]"), null);
+  } finally {
+    await view.unmount();
+  }
+});
+
+test("来自 LeoChat also lists Library artifacts tagged leochat (ANSWER LU-1) and opens them like any Library item", async () => {
+  const opened = [];
+  const view = await mount({ onOpenItem: (picked) => opened.push(picked.artifactId) }, { items: [...ITEMS, item("chat-card", "leochat")] });
+  try {
+    await view.click("leochat");
+    assert.ok(globalThis.__lu.mineCalls.some((call) => call.source === "leochat"));
+    const chat = view.container.querySelector("[data-chat-files-stub]");
+    assert.equal(chat.getAttribute("data-artifacts"), "chat-card");
+    await act(async () => view.container.querySelector('[data-open-artifact="chat-card"]').click());
+    assert.deepEqual(opened, ["chat-card"]);
   } finally {
     await view.unmount();
   }

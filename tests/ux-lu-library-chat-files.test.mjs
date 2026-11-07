@@ -309,3 +309,43 @@ test("a first page whose items were all skipped does not claim there are no file
   assert.deepEqual(cards(ui.container).map((node) => node.getAttribute("data-library-chat-file")), ["m2:0"]);
   await ui.unmount();
 });
+
+// ANSWER LU-1 (parent, 2026-11-07): Library artifacts with librarySource "leochat" are listed in the same section,
+// one list, newest first, so no item is ever invisible.
+test("leochat artifacts join the files in one newest-first list, filtered alike, opening in Library", async () => {
+  reset([{ body: { items: [sent, received], next: null } }]);
+  const opened = [];
+  const artifact = (id, title, createdAt) => ({
+    key: `artifact:${id}:r1`, source: "artifact", id, artifactId: id, revisionId: "r1", title, kind: "document",
+    siteId: "", favorite: false, meta: {}, createdAt,
+  });
+  const artifacts = [artifact("a-old", "旧的聊天卡片", "2026-11-01T00:00:00Z"), artifact("a-mid", "保存的聊天卡片", "2026-11-05T12:00:00Z")];
+  const ui = mount();
+  await ui.render({ query: "", category: "all", view: "grid", artifacts, onOpenArtifact: (item) => opened.push(item.id) });
+  await settle();
+  const order = [...ui.container.querySelectorAll("[data-library-chat-file], [data-library-chat-artifact]")].map(
+    (node) => node.getAttribute("data-library-chat-file") || node.getAttribute("data-library-chat-artifact"),
+  );
+  // Files keep the server order (sent 11-06, received 11-05 08:00); artifacts slot in by time.
+  assert.deepEqual(order, ["m2:0", "a-mid", "m1:0", "a-old"]);
+  const card = ui.container.querySelector('[data-library-chat-artifact="a-mid"]');
+  await act(async () => card.querySelector("[data-collection-card-main]").click());
+  assert.deepEqual(opened, ["a-mid"]);
+  await ui.render({ query: "保存", category: "all", view: "grid", artifacts, onOpenArtifact: () => {} });
+  assert.deepEqual(
+    [...ui.container.querySelectorAll("[data-library-chat-file], [data-library-chat-artifact]")].map((node) => node.getAttribute("data-library-chat-artifact")),
+    ["a-mid"],
+  );
+  await ui.unmount();
+});
+
+test("with only leochat artifacts and no chat files the section is not empty", async () => {
+  reset([{ body: { items: [], next: null } }]);
+  const ui = mount();
+  const item = { key: "artifact:x:r1", source: "artifact", id: "x", artifactId: "x", revisionId: "r1", title: "卡片", kind: "document", siteId: "", favorite: false, meta: {}, createdAt: "2026-11-02T00:00:00Z" };
+  await ui.render({ query: "", category: "all", view: "list", artifacts: [item] });
+  await settle();
+  assert.ok(ui.container.querySelector('[data-library-chat-artifact="x"]'));
+  assert.doesNotMatch(ui.container.textContent, /LeoChat 里还没有收发过文件/);
+  await ui.unmount();
+});

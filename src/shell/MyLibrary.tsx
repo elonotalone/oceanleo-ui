@@ -1961,15 +1961,18 @@ export function MyLibrary({
     () => orderedItems.filter((item) => libraryItemSection(item) === activeSection),
     [activeSection, orderedItems],
   );
+  // 来自 LeoChat lists these artifacts together with the chat files (ANSWER LU-1).
+  const shownSectionItems = useMemo(
+    () =>
+      sectionItems.filter(
+        (item) => (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)),
+      ),
+    [favoritesOnly, itemFilter, sectionItems],
+  );
   const entries = useMemo(
     () =>
       dedupeWorkspaceEntries([
-        ...sectionItems
-          .filter(
-            (item) =>
-              (!favoritesOnly || item.favorite) &&
-              (!itemFilter || itemFilter(item)),
-          )
+        ...shownSectionItems
           .map((item) => {
             const owned =
               isDurableLibraryItem(item) &&
@@ -2003,7 +2006,7 @@ export function MyLibrary({
       ]),
     [
       featuredEntries,
-      itemFilter,
+      shownSectionItems,
       sectionItems,
       favoritesOnly,
       ownerPrincipalId,
@@ -2173,6 +2176,8 @@ export function MyLibrary({
               category={activeCategory}
               view={libraryView}
               className={className}
+              artifacts={shownSectionItems}
+              onOpenArtifact={openLibraryItem}
             />
           </Suspense>
         ) : (
