@@ -3273,7 +3273,8 @@ function AgentChatInner({
           stopping={acpStopping}
           onOpenAttachment={openTaskAttachment}
           disabled={acpComposerDisabled || acpBusy}
-          placeholder={placeholder ?? (toolsOn ? tt("继续追问，或上传文件让 agent 分析…") : tt("继续追问"))}
+          // A host placeholder that names OceanLeo does not fit a Claude / Codex task.
+          placeholder={placeholder && !/oceanleo/i.test(placeholder) ? placeholder : tt("继续追问")}
           rows={1}
           onAttachFiles={toolsOn ? atts.handleAttachFiles : undefined}
           attachments={toolsOn ? atts.composerAttachments : undefined}

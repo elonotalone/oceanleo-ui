@@ -341,7 +341,8 @@ const codexSessions = [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00
 // ---------------------------------------------------------------------------
 
 test("a native computer task shows one frames stream: the socket's rows through AcpTranscript, nothing of the old page", async () => {
-  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_old", "acp", "claude"), ...codexSessions] });
+  const view = await mount({ taskId: "t1", placeholder: "继续给 OceanLeo 布置任务，可上传文件或使用语音…" },
+    { task: computerTask(), sessions: [session("cts_old", "acp", "claude"), ...codexSessions] });
   try {
     const pane = view.host.querySelector('[data-agent-stream="acp"]');
     assert.ok(visible(pane), "the frames stream is in front");
@@ -358,6 +359,7 @@ test("a native computer task shows one frames stream: the socket's rows through 
     assert.equal(composer.textContent.startsWith("elon · codex"), true);
     assert.deepEqual(composer.__props.boundExecutionTarget, { kind: "computer", id: "cc_elon", name: "elon" });
     assert.equal(composer.__props.disabled, false);
+    assert.equal(composer.__props.placeholder, "继续追问", "a host placeholder naming OceanLeo does not fit a Codex task");
     assert.doesNotMatch(view.host.textContent, /在下方输入|正在理解问题|正在重新连接|已排队|未发送|重试/);
     assert.equal(globalThis.__acpCalls.some((call) => /timeline|transcript|messages/.test(call.path)), false, "no old reads");
   } finally { await view.unmount(); }
@@ -442,6 +444,7 @@ test("Stop shows while a prompt row has no response and posts /stop only; Escape
     await act(async () => { composer.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); await new Promise((r) => setTimeout(r, 0)); });
     await settle();
     assert.equal(posts("/v1/tasks/t1/stop").length, 1);
+    assert.equal(globalThis.__stops, 0, "never the cloud agent's stop");
     assert.equal(posts("/close").length, 0, "Stop never closes");
     await deliver(rows.done(3));
     assert.equal(view.composer("acp").__props.loading, false, "the agent's answer to the prompt ends the turn");

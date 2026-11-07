@@ -40,7 +40,8 @@ const STRICT_ENTRIES = [
   "src/lib/computer-task-api.ts",
 ];
 /** 只在门户首页（/root/projects/oceanleo/app/_components/home-content.tsx）用到的 key。 */
-const PORTAL_ONLY = new Set([]);
+// Keys read outside src/: oceanleo-app mobile TaskTimelineView reads `saveToCloudFailed`.
+const PORTAL_ONLY = new Set(["这段对话暂时没能保存到云端"]);
 
 function walk(target) {
   if (statSync(target).isFile()) return [target];
