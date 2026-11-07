@@ -17,7 +17,8 @@ function rows() {
       id,
       direction,
       node_seq: direction === "agent" ? ++seq : null,
-      raw: JSON.stringify(direction === "agent" && !("oceanleo_acp" in value) ? { oceanleo_acp: 1, seq, message: value } : value),
+      // Stored as TG-G1 stores them: the agent's message as written; node meta lines whole.
+      raw: JSON.stringify(value),
       received_at: "2026-11-07T10:00:00Z",
     };
     list.push(row);
@@ -422,6 +423,29 @@ test("updates before the first prompt are the preamble; rows out of order or del
   assert.equal(view.preamble[0].text, "replayed");
   const shuffled = [r.list[3], r.list[1], r.list[0], r.list[2], r.list[1]];
   assert.deepEqual(reduceRows(shuffled), view);
+});
+
+test("rows between a client session/load and its response are a history replay and render nothing", () => {
+  const r = rows();
+  r.prompt(1, "first");
+  r.say("answer");
+  r.done(1);
+  r.meta({ exit: { code: 0, signal: "" } });
+  // Re-launch on a new session row: the agent replays the conversation before answering session/load.
+  r.request(2, "session/load", { sessionId: "s1", cwd: "/w", mcpServers: [] });
+  r.update({ sessionUpdate: "user_message_chunk", content: { type: "text", text: "first" } });
+  r.update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text: "answer" } });
+  r.update({ sessionUpdate: "tool_call", toolCallId: "old", title: "Read", status: "completed" });
+  r.update({ sessionUpdate: "subagent_spawned", subagentSessionId: "c1" });
+  r.result(2, { modes: { currentModeId: "plan", availableModes: [] } });
+  r.prompt(3, "second");
+  r.say("new answer");
+  const view = reduceRows(r.list);
+  assert.deepEqual(kinds(view.turns[0].items), ["message", "exit"]);
+  assert.equal(view.modeId, "plan", "the load result itself still counts");
+  assert.equal(view.turns.length, 2);
+  assert.deepEqual(kinds(view.turns[1].items), ["message"]);
+  assert.equal(view.turns[1].items[0].text, "new answer");
 });
 
 test("unknown rows are kept as items with their raw row", () => {

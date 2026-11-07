@@ -5,7 +5,8 @@ import test from "node:test";
 import { parseRow } from "../src/acp/parse.ts";
 
 let nextId = 1;
-const agent = (message) => ({ id: nextId++, direction: "agent", node_seq: nextId, raw: JSON.stringify({ oceanleo_acp: 1, seq: nextId, message }), received_at: "2026-11-07T10:00:00Z" });
+// Agent rows hold the agent's JSON-RPC message as written; only node meta lines carry `oceanleo_acp` (TG-G1 storage).
+const agent = (message) => ({ id: nextId++, direction: "agent", node_seq: nextId, raw: JSON.stringify(message), received_at: "2026-11-07T10:00:00Z" });
 const meta = (line) => ({ id: nextId++, direction: "agent", node_seq: nextId, raw: JSON.stringify({ oceanleo_acp: 1, seq: nextId, ...line }), received_at: "" });
 const client = (message) => ({ id: nextId++, direction: "client", node_seq: null, raw: JSON.stringify(message), received_at: "" });
 const update = (u, sessionId = "s1") => agent({ jsonrpc: "2.0", method: "session/update", params: { sessionId, update: u } });
@@ -90,6 +91,7 @@ test("node meta lines: gap, exit, oversize", () => {
   assert.deepEqual([exit.kind, exit.code, exit.signal], ["exit", 0, null]);
   const killed = parseRow(meta({ exit: { code: null, signal: "killed" } }));
   assert.deepEqual([killed.code, killed.signal], [null, "killed"]);
+  assert.equal(parseRow(meta({ exit: { code: null, signal: 9 } })).signal, "9");
   const big = parseRow(meta({ oversize: { bytes: 3145728 } }));
   assert.deepEqual([big.kind, big.bytes], ["oversize", 3145728]);
 });
@@ -105,7 +107,8 @@ test("unreadable rows are unknown and keep the row", () => {
   assert.equal(parseRow(client({ jsonrpc: "2.0" })).reason, "not_jsonrpc");
 });
 
-test("an agent row without node framing is read as the JSON-RPC message itself", () => {
-  const row = { id: 100, direction: "agent", node_seq: 5, raw: JSON.stringify({ jsonrpc: "2.0", id: 1, result: { stopReason: "end_turn" } }), received_at: "" };
-  assert.equal(parseRow(row).kind, "agent_response");
+test("a node envelope is never a stored agent row: one that carries a message is an unknown meta line", () => {
+  const row = { id: 100, direction: "agent", node_seq: 5, raw: JSON.stringify({ oceanleo_acp: 1, seq: 5, message: { jsonrpc: "2.0", id: 1, result: {} } }), received_at: "" };
+  assert.equal(parseRow(row).kind, "unknown");
+  assert.equal(parseRow(row).reason, "unknown_meta");
 });

@@ -1,8 +1,9 @@
 // One stored row → one typed event (contract §2.1/§2.3).
 //
-// Agent rows are node lines: `{"oceanleo_acp":1,"seq":n,"message":{…JSON-RPC…}}`, or the node's own meta lines
-// (`gap`, `exit`, `oversize`). Client rows are the JSON-RPC object the gateway wrote. Nothing is repaired or
-// guessed: a row this page cannot read becomes `unknown` and keeps its raw line.
+// Agent rows hold the JSON-RPC message exactly as the agent wrote it (TG-G1 stores the node envelope's inner message
+// bytes); the node's own lines (`gap`, `exit`, `oversize`) are stored whole and are the only rows with an
+// `oceanleo_acp` key. Client rows are the JSON-RPC object the gateway wrote. Nothing is repaired or guessed: a row
+// this page cannot read becomes `unknown` and keeps its raw line.
 
 import {
   KNOWN_SESSION_UPDATES,
@@ -94,7 +95,6 @@ export function parseRow(row: AcpFrameRow): AcpEvent {
   }
   if (!isRecord(value)) return { row, kind: "unknown", reason: "not_object", value };
   if (row.direction === "agent" && value.oceanleo_acp !== undefined) {
-    if (isRecord(value.message)) return message(row, value.message);
     if (isRecord(value.gap)) {
       const gap = value.gap;
       return { row, kind: "gap", from: num(gap.from) ?? 0, to: num(gap.to) ?? 0, count: num(gap.count) ?? 0 };
@@ -105,7 +105,7 @@ export function parseRow(row: AcpFrameRow): AcpEvent {
         row,
         kind: "exit",
         code: num(exit.code),
-        signal: typeof exit.signal === "string" && exit.signal ? exit.signal : null,
+        signal: typeof exit.signal === "string" && exit.signal ? exit.signal : typeof exit.signal === "number" ? String(exit.signal) : null,
       };
     }
     if (isRecord(value.oversize)) return { row, kind: "oversize", bytes: num(value.oversize.bytes) ?? 0 };

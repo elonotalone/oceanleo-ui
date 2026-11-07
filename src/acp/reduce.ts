@@ -4,6 +4,8 @@
 // is open until an agent response row carries the same JSON-RPC id. A response answers the latest EARLIER request
 // with that id (ids restart when the gateway or the adapter restarts). An agent request is pending until a client
 // response row with its id follows. Everything else is placed in the turn it arrived in, in row order.
+// The `session/update` rows between a client `session/load` and its response are the agent replaying a conversation
+// the task already shows from its earlier session rows: they render nothing (parent update 1, no dedupe).
 
 import { parseRow } from "./parse";
 import type {
@@ -127,6 +129,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
   const tasks = new Map<string, AcpBackgroundTask>();
 
   const openTurns = () => view.turns.filter((turn) => turn.open);
+  const replaying = () => [...clientRequests.values()].some((request) => request.method === "session/load");
   /**
    * Where new output goes: the oldest open turn (Claude Code and Codex queue a prompt sent during a turn and answer
    * them in order), else the newest turn, else the preamble.
@@ -386,7 +389,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     const { row } = parsed;
     switch (parsed.kind) {
       case "update":
-        sessionUpdate(row, parsed.sessionId, parsed.update);
+        if (!replaying()) sessionUpdate(row, parsed.sessionId, parsed.update);
         return;
       case "prompt": {
         if (parsed.sessionId) mainSessions.add(parsed.sessionId);
@@ -456,6 +459,8 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         push({ type: "exit", key: `exit-${row.id}`, code: parsed.code, signal: parsed.signal, rowId: row.id });
         return;
       case "unknown_update":
+        if (!replaying()) push({ type: "unknown", key: `unknown-${row.id}`, row, reason: parsed.kind });
+        return;
       case "agent_notification":
         push({ type: "unknown", key: `unknown-${row.id}`, row, reason: parsed.kind });
         return;

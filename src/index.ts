@@ -10,3 +10,4 @@ export * from "./shell";
 export * from "./pages";
 export * from "./ui";
 export * from "./lib";
+export { AcpTranscript, reduceRows, parseRow, type AcpTranscriptProps, type AcpFrameRow, type AcpEvent, type AcpView, type AcpTurn, type AcpItem, type AcpPermission, type AcpToolCall, type AcpBackgroundTask } from "./acp";
