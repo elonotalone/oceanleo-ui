@@ -1016,6 +1016,22 @@ export interface ArtifactProjection extends ArtifactIdentity {
    * 手写字面量上，而缺席的语义与 `null` 相同（热度未知）。
    */
   popularity?: PopularityMetrics | null;
+  /**
+   * Which Library section the item belongs to, decided by the server from its roles / provenance
+   * (2026-11-07 UX wave, contract §2.4; wire `librarySource`). `null` when the server did not say.
+   * Optional for the same reason as `popularity`: hand-written projection literals stay valid.
+   */
+  librarySource?: LibrarySource | null;
+}
+
+/** The four Library sections (我的创作 / 上传的 / 来自 LeoBay / 来自 LeoChat). */
+export const LIBRARY_SOURCES = ["creation", "upload", "leobay", "leochat"] as const;
+export type LibrarySource = (typeof LIBRARY_SOURCES)[number];
+
+export function librarySourceFromWire(value: unknown): LibrarySource | null {
+  return typeof value === "string" && (LIBRARY_SOURCES as readonly string[]).includes(value)
+    ? (value as LibrarySource)
+    : null;
 }
 
 /**
@@ -2008,6 +2024,7 @@ export function normalizeArtifactProjection(
     // 热度不参与完整性判定：读不到只影响排序，不影响这个 artifact 能不能预览/编辑。
     // 所以它在这里是纯放行，绝不能让一份缺热度的投影被判成 invalid。
     popularity: popularityMetricsFromWire(raw),
+    librarySource: librarySourceFromWire(raw.librarySource ?? raw.library_source),
   };
 }
 

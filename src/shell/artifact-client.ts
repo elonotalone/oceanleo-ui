@@ -27,6 +27,7 @@ import {
   type ArtifactRendition,
   type ArtifactRenditionPurpose,
   type ArtifactType,
+  type LibrarySource,
   type TransientGenerationResult,
 } from "./artifact-contract";
 import { revisionPublishLocalRefusal } from "./doc-editors/artifact-save-contract";
@@ -1647,8 +1648,10 @@ export async function resolveArtifactEditOwnership(
 
 export async function listMyArtifacts(options: {
   artifactType?: ArtifactType | "";
-  /** Revision role filter, e.g. `user_upload` for the Library "Uploaded" filter. */
+  /** Revision role filter, e.g. `user_upload`. */
   role?: string;
+  /** Library section (`source=`, contract §2.4): only items whose `librarySource` is this one. */
+  source?: LibrarySource;
   offset?: number;
   cursor?: string;
   limit?: number;
@@ -1659,6 +1662,7 @@ export async function listMyArtifacts(options: {
   });
   setTrimmedParam(params, "artifactType", options.artifactType);
   setTrimmedParam(params, "role", options.role);
+  setTrimmedParam(params, "source", options.source);
   const offset = boundedLibraryOffset(options.offset ?? options.cursor);
   if (offset > 0) params.set("offset", String(offset));
   const result = await artifactRequest<unknown>(

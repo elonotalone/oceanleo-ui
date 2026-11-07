@@ -3,6 +3,7 @@ import type {
   ArtifactProjection,
   ArtifactRendition,
   ArtifactType,
+  LibrarySource,
   PopularityMetrics,
   TransientGenerationResult,
 } from "./artifact-contract";
@@ -642,6 +643,11 @@ export function isUploadedLibraryItem(item: LibraryItem): boolean {
   const sourceKind = provenance?.sourceKind ?? provenance?.source_kind;
   if (typeof sourceKind === "string" && sourceKind.trim().toLowerCase() === LIBRARY_UPLOAD_ROLE) return true;
   return meta.library_source === "upload";
+}
+
+/** The Library section an item belongs to: the server's `librarySource` (contract §2.4), `null` when it did not say. */
+export function libraryItemSection(item: LibraryItem): LibrarySource | null {
+  return item.artifact?.librarySource ?? null;
 }
 
 function libraryItemMetaText(item: LibraryItem, key: string): string {
