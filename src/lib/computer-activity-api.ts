@@ -20,9 +20,9 @@ export type ComputerUsage = {
 export type ActivityProgram = {
   slot: string;
   program: string;
-  pid: number;
+  pid: number | null;
   alive: boolean;
-  started_at: string;
+  started_at: string | null;
   rss_bytes: number | null;
   cpu_percent: number | null;
   task_id: string | null;
