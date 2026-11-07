@@ -53,6 +53,8 @@ import {
   translateLibraryTypeLabel,
 } from "./library-editor-category";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
+import { DEFAULT_LIBRARY_SECTION, LibrarySectionTabs } from "./library-sections";
+import type { LibrarySource } from "./artifact-contract";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
 export interface ArtifactItem {
@@ -283,7 +285,7 @@ function LibraryFoldersPending({ failed, filterRow }: { failed: boolean; filterR
       {filterRow}
       {failed ? (
         <p role="alert" className="py-16 text-center text-[13px] text-neutral-500">
-          {tt("文件夹暂时无法加载")}
+          {tt("文件包暂时无法加载")}
         </p>
       ) : (
         <CollectionCardGrid className="mt-5">
@@ -335,6 +337,8 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   // 非受控（门户 /library）时由这里记住当前类别，才知道什么时候换成文件夹视图；
   // MyLibrary 的类别切换照旧走它自己的菜单，只是状态放在这一层。
   const [ownCategory, setOwnCategory] = useState("all");
+  // The section lives here too: the 文件包 view replaces MyLibrary but keeps the section row on top.
+  const [section, setSection] = useState<LibrarySource>(DEFAULT_LIBRARY_SECTION);
   const folders = useLibraryFoldersModule();
   const uncontrolled = props.filter === undefined;
   useEffect(() => {
@@ -352,6 +356,20 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
     if (uncontrolled) setOwnCategory(category);
     props.onFilterChange?.(CATEGORY_FILTER[category] || "all");
   };
+  // In the 文件包 view a section click goes back to that section's list (文件包 are not split by section).
+  const folderFilterRow = (
+    <>
+      <LibrarySectionTabs
+        value={section}
+        onChange={(next) => {
+          setSection(next);
+          changeCategory("all");
+        }}
+        className="mt-4"
+      />
+      <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
+    </>
+  );
   return (
     <div
       className={
@@ -364,19 +382,9 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
       {showFolders ? (
         <div className="min-h-0 flex-1 overflow-hidden" data-library-category="folders">
           {folders.module ? (
-            <folders.module.LibraryFoldersPage
-              pageTitle="我的库"
-              filterRow={
-                <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
-              }
-            />
+            <folders.module.LibraryFoldersPage pageTitle="我的库" filterRow={folderFilterRow} />
           ) : (
-            <LibraryFoldersPending
-              failed={folders.failed}
-              filterRow={
-                <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
-              }
-            />
+            <LibraryFoldersPending failed={folders.failed} filterRow={folderFilterRow} />
           )}
         </div>
       ) : null}
@@ -389,17 +397,20 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
           plain
           pageTitle="我的库"
           category={myLibraryCategory}
+          section={section}
+          onSectionChange={setSection}
           className={editorOpen ? "h-full min-h-0 w-full min-w-0" : ""}
           onEditorOpenChange={setEditorOpen}
           onlyFavorites={filter === "favorites"}
           onCategoryChange={changeCategory}
           supplementalSection={
-            // 「全部」时在网格上方放最近的文件夹（仲裁 A-04）；收藏视图与具体类别不放。
-            // 函数形式（A-21）：跟着 MyLibrary 的搜索词过滤，「仅看收藏」打开时不显示。
+            // 「全部」时在网格上方放最近的文件包（仲裁 A-04）；收藏视图与具体类别不放。
+            // 函数形式（A-21）：跟着 MyLibrary 的搜索词过滤，「仅看收藏」打开时不显示；
+            // 只在「上传的」分区（2026-11-07 UX 波：上传的文件夹在那里变成文件包）。
             (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module
-              ? ({ query, favoritesOnly }: { query: string; favoritesOnly: boolean }) => {
+              ? ({ query, favoritesOnly, section: shown }: { query: string; favoritesOnly: boolean; section: LibrarySource }) => {
                   const Strip = folders.module?.LibraryFoldersStrip;
-                  return Strip && !favoritesOnly ? (
+                  return Strip && !favoritesOnly && shown === "upload" ? (
                     <Strip query={query} onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
                   ) : null;
                 }

@@ -38,8 +38,8 @@ import {
   inferLibraryKind,
   isDurableLibraryItem,
   isUploadedLibraryItem,
-  LIBRARY_UPLOAD_ROLE,
   libraryItemIdentityKey,
+  libraryItemSection,
   sortLibraryItems,
   type LibrarySort,
   type LibraryItem,
@@ -61,11 +61,19 @@ import {
   rememberOpenedLibraryItem,
 } from "./library-current-identity";
 import { useLibraryEditIntent } from "./library-edit-intent";
+import { DEFAULT_LIBRARY_SECTION, LibrarySectionTabs } from "./library-sections";
+import { LibraryDropOverlay, useLibraryDrop, type LibraryDrop } from "./library-drop";
+import {
+  canPickFolder,
+  foldersFromDirectoryInput,
+  type DroppedFolder,
+} from "./dropped-entries";
 import { libraryStandaloneEditorBinding } from "./library-edit-landing";
 import {
   artifactIsVisible,
   isEnsureableTransient,
   normalizeArtifactProjectionResult,
+  type LibrarySource,
   type TransientGenerationResult,
 } from "./artifact-contract";
 import {
@@ -87,6 +95,8 @@ import type { WorkbenchMaterialActionAvailability } from "./workbench-material-r
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
+// Same reason for the 来自 LeoChat section (it opens chats through the IM host).
+const LibraryChatFiles = lazy(() => import("./LibraryChatFiles").then((module) => ({ default: module.LibraryChatFiles })));
 
 const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
@@ -188,6 +198,19 @@ function retainableLibraryReadFailure(result: {
 type LibraryPageResult = Awaited<ReturnType<typeof listMyArtifacts>>;
 
 const DEFAULT_LIBRARY_SORT: LibrarySort = { by: "none", direction: "desc" };
+
+const SECTION_EMPTY_COPY: Record<LibrarySource, { title: string; description: string }> = {
+  creation: { title: "还没有创作", description: "生成的作品会自动出现在这里。" },
+  upload: { title: "还没有上传的文件", description: "把文件或文件夹拖到这里就能上传。" },
+  leobay: { title: "还没有来自 LeoBay 的内容", description: "在 LeoBay 获取的内容会出现在这里。" },
+  // 来自 LeoChat renders LibraryChatFiles, which has its own empty state.
+  leochat: { title: "", description: "" },
+};
+
+/** A complete sort snapshot belongs to one owner and one section. */
+function completeSortKey(ownerPrincipalId: string, source: LibrarySource): string {
+  return `${ownerPrincipalId}\u0000${source}`;
+}
 const LIBRARY_SORT_PAGE_SIZE = 100;
 const MAX_LIBRARY_SORT_ROWS_PER_SCOPE = 10_000;
 const MAX_LIBRARY_SORT_PAGES =
@@ -319,6 +342,7 @@ async function collectCompleteLibrarySnapshot(
   mineFirst: LibraryPageResult,
   favoritesFirst: LibraryPageResult,
   ownerPrincipalId: string,
+  source: LibrarySource,
   signal: AbortSignal,
 ): Promise<{ mine: LibraryItem[]; favorites: LibraryItem[] }> {
   if (
@@ -333,7 +357,7 @@ async function collectCompleteLibrarySnapshot(
     collectCompleteLibraryPages(
       mineFirst,
       (offset, pageSignal) =>
-        listMyArtifacts({ offset, limit: LIBRARY_SORT_PAGE_SIZE, signal: pageSignal }),
+        listMyArtifacts({ offset, source, limit: LIBRARY_SORT_PAGE_SIZE, signal: pageSignal }),
       ownerPrincipalId,
       signal,
     ),
@@ -603,6 +627,9 @@ export interface MyLibraryProps {
   refreshNonce?: string | number;
   category?: string;
   onCategoryChange?: (category: string) => void;
+  /** Library section (我的创作 / 上传的 / 来自 LeoBay / 来自 LeoChat); uncontrolled when omitted. */
+  section?: LibrarySource;
+  onSectionChange?: (section: LibrarySource) => void;
   onlyFavorites?: boolean;
   plain?: boolean;
   itemFilter?: (item: LibraryItem) => boolean;
@@ -636,12 +663,12 @@ export interface MyLibraryProps {
   pageTitle?: ReactNode;
   /**
    * 类型筛选行之后、网格之前的一段宿主内容（skills-overhaul W17 / 仲裁 A-04）：
-   * `/library`「全部」时放「文件夹」横排。不传则什么都不渲染。
-   * 也可以传函数（仲裁 A-21）：拿到本库当前的搜索词与「仅看收藏」，宿主据此过滤或隐藏。
+   * `/library`「上传的」分区、「全部类型」时放「文件包」横排。不传则什么都不渲染。
+   * 也可以传函数（仲裁 A-21）：拿到本库当前的搜索词、「仅看收藏」与分区，宿主据此过滤或隐藏。
    */
   supplementalSection?:
     | ReactNode
-    | ((ctx: { query: string; favoritesOnly: boolean }) => ReactNode);
+    | ((ctx: { query: string; favoritesOnly: boolean; section: LibrarySource }) => ReactNode);
 }
 
 /** User-owned works + generated websites + task artifacts + uploaded files. */
@@ -655,6 +682,8 @@ export function MyLibrary({
   refreshNonce,
   category,
   onCategoryChange,
+  section,
+  onSectionChange,
   onlyFavorites = false,
   plain = false,
   itemFilter,
@@ -686,11 +715,15 @@ export function MyLibrary({
   });
   const [internalCategory, setInternalCategory] = useState(category ?? "all");
   const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
-  // "Uploaded" filter: files the user uploaded, across every type category.
-  const [uploadedOnly, setUploadedOnly] = useState(false);
-  // Owner-verified `/v1/library/mine?role=user_upload` page, so uploads older
-  // than the mixed first page still show while the filter is on.
-  const [uploadedItems, setUploadedItems] = useState<LibraryItem[]>([]);
+  const [internalSection, setInternalSection] = useState<LibrarySource>(
+    section ?? DEFAULT_LIBRARY_SECTION,
+  );
+  const activeSection = section ?? internalSection;
+  // Every list read takes the section from here (`source=`), so a read started
+  // right after a section click already asks for the new one.
+  const sectionRef = useRef(activeSection);
+  sectionRef.current = activeSection;
+  const loadedSectionRef = useRef<LibrarySource | null>(null);
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -796,18 +829,20 @@ export function MyLibrary({
     if (category === undefined) setInternalCategory(next);
     onCategoryChange?.(next);
   };
+  const changeSection = useCallback(
+    (next: LibrarySource) => {
+      sectionRef.current = next;
+      if (section === undefined) setInternalSection(next);
+      onSectionChange?.(next);
+    },
+    [onSectionChange, section],
+  );
   const favoriteViewOptions: CollectionViewOption[] = [
     {
       id: "favorites",
       label: tt("仅看收藏"),
       checked: favoritesOnly,
       onSelect: () => setFavoritesOnly((value) => !value),
-    },
-    {
-      id: "uploaded",
-      label: tt("仅看上传"),
-      checked: uploadedOnly,
-      onSelect: () => setUploadedOnly((value) => !value),
     },
   ];
 
@@ -824,7 +859,7 @@ export function MyLibrary({
     );
     return documentsFirstItems(
       dedupeDurableItems([
-        ...[...ownedItems, ...(uploadedOnly ? uploadedItems : [])].map((item) =>
+        ...ownedItems.map((item) =>
           favoriteIdentity.has(libraryItemIdentityKey(item))
             ? withFavoriteState(item, true)
             : item,
@@ -832,7 +867,7 @@ export function MyLibrary({
         ...favoriteItems,
       ]),
     );
-  }, [favoriteItems, ownedItems, uploadedItems, uploadedOnly]);
+  }, [favoriteItems, ownedItems]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -867,6 +902,8 @@ export function MyLibrary({
     sortAbortRef.current = null;
     sortEpochRef.current += 1;
     let requestedSort = librarySortRef.current;
+    const requestedSection = sectionRef.current;
+    loadedSectionRef.current = requestedSection;
     setSortLoading(requestedSort.by !== "none");
     setSortWarning("");
     loadAbortRef.current?.abort();
@@ -884,15 +921,18 @@ export function MyLibrary({
       await Promise.allSettled([
         listMyArtifacts({
           artifactType: "document",
+          source: requestedSection,
           limit: 100,
           signal: controller.signal,
         }),
         listMyArtifacts({
           artifactType: "pdf",
+          source: requestedSection,
           limit: 100,
           signal: controller.signal,
         }),
         listMyArtifacts({
+          source: requestedSection,
           limit: 100,
           signal: controller.signal,
         }),
@@ -1057,6 +1097,7 @@ export function MyLibrary({
           mineResult,
           favoritesResult,
           mineOwnerPrincipalId,
+          requestedSection,
           controller.signal,
         );
       } catch (caught) {
@@ -1117,7 +1158,7 @@ export function MyLibrary({
       setNextCursor(null);
       setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
       setFavoriteNextCursor(null);
-      completeSortOwnerRef.current = mineOwnerPrincipalId;
+      completeSortOwnerRef.current = completeSortKey(mineOwnerPrincipalId, requestedSection);
     } else {
       setOwnedItems(
         mergeOwnedMineItems(
@@ -1145,6 +1186,13 @@ export function MyLibrary({
   useEffect(() => {
     void load();
   }, [load, refreshNonce]);
+
+  // A section click re-reads the list for that section (the mount read above already covers the first one).
+  useEffect(() => {
+    if (loadedSectionRef.current !== null && loadedSectionRef.current !== activeSection) {
+      void load();
+    }
+  }, [activeSection, load]);
 
   useEffect(() => {
     let active = true;
@@ -1296,7 +1344,9 @@ export function MyLibrary({
         isDurableLibraryItem(detail.item) &&
         artifactIsVisible(detail.item.artifact) &&
         detail.item.artifact.owner.principalId === ownerPrincipalId &&
-        detail.item.artifact.owner.visibility !== "public"
+        detail.item.artifact.owner.visibility !== "public" &&
+        // Without the server's section the item could only be guessed into one; the re-read below places it.
+        libraryItemSection(detail.item)
       ) {
         invalidatePendingReads();
         setOwnedItems((current) =>
@@ -1322,34 +1372,14 @@ export function MyLibrary({
   useEffect(() => {
     if (!action?.nonce || lastActionNonceRef.current === action.nonce) return;
     lastActionNonceRef.current = action.nonce;
-    // A chat upload opens here with the Uploaded filter on; its type category
+    // A chat upload opens here on the 上传的 section; its type category
     // (`action.category`) is applied by WorkspaceLibrary.
-    if (action.action?.filter === "uploaded") setUploadedOnly(true);
+    if (action.action?.filter === "uploaded") changeSection("upload");
     // A result card can be clicked immediately after its durable artifact row
     // is inserted. Revalidate the per-user cache; WorkspaceLibrary retries the
     // same itemId/URL action when the fresh entry list arrives, then opens it.
     void load();
-  }, [action?.nonce, load]);
-
-  useEffect(() => {
-    if (!uploadedOnly || !ownerPrincipalId) {
-      setUploadedItems([]);
-      return;
-    }
-    const controller = new AbortController();
-    void listMyArtifacts({ role: LIBRARY_UPLOAD_ROLE, limit: 100, signal: controller.signal })
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        // Same owner gate as the main list: never adopt another principal's rows.
-        setUploadedItems(
-          result.ok && result.data && result.data.ownerPrincipalId === ownerPrincipalId
-            ? result.data.items
-            : [],
-        );
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [uploadedOnly, ownerPrincipalId, refreshNonce, action?.nonce]);
+  }, [action?.nonce, changeSection, load]);
 
   const openLibraryItem = useCallback(
     (item: LibraryItem) => {
@@ -1405,6 +1435,8 @@ export function MyLibrary({
     }
     const mineCursor = nextCursor;
     const favoritesCursor = favoriteNextCursor;
+    // The cursors belong to the section the last load read.
+    const source = loadedSectionRef.current ?? sectionRef.current;
     loadMoreAbortRef.current?.abort();
     const controller = new AbortController();
     loadMoreAbortRef.current = controller;
@@ -1415,6 +1447,7 @@ export function MyLibrary({
         documentCursor
           ? listMyArtifacts({
               artifactType: "document",
+              source,
               cursor: documentCursor,
               limit: 100,
               signal: controller.signal,
@@ -1423,6 +1456,7 @@ export function MyLibrary({
         pdfCursor
           ? listMyArtifacts({
               artifactType: "pdf",
+              source,
               cursor: pdfCursor,
               limit: 100,
               signal: controller.signal,
@@ -1430,6 +1464,7 @@ export function MyLibrary({
           : Promise.resolve(null),
         mineCursor
           ? listMyArtifacts({
+              source,
               cursor: mineCursor,
               limit: 100,
               signal: controller.signal,
@@ -1609,8 +1644,9 @@ export function MyLibrary({
         return;
       }
       const expectedOwner = ownerPrincipalIdRef.current;
+      const expectedSection = sectionRef.current;
       if (!expectedOwner || loading) return;
-      if (completeSortOwnerRef.current === expectedOwner) {
+      if (completeSortOwnerRef.current === completeSortKey(expectedOwner, expectedSection)) {
         updateLibrarySort(nextSort);
         setSortLoading(false);
         return;
@@ -1622,13 +1658,14 @@ export function MyLibrary({
       void (async () => {
         try {
           const [mineFirst, favoritesFirst] = await Promise.all([
-            listMyArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
+            listMyArtifacts({ source: expectedSection, limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
             listFavoriteArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
           ]);
           if (
             controller.signal.aborted ||
             epoch !== sortEpochRef.current ||
-            expectedOwner !== ownerPrincipalIdRef.current
+            expectedOwner !== ownerPrincipalIdRef.current ||
+            expectedSection !== sectionRef.current
           ) {
             return;
           }
@@ -1649,12 +1686,14 @@ export function MyLibrary({
               mineFirst,
               favoritesFirst,
               expectedOwner,
+              expectedSection,
               controller.signal,
             );
           if (
             controller.signal.aborted ||
             epoch !== sortEpochRef.current ||
-            expectedOwner !== ownerPrincipalIdRef.current
+            expectedOwner !== ownerPrincipalIdRef.current ||
+            expectedSection !== sectionRef.current
           ) {
             return;
           }
@@ -1673,7 +1712,7 @@ export function MyLibrary({
           setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
           setFavoriteNextCursor(null);
           favoritesOwnerRef.current = expectedOwner;
-          completeSortOwnerRef.current = expectedOwner;
+          completeSortOwnerRef.current = completeSortKey(expectedOwner, expectedSection);
           hasUsableLibrarySnapshotRef.current = true;
           setHasUsableLibrarySnapshot(true);
           updateLibrarySort(nextSort);
@@ -1735,6 +1774,8 @@ export function MyLibrary({
         );
         return;
       }
+      // Uploads belong to 上传的: show that section so the new files are in view.
+      changeSection("upload");
       setUploading(true);
       setUploadError("");
       if (retrying) {
@@ -1743,6 +1784,8 @@ export function MyLibrary({
         );
       }
       const retryableFailures: File[] = [];
+      // An upload answer without `librarySource` cannot be placed in a section here; the server decides on a re-read.
+      let rereadSections = false;
       try {
         for (let index = 0; index < queue.length; index += 1) {
           const file = queue[index];
@@ -1814,6 +1857,7 @@ export function MyLibrary({
             );
             continue;
           }
+          if (!libraryItemSection(uploadedItem)) rereadSections = true;
           setOwnedItems((current) =>
             dedupeDurableItems([
               uploadedItem!,
@@ -1851,26 +1895,79 @@ export function MyLibrary({
         }
         setUploading(false);
         setUploadProgress("");
+        if (rereadSections) void load();
       }
     },
-    [ownerPrincipalId, siteId, uploading],
+    [changeSection, load, ownerPrincipalId, siteId, uploading],
   );
   const retryFailedUploads = useCallback(() => {
     void handleUpload(retryableUploadFiles, true);
   }, [handleUpload, retryableUploadFiles]);
 
+  // A dropped folder is zipped here and becomes a 文件包 (the folder module loads only when one is dropped).
+  const uploadFolders = useCallback(
+    async (folders: readonly DroppedFolder[]) => {
+      changeSection("upload");
+      setUploading(true);
+      setUploadError("");
+      try {
+        const { uploadDroppedFolder } = await import("./library-folder-upload");
+        for (const folder of folders) {
+          const result = await uploadDroppedFolder(folder, {
+            onPhase: (phase) =>
+              setUploadProgress(
+                `${tt(phase === "zipping" ? "正在打包文件夹…" : "正在上传文件包…")} · ${folder.name}`,
+              ),
+          });
+          if (!result.ok) setUploadError(tt(result.error));
+        }
+      } catch (caught) {
+        setUploadError(
+          caught instanceof Error ? caught.message : "上传处理失败，请重试。",
+        );
+      } finally {
+        setUploading(false);
+        setUploadProgress("");
+      }
+    },
+    [changeSection, tt],
+  );
+  const uploadBlocked =
+    uploading || loading || authRequired || failed || !ownerPrincipalId;
+  // 「上传文件夹」 only where the browser really opens a folder picker (desktop); decided after mount so
+  // the server render and the first client render agree. Elsewhere folders arrive by drop or as .zip on 文件包.
+  const [folderPickable, setFolderPickable] = useState(false);
+  useEffect(() => setFolderPickable(canPickFolder()), []);
+  const folderInputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    // `webkitdirectory` is not in React's input attribute types.
+    folderInputRef.current?.setAttribute("webkitdirectory", "");
+  }, [folderPickable]);
+  const { dragging, dropProps } = useLibraryDrop({
+    disabled: uploadBlocked,
+    onDrop: ({ files, folders }: LibraryDrop) => {
+      void (async () => {
+        if (files.length) await handleUpload(files);
+        if (folders.length) await uploadFolders(folders);
+      })();
+    },
+  });
+
   const orderedItems = useMemo(
     () => sortLibraryItems(items, librarySort),
     [items, librarySort],
   );
+  const sectionItems = useMemo(
+    () => orderedItems.filter((item) => libraryItemSection(item) === activeSection),
+    [activeSection, orderedItems],
+  );
   const entries = useMemo(
     () =>
       dedupeWorkspaceEntries([
-        ...orderedItems
+        ...sectionItems
           .filter(
             (item) =>
               (!favoritesOnly || item.favorite) &&
-              (!uploadedOnly || isUploadedLibraryItem(item)) &&
               (!itemFilter || itemFilter(item)),
           )
           .map((item) => {
@@ -1883,7 +1980,7 @@ export function MyLibrary({
               owned ? () => removeItem(item) : undefined,
             );
           }),
-        ...(favoritesOnly || uploadedOnly
+        ...(favoritesOnly
           ? []
           : featuredEntries.filter(
               (entry) =>
@@ -1893,7 +1990,8 @@ export function MyLibrary({
                 Boolean(ownerPrincipalId) &&
                 entry.libraryItem.artifact.owner.principalId ===
                   ownerPrincipalId &&
-                orderedItems.some(
+                // A task output shows in the section its Library copy is in.
+                sectionItems.some(
                   (item) =>
                     libraryItemIdentityKey(item) ===
                     libraryItemIdentityKey(entry.libraryItem!),
@@ -1906,9 +2004,8 @@ export function MyLibrary({
     [
       featuredEntries,
       itemFilter,
-      orderedItems,
+      sectionItems,
       favoritesOnly,
-      uploadedOnly,
       ownerPrincipalId,
       previewIntentItem,
       removeItem,
@@ -1919,22 +2016,14 @@ export function MyLibrary({
     <div className="flex shrink-0 flex-wrap items-center gap-2">
       <label
         className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
-          uploading || loading || authRequired || failed || !ownerPrincipalId
-            ? "pointer-events-none opacity-50"
-            : ""
+          uploadBlocked ? "pointer-events-none opacity-50" : ""
         }`}
       >
         <input
           type="file"
           multiple
           className="sr-only"
-          disabled={
-            uploading ||
-            loading ||
-            authRequired ||
-            failed ||
-            !ownerPrincipalId
-          }
+          disabled={uploadBlocked}
           onChange={(event) => {
             void handleUpload(event.currentTarget.files);
             event.currentTarget.value = "";
@@ -1942,6 +2031,28 @@ export function MyLibrary({
         />
         {tt(uploading ? "上传中…" : "上传文件")}
       </label>
+      {pageTitle && folderPickable ? (
+        <label
+          data-library-folder-pick=""
+          className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
+            uploadBlocked ? "pointer-events-none opacity-50" : ""
+          }`}
+        >
+          <input
+            ref={folderInputRef}
+            type="file"
+            className="sr-only"
+            disabled={uploadBlocked}
+            onChange={(event) => {
+              const folders = foldersFromDirectoryInput(event.currentTarget.files || []);
+              event.currentTarget.value = "";
+              if (folders.length) void uploadFolders(folders);
+              else setUploadError("这个文件夹是空的");
+            }}
+          />
+          {tt("上传文件夹")}
+        </label>
+      ) : null}
     </div>
   );
   const retryControl = (
@@ -1994,7 +2105,14 @@ export function MyLibrary({
     return <Suspense fallback={null}><LibraryMemoPage className={className} /></Suspense>;
   }
 
+  const emptyCopy = SECTION_EMPTY_COPY[activeSection];
   return (
+    <div
+      className="relative h-full min-h-0"
+      data-library-drop-zone=""
+      data-library-section-active={activeSection}
+      {...dropProps}
+    >
     <LibraryScope
       {...libraryScope}
       header={
@@ -2020,6 +2138,11 @@ export function MyLibrary({
               ) : undefined
             }
           />
+          <LibrarySectionTabs
+            value={activeSection}
+            onChange={changeSection}
+            className="mt-4"
+          />
           {pageTitle ? (
             <CollectionFilterRow>
               <CollectionFilterSelect
@@ -2036,13 +2159,23 @@ export function MyLibrary({
             </CollectionFilterRow>
           ) : null}
           {typeof supplementalSection === "function"
-            ? supplementalSection({ query: libraryQuery, favoritesOnly })
+            ? supplementalSection({ query: libraryQuery, favoritesOnly, section: activeSection })
             : supplementalSection}
         </div>
         )
       }
     >
       <div className="relative h-full min-h-0">
+        {activeSection === "leochat" ? (
+          <Suspense fallback={null}>
+            <LibraryChatFiles
+              query={libraryQuery}
+              category={activeCategory}
+              view={libraryView}
+              className={className}
+            />
+          </Suspense>
+        ) : (
         <WorkspaceLibrary
           entries={entries}
           accent={accent}
@@ -2076,12 +2209,12 @@ export function MyLibrary({
               ? "正在加载我的库…"
               : authRequired || failed
                 ? failureCopy.title
-                : "我的库还是空的"
+                : emptyCopy.title
           }
           emptyDescription={
             authRequired || failed
               ? failureCopy.description
-              : "生成作品、收藏公共素材或上传文件后，它们会自动出现在这里。"
+              : emptyCopy.description
           }
           emptyCta={failed && !authRequired ? retryControl : undefined}
           hasMore={Boolean(
@@ -2096,6 +2229,7 @@ export function MyLibrary({
           className={className}
           plain={plain}
         />
+        )}
         {failed && entries.length > 0 && hasUsableLibrarySnapshot && (
           <div
             role="status"
@@ -2155,5 +2289,7 @@ export function MyLibrary({
         )}
       </div>
     </LibraryScope>
+    <LibraryDropOverlay show={dragging} />
+    </div>
   );
 }

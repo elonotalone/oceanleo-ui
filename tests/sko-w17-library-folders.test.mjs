@@ -106,7 +106,7 @@ test("upload accepts .zip/.skill within 20 MB; uploaded skills announce they sta
     mod.uploadNotice({ skill: { name: "x", description: "", enabled: false } }),
     "来自上传的技能默认关闭，确认内容后再启用",
   );
-  assert.equal(mod.uploadNotice({ skill: null }), "文件夹已上传");
+  assert.equal(mod.uploadNotice({ skill: null }), "文件包已上传");
 });
 
 test("copy-to-project lists only projects the user can write", () => {
@@ -132,7 +132,7 @@ test("skill folder card: 技能 badge + switch; plain folder: folder icon, no sw
   assert.match(skillCard, /data-library-folder-card="f1"/);
   assert.match(skillCard, /data-library-folder-badge="skill"[^>]*>技能</);
   assert.match(skillCard, /role="switch"[^>]*aria-checked="false"/);
-  assert.match(skillCard, /文件夹 · 3 个文件/);
+  assert.match(skillCard, /文件包 · 3 个文件/);
   assert.match(skillCard, /data-library-folder-cover="icon"/);
 
   const plain = renderToStaticMarkup(
@@ -242,7 +242,7 @@ test("every literal tt() key in the folders UI has all 16 translations", async (
     for (const match of source.matchAll(/(?:title|body|description|text|error):\s*"([^"]*[一-鿿][^"]*)"/g)) keys.add(match[1]);
     for (const match of source.matchAll(/return "([^"]*[一-鿿][^"]*)"/g)) keys.add(match[1]);
   }
-  keys.add("文件夹");
+  keys.add("文件包");
   assert.ok(keys.size > 30, `scanned ${keys.size} keys`);
   const missing = [];
   for (const key of keys) {
@@ -261,17 +261,17 @@ test("every literal tt() key in the folders UI has all 16 translations", async (
 
 test("「全部」: MyLibrary renders the host slot after the type row; Library passes the folders strip only there", () => {
   const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
-  // 仲裁 A-04 + A-21：ReactNode 或 (ctx: {query, favoritesOnly}) => ReactNode。
+  // 仲裁 A-04 + A-21：ReactNode 或 (ctx: {query, favoritesOnly, section}) => ReactNode（2026-11-07 UX 波加了分区）。
   assert.match(
     mine,
-    /supplementalSection\?:\s*\| ReactNode\s*\| \(\(ctx: \{ query: string; favoritesOnly: boolean \}\) => ReactNode\);/,
+    /supplementalSection\?:\s*\| ReactNode\s*\| \(\(ctx: \{ query: string; favoritesOnly: boolean; section: LibrarySource \}\) => ReactNode\);/,
   );
   // 位置在类型筛选行之后、网格（WorkspaceLibrary）之前，且只此一处；传的是库自己的搜索词与收藏开关。
   const row = mine.indexOf("</CollectionFilterRow>");
   const slot = mine.indexOf('{typeof supplementalSection === "function"');
   const grid = mine.indexOf("<WorkspaceLibrary");
   assert.ok(row > 0 && slot > row && grid > slot, "slot sits between the type row and the grid");
-  assert.match(mine, /supplementalSection\(\{ query: libraryQuery, favoritesOnly \}\)/);
+  assert.match(mine, /supplementalSection\(\{ query: libraryQuery, favoritesOnly, section: activeSection \}\)/);
   assert.equal(
     mine.split("supplementalSection").length - 1,
     5,
@@ -281,10 +281,10 @@ test("「全部」: MyLibrary renders the host slot after the type row; Library 
   const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
   assert.match(
     artifact,
-    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" && folders\.module\s*\? \(\{ query, favoritesOnly \}/,
+    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" && folders\.module\s*\? \(\{ query, favoritesOnly, section: shown \}/,
   );
-  // 「仅看收藏」打开时不显示；横排跟着搜索词。
-  assert.match(artifact, /return Strip && !favoritesOnly \? \(\s*<Strip query=\{query\} onViewAll=/);
+  // 「仅看收藏」打开时不显示；横排跟着搜索词；只在「上传的」分区（上传的文件夹在那里变成文件包）。
+  assert.match(artifact, /return Strip && !favoritesOnly && shown === "upload" \? \(\s*<Strip query=\{query\} onViewAll=/);
 });
 
 test("folder strip: newest first, capped, compact cards with 技能 badge", () => {
@@ -314,7 +314,7 @@ test("folder strip: newest first, capped, compact cards with 技能 badge", () =
   );
   assert.match(html, /data-library-folder-strip-card="f1"/);
   assert.match(html, />技能</);
-  assert.match(html, /文件夹 · 3 个文件/);
+  assert.match(html, /文件包 · 3 个文件/);
   // 没有文件夹时整段不渲染（首帧 SSR 也是空的，不会闪一个空标题）。
   assert.equal(renderToStaticMarkup(React.createElement(mod.LibraryFoldersStrip, { onViewAll() {} })), "");
 });

@@ -24,6 +24,14 @@ import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import { COLLECTION_ACTION_BTN_PRIMARY, CollectionCardGrid } from "./collection-chrome";
 import { CollectionItemCard } from "./collection-items";
+import { canPickFolder, foldersFromDirectoryInput, type DroppedFolder } from "./dropped-entries";
+import { LibraryDropOverlay, useLibraryDrop, type LibraryDrop } from "./library-drop";
+import {
+  FOLDER_UPLOAD_MAX_BYTES,
+  LIBRARY_FOLDERS_CHANGE_EVENT,
+  uploadDroppedFolder,
+  type LibraryFoldersChangeDetail,
+} from "./library-folder-upload";
 import {
   ConfigDialogShell,
   ConfigToggle,
@@ -41,8 +49,8 @@ type TT = (zh: string, vars?: Record<string, string | number>) => string;
 // 纯逻辑（测试直接调用）
 // ---------------------------------------------------------------------------
 
-/** 与网关 zip 上限一致（合同 §3.2：zip ≤ 20 MB）。先在本地挡掉，省一次上传。 */
-export const FOLDER_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
+/** 与网关 zip 上限一致（合同 §3.2：zip ≤ 20 MB）。先在本地挡掉，省一次上传。拖进来的文件夹按压缩后的大小算。 */
+export { FOLDER_UPLOAD_MAX_BYTES };
 export const FOLDER_UPLOAD_ACCEPT = ".zip,.skill,application/zip,application/x-zip-compressed";
 
 export function folderTimestamp(folder: Pick<Folder, "updated_at" | "created_at">): number {
@@ -109,7 +117,7 @@ export function folderSourceLabel(folder: Pick<Folder, "source">): string {
 }
 
 export function folderFileCountLabel(tt: TT, folder: Pick<Folder, "file_count">): string {
-  return tt("文件夹 · {n} 个文件", { n: Math.max(0, Number(folder.file_count) || 0) });
+  return tt("文件包 · {n} 个文件", { n: Math.max(0, Number(folder.file_count) || 0) });
 }
 
 export function checkFolderUpload(
@@ -127,7 +135,7 @@ export function checkFolderUpload(
 
 /** 上传成功后的提示：技能默认关闭（合同 D7），普通文件夹只报成功。 */
 export function uploadNotice(folder: Pick<Folder, "skill">): string {
-  return folder.skill ? "来自上传的技能默认关闭，确认内容后再启用" : "文件夹已上传";
+  return folder.skill ? "来自上传的技能默认关闭，确认内容后再启用" : "文件包已上传";
 }
 
 export interface CopyTargetProject {
@@ -304,10 +312,10 @@ export function LibraryFolderCard({
   return (
     <CollectionItemCard
       cover={<LibraryFolderCover folder={folder} />}
-      title={folder.title || tt("未命名文件夹")}
+      title={folder.title || tt("未命名文件包")}
       metadata={folderFileCountLabel(tt, folder)}
       onOpen={onOpen}
-      openLabel={tt("打开文件夹「{title}」", { title: folder.title })}
+      openLabel={tt("打开文件包「{title}」", { title: folder.title })}
       containerProps={{
         "data-library-folder-card": folder.id,
         "data-library-folder-skill": skill ? "true" : "false",
@@ -529,7 +537,7 @@ export function LibraryFolderDetail({
     onDeleted(folder.id);
   };
 
-  const title = folder?.title || tt("未命名文件夹");
+  const title = folder?.title || tt("未命名文件包");
   const official = folder?.source === "official";
   const subtitle = folder ? (
     <span className="inline-flex flex-wrap items-center gap-x-1.5" data-library-folder-subtitle="">
@@ -682,7 +690,7 @@ function FolderDeleteConfirm({
   return (
     <Modal onClose={onCancel} className="max-w-sm">
       <div className="p-5" data-library-folder-delete-confirm="">
-        <h3 className="text-[15px] font-semibold text-neutral-900">{tt("删除这个文件夹？")}</h3>
+        <h3 className="text-[15px] font-semibold text-neutral-900">{tt("删除这个文件包？")}</h3>
         <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
           {official
             ? tt("只会从你的 Library 移除这条引用，官方技能本身不受影响。")
@@ -716,6 +724,18 @@ function FolderDeleteConfirm({
 // 整页视图
 // ---------------------------------------------------------------------------
 
+/** A 文件包 just uploaded anywhere on the page (picked or dropped folder) goes to the top of this list. */
+function useLandedFolders(setFolders: (update: (current: Folder[]) => Folder[]) => void) {
+  useEffect(() => {
+    const land = (event: Event) => {
+      const folder = (event as CustomEvent<LibraryFoldersChangeDetail>).detail?.folder;
+      if (folder) setFolders((current) => [folder, ...current.filter((item) => item.id !== folder.id)]);
+    };
+    window.addEventListener(LIBRARY_FOLDERS_CHANGE_EVENT, land);
+    return () => window.removeEventListener(LIBRARY_FOLDERS_CHANGE_EVENT, land);
+  }, [setFolders]);
+}
+
 export interface LibraryFoldersPageProps {
   /** 页标题（例如「我的库」）。 */
   pageTitle?: ReactNode;
@@ -735,6 +755,15 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<{ text: string; vars?: Record<string, string | number>; error?: boolean } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // A real folder picker only on desktop browsers (decided after mount, so SSR and the first render agree);
+  // elsewhere the .zip / .skill picker stays (operator 2026-11-07: zip only where a folder cannot be picked).
+  const [folderPickable, setFolderPickable] = useState(false);
+  useEffect(() => setFolderPickable(canPickFolder()), []);
+  useEffect(() => {
+    // `webkitdirectory` is not in React's input attribute types.
+    if (folderPickable) inputRef.current?.setAttribute("webkitdirectory", "");
+  }, [folderPickable]);
+  useLandedFolders(setFolders);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -781,7 +810,7 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
       return;
     }
     setUploading(true);
-    setNotice({ text: "正在上传文件夹…" });
+    setNotice({ text: "正在上传文件包…" });
     const result = await folderApi.importFolderZip(file);
     setUploading(false);
     if (!result.ok) {
@@ -792,7 +821,36 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
     setNotice({ text: uploadNotice(result.data) });
   };
 
+  // A picked or dropped folder: zipped here, then the same import (the landed event puts it in the list).
+  const uploadFolders = async (picked: readonly DroppedFolder[]) => {
+    if (!picked.length) {
+      setNotice({ text: "这个文件夹是空的", error: true });
+      return;
+    }
+    setUploading(true);
+    try {
+      for (const folder of picked) {
+        const result = await uploadDroppedFolder(folder, {
+          onPhase: (phase) => setNotice({ text: phase === "zipping" ? "正在打包文件夹…" : "正在上传文件包…" }),
+        });
+        setNotice(result.ok ? { text: uploadNotice(result.folder) } : { text: result.error, error: true });
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const authRequired = error?.status === 401;
+  const { dragging, dropProps } = useLibraryDrop({
+    disabled: uploading || authRequired,
+    onDrop: ({ files, folders: dropped }: LibraryDrop) => {
+      void (async () => {
+        // Here a loose file can only be a .zip / .skill package; checkFolderUpload says so for anything else.
+        for (const file of files) await upload(file);
+        if (dropped.length) await uploadFolders(dropped);
+      })();
+    },
+  });
   const uploadButton = (
     <label
       className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer gap-1.5 ${
@@ -800,27 +858,45 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
       }`}
       data-library-folder-upload=""
     >
-      <input
-        ref={inputRef}
-        type="file"
-        accept={FOLDER_UPLOAD_ACCEPT}
-        className="sr-only"
-        disabled={uploading || authRequired}
-        onChange={(event) => {
-          const file = event.currentTarget.files?.[0];
-          event.currentTarget.value = "";
-          void upload(file);
-        }}
-      />
+      {folderPickable ? (
+        <input
+          key="folder"
+          ref={inputRef}
+          type="file"
+          className="sr-only"
+          data-library-folder-pick=""
+          disabled={uploading || authRequired}
+          onChange={(event) => {
+            const picked = foldersFromDirectoryInput(event.currentTarget.files || []);
+            event.currentTarget.value = "";
+            void uploadFolders(picked);
+          }}
+        />
+      ) : (
+        <input
+          key="zip"
+          ref={inputRef}
+          type="file"
+          accept={FOLDER_UPLOAD_ACCEPT}
+          className="sr-only"
+          disabled={uploading || authRequired}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            event.currentTarget.value = "";
+            void upload(file);
+          }}
+        />
+      )}
       <UploadGlyph />
-      {tt(uploading ? "上传中…" : "上传文件夹（.zip）")}
+      {tt(uploading ? "上传中…" : folderPickable ? "上传文件夹" : "上传压缩包（.zip）")}
     </label>
   );
 
   const openFolder = openId ? folders.find((item) => item.id === openId) || null : null;
 
   return (
-    <div className={`flex h-full min-h-0 flex-col ${className}`} data-library-folders="">
+    <div className={`relative flex h-full min-h-0 flex-col ${className}`} data-library-folders="" {...dropProps}>
+      <LibraryDropOverlay show={dragging} />
       <div className="mb-3 shrink-0" data-library-collection-chrome="">
         <LibraryToolbar
           search={query}
@@ -872,8 +948,8 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
           </CollectionCardGrid>
         ) : error && folders.length === 0 ? (
           <FoldersEmpty
-            title={authRequired ? "登录后查看我的文件夹" : "文件夹暂时无法加载"}
-            description={authRequired ? "登录任意 OceanLeo 站点后，你的文件夹与技能会在这里汇总。" : error.text}
+            title={authRequired ? "登录后查看我的文件包" : "文件包暂时无法加载"}
+            description={authRequired ? "登录任意 OceanLeo 站点后，你的文件包与技能会在这里汇总。" : error.text}
             action={
               authRequired ? null : (
                 <button type="button" className={DETAIL_BTN} onClick={() => void load()}>
@@ -884,11 +960,11 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
           />
         ) : visible.length === 0 ? (
           <FoldersEmpty
-            title={query.trim() ? "未找到匹配的内容" : "还没有文件夹"}
+            title={query.trim() ? "未找到匹配的内容" : "还没有文件包"}
             description={
               query.trim()
                 ? "换个关键词试试，或清除筛选条件。"
-                : "上传一个 .zip 就会变成文件夹；带 SKILL.md 的会成为技能。从官方技能库添加的技能也会出现在这里。"
+                : "上传一个文件夹或 .zip 就会变成文件包；带 SKILL.md 的会成为技能。从官方技能库添加的技能也会出现在这里。"
             }
             action={query.trim() ? null : uploadButton}
           />
@@ -916,7 +992,7 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
           onDeleted={(id) => {
             setOpenId(null);
             setFolders((current) => current.filter((item) => item.id !== id));
-            setNotice({ text: "文件夹已删除" });
+            setNotice({ text: "文件包已删除" });
           }}
         />
       ) : null}
@@ -974,7 +1050,7 @@ export function LibraryFolderStripCard({ folder, onOpen }: { folder: Folder; onO
       type="button"
       onClick={onOpen}
       data-library-folder-strip-card={folder.id}
-      aria-label={tt("打开文件夹「{title}」", { title: folder.title })}
+      aria-label={tt("打开文件包「{title}」", { title: folder.title })}
       className="group flex w-60 shrink-0 items-center gap-3 rounded-xl border border-neutral-200 bg-white p-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-neutral-300 hover:shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
     >
       <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-neutral-100 text-neutral-500">
@@ -997,7 +1073,7 @@ export function LibraryFolderStripCard({ folder, onOpen }: { folder: Folder; onO
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
           <span className="truncate text-[13px] font-medium text-neutral-900">
-            {folder.title || tt("未命名文件夹")}
+            {folder.title || tt("未命名文件包")}
           </span>
           {folder.skill ? (
             <span
@@ -1020,6 +1096,7 @@ export function LibraryFoldersStrip({ onViewAll, query = "" }: { onViewAll: () =
   const tt = useUI();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
+  useLandedFolders(setFolders);
 
   useEffect(() => {
     let alive = true;
@@ -1036,16 +1113,16 @@ export function LibraryFoldersStrip({ onViewAll, query = "" }: { onViewAll: () =
   const openFolder = openId ? folders.find((item) => item.id === openId) || null : null;
 
   return (
-    <section className="mt-3" aria-label={tt("文件夹")} data-library-folder-strip="">
+    <section className="mt-3" aria-label={tt("文件包")} data-library-folder-strip="">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="text-[13px] font-semibold text-neutral-800">{tt("文件夹")}</p>
+        <p className="text-[13px] font-semibold text-neutral-800">{tt("文件包")}</p>
         <button
           type="button"
           onClick={onViewAll}
           data-library-folder-view-all=""
           className="text-[12px] text-neutral-500 underline underline-offset-2 hover:text-neutral-800"
         >
-          {tt("查看全部文件夹")}
+          {tt("查看全部文件包")}
         </button>
       </div>
       <div className="v-scroll flex gap-2.5 overflow-x-auto pb-1">

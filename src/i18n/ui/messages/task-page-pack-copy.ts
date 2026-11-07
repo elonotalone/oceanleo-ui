@@ -14,6 +14,7 @@ import { UX_TS_COPY } from "./ux-ts-copy";
 import { UX_DU_COPY } from "./ux-du-copy";
 import { UX_PM_U_COPY } from "./ux-pm-u-copy";
 import { UX_LA_COPY } from "./ux-la-copy";
+import { UX_LU_COPY } from "./ux-lu-copy";
 
 const PARTS: readonly TaskPagePackCopy[] = [
   TASK_PAGE_PACK_PARENT_COPY,
@@ -25,6 +26,7 @@ const PARTS: readonly TaskPagePackCopy[] = [
   UX_DU_COPY,
   UX_PM_U_COPY,
   UX_LA_COPY,
+  UX_LU_COPY,
 ];
 
 /** 本波全部中文原文（中文站 key 等于值）；i18n 判据按它逐条查 16 语。 */
