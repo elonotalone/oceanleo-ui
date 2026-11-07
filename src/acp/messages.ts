@@ -83,7 +83,8 @@ function errorText(error: JsonRpcError): string {
 function attachments(blocks: readonly ContentBlock[]): AgentAttachment[] {
   return blocks.flatMap((block): AgentAttachment[] => {
     if (block.type === "resource_link") return [{ url: "", name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}) }];
-    if (block.type === "image") return [{ url: block.uri ?? "", name: block.uri?.split("/").pop() || "image", mime: block.mimeType, media_type: "image" }];
+    // Names only: a prompt's file reference is a path or link on the user's side, never fetched from here.
+    if (block.type === "image") return [{ url: "", name: block.uri?.split("/").pop() || block.mimeType, mime: block.mimeType, media_type: "image" }];
     if (block.type === "resource") return [{ url: "", name: block.resource.uri.split("/").pop() || block.resource.uri }];
     return [];
   });
@@ -134,7 +135,7 @@ function cursorQuestionMessage(request: AcpPermission): AgentMessage {
   const plan = request.method === "cursor/create_plan";
   // Cursor nests the questions at `params.questions` (older builds sent the list itself).
   const questions = plan
-    ? [{ id: "__plan__", prompt: str(params.name) || str(params.overview) || "Plan", options: [{ id: "accepted", label: "accepted" }, { id: "rejected", label: "rejected" }] }]
+    ? [{ id: "__plan__", prompt: str(params.name) || str(params.overview) || request.method, options: [{ id: "accepted", label: "accepted" }, { id: "rejected", label: "rejected" }] }]
     : Array.isArray(request.params) ? request.params : Array.isArray(params.questions) ? params.questions : [];
   const first = isRecord(questions[0]) ? questions[0] : {};
   const title = str(params.title) || str(params.name) || str(params.overview) || str(first.prompt);
