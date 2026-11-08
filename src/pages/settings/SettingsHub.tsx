@@ -89,6 +89,8 @@ export type SettingsHubProps = {
   guestPrompt?: "auth" | "notice";
   /** Capability-pack request; value is deliberately not part of this shape. */
   vaultPrefill?: VaultPrefill;
+  /** Modal only. "tabs" keeps the section list as a top tab strip even on a wide screen (narrow hosts like the right sidebar). */
+  layout?: "auto" | "tabs";
 };
 
 const SKIP_MENU_HREFS = new Set([
@@ -274,6 +276,7 @@ export function SettingsHub({
   currentHref,
   guestPrompt = "auth",
   vaultPrefill,
+  layout = "auto",
 }: SettingsHubProps) {
   const tt = useUI();
   const localWorkspace = useLocalWorkspace();
@@ -692,7 +695,7 @@ export function SettingsHub({
     return (
       <div
         className={`mb-6 flex w-full items-center gap-2 ${
-          variant === "modal" ? "pr-20" : ""
+          variant === "modal" && layout !== "tabs" ? "pr-20" : ""
         } ${nestedAccount ? "border-b border-neutral-200 pb-3" : ""}`}
       >
         {nestedAccount ? (
@@ -807,6 +810,14 @@ export function SettingsHub({
     );
   }
 
+  if (variant === "modal" && layout === "tabs") {
+    return <div data-settings-hub data-settings-variant="modal" data-settings-layout="tabs" className="flex h-full min-h-0 flex-col text-neutral-900 dark:text-neutral-100">
+      <div data-settings-nav-top="" className="shrink-0 overflow-hidden px-5 pt-5">
+        <SettingsNav tabs groups={groups} activeId={navActiveId} onSelect={selectTab} displayName={profile?.displayName} avatarUrl={profile?.avatarUrl} userEmail={email} onCreateOrganization={() => selectTab("team", { orgPane: "create" })} />
+      </div>
+      <div data-settings-pane-scroll="" className="v-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-5 pb-5 pt-5">{paneHeading()}{active?.render?.()}</div>
+    </div>;
+  }
   if (variant === "modal") {
     return <div data-settings-hub data-settings-variant="modal" className="flex h-full min-h-0 flex-col gap-4 overflow-visible p-5 text-neutral-900 dark:text-neutral-100 md:flex-row md:gap-0 md:p-0">
       <div data-settings-nav-rail="" className="shrink-0 overflow-hidden px-5 pt-5 md:flex md:h-full md:w-60 md:flex-col md:border-r md:border-neutral-200 md:pl-5 md:pr-0.5 md:py-6">

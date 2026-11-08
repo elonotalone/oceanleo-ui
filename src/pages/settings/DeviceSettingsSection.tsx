@@ -12,6 +12,9 @@ import { DeviceFolderPicker, FolderIcon } from "../devices/DeviceFolderPicker";
 import { formatDeviceTime } from "../devices/DeviceTasksDialog";
 import { deviceRevocationNotice, deviceSettingsErrorCopy, runDeviceRequest, runDeviceSettingsOperation } from "../devices/device-settings-state";
 import { readDeviceUser, readLocalDeviceId } from "../devices/local-device";
+import { cloudComputerApi, type CloudComputerClient, type Computer } from "../../lib/cloud-computer-api";
+import { computerDisplayState } from "../../shell/cloud-computer/computer-state";
+import { ServerSettingsPanel } from "./ServerSettingsPanel";
 
 export function DeviceSettingsPanel({ device, availability, client, isLocalDevice = false, onControl, onRename, onRevoke }: {
   device: Device;
@@ -235,14 +238,17 @@ function selectedDeviceFromLocation(): string | null {
 }
 
 /** Device controls live in the same Settings pane as the user's other preferences. */
-export function DeviceSettingsSection({ client = devicesFacade, settingsClient = defaultSettingsClient, requestTimeoutMs = 15_000, currentUser = readDeviceUser }: {
+export function DeviceSettingsSection({ client = devicesFacade, settingsClient = defaultSettingsClient, serverClient = cloudComputerApi, requestTimeoutMs = 15_000, currentUser = readDeviceUser }: {
   client?: DevicesFacade;
+  /** Connected servers (cloud computers) share this page with app devices. */
+  serverClient?: CloudComputerClient;
   settingsClient?: DeviceSettingsClient;
   requestTimeoutMs?: number;
   currentUser?: typeof readDeviceUser;
 } = {}) {
   const tt = useUI();
   const [devices, setDevices] = useState<Device[]>([]);
+  const [servers, setServers] = useState<Computer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(selectedDeviceFromLocation);
   const [localDeviceId, setLocalDeviceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -261,7 +267,7 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
     const changed = () => setSelectedId(selectedDeviceFromLocation());
     const clearAccount = () => {
       lifetime.current?.abort();
-      setDevices([]); setConfirmRevoke(null); setRevoking(false); setError(null); setLoading(true);
+      setDevices([]); setServers([]); setConfirmRevoke(null); setRevoking(false); setError(null); setLoading(true);
       setAccountRevision((value) => value + 1);
     };
     function discoverAccount() {
@@ -297,7 +303,14 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
     const controller = new AbortController();
     lifetime.current = controller;
     let timer: ReturnType<typeof setTimeout>;
+    async function loadServers() {
+      try {
+        const listed = await serverClient.listComputers();
+        if (!controller.signal.aborted) setServers((listed.items ?? []).filter((item) => computerDisplayState(item) !== "gone"));
+      } catch { /* servers are optional here; the Devices page reports their errors */ }
+    }
     async function load() {
+      void loadServers();
       const result = await runDeviceRequest((signal) => client.listDevices(signal), controller.signal, requestTimeoutMs);
       if (controller.signal.aborted) return;
       setLoading(false);
@@ -310,9 +323,10 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
     }
     void load();
     return () => { controller.abort(); clearTimeout(timer); };
-  }, [client, requestTimeoutMs, revision, accountRevision]);
+  }, [client, serverClient, requestTimeoutMs, revision, accountRevision]);
 
-  const selected = selectedId ? devices.find((device) => device.device_id === selectedId) : devices[0];
+  const selectedServer = selectedId ? servers.find((server) => server.id === selectedId) : undefined;
+  const selected = selectedServer ? undefined : selectedId ? devices.find((device) => device.device_id === selectedId) : devices[0];
   function selectDevice(id: string) {
     setSelectedId(id);
     const url = new URL(window.location.href);
@@ -342,11 +356,11 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
   return <div className="space-y-5" data-settings-pane="device-settings">
     <p className="text-[13px] text-neutral-500">{tt("管理每台设备的访问权限、Agent 控制和任务文件夹。")}</p>
     {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{tt(error)}<button type="button" className={QUIET} onClick={() => setRevision((value) => value + 1)}>{tt("重试")}</button></div>}
-    {loading ? <p role="status" className="py-4 text-[13px] text-neutral-400">{tt("正在加载设备")}</p> : devices.length > 0 ? <>
-      <label className="block text-[13px] font-medium">{tt("选择设备")}<select aria-label={tt("选择设备")} className="mt-2 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[14px]" value={selected?.device_id ?? ""} onChange={(event) => selectDevice(event.currentTarget.value)}>
-        {!selected && <option value="" disabled>{tt("选择设备")}</option>}{devices.map((device) => <option key={device.device_id} value={device.device_id}>{device.device_name}</option>)}
+    {loading ? <p role="status" className="py-4 text-[13px] text-neutral-400">{tt("正在加载设备")}</p> : devices.length + servers.length > 0 ? <>
+      <label className="block text-[13px] font-medium">{tt("选择设备")}<select aria-label={tt("选择设备")} className="mt-2 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[14px]" value={selectedServer?.id ?? selected?.device_id ?? ""} onChange={(event) => selectDevice(event.currentTarget.value)}>
+        {!selected && !selectedServer && <option value="" disabled>{tt("选择设备")}</option>}{devices.map((device) => <option key={device.device_id} value={device.device_id}>{device.device_name}</option>)}{servers.length > 0 && <optgroup label={tt("云电脑")}>{servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}</optgroup>}
       </select></label>
-      {selected ? <DeviceSettingsPanel key={`${accountRevision}-${selected.device_id}`} device={selected} availability={selected.availability ?? "unknown"} isLocalDevice={selected.device_id === localDeviceId} client={settingsClient} onControl={() => { window.location.href = portalHref(`/devices?desktop=${encodeURIComponent(selected.device_id)}`); }} onRename={(name) => rename(selected, name)} onRevoke={() => setConfirmRevoke(selected)} /> : <p role="status" className="text-[13px] text-neutral-500">{tt("当前账号找不到这台电脑。")}</p>}
+      {selectedServer ? <ServerSettingsPanel key={`${accountRevision}-${selectedServer.id}`} computer={selectedServer} client={serverClient} onUpdated={() => setRevision((value) => value + 1)} onRemoved={() => { setServers((current) => current.filter((item) => item.id !== selectedServer.id)); setSelectedId(null); }} /> : selected ? <DeviceSettingsPanel key={`${accountRevision}-${selected.device_id}`} device={selected} availability={selected.availability ?? "unknown"} isLocalDevice={selected.device_id === localDeviceId} client={settingsClient} onControl={() => { window.location.href = portalHref(`/devices?desktop=${encodeURIComponent(selected.device_id)}`); }} onRename={(name) => rename(selected, name)} onRevoke={() => setConfirmRevoke(selected)} /> : <p role="status" className="text-[13px] text-neutral-500">{tt("当前账号找不到这台电脑。")}</p>}
     </> : <p role="status" className="py-4 text-[13px] text-neutral-500">{tt("还没有连接设备。")}</p>}
     {confirmRevoke && <ConfirmDialog title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })} body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")} confirmLabel={tt("确认撤销")} danger onConfirm={() => revokeDevice(confirmRevoke)} onCancel={() => setConfirmRevoke(null)} />}
   </div>;

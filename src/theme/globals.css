@@ -1046,6 +1046,36 @@ html.dark [data-settings-group-label] {
   color: var(--leo-d-muted) !important;
 }
 
+/* 强制顶部标签（右侧栏等窄宿主）：不随屏幕宽度变成左栏，样式与窄屏标签一致。 */
+[data-settings-nav][data-settings-layout="tabs"] {
+  width: 100%;
+  height: auto;
+}
+[data-settings-layout="tabs"] [data-settings-group] { display: contents; }
+[data-settings-layout="tabs"] [data-settings-group-label] { display: none; }
+[data-settings-layout="tabs"] [data-settings-nav-scroll] {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: auto;
+}
+[data-settings-layout="tabs"] [data-settings-nav-scroll] [data-settings-item] {
+  width: fit-content;
+  border-bottom-width: 2px;
+  border-radius: 0;
+}
+html.dark [data-settings-layout="tabs"] [data-settings-nav-scroll] [data-settings-item],
+html.dark [data-settings-layout="tabs"] [data-settings-nav-scroll] [data-settings-item]:hover {
+  background-color: transparent !important;
+}
+html.dark [data-settings-layout="tabs"] [data-settings-nav-scroll] [data-settings-item][aria-current="page"] {
+  background-color: transparent !important;
+  border-bottom-color: var(--leo-d-fg) !important;
+}
+
 [data-personalization-memory-cols] {
   display: flex;
   flex-direction: column;

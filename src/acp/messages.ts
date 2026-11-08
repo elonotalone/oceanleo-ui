@@ -89,11 +89,24 @@ function errorText(error: JsonRpcError): string {
   return [error.message, data].filter(Boolean).join("\n");
 }
 
+const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
+const LIBRARY_URI = new RegExp(`^oceanleo-attachment://(${UUID})/(${UUID})/`, "i");
+
+/**
+ * The gateway sends a Library upload as `oceanleo-attachment://<artifact>/<revision>/<name>`.
+ * That pair is the owner's private Library reference: the bubble asks the gateway for a
+ * thumbnail (owner-checked), so a pasted picture shows as the picture, not a file chip.
+ */
+export function libraryRefFromUri(uri: string | null | undefined): { artifact_id: string; revision_id: string } | null {
+  const match = typeof uri === "string" ? LIBRARY_URI.exec(uri) : null;
+  return match ? { artifact_id: match[1].toLowerCase(), revision_id: match[2].toLowerCase() } : null;
+}
+
 function attachments(blocks: readonly ContentBlock[]): AgentAttachment[] {
   return blocks.flatMap((block): AgentAttachment[] => {
     if (block.type === "resource_link") return [{ url: "", name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}) }];
-    // Names only: a prompt's file reference is a path or link on the user's side, never fetched from here.
-    if (block.type === "image") return [{ url: "", name: block.uri?.split("/").pop() || block.mimeType, mime: block.mimeType, media_type: "image" }];
+    // Other paths and links belong to the user's side and are never fetched; a Library reference is.
+    if (block.type === "image") return [{ url: "", name: block.uri?.split("/").pop() || block.mimeType, mime: block.mimeType, media_type: "image", ...libraryRefFromUri(block.uri) }];
     if (block.type === "resource") return [{ url: "", name: block.resource.uri.split("/").pop() || block.resource.uri }];
     return [];
   });
