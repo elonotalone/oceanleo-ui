@@ -33,7 +33,7 @@ test("assistant prose stays plain while every structured artifact is a card", ()
 
 test("task menu exposes complete management actions", () => {
   const menu = readFileSync(
-    new URL("../src/shell/HistoryRowActions.tsx", import.meta.url),
+    new URL("../src/shell/TaskActionsMenu.tsx", import.meta.url),
     "utf8",
   );
   for (const action of [

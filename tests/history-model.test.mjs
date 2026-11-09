@@ -19,6 +19,10 @@ const historySource = readFileSync(
   new URL("../src/shell/HistoryMasterDetail.tsx", import.meta.url),
   "utf8",
 );
+const rowActionsSource = readFileSync(
+  new URL("../src/shell/task-row-actions.ts", import.meta.url),
+  "utf8",
+);
 
 const baseSession = {
   id: "session-1",
@@ -301,8 +305,9 @@ test("完整 session 交给站点 runtime，旧任务直接回到可续聊对话
 test("HistoryMasterDetail 删除按资源类型守卫，且成功后清理深链", () => {
   assert.match(
     historySource,
-    /if \(!canDeleteHistoryEntry\(entry\)\) return false;[\s\S]*?deleteTask\(entry\.task\.id\)/,
+    /if \(!canDeleteHistoryEntry\(entry\)\) return false;[\s\S]*?deleteTaskRow\(/,
   );
+  assert.match(rowActionsSource, /target\.kind === "session"[\s\S]*?deleteTask\(target\.id\)/);
   assert.doesNotMatch(historySource, /deleteTask\(entry\.id\)/);
   assert.match(historySource, /removed && target\.id === sel[\s\S]*?router\.replace\("\/history"\)/);
 });

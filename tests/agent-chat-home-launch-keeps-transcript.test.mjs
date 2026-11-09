@@ -738,6 +738,7 @@ async function loadHomeContent() {
       export const PRIVATE_ATTACHMENT_TOO_LARGE = "文件超过 20MB，暂不支持";
       const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       export function attachmentRef(a){ const x = a && (a.artifactId || a.artifact_id), y = a && (a.revisionId || a.revision_id); return UUID.test(x||"") && UUID.test(y||"") ? { artifactId: x, revisionId: y } : null; }
+      export function parseTaskLink(){ return null; }
       export function isRawStorageUrl(u){ return /supabase\.co/.test(String(u||"")); }
       export { acpErrorText, AcpSendError } from ${JSON.stringify(acpFramesApiUrl)};
       // A native chat's message (POST /v1/tasks/{id}/send) is recorded.

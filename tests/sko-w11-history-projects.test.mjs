@@ -54,6 +54,7 @@ globalThis.React = React;
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 const masterDetail = source("../src/shell/HistoryMasterDetail.tsx");
 const rowActions = source("../src/shell/HistoryRowActions.tsx");
+const taskActionsMenu = source("../src/shell/TaskActionsMenu.tsx");
 
 const model = await import("../src/shell/history-model.ts");
 
@@ -368,11 +369,11 @@ test("源码：不再按 project_id 过滤、不再有拦截页分支", () => {
 });
 
 test("源码：菜单在已有项目时给「换项目 / 移出项目」", () => {
-  assert.match(rowActions, /inProject \? \(/);
-  assert.match(rowActions, /tt\("换项目"\)/);
-  assert.match(rowActions, /tt\("移出项目"\)/);
-  assert.match(rowActions, /tt\("移动到项目"\)/);
-  assert.match(rowActions, /currentProjectId \? tt\("换项目"\) : tt\("移动到项目"\)/);
+  assert.match(taskActionsMenu, /inProject \? </);
+  assert.match(taskActionsMenu, /tt\("换项目"\)/);
+  assert.match(taskActionsMenu, /tt\("移出项目"\)/);
+  assert.match(taskActionsMenu, /tt\("移动到项目"\)/);
+  assert.match(rowActions, /currentProjectId \? tt\("换项目"\) : tt\("移动到项目"\)/s);
 });
 
 test("文案分表：sko-w11 两条新词条 16 个语种齐全", async () => {
