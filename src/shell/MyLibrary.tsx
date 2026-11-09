@@ -93,7 +93,6 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { WorksOverview } from "./works/WorksOverview";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
 // Same reason for the 来自 LeoChat section (it opens chats through the IM host).
@@ -706,7 +705,7 @@ export function MyLibrary({
   const tt = useUI();
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
-  const [showWorks, setShowWorks] = useState(false);
+  const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -2017,48 +2016,77 @@ export function MyLibrary({
     ],
   );
   const failureCopy = myLibraryFailure(failureStatus);
-  const toolbar = (
-    <div className="flex shrink-0 flex-wrap items-center gap-2">
-      <label
-        className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
-          uploadBlocked ? "pointer-events-none opacity-50" : ""
-        }`}
+  const uploadFilePicker = (
+    <label
+      data-library-upload-file=""
+      role={pageTitle && folderPickable ? "menuitem" : undefined}
+      className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
+        pageTitle && folderPickable ? "block w-full rounded-md bg-transparent text-left text-neutral-800 hover:bg-neutral-100" : ""
+      } ${uploadBlocked ? "pointer-events-none opacity-50" : ""}`}
+    >
+      <input
+        type="file"
+        multiple
+        className="sr-only"
+        disabled={uploadBlocked}
+        onChange={(event) => {
+          void handleUpload(event.currentTarget.files);
+          event.currentTarget.value = "";
+          setUploadMenuOpen(false);
+        }}
+      />
+      {tt(pageTitle && !folderPickable ? (uploading ? "上传中…" : "上传") : "上传文件")}
+    </label>
+  );
+  const uploadFolderPicker = folderPickable ? (
+    <label
+      data-library-folder-pick=""
+      role={pageTitle ? "menuitem" : undefined}
+      className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
+        pageTitle ? "block w-full rounded-md bg-transparent text-left text-neutral-800 hover:bg-neutral-100" : ""
+      } ${uploadBlocked ? "pointer-events-none opacity-50" : ""}`}
+    >
+      <input
+        ref={folderInputRef}
+        type="file"
+        className="sr-only"
+        disabled={uploadBlocked}
+        onChange={(event) => {
+          const folders = foldersFromDirectoryInput(event.currentTarget.files || []);
+          event.currentTarget.value = "";
+          if (folders.length) void uploadFolders(folders);
+          else setUploadError("这个文件夹是空的");
+          setUploadMenuOpen(false);
+        }}
+      />
+      {tt("上传文件夹")}
+    </label>
+  ) : null;
+  const uploadMenu = pageTitle && folderPickable ? (
+    <div className="relative shrink-0" data-library-upload-menu="">
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={uploadMenuOpen}
+        disabled={uploadBlocked}
+        onClick={() => setUploadMenuOpen((open) => !open)}
+        className={`${COLLECTION_ACTION_BTN_PRIMARY} relative gap-1.5 after:absolute after:-inset-1 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50`}
       >
-        <input
-          type="file"
-          multiple
-          className="sr-only"
-          disabled={uploadBlocked}
-          onChange={(event) => {
-            void handleUpload(event.currentTarget.files);
-            event.currentTarget.value = "";
-          }}
-        />
-        {tt(uploading ? "上传中…" : "上传文件")}
-      </label>
-      {pageTitle && folderPickable ? (
-        <label
-          data-library-folder-pick=""
-          className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
-            uploadBlocked ? "pointer-events-none opacity-50" : ""
-          }`}
-        >
-          <input
-            ref={folderInputRef}
-            type="file"
-            className="sr-only"
-            disabled={uploadBlocked}
-            onChange={(event) => {
-              const folders = foldersFromDirectoryInput(event.currentTarget.files || []);
-              event.currentTarget.value = "";
-              if (folders.length) void uploadFolders(folders);
-              else setUploadError("这个文件夹是空的");
-            }}
-          />
-          {tt("上传文件夹")}
-        </label>
+        {tt(uploading ? "上传中…" : "上传")}
+        <span aria-hidden="true" className="text-[10px]">⌄</span>
+      </button>
+      {uploadMenuOpen ? (
+        <div role="menu" aria-label={tt("上传")} className="absolute left-0 top-full z-30 mt-1 min-w-32 rounded-lg border border-neutral-200 bg-white p-1 text-[12px] shadow-lg">
+          {uploadFilePicker}
+          {uploadFolderPicker}
+        </div>
       ) : null}
     </div>
+  ) : pageTitle ? uploadFilePicker : (
+    <div className="flex shrink-0 flex-wrap items-center gap-2">{uploadFilePicker}</div>
+  );
+  const toolbar = pageTitle ? null : (
+    <div className="flex shrink-0 flex-wrap items-center gap-2">{uploadFilePicker}</div>
   );
   const retryControl = (
     <button
@@ -2137,9 +2165,12 @@ export function MyLibrary({
             sortBusy={sortLoading || loading}
             leading={
               pageTitle ? (
-                <h1 className={APP_PAGE_TITLE_CLASS}>
-                  {typeof pageTitle === "string" ? tt(pageTitle) : pageTitle}
-                </h1>
+                <div className="flex min-w-0 items-center gap-3">
+                  <h1 className={APP_PAGE_TITLE_CLASS}>
+                    {typeof pageTitle === "string" ? tt(pageTitle) : pageTitle}
+                  </h1>
+                  {uploadMenu}
+                </div>
               ) : undefined
             }
           />
@@ -2148,19 +2179,7 @@ export function MyLibrary({
             onChange={changeSection}
             className="mt-4"
           />
-          <div className="mt-2 flex items-center gap-1" data-library-work-tab-row="">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={showWorks}
-              data-library-section="works"
-              onClick={() => setShowWorks((value) => !value)}
-              className={`min-h-8 shrink-0 rounded-full border px-3 text-[12px] ${showWorks ? "border-transparent bg-[var(--fg,#292524)] text-white" : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"}`}
-            >
-              {tt("作品")}
-            </button>
-          </div>
-          {pageTitle && !showWorks ? (
+          {pageTitle ? (
             <CollectionFilterRow>
               <CollectionFilterSelect
                 label={tt("类型")}
@@ -2175,17 +2194,15 @@ export function MyLibrary({
               />
             </CollectionFilterRow>
           ) : null}
-          {!showWorks && (typeof supplementalSection === "function"
+          {typeof supplementalSection === "function"
             ? supplementalSection({ query: libraryQuery, favoritesOnly, section: activeSection })
-            : supplementalSection)}
+            : supplementalSection}
         </div>
         )
       }
     >
       <div className="relative h-full min-h-0">
-        {showWorks ? (
-          <WorksOverview className="h-full min-h-0 px-1" onClose={() => setShowWorks(false)} />
-        ) : activeSection === "leochat" ? (
+        {activeSection === "leochat" ? (
           <Suspense fallback={null}>
             <LibraryChatFiles
               query={libraryQuery}
