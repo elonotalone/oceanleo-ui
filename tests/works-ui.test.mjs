@@ -26,7 +26,7 @@ test("works overview maps every card field and server actions to the C6 client",
 test("user work preview stays in the shared restrictive frame and app content domain", () => {
   assert.match(overview, /webViewerFrameSandbox\(false\)/);
   assert.match(overview, /referrerPolicy="no-referrer"/);
-  assert.match(overview, /hostname === "oceanleo\.app"/);
+  assert.doesNotMatch(overview, /hostname === "oceanleo\.app"/);
   assert.match(overview, /hostname\.endsWith\("\.oceanleo\.app"\)/);
   assert.doesNotMatch(overview, /allow-same-origin/);
 });

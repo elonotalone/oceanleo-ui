@@ -48,7 +48,7 @@ function isPreviewUrl(value: string | undefined): value is string {
   if (!value) return false;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && (url.hostname === "oceanleo.app" || url.hostname.endsWith(".oceanleo.app"));
+    return url.protocol === "https:" && url.hostname.endsWith(".oceanleo.app");
   } catch {
     return false;
   }
