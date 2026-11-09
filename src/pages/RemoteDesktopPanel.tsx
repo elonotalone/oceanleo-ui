@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
-import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopBrokerClient, type RemoteDesktopBrokerStatus, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
+import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopBrokerClient, type RemoteDesktopBrokerStatus, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopSession, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
 import { isNetworkFailure, newRequestId } from "../api/remote-desktop-retry";
 import { RemoteDesktopVideo, remoteFrameStyle, type RemoteEarlyMedia } from "./RemoteDesktopVideo";
 import { useUI } from "../i18n/ui/useUI";
@@ -452,7 +452,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       setFrame(null);
       reconnectingRef.current = false; setReconnecting(false); setReconnectDeadline(null); setIdleDeadline(null);
       updatePhase(terminal(error));
-      setMessage(rdBrokerErrorCopy(error) ?? remoteDesktopErrorCopy(error, status));
+      setMessage(error === "media_capabilities_stale"
+        ? "这台电脑还没有上报视频能力，请稍后重新连接。"
+        : rdBrokerErrorCopy(error) ?? remoteDesktopErrorCopy(error, status));
       revealToolbar();
     };
     const connect = async () => {
@@ -484,8 +486,18 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         }
       }
       sessionClientRef.current = sessionClient;
-      // One id per click; the client retries a lost reply with it (same session back).
-      const result = await sessionClient.createSession(deviceId, { signal: abort.signal, requestId: newRequestId(), ownerDirect: !agentRequest });
+      // One id per click; capability refresh retries reuse it so a delayed
+      // reply can never create a second consent request or bill.
+      const requestId = newRequestId();
+      let result: RemoteDesktopApiResult<RemoteDesktopSession>;
+      let capabilityAttempt = 0;
+      for (;;) {
+        result = await sessionClient.createSession(deviceId, { signal: abort.signal, requestId, ownerDirect: !agentRequest });
+        if (result.ok || result.error !== "media_capabilities_stale" || capabilityAttempt >= 2 || abort.signal.aborted) break;
+        capabilityAttempt++;
+        setMessage(`等待电脑上报画面能力…（${capabilityAttempt}/3）`);
+        await wait(2000, abort.signal);
+      }
       if (abort.signal.aborted) {
         if (result.ok && result.data) void sessionClient.closeSession(deviceId, result.data.session_id).catch(() => {});
         return;

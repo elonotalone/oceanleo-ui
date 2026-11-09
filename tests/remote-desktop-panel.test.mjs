@@ -232,6 +232,26 @@ test("a session the gateway closed is final: no automatic new session", async ()
   assert.equal(sessions, 2, "only the person's click asks the computer again");
 });
 
+test("stale media capabilities retry with one request id and show the waiting state", async () => {
+  let attempts = 0;
+  let requestIds = [];
+  const view = await mount({ pending: true, overrides: {
+    async createSession(_device, options) {
+      requestIds.push(options?.requestId);
+      attempts++;
+      if (attempts === 1) return { ok: false, error: "media_capabilities_stale", status: 409 };
+      return { ok: true, data: { session_id: "fresh-session", state: "connecting", transport: "websocket-v2", expires_at: "" } };
+    },
+    async openStream(_device, _session, callbacks) { callbacks.state("active"); return { ok: true, data: { send() { return true; }, acknowledgeFrame() {}, close() {} } }; },
+  }});
+  try {
+    await settle(2100);
+    assert.equal(attempts, 2);
+    assert.equal(requestIds[0], requestIds[1], "capability retry must remain idempotent");
+    assert.doesNotMatch(view.screen().textContent, /黑屏|media_capabilities_stale/);
+  } finally { await view.unmount(); }
+});
+
 test("only an explicit device_lost reports lost computer contact and never reconnects automatically", async () => {
   let sessions = 0;
   const view = await mount({ overrides: {
