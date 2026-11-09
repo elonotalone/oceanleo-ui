@@ -1407,6 +1407,25 @@ function AgentChatInner({
   /** The left pane shows this stream (a computer task, or a draft whose dock picked a program's chat). */
   const acpShown = nativeTask || (!taskId && Boolean(acpTarget));
   const frames = useAcpFrames(nativeTask && taskId ? taskId : null);
+  // A new prompt or a finished turn of this computer task moves it to the top of My Tasks at once.
+  // The first rows a page loads are history, not activity, so they only set the baseline.
+  const activityTaskId = nativeTask && taskId ? taskId : "";
+  const activityRowRef = useRef<{ taskId: string; rowId: number } | null>(null);
+  useEffect(() => {
+    const rows = frames.rows;
+    const last = rows.length ? rows[rows.length - 1].id : 0;
+    const seen = activityRowRef.current;
+    activityRowRef.current = { taskId: activityTaskId, rowId: last };
+    if (!activityTaskId || !seen || seen.taskId !== activityTaskId || last <= seen.rowId) return;
+    for (let index = rows.length - 1; index >= 0 && rows[index].id > seen.rowId; index -= 1) {
+      const row = rows[index];
+      const prompt = row.direction === "client" && row.raw.includes('"session/prompt"');
+      const turnEnd = row.direction === "agent" && row.raw.includes('"stopReason"');
+      if (!prompt && !turnEnd) continue;
+      notifyHistoryActivity({ taskId: activityTaskId, user: prompt, at: row.received_at });
+      return;
+    }
+  }, [activityTaskId, frames.rows]);
   const acpConnected = frames.state === "connected";
   const acpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
   const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
