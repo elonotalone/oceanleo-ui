@@ -39,13 +39,16 @@ export type ActivityTerminal = {
 
 export type ComputerActivity = {
   online: boolean;
+  /** False when the node is online on another gateway this page cannot reach. */
+  reachable?: boolean;
+  gateway?: string | null;
   node_version: string;
   latest_version: string | null;
   update_available: boolean;
   /** null: the node is too old to report usage. */
-  usage: ComputerUsage | null;
-  programs: ActivityProgram[];
-  terminals: ActivityTerminal[];
+  usage?: ComputerUsage | null;
+  programs?: ActivityProgram[];
+  terminals?: ActivityTerminal[];
 };
 
 export type ActivityEndTarget = { slot: string } | { session_id: string };
@@ -71,7 +74,7 @@ export function endAllComputerActivity(computerId: string) {
 
 /** The live programs (the card's count and the panel's list). */
 export function runningPrograms(activity: ComputerActivity): ActivityProgram[] {
-  return activity.programs.filter((item) => item.alive);
+  return (activity.programs ?? []).filter((item) => item.alive);
 }
 
 /** Whole percent of the machine's memory in use, or null when the node sent no total. */

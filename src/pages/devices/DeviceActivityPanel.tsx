@@ -23,6 +23,7 @@ type Translate = ReturnType<typeof useUI>;
 
 /** The card's one line: 「N 个程序在运行 · 内存 x% · CPU y%」 (usage left out for a node that sends none). */
 export function activityLine(tt: Translate, activity: ComputerActivity): string {
+  if (activity.online && activity.reachable === false) return tt("在线，但当前版本连不到它");
   const parts = [tt("{count} 个程序在运行", { count: runningPrograms(activity).length })];
   const memory = activity.usage ? memoryPercent(activity.usage) : null;
   if (memory !== null) parts.push(tt("内存 {percent}%", { percent: memory }));
@@ -139,16 +140,20 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
     {!activity ? (!error && <p role="status" className="py-8 text-center text-sm text-neutral-500">{tt("正在加载…")}</p>) : <>
       <section className="flex flex-wrap items-start justify-between gap-4 pb-6" data-device-activity-machine>
         <div className="min-w-0 text-sm text-neutral-700">
-          {!activity.online && <p className="font-medium text-neutral-500" data-device-activity-offline>{tt("离线")}</p>}
+          {activity.reachable === false ? <>
+            <p className="font-medium text-amber-700" data-device-activity-unreachable>{tt("在线，但当前版本连不到它")}</p>
+            {activity.gateway && <p className="mt-1 text-xs text-neutral-500" data-device-activity-gateway>{tt("网关 {gateway}", { gateway: activity.gateway })}</p>}
+            <p className="mt-1 text-xs text-neutral-500" data-device-activity-unreachable-reason>{tt("当前版本无法控制这台电脑。")}</p>
+          </> : !activity.online && <p className="font-medium text-neutral-500" data-device-activity-offline>{tt("离线")}</p>}
           {usage && <p data-device-activity-usage>{tt("CPU {percent}%", { percent: Math.round(usage.cpu_percent) })}{memory !== null && <> · {tt("内存 {percent}%", { percent: memory })} <span className="text-neutral-400">{formatBytes(usage.mem_used_bytes)} / {formatBytes(usage.mem_total_bytes)}</span></>}</p>}
           <p className="mt-1 text-xs text-neutral-500">{tt("节点版本 {version}", { version: activity.node_version || "—" })}{activity.update_available && <span className="ml-2 rounded-full bg-sky-50 px-2 py-0.5 font-medium text-sky-700">{tt("有更新")}</span>}</p>
         </div>
-        {(activity.update_available || upgrading) && <button type="button" className={DEVICE_BUTTON} disabled={Boolean(busy) || upgrading || !activity.online} onClick={() => void upgrade(false)} data-device-upgrade>{tt(upgrading ? "正在升级…" : "升级节点")}</button>}
+        {(activity.update_available || upgrading) && <button type="button" className={DEVICE_BUTTON} disabled={Boolean(busy) || upgrading || !activity.online || activity.reachable === false} onClick={() => void upgrade(false)} data-device-upgrade>{tt(upgrading ? "正在升级…" : "升级节点")}</button>}
       </section>
       <section className="border-t border-neutral-200 py-6" data-device-activity-programs>
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">{tt("正在运行的程序")}</h3>
-          {(programs.length > 0 || terminals.length > 0) && <button type="button" className={`${DEVICE_BUTTON} text-red-600`} disabled={Boolean(busy)} onClick={() => void act("all", () => client.endAll(computerId))} data-device-end-all>{tt("全部结束")}</button>}
+          {(programs.length > 0 || terminals.length > 0) && <button type="button" className={`${DEVICE_BUTTON} text-red-600`} disabled={Boolean(busy) || activity.reachable === false} onClick={() => void act("all", () => client.endAll(computerId))} data-device-end-all>{tt("全部结束")}</button>}
         </div>
         {programs.length === 0 ? <p className="text-sm text-neutral-400">{tt("没有程序在运行")}</p> : <ul className="divide-y divide-neutral-200">
           {programs.map((item) => {
@@ -159,7 +164,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
                 <p className="truncate text-sm text-neutral-800"><span className="font-medium">{programLabel(item.program)}</span>{item.task_id && <> · <Link href={taskHref(item.task_id)} className="underline-offset-2 hover:underline" data-activity-task={item.task_id}>{item.task_title || tt("未命名任务")}</Link></>}</p>
                 {facts.length > 0 && <p className="mt-1 text-xs text-neutral-500">{facts.join(" · ")}</p>}
               </div>
-              <button type="button" className={DEVICE_BUTTON} disabled={Boolean(busy)} onClick={() => end(item.slot, { slot: item.slot })} data-activity-end={item.slot}>{tt("结束")}</button>
+              <button type="button" className={DEVICE_BUTTON} disabled={Boolean(busy) || activity.reachable === false} onClick={() => end(item.slot, { slot: item.slot })} data-activity-end={item.slot}>{tt("结束")}</button>
             </li>;
           })}
         </ul>}
@@ -175,7 +180,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
                 <p className="truncate text-sm text-neutral-800">{item.task_id ? <Link href={taskHref(item.task_id)} className="underline-offset-2 hover:underline" data-activity-task={item.task_id}>{title}</Link> : title}</p>
                 {age && <p className="mt-1 text-xs text-neutral-500">{tt("已运行 {time}", { time: age })}</p>}
               </div>
-              <button type="button" className={DEVICE_BUTTON} disabled={Boolean(busy)} onClick={() => end(item.session_id, { session_id: item.session_id })} data-activity-end={item.session_id}>{tt("结束")}</button>
+              <button type="button" className={DEVICE_BUTTON} disabled={Boolean(busy) || activity.reachable === false} onClick={() => end(item.session_id, { session_id: item.session_id })} data-activity-end={item.session_id}>{tt("结束")}</button>
             </li>;
           })}
         </ul>

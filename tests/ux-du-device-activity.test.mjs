@@ -176,6 +176,26 @@ test("an old node (usage null) shows only the count; no badge without an update;
   } finally { view.cleanup(); }
 });
 
+test("a node held by another gateway stays online but disables dashboard actions", async () => {
+  const client = activityClient({ initial: activity({ reachable: false, gateway: "api.oceanbizs.com" }) });
+  const view = await render({ client: cloudClient(), activityClient: client });
+  try {
+    const cardLine = view.host.querySelector('[data-device-activity-open="cc_1"]');
+    assert.equal(cardLine.textContent, "在线，但当前版本连不到它");
+    await click(cardLine);
+    const dialog = panel();
+    assert.ok(dialog);
+    assert.ok(dialog.querySelector("[data-device-activity-unreachable]"));
+    assert.equal(dialog.querySelector("[data-device-activity-unreachable]").textContent, "在线，但当前版本连不到它");
+    assert.equal(dialog.querySelector("[data-device-activity-gateway]").textContent, "网关 api.oceanbizs.com");
+    assert.match(dialog.querySelector("[data-device-activity-unreachable-reason]").textContent, /当前版本无法控制/);
+    assert.equal(dialog.querySelector("[data-device-activity-offline]"), null);
+    assert.equal(dialog.querySelector("[data-device-upgrade]").disabled, true);
+    assert.equal(dialog.querySelector("[data-device-end-all]").disabled, true);
+    assert.equal(dialog.querySelector('[data-activity-end="acp-s1"]').disabled, true);
+  } finally { view.cleanup(); }
+});
+
 test("pending computers are not asked for activity", async () => {
   const client = activityClient();
   const view = await render({ client: cloudClient([computer({ id: "cc_new", enrolled_at: null, confirmed_at: null, node_online: false })]), activityClient: client });
