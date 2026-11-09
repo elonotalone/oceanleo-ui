@@ -93,6 +93,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { WorksOverview } from "./works/WorksOverview";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
 // Same reason for the 来自 LeoChat section (it opens chats through the IM host).
@@ -705,6 +706,7 @@ export function MyLibrary({
   const tt = useUI();
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
+  const [showWorks, setShowWorks] = useState(false);
   const [detailOpen, setDetailOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -2104,7 +2106,7 @@ export function MyLibrary({
     );
   }
 
-  if (action?.action?.tab === "mine" && action.action.itemId === "memo") {
+  if (action?.action.tab === "mine" && action.action.itemId === "memo") {
     return <Suspense fallback={null}><LibraryMemoPage className={className} /></Suspense>;
   }
 
@@ -2146,7 +2148,19 @@ export function MyLibrary({
             onChange={changeSection}
             className="mt-4"
           />
-          {pageTitle ? (
+          <div className="mt-2 flex items-center gap-1" data-library-work-tab-row="">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={showWorks}
+              data-library-section="works"
+              onClick={() => setShowWorks((value) => !value)}
+              className={`min-h-8 shrink-0 rounded-full border px-3 text-[12px] ${showWorks ? "border-transparent bg-[var(--fg,#292524)] text-white" : "border-[var(--border,#e7e5e4)] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]"}`}
+            >
+              {tt("作品")}
+            </button>
+          </div>
+          {pageTitle && !showWorks ? (
             <CollectionFilterRow>
               <CollectionFilterSelect
                 label={tt("类型")}
@@ -2161,15 +2175,17 @@ export function MyLibrary({
               />
             </CollectionFilterRow>
           ) : null}
-          {typeof supplementalSection === "function"
+          {!showWorks && (typeof supplementalSection === "function"
             ? supplementalSection({ query: libraryQuery, favoritesOnly, section: activeSection })
-            : supplementalSection}
+            : supplementalSection)}
         </div>
         )
       }
     >
       <div className="relative h-full min-h-0">
-        {activeSection === "leochat" ? (
+        {showWorks ? (
+          <WorksOverview className="h-full min-h-0 px-1" onClose={() => setShowWorks(false)} />
+        ) : activeSection === "leochat" ? (
           <Suspense fallback={null}>
             <LibraryChatFiles
               query={libraryQuery}
