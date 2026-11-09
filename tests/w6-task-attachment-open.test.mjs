@@ -43,9 +43,9 @@ const durable = (extra = {}) => ({
 });
 const never = () => { throw new Error("must not be called"); };
 
-test("immediate: a typed libraryItem opens as is; a local blob tile opens at once; a sent reference waits", () => {
+test("immediate: a typed libraryItem opens as a preview; a local blob tile opens at once; a sent reference waits", () => {
   const typed = durable({ meta: { editable: true } });
-  assert.deepEqual(immediateTaskAttachment({ id: "x", libraryItem: typed }), { item: typed, mode: "edit" });
+  assert.deepEqual(immediateTaskAttachment({ id: "x", libraryItem: typed }), { item: typed, mode: "preview" });
   const tile = immediateTaskAttachment({ id: "a-1", name: "shot.png", mime: "image/png", previewUrl: "blob:https://oceanbizs.com/1", url: "blob:https://oceanbizs.com/1" });
   assert.equal(tile.item.kind, "image");
   assert.equal(tile.item.url, "blob:https://oceanbizs.com/1");
@@ -54,7 +54,7 @@ test("immediate: a typed libraryItem opens as is; a local blob tile opens at onc
   assert.equal(immediateTaskAttachment({ url: "", name: "notes.md", native_archive: { download_path: ROUTE } }), null);
 });
 
-test("sent private reference: the Library item is read back (viewer re-signs; editor when it has one)", async () => {
+test("sent private reference: the Library item is read back and opened as a preview", async () => {
   const calls = [];
   const target = await resolveTaskAttachment(
     // The bubble hands over its thumbnail grant as `url`; the reference wins.
@@ -64,7 +64,7 @@ test("sent private reference: the Library item is read back (viewer re-signs; ed
   );
   assert.deepEqual(calls, [[ART, REV]]);
   assert.equal(target.item.artifactId, ART);
-  assert.equal(target.mode, "edit");
+  assert.equal(target.mode, "preview");
 });
 
 test("reference not readable: a fresh rendition URL (source for files, preview for images) and the reference kept", async () => {
