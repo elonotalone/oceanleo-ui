@@ -22,7 +22,7 @@ export async function resolveOwnTaskTitle(url: string): Promise<string | null> {
   if (!taskListPromise) {
     taskListPromise = listTasks(100, undefined, false, "all", "all")
       .then((result) => {
-        if (result.ok) for (const task of result.data.items) taskTitleCache.set(task.id, task.title || "");
+        if (result.ok && result.data) for (const task of result.data.items) taskTitleCache.set(task.id, task.title || "");
       })
       .catch(() => undefined)
       .finally(() => { taskListPromise = null; });
@@ -92,9 +92,9 @@ export const ComposerLink = Mark.create({
         ...(taskTitle ? { "data-task-title": taskTitle } : {}),
         "data-composer-link": "",
       }),
-      ["img", { src: icon, alt: "", width: "14", height: "14", class: "oc-composer-link-icon", "aria-hidden": "true" }],
-      ...(taskTitle ? [["span", { class: "oc-task-chip-label" }, taskTitle] as const] : []),
-      0,
+      ["span", { class: "oc-composer-link-icon-wrap", contenteditable: "false" }, ["img", { src: icon, alt: "", width: "14", height: "14", class: "oc-composer-link-icon", "aria-hidden": "true" }]],
+      ...(taskTitle ? [["span", { class: "oc-task-chip-label", contenteditable: "false" }, taskTitle] as const] : []),
+      ["span", { class: "oc-composer-link-text" }, 0],
     ];
   },
   addProseMirrorPlugins() {

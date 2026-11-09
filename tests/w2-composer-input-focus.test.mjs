@@ -165,3 +165,35 @@ test("closing the right pane gives focus back to the visible composer textbox, n
     assert.equal(window.document.activeElement?.getAttribute("data-box"), "shown", "focus lands in the shown composer");
   } finally { await m.unmount(); }
 });
+
+test("real DOM link typing produces an editable blue anchor with first-party icon", async () => {
+  const m = await mount(React.createElement(PromptHighlightArea, { value: "", onChange() {} }));
+  try {
+    await until(() => m.q('[role="textbox"]'), "editor mount");
+    const box = m.q('[role="textbox"]');
+    await act(async () => { box.editor.commands.insertContent("https://example.com/path "); });
+    await flush();
+    const link = m.q('a[data-composer-link]');
+    assert.ok(link, "link anchor is rendered");
+    assert.equal(link.classList.contains("oc-composer-link"), true);
+    assert.equal(link.querySelector("img.oc-composer-link-icon")?.getAttribute("src")?.startsWith("/v1/link-icon?url="), true);
+  } finally { await m.unmount(); }
+});
+
+test("real DOM task mark renders the atomic title chip while retaining URL text in the document", async () => {
+  const m = await mount(React.createElement(PromptHighlightArea, { value: "", onChange() {} }));
+  try {
+    await until(() => m.q('[role="textbox"]'), "editor mount");
+    const box = m.q('[role="textbox"]');
+    const href = "https://oceanleo.com/tasks/dc75a314-6e8d-447f-a581-8a2fc04d471a";
+    await act(async () => {
+      box.editor.commands.insertContent(href);
+      const mark = box.editor.state.schema.marks.composerLink;
+      box.editor.view.dispatch(box.editor.state.tr.addMark(1, 1 + href.length, mark.create({ href, taskTitle: "My task" })));
+    });
+    await flush();
+    assert.equal(m.q(".oc-task-chip .oc-task-chip-label")?.textContent, "My task");
+    assert.ok(m.q(".oc-task-chip img.oc-composer-link-icon"));
+    assert.equal(box.editor.getText(), href, "serialization remains the plain URL");
+  } finally { await m.unmount(); }
+});

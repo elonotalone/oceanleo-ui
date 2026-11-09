@@ -46,7 +46,7 @@ import Text from "@tiptap/extension-text";
 import Placeholder from "@tiptap/extension-placeholder";
 import History from "@tiptap/extension-history";
 import { PromptSlot, PROMPT_SLOT_NAME } from "./promptSlotNode";
-import { ComposerLink, linkifyEditor, openComposerLink, resolveOwnTaskTitle } from "./composer-links";
+import { ComposerLink, composerLinkRanges, linkifyEditor, openComposerLink, resolveOwnTaskTitle } from "./composer-links";
 
 // ── 空态选区回正（操作员 2026-07-06 报的「粗光标」bug）──────────────────────────
 // 复现：输入框里打字 → Ctrl+A 全选 → 删除。删完文档已空，但 ProseMirror 把那个覆盖全文的
@@ -588,17 +588,17 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
       if (!editor || editor.view.composing) return;
       let cancelled = false;
       const jobs: Array<Promise<void>> = [];
+      const composerLinkType = editor.state.schema.marks.composerLink;
       editor.state.doc.descendants((node, pos) => {
-        if (!node.isText || !node.text) return;
-        for (const range of node.text.matchAll(/(?:https?:\/\/|www\.)[^\s<>]+/gi)) {
-          const raw = range[0].replace(/[.,!?;:，。！？；：、）》」』】〉》]+$/u, "");
-          const from = pos + (range.index ?? 0);
-          const to = from + raw.length;
-          const mark = node.marks.find((item) => item.type === "composerLink" && item.attrs.href);
-          if (!mark || mark.attrs.taskTitle || !raw) continue;
+        if (!node.isText || !node.text || !composerLinkType) return;
+        for (const range of composerLinkRanges(node.text)) {
+          const from = pos + range.from;
+          const to = pos + range.to;
+          const mark = node.marks.find((item) => item.type === composerLinkType && item.attrs.href);
+          if (!mark || mark.attrs.taskTitle) continue;
           jobs.push(resolveOwnTaskTitle(String(mark.attrs.href)).then((title) => {
             if (cancelled || !title || editor.isDestroyed) return;
-            const tr = editor.state.tr.removeMark(from, to, ComposerLink).addMark(from, to, ComposerLink.create({ ...mark.attrs, taskTitle: title }));
+            const tr = editor.state.tr.removeMark(from, to, composerLinkType).addMark(from, to, composerLinkType.create({ ...mark.attrs, taskTitle: title }));
             editor.view.dispatch(tr);
           }));
         }
