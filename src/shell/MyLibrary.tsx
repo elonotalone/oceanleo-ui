@@ -44,7 +44,7 @@ import {
   type LibrarySort,
   type LibraryItem,
 } from "./library-data";
-import { isServerWorkItem, serverWorkLibraryItem } from "./works/server-work-item";
+import { serverWorkLibraryItem } from "./works/server-work-item";
 import {
   LibraryScope,
   type LibraryScopeIntegration,
@@ -102,12 +102,16 @@ const LibraryChatFiles = lazy(() => import("./LibraryChatFiles").then((module) =
 
 const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
+function isServerWorkLibraryItem(item: LibraryItem): boolean {
+  return item.source === "creation" && item.key.startsWith("server-work:") && Boolean(item.meta?.serverWorkRecord);
+}
+
 // 服务端的库结果就是用户实际拥有的内容。这里只去掉非持久项和重复项，不再用
 // 一张固定 artifact type 清单替用户决定哪些内容有资格出现。
 function dedupeDurableItems(items: readonly LibraryItem[]): LibraryItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    if (!isDurableLibraryItem(item) && !isServerWorkItem(item)) return false;
+    if (!isDurableLibraryItem(item) && !isServerWorkLibraryItem(item)) return false;
     const identity = libraryItemIdentityKey(item);
     if (seen.has(identity)) return false;
     seen.add(identity);
@@ -120,7 +124,7 @@ function dedupeWorkspaceEntries(
 ): WorkspaceLibraryEntry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
-    if (!entry.libraryItem || (!isDurableLibraryItem(entry.libraryItem) && !isServerWorkItem(entry.libraryItem))) {
+    if (!entry.libraryItem || (!isDurableLibraryItem(entry.libraryItem) && !isServerWorkLibraryItem(entry.libraryItem))) {
       return false;
     }
     const identity = libraryItemIdentityKey(entry.libraryItem);
@@ -2196,7 +2200,7 @@ export function MyLibrary({
     );
   }
 
-  if (action?.action.tab === "mine" && action.action.itemId === "memo") {
+  if (action?.action?.tab === "mine" && action.action.itemId === "memo") {
     return <Suspense fallback={null}><LibraryMemoPage className={className} /></Suspense>;
   }
 

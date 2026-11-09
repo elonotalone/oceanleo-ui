@@ -328,6 +328,13 @@ test("library sort uses favorite, created time, and source/upload bytes only", (
 const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
   "./WorkspaceSession": dataModule(`export function useOptionalWorkspaceSession(){return null;} export function WorkspaceSessionProvider({children}){return children;}`),
+  "./library-standalone-editor-host": dataModule(`
+    import { createElement as h, useEffect } from "${reactUrl}";
+    export function MaterialStandaloneEditor({item}){
+      useEffect(() => { globalThis.__editorMounts += 1; globalThis.__preloadEvents.push("editor-mounted"); return () => { globalThis.__editorUnmounts += 1; }; }, []);
+      return h("div", {"data-editor": item?.artifactId || item?.id});
+    }
+  `),
   "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
   "../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT = "oceanleo:auth-state";
