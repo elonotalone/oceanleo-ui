@@ -34,6 +34,9 @@ test("cloud and computer task headers expose the same action labels", async () =
   const taskPage = fs.readFileSync(path.resolve("../oceanleo/app/tasks/[id]/page.tsx"), "utf8");
   assert.match(chatSource, /taskId && \(\s*<TaskActionsMenu/);
   assert.match(taskPage, /taskActions=\{taskActions\}/);
+  assert.match(taskPage, /function RenameTaskDialog/);
+  assert.match(taskPage, /event\.key === "Escape"/);
+  assert.doesNotMatch(taskPage, /window\.prompt/);
   const props = {
     open: true, onOpenChange(){}, href: "/tasks/123e4567-e89b-12d3-a456-426614174000",
     taskId: "123e4567-e89b-12d3-a456-426614174000", taskTitle: "Quoted", canDelete: true,
