@@ -44,6 +44,7 @@ import {
   type LibrarySort,
   type LibraryItem,
 } from "./library-data";
+import { isServerWorkItem, serverWorkLibraryItem } from "./works/server-work-item";
 import {
   LibraryScope,
   type LibraryScopeIntegration,
@@ -106,7 +107,7 @@ const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 function dedupeDurableItems(items: readonly LibraryItem[]): LibraryItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    if (!isDurableLibraryItem(item)) return false;
+    if (!isDurableLibraryItem(item) && !isServerWorkItem(item)) return false;
     const identity = libraryItemIdentityKey(item);
     if (seen.has(identity)) return false;
     seen.add(identity);
@@ -119,7 +120,7 @@ function dedupeWorkspaceEntries(
 ): WorkspaceLibraryEntry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
-    if (!entry.libraryItem || !isDurableLibraryItem(entry.libraryItem)) {
+    if (!entry.libraryItem || (!isDurableLibraryItem(entry.libraryItem) && !isServerWorkItem(entry.libraryItem))) {
       return false;
     }
     const identity = libraryItemIdentityKey(entry.libraryItem);
@@ -429,6 +430,21 @@ function mergeOwnedMineItems(
   mine: readonly LibraryItem[],
 ): LibraryItem[] {
   return documentsFirstItems(dedupeDurableItems([...pinned, ...mine]));
+}
+
+function serverWorkItemsFromPage(
+  result: LibraryPageResult,
+  options: { offset: number; source?: LibrarySource; artifactType?: string; role?: string },
+): LibraryItem[] {
+  if (
+    options.offset !== 0 ||
+    (options.source !== undefined && options.source !== "creation") ||
+    (options.artifactType !== undefined && options.artifactType !== "website") ||
+    options.role !== undefined ||
+    !result.ok ||
+    !result.data
+  ) return [];
+  return (result.data.serverWorks || []).map(serverWorkLibraryItem);
 }
 
 function favoriteRefreshWarning(result: LibraryPageResult): string {
@@ -951,6 +967,10 @@ export function MyLibrary({
     const mineResult =
       libraryPageFromSettled(mineSettled) ??
       rejectedLibraryPage(undefined);
+    const serverWorkItems = serverWorkItemsFromPage(mineResult, {
+      offset: 0,
+      source: requestedSection,
+    });
     const favoritesResult =
       libraryPageFromSettled(favoritesSettled) ??
       rejectedLibraryPage(undefined);
@@ -1151,7 +1171,7 @@ export function MyLibrary({
       );
       setOwnedItems(
         dedupeDurableItems(
-          completePages.mine.map((item) =>
+          [...serverWorkItems, ...completePages.mine].map((item) =>
             favoriteKeys.has(libraryItemIdentityKey(item))
               ? withFavoriteState(item, true)
               : item,
@@ -1167,7 +1187,7 @@ export function MyLibrary({
       setOwnedItems(
         mergeOwnedMineItems(
           [...documentPage.items, ...pdfPage.items],
-          mineResult.data.items,
+          [...serverWorkItems, ...mineResult.data.items],
         ),
       );
       setFavoriteItems(dedupeDurableItems(favoritesResult.data.items));
