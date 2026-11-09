@@ -103,5 +103,5 @@ test("Memo uploads privately, adds artifact, refreshes on focus, and opens/downl
 
 test("MyLibrary opens Memo from the capability-pack mine action", () => {
   const source = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
-  assert.match(source, /action\?\.action\.tab === "mine" && action\.action\.itemId === "memo"/);
+  assert.match(source, /action\?\.action\??\.tab === "mine" && action\.action\.itemId === "memo"/);
 });
