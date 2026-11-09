@@ -311,7 +311,10 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
     void getArtifactWebsitePreview(item, controller.signal).then((next) => {
       if (controller.signal.aborted) return;
       setResult(next);
-      if (next.ok && next.data) {
+      if (next.ok && next.data?.status === "starting") {
+        const delay = Math.min(8_000, 500 * 2 ** Math.min(attempt, 4));
+        renewal = setTimeout(() => setAttempt((value) => value + 1), delay);
+      } else if (next.ok && next.data?.status === "ready" && next.data.expiresAt) {
         renewal = setTimeout(
           () => setAttempt((value) => value + 1),
           Math.max(1_000, Date.parse(next.data.expiresAt) - Date.now() - 5_000),
@@ -331,7 +334,36 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
       </Panel>
     );
   }
-  if (result.ok && result.data) {
+  if (result.ok && result.data?.status === "starting") {
+    const stage = result.data.stage === "installing_dependencies"
+      ? "正在安装网站依赖…"
+      : result.data.stage === "starting_dev_server"
+        ? "正在启动网站预览…"
+        : "正在准备网站源码…";
+    return (
+      <Panel>
+        <span className="h-5 w-5 animate-spin rounded-full border-2 border-stone-200 border-t-stone-500" />
+        <p role="status" className="text-[13px] text-stone-500">{tt(stage)}</p>
+      </Panel>
+    );
+  }
+  if (result.ok && result.data?.status === "failed") {
+    return (
+      <Panel>
+        <p role="status" className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
+          {tt(result.data.reason?.message || "网站预览启动失败，请重试。")}
+        </p>
+        <button
+          type="button"
+          onClick={() => setAttempt((value) => value + 1)}
+          className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
+        >
+          {tt("重试")}
+        </button>
+      </Panel>
+    );
+  }
+  if (result.ok && result.data?.status === "ready" && result.data.url) {
     return <SandboxedPage url={result.data.url} title={item.title} />;
   }
   const denied = result.code === "unauthorized" || result.status === 401 || result.status === 403;

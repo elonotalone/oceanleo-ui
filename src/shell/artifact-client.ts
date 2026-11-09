@@ -2514,9 +2514,12 @@ export function artifactDownloadTypeHint(item: LibraryItem): {
 }
 
 export interface ArtifactWebsitePreview {
-  url: string;
-  expiresAt: string;
+  status: "starting" | "ready" | "failed";
+  url?: string;
+  expiresAt?: string;
   sourceFormat: string;
+  stage?: string;
+  reason?: { code: string; message: string };
 }
 
 function websiteRevisionPath(item: LibraryItem, endpoint: string): string {
@@ -2535,13 +2538,38 @@ export async function getArtifactWebsitePreview(
     websiteRevisionPath(item, "website-preview"), { signal },
   );
   if (!result.ok) return { ...result, data: undefined };
+  const rawStatus = String(result.data?.status || "").trim();
+  const status: ArtifactWebsitePreview["status"] =
+    rawStatus === "starting" || rawStatus === "failed" ? rawStatus : "ready";
   const url = isolatedWebsitePreviewUrl(result.data?.url);
   const expiresAt = String(result.data?.expires_at || "");
   const sourceFormat = String(result.data?.source_format || "").trim();
-  if (!url || !sourceFormat || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()) {
+  const rawReason = result.data?.reason;
+  const reason = rawReason && typeof rawReason === "object"
+    ? {
+        code: String((rawReason as Record<string, unknown>).code || "preview_failed").trim(),
+        message: String((rawReason as Record<string, unknown>).message || "网站预览启动失败，请重试。").trim(),
+      }
+    : undefined;
+  const validStarting = status === "starting" && Boolean(result.data?.stage);
+  const validFailed = status === "failed" && Boolean(reason?.code && reason.message);
+  const validReady = status === "ready" && Boolean(url) && Boolean(sourceFormat)
+    && Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now();
+  if (!sourceFormat || (!validStarting && !validFailed && !validReady)) {
     return { ok: false, status: result.status, code: "invalid-response", error: "无法打开网站预览，请重试。", retryable: true };
   }
-  return { ok: true, status: result.status, data: { url, expiresAt, sourceFormat } };
+  return {
+    ok: true,
+    status: result.status,
+    data: {
+      status,
+      ...(url ? { url } : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      sourceFormat,
+      ...(result.data?.stage ? { stage: String(result.data.stage) } : {}),
+      ...(reason ? { reason } : {}),
+    },
+  };
 }
 
 /** Fetch the authenticated source closure, never a signed image or JSON entrypoint. */

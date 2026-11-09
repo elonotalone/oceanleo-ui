@@ -136,6 +136,49 @@ test("website preview rejects credential-bearing, expired, first-party and nonis
   } finally { globalThis.fetch = original; }
 });
 
+test("website preview shows startup stages and polls until the executor is ready", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return calls === 1
+      ? json({ status: "starting", stage: "installing_dependencies", source_format: "website-code@1" })
+      : json(ready());
+  };
+  try {
+    await mounted(fixture().item, async (host) => {
+      assert.match(host.querySelector('[role="status"]').textContent, /安装网站依赖/);
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 650)));
+      assert.equal(host.querySelector("iframe").getAttribute("src"), previewUrl);
+      assert.equal(calls, 2);
+    });
+  } finally { globalThis.fetch = original; }
+});
+
+test("website preview renders a non-retryable failure reason and retries on demand", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    return calls === 1
+      ? json({
+          status: "failed",
+          source_format: "website-code@1",
+          reason: { code: "build_failed", message: "网站预览启动失败，请重试。" },
+        })
+      : json(ready());
+  };
+  try {
+    await mounted(fixture().item, async (host) => {
+      assert.match(host.querySelector('[role="status"]').textContent, /启动失败/);
+      assert.equal(host.querySelector("iframe"), null);
+      await act(async () => host.querySelector("button").click());
+      assert.equal(host.querySelector("iframe").getAttribute("src"), previewUrl);
+      assert.equal(calls, 2);
+    });
+  } finally { globalThis.fetch = original; }
+});
+
 // UC-1 / UC-3 / UC-4 / UC-6 — docs/architecture/oceanleo-untrusted-content-isolation.md.
 test("website frame keeps the shared restrictive sandbox and no inline execution or messaging", () => {
   const source = readFileSync("src/shell/WebsiteArtifactViewer.tsx", "utf8");
