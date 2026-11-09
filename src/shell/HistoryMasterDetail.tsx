@@ -1172,6 +1172,8 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 canDelete={canDeleteHistoryEntry(entry)}
                 inProject={Boolean(project)}
                 href={historyHrefFor(entry, pathname)}
+                taskId={entry.kind === "task" ? entry.id : entry.session.task_id || undefined}
+                taskTitle={title}
                 onRename={() => {
                   setRenameDraft(title);
                   setRenameFor(entry.id);
