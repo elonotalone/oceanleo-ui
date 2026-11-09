@@ -95,6 +95,7 @@ import {
 } from "../lib/computer-task-api";
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
 import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
+import { TaskActionsMenu, type TaskActionCallbacks, taskQuoteHref } from "./TaskActionsMenu";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
 import {
@@ -512,6 +513,8 @@ export interface AgentChatProps {
    * 顶栏右侧、搜索图标之前的宿主自定义节点（2026-09-07）。主站 `/tasks/[id]` 用它放
    * 任务状态胶囊与评分星星，从而删掉自带的那条页头，与子站共用同一行。 */
   headerExtra?: ReactNode;
+  /** Shared task row actions rendered in the task header as well. */
+  taskActions?: TaskActionCallbacks;
   /** 工作流人工确认门；主站任务页传入 resumeWorkflow。 */
   onGate?: (
     decision: "approve" | "reject",
@@ -729,6 +732,7 @@ function AgentChatInner({
   onBack,
   backLabel,
   headerExtra,
+  taskActions,
   onGate,
   libraryTabs,
   mentionMembers,
@@ -827,6 +831,7 @@ function AgentChatInner({
   const [taskTitle, setTaskTitle] = useState<string>(
     () => String(initialTask?.task?.title || initialTitle || ""),
   );
+  const [taskMenuOpen, setTaskMenuOpen] = useState(false);
   const [input, setInput] = useState("");
   const [gateBusy, setGateBusy] = useState(false);
   const [branchFromMessageId, setBranchFromMessageId] = useState<number | null>(
@@ -3085,6 +3090,17 @@ function AgentChatInner({
         <ShareEntryButton
           active={share.active}
           onClick={() => (share.active ? share.exit() : share.enter("all"))}
+        />
+      )}
+      {taskId && (
+        <TaskActionsMenu
+          open={taskMenuOpen}
+          onOpenChange={setTaskMenuOpen}
+          active={taskMenuOpen}
+          href={taskQuoteHref(taskId)}
+          taskId={taskId}
+          taskTitle={taskTitle}
+          {...taskActions}
         />
       )}
     </div>
