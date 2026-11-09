@@ -2,12 +2,13 @@
 
 import { accessToken } from "./auth/client";
 import { gatewayBase } from "./auth/config";
-import { normalizeWork, type Work, type WorkPreviewResult, type WorkServerInput, type WorkUpdate } from "../shell/works/model";
+import { normalizeWork, type MoveToServerInput, type SaveToCloudInput, type SaveToCloudResult, type Work, type WorkPreviewResult, type WorkServerInput, type WorkStopResult, type WorkUpdate } from "../shell/works/model";
 
 export class WorksApiError extends Error {
   readonly status: number;
   readonly code: string;
   readonly detail: unknown;
+  readonly detailMessage: string;
 
   constructor(status: number, code: string, detail?: unknown) {
     super(code || `HTTP ${status}`);
@@ -15,6 +16,7 @@ export class WorksApiError extends Error {
     this.status = status;
     this.code = code || `HTTP ${status}`;
     this.detail = detail;
+    this.detailMessage = errorMessage(detail);
   }
 
   get unsupported(): boolean {
@@ -24,6 +26,17 @@ export class WorksApiError extends Error {
 
 type WorkEnvelope = { work?: unknown };
 type WorksEnvelope = { items?: unknown };
+
+function errorMessage(body: unknown): string {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return "";
+  const value = body as { message?: unknown; detail?: unknown };
+  if (typeof value.message === "string" && value.message.trim()) return value.message.trim();
+  if (value.detail && typeof value.detail === "object" && !Array.isArray(value.detail)) {
+    const nested = value.detail as { message?: unknown };
+    if (typeof nested.message === "string" && nested.message.trim()) return nested.message.trim();
+  }
+  return "";
+}
 
 function errorCode(body: unknown, status: number): string {
   if (!body || typeof body !== "object" || Array.isArray(body)) return `HTTP ${status}`;
@@ -79,10 +92,10 @@ export interface WorksApi {
   update(id: string, input: WorkUpdate, signal?: AbortSignal): Promise<Work>;
   remove(id: string, signal?: AbortSignal): Promise<void>;
   preview(id: string, signal?: AbortSignal): Promise<WorkPreviewResult>;
-  stop(id: string, signal?: AbortSignal): Promise<WorkPreviewResult>;
+  stop(id: string, signal?: AbortSignal): Promise<WorkStopResult>;
   /** Optional capability hooks. W7 may expose these after the first API cut. */
-  moveToServer?: (id: string, input: WorkServerInput, signal?: AbortSignal) => Promise<Work>;
-  saveToCloud?: (id: string, signal?: AbortSignal) => Promise<Work>;
+  moveToServer?: (input: MoveToServerInput, signal?: AbortSignal) => Promise<Work>;
+  saveToCloud?: (id: string, input?: SaveToCloudInput, signal?: AbortSignal) => Promise<SaveToCloudResult>;
 }
 
 export const worksApi: WorksApi = {
@@ -118,9 +131,26 @@ export const worksApi: WorksApi = {
     });
   },
   async stop(id, signal) {
-    return request<WorkPreviewResult>(`/v1/works/${encodeURIComponent(id)}/stop`, {
+    return request<WorkStopResult>(`/v1/works/${encodeURIComponent(id)}/stop`, {
       method: "POST",
       signal,
     });
+  },
+  async moveToServer(input, signal) {
+    const body = await request<WorkEnvelope>("/v1/works/move-to-server", {
+      method: "POST",
+      body: JSON.stringify(input),
+      signal,
+    });
+    return requireWork(body.work);
+  },
+  async saveToCloud(id, input, signal) {
+    const body = await request<SaveToCloudResult>(`/v1/works/${encodeURIComponent(id)}/save-to-cloud`, {
+      method: "POST",
+      ...(input ? { body: JSON.stringify(input) } : {}),
+      signal,
+    });
+    if (!body || typeof body.work_id !== "string" || !body.work_id.trim()) throw new WorksApiError(502, "response_malformed");
+    return body;
   },
 };

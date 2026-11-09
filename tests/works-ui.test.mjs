@@ -14,13 +14,15 @@ test("Library exposes a Works panel without creating a second library page", () 
 });
 
 test("works overview maps every card field and server actions to the C6 client", () => {
-  for (const marker of ["data-work-card", "data-work-status", "data-work-preview-stage", "data-work-preview", "更新时间", "在服务器上打开文件夹", "移除作品", "api.preview", "api.stop", "api.remove", "api.createServer"]) {
+  for (const marker of ["data-work-card", "data-work-status", "data-work-preview-stage", "data-work-preview", "更新时间", "在服务器上打开文件夹", "移除作品", "搬到我的服务器", "存回云端", "api.preview", "api.stop", "api.remove", "api.createServer", "api.moveToServer", "api.saveToCloud"]) {
     assert.match(overview, new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
   assert.match(overview, /data-works-server-list/);
   assert.match(overview, /服务器离线，无法浏览文件夹/);
   assert.match(overview, /DeviceFolderPicker/);
   assert.match(overview, /startLocalAction\(work\.home\.computer_id, "app\.open"/);
+  assert.match(overview, /destination_not_empty/);
+  assert.match(overview, /50 MiB、1000 个文件/);
 });
 
 test("user work preview stays in the shared restrictive frame and app content domain", () => {

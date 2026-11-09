@@ -54,6 +54,49 @@ test("works API exposes unsupported gateways as a feature-detection error", asyn
   }
 });
 
+test("works API wires move-to-server, save-to-cloud, and stop to their exact C6 routes", async () => {
+  const calls = [];
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    calls.push({ url, init });
+    if (String(url).endsWith("/move-to-server")) return response({ work: {
+      id: "server-2", title: "Moved", kind: "website", home: { type: "server", computer_id: "cc1", computer_name: "Office", path: "/srv/moved" },
+      preview: { available: true }, links: [], status: "draft", updated_at: "2026-11-09T00:00:00Z",
+    } });
+    if (String(url).includes("/save-to-cloud")) return response({ project: { id: "project-1" }, work_id: "server-1" });
+    return response({ ok: true });
+  };
+  try {
+    const moved = await apiModule.worksApi.moveToServer({ artifact_id: "artifact-1", computer_id: "cc1", path: "/srv/moved", title: "Moved" });
+    assert.equal(moved.home.type, "server");
+    const saved = await apiModule.worksApi.saveToCloud("server-1", { title: "Cloud copy", slug: "cloud-copy" });
+    assert.equal(saved.work_id, "server-1");
+    const stopped = await apiModule.worksApi.stop("server-1");
+    assert.equal(stopped.ok, true);
+    assert.equal(calls[0].url, "https://api.test/v1/works/move-to-server");
+    assert.match(calls[0].init.body, /"artifact_id":"artifact-1"/);
+    assert.equal(calls[1].url, "https://api.test/v1/works/server-1/save-to-cloud");
+    assert.match(calls[1].init.body, /"slug":"cloud-copy"/);
+    assert.equal(calls[2].url, "https://api.test/v1/works/server-1/stop");
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
+test("works API preserves structured action errors for UI copy", async () => {
+  const previous = globalThis.fetch;
+  globalThis.fetch = async () => response({ detail: { code: "destination_not_empty", message: "destination folder is not empty" } }, 409);
+  try {
+    await assert.rejects(apiModule.worksApi.moveToServer({ artifact_id: "a1", computer_id: "cc1", path: "/srv/existing" }), (error) => {
+      assert.equal(error.code, "destination_not_empty");
+      assert.equal(error.detailMessage, "destination folder is not empty");
+      return true;
+    });
+  } finally {
+    globalThis.fetch = previous;
+  }
+});
+
 test("work normalization keeps server locations and rejects unsafe preview urls", () => {
   const work = model.normalizeWork({
     id: "w1", title: "Server app", kind: "app",

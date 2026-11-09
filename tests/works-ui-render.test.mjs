@@ -33,11 +33,11 @@ const mod = await import(await compileModule("src/shell/works/WorksOverview.tsx"
 
 function button(host, label) { return [...host.querySelectorAll("button")].find((node) => node.textContent.includes(label)); }
 
-async function render() {
+async function render(apiOverride = api) {
   const host = document.createElement("div");
   document.body.append(host);
   const root = createRoot(host);
-  await act(async () => { root.render(React.createElement(mod.WorksOverview, { api, computerClient })); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await act(async () => { root.render(React.createElement(mod.WorksOverview, { api: apiOverride, computerClient })); await new Promise((resolve) => setTimeout(resolve, 0)); });
   return { host, root };
 }
 
@@ -60,6 +60,45 @@ test("add-from-server flow browses a folder and posts the selected path", async 
   await act(async () => { button(host, "确认添加").click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(calls.created.at(-1).computer_id, "cc1");
   assert.equal(calls.created.at(-1).path, "/srv/selected");
+  await act(async () => root.unmount());
+  host.remove();
+});
+
+test("cloud move chooses an online server and reports an occupied destination", async () => {
+  const moveCalls = [];
+  class MoveError extends Error { constructor() { super("destination_not_empty"); this.code = "destination_not_empty"; this.detailMessage = ""; } }
+  const moveApi = {
+    ...api,
+    async list() { return [
+      { id: "cloud-artifact:a1", title: "Cloud site", kind: "website", home: { type: "cloud", artifact_id: "a1" }, preview: { available: true }, links: [], status: "published", updated_at: "2026-11-09T00:00:00Z" },
+      { id: "w1", title: "Server site", kind: "website", home: { type: "server", computer_id: "cc1", computer_name: "Office", path: "/srv/demo" }, preview: { available: true }, links: [], status: "stopped", updated_at: "2026-11-09T00:00:00Z" },
+    ]; },
+    async moveToServer(input) { moveCalls.push(input); throw new MoveError(); },
+  };
+  const { host, root } = await render(moveApi);
+  await act(async () => { button(host, "搬到我的服务器").click(); });
+  await act(async () => { host.querySelector('[data-works-move-server="cc1"]').click(); });
+  await act(async () => { button(host, "浏览文件夹").click(); });
+  await act(async () => { host.querySelector("[data-test-picker]").click(); });
+  await act(async () => { button(host, "确认搬到服务器").click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(moveCalls[0].artifact_id, "a1");
+  assert.equal(moveCalls[0].path, "/srv/selected");
+  assert.match(host.textContent, /已有内容/);
+  await act(async () => root.unmount());
+  host.remove();
+});
+
+test("server save-to-cloud reports the 50 MiB and 1000-file limits", async () => {
+  const saveCalls = [];
+  const saveApi = {
+    ...api,
+    async saveToCloud(id) { saveCalls.push(id); const error = new Error("source_too_large"); error.code = "source_too_large"; error.detailMessage = ""; throw error; },
+  };
+  const { host, root } = await render(saveApi);
+  await act(async () => { button(host, "存回云端").click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.deepEqual(saveCalls, ["w1"]);
+  assert.match(host.textContent, /50 MiB/);
+  assert.match(host.textContent, /1000/);
   await act(async () => root.unmount());
   host.remove();
 });

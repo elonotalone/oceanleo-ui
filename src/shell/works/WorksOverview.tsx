@@ -11,6 +11,7 @@ import { computerDisplayState } from "../cloud-computer/computer-state";
 import { webViewerFrameSandbox } from "../editor-sandbox-origin";
 import { WorksApiError, worksApi, type WorksApi } from "../../lib/works-api";
 import {
+  type MoveToServerInput,
   workDraftForPath,
   workKindLabel,
   workLocationLabel,
@@ -26,6 +27,7 @@ const QUIET = "inline-flex min-h-9 items-center justify-center rounded-lg border
 const FIELD = "mt-1 block min-h-9 w-full rounded-lg border border-stone-200 bg-white px-3 text-[13px] text-stone-800 outline-none focus:border-stone-400 focus:ring-2 focus:ring-stone-200";
 
 type AddStep = "choose" | "details";
+type MoveStep = "choose" | "details";
 
 function formatUpdatedAt(value: string): string {
   const timestamp = Date.parse(value);
@@ -63,6 +65,29 @@ function computerOfflineReason(computer: Computer, tt: ReturnType<typeof useUI>)
   if (state === "stopped") return tt("服务器已停机，无法浏览文件夹。");
   if (state === "pending_install" || state === "pending_confirm" || state === "provisioning") return tt("服务器还在接入，暂时无法浏览文件夹。");
   return tt("服务器离线，无法浏览文件夹。");
+}
+
+function cloudArtifactId(work: Work): string {
+  if (work.home.type !== "cloud") return "";
+  if (work.home.artifact_id) return work.home.artifact_id;
+  return work.id.startsWith("cloud-artifact:") ? work.id.slice("cloud-artifact:".length) : "";
+}
+
+function workActionError(caught: unknown, action: "move" | "save", tt: ReturnType<typeof useUI>): string {
+  const value = caught && typeof caught === "object" ? caught as { code?: unknown; detailMessage?: unknown; message?: unknown } : null;
+  const code = caught instanceof WorksApiError ? caught.code : typeof value?.code === "string" ? value.code : "";
+  const detailMessage = caught instanceof WorksApiError ? caught.detailMessage : typeof value?.detailMessage === "string" ? value.detailMessage : "";
+  if (code) {
+    if (action === "move" && code === "destination_not_empty") {
+      return tt("目标文件夹已有内容，请选择新文件夹或空文件夹。");
+    }
+    if (action === "save" && (code === "source_too_large" || code === "too_many_files")) {
+      return tt("存回云端失败：云端上限为 50 MiB、1000 个文件。");
+    }
+    if (detailMessage) return detailMessage;
+  }
+  if (typeof value?.message === "string" && value.message.trim()) return value.message;
+  return tt("操作未完成，请重试。");
 }
 
 function WorkPreview({ work, result, tt }: { work: Work; result?: WorkPreviewResult; tt: ReturnType<typeof useUI> }) {
@@ -159,11 +184,17 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
   const [notice, setNotice] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [movePickerOpen, setMovePickerOpen] = useState(false);
   const [addStep, setAddStep] = useState<AddStep>("choose");
+  const [moveStep, setMoveStep] = useState<MoveStep>("choose");
   const [selectedComputer, setSelectedComputer] = useState<Computer | null>(null);
+  const [moveWork, setMoveWork] = useState<Work | null>(null);
+  const [moveComputer, setMoveComputer] = useState<Computer | null>(null);
   const [path, setPath] = useState("");
+  const [movePath, setMovePath] = useState("");
   const [draft, setDraft] = useState<WorkServerInput>({ computer_id: "", path: "", kind: "website", start_command: "npm run dev", port: 3000 });
   const [saving, setSaving] = useState(false);
+  const [moving, setMoving] = useState(false);
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const mounted = useRef(true);
 
@@ -227,6 +258,14 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
     setDraft({ computer_id: "", path: "", kind: "website", start_command: "npm run dev", port: 3000 });
   }
 
+  function openMove(work: Work) {
+    if (!api.moveToServer || !cloudArtifactId(work)) return;
+    setMoveWork(work);
+    setMoveStep("choose");
+    setMoveComputer(null);
+    setMovePath("");
+  }
+
   function chooseComputer(computer: Computer) {
     if (!computerCanBrowse(computer)) return;
     setSelectedComputer(computer);
@@ -239,6 +278,17 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
     setPath(nextPath);
     setDraft((current) => ({ ...current, path: nextPath, ...defaults }));
     setPickerOpen(false);
+  }
+
+  function chooseMoveComputer(computer: Computer) {
+    if (!computerCanBrowse(computer)) return;
+    setMoveComputer(computer);
+    setMoveStep("details");
+  }
+
+  function chooseMovePath(nextPath: string) {
+    setMovePath(nextPath);
+    setMovePickerOpen(false);
   }
 
   async function submitServerWork(event: FormEvent) {
@@ -259,6 +309,30 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
     }
   }
 
+  async function submitMove(event: FormEvent) {
+    event.preventDefault();
+    if (!moveWork || !moveComputer || !movePath.trim() || !api.moveToServer || moving) return;
+    const input: MoveToServerInput = {
+      artifact_id: cloudArtifactId(moveWork),
+      computer_id: moveComputer.id,
+      path: movePath.trim(),
+      title: moveWork.title,
+    };
+    setMoving(true);
+    setError("");
+    try {
+      const moved = await api.moveToServer(input);
+      if (!mounted.current) return;
+      setWorks((current) => [moved, ...current.filter((item) => item.id !== moved.id)]);
+      setMoveWork(null);
+      setNotice(tt("作品已搬到服务器。"));
+    } catch (caught) {
+      if (mounted.current) setError(workActionError(caught, "move", tt));
+    } finally {
+      if (mounted.current) setMoving(false);
+    }
+  }
+
   async function openServerFolder(work: Work) {
     if (work.home.type !== "server") return;
     try {
@@ -266,6 +340,20 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
       if (mounted.current) setNotice(tt("服务器文件夹已打开。"));
     } catch {
       if (mounted.current) setError(tt("操作未完成，请重试。"));
+    }
+  }
+
+  async function saveWorkToCloud(work: Work) {
+    if (!api.saveToCloud) return;
+    setBusy((current) => ({ ...current, [work.id]: true }));
+    setError("");
+    try {
+      await api.saveToCloud(work.id);
+      if (mounted.current) setNotice(tt("服务器作品已存回云端。"));
+    } catch (caught) {
+      if (mounted.current) setError(workActionError(caught, "save", tt));
+    } finally {
+      if (mounted.current) setBusy((current) => ({ ...current, [work.id]: false }));
     }
   }
 
@@ -279,7 +367,7 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
       </div>
       {error && <p role="alert" className="mt-4 rounded-lg bg-rose-50 px-3 py-2 text-[12px] text-rose-800">{error}</p>}
       {notice && <p role="status" className="mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-[12px] text-emerald-800">{notice}</p>}
-      {loading ? <p role="status" className="mt-8 text-[13px] text-stone-500">{tt("正在加载…")}</p> : works.length === 0 ? <div className="mt-8 rounded-2xl border border-dashed border-stone-200 p-8 text-center"><p className="text-[14px] font-medium text-stone-700">{tt("还没有作品")}</p><p className="mt-2 text-[12px] text-stone-500">{tt("先从服务器添加一个项目，或在云端创建作品。")}</p></div> : <div className="mt-5 grid gap-4 lg:grid-cols-2">{works.map((work) => <WorkCard key={work.id} work={work} result={previewResults[work.id]} busy={Boolean(busy[work.id])} removeArmed={removeArmed === work.id} tt={tt} onPreview={() => void runWorkAction(work.id, async () => { setRemoveArmed(null); await refreshPreview(work); })} onStop={() => void runWorkAction(work.id, async () => { const result = await api.stop(work.id); setPreviewResults((current) => ({ ...current, [work.id]: result })); setWorks((current) => current.map((item) => item.id === work.id ? { ...item, status: "stopped" } : item)); })} onRemove={() => { if (removeArmed !== work.id) { setRemoveArmed(work.id); return; } void runWorkAction(work.id, async () => { await api.remove(work.id); setWorks((current) => current.filter((item) => item.id !== work.id)); setRemoveArmed(null); setNotice(tt("作品已移除，服务器上的文件没有改动。")); }); }} onOpenFolder={() => void openServerFolder(work)} onMoveToServer={api.moveToServer ? () => setNotice(tt("搬到我的服务器功能即将开放。")) : undefined} onSaveToCloud={api.saveToCloud ? () => setNotice(tt("存回云端功能即将开放。")) : undefined} />)}</div>}
+      {loading ? <p role="status" className="mt-8 text-[13px] text-stone-500">{tt("正在加载…")}</p> : works.length === 0 ? <div className="mt-8 rounded-2xl border border-dashed border-stone-200 p-8 text-center"><p className="text-[14px] font-medium text-stone-700">{tt("还没有作品")}</p><p className="mt-2 text-[12px] text-stone-500">{tt("先从服务器添加一个项目，或在云端创建作品。")}</p></div> : <div className="mt-5 grid gap-4 lg:grid-cols-2">{works.map((work) => <WorkCard key={work.id} work={work} result={previewResults[work.id]} busy={Boolean(busy[work.id]) || moving} removeArmed={removeArmed === work.id} tt={tt} onPreview={() => void runWorkAction(work.id, async () => { setRemoveArmed(null); await refreshPreview(work); })} onStop={() => void runWorkAction(work.id, async () => { await api.stop(work.id); setPreviewResults((current) => { const next = { ...current }; delete next[work.id]; return next; }); setWorks((current) => current.map((item) => item.id === work.id ? { ...item, status: "stopped" } : item)); })} onRemove={() => { if (removeArmed !== work.id) { setRemoveArmed(work.id); return; } void runWorkAction(work.id, async () => { await api.remove(work.id); setWorks((current) => current.filter((item) => item.id !== work.id)); setRemoveArmed(null); setNotice(tt("作品已移除，服务器上的文件没有改动。")); }); }} onOpenFolder={() => void openServerFolder(work)} onMoveToServer={api.moveToServer && cloudArtifactId(work) ? () => openMove(work) : undefined} onSaveToCloud={api.saveToCloud && work.home.type === "server" ? () => void saveWorkToCloud(work) : undefined} />)}</div>}
 
       {addOpen && <Modal onClose={() => { if (!saving) setAddOpen(false); }} className="max-w-2xl">
         <form onSubmit={submitServerWork}>
@@ -296,7 +384,20 @@ export function WorksOverview({ api = worksApi, computerClient = cloudComputerAp
           <div className="flex justify-end gap-2 border-t border-stone-100 px-5 py-4"><button type="button" className={QUIET} disabled={saving} onClick={() => addStep === "details" ? setAddStep("choose") : setAddOpen(false)}>{tt(addStep === "details" ? "上一步" : "取消")}</button>{addStep === "details" && <button type="submit" className={PRIMARY} disabled={saving || !draft.path.trim()}>{tt(saving ? "正在添加…" : "确认添加")}</button>}</div>
         </form>
       </Modal>}
+      {moveWork && <Modal onClose={() => { if (!moving) setMoveWork(null); }} className="max-w-2xl">
+        <form onSubmit={submitMove}>
+          <div className="border-b border-stone-100 px-5 py-4"><h3 className="text-[15px] font-semibold text-stone-900">{tt("搬到我的服务器")}</h3><p className="mt-1 text-[12px] text-stone-500">{tt("选择在线服务器和新建或空的目标文件夹；已有内容的文件夹会被拒绝。")}</p></div>
+          <div className="space-y-4 px-5 py-5">
+            {moveStep === "choose" ? <div className="space-y-2" data-works-move-server-list><p className="text-[12px] font-medium text-stone-700">{tt("目标服务器")}</p>{readyComputers.length === 0 ? <p className="rounded-lg bg-stone-50 px-3 py-3 text-[12px] text-stone-500">{tt("还没有连接的服务器。")}</p> : readyComputers.map((computer) => { const canBrowse = computerCanBrowse(computer); return <button key={computer.id} type="button" disabled={!canBrowse || moving} onClick={() => chooseMoveComputer(computer)} className={`flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-3 text-left ${canBrowse ? "border-stone-200 hover:bg-stone-50" : "cursor-not-allowed border-stone-100 bg-stone-50 opacity-55"}`} data-works-move-server={computer.id}><span><span className="block text-[13px] font-medium text-stone-800">{computer.name}</span><span className="mt-0.5 block text-[11px] text-stone-500">{canBrowse ? tt("在线") : computerOfflineReason(computer, tt)}</span></span><span className="text-[11px] text-stone-400">{canBrowse ? "›" : "—"}</span></button>; })}</div> : <>
+              <div className="flex items-center justify-between gap-3"><div><p className="text-[12px] font-medium text-stone-700">{tt("目标文件夹")}</p><p className="mt-1 truncate text-[12px] text-stone-500">{movePath || tt("还没有选择文件夹")}</p></div><button type="button" className={QUIET} disabled={!moveComputer || moving} onClick={() => setMovePickerOpen(true)}>{tt("浏览文件夹")}</button></div>
+              <p className="rounded-lg bg-amber-50 px-3 py-2 text-[11px] text-amber-800">{tt("目标文件夹必须是新建或空文件夹；已有内容会被拒绝。")}</p>
+            </>}
+          </div>
+          <div className="flex justify-end gap-2 border-t border-stone-100 px-5 py-4"><button type="button" className={QUIET} disabled={moving} onClick={() => moveStep === "details" ? setMoveStep("choose") : setMoveWork(null)}>{tt(moveStep === "details" ? "上一步" : "取消")}</button>{moveStep === "details" && <button type="submit" className={PRIMARY} disabled={moving || !movePath.trim()}>{tt(moving ? "正在搬运…" : "确认搬到服务器")}</button>}</div>
+        </form>
+      </Modal>}
       {pickerOpen && selectedComputer && <DeviceFolderPicker deviceId={selectedComputer.id} deviceName={selectedComputer.name} title={tt("选择项目文件夹")} client={settingsClient} onSelect={choosePath} onClose={() => setPickerOpen(false)} />}
+      {movePickerOpen && moveComputer && <DeviceFolderPicker deviceId={moveComputer.id} deviceName={moveComputer.name} title={tt("选择目标文件夹")} client={settingsClient} onSelect={chooseMovePath} onClose={() => setMovePickerOpen(false)} />}
     </section>
   );
 }

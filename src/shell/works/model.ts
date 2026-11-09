@@ -41,6 +41,27 @@ export interface WorkServerInput {
   port?: number;
 }
 
+export interface MoveToServerInput {
+  artifact_id: string;
+  computer_id: string;
+  path: string;
+  title?: string;
+}
+
+export interface SaveToCloudInput {
+  title?: string;
+  slug?: string;
+}
+
+export interface SaveToCloudResult {
+  project?: unknown;
+  work_id: string;
+}
+
+export interface WorkStopResult {
+  ok: boolean;
+}
+
 export interface WorkUpdate {
   title?: string;
   kind?: WorkKind;
