@@ -101,6 +101,10 @@ export {
 } from "./LeoAssistant";
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";
 export { LeoComposer } from "./LeoComposer";
+export { TaskActionsMenu, taskQuoteHref } from "./TaskActionsMenu";
+export type { TaskActionsMenuProps, TaskActionCallbacks } from "./TaskActionsMenu";
+export { MoveTaskProjectDialog } from "./HistoryRowActions";
+export { useTaskRowActions, updateTaskRow, deleteTaskRow } from "./task-row-actions";
 export { PluginsPopover } from "./PluginsPopover";
 export type {
   LeoComposerProps,

@@ -18,7 +18,6 @@ import { AgentChat, type AgentLibraryTabs } from "./AgentChat";
 import { useWorkspaceSelection } from "./WorkspaceSelection";
 import {
   listTasks,
-  deleteTask,
   getTask,
   type AgentMessage,
   type AgentApiResult,
@@ -28,11 +27,9 @@ import {
 } from "../lib/agent";
 import { taskRequestFailureText } from "../lib/local-agent-task";
 import {
-  deleteAppSession,
   getAppSession,
   isAppSessionApiUnavailableStatus,
   listAppSessions,
-  updateAppSessionMetadata,
   type AppSession,
 } from "../lib/app-session";
 import { ConfirmDialog } from "../ui";
@@ -101,6 +98,7 @@ import {
   HistoryRowMenu,
   MoveTaskProjectDialog,
 } from "./HistoryRowActions";
+import { deleteTaskRow, updateTaskRow } from "./task-row-actions";
 import { HistoryRowFrame } from "./HistoryRowBubble";
 
 const HISTORY_TITLE_CHANGED_EVENT = "oceanleo:history-title-changed";
@@ -698,13 +696,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         (item) => item.kind !== entry.kind || item.id !== entry.id,
       ),
     );
-    const r =
+    const r = await deleteTaskRow(
       entry.kind === "session"
-        ? await deleteAppSession(
-            entry.session.id,
-            entry.session.surface === "advanced" ? "advanced" : "app",
-          )
-        : await deleteTask(entry.task.id);
+        ? { kind: "session", id: entry.session.id, surface: entry.session.surface === "advanced" ? "advanced" : "app" }
+        : { kind: "task", id: entry.task.id },
+    );
     deletingRef.current.delete(deletionKey);
     if (!r.ok) {
       setItems(prev);
@@ -731,7 +727,6 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       /** 换项目时用于乐观显示的项目标注；只进本地列表，绝不写进数据库。 */
       projectBadge?: HistoryProjectBadge | null,
     ): Promise<boolean> => {
-      const table = entry.kind === "session" ? "app_sessions" : "agent_tasks";
       const id = entry.id;
       const prev = items;
       const movesProject = Object.prototype.hasOwnProperty.call(patch, "project_id");
@@ -757,24 +752,13 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
         }),
       );
       let mutationError = "";
-      if (entry.kind === "session") {
-        const result = await updateAppSessionMetadata(
-          id,
-          patch,
-          entry.session.surface === "advanced" ? "advanced" : "app",
-        );
-        if (!result.ok) mutationError = result.error || "session update failed";
-      } else {
-        const supabase = browserClient();
-        if (!supabase) mutationError = "supabase unavailable";
-        else {
-          const { error: err } = await supabase
-            .from(table)
-            .update(patch)
-            .eq("id", id);
-          if (err) mutationError = err.message;
-        }
-      }
+      const result = await updateTaskRow(
+        entry.kind === "session"
+          ? { kind: "session", id, surface: entry.session.surface === "advanced" ? "advanced" : "app" }
+          : { kind: "task", id },
+        patch,
+      );
+      if (!result.ok) mutationError = result.error || "update failed";
       if (mutationError) {
         setItems(prev);
         setError(tt("操作失败，请稍后重试。"));
