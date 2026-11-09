@@ -38,7 +38,7 @@ export function ServerWorkViewer({ item, onRemoved }: { item: ServerWork; onRemo
           setUrl(result.url); setState("ready"); return;
         }
         if (result.status === "failed") {
-          setReason(result.reason || tt("预览启动失败")); setState("failed"); return;
+          setReason(result.reason && /offline|离线/i.test(result.reason) ? tt("电脑离线") : (result.reason || tt("预览启动失败"))); setState("failed"); return;
         }
         setState("starting");
         if (Date.now() - started >= PREVIEW_TIMEOUT_MS) {
