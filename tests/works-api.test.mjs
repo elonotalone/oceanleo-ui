@@ -12,7 +12,7 @@ function response(body, status = 200) {
   return { ok: status >= 200 && status < 300, status, async json() { return body; } };
 }
 
-test("works API lists and creates server works with bearer auth and encoded ids", async () => {
+test("works API lists server works with bearer auth", async () => {
   const calls = [];
   const previous = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
@@ -29,11 +29,7 @@ test("works API lists and creates server works with bearer auth and encoded ids"
   try {
     const listed = await apiModule.worksApi.list();
     assert.equal(listed[0].id, "cloud-1");
-    const created = await apiModule.worksApi.createServer({ computer_id: "cc/1", path: "/srv/site", kind: "website", port: 3000 });
-    assert.equal(created.home.type, "server");
     assert.equal(calls[0].init.headers.Authorization, "Bearer test-token");
-    assert.equal(calls[1].url, "https://api.test/v1/works/server");
-    assert.ok(calls[1].init.body.includes('"computer_id":"cc/1"'));
   } finally {
     globalThis.fetch = previous;
   }
@@ -54,40 +50,33 @@ test("works API exposes unsupported gateways as a feature-detection error", asyn
   }
 });
 
-test("works API wires move-to-server, save-to-cloud, and stop to their exact C6 routes", async () => {
+test("works API wires preview, stop, and remove to their exact routes", async () => {
   const calls = [];
   const previous = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
     calls.push({ url, init });
-    if (String(url).endsWith("/move-to-server")) return response({ work: {
-      id: "server-2", title: "Moved", kind: "website", home: { type: "server", computer_id: "cc1", computer_name: "Office", path: "/srv/moved" },
-      preview: { available: true }, links: [], status: "draft", updated_at: "2026-11-09T00:00:00Z",
-    } });
-    if (String(url).includes("/save-to-cloud")) return response({ project: { id: "project-1" }, work_id: "server-1" });
+    if (String(url).includes("/preview")) return response({ status: "ready", url: "https://w-abc.ws.oceanleo.app", stage: "ready" });
     return response({ ok: true });
   };
   try {
-    const moved = await apiModule.worksApi.moveToServer({ artifact_id: "artifact-1", computer_id: "cc1", path: "/srv/moved", title: "Moved" });
-    assert.equal(moved.home.type, "server");
-    const saved = await apiModule.worksApi.saveToCloud("server-1", { title: "Cloud copy", slug: "cloud-copy" });
-    assert.equal(saved.work_id, "server-1");
+    const preview = await apiModule.worksApi.preview("server/1");
+    assert.equal(preview.status, "ready");
     const stopped = await apiModule.worksApi.stop("server-1");
     assert.equal(stopped.ok, true);
-    assert.equal(calls[0].url, "https://api.test/v1/works/move-to-server");
-    assert.match(calls[0].init.body, /"artifact_id":"artifact-1"/);
-    assert.equal(calls[1].url, "https://api.test/v1/works/server-1/save-to-cloud");
-    assert.match(calls[1].init.body, /"slug":"cloud-copy"/);
-    assert.equal(calls[2].url, "https://api.test/v1/works/server-1/stop");
+    await apiModule.worksApi.remove("server/1");
+    assert.equal(calls[0].url, "https://api.test/v1/works/server%2F1/preview");
+    assert.equal(calls[1].url, "https://api.test/v1/works/server-1/stop");
+    assert.equal(calls[2].url, "https://api.test/v1/works/server%2F1");
   } finally {
     globalThis.fetch = previous;
   }
 });
 
-test("works API preserves structured action errors for UI copy", async () => {
+test("works API preserves structured preview errors for UI copy", async () => {
   const previous = globalThis.fetch;
   globalThis.fetch = async () => response({ detail: { code: "destination_not_empty", message: "destination folder is not empty" } }, 409);
   try {
-    await assert.rejects(apiModule.worksApi.moveToServer({ artifact_id: "a1", computer_id: "cc1", path: "/srv/existing" }), (error) => {
+    await assert.rejects(apiModule.worksApi.preview("server/1"), (error) => {
       assert.equal(error.code, "destination_not_empty");
       assert.equal(error.detailMessage, "destination folder is not empty");
       return true;
@@ -108,4 +97,10 @@ test("work normalization keeps server locations and rejects unsafe preview urls"
   assert.deepEqual(work.links.map((link) => link.label), ["safe"]);
   assert.equal(model.workLocationLabel(work), "Office · C:\\site");
   assert.deepEqual(model.workDraftForPath("/projects/game-demo"), { kind: "game", start_command: "npm run dev", port: 3000 });
+});
+
+test("works API no longer exposes removed server transfer methods", () => {
+  assert.equal("createServer" in apiModule.worksApi, false);
+  assert.equal("moveToServer" in apiModule.worksApi, false);
+  assert.equal("saveToCloud" in apiModule.worksApi, false);
 });
