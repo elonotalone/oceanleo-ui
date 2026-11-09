@@ -11,6 +11,7 @@ export * from "./execution-target";
 export { LOCAL_AGENT_COPY, CLOUD_AGENT_COPY, localAgentFailure, localAgentRefusalText, type LocalAgentFailure } from "./local-agent-task";
 export { cloudDriverPreflight } from "./cloud-agent-api";
 export * from "./agent-progress";
+export * from "./task-link";
 // 完整 app 工作会话（版本化 snapshot + 乐观并发）。
 export * from "./app-session";
 export * from "./organization";
