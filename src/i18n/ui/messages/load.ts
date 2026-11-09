@@ -134,7 +134,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...worksCopy(locale),
     ...environmentsCopy(locale),
     ...purchaseCopy(locale),
-    ...(PROGRAM_SIGNIN_COPY[locale as keyof typeof PROGRAM_SIGNIN_COPY] ?? {}),
+    ...((PROGRAM_SIGNIN_COPY as Record<string, Record<string, string>>)[locale] ?? {}),
     ...share.SHARE_COPY_MESSAGES[locale],
     ...accountSecurity.ACCOUNT_SECURITY_MESSAGES[locale],
     ...authOauth.AUTH_OAUTH_MESSAGES[locale],
