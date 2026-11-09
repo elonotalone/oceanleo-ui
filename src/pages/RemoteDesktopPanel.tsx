@@ -489,7 +489,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       // One id per click; capability refresh retries reuse it so a delayed
       // reply can never create a second consent request or bill.
       const requestId = newRequestId();
-      let result: RemoteDesktopApiResult<RemoteDesktopSession>;
+      let result: Awaited<ReturnType<typeof sessionClient.createSession>>;
       let capabilityAttempt = 0;
       for (;;) {
         result = await sessionClient.createSession(deviceId, { signal: abort.signal, requestId, ownerDirect: !agentRequest });
