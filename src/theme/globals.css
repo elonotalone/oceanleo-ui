@@ -2373,3 +2373,7 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
   appearance: none;
   -webkit-appearance: none;
 }
+
+/* Composer links stay editable while showing the site icon supplied by our API. */
+.oc-slot-editor .oc-composer-link { color: #2563eb; text-decoration: underline; text-decoration-color: color-mix(in srgb, #2563eb 35%, transparent); text-underline-offset: 2px; }
+.oc-slot-editor .oc-composer-link-icon { display: inline-block; width: 14px; height: 14px; margin-inline-end: 3px; vertical-align: -2px; object-fit: contain; }

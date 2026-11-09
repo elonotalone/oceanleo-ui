@@ -46,6 +46,7 @@ import Text from "@tiptap/extension-text";
 import Placeholder from "@tiptap/extension-placeholder";
 import History from "@tiptap/extension-history";
 import { PromptSlot, PROMPT_SLOT_NAME } from "./promptSlotNode";
+import { ComposerLink } from "./composer-links";
 
 // ── 空态选区回正（操作员 2026-07-06 报的「粗光标」bug）──────────────────────────
 // 复现：输入框里打字 → Ctrl+A 全选 → 删除。删完文档已空，但 ProseMirror 把那个覆盖全文的
@@ -267,6 +268,7 @@ export const PromptHighlightArea = forwardRef<PromptHighlightAreaHandle, PromptH
         Text,
         History, // undo/redo（此前漏装 = Ctrl+Z 完全无效的真正根因，2026-07-06 修）
         PromptSlot,
+        ComposerLink,
         CollapseEmptySelection, // Ctrl+A 删空后粗光标 + 划词气泡滞留（2026-07-06）
         Placeholder.configure({
           placeholder: placeholder || "",
