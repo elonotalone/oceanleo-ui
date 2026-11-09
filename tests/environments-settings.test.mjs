@@ -78,5 +78,7 @@ test("server settings owns the development environment card and copy includes iO
   const copy = readFileSync(new URL("../src/i18n/ui/messages/environments-copy.ts", import.meta.url), "utf8");
   assert.match(panel, /<EnvironmentCard/);
   assert.match(copy, /iOS builds require a Mac/);
+  assert.match(copy, /EAS CLI/);
+  assert.doesNotMatch(copy, /expo-cli/);
   assert.match(copy, /让 agent 处理/);
 });
