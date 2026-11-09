@@ -51,7 +51,7 @@ function RawRequest({ request }: { request: AcpPermission }) {
 }
 
 function finishedBackgroundState(state: string): boolean {
-  return ["completed", "complete", "failed", "stopped", "cancelled", "canceled", "terminated"].includes(state.toLowerCase());
+  return ["completed", "complete", "failed", "stopped", "cancelled", "canceled", "terminated", "ended"].includes(state.toLowerCase());
 }
 
 function elapsedLabel(startedAt: string, now: number): string {
@@ -63,12 +63,27 @@ function elapsedLabel(startedAt: string, now: number): string {
   return `${minutes}m ${seconds % 60}s`;
 }
 
+function ModelWaitingNotice({ view, rows, tt }: { view: ReturnType<typeof reduceRows>; rows: AcpFrameRow[]; tt: (key: string, vars?: Record<string, unknown>) => string }) {
+  const open = view.turns.find((turn) => turn.open);
+  if (!open) return null;
+  if (view.retrying) return <div data-acp-model-retry="" className="mb-2 text-[12px] text-amber-700">{tt("模型连接中断，正在重试")}</div>;
+  const last = rows.filter((row) => row.direction === "agent").reduce((latest, row) => Math.max(latest, Date.parse(row.received_at) || 0), 0);
+  const promptAt = Date.parse(rows.find((row) => row.id === open.rowId)?.received_at || "") || 0;
+  const silent = Date.now() - Math.max(last, promptAt);
+  if (silent < 60_000) return null;
+  const seconds = Math.floor(silent / 1000);
+  const elapsed = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return <div data-acp-model-waiting="" className="mb-2 text-[12px] text-stone-500">{tt("等待模型回应 · {elapsed}", { elapsed })}</div>;
+}
+
 /** Live AIR tasks sit above the composer; terminal states render on their tool row. */
 export function AcpBackgroundTaskStrip({ tasks, onStopTask }: { tasks: AcpBackgroundTask[]; onStopTask?: (ref: string) => void }) {
   const tt = useUI();
   const [now, setNow] = useState(() => Date.now());
   const [expanded, setExpanded] = useState(false);
-  const running = tasks.filter((task) => !finishedBackgroundState(task.state));
+  const running = tasks.filter((task) => !finishedBackgroundState(task.state) && task.backgroundState !== "stale" && task.backgroundState !== "unknown");
+  const ended = tasks.filter((task) => !finishedBackgroundState(task.state) && (task.backgroundState === "stale" || task.backgroundState === "unknown"));
+  const visible = [...running, ...ended];
   const previousRunningCount = useRef(running.length);
   useEffect(() => {
     if (!running.length) return;
@@ -80,7 +95,7 @@ export function AcpBackgroundTaskStrip({ tasks, onStopTask }: { tasks: AcpBackgr
     if (running.length < previous && running.length <= 1) setExpanded(false);
     previousRunningCount.current = running.length;
   }, [running.length]);
-  if (!running.length) return null;
+  if (!visible.length) return null;
 
   const nameFor = (task: AcpBackgroundTask) => task.name || task.description || task.id;
   const stop = (task: AcpBackgroundTask) => onStopTask && task.canStop ? (
@@ -96,7 +111,9 @@ export function AcpBackgroundTaskStrip({ tasks, onStopTask }: { tasks: AcpBackgr
   const first = running[0];
   const summary = running.length === 1
     ? tt("后台任务运行中 · {name} · {elapsed}", { name: nameFor(first), elapsed: elapsedLabel(first.startedAt, now) })
-    : tt("{count} 个后台任务运行中", { count: running.length });
+    : running.length > 1
+      ? tt("{count} 个后台任务运行中", { count: running.length })
+      : tt("已随会话结束（未确认）");
   const listId = "acp-background-task-list";
 
   return (
@@ -112,20 +129,20 @@ export function AcpBackgroundTaskStrip({ tasks, onStopTask }: { tasks: AcpBackgr
           className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-0.5 text-left hover:bg-stone-50"
         >
           <span className="min-w-0 flex-1 truncate text-stone-600">{summary}</span>
-          {running.length > 1 && <span aria-hidden="true" className="shrink-0 text-[11px] text-stone-400">{expanded ? "⌃" : "⌄"}</span>}
+          {visible.length > 1 && <span aria-hidden="true" className="shrink-0 text-[11px] text-stone-400">{expanded ? "⌃" : "⌄"}</span>}
         </button>
         {running.length === 1 && stop(first)}
       </div>
       {expanded && (
         <div id={listId} data-acp-background-list="" role="list" className="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-lg bg-stone-50/70 px-2 py-1.5">
-          {running.map((task) => (
+          {visible.map((task) => (
             <div key={task.id} data-acp-background-task={task.id} data-task-state={task.state} role="listitem" className="flex min-w-0 items-start gap-2 text-[12px] text-stone-500">
               <div className="min-w-0 flex-1">
                 <div className="flex min-w-0 items-center gap-1.5">
                   <span className="min-w-0 flex-1 truncate text-stone-600">{nameFor(task)}</span>
                   <span className="shrink-0 text-stone-400">{tt("用时 {elapsed}", { elapsed: elapsedLabel(task.startedAt, now) })}</span>
                 </div>
-                {task.summary && <p className="whitespace-pre-wrap text-stone-400">{task.summary}</p>}
+                {task.backgroundState === "stale" || task.backgroundState === "unknown" ? <p className="whitespace-pre-wrap text-stone-400">{tt("已随会话结束（未确认）")}</p> : task.summary && <p className="whitespace-pre-wrap text-stone-400">{task.summary}</p>}
               </div>
               {stop(task)}
             </div>
@@ -166,6 +183,7 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
       exit: (code, signal) => tt("程序已退出（{detail}）", { detail: signal ? `signal ${signal}` : `code ${code ?? "?"}` }),
       stopReason: (reason) => tt("本轮结束：{reason}", { reason }),
       cancelled: tt("已停止生成"),
+      modelRetry: tt("模型连接中断，正在重试"),
       permissionPrompt: tt("请确认后继续。"),
       backgroundTask: (name, state) => {
         const stateText = state === "completed" || state === "complete" ? tt("已完成")
@@ -207,6 +225,7 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
   return (
     <div data-acp-transcript="" data-acp-program={program} className="space-y-3">
       {blocks.map(render)}
+      <ModelWaitingNotice view={view} rows={rows} tt={tt} />
     </div>
   );
 }

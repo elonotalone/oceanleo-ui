@@ -18,8 +18,10 @@ export type HistoryListEntry =
       /** Present (true) only while the agent is working on this row; see `isTaskWorking`. */
       working?: true;
       activity_state?: AgentTask["activity_state"];
+      background_state?: "idle" | "running" | "stale" | "unknown";
+      background_active_count?: number;
     } & HistoryEntryTimes)
-  | ({ kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true; activity_state?: AgentTask["activity_state"] } & HistoryEntryTimes);
+  | ({ kind: "task"; id: string; task: AgentTask; created_by?: string | null; working?: true; activity_state?: AgentTask["activity_state"]; background_state?: "idle" | "running" | "stale" | "unknown"; background_active_count?: number } & HistoryEntryTimes);
 
 function activityStateOf(record: unknown): AgentTask["activity_state"] {
   if (!record || typeof record !== "object") return undefined;
@@ -54,6 +56,10 @@ export function isTaskWorking(
 
 export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
   return entry.working === true;
+}
+
+export function isHistoryEntryBackgroundRunning(entry: HistoryListEntry): boolean {
+  return entry.background_state === "running" && (entry.background_active_count || 0) > 0;
 }
 
 /** A computer task is waiting for the user's permission/input, not running. */

@@ -51,6 +51,8 @@ export function blocksText(blocks: readonly ContentBlock[]): string {
   return blocks.map((block) => (block.type === "text" ? block.text : "")).join("");
 }
 
+function finishedBackgroundState(state: string): boolean { return ["completed", "complete", "failed", "stopped", "cancelled", "canceled", "terminated", "ended"].includes(state.toLowerCase()); }
+
 const TOOL_STATUSES = new Set<ToolCallStatus>(["pending", "in_progress", "completed", "failed"]);
 
 function claudeMeta(value: unknown): Json {
@@ -121,6 +123,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     backgroundTasks: [],
     activity: null,
     exited: null,
+    retrying: false,
   };
   const mainSessions = new Set<string>();
   const clientRequests = new Map<string, PendingClient>();
@@ -232,6 +235,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
       if (typeof fields[name] === "string") entry[name] = fields[name] as string;
     }
     if (typeof fields.canStop === "boolean") entry.canStop = fields.canStop;
+    if (fields.backgroundState === "stale" || fields.backgroundState === "unknown" || fields.backgroundState === "running") entry.backgroundState = fields.backgroundState;
     if (update.sessionUpdate === "async_task_state_update" && typeof update.state === "string") entry.state = update.state;
     entry.updatedAt = row.received_at;
   };
@@ -240,6 +244,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     if (sessionId && mainSessions.size === 0) mainSessions.add(sessionId);
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
+        view.retrying = false;
         if (program === "hermes" && isRecord(update.content) && update.content.type === "text") {
           const text = update.content.text.trim();
           if (HERMES_FOLLOWUP.test(text)) {
@@ -254,6 +259,9 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         chunk(row, sessionId, update);
         return;
       case "agent_thought_chunk":
+        view.retrying = false;
+        chunk(row, sessionId, update);
+        return;
       case "user_message_chunk":
         chunk(row, sessionId, update);
         return;
@@ -292,16 +300,21 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
           view.usage = { used: update.used, size: update.size, ...(update.cost ? { cost: update.cost } : {}) };
         }
         return;
-      case "notice":
+      case "notice": {
+        const title = str(update.title);
+        const description = str(update.description);
+        const retryText = `${title} ${description}`.toLowerCase();
+        if (retryText.includes("retry") || retryText.includes("重试") || retryText.includes("reconnect") || retryText.includes("重新连接")) view.retrying = true;
         push({
           type: "notice",
           key: `notice-${row.id}`,
           severity: str(update.severity),
-          title: str(update.title),
-          description: str(update.description),
+          title,
+          description,
           rowId: row.id,
         });
         return;
+      }
       case "async_task_spawned":
       case "async_task_progress":
       case "async_task_state_update":
@@ -459,6 +472,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         push({ type: "oversize", key: `oversize-${row.id}`, bytes: parsed.bytes, rowId: row.id });
         return;
       case "exit":
+        for (const task of tasks.values()) if (!finishedBackgroundState(task.state)) { task.state = "ended"; task.backgroundState = "stale"; task.canStop = false; }
         view.exited = { code: parsed.code, signal: parsed.signal };
         // The process that would answer these is gone: its open prompts and its unanswered requests end here. The
         // row says so; nothing is sent to anyone.

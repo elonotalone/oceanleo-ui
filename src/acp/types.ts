@@ -204,6 +204,8 @@ export type AcpBackgroundTask = {
   outputFilePath: string;
   startedAt: string;
   updatedAt: string;
+  /** Gateway projection may mark a task ended without a terminal AIR update. */
+  backgroundState?: "running" | "stale" | "unknown" | "idle";
 };
 
 export type AcpItem =
@@ -272,4 +274,6 @@ export type AcpView = {
   /** Codex: `session_info_update._meta.codex.threadStatus.type` (Codex keeps working after a prompt for goals). */
   activity: "active" | "idle" | null;
   exited: { code: number | null; signal: string | null } | null;
+  /** Codex adapter is retrying its model stream. */
+  retrying: boolean;
 };

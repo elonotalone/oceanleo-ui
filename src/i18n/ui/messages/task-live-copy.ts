@@ -17,6 +17,9 @@ const EN: Record<string, string> = {
   "已完成": "Completed",
   "已失败": "Failed",
   "已停止": "Stopped",
+  "等待模型回应 · {elapsed}": "Waiting for the model · {elapsed}",
+  "模型连接中断，正在重试": "Model connection interrupted, retrying",
+  "已随会话结束（未确认）": "Ended with the session (unconfirmed)",
 };
 
 export function taskLiveCopy(locale: Locale): Record<string, string> {
