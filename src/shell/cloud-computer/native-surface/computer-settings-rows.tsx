@@ -25,7 +25,7 @@ import { AppearancePanel } from "../terminal-card/AppearancePanel";
 import { useTerminalAppearance } from "../terminal-card/appearance";
 import { isCliToolProgram, type CliToolProgram } from "../terminal-card/CliSettingsPanel";
 import { readCliProgramSettings, writeCliProgramSettings, type CliOptionValue, type CliProgramSettings } from "../terminal-card/cli-settings";
-import { HOST_PANEL_SKIN } from "./host-style";
+import { HOST, HOST_PANEL_SKIN } from "./host-style";
 import { InstallFlow, KeyForm, LoginFlow, programAccessState } from "./ProgramAccess";
 import type { ProgramAccess } from "./useProgramAccess";
 
@@ -158,10 +158,20 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
   const status = dialog.programs.find((item) => item.id === program);
   const { state, copy } = programAccessState(status, tt);
   const choices: ComposerSettingChoice[] = [];
+  const methods = status?.login?.methods ?? [];
+  const methodLabel = (id: string) => ({
+    device: tt("用 ChatGPT 登录（设备码）"), browser: tt("在这台电脑的浏览器里登录"), api_key: tt("API Key"), access_token: tt("Access Token"),
+    claudeai: tt("Claude 订阅"), console: tt("Console（按 API 计费）"), sso: tt("SSO"), oauth_token: tt("长期令牌（setup-token）"), login: tt("登录"), nous: tt("Nous Portal"),
+  }[id] || id);
+  const signedIn = state === "signed_in";
   if (state === "not_installed") {
     choices.push({ value: "install", label: tt("安装"), attrs: { "data-oceanleo-native-program-install": "" } });
   } else if (state === "signed_out" || state === "unknown") {
-    choices.push({ value: "login", label: tt("登录"), attrs: { "data-oceanleo-native-program-login": "" } });
+    (methods.length ? methods : [{ id: "device", kind: "link_code" as const }]).forEach((method) => choices.push({ value: `login:${method.id}`, label: methodLabel(method.id), attrs: { "data-oceanleo-native-program-login": method.id } }));
+  } else if (signedIn) {
+    choices.push({ value: "switch", label: tt("换账号") });
+    if (status?.login?.can_logout !== false) choices.push({ value: "logout", label: tt("退出登录") });
+    methods.filter((method) => method.kind === "secret").forEach((method) => choices.push({ value: `login:${method.id}`, label: methodLabel(method.id), attrs: { "data-oceanleo-native-program-login": method.id } }));
   }
   if (status?.installed) {
     choices.push({ value: "key", label: program === "hermes" ? tt("管理凭据") : tt("Key"), attrs: { "data-oceanleo-native-program-key": "" } });
@@ -172,21 +182,29 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
     <div className="grid gap-2">
       {installOpen ? <InstallFlow dialog={dialog} program={program} /> : null}
       {loginOpen ? <LoginFlow dialog={dialog} program={program} /> : null}
-      {keyOpen ? <KeyForm computerId={computerId} program={program} status={status} dialog={dialog} onClose={() => onKeyOpen(false)} /> : null}
+      {keyOpen ? <KeyForm computerId={computerId} program={program} status={status} dialog={dialog} kind="api_key" onClose={() => onKeyOpen(false)} /> : null}
+      {dialog.logout.confirm ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900"><p>{status?.agents_running && status.agents_running > 0 ? tt("这台电脑上 {n} 个 {program} 正在运行，退出后它们都将失去登录", { n: status.agents_running, program: PROGRAM_LABEL[program] }) : tt("退出后这台电脑上的 {program} 将失去登录。", { program: PROGRAM_LABEL[program] })}</p><div className="mt-2 flex gap-2"><button type="button" className={HOST_PANEL_SKIN.primary} onClick={dialog.confirmLogout}>{tt("确认退出")}</button><button type="button" className={HOST_PANEL_SKIN.quiet} onClick={dialog.cancelLogout}>{tt("取消")}</button></div></div> : null}
     </div>
   ) : null;
   return {
     id: "account",
     section: tt("这台电脑上的 {program}", { program: PROGRAM_LABEL[program] }),
     label: tt("账号"),
-    value: status?.installed && status.version ? `${copy} · ${status.version}` : copy,
+    value: status?.installed && status.version ? `${status.account ? `${status.account}${status.plan ? ` · ${status.plan}` : ""} · ` : ""}${copy}${status.mode ? ` · ${status.mode}` : ""} · ${status.version}` : copy,
     selected: "",
     choices,
     keepOpen: true,
     card,
     onPick: choices.length || card ? (value) => {
       if (value === "install") dialog.openInstall(program);
-      else if (value === "login") dialog.openLogin(program);
+      else if (value.startsWith("login:")) {
+        const methodId = value.slice(6);
+        const method = methods.find((item) => item.id === methodId);
+        if (method?.kind === "secret") onKeyOpen(!keyOpen);
+        else dialog.openLoginMethod(program, methodId);
+      }
+      else if (value === "logout") dialog.requestLogout();
+      else if (value === "switch") dialog.requestLogout();
       else if (value === "key") onKeyOpen(!keyOpen);
     } : undefined,
     attrs: { "data-oceanleo-native-program": program, "data-state": state },

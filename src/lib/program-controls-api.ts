@@ -5,11 +5,11 @@
 // The key routes stay in program-key-api.
 
 import { CloudComputerError, cloudComputerRequest } from "./cloud-computer-api";
-import type { ProgramStatus } from "../native-agent-core/index";
+import type { ProgramLoginMethod, ProgramStatus } from "../native-agent-core/index";
 
 export type ProgramOperation = {
   operation_id: string;
-  kind: "install" | "login";
+  kind: "install" | "login" | "logout";
   state: "running" | "succeeded" | "failed" | "cancelled";
   url?: string;
   needs_code?: boolean;
@@ -25,6 +25,7 @@ export type ProgramOptions = {
   version: string | null;
   /** The computer's own probe row; null when the probe did not answer. */
   status: ProgramStatus | null;
+  login?: { state: "logged_in" | "logged_out" | "unknown"; account?: string | null; plan?: string | null; mode?: string | null; methods: ProgramLoginMethod[]; can_logout?: boolean; agents_running?: number | null; key_replaces_login?: boolean };
 };
 
 const base = (computerId: string) => `/v1/computers/${encodeURIComponent(computerId)}`;
@@ -45,8 +46,12 @@ export function startProgramInstall(computerId: string, program: string, dir: st
   return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/install`, json(dir ? { dir } : {}));
 }
 
-export function startProgramLogin(computerId: string, program: string): Promise<{ operation_id: string; url?: string; needs_code?: boolean }> {
-  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/login`, json({}));
+export function startProgramLogin(computerId: string, program: string, method = "device", email?: string): Promise<{ operation_id: string; url?: string; needs_code?: boolean }> {
+  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/login`, json({ method, ...(email ? { email } : {}) }));
+}
+
+export function startProgramLogout(computerId: string, program: string, confirm = false, provider?: string): Promise<{ operation_id: string }> {
+  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/logout`, json({ confirm, ...(provider ? { provider } : {}) }));
 }
 
 export function submitProgramLoginCode(computerId: string, program: string, operationId: string, code: string): Promise<ProgramOperation> {

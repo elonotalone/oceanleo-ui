@@ -36,7 +36,7 @@ function detailOf(payload: unknown): { code: string; message: string } {
 async function request(
   computerId: string,
   program: WsProgram,
-  init: { method: "POST" | "DELETE"; key?: string; provider?: string },
+  init: { method: "POST" | "DELETE"; key?: string; provider?: string; kind?: string; confirm_replace_login?: boolean },
 ): Promise<Record<string, unknown>> {
   const id = computerId.trim();
   if (!id) throw new ProgramKeyError("computer_not_found", "");
@@ -55,7 +55,7 @@ async function request(
           ...(init.method === "POST" ? { "Content-Type": "application/json" } : {}),
         },
         ...(init.method === "POST"
-          ? { body: JSON.stringify({ key: init.key ?? "", provider: init.provider ?? "" }) }
+          ? { body: JSON.stringify({ key: init.key ?? "", provider: init.provider ?? "", ...(init.kind ? { kind: init.kind } : {}), ...(init.confirm_replace_login ? { confirm_replace_login: true } : {}) }) }
           : {}),
         cache: "no-store",
         credentials: "include",
@@ -84,9 +84,11 @@ export async function saveProgramKey(
   program: WsProgram,
   key: string,
   provider = "",
+  kind = "api_key",
+  confirmReplaceLogin = false,
 ): Promise<{ ok: true; auth: string }> {
   if (!isWsProgram(program)) throw new ProgramKeyError("invalid_argument", "");
-  const payload = await request(computerId, program, { method: "POST", key, provider });
+  const payload = await request(computerId, program, { method: "POST", key, provider, kind, confirm_replace_login: confirmReplaceLogin });
   if (payload.ok !== true) throw new ProgramKeyError("node_error", "");
   return { ok: true, auth: typeof payload.auth === "string" ? payload.auth : "key" };
 }

@@ -41,6 +41,24 @@ export type ProgramStatus = {
   /** Hermes only; "" when unknown. */
   active_provider?: string;
   account_kind?: string;
+  account?: string | null;
+  plan?: string | null;
+  mode?: string | null;
+  agents_running?: number | null;
+  key_replaces_login?: boolean;
+  login?: ProgramLoginInfo;
+};
+
+export type ProgramLoginMethod = { id: string; kind: "link_code" | "browser" | "secret" };
+export type ProgramLoginInfo = {
+  state: "logged_in" | "logged_out" | "unknown";
+  account?: string | null;
+  plan?: string | null;
+  mode?: string | null;
+  methods: ProgramLoginMethod[];
+  can_logout?: boolean;
+  agents_running?: number | null;
+  key_replaces_login?: boolean;
 };
 
 export type ProgramProvider = {

@@ -206,18 +206,21 @@ export function KeyForm({
   status,
   dialog,
   onClose,
+  kind = "api_key",
 }: {
   computerId: string;
   program: WsProgram;
   status: ProgramStatus | undefined;
   dialog: ProgramAccess;
   onClose: () => void;
+  kind?: string;
 }) {
   const tt = useUI();
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [key, setKey] = useState("");
+  const [confirmReplace, setConfirmReplace] = useState(false);
   const saved = status?.providers;
   const [provider, setProvider] = useState<string>(
     () => HERMES_PROVIDERS.find((id) => !saved?.some((row) => row.id === id && row.auth === "key")) || HERMES_PROVIDERS[0],
@@ -230,9 +233,10 @@ export function KeyForm({
     setBusy(true);
     setError("");
     try {
-      if (op === "save") await saveProgramKey(computerId, program, key, program === "hermes" ? provider : "");
+      if (op === "save") await saveProgramKey(computerId, program, key, program === "hermes" ? provider : "", kind, confirmReplace);
       else await removeProgramKey(computerId, program, program === "hermes" ? target : "");
       setKey("");
+      setConfirmReplace(false);
       dialog.retryConnect();
       onClose();
     } catch (reason) {
@@ -255,6 +259,8 @@ export function KeyForm({
       }}
     >
       <p className="text-[13px] font-medium text-neutral-800">{tt("Key")} · {PROGRAM_LABEL[program]}</p>
+      {status?.key_replaces_login && !confirmReplace ? <p className={HOST.hint}>{tt("保存后会替换当前的 ChatGPT 登录（这台电脑上所有 Codex 都会改用这个 Key）")}</p> : null}
+      {status?.key_replaces_login && confirmReplace ? <p className={HOST.error}>{tt("确认后会替换这台电脑上所有 Codex 的 ChatGPT 登录。")}</p> : null}
       {program === "hermes" ? (
         <>
           {saved?.length ? (
@@ -287,11 +293,12 @@ export function KeyForm({
         <input type="password" autoComplete="off" value={key} disabled={busy} onChange={(event) => setKey(event.target.value)} className={`${HOST.input} font-mono`} data-oceanleo-native-key-input="" />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button type="submit" disabled={busy || !key.trim()} className={HOST.primary} data-oceanleo-native-key-save="">
+        <button type="submit" disabled={busy || !key.trim() || Boolean(status?.key_replaces_login && !confirmReplace)} className={HOST.primary} data-oceanleo-native-key-save="">
           {hasKey && program !== "hermes" ? tt("更换") : tt("保存")}
         </button>
         <button type="button" disabled={busy} className={HOST.quiet} onClick={onClose}>{tt("关闭")}</button>
       </div>
+      {status?.key_replaces_login && !confirmReplace ? <button type="button" className={HOST.secondary} onClick={() => setConfirmReplace(true)}>{tt("我知道了，继续")}</button> : null}
       {error ? <p className={HOST.error} role="alert">{error}</p> : null}
     </form>
   );
