@@ -55,6 +55,7 @@ import { gatewayRoutingCopy } from "./gateway-routing-copy";
 import { worksCopy } from "./works-copy";
 import { environmentsCopy } from "./environments-copy";
 import { purchaseCopy } from "./purchase-copy";
+import { PROGRAM_SIGNIN_COPY } from "./program-signin-copy";
 import { LOCAL_AGENT_MESSAGES } from "./local-agent-copy";
 
 const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
@@ -503,5 +504,5 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
 };
 
 export const UI_MESSAGES = Object.fromEntries(
-  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...taskLiveCopy(locale as Locale), ...taskStateCopy(locale as Locale), ...websitePreviewProgressCopy(locale as Locale), ...gatewayRoutingCopy(locale as Locale), ...worksCopy(locale as Locale), ...environmentsCopy(locale as Locale), ...purchaseCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale], ...COMPUTER_TASK_WORKSPACE_MESSAGES[locale as Locale], ...NATIVE_ATTACHMENTS_MESSAGES[locale as Locale], ...TASK_PAGE_PACK_MESSAGES[locale as Locale] }]),
+  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...taskLiveCopy(locale as Locale), ...taskStateCopy(locale as Locale), ...websitePreviewProgressCopy(locale as Locale), ...gatewayRoutingCopy(locale as Locale), ...worksCopy(locale as Locale), ...environmentsCopy(locale as Locale), ...purchaseCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale], ...(PROGRAM_SIGNIN_COPY[locale as keyof typeof PROGRAM_SIGNIN_COPY] ?? {}), ...COMPUTER_TASK_WORKSPACE_MESSAGES[locale as Locale], ...NATIVE_ATTACHMENTS_MESSAGES[locale as Locale], ...TASK_PAGE_PACK_MESSAGES[locale as Locale] }]),
 ) as Record<Locale, Record<string, string>>;

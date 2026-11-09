@@ -17,6 +17,7 @@ import { gatewayRoutingCopy } from "./gateway-routing-copy";
 import { worksCopy } from "./works-copy";
 import { environmentsCopy } from "./environments-copy";
 import { purchaseCopy } from "./purchase-copy";
+import { PROGRAM_SIGNIN_COPY } from "./program-signin-copy";
 import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
 import { COMPOSER_UPLOAD_MESSAGES } from "./composer-upload-copy";
 
@@ -133,6 +134,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...worksCopy(locale),
     ...environmentsCopy(locale),
     ...purchaseCopy(locale),
+    ...(PROGRAM_SIGNIN_COPY[locale as keyof typeof PROGRAM_SIGNIN_COPY] ?? {}),
     ...share.SHARE_COPY_MESSAGES[locale],
     ...accountSecurity.ACCOUNT_SECURITY_MESSAGES[locale],
     ...authOauth.AUTH_OAUTH_MESSAGES[locale],
