@@ -76,6 +76,8 @@ import {
   useVisibleViewerGate,
 } from "./library-viewer-first-paint";
 import { WebsiteArtifactViewer } from "./WebsiteArtifactViewer";
+import { isServerWorkItem, serverWorkFromLibraryItem } from "./works/server-work-item";
+import { ServerWorkViewer } from "./works/ServerWorkViewer";
 import { isDisplayableText } from "./website-inline-preview";
 import {
   GamePlayDetail,
@@ -1993,6 +1995,10 @@ export function LibraryItemViewer({
   accent?: string;
 }) {
   const gate = useVisibleViewerGate(!libraryViewerIsHeavy(item));
+  if (isServerWorkItem(item)) {
+    const serverWork = serverWorkFromLibraryItem(item);
+    if (serverWork) return <ServerWorkViewer item={serverWork} />;
+  }
   if (!gate.ready) {
     return <ViewerThumbPoster item={item} containerRef={gate.ref} />;
   }
