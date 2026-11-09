@@ -2561,6 +2561,7 @@ export async function getArtifactWebsitePreview(
   return {
     ok: true,
     status: result.status,
+    retryable: status === "starting",
     data: {
       status,
       ...(url ? { url } : {}),
