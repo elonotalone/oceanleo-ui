@@ -3,7 +3,7 @@
 // The task page as a standard ACP client (contract §2.5, P4): stored rows in, the conversation out.
 // Program differences live in reduce.ts / messages.ts; this file only renders. An empty row list renders nothing.
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
 import { useUI } from "../i18n/ui/useUI";
@@ -65,34 +65,71 @@ function elapsedLabel(startedAt: string, now: number): string {
 export function AcpBackgroundTaskStrip({ tasks, onStopTask }: { tasks: AcpBackgroundTask[]; onStopTask?: (ref: string) => void }) {
   const tt = useUI();
   const [now, setNow] = useState(() => Date.now());
+  const [expanded, setExpanded] = useState(false);
   const running = tasks.filter((task) => !finishedBackgroundState(task.state));
+  const previousRunningCount = useRef(running.length);
   useEffect(() => {
     if (!running.length) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [running.length]);
+  useEffect(() => {
+    const previous = previousRunningCount.current;
+    if (running.length < previous && running.length <= 1) setExpanded(false);
+    previousRunningCount.current = running.length;
+  }, [running.length]);
   if (!running.length) return null;
+
+  const nameFor = (task: AcpBackgroundTask) => task.name || task.description || task.id;
+  const stop = (task: AcpBackgroundTask) => onStopTask && task.canStop ? (
+    <button
+      type="button"
+      data-acp-stop-task={task.id}
+      onClick={() => onStopTask(task.id)}
+      className="shrink-0 rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-50"
+    >
+      {tt("停止")}
+    </button>
+  ) : null;
+  const first = running[0];
+  const summary = running.length === 1
+    ? tt("后台任务运行中 · {name} · {elapsed}", { name: nameFor(first), elapsed: elapsedLabel(first.startedAt, now) })
+    : tt("{count} 个后台任务运行中", { count: running.length });
+  const listId = "acp-background-task-list";
+
   return (
-    <div data-acp-background-strip="" className="mb-2 space-y-1 border-l-2 border-stone-200 pl-3">
-      {running.map((task) => (
-        <div key={task.id} data-acp-background-task={task.id} data-task-state={task.state} className="flex min-w-0 items-start gap-2 text-[12px] text-stone-500">
-          <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
-            <span className="text-stone-600">{task.name || task.description || task.id}</span>
-            <span className="text-stone-400">{` · ${tt("运行中")} · ${tt("用时 {elapsed}", { elapsed: elapsedLabel(task.startedAt, now) })}`}</span>
-            {task.summary && <p className="whitespace-pre-wrap text-stone-400">{task.summary}</p>}
-          </div>
-          {onStopTask && task.canStop && task.state === "running" && (
-            <button
-              type="button"
-              data-acp-stop-task={task.id}
-              onClick={() => onStopTask(task.id)}
-              className="shrink-0 rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-50"
-            >
-              {tt("停止")}
-            </button>
-          )}
+    <div data-acp-background-strip="" className="mb-2 border-l-2 border-stone-200 pl-3">
+      <div data-acp-background-summary="" className="flex min-w-0 items-center gap-2 text-[12px] text-stone-500">
+        <button
+          type="button"
+          data-acp-background-toggle=""
+          aria-expanded={expanded}
+          aria-controls={listId}
+          aria-label={tt(expanded ? "收起后台任务" : "展开后台任务")}
+          onClick={() => setExpanded((open) => !open)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg py-0.5 text-left hover:bg-stone-50"
+        >
+          <span className="min-w-0 flex-1 truncate text-stone-600">{summary}</span>
+          {running.length > 1 && <span aria-hidden="true" className="shrink-0 text-[11px] text-stone-400">{expanded ? "⌃" : "⌄"}</span>}
+        </button>
+        {running.length === 1 && stop(first)}
+      </div>
+      {expanded && (
+        <div id={listId} data-acp-background-list="" role="list" className="mt-1 max-h-48 space-y-1 overflow-y-auto rounded-lg bg-stone-50/70 px-2 py-1.5">
+          {running.map((task) => (
+            <div key={task.id} data-acp-background-task={task.id} data-task-state={task.state} role="listitem" className="flex min-w-0 items-start gap-2 text-[12px] text-stone-500">
+              <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <span className="min-w-0 flex-1 truncate text-stone-600">{nameFor(task)}</span>
+                  <span className="shrink-0 text-stone-400">{tt("用时 {elapsed}", { elapsed: elapsedLabel(task.startedAt, now) })}</span>
+                </div>
+                {task.summary && <p className="whitespace-pre-wrap text-stone-400">{task.summary}</p>}
+              </div>
+              {stop(task)}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }

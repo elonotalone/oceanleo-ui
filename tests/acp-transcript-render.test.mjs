@@ -173,9 +173,10 @@ test("a running background task is rendered in the composer strip, never after t
   assert.equal(withStop.querySelector('[data-acp-background-task="bg1"]'), null);
   const view = reduceRows(rows);
   const strip = new JSDOM(`<!doctype html><html><body>${renderStrip(view.backgroundTasks, () => {})}</body></html>`).window.document.body;
-  const task = strip.querySelector('[data-acp-background-task="bg1"]');
-  assert.ok(task);
-  assert.ok(task.textContent.includes("build"));
+  assert.ok(strip.querySelector('[data-acp-background-strip]'));
+  assert.match(strip.querySelector('[data-acp-background-summary]').textContent, /后台任务运行中 · build · \d+(?:s|m \d+s)/);
+  assert.equal(strip.querySelector('[data-acp-background-toggle]').getAttribute("aria-expanded"), "false");
+  assert.equal(strip.querySelector('[data-acp-background-list]'), null, "the task list stays collapsed by default");
   assert.ok(strip.querySelector('[data-acp-stop-task="bg1"]'));
 
   const without = new JSDOM(`<!doctype html><html><body>${renderStrip(view.backgroundTasks)}</body></html>`).window.document.body;
