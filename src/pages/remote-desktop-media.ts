@@ -350,7 +350,8 @@ export async function openRemoteMedia(
     lastInbound = lastFrame;
     // Notify on every decoded frame so display-switch geometry can gate input even
     // when two displays happen to have identical encoded dimensions.
-    handlers.frame(video.videoWidth, video.videoHeight, sample);
+    if (sample) handlers.frame(video.videoWidth, video.videoHeight, sample);
+    else handlers.frame(video.videoWidth, video.videoHeight);
     if (!playing) { playing = true; clearTimeout(subscribeFailure); subscribeFailure = undefined; lowerPlayoutDelay(video); handlers.state("playing"); }
   };
   const fallbackFrame = () => {
@@ -395,12 +396,13 @@ export async function openRemoteMedia(
   const subscribe = (uid: string, track?: number) => {
     if (closed || uid !== credentials.publisher_id || (track !== undefined && !(track & 2))) return;
     try {
-      // 7.3.8 public subscribeRemoteMediaStream incorrectly passes {video,audio},
-      // omitting screen. Use the SDK's declared screen reconciler; never subscribe mic.
-      const biz = (engine as unknown as { bizControl?: { updateScreenWant(uid: string, enabled: boolean): void } }).bizControl;
-      if (!biz?.updateScreenWant) throw new Error("media_screen_subscription_unsupported");
       engine.setRemoteViewConfig(video, uid, 2);
-      biz.updateScreenWant(uid, true);
+      // 7.3.8's public method maps track 2 to camera; use its screen want
+      // reconciler directly, with the older SDK fallback when needed.
+      const biz = (engine as unknown as { bizControl?: { updateScreenWant?(uid: string, enabled: boolean): void; updateVideoWant?(uid: string, enabled: boolean): void } }).bizControl;
+      if (biz?.updateScreenWant) biz.updateScreenWant(uid, true);
+      else if (typeof (engine as any).subscribeRemoteMediaStream === "function") engine.subscribeRemoteMediaStream(uid, 2, true, true);
+      else throw new Error("media_screen_subscription_unsupported");
     } catch { fail("media_subscribe_failed"); }
   };
   signal.addEventListener("abort", abort, { once: true });
