@@ -544,28 +544,16 @@ test("CLI and terminal sessions show the terminal surface and the ConversationBa
   }
 });
 
-test("the dock naming another program makes the next message a /switch (native → native); an existing chat is reused without creating anything", async () => {
+test("an existing native task keeps its bound program and never switches", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_claude", "acp", "claude")] });
   try {
     await connect();
-    await changeConversation(view, "acp", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" });
-    assert.equal(globalThis.__gateway.filter((call) => call.method === "POST").length, 0, "picking creates nothing");
-    // The gateway starts Codex in a new session row; the list read after the switch has it.
-    globalThis.__sessions = [session("cts_claude", "acp", "claude"), session("cts_codex2", "acp", "codex", "2026-10-30T12:00:00Z")];
+    assert.equal(view.composer("acp").__props.onConversationChange, undefined, "existing tasks lock their target");
     await type(view, "acp", "接着做");
     await submit(view, "acp");
-    assert.equal(posts("/send").length, 0);
-    const switched = posts("/v1/tasks/t1/switch");
-    assert.equal(switched.length, 1);
-    assert.equal(switched[0].body.program, "codex");
-    assert.equal(switched[0].body.text, "接着做");
-    assert.equal(view.composer("acp").__props.oceanleoDisabledReason, "要换执行位置，请新建任务", "no OceanLeo inside a native task");
-    await settle();
-    assert.equal(view.composer("acp").textContent.startsWith("elon · codex"), true, "the dock names the program now running");
-    await type(view, "acp", "再来");
-    await submit(view, "acp");
-    assert.equal(posts("/v1/tasks/t1/send").length, 1, "the next message goes to the running program");
-    assert.equal(posts("/switch").length, 1);
+    assert.equal(posts("/v1/tasks/t1/switch").length, 0);
+    assert.equal(posts("/v1/tasks/t1/send").length, 1);
+    assert.equal(posts("/v1/tasks/t1/send")[0].body.program, "claude");
   } finally { await view.unmount(); }
 });
 

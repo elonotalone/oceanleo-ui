@@ -117,19 +117,22 @@ export function getFrames(taskId: string, after = 0, limit = 500, options: { sig
 /** Cursor based history window (C9). Older gateways may return 404; callers fall back to frames. */
 export type AcpHistoryWindow = {
   rows: AcpFrameRow[];
+  turns: { start_id: number; end_id: number }[];
   oldest_id: number | null;
   newest_id: number | null;
   next_before: number | null;
   has_more: boolean;
-  tail_id: number | null;
+  tail_id: number;
+  capped: boolean;
+  max_rows: number;
 };
 
-export function getHistoryWindow(taskId: string, options: { before?: number; anchor?: number; limit?: number; signal?: AbortSignal } = {}): Promise<AcpHistoryWindow> {
+export function getHistoryWindow(taskId: string, options: { before?: number; anchor?: number; turns?: number; signal?: AbortSignal } = {}): Promise<AcpHistoryWindow> {
   const query = new URLSearchParams();
   if (options.before != null) query.set("before", String(options.before));
   if (options.anchor != null) query.set("anchor", String(options.anchor));
-  query.set("limit", String(options.limit ?? 1800));
-  return request<AcpHistoryWindow>(`${taskPath(taskId, "frames/history")}?${query}`, { signal: options.signal });
+  query.set("turns", String(options.turns ?? 8));
+  return request<AcpHistoryWindow>(`${taskPath(taskId, "history")}?${query}`, { signal: options.signal });
 }
 
 /** Per-session choices sent with a message; the gateway applies them (session/set_*) before the prompt. */

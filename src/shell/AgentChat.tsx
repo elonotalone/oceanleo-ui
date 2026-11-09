@@ -1453,6 +1453,7 @@ function AgentChatInner({
   // The stream follows new rows while the user is at the bottom; scrolled up, it stays put.
   const acpScrollRef = useRef<HTMLDivElement>(null);
   const acpFollowRef = useRef(true);
+  const acpRowsBeforeHistoryRef = useRef<number | null>(null);
   const onAcpScroll = useCallback(() => {
     const el = acpScrollRef.current;
     if (el) {
@@ -1467,6 +1468,15 @@ function AgentChatInner({
     const el = acpScrollRef.current;
     if (el && acpFollowRef.current) el.scrollTop = el.scrollHeight;
   }, [frames.rows, acpPendingIds.join("|")]);
+  useLayoutEffect(() => {
+    const before = acpRowsBeforeHistoryRef.current;
+    const el = acpScrollRef.current;
+    if (before != null && el) {
+      const delta = el.scrollHeight - before;
+      if (delta > 0) el.scrollTop += delta;
+      acpRowsBeforeHistoryRef.current = null;
+    }
+  }, [frames.rows]);
   useLayoutEffect(() => {
     const el = acpScrollRef.current;
     const anchor = taskId ? readTaskConversationAnchor(taskId) : undefined;
@@ -3439,6 +3449,11 @@ function AgentChatInner({
   // rows (AcpTranscript). The composer and its buttons work only while the
   // socket is connected; a refusal is said under the composer in the gateway's words.
   const acpErrorLine = acpError && acpError.taskId === (taskId || "") ? acpError.text : "";
+  const loadEarlierAcp = useCallback(async () => {
+    const el = acpScrollRef.current;
+    if (el) acpRowsBeforeHistoryRef.current = el.scrollHeight;
+    await frames.loadEarlier();
+  }, [frames.loadEarlier]);
   const acpStream = acpShown ? renderStream({
     pane: "acp",
     scrollRef: acpScrollRef,
@@ -3447,6 +3462,13 @@ function AgentChatInner({
     empty: null,
     items: (
       <>
+      {frames.hasMore && (
+        <div className="flex justify-center py-1" data-acp-history-window="">
+          <button type="button" disabled={frames.loadingEarlier} onClick={() => void loadEarlierAcp()} className="rounded-lg px-2 py-1 text-[12px] text-stone-500 hover:bg-stone-100">
+            {frames.loadingEarlier ? tt("正在加载更早的消息…") : frames.capped ? tt("消息较多，加载更早的消息") : tt("加载更早的消息")}
+          </button>
+        </div>
+      )}
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} />}
       <AcpTranscript
         rows={frames.rows}
