@@ -293,6 +293,17 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         const codex = isRecord(update._meta) && isRecord(update._meta.codex) ? update._meta.codex : null;
         const status = codex && isRecord(codex.threadStatus) ? str(codex.threadStatus.type) : "";
         if (status === "active" || status === "idle") view.activity = status;
+        // Codex retrying its model stream (works-wave C10, codex-acp 2.5.0): older clients get
+        // `_meta.codex.error.willRetry`; typed clients `_meta.jetbrains.air.sessionFailure` (severity "warning" while
+        // retrying, "error" when it gave up, null once the turn recovered).
+        const codexError = codex && isRecord(codex.error) ? codex.error : null;
+        if (codexError) view.retrying = codexError.willRetry === true;
+        const jetbrains = isRecord(update._meta) && isRecord(update._meta.jetbrains) ? update._meta.jetbrains : null;
+        const air = jetbrains && isRecord(jetbrains.air) ? jetbrains.air : null;
+        if (air && "sessionFailure" in air) {
+          const failure = isRecord(air.sessionFailure) ? air.sessionFailure : null;
+          view.retrying = failure ? str(failure.severity) === "warning" : false;
+        }
         return;
       }
       case "usage_update":

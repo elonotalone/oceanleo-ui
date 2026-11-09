@@ -63,7 +63,7 @@ function elapsedLabel(startedAt: string, now: number): string {
   return `${minutes}m ${seconds % 60}s`;
 }
 
-function ModelWaitingNotice({ view, rows, tt }: { view: ReturnType<typeof reduceRows>; rows: AcpFrameRow[]; tt: (key: string, vars?: Record<string, unknown>) => string }) {
+function ModelWaitingNotice({ view, rows, tt }: { view: ReturnType<typeof reduceRows>; rows: AcpFrameRow[]; tt: ReturnType<typeof useUI> }) {
   const open = view.turns.find((turn) => turn.open);
   if (!open) return null;
   if (view.retrying) return <div data-acp-model-retry="" className="mb-2 text-[12px] text-amber-700">{tt("模型连接中断，正在重试")}</div>;

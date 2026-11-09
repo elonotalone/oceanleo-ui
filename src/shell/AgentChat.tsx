@@ -72,6 +72,7 @@ import {
 } from "../lib/acp-frames-api";
 import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, usePendingMany } from "./acp-task";
 import { PendingSendBubble, pendingAttachmentTiles, pendingConversation } from "./acp-task/PendingSendBubble";
+import { useTaskActivity, withTaskActivity } from "./acp-task/useTaskActivity";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
 import { NativeTerminalSurface } from "./cloud-computer/native-surface";
@@ -1428,7 +1429,10 @@ function AgentChatInner({
     }
   }, [activityTaskId, frames.rows]);
   const acpConnected = frames.state === "connected";
-  const acpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
+  const reducedAcpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
+  // The gateway's background projection (W17): a task whose session ended is never shown as running.
+  const taskActivity = useTaskActivity(computerTask && taskId ? taskId : null, 10_000);
+  const acpView = useMemo(() => withTaskActivity(reducedAcpView, taskActivity.activity), [reducedAcpView, taskActivity.activity]);
   const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
   const acpComposerDisabled = readOnly || (taskId ? !acpConnected : acpDraftOffline);
   const acpPicker = useAcpCatalogPicker({

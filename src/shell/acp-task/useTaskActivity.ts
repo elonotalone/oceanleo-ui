@@ -60,3 +60,30 @@ export function useTaskActivity(taskId: string | null, intervalMs = 5000): {
   }, [refresh, taskId, intervalMs]);
   return { activity, loading, error, refresh };
 }
+
+const ENDED_STATES = new Set(["stale", "unknown", "ended", "completed", "complete", "failed", "stopped", "cancelled", "canceled", "terminated"]);
+
+/**
+ * Lay the gateway's projection over the reduced view: a background task the gateway knows ended with its session
+ * (stale / unknown / a terminal state) is never shown as running, even when its own terminal update never arrived
+ * (the frames of a dead process cannot say so). Tasks the projection does not list are left as the frames say.
+ */
+export function withTaskActivity<V extends { backgroundTasks: Array<{ id: string; state: string; canStop: boolean; backgroundState?: "running" | "stale" | "unknown" | "idle" }> }>(
+  view: V,
+  activity: TaskActivitySnapshot | null,
+): V {
+  if (!activity || !Array.isArray(activity.background_tasks) || !activity.background_tasks.length) return view;
+  const ended = new Map<string, "stale" | "unknown">();
+  for (const task of activity.background_tasks) {
+    const state = String(task.state || "").toLowerCase();
+    if (ENDED_STATES.has(state)) ended.set(task.id, state === "unknown" ? "unknown" : "stale");
+  }
+  if (!ended.size || !view.backgroundTasks.some((task) => ended.has(task.id))) return view;
+  return {
+    ...view,
+    backgroundTasks: view.backgroundTasks.map((task) => {
+      const mark = ended.get(task.id);
+      return mark ? { ...task, backgroundState: mark, canStop: false } : task;
+    }),
+  };
+}
