@@ -3480,7 +3480,7 @@ function AgentChatInner({
           </button>
         </div>
       )}
-      {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} />}
+      {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onOpenAttachment={openTaskAttachment} />}
       <AcpTranscript
         rows={frames.rows}
         program={acpRowsProgram}
@@ -3490,6 +3490,7 @@ function AgentChatInner({
         onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
         highlightQuery={highlightQuery || undefined}
         onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
+        onOpenAttachment={openTaskAttachment}
         select={share.active ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle } : undefined}
       />
       {acpPendingShown.map((entry) => (
@@ -3498,6 +3499,7 @@ function AgentChatInner({
           pending={entry}
           errorText={entry.error != null && !refusedByAgent(entry.error) ? acpErrorText(entry.error) : ""}
           onRetry={() => retryAcpPending(entry)}
+          onOpenAttachment={openTaskAttachment}
         />
       ))}
       </>
