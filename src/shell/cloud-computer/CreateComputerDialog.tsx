@@ -14,10 +14,19 @@ import {
   pickDefaultTierId,
   visibleCatalogTiers,
 } from "./catalog-ui";
+import { CnAccountStep } from "./cn-account/CnAccountStep";
+import { PURCHASE_COPY } from "../../i18n/ui/messages/purchase-copy";
 
 const COST_HREF = "/cost";
 
-type CheckoutStep = "catalog" | "checkout" | "result";
+type CheckoutStep = "catalog" | "cn-account" | "checkout" | "result";
+
+type PurchaseCatalog = ComputerCatalog & {
+  edition?: "cn" | "global";
+  account_required?: boolean;
+  account_verified?: boolean;
+  dev_requires_confirmation?: boolean;
+};
 
 export type CreditsSnapshot = {
   balance_minor: number;
@@ -86,8 +95,11 @@ export function CreateComputerDialog({
   const [credits, setCredits] = useState<CreditsSnapshot | null>(null);
   const [creditsError, setCreditsError] = useState<string | null>(null);
   const [insufficient, setInsufficient] = useState(false);
+  const [devConfirmed, setDevConfirmed] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const catalogGen = useRef(0);
+  const purchaseCatalog = catalog as PurchaseCatalog | null;
+  const isCnPurchase = Boolean(purchaseCatalog?.account_required);
 
   useEffect(() => {
     let alive = true;
@@ -151,7 +163,7 @@ export function CreateComputerDialog({
     }
   }
 
-  async function goCheckout() {
+  async function goCheckout(options: { accountVerified?: boolean } = {}) {
     if (!tier || !tier.available) return;
     const trimmed = (nameRef.current?.value || name).trim();
     if (!trimmed) {
@@ -162,6 +174,12 @@ export function CreateComputerDialog({
     setBusy(true);
     setSubmitError(null);
     setInsufficient(false);
+    setDevConfirmed(false);
+    if (isCnPurchase && !purchaseCatalog?.account_verified && !options.accountVerified) {
+      setStep("cn-account");
+      setBusy(false);
+      return;
+    }
     setStep("checkout");
     try {
       const wallet = await loadCredits();
@@ -185,6 +203,12 @@ export function CreateComputerDialog({
     }
   }
 
+  function onCnAccountVerified() {
+    setCatalog((current) => (current ? ({ ...current, account_verified: true } as ComputerCatalog) : current));
+    setStep("checkout");
+    void goCheckout({ accountVerified: true });
+  }
+
   async function payAndCreate() {
     if (!tier || !tier.available || knownShort || !regionId) return;
     const trimmed = name.trim();
@@ -200,7 +224,8 @@ export function CreateComputerDialog({
         tier_id: tier.id,
         disk_gb: diskGb,
         region_id: regionId,
-      });
+        ...(purchaseCatalog?.dev_requires_confirmation ? { confirm_spend: true } : {}),
+      } as Parameters<CloudComputerClient["createAliyunComputer"]>[0] & { confirm_spend?: boolean });
       onCreated();
       setStep("result");
     } catch (err) {
@@ -258,6 +283,11 @@ export function CreateComputerDialog({
               </button>
             </div>
           </div>
+        ) : step === "cn-account" ? (
+          <CnAccountStep
+            onVerified={onCnAccountVerified}
+            onBack={() => setStep("catalog")}
+          />
         ) : step === "checkout" ? (
           <div className="mt-4 space-y-4" data-oceanleo-cc-checkout>
             <p className="text-[13px] text-neutral-700">
@@ -294,6 +324,12 @@ export function CreateComputerDialog({
             <p className="text-[12px] leading-relaxed text-neutral-500">
               {tt("开通时至少需要 24 小时的费用作为预留，之后按小时扣")}
             </p>
+            {purchaseCatalog?.dev_requires_confirmation ? (
+              <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900" data-oceanleo-cc-dev-confirm>
+                <input type="checkbox" checked={devConfirmed} onChange={(event) => setDevConfirmed(event.target.checked)} className="mt-0.5" />
+                <span>{tt(PURCHASE_COPY.devSpendWarning)} {tt(PURCHASE_COPY.devSpendConfirm)}</span>
+              </label>
+            ) : null}
             {insufficient || knownShort ? (
               <div
                 className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900"
@@ -330,7 +366,7 @@ export function CreateComputerDialog({
                   type="button"
                   data-oceanleo-cc-checkout-pay
                   onClick={() => void payAndCreate()}
-                  disabled={busy || !tier?.available || !regionId}
+                  disabled={busy || !tier?.available || !regionId || Boolean(purchaseCatalog?.dev_requires_confirmation && !devConfirmed)}
                   className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
                 >
                   {busy ? tt("创建中…") : tt("确认支付并创建")}
@@ -409,6 +445,7 @@ export function CreateComputerDialog({
             >
               <div className="grid gap-2 sm:grid-cols-2">
                 {visibleTiers.map((item) => {
+                  const hints = item as typeof item & { purpose?: string; preinstalled?: string[] };
                   const selected = item.id === tierId;
                   const recommended = Boolean(item.recommended);
                   return (
@@ -446,6 +483,8 @@ export function CreateComputerDialog({
                           ? `${formatMinor(item.hourly.amount_minor, item.hourly.currency)}${tt("/小时")}`
                           : tt("选中后显示价格")}
                       </div>
+                      {hints.purpose ? <div className="mt-1 opacity-80">{tt(hints.purpose)}</div> : null}
+                      {hints.preinstalled?.length ? <div className="mt-1 opacity-80">{tt(PURCHASE_COPY.tierPreinstalled)}：{hints.preinstalled.join("、")}</div> : null}
                       {item.hourly && item.monthly_estimate ? (
                         <div className="opacity-80">
                           {tt("折合每月")}{" "}

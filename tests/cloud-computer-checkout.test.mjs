@@ -440,3 +440,64 @@ test("核数内存筛选默认不过滤，提高门槛后只留大规格", async
   );
   view.cleanup();
 });
+
+test("中国版未绑定阿里云账号时先显示连接步骤", async () => {
+  const client = makeClient();
+  const base = client.getCatalog;
+  client.getCatalog = async () => ({
+    ...(await base()),
+    edition: "cn",
+    account_required: true,
+    account_verified: false,
+  });
+  const previousFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("offline fixture");
+  };
+  const view = await render({
+    client,
+    loadCredits: async () => ({
+      ok: true,
+      data: { balance_minor: 50_000, currency: "CNY" },
+    }),
+  });
+  await fillName(view.host, "境内机");
+  await view.click(view.button("下一步：费用确认"));
+  assert.equal(view.step(), "cn-account");
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-cn-account]"));
+  assert.match(view.text(), /连接你的阿里云账号/);
+  view.cleanup();
+  globalThis.fetch = previousFetch;
+});
+
+test("开发版费用确认要求真实扣费勾选并把确认传给后端", async () => {
+  const client = makeClient();
+  const base = client.getCatalog;
+  client.getCatalog = async () => ({
+    ...(await base()),
+    dev_requires_confirmation: true,
+  });
+  const view = await render({
+    client,
+    loadCredits: async () => ({
+      ok: true,
+      data: { balance_minor: 50_000, currency: "USD" },
+    }),
+  });
+  await fillName(view.host, "开发机");
+  await view.click(view.button("下一步：费用确认"));
+  assert.ok(view.host.querySelector("[data-oceanleo-cc-dev-confirm]"));
+  const pay = view.button("确认支付并创建");
+  assert.ok(pay);
+  assert.equal(pay.disabled, true);
+  const checkbox = view.host.querySelector("[data-oceanleo-cc-dev-confirm] input");
+  assert.ok(checkbox);
+  await act(async () => {
+    checkbox.click();
+  });
+  await flush();
+  assert.equal(view.button("确认支付并创建").disabled, false);
+  await view.click(view.button("确认支付并创建"));
+  assert.equal(client.log.create[0].confirm_spend, true);
+  view.cleanup();
+});
