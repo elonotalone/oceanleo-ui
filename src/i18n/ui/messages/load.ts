@@ -10,6 +10,13 @@ import type {
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { localBrowserCopy } from "./local-browser-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
+import { taskLiveCopy } from "./task-live-copy";
+import { taskStateCopy } from "./task-state-copy";
+import { websitePreviewProgressCopy } from "./website-preview-progress-copy";
+import { gatewayRoutingCopy } from "./gateway-routing-copy";
+import { worksCopy } from "./works-copy";
+import { environmentsCopy } from "./environments-copy";
+import { purchaseCopy } from "./purchase-copy";
 import { LEO_PANEL_MESSAGES } from "./leo-panel-copy";
 import { COMPOSER_UPLOAD_MESSAGES } from "./composer-upload-copy";
 
@@ -119,6 +126,13 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...CLOUD_BROWSER_MESSAGES[locale],
     ...localBrowserCopy(locale),
     ...deviceExperienceCopy(locale),
+    ...taskLiveCopy(locale),
+    ...taskStateCopy(locale),
+    ...websitePreviewProgressCopy(locale),
+    ...gatewayRoutingCopy(locale),
+    ...worksCopy(locale),
+    ...environmentsCopy(locale),
+    ...purchaseCopy(locale),
     ...share.SHARE_COPY_MESSAGES[locale],
     ...accountSecurity.ACCOUNT_SECURITY_MESSAGES[locale],
     ...authOauth.AUTH_OAUTH_MESSAGES[locale],

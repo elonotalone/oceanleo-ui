@@ -48,6 +48,13 @@ import { WORK_CHAT_MESSAGES } from "./work-chat-copy";
 import { BAY_MESSAGES } from "./bay-copy";
 import { EDITOR_OVERHAUL_MESSAGES } from "./editor-overhaul-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
+import { taskLiveCopy } from "./task-live-copy";
+import { taskStateCopy } from "./task-state-copy";
+import { websitePreviewProgressCopy } from "./website-preview-progress-copy";
+import { gatewayRoutingCopy } from "./gateway-routing-copy";
+import { worksCopy } from "./works-copy";
+import { environmentsCopy } from "./environments-copy";
+import { purchaseCopy } from "./purchase-copy";
 import { LOCAL_AGENT_MESSAGES } from "./local-agent-copy";
 
 const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
@@ -496,5 +503,5 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
 };
 
 export const UI_MESSAGES = Object.fromEntries(
-  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale], ...COMPUTER_TASK_WORKSPACE_MESSAGES[locale as Locale], ...NATIVE_ATTACHMENTS_MESSAGES[locale as Locale], ...TASK_PAGE_PACK_MESSAGES[locale as Locale] }]),
+  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...taskLiveCopy(locale as Locale), ...taskStateCopy(locale as Locale), ...websitePreviewProgressCopy(locale as Locale), ...gatewayRoutingCopy(locale as Locale), ...worksCopy(locale as Locale), ...environmentsCopy(locale as Locale), ...purchaseCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale], ...COMPUTER_TASK_WORKSPACE_MESSAGES[locale as Locale], ...NATIVE_ATTACHMENTS_MESSAGES[locale as Locale], ...TASK_PAGE_PACK_MESSAGES[locale as Locale] }]),
 ) as Record<Locale, Record<string, string>>;
