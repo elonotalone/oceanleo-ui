@@ -63,7 +63,6 @@ export {
   send,
   stop,
   stopTask as stopAcpTask,
-  switchProgram,
   type AcpCatalog,
   type AcpFrames,
   type AcpFramesEvent,
