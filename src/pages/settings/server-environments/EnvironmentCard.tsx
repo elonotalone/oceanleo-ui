@@ -50,6 +50,7 @@ export function EnvironmentCard({ computerId, online, api = environmentApi }: {
     try {
       const next = await api.getEnvironmentInstallJob(computerId, jobId);
       setJobs((current) => ({ ...current, [item.id]: next }));
+      if (next.status === "ready") setGroups((current) => current.map((group) => ({ ...group, items: group.items.map((row) => row.id === item.id ? { ...row, installed: true } : row) })));
       if (next.status === "running") window.setTimeout(() => { void refreshJob(item, jobId); }, 900);
     } catch (reason) { setError(errorText(reason)); }
   }
