@@ -26,13 +26,13 @@ export const ENVIRONMENTS_COPY = {
 export type EnvironmentCopyKey = keyof typeof ENVIRONMENTS_COPY;
 
 export const ENVIRONMENT_ITEM_COPY: Record<string, string> = {
-  网站: "Website",
-  游戏: "Game",
-  App: "App",
-  通用: "Common",
+  "网站": "Website",
+  "游戏": "Game",
+  "App": "App",
+  "通用": "Common",
   "Node.js LTS + pnpm": "Node.js LTS + pnpm",
   "构建网站和 JavaScript 工具，含固定版本 pnpm。": "Build websites and JavaScript tools with pinned pnpm.",
-  Git: "Git",
+  "Git": "Git",
   "版本管理和从 Git 仓库同步代码。": "Version control and Git repository sync.",
   "Python 3 + uv": "Python 3 + uv",
   "运行 Python 服务和快速安装依赖。": "Run Python services and install dependencies quickly.",
@@ -46,9 +46,9 @@ export const ENVIRONMENT_ITEM_COPY: Record<string, string> = {
   "Android 命令行构建工具和 platform-tools，下载较大。": "Android command-line build tools and platform-tools; large download.",
   "Flutter SDK": "Flutter SDK",
   "构建 Flutter App，下载较大；iOS 构建仍需要 Mac。": "Build Flutter apps; large download, and iOS builds require a Mac.",
-  build-essential: "build-essential",
+  "build-essential": "build-essential",
   "C/C++ 原生依赖和常见构建工具。": "C/C++ native dependencies and common build tools.",
-  FFmpeg: "FFmpeg",
+  "FFmpeg": "FFmpeg",
   "音视频处理和转码工具。": "Audio and video processing and transcoding tools.",
 };
 
