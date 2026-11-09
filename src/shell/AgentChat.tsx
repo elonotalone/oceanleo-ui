@@ -60,7 +60,7 @@ import type { ExecutionTarget } from "../lib/execution-target";
 // Computer tasks (thin-gateway 2026-11-07): one stream per task, the raw ACP rows the
 // gateway stored (`AcpTranscript`) in this same stream frame and LeoComposer;
 // CLI/terminal show the host-styled surface with the same dock below.
-import { AcpTranscript, acpShareItems, reduceRows, resendable } from "../acp";
+import { AcpBackgroundTaskStrip, AcpTranscript, acpShareItems, reduceRows, resendable } from "../acp";
 import {
   acpErrorText,
   answer as answerAcp,
@@ -71,7 +71,7 @@ import {
   switchProgram as switchAcpProgram,
   type AcpSessionChoices,
 } from "../lib/acp-frames-api";
-import { changedChoices, useAcpCatalogPicker, useAcpFrames, usePending } from "./acp-task";
+import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, usePendingMany } from "./acp-task";
 import { PendingSendBubble, pendingAttachmentTiles, pendingConversation } from "./acp-task/PendingSendBubble";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
 import { ConversationBar } from "./cloud-computer/ConversationBar";
@@ -641,6 +641,33 @@ function acpMessageKey(text: string, attachments: readonly AgentAttachment[]): s
   return `${text}\u0000${attachments.map((attachment) => attachment.url).join("\u0001")}`;
 }
 
+/** A send receipt normally carries row_id; the text fallback covers older gateways and queued receipts. */
+function acpPromptRowVisible(
+  pending: { rowId: number | null; afterRowId?: number; text: string },
+  rows: readonly { id: number; direction: string; raw: string }[],
+): boolean {
+  if (pending.rowId !== null && rows.some((row) => row.id === pending.rowId)) return true;
+  const after = pending.afterRowId || 0;
+  return rows.some((row) => {
+    if (row.direction !== "client" || row.id <= after) return false;
+    try {
+      const value = JSON.parse(row.raw) as { method?: unknown; params?: { prompt?: { type?: unknown; text?: unknown }[] } };
+      if (value.method !== "session/prompt" || !Array.isArray(value.params?.prompt)) return false;
+      return value.params.prompt.some((block) => block?.type === "text" && block.text === pending.text);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function acpQueuedValue(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some(acpQueuedValue);
+  const record = value as Record<string, unknown>;
+  if (record.queued === true) return true;
+  return [record.status, record.state, record.delivery].some((item) => item === "queued");
+}
+
 /** Same cadence as the computer views (`useCloudComputers` CC_POLL_MS). */
 const COMPUTER_REFRESH_MS = 15_000;
 
@@ -749,6 +776,9 @@ function AgentChatInner({
   const [taskMode, setTaskMode] = useState<{taskId: string; computer: boolean}>({taskId: "", computer: false});
   /** The home's message this view opened with (contract §2.5); null without one or after a reload. */
   const pending = usePending(pendingId);
+  /** Task-page optimistic sends. The shared pending store also powers the home's first-message path. */
+  const [acpPendingIds, setAcpPendingIds] = useState<string[]>([]);
+  const acpPendingSends = usePendingMany(acpPendingIds);
   /** Draft (no task yet) only: the OceanLeo target picked in the dock; undefined = today's remembered target. */
   const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(() => pendingConversation(pending));
   /** A native chat picked for a program this task (or draft) has no session for: created by the first send. */
@@ -1479,6 +1509,29 @@ function AgentChatInner({
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
     && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
+  const acpPendingShown = acpPendingSends.filter((entry) => !acpPromptRowVisible(entry, frames.rows));
+  useEffect(() => {
+    const settled = acpPendingSends.filter((entry) => acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
+    if (!settled.length) return;
+    settled.forEach(forgetPending);
+    setAcpPendingIds((current) => current.filter((id) => !settled.includes(id)));
+  }, [acpPendingSends, frames.rows]);
+  const acpPendingRestoredRef = useRef(new Map<string, unknown>());
+  useEffect(() => {
+    for (const entry of acpPendingSends) {
+      if (entry.status !== "failed" || acpPendingRestoredRef.current.get(entry.id) === entry.error) continue;
+      acpPendingRestoredRef.current.set(entry.id, entry.error);
+      setInput((current) => current || entry.text);
+      atts.restoreReady(pendingAttachmentTiles(entry.attachments));
+      acpMessageIdRef.current = { key: acpMessageKey(entry.text, entry.attachments), id: entry.clientMessageId };
+    }
+  }, [acpPendingSends, atts.restoreReady]);
+  const retryAcpPending = useCallback((entry: (typeof acpPendingSends)[number]) => {
+    retryPending(entry.id);
+    setInput((current) => current || entry.text);
+    atts.restoreReady(pendingAttachmentTiles(entry.attachments));
+    acpMessageIdRef.current = { key: acpMessageKey(entry.text, entry.attachments), id: entry.clientMessageId };
+  }, [atts.restoreReady]);
   useEffect(() => {
     if (!pending?.taskId || !pending.session || taskId) return;
     void adoptCreatedTask(pending.taskId, pending.session, pending.text);
@@ -2081,6 +2134,25 @@ function AgentChatInner({
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
     const clientMessageId = acpMessageIdRef.current.id;
     if (pendingShown) setPendingRetried(pendingShown.id);
+    const reuseHomePending = Boolean(pendingShown && !(pendingShown.error != null && refusedByAgent(pendingShown.error)));
+    const retryingTaskPending = acpPendingSends.find((entry) =>
+      entry.rowId === null && entry.clientMessageId === clientMessageId && acpMessageKey(entry.text, entry.attachments) === key,
+    );
+    if (retryingTaskPending) retryPending(retryingTaskPending.id);
+    const optimisticId = reuseHomePending && pendingShown ? pendingShown.id : retryingTaskPending?.id ?? putPending({
+      clientMessageId,
+      computerId: acpComputerId,
+      program: acpProgram,
+      text,
+      attachments: uploaded,
+      choice: acpPicker.choice,
+      taskId: taskId || null,
+      afterRowId: frames.rows.reduce((max, row) => Math.max(max, row.id), 0),
+    });
+    if (!reuseHomePending && !retryingTaskPending) setAcpPendingIds((current) => [...current, optimisticId]);
+    // The bubble is committed in this render; the network request never owns the composer.
+    setInput("");
+    atts.clear();
     setAcpBusy(true);
     setAcpError(null);
     let id = taskId || "";
@@ -2090,6 +2162,9 @@ function AgentChatInner({
         const result = await createComputerTaskSession(acpComputerId, { kind: "acp", program: acpProgram, request_id: clientMessageId });
         created = { taskId: result.task_id, session: result.session };
         id = result.task_id;
+        settlePending(optimisticId, { taskId: id, session: result.session });
+      } else {
+        settlePending(optimisticId, { taskId: id });
       }
       const switching = Boolean(acpSession && acpSession.program !== acpProgram);
       const sent = !switching && acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
@@ -2101,12 +2176,15 @@ function AgentChatInner({
         ...(uploaded.length ? { attachments: uploaded } : {}),
         ...changedChoices(acpPicker.choice, sent),
       };
-      if (switching) await switchAcpProgram(id, body);
-      else await sendAcp(id, body);
+      const result = switching ? await switchAcpProgram(id, body) : await sendAcp(id, body);
+      settlePending(optimisticId, {
+        taskId: id,
+        rowId: typeof result?.row_id === "number" ? result.row_id : null,
+        queued: acpQueuedValue(result),
+        session: created?.session,
+      });
       acpSentRef.current = { taskId: id, choices: { ...sent, ...acpPicker.choice } };
       acpMessageIdRef.current = null;
-      setInput("");
-      atts.clear();
       acpFollowRef.current = true;
       // A first message or a switch made a new session row: read the list for it.
       if (switching || !acpSession) {
@@ -2114,12 +2192,15 @@ function AgentChatInner({
         setSessionsEpoch((epoch) => epoch + 1);
       }
     } catch (caught) {
+      const queued = acpQueuedValue(caught) || acpQueuedValue((caught as { payload?: unknown })?.payload);
+      if (queued && id) settlePending(optimisticId, { taskId: id, queued: true });
+      else settlePending(optimisticId, { error: caught });
       // The program's own refusal is its error row in the transcript (shown once there);
       // a gateway failure has no row and is said under the composer. The text stays either way.
-      if (!refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) });
+      if (!queued && !refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) });
     } finally {
       setAcpBusy(false);
-      if (created) await adoptCreatedTask(created.taskId, created.session, text);
+      if (created && adoptedTaskRef.current !== created.taskId) await adoptCreatedTask(created.taskId, created.session, text);
     }
   }
 
@@ -2157,11 +2238,37 @@ function AgentChatInner({
     const id = acpResend.taskId;
     setAcpBusy(true);
     void (async () => {
-      try { for (const turn of again) await sendAcp(id, { client_message_id: crypto.randomUUID(), text: turn.text }); }
+      try {
+        for (const turn of again) {
+          const clientMessageId = crypto.randomUUID();
+          const optimisticId = putPending({
+            clientMessageId,
+            computerId: acpComputerId || "",
+            program: acpProgram || "",
+            text: turn.text,
+            attachments: [],
+            choice: {},
+            taskId: id,
+            afterRowId: acpView.turns.reduce((max, item) => Math.max(max, item.rowId), 0),
+          });
+          setAcpPendingIds((current) => [...current, optimisticId]);
+          const result = await sendAcp(id, {
+            client_message_id: clientMessageId,
+            program: acpProgram || undefined,
+            computer_id: acpComputerId || undefined,
+            text: turn.text,
+          });
+          settlePending(optimisticId, {
+            taskId: id,
+            rowId: typeof result?.row_id === "number" ? result.row_id : null,
+            queued: acpQueuedValue(result),
+          });
+        }
+      }
       catch (caught) { if (!refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) }); }
       finally { setAcpBusy(false); }
     })();
-  }, [acpConnected, acpResend, acpView, taskId]);
+  }, [acpComputerId, acpConnected, acpProgram, acpResend, acpView, taskId]);
   const answerAcpRequest = useCallback((requestId: number | string, result: unknown) => {
     if (!taskId || readOnly) return;
     void answerAcp(taskId, requestId, result).catch((caught) => setAcpError({ taskId, text: acpErrorText(caught) }));
@@ -3308,6 +3415,14 @@ function AgentChatInner({
     items: (
       <>
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} />}
+      {acpPendingShown.map((entry) => (
+        <PendingSendBubble
+          key={entry.id}
+          pending={entry}
+          errorText={entry.error != null && !refusedByAgent(entry.error) ? acpErrorText(entry.error) : ""}
+          onRetry={() => retryAcpPending(entry)}
+        />
+      ))}
       <AcpTranscript
         rows={frames.rows}
         program={acpRowsProgram}
@@ -3332,6 +3447,7 @@ function AgentChatInner({
         {taskId && !acpConnected && (
           <p className="px-1 text-[12px] text-stone-500" role="status" data-acp-disconnected="">{tt("连接断开")}</p>
         )}
+        <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         <LeoComposer
           optimizeImages
           boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}

@@ -40,6 +40,7 @@ export type AcpLabels = {
   stopReason: (reason: string) => string;
   cancelled: string;
   permissionPrompt: string;
+  backgroundTask?: (name: string, state: string) => string;
 };
 
 const TIMELINE_STATUS: Record<ToolCallStatus, string> = {
@@ -73,12 +74,17 @@ function toolCard(tool: AcpToolCall, children: AcpToolCall[]): Json {
   };
 }
 
-function stepMessage(tool: AcpToolCall, children: AcpToolCall[]): AgentMessage {
+function stepMessage(tool: AcpToolCall, children: AcpToolCall[], labels: AcpLabels): AgentMessage {
+  const background = tool.backgroundTask;
+  const backgroundLabel = background && background.state !== "running"
+    ? (labels.backgroundTask?.(background.name || background.description || background.id, background.state)
+      || `后台任务 · ${background.state}`)
+    : "";
   return {
     id: tool.rowIds[0] ?? 0,
     role: "assistant",
     kind: "step",
-    content: tool.title,
+    content: [tool.title, backgroundLabel].filter(Boolean).join(" · "),
    
     meta: { native: true, tool_status: TIMELINE_STATUS[tool.status], tool_card: toolCard(tool, children) },
   };
@@ -235,7 +241,7 @@ export function itemBlocks(items: readonly AcpItem[], live: boolean, labels: Acp
         break;
       case "tool":
         if (item.tool.parentId && known.has(item.tool.parentId)) break;
-        addProcess(item.key, stepMessage(item.tool, childrenOf.get(item.tool.id) ?? []));
+        addProcess(item.key, stepMessage(item.tool, childrenOf.get(item.tool.id) ?? [], labels));
         break;
       case "plan":
         addProcess(item.key, {

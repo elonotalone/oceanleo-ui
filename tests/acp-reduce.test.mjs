@@ -392,6 +392,18 @@ test("Claude background tasks merge spawned / progress / state updates by asyncT
   assert.equal(reduceRows(r.list).backgroundTasks.length, 1);
 });
 
+test("a finished background task is attached to its originating tool row", () => {
+  const r = rows();
+  r.prompt(1, "build in background");
+  r.update({ sessionUpdate: "tool_call", toolCallId: "t1", title: "Task", kind: "execute", status: "in_progress" });
+  r.update({ sessionUpdate: "async_task_spawned", asyncTaskId: "bg1", name: "build", toolCallId: "t1" });
+  r.update({ sessionUpdate: "async_task_state_update", asyncTaskId: "bg1", state: "completed" });
+  const tool = reduceRows(r.list).turns[0].items.find((item) => item.type === "tool").tool;
+  assert.equal(tool.backgroundTask?.id, "bg1");
+  assert.equal(tool.backgroundTask?.state, "completed");
+  assert.equal(tool.backgroundTask?.toolCallId, "t1");
+});
+
 test("a sub-agent's words never join the main reply; its tool steps name their parent", () => {
   const r = rows();
   r.prompt(1, "research");

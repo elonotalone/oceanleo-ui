@@ -13,6 +13,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { cursorAnswerResult } from "../src/acp/messages.ts";
+import { reduceRows } from "../src/acp/reduce.ts";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -35,7 +36,7 @@ const clipboardStub = dataModule(`
   export async function writeClipboardText() { return true; }
 `);
 
-const { AcpTranscript } = await import(
+const { AcpBackgroundTaskStrip, AcpTranscript } = await import(
   await compileModule("src/acp/AcpTranscript.tsx", {
     "../i18n/ui/useUI": uiStub,
     "./share/share-clipboard": clipboardStub,
@@ -87,6 +88,10 @@ function render(rows, props) {
 
 function occurrences(text, needle) {
   return text.split(needle).length - 1;
+}
+
+function renderStrip(tasks, onStopTask) {
+  return renderToStaticMarkup(React.createElement(AcpBackgroundTaskStrip, { tasks, onStopTask }));
 }
 
 // ---- tests -----------------------------------------------------------------------
@@ -159,19 +164,21 @@ test("node meta rows: a gap and an exit render as notices", () => {
   assert.ok(exit.textContent.includes("code 1"));
 });
 
-test("a stoppable background task gets a stop button only when onStopTask is given", () => {
+test("a running background task is rendered in the composer strip, never after the transcript", () => {
   const rows = [
     prompt(1, "build it"),
     update({ sessionUpdate: "async_task_spawned", asyncTaskId: "bg1", name: "build", description: "npm build", canStop: true }),
   ];
   const withStop = render(rows, { onStopTask: () => {} });
-  const task = withStop.querySelector('[data-acp-background-task="bg1"]');
+  assert.equal(withStop.querySelector('[data-acp-background-task="bg1"]'), null);
+  const view = reduceRows(rows);
+  const strip = new JSDOM(`<!doctype html><html><body>${renderStrip(view.backgroundTasks, () => {})}</body></html>`).window.document.body;
+  const task = strip.querySelector('[data-acp-background-task="bg1"]');
   assert.ok(task);
-  assert.ok(task.textContent.includes("npm build"));
-  assert.ok(withStop.querySelector('[data-acp-stop-task="bg1"]'));
+  assert.ok(task.textContent.includes("build"));
+  assert.ok(strip.querySelector('[data-acp-stop-task="bg1"]'));
 
-  const without = render(rows);
-  assert.ok(without.querySelector('[data-acp-background-task="bg1"]'));
+  const without = new JSDOM(`<!doctype html><html><body>${renderStrip(view.backgroundTasks)}</body></html>`).window.document.body;
   assert.equal(without.querySelector("[data-acp-stop-task]"), null);
 });
 

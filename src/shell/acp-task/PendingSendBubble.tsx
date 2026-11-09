@@ -5,6 +5,7 @@
 
 import { AgentTranscriptBubble } from "../AgentTranscriptBubble";
 import type { AgentAttachment, AgentMessage } from "../../lib/agent";
+import { useUI } from "../../i18n/ui/useUI";
 import { knownComputer, lastKnownComputer } from "../../lib/computer-task-api";
 import type { ConversationTarget, NativeProgram } from "../native-thread/types";
 import type { PendingAttachment } from "../useAttachments";
@@ -42,20 +43,41 @@ function pendingMessage(pending: PendingSend): AgentMessage {
     name: attachment.name,
     ...(attachment.mime ? { mime: attachment.mime } : {}),
     ...(attachment.media_type ? { media_type: attachment.media_type } : {}),
+    ...(attachment.artifact_id ? { artifact_id: attachment.artifact_id } : {}),
+    ...(attachment.revision_id ? { revision_id: attachment.revision_id } : {}),
   }));
   return { id: 0, role: "user", kind: "text", content: pending.text, ...(files.length ? { meta: { attachments: files } } : {}) } as AgentMessage;
 }
 
 /** `errorText`: what the create or the send threw, verbatim; empty when there is nothing to say here. */
-export function PendingSendBubble({ pending, errorText }: { pending: PendingSend; errorText: string }) {
+export function PendingSendBubble({
+  pending,
+  errorText,
+  onRetry,
+}: {
+  pending: PendingSend;
+  errorText: string;
+  onRetry?: () => void;
+}) {
+  const tt = useUI();
+  const statusText = pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("发送失败") : tt("正在发送");
   return (
-    <div className="space-y-1.5" data-acp-pending-send={pending.id}>
+    <div className="space-y-1.5" data-acp-pending-send={pending.id} data-acp-pending-status={pending.status}>
       <AgentTranscriptBubble message={pendingMessage(pending)} />
-      {errorText && (
-        <p className="whitespace-pre-wrap break-words px-1 text-right text-[13px] text-rose-500 [overflow-wrap:anywhere]" role="alert" data-acp-pending-error="">
-          {errorText}
-        </p>
-      )}
+      <div className={`flex items-center justify-end gap-2 px-1 text-[12px] ${pending.status === "failed" ? "text-rose-500" : "text-stone-400"}`}>
+        <span data-acp-pending-state="">{statusText}</span>
+        {errorText && <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" role="alert" data-acp-pending-error="">{errorText}</span>}
+        {pending.status === "failed" && onRetry && (
+          <button
+            type="button"
+            data-acp-pending-retry={pending.id}
+            onClick={onRetry}
+            className="shrink-0 rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-50"
+          >
+            {tt("重试")}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

@@ -169,6 +169,8 @@ export type AcpToolCall = {
   parentId: string;
   /** Rows that built this call, in order (the `tool_call` and every `tool_call_update`). */
   rowIds: number[];
+  /** AIR/Claude background task attached to this tool step, when one exists. */
+  backgroundTask?: AcpBackgroundTask;
 };
 
 export type AcpPermission = {
@@ -200,6 +202,8 @@ export type AcpBackgroundTask = {
   canStop: boolean;
   toolCallId: string;
   outputFilePath: string;
+  startedAt: string;
+  updatedAt: string;
 };
 
 export type AcpItem =

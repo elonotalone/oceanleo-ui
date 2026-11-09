@@ -3,7 +3,7 @@
 // The task page as a standard ACP client (contract §2.5, P4): stored rows in, the conversation out.
 // Program differences live in reduce.ts / messages.ts; this file only renders. An empty row list renders nothing.
 
-import { Fragment, useMemo } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
 import { useUI } from "../i18n/ui/useUI";
@@ -48,15 +48,37 @@ function RawRequest({ request }: { request: AcpPermission }) {
   );
 }
 
-function BackgroundTasks({ tasks, onStopTask }: { tasks: AcpBackgroundTask[]; onStopTask?: (ref: string) => void }) {
+function finishedBackgroundState(state: string): boolean {
+  return ["completed", "complete", "failed", "stopped", "cancelled", "canceled", "terminated"].includes(state.toLowerCase());
+}
+
+function elapsedLabel(startedAt: string, now: number): string {
+  const start = Date.parse(startedAt);
+  if (!Number.isFinite(start)) return "0s";
+  const seconds = Math.max(0, Math.floor((now - start) / 1000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}m ${seconds % 60}s`;
+}
+
+/** Live AIR tasks sit above the composer; terminal states render on their tool row. */
+export function AcpBackgroundTaskStrip({ tasks, onStopTask }: { tasks: AcpBackgroundTask[]; onStopTask?: (ref: string) => void }) {
   const tt = useUI();
+  const [now, setNow] = useState(() => Date.now());
+  const running = tasks.filter((task) => !finishedBackgroundState(task.state));
+  useEffect(() => {
+    if (!running.length) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [running.length]);
+  if (!running.length) return null;
   return (
-    <div data-acp-background-tasks="" className="space-y-1 border-l-2 border-stone-200 pl-3">
-      {tasks.map((task) => (
+    <div data-acp-background-strip="" className="mb-2 space-y-1 border-l-2 border-stone-200 pl-3">
+      {running.map((task) => (
         <div key={task.id} data-acp-background-task={task.id} data-task-state={task.state} className="flex min-w-0 items-start gap-2 text-[12px] text-stone-500">
           <div className="min-w-0 flex-1 break-words [overflow-wrap:anywhere]">
-            <span className="text-stone-600">{task.description || task.name || task.id}</span>
-            <span className="text-stone-400">{` · ${task.state}`}</span>
+            <span className="text-stone-600">{task.name || task.description || task.id}</span>
+            <span className="text-stone-400">{` · ${tt("运行中")} · ${tt("用时 {elapsed}", { elapsed: elapsedLabel(task.startedAt, now) })}`}</span>
             {task.summary && <p className="whitespace-pre-wrap text-stone-400">{task.summary}</p>}
           </div>
           {onStopTask && task.canStop && task.state === "running" && (
@@ -106,6 +128,13 @@ export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQu
       stopReason: (reason) => tt("本轮结束：{reason}", { reason }),
       cancelled: tt("已停止生成"),
       permissionPrompt: tt("请确认后继续。"),
+      backgroundTask: (name, state) => {
+        const stateText = state === "completed" || state === "complete" ? tt("已完成")
+          : state === "failed" ? tt("已失败")
+            : state === "stopped" || state === "cancelled" || state === "canceled" ? tt("已停止")
+              : tt(state);
+        return `${tt("后台任务")} · ${name} · ${stateText}`;
+      },
     }),
     [tt],
   );
@@ -139,7 +168,6 @@ export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQu
   return (
     <div data-acp-transcript="" data-acp-program={program} className="space-y-3">
       {blocks.map(render)}
-      {view.backgroundTasks.length > 0 && <BackgroundTasks tasks={view.backgroundTasks} onStopTask={onStopTask} />}
     </div>
   );
 }

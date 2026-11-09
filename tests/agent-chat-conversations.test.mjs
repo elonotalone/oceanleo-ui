@@ -413,6 +413,53 @@ test("send posts the message once to /send with the program and computer; the us
   } finally { await view.unmount(); }
 });
 
+test("ACP send paints a quiet optimistic bubble before the POST resolves and replaces it by the committed row", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
+  try {
+    await connect();
+    await type(view, "acp", "立刻显示");
+    await submit(view, "acp");
+    const pending = view.host.querySelector("[data-acp-pending-send]");
+    assert.ok(pending);
+    assert.equal(pending.getAttribute("data-acp-pending-status"), "sending");
+    assert.match(pending.textContent, /立刻显示/);
+    assert.equal(view.composer("acp").__props.value, "");
+    await deliver(rows.prompt(17, "立刻显示"));
+    assert.equal(view.host.querySelector("[data-acp-pending-send]"), null);
+    assert.equal(view.host.querySelectorAll('[data-testid="task-user-bubble"]').length, 1);
+  } finally { await view.unmount(); }
+});
+
+test("an ACP gateway failure keeps the optimistic bubble failed, restores empty composer input, and exposes retry", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
+  try {
+    await connect();
+    globalThis.__acpRoute = (path) => path.endsWith("/send")
+      ? { status: 503, body: { detail: "temporary" } } : null;
+    await type(view, "acp", "稍后重试");
+    await submit(view, "acp");
+    const pending = view.host.querySelector("[data-acp-pending-send]");
+    assert.equal(pending?.getAttribute("data-acp-pending-status"), "failed");
+    assert.ok(view.host.querySelector("[data-acp-pending-retry]"));
+    assert.equal(view.composer("acp").__props.value, "稍后重试");
+    await act(async () => { view.host.querySelector("[data-acp-pending-retry]").click(); });
+    assert.equal(view.composer("acp").__props.value, "稍后重试");
+  } finally { await view.unmount(); }
+});
+
+test("a queued ACP receipt marks the optimistic bubble queued", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
+  try {
+    await connect();
+    globalThis.__acpRoute = (path) => path.endsWith("/send")
+      ? { status: 200, body: { row_id: null, queued: true } } : null;
+    await type(view, "acp", "排队执行");
+    await submit(view, "acp");
+    assert.equal(view.host.querySelector("[data-acp-pending-send]")?.getAttribute("data-acp-pending-status"), "queued");
+    assert.match(view.host.querySelector("[data-acp-pending-state]")?.textContent || "", /已排队/);
+  } finally { await view.unmount(); }
+});
+
 test("a program's refusal (409 with its JSON-RPC error) is not repeated under the composer; a gateway refusal is shown verbatim; the text stays", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {

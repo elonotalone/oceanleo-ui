@@ -206,7 +206,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     push({ type: "tool", key: `tool-${row.id}`, tool: next });
   };
 
-  const task = (update: Extract<SessionUpdate, { asyncTaskId: string }>) => {
+  const task = (row: AcpFrameRow, update: Extract<SessionUpdate, { asyncTaskId: string }>) => {
     if (typeof update.asyncTaskId !== "string" || !update.asyncTaskId) return;
     let entry = tasks.get(update.asyncTaskId);
     if (!entry) {
@@ -221,6 +221,8 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         canStop: false,
         toolCallId: "",
         outputFilePath: "",
+        startedAt: row.received_at,
+        updatedAt: row.received_at,
       };
       tasks.set(update.asyncTaskId, entry);
       view.backgroundTasks.push(entry);
@@ -231,6 +233,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     }
     if (typeof fields.canStop === "boolean") entry.canStop = fields.canStop;
     if (update.sessionUpdate === "async_task_state_update" && typeof update.state === "string") entry.state = update.state;
+    entry.updatedAt = row.received_at;
   };
 
   const sessionUpdate = (row: AcpFrameRow, sessionId: string, update: SessionUpdate) => {
@@ -302,7 +305,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
       case "async_task_spawned":
       case "async_task_progress":
       case "async_task_state_update":
-        task(update);
+        task(row, update);
         return;
     }
   };
@@ -486,6 +489,16 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     if (seen.has(row.id)) continue;
     seen.add(row.id);
     event(parseRow(row));
+  }
+
+  // A background task's final state belongs on the tool row that launched it. The
+  // strip only shows live tasks; completed / failed / stopped work therefore stays
+  // in the ordered process timeline instead of becoming a trailing list.
+  for (const background of tasks.values()) {
+    if (!background.toolCallId) continue;
+    for (const tool of tools.values()) {
+      if (tool.id === background.toolCallId) tool.backgroundTask = background;
+    }
   }
 
   view.open = view.turns.some((turn) => turn.open);
