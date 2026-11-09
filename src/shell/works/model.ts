@@ -32,34 +32,41 @@ export interface WorkPreviewResult {
   reason?: string;
 }
 
-export interface WorkServerInput {
-  computer_id: string;
-  path: string;
-  title?: string;
-  kind?: WorkKind;
-  start_command?: string;
-  port?: number;
-}
-
-export interface MoveToServerInput {
-  artifact_id: string;
-  computer_id: string;
-  path: string;
-  title?: string;
-}
-
-export interface SaveToCloudInput {
-  title?: string;
-  slug?: string;
-}
-
-export interface SaveToCloudResult {
-  project?: unknown;
-  work_id: string;
+export interface ServerWork {
+  id: string;
+  title: string;
+  kind: WorkKind;
+  status: WorkStatus;
+  updated_at: string;
+  home: { type: "server"; computer_id: string; computer_name: string; path: string };
+  preview: WorkPreview;
+  server_work: { id: string; computer_id: string; computer_name: string; path: string };
 }
 
 export interface WorkStopResult {
   ok: boolean;
+}
+
+export function normalizeServerWork(value: unknown): ServerWork | null {
+  if (!isRecord(value)) return null;
+  const id = text(value.id);
+  const title = text(value.title);
+  const home = isRecord(value.home) ? value.home : null;
+  const server = isRecord(value.server_work) ? value.server_work : null;
+  if (!id || !title || !home || home.type !== "server" || !server) return null;
+  const computerId = text(home.computer_id) || text(server.computer_id);
+  const path = text(home.path) || text(server.path);
+  if (!computerId || !path) return null;
+  const computerName = text(home.computer_name) || text(server.computer_name) || computerId;
+  const kind = KINDS.has(value.kind as WorkKind) ? value.kind as WorkKind : "other";
+  const status = STATUSES.has(value.status as WorkStatus) ? value.status as WorkStatus : "draft";
+  const previewValue = isRecord(value.preview) ? value.preview : {};
+  return {
+    id, title, kind, status, updated_at: text(value.updated_at) || new Date(0).toISOString(),
+    home: { type: "server", computer_id: computerId, computer_name: computerName, path },
+    preview: { available: previewValue.available === true, ...(isUserContentUrl(text(previewValue.url)) ? { url: text(previewValue.url) } : {}) },
+    server_work: { id, computer_id: computerId, computer_name: computerName, path },
+  };
 }
 
 export interface WorkUpdate {
@@ -152,7 +159,7 @@ export function workStatusLabel(status: WorkStatus): string {
   return ({ draft: "草稿", published: "已发布", running: "运行中", stopped: "已停止", error: "出错", offline: "离线" })[status];
 }
 
-export function workDraftForPath(path: string): Pick<WorkServerInput, "kind" | "start_command" | "port"> {
+export function workDraftForPath(path: string): { kind: WorkKind; start_command: string; port: number } {
   const lower = path.toLocaleLowerCase();
   if (lower.endsWith(".game") || lower.includes("game")) return { kind: "game", start_command: "npm run dev", port: 3000 };
   if (lower.includes("app")) return { kind: "app", start_command: "npm run dev", port: 3000 };

@@ -39,6 +39,7 @@ import {
   withoutWithheldLibraryThumbnail,
   type LibraryItem,
 } from "./library-data";
+import { normalizeServerWork, type ServerWork } from "./works/model";
 
 export interface ArtifactApiResult<T> {
   ok: boolean;
@@ -73,6 +74,7 @@ export interface ArtifactSearchResult {
    * 字段。**前端必须原样带出来**，否则用户永远清不掉那一行。
    */
   invalidItems?: { artifactId: string; revisionId: string }[];
+  serverWorks?: ServerWork[];
 }
 
 export interface ArtifactDownloadResult {
@@ -1719,6 +1721,13 @@ export async function listMyArtifacts(options: {
   }
   // scope 已校验为 mine，这就是权威的「我是谁」；喂给 owner 判定省掉探测请求。
   primeCurrentPrincipalId(normalized.ownerPrincipalId);
+  const rawServerWorks =
+    result.data && typeof result.data === "object" && !Array.isArray(result.data)
+      ? (result.data as { serverWorks?: unknown }).serverWorks
+      : undefined;
+  const serverWorks = Array.isArray(rawServerWorks)
+    ? rawServerWorks.map(normalizeServerWork).filter((work): work is ServerWork => Boolean(work))
+    : undefined;
   return {
     ...result,
     data: {
@@ -1729,6 +1738,7 @@ export async function listMyArtifacts(options: {
       total: normalized.total,
       ownerPrincipalId: normalized.ownerPrincipalId,
       invalidItems: invalidItemsFromPayload(result.data),
+      ...(serverWorks ? { serverWorks } : {}),
     },
   };
 }

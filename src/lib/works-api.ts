@@ -2,7 +2,7 @@
 
 import { accessToken } from "./auth/client";
 import { gatewayBase } from "./auth/config";
-import { normalizeWork, type MoveToServerInput, type SaveToCloudInput, type SaveToCloudResult, type Work, type WorkPreviewResult, type WorkServerInput, type WorkStopResult, type WorkUpdate } from "../shell/works/model";
+import { normalizeWork, type Work, type WorkPreviewResult, type WorkStopResult, type WorkUpdate } from "../shell/works/model";
 
 export class WorksApiError extends Error {
   readonly status: number;
@@ -88,27 +88,15 @@ function requireWorks(value: unknown): Work[] {
 
 export interface WorksApi {
   list(signal?: AbortSignal): Promise<Work[]>;
-  createServer(input: WorkServerInput, signal?: AbortSignal): Promise<Work>;
   update(id: string, input: WorkUpdate, signal?: AbortSignal): Promise<Work>;
   remove(id: string, signal?: AbortSignal): Promise<void>;
   preview(id: string, signal?: AbortSignal): Promise<WorkPreviewResult>;
   stop(id: string, signal?: AbortSignal): Promise<WorkStopResult>;
-  /** Optional capability hooks. W7 may expose these after the first API cut. */
-  moveToServer?: (input: MoveToServerInput, signal?: AbortSignal) => Promise<Work>;
-  saveToCloud?: (id: string, input?: SaveToCloudInput, signal?: AbortSignal) => Promise<SaveToCloudResult>;
 }
 
 export const worksApi: WorksApi = {
   async list(signal) {
     return requireWorks(await request<WorksEnvelope>("/v1/works", { signal }));
-  },
-  async createServer(input, signal) {
-    const body = await request<WorkEnvelope>("/v1/works/server", {
-      method: "POST",
-      body: JSON.stringify(input),
-      signal,
-    });
-    return requireWork(body.work);
   },
   async update(id, input, signal) {
     const body = await request<WorkEnvelope>(`/v1/works/${encodeURIComponent(id)}`, {
@@ -136,21 +124,5 @@ export const worksApi: WorksApi = {
       signal,
     });
   },
-  async moveToServer(input, signal) {
-    const body = await request<WorkEnvelope>("/v1/works/move-to-server", {
-      method: "POST",
-      body: JSON.stringify(input),
-      signal,
-    });
-    return requireWork(body.work);
-  },
-  async saveToCloud(id, input, signal) {
-    const body = await request<SaveToCloudResult>(`/v1/works/${encodeURIComponent(id)}/save-to-cloud`, {
-      method: "POST",
-      ...(input ? { body: JSON.stringify(input) } : {}),
-      signal,
-    });
-    if (!body || typeof body.work_id !== "string" || !body.work_id.trim()) throw new WorksApiError(502, "response_malformed");
-    return body;
-  },
+
 };

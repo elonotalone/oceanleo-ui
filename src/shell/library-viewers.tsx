@@ -82,6 +82,7 @@ import {
   MaterialDetailUnavailable,
   useMaterialDetailTarget,
 } from "./material-detail-slot";
+import { AttachmentFileViewer, isAttachmentFilePreview } from "./attachment-file-viewer";
 
 // PDFium is a wasm engine: only load it when a PDF is actually previewed.
 const LibraryPdfReader = lazy(() => import("./LibraryPdfReader"));
@@ -2131,6 +2132,7 @@ function LibraryItemViewerBody({
 }) {
   const preparedOffice = usePreparedOfficeLibraryItem(item);
   const viewerItem = preparedOffice.item;
+  const officeKind = officePackageKindForItem(viewerItem);
   const rendition = useArtifactRendition(
     viewerItem,
     officeViewerRenditionPurposes(viewerItem),
@@ -2231,20 +2233,29 @@ function LibraryItemViewerBody({
       <StructuredCanvas item={resolvedItem} />
     );
   }
-  if (resolvedItem.kind === "ppt")
+  if (resolvedItem.kind === "ppt" || officeKind === "pptx")
     return (
       <PptViewer
         item={resolvedItem}
         onResourceError={rendition.resourceFailed}
       />
     );
-  if (resolvedItem.kind === "sheet")
+  if (resolvedItem.kind === "sheet" || officeKind === "xlsx")
     return (
       <SpreadsheetViewer
         item={resolvedItem}
         onResourceError={rendition.resourceFailed}
       />
     );
+  if (resolvedItem.kind === "document" || resolvedItem.kind === "file")
+    if (isAttachmentFilePreview(resolvedItem)) {
+      return (
+        <AttachmentFileViewer
+          item={resolvedItem}
+          url={url || resolvedItem.url || resolvedItem.previewUrl}
+        />
+      );
+    }
   if (resolvedItem.kind === "document" || resolvedItem.kind === "file")
     return (
       <DocumentViewer
