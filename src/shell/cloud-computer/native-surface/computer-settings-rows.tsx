@@ -182,7 +182,8 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
     if (status?.login?.can_logout !== false) choices.push({ value: "logout", label: tt("退出登录") });
     methods.filter((method) => method.kind === "secret").forEach((method) => choices.push({ value: `login:${method.id}`, label: methodLabel(method.id), attrs: { "data-oceanleo-native-program-login": method.id } }));
   }
-  if (status?.installed) {
+  // The generic Key entry is only a fallback: C8 secret methods (API Key, Access Token, …) already cover it.
+  if (status?.installed && (program === "hermes" || !methods.some((method) => method.kind === "secret"))) {
     choices.push({ value: "key", label: program === "hermes" ? tt("管理凭据") : tt("Key"), attrs: { "data-oceanleo-native-program-key": "" } });
   }
   const loginOpen = dialog.login.open && dialog.login.program === program;
