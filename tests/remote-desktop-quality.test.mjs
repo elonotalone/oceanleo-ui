@@ -78,8 +78,22 @@ test("one report per session: click-relative steps, consent excluded separately,
   assert.equal(r.video.rtt_p90_ms, 70);
   assert.equal(r.video.relay, false);
   assert.deepEqual(r.env, ENV);
+
   assert.equal(wrapped.mediaQuality(created.data.session_id), null, "finished sessions take no more samples");
 });
+
+test("media join diagnostics stay bounded and anonymous", () => {
+  const report = [];
+  const collector = new q.RemoteDesktopQualityCollector({ deviceId: "dev-1", origin: 100, attempt: 0, now: () => 500, env: ENV, send: (value) => report.push(value) });
+  collector.mediaTiming({ prepare_started_ms: 180, join_started_ms: 220, joined_ms: 260 });
+  collector.mediaDiagnostic({ sdk_error: 16844114 });
+  collector.mediaDiagnostic({ renew_reason: "auth_info_will_expire" });
+  collector.finish();
+  assert.deepEqual(report[0].steps, { media_prepare_ms: 80, media_join_started_ms: 120, media_joined_ms: 160 });
+  assert.deepEqual(report[0].media_diagnostics, { sdk_error_codes: [16844114], renew_reasons: ["auth_info_will_expire"] });
+  assert.doesNotMatch(JSON.stringify(report[0]), /token|device_name|ip/);
+});
+
 
 test("privacy: report carries only numbers, enums and fixed codes", async () => {
   const now = { t: 0 }, sent = [];

@@ -13,7 +13,7 @@ import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-
 import { RemoteDesktopQualityHub } from "../api/remote-desktop-quality";
 import { RD_BROKER_COPY, rdBrokerErrorCopy, rdBrokerStatusCopy } from "../i18n/ui/messages/rd-broker-copy";
 import type { RemoteDesktopTransportDiagnostics, RemoteInputDiagnostics } from "../api/remote-desktop-diagnostics";
-import type { RemoteMediaDiagnosticSnapshot, RemoteMediaStartupTimings } from "./remote-desktop-media";
+import type { RemoteMediaDiagnostic, RemoteMediaDiagnosticSnapshot, RemoteMediaStartupTimings } from "./remote-desktop-media";
 
 export { requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 export { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
@@ -111,10 +111,21 @@ function mediaFrameMatches(status: RemoteMediaStatus | null, width: number, heig
 
 export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, agentRequest = false, consent, ticket: requested, onDiagnostics }: RemoteDesktopPanelProps) {
   const tt = useUI();
-  const diagnosticsRef = useRef(onDiagnostics); diagnosticsRef.current = onDiagnostics;
-  const reportDiagnostics = useCallback((value: RemoteDesktopDiagnosticSample) => { try { diagnosticsRef.current?.(value); } catch { /* measurement only */ } }, []);
-  // Anonymous per-session quality report: the wrapper measures the client calls; control flow is unchanged.
   const qualityRef = useRef<RemoteDesktopQualityHub | null>(null);
+  const sessionRef = useRef<string | null>(null);
+  const diagnosticsRef = useRef(onDiagnostics); diagnosticsRef.current = onDiagnostics;
+  const reportDiagnostics = useCallback((value: RemoteDesktopDiagnosticSample) => {
+    try {
+      diagnosticsRef.current?.(value);
+      const sessionId = sessionRef.current;
+      if (!sessionId) return;
+      const collector = qualityRef.current?.forSession(sessionId);
+      if (!collector) return;
+      if ((value as RemoteMediaStartupTimings).kind === 3) collector.mediaTiming(value as RemoteMediaStartupTimings);
+      else if ("sdk_error" in value || "renew_reason" in value) collector.mediaDiagnostic(value as RemoteMediaDiagnostic);
+    } catch { /* measurement only */ }
+  }, []);
+  // Anonymous per-session quality report: the wrapper measures the client calls; control flow is unchanged.
   const client = useMemo(() => {
     if (!baseClient) return baseClient;
     qualityRef.current ??= new RemoteDesktopQualityHub();
@@ -173,7 +184,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const stageRef = useRef<HTMLDivElement>(null);
   const imageRef = useRef<HTMLImageElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const sessionRef = useRef<string | null>(null);
   const streamRef = useRef<RemoteDesktopStream | null>(null);
   const streamModeRef = useRef(false);
   const closedRef = useRef(false);

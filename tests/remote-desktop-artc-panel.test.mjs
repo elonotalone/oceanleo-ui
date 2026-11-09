@@ -270,3 +270,21 @@ test("a consent-pending session does not negotiate video early", async () => {
   await settle();
   assert.equal(view.negotiations(), 0);
 });
+
+test("publisher metrics in every status never restart the receiver or renegotiate (11-09 join loop)", async () => {
+  let starts = 0, negotiations = 0;
+  const start = globalThis.__remoteMediaTestStart;
+  globalThis.__remoteMediaTestStart = (...args) => { starts++; return start(...args); };
+  const view = await mount({ overrides: {
+    // Real gateways attach a fresh publisher metrics object to every media status.
+    async negotiateMedia() { negotiations++; return { ok: true, data: { media, media_status: { state: "publishing", metrics: { sdk_sent_fps: 20, pushes: Math.random() } } } }; },
+  } });
+  await settle();
+  for (let index = 0; index < 5; index++) {
+    await act(async () => view.handlers().media(media, { state: "publishing", metrics: { sdk_sent_fps: 20 + index, pushes: index } }));
+    await settle();
+  }
+  assert.equal(negotiations, 1, "one /media negotiation for the whole join");
+  assert.equal(view.stopped(), 0, "the joining receiver was never aborted");
+  assert.equal(starts, 0, "no second receiver was started");
+});

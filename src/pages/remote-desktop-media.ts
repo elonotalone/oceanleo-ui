@@ -24,7 +24,7 @@ export interface RemoteMediaHandlers {
   diagnostics?(value: RemoteMediaDiagnosticSnapshot): void;
 }
 
-export interface RemoteMediaDiagnostic { blocked_host?: string; sdk_error?: number }
+export interface RemoteMediaDiagnostic { blocked_host?: string; sdk_error?: number; renew_reason?: string }
 export type RemoteMediaStartupStep = "media_negotiate_started_ms" | "media_negotiated_ms" | "media_open_ms" | "sdk_load_started_ms" | "sdk_loaded_ms" | "engine_created_ms"
   | "prepare_started_ms" | "prepared_ms" | "publish_disabled_ms" | "join_started_ms" | "joined_ms"
   | "synthetic_started_ms" | "synthetic_ready_ms" | "synthetic_failed_ms" | "synthetic_skipped_ms"
@@ -384,9 +384,11 @@ export async function openRemoteMedia(
       // SDK exceptions are not gateway HTTP or publisher status evidence.
       try { await engine.refreshAuthInfo(fresh.token); }
       catch { throw new Error("media_auth_failed"); }
-      if (!closed) scheduleRenew(fresh.expires_at);
+      if (!closed) { handlers.diagnostic?.({ renew_reason: "success" }); scheduleRenew(fresh.expires_at); }
     })().catch((error: unknown) => {
       // A renewal refusal retains account/revocation/compatibility evidence.
+      const reason = error instanceof Error ? error.message : "media_auth_failed";
+      handlers.diagnostic?.({ renew_reason: reason.replace(/[^a-zA-Z0-9_]+/g, "_").toLowerCase().slice(0, 64) || "media_auth_failed" });
       const status = error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined;
       fail(error instanceof RemotePublisherStatusError ? error.message
         : status !== undefined && error instanceof Error ? error.message : "media_auth_failed", status);
@@ -434,8 +436,8 @@ export async function openRemoteMedia(
       fail("media_subscribe_failed");
     }, SUBSCRIBE_ERROR_GRACE_MS);
   });
-  on("authInfoWillExpire", () => { void renew(); });
-  on("authInfoExpired", () => { void renew(); });
+  on("authInfoWillExpire", () => { handlers.diagnostic?.({ renew_reason: "auth_info_will_expire" }); void renew(); });
+  on("authInfoExpired", () => { handlers.diagnostic?.({ renew_reason: "auth_info_expired" }); void renew(); });
   on("bye", () => fail("media_session_closed"));
   const checkLiveness = () => {
     if (closed || (typeof document !== "undefined" && document.hidden)) return;

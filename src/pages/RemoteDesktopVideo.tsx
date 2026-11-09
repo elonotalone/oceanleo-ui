@@ -37,6 +37,9 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
   callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming };
   const previousClose = useRef<Promise<void>>(Promise.resolve());
   const earlyRef = useRef(early); earlyRef.current = early;
+  // Publisher metrics are refreshed on every status response; their object identity
+  // must not restart the receive engine while joinChannel is pending.
+  const publisherRef = useRef(publisher); publisherRef.current = publisher;
   useEffect(() => {
     const abort = new AbortController();
     let viewer: RemoteMediaViewer | undefined;
@@ -127,7 +130,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
                 window_start_ms: qualityWindowStart, viewer: { ...report,
                   ...(windowP50 !== undefined ? { age_p50_ms: windowP50 } : {}),
                   ...(windowP95 !== undefined ? { age_p95_ms: windowP95 } : {}),
-                }, ...(publisher ? { publisher } : {}) });
+                }, ...(publisherRef.current ? { publisher: publisherRef.current } : {}) });
               qualityWindowStart = Date.now(); qualityWindowAges = [];
             }
             ageSamples = []; previousStats = sample; previousStatsAt = now;
@@ -147,7 +150,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
       callbacks.current.onDataChannel?.(null);
       previousClose.current = start.then(async () => { await viewer?.close(); });
     };
-  }, [client, deviceId, sessionId, videoRef, displayId, publisher]);
+  }, [client, deviceId, sessionId, videoRef, displayId]);
   // No canvas copy: the SDK attaches the decoded MediaStream to this element directly (D5).
   // Geometry changes hide obsolete pixels without detaching the decoder; stalls keep showFrame true.
   return <video ref={videoRef} data-remote-video autoPlay muted playsInline style={{ ...remoteFrameStyle(fit, width, height), opacity: showFrame ? 1 : 0 }} />;

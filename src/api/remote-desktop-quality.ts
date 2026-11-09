@@ -45,11 +45,12 @@ export interface QualityEnvironment {
 export interface RemoteDesktopQualityReport {
   v: 1; device_id: string; session_id?: string; attempt: number; transport?: "websocket-v2" | "http-v1";
   media: "artc" | "legacy" | "none"; end_reason: string; duration_ms: number; reconnects: number; media_renewals: number;
+  media_diagnostics?: { sdk_error_codes?: number[]; renew_reasons?: string[] };
   steps: Partial<Record<QualityStep, number>>;
   input: { ws_count: number; dc_count: number; accepted?: QualityPercentiles; executed?: QualityPercentiles };
   video?: QualityVideoSummary; env: QualityEnvironment;
 }
-export type QualityStep = "create_ms" | "consent_ms" | "stream_open_ms" | "active_ms" | "media_negotiate_ms" | "artc_join_ms" | "first_frame_ms";
+export type QualityStep = "create_ms" | "consent_ms" | "stream_open_ms" | "active_ms" | "media_negotiate_ms" | "media_prepare_ms" | "media_join_started_ms" | "media_joined_ms" | "artc_join_ms" | "first_frame_ms";
 export type QualityMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
 
 const MAX_MS = 600_000;
@@ -218,6 +219,8 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
   private executed: number[] = [];
   private samples: VideoStatSample[] = [];
   private sent = false;
+  private sdkErrors: number[] = [];
+  private renewReasons: string[] = [];
 
   constructor(options: QualityCollectorOptions) { this.options = options; }
 
@@ -257,6 +260,17 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
     if (state === "error") this.fail(error || "media_error");
   }
   frame(): void { this.mark("artc_join_ms"); this.mark("first_frame_ms"); }
+  mediaTiming(value: { [key: string]: unknown }): void {
+    const keys: Array<[string, QualityStep]> = [["media_negotiate_started_ms", "media_negotiate_ms"], ["prepare_started_ms", "media_prepare_ms"], ["join_started_ms", "media_join_started_ms"], ["joined_ms", "media_joined_ms"]];
+    for (const [source, target] of keys) {
+      const at = value[source];
+      if (typeof at === "number" && Number.isFinite(at)) this.steps[target] ??= Math.max(0, Math.min(MAX_MS, Math.round(at - this.options.origin)));
+    }
+  }
+  mediaDiagnostic(value: { sdk_error?: unknown; renew_reason?: unknown }): void {
+    if (typeof value.sdk_error === "number" && Number.isInteger(value.sdk_error) && value.sdk_error >= 0 && this.sdkErrors.length < 20) this.sdkErrors.push(value.sdk_error);
+    if (typeof value.renew_reason === "string" && /^[a-z0-9_]{1,64}$/i.test(value.renew_reason) && this.renewReasons.length < 20) this.renewReasons.push(value.renew_reason.toLowerCase());
+  }
   stats(sample: VideoStatSample | null): void {
     if (!sample || this.sent) return;
     this.samples.push(sample);
@@ -279,6 +293,7 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
       media, end_reason: this.reason ?? qualityCode(defaultReason),
       duration_ms: Math.max(0, Math.min(86_400_000, Math.round(this.options.now() - this.options.origin))),
       reconnects: Math.min(10_000, this.reconnects), media_renewals: Math.min(10_000, Math.max(0, this.negotiated - 1)),
+      ...(this.sdkErrors.length || this.renewReasons.length ? { media_diagnostics: { ...(this.sdkErrors.length ? { sdk_error_codes: [...this.sdkErrors] } : {}), ...(this.renewReasons.length ? { renew_reasons: [...this.renewReasons] } : {}) } } : {}),
       steps,
       input: { ws_count: this.lanes.websocket, dc_count: this.lanes.data_channel, ...(accepted ? { accepted } : {}), ...(executed ? { executed } : {}) },
       ...(video ? { video } : {}),
