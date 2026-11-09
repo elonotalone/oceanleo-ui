@@ -72,7 +72,7 @@ test("Library action helper: typed item, sent reference and archive all retain t
   assert.equal(uploadLibraryCategory("", "deck.pptx"), "presentations");
 });
 
-test("opener: uploaded non-images emit Library actions; uploaded and local images preview", async () => {
+test("opener: uploaded non-images preview directly; Library remains an explicit header action", async () => {
   const shown = [];
   const library = [];
   let open;
@@ -82,22 +82,23 @@ test("opener: uploaded non-images emit Library actions; uploaded and local image
   }
   const root = createRoot(document.createElement("div"));
   await act(async () => root.render(React.createElement(Host)));
-  assert.equal(await open({ url: "", name: "notes.md", native_archive: { download_path: ROUTE, mime: "text/markdown", artifact_id: ART } }), true);
+  assert.equal(await open({ id: "t0", name: "notes.md", mime: "text/markdown", libraryItem: durable({}, { kind: "document", title: "notes.md" }) }), true);
   assert.equal(await open({ id: "t1", name: "a.png", mime: "image/png", libraryItem: durable() }), true);
-  assert.deepEqual(library.map((a) => [a.tab, a.itemId, a.intent, a.filter]), [["mine", ART, "open", "uploaded"]]);
-  assert.deepEqual(shown, [`artifact:${ART}:${REV}`]);
+  assert.deepEqual(library, []);
+  assert.deepEqual(shown, [`artifact:${ART}:${REV}`, `artifact:${ART}:${REV}`]);
   assert.equal(await open({ id: "t2", name: "b.png", mime: "image/png", previewUrl: "blob:https://oceanbizs.com/b" }), true);
-  assert.deepEqual(shown, [`artifact:${ART}:${REV}`, "attachment:t2"]);
-  assert.equal(library.length, 1);
+  assert.deepEqual(shown, [`artifact:${ART}:${REV}`, `artifact:${ART}:${REV}`, "attachment:t2"]);
+  assert.equal(library.length, 0);
   await act(async () => root.unmount());
 
   const calls = [];
+  const explicit = taskAttachmentLibraryAction({ id: "t1", name: "a.png", mime: "image/png", libraryItem: durable() });
   openTaskWorkspaceLibrary({
     setRightOpen: (v) => calls.push(["open", v]),
     setLibTab: (v) => calls.push(["tab", v]),
     setWorkspaceAction: (v) => calls.push(["action", v.action, typeof v.nonce]),
-  }, library[0]);
-  assert.deepEqual(calls, [["open", true], ["tab", "mine"], ["action", library[0], "string"]]);
+  }, explicit);
+  assert.deepEqual(calls, [["open", true], ["tab", "mine"], ["action", explicit, "string"]]);
 });
 
 test("workspace action normalizer keeps filter:uploaded only; archive sanitizer keeps a UUID artifact_id", () => {

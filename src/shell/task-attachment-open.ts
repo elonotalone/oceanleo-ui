@@ -31,14 +31,16 @@ import {
 } from "../lib/attachment-url";
 import { isDurableLibraryItem, isUploadedLibraryItem, type LibraryItem } from "./library-data";
 import {
-  attachmentOpenMode,
   attachmentWorkspaceItem,
   type OpenableAttachment,
   type TaskWorkspaceState,
 } from "./TaskWorkspaceShell";
 import type { TaskWorkspaceOpenItem } from "./ResultCanvas";
 import type { WorkspaceActionV1 } from "./workspace-actions";
-import { withTaskAttachmentLibraryLink } from "./task-attachment-library-link";
+import {
+  withTaskAttachmentActions,
+  type TaskAttachmentGallery,
+} from "./task-attachment-library-link";
 
 /** 电脑任务 inbox 里的云端副本（网关 `/v1/computer-task-sessions/<s>/attachments/<a>`）。 */
 export interface NativeArchiveRef {
@@ -68,6 +70,24 @@ export type TaskOpenableAttachment =
       nativeArchive?: NativeArchiveRef;
     })
   | (AgentAttachment & { native_archive?: NativeArchiveRef });
+
+type AttachmentGalleryCarrier = {
+  __oceanleoAttachmentGallery?: {
+    items?: readonly AgentAttachment[];
+    index?: number;
+  };
+};
+
+function attachmentGalleryOf(att: TaskOpenableAttachment): {
+  items: readonly AgentAttachment[];
+  index: number;
+} | null {
+  const value = (att as AttachmentGalleryCarrier).__oceanleoAttachmentGallery;
+  if (!value || !Array.isArray(value.items)) return null;
+  const index = Number(value.index);
+  if (!Number.isInteger(index) || index < 0 || index >= value.items.length) return null;
+  return { items: value.items, index };
+}
 
 /** Block every opening route while a composer file is still being prepared. */
 function attachmentPending(att: TaskOpenableAttachment): boolean {
@@ -197,7 +217,9 @@ function isImageAttachment(att: OpenableAttachment): boolean {
 }
 
 function taskAttachmentMode(item: LibraryItem): TaskAttachmentTarget["mode"] {
-  return item.kind === "image" ? "preview" : attachmentOpenMode(item);
+  // Sent files are read-only previews. Editing remains available from the
+  // explicit Library action in the detail header.
+  return "preview";
 }
 
 /**
@@ -321,27 +343,39 @@ export function useTaskAttachmentOpener(
   const showLibraryRef = useRef(showLibrary);
   showLibraryRef.current = showLibrary;
   const seqRef = useRef(0);
-  return useCallback(async (attachment: TaskOpenableAttachment) => {
+  return useCallback(async function openTaskAttachment(attachment: TaskOpenableAttachment): Promise<boolean> {
     const seq = ++seqRef.current;
     if (attachmentPending(attachment)) return false;
+    const galleryInfo = attachmentGalleryOf(attachment);
+    const gallery: TaskAttachmentGallery | null = galleryInfo
+      ? {
+          index: galleryInfo.index,
+          count: galleryInfo.items.length,
+          go: (index) => {
+            const next = galleryInfo.items[index];
+            if (next) void openTaskAttachment(next);
+          },
+        }
+      : null;
     const showTarget = (target: TaskAttachmentTarget) => {
       const action = taskAttachmentLibraryAction(attachment);
+      const previewItem: LibraryItem = {
+        ...target.item,
+        meta: { ...target.item.meta, attachment_preview: true },
+      };
       showRef.current({
         ...target,
-        item: withTaskAttachmentLibraryLink(
-          target.item,
-          action,
-          showLibraryRef.current ? (next) => showLibraryRef.current?.(next) : undefined,
+        mode: "preview",
+        item: withTaskAttachmentActions(
+          previewItem,
+          {
+            action,
+            open: showLibraryRef.current ? (next) => showLibraryRef.current?.(next) : undefined,
+            gallery,
+          },
         ),
       });
     };
-    const library = showLibraryRef.current && !isImageAttachment(taskOpenable(attachment))
-      ? taskAttachmentLibraryAction(attachment)
-      : null;
-    if (library) {
-      showLibraryRef.current!(library);
-      return true;
-    }
     const now = immediateTaskAttachment(attachment, siteId);
     if (now) {
       showTarget(now);

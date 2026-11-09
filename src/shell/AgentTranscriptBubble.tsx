@@ -89,6 +89,23 @@ export interface AgentTranscriptBubbleProps {
   onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }
 
+type AttachmentGalleryInfo = {
+  items: readonly AgentAttachment[];
+  index: number;
+};
+
+function attachmentWithGallery(
+  attachment: AgentAttachment,
+  items: readonly AgentAttachment[],
+  index: number,
+): AgentAttachment {
+  if (items.length < 2) return attachment;
+  return {
+    ...attachment,
+    __oceanleoAttachmentGallery: { items, index } as AttachmentGalleryInfo,
+  } as AgentAttachment;
+}
+
 /**
  * 一条消息。普通模式下助手回答底下有「复制 / 重做」一排小图标；
  * 选段模式下整条变成可勾选的行，图标收起（此时用户是在选，不是在操作单条）。
@@ -280,7 +297,7 @@ function TranscriptBody({
           <span className="inline-flex items-center gap-1 text-[12px] text-stone-500 dark:text-stone-400">{labelContent}</span>
         )}
         {attachments.length > 0 && <div className="flex max-w-[85%] flex-wrap gap-1.5" data-transcript-attachments="">
-          {attachments.map((attachment, index) => <TranscriptAttachment key={`${attachment.url || attachment.name || "attachment"}-${index}`} attachment={attachment} onOpen={onOpenAttachment} />)}
+          {attachments.map((attachment, index) => <TranscriptAttachment key={`${attachment.url || attachment.name || "attachment"}-${index}`} attachment={attachment} onOpen={onOpenAttachment ? (value) => onOpenAttachment(attachmentWithGallery(value, attachments, index)) : undefined} />)}
         </div>}
         {message.content && <div className="min-w-0 max-w-[85%] whitespace-pre-wrap break-words rounded-2xl rounded-bl-md border border-sky-200 bg-sky-50 px-4 py-2.5 text-[15px] leading-relaxed text-sky-950 [overflow-wrap:anywhere] dark:border-sky-800/70 dark:bg-sky-950/40 dark:text-sky-100">
           <HighlightedText text={message.content} query={highlightQuery} />
@@ -299,7 +316,7 @@ function TranscriptBody({
               <TranscriptAttachment
                 key={`${attachment.url || attachment.name || "attachment"}-${index}`}
                 attachment={attachment}
-                onOpen={onOpenAttachment}
+                onOpen={onOpenAttachment ? (value) => onOpenAttachment(attachmentWithGallery(value, attachments, index)) : undefined}
               />
             ))}
           </div>

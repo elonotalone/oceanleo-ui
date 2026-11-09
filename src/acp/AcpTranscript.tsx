@@ -6,6 +6,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
+import type { AgentAttachment } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
 import { cursorAnswerResult, isCursorQuestion, resendable, viewBlocks, type AcpBlock, type AcpLabels } from "./messages";
 import { reduceRows } from "./reduce";
@@ -29,6 +30,8 @@ export type AcpTranscriptProps = {
   onStopAndSend?: (promptRowId: number) => void;
   /** 「分享」's select mode: the pickable messages (`acpShareItems`) get the checkbox, nothing else does. */
   select?: { pickable: ReadonlySet<number>; selected: ReadonlySet<number>; onToggle: (messageId: number) => void };
+  /** Open a sent attachment in the task right sidebar. */
+  onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
 };
 
 function answerFor(request: AcpPermission, answer: unknown): unknown {
@@ -173,7 +176,7 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
   );
 }
 
-export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select }: AcpTranscriptProps) {
+export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const labels: AcpLabels = useMemo(
@@ -214,6 +217,7 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
           stopped={block.stopped}
           highlightQuery={highlightQuery}
           onNativeAnswer={request && onAnswer ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
+          onOpenAttachment={onOpenAttachment}
           selectMode={Boolean(pick)}
           selected={pick ? pick.selected.has(id) : false}
           onSelectToggle={pick ? () => pick.onToggle(id) : undefined}
