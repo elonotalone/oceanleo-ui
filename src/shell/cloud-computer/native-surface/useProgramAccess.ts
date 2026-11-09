@@ -21,7 +21,7 @@ import { DEFAULT_INSTALL_DIR, installDirPayload } from "../agent-dialog/install-
 export const OPERATION_POLL_MS = 1000;
 
 const CLOSED_INSTALL: InstallState = { open: false, program: null, dir: DEFAULT_INSTALL_DIR, running: false, lines: [], donePath: "", failedText: "" };
-const CLOSED_LOGIN: LoginState = { open: false, program: null, phase: "idle", url: "", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false };
+const CLOSED_LOGIN: LoginState = { open: false, program: null, phase: "idle", url: "", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false, method: "", email: "" };
 
 export type ProgramAccess = {
   programs: ProgramStatus[];
@@ -32,12 +32,13 @@ export type ProgramAccess = {
   startInstall: () => void;
   login: LoginState;
   openLogin: (program: WsProgram) => void;
-  openLoginMethod: (program: WsProgram, method: string) => void;
+  openLoginMethod: (program: WsProgram, method: string, email?: string) => void;
+  setLoginEmail: (email: string) => void;
   closeLogin: () => void;
   submitLoginCode: (program: WsProgram, code: string) => void;
   cancelLogin: (program: WsProgram) => void;
-  logout: { pending: boolean; failed: string; confirm: boolean };
-  requestLogout: () => void;
+  logout: { pending: boolean; failed: string; confirm: boolean; switching: boolean };
+  requestLogout: (switchAccount?: boolean) => void;
   confirmLogout: () => void;
   cancelLogout: () => void;
   setLoginCodeDraft: (code: string) => void;
@@ -50,7 +51,7 @@ export function useProgramAccess(computerId: string, program: WsProgram | null):
   const [install, setInstall] = useState<InstallState>(CLOSED_INSTALL);
   const [login, setLogin] = useState<LoginState>(CLOSED_LOGIN);
   const [running, setRunning] = useState<{ id: string; kind: "install" | "login" | "logout"; program: WsProgram } | null>(null);
-  const [logout, setLogout] = useState({ pending: false, failed: "", confirm: false });
+  const [logout, setLogout] = useState({ pending: false, failed: "", confirm: false, switching: false });
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -121,23 +122,29 @@ export function useProgramAccess(computerId: string, program: WsProgram | null):
     openLoginMethod(target, "device");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [computerId]);
-  const openLoginMethod = useCallback((target: WsProgram, method: string) => {
-    setLogin({ ...CLOSED_LOGIN, open: true, program: target, phase: "opening", pending: true });
-    startProgramLogin(computerId, target, method).then(({ operation_id, url, needs_code }) => {
+  const openLoginMethod = useCallback((target: WsProgram, method: string, email?: string) => {
+    if (method === "sso" && email === undefined) {
+      setLogin({ ...CLOSED_LOGIN, open: true, program: target, phase: "waiting", pending: false, method, email: "" });
+      return;
+    }
+    setLogin({ ...CLOSED_LOGIN, open: true, program: target, phase: "opening", pending: true, method, email: email || "" });
+    startProgramLogin(computerId, target, method, email).then(({ operation_id, url, needs_code }) => {
       setLogin((state) => ({ ...state, url: url || "", needsCode: Boolean(needs_code), phase: url ? "waiting" : "opening" }));
       setRunning({ id: operation_id, kind: "login", program: target });
     }, (reason) => setLogin((state) => ({ ...state, pending: false, phase: "failed", failed: programControlCode(reason) })));
   }, [computerId]);
 
-  const requestLogout = useCallback(() => setLogout((state) => ({ ...state, confirm: true, failed: "" })), []);
+  const setLoginEmail = useCallback((email: string) => setLogin((state) => ({ ...state, email })), []);
+
+  const requestLogout = useCallback((switchAccount = false) => setLogout((state) => ({ ...state, confirm: true, failed: "", switching: switchAccount })), []);
   const cancelLogout = useCallback(() => setLogout((state) => ({ ...state, confirm: false })), []);
   const confirmLogout = useCallback(() => {
     if (!program || logout.pending) return;
-    setLogout({ pending: true, failed: "", confirm: false });
+    setLogout((state) => ({ ...state, pending: true, failed: "", confirm: false }));
     startProgramLogout(computerId, program, true).then(({ operation_id }) => {
       setRunning({ id: operation_id, kind: "logout", program });
       setLogin((state) => ({ ...state, pending: true }));
-    }, (reason) => setLogout({ pending: false, failed: programControlCode(reason), confirm: false }));
+    }, (reason) => setLogout((state) => ({ ...state, pending: false, failed: programControlCode(reason), confirm: false })));
   }, [computerId, logout.pending, program]);
 
   const cancelLogin = useCallback((target: WsProgram) => {
@@ -165,6 +172,7 @@ export function useProgramAccess(computerId: string, program: WsProgram | null):
     login,
     openLogin,
     openLoginMethod,
+    setLoginEmail,
     closeLogin: () => setLogin(CLOSED_LOGIN),
     submitLoginCode,
     cancelLogin,

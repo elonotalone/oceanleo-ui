@@ -306,13 +306,14 @@ function NativeChatSettings({ program, computerId, dialog, online, client = clou
   const tt = useUI();
   const [opened, setOpened] = useState(false);
   const [keyOpen, setKeyOpen] = useState(false);
+  const [keyKind, setKeyKind] = useState("api_key");
   const machine = useMachineSettings(computerId, client, opened && online);
   const setupRequest = useContext(NativeSetupRequest);
   const decorateRows = (own: ComposerSettingRow[]) => {
     const conversation = tt("本对话");
     const rows = [
       ...own.map((row) => ({ ...row, section: conversation })),
-      ...(isWsProgram(program) ? [programAccountRow({ computerId, program, dialog, keyOpen, onKeyOpen: setKeyOpen, tt })] : []),
+      ...(isWsProgram(program) ? [programAccountRow({ computerId, program, dialog, keyOpen, onKeyOpen: setKeyOpen, keyKind, onKeyKind: setKeyKind, tt })] : []),
       ...machineSettingRows(machine, tt),
     ];
     return online ? rows : offlineSettingRows(rows, tt);

@@ -291,6 +291,8 @@ export type LoginState = {
   hint: string;
   failed: string;
   pending: boolean;
+  method?: string;
+  email?: string;
 };
 
 export type NativeTurnState = {

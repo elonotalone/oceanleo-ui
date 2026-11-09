@@ -167,3 +167,38 @@ test("a refused start shows the route's own code; cancel cancels the running log
   assert.equal(box.access.login.open, false);
   await unmount();
 });
+
+test("method-aware login sends the selected method and optional SSO email", async () => {
+  reset({
+    [`GET ${BASE}/programs/claude/options`]: () => ({ status: { ...STATUS, id: "claude", installed: true }, login: { state: "logged_out", methods: [{ id: "sso", kind: "link_code" }] } }),
+    [`POST ${BASE}/programs/claude/login`]: (body) => ({ operation_id: body.email ? "sso-email" : "sso-empty" }),
+    [`GET ${BASE}/program-operations/sso-email`]: () => ({ operation_id: "sso-email", kind: "login", state: "succeeded" }),
+  });
+  const { box, unmount } = await mountHook("claude");
+  await act(async () => box.access.openLoginMethod("claude", "sso", "person@example.com"));
+  await flush();
+  assert.deepEqual(calls.find((call) => call.path.endsWith("/login")).body, { method: "sso", email: "person@example.com" });
+  await tick();
+  assert.equal(box.access.login.phase, "done");
+  await unmount();
+});
+
+test("logout requires confirmation and polls the logout operation", async () => {
+  let state = "running";
+  reset({
+    [`GET ${BASE}/programs/codex/options`]: () => ({ status: { ...STATUS, installed: true, logged_in: true }, login: { state: "logged_in", account: "a@example.com", plan: "pro", mode: "chatgpt", methods: [], can_logout: true, agents_running: 2 } }),
+    [`POST ${BASE}/programs/codex/logout`]: (body) => { assert.deepEqual(body, { confirm: true }); return { operation_id: "logout-1" }; },
+    [`GET ${BASE}/program-operations/logout-1`]: () => ({ operation_id: "logout-1", kind: "logout", state }),
+  });
+  const { box, unmount } = await mountHook();
+  await act(async () => box.access.requestLogout());
+  assert.equal(box.access.logout.confirm, true);
+  await act(async () => box.access.confirmLogout());
+  await flush();
+  assert.equal(box.access.logout.pending, true);
+  state = "succeeded";
+  await tick();
+  assert.equal(box.access.logout.pending, false);
+  assert.equal(box.access.logout.failed, "");
+  await unmount();
+});

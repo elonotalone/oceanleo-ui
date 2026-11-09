@@ -44,6 +44,8 @@ function loginFailureCopy(tt: Translate, code: string): string {
   if (code === "not_confirmed") return tt("程序说完成了，但这边没确认到登录。");
   if (code === "cancelled") return tt("登录已取消。");
   if (code === "busy") return tt("上一个操作还没结束，稍后再试。");
+  if (code === "invalid_method") return tt("这个登录方式当前不可用。");
+  if (code === "confirm_required") return tt("请先确认后再保存或退出。");
   const exit = /^exit_(\d+)$/.exec(code);
   if (exit) return tt("登录程序退出了（退出码 {code}）。", { code: exit[1] });
   return tt("登录没有完成。再点一次登录。");
@@ -78,6 +80,7 @@ export function LoginFlow({ dialog, program }: { dialog: ProgramAccess; program:
 
   const href = httpUrl(login.url);
   const failed = phase === "failed" || (phase === "opening" && stalled);
+  const needsSsoEmail = login.method === "sso" && phase === "waiting" && !login.url;
   return (
     <div className="grid gap-2 rounded-xl border border-neutral-200 p-3" data-oceanleo-native-login={program} data-phase={failed ? "failed" : phase}>
       <p className="text-[13px] font-medium text-neutral-800">{tt("登录")} {PROGRAM_LABEL[program]}</p>
@@ -87,6 +90,12 @@ export function LoginFlow({ dialog, program }: { dialog: ProgramAccess; program:
       {phase === "failed" ? <p className={HOST.error}>{loginFailureCopy(tt, login.failed)}</p> : null}
       {phase === "waiting" ? (
         <>
+          {needsSsoEmail ? (
+            <form className="grid gap-2" onSubmit={(event) => { event.preventDefault(); const email = login.email?.trim() || ""; if (!email || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) dialog.openLoginMethod(program, "sso", email); }}>
+              <label className={HOST.label}><span className={HOST.hint}>{tt("邮箱（可选）")}</span><input type="email" autoComplete="email" value={login.email || ""} onChange={(event) => dialog.setLoginEmail(event.target.value)} className={HOST.input} /></label>
+              <div><button type="submit" className={HOST.primary}>{tt("开始 SSO 登录")}</button></div>
+            </form>
+          ) : null}
           {href ? (
             <div className="grid gap-2">
               <p className="break-all rounded-lg bg-neutral-50 px-2.5 py-1.5 font-mono text-[12px] text-neutral-700">{href}</p>
@@ -226,6 +235,7 @@ export function KeyForm({
     () => HERMES_PROVIDERS.find((id) => !saved?.some((row) => row.id === id && row.auth === "key")) || HERMES_PROVIDERS[0],
   );
   const hasKey = status?.auth === "key";
+  const kindLabel = kind === "access_token" ? tt("Access Token") : kind === "oauth_token" ? tt("长期令牌（setup-token）") : tt("API Key");
 
   async function run(op: "save" | "remove", target = provider) {
     if (busyRef.current) return;
@@ -258,7 +268,7 @@ export function KeyForm({
         if (key.trim()) void run("save");
       }}
     >
-      <p className="text-[13px] font-medium text-neutral-800">{tt("Key")} · {PROGRAM_LABEL[program]}</p>
+      <p className="text-[13px] font-medium text-neutral-800">{kindLabel} · {PROGRAM_LABEL[program]}</p>
       {status?.key_replaces_login && !confirmReplace ? <p className={HOST.hint}>{tt("保存后会替换当前的 ChatGPT 登录（这台电脑上所有 Codex 都会改用这个 Key）")}</p> : null}
       {status?.key_replaces_login && confirmReplace ? <p className={HOST.error}>{tt("确认后会替换这台电脑上所有 Codex 的 ChatGPT 登录。")}</p> : null}
       {program === "hermes" ? (
@@ -289,8 +299,8 @@ export function KeyForm({
         </div>
       ) : null}
       <label className={HOST.label}>
-        <span className={HOST.hint}>{hasKey && program !== "hermes" ? tt("更换 Key") : tt("Key")}</span>
-        <input type="password" autoComplete="off" value={key} disabled={busy} onChange={(event) => setKey(event.target.value)} className={`${HOST.input} font-mono`} data-oceanleo-native-key-input="" />
+        <span className={HOST.hint}>{hasKey && program !== "hermes" ? tt("更换 {kind}", { kind: kindLabel }) : kindLabel}</span>
+        <input type="password" autoComplete="off" placeholder={kindLabel} value={key} disabled={busy} onChange={(event) => setKey(event.target.value)} className={`${HOST.input} font-mono`} data-oceanleo-native-key-input="" />
       </label>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={busy || !key.trim() || Boolean(status?.key_replaces_login && !confirmReplace)} className={HOST.primary} data-oceanleo-native-key-save="">

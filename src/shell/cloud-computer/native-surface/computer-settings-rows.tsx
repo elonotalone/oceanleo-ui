@@ -32,6 +32,12 @@ import type { ProgramAccess } from "./useProgramAccess";
 const DEFAULT_SETTINGS: AgentSettings = { oceanleo_tools: true, billing_paused: false };
 const SETTINGS_RETRY_DELAYS_MS = [1_000, 2_000, 5_000, 10_000, 15_000] as const;
 
+export function programModeCopy(mode?: string | null): string {
+  if (!mode) return "";
+  const words: Record<string, string> = { chatgpt: "ChatGPT", apikey: "API Key", api_key: "API Key", access_token: "Access Token", subscription: "订阅", console: "Console", oauth_token: "长期令牌", login: "已登录" };
+  return words[mode] || (mode.startsWith("oauth:") ? `用 ${mode.slice(6)} 账号登录` : "");
+}
+
 /** Whole-computer agent settings; read only once `enabled` (the menu was opened, the computer is online). */
 export function useMachineSettings(computerId: string, client: CloudComputerClient = cloudComputerApi, enabled = true) {
   const tt = useUI();
@@ -147,12 +153,14 @@ export function machineSettingRows(machine: MachineSettings, tt: UITranslate): C
  * can be done now (安装 / 登录 / Key) and shows the running flow
  * (InstallFlow / LoginFlow / KeyForm) under those choices.
  */
-export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyOpen, tt }: {
+export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyOpen, keyKind, onKeyKind, tt }: {
   computerId: string;
   program: WsProgram;
   dialog: ProgramAccess;
   keyOpen: boolean;
   onKeyOpen: (open: boolean) => void;
+  keyKind?: string;
+  onKeyKind?: (kind: string) => void;
   tt: UITranslate;
 }): ComposerSettingRow {
   const status = dialog.programs.find((item) => item.id === program);
@@ -162,11 +170,12 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
   const methodLabel = (id: string) => ({
     device: tt("用 ChatGPT 登录（设备码）"), browser: tt("在这台电脑的浏览器里登录"), api_key: tt("API Key"), access_token: tt("Access Token"),
     claudeai: tt("Claude 订阅"), console: tt("Console（按 API 计费）"), sso: tt("SSO"), oauth_token: tt("长期令牌（setup-token）"), login: tt("登录"), nous: tt("Nous Portal"),
-  }[id] || id);
+  }[id] || (id.startsWith("oauth:") ? tt("用 {provider} 账号登录", { provider: id.slice(6) }) : id));
   const signedIn = state === "signed_in";
+  const switching = dialog.logout.switching;
   if (state === "not_installed") {
     choices.push({ value: "install", label: tt("安装"), attrs: { "data-oceanleo-native-program-install": "" } });
-  } else if (state === "signed_out" || state === "unknown") {
+  } else if (state === "signed_out" || state === "unknown" || switching) {
     (methods.length ? methods : [{ id: "device", kind: "link_code" as const }]).forEach((method) => choices.push({ value: `login:${method.id}`, label: methodLabel(method.id), attrs: { "data-oceanleo-native-program-login": method.id } }));
   } else if (signedIn) {
     choices.push({ value: "switch", label: tt("换账号") });
@@ -178,19 +187,22 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
   }
   const loginOpen = dialog.login.open && dialog.login.program === program;
   const installOpen = dialog.install.open && dialog.install.program === program;
-  const card = installOpen || loginOpen || keyOpen ? (
+  const card = installOpen || loginOpen || keyOpen || dialog.logout.confirm || dialog.logout.pending || dialog.logout.failed || switching ? (
     <div className="grid gap-2">
       {installOpen ? <InstallFlow dialog={dialog} program={program} /> : null}
       {loginOpen ? <LoginFlow dialog={dialog} program={program} /> : null}
-      {keyOpen ? <KeyForm computerId={computerId} program={program} status={status} dialog={dialog} kind="api_key" onClose={() => onKeyOpen(false)} /> : null}
-      {dialog.logout.confirm ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900"><p>{status?.agents_running && status.agents_running > 0 ? tt("这台电脑上 {n} 个 {program} 正在运行，退出后它们都将失去登录", { n: status.agents_running, program: PROGRAM_LABEL[program] }) : tt("退出后这台电脑上的 {program} 将失去登录。", { program: PROGRAM_LABEL[program] })}</p><div className="mt-2 flex gap-2"><button type="button" className={HOST_PANEL_SKIN.primary} onClick={dialog.confirmLogout}>{tt("确认退出")}</button><button type="button" className={HOST_PANEL_SKIN.quiet} onClick={dialog.cancelLogout}>{tt("取消")}</button></div></div> : null}
+      {keyOpen ? <KeyForm computerId={computerId} program={program} status={status} dialog={dialog} kind={keyKind || "api_key"} onClose={() => onKeyOpen(false)} /> : null}
+      {dialog.logout.confirm ? <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900"><p>{status?.agents_running && status.agents_running > 0 ? tt("这台电脑上 {n} 个 {program} 正在运行，退出后它们都将失去登录", { n: status.agents_running, program: PROGRAM_LABEL[program] }) : tt("退出后这台电脑上的 {program} 将失去登录。", { program: PROGRAM_LABEL[program] })}</p><div className="mt-2 flex gap-2"><button type="button" className={HOST.primary} onClick={dialog.confirmLogout}>{tt("确认退出")}</button><button type="button" className={HOST.quiet} onClick={dialog.cancelLogout}>{tt("取消")}</button></div></div> : null}
+      {dialog.logout.confirm ? <p className={HOST.hint}>{switching ? tt("确认后会先退出，再选择新的登录方式。") : ""}</p> : null}
+      {dialog.logout.pending ? <p className={HOST.hint}>{tt("正在退出登录…")}</p> : null}
+      {dialog.logout.failed ? <p className={HOST.error}>{dialog.logout.failed === "confirm_required" ? tt("请先确认退出登录。") : dialog.logout.failed === "invalid_method" ? tt("这个登录方式当前不可用。") : dialog.logout.failed === "busy" ? tt("上一个操作还没结束，稍后再试。") : dialog.logout.failed === "connection_lost" ? tt("连接断了，没拿到退出结果。") : tt("退出登录没有完成。")}</p> : null}
     </div>
   ) : null;
   return {
     id: "account",
     section: tt("这台电脑上的 {program}", { program: PROGRAM_LABEL[program] }),
     label: tt("账号"),
-    value: status?.installed && status.version ? `${status.account ? `${status.account}${status.plan ? ` · ${status.plan}` : ""} · ` : ""}${copy}${status.mode ? ` · ${status.mode}` : ""} · ${status.version}` : copy,
+    value: status?.installed && status.version ? `${status.account ? `${status.account}${status.plan ? ` · ${status.plan}` : ""} · ` : ""}${copy}${programModeCopy(status.mode) ? ` · ${tt(programModeCopy(status.mode))}` : ""} · ${status.version}` : copy,
     selected: "",
     choices,
     keepOpen: true,
@@ -200,12 +212,12 @@ export function programAccountRow({ computerId, program, dialog, keyOpen, onKeyO
       else if (value.startsWith("login:")) {
         const methodId = value.slice(6);
         const method = methods.find((item) => item.id === methodId);
-        if (method?.kind === "secret") onKeyOpen(!keyOpen);
+        if (method?.kind === "secret") { onKeyKind?.(methodId === "access_token" || methodId === "oauth_token" ? methodId : "api_key"); onKeyOpen(!keyOpen); }
         else dialog.openLoginMethod(program, methodId);
       }
       else if (value === "logout") dialog.requestLogout();
-      else if (value === "switch") dialog.requestLogout();
-      else if (value === "key") onKeyOpen(!keyOpen);
+      else if (value === "switch") dialog.requestLogout(true);
+      else if (value === "key") { onKeyKind?.("api_key"); onKeyOpen(!keyOpen); }
     } : undefined,
     attrs: { "data-oceanleo-native-program": program, "data-state": state },
   };
