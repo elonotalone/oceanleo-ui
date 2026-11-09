@@ -93,6 +93,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
 // Same reason for the 来自 LeoChat section (it opens chats through the IM host).
@@ -706,6 +707,8 @@ export function MyLibrary({
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
+  const uploadAnchorRef = useRef<HTMLButtonElement | null>(null);
+  const uploadFileInputRef = useRef<HTMLInputElement | null>(null);
   const [detailOpen, setDetailOpen] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -2019,12 +2022,12 @@ export function MyLibrary({
   const uploadFilePicker = (
     <label
       data-library-upload-file=""
-      role={pageTitle && folderPickable ? "menuitem" : undefined}
       className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
-        pageTitle && folderPickable ? "block w-full rounded-md bg-transparent text-left text-neutral-800 hover:bg-neutral-100" : ""
-      } ${uploadBlocked ? "pointer-events-none opacity-50" : ""}`}
+        uploadBlocked ? "pointer-events-none opacity-50" : ""
+      }`}
     >
       <input
+        ref={uploadFileInputRef}
         type="file"
         multiple
         className="sr-only"
@@ -2035,17 +2038,35 @@ export function MyLibrary({
           setUploadMenuOpen(false);
         }}
       />
-      {tt(pageTitle && !folderPickable ? (uploading ? "上传中…" : "上传") : "上传文件")}
+      {tt("上传文件")}
     </label>
   );
-  const uploadFolderPicker = folderPickable ? (
-    <label
-      data-library-folder-pick=""
-      role={pageTitle ? "menuitem" : undefined}
-      className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${
-        pageTitle ? "block w-full rounded-md bg-transparent text-left text-neutral-800 hover:bg-neutral-100" : ""
-      } ${uploadBlocked ? "pointer-events-none opacity-50" : ""}`}
-    >
+  const uploadMenu = pageTitle && folderPickable ? (
+    <div className="relative shrink-0" data-library-upload-menu="">
+      <button
+        ref={uploadAnchorRef}
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={uploadMenuOpen}
+        disabled={uploadBlocked}
+        onClick={() => setUploadMenuOpen((open) => !open)}
+        className={`${COLLECTION_ACTION_BTN_PRIMARY} relative gap-1.5 after:absolute after:-inset-1 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50`}
+      >
+        {tt(uploading ? "上传中…" : "上传")}
+        <span aria-hidden="true" className="text-[10px]">⌄</span>
+      </button>
+      <input
+        ref={uploadFileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        disabled={uploadBlocked}
+        onChange={(event) => {
+          void handleUpload(event.currentTarget.files);
+          event.currentTarget.value = "";
+          setUploadMenuOpen(false);
+        }}
+      />
       <input
         ref={folderInputRef}
         type="file"
@@ -2059,30 +2080,51 @@ export function MyLibrary({
           setUploadMenuOpen(false);
         }}
       />
-      {tt("上传文件夹")}
-    </label>
-  ) : null;
-  const uploadMenu = pageTitle && folderPickable ? (
-    <div className="relative shrink-0" data-library-upload-menu="">
-      <button
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={uploadMenuOpen}
-        disabled={uploadBlocked}
-        onClick={() => setUploadMenuOpen((open) => !open)}
-        className={`${COLLECTION_ACTION_BTN_PRIMARY} relative gap-1.5 after:absolute after:-inset-1 hover:bg-neutral-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 disabled:opacity-50`}
+      <FloatingMenu
+        open={uploadMenuOpen}
+        anchorRef={uploadAnchorRef}
+        onClose={() => setUploadMenuOpen(false)}
+        align="start"
+        width={160}
+        ariaLabel={tt("上传")}
       >
-        {tt(uploading ? "上传中…" : "上传")}
-        <span aria-hidden="true" className="text-[10px]">⌄</span>
-      </button>
-      {uploadMenuOpen ? (
-        <div role="menu" aria-label={tt("上传")} className="absolute left-0 top-full z-30 mt-1 min-w-32 rounded-lg border border-neutral-200 bg-white p-1 text-[12px] shadow-lg">
-          {uploadFilePicker}
-          {uploadFolderPicker}
-        </div>
-      ) : null}
+        <FloatingMenuItem
+          label={tt("上传文件")}
+          disabled={uploadBlocked}
+          onSelect={() => {
+            setUploadMenuOpen(false);
+            uploadFileInputRef.current?.click();
+          }}
+        />
+        <FloatingMenuItem
+          label={tt("上传文件夹")}
+          disabled={uploadBlocked}
+          onSelect={() => {
+            setUploadMenuOpen(false);
+            folderInputRef.current?.click();
+          }}
+        />
+      </FloatingMenu>
     </div>
-  ) : pageTitle ? uploadFilePicker : (
+  ) : pageTitle ? (
+    <label
+      data-library-upload-file=""
+      className={`${COLLECTION_ACTION_BTN_PRIMARY} cursor-pointer ${uploadBlocked ? "pointer-events-none opacity-50" : ""}`}
+    >
+      <input
+        ref={uploadFileInputRef}
+        type="file"
+        multiple
+        className="sr-only"
+        disabled={uploadBlocked}
+        onChange={(event) => {
+          void handleUpload(event.currentTarget.files);
+          event.currentTarget.value = "";
+        }}
+      />
+      {tt(uploading ? "上传中…" : "上传")}
+    </label>
+  ) : (
     <div className="flex shrink-0 flex-wrap items-center gap-2">{uploadFilePicker}</div>
   );
   const toolbar = pageTitle ? null : (
