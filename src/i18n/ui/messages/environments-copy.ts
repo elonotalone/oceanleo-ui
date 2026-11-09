@@ -25,10 +25,38 @@ export const ENVIRONMENTS_COPY = {
 
 export type EnvironmentCopyKey = keyof typeof ENVIRONMENTS_COPY;
 
+export const ENVIRONMENT_ITEM_COPY: Record<string, string> = {
+  网站: "Website",
+  游戏: "Game",
+  App: "App",
+  通用: "Common",
+  "Node.js LTS + pnpm": "Node.js LTS + pnpm",
+  "构建网站和 JavaScript 工具，含固定版本 pnpm。": "Build websites and JavaScript tools with pinned pnpm.",
+  Git: "Git",
+  "版本管理和从 Git 仓库同步代码。": "Version control and Git repository sync.",
+  "Python 3 + uv": "Python 3 + uv",
+  "运行 Python 服务和快速安装依赖。": "Run Python services and install dependencies quickly.",
+  "Docker Engine + Compose": "Docker Engine + Compose",
+  "本地运行 Postgres、Redis 等服务，安装体积较大。": "Run Postgres, Redis, and other local services; large download.",
+  "Godot 4 headless + Web templates": "Godot 4 headless + Web templates",
+  "导出和检查 Godot 4 网页游戏；只安装无界面的 headless 运行时。": "Export and check Godot 4 web games with a headless runtime.",
+  "Expo CLI": "Expo CLI",
+  "用 Node.js 创建和运行跨平台 App；iOS 构建仍需要 Mac。": "Create and run cross-platform apps with Node.js; iOS builds require a Mac.",
+  "Android SDK command-line tools": "Android SDK command-line tools",
+  "Android 命令行构建工具和 platform-tools，下载较大。": "Android command-line build tools and platform-tools; large download.",
+  "Flutter SDK": "Flutter SDK",
+  "构建 Flutter App，下载较大；iOS 构建仍需要 Mac。": "Build Flutter apps; large download, and iOS builds require a Mac.",
+  build-essential: "build-essential",
+  "C/C++ 原生依赖和常见构建工具。": "C/C++ native dependencies and common build tools.",
+  FFmpeg: "FFmpeg",
+  "音视频处理和转码工具。": "Audio and video processing and transcoding tools.",
+};
+
 // The message loader merges this map into the existing UI dictionary.
-const EN: Record<string, string> = Object.fromEntries(
-  Object.values(ENVIRONMENTS_COPY).map(({ zh, en }) => [zh, en]),
-);
+const EN: Record<string, string> = {
+  ...Object.fromEntries(Object.values(ENVIRONMENTS_COPY).map(({ zh, en }) => [zh, en])),
+  ...ENVIRONMENT_ITEM_COPY,
+};
 
 export function environmentsCopy(locale: Locale): Record<string, string> {
   if (locale === "zh") return Object.fromEntries(Object.keys(EN).map((key) => [key, key]));
