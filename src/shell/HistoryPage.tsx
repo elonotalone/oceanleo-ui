@@ -18,6 +18,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
 import { taskRequestFailureText } from "../lib/local-agent-task";
+import { isTaskWorking } from "./history-model";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
@@ -155,6 +156,8 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
             {shown.map((t) => {
               const st = STATUS_LABEL[t.status] || { text: t.status, cls: "bg-stone-100 text-stone-500" };
               const removing = deletingId === t.id;
+              const waiting = t.activity_state === "waiting_user";
+              const working = isTaskWorking(t);
               return (
                 <div
                   key={t.id}
@@ -167,6 +170,10 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
                     onClick={() => onOpen(t.id)}
                     className="flex min-w-0 flex-1 items-center gap-3 text-left"
                   >
+                    <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={working ? "" : undefined} data-history-waiting={waiting ? "" : undefined}>
+                      {working ? <span className="text-emerald-600" aria-label={tt("进行中")}>⟳</span> : null}
+                      {waiting ? <span className="text-amber-500" aria-label={tt("等待你的操作")} title={tt("等待你的操作")}>◌</span> : null}
+                    </span>
                     <span
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-[12px] font-semibold text-white"
                       style={{ background: accent }}

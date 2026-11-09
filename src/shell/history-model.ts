@@ -56,6 +56,11 @@ export function isHistoryEntryWorking(entry: HistoryListEntry): boolean {
   return entry.working === true;
 }
 
+/** A computer task is waiting for the user's permission/input, not running. */
+export function isHistoryEntryWaiting(entry: HistoryListEntry): boolean {
+  return !isHistoryEntryWorking(entry) && entry.activity_state === "waiting_user";
+}
+
 export function isHistoryEntryFailed(entry: HistoryListEntry): boolean {
   return !isHistoryEntryWorking(entry) && (entry.activity_state === "failed" || entry.activity_state === "offline");
 }

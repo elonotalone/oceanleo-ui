@@ -73,6 +73,7 @@ import {
   historyEntryTimestamp,
   historyPollDelayMs,
   isHistoryEntryFinishing,
+  isHistoryEntryWaiting,
   isHistoryEntryWorking,
   isRestorableAppSession,
   isShellTask,
@@ -604,7 +605,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       void reload(true, true);
     };
     window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
-    return () => window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", refresh);
+    };
   }, [reload]);
   // A chat on screen moved (native frame / Leo reply / user send): bump its row
   // right away (throttled at the source). The working mark itself still comes
@@ -672,7 +677,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   }, [hasPendingSessionTitle, reload]);
   // Runs end without a client event: while any row shows the working mark,
   // refresh every few seconds so the mark stops shortly after the run ends.
-  const hasWorkingEntry = items.some(isHistoryEntryWorking);
+  const hasWorkingEntry = items.some((entry) => isHistoryEntryWorking(entry) || isHistoryEntryWaiting(entry));
   useEffect(() => {
     if (!hasWorkingEntry) return;
     const timer = setInterval(() => reload(true), HISTORY_WORKING_POLL_MS);
@@ -1118,9 +1123,18 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                     other rows keep an empty slot so titles stay aligned.
                     The slot is as wide as a nav icon, so task names line up with the
                     nav labels above (no indent line). */}
-                <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined}>
+                <span className="inline-flex w-4 shrink-0 justify-center" data-history-working={isHistoryEntryWorking(entry) ? "" : undefined} data-history-waiting={isHistoryEntryWaiting(entry) ? "" : undefined}>
                   {isHistoryEntryWorking(entry) && (
                     <SessionRunningIcon label={tt("进行中")} toneClassName="text-emerald-600" />
+                  )}
+                  {isHistoryEntryWaiting(entry) && (
+                    <span
+                      aria-label={tt("等待你的操作")}
+                      title={tt("等待你的操作")}
+                      className="text-[13px] leading-4 text-amber-500"
+                    >
+                      ◌
+                    </span>
                   )}
                 </span>
                 <span className="flex min-w-0 flex-1 items-center gap-1.5">
