@@ -13,6 +13,8 @@ import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId 
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
+  /** A view reduced by the owning task page; avoids reducing the same backlog twice. */
+  view?: ReturnType<typeof reduceRows>;
   program: string;
   /** Send `result` as the JSON-RPC response to the agent's request `requestId`. */
   onAnswer?: (requestId: JsonRpcId, result: unknown) => void;  // omitted while the page's socket is down: cards render, not clickable
@@ -154,9 +156,9 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
   );
 }
 
-export function AcpTranscript({ rows, program, onAnswer, onStopTask, highlightQuery, onStopAndSend, select }: AcpTranscriptProps) {
+export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select }: AcpTranscriptProps) {
   const tt = useUI();
-  const view = useMemo(() => reduceRows(rows, program), [rows, program]);
+  const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const labels: AcpLabels = useMemo(
     () => ({
       gap: (count) => tt("此处省略 {count} 条", { count }),

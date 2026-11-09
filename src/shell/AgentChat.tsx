@@ -68,7 +68,6 @@ import {
   send as sendAcp,
   stop as stopAcp,
   stopTask as stopAcpTask,
-  switchProgram as switchAcpProgram,
   type AcpSessionChoices,
 } from "../lib/acp-frames-api";
 import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, usePendingMany } from "./acp-task";
@@ -196,6 +195,8 @@ import {
   markPartialTaskSeed,
   peekTaskDetail,
   rememberTaskDetail,
+  readTaskConversationAnchor,
+  rememberTaskConversationAnchor,
   takeTaskPrefetch,
 } from "./task-open-cache";
 
@@ -1454,12 +1455,23 @@ function AgentChatInner({
   const acpFollowRef = useRef(true);
   const onAcpScroll = useCallback(() => {
     const el = acpScrollRef.current;
-    if (el) acpFollowRef.current = isNearBottom(scrollMetricsOf(el));
-  }, []);
+    if (el) {
+      acpFollowRef.current = isNearBottom(scrollMetricsOf(el));
+      if (taskId && frames.rows.length) {
+        const row = frames.rows[Math.min(frames.rows.length - 1, Math.max(0, Math.floor((el.scrollTop / Math.max(1, el.scrollHeight)) * frames.rows.length)))];
+        if (row) rememberTaskConversationAnchor(taskId, { rowId: row.id, offsetPx: el.scrollTop, atBottom: acpFollowRef.current });
+      }
+    }
+  }, [frames.rows, taskId]);
   useLayoutEffect(() => {
     const el = acpScrollRef.current;
     if (el && acpFollowRef.current) el.scrollTop = el.scrollHeight;
-  }, [frames.rows]);
+  }, [frames.rows, acpPendingIds.join("|")]);
+  useLayoutEffect(() => {
+    const el = acpScrollRef.current;
+    const anchor = taskId ? readTaskConversationAnchor(taskId) : undefined;
+    if (el && anchor && !anchor.atBottom && anchor.offsetPx != null) el.scrollTop = anchor.offsetPx;
+  }, [taskId]);
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -2185,8 +2197,7 @@ function AgentChatInner({
       } else {
         settlePending(optimisticId, { taskId: id });
       }
-      const switching = Boolean(acpSession && acpSession.program !== acpProgram);
-      const sent = !switching && acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
+      const sent = acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
       const body = {
         client_message_id: clientMessageId,
         program: acpProgram,
@@ -2195,7 +2206,7 @@ function AgentChatInner({
         ...(uploaded.length ? { attachments: uploaded } : {}),
         ...changedChoices(acpPicker.choice, sent),
       };
-      const result = switching ? await switchAcpProgram(id, body) : await sendAcp(id, body);
+      const result = await sendAcp(id, body);
       settlePending(optimisticId, {
         taskId: id,
         rowId: typeof result?.row_id === "number" ? result.row_id : null,
@@ -2205,8 +2216,8 @@ function AgentChatInner({
       acpSentRef.current = { taskId: id, choices: { ...sent, ...acpPicker.choice } };
       acpMessageIdRef.current = null;
       acpFollowRef.current = true;
-      // A first message or a switch made a new session row: read the list for it.
-      if (switching || !acpSession) {
+      // A first message creates the session row; refresh the list for it.
+      if (!acpSession) {
         setPickedChat(null);
         setSessionsEpoch((epoch) => epoch + 1);
       }
@@ -3196,7 +3207,10 @@ function AgentChatInner({
   // An OceanLeo task has no program conversations (the dock only shows its target).
   const conversationProps = {
     conversation,
-    onConversationChange: taskId && !nativeTask ? undefined : onConversationChange,
+    // Existing tasks are bound to the program and computer of their ACP session.
+    // Model/effort/mode remain editable in the composer pill; changing the agent
+    // requires a new task.
+    onConversationChange: taskId ? undefined : onConversationChange,
     taskSessions: sessions,
     oceanleoDisabledReason,
   };
@@ -3434,6 +3448,17 @@ function AgentChatInner({
     items: (
       <>
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} />}
+      <AcpTranscript
+        rows={frames.rows}
+        program={acpRowsProgram}
+        view={acpView}
+        // Buttons work only while the socket is connected (P4): cards still render, not clickable.
+        onAnswer={acpConnected && !readOnly ? answerAcpRequest : undefined}
+        onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
+        highlightQuery={highlightQuery || undefined}
+        onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
+        select={share.active ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle } : undefined}
+      />
       {acpPendingShown.map((entry) => (
         <PendingSendBubble
           key={entry.id}
@@ -3442,16 +3467,6 @@ function AgentChatInner({
           onRetry={() => retryAcpPending(entry)}
         />
       ))}
-      <AcpTranscript
-        rows={frames.rows}
-        program={acpRowsProgram}
-        // Buttons work only while the socket is connected (P4): cards still render, not clickable.
-        onAnswer={acpConnected && !readOnly ? answerAcpRequest : undefined}
-        onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined}
-        highlightQuery={highlightQuery || undefined}
-        onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
-        select={share.active ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle } : undefined}
-      />
       </>
     ),
     tail: (

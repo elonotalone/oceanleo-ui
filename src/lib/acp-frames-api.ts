@@ -114,6 +114,24 @@ export function getFrames(taskId: string, after = 0, limit = 500, options: { sig
   return request<AcpFrameRow[]>(`${taskPath(taskId, "frames")}?${query}`, { signal: options.signal });
 }
 
+/** Cursor based history window (C9). Older gateways may return 404; callers fall back to frames. */
+export type AcpHistoryWindow = {
+  rows: AcpFrameRow[];
+  oldest_id: number | null;
+  newest_id: number | null;
+  next_before: number | null;
+  has_more: boolean;
+  tail_id: number | null;
+};
+
+export function getHistoryWindow(taskId: string, options: { before?: number; anchor?: number; limit?: number; signal?: AbortSignal } = {}): Promise<AcpHistoryWindow> {
+  const query = new URLSearchParams();
+  if (options.before != null) query.set("before", String(options.before));
+  if (options.anchor != null) query.set("anchor", String(options.anchor));
+  query.set("limit", String(options.limit ?? 1800));
+  return request<AcpHistoryWindow>(`${taskPath(taskId, "frames/history")}?${query}`, { signal: options.signal });
+}
+
 /** Per-session choices sent with a message; the gateway applies them (session/set_*) before the prompt. */
 export type AcpSessionChoices = {
   model?: string;
@@ -155,11 +173,6 @@ export function answer(taskId: string, requestId: number | string, result: unkno
 /** Claude's per-task stop for one background task; 404 when the adapter has none. */
 export function stopTask(taskId: string, taskRef: string): Promise<unknown> {
   return post(taskPath(taskId, "stop-task"), { task_ref: taskRef });
-}
-
-/** Hand the task to another program: the gateway writes the conversation to a file on the computer and starts it. */
-export function switchProgram(taskId: string, body: AcpSendBody & { program: string }): Promise<AcpSendResult> {
-  return post<AcpSendResult>(taskPath(taskId, "switch"), body);
 }
 
 /** One program's models / modes / options as its last session reported them; `{}` until one did. */
