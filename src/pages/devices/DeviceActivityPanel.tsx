@@ -14,6 +14,7 @@ import {
   type ActivityTerminal,
   type ComputerActivity,
   type ComputerActivityClient,
+  heldElsewhereGateway,
 } from "../../lib/computer-activity-api";
 import { formatBytes, formatDuration } from "../../lib/upload/progress";
 import { PROGRAM_LABEL, type AgentProgram } from "../../native-agent-core/index";
@@ -87,12 +88,25 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
     report.current?.(next);
   }
 
+  function markHeldElsewhere(cause: unknown): boolean {
+    const gateway = heldElsewhereGateway(cause);
+    if (gateway === undefined) return false;
+    setConfirm(null);
+    setError(null);
+    if (activity) {
+      const next = { ...activity, online: true, reachable: false, gateway };
+      setActivity(next);
+      report.current?.(next);
+    }
+    return true;
+  }
+
   useEffect(() => {
     alive.current = true;
     let timer: ReturnType<typeof setTimeout>;
     async function load() {
       try { await read(() => client.getActivity(computerId)); }
-      catch (cause) { if (alive.current) setError(errorText(cause)); }
+      catch (cause) { if (alive.current && !markHeldElsewhere(cause)) setError(errorText(cause)); }
       finally { if (alive.current) timer = setTimeout(load, refreshMs); }
     }
     void load();
@@ -105,7 +119,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
     if (busy) return;
     setBusy(key); setError(null);
     try { await read(request); }
-    catch (cause) { if (alive.current) setError(errorText(cause)); }
+    catch (cause) { if (alive.current && !markHeldElsewhere(cause)) setError(errorText(cause)); }
     finally { if (alive.current) setBusy(null); }
   }
 
@@ -124,7 +138,7 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
       if (!alive.current) return;
       const list = confirmed ? null : upgradeConfirmList(cause);
       setConfirm(list);
-      if (!list) setError(errorText(cause));
+      if (!list && !markHeldElsewhere(cause)) setError(errorText(cause));
     } finally { if (alive.current) setBusy(null); }
   }
 

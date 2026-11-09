@@ -63,7 +63,7 @@ const { CloudDeviceGrid } = await import(await compileModule("src/pages/devices/
   "../../shell/cloud-computer/ConnectServerDialog": dialogStubUrl,
   "../AuthDialog": authDialogStubUrl,
 }));
-const { upgradeConfirmList, runningPrograms, memoryPercent } = await import(await compileModule("src/lib/computer-activity-api.ts", {
+const { upgradeConfirmList, heldElsewhereGateway, runningPrograms, memoryPercent } = await import(await compileModule("src/lib/computer-activity-api.ts", {
   "./auth/client": dataModule(`export async function accessToken() { return null; }`),
 }));
 
@@ -379,7 +379,26 @@ test("a refresh that started before End cannot overwrite what End returned", asy
   } finally { view.cleanup(); }
 });
 
+test("a mutating held-elsewhere response updates the panel to the unreachable state", async () => {
+  const held = Object.assign(new Error("在线，但当前版本连不到它"), {
+    status: 409, code: "held_elsewhere",
+    detail: { code: "held_elsewhere", message: "在线，但当前版本连不到它", gateway: "api.oceanbizs.com" },
+  });
+  const client = activityClient({ end: async () => { throw held; } });
+  const view = await render({ client: cloudClient(), activityClient: client });
+  try {
+    await click(view.host.querySelector('[data-device-activity-open="cc_1"]'));
+    await click(panel().querySelector('[data-activity-end="acp-s1"]'));
+    assert.ok(panel().querySelector("[data-device-activity-unreachable]"));
+    assert.equal(panel().querySelector("[data-device-activity-gateway]").textContent, "网关 api.oceanbizs.com");
+    assert.equal(panel().querySelector("[data-device-activity-error]"), null);
+    assert.equal(panel().querySelector('[data-activity-end="acp-s1"]').disabled, true);
+  } finally { view.cleanup(); }
+});
+
 test("client helpers: live programs, memory percent, and the upgrade refusal list", () => {
+  assert.equal(heldElsewhereGateway(Object.assign(new Error("x"), { status: 409, code: "held_elsewhere", detail: { gateway: "api.oceanbizs.com" } })), "api.oceanbizs.com");
+  assert.equal(heldElsewhereGateway(new Error("network")), undefined);
   assert.deepEqual(runningPrograms(activity()).map((item) => item.slot), ["acp-s1", "acp-s2"]);
   assert.equal(memoryPercent({ cpu_percent: 0, mem_used_bytes: 1, mem_total_bytes: 3, sampled_at: "" }), 33);
   assert.equal(memoryPercent({ cpu_percent: 0, mem_used_bytes: 1, mem_total_bytes: 0, sampled_at: "" }), null);

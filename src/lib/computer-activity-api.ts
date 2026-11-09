@@ -93,6 +93,14 @@ export function upgradeConfirmList(error: unknown): { programs: ActivityProgram[
   };
 }
 
+/** The node is online, but a mutating request reached a gateway that does not hold it. */
+export function heldElsewhereGateway(error: unknown): string | null | undefined {
+  const failure = error as Partial<CloudComputerError> | null;
+  if (!failure || failure.status !== 409 || failure.code !== "held_elsewhere") return undefined;
+  const gateway = failure.detail?.gateway;
+  return typeof gateway === "string" && gateway ? gateway : null;
+}
+
 export type ComputerActivityClient = {
   getActivity: typeof getComputerActivity;
   endActivity: typeof endComputerActivity;
