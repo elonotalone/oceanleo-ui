@@ -16,6 +16,7 @@ const EN: Record<string, string> = {
   "阿里云账号已验证": "Aliyun account verified",
   "这是开发版，操作会真实扣费/真实购买。": "This is a development edition; this action makes a real charge and purchase.",
   "我确认这次操作会真实扣费并购买服务器": "I confirm this action will make a real charge and purchase a server",
+  "阿里云会直接向你的账号计费，OceanLeo 钱包不扣款。": "Aliyun bills your account directly; the OceanLeo wallet is not charged.",
   预装: "Preinstalled",
 };
 
@@ -37,5 +38,6 @@ export const PURCHASE_COPY = {
   cnVerified: "阿里云账号已验证",
   devSpendWarning: "这是开发版，操作会真实扣费/真实购买。",
   devSpendConfirm: "我确认这次操作会真实扣费并购买服务器",
+  cnDirectBilling: "阿里云会直接向你的账号计费，OceanLeo 钱包不扣款。",
   tierPreinstalled: "预装",
 } as const;

@@ -501,3 +501,32 @@ test("开发版费用确认要求真实扣费勾选并把确认传给后端", as
   assert.equal(client.log.create[0].confirm_spend, true);
   view.cleanup();
 });
+
+test("中国版已验证账号直接由阿里云计费，不读取或提示 OceanLeo 余额", async () => {
+  const client = makeClient();
+  const base = client.getCatalog;
+  client.getCatalog = async () => ({
+    ...(await base()),
+    edition: "cn",
+    account_required: true,
+    account_verified: true,
+  });
+  let creditsCalls = 0;
+  const view = await render({
+    client,
+    loadCredits: async () => {
+      creditsCalls += 1;
+      throw new Error("CN own-account path must not load wallet");
+    },
+  });
+  await fillName(view.host, "自有账号机");
+  await view.click(view.button("下一步：费用确认"));
+  assert.equal(view.step(), "checkout");
+  assert.equal(creditsCalls, 0);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-balance]"), null);
+  assert.equal(view.host.querySelector("[data-oceanleo-cc-checkout-topup]"), null);
+  assert.match(view.text(), /阿里云会直接向你的账号计费/);
+  await view.click(view.button("确认支付并创建"));
+  assert.equal(client.log.create.length, 1);
+  view.cleanup();
+});

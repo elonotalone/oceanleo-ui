@@ -181,6 +181,13 @@ export function CreateComputerDialog({
       return;
     }
     setStep("checkout");
+    if (isCnPurchase) {
+      setCredits(null);
+      setCreditsError(null);
+      setStep("checkout");
+      setBusy(false);
+      return;
+    }
     try {
       const wallet = await loadCredits();
       if (wallet.ok) {
@@ -310,19 +317,23 @@ export function CreateComputerDialog({
                     : tt("选中后显示价格")}
                 </dd>
               </div>
-              <div className="flex justify-between gap-3">
-                <dt className="text-neutral-500">{tt("当前余额")}</dt>
-                <dd data-oceanleo-cc-balance>
-                  {credits
-                    ? formatMinor(credits.balance_minor, credits.currency || ledgerCurrency)
-                    : creditsError
-                      ? tt("暂无")
-                      : tt("暂无")}
-                </dd>
-              </div>
+              {!isCnPurchase ? (
+                <div className="flex justify-between gap-3">
+                  <dt className="text-neutral-500">{tt("当前余额")}</dt>
+                  <dd data-oceanleo-cc-balance>
+                    {credits
+                      ? formatMinor(credits.balance_minor, credits.currency || ledgerCurrency)
+                      : creditsError
+                        ? tt("暂无")
+                        : tt("暂无")}
+                  </dd>
+                </div>
+              ) : null}
             </dl>
             <p className="text-[12px] leading-relaxed text-neutral-500">
-              {tt("开通时至少需要 24 小时的费用作为预留，之后按小时扣")}
+              {isCnPurchase
+                ? tt(PURCHASE_COPY.cnDirectBilling)
+                : tt("开通时至少需要 24 小时的费用作为预留，之后按小时扣")}
             </p>
             {purchaseCatalog?.dev_requires_confirmation ? (
               <label className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-relaxed text-amber-900" data-oceanleo-cc-dev-confirm>
@@ -516,7 +527,9 @@ export function CreateComputerDialog({
               />
             </label>
             <p className="text-[12px] leading-relaxed text-neutral-500">
-              {tt("按阿里云成本价计费，OceanLeo 不加价；按小时从钱包扣")}
+              {isCnPurchase
+                ? tt(PURCHASE_COPY.cnDirectBilling)
+                : tt("按阿里云成本价计费，OceanLeo 不加价；按小时从钱包扣")}
               {tier && monthlyFromHourly && tier.hourly ? (
                 <>
                   {" · "}
