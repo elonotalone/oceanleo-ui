@@ -12,6 +12,7 @@ import { DeviceIcon } from "../devices/DeviceCard";
 import { DeviceActivityPanel } from "../devices/DeviceActivityPanel";
 import { formatDeviceTime } from "../devices/DeviceTasksDialog";
 import { STATE_LABEL } from "../devices/CloudDeviceGrid";
+import { EnvironmentCard } from "./server-environments/EnvironmentCard";
 
 /** A connected server (cloud computer) in Settings › Device settings, same cards as the other devices. */
 export function ServerSettingsPanel({ computer, client = cloudComputerApi, activityClient = computerActivityApi, onUpdated, onRemoved }: {
@@ -80,6 +81,7 @@ export function ServerSettingsPanel({ computer, client = cloudComputerApi, activ
         {aliyun && (state === "ready" || state === "offline") && <button type="button" className={QUIET} disabled={busy} onClick={() => void act("stop")}>{tt("停机")}</button>}
       </div>
     </section>}
+    {connected && <EnvironmentCard computerId={computer.id} online={state === "ready"} />}
     {events.length > 0 && <section className={CARD}>
       <h3 className={CARD_TITLE}>{tt("最近活动")}</h3>
       <ul className="mt-3 space-y-3">{events.slice(0, 8).map((event) => <li key={event.id} className="flex justify-between gap-3 text-[12px] text-neutral-500"><span>{tt(event.kind === "node.confirmed" ? "主人已确认" : event.kind === "node.enrolled" ? "节点已注册" : "设备活动")}</span><span>{formatDeviceTime(event.created_at)}</span></li>)}</ul>
