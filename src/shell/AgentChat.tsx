@@ -3469,6 +3469,13 @@ function AgentChatInner({
           </button>
         </div>
       )}
+      {frames.hasMoreAfter && (
+        <div className="flex justify-center py-1" data-acp-history-latest="">
+          <button type="button" disabled={frames.jumpingLatest} onClick={() => void frames.jumpToLatest()} className="rounded-lg px-2 py-1 text-[12px] text-stone-500 hover:bg-stone-100">
+            {frames.jumpingLatest ? tt("正在加载最新消息…") : tt("回到最新")}
+          </button>
+        </div>
+      )}
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} />}
       <AcpTranscript
         rows={frames.rows}

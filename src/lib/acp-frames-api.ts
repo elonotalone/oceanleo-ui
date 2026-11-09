@@ -122,14 +122,17 @@ export type AcpHistoryWindow = {
   newest_id: number | null;
   next_before: number | null;
   has_more: boolean;
+  next_after?: number | null;
+  has_more_after?: boolean;
   tail_id: number;
   capped: boolean;
   max_rows: number;
 };
 
-export function getHistoryWindow(taskId: string, options: { before?: number; anchor?: number; turns?: number; signal?: AbortSignal } = {}): Promise<AcpHistoryWindow> {
+export function getHistoryWindow(taskId: string, options: { before?: number; after?: number; anchor?: number; turns?: number; signal?: AbortSignal } = {}): Promise<AcpHistoryWindow> {
   const query = new URLSearchParams();
   if (options.before != null) query.set("before", String(options.before));
+  if (options.after != null) query.set("after", String(options.after));
   if (options.anchor != null) query.set("anchor", String(options.anchor));
   query.set("turns", String(options.turns ?? 8));
   return request<AcpHistoryWindow>(`${taskPath(taskId, "history")}?${query}`, { signal: options.signal });
