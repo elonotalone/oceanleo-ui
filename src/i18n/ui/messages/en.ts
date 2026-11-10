@@ -6673,5 +6673,8 @@ const en: Record<string, string> = {
   "没有可编辑的项目": "No editable projects",
   "项目更新失败，请重试。": "Could not update project membership. Try again.",
   "等 {count} 个项目": " and others ({count} projects)",
+  "还没有素材。在 Library 卡片的「⋯」菜单里选「加入项目」，就会出现在这里。": "No materials yet. Choose Add to project in a Library card’s ⋯ menu to show it here.",
+  "无法从项目移除素材，请重试。": "Could not remove this material from the project. Try again.",
+  "代码": "Code",
 };
 export default en;
