@@ -1,12 +1,12 @@
 // Read by oceanleo-app mobile (features/native-agent/task-timeline.ts); the web task page no longer uses it.
-import type { AgentAttachment, AgentMessage } from "../../lib/agent";
+import type { NativeAgentAttachment as AgentAttachment, NativeAgentMessage as AgentMessage } from "../../native-agent-core/index";
 import type {
   TaskState,
   TaskLocalMessageInput,
   TaskTimelineLiveFrame,
   TaskTimelineEntry,
   TaskProgram,
-} from "../../lib/task-timeline-api";
+} from "./types";
 import { PROGRAM_LABEL } from "../../native-agent-core/index";
 import { applyDialog, initialDialogState } from "../cloud-computer/agent-dialog/reduce";
 import { dialogToAgentMessages } from "../native-thread/map-dialog";
