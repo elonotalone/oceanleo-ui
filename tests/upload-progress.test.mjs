@@ -54,6 +54,7 @@ const STUBS = {
     export async function getUserEmail(){ return "test@example.com"; }
     export async function getUserId(){ return "user-test"; }
     export async function getUserIdSnapshot(){ return { userId: "user-test" }; }
+    export async function getUsableSessionSnapshot(){ return { available: false, userId: null, email: null, expiresAt: null }; }
     export function desktopBrowserLoginAvailable(){ return false; }
     export async function startDesktopBrowserSignIn(){ return {}; }
     export async function signIn(){ return {}; }

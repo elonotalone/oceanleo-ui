@@ -14,6 +14,7 @@ export function browserClient() { return null; }
 export function cachedAccessToken() { return null; }
 export async function accessToken() { return null; }
 export async function isSignedIn() { return false; }
+export async function getUsableSessionSnapshot() { return { available: false, userId: null, email: null, expiresAt: null }; }
 export async function getUserId() { return null; }
 export async function getUserEmail() { return null; }
 
