@@ -2654,6 +2654,11 @@
         },
         {
           "kind": "named",
+          "name": "getUsableSessionSnapshot",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "getUserEmail",
           "source": ""
         },
@@ -2821,6 +2826,11 @@
         {
           "kind": "type",
           "name": "UpdatePasswordOptions",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "UsableSessionSnapshot",
           "source": ""
         }
       ]
