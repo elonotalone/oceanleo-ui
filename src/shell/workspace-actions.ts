@@ -64,6 +64,10 @@ export interface WorkspaceActionV1 {
   section?: string;
   prefill?: WorkspaceActionPrefill;
   deviceId?: string;
+  /** Project scope for the Library mine view. */
+  projectId?: string;
+  /** Display-only project name, trimmed and bounded by the receipt parser. */
+  projectName?: string;
 }
 
 export type WorkspaceActionPrefill = Readonly<Record<string, string>>;
@@ -211,6 +215,11 @@ export function normalizeWorkspaceAction(
       ? rawIntent
       : undefined;
   const entryId = clean("entryId", 300);
+  const rawProjectId = clean("projectId", 80);
+  const projectId = rawProjectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawProjectId)
+    ? rawProjectId.toLowerCase()
+    : undefined;
+  const projectName = clean("projectName", 120);
   const filter = clean("filter", 16) === "uploaded" ? "uploaded" as const : undefined;
   const section = version === 2 ? clean("section", 80) : undefined;
   const deviceId = version === 2 ? clean("deviceId", 300) : undefined;
@@ -236,6 +245,8 @@ export function normalizeWorkspaceAction(
     ...(section ? { section } : {}),
     ...(prefill && Object.keys(prefill).length ? { prefill } : {}),
     ...(deviceId ? { deviceId } : {}),
+    ...(projectId ? { projectId } : {}),
+    ...(projectName ? { projectName } : {}),
   } as WorkspaceActionV1;
 }
 

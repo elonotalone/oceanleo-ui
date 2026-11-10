@@ -97,6 +97,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
+import { useProjectLibraryScope } from "./library-project-scope";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
@@ -130,7 +131,7 @@ function dedupeWorkspaceEntries(
 ): WorkspaceLibraryEntry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
-    if (!entry.libraryItem || (!isDurableLibraryItem(entry.libraryItem) && !isServerWorkLibraryItem(entry.libraryItem) && !isLinkWorkLibraryItem(entry.libraryItem))) {
+    if (!entry.libraryItem || (!entry.libraryItem.meta.project_scope && !isDurableLibraryItem(entry.libraryItem) && !isServerWorkLibraryItem(entry.libraryItem) && !isLinkWorkLibraryItem(entry.libraryItem))) {
       return false;
     }
     const identity = libraryItemIdentityKey(entry.libraryItem);
@@ -734,6 +735,11 @@ export function MyLibrary({
   supplementalSection,
 }: MyLibraryProps) {
   const tt = useUI();
+  const [projectScopeSuppressed, setProjectScopeSuppressed] = useState(false);
+  const projectScoped = Boolean(action?.action.projectId) && !projectScopeSuppressed;
+  const projectScopeAction = projectScoped ? action : null;
+  const projectScope = useProjectLibraryScope(projectScopeAction);
+  useEffect(() => { setProjectScopeSuppressed(false); }, [action?.nonce, action?.action.projectId]);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
@@ -892,6 +898,7 @@ export function MyLibrary({
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const favoritesOwnerRef = useRef("");
   const items = useMemo(() => {
+    if (projectScoped) return projectScope.items;
     const favoriteIdentity = new Set(
       favoriteItems.map(libraryItemIdentityKey),
     );
@@ -905,7 +912,7 @@ export function MyLibrary({
         ...favoriteItems,
       ]),
     );
-  }, [favoriteItems, ownedItems]);
+  }, [favoriteItems, ownedItems, projectScope.items, projectScoped]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -2000,8 +2007,8 @@ export function MyLibrary({
     [items, librarySort],
   );
   const sectionItems = useMemo(
-    () => orderedItems.filter((item) => libraryItemSection(item) === activeSection),
-    [activeSection, orderedItems],
+    () => projectScoped ? orderedItems : orderedItems.filter((item) => libraryItemSection(item) === activeSection),
+    [activeSection, orderedItems, projectScoped],
   );
   // 来自 LeoChat lists these artifacts together with the chat files (ANSWER LU-1).
   const shownSectionItems = useMemo(
@@ -2014,6 +2021,7 @@ export function MyLibrary({
   const entries = useMemo(
     () =>
       dedupeWorkspaceEntries([
+        ...(projectScoped ? shownSectionItems.map((item) => workspaceEntryFromLibraryItem(item, { description: String(item.meta.folder_path || item.meta.library_source_label || "") })) : []),
         ...shownSectionItems
           .map((item) => {
             const owned =
@@ -2054,6 +2062,7 @@ export function MyLibrary({
       ownerPrincipalId,
       previewIntentItem,
       removeItem,
+      projectScoped,
     ],
   );
   const failureCopy = myLibraryFailure(failureStatus);
@@ -2261,6 +2270,12 @@ export function MyLibrary({
               ) : undefined
             }
           />
+          {projectScoped ? (
+            <div className="mt-3 flex items-center justify-between rounded-md border border-[var(--line,#e5e7eb)] px-3 py-2 text-xs" data-library-project-scope="">
+              <span>{projectScope.loading ? tt("正在加载项目素材…") : projectScope.error ? tt("项目素材暂时无法加载") : `${action?.action.projectName ? `项目「${action.action.projectName}」的素材` : "项目素材"}`}</span>
+              <button type="button" className="font-medium underline underline-offset-2" onClick={() => setProjectScopeSuppressed(true)}>{tt("显示整个 Library")}</button>
+            </div>
+          ) : null}
           <LibrarySectionTabs
             value={activeSection}
             onChange={changeSection}
