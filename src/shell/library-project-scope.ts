@@ -83,10 +83,10 @@ function referenceLibraryItem(reference: ProjectScopeReference): LibraryItem | n
   if (reference.kind === "work") {
     const work = record(raw.link_work);
     if (work) {
-      const normalizedWork = normalizeLinkWork({ ...work, id: text(work.id) || reference.id, title: text(work.title) || text(raw.title) || "Untitled work" });
+      const normalizedWork = normalizeLinkWork({ ...work, updated_at: text(work.updated_at) || text(raw.updated_at) || text(raw.created_at), id: text(work.id) || reference.id, title: text(work.title) || text(raw.title) || "Untitled work" });
       if (!normalizedWork) return null;
       const normalized = linkWorkLibraryItem(normalizedWork);
-      return { ...normalized, meta: { ...normalized.meta, project_scope: true, project_reference: true, project_reference_kind: reference.kind } };
+      return { ...normalized, createdAt: text(work.created_at) || text(raw.created_at) || normalized.createdAt, meta: { ...normalized.meta, updated_at: normalizedWork.updated_at, project_scope: true, project_reference: true, project_reference_kind: reference.kind } };
     }
   }
   const title = text(raw.title) || "Untitled artifact";
@@ -97,10 +97,11 @@ function referenceLibraryItem(reference: ProjectScopeReference): LibraryItem | n
     id: reference.id,
     artifactId: reference.kind === "artifact" ? reference.id : undefined,
     title,
+    createdAt: text(raw.created_at) || text(raw.updated_at) || undefined,
     kind: (["website", "canvas", "ppt", "sheet", "document", "image", "video", "audio", "file"] as string[]).includes(kind) ? kind as LibraryKind : "file",
     siteId: "",
     favorite: false,
-    meta: { library_source_label: "项目素材", project_reference: true, project_reference_kind: reference.kind },
+    meta: { updated_at: text(raw.updated_at) || undefined, project_reference: true, project_reference_kind: reference.kind },
   };
   return item;
 }
@@ -120,6 +121,7 @@ function assetLibraryItem(asset: ProjectScopeAsset, projectId: string, path: str
     url: fileUrl,
     meta: {
       library_source_label: "项目文件",
+      updated_at: asset.updated_at || undefined,
       project_scope: true,
       project_asset: true,
       project_asset_id: asset.id,

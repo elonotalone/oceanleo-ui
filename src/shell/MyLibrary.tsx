@@ -21,6 +21,7 @@ import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import {
   COLLECTION_ACTION_BTN_PRIMARY,
+  COLLECTION_ACTION_BTN_GHOST,
   CollectionFilterRow,
   CollectionFilterSelect,
   type CollectionViewOption,
@@ -91,6 +92,7 @@ import {
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
+import type { WorkspaceEntryMenuItem } from "./workspace-library-view";
 import { adoptSavedEditorItem } from "./advanced-session";
 import { MaterialStandaloneEditor } from "./library-standalone-editor-host";
 import { preloadEditorFor } from "./editor-preload";
@@ -768,6 +770,7 @@ export function MyLibrary({
   const [chatItems, setChatItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const displayLoading = loading || (projectScoped && projectScope.loading);
   const [hasUsableLibrarySnapshot, setHasUsableLibrarySnapshot] =
     useState(false);
   const hasUsableLibrarySnapshotRef = useRef(false);
@@ -1471,8 +1474,8 @@ export function MyLibrary({
     if (item) void preloadEditorFor(item);
   }, []);
 
-  const projectEntryActions = useCallback((entry: WorkspaceLibraryEntry): ReactNode => {
-    if (!hasProjectAction || !entry.libraryItem || !action?.action.projectId) return null;
+  const projectEntryMenuItems = useCallback((entry: WorkspaceLibraryEntry): readonly WorkspaceEntryMenuItem[] => {
+    if (!hasProjectAction || !entry.libraryItem || !action?.action.projectId) return [];
     const item = entry.libraryItem;
     const projectId = action.action.projectId;
     const projectName = action.action.projectName || projectId;
@@ -1482,17 +1485,20 @@ export function MyLibrary({
     };
     if (projectScoped && item.meta.project_reference) {
       const kind = item.meta.project_reference_kind === "work" ? "work" : "artifact";
-      return <button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void run(() => removeProjectLibraryReference(projectId, kind, item.id)); }}>{tt("从项目移除")}</button>;
+      return [{ label: tt("从项目移除"), danger: true, onSelect: () => run(() => removeProjectLibraryReference(projectId, kind, item.id)) }];
     }
     if (projectScoped && item.meta.project_asset) {
-      return <span className="flex gap-2"><button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void run(() => downloadProjectAsset(projectId, item.id, item.title)); }}>{tt("下载")}</button>{projectScope.canEdit ? <button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (window.confirm(tt("确认删除项目文件吗？"))) void run(() => deleteProjectAsset(projectId, item.id)); }}>{tt("删除")}</button> : null}</span>;
+      return [
+        { label: tt("下载"), onSelect: () => run(() => downloadProjectAsset(projectId, item.id, item.title)) },
+        ...(projectScope.canEdit ? [{ label: tt("删除"), danger: true, onSelect: () => { if (window.confirm(tt("确认删除项目文件吗？"))) return run(() => deleteProjectAsset(projectId, item.id)); } }] : []),
+      ];
     }
-    if (!projectScoped) {
+    if (!projectScoped && (isDurableLibraryItem(item) || item.meta.link_work)) {
       const kind = item.meta.link_work ? "work" : "artifact";
       const id = kind === "work" ? item.id : (item.artifactId || item.id);
-      return <button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void run(() => addProjectLibraryReference(projectId, kind, id), "已加入项目"); }}>{tt("加入项目「{name}」", { name: projectName })}</button>;
+      return [{ label: tt("加入项目「{name}」", { name: projectName }), onSelect: () => run(() => addProjectLibraryReference(projectId, kind, id), "已加入项目") }];
     }
-    return null;
+    return [];
   }, [action?.action.projectId, action?.action.projectName, hasProjectAction, projectScope, projectScoped, tt]);
 
   useEffect(() => {
@@ -2322,10 +2328,10 @@ export function MyLibrary({
             }
           />
           {hasProjectAction ? (
-            <div className="mt-3 flex items-center justify-between rounded-md border border-[var(--line,#e5e7eb)] px-3 py-2 text-xs" data-library-project-scope="">
+            <CollectionFilterRow className="mt-3" data-library-project-scope="">
               <span>{projectScoped ? (projectScope.loading ? tt("正在加载项目素材…") : projectScope.error ? tt("项目素材暂时无法加载") : tt("项目「{name}」的素材", { name: action?.action.projectName || action?.action.projectId || "" })) : tt("回到项目「{name}」的素材", { name: action?.action.projectName || action?.action.projectId || "" })}</span>
-              <button type="button" className="font-medium underline underline-offset-2" onClick={() => setProjectScopeSuppressed((value) => !value)}>{tt(projectScoped ? "显示整个 Library" : "回到项目")}</button>
-            </div>
+              <button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => setProjectScopeSuppressed((value) => !value)}>{tt(projectScoped ? "显示整个 Library" : "回到项目")}</button>
+            </CollectionFilterRow>
           ) : null}
           {pageTitle ? (
             <CollectionFilterRow>
@@ -2377,11 +2383,13 @@ export function MyLibrary({
           onMaterialDragStart={onMaterialDragStart}
           onMaterialDragEnd={onMaterialDragEnd}
           toolbarActions={toolbar}
-          entryActions={hasProjectAction ? projectEntryActions : undefined}
+          entryMenuItems={hasProjectAction ? projectEntryMenuItems : undefined}
           searchPlaceholder="search"
           emptyTitle={
-            loading
+            displayLoading
               ? "正在加载我的库…"
+              : projectScoped
+                ? projectScope.error ? "项目素材暂时无法加载" : "这个项目还没有素材"
               : authRequired || failed
                 ? failureCopy.title
                 : emptyCopy.title
@@ -2391,15 +2399,16 @@ export function MyLibrary({
               ? failureCopy.description
               : emptyCopy.description
           }
-          emptyCta={failed && !authRequired ? retryControl : undefined}
+          emptyCta={projectScoped ? uploadMenu : failed && !authRequired ? retryControl : undefined}
           hasMore={Boolean(
-            !loading &&
+            !projectScoped && !displayLoading &&
               (nextCursor ||
                 favoriteNextCursor ||
                 pinnedNextCursors.document ||
                 pinnedNextCursors.pdf),
           )}
-          loadingMore={loadingMore}
+          loadingMore={!projectScoped && loadingMore}
+          loading={displayLoading}
           onLoadMore={loadMore}
           className={className}
           plain={plain}

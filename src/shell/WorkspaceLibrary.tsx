@@ -76,6 +76,7 @@ import {
   WorkspaceCard,
   WorkspaceLibraryEmpty,
   WorkspaceListRow,
+  type WorkspaceEntryMenuItem,
 } from "./workspace-library-view";
 
 export {
@@ -161,6 +162,7 @@ export interface WorkspaceLibraryProps {
    * 塞回卡片，那条断言同时带反向用例，改成摆设会被测出来。
    */
   entryActions?: (entry: WorkspaceLibraryEntry) => ReactNode;
+  entryMenuItems?: (entry: WorkspaceLibraryEntry) => readonly WorkspaceEntryMenuItem[];
   searchPlaceholder?: string;
   emptyTitle?: string;
   emptyDescription?: string;
@@ -171,6 +173,7 @@ export interface WorkspaceLibraryProps {
   emptyCta?: ReactNode;
   /** Silent next-page fetch as the list is scrolled. */
   hasMore?: boolean;
+  loading?: boolean;
   loadingMore?: boolean;
   onLoadMore?: () => void;
   className?: string;
@@ -350,11 +353,13 @@ export function WorkspaceLibrary({
   onOpenEntry,
   allowHostRestore = true,
   entryActions,
+  entryMenuItems,
   searchPlaceholder = "搜索",
   emptyTitle = "这里还没有内容",
   emptyDescription = "生成或保存内容后，会显示在这里。",
   emptyCta,
   hasMore = false,
+  loading = false,
   loadingMore = false,
   onLoadMore,
   className = "",
@@ -969,6 +974,7 @@ export function WorkspaceLibrary({
             onOpen={() => activateEntry(entry)}
             dragProps={dragPropsFor(entry)}
             actions={entryActions?.(entry)}
+            menuItems={entryMenuItems?.(entry)}
           />
         ))}
       </CollectionItemList>
@@ -986,6 +992,7 @@ export function WorkspaceLibrary({
             dragProps={dragPropsFor(entry)}
             accent={accent}
             actions={entryActions?.(entry)}
+            menuItems={entryMenuItems?.(entry)}
           />
         )}
       />
@@ -1046,7 +1053,9 @@ export function WorkspaceLibrary({
             }
           />
         ) : null}
-        {filtered.length === 0 ? (
+        {loading ? (
+          <WorkspaceLibraryEmpty title={tt("正在加载…")} description="" />
+        ) : filtered.length === 0 ? (
           <WorkspaceLibraryEmpty
             title={tt(search ? "没有匹配内容" : emptyTitle)}
             description={tt(
@@ -1083,7 +1092,7 @@ export function WorkspaceLibrary({
         ) : (
           renderEntries(filtered)
         )}
-        {onLoadMore && (hasMore || loadingMore) ? (
+        {!loading && onLoadMore && (hasMore || loadingMore) ? (
           <CollectionInfiniteSentinel
             active={hasMore && !loadingMore}
             loading={loadingMore}

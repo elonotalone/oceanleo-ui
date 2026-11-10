@@ -4,6 +4,7 @@ import type {
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
+import { useRef, useState } from "react";
 import { CollectionItemCard, CollectionItemRow } from "./collection-items";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryItemViewer } from "./library-viewers";
@@ -19,6 +20,30 @@ import {
   libraryCategoryLabel,
   translateLibraryTypeLabel,
 } from "./library-editor-category";
+import { IconButton } from "../ui/Button";
+import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
+
+export interface WorkspaceEntryMenuItem {
+  label: ReactNode;
+  onSelect: () => void | Promise<void>;
+  danger?: boolean;
+  disabled?: boolean;
+}
+
+function WorkspaceEntryMenu({ items }: { items: readonly WorkspaceEntryMenuItem[] }) {
+  const tt = useUI();
+  const anchorRef = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  if (!items.length) return null;
+  return <div className="absolute right-2 top-2 z-10" onClick={(event) => event.stopPropagation()}>
+    <IconButton ref={anchorRef} size="sm" label={tt("更多操作")} aria-haspopup="menu" aria-expanded={open}
+      icon={<span aria-hidden="true">⋯</span>} onClick={() => setOpen((value) => !value)} />
+    <FloatingMenu open={open} anchorRef={anchorRef} onClose={() => setOpen(false)} ariaLabel={tt("更多操作")}>
+      {items.map((item, index) => <FloatingMenuItem key={`${String(item.label)}:${index}`} label={item.label} danger={item.danger} disabled={item.disabled}
+        onSelect={() => { setOpen(false); void item.onSelect(); }} />)}
+    </FloatingMenu>
+  </div>;
+}
 
 export function WorkspaceLibraryEntryViewer({
   entry,
@@ -58,6 +83,7 @@ interface WorkspaceRowProps {
   entry: WorkspaceLibraryEntry;
   onOpen: () => void;
   actions?: ReactNode;
+  menuItems?: readonly WorkspaceEntryMenuItem[];
   dragProps?: {
     draggable?: boolean;
     onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
@@ -75,19 +101,21 @@ function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI
   return entry.libraryItem ? <>{kindLabel} · {tt(librarySourceLabel(entry.libraryItem))}</> : kindLabel;
 }
 
-export function WorkspaceCard({ entry, onOpen, accent, dragProps, actions }: WorkspaceRowProps & { accent: string }) {
+export function WorkspaceCard({ entry, onOpen, accent, dragProps, actions, menuItems }: WorkspaceRowProps & { accent: string }) {
   const tt = useUI();
   return <CollectionItemCard title={entry.title} metadata={entryMetadata(entry, tt)} onOpen={onOpen}
     openLabel={tt("预览「{title}」", { title: entry.title })} containerProps={dragProps} actions={actions}
+    floatingActions={menuItems?.length ? <WorkspaceEntryMenu items={menuItems} /> : undefined}
     cover={<WorkspaceThumbnail url={entry.thumbUrl} item={entry.libraryItem} alt={entry.title}
       kind={entry.kind || entry.libraryItem?.kind || "file"} accent={accent}
       imageClassName="h-full w-full object-cover transition duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] group-hover:scale-[1.02]" />} />;
 }
 
-export function WorkspaceListRow({ entry, onOpen, dragProps, actions }: WorkspaceRowProps) {
+export function WorkspaceListRow({ entry, onOpen, dragProps, actions, menuItems }: WorkspaceRowProps) {
   const tt = useUI();
   return <CollectionItemRow title={entry.title} metadata={entryMetadata(entry, tt)} onOpen={onOpen}
     openLabel={tt("预览「{title}」", { title: entry.title })} containerProps={dragProps} actions={actions}
+    floatingActions={menuItems?.length ? <WorkspaceEntryMenu items={menuItems} /> : undefined}
     cover={<WorkspaceThumbnail url={entry.thumbUrl} item={entry.libraryItem} alt={entry.title}
       kind={entry.kind || entry.libraryItem?.kind || "file"} accent="#78716c" imageClassName="h-full w-full object-cover" compact />} />;
 }
