@@ -1442,6 +1442,30 @@ export function MyLibrary({
     if (item) void preloadEditorFor(item);
   }, []);
 
+  const projectEntryActions = useCallback((entry: WorkspaceLibraryEntry): ReactNode => {
+    if (!hasProjectAction || !entry.libraryItem || !action?.action.projectId) return null;
+    const item = entry.libraryItem;
+    const projectId = action.action.projectId;
+    const projectName = action.action.projectName || projectId;
+    const run = async (operation: () => Promise<void>, notice?: string) => {
+      try { await operation(); projectScope.reload(); if (notice) setUploadError(tt(notice)); }
+      catch (error) { setUploadError(error instanceof Error ? error.message : tt("操作失败，请重试")); }
+    };
+    if (projectScoped && item.meta.project_reference) {
+      const kind = item.meta.project_reference_kind === "work" ? "work" : "artifact";
+      return <button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void run(() => removeProjectLibraryReference(projectId, kind, item.id)); }}>{tt("从项目移除")}</button>;
+    }
+    if (projectScoped && item.meta.project_asset) {
+      return <span className="flex gap-2"><button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void run(() => downloadProjectAsset(projectId, item.id, item.title)); }}>{tt("下载")}</button>{projectScope.canEdit ? <button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); if (window.confirm(tt("确认删除项目文件吗？"))) void run(() => deleteProjectAsset(projectId, item.id)); }}>{tt("删除")}</button> : null}</span>;
+    }
+    if (!projectScoped) {
+      const kind = item.meta.link_work ? "work" : "artifact";
+      const id = kind === "work" ? item.id : (item.artifactId || item.id);
+      return <button type="button" className="text-[11px] underline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void run(() => addProjectLibraryReference(projectId, kind, id), "已加入项目"); }}>{tt("加入项目「{name}」", { name: projectName })}</button>;
+    }
+    return null;
+  }, [action?.action.projectId, action?.action.projectName, hasProjectAction, projectScope, projectScoped, tt]);
+
   useEffect(() => {
     if (previewIntentItem) return;
     const identity = getLibraryCurrentIdentity();
@@ -1907,6 +1931,10 @@ export function MyLibrary({
             );
             continue;
           }
+          if (projectScoped && action?.action.projectId && uploadedItem) {
+            await addProjectLibraryReference(action.action.projectId, "artifact", uploadedItem.artifactId || uploadedItem.id);
+            projectScope.reload();
+          }
           if (!libraryItemSection(uploadedItem)) rereadSections = true;
           setOwnedItems((current) =>
             dedupeDurableItems([
@@ -2093,7 +2121,11 @@ export function MyLibrary({
     const links = linkRows.map((link) => ({ label: link.label.trim(), url: link.url.trim() }));
     if (!linkTitle.trim()) return setUploadError(tt("请填写标题"));
     if (!links.length || links.length > 8 || links.some((link) => !link.label || link.label.length > 40 || !/^https:\/\/[^#\s]+$/i.test(link.url))) return setUploadError(tt("请填写有效的 HTTPS 链接和标签"));
-    try { await worksApi.createLink({ title: linkTitle.trim(), links, note: linkNote.trim() }); setLinkDialogOpen(false); setLinkTitle(""); setLinkNote(""); setLinkRows([{ label: "正式版", url: "" }]); setUploadError(""); window.dispatchEvent(new CustomEvent("oceanleo:artifact-library-change")); } catch { setUploadError(tt("保存失败，请重试")); }
+    try {
+      const created = await worksApi.createLink({ title: linkTitle.trim(), links, note: linkNote.trim() });
+      if (projectScoped && action?.action.projectId) { await addProjectLibraryReference(action.action.projectId, "work", created.id); projectScope.reload(); }
+      setLinkDialogOpen(false); setLinkTitle(""); setLinkNote(""); setLinkRows([{ label: "正式版", url: "" }]); setUploadError(""); window.dispatchEvent(new CustomEvent("oceanleo:artifact-library-change"));
+    } catch { setUploadError(tt("保存失败，请重试")); }
   };
   const uploadMenu = pageTitle && folderPickable ? (
     <div className="relative shrink-0" data-library-upload-menu="">

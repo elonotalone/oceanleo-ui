@@ -6656,9 +6656,9 @@ const en: Record<string, string> = {
   "项目文件": "Project file",
   "这个项目还没有素材": "This project has no materials yet",
   "从项目移除": "Remove from project",
+  "确认删除项目文件吗？": "Delete this project file?",
+  "已加入项目": "Added to project",
   "加入项目「{name}」": "Add to project “{name}”",
-  "下载": "Download",
-  "删除": "Delete",
 
 };
 export default en;
