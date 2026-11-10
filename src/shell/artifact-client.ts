@@ -1,5 +1,7 @@
 "use client";
 
+import { artifactDisplayRendition } from "./artifact-contract";
+
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { hostAwareLibraryTimeoutMs } from "../contracts/client-host-config";
@@ -2225,7 +2227,8 @@ export async function refreshArtifactRendition(
     };
   }
   const rendition =
-    projection?.renditions[purpose] ||
+    (projection && (purpose === "thumbnail" || purpose === "preview")
+      ? artifactDisplayRendition(projection, purpose) : projection?.renditions[purpose]) ||
     (() => {
       const raw =
         result.data &&

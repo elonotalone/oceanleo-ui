@@ -521,7 +521,7 @@ export function workspaceCoverRenditionPurposes(
   if (!item.artifact) return ["thumbnail", "preview"];
   const purposes = COVER_PURPOSES.filter((purpose) => {
     const rendition = item.artifact?.renditions[purpose];
-    if (!rendition?.url) return false;
+    if (!rendition?.url || rendition.revisionId !== item.artifact?.revisionId) return false;
     return (
       workspaceCoverPlan({
         item,

@@ -2243,6 +2243,21 @@ export function viewerRenditionOrder(
   return ["full", "preview"];
 }
 
+/** Display aliases never cross a content revision or read editor/source bytes. */
+export function artifactDisplayRendition(
+  artifact: ArtifactProjection,
+  purpose: "thumbnail" | "preview",
+): ArtifactRendition | undefined {
+  const order: readonly ArtifactRenditionPurpose[] = purpose === "thumbnail"
+    ? ["thumbnail", "preview", "full"] : ["preview", "full"];
+  for (const candidate of order) {
+    const rendition = artifact.renditions[candidate];
+    if (rendition?.url && rendition.revisionId === artifact.revisionId
+        && !isArtifactSourceTreeUrl(rendition.url)) return rendition;
+  }
+  return undefined;
+}
+
 export function selectArtifactRendition(
   artifact: ArtifactProjection,
   purposes = viewerRenditionOrder(
@@ -2251,7 +2266,8 @@ export function selectArtifactRendition(
   ),
 ): ArtifactRendition | null {
   for (const purpose of purposes) {
-    const rendition = artifact.renditions[purpose];
+    const rendition = purpose === "thumbnail" || purpose === "preview"
+      ? artifactDisplayRendition(artifact, purpose) : artifact.renditions[purpose];
     if (
       rendition?.url &&
       rendition.revisionId === artifact.revisionId &&

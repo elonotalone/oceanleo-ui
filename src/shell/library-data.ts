@@ -8,6 +8,7 @@ import type {
   TransientGenerationResult,
 } from "./artifact-contract";
 import {
+  artifactDisplayRendition,
   isArtifactSourceTreeUrl,
   POPULARITY_META_KEY,
   popularityMetricsFromWire,
@@ -475,17 +476,19 @@ export function artifactProjectionToLibraryItem(
     artifact.editorCapability === "video-canvas"
       ? "video_canvas"
       : ARTIFACT_KIND[artifact.artifactType];
-  const preview = artifact.renditions.preview;
-  const thumbnail = artifact.renditions.thumbnail;
-  const full = artifact.renditions.full;
-  const source = artifact.renditions.source;
+  const preview = artifactDisplayRendition(artifact, "preview");
+  const thumbnail = artifactDisplayRendition(artifact, "thumbnail");
+  const full = artifact.renditions.full?.revisionId === artifact.revisionId
+    ? artifact.renditions.full : undefined;
+  const source = artifact.renditions.source?.revisionId === artifact.revisionId
+    ? artifact.renditions.source : undefined;
   const browserSafeSource =
     source?.url && !isArtifactSourceTreeUrl(source.url) ? source : null;
   // Never fall back to auth-gated source-tree for LibraryItem.url — sites do not
   // proxy /v1, so relative source-tree resolves to slide/asset origin → 404.
   const viewer =
-    artifact.renditions.preview ||
-    artifact.renditions.full ||
+    preview ||
+    full ||
     (artifact.access.canExportSource ? browserSafeSource : undefined);
   const routeHint = editorRouteHintForArtifactCapability(
     artifact.editorCapability,

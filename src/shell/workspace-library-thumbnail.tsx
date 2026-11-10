@@ -1,5 +1,7 @@
 "use client";
 
+import { artifactDisplayRendition } from "./artifact-contract";
+
 import { useEffect, useRef, useState } from "react";
 import { accessToken } from "../lib/auth/client";
 import { gatewayBase } from "../lib/auth/config";
@@ -376,10 +378,7 @@ export function WorkspaceThumbnail({
    */
   const coverGeometry = artifactMediaGeometry({
     rendition:
-      item?.artifact?.renditions.thumbnail ||
-      item?.artifact?.renditions.preview ||
-      item?.artifact?.renditions.full ||
-      null,
+      (item?.artifact ? artifactDisplayRendition(item.artifact, "thumbnail") : null) || null,
     artifactType: item?.artifactType,
     kind,
   });

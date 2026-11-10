@@ -1,5 +1,7 @@
 "use client";
 
+import { artifactDisplayRendition } from "./artifact-contract";
+
 // ============================================================================
 // @oceanleo/ui — 库预览的首屏策略（合同 §0.1.11「素材预览要尽量快」/ W4 Done-when 6）
 // ----------------------------------------------------------------------------
@@ -246,10 +248,11 @@ function renditionBehind(
   if (!renditions) return null;
   if (url) {
     for (const rendition of Object.values(renditions)) {
-      if (rendition?.url && rendition.url === url) return rendition;
+      if (rendition?.url && rendition.url === url
+          && rendition.revisionId === item.artifact?.revisionId) return rendition;
     }
   }
-  return renditions.thumbnail || renditions.preview || null;
+  return item.artifact ? artifactDisplayRendition(item.artifact, "thumbnail") || null : null;
 }
 
 /** 一件素材在查看器里该占住的那块地。海报与三级渐进图共用同一份判定。 */
