@@ -46,7 +46,7 @@ export const AssetDetail = forwardRef<HTMLDivElement, AssetDetailProps>(function
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-[13px] font-semibold text-[var(--fg,#1c1917)]">{entry.title}</h3>
+            <h3 title={entry.title} className="min-w-0 flex-1 truncate text-[13px] font-semibold text-[var(--fg,#1c1917)]">{entry.title}</h3>
             {kind && <span className="shrink-0 rounded-md bg-[var(--surface,#f5f5f4)] px-1.5 py-0.5 text-[10px] font-medium text-[var(--muted,#78716c)]">
               {translateLibraryTypeLabel(tt, labelItem ? libraryEditorLabel(labelItem) : WORKSPACE_KIND_LABELS[kind] || "内容")}
             </span>}

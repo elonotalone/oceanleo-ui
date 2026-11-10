@@ -457,10 +457,12 @@ function serverWorkItemsFromPage(
     !result.ok ||
     !result.data
   ) return [];
-  return (result.data.serverWorks || []).map((work) => {
-    const raw = work as unknown as { source_type?: string; link_work?: unknown };
-    const link = normalizeLinkWork(raw.link_work && typeof raw.link_work === "object" ? { ...work, ...raw.link_work } : raw.source_type === "link" ? work : null);
-    return link ? linkWorkLibraryItem(link) : serverWorkLibraryItem(work);
+  return (result.data.serverWorks || []).flatMap((work) => {
+    if ("link_work" in work) {
+      const link = normalizeLinkWork({ ...work, ...work.link_work });
+      return link ? [linkWorkLibraryItem(link)] : [];
+    }
+    return [serverWorkLibraryItem(work)];
   });
 }
 

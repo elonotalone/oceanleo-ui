@@ -41,7 +41,7 @@ import {
   withoutWithheldLibraryThumbnail,
   type LibraryItem,
 } from "./library-data";
-import { normalizeServerWork, type ServerWork } from "./works/model";
+import { normalizeLibraryWork, type LibraryWork } from "./works/model";
 
 export interface ArtifactApiResult<T> {
   ok: boolean;
@@ -76,7 +76,7 @@ export interface ArtifactSearchResult {
    * 字段。**前端必须原样带出来**，否则用户永远清不掉那一行。
    */
   invalidItems?: { artifactId: string; revisionId: string }[];
-  serverWorks?: ServerWork[];
+  serverWorks?: LibraryWork[];
 }
 
 export interface ArtifactDownloadResult {
@@ -1728,7 +1728,7 @@ export async function listMyArtifacts(options: {
       ? (result.data as { serverWorks?: unknown }).serverWorks
       : undefined;
   const serverWorks = Array.isArray(rawServerWorks)
-    ? rawServerWorks.map(normalizeServerWork).filter((work): work is ServerWork => Boolean(work))
+    ? rawServerWorks.map(normalizeLibraryWork).filter((work): work is LibraryWork => Boolean(work))
     : undefined;
   return {
     ...result,

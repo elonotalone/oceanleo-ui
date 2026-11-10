@@ -1,3 +1,5 @@
+import { normalizeLinkWork, type LinkWork } from "./link-work-item";
+
 export type WorkKind = "website" | "game" | "app" | "other";
 export type WorkStatus = "draft" | "published" | "running" | "stopped" | "error" | "offline";
 export type WorkLocation =
@@ -41,6 +43,25 @@ export interface ServerWork {
   home: { type: "server"; computer_id: string; computer_name: string; path: string };
   preview: WorkPreview;
   server_work: { id: string; computer_id: string; computer_name: string; path: string };
+}
+
+/** /library/mine keeps its serverWorks field for both server and link works. */
+export type LinkLibraryWork = LinkWork & {
+  source_type: "link";
+  home: { type: "link" };
+  link_work: LinkWork;
+};
+export type LibraryWork = ServerWork | LinkLibraryWork;
+
+export function normalizeLibraryWork(value: unknown): LibraryWork | null {
+  if (!isRecord(value)) return null;
+  const home = isRecord(value.home) ? value.home : null;
+  const nested = isRecord(value.link_work) ? value.link_work : null;
+  if (value.source_type === "link" || home?.type === "link" || nested) {
+    const link = normalizeLinkWork({ ...value, ...nested });
+    return link ? { ...link, source_type: "link", home: { type: "link" }, link_work: link } : null;
+  }
+  return normalizeServerWork(value);
 }
 
 export interface WorkStopResult {
