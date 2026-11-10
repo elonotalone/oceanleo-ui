@@ -10,7 +10,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import test from "node:test";
+import test, { beforeEach, afterEach } from "node:test";
 
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
@@ -53,20 +53,29 @@ const { useProgramAccess, OPERATION_POLL_MS } = await import(await compileModule
   "../../../lib/cloud-computer-api": cloudComputerApi,
 }));
 
+const { LoginFlow } = await import(await compileModule("src/shell/cloud-computer/native-surface/ProgramAccess.tsx", {
+  "../agent-dialog/program-key-api": dataModule(`export class ProgramKeyError extends Error {} export function removeProgramKey(){} export function saveProgramKey(){}`),
+  "../../../i18n/ui/useUI": dataModule(`export function useUI(){ return text => text; }`),
+}));
+let errors;
+const originalError = console.error;
+beforeEach(() => { errors = []; console.error = (...args) => errors.push(args.join(" ")); });
+afterEach(() => { console.error = originalError; assert.deepEqual(errors, []); });
+
 const BASE = "/v1/computers/cc_1";
 const STATUS = { id: "codex", installed: false, path: "", version: "", auth: "none", logged_in: false, dir_capability: "full", running: false };
 
 async function flush(count = 6) { for (let i = 0; i < count; i += 1) await act(async () => {}); }
 async function tick() { await act(async () => { await new Promise((resolve) => setTimeout(resolve, OPERATION_POLL_MS + 20)); }); await flush(); }
 
-async function mountHook(program = "codex") {
+async function mountHook(program = "codex", strict = false, show = false) {
   const box = { access: null };
-  function Probe() { box.access = useProgramAccess("cc_1", program); return null; }
+  function Probe() { box.access = useProgramAccess("cc_1", program); return show ? React.createElement(LoginFlow, { dialog: box.access, program }) : null; }
   const container = document.createElement("div");
   const root = createRoot(container);
-  await act(async () => root.render(React.createElement(Probe)));
+  await act(async () => root.render(strict ? React.createElement(React.StrictMode, null, React.createElement(Probe)) : React.createElement(Probe)));
   await flush();
-  return { box, unmount: async () => act(async () => root.unmount()) };
+  return { box, container, unmount: async () => act(async () => root.unmount()) };
 }
 
 function reset(next) { calls.length = 0; routes = next; }
@@ -201,4 +210,98 @@ test("logout requires confirmation and polls the logout operation", async () => 
   assert.equal(box.access.logout.pending, false);
   assert.equal(box.access.logout.failed, "");
   await unmount();
+});
+
+test("StrictMode shows a device code, keeps polling needs_code, deduplicates clicks and completes", async () => {
+  let state = "needs_code";
+  reset({
+    [`GET ${BASE}/programs/codex/options`]: () => ({ status: STATUS }),
+    [`POST ${BASE}/programs/codex/login`]: () => ({ operation_id: "device" }),
+    [`GET ${BASE}/program-operations/device`]: () => ({ operation_id: "device", kind: "login", state, url: "https://example.test/device", device_code: "TEST-CODE", needs_code: false }),
+  });
+  const { box, container, unmount } = await mountHook("codex", true, true);
+  await act(async () => { box.access.openLogin("codex"); box.access.openLogin("codex"); });
+  await tick();
+  assert.equal(box.access.login.phase, "waiting");
+  assert.equal(box.access.login.pending, true);
+  assert.match(container.textContent, /TEST-CODE/);
+  assert.equal(container.querySelector("a").href, "https://example.test/device");
+  assert.equal(container.querySelector("input"), null);
+  await act(async () => box.access.openLogin("codex"));
+  assert.equal(calls.filter(call => call.path.endsWith("/login")).length, 1);
+  state = "succeeded";
+  await tick();
+  assert.equal(box.access.login.phase, "done");
+  assert.match(container.textContent, /已登录/);
+  await unmount();
+});
+
+test("StrictMode logout completes; rate limit ends login spinner with actionable copy", async () => {
+  reset({
+    [`GET ${BASE}/programs/codex/options`]: () => ({ status: STATUS }),
+    [`POST ${BASE}/programs/codex/logout`]: () => ({ operation_id: "out" }),
+    [`GET ${BASE}/program-operations/out`]: () => ({ operation_id: "out", kind: "logout", state: "succeeded" }),
+    [`POST ${BASE}/programs/codex/login`]: () => ({ operation_id: "limited" }),
+    [`GET ${BASE}/program-operations/limited`]: () => ({ operation_id: "limited", kind: "login", state: "failed", message: "rate_limited" }),
+  });
+  const { box, container, unmount } = await mountHook("codex", true, true);
+  await act(async () => { box.access.confirmLogout(); box.access.confirmLogout(); });
+  await tick();
+  assert.equal(box.access.logout.pending, false);
+  assert.equal(calls.filter(call => call.path.endsWith("/logout")).length, 1);
+  await act(async () => box.access.openLogin("codex"));
+  await tick();
+  assert.equal(box.access.login.pending, false);
+  assert.match(container.textContent, /登录尝试太频繁，请约 15 分钟后再试/);
+  await unmount();
+});
+
+test("cancel before start response cancels the eventual operation and never reopens login", async () => {
+  let resolveStart;
+  reset({
+    [`GET ${BASE}/programs/codex/options`]: () => ({ status: STATUS }),
+    [`POST ${BASE}/programs/codex/login`]: () => new Promise(resolve => { resolveStart = resolve; }),
+    [`POST ${BASE}/programs/codex/login/cancel`]: () => ({ state: "cancelled" }),
+  });
+  const { box, unmount } = await mountHook();
+  await act(async () => box.access.openLogin("codex"));
+  await act(async () => box.access.cancelLogin("codex"));
+  await act(async () => resolveStart({ operation_id: "late" }));
+  await flush();
+  assert.equal(box.access.login.open, false);
+  assert.equal(calls.at(-1).body.operation_id, "late");
+  assert.match(calls.at(-1).path, /cancel$/);
+  await unmount();
+});
+
+test("lost operation, timeout and CLI exit end the real login view with an error", async () => {
+  const { CloudComputerError } = await import(cloudComputerApi);
+  for (const [message, copy] of [["operation_not_found", /登录状态已丢失/], ["timeout", /登录超时/], ["exit_7", /登录程序退出了/]]) {
+    reset({
+      [`GET ${BASE}/programs/codex/options`]: () => ({ status: STATUS }),
+      [`POST ${BASE}/programs/codex/login`]: () => ({ operation_id: "err" }),
+      [`GET ${BASE}/program-operations/err`]: () => {
+        if (message === "operation_not_found") throw new CloudComputerError(message, message, 404);
+        return { operation_id: "err", kind: "login", state: "failed", message };
+      },
+    });
+    const { box, container, unmount } = await mountHook("codex", true, true);
+    await act(async () => box.access.openLogin("codex"));
+    await tick();
+    assert.equal(box.access.login.pending, false);
+    assert.equal(box.access.login.phase, "failed");
+    assert.match(container.textContent, copy);
+    await unmount();
+  }
+});
+
+test("a transport that never answers is bounded to twenty seconds", async (t) => {
+  const api = await import(await compileModule("src/lib/program-controls-api.ts", { "./cloud-computer-api": cloudComputerApi }));
+  reset({ [`POST ${BASE}/programs/codex/login`]: () => new Promise(() => {}) });
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const pending = api.startProgramLogin("cc_1", "codex");
+  const checked = assert.rejects(pending, error => error.code === "timeout");
+  t.mock.timers.tick(20001);
+  await checked;
+  t.mock.timers.reset();
 });

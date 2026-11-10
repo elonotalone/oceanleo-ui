@@ -1,6 +1,8 @@
 /** Program sign-in labels and failure copy. Registration in messages/index/load is parent-owned. */
 export const PROGRAM_SIGNIN_COPY = {
   zh: {
+    "登录尝试太频繁，请约 15 分钟后再试": "登录尝试太频繁，请约 15 分钟后再试",
+    "登录状态已丢失，请取消后重试。": "登录状态已丢失，请取消后重试。",
     "用 ChatGPT 登录（设备码）": "用 ChatGPT 登录（设备码）",
     "在这台电脑的浏览器里登录": "在这台电脑的浏览器里登录",
     "Access Token": "Access Token",
@@ -13,6 +15,8 @@ export const PROGRAM_SIGNIN_COPY = {
     "确认退出": "确认退出",
   },
   en: {
+    "登录尝试太频繁，请约 15 分钟后再试": "Too many sign-in attempts. Please try again in about 15 minutes.",
+    "登录状态已丢失，请取消后重试。": "Sign-in status was lost. Cancel and try again.",
     "用 ChatGPT 登录（设备码）": "Sign in with ChatGPT (device code)",
     "在这台电脑的浏览器里登录": "Sign in in this computer's browser",
     "API Key": "API key",

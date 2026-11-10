@@ -10,9 +10,10 @@ import type { ProgramLoginMethod, ProgramStatus } from "../native-agent-core/ind
 export type ProgramOperation = {
   operation_id: string;
   kind: "install" | "login" | "logout";
-  state: "running" | "succeeded" | "failed" | "cancelled";
+  state: "running" | "needs_code" | "succeeded" | "failed" | "cancelled";
   url?: string;
   needs_code?: boolean;
+  device_code?: string;
   /** Failure code (`exit_1`, `connection_lost`, `not_confirmed` …) or the install's done line. */
   message?: string;
   /** Install: the last output line. */
@@ -39,29 +40,46 @@ export function programControlCode(reason: unknown): string {
 }
 
 export function getProgramOptions(computerId: string, program: string): Promise<ProgramOptions> {
-  return cloudComputerRequest<ProgramOptions>(`${base(computerId)}/programs/${encodeURIComponent(program)}/options`);
+  return request<ProgramOptions>(`${base(computerId)}/programs/${encodeURIComponent(program)}/options`);
 }
 
 export function startProgramInstall(computerId: string, program: string, dir: string): Promise<{ operation_id: string }> {
-  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/install`, json(dir ? { dir } : {}));
+  return request(`${base(computerId)}/programs/${encodeURIComponent(program)}/install`, json(dir ? { dir } : {}));
 }
 
-export function startProgramLogin(computerId: string, program: string, method = "device", email?: string): Promise<{ operation_id: string; url?: string; needs_code?: boolean }> {
-  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/login`, json({ method, ...(email ? { email } : {}) }));
+export function startProgramLogin(computerId: string, program: string, method = "device", email?: string): Promise<{ operation_id: string; url?: string; needs_code?: boolean; device_code?: string }> {
+  return request(`${base(computerId)}/programs/${encodeURIComponent(program)}/login`, json({ method, ...(email ? { email } : {}) }));
 }
 
 export function startProgramLogout(computerId: string, program: string, confirm = false, provider?: string): Promise<{ operation_id: string }> {
-  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/logout`, json({ confirm, ...(provider ? { provider } : {}) }));
+  return request(`${base(computerId)}/programs/${encodeURIComponent(program)}/logout`, json({ confirm, ...(provider ? { provider } : {}) }));
 }
 
 export function submitProgramLoginCode(computerId: string, program: string, operationId: string, code: string): Promise<ProgramOperation> {
-  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/login/code`, json({ operation_id: operationId, code }));
+  return request(`${base(computerId)}/programs/${encodeURIComponent(program)}/login/code`, json({ operation_id: operationId, code }));
 }
 
 export function cancelProgramLogin(computerId: string, program: string, operationId: string): Promise<ProgramOperation> {
-  return cloudComputerRequest(`${base(computerId)}/programs/${encodeURIComponent(program)}/login/cancel`, json({ operation_id: operationId }));
+  return request(`${base(computerId)}/programs/${encodeURIComponent(program)}/login/cancel`, json({ operation_id: operationId }));
 }
 
 export function getProgramOperation(computerId: string, operationId: string): Promise<ProgramOperation> {
-  return cloudComputerRequest(`${base(computerId)}/program-operations/${encodeURIComponent(operationId)}`);
+  return request(`${base(computerId)}/program-operations/${encodeURIComponent(operationId)}`);
+}
+
+/** Bound both token lookup and transport so a lost gateway cannot leave a spinner forever. */
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(new CloudComputerError("timeout", "timeout", 408));
+      controller.abort();
+    }, 20000);
+  });
+  try {
+    return await Promise.race([cloudComputerRequest<T>(path, { ...init, signal: controller.signal }), timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
 }

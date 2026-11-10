@@ -39,6 +39,8 @@ function httpUrl(value: string): string | null {
 }
 
 function loginFailureCopy(tt: Translate, code: string): string {
+  if (code === "rate_limited") return tt("登录尝试太频繁，请约 15 分钟后再试");
+  if (code === "operation_not_found") return tt("登录状态已丢失，请取消后重试。");
   if (code === "timeout") return tt("登录超时，没等到确认。");
   if (code === "connection_lost") return tt("连接断了，没拿到登录结果。");
   if (code === "not_confirmed") return tt("程序说完成了，但这边没确认到登录。");
