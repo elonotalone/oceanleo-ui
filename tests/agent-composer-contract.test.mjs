@@ -167,8 +167,8 @@ function UnmemoizedBlocks({ content }) {
 }
 
 test("普通发送不会被误认成操作台 override，输入和附件会清空", () => {
-  // 签名多了 payer / org_id：普通发送仍直接 send，第一参是 undefined
-  //（不是操作台 override 文本）。AgentChat 的 send 本来就没有 override 参。
+  // FunctionAgentChat 的第一参仍是 undefined（不是操作台 override 文本）。
+  // AgentChat 不接受 composer 自选付款人；传 undefined，由请求路径在发送时读取账户身份。
   // 第三参是按下发送那一刻选择器显示的执行位置（含云端助手 driver），两处都原样带进 createTask。
   assert.match(
     functionChat,
@@ -176,7 +176,7 @@ test("普通发送不会被误认成操作台 override，输入和附件会清�
   );
   assert.match(functionChat, /orgId,\s*executionTarget,/);
   assert.match(functionChat, /if \(!override\) \{\s*setInput\(""\);\s*atts\.clear\(\)/);
-  assert.match(agentChat, /onSubmit=\{\(_, payer, context\) => void send\(payer\?\.org_id, context\?\.executionTarget\)\}/);
+  assert.match(agentChat, /onSubmit=\{\(_, _payer, context\) => void send\(undefined, context\?\.executionTarget\)\}/);
   assert.match(agentChat, /setInput\(""\);\s*atts\.clear\(\)/);
   assert.doesNotMatch(functionChat, /onSubmit=\{[^}]*\bsend\(\s*override/);
   assert.doesNotMatch(agentChat, /onSubmit=\{[^}]*\bsend\(\s*override/);

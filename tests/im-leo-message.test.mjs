@@ -189,7 +189,6 @@ test("文案：组件里每个 tt() 原文，要么在 W06 分表里，要么是
     .map((f) => readFileSync(`${dir}/${f}`, "utf8"));
   const literals = new Set();
   for (const file of [
-    "src/shell/messages/leo/LeoComposerAddon.tsx",
     "src/shell/messages/leo/LeoMessageBody.tsx",
   ]) {
     for (const match of readFileSync(file, "utf8").matchAll(/\btt\(\s*"([^"]+)"/g)) literals.add(match[1]);
@@ -200,5 +199,5 @@ test("文案：组件里每个 tt() 原文，要么在 W06 分表里，要么是
     assert.ok(others.some((text) => text.includes(`"${literal}"`)), `「${literal}」既不在 im-leo-copy 也不在词典里`);
     existing.add(literal);
   }
-  assert.deepEqual([...existing].sort(), ["个人钱包", "去充值", "停止", "已停止生成", "这次谁付钱"].sort());
+  assert.deepEqual([...existing].sort(), ["去充值", "停止", "已停止生成"].sort());
 });
