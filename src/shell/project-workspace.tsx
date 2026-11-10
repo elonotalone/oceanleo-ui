@@ -71,6 +71,8 @@ export interface ProjectWorkspaceFrameProps {
   configAriaLabel?: string;
   closeConfigLabel?: string;
   configId?: string;
+  /** Keep the narrow-screen one-column layout while the right workspace is open. */
+  compact?: boolean;
   defaultConfigOpen?: boolean;
   configOpen?: boolean;
   onConfigOpenChange?: (open: boolean) => void;
@@ -95,6 +97,7 @@ export function ProjectWorkspaceFrame({
   configAriaLabel = "Configuration",
   closeConfigLabel = "Close configuration",
   configId,
+  compact = false,
   defaultConfigOpen = false,
   configOpen,
   onConfigOpenChange,
@@ -103,6 +106,7 @@ export function ProjectWorkspaceFrame({
   const resolvedConfigId = configId ?? `${generatedConfigId}-config`;
   const hasConfig = config != null;
   const isDesktop = useDesktopLayout();
+  const useDesktopLayoutMode = isDesktop && !compact;
   const [uncontrolledConfigOpen, setUncontrolledConfigOpen] =
     useState(defaultConfigOpen);
   const isControlled = configOpen !== undefined;
@@ -123,7 +127,7 @@ export function ProjectWorkspaceFrame({
   );
 
   useEffect(() => {
-    if (isDesktop) {
+    if (useDesktopLayoutMode) {
       previousMobileOpenRef.current = false;
       return;
     }
@@ -134,19 +138,19 @@ export function ProjectWorkspaceFrame({
       triggerRef.current?.focus({ preventScroll: true });
     }
     previousMobileOpenRef.current = resolvedConfigOpen;
-  }, [isDesktop, resolvedConfigOpen]);
+  }, [useDesktopLayoutMode, resolvedConfigOpen]);
 
   useEffect(() => {
-    if (isDesktop || !resolvedConfigOpen) return;
+    if (useDesktopLayoutMode || !resolvedConfigOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [isDesktop, resolvedConfigOpen]);
+  }, [useDesktopLayoutMode, resolvedConfigOpen]);
 
   useEffect(() => {
-    if (isDesktop || !resolvedConfigOpen) return;
+    if (useDesktopLayoutMode || !resolvedConfigOpen) return;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // A dialog opened from inside the drawer (activity, plan, assets...) sits
@@ -160,7 +164,7 @@ export function ProjectWorkspaceFrame({
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => document.removeEventListener("keydown", closeOnEscape);
-  }, [changeConfigOpen, isDesktop, resolvedConfigOpen]);
+  }, [changeConfigOpen, useDesktopLayoutMode, resolvedConfigOpen]);
 
   return (
     <div
@@ -184,10 +188,10 @@ export function ProjectWorkspaceFrame({
               ref={triggerRef}
               type="button"
               aria-controls={resolvedConfigId}
-              aria-expanded={isDesktop || resolvedConfigOpen}
+              aria-expanded={useDesktopLayoutMode || resolvedConfigOpen}
               aria-haspopup="dialog"
               data-project-config-trigger
-              className="min-h-11 min-w-11 inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[13px] font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)] lg:hidden"
+              className={classNames("min-h-11 min-w-11 inline-flex shrink-0 items-center justify-center rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2 text-[13px] font-medium text-[var(--fg,#292524)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface,#f5f5f4)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent,#4f46e5)]", !compact && "lg:hidden")}
               onClick={() => changeConfigOpen(true)}
             >
               {mobileConfigLabel}
@@ -200,7 +204,7 @@ export function ProjectWorkspaceFrame({
         data-project-workspace-body
         className={classNames(
           "grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 overflow-hidden px-4 pb-4",
-          hasConfig &&
+          hasConfig && !compact &&
             "lg:grid-cols-[minmax(0,1fr)_clamp(20rem,24vw,22.5rem)]",
           bodyClassName,
         )}
@@ -238,7 +242,7 @@ export function ProjectWorkspaceFrame({
               aria-label={closeConfigLabel}
               data-project-config-backdrop
               className={classNames(
-                "fixed inset-0 z-40 bg-black/40 transition-opacity duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)] lg:hidden",
+                classNames("fixed inset-0 z-40 bg-black/40 transition-opacity duration-[var(--leo-dur-4)] ease-[var(--leo-ease-standard)]", !compact && "lg:hidden"),
                 resolvedConfigOpen
                   ? "pointer-events-auto opacity-100"
                   : "pointer-events-none opacity-0",
@@ -247,13 +251,13 @@ export function ProjectWorkspaceFrame({
             />
             <aside
               id={resolvedConfigId}
-              role={isDesktop ? "complementary" : "dialog"}
-              aria-modal={isDesktop ? undefined : true}
+              role={useDesktopLayoutMode ? "complementary" : "dialog"}
+              aria-modal={useDesktopLayoutMode ? undefined : true}
               aria-label={configAriaLabel}
               aria-hidden={
-                !isDesktop && !resolvedConfigOpen ? true : undefined
+                !useDesktopLayoutMode && !resolvedConfigOpen ? true : undefined
               }
-              inert={!isDesktop && !resolvedConfigOpen ? true : undefined}
+              inert={!useDesktopLayoutMode && !resolvedConfigOpen ? true : undefined}
               tabIndex={-1}
               data-project-workspace-config
               data-mobile-open={resolvedConfigOpen || undefined}
@@ -265,11 +269,11 @@ export function ProjectWorkspaceFrame({
                 resolvedConfigOpen
                   ? "translate-x-0"
                   : "translate-x-full",
-                "lg:static lg:z-auto lg:h-full lg:w-auto lg:translate-x-0 lg:border-0 lg:bg-transparent lg:shadow-none lg:transition-none",
+                !compact && "lg:static lg:z-auto lg:h-full lg:w-auto lg:translate-x-0 lg:border-0 lg:bg-transparent lg:shadow-none lg:transition-none",
                 configClassName,
               )}
             >
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border,#e7e5e4)] px-4 py-3 lg:hidden">
+              <div className={classNames("flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border,#e7e5e4)] px-4 py-3", !compact && "lg:hidden")}>
                 <div className="min-w-0 truncate text-[13px] font-semibold">
                   {mobileConfigLabel}
                 </div>
@@ -286,7 +290,7 @@ export function ProjectWorkspaceFrame({
               </div>
               <div
                 data-project-workspace-config-scroll
-                className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable] lg:-mx-1 lg:p-0 lg:px-1 lg:pb-1"
+                className={classNames("min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 [scrollbar-gutter:stable]", !compact && "lg:-mx-1 lg:p-0 lg:px-1 lg:pb-1")}
               >
                 {config}
               </div>

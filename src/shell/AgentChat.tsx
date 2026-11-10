@@ -3124,7 +3124,7 @@ function AgentChatInner({
         <TaskActionsMenu
           open={taskMenuOpen}
           onOpenChange={setTaskMenuOpen}
-          active={taskMenuOpen}
+          variant="header"
           href={taskQuoteHref(taskId)}
           taskId={taskId}
           taskTitle={taskTitle}

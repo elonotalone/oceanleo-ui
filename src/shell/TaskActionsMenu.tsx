@@ -37,6 +37,8 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   active?: boolean;
+  /** Header triggers stay visible; row triggers reveal on hover. */
+  variant?: "row" | "header";
   pinned?: boolean;
   favorite?: boolean;
   canDelete?: boolean;
@@ -50,7 +52,7 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
 
 /** The one task menu used by My Tasks rows and task headers. */
 export function TaskActionsMenu({
-  open, onOpenChange, active = false, pinned = false, favorite = false,
+  open, onOpenChange, active = false, variant = "row", pinned = false, favorite = false,
   canDelete = true, inProject = false, href, taskId, taskTitle = "", trigger,
   onRename, onTogglePin, onToggleFavorite, onMove, onRemoveFromProject, onDelete, onQuote,
 }: TaskActionsMenuProps) {
@@ -78,7 +80,9 @@ export function TaskActionsMenu({
   };
   const button = trigger ?? (
     <button ref={anchorRef} type="button" onClick={() => onOpenChange(!open)} aria-label={tt("更多操作")} aria-haspopup="menu" aria-expanded={open}
-      className={`rounded p-0.5 transition ${active ? "text-neutral-500 hover:bg-neutral-300/60" : `text-neutral-400 hover:bg-neutral-200 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}`}>
+      className={variant === "header"
+        ? "inline-flex shrink-0 items-center justify-center rounded-lg p-1.5 text-stone-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-800 active:scale-95"
+        : `rounded p-0.5 transition ${active ? "text-neutral-500 hover:bg-neutral-300/60" : `text-neutral-400 hover:bg-neutral-200 ${open ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100"}`}`}>
       <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6" /><circle cx="12" cy="12" r="1.6" /><circle cx="19" cy="12" r="1.6" /></svg>
     </button>
   );
