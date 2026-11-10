@@ -2375,8 +2375,11 @@ html.sakura .v-scroll::-webkit-scrollbar-thumb { background: rgba(136, 57, 239, 
 }
 
 /* Composer links stay editable while showing the site icon supplied by our API. */
-.oc-slot-editor .oc-composer-link { color: #2563eb; text-decoration: underline; text-decoration-color: color-mix(in srgb, #2563eb 35%, transparent); text-underline-offset: 2px; }
+.oc-slot-editor .oc-composer-link { cursor: text; color: #2563eb; text-decoration: underline; text-decoration-color: color-mix(in srgb, #2563eb 35%, transparent); text-underline-offset: 2px; }
 .oc-slot-editor .oc-composer-link-icon { display: inline-block; width: 14px; height: 14px; margin-inline-end: 3px; vertical-align: -2px; object-fit: contain; }
-.oc-slot-editor .oc-task-chip { display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 1px 7px 1px 4px; background: color-mix(in srgb, #2563eb 10%, transparent); text-decoration: none; }
-.oc-slot-editor .oc-task-chip .oc-task-chip-label { font-size: 13px; font-weight: 600; color: #1d4ed8; }
+.oc-slot-editor .oc-task-chip { cursor: default; display: inline-flex; align-items: center; gap: 3px; border-radius: 999px; padding: 1px 7px 1px 4px; background: color-mix(in srgb, #2563eb 10%, transparent); text-decoration: none; }
+.oc-slot-editor .oc-task-chip .oc-task-chip-label { cursor: default; font-size: 13px; font-weight: 600; color: #1d4ed8; }
 .oc-slot-editor .oc-task-chip .oc-composer-link-icon { width: 13px; height: 13px; }
+
+.oc-slot-editor .oc-composer-link-icon-wrap,
+.oc-slot-editor .oc-composer-link-icon { cursor: pointer; }

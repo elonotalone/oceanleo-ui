@@ -1,6 +1,6 @@
-import { Mark, mergeAttributes } from "@tiptap/core";
+import { Mark, Node, mergeAttributes } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
-import { listTasks } from "../lib/agent";
+import { getTask } from "../lib/agent";
 import { parseTaskLink } from "../lib/task-link";
 
 /** Protocol links and www links only. Bare domains deliberately do not match. */
@@ -12,23 +12,27 @@ export function normaliseComposerUrl(raw: string): string {
 }
 
 const taskTitleCache = new Map<string, string | null>();
-let taskListPromise: Promise<void> | null = null;
+const taskTitleRequests = new Map<string, Promise<string | null>>();
 
-/** Owner-scoped task lookup: the API only returns this user's task rows. */
+/** Direct owner-scoped lookup, including tasks beyond the first history page. */
 export async function resolveOwnTaskTitle(url: string): Promise<string | null> {
   const parsed = parseTaskLink(url);
   if (!parsed) return null;
-  if (taskTitleCache.has(parsed.taskId)) return taskTitleCache.get(parsed.taskId) ?? null;
-  if (!taskListPromise) {
-    taskListPromise = listTasks(100, undefined, false, "all", "all")
-      .then((result) => {
-        if (result.ok && result.data) for (const task of result.data.items) taskTitleCache.set(task.id, task.title || "");
-      })
-      .catch(() => undefined)
-      .finally(() => { taskListPromise = null; });
+  const id = parsed.taskId;
+  if (taskTitleCache.has(id)) return taskTitleCache.get(id) ?? null;
+  let request = taskTitleRequests.get(id);
+  if (!request) {
+    request = getTask(id, { messageLimit: 1 })
+      .then((result) => result.ok ? result.data?.task.title || null : null)
+      .catch(() => null)
+      .then((title) => {
+        taskTitleCache.set(id, title);
+        taskTitleRequests.delete(id);
+        return title;
+      });
+    taskTitleRequests.set(id, request);
   }
-  await taskListPromise;
-  return taskTitleCache.get(parsed.taskId) ?? null;
+  return request;
 }
 
 export function openComposerLink(href: string): Window | null {
@@ -72,7 +76,6 @@ export const ComposerLink = Mark.create({
   addAttributes() {
     return {
       href: { default: "" },
-      taskTitle: { default: null },
     };
   },
   parseHTML() {
@@ -81,19 +84,16 @@ export const ComposerLink = Mark.create({
   renderHTML({ HTMLAttributes }) {
     const href = String(HTMLAttributes.href || "");
     const icon = `/v1/link-icon?url=${encodeURIComponent(href)}`;
-    const taskTitle = typeof HTMLAttributes.taskTitle === "string" ? HTMLAttributes.taskTitle : "";
     return [
       "a",
       mergeAttributes(HTMLAttributes, {
         href,
         target: "_blank",
         rel: "noopener,noreferrer",
-        class: taskTitle ? "oc-composer-link oc-task-chip" : "oc-composer-link",
-        ...(taskTitle ? { "data-task-title": taskTitle } : {}),
+        class: "oc-composer-link",
         "data-composer-link": "",
       }),
       ["span", { class: "oc-composer-link-icon-wrap", contenteditable: "false" }, ["img", { src: icon, alt: "", width: "14", height: "14", class: "oc-composer-link-icon", "aria-hidden": "true" }]],
-      ...(taskTitle ? [["span", { class: "oc-task-chip-label", contenteditable: "false" }, taskTitle] as const] : []),
       ["span", { class: "oc-composer-link-text" }, 0],
     ];
   },
@@ -121,5 +121,102 @@ export const ComposerLink = Mark.create({
         },
       }),
     ];
+  },
+});
+
+/** An indivisible visual label; every plain-text path still carries the URL. */
+export const ComposerTaskChip = Node.create({
+  name: "composerTaskChip",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  marks: "",
+  addAttributes() {
+    return { href: { default: "" }, title: { default: "" } };
+  },
+  // Restore from plain text and resolve ownership again, never trust pasted HTML labels.
+  parseHTML() { return []; },
+  renderHTML({ node }) {
+    const { href, title } = node.attrs;
+    return ["span", {
+      class: "oc-task-chip", "data-composer-task-chip": "", "data-href": href,
+      "aria-label": title, contenteditable: "false",
+    },
+    ["span", { class: "oc-composer-link-icon-wrap" },
+      ["img", { src: `/v1/link-icon?url=${encodeURIComponent(href)}`, alt: "", width: "14", height: "14", class: "oc-composer-link-icon", "aria-hidden": "true" }]],
+    ["span", { class: "oc-task-chip-label" }, title]];
+  },
+  renderText({ node }) { return node.attrs.href; },
+  addKeyboardShortcuts() {
+    const removeAdjacent = (backward: boolean) => {
+      const { state, view } = this.editor;
+      if (view.composing || !state.selection.empty) return false;
+      const { $from } = state.selection;
+      const node = backward ? $from.nodeBefore : $from.nodeAfter;
+      if (node?.type !== this.type) return false;
+      const from = backward ? $from.pos - node.nodeSize : $from.pos;
+      view.dispatch(state.tr.delete(from, from + node.nodeSize));
+      return true;
+    };
+    return { Backspace: () => removeAdjacent(true), Delete: () => removeAdjacent(false) };
+  },
+  addProseMirrorPlugins() {
+    const type = this.type;
+    return [new Plugin({
+      key: new PluginKey("composerTaskChips"),
+      view(view) {
+        let destroyed = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const pending = new Set<string>();
+        const titles = new Map<string, string | null>();
+        const schedule = () => {
+          if (destroyed || timer !== undefined) return;
+          timer = setTimeout(scan, 0);
+        };
+        const scan = () => {
+          timer = undefined;
+          if (destroyed || view.isDestroyed || view.composing) return;
+          const replacements: Array<{ from: number; to: number; href: string; title: string }> = [];
+          // Re-read positions after each async reply; edits may have moved/deleted the link.
+          view.state.doc.descendants((node, pos) => {
+            if (!node.isText || !node.text) return;
+            for (const range of composerLinkRanges(node.text)) {
+              const href = range.href;
+              if (!parseTaskLink(href)) continue;
+              if (titles.has(href)) {
+                const title = titles.get(href);
+                if (title) replacements.push({ from: pos + range.from, to: pos + range.to, href, title });
+              } else if (!pending.has(href)) {
+                pending.add(href);
+                void resolveOwnTaskTitle(href).then((title) => {
+                  if (destroyed) return;
+                  pending.delete(href);
+                  titles.set(href, title);
+                  schedule();
+                });
+              }
+            }
+          });
+          if (!replacements.length) return;
+          const tr = view.state.tr.setMeta("addToHistory", false);
+          for (const range of replacements.reverse()) {
+            tr.replaceWith(range.from, range.to, type.create({ href: range.href, title: range.title }));
+          }
+          view.dispatch(tr);
+        };
+        const compositionEnd = () => schedule();
+        view.dom.addEventListener("compositionend", compositionEnd);
+        schedule();
+        return {
+          update: schedule,
+          destroy() {
+            destroyed = true;
+            clearTimeout(timer);
+            view.dom.removeEventListener("compositionend", compositionEnd);
+          },
+        };
+      },
+    })];
   },
 });

@@ -180,20 +180,19 @@ test("real DOM link typing produces an editable blue anchor with first-party ico
   } finally { await m.unmount(); }
 });
 
-test("real DOM task mark renders the atomic title chip while retaining URL text in the document", async () => {
+test("real DOM task atom renders only the title while serializing the URL", async () => {
   const m = await mount(React.createElement(PromptHighlightArea, { value: "", onChange() {} }));
   try {
     await until(() => m.q('[role="textbox"]'), "editor mount");
     const box = m.q('[role="textbox"]');
     const href = "https://oceanleo.com/tasks/dc75a314-6e8d-447f-a581-8a2fc04d471a";
     await act(async () => {
-      box.editor.commands.insertContent(href);
-      const mark = box.editor.state.schema.marks.composerLink;
-      box.editor.view.dispatch(box.editor.state.tr.addMark(1, 1 + href.length, mark.create({ href, taskTitle: "My task" })));
+      box.editor.commands.insertContent({ type: "composerTaskChip", attrs: { href, title: "My task" } });
     });
     await flush();
     assert.equal(m.q(".oc-task-chip .oc-task-chip-label")?.textContent, "My task");
     assert.ok(m.q(".oc-task-chip img.oc-composer-link-icon"));
+    assert.equal(box.textContent, "My task", "URL is not visible in the editor");
     assert.equal(box.editor.getText(), href, "serialization remains the plain URL");
   } finally { await m.unmount(); }
 });
