@@ -6647,5 +6647,18 @@ const en: Record<string, string> = {
   '确认删除这个链接项目吗？': 'Delete this link item?',
   '这个网站不允许被嵌入显示': 'This website does not allow embedding',
 
+  "项目「{name}」的素材": "Materials of project “{name}”",
+  "回到项目「{name}」的素材": "Back to materials of project “{name}”",
+  "正在加载项目素材…": "Loading project materials…",
+  "项目素材暂时无法加载": "Project materials are temporarily unavailable",
+  "显示整个 Library": "Show entire Library",
+  "回到项目": "Back to project",
+  "项目文件": "Project file",
+  "这个项目还没有素材": "This project has no materials yet",
+  "从项目移除": "Remove from project",
+  "加入项目「{name}」": "Add to project “{name}”",
+  "下载": "Download",
+  "删除": "Delete",
+
 };
 export default en;

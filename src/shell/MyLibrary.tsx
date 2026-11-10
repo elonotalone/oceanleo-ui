@@ -97,7 +97,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { useProjectLibraryScope } from "./library-project-scope";
+import { addProjectLibraryReference, deleteProjectAsset, downloadProjectAsset, removeProjectLibraryReference, useProjectLibraryScope } from "./library-project-scope";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
@@ -736,7 +736,8 @@ export function MyLibrary({
 }: MyLibraryProps) {
   const tt = useUI();
   const [projectScopeSuppressed, setProjectScopeSuppressed] = useState(false);
-  const projectScoped = Boolean(action?.action.projectId) && !projectScopeSuppressed;
+  const hasProjectAction = Boolean(action?.action.projectId);
+  const projectScoped = hasProjectAction && !projectScopeSuppressed;
   const projectScopeAction = projectScoped ? action : null;
   const projectScope = useProjectLibraryScope(projectScopeAction);
   useEffect(() => { setProjectScopeSuppressed(false); }, [action?.nonce, action?.action.projectId]);
@@ -1947,7 +1948,7 @@ export function MyLibrary({
         if (rereadSections) void load();
       }
     },
-    [changeSection, load, ownerPrincipalId, siteId, uploading],
+    [action?.action.projectId, changeSection, load, ownerPrincipalId, projectScope, projectScoped, siteId, uploading],
   );
   const retryFailedUploads = useCallback(() => {
     void handleUpload(retryableUploadFiles, true);
@@ -2270,10 +2271,10 @@ export function MyLibrary({
               ) : undefined
             }
           />
-          {projectScoped ? (
+          {hasProjectAction ? (
             <div className="mt-3 flex items-center justify-between rounded-md border border-[var(--line,#e5e7eb)] px-3 py-2 text-xs" data-library-project-scope="">
-              <span>{projectScope.loading ? tt("正在加载项目素材…") : projectScope.error ? tt("项目素材暂时无法加载") : `${action?.action.projectName ? `项目「${action.action.projectName}」的素材` : "项目素材"}`}</span>
-              <button type="button" className="font-medium underline underline-offset-2" onClick={() => setProjectScopeSuppressed(true)}>{tt("显示整个 Library")}</button>
+              <span>{projectScoped ? (projectScope.loading ? tt("正在加载项目素材…") : projectScope.error ? tt("项目素材暂时无法加载") : tt("项目「{name}」的素材", { name: action?.action.projectName || action?.action.projectId || "" })) : tt("回到项目「{name}」的素材", { name: action?.action.projectName || action?.action.projectId || "" })}</span>
+              <button type="button" className="font-medium underline underline-offset-2" onClick={() => setProjectScopeSuppressed((value) => !value)}>{tt(projectScoped ? "显示整个 Library" : "回到项目")}</button>
             </div>
           ) : null}
           <LibrarySectionTabs
@@ -2343,6 +2344,7 @@ export function MyLibrary({
           onMaterialDragStart={onMaterialDragStart}
           onMaterialDragEnd={onMaterialDragEnd}
           toolbarActions={toolbar}
+          entryActions={hasProjectAction ? projectEntryActions : undefined}
           searchPlaceholder="search"
           emptyTitle={
             loading

@@ -23,3 +23,39 @@ test("scope mapping combines references and project files, preserving link viewe
   assert.equal(items[2].meta.library_source_label, "项目文件");
   assert.equal(items[2].meta.folder_path, "docs/notes.md");
 });
+
+test("project reference mutations use the project API paths", async () => {
+  const scope = await import("../src/shell/library-project-scope.ts");
+  const calls = [];
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => { calls.push({ url: String(url), method: init.method || "GET", body: init.body }); return new Response("{}", { status: 200, headers: { "content-type": "application/json" } }); };
+  try {
+    await scope.addProjectLibraryReference("550e8400-e29b-41d4-a716-446655440000", "work", "w1");
+    await scope.removeProjectLibraryReference("550e8400-e29b-41d4-a716-446655440000", "work", "w1");
+  } finally { globalThis.fetch = original; }
+  assert.equal(calls[0].method, "POST");
+  assert.match(calls[0].url, /\/v1\/projects\/550e8400-e29b-41d4-a716-446655440000\/library-items$/);
+  assert.deepEqual(JSON.parse(calls[0].body), { kind: "work", id: "w1" });
+  assert.equal(calls[1].method, "DELETE");
+  assert.match(calls[1].url, /\/library-items\/work\/w1$/);
+});
+
+test("markdown project files hydrate FileContent text for sidebar detail", async () => {
+  const { loadProjectLibraryScope } = await import("../src/shell/library-project-scope.ts");
+  const original = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const value = String(url);
+    if (value.endsWith("/library-items")) return new Response(JSON.stringify({ items: [] }), { status: 200 });
+    if (value.includes("/assets?limit=")) return new Response(JSON.stringify({ items: [{ id: "f1", kind: "file", name: "readme.md", mime_type: "text/markdown", size_bytes: 5 }] }), { status: 200 });
+    if (value.endsWith("/access")) return new Response(JSON.stringify({ role: "edit" }), { status: 200 });
+    if (value.endsWith("/f1/file")) return new Response(JSON.stringify({ path: "readme.md", kind: "markdown", text: "hello" }), { status: 200 });
+    if (value.endsWith("/f1/download")) return new Response(JSON.stringify({ url: "https://cdn.example/readme.md" }), { status: 200 });
+    throw new Error(`unexpected ${value}`);
+  };
+  try {
+    const result = await loadProjectLibraryScope("550e8400-e29b-41d4-a716-446655440000");
+    assert.equal(result.items.length, 1);
+    assert.equal(result.items[0].content, "hello");
+    assert.equal(result.canEdit, true);
+  } finally { globalThis.fetch = original; }
+});

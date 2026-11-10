@@ -38,6 +38,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 function projectPath(projectId: string, suffix: string): string {
   return `/v1/projects/${encodeURIComponent(projectId)}${suffix}`;
 }
+function projectUrl(projectId: string, suffix: string): string {
+  return `${gatewayBase()}${projectPath(projectId, suffix)}`;
+}
 
 async function projectRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
@@ -83,7 +86,7 @@ function referenceLibraryItem(reference: ProjectScopeReference): LibraryItem | n
       const normalizedWork = normalizeLinkWork({ ...work, id: text(work.id) || reference.id, title: text(work.title) || text(raw.title) || "Untitled work" });
       if (!normalizedWork) return null;
       const normalized = linkWorkLibraryItem(normalizedWork);
-      return { ...normalized, meta: { ...normalized.meta, library_source_label: "项目素材", project_scope: true, project_reference: true, project_reference_kind: reference.kind } };
+      return { ...normalized, meta: { ...normalized.meta, project_scope: true, project_reference: true, project_reference_kind: reference.kind } };
     }
   }
   const title = text(raw.title) || "Untitled artifact";
@@ -104,7 +107,7 @@ function referenceLibraryItem(reference: ProjectScopeReference): LibraryItem | n
 
 function assetLibraryItem(asset: ProjectScopeAsset, projectId: string, path: string): LibraryItem {
   const mime = text(asset.mime_type);
-  const fileUrl = projectPath(projectId, `/assets/${encodeURIComponent(asset.id)}/file`);
+  const fileUrl = projectUrl(projectId, `/assets/${encodeURIComponent(asset.id)}/file`);
   return {
     key: `project-asset:${asset.id}`,
     source: "artifact",
@@ -126,7 +129,7 @@ function assetLibraryItem(asset: ProjectScopeAsset, projectId: string, path: str
       source_bytes: asset.size_bytes || 0,
       folder_path: path,
       open_url: fileUrl,
-      download_url: projectPath(projectId, `/assets/${encodeURIComponent(asset.id)}/download`),
+      download_url: projectUrl(projectId, `/assets/${encodeURIComponent(asset.id)}/download`),
     },
   };
 }
@@ -157,19 +160,36 @@ export async function loadProjectLibraryScope(projectId: string, signal?: AbortS
     const id = text(raw.id); if (!kind || !id) return [];
     return [{ id, kind, name: text(raw.name) || id, parent_id: typeof raw.parent_id === "string" ? raw.parent_id : null, mime_type: text(raw.mime_type) || null, size_bytes: typeof raw.size_bytes === "number" ? raw.size_bytes : 0, created_at: text(raw.created_at) || null, updated_at: text(raw.updated_at) || null } as ProjectScopeAsset];
   });
-  const folders = assets.filter((asset) => asset.kind === "folder");
-  for (const folder of folders) {
-    const childPayload = await projectRequest<{ items?: unknown }>(projectPath(projectId, `/assets?parent_id=${encodeURIComponent(folder.id)}&limit=200`), { signal });
+  const pendingFolders = assets.filter((asset) => asset.kind === "folder").map((folder) => ({ folder, path: folder.name }));
+  while (pendingFolders.length) {
+    const current = pendingFolders.shift()!;
+    const childPayload = await projectRequest<{ items?: unknown }>(projectPath(projectId, `/assets?parent_id=${encodeURIComponent(current.folder.id)}&limit=200`), { signal });
     const children = Array.isArray(childPayload.items) ? childPayload.items : [];
     for (const entry of children) {
       const raw = record(entry); if (!raw) continue;
       const kind = raw.kind === "folder" ? "folder" : raw.kind === "file" ? "file" : "";
-      const id = text(raw.id); if (!kind || !id) continue;
-      assets.push({ id, kind, name: text(raw.name) || id, parent_id: folder.id, mime_type: text(raw.mime_type) || null, size_bytes: typeof raw.size_bytes === "number" ? raw.size_bytes : 0, created_at: text(raw.created_at) || null, updated_at: text(raw.updated_at) || null, path: `${folder.name}/${text(raw.name)}` });
+      const id = text(raw.id); const name = text(raw.name) || id; if (!kind || !id) continue;
+      const path = `${current.path}/${name}`;
+      const child = { id, kind, name, parent_id: current.folder.id, mime_type: text(raw.mime_type) || null, size_bytes: typeof raw.size_bytes === "number" ? raw.size_bytes : 0, created_at: text(raw.created_at) || null, updated_at: text(raw.updated_at) || null, path } as ProjectScopeAsset;
+      assets.push(child);
+      if (kind === "folder") pendingFolders.push({ folder: child, path });
     }
   }
   const references = Array.isArray(referencePayload.items) ? referencePayload.items.flatMap((entry) => { const raw = record(entry); const kind = raw?.kind === "artifact" || raw?.kind === "work" ? raw.kind : ""; const id = text(raw?.id); return kind && id ? [{ kind, id, item: record(raw?.item) }] as ProjectScopeReference[] : []; }) : [];
-  return { references, assets, items: mapProjectScopePayload(references, assets, projectId), canEdit: ["owner", "edit", "editor"].includes(text(accessPayload.role)) };
+  const items = mapProjectScopePayload(references, assets, projectId);
+  await Promise.all(items.filter((item) => item.meta.project_asset).map(async (item) => {
+    const assetId = text(item.meta.project_asset_id);
+    if (!assetId) return;
+    try {
+      const file = await projectRequest<Record<string, unknown>>(projectPath(projectId, `/assets/${encodeURIComponent(assetId)}/file`), { signal });
+      if (typeof file.text === "string") item.content = file.text;
+      if (typeof file.mime_type === "string") item.meta.mime_type = file.mime_type;
+      if (typeof file.url === "string" && file.url) item.url = file.url;
+      const download = await projectRequest<{ url?: unknown }>(projectPath(projectId, `/assets/${encodeURIComponent(assetId)}/download`), { signal }).catch(() => null);
+      if (typeof download?.url === "string" && download.url) { item.url = download.url; item.meta.open_url = download.url; }
+    } catch { /* keep the card visible; the detail viewer can retry its source */ }
+  }));
+  return { references, assets, items, canEdit: ["owner", "edit", "editor"].includes(text(accessPayload.role)) };
 }
 
 export async function addProjectLibraryReference(projectId: string, kind: "artifact" | "work", id: string): Promise<void> {
@@ -177,6 +197,16 @@ export async function addProjectLibraryReference(projectId: string, kind: "artif
 }
 export async function removeProjectLibraryReference(projectId: string, kind: "artifact" | "work", id: string): Promise<void> {
   await projectRequest(projectPath(projectId, `/library-items/${encodeURIComponent(kind)}/${encodeURIComponent(id)}`), { method: "DELETE" });
+}
+export async function deleteProjectAsset(projectId: string, assetId: string): Promise<void> {
+  await projectRequest(projectPath(projectId, `/assets/${encodeURIComponent(assetId)}`), { method: "DELETE" });
+}
+export async function downloadProjectAsset(projectId: string, assetId: string, filename: string): Promise<void> {
+  const result = await projectRequest<{ url?: unknown }>(projectPath(projectId, `/assets/${encodeURIComponent(assetId)}/download`));
+  if (typeof result.url !== "string" || !result.url) throw new Error("download unavailable");
+  if (typeof window !== "undefined") {
+    const anchor = document.createElement("a"); anchor.href = result.url; anchor.download = filename; anchor.target = "_blank"; anchor.rel = "noreferrer"; anchor.click();
+  }
 }
 
 export interface ProjectScopeState extends ProjectScopeResult { loading: boolean; error: string; }
