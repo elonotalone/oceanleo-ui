@@ -161,7 +161,7 @@ export function HomeIntro({
 
   const submit = (cleanValue?: string, _payer?: ComposerPayer, context?: ComposerSubmitContext) => {
     // 第二参留在类型上，不转给 onStart（宿主面不改）。
-    // createTask 未传 orgId 时读 PayerSelector 已写入的持久化选择。
+    // createTask 未传 orgId 时读 AccountMenu 已写入的持久化选择。
     void _payer;
     const p = (cleanValue ?? value).trim();
     const uploaded = toolsOn ? atts.ready() : [];

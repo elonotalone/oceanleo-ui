@@ -101,7 +101,7 @@ const NATIVE = { kind: "native", computerId: "cc_1", computerName: "elon", progr
 test("LeoComposer: a native conversation never shows the wallet or the Leo tier, even if the host forgets", async () => {
   const m = await mount(React.createElement(LeoComposer, { ...composerBase, conversation: { kind: "oceanleo", target: { kind: "cloud" } } }));
   try {
-    assert.ok(m.q("[data-payer-selector]"), "OceanLeo keeps the wallet");
+    assert.equal(m.q("[data-payer-selector]"), null, "OceanLeo uses the account identity");
     assert.ok(m.q("[data-model-group-picker]"), "OceanLeo keeps the tier");
     // Host forgot showPayerSelector={false} and the slot.
     await m.rerender(React.createElement(LeoComposer, { ...composerBase, conversation: NATIVE }));

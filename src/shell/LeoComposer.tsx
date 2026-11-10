@@ -36,7 +36,6 @@ import { useUI } from "../i18n/ui/useUI";
 import { useWorkspaceRuntimeHydration } from "./workspace-runtime-hydration";
 import { ModelGroupPicker } from "./ModelPicker";
 import { PluginsPopover } from "./PluginsPopover";
-import { PayerSelector } from "./PayerSelector";
 import { ComposerAppsBar, type McpAppsHost } from "./mcp-apps";
 import { ComputerDock } from "./cloud-computer/ComputerDock";
 import type { ExecutionTarget } from "../lib/execution-target";
@@ -140,11 +139,7 @@ export interface ComposerMenuItem {
   onClick: () => void;
 }
 
-/**
- * 这次派活谁付钱（企业版，2026-09-20）。字段名 `org_id` 是网关认的那个
- * （`resolve_payer(user_id, requested_org_id=...)`），**空串 = 个人钱包**。
- * 调用方原样塞进请求体即可，不要改名、不要在空串时省略它。
- */
+/** @deprecated Compatibility type only. Composer submits undefined; send paths read the account identity. */
 export interface ComposerPayer {
   org_id: string;
 }
@@ -161,8 +156,7 @@ export interface LeoComposerProps {
   onChange: (value: string) => void;
   /**
    * 点击发送键 / 回车（无 shift）时触发；不传则不显示发送键。参数是已去掉占位 token 的 prompt。
-   * 第二个参数是付费主体，**恒有值**，没进过组织的用户拿到的是 `{ org_id: "" }`
-   * ——与不带这个字段发出去的请求在网关侧是同一条路径。
+   * 第二参保留兼容签名，恒为 undefined；发送路径读取账户身份。
    * 第三参固定点击发送时可见的执行位置，避免页面切换或等待上传期间改变目标。
    */
   onSubmit?: (cleanValue?: string, payer?: ComposerPayer, context?: ComposerSubmitContext) => void;
@@ -303,8 +297,7 @@ export interface LeoComposerProps {
   showPlugins?: boolean;
 
   /**
-   * 是否挂「这次谁付钱」选择器（默认 true）。默认开是安全的：**此人没进过任何组织时
-   * `PayerSelector` 返回 null**，这一排的渲染结果与企业版之前逐字相同。
+   * @deprecated Ignored. The account menu identity determines billing at send time.
    */
   showPayerSelector?: boolean;
 
@@ -397,7 +390,6 @@ export function LeoComposer({
   meetingRecordingMaxSec = 7200,
   showModelPicker = true,
   showPlugins = true,
-  showPayerSelector = true,
   showAppsBar = true,
   showComputerDock = true,
   onBeforeComputerNavigate,
@@ -487,8 +479,6 @@ export function LeoComposer({
   useNativeTaskNotifications();
   // 最高约占视口 30%（仿 Manus），`maxHeight` 是绝对上限；再多在框内滚动。
   const editorMaxHeight = useComposerMaxHeight(maxHeight);
-  // 这次派活谁付钱。空串 = 个人钱包，也是没进过组织的人恒定的值。
-  const [payerOrgId, setPayerOrgId] = useState("");
   // 输入框 `/` 调用技能。skillSlash 不传时 onKeyDown 恒 false、popover 恒 null。
   const skillSlashUi = useComposerSkillSlash({
     option: skillSlash,
@@ -561,7 +551,7 @@ export function LeoComposer({
     draft.markSubmitted();
     const shownConversation: ConversationTarget = activeConversation && activeConversation.kind !== "oceanleo"
       ? { ...activeConversation } : { kind: "oceanleo", target: { ...selected } };
-    onSubmit?.(cleanPromptValue(), { org_id: payerOrgId },
+    onSubmit?.(cleanPromptValue(), undefined,
       showComputerDock ? { executionTarget: { ...selected }, conversation: shownConversation } : undefined);
     if (boundExecutionTarget === undefined && !nativeConversation) {
       if (selected.kind === "device" && selected.driver === "cloud") executionTargetRef.current = {...selected, gui: false};
@@ -809,12 +799,6 @@ export function LeoComposer({
             <LeoEntryButton tone="light" context={leoContext ?? { page: "home" }} />
           )}
           {inlineSlot}
-          {/* 「这次谁付钱」。进了组织才渲染，否则这里是 null，整排与企业版之前逐字相同。
-              挂在左组而不是右组：左组本来就 flex-wrap，窄屏时它换行，
-              右组那颗 shrink-0 的发送键因此永远挤不掉（P3）。 */}
-          {showPayerSelector && !nativeProgramConversation && (
-            <PayerSelector value={payerOrgId} onChange={setPayerOrgId} />
-          )}
           {/* MCP Apps「应用」入口（A6）。此人没有带界面的 MCP 工具时它是 null，
               这一排逐字不变。界面 `ui/message` 的那句话追加进输入框，不自动发送。 */}
           {showAppsBar && (

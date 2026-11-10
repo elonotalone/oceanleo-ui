@@ -9,7 +9,7 @@ import type { ImAttachment, ImCard, ImConversationDetail, ImMessage } from "../.
 import { ReplayPickerDialog } from "../../replay/work/ReplayPickerDialog";
 import type { ConversationStore } from "../conversation/conversation-store";
 import { plainTextOf } from "../conversation/message-format";
-import { LeoComposerAddon, type LeoPayerChoice } from "../leo/LeoComposerAddon";
+import { payerRequestField } from "../../../lib/im/leo-api";
 import { sendTyping } from "../realtime/hooks";
 import { ArtifactPickerDialog } from "./ArtifactPickerDialog";
 import { AttachmentTray } from "./AttachmentTray";
@@ -133,7 +133,6 @@ export function Composer(props: ComposerProps) {
   const [artifactOpen, setArtifactOpen] = useState(false);
   const [replayOpen, setReplayOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
-  const [payer, setPayer] = useState<LeoPayerChoice | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const controllers = useRef(new Map<string, AbortController>());
@@ -202,7 +201,6 @@ export function Composer(props: ComposerProps) {
   useEffect(() => setActiveIndex(0), [active?.query, candidates.length]);
 
   const leoEnabled = Boolean(conversation?.leo_enabled) && conversation?.kind !== "talent";
-  const mentionsLeo = useMemo(() => collectMentions(text, picked, leoEnabled).mention_leo, [picked, text, leoEnabled]);
 
   // ── 上传 ────────────────────────────────────────────────────────────────
   const runUpload = useCallback((job: UploadJob) => {
@@ -274,7 +272,6 @@ export function Composer(props: ComposerProps) {
     setText("");
     setPicked([]);
     setJobs([]);
-    setPayer(null);
     draftBook.clear(conversationId, threadRootId);
     onClearQuote?.();
     onSent?.();
@@ -293,7 +290,6 @@ export function Composer(props: ComposerProps) {
       return;
     }
     const mentions = collectMentions(trimmed, picked, leoEnabled);
-    const teamPayer = mentions.mention_leo && payer?.kind === "team" ? payer.org_id : null;
     const kind = readyAttachments.length > 0 ? messageKindForAttachments(readyAttachments) : "text";
     const input: Omit<SendMessageInput, "client_id"> = {
       kind,
@@ -302,7 +298,7 @@ export function Composer(props: ComposerProps) {
       quote_id: quote?.id ?? null,
       thread_root_id: threadRootId,
       attachments: readyAttachments,
-      ...(teamPayer ? { leo_payer_org_id: teamPayer } : {}),
+      ...(mentions.mention_leo ? payerRequestField() : {}),
     };
     afterSend();
     void store.send(input);
@@ -495,11 +491,6 @@ export function Composer(props: ComposerProps) {
         </div>
       ) : null}
       <AttachmentTray jobs={jobs} onCancel={cancelJob} onRetry={retryJob} onRemove={removeJob} />
-      {conversation ? (
-        <div className="px-3 pt-2">
-          <LeoComposerAddon conversation={conversation} mentionActive={mentionsLeo} value={payer} onChange={setPayer} />
-        </div>
-      ) : null}
       {voiceError ? <div className="px-3 pt-1 text-[12px] text-red-600">{voiceError}</div> : null}
       <div className="relative px-3 pb-2 pt-2">
         <MentionPicker

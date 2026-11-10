@@ -446,7 +446,7 @@ export async function createTask(body: {
   /** 用户上传的附件（文件/图片/语音的公网 url）。 */
   attachments?: AgentAttachment[];
   /**
-   * 这次谁付钱。显式传了（含 `""`）用显式；没传则读 PayerSelector 持久化的选择。
+   * 这次谁付钱。显式传了（含 `""`）用显式；没传则读 AccountMenu 持久化的选择。
    * 请求体字段名固定 `org_id`，空串 = 个人钱包。
    */
   orgId?: string;

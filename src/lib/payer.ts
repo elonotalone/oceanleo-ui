@@ -1,7 +1,7 @@
 // ============================================================================
 // @oceanleo/ui — 付费主体（这次谁付钱）的唯一取法
 // ----------------------------------------------------------------------------
-// PayerSelector 把人选的组织写进 localStorage；三条发送路径和所有组
+// AccountMenu 把人选的组织写进 localStorage；三条发送路径和所有组
 // `/v1/agent/tasks` 请求体的地方只许从这里读，字段名固定 `org_id`。
 // 空串 = 个人钱包（网关 `resolve_payer(user_id, requested_org_id="")`）。
 // ============================================================================
@@ -23,17 +23,21 @@ function localStorageOrNull(): Storage | null {
 }
 
 /**
- * PayerSelector 持久化的 org_id；个人钱包 = ""。只读 localStorage，SSR 下返回 ""。
+ * AccountMenu 持久化的 org_id；个人钱包 = ""。只读 localStorage，SSR 下返回 ""。
  */
 export function persistedPayerOrgId(): string {
   const store = localStorageOrNull();
   if (!store) return PERSONAL_PAYER;
-  return store.getItem(PAYER_LAST_KEY) || PERSONAL_PAYER;
+  try {
+    return store.getItem(PAYER_LAST_KEY) || PERSONAL_PAYER;
+  } catch {
+    return PERSONAL_PAYER;
+  }
 }
 
 /**
  * 把这次选择写进 localStorage。个人钱包删键，不写空串。
- * 选择器是唯一写入方；发送路径只读。
+ * AccountMenu 是唯一写入方；发送路径只读。
  */
 export function persistPayerOrgId(orgId: string): void {
   const store = localStorageOrNull();

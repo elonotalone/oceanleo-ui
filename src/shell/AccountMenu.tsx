@@ -34,6 +34,12 @@ function IdentitySwitchChevrons() {
   );
 }
 
+/** Shared account identity action, also used by the settings identity shortcut. */
+export function selectAccountIdentity(id: string): void {
+  persistPayerOrgId(id);
+  window.dispatchEvent(new StorageEvent("storage", { key: PAYER_LAST_KEY, newValue: id || null }));
+}
+
 export function AccountMenu(props: AccountMenuProps) {
   const tt = useUI();
   const signedIn = props.signedIn !== false;
@@ -45,22 +51,41 @@ export function AccountMenu(props: AccountMenuProps) {
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [payer, setPayer] = useState(PERSONAL_PAYER);
   useEffect(() => {
-    if (!open) return;
+    if (!signedIn) return;
     let cancelled = false;
-    setPayer(persistedPayerOrgId());
-    listMyOrgs().then((rows) => { if (!cancelled) setOrgs(rows); }).catch(() => {
-      if (!cancelled) { setOrgs([]); setPayer(PERSONAL_PAYER); }
+    let available: OrgSummary[] | null = null;
+    const syncIdentity = () => {
+      const current = persistedPayerOrgId();
+      const next = available && !available.some((org) => org.id === current) ? PERSONAL_PAYER : current;
+      if (next !== current) persistPayerOrgId(next);
+      setPayer(next);
+    };
+    syncIdentity();
+    listMyOrgs().then((rows) => {
+      if (cancelled) return;
+      available = rows;
+      setOrgs(rows);
+      syncIdentity();
+    }).catch(() => {
+      if (cancelled) return;
+      available = [];
+      setOrgs([]);
+      syncIdentity();
     });
+    window.addEventListener("storage", syncIdentity);
+    return () => { cancelled = true; window.removeEventListener("storage", syncIdentity); };
+  }, [open, signedIn]);
+  useEffect(() => {
+    if (!open) return;
     const resize = () => setNarrow(window.innerWidth < 640);
     resize();
     window.addEventListener("resize", resize);
-    return () => { cancelled = true; window.removeEventListener("resize", resize); };
+    return () => window.removeEventListener("resize", resize);
   }, [open]);
   const close = () => { setIdentitiesOpen(false); setOpen(false); };
   const select = (id: string) => {
-    persistPayerOrgId(id);
-    setPayer(id);
-    window.dispatchEvent(new StorageEvent("storage", { key: PAYER_LAST_KEY, newValue: id || null }));
+    selectAccountIdentity(id);
+    setPayer(persistedPayerOrgId());
     setIdentitiesOpen(false);
   };
   const roleLabel = (role: OrgSummary["role"]) => role === "owner" ? tt("所有者") : role === "admin" ? tt("管理员") : tt("团队成员");

@@ -3459,7 +3459,7 @@ function AgentChatInner({
             boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
             value={input}
             onChange={setInput}
-            onSubmit={(_, payer, context) => void send(payer?.org_id, context?.executionTarget)}
+            onSubmit={(_, _payer, context) => void send(undefined, context?.executionTarget)}
             loading={running}
             onStop={() => void stop()}
             stopping={taskStopping}

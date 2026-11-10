@@ -344,7 +344,7 @@ const OVERRIDES = {
   `),
 };
 
-test("AgentChat：LeoComposer.onSubmit({org_id:o1}) 之后 fetch 体带 o1", async () => {
+test("AgentChat ignores composer payer and reads the current left identity", async () => {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvasModule = require.cache[canvasEntry];
@@ -410,8 +410,12 @@ test("AgentChat：LeoComposer.onSubmit({org_id:o1}) 之后 fetch 体带 o1", asy
     })
   );
 
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(" "));
   try {
     await withFetch(async (calls) => {
+      window.localStorage.setItem(PAYER_LAST_KEY, "o1");
       const host = window.document.createElement("div");
       window.document.body.append(host);
       const root = createRoot(host);
@@ -428,7 +432,7 @@ test("AgentChat：LeoComposer.onSubmit({org_id:o1}) 之后 fetch 体带 o1", asy
       await act(async () => {
         // 必须用 onChange 之后那一次渲染的 onSubmit：它才闭包到已写入的 input。
         globalThis.__payerComposerProps.onSubmit("hi from composer", {
-          org_id: "o1",
+          org_id: "",
         });
       });
       for (let i = 0; i < 20 && !calls.some((c) => c.url.endsWith("/v1/agent/tasks")); i += 1) {
@@ -442,13 +446,43 @@ test("AgentChat：LeoComposer.onSubmit({org_id:o1}) 之后 fetch 体带 o1", asy
       );
       assert.equal(body.org_id, "o1");
       assert.equal(body.prompt, "hi from composer");
+      for (const identity of ["o2", ""]) {
+        identity ? window.localStorage.setItem(PAYER_LAST_KEY, identity) : window.localStorage.removeItem(PAYER_LAST_KEY);
+        await act(async () => globalThis.__payerComposerProps.onChange("next turn"));
+        const before = calls.length;
+        await act(async () => globalThis.__payerComposerProps.onSubmit("next turn"));
+        for (let i = 0; i < 20 && !calls.slice(before).some(c => c.method === "POST"); i++) {
+          await act(async () => new Promise(resolve => setTimeout(resolve, 20)));
+        }
+        const next = calls.slice(before).find(c => c.method === "POST");
+        assert.ok(next);
+        assert.equal(JSON.parse(next.body).org_id, identity);
+      }
       await act(async () => root.unmount());
       host.remove();
     });
   } finally {
+    console.error = originalError;
+    assert.deepEqual(errors, [], "AgentChat must not log console.error");
     delete globalThis.__payerComposerProps;
     delete globalThis.IS_REACT_ACT_ENVIRONMENT;
     for (const undo of restore.reverse()) undo();
     window.close();
   }
+});
+
+
+test("createTask and followUp read identity anew on every send", async () => {
+  const bag = installMemoryStorage();
+  try {
+    await withFetch(async calls => {
+      for (const identity of ["org-a", "org-b", ""]) {
+        persistPayerOrgId(identity);
+        await createTask({prompt: "hello"});
+        assert.equal(JSON.parse(calls.at(-1).body).org_id, identity);
+        await followUp("t1", "next");
+        assert.equal(JSON.parse(calls.at(-1).body).org_id, identity);
+      }
+    });
+  } finally { bag.restore(); }
 });

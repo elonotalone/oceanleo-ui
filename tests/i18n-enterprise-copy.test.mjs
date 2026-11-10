@@ -31,7 +31,6 @@ const TT_PAGES = [
   "src/pages/ByokKeys.tsx",
   "src/pages/PluginsPage.tsx",
   "src/pages/plugins/ConnectorsSection.tsx",
-  "src/shell/PayerSelector.tsx",
   "src/shell/mcp-apps/ComposerAppsBar.tsx",
   "src/lib/org-api.ts",
   "src/shell/PublishToOrgButton.tsx",
@@ -94,7 +93,9 @@ test("非中文语种不含 CJK；zh-TW/ja/ko 允许 CJK 但不得与简体原�
 
 test("ENTERPRISE_COPY_KEYS ⊆ 企业版页面与 org-api 里的 tt() 字面", () => {
   const literals = sevenPageTtLiterals();
-  const extra = ENTERPRISE_COPY_KEYS.filter((key) => !literals.has(key));
+  // Retained translations for older clients; the composer payer picker was removed.
+  const retiredPayerKeys = new Set(["个人钱包", "之前选的团队已停用，或你已不在该团队里。", "已切回个人钱包", "这次谁付钱"]);
+  const extra = ENTERPRISE_COPY_KEYS.filter((key) => !literals.has(key) && !retiredPayerKeys.has(key));
   assert.deepEqual(
     extra.sort(),
     [],

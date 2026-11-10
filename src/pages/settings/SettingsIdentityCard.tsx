@@ -6,9 +6,9 @@ import { listMyOrgs, type OrgSummary } from "../../lib/org-api";
 import {
   PAYER_LAST_KEY,
   PERSONAL_PAYER,
-  persistPayerOrgId,
   persistedPayerOrgId,
 } from "../../lib/payer";
+import { selectAccountIdentity } from "../../shell/AccountMenu";
 import { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator } from "../../ui/menu/FloatingMenu";
 
 function IdentitySwitchChevrons() {
@@ -73,9 +73,8 @@ export function SettingsIdentityCard({
   const identity = selected ? selected.name : tt("个人");
 
   const select = (id: string) => {
-    persistPayerOrgId(id);
-    setPayer(id);
-    window.dispatchEvent(new StorageEvent("storage", { key: PAYER_LAST_KEY, newValue: id || null }));
+    selectAccountIdentity(id);
+    setPayer(persistedPayerOrgId());
     setOpen(false);
   };
 
