@@ -78,6 +78,8 @@ import {
 import { WebsiteArtifactViewer } from "./WebsiteArtifactViewer";
 import { isServerWorkItem, serverWorkFromLibraryItem } from "./works/server-work-item";
 import { ServerWorkViewer } from "./works/ServerWorkViewer";
+import { isLinkWorkItem, linkWorkFromLibraryItem } from "./works/link-work-item";
+import { LinkWorkViewer } from "./works/LinkWorkViewer";
 import { isDisplayableText } from "./website-inline-preview";
 import {
   GamePlayDetail,
@@ -1999,6 +2001,7 @@ export function LibraryItemViewer({
     const serverWork = serverWorkFromLibraryItem(item);
     if (serverWork) return <ServerWorkViewer item={serverWork} />;
   }
+  if (isLinkWorkItem(item) && linkWorkFromLibraryItem(item)) return <LinkWorkViewer item={item} />;
   if (!gate.ready) {
     return <ViewerThumbPoster item={item} containerRef={gate.ref} />;
   }

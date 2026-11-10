@@ -74,7 +74,11 @@ export interface WorkUpdate {
   kind?: WorkKind;
   start_command?: string;
   port?: number;
+  links?: WorkLink[];
+  note?: string;
 }
+
+export interface WorkLink { label: string; url: string }
 
 const KINDS = new Set<WorkKind>(["website", "game", "app", "other"]);
 const STATUSES = new Set<WorkStatus>(["draft", "published", "running", "stopped", "error", "offline"]);

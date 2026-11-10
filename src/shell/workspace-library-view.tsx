@@ -12,6 +12,7 @@ import {
   type WorkspaceLibraryEntry,
 } from "./workspace-library-model";
 import { WorkspaceThumbnail } from "./workspace-library-thumbnail";
+import { linkWorkFromLibraryItem } from "./works/link-work-item";
 import {
   libraryEditorLabel,
   libraryCategoryLabel,
@@ -64,6 +65,10 @@ interface WorkspaceRowProps {
 }
 
 function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>) {
+  const link = entry.libraryItem ? linkWorkFromLibraryItem(entry.libraryItem) : null;
+  if (link) {
+    try { return `🔗 ${new URL(link.links[0]!.url).hostname}`; } catch { return `🔗 ${tt("链接")}`; }
+  }
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   return translateLibraryTypeLabel(tt, entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : libraryCategoryLabel(entry.category || WORKSPACE_KIND_LABELS[kind] || "内容"));
 }

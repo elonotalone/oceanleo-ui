@@ -2,7 +2,10 @@
 
 import { accessToken } from "./auth/client";
 import { gatewayBase } from "./auth/config";
-import { normalizeWork, type Work, type WorkPreviewResult, type WorkStopResult, type WorkUpdate } from "../shell/works/model";
+import { normalizeWork, type Work, type WorkPreviewResult, type WorkStopResult, type WorkUpdate, type WorkLink, type WorkKind } from "../shell/works/model";
+
+export interface CreateLinkWorkInput { title: string; links: WorkLink[]; kind?: WorkKind; note?: string }
+export interface EmbedCheckResult { embeddable: boolean | null; reason: "ok" | "x-frame-options" | "csp-frame-ancestors" | "unreachable" | "invalid" }
 
 export class WorksApiError extends Error {
   readonly status: number;
@@ -88,6 +91,7 @@ function requireWorks(value: unknown): Work[] {
 
 export interface WorksApi {
   list(signal?: AbortSignal): Promise<Work[]>;
+  createLink(input: CreateLinkWorkInput, signal?: AbortSignal): Promise<Work>;
   update(id: string, input: WorkUpdate, signal?: AbortSignal): Promise<Work>;
   remove(id: string, signal?: AbortSignal): Promise<void>;
   preview(id: string, signal?: AbortSignal): Promise<WorkPreviewResult>;
@@ -97,6 +101,10 @@ export interface WorksApi {
 export const worksApi: WorksApi = {
   async list(signal) {
     return requireWorks(await request<WorksEnvelope>("/v1/works", { signal }));
+  },
+  async createLink(input, signal) {
+    const body = await request<WorkEnvelope>("/v1/works/links", { method: "POST", body: JSON.stringify(input), signal });
+    return requireWork(body.work ?? body);
   },
   async update(id, input, signal) {
     const body = await request<WorkEnvelope>(`/v1/works/${encodeURIComponent(id)}`, {
@@ -126,3 +134,15 @@ export const worksApi: WorksApi = {
   },
 
 };
+
+export async function embedCheck(url: string, signal?: AbortSignal): Promise<EmbedCheckResult> {
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== "https:" || parsed.username || parsed.password || parsed.hash) return { embeddable: false, reason: "invalid" };
+    return request<EmbedCheckResult>(`/v1/works/embed-check?url=${encodeURIComponent(parsed.href)}`, { signal });
+  } catch { return { embeddable: false, reason: "invalid" }; }
+}
+
+export const createLinkWork = (input: CreateLinkWorkInput, signal?: AbortSignal) => worksApi.createLink(input, signal);
+export const updateLinkWork = (id: string, input: WorkUpdate, signal?: AbortSignal) => worksApi.update(id, input, signal);
+export const deleteWork = (id: string, signal?: AbortSignal) => worksApi.remove(id, signal);

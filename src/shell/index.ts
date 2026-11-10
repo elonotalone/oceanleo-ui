@@ -491,6 +491,8 @@ export {
   LibraryKindIcon,
   libraryKindLabel,
 } from "./library-viewers";
+export { LinkWorkViewer } from "./works/LinkWorkViewer";
+export { isLinkWorkItem } from "./works/link-work-item";
 // 宗旨 v22（2026-07-12）：素材总栏目（分板块：网站/PPT/图片/文档/幻灯/视频…）——各站右栏
 // 素材库 = 本栏目的子页面切片；完整栏目在 asset 站/`/materials`。
 export { MaterialCatalog, MATERIAL_BOARDS, materialsForBoards } from "./material-catalog";

@@ -45,6 +45,9 @@ import {
   type LibraryItem,
 } from "./library-data";
 import { serverWorkLibraryItem } from "./works/server-work-item";
+import { linkWorkLibraryItem, normalizeLinkWork } from "./works/link-work-item";
+import { worksApi } from "../lib/works-api";
+import type { WorkLink } from "./works/model";
 import {
   LibraryScope,
   type LibraryScopeIntegration,
@@ -105,13 +108,16 @@ const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 function isServerWorkLibraryItem(item: LibraryItem): boolean {
   return item.source === "creation" && item.key.startsWith("server-work:") && Boolean(item.meta?.serverWorkRecord);
 }
+function isLinkWorkLibraryItem(item: LibraryItem): boolean {
+  return item.source === "creation" && Boolean(normalizeLinkWork(item.meta?.link_work));
+}
 
 // 服务端的库结果就是用户实际拥有的内容。这里只去掉非持久项和重复项，不再用
 // 一张固定 artifact type 清单替用户决定哪些内容有资格出现。
 function dedupeDurableItems(items: readonly LibraryItem[]): LibraryItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    if (!isDurableLibraryItem(item) && !isServerWorkLibraryItem(item)) return false;
+    if (!isDurableLibraryItem(item) && !isServerWorkLibraryItem(item) && !isLinkWorkLibraryItem(item)) return false;
     const identity = libraryItemIdentityKey(item);
     if (seen.has(identity)) return false;
     seen.add(identity);
@@ -124,7 +130,7 @@ function dedupeWorkspaceEntries(
 ): WorkspaceLibraryEntry[] {
   const seen = new Set<string>();
   return entries.filter((entry) => {
-    if (!entry.libraryItem || (!isDurableLibraryItem(entry.libraryItem) && !isServerWorkLibraryItem(entry.libraryItem))) {
+    if (!entry.libraryItem || (!isDurableLibraryItem(entry.libraryItem) && !isServerWorkLibraryItem(entry.libraryItem) && !isLinkWorkLibraryItem(entry.libraryItem))) {
       return false;
     }
     const identity = libraryItemIdentityKey(entry.libraryItem);
@@ -448,7 +454,11 @@ function serverWorkItemsFromPage(
     !result.ok ||
     !result.data
   ) return [];
-  return (result.data.serverWorks || []).map(serverWorkLibraryItem);
+  return (result.data.serverWorks || []).map((work) => {
+    const raw = work as unknown as { source_type?: string; link_work?: unknown };
+    const link = normalizeLinkWork(raw.link_work || (raw.source_type === "link" ? work : null));
+    return link ? linkWorkLibraryItem(link) : serverWorkLibraryItem(work);
+  });
 }
 
 function favoriteRefreshWarning(result: LibraryPageResult): string {
@@ -782,6 +792,10 @@ export function MyLibrary({
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [linkTitle, setLinkTitle] = useState("");
+  const [linkNote, setLinkNote] = useState("");
+  const [linkRows, setLinkRows] = useState<WorkLink[]>([{ label: "正式版", url: "" }]);
   const [retryableUploadFiles, setRetryableUploadFiles] = useState<File[]>([]);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
@@ -2065,6 +2079,12 @@ export function MyLibrary({
       {tt("上传文件")}
     </label>
   );
+  const saveLink = async () => {
+    const links = linkRows.map((link) => ({ label: link.label.trim(), url: link.url.trim() }));
+    if (!linkTitle.trim()) return setUploadError(tt("请填写标题"));
+    if (!links.length || links.length > 8 || links.some((link) => !link.label || link.label.length > 40 || !/^https:\/\/[^#\s]+$/i.test(link.url))) return setUploadError(tt("请填写有效的 HTTPS 链接和标签"));
+    try { await worksApi.createLink({ title: linkTitle.trim(), links, note: linkNote.trim() }); setLinkDialogOpen(false); setLinkTitle(""); setLinkNote(""); setLinkRows([{ label: "正式版", url: "" }]); setUploadError(""); window.dispatchEvent(new CustomEvent("oceanleo:artifact-library-change")); } catch { setUploadError(tt("保存失败，请重试")); }
+  };
   const uploadMenu = pageTitle && folderPickable ? (
     <div className="relative shrink-0" data-library-upload-menu="">
       <button
@@ -2128,6 +2148,7 @@ export function MyLibrary({
             folderInputRef.current?.click();
           }}
         />
+        <FloatingMenuItem label={tt("添加链接")} disabled={uploadBlocked} onSelect={() => { setUploadMenuOpen(false); setLinkDialogOpen(true); }} />
       </FloatingMenu>
     </div>
   ) : pageTitle ? (
@@ -2393,6 +2414,18 @@ export function MyLibrary({
         )}
       </div>
     </LibraryScope>
+    {linkDialogOpen && (
+      <div role="dialog" aria-modal="true" className="fixed inset-0 z-[80] grid place-items-center bg-black/30 p-4">
+        <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
+          <h2 className="text-base font-semibold">{tt("添加链接")}</h2>
+          <input className="mt-4 w-full rounded border p-2 text-sm" value={linkTitle} onChange={(e) => setLinkTitle(e.target.value)} placeholder={tt("标题")} />
+          {linkRows.map((link, index) => <div key={index} className="mt-2 flex gap-2"><input className="w-28 rounded border p-2 text-sm" value={link.label} onChange={(e) => setLinkRows((all) => all.map((item, i) => i === index ? { ...item, label: e.target.value } : item))} placeholder={tt("标签")} /><input className="min-w-0 flex-1 rounded border p-2 text-sm" value={link.url} onChange={(e) => setLinkRows((all) => all.map((item, i) => i === index ? { ...item, url: e.target.value } : item))} placeholder="https://" /></div>)}
+          {linkRows.length < 8 && <button type="button" className="mt-2 text-xs underline" onClick={() => setLinkRows((all) => [...all, { label: "开发版", url: "" }])}>{tt("＋ 再加一条")}</button>}
+          <textarea className="mt-3 w-full rounded border p-2 text-sm" value={linkNote} onChange={(e) => setLinkNote(e.target.value)} placeholder={tt("备注（可选）")} />
+          <div className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={() => setLinkDialogOpen(false)}>{tt("取消")}</button><button type="button" className="rounded bg-stone-800 px-3 py-1.5 text-sm text-white" onClick={() => void saveLink()}>{tt("保存")}</button></div>
+        </div>
+      </div>
+    )}
     <LibraryDropOverlay show={dragging} />
     </div>
   );
