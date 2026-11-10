@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { useArtifactRendition } from "./ArtifactRendition";
@@ -304,9 +304,11 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
   const tt = useUI();
   const [result, setResult] = useState<ArtifactApiResult<ArtifactWebsitePreview> | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const startedAt = useRef(0);
   useEffect(() => {
     const controller = new AbortController();
     let renewal: ReturnType<typeof setTimeout> | undefined;
+    if (!startedAt.current || attempt === 0) startedAt.current = Date.now();
     setResult(null);
     void getArtifactWebsitePreview(item, controller.signal).then((next) => {
       if (controller.signal.aborted) return;
@@ -319,6 +321,13 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
           () => setAttempt((value) => value + 1),
           Math.max(1_000, Date.parse(next.data.expiresAt) - Date.now() - 5_000),
         );
+      } else if (!next.ok && Date.now() - startedAt.current < 3 * 60_000) {
+        renewal = setTimeout(() => setAttempt((value) => value + 1), Math.min(8_000, 500 * 2 ** Math.min(attempt, 4)));
+      } else if (!next.ok && Date.now() - startedAt.current >= 3 * 60_000) {
+        setResult({ ok: true, data: {
+          status: "failed", sourceFormat: "website",
+          reason: { code: "preview_timeout", origin: "service", message: "网站预览准备超时，OceanLeo 预览服务出错，我们会修复" },
+        } });
       }
     });
     return () => {
@@ -348,17 +357,24 @@ function WebsiteRevisionPreview({ item }: { item: LibraryItem }) {
     );
   }
   if (result.ok && result.data?.status === "failed") {
+    const reason = result.data.reason;
+    const isSiteFailure = reason?.origin === "site";
     return (
       <Panel>
         <p role="status" className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
-          {tt(result.data.reason?.message || "网站预览启动失败，请重试。")}
+          {tt(isSiteFailure ? "网站自己的代码没能启动" : reason?.message || "OceanLeo 预览服务出错，我们会修复")}
         </p>
+        {isSiteFailure && reason?.log?.length ? (
+          <pre className="max-h-48 w-full max-w-xl overflow-auto whitespace-pre-wrap rounded-lg bg-stone-900 p-3 text-left text-[11px] text-stone-100">
+            {reason.log.join("\n")}
+          </pre>
+        ) : null}
         <button
           type="button"
           onClick={() => setAttempt((value) => value + 1)}
           className="min-h-9 rounded-lg border border-stone-200 bg-white px-3 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
         >
-          {tt("重试")}
+          {tt(isSiteFailure ? "关闭" : "重试")}
         </button>
       </Panel>
     );

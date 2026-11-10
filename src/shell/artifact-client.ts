@@ -2529,8 +2529,10 @@ export interface ArtifactWebsitePreview {
   expiresAt?: string;
   sourceFormat: string;
   stage?: string;
-  reason?: { code: string; message: string };
+  reason?: { code: string; message: string; origin?: "service" | "site"; log?: string[] };
 }
+
+const WEBSITE_PREVIEW_TIMEOUT_MS = 30_000;
 
 function websiteRevisionPath(item: LibraryItem, endpoint: string): string {
   return `/v1/artifacts/${encodeURIComponent(item.artifactId || "")}/${endpoint}?revisionId=${encodeURIComponent(item.revisionId || "")}`;
@@ -2545,7 +2547,7 @@ export async function getArtifactWebsitePreview(
     return { ok: false, code: "invalid-response", error: "无法打开网站预览，请重试。", retryable: false };
   }
   const result = await artifactRequest<Record<string, unknown>>(
-    websiteRevisionPath(item, "website-preview"), { signal },
+    websiteRevisionPath(item, "website-preview"), { signal, timeoutMs: WEBSITE_PREVIEW_TIMEOUT_MS },
   );
   if (!result.ok) return { ...result, data: undefined };
   const rawStatus = String(result.data?.status || "").trim();
@@ -2556,16 +2558,25 @@ export async function getArtifactWebsitePreview(
   const sourceFormat = String(result.data?.source_format || "").trim();
   const rawReason = result.data?.reason;
   const reason = rawReason && typeof rawReason === "object"
-    ? {
-        code: String((rawReason as Record<string, unknown>).code || "preview_failed").trim(),
-        message: String((rawReason as Record<string, unknown>).message || "网站预览启动失败，请重试。").trim(),
-      }
+    ? (() => {
+        const record = rawReason as Record<string, unknown>;
+        const logs = record.log;
+        return {
+          code: String(record.code || "preview_failed").trim(),
+          message: String(record.message || "网站预览启动失败，请重试。").trim(),
+          origin: record.origin === "site" ? "site" as const :
+            record.origin === "service" ? "service" as const : undefined,
+          log: Array.isArray(logs)
+          ? logs.filter((line: unknown): line is string => typeof line === "string").slice(-40)
+          : undefined,
+        };
+      })()
     : undefined;
   const validStarting = status === "starting" && Boolean(result.data?.stage);
   const validFailed = status === "failed" && Boolean(reason?.code && reason.message);
   const validReady = status === "ready" && Boolean(url) && Boolean(sourceFormat)
     && Number.isFinite(Date.parse(expiresAt)) && Date.parse(expiresAt) > Date.now();
-  if (!sourceFormat || (!validStarting && !validFailed && !validReady)) {
+  if ((!sourceFormat && status !== "starting") || (!validStarting && !validFailed && !validReady)) {
     return { ok: false, status: result.status, code: "invalid-response", error: "无法打开网站预览，请重试。", retryable: true };
   }
   return {
@@ -2576,7 +2587,7 @@ export async function getArtifactWebsitePreview(
       status,
       ...(url ? { url } : {}),
       ...(expiresAt ? { expiresAt } : {}),
-      sourceFormat,
+      sourceFormat: sourceFormat || "website",
       ...(result.data?.stage ? { stage: String(result.data.stage) } : {}),
       ...(reason ? { reason } : {}),
     },
