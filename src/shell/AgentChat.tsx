@@ -1418,6 +1418,7 @@ function AgentChatInner({
   // The first rows a page loads are history, not activity, so they only set the baseline.
   const activityTaskId = nativeTask && taskId ? taskId : "";
   const activityRowRef = useRef<{ taskId: string; rowId: number } | null>(null);
+  const sidebarToolCallsRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     const rows = frames.rows;
     const last = rows.length ? rows[rows.length - 1].id : 0;
@@ -1430,9 +1431,23 @@ function AgentChatInner({
       const turnEnd = row.direction === "agent" && row.raw.includes('"stopReason"');
       if (!prompt && !turnEnd) continue;
       notifyHistoryActivity({ taskId: activityTaskId, user: prompt, at: row.received_at });
-      return;
+      break;
     }
-  }, [activityTaskId, frames.rows]);
+    // An OceanLeo sidebar tool (oceanleo_open_page, …_library_open, …) stores its signed ui_action on the task,
+    // not in these rows: when such a call completes (or the turn ends) re-read the task so the page applies it.
+    let readActions = false;
+    const calls = sidebarToolCallsRef.current;
+    for (const row of rows) {
+      if (row.id <= seen.rowId || row.direction !== "agent") continue;
+      if (row.raw.includes('"stopReason"')) { readActions = true; continue; }
+      const callId = /"toolCallId":"([^"]+)"/.exec(row.raw)?.[1];
+      if (!callId) continue;
+      if (row.raw.includes('"sessionUpdate":"tool_call"') && NATIVE_SIDEBAR_TOOL.test(row.raw)) calls.add(callId);
+      if (calls.has(callId) && /"status":"(completed|failed)"/.test(row.raw)) { calls.delete(callId); readActions = true; }
+    }
+    if (calls.size > 64) calls.clear();
+    if (readActions) void refresh(activityTaskId);
+  }, [activityTaskId, frames.rows, refresh]);
   const acpConnected = frames.state === "connected";
   const reducedAcpView = useMemo(() => reduceRows(frames.rows, acpRowsProgram), [frames.rows, acpRowsProgram]);
   // The gateway's background projection (W17): a task whose session ended is never shown as running.
@@ -3749,6 +3764,9 @@ function AgentChatInner({
     </div>
   );
 }
+
+/** OceanLeo tools that can publish a sidebar ui_action (open_page, library_open, settings_open, …). */
+const NATIVE_SIDEBAR_TOOL = /oceanleo_[a-z_]*(?:open|page)/;
 
 interface StreamPane {
   pane: "cloud" | "acp";

@@ -6,7 +6,7 @@
 // and WebSocket are fakes (routes and the frames socket). Pins:
 //   - a native computer task shows ONE stream (`data-agent-stream="acp"`): the
 //     rows the socket delivers, through AcpTranscript; no cloud stream;
-//   - the composer is disabled unless the socket is connected, with one
+//   - Send is blocked (typing never is: operator 2026-11-10) unless the socket is connected, with one
 //     「连接断开」 line; nothing is queued or resent;
 //   - send → POST /send body; another program in the dock → POST /switch;
 //     a program's refusal (409 {"error"}) is not repeated under the composer,
@@ -76,6 +76,7 @@ const agentLibStub = dataModule(`
   export * from ${JSON.stringify(realAgentLibUrl)};
   globalThis.__task = null; globalThis.__stops = 0; globalThis.__followUps = []; globalThis.__followUpBodies = [];
   export async function getTask() {
+    globalThis.__getTaskCalls = (globalThis.__getTaskCalls || 0) + 1;
     return globalThis.__task ? { ok: true, data: globalThis.__task } : { ok: false, status: 404, error: "no task" };
   }
   export async function createTask(input) {
@@ -279,6 +280,10 @@ const rows = {
   permission: (id) => row("agent", { id, method: "session/request_permission", params: { sessionId: "s1",
     toolCall: { toolCallId: "tc1", title: "运行 npm test", status: "pending" },
     options: [{ optionId: "allow", name: "允许", kind: "allow_once" }, { optionId: "deny", name: "拒绝", kind: "reject_once" }] } }),
+  toolStart: (toolCallId, name) => row("agent", { method: "session/update", params: { sessionId: "s1", update: { sessionUpdate: "tool_call",
+    toolCallId, name, title: name, status: "pending", kind: "other", content: [] } } }),
+  toolDone: (toolCallId) => row("agent", { method: "session/update", params: { sessionId: "s1", update: { sessionUpdate: "tool_call_update",
+    toolCallId, status: "completed", content: [{ type: "content", content: { type: "text", text: "{\"ok\":true}" } }] } } }),
   task: (asyncTaskId) => row("agent", { method: "session/update", params: { sessionId: "s1", update: { sessionUpdate: "async_task_spawned",
     asyncTaskId, name: "test runner", taskType: "agent", description: "跑全部测试", canStop: true } } }),
 };
@@ -360,35 +365,53 @@ test("a native computer task shows one frames stream: the socket's rows through 
     const composer = view.composer("acp");
     assert.equal(composer.textContent.startsWith("elon · codex"), true);
     assert.deepEqual(composer.__props.boundExecutionTarget, { kind: "computer", id: "cc_elon", name: "elon" });
-    assert.equal(composer.__props.disabled, false);
+    assert.equal(composer.__props.sendBlocked, false);
     assert.equal(composer.__props.placeholder, "继续追问", "a host placeholder naming OceanLeo does not fit a Codex task");
     assert.doesNotMatch(view.host.textContent, /在下方输入|正在理解问题|正在重新连接|已排队|未发送|重试/);
     assert.equal(globalThis.__acpCalls.some((call) => /timeline|transcript|messages/.test(call.path)), false, "no old reads");
   } finally { await view.unmount(); }
 });
 
-test("while the socket is not connected the composer is disabled with one 「连接断开」 line; a drop reconnects from the last row and resends nothing", async () => {
+test("an agent's OceanLeo sidebar tool (open_page) makes the native task page re-read the task once it completes, so its ui_action opens the sidebar", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: [session("cts_old", "acp", "claude")] });
+  try {
+    await connect();
+    await deliver(rows.prompt(1, "把决定表打开给我"));
+    const before = globalThis.__getTaskCalls || 0;
+    await deliver(rows.toolStart("toolu_open", "mcp__oceanleo__oceanleo_open_page"), rows.chunk("正在打开"));
+    assert.equal(globalThis.__getTaskCalls || 0, before, "a started call publishes nothing yet");
+    await deliver(rows.toolDone("toolu_open"));
+    assert.equal((globalThis.__getTaskCalls || 0) - before, 1, "the completed sidebar tool re-reads the task once");
+    await deliver(rows.toolStart("toolu_bash", "Bash"), rows.toolDone("toolu_bash"));
+    assert.equal((globalThis.__getTaskCalls || 0) - before, 1, "other tools do not re-read the task");
+    await deliver(rows.done(1));
+    assert.equal((globalThis.__getTaskCalls || 0) - before, 2, "the end of the turn re-reads it too");
+  } finally { await view.unmount(); }
+});
+
+test("while the socket is not connected Send is blocked (typing stays allowed) with one 「连接断开」 line; a drop reconnects from the last row and resends nothing", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
-    assert.equal(view.composer("acp").__props.disabled, true, "connecting counts as not connected");
+    assert.equal(view.composer("acp").__props.sendBlocked, true, "connecting counts as not connected");
+    assert.notEqual(view.composer("acp").__props.disabled, true, "typing is never disabled by the network");
     assert.equal(view.host.querySelectorAll("[data-acp-disconnected]").length, 1);
     assert.equal(view.host.querySelector("[data-acp-disconnected]").textContent, "连接断开");
     await connect();
-    assert.equal(view.composer("acp").__props.disabled, false);
+    assert.equal(view.composer("acp").__props.sendBlocked, false);
     assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
     await deliver(rows.prompt(1, "hi"), rows.chunk("hello"));
     const first = socket();
     await type(view, "acp", "这句还没发");
     await act(async () => { first.drop(); });
     await settle();
-    assert.equal(view.composer("acp").__props.disabled, true);
+    assert.equal(view.composer("acp").__props.sendBlocked, true);
     assert.equal(view.host.querySelector("[data-acp-disconnected]").textContent, "连接断开");
     assert.equal(view.composer("acp").__props.value, "这句还没发", "the composer keeps what was typed");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     assert.notEqual(socket(), first, "the plain backoff opened a new socket");
     assert.match(socket().url, new RegExp(`after=${rowSeq}$`), "it continues after the last row delivered");
     await connect();
-    assert.equal(view.composer("acp").__props.disabled, false);
+    assert.equal(view.composer("acp").__props.sendBlocked, false);
     assert.equal(posts("/send").length, 0, "nothing was queued or resent");
   } finally { await view.unmount(); }
 });
@@ -470,7 +493,7 @@ test("a program's refusal (409 with its JSON-RPC error) is not repeated under th
     await submit(view, "acp");
     assert.equal(view.composer("acp").__props.value, "用 gpt-x");
     assert.equal(view.host.querySelector("[data-acp-error]"), null, "the agent's own error row is the one place it shows");
-    assert.equal(view.composer("acp").__props.disabled, false, "the composer re-enables");
+    assert.equal(view.composer("acp").__props.sendBlocked, false, "Send unblocks again");
     globalThis.__acpRoute = (path) => path.endsWith("/send")
       ? { status: 409, body: { detail: { code: "agent_not_running", message: "agent process is not running" } } } : null;
     await submit(view, "acp");
@@ -593,7 +616,7 @@ test("a draft that picked a program: send creates the task's chat session, posts
     await changeConversation(draft, "cloud", { kind: "native", computerId: "cc_elon", computerName: "elon", program: "codex", view: "chat" });
     assert.equal(globalThis.__gateway.filter((call) => call.method === "POST").length, 0, "selection alone creates nothing");
     assert.ok(visible(draft.host.querySelector('[data-agent-stream="acp"]')));
-    assert.equal(draft.composer("acp").__props.disabled, false, "a draft has no socket to wait for");
+    assert.equal(draft.composer("acp").__props.sendBlocked, false, "a draft has no socket to wait for");
     await type(draft, "acp", "第一句");
     await submit(draft, "acp");
     const create = globalThis.__gateway.filter((call) => call.method === "POST" && call.path.endsWith("/task-sessions"));
