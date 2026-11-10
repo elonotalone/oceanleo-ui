@@ -77,7 +77,7 @@ const { ProjectSidePlanCard } = await import(await compileModule(resolve("../oce
 const { ProjectSideAssetsCard } = await import(await compileModule(resolve("../oceanleo/components/project/ProjectSideAssetsCard.tsx"), stubs));
 const { default: NewProjectPage } = await import(await compileModule(resolve("../oceanleo/app/projects/new/page.tsx"), stubs));
 
-async function withCard(Component, { canEdit = true, items = [] } = {}, run) {
+async function withCard(Component, { canEdit = true, items = [], props = {} } = {}, run) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvas = require.cache[canvasEntry];
@@ -99,7 +99,7 @@ async function withCard(Component, { canEdit = true, items = [] } = {}, run) {
   const find = (selector) => document.querySelector(selector);
   const click = (node) => act(async () => node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
   try {
-    await act(async () => root.render(React.createElement(Component, { projectId: "p-one", canEdit })));
+    await act(async () => root.render(React.createElement(Component, { projectId: "p-one", canEdit, ...props })));
     await run({ harness, find, click, window: dom.window });
   } finally {
     await act(async () => root.unmount());
@@ -125,33 +125,38 @@ test("empty Plan header plus opens the plan dialog; the card itself creates noth
   });
 });
 
-test("empty Assets header plus opens the assets dialog; uploading lives in the dialog", async () => {
-  await withCard(ProjectSideAssetsCard, {}, async ({ harness, find, click }) => {
+// 2026-11-10 sidebar wave: the Assets card opens the product's shared right sidebar on the project's materials
+// (onOpenAssets) — operator: 「点击这个页面中的assets为什么不打开右侧侧边栏中的library？」. No Assets dialog any more.
+test("empty Assets header plus opens the shared sidebar on the project's materials; no dialog, no file input", async () => {
+  let opened = 0;
+  await withCard(ProjectSideAssetsCard, { props: { onOpenAssets: () => { opened += 1; } } }, async ({ harness, find, click }) => {
     const plus = find('[data-project-config-action="add"]');
     assert.equal(plus.getAttribute("aria-label"), "添加资产");
     assert.equal(find('[data-project-config-action="open"]'), null);
     assert.equal(find('input[type="file"]'), null, "the card carries no file input");
     await click(plus);
-    const dialog = find("[data-config-dialog]");
-    assert.ok(dialog);
-    assert.equal(dialog.querySelector("[data-assets-detail]").getAttribute("data-can-edit"), "true");
+    assert.equal(opened, 1);
+    assert.equal(find("[data-config-dialog]"), null);
     assert.deepEqual(harness.calls, []);
   });
 });
 
-test("read-only members cannot add and retain access to populated detail dialogs", async () => {
-  for (const [Component, items, detail] of [
-    [ProjectSidePlanCard, [{ id: "t", title: "To do", status: "todo" }], "[data-plan-detail]"],
-    [ProjectSideAssetsCard, [{ id: "a", name: "brief.txt", kind: "file", size_bytes: 5 }], "[data-assets-detail]"],
-  ]) {
-    await withCard(Component, { canEdit: false, items }, async ({ find, click }) => {
-      assert.equal(find('[data-project-config-action="add"]'), null);
-      assert.equal(find('input[type="file"]'), null);
-      await click(find("[data-project-config-card]"));
-      assert.ok(find('[role="dialog"]'));
-      assert.equal(find(detail).getAttribute("data-can-edit"), "false");
-    });
-  }
+test("read-only members cannot add and still open: plan in its dialog, assets in the shared sidebar", async () => {
+  await withCard(ProjectSidePlanCard, { canEdit: false, items: [{ id: "t", title: "To do", status: "todo" }] }, async ({ find, click }) => {
+    assert.equal(find('[data-project-config-action="add"]'), null);
+    assert.equal(find('input[type="file"]'), null);
+    await click(find("[data-project-config-card]"));
+    assert.ok(find('[role="dialog"]'));
+    assert.equal(find("[data-plan-detail]").getAttribute("data-can-edit"), "false");
+  });
+  let opened = 0;
+  await withCard(ProjectSideAssetsCard, { canEdit: false, items: [{ id: "a", name: "brief.txt", kind: "file", size_bytes: 5 }], props: { onOpenAssets: () => { opened += 1; } } }, async ({ find, click }) => {
+    assert.equal(find('[data-project-config-action="add"]'), null);
+    assert.equal(find('input[type="file"]'), null);
+    await click(find("[data-project-config-card]"));
+    assert.equal(opened, 1);
+    assert.equal(find('[role="dialog"]'), null);
+  });
 });
 
 test("project creation submits without a category and opens the newly created project", async () => {

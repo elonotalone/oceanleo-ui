@@ -423,7 +423,9 @@ const asset = (id, kind, updated_at, extra = {}) => ({
   ...extra,
 });
 
-test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，打开资产大弹窗（上传在弹窗 Add ▾ 里）", skipPortal, async () => {
+// 2026-11-10 sidebar wave (operator: 「点击这个页面中的assets为什么不打开右侧侧边栏中的library？」): the card opens the
+// product's shared right sidebar on the project's materials through onOpenAssets; there is no Assets dialog any more.
+test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，打开右侧边栏的项目素材（不再有资产大弹窗）", skipPortal, async () => {
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, text, click }) => {
     let uploads = 0;
@@ -434,38 +436,29 @@ test("资产卡 · 空、编辑者：一句话 + 右上 +「添加资产」，�
         return ok({});
       },
     };
-    await renderRoot(h(Assets, { projectId: "p1", canEdit: true }));
+    let opened = 0;
+    await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onOpenAssets: () => (opened += 1) }));
     assert.match(text(), /还没有文件。上传或从 Library 导入资料，团队成员都能看到。/);
     assert.equal(find('input[type="file"]'), null, "the card no longer carries its own file input");
     assert.equal(find('[data-project-config-action="open"]'), null);
     const plus = find('[data-project-config-action="add"]');
     assert.equal(plus.getAttribute("aria-label"), "添加资产");
     await click(plus);
-    const dialog = find("[data-config-dialog]");
-    assert.ok(dialog);
-    assert.equal(dialog.getAttribute("data-testid"), "project-assets-dialog");
-    assert.equal(dialog.getAttribute("data-size"), "xl");
-    assert.equal(dialog.querySelector('[data-stub-tab="ProjectAssetsTab"]').getAttribute("data-can-edit"), "true");
+    assert.equal(opened, 1, "+ opens the shared sidebar on the project's materials");
+    assert.equal(find("[data-config-dialog]"), null, "no Assets dialog");
     assert.equal(uploads, 0);
   });
 });
 
-test("资产卡 · 弹窗里有子弹窗或上传进行中（holdOpen）时，✕ 不关大弹窗（A-14）", skipPortal, async () => {
+test("资产卡 · 整卡点击打开右侧边栏（没有自己的弹窗，也就没有 holdOpen）", skipPortal, async () => {
   const { Assets } = await load();
-  await withDom(async ({ renderRoot, find, click, wait }) => {
+  await withDom(async ({ renderRoot, find, click }) => {
     globalThis.__w10.api = { listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
-    let closed = 0;
-    globalThis.__w10.holdOpen = true;
-    try {
-      await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onDialogClosed: () => (closed += 1) }));
-      await click("[data-project-config-card]");
-      await click("[data-config-dialog-close]");
-      await wait(400);
-      assert.ok(find("[data-config-dialog]"), "held open while the tab is busy");
-      assert.equal(closed, 0);
-    } finally {
-      globalThis.__w10.holdOpen = false;
-    }
+    let opened = 0;
+    await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onOpenAssets: () => (opened += 1) }));
+    await click("[data-project-config-card]");
+    assert.equal(opened, 1);
+    assert.equal(find("[data-config-dialog]"), null);
   });
 });
 
@@ -473,16 +466,17 @@ test("资产卡 · 空、只读成员：没有上传入口，也没有 +；仍�
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, text, click }) => {
     globalThis.__w10.api = { listProjectAssets: () => ok({ items: [], usage: { used_bytes: 0, limit_bytes: 10 } }) };
-    await renderRoot(h(Assets, { projectId: "p1", canEdit: false }));
+    let opened = 0;
+    await renderRoot(h(Assets, { projectId: "p1", canEdit: false, onOpenAssets: () => (opened += 1) }));
     assert.match(text(), /还没有文件。有编辑权限的成员上传后会显示在这里。/);
     assert.equal(find('input[type="file"]'), null);
     assert.equal(find("[data-project-config-action]"), null);
     await click("[data-project-config-card]");
-    assert.equal(find('[data-config-dialog] [data-stub-tab="ProjectAssetsTab"]').getAttribute("data-can-edit"), "false");
+    assert.equal(opened, 1, "read-only members still open the project's materials in the sidebar");
   });
 });
 
-test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个，整卡打开资产大弹窗", skipPortal, async () => {
+test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个，整卡打开右侧边栏的项目素材", skipPortal, async () => {
   const { Assets } = await load();
   await withDom(async ({ renderRoot, find, findAll, text, click }) => {
     globalThis.__w10.api = {
@@ -497,7 +491,8 @@ test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个�
           usage: { used_bytes: 5 * 1024 * 1024, limit_bytes: 1024 ** 3 },
         }),
     };
-    await renderRoot(h(Assets, { projectId: "p1", canEdit: true }));
+    let opened = 0;
+    await renderRoot(h(Assets, { projectId: "p1", canEdit: true, onOpenAssets: () => (opened += 1) }));
     assert.equal(find("[data-project-config-count]").textContent, "4");
     assert.match(text(), /3 个文件 · 1 个文件夹/);
     assert.match(text(), /已用 5\.0 MB \/ 1\.00 GB/);
@@ -508,9 +503,8 @@ test("资产卡 · 有文件：根层条目数、用量、最近改动的 3 个�
     assert.match(rows[2], /中\.png/);
 
     await click("[data-project-config-card]");
-    const tab = find('[data-config-dialog] [data-stub-tab="ProjectAssetsTab"]');
-    assert.ok(tab);
-    assert.equal(tab.getAttribute("data-can-edit"), "true");
+    assert.equal(opened, 1);
+    assert.equal(find("[data-config-dialog]"), null);
   });
 });
 
@@ -618,7 +612,7 @@ test("读取失败后被通知重读：先显示读取中，不闪一句还不�
 // 容器：顺序 + 任一弹窗关掉，三张卡一起重读
 // ---------------------------------------------------------------------------
 
-test("三张卡的顺序是 动态、计划、资产；任一弹窗关掉，三张一起重读", skipPortal, async () => {
+test("三张卡的顺序是 动态、计划、资产；动态/计划的弹窗关掉，三张一起重读（资产卡没有弹窗）", skipPortal, async () => {
   const { Cards } = await load();
   await withDom(async ({ renderRoot, findAll }) => {
     globalThis.__w10.cards = {};
@@ -633,7 +627,6 @@ test("三张卡的顺序是 动态、计划、资产；任一弹窗关掉，三�
 
     await act(async () => globalThis.__w10.cards.plan.onDialogClosed());
     assert.deepEqual(cards().map((node) => node.getAttribute("data-refresh")), ["1", "1", "1"]);
-    await act(async () => globalThis.__w10.cards.assets.onDialogClosed());
-    assert.deepEqual(cards().map((node) => node.getAttribute("data-refresh")), ["2", "2", "2"]);
+    assert.equal(typeof globalThis.__w10.cards.assets.onDialogClosed, "undefined", "the Assets card opens the sidebar, not a dialog");
   });
 });
