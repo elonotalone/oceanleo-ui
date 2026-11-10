@@ -95,6 +95,7 @@ import { W3_L5D_MESSAGES } from "./w3-l5d-copy";
 import { W2_CN2_MESSAGES } from "./w2-cn2-copy";
 import { W3_M3_MESSAGES } from "./w3-m3-copy";
 import { W4_SIDEBAR_MESSAGES } from "./w4-sidebar-copy";
+import { SERVER_NOTICE_MESSAGES } from "./server-notice-copy";
 import { RD_SERVICE_STATUS_MESSAGES } from "./rd-service-status-copy";
 import { NATIVE_MIDTURN_MESSAGES } from "./native-midturn-copy";
 import { W3_M4_MESSAGES } from "./w3-m4-copy";
@@ -201,6 +202,7 @@ const PARTS = [
   W2_CN2_MESSAGES,
   W3_M3_MESSAGES,
   W4_SIDEBAR_MESSAGES,
+  SERVER_NOTICE_MESSAGES,
   RD_SERVICE_STATUS_MESSAGES,
   NATIVE_MIDTURN_MESSAGES,
   W3_M4_MESSAGES,

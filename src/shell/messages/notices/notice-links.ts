@@ -16,6 +16,7 @@ import { isBayPath, parseBayParam, BAY_PARAM } from "../../bay/shell/bay-links";
 import type { BayTarget } from "../../bay/shell/bay-state";
 import { parseCallDeepLink } from "../call/incoming/deep-link";
 import { isCaseId, parseImDeepLink } from "../host-state";
+import { SERVER_NOTICE_KIND, serverNoticeLink } from "./server-notice";
 
 export type NoticeTarget =
   | { kind: "none" }
@@ -160,6 +161,10 @@ function decodeSegment(segment: string): string {
 
 /** 一条通知点开后该去哪。 */
 export function classifyNoticeLink(input: NoticeLinkInput, ctx: NoticeLinkContext = {}): NoticeTarget {
+  if (input.kind === SERVER_NOTICE_KIND) {
+    const href = serverNoticeLink(input.link);
+    return href ? { kind: "external", href } : { kind: "none" };
+  }
   const link = parseLink(input.link, ctx);
   const local = link && link.ours ? classifyOurs(link) : null;
 

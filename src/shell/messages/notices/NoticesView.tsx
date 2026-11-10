@@ -11,6 +11,8 @@ import { NoticeBellIcon, NoticeChevronIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
 import { noticeActionable, openNoticeDetail } from "./open-notice";
 import { noticeStore, useNoticeState } from "./use-notices";
+import { SERVER_NOTICE_KIND } from "./server-notice";
+import { ServerNoticeCounts, ServerNoticeMeta } from "./ServerNoticeMeta";
 
 export interface NoticesViewProps {
   onBack: () => void;
@@ -129,21 +131,23 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                           unread ? "font-semibold" : "font-medium text-black/55 dark:text-white/55"
                         }`}
                       >
-                        {tt(item.title)}
+                        {item.kind === SERVER_NOTICE_KIND ? item.title : tt(item.title)}
                       </span>
                       <span className="shrink-0 text-[11px] text-black/35 dark:text-white/35">
                         {formatNoticeTime(item.created_at, now, yesterday)}
                       </span>
                     </span>
+                    <ServerNoticeMeta item={item} />
                     {item.body ? (
                       <span
                         className={`mt-0.5 line-clamp-2 block whitespace-pre-line text-[12px] leading-snug ${
                           unread ? "text-black/60 dark:text-white/60" : "text-black/40 dark:text-white/40"
                         }`}
                       >
-                        {tt(item.body)}
+                        {item.kind === SERVER_NOTICE_KIND ? item.body : tt(item.body)}
                       </span>
                     ) : null}
+                    <ServerNoticeCounts item={item} />
                   </span>
                   {go ? (
                     <span className="mt-1 shrink-0 text-black/25 dark:text-white/25" data-notice-go="">
