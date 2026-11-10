@@ -30,8 +30,8 @@ export function LinkWorkActions({ item, onDeleted }: { item: LibraryItem; onDele
   };
   return <>
     <a href={work.links[0]?.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]">{tt("在新标签页打开")}</a>
-    <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>{tt("编辑")}</Button>
-    <Button size="sm" variant="danger" onClick={() => setDeleting(true)}>{tt("删除")}</Button>
+    <Button variant="secondary" onClick={() => setEditing(true)}>{tt("编辑")}</Button>
+    <Button variant="danger" onClick={() => setDeleting(true)}>{tt("删除")}</Button>
     {error && <span role="alert">{error}</span>}
     {deleting && <ConfirmDialog title="确认删除这个链接项目吗？" confirmLabel="删除" danger onCancel={() => setDeleting(false)} onConfirm={remove} />}
     {editing && <LinkWorkDialog mode="edit" work={work} onClose={() => setEditing(false)} />}

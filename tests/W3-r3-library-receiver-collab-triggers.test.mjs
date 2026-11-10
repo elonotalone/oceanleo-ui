@@ -223,6 +223,8 @@ const { ArtifactLibrary } = await import(
     `),
     "../ui": dataModule(`
       export function Modal({ children }) { return children; }
+      export function Button() { return null; }
+      export function ConfirmDialog() { return null; }
       export function SkeletonCard() { return null; }
       export function EmptyState() { return null; }
       export function timeAgo() { return ""; }
@@ -231,6 +233,7 @@ const { ArtifactLibrary } = await import(
     "./LibraryLayout": dataModule(`export function LibraryToolbar() { return null; }`),
     "./collection-chrome": dataModule(`
       export const COLLECTION_ACTION_BTN_PRIMARY = "";
+      export const COLLECTION_ACTION_BTN_GHOST = "";
       export const COLLECTION_CARD_GRID_CLASS = "";
       export const COLLECTION_CARD_GRID_STYLE = {};
       export function CollectionCardGrid({ children }) { return children; }
@@ -300,6 +303,8 @@ const { CollabActionSlotInner } = await import(
       export function Modal({ children, labelledBy }) {
         return jsx("div", { role: "dialog", "aria-labelledby": labelledBy, children });
       }
+      export function Button({ children, onClick }) { return jsx("button", { type: "button", onClick, children }); }
+      export function ConfirmDialog() { return null; }
     `),
     "../../lib/im/client": dataModule(`
       export function useImEnabled() { return true; }

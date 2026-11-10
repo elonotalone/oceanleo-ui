@@ -88,7 +88,7 @@ const stubs = {
     export async function accessToken() { return null; }
     export const AUTH_STATE_EVENT = 'g3-verified-auth';
     export async function getUserIdSnapshot() { return { available: true, userId: 'owner' }; }`),
-  '../ui': dataModule(`export function Modal() { return null; } export function SkeletonCard() { return null; } export function EmptyState() { return null; } export function timeAgo() { return ''; }`),
+  '../ui': dataModule(`export function Modal() { return null; } export function Button() { return null; } export function ConfirmDialog() { return null; } export function SkeletonCard() { return null; } export function EmptyState() { return null; } export function timeAgo() { return ''; }`),
   './StorageCapacityStrip': dataModule(`export function StorageCapacityStrip() { return null; }`),
   // Keep the real TaskFileWorkspace/editor composition. Only unrelated chat
   // orchestration is replaced to break AgentChat→ResultCanvas→Library's cycle.

@@ -36,7 +36,7 @@ function WorkspaceEntryMenu({ items }: { items: readonly WorkspaceEntryMenuItem[
   const [open, setOpen] = useState(false);
   if (!items.length) return null;
   return <div className="absolute right-2 top-2 z-10" onClick={(event) => event.stopPropagation()}>
-    <IconButton ref={anchorRef} size="sm" label={tt("更多操作")} aria-haspopup="menu" aria-expanded={open}
+    <IconButton ref={anchorRef} label={tt("更多操作")} aria-haspopup="menu" aria-expanded={open}
       icon={<span aria-hidden="true">⋯</span>} onClick={() => setOpen((value) => !value)} />
     <FloatingMenu open={open} anchorRef={anchorRef} onClose={() => setOpen(false)} ariaLabel={tt("更多操作")}>
       {items.map((item, index) => <FloatingMenuItem key={`${String(item.label)}:${index}`} label={item.label} danger={item.danger} disabled={item.disabled}
