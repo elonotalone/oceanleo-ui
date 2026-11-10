@@ -2136,6 +2136,10 @@
         },
         {
           "kind": "star",
+          "source": "./task-link"
+        },
+        {
+          "kind": "star",
           "source": "./taxonomy"
         },
         {
@@ -3715,6 +3719,16 @@
         {
           "kind": "type",
           "name": "ProgramAuth",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProgramLoginInfo",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "ProgramLoginMethod",
           "source": ""
         },
         {
@@ -5314,6 +5328,12 @@
         },
         {
           "kind": "named",
+          "name": "deleteTaskRow",
+          "importedName": "deleteTaskRow",
+          "source": "./task-row-actions"
+        },
+        {
+          "kind": "named",
           "name": "describePluginCommands",
           "importedName": "describePluginCommands",
           "source": "./plugin-command"
@@ -5812,6 +5832,12 @@
         },
         {
           "kind": "named",
+          "name": "isLinkWorkItem",
+          "importedName": "isLinkWorkItem",
+          "source": "./works/link-work-item"
+        },
+        {
+          "kind": "named",
           "name": "isMaterialDownloadEntry",
           "importedName": "isMaterialDownloadEntry",
           "source": "./material-library-download"
@@ -6061,6 +6087,12 @@
           "name": "LibraryToolbarProps",
           "importedName": "LibraryToolbarProps",
           "source": "./LibraryLayout"
+        },
+        {
+          "kind": "named",
+          "name": "LinkWorkViewer",
+          "importedName": "LinkWorkViewer",
+          "source": "./works/LinkWorkViewer"
         },
         {
           "kind": "named",
@@ -6325,6 +6357,12 @@
           "name": "ModelPickerProps",
           "importedName": "ModelPickerProps",
           "source": "./ModelPicker"
+        },
+        {
+          "kind": "named",
+          "name": "MoveTaskProjectDialog",
+          "importedName": "MoveTaskProjectDialog",
+          "source": "./HistoryRowActions"
         },
         {
           "kind": "named",
@@ -6724,6 +6762,18 @@
         },
         {
           "kind": "named",
+          "name": "putPending",
+          "importedName": "putPending",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "named",
+          "name": "readPending",
+          "importedName": "readPending",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "named",
           "name": "readPluginCommandState",
           "importedName": "readPluginCommandState",
           "source": "./plugin-command"
@@ -7060,6 +7110,12 @@
         },
         {
           "kind": "named",
+          "name": "settlePending",
+          "importedName": "settlePending",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "named",
           "name": "ShellChromeProvider",
           "importedName": "ShellChromeProvider",
           "source": "./ShellChrome"
@@ -7186,9 +7242,33 @@
         },
         {
           "kind": "named",
+          "name": "TaskActionCallbacks",
+          "importedName": "TaskActionCallbacks",
+          "source": "./TaskActionsMenu"
+        },
+        {
+          "kind": "named",
+          "name": "TaskActionsMenu",
+          "importedName": "TaskActionsMenu",
+          "source": "./TaskActionsMenu"
+        },
+        {
+          "kind": "named",
+          "name": "TaskActionsMenuProps",
+          "importedName": "TaskActionsMenuProps",
+          "source": "./TaskActionsMenu"
+        },
+        {
+          "kind": "named",
           "name": "taskAttachmentLibraryAction",
           "importedName": "taskAttachmentLibraryAction",
           "source": "./task-attachment-open"
+        },
+        {
+          "kind": "named",
+          "name": "taskQuoteHref",
+          "importedName": "taskQuoteHref",
+          "source": "./TaskActionsMenu"
         },
         {
           "kind": "named",
@@ -7261,6 +7341,12 @@
           "name": "TemplateShowcaseProps",
           "importedName": "TemplateShowcaseProps",
           "source": "./ImageLightbox"
+        },
+        {
+          "kind": "named",
+          "name": "updateTaskRow",
+          "importedName": "updateTaskRow",
+          "source": "./task-row-actions"
         },
         {
           "kind": "named",
@@ -7414,6 +7500,12 @@
         },
         {
           "kind": "named",
+          "name": "usePending",
+          "importedName": "usePending",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "named",
           "name": "usePluginCommandSurface",
           "importedName": "usePluginCommandSurface",
           "source": "./plugin-command"
@@ -7441,6 +7533,12 @@
           "name": "useShellChrome",
           "importedName": "useShellChrome",
           "source": "./ShellChrome"
+        },
+        {
+          "kind": "named",
+          "name": "useTaskRowActions",
+          "importedName": "useTaskRowActions",
+          "source": "./task-row-actions"
         },
         {
           "kind": "named",
@@ -8066,6 +8164,24 @@
         },
         {
           "kind": "type",
+          "name": "PendingSend",
+          "importedName": "PendingSend",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "type",
+          "name": "PendingSendInput",
+          "importedName": "PendingSendInput",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "type",
+          "name": "PendingSettle",
+          "importedName": "PendingSettle",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "type",
           "name": "PluginCommandParam",
           "importedName": "PluginCommandParam",
           "source": "./plugin-command"
@@ -8632,6 +8748,11 @@
         {
           "kind": "named",
           "name": "libraryItemPosterUrl",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "libraryItemSection",
           "source": ""
         },
         {
