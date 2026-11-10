@@ -166,12 +166,15 @@ for(const [id,title] of [['older-artifact','Older document'],['link-work:older',
 }));
 
 test('project captions cap visible names at three in both grid and list cards',async()=>{
- const {WorkspaceCard,WorkspaceListRow}=await import(await compileModule('src/shell/workspace-library-view.tsx',libraryOverrides));
+ const membershipUrl=await compileModule('src/shell/library-project-membership.ts',libraryOverrides);
+ const {LibraryProjectContext}=await import(membershipUrl);
+ const {WorkspaceCard,WorkspaceListRow}=await import(await compileModule('src/shell/workspace-library-view.tsx',{...libraryOverrides,'./library-project-membership':membershipUrl}));
  const {linkWorkLibraryItem}=await import('../src/shell/works/link-work-item.ts');
- const item=linkWorkLibraryItem(link);item.meta.library_projects=['One','Two','Three','Four'].map((name,id)=>({id:String(id),name}));
+ const item=linkWorkLibraryItem(link);
+ const lookup=new Map([['work:w1',['One','Two','Three','Four'].map((name,id)=>({id:String(id),name}))]]);
  const entry={id:item.key,title:item.title,libraryItem:item};
  for(const Component of [WorkspaceCard,WorkspaceListRow]){
-  const mounted=await render(React.createElement(Component,{entry,onOpen(){},accent:'#000'}));
+  const mounted=await render(React.createElement(LibraryProjectContext.Provider,{value:lookup},React.createElement(Component,{entry,onOpen(){},accent:'#000'})));
   try{assert.match(mounted.host.textContent,/One、Two、Three等 4 个项目/);assert.doesNotMatch(mounted.host.textContent,/Four/);}finally{await dispose(mounted);}
  }
 });

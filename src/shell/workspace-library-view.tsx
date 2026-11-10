@@ -4,7 +4,7 @@ import type {
   DragEvent as ReactDragEvent,
   ReactNode,
 } from "react";
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { CollectionItemCard, CollectionItemRow } from "./collection-items";
 import { useUI } from "../i18n/ui/useUI";
 import { LibraryItemViewer } from "./library-viewers";
@@ -14,7 +14,7 @@ import {
 } from "./workspace-library-model";
 import { WorkspaceThumbnail } from "./workspace-library-thumbnail";
 import { linkWorkFromLibraryItem } from "./works/link-work-item";
-import { projectNames } from "./library-project-membership";
+import { LibraryProjectContext, projectNames, type LibraryProjectLookup } from "./library-project-membership";
 import { librarySourceLabel } from "./library-sections";
 import {
   libraryEditorLabel,
@@ -117,14 +117,15 @@ function entryBaseMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof u
   return entry.libraryItem ? <>{kindLabel} · {tt(librarySourceLabel(entry.libraryItem))}</> : kindLabel;
 }
 
-function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>) {
-  const names = entry.libraryItem ? projectNames(entry.libraryItem) : [];
+function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>, projects: LibraryProjectLookup) {
+  const names = entry.libraryItem ? projectNames(entry.libraryItem, projects) : [];
   return <>{entryBaseMetadata(entry, tt)}{names.length > 0 ? <> · {names.slice(0, 3).join("、")}{names.length > 3 ? tt("等 {count} 个项目", { count: names.length }) : ""}</> : null}</>;
 }
 
 export function WorkspaceCard({ entry, onOpen, accent, dragProps, actions, menuItems }: WorkspaceRowProps & { accent: string }) {
   const tt = useUI();
-  return <CollectionItemCard title={entry.title} metadata={entryMetadata(entry, tt)} onOpen={onOpen}
+  const projects = useContext(LibraryProjectContext);
+  return <CollectionItemCard title={entry.title} metadata={entryMetadata(entry, tt, projects)} onOpen={onOpen}
     openLabel={tt("预览「{title}」", { title: entry.title })} containerProps={dragProps} actions={actions}
     floatingActions={menuItems?.length ? <WorkspaceEntryMenu items={menuItems} /> : undefined}
     cover={<WorkspaceThumbnail url={entry.thumbUrl} item={entry.libraryItem} alt={entry.title}
@@ -134,7 +135,8 @@ export function WorkspaceCard({ entry, onOpen, accent, dragProps, actions, menuI
 
 export function WorkspaceListRow({ entry, onOpen, dragProps, actions, menuItems }: WorkspaceRowProps) {
   const tt = useUI();
-  return <CollectionItemRow title={entry.title} metadata={entryMetadata(entry, tt)} onOpen={onOpen}
+  const projects = useContext(LibraryProjectContext);
+  return <CollectionItemRow title={entry.title} metadata={entryMetadata(entry, tt, projects)} onOpen={onOpen}
     openLabel={tt("预览「{title}」", { title: entry.title })} containerProps={dragProps} actions={actions}
     floatingActions={menuItems?.length ? <WorkspaceEntryMenu items={menuItems} /> : undefined}
     cover={<WorkspaceThumbnail url={entry.thumbUrl} item={entry.libraryItem} alt={entry.title}

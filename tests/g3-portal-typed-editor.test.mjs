@@ -1,10 +1,27 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { beforeEach, afterEach } from 'node:test';
 import React, { act } from 'react';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
 import { compileSubject, mountDom, reactUrl, click } from './g3-test-support.mjs';
 import { editorCapabilityFor } from '../src/shell/workbench-routes.ts';
 import { resetLibraryCurrentIdentityForTests } from '../src/shell/library-current-identity.ts';
+
+let originalFetch;
+let membershipReads;
+beforeEach(() => {
+  originalFetch = globalThis.fetch;
+  membershipReads = 0;
+  globalThis.fetch = async input => {
+    if (new URL(String(input)).pathname === '/v1/library/project-memberships') {
+      membershipReads += 1;
+      return new Response(JSON.stringify({ items: (globalThis.__g3library?.items || []).map(item => ({
+        kind: 'artifact', id: item.artifactId, projects: [{ id: 'project-a', name: '仪表盘' }],
+      })) }), { headers: { 'Content-Type': 'application/json' } });
+    }
+    throw new Error('Unexpected test request');
+  };
+});
+afterEach(() => { globalThis.fetch = originalFetch; });
 
 const ui = dataModule(`export function useUI() { return (text, values) => values?.title ? text.replace('{title}', values.title) : text; }`);
 const client = dataModule(`
@@ -166,7 +183,9 @@ for (const [item, route] of CASES) {
       assert.equal(editor?.dataset.editor, route);
       assert.equal(editor?.dataset.artifact, item.artifactId);
       assert.equal(editor?.dataset.revision, item.revisionId);
+      assert.equal(membershipReads, 1);
       assert.equal(globalThis.__g3library.editor.item, item);
+      assert.equal(Object.hasOwn(globalThis.__g3library.editor.item.meta, 'library_projects'), false);
       assert.equal(globalThis.__g3library.editor.linkUrl, item.url);
       // The new Library task belongs to the current portal host, not the
       // artifact's origin app/site. Artifact identity and origin stay unchanged.

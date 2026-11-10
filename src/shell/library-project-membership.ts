@@ -1,5 +1,6 @@
 "use client";
 
+import { createContext } from "react";
 import { accessToken } from "../lib/auth/client";
 import { gatewayBase } from "../lib/auth/config";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
@@ -12,10 +13,14 @@ export function libraryReference(item: LibraryItem): { kind: "artifact" | "work"
   if (work) return { kind: "work", id: work.id };
   return isDurableLibraryItem(item) ? { kind: "artifact", id: item.artifactId } : null;
 }
-export function projectNames(item: LibraryItem): string[] {
-  const projects = item.meta.library_projects;
-  return Array.isArray(projects) ? projects.flatMap(p => typeof p?.name === "string" ? [p.name] : []) : [];
+// Presentation metadata stays separate from the authoritative item sent to actions/editors.
+export type LibraryProjectLookup = ReadonlyMap<string, readonly LibraryProject[]>;
+export const LibraryProjectContext = createContext<LibraryProjectLookup>(new Map());
+export function projectNames(item: LibraryItem, lookup: LibraryProjectLookup): string[] {
+  const reference = libraryReference(item);
+  return reference ? (lookup.get(`${reference.kind}:${reference.id}`) || []).map(project => project.name) : [];
 }
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await accessToken();
   const response = await fetch(`${gatewayBase()}${path}`, {

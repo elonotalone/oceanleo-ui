@@ -99,7 +99,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { addProjectLibraryReference, removeProjectLibraryReference, loadEditableProjects, loadProjectMemberships, loadLinkWorkItem, libraryReference, projectNames, type LibraryProjectMembership } from "./library-project-membership";
+import { addProjectLibraryReference, removeProjectLibraryReference, loadEditableProjects, loadProjectMemberships, loadLinkWorkItem, libraryReference, projectNames, LibraryProjectContext, type LibraryProjectMembership } from "./library-project-membership";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
@@ -642,7 +642,6 @@ function toEntry(
       (item.siteId ? ` · ${item.siteId}` : ""),
     keywords: [
       item.kind,
-      ...projectNames(item),
       item.siteId,
       uploaded ? "上传 文件" : userAsset ? "素材 收藏" : "作品 生成",
       item.favorite ? "收藏" : "",
@@ -740,6 +739,9 @@ export function MyLibrary({
 }: MyLibraryProps) {
   const tt = useUI();
   const [memberships, setMemberships] = useState<LibraryProjectMembership[]>([]);
+  const projectLookup = useMemo(() => new Map(
+    memberships.map(membership => [`${membership.kind}:${membership.id}`, membership.projects]),
+  ), [memberships]);
   const membershipEpoch = useRef(0);
   useEffect(() => {
     const controller = new AbortController();
@@ -913,12 +915,8 @@ export function MyLibrary({
         ),
         ...favoriteItems,
       ]),
-    ).map(item => {
-      const ref = libraryReference(item);
-      const projects = ref ? memberships.find(m => m.kind === ref.kind && m.id === ref.id)?.projects || [] : [];
-      return { ...item, meta: { ...item.meta, library_projects: projects } };
-    });
-  }, [chatItems, favoriteItems, ownedItems, memberships]);
+    );
+  }, [chatItems, favoriteItems, ownedItems]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -1522,13 +1520,7 @@ export function MyLibrary({
     }).catch(() => { if (!controller.signal.aborted) setDirectItem({ nonce, item: null }); });
     return () => controller.abort();
   }, [action?.nonce, directItemId, restoreGeneration, clearPreviewIntent]);
-  const resolvedDirectItem = useMemo(() => {
-    const item = directItem?.nonce === action?.nonce ? directItem?.item : null;
-    if (!item) return null;
-    const ref = libraryReference(item);
-    const projects = ref ? memberships.find(m => m.kind === ref.kind && m.id === ref.id)?.projects || [] : [];
-    return { ...item, meta: { ...item.meta, library_projects: projects } };
-  }, [directItem, action?.nonce, memberships]);
+  const resolvedDirectItem = directItem?.nonce === action?.nonce ? directItem?.item : null;
   // Do not let the shelf consume the action before its requested item exists.
   const shelfAction: WorkspaceActionEnvelope | null | undefined = directItemId && action
     ? resolvedDirectItem
@@ -2139,7 +2131,10 @@ export function MyLibrary({
         // 能力）会被 dedupe 保留，这里不会把它降级成一张只读卡。
         ...(previewIntentItem ? [toEntry(previewIntentItem)] : []),
         ...(resolvedDirectItem ? [toEntry(resolvedDirectItem)] : []),
-      ]),
+      ]).map(entry => ({
+        ...entry,
+        keywords: [...(entry.keywords || []), ...(entry.libraryItem ? projectNames(entry.libraryItem, projectLookup) : [])],
+      })),
     [
       featuredEntries,
       shownSectionItems,
@@ -2147,6 +2142,7 @@ export function MyLibrary({
       ownerPrincipalId,
       previewIntentItem,
       resolvedDirectItem,
+      projectLookup,
       removeItem,
     ],
   );
@@ -2271,6 +2267,7 @@ export function MyLibrary({
 
   const emptyCopy = SECTION_EMPTY_COPY.creation;
   return (
+    <LibraryProjectContext.Provider value={projectLookup}>
     <div
       className="relative h-full min-h-0"
       data-library-drop-zone=""
@@ -2446,5 +2443,6 @@ export function MyLibrary({
     {linkDialogOpen && <LinkWorkDialog mode="create" onClose={() => setLinkDialogOpen(false)} />}
     <LibraryDropOverlay show={dragging} />
     </div>
+    </LibraryProjectContext.Provider>
   );
 }

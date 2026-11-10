@@ -25,7 +25,7 @@ const view = await compileModule("src/shell/workspace-library-view.tsx", {
   "./workspace-library-model": dataModule(`export const WORKSPACE_KIND_LABELS={};`),
   "./workspace-library-thumbnail": dataModule(`export function WorkspaceThumbnail(){return null;}`),
   "./works/link-work-item": dataModule(`export function linkWorkFromLibraryItem(){return null;}`),
-  "./library-project-membership": dataModule(`export function projectNames(){return [];}`),
+  "./library-project-membership": dataModule(`import { createContext } from ${JSON.stringify(pathToFileURL(require.resolve("react")).href)};export const LibraryProjectContext=createContext(new Map());export function projectNames(){return [];}`),
   "./library-sections": dataModule(`export function librarySourceLabel(){return "项目文件";}`),
   "./library-editor-category": dataModule(`export function libraryEditorLabel(){return "文档";} export function libraryCategoryLabel(){return "文档";} export function translateLibraryTypeLabel(_tt,v){return v;}`),
 });
