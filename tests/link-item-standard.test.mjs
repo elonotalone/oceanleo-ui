@@ -105,9 +105,9 @@ test('real WorkspaceLibrary link detail keeps standard actions and no unavailabl
  });
 });
 
-test('project work hydration retains outer API row timestamp',async()=>{
- const {loadProjectLibraryScope}=await import(await compileModule('src/shell/library-project-scope.ts',libraryOverrides));
+test('direct link work hydration retains API row timestamp',async()=>{
+ const {loadLinkWorkItem}=await import(await compileModule('src/shell/library-project-membership.ts',libraryOverrides));
  const previous=globalThis.fetch;
- globalThis.fetch=async url=>new Response(JSON.stringify(String(url).endsWith('/library-items') ? {items:[{kind:'work',id:'link-1',item:{title:'Dashboard',updated_at:'2026-11-10T08:00:00Z',link_work:{id:'link-1',links:work.links,note:'counts'}}}]} : String(url).endsWith('/access') ? {role:'edit'} : {items:[]}));
- try{const result=await loadProjectLibraryScope('550e8400-e29b-41d4-a716-446655440000');assert.equal(result.items[0].createdAt,'2026-11-10T08:00:00Z');}finally{globalThis.fetch=previous;}
+ globalThis.fetch=async ()=>new Response(JSON.stringify({work:{id:'link-1',title:'Dashboard',updated_at:'2026-11-10T08:00:00Z',links:work.links,note:'counts'}}));
+ try{const result=await loadLinkWorkItem('link-1');assert.equal(result.createdAt,'2026-11-10T08:00:00Z');}finally{globalThis.fetch=previous;}
 });

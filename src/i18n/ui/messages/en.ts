@@ -6667,5 +6667,11 @@ const en: Record<string, string> = {
   '介绍': 'Description',
   '请填写有效的 HTTPS 链接': 'Enter a valid HTTPS link',
   '删除失败，请重试': 'Could not delete. Try again.',
+  "加入项目": "Add to project",
+  "正在加载项目…": "Loading projects…",
+  "项目暂时无法加载，请重试。": "Could not load projects. Try again.",
+  "没有可编辑的项目": "No editable projects",
+  "项目更新失败，请重试。": "Could not update project membership. Try again.",
+  "等 {count} 个项目": " and others ({count} projects)",
 };
 export default en;

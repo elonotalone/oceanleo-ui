@@ -56,6 +56,7 @@ import {
 import {
   ARTIFACT_LIBRARY_CHANGE_EVENT,
   ensureArtifact,
+  getCurrentArtifactItem,
   listFavoriteArtifacts,
   listMyArtifacts,
   retireArtifact,
@@ -98,7 +99,7 @@ import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { addProjectLibraryReference, deleteProjectAsset, downloadProjectAsset, removeProjectLibraryReference, useProjectLibraryScope } from "./library-project-scope";
+import { addProjectLibraryReference, removeProjectLibraryReference, loadEditableProjects, loadProjectMemberships, loadLinkWorkItem, libraryReference, projectNames, type LibraryProjectMembership } from "./library-project-membership";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
@@ -641,6 +642,7 @@ function toEntry(
       (item.siteId ? ` · ${item.siteId}` : ""),
     keywords: [
       item.kind,
+      ...projectNames(item),
       item.siteId,
       uploaded ? "上传 文件" : userAsset ? "素材 收藏" : "作品 生成",
       item.favorite ? "收藏" : "",
@@ -737,12 +739,16 @@ export function MyLibrary({
   supplementalSection,
 }: MyLibraryProps) {
   const tt = useUI();
-  const [projectScopeSuppressed, setProjectScopeSuppressed] = useState(false);
-  const hasProjectAction = Boolean(action?.action.projectId);
-  const projectScoped = hasProjectAction && !projectScopeSuppressed;
-  const projectScopeAction = projectScoped ? action : null;
-  const projectScope = useProjectLibraryScope(projectScopeAction);
-  useEffect(() => { setProjectScopeSuppressed(false); }, [action?.nonce, action?.action.projectId]);
+  const [memberships, setMemberships] = useState<LibraryProjectMembership[]>([]);
+  const membershipEpoch = useRef(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    const epoch = ++membershipEpoch.current;
+    void loadProjectMemberships(controller.signal).then(value => {
+      if (!controller.signal.aborted && epoch === membershipEpoch.current) setMemberships(value);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, []);
   const [libraryQuery, setLibraryQuery] = useState("");
   const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
   const [uploadMenuOpen, setUploadMenuOpen] = useState(false);
@@ -769,7 +775,7 @@ export function MyLibrary({
   const [chatItems, setChatItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const displayLoading = loading || (projectScoped && projectScope.loading);
+  const displayLoading = loading;
   const [hasUsableLibrarySnapshot, setHasUsableLibrarySnapshot] =
     useState(false);
   const hasUsableLibrarySnapshotRef = useRef(false);
@@ -894,7 +900,6 @@ export function MyLibrary({
   const loadMoreAbortRef = useRef<AbortController | null>(null);
   const favoritesOwnerRef = useRef("");
   const items = useMemo(() => {
-    if (projectScoped) return projectScope.items;
     const favoriteIdentity = new Set(
       favoriteItems.map(libraryItemIdentityKey),
     );
@@ -908,8 +913,12 @@ export function MyLibrary({
         ),
         ...favoriteItems,
       ]),
-    );
-  }, [chatItems, favoriteItems, ownedItems, projectScope.items, projectScoped]);
+    ).map(item => {
+      const ref = libraryReference(item);
+      const projects = ref ? memberships.find(m => m.kind === ref.kind && m.id === ref.id)?.projects || [] : [];
+      return { ...item, meta: { ...item.meta, library_projects: projects } };
+    });
+  }, [chatItems, favoriteItems, ownedItems, memberships]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -929,6 +938,7 @@ export function MyLibrary({
     setPinnedNextCursors(EMPTY_PINNED_MINE_CURSORS);
     setFavoriteNextCursor(null);
     setStandaloneEditorItem(null);
+    setDirectItem(null);
     if (!preservePreviewForPrincipal ||
         previewRestoreRef.current?.principalId !== preservePreviewForPrincipal) {
       clearPreviewIntent();
@@ -1471,31 +1481,60 @@ export function MyLibrary({
   }, []);
 
   const projectEntryMenuItems = useCallback((entry: WorkspaceLibraryEntry): readonly WorkspaceEntryMenuItem[] => {
-    if (!hasProjectAction || !entry.libraryItem || !action?.action.projectId) return [];
-    const item = entry.libraryItem;
-    const projectId = action.action.projectId;
-    const projectName = action.action.projectName || projectId;
-    const run = async (operation: () => Promise<void>, notice?: string) => {
-      try { await operation(); projectScope.reload(); if (notice) setUploadError(tt(notice)); }
-      catch (error) { setUploadError(error instanceof Error ? error.message : tt("操作失败，请重试")); }
-    };
-    if (projectScoped && item.meta.project_reference) {
-      const kind = item.meta.project_reference_kind === "work" ? "work" : "artifact";
-      return [{ label: tt("从项目移除"), danger: true, onSelect: () => run(() => removeProjectLibraryReference(projectId, kind, item.id)) }];
-    }
-    if (projectScoped && item.meta.project_asset) {
-      return [
-        { label: tt("下载"), onSelect: () => run(() => downloadProjectAsset(projectId, item.id, item.title)) },
-        ...(projectScope.canEdit ? [{ label: tt("删除"), danger: true, onSelect: () => { if (window.confirm(tt("确认删除项目文件吗？"))) return run(() => deleteProjectAsset(projectId, item.id)); } }] : []),
-      ];
-    }
-    if (!projectScoped && (isDurableLibraryItem(item) || item.meta.link_work)) {
-      const kind = item.meta.link_work ? "work" : "artifact";
-      const id = kind === "work" ? item.id : (item.artifactId || item.id);
-      return [{ label: tt("加入项目「{name}」", { name: projectName }), onSelect: () => run(() => addProjectLibraryReference(projectId, kind, id), "已加入项目") }];
-    }
-    return [];
-  }, [action?.action.projectId, action?.action.projectName, hasProjectAction, projectScope, projectScoped, tt]);
+    const ref = entry.libraryItem && libraryReference(entry.libraryItem);
+    if (!ref) return [];
+    return [{ label: tt("加入项目"), children: async () => {
+      const projects = await loadEditableProjects();
+      return projects.map(project => {
+        const selected = memberships.some(m => m.kind === ref.kind && m.id === ref.id && m.projects.some(p => p.id === project.id));
+        return { label: project.name, selected, onSelect: async () => {
+          try {
+            await (selected ? removeProjectLibraryReference : addProjectLibraryReference)(project.id, ref.kind, ref.id);
+            // Ignore a slower initial read; reflect the successful mutation immediately.
+            const epoch = ++membershipEpoch.current;
+            setMemberships(current => {
+              const prior = current.find(m => m.kind === ref.kind && m.id === ref.id);
+              const next = (prior?.projects || []).filter(p => p.id !== project.id);
+              if (!selected) next.push(project);
+              next.sort((a, b) => a.name.localeCompare(b.name));
+              return [...current.filter(m => m.kind !== ref.kind || m.id !== ref.id), { ...ref, projects: next }];
+            });
+            void loadProjectMemberships().then(value => { if (epoch === membershipEpoch.current) setMemberships(value); }).catch(() => {});
+          } catch { setUploadError(tt("项目更新失败，请重试。")); }
+        } };
+      });
+    } }];
+  }, [memberships, tt]);
+
+  const [directItem, setDirectItem] = useState<{ nonce: string; item: LibraryItem | null } | null>(null);
+  const directItemId = action?.action.tab === "mine" && !action.action.intent && action.action.itemId !== "memo" ? action.action.itemId : undefined;
+  useEffect(() => {
+    if (!directItemId || !action?.nonce) return;
+    const controller = new AbortController();
+    const nonce = action.nonce;
+    clearPreviewIntent();
+    clearLibraryCurrentIdentity();
+    const fetchItem = directItemId.startsWith("link-work:")
+      ? loadLinkWorkItem(directItemId.slice(10), controller.signal)
+      : getCurrentArtifactItem(directItemId, controller.signal).then(result => result.ok ? result.data || null : null);
+    void fetchItem.then(item => {
+      if (!controller.signal.aborted) setDirectItem({ nonce, item });
+    }).catch(() => { if (!controller.signal.aborted) setDirectItem({ nonce, item: null }); });
+    return () => controller.abort();
+  }, [action?.nonce, directItemId, restoreGeneration, clearPreviewIntent]);
+  const resolvedDirectItem = useMemo(() => {
+    const item = directItem?.nonce === action?.nonce ? directItem?.item : null;
+    if (!item) return null;
+    const ref = libraryReference(item);
+    const projects = ref ? memberships.find(m => m.kind === ref.kind && m.id === ref.id)?.projects || [] : [];
+    return { ...item, meta: { ...item.meta, library_projects: projects } };
+  }, [directItem, action?.nonce, memberships]);
+  // Do not let the shelf consume the action before its requested item exists.
+  const shelfAction: WorkspaceActionEnvelope | null | undefined = directItemId && action
+    ? resolvedDirectItem
+      ? { ...action, nonce: `${action.nonce}:resolved` }
+      : { nonce: `${action.nonce}:pending`, action: { version: 1, tab: "mine" } }
+    : action;
 
   useEffect(() => {
     if (previewIntentItem) return;
@@ -1959,10 +1998,6 @@ export function MyLibrary({
             );
             continue;
           }
-          if (projectScoped && action?.action.projectId && uploadedItem) {
-            await addProjectLibraryReference(action.action.projectId, "artifact", uploadedItem.artifactId || uploadedItem.id);
-            projectScope.reload();
-          }
           if (!libraryItemSection(uploadedItem)) rereadSections = true;
           setOwnedItems((current) =>
             dedupeDurableItems([
@@ -2004,7 +2039,7 @@ export function MyLibrary({
         if (rereadSections) void load();
       }
     },
-    [action?.action.projectId, changeSection, load, ownerPrincipalId, projectScope, projectScoped, siteId, uploading],
+    [changeSection, load, ownerPrincipalId, siteId, uploading],
   );
   const retryFailedUploads = useCallback(() => {
     void handleUpload(retryableUploadFiles, true);
@@ -2072,7 +2107,6 @@ export function MyLibrary({
   const entries = useMemo(
     () =>
       dedupeWorkspaceEntries([
-        ...(projectScoped ? shownSectionItems.map((item) => workspaceEntryFromLibraryItem(item, { description: String(item.meta.folder_path || item.meta.library_source_label || "") })) : []),
         ...shownSectionItems
           .map((item) => {
             const owned =
@@ -2104,6 +2138,7 @@ export function MyLibrary({
         // 深链指名的只读预览排在最后：万一它本来就在我的库里，前面那份（带删除
         // 能力）会被 dedupe 保留，这里不会把它降级成一张只读卡。
         ...(previewIntentItem ? [toEntry(previewIntentItem)] : []),
+        ...(resolvedDirectItem ? [toEntry(resolvedDirectItem)] : []),
       ]),
     [
       featuredEntries,
@@ -2111,8 +2146,8 @@ export function MyLibrary({
       favoritesOnly,
       ownerPrincipalId,
       previewIntentItem,
+      resolvedDirectItem,
       removeItem,
-      projectScoped,
     ],
   );
   const failureCopy = myLibraryFailure(failureStatus);
@@ -2269,12 +2304,6 @@ export function MyLibrary({
               ) : undefined
             }
           />
-          {hasProjectAction ? (
-            <CollectionFilterRow className="mt-3" data-library-project-scope="">
-              <span>{projectScoped ? (projectScope.loading ? tt("正在加载项目素材…") : projectScope.error ? tt("项目素材暂时无法加载") : tt("项目「{name}」的素材", { name: action?.action.projectName || action?.action.projectId || "" })) : tt("回到项目「{name}」的素材", { name: action?.action.projectName || action?.action.projectId || "" })}</span>
-              <button type="button" className={COLLECTION_ACTION_BTN_GHOST} onClick={() => setProjectScopeSuppressed((value) => !value)}>{tt(projectScoped ? "显示整个 Library" : "回到项目")}</button>
-            </CollectionFilterRow>
-          ) : null}
           {pageTitle ? (
             <CollectionFilterRow>
               <CollectionFilterSelect
@@ -2299,9 +2328,11 @@ export function MyLibrary({
     >
       <div className="relative h-full min-h-0">
         <WorkspaceLibrary
+          key={directItemId ? action?.nonce : "library"}
+          allowHostRestore={!directItemId}
           entries={entries}
           accent={accent}
-          action={action}
+          action={shelfAction}
           query={libraryQuery}
           onQueryChange={setLibraryQuery}
           view={libraryView}
@@ -2325,13 +2356,11 @@ export function MyLibrary({
           onMaterialDragStart={onMaterialDragStart}
           onMaterialDragEnd={onMaterialDragEnd}
           toolbarActions={toolbar}
-          entryMenuItems={hasProjectAction ? projectEntryMenuItems : undefined}
+          entryMenuItems={projectEntryMenuItems}
           searchPlaceholder="search"
           emptyTitle={
             displayLoading
               ? "正在加载我的库…"
-              : projectScoped
-                ? projectScope.error ? "项目素材暂时无法加载" : "这个项目还没有素材"
               : authRequired || failed
                 ? failureCopy.title
                 : emptyCopy.title
@@ -2341,15 +2370,15 @@ export function MyLibrary({
               ? failureCopy.description
               : emptyCopy.description
           }
-          emptyCta={projectScoped ? uploadMenu : failed && !authRequired ? retryControl : undefined}
+          emptyCta={failed && !authRequired ? retryControl : undefined}
           hasMore={Boolean(
-            !projectScoped && !displayLoading &&
+            !displayLoading &&
               (nextCursor ||
                 favoriteNextCursor ||
                 pinnedNextCursors.document ||
                 pinnedNextCursors.pdf),
           )}
-          loadingMore={!projectScoped && loadingMore}
+          loadingMore={loadingMore}
           loading={displayLoading}
           onLoadMore={loadMore}
           className={className}
@@ -2414,7 +2443,7 @@ export function MyLibrary({
         )}
       </div>
     </LibraryScope>
-    {linkDialogOpen && <LinkWorkDialog mode="create" onClose={() => setLinkDialogOpen(false)} onSaved={async (id) => { if (projectScoped && action?.action.projectId) { await addProjectLibraryReference(action.action.projectId, "work", id); projectScope.reload(); } }} />}
+    {linkDialogOpen && <LinkWorkDialog mode="create" onClose={() => setLinkDialogOpen(false)} />}
     <LibraryDropOverlay show={dragging} />
     </div>
   );

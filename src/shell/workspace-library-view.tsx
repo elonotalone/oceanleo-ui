@@ -14,6 +14,7 @@ import {
 } from "./workspace-library-model";
 import { WorkspaceThumbnail } from "./workspace-library-thumbnail";
 import { linkWorkFromLibraryItem } from "./works/link-work-item";
+import { projectNames } from "./library-project-membership";
 import { librarySourceLabel } from "./library-sections";
 import {
   libraryEditorLabel,
@@ -25,7 +26,9 @@ import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 
 export interface WorkspaceEntryMenuItem {
   label: ReactNode;
-  onSelect: () => void | Promise<void>;
+  onSelect?: () => void | Promise<void>;
+  children?: () => Promise<readonly WorkspaceEntryMenuItem[]>;
+  selected?: boolean;
   danger?: boolean;
   disabled?: boolean;
 }
@@ -34,13 +37,26 @@ function WorkspaceEntryMenu({ items }: { items: readonly WorkspaceEntryMenuItem[
   const tt = useUI();
   const anchorRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
+  const [nested, setNested] = useState<readonly WorkspaceEntryMenuItem[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(false);
+  const requestRef = useRef(0);
+  const close = () => { requestRef.current += 1; setOpen(false); setNested(null); setBusy(false); setError(false); };
   if (!items.length) return null;
   return <div className="absolute right-2 top-2 z-10" onClick={(event) => event.stopPropagation()}>
     <IconButton ref={anchorRef} label={tt("更多操作")} aria-haspopup="menu" aria-expanded={open}
-      icon={<span aria-hidden="true">⋯</span>} onClick={() => setOpen((value) => !value)} />
-    <FloatingMenu open={open} anchorRef={anchorRef} onClose={() => setOpen(false)} ariaLabel={tt("更多操作")}>
-      {items.map((item, index) => <FloatingMenuItem key={`${String(item.label)}:${index}`} label={item.label} danger={item.danger} disabled={item.disabled}
-        onSelect={() => { setOpen(false); void item.onSelect(); }} />)}
+      icon={<span aria-hidden="true">⋯</span>} onClick={() => { if (open) close(); else setOpen(true); }} />
+    <FloatingMenu open={open} anchorRef={anchorRef} onClose={close} ariaLabel={tt(nested ? "加入项目" : "更多操作")}>
+      {nested && <FloatingMenuItem label={tt("返回")} onSelect={() => setNested(null)} />}
+      {busy ? <FloatingMenuItem disabled label={tt("正在加载项目…")} /> : error ? <FloatingMenuItem disabled label={tt("项目暂时无法加载，请重试。")} /> : (nested || items).map((item, index) => <FloatingMenuItem key={`${String(item.label)}:${index}`} label={item.label} danger={item.danger} disabled={item.disabled} selected={item.selected}
+        onSelect={() => {
+          if (item.children) {
+            const request = ++requestRef.current;
+            setBusy(true); setError(false);
+            void item.children().then(children => { if (request === requestRef.current) setNested(children); }).catch(() => { if (request === requestRef.current) setError(true); }).finally(() => { if (request === requestRef.current) setBusy(false); });
+          } else { close(); void item.onSelect?.(); }
+        }} />)}
+      {nested?.length === 0 && <FloatingMenuItem disabled label={tt("没有可编辑的项目")} />}
     </FloatingMenu>
   </div>;
 }
@@ -91,7 +107,7 @@ interface WorkspaceRowProps {
   };
 }
 
-function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>) {
+function entryBaseMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>) {
   const link = entry.libraryItem ? linkWorkFromLibraryItem(entry.libraryItem) : null;
   if (link) {
     try { return <>{`🔗 ${new URL(link.links[0]!.url).hostname}`} · {tt(librarySourceLabel(entry.libraryItem!))}</>; } catch { return <>{`🔗 ${tt("链接")} · ${tt(librarySourceLabel(entry.libraryItem!))}`}</>; }
@@ -99,6 +115,11 @@ function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI
   const kind = entry.kind || entry.libraryItem?.kind || "file";
   const kindLabel = translateLibraryTypeLabel(tt, entry.libraryItem ? libraryEditorLabel(entry.libraryItem) : libraryCategoryLabel(entry.category || WORKSPACE_KIND_LABELS[kind] || "内容"));
   return entry.libraryItem ? <>{kindLabel} · {tt(librarySourceLabel(entry.libraryItem))}</> : kindLabel;
+}
+
+function entryMetadata(entry: WorkspaceLibraryEntry, tt: ReturnType<typeof useUI>) {
+  const names = entry.libraryItem ? projectNames(entry.libraryItem) : [];
+  return <>{entryBaseMetadata(entry, tt)}{names.length > 0 ? <> · {names.slice(0, 3).join("、")}{names.length > 3 ? tt("等 {count} 个项目", { count: names.length }) : ""}</> : null}</>;
 }
 
 export function WorkspaceCard({ entry, onOpen, accent, dragProps, actions, menuItems }: WorkspaceRowProps & { accent: string }) {
