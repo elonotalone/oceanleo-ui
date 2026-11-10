@@ -21,13 +21,7 @@ export const DEFAULT_LIBRARY_SECTION: LibrarySource = "creation";
 export function librarySourceLabel(item: LibraryItem): string {
   const explicit = item.meta?.library_source_label;
   if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
-  const source = item.meta?.library_source;
-  if (typeof source === "string") {
-    const section = LIBRARY_SECTIONS.find((entry) => entry.id === source);
-    if (section) return section.label;
-    if (source === "upload") return "上传的";
-  }
-  const section = LIBRARY_SECTIONS.find((entry) => entry.id === item.source);
+  const section = LIBRARY_SECTIONS.find((entry) => entry.id === item.artifact?.librarySource);
   return section?.label || "我的创作";
 }
 
