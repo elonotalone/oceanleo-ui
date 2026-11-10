@@ -31,10 +31,12 @@ test("link note and filename are searchable in the shared entries", () => {
   assert.match(mine, /title: file\.name/);
 });
 
-test("LeoChat files are merged into the same entries and open by URL", () => {
-  assert.match(mine, /listLibraryChatFiles/);
-  assert.match(mine, /chat_file_url/);
-  assert.match(mine, /onOpenEntry=\{\(entry\)/);
+test("LeoChat files join the same list, load on demand, and never take over card clicks", () => {
+  assert.match(mine, /await import\("\.\/library-chat-files"\)/, "the LeoChat client loads on demand (IM transport)");
+  assert.doesNotMatch(mine, /^import \{[^}]*\} from "\.\/library-chat-files";/m, "no static runtime import");
+  assert.match(mine, /library_source_label: "来自 LeoChat"/);
+  assert.match(mine, /previewUrl: file\.url/, "a LeoChat file previews through the normal detail");
+  assert.doesNotMatch(mine, /onOpenEntry=/, "My Library never overrides the card click (other cards would stop opening)");
 });
 
 test("uploaded actions retain item targeting without changing section", () => {

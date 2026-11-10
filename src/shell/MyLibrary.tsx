@@ -16,6 +16,7 @@ import {
   getUserIdSnapshot,
   type AuthStateEventDetail,
 } from "../lib/auth/client";
+import type { LibraryChatFile } from "./library-chat-files";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
 import {
@@ -95,7 +96,6 @@ import { MaterialStandaloneEditor } from "./library-standalone-editor-host";
 import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
-import { chatFileLibraryItem, chatFileMatches, listLibraryChatFiles, type LibraryChatFile } from "./library-chat-files";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { addProjectLibraryReference, deleteProjectAsset, downloadProjectAsset, removeProjectLibraryReference, useProjectLibraryScope } from "./library-project-scope";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
@@ -764,7 +764,8 @@ export function MyLibrary({
   const sectionRef = useRef<LibrarySource>("creation");
   const loadedSectionRef = useRef<LibrarySource | null>(null);
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
-  const [chatFiles, setChatFiles] = useState<LibraryChatFile[]>([]);
+  // 来自 LeoChat files, mapped to Library items once loaded (the client module is loaded on demand).
+  const [chatItems, setChatItems] = useState<LibraryItem[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasUsableLibrarySnapshot, setHasUsableLibrarySnapshot] =
@@ -900,12 +901,7 @@ export function MyLibrary({
     );
     return documentsFirstItems(
       dedupeDurableItems([
-        ...chatFiles.filter((file) => chatFileMatches(file, { query: "", category: "all" })).map((file) => ({
-          ...chatFileLibraryItem(file),
-          url: file.url,
-          createdAt: file.created_at || undefined,
-          meta: { chat_file_url: file.url, library_source_label: "来自 LeoChat" },
-        } as LibraryItem)),
+        ...chatItems,
         ...ownedItems.map((item) =>
           favoriteIdentity.has(libraryItemIdentityKey(item))
             ? withFavoriteState(item, true)
@@ -914,7 +910,7 @@ export function MyLibrary({
         ...favoriteItems,
       ]),
     );
-  }, [chatFiles, favoriteItems, ownedItems, projectScope.items, projectScoped]);
+  }, [chatItems, favoriteItems, ownedItems, projectScope.items, projectScoped]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -948,16 +944,34 @@ export function MyLibrary({
     const controller = new AbortController();
     let active = true;
     void (async () => {
-      const all: LibraryChatFile[] = [];
+      // On demand, like the old 来自 LeoChat section: the LeoChat client pulls the IM transport.
+      const chat = await import("./library-chat-files").catch(() => null);
+      if (!chat || !active) return;
+      const files: LibraryChatFile[] = [];
       let cursor: string | undefined;
-      for (let page = 0; page < 100 && active; page += 1) {
-        const result = await listLibraryChatFiles({ ...(cursor ? { cursor } : {}), limit: 100, signal: controller.signal });
-        if (!result.ok) break;
-        all.push(...result.items);
+      // The newest 200 LeoChat files join the list; older ones stay reachable in LeoChat itself.
+      for (let page = 0; page < 2 && active; page += 1) {
+        const result = await chat.listLibraryChatFiles({ ...(cursor ? { cursor } : {}), limit: 100, signal: controller.signal }).catch(() => null);
+        if (!result || !result.ok) break;
+        files.push(...result.items);
         if (!result.next) break;
         cursor = result.next;
       }
-      if (active) setChatFiles(all);
+      if (!active) return;
+      setChatItems(files
+        .filter((file) => chat.chatFileMatches(file, { query: "", category: "all" }))
+        .map((file) => {
+          const item = chat.chatFileLibraryItem(file);
+          const image = item.kind === "image";
+          return {
+            ...item,
+            url: file.url,
+            previewUrl: file.url,
+            ...(image ? { thumbUrl: file.url } : {}),
+            createdAt: file.created_at || undefined,
+            meta: { ...item.meta, chat_file_url: file.url, library_source_label: "来自 LeoChat" },
+          } as LibraryItem;
+        }));
     })();
     return () => { active = false; controller.abort(); };
   }, [refreshNonce]);
@@ -2353,10 +2367,6 @@ export function MyLibrary({
           taskId={taskId}
           siteId={siteId}
           onOpenItem={onOpenItem || setStandaloneEditorItem}
-          onOpenEntry={(entry) => {
-            const url = typeof entry.libraryItem?.meta.chat_file_url === "string" ? entry.libraryItem.meta.chat_file_url : "";
-            if (url) window.open(url, "_blank", "noopener,noreferrer");
-          }}
           openAdvancedOnSelect={openAdvancedOnSelect}
           materialActions={materialActions}
           onMaterialAction={onMaterialAction}
