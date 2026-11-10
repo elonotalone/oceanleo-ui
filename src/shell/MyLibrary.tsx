@@ -65,7 +65,6 @@ import {
   rememberOpenedLibraryItem,
 } from "./library-current-identity";
 import { useLibraryEditIntent } from "./library-edit-intent";
-import { DEFAULT_LIBRARY_SECTION, LibrarySectionTabs } from "./library-sections";
 import { LibraryDropOverlay, useLibraryDrop, type LibraryDrop } from "./library-drop";
 import {
   canPickFolder,
@@ -96,13 +95,14 @@ import { MaterialStandaloneEditor } from "./library-standalone-editor-host";
 import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
+import { chatFileLibraryItem, chatFileMatches, listLibraryChatFiles, type LibraryChatFile } from "./library-chat-files";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
 import { addProjectLibraryReference, deleteProjectAsset, downloadProjectAsset, removeProjectLibraryReference, useProjectLibraryScope } from "./library-project-scope";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
 // Same reason for the 来自 LeoChat section (it opens chats through the IM host).
-const LibraryChatFiles = lazy(() => import("./LibraryChatFiles").then((module) => ({ default: module.LibraryChatFiles })));
+
 
 const LIBRARY_PAGE_TYPE_OPTIONS = LIBRARY_EDITOR_CATEGORIES;
 
@@ -118,7 +118,7 @@ function isLinkWorkLibraryItem(item: LibraryItem): boolean {
 function dedupeDurableItems(items: readonly LibraryItem[]): LibraryItem[] {
   const seen = new Set<string>();
   return items.filter((item) => {
-    if (!isDurableLibraryItem(item) && !isServerWorkLibraryItem(item) && !isLinkWorkLibraryItem(item)) return false;
+    if (!isDurableLibraryItem(item) && !isServerWorkLibraryItem(item) && !isLinkWorkLibraryItem(item) && !item.key.startsWith("leochat:")) return false;
     const identity = libraryItemIdentityKey(item);
     if (seen.has(identity)) return false;
     seen.add(identity);
@@ -643,6 +643,7 @@ function toEntry(
       item.siteId,
       uploaded ? "上传 文件" : userAsset ? "素材 收藏" : "作品 生成",
       item.favorite ? "收藏" : "",
+      typeof (item.meta?.link_work as { note?: unknown } | undefined)?.note === "string" ? String((item.meta?.link_work as { note?: unknown }).note) : "",
     ].filter(Boolean),
     ...(onDelete ? { onDelete } : {}),
   });
@@ -756,16 +757,14 @@ export function MyLibrary({
   });
   const [internalCategory, setInternalCategory] = useState(category ?? "all");
   const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
-  const [internalSection, setInternalSection] = useState<LibrarySource>(
-    section ?? DEFAULT_LIBRARY_SECTION,
-  );
-  const activeSection = section ?? internalSection;
+  // Deprecated compatibility props: the unified Library no longer scopes by section.
+  const activeSection: LibrarySource = "creation";
   // Every list read takes the section from here (`source=`), so a read started
   // right after a section click already asks for the new one.
-  const sectionRef = useRef(activeSection);
-  sectionRef.current = activeSection;
+  const sectionRef = useRef<LibrarySource>("creation");
   const loadedSectionRef = useRef<LibrarySource | null>(null);
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
+  const [chatFiles, setChatFiles] = useState<LibraryChatFile[]>([]);
   const [favoriteItems, setFavoriteItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasUsableLibrarySnapshot, setHasUsableLibrarySnapshot] =
@@ -874,14 +873,10 @@ export function MyLibrary({
     if (category === undefined) setInternalCategory(next);
     onCategoryChange?.(next);
   };
-  const changeSection = useCallback(
-    (next: LibrarySource) => {
-      sectionRef.current = next;
-      if (section === undefined) setInternalSection(next);
-      onSectionChange?.(next);
-    },
-    [onSectionChange, section],
-  );
+  const changeSection = useCallback((next: LibrarySource) => {
+    // Kept for legacy hosts; there are no section tabs in the unified shelf.
+    onSectionChange?.(next);
+  }, [onSectionChange]);
   const favoriteViewOptions: CollectionViewOption[] = [
     {
       id: "favorites",
@@ -905,6 +900,12 @@ export function MyLibrary({
     );
     return documentsFirstItems(
       dedupeDurableItems([
+        ...chatFiles.filter((file) => chatFileMatches(file, { query: "", category: "all" })).map((file) => ({
+          ...chatFileLibraryItem(file),
+          url: file.url,
+          createdAt: file.created_at || undefined,
+          meta: { chat_file_url: file.url, library_source_label: "来自 LeoChat" },
+        } as LibraryItem)),
         ...ownedItems.map((item) =>
           favoriteIdentity.has(libraryItemIdentityKey(item))
             ? withFavoriteState(item, true)
@@ -913,7 +914,7 @@ export function MyLibrary({
         ...favoriteItems,
       ]),
     );
-  }, [favoriteItems, ownedItems, projectScope.items, projectScoped]);
+  }, [chatFiles, favoriteItems, ownedItems, projectScope.items, projectScoped]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -943,6 +944,24 @@ export function MyLibrary({
     favoritesOwnerRef.current = "";
   }, [clearPreviewIntent, updateLibrarySort]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    let active = true;
+    void (async () => {
+      const all: LibraryChatFile[] = [];
+      let cursor: string | undefined;
+      for (let page = 0; page < 100 && active; page += 1) {
+        const result = await listLibraryChatFiles({ ...(cursor ? { cursor } : {}), limit: 100, signal: controller.signal });
+        if (!result.ok) break;
+        all.push(...result.items);
+        if (!result.next) break;
+        cursor = result.next;
+      }
+      if (active) setChatFiles(all);
+    })();
+    return () => { active = false; controller.abort(); };
+  }, [refreshNonce]);
+
   const load = useCallback(async () => {
     sortAbortRef.current?.abort();
     sortAbortRef.current = null;
@@ -967,18 +986,15 @@ export function MyLibrary({
       await Promise.allSettled([
         listMyArtifacts({
           artifactType: "document",
-          source: requestedSection,
           limit: 100,
           signal: controller.signal,
         }),
         listMyArtifacts({
           artifactType: "pdf",
-          source: requestedSection,
           limit: 100,
           signal: controller.signal,
         }),
         listMyArtifacts({
-          source: requestedSection,
           limit: 100,
           signal: controller.signal,
         }),
@@ -995,7 +1011,6 @@ export function MyLibrary({
       rejectedLibraryPage(undefined);
     const serverWorkItems = serverWorkItemsFromPage(mineResult, {
       offset: 0,
-      source: requestedSection,
     });
     const favoritesResult =
       libraryPageFromSettled(favoritesSettled) ??
@@ -1147,7 +1162,7 @@ export function MyLibrary({
           mineResult,
           favoritesResult,
           mineOwnerPrincipalId,
-          requestedSection,
+          "creation",
           controller.signal,
         );
       } catch (caught) {
@@ -1424,7 +1439,7 @@ export function MyLibrary({
     lastActionNonceRef.current = action.nonce;
     // A chat upload opens here on the 上传的 section; its type category
     // (`action.category`) is applied by WorkspaceLibrary.
-    if (action.action?.filter === "uploaded") changeSection("upload");
+    // Uploaded actions still resolve by itemId; section switching was removed.
     // A result card can be clicked immediately after its durable artifact row
     // is inserted. Revalidate the per-user cache; WorkspaceLibrary retries the
     // same itemId/URL action when the fresh entry list arrives, then opens it.
@@ -1521,7 +1536,6 @@ export function MyLibrary({
         documentCursor
           ? listMyArtifacts({
               artifactType: "document",
-              source,
               cursor: documentCursor,
               limit: 100,
               signal: controller.signal,
@@ -1530,7 +1544,6 @@ export function MyLibrary({
         pdfCursor
           ? listMyArtifacts({
               artifactType: "pdf",
-              source,
               cursor: pdfCursor,
               limit: 100,
               signal: controller.signal,
@@ -1538,7 +1551,6 @@ export function MyLibrary({
           : Promise.resolve(null),
         mineCursor
           ? listMyArtifacts({
-              source,
               cursor: mineCursor,
               limit: 100,
               signal: controller.signal,
@@ -1732,7 +1744,7 @@ export function MyLibrary({
       void (async () => {
         try {
           const [mineFirst, favoritesFirst] = await Promise.all([
-            listMyArtifacts({ source: expectedSection, limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
+            listMyArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
             listFavoriteArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
           ]);
           if (
@@ -1760,7 +1772,7 @@ export function MyLibrary({
               mineFirst,
               favoritesFirst,
               expectedOwner,
-              expectedSection,
+              "creation",
               controller.signal,
             );
           if (
@@ -2035,17 +2047,11 @@ export function MyLibrary({
     () => sortLibraryItems(items, librarySort),
     [items, librarySort],
   );
-  const sectionItems = useMemo(
-    () => projectScoped ? orderedItems : orderedItems.filter((item) => libraryItemSection(item) === activeSection),
-    [activeSection, orderedItems, projectScoped],
-  );
-  // 来自 LeoChat lists these artifacts together with the chat files (ANSWER LU-1).
   const shownSectionItems = useMemo(
-    () =>
-      sectionItems.filter(
-        (item) => (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)),
-      ),
-    [favoritesOnly, itemFilter, sectionItems],
+    () => orderedItems.filter(
+      (item) => (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)),
+    ),
+    [favoritesOnly, itemFilter, orderedItems],
   );
   const entries = useMemo(
     () =>
@@ -2073,7 +2079,7 @@ export function MyLibrary({
                 entry.libraryItem.artifact.owner.principalId ===
                   ownerPrincipalId &&
                 // A task output shows in the section its Library copy is in.
-                sectionItems.some(
+                shownSectionItems.some(
                   (item) =>
                     libraryItemIdentityKey(item) ===
                     libraryItemIdentityKey(entry.libraryItem!),
@@ -2086,7 +2092,6 @@ export function MyLibrary({
     [
       featuredEntries,
       shownSectionItems,
-      sectionItems,
       favoritesOnly,
       ownerPrincipalId,
       previewIntentItem,
@@ -2267,12 +2272,11 @@ export function MyLibrary({
     return <Suspense fallback={null}><LibraryMemoPage className={className} /></Suspense>;
   }
 
-  const emptyCopy = SECTION_EMPTY_COPY[activeSection];
+  const emptyCopy = SECTION_EMPTY_COPY.creation;
   return (
     <div
       className="relative h-full min-h-0"
       data-library-drop-zone=""
-      data-library-section-active={activeSection}
       {...dropProps}
     >
     <LibraryScope
@@ -2309,11 +2313,6 @@ export function MyLibrary({
               <button type="button" className="font-medium underline underline-offset-2" onClick={() => setProjectScopeSuppressed((value) => !value)}>{tt(projectScoped ? "显示整个 Library" : "回到项目")}</button>
             </div>
           ) : null}
-          <LibrarySectionTabs
-            value={activeSection}
-            onChange={changeSection}
-            className="mt-4"
-          />
           {pageTitle ? (
             <CollectionFilterRow>
               <CollectionFilterSelect
@@ -2337,18 +2336,6 @@ export function MyLibrary({
       }
     >
       <div className="relative h-full min-h-0">
-        {activeSection === "leochat" ? (
-          <Suspense fallback={null}>
-            <LibraryChatFiles
-              query={libraryQuery}
-              category={activeCategory}
-              view={libraryView}
-              className={className}
-              artifacts={shownSectionItems}
-              onOpenArtifact={openLibraryItem}
-            />
-          </Suspense>
-        ) : (
         <WorkspaceLibrary
           entries={entries}
           accent={accent}
@@ -2366,6 +2353,10 @@ export function MyLibrary({
           taskId={taskId}
           siteId={siteId}
           onOpenItem={onOpenItem || setStandaloneEditorItem}
+          onOpenEntry={(entry) => {
+            const url = typeof entry.libraryItem?.meta.chat_file_url === "string" ? entry.libraryItem.meta.chat_file_url : "";
+            if (url) window.open(url, "_blank", "noopener,noreferrer");
+          }}
           openAdvancedOnSelect={openAdvancedOnSelect}
           materialActions={materialActions}
           onMaterialAction={onMaterialAction}
@@ -2403,7 +2394,6 @@ export function MyLibrary({
           className={className}
           plain={plain}
         />
-        )}
         {failed && entries.length > 0 && hasUsableLibrarySnapshot && (
           <div
             role="status"

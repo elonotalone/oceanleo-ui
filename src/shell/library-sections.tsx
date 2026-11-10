@@ -6,6 +6,7 @@
 
 import { useUI } from "../i18n/ui/useUI";
 import type { LibrarySource } from "./artifact-contract";
+import type { LibraryItem } from "./library-data";
 
 export const LIBRARY_SECTIONS: ReadonlyArray<{ id: LibrarySource; label: string }> = [
   { id: "creation", label: "我的创作" },
@@ -15,6 +16,20 @@ export const LIBRARY_SECTIONS: ReadonlyArray<{ id: LibrarySource; label: string 
 ];
 
 export const DEFAULT_LIBRARY_SECTION: LibrarySource = "creation";
+
+/** Source caption shown at the bottom of every shared Library card. */
+export function librarySourceLabel(item: LibraryItem): string {
+  const explicit = item.meta?.library_source_label;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  const source = item.meta?.library_source;
+  if (typeof source === "string") {
+    const section = LIBRARY_SECTIONS.find((entry) => entry.id === source);
+    if (section) return section.label;
+    if (source === "upload") return "上传的";
+  }
+  const section = LIBRARY_SECTIONS.find((entry) => entry.id === item.source);
+  return section?.label || "我的创作";
+}
 
 // Same chip look as LeoBay's explore axis (material-library-type-filter.tsx).
 const CHIP_BASE = "min-h-8 shrink-0 rounded-full border px-3 text-[12px]";
