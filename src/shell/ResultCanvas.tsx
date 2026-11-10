@@ -35,6 +35,7 @@ import {
 import {
   workspaceSlotForLegacyId,
   workspaceMaterialsActionFromSearch,
+  dispatchWorkspaceAction,
   type WorkspaceActionEnvelope,
   type WorkspaceSlotId,
 } from "./workspace-actions";
@@ -622,16 +623,48 @@ export function ResultCanvas({
   const entryRequest = useWorkspaceEntryRequest(latestEntryRequest.current.request, openResolvedEntry);
   const bayBackRef = useRef<(() => void) | null>(null);
   const chatBackRef = useRef<(() => void) | null>(null);
+  const projectsBackRef = useRef<(() => void) | null>(null);
+  const projectLibraryReturnRef = useRef(false);
+  const projectLibrarySequence = useRef(0);
+  const projectRequestRef = useRef<WorkspaceActionEnvelope | null>(null);
+  if (pageAction?.action.tab === "projects") projectRequestRef.current = pageAction;
+  const projectRequest = projectRequestRef.current;
+  const setProjectsBack = useCallback((back: (() => void) | null) => {
+    projectsBackRef.current = back;
+  }, []);
+  const openProjectLibrary = useCallback((itemId?: string) => {
+    projectLibraryReturnRef.current = true;
+    setForegroundSuspended(true);
+    // Use the normal Library action receiver, including direct resolution of
+    // items beyond page one. The configuration remains mounted underneath.
+    dispatchWorkspaceAction({
+      nonce: `project-library:${++projectLibrarySequence.current}:${libraryPanelInstanceId}`,
+      action: { version: 1, tab: "mine", ...(itemId ? { itemId } : { intent: "open" }) },
+    });
+  }, [libraryPanelInstanceId]);
+  const openProjectLibraryItem = useCallback((itemId: string) => openProjectLibrary(itemId), [openProjectLibrary]);
+  const openProjectLibraryList = useCallback(() => openProjectLibrary(), [openProjectLibrary]);
+  useEffect(() => {
+    if (view !== "mine") projectLibraryReturnRef.current = false;
+  }, [view, projectRequest?.nonce]);
   const handleBack = useCallback(() => {
-    const inner = view === "bay" ? (bayRequest?.view === "materials" ? null : bayBackRef.current) : view === "leochat" ? chatBackRef.current : null;
+    if (view === "mine" && projectLibraryReturnRef.current) {
+      projectLibraryReturnRef.current = false;
+      setForegroundSuspended(true);
+      openPanel("projects");
+      return;
+    }
+    const inner = view === "bay" ? (bayRequest?.view === "materials" ? null : bayBackRef.current) : view === "leochat" ? chatBackRef.current : view === "projects" ? projectsBackRef.current : null;
     if (inner) inner();
     else goHome();
-  }, [goHome, view, bayRequest?.view]);
+  }, [goHome, openPanel, view, bayRequest?.view]);
   const [bayVisited, setBayVisited] = useState(false);
   const [chatVisited, setChatVisited] = useState(false);
+  const [projectsVisited, setProjectsVisited] = useState(false);
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
   useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
-  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("Projects") : view === "settings" ? tt("Settings") : tt(WORKSPACE_SLOT_LABELS[view]);
+  useEffect(() => { if (view === "projects") setProjectsVisited(true); }, [view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -664,7 +697,10 @@ export function ResultCanvas({
   const RegisteredProjectsPanel = getWorkspacePanel("projects");
   const managedContent: Record<"devices" | "projects" | "settings", ReactNode> = {
     devices: <DevicesWorkspacePanel section={managedPageAction?.tab === "devices" ? managedPageAction.section : undefined} deviceId={managedPageAction?.deviceId} taskId={effectiveTaskId} />,
-    projects: RegisteredProjectsPanel ? <RegisteredProjectsPanel taskId={effectiveTaskId} /> : <ProjectsWorkspacePanel />,
+    projects: RegisteredProjectsPanel ? <RegisteredProjectsPanel taskId={effectiveTaskId}
+      projectId={projectRequest?.action.projectId} requestNonce={projectRequest?.nonce}
+      onOpenLibraryItem={openProjectLibraryItem} onOpenLibrary={openProjectLibraryList}
+      onBackChange={setProjectsBack} /> : <ProjectsWorkspacePanel />,
     settings: <SettingsWorkspacePanel section={managedPageAction?.tab === "settings" ? managedPageAction.section : undefined} prefill={managedPageAction?.tab === "settings" ? managedPageAction.prefill : undefined} />,
   };
   const content: Record<WorkspaceSlotId, ReactNode> = {
@@ -944,7 +980,13 @@ export function ResultCanvas({
                           onBackChange={(back) => { chatBackRef.current = back; }} onEvicted={goHome} />
           </div>
         ) : null}
-        {(view === "devices" || view === "projects" || view === "settings") ? (
+        {projectsVisited || view === "projects" ? (
+          <div data-workspace-managed-panel="projects" hidden={view !== "projects"}
+               inert={view !== "projects" || undefined} className="h-full min-h-0 overflow-auto">
+            {managedContent.projects}
+          </div>
+        ) : null}
+        {(view === "devices" || view === "settings") ? (
           <div data-workspace-managed-panel={view} className="h-full min-h-0 overflow-auto">
             {managedContent[view]}
           </div>

@@ -64,7 +64,7 @@ export interface WorkspaceActionV1 {
   section?: string;
   prefill?: WorkspaceActionPrefill;
   deviceId?: string;
-  /** Project scope for the Library mine view. */
+  /** Project selection for V2 configuration requests; legacy Library scope. */
   projectId?: string;
   /** Display-only project name, trimmed and bounded by the receipt parser. */
   projectName?: string;
@@ -216,7 +216,7 @@ export function normalizeWorkspaceAction(
       : undefined;
   const entryId = clean("entryId", 300);
   const rawProjectId = clean("projectId", 80);
-  const projectId = rawProjectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawProjectId)
+  const projectId = version === 2 && tab === "projects" ? rawProjectId : rawProjectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawProjectId)
     ? rawProjectId.toLowerCase()
     : undefined;
   const projectName = clean("projectName", 120);

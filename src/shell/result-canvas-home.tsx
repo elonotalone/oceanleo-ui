@@ -21,7 +21,7 @@ const SLOT_DESC: Record<WorkspaceSlotId, string> = {
 
 const MANAGED_PAGE_DESC: Record<WorkspaceManagedPanelId, string> = {
   devices: "你的电脑、云电脑和云端浏览器",
-  projects: "管理项目和任务归属",
+  projects: "查看和修改各个项目的配置",
   settings: "偏好、密钥库和连接器",
 };
 
@@ -174,7 +174,7 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
         <WorkspaceCard
           key={id}
           id={id}
-          title={tt(id === "devices" ? "Devices" : id === "projects" ? "Projects" : "Settings")}
+          title={tt(id === "devices" ? "Devices" : id === "projects" ? "项目配置" : "Settings")}
           description={tt(MANAGED_PAGE_DESC[id])}
           icon={<LineIcon><path d={id === "devices" ? "M4 6h16M4 12h16M4 18h16" : id === "projects" ? "M4 5h16v14H4zM8 9h8M8 13h5" : "M12 3.5l1.8 1.1 2.1-.2.8 2 1.8 1.2-.8 2 .8 2-1.8 1.2-.8 2-2.1-.2L12 21l-1.8-1.1-2.1.2-.8-2-1.8-1.2.8-2-.8-2 1.8-1.2.8-2 2.1.2z"} /></LineIcon>}
           count={0}

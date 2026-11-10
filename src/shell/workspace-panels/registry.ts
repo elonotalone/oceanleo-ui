@@ -2,7 +2,16 @@
 
 import type { ComponentType } from "react";
 
-export type WorkspacePanelComponent = ComponentType<{ taskId?: string | null }>;
+export interface WorkspacePanelProps {
+  taskId?: string | null;
+  projectId?: string | null;
+  requestNonce?: string;
+  onOpenLibraryItem?: (itemId: string) => void;
+  onOpenLibrary?: () => void;
+  onBackChange?: (back: (() => void) | null) => void;
+}
+
+export type WorkspacePanelComponent = ComponentType<WorkspacePanelProps>;
 
 const panels = new Map<string, WorkspacePanelComponent>();
 
