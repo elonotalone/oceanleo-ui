@@ -2989,6 +2989,9 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
     calls.push(url);
+    if (url.pathname === "/v1/library/project-memberships") {
+      return jsonResponse({ items: [] });
+    }
     if (
       libraryMode === "favorites-unavailable" &&
       url.pathname === "/v1/library/favorites"
@@ -3030,6 +3033,7 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
     assert.deepEqual(
       calls.map((url) => [url.pathname, url.searchParams.get("artifactType")]),
       [
+        ["/v1/library/project-memberships", null],
         ["/v1/library/mine", "document"],
         ["/v1/library/mine", "pdf"],
         ["/v1/library/mine", null],
@@ -3158,8 +3162,17 @@ test("rendered My Library pins owned documents above the mixed mine page", async
   documentItem.created_at = "2026-10-01T00:00:00Z";
   pdfItem.created_at = "2026-10-16T00:00:00Z";
   const mineCalls = [];
+  let membershipReads = 0;
+  let releaseMemberships;
+  const membershipGate = new Promise(resolve => { releaseMemberships = resolve; });
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
+    if (url.pathname === "/v1/library/project-memberships") {
+      membershipReads += 1;
+      await membershipGate;
+      return jsonResponse({ items: [{ kind: "artifact", id: "pinned-document", projects: [{ id: "project-a", name: "仪表盘" }] }] });
+    }
+    assert.ok(["/v1/library/mine", "/v1/library/favorites"].includes(url.pathname));
     if (url.pathname === "/v1/library/favorites") {
       return jsonResponse({
         scope: "favorites",
@@ -3200,7 +3213,9 @@ test("rendered My Library pins owned documents above the mixed mine page", async
   const mounted = await createMounted(MyLibrary, {});
   try {
     await settle();
+    assert.equal(membershipReads, 1);
     assert.deepEqual(mineCalls, ["document", "pdf", null]);
+    // The first complete shelf renders while membership metadata is still pending.
     assert.deepEqual(
       [...mounted.container.querySelectorAll("[data-entry-title]")].map(
         (node) => node.getAttribute("data-entry-title"),
@@ -3213,7 +3228,19 @@ test("rendered My Library pins owned documents above the mixed mine page", async
         ?.getAttribute("data-entry-category"),
       "pdf_editing",
     );
+    await act(async () => { releaseMemberships(); });
+    await settle();
+    assert.deepEqual(
+      [...mounted.container.querySelectorAll("[data-entry-title]")].map(
+        node => node.getAttribute("data-entry-title"),
+      ),
+      ["Pinned PDF", "Pinned document", "Newest game"],
+      "membership arrival must not reorder the pinned shelf",
+    );
+    assert.equal(membershipReads, 1);
+    assert.deepEqual(mineCalls, ["document", "pdf", null]);
   } finally {
+    releaseMemberships();
     await mounted.unmount();
   }
 });
