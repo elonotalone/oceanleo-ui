@@ -6664,5 +6664,8 @@ const en: Record<string, string> = {
   "已加入项目": "Added to project",
   "加入项目「{name}」": "Add to project “{name}”",
 
+  '介绍': 'Description',
+  '请填写有效的 HTTPS 链接': 'Enter a valid HTTPS link',
+  '删除失败，请重试': 'Could not delete. Try again.',
 };
 export default en;

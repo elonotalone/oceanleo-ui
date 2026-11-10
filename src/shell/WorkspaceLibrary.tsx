@@ -71,6 +71,8 @@ import {
   useMaterialDetailAppPlan,
 } from "./library-detail-app-actions";
 import { resolveLibraryEditRoute } from "./library-edit-landing";
+import { isLinkWorkItem } from "./works/link-work-item";
+import { LinkWorkActions } from "./works/LinkWorkViewer";
 import type { LibraryEntrySection } from "./deck-delivery-family";
 import {
   WorkspaceCard,
@@ -779,6 +781,13 @@ export function WorkspaceLibrary({
     const item = entry.libraryItem;
     if (!item) return null;
     const linkUrl = entryLinkUrl(entry);
+    if (isLinkWorkItem(item)) {
+      const matrix = matrixFor(item, "none");
+      return <>
+        <ArtifactActionButtons item={item} matrix={{ ...matrix, edit: { ...matrix.edit, visible: false }, preview: { ...matrix.preview, visible: true } }} accent={accent} compact={compact} />
+        <LinkWorkActions item={item} onDeleted={() => { clearLibraryCurrentIdentity(action?.nonce); setDetailSelection(""); }} />
+      </>;
+    }
     const websiteTemplate = isOfficialWebsiteTemplate(item);
     // website 官方模板是唯一例外：归属入口仍保持纯读预览，旁边这颗明确的建站动作
     // 复用 typed Edit → owner fork 链，两颗按钮承担不同职责，不把原预览合同偷换成
@@ -913,12 +922,12 @@ export function WorkspaceLibrary({
             </div>
           ) : null}
           <TaskAttachmentLibraryLink item={selected.libraryItem} />
-          <MaterialOwningAppEdit
+          {!isLinkWorkItem(workbenchItem) && <MaterialOwningAppEdit
             plan={hostDetailPlan}
             item={workbenchItem}
             accent={accent}
             compact
-          />
+          />}
           {actionButtonsFor(
             { ...selected, libraryItem: workbenchItem },
             true,

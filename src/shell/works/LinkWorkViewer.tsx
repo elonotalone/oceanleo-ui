@@ -1,24 +1,67 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { embedCheck, worksApi } from "../../lib/works-api";
 import type { LibraryItem } from "../library-data";
-import type { WorkLink } from "./model";
 import { linkWorkFromLibraryItem } from "./link-work-item";
+import { Button, ConfirmDialog } from "../../ui";
+import { LinkWorkDialog } from "./LinkWorkDialog";
 
 export const LINK_WORK_FRAME_SANDBOX = "allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads";
-const validHttps = (value: string) => { try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && !url.hash; } catch { return false; } };
 
-function LinkEditor({ work, onClose }: { work: NonNullable<ReturnType<typeof linkWorkFromLibraryItem>>; onClose: () => void }) {
-  const tt = useUI(); const [title, setTitle] = useState(work.title); const [note, setNote] = useState(work.note); const [links, setLinks] = useState<WorkLink[]>(work.links); const [error, setError] = useState("");
-  const save = async () => { const clean = links.map((link) => ({ label: link.label.trim(), url: link.url.trim() })); if (!title.trim()) return setError(tt("请填写标题")); if (!clean.length || clean.length > 8 || clean.some((link) => !link.label || link.label.length > 40 || !validHttps(link.url))) return setError(tt("请填写有效的 HTTPS 链接和标签")); try { await worksApi.update(work.id, { title: title.trim(), links: clean, note: note.trim() }); window.dispatchEvent(new CustomEvent("oceanleo:artifact-library-change")); onClose(); } catch { setError(tt("保存失败，请重试")); } };
-  return <div role="dialog" aria-modal="true" className="fixed inset-0 z-[80] grid place-items-center bg-black/30 p-4"><div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl"><h2 className="text-base font-semibold">{tt("编辑链接")}</h2><input className="mt-4 w-full rounded border p-2 text-sm" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={tt("标题")} />{links.map((link, index) => <div key={index} className="mt-2 flex gap-2"><input className="w-28 rounded border p-2 text-sm" value={link.label} onChange={(e) => setLinks((all) => all.map((item, i) => i === index ? { ...item, label: e.target.value } : item))} placeholder={tt("标签")} /><input className="min-w-0 flex-1 rounded border p-2 text-sm" value={link.url} onChange={(e) => setLinks((all) => all.map((item, i) => i === index ? { ...item, url: e.target.value } : item))} placeholder="https://" /></div>)}<textarea className="mt-3 w-full rounded border p-2 text-sm" value={note} onChange={(e) => setNote(e.target.value)} placeholder={tt("备注（可选）")} />{error && <p role="alert" className="mt-2 text-sm text-red-600">{error}</p>}<div className="mt-4 flex justify-end gap-2"><button type="button" className="rounded border px-3 py-1.5 text-sm" onClick={onClose}>{tt("取消")}</button><button type="button" className="rounded bg-stone-800 px-3 py-1.5 text-sm text-white" onClick={() => void save()}>{tt("保存")}</button></div></div></div>;
+/** Standard Library action row for a link item. */
+export function LinkWorkActions({ item, onDeleted }: { item: LibraryItem; onDeleted?: () => void }) {
+  const tt = useUI();
+  const work = linkWorkFromLibraryItem(item);
+  const [editing, setEditing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  if (!work) return null;
+  const remove = async () => {
+
+    try {
+      await worksApi.remove(work.id);
+      window.dispatchEvent(new CustomEvent("oceanleo:artifact-library-change"));
+      onDeleted?.();
+    } catch {
+      setError(tt("删除失败，请重试"));
+    } finally { setDeleting(false); }
+  };
+  return <>
+    <a href={work.links[0]?.url} target="_blank" rel="noopener noreferrer" className="shrink-0 rounded-lg border border-[var(--border,#e7e5e4)] px-2.5 py-1.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,#fafaf9)]">{tt("在新标签页打开")}</a>
+    <Button size="sm" variant="secondary" onClick={() => setEditing(true)}>{tt("编辑")}</Button>
+    <Button size="sm" variant="danger" onClick={() => setDeleting(true)}>{tt("删除")}</Button>
+    {error && <span role="alert">{error}</span>}
+    {deleting && <ConfirmDialog title="确认删除这个链接项目吗？" confirmLabel="删除" danger onCancel={() => setDeleting(false)} onConfirm={remove} />}
+    {editing && <LinkWorkDialog mode="edit" work={work} onClose={() => setEditing(false)} />}
+  </>;
 }
 
 export function LinkWorkViewer({ item }: { item: LibraryItem }) {
-  const tt = useUI(); const work = linkWorkFromLibraryItem(item); const [selected, setSelected] = useState(0); const [embed, setEmbed] = useState<boolean | null>(null); const [editing, setEditing] = useState(false); const link = work?.links[selected];
-  useEffect(() => { setEmbed(null); if (link && validHttps(link.url)) void embedCheck(link.url).then((result) => setEmbed(result.embeddable)).catch(() => setEmbed(null)); }, [link?.url]);
-  if (!work || !link || !validHttps(link.url)) return <div role="alert" className="p-6 text-sm text-red-600">{tt("链接无效")}</div>;
-  const remove = async () => { if (!window.confirm(tt("确认删除这个链接项目吗？"))) return; await worksApi.remove(work.id); window.dispatchEvent(new CustomEvent("oceanleo:artifact-library-change")); };
-  return <section className="flex h-full min-h-[520px] flex-col bg-white" data-link-work-id={work.id}><header className="border-b border-stone-200 px-5 py-4"><div className="flex items-center justify-between gap-3"><div><h2 className="text-base font-semibold text-stone-800">{work.title}</h2>{work.note && <p className="mt-1 text-xs text-stone-500">{work.note}</p>}</div><div className="flex gap-2"><button type="button" className="text-xs underline" onClick={() => setEditing(true)}>{tt("编辑")}</button><button type="button" className="text-xs text-red-600 underline" onClick={() => void remove()}>{tt("删除")}</button></div></div></header><div className="flex flex-wrap items-center gap-2 border-b border-stone-100 px-5 py-3">{work.links.length > 1 && work.links.map((entry, index) => <button type="button" key={entry.url} className={`rounded px-2 py-1 text-xs ${index === selected ? "bg-stone-800 text-white" : "border text-stone-600"}`} onClick={() => setSelected(index)}>{entry.label}</button>)}<a className="ml-auto text-xs text-stone-500 underline" href={link.url} target="_blank" rel="noopener noreferrer">{tt("在新标签页打开")}</a></div><div className="min-h-0 flex-1">{embed === false ? <div role="status" className="grid h-full min-h-[360px] place-items-center p-6 text-center text-sm text-stone-600">{tt("这个网站不允许被嵌入显示")}</div> : <iframe src={link.url} title={link.label || work.title} className="h-full min-h-[360px] w-full border-0" sandbox={LINK_WORK_FRAME_SANDBOX} referrerPolicy="no-referrer" allow="" />}</div>{editing && <LinkEditor work={work} onClose={() => setEditing(false)} />}</section>;
+  const tt = useUI();
+  const work = linkWorkFromLibraryItem(item);
+  const link = work?.links[0];
+  const url = link?.url;
+  const [embed, setEmbed] = useState<boolean | null>(null);
+  useEffect(() => {
+    setEmbed(null);
+    if (!url) return;
+    let active = true;
+    void embedCheck(url).then((result) => { if (active) setEmbed(result.embeddable); }).catch(() => { if (active) setEmbed(null); });
+    return () => { active = false; };
+  }, [url]);
+  if (!work || !link) return <div role="alert" className="p-6 text-sm text-red-600">{tt("链接无效")}</div>;
+  return (
+    <section className="flex h-full min-h-[420px] flex-col bg-white" data-link-work-id={work.id}>
+      {embed === false ? (
+        <div role="status" className="flex h-full min-h-[360px] flex-col items-center justify-center gap-3 p-6 text-center text-sm text-stone-600">
+          <p>{tt("暂时无法预览")}</p>
+          <a href={link.url} target="_blank" rel="noopener noreferrer" className="rounded-lg border border-stone-200 px-3 py-1.5 text-[13px] text-stone-600 hover:bg-stone-50">{tt("在新标签页打开")}</a>
+        </div>
+      ) : (
+        <iframe src={link.url} title={work.title} className="h-full min-h-[360px] w-full border-0" sandbox={LINK_WORK_FRAME_SANDBOX} referrerPolicy="no-referrer" allow="" />
+      )}
+    </section>
+  );
 }

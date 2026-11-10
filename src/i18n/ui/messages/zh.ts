@@ -6461,5 +6461,8 @@ const zh: Record<string, string> = {
   "已加入项目": "已加入项目",
   "加入项目「{name}」": "加入项目「{name}」",
 
+  '介绍': '介绍',
+  '请填写有效的 HTTPS 链接': '请填写有效的 HTTPS 链接',
+  '删除失败，请重试': '删除失败，请重试',
 };
 export default zh;

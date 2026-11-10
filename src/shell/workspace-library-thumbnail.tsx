@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { accessToken } from "../lib/auth/client";
+import { gatewayBase } from "../lib/auth/config";
 import { useUI } from "../i18n/ui/useUI";
 import { ensureDatabaseThumbnail } from "../lib/database";
 import { advancedLibraryReferenceFor } from "./advanced-features";
@@ -28,6 +30,7 @@ import {
   libraryEditorLabel,
   translateLibraryTypeLabel,
 } from "./library-editor-category";
+import { linkWorkFromLibraryItem } from "./works/link-work-item";
 
 const generatedThumbnailCache = new Map<string, string>();
 const generatedThumbnailPending = new Map<string, Promise<string>>();
@@ -83,6 +86,28 @@ export function WorkspaceThumbnail({
   compact?: boolean;
 }) {
   const tt = useUI();
+  const linkWork = item ? linkWorkFromLibraryItem(item) : null;
+  const linkUrl = linkWork?.links[0]?.url;
+  const [linkIcon, setLinkIcon] = useState("");
+  useEffect(() => {
+    setLinkIcon("");
+    if (!linkUrl) return;
+    const controller = new AbortController();
+    let objectUrl = "";
+    void (async () => {
+      const token = await accessToken();
+      if (controller.signal.aborted) return;
+      const response = await fetch(`${gatewayBase()}/v1/link-icon?url=${encodeURIComponent(linkUrl)}`, {
+        signal: controller.signal, credentials: "include", headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!response.ok) return;
+      const blob = await response.blob();
+      if (controller.signal.aborted) return;
+      objectUrl = URL.createObjectURL(blob);
+      setLinkIcon(objectUrl);
+    })().catch(() => { /* Host name remains the standard cover when the site has no icon. */ });
+    return () => { controller.abort(); if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [linkUrl]);
   /**
    * D8：文档类的项直接是文字卡片（标题 + 开头几行）。它的 preview / thumbnail 可能是
    * 编辑器保存时渲的整页 PNG——这里连签名都不发：给 rendition hook 一个非 durable 的
@@ -97,7 +122,7 @@ export function WorkspaceThumbnail({
     Boolean(item && isDurableLibraryItem(item)) &&
     renditionPurposes.length === 0;
   const artifactRendition = useArtifactRendition(
-    textDocumentCard ? EMPTY_THUMBNAIL_ITEM : item || EMPTY_THUMBNAIL_ITEM,
+    textDocumentCard || linkWork ? EMPTY_THUMBNAIL_ITEM : item || EMPTY_THUMBNAIL_ITEM,
     noDisplayableCover ? [] : renditionPurposes,
   );
   const [failed, setFailed] = useState(false);
@@ -358,6 +383,18 @@ export function WorkspaceThumbnail({
     artifactType: item?.artifactType,
     kind,
   });
+  if (linkWork?.links[0]?.url) {
+    let hostname = linkWork.links[0].url;
+    try { hostname = new URL(hostname).hostname; } catch { /* normalized link data is still displayable */ }
+    return (
+      <div ref={hostRef} className="relative flex h-full w-full items-center justify-center overflow-hidden bg-neutral-100" data-cover-state="ready" data-link-cover="true">
+        <div className="flex flex-col items-center gap-2 text-center">
+          {linkIcon ? <img src={linkIcon} alt="" aria-hidden="true" className="h-10 w-10 rounded-xl bg-white p-1 shadow-sm" onError={(event) => { setLinkIcon(""); }} /> : <WorkspaceKindIcon kind="website" accent={accent} />}
+          <span className="max-w-[90%] truncate px-2 text-xs font-medium text-neutral-700">{hostname}</span>
+        </div>
+      </div>
+    );
+  }
   return (
     <div
       ref={hostRef}

@@ -83,7 +83,7 @@ function referenceLibraryItem(reference: ProjectScopeReference): LibraryItem | n
   if (reference.kind === "work") {
     const work = record(raw.link_work);
     if (work) {
-      const normalizedWork = normalizeLinkWork({ ...work, updated_at: text(work.updated_at) || text(raw.updated_at) || text(raw.created_at), id: text(work.id) || reference.id, title: text(work.title) || text(raw.title) || "Untitled work" });
+      const normalizedWork = normalizeLinkWork({ ...raw, ...work, updated_at: text(work.updated_at) || text(raw.updated_at) || text(raw.created_at), id: text(work.id) || reference.id, title: text(work.title) || text(raw.title) || "Untitled work" });
       if (!normalizedWork) return null;
       const normalized = linkWorkLibraryItem(normalizedWork);
       return { ...normalized, createdAt: text(work.created_at) || text(raw.created_at) || normalized.createdAt, meta: { ...normalized.meta, updated_at: normalizedWork.updated_at, project_scope: true, project_reference: true, project_reference_kind: reference.kind } };
