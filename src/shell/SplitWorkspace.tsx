@@ -904,9 +904,9 @@ export function SplitWorkspace({
       data-library-dock="right"
       aria-hidden={hasRight ? undefined : "true"}
       inert={!hasRight || undefined}
-      className={`relative mt-1.5 flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${paneTransitionClass} md:mt-0 ${
+      className={`relative flex min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-stone-200 bg-white/70 ${paneTransitionClass} md:mt-0 ${
         hasRight
-          ? "pointer-events-auto opacity-100"
+          ? "pointer-events-auto mt-1.5 opacity-100"
           : "pointer-events-none mt-0 border-0 opacity-0"
       }`}
       style={
@@ -916,6 +916,11 @@ export function SplitWorkspace({
               flexGrow: hasRight ? 1 : 0,
               flexShrink: hasRight ? 1 : 0,
               borderWidth: hasRight ? undefined : 0,
+              // Keep the runtime mounted, but do not let its intrinsic height
+              // size an auto-height row (or the mobile stacked layout).
+              height: hasRight ? undefined : 0,
+              maxHeight: hasRight ? undefined : 0,
+              alignSelf: hasRight ? undefined : "flex-start",
             }
           : {
               flexBasis: `${(1 - defaultRatio) * 100}%`,

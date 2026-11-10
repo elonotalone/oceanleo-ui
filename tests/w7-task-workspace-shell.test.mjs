@@ -119,7 +119,7 @@ const OVERRIDES = {
       "export function workspaceSurfacePrimaryTab(){ return null; }\n" +
       "export function workspaceSurfaceSlotForId(_m, id, fallback){ return fallback(id); }\n",
   ),
-  "./bay/shell/bay-state": dataModule("export function useBayEnabled(){ return false; }\n"),
+  "./bay/shell/bay-state": dataModule("export function useBayEnabled(){ return false; }\nexport function attachBayDeepLinks(){ return () => {}; }\n"),
   "./bay/panel": dataModule("export function BayPanel(){ return null; }\n"),
   "./leochat/LeoChatPanel": dataModule("export function LeoChatPanel(){ return null; }\n"),
   "../lib/im/client": dataModule("export function useImEnabled(){ return false; }\n"),
