@@ -352,7 +352,7 @@ test("one stalled native task list cannot hide sessions that already loaded", as
   assert.equal(signal?.aborted, true, "unmount cancels the pending request");
 });
 
-test("partial failure retains cached sessions, shows available task rows and the real error", async () => {
+test("partial failure retains cached sessions, shows available task rows without read-error text", async () => {
   const panel = await mount("partial-failure");
   try {
     await settle(20);
@@ -366,7 +366,7 @@ test("partial failure retains cached sessions, shows available task rows and the
     await settle(30);
     assert.match(panel.text(), /第一条任务/);
     assert.match(panel.text(), /仍能读取的电脑任务/);
-    assert.match(panel.text(), /session list unavailable/);
+    assert.doesNotMatch(panel.text(), /session list unavailable/);
     assert.doesNotMatch(panel.text(), /加载…/);
   } finally {
     await panel.unmount();
@@ -389,7 +389,7 @@ test("a failed refresh preserves the task but cannot keep claiming it works now"
     await settle(20);
     assert.ok(panel.container.querySelector('[data-history-row="stale-working"]'));
     assert.equal(panel.container.querySelector('[data-history-row="stale-working"] [data-history-working]'), null);
-    assert.match(panel.text(), /native list unavailable/);
+    assert.doesNotMatch(panel.text(), /native list unavailable/);
     assert.doesNotMatch(panel.text(), /加载…/);
   } finally {
     await panel.unmount();
@@ -397,14 +397,14 @@ test("a failed refresh preserves the task but cannot keep claiming it works now"
   }
 });
 
-test("two rejected list APIs settle the first load with an error", async () => {
+test("two rejected list APIs retain the first loading placeholder", async () => {
   globalThis.__historyTasksRead = async () => { throw new Error("native list unavailable"); };
   globalThis.__historySessionsRead = async () => { throw new Error("session list unavailable"); };
   const panel = await mount("both-list-rejections");
   try {
     await settle(20);
-    assert.match(panel.text(), /session list unavailable/);
-    assert.doesNotMatch(panel.text(), /加载…/);
+    assert.doesNotMatch(panel.text(), /session list unavailable/);
+    assert.match(panel.text(), /加载…/);
     assert.doesNotMatch(panel.text(), /还没有任务/);
   } finally {
     await panel.unmount();

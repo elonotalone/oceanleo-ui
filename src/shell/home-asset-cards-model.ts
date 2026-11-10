@@ -26,7 +26,7 @@ export function homeAssetCardKey(ref: HomeAssetRef): string {
   return `${ref.kind}:${ref.id}`;
 }
 
-/** Always render every section; preserve the server's curated item ordering. */
+/** Keep all four tab groups available; preserve the server's curated item ordering. */
 export function homeAssetSections(sections: readonly HomeAssetSection[]): HomeAssetSection[] {
   return HOME_ASSET_SECTION_IDS.map((id) => ({
     id,

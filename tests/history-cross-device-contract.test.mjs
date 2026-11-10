@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -18,7 +18,9 @@ test("history APIs resolve the injected desktop gateway at request time", () => 
 });
 
 test("desktop history is account-wide while the web portal keeps main-site scope", () => {
-  const page = source("../oceanleo/app/history/page.tsx");
+  const portal = ["../oceanleo", "../../oceanleo"].find((path) => existsSync(resolve(root, path, "app/history/page.tsx")));
+  assert.ok(portal, "portal checkout is present alongside main or worktree root");
+  const page = source(`${portal}/app/history/page.tsx`);
   assert.match(page, /useOptionalClientHost/);
   assert.match(page, /platform === "desktop" \? undefined : "oceanleo"/);
   assert.match(page, /<HistoryDetail\s+siteId=\{historySiteId\}/);

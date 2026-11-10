@@ -35,7 +35,7 @@ import {
 import { ConfirmDialog } from "../ui";
 import { browserClient } from "../lib/auth/client";
 import { onUserScopedClear, setCacheUser } from "../lib/user-scoped-cache";
-import { readHistoryListSource } from "../lib/history-list-api";
+import { historyActionFailureText, historyInitialRetryDelayMs, readHistoryListSource } from "../lib/history-list-api";
 import {
   prefetchHistoryOpen,
   readHistorySession,
@@ -494,11 +494,8 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       const tasks = sources.tasksTrusted === false
         ? (sources.tasks || []).map((task) => ({ ...task, working: false, open_turn: false }))
         : sources.tasks || [];
-      const complete = Boolean(sessionsResult && tasksResult);
       const unavailable = Boolean(sessionsResult && !sessionsResult.ok && isAppSessionApiUnavailableStatus(sessionsResult.status));
-      const failure = [sessionsResult, tasksResult].find((result, index) =>
-        result && !result.ok && !(index === 0 && unavailable));
-      putError(failure ? taskRequestFailureText(failure, "加载失败") : null);
+      putError(null);
       for (const task of tasks) {
         if (task.session_id) historyTaskSession.set(task.id, task.session_id);
       }
@@ -509,7 +506,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       }).filter(
         (entry) => !deletingRef.current.has(`${entry.kind}:${entry.id}`),
       );
-      if (next.length || complete || loadedOnceRef.current) {
+      if (next.length || (sessionsResult && tasksResult && (sessionsResult.ok || tasksResult.ok)) || loadedOnceRef.current) {
         if (sessionsResult?.ok || tasksResult?.ok) loadedOnceRef.current = true;
         putLoading(false);
       }
@@ -604,9 +601,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
     };
     window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
     window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     return () => {
       window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
     };
   }, [reload]);
   // A chat on screen moved (native frame / Leo reply / user send): bump its row
@@ -651,9 +650,14 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
             schedule();
           },
         );
-      }, historyPollDelayMs(pollFailuresRef.current));
+      }, loadedOnceRef.current ? historyPollDelayMs(pollFailuresRef.current) : historyInitialRetryDelayMs(Math.max(0, pollFailuresRef.current - 1)));
     };
-    schedule();
+    // Join the initial read; successful lists keep the ordinary 8 s cadence.
+    void reload(true).then((ok) => {
+      if (cancelled) return;
+      pollFailuresRef.current = ok ? 0 : 1;
+      schedule();
+    });
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -700,12 +704,12 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       entry.kind === "session"
         ? { kind: "session", id: entry.session.id, surface: entry.session.surface === "advanced" ? "advanced" : "app" }
         : { kind: "task", id: entry.task.id },
-    );
+    ).catch(() => ({ ok: false, error: "删除失败，请重试。" }));
     deletingRef.current.delete(deletionKey);
     if (!r.ok) {
       setItems(prev);
       // e.g. 409 local_agent_stop_pending: the computer was asked to stop the task first.
-      setNotice(taskRequestFailureText(r, "删除失败，请重试。"));
+      setNotice(historyActionFailureText(r, "删除失败，请重试。"));
       reload(true);
     } else {
       setError(null);
@@ -757,11 +761,11 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
           ? { kind: "session", id, surface: entry.session.surface === "advanced" ? "advanced" : "app" }
           : { kind: "task", id },
         patch,
-      );
+      ).catch(() => ({ ok: false, error: "操作失败，请稍后重试。" }));
       if (!result.ok) mutationError = result.error || "update failed";
       if (mutationError) {
         setItems(prev);
-        setError(tt("操作失败，请稍后重试。"));
+        setNotice("操作失败，请稍后重试。");
         return false;
       }
       if (typeof window !== "undefined") {
@@ -772,12 +776,12 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
           }));
         }
       }
-      setError(null);
+      setNotice(null);
       // 网关给的项目名才是准的：换项目后静默刷新一次拿回 `project` 标注。
       if (movesProject) void reload(true, true);
       return true;
     },
-    [items, reload, tt],
+    [items, reload],
   );
   return { items, loading, error, notice, remove, mutate, reload };
 }
@@ -876,7 +880,7 @@ function useHoverPrefetch() {
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
   const { items, loading, error, notice, remove, mutate } = useHistory(siteId);
-  const local = useLocalTasks();
+  const local = useLocalTasks(true);
   const cloudTaskIds = new Set(items.filter((entry) => entry.kind === "task").map((entry) => entry.id));
   // Once a finished local record is synced, keep the ordinary task's title,
   // menu and outputs. Native rows cover live execution and offline records.
@@ -1011,11 +1015,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
       ) : null}
       {error && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(error)}</p>}
       {notice && <p role="alert" data-history-delete-error className="px-3 py-2 text-[12px] text-rose-600">{tt(notice)}</p>}
-      {!error && loading && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
-      {!error && !loading && visibleItems.length === 0 && visibleLocalTasks.length === 0 && (
+      {!error && (loading || local.loading) && <p className="px-3 py-2 text-[12px] text-neutral-400">{tt("加载…")}</p>}
+      {!error && !loading && !local.loading && visibleItems.length === 0 && visibleLocalTasks.length === 0 && (
         <p className="px-3 py-2 text-[12px] text-neutral-400">{tt(normalizedSearch ? "没有匹配的任务。" : "还没有任务。")}</p>
       )}
-      {local.error && <p role="status" className="px-3 py-2 text-[12px] text-neutral-400">{tt("无法读取本机任务，请稍后重试。")}</p>}
       <LocalTaskRows tasks={visibleLocalTasks} selected={sel} accent={accent} />
       {visibleItems.filter((entry) => entry.kind !== "task" || !localRemoteIds.has(entry.id)).map((entry) => {
         const isSession = entry.kind === "session";

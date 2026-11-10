@@ -68,27 +68,27 @@ test("model renders four ordered sections without reordering curated assets or c
   assert.notEqual(homeAssetCardKey(image.ref), homeAssetCardKey(website.ref));
 });
 
-test("all four sections and their navigation targets remain present, including empty video", () => {
+test("four tabs offer one panel, defaulting to the first populated type", () => {
   const doc = new window.DOMParser().parseFromString(render(), "text/html");
-  assert.deepEqual([...doc.querySelectorAll("[data-home-asset-section]")].map((node) => node.dataset.homeAssetSection), ["video", "image", "website", "essay"]);
-  for (const button of doc.querySelectorAll("nav button")) assert.ok(doc.getElementById(button.getAttribute("aria-controls")));
-  assert.equal(doc.querySelectorAll("[data-home-asset-ref]").length, 3);
-  assert.equal(doc.querySelector("[data-home-asset-empty=video]").textContent, "No video assets available yet");
+  assert.equal(doc.querySelectorAll('[role="tab"]').length, 4);
+  assert.equal(doc.querySelector('[role="tabpanel"]').dataset.homeAssetSection, "image");
+  assert.equal(doc.querySelectorAll("[data-home-asset-section]").length, 1);
+  assert.equal(doc.querySelectorAll("[data-home-asset-ref]").length, 1);
 });
 
-test("category activation scrolls and transfers focus without filtering any section", async () => {
+test("category activation replaces the cards without scrolling", async () => {
   const calls = [];
   const previous = window.HTMLElement.prototype.scrollIntoView;
-  window.HTMLElement.prototype.scrollIntoView = function(options) { calls.push([this.dataset.homeAssetSection, options]); };
+  window.HTMLElement.prototype.scrollIntoView = function(options) { calls.push(options); };
   try {
     await mounted({}, async (container) => {
       const button = [...container.querySelectorAll("nav button")].find((node) => node.textContent === "Website");
       await click(button);
-      assert.deepEqual(calls, [["website", {block:"start", behavior:"auto"}]]);
-      assert.equal(document.activeElement.dataset.homeAssetSection, "website");
-      assert.equal(button.getAttribute("aria-current"), "location");
-      assert.equal(container.querySelectorAll("[data-home-asset-section]").length, 4);
-      assert.equal(container.querySelectorAll("[data-home-asset-ref]").length, 3);
+      assert.deepEqual(calls, []);
+      assert.equal(button.getAttribute("aria-selected"), "true");
+      assert.equal(container.querySelectorAll("[data-home-asset-section]").length, 1);
+      assert.equal(container.querySelector('[role="tabpanel"]').dataset.homeAssetSection, "website");
+      assert.equal(container.querySelectorAll("[data-home-asset-ref]").length, 1);
     });
   } finally { window.HTMLElement.prototype.scrollIntoView = previous; }
 });
@@ -103,6 +103,7 @@ test("card and prompt chip independently dispatch the exact ref and unchanged pr
     await click(tile.querySelector("[data-app-card-main]"));
     assert.deepEqual(opened, [image.ref]);
     assert.deepEqual(picked, [image.promptText]);
+    await click([...container.querySelectorAll("nav button")].find((node) => node.textContent === "Website"));
     await click(container.querySelector('[data-home-asset-ref="template:same"] [data-app-card-main]'));
     assert.deepEqual(opened, [image.ref, website.ref]);
     assert.equal(container.querySelectorAll('[role="dialog"]').length, 0);
@@ -120,14 +121,14 @@ test("no empty prompt chips; every asset still has an independent native keyboar
 
 test("card previews use the public resolver's exact asset paths and purpose for every family", () => {
   for (const family of ["cn", "com", "ws"]) {
-    const doc = new window.DOMParser().parseFromString(render({family}), "text/html");
     for (const item of [image, website]) {
+      const doc = new window.DOMParser().parseFromString(render({family, sections:[{id:"image",items:[item]}]}), "text/html");
       const tile = doc.querySelector(`[data-home-asset-ref="${homeAssetCardKey(item.ref)}"]`);
       const src = resolvePublicAssetMedia(item.preview.key, {purpose:"thumb", family});
       assert.ok(tile.querySelectorAll("img").length > 0);
       assert.ok([...tile.querySelectorAll("img")].every((img) => img.getAttribute("src") === src));
     }
-    assert.doesNotMatch(doc.documentElement.outerHTML, /cap-app\//);
+
   }
 });
 
@@ -139,10 +140,10 @@ test("URL previews are preserved by the resolver and real video removes the exce
   assert.match(html, /platform:film/);
 });
 
-test("loading and failure retain all sections and prompt entry without falsely claiming empty video", () => {
+test("loading and failure retain one panel and prompt entry without falsely claiming empty video", () => {
   for (const state of [{loading:true}, {error:true}]) {
     const html = render({...state, sections:[]});
-    assert.equal((html.match(/data-home-asset-section=/g) || []).length, 4);
+    assert.equal((html.match(/data-home-asset-section=/g) || []).length, 1);
     assert.doesNotMatch(html, /data-home-asset-empty=/);
     assert.match(html, /data-home-add-prompt/);
     assert.match(html, state.loading ? /role="status"/ : /role="alert"/);

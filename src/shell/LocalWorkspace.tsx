@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { getClientHostConfig, onClientHostConfigChange, type ClientLocalTask } from "../contracts/client-host-config";
 import { useUI } from "../i18n/ui/useUI";
+import { boundedHistoryListRequest, historyInitialRetryDelayMs } from "../lib/history-list-api";
 import { RdServiceStatus } from "./RdServiceStatus";
 
 export function getLocalWorkspace() {
@@ -15,7 +16,7 @@ export function useLocalWorkspace() {
   return useSyncExternalStore(onClientHostConfigChange, getLocalWorkspace, () => undefined);
 }
 
-export function useLocalTasks() {
+export function useLocalTasks(quietList = false) {
   const workspace = useLocalWorkspace();
   const [tasks, setTasks] = useState<ClientLocalTask[]>([]);
   const [error, setError] = useState("");
@@ -23,21 +24,46 @@ export function useLocalTasks() {
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
+    let loaded = false;
+    let failures = 0;
+    let reading = false;
+    const controller = new AbortController();
     if (!workspace) { setTasks([]); setLoading(false); return; }
     setLoading(true);
     const refresh = async () => {
+      if (reading) return;
+      reading = true;
+      clearTimeout(timer);
       try {
-        const next = await workspace.listTasks();
-        if (active) { setTasks(next); setError(""); }
+        const next = quietList
+          ? await boundedHistoryListRequest(() => workspace.listTasks(), { signal: controller.signal })
+          : await workspace.listTasks();
+        if (active) { loaded = true; failures = 0; setTasks(next); setError(""); }
       } catch (caught) {
-        if (active) setError(String(caught instanceof Error ? caught.message : caught));
+        if (active) { failures += 1; setError(String(caught instanceof Error ? caught.message : caught)); }
       } finally {
-        if (active) { setLoading(false); timer = setTimeout(refresh, 3000); }
+        reading = false;
+        if (active) {
+          setLoading(quietList && !loaded);
+          timer = setTimeout(refresh, quietList && failures ? historyInitialRetryDelayMs(failures - 1) : 3000);
+        }
       }
     };
     void refresh();
-    return () => { active = false; clearTimeout(timer); };
-  }, [workspace]);
+    if (quietList) {
+      window.addEventListener("focus", refresh);
+      window.addEventListener("online", refresh);
+    }
+    return () => {
+      active = false;
+      controller.abort();
+      clearTimeout(timer);
+      if (quietList) {
+        window.removeEventListener("focus", refresh);
+        window.removeEventListener("online", refresh);
+      }
+    };
+  }, [workspace, quietList]);
   return { tasks, error, loading, workspace };
 }
 

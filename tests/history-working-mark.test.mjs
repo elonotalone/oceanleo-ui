@@ -291,7 +291,7 @@ test("a failed session read cannot keep an unbound cached session working now", 
     });
     assert.ok(row(container, "unbound-working"));
     assert.deepEqual(workingIds(container), []);
-    assert.match(container.textContent, /session state unavailable/);
+    assert.doesNotMatch(container.textContent, /session state unavailable/);
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();

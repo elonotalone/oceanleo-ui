@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { boundedHistoryListRequest, readHistoryListSource } from "../src/lib/history-list-api.ts";
+import { boundedHistoryListRequest, readHistoryListSource, historyInitialRetryDelayMs, historyActionFailureText } from "../src/lib/history-list-api.ts";
 
 test("a list deadline aborts transport and settles even if authentication ignores cancellation", async () => {
   let signal;
@@ -41,4 +41,12 @@ test("thrown errors, timeouts and malformed partial APIs remain failures, never 
   }
   const empty = await readHistoryListSource(async () => ({ ok: true, data: { items: [] } }));
   assert.equal(empty.ok, true);
+});
+
+test("initial retries cap at 30 seconds and action failures never repeat transport text", () => {
+  assert.deepEqual([0,1,2,3,4,10].map(historyInitialRetryDelayMs), [2000,4000,8000,16000,30000,30000]);
+  for (const error of ["Network error: can't reach the AI gateway.", "Failed to fetch", "加载超时，请重试。", "网络错误"]) {
+    assert.equal(historyActionFailureText({error}, "删除失败，请重试。"), "删除失败，请重试。");
+  }
+  assert.notEqual(historyActionFailureText({error:"LOCAL_AGENT_STOP_PENDING"}, "删除失败，请重试。"), "删除失败，请重试。");
 });

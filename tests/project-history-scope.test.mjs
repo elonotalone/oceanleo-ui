@@ -48,7 +48,7 @@ test("ordinary shared history keeps each consumer site; the sidebar lists the ca
   // 旧整页 HistoryPage 不在 D11 范围内，仍只列未归属项目的记录。
   assert.match(
     historyPage,
-    /listTasks\(100, siteId, false, "app", "unassigned"\)/,
+    /listTasks\(100, siteId, false, "app", "unassigned", \{ signal \}\)/,
   );
   assert.match(
     historyPage,

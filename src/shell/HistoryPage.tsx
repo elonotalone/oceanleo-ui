@@ -17,7 +17,7 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
-import { taskRequestFailureText } from "../lib/local-agent-task";
+import { historyActionFailureText, historyInitialRetryDelayMs, readHistoryListSource } from "../lib/history-list-api";
 import { isTaskWorking } from "./history-model";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
@@ -77,20 +77,46 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 
   useEffect(() => {
     let alive = true;
+    let failures = 0;
+    let timer: ReturnType<typeof setTimeout>;
+    let reading = false;
+    const controller = new AbortController();
+    setItems([]);
     setLoading(true);
     setError(null);
-    listTasks(100, siteId, false, "app", "unassigned").then((r) => {
+    const refresh = async () => {
+      if (reading) return;
+      reading = true;
+      clearTimeout(timer);
+      const r = await readHistoryListSource<AgentTask>((signal) =>
+        listTasks(100, siteId, false, "app", "unassigned", { signal }), { signal: controller.signal });
+      reading = false;
       if (!alive) return;
-      setLoading(false);
       if (!r.ok || !r.data) {
-        setError(r.status === 401 ? tt("登录后即可查看我的任务。") : taskRequestFailureText(r, "加载失败"));
+        if (r.status === 401) {
+          setError("登录后即可查看我的任务。");
+          setLoading(false);
+          setItems([]);
+        } else {
+          timer = setTimeout(refresh, historyInitialRetryDelayMs(failures++));
+        }
         return;
       }
+      failures = 0;
+      setError(null);
+      setLoading(false);
       // 旧后端可能忽略项目范围；普通历史仍须在 UI 侧 fail closed。
-      setItems((r.data.items || []).filter((task) => task.project_id == null));
-    });
+      setItems(r.data.items.filter((task) => task.project_id == null));
+    };
+    void refresh();
+    window.addEventListener("focus", refresh);
+    window.addEventListener("online", refresh);
     return () => {
       alive = false;
+      controller.abort();
+      clearTimeout(timer);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener("online", refresh);
     };
   }, [siteId]);
 
@@ -102,12 +128,12 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
     setDeleteError(null);
     const prev = items;
     setItems((list) => list.filter((t) => t.id !== task.id)); // optimistic
-    const r = await deleteTask(task.id);
+    const r = await deleteTask(task.id).catch(() => ({ ok: false, error: "删除失败，请重试。" }));
     setDeletingId(null);
     if (!r.ok) {
       setItems(prev); // rollback
       // e.g. 409 local_agent_stop_pending: the computer was asked to stop the task first.
-      setDeleteError(taskRequestFailureText(r, "删除失败，请重试。"));
+      setDeleteError(historyActionFailureText(r, "删除失败，请重试。"));
     }
   }
 
@@ -137,7 +163,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 
       <div className="min-h-0 flex-1 overflow-y-auto">
         {error ? (
-          <Empty text={error} />
+          <Empty text={tt(error)} />
         ) : loading ? (
           <div className="space-y-2">
             {Array.from({ length: 6 }).map((_, i) => (

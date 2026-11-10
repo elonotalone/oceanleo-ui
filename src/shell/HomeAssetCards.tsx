@@ -30,14 +30,15 @@ export interface HomeAssetCardsProps {
 export function HomeAssetCards({ sections, siteId, accent = "#4f46e5", family, loading = false, error = false, onOpenAsset, onPick }: HomeAssetCardsProps) {
   const tt = useUI();
   const instanceId = useId();
-  const sectionNodes = useRef<Partial<Record<HomeAssetSectionId, HTMLElement | null>>>({});
-  const [active, setActive] = useState<HomeAssetSectionId>("video");
+  const tabNodes = useRef<Partial<Record<HomeAssetSectionId, HTMLButtonElement | null>>>({});
+  const [selected, setSelected] = useState<HomeAssetSectionId | null>(null);
   // Keep the loaded site's identity with its cards, so switching sites cannot write old cards to a new key.
   const [stored, setStored] = useState<{ siteId: string; cards: PromptCard[] }>({ siteId, cards: [] });
   const custom = stored.siteId === siteId ? stored.cards : [];
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<PromptCard | null>(null);
   const groups = useMemo(() => homeAssetSections(sections), [sections]);
+  const active = selected ?? groups.find((group) => group.items.length)?.id ?? "video";
   const presets = useMemo(() => promptCardsForSite(siteId), [siteId]);
   const categories = [...new Set(custom.map((card) => card.category).filter(Boolean))];
 
@@ -60,19 +61,25 @@ export function HomeAssetCards({ sections, siteId, accent = "#4f46e5", family, l
     }
   }
 
-  function jump(id: HomeAssetSectionId) {
-    setActive(id);
-    const target = sectionNodes.current[id];
-    target?.scrollIntoView({ block: "start", behavior: "auto" });
-    target?.focus({ preventScroll: true });
-  }
 
   return (
     <section className="w-full" data-home-asset-cards>
-      <nav aria-label={tt("首页素材分类")} className="flex flex-wrap items-center gap-1 border-b border-stone-200/70">
+      <nav role="tablist" aria-label={tt("首页素材分类")} className="flex flex-wrap items-center gap-1 border-b border-stone-200/70">
         {groups.map(({ id }) => (
-          <button key={id} type="button" aria-controls={`${instanceId}-${id}`} aria-current={active === id ? "location" : undefined}
-            onClick={() => jump(id)} className="relative rounded px-3 pb-2 pt-1 text-[13px] text-stone-600 focus-visible:outline focus-visible:outline-2"
+          <button key={id} type="button" role="tab" id={`${instanceId}-${id}-tab`}
+            ref={(node) => { tabNodes.current[id] = node; }}
+            aria-controls={`${instanceId}-${id}`} aria-selected={active === id} tabIndex={active === id ? 0 : -1}
+            onClick={() => setSelected(id)}
+            onKeyDown={(event) => {
+              const index = groups.findIndex((group) => group.id === id);
+              const next = event.key === "ArrowRight" ? (index + 1) % groups.length
+                : event.key === "ArrowLeft" ? (index + groups.length - 1) % groups.length
+                : event.key === "Home" ? 0 : event.key === "End" ? groups.length - 1 : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              setSelected(groups[next].id);
+              tabNodes.current[groups[next].id]?.focus();
+            }} className="relative rounded px-3 pb-2 pt-1 text-[13px] text-stone-600 focus-visible:outline focus-visible:outline-2"
             style={active === id ? { color: accent, boxShadow: `inset 0 -2px ${accent}` } : undefined}>
             {tt(SECTION_COPY[id])}
           </button>
@@ -80,9 +87,9 @@ export function HomeAssetCards({ sections, siteId, accent = "#4f46e5", family, l
       </nav>
       {loading && <p role="status" className="py-3 text-sm text-stone-500">{tt("正在加载首页素材…")}</p>}
       {error && <p role="alert" className="py-3 text-sm text-stone-500">{tt("首页素材暂时无法加载，请稍后重试。")}</p>}
-      {groups.map(({ id, items }) => (
-        <section key={id} id={`${instanceId}-${id}`} ref={(node) => { sectionNodes.current[id] = node; }} tabIndex={-1}
-          aria-labelledby={`${instanceId}-${id}-heading`} className="scroll-mt-4 pt-5 focus-visible:outline focus-visible:outline-2" data-home-asset-section={id}>
+      {groups.filter(({ id }) => id === active).map(({ id, items }) => (
+        <section key={id} id={`${instanceId}-${id}`} role="tabpanel" tabIndex={0}
+          aria-labelledby={`${instanceId}-${id}-tab`} className="scroll-mt-4 pt-5 focus-visible:outline focus-visible:outline-2" data-home-asset-section={id}>
           <h2 id={`${instanceId}-${id}-heading`} className="mb-3 text-sm font-semibold text-stone-800">{tt(SECTION_COPY[id])}</h2>
           <div className={APP_CARD_GRID_CLASS}>
             {items.map((item) => (

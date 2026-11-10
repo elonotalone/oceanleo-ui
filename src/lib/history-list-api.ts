@@ -1,4 +1,5 @@
 import type { AgentApiResult } from "./agent";
+import { taskRequestFailureText } from "./local-agent-task";
 
 /** Covers authentication, transport and response parsing, including stalled clients. */
 export const HISTORY_LIST_TIMEOUT_MS = 12_000;
@@ -81,4 +82,16 @@ export async function readHistoryListSource<T>(
       error: error instanceof Error ? error.message : "加载失败",
     };
   }
+}
+
+/** First-read retries are quiet and bounded; successful lists retain their normal poll cadence. */
+export function historyInitialRetryDelayMs(failures: number): number {
+  return Math.min(30_000, 2_000 * 2 ** Math.min(4, Math.max(0, failures)));
+}
+
+/** Transport details belong to diagnostics, not a user's failed list action. */
+export function historyActionFailureText(result: { status?: number; error?: string }, fallback: string): string {
+  if (result.status === 0 || result.status === 408 || result.status === 504 ||
+      /network|fetch|timeout|timed.?out|网络|超时|加载已取消/i.test(result.error || "")) return fallback;
+  return taskRequestFailureText(result, fallback);
 }
