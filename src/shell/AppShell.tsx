@@ -50,6 +50,7 @@ import { useUI } from "../i18n/ui/useUI";
 import { helpCenterUrl } from "../lib/help-url";
 import { usePresenceHeartbeat } from "../lib/presence";
 import { AUTH_STATE_EVENT } from "../lib/auth/client";
+import { useAccountSession } from "../lib/auth/account-identity";
 import { PhoneBindGate } from "../pages/PhoneBindGate";
 import { AppPageHeader } from "./AppPageHeader";
 // 手机上「看起来是一个 app」的那一套：安全区让位 + 原生宿主下的触感修复。
@@ -492,10 +493,17 @@ function AppShellInner({
       window.removeEventListener(AUTH_STATE_EVENT, read);
     };
   }, [host]);
-  const resolvedEmail = userEmail || (isClientHostConfigured() ? hostEmail : null);
+  const accountSession = useAccountSession();
+  const resolvedEmail = accountSession?.available
+    ? accountSession.email
+    : userEmail || (isClientHostConfigured() ? hostEmail : null);
   useEffect(() => {
     let cancelled = false;
     async function refreshName() {
+      if (!resolvedEmail) {
+        setProfileDisplayName("");
+        return;
+      }
       try {
         const auth = (await import("../lib/auth")) as {
           getAccountProfile?: () => Promise<

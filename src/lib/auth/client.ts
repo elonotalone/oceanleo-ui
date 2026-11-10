@@ -289,6 +289,33 @@ export interface AuthStateEventDetail {
   userId?: string | null;
 }
 
+export interface UsableSessionSnapshot {
+  available: boolean;
+  userId: string | null;
+  email: string | null;
+  expiresAt: number | null;
+}
+
+/** Saved native identity can outlive its access token while renewal retries. */
+export async function getUsableSessionSnapshot(): Promise<UsableSessionSnapshot> {
+  const empty = { userId: null, email: null, expiresAt: null };
+  const c = browserClient();
+  if (!c) return { available: false, ...empty };
+  try {
+    if (!await waitForBrowserOauthReturn()) return { available: false, ...empty };
+    const { data, error } = await c.auth.getSession();
+    if (error) return { available: false, ...empty };
+    const session = data.session;
+    const expiresAt = session?.expires_at ? session.expires_at * 1000 : null;
+    if (!session?.access_token || !session.user?.id || (expiresAt !== null && expiresAt <= Date.now())) {
+      return { available: true, ...empty };
+    }
+    return { available: true, userId: session.user.id, email: session.user.email || null, expiresAt };
+  } catch {
+    return { available: false, ...empty };
+  }
+}
+
 /**
  * A verified local auth snapshot for legacy auth-state announcements that do
  * not carry event detail. `available: false` is deliberately distinct from a

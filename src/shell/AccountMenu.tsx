@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { useAccountSession } from "../lib/auth/account-identity";
 import { listMyOrgs, type OrgSummary } from "../lib/org-api";
 import { PAYER_LAST_KEY, PERSONAL_PAYER, persistPayerOrgId, persistedPayerOrgId } from "../lib/payer";
 import { FloatingMenu, FloatingMenuItem, FloatingMenuSeparator } from "../ui/menu/FloatingMenu";
@@ -42,7 +43,9 @@ export function selectAccountIdentity(id: string): void {
 
 export function AccountMenu(props: AccountMenuProps) {
   const tt = useUI();
-  const signedIn = props.signedIn !== false;
+  const session = useAccountSession();
+  const signedIn = props.signedIn !== false && session?.userId !== null;
+  const name = signedIn ? props.name : tt("登录");
   const anchorRef = useRef<HTMLButtonElement>(null);
   const identityRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -50,6 +53,12 @@ export function AccountMenu(props: AccountMenuProps) {
   const [narrow, setNarrow] = useState(false);
   const [orgs, setOrgs] = useState<OrgSummary[]>([]);
   const [payer, setPayer] = useState(PERSONAL_PAYER);
+  useEffect(() => {
+    if (!signedIn) {
+      setOpen(false);
+      setIdentitiesOpen(false);
+    }
+  }, [signedIn]);
   useEffect(() => {
     if (!signedIn) return;
     let cancelled = false;
@@ -91,7 +100,7 @@ export function AccountMenu(props: AccountMenuProps) {
   const roleLabel = (role: OrgSummary["role"]) => role === "owner" ? tt("所有者") : role === "admin" ? tt("管理员") : tt("团队成员");
   const selected = orgs.find((org) => org.id === payer);
   const identity = selected ? `${selected.name} · ${roleLabel(selected.role)}` : tt("个人");
-  const avatar = props.avatar ?? <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-800 text-[11px] text-white">{(props.name || props.email || "?")[0].toUpperCase()}</span>;
+  const avatar = (signedIn ? props.avatar : null) ?? <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-800 text-[11px] text-white">{(name || "?")[0].toUpperCase()}</span>;
   const identities = <>
     <FloatingMenuItem label={tt("个人")} selected={!selected} trailing={!selected ? "✓" : undefined} onSelect={() => select(PERSONAL_PAYER)} />
     {orgs.map((org) => <FloatingMenuItem key={org.id} label={org.name} description={roleLabel(org.role)} selected={payer === org.id} trailing={payer === org.id ? "✓" : undefined} onSelect={() => select(org.id)} />)}
@@ -101,7 +110,7 @@ export function AccountMenu(props: AccountMenuProps) {
   const settings = (tab: string) => { close(); props.onOpenSettings(tab); };
   const personalizationTab = props.personalizationTab === undefined ? "personalization" : props.personalizationTab;
   return <>
-    <button ref={anchorRef} type="button" data-account-trigger aria-haspopup={signedIn ? "menu" : undefined} aria-expanded={signedIn ? open : undefined} aria-label={props.name} title={props.name} onClick={() => {
+    <button ref={anchorRef} type="button" data-account-trigger aria-haspopup={signedIn ? "menu" : undefined} aria-expanded={signedIn ? open : undefined} aria-label={name} title={name} onClick={() => {
       if (!signedIn) {
         props.onOpenSettings("account");
         return;
@@ -109,9 +118,9 @@ export function AccountMenu(props: AccountMenuProps) {
       setOpen(!open);
       setIdentitiesOpen(false);
     }} className={`leo-tap-row flex min-w-0 items-center gap-2.5 rounded-lg p-1.5 text-neutral-800 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-neutral-200/50 dark:text-neutral-100 dark:hover:bg-neutral-800 ${props.compact ? "w-full justify-center" : "max-w-[7.5rem]"}`}>
-      {avatar}{!props.compact && <span className="truncate text-[13px] font-medium">{props.name}</span>}
+      {avatar}{!props.compact && <span className="truncate text-[13px] font-medium">{name}</span>}
     </button>
-    <FloatingMenu open={open} anchorRef={anchorRef} onClose={close} preferredPlacement="above" align="start" width={280} ariaLabel={tt("账户")}>
+    {signedIn ? <FloatingMenu open={open} anchorRef={anchorRef} onClose={close} preferredPlacement="above" align="start" width={280} ariaLabel={tt("账户")}>
       <button ref={identityRef} type="button" role="menuitem" aria-haspopup="menu" aria-expanded={identitiesOpen} onClick={() => setIdentitiesOpen(!identitiesOpen)} className="flex w-full items-center gap-3 rounded-lg px-2.5 py-3 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800">
         {avatar}<span className="min-w-0 flex-1"><span className="block truncate text-[13px] font-medium">{props.name}</span><span data-account-identity className="block truncate text-[12px] text-neutral-500 dark:text-neutral-400">{identity}</span></span><span data-identity-switch aria-hidden="true"><IdentitySwitchChevrons /></span>
       </button>
@@ -131,6 +140,6 @@ export function AccountMenu(props: AccountMenuProps) {
         <FloatingMenuSeparator />
         <FloatingMenuItem label={tt("退出登录")} danger onSelect={() => { close(); props.onSignOut(); }} />
       </> : null}
-    </FloatingMenu>
+    </FloatingMenu> : null}
   </>;
 }

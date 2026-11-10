@@ -196,6 +196,9 @@ const clientStubUrl = dataModule(`
   export async function accessToken() { return g().accessToken ?? "tok"; }
   export async function getUserEmail() { return g().user?.email ?? null; }
   export async function getUserId() { return g().user?.id ?? null; }
+  export async function getUsableSessionSnapshot() {
+    return { available: true, userId: g().user?.id ?? null, email: g().user?.email ?? null, expiresAt: null };
+  }
   export async function reauthenticate() { return g().reauthenticate(); }
   export async function wechatLoginUrl(redirect) { return g().wechatLoginUrl(redirect); }
   export async function startOauthSignIn(provider, redirect) {

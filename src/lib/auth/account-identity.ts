@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
   AUTH_STATE_EVENT,
   accessToken,
@@ -7,6 +8,9 @@ import {
   getAuthPhoneUser,
   getUserEmail,
   getUserId,
+  getUsableSessionSnapshot,
+  type AuthStateEventDetail,
+  type UsableSessionSnapshot,
   maskCnPhone,
   reauthenticate,
   wechatLoginUrl,
@@ -86,6 +90,46 @@ const BAD_OTP = "验证码不正确或已过期，请重新获取。";
 const RATE_LIMITED = "操作过于频繁，请稍后再试。";
 const ENTER_EMAIL = "请先填写邮箱地址。";
 const DELETE_FAILED = "现在删不了这个账户，请稍后再试。";
+
+/** Unknown on first paint: a caller's valid hydrated identity stays immediate. */
+export function useAccountSession(): UsableSessionSnapshot | null {
+  const [identity, setIdentity] = useState<UsableSessionSnapshot | null>(null);
+  useEffect(() => {
+    let alive = true;
+    let generation = 0;
+    let expiryTimer: ReturnType<typeof setTimeout> | undefined;
+    async function read() {
+      const request = ++generation;
+      const snapshot = await getUsableSessionSnapshot();
+      if (!alive || request !== generation) return;
+      if (!snapshot.available) {
+        setIdentity((current) => current?.expiresAt && current.expiresAt <= Date.now()
+          ? { available: true, userId: null, email: null, expiresAt: null } : current);
+        return;
+      }
+      clearTimeout(expiryTimer);
+      setIdentity(snapshot);
+      if (snapshot.expiresAt) expiryTimer = setTimeout(() => { void read(); },
+        Math.min(Math.max(1, snapshot.expiresAt - Date.now() + 1), 2_147_483_647));
+    }
+    const onAuth = (event: Event) => {
+      if ((event as CustomEvent<AuthStateEventDetail>).detail?.event === "SIGNED_OUT") {
+        ++generation;
+        clearTimeout(expiryTimer);
+        setIdentity({ available: true, userId: null, email: null, expiresAt: null });
+      } else void read();
+    };
+    window.addEventListener(AUTH_STATE_EVENT, onAuth);
+    void read();
+    return () => {
+      alive = false;
+      ++generation;
+      clearTimeout(expiryTimer);
+      window.removeEventListener(AUTH_STATE_EVENT, onAuth);
+    };
+  }, []);
+  return identity;
+}
 
 function hasHan(text: string): boolean {
   return /[\u3400-\u9fff]/.test(text);
@@ -306,6 +350,8 @@ function announceAuthState(): void {
 async function currentUser(): Promise<{ user: AccountUserLike | null; error?: string }> {
   const client = browserClient();
   if (!client) return { user: null, error: CONFIG_UNAVAILABLE };
+  const snapshot = await getUsableSessionSnapshot();
+  if (snapshot.available && !snapshot.userId) return { user: null, error: SESSION_GONE };
   const { data, error } = await client.auth.getUser();
   if (!error && data?.user) return { user: data.user as AccountUserLike };
   const session = await client.auth.getSession();
