@@ -1439,7 +1439,8 @@ function AgentChatInner({
   const taskActivity = useTaskActivity(computerTask && taskId ? taskId : null, 10_000);
   const acpView = useMemo(() => withTaskActivity(reducedAcpView, taskActivity.activity), [reducedAcpView, taskActivity.activity]);
   const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
-  const acpComposerDisabled = readOnly || (taskId ? !acpConnected : acpDraftOffline);
+  const acpTransportBlocked = taskId ? !acpConnected : acpDraftOffline;
+  const acpComposerDisabled = readOnly || acpTransportBlocked;
   const acpPicker = useAcpCatalogPicker({
     computerId: acpComputerId,
     program: acpProgram,
@@ -1556,6 +1557,18 @@ function AgentChatInner({
   const pendingTask = pending && (!taskId || taskId === pending.taskId || pendingRetried === pending.id);
   const pendingShown = pending && pendingTask && acpView.turns.length === 0 ? pending : null;
   const pendingInFlight = Boolean(pendingShown && pendingShown.error == null);
+  const acpSendBlocked = acpTransportBlocked || acpBusy || pendingInFlight;
+  const acpSendBlockedReason = readOnly
+    ? null
+    : pendingInFlight
+      ? tt("上一条还在发送")
+      : acpBusy
+        ? tt("正在发送…")
+        : acpTransportBlocked
+          ? (taskId
+            ? (frames.state === "connecting" ? tt("正在连接…") : tt("网络断开，恢复后可发送"))
+            : tt("电脑离线"))
+          : null;
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
     && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
@@ -3544,7 +3557,9 @@ function AgentChatInner({
           onStop={() => void stopAcpTurn()}
           stopping={acpStopping}
           onOpenAttachment={openTaskAttachment}
-          disabled={acpComposerDisabled || acpBusy || pendingInFlight}
+          readOnly={readOnly}
+          sendBlocked={acpSendBlocked}
+          sendBlockedReason={acpSendBlockedReason}
           // A host placeholder that names OceanLeo does not fit a Claude / Codex task.
           placeholder={placeholder && !/oceanleo/i.test(placeholder) ? placeholder : tt("继续追问")}
           rows={1}

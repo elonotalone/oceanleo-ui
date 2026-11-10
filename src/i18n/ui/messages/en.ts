@@ -450,6 +450,9 @@ const en: Record<string, string> = {
   "{device}现在离线。小文件会排队等它上线；大文件要分几次送，得等它上线后再发。": "{device} is offline. Small files wait in the queue until it is back; large files need several transfers, so send those after it comes online.",
   "发送到{device}": "Send to {device}",
   "正在发送…": "Sending…",
+  "上一条还在发送": "The previous message is still sending",
+  "网络断开，恢复后可发送": "Network disconnected; you can send when it reconnects",
+  "电脑离线": "Computer offline",
   "正在发送到{device}…": "Sending to {device}…",
   "正在发送 {sent}/{total} 片…": "Sending part {sent}/{total}…",
   "已排队，等{device}上线后自动写入。": "Queued; it will be written once {device} comes online.",
@@ -6634,5 +6637,15 @@ const en: Record<string, string> = {
   "暂无内容预览，打开查看素材": "No content preview available. Open the item to view it.",
   "正在读取内容预览": "Loading content preview",
   "预览加载超时，打开查看素材": "Preview timed out. Open the item to view it.",
+  '添加链接': 'Add link',
+  '编辑链接': 'Edit link',
+  '请填写标题': 'Enter a title',
+  '请填写有效的 HTTPS 链接和标签': 'Enter valid HTTPS links and labels',
+  '保存失败，请重试': 'Save failed. Try again.',
+  '＋ 再加一条': '＋ Add another',
+  '链接无效': 'Invalid link',
+  '确认删除这个链接项目吗？': 'Delete this link item?',
+  '这个网站不允许被嵌入显示': 'This website does not allow embedding',
+
 };
 export default en;

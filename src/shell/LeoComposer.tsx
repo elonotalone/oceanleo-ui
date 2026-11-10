@@ -210,6 +210,13 @@ export interface LeoComposerProps {
   /** 透传给最外层卡片的额外 class */
   className?: string;
   autoFocus?: boolean;
+  /** Keeps the editor and composer controls locked for permission/read-only views. */
+  readOnly?: boolean;
+  /** Blocks only submission while leaving the draft editor usable. */
+  sendBlocked?: boolean;
+  /** Localized explanation shown next to the disabled Send button. */
+  sendBlockedReason?: string | null;
+  /** @deprecated Use readOnly for permission locks and sendBlocked for transport state. */
   disabled?: boolean;
 
   // --- 模板实填（宗旨 v15，2026-07-05 改写；旧「幽灵占位」已废弃） ---
@@ -362,6 +369,9 @@ export function LeoComposer({
   maxHeight = 280,
   className = "",
   autoFocus = false,
+  readOnly: readOnlyProp,
+  sendBlocked = false,
+  sendBlockedReason = null,
   disabled = false,
   highlightTemplate = null,
   fillNonce,
@@ -403,6 +413,9 @@ export function LeoComposer({
   skillSlash,
 }: LeoComposerProps) {
   const tt = useUI();
+  // `disabled` remains a full lock for older callers. Network callers use the
+  // split props so reconnecting or an in-flight send never disables typing.
+  const readOnly = readOnlyProp ?? disabled;
   // A stop on its way is still work in progress: Stop stays on screen, nothing is sent.
   const loading = loadingProp || stopping;
   const canSendWhileRunning = allowSendWhileRunning ?? Boolean(onStop);
@@ -480,7 +493,7 @@ export function LeoComposer({
   const skillSlashUi = useComposerSkillSlash({
     option: skillSlash,
     templateActive: effectiveHighlightTemplate != null,
-    disabled,
+    disabled: readOnly,
     value,
     adapter: composerSlashAdapter(
       currentTextarea,
@@ -504,7 +517,7 @@ export function LeoComposer({
     // 压缩期间文件还没交给业务，此刻放行会把「没有附件」的消息发出去。
     !intake.compressing &&
     (!loading || (canSendWhileRunning && !stopping)) &&
-    !disabled && (boundExecutionTarget !== null || nativeConversation);
+    !readOnly && !sendBlocked && (boundExecutionTarget !== null || nativeConversation);
   // 误触停止（F3 2026-11-02）：发送键原地变成停止键，双击「发送」的第二下曾把刚开始的
   // 任务停掉。停止键出现 800ms 内不认，且只认从停止键本身按下去的那一下（键盘不受后者限）。
   const hasContent = Boolean(value.trim() || attachments?.length || intake.pending.length);
@@ -575,7 +588,7 @@ export function LeoComposer({
 
   // ── 拖拽上传（传了 onAttachFiles 才启用）：把文件拖到整个输入框卡片上，松手即上传。
   //    与主站首页「整页拖拽」互补——这里落点在输入框本体，各站零改动即获此能力。
-  const dragEnabled = Boolean(onAttachFiles) && !disabled;
+  const dragEnabled = Boolean(onAttachFiles) && !readOnly;
   function hasFiles(e: ReactDragEvent) {
     return Array.from(e.dataTransfer?.types || []).includes("Files");
   }
@@ -657,7 +670,7 @@ export function LeoComposer({
         onRemove={onRemoveAttachment}
         onOpenAttachment={onOpenAttachment}
         onRetry={onRetryAttachment}
-        onUseOriginal={!disabled && !stopping && onRemoveAttachment && onAttachFiles ? (attachment) => {
+        onUseOriginal={!readOnly && !stopping && onRemoveAttachment && onAttachFiles ? (attachment) => {
           if (!attachment.originalFile) return;
           if (!nativeConversation && attachment.originalFile.size > PRIVATE_ATTACHMENT_MAX_BYTES) return;
           if (replacedOriginalsRef.current.has(attachment.id)) return;
@@ -687,7 +700,7 @@ export function LeoComposer({
         placeholder={placeholderText}
         rows={rows}
         maxHeight={editorMaxHeight}
-        disabled={disabled}
+        disabled={readOnly}
         onKeyDown={handleKeyDown}
         className="rounded-t-2xl"
       />
@@ -740,7 +753,7 @@ export function LeoComposer({
             <button
               key={action.id}
               type="button"
-              disabled={disabled}
+              disabled={readOnly}
               onClick={action.onClick}
               data-composer-context-action={action.id}
               aria-label={action.id === "get-help" ? action.label : undefined}
@@ -820,7 +833,7 @@ export function LeoComposer({
             <button
               type="button"
               onClick={() => setMeetingOpen(true)}
-              disabled={disabled}
+              disabled={readOnly}
               aria-label={tt("会议录音纪要")}
               title={tt("会议录音纪要")}
               className="flex h-8 shrink-0 items-center gap-1.5 rounded-full px-2.5 text-[12px] text-neutral-400 transition-all duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-700 active:scale-95"
@@ -829,7 +842,7 @@ export function LeoComposer({
             </button>
           )}
           {onVoiceTranscript && (
-            <VoiceButton lang={voiceLang} onTranscript={onVoiceTranscript} disabled={disabled} />
+            <VoiceButton lang={voiceLang} onTranscript={onVoiceTranscript} disabled={readOnly} />
           )}
           {stopShown && (
               // 工作中只有空输入框显示停止；有文字或附件时同一位置显示发送。
@@ -867,6 +880,8 @@ export function LeoComposer({
                 type="button"
                 onClick={() => canSend && submitPrompt()}
                 disabled={!canSend}
+                aria-disabled={sendBlocked || undefined}
+                aria-describedby={sendBlockedReason ? "leo-composer-send-blocked" : undefined}
                 aria-label={tt("发送")}
                 data-composer-send=""
                 className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white transition-all duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] ${
@@ -880,6 +895,12 @@ export function LeoComposer({
           )}
         </div>
       </div>
+
+      {sendBlockedReason && (
+        <p id="leo-composer-send-blocked" role="status" className="px-4 pb-2 text-right text-[12px] text-stone-500">
+          {sendBlockedReason}
+        </p>
+      )}
 
       {/* 隐藏的本地文件选择 input（「从本地添加文件」点它） */}
       {onAttachFiles && (
