@@ -14,6 +14,8 @@ export type PendingSendInput = {
   /** The message's id at the gateway (`client_message_id`); a retry of the same message reuses it. */
   clientMessageId: string;
   computerId: string;
+  /** Project selected when this first task message was composed; preserved on retry. */
+  projectId?: string;
   program: string;
   text: string;
   attachments: AgentAttachment[];

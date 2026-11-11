@@ -2248,7 +2248,11 @@ function AgentChatInner({
     let created: { taskId: string; session: ComputerTaskSession } | null = null;
     try {
       if (!id) {
-        const result = await createComputerTaskSession(acpComputerId, { kind: "acp", program: acpProgram, request_id: clientMessageId });
+        const initialProjectId = retry?.projectId ?? pendingShown?.projectId ?? projectId;
+        const result = await createComputerTaskSession(acpComputerId, {
+          kind: "acp", program: acpProgram, request_id: clientMessageId,
+          ...(initialProjectId ? { project_id: initialProjectId } : {}),
+        });
         created = { taskId: result.task_id, session: result.session };
         id = result.task_id;
         settlePending(optimisticId, { taskId: id, session: result.session });

@@ -11,7 +11,7 @@ export type ComputerTaskSession = {
 };
 export type CreateComputerTaskSessionInput = Pick<ComputerTaskSession, "kind"> & {
   program?: ComputerTaskSession["program"]; task_id?: string; native_session_id?: string;
-  title?: string; request_id: string;
+  title?: string; request_id: string; project_id?: string;
 };
 type Options = { signal?: AbortSignal };
 export async function createComputerTaskSession(computerId: string, input: CreateComputerTaskSessionInput, options: Options = {}) {
