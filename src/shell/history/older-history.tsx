@@ -22,6 +22,7 @@ type Anchor = { element: HTMLElement; key: string | null; offset: number; firstK
 export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState {
   const latest = useRef(options);
   const anchor = useRef<Anchor | null>(null);
+  const flight = useRef<symbol | null>(null);
   const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [atTop, setAtTop] = useState(false);
@@ -45,9 +46,10 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
 
   useEffect(() => {
     const scroller = options.scrollRef.current;
+    setLoading(false);
+    setAtTop(false);
     if (!scroller || !sentinel || options.disabled) return;
     let disposed = false;
-    let inFlight = false;
     let frame: number | null = null;
     let retry: ReturnType<typeof setTimeout> | null = null;
     let failures = 0;
@@ -72,10 +74,11 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
       const top = sentinel.getBoundingClientRect().top;
       const height = scroller.clientHeight;
       setAtTop(top >= root.top && top <= root.top + height);
-      if (!height || current.disabled || !current.hasMore || inFlight || exhaustedRetries || Date.now() < retryAt) return;
+      if (!height || current.disabled || !current.hasMore || flight.current != null || exhaustedRetries || Date.now() < retryAt) return;
       if (!prefetch && failures === 0 && top < root.top - (current.prefetchScreens ?? 1.5) * height) return;
       prefetch = false;
-      inFlight = true;
+      const request = Symbol("older-history");
+      flight.current = request;
       capture();
       setLoading(true);
       try {
@@ -94,11 +97,13 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
           retry = setTimeout(() => { retry = null; schedule(); }, delay);
         } else exhaustedRetries = true;
       } finally {
-        if (!disposed) { inFlight = false; setLoading(false); }
+        if (flight.current === request) flight.current = null;
+        if (!disposed) setLoading(false);
+        else check.current?.();
       }
     };
     const onScroll = () => {
-      if (inFlight) capture();
+      if (flight.current != null) capture();
       if (exhaustedRetries) { exhaustedRetries = false; failures = 0; retryAt = 0; }
       schedule();
     };
@@ -141,7 +146,7 @@ export function OlderHistoryTop({ hasMore, spinnerVisible, sentinelRef }: {
   return (
     <div data-older-history-top="" style={{ height: 32, position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
       <span ref={sentinelRef} data-older-history-sentinel="" style={{ position: "absolute", top: 0, height: 0 }} />
-      {spinnerVisible && <span role="status" aria-label="Loading" style={{ display: "flex" }}><span className="v-spinner" aria-hidden="true" /></span>}
+      {spinnerVisible && <span role="status" style={{ display: "flex" }}><span className="v-spinner" aria-hidden="true" /><span className="sr-only">Loading</span></span>}
     </div>
   );
 }

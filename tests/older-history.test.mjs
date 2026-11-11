@@ -89,7 +89,7 @@ test('bottom-only streaming does not change scrollTop; final slot removal is anc
 test('spinner only at visible top while pending, fixed slot and no visible loading text', async () => {
   const view = await mount({ scrollTop: 300 });
   try { await tick(); assert.equal(view.state.loading, true); assert.equal(view.host.querySelector('.v-spinner'), null);
-    await view.scroll(0); await tick(); assert.ok(view.host.querySelector('.v-spinner')); assert.equal(view.host.querySelector('[data-older-history-top]').style.height, '32px'); assert.equal(view.host.querySelector('[data-older-history-top]').textContent, '');
+    await view.scroll(0); await tick(); assert.ok(view.host.querySelector('.v-spinner')); assert.equal(view.host.querySelector('[data-older-history-top]').style.height, '32px'); assert.equal(view.host.querySelector('[role="status"] .sr-only').textContent, 'Loading');
     await view.scroll(100); await tick(); assert.equal(view.host.querySelector('.v-spinner'), null);
   } finally { await view.close(); }
 });
@@ -99,4 +99,27 @@ test('failed batch retries silently after one second and never overlaps on scrol
   try { await tick(); assert.equal(calls, 1); assert.equal(view.state.loading, false); await view.scroll(1800); await tick(); assert.equal(calls, 1);
     await act(async () => new Promise((resolve) => setTimeout(resolve, 1050))); await tick(); assert.equal(calls, 2); assert.equal(view.host.textContent.includes('offline'), false);
   } finally { await view.close(); }
+});
+
+test('backoff is 1s, 3s, 8s, then waits for a new intersection or scroll', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  let calls = 0;
+  const view = await mount({ scrollTop: 100, load: async () => { calls++; throw new Error('offline'); } });
+  try {
+    await tick(); assert.equal(calls, 1);
+    for (const delay of [1000, 3000, 8000]) {
+      await act(async () => t.mock.timers.tick(delay - 1)); await tick(); const before = calls;
+      await act(async () => t.mock.timers.tick(1)); await tick(); assert.equal(calls, before + 1);
+    }
+    assert.equal(calls, 4);
+    await act(async () => t.mock.timers.tick(60_000)); await tick(); assert.equal(calls, 4);
+    await act(async () => observers.at(-1).callback([])); await tick(); assert.equal(calls, 5);
+  } finally { await view.close(); t.mock.timers.reset(); }
+});
+
+test('disabling then re-enabling while a batch is pending never overlaps requests', async () => {
+  let calls = 0; const pending = deferred();
+  const view = await mount({ load: () => { calls++; return pending.promise; } });
+  try { await tick(); await view.patch({ disabled: true }); await view.patch({ disabled: false }); await tick(); assert.equal(calls, 1); }
+  finally { await view.close(); await act(async () => pending.resolve()); }
 });
