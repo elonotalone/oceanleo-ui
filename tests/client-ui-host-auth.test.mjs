@@ -38,10 +38,6 @@ const authFetchSource = readFileSync(
   new URL("../src/lib/auth/auth-fetch.ts", import.meta.url),
   "utf8",
 );
-const appShell = readFileSync(
-  new URL("../src/shell/AppShell.tsx", import.meta.url),
-  "utf8",
-);
 const promptArea = readFileSync(
   new URL("../src/shell/PromptHighlightArea.tsx", import.meta.url),
   "utf8",
@@ -461,9 +457,7 @@ test("login dialog email, password, and continue have accessible names", () => {
   assert.match(authDialog, /aria-label=\{tt\("继续"\)\}/);
 });
 
-test("search, home task input, and send have accessible names", () => {
-  assert.match(appShell, /<input[\s\S]*aria-label=\{tt\("搜索"\)\}/);
-  assert.match(appShell, /aria-label=\{tt\("搜索"\)\}/);
+test("shared composer inputs and send retain accessible names", () => {
   assert.match(promptArea, /"aria-label": placeholder/);
   assert.match(leoComposer, /aria-label=\{tt\("发送"\)\}/);
 });

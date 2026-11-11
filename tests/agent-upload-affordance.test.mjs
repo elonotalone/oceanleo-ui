@@ -210,24 +210,3 @@ test("关闭态的占位文案仍是本地化词条，不是硬编码中文", as
     assert.match(dict, /^ {2}"让 agent 帮你做「\{title\}」":/m);
   }
 });
-
-test("HomeIntro 的同名 prop 仍在，三个入口一套写法", async () => {
-  const home = await readFile(
-    new URL("../src/shell/HomeIntro.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(home, /enableInputTools = true/);
-  assert.match(home, /onAttachFiles=\{toolsOn \? atts\.handleAttachFiles : undefined\}/);
-  for (const name of ["AgentChat", "FunctionAgentChat"]) {
-    const source = await readFile(
-      new URL(`../src/shell/${name}.tsx`, import.meta.url),
-      "utf8",
-    );
-    assert.match(source, /enableInputTools = true/, `${name} 默认值必须是 true`);
-    assert.match(
-      source,
-      /onAttachFiles=\{toolsOn \? atts\.handleAttachFiles : undefined\}/,
-      `${name} 没有按 toolsOn 收敛 onAttachFiles`,
-    );
-  }
-});

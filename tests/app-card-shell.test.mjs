@@ -116,13 +116,6 @@ test("版式常量是唯一事实源：几何、hover 放大、z-10、栅格都�
   assert.match(APP_CARD_FRAME_CLASS, /shadow-sm/);
   assert.match(APP_CARD_FRAME_CLASS, /hover:shadow-lg/);
 
-  // 首页消费的是常量，不是自己再抄一串（抄了就会漂）。注释里提到这些 class 名是**故意**
-  // 的（它们记录了为什么必须成对出现），所以扫描前先把注释剥掉。
-  const home = stripComments(await readFile(resolve("src/shell/HomeAppCards.tsx"), "utf8"));
-  assert.match(home, /APP_CARD_GRID_CLASS/);
-  assert.doesNotMatch(home, /grid-cols-1 gap-3 sm:grid-cols-2/);
-  assert.doesNotMatch(home, /hover:scale-105/);
-  assert.doesNotMatch(home, /xl:grid-cols-4/);
 });
 
 test("触屏常驻：无 hover 环境下主按钮可见，且不压住 tagline", () => {

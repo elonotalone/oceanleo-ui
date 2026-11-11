@@ -175,7 +175,6 @@ const clientSource = await readFile(resolve("src/lib/auth/client.ts"), "utf8");
 const accountSource = await readFile(resolve("src/lib/auth/account.ts"), "utf8");
 const gateSource = await readFile(resolve("src/pages/PhoneBindGate.tsx"), "utf8");
 const securitySource = await readFile(resolve("src/pages/AccountSecurityPage.tsx"), "utf8");
-const appShellSource = await readFile(resolve("src/shell/AppShell.tsx"), "utf8");
 const dialogSource = await readFile(resolve("src/pages/AuthDialog.tsx"), "utf8");
 
 function defaultBind() {
@@ -387,11 +386,6 @@ test("authed 把 phone_required 收成同一块绑卡事件", () => {
   assert.match(accountSource, /announcePhoneRequired/);
   assert.match(accountSource, /PHONE_REQUIRED_EVENT|phone_required/);
   assert.equal(PHONE_REQUIRED_EVENT, "oceanleo:phone-required");
-});
-
-test("AppShell 两支布局都挂 PhoneBindGate；登录门不另写一套", () => {
-  assert.equal((appShellSource.match(/<PhoneBindGate\s*\/>/g) || []).length, 2);
-  assert.match(dialogSource, /目前仅开放被邀请的账号登录。/);
 });
 
 test("cn + 已登录 + 无 phone_confirmed_at → 出现绑卡；com → 不出现", async () => {

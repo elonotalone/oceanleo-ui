@@ -1,32 +1,16 @@
-// ============================================================================
-// @oceanleo/ui — 侧栏导航的**唯一事实源**（数据，不是组件）
-// ----------------------------------------------------------------------------
-// 病根（本文件存在的理由，W24 2026-08-31 实测）：外壳有两套**各自手写**的导航——
-//   A. `WorkspacePages.tsx` 的 `workspaceNav()`：31 个租户站走这套；
-//   B. 门户 `oceanleo/app/_components/clone-shell.tsx` 的 `usePrimaryNav()`：
-//      主站 oceanleo.com 走这套（它比功能站多出项目/计划等项，
-//      当初套不进 `workspaceNav()`，于是整份复制着手写）。
-// 两套不同步，而且**已经真实发病过一次**：`/bay` 页（原 `/explore`）上线后
-// 门户侧栏却一直没有入口，用户只能手打 URL 才进得去（`clone-shell.tsx` 的注释里
-// 由作者本人记录在案）。
-//
-// 所以这里放的是**数据**：菜单项 id、路由、label key、图标 id、可见性条件、排序。
-// 两套外壳都从这份数据派生自己的渲染，谁都不许再单侧手写一项。
-//
-// 为什么是「图标 id」而不是图标节点：本文件必须是**纯数据、零 JSX、零 React**。
-//   - 两个仓（共享包与门户）各自持有自己的图标实现，节点没法跨仓共享；
-//   - 纯 TS 才能被 `node --experimental-strip-types` 直接 import，
-//     `tests/nav-single-source.test.mjs` 于是能跑**真实派生**而不是复刻一份再断言复刻品。
-// 往这里加 `import ... from "react"` 或任何 JSX，那条测试会当场红。
-// ============================================================================
+// OceanLeo family navigation data shared by the merged portal and every site pack.
+// The merged CloneShell owns every domain. There is no separate sub-site shell
+// or workspace placement: all sites receive the same labels, icons and order.
+// Keep this module free of React/JSX so routing checks can use the actual data.
+// The portal mirror is checked by oceanleo/tests/route-loading-boundary.test.mjs.
 
-/** 哪一套外壳。`workspace` = 31 个租户站的 `AppShell`；`portal` = 主站 `CloneShell`。 */
-export type NavScope = "workspace" | "portal";
+/** All family domains use the merged portal shell. */
+export type NavScope = "portal";
 
 /** 侧栏里的分区：主导航，或钉在底部的那一组。 */
 export type NavSection = "primary" | "footer";
 
-/** 菜单项 id。两套外壳共用同一套 id，这是「同一页」的判定依据。 */
+/** Page identities shared by every family domain. */
 export type NavPageId =
   | "home"
   | "explore"
@@ -46,8 +30,7 @@ export type NavPageId =
 
 /**
  * 图标 id。消费方各自把 id 映射到自己的图标节点。
- * 同一页在两套外壳里**允许**用不同图标，但必须在本文件里**声明**（见 `placements`）——
- * 声明过的差异是设计决定，没声明的差异才是漂移。
+ * Every family domain uses the same icon for a page.
  */
 export type NavIconId =
   | "home"
@@ -89,7 +72,7 @@ export type NavOption =
   | "withTalent"
   | "withMessages";
 
-/** 一个菜单项在**某一套外壳**里的落位。同一项在两套外壳里可以有不同落位。 */
+/** A menu entry in the merged family shell. */
 export interface NavPlacement {
   /** 该外壳内的排序键（只比大小，不要求连续；留白便于插项）。 */
   order: number;
@@ -134,9 +117,9 @@ export interface NavSourceEntry {
 }
 
 /**
- * 唯一事实源。**加一页只改这一处**，两套外壳自动跟上。
+ * Shared navigation contract for the merged main site and 33 functional sites.
  *
- * `order` 留白 10：两套外壳的次序本来就不同，所以次序是**每套外壳各自的数据**，
+ * `order` leaves room for new entries; every family domain uses the same order,
  * 不是全局的一条。playground 条目仍留在表里（类型 / withPlayground 开关还在），
  * `navEntries` 不再产出这一行。
  */
@@ -148,9 +131,8 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     iconId: "home",
     exact: true,
     placements: {
-      workspace: { order: 10 },
       // 门户的首页**就是**新建任务入口（`/tasks/new` 已废弃，2026-07-10），
-      // 所以它的文案与图标与租户站不同。这是语义差异，不是漂移，故在此声明。
+      // All family domains use the main site label and icon.
       portal: { order: 10, labelKey: "newTask", iconId: "newTask" },
     },
   },
@@ -161,8 +143,7 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     labelSource: "ui",
     iconId: "bay",
     placements: {
-      // 原「探索」的位置：恒在首页与工作台之间。withExplore 是旧名，语义是显示 LeoBay。
-      workspace: { order: 20, option: "withExplore", optionDefault: true },
+      // LeoBay follows New Task on every family domain.
       // 门户侧栏用它自己那套图标里的一枚（`portal-nav.ts` 的 iconId 必须与这里逐字一致）。
       portal: { order: 20, iconId: "talent" },
     },
@@ -175,7 +156,6 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     iconId: "messages",
     placements: {
       // 紧跟 LeoBay。境内外一样都有 LeoChat（2026-10-23 操作员：两版 leo message 功能完全一样）。
-      workspace: { order: 25, option: "withMessages", optionDefault: true },
       portal: { order: 25 },
     },
   },
@@ -184,13 +164,13 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     href: "/projects",
     labelKey: "projects",
     iconId: "folder",
-    // 门户独有：租户站没有跨站项目的概念。
+    // Projects are shared across the main site and every functional sub-site.
     placements: { portal: { order: 30, iconId: "folder" } },
   },
   {
     id: "devices",
     href: "/devices",
-    labelKey: "Devices",
+    labelKey: "我的设备",
     labelSource: "ui",
     iconId: "device",
     placements: { portal: { order: 35 } },
@@ -201,7 +181,6 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     labelKey: "workspace",
     iconId: "workspace",
     placements: {
-      workspace: { order: 30, option: "withWorkspace", optionDefault: true },
       portal: { order: 50, iconId: "panel" },
     },
   },
@@ -212,7 +191,6 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     iconId: "sparkles",
     placements: {
       // 落位保留，避免「死数据」闸；navEntries 恒跳过 id=playground。
-      workspace: { order: 60, option: "withPlayground", optionDefault: false },
       // 门户侧栏已无此项；不挂 option，避免跨仓把 playground 当成「有条件显示」的项。
       portal: { order: 60 },
     },
@@ -230,7 +208,7 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     href: "/library",
     labelKey: "library",
     iconId: "library",
-    placements: { workspace: { order: 40 }, portal: { order: 90 } },
+    placements: { portal: { order: 90 } },
   },
   {
     id: "history",
@@ -239,7 +217,7 @@ export const NAV_SOURCE: readonly NavSourceEntry[] = [
     labelKey: "history",
     iconId: "history",
     supportsDisclosure: true,
-    placements: { workspace: { order: 50 }, portal: { order: 100 } },
+    placements: { portal: { order: 100 } },
   },
 ] as const;
 
@@ -282,7 +260,7 @@ function placementVisible(
 /**
  * 取某一套外壳、某一个分区的导航，按该外壳的 `order` 升序。
  *
- * 这是两套外壳**唯一**允许的取数入口。谁在自己那边另写一份数组，
+ * 这是合并外壳的取数入口。任何站点不得自持不同的导航数组，
  * `tests/nav-single-source.test.mjs` 会当场红。
  */
 export function navEntries(

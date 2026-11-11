@@ -254,17 +254,6 @@ test("A1: a send whose host clears the composer clears the draft; a restored uns
   });
 });
 
-test("A1: LeoComposer wires draftKey through useComposerDraft and marks the send", () => {
-  const source = readFileSync(new URL("../src/shell/LeoComposer.tsx", import.meta.url), "utf8");
-  // 2026-11-02 unit D: every file the composer takes in goes through the draft first (bytes survive refresh).
-  assert.match(source, /useComposerDraft\(\{ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles \}\)/);
-  assert.match(source, /useAttachmentIntake\(onAttachFiles \? draft\.attachFiles : undefined,/);
-  assert.match(source, /draft\.markSubmitted\(\);/);
-  const home = readFileSync(new URL("../src/shell/HomeIntro.tsx", import.meta.url), "utf8");
-  assert.match(home, /draftKey=\{`home:\$\{attachSiteId\}`\}/);
-  assert.match(home, /onAddAttachments=\{toolsOn \? atts\.addComposerAttachments : undefined\}/);
-});
-
 // ---------------------------------------------------------------- A2 library
 
 test("A2: a Library item becomes the same reference attachment 最近文件 builds", () => {
@@ -443,4 +432,11 @@ test("A5: an uploading tile renders the same × as a finished one", async () => 
     );
     assert.deepEqual(removed, ["up"]);
   });
+});
+
+test("A1: LeoComposer wires draftKey through useComposerDraft and marks the send", () => {
+  const source = readFileSync(new URL("../src/shell/LeoComposer.tsx", import.meta.url), "utf8");
+  assert.match(source, /useComposerDraft\(\{ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles \}\)/);
+  assert.match(source, /useAttachmentIntake\(onAttachFiles \? draft\.attachFiles : undefined,/);
+  assert.match(source, /draft\.markSubmitted\(\);/);
 });

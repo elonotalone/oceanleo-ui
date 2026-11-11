@@ -25,10 +25,6 @@ const portalShell = readFileSync(
   "/root/projects/oceanleo/app/_components/clone-shell.tsx",
   "utf8",
 );
-const appShell = readFileSync(
-  new URL("../src/shell/AppShell.tsx", import.meta.url),
-  "utf8",
-);
 
 function hostConfig(overrides = {}) {
   return {
@@ -181,13 +177,6 @@ test("clone-shell wires host location and host session", () => {
   assert.match(portalShell, /host\?\.session\?\.subscribe/);
   assert.match(portalShell, /signedIn=\{Boolean\(userEmail\)\}/);
   assert.doesNotMatch(portalShell, /getBootExtensions\s*\(/);
-});
-
-test("AppShell uses the same host path and session helpers", () => {
-  assert.match(appShell, /useHostAwarePathname/);
-  assert.match(appShell, /readShellUserEmail/);
-  assert.match(appShell, /resolvedEmail/);
-  assert.match(appShell, /signedIn=\{Boolean\(resolvedEmail\)\}/);
 });
 
 test("host location event name stays stable", () => {

@@ -39,11 +39,6 @@ test("SidebarAccountCluster：有 LeoChatButton，没有铃铛（平台通知搬
   assert.doesNotMatch(text, /<BayNavIcon/);
 });
 
-test("AppShell：不再出现 CallHumanButton", () => {
-  const text = src("shell/AppShell.tsx");
-  assert.doesNotMatch(text, /CallHumanButton/);
-});
-
 test("MessageItem：talent_order 卡渲染 BayOrderCard", () => {
   const text = src("shell/messages/conversation/MessageItem.tsx");
   assert.match(text, /talent_order/);
@@ -60,7 +55,7 @@ test("nav-source：侧栏是 LeoBay（原探索位），紧跟一行 LeoChat 整
   const leochat = /\{\s*id: "leochat",[\s\S]*?\n  \},/.exec(text)?.[0] ?? "";
   assert.match(leochat, /href: "\/leochat"/);
   assert.match(leochat, /labelKey: "LeoChat"/);
-  assert.match(leochat, /workspace: \{ order: 25, option: "withMessages", optionDefault: true \}/);
+  assert.doesNotMatch(leochat, /workspace:/);
   assert.match(leochat, /portal: \{ order: 25 \}/);
   assert.ok(text.indexOf('id: "bay"') < text.indexOf('id: "leochat"'), "LeoChat 排在 LeoBay 后面");
   assert.equal(text.match(/href: "\/leochat"/g)?.length, 1, "侧栏里 LeoChat 只有一行");

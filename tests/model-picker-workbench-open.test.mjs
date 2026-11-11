@@ -83,9 +83,6 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 // store 是纯 `.ts`、只 import react：编译台把它挂成 `file://` 真模块，
 // 这里直接 import 的与 AppShell / ModelPicker 链过去的是**同一份实例**。
 const store = await import("../src/shell/workbench-open-store.ts");
-const { shouldShowModelPicker } = await import(
-  "../src/shell/model-picker-visibility.ts"
-);
 
 const uiStubUrl = dataModule(`
   export function useUI() {
@@ -150,20 +147,6 @@ const workspaceSelectionStubUrl = dataModule(`
 const themeStubUrl = dataModule(`export function ThemeSwitcher() { return null; }`);
 const languageStubUrl = dataModule(`export function LanguageSwitcher() { return null; }`);
 const presenceStubUrl = dataModule(`export function usePresenceHeartbeat() {}`);
-const appShellUrl = await compileModule("src/shell/AppShell.tsx", {
-  "./messages/MessagesHost": dataModule(`export function MessagesHost(){return null;}`),
-  "next/link": linkStubUrl,
-  "next/navigation": navigationStubUrl,
-  "./ModelPicker": modelPickerUrl,
-  "./icons": iconsStubUrl,
-  "./WorkspaceSelection": workspaceSelectionStubUrl,
-  "../theme": themeStubUrl,
-  "../i18n/LanguageSwitcher": languageStubUrl,
-  "../i18n/config": localeStubUrl,
-  "../i18n/ui/useUI": uiStubUrl,
-  "../lib/presence": presenceStubUrl,
-});
-const { AppShell } = await import(appShellUrl);
 const { ModelGroupPicker } = await import(modelPickerUrl);
 
 const brand = {
@@ -178,50 +161,6 @@ function OpenEditor({ active = true }) {
   store.useWorkbenchOpenClaim(active);
   return React.createElement("div", { "data-fake-editor": true }, "editor");
 }
-
-// ------------------------------------------------------------- 1. 纯函数
-
-test("workbenchOpen 一律优先于路由：原本显示的每一条路由都变成不显示", () => {
-  const shownByRoute = [
-    ["/", ""],
-    ["/home", ""],
-    ["/tasks/task-1", ""],
-    ["/history/session-1", ""],
-    ["/history", "?task=task-1"],
-    ["/zh-TW/history/session-1", ""],
-    ["/s/image/history/session-1", ""],
-  ];
-  for (const [pathname, search] of shownByRoute) {
-    assert.equal(
-      shouldShowModelPicker(pathname, search),
-      true,
-      `前提：${pathname}${search} 按路由本该显示`,
-    );
-    assert.equal(
-      shouldShowModelPicker(pathname, search, { workbenchOpen: true }),
-      false,
-      `${pathname}${search}：编辑器开着还显示 = 压面板页签`,
-    );
-  }
-});
-
-test("不传 context / workbenchOpen=false 时行为与旧签名逐字相同", () => {
-  const routes = [
-    ["/", "", true],
-    ["/history/session-1", "", true],
-    ["/workspace/poster", "", false],
-    ["/advanced", "", false],
-    ["/projects/11", "", false],
-  ];
-  for (const [pathname, search, expected] of routes) {
-    assert.equal(shouldShowModelPicker(pathname, search), expected);
-    assert.equal(shouldShowModelPicker(pathname, search, {}), expected);
-    assert.equal(
-      shouldShowModelPicker(pathname, search, { workbenchOpen: false }),
-      expected,
-    );
-  }
-});
 
 // ------------------------------------------------------------- 2. store 本体
 
@@ -277,68 +216,6 @@ async function mount(element) {
   };
 }
 
-function shellWith(children) {
-  return React.createElement(
-    AppShell,
-    { brand, layout: "sidebar" },
-    React.createElement("section", { "aria-label": "Route content" }, children),
-  );
-}
-
-test("/history 对话页：库编辑器一挂上，模型组合槽位消失；卸下就回来", async () => {
-  store.resetWorkbenchOpenForTests();
-  navigation.setRoute("/history/session-1", "");
-  const mounted = await mount(shellWith(null));
-  try {
-    assert.equal(
-      mounted.container.querySelectorAll(PICKER_SLOT).length,
-      1,
-      "前提：纯对话页显示选择框",
-    );
-
-    await mounted.rerender(shellWith(React.createElement(OpenEditor)));
-    assert.equal(store.workbenchOpenSnapshot(), true);
-    assert.equal(
-      mounted.container.querySelectorAll(PICKER_SLOT).length,
-      0,
-      "编辑器开着，选择框还在 = 压住面板页签",
-    );
-    assert.equal(
-      mounted.container.querySelector('[title="选择全站通用的模型组合"]'),
-      null,
-    );
-
-    await mounted.rerender(shellWith(null));
-    assert.equal(store.workbenchOpenSnapshot(), false);
-    assert.equal(
-      mounted.container.querySelectorAll(PICKER_SLOT).length,
-      1,
-      "关掉编辑器回到对话页，选择框要回来",
-    );
-  } finally {
-    await mounted.unmount();
-    store.resetWorkbenchOpenForTests();
-  }
-});
-
-test("claim 的 active 翻成 false 也算关闭（详情面板收起，不必卸载组件）", async () => {
-  store.resetWorkbenchOpenForTests();
-  navigation.setRoute("/history/session-1", "");
-  const mounted = await mount(
-    shellWith(React.createElement(OpenEditor, { active: true })),
-  );
-  try {
-    assert.equal(mounted.container.querySelectorAll(PICKER_SLOT).length, 0);
-    await mounted.rerender(
-      shellWith(React.createElement(OpenEditor, { active: false })),
-    );
-    assert.equal(mounted.container.querySelectorAll(PICKER_SLOT).length, 1);
-  } finally {
-    await mounted.unmount();
-    store.resetWorkbenchOpenForTests();
-  }
-});
-
 test("不走 AppShell、直接挂 ModelGroupPicker 的宿主同样让位（同一个事实源）", async () => {
   store.resetWorkbenchOpenForTests();
   const mounted = await mount(
@@ -368,23 +245,6 @@ test("不走 AppShell、直接挂 ModelGroupPicker 的宿主同样让位（同�
     );
   } finally {
     await mounted.unmount();
-    store.resetWorkbenchOpenForTests();
-  }
-});
-
-test("SSR 首帧不受登记影响（服务端没有打开的编辑器），避免 hydration 不一致", () => {
-  store.resetWorkbenchOpenForTests();
-  navigation.setRoute("/history/session-1", "");
-  const release = store.claimWorkbenchOpen("ssr-probe");
-  try {
-    const markup = renderToStaticMarkup(shellWith(null));
-    assert.equal(
-      markup.split("data-oceanleo-model-picker-slot").length - 1,
-      1,
-      "SSR 用 getServerSnapshot=false，槽位照旧",
-    );
-  } finally {
-    release();
     store.resetWorkbenchOpenForTests();
   }
 });

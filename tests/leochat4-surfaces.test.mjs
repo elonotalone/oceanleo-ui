@@ -294,17 +294,6 @@ const { MessagesHost } = await import(
     `),
   })
 );
-const { workspaceNav } = await import(
-  await compileModule("src/shell/WorkspacePages.tsx", {
-    "../i18n/ui/useUI": uiStub,
-    "next-intl": dataModule(`export function useTranslations(){ return (key) => key; }`),
-    "./bay/shell/bay-state": bayStateStub,
-    "./leochat/LeoChatButton": dataModule(`
-      export function LeoChatGlyph(){ return null; }
-      export function LeoChatButton(){ return null; }
-    `),
-  })
-);
 
 resetHost();
 
@@ -527,29 +516,6 @@ test("LeoChatButton：点一下请求右侧栏；整页认领着时 pressed 且 
   assert.equal(pageHost.getSnapshot().surface, "page");
   await pageView.unmount();
   window.removeEventListener("oceanleo:leochat-panel-request", consume);
-});
-
-test("workspaceNav：境内外都有 LeoChat（紧跟 LeoBay 那一项）；withMessages:false 没有", () => {
-  globalThis.__leoChat4BayOn = true;
-  const overseas = workspaceNav();
-  const bayAt = overseas.findIndex((row) => row.href === "/bay");
-  const chatAt = overseas.findIndex((row) => row.href === "/leochat");
-  assert.ok(bayAt >= 0);
-  assert.equal(chatAt, bayAt + 1);
-  assert.equal(overseas[chatAt].label, "LeoChat");
-  assert.equal(overseas[chatAt].href, "/leochat");
-
-  globalThis.__leoChat4BayOn = false;
-  assert.equal(
-    workspaceNav().some((row) => row.href === "/leochat"),
-    true,
-  );
-
-  globalThis.__leoChat4BayOn = true;
-  assert.equal(
-    workspaceNav({ withMessages: false }).some((row) => row.href === "/leochat"),
-    false,
-  );
 });
 
 test("W5 2026-10-31：LeoChat 打开、登录态还没查清时显示页面级骨架（与 /projects 同一套），不是空白", async () => {

@@ -1952,7 +1952,7 @@ test("铃铛：从侧栏账号区拿掉；文件与公开导出保留（别处�
   assert.match(bell, /export function NotificationBell/);
   assert.match(bell, /已不再渲染/);
   // 全仓除了定义与导出，没有任何组件再 <NotificationBell …/>
-  for (const file of ["shell/AppShell.tsx", "shell/leochat/LeoChatButton.tsx", "shell/messages/MessagesHost.tsx"]) {
+  for (const file of ["shell/leochat/LeoChatButton.tsx", "shell/messages/MessagesHost.tsx"]) {
     assert.doesNotMatch(src(file), /<NotificationBell/, file);
   }
 });

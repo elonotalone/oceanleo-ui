@@ -5,22 +5,11 @@ import test from "node:test";
 function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
-
-const appShell = source("../src/shell/AppShell.tsx");
 const splitWorkspace = source("../src/shell/SplitWorkspace.tsx");
 const operatorConsole = source("../src/shell/OperatorConsole.tsx");
 const runtimeBoundary = source(
   "../src/shell/workspace-runtime-hydration.tsx",
 );
-
-test("canonical route updates keep the AppShell DOM surface mounted", () => {
-  assert.equal(
-    (appShell.match(/data-oceanleo-route-surface/g) || []).length,
-    2,
-  );
-  assert.doesNotMatch(appShell, /key=\{pathname\}/);
-  assert.doesNotMatch(appShell, /className="v-page contents"/);
-});
 
 test("one app-level owner controls entrance animation without nested remounts", () => {
   assert.equal(

@@ -225,24 +225,6 @@ test("未登录整块不渲染；登录后的首帧是骨架", () => {
   assert.match(loading, /aria-busy="true"/);
 });
 
-test("首页不再有「我的应用」这一块", async () => {
-  const source = await readFile("src/shell/HomeAppCards.tsx", "utf8");
-  assert.equal(
-    source.includes("MyAppsRail"),
-    false,
-    "首页是办公站的门面，加入工作台的 app 不出现在首页也不出现在侧栏",
-  );
-});
-
-test("AppShell 侧栏不再挂已加入的 app", async () => {
-  const source = await readFile("src/shell/AppShell.tsx", "utf8");
-  assert.equal(
-    source.includes("MyAppsRail"),
-    false,
-    "加入工作台的 app 只出现在主站工作台，不许再插进各站侧栏",
-  );
-});
-
 test("侧栏展示服务端列表且限八个；移除立即生效并二次确认", async () => {
   const { window, restore } = await installDom();
   const { createRoot } = await import("react-dom/client");

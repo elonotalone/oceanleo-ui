@@ -1,15 +1,6 @@
-export { AppShell, PageTitle, AppPageHeader, APP_PAGE_TITLE_CLASS, APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS } from "./AppShell";
+export { AppPageHeader, APP_PAGE_TITLE_CLASS, APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS } from "./AppPageHeader";
 // 工作台 iframe 内嵌「外壳闪屏」pre-paint 杀手（root layout 放一次）。
 export { EmbedChrome } from "./EmbedChrome";
-export type {
-  AppShellProps,
-  AppShellBrand,
-  AppShellLayout,
-  ShellNavItem,
-  ShellNavGroup,
-  ShellNavDisclosure,
-  ShellSubNav,
-} from "./AppShell";
 export {
   ProjectWorkspaceFrame,
   ProjectTabNav,
@@ -580,7 +571,7 @@ export { CloudBrowserPanel } from "./CloudBrowserPanel";
 // doctrine 2026-07-09：组织节点图画布（团队≡组织）的本体 + 类型都在独立子路径
 // `@oceanleo/ui/org-canvas`（peer dep @xyflow/react，只主站/agent 站装，其余 29 站不受累）。
 // 这里【不】re-export，避免把 xyflow 模块图拉进不用画布的站。
-// 首页输入框「＋」上传 / 拖入的附件类型（各站首页把 HomeIntro.onStart 的
+// 首页输入框「＋」上传 / 拖入的附件类型（首页把 composer 提交的
 // opts.attachments 透传给 AgentChat.initialAttachments 时用它给 state 标注类型）。
 export type { AgentAttachment } from "../lib/agent";
 // 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
@@ -620,9 +611,6 @@ export type { CreateSkillModalProps, CreateSkillTeamModalProps } from "./CreateS
 export { AgentConsole, type AgentConsoleProps, type RunCapabilityFn } from "./AgentConsole";
 // 主站「工作台」母页面壳（iframe 内嵌子站功能区 + 选/加 agent）。
 export { WorkspaceShell, type WorkspaceShellProps } from "./WorkspaceShell";
-// 站点首页（大输入框 → 进入 agent + 卡片区）。2026-07-25：那张收费 / BYOK 说明卡与
-// `intro` 介绍段已从共享包硬删，首页不再以任何形式保留它们。
-export { HomeIntro, type HomeIntroProps } from "./HomeIntro";
 // app 卡片外壳（合同 2026-07-27 §0.3 / §3.1 决策 D3，W1 产出）：**首页卡与工作台卡的
 // 唯一一份版式实现**。操作员要求两者「完完全全一样的格式」，所以尺寸/圆角/hover 放大/
 // 铺满层/触屏常驻主按钮/栅格全部只在这里定义；`variant` 只决定落点语义与既有的
@@ -646,27 +634,10 @@ export type {
   AppCardShellProps,
   AppCardVariant,
 } from "./app-card-shell";
-// 首页 app 卡片（合同 §0.1 / §0.2，2026-07-26）：一卡 = 一个 GoalApp = 一个代表 prompt
-// + 1–2 份模板素材。左图右文（缩略图 = 功能图）→ hover 整卡放大 + 下缘唯一一颗 `prompt`
-// 按钮（触屏常驻）→ 点卡片主体开大卡片。「预览」按钮本轮已删除。
-export {
-  HomeAppCards,
-  HOME_APP_ALL_GROUP,
-  HOME_APP_FEATURED_LIMIT,
-  HOME_APP_SEE_ALL_HREF,
-  appPreviewImageKey,
-  featuredHomeApps,
-  homeAppGroups,
-} from "./HomeAppCards";
-export type { HomeAppCardsProps } from "./HomeAppCards";
 // 2026-11-03: home asset cards (video / image / website / essay).
 export { HomeAssetCards } from "./HomeAssetCards";
 export type { HomeAssetCardsProps } from "./HomeAssetCards";
 export type { HomeAssetsResponse, HomeAssetSection, HomeAssetSectionId, HomeAssetCard, HomeAssetRef } from "./home-asset-cards-model";
-// 大卡片 = 多模板详情浮层（合同 §0.3，W2 产出）。文件名仍是 `ImageLightbox.tsx`，
-// 旧名 `ImageLightbox` 只是一层 `@deprecated` 兼容壳，新代码一律用 `TemplateShowcase`。
-export { ImageLightbox, TemplateShowcase } from "./ImageLightbox";
-export type { ImageLightboxProps, TemplateShowcaseProps } from "./ImageLightbox";
 // 合同 §3 的深链 / 下载 helper（W4 产出）：`workspaceTemplateEditHref` 把**具体那份**
 // 模板素材载入编辑器，`templateDownloadHref` 解析该素材的真实文件地址。
 export {
@@ -736,11 +707,8 @@ export { TemplateDownloadError, downloadTemplateMaterial } from "./template-down
 export type { TemplateDownloadErrorCode } from "./template-download";
 // 封面图 key/URL 约定（合同 §3，W5 产出）走 `@oceanleo/ui/lib`（见 `src/lib/index.ts`），
 // shell 这层不再重复暴露，避免同一符号两条导入路径。
-// 首页 prompt 卡片分区（宗旨 v12，2026-07-04）：未迁移站的既有路径（agent 卡片组件保留
-// 导出但首页不再渲染）。「添加 prompt」= 预制库选择 + 新建（AddPromptModal）。
-export { HomePromptCards } from "./HomeCards";
+// Prompt editing and custom-card persistence remain shared by the merged home and Playground.
 export { PromptCardModal, AddPromptModal } from "./HomePromptModals";
-export { HomeAgentCards, type HomeAgentPick } from "./HomeAgentCards";
 export { promptCardsForSite, loadCustomPromptCards, saveCustomPromptCards, loadAllCustomPromptCards } from "./home-cards";
 export type { PromptCard } from "./home-cards";
 // 文件库（整合「我的数据库」+ 上传 + 跨站分区）。
@@ -768,9 +736,6 @@ export type { ArtifactLibraryProps, ArtifactFilter, ArtifactItem } from "./Artif
 export { HistoryPage, type HistoryPageProps } from "./HistoryPage";
 export { ShellTaskView, type ShellTaskViewProps } from "./cloud-computer/ShellTaskView";
 export { ServerPage, serverPageHref, type ServerPageProps, type ServerPageCard, type ServerPageHrefOptions } from "./cloud-computer/server-page";
-// 站级四页范式帮助器（首页/工作台/文件库/历史记录 的 nav + 路由）。
-export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePages";
-export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
 export * from "./icons";
 export * from "./public-exports";
 

@@ -64,7 +64,6 @@ const overrides = {
 const authUrl = await compileModule('src/lib/auth/client.ts', overrides);
 const identityUrl = await compileModule('src/lib/auth/account-identity.ts', { ...overrides, './client': authUrl });
 const shellOverrides = { ...overrides, '../lib/auth': identityUrl, '../lib/auth/client': authUrl, '../lib/auth/account-identity': identityUrl };
-const { AppShell } = await import(await compileModule('src/shell/AppShell.tsx', shellOverrides));
 const { AccountMenu } = await import(await compileModule('src/shell/AccountMenu.tsx', shellOverrides));
 const auth = await import(authUrl);
 const brand = { name: 'Fixture', accent: '#000', logo: React.createElement('span', null, 'F') };
@@ -84,35 +83,6 @@ const errors = [];
 const originalError = console.error;
 console.error = (...args) => { errors.push(args.map(String).join(' ')); };
 test.after(() => { console.error = originalError; assert.deepEqual(errors, []); });
-
-test('valid hydrated identity is present in the shell first paint', () => {
-  nativeIdentity = liveIdentity();
-  const markup = renderToStaticMarkup(React.createElement(AppShell, { brand, userEmail: 'ada@example.test', showThemeSwitcher: false, showLanguageSwitcher: false }, 'Body'));
-  assert.match(markup, /data-account-trigger[^>]*aria-label="ada"/);
-  assert.doesNotMatch(markup, /aria-label="登录"/);
-});
-
-test('real AppShell and AccountMenu hide retained expired identity and recover without remount', async () => {
-  nativeIdentity = liveIdentity();
-  const mount = document.createElement('div'); document.body.append(mount);
-  const root = createRoot(mount); roots.push(root);
-  await act(async () => root.render(React.createElement(AppShell, { brand, userEmail: 'ada@example.test', showThemeSwitcher: false, showLanguageSwitcher: false }, 'Body')));
-  await flush();
-  assert.equal((await auth.getUsableSessionSnapshot()).userId, 'u1');
-  assert.ok(triggers().length);
-  assert.ok(triggers().every((button) => button.getAttribute('aria-label') === 'Ada'));
-  await act(async () => triggers()[0].click());
-  assert.ok(document.querySelector('[role="menu"]'));
-  await announce({ ...nativeIdentity, expiresAt: Date.now() - 10 });
-  assert.equal((await auth.getUsableSessionSnapshot()).userId, null);
-  assert.ok(triggers().every((button) => button.getAttribute('aria-label') === '登录'));
-  assert.equal(document.querySelector('[role="menu"]'), null);
-  await act(async () => triggers()[0].click());
-  assert.equal(globalThis.__openedAccountTab, 'account');
-  await announce(liveIdentity());
-  assert.ok(triggers().every((button) => button.getAttribute('aria-label') === 'Ada'));
-
-});
 
 test('confirmed no session hides stale caller name and avatar; returning token restores it', async () => {
   nativeIdentity = null;

@@ -148,18 +148,10 @@ test("LibraryToolbar leading text appears before the search box", async () => {
   host.remove();
 });
 
-test("contract classes and PageTitle no longer write 22px", () => {
+test("shared page-header classes and public exports remain canonical", () => {
   assert.equal(APP_PAGE_TITLE_CLASS, TITLE_CLASS);
   assert.equal(APP_PAGE_FRAME_CLASS, FRAME_CLASS);
   assert.equal(APP_PAGE_HEADER_ROW_CLASS, HEADER_ROW_CLASS);
-
-  const pageTitle = readFileSync(
-    new URL("../src/shell/AppShell.tsx", import.meta.url),
-    "utf8",
-  ).match(/export function PageTitle[\s\S]*?\n\}/);
-  assert.ok(pageTitle, "PageTitle export exists");
-  assert.doesNotMatch(pageTitle[0], /text-\[22px\]/);
-  assert.match(pageTitle[0], /AppPageHeader/);
 
   const indexFirst = readFileSync(
     new URL("../src/shell/index.ts", import.meta.url),
@@ -168,7 +160,7 @@ test("contract classes and PageTitle no longer write 22px", () => {
     .split("\n")[0];
   assert.equal(
     indexFirst,
-    'export { AppShell, PageTitle, AppPageHeader, APP_PAGE_TITLE_CLASS, APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS } from "./AppShell";',
+    'export { AppPageHeader, APP_PAGE_TITLE_CLASS, APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS } from "./AppPageHeader";',
   );
   const indexLines = readFileSync(
     new URL("../src/shell/index.ts", import.meta.url),

@@ -15,7 +15,7 @@ test("导航里是 bay 和 leochat（紧跟），没有 explore、没有消息�
   for (const entry of NAV_SOURCE) {
     assert.equal(entry.action, undefined, `${entry.id} 不应是动作项`);
   }
-  for (const scope of ["workspace", "portal"]) {
+  for (const scope of ["portal"]) {
     assert.equal(navEntries(scope).some((e) => e.id === "messages"), false, `${scope} 默认`);
     assert.equal(
       navEntries(scope, { withPlayground: true, withTalent: true, withMessages: true }).some((e) => e.id === "messages"),
@@ -45,22 +45,9 @@ test("导航里是 bay 和 leochat（紧跟），没有 explore、没有消息�
   assert.equal(portalIds.indexOf("leochat"), portalIds.indexOf("bay") + 1);
   assert.ok(portalIds.indexOf("bay") < portalIds.indexOf("workspace"));
 
-  const ws = navEntries("workspace").map((e) => e.id);
-  assert.deepEqual(ws, ["home", "bay", "leochat", "workspace", "library", "history"]);
-  assert.deepEqual(navEntries("workspace", { withPlayground: true }).map((e) => e.id), [
-    "home",
-    "bay",
-    "leochat",
-    "workspace",
-    "library",
-    "history",
-  ]);
-  assert.equal(
-    navEntries("workspace", { withMessages: false }).some((e) => e.id === "leochat"),
-    false,
-  );
-  assert.ok(!ws.includes("explore"));
-  assert.ok(!ws.includes("messages"));
+  assert.deepEqual(portalIds, ["home", "bay", "leochat", "projects", "devices", "workspace", "schedules", "library", "history"]);
+  assert.deepEqual(navEntries("portal", { withMessages: false }), portal);
+
 });
 
 test("可见性判定：三个独立域名家族的已登录用户均可用 LeoChat；未登录不可用", () => {
@@ -69,14 +56,6 @@ test("可见性判定：三个独立域名家族的已登录用户均可用 LeoC
   assert.equal(imEnabledFor("com", false), false);
   assert.equal(imEnabledFor("com", true), true);
   assert.equal(imEnabledFor("ws", true), true);
-});
-
-test("租户站 workspaceNav 不再映射侧栏消息动作项", () => {
-  const source = src("shell/WorkspacePages.tsx");
-  assert.doesNotMatch(source, /openMessages/);
-  assert.doesNotMatch(source, /MessagesNavIcon/);
-  assert.match(source, /withMessages/);
-  assert.doesNotMatch(source, /entry\.action/);
 });
 
 test("共享外壳消息导出；MessagesHost 在不可用时只渲染登录框宿主", () => {

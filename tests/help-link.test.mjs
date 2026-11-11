@@ -89,24 +89,6 @@ test("isHelpCenterHost: help.com / help.cn 隐藏；design.com 与本机开发 h
   assert.equal(isHelpCenterHost("localhost:3000"), false);
 });
 
-const appShell = await readFile("src/shell/AppShell.tsx", "utf8");
-
-// 操作员 2026-09-24：左下角 / 顶栏的「?」删掉，帮助只从账号菜单「获取帮助」进。
-// 三种布局真渲染出来的判据在 eas-w05-shell-help-leo；这里钉住源码层面不许回来。
-test("AppShell 不再渲染 HelpLink，HelpLink.tsx 已删", () => {
-  assert.doesNotMatch(appShell, /<HelpLink\b/);
-  assert.doesNotMatch(appShell, /from ["']\.\/HelpLink["']/);
-  assert.equal(existsSync("src/shell/HelpLink.tsx"), false);
-});
-
-test("AppShell 仍收 helpHref / showHelp / siteKey（子站在传），只喂账号菜单「获取帮助」", () => {
-  assert.match(appShell, /helpHref\?: string \| null/);
-  assert.match(appShell, /showHelp\?: boolean/);
-  assert.match(appShell, /siteKey\?: string/);
-  assert.match(appShell, /helpHref=\{accountHelpHref\}/);
-  assert.match(appShell, /helpCenterUrl\(\{\s*host: window\.location\.host,/);
-});
-
 test("分身 ws 子站 / 门户 → 门户自己的 /help，不回落 help.oceanleo.com", () => {
   assert.equal(
     helpCenterUrl({ host: "oceanbizs.com" }),

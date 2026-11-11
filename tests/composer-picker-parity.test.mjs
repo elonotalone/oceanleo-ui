@@ -65,18 +65,6 @@ const composerUrl = await compileModule("src/shell/LeoComposer.tsx", {
   "./composer-skill-slash": dataModule("export function composerSlashAdapter(){} export function useComposerSkillSlash(){ return { onKeyDown(){ return false; }, popover: null }; }"),
 });
 const { LeoComposer } = await import(composerUrl);
-const { HomeIntro } = await import(await compileModule("src/shell/HomeIntro.tsx", {
-  "./LeoComposer": composerUrl,
-  "./HomeCards": nil("HomePromptCards"),
-  "./HomeAppCards": dataModule("export const HOME_APP_FEATURED_LIMIT=6; export function HomeAppCards(){ return null; }"),
-  "./useAttachments": dataModule(`
-    export function useAttachments(){ return {
-      handleAttachFiles(){}, addComposerAttachments: globalThis.__homePrivateAdd,
-      composerAttachments: [], removeAttachment(){}, retryAttachment(){},
-    }; }
-  `),
-  "../i18n/ui/useUI": ui,
-}));
 
 async function flush() {
   for (let index = 0; index < 4; index++) await act(async () => {});
@@ -252,21 +240,6 @@ test("canonical Recent takes precedence over legacy host files and callbacks", a
     assert.equal(picked.length, 1);
     assert.deepEqual(legacy, []);
   } finally { await view.unmount(); }
-});
-
-test("the real shared HomeIntro uses the common private Recent picker without its old listFiles plumbing", async () => {
-  const picks = [];
-  globalThis.__homePrivateAdd = (files) => picks.push(...files);
-  globalThis.__pickerLoad = async () => result([item(1)]);
-  const view = await mount(HomeIntro, { siteName: "Test", siteId: "test", enableInputTools: true });
-  try {
-    await openRecent(view);
-    await waitFor(() => rows(view).length === 1);
-    await view.click(rows(view)[0]);
-    assert.equal(picks[0].artifactId, item(1).artifactId);
-    assert.equal(picks[0].revisionId, item(1).revisionId);
-    assert.equal(picks[0].url, undefined);
-  } finally { await view.unmount(); delete globalThis.__homePrivateAdd; }
 });
 
 test("Recent shows loading then its empty state; a returned failure and a thrown request show an error", async () => {

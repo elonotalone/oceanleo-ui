@@ -596,14 +596,6 @@ test("menu 自定义项出现在能力分组", async () => {
   view.cleanup();
 });
 
-test("AppShell 默认账户链接是 /settings 且 oceanleo 站导航里没有云电脑", () => {
-  const src = readFileSync(new URL("../src/shell/AppShell.tsx", import.meta.url), "utf8");
-  assert.match(src, /accountHref = "\/settings"/);
-  assert.doesNotMatch(src, /CloudComputerNavIcon/);
-  assert.doesNotMatch(src, /href: "\/computers"/);
-  assert.doesNotMatch(src, /tt\("云电脑"\)/);
-});
-
 test("登录成功不得 location.reload（开发版 overlay 经不起刷新）", () => {
   const src = readFileSync(
     new URL("../src/pages/settings/SettingsHub.tsx", import.meta.url),

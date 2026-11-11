@@ -98,8 +98,3 @@ test("主站工作台 app 分区读 my_apps，优先打开站点作用域 surfac
   assert.match(source, /kind === "market"/);
   assert.match(source, /chatAgents/);
 });
-
-test("各站侧栏不再承接加入工作台的 app", async () => {
-  const source = await readFile("src/shell/AppShell.tsx", "utf8");
-  assert.doesNotMatch(source, /MyAppsRail/);
-});

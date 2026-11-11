@@ -50,9 +50,8 @@ test("client-ui core has no Next or browser globals", () => {
   );
 });
 
-test("real host coupling inventory from AppShell, clone-shell, library, projects", () => {
+test("real host coupling inventory from merged clone-shell, library, projects", () => {
   const files = [
-    read(join(uiRoot, "src/shell/AppShell.tsx")),
     {
       path: "portal/app/_components/clone-shell.tsx",
       source: readFileSync(join(portalRoot, "app/_components/clone-shell.tsx"), "utf8"),
@@ -70,20 +69,6 @@ test("real host coupling inventory from AppShell, clone-shell, library, projects
   ];
   const hits = inventoryHostCoupling(files);
   const byPath = (suffix) => hits.filter((hit) => hit.path.endsWith(suffix));
-
-  const appShell = byPath("src/shell/AppShell.tsx");
-  assert.ok(
-    appShell.some((hit) => hit.kind === "next-import" && hit.text.includes("next/link")),
-    "AppShell still imports next/link (prefetch contract)",
-  );
-  assert.ok(
-    appShell.some((hit) => hit.kind === "next-import" && hit.text.includes("next/navigation")),
-    "AppShell still imports next/navigation (existing tests lock usePathname)",
-  );
-  assert.ok(
-    appShell.some((hit) => hit.kind === "hostname-guess"),
-    "AppShell help link still reads window.location.host (help-link.test lock)",
-  );
 
   const cloneShell = byPath("clone-shell.tsx");
   assert.ok(
@@ -124,7 +109,7 @@ test("real host coupling inventory from AppShell, clone-shell, library, projects
     0,
     "MyLibrary has no Next imports; remaining window events are listed, not rewritten (dirty file)",
   );
-  assert.ok(hitsInPaths(hits, (path) => path.endsWith("AppShell.tsx")).length > 0);
+  assert.ok(hitsInPaths(hits, (path) => path.endsWith("clone-shell.tsx")).length > 0);
 
   const core = readFileSync(join(uiRoot, "src/client-ui/core.ts"), "utf8");
   assert.doesNotMatch(core, /from ["']\.\/surfaces\//);

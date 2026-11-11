@@ -151,8 +151,8 @@ test("正对照：扫描确实走到了 src/，不是在空集合上通过", () 
     `只扫到 ${scanned.length} 个文件，src/ 的规模应当在 600 上下；遍历大概率坏了`,
   );
   assert.ok(
-    scanned.includes("shell/AppShell.tsx"),
-    "扫描结果里没有 shell/AppShell.tsx，路径解析可疑",
+    scanned.includes("shell/AgentChat.tsx"),
+    "扫描结果里没有 shell/AgentChat.tsx，路径解析可疑",
   );
   for (const excluded of EXCLUDED) {
     assert.ok(!scanned.includes(excluded), `${excluded} 是非调用点，应当被排除`);

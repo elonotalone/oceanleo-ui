@@ -440,22 +440,3 @@ test("image optimization requires an explicit host opt-in and an exact-original 
     assert.equal(globalThis.__composerIntakeOptions.byteAwareJpeg, false);
   } finally { delete globalThis.__composerIntakeOptions; view.cleanup(); }
 });
-
-const { HomeIntro } = await import(await compileModule("src/shell/HomeIntro.tsx", {
-  "./LeoComposer": dataModule("export function LeoComposer(props){globalThis.__homeIntroComposerProps=props;return null;}"),
-  "./HomeCards": noopComponent("HomePromptCards"),
-  "./HomeAppCards": dataModule("export const HOME_APP_FEATURED_LIMIT=12;export function HomeAppCards(){return null;}"),
-  "./useAttachments": dataModule("export function useAttachments(){return {composerAttachments:[],handleAttachFiles(){},addComposerAttachments(){},removeAttachment(){},retryAttachment(){},ready(){return [];},clear(){}};}"),
-  "../lib/database": dataModule("export async function listFiles(){return {ok:true,data:{items:[]}};}"),
-  "../i18n/ui/useUI": dataModule(`export function useUI(){return ${tt.toString()};}`),
-}));
-
-test("shared home opts in only while its supported attachment tools are enabled", async () => {
-  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
-  try {
-    await act(async()=>root.render(React.createElement(HomeIntro,{siteName:"Test",siteId:"test",onStart(){}})));
-    assert.equal(globalThis.__homeIntroComposerProps.optimizeImages,true);
-    await act(async()=>root.render(React.createElement(HomeIntro,{siteName:"Test",siteId:"test",enableInputTools:false,onStart(){}})));
-    assert.equal(globalThis.__homeIntroComposerProps.optimizeImages,false);
-  } finally {await act(async()=>root.unmount());host.remove();delete globalThis.__homeIntroComposerProps;}
-});

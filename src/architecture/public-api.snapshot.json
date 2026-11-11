@@ -4728,19 +4728,19 @@
           "kind": "named",
           "name": "APP_PAGE_FRAME_CLASS",
           "importedName": "APP_PAGE_FRAME_CLASS",
-          "source": "./AppShell"
+          "source": "./AppPageHeader"
         },
         {
           "kind": "named",
           "name": "APP_PAGE_HEADER_ROW_CLASS",
           "importedName": "APP_PAGE_HEADER_ROW_CLASS",
-          "source": "./AppShell"
+          "source": "./AppPageHeader"
         },
         {
           "kind": "named",
           "name": "APP_PAGE_TITLE_CLASS",
           "importedName": "APP_PAGE_TITLE_CLASS",
-          "source": "./AppShell"
+          "source": "./AppPageHeader"
         },
         {
           "kind": "named",
@@ -4872,37 +4872,7 @@
           "kind": "named",
           "name": "AppPageHeader",
           "importedName": "AppPageHeader",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "appPreviewImageKey",
-          "importedName": "appPreviewImageKey",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
-          "name": "AppShell",
-          "importedName": "AppShell",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "AppShellBrand",
-          "importedName": "AppShellBrand",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "AppShellLayout",
-          "importedName": "AppShellLayout",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "AppShellProps",
-          "importedName": "AppShellProps",
-          "source": "./AppShell"
+          "source": "./AppPageHeader"
         },
         {
           "kind": "named",
@@ -5452,12 +5422,6 @@
         },
         {
           "kind": "named",
-          "name": "featuredHomeApps",
-          "importedName": "featuredHomeApps",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
           "name": "FileLibrary",
           "importedName": "FileLibrary",
           "source": "./FileLibrary"
@@ -5638,48 +5602,6 @@
         },
         {
           "kind": "named",
-          "name": "HOME_APP_ALL_GROUP",
-          "importedName": "HOME_APP_ALL_GROUP",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
-          "name": "HOME_APP_FEATURED_LIMIT",
-          "importedName": "HOME_APP_FEATURED_LIMIT",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
-          "name": "HOME_APP_SEE_ALL_HREF",
-          "importedName": "HOME_APP_SEE_ALL_HREF",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
-          "name": "HomeAgentCards",
-          "importedName": "HomeAgentCards",
-          "source": "./HomeAgentCards"
-        },
-        {
-          "kind": "named",
-          "name": "HomeAppCards",
-          "importedName": "HomeAppCards",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
-          "name": "HomeAppCardsProps",
-          "importedName": "HomeAppCardsProps",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
-          "name": "homeAppGroups",
-          "importedName": "homeAppGroups",
-          "source": "./HomeAppCards"
-        },
-        {
-          "kind": "named",
           "name": "HomeAssetCard",
           "importedName": "HomeAssetCard",
           "source": "./home-asset-cards-model"
@@ -5722,18 +5644,6 @@
         },
         {
           "kind": "named",
-          "name": "HomeIntro",
-          "importedName": "HomeIntro",
-          "source": "./HomeIntro"
-        },
-        {
-          "kind": "named",
-          "name": "HomePromptCards",
-          "importedName": "HomePromptCards",
-          "source": "./HomeCards"
-        },
-        {
-          "kind": "named",
           "name": "HumanHandoffButton",
           "importedName": "HumanHandoffButton",
           "source": "./HumanHandoffButton"
@@ -5767,18 +5677,6 @@
           "name": "IconRightPanelToggle",
           "importedName": "IconRightPanelToggle",
           "source": "./SplitWorkspace"
-        },
-        {
-          "kind": "named",
-          "name": "ImageLightbox",
-          "importedName": "ImageLightbox",
-          "source": "./ImageLightbox"
-        },
-        {
-          "kind": "named",
-          "name": "ImageLightboxProps",
-          "importedName": "ImageLightboxProps",
-          "source": "./ImageLightbox"
         },
         {
           "kind": "named",
@@ -6508,18 +6406,6 @@
         },
         {
           "kind": "named",
-          "name": "pageFromPath",
-          "importedName": "pageFromPath",
-          "source": "./WorkspacePages"
-        },
-        {
-          "kind": "named",
-          "name": "PageTitle",
-          "importedName": "PageTitle",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
           "name": "parseWorkspacePile",
           "importedName": "parseWorkspacePile",
           "source": "./WorkspaceDesk"
@@ -7132,30 +7018,6 @@
         },
         {
           "kind": "named",
-          "name": "ShellNavDisclosure",
-          "importedName": "ShellNavDisclosure",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "ShellNavGroup",
-          "importedName": "ShellNavGroup",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "ShellNavItem",
-          "importedName": "ShellNavItem",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
-          "name": "ShellSubNav",
-          "importedName": "ShellSubNav",
-          "source": "./AppShell"
-        },
-        {
-          "kind": "named",
           "name": "ShellTaskView",
           "importedName": "ShellTaskView",
           "source": "./cloud-computer/ShellTaskView"
@@ -7339,18 +7201,6 @@
           "name": "templateSegments",
           "importedName": "templateSegments",
           "source": "./PromptHighlightArea"
-        },
-        {
-          "kind": "named",
-          "name": "TemplateShowcase",
-          "importedName": "TemplateShowcase",
-          "source": "./ImageLightbox"
-        },
-        {
-          "kind": "named",
-          "name": "TemplateShowcaseProps",
-          "importedName": "TemplateShowcaseProps",
-          "source": "./ImageLightbox"
         },
         {
           "kind": "named",
@@ -7588,12 +7438,6 @@
         },
         {
           "kind": "named",
-          "name": "useWorkspaceNavLabels",
-          "importedName": "useWorkspaceNavLabels",
-          "source": "./WorkspacePages"
-        },
-        {
-          "kind": "named",
           "name": "useWorkspaceRuntimeHydration",
           "importedName": "useWorkspaceRuntimeHydration",
           "source": "./workspace-runtime-hydration"
@@ -7741,24 +7585,6 @@
           "name": "WorkspaceLibraryProps",
           "importedName": "WorkspaceLibraryProps",
           "source": "./WorkspaceLibrary"
-        },
-        {
-          "kind": "named",
-          "name": "workspaceNav",
-          "importedName": "workspaceNav",
-          "source": "./WorkspacePages"
-        },
-        {
-          "kind": "named",
-          "name": "WorkspaceNavOptions",
-          "importedName": "WorkspaceNavOptions",
-          "source": "./WorkspacePages"
-        },
-        {
-          "kind": "named",
-          "name": "WorkspacePage",
-          "importedName": "WorkspacePage",
-          "source": "./WorkspacePages"
         },
         {
           "kind": "named",
@@ -8063,18 +7889,6 @@
           "name": "HistoryPageProps",
           "importedName": "HistoryPageProps",
           "source": "./HistoryPage"
-        },
-        {
-          "kind": "type",
-          "name": "HomeAgentPick",
-          "importedName": "HomeAgentPick",
-          "source": "./HomeAgentCards"
-        },
-        {
-          "kind": "type",
-          "name": "HomeIntroProps",
-          "importedName": "HomeIntroProps",
-          "source": "./HomeIntro"
         },
         {
           "kind": "type",

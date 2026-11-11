@@ -30,9 +30,3 @@ test("Light 基座画布是 Etsy 页底 #faf8f5", () => {
   assert.match(lightBody[0], /background: #faf8f5;/);
   assert.doesNotMatch(lightBody[0], /#e8edf8/);
 });
-
-test("AppShell 侧栏颜色不放进 className 模板，避免 SWC 把后面的 ${ 当成标签", () => {
-  const source = readFileSync(new URL("../src/shell/AppShell.tsx", import.meta.url), "utf8");
-  assert.match(source, /bg-\[var\(--sidebar\)\]/);
-  assert.doesNotMatch(source, /className=\{`[^`]*bg-\[var\(--sidebar\)\]/s);
-});

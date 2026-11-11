@@ -3,13 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 const src = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
-const shell = src("../src/shell/AppShell.tsx");
 const exports = src("../src/shell/index.ts");
-test("all AppShell layouts share account, device and notification controls", () => {
-  assert.match(shell, /<SidebarAccountCluster/);
-  assert.match(shell, /renderAccountCluster\(true\)/);
-  assert.match(shell, /<SettingsModalHost/);
-  assert.doesNotMatch(shell, /creditsCapsule|renderAccountButton|renderCredits/);
+test("shared account cluster retains account, device and notification controls", () => {
   const cluster = src("../src/shell/account/SidebarAccountCluster.tsx");
   assert.match(cluster, /props\.compact \? "w-full flex-col gap-2"/);
   assert.match(cluster, /justify-between gap-3/);
@@ -25,7 +20,6 @@ test("every site's account menu has personalization and skills; only an explicit
   assert.match(cluster, /personalizationTab=\{props\.personalizationTab\}/);
   assert.match(menu, /props\.personalizationTab === undefined \? "personalization" : props\.personalizationTab/);
   assert.match(menu, /settings\("skills"\)/);
-  assert.doesNotMatch(shell, /personalizationTab=/, "AppShell must not narrow the shared menu per site");
 });
 test("settings route renders the shared center without site sidebar", () => {
   const page = src("../src/pages/SettingsPage.tsx");

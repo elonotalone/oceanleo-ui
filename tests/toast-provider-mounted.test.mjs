@@ -105,10 +105,6 @@ const STUBS = {
   "../lib/presence": presenceStubUrl,
   "../lib/app-market": appMarketStubUrl,
 };
-
-const { AppShell } = await import(
-  await compileModule("src/shell/AppShell.tsx", STUBS)
-);
 const uiBarrel = await import(await compileModule("src/ui/index.tsx", STUBS));
 const { resetToastStoreForTests } = await import(
   await compileModule("src/ui/Toast.tsx", STUBS)
@@ -119,14 +115,6 @@ const brand = {
   logo: React.createElement("span", null, "T"),
   accent: "#2563eb",
 };
-
-function shellWith(child, props = {}) {
-  return React.createElement(
-    AppShell,
-    { brand, userEmail: "a@oceanleo.com", ...props },
-    child ?? React.createElement("section", null, "Body"),
-  );
-}
 
 async function withDom(run) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -222,92 +210,4 @@ test("`../ui` 确实把 ToastProvider 露了出来（挂载点的前提）", () 
     "@oceanleo/ui/ui 不再导出 ToastProvider —— 挂载点就没得挂了",
   );
   assert.equal(typeof uiBarrel.useToast, "function");
-});
-
-test("应用根部挂了 ToastProvider：一条 toast 真的进得了 DOM", async () => {
-  await withDom(async ({ render, viewports, toasts, window }) => {
-    await render(shellWith(null));
-    assert.equal(
-      viewports().length,
-      1,
-      "AppShell 渲染完之后屏幕上没有 toast viewport —— 全站 toast 一条都出不来",
-    );
-
-    // 原语在「没人渲染」时会 warn 一次（它刻意不假装成功）。挂对了就必须沉默，
-    // 所以这行读数是与 DOM 断言互相独立的第二个证据。
-    const warnings = [];
-    const realWarn = console.warn;
-    console.warn = (...args) => warnings.push(args.join(" "));
-    try {
-      await act(async () => {
-        uiBarrel.useToast().success("已保存", "改动已经落到云端");
-      });
-    } finally {
-      console.warn = realWarn;
-    }
-
-    const rendered = toasts();
-    assert.equal(rendered.length, 1, "toast 进了 store 却没渲染出来");
-    assert.match(
-      rendered[0].textContent,
-      /已保存/,
-      `渲染出来的那条不是刚推的：${rendered[0].textContent}`,
-    );
-    assert.match(rendered[0].textContent, /改动已经落到云端/);
-    assert.deepEqual(
-      warnings.filter((line) => line.includes("ToastProvider")),
-      [],
-      "原语报「没有任何 ToastProvider / ToastViewport 在渲染它」——挂载点没生效",
-    );
-
-    // viewport 不许挡点击：它包在整个应用外面，`pointer-events` 走的是那条
-    // 注入样式。这里验的是 DOM 结构上它没有把 children 吞掉。
-    assert.match(window.document.body.textContent, /Body/);
-  });
-});
-
-test("套几层 AppShell 都只有一个 viewport（不会右下角摞两摞）", async () => {
-  await withDom(async ({ render, viewports, toasts }) => {
-    await render(
-      shellWith(
-        shellWith(React.createElement("section", null, "Nested body"), {
-          brand: { ...brand, name: "Nested" },
-        }),
-      ),
-    );
-    assert.equal(
-      viewports().length,
-      1,
-      "内层 AppShell 又挂了一个 viewport —— 同一条 toast 会在屏幕上出现两次",
-    );
-    await act(async () => {
-      uiBarrel.useToast().info("只该出现一次");
-    });
-    assert.equal(toasts().length, 1);
-  });
-});
-
-
-test("SSR 首帧就带着 viewport 容器（aria-live 区域要先存在才播报得了）", () => {
-  const markup = renderToStaticMarkup(shellWith(null));
-  assert.equal(
-    markup.split("data-leo-toast-viewport").length - 1,
-    1,
-    "服务端首帧没有 viewport 容器：屏幕阅读器不会播报之后插进来的 toast",
-  );
-});
-
-test("挂载点自己不许引第三方 toast 库（红线 7）", async () => {
-  const { readFileSync } = await import("node:fs");
-  const source = readFileSync("src/shell/AppShell.tsx", "utf8");
-  assert.equal(
-    /\bsonner\b/.test(source),
-    false,
-    "AppShell 里出现了 sonner —— 它在本包里是 optional peer，31 个站不一定装",
-  );
-  assert.match(
-    source,
-    /import \{ ToastProvider \} from "\.\.\/ui"/,
-    "挂载点必须走第一方原语的公共子路径",
-  );
 });
