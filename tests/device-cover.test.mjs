@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+
+test.beforeEach((t) => {
+  t.mock.method(console, "error", (...args) => { assert.fail(args.map(String).join(" ")); });
+});
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { document, window } from "./helpers/remote-desktop-dom.mjs";
@@ -21,7 +25,7 @@ test("cover parser rejects public URLs, SVG, paths, oversized data and false dim
   }
 });
 
-test("cover reads wallpaper only on an online computer, retains timestamp offline, clears on signout", async () => {
+test("cover reads wallpaper only on an online computer, retains wallpaper offline without a caption, clears on signout", async () => {
   const calls = [];
   const client = { async startOperation(id, payload, signal) { calls.push({ id, payload, signal }); return { ok: true, data: { state: "succeeded", result: { cover: wallpaper } } }; } };
   const host = document.createElement("div"); document.body.append(host);
@@ -34,10 +38,12 @@ test("cover reads wallpaper only on an online computer, retains timestamp offlin
     await render("online");
     assert.deepEqual(calls.map(({ id, payload }) => [id, payload]), [["mac", { kind: "cover.read" }]]);
     assert.equal(host.querySelector("img").getAttribute("src"), wallpaper.image);
-    assert.equal(host.querySelector("time").getAttribute("datetime"), new Date(now * 1000).toISOString());
+    assert.equal(host.querySelector("time, [data-device-cover-timestamp]"), null);
+    assert.equal(host.textContent, "");
     await render("offline");
     assert.equal(host.querySelector("[data-device-cover-state]").getAttribute("data-device-cover-state"), "last-known");
-    assert.match(host.textContent, /上次壁纸/);
+    assert.equal(host.querySelector("img").getAttribute("src"), wallpaper.image);
+    assert.equal(host.textContent, "");
     assert.equal(calls.length, 1);
     assert.equal(calls[0].signal.aborted, true);
     await render("signed_out");

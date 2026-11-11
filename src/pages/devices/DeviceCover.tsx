@@ -54,13 +54,11 @@ export function WallpaperSurface({ cover = null, loading = false, availability =
   const tt = useUI();
   const [failedImage, setFailedImage] = useState<string | null>(null);
   const image = cover?.state === "available" && cover.image !== failedImage ? cover : null;
-  const stamp = image ? new Date(image.observed_at * 1000).toLocaleString() : "";
   const lastKnown = image && (availability !== "online" || Date.now() / 1000 - image.observed_at > 360);
   return <div className="relative flex aspect-[16/10] min-h-[180px] items-center justify-center overflow-hidden bg-neutral-100" data-device-cover data-device-cover-state={image ? lastKnown ? "last-known" : "available" : loading ? "loading" : "unavailable"}>
     {image ? <>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={image.image} alt="" width={image.width} height={image.height} className="absolute inset-0 h-full w-full object-cover" referrerPolicy="no-referrer" draggable={false} onError={() => setFailedImage(image.image)} />
-      <span className="absolute right-3 top-3 rounded-md bg-black/60 px-2 py-1 text-[10px] text-white" title={stamp} data-device-cover-timestamp>{tt(lastKnown ? "上次壁纸" : "设备壁纸")} · <time dateTime={new Date(image.observed_at * 1000).toISOString()}>{stamp}</time></span>
     </> : <span className="px-5 text-center text-xs text-neutral-400" role="status">{tt(loading ? "正在读取设备壁纸…" : cover?.state === "unavailable" && cover.reason === "headless" ? "此设备没有桌面壁纸" : placeholder)}</span>}
     {children}
   </div>;

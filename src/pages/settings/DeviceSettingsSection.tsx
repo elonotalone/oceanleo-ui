@@ -155,6 +155,9 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
   // values are defaults, so they are not editable. Agent consent is the durable server policy.
   const deviceStateReady = effectiveAvailability === "online" && settings?.preferences_available === true;
   const controlsBusy = busy || revokingAgent;
+  // OFF revokes durable server consent, even offline or during a preference update.
+  // ON still requires an online device and no competing settings operation.
+  const agentControlDisabled = revokingAgent || (!remoteAccess.agent_control_allowed && (busy || effectiveAvailability !== "online"));
 
   return <div className="space-y-5" data-device-settings-panel={device.device_id}>
     <section className="flex flex-wrap items-center justify-between gap-4">
@@ -176,9 +179,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     {notice && <p role="status" className="rounded-lg bg-neutral-50 px-3 py-2 text-[13px] text-neutral-600">{tt(notice)}</p>}
 
     {isComputer(device) && <section className={CARD} data-device-access-settings>
-      <div className="flex flex-wrap items-center justify-between gap-3"><h3 className={CARD_TITLE}>{tt("访问与控制")}</h3>
-        <button type="button" className={`${QUIET} text-red-600`} data-revoke-agent-control disabled={revokingAgent} onClick={() => void revokeAgentControl()}>{tt(revokingAgent ? "正在撤销…" : "撤销 Agent 控制")}</button>
-      </div>
+      <h3 className={CARD_TITLE}>{tt("访问与控制")}</h3>
       <p className={CARD_DESC}>{tt("自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。")}</p>
       {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 divide-y divide-neutral-100">
         <div className="flex items-start justify-between gap-4 py-3">
@@ -191,7 +192,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后撤销权限，离线设备会在重新连接后同步。")}</p></div>
-          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={controlsBusy || effectiveAvailability !== "online"} onChange={(agent_control_allowed) => void saveRemoteAccess({ kind: "remote_access.update", agent_control_allowed })} />
+          <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={agentControlDisabled} onChange={(agent_control_allowed) => void saveRemoteAccess({ kind: "remote_access.update", agent_control_allowed })} />
         </div>
         <div className="flex items-start justify-between gap-4 py-3">
           <div><p className="text-[13px] font-medium">{tt("每次询问")}</p><p className={CARD_DESC}>{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</p></div>

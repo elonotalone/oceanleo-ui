@@ -144,7 +144,7 @@ test("a late scoped reply cannot undo a newer Agent revoke", async (t) => {
     await view.click("允许操作屏幕（查看、点击、输入）");
     await act(async () => t.mock.timers.tick(750)); await flush();
     assert.equal(typeof lateScope, "function");
-    await view.click("撤销 Agent 控制");
+    await view.click("允许远程 Agent 控制");
     assert.equal(aborted, true);
     assert.deepEqual(calls, [{kind: "remote_access.preferences.update", input_allowed: false}, {kind: "remote_access.update", agent_control_allowed: false}]);
     await act(async () => lateScope({ok: true, data: {state: "succeeded", result: {remote_access: {...snapshot.remote_access, agent_control_allowed: true}}}})); await flush();
