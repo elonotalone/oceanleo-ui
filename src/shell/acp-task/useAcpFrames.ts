@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getHistoryWindow, openFrames, type AcpFrameRow, type AcpFramesState, type AcpLinkState } from "../../lib/acp-frames-api";
 import { readTaskConversationAnchor } from "../task-open-cache";
 
@@ -23,6 +23,16 @@ const FLUSH_MS = 16;
 /** Open C9's bounded window, then stream rows after its tail; old gateways fall back to frames. */
 export function useAcpFrames(taskId: string | null): AcpFramesView {
   const [view, setView] = useState<{ taskId: string; value: AcpFramesView }>({ taskId: "", value: IDLE });
+  const committed = useRef<Array<{ taskId: string; rowId: number | null; resolve: () => void }>>([]);
+  useLayoutEffect(() => {
+    committed.current = committed.current.filter((waiter) => {
+      if (waiter.taskId === view.taskId && (waiter.rowId == null || view.value.rows.some((row) => row.id === waiter.rowId))) {
+        waiter.resolve();
+        return false;
+      }
+      return true;
+    });
+  }, [view]);
   useEffect(() => {
     if (!taskId) return;
     let closed = false;
@@ -30,7 +40,7 @@ export function useAcpFrames(taskId: string | null): AcpFramesView {
     let unsubscribe: (() => void) | null = null;
     let before: number | null = null;
     let anchor: number | undefined = readTaskConversationAnchor(taskId)?.rowId;
-    let loadingEarlier = false;
+    let earlierRequest: Promise<void> | null = null;
     let pending: AcpFrameRow[] = [];
     let timer: ReturnType<typeof setTimeout> | null = null;
     const append = (rows: AcpFrameRow[]) => {
@@ -52,24 +62,31 @@ export function useAcpFrames(taskId: string | null): AcpFramesView {
       });
     };
     const fallback = () => { if (!closed) { const frames = openFrames(taskId, 0); setView({ taskId, value: { ...IDLE, state: frames.state, loadEarlier: noop, jumpToLatest: noop } }); subscribe(frames); } };
-    const loadEarlier = async () => {
-      if (closed || loadingEarlier || before == null) return;
-      loadingEarlier = true;
-      setView((current) => current.taskId === taskId ? { ...current, value: { ...current.value, loadingEarlier: true } } : current);
-      try {
-        const page = await getHistoryWindow(taskId, { before, turns: 8 });
-        if (closed) return;
-        before = page.next_before;
-        setView((current) => {
-          if (current.taskId !== taskId) return current;
-          const known = new Set(current.value.rows.map((row) => row.id));
-          const older = page.rows.filter((row) => !known.has(row.id));
-          return { taskId, value: { ...current.value, rows: [...older, ...current.value.rows], hasMore: page.has_more, capped: page.capped, loadingEarlier: false } };
-        });
-      } finally {
-        loadingEarlier = false;
-        if (!closed) setView((current) => current.taskId === taskId ? { ...current, value: { ...current.value, loadingEarlier: false } } : current);
-      }
+    const loadEarlier = (): Promise<void> => {
+      if (earlierRequest) return earlierRequest;
+      if (closed || before == null) return Promise.resolve();
+      earlierRequest = (async () => {
+        setView((current) => current.taskId === taskId ? { ...current, value: { ...current.value, loadingEarlier: true } } : current);
+        try {
+          const page = await getHistoryWindow(taskId, { before, turns: 8 });
+          if (closed) return;
+          before = page.next_before;
+          const applied = new Promise<void>((resolve) => {
+            committed.current.push({ taskId, rowId: page.rows[0]?.id ?? null, resolve });
+          });
+          setView((current) => {
+            if (current.taskId !== taskId) return current;
+            const known = new Set(current.value.rows.map((row) => row.id));
+            const older = page.rows.filter((row) => !known.has(row.id));
+            return { taskId, value: { ...current.value, rows: older.length ? [...older, ...current.value.rows] : current.value.rows, hasMore: page.has_more, capped: page.capped, loadingEarlier: false } };
+          });
+          await applied;
+        } finally {
+          earlierRequest = null;
+          if (!closed) setView((current) => current.taskId === taskId ? { ...current, value: { ...current.value, loadingEarlier: false } } : current);
+        }
+      })();
+      return earlierRequest;
     };
     const attachWindow = (page: Awaited<ReturnType<typeof getHistoryWindow>>, rows: AcpFrameRow[]) => {
       before = page.next_before;
@@ -107,15 +124,15 @@ export function useAcpFrames(taskId: string | null): AcpFramesView {
       if (anchor == null || page.has_more_after !== true) attachWindow(page, page.rows);
       else {
         setView((current) => current.taskId === taskId ? { ...current, value: { ...current.value, rows: page.rows, hasMoreAfter: true } } : current);
-        const oldestBefore = before;
         const filled = await fillForward(page);
         if (!closed) {
-          attachWindow(filled.page, filled.rows);
-          before = oldestBefore;
+          attachWindow({ ...filled.page, next_before: page.next_before, has_more: page.has_more, capped: page.capped }, filled.rows);
         }
       }
     }).catch(fallback);
-    return () => { closed = true; unsubscribe?.(); if (timer !== null) clearTimeout(timer); socket?.close(); };
+    return () => { closed = true;
+      committed.current = committed.current.filter((waiter) => { if (waiter.taskId !== taskId) return true; waiter.resolve(); return false; });
+      unsubscribe?.(); if (timer !== null) clearTimeout(timer); socket?.close(); };
   }, [taskId]);
   return taskId && view.taskId === taskId ? view.value : IDLE;
 }

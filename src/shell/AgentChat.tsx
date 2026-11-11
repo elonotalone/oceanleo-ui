@@ -1,6 +1,7 @@
 "use client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
+import { OlderHistoryTop, useOlderHistory } from "./history/older-history";
 import { StepsFoldPreferenceProvider } from "./steps-fold-preference";
 
 // ============================================================================
@@ -1478,7 +1479,16 @@ function AgentChatInner({
   // The stream follows new rows while the user is at the bottom; scrolled up, it stays put.
   const acpScrollRef = useRef<HTMLDivElement>(null);
   const acpFollowRef = useRef(true);
-  const acpRowsBeforeHistoryRef = useRef<number | null>(null);
+  const acpFirstKey = frames.rows[0]?.id ?? null;
+  const acpPreviousFirstRef = useRef<{ taskId: string | null | undefined; key: number | null }>({ taskId, key: acpFirstKey });
+  const acpHistory = useOlderHistory({
+    scrollRef: acpScrollRef,
+    hasMore: frames.hasMore,
+    loadOlder: frames.loadEarlier,
+    firstKey: acpFirstKey,
+    itemSelector: "[data-history-key], [data-acp-transcript] > *",
+    disabled: !acpShown || !frames.rows.length,
+  });
   const onAcpScroll = useCallback(() => {
     const el = acpScrollRef.current;
     if (el) {
@@ -1489,24 +1499,27 @@ function AgentChatInner({
       }
     }
   }, [frames.rows, taskId]);
+  const acpPendingKey = acpPendingIds.join("|");
   useLayoutEffect(() => {
     const el = acpScrollRef.current;
-    if (el && acpFollowRef.current) el.scrollTop = el.scrollHeight;
-  }, [frames.rows, acpPendingIds.join("|")]);
+    const previous = acpPreviousFirstRef.current;
+    if (previous.taskId !== taskId) acpFollowRef.current = true;
+    const prepended = previous.taskId === taskId && previous.key != null && acpFirstKey != null && acpFirstKey < previous.key;
+    acpPreviousFirstRef.current = { taskId, key: acpFirstKey };
+    if (el && acpFollowRef.current && !prepended) el.scrollTop = el.scrollHeight;
+  }, [frames.rows, acpPendingKey, acpFirstKey, taskId]);
+  const acpRestoredTaskRef = useRef<string | null>(null);
   useLayoutEffect(() => {
-    const before = acpRowsBeforeHistoryRef.current;
+    if (!taskId) { acpRestoredTaskRef.current = null; return; }
     const el = acpScrollRef.current;
-    if (before != null && el) {
-      const delta = el.scrollHeight - before;
-      if (delta > 0) el.scrollTop += delta;
-      acpRowsBeforeHistoryRef.current = null;
+    if (!el || !frames.rows.length || acpRestoredTaskRef.current === taskId) return;
+    acpRestoredTaskRef.current = taskId;
+    const anchor = readTaskConversationAnchor(taskId);
+    if (anchor && !anchor.atBottom && anchor.offsetPx != null) {
+      acpFollowRef.current = false;
+      el.scrollTop = anchor.offsetPx;
     }
-  }, [frames.rows]);
-  useLayoutEffect(() => {
-    const el = acpScrollRef.current;
-    const anchor = taskId ? readTaskConversationAnchor(taskId) : undefined;
-    if (el && anchor && !anchor.atBottom && anchor.offsetPx != null) el.scrollTop = anchor.offsetPx;
-  }, [taskId]);
+  }, [taskId, acpShown, frames.rows]);
 
   const patchSession = useCallback((sessionId: string, nativeId: string) => {
     const known = knownComputerTaskSession(sessionId);
@@ -3497,11 +3510,9 @@ function AgentChatInner({
   // rows (AcpTranscript). The composer and its buttons work only while the
   // socket is connected; a refusal is said under the composer in the gateway's words.
   const acpErrorLine = acpError && acpError.taskId === (taskId || "") ? acpError.text : "";
-  const loadEarlierAcp = useCallback(async () => {
-    const el = acpScrollRef.current;
-    if (el) acpRowsBeforeHistoryRef.current = el.scrollHeight;
-    await frames.loadEarlier();
-  }, [frames.loadEarlier]);
+  const acpTranscriptSelect = useMemo(() => share.active
+    ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle }
+    : undefined, [share.active, acpPickable, share.selectedIds, share.toggle]);
   const acpStream = acpShown ? renderStream({
     pane: "acp",
     scrollRef: acpScrollRef,
@@ -3510,13 +3521,7 @@ function AgentChatInner({
     empty: null,
     items: (
       <>
-      {frames.hasMore && (
-        <div className="flex justify-center py-1" data-acp-history-window="">
-          <button type="button" disabled={frames.loadingEarlier} onClick={() => void loadEarlierAcp()} className="rounded-lg px-2 py-1 text-[12px] text-stone-500 hover:bg-stone-100">
-            {frames.loadingEarlier ? tt("正在加载更早的消息…") : frames.capped ? tt("消息较多，加载更早的消息") : tt("加载更早的消息")}
-          </button>
-        </div>
-      )}
+      <OlderHistoryTop key={taskId || "draft"} hasMore={frames.hasMore} spinnerVisible={acpHistory.spinnerVisible} sentinelRef={acpHistory.sentinelRef} />
       {frames.hasMoreAfter && (
         <div className="flex justify-center py-1" data-acp-history-latest="">
           <button type="button" disabled={frames.jumpingLatest} onClick={() => void frames.jumpToLatest()} className="rounded-lg px-2 py-1 text-[12px] text-stone-500 hover:bg-stone-100">
@@ -3535,7 +3540,7 @@ function AgentChatInner({
         highlightQuery={highlightQuery || undefined}
         onStopAndSend={acpConnected && !readOnly && !acpStopping && !acpResend ? stopAndSendAcp : undefined}
         onOpenAttachment={openTaskAttachment}
-        select={share.active ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle } : undefined}
+        select={acpTranscriptSelect}
       />
       {acpPendingShown.map((entry) => (
         <PendingSendBubble
