@@ -120,6 +120,7 @@ test('backoff is 1s, 3s, 8s, then waits for a new intersection or scroll', async
 test('disabling then re-enabling while a batch is pending never overlaps requests', async () => {
   let calls = 0; const pending = deferred();
   const view = await mount({ load: () => { calls++; return pending.promise; } });
-  try { await tick(); await view.patch({ disabled: true }); await view.patch({ disabled: false }); await tick(); assert.equal(calls, 1); }
+  try { await tick(); await view.patch({ disabled: true }); await view.patch({ disabled: false }); await tick(); assert.equal(calls, 1);
+    await view.scroll(0); await tick(); assert.ok(view.host.querySelector(".v-spinner"), "resumed pending request still shows spinner at top"); }
   finally { await view.close(); await act(async () => pending.resolve()); }
 });

@@ -74,7 +74,13 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
       const top = sentinel.getBoundingClientRect().top;
       const height = scroller.clientHeight;
       setAtTop(top >= root.top && top <= root.top + height);
-      if (!height || current.disabled || !current.hasMore || flight.current != null || exhaustedRetries || Date.now() < retryAt) return;
+      if (!height || current.disabled || !current.hasMore) return;
+      if (flight.current != null) {
+        if (anchor.current == null) capture();
+        setLoading(true);
+        return;
+      }
+      if (exhaustedRetries || Date.now() < retryAt) return;
       if (!prefetch && failures === 0 && top < root.top - (current.prefetchScreens ?? 1.5) * height) return;
       prefetch = false;
       const request = Symbol("older-history");
@@ -103,7 +109,11 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
       }
     };
     const onScroll = () => {
-      if (flight.current != null) capture();
+      // The same keyed item can anchor a moving viewport too; one rect avoids scanning the transcript on every scroll.
+      const saved = anchor.current;
+      if (flight.current != null && saved && scroller.contains(saved.element)) {
+        saved.offset = saved.element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      }
       if (exhaustedRetries) { exhaustedRetries = false; failures = 0; retryAt = 0; }
       schedule();
     };
@@ -134,7 +144,8 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
     };
   }, [sentinel, options.scrollRef, options.disabled]);
 
-  return { sentinelRef, loading, spinnerVisible: loading && atTop };
+  const activeLoading = loading && options.hasMore && !options.disabled;
+  return { sentinelRef, loading: activeLoading, spinnerVisible: activeLoading && atTop };
 }
 
 export function OlderHistoryTop({ hasMore, spinnerVisible, sentinelRef }: {
