@@ -16,7 +16,7 @@
 // Rendered with the host's own styling (stone palette, the AgentStepMark block); nothing here is
 // borrowed from agent-dialog components or server-page/tone.
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { AgentMessage } from "../lib/agent";
 import {
   buildProcessEntries,
@@ -109,11 +109,14 @@ function summaryParts(tt: UITranslate, summary: ProcessSummary): ReactNode[] {
   return parts.flatMap((part, index) => (index ? [" · ", part] : [part]));
 }
 
-export function AgentProgress({
+export const AgentProgress = memo(function AgentProgress({
+  onBlockRender,
   messages,
   running,
   highlightQuery,
 }: {
+  /** Optional render diagnostic; omitted by production callers. */
+  onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   messages: AgentMessage[];
   running: boolean;
   /** Kept for callers; the timeline is neutral now (the step mark replaced the accent dot). */
@@ -121,18 +124,50 @@ export function AgentProgress({
   /** The task page's search words: step titles wrap hits in `<mark data-leo-search-hit>`. */
   highlightQuery?: string;
 }) {
+  onBlockRender?.("process", messages[0]?.id ?? 0);
   const tt = useUI();
   const entries = useMemo(() => buildProcessEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
   const engineLabel = typeof messages[0]?.meta?.engine_label === "string" ? messages[0].meta.engine_label : "";
-  const { elementRef, open: foldOpen, toggle, close } = useStepsFoldBlock(running, entries.length > 0);
   // A folded block is not on the page: while a step title matches the search, the block stays open so the hit shows.
   const searchHit = useMemo(
     () => Boolean(highlightQuery) && entries.some((entry) => entry.type === "tool" && splitHighlights(entry.title, highlightQuery).some((part) => part.hit)),
     [entries, highlightQuery],
   );
-  const open = foldOpen || searchHit;
   if (!entries.length) return null;
+  return <ProgressFold entries={entries} summary={summary} running={running} highlightQuery={highlightQuery}
+    engineLabel={engineLabel} tt={tt} searchHit={searchHit} />;
+});
+
+type ProgressFoldProps = {
+  entries: ProcessEntry[];
+  summary: ProcessSummary;
+  running: boolean;
+  highlightQuery?: string;
+  engineLabel: string;
+  tt: UITranslate;
+  searchHit: boolean;
+};
+
+/** Fold preference broadcasts when history registers new blocks. Keep that
+ * subscription out of AgentProgress and keep its unchanged timeline memoized. */
+function ProgressFold(props: ProgressFoldProps) {
+  const { elementRef, open, toggle, close } = useStepsFoldBlock(props.running, props.entries.length > 0);
+  const actions = useRef({ toggle, close });
+  useLayoutEffect(() => { actions.current = { toggle, close }; }, [toggle, close]);
+  const onToggle = useCallback(() => actions.current.toggle(), []);
+  const onClose = useCallback(() => actions.current.close(), []);
+  return <ProgressContent {...props} elementRef={elementRef} open={open || props.searchHit} toggle={onToggle} close={onClose} />;
+}
+
+const ProgressContent = memo(function ProgressContent({
+  entries, summary, running, highlightQuery, engineLabel, tt, elementRef, open, toggle, close,
+}: ProgressFoldProps & {
+  elementRef: RefObject<HTMLDivElement | null>;
+  open: boolean;
+  toggle: () => void;
+  close: () => void;
+}) {
   let latestPlan = "";
   for (const entry of entries) if (entry.type === "plan") latestPlan = entry.key;
   const last = entries.length - 1;
@@ -195,7 +230,7 @@ export function AgentProgress({
       )}
     </div>
   );
-}
+});
 
 function ThoughtView({ entry, live }: { entry: ThoughtEntry; live: boolean }) {
   const tt = useUI();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import {
@@ -36,6 +36,8 @@ export function agentArtifactLabels(
 
 export interface AgentTranscriptBubbleProps {
   message: AgentMessage;
+  /** Optional render diagnostic; omitted by production callers. */
+  onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   /**
    * Epoch ms for the small centred time above this (user) bubble — Manus
    * "Today 4:54 PM". Decided by `agentMessageTimeSeparators` (first user message,
@@ -110,7 +112,8 @@ function attachmentWithGallery(
  * 一条消息。普通模式下助手回答底下有「复制 / 重做」一排小图标；
  * 选段模式下整条变成可勾选的行，图标收起（此时用户是在选，不是在操作单条）。
  */
-export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
+export const AgentTranscriptBubble = memo(function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
+  props.onBlockRender?.("bubble", props.message.id);
   const tt = useUI();
   const { message, timeAbove } = props;
   if (message.kind === "ui_action") return null;
@@ -122,7 +125,7 @@ export function AgentTranscriptBubble(props: AgentTranscriptBubbleProps) {
       {bubble}
     </>
   );
-}
+});
 
 function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnType<typeof useUI>) {
   const {

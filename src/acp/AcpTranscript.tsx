@@ -3,7 +3,7 @@
 // The task page as a standard ACP client (contract §2.5, P4): stored rows in, the conversation out.
 // Program differences live in reduce.ts / messages.ts; this file only renders. An empty row list renders nothing.
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
 import type { AgentAttachment } from "../lib/agent";
@@ -14,6 +14,8 @@ import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId 
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
+  /** Optional render diagnostic; omitted by production callers. */
+  onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   /** A view reduced by the owning task page; avoids reducing the same backlog twice. */
   view?: ReturnType<typeof reduceRows>;
   program: string;
@@ -176,7 +178,7 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
   );
 }
 
-export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment }: AcpTranscriptProps) {
+export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const labels: AcpLabels = useMemo(
@@ -200,36 +202,94 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
   );
   const blocks = useMemo(() => viewBlocks(view, labels), [view, labels]);
   if (!rows.length) return null;
-  const render = (block: AcpBlock) => {
-    if (block.type === "process") {
-      return <AgentProgress key={block.key} messages={block.messages} running={block.running} highlightQuery={highlightQuery} />;
-    }
-    if (block.type === "raw-request") return <RawRequest key={block.key} request={block.request} />;
-    const request = block.request;
-    const { id, kind } = block.message;
-    // A turn's error / stop notice carries its prompt's id: only text bubbles are words.
-    const pick = select && kind === "text" && select.pickable.has(id) ? select : null;
-    return (
-      <Fragment key={block.key}>
-        <AgentTranscriptBubble
-          message={block.message}
-          streaming={block.streaming}
-          stopped={block.stopped}
-          highlightQuery={highlightQuery}
-          onNativeAnswer={request && onAnswer ? (_message, answer) => onAnswer(request.requestId, answerFor(request, answer)) : undefined}
-          onOpenAttachment={onOpenAttachment}
-          selectMode={Boolean(pick)}
-          selected={pick ? pick.selected.has(id) : false}
-          onSelectToggle={pick ? () => pick.onToggle(id) : undefined}
-        />
-        {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
-      </Fragment>
-    );
-  };
   return (
     <div data-acp-transcript="" data-agent-stream="" data-acp-program={program} className="space-y-3">
-      {blocks.map((block) => <div key={block.key} data-history-item="" data-history-key={block.key}>{render(block)}</div>)}
+      {blocks.map((block) => {
+        const pick = block.type === "bubble" && block.message.kind === "text" && select?.pickable.has(block.message.id);
+        return <div key={block.key} data-history-item="" data-history-key={block.key}>
+          <TranscriptBlock
+            block={block}
+            highlightQuery={highlightQuery}
+            onAnswer={block.type === "bubble" && block.request ? onAnswer : undefined}
+            onStopAndSend={block.type === "bubble" && block.queued ? onStopAndSend : undefined}
+            onOpenAttachment={block.type === "bubble" ? onOpenAttachment : undefined}
+            selectMode={Boolean(pick)}
+            selected={Boolean(pick && block.type === "bubble" && select?.selected.has(block.message.id))}
+            onToggle={pick ? select?.onToggle : undefined}
+            onBlockRender={onBlockRender}
+          />
+        </div>;
+      })}
       <ModelWaitingNotice view={view} rows={rows} tt={tt} />
     </div>
   );
 }
+
+type TranscriptBlockProps = Pick<AcpTranscriptProps,
+  "onAnswer" | "onStopAndSend" | "onOpenAttachment" | "highlightQuery" | "onBlockRender"> & {
+  block: AcpBlock;
+  selectMode: boolean;
+  selected: boolean;
+  onToggle?: (id: number) => void;
+};
+
+/**
+ * Both reducers rebuild their JSON-shaped output, even for unchanged rows. Compare
+ * that data structurally before entering a block: text compares as a string, tool
+ * details short-circuit on shared references, and every field (including nested
+ * request / attachment / tool metadata) participates. No lossy hash or id-only
+ * comparison can hide a streamed update. Functions are compared by identity.
+ */
+function sameBlockData(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const left = a as Record<string, unknown>;
+  const right = b as Record<string, unknown>;
+  const keys = Object.keys(left);
+  return keys.length === Object.keys(right).length && keys.every((key) =>
+    Object.prototype.hasOwnProperty.call(right, key) && sameBlockData(left[key], right[key]));
+}
+
+const TranscriptBlock = memo(function TranscriptBlock({
+  block, onAnswer, onStopAndSend, onOpenAttachment, highlightQuery,
+  selectMode, selected, onToggle, onBlockRender,
+}: TranscriptBlockProps) {
+  const request = block.type === "bubble" ? block.request : undefined;
+  const id = block.type === "bubble" ? block.message.id : null;
+  const answer = useCallback((_message: unknown, value: unknown) => {
+    if (request) onAnswer?.(request.requestId, answerFor(request, value));
+  }, [request, onAnswer]);
+  const toggle = useCallback(() => {
+    if (id !== null) onToggle?.(id);
+  }, [id, onToggle]);
+  if (block.type === "process") {
+    return <AgentProgress messages={block.messages} running={block.running} highlightQuery={highlightQuery} onBlockRender={onBlockRender} />;
+  }
+  if (block.type === "raw-request") return <RawRequest request={block.request} />;
+  return <>
+    <AgentTranscriptBubble
+      message={block.message}
+      streaming={block.streaming}
+      stopped={block.stopped}
+      highlightQuery={highlightQuery}
+      onNativeAnswer={request && onAnswer ? answer : undefined}
+      onOpenAttachment={onOpenAttachment}
+      selectMode={selectMode}
+      selected={selected}
+      onSelectToggle={onToggle ? toggle : undefined}
+      onBlockRender={onBlockRender}
+    />
+    {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
+  </>;
+}, (previous, next) =>
+  previous.highlightQuery === next.highlightQuery &&
+  previous.onAnswer === next.onAnswer &&
+  previous.onStopAndSend === next.onStopAndSend &&
+  previous.onOpenAttachment === next.onOpenAttachment &&
+  previous.selectMode === next.selectMode &&
+  previous.selected === next.selected &&
+  previous.onToggle === next.onToggle &&
+  previous.onBlockRender === next.onBlockRender &&
+  sameBlockData(previous.block, next.block),
+);
