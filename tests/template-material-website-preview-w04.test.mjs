@@ -525,7 +525,7 @@ test("W04/9 durable website resolves a revision preview before looking at image 
     rendition: { url: FULL_PAGE_URL, rendition: { mediaType: "text/html" } },
     body: SELF_PAINTING_HTML,
     manifest: { templateId: WEBSITE_TEMPLATE_ID, pages: [], pageCount: 1 },
-    resolvedPreview: { ok: true, data: { url: "https://revision.ws.oceanleo.app/", expiresAt: new Date(Date.now() + 300_000).toISOString(), sourceFormat: "website-source@1" } },
+    resolvedPreview: { ok: true, data: { status: "ready", url: "https://revision.ws.oceanleo.app/", expiresAt: new Date(Date.now() + 300_000).toISOString(), sourceFormat: "website-source@1" } },
   });
   try {
     const frame = mounted.container.querySelector("iframe");

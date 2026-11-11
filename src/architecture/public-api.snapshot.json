@@ -4600,12 +4600,6 @@
         },
         {
           "kind": "named",
-          "name": "AdvancedFeatureCatalog",
-          "importedName": "AdvancedFeatureCatalog",
-          "source": "./AdvancedFeaturePages"
-        },
-        {
-          "kind": "named",
           "name": "AdvancedFeatureDefinition",
           "importedName": "AdvancedFeatureDefinition",
           "source": "./advanced-features"
@@ -4633,12 +4627,6 @@
           "name": "AdvancedFeatureId",
           "importedName": "AdvancedFeatureId",
           "source": "./advanced-features"
-        },
-        {
-          "kind": "named",
-          "name": "AdvancedFeatureRoute",
-          "importedName": "AdvancedFeatureRoute",
-          "source": "./AdvancedFeaturePages"
         },
         {
           "kind": "named",

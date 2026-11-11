@@ -296,8 +296,8 @@ test("页签进第一行：没有第二行页签行，页签排在库按钮之�
         InlineAdvancedWorkbenchHeader,
         headerProps({
           adapter: {
-            id: "website",
-            label: "网站",
+            id: "grid",
+            label: "表格",
             stage: null,
             mode: { current: "normal", setMode() {} },
             pages: {

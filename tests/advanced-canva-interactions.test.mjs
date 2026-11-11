@@ -8,7 +8,6 @@ function source(path) {
 
 test("advanced editor surfaces use semantic theme tokens", () => {
   const themed = [
-    "../src/shell/AdvancedFeaturePages.tsx",
     "../src/shell/InlineAdvancedWorkbenchShell.tsx",
     "../src/shell/InlineEditorMaterialPanel.tsx",
     "../src/shell/WorkspaceLibrary.tsx",

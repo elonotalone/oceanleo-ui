@@ -49,12 +49,12 @@ function pendingAux() {
   }));
 }
 
-function websiteFirstFrame() {
-  return buildPluginPages({ pluginId: "website", aux: pendingAux() });
+function gridFirstFrame() {
+  return buildPluginPages({ pluginId: "grid", aux: pendingAux() });
 }
 
-test("网站首帧六个页签，四个附加页置灰", () => {
-  const pages = websiteFirstFrame();
+test("表格首帧六个页签，四个附加页置灰", () => {
+  const pages = gridFirstFrame();
   assert.deepEqual(
     pages.map((page) => page.id),
     ["artifact", "pro", ...WEBSITE_AUX_PAGE_IDS],
@@ -101,7 +101,7 @@ test("manifest 到达后同 id 可点；表外 id 追加", () => {
     },
   ];
   const pages = buildPluginPages({
-    pluginId: "website",
+    pluginId: "grid",
     aux: remote,
   });
   assert.deepEqual(
@@ -199,7 +199,7 @@ async function withPageRowDom(run) {
 
 function readyWebsitePages() {
   return buildPluginPages({
-    pluginId: "website",
+    pluginId: "grid",
     aux: WEBSITE_AUX_PAGE_IDS.map((id) => ({
       id,
       label: AUX_LABELS[id],
@@ -213,7 +213,7 @@ test("未就绪四个页签 aria-disabled、不是灰按钮，点击不切页而
   await withPageRowDom(async ({ container, render, click }) => {
     const selected = [];
     globalThis.__w16Toasts = [];
-    await render(websiteFirstFrame(), (id) => selected.push(id));
+    await render(gridFirstFrame(), (id) => selected.push(id));
     for (const id of WEBSITE_AUX_PAGE_IDS) {
       const tab = container.querySelector(`[data-plugin-page="${id}"]`);
       assert.ok(tab, `${id} 页签不在`);

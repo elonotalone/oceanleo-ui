@@ -20,14 +20,13 @@ export const ARTIFACT_PAGE_ID = "artifact";
 export const PRO_PAGE_ID = "pro";
 
 /**
- * 只有这三件编辑器有「专业编辑」页：同一内核自带官方完整 UI，且跑在同一个实例上
- * （grid = Univer ribbon，pdf = EmbedPDF 官方 viewer，website = Puck 默认完整 UI）。
+ * 只有这两件编辑器有「专业编辑」页：同一内核自带官方完整 UI，且跑在同一个实例上
+ * （grid = Univer ribbon，pdf = EmbedPDF 官方 viewer）。
  * 其余编辑器只有一个模式。单一来源——不要在别处再列一遍。
  */
 export const PRO_PAGE_EDITORS = Object.freeze([
   "grid",
   "pdf",
-  "website",
 ] as const);
 
 export function hasProPage(pluginId: string | null | undefined): boolean {
@@ -91,7 +90,7 @@ export function buildPluginPages(
     (page) => page.kind === "aux" && !RESERVED_PAGE_IDS.has(page.id),
   );
   return [
-    { id: ARTIFACT_PAGE_ID, label: "编辑", kind: "artifact", icon: "preview" },
+    { id: ARTIFACT_PAGE_ID, label: options.pluginId === "website" ? "预览" : "编辑", kind: "artifact", icon: "preview" },
     ...(hasProPage(options.pluginId)
       ? [
           {

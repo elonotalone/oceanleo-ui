@@ -861,7 +861,6 @@ const V1_GAP_COPY = {
     "src/shell/artifact-client.ts",
   "登录后才能编辑素材：需要先确认你的账号，才能把改动保存成你自己的副本。":
     "src/shell/artifact-client.ts",
-  "高级编辑已融入 App 的生成与库，正在返回工作台…": "src/shell/AdvancedFeaturePages.tsx",
   // 2026-08-05（W27）：`PENDING_I18N` 那一格补完译文后归队。`2ce8a49` 改了这句
   // 提示的后半句（「更多素材」按 D1 下线），17 份词典当时一份都没跟上，16 个非中文
   // locale 静默露中文；译文已逐语补齐，旧串一并从词典清掉。

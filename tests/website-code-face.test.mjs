@@ -9,15 +9,12 @@ test("git website manifests select runtime preview before visual document valida
   assert.deepEqual(websiteCodeProjectFromText(JSON.stringify(entry)), {projectId:entry.projectId, fileCount:1, entryPath:"app.py"});
   assert.equal(websiteCodeProjectFromText(JSON.stringify({...entry, projectId:"../x"})), null);
   assert.equal(websiteCodeProjectFromText(JSON.stringify({format:"website-source", pages:[]})), null);
-  assert.ok(route.indexOf("websiteCodeProjectFromText(entryText)") < route.indexOf("websiteSiteEnvelopeFromText(entryText)"));
-  assert.match(route, /<WebsitePreviewWorkbench key=\{codeProjectId\} projectId=\{codeProjectId\}/);
+  assert.ok(route.indexOf("websiteCodeProjectFromText(text)") < route.indexOf("websiteSiteEnvelopeFromText(text)"));
+  assert.match(route, /<WebsiteMaterialRuntimePreview key=\{loaded.code.projectId\} projectId=\{loaded.code.projectId\}/);
 });
-test("source face, source routes and editable source panel are removed", () => {
-  assert.equal(existsSync("src/shell/website-platform/WebsiteCodeFace.tsx"), false);
-  const panels = readFileSync("src/shell/website-platform/WebsiteWorkbenchPanels.tsx", "utf8");
-  const old = readFileSync("src/shell/website-local/WebsiteSiteWorkbench.tsx", "utf8");
-  for (const source of [route, panels, old]) assert.doesNotMatch(source, /WebsiteCodeFace|CodePanel|panel="code"|\["code",/);
-  assert.doesNotMatch(panels, /文件内容|保存并提交/);
-  assert.match(old, /<WebsitePuckStage/);
-  assert.match(route, /<WebsiteSiteWorkbench/);
+test("website material source is read-only and visual editing is removed", () => {
+  const viewer = readFileSync("src/shell/website-local/WebsiteMaterialViewer.tsx", "utf8");
+  assert.equal(existsSync("src/shell/website-local/WebsiteSiteWorkbench.tsx"), false);
+  assert.match(viewer, /<pre[\s\S]*?<code>\{sourceText\}<\/code>/);
+  assert.doesNotMatch(viewer + route, /contentEditable|<textarea|WebsitePuckStage|WebsiteWorkbenchPanels/);
 });

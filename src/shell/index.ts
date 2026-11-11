@@ -412,10 +412,6 @@ export type {
   SelectionRevision,
 } from "./selection-context";
 export {
-  AdvancedFeatureCatalog,
-  AdvancedFeatureRoute,
-} from "./AdvancedFeaturePages";
-export {
   ADVANCED_FEATURES,
   advancedFeatureById,
   advancedFeatureForItem,

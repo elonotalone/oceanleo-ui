@@ -42,34 +42,10 @@ const localRoute = readFileSync(
   "src/shell/advanced-routes/WebsiteLocalRoute.tsx",
   "utf8",
 );
-const puckConfig = readFileSync(
-  "src/shell/website-local/website-puck-config.tsx",
-  "utf8",
-);
 const EVIDENCE_DIR =
   "/root/projects/oceanleo-app/docs/react-client-rebuild/evidence/W10/website";
 
-test("website always opens in the local Puck route; no remote website iframe", () => {
-  const workbench = readFileSync("src/shell/AdvancedContentWorkbench.tsx", "utf8");
-  assert.match(workbench, /case "website":\s*editor = <WebsiteLocalRoute/);
-  assert.equal(/EmbedEditorPane|<iframe/i.test(localRoute), false);
-  // Undo/redo live in the OceanLeo top bar (adapter.history), not inside the stage.
-  assert.match(localRoute, /history: \{ canUndo, canRedo, undo, redo \}/);
-  assert.doesNotMatch(localRoute, /website-local-undo|website-local-redo/);
-  assert.match(localRoute, /website-offline-preview-notice/);
-  assert.match(localRoute, /preview\.notice/);
-  assert.match(localRoute, /website-page-add/);
-  assert.match(localRoute, /website-theme-accent/);
-  assert.match(localRoute, /WEBSITE_SECTION_KINDS/);
-});
 
-test("Puck config is generated from all website-source@1 section kinds", () => {
-  assert.match(puckConfig, /WEBSITE_SECTION_KINDS/);
-  assert.match(puckConfig, /buildComponents/);
-  assert.doesNotMatch(puckConfig, /Hero: \{ fields, render: Block \}/);
-  assert.deepEqual([...websitePuckKinds()], [...WEBSITE_SECTION_KINDS]);
-  assert.equal(WEBSITE_SECTION_KINDS.length, 13);
-});
 
 test("existing website-source@1 load/edit pages/blocks/images/links/styles/save/reopen/export", async () => {
   const opened = existingWebsiteSource("操作员已有的网站工程");

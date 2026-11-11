@@ -356,27 +356,24 @@ export function recalledAdvancedLibraryItem(
   }
 }
 
-export function advancedFeatureHref(
-  feature: AdvancedFeatureDefinition | AdvancedFeatureId,
-  options: { item?: LibraryItem; sessionId?: string } = {},
-): string {
-  const id = typeof feature === "string" ? feature : feature.id;
-  const params = new URLSearchParams();
-  if (options.item) {
-    const reference = encodeAdvancedLibraryReference(
-      advancedLibraryReferenceFor(options.item),
-    );
-    rememberAdvancedLibraryItem(reference, options.item);
-    params.set("asset", reference);
-  }
-  if (options.sessionId) params.set("session", options.sessionId);
-  const query = params.toString();
-  return `/advanced/${id}${query ? `?${query}` : ""}`;
+/** Typed material share links open the common Library. */
+export function libraryItemHref(item: LibraryItem): string {
+  const params = new URLSearchParams({ item: String(item.artifactId || item.meta.artifact_id || item.id) });
+  if (item.revisionId) params.set("revisionId", item.revisionId);
+  return `/library?${params}`;
 }
 
+/** @deprecated Compatibility for old consumers; standalone feature pages are removed. */
+export function advancedFeatureHref(
+  _feature: AdvancedFeatureDefinition | AdvancedFeatureId,
+  options: { item?: LibraryItem; sessionId?: string } = {},
+): string {
+  return options.item ? libraryItemHref(options.item) : "/library";
+}
+
+/** @deprecated Use libraryItemHref for typed materials. */
 export function advancedFeatureHrefForItem(item: LibraryItem): string | null {
-  const feature = advancedFeatureForItem(item);
-  return feature ? advancedFeatureHref(feature, { item }) : null;
+  return advancedFeatureForItem(item) ? libraryItemHref(item) : null;
 }
 
 /**

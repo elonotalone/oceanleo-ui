@@ -247,23 +247,12 @@ test("save keeps the bundle: only site.json (and new images) change in the manif
   assert.equal(validateSiteImage({ type: "image/jpeg", size: 40_000 }), "");
 });
 
-test("route delegates site documents and never reloads over its own saves", () => {
+test("website materials render site documents without local editing", () => {
   const route = readFileSync("src/shell/advanced-routes/WebsiteLocalRoute.tsx", "utf8");
-  assert.match(route, /saveStrictWebsiteRevision\(baseItemRef.current/);
-  assert.doesNotMatch(route, /ok: true as const, item: savedItem/);
-  assert.doesNotMatch(route, /autoSave: false/);
-  assert.match(route, /websiteSiteEnvelopeFromText\(entryText\)/);
-  assert.match(route, /<WebsiteSiteWorkbench/);
-  assert.match(route, /ownSavedRevisionsRef\.current\.has\(/);
-  const workbench = readFileSync("src/shell/website-local/WebsiteSiteWorkbench.tsx", "utf8");
-  // one Puck instance; the face is a prop, not a key
-  assert.match(workbench, /key=\{`page:\$\{pageIndex\}`\}/);
-  assert.match(workbench, /face=\{websiteFaceForMode\(mode\)\}/);
-  // the save is a real revision; failures surface as ok:false
-  assert.match(workbench, /saveSiteDocRevision\(/);
-  assert.match(workbench, /ok: false as const, error/);
+  assert.match(route, /<SiteDocumentPreview/);
+  assert.match(route, /<WebsiteMaterialViewer/);
+  assert.doesNotMatch(route, /Puck|saveSiteDocRevision|saveStrictWebsiteRevision/);
   const render = readFileSync("src/shell/website-local/website-site-render.tsx", "utf8");
-  // D6: the preview paints with the site's colours, never host tokens
   assert.doesNotMatch(render, /var\(--awb-|var\(--pchrome-/);
-  assert.doesNotMatch(render, /dangerouslySetInnerHTML|innerHTML/);
+  assert.doesNotMatch(render, /dangerouslySetInnerHTML|innerHTML|contentEditable|pointerdown/);
 });

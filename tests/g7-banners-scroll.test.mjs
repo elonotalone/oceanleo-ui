@@ -24,7 +24,6 @@ const galleryHost = "/opt/cursor-workspaces/oceandino/plugin-gallery/components/
 const galleryWorkbench = "/opt/cursor-workspaces/oceandino/plugin-gallery/components/PluginWorkbench.tsx";
 const galleryCss = "/opt/cursor-workspaces/oceandino/plugin-gallery/styles/gallery-host.css";
 const websiteCode = "/root/projects/website/front/packages/gallery-editor/src/WebsiteCodeStage.tsx";
-const advancedPages = new URL("../src/shell/AdvancedFeaturePages.tsx", import.meta.url);
 const workbenchLoading = new URL("../src/shell/advanced-routes/WorkbenchRouteLoading.tsx", import.meta.url);
 const gallerySeed = "/opt/cursor-workspaces/oceandino/plugin-gallery/tests/i18n/seed-gaps.json";
 
@@ -98,7 +97,6 @@ test("插件加载态是舞台内 spinner + 短文案，不保留通栏旧文案
   const workbench = await source(galleryWorkbench);
   const css = await source(galleryCss);
   const website = await source(websiteCode);
-  const advanced = await source(advancedPages);
   const routeLoading = await source(workbenchLoading);
   const seed = JSON.parse(await source(gallerySeed));
   assert.match(design, /data-editor-loading/);
@@ -112,7 +110,6 @@ test("插件加载态是舞台内 spinner + 短文案，不保留通栏旧文案
   assert.match(workbench, /gallery-loading-indicator/);
   assert.match(website, /animate-spin/);
   assert.doesNotMatch(website, /正在打开编辑器…/);
-  assert.doesNotMatch(advanced, /编辑器已打开|正在打开编辑器|正在加载编辑器/);
   assert.doesNotMatch(routeLoading, /正在加载编辑器|正在打开编辑器/);
   assert.doesNotMatch(css, /\.gallery-banner/);
   assert.equal(

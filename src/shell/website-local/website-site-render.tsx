@@ -1,20 +1,9 @@
 "use client";
 
-/**
- * Editor preview of a site-document section (W14). Paints with the site's own
- * colours (D6: a website preview keeps its colours in both host themes) and
- * real closure images. Every editable piece carries `data-w14-field` (a path
- * inside `content`, dots for nesting) so a click can tell the edit bar what was
- * picked; `data-w14-section` marks the section.
- *
- * Values may be Puck inline-text elements (contentEditable fields), so this
- * module only checks presence on the raw document and renders the Puck value.
- */
+/** Render-only site document sections, preserving the website colours and closure images. */
 import {
   createContext,
   useContext,
-  useEffect,
-  useRef,
   useSyncExternalStore,
   type CSSProperties,
   type ReactNode,
@@ -349,70 +338,12 @@ export function SiteSectionView({
   );
 }
 
-/** Site frame (Puck root): the site's background, fonts, accent and header. */
+/** Site frame: the website background, fonts, accent and header. */
 export function SiteFrame({ children }: { children: ReactNode }) {
   const context = useContext(SiteEditorContext);
   const doc = context?.doc;
   const typography = isRow(doc?.typography) ? doc!.typography : {};
   const page = doc?.pages[context?.pageIndex || 0];
-  // In edit mode Puck draws its overlay above the section and turns pointer
-  // events off for component content, so neither the event target nor
-  // `elementsFromPoint` sees our nodes: hit-test their boxes instead.
-  const frameRef = useRef<HTMLDivElement | null>(null);
-  const contextRef = useRef(context);
-  contextRef.current = context;
-  const pick = (frame: Element, event: { clientX: number; clientY: number }) => {
-    const context = contextRef.current;
-    if (!context) return;
-    const hit = (selector: string) => {
-      let best: Element | null = null;
-      let bestArea = Infinity;
-      for (const element of frame.querySelectorAll(selector)) {
-        const box = element.getBoundingClientRect();
-        if (
-          event.clientX >= box.left && event.clientX <= box.right &&
-          event.clientY >= box.top && event.clientY <= box.bottom &&
-          box.width * box.height < bestArea
-        ) {
-          best = element;
-          bestArea = box.width * box.height;
-        }
-      }
-      return best;
-    };
-    const field = hit("[data-w14-field]");
-    const section = field?.closest("[data-w14-section]") || hit("[data-w14-section]");
-    if (!section) {
-      context.onPick(null);
-      return;
-    }
-    const sectionId = section.getAttribute("data-w14-section") || "";
-    context.onPick(
-      field && section.contains(field)
-        ? {
-            sectionId,
-            field: field.getAttribute("data-w14-field") || "",
-            kind: field.getAttribute("data-w14-kind") === "image" ? "image" : "text",
-          }
-        : { sectionId, field: "", kind: "text" },
-    );
-  };
-  // Puck portals its hover/selection overlays outside this frame, so listen on
-  // the document and keep only presses inside this stage and this frame's box.
-  useEffect(() => {
-    const onPointerDown = (event: PointerEvent) => {
-      const frame = frameRef.current;
-      const stage = frame?.closest("[data-testid='website-puck-stage']");
-      if (!frame || !stage || !(event.target instanceof Node) || !stage.contains(event.target)) return;
-      const box = frame.getBoundingClientRect();
-      if (event.clientX < box.left || event.clientX > box.right || event.clientY < box.top || event.clientY > box.bottom) return;
-      pick(frame, event);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-    // pick reads the latest context through a ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   const siteStyle = {
     background: safeSiteColor(doc?.backgroundColor) || "#ffffff",
     color: "#0f172a",
@@ -427,7 +358,6 @@ export function SiteFrame({ children }: { children: ReactNode }) {
     <div
       data-testid="website-site-frame"
       style={siteStyle}
-      ref={frameRef}
     >
       <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, padding: "14px 28px", borderBottom: "1px solid rgba(15,23,42,0.08)" }}>
         <strong style={{ fontWeight: 800 }}>{String(doc?.siteName || "")}</strong>

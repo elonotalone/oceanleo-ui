@@ -57,8 +57,7 @@ test("history, file library, and database pages use AppPageHeader without intro 
   const history = source("src/shell/HistoryPage.tsx");
   const files = source("src/shell/FileLibrary.tsx");
   const database = source("src/pages/MyDatabasePage.tsx");
-  const advanced = source("src/shell/AdvancedFeaturePages.tsx");
-  for (const body of [history, files, database, advanced]) {
+  for (const body of [history, files, database]) {
     assert.match(body, /AppPageHeader/);
     assert.match(body, /APP_PAGE_FRAME_CLASS/);
     assert.doesNotMatch(body, /text-\[22px\]/);
@@ -67,7 +66,6 @@ test("history, file library, and database pages use AppPageHeader without intro 
   assert.doesNotMatch(history, /全家桶各站的每次对话 \/ 工作都会记录在这里/);
   assert.doesNotMatch(files, /上传文件供本站 AI 使用/);
   assert.doesNotMatch(database, /你在全 OceanLeo 系列里产出的作品/);
-  assert.doesNotMatch(advanced, /独立于普通 App 的专业编辑空间/);
 });
 
 test("LibraryScope renders header above the library body with no cloud/local nav", async () => {

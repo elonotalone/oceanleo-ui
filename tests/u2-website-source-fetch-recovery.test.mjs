@@ -154,7 +154,7 @@ test("WebsiteLocalRoute wires gateway source re-sign and the abort signal", () =
     "utf8",
   );
   assert.match(route, /refreshArtifactRendition\(/);
-  assert.match(route, /\{ artifactId, revisionId \},\s*"source"/);
+  assert.match(route, /refreshArtifactRendition\(revision, "source", abort\.signal\)/);
   assert.match(route, /refreshUrl:/);
   assert.match(route, /signal: abort\.signal,\s*\n\s*refreshUrl/);
 });
