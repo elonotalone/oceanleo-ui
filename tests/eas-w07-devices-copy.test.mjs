@@ -98,7 +98,7 @@ const devicesClient = {
 
 globalThis.__OCEANLEO_HOST__ = { bridge: { status: async () => ({ device: { device_id: "d-1" } }) } };
 
-test("英文词典与页面上这三处都不是中文", async () => {
+test("英文设备页保留状态与设置，Agent 控制只在设置中切换", async (t) => {
   for (const key of KEYS) {
     const en = EAS_W07_MESSAGES.en[key];
     assert.ok(en, `分表缺英文：${key}`);
@@ -108,6 +108,11 @@ test("英文词典与页面上这三处都不是中文", async () => {
   const host = window.document.createElement("div");
   window.document.body.append(host);
   const root = createRoot(host);
+  t.after(async () => {
+    await act(async () => root.unmount());
+    host.remove();
+    delete globalThis.__OCEANLEO_HOST__;
+  });
   await act(async () => root.render(React.createElement(DevicesPage, { client: devicesClient, settingsClient: { async getSettings() { return { ok: true, data: { controller_id: "controller", controllers: [], preferences: { default_task_directory: null, task_folders: [] }, roots: [], availability: "online", preferences_available: true } }; } } })));
   for (let i = 0; i < 6; i += 1) await act(async () => {});
 
@@ -126,14 +131,11 @@ test("英文词典与页面上这三处都不是中文", async () => {
   assert.equal(window.location.pathname, "/settings/device-settings");
   assert.equal(new URL(window.location.href).searchParams.get("device"), "d-1");
   const revoke = host.querySelector('[data-device-revoke-agent="d-1"]');
-  assert.ok(revoke);
-  assert.equal(revoke.textContent, "Revoke Agent control");
-  assert.equal(CJK.test(revoke.textContent), false);
+  // Family merge: the settings toggle is the only Agent-control action.
+  assert.equal(revoke, null);
+  assert.doesNotMatch(text, /Revoke Agent control/);
   const title = UI_MESSAGES.en["撤销「{name}」？"].replace("{name}", "This computer");
   assert.match(title, /Revoke/);
   assert.equal(CJK.test(title), false, `撤销确认标题不该是中文：${title}`);
 
-  await act(async () => root.unmount());
-  host.remove();
-  delete globalThis.__OCEANLEO_HOST__;
 });

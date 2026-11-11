@@ -182,7 +182,7 @@ async function render(props) {
   };
 }
 
-test("paired clients and real cloud rows use a single reference-style grid", async () => {
+test("paired clients and real cloud rows use a single reference-style grid", async (t) => {
   const view = await render({
     initialTab: "cloud",
     cloudClient: makeCloudClient([
@@ -198,6 +198,7 @@ test("paired clients and real cloud rows use a single reference-style grid", asy
       }),
     ]),
   });
+  t.after(() => view.cleanup());
   assert.ok(view.host.querySelector("[data-oceanleo-devices-page]"));
   assert.ok(view.host.querySelector("[data-device-grid]"));
   assert.equal(view.host.querySelector("[data-oceanleo-cc-section]"), null, "no second old-style cloud section");
@@ -210,9 +211,9 @@ test("paired clients and real cloud rows use a single reference-style grid", asy
   assert.equal(pending.parentElement, connected.parentElement);
   assert.equal(connected.getAttribute("data-oceanleo-cc-display-state"), "ready");
   assert.equal(pending.getAttribute("data-oceanleo-cc-display-state"), "pending_install");
-  assert.ok(connected.querySelector('a[href="/devices?computer=cc_1&view=tasks"]'), "Tasks opens the Devices task view (/computers page removed)");
+  // The released device card opens its activity dashboard in place.
+  assert.ok(connected.querySelector('button[data-device-dashboard-open="cc_1"]'), "the connected computer opens its dashboard");
   assert.doesNotMatch(connected.textContent, /进入桌面/, "a cloud node without desktop capability is not a native remote target");
-  view.cleanup();
 });
 
 test("cloud 401 offers normal login, while 403 and 503 retain cloud errors", async () => {

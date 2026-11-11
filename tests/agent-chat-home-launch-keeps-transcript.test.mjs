@@ -766,6 +766,8 @@ async function loadHomeContent() {
     "@oceanleo/ui/i18n": dataModule("const tr = (text) => text; export function useT(){return tr;} export function useUI(){return tr;}"),
     "@/lib/oceanleo-ai": dataModule("export async function getUserId(){return globalThis.__portalOwner || 'owner-a';} export async function isSignedIn(){return true;} export async function createAgentTask(){throw new Error('must use real AgentChat');} export async function transcribeAudioUrl(){return {};} export const GATEWAY_BASE = 'https://gateway.test'; const realFetch = globalThis.fetch; globalThis.fetch = async (url, init) => String(url).includes('/v1/home/assets') ? new Response(JSON.stringify({ sections: [] }), { status: 200, headers: { 'content-type': 'application/json' } }) : realFetch(url, init);"),
     "@/lib/app-catalog": dataModule("export const OCEANLEO_APPS = [];"),
+    // Family merge: the shared home now reads its host site from the portal context.
+    "@/lib/site-context-client": dataModule('export function useSite(){ return { key: "oceanleo", name: "OceanLeo", isMain: true }; }'),
     "./auth-modal": dataModule("export function AuthModal(){return null;}"),
     "sonner": dataModule("globalThis.__toasts = []; export const toast = {error(text){ globalThis.__toasts.push(text); },loading(){},success(){}};"),
   };

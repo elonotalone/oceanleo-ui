@@ -11,8 +11,8 @@ const src = (rel) => readFileSync(join(REPO, "src", rel), "utf8");
 test("host-state：MessagesView 与深链不认 bay", () => {
   const text = src("shell/messages/host-state.ts");
   assert.match(text, /export type MessagesView = "inbox" \| "people"/);
-  // 2026-10-23（W08）：加了两个二级视图 notices（平台通知）与 cases（内容处置）；仍然没有 bay。
-  assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \["inbox", "people", "notices", "cases"\]/);
+  // 通知详情已加入二级视图；LeoBay 仍然独立于聊天。
+  assert.match(text, /MESSAGES_VIEWS: readonly MessagesView\[\] = \["inbox", "people", "notices", "cases", "notice-detail"\]/);
   assert.doesNotMatch(text, /raw === "bay"/);
   assert.doesNotMatch(text, /view === "bay"/);
 });

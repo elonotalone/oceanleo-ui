@@ -153,7 +153,7 @@ test("closing a configured library keeps the app runtime mounted", () => {
   assert.match(source, /data-workspace-pane-state=\{hasRight \? "open" : "closed"\}/);
   assert.match(source, /aria-hidden=\{hasRight \? undefined : "true"\}/);
   assert.match(source, /inert=\{!hasRight \|\| undefined\}/);
-  assert.match(source, /hasRight\s*\? "pointer-events-auto opacity-100"\s*: "pointer-events-none mt-0 border-0 opacity-0"/);
+  assert.match(source, /hasRight\s*\? "pointer-events-auto mt-1.5 opacity-100"\s*: "pointer-events-none mt-0 border-0 opacity-0"/);
   assert.match(source, /Keep every left-panel runtime mounted/);
   assert.match(source, /WORKSPACE_ACTION_EVENT/);
 });

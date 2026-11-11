@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// NOTE: since 2026-10-22 only grid / pdf / website have a Pro mode (PRO_PAGE_EDITORS), so the
-// lock cases use those ids; every case detaches its lock and resets the cache.
+// Family merge removed website Pro editing; lock cases use the remaining grid / pdf editors.
+// Every case detaches its lock and resets the cache.
 import { attachProModeLock, decideProEntry } from "../src/shell/collab/pro-mode-lock.ts";
 import {
   currentPluginMode,
@@ -96,16 +96,16 @@ test("viewer 进不了专业模式；没挂锁的插件与离开专业模式不�
   resetPluginModeCache();
   const room = fakeRoom({ role: "viewer" });
   const blocked = [];
-  const detach = attachProModeLock({ pluginId: "website", room, onBlocked: (v) => blocked.push(v.reason) });
-  setPluginMode("website", "pro");
+  const detach = attachProModeLock({ pluginId: "grid", room, onBlocked: (v) => blocked.push(v.reason) });
+  setPluginMode("grid", "pro");
   await tick();
-  assert.equal(currentPluginMode("website"), "normal");
+  assert.equal(currentPluginMode("grid"), "normal");
   assert.deepEqual(blocked, ["viewer"]);
   detach();
   // 解除后（组件卸载）同一个插件恢复无把关行为：同步生效
-  setPluginMode("website", "pro");
-  assert.equal(currentPluginMode("website"), "pro");
-  setPluginMode("website", "normal");
+  setPluginMode("grid", "pro");
+  assert.equal(currentPluginMode("grid"), "pro");
+  setPluginMode("grid", "normal");
   // 另一个从没挂过锁的插件
   setPluginMode("pdf", "pro");
   assert.equal(currentPluginMode("pdf"), "pro");
@@ -149,8 +149,8 @@ test("在专业模式里锁被别人拿走 → 退回普通模式", async () => 
 test("detach 释放锁并注销把关", async () => {
   resetPluginModeCache();
   const room = fakeRoom();
-  const detach = attachProModeLock({ pluginId: "website", room, onBlocked() {} });
-  setPluginMode("website", "pro");
+  const detach = attachProModeLock({ pluginId: "grid", room, onBlocked() {} });
+  setPluginMode("grid", "pro");
   await tick();
   const before = room.releases;
   detach();

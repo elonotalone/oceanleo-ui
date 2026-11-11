@@ -259,7 +259,7 @@ test("任意 siteId（37 个 TSV key + 6 个别名）：头部控件集合完全
       await view.cleanup();
     }
   }
-  assert.deepEqual(reference, ["会话选择器", "新会话", "放大", "停用", "关闭"]);
+  assert.deepEqual(reference, ["会话选择器", "开始 Leo 实时通话", "新会话", "放大", "停用", "关闭"]);
 });
 
 async function askLeoQuestion(scope) {

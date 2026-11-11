@@ -124,7 +124,8 @@ test("the real pill calls onOpen when its menu opens (a native chat's full menu 
   const opened = [];
   const dialog = { models: [], configOptions: [], selectedModel: "", setSelectedModel() {}, mode: null, selectedMode: "", setMode() {},
     setConfig() {}, activeSession: "" };
-  const full = { ...dialog, programs: [status(true)], install: { open: false }, login: { open: false }, openInstall() {}, closeInstall() {},
+  // ProgramAccess now carries its logout flow even while the account card is closed.
+  const full = { ...dialog, programs: [status(true)], install: { open: false }, login: { open: false }, logout: { switching: false, confirm: false, pending: false, failed: "" }, openInstall() {}, closeInstall() {},
     setInstallDir() {}, startInstall() {}, openLogin() {}, closeLogin() {}, submitLoginCode() {}, cancelLogin() {}, setLoginCodeDraft() {}, retryConnect() {} };
   const withModel = { ...dialog, models: [{ id: "opus", name: "Opus", default: true }], selectedModel: "opus" };
   for (const [name, value] of [["full", full], ["plain", withModel]]) {

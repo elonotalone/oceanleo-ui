@@ -442,7 +442,7 @@ test("已废除的两个旧按钮名：17 份词典里一条都不剩", () => {
   }
 });
 
-test("V1 判据 21/10 的 8 条补课词条：17 语逐格齐备（136 格）", () => {
+test("V1 判据 21/10 剩余 7 条词条：17 语逐格齐备（119 格）", () => {
   const placeholder = /\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|\?\?\?|机翻|待翻译|[Uu]ntranslated/;
   const cjkOk = new Set(["zh", "zh-TW", "ja", "ko"]);
   const zh = uiDictionaries.get("zh");
@@ -468,7 +468,9 @@ test("V1 判据 21/10 的 8 条补课词条：17 语逐格齐备（136 格）", 
       `zh-TW 的 "${key}" 照抄了简体`,
     );
   }
-  assert.equal(cells, 8 * 17, "应当覆盖 136 格");
+  // Family merge removed the obsolete home heading from this table.
+  assert.equal(Object.keys(V1_GAP_COPY).length, 7);
+  assert.equal(cells, 7 * 17, "应当覆盖 119 格");
 });
 
 /**

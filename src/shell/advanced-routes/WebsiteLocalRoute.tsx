@@ -51,7 +51,7 @@ export function WebsiteLocalRoute({ item, taskId, siteId = "", accent = "#1F6FEB
       if (code) return { text, code };
       const envelope = websiteSiteEnvelopeFromText(text);
       if (!envelope) return null;
-      if (envelope.kind === "bundle" && (!artifactId || !revisionId)) throw new Error(tt("网站源文件尚未关联。"));
+      if (envelope.kind === "bundle" && (!artifactId || !revisionId)) throw new Error("网站源文件尚未关联。");
       const doc = await loadSiteDoc(revision, envelope, abort.signal);
       images = new SiteImageResolver(artifactId && revisionId ? revision : null);
       return { text: JSON.stringify(doc, null, 2), doc, images };
@@ -82,13 +82,13 @@ export function WebsiteLocalRoute({ item, taskId, siteId = "", accent = "#1F6FEB
       if (!abort.signal.aborted) setResult({ identity, error: error instanceof Error ? error.message : String(error) });
     });
     return () => { abort.abort(); };
-    // item is pinned by identity; tt remains the current language's translator.
+    // Item identity pins loading; translate errors during render so locale changes do not refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [identity, plan, tt]);
+  }, [identity, plan]);
 
   if (!item) return <div>{tt("没有打开的网站工程。")}</div>;
   const loaded = current?.loaded;
-  const stage = current?.error ? <EditorSourceFailurePanel message={current.error} onReload={() => setRetry(value => value + 1)} variant="surface" />
+  const stage = current?.error ? <EditorSourceFailurePanel message={tt(current.error)} onReload={() => setRetry(value => value + 1)} variant="surface" />
     : !loaded ? <div role="status" data-testid="website-remote-loading">{tt("正在读取远程网站工程。")}</div>
     : <WebsiteMaterialViewer key={identity} sourceText={loaded.text} source={loaded.code ? <WebsiteCodeSourceViewer projectId={loaded.code.projectId} /> : undefined} preview={
       loaded.code ? <WebsiteMaterialRuntimePreview key={loaded.code.projectId} projectId={loaded.code.projectId} />

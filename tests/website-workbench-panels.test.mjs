@@ -39,15 +39,14 @@ test("website platform client covers management, storage, settings, usage, and a
   assert.match(api, /cost_ledger/);
 });
 
-test("website route declares shared aux pages for legacy dashboard, database, storage, and settings", () => {
-  for (const id of ["dashboard", "database", "storage", "settings"]) {
-    assert.match(route, new RegExp(`\\[\\\"${id}\\\"`));
-  }
-  assert.match(route, /pages: websitePages/);
-  assert.match(route, /usePluginPage\("website"\)/);
+// Family merge: website materials expose preview and source; management pages are not editor tabs.
+test("website material route keeps one artifact page with preview and source", () => {
+  assert.match(route, /pages: \{ activePageId: "artifact", aux: \[\] \}/);
+  assert.match(route, /<WebsiteMaterialViewer/);
+  assert.doesNotMatch(route, /websitePages|usePluginPage|WebsiteWorkbenchPanels/);
 });
 
-test("website local route passes linked project id into the workbench", () => {
-  assert.match(route, /const projectId = String\(/);
-  assert.match(route, /projectId=\{projectId \|\| undefined\}/);
+test("website code material passes its durable project id to preview and source viewers", () => {
+  assert.match(route, /<WebsiteMaterialRuntimePreview[^>]*projectId=\{loaded\.code\.projectId\}/);
+  assert.match(route, /<WebsiteCodeSourceViewer projectId=\{loaded\.code\.projectId\}/);
 });

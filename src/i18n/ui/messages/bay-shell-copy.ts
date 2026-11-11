@@ -6,6 +6,7 @@
 import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
+  market: "市场",
   emptyFeed: "LeoBay 里还没有内容，发第一条需求或服务吧",
   navBadge: "LeoBay，{n} 件事等你处理",
   publishService: "发布服务",
@@ -173,6 +174,7 @@ const SOURCE = {
 
 export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
   "zh-TW": {
+    market: "市場",
     emptyFeed: "LeoBay 裡還沒有內容，發布第一則需求或服務吧",
     navBadge: "LeoBay，{n} 件事等你處理",
     publishService: "發布服務",
@@ -338,6 +340,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "登入確認",
 },
   en: {
+    market: "Marketplace",
     emptyFeed: "Nothing in LeoBay yet. Post the first request or service.",
     navBadge: "LeoBay, {n} items need your attention",
     publishService: "Publish a service",
@@ -503,6 +506,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Sign-in confirmation",
 },
   ja: {
+    market: "マーケット",
     emptyFeed: "LeoBay にはまだ何もありません。最初の依頼やサービスを投稿しましょう",
     navBadge: "LeoBay：対応待ちが {n} 件あります",
     publishService: "サービスを出品",
@@ -668,6 +672,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "ログイン確認",
 },
   ko: {
+    market: "마켓",
     emptyFeed: "LeoBay에 아직 아무것도 없어요. 첫 요청이나 서비스를 올려 보세요",
     navBadge: "LeoBay, 처리할 일 {n}건",
     publishService: "서비스 등록",
@@ -833,6 +838,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "로그인 확인",
 },
   fr: {
+    market: "Marché",
     emptyFeed: "Rien dans LeoBay pour l'instant. Publiez la première demande ou le premier service.",
     navBadge: "LeoBay, {n} éléments attendent votre action",
     publishService: "Publier un service",
@@ -998,6 +1004,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Confirmation de connexion",
 },
   de: {
+    market: "Marktplatz",
     emptyFeed: "In LeoBay gibt es noch nichts. Veröffentliche die erste Anfrage oder den ersten Service.",
     navBadge: "LeoBay, {n} Punkte warten auf dich",
     publishService: "Service anbieten",
@@ -1163,6 +1170,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Anmeldebestätigung",
 },
   it: {
+    market: "Mercato",
     emptyFeed: "LeoBay è ancora vuoto. Pubblica la prima richiesta o il primo servizio.",
     navBadge: "LeoBay, {n} elementi in attesa di te",
     publishService: "Pubblica un servizio",
@@ -1328,6 +1336,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Conferma di accesso",
 },
   es: {
+    market: "Mercado",
     emptyFeed: "Todavía no hay nada en LeoBay. Publica el primer encargo o servicio.",
     navBadge: "LeoBay, {n} asuntos esperan tu acción",
     publishService: "Publicar un servicio",
@@ -1493,6 +1502,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Confirmación de inicio de sesión",
 },
   "es-419": {
+    market: "Mercado",
     emptyFeed: "Todavía no hay nada en LeoBay. Publica el primer pedido o servicio.",
     navBadge: "LeoBay, {n} asuntos esperan tu acción",
     publishService: "Publicar un servicio",
@@ -1658,6 +1668,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Confirmación de inicio de sesión",
 },
   "pt-BR": {
+    market: "Mercado",
     emptyFeed: "Ainda não há nada no LeoBay. Publique o primeiro pedido ou serviço.",
     navBadge: "LeoBay, {n} itens aguardam você",
     publishService: "Publicar um serviço",
@@ -1823,6 +1834,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Confirmação de login",
 },
   "pt-PT": {
+    market: "Mercado",
     emptyFeed: "Ainda não há nada no LeoBay. Publique o primeiro pedido ou serviço.",
     navBadge: "LeoBay, {n} itens aguardam por si",
     publishService: "Publicar um serviço",
@@ -1988,6 +2000,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Confirmação de início de sessão",
 },
   ar: {
+    market: "السوق",
     emptyFeed: "لا يوجد شيء في LeoBay بعد. انشر أول طلب أو خدمة.",
     navBadge: "LeoBay، {n} عناصر بانتظارك",
     publishService: "انشر خدمة",
@@ -2153,6 +2166,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "تأكيد تسجيل الدخول",
 },
   hi: {
+    market: "बाज़ार",
     emptyFeed: "LeoBay में अभी कुछ नहीं है। पहली माँग या सेवा पोस्ट करें।",
     navBadge: "LeoBay, {n} काम आपका इंतज़ार कर रहे हैं",
     publishService: "सेवा प्रकाशित करें",
@@ -2318,6 +2332,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "साइन-इन पुष्टि",
 },
   th: {
+    market: "ตลาด",
     emptyFeed: "ยังไม่มีอะไรใน LeoBay โพสต์คำขอหรือบริการแรกเลย",
     navBadge: "LeoBay มี {n} รายการรอคุณดำเนินการ",
     publishService: "ลงประกาศบริการ",
@@ -2483,6 +2498,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "ยืนยันการเข้าสู่ระบบ",
 },
   tr: {
+    market: "Pazar",
     emptyFeed: "LeoBay'de henüz bir şey yok. İlk talebi ya da hizmeti sen yayınla.",
     navBadge: "LeoBay, {n} iş seni bekliyor",
     publishService: "Hizmet yayınla",
@@ -2648,6 +2664,7 @@ export const BAY_SHELL_MESSAGES = assembleCopy(SOURCE, {
     loginConfirm: "Giriş onayı",
 },
   vi: {
+    market: "Chợ",
     emptyFeed: "LeoBay chưa có nội dung nào. Hãy đăng nhu cầu hoặc dịch vụ đầu tiên.",
     navBadge: "LeoBay, {n} việc đang chờ bạn xử lý",
     publishService: "Đăng dịch vụ",

@@ -378,7 +378,7 @@ test("坞只列可用的已接入电脑：开通失败与开通中都不成为�
 
 test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 origin 下是相对路径", async () => {
   setPageUrl(`${SUBSITE}/`);
-  assert.equal(serverPageHref("cc_ready"), `${PORTAL}/computers/cc_ready`);
+  assert.equal(serverPageHref("cc_ready"), `${PORTAL}/devices?computer=cc_ready`);
   assert.equal(devicesCloudHref(), `${PORTAL}/devices`);
 
   const subPushes = [];
@@ -403,7 +403,7 @@ test("子站 origin 下坞与服务器页链接是门户绝对地址，门户 or
   }
 
   setPageUrl(`${PORTAL}/`);
-  assert.equal(serverPageHref("cc_ready"), "/computers/cc_ready");
+  assert.equal(serverPageHref("cc_ready"), "/devices?computer=cc_ready");
   assert.equal(devicesCloudHref(), "/devices");
 
   const portalPushes = [];

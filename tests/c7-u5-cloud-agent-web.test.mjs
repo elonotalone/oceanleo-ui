@@ -528,9 +528,11 @@ test("portal createAgentTask: refusals are the translated sentence, unconfirmed 
     assert.deepEqual(await createAgentTask({ prompt: "x", mode: "agent", executionTarget: cloudMac }), { task_id: "t1" });
     assert.deepEqual(posts[0].execution_target, { kind: "device", id: "mac-1", driver: "cloud", gui: false });
   } finally { globalThis.fetch = original; delete globalThis.__portalRefusal; delete globalThis.__portalPreflight; }
-  // Both portal paths render the sentence through tt.
-  const home = readFileSync(new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url), "utf8");
-  assert.match(home, /result\.refusal \? tt\(result\.refusal\)/);
-  const workspace = readFileSync(new URL("../../oceanleo/components/project/ProjectWorkspace.tsx", import.meta.url), "utf8");
-  assert.match(workspace, /result\.refusal\s*\?\s*tt\(result\.refusal\)/);
+  // Family merge: home and projects now share the composer that translates refusals.
+  const composer = readFileSync(new URL("../../oceanleo/app/_components/task-composer.tsx", import.meta.url), "utf8");
+  assert.match(composer, /result\.refusal \? tt\(result\.refusal\)/);
+  for (const relative of ["home-content.tsx", "../../components/project/ProjectWorkspace.tsx"]) {
+    const host = readFileSync(new URL(`../../oceanleo/app/_components/${relative}`, import.meta.url), "utf8");
+    assert.match(host, /useTaskComposer\(/);
+  }
 });

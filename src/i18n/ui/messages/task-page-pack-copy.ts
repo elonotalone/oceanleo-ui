@@ -16,7 +16,10 @@ import { UX_PM_U_COPY } from "./ux-pm-u-copy";
 import { UX_LA_COPY } from "./ux-la-copy";
 import { UX_LU_COPY } from "./ux-lu-copy";
 
+import { FAMILY_MERGE_COPY } from "./family-merge-copy";
+
 const PARTS: readonly TaskPagePackCopy[] = [
+  FAMILY_MERGE_COPY,
   TASK_PAGE_PACK_PARENT_COPY,
   LIBRARY_MEMO_COPY,
   CONNECTORS_COPY,

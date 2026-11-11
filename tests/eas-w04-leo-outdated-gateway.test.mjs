@@ -252,7 +252,7 @@ test("旧网关：头部控件与新网关完全相同；会话选择器与「+�
   await withLeo({ gateway: "current" }, async (view) => {
     current = headerSignature(view.host);
   });
-  assert.deepEqual(current, ["会话选择器", "新会话", "放大", "停用", "关闭"]);
+  assert.deepEqual(current, ["会话选择器", "开始 Leo 实时通话", "新会话", "放大", "停用", "关闭"]);
 
   await withLeo({ gateway: "outdated" }, async (view) => {
     assert.deepEqual(headerSignature(view.host), current, "旧网关的头部控件");
@@ -320,7 +320,7 @@ test("记录级 404（leo_session_not_found）不是旧网关：仍是可重试�
 test("未登录维持原语义：记录区「登录后 leo 才能记住对话」，头部控件不变，选择器说同一句", async () => {
   await withLeo({ token: null }, async (view) => {
     assert.ok(view.host.querySelector("[data-leo-transcript-anonymous]"));
-    assert.deepEqual(headerSignature(view.host), ["会话选择器", "新会话", "放大", "停用", "关闭"]);
+    assert.deepEqual(headerSignature(view.host), ["会话选择器", "开始 Leo 实时通话", "新会话", "放大", "停用", "关闭"]);
     const plus = titleBar(view.host).querySelector('[aria-label="新会话"]');
     assert.equal(plus.disabled, true);
     assert.equal(plus.getAttribute("title"), "登录后 leo 才能记住对话");

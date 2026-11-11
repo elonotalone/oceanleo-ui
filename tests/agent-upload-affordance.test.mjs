@@ -128,7 +128,8 @@ test("拖拽上传与文件选择共用同一个开关，关掉选择器即关�
     new URL("../src/shell/LeoComposer.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /const dragEnabled = Boolean\(onAttachFiles\) && !disabled;/);
+  // Pending sends keep uploads available; the read-only state disables both input paths.
+  assert.match(source, /const dragEnabled = Boolean\(onAttachFiles\) && !readOnly;/);
   assert.match(source, /\{onAttachFiles && \(\s*<input/);
 });
 

@@ -1,5 +1,5 @@
 // Native-editors wave guard (2026-10-22): the shell offers a Pro page only for
-// grid / pdf / website, no editor mounts a third-party/sub-site web app, and
+// grid / pdf (family merge removed website Pro); website UGC previews stay isolated, and
 // removed modules are never imported again.
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
@@ -47,11 +47,11 @@ const ALL_EDITOR_IDS = [
   "unknown-editor",
 ];
 
-test("PRO_PAGE_EDITORS is exactly grid / pdf / website", () => {
-  assert.deepEqual([...PRO_PAGE_EDITORS].sort(), ["grid", "pdf", "website"]);
+test("PRO_PAGE_EDITORS is exactly grid / pdf", () => {
+  assert.deepEqual([...PRO_PAGE_EDITORS].sort(), ["grid", "pdf"]);
 });
 
-test("buildPluginPages emits a pro page only for the three allowlisted editors", () => {
+test("buildPluginPages emits a pro page only for the remaining allowlisted editors", () => {
   for (const id of ALL_EDITOR_IDS) {
     const pages = buildPluginPages({ pluginId: id });
     const hasPro = pages.some((page) => page.id === PRO_PAGE_ID);
@@ -81,7 +81,7 @@ test("stale persisted pro mode is ignored for non-Pro editors", async () => {
   };
   try {
     const mode = await import("../src/shell/plugin-chrome/plugin-mode-store.ts");
-    for (const id of ["audio", "deck", "richdoc", "image", "threed", "video-timeline"]) {
+    for (const id of ["audio", "deck", "richdoc", "image", "threed", "video-timeline", "website"]) {
       store.set(mode.pluginModeStorageKey(id), "pro");
       mode.resetPluginModeCache();
       assert.equal(mode.currentPluginMode(id), "normal", `${id} stale pro`);
@@ -106,18 +106,27 @@ const EDITOR_DIRS = [
   "shell/workflow-carrier",
 ];
 
-// Genuine UGC run sandboxes living under an editor directory would be listed
-// here with a reason. None exist today; GameRoute only hands off to the
-// sandbox host (game-editor/ is outside the editor dirs above).
-const IFRAME_ALLOWLIST = new Map();
+// Family merge: website materials render their isolated runtime instead of a cover image.
+// This is a read-only UGC preview, with its origin and sandbox checked below.
+const IFRAME_ALLOWLIST = new Map([
+  ["src/shell/website-local/WebsiteMaterialRuntimePreview.tsx", "Website material runtime preview on oceanleo.app"],
+]);
 
 test("no editor directory mounts an iframe (third-party / sub-site web app)", () => {
   const hits = [];
   for (const dir of EDITOR_DIRS) {
     for (const file of walk(join(SRC, dir))) {
       const rel = relative(ROOT, file);
-      if (IFRAME_ALLOWLIST.has(rel)) continue;
       const text = readFileSync(file, "utf8");
+      if (IFRAME_ALLOWLIST.has(rel)) {
+        assert.match(text, /isolatedWebsitePreviewUrl\(runtime\?\.preview_url\)/);
+        assert.match(text, /url\.protocol === "https:" && url\.hostname\.endsWith\("\.oceanleo\.app"\)/);
+        assert.match(text, /!url\.username && !url\.password/);
+        assert.match(text, /referrerPolicy="no-referrer"/);
+        assert.match(text, /sandbox="allow-forms allow-modals allow-popups allow-presentation allow-scripts"/);
+        assert.doesNotMatch(text, /allow-same-origin|srcDoc=|dangerouslySetInnerHTML/);
+        continue;
+      }
       if (/<iframe\b/i.test(text) || /createElement\(\s*["']iframe["']/.test(text)) {
         hits.push(rel);
       }

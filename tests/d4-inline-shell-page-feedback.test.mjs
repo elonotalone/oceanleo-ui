@@ -65,7 +65,8 @@ class ErrorBoundary extends React.Component {
   render() { return this.state.error ? React.createElement('output', {'data-crash': true}, this.state.error) : this.props.children; }
 }
 
-test('host-reported Pro page switches settle in the workspace header slot (website is a Pro editor)', async () => {
+// Family merge removed website Pro editing; the grid still exercises real header switches.
+test('host-reported Pro page switches settle in the workspace header slot (grid retains its Pro editor)', async () => {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {pretendToBeVisual: true, url: 'https://test.dev.oceanleo.com/'});
   const {window} = dom;
   const restore = [];
@@ -85,11 +86,11 @@ test('host-reported Pro page switches settle in the workspace header slot (websi
   const h=React.createElement;
   function Selection() { useAdvancedLayout(); return h('span',{'data-selection':true}); }
   function Editor({onClose}) {
-    const {pageId}=usePluginPage('website');
+    const {pageId}=usePluginPage('grid');
     const [mode,setMode]=React.useState('normal');
     React.useLayoutEffect(() => { commits++; transitions.push([pageId,mode]); });
     return h(InlineAdvancedWorkbenchShell,{item,siteId:'design',onClose,adapter:{
-      id:'website', label:'网站',
+      id:'grid', label:'表格',
       pages:{activePageId:pageId}, mode:{current:mode,setMode},
       stage:h('div',{'data-design-content':mode}, 'public design'),
       contextToolbar:h(Selection),
