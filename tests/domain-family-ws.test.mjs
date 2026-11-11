@@ -7,7 +7,7 @@
 //   1. `oceanbizs.com` 及其子域 → 家族 ws；`ws.oceanleo.app` 及其子域 → 不属于任何家族；
 //   2. ws 页面的会话 / 非会话 cookie 域是 `.oceanbizs.com`，在 `*.ws.oceanleo.app` 上 host-only；
 //   3. `NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws` 能选中该家族，且在那个进程里：
-//      - 姐妹站清单恰好 design / website / video ⇒ 内嵌白名单是三条
+//      - 姐妹站清单是 33 个功能子站（2026-11-11 起；无 aitools）⇒ 内嵌白名单只会是
 //        `*.oceanbizs.com` base；`.com` 编辑器 origin 仍不可信、仍不得
 //        `buildEditorEmbedUrl` 到 `.com`（UC-3）；
 //      - Hosted 编辑器 / MCP App 承载面拼在 `ws.oceanleo.app` 上（全串白名单，不是后缀）；
@@ -93,14 +93,15 @@ test("ws/1 familyForHost / cookie 域：oceanbizs.com 是 ws，ws.oceanleo.app �
       assetOrigin: "https://asset.oceanleo.com",
       untrustedContentDomain: "ws.oceanleo.app",
       hostedEditorDomain: "ws.oceanleo.app",
-      availableSubsites: ["design", "website", "video"],
+      availableSubsites: ["3d", "agent", "aihuman", "bizdev", "chat", "converter", "design", "e-commerce", "edu", "excel", "finance", "game", "image", "interior", "law", "logo", "make", "med", "meeting", "music", "notebook", "novel", "paper", "prompt", "resume", "script", "search", "slide", "study", "travel", "video", "website", "word"],
     },
   );
   assert.equal(m.familyHasSubsite("ws", "design"), true);
   assert.equal(m.familyHasSubsite("ws", "website"), true);
   assert.equal(m.familyHasSubsite("ws", "video"), true);
-  assert.equal(m.familyHasSubsite("ws", "excel"), false);
-  assert.equal(m.familyHasSubsite("ws", "slide"), false);
+  assert.equal(m.familyHasSubsite("ws", "excel"), true);
+  assert.equal(m.familyHasSubsite("ws", "slide"), true);
+  assert.equal(m.familyHasSubsite("ws", "aitools"), false);
   assert.deepEqual(
     [...m.UNTRUSTED_CONTENT_DOMAINS],
     ["oceanleo.app", "leoapp.cn", "ws.oceanleo.app"],
@@ -188,8 +189,8 @@ test("ws/2 NEXT_PUBLIC_OCEANLEO_DOMAIN_FAMILY=ws：选中 ws，嵌三条 oceanbi
   assert.equal(ws.comBaseGrantsSameOrigin, false);
   assert.equal(ws.buildThrew, true, "ws 不得构造出指向 .com 编辑器的 embed URL");
   assert.equal(ws.subsiteOrigin, "https://design.oceanbizs.com");
-  assert.equal(ws.excelOrigin, null);
-  assert.equal(ws.slideOrigin, null);
+  assert.equal(ws.excelOrigin, "https://excel.oceanbizs.com");
+  assert.equal(ws.slideOrigin, "https://slide.oceanbizs.com");
   // Hosted 六件已下线：ws 的 slides.ws.oceanleo.app 与生产的 .app 全串一样不可信。
   assert.equal(ws.hostedSandbox, sandboxConst("UNTRUSTED_FRAME_SANDBOX"));
   assert.equal(ws.hostedProdSandbox, sandboxConst("UNTRUSTED_FRAME_SANDBOX"));

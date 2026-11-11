@@ -34,10 +34,11 @@
 // 所以是独立家族：`.oceanbizs.com` 的登录态与 `.oceanleo.com` 永不串门。
 // 用户内容域用生产 `oceanleo.app` 的一个子区 `ws.oceanleo.app`：它仍在
 // `oceanleo.app` 之下，所以对 com 家族天然就是不可信；这里再显式列一次，
-// 让「明确属于用户内容域」那一道也能挡住它。分身内嵌三件（design /
-// website / video）已开放，`availableSubsites` 恰好这三项 —— 分身页面只拿
-// 这三条子站链接和对应内嵌白名单；excel / slide 等仍不存在，fail closed，
-// 不会去嵌一个不存在的 `x.oceanbizs.com`，也不会嵌 `.com` 编辑器。
+// 让「明确属于用户内容域」那一道也能挡住它。2026-11-11 起分身由合并后的门户
+// （Vercel 项目 `oceanleo` 的 `main`）同时服务主站和 33 个功能子站（操作员：同步
+// oceanbizs = 同步所有系列站），`availableSubsites` 就是这 33 个标签，与门户
+// `lib/sites.tsx` 的 `WS_SUBSITES` 同一份；aitools 不在分身上，fail closed；
+// 不会去嵌 `.com` 编辑器。
 // 事实源：oceandino `docs/architecture/oceanleo-workstation.md` §3。
 //
 // 本模块零运行时依赖：iframe 渲染面与安全判定面都要能引它。
@@ -199,9 +200,44 @@ const FAMILIES: Readonly<Record<DomainFamily, DomainFamilyProfile>> = {
     untrustedContentDomain: "ws.oceanleo.app",
     // 分身自己的 Hosted 编辑器 / MCP App 承载面：slides. docs. audio. mcp-apps.ws.oceanleo.app。
     hostedEditorDomain: "ws.oceanleo.app",
-    // 分身内嵌三件（2026-10-16）：design / website / video。其余子站仍不部署
-    // —— 不在清单里就没有链接、没有内嵌白名单；不许回落嵌 `.com` 编辑器。
-    availableSubsites: ["design", "website", "video"],
+    // 分身子站：2026-11-11 起全部 33 个功能子站由合并后的门户服务（此前只有
+    // design / website / video）。不在清单里就没有链接、没有内嵌白名单；aitools
+    // 不在分身上；不许回落嵌 `.com` 编辑器。必须与门户 `WS_SUBSITES` 逐字相同。
+    availableSubsites: [
+      "3d",
+      "agent",
+      "aihuman",
+      "bizdev",
+      "chat",
+      "converter",
+      "design",
+      "e-commerce",
+      "edu",
+      "excel",
+      "finance",
+      "game",
+      "image",
+      "interior",
+      "law",
+      "logo",
+      "make",
+      "med",
+      "meeting",
+      "music",
+      "notebook",
+      "novel",
+      "paper",
+      "prompt",
+      "resume",
+      "script",
+      "search",
+      "slide",
+      "study",
+      "travel",
+      "video",
+      "website",
+      "word",
+    ],
   },
 };
 
