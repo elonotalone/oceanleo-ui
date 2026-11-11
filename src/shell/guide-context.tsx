@@ -30,6 +30,7 @@ import {
   type ReactNode,
 } from "react";
 import { type FunctionGuide, type GuideExample } from "./NavigatorGuide";
+import { InspirationProvider } from "./inspirations/inspiration-context";
 import {
   listWorkflows,
   saveWorkflow as persistWorkflow,
@@ -201,7 +202,9 @@ export function GuideProvider({
     [bus, guide, workflows, saveWorkflow, deleteWorkflow],
   );
 
-  return <GuideCtx.Provider value={value}>{children}</GuideCtx.Provider>;
+  return <InspirationProvider value={{ siteKey: siteId, appId: activeKey }}>
+    <GuideCtx.Provider value={value}>{children}</GuideCtx.Provider>
+  </InspirationProvider>;
 }
 
 /** 右栏 ResultCanvas 读取：拿 guide + useExample（渲染「使用指南」标签）。 */
@@ -264,3 +267,7 @@ export function useRequestOneShotFill(): (
     [ctx],
   );
 }
+
+// Catalog inspiration scope is separate from legacy guides and saved workflows.
+export { InspirationProvider, useInspirationContext } from "./inspirations/inspiration-context";
+export type { InspirationContextValue } from "./inspirations/inspiration-context";

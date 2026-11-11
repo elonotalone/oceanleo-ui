@@ -773,3 +773,7 @@ export { workspaceNav, pageFromPath, useWorkspaceNavLabels } from "./WorkspacePa
 export type { WorkspacePage, WorkspaceNavOptions } from "./WorkspacePages";
 export * from "./icons";
 export * from "./public-exports";
+
+// Platform inspiration prompts, scoped by the app console (family merge).
+export { InspirationProvider, useInspirationContext } from "./inspirations/inspiration-context";
+export type { InspirationContextValue } from "./inspirations/inspiration-context";

@@ -5806,6 +5806,18 @@
         },
         {
           "kind": "named",
+          "name": "InspirationContextValue",
+          "importedName": "InspirationContextValue",
+          "source": "./inspirations/inspiration-context"
+        },
+        {
+          "kind": "named",
+          "name": "InspirationProvider",
+          "importedName": "InspirationProvider",
+          "source": "./inspirations/inspiration-context"
+        },
+        {
+          "kind": "named",
           "name": "isAdvancedEditableShelfItem",
           "importedName": "isAdvancedEditableShelfItem",
           "source": "./advanced-features"
@@ -7471,6 +7483,12 @@
           "name": "useGuideWorkflows",
           "importedName": "useGuideWorkflows",
           "source": "./guide-context"
+        },
+        {
+          "kind": "named",
+          "name": "useInspirationContext",
+          "importedName": "useInspirationContext",
+          "source": "./inspirations/inspiration-context"
         },
         {
           "kind": "named",

@@ -1,18 +1,22 @@
 "use client";
 
-import type { ReactElement, ReactNode } from "react";
+import { lazy, Suspense, useState, type ReactElement, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { useImEnabled } from "../lib/im/client";
 import type { WorkspacePanelId, WorkspaceSlotId, WorkspaceManagedPanelId } from "./workspace-actions";
 import { WORKSPACE_SLOT_LABELS } from "./result-canvas-view";
 import { BayIcon } from "./bay/shell/bay-icons";
 import { useImUnread } from "./messages/realtime/hooks";
+import { useInspirationContext } from "./inspirations/inspiration-context";
+import { useOptionalWorkspaceSession } from "./workspace-session-context";
+
+const InspirationPanel = lazy(() => import("./inspirations/InspirationPanel").then(module => ({ default: module.InspirationPanel })));
 
 const CARD_CLASS =
   "flex min-w-0 flex-col items-start gap-1.5 rounded-xl border border-stone-200 bg-white p-3 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:border-stone-300 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300";
 
 const SLOT_DESC: Record<WorkspaceSlotId, string> = {
-  template: "看这个应用怎么用，从示例开始",
+  template: "平台精选提示词，点击填入应用对话",
   preview: "这次对话里生成的内容",
   materials: "平台精选的模板和素材",
   mine: "你保存和上传的文件",
@@ -149,13 +153,36 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
   const unread = useImUnread();
   const chatCount = imOn ? unread?.total ?? 0 : 0;
   const previewCount = props.previewCount ?? 0;
+  const explicitScope = useInspirationContext();
+  const workspace = useOptionalWorkspaceSession();
+  const scope = explicitScope?.siteKey && explicitScope.appId ? explicitScope
+    : workspace ? { siteKey: workspace.siteId, appId: workspace.appId } : null;
+  const scopeKey = JSON.stringify([scope?.siteKey, scope?.appId]);
+  const [inspirationView, setInspirationView] = useState({ scope: scopeKey, open: false });
+  if (inspirationView.scope !== scopeKey) setInspirationView({ scope: scopeKey, open: false });
+  const inspirationOpen = inspirationView.scope === scopeKey && inspirationView.open;
+  // The card owns its API-backed view, independent of legacy GuideProvider tabs.
+  // Keep it available on main-site app consoles as well as sub-site consoles.
+  const slots = scope?.siteKey && scope.appId && !props.slots.includes("template")
+    ? ["template" as const, ...props.slots] : props.slots;
+  if (inspirationOpen) return <section data-workspace-inspirations className="flex min-h-0 flex-1 flex-col">
+    <header className="flex items-center gap-3 border-b border-stone-100 px-3 py-2">
+      <button type="button" onClick={() => setInspirationView({ scope: scopeKey, open: false })} className="text-sm">{tt("返回")}</button>
+      <h2 className="text-sm font-semibold">{tt("灵感")}</h2>
+    </header>
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <Suspense fallback={<span className="v-spinner" role="status" aria-label={tt("加载中")} />}>
+        <InspirationPanel siteKey={scope?.siteKey} appId={scope?.appId} />
+      </Suspense>
+    </div>
+  </section>;
   return (
     <nav
       data-workspace-home-cards
       aria-label={tt("工作区")}
       className="grid grid-cols-[repeat(auto-fill,minmax(11rem,1fr))] content-start gap-3 p-3"
     >
-      {props.slots.filter((id) => id !== "materials").map((id) => (
+      {slots.filter((id) => id !== "materials").map((id) => (
         // Browser is now a child of Devices. Keep the slot mounted for legacy
         // receipts, but do not present a second card for it.
         id === "browser" ? null : (
@@ -166,7 +193,7 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
           description={tt(SLOT_DESC[id])}
           icon={slotIcon(id)}
           count={id === "preview" ? previewCount : 0}
-          onClick={() => props.onOpenSlot(id)}
+          onClick={() => id === "template" && scope?.siteKey && scope.appId ? setInspirationView({ scope: scopeKey, open: true }) : props.onOpenSlot(id)}
         />
         )
       ))}
