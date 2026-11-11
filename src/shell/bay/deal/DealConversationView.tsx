@@ -382,7 +382,7 @@ export function DealConversationView({ threadId, layout, onBack }: DealConversat
         }
         hasMore={state.hasMore}
         loadingMore={state.loadingMore}
-        onLoadMore={() => void loadOlder()}
+        onLoadMore={loadOlder}
         emptyHint={offerAllowed ? tt("还没有消息。先打个招呼，谈好了就发一份报价。") : tt("还没有消息，先打个招呼吧。")}
       />
     );

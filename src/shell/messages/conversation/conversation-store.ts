@@ -210,8 +210,9 @@ export class ConversationStore {
         hasMoreBefore: page.has_more_before,
         loadingBefore: false,
       });
-    } catch {
+    } catch (error) {
       this.set({ loadingBefore: false });
+      throw error;
     }
   }
 

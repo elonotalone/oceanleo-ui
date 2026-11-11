@@ -137,8 +137,9 @@ export function useTalentThread(threadId: string | null) {
     try {
       const page = await fetchTalentThread(threadId, { before: oldest.created_at });
       if (alive.current) apply(page, "older");
-    } catch {
+    } catch (error) {
       if (alive.current) setState((prev) => ({ ...prev, loadingMore: false }));
+      throw error;
     }
   }, [threadId, state.messages, apply]);
 
@@ -335,7 +336,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
           openUrl={openUrl}
           hasMore={state.hasMore}
           loadingMore={state.loadingMore}
-          onLoadMore={() => void loadOlder()}
+          onLoadMore={loadOlder}
           peerName={peer?.display_name}
           onReport={(message) =>
             setReport({

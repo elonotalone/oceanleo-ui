@@ -3,7 +3,8 @@
 // 交易会话的消息列表：文字、文件、报价卡、灰字行；被运营隐藏的只显示占位。
 // 正文一律当纯文字（React 文本节点）；文件只认 https 地址，图片用 <img>，其余给新窗口打开的链接。
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { OlderHistoryTop, useOlderHistory } from "../../history/older-history";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   dealAttachmentKind,
@@ -31,7 +32,7 @@ export interface DealMessageListProps {
   onReport?: (message: DealMessage) => void;
   hasMore?: boolean;
   loadingMore?: boolean;
-  onLoadMore?: () => void;
+  onLoadMore?: () => Promise<void>;
   /** 还没有消息时显示的话。 */
   emptyHint?: string;
 }
@@ -89,7 +90,6 @@ export function DealMessageList(props: DealMessageListProps) {
     onLineAction,
     onReport,
     hasMore,
-    loadingMore,
     onLoadMore,
     emptyHint,
   } = props;
@@ -110,23 +110,21 @@ export function DealMessageList(props: DealMessageListProps) {
 
   useEffect(() => {
     if (stickRef.current) endRef.current?.scrollIntoView?.({ block: "end" });
-  }, [lastId, messages.length]);
+  }, [lastId]);
+
+  const loadOlder = useCallback(async () => { await onLoadMore?.(); }, [onLoadMore]);
+  const history = useOlderHistory({
+    scrollRef: scrollerRef,
+    hasMore: Boolean(hasMore && onLoadMore),
+    loadOlder,
+    firstKey: messages[0]?.id ?? null,
+    itemSelector: "[data-message-id]",
+    disabled: !onLoadMore || messages.length === 0,
+  });
 
   return (
-    <div ref={scrollerRef} data-deal-messages className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-      {hasMore ? (
-        <div className="pb-3 text-center">
-          <button
-            type="button"
-            disabled={loadingMore}
-            data-action="load-more"
-            onClick={onLoadMore}
-            className="rounded-full border border-neutral-900 px-3 py-1 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
-          >
-            {loadingMore ? tt("加载中…") : tt("加载更早的消息")}
-          </button>
-        </div>
-      ) : null}
+    <div ref={scrollerRef} data-deal-messages className="min-h-0 flex-1 overflow-y-auto px-3 py-3" style={{ overflowAnchor: "none" }}>
+      <OlderHistoryTop hasMore={Boolean(hasMore && onLoadMore)} spinnerVisible={history.spinnerVisible} sentinelRef={history.sentinelRef} />
       {messages.length === 0 && emptyHint ? (
         <p data-deal-empty className="px-4 py-10 text-center text-[13px] text-neutral-400">
           {emptyHint}

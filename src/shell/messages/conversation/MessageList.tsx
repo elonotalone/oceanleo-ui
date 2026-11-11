@@ -11,10 +11,11 @@ import { dmReadState } from "./ReadReceipt";
 import { useImEvent } from "../realtime/hooks";
 import { buildRows, type ConversationSnapshot, type ConversationStore } from "./conversation-store";
 import { ChatTimeSeparator } from "../../ChatTimeSeparator";
+import { OlderHistoryTop, useOlderHistory } from "../../history/older-history";
 
 const useIsoLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const NEAR_BOTTOM_PX = 80;
-const LOAD_MORE_PX = 160;
+const LOAD_NEWER_PX = 160;
 const FLASH_MS = 1800;
 
 export interface MessageListProps {
@@ -58,7 +59,7 @@ export function MessageList(props: MessageListProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const atBottomRef = useRef(true);
   const initializedRef = useRef(false);
-  const prevRef = useRef({ firstId: "", lastId: "", count: 0, height: 0, pending: 0 });
+  const prevRef = useRef({ firstId: "", lastId: "", count: 0, pending: 0 });
   const [newCount, setNewCount] = useState(0);
   const [flashSeq, setFlashSeq] = useState<number | null>(null);
   const flashedRef = useRef<number | null>(null);
@@ -110,15 +111,15 @@ export function MessageList(props: MessageListProps) {
       } else {
         scrollToBottom();
       }
-    } else if (first && prev.firstId && first !== prev.firstId && messages.length > prev.count && last === prev.lastId) {
-      // 往上翻出了更早的消息：保持用户眼前那条不动
-      el.scrollTop += el.scrollHeight - prev.height;
     } else if (last !== prev.lastId || snapshot.pending.length > prev.pending) {
+      const prepended = first && prev.firstId && first !== prev.firstId && messages.length > prev.count;
       const appendedMine = snapshot.pending.length > prev.pending || messages[messages.length - 1]?.sender_id === viewerId;
-      if (atBottomRef.current || appendedMine) {
+      // A simultaneous prepend keeps the reading anchor; older rows never count as new messages.
+      if (!prepended && (atBottomRef.current || appendedMine)) {
         scrollToBottom();
-      } else if (last !== prev.lastId) {
-        const added = Math.max(1, messages.length - prev.count);
+      } else if (last !== prev.lastId && !atBottomRef.current) {
+        const previousLastIndex = messages.findIndex((message) => message.id === prev.lastId);
+        const added = previousLastIndex >= 0 ? messages.length - previousLastIndex - 1 : Math.max(1, messages.length - prev.count);
         setNewCount((value) => value + added);
       }
     }
@@ -126,10 +127,19 @@ export function MessageList(props: MessageListProps) {
       firstId: first,
       lastId: last,
       count: messages.length,
-      height: el.scrollHeight,
       pending: snapshot.pending.length,
     };
   }, [snapshot.messages, snapshot.pending, snapshot.loaded, highlightSeq, scrollToSeq, scrollToBottom, viewerId]);
+
+  const loadOlder = useCallback(() => store.loadBefore(), [store]);
+  const history = useOlderHistory({
+    scrollRef: containerRef,
+    hasMore: snapshot.hasMoreBefore,
+    loadOlder,
+    firstKey: snapshot.messages[0]?.id ?? null,
+    itemSelector: "[data-history-key]",
+    disabled: !snapshot.loaded || snapshot.messages.length === 0,
+  });
 
   // highlightSeq：滚过去并闪一下（每个 seq 只闪一次）
   useEffect(() => {
@@ -165,8 +175,7 @@ export function MessageList(props: MessageListProps) {
     const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
     const atBottom = distance < NEAR_BOTTOM_PX;
     atBottomRef.current = atBottom;
-    if (el.scrollTop < LOAD_MORE_PX) void store.loadBefore();
-    if (distance < LOAD_MORE_PX) void store.loadAfter();
+    if (distance < LOAD_NEWER_PX) void store.loadAfter();
     if (atBottom && !store.getSnapshot().hasMoreAfter) {
       setNewCount(0);
       const seq = store.getSnapshot().lastSeq;
@@ -184,13 +193,8 @@ export function MessageList(props: MessageListProps) {
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={containerRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain pb-2" data-message-list="">
-        {snapshot.loadingBefore ? (
-          <div className="py-2 text-center text-[12px] text-neutral-400">{tt("正在加载更早的消息…")}</div>
-        ) : null}
-        {!snapshot.hasMoreBefore && snapshot.loaded && snapshot.messages.length > 0 ? (
-          <div className="py-3 text-center text-[12px] text-neutral-300">{tt("这是会话的开头")}</div>
-        ) : null}
+      <div ref={containerRef} onScroll={onScroll} className="h-full overflow-y-auto overscroll-contain pb-2" style={{ overflowAnchor: "none" }} data-message-list="">
+        <OlderHistoryTop hasMore={snapshot.hasMoreBefore} spinnerVisible={history.spinnerVisible} sentinelRef={history.sentinelRef} />
         {snapshot.loaded && snapshot.messages.length === 0 && snapshot.pending.length === 0 ? (
           <div className="px-6 py-16 text-center text-[13px] text-neutral-400">
             {snapshot.error ? tt("消息加载失败，请稍后重试。") : tt("还没有消息，说点什么吧。")}
@@ -207,24 +211,25 @@ export function MessageList(props: MessageListProps) {
           }
           const { message, pending } = row;
           return (
-            <MessageItem
-              key={row.key}
-              message={message}
-              pending={pending}
-              grouped={row.grouped}
-              viewerId={viewerId}
-              profiles={profiles}
-              conversation={conversation}
-              isAdmin={isAdmin}
-              streamingText={snapshot.streaming[message.id]}
-              notice={snapshot.notices[message.id]}
-              dmRead={isDm && !pending ? dmReadState(message, lastOwnSeq, snapshot.peerLastReadSeq) : null}
-              highlighted={flashSeq !== null && message.seq === flashSeq}
-              handlers={handlers}
-              selectionMode={selectionMode}
-              selected={selectedMessageIds.has(message.id)}
-              onToggleSelected={onToggleSelected}
-            />
+            <div key={row.key} data-history-key={message.id}>
+              <MessageItem
+                message={message}
+                pending={pending}
+                grouped={row.grouped}
+                viewerId={viewerId}
+                profiles={profiles}
+                conversation={conversation}
+                isAdmin={isAdmin}
+                streamingText={snapshot.streaming[message.id]}
+                notice={snapshot.notices[message.id]}
+                dmRead={isDm && !pending ? dmReadState(message, lastOwnSeq, snapshot.peerLastReadSeq) : null}
+                highlighted={flashSeq !== null && message.seq === flashSeq}
+                handlers={handlers}
+                selectionMode={selectionMode}
+                selected={selectedMessageIds.has(message.id)}
+                onToggleSelected={onToggleSelected}
+              />
+            </div>
           );
         })}
         {snapshot.hasMoreAfter ? (

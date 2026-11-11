@@ -116,8 +116,9 @@ export function useDealThread(threadId: string | null) {
     try {
       const page = await fetchDealThread(threadId, { before });
       if (alive.current) setState((prev) => applyDealPage(prev, page, "older"));
-    } catch {
+    } catch (error) {
       if (alive.current) setState((prev) => ({ ...prev, loadingMore: false }));
+      throw error;
     }
   }, [threadId]);
 

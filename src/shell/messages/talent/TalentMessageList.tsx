@@ -3,7 +3,8 @@
 // 交易会话的消息列表：文字、附件、报价卡、系统消息；被运营隐藏的消息只显示占位。
 // 正文一律当纯文字（React 文本节点）渲染，附件只认 http(s) 地址：图片用 <img>，其余只给下载链接。
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
+import { OlderHistoryTop, useOlderHistory } from "../../history/older-history";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImAttachment, ImMessage } from "../../../lib/im/types";
 import { TalentOfferCard } from "./TalentOfferCard";
@@ -21,7 +22,7 @@ export interface TalentMessageListProps {
   onReport?: (message: ImMessage) => void;
   hasMore?: boolean;
   loadingMore?: boolean;
-  onLoadMore?: () => void;
+  onLoadMore?: () => Promise<void>;
   /** 对方的名字，用在每条消息上方。 */
   peerName?: string;
 }
@@ -74,7 +75,7 @@ function AttachmentView({ attachment }: { attachment: ImAttachment }) {
 
 export function TalentMessageList(props: TalentMessageListProps) {
   const tt = useUI();
-  const { messages, viewerId, offers, onOfferAct, busyOfferId = null, offerError = null, openUrl = null, onReport, hasMore, loadingMore, onLoadMore, peerName } = props;
+  const { messages, viewerId, offers, onOfferAct, busyOfferId = null, offerError = null, openUrl = null, onReport, hasMore, onLoadMore, peerName } = props;
   const endRef = useRef<HTMLDivElement | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const stickRef = useRef(true);
@@ -92,23 +93,21 @@ export function TalentMessageList(props: TalentMessageListProps) {
 
   useEffect(() => {
     if (stickRef.current) endRef.current?.scrollIntoView?.({ block: "end" });
-  }, [lastId, messages.length]);
+  }, [lastId]);
+
+  const loadOlder = useCallback(async () => { await onLoadMore?.(); }, [onLoadMore]);
+  const history = useOlderHistory({
+    scrollRef: scrollerRef,
+    hasMore: Boolean(hasMore && onLoadMore),
+    loadOlder,
+    firstKey: messages[0]?.id ?? null,
+    itemSelector: "[data-message-id]",
+    disabled: !onLoadMore || messages.length === 0,
+  });
 
   return (
-    <div ref={scrollerRef} data-talent-messages className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-      {hasMore && (
-        <div className="pb-3 text-center">
-          <button
-            type="button"
-            disabled={loadingMore}
-            data-action="load-more"
-            onClick={onLoadMore}
-            className="rounded-lg border border-neutral-200 px-3 py-1 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
-          >
-            {loadingMore ? tt("加载中…") : tt("加载更早的消息")}
-          </button>
-        </div>
-      )}
+    <div ref={scrollerRef} data-talent-messages className="min-h-0 flex-1 overflow-y-auto px-3 py-3" style={{ overflowAnchor: "none" }}>
+      <OlderHistoryTop hasMore={Boolean(hasMore && onLoadMore)} spinnerVisible={history.spinnerVisible} sentinelRef={history.sentinelRef} />
       <ul className="flex flex-col gap-3">
         {messages.map((message) => {
           const mine = Boolean(viewerId) && message.sender_id === viewerId;
