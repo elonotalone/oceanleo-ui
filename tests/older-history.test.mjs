@@ -95,8 +95,8 @@ test('spinner only at visible top while pending, fixed slot and no visible loadi
 });
 
 test('failed batch retries silently after one second and never overlaps on scroll', async () => {
-  let calls = 0; const pending = deferred(); const view = await mount({ load: () => { calls++; return calls === 1 ? Promise.reject(new Error('offline')) : pending.promise; } });
-  try { await tick(); assert.equal(calls, 1); assert.equal(view.state.loading, false); await view.scroll(100); await tick(); assert.equal(calls, 1);
+  let calls = 0; const pending = deferred(); const view = await mount({ scrollTop: 2000, load: () => { calls++; return calls === 1 ? Promise.reject(new Error('offline')) : pending.promise; } });
+  try { await tick(); assert.equal(calls, 1); assert.equal(view.state.loading, false); await view.scroll(1800); await tick(); assert.equal(calls, 1);
     await act(async () => new Promise((resolve) => setTimeout(resolve, 1050))); await tick(); assert.equal(calls, 2); assert.equal(view.host.textContent.includes('offline'), false);
   } finally { await view.close(); }
 });

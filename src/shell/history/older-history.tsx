@@ -73,7 +73,7 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
       const height = scroller.clientHeight;
       setAtTop(top >= root.top && top <= root.top + height);
       if (!height || current.disabled || !current.hasMore || inFlight || exhaustedRetries || Date.now() < retryAt) return;
-      if (!prefetch && top < root.top - (current.prefetchScreens ?? 1.5) * height) return;
+      if (!prefetch && failures === 0 && top < root.top - (current.prefetchScreens ?? 1.5) * height) return;
       prefetch = false;
       inFlight = true;
       capture();
@@ -105,7 +105,7 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
     const observe = () => {
       observer?.disconnect();
       if (typeof IntersectionObserver !== "undefined") {
-        observer = new IntersectionObserver(() => schedule(), { root: scroller, rootMargin: `${(latest.current.prefetchScreens ?? 1.5) * scroller.clientHeight}px 0px 0px 0px` });
+        observer = new IntersectionObserver(onScroll, { root: scroller, rootMargin: `${(latest.current.prefetchScreens ?? 1.5) * scroller.clientHeight}px 0px 0px 0px` });
         observer.observe(sentinel);
       }
       schedule();
