@@ -227,8 +227,8 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
     );
   };
   return (
-    <div data-acp-transcript="" data-acp-program={program} className="space-y-3">
-      {blocks.map(render)}
+    <div data-acp-transcript="" data-agent-stream="" data-acp-program={program} className="space-y-3">
+      {blocks.map((block) => <div key={block.key} data-history-item="" data-history-key={block.key}>{render(block)}</div>)}
       <ModelWaitingNotice view={view} rows={rows} tt={tt} />
     </div>
   );
