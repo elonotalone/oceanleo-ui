@@ -124,3 +124,16 @@ test('disabling then re-enabling while a batch is pending never overlaps request
     await view.scroll(0); await tick(); assert.ok(view.host.querySelector(".v-spinner"), "resumed pending request still shows spinner at top"); }
   finally { await view.close(); await act(async () => pending.resolve()); }
 });
+
+test('a newly opened history prefetches even if the previous conversation request is still pending', async () => {
+  let calls = 0; const first = deferred(); const second = deferred();
+  const view = await mount({ load: () => { calls++; return calls === 1 ? first.promise : second.promise; } });
+  try {
+    await tick(); assert.equal(calls, 1);
+    await view.patch({ hasMore: false });
+    await view.patch({ hasMore: true, ids: [20, 21, 22, 23] });
+    await tick(); assert.equal(calls, 2, 'old conversation does not block opening prefetch');
+    await act(async () => first.resolve()); await view.scroll(100); await tick();
+    assert.equal(calls, 2, 'completion from old conversation never releases new request guard');
+  } finally { await view.close(); await act(async () => second.resolve()); }
+});

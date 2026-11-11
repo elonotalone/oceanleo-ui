@@ -31,6 +31,8 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
 
   useLayoutEffect(() => {
     latest.current = options;
+    // A closed/exhausted conversation must not hold up the next conversation on this scroller.
+    if (!options.hasMore) flight.current = null;
     const saved = anchor.current;
     const scroller = options.scrollRef.current;
     if (saved && scroller && saved.firstKey !== options.firstKey) {
