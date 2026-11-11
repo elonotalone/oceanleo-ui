@@ -215,3 +215,36 @@ test("new UI copy covers every locale, with English fallback outside Chinese loc
   }
   globalThis.__homeCardsLocale = "en";
 });
+
+const { groupAppMaterials } = await import(await compileModule("src/shell/AppMaterialsPanel.tsx", { "../i18n/ui/useUI": ui }));
+const appMaterials = [
+  { id:"web-1", appId:"landing", siteKey:"website", title:"Landing sample", artifactType:"website", previewKey:"assets/charts/web-1.png" },
+  { id:"web-2", appId:"landing", siteKey:"website", title:"Second sample", artifactType:"website" },
+  { id:"deck-1", appId:"slides", siteKey:"ppt", title:"Wrong site", artifactType:"deck" },
+  { id:"web-3", app_id:"store", site_key:"website", app_name:"Shop", title:"Store sample", artifact_type:"website" },
+];
+
+test("app material grouping preserves order, names, typed rows and site isolation", () => {
+  const groups = groupAppMaterials([...appMaterials, appMaterials[0]], "website", {landing:"Landing pages"});
+  assert.deepEqual(groups.map(({appId,name}) => ({appId,name})), [{appId:"landing",name:"Landing pages"},{appId:"store",name:"Shop"}]);
+  assert.deepEqual(groups[0].materials, appMaterials.slice(0,2));
+  assert.equal(groups[0].materials[0].artifactType, "website");
+  assert.deepEqual(groupAppMaterials(appMaterials,"ppt").map(group => group.materials[0].id), ["deck-1"]);
+});
+
+test("sub-site card opens the app's complete materials without prompt pairing; main stays on asset tabs", async () => {
+  const opened = [], picked = [];
+  await mounted({siteId:"website",materials:appMaterials,appNames:{landing:"Landing pages"},onOpenApp:group=>opened.push(group),onPick:text=>picked.push(text)}, async container => {
+    assert.equal(container.querySelectorAll("[data-home-material-app]").length,2);
+    assert.equal(container.querySelector('[role="tablist"]'),null);
+    assert.equal(container.querySelector('[data-app-card-primary]'),null);
+    assert.equal(container.querySelector('[data-home-custom-prompts]'),null);
+    await click(container.querySelector('[data-home-material-app="landing"] [data-app-card-main]'));
+    assert.equal(opened.length,1);
+    assert.deepEqual(opened[0].materials, appMaterials.slice(0,2));
+    assert.equal(opened[0].name,"Landing pages");
+    assert.deepEqual(picked,[]);
+  });
+  assert.match(render(), /role="tablist"/);
+  assert.doesNotMatch(render(), /data-home-material-app=/);
+});

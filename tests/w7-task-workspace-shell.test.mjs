@@ -522,3 +522,43 @@ test("W4 an initial entry carries full server commerce data from home into a new
     assert.equal(m.container.querySelector('[data-workspace-pane="main"]').getAttribute('data-workspace-pane-state'), 'open');
   } finally { await m.unmount(); }
 });
+
+test("app card opens only its materials in the real sidebar, then dispatches typed template preview", async () => {
+  const { HomeAssetCards } = await import(await compileModule("src/shell/HomeAssetCards.tsx", {"../i18n/ui/useUI":uiStub}));
+  const materials = [
+    {id:"website-a",appId:"landing",siteKey:"website",title:"First website",artifactType:"website"},
+    {id:"website-b",appId:"landing",siteKey:"website",title:"Second website",artifactType:"website"},
+    {id:"website-c",appId:"shop",siteKey:"website",title:"Other app",artifactType:"website"},
+  ];
+  let state;
+  function Host({siteKey="website"}) {
+    state=useTaskWorkspaceState({siteKey});
+    return React.createElement(TaskWorkspaceShell,{
+      state,tabs:[],lazyRight:true,canvas:{siteId:siteKey},
+      left:React.createElement(HomeAssetCards,{sections:[],siteId:siteKey,materials,onOpenApp:state.openAppMaterials,onOpenAsset:state.openWorkspaceAsset,onPick(){}}),
+    });
+  }
+  const m=await mount(React.createElement(Host));
+  try {
+    await act(async()=>m.container.querySelector('[data-home-material-app="landing"] [data-app-card-main]').click());
+    assert.equal(state.rightOpen,true);
+    const panel=m.container.querySelector('[data-app-materials-panel="landing"]');
+    assert.ok(panel);
+    assert.deepEqual([...panel.querySelectorAll('[data-app-material]')].map(node=>node.dataset.appMaterial),["website-a","website-b"]);
+    assert.equal(panel.querySelector('[data-app-card-primary]'),null);
+    await act(async()=>panel.querySelector('[data-app-material="website-a"] [data-app-card-main]').click());
+    assert.equal(m.container.querySelector('[data-app-materials-panel]'),null);
+    assert.deepEqual(globalThis.__canvasProps.openEntry.ref,{kind:"template",id:"website-a"});
+    assert.equal(globalThis.__canvasProps.openEntry.mode,"preview");
+    assert.equal(globalThis.__canvasProps.openEntry.surface,"home");
+    await act(async()=>state.openAppMaterials({siteKey:"website",appId:"landing",name:"Landing",materials:materials.slice(0,2)}));
+    assert.ok(m.container.querySelector('[data-app-materials-panel]'));
+    await act(async()=>state.setWorkspaceAction({nonce:"attachment-library:test",kind:"library"}));
+    assert.equal(state.appMaterials,null,"another sidebar action returns to ResultCanvas");
+    assert.ok(m.container.querySelector('[data-canvas]'));
+    await m.render(React.createElement(Host,{siteKey:"ppt"}));
+    assert.equal(state.rightOpen,false);
+    assert.equal(state.openEntry,null);
+    assert.equal(state.appMaterials,null);
+  } finally { await m.unmount(); }
+});

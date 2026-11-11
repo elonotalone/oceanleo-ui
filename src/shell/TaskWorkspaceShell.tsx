@@ -40,6 +40,7 @@ import type { LibraryItem, LibraryKind } from "./library-data";
 import { editorCapabilityFor } from "./workbench-routes";
 import { WorkspaceSessionProvider } from "./WorkspaceSession";
 import { useOptionalWorkspaceSession } from "./workspace-session-context";
+import { AppMaterialsPanel, type AppMaterialGroup } from "./AppMaterialsPanel";
 import { WorkspacePaneSkeleton } from "./WorkspacePaneSkeleton";
 
 export type { TaskWorkspaceOpenItem, TaskWorkspaceOpenState } from "./ResultCanvas";
@@ -55,6 +56,8 @@ export interface TaskWorkspaceInitial {
 }
 
 export interface TaskWorkspaceState {
+  appMaterials: AppMaterialGroup | null;
+  openAppMaterials: (group: AppMaterialGroup) => void;
   rightOpen: boolean;
   setRightOpen: Dispatch<SetStateAction<boolean>>;
   libTab: string;
@@ -79,17 +82,24 @@ export interface TaskWorkspaceState {
 let openSeq = 0;
 
 export function useTaskWorkspaceState({
+  siteKey,
   defaultOpen = false,
   defaultTab = "home",
   initial,
 }: {
+  /** Reset app/detail state when a host switches site without remounting. */
+  siteKey?: string;
   defaultOpen?: boolean;
   defaultTab?: string;
   initial?: TaskWorkspaceInitial | null;
 } = {}): TaskWorkspaceState {
+  const [appMaterials, setAppMaterials] = useState<AppMaterialGroup | null>(null);
   const [libTab, setLibTab] = useState(initial?.tab ?? defaultTab);
   const [workspaceAction, setWorkspaceAction] =
     useState<WorkspaceActionEnvelope | null>(initial?.action ?? null);
+  useEffect(() => {
+    if (workspaceAction) setAppMaterials(null);
+  }, [workspaceAction]);
   const [leoChatRequestNonce, setLeoChatRequestNonce] = useState<string | null>(null);
   const [rightOpen, setRightOpen] = useState(
     initial?.open ?? (initial?.item || initial?.entry ? true : defaultOpen),
@@ -98,6 +108,16 @@ export function useTaskWorkspaceState({
     initial?.item ?? null,
   );
   const [openEntry, setOpenEntry] = useState<TaskWorkspaceOpenEntry | null>(initial?.entry ?? null);
+  const previousSite = useRef(siteKey);
+  useEffect(() => {
+    if (previousSite.current === siteKey) return;
+    previousSite.current = siteKey;
+    setAppMaterials(null);
+    setOpenItem(null);
+    setOpenEntry(null);
+    setWorkspaceAction(null);
+    setRightOpen(false);
+  }, [siteKey]);
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const receive = (event: Event) => {
@@ -113,6 +133,7 @@ export function useTaskWorkspaceState({
     (item, mode = "preview", options) => {
       openSeq += 1;
       setRightOpen(true);
+      setAppMaterials(null);
       setOpenEntry(null);
       setOpenItem({
         nonce: `open-item:${item.key}:${Date.now()}:${openSeq}`,
@@ -125,15 +146,26 @@ export function useTaskWorkspaceState({
   );
   const openWorkspaceEntry = useCallback<TaskWorkspaceState["openWorkspaceEntry"]>((entry, options = {}) => {
     setRightOpen(true);
+    setAppMaterials(null);
     setOpenItem(null);
     setOpenEntry({ nonce: `open-entry:${++openSeq}`, entry, mode: options.mode || "preview", actionContext: options.actionContext, bindTask: options.bindTask });
   }, []);
   const openWorkspaceAsset = useCallback<TaskWorkspaceState["openWorkspaceAsset"]>((ref, options = {}) => {
     setRightOpen(true);
+    setAppMaterials(null);
     setOpenItem(null);
     setOpenEntry({ nonce: `open-asset:${++openSeq}`, ref, mode: options.mode || "preview", surface: options.surface });
   }, []);
+  const openAppMaterials = useCallback((group: AppMaterialGroup) => {
+    setAppMaterials(group);
+    setWorkspaceAction(null);
+    setOpenEntry(null);
+    setOpenItem(null);
+    setRightOpen(true);
+  }, []);
   return {
+    appMaterials,
+    openAppMaterials,
     openEntry,
     openWorkspaceEntry,
     openWorkspaceAsset,
@@ -248,7 +280,10 @@ export function TaskWorkspaceShell({
   const everOpenedRef = useRef(open);
   if (open) everOpenedRef.current = true;
   const canvasNode =
-    lazyRight && !everOpenedRef.current ? null : (
+    lazyRight && !everOpenedRef.current ? null : state.appMaterials ? (
+      <AppMaterialsPanel group={state.appMaterials} accent={canvas?.accent}
+        onOpenAsset={(ref) => state.openWorkspaceAsset(ref, { surface: "home" })} />
+    ) : (
       <ResultCanvas
         {...canvas}
         tabs={tabs}

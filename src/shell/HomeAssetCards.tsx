@@ -10,6 +10,8 @@ import { AddPromptModal, PromptCardModal } from "./HomePromptModals";
 import { loadCustomPromptCards, promptCardsForSite, saveCustomPromptCards, type PromptCard } from "./home-cards";
 import { homeAssetCardKey, homeAssetSections, type HomeAssetRef, type HomeAssetSection, type HomeAssetSectionId } from "./home-asset-cards-model";
 
+import { groupAppMaterials, materialThumbnail, type AppMaterial, type AppMaterialGroup } from "./AppMaterialsPanel";
+
 const SECTION_COPY = { video: "视频素材", image: "图片素材", website: "网站素材", essay: "文章素材" } as const;
 const SECTION_ICONS = { video: "🎬", image: "🖼️", website: "🌐", essay: "📄" } as const;
 
@@ -17,6 +19,10 @@ export interface HomeAssetCardsProps {
   /** Pass GET /v1/home/assets.sections; fetching/retry belongs to the host. */
   sections: readonly HomeAssetSection[];
   siteId: string;
+  /** Sub-site mode: one card per app, opening only that app's materials. */
+  materials?: readonly AppMaterial[];
+  appNames?: Readonly<Record<string, string>>;
+  onOpenApp?: (group: AppMaterialGroup) => void;
   accent?: string;
   /** Pass the request family for identical SSR/client preview resolution. */
   family?: DomainFamily;
@@ -27,7 +33,7 @@ export interface HomeAssetCardsProps {
   onPick: (prompt: string) => void;
 }
 
-export function HomeAssetCards({ sections, siteId, accent = "#4f46e5", family, loading = false, error = false, onOpenAsset, onPick }: HomeAssetCardsProps) {
+export function HomeAssetCards({ sections, siteId, materials, appNames, onOpenApp, accent = "#4f46e5", family, loading = false, error = false, onOpenAsset, onPick }: HomeAssetCardsProps) {
   const tt = useUI();
   const instanceId = useId();
   const tabNodes = useRef<Partial<Record<HomeAssetSectionId, HTMLButtonElement | null>>>({});
@@ -61,6 +67,24 @@ export function HomeAssetCards({ sections, siteId, accent = "#4f46e5", family, l
     }
   }
 
+
+  if (materials !== undefined) {
+    const apps = groupAppMaterials(materials, siteId, appNames);
+    return <section className="w-full" data-home-asset-cards data-home-app-materials={siteId}>
+      {loading && <p role="status" className="py-3 text-sm text-stone-500">{tt("正在加载首页素材…")}</p>}
+      {error && <p role="alert" className="py-3 text-sm text-stone-500">{tt("首页素材暂时无法加载，请稍后重试。")}</p>}
+      <div className={APP_CARD_GRID_CLASS}>
+        {apps.map((group) => <div key={group.appId} data-home-material-app={group.appId}>
+          <AppCardShell variant="home" accent={accent}
+            app={{ id: group.appId, name: group.name, tagline: group.materials[0]?.summary, icon: "📄" }}
+            image={materialThumbnail(group.materials[0], family)}
+            cardActionLabel={group.name}
+            onCardClick={() => onOpenApp?.(group)} primaryAction={null} />
+        </div>)}
+      </div>
+      {!apps.length && !loading && !error && <p className="py-3 text-sm text-stone-400">{tt("暂无可用素材")}</p>}
+    </section>;
+  }
 
   return (
     <section className="w-full" data-home-asset-cards>
