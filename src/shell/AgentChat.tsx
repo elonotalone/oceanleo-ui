@@ -1454,6 +1454,8 @@ function AgentChatInner({
   // The gateway's background projection (W17): a task whose session ended is never shown as running.
   const taskActivity = useTaskActivity(computerTask && taskId ? taskId : null, 10_000);
   const acpView = useMemo(() => withTaskActivity(reducedAcpView, taskActivity.activity), [reducedAcpView, taskActivity.activity]);
+  const acpViewRef = useRef(acpView);
+  useLayoutEffect(() => { acpViewRef.current = acpView; }, [acpView]);
   const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
   const acpTransportBlocked = taskId ? !acpConnected : acpDraftOffline;
   const acpComposerDisabled = readOnly || acpTransportBlocked;
@@ -2309,11 +2311,11 @@ function AgentChatInner({
   // turns, and nothing is sent.
   const [acpResend, setAcpResend] = useState<{ taskId: string; rowIds: number[] } | null>(null);
   const stopAndSendAcp = useCallback((rowId: number) => {
-    const held = acpView.turns.filter((turn) => turn.open && turn.queued);
+    const held = acpViewRef.current.turns.filter((turn) => turn.open && turn.queued);
     if (!taskId || !held.some((turn) => turn.rowId === rowId)) return;
     setAcpResend({ taskId, rowIds: held.map((turn) => turn.rowId) });
     void stopAcpTurn().then((stopped) => { if (!stopped) setAcpResend(null); });
-  }, [acpView, stopAcpTurn, taskId]);
+  }, [stopAcpTurn, taskId]);
   useEffect(() => {
     if (!acpResend) return;
     const held = acpView.turns.filter((turn) => acpResend.rowIds.includes(turn.rowId));
