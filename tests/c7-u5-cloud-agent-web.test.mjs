@@ -470,7 +470,7 @@ test("source: the panel's media/input paths are untouched and the thumbnail is n
   assert.match(transportSource, /cache: "no-store"/);
   assert.match(transportSource, /credentials: "omit"/);
   const chat = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
-  assert.match(chat, /useAgentThreadPolling\(taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive\(localRun\)\)/);
+  assert.match(chat, /useAgentThreadPolling\(nativeTask \? null : taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive\(localRun\)\)/);
 });
 
 // ------------------------------------------------------------------ portal gap

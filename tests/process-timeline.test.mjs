@@ -343,7 +343,7 @@ test("long unbroken strings wrap: user bubble, gate prompt, error, tool title/bo
 
 test("stream scroller never scrolls sideways and the column wraps (AgentChat render region)", () => {
   const source = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
-  const scroller = source.match(/className="([^"]*)"\s*\n\s*data-agent-stream-scroller=""/);
+  const scroller = source.match(/className="([^"]*)"[^>]*data-agent-stream-scroller=""/);
   assert.ok(scroller, "scroller is marked");
   assert.match(scroller[1], /overflow-y-auto/);
   assert.match(scroller[1], /overflow-x-hidden/);

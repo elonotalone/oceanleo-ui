@@ -70,6 +70,7 @@ const noop = dataModule(`
  export function LeoChatPanel(){return null;}
  export function MaterialStandaloneEditor(){return null;}
  export function openBay() {}
+ export function attachBayDeepLinks(){return () => {};}
  export function useBayEnabled(){return false;}
  export function useFunctionGuide(){return null;}
  export function useWorkspaceRuntimeHydration(){return null;}
