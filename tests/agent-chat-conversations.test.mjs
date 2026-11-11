@@ -140,7 +140,7 @@ globalThis.fetch = async (url, init = {}) => {
   const method = init.method || "GET";
   const body = init.body ? JSON.parse(init.body) : null;
   globalThis.__acpCalls.push({ path, method, body });
-  const route = globalThis.__acpRoute?.(path, method, body);
+  const route = await globalThis.__acpRoute?.(path, method, body);
   const payload = route?.body ?? (path.endsWith("/catalog") ? (globalThis.__catalog ?? {}) : { row_id: 1 });
   return new Response(JSON.stringify(payload), { status: route?.status ?? 200, headers: { "content-type": "application/json" } });
 };
@@ -389,13 +389,14 @@ test("an agent's OceanLeo sidebar tool (open_page) makes the native task page re
   } finally { await view.unmount(); }
 });
 
-test("while the socket is not connected Send is blocked (typing stays allowed) with one 「连接断开」 line; a drop reconnects from the last row and resends nothing", async () => {
+test("while the socket is not connected Send is blocked (typing stays allowed) with Connecting until a real drop; a drop reconnects from the last row and resends nothing", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
     assert.equal(view.composer("acp").__props.sendBlocked, true, "connecting counts as not connected");
     assert.notEqual(view.composer("acp").__props.disabled, true, "typing is never disabled by the network");
-    assert.equal(view.host.querySelectorAll("[data-acp-disconnected]").length, 1);
-    assert.equal(view.host.querySelector("[data-acp-disconnected]").textContent, "连接断开");
+    assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
+    assert.equal(view.host.querySelector("[data-acp-connection]").textContent, "正在连接…");
+    assert.equal(view.composer("acp").__props.sendBlockedReason, "正在连接…");
     await connect();
     assert.equal(view.composer("acp").__props.sendBlocked, false);
     assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
@@ -410,6 +411,8 @@ test("while the socket is not connected Send is blocked (typing stays allowed) w
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     assert.notEqual(socket(), first, "the plain backoff opened a new socket");
     assert.match(socket().url, new RegExp(`after=${rowSeq}$`), "it continues after the last row delivered");
+    assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
+    assert.equal(view.host.querySelector("[data-acp-connection]").textContent, "正在连接…");
     await connect();
     assert.equal(view.composer("acp").__props.sendBlocked, false);
     assert.equal(posts("/send").length, 0, "nothing was queued or resent");
@@ -436,7 +439,7 @@ test("send posts the message once to /send with the program and computer; the us
   } finally { await view.unmount(); }
 });
 
-test("ACP send paints a quiet optimistic bubble before the POST resolves and replaces it by the committed row", async () => {
+test("ACP send keeps its accepted bubble quiet and replaces it by the committed row", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
     await connect();
@@ -444,13 +447,39 @@ test("ACP send paints a quiet optimistic bubble before the POST resolves and rep
     await submit(view, "acp");
     const pending = view.host.querySelector("[data-acp-pending-send]");
     assert.ok(pending);
-    assert.equal(pending.getAttribute("data-acp-pending-status"), "sending");
+    assert.equal(pending.getAttribute("data-acp-pending-status"), "accepted");
+    assert.doesNotMatch(pending.textContent, /Sending|正在发送|发送中|上一条还在发送/i);
     assert.match(pending.textContent, /立刻显示/);
     assert.equal(view.composer("acp").__props.value, "");
     await deliver(rows.prompt(17, "立刻显示"));
     assert.equal(view.host.querySelector("[data-acp-pending-send]"), null);
     assert.equal(view.host.querySelectorAll('[data-testid="task-user-bubble"]').length, 1);
   } finally { await view.unmount(); }
+});
+
+test("a send blocks silently only for its HTTP request, then accepts another message before the stream echo", async () => {
+  const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
+  let complete;
+  try {
+    await connect();
+    globalThis.__acpRoute = (path) => path.endsWith("/send")
+      ? new Promise((resolve) => { complete = resolve; }) : null;
+    await type(view, "acp", "first request");
+    await submit(view, "acp");
+    assert.equal(view.composer("acp").__props.sendBlocked, true);
+    assert.equal(view.composer("acp").__props.sendBlockedReason, null);
+    assert.doesNotMatch(view.host.textContent, /Sending|正在发送|发送中|上一条还在发送/i);
+    await type(view, "acp", "second request");
+    await submit(view, "acp");
+    assert.equal(posts("/send").length, 1, "the request itself still owns the Send button");
+    await act(async () => { complete({ body: { row_id: 90000 } }); });
+    await settle();
+    assert.equal(view.composer("acp").__props.sendBlocked, false, "no stream row is needed");
+    globalThis.__acpRoute = null;
+    await submit(view, "acp");
+    assert.equal(posts("/send").length, 2);
+    assert.equal(view.host.querySelectorAll("[data-acp-pending-send]").length, 2, "both messages retain their bubbles");
+  } finally { complete?.({ body: { row_id: 90000 } }); await view.unmount(); }
 });
 
 test("an ACP gateway failure keeps the optimistic bubble failed, restores empty composer input, and exposes retry", async () => {
@@ -465,8 +494,14 @@ test("an ACP gateway failure keeps the optimistic bubble failed, restores empty 
     assert.equal(pending?.getAttribute("data-acp-pending-status"), "failed");
     assert.ok(view.host.querySelector("[data-acp-pending-retry]"));
     assert.equal(view.composer("acp").__props.value, "稍后重试");
+    const firstId = posts("/send")[0].body.client_message_id;
+    globalThis.__acpRoute = null;
     await act(async () => { view.host.querySelector("[data-acp-pending-retry]").click(); });
-    assert.equal(view.composer("acp").__props.value, "稍后重试");
+    await settle();
+    assert.equal(posts("/send").length, 2, "retry sends directly from its bubble");
+    assert.equal(posts("/send")[1].body.client_message_id, firstId);
+    assert.equal(view.host.querySelector("[data-acp-pending-send]").getAttribute("data-acp-pending-status"), "accepted");
+    assert.equal(view.host.querySelector("[data-acp-pending-error]"), null);
   } finally { await view.unmount(); }
 });
 

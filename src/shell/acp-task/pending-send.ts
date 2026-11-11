@@ -25,7 +25,7 @@ export type PendingSendInput = {
   afterRowId?: number;
 };
 
-export type PendingSendStatus = "sending" | "queued" | "failed";
+export type PendingSendStatus = "sending" | "accepted" | "queued" | "failed";
 
 export type PendingSend = Readonly<PendingSendInput & {
   id: string;
@@ -35,7 +35,7 @@ export type PendingSend = Readonly<PendingSendInput & {
   session: ComputerTaskSession | null;
   /** The committed prompt row returned by the send route, when known. */
   rowId: number | null;
-  /** Sending state is quiet; queued means the gateway accepted it behind a live turn. */
+  /** Sending is the request in flight; accepted awaits its stream row; both stay quiet. */
   status: PendingSendStatus;
   /** What the create or the send threw, as it came; null while it is on its way or after it went out. */
   error: unknown;
@@ -80,7 +80,7 @@ export function putPending(input: PendingSendInput): string {
   return id;
 }
 
-/** The task id arrived (`{taskId}`), or the create / send failed (`{error}`). A task id stays once known. */
+/** Task creation keeps the request in flight. A rowId/queued receipt settles the send, even without a row yet. */
 export function settlePending(pendingId: string, outcome: PendingSettle): void {
   const current = entries.get(pendingId);
   if (!current) return;
@@ -91,7 +91,7 @@ export function settlePending(pendingId: string, outcome: PendingSettle): void {
         taskId: outcome.taskId,
         session: outcome.session ?? current.session,
         rowId: outcome.rowId === undefined ? current.rowId : outcome.rowId,
-        status: outcome.queued ? "queued" : "sending",
+        status: outcome.queued ? "queued" : "rowId" in outcome || "queued" in outcome ? "accepted" : current.status,
         error: null,
       });
   notify();

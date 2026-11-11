@@ -10,7 +10,7 @@ import React, { act } from "react";
 // agent-chat-conversations.test.mjs (real frames client, fake fetch / WebSocket).
 await import("./agent-chat-conversations.test.mjs");
 const { mount, settle, session, socket, connect, deliver, posts, type, submit } = globalThis.__agentChatHarness;
-const { putPending, settlePending } = await import("../src/shell/acp-task/pending-send.ts");
+const { putPending, settlePending, readPending } = await import("../src/shell/acp-task/pending-send.ts");
 const { AcpSendError } = globalThis.__agentChatHarness.acpFrames;
 
 const SPEC = { url: "", artifact_id: "art-1", revision_id: "rev-1", name: "spec.pdf", mime: "application/pdf", media_type: "doc" };
@@ -52,10 +52,11 @@ test("opened with a pending message: the bubble (text + files) and the task comp
     const composer = view.composer("acp");
     assert.ok(composer, "the task composer is there");
     assert.equal(composer.textContent.startsWith("elon · claude") || composer.textContent.startsWith("cc_elon · claude"), true, "it addresses the program on that computer");
-    assert.equal(composer.__props.disabled, true, "nothing else is sent while the first message is on its way");
+    assert.equal(composer.__props.sendBlocked, true, "nothing else is sent while the first message is on its way");
     assert.equal(view.host.querySelector("[data-acp-pending-error]"), null);
     assert.equal(posts("/send").length, 0, "the home sends the message; the task view does not send it again");
-    assert.doesNotMatch(view.host.textContent, /在下方输入|正在加载任务|正在创建/);
+    assert.doesNotMatch(view.host.textContent, /在下方输入|正在加载任务|正在创建|Sending|正在发送|发送中|上一条还在发送/i);
+    assert.equal(view.composer("acp").__props.sendBlockedReason, null);
   } finally { await view.unmount(); }
 });
 
@@ -80,6 +81,7 @@ test("the task id is adopted in place (no remount, no list read); the message's 
     await deliver(sessionNew(1), sessionNewResult(1));
     assert.equal(userBubbles(view).length, 1, "session/new rows: the bubble stays, once");
     assert.ok(pendingBubble(view));
+    await act(async () => { settlePending(pendingId, { taskId: "t1", rowId: null }); });
     await deliver(prompt(2, "修一下构建"));
     assert.equal(pendingBubble(view), null, "the row replaced the local copy");
     const bubbles = userBubbles(view);
@@ -87,12 +89,41 @@ test("the task id is adopted in place (no remount, no list read); the message's 
     assert.match(bubbles[0].textContent, /修一下构建/);
     assert.ok(view.host.querySelector("[data-acp-transcript]").contains(bubbles[0]), "it is the transcript's own row now");
     assert.equal(view.host.querySelector("[data-acp-stream-pane]"), pane);
-    assert.equal(view.composer("acp").__props.disabled, false, "the composer works once the message is in the stream");
+    assert.equal(view.composer("acp").__props.sendBlocked, false, "the composer works once the message is accepted");
     await type(view, "acp", "再看看测试");
     await submit(view, "acp");
     const sent = posts("/v1/tasks/t1/send");
     assert.equal(sent.length, 1);
     assert.equal("model" in sent[0].body, false, "the first message's choices are not sent again");
+  } finally { await view.unmount(); }
+});
+
+test("the home send stays quiet while its request runs, then allows a distinct follow-up before the echo", async () => {
+  const pendingId = put({ attachments: [] });
+  const view = await mount({ pendingId }, { url: `/tasks/new?pending=${pendingId}` });
+  try {
+    await act(async () => { settlePending(pendingId, { taskId: "t1", session: { ...claudeSession, task_id: "t1" } }); });
+    await settle();
+    await connect();
+    assert.equal(view.composer("acp").__props.sendBlocked, true, "create did not finish POST /send");
+    assert.equal(view.composer("acp").__props.sendBlockedReason, null);
+    assert.doesNotMatch(view.host.textContent, /Sending|正在发送|发送中|上一条还在发送/i);
+    await act(async () => { settlePending(pendingId, { taskId: "t1", rowId: null, queued: false }); });
+    await settle();
+    assert.equal(readPending(pendingId).status, "accepted");
+    assert.equal(view.composer("acp").__props.sendBlocked, false);
+    await type(view, "acp", "还有这一个");
+    await submit(view, "acp");
+    assert.equal(posts("/send").length, 1);
+    assert.equal(posts("/send")[0].body.text, "还有这一个");
+    assert.equal("model" in posts("/send")[0].body, false, "accepted home choices are not repeated");
+    assert.equal(readPending(pendingId).text, "修一下构建", "the follow-up does not reuse or overwrite the first bubble");
+    assert.equal(view.host.querySelectorAll("[data-acp-pending-send]").length, 2);
+    await deliver(prompt(80, "还有这一个"));
+    assert.ok(pendingBubble(view), "a different prompt row cannot replace the home bubble");
+    assert.equal(userBubbles(view).length, 2);
+    await deliver(prompt(81, "修一下构建"));
+    assert.equal(pendingBubble(view), null);
   } finally { await view.unmount(); }
 });
 
@@ -107,13 +138,15 @@ test("a failed send: the gateway's words under the bubble, the text and file bac
     await settle();
     assert.equal(view.host.querySelector("[data-acp-pending-error]").textContent, "Failed to fetch", "verbatim");
     assert.ok(pendingBubble(view).contains(view.host.querySelector("[data-acp-pending-error]")), "under the bubble");
+    assert.ok(pendingBubble(view).querySelector("[data-acp-pending-retry]"), "the home send also exposes retry");
     assert.equal(userBubbles(view).length, 1);
     const composer = view.composer("acp");
     assert.equal(composer.__props.value, "修一下构建", "the text is back for the user to send");
     assert.deepEqual(composer.__props.attachments.map((item) => item.name), ["spec.pdf"]);
-    assert.equal(composer.__props.disabled, false);
+    assert.equal(composer.__props.sendBlocked, false);
     assert.equal(posts("/send").length, 0, "no automatic resend");
-    await submit(view, "acp");
+    await act(async () => { pendingBubble(view).querySelector("[data-acp-pending-retry]").click(); });
+    await settle();
     const sent = posts("/v1/tasks/t1/send");
     assert.equal(sent.length, 1);
     assert.equal(sent[0].body.client_message_id, "11111111-1111-4111-8111-111111111111", "the same message: the gateway keeps one row");

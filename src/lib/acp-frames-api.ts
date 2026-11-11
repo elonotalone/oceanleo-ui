@@ -266,6 +266,7 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
   };
   const connect = async () => {
     if (closed) return;
+    setState("connecting");
     const current = ++generation;
     let url: string;
     try { url = await framesWsUrl(taskId, cursor); } catch { dropped(current); return; }

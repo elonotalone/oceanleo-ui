@@ -62,12 +62,12 @@ export function PendingSendBubble({
   onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }) {
   const tt = useUI();
-  const statusText = pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("发送失败") : tt("正在发送");
+  const statusText = pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("发送失败") : "";
   return (
     <div className="space-y-1.5" data-acp-pending-send={pending.id} data-acp-pending-status={pending.status}>
       <AgentTranscriptBubble message={pendingMessage(pending)} onOpenAttachment={onOpenAttachment} />
-      <div className={`flex items-center justify-end gap-2 px-1 text-[12px] ${pending.status === "failed" ? "text-rose-500" : "text-stone-400"}`}>
-        <span data-acp-pending-state="">{statusText}</span>
+      {(statusText || errorText) && <div className={`flex items-center justify-end gap-2 px-1 text-[12px] ${pending.status === "failed" ? "text-rose-500" : "text-stone-400"}`}>
+        {statusText && <span data-acp-pending-state="">{statusText}</span>}
         {errorText && <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" role="alert" data-acp-pending-error="">{errorText}</span>}
         {pending.status === "failed" && onRetry && (
           <button
@@ -79,7 +79,7 @@ export function PendingSendBubble({
             {tt("重试")}
           </button>
         )}
-      </div>
+      </div>}
     </div>
   );
 }

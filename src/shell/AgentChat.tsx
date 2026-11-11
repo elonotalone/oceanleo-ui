@@ -1585,20 +1585,16 @@ function AgentChatInner({
   /** The user sent again from this composer: the earlier failure is no longer what is said. */
   const [pendingRetried, setPendingRetried] = useState("");
   const pendingTask = pending && (!taskId || taskId === pending.taskId || pendingRetried === pending.id);
-  const pendingShown = pending && pendingTask && acpView.turns.length === 0 ? pending : null;
-  const pendingInFlight = Boolean(pendingShown && pendingShown.error == null);
+  const pendingShown = pending && pendingTask && !acpPromptRowVisible(pending, frames.rows) ? pending : null;
+  const pendingInFlight = Boolean(pending && pendingTask && pending.status === "sending");
   const acpSendBlocked = acpTransportBlocked || acpBusy || pendingInFlight;
-  const acpSendBlockedReason = readOnly
+  const acpSendBlockedReason = readOnly || acpBusy || pendingInFlight
     ? null
-    : pendingInFlight
-      ? tt("上一条还在发送")
-      : acpBusy
-        ? tt("正在发送…")
-        : acpTransportBlocked
-          ? (taskId
-            ? (frames.state === "connecting" ? tt("正在连接…") : tt("网络断开，恢复后可发送"))
-            : tt("电脑离线"))
-          : null;
+    : acpTransportBlocked
+      ? (taskId
+        ? (frames.state === "disconnected" ? tt("网络断开，恢复后可发送") : tt("正在连接…"))
+        : tt("电脑离线"))
+      : null;
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
     && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
@@ -1619,12 +1615,6 @@ function AgentChatInner({
       acpMessageIdRef.current = { key: acpMessageKey(entry.text, entry.attachments), id: entry.clientMessageId };
     }
   }, [acpPendingSends, atts.restoreReady]);
-  const retryAcpPending = useCallback((entry: (typeof acpPendingSends)[number]) => {
-    retryPending(entry.id);
-    setInput((current) => current || entry.text);
-    atts.restoreReady(pendingAttachmentTiles(entry.attachments));
-    acpMessageIdRef.current = { key: acpMessageKey(entry.text, entry.attachments), id: entry.clientMessageId };
-  }, [atts.restoreReady]);
   useEffect(() => {
     if (!pending?.taskId || !pending.session || taskId) return;
     void adoptCreatedTask(pending.taskId, pending.session, pending.text);
@@ -1642,7 +1632,7 @@ function AgentChatInner({
   }, [pending, atts.restoreReady]);
   // The message went out with its choices: a later message carries only what changes.
   useEffect(() => {
-    if (pending?.taskId && taskId === pending.taskId && acpView.turns.length > 0 && acpSentRef.current?.taskId !== taskId) {
+    if (pending?.taskId && taskId === pending.taskId && (pending.status === "accepted" || pending.status === "queued" || acpView.turns.length > 0) && acpSentRef.current?.taskId !== taskId) {
       acpSentRef.current = {taskId, choices: pending.choice};
     }
   }, [pending, taskId, acpView.turns.length]);
@@ -2218,16 +2208,20 @@ function AgentChatInner({
   // A native task's message: POST send (or switch, when the dock names another
   // program). A draft creates its task first. On a refusal (409) the composer keeps
   // the text; the user's own row, and the program's error row, arrive on the socket.
-  async function sendAcpMessage() {
-    const text = input.trim();
-    const uploaded = toolsOn ? atts.ready() : [];
+  async function sendAcpMessage(retry?: (typeof acpPendingSends)[number]) {
+    const text = retry ? retry.text : input.trim();
+    const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || pendingInFlight || acpComposerDisabled || !acpProgram || !acpComputerId) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
+    const choice = retry?.choice ?? acpPicker.choice;
     const key = acpMessageKey(text, uploaded);
+    if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
     const clientMessageId = acpMessageIdRef.current.id;
-    if (pendingShown) setPendingRetried(pendingShown.id);
-    const reuseHomePending = Boolean(pendingShown && !(pendingShown.error != null && refusedByAgent(pendingShown.error)));
+    const retryHomePending = pendingShown?.status === "failed" && acpMessageKey(pendingShown.text, pendingShown.attachments) === key;
+    if (retryHomePending) setPendingRetried(pendingShown.id);
+    const reuseHomePending = retryHomePending && !refusedByAgent(pendingShown.error);
+    if (reuseHomePending) retryPending(pendingShown.id);
     const retryingTaskPending = acpPendingSends.find((entry) =>
       entry.rowId === null && entry.clientMessageId === clientMessageId && acpMessageKey(entry.text, entry.attachments) === key,
     );
@@ -2238,14 +2232,16 @@ function AgentChatInner({
       program: acpProgram,
       text,
       attachments: uploaded,
-      choice: acpPicker.choice,
+      choice,
       taskId: taskId || null,
       afterRowId: frames.rows.reduce((max, row) => Math.max(max, row.id), 0),
     });
     if (!reuseHomePending && !retryingTaskPending) setAcpPendingIds((current) => [...current, optimisticId]);
     // The bubble is committed in this render; the network request never owns the composer.
-    setInput("");
-    atts.clear();
+    if (!retry || input.trim() === text) {
+      setInput("");
+      atts.clear();
+    }
     setAcpBusy(true);
     setAcpError(null);
     let id = taskId || "";
@@ -2266,7 +2262,7 @@ function AgentChatInner({
         computer_id: acpComputerId,
         text,
         ...(uploaded.length ? { attachments: uploaded } : {}),
-        ...changedChoices(acpPicker.choice, sent),
+        ...changedChoices(choice, sent),
       };
       const result = await sendAcp(id, body);
       settlePending(optimisticId, {
@@ -2275,7 +2271,7 @@ function AgentChatInner({
         queued: acpQueuedValue(result),
         session: created?.session,
       });
-      acpSentRef.current = { taskId: id, choices: { ...sent, ...acpPicker.choice } };
+      acpSentRef.current = { taskId: id, choices: { ...sent, ...choice } };
       acpMessageIdRef.current = null;
       acpFollowRef.current = true;
       // A first message creates the session row; refresh the list for it.
@@ -3531,7 +3527,7 @@ function AgentChatInner({
           </button>
         </div>
       )}
-      {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onOpenAttachment={openTaskAttachment} />}
+      {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onRetry={() => void sendAcpMessage(pendingShown)} onOpenAttachment={openTaskAttachment} />}
       <AcpTranscript
         rows={frames.rows}
         program={acpRowsProgram}
@@ -3549,7 +3545,7 @@ function AgentChatInner({
           key={entry.id}
           pending={entry}
           errorText={entry.error != null && !refusedByAgent(entry.error) ? acpErrorText(entry.error) : ""}
-          onRetry={() => retryAcpPending(entry)}
+          onRetry={() => void sendAcpMessage(entry)}
           onOpenAttachment={openTaskAttachment}
         />
       ))}
@@ -3565,7 +3561,7 @@ function AgentChatInner({
     footer: share.active ? <ShareActionBar share={share} /> : (
       <>
         {taskId && !acpConnected && (
-          <p className="px-1 text-[12px] text-stone-500" role="status" data-acp-disconnected="">{tt("连接断开")}</p>
+          <p className="px-1 text-[12px] text-stone-500" role="status" data-acp-connection={frames.state} data-acp-disconnected={frames.state === "disconnected" ? "" : undefined}>{frames.state === "disconnected" ? tt("连接断开") : tt("正在连接…")}</p>
         )}
         <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         <LeoComposer
