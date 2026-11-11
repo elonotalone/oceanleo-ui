@@ -197,10 +197,10 @@ for (const kind of ["LeoChat", "Deal", "Talent"]) {
     } finally { await view.close(); }
   });
 
-  test(`${kind}: a failed older page is invisible and retries after backoff`, async () => {
+  for (const retryPosition of ["near top", "background at bottom"]) test(`${kind}: a failed older page ${retryPosition} is invisible and retries after backoff`, async () => {
     const view = await mount(kind);
     try {
-      await scroll(view.scroller, 550);
+      if (retryPosition === "near top") await scroll(view.scroller, 550);
       await act(async () => view.calls[0].reject(new Error("offline")));
       noHistoryText(view.host);
       assert.equal(view.host.querySelector(".v-spinner"), null);
