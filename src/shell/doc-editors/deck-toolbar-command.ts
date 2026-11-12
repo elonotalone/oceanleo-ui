@@ -1,7 +1,6 @@
 import type { SelectionCommand } from "../selection-context";
 import type {
   DeckElement,
-  DeckLayout,
   DeckTextAlign,
 } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
@@ -48,9 +47,6 @@ export function applyDeckToolbarCommand(
         break;
       case "add-slide":
         editor.addSlide();
-        break;
-      case "layout":
-        editor.applySlideLayout(String(message.value) as DeckLayout);
         break;
       case "title":
       case "body":

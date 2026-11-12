@@ -3,34 +3,13 @@
 import type { ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { deckShapeClipPath } from "./DeckElementContent";
-import { DECK_THEMES, type DeckLayout } from "./deck-schema";
+import { DECK_THEMES } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 
 const inputClass =
   "w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[12px] text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus:border-[var(--awb-accent,#7c3aed)] focus:ring-2 focus:ring-[var(--awb-accent,#7c3aed)]/10";
 const buttonClass =
   "rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2.5 text-[11px] font-medium text-[var(--fg-2,#57534e)] transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:border-[var(--awb-accent,#7c3aed)]/40 hover:shadow-sm disabled:opacity-35";
-/** deck-extension.md §4 L1–L16, plus the two legacy editor grammars. */
-const DECK_LAYOUTS: readonly { id: DeckLayout; label: string }[] = [
-  { id: "title", label: "封面" },
-  { id: "section", label: "章节页" },
-  { id: "bullets", label: "要点列表" },
-  { id: "two-column", label: "双栏" },
-  { id: "data-table", label: "数据表" },
-  { id: "image-full", label: "满幅图" },
-  { id: "image-left", label: "左图右文" },
-  { id: "image-right", label: "左文右图" },
-  { id: "image-grid", label: "图片宫格" },
-  { id: "chart-focus", label: "图表主视觉" },
-  { id: "chart-with-notes", label: "图表加要点" },
-  { id: "kpi-row", label: "指标卡" },
-  { id: "comparison", label: "左右对比" },
-  { id: "timeline", label: "时间轴" },
-  { id: "quote", label: "引文" },
-  { id: "mixed-triptych", label: "图文数三联" },
-  { id: "title-body", label: "标题与正文" },
-];
-
 function Panel({
   title,
   description,
@@ -110,43 +89,6 @@ export function DeckDesignPanel({
                 {aspect}
               </button>
             ))}
-          </div>
-          <div>
-            <p className="mb-2 text-[10px] font-medium text-[var(--muted,#78716c)]">
-              {tt("页面布局")}
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {DECK_LAYOUTS.map((layout) => (
-                <button
-                  key={layout.id}
-                  type="button"
-                  onClick={() => editor.applySlideLayout(layout.id)}
-                  className="rounded-xl border px-2.5 py-2 text-left text-[10px] font-medium transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:-translate-y-0.5 hover:shadow-sm"
-                  style={
-                    slide.layout === layout.id
-                      ? {
-                          borderColor: accent,
-                          color: accent,
-                          background: `${accent}0d`,
-                        }
-                      : {
-                          borderColor: "var(--border,#e7e5e4)",
-                          color: "var(--fg-2,#57534e)",
-                        }
-                  }
-                >
-                  <span className="mb-1.5 block aspect-video rounded-md border border-current/20 bg-[var(--surface,#f5f5f4)]">
-                    <span
-                      className={`mx-auto mt-1.5 block h-1 rounded-full bg-current/55 ${
-                        layout.id.includes("image") ? "w-2/5" : "w-3/5"
-                      }`}
-                    />
-                    <span className="mx-auto mt-1 block h-5 w-4/5 rounded-sm border border-current/15" />
-                  </span>
-                  {tt(layout.label)}
-                </button>
-              ))}
-            </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {DECK_THEMES.map((theme) => (

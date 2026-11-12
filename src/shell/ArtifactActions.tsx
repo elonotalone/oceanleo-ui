@@ -16,7 +16,6 @@ import {
   prepareArtifactForAction,
   setArtifactFavorite,
 } from "./artifact-client";
-import { DeckHtmlActionButton, deckHtmlEvidence } from "./DeckHtmlAction";
 import { deckHtmlOpenPlan } from "./deck-delivery-family";
 import { humanErrorMessage } from "./human-error-message";
 import {
@@ -203,9 +202,7 @@ function editEvidence(item: LibraryItem): {
   reason: string;
   requiresEnsure: boolean;
 } {
-  // HTML 网页版演示的编辑源**只能**是那份 `oceanleo.deck.v1` 结构稿。拿不到稿子时
-  // 按钮不出现：绝不把 HTML 成品当编辑源塞给 deck editor，也不留一颗按下去只会
-  // 吐技术理由的灰按钮。这一档与「查看」互不牵连（`deck-delivery-family.ts`）。
+  // Legacy HTML deliveries cannot be edited by the PPTX editor.
   const deckHtml = deckHtmlOpenPlan(item);
   if (deckHtml.family === "html" && !deckHtml.edit.visible) {
     return {
@@ -596,23 +593,7 @@ export function ArtifactActionButtons({
   const favoriteReason = identityBlocked
     ? artifactActionMessage(identityReason, "没取到这份素材的当前版本，重试一次即可。")
     : "暂时无法收藏，请刷新后重试。";
-  /**
-   * 「网页版」是从稿子当场渲的，所以它跟着**稿子**在不在，而不是跟着 rendition 走。
-   * 身份还没取回来时它与下载同口径：留在原地、按不动、说同一句话——那一刻我们连
-   * 当前 revision 是哪个都还不知道，渲出来的很可能不是用户看的这一版。
-   */
   const deckHtmlPlan = deckHtmlOpenPlan(item);
-  const deckHtmlSource = deckHtmlEvidence(item);
-  const deckHtml = {
-    ...deckHtmlSource,
-    // 已经是 HTML 交付的那三件不需要「临时导出一份网页版」：它们本身就是网页版，
-    // 播放入口是隔离域的「查看」。这颗按钮仍然只服务于带结构稿的 PPTX 条目。
-    visible: deckHtmlSource.visible && deckHtmlPlan.family !== "html",
-    available: deckHtmlSource.available && !identityBlocked,
-    reason: identityBlocked
-      ? artifactActionMessage(identityReason, "没取到这份素材的当前版本，重试一次即可。")
-      : artifactActionMessage(deckHtmlSource.reason, "暂时无法导出，请刷新后重试。"),
-  };
   /**
    * HTML 演示的「查看」= 在**新窗口**打开隔离域播放页。
    *
@@ -782,7 +763,6 @@ export function ArtifactActionButtons({
     identity?.onRetry?.();
   };
   // Library material order: 分享 → 下载 → 收藏 → 编辑.
-  // 「网页版」紧跟在下载后面，只在 deck 条目上出现（`deckHtmlEvidence` 自己判可见性）。
   // Insert/Replace follow when an editor host registers them.
   // Preview is hidden for library materials via matrix.hidePreview.
   const primaryActions = (
@@ -806,9 +786,6 @@ export function ArtifactActionButtons({
           : []),
         ...(favoriteVisible && !favoriteAvailable && favoriteReason
           ? [`${tt("收藏")}: ${tt(favoriteReason)}`]
-          : []),
-        ...(deckHtml.visible && !deckHtml.available && deckHtml.reason
-          ? [`${tt("网页版")}: ${tt(deckHtml.reason)}`]
           : []),
       ],
     ),
@@ -996,15 +973,6 @@ export function ArtifactActionButtons({
             {tt("查看")}
           </a>
         )}
-        <DeckHtmlActionButton
-          item={item}
-          evidence={deckHtml}
-          report={report}
-          onFailure={fail}
-          reasonId={reasonId}
-          className={chipClass}
-          style={chipStyle(deckHtml.available)}
-        />
         {fullscreenVisible && (
           <button
             type="button"

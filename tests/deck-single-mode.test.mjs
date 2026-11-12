@@ -29,8 +29,8 @@ test("PPTist hosted files are deleted", () => {
   }
 });
 
-test("pptist carrier stays a clean-room format converter (no AGPL app code)", () => {
-  const carrier = readFileSync("src/shell/doc-editors/deck-pptist-carrier.ts", "utf8");
-  assert.doesNotMatch(carrier, /from\s+["'](?:pptist|@pptist)/i);
-  assert.match(carrier, /AGPL/);
+test("fixed-layout deck carriers are deleted", () => {
+  for (const file of ["deck-ir", "deck-packs", "deck-layout-grid", "deck-ooxml-package", "deck-html-package", "deck-pptist-carrier", "deck-aippt-schema"]) {
+    assert.equal(existsSync(`src/shell/doc-editors/${file}.ts`), false, file);
+  }
 });

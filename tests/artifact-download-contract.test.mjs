@@ -569,7 +569,7 @@ test("deck shelf hint stays pptx even when only editor JSON source exists", asyn
         revisionId: "r1",
         url: "https://example.test/deck.json",
         mediaType: "application/json",
-        format: "oceanleo.deck.v1",
+        format: "pptx",
         expiresAt: null,
         rendererVersion: null,
         width: null,

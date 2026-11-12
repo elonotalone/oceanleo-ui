@@ -177,7 +177,7 @@ function shelfItem(bindings) {
       revisionId,
       artifactType: "deck",
       editorCapability: "deck-editor",
-      sourceFormat: "oceanleo.deck.v1",
+      sourceFormat: "pptx",
       access: {
         canRead: true,
         canPreview: true,

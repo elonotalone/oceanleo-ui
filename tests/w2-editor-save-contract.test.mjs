@@ -926,8 +926,8 @@ test("a dropped contract rendition is refused at the verify step", async () => {
       kind: "deck",
       idempotencyKey: "deck:verify:r1",
       meta: {},
-      project: { schema: "oceanleo.deck.v1", data: {} },
-      editorManifest: { id: "deck-editor", format: "oceanleo.deck.v1" },
+      project: { schema: "pptx", data: {} },
+      editorManifest: { id: "deck-editor", format: "pptx" },
       artifactRevision: { artifactType: "deck" },
     },
     {
@@ -986,7 +986,7 @@ test("a dropped contract rendition is refused at the verify step", async () => {
                 purpose: "editor_manifest",
                 revisionId: "r2",
                 url: "https://signed.test/deck-r2.json",
-                format: "oceanleo.deck.v1",
+                format: "pptx",
                 mediaType: "application/json",
                 digest: `sha256:${
                   commit.renditions.find(

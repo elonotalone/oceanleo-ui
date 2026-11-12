@@ -1611,6 +1611,7 @@ const EMBEDDED_TYPED_COMMIT_SOURCE_FORMATS: Readonly<
     "oceanleo.video.project.v2",
   ],
   website: [
+    "website-source@1",
     "html",
     "zip",
     "oceanleo.website-project.v1",
@@ -1625,6 +1626,7 @@ const EMBEDDED_TYPED_COMMIT_MEDIA_TYPES: Readonly<Record<string, string>> =
     "oceanleo.workflow.v1": "application/json",
     "oceanleo.video-canvas.v1": "application/json",
     "oceanleo.video.project.v2": "application/json",
+    "website-source@1": "application/json",
     "oceanleo.website-project.v1": "application/json",
     html: "text/html",
     zip: "application/zip",

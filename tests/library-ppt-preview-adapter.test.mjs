@@ -146,12 +146,10 @@ test("adapter destroys imperative preview surfaces and keeps errors truthful", (
   assert.match(viewer, /role="alert"/);
   assert.match(
     viewer,
-    /PPT 在线解析失败，正在显示结构化幻灯片快照。/,
+    /PPT 在线解析失败，可打开原文件。/,
   );
   assert.match(viewer, /busy=\{state === "loading"\}/);
-  // 结构化快照兜底仍然挂在 error 分支上。
-  assert.match(viewer, /if \(state === "error"\) \{/);
-  assert.match(viewer, /<StructuredSlidePreview/);
+  assert.doesNotMatch(viewer, /<StructuredSlidePreview/);
 });
 
 test("PPT preview no longer pulls echarts into the parse path", () => {

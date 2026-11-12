@@ -250,13 +250,7 @@ export function DeckRoute({
         source_media_type: saved.sourceMediaType,
         source_url: saved.url,
         delivery_format: "pptx",
-        editor_project_url: saved.projectUrl,
-        editor_project_schema: saved.projectSchema || "oceanleo.deck.v1",
-        editor_manifest_url: saved.projectUrl,
-        editor_manifest_schema: saved.projectSchema || "oceanleo.deck.v1",
-        editor_working_head_url: saved.projectUrl,
-        editor_working_head_project_url: saved.projectUrl,
-        editor_working_head_schema: saved.projectSchema || "oceanleo.deck.v1",
+
       },
     });
     return {
@@ -306,10 +300,6 @@ export function DeckRoute({
           await editor.exportPptx();
           return editor.error || "";
         }
-        if (extension === "json") {
-          await editor.downloadJson();
-          return "";
-        }
         if (extension === "pdf") {
           await editor.flushBeforeExport();
           const title = (editor.deck.title || item.title || "presentation").replace(/\.(?:pptx?|odp|key)$/i, "");
@@ -329,7 +319,6 @@ export function DeckRoute({
     },
     [
       editor.deck,
-      editor.downloadJson,
       editor.error,
       editor.exportPptx,
       editor.flushBeforeExport,

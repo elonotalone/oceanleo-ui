@@ -1,3 +1,4 @@
+const EMU_PER_POINT = 12700;
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createElement } from "react";
@@ -5,10 +6,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import PptxGenJS from "pptxgenjs";
 import { strFromU8, unzipSync } from "fflate";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { buildDeckHtml } from "../src/shell/doc-editors/deck-html-package.ts";
-import { DECK_GRID, EMU_PER_POINT } from "../src/shell/doc-editors/deck-layout-grid.ts";
-import { deckCarrierPlacement } from "../src/shell/doc-editors/deck-schema.ts";
-import { deckDocumentToPptist, pptistToDeckDocument } from "../src/shell/doc-editors/deck-pptist-carrier.ts";
 import { deckPptxTableImageData } from "../src/shell/doc-editors/DeckPptxVisuals.ts";
 import { renderDeckPreviewPng } from "../src/shell/doc-editors/editor-preview-raster.ts";
 import { deckPageWidthPt, deckFontSizeCqi, deckFontSizePx, deckFontSizePt } from "../src/shell/doc-editors/deck-text-scale.ts";
@@ -33,19 +30,8 @@ function cqi(props) {
   const html = renderToStaticMarkup(createElement(DeckElementContent, { element: element(), ...props }));
   return Number(html.match(/font-size:([\d.]+)cqi/)?.[1]);
 }
-function htmlProject() {
-  return { schema: "oceanleo.deck.v1", version: 1, title: "字号", theme: { accent: "1F6FEB", fontMajor: "Aptos", fontEastAsian: "Microsoft YaHei" }, master: { footerText: "", showPageNumber: false }, slides: [{ layout: "bullets", title: "字号对齐", bullets: ["正文"] }], assets: [], attribution: { entries: [{ text: "OceanLeo", licenseCode: "OCEANLEO-AIGEN", licenseUrl: "https://oceanleo.com/license" }] } };
-}
-
 test("16:9 18pt uses 18/9.6 cqi in the actual text renderer", () => {
   close(cqi({ aspect: "16:9" }), 18 / 9.6, "wide text");
-});
-
-test("the same 16:9 title has the same font/page-width ratio in edit and HTML", async () => {
-  const title = deckCarrierPlacement("bullets").title;
-  const build = await buildDeckHtml(htmlProject());
-  const exportedPx = Number(build.html.match(/font-size:([\d.]+)px[^>]*><span data-deck-text>字号对齐/)?.[1]);
-  close(cqi({ element: element(title), aspect: "16:9" }) / 100, exportedPx / build.pageWidth, "edit/HTML ratio");
 });
 
 for (const [aspect, widthPt, layout] of [["16:9", 960, "LAYOUT_WIDE"], ["4:3", 720, "LAYOUT_4x3"]]) {
@@ -92,36 +78,6 @@ for (const [aspect, widthPt, layout] of [["16:9", 960, "LAYOUT_WIDE"], ["4:3", 7
     close(Number(html.match(/font-size:([\d.]+)cqi/)?.[1]), 18 / (widthPt / 100), "thumbnail");
   });
 
-  test(`${aspect} PPTist writes scaled px and round-trips decimal pt without drift`, () => {
-    for (const fontSize of [4, 9.5, 18, 23.37, 44.125, 72, 299.99]) {
-      for (const align of [undefined, "left", "center", "right"]) {
-        let source = deck(aspect, [element({ fontSize, align })]);
-        const original = JSON.stringify(source);
-        const carrier = deckDocumentToPptist(source);
-        close(Number(carrier.slides[0].elements[0].content.match(/font-size:([\d.]+)px/)?.[1]), fontSize * 1000 / widthPt, "PPTist px");
-        assert.equal(JSON.stringify(source), original, "conversion must not rewrite stored pt");
-        for (let turn = 0; turn < 10; turn++) source = pptistToDeckDocument(deckDocumentToPptist(source));
-        close(source.slides[0].elements[0].fontSize, fontSize, "round-trip pt", 0.01);
-        for (const key of ["x", "y", "width", "height", "rotation"]) assert.equal(source.slides[0].elements[0][key], element()[key]);
-      }
-    }
-  });
-
-  test(`${aspect} shape labels use the same PPTist scale in both directions`, () => {
-    const source = deck(aspect, [element({ type: "shape", shape: "rect", fontSize: 23.37, align: "center" })]);
-    const carrier = deckDocumentToPptist(source);
-    const px = Number(carrier.slides[0].elements[0].text.content.match(/font-size:([\d.]+)px/)?.[1]);
-    close(px, 23.37 * 1000 / widthPt, "shape label px");
-    close(pptistToDeckDocument(carrier).slides[0].elements[0].fontSize, 23.37, "shape label pt", 0.01);
-  });
-
-  test(`${aspect} HTML uses the same font/page-width ratio`, async () => {
-    const title = deckCarrierPlacement("bullets").title;
-    const build = await buildDeckHtml(htmlProject(), { aspect });
-    const px = Number(build.html.match(/font-size:([\d.]+)px[^>]*><span data-deck-text>字号对齐/)?.[1]);
-    close(px / build.pageWidth, title.fontSize / widthPt, "HTML ratio");
-  });
-
   test(`${aspect} flattened table font accounts for the table's width on the page`, () => {
     for (const width of [25, 50, 80]) {
       const table = element({ type: "table", width, fontSize: 18.25, rows: [["单元格"]], bold: true });
@@ -148,10 +104,3 @@ for (const [aspect, widthPt, layout] of [["16:9", 960, "LAYOUT_WIDE"], ["4:3", 7
     }
   });
 }
-
-test("the default title line including line-height fits its unchanged frame", () => {
-  const title = deckCarrierPlacement("title").title;
-  const fontPx = cqi({ element: element(title) }) / 100 * 960;
-  const boxPx = title.height / 100 * (DECK_GRID.pageHeight / EMU_PER_POINT);
-  assert.ok(fontPx * 1.15 <= boxPx, `${fontPx * 1.15} > ${boxPx}`);
-});

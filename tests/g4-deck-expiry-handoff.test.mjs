@@ -62,9 +62,6 @@ registerHooks({
   },
 });
 
-const { deckDocumentToPptist } = await import(
-  "../src/shell/doc-editors/deck-pptist-carrier.ts"
-);
 const { deckDeliveryUrlFor } = await import(
   "../src/shell/doc-editors/use-deck-editor.ts"
 );
@@ -119,7 +116,7 @@ const sourceDeck = normalizeDeckDocument({
 });
 
 function fakePptxImport() {
-  return deckDocumentToPptist(sourceDeck);
+  return sourceDeck;
 }
 
 test("G4: old signed URL expires at 300s, refreshed URL preserves every page through pro and back", async () => {
@@ -161,7 +158,7 @@ test("G4: old signed URL expires at 300s, refreshed URL preserves every page thr
     });
     assert.equal(pro.ok, true);
     assert.equal(pro.slideCount, 8);
-    assert.match(pro.json.slides[0].elements[0].content, /月度工作汇报/);
+    assert.match(pro.json.slides[0].title, /月度工作汇报/);
 
     const normalAfterReturning = await fetchDeck(refreshedItem);
     assert.equal(normalAfterReturning.slides.length, 8);

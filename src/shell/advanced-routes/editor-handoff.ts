@@ -514,50 +514,6 @@ export function openHostedSaveGate(options?: {
   };
 }
 
-export function libraryItemFromProSave(
-  item: LibraryItem,
-  input: {
-    deck: unknown;
-    revision: string;
-    projectUrl?: string;
-    sourceUrl?: string;
-  },
-): LibraryItem {
-  const deck = input.deck;
-  if (input.projectUrl) {
-    return {
-      ...item,
-      revisionId: input.revision,
-      url: input.sourceUrl || item.url,
-      content:
-        typeof deck === "string" ? deck : JSON.stringify(deck ?? {}),
-      meta: {
-        ...item.meta,
-        deck,
-        editor_project_url: input.projectUrl,
-        editor_working_head_url: input.projectUrl,
-        editor_working_head_project_url: input.projectUrl,
-        editor_working_head_schema: "oceanleo.deck.v1",
-        handoff_revision: input.revision,
-      },
-    };
-  }
-  return {
-    ...item,
-    revisionId: input.revision,
-    url: undefined,
-    content: typeof deck === "string" ? deck : JSON.stringify(deck ?? {}),
-    meta: {
-      ...item.meta,
-      deck,
-      editor_project_url: "",
-      editor_working_head_url: "",
-      editor_working_head_project_url: "",
-      handoff_revision: input.revision,
-    },
-  };
-}
-
 export function slideCountOf(value: unknown): number {
   const record = asRecord(value);
   const slides = record && Array.isArray(record.slides) ? record.slides : null;

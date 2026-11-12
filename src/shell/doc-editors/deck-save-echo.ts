@@ -78,7 +78,7 @@ export function deckExistingVersion(
     artifactId,
     revisionId,
     projectUrl,
-    projectSchema: text(item.meta.editor_project_schema) || "oceanleo.deck.v1",
+    projectSchema: "",
     sourceFormat: text(item.meta.source_format) || "pptx",
     sourceMediaType: text(item.meta.source_media_type) || undefined,
     title: item.title,

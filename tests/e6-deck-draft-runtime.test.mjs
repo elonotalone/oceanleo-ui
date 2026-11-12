@@ -81,6 +81,14 @@ const { useDeckEditor } = await import(await compileModule('src/shell/doc-editor
     import { loadDeckServerDraft as read } from ${JSON.stringify(new URL('../src/shell/advanced-draft-deck.ts', import.meta.url).href)};
     export function loadDeckServerDraft(item, signal) { return read(item, signal, globalThis.fetch); }
   `),
+  './office-file': dataModule(`
+    export async function fetchValidatedOfficePackage() { return { arrayBuffer: new ArrayBuffer(1) }; }
+    export function notifyOfficeAccessDenied() {}
+    export async function validateOfficePackageBlob() {}
+  `),
+  './pptx-deck-import': dataModule(`
+    export async function importPptxDeck() { return globalThis.__e6Deck?.project || { version: 2, title: 'Version title', aspect: '16:9', theme: 'ocean', masters: [{ id: 'master' }], slides: [{ id: 'slide', title: 'Version', layout: 'blank', body: '', bullets: [], notes: '', elements: [] }] }; }
+  `),
   './doc-io': dataModule(`
     export function blobToDataUrl() { throw Error('unexpected'); }
     export function downloadBlob() { globalThis.__e6Deck.downloads++; }
@@ -91,7 +99,7 @@ const { useDeckEditor } = await import(await compileModule('src/shell/doc-editor
   `),
 }));
 const documentModel = normalizeDeckDocument({ title: 'Cloud title', slides: [{ id: 'slide', title: 'Cloud edit' }] });
-const base = { id: 'base-1', key: 'root-1', source: 'creation', title: 'Base title', kind: 'ppt', siteId: 'ppt', favorite: false, meta: { parent_asset_id: 'root-1', deck: normalizeDeckDocument({ title: 'Version title' }) } };
+const base = { url: 'https://files.example/source.pptx', id: 'base-1', key: 'root-1', source: 'creation', title: 'Base title', kind: 'ppt', siteId: 'ppt', favorite: false, meta: { parent_asset_id: 'root-1', deck: normalizeDeckDocument({ title: 'Version title' }) } };
 const pointer = { rootId: 'root-1', baseRevisionId: 'base-1', url: 'https://files.example/draft.json', schema: DECK_DRAFT_SCHEMA, editRevision: 7, savedAt: '2026-09-27T00:00:00Z' };
 let editor;
 function Probe({ item = base }) { editor = useDeckEditor(item, 'ppt'); return null; }
@@ -142,22 +150,6 @@ test('a successful PPT save still returns its version receipt after the editor u
   const saved = await saving;
   assert.equal(saved?.versionId, 'base-2'); assert.equal(saved?.item.id, 'base-2');
 });
-test('PPT JSON download waits for its complete version gate and stops on save failure', async () => {
-  globalThis.__e6Deck = { downloads: 0 }; const pending = deferred();
-  const tree = await mount(React.createElement(Probe, {}));
-  try {
-    await act(async () => { await sleep(0); });
-    editor.draft.bindFlush(() => pending.promise);
-    const exporting = editor.downloadJson();
-    await Promise.resolve(); assert.equal(globalThis.__e6Deck.downloads, 0);
-    pending.resolve({ ok: true }); await exporting;
-    assert.equal(globalThis.__e6Deck.downloads, 1);
-    editor.draft.bindFlush(async () => ({ ok: false, error: 'version failed' }));
-    await assert.rejects(() => editor.downloadJson(), /version failed/);
-    assert.equal(globalThis.__e6Deck.downloads, 1);
-  } finally { await tree.unmount(); }
-});
-
 test('normal to professional handoff asks the host version queue instead of directly exporting again', async () => {
   let queued = 0, direct = 0;
   globalThis.__e6Deck = { save: async () => { direct++; return { ok: false }; } };
@@ -182,4 +174,22 @@ test('a matching pointer arriving with session hydration triggers the actual PPT
     assert.equal(editor.deck.title, 'Cloud title');
     assert.equal(editor.draft.restoredRevision, 7);
   } finally { await tree.unmount(); globalThis.fetch = originalFetch; }
+});
+
+test('PPTX export waits for the version gate and stops on save failure', async () => {
+  globalThis.__e6Deck = {};
+  const pending = deferred();
+  const tree = await mount(React.createElement(Probe, {}));
+  try {
+    let released = false;
+    editor.draft.bindFlush(() => pending.promise);
+    const gate = editor.flushBeforeExport().then(() => { released = true; });
+    await Promise.resolve();
+    assert.equal(released, false);
+    pending.resolve({ ok: true });
+    await gate;
+    assert.equal(released, true);
+    editor.draft.bindFlush(async () => ({ ok: false, error: 'version failed' }));
+    await assert.rejects(() => editor.flushBeforeExport(), /version failed/);
+  } finally { await tree.unmount(); }
 });

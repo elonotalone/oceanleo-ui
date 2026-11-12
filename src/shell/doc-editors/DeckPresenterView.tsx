@@ -219,109 +219,6 @@ function PositionedPresenterSlide({ slide, aspect }: { slide: DeckSlide; aspect:
 }
 
 /**
- * 没有定位元素的老版式。
- *
- * `DeckLegacySlideLayout` 在这里用不了：它整屏是 `<textarea>`，而且要一个完整的
- * `DeckEditorState`（放映态刻意只有只读的两个字段）。所以照它的版式写一份只读的。
- *
- * 字号用 `cqw` 而不是原件的 `vw`：这一份要同时出现在整屏投影和演讲者窗里那块
- * 小预览上，`vw` 会让小预览里的标题跟投影一样大，直接糊出去。
- */
-function LegacyPresenterSlide({
-  deck,
-  slide,
-}: {
-  deck: DeckDocument;
-  slide: DeckSlide;
-}) {
-  const theme = deckTheme(deck.theme);
-  const master = deckMasterFor(deck, slide);
-  const isCenter = slide.layout === "title" || slide.layout === "section";
-  const hasImage =
-    slide.layout === "image-left" || slide.layout === "image-right";
-  const imageLeft = slide.layout === "image-left";
-
-  const textPanel = (
-    <div
-      className={`flex min-w-0 flex-1 flex-col ${
-        isCenter ? "items-center justify-center text-center" : "justify-start"
-      }`}
-    >
-      <h2
-        className={`w-full font-bold ${
-          isCenter ? "text-center text-[6cqw]" : "text-[4.4cqw]"
-        }`}
-        style={{
-          color: master.textColor || theme.text,
-          fontFamily: master.fontFamily || theme.fontFamily,
-        }}
-      >
-        {slide.title}
-      </h2>
-      {slide.layout !== "blank" && slide.body.trim() && (
-        <p
-          className={`mt-[1.5cqw] w-full whitespace-pre-wrap text-[2.4cqw] leading-relaxed ${
-            isCenter ? "text-center" : "text-left"
-          }`}
-          style={{ color: theme.muted, fontFamily: theme.fontFamily }}
-        >
-          {slide.body}
-        </p>
-      )}
-      {slide.layout !== "blank" && slide.bullets.length > 0 && (
-        <ul
-          className={`mt-[2cqw] w-full space-y-[1.2cqw] text-[2.3cqw] ${
-            isCenter ? "text-left" : ""
-          }`}
-          style={{ color: theme.text }}
-        >
-          {slide.bullets.map((bullet, index) => (
-            <li key={`${index}-${bullet}`} className="flex gap-[1.4cqw]">
-              <span
-                className="mt-[0.55em] h-[0.7cqw] w-[0.7cqw] shrink-0 rounded-full"
-                style={{ background: master.accentColor || theme.accent }}
-              />
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-
-  const imagePanel = hasImage ? (
-    <div
-      className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-[2cqw]"
-      style={{ background: theme.surface }}
-    >
-      {slide.image?.url ? (
-        <img
-          src={slide.image.url}
-          alt={slide.image.alt || ""}
-          className="h-full w-full object-cover"
-        />
-      ) : null}
-    </div>
-  ) : null;
-
-  return (
-    <div className="flex h-full w-full p-[6cqw]">
-      <span
-        className="absolute left-[6cqw] top-[4cqw] h-[0.5cqw] w-[9cqw] rounded-full"
-        style={{ background: master.accentColor || theme.accent }}
-      />
-      <div
-        className={`flex min-h-0 w-full gap-[5cqw] ${hasImage ? "" : "items-stretch"}`}
-      >
-        {imageLeft && imagePanel}
-        {textPanel}
-        {!imageLeft && imagePanel}
-      </div>
-    </div>
-  );
-}
-
-/**
  * 一整页，含切换动效。
  *
  * **`key` 落在带动效的那个包裹层上，这是「动效要真的播放」的全部机关。**
@@ -368,7 +265,7 @@ function PresenterSlideSurface({
           {slide.elements.length > 0 ? (
             <PositionedPresenterSlide slide={slide} aspect={deck.aspect} />
           ) : (
-            <LegacyPresenterSlide deck={deck} slide={slide} />
+            null
           )}
         </div>
       )}

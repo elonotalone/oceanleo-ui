@@ -34,7 +34,6 @@ import {
 } from "./DeckElementSelectionChrome";
 import { deckElementKey } from "../collab/adapters/deck";
 import { peersSelecting, type PeerSelection } from "../collab/adapters/visual-selection";
-import { DeckLegacySlideLayout } from "./DeckLegacySlideLayout";
 import { DeckSlideThumbnail } from "./DeckSlideThumbnail";
 import { EditorSourceFailurePanel } from "./EditorSourceFailurePanel";
 import { DeckPreviewLayout } from "./DeckPreviewLayout";
@@ -389,20 +388,7 @@ function SlideCanvas({
   inkStyle: DeckInkStyle;
   peers: readonly PeerSelection[];
 }) {
-  const slide = editor.activeSlide;
-
-  if (slide.elements.length > 0 || activeTool === "draw") {
-    return (
-      <PositionedSlideCanvas
-        editor={editor}
-        activeTool={activeTool}
-        inkStyle={inkStyle}
-        peers={peers}
-      />
-    );
-  }
-
-  return <DeckLegacySlideLayout editor={editor} slide={slide} />;
+  return <PositionedSlideCanvas editor={editor} activeTool={activeTool} inkStyle={inkStyle} peers={peers} />;
 }
 
 export function DeckStage({

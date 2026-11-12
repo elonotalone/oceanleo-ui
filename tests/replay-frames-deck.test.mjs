@@ -54,25 +54,7 @@ test("fromRevision（版本 JSON）与 fromY（协同文档）对同一内容得
   assert.equal(deckFromRevision(null), null);
 });
 
-test("fromRevision 认草稿（deck-ir）版本，且相邻版本的页与元素 id 稳定（逐页逐元素可比）", () => {
-  const ir = (extraTitle) => ({
-    schema: "oceanleo.deck.v1",
-    version: 1,
-    title: "草稿",
-    theme: { accent: "2563EB" },
-    slides: [
-      { layout: "title", title: extraTitle, subtitle: "副标题" },
-      { layout: "bullets", title: "要点", bullets: ["第一条", "第二条"] },
-    ],
-    attribution: { entries: [{ text: "t", licenseCode: "CC0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/" }] },
-  });
-  const a = deckFromRevision(ir("封面"));
-  const b = deckFromRevision(ir("新封面"));
-  assert.equal(a.slides.length, 2);
-  assert.deepEqual(a.slides.map((s) => s.id), ["draft-slide-1", "draft-slide-2"]);
-  assert.deepEqual(a.slides.map((s) => s.elements.map((e) => e.id)), b.slides.map((s) => s.elements.map((e) => e.id)));
-  assert.equal(deckDescribeChange(a, b)?.startsWith("改了第 1 页"), true);
-});
+
 
 test("describeChange：新增页、删除页、改标题、改文字、换图、移动、调层级、排序", () => {
   const base = makeDeck();

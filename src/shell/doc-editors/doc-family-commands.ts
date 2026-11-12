@@ -29,7 +29,6 @@ import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
 import type { PdfWorkbenchState } from "../media-editors/pdf-workbench-state";
 import type { LibraryItem } from "../library-data";
-import { DECK_IR_LAYOUTS } from "./deck-layout-grid";
 import type { DeckEditorState } from "./use-deck-editor";
 import type { GridCommandEditorState } from "./grid-shared";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
@@ -887,30 +886,6 @@ export function buildGridCommandSurface(
 // 演示（deck）
 // ---------------------------------------------------------------------------
 
-const DECK_LAYOUT_LABELS: Readonly<Record<string, string>> = {
-  title: "封面",
-  section: "章节页",
-  bullets: "要点列表",
-  "two-column": "双栏",
-  "data-table": "数据表",
-  "image-full": "满幅图",
-  "image-left": "左图右文",
-  "image-right": "左文右图",
-  "image-grid": "图片宫格",
-  "chart-focus": "图表主视觉",
-  "chart-with-notes": "图表加要点",
-  "kpi-row": "指标卡",
-  comparison: "左右对比",
-  timeline: "时间轴",
-  quote: "引文",
-  "mixed-triptych": "图文数三联",
-};
-
-const DECK_LAYOUT_CHOICES = DECK_IR_LAYOUTS.map((layout) => ({
-  value: layout,
-  label: DECK_LAYOUT_LABELS[layout] || layout,
-}));
-
 const DECK_SPECS: readonly PluginCommandSpec[] = [
   {
     id: "deck.add-slide",
@@ -926,21 +901,6 @@ const DECK_SPECS: readonly PluginCommandSpec[] = [
     params: [
       { key: "title", label: "标题", type: "string", required: true },
       { key: "page", label: "第几页", type: "number", hint: "从 1 开始，不给就是当前页。" },
-    ],
-  },
-  {
-    id: "deck.apply-layout",
-    label: "换当前页的版式",
-    summary: "把当前页换成指定版式，元素会按新版式重排。",
-    mutates: true,
-    params: [
-      {
-        key: "layout",
-        label: "版式",
-        type: "enum",
-        required: true,
-        enumValues: DECK_LAYOUT_CHOICES,
-      },
     ],
   },
   {
@@ -1026,14 +986,6 @@ export function buildDeckCommandSurface(
       editor.patchSlide({ title });
       return { ok: true, message: `已把第 ${page} 页标题改成「${clip(title, 40)}」。` };
     };
-    handlers["deck.apply-layout"] = (values) => {
-      const layout = String(values.layout);
-      editor.applySlideLayout(layout as (typeof DECK_IR_LAYOUTS)[number]);
-      return {
-        ok: true,
-        message: `当前页已换成「${DECK_LAYOUT_LABELS[layout] || layout}」版式。`,
-      };
-    };
     handlers["deck.add-text"] = (values) => {
       const text = String(values.text);
       editor.addTextElement({ text });
@@ -1061,7 +1013,7 @@ export function buildDeckCommandSurface(
             .map(
               (slide, index) =>
                 `第 ${index + 1} 页：${clip(slide.title || "（无标题）", 40)}（${
-                  DECK_LAYOUT_LABELS[String(slide.layout)] || slide.layout
+                  slide.layout
                 }）`,
             )
             .join("；")

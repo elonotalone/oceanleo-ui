@@ -7,7 +7,7 @@
 //   4. 相似域 / userinfo / 端口 / query / fragment 的 runtime 一律被拒；
 //   5. 没有结构稿的 HTML 件不显示「编辑」（但「查看」不跟着降级）；
 //   6. 没有 runtime 的 HTML 件不显示「查看」（但「编辑」不跟着降级）；
-//   7. 当前 app 的编辑仍是 inline handoff：一颗就地按钮，不是跳页深链。
+//   7. 旧 HTML 不再打开结构稿编辑：一颗就地按钮，不是跳页深链。
 //
 // 另外守住「非 deck 素材布局不变」：没有 HTML 交付时货架仍是今天那一张平铺网格。
 
@@ -414,7 +414,7 @@ test("判据 2 · 标签/标题/meta 里写 html 的 PPTX 仍然归 PPTX", () =>
   );
 });
 
-test("判据 3 · H1 三件逐件落在 HTML，查看指 runtime、编辑指结构稿", () => {
+test("判据 3 · H1 三件逐件落在 HTML，查看指 runtime、不再打开结构稿", () => {
   for (const item of HTML_ITEMS) {
     assert.equal(deckDeliveryFamilyOf(item), "html", item.id);
     const plan = deckHtmlOpenPlan(item);
@@ -422,14 +422,9 @@ test("判据 3 · H1 三件逐件落在 HTML，查看指 runtime、编辑指结�
     assert.equal(plan.view.visible, true);
     assert.equal(plan.view.available, true);
     assert.equal(plan.view.url, H1_RUNTIME[item.id]);
-    assert.equal(plan.edit.visible, true);
-    assert.equal(plan.edit.available, true);
-    assert.equal(
-      plan.edit.sourceUrl,
-      `https://signed.example/${item.id}.deck.json`,
-      "编辑必须拿结构稿，不能拿 HTML 交付物",
-    );
-    assert.notEqual(plan.edit.sourceUrl, plan.view.url);
+    assert.equal(plan.edit.visible, false);
+    assert.equal(plan.edit.available, false);
+    assert.equal(plan.edit.sourceUrl, "");
   }
 });
 
@@ -478,7 +473,7 @@ test("判据 4 · 相似域 / userinfo / 端口 / query / fragment 的 runtime �
   const plan = deckHtmlOpenPlan(spoofed);
   assert.equal(plan.view.visible, false);
   assert.equal(plan.view.url, "");
-  assert.equal(plan.edit.visible, true);
+  assert.equal(plan.edit.visible, false);
 });
 
 test("判据 5 · 没有结构稿的 HTML 件不显示编辑，查看不跟着降级", () => {
@@ -508,19 +503,19 @@ test("判据 5 · 没有结构稿的 HTML 件不显示编辑，查看不跟着�
   assert.match(html, /data-deck-html-view="true"/);
 });
 
-test("判据 6 · 没有 runtime 的 HTML 件不显示查看，编辑不跟着降级", () => {
+test("判据 6 · 没有 runtime 的 HTML 件不显示查看，不再显示结构稿编辑", () => {
   const runtimeless = htmlDeck("deck-html-nocturne-01", { runtime: "" });
   const plan = deckHtmlOpenPlan(runtimeless);
   assert.equal(plan.view.visible, false);
   assert.equal(plan.view.url, "");
-  assert.equal(plan.edit.visible, true);
+  assert.equal(plan.edit.visible, false);
 
   const matrix = artifactActionMatrix(runtimeless, {
     hidePreview: true,
     canOpenEdit: true,
     materialEditRoute: "in-place",
   });
-  assert.equal(matrix.edit.visible, true);
+  assert.equal(matrix.edit.visible, false);
 
   const html = renderToStaticMarkup(
     createElement(ArtifactActionButtons, {
@@ -530,18 +525,18 @@ test("判据 6 · 没有 runtime 的 HTML 件不显示查看，编辑不跟着�
     }),
   );
   assert.doesNotMatch(html, /data-deck-html-view="true"/);
-  assert.match(html, /aria-label="编辑「/);
+  assert.doesNotMatch(html, /aria-label="编辑「/);
 });
 
-test("判据 7 · 当前 app 的编辑仍是 inline handoff，查看只在新窗口外开、不 iframe", () => {
+test("判据 7 · 旧 HTML 不再打开结构稿编辑，查看只在新窗口外开、不 iframe", () => {
   const item = HTML_ITEMS[0];
   const matrix = artifactActionMatrix(item, {
     hidePreview: true,
     canOpenEdit: true,
     materialEditRoute: "in-place",
   });
-  assert.equal(matrix.edit.visible, true);
-  assert.equal(matrix.edit.available, true);
+  assert.equal(matrix.edit.visible, false);
+  assert.equal(matrix.edit.available, false);
 
   const html = renderToStaticMarkup(
     createElement(ArtifactActionButtons, {
@@ -551,7 +546,7 @@ test("判据 7 · 当前 app 的编辑仍是 inline handoff，查看只在新窗
     }),
   );
   // 编辑是一颗就地按钮，不是把用户送走的链接。
-  assert.match(html, /<button[^>]*aria-label="编辑「/);
+  assert.doesNotMatch(html, /<button[^>]*aria-label="编辑「/);
   assert.doesNotMatch(html, /<a[^>]*aria-label="编辑「/);
   // 查看只在新窗口打开隔离域，且绝不 iframe。
   const viewAnchor = html.match(/<a\b[^>]*data-deck-html-view="true"[^>]*>/);

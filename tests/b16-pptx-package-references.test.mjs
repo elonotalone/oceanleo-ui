@@ -64,7 +64,7 @@ registerHooks({
   },
 });
 
-const { buildDeckDraftPptxBytes, buildDeckPptxBlob } = await import(
+const { buildDeckPptxBlob } = await import(
   "../src/shell/doc-editors/use-deck-editor.ts",
 );
 const { normalizeDeckDocument, createDeckMaster, emptyDeckSlide } = await import(
@@ -108,23 +108,13 @@ function assertPackageReferences(bytes) {
 
 test("B17 malformed shape is represented by the fixture and the writer emits a complete package", async () => {
   assert.equal(fixture.slides.length, 2);
-  const fixtureProject = {
-    schema: "oceanleo.deck.v1",
-    version: 1,
-    title: fixture.title,
-    theme: { accent: "2563EB" },
-    slides: fixture.slides.map((slide) => ({ layout: "title", title: slide.title, body: slide.body, bullets: [] })),
-    attribution: { entries: [] },
-  };
-  const normalProject = {
-    ...fixtureProject,
-    title: "正常 deck",
-    slides: [{ layout: "title", title: "首页标题", body: "正文", bullets: [] }],
-  };
-  for (const project of [fixtureProject, normalProject]) {
-    const bytes = await buildDeckDraftPptxBytes(project, { timestamp: "2026-09-25T00:00:00Z" });
-    assertPackageReferences(bytes);
-  }
+  const deck = normalizeDeckDocument({
+    version: 2, title: fixture.title,
+    slides: fixture.slides.map((slide) => ({ ...emptyDeckSlide(slide.title), elements: [{
+      id: slide.title, type: "text", x: 10, y: 10, width: 80, height: 30, rotation: 0, order: 0, text: slide.body,
+    }] })),
+  });
+  assertPackageReferences(new Uint8Array(await (await buildDeckPptxBlob(deck)).arrayBuffer()));
 });
 
 test("普通编辑保存多页 PPT：能存下来，清单里登记的母版都真在包里", async () => {

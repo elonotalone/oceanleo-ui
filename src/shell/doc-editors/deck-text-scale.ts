@@ -1,9 +1,8 @@
-import { DECK_GRID, EMU_PER_INCH, EMU_PER_POINT } from "./deck-layout-grid";
 import type { DeckAspect } from "./deck-schema";
 
 /** Physical width used by PPTX: 13 1/3 in wide, 10 in for 4:3. */
 export function deckPageWidthPt(aspect: DeckAspect): number {
-  return (aspect === "4:3" ? 10 * EMU_PER_INCH : DECK_GRID.pageWidth) / EMU_PER_POINT;
+  return aspect === "4:3" ? 720 : 960;
 }
 
 /** One cqi is 1% of the slide container's inline size. */

@@ -18,10 +18,8 @@ import type {
   DeckSlide,
 } from "../../doc-editors/deck-schema";
 import {
-  deckDocumentFromIr,
   normalizeDeckDocument,
 } from "../../doc-editors/deck-schema";
-import { DECK_IR_SCHEMA, validateDeckIr } from "../../doc-editors/deck-ir";
 
 export const DECK_COLLAB_ROOT = "oceanleo:deck";
 
@@ -135,7 +133,6 @@ export function deckToEntities(deck: DeckDocument): EntityState {
     theme: deck.theme,
     masters: cloneJson(deck.masters),
     importWarnings: field(deck.importWarnings),
-    pptistSource: field(deck.pptistSource),
   };
   return { order, entities, meta };
 }
@@ -229,8 +226,6 @@ export function deckFromEntities(
   if (Array.isArray(meta.importWarnings) && meta.importWarnings.length) {
     deck.importWarnings = cloneJson(meta.importWarnings) as string[];
   }
-  const source = meta.pptistSource as DeckDocument["pptistSource"] | null | undefined;
-  if (source && typeof source === "object") deck.pptistSource = cloneJson(source);
   return deck;
 }
 
@@ -337,32 +332,14 @@ export function deckFromY(doc: unknown): DeckDocument | null {
   return state.order.length ? deckFromEntities(state, null) : null;
 }
 
-function restableIds(deck: DeckDocument): DeckDocument {
-  // 草稿（IR）转出来的 id 每次随机；回放要在相邻版本间逐页逐元素比，所以按位置重新编号。
-  return {
-    ...deck,
-    slides: deck.slides.map((slide, si) => {
-      const id = `draft-slide-${si + 1}`;
-      return {
-        ...slide,
-        id,
-        elements: slide.elements.map((element, ei) => ({ ...element, id: `${id}:el-${ei + 1}` })),
-      };
-    }),
-  };
-}
-
-/** 作品版本 JSON → 快照。草稿（deck-ir）与普通 deck JSON 都认。 */
+/** PPTX 编辑中的自由画布快照。 */
 export function deckFromRevision(json: unknown): DeckDocument | null {
   if (!json || typeof json !== "object") return null;
   const outer = json as Record<string, unknown>;
-  const wrapped = outer.data && typeof outer.data === "object" ? (outer.data as Record<string, unknown>) : null;
-  const candidate = wrapped && wrapped.schema === DECK_IR_SCHEMA ? wrapped : outer;
-  if (candidate.schema === DECK_IR_SCHEMA && Array.isArray(candidate.slides)) {
-    const validation = validateDeckIr(candidate);
-    if (validation.ok) return restableIds(deckDocumentFromIr(validation.project));
-  }
-  const deck = normalizeDeckDocument(json);
+  const record = outer.deck && typeof outer.deck === "object" ? outer.deck as Record<string, unknown> : outer;
+  if (record.version !== 2 || !Array.isArray(record.slides) ||
+      !record.slides.every((slide) => slide && typeof slide === "object" && Array.isArray(slide.elements))) return null;
+  const deck = normalizeDeckDocument(record);
   return deck.slides.length ? deck : null;
 }
 

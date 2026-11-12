@@ -160,7 +160,7 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
   deck: {
     routeType: "deck",
     roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.deck.v1",
+    projectSchema: "pptx",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",
@@ -187,7 +187,7 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
   website: {
     routeType: "website",
     roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.website-project.v1",
+    projectSchema: "website-source@1",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",

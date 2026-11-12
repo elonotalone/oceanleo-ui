@@ -360,7 +360,6 @@ const EXPECTED_MUTATING = {
   deck: [
     "deck.add-slide",
     "deck.set-slide-title",
-    "deck.apply-layout",
     "deck.add-text",
     "deck.delete-slide",
     "deck.save",
@@ -602,8 +601,7 @@ test("演示：加页 / 改某页标题 / 换版式 / 跳页", async () => {
   assert.deepEqual(deck.calls[2], ["patchSlide", { title: "新标题" }]);
 
   const layout = await surface.run("deck.apply-layout", { layout: "two-column" });
-  assert.equal(layout.ok, true);
-  assert.deepEqual(deck.calls[3], ["applySlideLayout", "two-column"]);
+  assert.equal(layout.ok, false);
 
   const jumped = await surface.run("deck.go-to-slide", { page: 2 });
   assert.equal(jumped.ok, true);

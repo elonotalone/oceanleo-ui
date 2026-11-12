@@ -8,8 +8,7 @@ import {
   DECK_RELATIONSHIP_TYPES,
   deckCustomPropertiesXml,
   escapeXml,
-} from "./deck-ooxml-package";
-import { DECK_CONSTANTS } from "./deck-layout-grid";
+} from "./pptx-properties";
 import type {
   DeckElement,
   DeckElementAnimation,
@@ -541,11 +540,11 @@ export function deckPptxCreditsText(
     .filter((entry) => entry.text && entry.licenseCode)
     .map((entry) => `${entry.text} (${entry.licenseCode})`);
   const joined = parts.join("; ");
-  if (joined.length <= DECK_CONSTANTS.C48) return joined;
+  if (joined.length <= 4_000) return joined;
   let text = "";
   for (const part of parts) {
     const candidate = text ? `${text}; ${part}` : part;
-    if (candidate.length > DECK_CONSTANTS.C48) break;
+    if (candidate.length > 4_000) break;
     text = candidate;
   }
   return text;
@@ -614,7 +613,7 @@ export function repairDeckPptxPackageParts(
 
   const credits = deckPptxCreditsText(repair.attribution || []);
   report.credits = credits;
-  if (credits.length >= DECK_CONSTANTS.C49) {
+  if (credits.length >= 8) {
     if (!archive["docProps/custom.xml"]) {
       archive["docProps/custom.xml"] = strToU8(deckCustomPropertiesXml(credits));
       report.customPartAdded = true;

@@ -50,15 +50,11 @@ import {
 } from "../lib/media-proxy";
 import { DeckSlideThumbnail } from "./doc-editors/DeckSlideThumbnail";
 import {
-  deckDocumentFromIr,
   deckMasterFor,
   deckTheme,
-  normalizeDeckDocument,
   type DeckDocument,
   type DeckSlide,
 } from "./doc-editors/deck-schema";
-import { parseDeckIr } from "./doc-editors/deck-ir";
-import { deckStructuredSourceUrl } from "./deck-delivery-family";
 import {
   DeckPreviewLayout,
   deckPreviewLogicalSize,
@@ -611,88 +607,10 @@ function PptxSlideThumbnail({
   );
 }
 
-function StructuredSlidePreview({
-  slide,
-  index,
-  count,
-  thumbnail = false,
-}: {
-  slide: Record<string, unknown>;
-  index: number;
-  count: number;
-  thumbnail?: boolean;
-}) {
-  const bullets = Array.isArray(slide.bullets)
-    ? slide.bullets.map(String)
-    : [];
-  return (
-    <article className="relative h-full w-full overflow-hidden bg-white p-[7%]">
-      <span
-        className={`absolute right-[4%] top-[3%] text-stone-300 ${
-          thumbnail ? "text-[5px]" : "text-[10px]"
-        }`}
-      >
-        {index + 1} / {count}
-      </span>
-      <h3
-        className={`max-w-[85%] font-semibold leading-tight text-stone-900 ${
-          thumbnail ? "text-[7px]" : "text-[clamp(18px,3vw,34px)]"
-        }`}
-      >
-        {stringValue(slide.title) || `第 ${index + 1} 页`}
-      </h3>
-      {bullets.length > 0 && (
-        <ul
-          className={`mt-[6%] space-y-[2%] leading-relaxed text-stone-600 ${
-            thumbnail ? "text-[4px]" : "text-[clamp(12px,1.7vw,20px)]"
-          }`}
-        >
-          {bullets.map((bullet, bulletIndex) => (
-            <li key={bulletIndex} className="flex gap-[3%]">
-              <span>•</span>
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </article>
-  );
-}
-
-/**
- * 页轨占位：真缩略图补上之前（以及解析期间）画的那一格。
- *
- * 有结构化元数据就画标题与要点，没有就只画页码 —— 两种都比空白格更能让人定位到页。
- */
-function PendingSlideThumbnail({
-  slide,
-  index,
-  count,
-}: {
-  slide?: Record<string, unknown>;
-  index: number;
-  count: number;
-}) {
-  return (
-    <div
-      aria-hidden="true"
-      data-deck-thumbnail-pending=""
-      className="aspect-video animate-pulse overflow-hidden rounded bg-white shadow-sm"
-    >
-      {slide ? (
-        <StructuredSlidePreview
-          slide={slide}
-          index={index}
-          count={count}
-          thumbnail
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-[7px] text-stone-300">
-          {index + 1} / {count}
-        </div>
-      )}
-    </div>
-  );
+function PendingSlideThumbnail({ index, count }: { index: number; count: number }) {
+  return <div aria-hidden="true" data-deck-thumbnail-pending="" className="aspect-video animate-pulse overflow-hidden rounded bg-white shadow-sm">
+    <div className="flex h-full w-full items-center justify-center text-[7px] text-stone-300">{index + 1} / {count}</div>
+  </div>;
 }
 
 /**
@@ -705,124 +623,6 @@ function readableSlideName(name: string | undefined): string {
   if (!trimmed) return "";
   if (trimmed.includes("/") || /\.[a-z0-9]+$/i.test(trimmed)) return "";
   return trimmed;
-}
-
-/**
- * Read the declared `oceanleo.deck.v1` source through the normal media proxy.
- * The IR is not an OOXML package: validating it as a PPTX makes the browser
- * reject a perfectly usable structured deck before the shared deck renderer
- * gets a chance to paint it.
- */
-async function fetchStructuredDeck(
-  url: string,
-  item: LibraryItem,
-  signal?: AbortSignal,
-): Promise<DeckDocument> {
-  let absolute = absoluteMediaUrl(url);
-  if (/\/source-tree\/@source\/?$/.test(absolute)) {
-    if (!item.artifactId || !item.revisionId) {
-      throw new Error("结构化演示文稿缺少稳定版本身份。");
-    }
-    // A source-tree URL is an auth-gated entrypoint, not a browser media URL.
-    // Reuse the shared rendition refresh path to mint the opaque source grant;
-    // this keeps auth, expiry and revision binding in artifact-client rather
-    // than duplicating gateway calls in the viewer.
-    const refreshed = await refreshArtifactRendition(
-      { artifactId: item.artifactId, revisionId: item.revisionId },
-      "source",
-      signal,
-    );
-    if (!refreshed.ok || !refreshed.data?.url) {
-      throw new Error(refreshed.error || "结构化演示文稿授权失败。");
-    }
-    absolute = absoluteMediaUrl(refreshed.data.url);
-  }
-  const response = await fetch(absolute, {
-    cache: "no-store",
-    credentials: "include",
-    headers: { Accept: "application/vnd.oceanleo.deck+json, application/json" },
-    signal,
-  });
-  if (!response.ok) {
-    throw new Error(`结构化演示文稿读取失败（HTTP ${response.status}）`);
-  }
-  const declared = Number(response.headers.get("content-length") || 0);
-  if (declared > 8 * 1024 * 1024) {
-    throw new Error("结构化演示文稿过大，无法在浏览器内存中安全处理");
-  }
-  const bytes = new Uint8Array(await response.arrayBuffer());
-  if (bytes.byteLength > 8 * 1024 * 1024) {
-    throw new Error("结构化演示文稿过大，无法在浏览器内存中安全处理");
-  }
-  try {
-    return deckDocumentFromIr(parseDeckIr(bytes));
-  } catch (reason) {
-    // Some early `oceanleo.deck.v1` rows carry the same declared schema but
-    // the editor's v2-compatible slide object (without the IR attribution
-    // envelope). Keep the schema gate above, then use the shared normalizer
-    // for that already-persisted shape instead of treating it as PPTX bytes.
-    let raw: unknown;
-    try {
-      raw = JSON.parse(new TextDecoder().decode(bytes));
-    } catch {
-      throw reason;
-    }
-    const record =
-      raw && typeof raw === "object" && !Array.isArray(raw)
-        ? (raw as Record<string, unknown>)
-        : null;
-    if (!record) throw reason;
-    // The delivery endpoint wraps the validated IR with asset metadata and
-    // resolved asset URLs.  `data` is the actual §3.1 document; parse that
-    // inner object with the shared validator before considering legacy shapes.
-    const inner =
-      record.data && typeof record.data === "object" && !Array.isArray(record.data)
-        ? (record.data as Record<string, unknown>)
-        : null;
-    if (inner) {
-      try {
-        return deckDocumentFromIr(parseDeckIr(JSON.stringify(inner)));
-      } catch {
-        // Keep the controlled legacy fallback below for older rows whose
-        // `data` field is the editor's v2 document rather than IR.
-      }
-    }
-    const candidate =
-      inner ||
-      (record.deck && typeof record.deck === "object" && !Array.isArray(record.deck)
-        ? record.deck
-        : record.project && typeof record.project === "object" && !Array.isArray(record.project)
-          ? record.project
-          : record);
-    const normalized = normalizeDeckDocument(candidate, item.title || "演示文稿");
-    const candidateSlides =
-      candidate && typeof candidate === "object" && !Array.isArray(candidate)
-        ? (candidate as Record<string, unknown>).slides
-        : undefined;
-    if (!Array.isArray(candidateSlides) || candidateSlides.length === 0) throw reason;
-    return normalized;
-  }
-}
-
-function structuredDeckSourceCandidate(item: LibraryItem): string {
-  const declared = item.artifact?.sourceFormat || item.meta.source_format;
-  if (declared !== "oceanleo.deck.v1") return "";
-  const source = item.artifact?.renditions.source;
-  if (
-    source?.format === "oceanleo.deck.v1" &&
-    source.url &&
-    !/\/source-tree\/@source\/?$/.test(source.url)
-  ) {
-    return source.url;
-  }
-  // Legacy structured rows may lack a source projection; only then is the
-  // resolved item URL a valid fallback.  A normal projection with a
-  // source-tree URL must go through the refresh branch above, never through
-  // the full HTML rendition selected for ordinary previews.
-  if (!source && item.url && !/\/source-tree\/@source\/?$/.test(item.url)) {
-    return item.url;
-  }
-  return typeof item.meta.source_url === "string" ? item.meta.source_url : "";
 }
 
 function PptViewer({
@@ -852,16 +652,8 @@ function PptViewer({
       node.append(previewer.wrapper);
     }
   }, []);
-  const structuredSlides = useMemo(
-    () => asRecords(item.meta.slides),
-    [item.meta.slides],
-  );
-  const structuredSourceUrl = useMemo(
-    () => deckStructuredSourceUrl(item) || structuredDeckSourceCandidate(item),
-    [item],
-  );
   const [state, setState] = useState<"loading" | "ready" | "error">(
-    item.url || structuredSourceUrl ? "loading" : "error",
+    item.url ? "loading" : "error",
   );
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -892,7 +684,7 @@ function PptViewer({
   }
   const accessRetry = failedSourceRef.current.retry;
   const sourceIdentity = officeSourceCacheKey(
-    structuredSourceUrl || item.url || "",
+    item.url || "",
     item.revisionId || item.artifact?.revisionId || "",
     item,
   );
@@ -911,7 +703,7 @@ function PptViewer({
     setLogicalSize(deckPreviewLogicalSize());
     setActiveSlideId("");
     setFirstPaintRenders(0);
-    if (!item.url && !structuredSourceUrl) {
+    if (!item.url) {
       setError("没有可解析的 PPT 地址。");
       setState("error");
       return;
@@ -924,32 +716,6 @@ function PptViewer({
     setError("");
     void (async () => {
       try {
-        if (structuredSourceUrl) {
-          const deck = await fetchStructuredDeck(structuredSourceUrl, item);
-          if (cancelled) return;
-          if (!deck.slides.length) {
-            throw new Error("结构化演示文稿中没有可显示的幻灯片。");
-          }
-          const nextLogicalSize = deckPreviewLogicalSize(
-            deck.aspect === "4:3" ? 4 / 3 : 16 / 9,
-          );
-          const outline: PptxRenderedSlide[] = deck.slides.map(
-            (slide, index) => ({
-              id: slide.id || `structured-slide-${index + 1}`,
-              index,
-              label: slide.title || `第 ${index + 1} 页`,
-              thumbnail: null,
-              nativeSlide: slide,
-            }),
-          );
-          setNativeDeck(deck);
-          setLogicalSize(nextLogicalSize);
-          setRenderedSlides(outline);
-          setActiveSlideId(outline[0].id);
-          setFirstPaintRenders(1);
-          setState("ready");
-          return;
-        }
         if (!item.url) throw new Error("没有可解析的 PPT 地址。");
         const { arrayBuffer } = await fetchValidatedOfficePackage(
           item.url!,
@@ -1084,8 +850,7 @@ function PptViewer({
     if (state === "ready") {
       return renderedSlides.map((slide) => ({
         id: slide.id,
-        label: stringValue(structuredSlides[slide.index]?.title) ||
-          stringValue(structuredSlides[slide.index]?.label) || slide.label,
+        label: slide.label,
         thumbnail: slide.nativeSlide ? (
           <div className="aspect-video overflow-hidden rounded bg-white shadow-sm">
             <DeckSlideThumbnail
@@ -1108,60 +873,19 @@ function PptViewer({
           />
         ) : (
           <PendingSlideThumbnail
-            slide={structuredSlides[slide.index]}
             index={slide.index}
             count={renderedSlides.length}
           />
         ),
       }));
     }
-    /**
-     * 解析期间也给页轨一份占位，前提是目录行带了结构化幻灯片元数据。
-     * 没有元数据就仍然是空页轨——那不算「白屏」，白屏那半边由舞台上的海报兜底。
-     */
-    if (state === "loading") {
-      return structuredSlides.map((slide, index) => ({
-        id: `pending-slide-${index + 1}`,
-        label: stringValue(slide.title) || `第 ${index + 1} 页`,
-        thumbnail: (
-          <PendingSlideThumbnail
-            slide={slide}
-            index={index}
-            count={structuredSlides.length}
-          />
-        ),
-      }));
-    }
-    if (state === "error") {
-      return structuredSlides.map((slide, index) => ({
-        id: `structured-slide-${index + 1}`,
-        label: stringValue(slide.title) || `第 ${index + 1} 页`,
-        thumbnail: (
-          <div className="aspect-video overflow-hidden rounded bg-white shadow-sm">
-            <StructuredSlidePreview
-              slide={slide}
-              index={index}
-              count={structuredSlides.length}
-              thumbnail
-            />
-          </div>
-        ),
-      }));
-    }
     return [];
-  }, [logicalSize, nativeDeck, renderedSlides, state, structuredSlides]);
+  }, [logicalSize, nativeDeck, renderedSlides, state]);
   const effectiveActiveSlideId = layoutSlides.some(
     (slide) => slide.id === activeSlideId,
   )
     ? activeSlideId
     : layoutSlides[0]?.id || "";
-  const activeStructuredIndex = layoutSlides.findIndex(
-    (slide) => slide.id === effectiveActiveSlideId,
-  );
-  const hasStructuredFallback =
-    state === "error" &&
-    activeStructuredIndex >= 0 &&
-    Boolean(structuredSlides[activeStructuredIndex]);
   const activeNativeSlide = nativeDeck
     ? renderedSlides.find((slide) => slide.id === effectiveActiveSlideId)?.nativeSlide
     : undefined;
@@ -1208,26 +932,8 @@ function PptViewer({
               <ViewerParsingPoster item={item} label={tt("正在解析 PPT…")} />
             </div>
           )}
-          {state === "error" && hasStructuredFallback && (
-            <div
-              role="alert"
-              className="absolute bottom-3 left-3 z-[25] inline-flex max-w-[calc(100%_-_1.5rem)] flex-wrap items-center gap-2 px-1 py-1 text-[11px] text-[var(--awb-warn,#b45309)]"
-            >
-              <span>
-                {tt("PPT 在线解析失败，正在显示结构化幻灯片快照。")}
-                {error ? `（${tt(error)}）` : ""}
-              </span>
-              <button
-                type="button"
-                onClick={retry}
-                className="rounded border border-current/40 px-2 py-1 font-medium hover:bg-[var(--awb-muted,#f5f5f4)]"
-              >
-                {tt("重试")}
-              </button>
-            </div>
-          )}
-          {state === "error" && !hasStructuredFallback && (
-            <div className="absolute inset-0 z-[25] bg-white">
+          {state === "error" && (
+            <div role="alert" className="absolute inset-0 z-[25] bg-white">
               <ErrorView
                 message={`${tt("PPT 在线解析失败，可打开原文件。")}${error ? `（${tt(error)}）` : ""}`}
                 url={item.url}
@@ -1266,15 +972,7 @@ function PptViewer({
             />
           </div>
         )}
-        {hasStructuredFallback && (
-          <div className="absolute inset-0">
-            <StructuredSlidePreview
-              slide={structuredSlides[activeStructuredIndex]}
-              index={activeStructuredIndex}
-              count={structuredSlides.length}
-            />
-          </div>
-        )}
+
       </div>
     </DeckPreviewLayout>
   );

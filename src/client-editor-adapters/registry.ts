@@ -47,7 +47,7 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
     },
     {
       editorId: "deck",
-      schema: "oceanleo.deck.v1",
+      schema: "pptx",
       core: "native deck editor (DeckRoute)",
       license: "n/a",
       status: "GREEN",

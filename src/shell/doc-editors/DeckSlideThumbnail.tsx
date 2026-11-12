@@ -81,66 +81,6 @@ function deckElementFrameStyle(element: DeckElement): CSSProperties {
   };
 }
 
-function DeckLegacySlidePaint({
-  slide,
-  theme,
-  master,
-}: {
-  slide: DeckSlide;
-  theme: DeckTheme;
-  master: DeckMaster;
-}) {
-  const isCenter = slide.layout === "title" || slide.layout === "section";
-  const hasImage =
-    slide.layout === "image-left" || slide.layout === "image-right";
-  const imageLeft = slide.layout === "image-left";
-  const image = slide.image?.url ? (
-    <img
-      src={slide.image.url}
-      alt=""
-      className="min-h-0 min-w-0 flex-1 object-cover"
-    />
-  ) : null;
-
-  return (
-    <div
-      data-deck-slide-paint="legacy"
-      className="relative flex h-full w-full overflow-hidden p-[5%]"
-      style={{
-        background: slide.background || master.background || theme.background,
-        color: master.textColor || theme.text,
-        fontFamily: master.fontFamily || theme.fontFamily,
-      }}
-    >
-      <div
-        className={`flex min-h-0 w-full gap-[4%] ${hasImage ? "" : "items-stretch"}`}
-      >
-        {imageLeft ? image : null}
-        <div className={`min-w-0 flex-1 ${isCenter ? "text-center" : ""}`}>
-          {slide.title ? (
-            <div data-deck-legacy-title className="font-bold">
-              {slide.title}
-            </div>
-          ) : null}
-          {slide.body ? (
-            <div data-deck-legacy-body className="opacity-80">
-              {slide.body}
-            </div>
-          ) : null}
-          {slide.bullets.length > 0 ? (
-            <ul>
-              {slide.bullets.map((bullet, index) => (
-                <li key={`${index}-${bullet}`}>{bullet}</li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
-        {!imageLeft ? image : null}
-      </div>
-    </div>
-  );
-}
-
 function DeckSlidePaintView({
   slide,
   theme,
@@ -159,7 +99,7 @@ function DeckSlidePaintView({
 
   return (
     <div
-      data-deck-slide-paint={slide.elements.length > 0 ? "elements" : "legacy"}
+      data-deck-slide-paint="elements"
       className="relative overflow-hidden"
       style={{
         width: pageWidth,
@@ -191,7 +131,7 @@ function DeckSlidePaintView({
             </div>
           ))
       ) : (
-        <DeckLegacySlidePaint slide={slide} theme={theme} master={master} />
+        null
       )}
     </div>
   );

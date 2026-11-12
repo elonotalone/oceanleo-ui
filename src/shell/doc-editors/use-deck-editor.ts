@@ -26,10 +26,7 @@ import {
 import {
   cloneDeckDocument,
   createDeckMaster,
-  deckCarrierPlacement,
-  deckFontPoints,
   deckId,
-  deckLayoutIsCarrierGrammar,
   deckMasterFor,
   deckTheme,
   emptyDeckSlide,
@@ -37,32 +34,17 @@ import {
   type DeckAspect,
   type DeckDocument,
   type DeckElement,
-  type DeckLayout,
-  type DeckLegacyLayout,
   type DeckMaster,
-  type DeckPercentBox,
   type DeckSlide,
   type DeckThemeId,
 } from "./deck-schema";
 import {
-  DECK_IR_SCHEMA,
-  validateDeckIr,
-  type DeckIrAsset,
-  type DeckIrDocument,
-  type DeckIrThemeSurfaceImage,
-} from "./deck-ir";
-import { buildDeckPptx, type DeckAssetBytes } from "./deck-ooxml-package";
-import { packById } from "./deck-packs";
-import {
   blobToDataUrl,
   downloadBlob,
-  downloadText,
-  loadEditorProject,
   saveFileToLibrary,
   urlExtension,
   type PreparedDeliveryUpload,
   type PreparedPreviewUpload,
-  type PreparedProjectUpload,
   type PersistedEditorVersion,
 } from "./doc-io";
 import { artifactSaveStepMessage } from "./artifact-save-contract";
@@ -135,7 +117,6 @@ export interface DeckEditorState {
   deleteMaster: () => void;
   patchSlide: (patch: Partial<DeckSlide>) => void;
   patchSlideTransient: (patch: Partial<DeckSlide>) => void;
-  applySlideLayout: (layout: DeckLayout) => void;
   selectElement: (id: string) => void;
   patchElement: (id: string, patch: Partial<DeckElement>) => void;
   patchElementTransient: (id: string, patch: Partial<DeckElement>) => void;
@@ -182,7 +163,6 @@ export interface DeckEditorState {
   reload: () => void;
   /** 用本地上传的 PPTX 顶掉当前演示文稿（.ppt/.odp 由调用方先归一化成 pptx）。 */
   importSource: (file: File) => Promise<void>;
-  downloadJson: () => Promise<void>;
   draft: AdvancedEditorDraftAdapter;
   flushBeforeExport: () => Promise<void>;
   persistInBackground: () => void;
@@ -224,16 +204,9 @@ export function deckPresentationSource(
 }
 
 const HISTORY_LIMIT = 60;
-export const DECK_PROJECT_SCHEMA = "oceanleo.deck.v1";
 export const DECK_SOURCE_FORMAT = "pptx";
 export const DECK_SOURCE_MEDIA_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-
-function record(value: unknown): Record<string, unknown> | null {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : null;
-}
 
 function httpUrl(value: unknown): string {
   if (typeof value !== "string" || !value.trim()) return "";
@@ -258,9 +231,7 @@ export function isDeckEditorJsonHint(...hints: unknown[]): boolean {
     const value = textHint(hint);
     if (!value) continue;
     if (
-      value === DECK_PROJECT_SCHEMA ||
       value === "application/json" ||
-      value === "application/vnd.oceanleo.deck+json" ||
       value.startsWith("application/vnd.oceanleo") ||
       value.includes("oceanleo.deck") ||
       value.includes("oceanleo-project") ||
@@ -292,107 +263,8 @@ function looksLikePptxDelivery(...hints: unknown[]): boolean {
   return false;
 }
 
-/**
- * Load a durable deck working head. Accepts both the wrapped
- * `{schema,version,data}` project envelope and legacy raw deck JSON that was
- * historically published as the artifact source.
- */
-export async function loadDeckEditorHead(
-  url: string,
-  title: string,
-  signal?: AbortSignal,
-): Promise<DeckDocument> {
-  return normalizeDeckDocument(
-    await loadDeckEditorPayload(url, signal),
-    title || "演示文稿",
-  );
-}
-
-/**
- * The same fetch as `loadDeckEditorHead`, stopping one step earlier.
- *
- * Normalizing straight into the editor's own model is lossy by design, and a
- * production draft cannot survive it: everything the writer needs — the layout
- * grammar per page, the declared pictures, the credits — is dropped on the way
- * in. So the raw payload is read first, and the caller decides what it is.
- */
-export async function loadDeckEditorPayload(
-  url: string,
-  signal?: AbortSignal,
-): Promise<unknown> {
-  try {
-    return await loadEditorProject<unknown>(url, DECK_PROJECT_SCHEMA, signal);
-  } catch (caught) {
-    if (caught instanceof DOMException && caught.name === "AbortError") {
-      throw caught;
-    }
-    const response = await fetch(url, {
-      signal,
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    });
-    if (!response.ok) {
-      throw caught instanceof Error
-        ? caught
-        : new Error(`可编辑工程读取失败（HTTP ${response.status}）`);
-    }
-    const text = await response.text();
-    if (!text || new TextEncoder().encode(text).byteLength > 20_000_000) {
-      throw caught instanceof Error
-        ? caught
-        : new Error("可编辑工程为空或超过 20MB 安全上限");
-    }
-    return JSON.parse(text);
-  }
-}
-
-/** Structured head wins for reopen; the PPTX source remains a separate URL. */
-export function deckProjectUrlFor(item: LibraryItem): string {
-  const manifest = record(item.meta.editor_manifest);
-  const manifestSource = record(manifest?.source);
-  const artifactManifest = item.artifact?.renditions.editor_manifest;
-  const artifactSource = item.artifact?.renditions.source;
-  const legacyJsonSource =
-    isDeckEditorJsonHint(
-      item.artifact?.sourceFormat,
-      artifactSource?.format,
-      artifactSource?.mediaType,
-      item.meta.source_format,
-      item.meta.source_media_type,
-      item.meta.format,
-      item.meta.mime,
-      item.url,
-    ) && !looksLikePptxDelivery(artifactSource?.format, artifactSource?.mediaType)
-      ? artifactSource?.url || item.meta.source_url || item.url
-      : "";
-  const candidates = [
-    item.meta.editor_project_url,
-    item.meta.editor_manifest_url,
-    manifestSource?.format === DECK_PROJECT_SCHEMA ||
-    isDeckEditorJsonHint(manifestSource?.format)
-      ? manifestSource?.url
-      : "",
-    item.meta.editor_working_head_schema === DECK_PROJECT_SCHEMA ||
-    isDeckEditorJsonHint(item.meta.editor_working_head_schema)
-      ? item.meta.editor_working_head_project_url ||
-        item.meta.editor_working_head_url
-      : "",
-    artifactManifest?.url,
-    isDeckEditorJsonHint(artifactManifest?.format, artifactManifest?.mediaType)
-      ? artifactManifest?.url
-      : "",
-    legacyJsonSource,
-  ];
-  for (const candidate of candidates) {
-    const url = httpUrl(candidate);
-    if (url) return url;
-  }
-  return "";
-}
-
 /** Download/source handoff never selects the JSON editor project. */
 export function deckDeliveryUrlFor(item: LibraryItem): string {
-  const projectUrl = deckProjectUrlFor(item);
   const artifactSource = item.artifact?.renditions.source;
   const candidates: Array<{ url: unknown; hints: unknown[] }> = [
     // `useOfficeArtifactSource` writes the freshly re-signed source/full URL
@@ -434,7 +306,7 @@ export function deckDeliveryUrlFor(item: LibraryItem): string {
   ];
   for (const candidate of candidates) {
     const url = httpUrl(candidate.url);
-    if (!url || url === projectUrl) continue;
+    if (!url) continue;
     if (isDeckEditorJsonHint(...candidate.hints, url)) continue;
     if (
       looksLikePptxDelivery(...candidate.hints, url) ||
@@ -456,23 +328,6 @@ export function deckSavedItemForHandoff(
       original.artifactId ||
       original.id,
   );
-  const projectUrl = saved.projectUrl || "";
-  const projectSchema = saved.projectSchema || DECK_PROJECT_SCHEMA;
-  const sourceFormat = saved.sourceFormat || DECK_SOURCE_FORMAT;
-  const sourceMediaType = saved.sourceMediaType || DECK_SOURCE_MEDIA_TYPE;
-  const editorManifest = projectUrl
-    ? {
-        schema: "oceanleo.editor-manifest.v1",
-        id: "deck-editor",
-        version: 1,
-        capabilities: ["load", "mutate", "save", "reopen"],
-        source: {
-          kind: "url",
-          format: projectSchema,
-          url: projectUrl,
-        },
-      }
-    : undefined;
   const base: LibraryItem =
     saved.item ||
     ({
@@ -486,6 +341,11 @@ export function deckSavedItemForHandoff(
         root_asset_id: rootId,
       },
     } satisfies LibraryItem);
+  const meta = { ...base.meta };
+  for (const key of Object.keys(meta)) {
+    if (key.startsWith("editor_project_") || key.startsWith("editor_manifest") ||
+        key.startsWith("editor_working_head") || key === "deck_asset_urls") delete meta[key];
+  }
   return {
     ...base,
     title: saved.title || base.title,
@@ -495,24 +355,15 @@ export function deckSavedItemForHandoff(
     revisionId: saved.revisionId || base.revisionId,
     artifactType: "deck",
     meta: {
-      ...base.meta,
-      source_format: sourceFormat,
-      source_media_type: sourceMediaType,
+      ...meta,
+      source_format: DECK_SOURCE_FORMAT,
+      source_media_type: DECK_SOURCE_MEDIA_TYPE,
       source_url: saved.url,
-      format: sourceFormat,
-      mime: sourceMediaType,
+      format: DECK_SOURCE_FORMAT,
+      mime: DECK_SOURCE_MEDIA_TYPE,
       delivery_format: DECK_SOURCE_FORMAT,
       file_name: saved.fileName || `${saved.title || base.title || "deck"}.pptx`,
       representation: DECK_SOURCE_FORMAT,
-      editor_project_url: projectUrl,
-      editor_project_schema: projectSchema,
-      editor_manifest_url: projectUrl,
-      editor_manifest_schema: projectSchema,
-      editor_manifest_media_type: "application/json",
-      ...(editorManifest ? { editor_manifest: editorManifest } : {}),
-      editor_working_head_url: projectUrl,
-      editor_working_head_project_url: projectUrl,
-      editor_working_head_schema: projectSchema,
       editor_saved_at: saved.savedAt,
       ...(saved.previousRevisionId
         ? { previous_revision_id: saved.previousRevisionId }
@@ -521,32 +372,9 @@ export function deckSavedItemForHandoff(
   };
 }
 
-function initialSource(
-  item: LibraryItem,
-  previewContent?: unknown,
-): unknown {
-  const meta = item.meta || {};
-  const usablePreview =
-    typeof previewContent === "string" ||
-    Array.isArray(previewContent) ||
-    (Boolean(previewContent) &&
-      typeof previewContent === "object" &&
-      !("$$typeof" in (previewContent as Record<string, unknown>)));
-  return (
-    (usablePreview ? previewContent : null) ||
-    meta.deck ||
-    meta.presentation ||
-    meta.slides ||
-    meta.content_json ||
-    meta.content ||
-    meta
-  );
-}
-
 interface DeckLoad {
   serverDraft?: AdvancedDraftPointer;
   deck: DeckDocument;
-  draft: DeckDraftState | null;
 }
 
 async function loadDeck(
@@ -557,42 +385,8 @@ async function loadDeck(
 ): Promise<DeckLoad> {
   const serverDraft = await loadDeckServerDraft(item, signal);
   if (serverDraft) return serverDraft;
-  const projectUrl = deckProjectUrlFor(item);
-  let projectError: unknown;
-  if (projectUrl) {
-    try {
-      const payload = await loadDeckEditorPayload(projectUrl, signal);
-      const project = deckDraftFrom(payload);
-      if (project) {
-        const assetUrls = deckDraftAssetUrlsFor(item, payload);
-        return {
-          deck: deckDocumentFromDraft(project, assetUrls),
-          draft: { project, assetUrls },
-        };
-      }
-      return {
-        deck: normalizeDeckDocument(payload, item.title || "演示文稿"),
-        draft: null,
-      };
-    } catch (caught) {
-      if (caught instanceof DOMException && caught.name === "AbortError") {
-        throw caught;
-      }
-      projectError = caught;
-    }
-  }
-  const fallback = normalizeDeckDocument(
-    initialSource(item, previewContent),
-    item.title || "演示文稿",
-  );
   const deliveryUrl = deckDeliveryUrlFor(item);
-  if (!deliveryUrl) {
-    if (projectError) {
-      notifyOfficeAccessDenied(projectError, onSourceAccessError);
-      throw projectError;
-    }
-    return { deck: fallback, draft: null };
-  }
+  if (!deliveryUrl) throw new Error("没有可读取的 PPTX 文件，请上传 PPTX 后重试。");
   const extension = (
     officeExtensionForItem(item) ||
     urlExtension(deliveryUrl) ||
@@ -623,7 +417,6 @@ async function loadDeck(
         item.title || "演示文稿",
         extension === "ppt" ? "pptx" : extension || "pptx",
       ),
-      draft: null,
     };
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") throw error;
@@ -1011,91 +804,6 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
       if (source.notes) slide.addNotes(source.notes);
       continue;
     }
-    const hasImage =
-      (source.layout === "image-left" || source.layout === "image-right") &&
-      source.image?.url;
-    const textX = source.layout === "image-left" ? width * 0.48 : 0.75;
-    const textW = hasImage ? width * 0.46 : width - 1.5;
-    const titleY = source.layout === "title" || source.layout === "section" ? 2.25 : 0.65;
-    slide.addText(source.title || "", {
-      x: textX,
-      y: titleY,
-      w: textW,
-      h: source.layout === "title" || source.layout === "section" ? 1.25 : 0.7,
-      fontFace: master.fontFamily.split(",")[0],
-      fontSize: source.layout === "title" || source.layout === "section" ? 34 : 26,
-      color: cleanHex(master.textColor, "#111827"),
-      bold: true,
-      margin: 0,
-      breakLine: false,
-      valign: "middle",
-    });
-    if (source.body && source.layout !== "blank") {
-      slide.addText(source.body, {
-        x: textX,
-        y: titleY + 1,
-        w: textW,
-        h: 2.2,
-        fontFace: master.fontFamily.split(",")[0],
-        fontSize: 16,
-        color: cleanHex(theme.muted, "#64748b"),
-        margin: 0,
-        breakLine: false,
-        valign: "top",
-      });
-    }
-    if (source.bullets.length && source.layout !== "blank") {
-      slide.addText(
-        source.bullets.map((text) => ({
-          text,
-          options: { bullet: { indent: 16 }, breakLine: true },
-        })),
-        {
-          x: textX,
-          y: source.body ? 4.15 : titleY + 1,
-          w: textW,
-          h: source.body ? 2.25 : 4.5,
-          fontFace: master.fontFamily.split(",")[0],
-          fontSize: 17,
-          color: cleanHex(master.textColor, "#111827"),
-          margin: 0,
-          breakLine: false,
-          valign: "top",
-        },
-      );
-    }
-    if (hasImage && source.image) {
-      try {
-        const imageBlob = await fetchMediaBlob(source.image.url, {
-          maxBytes: 24 * 1024 * 1024,
-        });
-        const data = await blobToDataUrl(imageBlob);
-        slide.addImage({
-          data,
-          x: source.layout === "image-left" ? 0.55 : width * 0.53,
-          y: 0.7,
-          w: width * 0.42,
-          h: height - 1.4,
-          sizing: {
-            type: "contain",
-            x: source.layout === "image-left" ? 0.55 : width * 0.53,
-            y: 0.7,
-            w: width * 0.42,
-            h: height - 1.4,
-          },
-        });
-      } catch {
-        slide.addText("图片暂时无法嵌入", {
-          x: source.layout === "image-left" ? 0.55 : width * 0.53,
-          y: 3.2,
-          w: width * 0.42,
-          h: 0.5,
-          color: cleanHex(theme.muted, "#64748b"),
-          align: "center",
-          fontSize: 12,
-        });
-      }
-    }
     if (source.notes) slide.addNotes(source.notes);
   }
   const blob = (await pptx.write({ outputType: "blob" })) as Blob;
@@ -1107,523 +815,6 @@ export async function buildDeckPptxBlob(deck: DeckDocument): Promise<Blob> {
   );
   await assertDeckPptxDelivery(delivery, pinnedDeck.slides.length);
   return delivery;
-}
-
-/* ───────────────────────── editing the draft, not the file ─────────────────
- *
- * A deck on the shelf is one of two things.
- *
- * Almost every one of them today is a PPTX file and nothing else. The only way
- * in is to unpack the OOXML into this editor's own model, and the only way out
- * is `buildDeckPptxBlob` writing a fresh file with `pptxgenjs` — which is why
- * changing one character in a title hands the user a wholly regenerated deck,
- * with the master, the theme, the real chart objects and the credit line gone.
- * That path is untouched below; those files have nothing else to offer.
- *
- * The other kind carries the document the production line built it from. For
- * those the editor edits that document and hands it to the same writer the line
- * uses, so what the user downloads and what the line produces are one thing.
- *
- * `DECK_PROJECT_SCHEMA` and `DECK_IR_SCHEMA` are the same string, so the schema
- * id cannot tell the two apart. The shape decides.
- * ──────────────────────────────────────────────────────────────────────────*/
-
-export type DeckDraftPathSegment = string | number;
-
-export interface DeckDraftAssetUrls {
-  readonly [assetId: string]: string;
-}
-
-export interface DeckDraftState {
-  project: DeckIrDocument;
-  assetUrls: DeckDraftAssetUrls;
-}
-
-const DRAFT_ELEMENT_PREFIX = "draft:";
-/** Keys whose string value is a machine identifier or an enum, never prose. */
-const DRAFT_OPAQUE_KEYS = new Set(["layout", "assetId", "fit", "chartType"]);
-const DRAFT_TITLE_BOX: DeckPercentBox = { x: 6, y: 7, width: 88, height: 14 };
-const DRAFT_CONTENT_BOX: DeckPercentBox = { x: 6, y: 26, width: 88, height: 58 };
-const DRAFT_IMAGE_BOX: DeckPercentBox = { x: 56, y: 26, width: 38, height: 52 };
-const DRAFT_MIN_ROW_HEIGHT = 4;
-
-/** Read a production draft out of an editor project payload, wrapped or not. */
-export function deckDraftFrom(value: unknown): DeckIrDocument | null {
-  const outer = record(value);
-  const wrapped = outer ? record(outer.data) : null;
-  const candidate =
-    wrapped && wrapped.schema === DECK_IR_SCHEMA ? wrapped : outer;
-  if (!candidate || candidate.schema !== DECK_IR_SCHEMA) return null;
-  if (!Array.isArray(candidate.slides)) return null;
-  const validation = validateDeckIr(candidate);
-  return validation.ok ? validation.project : null;
-}
-
-/**
- * Where a picture's bytes can be fetched from.
- *
- * The draft declares its pictures by id, digest and size and deliberately
- * carries no address — the same document has to stay valid wherever it is
- * stored. So the addresses travel beside it, on the library record.
- */
-export function deckDraftAssetUrlsFor(
-  item: LibraryItem,
-  payload?: unknown,
-): DeckDraftAssetUrls {
-  const urls: Record<string, string> = {};
-  const absorb = (value: unknown) => {
-    if (Array.isArray(value)) {
-      for (const entry of value) {
-        const asset = record(entry);
-        const id = typeof asset?.id === "string" ? asset.id : "";
-        const url = httpUrl(asset?.url);
-        if (id && url) urls[id] = url;
-      }
-      return;
-    }
-    const map = record(value);
-    if (!map) return;
-    for (const [id, candidate] of Object.entries(map)) {
-      const url = httpUrl(candidate);
-      if (id && url) urls[id] = url;
-    }
-  };
-  const envelope = record(payload);
-  absorb(item.meta.deck_asset_urls);
-  absorb(item.meta.asset_urls);
-  absorb(envelope?.assetUrls);
-  absorb(envelope?.asset_urls);
-  return urls;
-}
-
-export function deckDraftElementId(
-  slideIndex: number,
-  path: readonly DeckDraftPathSegment[],
-): string {
-  return `${DRAFT_ELEMENT_PREFIX}${slideIndex}/${path.join("/")}`;
-}
-
-export function deckDraftElementPath(
-  id: string,
-): { slideIndex: number; path: DeckDraftPathSegment[] } | null {
-  if (!id.startsWith(DRAFT_ELEMENT_PREFIX)) return null;
-  const [head, ...rest] = id.slice(DRAFT_ELEMENT_PREFIX.length).split("/");
-  const slideIndex = Number(head);
-  if (!Number.isInteger(slideIndex) || slideIndex < 0 || !rest.length) {
-    return null;
-  }
-  return {
-    slideIndex,
-    path: rest.map((part) => (/^\d+$/.test(part) ? Number(part) : part)),
-  };
-}
-
-interface DeckDraftTextLeaf {
-  path: DeckDraftPathSegment[];
-  value: string;
-}
-
-/**
- * Every piece of prose in one page of the draft, each with the exact place it
- * came from. Addressing the text by where it lives — rather than by matching it
- * back up afterwards — is what makes the return trip exact.
- */
-function draftTextLeaves(
-  value: unknown,
-  path: DeckDraftPathSegment[] = [],
-): DeckDraftTextLeaf[] {
-  if (typeof value === "string") return [{ path, value }];
-  if (Array.isArray(value)) {
-    return value.flatMap((entry, index) =>
-      draftTextLeaves(entry, [...path, index]),
-    );
-  }
-  if (value && typeof value === "object") {
-    return Object.entries(value as Record<string, unknown>).flatMap(
-      ([key, entry]) =>
-        DRAFT_OPAQUE_KEYS.has(key) ? [] : draftTextLeaves(entry, [...path, key]),
-    );
-  }
-  return [];
-}
-
-function draftTextAt(
-  slide: unknown,
-  path: readonly DeckDraftPathSegment[],
-): string | null {
-  let cursor: unknown = slide;
-  for (const part of path) {
-    if (!cursor || typeof cursor !== "object") return null;
-    cursor = (cursor as Record<DeckDraftPathSegment, unknown>)[part];
-  }
-  return typeof cursor === "string" ? cursor : null;
-}
-
-/** Write prose back where it came from. Refuses anything that is not prose. */
-function setDraftTextAt(
-  slide: unknown,
-  path: readonly DeckDraftPathSegment[],
-  value: string,
-): boolean {
-  if (!path.length) return false;
-  let cursor: unknown = slide;
-  for (const part of path.slice(0, -1)) {
-    if (!cursor || typeof cursor !== "object") return false;
-    cursor = (cursor as Record<DeckDraftPathSegment, unknown>)[part];
-  }
-  if (!cursor || typeof cursor !== "object") return false;
-  const holder = cursor as Record<DeckDraftPathSegment, unknown>;
-  const last = path[path.length - 1];
-  if (typeof holder[last] !== "string") return false;
-  holder[last] = value;
-  return true;
-}
-
-function draftBox(
-  box: DeckPercentBox | undefined,
-  fallback: DeckPercentBox,
-): DeckPercentBox {
-  return box || fallback;
-}
-
-function draftStackedBox(
-  box: DeckPercentBox,
-  index: number,
-  count: number,
-): DeckPercentBox {
-  const height = Math.max(DRAFT_MIN_ROW_HEIGHT, box.height / Math.max(1, count));
-  return {
-    x: box.x,
-    y: box.y + index * height,
-    width: box.width,
-    height,
-  };
-}
-
-/**
- * One page of the draft as stage elements.
- *
- * The picture and the two text regions sit on the §4 grid the writer itself
- * uses, so the stage and the exported file agree on the big shapes. The rest of
- * the page's prose — table cells, KPI labels, milestone dates — is stacked
- * inside the body region: the writer decides where each of those really lands,
- * and pretending otherwise on the stage would be a promise this path cannot
- * keep.
- */
-function draftSlideElements(
-  slide: DeckIrDocument["slides"][number],
-  slideIndex: number,
-  assetUrls: DeckDraftAssetUrls,
-  surfaceImage?: DeckIrThemeSurfaceImage,
-): DeckElement[] {
-  const placement = deckLayoutIsCarrierGrammar(slide.layout)
-    ? deckCarrierPlacement(slide.layout)
-    : {};
-  const titleBox = draftBox(placement.title, DRAFT_TITLE_BOX);
-  const contentBox = draftBox(placement.content, DRAFT_CONTENT_BOX);
-  const imageBox = draftBox(placement.image, DRAFT_IMAGE_BOX);
-  const leaves = draftTextLeaves(slide).filter(
-    (leaf) => leaf.path[0] !== "layout",
-  );
-  const titlePath = leaves.some((leaf) => leaf.path.join("/") === "title")
-    ? ["title"]
-    : slide.layout === "quote" &&
-        leaves.some((leaf) => leaf.path.join("/") === "quote/text")
-      ? ["quote", "text"]
-      : null;
-  const titleKey = titlePath?.join("/") || "";
-  const body = leaves.filter((leaf) => leaf.path.join("/") !== titleKey);
-  const elements: DeckElement[] = [];
-  let order = 0;
-
-  if (surfaceImage) {
-    const url = assetUrls[surfaceImage.assetId];
-    if (url) {
-      elements.push({
-        id: `${deckDraftElementId(slideIndex, ["theme", "surface", "image"])}/#picture`,
-        type: "image",
-        x: 0,
-        y: 0,
-        width: 100,
-        height: 100,
-        rotation: 0,
-        order: (order += 1),
-        src: url,
-        alt: surfaceImage.alt,
-        imageFit: surfaceImage.fit === "contain" ? "contain" : "cover",
-        opacity: 1,
-        locked: true,
-      });
-    }
-  }
-
-  (slide.images || []).forEach((image, index) => {
-    const url = assetUrls[image.assetId];
-    if (!url) return;
-    const box =
-      index === 0
-        ? imageBox
-        : draftStackedBox(imageBox, index, (slide.images || []).length);
-    elements.push({
-      id: `${deckDraftElementId(slideIndex, ["images", index])}/#picture`,
-      type: "image",
-      ...box,
-      rotation: 0,
-      order: (order += 1),
-      src: url,
-      alt: image.alt,
-      imageFit: image.fit === "contain" ? "contain" : "cover",
-      opacity: 1,
-    });
-  });
-
-  if (titlePath) {
-    elements.push({
-      id: deckDraftElementId(slideIndex, titlePath),
-      type: "text",
-      ...titleBox,
-      rotation: 0,
-      order: (order += 1),
-      text: draftTextAt(slide, titlePath) || "",
-      fontSize: deckFontPoints("heading"),
-      bold: true,
-      align: placement.title?.align || "left",
-      lineHeight: 1.12,
-      opacity: 1,
-      label: "标题",
-    });
-  }
-
-  body.forEach((leaf, index) => {
-    elements.push({
-      id: deckDraftElementId(slideIndex, leaf.path),
-      type: "text",
-      ...draftStackedBox(contentBox, index, body.length),
-      rotation: 0,
-      order: (order += 1),
-      text: leaf.value,
-      fontSize: deckFontPoints("body-sm"),
-      align: placement.content?.align || "left",
-      lineHeight: 1.3,
-      opacity: 1,
-    });
-  });
-
-  return elements;
-}
-
-/** Load a draft into the editor's working model without touching any PPTX. */
-export function deckDocumentFromDraft(
-  project: DeckIrDocument,
-  assetUrls: DeckDraftAssetUrls = {},
-): DeckDocument {
-  const master = createDeckMaster("ocean", "默认母版", "master-default");
-  const pack = project.packId ? packById(project.packId) : undefined;
-  const sourceSurface = project.theme.surface?.color;
-  const surfaceColor =
-    typeof sourceSurface === "string" && /^[0-9A-Fa-f]{6}$/.test(sourceSurface)
-      ? sourceSurface.toUpperCase()
-      : pack?.surface.color;
-  const fontFamily =
-    project.theme.fontMajor || pack?.fonts.major || master.fontFamily;
-  const slides: DeckSlide[] = project.slides.map((slide, index) => ({
-    id: `draft-slide-${index + 1}`,
-    title: slide.title || slide.quote?.attribution || `第 ${index + 1} 页`,
-    body: slide.body || slide.subtitle || "",
-    bullets: [...(slide.bullets || [])],
-    notes: slide.note || "",
-    layout: slide.layout,
-    background: "",
-    masterId: master.id,
-    elements: draftSlideElements(
-      slide,
-      index,
-      assetUrls,
-      project.theme.surface?.image,
-    ),
-  }));
-  return {
-    version: 2,
-    title: project.title,
-    aspect: "16:9",
-    theme: "ocean",
-    masters: [
-      {
-        ...master,
-        ...(surfaceColor ? { background: `#${surfaceColor}` } : {}),
-        accentColor: `#${project.theme.accent.toUpperCase()}`,
-        fontFamily,
-      },
-    ],
-    slides: slides.length
-      ? slides
-      : [{ ...emptyDeckSlide(), masterId: master.id }],
-  };
-}
-
-/**
- * Fold the edits back into the draft.
- *
- * Only text that came out of the draft goes back in, and only into the exact
- * field it came from. Anything the user added on the stage that the draft has
- * no room for is left where it is rather than guessed at — see
- * `deckDraftUnexpressibleEdits`, which is what tells the user about it.
- */
-export function applyDeckDocumentToDraft(
-  project: DeckIrDocument,
-  deck: DeckDocument,
-): DeckIrDocument {
-  const next = structuredClone(project) as DeckIrDocument;
-  const title = deck.title.trim();
-  if (title && title !== next.title) next.title = title;
-  for (const slide of deck.slides) {
-    for (const element of slide.elements) {
-      if (typeof element.text !== "string") continue;
-      const address = deckDraftElementPath(element.id);
-      if (!address) continue;
-      const target = next.slides[address.slideIndex];
-      if (!target) continue;
-      setDraftTextAt(target, address.path, element.text);
-    }
-  }
-  return next;
-}
-
-/**
- * Edits the stage accepted that the draft cannot hold, in plain language.
- *
- * The stage is a free canvas and the draft is a set of named regions, so the
- * two do not cover the same ground. Saying which edits fall through is the only
- * honest option: the alternative is a download that quietly differs from what
- * the user just spent ten minutes arranging.
- */
-export function deckDraftUnexpressibleEdits(
-  project: DeckIrDocument,
-  deck: DeckDocument,
-): string[] {
-  const notes: string[] = [];
-  const added = deck.slides.reduce(
-    (total, slide) =>
-      total +
-      slide.elements.filter((element) => !deckDraftElementPath(element.id))
-        .length,
-    0,
-  );
-  if (added > 0) {
-    notes.push(
-      `这一版里有 ${added} 个自己加上去的元素（文字框、形状、图片等）。` +
-        "这份演示文稿是按版式生成的，加上去的元素没有对应的位置，不会出现在下载到的文件里。",
-    );
-  }
-  if (deck.slides.length !== project.slides.length) {
-    notes.push(
-      `编辑器里有 ${deck.slides.length} 页，这份演示文稿原本是 ${project.slides.length} 页。` +
-        "增删页面暂时不会带到下载的文件里。",
-    );
-  }
-  return notes;
-}
-
-export class DeckDraftAssetError extends Error {
-  readonly code = "deck-draft-assets-missing";
-  readonly assetIds: string[];
-
-  constructor(assetIds: string[], detail = "") {
-    super(
-      `导出已中止：这份演示文稿里有 ${assetIds.length} 张图片取不回原图` +
-        `（${assetIds.join("、")}）。` +
-        "继续导出只会得到一份缺图的文件，所以没有生成。" +
-        (detail ? `原因：${detail}。` : "") +
-        "请重新打开这份素材再试一次，或先把图片重新上传。",
-    );
-    this.name = "DeckDraftAssetError";
-    this.assetIds = assetIds;
-  }
-}
-
-export type DeckDraftAssetLoader = (
-  asset: DeckIrAsset,
-  url: string,
-) => Promise<Uint8Array>;
-
-export interface DeckDraftExportOptions {
-  assetUrls?: DeckDraftAssetUrls;
-  loadAsset?: DeckDraftAssetLoader;
-  timestamp?: string;
-}
-
-async function fetchDraftAssetBytes(
-  _asset: DeckIrAsset,
-  url: string,
-): Promise<Uint8Array> {
-  const blob = await fetchMediaBlob(url, { maxBytes: 24 * 1024 * 1024 });
-  return new Uint8Array(await blob.arrayBuffer());
-}
-
-/**
- * The declared pictures, as bytes. Every one of them or none: the writer treats
- * a picture it was given no bytes for as an empty frame and carries on, which
- * is right for a batch run and wrong for someone who just pressed download.
- */
-export async function resolveDeckDraftAssets(
-  project: DeckIrDocument,
-  options: DeckDraftExportOptions = {},
-): Promise<DeckAssetBytes[]> {
-  const declared = project.assets || [];
-  if (!declared.length) return [];
-  const urls = options.assetUrls || {};
-  const load = options.loadAsset || fetchDraftAssetBytes;
-  const resolved: DeckAssetBytes[] = [];
-  const missing: string[] = [];
-  const reasons: string[] = [];
-  for (const asset of declared) {
-    const url = urls[asset.id] || "";
-    if (!url) {
-      missing.push(asset.id);
-      reasons.push(`${asset.id} 没有可用的图片地址`);
-      continue;
-    }
-    try {
-      const bytes = await load(asset, url);
-      if (!bytes?.length) throw new Error("取回 0 字节");
-      resolved.push({
-        id: asset.id,
-        bytes,
-        width: asset.width,
-        height: asset.height,
-      });
-    } catch (caught) {
-      missing.push(asset.id);
-      reasons.push(
-        `${asset.id} ${caught instanceof Error ? caught.message : "取图失败"}`,
-      );
-    }
-  }
-  if (missing.length) throw new DeckDraftAssetError(missing, reasons.join("；"));
-  return resolved;
-}
-
-/** The production writer, called with exactly what the production line calls it with. */
-export async function buildDeckDraftPptxBytes(
-  project: DeckIrDocument,
-  options: DeckDraftExportOptions = {},
-): Promise<Uint8Array> {
-  const assets = await resolveDeckDraftAssets(project, options);
-  const { bytes } = buildDeckPptx(project, {
-    assets,
-    ...(options.timestamp ? { timestamp: options.timestamp } : {}),
-  });
-  return bytes;
-}
-
-export async function buildDeckDraftPptxBlob(
-  project: DeckIrDocument,
-  options: DeckDraftExportOptions = {},
-): Promise<Blob> {
-  const bytes = await buildDeckDraftPptxBytes(project, options);
-  return new Blob([bytes as unknown as BlobPart], {
-    type: DECK_SOURCE_MEDIA_TYPE,
-  });
 }
 
 function boundedLoadKey(parts: readonly unknown[]): string {
@@ -1646,7 +837,7 @@ function boundedLoadKey(parts: readonly unknown[]): string {
  */
 export function deckSourceLoadKey(
   item: LibraryItem,
-  previewContent?: unknown,
+  _previewContent?: unknown,
 ): string {
   return boundedLoadKey([
     item.id,
@@ -1654,7 +845,6 @@ export function deckSourceLoadKey(
     item.title,
     item.url || "",
     item.previewUrl || "",
-    deckProjectUrlFor(item),
     deckDeliveryUrlFor(item),
     item.meta[ADVANCED_DRAFT_META_KEY] ?? null,
     // `loadDeck` picks the unpacker by extension, so the format hints are load
@@ -1663,7 +853,6 @@ export function deckSourceLoadKey(
     officeExtensionForItem(item),
     item.meta.source_format ?? "",
     item.meta.format ?? "",
-    initialSource(item, previewContent),
   ]);
 }
 
@@ -1735,8 +924,8 @@ export function useDeckEditor(
   const onSavedRef = useRef(collab?.onSaved);
   onSavedRef.current = collab?.onSaved;
   const initial = useMemo(
-    () => normalizeDeckDocument(initialSource(item, previewContent), item.title),
-    [item, previewContent],
+    () => normalizeDeckDocument(null, item.title),
+    [item.title],
   );
   const [deck, setDeckState] = useState(initial);
   const [activeId, setActiveId] = useState(initial.slides[0].id);
@@ -1779,19 +968,13 @@ export function useDeckEditor(
   const lastSavedRef = useRef<{ editRevision: number; item: LibraryItem; version: PersistedEditorVersion } | null>(null);
   const preparedSaveRef = useRef<{
     key: string;
-    project?: PreparedProjectUpload;
     delivery?: PreparedDeliveryUpload;
     preview?: PreparedPreviewUpload;
   } | null>(null);
   const workingHeadUrlRef = useRef(
-    deckProjectUrlFor(item) || item.previewUrl || "",
+    deckDeliveryUrlFor(item),
   );
-  /**
-   * The draft this deck was built from, when it has one. Pinned rather than
-   * kept in state: nothing on screen depends on it, and the user is never told
-   * it exists.
-   */
-  const draftRef = useRef<DeckDraftState | null>(null);
+
   const canvasElementRef = useRef<HTMLElement | null>(null);
 
   /**
@@ -1853,14 +1036,12 @@ export function useDeckEditor(
     ownSavedRevisionsRef.current = new Set();
     lastSavedRef.current = null;
     preparedSaveRef.current = null;
-    draftRef.current = null;
     workingHeadUrlRef.current =
-      deckProjectUrlFor(source) || source.previewUrl || "";
+      deckDeliveryUrlFor(source);
     void loadDeck(source, sourcePreview, abort.signal, notifySourceAccessError)
       .then((loaded) => {
         if (abort.signal.aborted) return;
         const next = loaded.deck;
-        draftRef.current = loaded.draft;
         serverDraftRef.current = loaded.serverDraft || null;
         if (loaded.serverDraft) {
           revisionRef.current = typeof loaded.serverDraft.editRevision === "number" ? loaded.serverDraft.editRevision : 1;
@@ -1868,7 +1049,7 @@ export function useDeckEditor(
           applyDeckUserEditSession(source, "load");
         }
         deckRef.current = next;
-        const existingVersion = deckExistingVersion(source, deckDeliveryUrlFor(source) || source.url || "", deckProjectUrlFor(source));
+        const existingVersion = deckExistingVersion(source, deckDeliveryUrlFor(source) || source.url || "", "");
         if (existingVersion && !loaded.serverDraft) lastSavedRef.current = { editRevision: revisionRef.current, item: source, version: existingVersion };
         activeRef.current = next.slides[0].id;
         selectedElementRef.current = "";
@@ -2115,81 +1296,6 @@ export function useDeckEditor(
       ),
     }));
   }, [commit]);
-  const applySlideLayout = useCallback(
-    (layout: DeckLayout) => {
-      commit((current) => ({
-        ...current,
-        slides: current.slides.map((slide) => {
-          if (slide.id !== activeRef.current) return slide;
-          if (layout === "blank") return { ...slide, layout };
-          const orderedText = slide.elements
-            .filter((element) => element.type === "text")
-            .sort((left, right) => left.order - right.order);
-          const titleId = orderedText[0]?.id;
-          const contentIds = new Set(orderedText.slice(1).map((element) => element.id));
-          // deck-extension.md §4 — the 16 carrier grammars are placed from the
-          // §2.2 EMU grid instead of the pre-contract hand-tuned percentages.
-          if (deckLayoutIsCarrierGrammar(layout)) {
-            const placement = deckCarrierPlacement(layout);
-            return {
-              ...slide,
-              layout,
-              elements: slide.elements.map((element) => {
-                if (element.locked) return element;
-                if (element.type === "image" && placement.image) {
-                  return { ...element, ...placement.image };
-                }
-                if (element.id === titleId && placement.title) {
-                  const { fontSize, align, ...box } = placement.title;
-                  return { ...element, ...box, fontSize, align };
-                }
-                if (contentIds.has(element.id) && placement.content) {
-                  const { fontSize, align, ...box } = placement.content;
-                  return { ...element, ...box, fontSize, align };
-                }
-                return element;
-              }),
-            };
-          }
-          // `blank` returned above and the 16 §4 grammars took the carrier
-          // branch, so `title-body` is the only grammar still placed from the
-          // pre-contract percentages. The annotation is the guard: adding a
-          // third legacy grammar to `DeckLayout` fails here instead of silently
-          // inheriting the title-body geometry.
-          const titleBody: Exclude<DeckLegacyLayout, "blank"> = layout;
-          return {
-            ...slide,
-            layout: titleBody,
-            elements: slide.elements.map((element) => {
-              if (element.locked) return element;
-              if (element.id === titleId) {
-                return {
-                  ...element,
-                  x: 8,
-                  y: 13,
-                  width: 84,
-                  height: 14,
-                  align: "left" as const,
-                };
-              }
-              if (contentIds.has(element.id)) {
-                return {
-                  ...element,
-                  x: 8,
-                  y: 33,
-                  width: 84,
-                  height: 50,
-                  align: "left" as const,
-                };
-              }
-              return element;
-            }),
-          };
-        }),
-      }));
-    },
-    [commit],
-  );
 
   const selectElement = useCallback((id: string) => {
     selectedElementRef.current = id;
@@ -2594,9 +1700,8 @@ export function useDeckEditor(
         if (!revisionItem) return null;
         const loaded = await loadDeck(revisionItem, undefined, undefined, undefined);
         persistedItemRef.current = revisionItem;
-        workingHeadUrlRef.current = deckProjectUrlFor(revisionItem) || revisionItem.previewUrl || "";
+        workingHeadUrlRef.current = deckDeliveryUrlFor(revisionItem);
         preparedSaveRef.current = null;
-        draftRef.current = loaded.draft;
         return loaded.deck;
       } catch {
         return null;
@@ -2633,31 +1738,9 @@ export function useDeckEditor(
     setSavedUrl("");
   }, [applySnapshot, snapshot]);
 
-  /**
-   * One PPTX out of the current edit.
-   *
-   * A deck with a draft behind it goes out through the writer the production
-   * line uses, so the file the user gets is the file the line would have made.
-   * Everything else keeps the old route, which is all a bare PPTX has.
-   */
-  const buildDelivery = useCallback(
-    async (
-      snapshot: DeckDocument,
-    ): Promise<{ blob: Blob; notes: string[] }> => {
-      const draft = draftRef.current;
-      if (!draft) {
-        return { blob: await buildDeckPptxBlob(snapshot), notes: [] };
-      }
-      const project = applyDeckDocumentToDraft(draft.project, snapshot);
-      return {
-        blob: await buildDeckDraftPptxBlob(project, {
-          assetUrls: draft.assetUrls,
-        }),
-        notes: deckDraftUnexpressibleEdits(draft.project, snapshot),
-      };
-    },
-    [],
-  );
+  const buildDelivery = useCallback(async (snapshot: DeckDocument) => ({
+    blob: await buildDeckPptxBlob(snapshot), notes: [] as string[],
+  }), []);
 
   const exportPptx = useCallback(async () => {
     if (exporting) return;
@@ -2716,10 +1799,6 @@ export function useDeckEditor(
       const fileStem =
         title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) ||
         tt("演示文稿");
-      const draft = draftRef.current;
-      const savedProject = draft
-        ? applyDeckDocumentToDraft(draft.project, snapshot)
-        : null;
       const result = await saveFileToLibrary({
         item: baseItem,
         siteId,
@@ -2740,7 +1819,6 @@ export function useDeckEditor(
         kind: "deck",
         idempotencyKey: saveKey,
         workingHeadUrl: workingHeadUrlRef.current,
-        preparedProject: prepared?.project,
         preparedDelivery: prepared?.delivery,
         preparedPreview: prepared?.preview,
         meta: {
@@ -2752,18 +1830,6 @@ export function useDeckEditor(
           aspect: snapshot.aspect,
           theme: snapshot.theme,
           deck_version: snapshot.version,
-          // The draft declares its pictures by id and carries no address, so
-          // the addresses have to be kept beside it or the next person to open
-          // this deck cannot export it.
-          ...(draft ? { deck_asset_urls: draft.assetUrls } : {}),
-        },
-        project: {
-          schema: DECK_PROJECT_SCHEMA,
-          data: savedProject || snapshot,
-        },
-        editorManifest: {
-          id: "deck-editor",
-          format: DECK_PROJECT_SCHEMA,
         },
         artifactRevision: {
           artifactType: "deck",
@@ -2775,12 +1841,10 @@ export function useDeckEditor(
       });
       if (!result.ok) {
         preparedSaveRef.current =
-          result.preparedProject ||
           result.preparedDelivery ||
           result.preparedPreview
             ? {
                 key: saveKey,
-                project: result.preparedProject,
                 delivery: result.preparedDelivery,
                 preview: result.preparedPreview,
               }
@@ -2790,9 +1854,6 @@ export function useDeckEditor(
         );
       }
       preparedSaveRef.current = null;
-      if (draft && savedProject) {
-        draftRef.current = { ...draft, project: savedProject };
-      }
       const handoff = deckSavedItemForHandoff(
         result.item || baseItem,
         result,
@@ -2803,7 +1864,7 @@ export function useDeckEditor(
         if (saved && saved !== baseRevision && saved !== rootId) ownSavedRevisionsRef.current.add(saved);
       }
       workingHeadUrlRef.current =
-        result.projectUrl || deckProjectUrlFor(handoff);
+        result.url;
       if (mountedRef.current) {
         setSavedUrl(result.url);
         if (revisionRef.current === savingRevision) {
@@ -2915,7 +1976,6 @@ export function useDeckEditor(
       schema: DECK_DRAFT_SCHEMA,
       capture: () => sourceLoadingRef.current || sourceFailedRef.current ? null : {
         deck: cloneDeckDocument(deckRef.current),
-        draft: draftRef.current ? structuredClone(draftRef.current) : null,
       },
       restoredRevision: serverDraftRef.current ? (typeof serverDraftRef.current.editRevision === "number" ? serverDraftRef.current.editRevision : 1) : undefined,
       bindFlush: bindDraftFlush,
@@ -2954,7 +2014,6 @@ export function useDeckEditor(
     deleteMaster,
     patchSlide,
     patchSlideTransient,
-    applySlideLayout,
     selectElement,
     patchElement,
     patchElementTransient,
@@ -3041,14 +2100,6 @@ export function useDeckEditor(
     redo,
     reload,
     importSource,
-    downloadJson: async () => {
-      await flushBeforeExport();
-      downloadText(
-        `${deckRef.current.title || "演示文稿"}.oceanleo-deck.v1.json`,
-        JSON.stringify(deckRef.current, null, 2),
-        "application/json",
-      );
-    },
     exportPptx,
     save,
     restoreRecovery,

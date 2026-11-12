@@ -1130,6 +1130,7 @@ test("W16 放映视图是只读的：没有可编辑控件", async () => {
       body: "正文",
       bullets: ["一", "二"],
       notes: "备注",
+      elements: [{ id: "ro-text", type: "text", x: 10, y: 10, width: 80, height: 40, rotation: 0, order: 0, text: "只读 正文", fontSize: 20 }],
     }),
   ]);
   const mounted = await createMounted(DeckPresenterView, {

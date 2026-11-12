@@ -15,7 +15,6 @@ import {
   deckDocumentFromWorkingDraft,
   loadDeckServerDraft,
 } from "../src/shell/advanced-draft-deck.ts";
-import { deckDocumentToPptist } from "../src/shell/doc-editors/deck-pptist-carrier.ts";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
 
 const RICHDOC_DRAFT_SCHEMA = "oceanleo.richdoc.edit.v1";
@@ -90,19 +89,16 @@ test("P4: applyMode in owned faces never waits on saveBeforeLeavePro", () => {
   }
 });
 
-test("P4: working draft restore accepts envelope, PPTist, and deck IR as one document", () => {
+test("P4: working draft restore accepts PPTX working-document envelope as one document", () => {
   const deck = sampleDeck();
   const fromIr = deckDocumentFromWorkingDraft(deck, "同一份稿");
   assert.equal(fromIr?.slides[0].elements[0].text, "专业面刚写下的正文");
   const fromEnvelope = deckDocumentFromWorkingDraft({ deck, draft: null }, "同一份稿");
   assert.equal(fromEnvelope?.slides[0].id, "s1");
-  const pptist = deckDocumentToPptist(deck);
-  const fromPro = deckDocumentFromWorkingDraft(pptist, "同一份稿");
-  assert.match(fromPro?.slides[0].elements[0].text || "", /专业面刚写下的正文/);
   assert.equal(deckDocumentFromWorkingDraft({ title: "no slides" }, "x"), null);
 });
 
-test("P4: server draft loader reads a PPTist working document under the shared schema", async () => {
+test("P4: server draft loader reads a freeform working document under the shared schema", async () => {
   const deck = sampleDeck();
   const pointer = {
     rootId: "root-1",
@@ -123,11 +119,17 @@ test("P4: server draft loader reads a PPTist working document under the shared s
       JSON.stringify({
         ...pointer,
         version: 1,
-        data: deckDocumentToPptist(deck),
+        data: { deck },
       }),
     ),
   );
   assert.equal(loaded.serverDraft.schema, DECK_DRAFT_SCHEMA);
   assert.match(loaded.deck.slides[0].elements[0].text, /专业面刚写下的正文/);
-  assert.equal(loaded.draft, null);
+});
+
+test("PPTX drafts reject structured layouts and preserve a truly blank slide", () => {
+  assert.equal(deckDocumentFromWorkingDraft({ version: 1, slides: [{ layout: "title", title: "Old" }] }, "Old"), null);
+  const deck = sampleDeck();
+  deck.slides[0].elements = [];
+  assert.deepEqual(deckDocumentFromWorkingDraft({ deck }, "Blank").slides[0].elements, []);
 });

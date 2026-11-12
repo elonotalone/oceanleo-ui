@@ -20,7 +20,6 @@
 
 import { currentDomainProfile } from "../contracts/domain-family";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
-import { DECK_IR_SCHEMA } from "./doc-editors/deck-ir";
 import type { WorkspaceLibraryEntry } from "./workspace-library-model";
 
 export type DeckDeliveryFamily = "pptx" | "html";
@@ -281,52 +280,6 @@ export function deckHtmlRuntimeUrl(
   return "";
 }
 
-function declaresDeckIr(...hints: unknown[]): boolean {
-  return hints.some((hint) => lower(hint) === DECK_IR_SCHEMA);
-}
-
-function httpUrl(value: unknown): string {
-  const url = typeof value === "string" ? value.trim() : "";
-  return /^https?:\/\//i.test(url) ? url : "";
-}
-
-/**
- * 这件素材的 `oceanleo.deck.v1` 结构稿在哪。
- *
- * 判据只认**声明出来的那个 schema 字面量**：pptx 交付物、渲染图、HTML 成品都不是
- * 稿子。认宽了就会拿一份 OOXML（或者一份 HTML）去喂 IR 解析器，然后炸在用户脸上。
- */
-export function deckStructuredSourceUrl(
-  item: LibraryItem | null | undefined,
-): string {
-  if (!item) return "";
-  const artifact = item.artifact;
-  const source = artifact?.renditions.source;
-  const manifest = artifact?.renditions.editor_manifest;
-  const meta = record(item.meta) || {};
-  const editorManifestMeta = record(meta.editor_manifest);
-  const editorManifestSource = record(editorManifestMeta?.source);
-  const candidates: Array<{ url: unknown; declared: unknown[] }> = [
-    { url: source?.url, declared: [source?.format, artifact?.sourceFormat] },
-    { url: manifest?.url, declared: [manifest?.format] },
-    {
-      url: meta.editor_project_url || meta.editor_working_head_project_url,
-      declared: [
-        meta.editor_working_head_schema,
-        meta.editor_project_schema,
-        meta.project_schema,
-      ],
-    },
-    { url: editorManifestSource?.url, declared: [editorManifestSource?.format] },
-    { url: meta.source_url, declared: [meta.source_format] },
-  ];
-  for (const candidate of candidates) {
-    const url = httpUrl(candidate.url);
-    if (url && declaresDeckIr(...candidate.declared)) return url;
-  }
-  return "";
-}
-
 export interface DeckHtmlViewEvidence {
   visible: boolean;
   available: boolean;
@@ -363,13 +316,7 @@ const HIDDEN_EDIT: DeckHtmlEditEvidence = Object.freeze({
   sourceUrl: "",
 });
 
-/**
- * 一件 HTML 演示的两个入口各自能不能出现。
- *
- * **两条链互不牵连**：runtime 不可信只让「查看」消失，结构稿缺失只让「编辑」消失。
- * 互相降级（拿 HTML 当编辑源，或者拿结构稿去"播放"）恰恰是这份合同要根除的东西。
- * 身份不可信（不可读 / 完整性未过）时两条一起隐藏——那一刻我们连这是哪一版都不知道。
- */
+/** Legacy HTML keeps its isolated view link, with no structured editor. */
 export function deckHtmlOpenPlan(
   item: LibraryItem | null | undefined,
 ): DeckHtmlOpenPlan {
@@ -393,15 +340,12 @@ export function deckHtmlOpenPlan(
     };
   }
   const url = deckHtmlRuntimeUrl(item);
-  const sourceUrl = deckStructuredSourceUrl(item);
   return {
     family,
     view: url
       ? { visible: true, available: true, reason: "", url }
       : HIDDEN_VIEW,
-    edit: sourceUrl
-      ? { visible: true, available: true, reason: "", sourceUrl }
-      : HIDDEN_EDIT,
+    edit: HIDDEN_EDIT,
   };
 }
 

@@ -76,7 +76,7 @@
     },
     {
       "artifactType": "deck",
-      "sourceFormat": "oceanleo.deck.v1",
+      "sourceFormat": "pptx",
       "editorCapability": "deck-editor",
       "liveRows": 73,
       "expect": {

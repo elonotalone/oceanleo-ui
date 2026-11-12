@@ -261,7 +261,7 @@ test("slide bar: no page-content panel, layout and notes do not share the drawer
   const notes = context.controls.find((control) => control.id === "notes");
   // 空态抽屉：模板 templates / 元素 elements / 画笔 draw / 线条 line / 便签 note。
   const drawerGlyphs = new Set(["templates", "elements", "draw", "line", "note"]);
-  assert.ok(!drawerGlyphs.has(layout.icon), layout.icon);
+  assert.equal(layout, undefined);
   assert.ok(!drawerGlyphs.has(notes.inspectorIcon), notes.inspectorIcon);
 });
 

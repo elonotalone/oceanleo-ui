@@ -36,7 +36,6 @@ const {
   bindNormalFaceHandoff,
   captureBeforeEnterPro,
   inferHandoffFormat,
-  libraryItemFromProSave,
   materializeHandoffJson,
   openHostedSaveGate,
   peekProSavedRevision,
@@ -138,20 +137,7 @@ test("只有 .pptx 的素材解析成 url/pptx，导入后页数大于 0", async
   assert.ok(loaded.slideCount > 0);
 });
 
-test("专业面保存回写后，快速面按新 revision 能再解析到同一份", () => {
-  const saved = libraryItemFromProSave(item(), {
-    deck: { slides: [{ id: "after-pro", title: "专业面改过" }] },
-    revision: "rev-pro-1",
-  });
-  reportProSaved("deck-1", saved);
-  const again = peekProSavedRevision("deck-1");
-  assert.ok(again);
-  assert.equal(again.revisionId, "rev-pro-1");
-  const resolved = resolveEditorHandoffFromItem(again);
-  assert.equal(resolved.kind, "inline");
-  assert.equal(resolved.json.slides[0].id, "after-pro");
-  assert.equal(slideCountOf(resolved.json) > 0, true);
-});
+
 
 test("flush 在没有 save-result 时超时返回 ok: false", async () => {
   const gate = openHostedSaveGate({ timeoutMs: 40, saveId: "save-timeout" });

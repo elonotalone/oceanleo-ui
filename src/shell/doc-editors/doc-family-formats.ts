@@ -58,7 +58,6 @@ export const DOC_FAMILY_DOWNLOAD_FORMATS: Readonly<
   deck: [
     { id: "deck.download.pptx", label: "PowerPoint 演示文稿 (.pptx)", extension: "pptx", via: "local" },
     { id: "deck.download.pdf", label: "PDF 文件 (.pdf)", extension: "pdf", via: "convert" },
-    { id: "deck.download.json", label: "可继续编辑的工程文件 (.json)", extension: "json", via: "local" },
   ],
   pdf: [
     { id: "pdf.download.pdf", label: "PDF 文件 (.pdf)", extension: "pdf", via: "local" },

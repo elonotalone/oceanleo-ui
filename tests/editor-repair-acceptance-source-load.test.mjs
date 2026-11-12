@@ -253,14 +253,14 @@ test("vector empty SVG stays empty; a real SVG hydrates", async () => {
 });
 
 test("deck and image loaders fail closed on empty source bytes", async () => {
-  const { deckProjectUrlFor } = await import(
+  const { deckDeliveryUrlFor } = await import(
     await compileModule("src/shell/doc-editors/use-deck-editor.ts", {
       "../i18n/ui/useUI": dataModule(
         "export function useUI(){ return (value) => value; }",
       ),
     })
   );
-  const deckUrl = deckProjectUrlFor(
+  const deckUrl = deckDeliveryUrlFor(
     artifactItem({
       kind: "ppt",
       url: "",
