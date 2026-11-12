@@ -23,7 +23,7 @@ import {
 import type { NativeDialog } from "../cloud-computer/native-surface/ProgramAccess";
 import { isWsProgram } from "../cloud-computer/agent-dialog/parse";
 import { PROGRAM_LABEL } from "../cloud-computer/agent-dialog/types";
-import { modelDisplayName, modelParamOptions, providerLabel } from "../cloud-computer/agent-dialog/notice";
+import { modelDisplayName, providerLabel } from "../cloud-computer/agent-dialog/notice";
 import { modelControls } from "../cloud-computer/agent-dialog/model-controls";
 import { coerceOptionValue, optionCurrentWire } from "../cloud-computer/agent-dialog/model-param-memory";
 import type { AgentDialogController, DialogConfigOption, DialogModel, ModeOption } from "../cloud-computer/agent-dialog/types";
@@ -46,7 +46,7 @@ export type NativeModelPickerProps = {
   /** Codex catalogs that encode effort in model ids (`gpt-5[high]`): picking one selects that id. */
   effort?: NativeEffortChoices | null;
   onEffort?: (wire: string) => void;
-  /** The program has fast mode for some models: say so when the current model lacks it. */
+  /** Compatibility prop; rows are determined solely by the reported params. */
   fastSupported?: boolean;
   /** The host could not store the last pick: its error, verbatim, as a line under this conversation's rows. */
   notice?: string;
@@ -133,7 +133,7 @@ function modeRowLabel(program: string | undefined, tt: UITranslate): string {
  * effort, other config options, its modes, fast). Nothing is hard-coded.
  */
 export function nativeSettingRows({
-  program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort, fastSupported,
+  program, models, selected, onSelect, mode, selectedMode, onMode, params, onParam, effort, onEffort,
 }: Required<Pick<NativeModelPickerProps, "models" | "selected" | "onSelect">> & Omit<NativeModelPickerProps, "models" | "selected" | "onSelect">, tt: UITranslate): ComposerSettingRow[] {
   const rows: ComposerSettingRow[] = [];
   const list = params ?? [];
@@ -144,7 +144,7 @@ export function nativeSettingRows({
     rows.push({
       id: "model",
       label: tt("模型"),
-      value: active ? modelDisplayName(active) : tt("选择模型"),
+      value: active ? modelDisplayName(active) : selected || tt("选择模型"),
       selected,
       choices: models.map((model) => {
         const usable = model.usable !== false;
@@ -208,9 +208,6 @@ export function nativeSettingRows({
       ],
       onPick: onParam ? (wire) => onParam(fastOption, wire) : undefined,
     });
-  } else if (fastSupported && !list.some(isFastOption)) {
-    // The program has fast mode, the current model does not: said, not hidden.
-    rows.push({ id: "fast", label: tt("快速模式"), value: tt("关"), selected: "", choices: [], reason: tt("当前模型不支持快速模式") });
   }
   return rows;
 }
@@ -356,17 +353,18 @@ export function nativeModelPickerFor({ program, computerId, dialog, waiting, onl
   if (!program) return null;
   const configOptions = dialog.configOptions || [];
   const controls = modelControls(program, dialog.models, configOptions, dialog.selectedModel);
-  const params = modelParamOptions(configOptions, dialog.mode?.id);
+  const params = configOptions.filter((option) => option.id !== "model" && option.category !== "model"
+    && option.id !== dialog.mode?.id && (option.type === "bool" || option.type === "select"));
   const hasModes = Boolean(dialog.mode && dialog.mode.options.length > 0);
   const known = controls.models.length > 0 || hasModes || params.length > 0 || Boolean(controls.effort);
   const full = computerId && isNativeDialog(dialog) ? dialog : null;
   // Nothing known yet: a waiting trigger. A blocked program (not installed / signed
   // out) or an offline computer still gets the pill: its account and computer rows.
-  if (!known && !full) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
+  if (!known && !full && !dialog.selectedModel) return waiting ? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} loading /> : null;
   const picker: NativeModelPickerProps = {
     program,
-    models: controls.models,
-    selected: controls.selected,
+    models: controls.models.length || !dialog.selectedModel ? controls.models : [{ id: dialog.selectedModel, name: dialog.selectedModel, default: true }],
+    selected: controls.selected || dialog.selectedModel,
     onSelect: dialog.setSelectedModel,
     mode: dialog.mode,
     selectedMode: dialog.selectedMode,

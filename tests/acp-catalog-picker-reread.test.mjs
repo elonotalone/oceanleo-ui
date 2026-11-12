@@ -18,6 +18,7 @@ const { createRoot } = await import("react-dom/client");
 const { useAcpCatalogPicker } = await import(await compileModule("src/shell/acp-task/useAcpCatalogPicker.tsx", {
   "../../i18n/ui/useUI": dataModule("export function useUI(){ return (zh) => zh; }"),
   "../../lib/acp-frames-api": dataModule(`
+    export async function request(){ throw new Error("unexpected live apply"); }
     export function acpErrorText(error) { return error instanceof Error ? error.message : String(error); }
     export async function getCatalog(computerId, program) {
       globalThis.__reads.push(computerId + "/" + program);

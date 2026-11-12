@@ -2,7 +2,7 @@
 // A Codex / Claude Code conversation never shows the OceanLeo wallet or the
 // Lite/Pro/Max tier; its own picker shows model, effort, fast and modes (W7: as
 // setting rows behind a model-name pill, each opening a card of choices), with
-// fast explained when the current model lacks it, and choices sent through the
+// settings absent when the current model does not report them, and choices sent through the
 // controller's setters (the host remembers them on the server: UX wave
 // 2026-11-07, tests/ux-pm-u-program-choice.test.mjs).
 import assert from "node:assert/strict";
@@ -202,17 +202,15 @@ test("rows follow what each program reports (Cursor / Hermes modes are plain 模
   } finally { await m.unmount(); }
 });
 
-test("fast is a disabled row with its reason when the program has it but the current model does not", async () => {
+test("fast is absent when the selected model does not report it", async () => {
   const m = await mount(React.createElement(NativeModelPicker, {
     program: "codex", models: MODELS.slice(0, 2), selected: "sonnet", onSelect() {}, params: [EFFORT], onParam() {}, fastSupported: true,
   }));
   try {
     await m.click(m.q("[data-native-model-trigger]"));
     const row = m.q('[data-composer-setting-row="fast"]');
-    assert.ok(row, "fast does not just vanish");
-    assert.equal(row.disabled, true);
-    assert.equal(rowValue(m, "fast"), "关");
-    assert.equal(m.q("[data-composer-setting-reason]").textContent, "当前模型不支持快速模式");
+    assert.equal(row, null);
+    assert.equal(m.q("[data-composer-setting-reason]"), null);
   } finally { await m.unmount(); }
   const none = await mount(React.createElement(NativeModelPicker, { program: "hermes", models: MODELS.slice(0, 2), selected: "opus", onSelect() {}, fastSupported: false }));
   try {

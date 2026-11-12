@@ -1466,9 +1466,16 @@ function AgentChatInner({
   const acpPicker = useAcpCatalogPicker({
     computerId: acpComputerId,
     program: acpProgram,
-    disabled: acpComposerDisabled,
+    disabled: readOnly,
     // A program's catalog fills with its first session: read it again when the agent attaches.
     reloadKey: frames.link,
+    taskId,
+    sessionLive: frames.link === "attached",
+    live: useMemo(() => ({
+      configOptions: acpView.configOptions,
+      models: { currentModelId: acpView.modelId, availableModels: acpView.models },
+      modes: { currentModeId: acpView.modeId, availableModes: acpView.modes },
+    }), [acpView.configOptions, acpView.modelId, acpView.models, acpView.modeId, acpView.modes]),
   });
   const [acpBusy, setAcpBusy] = useState(false);
   /** The gateway's own words for the last refused action (409 from send, a failed stop / close / answer). */
@@ -2216,7 +2223,7 @@ function AgentChatInner({
     const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || pendingInFlight || acpComposerDisabled || (!taskId && (!acpProgram || !acpComputerId))) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
-    const choice = retry?.choice ?? acpPicker.choice;
+    const choice = acpPicker.forSend(retry?.choice);
     const key = acpMessageKey(text, uploaded);
     if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };

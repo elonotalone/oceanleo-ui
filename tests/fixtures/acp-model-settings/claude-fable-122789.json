@@ -1,0 +1,211 @@
+{
+  "configOptions": [
+    {
+      "id": "mode",
+      "name": "Mode",
+      "type": "select",
+      "options": [
+        {
+          "name": "Manual",
+          "_meta": {
+            "jetbrains": {
+              "air": {
+                "kind": "standard",
+                "version": 1
+              }
+            }
+          },
+          "value": "default",
+          "description": "Always ask before making changes"
+        },
+        {
+          "name": "Accept edits",
+          "_meta": {
+            "jetbrains": {
+              "air": {
+                "kind": "standard",
+                "version": 1
+              }
+            }
+          },
+          "value": "acceptEdits",
+          "description": "Automatically accept all file edits"
+        },
+        {
+          "name": "Plan",
+          "_meta": {
+            "jetbrains": {
+              "air": {
+                "kind": "plan",
+                "version": 1
+              }
+            }
+          },
+          "value": "plan",
+          "description": "Create a plan before making changes"
+        },
+        {
+          "name": "Auto",
+          "_meta": {
+            "jetbrains": {
+              "air": {
+                "kind": "auto_review",
+                "version": 1
+              }
+            }
+          },
+          "value": "auto",
+          "description": "Claude handles permission decisions"
+        },
+        {
+          "name": "Bypass permissions",
+          "_meta": {
+            "jetbrains": {
+              "air": {
+                "kind": "full_access",
+                "version": 1
+              }
+            }
+          },
+          "value": "bypassPermissions",
+          "description": "Accepts all permissions"
+        }
+      ],
+      "category": "mode",
+      "description": "Session permission mode",
+      "currentValue": "bypassPermissions"
+    },
+    {
+      "id": "model",
+      "name": "Model",
+      "type": "select",
+      "options": [
+        {
+          "name": "Default (recommended)",
+          "value": "default",
+          "description": "Opus 5.5"
+        },
+        {
+          "name": "Opus 5.5",
+          "value": "opus",
+          "description": "For complex work and everyday tasks"
+        },
+        {
+          "name": "Fable 5.2",
+          "value": "claude-fable-5-2",
+          "description": "For your toughest challenges"
+        },
+        {
+          "name": "Sonnet 5.5",
+          "value": "sonnet",
+          "description": "Most efficient for simpler tasks"
+        },
+        {
+          "name": "Haiku 5.5",
+          "value": "haiku",
+          "description": "Fastest for quick answers"
+        },
+        {
+          "name": "Fable 5.1",
+          "value": "fable",
+          "description": "Most capable for your hardest and longest-running tasks"
+        },
+        {
+          "name": "Haiku 4.5",
+          "value": "claude-haiku-4-5-20251001",
+          "description": "Fastest for quick answers"
+        },
+        {
+          "name": "Sonnet 5",
+          "value": "claude-sonnet-5",
+          "description": "Efficient for routine tasks"
+        },
+        {
+          "name": "Opus 5",
+          "value": "claude-opus-5",
+          "description": "Best for everyday, complex tasks"
+        },
+        {
+          "name": "Fable 5",
+          "value": "claude-fable-5",
+          "description": "Most capable for your hardest and longest-running tasks"
+        },
+        {
+          "name": "Opus 4.8",
+          "value": "claude-opus-4-8",
+          "description": "Best for everyday, complex tasks"
+        },
+        {
+          "name": "Opus 4.7",
+          "value": "claude-opus-4-7",
+          "description": "Best for everyday, complex tasks"
+        },
+        {
+          "name": "Opus 4.6",
+          "value": "claude-opus-4-6",
+          "description": "Best for everyday, complex tasks"
+        },
+        {
+          "name": "Sonnet 4.6",
+          "value": "claude-sonnet-4-6",
+          "description": "Efficient for routine tasks"
+        }
+      ],
+      "category": "model",
+      "description": "AI model to use",
+      "currentValue": "claude-fable-5-2"
+    },
+    {
+      "id": "effort",
+      "name": "Effort",
+      "type": "select",
+      "options": [
+        {
+          "name": "Default",
+          "value": "default"
+        },
+        {
+          "name": "Low",
+          "value": "low"
+        },
+        {
+          "name": "Medium",
+          "value": "medium"
+        },
+        {
+          "name": "High",
+          "value": "high"
+        },
+        {
+          "name": "Xhigh",
+          "value": "xhigh"
+        },
+        {
+          "name": "Max",
+          "value": "max"
+        }
+      ],
+      "category": "thought_level",
+      "description": "Available effort levels for this model",
+      "currentValue": "max"
+    },
+    {
+      "id": "ultracode",
+      "name": "Ultracode",
+      "type": "select",
+      "options": [
+        {
+          "name": "On",
+          "value": "on"
+        },
+        {
+          "name": "Off",
+          "value": "off"
+        }
+      ],
+      "category": "model_config",
+      "description": "Dynamic workflows on every task, at any effort level",
+      "currentValue": "off"
+    }
+  ]
+}

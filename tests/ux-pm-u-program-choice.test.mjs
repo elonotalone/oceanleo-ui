@@ -150,6 +150,13 @@ const CLAUDE = {
   ],
 };
 
+// I3: model-dependent options are usable only when reported for that model.
+CLAUDE.configOptions[0].options = CLAUDE.modes.availableModes.map(({ id, name }) => ({ value: id, name }));
+CLAUDE.byModel = Object.fromEntries(["opus", "sonnet"].map((id) => [id, {
+  modes: CLAUDE.modes,
+  configOptions: CLAUDE.configOptions.map((option) => option.id === "model" ? { ...option, currentValue: id } : option),
+}]));
+
 async function flush(count = 6) { for (let i = 0; i < count; i += 1) await act(async () => {}); }
 
 function Probe({ hook = useAcpCatalogPicker, ...props }) {
@@ -209,10 +216,14 @@ test("nothing stored: the program's own defaults show and nothing goes out", asy
 
 test("only choices the program lists go out (and show)", async () => {
   gateway.choices.set("cc_1/claude", { model: "gone", mode: "bypassPermissions", config: { effort: "ultra", fast: "on", unknown: "x" } });
-  gateway.catalogs.claude = { ...CLAUDE, modes: { currentModeId: "default", availableModes: CLAUDE.modes.availableModes.slice(0, 4) } };
+  const modes = { currentModeId: "default", availableModes: CLAUDE.modes.availableModes.slice(0, 4) };
+  gateway.catalogs.claude = { ...CLAUDE, modes, byModel: Object.fromEntries(Object.entries(CLAUDE.byModel).map(([id, entry]) => [id, {
+    ...entry, modes, configOptions: entry.configOptions.map((option) => option.id === "mode"
+      ? { ...option, options: modes.availableModes.map(({ id, name }) => ({ value: id, name })) } : option),
+  }])) };
   const m = await mount();
   try {
-    assert.deepEqual(m.choice, { config: { fast: "on" } }, "an unlisted model, mode, value or option id is not sent");
+    assert.deepEqual(m.choice, {}, "a removed model does not donate its saved parameters to the fallback model");
     assert.equal(m.dialog.selectedModel, "opus");
     assert.equal(m.dialog.selectedMode, "default", "root Linux without Bypass on offer: the program default shows");
     assert.equal(m.dialog.configOptions.find((option) => option.id === "effort").current, "default");
@@ -223,12 +234,12 @@ test("a pick is stored on the server at once (one PUT patch each) and goes out; 
   const m = await mount();
   try {
     await m.run(() => m.dialog.setMode("bypassPermissions"));
-    await m.run(() => m.dialog.setConfig("effort", "high"));
     await m.run(() => m.dialog.setSelectedModel("sonnet"));
+    await m.run(() => m.dialog.setConfig("effort", "high"));
     assert.deepEqual(puts(), [
       { path: CHOICE_PATH, body: { mode: "bypassPermissions" } },
-      { path: CHOICE_PATH, body: { config: { effort: "high" } } },
       { path: CHOICE_PATH, body: { model: "sonnet" } },
+      { path: CHOICE_PATH, body: { config: { effort: "high" } } },
     ]);
     assert.deepEqual(m.choice, { model: "sonnet", mode: "bypassPermissions", config: { effort: "high" } });
     assert.equal(window.localStorage.length, 0);
