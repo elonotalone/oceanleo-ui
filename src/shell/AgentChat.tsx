@@ -1593,7 +1593,11 @@ function AgentChatInner({
   const pendingInFlight = Boolean(pending && pendingTask && pending.status === "sending");
   const acpSendBlocked = acpBusy || pendingInFlight;
   const acpSendBlockedReason = null;
-  const [acpSettingNotices, setAcpSettingNotices] = useState<{ taskId: string; text: string; message: string }[]>([]);
+  const [acpSettingNotices, setAcpSettingNotices] = useState<{ taskId: string; text: string; message: string; afterRowId: number }[]>([]);
+  const acpStoredSettingNotices = useMemo(() => [
+    ...acpView.preamble, ...acpView.turns.flatMap((turn) => turn.items),
+  ].flatMap((item) => item.type === "error" ? [{ rowId: item.rowId, text: item.error.message }]
+    : item.type === "notice" ? [{ rowId: item.rowId, text: [item.title, item.description].join("\n") }] : []), [acpView]);
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
     && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
@@ -2271,7 +2275,7 @@ function AgentChatInner({
       const refused = result.settings?.filter((setting) => !setting.applied) ?? [];
       if (refused.length) setAcpSettingNotices((current) => [...current, ...refused.map((setting) => {
         const message = setting.error?.message || tt("程序拒绝了这项设置");
-        return { taskId: id, message, text: tt("设置没有生效：{message}", { message }) };
+        return { taskId: id, message, afterRowId: frames.rows.reduce((max, row) => Math.max(max, row.id), 0), text: tt("设置没有生效：{message}", { message }) };
       })]);
       settlePending(optimisticId, {
         taskId: id,
@@ -3563,7 +3567,7 @@ function AgentChatInner({
       <>
         {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
         {conversationNotice}
-        {acpSettingNotices.filter((notice) => notice.taskId === taskId && !frames.rows.some((row) => row.raw.includes(notice.message))).map((notice, index) => (
+        {acpSettingNotices.filter((notice) => notice.taskId === taskId && !acpStoredSettingNotices.some((stored) => stored.rowId > notice.afterRowId && stored.text.includes(notice.message))).map((notice, index) => (
           <p key={index} className="px-1 text-[13px] text-stone-500" role="status" data-acp-setting-refused="">{notice.text}</p>
         ))}
       </>

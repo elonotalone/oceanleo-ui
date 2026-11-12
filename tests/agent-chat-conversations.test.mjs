@@ -735,17 +735,17 @@ test("a carried setting refusal shows one plain line while the message succeeds 
   const view = await mount({ taskId: 't1' }, { task: computerTask(), sessions: codexSessions });
   try {
     globalThis.__acpRoute = (path) => path.endsWith('/send') ? { body: { row_id: 90001,
-      settings: [{ kind: 'config', id: 'fast', value: true, applied: false, error: { code: -32602, message: 'Unknown config option: fast' } }] } } : null;
+      settings: [{ kind: 'config', id: 'fast', value: true, applied: false, error: { code: -32602, message: 'Unknown config option: "fast"' } }] } } : null;
     await type(view, 'acp', '消息仍然发出'); await submit(view, 'acp');
     assert.equal(posts('/send').length, 1);
     assert.equal(view.host.querySelector('[data-acp-pending-send]').getAttribute('data-acp-pending-status'), 'accepted');
     assert.equal(view.host.querySelectorAll('[data-acp-setting-refused]').length, 1);
-    assert.match(view.host.querySelector('[data-acp-setting-refused]').textContent, /设置没有生效：Unknown config option: fast/);
+    assert.match(view.host.querySelector('[data-acp-setting-refused]').textContent, /设置没有生效：Unknown config option: "fast"/);
     assert.equal(view.host.querySelector('[data-acp-pending-error]'), null);
     await connect();
-    await deliver(rows.prompt(702, '消息仍然发出'), row('agent', { method: 'session/update', params: { sessionId: 's1', update: { sessionUpdate: 'notice', severity: 'info', title: '设置没有生效：Unknown config option: fast' } } }));
+    await deliver(rows.prompt(702, '消息仍然发出'), row('agent', { method: 'session/update', params: { sessionId: 's1', update: { sessionUpdate: 'notice', severity: 'info', title: '设置没有生效：Unknown config option: "fast"' } } }));
     assert.equal(view.host.querySelector('[data-acp-setting-refused]'), null, 'stored notice replaces temporary receipt');
-    assert.equal((view.host.textContent.match(/Unknown config option: fast/g) || []).length, 1);
+    assert.equal((view.host.textContent.match(/Unknown config option: "fast"/g) || []).length, 1);
   } finally { await view.unmount(); }
 });
 
