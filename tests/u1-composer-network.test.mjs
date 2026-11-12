@@ -14,14 +14,11 @@ test("LeoComposer keeps the editor read-only split from transport submission blo
   assert.match(composer, /id="leo-composer-send-blocked"/);
 });
 
-test("ACP reconnecting explains Send; busy and pending states keep typing enabled without sending copy", () => {
-  assert.match(agentChat, /const acpTransportBlocked = taskId \? !acpConnected : acpDraftOffline/);
-  assert.match(agentChat, /const acpSendBlocked = acpTransportBlocked \|\| acpBusy \|\| pendingInFlight/);
-  assert.match(agentChat, /sendBlockedReason=\{acpSendBlockedReason\}/);
-  // Family merge: reconnecting says Connecting; pending sends stay quiet.
-  assert.match(agentChat, /frames\.state === "disconnected" \? tt\("网络断开，恢复后可发送"\) : tt\("正在连接…"\)/);
-  assert.match(agentChat, /const acpSendBlockedReason = readOnly \|\| acpBusy \|\| pendingInFlight\s*\? null/);
-  assert.doesNotMatch(agentChat, /tt\("上一条还在发送"\)/);
+test("ACP Send does not depend on the socket and no connection text is rendered", () => {
+  assert.match(agentChat, /const acpComposerDisabled = readOnly;/);
+  assert.match(agentChat, /const acpSendBlocked = acpBusy \|\| pendingInFlight/);
+  assert.match(agentChat, /const acpSendBlockedReason = null/);
+  assert.doesNotMatch(agentChat, /tt\("(?:Connecting|正在连接…|网络断开|网络断开，恢复后可发送|连接断开)"\)/);
+  assert.doesNotMatch(agentChat, /data-acp-connection=/);
   assert.match(agentChat, /readOnly=\{readOnly\}/);
 });
-

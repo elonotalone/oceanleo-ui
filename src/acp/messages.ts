@@ -39,6 +39,7 @@ export type AcpLabels = {
   exit: (code: number | null, signal: string | null) => string;
   stopReason: (reason: string) => string;
   cancelled: string;
+  settingRefused?: (message: string) => string;
   permissionPrompt: string;
   backgroundTask?: (name: string, state: string) => string;
 };
@@ -287,7 +288,9 @@ export function itemBlocks(items: readonly AcpItem[], live: boolean, labels: Acp
         break;
       case "error":
         flush();
-        blocks.push(bubble(item.key, item.rowId, "error", errorText(item.error)));
+        if (labels.settingRefused && ["session/set_config_option", "session/set_model", "session/set_mode"].includes(item.method)) {
+          blocks.push(bubble(item.key, item.rowId, "notice", labels.settingRefused(item.error.message.replace(/\s+/g, " "))));
+        } else blocks.push(bubble(item.key, item.rowId, "error", errorText(item.error)));
         break;
       case "gap":
         flush();

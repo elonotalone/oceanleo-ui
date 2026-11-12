@@ -6,8 +6,8 @@
 // and WebSocket are fakes (routes and the frames socket). Pins:
 //   - a native computer task shows ONE stream (`data-agent-stream="acp"`): the
 //     rows the socket delivers, through AcpTranscript; no cloud stream;
-//   - Send is blocked (typing never is: operator 2026-11-10) unless the socket is connected, with one
-//     「连接断开」 line; nothing is queued or resent;
+//   - Typing and Send work while the background socket reconnects silently;
+//     failed sends keep their own error and explicit resend action;
 //   - send → POST /send body; another program in the dock → POST /switch;
 //     a program's refusal (409 {"error"}) is not repeated under the composer,
 //     a gateway refusal is shown verbatim; the text stays either way;
@@ -77,6 +77,7 @@ const agentLibStub = dataModule(`
   globalThis.__task = null; globalThis.__stops = 0; globalThis.__followUps = []; globalThis.__followUpBodies = [];
   export async function getTask() {
     globalThis.__getTaskCalls = (globalThis.__getTaskCalls || 0) + 1;
+    if (globalThis.__taskRead) return globalThis.__taskRead;
     return globalThis.__task ? { ok: true, data: globalThis.__task } : { ok: false, status: 404, error: "no task" };
   }
   export async function createTask(input) {
@@ -292,7 +293,7 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute } = {}) {
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
   globalThis.__listHang = listHang;
@@ -300,11 +301,12 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   globalThis.__computerMode = computerMode;
   globalThis.__barProps = null;
   globalThis.__task = task ?? null;
+  globalThis.__taskRead = taskRead;
   globalThis.__sessions = sessions;
   globalThis.__gateway.length = 0;
   globalThis.__acpCalls = [];
   globalThis.__sockets = [];
-  globalThis.__acpRoute = null;
+  globalThis.__acpRoute = acpRoute ?? null;
   globalThis.__catalog = catalog;
   globalThis.__pickerDialog = null;
   globalThis.__followUpBodies = [];
@@ -389,14 +391,14 @@ test("an agent's OceanLeo sidebar tool (open_page) makes the native task page re
   } finally { await view.unmount(); }
 });
 
-test("while the socket is not connected Send is blocked (typing stays allowed) with Connecting until a real drop; a drop reconnects from the last row and resends nothing", async () => {
+test("Send and typing work before connection and during silent reconnect; the socket resumes after its last row", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
-    assert.equal(view.composer("acp").__props.sendBlocked, true, "connecting counts as not connected");
+    assert.equal(view.composer("acp").__props.sendBlocked, false, "Send uses HTTP without waiting for the socket");
     assert.notEqual(view.composer("acp").__props.disabled, true, "typing is never disabled by the network");
     assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
-    assert.equal(view.host.querySelector("[data-acp-connection]").textContent, "正在连接…");
-    assert.equal(view.composer("acp").__props.sendBlockedReason, "正在连接…");
+    assert.equal(view.host.querySelector("[data-acp-connection]"), null);
+    assert.equal(view.composer("acp").__props.sendBlockedReason, null);
     await connect();
     assert.equal(view.composer("acp").__props.sendBlocked, false);
     assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
@@ -405,14 +407,14 @@ test("while the socket is not connected Send is blocked (typing stays allowed) w
     await type(view, "acp", "这句还没发");
     await act(async () => { first.drop(); });
     await settle();
-    assert.equal(view.composer("acp").__props.sendBlocked, true);
-    assert.equal(view.host.querySelector("[data-acp-disconnected]").textContent, "连接断开");
+    assert.equal(view.composer("acp").__props.sendBlocked, false);
+    assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
     assert.equal(view.composer("acp").__props.value, "这句还没发", "the composer keeps what was typed");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
     assert.notEqual(socket(), first, "the plain backoff opened a new socket");
     assert.match(socket().url, new RegExp(`after=${rowSeq}$`), "it continues after the last row delivered");
     assert.equal(view.host.querySelector("[data-acp-disconnected]"), null);
-    assert.equal(view.host.querySelector("[data-acp-connection]").textContent, "正在连接…");
+    assert.equal(view.host.querySelector("[data-acp-connection]"), null);
     await connect();
     assert.equal(view.composer("acp").__props.sendBlocked, false);
     assert.equal(posts("/send").length, 0, "nothing was queued or resent");
@@ -532,7 +534,8 @@ test("a program's refusal (409 with its JSON-RPC error) is not repeated under th
     globalThis.__acpRoute = (path) => path.endsWith("/send")
       ? { status: 409, body: { detail: { code: "agent_not_running", message: "agent process is not running" } } } : null;
     await submit(view, "acp");
-    assert.equal(view.host.querySelector("[data-acp-error]")?.textContent, "agent process is not running");
+    assert.equal(view.host.querySelector("[data-acp-error]"), null);
+    assert.equal(view.host.querySelector("[data-acp-pending-error]")?.textContent, "agent process is not running");
     assert.equal(view.composer("acp").__props.value, "用 gpt-x");
     const ids = posts("/send").map((call) => call.body.client_message_id);
     assert.equal(ids.length, 2);
@@ -690,4 +693,108 @@ test("the catalog pill: empty catalog → disabled 「选择程序后加载」; 
     assert.equal(bodies[0].model, "gpt-5-mini");
     assert.equal("model" in bodies[1], false, "an unchanged choice is not sent again");
   } finally { await view.unmount(); localStorage.clear(); }
+});
+
+const historyPage = (items) => ({ rows: items, turns: [], oldest_id: items[0]?.id ?? null, newest_id: items.at(-1)?.id ?? null, next_before: null, has_more: false, tail_id: items.at(-1)?.id ?? 0, capped: false, max_rows: 2000 });
+const deferredRead = () => { let resolve; const promise = new Promise((yes) => { resolve = yes; }); return { promise, resolve }; };
+
+test("stored history and the model catalog render while task detail is unresolved; Send works before the socket opens", async () => {
+  const detail = deferredRead();
+  const stored = [rows.prompt(700, "保存的对话马上显示"), rows.done(700)];
+  const view = await mount({ taskId: "t1" }, { taskRead: detail.promise, sessions: codexSessions,
+    catalog: { models: { currentModelId: "gpt", availableModels: [{ modelId: "gpt", name: "GPT" }] } },
+    acpRoute: (path) => path.includes("/history?") ? { body: historyPage(stored) } : null });
+  try {
+    assert.ok(view.host.querySelector('[data-acp-transcript]'));
+    assert.match(view.host.textContent, /保存的对话马上显示/);
+    assert.ok(globalThis.__acpCalls.some((call) => call.path.endsWith('/codex/catalog')), "program menu reads without task detail");
+    assert.equal(socket().closed, false);
+    assert.equal(view.composer("acp").__props.sendBlocked, false);
+    assert.doesNotMatch(view.host.textContent, /Connecting|正在连接|网络断开|连接断开/i);
+    await type(view, "acp", "离线订阅也能发送"); await submit(view, "acp");
+    assert.equal(posts('/send').length, 1);
+    assert.equal(posts('/send')[0].body.text, "离线订阅也能发送");
+  } finally { detail.resolve({ ok: true, data: computerTask() }); await settle(); await view.unmount(); }
+});
+
+test("history rows identify a native task even while both detail and sessions are unresolved", async () => {
+  const detail = deferredRead();
+  const stored = [rows.prompt(701, "只靠服务器保存的历史"), rows.done(701)];
+  const view = await mount({ taskId: "t1" }, { taskRead: detail.promise, listHang: true,
+    acpRoute: (path) => path.includes('/history?') ? { body: historyPage(stored) } : null });
+  try {
+    assert.match(view.host.querySelector('[data-acp-transcript]').textContent, /只靠服务器保存的历史/);
+    assert.equal(view.host.querySelector('[data-agent-stream="cloud"]'), null);
+    await type(view, 'acp', '继续已有任务'); await submit(view, 'acp');
+    assert.equal(posts('/send').length, 1, "an existing task sends without waiting for its session metadata");
+    assert.equal('program' in posts('/send')[0].body, false, "gateway uses the task's fixed program");
+  } finally { detail.resolve({ ok: true, data: computerTask() }); await settle(); await view.unmount(); }
+});
+
+test("a carried setting refusal shows one plain line while the message succeeds with the socket closed", async () => {
+  const view = await mount({ taskId: 't1' }, { task: computerTask(), sessions: codexSessions });
+  try {
+    globalThis.__acpRoute = (path) => path.endsWith('/send') ? { body: { row_id: 90001,
+      settings: [{ kind: 'config', id: 'fast', value: true, applied: false, error: { code: -32602, message: 'Unknown config option: fast' } }] } } : null;
+    await type(view, 'acp', '消息仍然发出'); await submit(view, 'acp');
+    assert.equal(posts('/send').length, 1);
+    assert.equal(view.host.querySelector('[data-acp-pending-send]').getAttribute('data-acp-pending-status'), 'accepted');
+    assert.equal(view.host.querySelectorAll('[data-acp-setting-refused]').length, 1);
+    assert.match(view.host.querySelector('[data-acp-setting-refused]').textContent, /设置没有生效：Unknown config option: fast/);
+    assert.equal(view.host.querySelector('[data-acp-pending-error]'), null);
+    await connect();
+    await deliver(rows.prompt(702, '消息仍然发出'), row('agent', { method: 'session/update', params: { sessionId: 's1', update: { sessionUpdate: 'notice', severity: 'info', title: '设置没有生效：Unknown config option: fast' } } }));
+    assert.equal(view.host.querySelector('[data-acp-setting-refused]'), null, 'stored notice replaces temporary receipt');
+    assert.equal((view.host.textContent.match(/Unknown config option: fast/g) || []).length, 1);
+  } finally { await view.unmount(); }
+});
+
+test("long rows load full text only on Expand, keep errors beside that row, and allow retry", async () => {
+  const short = { ...rows.prompt(703, '文本已缩短…'), truncated: { bytes: 50 * 1024 } };
+  const full = { ...short, raw: short.raw.replace('文本已缩短…', '完整文本在此展开'), truncated: undefined };
+  let attempts = 0;
+  const view = await mount({ taskId: 't1' }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path) => path.includes('/history?') ? { body: historyPage([short]) }
+      : path.endsWith(`/frames/${short.id}`) ? (++attempts === 1 ? { status: 503, body: { detail: '暂时无法展开' } } : { body: full }) : null });
+  try {
+    const notice = () => view.host.querySelector('[data-acp-truncated-row]');
+    assert.match(notice().textContent, /内容较长，已省略 50 KB · 展开/);
+    assert.equal(attempts, 0);
+    await act(async () => { notice().querySelector('button').click(); }); await settle();
+    assert.equal(attempts, 1); assert.match(notice().textContent, /暂时无法展开/);
+    await act(async () => { notice().querySelector('button').click(); }); await settle();
+    assert.equal(attempts, 2); assert.equal(notice(), null);
+    assert.match(view.host.querySelector('[data-acp-transcript]').textContent, /完整文本在此展开/);
+  } finally { await view.unmount(); }
+});
+
+test("a truncated image downloads its full row only when opened and renders the returned image", async () => {
+  const short = { ...row('client', { id: 704, method: 'session/prompt', params: { sessionId: 's1', prompt: [{ type: 'text', text: '截图' }, { type: 'image', data: '', mimeType: 'image/png' }] } }), truncated: { bytes: 70 * 1024 } };
+  const full = { ...short, raw: short.raw.replace('"data":""', '"data":"aGVsbG8="'), truncated: undefined };
+  let reads = 0;
+  const view = await mount({ taskId: 't1' }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path) => path.includes('/history?') ? { body: historyPage([short]) } : path.endsWith(`/frames/${short.id}`) ? (reads++, { body: full }) : null });
+  try {
+    assert.equal(view.host.querySelector('[data-acp-full-image]'), null); assert.equal(reads, 0);
+    await act(async () => { [...view.host.querySelectorAll('[data-acp-truncated-row] button')].find((button) => button.textContent === '打开图片').click(); });
+    await settle();
+    assert.equal(reads, 1);
+    assert.equal(view.host.querySelector('[data-acp-full-image]').getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
+  } finally { await view.unmount(); }
+});
+
+test("keep-alive pings never become rows or advance the reconnect cursor", async () => {
+  const stored = [rows.prompt(705, '保持订阅'), rows.done(705)];
+  const view = await mount({ taskId: 't1' }, { task: computerTask(), sessions: codexSessions,
+    acpRoute: (path) => path.includes('/history?') ? { body: historyPage(stored) } : null });
+  try {
+    await connect();
+    const first = socket(); const text = view.host.querySelector('[data-acp-transcript]').textContent;
+    await act(async () => { first.push({ ping: Date.now() }); first.drop(); });
+    await settle();
+    assert.equal(view.host.querySelector('[data-acp-transcript]').textContent, text);
+    assert.doesNotMatch(view.host.textContent, /Connecting|正在连接|网络断开|连接断开/i);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 1100)); });
+    assert.match(socket().url, new RegExp(`after=${stored.at(-1).id}$`));
+  } finally { await view.unmount(); }
 });

@@ -125,3 +125,22 @@ test('reopening a saved reading position fills forward, preserves the oldest cur
     assert.notEqual(view.scroller.scrollTop, 4000, 'prefetch never follows to bottom');
   } finally { await view.close(); }
 });
+
+test('anchored history opens its live subscription before forward fill finishes and retains rows received meanwhile', async () => {
+  const pending = wait();
+  const view = await historyMount((query) => {
+    if (query.has('after')) return pending.promise;
+    return json({ ...page(initialRows(), false, null), has_more_after: true, next_after: 103, newest_id: 103 });
+  }, { anchor: { rowId: 102, offsetPx: 550, atBottom: false } });
+  try {
+    assert.match(view.host.textContent, /Reading this question/);
+    assert.ok(globalThis.__agentChatHarness.socket(), 'live socket does not wait for the forward-fill read');
+    await connect();
+    await deliver({ ...rows.prompt(900, 'Live output while filling'), id: 120 });
+    await act(async () => pending.resolve(json({ ...page([{ ...rows.prompt(103, 'Forward fill arrives later'), id: 110 }, { ...rows.done(103), id: 111 }], false, null), tail_id: 111 })));
+    await settle();
+    assert.match(view.host.textContent, /Live output while filling/);
+    assert.match(view.host.textContent, /Forward fill arrives later/);
+    assert.equal(globalThis.__sockets.length, 1, 'history completion does not reopen the live socket');
+  } finally { pending.resolve(json(page([], false, null))); await view.close(); }
+});

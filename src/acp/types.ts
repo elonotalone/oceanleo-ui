@@ -13,6 +13,8 @@ export type AcpFrameRow = {
   direction: "agent" | "client";
   node_seq: number | null;
   raw: string;
+  /** Full raw byte count when large values were shortened for history/live transport. */
+  truncated?: { bytes: number };
   received_at: string;
 };
 

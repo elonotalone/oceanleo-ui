@@ -14,6 +14,8 @@ import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId 
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
+  /** Fetch a shortened row in full; the owner replaces it in the stored window. */
+  onExpandRow?: (rowId: number) => Promise<void>;
   /** Optional render diagnostic; omitted by production callers. */
   onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   /** A view reduced by the owning task page; avoids reducing the same backlog twice. */
@@ -178,8 +180,60 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
   );
 }
 
-export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender }: AcpTranscriptProps) {
+function TruncatedRow({ row, onExpand }: { row: AcpFrameRow; onExpand?: AcpTranscriptProps["onExpandRow"] }) {
   const tt = useUI();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const expand = async () => {
+    if (!onExpand || busy) return;
+    setBusy(true); setError("");
+    try { await onExpand(row.id); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    finally { setBusy(false); }
+  };
+  return <div className="px-1 text-[12px] text-stone-500" data-acp-truncated-row={row.id}>
+    <button type="button" disabled={!onExpand || busy} onClick={() => void expand()} aria-busy={busy}>
+      {tt("内容较长，已省略 {size} KB · 展开", { size: Math.ceil((row.truncated?.bytes || 0) / 1024) })}
+    </button>
+    {/"type"\s*:\s*"image"/.test(row.raw) && <button type="button" className="ml-2" disabled={!onExpand || busy} onClick={() => void expand()}>{tt("打开图片")}</button>}
+    {error && <p role="alert">{error}</p>}
+  </div>;
+}
+
+function blockRowId(block: AcpBlock): number {
+  return block.type === "bubble" ? block.message.id
+    : block.type === "raw-request" ? block.request.rowId
+      : Math.min(...block.messages.map((message) => message.id));
+}
+
+function rowImages(row: AcpFrameRow): { src: string; name: string }[] {
+  const images: { src: string; name: string }[] = [];
+  let message: unknown;
+  try { message = JSON.parse(row.raw); } catch { return images; }
+  const pending: unknown[] = [message];
+  while (pending.length) {
+    const value = pending.pop();
+    if (!value || typeof value !== "object") continue;
+    if (Array.isArray(value)) { for (const item of value) pending.push(item); continue; }
+    const object = value as Record<string, unknown>;
+    if (object.type === "image" && typeof object.data === "string" && object.data
+      && typeof object.mimeType === "string" && /^image\/(png|jpeg|gif|webp|avif)$/.test(object.mimeType)) {
+      images.push({ src: `data:${object.mimeType};base64,${object.data}`, name: object.mimeType });
+    }
+    for (const item of Object.values(object)) pending.push(item);
+  }
+  return images;
+}
+
+export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow }: AcpTranscriptProps) {
+  const tt = useUI();
+  const [openedRows, setOpenedRows] = useState<ReadonlySet<number>>(new Set());
+  const expandRow = useCallback(async (rowId: number) => {
+    await onExpandRow?.(rowId);
+    setOpenedRows((current) => new Set([...current, rowId]));
+  }, [onExpandRow]);
+  const loadedImages = useMemo(() => rows.filter((row) => openedRows.has(row.id) && !row.truncated).flatMap((row) =>
+    rowImages(row).map((image) => ({ ...image, rowId: row.id }))), [rows, openedRows]);
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const labels: AcpLabels = useMemo(
     () => ({
@@ -188,6 +242,7 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
       exit: (code, signal) => tt("程序已退出（{detail}）", { detail: signal ? `signal ${signal}` : `code ${code ?? "?"}` }),
       stopReason: (reason) => tt("本轮结束：{reason}", { reason }),
       cancelled: tt("已停止生成"),
+      settingRefused: (message) => tt("设置没有生效：{message}", { message }),
       modelRetry: tt("模型连接中断，正在重试"),
       permissionPrompt: tt("请确认后继续。"),
       backgroundTask: (name, state) => {
@@ -201,6 +256,16 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
     [tt],
   );
   const blocks = useMemo(() => viewBlocks(view, labels), [view, labels]);
+  const shortened = useMemo(() => {
+    const assigned = new Map<string, AcpFrameRow[]>();
+    for (const row of rows) {
+      if (!row.truncated) continue;
+      const block = blocks.findLast((item) => blockRowId(item) <= row.id);
+      const key = block?.key ?? "";
+      assigned.set(key, [...(assigned.get(key) ?? []), row]);
+    }
+    return assigned;
+  }, [rows, blocks]);
   if (!rows.length) return null;
   return (
     <div data-acp-transcript="" data-agent-stream="" data-acp-program={program} className="space-y-3">
@@ -218,8 +283,15 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
             onToggle={pick ? select?.onToggle : undefined}
             onBlockRender={onBlockRender}
           />
+          {shortened.get(block.key)?.map((row) => <TruncatedRow key={row.id} row={row} onExpand={onExpandRow ? expandRow : undefined} />)}
         </div>;
       })}
+      {shortened.get("")?.map((row) => <TruncatedRow key={row.id} row={row} onExpand={onExpandRow ? expandRow : undefined} />)}
+      {loadedImages.map((image, index) => (
+        // The shared ACP client displays fetched inline image bytes without a Next image server.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img key={`${image.rowId}-${index}`} data-acp-full-image={image.rowId} src={image.src} alt={tt("图片")} className="max-h-[70vh] max-w-full rounded-lg object-contain" />
+      ))}
       <ModelWaitingNotice view={view} rows={rows} tt={tt} />
     </div>
   );

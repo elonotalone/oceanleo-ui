@@ -804,8 +804,16 @@ function AgentChatInner({
     (explicitTaskId !== undefined
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
-  /** A `mode="computer"` task (its conversations run on the user's computer): known once its row is read. */
-  const computerTask = taskMode.taskId === taskId && taskMode.computer;
+  // The route is enough to read our stored conversation. Start this before the
+  // task-detail effect; a session or returned frame can identify a native task.
+  const earlySessions = taskSessions.taskId === taskId ? taskSessions.items : taskId ? knownComputerTaskSessions(taskId) ?? [] : [];
+  const earlyNativeSession = earlySessions.filter((row) => usableSession(row) && row.kind === "acp")
+    .reduce<ComputerTaskSession | null>((latest, row) => !latest || row.created_at >= latest.created_at ? row : latest, null);
+  const knownComputerTask = taskMode.taskId === taskId ? taskMode.computer
+    : initialTask?.task?.id === taskId ? isComputerWorkspaceTask(initialTask.task) : undefined;
+  const nativeHint = knownComputerTask !== false && Boolean(earlyNativeSession);
+  const frames = useAcpFrames(taskId || null, nativeHint);
+  const computerTask = knownComputerTask === true || (knownComputerTask !== false && (nativeHint || frames.rows.length > 0));
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   // 手上这份消息属于哪段对话。换对话时它先归零，等服务端那份到齐才跟上；
   // 编辑器指令只在两者一致时才看，否则会拿上一段对话的消息去对新对话记账。
@@ -1227,6 +1235,7 @@ function AgentChatInner({
     // A task this page just created in place already holds its only session: no list read.
     if (adoptedTaskRef.current === taskId && sessionsEpoch === adoptedEpochRef.current) return;
     let alive = true;
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     // A session this tab was just handed (`?computerSession=` from the homepage) shows at once;
     // the list (and its computer) are read in parallel instead of one after the other.
@@ -1236,7 +1245,7 @@ function AgentChatInner({
     const listed = knownComputerTaskSessions(taskId);
     const seed = listed ?? (handed && handed.task_id === taskId ? [handed] : []);
     setTaskSessions((current) => current.taskId === taskId ? current : {taskId, items: seed, loaded: Boolean(listed), failed: false});
-    void listComputerTaskSessions(taskId).then((result) => {
+    void listComputerTaskSessions(taskId, { signal: controller.signal }).then((result) => {
       if (!alive) return;
       sessionsRetryRef.current = 0;
       setTaskSessions((current) => {
@@ -1250,7 +1259,7 @@ function AgentChatInner({
       const attempt = sessionsRetryRef.current++;
       timer = setTimeout(() => setSessionsEpoch((epoch) => epoch + 1), Math.min(30_000, 2_000 * 2 ** attempt));
     });
-    return () => { alive = false; clearTimeout(timer); };
+    return () => { alive = false; clearTimeout(timer); controller.abort(); };
   }, [taskId, sessionsEpoch]);
   const retrySessions = useCallback(() => {
     sessionsRetryRef.current = 0;
@@ -1266,11 +1275,11 @@ function AgentChatInner({
   // terminal) is a native task: its page is the frames stream. OceanLeo — in the
   // cloud or on a computer — keeps its own stream; a computer-mode task with no
   // native session is OceanLeo's. Until the list is read a computer task counts as native.
-  const nativeTask = computerTask && (!sessionsLoaded || sessions.length > 0);
+  const nativeTask = computerTask && (!sessionsLoaded || sessions.length > 0 || frames.rows.length > 0 || Boolean(earlyNativeSession));
   // A computer run that is paused, stuck or stopping keeps refreshing until it is terminal.
   // A native task's conversation is its frames socket; only OceanLeo's stream polls.
   useAgentThreadPolling(nativeTask ? null : taskId, status, refresh, pollEpoch, isLocalExecution && localAgentRunLive(localRun));
-  const taskModeKnown = Boolean(taskId) && (taskMode.taskId === taskId || messagesTaskId === taskId);
+  const taskModeKnown = Boolean(taskId) && (computerTask || taskMode.taskId === taskId || messagesTaskId === taskId);
 
   // The URL names the conversation; a change from outside (back/forward, a link
   // to another `computerSession` of this task) switches it.
@@ -1370,7 +1379,8 @@ function AgentChatInner({
   const taskBound = boundTarget.taskId === taskId ? boundTarget.target : null;
   const frontComputer = activeSession
     ? {id: activeSession.computer_id, name: activeSession.computer_name}
-    : pick ? {id: pick.computerId, name: pick.computerName} : null;
+    : pick ? {id: pick.computerId, name: pick.computerName}
+      : earlyNativeSession ? {id: earlyNativeSession.computer_id, name: earlyNativeSession.computer_name} : null;
   const resolvedBoundTarget: ExecutionTarget | null = !taskId ? null
     : computerTask
       ? (frontComputer ? {kind: "computer", id: frontComputer.id, name: frontComputer.name || frontComputer.id}
@@ -1403,18 +1413,14 @@ function AgentChatInner({
   // ---------------------------------------------------------------------
   // The computer task's one stream (thin-gateway 2026-11-07, contract §2.4/§2.5)
   // ---------------------------------------------------------------------
-  // Rows are the raw JSON-RPC lines the gateway stored, read over one socket per
-  // page; the page renders them and posts only what the user does (send, Stop,
-  // Close, an answer). Nothing is queued, resent or guessed here: while the socket
-  // is down the composer is disabled and one line says 「连接断开」.
-  // The dock's choice is the recipient of the next message (another program = a switch).
+  // Stored rows render independently of the live socket. HTTP actions remain
+  // usable while the background subscription reconnects from its last row.
   const acpTarget = conversation?.kind === "native" && conversation.view === "chat" ? conversation : null;
-  const acpProgram = acpTarget?.program ?? acpSession?.program ?? null;
-  const acpComputerId = acpTarget?.computerId ?? acpSession?.computer_id ?? null;
+  const acpProgram = acpTarget?.program ?? acpSession?.program ?? earlyNativeSession?.program ?? null;
+  const acpComputerId = acpTarget?.computerId ?? acpSession?.computer_id ?? earlyNativeSession?.computer_id ?? null;
   const acpRowsProgram = acpSession?.program || acpProgram || "";
   /** The left pane shows this stream (a computer task, or a draft whose dock picked a program's chat). */
   const acpShown = nativeTask || (!taskId && Boolean(acpTarget));
-  const frames = useAcpFrames(nativeTask && taskId ? taskId : null);
   // A new prompt or a finished turn of this computer task moves it to the top of My Tasks at once.
   // The first rows a page loads are history, not activity, so they only set the baseline.
   const activityTaskId = nativeTask && taskId ? taskId : "";
@@ -1456,9 +1462,7 @@ function AgentChatInner({
   const acpView = useMemo(() => withTaskActivity(reducedAcpView, taskActivity.activity), [reducedAcpView, taskActivity.activity]);
   const acpViewRef = useRef(acpView);
   useLayoutEffect(() => { acpViewRef.current = acpView; }, [acpView]);
-  const acpDraftOffline = !taskId && conversationComputer?.node_online === false;
-  const acpTransportBlocked = taskId ? !acpConnected : acpDraftOffline;
-  const acpComposerDisabled = readOnly || acpTransportBlocked;
+  const acpComposerDisabled = readOnly;
   const acpPicker = useAcpCatalogPicker({
     computerId: acpComputerId,
     program: acpProgram,
@@ -1587,20 +1591,15 @@ function AgentChatInner({
   const pendingTask = pending && (!taskId || taskId === pending.taskId || pendingRetried === pending.id);
   const pendingShown = pending && pendingTask && !acpPromptRowVisible(pending, frames.rows) ? pending : null;
   const pendingInFlight = Boolean(pending && pendingTask && pending.status === "sending");
-  const acpSendBlocked = acpTransportBlocked || acpBusy || pendingInFlight;
-  const acpSendBlockedReason = readOnly || acpBusy || pendingInFlight
-    ? null
-    : acpTransportBlocked
-      ? (taskId
-        ? (frames.state === "disconnected" ? tt("网络断开，恢复后可发送") : tt("正在连接…"))
-        : tt("电脑离线"))
-      : null;
+  const acpSendBlocked = acpBusy || pendingInFlight;
+  const acpSendBlockedReason = null;
+  const [acpSettingNotices, setAcpSettingNotices] = useState<{ taskId: string; text: string; message: string }[]>([]);
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
     && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
-  const acpPendingShown = acpPendingSends.filter((entry) => !acpPromptRowVisible(entry, frames.rows));
+  const acpPendingShown = acpPendingSends.filter((entry) => entry.status === "failed" || !acpPromptRowVisible(entry, frames.rows));
   useEffect(() => {
-    const settled = acpPendingSends.filter((entry) => acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
+    const settled = acpPendingSends.filter((entry) => entry.status !== "failed" && acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
     if (!settled.length) return;
     settled.forEach(forgetPending);
     setAcpPendingIds((current) => current.filter((id) => !settled.includes(id)));
@@ -2211,7 +2210,7 @@ function AgentChatInner({
   async function sendAcpMessage(retry?: (typeof acpPendingSends)[number]) {
     const text = retry ? retry.text : input.trim();
     const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
-    if ((!text && uploaded.length === 0) || acpBusy || pendingInFlight || acpComposerDisabled || !acpProgram || !acpComputerId) return;
+    if ((!text && uploaded.length === 0) || acpBusy || pendingInFlight || acpComposerDisabled || (!taskId && (!acpProgram || !acpComputerId))) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
     const choice = retry?.choice ?? acpPicker.choice;
     const key = acpMessageKey(text, uploaded);
@@ -2228,8 +2227,8 @@ function AgentChatInner({
     if (retryingTaskPending) retryPending(retryingTaskPending.id);
     const optimisticId = reuseHomePending && pendingShown ? pendingShown.id : retryingTaskPending?.id ?? putPending({
       clientMessageId,
-      computerId: acpComputerId,
-      program: acpProgram,
+      computerId: acpComputerId || "",
+      program: acpProgram || "",
       text,
       attachments: uploaded,
       choice,
@@ -2249,8 +2248,8 @@ function AgentChatInner({
     try {
       if (!id) {
         const initialProjectId = retry?.projectId ?? pendingShown?.projectId ?? projectId;
-        const result = await createComputerTaskSession(acpComputerId, {
-          kind: "acp", program: acpProgram, request_id: clientMessageId,
+        const result = await createComputerTaskSession(acpComputerId!, {
+          kind: "acp", program: acpProgram!, request_id: clientMessageId,
           ...(initialProjectId ? { project_id: initialProjectId } : {}),
         });
         created = { taskId: result.task_id, session: result.session };
@@ -2262,13 +2261,18 @@ function AgentChatInner({
       const sent = acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
       const body = {
         client_message_id: clientMessageId,
-        program: acpProgram,
-        computer_id: acpComputerId,
+        ...(acpProgram ? { program: acpProgram } : {}),
+        ...(acpComputerId ? { computer_id: acpComputerId } : {}),
         text,
         ...(uploaded.length ? { attachments: uploaded } : {}),
         ...changedChoices(choice, sent),
       };
       const result = await sendAcp(id, body);
+      const refused = result.settings?.filter((setting) => !setting.applied) ?? [];
+      if (refused.length) setAcpSettingNotices((current) => [...current, ...refused.map((setting) => {
+        const message = setting.error?.message || tt("程序拒绝了这项设置");
+        return { taskId: id, message, text: tt("设置没有生效：{message}", { message }) };
+      })]);
       settlePending(optimisticId, {
         taskId: id,
         rowId: typeof result?.row_id === "number" ? result.row_id : null,
@@ -2287,9 +2291,8 @@ function AgentChatInner({
       const queued = acpQueuedValue(caught) || acpQueuedValue((caught as { payload?: unknown })?.payload);
       if (queued && id) settlePending(optimisticId, { taskId: id, queued: true });
       else settlePending(optimisticId, { error: caught });
-      // The program's own refusal is its error row in the transcript (shown once there);
-      // a gateway failure has no row and is said under the composer. The text stays either way.
-      if (!queued && !refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) });
+      // Delivery failures belong to this message's bubble and its resend action.
+      // A refused carried setting is a successful send with a separate plain line.
     } finally {
       setAcpBusy(false);
       if (created && adoptedTaskRef.current !== created.taskId) await adoptCreatedTask(created.taskId, created.session, text);
@@ -3509,8 +3512,8 @@ function AgentChatInner({
   });
 
   // The computer task's stream: the same frame and composer, the program's own
-  // rows (AcpTranscript). The composer and its buttons work only while the
-  // socket is connected; a refusal is said under the composer in the gateway's words.
+  // rows (AcpTranscript). Sending uses HTTP independently of the live socket;
+  // a failed message keeps its own error and resend action.
   const acpErrorLine = acpError && acpError.taskId === (taskId || "") ? acpError.text : "";
   const acpTranscriptSelect = useMemo(() => share.active
     ? { pickable: acpPickable, selected: share.selectedIds, onToggle: share.toggle }
@@ -3534,6 +3537,7 @@ function AgentChatInner({
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onRetry={() => void sendAcpMessage(pendingShown)} onOpenAttachment={openTaskAttachment} />}
       <AcpTranscript
         rows={frames.rows}
+        onExpandRow={frames.expandRow}
         program={acpRowsProgram}
         view={acpView}
         // Buttons work only while the socket is connected (P4): cards still render, not clickable.
@@ -3559,14 +3563,14 @@ function AgentChatInner({
       <>
         {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
         {conversationNotice}
+        {acpSettingNotices.filter((notice) => notice.taskId === taskId && !frames.rows.some((row) => row.raw.includes(notice.message))).map((notice, index) => (
+          <p key={index} className="px-1 text-[13px] text-stone-500" role="status" data-acp-setting-refused="">{notice.text}</p>
+        ))}
       </>
     ),
     overlay: null,
     footer: share.active ? <ShareActionBar share={share} /> : (
       <>
-        {taskId && !acpConnected && (
-          <p className="px-1 text-[12px] text-stone-500" role="status" data-acp-connection={frames.state} data-acp-disconnected={frames.state === "disconnected" ? "" : undefined}>{frames.state === "disconnected" ? tt("连接断开") : tt("正在连接…")}</p>
-        )}
         <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         <LeoComposer
           optimizeImages

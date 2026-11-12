@@ -224,3 +224,14 @@ test("cursorAnswerResult builds the result object Cursor reads", () => {
     outcome: { outcome: "answered", answers: [{ questionId: "q1", selectedOptionIds: ["a", "b"] }] },
   });
 });
+
+test('a refused carried setting is one plain notice; it does not hide the following sent prompt', () => {
+  const body = render([
+    client({ id: 950, method: 'session/set_config_option', params: { sessionId: 's1', configId: 'fast', value: true } }),
+    agent({ id: 950, error: { code: -32602, message: 'Unknown config option: fast', data: { code: 'not_offered', technical: 'hidden-data' } } }),
+    prompt(951, '这条消息照常发送'), endTurn(951),
+  ]);
+  assert.equal(occurrences(body.textContent, '设置没有生效：Unknown config option: fast'), 1);
+  assert.match(body.textContent, /这条消息照常发送/);
+  assert.doesNotMatch(body.textContent, /hidden-data|not_offered|session\/set_config_option/);
+});

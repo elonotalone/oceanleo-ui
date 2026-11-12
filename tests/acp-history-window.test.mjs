@@ -53,3 +53,21 @@ test("a history 404 is preserved for the hook's full-stream fallback", async () 
   await assert.rejects(() => api.getHistoryWindow("legacy"), (error) => error?.status === 404);
   globalThis.fetch = previous;
 });
+
+test('concurrent history and full-row readers share their identical authenticated GET', async () => {
+  const previous = globalThis.fetch;
+  const held = [];
+  globalThis.fetch = (url) => new Promise((resolve) => { held.push({ url: String(url), resolve }); });
+  try {
+    const histories = Array.from({ length: 12 }, () => api.getHistoryWindow('shared-task'));
+    const fullRows = Array.from({ length: 12 }, () => api.getFrame('shared-task', 71));
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(held.length, 2, 'one request per distinct history/full-row URL');
+    assert.match(held[0].url, /\/history\?turns=8$/);
+    assert.match(held[1].url, /\/frames\/71$/);
+    held[0].resolve(json({ rows: [], tail_id: 71 }));
+    held[1].resolve(json({ id: 71, direction: 'agent', raw: '{"result":{}}' }));
+    assert.ok((await Promise.all(histories)).every((page) => page.tail_id === 71));
+    assert.ok((await Promise.all(fullRows)).every((row) => row.id === 71));
+  } finally { globalThis.fetch = previous; }
+});

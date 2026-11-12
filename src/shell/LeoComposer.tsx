@@ -210,7 +210,7 @@ export interface LeoComposerProps {
   sendBlocked?: boolean;
   /** Localized explanation shown next to the disabled Send button. */
   sendBlockedReason?: string | null;
-  /** @deprecated Use readOnly for permission locks and sendBlocked for transport state. */
+  /** @deprecated Use readOnly for permission locks and sendBlocked for an in-flight submission. */
   disabled?: boolean;
 
   // --- 模板实填（宗旨 v15，2026-07-05 改写；旧「幽灵占位」已废弃） ---

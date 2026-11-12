@@ -7,6 +7,7 @@
 // gateway's answer as it came; a dropped socket is `disconnected` until the plain
 // backoff reconnects it from the last row it delivered.
 
+import { sharedGatewayFetch } from "./shared-get";
 import type { AcpFrameRow } from "../acp";
 import type { AgentAttachment } from "./agent";
 import { accessToken } from "./auth/client";
@@ -23,8 +24,7 @@ export type AcpRpcError = { code?: number | string; message?: string; data?: unk
 
 /**
  * A refused route call. `code` / `message` / `data` are the gateway's JSON-RPC
- * error verbatim when it sent one (a 409 from `send`: the program refused a
- * setting and no prompt went out); otherwise `message` is the body as it came.
+ * error verbatim when it sent one; otherwise `message` is the body as it came.
  */
 export class AcpSendError extends Error {
   readonly status: number;
@@ -58,9 +58,9 @@ function routeError(status: number, payload: unknown): AcpSendError {
 }
 
 /**
- * The program itself refused (a `session/set_*` answered with an error, so no
- * prompt went out): its error is already a row of the task (`{"error":…}` body,
- * HTTP 409). Any other failure is the gateway's, with no row behind it.
+ * A program refusal is already archived as a task row (`{"error":…}`, HTTP 409).
+ * Carried setting refusals are non-fatal and arrive in a successful send receipt.
+ * Other failures belong to the gateway and have no transcript row behind them.
  */
 export function refusedByAgent(error: unknown): boolean {
   return error instanceof AcpSendError && error.status === 409 && record(record(error.payload)?.error) !== null;
@@ -82,7 +82,7 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (!token) throw new AcpSendError(401, "未登录", null, null);
   let res: Response;
   try {
-    res = await fetch(`${gatewayBase()}${path}`, {
+    res = await sharedGatewayFetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init.headers || {}),
@@ -112,6 +112,11 @@ const taskPath = (taskId: string, tail: string) => `/v1/tasks/${encodeURICompone
 export function getFrames(taskId: string, after = 0, limit = 500, options: { signal?: AbortSignal } = {}): Promise<AcpFrameRow[]> {
   const query = new URLSearchParams({ after: String(after), limit: String(limit) });
   return request<AcpFrameRow[]>(`${taskPath(taskId, "frames")}?${query}`, { signal: options.signal });
+}
+
+/** Load a shortened row in full only when the reader expands it. */
+export function getFrame(taskId: string, rowId: number): Promise<AcpFrameRow> {
+  return request<AcpFrameRow>(taskPath(taskId, `frames/${encodeURIComponent(String(rowId))}`));
 }
 
 /** Cursor based history window (C9). Older gateways may return 404; callers fall back to frames. */
@@ -155,7 +160,11 @@ export type AcpSendBody = AcpSessionChoices & {
 };
 
 /** The gateway's receipt; the user's row itself arrives on the frames socket. */
-export type AcpSendResult = { row_id?: number; [key: string]: unknown };
+export type AcpSendResult = {
+  row_id?: number;
+  settings?: { kind: string; id?: string; value: string | boolean; applied: boolean; error?: AcpRpcError | null }[];
+  [key: string]: unknown;
+};
 
 export function send(taskId: string, body: AcpSendBody, options: { signal?: AbortSignal } = {}): Promise<AcpSendResult> {
   return post<AcpSendResult>(taskPath(taskId, "send"), body, options.signal);
@@ -283,7 +292,7 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
       if (current !== generation || closed) return;
       let message: Record<string, unknown> | null = null;
       try { message = record(JSON.parse(String(event.data))); } catch { return; }
-      if (!message) return;
+      if (!message || typeof message.ping === "number") return;
       const row = frameRow(message.row);
       if (row) {
         // Rows come in commit order; one already delivered (id at or below the cursor) is not a new row.
