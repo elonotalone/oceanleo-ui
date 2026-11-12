@@ -49,7 +49,14 @@ interface SavedUpload extends PendingLibraryUpload {
   options: Pick<LibraryUploadOptions, "folderId" | "path" | "projectId">;
 }
 export class LibraryUploadError extends Error {
-  constructor(message: string, public status = 0, public retryable = false) { super(message); }
+  // Explicit fields (no TypeScript parameter properties): the node test loader strips types only.
+  status: number;
+  retryable: boolean;
+  constructor(message: string, status = 0, retryable = false) {
+    super(message);
+    this.status = status;
+    this.retryable = retryable;
+  }
 }
 
 export function libraryUploadError(status: number, body: unknown): LibraryUploadError {
