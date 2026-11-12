@@ -54,7 +54,10 @@ export const MATERIAL_CATALOG_TYPES: readonly ArtifactType[] = Object.freeze([
   ...VIEW_ONLY_ARTIFACT_TYPES,
 ]);
 
-/** New game revisions carry one complete, self-contained HTML document. */
+/** New game revisions carry a complete static file project. */
+export const GAME_PROJECT_SOURCE_FORMAT = "game-project@1";
+
+/** Legacy read-only document format. */
 export const GAME_DOCUMENT_SOURCE_FORMAT = "oceanleo.game-document.v1";
 /** Retired five-slot carriers remain identifiable for stored-row reads/downloads only. */
 export const LEGACY_GAME_BUNDLE_SOURCE_FORMAT = "oceanleo.game-bundle.v1";
@@ -67,8 +70,8 @@ export function gameSourceFormatAccess(
   sourceFormat: unknown,
 ): GameSourceFormatAccess | null {
   const normalized = String(sourceFormat || "").trim().toLowerCase();
-  if (normalized === GAME_DOCUMENT_SOURCE_FORMAT) return "current";
-  if (normalized === LEGACY_GAME_BUNDLE_SOURCE_FORMAT) {
+  if (normalized === GAME_PROJECT_SOURCE_FORMAT) return "current";
+  if (normalized === GAME_DOCUMENT_SOURCE_FORMAT || normalized === LEGACY_GAME_BUNDLE_SOURCE_FORMAT) {
     return "legacy-read-only";
   }
   return null;
@@ -425,34 +428,17 @@ const ADVANCED_CAPABILITY_ROWS = [
     },
   },
   {
-    /**
-     * 用户生成的游戏（LeoPlay）。
-     *
-     * `game_editing` 而不是 `game_authoring`：这个 id 是
-     * `reviewed_material_catalog.EXPECTED_CLASS_CONTRACT` 与 catalog-release
-     * `expected_contracts` 的连接键，两处都已按这个拼写落地。
-     *
-     * 产物是 `oceanleo.game-document.v1` **JSON 信封**，不是裸 `text/html`：
-     * `media_rehost._BLOCKED_MIME` 与
-     * `typed_artifact_repository._validate_upload_media_type` 都拒收 text/html
-     * （`<!doctype html` 正文另有 active-content 拒收），而那两份名单正是
-     * `policy:security.untrusted-content-domain` 的落点，所以是契约让路而不是名单让路。
-     * `source` 是完整 HTML 文档；沙箱域原样装载，不再补骨架或固定槽位。
-     *
-     * 刻意**不**复用 `website` 的 capability：`website-editor` 背后是 Next 源码
-     * 工作台（CAS 源码树 + dev preview），把它接到一份自包含 bundle 上是错的
-     * （`01-decisions.md` D7）。两者同为 JSON 信封只是形态巧合。
-     */
+    /** Static game file closure, executed only on the untrusted content domain. */
     featureId: "game_editing",
     artifactType: "game",
-    sourceFormat: GAME_DOCUMENT_SOURCE_FORMAT,
+    sourceFormat: GAME_PROJECT_SOURCE_FORMAT,
     sourceMediaType: "application/json",
     editorCapability: "game-editor",
     artifactBindings: [
       { artifactType: "game", editorCapabilities: ["game-editor"] },
     ],
     adapter: "game",
-    projectSchema: GAME_DOCUMENT_SOURCE_FORMAT,
+    projectSchema: GAME_PROJECT_SOURCE_FORMAT,
     editability: "bounded",
     sourceIntegrity: "content_addressed",
     // 与其他 JSON 信封能力（website / chart / design canvas / video canvas）一致：

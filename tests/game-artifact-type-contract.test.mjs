@@ -13,7 +13,7 @@ import {
   ADVANCED_EDITOR_ADAPTER_IDS,
   ARTIFACT_EDITOR_CAPABILITIES,
   ARTIFACT_TYPES,
-  GAME_DOCUMENT_SOURCE_FORMAT,
+  GAME_PROJECT_SOURCE_FORMAT,
   LEGACY_GAME_BUNDLE_SOURCE_FORMAT,
   advancedCapabilityForArtifactFields,
   artifactDownloadPlanFor,
@@ -72,7 +72,7 @@ test("game is the fourteenth artifact type and owns its own adapter", () => {
   assert.equal(row.featureId, "game_editing");
   assert.equal(row.editorCapability, "game-editor");
   assert.equal(row.adapter, "game");
-  assert.equal(row.projectSchema, GAME_DOCUMENT_SOURCE_FORMAT);
+  assert.equal(row.projectSchema, GAME_PROJECT_SOURCE_FORMAT);
   assert.equal(row.editability, "bounded");
 });
 
@@ -84,7 +84,7 @@ test("the game row stays byte-for-byte aligned with the backend contract", () =>
     (entry) => entry.artifactType === "game",
   );
   assert.equal(row.featureId, "game_editing");
-  assert.equal(row.sourceFormat, GAME_DOCUMENT_SOURCE_FORMAT);
+  assert.equal(row.sourceFormat, GAME_PROJECT_SOURCE_FORMAT);
   assert.equal(row.sourceMediaType, "application/json");
   assert.equal(row.openMode, "structured-project");
   assert.deepEqual(row.requirement, {
@@ -125,20 +125,20 @@ test("game never borrows the website source-code capability", () => {
   const website = ADVANCED_CAPABILITY_MATRIX.find(
     (entry) => entry.artifactType === "website",
   );
-  assert.notEqual(website.projectSchema, GAME_DOCUMENT_SOURCE_FORMAT);
+  assert.notEqual(website.projectSchema, GAME_PROJECT_SOURCE_FORMAT);
   assert.equal(
     advancedCapabilityForArtifactFields({
       artifactType: "game",
-      sourceFormat: GAME_DOCUMENT_SOURCE_FORMAT,
+      sourceFormat: GAME_PROJECT_SOURCE_FORMAT,
       editorCapability: "website-editor",
     }),
     null,
   );
 });
 
-test("only the complete-document carrier is editable; legacy is identified read-only", () => {
+test("only the file-project carrier is editable; legacy is identified read-only", () => {
   assert.equal(
-    artifactSourceFormatIsCompatible("game", GAME_DOCUMENT_SOURCE_FORMAT),
+    artifactSourceFormatIsCompatible("game", GAME_PROJECT_SOURCE_FORMAT),
     true,
   );
   assert.equal(
@@ -239,7 +239,7 @@ test("game routes to its own local route, not to an external embed", () => {
   assert.equal(registry.routeType, "game");
   assert.equal(registry.routable, true);
   assert.equal(registry.featureId, "game_editing");
-  assert.equal(registry.projectSchema, GAME_DOCUMENT_SOURCE_FORMAT);
+  assert.equal(registry.projectSchema, GAME_PROJECT_SOURCE_FORMAT);
   assert.deepEqual(
     [...registry.roundTrip],
     ["load", "mutate", "save", "reopen"],
@@ -276,7 +276,7 @@ test("GameRoute rejects imported bundles and never renders its own iframe", () =
   assert.equal(/<iframe/i.test(gameRouteCode), false);
   assert.equal(/srcdoc/i.test(gameRouteCode), false);
   assert.ok(gameRouteCode.includes("registerGamePreviewHost"));
-  assert.ok(gameRouteCode.includes("useGamePreviewHost"));
+  assert.ok(gameRouteCode.includes("GameProjectEditor"));
   assert.ok(previewHostSource.includes("gamePreviewHostListeners"));
 });
 
@@ -300,6 +300,6 @@ test("useGamePreviewHost stores the host through a state updater", () => {
 test("GameRoute remix reuses the existing artifact fork endpoint", () => {
   // D7：血缘走 `POST /v1/artifacts/{id}:fork` 的 provenance.parent_revision_ids，
   // 不另建血缘表或第二套 remix 机制。
-  assert.ok(gameRouteCode.includes("forkArtifact"));
+  assert.ok(readFileSync("src/shell/game-editor/GameProjectEditor.tsx", "utf8").includes("forkArtifact"));
   assert.equal(/remix_of|remixOf|lineage_table/.test(gameRouteCode), false);
 });

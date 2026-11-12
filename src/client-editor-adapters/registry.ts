@@ -79,7 +79,7 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
     },
     {
       editorId: "game",
-      schema: "oceanleo.game-document.v1",
+      schema: "game-project@1",
       core: "sandbox host; no IDE core",
       license: "n/a",
       status: "RED",

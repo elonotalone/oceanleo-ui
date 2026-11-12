@@ -32,7 +32,7 @@ test("owned audio/3D/PDF/game sources share one working schema and have no leave
   assert.match(audioRoute, /draftSchema:\s*"oceanleo\.audio\.edit\.v1"/);
   assert.match(modelRoute, /draftSchema:\s*"oceanleo\.threed\.edit\.v1"/);
   assert.match(gameRoute, /GAME_WORKING_DOCUMENT_SCHEMA/);
-  assert.match(gameCode, /GAME_WORKING_DOCUMENT_SCHEMA/);
+  assert.match(gameCode, /GameProjectEditor/);
   assert.doesNotMatch(gameCode, /oceanleo\.game\.code\.v1/);
   assert.doesNotMatch(pdfRoute, /draftSchema:/);
   assert.doesNotMatch(pdfRoute, /W19_PRO_SAVED_AS_NEW_VERSION/);

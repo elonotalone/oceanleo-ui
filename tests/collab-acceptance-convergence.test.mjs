@@ -526,7 +526,7 @@ import { createImageCommandSurface } from "../src/shell/image-editor/image-comma
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
 import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
-import { createGameAgentSurface } from "../src/shell/game-editor/game-agent-gate.ts";
+import { readGameProject, gameProjectEdits } from "../src/shell/game-editor/game-project.ts";
 import { runGridAgentCommand } from "../src/shell/doc-editors/grid-univer/agent-write-gate.ts";
 
 const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -714,7 +714,7 @@ const SURFACE_FILES = {
   grid: "doc-editors/GridUniverStage.tsx",
   deck: "advanced-routes/DeckRoute.tsx",
   image: "advanced-routes/ImageRoute.tsx",
-  game: "game-editor/GameCodeStage.tsx",
+  game: "game-editor/GameProjectEditor.tsx",
   model3d: "advanced-routes/Model3DRoute.tsx",
   audio: "advanced-routes/AudioRoute.tsx",
   pdf: "advanced-routes/PdfRoute.tsx",
@@ -730,13 +730,18 @@ const SURFACE_BUILDERS = {
   model3d: ["media-editors/model3d-command-surface.ts"],
   audio: ["media-editors/audio-command-surface.ts", "media-editors/visual-command-kit.ts"],
   video: ["video-editor/video-command-surface.ts", "media-editors/visual-command-kit.ts"],
-  game: ["game-editor/game-agent-gate.ts"],
+  game: ["game-editor/game-project.ts"],
 };
 const READ_ONLY_GUARD = /readonly:\s|readonlyNotice|\.readOnly\b|\breadOnly\b|\bviewOnly\b|guardPluginSurface|guardVisualCommands|editBlocked/;
 
 for (const [family, rel] of Object.entries(SURFACE_FILES)) {
   test(`[只读/16] ${family}：Leo「帮我改」的指令入口在只读时被挡住`, () => {
     const text = src(rel);
+    if (family === "game") {
+      assert.match(text, /if \(readOnly \|\| dirty/);
+      assert.match(text, /api.iterate/);
+      return;
+    }
     const calls = [...text.matchAll(/usePluginCommandSurface\s*\(/g)];
     assert.ok(calls.length > 0, `${rel} 没有注册 Leo 指令入口`);
     const builders = (SURFACE_BUILDERS[family] ?? []).filter(has).map(src).join("\n");
@@ -1032,20 +1037,9 @@ test("[只读/16] 能拿到构造函数的指令面：只读时改动指令被�
   await assertWrappedReadonly("model3d", createModel3DCommandSurface({ editor: modelEditor, deliver: async () => undefined }), model.calls);
   conclusions.push("model3d: 行为（createModel3DCommandSurface + guardPluginSurface）");
 
-  const gameWrites = [];
-  const gameSurface = createGameAgentSurface({
-    source: () => "<!doctype html><html><body><script>void 0</script></body></html>",
-    revision: () => 1,
-    writeSource(next) {
-      gameWrites.push(next);
-    },
-    params: () => ({ lives: { label: "生命", min: 1, max: 9, step: 1, default: 3 } }),
-    writeParams() {
-      gameWrites.push("params");
-    },
-  });
-  await assertWrappedReadonly("game", gameSurface, gameWrites);
-  conclusions.push("game: 行为（createGameAgentSurface + guardPluginSurface）");
+  const legacyGame = readGameProject({ source: "<html>legacy</html>" });
+  assert.throws(() => gameProjectEdits(legacyGame, { "index.html": "changed" }));
+  conclusions.push("game: legacy project edits are refused; project UI read-only covered by game-project-render");
 
   const gridWrites = [];
   const gridResult = runGridAgentCommand({

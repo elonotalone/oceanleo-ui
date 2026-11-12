@@ -103,6 +103,7 @@ export interface TrailFrames {
   updates: Array<{ seq: number; update: string; author_id: string | null; t_ms: number }>;
 }
 
+/** Revision JSON stays intact: game-project@1 needs its entire file closure, not only source. */
 export interface RevisionFrames {
   kind: "revisions";
   items: Array<{ revision_id: string; t_ms: number; json: unknown; title?: string | null }>;

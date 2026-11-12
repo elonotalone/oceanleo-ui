@@ -2,6 +2,7 @@
 
 // game 的回放画法（work-chat W14，契约 §8.4）：代码快照，只读等宽文本。
 // 改动的行用作者颜色标在行号旁；不运行任何代码，不用 iframe / innerHTML。
+import { useState } from "react";
 import { useUI } from "../../../../i18n/ui/useUI";
 import {
   gameChangedLines,
@@ -21,7 +22,8 @@ function GameFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" }: R
   const tt = useUI();
   const state = snapshot as GameCollabState;
   const before = (prev as GameCollabState | undefined)?.pages;
-  const page = state.pages[0];
+  const [selected, setSelected] = useState("");
+  const page = state.pages.find(entry => entry.id === selected) ?? state.pages[0];
   const code = page?.code ?? "";
   const lines = code.split("\n");
   const previous = before?.find((p) => p.id === page?.id);
@@ -38,9 +40,9 @@ function GameFrame({ snapshot, prev, width, height, authorColor = "#4f46e5" }: R
     >
       <div style={{ height: TAB_HEIGHT }} className="flex items-center gap-2 border-b border-[var(--border,#e7e5e4)] px-2">
         {state.pages.map((entry) => (
-          <span key={entry.id} className={entry.id === page?.id ? "font-semibold" : "opacity-60"}>
+          <button type="button" key={entry.id} onClick={() => setSelected(entry.id)} className={entry.id === page?.id ? "font-semibold" : "opacity-60"}>
             {entry.label}
-          </span>
+          </button>
         ))}
       </div>
       {code.trim() === "" ? (

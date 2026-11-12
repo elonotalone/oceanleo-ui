@@ -4,12 +4,11 @@
  * 代码 = 逐字合并：每一页代码一个 `Y.Text`，名字 `oceanleo:game:<pageId>`，由 `bindTextarea` 绑定。
  * 页的增删与顺序 = 实体型状态（实体 = 页，id 就是页 id），根名 `oceanleo:game`。
  *
- * 现有游戏文档的事实（读码）：一份游戏 = 一个信封，`source` 是一整份 HTML，Code 页就是它的
- * 一个文本框。所以今天只有一页（`main`）；页表和多文本的结构按契约留着，将来游戏拆成多文件时
- * 不用改协同层。
+ * 新游戏每个工程文件是一页；旧 HTML 文档作为一个只读代码快照。
  *
  * 只读代码快照给回放画：不运行任何代码。
  */
+import { readGameProject, type GameProject } from "../../game-editor/game-project";
 import { readEntityRoot, type EntityDoc } from "./video";
 
 export const GAME_ROOT = "oceanleo:game";
@@ -24,6 +23,7 @@ export interface GameCollabPage {
 
 export interface GameCollabState {
   pages: GameCollabPage[];
+  project?: GameProject;
   /** 游戏产物的来路等不随代码变的信息，原样透传。 */
   origin?: string;
   paramDeclarations?: unknown;
@@ -50,6 +50,7 @@ export function gameToEntities(state: GameCollabState): EntityDoc {
     order,
     entities,
     meta: {
+      ...(state.project ? { project: state.project } : {}),
       ...(state.origin !== undefined ? { origin: state.origin } : {}),
       ...(state.paramDeclarations !== undefined ? { paramDeclarations: state.paramDeclarations } : {}),
     },
@@ -72,6 +73,7 @@ export function gameFromEntities(
   const meta = input.meta ?? {};
   return {
     pages,
+    ...(isRecord(meta.project) ? { project: readGameProject(meta.project) } : prev?.project ? { project: prev.project } : {}),
     ...(meta.origin !== undefined ? { origin: String(meta.origin) } : prev?.origin !== undefined ? { origin: prev.origin } : {}),
     ...(meta.paramDeclarations !== undefined
       ? { paramDeclarations: meta.paramDeclarations }
@@ -103,6 +105,11 @@ export function gameFromYDoc(doc: unknown): GameCollabState {
 /** 版本 JSON：游戏信封 `{ source, origin, manifest }`（或带 source 的工作文档）→ 单页快照。 */
 export function gameFromRevisionJson(json: unknown): GameCollabState {
   const record = isRecord(json) ? json : {};
+  if (record.schema === "game-project@1") {
+    const project = readGameProject(record);
+    return { project, pages: project.files.map(file => ({ id: file.path, label: file.path,
+      code: file.content ?? `[${file.mediaType}, ${file.byteSize} bytes]` })) };
+  }
   const manifest = isRecord(record.manifest) ? record.manifest : {};
   return {
     pages: [{ id: GAME_MAIN_PAGE, label: "main", code: typeof record.source === "string" ? record.source : "" }],
@@ -173,6 +180,15 @@ export function gameDescribeChange(prev: unknown, next: unknown): string | null 
 /** 「从这一步接手」：还原成游戏信封的最小形状（source + origin + manifest）。 */
 export function gameToArtifactJson(snapshot: unknown): unknown {
   const state = isRecord(snapshot) && Array.isArray(snapshot.pages) ? (snapshot as unknown as GameCollabState) : gameFromRevisionJson(snapshot);
+  if (state.project) {
+    for (const file of state.project.files) {
+      const page = state.pages.find(entry => entry.id === file.path);
+      if (file.content !== undefined && page?.code !== undefined && page.code !== file.content) {
+        throw new Error("请先保存游戏工程，再从此版本创建副本。");
+      }
+    }
+    return state.project;
+  }
   const main = state.pages.find((page) => page.id === GAME_MAIN_PAGE) ?? state.pages[0];
   return {
     source: main?.code ?? "",

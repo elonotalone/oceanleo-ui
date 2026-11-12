@@ -154,11 +154,8 @@ test("Code -> Edit -> Code -> Edit always lands on the clicked page", async () =
   await act(async () => root2.unmount());
 });
 
-test("GameRoute derives the page from the host store, not local state", () => {
-  const route = readFileSync(
-    new URL("../src/shell/advanced-routes/GameRoute.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(route, /useGamePages\(\)/);
-  assert.doesNotMatch(route, /setActivePageId/);
+test("GameRoute and the compatibility Code route share the same project editor", () => {
+  for (const path of ["src/shell/advanced-routes/GameRoute.tsx", "src/shell/game-editor/GameCodeStage.tsx"]) {
+    assert.match(readFileSync(path, "utf8"), /<GameProjectEditor/);
+  }
 });

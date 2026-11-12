@@ -179,7 +179,7 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
   game: {
     routeType: "game",
     roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.game-document.v1",
+    projectSchema: "game-project@1",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",

@@ -3,72 +3,72 @@ import { assembleCopy } from "./shell-overhaul-copy-shared";
 
 export const GAME_PLAY_SOURCE = {
   fullscreenRefused: "当前环境无法进入全屏。",
-  playUnsupported: "当前站点暂不支持试玩，请在 OceanLeo 主站打开",
+  playUnsupported: "游戏试玩暂时不可用，请稍后重试",
 } as const;
 
 export const GAME_PLAY_MESSAGES = assembleCopy(GAME_PLAY_SOURCE, {
   en: {
     fullscreenRefused: "This environment cannot enter full screen.",
-    playUnsupported: "Playing is not supported on this site yet. Please open it on the OceanLeo main site.",
+    playUnsupported: "Game preview is temporarily unavailable. Please try again.",
   },
   de: {
     fullscreenRefused: "Diese Umgebung kann nicht in den Vollbildmodus wechseln.",
-    playUnsupported: "Spielen wird auf dieser Website noch nicht unterstützt. Bitte öffne es auf der OceanLeo-Hauptseite.",
+    playUnsupported: "Die Spielvorschau ist vorübergehend nicht verfügbar. Bitte versuche es erneut.",
   },
   es: {
     fullscreenRefused: "Este entorno no puede pasar a pantalla completa.",
-    playUnsupported: "Jugar aún no está disponible en este sitio. Ábrelo en el sitio principal de OceanLeo.",
+    playUnsupported: "La vista previa del juego no está disponible temporalmente. Inténtalo de nuevo.",
   },
   "es-419": {
     fullscreenRefused: "Este entorno no puede pasar a pantalla completa.",
-    playUnsupported: "Jugar todavía no está disponible en este sitio. Ábrelo en el sitio principal de OceanLeo.",
+    playUnsupported: "La vista previa del juego no está disponible temporalmente. Inténtalo de nuevo.",
   },
   fr: {
     fullscreenRefused: "Cet environnement ne peut pas passer en plein écran.",
-    playUnsupported: "Le jeu n'est pas encore pris en charge sur ce site. Ouvrez-le sur le site principal d'OceanLeo.",
+    playUnsupported: "L’aperçu du jeu est temporairement indisponible. Réessayez.",
   },
   it: {
     fullscreenRefused: "Questo ambiente non può passare a schermo intero.",
-    playUnsupported: "Giocare non è ancora supportato su questo sito. Aprilo sul sito principale di OceanLeo.",
+    playUnsupported: "L’anteprima del gioco non è temporaneamente disponibile. Riprova.",
   },
   "pt-BR": {
     fullscreenRefused: "Este ambiente não consegue entrar em tela cheia.",
-    playUnsupported: "Ainda não é possível jogar neste site. Abra no site principal da OceanLeo.",
+    playUnsupported: "A prévia do jogo está temporariamente indisponível. Tente novamente.",
   },
   "pt-PT": {
     fullscreenRefused: "Este ambiente não consegue entrar em ecrã inteiro.",
-    playUnsupported: "Ainda não é possível jogar neste site. Abra no site principal da OceanLeo.",
+    playUnsupported: "A pré-visualização do jogo está temporariamente indisponível. Tente novamente.",
   },
   vi: {
     fullscreenRefused: "Môi trường này không thể vào chế độ toàn màn hình.",
-    playUnsupported: "Trang này chưa hỗ trợ chơi thử. Hãy mở trên trang chính của OceanLeo.",
+    playUnsupported: "Bản chơi thử tạm thời không khả dụng. Vui lòng thử lại.",
   },
   tr: {
     fullscreenRefused: "Bu ortam tam ekrana geçemiyor.",
-    playUnsupported: "Bu sitede oynama henüz desteklenmiyor. Lütfen OceanLeo ana sitesinde açın.",
+    playUnsupported: "Oyun önizlemesi geçici olarak kullanılamıyor. Lütfen tekrar deneyin.",
   },
   "zh-TW": {
     fullscreenRefused: "目前環境無法進入全螢幕。",
-    playUnsupported: "目前網站暫不支援試玩，請在 OceanLeo 主站開啟。",
+    playUnsupported: "遊戲試玩暫時無法使用，請稍後重試。",
   },
   ja: {
     fullscreenRefused: "この環境では全画面表示にできません。",
-    playUnsupported: "このサイトではまだ試遊に対応していません。OceanLeo のメインサイトで開いてください。",
+    playUnsupported: "ゲームのプレビューは一時的に利用できません。もう一度お試しください。",
   },
   ko: {
     fullscreenRefused: "이 환경에서는 전체 화면으로 전환할 수 없습니다.",
-    playUnsupported: "이 사이트에서는 아직 플레이를 지원하지 않습니다. OceanLeo 메인 사이트에서 열어 주세요.",
+    playUnsupported: "게임 미리보기를 일시적으로 사용할 수 없습니다. 다시 시도해 주세요.",
   },
   ar: {
     fullscreenRefused: "لا تدعم هذه البيئة وضع ملء الشاشة.",
-    playUnsupported: "اللعب غير مدعوم على هذا الموقع بعد. يُرجى فتحه على موقع OceanLeo الرئيسي.",
+    playUnsupported: "معاينة اللعبة غير متاحة مؤقتًا. يُرجى المحاولة مجددًا.",
   },
   th: {
     fullscreenRefused: "สภาพแวดล้อมนี้ไม่สามารถเข้าสู่โหมดเต็มหน้าจอได้",
-    playUnsupported: "เว็บไซต์นี้ยังไม่รองรับการเล่น กรุณาเปิดบนเว็บไซต์หลักของ OceanLeo",
+    playUnsupported: "ตัวอย่างเกมไม่พร้อมใช้งานชั่วคราว โปรดลองอีกครั้ง",
   },
   hi: {
     fullscreenRefused: "यह परिवेश फ़ुलस्क्रीन में नहीं जा सकता।",
-    playUnsupported: "इस साइट पर अभी खेलना समर्थित नहीं है। कृपया इसे OceanLeo की मुख्य साइट पर खोलें।",
+    playUnsupported: "गेम का प्रीव्यू अभी उपलब्ध नहीं है। कृपया फिर कोशिश करें।",
   },
 });

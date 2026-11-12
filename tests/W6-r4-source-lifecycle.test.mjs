@@ -64,14 +64,7 @@ import {
   parseVideoCanvasProject,
 } from "../src/shell/workflow-carrier/video-canvas-local-session.ts";
 import { flushVideoCanvasGraph } from "../src/shell/workflow-carrier/video-canvas-leave.ts";
-import {
-  buildGameEnvelope,
-  inspectGameDraft,
-  readGameEnvelope,
-} from "../src/shell/game-editor/game-source.ts";
-import { createGameAgentSurface } from "../src/shell/game-editor/game-agent-gate.ts";
-import { planGamePreviewControl } from "../src/shell/game-editor/game-preview-controls.ts";
-import { registerGamePreviewHost } from "../src/shell/game-editor/preview-host.ts";
+import { readGameProject, gameProjectEdits } from "../src/shell/game-editor/game-source.ts";
 
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
@@ -543,70 +536,11 @@ test("video-canvas: graph hydrates, add-node command mutates, flush reopens", as
   assert.equal(refused.ok, false);
 });
 
-test("game play is hosted-iframe-only: fail-closed, no command surface, preview host is the adopted API", () => {
+test("game project rejects missing source and wraps legacy HTML read-only", () => {
   const missing = gameSourceAdmission(durableGame());
   assert.equal(missing.ok, false);
-  assert.match(missing.error, /未改用空白稿覆盖原件/);
-
-  const play = readFileSync("src/shell/advanced-routes/GameRoute.tsx", "utf8");
-  assert.doesNotMatch(play, /usePluginCommandSurface/);
-  assert.match(play, /registerGamePreviewHost/);
-  assert.match(play, /useGamePreviewHost/);
-  assert.match(play, /PreviewHost/);
-
-  let received = null;
-  registerGamePreviewHost((props) => {
-    received = props;
-    return null;
-  });
-  registerGamePreviewHost(null);
-  assert.equal(received, null);
-
-  const code = readFileSync("src/shell/game-editor/GameCodeStage.tsx", "utf8");
-  assert.match(code, /planGamePreviewControl/);
-  const stopped = planGamePreviewControl({ paused: false, reloadKey: 2 }, "stop");
-  assert.equal(stopped.paused, true);
-});
-
-test("game code: envelope hydrates and serializes; agent write parks without a token", async () => {
-  const source =
-    "<!doctype html><html><body><script>window.score=1</script></body></html>";
-  const stored = buildGameEnvelope({
-    source,
-    origin: "ai",
-    manifest: { engine: "v1" },
-  });
-  const loaded = readGameEnvelope(stored);
-  assert.equal(loaded.ok, true);
-  assert.equal(loaded.envelope.source, source);
-  const inspected = inspectGameDraft(loaded.envelope.source);
-  assert.equal(inspected.publishable, true);
-
-  const edited = buildGameEnvelope({
-    source: source.replace("score=1", "score=9"),
-    origin: loaded.envelope.origin,
-    manifest: loaded.envelope.manifest,
-  });
-  const reopened = readGameEnvelope(edited);
-  assert.equal(reopened.ok, true);
-  assert.match(reopened.envelope.source, /score=9/);
-  assert.equal(reopened.envelope.origin, "ai");
-
-  assert.equal(readGameEnvelope({ origin: "ai" }).ok, false);
-  assert.equal(readGameEnvelope({ source: "<html></html>" }).ok, false);
-
-  let current = loaded.envelope.source;
-  const surface = createGameAgentSurface({
-    source: () => current,
-    revision: () => 1,
-    writeSource(next) {
-      current = next;
-    },
-    params: () => null,
-  });
-  const parked = await surface.run("game.set-source", {
-    source: edited.source,
-  });
-  assert.equal(current, loaded.envelope.source);
-  assert.match(String(parked.message), /审阅|一个字/);
+  assert.throws(() => readGameProject({}));
+  const legacy = readGameProject({ source: "<html>stored game</html>" });
+  assert.equal(legacy.readOnly, true);
+  assert.throws(() => gameProjectEdits(legacy, { "index.html": "changed" }));
 });
