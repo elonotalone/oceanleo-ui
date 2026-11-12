@@ -4,7 +4,7 @@
 //      storage URL: local blob first, a private reference becomes a gateway
 //      rendition grant, a legacy public object goes through the gateway proxy.
 //   2. `uploadComposerFile` uses only the private route with an idempotency
-//      key, refuses > 20 MB before any request, and fails closed without ids.
+//      key, accepts large files through Library sessions, and fails closed without ids.
 //   3. `useAttachments` keeps a failed tile (`failed: true`) and retries it;
 //      what it sends to the agent is `{url: "", artifact_id, revision_id}`.
 
@@ -183,15 +183,14 @@ test("uploadComposerFile: private route with an idempotency key, reference resul
   assert.equal(call.opts.idempotencyKey, "composer-upload-v1:oceanleo:a.png:10:7");
 });
 
-test("uploadComposerFile: > 20 MB refused before any request", async () => {
+test("uploadComposerFile: big attachments use the same private upload path", async () => {
   const { uploadComposerFile } = await compileComposerUpload([okUpload]);
   const big = { name: "big.mp4", size: 20 * 1024 * 1024 + 1, type: "video/mp4", lastModified: 1 };
   const result = await uploadComposerFile(big, { siteId: "oceanleo" });
-  assert.deepEqual(
-    { ok: result.ok, error: result.error, tooLarge: result.tooLarge },
-    { ok: false, error: "文件超过 20MB，暂不支持", tooLarge: true },
-  );
-  assert.equal(globalThis.__w6Uploads.length, 0);
+  assert.equal(result.ok, true);
+  assert.equal(globalThis.__w6Uploads.length, 1);
+  assert.equal(globalThis.__w6Uploads[0].opts.privateUpload, true);
+  assert.equal(result.upload.attachment.url, "");
 });
 
 test("uploadComposerFile: no artifact ids is a failure, never a public fallback", async () => {

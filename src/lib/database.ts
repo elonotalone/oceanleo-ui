@@ -15,6 +15,7 @@
 
 import { sharedGatewayFetch } from "./shared-get";
 import { accessToken } from "./auth/client";
+import { uploadLibraryFile, LibraryUploadError } from "./library-uploads";
 import { GATEWAY_BASE } from "./auth/config";
 // W08：上传进度 / 续传 / 同一性校验的原语。只有 `uploadFile` 用它们。
 import {
@@ -796,8 +797,14 @@ export async function uploadFile(
 ): Promise<Result<{ ok: boolean; file: FileItem }>> {
   const progress = createUploadProgressReporter(file, opts);
   if (opts.privateUpload && file.size > 20 * 1024 * 1024) {
-    progress.fail();
-    return { ok: false, error: "私有文件上传目前上限 20MB；未转存到公开空间。", status: 413 };
+    try {
+      const uploaded = await uploadLibraryFile(file, { signal: opts.signal, onProgress: (loaded) => progress.report(loaded) });
+      progress.finish();
+      return { ok: true, data: { ok: true, file: uploaded } };
+    } catch (error) {
+      progress.fail();
+      return { ok: false, error: error instanceof Error ? error.message : "文件上传失败", status: error instanceof LibraryUploadError ? error.status : 0, retryable: error instanceof LibraryUploadError ? error.retryable : true };
+    }
   }
   // FastAPI's small multipart path intentionally caps at 20 MB and buffers
   // bytes in the gateway. Large editor media goes browser → signed Supabase

@@ -19,10 +19,10 @@ import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { FileItem, MediaType } from "./database";
 
-/** 私有上传的单文件上限（网关 `/v1/database/private-upload` 同值）。 */
-export const PRIVATE_ATTACHMENT_MAX_BYTES = 20 * 1024 * 1024;
+/** @deprecated Library upload sessions enforce the owner’s storage quota. */
+export const PRIVATE_ATTACHMENT_MAX_BYTES = Number.POSITIVE_INFINITY;
 /** 超过上限时给用户的那句话；绝不转去公开桶。 */
-export const PRIVATE_ATTACHMENT_TOO_LARGE = "文件超过 20MB，暂不支持";
+export const PRIVATE_ATTACHMENT_TOO_LARGE = "存储空间不足，请查看存储套餐";
 
 /** 附件可能带的几种字段（composer 驼峰 / 消息 snake_case 都认）。 */
 export interface AttachmentLike {

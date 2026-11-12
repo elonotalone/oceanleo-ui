@@ -11,7 +11,7 @@ const attachmentUrl = await compileModule("src/lib/attachment-url.ts", {
   "./auth/client": dataModule('export async function accessToken(){return "test-owner";}'),
   "./auth/config": dataModule('export const GATEWAY_BASE="https://gateway.test";'),
 });
-const { PRIVATE_ATTACHMENT_MAX_BYTES, PRIVATE_ATTACHMENT_TOO_LARGE } = await import(attachmentUrl);
+const { PRIVATE_ATTACHMENT_TOO_LARGE } = await import(attachmentUrl);
 const { useAttachments } = await import(await compileModule("src/shell/useAttachments.ts", {
   "../lib/attachment-url": attachmentUrl,
   "./composer-upload": dataModule(`
@@ -24,7 +24,7 @@ const { useAttachments } = await import(await compileModule("src/shell/useAttach
 const file = (name = "photo.jpg") => new File(["image bytes"], name, { type: "image/jpeg" });
 function oversizedFile() {
   const result = file("too-large.jpg");
-  Object.defineProperty(result, "size", { value: PRIVATE_ATTACHMENT_MAX_BYTES + 1 });
+  Object.defineProperty(result, "size", { value: 25 * 1024 * 1024 });
   return result;
 }
 function success(name = "photo.jpg") {
@@ -156,6 +156,7 @@ test("clear resolves each distinct failure and validation once, aborting pending
     await view.fail(1, "same failure");
     await view.reject(2);
     await view.select([oversizedFile()]);
+    await view.fail(4, PRIVATE_ATTACHMENT_TOO_LARGE);
     await view.clear();
     assert.deepEqual(new Set(view.resolved), new Set(["same failure", "文件上传失败", PRIVATE_ATTACHMENT_TOO_LARGE]));
     assert.equal(view.resolved.length, 3, "StrictMode does not duplicate callback side effects");
@@ -194,26 +195,23 @@ for (const late of ["success", "failure"]) {
   });
 }
 
-test("known oversize validation resolves on a valid selection or clear, not an empty or mixed invalid selection", async () => {
+test("large files reach the uploader; server quota errors resolve on retry or clear", async () => {
   const view = await mount();
   try {
     await view.select([oversizedFile()]);
-    assert.equal(view.uploads.length, 0);
-    assert.equal(view.hook.attachments.length, 0);
-    await view.select([]);
-    await view.select([file(), oversizedFile()]);
-    assert.deepEqual(view.resolved, []);
+    assert.equal(view.uploads.length, 1);
+    assert.equal(view.hook.attachments.length, 1);
+    await view.fail(0, PRIVATE_ATTACHMENT_TOO_LARGE);
     assert.equal(view.state.uploadError, PRIVATE_ATTACHMENT_TOO_LARGE);
-    await view.select([file("valid.jpg")]);
+    await view.retry(view.hook.attachments[0].id);
     assert.deepEqual(view.resolved, [PRIVATE_ATTACHMENT_TOO_LARGE]);
-    assert.equal(view.state.uploadError, null);
-    await view.select([oversizedFile()]);
+    await view.fail(1, PRIVATE_ATTACHMENT_TOO_LARGE);
     await view.clear();
     assert.deepEqual(view.resolved, [PRIVATE_ATTACHMENT_TOO_LARGE, PRIVATE_ATTACHMENT_TOO_LARGE]);
   } finally { await view.close(); }
 });
 
-test("a valid selection cannot resolve oversize text still owned by an actual failed tile", async () => {
+test("a valid large-file selection cannot resolve quota text owned by another failed tile", async () => {
   const view = await mount();
   try {
     await view.select([file()]);

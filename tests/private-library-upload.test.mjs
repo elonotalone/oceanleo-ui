@@ -5,6 +5,10 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { latestUploadTiming } from "../src/lib/upload/timing.ts";
 
 const moduleUrl = await compileModule("src/lib/database.ts", {
+  "./library-uploads": dataModule(`
+    export class LibraryUploadError extends Error {}
+    export async function uploadLibraryFile(file,opts){globalThis.__largePrivateUpload={file,opts}; return {id:"large-art",artifact_id:"large-art",revision_id:"large-rev",url:""};}
+  `),
   "./auth/client": dataModule('export async function accessToken(){return "owner-test-token";}'),
   "./auth/config": dataModule('export const GATEWAY_BASE="https://gateway.test";'),
   "./upload/chunked": dataModule(`
@@ -91,12 +95,13 @@ test("catalog 400 envelope is the upload error, not HTTP 400", async () => {
   }
 });
 
-test("private files exceeding 20 MiB fail before a network request", async () => {
+test("private files exceeding 20 MiB use resumable Library sessions", async () => {
   await withFetch(200, async (calls) => {
     const file = new File([new Uint8Array(20 * 1024 * 1024 + 1)], "large.pdf");
     const result = await uploadFile(file, { privateUpload: true });
-    assert.equal(result.ok, false);
-    assert.equal(result.status, 413);
-    assert.equal(calls.length, 0);
+    assert.equal(result.ok, true);
+    assert.equal(result.data.file.artifact_id, "large-art");
+    assert.equal(globalThis.__largePrivateUpload.file, file);
+    assert.equal(calls.length, 0, "no small-file or public route is used");
   });
 });
