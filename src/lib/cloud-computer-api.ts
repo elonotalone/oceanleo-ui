@@ -90,6 +90,10 @@ export type Computer = {
   source: ComputerSource;
   status: string;
   edition: string;
+  billing_mode?: ServerBillingMode;
+  expires_at?: string | null;
+  agent_managed?: boolean;
+  period_months?: number | null;
   region_id?: string | null;
   zone_id?: string | null;
   instance_id?: string | null;
@@ -178,6 +182,40 @@ export type ComputerCatalog = {
   image: { id: string; label: string };
   cny_per_usd: number;
 };
+
+export type ServerBillingMode = "pay_as_you_go" | "monthly" | "preemptible";
+export type ServerAllowance = {
+  enabled: boolean; currency: string; monthly_cap_minor: number;
+  max_hourly_minor: number | null; max_servers: number | null;
+  committed_minor: number; remaining_minor: number;
+};
+export type ServerOffer = {
+  billing_mode: ServerBillingMode; available: boolean; reason?: string;
+  price?: CatalogHourlyPrice; commitment_minor?: number; max_hourly_minor?: number;
+  period_months?: number | null; reclaimable?: boolean;
+};
+export type ServerOffers = { offers: ServerOffer[]; bandwidth_mbps: number };
+export type ServerPurchase = {
+  request_id: string; name: string; region_id: string; tier_id: string; disk_gb: number;
+  billing_mode: ServerBillingMode; period_months: number;
+};
+export function getServerAllowance() { return ccRequest<ServerAllowance>("/v1/computers/allowance"); }
+export function saveServerAllowance(value: Pick<ServerAllowance, "enabled" | "monthly_cap_minor" | "max_hourly_minor" | "max_servers">) {
+  return ccRequest<ServerAllowance>("/v1/computers/allowance", { method: "PUT", body: JSON.stringify(value) });
+}
+export function getServerOffers(value: {region_id: string; tier_id: string; disk_gb: number; period_months: number}) {
+  const query = new URLSearchParams(Object.entries(value).map(([key, v]) => [key, String(v)]));
+  return ccRequest<ServerOffers>(`/v1/computers/offers?${query}`);
+}
+export function buyBudgetServer(value: ServerPurchase) {
+  return ccRequest<Computer>("/v1/computers/purchases", { method: "POST", body: JSON.stringify(value) });
+}
+export function getServerRenewalQuote(id: string, months: number) {
+  return ccRequest<MoneyAmount>(`/v1/computers/${encodeURIComponent(id)}/renew-quote?period_months=${months}`);
+}
+export function renewServer(id: string, value: {request_id: string; period_months: number}) {
+  return ccRequest<Computer>(`/v1/computers/${encodeURIComponent(id)}/renew`, { method: "POST", body: JSON.stringify(value) });
+}
 
 export type ComputerEvent = {
   id: number;
@@ -831,6 +869,12 @@ export async function putComputerInbox(
 }
 
 export type CloudComputerClient = {
+  getServerAllowance?: typeof getServerAllowance;
+  saveServerAllowance?: typeof saveServerAllowance;
+  getServerOffers?: typeof getServerOffers;
+  buyBudgetServer?: typeof buyBudgetServer;
+  renewServer?: typeof renewServer;
+  getServerRenewalQuote?: typeof getServerRenewalQuote;
   listComputers: typeof listComputers;
   getCatalog: typeof getCatalog;
   createAliyunComputer: typeof createAliyunComputer;
@@ -868,6 +912,7 @@ export type CloudComputerClient = {
 };
 
 export const cloudComputerApi: CloudComputerClient = {
+  getServerAllowance, saveServerAllowance, getServerOffers, buyBudgetServer, renewServer, getServerRenewalQuote,
   listComputers,
   getCatalog,
   createAliyunComputer,

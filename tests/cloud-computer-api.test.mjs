@@ -7,7 +7,7 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const require = createRequire(import.meta.url);
 
-const { CloudComputerError, listComputers, createAliyunComputer, createByoComputer, getCatalog, getComputer, renameComputer, stopComputer, startComputer, deleteComputer, listComputerEvents, regenerateInstallCommand, confirmComputer, listTerminals, openTerminal, closeTerminal, getUsage, getUsageSummary, terminalWsUrl, nodeWsUrl, nodeInstallScriptUrl, nodeDownloadUrl, nodeSha256SumsUrl, getNodeInstallScript, isMountable, COMPUTER_STATUS_LABEL } =
+const { getServerAllowance, saveServerAllowance, getServerOffers, buyBudgetServer, renewServer, getServerRenewalQuote, CloudComputerError, listComputers, createAliyunComputer, createByoComputer, getCatalog, getComputer, renameComputer, stopComputer, startComputer, deleteComputer, listComputerEvents, regenerateInstallCommand, confirmComputer, listTerminals, openTerminal, closeTerminal, getUsage, getUsageSummary, terminalWsUrl, nodeWsUrl, nodeInstallScriptUrl, nodeDownloadUrl, nodeSha256SumsUrl, getNodeInstallScript, isMountable, COMPUTER_STATUS_LABEL } =
   await import(
     await compileModule("src/lib/cloud-computer-api.ts", {
       "./auth/client": dataModule(`
@@ -346,3 +346,24 @@ test("openTerminal 把 as_task 放进 POST body 并读回 task_id", async () => 
 
 void pathToFileURL;
 void require;
+
+
+test("server allowance, quoted plans, purchase and renewal use owner authenticated REST routes", async () => {
+  const calls=installFetch(()=>jsonResponse(200,{ok:true}));
+  await getServerAllowance();
+  await saveServerAllowance({enabled:true,monthly_cap_minor:10000,max_hourly_minor:100,max_servers:2});
+  await getServerOffers({region_id:"ap-southeast-1",tier_id:"ecs.test",disk_gb:40,period_months:3});
+  const purchase={request_id:"r1",name:"test",region_id:"ap-southeast-1",tier_id:"ecs.test",disk_gb:40,billing_mode:"monthly",period_months:3};
+  await buyBudgetServer(purchase);
+  await getServerRenewalQuote("cc/1",2);
+  await renewServer("cc/1",{request_id:"r2",period_months:2});
+  assert.equal(calls[0].url,"https://api.example.test/v1/computers/allowance");
+  assert.equal(calls[1].init.method,"PUT");
+  assert.equal(JSON.parse(calls[1].init.body).monthly_cap_minor,10000);
+  assert.match(calls[2].url,/offers\?region_id=ap-southeast-1&tier_id=ecs.test&disk_gb=40&period_months=3$/);
+  assert.deepEqual(JSON.parse(calls[3].init.body),purchase);
+  assert.match(calls[4].url,/cc%2F1\/renew-quote\?period_months=2$/);
+  assert.match(calls[5].url,/cc%2F1\/renew$/);
+  assert.deepEqual(JSON.parse(calls[5].init.body),{request_id:"r2",period_months:2});
+  assert.ok(calls.every(call=>call.init.headers.Authorization==="Bearer tok_test"));
+});

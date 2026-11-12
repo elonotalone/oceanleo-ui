@@ -14,6 +14,7 @@ import { deviceRevocationNotice, deviceSettingsErrorCopy, runDeviceRequest, runD
 import { readDeviceUser, readLocalDeviceId } from "../devices/local-device";
 import { cloudComputerApi, type CloudComputerClient, type Computer } from "../../lib/cloud-computer-api";
 import { computerDisplayState } from "../../shell/cloud-computer/computer-state";
+import { ServerBudgetPanel } from "./ServerBudgetPanel";
 import { ServerSettingsPanel } from "./ServerSettingsPanel";
 
 export function DeviceSettingsPanel({ device, availability, client, isLocalDevice = false, onControl, onRename, onRevoke }: {
@@ -55,6 +56,8 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
     lifetime.current = controller;
+    // Reset controls when subscribing to a different device snapshot.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     busyRef.current = false; revokingRef.current = false; setBusy(false); setRevokingAgent(false);
     setSettings(null); setLoading(true); setError(null);
     async function poll() { if (!document.hidden && !busyRef.current && !revokingRef.current) await refresh(controller.signal); if (!controller.signal.aborted) timer = setTimeout(poll, 5000); }
@@ -356,6 +359,7 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
 
   return <div className="space-y-5" data-settings-pane="device-settings">
     <p className="text-[13px] text-neutral-500">{tt("管理每台设备的访问权限、Agent 控制和任务文件夹。")}</p>
+    <ServerBudgetPanel key={`budget-${accountRevision}`} client={serverClient} onPurchased={() => setRevision((value) => value + 1)} />
     {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{tt(error)}<button type="button" className={QUIET} onClick={() => setRevision((value) => value + 1)}>{tt("重试")}</button></div>}
     {loading ? <p role="status" className="py-4 text-[13px] text-neutral-400">{tt("正在加载设备")}</p> : devices.length + servers.length > 0 ? <>
       <label className="block text-[13px] font-medium">{tt("选择设备")}<select aria-label={tt("选择设备")} className="mt-2 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[14px]" value={selectedServer?.id ?? selected?.device_id ?? ""} onChange={(event) => selectDevice(event.currentTarget.value)}>
