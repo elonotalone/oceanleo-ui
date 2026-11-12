@@ -7,6 +7,7 @@
 // 错误码是契约 §8 的小写闭集；不走 agent `authed`（它会把 code 收成大写）。
 // ============================================================================
 
+import { sharedGatewayFetch } from "./shared-get";
 import { accessToken } from "./auth/client";
 import { gatewayBase } from "./auth/config";
 import {
@@ -329,7 +330,7 @@ export async function cloudComputerRequest<T>(
   }
   let res: Response;
   try {
-    res = await fetch(`${gatewayBase()}${path}`, {
+    res = await sharedGatewayFetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),

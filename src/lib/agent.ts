@@ -13,6 +13,7 @@
 // 与现有 owner-scoped 网关一致）。
 // ============================================================================
 
+import { sharedGatewayFetch } from "./shared-get";
 import { accessToken, cachedAccessToken, getUserId } from "./auth/client";
 import { gatewayBase } from "./auth/config";
 import type { OpsPatch } from "./fn-agent";
@@ -213,7 +214,7 @@ export async function authed<T>(
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
   try {
-    res = await fetch(`${gatewayBase()}${path}`, {
+    res = await sharedGatewayFetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),

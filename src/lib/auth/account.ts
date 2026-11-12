@@ -1,5 +1,6 @@
 "use client";
 
+import { sharedGatewayFetch } from "../shared-get";
 import { accessToken, announcePhoneRequired } from "./client";
 import { GATEWAY_BASE } from "./config";
 import type {
@@ -49,7 +50,7 @@ async function authed<T>(
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}${path}`, {
+    res = await sharedGatewayFetch(`${GATEWAY_BASE}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),

@@ -13,6 +13,7 @@
 // 旧的「我的图片（image 站私有作品库）」概念被本统一数据库替代。
 // ============================================================================
 
+import { sharedGatewayFetch } from "./shared-get";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 // W08：上传进度 / 续传 / 同一性校验的原语。只有 `uploadFile` 用它们。
@@ -439,7 +440,7 @@ async function authed<T>(path: string, init?: RequestInit): Promise<Result<T>> {
   if (!token) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
   try {
-    res = await fetch(`${GATEWAY_BASE}${path}`, {
+    res = await sharedGatewayFetch(`${GATEWAY_BASE}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),

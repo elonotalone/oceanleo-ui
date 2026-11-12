@@ -1,5 +1,6 @@
 "use client";
 
+import { sharedGatewayFetch } from "../lib/shared-get";
 import { artifactDisplayRendition } from "./artifact-contract";
 
 import { accessToken } from "../lib/auth/client";
@@ -741,7 +742,7 @@ async function artifactRequest<T>(
     controller.abort("timeout");
   }, timeoutMs);
   try {
-    const response = await fetch(`${GATEWAY_BASE}${path}`, {
+    const response = await sharedGatewayFetch(`${GATEWAY_BASE}${path}`, {
       ...init,
       headers: {
         Accept: "application/json",
