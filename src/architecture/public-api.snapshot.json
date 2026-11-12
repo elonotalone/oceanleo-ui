@@ -8216,7 +8216,7 @@
           "kind": "named",
           "name": "GAME_DUAL_ENGINE_HANDOFF",
           "importedName": "GAME_DUAL_ENGINE_HANDOFF",
-          "source": ""
+          "source": "../game-editor/game-pages"
         },
         {
           "kind": "named",
@@ -8258,7 +8258,7 @@
           "kind": "named",
           "name": "gameLeavePolicy",
           "importedName": "gameLeavePolicy",
-          "source": ""
+          "source": "../game-editor/game-pages"
         },
         {
           "kind": "named",
@@ -8281,7 +8281,7 @@
           "kind": "named",
           "name": "gameSourceAdmission",
           "importedName": "gameSourceAdmission",
-          "source": ""
+          "source": "./non-richdoc-source-gate"
         },
         {
           "kind": "named",
@@ -8308,7 +8308,7 @@
           "kind": "named",
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
-          "source": ""
+          "source": "../game-editor/preview-host"
         },
         {
           "kind": "named",
