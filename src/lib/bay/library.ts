@@ -6,7 +6,7 @@ import { BayApiError } from "./http";
 import type { BayWorkRef } from "./types";
 
 export interface BayLibraryWork {
-  kind: "task" | "artifact";
+  kind: "task" | "artifact" | "folder";
   id: string;
   site_key: string;
   title: string;

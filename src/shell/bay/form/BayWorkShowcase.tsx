@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
+
 import { Suspense, lazy, useCallback, useEffect, useState, useSyncExternalStore, type CSSProperties, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -9,6 +11,8 @@ import { kindFromUrl, type PreviewFileKind } from "./bay-typed-preview";
 import type { DigitalWorkRef } from "./bay-digital-works";
 
 const LibraryItemViewer = lazy(() => import("../../library-viewers").then((m) => ({ default: m.LibraryItemViewer })));
+
+const LibraryFolderDetail = lazy(() => import("../../library-folders").then((m) => ({ default: m.LibraryFolderDetail })));
 
 const subscribeNever = () => () => {};
 
@@ -46,8 +50,8 @@ const THUMB: CSSProperties = {
 
 type LoadState =
   | { status: "loading" }
-  | { status: "ready"; item: LibraryItem }
-  | { status: "error"; message: string };
+  | { status: "ready"; item: LibraryItem; workId: string }
+  | { status: "error"; message: string; workId: string };
 
 export function BayWorkShowcase(props: {
   works: DigitalWorkRef[];
@@ -68,20 +72,19 @@ export function BayWorkShowcase(props: {
   }, [props]);
 
   useEffect(() => {
-    if (!current?.id) return;
+    if (!current?.id || current.kind === "folder") return;
     const controller = new AbortController();
-    setState({ status: "loading" });
     void getCurrentArtifactItem(current.id, controller.signal)
       .then((result) => {
         if (controller.signal.aborted) return;
-        if (result.ok && result.data) setState({ status: "ready", item: result.data });
-        else setState({ status: "error", message: "文件没读出来，请稍后再试。" });
+        if (result.ok && result.data) setState({ status: "ready", item: result.data, workId: current.id });
+        else setState({ status: "error", workId: current.id, message: "文件没读出来，请稍后再试。" });
       })
       .catch(() => {
-        if (!controller.signal.aborted) setState({ status: "error", message: "文件没读出来，请稍后再试。" });
+        if (!controller.signal.aborted) setState({ status: "error", workId: current.id, message: "文件没读出来，请稍后再试。" });
       });
     return () => controller.abort();
-  }, [current?.id]);
+  }, [current?.id, current?.kind]);
 
   useEffect(() => {
     if (!mounted) return;
@@ -97,7 +100,9 @@ export function BayWorkShowcase(props: {
     };
   }, [mounted, close]);
 
+  const viewState = state.status !== "loading" && state.workId === current?.id ? state : { status: "loading" as const };
   if (!mounted || !current) return null;
+  if (current.kind === "folder") return <Suspense fallback={null}><LibraryFolderDetail folderId={current.id} onClose={close} onChanged={() => {}} onDeleted={close} /></Suspense>;
 
   return createPortal(
     <div
@@ -118,18 +123,18 @@ export function BayWorkShowcase(props: {
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden p-5">
-          {state.status === "loading" ? (
+          {viewState.status === "loading" ? (
             <p className="py-16 text-center text-[13px] text-stone-500" role="status">
               {tt("正在打开这个文件…")}
             </p>
-          ) : state.status === "error" ? (
+          ) : viewState.status === "error" ? (
             <p className="py-16 text-center text-[13px] text-stone-500" role="status" data-bay-work-showcase-error>
-              {tt(state.message)}
+              {tt(viewState.message)}
             </p>
           ) : (
             <div className="h-[70vh] overflow-hidden rounded-xl bg-stone-100">
               <Suspense fallback={<p className="py-16 text-center text-[13px] text-stone-500">{tt("正在打开这个文件…")}</p>}>
-                <LibraryItemViewer item={state.item} accent={props.accent} />
+                <LibraryItemViewer item={viewState.item} accent={props.accent} />
               </Suspense>
             </div>
           )}

@@ -4,7 +4,7 @@ import { kindFromUrl } from "./bay-typed-preview";
 export type DigitalWorkRef = {
   id: string;
   title: string;
-  kind?: "task" | "artifact";
+  kind?: "task" | "artifact" | "folder";
   url?: string;
   thumbUrl?: string;
   bytes?: number;
@@ -83,7 +83,7 @@ export function normalizeDigitalWorks(works: readonly DigitalWorkRef[]): Digital
     out.push({
       id,
       title,
-      kind: work.kind === "artifact" ? "artifact" : work.kind === "task" ? "task" : undefined,
+      kind: work.kind === "folder" ? "folder" : work.kind === "artifact" ? "artifact" : work.kind === "task" ? "task" : undefined,
       ...(url ? { url } : {}),
       ...(thumbUrl ? { thumbUrl } : {}),
       ...(bytes ? { bytes } : {}),

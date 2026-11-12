@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
+
 // 服务向导的各步界面（移植自 talent `ServiceWizardFields.tsx`，外壳不搬）。只吃 props；用户内容一律纯文本。
 
 import { useEffect, useState, type ReactNode } from "react";
@@ -24,7 +26,6 @@ import { cleanGalleryUrls } from "../form/bay-gallery";
 import { isPriceInputText, parsePriceInput } from "../form/bay-price";
 import {
   MIN_DESCRIPTION,
-  SUMMARY_MAX,
   TITLE_MAX,
   safeHttpUrl,
   yuanText,
@@ -251,10 +252,6 @@ export function BasicsStep({
   category,
   onCategory,
   categories,
-  summary,
-  onSummary,
-  deliveryMode,
-  onDeliveryMode,
   scopeNote,
   onScopeNote,
 }: {
@@ -288,23 +285,7 @@ export function BasicsStep({
         <SellerField label={tt("能答范围")} hint={tt("哪些问题能答、哪些不在范围内")}>
           <textarea className={TEXTAREA_CLASS} rows={3} maxLength={1000} value={scopeNote} onChange={(event) => onScopeNote(event.target.value)} />
         </SellerField>
-      ) : (
-        <SellerField label={tt("交付方式")}>
-          <div className="space-y-2" role="radiogroup">
-            {(["on_platform", "off_platform"] as BayDeliveryMode[]).map((mode) => (
-              <label key={mode} className={`${OPTION_CLASS} ${deliveryMode === mode ? OPTION_ON : OPTION_OFF}`}>
-                <input type="radio" name="bay-delivery-mode" className="mt-1" checked={deliveryMode === mode} onChange={() => onDeliveryMode(mode)} />
-                <span className="min-w-0">
-                  <span className="block text-[13px] font-semibold text-stone-900">{mode === "on_platform" ? tt("在 OceanLeo 里做") : tt("只交付成果")}</span>
-                  <span className="mt-0.5 block text-[12px] leading-5 text-stone-500">
-                    {mode === "on_platform" ? tt("在共享项目里推进、交付与留痕，按平台规则验收。") : tt("在平台外制作，先交带水印的预览再放款；争议时以平台里那一份为准。")}
-                  </span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </SellerField>
-      )}
+      ) : null}
     </SellerCard>
   );
 }

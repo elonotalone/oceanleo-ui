@@ -28,6 +28,11 @@ export interface BayDigitalAsset {
   height?: number | null;
   author?: string;
   action_context?: AssetActionContext;
+  facts?: BayListingFacts | null;
+  preview?: BayListingPreview | null;
+  description?: string;
+  sellerUpdateAvailable?: boolean;
+  folder_id?: string | null;
 }
 
 export interface BayDigitalPurchase {
@@ -67,8 +72,8 @@ export function purchaseBayAsset(listingId: string, input: { purchase_site?: str
   });
 }
 
-export function getBayAssetEntitlement(listingId: string): Promise<{ entitled: boolean; purchase: BayDigitalPurchase | null }> {
-  return bayGet<{ entitled: boolean; purchase: BayDigitalPurchase | null }>(`/v1/bay/assets/${encodeURIComponent(listingId)}/entitlement`);
+export function getBayAssetEntitlement(listingId: string): Promise<BayEntitlement> {
+  return bayGet<BayEntitlement>(`/v1/bay/assets/${encodeURIComponent(listingId)}/entitlement`);
 }
 
 
@@ -77,6 +82,10 @@ export interface BayResolvedAsset {
   asset?: BayAsset | BayDigitalAsset;
   artifactRef?: Extract<AssetRef, { kind: "artifact" }>;
   actionContext: AssetActionContext;
+  facts?: BayListingFacts;
+  preview?: BayListingPreview;
+  description?: string;
+  sellerUpdateAvailable?: boolean;
 }
 
 export function resolveBayAsset(ref: AssetRef, options?: { signal?: AbortSignal }): Promise<BayResolvedAsset> {
@@ -96,4 +105,73 @@ export interface BayAssetClaim extends BayResolvedAsset {
 /** Platform identity is intentionally separate from a paid seller listing id. */
 export function claimBayAsset(ref: Extract<AssetRef, { kind: "platform" | "listing" }>): Promise<BayAssetClaim> {
   return bayPost<BayAssetClaim>("/v1/bay/assets/claim", { ref });
+}
+
+export interface BayListingFacts {
+  kind: string | null;
+  bytes: number | null;
+  fileCount: number | null;
+  pages: number | null;
+  durationSeconds: number | null;
+  width: number | null;
+  height: number | null;
+  formats: string[] | null;
+  license: string | null;
+  version: string | number | null;
+  updatedAt: string | null;
+}
+
+export interface BayListingPreview {
+  kind?: string;
+  tree?: { path: string; type?: "file" | "dir"; size?: number }[];
+  readme?: string | null;
+  images?: (string | { path?: string; url?: string })[];
+  url?: string | null;
+  thumbnailUrl?: string | null;
+  item?: import("../../shell/library-data").LibraryItem | null;
+}
+
+export interface BayEntitlement {
+  entitled: boolean;
+  purchase: BayDigitalPurchase | null;
+  revisionId?: string | null;
+  latestRevisionId?: string | null;
+  updateAvailable?: boolean;
+  libraryIdentity?: { kind: "artifact" | "folder"; id: string } | null;
+  editedCopies?: { id: string; title?: string; kind?: "artifact" | "folder" }[];
+}
+
+export interface BayLibraryDelivery {
+  libraryIdentity: { kind: "artifact" | "folder"; id: string };
+  artifactRef?: Extract<AssetRef, { kind: "artifact" }>;
+  folder?: { id: string; title?: string };
+  downloadUrl?: string | null;
+}
+
+export function getBayListing(id: string, signal?: AbortSignal): Promise<{ asset: BayDigitalAsset }> {
+  return bayGet<BayResolvedAsset>(`/v1/bay/assets/resolve?${new URLSearchParams({ kind: "listing", id })}`, { anonymous: true, signal }).then((body) => {
+    if (!body.asset) throw new Error("这件商品不存在或已经下架");
+    return { asset: { ...body.asset, facts: body.facts, preview: body.preview, description: body.description,
+      sellerUpdateAvailable: body.sellerUpdateAvailable ?? (body.asset as BayDigitalAsset).sellerUpdateAvailable } as BayDigitalAsset };
+  });
+}
+
+export function draftBayListing(work: { kind: "artifact" | "folder"; id: string }): Promise<{ title: string; summary: string; description: string; facts: BayListingFacts; preview: BayListingPreview }> {
+  return bayPost("/v1/bay/assets/draft", { digital_work: work });
+}
+
+export function updateBayPurchase(id: string): Promise<BayEntitlement> {
+  return bayPost(`/v1/bay/assets/${encodeURIComponent(id)}/update`, {});
+}
+
+export function publishBayVersion(id: string): Promise<{ asset: BayDigitalAsset }> {
+  return bayPost(`/v1/bay/assets/${encodeURIComponent(id)}/version`, {});
+}
+
+export function copyBayPurchase(id: string): Promise<BayLibraryDelivery> {
+  return bayPost(`/v1/bay/assets/${encodeURIComponent(id)}/copy`, {});
+}
+
+export function openBayPurchase(id: string): Promise<BayLibraryDelivery> {
+  return bayGet(`/v1/bay/assets/${encodeURIComponent(id)}/open`);
 }

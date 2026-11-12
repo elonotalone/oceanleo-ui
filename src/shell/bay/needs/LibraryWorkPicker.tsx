@@ -1,11 +1,14 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
+
 import { useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { filterLibraryWorks, libraryWorkRef, type BayLibraryWork } from "../../../lib/bay/library";
 import type { BayWorkRef } from "../../../lib/bay/types";
 import { Modal } from "../../../ui";
 import { listMyArtifacts } from "../../artifact-client";
+import { listFolders } from "../../skills/kit/folder-api";
 import { isDurableLibraryItem, type LibraryKind } from "../../library-data";
 import { requireBayLogin } from "../shell/bay-state";
 import { BTN_SECONDARY, INPUT, errorText } from "./need-ui";
@@ -105,10 +108,26 @@ export function LibraryWorkPickerHost() {
   return <LibraryWorkPickerDialog key={active.seq} title={active.title} onDone={settle} />;
 }
 
+async function allLibraryArtifacts(signal: AbortSignal) {
+  const first = await listMyArtifacts({ limit: 100, signal });
+  if (!first.ok || !first.data) return first;
+  const items = [...first.data.items];
+  let cursor = first.data.nextCursor;
+  const seen = new Set<string>();
+  while (cursor && !signal.aborted && !seen.has(cursor)) {
+    seen.add(cursor);
+    const page = await listMyArtifacts({ limit: 100, cursor, signal });
+    if (!page.ok || !page.data) return page;
+    items.push(...page.data.items);
+    cursor = page.data.nextCursor;
+  }
+  return { ...first, data: { ...first.data, items } };
+}
+
 function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (work: BayWorkRef | null) => void }) {
   const tt = useUI();
   const ttRef = useRef(tt);
-  ttRef.current = tt;
+  useEffect(() => { ttRef.current = tt; }, [tt]);
   const titleId = useId();
   const [works, setWorks] = useState<BayLibraryWork[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -116,8 +135,9 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
 
   useEffect(() => {
     let alive = true;
-    listMyArtifacts({ limit: 60 }).then(
-      (result) => {
+    const controller = new AbortController();
+    Promise.all([allLibraryArtifacts(controller.signal), listFolders({ scope: "mine" })]).then(
+      ([result, folders]) => {
         if (!alive) return;
         if (!result.ok) {
           setWorks([]);
@@ -137,6 +157,9 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
             thumb_url: httpsUrl(item.posterUrl || item.thumbUrl),
           });
         }
+        if (folders.ok) {
+          for (const folder of folders.data) items.push({ kind: "folder", id: folder.id, title: folder.title, site_key: "oceanleo", status: "folder", created_at: folder.created_at });
+        } else setError(folders.error);
         setWorks(items);
       },
       (reason: unknown) => {
@@ -148,6 +171,7 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
     );
     return () => {
       alive = false;
+      controller.abort();
     };
   }, []);
 
@@ -174,7 +198,7 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-3">
           {works === null ? (
             <p className="py-6 text-center text-[13px] text-stone-400">{tt("加载中…")}</p>
-          ) : error ? (
+          ) : error && works.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-rose-500">{error}</p>
           ) : shown.length === 0 ? (
             <p className="py-6 text-center text-[13px] text-stone-400">
@@ -182,6 +206,7 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
             </p>
           ) : (
             <ul className="space-y-1">
+              {error ? <li role="alert">{error}</li> : null}
               {shown.map((work) => (
                 <li key={work.id}>
                   <button
@@ -194,13 +219,13 @@ function LibraryWorkPickerDialog({ title, onDone }: { title?: string; onDone: (w
                       <img src={work.thumb_url} alt="" referrerPolicy="no-referrer" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                     ) : (
                       <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-stone-100 text-[10px] text-stone-500">
-                        {tt(KIND_LABEL[(work.status as LibraryKind) || "file"] || "文件")}
+                        {tt(work.kind === "folder" ? "文件夹" : KIND_LABEL[(work.status as LibraryKind) || "file"] || "文件")}
                       </span>
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-[13px] font-medium text-stone-800">{work.title || tt("未命名作品")}</span>
                       <span className="mt-0.5 block text-[11px] text-stone-400">
-                        {tt(KIND_LABEL[(work.status as LibraryKind) || "file"] || "文件")}
+                        {tt(work.kind === "folder" ? "文件夹" : KIND_LABEL[(work.status as LibraryKind) || "file"] || "文件")}
                       </span>
                     </span>
                   </button>

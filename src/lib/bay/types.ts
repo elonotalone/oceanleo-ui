@@ -69,7 +69,7 @@ export interface BayCategoriesResponse {
 }
 
 export interface BayWorkRef {
-  kind: "task" | "artifact";
+  kind: "task" | "artifact" | "folder";
   id: string;
   site_key?: string;
   title?: string;

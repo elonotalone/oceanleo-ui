@@ -299,7 +299,7 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
     assert.equal(view.host.querySelector("[data-bay-listing-stage] [data-bay-reveal-item]")?.getAttribute("data-bay-reveal-item"), "cover");
     assert.deepEqual(
       [...view.host.querySelectorAll('[data-bay-section="product"] [data-bay-reveal-item]')].map((node) => node.getAttribute("data-bay-reveal-item")),
-      ["how-you-deliver", "title", "description", "files"],
+      ["how-you-deliver", "title", "description", "files", ...(view === sell ? ["license"] : [])],
     );
     assert.ok(view.host.querySelector('[data-bay-section="product"] [data-bay-how-you-deliver]'));
     for (const kind of ["digital", "service", "app", "lesson", "other"]) {
@@ -309,7 +309,7 @@ test("买卖都有产品/价格/向谁展示/交付内容/交付条款；价格�
     assert.equal(view.host.querySelector("[data-bay-publish-delivery-field]"), null);
     assert.doesNotMatch(view.host.textContent, /所属分类/);
     assert.doesNotMatch(view.host.textContent, /尽快接手|公开征集|只有这个人能看到|只有选中的人能看到|付款后立即交付|交付说明/);
-    assert.equal(view.host.querySelector('[data-bay-reveal-item="license"]'), null);
+    assert.equal(Boolean(view.host.querySelector('[data-bay-reveal-item="license"]')), view === sell);
     assert.equal(view.host.querySelector("[data-bay-faq-toggle]"), null);
     assert.equal(view.host.querySelector('[data-bay-reveal-item="website"]'), null);
     assert.equal(view.host.querySelector('[data-bay-reveal-item="links"]'), null);

@@ -6,7 +6,7 @@ import { BAY_CATEGORY_LABEL } from "./bay-listing";
 import { BAY_FORM_LABEL_CLASS, BAY_FORM_PAIR_CLASS } from "./form-ui";
 import { PublishCategoryPicker, type PublishCategoryId } from "./PublishCategoryPicker";
 
-/** 发帖顶上：左卖/买，右分类。交付方式在交付条款里。 */
+/** 发帖顶上：左卖/买，右分类。商品种类在交付条款里。 */
 export function BayPublishKindPair({
   listing,
   siteCategory,

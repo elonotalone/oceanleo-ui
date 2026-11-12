@@ -1,5 +1,8 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
+
+import { draftBayListing } from "../../../lib/bay/assets";
 import { useRef, useState, type CSSProperties, type ReactElement } from "react";
 import { flushSync } from "react-dom";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -125,6 +128,8 @@ export function BayDigitalWorksField(props: {
   works: DigitalWorkRef[];
   onChange: (works: DigitalWorkRef[]) => void;
   disabled?: boolean;
+  refusal?: string;
+  onDraft?: (draft: { title: string; summary: string; description: string }) => void;
 }): ReactElement {
   const tt = useUI();
   const siteId = "oceanleo";
@@ -134,7 +139,8 @@ export function BayDigitalWorksField(props: {
   const [error, setError] = useState("");
   const [openIndex, setOpenIndex] = useState<number | null>(null);
   const disabled = Boolean(props.disabled);
-  const busy = pending.length > 0;
+  const [drafting, setDrafting] = useState(false);
+  const busy = pending.length > 0 || drafting;
 
   function commit(next: DigitalWorkRef[]) {
     const synced = applyDigitalWorks(next);
@@ -215,6 +221,7 @@ export function BayDigitalWorksField(props: {
     setError("");
     const work = await pickLibraryWork({ title: tt("从我的库选") });
     if (!work?.id) return;
+    if (work.kind === "task") { setError(tt("请从我的库重新选择文件或文件夹")); return; }
     if (works.some((item) => item.id === work.id)) return;
     const tile: PendingTile = { key: `library-${work.id}`, title: work.title || work.id };
     flushSync(() => {
@@ -223,7 +230,7 @@ export function BayDigitalWorksField(props: {
     try {
       let url = httpsWorkUrl(work.preview_url);
       let thumbUrl = httpsWorkUrl(work.thumb_url);
-      if (!url) {
+      if (!url && work.kind !== "folder") {
         try {
           const result = await getCurrentArtifactItem(work.id);
           if (result.ok && result.data) {
@@ -237,7 +244,7 @@ export function BayDigitalWorksField(props: {
       const next: DigitalWorkRef = {
         id: work.id,
         title: (work.title || work.id).trim(),
-        kind: work.kind === "artifact" ? "artifact" : "task",
+        kind: work.kind === "folder" ? "folder" : "artifact",
         ...(url ? { url } : {}),
         ...(thumbUrl ? { thumbUrl } : {}),
       };
@@ -252,7 +259,7 @@ export function BayDigitalWorksField(props: {
       <div data-bay-digital-work-grid="" style={GRID}>
         {works.map((work, index) => {
           const thumb = work.thumbUrl;
-          const kindLabel = tt(KIND_LABEL[kindFromUrl(work.url || work.title || "")]);
+          const kindLabel = tt(work.kind === "folder" ? "文件夹" : KIND_LABEL[kindFromUrl(work.url || work.title || "")]);
           return (
             <div key={work.id} data-bay-work-tile={index} style={TILE}>
               <button
@@ -337,6 +344,14 @@ export function BayDigitalWorksField(props: {
           )}
         </button>
       </div>
+      {props.onDraft && works[0] ? <button type="button" disabled={disabled || busy} className={BAY_FORM_CHIP_BUTTON_CLASS} onClick={async () => {
+        const work = works[0];
+        setDrafting(true); setError("");
+        try { props.onDraft?.(await draftBayListing({ kind: work.kind === "folder" ? "folder" : "artifact", id: work.id })); }
+        catch (reason) { setError(reason instanceof Error ? reason.message : tt("操作失败，请稍后再试。")); }
+        finally { setDrafting(false); }
+      }}>{tt(drafting ? "正在写简介…" : "让 agent 写简介")}</button> : null}
+      {props.refusal ? <p role="alert" data-bay-work-refusal className="mt-1 text-[12px] text-rose-600">{tt(props.refusal)}</p> : null}
       {error ? (
         <p role="alert" className="mt-1.5 text-[12px] text-rose-600">
           {error}

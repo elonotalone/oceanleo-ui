@@ -369,15 +369,15 @@ export function primaryDigitalWork(draft: Pick<EditorDraft, "digitalWork" | "dig
 export function listingPayload(draft: EditorDraft): {
   listing_kind: BayListingKind;
   license: BayLicense | null;
-  digital_work: { kind: "task" | "artifact"; id: string } | null;
+  digital_work: { kind: "artifact" | "folder"; id: string } | null;
 } {
   const first = primaryDigitalWork(draft);
   return {
     listing_kind: draft.offerKind === "service" ? "service" : draft.offerKind === "app" || draft.offerKind === "lesson" || draft.offerKind === "other" ? draft.offerKind : "digital",
     license: draft.license === "personal" || draft.license === "commercial" ? draft.license : null,
     digital_work:
-      draft.listingKind === "digital" && first?.id
-        ? { kind: first.kind === "artifact" ? "artifact" : "task", id: first.id }
+      draft.listingKind === "digital" && first?.id && first.kind !== "task"
+        ? { kind: first.kind === "folder" ? "folder" : "artifact", id: first.id }
         : null,
   };
 }
@@ -544,7 +544,7 @@ function extrasFromService(service: BayOwnService): {
         ? {
             id: work.id,
             title: typeof work.title === "string" ? work.title : "",
-            kind: work.kind === "artifact" ? "artifact" : "task",
+            kind: work.kind === "folder" ? "folder" : work.kind === "artifact" ? "artifact" : "task",
           }
         : null,
     official: service.official === true,
@@ -722,10 +722,11 @@ export function sectionMissing(draft: EditorDraft, ctx: EditorContext): Record<P
     (row) => row.slug === draft.category && row.catalog_kind === "delivery" && !isSellerRestrictedDomain(row.regulated_domain),
   );
   if (kind === "digital") {
+    if (!draft.license) product.push("授权");
     if (!draft.title.trim()) product.push("标题");
     if (!categoryKnown) product.push("分类");
     if (!preview) product.push("至少一张预览图");
-    if ((draft.offerKind === "digital" || draft.offerKind === "app") && !primaryDigitalWork(draft)?.id) product.push("放文件");
+    if ((draft.offerKind === "digital" || draft.offerKind === "app") && (!primaryDigitalWork(draft)?.id || primaryDigitalWork(draft)?.kind === "task")) product.push("放文件");
     if (!audienceDone(draft.audience)) terms.push("向谁展示");
   } else if (kind === "service") {
     if (!draft.title.trim()) product.push("标题");

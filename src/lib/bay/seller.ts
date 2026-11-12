@@ -201,7 +201,7 @@ export interface BayServiceInput {
   license?: BayLicense | null;
   has_digital_work?: boolean;
   official?: boolean;
-  digital_work?: { kind: "task" | "artifact"; id: string } | null;
+  digital_work?: { kind: "task" | "artifact" | "folder"; id: string } | null;
   custom_terms?: string | null;
   audience_mode?: BayAudienceMode | null;
   audience_handle?: string | null;

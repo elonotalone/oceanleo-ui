@@ -110,6 +110,7 @@ const MISSING_ITEMS: { label: string; item: string; group: ListingGroupId }[] = 
   { label: "至少一张预览图", item: "cover", group: "product" },
   { label: "标题", item: "title", group: "product" },
   { label: "放文件", item: "files", group: "product" },
+  { label: "授权", item: "license", group: "product" },
   { label: "价格要大于 0", item: "price", group: "price" },
   { label: "免费协作的价格要是 0", item: "price", group: "price" },
   { label: "向谁展示", item: "who", group: "audience" },
@@ -151,9 +152,9 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const [pricing, setPricing] = useState<BayServicePricing | null>(null);
   const [cases, setCases] = useState<BayContentCase[]>([]);
   const [domains, setDomains] = useState<Remote<BayConsultDomain[]>>({ data: [], loading: false, error: "" });
-  const [prompts, setPrompts] = useState<Remote<BayDomainPrompts | null>>({ data: null, loading: false, error: "" });
-  const [domainNonce, setDomainNonce] = useState(0);
-  const [promptNonce, setPromptNonce] = useState(0);
+  const [, setPrompts] = useState<Remote<BayDomainPrompts | null>>({ data: null, loading: false, error: "" });
+  const [domainNonce] = useState(0);
+  const [promptNonce] = useState(0);
   const [modelNonce, setModelNonce] = useState(0);
   const [pendingDelete, setPendingDelete] = useState(false);
   // 点过发布但还有必填项没填：之后页面一直标出缺的项，补好一项就少一项。
@@ -285,7 +286,6 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
   const highlight: ListingGroupId | null = attempted ? missingItems[0]?.group ?? null : null;
   const groupMissing = (group: ListingGroupId) => missingItems.filter((row) => row.group === group).map((row) => tt(row.label));
   const hiddenCase = hiddenCaseFor(cases, "talent_service", draft.serviceId || undefined);
-  const currency = (profile?.currency || "USD").toUpperCase();
   const narrow = layout === "docked" || layout === "mobile";
 
   const patch = useCallback((next: Partial<EditorDraft>) => {
@@ -410,7 +410,10 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     setDirty(true);
   }
 
+  const [workRefusal, setWorkRefusal] = useState("");
+
   function reportFailure(error: unknown, fallback: string) {
+    if (error && typeof error === "object" && "status" in error && error.status === 422) setWorkRefusal(errorText(error));
     const message = errorText(error) || fallback;
     setRejection(message);
     toast.error(tt(message));
@@ -459,7 +462,7 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     const works = draft.digitalWorks.length ? draft.digitalWorks : draft.digitalWork ? [draft.digitalWork] : [];
     const resolved = await Promise.all(
       works.map(async (work) => {
-        if (httpsWorkUrl(work.url) && httpsWorkUrl(work.thumbUrl)) return work;
+        if (work.kind === "folder" || (httpsWorkUrl(work.url) && httpsWorkUrl(work.thumbUrl))) return work;
         try {
           const result = await getCurrentArtifactItem(work.id);
           if (!result.ok || !result.data) return work;
@@ -674,7 +677,9 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     Boolean((draft.digitalWorks[0] ?? draft.digitalWork)?.id),
     <BayDigitalWorksField
       works={draft.digitalWorks.length ? draft.digitalWorks : draft.digitalWork ? [draft.digitalWork] : []}
-      onChange={(works) => patch(applyDigitalWorks(works))}
+      onChange={(works) => { setWorkRefusal(""); patch(applyDigitalWorks(works)); }}
+      refusal={workRefusal}
+      onDraft={(written) => patch({ description: written.description, summary: written.summary, ...(!draft.title.trim() ? { title: written.title } : {}) })}
     />,
     {
       summary: (draft.digitalWorks[0] ?? draft.digitalWork)?.title || (draft.digitalWorks[0] ?? draft.digitalWork)?.id,
@@ -684,7 +689,13 @@ export function ServiceEditorPane({ target, layout }: BayPaneProps) {
     },
   );
   const flagged = (items: BayRevealItem[]) => items.map((item) => (invalidItems.has(item.id) ? { ...item, invalid: true } : item));
-  const productItems: BayRevealItem[] = flagged([coverRow, titleRow, descriptionRow, filesRow]);
+  const licenseRow = revealRow("license", tt("授权"), Boolean(draft.license),
+    <select className={INPUT_CLASS} data-bay-field="license" aria-label={tt("授权")} value={draft.license} onChange={(event) => patch({ license: event.target.value === "commercial" ? "commercial" : "personal" })}>
+      <option value="" disabled>{tt("请选择")}</option>
+      <option value="personal">{tt("个人使用")}</option>
+      <option value="commercial">{tt("可商用")}</option>
+    </select>, { required: true, alwaysOpen: true, summary: draft.license ? tt(draft.license === "commercial" ? "可商用" : "个人使用") : undefined });
+  const productItems: BayRevealItem[] = flagged([coverRow, titleRow, descriptionRow, filesRow, ...(!pricedOffer ? [licenseRow] : [])]);
   const priceFen = draft.priceUnset ? null : draft.tiers[0]?.price_fen ?? null;
   const billingValue: "service" | "session" | "hour" =
     !pricedOffer ? "service" : draft.pricingModel === "hour" ? "hour" : draft.pricingModel === "session" ? "session" : "service";

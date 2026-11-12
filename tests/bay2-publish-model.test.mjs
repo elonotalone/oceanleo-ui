@@ -12,7 +12,7 @@ const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
 const previousCanvasModule = require.cache[canvasEntry];
 require.cache[canvasEntry] = { id: canvasEntry, filename: canvasEntry, loaded: true, exports: {} };
-const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
+await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
 if (previousCanvasModule) require.cache[canvasEntry] = previousCanvasModule;
 else delete require.cache[canvasEntry];
 
@@ -48,7 +48,7 @@ function digitalDraft(extra = {}) {
     title: "一套图标",
     category: "design",
     coverUrl: "https://cdn.example.com/a.png",
-    digitalWork: { id: "task-1", title: "图标包" },
+    digitalWork: { id: "art-primary", title: "图标包", kind: "artifact" },
     license: "personal",
     ...extra,
   };
@@ -91,13 +91,13 @@ function consultDraft(extra = {}) {
   };
 }
 
-test("数字商品空草稿：差标题、分类、预览图、放文件；价格与条款块不差项", () => {
+test("数字商品空草稿：差授权、标题、分类、预览图、放文件；价格与条款块不差项", () => {
   const draft = model.emptyDraft(tt);
   draft.catalogKind = "delivery";
   draft.listingKind = "digital";
   draft.offerKind = "digital";
   const missing = model.sectionMissing(draft, CTX_BARE);
-  assert.deepEqual(missing.product, ["标题", "分类", "至少一张预览图", "放文件"]);
+  assert.deepEqual(missing.product, ["授权", "标题", "分类", "至少一张预览图", "放文件"]);
   assert.deepEqual(missing.price, []);
   assert.deepEqual(missing.terms, []);
 });
@@ -191,7 +191,7 @@ test("提交载荷带 listing_kind、license、digital_work", () => {
   const digital = model.serviceInput(digitalDraft({ license: "commercial" }));
   assert.equal(digital.listing_kind, "digital");
   assert.equal(digital.license, "commercial");
-  assert.deepEqual(digital.digital_work, { kind: "task", id: "task-1" });
+  assert.deepEqual(digital.digital_work, { kind: "artifact", id: "art-primary" });
   assert.equal(digital.category, "design");
   const service = model.serviceInput(serviceDraft());
   assert.equal(service.listing_kind, "service");
@@ -205,7 +205,7 @@ test("listingPayload 与 publishKindOf 对应三种", () => {
   assert.equal(model.publishKindOf(serviceDraft()), "service");
   assert.equal(model.publishKindOf(consultDraft()), "consult");
   assert.equal(model.publishKindOf(model.emptyDraft(tt)), "");
-  assert.deepEqual(model.listingPayload(digitalDraft()), { listing_kind: "digital", license: "personal", digital_work: { kind: "task", id: "task-1" } });
+  assert.deepEqual(model.listingPayload(digitalDraft()), { listing_kind: "digital", license: "personal", digital_work: { kind: "artifact", id: "art-primary" } });
   assert.deepEqual(
     model.listingPayload(digitalDraft({ digitalWork: { id: "art-1", title: "海报", kind: "artifact" } })),
     { listing_kind: "digital", license: "personal", digital_work: { kind: "artifact", id: "art-1" } },
@@ -328,4 +328,13 @@ test("draftFromGalleryUrls 不动 bay-work media", () => {
 test("只有 digitalWorks[0] 也算放文件已填", () => {
   const draft = digitalDraft({ digitalWork: null, digitalWorks: [{ id: "art-9", title: "海报", kind: "artifact" }] });
   assert.deepEqual(model.sectionMissing(draft, CTX).product, []);
+});
+
+
+test("数字商品必须选择授权，文件夹按 I6 原样提交", () => {
+  assert.ok(model.sectionMissing(digitalDraft({ license: "" }), CTX).product.includes("授权"));
+  assert.deepEqual(model.listingPayload(digitalDraft({ digitalWork: { kind: "folder", id: "folder-1", title: "源码" } })).digital_work, { kind: "folder", id: "folder-1" });
+  const legacy = digitalDraft({ digitalWork: { kind: "task", id: "old-task", title: "旧任务" } });
+  assert.equal(model.listingPayload(legacy).digital_work, null);
+  assert.ok(model.sectionMissing(legacy, CTX).product.includes("放文件"));
 });

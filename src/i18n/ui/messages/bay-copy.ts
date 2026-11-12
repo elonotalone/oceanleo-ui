@@ -1,6 +1,7 @@
 // 2026-10-06 oceanleo-bay 词典聚合器：各分表按语种合并成一张，index.ts / load.ts 只登记这一张。只由 W03 改。
 
 import { LOCALES, type Locale } from "../../config";
+import { BAY_LIBRARY_MESSAGES } from "./bay-library-copy";
 import { BAY_SHELL_MESSAGES } from "./bay-shell-copy";
 import { BAY_NEEDS_MESSAGES } from "./bay-needs-copy";
 import { BAY_SUPPLY_MESSAGES } from "./bay-supply-copy";
@@ -37,6 +38,7 @@ import { UI_FOLLOWUP_PROFILE_MESSAGES } from "./ui-followup-profile-copy";
 import { UI_FOLLOWUP_PROJECTS_MESSAGES } from "./ui-followup-projects-copy";
 
 const PARTS = [
+  BAY_LIBRARY_MESSAGES,
   BAY_SHELL_MESSAGES,
   BAY_NEEDS_MESSAGES,
   BAY_SUPPLY_MESSAGES,
