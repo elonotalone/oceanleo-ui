@@ -187,7 +187,7 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
   website: {
     routeType: "website",
     roundTrip: ROUND_TRIP,
-    projectSchema: "website-source@1",
+    projectSchema: "oceanleo.website-project.v1",
     viewportOwnership: "content",
     toolbarOwnership: "shared",
     persistence: "project",

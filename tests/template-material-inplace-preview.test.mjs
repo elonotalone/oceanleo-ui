@@ -24,7 +24,6 @@ import {
 import {
   isCoverImageMediaType,
   isWebsitePageMediaType,
-  websiteInlineOutline,
   websitePaintMode,
 } from "../src/shell/website-inline-preview.ts";
 
@@ -143,7 +142,7 @@ function websiteProjectionPayload() {
     },
     editability: "native",
     editorCapability: "website-editor",
-    sourceFormat: "website-source@1",
+    sourceFormat: "oceanleo.website-project.v1",
     title: "礼品定制资讯内容站",
     renditions: {
       thumbnail: rendition(
@@ -229,34 +228,5 @@ test("W3/3 判读脚本引导型网站：空容器 + 内联脚本", () => {
   assert.equal(
     websitePaintMode({ elementCount: 1, textLength: 0, scriptCount: 0 }),
     "self-painting",
-  );
-});
-
-test("W3/4 从整站内联 HTML 读出页面清单", () => {
-  const site = {
-    siteName: "礼品定制传媒",
-    pages: [
-      { path: "/", title: "首页", sections: [{}, {}, {}] },
-      { path: "/about", title: "关于我们", sections: [{}] },
-    ],
-  };
-  const html = `<!doctype html><html><body><header id="site-nav"></header><main id="site-main"></main>
-<script>(function () { var FILES = ${JSON.stringify({
-    "site.json": JSON.stringify(site),
-    "README.md": "# demo",
-  })}; window.__FILES = FILES; })();</script></body></html>`;
-  const outline = websiteInlineOutline(html);
-  assert.deepEqual(outline, {
-    siteName: "礼品定制传媒",
-    pages: [
-      { path: "/", title: "首页", sectionCount: 3 },
-      { path: "/about", title: "关于我们", sectionCount: 1 },
-    ],
-  });
-  // 读不出来就必须是 null，不许编一份清单出来。
-  assert.equal(websiteInlineOutline("<!doctype html><body></body>"), null);
-  assert.equal(
-    websiteInlineOutline('<script>var FILES = {"site.json":"not json"};</script>'),
-    null,
   );
 });

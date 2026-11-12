@@ -440,9 +440,6 @@ test("W3/4 脚本引导型走说明态：静态封面 + 产物性质 + 出口，
     assert.equal(cover.getAttribute("src"), COVER_URL);
     assert.match(text, /脚本/, "要说清这一件的性质");
     assert.match(text, /下载|编辑/, "要给出用户现在能做什么");
-    // 内联 site.json 读得出的页面清单要摆出来，那是用户能拿到的真信息。
-    assert.match(text, /关于我们/);
-    assert.match(text, /礼品定制传媒/);
     // 说明是关于产物性质的，不是替产品的缺陷道歉。
     assert.doesNotMatch(text, /暂时|抱歉|制作得较早|敬请谅解/);
     assertNoRawBytes(mounted.container, "脚本引导型");

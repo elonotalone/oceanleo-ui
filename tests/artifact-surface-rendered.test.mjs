@@ -835,7 +835,7 @@ const TEST_SOURCE_FORMAT = {
   grid: "grid-json",
   deck: "deck-json",
   pdf: "pdf",
-  website: "website-source@1",
+  website: "oceanleo.website-project.v1",
   video: "timeline-json",
   audio: "audio-project+json",
   model_3d: "glb",

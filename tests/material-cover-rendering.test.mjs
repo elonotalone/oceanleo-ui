@@ -424,7 +424,7 @@ test("A-8 缩略图白名单两侧同口径：前缀像图片但画不出来的�
     ["image/vnd.radiance", "hdr", "HDR 光照贴图"],
     ["image/tiff", "tiff", "浏览器解不了的 tiff"],
     ["image/x-icon", "ico", "图标容器"],
-    ["application/json", "website-source@1", "website 源码清单 500 份"],
+    ["application/json", "oceanleo.website-project.v1", "website 源码清单 500 份"],
     [
       "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       "pptx",

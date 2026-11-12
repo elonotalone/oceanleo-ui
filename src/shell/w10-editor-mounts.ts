@@ -7,12 +7,10 @@
  */
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 import type { LibraryItem, LibraryKind } from "./library-data";
-import { blankWebsiteSource } from "./website-local/blank-website-source";
 import { emptyVideoCanvasGraph } from "./workflow-carrier/video-canvas-local-session";
 import { VIDEO_CANVAS_PROJECT_SCHEMA } from "./workflow-carrier/video-canvas-schema";
 
 export const W10_EDITOR_IDS = Object.freeze([
-  "website",
   "video-canvas",
   "video-timeline",
 ] as const);
@@ -37,22 +35,6 @@ type MountRow = {
 const WORKBENCH_REQUIRED = ["item", "onClose"] as const;
 
 export const W10_EDITOR_MOUNTS: Record<W10EditorId, MountRow> = {
-  website: {
-    editorId: "website",
-    kind: "website",
-    schema: "website-source@1",
-    exportName: "WebsiteLocalRoute",
-    modulePath: "src/shell/advanced-routes/WebsiteLocalRoute.tsx",
-    mountKind: "workbench",
-    defaultTitle: "本地可编辑的网站工程",
-    requiredWorkbench: WORKBENCH_REQUIRED,
-    load: () => import("./advanced-routes/WebsiteLocalRoute"),
-    defaultMeta: () => ({
-      editor: "website",
-      editor_project_schema: "website-source@1",
-      websiteSource: blankWebsiteSource("本地可编辑的网站工程"),
-    }),
-  },
   "video-canvas": {
     editorId: "video-canvas",
     kind: "video_canvas",

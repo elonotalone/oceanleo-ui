@@ -143,7 +143,7 @@ function material(kind, artifactType, capability, format, siteId) {
         preview: { purpose: 'preview', revisionId, url: `https://assets.test/${artifactId}.png` } } } };
 }
 const CASES = [
-  [material('website', 'website', 'website-editor', 'website-source@1', 'website'), 'WebsiteLocalRoute'],
+  [material('website', 'website', 'website-editor', 'oceanleo.website-project.v1', 'website'), 'WebsiteLocalRoute'],
   [material('ppt', 'deck', 'deck-editor', 'pptx', 'ppt'), 'DeckRoute'],
   [material('document', 'document', 'richdoc-editor', 'docx', 'word'), 'RichDocRoute'],
 ];

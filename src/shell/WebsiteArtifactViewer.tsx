@@ -14,6 +14,7 @@ import {
 } from "./artifact-client";
 import {
   TEMPLATE_MATERIAL_PREVIEW_META_KEY,
+  isTemplatePreviewPagePath,
   templateMaterialIdForArtifact,
   templateMaterialPreviewManifestUrl,
   templateMaterialPreviewUrl,
@@ -23,10 +24,8 @@ import {
   isMediaOversizeError,
   MAX_PROBE_BYTES,
   websiteFrameAdmission,
-  websiteInlineOutline,
   websiteViewerPlan,
   type WebsiteBodyProbe,
-  type WebsiteInlineOutline,
 } from "./website-inline-preview";
 
 /**
@@ -51,7 +50,6 @@ const WEBSITE_PAGE_PURPOSES: readonly ArtifactRenditionPurpose[] = [
 interface PageProbe {
   status: "probing" | "done";
   body: WebsiteBodyProbe;
-  outline: WebsiteInlineOutline | null;
 }
 
 /**
@@ -82,78 +80,46 @@ function templateMaterialPreviewId(item: LibraryItem): string {
   return templateMaterialIdForArtifact(item.artifactId);
 }
 
-interface PreviewPage {
-  slug: string;
-  title: string;
-}
+interface PreviewPage { path: string; title: string }
 
-/**
- * 页面清单（`GET /v1/template-materials/{id}/preview/manifest`）。
- *
- * 清单只决定**要不要出翻页控件**，不决定第一屏看什么：`/preview` 本身就是整站入口，
- * 所以清单没回来、回来是空的、或者只有一页时，用户看到的仍然是同一个页面，
- * 只是没有那排页签。翻页控件依据 `pages` 的长度而不是响应里的 `pageCount` ——
- * 两者不一致时按 `pageCount` 出页签会画出一排点不动的空标签。
- */
-function usePreviewManifest(templateId: string): PreviewPage[] {
-  const [pages, setPages] = useState<PreviewPage[]>([]);
-  useEffect(() => {
-    if (!templateId) {
-      setPages([]);
-      return;
-    }
-    const controller = new AbortController();
-    setPages([]);
-    void (async () => {
-      try {
-        const response = await fetch(
-          templateMaterialPreviewManifestUrl(templateId),
-          {
-            method: "GET",
-            headers: { Accept: "application/json" },
-            // 公共产品内容：不带 cookie、不带 bearer，与目录端点同一条纪律
-            // （`material-library-template-source.ts` 的 `fetchTemplateMaterials`）。
-            credentials: "omit",
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) throw new Error(String(response.status));
-        const payload = (await response.json()) as unknown;
-        if (controller.signal.aborted) return;
-        setPages(previewPages(payload));
-      } catch {
-        if (controller.signal.aborted) return;
-        // 清单取不回来不是错误态：整站入口照常能看，只是没有页签。
-        setPages([]);
-      }
-    })();
-    return () => controller.abort();
-  }, [templateId]);
-  return pages;
-}
-
-/** `slug` 是唯一进 URL 的响应可控字段，形状不合格就整条丢掉（URL 侧另有编码兜底）。 */
-const PREVIEW_SLUG = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
-function previewPages(payload: unknown): PreviewPage[] {
-  const rawPages = (payload as { pages?: unknown } | null)?.pages;
+/** Only relative HTML paths from the published closure may select a frame page. */
+export function previewPages(payload: unknown): PreviewPage[] {
+  if (!payload || typeof payload !== "object") return [];
+  const { pages: rawPages, entrypoint } = payload as { pages?: unknown; entrypoint?: unknown };
   if (!Array.isArray(rawPages)) return [];
   const pages: PreviewPage[] = [];
   const seen = new Set<string>();
   for (const raw of rawPages) {
-    const slug =
-      typeof (raw as { slug?: unknown })?.slug === "string"
-        ? (raw as { slug: string }).slug.trim()
-        : "";
-    if (!PREVIEW_SLUG.test(slug) || seen.has(slug)) continue;
-    const title =
-      typeof (raw as { title?: unknown })?.title === "string"
-        ? (raw as { title: string }).title.trim()
-        : "";
-    seen.add(slug);
-    pages.push({ slug, title: title || slug });
+    if (!raw || typeof raw !== "object") continue;
+    const { path, title } = raw as { path?: unknown; title?: unknown };
+    if (typeof path !== "string" || !isTemplatePreviewPagePath(path) || seen.has(path)) continue;
+    seen.add(path);
+    pages.push({ path, title: typeof title === "string" && title.trim() ? title.trim() : path });
   }
+  const first = pages.findIndex(page => page.path === entrypoint);
+  if (first > 0) pages.unshift(...pages.splice(first, 1));
   return pages;
+}
+
+function usePreviewManifest(templateId: string): PreviewPage[] {
+  const [result, setResult] = useState<{ templateId: string; pages: PreviewPage[] } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    if (templateId) void (async () => {
+      try {
+        const response = await fetch(templateMaterialPreviewManifestUrl(templateId), {
+          method: "GET", headers: { Accept: "application/json" }, credentials: "omit", signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(String(response.status));
+        const payload: unknown = await response.json();
+        if (!controller.signal.aborted) setResult({ templateId, pages: previewPages(payload) });
+      } catch {
+        if (!controller.signal.aborted) setResult({ templateId, pages: [] });
+      }
+    })();
+    return () => controller.abort();
+  }, [templateId]);
+  return result?.templateId === templateId ? result.pages : [];
 }
 
 /**
@@ -198,15 +164,14 @@ function usePagePaintProbe(
   const [probe, setProbe] = useState<PageProbe>({
     status: url ? "probing" : "done",
     body: UNREAD_BODY,
-    outline: null,
   });
   useEffect(() => {
     if (!url) {
-      setProbe({ status: "done", body: UNREAD_BODY, outline: null });
+      setProbe({ status: "done", body: UNREAD_BODY });
       return;
     }
     let cancelled = false;
-    setProbe({ status: "probing", body: UNREAD_BODY, outline: null });
+    setProbe({ status: "probing", body: UNREAD_BODY });
     void (async () => {
       try {
         const blob = await fetchMediaBlob(url, {
@@ -218,7 +183,6 @@ function usePagePaintProbe(
         setProbe({
           status: "done",
           body: { status: "read", html, shape: documentShape(html) },
-          outline: websiteInlineOutline(html),
         });
       } catch (error) {
         if (cancelled) return;
@@ -227,7 +191,6 @@ function usePagePaintProbe(
           body: isMediaOversizeError(error)
             ? { status: "oversize", byteLength: declaredBytes }
             : UNREAD_BODY,
-          outline: null,
         });
       }
     })();
@@ -242,34 +205,6 @@ function Panel({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-full min-h-[520px] flex-col items-center justify-center gap-4 bg-stone-50 px-6 py-10">
       {children}
-    </div>
-  );
-}
-
-function PageOutline({ outline }: { outline: WebsiteInlineOutline }) {
-  const tt = useUI();
-  return (
-    <div className="w-full max-w-xl rounded-xl border border-stone-200 bg-white p-4">
-      <p className="text-[12px] font-medium text-stone-600">
-        {outline.siteName
-          ? `${outline.siteName} · ${tt("共")} ${outline.pages.length} ${tt("页")}`
-          : `${tt("共")} ${outline.pages.length} ${tt("页")}`}
-      </p>
-      <ul className="mt-3 divide-y divide-stone-100">
-        {outline.pages.map((page) => (
-          <li
-            key={page.path}
-            className="flex items-baseline justify-between gap-3 py-2"
-          >
-            <span className="truncate text-[13px] text-stone-700">
-              {page.title}
-            </span>
-            <span className="shrink-0 text-[11px] text-stone-400">
-              {page.path} · {page.sectionCount} {tt("个板块")}
-            </span>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }
@@ -293,6 +228,8 @@ function StaticCover({ url, title }: { url: string; title: string }) {
 }
 
 export function WebsiteArtifactViewer({ item }: { item: LibraryItem }) {
+  const templateId = templateMaterialPreviewId(item);
+  if (templateId) return <TemplateMaterialPreview key={templateId} templateId={templateId} title={item.title} />;
   return isDurableLibraryItem(item) ? (
     <WebsiteRevisionPreview key={`${item.artifactId}:${item.revisionId}`} item={item} />
   ) : (
@@ -499,9 +436,6 @@ function LegacyWebsiteArtifactViewer({ item }: { item: LibraryItem }) {
       <p className="max-w-xl text-center text-[13px] leading-relaxed text-stone-700">
         {tt(plan.notice)}
       </p>
-      {plan.surface === "script-explainer" && probe.outline && (
-        <PageOutline outline={probe.outline} />
-      )}
       <p className="max-w-xl text-center text-[12px] leading-relaxed text-stone-500">
         {tt(EXIT_HINT)}
       </p>
@@ -553,15 +487,10 @@ export function TemplateMaterialPreview({
   layout?: "viewer" | "inline";
 }) {
   const tt = useUI();
-  /**
-   * `slug` 空串 = 整站入口 `/preview`（合同 §5 接口 A 的第一条），也就是第一页。
-   * 第一个页签点回去也写空串，所以清单到达不会让 frame 白重载一次。
-   */
   const pages = usePreviewManifest(templateId);
-  const [slug, setSlug] = useState("");
-  const activeIndex = slug
-    ? pages.findIndex((page) => page.slug === slug)
-    : 0;
+  const [selection, setSelection] = useState<{ templateId: string; path: string } | null>(null);
+  const activePath = selection?.templateId === templateId && pages.some(page => page.path === selection.path)
+    ? selection.path : pages[0]?.path || "index.html";
   return (
     <div
       data-template-material-preview={layout}
@@ -570,7 +499,7 @@ export function TemplateMaterialPreview({
       }`}
     >
       <UntrustedFrame
-        url={templateMaterialPreviewUrl(templateId, slug)}
+        url={templateMaterialPreviewUrl(templateId, activePath)}
         title={title}
       />
       {pages.length > 1 && (
@@ -578,14 +507,14 @@ export function TemplateMaterialPreview({
           aria-label={tt("站内页面")}
           className="flex shrink-0 flex-wrap items-center gap-1 border-t border-stone-200 bg-white px-3 py-2"
         >
-          {pages.map((page, index) => (
+          {pages.map((page) => (
             <button
-              key={page.slug}
+              key={page.path}
               type="button"
-              aria-current={index === activeIndex ? "page" : undefined}
-              onClick={() => setSlug(index === 0 ? "" : page.slug)}
+              aria-current={page.path === activePath ? "page" : undefined}
+              onClick={() => setSelection({ templateId, path: page.path })}
               className={`min-h-8 rounded-lg px-3 text-[12px] font-medium ${
-                index === activeIndex
+                page.path === activePath
                   ? "bg-stone-900 text-white"
                   : "text-stone-600 hover:bg-stone-100"
               }`}

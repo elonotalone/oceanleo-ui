@@ -5,9 +5,7 @@
  */
 
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
-import { planWebsiteLocalSource } from "../website-local/website-local-source";
 import { planDesignCanvasSource } from "../design-canvas/design-canvas-source";
-import type { WebsiteSource } from "../website-source-carrier/website-source-schema";
 
 export { storedEditorProjectUrl } from "./stored-editor-project";
 export {
@@ -128,33 +126,6 @@ export function model3dSourcePersistenceAdmitted(input: {
     };
   }
   return { ok: true };
-}
-
-export function websiteLocalSourceFromItem(item: {
-  title?: string;
-  content?: string | null;
-  artifactId?: string;
-  meta?: Record<string, unknown>;
-  url?: string | null;
-  artifact?: {
-    renditions?: {
-      source?: { url?: string | null } | null;
-      full?: { url?: string | null } | null;
-    };
-  };
-}): { ok: true; source: WebsiteSource } | { ok: false; error: string } {
-  const plan = planWebsiteLocalSource(item);
-  if (plan.kind === "ready" || plan.kind === "blank") {
-    return { ok: true, source: plan.source };
-  }
-  if (plan.kind === "remote") {
-    return {
-      ok: false,
-      error:
-        "这份网站的工程源在远程，需经授权加载后打开，未改用空白稿覆盖原件。",
-    };
-  }
-  return { ok: false, error: plan.error };
 }
 
 export function designCanvasLocalSourceAdmission(item: {

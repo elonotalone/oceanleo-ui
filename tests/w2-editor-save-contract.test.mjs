@@ -816,7 +816,7 @@ test("A12: the host refuses a design document posing as vector/workflow source",
   // revisions and none of them uses `json`, so this refuses nothing real.
   assert.equal(embeddedTypedCommitAccepts("workflow", "json"), false);
   assert.equal(
-    embeddedTypedCommitAccepts("website", "website-source@1"),
+    embeddedTypedCommitAccepts("website", "oceanleo.website-project.v1"),
     true,
   );
   // A raster format is not a vector source either.

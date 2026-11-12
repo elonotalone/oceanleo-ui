@@ -38,14 +38,6 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
       reason: "Local pdfium.wasm proven; jsDelivr blocked and still editable",
     },
     {
-      editorId: "website",
-      schema: "website-source@1",
-      core: "WebsiteLocalRoute (W10)",
-      license: "MIT",
-      status: "AMBER",
-      reason: "mountEditor loads WebsiteLocalRoute. Offline proof stays W10.",
-    },
-    {
       editorId: "video-timeline",
       schema: "oceanleo.timeline.v1",
       core: "own timeline (VideoTimelineStage)",

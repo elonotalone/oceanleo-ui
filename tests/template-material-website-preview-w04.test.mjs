@@ -1,25 +1,3 @@
-// ============================================================================
-// W04 · 卡片点开落到那个站本身（官方模板 · 匿名整站预览）
-// ----------------------------------------------------------------------------
-// 操作员报的症状：首页 prompt 卡片、探索页素材卡片点开之后**不是真实的网站素材**，
-// 而是一张图片灯箱 —— 没法滚、没法翻页、感觉不到这是个能用的站。
-//
-// 那张图的来路（逐跳表见
-// `docs/work-logs/2026-08/material-axis-and-mobile-native/signals/W04-journal.md`）：
-// 匿名访客拿不到网站 artifact 的 `full` rendition，只拿得到 `image/webp` 的封面，
-// 判读器据此判成 `cover-image-only`，承载于是画 `<img>`。前提是「匿名唯一读得到的
-// 字节就是那张封面」——`W03` 的匿名整站预览端点让这条前提失效了。
-//
-// 本份守四条：
-//   1. 目录源只把**网站**这一类改成整站查看器，其余 15 类逐字不变；
-//   2. 匿名态点开网站模板，屏幕上是 iframe 里的站本身，不是 `<img>`；
-//   3. 清单多页才出页签，单页不出空控件；
-//   4. 登录态（拿得到可读页面 rendition）走原路，连预览端点都不请求。
-//
-// 隔离面不在改动范围内：frame 沙箱值仍是 `webViewerFrameSandbox(false)`，
-// 最后一组守着这一点。
-// ============================================================================
-
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
@@ -141,15 +119,15 @@ test("W04/3 预览地址按目录行 id 拼，`{template_id}` 那一段永远被
   const base = templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID);
   assert.match(base, /^https?:\/\//);
   assert.equal(
-    base.endsWith(`/v1/template-materials/${WEBSITE_TEMPLATE_ID}/preview`),
+    base.endsWith(`/v1/template-materials/${WEBSITE_TEMPLATE_ID}/preview/index.html`),
     true,
     base,
   );
   assert.equal(
-    templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID, "about"),
-    `${base}/about`,
+    templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID, "about.html"),
+    base.replace("index.html", "about.html"),
   );
-  assert.equal(templateMaterialPreviewManifestUrl(WEBSITE_TEMPLATE_ID), `${base}/manifest`);
+  assert.equal(templateMaterialPreviewManifestUrl(WEBSITE_TEMPLATE_ID), base.replace("index.html", "manifest"));
   // 这两段是唯一进 URL 的响应可控字段：不编码的话一个 `../` 就能把 iframe 的 src
   // 指到网关上的别的路径去。
   assert.equal(templateMaterialPreviewUrl("../../v1/library/items").includes("../"), false);
@@ -262,7 +240,7 @@ const viewerModuleUrl = await compileModule(
     }`),
   },
 );
-const { WebsiteArtifactViewer } = await import(viewerModuleUrl);
+const { WebsiteArtifactViewer, TemplateMaterialPreview, previewPages } = await import(viewerModuleUrl);
 
 /** 自绘型整站 HTML：登录态那条路要的就是这个（判读器会放它进 frame）。 */
 const SELF_PAINTING_HTML = `<!doctype html><html><body>${Array.from(
@@ -314,7 +292,8 @@ async function mountViewer({ item, rendition, body, manifest, resolvedPreview })
   globalThis.__probeBody = body ?? null;
   globalThis.__probeUrls = [];
   globalThis.__manifestUrls = [];
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.credentials, "omit");
     globalThis.__manifestUrls.push(String(url));
     if (manifest === undefined) return { ok: false, status: 404, json: async () => ({}) };
     return { ok: true, status: 200, json: async () => manifest };
@@ -335,238 +314,59 @@ async function mountViewer({ item, rendition, body, manifest, resolvedPreview })
   };
 }
 
-const PREVIEW_BASE = templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID);
 
-test("W04/5 匿名点开网站模板：屏幕上是站本身，不是那张封面图", async () => {
-  // 匿名态只拿得到封面 webp —— 操作员截图那一屏的入口条件，逐字照抄。
-  normalizeTemplateMaterial(websiteRow());
-  for (const [label, item] of [
-    ["durable 投影（详情面的真实路径）", durableWebsiteItem()],
-    ["目录行 passthrough", catalogWebsiteItem()],
-  ]) {
-    const mounted = await mountViewer({
-      item,
-      rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-      body: null,
-      manifest: { templateId: WEBSITE_TEMPLATE_ID, pages: [], pageCount: 1 },
-      resolvedPreview: { ok: false, status: 401, code: "unauthorized" },
-    });
-    try {
-      const frame = mounted.container.querySelector("iframe");
-      assert.ok(frame, `${label}：点开必须落到站本身`);
-      assert.equal(frame.getAttribute("src"), PREVIEW_BASE, label);
-      assert.equal(
-        mounted.container.querySelector("img"),
-        null,
-        `${label}：不许再退回图片灯箱`,
-      );
-      // 隔离面一个字符没松。
-      assert.equal(
-        frame.getAttribute("sandbox").includes("allow-same-origin"),
-        false,
-        label,
-      );
-      assert.equal(frame.getAttribute("referrerpolicy"), "no-referrer", label);
-    } finally {
-      await mounted.unmount();
+test("published HTML pages render and switch with unchanged sandbox for catalog and durable cards", async () => {
+  const errors = []; const original = console.error; console.error = (...args) => errors.push(args);
+  try {
+    for (const item of [catalogWebsiteItem(), durableWebsiteItem()]) {
+      const view = await mountViewer({ item, manifest: { entrypoint: "index.html", pages: [
+        {path:"news/最新.html", title:"新闻"}, {path:"index.html", title:"首页"},
+      ] } });
+      try {
+        const frame = view.container.querySelector('iframe'); assert.ok(frame);
+        assert.equal(frame.getAttribute('src'), templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID, 'index.html'));
+        assert.equal(frame.getAttribute('sandbox'), 'allow-scripts allow-forms allow-popups allow-downloads');
+        assert.equal(frame.getAttribute('referrerpolicy'), 'no-referrer');
+        const buttons = [...view.container.querySelectorAll('nav button')];
+        assert.deepEqual(buttons.map(button=>button.textContent), ['首页','新闻']);
+        await act(async()=>buttons[1].click());
+        assert.equal(frame.getAttribute('src'), templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID, 'news/最新.html'));
+        assert.equal(buttons[1].getAttribute('aria-current'), 'page');
+        await act(async()=>buttons[0].click());
+        assert.equal(frame.getAttribute('src'), templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID, 'index.html'));
+        assert.deepEqual(globalThis.__probeUrls, []);
+      } finally { await view.unmount(); }
     }
-  }
+    assert.deepEqual(errors, []);
+  } finally { console.error = original; }
 });
 
-test("W04/6 多页才出页签，单页不出空控件；点页签换的是 iframe 的 src", async () => {
-  normalizeTemplateMaterial(websiteRow());
-  const single = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-    manifest: {
-      templateId: WEBSITE_TEMPLATE_ID,
-      pages: [{ slug: "index", title: "首页" }],
-      pageCount: 1,
-    },
-  });
-  try {
-    assert.equal(
-      single.container.querySelector("nav"),
-      null,
-      "只有一页时不许出现只有一个页签的空控件",
-    );
-    assert.deepEqual(globalThis.__manifestUrls, [
-      templateMaterialPreviewManifestUrl(WEBSITE_TEMPLATE_ID),
-    ]);
-  } finally {
-    await single.unmount();
-  }
-
-  const many = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-    manifest: {
-      templateId: WEBSITE_TEMPLATE_ID,
-      pages: [
-        { slug: "index", title: "首页" },
-        { slug: "about", title: "关于我们" },
-        { slug: "contact", title: "联系方式" },
-      ],
-      pageCount: 3,
-    },
-  });
-  try {
-    const nav = many.container.querySelector("nav");
-    assert.ok(nav, "多页要能翻页");
-    const tabs = [...nav.querySelectorAll("button")];
-    assert.deepEqual(
-      tabs.map((tab) => tab.textContent),
-      ["首页", "关于我们", "联系方式"],
-    );
-    assert.equal(tabs[0].getAttribute("aria-current"), "page", "默认停在第一页");
-    assert.equal(
-      many.container.querySelector("iframe").getAttribute("src"),
-      PREVIEW_BASE,
-    );
-    await act(async () => {
-      tabs[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.equal(
-      many.container.querySelector("iframe").getAttribute("src"),
-      `${PREVIEW_BASE}/about`,
-      "点了页签就要换页",
-    );
-    assert.equal(
-      many.container.querySelector("nav").querySelectorAll("button")[1]
-        .getAttribute("aria-current"),
-      "page",
-    );
-  } finally {
-    await many.unmount();
-  }
-
-  // 清单取不回来不是错误态：整站入口照常能看，只是没有页签。
-  const noManifest = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-    manifest: undefined,
-  });
-  try {
-    assert.equal(
-      noManifest.container.querySelector("iframe").getAttribute("src"),
-      PREVIEW_BASE,
-    );
-    assert.equal(noManifest.container.querySelector("nav"), null);
-  } finally {
-    await noManifest.unmount();
-  }
+test("manifest accepts only relative HTML files and uses file names for missing titles", () => {
+ const paths = ['../index.html','/index.html','a/../b.html','a//b.html','https://x/a.html','a%2fb.html','a.html?x','a\\b.html','site.json','a.html#x'];
+ for (const path of paths) assert.equal(templateMaterialPreviewUrl('template', path), '', path);
+ assert.deepEqual(previewPages({entrypoint:'首页.html',pages:[...paths.map(path=>({path})),{path:'about.html'},{path:'首页.html', title:'首页'},{path:'about.html'}]}),[{path:'首页.html',title:'首页'},{path:'about.html',title:'about.html'}]);
+ assert.deepEqual(previewPages(null), []);
 });
 
-test("W04/7 响应里的 slug 形状不合格就整条丢掉，不许拼进 iframe 的 src", async () => {
-  normalizeTemplateMaterial(websiteRow());
-  const mounted = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-    manifest: {
-      templateId: WEBSITE_TEMPLATE_ID,
-      pages: [
-        { slug: "index", title: "首页" },
-        { slug: "../../v1/library/items", title: "越界" },
-        { slug: "", title: "空的" },
-        { slug: "index", title: "重复的" },
-        { slug: "about", title: "" },
-      ],
-      pageCount: 5,
-    },
-  });
-  try {
-    const tabs = [...mounted.container.querySelectorAll("nav button")];
-    // 只剩合格的两条；标题缺了就退回 slug，不出现空页签。
-    assert.deepEqual(tabs.map((tab) => tab.textContent), ["首页", "about"]);
-    await act(async () => {
-      tabs[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    const src = mounted.container.querySelector("iframe").getAttribute("src");
-    assert.equal(src, `${PREVIEW_BASE}/about`);
-    assert.equal(src.includes("../"), false);
-  } finally {
-    await mounted.unmount();
-  }
+test("missing or single-page manifest leaves a safe entry frame without empty tabs", async () => {
+ for (const manifest of [undefined, {entrypoint:'landing.html',pages:[{path:'landing.html',title:'首页'}]}]) {
+  const view = await mountViewer({item:catalogWebsiteItem(),manifest});
+  assert.equal(view.container.querySelector('nav'),null);
+  assert.equal(view.container.querySelector('iframe').getAttribute('src'),templateMaterialPreviewUrl(WEBSITE_TEMPLATE_ID,manifest?'landing.html':'index.html'));
+  await view.unmount();
+ }
 });
 
-test("W04/8 界线说明是内容下面的一行常驻文字，不是弹窗、也不遮内容", async () => {
-  normalizeTemplateMaterial(websiteRow());
-  const mounted = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-    manifest: { templateId: WEBSITE_TEMPLATE_ID, pages: [], pageCount: 1 },
-  });
-  try {
-    const text = mounted.container.textContent;
-    assert.match(text, /翻页看完整个站/, "先说清能看什么");
-    assert.match(text, /下载源码|复制到工作台/, "再说清什么要登录");
-    const signIn = mounted.container.querySelector('a[href="/settings"]');
-    assert.ok(signIn, "要给登录入口");
-    assert.match(signIn.textContent, /登录/);
-    // 不弹窗、不遮内容：既没有对话框角色，也没有覆盖层定位。
-    assert.equal(mounted.container.querySelector('[role="dialog"]'), null);
-    assert.equal(/\b(fixed|absolute)\b/.test(mounted.container.innerHTML), false);
-    // 说明排在 frame 之后，所以它在内容下面而不是压在内容上。
-    const frame = mounted.container.querySelector("iframe");
-    assert.equal(
-      frame.compareDocumentPosition(signIn) & window.Node.DOCUMENT_POSITION_FOLLOWING,
-      window.Node.DOCUMENT_POSITION_FOLLOWING,
-    );
-    assert.doesNotMatch(text, /暂时|抱歉|敬请谅解/);
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-test("W04/9 durable website resolves a revision preview before looking at image or HTML renditions", async () => {
-  normalizeTemplateMaterial(websiteRow());
-  const mounted = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: FULL_PAGE_URL, rendition: { mediaType: "text/html" } },
-    body: SELF_PAINTING_HTML,
-    manifest: { templateId: WEBSITE_TEMPLATE_ID, pages: [], pageCount: 1 },
-    resolvedPreview: { ok: true, data: { status: "ready", url: "https://revision.ws.oceanleo.app/", expiresAt: new Date(Date.now() + 300_000).toISOString(), sourceFormat: "website-source@1" } },
-  });
-  try {
-    const frame = mounted.container.querySelector("iframe");
-    assert.equal(frame.getAttribute("src"), "https://revision.ws.oceanleo.app/");
-    assert.deepEqual(globalThis.__probeUrls, []);
-    assert.deepEqual(
-      globalThis.__manifestUrls,
-      [],
-      "原路上不该多出一次预览端点请求",
-    );
-    assert.equal(mounted.container.querySelector('a[href="/settings"]'), null);
-  } finally {
-    await mounted.unmount();
-  }
-});
-
-test("W04/10 不是官方模板、或反查不到 catalog id 时不许瞎回退", async () => {
-  invalidateTemplateMaterialCache();
-  // 反查表里没有这一件（比如详情是深链直开的，目录从没在本次会话里取过）：
-  // 端点按 catalog id 取内容，编一个 id 去撞只会拿到 404 或者别人的站。
-  const unknown = await mountViewer({
-    item: durableWebsiteItem(),
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-  });
-  try {
-    assert.equal(unknown.container.querySelector("iframe"), null);
-    assert.deepEqual(globalThis.__manifestUrls, []);
-    assert.ok(unknown.container.querySelector("img"), "退回原来的封面说明态");
-  } finally {
-    await unknown.unmount();
-  }
-
-  // 非网站类的 durable 条目根本不该进这条分支。
-  const audio = await mountViewer({
-    item: { ...durableWebsiteItem(), artifactType: "audio", kind: "audio" },
-    rendition: { url: COVER_URL, rendition: { mediaType: "image/webp" } },
-  });
-  try {
-    assert.equal(audio.container.querySelector("iframe"), null);
-    assert.deepEqual(globalThis.__manifestUrls, []);
-  } finally {
-    await audio.unmount();
-  }
+test("inline home preview resets selection when its template changes", async () => {
+ const { createRoot } = await import('react-dom/client');
+ const container=document.createElement('div');document.body.append(container);const root=createRoot(container);
+ globalThis.fetch=async url=>({ok:true,json:async()=>({entrypoint:'index.html',pages:[{path:'index.html',title:'首页'},{path:String(url).includes('/first/')?'old.html':'new.html',title:'详情'}]})});
+ try {
+  await act(async()=>root.render(React.createElement(TemplateMaterialPreview,{templateId:'first',title:'First',layout:'inline'})));
+  await act(async()=>container.querySelectorAll('button')[1].click());
+  assert.match(container.querySelector('iframe').src,/old.html$/);
+  await act(async()=>root.render(React.createElement(TemplateMaterialPreview,{templateId:'second',title:'Second',layout:'inline'})));
+  assert.equal(container.querySelector('iframe').getAttribute('src'),templateMaterialPreviewUrl('second','index.html'));
+  assert.equal(container.querySelector('[data-template-material-preview]').getAttribute('data-template-material-preview'),'inline');
+ } finally {await act(async()=>root.unmount());container.remove();}
 });

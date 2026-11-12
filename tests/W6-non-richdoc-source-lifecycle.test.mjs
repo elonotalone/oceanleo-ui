@@ -8,7 +8,6 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { blankDesignDocument } from "../src/shell/design-canvas/blank-design-document.ts";
-import { blankWebsiteSource } from "../src/shell/website-local/blank-website-source.ts";
 import {
   audioSourcePersistenceAdmitted,
   designCanvasLocalSourceAdmission,
@@ -16,7 +15,6 @@ import {
   imageSourcePersistenceAdmitted,
   model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
-  websiteLocalSourceFromItem,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
 import {
   gridExpectedSourcePresent,
@@ -131,35 +129,6 @@ test("grid: durable artifact without source throws instead of returning a blank 
     { title: "blank" },
   );
   assert.equal(flushed.ok, false);
-});
-
-test("website local: parse failure and durable missing source refuse blank overwrite", () => {
-  const parsed = websiteLocalSourceFromItem({
-    title: "本地可编辑的网站工程",
-    meta: { websiteSource: blankWebsiteSource("本地可编辑的网站工程") },
-  });
-  assert.equal(parsed.ok, true);
-
-  const invalid = websiteLocalSourceFromItem({
-    artifactId: "web-art",
-    title: "已有网站",
-    meta: { websiteSource: { not: "website-source@1" } },
-  });
-  assert.equal(invalid.ok, false);
-  assert.match(invalid.error, /未改用空白稿覆盖原件/);
-  assert.equal(persistFromAdmission(invalid, { title: "blank" }).ok, false);
-
-  const missing = websiteLocalSourceFromItem({
-    artifactId: "web-art",
-    title: "已有网站",
-  });
-  assert.equal(missing.ok, false);
-  assert.match(missing.error, /未改用空白稿覆盖原件/);
-
-  const fresh = websiteLocalSourceFromItem({
-    title: "本地可编辑的网站工程",
-  });
-  assert.equal(fresh.ok, true);
 });
 
 test("design canvas local: parse failure and durable missing source refuse blank overwrite", () => {

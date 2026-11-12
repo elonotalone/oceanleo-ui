@@ -25,10 +25,10 @@ const { WebsiteArtifactViewer } = await import(await compileModule("src/shell/We
 }));
 const { createRoot } = await import("react-dom/client");
 
-// E10: this artifact has website-source@1 + source.json + two dependencies,
+// E10: this artifact has oceanleo.website-project.v1 + source.json + two dependencies,
 // while thumbnail, preview and full are PNG. The two dependency files travel
 // inside the source ZIP response, never via the image rendition endpoint.
-function fixture({ revisionId = revision, canExport = true, source = true, format = "website-source@1" } = {}) {
+function fixture({ revisionId = revision, canExport = true, source = true, format = "oceanleo.website-project.v1" } = {}) {
   const renditions = Object.fromEntries(["thumbnail", "preview", "full"].map(purpose => [purpose, {
     purpose, revision_id: revisionId, url: `https://gateway.invalid/${purpose}.png`, format: "png", media_type: "image/png",
   }]));
@@ -51,7 +51,7 @@ function fixture({ revisionId = revision, canExport = true, source = true, forma
   return { raw, item: artifactProjectionToLibraryItem(artifact) };
 }
 const json = (data, status = 200) => new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
-function ready() { return { url: previewUrl, expires_at: new Date(Date.now() + 120_000).toISOString(), source_format: "website-source@1" }; }
+function ready() { return { url: previewUrl, expires_at: new Date(Date.now() + 120_000).toISOString(), source_format: "oceanleo.website-project.v1" }; }
 async function mounted(item, run) {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
@@ -196,7 +196,7 @@ test("website download evidence and hint promise source ZIP, never PNG or a JSON
   assert.deepEqual(artifactDownloadPlanFor(item.artifact).map(({ purpose, mode }) => ({ purpose, mode })), [{ purpose: "source", mode: "source" }]);
   assert.equal(client.artifactDownloadEvidence(item).available, true);
   assert.equal(client.artifactDownloadTypeHint(item).downloadMediaType, "application/zip");
-  assert.match(artifactUserFacingDownloadHint({ artifactType: "website", sourceFormat: "website-source@1", editorCapability: "website-editor", title: "示例" }).filename, /\.zip$/);
+  assert.match(artifactUserFacingDownloadHint({ artifactType: "website", sourceFormat: "oceanleo.website-project.v1", editorCapability: "website-editor", title: "示例" }).filename, /\.zip$/);
   assert.deepEqual(artifactDownloadPlanFor(fixture({ canExport: false }).item.artifact), []);
   assert.equal(client.artifactDownloadEvidence(fixture({ source: false }).item).available, false);
   const plan = websiteViewerPlan({ hasUrl: true, mediaType: "image/png", body: { status: "unread" } });

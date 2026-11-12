@@ -10,15 +10,6 @@ import { readFileSync } from "node:fs";
 import {
   storedEditorProjectUrl,
 } from "../src/shell/advanced-routes/stored-editor-project.ts";
-import {
-  hydrateWebsiteLocalSource,
-  planWebsiteLocalSource,
-  websiteLocalSourceFromItem,
-} from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
-import { existingWebsiteSource } from "../src/shell/website-local/blank-website-source.ts";
-import { applyWebsiteCommand } from "../src/shell/website-local/website-command-surface.ts";
-import { serializeWebsiteSource } from "../src/shell/website-source-carrier/website-source-validate.ts";
-import { parseWebsiteSource } from "../src/shell/website-source-carrier/website-source-validate.ts";
 import { blankDesignDocument } from "../src/shell/design-canvas/blank-design-document.ts";
 import {
   hydrateDesignCanvasSource,
@@ -69,50 +60,6 @@ test("stored projects skip credentialed source-tree descriptors for readable del
   assert.equal(result.ok, true);
   assert.equal(fetched, deliveryUrl);
   assert.equal(storedEditorProjectUrl({ artifact: item.artifact }), "");
-});
-
-test("website: durable without inline meta loads a valid remote website-source@1; malformed stays fail-closed", async () => {
-  const stored = existingWebsiteSource("操作员已有的网站工程");
-  const wrapped = JSON.stringify({
-    schema: "website-source@1",
-    version: 1,
-    data: stored,
-  });
-  const plan = planWebsiteLocalSource({
-    artifactId: "web-art",
-    title: "已有网站",
-    meta: { editor_project_url: "https://cdn.test/site.json" },
-  });
-  assert.equal(plan.kind, "remote");
-  const loaded = await hydrateWebsiteLocalSource(plan, async () => wrapped);
-  assert.equal(loaded.ok, true);
-  assert.ok(loaded.source.pages.length > 0);
-  const edited = applyWebsiteCommand(loaded.source, "website.set-theme-accent", {
-    accent: "#112233",
-  });
-  assert.equal(edited.ok, true);
-  assert.notEqual(edited.source.theme.accent, loaded.source.theme.accent);
-  const committed = stubCommit(serializeWebsiteSource(edited.source));
-  const reopened = parseWebsiteSource(committed.payload);
-  assert.equal(reopened.theme.accent, "#112233");
-  assert.equal(reopened.pages.length, stored.pages.length);
-
-  const missing = websiteLocalSourceFromItem({
-    artifactId: "web-art",
-    title: "已有网站",
-  });
-  assert.equal(missing.ok, false);
-  assert.match(missing.error, /未改用空白稿覆盖原件/);
-
-  const invalid = await hydrateWebsiteLocalSource(
-    planWebsiteLocalSource({
-      artifactId: "web-art",
-      meta: { websiteSource: { not: "website-source@1" } },
-    }),
-    async () => wrapped,
-  );
-  assert.equal(invalid.ok, false);
-  assert.match(invalid.error, /未改用空白稿覆盖原件/);
 });
 
 test("design: valid remote design-document loads, title edit serializes, reopen restores", async () => {

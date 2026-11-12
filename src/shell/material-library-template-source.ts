@@ -74,24 +74,21 @@ export function templateMaterialPreviewPath(templateId: string): string {
   return id ? `/v1/template-materials/${encodeURIComponent(id)}/preview` : "";
 }
 
-/**
- * 预览端点的绝对地址。`page` 给了就取那一页（slug 或序号），`"manifest"` 取页面清单。
- *
- * `encodeURIComponent` 两处都不能省：这两段是唯一进 URL 的响应可控字段，不编码的话
- * 一个 `../` 就能把 iframe 的 src 指到网关上的别的路径去。
- */
-export function templateMaterialPreviewUrl(
-  templateId: string,
-  page = "",
-): string {
+/** A page is a relative HTML closure path, never a URL or a traversal. */
+export function isTemplatePreviewPagePath(path: string): boolean {
+  return Boolean(path && /\.html$/i.test(path) && !/[\\?#%:\u0000-\u0020\u007f]/.test(path)
+    && path.split("/").every(part => part !== "" && part !== "." && part !== ".."));
+}
+
+export function templateMaterialPreviewUrl(templateId: string, page = "index.html"): string {
   const path = templateMaterialPreviewPath(templateId);
-  if (!path) return "";
-  const suffix = (page || "").trim();
-  return `${gatewayBase()}${path}${suffix ? `/${encodeURIComponent(suffix)}` : ""}`;
+  if (!path || !isTemplatePreviewPagePath(page)) return "";
+  return `${gatewayBase()}${path}/${page.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 export function templateMaterialPreviewManifestUrl(templateId: string): string {
-  return templateMaterialPreviewUrl(templateId, "manifest");
+  const path = templateMaterialPreviewPath(templateId);
+  return path ? `${gatewayBase()}${path}/manifest` : "";
 }
 
 /** 只有网站这一类走整站查看器；其余 15 类的落点这一波逐字不变。 */

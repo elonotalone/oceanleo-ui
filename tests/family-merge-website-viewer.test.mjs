@@ -6,7 +6,6 @@ import { existsSync, readFileSync } from "node:fs";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { blankWebsiteSource } from "../src/shell/website-local/blank-website-source.ts";
 import { buildPluginPages, hasProPage } from "../src/shell/plugin-chrome/plugin-pages.ts";
 
 const require = createRequire(import.meta.url);
@@ -24,12 +23,11 @@ const shell = dataModule('import React from "' + pathToFileURL(require.resolve('
 const io = dataModule('export async function fetchMediaBlob() { return globalThis.__websiteRead(); }');
 const refresh = dataModule('export async function refreshArtifactRendition() { throw new Error("unexpected write/refresh"); }');
 const runtime = dataModule('export function WebsiteMaterialRuntimePreview({projectId}) { return "runtime:" + projectId; }');
-const siteLoad = dataModule('export class SiteImageResolver { url(path) {return path;} subscribe(){return ()=>{};} snapshot(){return 0;} } export async function loadSiteDoc(_identity, envelope) {return envelope.entry;}');
 const { WebsiteLocalRoute } = await import(await compileModule("src/shell/advanced-routes/WebsiteLocalRoute.tsx", {
   "../../i18n/ui/useUI": ui, "../AdvancedWorkbenchShell": shell,
   "../../lib/media-proxy": io, "../artifact-client": refresh,
   "../website-local/WebsiteMaterialRuntimePreview": runtime,
-  "../website-local/website-site-load": siteLoad,
+  "../WebsiteArtifactViewer": dataModule('export function WebsiteArtifactViewer(){ return "File preview"; }'),
 }));
 const button = (container, text) => [...container.querySelectorAll('button')].find(entry => entry.textContent === text);
 async function settle() { for (let i = 0; i < 5; i++) await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); }); }
@@ -45,37 +43,31 @@ test("website source loads, shows rendered pages and escaped read-only source, a
  const errors = []; const oldError = console.error; console.error = (...args) => errors.push(args.join(' '));
  try {
   let finish; globalThis.__websiteRead = () => new Promise(resolve => { finish = resolve; });
-  const source = blankWebsiteSource('Viewer source'); source.navigation.brand = 'Viewer source';
+  const source = '<html><body>Viewer source</body></html>';
   const item = { key:'website:1', id:'1', title:'Viewer source', artifactId:'a1', revisionId:'r1', meta:{}, artifact:{renditions:{source:{url:'/v1/source/1'}}} };
   const view = await mount(item);
   assert.match(view.container.textContent, /正在读取/);
-  await act(async () => finish(new Blob([JSON.stringify(source)]))); await settle();
-  assert.match(view.container.textContent, /Viewer source/);
-  assert.ok(view.container.querySelector('section'));
+  await act(async () => finish(new Blob([source]))); await settle();
+  assert.match(view.container.textContent, /File preview/);
   assert.equal(view.container.querySelector('script, [contenteditable], textarea'), null);
   assert.deepEqual([...view.container.querySelectorAll('[role="tab"]')].map(x=>x.textContent), ['预览','源码']);
   await act(async () => button(view.container,'源码').click());
   assert.match(view.container.querySelector('pre code').textContent, /Viewer source/);
   assert.equal(view.container.querySelector('script, textarea'), null);
-  await act(async () => button(view.container,'预览').click()); assert.ok(view.container.querySelector('section'));
+  await act(async () => button(view.container,'预览').click()); assert.match(view.container.textContent, /File preview/);
   await view.close();
   globalThis.__websiteRead = async () => { throw new Error('HTTP 403'); };
   const failed = await mount({...item, key:'website:2'}); await settle();
   assert.match(failed.container.textContent,/HTTP 403/);
-  globalThis.__websiteRead = async () => new Blob([JSON.stringify(source)]);
+  globalThis.__websiteRead = async () => new Blob([source]);
   const retry = [...failed.container.querySelectorAll('button')].find(x=>/重新|重试/.test(x.textContent)); assert.ok(retry);
-  await act(async()=>retry.click()); await settle(); assert.ok(failed.container.querySelector('section'));
+  await act(async()=>retry.click()); await settle(); assert.match(failed.container.textContent, /File preview/);
   await failed.close();
   assert.deepEqual(errors, []);
  } finally { console.error = oldError; }
 });
 
-test("stored site documents render real sections and code manifests use material preview mode", async () => {
- const doc = { siteName:'Real site', pages:[{ name:'Home', sections:[{id:'hero',type:'hero',content:{title:'Real heading',body:'<script>untrusted</script>'},style:{}}]}] };
- const site = await mount({key:'site:3',id:'3',title:'Site',meta:{},content:JSON.stringify(doc)}); await settle();
- assert.match(site.container.textContent,/Real heading/); assert.ok(site.container.querySelector('[data-testid="website-site-frame"]'));
- assert.equal(site.container.querySelector('[contenteditable],script'),null);
- await act(async()=>button(site.container,'源码').click()); assert.match(site.container.querySelector('code').textContent,/Real heading/); await site.close();
+test("code manifests use file-based runtime preview", async () => {
  const projectId='f75afb8a-954f-40bb-8bf8-d87689aefd50';
  const code=await mount({key:'code:4',id:'4',title:'Code',meta:{},content:JSON.stringify({projectSchema:'oceanleo.website-project.v1',projectId,files:[]})}); await settle();
  assert.match(code.container.textContent,new RegExp('runtime:'+projectId)); await code.close();

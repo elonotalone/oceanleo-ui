@@ -9,8 +9,8 @@ test("git website manifests select runtime preview before visual document valida
   assert.deepEqual(websiteCodeProjectFromText(JSON.stringify(entry)), {projectId:entry.projectId, fileCount:1, entryPath:"app.py"});
   assert.equal(websiteCodeProjectFromText(JSON.stringify({...entry, projectId:"../x"})), null);
   assert.equal(websiteCodeProjectFromText(JSON.stringify({format:"website-source", pages:[]})), null);
-  assert.ok(route.indexOf("websiteCodeProjectFromText(text)") < route.indexOf("websiteSiteEnvelopeFromText(text)"));
-  assert.match(route, /<WebsiteMaterialRuntimePreview key=\{loaded.code.projectId\} projectId=\{loaded.code.projectId\}/);
+  assert.doesNotMatch(route, /websiteSiteEnvelopeFromText|StructuredWebsitePreview/);
+  assert.match(route, /<WebsiteMaterialRuntimePreview key=\{code.projectId\} projectId=\{code.projectId\}/);
 });
 test("website material source is read-only and visual editing is removed", () => {
   const viewer = readFileSync("src/shell/website-local/WebsiteMaterialViewer.tsx", "utf8");

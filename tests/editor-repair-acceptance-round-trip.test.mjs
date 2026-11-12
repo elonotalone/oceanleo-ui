@@ -20,16 +20,6 @@ import {
   parseFabricImageProject,
 } from "../src/shell/image-editor/editor-persistence.ts";
 import { imageSaveAdmitted } from "../src/shell/image-editor/image-source-ready.ts";
-import {
-  hydrateWebsiteLocalSource,
-  planWebsiteLocalSource,
-} from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
-import { existingWebsiteSource } from "../src/shell/website-local/blank-website-source.ts";
-import { applyWebsiteCommand } from "../src/shell/website-local/website-command-surface.ts";
-import {
-  parseWebsiteSource,
-  serializeWebsiteSource,
-} from "../src/shell/website-source-carrier/website-source-validate.ts";
 import { loadGridSheets } from "../src/shell/doc-editors/grid-model.ts";
 import { loadRichDocHtml } from "../src/shell/doc-editors/rich-doc-model.ts";
 import "./helpers/w1-jsdom-window.mjs";
@@ -95,31 +85,6 @@ test("grid: csv hydrates, in-memory cell edit survives, sourceless durable still
       }),
     /缺少可验证的 source\/full 内容/,
   );
-});
-
-test("website local: stored JSON loads, theme command mutates, reopen restores accent", async () => {
-  const stored = existingWebsiteSource("操作员已有的网站工程");
-  const wrapped = JSON.stringify({
-    schema: "website-source@1",
-    version: 1,
-    data: stored,
-  });
-  const loaded = await hydrateWebsiteLocalSource(
-    planWebsiteLocalSource({
-      artifactId: "web-art",
-      title: "已有网站",
-      meta: { editor_project_url: "https://cdn.test/site.json" },
-    }),
-    async () => wrapped,
-  );
-  assert.equal(loaded.ok, true);
-  const edited = applyWebsiteCommand(loaded.source, "website.set-theme-accent", {
-    accent: "#112233",
-  });
-  assert.equal(edited.ok, true);
-  const committed = commit(serializeWebsiteSource(edited.source));
-  const reopened = parseWebsiteSource(committed.payload);
-  assert.equal(reopened.theme.accent, "#112233");
 });
 
 test("design canvas: stored document loads, title command mutates, reopen restores title", async () => {

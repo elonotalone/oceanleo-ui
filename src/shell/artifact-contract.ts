@@ -172,22 +172,22 @@ const ADVANCED_CAPABILITY_ROWS = [
   {
     featureId: "website_finetuning",
     artifactType: "website",
-    sourceFormat: "website-source@1",
+    sourceFormat: "oceanleo.website-project.v1",
     sourceMediaType: "application/json",
     editorCapability: "website-editor",
     artifactBindings: [
       { artifactType: "website", editorCapabilities: ["website-editor"] },
     ],
     adapter: "website",
-    projectSchema: "website-source@1",
+    projectSchema: "oceanleo.website-project.v1",
     editability: "native",
     sourceIntegrity: "complete_dependency_closure",
     openMode: "structured-project",
     previewPurposes: ["preview", "full"],
     requirement: {
       kind: "manifest",
-      schema: "website-source@1",
-      requiredPaths: ["pages", "sections"],
+      schema: "oceanleo.website-project.v1",
+      requiredPaths: ["files"],
       dependencyClosure: "complete",
     },
   },
@@ -652,7 +652,7 @@ export function advancedCapabilityForAdapter(
  *
  * 名单是**枚举的成品族**而不是「schema id 形状」白名单：库里真实的工程源写法
  * 五花八门（`oceanleo.chart.v1` / `workflow-json` / `echarts-option+json` /
- * `website-source@1` / `svg`），按形状收会把它们一起判死。
+ * `oceanleo.website-project.v1` / `svg`），按形状收会把它们一起判死。
  */
 const FLATTENED_RENDER_SOURCE_FORMATS: ReadonlySet<string> = new Set([
   "png",

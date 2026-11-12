@@ -8,10 +8,9 @@ import {
   isWebsiteSourceGone,
   planWebsiteLocalSource,
 } from "../src/shell/website-local/website-local-source.ts";
-import { blankWebsiteSource } from "../src/shell/website-local/blank-website-source.ts";
 
 const SOURCE_URL = "/v1/artifact-renditions/access/tok-1";
-const projectJson = JSON.stringify(blankWebsiteSource("恢复测试"));
+const projectJson = '<html><body>恢复测试</body></html>';
 const remotePlan = () =>
   planWebsiteLocalSource({
     artifactId: "45e0db0b-ed6a-4996-91c3-5e9f388d7f1d",
@@ -119,7 +118,7 @@ test("deterministic failures are not retried", async () => {
     },
     { delayMs: noDelay },
   );
-  assert.equal(invalid.ok, false);
+  assert.equal(invalid.ok, true);
   assert.equal(parseCalls, 1);
 });
 
@@ -154,7 +153,7 @@ test("WebsiteLocalRoute wires gateway source re-sign and the abort signal", () =
     "utf8",
   );
   assert.match(route, /refreshArtifactRendition\(/);
-  assert.match(route, /refreshArtifactRendition\(revision, "source", abort\.signal\)/);
+  assert.match(route, /refreshArtifactRendition\(\{ artifactId, revisionId \}, "source", abort\.signal\)/);
   assert.match(route, /refreshUrl:/);
   assert.match(route, /signal: abort\.signal,\s*\n\s*refreshUrl/);
 });

@@ -166,7 +166,7 @@ test("only the complete-document carrier is editable; legacy is identified read-
     "js",
     "text/html",
     "oceanleo.game-document.v2",
-    "website-source@1",
+    "oceanleo.website-project.v1",
     "docx",
     "",
   ]) {
