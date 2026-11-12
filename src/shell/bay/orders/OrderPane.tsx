@@ -24,7 +24,6 @@ import {
   milestonePaymentStateLabel,
   milestoneStatusLabel,
   nextActionText,
-  offPlatformMoneyRule,
   orderActionsFor,
   orderAmountText,
   orderPaymentStateLabel,
@@ -190,7 +189,6 @@ export function OrderPane({ target }: BayPaneProps) {
         <p className="text-[12.5px] text-stone-700">{tt("下一步：{text}", { text: nextActionText(tt, order, gate) })}</p>
         <p className="text-[12px] text-neutral-500">{settlementRuleText(tt, order)}</p>
         <p className="text-[12px] text-neutral-500">{paymentsHint(tt, gate.enabled)}</p>
-        {order.delivery_mode === "off_platform" ? <p className="text-[12px] text-neutral-500">{offPlatformMoneyRule(tt, gate.enabled)}</p> : null}
       </header>
 
       {workLink ? (

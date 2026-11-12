@@ -16,7 +16,6 @@ export function BayServicePublic({ data }: { data: BayServicePublicData }) {
       <p data-bay-public-title className="break-words text-[22px] font-semibold text-neutral-950">
         {data.title}
       </p>
-      {data.delivery_mode === "off_platform" ? <p className="mt-1 text-[12px] text-amber-800">{tt("交付在平台外完成")}</p> : null}
       {data.summary ? <p className="mt-2 break-words text-[14px] text-neutral-600">{data.summary}</p> : null}
       <p className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[13px] text-neutral-600">
         <span data-bay-price>{publicPriceFrom(tt, data.min_price_fen, data.currency)}</span>

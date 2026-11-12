@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
+
 // supply 各窗格共用的小部件：加载/出错、收藏、举报、卖家卡、交付记录、评价列表。
 // 用户内容一律纯文本；图片只认 http(s)。
 
@@ -49,7 +51,7 @@ export function PaneMessage({ text, onRetry }: { text: string; onRetry?: () => v
   );
 }
 
-/** 按类型写清交付方式；自定义条款原样显示。没有条款、截止日期或交付句就不画空块。 */
+/** 按类型写清商品种类；自定义条款原样显示。没有条款、截止日期或交付句就不画空块。 */
 export function DigitalTerms({
   listingKind,
   deliveryDays,

@@ -7,6 +7,7 @@ import { libraryEditorLabel, translateLibraryTypeLabel } from "../library-editor
 import { WORKSPACE_KIND_LABELS, type WorkspaceLibraryEntry } from "../workspace-library-model";
 import { WorkspaceLibraryEntryViewer } from "../workspace-library-view";
 import type { AssetActionContext } from "./types";
+import { BayListingContent } from "../bay/asset/BayListingContent";
 import { AssetInfo } from "./AssetInfo";
 
 export interface AssetDetailProps {
@@ -58,6 +59,7 @@ export const AssetDetail = forwardRef<HTMLDivElement, AssetDetailProps>(function
       </header>
       <AssetInfo entry={entry} actionContext={actionContext} />
       <div ref={viewerRef} className="min-h-0 flex-1 overflow-auto bg-[var(--surface,#fafaf9)]">
+        {actionContext?.commerce?.listingId ? <BayListingContent listingId={actionContext.commerce.listingId} purchaseState={actionContext.commerce.purchaseState} /> : actionContext?.ref.kind === "listing" ? <BayListingContent listingId={actionContext.ref.id} /> : null}
         <WorkspaceLibraryEntryViewer entry={entry} accent={accent} viewerNonce={viewerNonce} />
       </div>
     </div>

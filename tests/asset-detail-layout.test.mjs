@@ -29,6 +29,7 @@ const viewer = dataModule(`import { createElement } from ${JSON.stringify(reactU
 const { AssetDetail } = await import(await compileModule("src/shell/asset-detail/AssetDetail.tsx", {
   "../../i18n/ui/useUI": ui,
   "../workspace-library-view": viewer,
+  "../bay/asset/BayListingContent": dataModule(`export function BayListingContent(){ return null; }`),
   "next-intl": dataModule("export function useLocale() { return globalThis.__assetDetailLocale; }"),
 }));
 

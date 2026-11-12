@@ -68,6 +68,7 @@ const dealStub = dataModule(`
   export function DealConversationView(){ return null; }
 `);
 const stubs = {
+  "../asset/BayListingContent": dataModule(`export function BayListingContent(){ return null; }`),
   "../../../i18n/ui/useUI": uiStub,
   "../../../lib/bay/http": httpStub,
   "../../../lib/auth/client": authStub,

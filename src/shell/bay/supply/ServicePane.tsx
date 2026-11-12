@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Library previews use signed or private URLs directly. */
+
 // 商品详情（移植自 talent `app/services/[id]/page.tsx`，外壳不搬）。
 // 不登录也能看；下单、先聊聊、收藏、举报要登录（requireBayLogin）。卖家本人看到「编辑」，看不到下单与先聊聊。
 // 用户内容（标题、描述、条款、评价）一律纯文本；媒体只认 http(s)，不内嵌任何别站页面。买家页不画授权罐头句和 FAQ。
@@ -18,20 +20,19 @@ import {
   reportBayService,
   serviceSelection,
   defaultTier,
-  type BayAttachedWork,
   type BayServiceDetail,
   type BayServiceMedia,
   type BayServiceTier,
 } from "../../../lib/bay/services";
-import type { BayServiceMediaRow } from "../../../lib/bay/seller";
 import { openTradeThread } from "../deal";
 import { openBay, requireBayLogin, type BayLayout, type BayPaneProps } from "../shell/bay-state";
-import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel, workOpenHref } from "./format";
+import { deliveryDaysText, moneyOrFree, revisionsText, safeHttpUrl, tierLabel } from "./format";
 import { ItemReviews } from "../reviews/ItemReviews";
 import { DigitalTerms, DoneMeans, FavoriteButton, PaneLoading, PaneMessage, ReportBox, Section, SellerCard } from "./parts";
 import { errorText, useBayResource } from "./use-bay-resource";
 import { cleanGalleryUrls } from "../form/bay-gallery";
 import { BayImageStage } from "../form/BayImageGallery";
+import { BayListingContent } from "../asset/BayListingContent";
 import { BayTypedPreview } from "../form/BayTypedPreview";
 
 export function ServicePane({ target, layout }: BayPaneProps) {
@@ -114,7 +115,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
   const [workPreview, setWorkPreview] = useState<LibraryItem | null>(null);
   const [talking, setTalking] = useState(false);
   const [claiming, setClaiming] = useState(false);
-  const [claimed, setClaimed] = useState<{ work: BayAttachedWork | null; media: BayServiceMediaRow[] } | null>(null);
+  const [claimed, setClaimed] = useState(false);
   const [error, setError] = useState("");
   const selection = serviceSelection(service, tierName);
   const owner = isOwnService(service, viewerId);
@@ -159,7 +160,8 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     setClaiming(true);
     setError("");
     try {
-      setClaimed(await claimBayService(service.id));
+      await claimBayService(service.id);
+      setClaimed(true);
     } catch (err) {
       setError(errorText(err) || tt("领取没成功，请稍后再试。"));
     } finally {
@@ -180,9 +182,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     }
   }
 
-  const workHref = claimed?.work ? workOpenHref(claimed.work) : null;
-  const fileMedia = (claimed?.media || []).filter((row) => row.kind === "file");
-  const primaryAction = owner ? null : freeDigital ? (
+  const primaryAction = owner || claimed ? null : freeDigital ? (
     <button
       type="button"
       data-bay-action="claim"
@@ -266,20 +266,6 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
             </button>
           </>
         )}
-        {workHref ? (
-          <a href={workHref} target="_blank" rel="noopener noreferrer" data-bay-open-work className="text-[13px] font-medium text-neutral-800 underline underline-offset-2">
-            {tt("打开作品")}
-          </a>
-        ) : null}
-        {fileMedia.map((row) => {
-          const url = safeHttpUrl(row.url);
-          if (!url) return null;
-          return (
-            <a key={row.id} href={url} target="_blank" rel="noopener noreferrer" data-bay-download={row.id} className="text-[13px] font-medium text-neutral-800 underline underline-offset-2">
-              {row.caption || tt("下载文件")}
-            </a>
-          );
-        })}
         {error ? <p className="text-[12px] text-rose-600">{tt(error)}</p> : null}
         <div className="flex items-start justify-between gap-2">
           <FavoriteButton kind="service" refId={service.id} />
@@ -294,9 +280,8 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
     service.cover_url,
   );
   const showTypedPreview = digital && Boolean(workPreview);
-  const main = (
-    <div className="min-w-0">
-      <section>
+  const mediaStage = (
+    <section>
         {showTypedPreview && workPreview ? (
           <BayTypedPreview
             artifactId={workPreview.artifactId || workPreview.id}
@@ -313,12 +298,14 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
           <div className="grid aspect-video place-items-center rounded-xl bg-neutral-100 text-[13px] text-neutral-400">{tt("卖家暂未上传作品图")}</div>
         )}
       </section>
+  );
+  const main = (
+    <div className="min-w-0">
+      {digital ? null : mediaStage}
 
       <section className="mt-4">
         <h2 className="break-words text-[18px] font-semibold text-neutral-950">{service.title}</h2>
-        {service.delivery_mode === "off_platform" ? (
-          <p className="mt-1 inline-block rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-800">{tt("交付在平台外完成")}</p>
-        ) : null}
+
         {service.summary ? <p className="mt-1.5 break-words text-[13px] text-neutral-600">{service.summary}</p> : null}
         <p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-[12px] text-neutral-500">
           <span>{tt("{n} 次浏览", { n: service.view_count || 0 })}</span>
@@ -331,6 +318,9 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
         </p>
         {service.description ? <p className="mt-3 whitespace-pre-wrap break-words text-[13px] leading-6 text-neutral-700">{service.description}</p> : null}
       </section>
+
+      {digital ? <BayListingContent listingId={service.id} showDescription={false} showPreview purchaseState={claimed ? "settled" : undefined} /> : null}
+      {digital && workPreview ? mediaStage : null}
 
       <DigitalTerms
         listingKind={digital ? "digital" : "service"}
