@@ -13,6 +13,7 @@ import {
 } from "../../lib/browser-trust";
 import { browserTrustActionLabel, browserTrustErrorCopy, browserTrustScopeLabel } from "../../shell/cloud-browser-trust";
 import { Switch } from "../../ui";
+import { MyBrowserPanel } from "./MyBrowserPanel";
 import { CloudBrowserFlowsSection } from "./CloudBrowserFlowsSection";
 
 const card = "rounded-2xl border border-neutral-200 p-5 dark:border-neutral-800";
@@ -202,6 +203,7 @@ export function CloudBrowserSettingsSection({ flows }: { flows?: ReactNode } = {
   const disabled = loading || busy || !data;
   return (
     <section data-settings-pane="cloud-browser" aria-labelledby={headingId} className="space-y-5">
+      <MyBrowserPanel />
       <div>
         <h2 id={headingId} className="text-[18px] font-semibold text-neutral-900">{tt("云浏览器")}</h2>
         <p className={description}>{tt("管理云浏览器记住的网站登录，以及你允许 Agent 执行的网站操作。")}</p>

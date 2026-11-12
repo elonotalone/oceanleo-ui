@@ -32,6 +32,7 @@ const { CloudBrowserSettingsSection } = await import(await compileModule("src/pa
         "aria-checked": checked, disabled, onClick: () => onChange(!checked) });
     }
   `),
+  "./MyBrowserPanel": dataModule("export function MyBrowserPanel() { return null; }"),
   "./CloudBrowserFlowsSection": dataModule("export function CloudBrowserFlowsSection() { return null; }"),
 }));
 

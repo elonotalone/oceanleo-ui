@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
-import { afterEach, test } from "node:test";
+import { beforeEach, afterEach, test } from "node:test";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import "./helpers/w1-jsdom-window.mjs";
@@ -36,6 +36,15 @@ const settingsModule = await compileModule("src/pages/settings/CloudBrowserSetti
   "../../lib/browser-trust": apiModule,
   "../../shell/cloud-browser-trust": panelModule,
   "../../ui": uiModule,
+  "../../lib/auth/config": dataModule('export const GATEWAY_BASE = "https://gateway.example.test";'),
+  "../../lib/local-browser-api": dataModule(`
+    export const localBrowserApi = {
+      devices: (...args) => globalThis.__localSettings.devices(...args),
+      sessions: async () => ({ items: [] }),
+      pair: async () => ({ code: "test-pair", expires_at: new Date(Date.now() + 600000).toISOString() }),
+    };
+    export async function downloadLocalBrowserExtension() { return new Blob(); }
+  `),
   "./CloudBrowserFlowsSection": dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export function CloudBrowserFlowsSection() { return createElement("div", { "data-default-flows-test": true }); }
@@ -43,6 +52,11 @@ const settingsModule = await compileModule("src/pages/settings/CloudBrowserSetti
 });
 const { CloudBrowserSettingsSection } = await import(settingsModule);
 const mounted = [];
+let renderErrors;
+beforeEach(t => {
+  renderErrors = [];
+  t.mock.method(console, "error", (...args) => renderErrors.push(args.map(String).join(" ")));
+});
 const observers = [];
 globalThis.IntersectionObserver = class {
   constructor(callback) { this.callback = callback; observers.push(this); }
@@ -86,6 +100,7 @@ function runtime(status = empty()) {
     revokeAllApprovals: async () => { calls.push({ method: "revokeAllApprovals" }); return { ok: true }; },
   };
   globalThis.__cloudBrowserTrustTest = value;
+  globalThis.__localSettings = { devices: async () => ({ items: [], preferences: { preferred_device_id: null, allow_cross_browser_tasks: false } }) };
   Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
   return value;
 }
@@ -110,6 +125,8 @@ afterEach(async () => {
   for (const { root, host } of mounted.splice(0)) { await act(async () => root.unmount()); host.remove(); }
   observers.length = 0;
   delete globalThis.__cloudBrowserTrustTest;
+  delete globalThis.__localSettings;
+  assert.deepEqual(renderErrors, [], "no React render errors");
 });
 
 test("approval card renders site, summary, reason and sends each exact approval scope or deny", async () => {
@@ -369,4 +386,24 @@ test("failed Settings mutations preserve saved state and never display raw serve
   assert.equal(host.textContent.includes("must-not-render"), false);
   assert.ok(Boolean(host.querySelector('[role="alert"]')));
   await flush();
+});
+
+
+test("browser settings mount local and cloud controls, load devices and create a pairing code", async () => {
+  runtime();
+  let resolveDevices;
+  globalThis.__localSettings.devices = () => new Promise(resolve => { resolveDevices = resolve; });
+  const { host } = await render(CloudBrowserSettingsSection, { flows: null });
+  const local = host.querySelector("[data-my-browser-panel]");
+  assert.ok(local);
+  assert.ok(host.querySelector("[data-cloud-browser-login-memory]"));
+  assert.match(local.textContent, /正在读取浏览器连接/);
+  assert.equal(local.querySelector("details").open, false);
+  await act(async () => resolveDevices({ items: [], preferences: { preferred_device_id: null, allow_cross_browser_tasks: false } }));
+  assert.match(local.textContent, /尚未配对浏览器/);
+  await click(named(local, "创建配对码"));
+  assert.ok([...local.querySelectorAll("input")].some(input => input.value === "test-pair"));
+  await act(async () => { local.querySelector("summary").click(); });
+  assert.equal(local.querySelector("details").open, true);
+  assert.match(local.querySelector("details").textContent, /网页内容会发送给服务器和模型/);
 });

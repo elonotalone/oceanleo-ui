@@ -514,7 +514,7 @@ export function SettingsHub({
       {
         id: "cloud-browser",
         group: "settings",
-        label: tt("云端浏览器"),
+        label: tt("浏览器"),
         render: () => <Suspense fallback={<PaneLoading />}><CloudBrowserSettingsSection /></Suspense>,
       },
       {

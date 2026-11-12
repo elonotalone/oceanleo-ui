@@ -4,7 +4,8 @@ export const LOCAL_BROWSER_EN: Record<string, string> = {
   "我的浏览器": "My Browser",
   "网关地址": "Gateway address",
   "正在读取任务记录…": "Loading task activity…",
-  "可选的本机浏览器连接，独立于 MCP。每次任务都需要在 Chrome 或 Edge 扩展中本地授权；授权后，网页内容会发送给服务器和模型。": "An optional local browser connection, separate from MCP. Approve each task locally in the Chrome or Edge extension. After approval, page content is sent to the server and model.",
+  "授权后，网页内容会发送给服务器和模型。": "After approval, page content is sent to the server and model.",
+  "连接说明": "Connection setup",
   "下载浏览器扩展 ZIP": "Download extension ZIP",
   "创建配对码": "Create pairing code",
   "刷新状态": "Refresh status",
@@ -43,7 +44,13 @@ export const LOCAL_BROWSER_EN: Record<string, string> = {
   "连接本机 Chrome / Edge，每次任务由扩展本地授权": "Connect local Chrome / Edge; approve each task in the extension",
 };
 
+const BROWSER_LABEL: Record<Locale, string> = {
+  zh: "浏览器", "zh-TW": "瀏覽器", en: "Browser", ja: "ブラウザー", ko: "브라우저",
+  fr: "Navigateur", de: "Browser", es: "Navegador", "pt-BR": "Navegador", "pt-PT": "Navegador", "es-419": "Navegador", tr: "Tarayıcı", it: "Browser",
+  ar: "المتصفح", hi: "ब्राउज़र", vi: "Trình duyệt", th: "เบราว์เซอร์",
+};
+
 /** New copy uses English fallback for untranslated locales, as other shared feature dictionaries do. */
 export function localBrowserCopy(locale: Locale): Record<string, string> {
-  return locale === "zh" ? Object.fromEntries(Object.keys(LOCAL_BROWSER_EN).map(key => [key, key])) : LOCAL_BROWSER_EN;
+  return { ...(locale === "zh" ? Object.fromEntries(Object.keys(LOCAL_BROWSER_EN).map(key => [key, key])) : LOCAL_BROWSER_EN), "浏览器": BROWSER_LABEL[locale] };
 }

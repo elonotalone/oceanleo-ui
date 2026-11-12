@@ -60,17 +60,27 @@ test("ZIP download is actual authenticated bytes without credential query parame
 });
 
 test("settings and chat expose optional native connector with local authorization and cleanup", () => {
-  const settings = read("src/pages/settings/ConnectorsSettingsPane.tsx");
+  const settings = read("src/pages/settings/CloudBrowserSettingsSection.tsx");
   const chat = read("src/shell/PluginsPopover.tsx");
   const panel = read("src/pages/settings/MyBrowserPanel.tsx");
   assert.match(settings, /<MyBrowserPanel\s*\/>/);
   assert.match(chat, /data-local-browser-entry/);
-  assert.match(chat, /openSettingsModal\("connectors"\)/);
-  assert.match(panel, /独立于 MCP/);
+  assert.match(chat, /data-local-browser-entry[^\n]+openSettingsModal\("cloud-browser"\)/);
+  assert.doesNotMatch(read("src/pages/settings/ConnectorsSettingsPane.tsx"), /MyBrowserPanel/);
+  assert.match(panel, /连接本机 Chrome \/ Edge，每次任务由扩展本地授权/);
   assert.match(panel, /网页内容会发送给服务器和模型/);
   assert.match(panel, /等待扩展同步/);
   assert.match(panel, /controller\.abort\(\); clearTimeout\(timer\)/);
   assert.match(panel, /clearInterval\(clock\)/);
   assert.doesNotMatch(panel, /pairings\/redeem|device_token|chromewebstore|chrome\.google\.com\/webstore/);
   assert.match(panel, /aria-live="polite"/);
+});
+
+test("Browser tab label is translated in all supported locales", async () => {
+  const { LOCALES } = await import("../src/i18n/config.ts");
+  const { localBrowserCopy } = await import("../src/i18n/ui/messages/local-browser-copy.ts");
+  for (const locale of LOCALES) {
+    assert.ok(localBrowserCopy(locale)["浏览器"]?.trim(), locale);
+    if (locale !== "zh") assert.notEqual(localBrowserCopy(locale)["浏览器"], "浏览器", locale);
+  }
 });

@@ -4,7 +4,6 @@
 import { useUI } from "../../i18n/ui/useUI";
 import { NotifySettingsPanel } from "./notify/NotifySettingsPanel";
 import { openCallTest } from "./call/diagnostics/diagnostics-store";
-import { ServerNoticeSettings } from "./notices/ServerNoticeSettings";
 
 export function SettingsView({ onOpenBlocks }: { onOpenBlocks: () => void }) {
   const tt = useUI();
@@ -13,7 +12,6 @@ export function SettingsView({ onOpenBlocks }: { onOpenBlocks: () => void }) {
       <section>
         <NotifySettingsPanel />
       </section>
-      <ServerNoticeSettings />
       <section>
         <div className="mb-2 text-[13px] font-semibold tracking-tight">{tt("拉黑名单")}</div>
         <p className="mb-2 text-[12px] text-black/45 dark:text-white/45">

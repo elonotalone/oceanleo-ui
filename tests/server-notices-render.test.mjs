@@ -125,84 +125,15 @@ test("script title and computer/source labels remain literal text, including mis
   assert.match(view.host.textContent, /备份状态/);
 });
 
-test("message settings mount loading, group sources per computer and optimistically toggle receive/urgent both ways", async () => {
-  const load = deferred(); state.load = () => load.promise;
-  const view = await mount(settings.SettingsView, { onOpenBlocks() {} });
-  assert.ok(view.host.querySelector("[data-server-notice-settings]"));
-  assert.match(view.host.textContent, /正在加载/);
-  await act(async () => load.resolve({ ok: true, data: { items: [source(), source({ source: "磁盘" }), source({ computer_id: "pc2", machine_name: "笔记本" })] } }));
-  assert.equal(view.host.querySelectorAll("[data-server-notice-computer]").length, 2);
-  assert.equal(view.host.querySelector('[data-server-notice-computer="pc1"]').querySelectorAll("[data-server-notice-source]").length, 2);
-  for (const [index, patch, before] of [[0, { enabled: false }, "true"], [0, { enabled: true }, "false"], [1, { min_level: "urgent" }, "false"], [1, { min_level: "normal" }, "true"]]) {
-    const save = deferred(); let args;
-    state.update = (...values) => { args = values; return save.promise; };
-    const toggle = row(view.host).querySelectorAll('[role="switch"]')[index];
-    assert.equal(toggle.getAttribute("aria-checked"), before);
-    await view.click(toggle);
-    assert.equal(toggle.getAttribute("aria-checked"), before === "true" ? "false" : "true");
-    assert.equal(toggle.disabled, true);
-    assert.deepEqual(args, ["pc1", "备份 / nightly?", patch]);
-    await act(async () => save.resolve({ ok: true }));
-    assert.equal(toggle.disabled, false);
-  }
-});
-
-test("failed toggle restores the previous value while another source's successful edit remains", async () => {
-  state.load = async () => ({ ok: true, data: { items: [source(), source({ source: "磁盘" })] } });
-  const view = await mount(settings.SettingsView, { onOpenBlocks() {} });
-  const save = deferred();
-  state.update = (_computer, src) => src === "磁盘" ? Promise.resolve({ ok: true }) : save.promise;
-  await view.click(row(view.host).querySelector('[role="switch"]'));
-  await view.click(row(view.host, "pc1", "磁盘").querySelector('[role="switch"]'));
-  await act(async () => save.resolve({ ok: false }));
-  assert.equal(row(view.host).querySelector('[role="switch"]').getAttribute("aria-checked"), "true");
-  assert.equal(row(view.host, "pc1", "磁盘").querySelector('[role="switch"]').getAttribute("aria-checked"), "false");
-  assert.match(view.host.querySelector('[role="alert"]').textContent, /已恢复原设置/);
-});
-
-test("forget removes optimistically, restores on rejection, and succeeds on retry", async () => {
-  const view = await mount(settings.SettingsView, { onOpenBlocks() {} });
-  let save = deferred(); let args;
-  state.forget = (...values) => { args = values; return save.promise; };
-  const forget = () => [...row(view.host).querySelectorAll("button")].find(button => button.textContent === "忘记来源");
-  await view.click(forget());
-  assert.equal(row(view.host), undefined);
-  assert.deepEqual(args, ["pc1", "备份 / nightly?"]);
-  await act(async () => save.reject(new Error("offline")));
-  assert.ok(row(view.host));
-  assert.match(view.host.textContent, /已恢复原设置/);
-  save = deferred();
-  await view.click(forget());
-  await act(async () => save.resolve({ ok: true }));
-  assert.ok(view.host.querySelector("[data-server-notice-empty]"));
-});
-
-test("empty source list explains automatic sources, copies exact example and handles clipboard denial", async (t) => {
-  state.load = async () => ({ ok: true, data: { items: [] } });
-  const copied = [];
-  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: async text => copied.push(text) } });
-  const view = await mount(settings.SettingsView, { onOpenBlocks() {} });
-  assert.match(view.host.textContent, /来源会自动出现/);
-  const example = view.host.querySelector('[aria-label="消息命令示例"]');
-  assert.equal(example.value, 'oceanleo-node notify "备份完成"');
-  assert.equal(example.readOnly, true);
-  const copy = [...view.host.querySelectorAll("button")].find(button => button.textContent === "复制命令");
-  await view.click(copy);
-  assert.deepEqual(copied, [example.value]);
-  assert.match(view.host.textContent, /已复制/);
-  t.mock.method(navigator.clipboard, "writeText", async () => { throw new Error("denied"); });
-  await view.click(copy);
-  assert.match(view.host.textContent, /无法复制/);
-});
-
-test("settings load failure can retry without showing an empty-source claim", async () => {
-  state.load = async () => ({ ok: false });
-  const view = await mount(settings.SettingsView, { onOpenBlocks() {} });
-  assert.match(view.host.querySelector('[role="alert"]').textContent, /暂时无法加载/);
-  assert.equal(view.host.querySelector("[data-server-notice-empty]"), null);
-  state.load = async () => ({ ok: true, data: { items: [source()] } });
-  await view.click([...view.host.querySelectorAll("button")].find(button => button.textContent === "重试"));
-  assert.ok(row(view.host));
+test("message settings never expose server messages or load their sources", async () => {
+  state.load = () => { throw new Error("settings must not load server notice sources"); };
+  let opened = 0;
+  const view = await mount(settings.SettingsView, { onOpenBlocks() { opened++; } });
+  assert.equal(view.host.querySelector("[data-server-notice-settings]"), null);
+  assert.doesNotMatch(view.host.textContent, /服务器消息|消息命令示例|忘记来源/);
+  await view.click([...view.host.querySelectorAll("button")].find(button => button.textContent === "管理拉黑名单"));
+  assert.equal(opened, 1);
+  assert.ok(view.host.querySelector('[data-open-call-test="settings"]'));
 });
 
 test("server notice copy is registered in runtime loader and keeps count placeholders across locales", async () => {
@@ -220,7 +151,7 @@ test("server notice copy is registered in runtime loader and keeps count placeho
 
 test("new server-notice utility classes already exist in committed ui.css", () => {
   const css = execFileSync("git", ["show", "HEAD:src/theme/ui.css"], { encoding: "utf8", maxBuffer: 4 * 1024 * 1024 });
-  for (const name of ["ServerNoticeMeta.tsx", "ServerNoticeSettings.tsx"]) {
+  for (const name of ["ServerNoticeMeta.tsx"]) {
     const source = readFileSync(new URL(`../src/shell/messages/notices/${name}`, import.meta.url), "utf8");
     const classes = new Set([...source.matchAll(/className="([^"]+)"/g)].flatMap(match => match[1].split(/\s+/)));
     for (const literal of ["bg-neutral-900", "bg-neutral-300", "translate-x-[18px]", "translate-x-[3px]"]) classes.add(literal);

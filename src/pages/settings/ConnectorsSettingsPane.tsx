@@ -20,7 +20,6 @@ import {
   myConnectorStatus,
 } from "../plugins/connector-logic";
 import { useConnectorController } from "../plugins/ConnectorsSection";
-import { MyBrowserPanel } from "./MyBrowserPanel";
 import { ConnectorList, ConnectorRow } from "./connectors/ConnectorRow";
 
 export interface ConnectorsSettingsPaneProps {
@@ -138,7 +137,6 @@ export function ConnectorsSettingsPane({
       <ConfigEmptyState
         icon={<PlugIcon />}
         title={tt("还没有连接器")}
-        description={tt("连接应用与 API（MCP）后，Agent 在任务中可直接调用该服务的工具。")}
         action={addMenu("primary")}
       />
     </div>
@@ -179,12 +177,12 @@ export function ConnectorsSettingsPane({
   return (
     <section data-plugins-connectors data-settings-connectors-pane className="min-h-0 pb-10">
       <span data-mcp-oauth-return-origin={controller.returnOrigin} hidden />
-      <MyBrowserPanel />
       {heading ? (
         <h2 className="mb-4 text-[24px] font-semibold tracking-tight text-neutral-900 dark:text-neutral-100">
           {tt("连接器")}
         </h2>
       ) : null}
+      <p className="mb-4 text-[12px] text-neutral-500">{tt("连接应用与 API（MCP）后，Agent 在任务中可直接调用该服务的工具。")}</p>
       {controller.connections.length > 0 ? (
         <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
           <label className="min-w-0 flex-1">

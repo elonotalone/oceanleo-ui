@@ -9,7 +9,7 @@ export const SETTINGS_BUILTIN_TABS = [
   "device-settings",
   "personalization",
   "vault",
-  "cloud-browser",
+  "cloud-browser", // Browser settings: local and cloud; preserve existing deep links.
   "billing",
   "bay",
   "messages",
