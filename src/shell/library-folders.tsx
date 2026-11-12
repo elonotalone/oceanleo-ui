@@ -17,6 +17,7 @@
 // ============================================================================
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { LibraryImportDialog, LibraryUploadQueue, LibraryPurchasedUpdates, type LibraryImportMode } from "./library-import";
 import { useUI } from "../i18n/ui/useUI";
 import { accessToken } from "../lib/auth/client";
 import { Modal, SkeletonCard, timeAgo } from "../ui";
@@ -750,7 +751,8 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ text: string; status: number } | null>(null);
   const [query, setQuery] = useState("");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(() => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("folder") : null);
+  const [importMode, setImportMode] = useState<LibraryImportMode | null>(null);
   const [toggling, setToggling] = useState<Record<string, boolean>>({});
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<{ text: string; vars?: Record<string, string | number>; error?: boolean } | null>(null);
@@ -821,7 +823,7 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
     setNotice({ text: uploadNotice(result.data) });
   };
 
-  // A picked or dropped folder: zipped here, then the same import (the landed event puts it in the list).
+  // A picked or dropped folder: direct per-file sessions (the landed event puts it in the list).
   const uploadFolders = async (picked: readonly DroppedFolder[]) => {
     if (!picked.length) {
       setNotice({ text: "这个文件夹是空的", error: true });
@@ -831,7 +833,7 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
     try {
       for (const folder of picked) {
         const result = await uploadDroppedFolder(folder, {
-          onPhase: (phase) => setNotice({ text: phase === "zipping" ? "正在打包文件夹…" : "正在上传文件包…" }),
+          onPhase: (phase) => setNotice({ text: phase === "creating" ? "正在创建文件夹…" : "正在上传文件包…" }),
         });
         setNotice(result.ok ? { text: uploadNotice(result.folder) } : { text: result.error, error: true });
       }
@@ -843,6 +845,7 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
   const authRequired = error?.status === 401;
   const { dragging, dropProps } = useLibraryDrop({
     disabled: uploading || authRequired,
+    onError: (text) => setNotice({ text, error: true }),
     onDrop: ({ files, folders: dropped }: LibraryDrop) => {
       void (async () => {
         // Here a loose file can only be a .zip / .skill package; checkFolderUpload says so for anything else.
@@ -916,6 +919,13 @@ export function LibraryFoldersPage({ pageTitle, filterRow, className = "" }: Lib
           }
         />
         {filterRow}
+      <div className="flex flex-wrap gap-3 py-2 text-sm">
+        <button type="button" onClick={() => setImportMode("computer")}>{tt("从我的电脑添加")}</button>
+        <button type="button" onClick={() => setImportMode("github")}>{tt("从 GitHub 导入")}</button>
+      </div>
+      <LibraryUploadQueue onCompleted={load} />
+      <LibraryPurchasedUpdates items={[]} onUpdated={load} />
+      {importMode && <LibraryImportDialog mode={importMode} onClose={() => setImportMode(null)} onImported={() => void load()} />}
       </div>
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {notice ? (

@@ -102,6 +102,7 @@ export function StorageCapacityStrip({
   return (
     <section
       className="rounded-xl border border-stone-200/80 bg-white/70 px-3 py-2.5"
+      id="storage-capacity"
       data-storage-capacity
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">

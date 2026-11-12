@@ -39,6 +39,7 @@ export interface PendingLibraryUpload {
   loaded: number;
   state: UploadState;
   error?: string;
+  folderId?: string;
   /** False if the browser could not keep local bytes; the file can still be reselected. */
   persisted: boolean;
 }
@@ -73,7 +74,7 @@ export async function libraryRequest<T>(path: string, body?: unknown, signal?: A
   try {
     response = await fetch(`${GATEWAY_BASE}${path}`, {
       method: body === undefined ? "GET" : "POST",
-      headers: { Authorization: `Bearer ${token}`, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+      headers: { Authorization: `Bearer ${token}`, "Accept-Language": typeof document === "undefined" ? "zh" : document.documentElement.lang || "zh", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal,
     });
   } catch (error) {
@@ -133,7 +134,7 @@ export async function pendingLibraryUploads(): Promise<PendingLibraryUpload[]> {
     const saved = await readAdvancedRecovery(key).catch(() => null);
     if (saved?.payload) rows.set(key, saved.payload as SavedUpload);
   }
-  return [...rows.values()].filter((row) => row.state !== "complete").map(({ file: _file, options: _options, ...row }) => row);
+  return [...rows.values()].filter((row) => row.state !== "complete").map(({ file: _file, options, ...row }) => ({ ...row, folderId: options?.folderId }));
 }
 export function pauseLibraryUpload(key: string) { active.get(key)?.abort(); }
 export async function discardLibraryUpload(key: string) {
@@ -211,6 +212,8 @@ export async function uploadLibraryFile(file: File, options: LibraryUploadOption
   }
   const stored = await readAdvancedRecovery(key).catch(() => null);
   const prior = memory.get(key) || stored?.payload as SavedUpload | undefined;
+  // Cache reads yield; another caller may have claimed this file meanwhile.
+  if (active.has(key)) throw new LibraryUploadError("这个文件正在上传");
   const record: SavedUpload = prior || { key, uploadId: "", name: file.name, size: file.size, loaded: 0, state: "uploading", persisted: false, file, lastModified: file.lastModified, options: { folderId: options.folderId, path: options.path, projectId: options.projectId } };
   record.file = file; record.state = "uploading"; record.error = undefined;
   const controller = new AbortController();

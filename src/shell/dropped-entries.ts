@@ -1,6 +1,6 @@
 /**
  * Read what the user dropped or picked: loose files and whole folders (no dependencies,
- * so pages import it up front; zipping lives in the on-demand library-folder-upload.ts).
+ * so pages import it up front; transfers live in library-folder-upload.ts).
  *
  * Lifted out of `project-import/ProjectImportPanel.tsx` (UX wave 2026-11-07) so
  * the project import and Library read a dropped folder with the same walker.
@@ -40,14 +40,6 @@ export interface FileSystemEntryLike {
   };
 }
 
-/** Upper bound on files read from one drop (all roots together). */
-const MAX_ENTRIES = 60_000;
-
-/** Shared by every root of one drop, so the cap bounds the whole drop. */
-interface WalkBudget {
-  left: number;
-}
-
 function rootEntries(transfer: DataTransfer | null): FileSystemEntryLike[] {
   const roots: FileSystemEntryLike[] = [];
   for (const item of Array.from(transfer?.items || [])) {
@@ -58,8 +50,9 @@ function rootEntries(transfer: DataTransfer | null): FileSystemEntryLike[] {
 }
 
 function fileOf(entry: FileSystemEntryLike): Promise<File | null> {
-  return new Promise<File | null>((resolve) => {
-    entry.file?.(resolve, () => resolve(null));
+  return new Promise<File | null>((resolve, reject) => {
+    if (!entry.file) { reject(new Error(`无法读取文件：${entry.name}`)); return; }
+    entry.file(resolve, () => reject(new Error(`无法读取文件：${entry.name}`)));
   });
 }
 
@@ -67,37 +60,32 @@ async function walk(
   entry: FileSystemEntryLike,
   prefix: string,
   output: DroppedEntry[],
-  budget: WalkBudget,
 ): Promise<void> {
-  if (budget.left <= 0) return;
   const path = prefix ? `${prefix}/${entry.name}` : entry.name;
   if (entry.isFile) {
     const file = await fileOf(entry);
     if (file) {
       output.push({ path, file });
-      budget.left -= 1;
     }
     return;
   }
-  await walkChildren(entry, path, output, budget);
+  await walkChildren(entry, path, output);
 }
 
 async function walkChildren(
   directory: FileSystemEntryLike,
   path: string,
   output: DroppedEntry[],
-  budget: WalkBudget,
 ): Promise<void> {
   if (!directory.isDirectory || !directory.createReader) return;
   const reader = directory.createReader();
   // `readEntries` returns a directory in batches; an empty batch means done.
   for (;;) {
-    const batch = await new Promise<FileSystemEntryLike[]>((resolve) => {
-      reader.readEntries(resolve, () => resolve([]));
+    const batch = await new Promise<FileSystemEntryLike[]>((resolve, reject) => {
+      reader.readEntries(resolve, () => reject(new Error(`无法读取文件夹：${directory.name}`)));
     });
     if (!batch.length) break;
-    for (const child of batch) await walk(child, path, output, budget);
-    if (budget.left <= 0) return;
+    for (const child of batch) await walk(child, path, output);
   }
 }
 
@@ -111,8 +99,7 @@ export async function readDroppedDirectories(
   if (!transfer) return [];
   const roots = rootEntries(transfer);
   const output: DroppedEntry[] = [];
-  const budget: WalkBudget = { left: MAX_ENTRIES };
-  for (const root of roots) await walk(root, "", output, budget);
+  for (const root of roots) await walk(root, "", output);
   return output;
 }
 
@@ -124,20 +111,20 @@ export async function readDataTransfer(
   transfer: DataTransfer | null,
 ): Promise<{ files: File[]; folders: DroppedFolder[] }> {
   const roots = rootEntries(transfer);
+  // Plain file drops still work where the non-standard directory API is absent.
+  const fallbackFiles = Array.from(transfer?.files || []);
+  if (!roots.length) return { files: fallbackFiles, folders: [] };
   const files: File[] = [];
   const folders: DroppedFolder[] = [];
-  const budget: WalkBudget = { left: MAX_ENTRIES };
   for (const root of roots) {
     if (root.isFile) {
-      if (budget.left <= 0) continue;
       const file = await fileOf(root);
       if (file) {
         files.push(file);
-        budget.left -= 1;
       }
     } else if (root.isDirectory) {
       const entries: DroppedEntry[] = [];
-      await walkChildren(root, "", entries, budget);
+      await walkChildren(root, "", entries);
       folders.push({ name: root.name, entries });
     }
   }

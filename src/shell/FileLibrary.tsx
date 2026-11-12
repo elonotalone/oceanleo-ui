@@ -14,6 +14,9 @@
 // ============================================================================
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { canPickFolder, foldersFromDirectoryInput, readDataTransfer } from "./dropped-entries";
+import { uploadDroppedFolder } from "./library-folder-upload";
+import { LibraryUploadQueue, LibraryImportDialog, LibraryStorageLink, type LibraryImportMode } from "./library-import";
 import { useUI } from "../i18n/ui/useUI";
 import {
   listFiles,
@@ -200,6 +203,12 @@ function FilesPanel({
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
+  const [folderPickable, setFolderPickable] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  useEffect(() => setFolderPickable(canPickFolder()), []);
+  useEffect(() => { folderInputRef.current?.setAttribute("webkitdirectory", ""); }, [folderPickable]);
+  const [importMode, setImportMode] = useState<LibraryImportMode | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -222,20 +231,34 @@ function FilesPanel({
     void load();
   }, [load]);
 
-  async function onFiles(files: FileList | null) {
+  async function onFiles(files: FileList | readonly File[] | null) {
     if (!files || files.length === 0) return;
     setUploading(true);
-    setError(null);
+    setUploadError("");
     for (const f of Array.from(files)) {
-      const r = await uploadFile(f, { siteId });
+      const r = await uploadFile(f, { siteId, privateUpload: true });
       if (!r.ok) {
-        setError(humanLibraryUploadError(r.error, r.status) || tt("上传失败：{name}", { name: f.name }));
+        setUploadError(humanLibraryUploadError(r.error, r.status) || tt("上传失败：{name}", { name: f.name }));
         break;
       }
     }
     setUploading(false);
     if (inputRef.current) inputRef.current.value = "";
     await load();
+  }
+
+  async function onFolders(folders: ReturnType<typeof foldersFromDirectoryInput>) {
+    if (!folders.length) return;
+    setUploading(true);
+    setUploadError("");
+    try {
+      for (const folder of folders) {
+        const result = await uploadDroppedFolder(folder);
+        if (!result.ok) setUploadError(result.error);
+      }
+    } catch (reason) {
+      setUploadError(reason instanceof Error ? reason.message : tt("上传失败，请重试"));
+    } finally { setUploading(false); }
   }
 
   async function onDelete(id: string) {
@@ -253,7 +276,12 @@ function FilesPanel({
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
-          void onFiles(e.dataTransfer.files);
+          const dropped = readDataTransfer(e.dataTransfer);
+          const fallbackFiles = Array.from(e.dataTransfer.files);
+          void dropped.then(async ({ files, folders }) => {
+            await onFiles(files.length ? files : folders.length ? [] : fallbackFiles);
+            await onFolders(folders);
+          }).catch((reason: unknown) => setUploadError(reason instanceof Error ? reason.message : tt("上传失败，请重试")));
         }}
         className="flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-stone-300 bg-stone-50/60 px-6 py-8 text-center"
       >
@@ -261,7 +289,7 @@ function FilesPanel({
         <p className="text-sm text-stone-600">
           {tt("点击或拖拽文件到此处上传（归「当前站」，可被本站 AI 使用）")}
         </p>
-        <p className="text-xs text-stone-400">{tt("单文件 ≤ 20MB · 图片 / 文档 / 音视频均可")}</p>
+        <p className="text-xs text-stone-400">{tt("大小由存储空间决定 · 支持断点续传")}</p>
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
@@ -280,6 +308,19 @@ function FilesPanel({
         />
       </div>
 
+      {uploadError && <div role="alert">{uploadError} <LibraryStorageLink /></div>}
+      <div className="flex gap-3 text-sm">
+        {folderPickable && <><button type="button" disabled={uploading} onClick={() => folderInputRef.current?.click()}>{tt("上传文件夹")}</button>
+        <input ref={folderInputRef} type="file" className="sr-only" onChange={(event) => {
+          const folders = foldersFromDirectoryInput(event.currentTarget.files || []);
+          event.currentTarget.value = "";
+          void onFolders(folders);
+        }} /></>}
+        <button type="button" onClick={() => setImportMode("computer")}>{tt("从我的电脑添加")}</button>
+        <button type="button" onClick={() => setImportMode("github")}>{tt("从 GitHub 导入")}</button>
+      </div>
+      <LibraryUploadQueue onCompleted={load} />
+      {importMode && <LibraryImportDialog mode={importMode} onClose={() => setImportMode(null)} onImported={() => void load()} />}
       {loading && items.length === 0 ? (
         <p className="py-8 text-center text-sm text-stone-400">{tt("加载中…")}</p>
       ) : items.length === 0 ? (

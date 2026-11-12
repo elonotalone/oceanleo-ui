@@ -19,9 +19,11 @@ export function isFileDrag(event: { dataTransfer: DataTransfer | null }): boolea
 export function useLibraryDrop({
   disabled,
   onDrop,
+  onError,
 }: {
   disabled: boolean;
   onDrop: (drop: LibraryDrop) => void;
+  onError?: (error: string) => void;
 }) {
   const [dragging, setDragging] = useState(false);
   const depth = useRef(0);
@@ -52,7 +54,7 @@ export function useLibraryDrop({
       // Entries must be taken from the DataTransfer inside this event; readDataTransfer does that first.
       void readDataTransfer(event.dataTransfer).then((drop) => {
         if (drop.files.length || drop.folders.length) onDrop(drop);
-      });
+      }).catch((error: unknown) => onError?.(error instanceof Error ? error.message : "无法读取拖入的文件夹，请重试"));
     },
   };
   return { dragging, dropProps };

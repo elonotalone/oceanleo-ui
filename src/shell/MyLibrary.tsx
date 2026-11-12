@@ -10,6 +10,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { StorageCapacityStrip } from "./StorageCapacityStrip";
+import { LibraryImportDialog, LibraryUploadQueue, LibraryPurchasedUpdates, type LibraryImportMode } from "./library-import";
 import { useUI } from "../i18n/ui/useUI";
 import {
   AUTH_STATE_EVENT,
@@ -812,6 +814,7 @@ export function MyLibrary({
   const [uploadProgress, setUploadProgress] = useState("");
   const [uploadError, setUploadError] = useState("");
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [importMode, setImportMode] = useState<LibraryImportMode | null>(null);
   const [retryableUploadFiles, setRetryableUploadFiles] = useState<File[]>([]);
   const [standaloneEditorItem, setStandaloneEditorItem] =
     useState<LibraryItem | null>(null);
@@ -1937,6 +1940,7 @@ export function MyLibrary({
             title: file.name,
             idempotencyKey: uploadIdempotencyKey,
             privateUpload: true,
+            onProgress: (loaded, total) => setUploadProgress(`${index + 1}/${queue.length} · ${file.name} · ${total ? Math.round(loaded / total * 100) : 0}%`),
           });
           if (!result.ok || !result.data?.file) {
             if (result.retryable) retryableFailures.push(file);
@@ -1946,6 +1950,10 @@ export function MyLibrary({
             continue;
           }
           const uploaded = result.data.file;
+          if (uploaded.meta?.library_folder_id) {
+            // Formats without a dedicated kind arrive as real Library folders.
+            continue;
+          }
           const hasCanonicalContract =
             uploaded.artifact !== undefined ||
             Boolean(uploaded.artifact_id) ||
@@ -2039,7 +2047,7 @@ export function MyLibrary({
     void handleUpload(retryableUploadFiles, true);
   }, [handleUpload, retryableUploadFiles]);
 
-  // A dropped folder is zipped here and becomes a 文件包 (the folder module loads only when one is dropped).
+  // A dropped folder is uploaded file by file and becomes a 文件包 (the folder module loads only when one is dropped).
   const uploadFolders = useCallback(
     async (folders: readonly DroppedFolder[]) => {
       changeSection("upload");
@@ -2051,7 +2059,7 @@ export function MyLibrary({
           const result = await uploadDroppedFolder(folder, {
             onPhase: (phase) =>
               setUploadProgress(
-                `${tt(phase === "zipping" ? "正在打包文件夹…" : "正在上传文件包…")} · ${folder.name}`,
+                `${tt(phase === "creating" ? "正在创建文件夹…" : "正在上传文件包…")} · ${folder.name}`,
               ),
           });
           if (!result.ok) setUploadError(tt(result.error));
@@ -2080,6 +2088,7 @@ export function MyLibrary({
   }, [folderPickable]);
   const { dragging, dropProps } = useLibraryDrop({
     disabled: uploadBlocked,
+    onError: setUploadError,
     onDrop: ({ files, folders }: LibraryDrop) => {
       void (async () => {
         if (files.length) await handleUpload(files);
@@ -2212,6 +2221,8 @@ export function MyLibrary({
             folderInputRef.current?.click();
           }}
         />}
+        <FloatingMenuItem label={tt("从我的电脑添加")} disabled={uploadBlocked} onSelect={() => { setUploadMenuOpen(false); setImportMode("computer"); }} />
+        <FloatingMenuItem label={tt("从 GitHub 导入")} disabled={uploadBlocked} onSelect={() => { setUploadMenuOpen(false); setImportMode("github"); }} />
         <FloatingMenuItem label={tt("添加链接")} disabled={uploadBlocked} onSelect={() => { setUploadMenuOpen(false); setLinkDialogOpen(true); }} />
       </FloatingMenu>
     </div>
@@ -2318,6 +2329,9 @@ export function MyLibrary({
               />
             </CollectionFilterRow>
           ) : null}
+          {uploadError && <StorageCapacityStrip accent={accent} />}
+          <LibraryUploadQueue onCompleted={load} />
+          <LibraryPurchasedUpdates items={shownSectionItems} onUpdated={load} />
           {typeof supplementalSection === "function"
             ? supplementalSection({ query: libraryQuery, favoritesOnly, section: activeSection })
             : supplementalSection}
@@ -2427,6 +2441,7 @@ export function MyLibrary({
             className="pointer-events-auto absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 rounded-lg bg-[var(--fg,#1c1917)] px-3 py-2 text-[11px] text-[var(--card,#fff)] shadow-lg"
           >
             {uploadError || uploadProgress}
+            {uploadError && <a href="/library#storage-capacity" className="shrink-0 underline">{tt("查看存储套餐")}</a>}
             {retryableUploadFiles.length > 0 ? (
               <button
                 type="button"
@@ -2442,6 +2457,7 @@ export function MyLibrary({
         )}
       </div>
     </LibraryScope>
+    {importMode && <LibraryImportDialog mode={importMode} onClose={() => setImportMode(null)} onImported={() => { changeSection("upload"); void load(); }} />}
     {linkDialogOpen && <LinkWorkDialog mode="create" onClose={() => setLinkDialogOpen(false)} />}
     <LibraryDropOverlay show={dragging} />
     </div>
