@@ -29,13 +29,13 @@ const sources = {
 };
 const compiled = Object.fromEntries(Object.entries(sources).map(([key, source]) => [key, ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText]));
 function load(key, dependencies) {
-  const module = { exports: {} };
+  const loadedModule = { exports: {} };
   new Function("require", "module", "exports", compiled[key])((name) => {
     if (name in dependencies) return dependencies[name];
     if (name === "react" || name === "react/jsx-runtime") return require(name);
     throw new Error(`unexpected test import: ${name}`);
-  }, module, module.exports);
-  return module.exports;
+  }, loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 
 function item(overrides = {}) {
@@ -53,6 +53,7 @@ function harness() {
   const state = { uid: "owner-1", locale: "en", vault: { enabled: true, limits: { max_secrets: 200, max_value_bytes: 12000 }, secrets: [item()], pending: [] }, references: [], writes: [], sealed: [], failWrite: null, sealKey: async () => ({ kid: "test" }), loadReferences: null, managedNavigation: [] };
   const api = load("api", { "./cloud-computer-api": { cloudComputerRequest: async () => { throw new Error("not used"); } } });
   Object.assign(api, {
+    checkVaultWriteAccess: async () => { if (state.needsAuth) throw new api.VaultApiError("reauth_required", 403); return { ready: true }; },
     getVault: async () => structuredClone(state.vault),
     getVaultReferences: async () => ({ references: structuredClone(state.references) }),
     getVaultProjectNames: async () => { state.nameReads = (state.nameReads || 0) + 1; return structuredClone(state.projectNames || {}); },
@@ -71,7 +72,7 @@ function harness() {
       state.vault.secrets = state.vault.secrets.map((secret) => secret.id === id ? { ...secret, version: secret.version + 1 } : secret);
       return { secret: state.vault.secrets.find((secret) => secret.id === id) };
     },
-    deleteVaultSecret: async (id) => { state.writes.push({ op: "delete", id }); state.vault.secrets = state.vault.secrets.filter((secret) => secret.id !== id); return { deleted: true, removing: 0 }; },
+    deleteVaultSecret: async (id) => { state.writes.push({ op: "delete", id }); if (state.failWrite) throw state.failWrite; state.vault.secrets = state.vault.secrets.filter((secret) => secret.id !== id); return { deleted: true, removing: 0 }; },
     createProjectVaultReference: async (projectId, input) => {
       state.writes.push({ op: "bind", projectId, input });
       if (state.failWrite) throw state.failWrite;
@@ -97,6 +98,9 @@ function harness() {
     "../../lib/vault-api": api,
   };
   const settings = load("settings", { ...common,
+    "../AuthDialog": { AuthPanel: ({ onSuccess, onClose }) => React.createElement("div", null,
+      React.createElement("button", { onClick: () => { state.needsAuth = false; state.failWrite = null; window.dispatchEvent(new window.CustomEvent("oceanleo:auth-state", { detail: { userId: state.uid } })); onSuccess(); } }, "Confirm identity"),
+      React.createElement("button", { onClick: onClose }, "Cancel sign-in")) },
     "./settings-tabs": { openSettingsModal: (tab) => state.managedNavigation.push(tab) },
     "../../i18n/useT.client": { useLocale: () => state.locale },
     "../../lib/vault-seal": { sealVaultValue: async (_key, context, value) => { state.sealed.push({ context, value }); return { v: 1, ct: "sealed-test-envelope" }; } },
@@ -356,8 +360,7 @@ test("database, browser and connector usage is labelled with its purpose and tar
       assert.match(view.host.textContent, /https:\/\/login\.example\.test/);
       assert.match(view.host.textContent, /Purpose: login/);
     }
-    assert.match(main.host.textContent, /Account connector credential/);
-    assert.match(main.host.textContent, /supabase/);
+    assert.doesNotMatch(main.host.textContent, /Account connector credential|supabase/);
     const browserRow = site.host.querySelector('[data-vault-reference="browser-ref"]');
     await click(button(browserRow, "Remove"));
     await click(button(browserRow, "Remove reference"));
@@ -366,61 +369,16 @@ test("database, browser and connector usage is labelled with its purpose and tar
   } finally { await main.close(); await site.close(); }
 });
 
-test("managed MCP authorizations are separate metadata with working Connectors navigation and no project-picker entry", async () => {
-  const h = harness();
-  const managedId = randomUUID();
-  const marker = randomUUID();
-  h.state.vault.managed_credentials = { available: true, items: [{ id: managedId, label: "My MCP authorization", auth_kind: "oauth", enabled: true, expires_at: "2000-01-01T00:00:00Z", endpoint: `https://example.invalid/private/${marker}`, fingerprint: marker, access_token: marker }] };
-  const main = await mount(h.VaultSettingsSection);
-  const site = await mount(h.SiteVaultPanel, { projectId: "project-1" });
-  try {
-    const summary = main.host.querySelector("[data-vault-managed-credentials]");
-    assert.equal(Boolean(summary), true);
-    assert.match(summary.textContent, /My MCP authorization/);
-    assert.match(summary.textContent, /OAuth sign-in · Enabled/);
-    assert.match(summary.textContent, /may refresh automatically/);
-    assert.equal(summary.querySelector("time").getAttribute("datetime"), "2000-01-01T00:00:00Z");
-    assert.equal(summary.textContent.includes(marker), false);
-    assert.equal(summary.querySelector("[data-vault-item]"), null);
-    assert.equal(summary.querySelector("button"), null, "managed entries must have no vault rotate/delete action");
-    assert.equal(main.host.querySelectorAll("[data-vault-item]").length, 1);
-    assert.deepEqual([...site.host.querySelectorAll("select[id$='-secret'] option")].map((option) => option.value), ["", "secret-1"]);
-    assert.equal(site.host.textContent.includes("My MCP authorization"), false);
-    const action = summary.querySelector("a");
-    assert.equal(action.getAttribute("href"), "/settings/connectors");
-    await act(async () => { action.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true })); }); await flush();
-    assert.deepEqual(h.state.managedNavigation, ["connectors"]);
-    assert.equal(h.state.writes.length, 0);
-  } finally { await main.close(); await site.close(); }
-});
-
-test("managed summary failures and older responses preserve ordinary secret management and distinguish empty", async () => {
-  for (const summary of [undefined, { available: false, items: [] }, { available: true, items: [] }, { available: true, items: [null] }, { available: true, items: "bad transport shape" }]) {
-    const h = harness();
-    h.state.vault.managed_credentials = summary;
+test("Vault excludes connector summaries, including disabled and malformed responses", async () => {
+  for (const summary of [undefined, { available: false, items: [] }, { available: true, items: [null] }, { available: true, items: [{ id: "mcp", label: "My MCP authorization", auth_kind: "oauth", enabled: true }] }]) {
+    const h = harness(); h.state.vault.managed_credentials = summary;
     const view = await mount(h.VaultSettingsSection);
     try {
-      const section = view.host.querySelector("[data-vault-managed-credentials]");
-      if (summary?.available && Array.isArray(summary.items) && !summary.items.length) assert.match(section.textContent, /No personal MCP authorizations/);
-      else assert.match(section.textContent, /temporarily unavailable/);
-      assert.equal(button(view.host, "Rotate").disabled, false);
-      assert.equal(button(view.host, "Delete").disabled, false);
+      assert.equal(view.host.querySelector("[data-vault-managed-credentials]"), null);
+      assert.doesNotMatch(view.host.textContent, /MCP|Connected services|card numbers/);
       assert.equal(button(view.host, "Add item").disabled, false);
     } finally { await view.close(); }
   }
-});
-
-test("managed personal connections remain visible when the main secret service is disabled", async () => {
-  const h = harness();
-  h.state.vault.enabled = false;
-  h.state.vault.managed_credentials = { available: true, items: [{ id: randomUUID(), label: "Saved MCP token", auth_kind: "header", enabled: false }] };
-  const view = await mount(h.VaultSettingsSection);
-  try {
-    const section = view.host.querySelector("[data-vault-managed-credentials]");
-    assert.match(section.textContent, /Saved MCP token/);
-    assert.match(section.textContent, /Token \/ API key · Disabled/);
-    assert.equal(view.host.querySelector("[data-vault-item]"), null);
-  } finally { await view.close(); }
 });
 
 // UC-NONE
@@ -435,7 +393,8 @@ test("project connector grants show service slots and environments, and provisio
   const site = await mount(h.SiteVaultPanel, { projectId: "project-1" });
   try {
     for (const [slot, label, environment] of [["database", "Database", "Production"], ["auth", "User sign-in", "Preview"], ["storage", "File storage", "Production"]]) {
-      for (const node of [main.host.querySelector(`[data-vault-used-by="grant-${slot}"]`), site.host.querySelector(`[data-vault-reference="grant-${slot}"]`)]) {
+      assert.equal(main.host.querySelector(`[data-vault-used-by="grant-${slot}"]`), null);
+      for (const node of [site.host.querySelector(`[data-vault-reference="grant-${slot}"]`)]) {
         assert.match(node.textContent, /Website service grant/);
         assert.equal(node.textContent.includes(label), true);
         assert.equal(node.textContent.includes(environment), true);
@@ -635,4 +594,66 @@ test("secret surfaces contain no reveal/persistence/telemetry or raw-card form p
   assert.match(sources.settings, /type="password"/);
   assert.doesNotMatch(sources.site, /type="password"|sealVaultValue|createVaultSecret/);
   assert.doesNotMatch(sources.settings, /name="(?:card_number|cvv|cvc)"/);
+});
+
+test("expired session prompts in place before entry and resumes Add for the same owner", async () => {
+  const h = harness(); h.state.needsAuth = true;
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, "Add item"));
+    assert.ok(view.host.querySelector('[data-vault-reauth]'));
+    assert.equal(view.host.querySelector('input[type="password"]'), null);
+    await click(button(view.host, "Confirm identity"));
+    assert.equal(view.host.querySelector('[data-vault-reauth]'), null);
+    assert.ok(view.host.querySelector('input[type="password"]'));
+    assert.equal(h.state.writes.length, 0);
+  } finally { await view.close(); }
+});
+
+for (const operation of ["create", "rotate", "delete"]) test(`${operation} resumes once after in-page authentication without restoring secret text`, async () => {
+  const h = harness();
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, operation === "create" ? "Add item" : operation === "rotate" ? "Rotate" : "Delete"));
+    h.state.failWrite = new h.api.VaultApiError("reauth_required", 403);
+    if (operation === "delete") await click(button(view.host, "Delete item"));
+    else {
+      const form = view.host.querySelector("form");
+      if (operation === "create") await change(form.querySelector("input[id$='-name']"), "New service");
+      await change(form.querySelector("input[type='password']"), "secret-canary-only");
+      await submit(form);
+      assert.equal(form.querySelector("input[type='password']").value, "");
+    }
+    assert.ok(view.host.querySelector('[data-vault-reauth]'));
+    await click(button(view.host, "Confirm identity"));
+    assert.equal(h.state.writes.length, 2);
+    assert.equal(view.host.querySelector('[data-vault-reauth]'), null);
+    assert.equal(view.host.querySelector("form"), null);
+    assert.doesNotMatch(JSON.stringify(h.state.writes), /secret-canary-only/);
+  } finally { await view.close(); }
+});
+
+test("canceling in-page sign-in does not retry the pending write", async () => {
+  const h = harness(); h.state.needsAuth = true;
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, "Add item"));
+    await click(button(view.host, "Cancel sign-in"));
+    assert.equal(h.state.writes.length, 0);
+    assert.equal(view.host.querySelector("form"), null);
+    assert.equal(button(view.host, "Add item").disabled, false);
+  } finally { await view.close(); }
+});
+
+test("switching accounts during confirmation cancels the previous owner's pending action", async () => {
+  const h = harness(); h.state.needsAuth = true;
+  const view = await mount(h.VaultSettingsSection);
+  try {
+    await click(button(view.host, "Add item"));
+    h.state.uid = "owner-2";
+    await click(button(view.host, "Confirm identity"));
+    assert.equal(h.state.writes.length, 0);
+    assert.equal(view.host.querySelector("form"), null);
+    assert.equal(view.host.querySelector('[data-vault-reauth]'), null);
+  } finally { await view.close(); }
 });

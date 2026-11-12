@@ -27,13 +27,13 @@ const sources = {
 };
 const compiled = Object.fromEntries(Object.entries(sources).map(([key, source]) => [key, ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText]));
 function load(key, dependencies) {
-  const module = { exports: {} };
+  const loadedModule = { exports: {} };
   new Function("require", "module", "exports", compiled[key])((name) => {
     if (name in dependencies) return dependencies[name];
     if (name === "react" || name === "react/jsx-runtime") return require(name);
     throw new Error(`unexpected test import: ${name}`);
-  }, module, module.exports);
-  return module.exports;
+  }, loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 const firstId = "11111111-1111-4111-8111-111111111111";
 const secondId = "22222222-2222-4222-8222-222222222222";
@@ -92,6 +92,7 @@ function harness() {
   } } });
   const settings = load("settings", {
     "../../lib/vault-api": api,
+    "../AuthDialog": { AuthPanel: ({ onClose }) => React.createElement("button", { onClick: onClose }, "Cancel sign-in") },
     "../../lib/auth/client": { AUTH_STATE_EVENT: "oceanleo:auth-state", getUserId: async () => state.uid },
     "../../i18n/useT.client": { useLocale: () => state.locale },
     "../../lib/vault-seal": { sealVaultValue: async () => { throw new Error("browser grants must not seal or read values"); } },
@@ -295,7 +296,10 @@ test("network, recent-auth, quota and fence refusals release controls and can be
     try {
       const form = await open(view);
       await change(form.querySelector("input"), "https://example.test"); await submit(form);
-      assert.match(view.host.textContent, expected);
+      if (raw.code === "reauth_required") {
+        assert.ok(view.host.querySelector("[data-vault-reauth]"));
+        await click(button(view.host, "Cancel sign-in"));
+      } else assert.match(view.host.textContent, expected);
       assert.equal(form.querySelector("input").matches(":disabled"), false);
       assert.equal(button(form, "Authorize login").disabled, false);
       assert.equal(view.host.innerHTML.includes(h.state.privateValue), false);

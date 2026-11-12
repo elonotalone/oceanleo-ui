@@ -4,10 +4,11 @@ import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 
 import { useLocale } from "../../i18n/useT.client";
 import { AUTH_STATE_EVENT, getUserId } from "../../lib/auth/client";
 import {
-  createVaultBrowserBinding, createVaultSecret, deleteVaultBrowserBinding, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, recoverVault,
+  createVaultBrowserBinding, createVaultSecret, deleteVaultBrowserBinding, deleteVaultSecret, getVault, getVaultFenceStatus, getVaultProjectNames, getVaultReferences, getVaultSealKey, checkVaultWriteAccess, recoverVault,
   normalizeVaultBrowserOrigin, safeVaultFingerprint, updateVaultSecret, vaultFenceState, vaultMutationWasCommitted, VaultApiError,
-  type VaultFenceRow, type VaultKind, type VaultManagedCredentials, type VaultRecovery, type VaultReference, type VaultSecret, type VaultStatus,
+  type VaultFenceRow, type VaultKind, type VaultRecovery, type VaultReference, type VaultSecret, type VaultStatus,
 } from "../../lib/vault-api";
+import { AuthPanel } from "../AuthDialog";
 import { sealVaultValue } from "../../lib/vault-seal";
 
 export type VaultPrefill = { name?: string; kind?: string; target?: string };
@@ -149,13 +150,17 @@ export function VaultSettingsSection({ accent, prefill }: { accent?: string; pre
   useEffect(() => {
     let active = true;
     let generation = 0;
-    const readIdentity = async () => {
+    let currentUid: string | null = null;
+    const readIdentity = async (event?: Event) => {
+      // A fresh session for this owner must not discard an encrypted pending save.
+      const detail = (event as CustomEvent<{ userId?: string | null }> | undefined)?.detail;
+      if (detail?.userId && detail.userId === currentUid) return;
       const current = ++generation;
       // Unmount any secret editor while the active account is being resolved.
       setIdentity({ loading: true, uid: null });
       let uid: string | null = null;
       try { uid = await getUserId(); } catch { /* Show the signed-out state. */ }
-      if (active && current === generation) setIdentity({ loading: false, uid });
+      if (active && current === generation) { currentUid = uid; setIdentity({ loading: false, uid }); }
     };
     void readIdentity();
     window.addEventListener(AUTH_STATE_EVENT, readIdentity);
@@ -177,6 +182,8 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [reauth, setReauth] = useState(false);
+  const pendingAuth = useRef<{ resolve: () => void; reject: (cause: unknown) => void } | null>(null);
   const [committed, setCommitted] = useState(false);
   const [editor, setEditor] = useState<{ secret?: VaultSecret; prefill?: VaultPrefill } | null>(null);
   const [deleting, setDeleting] = useState<VaultSecret | null>(null);
@@ -195,7 +202,7 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
     if (next.enabled) {
       const usage = await getVaultReferences(signal);
       if (signal.aborted) return;
-      setReferences(usage.references);
+      setReferences(usage.references.filter((ref) => ref.scope !== "connector" && ref.scope !== "project_connector"));
       if (usage.references.some((ref) => ref.project_id)) {
         const names = await getVaultProjectNames(signal);
         if (!signal.aborted) setProjectNames(names);
@@ -212,7 +219,7 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
     void refresh(controller.signal).catch(async (cause: unknown) => {
       if (controller.signal.aborted) return;
       if (vaultFenceState(cause)) await noteFence(cause, controller.signal);
-      else setError(vaultErrorText(cause, latestText.current));
+      else if (!(cause instanceof DOMException && cause.name === "AbortError")) setError(vaultErrorText(cause, latestText.current));
     }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { active.current = false; controller.abort(); };
   }, [refresh, checkFence, noteFence]);
@@ -230,6 +237,47 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
     setError("");
   }, [loading, prefill, status]);
 
+  // Only sealed envelopes or metadata remain in a pending operation.
+  async function withFreshAuth(work: () => Promise<unknown>, signal: AbortSignal) {
+    try { return await work(); }
+    catch (cause) {
+      if (!(cause instanceof VaultApiError) || cause.code !== "reauth_required" || signal.aborted) throw cause;
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { pendingAuth.current = null; reject(new DOMException("Aborted", "AbortError")); };
+        signal.addEventListener("abort", abort, { once: true });
+        pendingAuth.current = {
+          resolve: () => { signal.removeEventListener("abort", abort); resolve(); },
+          reject: (error) => { signal.removeEventListener("abort", abort); reject(error); },
+        };
+        setReauth(true);
+      });
+      if (signal.aborted || await getUserId() !== uid) throw new VaultApiError("signed_out", 401);
+      return work(); // Retry exactly once; never replay an ambiguous/committed mutation.
+    }
+  }
+
+  async function authenticated() {
+    if (await getUserId() !== uid) return;
+    const pending = pendingAuth.current;
+    pendingAuth.current = null;
+    setReauth(false);
+    pending?.resolve();
+  }
+
+  function cancelAuthentication() {
+    const pending = pendingAuth.current;
+    pendingAuth.current = null;
+    setReauth(false);
+    pending?.reject(new DOMException("Aborted", "AbortError"));
+  }
+
+  function openEditor(next: { secret?: VaultSecret; prefill?: VaultPrefill }) {
+    void act(async (signal) => {
+      await checkVaultWriteAccess(signal);
+      if (!signal.aborted) { setEditor(next); setDeleting(null); setRemovingBrowser(null); }
+    });
+  }
+
   async function recoverCommitted(signal: AbortSignal) {
     if (signal.aborted) return;
     setCommitted(true); setNotice(""); setError("");
@@ -244,13 +292,13 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
     operation.current = true;
     setBusy(true); setError(""); setNotice("");
     let saved = false;
-    try { await work(signal); saved = true; await refresh(signal, preserveReferences); }
+    try { await withFreshAuth(() => work(signal), signal); saved = true; await refresh(signal, preserveReferences); }
     catch (cause) {
       if (!signal.aborted) {
         if (saved && preserveReferences) setError(latestText.current("变更已保存，但暂时无法更新使用位置。请刷新查看。", "Your change was saved, but usage locations could not be refreshed. Refresh to check."));
         else if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
         else if (vaultFenceState(cause)) await noteFence(cause, signal);
-        else setError(vaultErrorText(cause, latestText.current));
+        else if (!(cause instanceof DOMException && cause.name === "AbortError")) setError(vaultErrorText(cause, latestText.current));
       }
     }
     finally { if (lifetime.current?.signal === signal) { operation.current = false; if (!signal.aborted) setBusy(false); } }
@@ -270,8 +318,10 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
   }
 
   return <section data-settings-pane="vault" aria-label={text("保险箱", "Vault")} aria-busy={loading || busy} className="space-y-4 text-[13px] text-neutral-700 dark:text-neutral-300">
-    <p className="leading-relaxed text-neutral-500">{text("把密钥保存在主保险箱，再给网站、应用或浏览器授权引用。更新后引用使用新版本，agent 只能看到名称和用途。", "Save secrets in your main vault, then grant references to websites, apps or browsers. References follow rotations; agents receive only names and purposes.")}</p>
-    <p className="text-[12px] text-neutral-500">{text("银行卡仅使用支付服务提供的令牌引用；不要填写卡号或安全码。", "For cards, use a payment provider token reference. Do not enter card numbers or security codes.")}</p>
+    <p className="text-[12px] text-neutral-500">{text("安全保存和管理密钥。", "Securely store and manage secrets.")}</p>
+    {reauth && <div data-vault-reauth="" className="rounded-2xl border border-neutral-200 p-5 dark:border-neutral-700">
+      <AuthPanel title={text("确认身份后继续", "Sign in to continue")} closeOnSuccess={false} onSuccess={() => void authenticated()} onClose={cancelAuthentication} />
+    </div>}
     {loading && <p role="status">{text("正在读取保险箱…", "Loading vault…")}</p>}
     {error && <div role="alert" className="space-y-2 rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-950/30">
       <p>{error}</p><button type="button" disabled={busy} className={QUIET} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button>
@@ -289,11 +339,11 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
     {status?.enabled && <>
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-[14px] font-medium text-neutral-900 dark:text-neutral-100">{text("保险箱项目", "Vault items")} <span className="font-normal text-neutral-500">{status.secrets.length}/{status.limits.max_secrets}</span></h3>
-        <button type="button" className={QUIET} disabled={busy || loading || !!editor || !!browserGrant || status.secrets.length >= status.limits.max_secrets} onClick={() => { setEditor({}); setDeleting(null); setRemovingBrowser(null); setError(""); }}>{text("添加", "Add item")}</button>
+        <button type="button" className={QUIET} disabled={busy || loading || !!editor || !!browserGrant || status.secrets.length >= status.limits.max_secrets} onClick={() => openEditor({})}>{text("添加", "Add item")}</button>
       </div>
       {status.secrets.length >= status.limits.max_secrets && <p role="status" className="text-neutral-500">{text("保险箱已达到容量上限。", "Your vault has reached its item limit.")}</p>}
       {editor && <SecretEditor key={editor.secret?.id || "new"} uid={uid} secret={editor.secret} prefill={editor.prefill} accent={accent} maxValueBytes={status.limits.max_value_bytes}
-        onClose={() => setEditor(null)} onSaving={setBusy} onSaved={async () => {
+        withFreshAuth={withFreshAuth} onClose={() => setEditor(null)} onSaving={setBusy} onSaved={async () => {
           const signal = lifetime.current?.signal;
           setEditor(null);
           if (signal && !signal.aborted) await refresh(signal);
@@ -302,9 +352,9 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
           if (!active.current || !signal || signal.aborted) return;
           if (vaultMutationWasCommitted(cause)) await recoverCommitted(signal);
           else if (vaultFenceState(cause)) await noteFence(cause, signal);
-          else setError(vaultErrorText(cause, latestText.current));
+          else if (!(cause instanceof DOMException && cause.name === "AbortError")) setError(vaultErrorText(cause, latestText.current));
         }} />}
-      {!status.secrets.length && !loading && <p className="rounded-2xl border border-dashed border-neutral-200 p-5 text-center text-neutral-500 dark:border-neutral-700">{text("还没有项目。先添加密钥，再从网站的小保险箱选择它。", "No items yet. Add a secret, then select it from a website’s small vault.")}</p>}
+      {!status.secrets.length && !loading && <p className="rounded-2xl border border-dashed border-neutral-200 p-5 text-center text-neutral-500 dark:border-neutral-700">{text("还没有密钥。", "No secrets yet.")}</p>}
       <div className="divide-y divide-neutral-100 dark:divide-neutral-800">
         {status.secrets.map((secret) => <article key={secret.id} data-vault-item={secret.id} className="space-y-3 py-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -316,7 +366,7 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
             </div>
             <div className="flex shrink-0 flex-wrap gap-2">
               <button type="button" className={QUIET} disabled={busy || !!editor || !!browserGrant || secret.needs_reentry} data-vault-browser-authorize={secret.id} onClick={() => { setBrowserGrant(secret.id); setDeleting(null); setRemovingBrowser(null); setError(""); setNotice(""); }}>{text("授权浏览器", "Authorize browser")}</button>
-              <button type="button" className={QUIET} disabled={busy || !!editor || !!browserGrant} onClick={() => { setEditor({ secret }); setDeleting(null); setRemovingBrowser(null); setError(""); }}>{text("更新密钥", "Rotate")}</button>
+              <button type="button" className={QUIET} disabled={busy || !!editor || !!browserGrant} onClick={() => openEditor({ secret })}>{text("更新密钥", "Rotate")}</button>
               <button type="button" className={`${QUIET} text-red-600`} disabled={busy || !!editor || !!browserGrant} onClick={() => { setDeleting(secret); setRemovingBrowser(null); }}>{text("删除", "Delete")}</button>
             </div>
           </div>
@@ -374,7 +424,6 @@ function SignedInVault({ uid, accent, prefill }: { uid: string; accent?: string;
         </article>)}
       </div>
     </>}
-    {status && <ManagedCredentialsSection summary={status.managed_credentials} />}
   </section>;
 }
 
@@ -408,53 +457,9 @@ function BrowserGrantEditor({ secret, references, busy, accent, onClose, onGrant
   </form>;
 }
 
-function ManagedCredentialsSection({ summary }: { summary?: VaultManagedCredentials }) {
-  const text = useVaultText();
-  const items = Array.isArray(summary?.items) ? summary.items : [];
-  const available = summary?.available === true && Array.isArray(summary.items) && items.length <= 1000
-    && items.every((item) => item && typeof item.id === "string" && item.id.length > 0 && item.id.length <= 64
-      && typeof item.label === "string" && item.label.length > 0 && item.label.length <= 200
-      && typeof item.auth_kind === "string" && typeof item.enabled === "boolean"
-      && (item.expires_at === undefined || (typeof item.expires_at === "string"
-        && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(item.expires_at)
-        && Number.isFinite(Date.parse(item.expires_at)))));
-  const kindLabel = (kind: string) => {
-    switch (kind) {
-      case "oauth": return text("OAuth 登录授权", "OAuth sign-in");
-      case "token": case "bearer": case "header": return text("令牌 / API 密钥", "Token / API key");
-      case "url": return text("专用服务地址", "Personal service URL");
-      case "url+token": return text("专用服务地址与令牌", "Personal service URL and token");
-      case "none": return text("无需凭据的连接", "Connection without credentials");
-      default: return text("连接器授权", "Connector authorization");
-    }
-  };
-
-  return <section data-vault-managed-credentials="" aria-label={text("已连接服务", "Connected services")} className="space-y-3 border-t border-neutral-200 pt-5 dark:border-neutral-700">
-    <div className="flex flex-wrap items-center justify-between gap-3">
-      <h3 className="text-[14px] font-medium text-neutral-900 dark:text-neutral-100">{text("已连接服务", "Connected services")}</h3>
-      <a href="/settings/connectors" className={`${QUIET} inline-block`} onClick={(event) => {
-        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-        event.preventDefault();
-        // Load only on navigation: importing the Settings shell eagerly would
-        // enlarge this page and break isolated vault consumers.
-        void import("./settings-tabs").then(({ openSettingsModal }) => openSettingsModal("connectors"))
-          .catch(() => { window.location.href = "/settings/connectors"; });
-      }}>{text("在连接器中管理", "Managed in Connectors")}</a>
-    </div>
-    <p className="text-[12px] leading-relaxed text-neutral-500">{text("这些个人 MCP 授权由连接器管理，可在那里检查、重新连接或移除；这里不能把它们选入网站小保险箱。", "These personal MCP authorizations are managed in Connectors, where you can check, reconnect or remove them. They cannot be selected for website vaults here.")}</p>
-    {!available ? <p role="status" className="text-[12px] text-neutral-500">{text("暂时无法读取已连接服务。主保险箱项目仍可正常管理。", "Connected services are temporarily unavailable. You can still manage your main vault items.")}</p>
-      : !items.length ? <p className="text-[12px] text-neutral-500">{text("还没有保存的个人 MCP 授权。", "No personal MCP authorizations are saved.")}</p>
-        : <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">{items.map((item) => <li key={item.id} data-vault-managed-credential={item.id} className="space-y-1 py-3">
-          <p className="break-words font-medium text-neutral-900 dark:text-neutral-100">{item.label}</p>
-          <p className="text-[12px] text-neutral-500">{kindLabel(item.auth_kind)} · {item.enabled ? text("已启用", "Enabled") : text("已停用", "Disabled")}</p>
-          {item.expires_at && <p className="text-[12px] text-neutral-500">{text("已保存的到期时间", "Saved expiry")}: <time dateTime={item.expires_at}>{item.expires_at}</time></p>}
-          {item.auth_kind === "oauth" && <p className="text-[12px] text-neutral-500">{text("OAuth 登录可自动续期；已保存的到期时间不代表需要重新授权。", "OAuth sign-ins may refresh automatically; a saved expiry does not mean reauthorization is required.")}</p>}
-        </li>)}</ul>}
-  </section>;
-}
-
-function SecretEditor({ uid, secret, prefill, maxValueBytes, accent, onClose, onSaved, onSaving, onError }: {
+function SecretEditor({ uid, secret, prefill, maxValueBytes, accent, withFreshAuth, onClose, onSaved, onSaving, onError }: {
   uid: string; secret?: VaultSecret; prefill?: VaultPrefill; maxValueBytes: number; accent?: string;
+  withFreshAuth: (work: () => Promise<unknown>, signal: AbortSignal) => Promise<unknown>;
   onClose: () => void; onSaved: () => Promise<void>; onSaving: (saving: boolean) => void; onError: (cause: unknown) => Promise<void>;
 }) {
   const text = useVaultText();
@@ -500,8 +505,9 @@ function SecretEditor({ uid, secret, prefill, maxValueBytes, accent, onClose, on
       const sealed = await sealVaultValue(key, { uid, op: secret ? "update" : "create", name: metadata.name, sid: secret?.id }, pendingValue);
       pendingValue = "";
       if (current.signal.aborted) return;
-      if (secret) await updateVaultSecret(secret.id, { ...metadata, sealed }, current.signal);
-      else await createVaultSecret({ ...metadata, kind, sealed }, current.signal);
+      await withFreshAuth(() => secret
+        ? updateVaultSecret(secret.id, { ...metadata, sealed }, current.signal)
+        : createVaultSecret({ ...metadata, kind, sealed }, current.signal), current.signal);
       if (!current.signal.aborted) await onSaved();
     } catch (cause) {
       if (!current.signal.aborted && mounted.current) await onError(cause);
@@ -523,7 +529,7 @@ function SecretEditor({ uid, secret, prefill, maxValueBytes, accent, onClose, on
       <label className="block space-y-1" htmlFor={`${id}-value`}><span>{secret ? text("新密钥值", "New secret value") : text("密钥值", "Secret value")}</span>
         <input id={`${id}-value`} type="password" className={FIELD} value={value} onChange={(event) => setValue(event.target.value)} autoFocus={!secret} autoComplete="new-password" autoCapitalize="off" spellCheck={false} aria-invalid={invalid} aria-describedby={`${id}-hint`} required />
       </label>
-      <p id={`${id}-hint`} className="text-[12px] leading-relaxed text-neutral-500">{text("只在此输入，浏览器密封后保存；提交或取消后立即清空，保存后无法查看原值。", "Entered here only, sealed in your browser before saving, and cleared on submit or cancel. Saved values cannot be displayed.")}</p>
+      <p id={`${id}-hint`} className="text-[12px] leading-relaxed text-neutral-500">{text("保存后无法查看原值。", "Saved values cannot be displayed.")}</p>
       {secret && <p className="text-[12px] text-neutral-500">{text("所有引用会使用更新后的版本，无需重新添加到各个网站。", "Every reference follows the new version; you do not need to add it to each website again.")}</p>}
       {invalid && <p role="alert" className="text-red-600">{text("密钥不能为空、不能含空字符，且不能超过", "The value must be nonempty, contain no NUL and be at most")} {Math.min(maxValueBytes, 12000)} {text("字节。请重新输入。", "bytes. Enter it again.")}</p>}
       <label className="block space-y-1" htmlFor={`${id}-description`}><span>{text("说明（不要填写秘密）", "Description (no secrets)")}</span><input id={`${id}-description`} className={FIELD} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={200} /></label>

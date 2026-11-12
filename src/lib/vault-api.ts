@@ -109,6 +109,7 @@ async function request<T>(path: string, method = "GET", body?: object, signal?: 
 }
 
 export const getVault = (signal?: AbortSignal) => request<VaultStatus>("/v1/vault", "GET", undefined, signal);
+export const checkVaultWriteAccess = (signal?: AbortSignal) => request<{ ready: boolean }>("/v1/vault/write-access", "GET", undefined, signal);
 export const getVaultSealKey = (signal?: AbortSignal) => request<VaultSealKey>("/v1/vault/seal-key", "GET", undefined, signal);
 
 export function createVaultSecret(input: CreateVaultSecret, signal?: AbortSignal) {

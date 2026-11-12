@@ -48,13 +48,13 @@ const sources = {
 };
 const compiled = Object.fromEntries(Object.entries(sources).map(([key, source]) => [key, ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020 } }).outputText]));
 function load(key, dependencies) {
-  const module = { exports: {} };
+  const loadedModule = { exports: {} };
   new Function("require", "module", "exports", compiled[key])((name) => {
     if (name in dependencies) return dependencies[name];
     if (name === "react" || name === "react/jsx-runtime") return require(name);
     throw new Error(`unexpected test import: ${name}`);
-  }, module, module.exports);
-  return module.exports;
+  }, loadedModule, loadedModule.exports);
+  return loadedModule.exports;
 }
 
 function item(overrides = {}) {
@@ -88,6 +88,7 @@ function harness() {
     return handler(init);
   } } });
   Object.assign(api, {
+    checkVaultWriteAccess: async () => ({ ready: true }),
     getVault: async () => { state.reads += 1; if (state.readError) { const error = state.readError; state.readError = null; throw error; } return structuredClone(state.vault); },
     getVaultReferences: async () => ({ references: structuredClone(state.references) }),
     getProjectVaultReferences: async (projectId) => ({ references: structuredClone(state.references.filter((ref) => ref.project_id === projectId)) }),
@@ -96,6 +97,7 @@ function harness() {
     deleteProjectVaultReference: async (projectId, id) => { state.writes.push({ op: "unbind", projectId, id }); if (state.failWrite) throw state.failWrite; return { reference: reference() }; },
   });
   const common = {
+    "../AuthDialog": { AuthPanel: () => null },
     "../../lib/auth/client": { AUTH_STATE_EVENT: "oceanleo:auth-state", getUserId: async () => state.uid },
     "../../lib/vault-api": api,
   };
