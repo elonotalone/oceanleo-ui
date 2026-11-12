@@ -60,7 +60,8 @@ test("every trusted editor declares project, viewport, toolbar and persistence o
       ["load", "mutate", "save", "reopen"],
       id,
     );
-    assert.match(contract.projectSchema, /^[a-z0-9.-]+(?:@|\.v)\d+$/i, id);
+    // Native-file editors (deck: pptx, 2026-11-12) name the file format itself; structured editors keep a versioned id.
+    assert.match(contract.projectSchema, /^[a-z0-9.-]+(?:(?:@|\.v)\d+)?$/i, id);
     assert.ok(["content", "native"].includes(contract.viewportOwnership), id);
     assert.ok(["shared", "native"].includes(contract.toolbarOwnership), id);
     assert.ok(["project", "native-callback"].includes(contract.persistence), id);
