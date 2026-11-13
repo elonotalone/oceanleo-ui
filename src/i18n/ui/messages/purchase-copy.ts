@@ -1,8 +1,10 @@
 import type { Locale } from "../../config";
+import { SERVER_ALLOWANCE_COPY_A } from "./server-allowance-copy-a";
+import { SERVER_ALLOWANCE_COPY_B } from "./server-allowance-copy-b";
 
 // W11 server purchase copy. Chinese source text remains the key so the
-// existing message loader can preserve zh identity while other locales use
-// the English fallback until translated rows are added.
+// existing message loader preserves zh identity. Allowance copy has translated
+// rows for every supported locale; older purchase fields retain their defaults.
 const EN: Record<string, string> = {
   "连接你的阿里云账号": "Connect your Aliyun account",
   "中国版的服务器由你的阿里云账号购买和管理。OceanLeo 只通过一次性授权的 RAM 角色操作。":
@@ -78,7 +80,7 @@ const EN: Record<string, string> = {
 
 export function purchaseCopy(locale: Locale): Record<string, string> {
   if (locale === "zh") return Object.fromEntries(Object.keys(EN).map((key) => [key, key]));
-  return { ...EN };
+  return { ...EN, ...SERVER_ALLOWANCE_COPY_A[locale], ...SERVER_ALLOWANCE_COPY_B[locale] };
 }
 
 /** Stable Chinese source keys used directly by the purchase dialog. */

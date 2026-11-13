@@ -1,4 +1,5 @@
 import type { Locale } from "../../config";
+import { LOCAL_BROWSER_WAVE_COPY } from "./local-browser-wave-copy";
 
 export const LOCAL_BROWSER_EN: Record<string, string> = {
   "我的浏览器": "My Browser",
@@ -50,7 +51,7 @@ const BROWSER_LABEL: Record<Locale, string> = {
   ar: "المتصفح", hi: "ब्राउज़र", vi: "Trình duyệt", th: "เบราว์เซอร์",
 };
 
-/** New copy uses English fallback for untranslated locales, as other shared feature dictionaries do. */
+/** Keep translated disclosure and setup copy over the legacy defaults. */
 export function localBrowserCopy(locale: Locale): Record<string, string> {
-  return { ...(locale === "zh" ? Object.fromEntries(Object.keys(LOCAL_BROWSER_EN).map(key => [key, key])) : LOCAL_BROWSER_EN), "浏览器": BROWSER_LABEL[locale] };
+  return { ...(locale === "zh" ? Object.fromEntries(Object.keys(LOCAL_BROWSER_EN).map(key => [key, key])) : LOCAL_BROWSER_EN), ...LOCAL_BROWSER_WAVE_COPY[locale], "浏览器": BROWSER_LABEL[locale] };
 }
