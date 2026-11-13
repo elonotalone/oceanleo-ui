@@ -82,6 +82,11 @@ const view = dataModule(`import React from ${JSON.stringify(reactUrl)};
 const stubs = {
   '../i18n/ui/useUI': ui,
   './artifact-client': client,
+  './library-import': dataModule(`
+    export function LibraryImportDialog() { throw new Error('unexpected import'); }
+    export function LibraryUploadQueue() { return null; }
+    export function LibraryPurchasedUpdates() { return null; }
+  `),
   '../lib/database': dataModule(`export async function uploadFile() { throw new Error('unexpected upload'); }
     export async function normalizeUploadIdempotencyKey(parts) { return parts.map(String).join(":"); }
     export function humanLibraryUploadError(error) { return String(error || "unexpected upload"); }`),
@@ -103,6 +108,8 @@ const stubs = {
   './advanced-routes/WorkbenchRouteLoading': dataModule(`export function WorkbenchRouteLoading() { return null; } export function WorkbenchRouteChunkError() { return null; }`),
   '../lib/auth/client': dataModule(`export function browserClient() { throw new Error('unexpected auth access'); }
     export async function accessToken() { return null; }
+    export function cachedAccessToken() { return null; }
+    export async function getUserId() { return 'owner'; }
     export const AUTH_STATE_EVENT = 'g3-verified-auth';
     export async function getUserIdSnapshot() { return { available: true, userId: 'owner' }; }`),
   '../ui': dataModule(`export function Modal() { return null; } export function Button() { return null; } export function ConfirmDialog() { return null; } export function SkeletonCard() { return null; } export function EmptyState() { return null; } export function timeAgo() { return ''; }`),
@@ -143,7 +150,7 @@ function material(kind, artifactType, capability, format, siteId) {
         preview: { purpose: 'preview', revisionId, url: `https://assets.test/${artifactId}.png` } } } };
 }
 const CASES = [
-  [material('website', 'website', 'website-editor', 'oceanleo.website-project.v1', 'website'), 'WebsiteLocalRoute'],
+  [material('website', 'website', 'website-editor', 'html', 'website'), 'WebsiteLocalRoute'],
   [material('ppt', 'deck', 'deck-editor', 'pptx', 'ppt'), 'DeckRoute'],
   [material('document', 'document', 'richdoc-editor', 'docx', 'word'), 'RichDocRoute'],
 ];
