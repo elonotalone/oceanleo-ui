@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act, useRef, useState } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { siblingRepoUrl } from "./helpers/sibling-repo-url.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -57,13 +58,15 @@ test("upload menu opens with two keyboard-accessible items and closes on Escape/
   await act(async () => host.querySelector("[data-test-anchor]").click());
   await act(async () => document.body.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true })));
   assert.equal(host.querySelector('[role="menu"]'), null);
-  root.unmount(); host.remove();
+  await act(async () => root.unmount()); host.remove();
 });
 
-test("Library header integration uses shared menu and one workspace shell", () => {
+test("Library header uses shared menu and portal delegates once to ArtifactLibrary", () => {
   const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
-  const page = readFileSync(new URL("../../oceanleo/app/library/library-page-client.tsx", import.meta.url), "utf8");
+  const page = readFileSync(siblingRepoUrl("oceanleo", "app/library/page.tsx"), "utf8");
   assert.match(mine, /FloatingMenu/);
   assert.match(mine, /data-library-upload-menu/);
-  assert.equal((page.match(/<TaskWorkspaceShell/g) || []).length, 1);
+  assert.equal((page.match(/<ArtifactLibrary\b/g) || []).length, 1);
+  assert.equal((page.match(/<CloneShell\b/g) || []).length, 1);
+  assert.doesNotMatch(page, /<TaskWorkspaceShell\b/);
 });

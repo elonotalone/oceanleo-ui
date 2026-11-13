@@ -9,7 +9,8 @@ test('retry after project task creation failed preserves the project, message id
   const requestId='55555555-5555-4555-8555-555555555555';
   const projectId='11111111-1111-4111-8111-111111111111';
   const pendingId=putPending({clientMessageId:requestId,computerId:'cc_elon',program:'claude',projectId,text:'Project task',attachments:[],choice:{model:'opus'}});
-  const view=await mount({pendingId},{url:`/tasks/new?pending=${pendingId}`});
+  const view=await mount({pendingId},{url:`/tasks/new?pending=${pendingId}`,
+    catalog:{models:{currentModelId:'opus',availableModels:[{modelId:'opus',name:'Opus'}]}}});
   try{
     await act(async()=>settlePending(pendingId,{error:new Error('Connection failed')}));await settle();
     await act(async()=>view.host.querySelector('[data-acp-pending-retry]').click());await settle();
