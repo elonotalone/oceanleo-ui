@@ -17,6 +17,7 @@ export function BudgetServerPurchase({client, allowance, onPurchased}: {client: 
   const [name, setName] = useState("");
   const [offerResult, setOfferResult] = useState<{key: string; data: ServerOffers} | null>(null);
   const [busy, setBusy] = useState(false);
+  // Translate fallback message keys at render so locale changes never reload requests.
   const [error, setError] = useState("");
   const [confirmationKey, setConfirmationKey] = useState("");
   const submitting = useRef(false);
@@ -34,16 +35,16 @@ export function BudgetServerPurchase({client, allowance, onPurchased}: {client: 
       if (!region) setRegion(row.recommended_region_id || row.regions[0]?.id || "");
       setTier((current) => row.tiers.some((t) => t.id === current) ? current : row.tiers.find((t) => t.available)?.id || "");
       setDisk((current) => Math.max(row.disk.min_gb, Math.min(row.disk.max_gb, current)));
-    }, (err: unknown) => { if (alive) setError(err instanceof Error ? err.message : tt("报价读取失败")); });
+    }, (err: unknown) => { if (alive) setError(err instanceof Error ? err.message : "报价读取失败"); });
     return () => { alive = false; };
-  }, [client, region, tt]);
+  }, [client, region]);
   useEffect(() => {
     let alive = true;
     if (catalog && region && tier) client.getServerOffers?.({region_id: region, tier_id: tier, disk_gb: disk, period_months: months}).then(
       (row) => { if (alive) { setOfferResult({key: offerKey, data: row}); setError(""); } },
-      (err: unknown) => { if (alive) setError(err instanceof Error ? err.message : tt("报价读取失败")); });
+      (err: unknown) => { if (alive) setError(err instanceof Error ? err.message : "报价读取失败"); });
     return () => { alive = false; };
-  }, [client, catalog, region, tier, disk, months, offerKey, tt]);
+  }, [client, catalog, region, tier, disk, months, offerKey]);
   const offer = offers?.offers.find((item) => item.billing_mode === mode);
   const enough = offer?.available && offer.commitment_minor !== undefined && offer.commitment_minor <= allowance.remaining_minor;
   async function buy() {
@@ -55,15 +56,15 @@ export function BudgetServerPurchase({client, allowance, onPurchased}: {client: 
     if (requestId.current?.key !== key) requestId.current = {key, id: crypto.randomUUID()};
     try {
       const result = await client.buyBudgetServer({request_id: requestId.current.id, ...payload});
-      if (result.status === "error") { setError(tt("购买结果需要核对，预算保留，请勿重复购买")); return; }
+      if (result.status === "error") { setError("购买结果需要核对，预算保留，请勿重复购买"); return; }
       onPurchased();
-    } catch (err) { setError(err instanceof Error ? err.message : tt("购买失败")); }
+    } catch (err) { setError(err instanceof Error ? err.message : "购买失败"); }
     finally { submitting.current = false; setBusy(false); }
   }
   const input = "mt-1 block w-full rounded-lg border p-2";
   return <div className="mt-5 space-y-3 border-t pt-4 text-sm" data-server-budget-purchase>
     <p>{tt("按预算购买服务器")}</p>
-    {error && <p role="alert" className="text-red-700">{error}</p>}
+    {error && <p role="alert" className="text-red-700">{tt(error)}</p>}
     <fieldset disabled={busy} className="grid gap-3 sm:grid-cols-2">
       <label>{tt("名字")}<input className={input} value={name} maxLength={80} onInput={(e) => { setName(e.currentTarget.value); }} /></label>
       <label>{tt("地域")}<select className={input} value={region} onChange={(e) => setRegion(e.target.value)}>{catalog?.regions.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></label>

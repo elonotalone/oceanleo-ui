@@ -81,6 +81,7 @@ export async function libraryRequest<T>(path: string, body?: unknown, signal?: A
   try {
     response = await fetch(`${GATEWAY_BASE}${path}`, {
       method: body === undefined ? "GET" : "POST",
+      credentials: "include",
       headers: { Authorization: `Bearer ${token}`, "Accept-Language": typeof document === "undefined" ? "zh" : document.documentElement.lang || "zh", ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal,
     });

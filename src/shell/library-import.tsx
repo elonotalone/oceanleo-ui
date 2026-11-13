@@ -36,22 +36,22 @@ export function LibraryPurchasedUpdates({ items, onUpdated }: { items: readonly 
     let live = true;
     const known = JSON.parse(titles) as { id: string; title: string }[];
     void libraryRequest<{ items: (BayEntitlement & { listing_id: string; title?: string; libraryIdentity?: { id: string; kind: string } })[] }>("/v1/bay/assets/purchases").then((data) => {
-      if (live) setUpdates(data.items.filter((item) => item.entitled).map((item) => ({ id: item.listing_id, title: item.title || known.find((row) => row.id === item.libraryIdentity?.id)?.title || tt("来自 LeoBay"), updateAvailable: item.updateAvailable, libraryIdentity: item.libraryIdentity })));
+      if (live) setUpdates(data.items.filter((item) => item.entitled).map((item) => ({ id: item.listing_id, title: item.title || known.find((row) => row.id === item.libraryIdentity?.id)?.title || "", updateAvailable: item.updateAvailable, libraryIdentity: item.libraryIdentity })));
     }).catch(() => { /* Library remains usable when entitlement refresh is unavailable. */ });
     return () => { live = false; };
-  }, [titles, tt]);
+  }, [titles]);
   if (!updates.length && !error) return null;
   return <section aria-label={tt("来自 LeoBay")} className="space-y-2 px-3 py-2" data-library-purchased-updates="">
     <h2 className="text-sm font-medium">{tt("来自 LeoBay")}</h2>
     {updates.map((item) => <div key={item.id} className="flex items-center gap-2 text-sm">
-      {item.libraryIdentity ? <a className="underline" href={item.libraryIdentity.kind === "folder" ? `/library?category=folders&folder=${encodeURIComponent(item.libraryIdentity.id)}` : `/library?item=${encodeURIComponent(item.libraryIdentity.id)}`}>{item.title}</a> : <span>{item.title}</span>}
+      {item.libraryIdentity ? <a className="underline" href={item.libraryIdentity.kind === "folder" ? `/library?category=folders&folder=${encodeURIComponent(item.libraryIdentity.id)}` : `/library?item=${encodeURIComponent(item.libraryIdentity.id)}`}>{item.title || tt("来自 LeoBay")}</a> : <span>{item.title || tt("来自 LeoBay")}</span>}
       {item.updateAvailable && <><span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{tt("有新版本")}</span>
         <button type="button" disabled={Boolean(busy)} onClick={() => {
           setBusy(item.id); setError("");
-          void libraryRequest<BayEntitlement>(`/v1/bay/assets/${encodeURIComponent(item.id)}/update`, {}).then((entitlement) => { setUpdates((rows) => rows.map((row) => row.id === item.id ? { ...row, updateAvailable: entitlement.updateAvailable } : row)); onUpdated(); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : tt("更新失败，请重试"))).finally(() => setBusy(""));
+          void libraryRequest<BayEntitlement>(`/v1/bay/assets/${encodeURIComponent(item.id)}/update`, {}).then((entitlement) => { setUpdates((rows) => rows.map((row) => row.id === item.id ? { ...row, updateAvailable: entitlement.updateAvailable } : row)); onUpdated(); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "更新失败，请重试")).finally(() => setBusy(""));
         }} className="underline disabled:opacity-50">{tt(busy === item.id ? "正在更新…" : "更新到我的库")}</button></>}
     </div>)}
-    {error && <p role="alert">{error}</p>}
+    {error && <p role="alert">{tt(error)}</p>}
   </section>;
 }
 
@@ -109,7 +109,7 @@ export function LibraryUploadQueue({ onCompleted }: { onCompleted: () => void })
     {rows.slice(0, 10).map((row) => <div key={row.key} className="space-y-1 text-xs">
       <div className="flex flex-wrap items-center gap-2"><span className="break-all">{row.name}</span><span>{formatBytes(row.loaded)} / {formatBytes(row.size)}</span>
         {row.state === "uploading" ? <button type="button" className="underline" onClick={() => pauseLibraryUpload(row.key)}>{tt("暂停")}</button> :
-          <button type="button" className="underline" onClick={() => { setError(""); void resumeLibraryUpload(row.key).then(async (result) => { if (result) onCompleted(); await resume(row.folderId); refresh(); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : tt("上传失败，请重试"))); }}>{tt("继续上传")}</button>}
+          <button type="button" className="underline" onClick={() => { setError(""); void resumeLibraryUpload(row.key).then(async (result) => { if (result) onCompleted(); await resume(row.folderId); refresh(); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "上传失败，请重试")); }}>{tt("继续上传")}</button>}
       </div>
       <progress className="w-full" max={row.size || 1} value={row.loaded} aria-label={row.name} />
       {row.error && <div role={row.state === "failed" ? "alert" : "status"}>{tt(row.error)} <LibraryStorageLink /></div>}
@@ -144,26 +144,26 @@ export function LibraryImportDialog({ mode, onClose, onImported }: { mode: Libra
           const data = await libraryRequest<{ connected: boolean; repositories: Repository[]; nextPage?: number | null }>("/v1/folders/github-repositories");
           if (live) { setConnected(data.connected); setRepositories(data.repositories || []); setNextRepositoryPage(data.nextPage || null); }
         }
-      } catch (reason) { if (live) setError(reason instanceof Error ? reason.message : tt("加载失败，请重试")); }
+      } catch (reason) { if (live) setError(reason instanceof Error ? reason.message : "加载失败，请重试"); }
       finally { if (live) setLoading(false); }
     };
     void load();
     return () => { live = false; };
-  }, [mode, tt]);
+  }, [mode]);
   const submit = async () => {
     setBusy(true); setError("");
     try {
       if (mode === "computer") {
         const result = await libraryRequest<{ folder?: import("./skills/kit/types").Folder; file?: unknown }>("/v1/library/uploads/from-computer", { computerId, path: path.trim() });
-        if (!result.folder && !result.file) throw new Error(tt("导入未返回文件夹，请重试"));
+        if (!result.folder && !result.file) throw new Error("导入未返回文件夹，请重试");
         if (result.folder) window.dispatchEvent(new CustomEvent(LIBRARY_FOLDERS_CHANGE_EVENT, { detail: { folder: result.folder } }));
       } else {
         const result = await libraryRequest<{ folder: import("./skills/kit/types").Folder }>("/v1/folders/import-github", { url: url.trim() });
-        if (!result.folder) throw new Error(tt("导入未返回文件夹，请重试"));
+        if (!result.folder) throw new Error("导入未返回文件夹，请重试");
         window.dispatchEvent(new CustomEvent(LIBRARY_FOLDERS_CHANGE_EVENT, { detail: { folder: result.folder } }));
       }
       onImported(); onClose();
-    } catch (reason) { setError(reason instanceof Error ? reason.message : tt("导入失败，请重试")); }
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "导入失败，请重试"); }
     finally { setBusy(false); }
   };
   return <Modal labelledBy="library-import-title" onClose={() => { if (!busy) onClose(); }}>
@@ -185,7 +185,7 @@ export function LibraryImportDialog({ mode, onClose, onImported }: { mode: Libra
         void libraryRequest<{ connected: boolean; repositories: Repository[]; nextPage: number | null }>(`/v1/folders/github-repositories?page=${nextRepositoryPage}`).then((data) => {
           setRepositories((current) => [...new Map([...current, ...data.repositories].map((repo) => [repo.full_name, repo])).values()]);
           setNextRepositoryPage(data.nextPage);
-        }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : tt("加载失败，请重试"))).finally(() => setLoadingRepositories(false));
+        }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "加载失败，请重试")).finally(() => setLoadingRepositories(false));
       }}>{tt("加载更多仓库")}</button>}
       {error && <div role="alert">{tt(error)} <LibraryStorageLink /></div>}
       {busy && <div role="status"><progress aria-label={tt("导入进度")} className="w-full" /><p>{tt(mode === "computer" ? "电脑正在上传，完成后会出现在我的库" : "正在导入…")}</p></div>}

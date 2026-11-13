@@ -222,10 +222,10 @@ function ConversationBody(props: ConversationViewProps & {
     void fetchConversations("all").then((page) => {
       if (alive) setForwardTargets(page.items.filter((item) => item.id !== conversationId));
     }).catch(() => {
-      if (alive) setForwardError(tt("暂时无法加载会话列表。"));
+      if (alive) setForwardError("暂时无法加载会话列表。");
     });
     return () => { alive = false; };
-  }, [forwardMessages, conversationId, tt]);
+  }, [forwardMessages, conversationId]);
   useEffect(() => subscribeHistoryCleared(window, conversationId, reloadHistory), [conversationId, reloadHistory]);
   useImEvent("conversation.updated", (event) => {
     if (historyEventTargetsConversation(event, conversationId)) reloadHistory();
@@ -549,7 +549,7 @@ function ConversationBody(props: ConversationViewProps & {
         <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setForwardMessages(null); }}>
           <section role="dialog" aria-modal="true" aria-label={tt("转发到会话")} className="max-h-[80%] w-full max-w-sm overflow-auto rounded-xl bg-white p-4 shadow-xl dark:bg-neutral-900">
             <h3 className="mb-3 text-sm font-semibold">{tt("转发到会话")}</h3>
-            {forwardError ? <p className="mb-2 text-sm text-red-600">{forwardError}</p> : null}
+            {forwardError ? <p className="mb-2 text-sm text-red-600">{tt(forwardError)}</p> : null}
             {!forwardTargets.length && !forwardError ? <p className="py-4 text-center text-sm text-neutral-500">{tt("正在加载会话…")}</p> : null}
             {forwardTargets.map((target) => (
               <button key={target.id} type="button" disabled={forwarding} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-white/10" onClick={() => {
@@ -564,7 +564,7 @@ function ConversationBody(props: ConversationViewProps & {
                   setForwardMessages(null);
                   setSelectedMessageIds(new Set());
                   setSelectionMode(false);
-                }).catch(() => setForwardError(tt("转发失败，请稍后重试。"))).finally(() => setForwarding(false));
+                }).catch(() => setForwardError("转发失败，请稍后重试。")).finally(() => setForwarding(false));
               }}>{conversationDisplayTitle(target)}</button>
             ))}
             <button type="button" className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" onClick={() => setForwardMessages(null)}>{tt("取消")}</button>

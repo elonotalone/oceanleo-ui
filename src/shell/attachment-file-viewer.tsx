@@ -127,7 +127,7 @@ export function AttachmentFileViewer({ item, url }: { item: LibraryItem; url?: s
     }
     if (!sourceUrl) {
       setLoading(false);
-      setError(tt("没有可读取的文件地址"));
+      setError("没有可读取的文件地址");
       return;
     }
     let cancelled = false;
@@ -137,7 +137,7 @@ export function AttachmentFileViewer({ item, url }: { item: LibraryItem; url?: s
     setEntries(null);
     void fetch(sourceUrl, { credentials: "omit", referrerPolicy: "no-referrer" })
       .then(async (response) => {
-        if (!response.ok) throw new Error(tt("文件读取失败"));
+        if (!response.ok) throw new Error("文件读取失败");
         if (zip) {
           const { unzipSync } = await import("fflate");
           const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
@@ -148,7 +148,7 @@ export function AttachmentFileViewer({ item, url }: { item: LibraryItem; url?: s
         }
       })
       .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : tt("文件读取失败"));
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "文件读取失败");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -156,13 +156,13 @@ export function AttachmentFileViewer({ item, url }: { item: LibraryItem; url?: s
     return () => {
       cancelled = true;
     };
-  }, [identity, sourceUrl, text, tt, zip]);
+  }, [identity, sourceUrl, text, zip]);
 
   if (!text && !zip) return <FileCard item={item} url={sourceUrl} />;
   if (loading) {
     return <div className="flex min-h-[420px] items-center justify-center text-[13px] text-stone-400">{tt("正在读取文件…")}</div>;
   }
-  if (error) return <FileCard item={item} url={sourceUrl} message={error} />;
+  if (error) return <FileCard item={item} url={sourceUrl} message={tt(error)} />;
   if (zip) {
     return (
       <div className="min-h-[420px] p-4" data-attachment-zip-preview="">
