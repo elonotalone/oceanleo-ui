@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { siblingRepoUrl } from './helpers/sibling-repo-url.mjs';
 import React, { act, useState } from 'react';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
 import { compileSubject, mountDom, reactUrl, click } from './g3-test-support.mjs';
@@ -58,7 +60,7 @@ const shell = dataModule(`import React from ${JSON.stringify(reactUrl)};
 `);
 // The family program replaced website/front's BuilderContext and canvases.
 // Mount its actual site entry with real shared selection, intent and hydration hooks.
-const { default: WebsiteWorkspace } = await import(await compileModule('/root/projects/oceanleo/sites/website/WebsiteWorkspace.tsx', {
+const { default: WebsiteWorkspace } = await import(await compileModule(fileURLToPath(siblingRepoUrl('oceanleo', 'sites/website/WebsiteWorkspace.tsx')), {
   '@oceanleo/ui/shell': shell,
   '@/app/_components/clone-shell': dataModule(`export function CloneShell({ children }) { return children; }`),
   'next/navigation': dataModule(`export function useSearchParams() { return new URLSearchParams(window.location.search); }`),

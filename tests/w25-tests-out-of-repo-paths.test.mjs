@@ -64,8 +64,6 @@ const SCRATCH = /(^|\/)scratch\//;
  * 是 → 可以登记；只是「我这台机器上现在有」→ 不许登记，搬进 `tests/fixtures/`。
  */
 const REGISTERED = {
-  "/root/projects/asset/lib/template-dna.ts":
-    "asset 仓的套装 DNA（调色板 key/label/十个色位的权威），deck-packs.test.mjs 拿它验套装有没有对着权威漂移；asset 仓在 main 上长期存在，抄副本进来两边会一起漂移，那条用例本来就在缺仓时自己 skip",
   "/root/projects/oceanleo/backend/app/routers/template_materials_router.py":
     "后端仓的模板素材路由，深链契约要跟它对账；同上，跨仓对账不能抄副本",
   "/root/projects/oceanleo/backend/app/artifact_cover_gate.py":
@@ -80,15 +78,11 @@ const REGISTERED = {
     "五层规范是 L4 chips 那八个标签的权威（§3 第 1 行），design-mode.test.mjs 拿它逐条对账；抄一份副本进来两边会各自漂移，而漂了就等于 chips 与规范不一致却没人发现。与上面几条跨仓对账同一档：oceandino 仓不在时那条用例自己 skip，不抛 ENOENT",
   // （2026-10-22 native-editors：umo-hosted 随富文本托管叶子一起删除，rich-doc-hosted-review 的七条登记随之移除）
   // ── X9 2026-09-06 登记的跨仓契约（三份测试早于本闸就在读这些路径，闸立起来后一直红）──
-  "/root/projects/oceandino/front/lib/editor-board-catalog.ts":
-    "oceandino 控制面的编辑器看板目录，advanced-plugin-open.test.mjs 拿它与本仓 ADVANCED_PLUGIN_FEATURE_IDS 对账 13 件插件是否同一张名单；控制面仓在 main 上长期存在（/root/projects/oceandino 是 /opt/cursor-workspaces/oceandino 的软链），抄副本进来两张名单会各自漂移",
   "/root/projects/umo-hosted/src/bridge/tools-manifest.ts":
     "umo-hosted 仓（富文本托管叶子）的 RICHDOC_CHIPS 权威，quick-actions-chips.test.mjs 拿它八个 label 与本仓 fallbackChipLabels 对账；跨仓契约不能抄副本，否则两边一起漂移却没人发现",
   // ── G3/G7 2026-09-25 登记的跨仓整合：P7 打开素材、P1 滚轮、P3 横幅的修法落在门户/网站/design/plugin-gallery，只有读对端真代码才验得到 ──
   "/root/projects/oceanleo/app/library/page.tsx":
     "门户仓的素材库页是 P7「打开素材」的真实宿主，g3-portal-typed-editor.test.mjs 挂它走完编辑键到类型编辑器的整条路；复述件验不了门户那一侧的接线",
-  "/root/projects/website/front":
-    "网站仓前端根，g3-website-material-restore.test.mjs 编译真实的 BuilderContext / BuildConsole / PreviewCanvas 验 P7 打开网站素材不再跳到云端浏览器；网站仓在 main 上长期存在",
   "/root/projects/design/packages/gallery-editor/src/editor/EditorCanvas.tsx":
     "design 仓画布的加载态，g7-banners-scroll.test.mjs 验 P3 通栏横幅换成舞台内转圈；跨仓对账不能抄副本",
   "/root/projects/website/front/packages/gallery-editor/src/WebsiteExplorerPanel.tsx":
@@ -126,9 +120,6 @@ const NOT_A_FIXTURE = {
   "~/.local": "安装目录输入是代理配置的纯字符串，测试不访问该家目录文件",
   "~/apps": "安装目录备选值只验证请求负载，测试不会读取家目录文件",
   "/opt/tools": "安装目录策略的纯字符串分支，测试只断言归一化结果不读文件",
-  "/home/me/.local/bin/codex": "安装完成事件里的回报路径只作 UI 题材，测试不打开该文件",
-  "/opt/leo": "安装目录提示中的节点路径只作返回数据，测试不访问该目录",
-  "/opt/leo/cursor": "安装完成回报的程序路径只作展示数据，测试不读取该路径",
 };
 
 /** 读一份源码里所有字符串字面量（含无插值模板串）。**只取字面量，不取注释** —— */

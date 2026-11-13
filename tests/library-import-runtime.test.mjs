@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
+const computerImport = JSON.parse(readFileSync(new URL("./fixtures/library-computer-import.json", import.meta.url), "utf8"));
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const apiStub = dataModule(`
@@ -228,7 +230,7 @@ test("computer import shows progress until a real typed-file receipt arrives", a
   globalThis.__luRequest = async (path) => path === "/v1/computers" ? { items: [{ id: "paired", name: "My computer" }] } : new Promise((resolve) => { finish = resolve; });
   await domTest(async ({ root, container, window }) => {
     await render(root, mod.LibraryImportDialog, { mode: "computer", onClose() {}, onImported: () => imported++ });
-    await change(window, container.querySelector("input"), "/home/me/movie.mp4");
+    await change(window, container.querySelector("input"), computerImport.moviePath);
     await submit(window, container);
     assert.ok(container.querySelector('progress[aria-label="导入进度"]'));
     assert.equal(imported, 0, "pending transfer is not reported as imported");
