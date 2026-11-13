@@ -713,17 +713,20 @@ test("ComposerAppsBar：零可用 App 一个字节都不渲染（今天全部用
 test("A6 LeoComposer：零可用 App 时挂不挂 ComposerAppsBar，innerHTML 逐字相同；PayerSelector 仍在", async () => {
   const { transport } = fakeTransport();
   const props = { value: "做个网站", onChange() {}, onSubmit() {}, onAttachFiles() {}, leoSuggest: true };
-  const withBar = await withDom(async ({ render, html }) => {
+  await withDom(async ({ render, html, find }) => {
     await render(LeoComposer, { ...props, showAppsBar: true, appsHost: createHostForDom({ transport }) });
-    return html();
-  });
-  const withoutBar = await withDom(async ({ render, html }) => {
+    const withBar = html();
+    const attachmentButton = find('button[aria-label="添加附件"]');
+    const menuId = attachmentButton.getAttribute("aria-controls");
+    assert.ok(menuId, "the attachment trigger retains its ARIA control identity");
     await render(LeoComposer, { ...props, showAppsBar: false });
-    return html();
+    const withoutBar = html();
+    assert.equal(find('button[aria-label="添加附件"]'), attachmentButton, "compare the same mounted composer");
+    assert.equal(attachmentButton.getAttribute("aria-controls"), menuId);
+    assert.ok(withoutBar.length > 0);
+    assert.equal(withBar, withoutBar, "没有可用 App 的用户，输入框这一排的渲染差异必须为零");
+    assert.doesNotMatch(withBar, /data-composer-apps-bar/);
   });
-  assert.ok(withoutBar.length > 0);
-  assert.equal(withBar, withoutBar, "没有可用 App 的用户，输入框这一排的渲染差异必须为零");
-  assert.doesNotMatch(withBar, /data-composer-apps-bar/);
 });
 
 test("A6 LeoComposer：有带界面的工具 → 左组出「应用」键，点开一排入口；降级点开出工具纯文本；ui/message 追加进输入框", async () => {

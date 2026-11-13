@@ -165,14 +165,17 @@ test("catalog projections preserve preview Content-Type and 3D dispatch metadata
     favorite: false,
     renditions: {
       thumbnail: {
+        revisionId: "revision-model",
         url: "https://api.oceanleo.com/thumbnail",
         mediaType: "image/png",
       },
       preview: {
+        revisionId: "revision-model",
         url: "https://api.oceanleo.com/preview",
         mediaType: "image/png",
       },
       full: {
+        revisionId: "revision-model",
         url: "https://api.oceanleo.com/full",
         mediaType: "image/png",
       },
@@ -200,4 +203,18 @@ test("catalog projections preserve preview Content-Type and 3D dispatch metadata
   assert.equal(threeDSubtypeFor(item), "model");
   assert.equal(editing.url, "https://api.oceanleo.com/source");
   assert.equal(editing.meta.viewer_media_type, "model/gltf+json");
+
+  // Missing or different revisions cannot substitute another revision's display bytes.
+  for (const revisionId of [undefined, "revision-older"]) {
+    const mismatched = structuredClone(artifact);
+    for (const purpose of ["thumbnail", "preview", "full"]) {
+      mismatched.renditions[purpose].revisionId = revisionId;
+    }
+    const fallback = artifactProjectionToLibraryItem(mismatched);
+    assert.equal(fallback.url, "https://api.oceanleo.com/source");
+    assert.equal(fallback.meta.viewer_media_type, "model/gltf+json");
+    assert.equal(fallback.meta.preview_media_type, "");
+    assert.equal(fallback.meta.thumbnail_media_type, "");
+    assert.equal(fallback.meta.full_media_type, "");
+  }
 });

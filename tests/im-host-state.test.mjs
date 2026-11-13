@@ -258,8 +258,8 @@ test("会话 id 与 view/filter 同时给：打开会话，filter 仍记下；se
 
 test("host-state 的筛选白名单与收件箱 API 的 INBOX_FILTERS 一致", () => {
   assert.deepEqual([...INBOX_FILTER_IDS], [...INBOX_FILTERS]);
-  // 四个视图：常驻导航只有 inbox / people 两个标签；notices（平台通知）与 cases（内容处置）是二级视图（见 tests/lbp-w08-notices.test.mjs）。
-  assert.deepEqual([...MESSAGES_VIEWS], ["inbox", "people", "notices", "cases"]);
+  // 五个视图：常驻导航仍只有 inbox / people；通知、通知详情和内容处置是二级视图。
+  assert.deepEqual([...MESSAGES_VIEWS], ["inbox", "people", "notices", "cases", "notice-detail"]);
 });
 
 test("?im_invite 打开收件箱并交出邀请码；处理完清掉", () => {
