@@ -1,0 +1,7 @@
+# UT server allowance translation b
+
+Owner copy_b, gpt-6.1-sol high standard tier. Live kernel/bootstrap and UT wave contract apply. Own ONLY /root/wave-2026-11-13/journal/UT-evidence/budget-b-draft.ts. Product source/tests are frozen while a complete suite runs: DO NOT edit any repository file, run installs/builds/browser, commit/push, stop processes, or print secrets.
+
+Input /root/wave-2026-11-13/journal/UT-evidence/budget-b-keys.json has28 exact newly added Chinese keys and canonical English. Produce export const SERVER_ALLOWANCE_COPY_B: Record<Locale, Record<string,string>> with import type { Locale } from '../../config'; all17 locales zh,zh-TW,en,ja,ko,fr,de,it,es,es-419,pt-BR,pt-PT,vi,tr,ar,th,hi. zh values equal keys; English values MUST equal provided canonical English exactly. Other15 are real localized translations, never English/Chinese fallback. Preserve every placeholder and numeric value (especially744 and1 Mbps), server-budget financial meaning, explicit human authorization/release confirmation, reservation versus charge, stop retaining disks, preemptible reclaim and reconciliation/no-repeat warnings. Keep provider brand Aliyun/Alibaba Cloud appropriate, never invent a provider. Read UI contexts if needed.
+
+Validate TypeScript parse/transpile, exact keys/locales, placeholders/numbers, non-CJK Han absence, nonempty and no full English fallback for non-en/zh. Return draft path and checks/counts here; no other writes or source changes. Parent will integrate.
