@@ -67,7 +67,7 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
   assert.match(hook, /onSaved/);
 });
 
-test("structured document editors cover rich text, workbooks and editable decks", () => {
+test("document editors cover rich text, workbooks and PPTX freeform decks", () => {
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
   // 表格只剩 Univer 舞台（core-swap:delete grid）；存盘走同一个 saveFileToLibrary。
   const grid = source("../src/shell/doc-editors/GridUniverStage.tsx");
@@ -129,12 +129,13 @@ test("structured document editors cover rich text, workbooks and editable decks"
   assert.match(deckBar, /panel\("adjust"\)/);
   assert.doesNotMatch(deckToolbar, /panelId: "deck-(?:effects|fonts)"/);
   assert.match(deckToolbarCommand, /deckArrangedElements/);
-  assert.match(deckToolbarCommand, /applySlideLayout/);
+  assert.doesNotMatch(deckToolbarCommand, /applySlideLayout/);
   assert.match(deckGeometry, /moveDeckElement/);
   assert.match(deckGeometry, /resizeDeckElement/);
   assert.match(deckGeometry, /rotateDeckElement/);
-  assert.match(deckSchema, /legacySlideElements/);
-  assert.match(deckSchema, /normalizedElements\.length > 0/);
+  assert.match(deckSchema, /elements: normalizedElements/);
+  assert.match(deckSchema, /layout: "blank"/);
+  assert.doesNotMatch(deckSchema, /legacySlideElements/);
 });
 
 test("native editors preserve history and never clear newer unsaved revisions", () => {

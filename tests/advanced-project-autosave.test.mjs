@@ -22,13 +22,7 @@ function section(path, start, end) {
 
 const DECK_EDITOR = "../src/shell/doc-editors/use-deck-editor.ts";
 
-/**
- * 2026-08-10 `f2d7b11` 给 deck 交付分了两条路：带编辑稿的演示文稿走产线写出器
- * `buildDeckDraftPptxBlob`，裸 pptx 保持旧的 `buildDeckPptxBlob`，两条都收在一个
- * `buildDelivery` 回调里。所以 deck 的 save / exportPptx 现在是两跳才到渲染器：
- * 判据按裁定跟着改成两跳都验，而不是放宽成只验一跳——`buildDelivery` 自己必须落在
- * 两个真实渲染器上，任何一条掉了都算交付渲染器从动作上脱开。
- */
+/** PPTX is the only deck carrier; save and download share its real renderer. */
 function assertDeckDeliveryReachesRenderers() {
   const buildDelivery = section(
     DECK_EDITOR,
@@ -36,7 +30,7 @@ function assertDeckDeliveryReachesRenderers() {
     "const exportPptx = useCallback",
   );
   assert.match(buildDelivery, /await buildDeckPptxBlob\(snapshot\)/);
-  assert.match(buildDelivery, /await buildDeckDraftPptxBlob\(project, \{/);
+  assert.doesNotMatch(source(DECK_EDITOR), /buildDeckDraftPptxBlob|deck-draft/);
 }
 
 function libraryItem(overrides = {}) {
@@ -221,7 +215,7 @@ test("image/video project autosave stays render-free; typed 3D save checkpoints 
   assert.doesNotMatch(pdfSave, /render|canvas|toDataURL|toBlob/);
 });
 
-test("Office saves persist a real delivery package plus exact project sidecar", () => {
+test("Office saves persist real delivery packages and sidecars only for structured editors", () => {
   assertDeckDeliveryReachesRenderers();
   // Rich documents preserve their original format through the shared delivery
   // builder. Follow the builder to the actual DOCX renderer and packaged file.
@@ -270,7 +264,13 @@ test("Office saves persist a real delivery package plus exact project sidecar", 
         path,
       );
     }
-    assert.match(save, /project: \{/, path);
+    if (extension === "pptx") {
+      assert.match(save, /sourceFormat: DECK_SOURCE_FORMAT/);
+      assert.match(save, /createPreview: \(\) => renderDeckPreviewPng\(snapshot\)/);
+      assert.doesNotMatch(save, /\bproject: \{/);
+    } else {
+      assert.match(save, /project: \{/, path);
+    }
   }
 });
 

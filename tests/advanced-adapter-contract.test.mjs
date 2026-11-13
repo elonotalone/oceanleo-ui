@@ -14,6 +14,7 @@ const source = (path) =>
  */
 const ROUTE_LEAF = {
   GridRoute: "../src/shell/doc-editors/GridUniverStage.tsx",
+  GameRoute: "../src/shell/game-editor/GameProjectEditor.tsx",
 };
 const routeSource = (route) =>
   source(ROUTE_LEAF[route] || `../src/shell/advanced-routes/${route}.tsx`);
@@ -91,6 +92,10 @@ test("all route components use the single typed adapter prop", () => {
       route,
     );
   }
+  assert.match(
+    source("../src/shell/advanced-routes/GameRoute.tsx"),
+    /return <GameProjectEditor \{\.\.\.props\} \/>/,
+  );
   const contract = source("../src/shell/advanced-editor-adapter.ts");
   assert.match(contract, /interface AdvancedEditorAdapter/);
   assert.match(contract, /persistence\?: AdvancedEditorPersistenceAdapter/);

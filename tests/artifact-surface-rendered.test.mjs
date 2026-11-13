@@ -9,7 +9,7 @@ import React, { act } from "react";
 
 import {
   ARTIFACT_TYPES,
-  GAME_DOCUMENT_SOURCE_FORMAT,
+  GAME_PROJECT_SOURCE_FORMAT,
   normalizeArtifactProjection,
 } from "../src/shell/artifact-contract.ts";
 import {
@@ -489,6 +489,12 @@ const {
   })
 );
 const databaseStubUrl = dataModule(`
+  export async function getStorageUsage() {
+    return { ok: false, error: "storage usage not loaded in this test" };
+  }
+  export async function changeStoragePacks() {
+    throw new Error("storage purchase not used in this test");
+  }
   export async function uploadFile() {
     return { ok: false, error: "upload not used in this test" };
   }
@@ -507,6 +513,11 @@ const myLibraryModule = (
       "../i18n/ui/useUI": uiStubUrl,
       "../lib/auth/client": authStubUrl,
       "../lib/database": databaseStubUrl,
+      "./library-import": dataModule(`
+        export function LibraryImportDialog() { throw new Error("import not used in this test"); }
+        export function LibraryUploadQueue() { return null; }
+        export function LibraryPurchasedUpdates() { return null; }
+      `),
       "./AdvancedContentWorkbench": advancedWorkbenchStubUrl,
       "./artifact-client": artifactClientUrl,
       "./artifact-contract": contractUrl,
@@ -833,18 +844,15 @@ const TEST_SOURCE_FORMAT = {
   chart: "echarts-option+json",
   document: "tiptap-json",
   grid: "grid-json",
-  deck: "deck-json",
+  deck: "pptx",
   pdf: "pdf",
-  website: "oceanleo.website-project.v1",
+  website: "html",
   video: "timeline-json",
   audio: "audio-project+json",
   model_3d: "glb",
   workflow: "workflow-json",
-  // 钉在常量上而不是写字面量：可玩产物的 source format 是
-  // `oceanleo.game-document.v1`，而 `advancedCapabilityForArtifactFields()` 对 game
-  // 这一类**逐字**比较 source format（退役的五槽 bundle 只许读，不许当编辑别名）。
-  // 夹具里原来那个 "game-bundle" 两边都对不上，于是这一类的路由永远解析不出来。
-  game: GAME_DOCUMENT_SOURCE_FORMAT,
+  // The file-project editor owns current games; legacy game documents stay read-only.
+  game: GAME_PROJECT_SOURCE_FORMAT,
   geo_map: "oceanleo.geo-map.v1",
   interactive_doc: "oceanleo.interactive-doc.v1",
 };
@@ -1815,7 +1823,7 @@ test("local production-shape 20-item pages accept either third-party evidence fi
   ]);
 });
 
-test("material cards and rows hide machine copy without changing generic rows", async () => {
+test("material cards and generic rows show type and source without machine copy", async () => {
   const normalized = normalizeArtifactProjection(
     projection({
       id: "quiet-material",
@@ -1884,7 +1892,9 @@ test("material cards and rows hide machine copy without changing generic rows", 
     onOpen() {},
   });
   try {
-    assert.match(genericRow.container.textContent || "", /用户自定义说明/);
+    assert.match(genericRow.container.textContent || "", /Generic entry/);
+    assert.match(genericRow.container.textContent || "", /图片 · 我的创作/);
+    assert.doesNotMatch(genericRow.container.textContent || "", /用户自定义说明|acceptance_fixture/);
   } finally {
     await genericRow.unmount();
   }
