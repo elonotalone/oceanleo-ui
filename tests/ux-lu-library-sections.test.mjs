@@ -1,10 +1,11 @@
-// 2026-11-07 UX wave, unit LU: Library's four sections (我的创作 / 上传的 / 来自 LeoBay / 来自 LeoChat) and
-// drag-drop upload. Operator ruling (rulings §4 "Computer-task UX wave" (6)); contract §2.4: every Library list
+// Library provenance (creation / upload / LeoBay / LeoChat) and drag-drop upload.
+// The current unified shelf shows those sources together; source filters remain a wire contract. Operator ruling (rulings §4 "Computer-task UX wave" (6)); contract §2.4: every Library list
 // item carries `librarySource`, the list route filters with `source=`. No browser (ruling 2026-11-06): jsdom +
 // stubbed neighbours, the real MyLibrary / library-sections / library-drop / dropped-entries.
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
@@ -53,9 +54,17 @@ async function settle() {
 }
 
 const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
+  "./library-import": dataModule(`
+    export function LibraryImportDialog(){ throw new Error("unexpected import dialog"); }
+    export function LibraryUploadQueue(){ return null; }
+    export function LibraryPurchasedUpdates(){ return null; }
+  `),
   "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
   "../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+    export async function accessToken(){ return null; }
+    export function cachedAccessToken(){ return null; }
+    export async function getUserId(){ return "user-1"; }
     export async function getUserIdSnapshot(){ return {available:true,userId:"user-1"}; }
   `),
   "./AppPageHeader": dataModule(`export const APP_PAGE_TITLE_CLASS = "";`),
@@ -72,6 +81,8 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export function CollectionFilterSelect(){ return null; }
   `),
   "../lib/database": dataModule(`
+    export async function getStorageUsage(){ return {ok:false,error:"storage usage not part of this fixture"}; }
+    export async function changeStoragePacks(){ throw new Error("unexpected storage purchase"); }
     export function humanLibraryUploadError(value){ return String(value || "upload failed"); }
     export async function normalizeUploadIdempotencyKey(){ return "stable-key"; }
     export async function uploadFile(file, options){
@@ -85,6 +96,11 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   `),
   "./artifact-client": dataModule(`
     export const ARTIFACT_LIBRARY_CHANGE_EVENT = "oceanleo:artifact-library-change";
+    export async function getCurrentArtifactItem(id){
+      globalThis.__lu.detailReads.push(id);
+      const value = globalThis.__lu.items.find(item => item.artifactId === id);
+      return value ? {ok:true,data:value} : {ok:false,status:404};
+    }
     export async function ensureArtifact(){ return {ok:false}; }
     export async function retireArtifact(){ return {ok:true}; }
     // The server side of contract §2.4: \`source=\` keeps only that section's items.
@@ -113,23 +129,20 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export function workspaceEntryFromLibraryItem(item, options = {}){
       return { id: item.artifactId, title: item.title, kind: item.kind, category: options.category, libraryItem: item };
     }
-    export function WorkspaceLibrary({entries = [], emptyTitle}){
-      return h("div", {"data-grid": ""},
+    export function WorkspaceLibrary({entries = [], emptyTitle, onOpenItem, action}){
+      return h("div", {"data-grid": "", "data-action-item":action?.action?.itemId || ""},
         entries.length === 0 ? h("div", {"data-empty-title": ""}, emptyTitle) : null,
-        ...entries.map((entry) => h("span", {key: entry.id, "data-library-item": entry.id}, entry.title)));
+        ...entries.map((entry) => h("button", {key: entry.id, "data-library-item": entry.id, onClick:()=>onOpenItem?.(entry.libraryItem)}, entry.title)));
     }
   `),
-  "./LibraryChatFiles": dataModule(`
-    import { createElement as h } from "${reactUrl}";
-    export function LibraryChatFiles({query, category, view, artifacts = [], onOpenArtifact}){
-      return h("div", {"data-chat-files-stub": "", "data-query": query, "data-category": category, "data-view": view,
-        "data-artifacts": artifacts.map((item) => item.artifactId).join(",")},
-        ...artifacts.map((item) => h("button", {key: item.artifactId, "data-open-artifact": item.artifactId, onClick: () => onOpenArtifact?.(item)})));
-    }
+  "./library-chat-files": dataModule(`
+    export async function listLibraryChatFiles(){ return {ok:true,items:[],next:null}; }
+    export function chatFileMatches(){ throw new Error("unexpected chat file in empty transport fixture"); }
+    export function chatFileLibraryItem(){ throw new Error("unexpected chat file in empty transport fixture"); }
   `),
   "./library-folder-upload": dataModule(`
     export async function uploadDroppedFolder(folder, { onPhase } = {}){
-      onPhase?.("zipping");
+      onPhase?.("creating");
       globalThis.__lu.folderUploads.push({ name: folder.name, paths: folder.entries.map((entry) => entry.path) });
       return globalThis.__lu.folderResponses.shift() || { ok: true, folder: { id: "pkg-1" } };
     }
@@ -181,6 +194,7 @@ async function mount(props = {}, { items = ITEMS, favorites = [] } = {}) {
     items,
     favorites,
     mineCalls: [],
+    detailReads: [],
     favoriteCalls: [],
     uploads: [],
     uploadResponses: [],
@@ -199,11 +213,6 @@ async function mount(props = {}, { items = ITEMS, favorites = [] } = {}) {
     container,
     render,
     shown: () => [...container.querySelectorAll("[data-library-item]")].map((node) => node.getAttribute("data-library-item")),
-    selected: () => container.querySelector('[data-library-section][aria-selected="true"]')?.getAttribute("data-library-section"),
-    click: async (section) => {
-      await act(async () => container.querySelector(`[data-library-section="${section}"]`).click());
-      await settle();
-    },
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -243,147 +252,106 @@ async function dispatchDrag(target, type, dataTransfer) {
   return event;
 }
 
-test("four sections in order; 我的创作 is the default and the list is read with source=creation", async () => {
+test("the unified Library shows every provenance in one shelf and reads mine without source=", async () => {
   const view = await mount();
   try {
-    const labels = [...view.container.querySelectorAll("[data-library-section]")].map((node) => node.textContent);
-    assert.deepEqual(labels, ["我的创作", "上传的", "来自 LeoBay", "来自 LeoChat"]);
-    assert.equal(view.selected(), "creation");
-    assert.deepEqual(view.shown(), ["made-1", "made-2"]);
-    // Every /v1/library/mine read (documents, pdfs, mixed page) asks for the section.
-    assert.ok(view.mineCalls?.length !== 0);
-    assert.deepEqual([...new Set(globalThis.__lu.mineCalls.map((call) => call.source))], ["creation"]);
-  } finally {
-    await view.unmount();
-  }
-});
-
-test("the old 「仅看上传」 view toggle is gone (上传的 is the section)", async () => {
-  const view = await mount();
-  try {
-    const options = view.container.querySelector("[data-view-options]").getAttribute("data-view-options");
-    assert.equal(options, "仅看收藏");
-  } finally {
-    await view.unmount();
-  }
-});
-
-test("clicking a section re-reads that section and shows only its items", async () => {
-  const view = await mount();
-  try {
-    globalThis.__lu.mineCalls = [];
-    await view.click("upload");
-    assert.equal(view.selected(), "upload");
-    assert.deepEqual(view.shown(), ["up-1"]);
+    assert.equal(view.container.querySelectorAll("[data-library-section]").length, 0);
+    assert.deepEqual(view.shown(), ITEMS.map(item => item.artifactId));
     assert.ok(globalThis.__lu.mineCalls.length > 0);
-    assert.ok(globalThis.__lu.mineCalls.every((call) => call.source === "upload"));
-    await view.click("leobay");
-    assert.deepEqual(view.shown(), ["bay-1"]);
-    assert.equal(view.container.querySelector("[data-empty-title]"), null);
-  } finally {
-    await view.unmount();
-  }
+    assert.ok(globalThis.__lu.mineCalls.every(call => call.source === null));
+  } finally { await view.unmount(); }
 });
 
-test("an item without librarySource is placed in no section (the client never guesses one)", async () => {
+test("the unified Library view menu offers favorites without an uploaded-only section toggle", async () => {
   const view = await mount();
   try {
-    for (const section of ["creation", "upload", "leobay"]) {
-      await view.click(section);
-      assert.ok(!view.shown().includes("no-section"), section);
-    }
-  } finally {
-    await view.unmount();
-  }
+    assert.equal(view.container.querySelector("[data-view-options]").getAttribute("data-view-options"), "仅看收藏");
+  } finally { await view.unmount(); }
 });
 
-test("favorites are read without source= and sorted into sections by their own librarySource", async () => {
+test("legacy section props cannot hide other sources from the unified shelf", async () => {
+  const view = await mount({ section: "upload" });
+  try {
+    assert.deepEqual(view.shown(), ITEMS.map(item => item.artifactId));
+    await view.render({ section: "leobay" });
+    assert.deepEqual(view.shown(), ITEMS.map(item => item.artifactId));
+    assert.ok(globalThis.__lu.mineCalls.every(call => call.source === null));
+  } finally { await view.unmount(); }
+});
+
+test("unknown provenance remains visible without being guessed into a source", async () => {
+  const view = await mount();
+  try {
+    assert.ok(view.shown().includes("no-section"));
+    assert.equal(ITEMS.find(item => item.artifactId === "no-section").artifact.librarySource, null);
+    assert.equal(view.container.querySelectorAll("[data-library-section]").length, 0);
+  } finally { await view.unmount(); }
+});
+
+test("favorites from different sources share the shelf and are read without source=", async () => {
   const favorites = [item("fav-bay", "leobay", { favorite: true }), item("fav-made", "creation", { favorite: true })];
   const view = await mount({}, { items: [], favorites });
   try {
-    assert.ok(globalThis.__lu.favoriteCalls.every((call) => call.source === null));
-    assert.deepEqual(view.shown(), ["fav-made"]);
-    await view.click("leobay");
-    assert.deepEqual(view.shown(), ["fav-bay"]);
-  } finally {
-    await view.unmount();
-  }
+    assert.ok(globalThis.__lu.favoriteCalls.every(call => call.source === null));
+    assert.deepEqual(view.shown(), ["fav-bay", "fav-made"]);
+  } finally { await view.unmount(); }
 });
 
-test("empty sections say which section is empty", async () => {
-  const view = await mount({}, { items: [item("made-1", "creation")] });
+test("an empty unified shelf keeps the same empty state across legacy section props", async () => {
+  const view = await mount({ section: "upload" }, { items: [] });
   try {
-    await view.click("upload");
-    assert.equal(view.container.querySelector("[data-empty-title]").textContent, "还没有上传的文件");
-    await view.click("leobay");
-    assert.equal(view.container.querySelector("[data-empty-title]").textContent, "还没有来自 LeoBay 的内容");
-  } finally {
-    await view.unmount();
-  }
+    assert.equal(view.container.querySelector("[data-empty-title]").textContent, "还没有创作");
+    await view.render({ section: "leobay" });
+    assert.equal(view.container.querySelector("[data-empty-title]").textContent, "还没有创作");
+  } finally { await view.unmount(); }
 });
 
-test("来自 LeoChat shows the chat files view with the page's search, type and view; no artifact grid", async () => {
-  const view = await mount();
+test("LeoChat Library artifacts appear in the same grid as other provenance", async () => {
+  const view = await mount({}, { items: [...ITEMS, item("chat-card", "leochat")] });
   try {
-    await view.click("leochat");
-    const chat = view.container.querySelector("[data-chat-files-stub]");
-    assert.ok(chat, view.container.innerHTML.slice(0, 600));
-    assert.equal(chat.getAttribute("data-category"), "all");
-    assert.equal(chat.getAttribute("data-view"), "grid");
-    assert.equal(view.container.querySelector("[data-grid]"), null);
-  } finally {
-    await view.unmount();
-  }
+    assert.ok(view.container.querySelector("[data-grid]"));
+    assert.ok(view.shown().includes("chat-card"));
+    assert.ok(view.shown().includes("made-1"));
+    assert.equal(view.container.querySelector("[data-chat-files-stub]"), null);
+    assert.ok(globalThis.__lu.mineCalls.every(call => call.source === null));
+  } finally { await view.unmount(); }
 });
 
-test("来自 LeoChat also lists Library artifacts tagged leochat (ANSWER LU-1) and opens them like any Library item", async () => {
+test("opening a LeoChat Library artifact preserves its exact identity", async () => {
   const opened = [];
-  const view = await mount({ onOpenItem: (picked) => opened.push(picked.artifactId) }, { items: [...ITEMS, item("chat-card", "leochat")] });
+  const view = await mount({ onOpenItem: picked => opened.push(picked.artifactId) }, { items: [...ITEMS, item("chat-card", "leochat")] });
   try {
-    await view.click("leochat");
-    assert.ok(globalThis.__lu.mineCalls.some((call) => call.source === "leochat"));
-    const chat = view.container.querySelector("[data-chat-files-stub]");
-    assert.equal(chat.getAttribute("data-artifacts"), "chat-card");
-    await act(async () => view.container.querySelector('[data-open-artifact="chat-card"]').click());
+    await act(async () => view.container.querySelector('[data-library-item="chat-card"]').click());
     assert.deepEqual(opened, ["chat-card"]);
-  } finally {
-    await view.unmount();
-  }
+  } finally { await view.unmount(); }
 });
 
-test("a chat upload that opens Library with filter=uploaded lands on 上传的", async () => {
-  const view = await mount({
-    action: { nonce: "chat-upload-1", action: { version: 1, tab: "mine", filter: "uploaded", itemId: "up-1" } },
-  });
+test("a legacy uploaded receipt preserves the requested item without filtering away the shelf", async () => {
+  const view = await mount({ action: { nonce: "chat-upload-1", action: { version: 1, tab: "mine", filter: "uploaded", itemId: "up-1" } } });
   try {
-    assert.equal(view.selected(), "upload");
-    assert.deepEqual(view.shown(), ["up-1"]);
-  } finally {
-    await view.unmount();
-  }
+    assert.ok(globalThis.__lu.detailReads.length > 0);
+    assert.ok(globalThis.__lu.detailReads.every(id => id === "up-1"));
+    assert.equal(view.container.querySelector("[data-grid]").getAttribute("data-action-item"), "up-1");
+    assert.ok(view.shown().includes("up-1"));
+    assert.ok(view.shown().includes("made-1"));
+  } finally { await view.unmount(); }
 });
 
-test("controlled section: the host owns it, a click reports it, and supplementalSection gets the section", async () => {
+test("supplemental content receives unified context and legacy section props do not select a tab", async () => {
   const reported = [];
   const seen = [];
   const supplementalSection = ({ section }) => {
     seen.push(section);
-    return section === "upload" ? React.createElement("div", { "data-strip": "" }) : null;
+    return React.createElement("div", { "data-unified-section": section });
   };
-  const view = await mount({ section: "creation", onSectionChange: (next) => reported.push(next), supplementalSection });
+  const view = await mount({ section: "creation", onSectionChange: next => reported.push(next), supplementalSection });
   try {
-    assert.equal(view.container.querySelector("[data-strip]"), null);
-    await view.click("upload");
-    assert.deepEqual(reported, ["upload"]);
-    // Still the host's value until it changes the prop.
-    assert.equal(view.selected(), "creation");
-    await view.render({ section: "upload", onSectionChange: (next) => reported.push(next), supplementalSection });
-    assert.equal(view.selected(), "upload");
-    assert.ok(view.container.querySelector("[data-strip]"));
-    assert.ok(seen.includes("upload"));
-  } finally {
-    await view.unmount();
-  }
+    await view.render({ section: "upload", onSectionChange: next => reported.push(next), supplementalSection });
+    assert.deepEqual(reported, []);
+    assert.ok(seen.length > 0 && seen.every(section => section === "creation"));
+    assert.equal(view.container.querySelector("[data-unified-section]").getAttribute("data-unified-section"), "creation");
+    assert.deepEqual(view.shown(), ITEMS.map(item => item.artifactId));
+  } finally { await view.unmount(); }
 });
 
 test("dragging files over the page shows 「松手即可添加文件」; dragging a Library card does not", async () => {
@@ -403,8 +371,9 @@ test("dragging files over the page shows 「松手即可添加文件」; draggin
   }
 });
 
-test("dropped files are uploaded with the existing private upload and the page moves to 上传的", async () => {
-  const view = await mount();
+test("dropped files retain private upload identity and notify a legacy host without adding section tabs", async () => {
+  const sections = [];
+  const view = await mount({onSectionChange: section => sections.push(section)});
   try {
     const file = new window.File(["hello"], "notes.txt", { type: "text/plain", lastModified: 7 });
     const entry = Object.assign(fileEntry(file), { __file: file });
@@ -416,15 +385,17 @@ test("dropped files are uploaded with the existing private upload and the page m
     assert.deepEqual(globalThis.__lu.uploads.map((upload) => [upload.name, upload.privateUpload, upload.siteId]), [
       ["notes.txt", true, "oceanleo"],
     ]);
-    assert.equal(view.selected(), "upload");
+    assert.ok(sections.includes("upload"));
+    assert.equal(view.container.querySelectorAll("[data-library-section]").length, 0);
     assert.equal(view.container.querySelector("[data-library-drop-overlay]"), null);
   } finally {
     await view.unmount();
   }
 });
 
-test("a dropped folder goes to the folder upload (zip → 文件包), not to the file upload", async () => {
-  const view = await mount();
+test("a dropped folder keeps its relative paths and uses the folder upload boundary", async () => {
+  const sections = [];
+  const view = await mount({onSectionChange: section => sections.push(section)});
   try {
     const a = new window.File(["a"], "a.md");
     const b = new window.File(["b"], "b.md");
@@ -434,7 +405,8 @@ test("a dropped folder goes to the folder upload (zip → 文件包), not to the
     await settle();
     assert.deepEqual(globalThis.__lu.folderUploads, [{ name: "Brand kit", paths: ["a.md", "assets/b.md"] }]);
     assert.equal(globalThis.__lu.uploads.length, 0);
-    assert.equal(view.selected(), "upload");
+    assert.ok(sections.includes("upload"));
+    assert.equal(view.container.querySelectorAll("[data-library-section]").length, 0);
   } finally {
     await view.unmount();
   }
@@ -443,23 +415,32 @@ test("a dropped folder goes to the folder upload (zip → 文件包), not to the
 test("a folder upload error is shown as returned", async () => {
   const view = await mount();
   try {
-    globalThis.__lu.folderResponses.push({ ok: false, error: "文件夹太大：压缩后超过 20 MB" });
+    globalThis.__lu.folderResponses.push({ ok: false, error: "文件夹上传失败：空间不足" });
     const zone = view.container.querySelector("[data-library-drop-zone]");
     await dispatchDrag(zone, "drop", transfer([dirEntry("Huge", [fileEntry(new window.File(["x"], "x.bin"))])]));
     await settle();
-    assert.equal(view.container.querySelector('[role="alert"]')?.textContent, "文件夹太大：压缩后超过 20 MB");
+    const alert = view.container.querySelector('[role="alert"]');
+    assert.equal(alert?.firstChild?.textContent, "文件夹上传失败：空间不足");
+    assert.equal(alert?.querySelector("a")?.getAttribute("href"), "/library#storage-capacity");
   } finally {
     await view.unmount();
   }
 });
 
-test("an upload answer without librarySource is not guessed into a section: the list is re-read", async () => {
+test("an upload answer without librarySource is never guessed: the complete shelf is refreshed", async () => {
   const view = await mount();
   try {
-    // The upload answer is canonical but carries no section; the re-read places it (server says upload).
+    // A complete private upload receipt may lack provenance; refresh the shelf instead of guessing it.
+    const artifact = structuredClone(JSON.parse(readFileSync(new URL("./fixtures/oceanleo-artifact-library-pages.json", import.meta.url), "utf8")).mineOwnerAPage.items[0]);
+    artifact.artifact_id = "fresh";
+    artifact.revision_id = "fresh-r1";
+    artifact.title = "fresh";
+    artifact.owner.principal_id = "user-1";
+    delete artifact.library_source;
+    delete artifact.librarySource;
+    for (const rendition of Object.values(artifact.renditions)) rendition.revision_id = "fresh-r1";
     globalThis.__lu.uploadResponses.push({
-      ok: true,
-      data: { file: { artifact_id: "fresh", revision_id: "fresh-r1" } },
+      ok: true, data: { file: { artifact_id: "fresh", revision_id: "fresh-r1", artifact } },
     });
     globalThis.__lu.items = [...ITEMS, item("fresh", "upload")];
     globalThis.__lu.mineCalls = [];
@@ -469,8 +450,11 @@ test("an upload answer without librarySource is not guessed into a section: the 
       input.dispatchEvent(new window.Event("change", { bubbles: true }));
     });
     await settle();
-    assert.equal(view.selected(), "upload");
-    assert.ok(globalThis.__lu.mineCalls.some((call) => call.source === "upload"));
+    assert.equal(view.container.querySelectorAll("[data-library-section]").length, 0);
+    assert.equal(view.container.querySelector('[role="alert"]'), null, view.container.textContent);
+    assert.ok(globalThis.__lu.mineCalls.length > 0);
+    assert.equal(globalThis.__lu.items.find(item => item.artifactId === "fresh").artifact.librarySource, "upload");
+    assert.ok(globalThis.__lu.mineCalls.every(call => call.source === null));
     assert.ok(view.shown().includes("fresh"), view.shown().join(","));
   } finally {
     await view.unmount();
