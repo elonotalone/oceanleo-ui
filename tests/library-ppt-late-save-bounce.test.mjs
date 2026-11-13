@@ -179,7 +179,7 @@ const PPT = itemOf({
   title: "年度述职幻灯片",
   artifactType: "deck",
   editorCapability: "deck-editor",
-  sourceFormat: "deck-json",
+  sourceFormat: "pptx",
   ext: "pptx",
   siteId: "ppt",
 });
@@ -189,7 +189,7 @@ const PPT_SAVED = itemOf({
   title: "年度述职幻灯片",
   artifactType: "deck",
   editorCapability: "deck-editor",
-  sourceFormat: "deck-json",
+  sourceFormat: "pptx",
   ext: "pptx",
   siteId: "ppt",
 });
@@ -199,7 +199,7 @@ const PPT_B = itemOf({
   title: "另一份演示文稿",
   artifactType: "deck",
   editorCapability: "deck-editor",
-  sourceFormat: "deck-json",
+  sourceFormat: "pptx",
   ext: "pptx",
   siteId: "ppt",
 });
@@ -507,6 +507,12 @@ const libraryLayoutStubUrl = dataModule(`
 `);
 
 const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
+  "./StorageCapacityStrip": dataModule(`export function StorageCapacityStrip() { return null; }`),
+  "./library-import": dataModule(`
+    export function LibraryImportDialog() { throw new Error("unexpected import"); }
+    export function LibraryUploadQueue() { return null; }
+    export function LibraryPurchasedUpdates() { return null; }
+  `),
   "../i18n/ui/useUI": uiStubUrl,
   "../lib/database": databaseStubUrl,
   "./AdvancedContentWorkbench": workbenchUrl,

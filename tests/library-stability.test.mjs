@@ -49,16 +49,7 @@ for (const [name, value] of Object.entries({
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-const libraryDataUrl = await compileModule("src/shell/library-data.ts", {
-  "./artifact-contract": dataModule(`
-    export function isArtifactSourceTreeUrl(){ return false; }
-    export const POPULARITY_META_KEY = "popularity";
-    export function popularityMetricsFromWire(){ return null; }
-  `),
-  "./workbench-capability-registry": dataModule(`
-    export function editorRouteHintForArtifactCapability(){ return ""; }
-  `),
-});
+const libraryDataUrl = new URL("../src/shell/library-data.ts", import.meta.url).href;
 const { libraryItemSourceBytes, sortLibraryItems } = await import(libraryDataUrl);
 
 const editorPreloadUrl = await compileModule("src/shell/editor-preload.ts", {
@@ -326,6 +317,12 @@ test("library sort uses favorite, created time, and source/upload bytes only", (
 });
 
 const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
+  "./StorageCapacityStrip": dataModule(`export function StorageCapacityStrip(){ return null; }`),
+  "./library-import": dataModule(`
+    export function LibraryImportDialog(){ throw new Error("unexpected import"); }
+    export function LibraryUploadQueue(){ return null; }
+    export function LibraryPurchasedUpdates(){ return null; }
+  `),
   "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
   "./WorkspaceSession": dataModule(`export function useOptionalWorkspaceSession(){return null;} export function WorkspaceSessionProvider({children}){return children;}`),
   "./library-standalone-editor-host": dataModule(`
@@ -338,6 +335,8 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
   "../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT = "oceanleo:auth-state";
+    export function cachedAccessToken(){ return null; }
+    export async function accessToken(){ return null; }
     export async function getUserId(){ return globalThis.__libraryUserId ?? null; }
     export async function getUserIdSnapshot(){ return {available:globalThis.__libraryAuthAvailable !== false,userId:globalThis.__libraryUserId ?? null}; }
   `),
@@ -384,6 +383,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   `),
   "./artifact-client": dataModule(`
     export const ARTIFACT_LIBRARY_CHANGE_EVENT = "oceanleo:artifact-library-change";
+    export async function getCurrentArtifactItem(){ throw new Error("unexpected authoritative detail read"); }
     export async function ensureArtifact(){ globalThis.__ensureCalls += 1; return {ok:false}; }
     export async function retireArtifact(){ return {ok:true}; }
     export async function listMyArtifacts(options={}){
@@ -657,7 +657,9 @@ test("detail-only failure leaves the usable Library list with a compact status",
     assert.equal(container.querySelectorAll("[data-library-item]").length, 1);
     assert.ok(container.querySelector('[role="status"]'));
     assert.equal(container.querySelector('[role="alert"]'), null);
-  }, { action: { nonce: "detail-only-failure" }, detailFailure: true });
+  }, { action: { nonce: "detail-only-failure", action: {
+    version: 1, tab: "mine", intent: "open", itemId: "missing-detail",
+  } }, detailFailure: true });
 });
 
 test("retryable private upload exposes a retry using the same file and idempotency identity", async () => {

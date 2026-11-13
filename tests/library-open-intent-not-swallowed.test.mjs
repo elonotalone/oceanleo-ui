@@ -311,6 +311,9 @@ const { WorkspaceLibrary } = await import(
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-client": dataModule(`
+      export async function getCurrentArtifactItem() {
+        throw new Error("unexpected authoritative detail read");
+      }
       export async function prepareArtifactForAction(action, item) {
         return { ok: true, data: item };
       }
