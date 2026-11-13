@@ -4,6 +4,11 @@ import { spawnSync } from "node:child_process";
 import { DOMAIN_FAMILIES, domainFamilyFeatures } from "../src/contracts/domain-family.ts";
 import { imEnabledFor } from "../src/shell/messages/messages-family.ts";
 
+test("domain family registration covers exactly the three supported families", () => {
+  assert.equal(DOMAIN_FAMILIES.length, 3);
+  assert.deepEqual([...DOMAIN_FAMILIES].sort(), ["cn", "com", "ws"]);
+});
+
 for (const family of DOMAIN_FAMILIES) {
   test(`${family}: full product features and authenticated LeoChat`, () => {
     assert.deepEqual(domainFamilyFeatures(family), { bay: true, commerce: true, chat: true });

@@ -26,6 +26,8 @@ const states = ["stopped", "installing", "starting", "running", "crashed", "slee
 // UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
 // C3 runtime enum labels, colors and descriptions are presentation completeness, not browser origin or content isolation.
 test("C3 mapping contains every runtime state and distinct readable labels", () => {
+  assert.equal(states.length, 6);
+  assert.deepEqual(states.toSorted(), ["crashed", "installing", "running", "sleeping", "starting", "stopped"]);
   assert.deepEqual(Object.keys(RUNTIME_STATES).sort(), states.toSorted());
   assert.equal(new Set(Object.values(RUNTIME_STATES).map(s=>s.label)).size, 6);
   for (const state of states) { assert.match(RUNTIME_STATES[state].color,/^#[a-f0-9]{6}$/); assert.ok(RUNTIME_STATES[state].description); }

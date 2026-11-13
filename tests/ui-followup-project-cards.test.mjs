@@ -1,16 +1,33 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { siblingRepoUrl } from "./helpers/sibling-repo-url.mjs";
 
-if (!existsSync(resolve("../oceanleo/components/project/ProjectSidePlanCard.tsx"))) {
-  test("portal project-card integration requires the sibling portal checkout", { skip: true }, () => {});
-} else {
+const source = relativePath => fileURLToPath(siblingRepoUrl("oceanleo", relativePath));
+const sources = {
+  plan: source("components/project/ProjectSidePlanCard.tsx"),
+  assets: source("components/project/ProjectSideAssetsCard.tsx"),
+  preview: source("components/project/ProjectSidePreview.ts"),
+  create: source("app/projects/new/page.tsx"),
+};
+function skipMissing(t, keys) {
+  const missing = keys.map(key => sources[key]).filter(path => !existsSync(path));
+  if (!missing.length) return false;
+  t.skip(`optional sibling portal source absent: ${missing.join(", ")}`);
+  return true;
+}
+
+test("portal project-card integration resolves its canonical sibling sources", t => {
+  if (skipMissing(t, Object.keys(sources))) return;
+  assert.equal(Object.keys(sources).length, 4);
+  assert.ok(Object.values(sources).every(path => existsSync(path)));
+});
+
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 // 2026-10-24（skills-overhaul W13，仲裁 A-23）：计划 / 资产卡点开的是 kit 的统一大弹窗
@@ -24,9 +41,13 @@ const workspaceUrl = await compileModule("src/shell/project-workspace.tsx", {
     export function Modal({children}) { return React.createElement("div", {role: "dialog"}, children); }`),
 });
 const useUIStub = dataModule("export function useUI() { return (value) => value; }");
+const overlayUrl = await compileModule("src/shell/anchored-popover.tsx");
+const overlayFixture = dataModule(`export * from ${JSON.stringify(overlayUrl)};
+  // jsdom cannot parse modern discrete CSS transitions; keep actual focus/scroll behavior.
+  export function ensureOverlayMotionStyles() {}`);
 const kitUrls = [];
 for (const file of ["ConfigDialogShell.tsx", "ConfigToolbar.tsx", "kit-icons.tsx"]) {
-  kitUrls.push(await compileModule(`src/shell/skills/kit/${file}`, { "../../../i18n/ui/useUI": useUIStub }));
+  kitUrls.push(await compileModule(`src/shell/skills/kit/${file}`, { "../../../i18n/ui/useUI": useUIStub, "../../anchored-popover": overlayFixture }));
 }
 const shellUrl = dataModule(
   [workspaceUrl, await compileModule("src/shell/collection-chrome.tsx", { "../i18n/ui/useUI": useUIStub }), ...kitUrls].map((url) => `export * from ${JSON.stringify(url)};`).join("\n"),
@@ -44,6 +65,7 @@ const resourceUrl = dataModule(`import {useState} from ${JSON.stringify(reactUrl
       refresh() { harness.refreshes += 1; }, mutate: setData };
   }`);
 const stubs = {
+  "@oceanleo/ui/ui": await compileModule("src/ui/menu/FloatingMenu.tsx"),
   "@oceanleo/ui/shell": shellUrl,
   "@oceanleo/ui/i18n": dataModule("const tt = (value) => value; export const useUI = () => tt;"),
   "sonner": dataModule("export const toast = { error() {}, success() {} };"),
@@ -53,13 +75,15 @@ const stubs = {
   "@/components/projects-cache": dataModule("export function prependProject(project) { globalThis.__uiFollowupProjectCards.cached.push(project); }"),
   "@/app/_components/icons": dataModule('export function IconPlus() { return "+"; } export function IconChevronDown() { return null; }'),
   "@/components/project/ProjectSideResource": resourceUrl,
-  "@/components/project/ProjectSidePreview": await compileModule(resolve("../oceanleo/components/project/ProjectSidePreview.ts")),
+  ...(existsSync(sources.preview) ? { "@/components/project/ProjectSidePreview": await compileModule(sources.preview) } : {}),
   "@/components/project/ProjectPlanTab": dataModule(`export { Tab as ProjectPlanTab } from ${JSON.stringify(framedTab("data-plan-detail"))};`),
   "@/components/project/ProjectAssetsTab": dataModule(`export { Tab as ProjectAssetsTab } from ${JSON.stringify(framedTab("data-assets-detail"))};`),
   "@/lib/projects": dataModule(`
     export const EMPTY_CONFIG = {connectors: [], agent_ids: [], skill_ids: [], workflow_ids: [], organization_id: null, connector_bindings: [], todo_sources: []};
     export async function listProjectTodos() {}
     export async function listProjectAssets() {}
+    export async function listProjectLibraryItems() {}
+    export async function removeProjectLibraryItem() { throw new Error("unexpected project reference removal"); }
     export async function createProject(payload) {
       globalThis.__uiFollowupProjectCards.calls.push({payload});
       return {ok: true, data: {project: {id: "project-created", ...payload}}};
@@ -73,9 +97,9 @@ const stubs = {
       return {ok: true, data: {asset: {id: "asset-new", name: file.name, kind: "file", size_bytes: file.size}}};
     }`),
 };
-const { ProjectSidePlanCard } = await import(await compileModule(resolve("../oceanleo/components/project/ProjectSidePlanCard.tsx"), stubs));
-const { ProjectSideAssetsCard } = await import(await compileModule(resolve("../oceanleo/components/project/ProjectSideAssetsCard.tsx"), stubs));
-const { default: NewProjectPage } = await import(await compileModule(resolve("../oceanleo/app/projects/new/page.tsx"), stubs));
+const { ProjectSidePlanCard } = existsSync(sources.plan) && existsSync(sources.preview) ? await import(await compileModule(sources.plan, stubs)) : {};
+const { ProjectSideAssetsCard } = existsSync(sources.assets) && existsSync(sources.preview) ? await import(await compileModule(sources.assets, stubs)) : {};
+const { default: NewProjectPage } = existsSync(sources.create) ? await import(await compileModule(sources.create, stubs)) : {};
 
 async function withCard(Component, { canEdit = true, items = [], props = {} } = {}, run) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -85,9 +109,10 @@ async function withCard(Component, { canEdit = true, items = [], props = {} } = 
   const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
   if (previousCanvas) require.cache[canvasEntry] = previousCanvas;
   else delete require.cache[canvasEntry];
-  const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://dev.test/projects/p-one" });
+  const dom = new JSDOM("<!doctype html><html><body><div id='root'></div></body></html>", { url: "https://dev.test/projects/p-one", pretendToBeVisual: true });
+  dom.window.scrollTo = () => {};
   const restore = [];
-  for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node, IS_REACT_ACT_ENVIRONMENT: true })) {
+  for (const [name, value] of Object.entries({ window: dom.window, document: dom.window.document, navigator: dom.window.navigator, HTMLElement: dom.window.HTMLElement, Element: dom.window.Element, Node: dom.window.Node, Event: dom.window.Event, KeyboardEvent: dom.window.KeyboardEvent, MutationObserver: dom.window.MutationObserver, getComputedStyle: dom.window.getComputedStyle.bind(dom.window), requestAnimationFrame: dom.window.requestAnimationFrame.bind(dom.window), cancelAnimationFrame: dom.window.cancelAnimationFrame.bind(dom.window), IS_REACT_ACT_ENVIRONMENT: true })) {
     const old = Object.getOwnPropertyDescriptor(globalThis, name);
     restore.push(() => old ? Object.defineProperty(globalThis, name, old) : delete globalThis[name]);
     Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
@@ -109,7 +134,8 @@ async function withCard(Component, { canEdit = true, items = [], props = {} } = 
   }
 }
 
-test("empty Plan header plus opens the plan dialog; the card itself creates nothing", async () => {
+test("empty Plan header plus opens the plan dialog; the card itself creates nothing", async t => {
+  if (skipMissing(t, ["plan", "preview"])) return;
   await withCard(ProjectSidePlanCard, {}, async ({ harness, find, click }) => {
     const plus = find('[data-project-config-action="add"]');
     assert.equal(plus.getAttribute("aria-label"), "添加待办");
@@ -127,7 +153,8 @@ test("empty Plan header plus opens the plan dialog; the card itself creates noth
 
 // 2026-11-10 sidebar wave: the Assets card opens the product's shared right sidebar on the project's materials
 // (onOpenAssets) — operator: 「点击这个页面中的assets为什么不打开右侧侧边栏中的library？」. No Assets dialog any more.
-test("empty Assets header plus opens the shared sidebar on the project's materials; no dialog, no file input", async () => {
+test("empty Assets header plus opens the shared sidebar on the project's materials; no dialog, no file input", async t => {
+  if (skipMissing(t, ["assets", "preview"])) return;
   let opened = 0;
   await withCard(ProjectSideAssetsCard, { props: { onOpenAssets: () => { opened += 1; } } }, async ({ harness, find, click }) => {
     const plus = find('[data-project-config-action="add"]');
@@ -141,7 +168,8 @@ test("empty Assets header plus opens the shared sidebar on the project's materia
   });
 });
 
-test("read-only members cannot add and still open: plan in its dialog, assets in the shared sidebar", async () => {
+test("read-only members cannot add and still open: plan in its dialog, assets in the shared sidebar", async t => {
+  if (skipMissing(t, ["plan", "assets", "preview"])) return;
   await withCard(ProjectSidePlanCard, { canEdit: false, items: [{ id: "t", title: "To do", status: "todo" }] }, async ({ find, click }) => {
     assert.equal(find('[data-project-config-action="add"]'), null);
     assert.equal(find('input[type="file"]'), null);
@@ -150,7 +178,7 @@ test("read-only members cannot add and still open: plan in its dialog, assets in
     assert.equal(find("[data-plan-detail]").getAttribute("data-can-edit"), "false");
   });
   let opened = 0;
-  await withCard(ProjectSideAssetsCard, { canEdit: false, items: [{ id: "a", name: "brief.txt", kind: "file", size_bytes: 5 }], props: { onOpenAssets: () => { opened += 1; } } }, async ({ find, click }) => {
+  await withCard(ProjectSideAssetsCard, { canEdit: false, items: [{ id: "a", kind: "artifact", added_at: "2026-11-01T00:00:00Z", item: { title: "brief.txt", kind: "document", updated_at: "2026-11-01T00:00:00Z" } }], props: { onOpenAssets: () => { opened += 1; } } }, async ({ find, click }) => {
     assert.equal(find('[data-project-config-action="add"]'), null);
     assert.equal(find('input[type="file"]'), null);
     await click(find("[data-project-config-card]"));
@@ -159,7 +187,8 @@ test("read-only members cannot add and still open: plan in its dialog, assets in
   });
 });
 
-test("project creation submits without a category and opens the newly created project", async () => {
+test("project creation submits without a category and opens the newly created project", async t => {
+  if (skipMissing(t, ["create"])) return;
   await withCard(NewProjectPage, {}, async ({ harness, find, click, window }) => {
     const input = find('input[placeholder="请输入项目名称"]');
     const confirm = [...window.document.querySelectorAll("button")].find((button) => button.textContent === "确定");
@@ -178,4 +207,3 @@ test("project creation submits without a category and opens the newly created pr
     assert.deepEqual(harness.routes, ["/projects/project-created"]);
   });
 });
-}

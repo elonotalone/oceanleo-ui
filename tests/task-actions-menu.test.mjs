@@ -5,6 +5,7 @@ import path from "node:path";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { siblingRepoUrl } from "./helpers/sibling-repo-url.mjs";
 import "./helpers/w1-jsdom-window.mjs";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -31,7 +32,7 @@ async function render(props) {
 
 test("cloud and computer task headers expose the same action labels", async () => {
   const chatSource = fs.readFileSync(path.resolve("src/shell/AgentChat.tsx"), "utf8");
-  const taskPage = fs.readFileSync(path.resolve("../oceanleo/app/tasks/[id]/page.tsx"), "utf8");
+  const taskPage = fs.readFileSync(siblingRepoUrl("oceanleo", "app/tasks/[id]/page.tsx"), "utf8");
   assert.match(chatSource, /taskId && \(\s*<TaskActionsMenu/);
   assert.match(taskPage, /taskActions=\{taskActions\}/);
   assert.match(taskPage, /function RenameTaskDialog/);
