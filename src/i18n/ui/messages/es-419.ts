@@ -6490,5 +6490,10 @@ const es419: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · el agente principal usa tu cupo",
   "已配置 {n} 家：{names}": "{n} configurados: {names}",
   "管理 →": "Administrar →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} todavía no ha autorizado esta operación.",
+  "{device}尚未授权这类操作。": "{device} todavía no ha autorizado este tipo de operación.",
+  "所选目录未获授权。": "No se ha autorizado el acceso a la carpeta seleccionada.",
+
 };
 export default es419;

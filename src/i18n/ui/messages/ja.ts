@@ -6491,5 +6491,10 @@ const ja: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · メインエージェントはあなたの枠を使います",
   "已配置 {n} 家：{names}": "{n} 件を設定済み：{names}",
   "管理 →": "管理 →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device}では、この操作がまだ許可されていません。",
+  "{device}尚未授权这类操作。": "{device}では、この種類の操作がまだ許可されていません。",
+  "所选目录未获授权。": "選択したフォルダーへのアクセスは許可されていません。",
+
 };
 export default ja;

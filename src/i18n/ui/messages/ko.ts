@@ -6490,5 +6490,10 @@ const ko: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · 메인 에이전트가 내 한도를 사용합니다",
   "已配置 {n} 家：{names}": "{n}곳 설정됨: {names}",
   "管理 →": "관리 →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device}에서 아직 이 작업을 허용하지 않았습니다.",
+  "{device}尚未授权这类操作。": "{device}에서 아직 이 유형의 작업을 허용하지 않았습니다.",
+  "所选目录未获授权。": "선택한 폴더에 대한 접근이 허용되지 않았습니다.",
+
 };
 export default ko;

@@ -221,7 +221,7 @@ const PARTS = [
 // re-registered them with English for every non-Chinese locale (重试 became "Retry" on the French site), so the
 // base dictionary wins here. Components that read their own table directly keep their own wording.
 const BASE_DICTIONARY_WORDS = new Set([
-  "授权说明", "价格", "免费", "下载", "编辑", "重试", "云端", "在线", "离线", "发送", "失败", "停止",
+  "登录", "授权说明", "价格", "免费", "下载", "编辑", "重试", "云端", "在线", "离线", "发送", "失败", "停止",
   "输入", "输出", "展开", "收起", "添加附件", "文件", "进行中", "已完成", "任务",
 ]);
 

@@ -25,7 +25,6 @@ export const PROGRAM_SIGNIN_COPY = {
     "Console（按 API 计费）": "Console (API billing)",
     "SSO": "SSO",
     "长期令牌（setup-token）": "Long-lived token (setup-token)",
-    "登录": "Sign in",
     "Nous Portal": "Nous Portal",
     "用 {provider} 账号登录": "Sign in with {provider}",
     "换账号": "Switch account",

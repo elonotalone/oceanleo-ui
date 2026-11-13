@@ -33,7 +33,7 @@ export const EDITOR_OVERHAUL_W02_COPY: EditorOverhaulCopy = {
     "当前编辑器不能插入素材": "This editor can't insert materials",
     "已插入「{title}」": "Inserted “{title}”",
     "这份素材没能插入，请重试": "This material couldn't be inserted. Try again.",
-    "保存失败，请重试": "Couldn't save. Try again.",
+    "保存失败，请重试": "Save failed. Try again.",
     "切换失败，请重试": "Couldn't switch. Try again.",
     "正在保存当前改动…": "Saving your changes…",
     "当前改动没有保存成功，先留在这份文件：{reason}": "Your changes weren't saved, so you're still on this file: {reason}",

@@ -140,7 +140,7 @@ const translations = {
     noHostedSites: "You have not published a site yet. Ask the agent to make one, then say \"publish\".",
     listApp: "List a work",
     siteUrl: "Website address",
-    needTitle: "Please enter a title",
+    needTitle: "Enter a title",
     titleTooLong: "The title can be at most 80 characters",
     needSummary: "Please write a one-line summary",
     summaryTooLong: "The one-line summary can be at most 200 characters",

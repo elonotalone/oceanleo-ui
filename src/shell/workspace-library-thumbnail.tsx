@@ -386,10 +386,10 @@ export function WorkspaceThumbnail({
     let hostname = linkWork.links[0].url;
     try { hostname = new URL(hostname).hostname; } catch { /* normalized link data is still displayable */ }
     return (
-      <div ref={hostRef} className="relative flex h-full w-full items-center justify-center overflow-hidden bg-neutral-100" data-cover-state="ready" data-link-cover="true">
+      <div ref={hostRef} className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[var(--muted-bg,#f5f5f4)]" data-cover-state="ready" data-link-cover="true">
         <div className="flex flex-col items-center gap-2 text-center">
-          {linkIcon ? <img src={linkIcon} alt="" aria-hidden="true" className="h-10 w-10 rounded-xl bg-white p-1 shadow-sm" onError={(event) => { setLinkIcon(""); }} /> : <WorkspaceKindIcon kind="website" accent={accent} />}
-          <span className="max-w-[90%] truncate px-2 text-xs font-medium text-neutral-700">{hostname}</span>
+          {linkIcon ? <img src={linkIcon} alt="" aria-hidden="true" className="h-10 w-10 rounded-xl bg-[var(--card,#fff)] p-1 shadow-sm" onError={(event) => { setLinkIcon(""); }} /> : <WorkspaceKindIcon kind="website" accent={accent} />}
+          <span className="max-w-[90%] truncate px-2 text-xs font-medium text-[var(--fg-2,#57534e)]">{hostname}</span>
         </div>
       </div>
     );

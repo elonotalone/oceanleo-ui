@@ -6676,5 +6676,10 @@ const en: Record<string, string> = {
   "代码": "Code",
   "项目配置": "Project configuration",
   "查看和修改各个项目的配置": "View and edit each project's configuration",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} hasn't allowed this operation.",
+  "{device}尚未授权这类操作。": "{device} hasn't allowed this type of operation.",
+  "所选目录未获授权。": "Access to the selected folder hasn't been allowed.",
+
 };
 export default en;

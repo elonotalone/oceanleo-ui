@@ -6490,5 +6490,10 @@ const ar: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · الوكيل الرئيسي يستخدم رصيدك",
   "已配置 {n} 家：{names}": "تم إعداد {n}: {names}",
   "管理 →": "إدارة →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "لم يسمح {device} بهذه العملية بعد.",
+  "{device}尚未授权这类操作。": "لم يسمح {device} بهذا النوع من العمليات بعد.",
+  "所选目录未获授权。": "لم يُسمح بالوصول إلى المجلد المحدد.",
+
 };
 export default ar;

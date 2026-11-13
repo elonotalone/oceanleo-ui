@@ -6490,5 +6490,10 @@ const de: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · der Haupt-Agent nutzt dein Kontingent",
   "已配置 {n} 家：{names}": "{n} hinterlegt: {names}",
   "管理 →": "Verwalten →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} hat diesen Vorgang noch nicht erlaubt.",
+  "{device}尚未授权这类操作。": "{device} hat diese Art von Vorgang noch nicht erlaubt.",
+  "所选目录未获授权。": "Für den ausgewählten Ordner wurde kein Zugriff erlaubt.",
+
 };
 export default de;

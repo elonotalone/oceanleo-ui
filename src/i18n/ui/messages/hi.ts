@@ -6490,5 +6490,10 @@ const hi: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · मुख्य एजेंट आपके कोटे का उपयोग करता है",
   "已配置 {n} 家：{names}": "{n} सेट हैं: {names}",
   "管理 →": "प्रबंधित करें →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} ने अभी तक इस कार्रवाई की अनुमति नहीं दी है।",
+  "{device}尚未授权这类操作。": "{device} ने अभी तक इस प्रकार की कार्रवाई की अनुमति नहीं दी है।",
+  "所选目录未获授权。": "चुने गए फ़ोल्डर तक पहुँच की अनुमति नहीं दी गई है।",
+
 };
 export default hi;

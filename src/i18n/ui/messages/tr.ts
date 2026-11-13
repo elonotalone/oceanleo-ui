@@ -6490,5 +6490,10 @@ const tr: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · ana agent senin kotanı kullanır",
   "已配置 {n} 家：{names}": "{n} yapılandırıldı: {names}",
   "管理 →": "Yönet →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} bu işleme henüz izin vermedi.",
+  "{device}尚未授权这类操作。": "{device} bu tür işlemlere henüz izin vermedi.",
+  "所选目录未获授权。": "Seçilen klasöre erişim izni verilmedi.",
+
 };
 export default tr;

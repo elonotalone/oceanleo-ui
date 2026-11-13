@@ -6462,5 +6462,10 @@ const zh: Record<string, string> = {
   '介绍': '介绍',
   '请填写有效的 HTTPS 链接': '请填写有效的 HTTPS 链接',
   '删除失败，请重试': '删除失败，请重试',
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device}尚未授权此操作。",
+  "{device}尚未授权这类操作。": "{device}尚未授权这类操作。",
+  "所选目录未获授权。": "所选目录未获授权。",
+
 };
 export default zh;

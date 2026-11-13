@@ -6490,5 +6490,10 @@ const vi: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · agent chính dùng hạn mức của bạn",
   "已配置 {n} 家：{names}": "Đã cấu hình {n} nhà: {names}",
   "管理 →": "Quản lý →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} chưa cho phép thao tác này.",
+  "{device}尚未授权这类操作。": "{device} chưa cho phép loại thao tác này.",
+  "所选目录未获授权。": "Chưa được phép truy cập thư mục đã chọn.",
+
 };
 export default vi;

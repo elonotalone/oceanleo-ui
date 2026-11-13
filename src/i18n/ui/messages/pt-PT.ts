@@ -6490,5 +6490,10 @@ const ptPT: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · o agente principal usa a sua quota",
   "已配置 {n} 家：{names}": "{n} configurados: {names}",
   "管理 →": "Gerir →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} ainda não autorizou esta operação.",
+  "{device}尚未授权这类操作。": "{device} ainda não autorizou este tipo de operação.",
+  "所选目录未获授权。": "O acesso à pasta selecionada não foi autorizado.",
+
 };
 export default ptPT;

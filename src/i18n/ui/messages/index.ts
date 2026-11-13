@@ -57,6 +57,8 @@ import { environmentsCopy } from "./environments-copy";
 import { purchaseCopy } from "./purchase-copy";
 import { PROGRAM_SIGNIN_COPY } from "./program-signin-copy";
 import { LOCAL_AGENT_MESSAGES } from "./local-agent-copy";
+import { UT_COPY_A } from "./pages-bay-wave-copy-a";
+import { UT_COPY_B } from "./pages-bay-wave-copy-b";
 
 const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
   zh: {
@@ -503,6 +505,29 @@ const BASE_UI_MESSAGES: Record<Locale, Record<string, string>> = {
   },
 };
 
+// General capability tables may still contain English defaults. Keep existing
+// locale translations ahead of these defaults, then fill the wave's new keys.
 export const UI_MESSAGES = Object.fromEntries(
-  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => [locale, { ...messages, ...localBrowserCopy(locale as Locale), ...deviceExperienceCopy(locale as Locale), ...taskLiveCopy(locale as Locale), ...taskStateCopy(locale as Locale), ...websitePreviewProgressCopy(locale as Locale), ...gatewayRoutingCopy(locale as Locale), ...worksCopy(locale as Locale), ...environmentsCopy(locale as Locale), ...purchaseCopy(locale as Locale), ...LOCAL_AGENT_MESSAGES[locale as Locale], ...((PROGRAM_SIGNIN_COPY as Record<string, Record<string, string>>)[locale] ?? {}), ...COMPUTER_TASK_WORKSPACE_MESSAGES[locale as Locale], ...NATIVE_ATTACHMENTS_MESSAGES[locale as Locale], ...TASK_PAGE_PACK_MESSAGES[locale as Locale] }]),
+  Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => {
+    const language = locale as Locale;
+    return [locale, {
+      ...localBrowserCopy(language),
+      ...deviceExperienceCopy(language),
+      ...taskLiveCopy(language),
+      ...taskStateCopy(language),
+      ...websitePreviewProgressCopy(language),
+      ...gatewayRoutingCopy(language),
+      ...worksCopy(language),
+      ...environmentsCopy(language),
+      ...purchaseCopy(language),
+      ...UT_COPY_A[language],
+      ...UT_COPY_B[language],
+      ...messages,
+      ...LOCAL_AGENT_MESSAGES[language],
+      ...((PROGRAM_SIGNIN_COPY as Record<string, Record<string, string>>)[locale] ?? {}),
+      ...COMPUTER_TASK_WORKSPACE_MESSAGES[language],
+      ...NATIVE_ATTACHMENTS_MESSAGES[language],
+      ...TASK_PAGE_PACK_MESSAGES[language],
+    }];
+  }),
 ) as Record<Locale, Record<string, string>>;

@@ -6490,5 +6490,10 @@ const th: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · เอเจนต์หลักใช้โควตาของคุณ",
   "已配置 {n} 家：{names}": "ตั้งค่าแล้ว {n} ราย: {names}",
   "管理 →": "จัดการ →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device} ยังไม่ได้อนุญาตการดำเนินการนี้",
+  "{device}尚未授权这类操作。": "{device} ยังไม่ได้อนุญาตการดำเนินการประเภทนี้",
+  "所选目录未获授权。": "ยังไม่ได้อนุญาตให้เข้าถึงโฟลเดอร์ที่เลือก",
+
 };
 export default th;

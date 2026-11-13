@@ -6447,5 +6447,10 @@ const zhTW: Record<string, string> = {
   "Cursor · 主 agent 用你的额度": "Cursor · 主 agent 用你的額度",
   "已配置 {n} 家：{names}": "已設定 {n} 家：{names}",
   "管理 →": "管理 →",
+  // Device permission results use the same dictionary as the handoff UI.
+  "{device}尚未授权此操作。": "{device}尚未授權此操作。",
+  "{device}尚未授权这类操作。": "{device}尚未授權這類操作。",
+  "所选目录未获授权。": "尚未授權存取所選資料夾。",
+
 };
 export default zhTW;
