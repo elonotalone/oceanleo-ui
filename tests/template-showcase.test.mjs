@@ -30,6 +30,7 @@ import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
 
 const require = createRequire(import.meta.url);
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
@@ -331,6 +332,14 @@ const V1_GAP_COPY = {
     "src/shell/material-library-presentation.ts",
 };
 
+// 6bc474ee (LeoBay assets in the shared library, 2026-11-01) replaced these
+// exact callers. Keep their 17 compatibility translations in V1_GAP_COPY; current
+// caller and replacement-translation assertions below remain separate and mandatory.
+const V1_REPLACED_CALLERS = {
+  "搜索本站素材": "搜索本站精选",
+  "本站暂无可编辑素材": "本站暂时没有精选素材",
+};
+
 /**
  * 欠着译文的词条登记表。**这张表只减不增**：下面的预算锁住它，补完译文就把那一格
  * 挪回 `V1_GAP_COPY` 并把预算改小。
@@ -479,16 +488,45 @@ test("V1 判据 21/10 剩余 7 条词条：17 语逐格齐备（119 格）", () 
  * 失败消息里直接把源串今天在 `src/` 的实际落点报出来，搬了家的下次是一行改完的事，
  * 不用再从头查一遍 git 历史。
  */
-test("那 8 条词条的调用点还活着（词条补了而源串改了 = 白补）", async () => {
+test("七条词条对应当前调用点或 6bc474ee 明确替换的兼容词条", async () => {
   const broken = [];
   for (const [key, file] of Object.entries(V1_GAP_COPY)) {
     const source = await readFile(resolve(file), "utf8");
-    if (source.includes(key)) continue;
+    const replacement = V1_REPLACED_CALLERS[key];
+    if (replacement) {
+      assert.equal(file, "src/shell/material-library-presentation.ts");
+      assert.deepEqual(await locateCopy(key), [], `${key}: replaced caller must stay retired`);
+      if (source.includes(replacement)) continue;
+    } else if (source.includes(key)) continue;
     broken.push(`${file} 里找不到源串 "${key.slice(0, 24)}…"，实际落点：${
       (await locateCopy(key)).join(" / ") || "src/ 里已经完全没有这个串（文案被改写或下线）"
     }`);
   }
   assert.deepEqual(broken, [], "词条与调用点已经对不上");
+});
+
+test("当前素材搜索与空态文案在 17 语词典中都有真实译文", () => {
+  const problems = [];
+  const placeholders = (text) => [...text.matchAll(/\{[^{}]+\}/g)].map((match) => match[0]).sort();
+  for (const key of Object.values(V1_REPLACED_CALLERS)) {
+    for (const locale of LOCALES) {
+      const value = UI_MESSAGES[locale][key];
+      if (typeof value !== "string" || !value.trim()) {
+        problems.push(`${locale} 缺当前调用词条：${key}`);
+        continue;
+      }
+      assert.deepEqual(placeholders(value), placeholders(key), `${locale}:${key}`);
+      if (locale === "zh") assert.equal(value, key);
+      if (!["zh", "zh-TW", "en"].includes(locale)) {
+        assert.notEqual(value, UI_MESSAGES.en[key], `${locale}: copied English: ${key}`);
+      }
+      if (!["zh", "zh-TW", "ja", "ko"].includes(locale)) {
+        assert.doesNotMatch(value, /[\u3400-\u9fff]/, `${locale}:${key}`);
+        assert.notEqual(value, key, `${locale}:${key}`);
+      }
+    }
+  }
+  assert.deepEqual(problems, [], "current replacement copy must not silently fall back to Chinese");
 });
 
 test("欠着的 i18n 缺口：只减不增，且每一条都还真的欠着", async () => {

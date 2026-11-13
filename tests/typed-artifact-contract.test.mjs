@@ -394,7 +394,7 @@ test("shared UI source contains exact primary/global More endpoints and no serie
   // frightening "缺少精确 contextId" wording never reappears in the shelf.
   assert.match(client, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
   assert.doesNotMatch(material, /ARTIFACT_CONTEXT_MISSING_MESSAGE/);
-  assert.match(material, /当前 App 暂未提供可用素材/);
+  assert.match(material, /暂时没有可用素材。/);
   assert.doesNotMatch(material, /缺少精确 contextId/);
   assert.doesNotMatch(client, /缺少精确 contextId\/siteKey/);
   assert.doesNotMatch(
@@ -423,7 +423,7 @@ test("material panels derive the canonical context id when hosts omit it", () =>
     resultCanvas,
     /materialContext\?\.contextId \|\|\s*canonicalArtifactContextId\(materialSiteId, materialAppId\)/,
   );
-  assert.match(resultCanvas, /contextId=\{materialContextId\}/);
+  assert.match(resultCanvas, /<BayAssetLibrary[^>]*context=\{materialContext \|\| \{ contextId: materialContextId, siteKey: materialSiteId, appId: materialAppId \}\}/);
 });
 
 test("canonical context id derivation trims, encodes and fails closed", () => {

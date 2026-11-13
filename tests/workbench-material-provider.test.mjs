@@ -99,8 +99,9 @@ test("ResultCanvas owns entries without subscribing to its own entry snapshot", 
     new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(source, /const EMPTY_MATERIALS: MaterialItem\[\] = \[\]/);
-  assert.match(source, /materials = EMPTY_MATERIALS/);
+  // The old standalone materials mount now routes through LeoBay (6bc474ee).
+  assert.match(source, /materials: null/);
+  assert.match(source, /<BayAssetLibrary/);
   assert.match(source, /useWorkbenchMaterialActions/);
-  assert.doesNotMatch(source, /useWorkbenchMaterialScope/);
+  assert.doesNotMatch(source, /useWorkbenchMaterialScope|useWorkbenchMaterialEntries|getWorkbenchMaterialSnapshot|subscribeWorkbenchMaterials/);
 });

@@ -101,8 +101,28 @@ const REQUESTED_KEYS = [
   "新建网站"
 ];
 
+// Caller retirements are supported by the implementing commits, not an i18n allowance.
+// 6fa2162b moved device settings and replaced the owner lease/consent controls.
+// 9b1116ac replaced the website toolbar/panel picker with dashboard/configuration views.
+// All 88 keys remain mandatory in the translation assertions below for compatibility.
+const COMPATIBILITY_ONLY_COPY = {
+  "4 小时": "6fa2162b: owner lease duration selector removed when controls moved into Settings",
+  "Agent 每次控制都要同意": "6fa2162b: label replaced by 每次询问 in DeviceSettingsSection",
+  "仅你的账号可以开启；到时间会自动关闭，也可以在这台电脑的托盘中停止。": "6fa2162b: temporary owner lease description removed",
+  "允许 Agent 控制此设备": "6fa2162b: replaced by the durable 允许远程 Agent 控制 switch",
+  "允许云端助手使用这台电脑": "6fa2162b: temporary cloud-assistant lease control removed",
+  "允许时长": "6fa2162b: owner lease duration selector removed",
+  "关闭后，Agent 申请仍会显示，但不会自动获得远程控制。": "6fa2162b: replaced by the durable Agent consent description",
+  "暂无看板": "9b1116ac: old website panel picker removed; dashboard now says 暂无网站看板",
+  "查看运行日志": "9b1116ac: toolbar log trigger moved into the dashboard and renamed 运行日志",
+  "返回预览": "9b1116ac: old selected-panel return action replaced by preview/dashboard tabs",
+};
+
 const SOURCE_PATHS = [
   "pages/devices/DeviceSettingsDialog.tsx",
+  "pages/settings/DeviceSettingsSection.tsx",
+  "pages/settings/ServerSettingsPanel.tsx",
+  "shell/website-platform/WebsiteDashboard.tsx",
   "shell/HistoryMasterDetail.tsx",
   "shell/collab/CollabPresenceBar.tsx",
   "shell/material-library-toolbar.tsx",
@@ -120,7 +140,7 @@ const dictionaries = Object.fromEntries(LOCALES.map((locale) => [locale,
 ]));
 const merged = (locale) => dictionaries[locale];
 
-test("all 88 requested gaps still correspond to actual source copy", () => {
+test("all 88 requested gaps retain live callers or documented compatibility translations", () => {
   assert.equal(new Set(REQUESTED_KEYS).size, 88);
   const literals = new Set();
   for (const relative of SOURCE_PATHS) {
@@ -132,7 +152,12 @@ test("all 88 requested gaps still correspond to actual source copy", () => {
     }
     visit(ast);
   }
-  assert.deepEqual(REQUESTED_KEYS.filter((key) => !literals.has(key)), []);
+  assert.deepEqual(sorted(REQUESTED_KEYS.filter((key) => !literals.has(key))), sorted(Object.keys(COMPATIBILITY_ONLY_COPY)));
+  assert.equal(Object.keys(COMPATIBILITY_ONLY_COPY).length, 10);
+  for (const [key, evidence] of Object.entries(COMPATIBILITY_ONLY_COPY)) {
+    assert.ok(REQUESTED_KEYS.includes(key), key);
+    assert.match(evidence, /^(6fa2162b|9b1116ac): .{20,}/, key);
+  }
 });
 
 test("all 17 locales cover the exact requested set without replacing base entries", async () => {

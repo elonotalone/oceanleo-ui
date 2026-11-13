@@ -220,7 +220,7 @@ test("库分类跟着这一份素材的 artifactType 走，不是该 app 的默�
     "tpl-1",
     "image",
   );
-  assert.equal(plan.action.category, "PPT");
+  assert.equal(plan.action.category, "演示文稿");
   assert.equal(plan.action.itemId, "art_0001");
 });
 
@@ -492,8 +492,14 @@ test("官方模板不在本人库里，所以按 artifact id 直接取一次（�
 });
 
 test("编辑意图以 nonce 去重：重渲染不重复取数，晚到的列表不在背后再开一次", () => {
-  assert.match(editIntentSource, /handledNonceRef\.current === nonce/);
-  assert.match(editIntentSource, /\}, \[nonce, artifactId\]\);/);
+  // Explicit nonces stay single-use; bare URL restoration has a separate auth generation.
+  assert.match(editIntentSource, /const handledKey = nonce \|\|/);
+  assert.match(editIntentSource, /`url:\$\{bareUrlArtifactId\}:restore:\$\{restoreGeneration \?\? 0\}`/);
+  assert.match(editIntentSource, /handledNonceRef\.current === handledKey/);
+  assert.match(editIntentSource, /if \(nonce && !consumeWorkspaceAction\(nonce, "library-edit-intent"\)\) return;/);
+  assert.match(editIntentSource, /handledNonceRef\.current = handledKey/);
+  assert.match(editIntentSource, /if \(controller\.signal\.aborted\) return;/);
+  assert.match(editIntentSource, /\}, \[handledKey, artifactId, restoreGeneration\]\);/);
   assert.doesNotMatch(
     editIntentSource,
     /setTimeout|setInterval|requestAnimationFrame/,
