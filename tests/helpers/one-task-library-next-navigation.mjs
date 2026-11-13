@@ -2,6 +2,10 @@ export function usePathname() {
   return typeof window === "undefined" ? "/library" : window.location.pathname;
 }
 
+export function useSearchParams() {
+  return new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+}
+
 const router = {
   push(path) {
     globalThis.__oneTaskLibraryNavigationCalls?.push({ method: "push", path });

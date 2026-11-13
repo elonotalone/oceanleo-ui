@@ -17,6 +17,15 @@ export async function getUserIdSnapshot() {
   return { available: true, userId: "one-task-library-owner" };
 }
 
+export async function getUsableSessionSnapshot() {
+  return {
+    available: true,
+    userId: "one-task-library-owner",
+    email: "acceptance@example.test",
+    expiresAt: null,
+  };
+}
+
 export async function getUserId() {
   return "one-task-library-owner";
 }
@@ -81,6 +90,10 @@ export async function signIn() { return {}; }
 export async function signUp() { return {}; }
 export async function verifyPhoneOtp() { return {}; }
 export async function startOauthSignIn() { return {}; }
+export function desktopBrowserLoginAvailable() { return false; }
+export async function startDesktopBrowserSignIn() {
+  throw new Error("unexpected desktop sign-in in authenticated Library fixture");
+}
 export async function enrollTotp() { return {}; }
 export async function unenrollFactor() { return {}; }
 export async function requestPhoneChange() { return {}; }

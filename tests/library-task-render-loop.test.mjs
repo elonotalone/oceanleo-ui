@@ -32,18 +32,13 @@ globalThis.__renderLoopFailList = false;
 globalThis.__renderLoopCurrentArtifactRequests = [];
 const historyTaskId = "dbec388c-aeae-400b-b905-48ab28cc1d96";
 const historyArtifactId = "21c1e4d9-0818-4bbe-ae33-b4d01a5beafd";
-const historyItem = {
- ...item,
- id: historyArtifactId,
- artifactId: historyArtifactId,
- title: "需签字盖章页清单（只打第3页）",
- kind: "document",
- meta: {
-  ...item.meta,
-  advanced_editor_route: "richdoc",
-  source_format: "text/markdown",
- },
-};
+const historyProjection = structuredClone(raw.mineOwnerAPage.items[0]);
+historyProjection.artifact_id = historyArtifactId;
+historyProjection.title = "需签字盖章页清单（只打第3页）";
+historyProjection.owner.principal_id = "user-1";
+const historyItem = artifactProjectionToLibraryItem(
+ normalizeArtifactProjectionResult(historyProjection).data,
+);
 const historyMessages = [
  {id:1,role:"user",kind:"text",content:"hi",meta:{model_selection:{}}},
  {id:2,role:"assistant",kind:"text",content:"你好！有什么我可以帮你？",meta:{done:true,suggestions:["帮我整理一份文档","帮我分析一个问题","告诉我你能做什么"],first_token_ms:250}},
@@ -329,7 +324,9 @@ test("real HistoryDetail legacy-task fallback + AgentChat survives an item query
     assert.ok(container.querySelector('[data-workspace-split]'));
     assert.match(container.textContent,/hi/);
     assert.match(container.textContent,/你好！有什么我可以帮你？/);
-    assert.match(container.textContent,/帮我整理一份文档/);
+    // Follow-up suggestion chips were removed by operator ruling 2026-10-31;
+    // legacy meta.suggestions must not recreate them while history renders.
+    assert.doesNotMatch(container.textContent,/帮我整理一份文档/);
     assert.doesNotMatch(container.textContent,/Too many re-renders/);
     assert.doesNotMatch(errors.join('\n'),/Too many re-renders/);
   } finally {
@@ -358,7 +355,7 @@ test("exact completed legacy history survives /history → task → selected ite
     await settle();
     assert.ok(container.querySelector('[data-workspace-split]'));
     assert.match(container.textContent,/你好！有什么我可以帮你？/);
-    assert.match(container.textContent,/帮我整理一份文档/);
+    assert.doesNotMatch(container.textContent,/帮我整理一份文档/);
 
     window.history.replaceState(null,"",`/history?task=${historyTaskId}&item=${historyArtifactId}`);
     await render();
