@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { siblingRepoUrl } from "./helpers/sibling-repo-url.mjs";
+
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
 
 test("游戏素材的编辑回调与公开试玩回调保持分离", () => {
@@ -23,7 +25,7 @@ test("游戏素材的编辑回调与公开试玩回调保持分离", () => {
 });
 
 test("公开 artifact 播放页仍只读官方目录投影", () => {
-  const lookup = source("../../game/app/play/artifact/artifact-play-lookup.ts");
+  const lookup = readFileSync(siblingRepoUrl("game", "app/play/artifact/artifact-play-lookup.ts"), "utf8");
   assert.match(lookup, /game-official\/board-ref/);
   assert.match(lookup, /v1\/library\/items/);
   assert.doesNotMatch(lookup, /getArtifactEditDecision|forkArtifact/);

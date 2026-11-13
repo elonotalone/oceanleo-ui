@@ -111,7 +111,7 @@ const confirmStub = dataModule(`
   }
 `);
 const needsStub = dataModule(`
-  export async function pickLibraryWork(){ return globalThis.__bayPickedWork ?? { kind: "task", id: "task-42", title: "季度汇报" }; }
+  export async function pickLibraryWork(){ return globalThis.__bayPickedWork ?? { kind: "artifact", id: "artifact-42", title: "季度汇报" }; }
 `);
 const databaseStub = dataModule(`
   export async function uploadFile(file, opts) {
@@ -157,7 +157,7 @@ function reset() {
   globalThis.__baySignedIn = true;
   globalThis.__baySiteKey = "video";
   globalThis.__bayCategories = CATEGORIES;
-  globalThis.__bayPickedWork = { kind: "task", id: "task-42", title: "季度汇报" };
+  globalThis.__bayPickedWork = { kind: "artifact", id: "artifact-42", title: "季度汇报" };
   globalThis.__bayRespond = (method, path, body) => {
     if (method === "GET" && path === "/v1/talent/me") return { profile: PROFILE };
     if (method === "GET" && path === "/v1/talent/pricing-models") return { items: PRICING_MODEL_CARDS };
@@ -327,6 +327,7 @@ test("publish 带 category=design 时，选素材后类目是 design，填齐后
   await pickHowYouDeliver(view, "digital");
   assert.equal(view.find("[data-bay-category-select]").value, "design");
   await view.setValue('[data-bay-field="title"]', "一套图标");
+  await view.setValue('[data-bay-field="license"]', "personal");
   const fileInput = view.find("[data-bay-cover-drop] input[type=file]");
   const png = Uint8Array.from(
     atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),

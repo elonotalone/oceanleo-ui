@@ -41,7 +41,7 @@ const detailUrl = await compileModule('src/shell/asset-detail/AssetDetail.tsx',{
 const { AssetDetail } = await import(detailUrl);
 const { WorkspaceThumbnail } = await import(await compileModule('src/shell/workspace-library-thumbnail.tsx',{
  '../i18n/ui/useUI':ui,
- '../lib/auth/client':dataModule('export async function accessToken(){return null;}'),
+ '../lib/auth/client':dataModule('export async function accessToken(){return null;} export function cachedAccessToken(){return null;} export async function getUserId(){return "test-user";} export function browserClient(){return null;}'),
  '../lib/database':dataModule('export async function ensureDatabaseThumbnail(){return null;}'),
  './ArtifactRendition':dataModule('export function useArtifactRendition(){return {url:"",status:"idle"};}'),
 }));
@@ -75,10 +75,11 @@ test('missing row date stays absent rather than epoch',()=>{assert.equal(normali
 const libraryOverrides = {
  '../i18n/ui/useUI':ui,
  '../lib/works-api':api,
+ './library-import':dataModule('export function LibraryUploadQueue(){return null;} export function LibraryPurchasedUpdates(){return null;} export function LibraryImportDialog(){return null;}'),
  './AgentChat':dataModule('export function AgentChat(){return null;}'),
  './library-standalone-editor-host':dataModule('export function MaterialStandaloneEditor(){return null;}'),
  './library-edit-intent':dataModule('export function useLibraryEditIntent(){return null;}'),
- '../lib/auth/client':dataModule('export const AUTH_STATE_EVENT="test-auth"; export function getUserIdSnapshot(){return {available:true,userId:"test-user"};} export async function accessToken(){return null;}'),
+ '../lib/auth/client':dataModule('export const AUTH_STATE_EVENT="test-auth"; export function getUserIdSnapshot(){return {available:true,userId:"test-user"};} export async function accessToken(){return null;} export function cachedAccessToken(){return null;} export async function getUserId(){return "test-user";} export function browserClient(){return null;}'),
  './artifact-client':dataModule(`export * from ${JSON.stringify(pathToFileURL(require.resolve('../src/shell/artifact-client.ts')).href)}; export const ARTIFACT_LIBRARY_CHANGE_EVENT='oceanleo:artifact-library-change'; export async function listMyArtifacts(){return {ok:true,data:{items:[],serverWorks:globalThis.__libraryWorks,nextCursor:null,ownerPrincipalId:"test-user"}};} export async function listFavoriteArtifacts(){return {ok:true,data:{items:[],nextCursor:null,ownerPrincipalId:"test-user"}};}`),
 };
 const { MyLibrary } = await import(await compileModule('src/shell/MyLibrary.tsx',libraryOverrides));

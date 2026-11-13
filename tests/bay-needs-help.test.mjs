@@ -343,7 +343,7 @@ test("叫真人：未登录点提交走登录；登录后请求体带 posted_sit
   await guest.unmount();
 
   reset();
-  globalThis.__bayPicked = { kind: "task", id: "task-9" };
+  globalThis.__bayPicked = { kind: "artifact", id: "artifact-9" };
   const view = await mount(React.createElement(CallHumanPane, { target: { kind: "call-human" }, layout: "docked", siteKey: "design" }));
   await fillHelp(view, "海报改一下层次和字号", "请把封面层次再压一压，字号对齐。");
   await view.click("[data-bay-work-library]");
@@ -352,7 +352,7 @@ test("叫真人：未登录点提交走登录；登录后请求体带 posted_sit
   const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/handoffs");
   assert.ok(created);
   assert.equal(created.body.posted_site, "design");
-  assert.deepEqual(created.body.attached_work, { kind: "task", id: "task-9" });
+  assert.deepEqual(created.body.attached_work, { kind: "artifact", id: "artifact-9" });
   assert.equal(created.body.origin_kind, "manual");
   assert.deepEqual(created.body.context, { messages: [], artifacts: [] });
   assert.deepEqual(globalThis.__bayOpened, [{ kind: "help", id: "h-new" }]);

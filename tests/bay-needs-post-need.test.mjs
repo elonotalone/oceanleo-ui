@@ -326,7 +326,7 @@ test("未登录点发布只弹登录，不发请求、不过条款", async () =>
 
 test("发布请求体带 posted_site 与 attached_work；先过买家条款", async () => {
   reset();
-  globalThis.__bayPicked = { kind: "task", id: "task-9" };
+  globalThis.__bayPicked = { kind: "artifact", id: "artifact-9" };
   const view = await mount(React.createElement(PostNeedPane, paneProps("ppt")));
   await fillRequired(view);
   await view.click("[data-bay-work-library]");
@@ -336,7 +336,7 @@ test("发布请求体带 posted_site 与 attached_work；先过买家条款", as
   const created = globalThis.__bayHttpCalls.find((call) => call.method === "POST" && call.path === "/v1/talent/demands");
   assert.ok(created);
   assert.equal(created.body.posted_site, "ppt");
-  assert.deepEqual(created.body.attached_work, { kind: "task", id: "task-9" });
+  assert.deepEqual(created.body.attached_work, { kind: "artifact", id: "artifact-9" });
   assert.equal(created.body.catalog_kind, "delivery");
   assert.equal(created.body.title, "给新品做一份演示稿");
   assert.deepEqual(globalThis.__bayOpened, [{ kind: "demand", id: "d-new" }]);

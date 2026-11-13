@@ -32,6 +32,7 @@ const authClientStubUrl = dataModule(`
   export async function getUserId(){return null;}
   export function browserClient() { return null; }
   export async function accessToken() { return null; }
+  export function cachedAccessToken() { return null; }
   export const AUTH_STATE_EVENT = "oceanleo-auth-state";
 `);
 
@@ -39,6 +40,8 @@ const hostUrl = await compileModule("src/client-ui/local/library-host.tsx", {
   "../../i18n/ui/useUI": uiStubUrl,
   "../../i18n/config": localeStubUrl,
   "../../shell/AdvancedContentWorkbench": advancedStubUrl,
+  "../../shell/StorageCapacityStrip": dataModule(`export function StorageCapacityStrip(){return null;}`),
+  "../../shell/library-import": dataModule(`export function LibraryUploadQueue(){return null;} export function LibraryPurchasedUpdates(){return null;} export function LibraryImportDialog(){return null;}`),
   "../../lib/auth/client": authClientStubUrl,
 });
 const { LocalLibraryHost } = await import(hostUrl);
@@ -54,7 +57,8 @@ const sharedSurface = readFileSync(
 
 test("portal /library and local host mount the same ArtifactLibrary surface", () => {
   assert.match(portalLibraryPage, /from "@oceanleo\/ui\/shell"/);
-  assert.match(portalLibraryPage, /<ArtifactLibrary accent="#0ea5e9" \/>/);
+  assert.match(portalLibraryPage, /const LIBRARY_ACCENT = "#0ea5e9"/);
+  assert.match(portalLibraryPage, /<ArtifactLibrary accent=\{LIBRARY_ACCENT\} \/>/);
   assert.match(sharedSurface, /from "\.\.\/\.\.\/shell\/ArtifactLibrary"/);
   assert.match(sharedSurface, /<ArtifactLibrary \{\.\.\.props\} \/>/);
   assert.equal(sharedSurface.includes("function FakeLibrary"), false);
@@ -65,7 +69,7 @@ test("local memory host renders the real My Library page, not a mock", () => {
     React.createElement(LocalLibraryHost, { accent: "#0ea5e9" }),
   );
   assert.match(markup, /我的库/);
-  assert.match(markup, /正在加载我的库/);
+  assert.match(markup, /正在加载…/);
   // My Library now uses the common collection toolbar and its search translation key.
   assert.match(markup, /type="search" placeholder="search" aria-label="search" data-collection-search/);
   assert.equal(markup.includes("data-advanced-stub"), false);

@@ -43,7 +43,7 @@ const stateStub = dataModule(`
   export function requireBayLogin(){ return true; }
   export function bayBack(){}
 `);
-const authStub = dataModule(`export async function getUserId(){ return null; }`);
+const authStub = dataModule(`export async function getUserId(){ return null; } export async function accessToken(){ return null; } export function cachedAccessToken(){ return null; }`);
 const dealStub = dataModule(`export async function openTradeThread(){} export function DealConversationView(){ return null; }`);
 const stubs = {
   "../../../i18n/ui/useUI": uiStub,
@@ -55,7 +55,7 @@ const stubs = {
   "../form/BayImageGallery": dataModule(`export function BayImageStage(){ return null; } export function BayImageGallery(){ return null; }`),
   "../auth/config": dataModule(`export const GATEWAY_BASE = "https://api.example.test";`),
   "../../../lib/database": dataModule(`export async function uploadFile(){ return { ok: true, data: { file: { url: "https://cdn.example.com/cover.png" } } }; }`),
-  "../../../contracts/domain-family": dataModule(`export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
+  "../../../contracts/domain-family": dataModule(`export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return "com"; }`),
   "../../artifact-client": dataModule(`export async function getCurrentArtifactItem(){ return { ok: false }; }`),
   "../../library-viewers": dataModule(`export function LibraryItemViewer(){ return null; }`),

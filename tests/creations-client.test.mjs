@@ -41,6 +41,11 @@ function loadDatabase({ token = "token", fetchImpl }) {
     fetch: fetchImpl,
     module: moduleRecord,
     require: (specifier) => {
+      if (specifier === "./shared-get") return { sharedGatewayFetch: fetchImpl };
+      if (specifier === "./library-uploads") return {
+        uploadLibraryFile: notCalled("uploadLibraryFile"),
+        LibraryUploadError: class LibraryUploadError extends Error {},
+      };
       if (specifier === "./auth/client") {
         return { accessToken: async () => token };
       }
