@@ -91,7 +91,7 @@ test("R06 点名的通用页、数据库卡片、表格输入和开关恢复紧�
   }, {
     "next/navigation": dataModule("export function useRouter(){return {replace(){}}}"),
     "next-intl": dataModule("export function useLocale(){return 'zh-CN'}"),
-    "../contracts/domain-family": dataModule("export function sharedCookieDomainFor(){return ''}"),
+    "../contracts/domain-family": dataModule(`export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)}; export function sharedCookieDomainFor(){return ''}`),
     "./PageHeader": dataModule("export function PageHeader(){return null}"),
     "../i18n/ui/useUI": uiStub,
     "../theme/ThemeProvider": dataModule("export function useTheme(){return {mode:'light',setMode(){}}}"),
@@ -162,39 +162,35 @@ test("r2 表内数据库删除键、LeoBoard 控件和云电脑按钮由实际�
   databaseHost.remove();
 
   const { ComputerDock } = await import(await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
-    "../../lib/cloud-computer-api": dataModule("export const cloudComputerApi={}; export function readMountedComputerName(){return ''}"),
-    "../../contracts/domain-family": dataModule("export function currentDomainFamily(){return 'com'} export function currentDomainProfile(){return {portalOrigin:'https://oceanleo.com'}}"),
+    "../../lib/cloud-computer-api": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/cloud-computer-api.ts", import.meta.url).href)}; export const cloudComputerApi={}; export function readMountedComputerName(){return ''}`),
+    "../../contracts/domain-family": dataModule(`export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)}; export function currentDomainFamily(){return 'com'} export function currentDomainProfile(){return {portalOrigin:'https://oceanleo.com'}}`),
     "../../i18n/ui/useUI": uiStub,
     "next/navigation": dataModule("export function useRouter(){return {push(){}}}"),
     "../anchored-popover": dataModule(`import React from ${JSON.stringify(reactUrl)}; export function AnchoredPopover({open,children,attributes}){return open ? React.createElement('div',{...(attributes||{}),'data-anchored-popover':'1'},children) : null}`),
     "./ConnectServerDialog": dataModule("export function ConnectServerDialog(){return null}"),
     "./CreateComputerDialog": dataModule("export function CreateComputerDialog(){return null}"),
-    "./useCloudComputers": dataModule(`
-      import React from ${JSON.stringify(reactUrl)};
-      export function useCloudComputers({computers=[]}){
-        const connected=computers.filter((item)=>item.status==='running'||item.status==='active');
-        const mounted=connected[0] || null;
-        return {computers,mounted,mountedId:mounted?.id||null,rememberedId:null,setMountedId(){},refresh(){},loading:false};
-      }
-    `),
+    "../../lib/auth/client": dataModule(`export * from ${JSON.stringify(new URL("../src/lib/auth/client.ts", import.meta.url).href)}; export async function getUserId(){return 'g1-owner'}`),
+    "../../api/devices": dataModule(`export async function listDevices(){return {ok:true,data:[]}}`),
+    "../../lib/cloud-agent-api": dataModule(`export async function listCloudAgentAvailability(){return {kind:'absent'}}`),
   }));
   const cloudComputer = (id, name) => ({ id, name, source: "aliyun", edition: "com", status: "running", enrolled_at: "2026-09-25T00:00:00Z", confirmed_at: "2026-09-25T00:00:00Z", node_online: true });
   const dockHost = document.createElement("div");
   document.body.append(dockHost);
   const dockRoot = createRoot(dockHost);
-  await act(async () => dockRoot.render(React.createElement(ComputerDock, { computers: [] })));
-  const connect = dockHost.querySelector("[data-oceanleo-cc-dock-empty]");
+  await act(async () => dockRoot.render(React.createElement(ComputerDock, { computers: [], boundTarget: { kind: "cloud" } })));
+  const connect = dockHost.querySelector("[data-oceanleo-cc-dock-trigger]");
   assert.ok(connect);
   assert.doesNotMatch(connect.className, /(?:^| )min-h-11(?: |$)/);
   await act(async () => connect.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-  const menuItems = [...dockHost.querySelectorAll("[role='menuitem']")];
+  const menuItems = [...dockHost.querySelectorAll("[data-anchored-popover] button")];
   assert.ok(menuItems.length >= 2);
   assert.ok(menuItems.every((node) => !/(?:^| )min-h-11(?: |$)/.test(node.className)));
-  await act(async () => dockRoot.render(React.createElement(ComputerDock, { computers: [cloudComputer("cc_1", "一号机"), cloudComputer("cc_2", "二号机")] })));
-  const mounted = dockHost.querySelector("[data-oceanleo-cc-dock-mounted]");
+  await act(async () => dockRoot.render(React.createElement(ComputerDock, { computers: [cloudComputer("cc_1", "一号机"), cloudComputer("cc_2", "二号机")], boundTarget: { kind: "computer", id: "cc_1", name: "一号机" } })));
+  const mounted = dockHost.querySelector("[data-oceanleo-cc-dock-trigger]");
   assert.ok(mounted);
+  assert.match(mounted.textContent, /一号机/);
   assert.doesNotMatch(mounted.className, /(?:^| )min-h-11(?: |$)/);
-  const switchToggle = dockHost.querySelector("[data-oceanleo-cc-switch-toggle]");
+  const switchToggle = dockHost.querySelector("[data-oceanleo-cc-dock-trigger]");
   assert.ok(switchToggle);
   assert.doesNotMatch(switchToggle.className, /(?:^| )(?:min-h-11|min-w-11)(?: |$)/);
   await act(async () => switchToggle.dispatchEvent(new MouseEvent("click", { bubbles: true })));
@@ -235,7 +231,7 @@ test("r2 表内数据库删除键、LeoBoard 控件和云电脑按钮由实际�
   treeHost.remove();
 
   const { LeoBoard } = await import(await compileModule("src/shell/leo/LeoBoard.tsx", {
-    "../../contracts/domain-family": dataModule("export function currentDomainProfile(){return {gatewayOrigin:'https://api.oceanleo.com'}}"),
+    "../../contracts/domain-family": dataModule(`export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)}; export function currentDomainProfile(){return {gatewayOrigin:'https://api.oceanleo.com'}}`),
     "../../i18n/ui/useUI": uiStub,
     "./host-input": dataModule("export function copyText(){} export function getHostText(){return ''} export function setHostValue(){}"),
   }));
