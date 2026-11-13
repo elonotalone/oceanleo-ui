@@ -1,5 +1,5 @@
 {
-  "note": "artifact_revisions 里今天真实存在的每一种 (artifact_type, source_format, editor_capability) 组合，\n以及 advancedCapabilityForArtifactFields() 对它解出的适配器。\n这份夹具取代了 /tmp/w7-aclass-rebuild/db-triples.json —— 那是 2026-07-27 落在 /tmp 的一次性导出，\n/tmp 早已清空，测试从此每次全量都红。仓外路径不许再当夹具，见 tests/w25-tests-out-of-repo-paths.test.mjs。\nliveRows 是采证当时的行数，仅作规模参考，不参与断言（库存每天在变，钉住行数只会制造假红）。",
+  "note": "artifact_revisions 里今天真实存在的每一种 (artifact_type, source_format, editor_capability) 组合，\n以及 advancedCapabilityForArtifactFields() 对它解出的适配器。\n这份夹具取代了 /tmp/w7-aclass-rebuild/db-triples.json —— 那是 2026-07-27 落在 /tmp 的一次性导出，\n/tmp 早已清空，测试从此每次全量都红。仓外路径不许再当夹具，见 tests/w25-tests-out-of-repo-paths.test.mjs。\nliveRows 是采证当时的行数，仅作规模参考，不参与断言（库存每天在变，钉住行数只会制造假红）。\n2026-11-13 UT: removed the obsolete oceanleo.deck.v1 sample after its PPTX-only migration had renamed it into a duplicate of the existing deck|pptx|deck-editor vector. The original PPTX sample remains; no supported distinct triple was removed.",
   "source": "supabase-sql oceanleo: select artifact_type, source_format, editor_capability, count(*) from artifact_revisions group by 1,2,3",
   "capturedAt": "2026-08-05",
   "triples": [
@@ -72,16 +72,6 @@
       "expect": {
         "featureId": "design_canvas",
         "adapter": "design-canvas"
-      }
-    },
-    {
-      "artifactType": "deck",
-      "sourceFormat": "pptx",
-      "editorCapability": "deck-editor",
-      "liveRows": 73,
-      "expect": {
-        "featureId": "presentation_editing",
-        "adapter": "deck"
       }
     },
     {

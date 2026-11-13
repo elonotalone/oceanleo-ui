@@ -100,8 +100,9 @@ function previewUrlOn(host) {
 test("com 构建跑在 ws 页：模板预览走 api.oceanbizs.com；com 页逐字不变", () => {
   const ws = previewUrlOn("oceanbizs.com");
   const com = previewUrlOn("oceanleo.com");
-  assert.equal(ws, "https://api.oceanbizs.com/v1/template-materials/tpl-1/preview");
-  assert.equal(com, "https://api.oceanleo.com/v1/template-materials/tpl-1/preview");
+  // Published HTML previews address the entry page explicitly; origin still follows the host family.
+  assert.equal(ws, "https://api.oceanbizs.com/v1/template-materials/tpl-1/preview/index.html");
+  assert.equal(com, "https://api.oceanleo.com/v1/template-materials/tpl-1/preview/index.html");
 });
 
 test("本地编辑器入口：分身 oceanbizs.com 与其子域同样算远端", async () => {

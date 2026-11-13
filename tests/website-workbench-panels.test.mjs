@@ -46,7 +46,11 @@ test("website material route keeps one artifact page with preview and source", (
   assert.doesNotMatch(route, /websitePages|usePluginPage|WebsiteWorkbenchPanels/);
 });
 
-test("website code material passes its durable project id to preview and source viewers", () => {
-  assert.match(route, /<WebsiteMaterialRuntimePreview[^>]*projectId=\{loaded\.code\.projectId\}/);
-  assert.match(route, /<WebsiteCodeSourceViewer projectId=\{loaded\.code\.projectId\}/);
+test("website materials keep revision identity, published HTML preview, and explicit code-project viewers", () => {
+  assert.match(route, /const identity = `[^`]*item\?\.artifactId[^`]*item\?\.revisionId[^`]*`/);
+  assert.match(route, /const current = result\?\.identity === identity \? result : null/);
+  assert.match(route, /const code = websiteCodeProjectFromText\(current\?\.text \|\| ""\)/);
+  assert.match(route, /<WebsiteMaterialViewer key=\{identity\} sourceText=\{current\.text\}/);
+  assert.match(route, /source=\{code \? <WebsiteCodeSourceViewer projectId=\{code\.projectId\}/);
+  assert.match(route, /preview=\{code \? <WebsiteMaterialRuntimePreview[^>]*projectId=\{code\.projectId\}[^>]*\/> : <WebsiteArtifactViewer item=\{item\} \/>/);
 });

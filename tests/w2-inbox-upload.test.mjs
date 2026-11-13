@@ -121,11 +121,17 @@ test("HTTP failure and invalid success path still fail closed", () => usingXhr(a
 
 test("upload state copy covers every locale and preserves progress interpolation", () => {
   assert.deepEqual(Object.keys(UPLOAD_UI_MESSAGES).sort(), [...LOCALES].sort());
+  const sourceKeys = Object.keys(UPLOAD_UI_MESSAGES.zh).sort();
+  const originalProgressKeys = ["正在压缩…", "正在上传…", "正在上传 {percent}%", "等待电脑确认…", "上传超时，请重试或移除文件。"];
+  for (const key of originalProgressKeys) assert.ok(sourceKeys.includes(key), `original progress copy missing: ${key}`);
+  const placeholders = (text) => [...text.matchAll(/\{([^{}]+)\}/g)].map((match) => match[1]).sort();
   for (const locale of LOCALES) {
-    const values = Object.values(UPLOAD_UI_MESSAGES[locale]);
-    assert.equal(values.length, 5);
-    assert.ok(values.every((value) => value.trim()));
+    const messages = UPLOAD_UI_MESSAGES[locale];
+    assert.deepEqual(Object.keys(messages).sort(), sourceKeys, `${locale}: exact upload/import key parity`);
+    const values = Object.values(messages);
+    assert.ok(values.every((value) => typeof value === "string" && value.trim()), locale);
     if (locale !== "zh" && locale !== "zh-TW") assert.ok(values.every((value) => !/[\u3400-\u9fff]/.test(value)), locale);
-    assert.match(UPLOAD_UI_MESSAGES[locale]["正在上传 {percent}%"], /\{percent\}/);
+    for (const key of sourceKeys) assert.deepEqual(placeholders(messages[key]), placeholders(key), `${locale}: ${key}`);
+    assert.match(messages["正在上传 {percent}%"], /\{percent\}/);
   }
 });

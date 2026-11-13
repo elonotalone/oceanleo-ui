@@ -193,11 +193,18 @@ test("画法说明：image / vector / deck（*ChangeNote 家族走 tt(note.zh, n
   assertTranslated("vector 新增图形", (tt) => R.vector.describeChange(v1, v2, tt));
   assertTranslated("vector 创建", (tt) => R.vector.describeChange(null, v1, tt));
 
-  const slide = (id, title) => ({ id, title, elements: [] });
-  const deck = (slides) => R.deck.fromRevision({ title: "年报", slides, theme: "default", aspect: "16:9" });
+  const slide = (id, title) => ({ id, title, elements: [{ id: `${id}-title`, type: "text", text: title, x: 5, y: 5, width: 90, height: 15 }] });
+  // Replay snapshots now use the normalized PPTX working model (version 2).
+  const deck = (slides) => R.deck.fromRevision({ version: 2, title: "年报", slides, theme: "ocean", aspect: "16:9" });
+  assert.equal(R.deck.fromRevision({ title: "年报", slides: [slide("a", "封面")] }), null, "retired unversioned structured snapshots are not replay inputs");
   const d1 = deck([slide("a", "封面")]);
   assertTranslated("deck 新增页", (tt) => R.deck.describeChange(d1, deck([slide("a", "封面"), slide("b", "目录")]), tt));
   assertTranslated("deck 改标题", (tt) => R.deck.describeChange(d1, deck([slide("a", "新标题")]), tt));
+  assert.equal(d1.version, 2);
+  assert.equal(d1.slides[0].elements[0].id, "a-title");
+  const changedText = slide("a", "封面");
+  changedText.elements[0].text = "新的文字";
+  assertTranslated("deck 改文字元素", (tt) => R.deck.describeChange(d1, deck([changedText]), tt));
 
   const image = (objects) => ({
     json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "bg", left: 0, top: 0, width: 1080, height: 1080 }, ...objects] },

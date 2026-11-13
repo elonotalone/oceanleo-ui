@@ -40,7 +40,7 @@ function resolve(triple) {
   });
 }
 
-test("夹具本身是活的：44 种真实三元组，不是空表也不是一条抄 44 遍", () => {
+test("夹具本身是活的：独立三元组覆盖完整，不是空表或重复行", () => {
   assert.ok(triples.length >= 40, `夹具只剩 ${triples.length} 种三元组，像是被截断了`);
   const distinct = new Set(
     triples.map(
@@ -58,6 +58,13 @@ test("夹具本身是活的：44 种真实三元组，不是空表也不是一�
     ),
     "A 类 composite_image 三元组不在夹具里",
   );
+});
+
+test("PPTX-only migration retains exactly one supported deck vector", () => {
+  const pptx = triples.filter((triple) => triple.artifactType === "deck" && triple.sourceFormat === "pptx" && triple.editorCapability === "deck-editor");
+  assert.equal(pptx.length, 1, "the supported PPTX triple must be covered exactly once");
+  assert.equal(resolve(pptx[0])?.adapter, "deck");
+  assert.equal(resolve(pptx[0])?.featureId, "presentation_editing");
 });
 
 test("A 类 composite_image 三元组解析出 design_canvas，不为 null", () => {
@@ -169,7 +176,7 @@ test("同一个 editor_capability 只对应一个适配器", () => {
  * 生成，所以它只能证明「行为没变」，不能证明「行为是对的」。上面两条结构断言才是独立判据。
  * 这一格的价值在于：谁改动解析链而没意识到它罩着库里 12 万多行真实素材，这里立刻红。
  */
-test("回归锁：44 种三元组的解析结果与钉住的快照逐格一致", () => {
+test("回归锁：每种独立三元组的解析结果与钉住的快照逐格一致", () => {
   const drift = [];
   for (const triple of triples) {
     const entry = resolve(triple);

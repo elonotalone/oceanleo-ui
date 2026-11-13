@@ -49,7 +49,7 @@ test("real sidebar viewer renders project markdown content and empty copy", asyn
 // Mount the real list, shelf, cards, project hook and menu. Only external data and
 // editor routes are replaced; the loading/filter/action behavior stays real.
 const reactUrl = pathToFileURL(require.resolve('react')).href;
-const auth = dataModule(`export const AUTH_STATE_EVENT='test-auth'; export async function accessToken(){return null;} export async function getUserIdSnapshot(){return {available:true,userId:'test-owner'};}`);
+const auth = dataModule(`export const AUTH_STATE_EVENT='test-auth'; export async function accessToken(){return null;} export function cachedAccessToken(){return null;} export async function getUserId(){return 'test-owner';} export async function getUserIdSnapshot(){return {available:true,userId:'test-owner'};}`);
 const client = dataModule(`
  export const ARTIFACT_LIBRARY_CHANGE_EVENT='test-library';
  export async function listMyArtifacts(options){ const response=await fetch('/v1/library/mine'+(options.cursor?'?cursor='+options.cursor:''),{signal:options.signal}); return response.json(); }
@@ -60,9 +60,9 @@ const client = dataModule(`
 const myLibraryUrl = await compileModule('src/shell/MyLibrary.tsx', {
  '../i18n/ui/useUI': ui,
  '../lib/auth/client': auth,
- '../lib/auth/config': dataModule(`export function gatewayBase(){return '';}`),
+ '../lib/auth/config': dataModule(`export const GATEWAY_BASE=''; export function gatewayBase(){return '';}`),
  './artifact-client': client,
- '../lib/database': dataModule(`export function humanLibraryUploadError(v){return v;} export async function normalizeUploadIdempotencyKey(){return '';} export async function uploadFile(){return {ok:false};}`),
+ '../lib/database': dataModule(`export function humanLibraryUploadError(v){return v;} export async function normalizeUploadIdempotencyKey(){return '';} export async function uploadFile(){return {ok:false};} export async function getStorageUsage(){return {ok:false};} export async function changeStoragePacks(){throw new Error('unexpected storage purchase');}`),
  './library-standalone-editor-host': dataModule(`export function MaterialStandaloneEditor(){return null;}`),
  './editor-preload': dataModule(`export function preloadEditorFor(){}`),
  './library-edit-intent': dataModule(`export function useLibraryEditIntent(){}`),
