@@ -99,7 +99,7 @@ test("ResultCanvas owns entries without subscribing to its own entry snapshot", 
     new URL("../src/shell/ResultCanvas.tsx", import.meta.url),
     "utf8",
   );
-  // The old standalone materials mount now routes through LeoBay (6bc474ee).
+  // The old standalone materials mount now routes through LeoBay (e9d3b4d6).
   assert.match(source, /materials: null/);
   assert.match(source, /<BayAssetLibrary/);
   assert.match(source, /useWorkbenchMaterialActions/);
