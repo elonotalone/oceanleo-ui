@@ -210,7 +210,12 @@ test("同一条编辑意图重渲染不得再打开一次", async () => {
   assert.deepEqual(opened, [ITEM_X.artifactId]);
 });
 
-test("bare ?item 在列表未载入该素材时独立读取并走只读预览", async () => {
+for (const [pathname, allowed] of [
+  ["/library", true], ["/tasks/task-1", true], ["/history", true],
+  ["/workspace/corp-site", false], ["/history/session-1", false],
+  ["/tasks/task-1/extra", false], ["/tasks", false],
+]) {
+test(`${pathname}: bare ?item 仅在独立宿主读取一次并走只读预览`, async () => {
   const requested = [];
   const identityWrites = [];
   const identityStub = dataModule(`
@@ -237,7 +242,7 @@ test("bare ?item 在列表未载入该素材时独立读取并走只读预览", 
   );
   globalThis.__libraryDetailRequests = requested;
   globalThis.__libraryDetailItem = ITEM_X;
-  window.history.replaceState({}, "", `/library?item=${ITEM_X.artifactId}`);
+  window.history.replaceState({}, "", `${pathname}?item=${ITEM_X.artifactId}`);
   const previewed = [];
   function Host() {
     standaloneIntent.useLibraryEditIntent({
@@ -252,13 +257,59 @@ test("bare ?item 在列表未载入该素材时独立读取并走只读预览", 
   await mounted(async (root) => {
     await act(async () => root.render(React.createElement(Host)));
     await act(async () => {});
+    await act(async () => root.render(React.createElement(Host)));
   });
-  assert.deepEqual(requested, [ITEM_X.artifactId]);
-  assert.deepEqual(previewed, [ITEM_X.artifactId]);
-  assert.deepEqual(identityWrites, [{ artifactId: ITEM_X.artifactId, entryId: "" }]);
+  assert.deepEqual(requested, allowed ? [ITEM_X.artifactId] : []);
+  assert.deepEqual(previewed, allowed ? [ITEM_X.artifactId] : []);
+  assert.deepEqual(identityWrites, allowed ? [{ artifactId: ITEM_X.artifactId, entryId: "" }] : []);
   delete globalThis.__libraryIdentityWrites;
   delete globalThis.__libraryDetailRequests;
   delete globalThis.__libraryDetailItem;
+});
+}
+
+test("task bare item aborts stale auth-generation reads and retries the exact item once", async () => {
+  resetCase();
+  window.history.replaceState({}, "", `/tasks/task-1?item=${ITEM_X.artifactId}`);
+  const requests = [];
+  globalThis.__libraryAuthGenerationReads = requests;
+  const intent = await import(await compileModule("src/shell/library-edit-intent.ts", {
+    "./artifact-client": dataModule(`
+      export function getCurrentArtifactItem(id, signal) {
+        return new Promise(resolve => globalThis.__libraryAuthGenerationReads.push({ id, signal, resolve }));
+      }
+    `),
+  }));
+  const previewed = [];
+  let restoreGeneration = 0;
+  function Host() {
+    intent.useLibraryEditIntent({
+      action: null, items: [], restoreGeneration,
+      onOpenItem: () => assert.fail("a task item bookmark must not edit or fork"),
+      onPreviewItem: item => previewed.push(item.artifactId),
+      onFailure: failure => assert.fail(failure.message),
+    });
+    return null;
+  }
+  try {
+    await mounted(async root => {
+      await act(async () => root.render(React.createElement(Host)));
+      assert.equal(requests.length, 1);
+      restoreGeneration = 1;
+      await act(async () => root.render(React.createElement(Host)));
+      assert.deepEqual(requests.map(request => request.id), [ITEM_X.artifactId, ITEM_X.artifactId]);
+      assert.equal(requests[0].signal.aborted, true);
+      await act(async () => requests[0].resolve({ ok: true, data: ITEM_Y }));
+      assert.deepEqual(previewed, []);
+      await act(async () => requests[1].resolve({ ok: true, data: ITEM_X }));
+      assert.deepEqual(previewed, [ITEM_X.artifactId]);
+      assert.equal(getLibraryCurrentIdentity()?.artifactId, ITEM_X.artifactId);
+      await act(async () => root.render(React.createElement(Host)));
+      assert.equal(requests.length, 2);
+    });
+  } finally {
+    delete globalThis.__libraryAuthGenerationReads;
+  }
 });
 
 const uiStubUrl = dataModule(`export function useUI() { return (value) => value; }`);

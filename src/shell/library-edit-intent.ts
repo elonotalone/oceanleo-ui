@@ -216,14 +216,19 @@ export function useLibraryEditIntent({
   const previewArtifactId = onPreviewItem
     ? libraryPreviewIntentArtifactId(action)
     : "";
-  // A bookmarked /library?item=<artifactId> has no action envelope. Restore it
-  // through the same read-only detail route; list membership is only a fast path.
+  // Standalone Library, task and legacy History bookmarks have no catalog
+  // sender. Restore their item through the same read-only detail route.
   // Workspace routes already have a catalog sender, which waits for its app
   // scope before dispatching. Reading that URL here would bypass its readiness
   // gate and fetch/open the same artifact twice when the real action arrives.
+  const pathname = typeof window === "undefined"
+    ? ""
+    : window.location.pathname.replace(/\/+$/, "");
+  const standaloneItemRoute = pathname === "/library" ||
+    pathname === "/history" || /^\/tasks\/[^/]+$/.test(pathname);
   const bareUrlArtifactId =
     !nonce && onPreviewItem && typeof window !== "undefined" &&
-      window.location.pathname.replace(/\/+$/, "") === "/library"
+      standaloneItemRoute
       ? libraryCurrentIdentityFromSearch(window.location.search)?.artifactId || ""
       : "";
   const artifactId = editArtifactId || previewArtifactId || bareUrlArtifactId;
