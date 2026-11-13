@@ -257,7 +257,8 @@ test("both cards stay mounted and switch through history with no router calls", 
     assert.equal(tab("cli").textContent, "AI 命令行");
     assert.equal(tab("terminal").textContent, "");
     await click(tab("terminal"));
-    assert.equal(window.location.search, "?card=terminal");
+    assert.equal(window.location.pathname, "/devices");
+    assert.equal(window.location.search, "?card=cli&computer=cc_1&view=terminal");
     const hidden = original.closest('[role="tabpanel"]');
     assert.ok(hidden.classList.contains("invisible"));
     assert.ok(hidden.classList.contains("pointer-events-none"));
@@ -317,7 +318,8 @@ test("list polling does not repeat node probes or reset initial card parameters"
 test("URL patch preserves unrelated query, hash and history state; null removes only its key", () => {
   window.history.replaceState({ next: true }, "", "/computers/cc_1?card=acp&program=cursor&session=s1&x=2#settings");
   replaceServerPageUrl("cc_1", { session: null });
-  assert.equal(window.location.search, "?card=acp&program=cursor&x=2");
+  assert.equal(window.location.pathname, "/devices");
+  assert.equal(window.location.search, "?card=acp&program=cursor&x=2&computer=cc_1");
   assert.equal(window.location.hash, "#settings");
   assert.deepEqual(window.history.state, { next: true });
   replaceServerPageUrl("cc_1", { card: "cli", program: "claude code" });

@@ -399,10 +399,12 @@ test("重连时拿不到令牌：保持 reconnecting，不谎报结束也不黑�
   await view.cleanup();
 });
 
-test("旧 Shell 外壳已退役，只保留服务器页重定向且没有结束/对话入口", () => {
+test("旧 Shell 外壳已退役，只保留任务或设备页重定向且没有结束/对话入口", () => {
   const source = readFileSync(resolve(repo, "src/shell/cloud-computer/ShellTaskView.tsx"), "utf8");
-  assert.match(source, /serverPageHref/);
-  assert.match(source, /card:\s*"terminal"/);
+  assert.match(source, /portalHref\(`\/tasks/);
+  assert.match(source, /computerSession=\$\{encodeURIComponent\(sessionId\)\}/);
+  assert.match(source, /portalHref\(`\/devices\?computer=/);
+  assert.match(source, /&view=terminal/);
   assert.match(source, /router\.replace\(target\)/);
   assert.equal(source.includes("data-oceanleo-cc-end-shell"), false);
   assert.equal(source.includes("data-oceanleo-cc-agent-dialog"), false);

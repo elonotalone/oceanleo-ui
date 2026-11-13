@@ -324,7 +324,7 @@ test("CLI 共享程序条、运行/历史列表、浅地址、续聊 options 与
     );
     assert.equal(
       window.location.pathname + window.location.search,
-      "/computers/cc_1?card=cli&program=cursor&session=launched-1",
+      "/devices?card=cli&computer=cc_1&view=cli&program=cursor&session=launched-1",
     );
 
     const settings = view.host.querySelector('[data-oceanleo-program-strip-settings="cursor"]');
@@ -347,7 +347,9 @@ test("CLI 共享程序条、运行/历史列表、浅地址、续聊 options 与
     const install = view.host.querySelector('[data-oceanleo-cli-install="claude"]');
     assert.ok(install);
     await act(async () => install.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-    assert.equal(window.location.search, "?card=acp&program=claude");
+    assert.ok(view.host.querySelector('[data-oceanleo-native-install="claude"]'));
+    assert.equal(view.host.querySelector('[data-oceanleo-cli-install="claude"]'), null);
+    assert.equal(window.location.search, "?card=cli&computer=cc_1&view=cli&program=claude&session=claude-live");
     assert.deepEqual(view.pushes, []);
     assert.deepEqual(view.replaces, []);
   } finally {
@@ -515,7 +517,7 @@ test("切到只有已结束会话的程序时不要自动打开死亡回放", as
     assert.ok(view.host.querySelector('[data-oceanleo-cli-ended="claude-dead"]'));
     assert.equal(
       window.location.pathname + window.location.search,
-      "/computers/cc_1?card=cli&program=claude",
+      "/devices?card=cli&computer=cc_1&view=cli&program=claude",
     );
   } finally {
     view.cleanup();
@@ -578,7 +580,7 @@ test("地址变化只更新浅地址，不重拉列表；失活时暂停终端�
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 70)); });
     assert.equal(api.calls.terminals, terminals, "inactive cards pause polling");
     await view.rerender({ active: true });
-    assert.equal(window.location.search, "?card=cli&program=cursor&session=cursor-live");
+    assert.equal(window.location.search, "?card=cli&computer=cc_1&view=cli&program=cursor&session=cursor-live");
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
     assert.ok(api.calls.terminals > terminals, "active cards resume polling");
   } finally {

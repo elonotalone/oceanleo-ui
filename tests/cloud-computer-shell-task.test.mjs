@@ -145,11 +145,11 @@ test("shellSessionFromTask 从旧任务 plan/列提取服务器和会话", () =>
   );
 });
 
-test("旧 Shell 任务只 replace 到服务器页终端记录，不再渲染结束或对话操作", async () => {
+test("旧 Shell 任务只 replace 到任务会话记录，不再渲染结束或对话操作", async () => {
   const view = await render();
   try {
     assert.deepEqual(view.replaces, [
-      "/computers/cc%20%2F1?card=terminal&session=sid+%2F2",
+      "/tasks/task-1?computerSession=sid%20%2F2",
     ]);
     assert.equal(view.host.innerHTML, "");
     assert.equal(view.host.querySelector("[data-oceanleo-cc-end-shell]"), null);
@@ -161,10 +161,26 @@ test("旧 Shell 任务只 replace 到服务器页终端记录，不再渲染结�
   }
 });
 
-test("旧任务缺服务器或会话时给说明和回首页，不猜测跳转", async () => {
+test("旧任务有任务和会话时不依赖服务器；否则回退到明确的设备终端", async () => {
+  for (const { props, target } of [
+    { props: { computerId: "" }, target: "/tasks/task-1?computerSession=sid%20%2F2" },
+    { props: { taskId: "" }, target: "/devices?computer=cc%20%2F1&view=terminal&session=sid%20%2F2" },
+    { props: { sessionId: "" }, target: "/devices?computer=cc%20%2F1&view=terminal" },
+  ]) {
+    const view = await render(props);
+    try {
+      assert.deepEqual(view.replaces, [target]);
+      assert.equal(view.host.innerHTML, "");
+    } finally {
+      view.cleanup();
+    }
+  }
+});
+
+test("没有可识别的任务会话或设备时给说明和回首页，不猜测跳转", async () => {
   for (const props of [
-    { computerId: "" },
-    { sessionId: "" },
+    { computerId: "", sessionId: "" },
+    { computerId: "", taskId: "" },
   ]) {
     const view = await render(props);
     try {

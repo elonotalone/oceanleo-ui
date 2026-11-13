@@ -178,30 +178,41 @@ test("reducer：transcript 立刻换成服务端历史；另一路 session 的 a
   assert.equal(state.agentBusy, false);
 });
 
-test("reducer：未知帧忽略（不报 dialog_unreachable），busy 时仍可切程序", () => {
+test("reducer：未知帧只推进接收游标；切换程序不影响原程序的进行中轮次", () => {
   let state = initialDialogState();
-  const before = state;
-  // 无 program 的未知帧会走完所有分支落到「忽略」；带别的 program 的在 forCurrent 就返回。
-  state = applyDialog(state, { type: "frame", frame: { t: "brand_new_frame", payload: 1 } });
-  assert.equal(state, before);
-  state = applyDialog(state, { type: "frame", frame: { t: "brand_new_frame", program: "cursor" } });
-  assert.equal(state, before);
-  state = applyDialog(state, { type: "frame", frame: { t: "" } });
-  assert.equal(state, before);
+  for (const frame of [
+    { t: "brand_new_frame", payload: 1 },
+    { t: "brand_new_frame", program: "cursor" },
+    { t: "" },
+  ]) {
+    const before = state;
+    state = applyDialog(state, { type: "frame", frame });
+    assert.equal(state.frameCursor, before.frameCursor + 1);
+    assert.deepEqual({ ...state, frameCursor: before.frameCursor }, before,
+      "unknown frames do not change messages, program, input or session state");
+  }
 
+  state = { ...state, draftRef: "new:oceanleo-draft" };
   state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, false, "sending is pending until the server reports work");
+  assert.equal(state.occupancyPendingSession, "new:oceanleo-draft");
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "sessions", program: "oceanleo", supported: true, sessions: [], busy: ["new:oceanleo-draft"],
+  } });
   assert.equal(state.busy, true);
   state = applyDialog(state, { type: "program", program: "cursor" });
   assert.equal(state.program, "cursor");
   assert.equal(state.busy, false);
-  assert.equal(Boolean(state.liveTurns["oceanleo::"]), true);
+  assert.equal(Boolean(state.liveTurns["oceanleo::new:oceanleo-draft"]), true);
 });
 
-test("reducer：turn_start 补上会话 id 后当前轮次仍显示 Stop", () => {
+test("reducer：发送等待服务端确认，turn_start 补上会话 id 后显示 Stop", () => {
   let state = initialDialogState();
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "send-began" });
-  assert.equal(state.busy, true);
+  assert.equal(state.busy, false);
+  assert.equal(typeof state.occupancyPendingAt, "number");
+  assert.equal(Boolean(state.liveTurns["cursor::"]), false);
   state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s1" } });
   assert.equal(state.activeSession, "s1");
   assert.equal(state.busy, true);
@@ -214,6 +225,7 @@ test("reducer：多会话 liveTurns 互不打断；invalid_argument 只结束当
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "session-loading", id: "s-a" });
   state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s-a" } });
   assert.equal(state.busy, true);
   assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
 
@@ -223,6 +235,8 @@ test("reducer：多会话 liveTurns 互不打断；invalid_argument 只结束当
   assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
 
   state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, false);
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s-b" } });
   assert.equal(state.busy, true);
   assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
 
@@ -249,6 +263,11 @@ test("reducer：Stop 请求保留忙碌，直到 sessions.busy 确认停止", ()
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = { ...state, draftRef: "new:draft1" };
   state = applyDialog(state, { type: "send-began" });
+  assert.equal(state.busy, false);
+  assert.equal(state.occupancyPendingSession, "new:draft1");
+  state = applyDialog(state, { type: "frame", frame: {
+    t: "sessions", program: "cursor", supported: true, sessions: [], busy: ["new:draft1"],
+  } });
   assert.equal(state.busy, true);
   assert.equal(Boolean(state.liveTurns["cursor::new:draft1"]), true);
 
@@ -272,6 +291,7 @@ test("reducer：Stop 请求保留忙碌，直到 sessions.busy 确认停止", ()
 
   state = applyDialog(state, { type: "session-loading", id: "s-a" });
   state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s-a" } });
   state = applyDialog(state, { type: "cancel-local" });
   assert.equal(state.busy, true);
   state = applyDialog(state, {
@@ -300,8 +320,10 @@ test("reducer：sessions.busy 清掉已结束的回合，不把空闲 running �
   state = applyDialog(state, { type: "program", program: "cursor" });
   state = applyDialog(state, { type: "session-loading", id: "s-a" });
   state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s-a" } });
   state = applyDialog(state, { type: "session-loading", id: "s-b" });
   state = applyDialog(state, { type: "send-began" });
+  state = applyDialog(state, { type: "frame", frame: { t: "turn_start", program: "cursor", acp_session: "s-b" } });
   assert.equal(Boolean(state.liveTurns["cursor::s-a"]), true);
   assert.equal(Boolean(state.liveTurns["cursor::s-b"]), true);
   state = applyDialog(state, {
