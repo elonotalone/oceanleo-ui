@@ -1000,7 +1000,7 @@ function ttLiterals(rel) {
 }
 
 /** 指用户自己「我的库」里的作品（作品集），不是种类名，保留。 */
-const LIBRARY_WORK_SENTENCES = new Set(["作品集", "还没有作品。从「我的库」挑进来。", "从我的库挑一件作品"]);
+const LIBRARY_WORK_SENTENCES = new Set(["作品集", "还没有作品。从「我的库」挑进来。", "从我的库挑一件作品", "作品集和资质核验单独保存。"]);
 
 test("边界内用户看得见的句子不再用「服务 / 素材 / 作品 / 成品文件」当种类名", () => {
   const offenders = [];

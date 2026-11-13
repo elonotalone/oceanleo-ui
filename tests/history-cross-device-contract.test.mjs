@@ -11,8 +11,8 @@ test("history APIs resolve the injected desktop gateway at request time", () => 
   const agent = source("src/lib/agent.ts");
   const computer = source("src/lib/cloud-computer-api.ts");
   assert.match(config, /export function gatewayBase\(\): string/);
-  assert.match(agent, /fetch\(`\$\{gatewayBase\(\)\}\$\{path\}/);
-  assert.match(computer, /fetch\(`\$\{gatewayBase\(\)\}\$\{path\}/);
+  assert.match(agent, /sharedGatewayFetch\(`\$\{gatewayBase\(\)\}\$\{path\}/);
+  assert.match(computer, /sharedGatewayFetch\(`\$\{gatewayBase\(\)\}\$\{path\}/);
   assert.doesNotMatch(agent, /fetch\(`\$\{GATEWAY_BASE\}/);
   assert.doesNotMatch(computer, /fetch\(`\$\{GATEWAY_BASE\}/);
 });
@@ -28,7 +28,7 @@ test("desktop history is account-wide while the web portal keeps main-site scope
 
 test("task history keeps the session list and first-send race contracts wired", () => {
   const chat = source("src/shell/AgentChat.tsx");
-  assert.match(chat, /listComputerTaskSessions\(taskId\)/);
+  assert.match(chat, /listComputerTaskSessions\(taskId, \{ signal: controller\.signal \}\)/);
   assert.match(chat, /if \(workspace\.taskId\)/);
   assert.match(chat, /if \(!local \|\| !sessionId \|\| workspace\.readOnly\) return/);
 });

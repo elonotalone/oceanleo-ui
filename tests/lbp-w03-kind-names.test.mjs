@@ -299,7 +299,6 @@ const KEEP = new Set([
   "先选一种：交付一件成品，还是答疑",
   "交付一件成品",
   "抄袭、盗用他人作品",
-  "打开作品",
 ]);
 
 function chineseLiterals(code) {
@@ -379,8 +378,9 @@ test("分表 lbp-w03：16 语齐全、占位符不丢、非中日韩不含汉字
   for (const [, zh] of KIND_TABLE) assert.equal(zh in LBP_W03_MESSAGES.zh, false, `不在本表重定义种类名「${zh}」`);
 });
 
-test("分表里的每一句都在边界源码里用着（没有死词条）", () => {
+test("分表只保留一个明确退役的兼容文案，其余每句都在边界源码里用着", () => {
   const sources = BOUNDARY.map((rel) => stripJsComments(read(rel))).join("\n");
   const dead = Object.keys(LBP_W03_MESSAGES.zh).filter((key) => !sources.includes(key));
-  assert.deepEqual(dead, []);
+  // LeoBay now delivers Library items on-platform; retain the translated old key for old consumers.
+  assert.deepEqual(dead, ["交付在平台外完成"]);
 });

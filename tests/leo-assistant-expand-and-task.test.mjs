@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { siblingRepoUrl } from "./helpers/sibling-repo-url.mjs";
 
 const TESTS_DIR = dirname(fileURLToPath(import.meta.url));
 
@@ -647,7 +648,7 @@ test("全站无悬浮气泡；门户 launcher 只挂一次 LeoAssistant，无 hi
   assert.equal(shell.includes("data-oceanleo-cc-leo-toggle"), false);
 
   const launcher = readFileSync(
-    join(TESTS_DIR, "../../oceanleo/app/_components/leo-launcher.tsx"),
+    siblingRepoUrl("oceanleo", "app/_components/leo-launcher.tsx"),
     "utf8",
   );
   assert.match(launcher, /siteId="oceanleo"/);

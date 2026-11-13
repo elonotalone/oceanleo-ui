@@ -97,6 +97,8 @@ const navigationStub = dataModule(`
       },
       replace(href) {
         (window.__settingsNav ??= []).push(["replace", href]);
+        // Next performs a full navigation across origins; jsdom only models local history.
+        if (new URL(href, window.location.href).origin !== window.location.origin) return;
         window.history.replaceState(null, "", href);
       },
       refresh() {},
@@ -265,7 +267,6 @@ const CAPABILITIES = [
   { id: "connectors", testId: "pane-connectors", label: "连接器", variant: false },
   { id: "automation", testId: "pane-automation", label: "自动化与通知", variant: true },
   { id: "mail", testId: "pane-mail", label: "邮件", variant: true },
-  { id: "devices", testId: "pane-devices", label: "我的设备", variant: true },
 ];
 
 test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
@@ -281,7 +282,7 @@ test("settingsPath 与旧 hash / ?tab= 都读成 /settings/<tab>", () => {
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/plugins"), "skills");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/connectors"), "connectors");
   assert.equal(settingsPath("plugins", "https://oceanleo.com/"), "/settings/skills");
-  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=devices"), "devices");
+  assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=devices"), "general");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings?tab=memory"), "personalization");
   assert.equal(tabFromSettingsLocation("https://oceanleo.com/settings/knowledge"), "personalization");
   assert.equal(settingsPath("cost", "https://oceanleo.com/"), "/settings/billing");
@@ -315,7 +316,7 @@ test("关掉设置窗的回跳地址：只要站内非设置页，协议相对�
   );
 });
 
-test("设置窗里点「AI 模型」「技能」「连接器」「我的设备」：右侧换成对应面板，窗不关，背后页面不动", async () => {
+test("设置窗里点「AI 模型」「技能」「连接器」：右侧换成对应面板，窗不关，背后页面不动", async () => {
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
   await open("general");
   assert.ok(dialog(), "openSettingsModal 之后设置窗应当打开");
@@ -442,14 +443,14 @@ test("设置窗开着时背后页面导航（pushState）→ 设置窗关闭；�
   assert.equal(window.location.pathname, "/projects");
   assert.equal(dialog() === null, true, "背后换了页，设置窗要跟着关掉，不能还盖在新页面上");
 
-  await open("devices");
-  assert.ok(pane("pane-devices"), "新页面上还能再打开设置窗");
+  await open("ai-models");
+  assert.ok(pane("pane-api"), "新页面上还能再打开设置窗");
   await view.cleanup();
 });
 
 test("设置窗开着时浏览器后退 → 设置窗关闭", async () => {
   const view = await mount(React.createElement(SettingsModalHost), "/agent");
-  await open("devices");
+  await open("ai-models");
   assert.ok(dialog());
   await act(async () => {
     window.history.back();
@@ -535,15 +536,18 @@ test("extraSections 与内置同 id（含旧 id memory）：内置优先，控�
   }
 });
 
-test("设置中心独立页（page 形态）：?tab=devices 与 ?tab=memory 同样落在面板上", async () => {
-  const devices = await mount(React.createElement(SettingsHub), "/settings?tab=devices");
-  const devicesPane = window.document.querySelector('[data-settings-hub] [data-testid="pane-devices"]');
-  assert.ok(devicesPane, "?tab=devices 应当渲染我的设备面板");
-  assert.equal(devicesPane.getAttribute("data-variant"), "pane");
-  assert.equal(window.document.querySelector('a[href="/devices"]') === null, true);
-  await devices.cleanup();
+test("旧设备设置地址由外壳重定向到 Devices；memory 仍打开个性化面板", async () => {
+  for (const path of ["/settings?tab=devices", "/settings/devices"]) {
+    const view = await mount(React.createElement(SettingsModalHost), path);
+    assert.ok(window.__settingsNav.some(([kind, href]) =>
+      kind === "replace" && href === "https://oceanleo.com/devices"),
+      "功能子站的旧设备设置地址应跳转到同一家族的门户设备页");
+    assert.equal(dialog(), null, "设备页不再嵌进账号设置窗");
+    await view.cleanup();
+  }
 
   const memory = await mount(React.createElement(SettingsHub), "/settings?tab=memory");
   assert.ok(window.document.querySelector('[data-settings-hub] [data-testid="pane-personalization"]'));
+  assert.equal(window.document.querySelector('[data-settings-item="devices"]'), null);
   await memory.cleanup();
 });

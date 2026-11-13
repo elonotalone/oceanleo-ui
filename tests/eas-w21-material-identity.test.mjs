@@ -349,31 +349,33 @@ test("打开 A 后 actionFor 不再交出已消费的 B envelope", async () => {
     "https://law.oceanleo.com/workspace/app?tab=materials&item=artifact-B&mode=preview",
     async ({ window, root }) => {
       window.addEventListener("oceanleo:workspace-action", () => {});
-      const seen = { materials: null };
+      // Materials requests now open LeoBay; the fixed preview slot still consumes item actions.
+      const envelope = { ...previewEnvelope(), action: { ...previewEnvelope().action, tab: "preview" } };
+      const seen = { preview: null };
       function Host() {
         const state = useWorkspaceSlotState({
           showTemplate: false,
           runtimeHydration: null,
-          slotForId: (id) => (id === "mine" ? "mine" : "materials"),
+          slotForId: (id) => (id === "mine" ? "mine" : "preview"),
           callerIdForSlot: () => null,
         });
-        seen.materials = state.actionFor("materials");
+        seen.preview = state.actionFor("preview");
         return null;
       }
       await act(async () => root.render(React.createElement(Host)));
       await act(async () => {
         window.dispatchEvent(
           new window.CustomEvent("oceanleo:workspace-action", {
-            detail: previewEnvelope(),
+            detail: envelope,
           }),
         );
       });
       await act(async () => root.render(React.createElement(Host)));
-      assert.equal(seen.materials?.action.itemId, "artifact-B");
+      assert.equal(seen.preview?.action.itemId, "artifact-B");
 
       rememberOpenedLibraryItem(ITEM_A, previewEnvelope().nonce);
       await act(async () => root.render(React.createElement(Host)));
-      assert.equal(seen.materials, null, "消费后宿主不得再把 B 的 envelope 往下传");
+      assert.equal(seen.preview, null, "消费后宿主不得再把 B 的 envelope 往下传");
       assert.doesNotMatch(window.location.search, /mode=preview/);
       assert.match(window.location.search, /item=artifact-A/);
     },

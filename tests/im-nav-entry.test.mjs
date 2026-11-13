@@ -59,7 +59,8 @@ test("可见性判定：三个独立域名家族的已登录用户均可用 LeoC
 });
 
 test("共享外壳消息导出；MessagesHost 在不可用时只渲染登录框宿主", () => {
-  const index = src("shell/index.ts");
+  assert.match(src("shell/index.ts"), /export \* from "\.\/public-exports"/);
+  const index = src("shell/public-exports.ts");
   assert.match(index, /export \{ MessagesHost \} from "\.\/messages\/MessagesHost"/);
   assert.match(index, /export \{ openMessages, closeMessages \} from "\.\/messages\/host-state"/);
   assert.match(index, /export \{ MessagesNavIcon \} from "\.\/messages\/MessagesNavIcon"/);

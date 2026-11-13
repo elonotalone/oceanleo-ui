@@ -39,9 +39,10 @@ test("acp_unavailable：程序已装也提供补装缺失对话组件的入口",
   assert.equal(noticeCopy(tt, "acp_unavailable", null), STILL_NEEDS_INSTALL);
   assert.equal(noticeAction("acp_unavailable", null), "install");
   assert.equal(noticeAction("program_missing", null), "install");
-  assert.equal(noticeAction("dialog_unreachable"), "retry");
-  assert.equal(noticeAction("computer_offline"), "retry");
-  assert.equal(noticeAction("computer_reconnecting"), "retry");
+  // Transport reconnects silently; only install/login problems offer a manual action.
+  assert.equal(noticeAction("dialog_unreachable"), null);
+  assert.equal(noticeAction("computer_offline"), null);
+  assert.equal(noticeAction("computer_reconnecting"), null);
 });
 
 test("电脑页从不显示 The dialog did not start", () => {

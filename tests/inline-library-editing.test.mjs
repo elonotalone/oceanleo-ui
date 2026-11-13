@@ -44,7 +44,7 @@ test("editor tools exist only inside an opened item and delegate details to the 
   assert.match(inline, /data-inline-editor/);
 });
 
-test("workspace actions expose both static libraries and opaque fullscreen chrome", () => {
+test("workspace actions route materials through LeoBay and keep the own-library panel and fullscreen chrome", () => {
   const actionBar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
   const canvas = source("../src/shell/ResultCanvas.tsx");
   const theme = source("../src/theme/globals.css");
@@ -53,7 +53,9 @@ test("workspace actions expose both static libraries and opaque fullscreen chrom
   assert.match(actionBar, /onOpenLibrary\("mine"\)/);
   assert.match(actionBar, /tt\("素材库"\)/);
   assert.match(actionBar, /tt\("我的库"\)/);
-  assert.match(canvas, /registerLibraryPanel\("materials"/);
+  assert.doesNotMatch(canvas, /registerLibraryPanel\("materials"/);
+  const slots = source("../src/shell/result-canvas-slot-state.ts");
+  assert.match(slots, /action\.tab === "bay"[\s\S]*?setPanelAction\(envelope\)/);
   assert.match(canvas, /registerLibraryPanel\("mine"/);
   assert.match(theme, /\[data-workspace-split\]:fullscreen::backdrop/);
   assert.match(theme, /height: 100vh !important/);
@@ -69,7 +71,7 @@ test("generated and material slots never wrap legacy container tabs as fake card
   );
   assert.match(
     canvas,
-    /tab\.role !== "container" &&[\s\S]*?\(tab\.materials\?\.length \|\| 0\) === 0[\s\S]*?Boolean\(tab\.libraryItem\)/,
+    /grouped\.mine[\s\S]*?\.filter\(\(tab\) => tab\.role !== "container"\)[\s\S]*?legacyWorkspaceEntry\(tab\)/,
   );
   assert.doesNotMatch(canvas, /workflowEntries/);
 });

@@ -1,14 +1,6 @@
-// 「AI 模型」「我的设备」两张共享页的两种形态（editors-and-shell-0924 W07）。
-//
-// 设置窗「能力」组的「AI 模型」「我的设备」现在是面板，直接渲染 `ApiPage variant="pane"`、
-// `DevicesPage variant="pane"`；门户 `/api`、`/devices` 独立页照旧渲染缺省（page）形态。
-//
-//   ① page 形态逐字不变：下面两份快照是 W07 动这两份文件**之前**（main `9f5ebf0`）
-//      用同一组替身渲染出来的整页 HTML。页面上多一个 class、少一个属性都会红。
-//   ② pane 形态没有统一页头（没有「返回」、没有 h1）——面板区自己有标题，页头的「返回」
-//      会把设置窗背后的页面退回上一页；也不带整页外边距，能在面板区里收缩滚动。
-//   ③ pane 形态的正文与 page 形态逐字相同：面板不是另一份删减版。
-//   ④ 我的设备 pane 不读地址栏的 `?tab=cloud`：地址栏属于设置窗背后的页面。
+// ApiPage keeps its page/pane settings contract. Devices is a standalone navigation page;
+// its pane variant remains a compact embedding compatibility surface with the same header,
+// cards and cloud-focus behavior, rather than an account Settings tab.
 //
 // 跑法：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
@@ -227,7 +219,7 @@ const API_PAGE_SNAPSHOT = String.raw`<div class="px-8 py-6">
 const DEVICES_PAGE_SNAPSHOT = String.raw`<div class="mx-auto flex min-h-full w-full max-w-7xl flex-col px-5 py-7 sm:px-8" data-oceanleo-devices-page="true">
 <header class="flex items-center justify-between gap-4">
 <div>
-<h1 class="text-2xl font-semibold tracking-tight text-neutral-900">我的设备</h1>
+<h1 class="text-2xl font-semibold tracking-tight text-neutral-900">Devices</h1>
 <p class="mt-2 text-sm text-neutral-500">你的电脑与云电脑</p>
 </div>
 <button type="button" class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45">
@@ -329,7 +321,7 @@ test("ApiPage page 形态（缺省与 variant=page）与改动前逐字相同", 
   }
 });
 
-test("DevicesPage page 形态（缺省与 variant=page）与改动前逐字相同", async () => {
+test("DevicesPage page 形态（缺省与 variant=page）都保留当前完整设备卡片", async () => {
   for (const props of [{}, { variant: "page" }]) {
     const view = await render(React.createElement(DevicesPage, { client: devicesClient, ...props }), "/devices");
     assert.equal(lines(view.html()), DEVICES_PAGE_SNAPSHOT, `props=${JSON.stringify(props)}`);
@@ -356,14 +348,14 @@ test("ApiPage pane 形态：没有页头与整页外边距，正文与独立页�
   await pane.cleanup();
 });
 
-test("DevicesPage pane 形态：没有页头与整页外边距，正文与独立页逐字相同", async () => {
+test("DevicesPage 兼容嵌入形态：保留页头和相同卡片，去掉整页外边距", async () => {
   const page = await render(React.createElement(DevicesPage, { client: devicesClient }), "/agent");
   const pageBody = bodyOf(page, "[data-device-grid]");
   await page.cleanup();
 
   const pane = await render(React.createElement(DevicesPage, { client: devicesClient, variant: "pane" }), "/agent");
   assert.equal(pane.backButtons(), 0, "设置窗面板里不该有页头的「返回」键");
-  assert.equal(pane.find("h1") === null, true, "面板区自己有标题，pane 形态不该再渲染页头 h1");
+  assert.equal(pane.find("h1")?.textContent, "Devices", "兼容嵌入仍是完整的设备页面");
   assert.equal(pane.rootHas("data-devices-pane"), true, "pane 根节点要带 data-devices-pane");
   const rootClass = pane.rootClass();
   assert.doesNotMatch(rootClass, /\bpx-8\b|\bpy-6\b|h-screen/, `pane 根节点不该带整页外边距或整屏高度：${rootClass}`);
@@ -372,7 +364,7 @@ test("DevicesPage pane 形态：没有页头与整页外边距，正文与独立
   await pane.cleanup();
 });
 
-test("DevicesPage：独立页认地址栏的 ?tab=cloud，pane 形态不认（地址栏属于背后的页面）", async () => {
+test("DevicesPage：独立与兼容嵌入形态都支持 cloud 深链，显式 initialTab 同样生效", async () => {
   const page = await render(React.createElement(DevicesPage, { client: devicesClient }), "/devices?tab=cloud");
   assert.equal(page.find("[data-stub=cloud]")?.getAttribute("data-autofocus"), "true");
   await page.cleanup();
@@ -381,7 +373,7 @@ test("DevicesPage：独立页认地址栏的 ?tab=cloud，pane 形态不认（�
     React.createElement(DevicesPage, { client: devicesClient, variant: "pane" }),
     "/agent?tab=cloud",
   );
-  assert.equal(pane.find("[data-stub=cloud]")?.getAttribute("data-autofocus"), "false");
+  assert.equal(pane.find("[data-stub=cloud]")?.getAttribute("data-autofocus"), "true");
   await pane.cleanup();
 
   const asked = await render(
