@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { ConfirmDialog } from "../../ui";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { artifactProjectionToLibraryItem } from "../library-data";
@@ -39,6 +40,7 @@ export function GameProjectEditorSession({ item, taskId, siteId = "", accent = "
   const [job, setJob] = useState<GameProjectJob | null>(null);
   const [retry, setRetry] = useState(0);
   const [notice, setNotice] = useState("");
+  const [confirmClose, setConfirmClose] = useState(false);
   const lifetime = useRef<AbortController | null>(null);
   const operation = useRef(false);
   const dirty = Object.keys(edits).length > 0;
@@ -164,7 +166,13 @@ export function GameProjectEditorSession({ item, taskId, siteId = "", accent = "
       style={{ aspectRatio: orientation === "portrait" ? "9 / 16" : "16 / 9", maxWidth: orientation === "portrait" ? "26rem" : "100%", alignSelf: "center" }}
       className="min-h-96 w-full flex-1 border-0" sandbox="allow-scripts allow-pointer-lock" allow="fullscreen; gamepad" />}
   </div>;
-  return <AdvancedWorkbenchShell item={head} taskId={taskId} siteId={siteId} accent={accent}
-    onClose={() => { if (!dirty || window.confirm(tt("修改尚未保存，仍要关闭吗？"))) onClose(); }}
-    adapter={{ id: "game", label: tt("游戏"), pages: { activePageId: "artifact", aux: [] }, stage }} />;
+  return <>
+    <AdvancedWorkbenchShell item={head} taskId={taskId} siteId={siteId} accent={accent}
+      onClose={() => { if (dirty) setConfirmClose(true); else onClose(); }}
+      adapter={{ id: "game", label: tt("游戏"), pages: { activePageId: "artifact", aux: [] }, stage }} />
+    {confirmClose && <ConfirmDialog title={tt("修改尚未保存，仍要关闭吗？")}
+      confirmLabel={tt("关闭")} cancelLabel={tt("取消")}
+      onCancel={() => setConfirmClose(false)}
+      onConfirm={() => { setConfirmClose(false); onClose(); }} />}
+  </>;
 }

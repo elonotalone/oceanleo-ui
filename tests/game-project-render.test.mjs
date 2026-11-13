@@ -8,18 +8,30 @@ const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve('fabric/node'));
 const canvas = fabricRequire.resolve('canvas'); const previous = require.cache[canvas];
 require.cache[canvas] = { id: canvas, filename: canvas, loaded: true, exports: {} };
-const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve('jsdom')).href);
+const { JSDOM, VirtualConsole } = await import(pathToFileURL(fabricRequire.resolve('jsdom')).href);
 if (previous) require.cache[canvas] = previous; else delete require.cache[canvas];
-const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://app.example.test' });
+const virtualConsole = new VirtualConsole();
+virtualConsole.on('jsdomError', error => {
+  // jsdom 20 cannot parse the shared overlay's modern @starting-style animation.
+  if (error.type === 'css parsing' && error.detail?.includes('@starting-style')) return;
+  throw error;
+});
+const dom = new JSDOM('<!doctype html><body></body>', { url: 'https://app.example.test', pretendToBeVisual: true, virtualConsole });
 for (const name of ['window', 'document', 'navigator', 'HTMLElement', 'HTMLTextAreaElement', 'Event', 'MouseEvent']) Object.defineProperty(globalThis, name, { configurable: true, value: name === 'window' ? dom.window : dom.window[name] });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
+globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+// The real shared modal restores scroll position; jsdom has no scrolling viewport.
+window.scrollTo = () => {};
 const errors = [];
 const oldError = console.error;
 console.error = (...args) => { errors.push(args.join(' ')); };
 const { createRoot } = await import('react-dom/client');
 const { GameProjectEditorSession } = await import(await compileModule('src/shell/game-editor/GameProjectEditor.tsx', {
   '../../i18n/ui/useUI': dataModule('export const useUI = () => (text) => text;'),
-  '../AdvancedWorkbenchShell': dataModule('export const AdvancedWorkbenchShell = ({adapter}) => adapter.stage;'),
+   '../AdvancedWorkbenchShell': dataModule(`import React from ${JSON.stringify(pathToFileURL(require.resolve('react')).href)};
+    export const AdvancedWorkbenchShell = ({adapter,onClose}) => React.createElement(React.Fragment,null,
+      React.createElement('button',{'data-test-game-close':'',onClick:onClose},'Close editor'),adapter.stage);`),
   '../library-data': dataModule('export const isDurableLibraryItem = x => !!x.artifact; export const artifactProjectionToLibraryItem = x => x;'),
   '../artifact-client': dataModule('export const forkArtifact = async x => ({ok:true,data:{...x, artifactId:"copy", revisionId:"copy-v1",artifact:{access:{canEdit:true}}}});'),
   './game-project-api': dataModule('export const gameProjectApi = {};'),
@@ -27,9 +39,9 @@ const { GameProjectEditorSession } = await import(await compileModule('src/shell
 const textFile = (path, content) => ({ path, content, mediaType: 'text/plain', sha256: 'a'.repeat(64), byteSize: Buffer.byteLength(content) });
 const project = { schema: 'game-project@1', entrypoint: 'index.html', title: '海岸', orientation: 'both', controls: ['touch'], files: [textFile('index.html', '<html>game</html>'), textFile('game.js', 'let score=0;')] };
 const item = { artifactId: 'game-1', revisionId: 'v1', id: 'game-1', kind: 'game', title: '海岸' };
-async function mount(api, currentItem = item) {
+async function mount(api, currentItem = item, onClose = () => {}) {
   const container = document.createElement('div'); document.body.append(container); const root = createRoot(container);
-  await act(async () => { root.render(React.createElement(GameProjectEditorSession, { item: currentItem, api, onClose() {} })); });
+  await act(async () => { root.render(React.createElement(GameProjectEditorSession, { item: currentItem, api, onClose })); });
   return { container, async close() { await act(async () => root.unmount()); container.remove(); } };
 }
 const apiBase = () => ({ load: async () => project, play: async () => ({url:'https://p-game.oceanleo.app/index.html'}), file: async () => '', current: async () => ({...item,revisionId:'v2'}) });
@@ -94,4 +106,52 @@ test('view-only projects expose no iteration and no writable text',async()=>{
   assert.equal(mounted.container.querySelector('textarea').readOnly,true);
   assert.equal(mounted.container.querySelector('#game-project-prompt'),null);
   await mounted.close();assert.deepEqual(errors,[]);
+});
+
+
+test('dirty close uses the real shared dialog: cancel keeps edits, confirm closes once', async () => {
+  let closes = 0; let saves = 0;
+  const nativeConfirm = window.confirm;
+  window.confirm = () => { throw new Error('native confirmation must never be used'); };
+  const mounted = await mount({ ...apiBase(), save: async () => { saves++; return item; } }, item, () => { closes++; });
+  try {
+    const editor = mounted.container.querySelector('textarea[aria-label="index.html"]');
+    await type(editor, '<html>unsaved change</html>');
+    const requestClose = () => mounted.container.querySelector('[data-test-game-close]').click();
+    await act(async () => requestClose());
+    let dialog = document.querySelector('[role="dialog"]');
+    assert.ok(dialog);
+    assert.match(dialog.textContent, /修改尚未保存，仍要关闭吗？/);
+    assert.equal(closes, 0, 'opening the warning cannot close the editor');
+    await act(async () => button(dialog, '取消').click());
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(closes, 0);
+    assert.equal(editor.value, '<html>unsaved change</html>');
+    assert.equal(button(mounted.container, '保存文件').disabled, false);
+    const unload = new window.Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(unload);
+    assert.equal(unload.defaultPrevented, true, 'cancel retains the unsaved-navigation warning');
+    await act(async () => requestClose());
+    dialog = document.querySelector('[role="dialog"]');
+    assert.ok(dialog);
+    await act(async () => button(dialog, '关闭').click());
+    assert.equal(closes, 1);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+    assert.equal(saves, 0, 'discard confirmation never saves a draft implicitly');
+  } finally {
+    await mounted.close();
+    window.confirm = nativeConfirm;
+  }
+  assert.deepEqual(errors, []);
+});
+
+test('clean editor closes immediately without a confirmation dialog', async () => {
+  let closes = 0;
+  const mounted = await mount(apiBase(), item, () => { closes++; });
+  try {
+    await act(async () => mounted.container.querySelector('[data-test-game-close]').click());
+    assert.equal(closes, 1);
+    assert.equal(document.querySelector('[role="dialog"]'), null);
+  } finally { await mounted.close(); }
+  assert.deepEqual(errors, []);
 });
