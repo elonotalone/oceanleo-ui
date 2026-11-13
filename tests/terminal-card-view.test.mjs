@@ -236,7 +236,8 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
     assert.equal(replay?.getAttribute("data-read-only"), "1");
     assert.ok(view.host.querySelector("[data-oceanleo-ended-terminal-banner]"));
     assert.equal(view.replaces.length, 0);
-    assert.equal(window.location.search, "?card=terminal&session=ended");
+    assert.equal(window.location.pathname, "/devices");
+    assert.equal(window.location.search, "?card=terminal&computer=cc_1&view=terminal&session=ended");
 
     const liveRow = view.host.querySelector(
       '[data-oceanleo-terminal-row="live-new"]',
@@ -286,7 +287,7 @@ test("终端卡排序、只读回放、关闭、二次确认删除与 URL 更新
       { id: "cc_1", body: { cols: 80, rows: 24, kind: "shell" } },
     ]);
     assert.equal(view.replaces.length, 0);
-    assert.equal(window.location.search, "?card=terminal&session=new-1");
+    assert.equal(window.location.search, "?card=terminal&computer=cc_1&view=terminal&session=new-1");
   } finally {
     window.setTimeout = originalSetTimeout;
     view.cleanup();

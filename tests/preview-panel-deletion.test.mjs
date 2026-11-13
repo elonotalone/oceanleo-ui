@@ -17,7 +17,10 @@ test("all file details use WorkspaceLibrary", () => {
   assert.doesNotMatch(source, /WorkspaceEntryCanvas|PreviewPanel|data-attachment-preview/);
 
   const library = fs.readFileSync(path.join(shell, "WorkspaceLibrary.tsx"), "utf8");
-  assert.match(library, /<header[\s\S]*selected\.title/);
+  assert.match(library, /import \{ AssetDetail \} from "\.\/asset-detail\/AssetDetail"/);
+  assert.match(library, /<AssetDetail[\s\S]*?entry=\{selected\}/);
+  const detail = fs.readFileSync(path.join(shell, "asset-detail", "AssetDetail.tsx"), "utf8");
+  assert.match(detail, /<header[\s\S]*?entry\.title/);
   assert.match(library, /openEntryId\?: string \| null/);
   for (const name of ["AttachmentStrip.tsx", "ResultCanvas.tsx"]) {
     const file = fs.readFileSync(path.join(shell, name), "utf8");

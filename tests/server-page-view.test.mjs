@@ -272,7 +272,8 @@ test("服务器落地页按 AI 命令行、终端显示说明并进入对应 URL
       choices[0].dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     assert.deepEqual(view.pushes, []);
-    assert.equal(window.location.search, "?card=cli");
+    assert.equal(window.location.pathname, "/devices");
+    assert.equal(window.location.search, "?computer=cc_1&view=cli");
   } finally {
     view.cleanup();
   }
@@ -293,7 +294,8 @@ test("卡片视图保留 program/session，并用浅地址在两张卡间切换"
       terminal.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
     assert.deepEqual(view.replaces, []);
-    assert.equal(window.location.search, "?card=terminal");
+    assert.equal(window.location.pathname, "/devices");
+    assert.equal(window.location.search, "?card=cli&computer=cc_1&view=terminal");
   } finally {
     view.cleanup();
   }
@@ -356,7 +358,7 @@ test("页头只列已接入服务器，切换时保留当前卡片", async () =>
       select.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.equal(globalThis.__serverMounted, "cc /2");
-    assert.deepEqual(view.pushes, ["/computers/cc%20%2F2?card=cli"]);
+    assert.deepEqual(view.pushes, ["/devices?computer=cc+%2F2&view=cli"]);
   } finally {
     view.cleanup();
   }

@@ -15,10 +15,11 @@ const fileLibrary = readFileSync(
 );
 
 test("file categories and legacy tabs always render in the main page", () => {
-  assert.match(artifactLibrary, /v5：文件类型永远在右侧页面顶部横排/);
+  assert.match(artifactLibrary, /\{!hideChips && \(\s*<CollectionFilterRow>\s*<CollectionFilterSelect/);
+  assert.match(artifactLibrary, /name="type"[\s\S]*?onChange=\{\(id\) => setFilter/);
   assert.doesNotMatch(
     artifactLibrary,
-    /controlledFilter === undefined && \(\s*<LibraryChips/,
+    /controlledFilter === undefined && \(\s*<(?:LibraryChips|CollectionFilterRow)/,
   );
   assert.match(fileLibrary, /<div className="flex gap-1 rounded-xl bg-stone-100 p-1">/);
   assert.doesNotMatch(

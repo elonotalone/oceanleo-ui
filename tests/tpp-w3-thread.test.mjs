@@ -95,18 +95,13 @@ test("both chats wire shared working and thinking and retain stopped history", a
   const root = new URL("../src/shell/", import.meta.url);
   for (const path of ["AgentChat.tsx", "FunctionAgentChat.tsx"]) {
     const source = await readFile(new URL(path, root), "utf8");
+    assert.match(source, /threadPresentation\(messages, status, \{[^}]*activeProgress: Boolean\(activeProgressKey\)/);
     assert.match(source, path === "AgentChat.tsx"
-      ? /threadPresentation\(timelineMessages, computerTask \? \(timeline\.state\?\.status \|\| ""\) : status, \{[^}]*activeProgress: Boolean\(activeProgressKey\)/
-      : /threadPresentation\(messages, status, \{[^}]*activeProgress: Boolean\(activeProgressKey\)/);
-    assert.match(source, path === "AgentChat.tsx"
-      ? /running=\{timelineRunning && item\.key === liveProgressKey\}/
+      ? /running=\{running && item\.key === liveProgressKey\}/
       : /running=\{presentation\.working && item\.key === liveProgressKey\}/);
-    assert.match(source, path === "AgentChat.tsx"
-      ? /const liveProgressKey = liveAgentProgressKey\(renderItems, timelineMessages\)/
-      : /const liveProgressKey = liveAgentProgressKey\(renderItems, messages\)/);
-    assert.match(source, path === "AgentChat.tsx"
-      ? /\{presentation\.thinking && !computerTask && \(\s*<div/
-      : /\{presentation\.thinking && \(\s*<div/);
+    assert.match(source, /const liveProgressKey = liveAgentProgressKey\(renderItems, messages\)/);
+    if (path === "AgentChat.tsx") assert.match(source, /const running = status === "running" \|\| busy \|\| taskStopping/);
+    assert.match(source, /\{presentation\.thinking && \(\s*<div/);
     const stoppedProp = source.match(/stopped=\{([\s\S]*?)\}\s*onArtifactOpen=/)?.[1] || "";
     assert.ok(/item\.message\.meta\?\.stopped === true\s*\|\|/.test(stoppedProp), `${path}: durable stop should stand alone`);
     assert.ok(/item\.index === lastAssistantIdx/.test(stoppedProp), `${path}: local stop should stay on the latest answer`);
