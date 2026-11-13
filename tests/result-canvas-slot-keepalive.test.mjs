@@ -210,6 +210,7 @@ const surfaceModelStubUrl = dataModule(`
 `);
 const bayStateStubUrl = dataModule(`
   export function useBayEnabled() { return true; }
+  export function attachBayDeepLinks() { return () => {}; }
 `);
 const bayPanelStubUrl = dataModule(`
   export function BayPanel() { return null; }
@@ -228,6 +229,7 @@ const bayIconsStubUrl = dataModule(`
 `);
 
 const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
+  "./workspace-panels/DevicesWorkspacePanel": dataModule(`export function DevicesWorkspacePanel(){ return null; }`),
     ...W4_SIDEBAR_STUBS,
   react: reactUrl,
   "../i18n/ui/useUI": uiStubUrl,
@@ -270,6 +272,9 @@ async function createMounted(props) {
   });
   return {
     container,
+    async render(overrides = {}) {
+      await act(async () => root.render(React.createElement(ResultCanvas, { ...props, ...overrides })));
+    },
     async unmount() {
       await act(async () => root.unmount());
       container.remove();
@@ -314,7 +319,19 @@ test("fixed right-panel slots preserve component instances and live tab state", 
   async function openSlot(id) {
     const backBtn = back();
     if (backBtn) await click(backBtn);
-    await click(card(id));
+    if (id === "browser") {
+      // The public browser entry moved under Devices; legacy controlled hosts
+      // still use the fixed browser slot whose instance this test protects.
+      await click(card("devices"));
+      for (const deadline = Date.now() + 2000; mounted.container.querySelector("[data-workspace-view]").dataset.workspaceView !== "devices" && Date.now() < deadline;) {
+        await act(async () => new Promise(resolve => setImmediate(resolve)));
+      }
+      assert.equal(mounted.container.querySelector("[data-workspace-view]").dataset.workspaceView, "devices");
+      await mounted.render();
+      await mounted.render({ active: "browser" });
+    } else {
+      await click(card(id));
+    }
   }
 
   try {

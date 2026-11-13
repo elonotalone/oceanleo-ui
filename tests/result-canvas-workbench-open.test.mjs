@@ -241,7 +241,7 @@ const STUBS = {
   "./workbench-material-provider": materialActionsStubUrl,
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
-  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; }`),
+  "./bay/shell/bay-state": dataModule(`export function useBayEnabled(){ return true; } export function attachBayDeepLinks(){ return () => {}; }`),
   "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
   "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
   "../lib/im/client": dataModule(`export function useImEnabled(){ return false; }`),

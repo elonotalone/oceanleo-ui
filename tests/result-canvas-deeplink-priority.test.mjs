@@ -101,6 +101,7 @@ const OVERRIDES = {
   "./WorkspaceLibrary": panelStub,
   "./AdvancedContentWorkbench": panelStub,
   "./WorkspaceEntryCanvas": panelStub,
+  "./workspace-panels/DevicesWorkspacePanel": dataModule("export function DevicesWorkspacePanel(){ return null; }"),
   "./workspace-session-context": sessionContextStub,
   "./workbench-routes": workbenchRoutesStub,
   "./advanced-session": advancedSessionStub,
@@ -108,7 +109,7 @@ const OVERRIDES = {
   "./legacy-workspace-surface-adapter": legacyAdapterStub,
   "./workspace-surface-model": surfaceModelStub,
   "./artifact-client": artifactClientStub,
-  "./bay/shell/bay-state": dataModule("export function useBayEnabled(){ return true; }\n"),
+  "./bay/shell/bay-state": dataModule("export function useBayEnabled(){ return true; } export function attachBayDeepLinks(){ return () => {}; }\n"),
   "./bay/panel": dataModule("export function BayPanel(){ return null; }\n"),
   "./leochat/LeoChatPanel": dataModule("export function LeoChatPanel(){ return null; }\n"),
   "../lib/im/client": dataModule("export function useImEnabled(){ return false; }\n"),
@@ -244,6 +245,8 @@ function HydrationProbe({ into, children }) {
 }
 
 function activeSlot(container) {
+  const view = container.querySelector("[data-workspace-view]")?.getAttribute("data-workspace-view");
+  if (view) return view;
   const active = container.querySelector(
     '[data-workspace-slot-panel][data-workspace-slot-active="true"]',
   );
@@ -411,6 +414,10 @@ test("普通 receipt 派发的栏位同样不该被晚到的快照覆盖", async
         action: { version: 1, tab: "browser" },
       });
     });
+    // Managed pages are lazy chunks: wait for the real Suspense commit.
+    for (const deadline = Date.now() + 2000; activeSlot(container) !== "devices" && Date.now() < deadline;) {
+      await act(async () => new Promise(resolve => setImmediate(resolve)));
+    }
     afterAction = activeSlot(container);
     await act(async () => {
       hydration.current.restoreSharedUi({ right_tab: "mine" });
@@ -418,8 +425,8 @@ test("普通 receipt 派发的栏位同样不该被晚到的快照覆盖", async
     await act(async () => {});
     afterRestore = activeSlot(container);
   });
-  assert.equal(afterAction, "browser");
-  assert.equal(afterRestore, "browser");
+  assert.equal(afterAction, "devices");
+  assert.equal(afterRestore, "devices");
 });
 
 test("W4 legacy material preview dispatcher carries a historical revision into LeoBay", async () => {
