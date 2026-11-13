@@ -15,9 +15,9 @@ const api = await import(await compileModule(`${source}/src/api/remote-desktop.t
 
 class Socket {
   static OPEN=1; static latest;
-  readyState=1; bufferedAmount=0; sent=[];
+  readyState=1; bufferedAmount=0; sent=[]; replyToPings=true;
   constructor(){Socket.latest=this;}
-  send(payload){this.sent.push(JSON.parse(payload));}
+  send(payload){const message=JSON.parse(payload);this.sent.push(message);if(this.replyToPings&&message.type==='ping')this.message({type:'pong',id:message.id});}
   close(){this.readyState=3;}
   message(value){this.onmessage?.({data:JSON.stringify(value)});}
 }
@@ -31,7 +31,7 @@ async function harness(t){
   const pending=api.remoteDesktopClient.openStream('fixture-device','fixture-session',{state:s=>callbacks.push(['state',s]),frame(){},media:()=>callbacks.push(['media']),inputDiagnostics:()=>callbacks.push(['input_diagnostics']),error:e=>{errors.push(e);callbacks.push(['error',e]);}});
   await new Promise(setImmediate);const socket=Socket.latest;socket.onopen();socket.message({type:'state',state:'active',acked_seq:0});
   const stream=(await pending).data;
-  const h={socket,stream,errors,callbacks,acked:0,step(ms=25){t.mock.timers.tick(ms);},
+  const h={socket,stream,errors,callbacks,acked:0,step(ms=25){for(let remaining=ms;remaining>0;){const slice=Math.min(25,remaining);t.mock.timers.tick(slice);remaining-=slice;}},
     report(admitted,completed){socket.message({type:'state',state:'active',acked_seq:h.acked,media:null,media_status:{state:'publishing',metrics:{version:1,...(admitted===undefined?{}:{dc_input_seq:admitted}),...(completed===undefined?{}:{input_completed_seq:completed})}}});},
     retireWs(seq){socket.message({type:'input_ack',seq});h.acked=Math.max(h.acked,seq);socket.message({type:'state',state:'active',acked_seq:h.acked});},
     stop(){stream.close();t.mock.timers.reset();}};
@@ -167,16 +167,33 @@ test('a late-attached lane drains prior WS under continuous motion and gets a pr
   assert.equal(p.sent.at(-1).a.kind,'move');assert.equal(p.sent.at(-1).a.x,.95);assert.deepEqual(h.errors,[]);
 });
 test('an unproven late-attach probe allows WS motion and retries after lost startup probes under continuous input',async t=>{
-  const h=await harness(t),p=peer();for(let i=0;i<12;i++)h.stream.send(motion(i/12));h.stream.attachDataChannel(p);
+  const h=await harness(t),p=peer(),probeTimes=[];
+  const send=p.send.bind(p);p.send=payload=>{probeTimes.push(Date.now());return send(payload);};
+  for(let i=0;i<12;i++)h.stream.send(motion(i/12));h.stream.attachDataChannel(p);
   for(let round=0;round<5;round++){
     for(let i=0;i<40;i++)h.stream.send(motion(i/40));
     for(const item of inputs(h).filter(m=>m.seq>h.acked))h.retireWs(item.seq);h.step();
     assert.equal(p.sent.length,round+1,'one new harmless probe per (backed-off) failed receipt interval');
     const before=inputs(h).length;for(let i=0;i<20;i++){h.stream.send(motion(i/20));for(const item of inputs(h).filter(m=>m.seq>h.acked))h.retireWs(item.seq);h.step();}
     assert.ok(inputs(h).length>before,'an unproven probe cannot freeze WS motion');
-    if(round<4){h.step(1500*2**round-600);for(let i=0;i<4;i++)h.stream.send(motion(.3));assert.equal(p.sent.length,round+1,'lost probes back off');h.step(1000);}
+    if(round<4){
+      // Anchor to the actual write, not the end of a coarse timers.tick that may include it.
+      const deadline=probeTimes[round]+api.PEER_RECEIPT_MS*2**round;
+      assert.ok(deadline-1>=Date.now());h.step(deadline-1-Date.now());
+      for(let i=0;i<4;i++){h.stream.send(motion(.3));for(const item of inputs(h).filter(m=>m.seq>h.acked))h.retireWs(item.seq);}
+      assert.equal(p.sent.length,round+1,'lost probes cannot retry before the full backoff interval elapses');
+      h.step(26);
+      assert.equal(p.sent.length,round+2,'an unanswered probe retries on the next pump after its deadline');
+      assert.ok(probeTimes[round+1]>=deadline&&probeTimes[round+1]<=deadline+25);
+    }
   }
   assert.deepEqual(p.sent.map(m=>m.a.kind),Array(5).fill('release_all'));assert.deepEqual(h.errors,[]);
+});
+
+test('the fixture keeps heartbeat failure observable when the socket stops answering valid pings',async t=>{
+  const h=await harness(t);h.socket.replyToPings=false;
+  h.step(3500);assert.deepEqual(h.errors,[]);
+  h.step(501);assert.deepEqual(h.errors,['network_error']);assert.equal(h.socket.readyState,3);
 });
 test('late attachment never probes away a held key or button and retires the real release before probing',async t=>{
   const h=await harness(t),p=peer();h.stream.send({kind:'key_down',key:'Shift'});h.stream.send({kind:'pointer_down',x:.2,y:.2});

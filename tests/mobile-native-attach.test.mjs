@@ -171,6 +171,11 @@ const inputCardWithoutNative = await load("InputCard.tsx", {
  * 渲染工具
  * ------------------------------------------------------------------ */
 
+const activeMounts = new Set();
+test.afterEach(async () => {
+  for (const mounted of [...activeMounts]) await mounted.unmount();
+});
+
 async function mount(Component, props) {
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -178,7 +183,7 @@ async function mount(Component, props) {
   await act(async () => {
     root.render(React.createElement(Component, props));
   });
-  return {
+  const mounted = {
     container,
     async click(node) {
       await act(async () => {
@@ -188,14 +193,30 @@ async function mount(Component, props) {
       });
     },
     async unmount() {
+      if (!activeMounts.delete(mounted)) return;
       await act(async () => root.unmount());
       container.remove();
     },
   };
+  activeMounts.add(mounted);
+  return mounted;
+}
+
+function attachmentMenu(container) {
+  const trigger = attachMenuButton(container);
+  const id = trigger?.getAttribute("aria-controls");
+  return id ? document.getElementById(id) : null;
+}
+
+function ownedMarkup(container) {
+  const menu = attachmentMenu(container);
+  return container.innerHTML + (menu && !container.contains(menu) ? menu.outerHTML : "");
 }
 
 function buttonLabelled(container, text) {
-  return [...container.querySelectorAll("button")].find(
+  const menu = attachmentMenu(container);
+  const roots = menu && !container.contains(menu) ? [container, menu] : [container];
+  return roots.flatMap(root => [...root.querySelectorAll("button")]).find(
     (node) => node.textContent?.trim() === text,
   );
 }
@@ -318,8 +339,15 @@ const COMPOSER_PROPS = {
   onAttachFiles() {},
 };
 
-// Separate React roots have distinct useId values; normalize both SVG ids and url(#id) references.
-const stableHtml = (html) => html.replace(/leo-entry-g-[\w:-]+/g, "leo-entry-g-N");
+// Compare all markup, including each trigger's own portal. Normalize generated IDs
+// consistently, so differing React roots cannot hide broken aria-controls relationships.
+const stableHtml = (html) => {
+  const ids = new Map();
+  return html.replace(/leo-entry-g-[\w:-]+/g, "leo-entry-g-N").replace(/_r_[\w]+_/g, id => {
+    if (!ids.has(id)) ids.set(id, `_r_TEST${ids.size}_`);
+    return ids.get(id);
+  });
+};
 
 test("浏览器：LeoComposer 的 DOM 与「没有手机模块」的那一版逐字相同", async () => {
   assert.equal(window.Capacitor, undefined, "这一节必须在没有原生宿主的窗口里跑");
@@ -328,8 +356,8 @@ test("浏览器：LeoComposer 的 DOM 与「没有手机模块」的那一版逐
   const baseline = await mount(composerWithoutNative.LeoComposer, COMPOSER_PROPS);
 
   assert.equal(
-    stableHtml(real.container.innerHTML),
-    stableHtml(baseline.container.innerHTML),
+    stableHtml(ownedMarkup(real.container)),
+    stableHtml(ownedMarkup(baseline.container)),
     "浏览器里的输入框 DOM 被手机功能改到了",
   );
 
@@ -344,10 +372,11 @@ test("浏览器：「＋」菜单展开后也逐字相同，三项一个都不�
   await real.click(attachMenuButton(real.container));
   await baseline.click(attachMenuButton(baseline.container));
 
-  assert.match(real.container.textContent, /从本地添加文件/, "菜单确实展开了");
+  assert.ok(attachmentMenu(real.container), "aria-controls identifies this root's portal menu");
+  assert.match(attachmentMenu(real.container).textContent, /从本地添加文件/, "菜单确实展开了");
   assert.equal(
-    stableHtml(real.container.innerHTML),
-    stableHtml(baseline.container.innerHTML),
+    stableHtml(ownedMarkup(real.container)),
+    stableHtml(ownedMarkup(baseline.container)),
     "展开的附件菜单被手机功能改到了",
   );
   for (const label of NATIVE_LABELS) {
@@ -369,8 +398,8 @@ test("浏览器：InputCard 的 DOM 与「没有手机模块」的那一版逐�
   try {
     assert.match(real.container.textContent, /上传文件/, "那颗虚线上传按钮还在");
     assert.equal(
-      stableHtml(real.container.innerHTML),
-      stableHtml(baseline.container.innerHTML),
+      stableHtml(ownedMarkup(real.container)),
+      stableHtml(ownedMarkup(baseline.container)),
       "浏览器里的 InputCard DOM 被手机功能改到了",
     );
   } finally {

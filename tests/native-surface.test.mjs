@@ -271,31 +271,37 @@ test("inactive new surface waits until shown before opening anything", async () 
 });
 
 function fakeDialog(overrides = {}) {
-  const calls = { model: [], mode: [], login: [], install: [], logout: [] };
-  return {
-    calls,
-    dialog: {
-      programs: [{ id: "codex", installed: true, path: "", version: "0.9", auth: "none", logged_in: false, dir_capability: "full", running: false }],
-      models: [{ id: "a", name: "Model A" }, { id: "b", name: "Model B" }],
-      selectedModel: "a",
-      setSelectedModel: (id) => calls.model.push(id),
-      mode: { id: "mode", name: "模式", options: [{ value: "ask", name: "Ask" }, { value: "agent", name: "Agent" }] },
-      selectedMode: "ask",
-      setMode: (value) => calls.mode.push(value),
-      configOptions: [],
-      setConfig() {},
-      activeSession: "s1",
-      login: { open: false, program: null, phase: "idle", url: "", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false },
-      install: { open: false, program: null, dir: "", running: false, lines: [], donePath: "", failedText: "" },
-      messages: [],
-      openLogin: (program) => calls.login.push(program),
-      openInstall: (program) => calls.install.push(program),
-      closeLogin() {}, cancelLogin() {}, submitLoginCode() {}, setLoginCodeDraft() {},
-      closeInstall() {}, setInstallDir() {}, startInstall() {},
-      logoutProgram: (program) => calls.logout.push(program), retryConnect() {},
-      ...overrides,
+  const calls = { model: [], mode: [], login: [], loginMethods: [], install: [], logout: [], logoutRequests: [] };
+  const dialog = {
+    programs: [{ id: "codex", installed: true, path: "", version: "0.9", auth: "none", logged_in: false, dir_capability: "full", running: false }],
+    models: [{ id: "a", name: "Model A" }, { id: "b", name: "Model B" }],
+    selectedModel: "a",
+    setSelectedModel: (id) => calls.model.push(id),
+    mode: { id: "mode", name: "模式", options: [{ value: "ask", name: "Ask" }, { value: "agent", name: "Agent" }] },
+    selectedMode: "ask",
+    setMode: (value) => calls.mode.push(value),
+    configOptions: [],
+    setConfig() {},
+    activeSession: "s1",
+    login: { open: false, program: null, phase: "idle", url: "", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false },
+    install: { open: false, program: null, dir: "", running: false, lines: [], donePath: "", failedText: "" },
+    logout: { pending: false, failed: "", confirm: false, switching: false },
+    messages: [],
+    openLogin: (program) => calls.login.push(program),
+    openLoginMethod: (program, method) => { calls.login.push(program); calls.loginMethods.push([program, method]); },
+    openInstall: (program) => calls.install.push(program),
+    closeLogin() {}, cancelLogin() {}, submitLoginCode() {}, setLoginCodeDraft() {}, setLoginEmail() {},
+    closeInstall() {}, setInstallDir() {}, startInstall() {},
+    requestLogout(switching = false) {
+      calls.logoutRequests.push(switching);
+      dialog.logout = { pending: false, failed: "", confirm: true, switching };
     },
+    cancelLogout() { dialog.logout = { pending: false, failed: "", confirm: false, switching: false }; },
+    confirmLogout() { calls.logout.push("codex"); dialog.logout = { ...dialog.logout, confirm: false, pending: true }; },
+    retryConnect() {},
+    ...overrides,
   };
+  return { calls, dialog };
 }
 
 function Pill({ request = 0, ...input }) {
@@ -321,7 +327,8 @@ test("native chat pill: this conversation, Codex on this computer and the whole 
     assert.equal(api.calls.settings, 0, "nothing read until the menu opens");
     await click(view.$("[data-native-model-trigger]"));
     assert.deepEqual(sections(view), ["本对话", "这台电脑上的 Codex", "整台电脑（所有程序）"]);
-    assert.deepEqual(rowIds(view), ["model", "mode", "fast", "account", "computer:oceanleo_tools"]);
+    assert.deepEqual(rowIds(view), ["model", "mode", "account", "computer:oceanleo_tools"]);
+    assert.equal(view.$('[data-composer-setting-row="fast"]'), null, "no fast option is invented when the program reports none");
     assert.deepEqual(rowIds(view).filter((id) => id.startsWith("computer:")), ["computer:oceanleo_tools"], "整台电脑 has only the tools switch");
     assert.doesNotMatch(view.text(), /危险操作/);
     assert.equal(api.calls.settings, 1, "whole-computer settings read on first open");
@@ -374,17 +381,34 @@ test("whole-computer settings recover after a transient read failure", async () 
   } finally { view.cleanup(); }
 });
 
-test("account card: signed in shows status and Key (no sign-out: the gateway has no logout route); the login flow renders inside the card", async () => {
+test("account card: signed in exposes switch/logout with explicit running-agent confirmation; login renders inside the card", async () => {
   globalThis.__api = client();
-  const signedIn = fakeDialog({ programs: [{ id: "codex", installed: true, path: "", version: "0.90.0", auth: "login", logged_in: true, dir_capability: "full", running: false }] });
+  const signedIn = fakeDialog({ programs: [{ id: "codex", installed: true, path: "", version: "0.90.0", auth: "login", logged_in: true, dir_capability: "full", running: false, agents_running: 3 }] });
   const view = mount(Pill, { dialog: signedIn.dialog });
   try {
     await view.render();
     await click(view.$("[data-native-model-trigger]"));
     assert.equal(view.$('[data-composer-setting-row="account"] [data-composer-setting-value]').textContent, "已登录 · 0.90.0");
     await click(view.$('[data-composer-setting-row="account"]'));
-    assert.equal(view.$("[data-oceanleo-native-program-logout]"), null);
+    assert.ok(view.$('[data-composer-setting-choice="account:switch"]'));
+    assert.ok(view.$('[data-composer-setting-choice="account:logout"]'));
     assert.ok(view.$("[data-oceanleo-native-program-key]"));
+    await click(view.$('[data-composer-setting-choice="account:logout"]'));
+    assert.deepEqual(signedIn.calls.logoutRequests, [false]);
+    assert.deepEqual(signedIn.calls.logout, [], "choosing logout cannot mutate credentials before confirmation");
+    await view.render();
+    assert.match(view.text(), /3 个 Codex 正在运行，退出后它们都将失去登录/);
+    const labeled = label => [...view.host.querySelectorAll('button')].find(node => node.textContent.trim() === label);
+    await click(labeled("取消"));
+    await view.render();
+    assert.deepEqual(signedIn.calls.logout, [], "cancel never signs out");
+    await click(view.$('[data-composer-setting-choice="account:switch"]'));
+    await view.render();
+    assert.deepEqual(signedIn.calls.logoutRequests, [false, true]);
+    assert.match(view.text(), /确认后会先退出，再选择新的登录方式/);
+    assert.deepEqual(signedIn.calls.logout, []);
+    await click(labeled("确认退出"));
+    assert.deepEqual(signedIn.calls.logout, ["codex"]);
   } finally { view.cleanup(); }
 
   const waiting = fakeDialog({ login: { open: true, program: "codex", phase: "waiting", url: "https://auth.example/login", code: "", needsCode: false, codeDraft: "", hint: "", failed: "", pending: false } });

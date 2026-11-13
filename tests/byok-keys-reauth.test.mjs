@@ -34,10 +34,10 @@ test("account.ts 把 403 reauth_required 收成可识别的 code", () => {
   assert.match(accountSource, /rec\.code/);
 });
 
-test("ByokKeys 对 reauth_required 画出重新登录按钮", () => {
-  assert.match(byokSource, /reauth_required/);
-  assert.match(byokSource, /重新登录/);
-  assert.match(byokSource, /signOutEverywhere/);
+test("sealed-cookie BYOK connections preserve errors without forcing account-wide sign-out", () => {
+  assert.match(accountSource, /\/v1\/byok\/connections/);
+  assert.match(byokSource, /await saveByokConnection\(/);
+  assert.doesNotMatch(byokSource, /signOutEverywhere/);
 });
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
@@ -132,13 +132,15 @@ function makeStub(writeResult) {
     providers: [],
     limits: { max_providers: 8 },
   };
+  const writes = [];
   return {
+    writes,
     getKeyProviders: async () => ({
       ok: true,
       data: { providers: defaultProviders() },
     }),
     getByok: async () => ({ ok: true, data: enabled }),
-    putByok: async () => writeResult,
+    putByok: async (...args) => { writes.push(args); return writeResult; },
     deleteByok: async () => ({ ok: true, data: enabled }),
     probeByok: async () => writeResult,
   };
@@ -182,6 +184,7 @@ async function render(writeResult) {
   await flush();
   return {
     host,
+    writes: globalThis.__byokStub.writes,
     text: () => host.textContent || "",
     cleanup() {
       act(() => root.unmount());
@@ -190,7 +193,7 @@ async function render(writeResult) {
   };
 }
 
-test("403 reauth_required 出现重新登录按钮", async () => {
+test("403 reauth_required 保留原错误和未保存表单，不强制全局登出或假报保存成功", async () => {
   const view = await render({
     ok: false,
     status: 403,
@@ -203,7 +206,13 @@ test("403 reauth_required 出现重新登录按钮", async () => {
   const button = [...view.host.querySelectorAll("button")].find(
     (node) => (node.textContent || "").trim() === "重新登录",
   );
-  assert.ok(button);
+  assert.equal(button, undefined);
+  assert.equal(globalThis.__byokSignedOut, false);
+  assert.equal(view.writes.length, 1, "a failed write is not silently retried");
+  assert.equal(view.host.querySelector('[data-byok-editor]')?.getAttribute('data-byok-editor'), "add");
+  assert.equal(view.host.querySelector('input[type=password]')?.value, "test-key");
+  assert.equal(view.host.querySelector('[data-byok-edit]'), null, "a failed connection never becomes a saved row");
+  assert.equal([...view.host.querySelectorAll('button')].find(node => node.textContent.trim() === "保存")?.disabled, false);
   view.cleanup();
 });
 
@@ -220,5 +229,8 @@ test("其它 4xx 只显示原来的错误，不出现重新登录按钮", async 
     (node) => (node.textContent || "").trim() === "重新登录",
   );
   assert.equal(button, undefined);
+  assert.equal(globalThis.__byokSignedOut, false);
+  assert.equal(view.writes.length, 1);
+  assert.equal(view.host.querySelector('[data-byok-editor]')?.getAttribute('data-byok-editor'), "add");
   view.cleanup();
 });
