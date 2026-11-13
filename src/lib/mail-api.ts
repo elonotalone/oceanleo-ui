@@ -60,6 +60,7 @@ async function mailRequest(path: string, init: RequestInit = {}): Promise<Respon
   }
   return fetch(`${GATEWAY_BASE}${path}`, {
     ...init,
+    credentials: "include",
     headers: {
       Accept: "application/json",
       "Content-Type": "application/json",

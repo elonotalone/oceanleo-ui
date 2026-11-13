@@ -234,7 +234,11 @@ const resultCanvasUrl = await compileModule("src/shell/ResultCanvas.tsx", {
   "./legacy-workspace-surface-adapter": legacyStubUrl,
   "./workspace-surface-model": surfaceModelStubUrl,
   "./result-canvas-view": resultViewStubUrl,
-  "./bay/shell/bay-state": dataModule(`export function openBay() {} export function useBayEnabled(){ return true; }`),
+  "./bay/shell/bay-state": dataModule(`
+    export function openBay() {}
+    export function useBayEnabled(){ return true; }
+    export function attachBayDeepLinks(){ return () => {}; }
+  `),
   "./bay/asset/BayAssetLibrary": dataModule(`export function BayAssetLibrary(){return null;}`),
   "./bay/panel": dataModule(`export function BayPanel(){ return null; }`),
   "./leochat/LeoChatPanel": dataModule(`export function LeoChatPanel(){ return null; }`),
