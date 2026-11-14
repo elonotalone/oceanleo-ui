@@ -1,3 +1,4 @@
+import type { Model3DRouteSnapshot } from "./Model3DRouteHistory";
 import type { RefCallback } from "react";
 import type { Model3DArtifactIdentity } from "./model3d-files";
 import type { Model3DOperation } from "./model3d-operations.mjs";
@@ -27,6 +28,7 @@ import type {
 
 export interface Model3DWorkbenchState {
   canvasRef: RefCallback<HTMLCanvasElement>;
+  captureRecovery: () => Model3DRouteSnapshot;
   title: string;
   sourceUrl: string;
   sourceFormat: Model3DSourceFormat;

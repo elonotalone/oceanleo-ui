@@ -131,9 +131,9 @@ export class WorkingCopySaver {
           const unpublished = copy.seq > (copy.published_seq ?? 0) && newer;
           if (unpublished && this.generation > 0) throw new WorkingCopyError(WORKING_COPY_CONFLICT, 409);
           if (unpublished && this.generation === 0) {
-            if (copy.schema !== this.options.schema) throw new WorkingCopyError("服务器草稿暂时无法读取，请重新载入", 409);
+            if (copy.schema !== this.options.schema) throw new WorkingCopyError("保存的修改暂时无法读取，请重新载入", 409);
             const restored = await this.options.restore(copy.doc, Date.parse(copy.saved_at));
-            if (restored === false) throw new Error("服务器草稿暂时无法读取，请重新载入");
+            if (restored === false) throw new Error("保存的修改暂时无法读取，请重新载入");
             this.options.onSaved?.(copy.seq);
           }
         }

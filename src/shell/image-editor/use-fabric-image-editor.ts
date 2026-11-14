@@ -37,6 +37,7 @@ import { exportDocBlob } from "./editor-objects";
 import {
   createFabricImageProject,
   createFabricImageWorkingCopy,
+  resolveFabricImageWorkingCopy,
   downloadImageBlob,
   parseFabricImageProject,
   persistCompositeImageProject,
@@ -1441,7 +1442,8 @@ export function useFabricImageEditor(
     // gesture; restore the collaboration permission that is current at finish.
     controller.setReadOnly(true);
     try {
-      const restored = await controller.loadSnapshot(project.snapshot);
+      const fresh = optionsRef.current.localImport ? project : await resolveFabricImageWorkingCopy(project);
+      const restored = await controller.loadSnapshot(fresh.snapshot);
       if (
         !restored ||
         !aliveRef.current ||

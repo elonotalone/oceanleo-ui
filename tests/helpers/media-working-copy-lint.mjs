@@ -16,8 +16,10 @@ const eslint = new ESLint({cwd:root,overrideConfigFile:true,overrideConfig:[{
   rules:{"react-hooks/rules-of-hooks":"error","react-hooks/exhaustive-deps":"warn"},
 }]});
 const paths = [
+  "editor-working-copy.ts",
   "advanced-routes/AudioRoute.tsx","advanced-routes/ImageRoute.tsx",
   "advanced-routes/Model3DRoute.tsx","advanced-routes/VideoTimelineRoute.tsx",
+  "advanced-routes/non-richdoc-source-gate.ts",
   "image-editor/editor-persistence.ts","image-editor/fabric-image-open.ts",
   "image-editor/types.ts","image-editor/use-fabric-image-editor.ts",
   "image-editor/fabric-controller-core.ts",

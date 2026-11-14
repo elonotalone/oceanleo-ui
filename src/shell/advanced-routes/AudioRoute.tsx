@@ -73,7 +73,7 @@ export function AudioRoute({
   const editorRef = useRef(editor);
   editorRef.current = editor;
   const collabLocal = useMemo(
-    () => (editor.loading ? null : (editor.captureRecovery() as AudioCollabState | null)),
+    () => editor.captureRecovery() as AudioCollabState | null,
     // editRevision 随本端每次编辑递增、contentVersion 随对方改动落地递增；captureRecovery 读的是 ref，所以以它们作为变化信号。
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [editor.loading, editor.editRevision, editor.contentVersion],

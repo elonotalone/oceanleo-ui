@@ -5,6 +5,7 @@ import { isDurableLibraryItem } from "../library-data";
 import {
   createArtifactRevision,
   getCurrentArtifactItem,
+  refreshArtifactRendition,
 } from "../artifact-client";
 import { uploadFile } from "../../lib/database";
 import {
@@ -33,6 +34,8 @@ import {
   sha256Blob,
 } from "./image-scene-source";
 import type { ExportFormat } from "./types";
+import { artifactGrantIdentity } from "../video-editor/grant-heal";
+import type { ArtifactAccessIdentity } from "../media-editors/audio-project-source";
 
 export const IMAGE_PROJECT_SCHEMA = "oceanleo.fabric-image.v1";
 /** Durable working copy schema; distinct from the published image project. */
@@ -147,24 +150,78 @@ export function createFabricImageProject(
   };
 }
 
-/** Complete cloud document. No encoding, fetching or uploading on the edit path. */
+function imageReference(object: Record<string, unknown>): ArtifactAccessIdentity | null {
+  const dependency = object.oceanleoDependency as Record<string, unknown> | undefined;
+  const inferred = artifactGrantIdentity(String(dependency?.url || object.src || ""));
+  const artifactId = String(dependency?.artifactId || inferred?.artifactId || "");
+  const revisionId = String(dependency?.revisionId || inferred?.revisionId || "");
+  const purpose = String(dependency?.renditionPurpose || inferred?.purpose || "full");
+  return artifactId && revisionId && ["source", "full", "preview", "thumbnail"].includes(purpose)
+    ? { artifactId, revisionId, purpose: purpose as ArtifactAccessIdentity["purpose"] } : null;
+}
+
+/** Complete cloud document: stable asset identities, never temporary tickets. */
 export function createFabricImageWorkingCopy(snapshot: EditorSnapshot): FabricImageProject {
-  // Fabric has just produced an owned JSON snapshot; rewrite only asset
-  // references in place instead of cloning its thousands of scalar properties.
+  // The controller supplies an owned JSON copy. Rewrite asset locators in place.
   const visit = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { value.forEach(visit); return; }
     const object = value as Record<string, unknown>;
     if (typeof object.src === "string") {
-      const dependency = object.oceanleoDependency as { url?: string } | undefined;
-      const source = dependency?.url || object.src;
-      if (/^(?:data|blob):/i.test(source)) throw new Error("图片源尚未上传");
-      object.src = source;
+      const dependency = object.oceanleoDependency as Record<string, unknown> | undefined;
+      const reference = imageReference(object);
+      if (reference) {
+        const stable = `artifact:${encodeURIComponent(reference.artifactId)}/${encodeURIComponent(reference.revisionId)}/${reference.purpose}`;
+        object.src = stable;
+        object.oceanleoDependency = { ...dependency, artifactId: reference.artifactId, revisionId: reference.revisionId, renditionPurpose: reference.purpose, url: stable };
+        delete (object.oceanleoDependency as Record<string, unknown>).expiresAt;
+      } else {
+        const source = String(dependency?.url || object.src);
+        if (/^(?:data|blob):/i.test(source) || source.includes("/artifact-renditions/access/")) {
+          throw new Error("图片源尚未上传");
+        }
+        object.src = source;
+      }
     }
     Object.values(object).forEach(visit);
   };
   visit(snapshot);
   return createFabricImageProject(snapshot);
+}
+
+/** Resolve both current stable references and older ticket-bearing copies. */
+export async function resolveFabricImageWorkingCopy(
+  project: FabricImageProject,
+  refresh: typeof refreshArtifactRendition = refreshArtifactRendition,
+  signal?: AbortSignal,
+): Promise<FabricImageProject> {
+  const resolved = structuredClone(project);
+  const requests = new Map<string, ReturnType<typeof refreshArtifactRendition>>();
+  const visit = async (value: unknown): Promise<void> => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) { await Promise.all(value.map(visit)); return; }
+    const object = value as Record<string, unknown>;
+    if (typeof object.src === "string") {
+      const reference = imageReference(object);
+      if (reference) {
+        const key = JSON.stringify(reference);
+        if (!requests.has(key)) requests.set(key, refresh({ artifactId: reference.artifactId, revisionId: reference.revisionId }, reference.purpose, signal));
+        const result = await requests.get(key)!;
+        const source = result.data;
+        const dependency = object.oceanleoDependency as Record<string, unknown> | undefined;
+        if (!result.ok || !source?.url || (source.revisionId && source.revisionId !== reference.revisionId) ||
+            (dependency?.digest && source.digest && source.digest.replace(/^sha256:/, "") !== dependency.digest)) {
+          throw new Error("图片工程读取失败");
+        }
+        object.src = source.url;
+        object.oceanleoDependency = { ...dependency, artifactId: reference.artifactId, revisionId: reference.revisionId,
+          renditionPurpose: reference.purpose, url: source.url, expiresAt: source.expiresAt };
+      }
+    }
+    await Promise.all(Object.values(object).map(visit));
+  };
+  await visit(resolved.snapshot);
+  return resolved;
 }
 
 export function parseFabricImageProject(

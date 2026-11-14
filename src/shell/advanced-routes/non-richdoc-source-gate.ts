@@ -94,16 +94,14 @@ export function audioSourcePersistenceAdmitted(input: {
   loading: boolean;
   capture: unknown;
 }): NonRichdocSourceAdmission {
-  if (input.loading) {
-    return {
-      ok: false,
-      error: "音频源尚未载入完成，未把静音占位当作可保存稿。",
-    };
-  }
+  // Waveform rebuilding temporarily sets loading even though the complete
+  // editable source and operation list remain available. Keep that saver alive.
   if (input.capture == null) {
     return {
       ok: false,
-      error: "音频源未成功载入，未把静音占位当作可保存稿。",
+      error: input.loading
+        ? "音频源尚未载入完成，未把静音占位当作可保存稿。"
+        : "音频源未成功载入，未把静音占位当作可保存稿。",
     };
   }
   return { ok: true };

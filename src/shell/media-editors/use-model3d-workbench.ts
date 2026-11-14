@@ -22,6 +22,7 @@ import type { Model3DOperation } from "./model3d-operations.mjs";
 import { Model3DSceneRuntime, type Model3DAnnotationPoint,
   type Model3DAnnotationScreen, type Model3DViewState } from "./model3d-runtime.mjs";
 import { normalizeModel3DEnvironmentUrl } from "./model3d-view";
+import { captureModel3DRouteSnapshot } from "./Model3DRouteHistory";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
 import {
   DEFAULT_MODEL3D_VIEW,
@@ -246,12 +247,10 @@ export function useModel3DWorkbench(
 
   const updateView = useCallback(
     (patch: Partial<Model3DViewState>) => {
-      setView((current) => {
-        const next = { ...current, ...patch };
-        viewRef.current = next;
-        return next;
-      });
-      runtimeRef.current?.setView(patch);
+      const next = { ...viewRef.current, ...patch };
+      viewRef.current = next;
+      setView(next);
+      runtimeRef.current?.setView(patch, { emit: false });
       if (!runtimeRef.current?.gestureActive) markDirty();
     },
     [markDirty],
@@ -356,8 +355,17 @@ export function useModel3DWorkbench(
 
   const selectedMaterial =
     runtimeState.selection?.materials.find((entry) => entry.selected) || null;
+  const documentRef = useRef({ sourceUrl, sourceProvenance, annotations: sidecar.annotations });
+  documentRef.current = { sourceUrl, sourceProvenance, annotations: sidecar.annotations };
+  const captureRecovery = useCallback(() => captureModel3DRouteSnapshot({
+    ...viewRef.current,
+    ...documentRef.current,
+    operationJournal: runtimeRef.current?.getOperationJournal() || pendingOperationsRef.current,
+  }), []);
+
   return {
     canvasRef,
+    captureRecovery,
     isOwnSavedRevision: (artifactId, revisionId) => Boolean(artifactId && revisionId && ownSavedVersionKeys.current.has(`${artifactId}:${revisionId}`)),
     title: item.title,
     sourceUrl,

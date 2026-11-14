@@ -297,6 +297,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
       downloadImageBlob() {},
       loadLocalImageDraft: () => null,
       parseFabricImageProject: (value) => value?.snapshot ? value : null,
+      resolveFabricImageWorkingCopy: async (value) => value,
       persistCompositeImageProject: async () => { throw new Error("unexpected composite save"); },
       persistImageProject: (...args) => new Promise((resolve) => pendingSaves.push({ args, resolve })),
       saveLocalImageDraft() {},

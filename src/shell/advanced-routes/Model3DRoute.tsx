@@ -559,7 +559,7 @@ function Model3DModelRoute({
             draftSchema: "oceanleo.threed.edit.v1",
             key: `threed:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: model3dAdmitted.ok,
-            capture: () => (model3dAdmitted.ok ? history.snapshot : null),
+            capture: () => (model3dAdmitted.ok ? editor.captureRecovery() : null),
             restore: editor.restoreRecovery,
           },
         },

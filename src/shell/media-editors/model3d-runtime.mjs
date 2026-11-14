@@ -1883,8 +1883,10 @@ export class Model3DSceneRuntime {
       5,
     );
     this.orbit.autoRotate = Boolean(this.view.autoRotate);
-    this.applyShadows();
-    this.applyOrbit();
+    if (patch.shadowEnabled !== undefined || patch.shadowIntensity !== undefined || patch.shadowSoftness !== undefined) {
+      this.applyShadows();
+    }
+    if (patch.azimuth !== undefined || patch.elevation !== undefined || patch.zoom !== undefined) this.applyOrbit();
     if (patch.environmentUrl !== undefined) {
       void this.loadEnvironment(this.view.environmentUrl);
     }
