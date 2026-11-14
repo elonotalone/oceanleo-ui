@@ -4,6 +4,7 @@ import {
   Component,
   memo,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -139,7 +140,7 @@ function DeckSlidePaintView({
 
 const DeckSlidePaint = memo(DeckSlidePaintView, (prev, next) => {
   return (
-    hashDeckSlideContent(prev.slide) === hashDeckSlideContent(next.slide) &&
+    (prev.slide === next.slide || hashDeckSlideContent(prev.slide) === hashDeckSlideContent(next.slide)) &&
     prev.pageWidth === next.pageWidth &&
     prev.pageHeight === next.pageHeight &&
     prev.theme.background === next.theme.background &&
@@ -195,7 +196,7 @@ export function DeckSlideThumbnail({
       : null;
   const hostRef = useRef<HTMLDivElement>(null);
   const [measuredWidth, setMeasuredWidth] = useState(0);
-  const hash = hashDeckSlideContent(slide);
+  const hash = useMemo(() => hashDeckSlideContent(slide), [slide]);
 
   useLayoutEffect(() => {
     if (explicitThumb) return;

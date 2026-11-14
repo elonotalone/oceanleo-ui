@@ -17,6 +17,10 @@
 export interface GridUndoStackLike {
   pitchTopUndoElement(): unknown;
   pitchTopRedoElement(): unknown;
+  // Univer 0.25.1 exposes unit-scoped stacks on its pinned local service.
+  // Read them without changing focus (the public pitch helpers follow the cell editor).
+  _getUndoStack?(unitId: string): unknown[] | null;
+  _getRedoStack?(unitId: string): unknown[] | null;
   undoRedoStatus$?: {
     subscribe(callback: () => void): { unsubscribe(): void };
   };
@@ -41,13 +45,14 @@ export interface GridEditWatch {
   dispose(): void;
 }
 
-function readStatus(undo: GridUndoStackLike): {
+function readStatus(undo: GridUndoStackLike, unitId?: string): {
   top: unknown;
   redoTop: unknown;
   status: GridUndoStatus;
 } {
-  const top = undo.pitchTopUndoElement() ?? null;
-  const redoTop = undo.pitchTopRedoElement() ?? null;
+  const scoped = unitId && undo._getUndoStack && undo._getRedoStack;
+  const top = (scoped ? undo._getUndoStack!(unitId!)?.at(-1) : undo.pitchTopUndoElement()) ?? null;
+  const redoTop = (scoped ? undo._getRedoStack!(unitId!)?.at(-1) : undo.pitchTopRedoElement()) ?? null;
   return { top, redoTop, status: { canUndo: top !== null, canRedo: redoTop !== null } };
 }
 
@@ -56,6 +61,8 @@ export function createGridEditWatch(options: {
   events?: GridCommandEventSource | null;
   /** 本人改了文档（打字、编辑栏、ribbon、快捷键、撤销、重做）。 */
   onPersonWrite: () => void;
+  /** Ignore the temporary rich-text document used while editing a cell. */
+  unitId?: () => string | undefined;
   /** 撤销 / 重做是否可用（顶栏 ↶ ↷）。 */
   onHistory: (status: GridUndoStatus) => void;
   /** 任何命令之后（含选区变化）：让编辑栏重读当前格子的值。 */
@@ -64,7 +71,7 @@ export function createGridEditWatch(options: {
   blocked?: () => boolean;
 }): GridEditWatch {
   const undo = options.undo;
-  let baseline = undo ? readStatus(undo) : null;
+  let baseline = undo ? readStatus(undo, options.unitId?.()) : null;
   let lastStatusKey = "";
 
   const publish = (status: GridUndoStatus) => {
@@ -76,14 +83,19 @@ export function createGridEditWatch(options: {
 
   const observe = (): boolean => {
     if (!undo) return false;
-    const next = readStatus(undo);
+    const next = readStatus(undo, options.unitId?.());
+    const unitId = options.unitId?.();
+    const foreign = (entry: unknown) => Boolean(unitId && entry && typeof entry === "object" &&
+      "unitID" in entry && (entry as { unitID: string }).unitID !== unitId);
+    if (foreign(next.top) || foreign(next.redoTop)) return false;
     // 两个栈同时为空只可能是换了工作簿或清了栈：本人的改动（含撤销到底）总会在
     // 撤销栈或重做栈里留下一项。焦点晚一拍切到新工作簿时，这条挡住误判。
     const emptied = next.top === null && next.redoTop === null;
     const moved =
       !emptied &&
       (!baseline || next.top !== baseline.top || next.redoTop !== baseline.redoTop);
-    baseline = next;
+    // Focus can move to an empty cell-editor stack and back without a workbook edit.
+    if (!emptied) baseline = next;
     publish(next.status);
     if (moved && !options.blocked?.()) {
       options.onPersonWrite();
@@ -114,7 +126,7 @@ export function createGridEditWatch(options: {
   return {
     observe,
     resetBaseline() {
-      baseline = undo ? readStatus(undo) : null;
+      baseline = undo ? readStatus(undo, options.unitId?.()) : null;
       if (baseline) publish(baseline.status);
     },
     dispose() {

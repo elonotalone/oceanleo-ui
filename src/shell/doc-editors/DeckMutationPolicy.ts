@@ -57,11 +57,18 @@ export function deckDocumentsEqual(
   before: DeckDocument,
   after: DeckDocument,
 ): boolean {
-  // Collaboration and recovery reconstruct objects in a different key order.
-  // Object-key order is not a document edit; array order (slides/layers) is.
-  const serialize = (value: DeckDocument) => JSON.stringify(value, (_key, entry) =>
-    entry && typeof entry === "object" && !Array.isArray(entry)
-      ? Object.fromEntries(Object.keys(entry).sort().map((key) => [key, entry[key]]))
-      : entry);
-  return serialize(before) === serialize(after);
+  // Documents are immutable. Shared subtrees need no serialization or comparison.
+  const equal = (left: unknown, right: unknown): boolean => {
+    if (Object.is(left, right)) return true;
+    if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+    if (Array.isArray(left) || Array.isArray(right)) {
+      return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+        left.every((value, index) => equal(value, right[index]));
+    }
+    const l = left as Record<string, unknown>, r = right as Record<string, unknown>;
+    const keys = Object.keys(l).filter((key) => l[key] !== undefined);
+    return keys.length === Object.keys(r).filter((key) => r[key] !== undefined).length &&
+      keys.every((key) => Object.hasOwn(r, key) && equal(l[key], r[key]));
+  };
+  return equal(before, after);
 }

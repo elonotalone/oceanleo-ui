@@ -152,6 +152,7 @@ export function useGridUniverLive(options: {
     const undo = service<GridUndoStackLike>(handle, idsRef.current.undo);
     const watch = createGridEditWatch({
       undo,
+      unitId: () => (handle.api as { getActiveWorkbook?: () => { getId?: () => string } | null }).getActiveWorkbook?.()?.getId?.(),
       events: handle.api,
       onPersonWrite: () => onPersonWriteRef.current(),
       onHistory: (status) => { setHistory(status); setGridProbe("publishedHistory", status); },

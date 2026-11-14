@@ -890,9 +890,8 @@ export function GridUniverStage({
         return;
       }
       setStatus("");
-      bumpHistory();
     },
-    [bumpHistory, collabBlocked, collabPhase, livePort, readonly, sourceFailureReason, tt],
+    [collabBlocked, collabPhase, livePort, readonly, sourceFailureReason, tt],
   );
 
   const undo = useCallback(() => {

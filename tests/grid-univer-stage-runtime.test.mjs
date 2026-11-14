@@ -115,6 +115,7 @@ const presetsStubUrl = dataModule(`
     counters.lastConfig = config;
     let snapshot = null;
     let topUndo = null;
+    let workbookTop = null;
     let topRedo = null;
     let commandCallback = null;
     let statusCallback = null;
@@ -153,10 +154,13 @@ const presetsStubUrl = dataModule(`
     };
     counters.edit = (value = "Edited cell") => {
       snapshot.sheets[Object.keys(snapshot.sheets)[0]].cellData = { 0: { 0: { v: value, t: 1 } } };
-      topUndo = {};
+      topUndo = workbookTop = {unitID:"wb",id:Math.random()};
       statusCallback?.();
       commandCallback?.();
     };
+    counters.cellTyping = () => { topUndo={unitID:"cell-editor",id:"typing"};statusCallback?.();commandCallback?.(); };
+    counters.cellEmpty = () => { topUndo=null;statusCallback?.();commandCallback?.(); };
+    counters.focusWorkbook = () => { topUndo=workbookTop;statusCallback?.();commandCallback?.(); };
     const univer = {
       __getInjector: () => ({ get: (id) => id === "IUndoRedoService" ? undoService : null }),
       dispose() { counters.dispose += 1; },
@@ -228,11 +232,19 @@ stubs["../../i18n/ui/useUI"] = dataModule(`
   }
 `);
 // 外壳：只把 `adapter.stage` 与文档动作画出来，chrome 的判据全在 stage 容器上。
+const saverUrl=await compileModule("src/shell/use-advanced-autosave.ts",{
+  "../lib/auth/client":dataModule('export async function accessToken(){return "test";}'),
+  "../lib/auth/config":dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid";'),
+});
 stubs["../AdvancedWorkbenchShell"] = dataModule(`
   import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
+  import {useAdvancedAutoSave} from ${JSON.stringify(saverUrl)};
   export function AdvancedWorkbenchShell(props) {
     const adapter = props.adapter || {};
-    globalThis.__gridUniverRuntimeCounters.adapter = adapter;
+    const counters=globalThis.__gridUniverRuntimeCounters;
+    counters.adapter = adapter;
+    const p=adapter.persistence;
+    counters.save=useAdvancedAutoSave({item:props.item,editorId:"grid",dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:{...p.recovery,ready:Boolean(counters.integrated&&p.recovery.ready)},session:null});
     return jsxs("div", {
       "data-shell": "1",
       "data-status": adapter.status || "",
@@ -253,6 +265,7 @@ stubs["./doc-io"] = dataModule(`
   export async function saveFileToLibrary(input) {
     const counters = globalThis.__gridUniverRuntimeCounters;
     counters.publishInput = input;
+    if(counters.integrated)return {ok:true,item:{...input.item,revisionId:"published-grid"},url:"https://example.invalid/grid.xlsx",revisionId:"published-grid"};
     return new Promise((resolve) => { counters.resolvePublish = () => resolve({ok:true,url:"https://example.invalid/saved.xlsx",versionId:"revision-grid",revisionId:"revision-grid",projectUrl:"https://example.invalid/grid.json",item:{...input.item,revisionId:"revision-grid"}}); });
   }
 `);
@@ -527,4 +540,51 @@ test("native Univer image insertion uploads the device file before returning a d
     const image=await new ImageIo().saveImage(new File(["image"],"local.png",{type:"image/png"}));
     assert.equal(counters.imageUploads,1);assert.equal(image.source,"https://example.invalid/upload.png");assert.equal(image.imageSourceType,"URL");
   } finally {await mounted.unmount();await nextMacrotask();}
+});
+
+
+test("integrated sheet reopen and 40 committed cells: no false conflict and exactly one PUT per edit",async()=>{
+  const errors=[];const oldError=console.error;console.error=(...args)=>errors.push(args.join(" "));
+  const previousFetch=globalThis.fetch;let puts=0,releaseGet,delay=0;
+  const original={id:"wb",name:"Book",sheetOrder:["s1"],sheets:{s1:{id:"s1",name:"Sheet1",rowCount:100,columnCount:26,cellData:{0:{0:{v:"Existing",t:1}}}}}};
+  let copy={schema:"oceanleo.univer-working-document.v1",seq:55,published_seq:0,base_revision_id:null,saved_at:new Date().toISOString(),doc:original};
+  globalThis.fetch=async(_url,init={})=>{
+    if(!init.method||init.method==="GET"){await new Promise(done=>releaseGet=done);return new Response(JSON.stringify(copy));}
+    if(init.method==="POST")return new Response("{}");
+    const input=JSON.parse(init.body);assert.equal(input.if_seq,copy.seq);puts++;if(delay)await new Promise(r=>setTimeout(r,delay));
+    copy={...copy,seq:copy.seq+1,doc:input.doc};
+    return new Response(JSON.stringify({ok:true,seq:copy.seq,saved_at:copy.saved_at,server_ms:0}));
+  };
+  resetCounters();resetPluginModeCache();counters.integrated=true;
+  const view=await mount(React.createElement(GridRoute,{item:blankItem(),onClose(){}}));
+  try {
+    for(let i=0;i<30&&!releaseGet;i++)await view.flush();
+    await act(async()=>{counters.cellTyping();counters.cellEmpty();counters.focusWorkbook();});
+    assert.equal(counters.adapter.persistence.editRevision,0,"cell-document focus never creates a pre-GET edit");
+    await act(async()=>{releaseGet();await new Promise(r=>setTimeout(r,0));});
+    assert.equal(counters.save.conflict,false);assert.equal(counters.save.state,"saved");assert.equal(puts,0);
+    let edit=0;
+    const settled=async()=>{for(let n=0;n<100&&counters.save.state!=="saved";n++)await act(async()=>{await new Promise(r=>setTimeout(r,5));});assert.equal(counters.save.state,"saved");};
+    for(const rtt of [0,150]){
+      delay=rtt+33;const samples=[],bursts=[];
+      for(let i=0;i<20;i++){
+        const before=puts;
+        await act(async()=>counters.cellTyping());assert.equal(puts,before,"cell document produces no PUT");
+        const start=performance.now();
+        await act(async()=>counters.edit(`Committed ${++edit}`));await settled();
+        samples.push(performance.now()-start);assert.equal(puts,before+1);assert.equal(counters.adapter.persistence.editRevision,edit);
+      }
+      for(let b=0;b<3;b++){
+        for(let i=0;i<10;i++){await act(async()=>{counters.cellTyping();counters.edit(`Committed ${++edit}`);await new Promise(r=>setTimeout(r,15));});}
+        const last=performance.now();await settled();bursts.push(performance.now()-last);
+      }
+      samples.sort((a,b)=>a-b);
+      console.log(`VS_MATRIX sheet RTT=${rtt}ms gateway=33ms isolated=20 burst=3x10 p50=${samples[10].toFixed(2)}ms p95=${samples[18].toFixed(2)}ms max=${samples[19].toFixed(2)}ms burst-last-ack-max=${Math.max(...bursts).toFixed(2)}ms`);
+      assert.ok(samples[19]<500);assert.ok(Math.max(...bursts)<500);
+    }
+    assert.equal(copy.seq,55+puts);assert.equal(edit,100);
+    assert.deepEqual(errors,[]);
+  } finally {
+    await view.unmount();await nextMacrotask();counters.integrated=false;globalThis.fetch=previousFetch;console.error=oldError;
+  }
 });

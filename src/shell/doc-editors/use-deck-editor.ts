@@ -1079,7 +1079,7 @@ export function useDeckEditor(
 
   const snapshot = useCallback(
     (): Snapshot => ({
-      deck: cloneDeckDocument(deckRef.current),
+      deck: deckRef.current,
       activeId: activeRef.current,
       selectedElementId: selectedElementRef.current,
     }),
@@ -1087,7 +1087,7 @@ export function useDeckEditor(
   );
 
   const applySnapshot = useCallback((value: Snapshot) => {
-    const next = cloneDeckDocument(value.deck);
+    const next = value.deck;
     deckRef.current = next;
     activeRef.current = value.activeId;
     selectedElementRef.current = value.selectedElementId;
@@ -1103,7 +1103,7 @@ export function useDeckEditor(
       // 载入完成前画布上是占位稿：改了会被真文稿顶掉，却照样报「已保存」（10-23 W07 实测）。
       if (readOnlyRef.current || sourceLoadingRef.current) return false;
       const base = snapshot();
-      const next = update(cloneDeckDocument(base.deck));
+      const next = update(base.deck);
       const resolvedActive = nextActive || base.activeId || next.slides[0].id;
       if (deckDocumentsEqual(next, base.deck)) {
         if (resolvedActive !== base.activeId) {
@@ -1123,7 +1123,7 @@ export function useDeckEditor(
       setNotice("");
       revisionRef.current += 1;
       setDirty(true);
-      applyDeckHistoryWriteIfChanged(persistedItemRef.current, base.deck, next);
+      applyDeckUserEditSession(persistedItemRef.current, "local-history");
       setHistoryRevision((value) => value + 1);
       return true;
     },
@@ -1134,12 +1134,12 @@ export function useDeckEditor(
     (update: (current: DeckDocument) => DeckDocument) => {
       if (readOnlyRef.current || sourceLoadingRef.current) return false;
       const current = deckRef.current;
-      const next = update(cloneDeckDocument(current));
+      const next = update(current);
       if (deckDocumentsEqual(next, current)) return false;
       deckRef.current = next;
       revisionRef.current += 1;
       setDirty(true);
-      applyDeckHistoryWriteIfChanged(persistedItemRef.current, current, next);
+      applyDeckUserEditSession(persistedItemRef.current, "local-history");
       setDeckState(next);
       setHistoryRevision((value) => value + 1);
       return true;
@@ -1159,11 +1159,7 @@ export function useDeckEditor(
     if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
     redoRef.current = [];
     setDirty(true);
-    applyDeckHistoryWriteIfChanged(
-      persistedItemRef.current,
-      base.deck,
-      deckRef.current,
-    );
+    applyDeckUserEditSession(persistedItemRef.current, "local-history");
     setSavedUrl("");
     setNotice("");
     setHistoryRevision((value) => value + 1);
@@ -1925,7 +1921,7 @@ export function useDeckEditor(
   }, [buildDelivery, siteId, tt]);
 
   const prepareSave = useCallback(() => {
-    const snapshot = cloneDeckDocument(deckRef.current);
+    const snapshot = deckRef.current;
     const savingRevision = revisionRef.current;
     return () => publish(snapshot, savingRevision);
   }, [publish]);
