@@ -26,7 +26,7 @@ export function useAdvancedAutoSave(input: Input) {
   sources.current.source.current = input;
   const latest = sources.current.source;
   const local = input.destination === "local-device";
-  const ready = Boolean((input.recovery?.ready || local) && root);
+  const ready = Boolean((input.recovery ? input.recovery.ready : local) && root);
   const [view, setView] = useState<WorkingCopySnapshot>({ state: ready ? "saving" : "saved", error: "", seq: null, pending: false });
   const active = useRef<{
     root: string; saver: WorkingCopySaver; publisher: ReturnType<typeof createBackgroundPublisher>;
@@ -156,7 +156,7 @@ export function useAdvancedAutoSave(input: Input) {
     input.draft?.bindFlush?.(flushLatest);
     return () => { unbind.forEach((fn) => fn()); input.draft?.bindFlush?.(null); };
   }, [root, ready, flushLatest, input.key, input.item?.key, input.item?.id, input.editorId, input.draft, input.item]);
-  return { state: !ready && input.sharedSaveState ? input.sharedSaveState : (view.state === "conflict" ? "error" : view.state) as AdvancedAutoSaveState,
+  return { state: !ready && input.sharedSaveState ? input.sharedSaveState : input.recovery && !ready ? "saving" : (view.state === "conflict" ? "error" : view.state) as AdvancedAutoSaveState,
     pending: view.pending || Boolean(input.sharedSavePending),
     errorMessage: (!ready && input.sharedSaveState === "error") ? "网络不通，稍后自动重试" : view.error, conflict: view.state === "conflict", flushLatest, retry, handOffToBackground };
 }

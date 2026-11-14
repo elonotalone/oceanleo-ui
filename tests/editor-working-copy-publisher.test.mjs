@@ -54,3 +54,17 @@ test('export/new-conversation gate drains edits arriving while its previous publ
  const saver={flush:async()=>true,snapshot:()=>({seq,pending:false}),freeze:()=>{},dispose:()=>{}};
  const pub=createBackgroundPublisher({saver,transport:{published:async()=>{}},record:async()=>{},prepare:()=>{const value=text;return async()=>{calls.push(value);if(value==='first')await barrier.promise;return {ok:true,item:{revisionId:value}};};}});pub.saved();const gate=pub.flushLatest();await settle();seq=2;text='latest';pub.saved();barrier.resolve();const result=await gate;assert.equal(result.item.revisionId,'latest');assert.deepEqual(calls,['first','latest']);
 });
+
+test('a removed publisher cannot resurrect its retry timer when the pending publication fails', async(t)=>{
+ t.mock.timers.enable({apis:['setTimeout']});const barrier=deferred();let runs=0;
+ const saver={flush:async()=>true,snapshot:()=>({seq:1,pending:false}),freeze(){},dispose(){}};
+ const pub=createBackgroundPublisher({saver,transport:{published:async()=>{}},record:async()=>{},prepare:()=>async()=>{runs++;await barrier.promise;return {ok:false,error:'offline'};}});
+ pub.saved();const run=pub.publish();await settle();resetBackgroundSaverForTests();barrier.resolve();await run;
+ t.mock.timers.tick(30000);await settle();assert.equal(runs,1);
+});
+
+test('a late working-copy acknowledgement cannot schedule publication for a removed job', async(t)=>{
+ t.mock.timers.enable({apis:['setTimeout']});const b=bed();resetBackgroundSaverForTests();
+ b.publisher.saved();t.mock.timers.tick(30000);await settle();
+ assert.deepEqual(b.calls,['dispose']);assert.equal(b.published.length,0);
+});

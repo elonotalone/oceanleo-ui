@@ -77,6 +77,11 @@ export function useModel3DSave({
     const generation = sourceGenerationRef.current;
     const savingRevision = revisionRef.current;
     const inputRoot = item.artifactId || item.id;
+    const receipt = receiptRef.current;
+    if (receipt && (receipt.inputRoot === inputRoot || receipt.saved.artifactId === inputRoot)
+      && receipt.generation === generation && receipt.revision === savingRevision) {
+      return async () => receipt.saved;
+    }
     const journal = runtime.getOperationJournal();
     const capturedView = structuredClone(view);
     const plan = createModel3DSavePlan(journal, {

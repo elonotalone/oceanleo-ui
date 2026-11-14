@@ -20,8 +20,9 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 // Same module instance the compiled production shell imports (the real user-edit ledger).
+import { resetBackgroundSaverForTests } from "../src/shell/advanced-background-saver.ts";
 import { recordUserMutation, resetUserEditSession } from "../src/shell/user-edit-session.ts";
 
 const require = createRequire(import.meta.url);
@@ -29,7 +30,7 @@ const fabricRequire = createRequire(require.resolve("fabric/node"));
 const canvasEntry = fabricRequire.resolve("canvas");
 const previousCanvas = require.cache[canvasEntry];
 require.cache[canvasEntry] = { id: canvasEntry, filename: canvasEntry, loaded: true, exports: {} };
-const { JSDOM } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
+const { JSDOM, VirtualConsole } = await import(pathToFileURL(fabricRequire.resolve("jsdom")).href);
 if (previousCanvas) require.cache[canvasEntry] = previousCanvas;
 else delete require.cache[canvasEntry];
 const reactUrl = pathToFileURL(require.resolve("react")).href;
@@ -72,17 +73,24 @@ export function useFabricImageEditor(_item, _siteId, options) {
     collab: { readOnly: false, tick: 0, remoteDelta: "", snapshot: () => null, ensureIds() {}, applyRemote() {}, objectBoxes: () => [], adoptRevision: async () => null, markClean() {} },
     vectorConversion: null, confirmVectorConversion() {}, openIdentity: "image-1", loading: false, saving: false, aiBusy: false,
     error: ctl.failed ? "图片源未成功载入" : "", notice: "", sceneDiagnostic: null, sourceReady: !ctl.failed, reload() { ctl.reloads += 1; ctl.failed = false; ctl.rerender && ctl.rerender(); }, savedUrl: "", savedProjectUrl: "", savedAt: "",
-    dirty, editRevision: rev, captureRecovery: () => null, captureRecoveryRevision: () => null, captureLocalSave, markLocalSaved,
+    dirty, editRevision: rev, captureRecovery: () => ({ snapshot: { json: {objects: [{ type: "textbox", text: "OLEO-" + revRef.current }]}, doc: {width: 8, height: 8}, canvasBackground: "#fff" } }), captureRecoveryRevision: () => null, captureLocalSave, markLocalSaved,
     restoreRecovery: async () => false, stageCanvasRef() {}, stageContainerRef() {}, zoom: 1, setZoom() {}, zoomFit() {},
     layers: [], selected: null, cropping: false, canUndo: false, canRedo: false, undo() {}, redo() {},
     exportQuality: 90, downloadAs: async () => {}, downloadDefaultPng: async () => {},
     addImageFromUrl: async () => {}, replaceSelectedImageFromUrl: async () => {}, addImageFromFile: async () => {},
-    save,
+    save, prepareSave: () => save,
   };
 }
 `;
 
 const stubs = {
+  "./editor-working-copy": dataModule(`export * from ${JSON.stringify(realModule("src/shell/editor-working-copy.ts"))};
+    export function workingCopyTransport() { return {
+      get: async () => null,
+      put: async (doc, seq) => { globalThis.__fakeImageEditor.workingCopies.push(doc); return {ok:true,seq:(seq??0)+1,saved_at:new Date().toISOString(),server_ms:0}; },
+      published: async () => {},
+    }; }
+  `),
   "../i18n/ui/useUI": dataModule("export function useUI() { return (text) => text; }"),
   "./AdvancedStageControls": nullComponent("AdvancedStageControls"),
   "./AdvancedWorkbenchStage": dataModule("export function AdvancedWorkbenchStage({editorStage}) { return editorStage; }"),
@@ -133,7 +141,11 @@ const ITEM = {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 async function withRoute(props, body) {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true, url: "https://test.dev.oceanleo.com/" });
+  // JSDOM 20 predates the existing FloatingMenu @starting-style CSS. Keep
+  // product console.error fatal and suppress only that CSS-parser diagnostic.
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", (error) => { if (error.type !== "css parsing") throw error; });
+  const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true, url: "https://test.dev.oceanleo.com/", virtualConsole });
   const { window } = dom;
   const restore = [];
   for (const [key, value] of Object.entries({
@@ -147,8 +159,10 @@ async function withRoute(props, body) {
     Object.defineProperty(globalThis, key, { configurable: true, writable: true, value });
   }
   resetUserEditSession();
-  globalThis.__fakeImageEditor = { captures: [], marks: [], cloudSaves: 0, reloads: 0, failed: false, createStage: () => h("div", { "data-fake-stage": true }) };
+  globalThis.__fakeImageEditor = { captures: [], marks: [], workingCopies: [], cloudSaves: 0, reloads: 0, failed: false, createStage: () => h("div", { "data-fake-stage": true }) };
   const errors = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(" "));
   const { createRoot } = await import("react-dom/client");
   const container = window.document.createElement("div");
   window.document.body.append(container);
@@ -156,9 +170,13 @@ async function withRoute(props, body) {
   const ctl = globalThis.__fakeImageEditor;
   try {
     await act(async () => root.render(h(ImageRoute, { item: ITEM, onClose() {}, ...props })));
+    await settle(0);
     await body({ container, ctl, root, window, errors });
+    assert.deepEqual(errors, [], "the real image route must not emit console.error");
   } finally {
     await act(async () => root.unmount());
+    resetBackgroundSaverForTests();
+    console.error = originalConsoleError;
     window.close();
     for (const undo of restore.reverse()) undo();
     delete globalThis.__fakeImageEditor;
@@ -215,7 +233,7 @@ test("host failure shows a real failure, keeps the edit dirty, and the retry con
     await act(async () => host.calls[0].resolve({ ok: false, error: "宿主拒绝保存" }));
     await settle(50);
     assert.equal(slot(container).getAttribute("data-save-state"), "error");
-    assert.equal(label(container), "保存遇到问题");
+    assert.equal(label(container), "保存失败");
     assert.match(slot(container).getAttribute("title"), /宿主拒绝保存/);
     assert.equal(ctl.snapshot().dirty, true, "failed save never cleans");
     assert.equal(ctl.marks.length, 0);
@@ -278,7 +296,9 @@ test("without onLocalSave the cloud save runs and the slot stays a cloud slot", 
     assert.match(slot(container).querySelector("svg").innerHTML, /M7 18h10/, "cloud icon unchanged");
     await edit(ctl);
     await settle(900);
-    assert.ok(ctl.cloudSaves >= 1, "production flush called the cloud save");
+    assert.equal(ctl.workingCopies.length, 1, "the edit is acknowledged as a complete working copy");
+    assert.equal(ctl.cloudSaves, 0, "Library publication waits for idle or a delivery gate");
+    assert.equal(label(container), "已保存");
     assert.equal(ctl.captures.length, 0, "local capture never used");
     assert.equal(ctl.marks.length, 0);
   });
@@ -304,7 +324,7 @@ test("a failed source load keeps the stage mounted under the failure panel, and 
     assert.ok(panel, "failure is shown");
     assert.ok(container.querySelector("[data-fake-stage]"), "the canvas stage is still mounted so Fabric can be re-initialised");
     assert.match(panel.className, /absolute inset-0/, "the panel overlays the stage (variant overlay)");
-    assert.equal(slot(container).getAttribute("data-save-state"), "unconfirmed", "no blank overwrite and no success while the source failed");
+    assert.equal(slot(container).getAttribute("data-save-state"), "saving", "no blank overwrite and no success while the source failed");
     const reload = [...panel.querySelectorAll("button")].find((b) => b.textContent === "重新载入");
     await act(async () => reload.dispatchEvent(new window.MouseEvent("click", { bubbles: true })));
     assert.equal(ctl.reloads, 1);

@@ -10,6 +10,12 @@
 
 import { pdfLiveAnnotation, pdfWorkingJson, type PdfWorkingState } from "./pdf-recovery";
 
+import type {
+  Off, Hook, TaskLike, PdfViewerRegistryLike, PdfAnnotationLike, PdfSearchHit,
+  UiCap, AnnotationCap, DocsCap,
+} from "./pdf-viewer-types";
+export type { PdfViewerRegistryLike, PdfRect, PdfAnnotationLike, PdfSearchHit } from "./pdf-viewer-types";
+
 export type PdfChromeMode = "basic" | "pro";
 
 /** 标准批注子类型（`@embedpdf/models` 的 `PdfAnnotationSubtype`，测试钉住同值）。 */
@@ -53,85 +59,6 @@ export const PDF_VIEWER_BASIC_HIDDEN: readonly string[] = [
 
 /** 基础档关掉的快捷指令：Ctrl+F 不许打开官方查找侧栏（由我们的查找栏接管）。 */
 export const PDF_VIEWER_BASIC_COMMANDS_OFF: readonly string[] = ["panel", "mode"];
-
-type Off = () => void;
-type Hook<T> = (listener: (event: T) => void) => Off | void;
-interface TaskLike<T> {
-  toPromise(): Promise<T>;
-}
-
-export interface PdfViewerRegistryLike {
-  getPlugin(id: string): { provides?: () => unknown } | null;
-}
-
-export interface PdfRect {
-  origin: { x: number; y: number };
-  size: { width: number; height: number };
-}
-
-export interface PdfAnnotationLike {
-  id: string;
-  type: number;
-  pageIndex: number;
-  rect: PdfRect;
-  [field: string]: unknown;
-}
-
-export interface PdfSearchHit {
-  pageIndex: number;
-  rects: PdfRect[];
-}
-
-interface UiScope {
-  setActiveToolbar(placement: string, slot: string, toolbarId: string): void;
-  getActiveToolbar(placement: string, slot: string): string | null;
-  closeToolbarSlot(placement: string, slot: string): void;
-  isToolbarOpen(placement: string, slot: string, toolbarId?: string): boolean;
-  closeSidebarSlot(placement: string, slot: string): void;
-  closeModal?(): void;
-  closeAllMenus?(): void;
-}
-interface UiCap {
-  forDocument(id: string): UiScope;
-  setDisabledCategories(categories: string[]): void;
-  getSchema?(): { toolbars?: Record<string, Record<string, unknown>> };
-  mergeSchema?(partial: unknown): void;
-}
-interface AnnotationScope {
-  getState(): { selectedUids: string[]; activeToolId: string | null };
-  getSelectedAnnotation(): { object: PdfAnnotationLike } | null;
-  getAnnotations(options?: { pageIndex?: number }): { object: PdfAnnotationLike }[];
-  exportAnnotations(): TaskLike<{ annotation: PdfAnnotationLike; ctx?: { data?: ArrayBuffer; mimeType?: string } }[]>;
-  setActiveTool(toolId: string | null): void;
-  createAnnotation(pageIndex: number, annotation: unknown, context?: unknown): void;
-  updateAnnotation(pageIndex: number, id: string, patch: Record<string, unknown>): void;
-  deleteAnnotation(pageIndex: number, id: string): void;
-  selectAnnotation(pageIndex: number, id: string): void;
-  deselectAnnotation(): void;
-  setLocked?(mode: { type: string; categories?: string[] }): void;
-  commit(): TaskLike<boolean>;
-}
-interface AnnotationCap {
-  forDocument(id: string): AnnotationScope;
-  setToolDefaults(toolId: string, patch: Record<string, unknown>): void;
-  getTool(toolId: string): { defaults: Record<string, unknown> } | undefined;
-  onStateChange: Hook<{ documentId: string }>;
-}
-interface DocsCap {
-  getActiveDocumentId(): string | null;
-  getActiveDocument(): {
-    pages: { index: number; size: { width: number; height: number }; rotation: number }[];
-  } | null;
-  /** 2.15：外层 Task 给出 documentId，内层 task 才是文档真正载好。 */
-  openDocumentBuffer(options: {
-    buffer: ArrayBuffer;
-    name: string;
-    autoActivate?: boolean;
-  }): TaskLike<{ documentId: string; task: TaskLike<unknown> }>;
-  closeDocument(id: string): TaskLike<void>;
-  setActiveDocument(id: string): void;
-  onDocumentOpened: Hook<{ id: string }>;
-}
 
 function bytesBuffer(bytes: Uint8Array): ArrayBuffer {
   return Uint8Array.from(bytes).buffer as ArrayBuffer;

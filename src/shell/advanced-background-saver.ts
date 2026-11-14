@@ -70,6 +70,7 @@ export function createBackgroundPublisher(input: Omit<Publisher, "again" | "clos
     })();
     job.running = running;
     void running.then((result) => {
+      if (!jobs.has(job)) return;
       job.running = undefined;
       job.last = result;
       job.failure = !result.ok;
@@ -84,7 +85,7 @@ export function createBackgroundPublisher(input: Omit<Publisher, "again" | "clos
     return running;
   };
   return {
-    saved() { job.owed = true; if (!job.closed) later(10_000); emit(); },
+    saved() { if (!jobs.has(job)) return; job.owed = true; if (!job.closed) later(10_000); emit(); },
     publish,
     async flushLatest(): Promise<AdvancedFlushResult> {
       let result: AdvancedFlushResult;
