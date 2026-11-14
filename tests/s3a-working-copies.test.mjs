@@ -156,8 +156,32 @@ test("PDF background builder uses a separate PDFium document, preserves forms an
       const appearance=await engine.exportAnnotationAppearanceAsPdf(reopened.doc,reopened.doc.pages[0],stamp).toPromise();
       assert.ok(appearance.byteLength>0);
     } finally { await reopened.close(); }
+    const rotationBefore=await host.openPdfEngineDocument(saved,{mode:"direct"});
+    const beforeAnnotations=await engine.getPageAnnotations(rotationBefore.doc,rotationBefore.doc.pages[0]).toPromise();
+    const pageInfos=rotationBefore.doc.pages;
+    await rotationBefore.close();
+    const {pdfPageWorkingCopy}=await import("../src/shell/media-editors/pdf-page-working-copy.ts");
+    const rotationDoc={...copy,operations:[],annotations:beforeAnnotations.map(annotation=>({annotation}))};
+    const transformed=pdfPageWorkingCopy(rotationDoc,{type:"rotate",pageIndex:0,degrees:90},pageInfos);
+    const {rotatePdfPage}=await import("../src/shell/media-editors/pdf-operations.ts");
+    assert.equal(transformed.annotationOperationCount,0);
+    assert.equal(transformed.annotations,rotationDoc.annotations,"page edits do not transform PDFium annotation coordinates in JavaScript");
+    const fastBuilt=await buildPdfWorkingCopy(transformed,saved);
+    const fastOpened=await host.openPdfEngineDocument(fastBuilt,{mode:"direct"});
+    const fastAnnotations=await engine.getPageAnnotations(fastOpened.doc,fastOpened.doc.pages[0]).toPromise();
+    await fastOpened.close();
+    const rotationAfter=await host.openPdfEngineDocument(await rotatePdfPage(saved,0,90),{mode:"direct"});
+    try {
+      const actual=await engine.getPageAnnotations(rotationAfter.doc,rotationAfter.doc.pages[0]).toPromise();
+      for(const annotation of fastAnnotations){
+        const match=actual.find(entry=>entry.id===annotation.id);
+        assert.ok(match);
+        assert.deepEqual(annotation.rect,match.rect,"replayed native page edits match PDFium geometry");
+        assert.equal(annotation.rotation,match.rotation,"annotation rotation matches PDFium");
+      }
+    } finally {await rotationAfter.close();}
     const invalid=structuredClone(copy);invalid.annotations.find(({annotation})=>annotation.type===3).annotation.fontColor=undefined;
     await assert.rejects(buildPdfWorkingCopy(invalid,bytes));
-    assert.equal(globalThis.__s3aPdfCloses,2,"failed publisher also closes exactly once");
+    assert.equal(globalThis.__s3aPdfCloses,3,"both successful publishers and the failed publisher close exactly once");
   } finally { await wasm.close(); host.overridePdfiumWasmUrlForTests(null); }
 });

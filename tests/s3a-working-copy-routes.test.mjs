@@ -52,7 +52,7 @@ const stubs = {
   "../media-editors/PdfSignatureDialog": empty("PdfSignatureDialog"),
   "./pdf-cjk-appearance": dataModule("export async function fixPdfCjkFreeTextAppearances(bytes){return {bytes,fixed:0};}"),
   "./pdf-source": dataModule('export async function loadInitialPdfSource(){return {bytes:new Uint8Array([1,2,3]),durableUrl:"https://example.invalid/source.pdf",pageCount:3,blank:false};}'),
-  "./pdf-working-copy-publish": dataModule('export async function applyPdfPageOperations(bytes){return bytes;}export async function pdfWorkingSource(){return new Uint8Array([1,2,3]);}export async function buildPdfWorkingCopy(doc){globalThis.__s3a.pdfDoc=structuredClone(doc);await new Promise((resolve)=>globalThis.__s3a.release=resolve);return new Uint8Array([1,2,3]);}'),
+  "./pdf-working-copy-publish": dataModule('export async function applyPdfPageOperations(bytes){return bytes;}export async function pdfWorkingSource(){return new Uint8Array([1,2,3]);}export async function buildPdfWorkingCopy(doc){globalThis.__s3a.pdfDoc=structuredClone(doc);if(globalThis.__s3a.deferBuild)await new Promise((resolve)=>globalThis.__s3a.release=resolve);return new Uint8Array([1,2,3]);}'),
   "./pdf-library-save": dataModule('export async function savePdfBytesToLibrary(input){globalThis.__s3a.input=input;return {ok:true,url:"https://example.invalid/saved.pdf",versionId:"pdf-2",revisionId:"pdf-2",item:{...input.item,revisionId:"pdf-2",url:"https://example.invalid/saved.pdf"}};}'),
   "./pdf-operations": dataModule('export async function inspectPdf(){return 3;}export async function rotatePdfPage(bytes){return bytes;}export async function deletePdfPage(bytes){return bytes;}export async function movePdfPage(bytes){return bytes;}'),
 };
@@ -174,19 +174,23 @@ test("real PdfRoute: annotation edit → native JSON capture → restore with no
   assert.equal(persistence.dirty, true); assert.equal(persistence.editRevision, 1);
   const copy = persistence.recovery.capture();
   assert.equal(copy.annotations[0].annotation.contents, "Edited PDF");
-  assert.equal(copy.source.url, "https://example.invalid/source.pdf");
+  assert.equal(copy.source.artifactId, "pdf-root");
+  assert.equal(copy.source.revisionId, "initial");
+  assert.equal(copy.source.url, undefined, "source tickets are never retained");
   assert.ok(!(copy instanceof Blob));
   await act(async () => { assert.equal(await persistence.recovery.restore(copy), true); });
   persistence = probe.adapter.persistence;
   assert.equal(persistence.editRevision, 1);
   assert.deepEqual(persistence.recovery.capture(), copy);
   const publish = persistence.preparePublish();
+  probe.deferBuild = true;
   await mounted.unmount();
   const pending = publish();
   await tick();
   assert.deepEqual(probe.pdfDoc, copy);
   probe.release();
   assert.equal((await pending).ok, true);
+  probe.deferBuild = false;
   } finally { if (mounted.container.isConnected) await mounted.unmount(); }
 }));
 

@@ -8,6 +8,7 @@
  * 用假 registry 就能钉住行为。注册表的形状实读自 `@embedpdf/plugin-*` 2.15.0 的 d.ts。
  */
 
+import { pdfMediaReference, type PdfMediaReference } from "./pdf-source-reference";
 import { pdfLiveAnnotation, pdfWorkingJson, type PdfWorkingState } from "./pdf-recovery";
 
 import type {
@@ -139,7 +140,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     }
   };
   let hydrating = 0;
-  const stampMedia = new Map<string, { url: string; mimeType: string }>();
+  const stampMedia = new Map<string, PdfMediaReference & { mimeType: string }>();
   let proSecondary: string | null = null;
   let readOnly = false;
   const offs: Off[] = [];
@@ -345,8 +346,13 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     },
     rememberStamp(id: string, url: string, mimeType: string) {
       workingState = null;
-      stampMedia.set(id, { url, mimeType });
+      stampMedia.set(id, { ...pdfMediaReference(url), mimeType });
     },
+    adoptWorkingCopyMedia(state: PdfWorkingState) {
+      for (const { annotation, media } of state.annotations) if (media) stampMedia.set(annotation.id, media);
+      refreshAfterEdit();
+    },
+    workingCopyMediaReady: () => (annotationScope()?.getAnnotations() ?? []).every(({ object }) => object.type !== PDF_SUBTYPE.STAMP || stampMedia.has(object.id)),
     async prepareWorkingCopyMedia(upload: (bytes: ArrayBuffer, mime: string) => Promise<string>) {
       const scope = annotationScope();
       if (!scope) return;
@@ -357,12 +363,12 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       await Promise.all(exported.filter((entry) => missing.some(({ object }) => object.id === entry.annotation.id)).map(async ({ annotation, ctx }) => {
         if (!ctx?.data) throw new Error("图片读取失败");
         const mimeType = ctx.mimeType || "application/pdf";
-        stampMedia.set(annotation.id, { url: await upload(ctx.data, mimeType), mimeType });
+        stampMedia.set(annotation.id, { ...pdfMediaReference(await upload(ctx.data, mimeType)), mimeType });
       }));
       refreshWorkingState();
     },
     captureWorkingState: () => workingState ?? refreshWorkingState(),
-    async restoreWorkingState(state: PdfWorkingState, readMedia: (url: string) => Promise<ArrayBuffer>) {
+    async restoreWorkingState(state: PdfWorkingState, readMedia: (reference: PdfMediaReference) => Promise<ArrayBuffer>) {
       const scope = annotationScope();
       const id = doc();
       if (!scope || !id) throw new Error("查看器里没有打开的文档。");
@@ -379,7 +385,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
           if (existing.has(annotation.id)) {
             scope.updateAnnotation(annotation.pageIndex, annotation.id, annotation);
           } else {
-            const context = entry.media ? { data: await readMedia(entry.media.url), mimeType: entry.media.mimeType } : undefined;
+            const context = entry.media ? { data: await readMedia(entry.media), mimeType: entry.media.mimeType } : undefined;
             scope.createAnnotation(annotation.pageIndex, annotation, context);
           }
         }

@@ -3,6 +3,7 @@ import {
   importMediaUrl,
   isFirstPartyMediaUrl,
 } from "../../lib/media-proxy";
+import { resolvePdfMedia, type PdfSourceReference } from "./pdf-source-reference";
 import { createBlankPdf, inspectPdf } from "./pdf-operations";
 import { assertBlobSource } from "./source-integrity.mjs";
 
@@ -17,6 +18,7 @@ export interface LoadedPdfSource {
 
 export async function loadInitialPdfSource(input: {
   source: string;
+  reference?: PdfSourceReference;
   siteId: string;
   title: string;
   signal: AbortSignal;
@@ -31,9 +33,10 @@ export async function loadInitialPdfSource(input: {
     const bytes = await createBlankPdf();
     return { bytes, durableUrl: "", pageCount: 1, blank: true };
   }
-  const durableUrl = isFirstPartyMediaUrl(input.source)
-    ? input.source
-    : await importMediaUrl(input.source, {
+  const freshSource = await resolvePdfMedia(input.reference ?? { url: input.source }, input.signal);
+  const durableUrl = isFirstPartyMediaUrl(freshSource)
+    ? freshSource
+    : await importMediaUrl(freshSource, {
         kind: "file",
         siteId: input.siteId || "oceanleo",
         title: input.title,

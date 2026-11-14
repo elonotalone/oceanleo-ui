@@ -1,11 +1,12 @@
 import type { PdfAnnotationObject, PdfWidgetAnnoObject } from "@embedpdf/models";
+import { resolvePdfMedia } from "./pdf-source-reference";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { openPdfEngineDocument } from "./pdf-engine-host";
 import { createBlankPdf, deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
 import { pdfLiveAnnotation, type PdfPageOperation, type PdfWorkingCopy } from "./pdf-recovery";
 
 export async function pdfWorkingSource(doc: PdfWorkingCopy): Promise<Uint8Array> {
-  return doc.source.blank ? createBlankPdf() : new Uint8Array(await (await fetchMediaBlob(doc.source.url)).arrayBuffer());
+  return doc.source.blank ? createBlankPdf() : new Uint8Array(await (await fetchMediaBlob(await resolvePdfMedia(doc.source))).arrayBuffer());
 }
 
 export async function applyPdfPageOperations(bytes: Uint8Array, operations: PdfPageOperation[]): Promise<Uint8Array> {
@@ -20,7 +21,8 @@ export async function applyPdfPageOperations(bytes: Uint8Array, operations: PdfP
 
 /** Independent PDFium document: no mounted viewer, canvas or React state is needed. */
 export async function buildPdfWorkingCopy(doc: PdfWorkingCopy, source?: Uint8Array): Promise<Uint8Array> {
-  const bytes = await applyPdfPageOperations(source ?? await pdfWorkingSource(doc), doc.operations);
+  const annotationOperationCount = doc.annotationOperationCount ?? doc.operations.length;
+  const bytes = await applyPdfPageOperations(source ?? await pdfWorkingSource(doc), doc.operations.slice(0, annotationOperationCount));
   const opened = await openPdfEngineDocument(bytes);
   const { engine, doc: pdf } = opened;
   try {
@@ -43,7 +45,7 @@ export async function buildPdfWorkingCopy(doc: PdfWorkingCopy, source?: Uint8Arr
           }
         } else {
           const context = entry.media ? {
-            data: await (await fetchMediaBlob(entry.media.url)).arrayBuffer(),
+            data: await (await fetchMediaBlob(await resolvePdfMedia(entry.media))).arrayBuffer(),
             mimeType: entry.media.mimeType,
           } : undefined;
           if (!await engine.createPageAnnotation(pdf, page, annotation, context as never).toPromise()) throw new Error("PDF 保存失败");
@@ -55,6 +57,6 @@ export async function buildPdfWorkingCopy(doc: PdfWorkingCopy, source?: Uint8Arr
       const { fixPdfCjkFreeTextAppearances } = await import("./pdf-cjk-appearance");
       saved = new Uint8Array((await fixPdfCjkFreeTextAppearances(saved)).bytes);
     }
-    return saved;
+    return applyPdfPageOperations(saved, doc.operations.slice(annotationOperationCount));
   } finally { await opened.close(); }
 }
