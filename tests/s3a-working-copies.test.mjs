@@ -13,9 +13,9 @@ function annotation(id, type = 3, pageIndex = 0) {
   return { id, type, pageIndex, rect: { origin: { x: 20, y: 30 }, size: { width: 100, height: 40 } },
     contents: `Note ${id}`, color: "#123456", opacity: 1, flags: ["print"], created: new Date("2026-11-01T00:00:00Z") };
 }
-function registry(initial = []) {
+function registry(initial = [], formValues = { name: "OceanLeo" }) {
   let objects = structuredClone(initial);
-  let values = { name: "OceanLeo" };
+  let values = structuredClone(formValues);
   let active = "doc";
   const edits = new Set();
   const task = (value) => ({ toPromise: async () => value });
@@ -86,7 +86,7 @@ test("grid complete workbook round-trips cells, formula, styles, layout and plug
   assert.equal(gridWorkingCopy({ sheets: [] }), null);
 });
 
-test("PDF native state round-trips stamps, forms and page edits without exporting bytes", async () => {
+test("PDF native JSON preserves stamps, forms and page edits and adopts media after viewer replacement", async () => {
   const original = registry([annotation("note"), annotation("signature", 13), { ...annotation("field", 20), field: { name: "name", value: "OceanLeo", type: 6 } }]);
   const bridge = createPdfViewerBridge(original, "sample.pdf");
   let uploads=0;
@@ -95,12 +95,18 @@ test("PDF native state round-trips stamps, forms and page edits without exportin
   await bridge.prepareWorkingCopyMedia(async()=>{uploads++;return "https://example.invalid/stamp.png";});
   assert.equal(uploads,1,"known stamp media is reused");
   const first = { version: 1, source: { url: "https://example.invalid/source.pdf", blank: false }, operations: [{ type: "rotate", pageIndex: 0, degrees: 90 }, { type: "move", fromIndex: 1, toIndex: 0 }, { type: "delete", pageIndex: 2 }], ...bridge.captureWorkingState() };
-  assert.ok(decodePdfRecovery(first));
-  const opened = registry();
+  const decoded = decodePdfRecovery(JSON.parse(JSON.stringify(first)));
+  assert.deepEqual(decoded, pdfWorkingJson(first), "the wire document preserves annotations, fields and page operations");
+  // The production route rebuilds PDF bytes and replaces the viewer document.
+  // The real PDFium builder and real route round trip are covered below and in
+  // s3a-working-copy-routes; this bridge only adopts the rebuilt stamp references.
+  const opened = registry(decoded.annotations.map(({ annotation }) => annotation), decoded.formValues);
   const second = createPdfViewerBridge(opened, "reopen.pdf");
   let edits = 0;
   const off = second.subscribe({ onEdit: () => edits++ });
-  await second.restoreWorkingState(first, async () => new ArrayBuffer(4));
+  second.adoptWorkingCopyMedia(decoded);
+  await second.prepareWorkingCopyMedia(async () => { throw new Error("restored stamps must reuse their durable references"); });
+  assert.equal(second.workingCopyMediaReady(), true);
   assert.equal(edits, 0, "restore never becomes a user edit");
   opened.emit();
   assert.equal(edits, 1, "a real native history edit is reported");

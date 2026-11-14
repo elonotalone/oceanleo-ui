@@ -264,6 +264,17 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   const controllers = [];
   let autoSave = null;
   const workingCopies = [];
+  const startPublication = async (expectedCount) => {
+    // The publisher yields to input before preparation and before rendering.
+    // Wait for the observable upload boundary, not a fixed number of turns.
+    await act(async () => { void autoSave.flushLatest(); });
+    const deadline = performance.now() + 5000;
+    while (pendingSaves.length < expectedCount && performance.now() < deadline) {
+      assert.notEqual(autoSave.state, "error", autoSave.errorMessage);
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+    }
+    assert.equal(pendingSaves.length, expectedCount, "publication must start after the working-copy acknowledgement");
+  };
   const stubs = new Map([
     ["../../i18n/ui/useUI", { useUI: () => (value) => value }],
     ["../../lib/image-ai-edit", { aiEditImage: async () => "" }],
@@ -418,7 +429,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   assert.equal(hook.editRevision, capturedRevision, "recovery is not a user edit");
   await act(async () => controller.callbacks.onRemoteApplied("remote"));
   assert.equal(hook.editRevision, capturedRevision, "remote content is not a local user edit");
-  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await startPublication(1);
   assert.equal(workingCopies.length, 1, "working copy acknowledges the deletion before publication");
   assert.equal(pendingSaves.length, 1);
   assert.deepEqual(pendingSaves[0].args[0].json.objects, [], "deleted layer is the saved snapshot");
@@ -449,7 +460,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   assert.equal(controller.disposed, undefined, "save receipt must not dispose the live controller");
   assert.equal(controller.undoStack.length, 2, "save receipt preserves both the deletion and in-flight edit steps");
 
-  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await startPublication(2);
   assert.equal(pendingSaves.length, 2, "the in-flight first-save edit auto-flushes after the fork receipt");
   assert.equal(pendingSaves[1].args[0].json.objects[0].text, "edit during first save");
   assert.equal(pendingSaves[1].args[1].artifactId, "artifact-a",
@@ -501,7 +512,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   // undo starts an asynchronous Fabric restore; wait for loadFromJSON's
   // promise continuation before checking the restored object list.
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await startPublication(3);
   assert.deepEqual(controller.canvas.objects, []);
   assert.equal(pendingSaves.length, 3, "undo after the fork auto-flushes without a manual save call");
   assert.deepEqual(pendingSaves[2].args[0].json.objects, []);
@@ -544,7 +555,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   const legacyController = controllers[2];
   legacyController.canvas.objects = [];
   await act(async () => legacyController.commit());
-  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  await startPublication(4);
   assert.equal(pendingSaves.length, 4);
   const legacyReceipt = {
     ...legacySource,

@@ -97,7 +97,8 @@ test("PDF blank creation is explicit and disposed page loads release resources",
   assert.match(workbench, /item\.source === "creation"/);
   assert.match(workbench, /loadInitialPdfSource\(\{[\s\S]*?allowBlank,/);
   assert.match(workbench, /decodePdfRecovery\(payload\)/);
-  assert.match(workbench, /bridge\.restoreWorkingState/);
+  assert.match(workbench, /bridge\.replaceDocument\(await buildPdfWorkingCopy\(doc, source\)\)/);
+  assert.match(workbench, /bridge\.adoptWorkingCopyMedia\(doc\)/);
   // 缩略图：卸掉的那一张不再落图，object URL 随之释放。
   assert.match(rail, /if \(!alive\) return;\s*objectUrl = URL\.createObjectURL\(blob\)/);
   assert.match(rail, /alive = false;\s*if \(objectUrl\) URL\.revokeObjectURL\(objectUrl\)/);

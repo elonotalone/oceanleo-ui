@@ -9,7 +9,7 @@
  */
 
 import { pdfMediaReference, type PdfMediaReference } from "./pdf-source-reference";
-import { pdfLiveAnnotation, pdfWorkingJson, type PdfWorkingState } from "./pdf-recovery";
+import { pdfWorkingJson, type PdfWorkingState } from "./pdf-recovery";
 
 import type {
   Off, Hook, TaskLike, PdfViewerRegistryLike, PdfAnnotationLike, PdfSearchHit,
@@ -368,32 +368,6 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       refreshWorkingState();
     },
     captureWorkingState: () => workingState ?? refreshWorkingState(),
-    async restoreWorkingState(state: PdfWorkingState, readMedia: (reference: PdfMediaReference) => Promise<ArrayBuffer>) {
-      const scope = annotationScope();
-      const id = doc();
-      if (!scope || !id) throw new Error("查看器里没有打开的文档。");
-      hydrating += 1;
-      try {
-        const existing = new Map(scope.getAnnotations().map(({ object }) => [object.id, object]));
-        const desired = new Set(state.annotations.map(({ annotation }) => annotation.id));
-        for (const annotation of existing.values()) {
-          if (!desired.has(annotation.id)) scope.deleteAnnotation(annotation.pageIndex, annotation.id);
-        }
-        for (const entry of state.annotations) {
-          const annotation = pdfLiveAnnotation(entry.annotation);
-          if (entry.media) stampMedia.set(annotation.id, entry.media);
-          if (existing.has(annotation.id)) {
-            scope.updateAnnotation(annotation.pageIndex, annotation.id, annotation);
-          } else {
-            const context = entry.media ? { data: await readMedia(entry.media), mimeType: entry.media.mimeType } : undefined;
-            scope.createAnnotation(annotation.pageIndex, annotation, context);
-          }
-        }
-        await scope.commit().toPromise();
-        await form?.forDocument(id).setFormValues(state.formValues).toPromise();
-        refreshWorkingState();
-      } finally { hydrating -= 1; }
-    },
 
     // ---- 字节 ----
     /** 当前文档字节（批注先提交进引擎，再整份导出：标准 PDF 批注）。 */
