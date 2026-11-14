@@ -261,6 +261,7 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
     const s = await open(browser, origin, { mobile: true, w: 1280, h: 720 });
     const typedText = async () => (await s.inputs()).filter((x) => x.kind === "type").map((x) => x.text).join("");
     const focused = () => s.page.evaluate(() => document.activeElement?.hasAttribute("data-remote-input"));
+    await s.page.locator("[data-remote-toolbar-handle]").tap();
     const button = s.page.getByRole("button", { name: "键盘" });
     assert.equal(await button.isVisible(), true, "键盘入口必须可见且可访问");
     assert.equal(await focused(), false, "连接成功本身不能聚焦手机软键盘输入口");
@@ -518,7 +519,10 @@ test("HTTP 待定点击：不同位置与后续输入顺序保持，取消/断�
         if (stop === "cancel") {
           await s.touch("touchStart", [point]);
           await s.cdp.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
-        } else if (stop === "close") await s.page.getByRole("button", { name: "退出桌面" }).tap();
+        } else if (stop === "close") {
+          await s.page.locator("[data-remote-toolbar-handle]").tap();
+          await s.page.getByRole("button", { name: "退出桌面" }).tap();
+        }
         else if (stop === "revoke") await s.page.evaluate(() => { window.__rd.revoked = true; });
         else if (stop === "unmount") await s.page.evaluate(() => window.__rd.unmount());
         else await s.page.evaluate(() => { window.__rd.resized = true; });

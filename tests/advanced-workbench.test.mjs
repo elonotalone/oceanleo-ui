@@ -275,7 +275,8 @@ test("the shared property bar dispatches direct, dropdown and drawer controls", 
   assert.match(inspector, /type="range"/);
   assert.match(inspector, /<textarea/);
   assert.match(toolbar, /openTransientPanel/);
-  assert.match(toolbar, /data-selection-inspector-fallback/);
+  assert.match(toolbar, /<EditBarFloatingPanel/);
+  assert.doesNotMatch(toolbar, /data-selection-inspector-fallback/);
   assert.match(context, /"panel"/);
   assert.match(context, /panelId\?: string/);
   assert.match(context, /panelAction\?: SelectionPanelAction/);

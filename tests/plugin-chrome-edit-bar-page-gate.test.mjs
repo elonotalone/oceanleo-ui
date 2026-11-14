@@ -81,6 +81,7 @@ function loadShell() {
         export function useInlineAdvancedPanels() {
           return {
             drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
             activeDrawerId: "",
             isPanelOpen() { return false; },
             editBarDrawers: [],

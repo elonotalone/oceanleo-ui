@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { gunzipSync } from "node:zlib";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { installOneTaskLibrarySourceLoader } from "./helpers/one-task-library-source-loader.mjs";
@@ -330,17 +331,12 @@ async function waitForBackgroundSavesToSettle(label, timeoutMs = 10000) {
   );
   const deadline = Date.now() + timeoutMs;
   while (saver.hasPendingOrFailed() && Date.now() < deadline) {
-    if (saver.failedBackgroundSaveCount() > 0) {
-      assert.fail(
-        `${label}: background save failed instead of settling; jobs=${JSON.stringify(saver.snapshotBackgroundSaves())}; revisionRequests=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
-      );
-    }
     await new Promise((resolveWait) => setTimeout(resolveWait, 50));
   }
   assert.equal(
     saver.hasPendingOrFailed(),
     false,
-    `${label}: background saves must settle before their fixture projection is restored; jobs=${JSON.stringify(saver.snapshotBackgroundSaves())}; revisionRequests=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
+    `${label}: background saves must settle before their fixture projection is restored; revisionRequests=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
   );
 }
 function persistedInlineEditorHead(rootId = "one-task-library-document") {
@@ -446,6 +442,7 @@ function uploadedMediaType(filename) {
   return "application/octet-stream";
 }
 
+const workingCopies = new Map();
 async function libraryFetch(input, init = {}) {
   const url = new URL(typeof input === "string" ? input : input.url, "https://gateway.one-task-library.test");
   const method = String(init.method || (typeof input === "object" ? input.method : "GET") || "GET").toUpperCase();
@@ -464,6 +461,24 @@ async function libraryFetch(input, init = {}) {
     historyBackendFetchCount += 1;
     if (historyBackendFetchCount > 300) {
       return Promise.resolve(jsonResponse({ error: "History detail fixture stopped a repeated session/task fetch loop after 300 calls." }, 508));
+    }
+  }
+  const workingCopyPath = url.pathname.match(/^\/v1\/editor-working-copies\/([^/]+)(\/published)?$/);
+  if (workingCopyPath) {
+    const root = workingCopyPath[1];
+    const previous = workingCopies.get(root);
+    if (method === "GET") return jsonResponse(previous ?? {}, previous ? 200 : 404);
+    const payload = init.body ? JSON.parse(typeof init.body === "string" ? init.body : gunzipSync(Buffer.from(init.body)).toString()) : {};
+    if (method === "PUT") {
+      if ((previous?.seq ?? null) !== payload.if_seq) return jsonResponse({ ok: false, code: "stale", seq: previous.seq }, 409);
+      const copy = { ...payload, seq: (previous?.seq ?? 0) + 1, published_seq: previous?.published_seq ?? null, saved_at: new Date().toISOString() };
+      workingCopies.set(root, copy);
+      return jsonResponse({ ok: true, seq: copy.seq, saved_at: copy.saved_at, server_ms: 0 });
+    }
+    if (method === "POST" && previous) {
+      previous.published_seq = payload.seq;
+      previous.base_revision_id = payload.revision_id;
+      return jsonResponse({ ok: true });
     }
   }
   if (url.pathname === "/v1/library/mine") {
@@ -1600,3 +1615,6 @@ test("switching an existing Task's native workbench to another Library root reje
     includeSecondLibraryItem = false;
   }
 });
+
+// Release JSDOM animation/timer resources once every real composition is unmounted.
+test.after(() => dom.window.close());

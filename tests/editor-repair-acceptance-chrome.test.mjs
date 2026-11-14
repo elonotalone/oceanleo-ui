@@ -373,6 +373,7 @@ test("standalone workbench 我的库 still opens the mine panel when SplitWorksp
         export function useInlineAdvancedPanels() {
           return {
             drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
             activeDrawerId: "",
             isPanelOpen() { return false; },
             editBarDrawers: [],

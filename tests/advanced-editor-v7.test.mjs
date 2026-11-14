@@ -102,7 +102,8 @@ test("selection toolbar keeps every primary capability at every width", () => {
   assert.doesNotMatch(toolbar, /calc\(100vw-2rem\),100%/);
   assert.match(toolbar, /openTransientPanel/);
   assert.match(toolbar, /SelectionInspectorPanel/);
-  assert.match(toolbar, /data-selection-inspector-fallback/);
+  assert.match(toolbar, /<EditBarFloatingPanel/);
+  assert.doesNotMatch(toolbar, /data-selection-inspector-fallback/);
 });
 
 test("Fabric main image is movable and its image geometry commands are concrete", () => {

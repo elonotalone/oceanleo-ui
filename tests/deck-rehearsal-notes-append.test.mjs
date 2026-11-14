@@ -62,6 +62,7 @@ const engineStubUrl = dataModule(`
     const [, bump] = React.useState(0);
     const rerender = () => bump((value) => value + 1);
     return {
+      bindFlush() {},
       deck,
       activeSlide: deck.slides.find((slide) => slide.id === activeId) || deck.slides[0],
       activeIndex: Math.max(0, deck.slides.findIndex((slide) => slide.id === activeId)),
@@ -187,9 +188,6 @@ const STUBS = {
   ),
   "../advanced-session": dataModule(
     "export function advancedSavedItem(item){ return item; }",
-  ),
-  "../advanced-recovery-store": dataModule(
-    "export function advancedRecoveryKey(){ return 'k'; }",
   ),
 };
 

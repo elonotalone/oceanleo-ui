@@ -1328,7 +1328,7 @@ test("dock follows the action row and showDetail reveals console without exiting
     new URL("../src/shell/use-inline-advanced-panels.tsx", import.meta.url),
     "utf8",
   );
-  assert.equal((panels.match(/showWorkspaceDetail\(\{/g) || []).length, 2);
+  assert.equal((panels.match(/showWorkspaceDetail\(\{/g) || []).length, 1);
   assert.equal((inline.match(/showWorkspaceDetail\(\{/g) || []).length, 0);
   // Standalone MaterialCatalog embeds must still own a dock host + pin path
   // and mark the fallback inspector as the left console for V3-09.

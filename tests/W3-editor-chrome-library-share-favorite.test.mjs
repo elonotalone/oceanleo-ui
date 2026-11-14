@@ -23,6 +23,13 @@ const ttStubUrl = dataModule(`
 `);
 
 const toastStubUrl = dataModule(`
+  export const TOAST_MAX_VISIBLE = 3;
+  export function ToastProvider({children}) { return children; }
+  export function ToastViewport() { return null; }
+  export function resetToastStoreForTests() {}
+  export function ensureToastMotionStyles() {}
+  export const LEO_TOAST_MOTION_CSS = "";
+  export const TOAST_DWELL = {info:4000,success:4000,error:6000};
   export function useToast() {
     const handle = {
       id: "t",
@@ -88,6 +95,7 @@ function durableItem(overrides = {}) {
 }
 
 const artifactClientStubUrl = dataModule(`
+  export * from ${JSON.stringify(new URL("../src/shell/artifact-client.ts", import.meta.url).href)};
   export async function setArtifactFavorite(item, favorite) {
     const delay = Number(globalThis.__w3FavoriteDelay || 0);
     if (delay) await new Promise((resolve) => setTimeout(resolve, delay));
@@ -110,6 +118,8 @@ const artifactClientStubUrl = dataModule(`
       },
     };
   }
+  export async function searchArtifactLibrary() { return {ok:true,data:{items:[],nextCursor:null}}; }
+  export async function listPrimaryArtifacts() { return { ok: true, data: { items: [], nextCursor: null } }; }
   export async function listMyArtifacts() {
     return {
       ok: true,
@@ -252,7 +262,7 @@ async function withDom(run) {
   window.document.body.append(container);
   const root = createRoot(container);
   const render = (element) => act(async () => root.render(element));
-  const find = (selector) => container.querySelector(selector);
+  const find = (selector) => container.querySelector(selector) || window.document.body.querySelector(selector);
   const click = (node) =>
     act(async () =>
       node.dispatchEvent(new window.MouseEvent("click", { bubbles: true })),
@@ -298,7 +308,7 @@ test("W3: 保存失败只留图标，错误进 title，状态字仍给读屏", (
   assert.match(html, /data-workspace-save-launcher/);
   assert.match(html, /保存被拒绝（integrity-failed）/);
   assert.match(html, /sr-only/);
-  assert.match(html, /保存遇到问题/);
+  assert.match(html, /保存失败/);
 });
 
 test("W3: share URL 带上 LibraryItem 身份", () => {
@@ -398,6 +408,13 @@ test("W3: 分享把当前条目 URL 交给剪贴板；收藏走 setArtifactFavor
 test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
   const { InlineAdvancedWorkbenchShell } = await import(
     await compileModule("src/shell/InlineAdvancedWorkbenchShell.tsx", {
+      "./inline-advanced-shell-helpers": dataModule(`
+        export function resolveActiveMaterialAction(){return undefined;}
+        export function resolveInlineAdvancedDrawers(adapter){return adapter.drawers || [];}
+        export function resolveEditBarDrawers(){return [];}
+      `),
+      "./InlineEditorMaterialPanel": dataModule(`export function InlineEditorMaterialPanel(){return null;}`),
+      "./plugin-chrome/PluginAgentPanel": dataModule(`export function PluginAgentPanel(){return null;}`),
       "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
       "./WorkspaceSession": dataModule(`export function useOptionalWorkspaceSession(){return null;} export function WorkspaceSessionProvider({children}){return children;}`),
       "../i18n/ui/useUI": ttStubUrl,
@@ -435,40 +452,6 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
           return { dropMessage: "", performUpload() {}, handleDrop() {} };
         }
       `),
-      "./use-inline-advanced-panels": dataModule(`
-        import { useState } from ${JSON.stringify(reactUrl)};
-        export function useInlineAdvancedPanels() {
-          const [fallbackDetail, setFallbackDetail] = useState(null);
-          const [activeDrawerId, setActiveDrawerId] = useState("");
-          const [transientPanel, setTransientPanel] = useState(null);
-          return {
-            drawers: [],
-            activeDrawerId,
-            activeMaterialAction: null,
-            transientPanel,
-            fallbackDetail,
-            openDrawer(id) {
-              setTransientPanel(null);
-              setActiveDrawerId(id);
-              setFallbackDetail({ label: id, content: id });
-            },
-            openTransientPanel(id, label, content) {
-              setTransientPanel({ id, label });
-              setActiveDrawerId(id);
-              setFallbackDetail({ label, content });
-            },
-            updateTransientPanel() {},
-            closeDetail() {
-              setFallbackDetail(null);
-              setActiveDrawerId("");
-              setTransientPanel(null);
-            },
-            closeDrawer() {},
-            isPanelOpen(id) { return activeDrawerId === id; },
-            editBarDrawers: [],
-          };
-        }
-      `),
       "./advanced-session-context": dataModule(
         `export function useAdvancedSession() { return null; }`,
       ),
@@ -478,6 +461,7 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
       "./SplitWorkspace": dataModule(`
         export function useRightPaneSlot() { return null; }
         export function useWorkspacePane() { return null; }
+        export function useConsoleAgentFocus() { return null; }
       `),
       "./use-advanced-autosave": dataModule(`
         export function useAdvancedAutoSave() {
@@ -540,9 +524,9 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
       find('[data-workspace-library-panel="mine"]').getAttribute("aria-pressed"),
       "true",
     );
-    const pane = find("[data-editor-fallback-pane]");
-    assert.ok(pane, "独立侧栏内容层没挂上");
-    assert.match(pane.className, /data-agent-conversation/);
+    const pane = find('[data-edit-bar-floating-panel="mine"]');
+    assert.ok(pane, "我的库应浮在编辑器画布上");
+    assert.equal(find("[data-editor-fallback-pane]"), null, "只有 AI 可占左栏");
     await click(find('[data-inline-editor-mine-item="art-mine-1"]'));
     assert.equal(actions.length, 1, "点库条目没有发出 typed open");
     assert.equal(actions[0].action.tab, "mine");
@@ -585,7 +569,8 @@ const frameStubs = {
   `),
   "../plugin-theme": dataModule(`
     import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-    export function usePluginTheme() {
+    export function PluginThemeScope({ children }) { return children; }
+  export function usePluginTheme() {
       return { theme: "light", accent: "#4f46e5" };
     }
     export function PluginThemeToggle({ pluginId }) {
@@ -728,11 +713,13 @@ test("W3: 自有 chrome 画出我的库和带身份的分享/收藏，点我的�
     await click(find('[data-workspace-library-panel="mine"]'));
     await waitFor(find, '[data-inline-editor-mine-item="art-mine-1"]');
     assert.ok(find("[data-plugin-chrome-stage] [data-test-stage]"), "点我的库卸了舞台");
-    assert.ok(find('[data-plugin-chrome-panel="mine"]'));
+    const panel = find('[data-edit-bar-floating-panel="mine"]') || window.document.querySelector('[data-edit-bar-floating-panel="mine"]');
+    assert.ok(panel);
+    assert.equal(find('[data-plugin-chrome-panel="mine"]'), null);
     assert.ok(find('[data-inline-editor-mine-item="art-mine-1"]'));
-    const panelBody = find("[data-plugin-chrome-panel-body]");
+    const panelBody = panel.querySelector('[data-edit-bar-panel-current="true"]')?.parentElement;
     assert.ok(panelBody);
-    assert.match(panelBody.className, /data-agent-conversation/);
+    assert.equal(panelBody.style.overflow, "auto");
     await click(find('[data-inline-editor-mine-item="art-mine-1"]'));
     assert.equal(actions.length, 1, "自有 chrome 点库条目没有发出 typed open");
     assert.equal(actions[0].action.itemId, "art-mine-1");
@@ -842,6 +829,7 @@ test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己�
           const long = Array.from({ length: 40 }, (_, index) => "行" + index).join(" ");
           return {
             drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
             activeDrawerId: "agent",
             activeMaterialAction: null,
             transientPanel: null,

@@ -77,4 +77,3 @@ export interface DocsCap {
   setActiveDocument(id: string): void;
   onDocumentOpened: Hook<{ id: string }>;
 }
-

@@ -104,14 +104,13 @@ for(const scoped of [false,true]) test(`normal full list, project captions and s
 test('membership 500 leaves the full list usable without error copy',async()=>scenario(async()=>{
  const mounted=await render(React.createElement(MyLibrary));try{await act(pause);assert.match(mounted.host.textContent,/Live dashboard/);assert.doesNotMatch(mounted.host.textContent,/仪表盘|失败|500|无法加载/);}finally{await dispose(mounted);}
 },{membershipFailure:true}));
-test('same card menu checks membership, filters viewers and toggles references with immediate captions',async()=>scenario(async calls=>{
+test('Library menus keep project captions but offer no project mutations',async()=>scenario(async calls=>{
  const mounted=await render(React.createElement(MyLibrary,{pageTitle:'我的库'}));try{
-  await act(pause);await click(mounted.host.querySelector('[aria-label="更多操作"]'));await click(menuItem('加入项目'));
-  assert.match(menuItem('仪表盘').textContent,/✓/);assert.equal(menuItem('Read only'),undefined);
-  await click(menuItem('仪表盘'));assert.doesNotMatch(mounted.host.textContent,/仪表盘/);
-  assert.ok(calls.some(c=>c.method==='DELETE'&&c.path.endsWith('/library-items/work/w1')));
-  await click(mounted.host.querySelector('[aria-label="更多操作"]'));await click(menuItem('加入项目'));await click(menuItem('基础设施'));
-  assert.match(mounted.host.textContent,/基础设施/);assert.ok(calls.some(c=>c.method==='POST'&&c.body===JSON.stringify({kind:'work',id:'w1'})));
+  await act(pause);assert.match(mounted.host.textContent,/仪表盘/);
+  assert.equal(mounted.host.querySelector('[aria-label="更多操作"]'),null,"a link with no remaining card actions has no empty menu");
+  assert.equal(menuItem('加入项目'),undefined);
+  assert.equal(menuItem('Read only'),undefined);
+  assert.equal(calls.some(c=>['POST','DELETE'].includes(c.method)),false);
  }finally{await dispose(mounted);}
 }));
 
@@ -184,10 +183,13 @@ test('slow membership reads never hold up the Library cards',async()=>{
   const mounted=await render(React.createElement(MyLibrary));try{await act(pause);assert.match(mounted.host.textContent,/Live dashboard/);assert.doesNotMatch(mounted.host.textContent,/正在加载|仪表盘/);await act(async()=>{gate.resolve();await pause();});assert.match(mounted.host.textContent,/仪表盘/);}finally{gate.resolve();await dispose(mounted);}
  },{membershipDelay:gate});
 });
-test('failed reference mutation preserves caption and shows human error copy',async()=>scenario(async()=>{
+test('unavailable project mutations leave Library captions and other actions usable',async()=>scenario(async calls=>{
  const mounted=await render(React.createElement(MyLibrary));try{
-  await act(pause);await click(mounted.host.querySelector('[aria-label="更多操作"]'));await click(menuItem('加入项目'));await click(menuItem('仪表盘'));
-  assert.match(mounted.host.textContent,/仪表盘/);assert.match(mounted.host.textContent,/项目更新失败，请重试。/);assert.doesNotMatch(mounted.host.textContent,/500|request failed/);
+  await act(pause);assert.equal(mounted.host.querySelector('[aria-label="更多操作"]'),null);
+  assert.equal(menuItem('加入项目'),undefined);
+  assert.match(mounted.host.textContent,/仪表盘/);
+  assert.doesNotMatch(mounted.host.textContent,/项目更新失败|500|request failed/);
+  assert.equal(calls.some(c=>['POST','DELETE'].includes(c.method)),false);
  }finally{await dispose(mounted);}
 },{failMutations:true}));
 

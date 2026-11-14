@@ -289,7 +289,8 @@ test("PluginAgentPanel + chrome aside form a min-h-0 flex column around the comp
         }
       `),
       "../plugin-theme": dataModule(`
-        export function usePluginTheme() { return { theme: "light", accent: "#4f46e5" }; }
+        export function PluginThemeScope({ children }) { return children; }
+  export function usePluginTheme() { return { theme: "light", accent: "#4f46e5" }; }
         export function usePluginThemePortal() { return null; }
         export function PluginThemeToggle() { return null; }
         export function pluginWorkbenchStyle() { return {}; }
@@ -315,9 +316,11 @@ test("PluginAgentPanel + chrome aside form a min-h-0 flex column around the comp
       `),
       "../SplitWorkspace": dataModule(`
         export function useConsoleAgentFocus() { return null; }
+
         export function useRegisterConsoleAgentFocus() {}
         export function useLeftPaneSlot() { return null; }
         export function useRightPaneSlot() { return null; }
+
         export function useWorkspacePane() { return null; }
       `),
       "../PluginChromeEditBarGestureLayer": dataModule(`

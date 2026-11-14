@@ -86,6 +86,9 @@ const inlinePanelsUrl = await compileModule("src/shell/use-inline-advanced-panel
   "./SplitWorkspace": splitUrl,
 });
 const { useInlineAdvancedPanels } = await import(inlinePanelsUrl);
+const { EditBarFloatingPanel } = await import(await compileModule("src/shell/EditBarFloatingPanel.tsx", {
+  "../i18n/ui/useUI": dataModule(`export function useUI(){return value=>value;}`),
+}));
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
 const artifactLibraryUrl = await compileModule("src/shell/ArtifactLibrary.tsx", {
   "../lib/auth/client": dataModule(`export function browserClient(){return null;}`),
@@ -209,16 +212,18 @@ test("task Library reuses its current split and conversation", async()=>{
   } finally {await m.destroy();}
 });
 
-test("editor Assets replaces the Agent body in the shared left island and Agent returns to chat", async()=>{
+test("editor Assets float above the canvas while Agent keeps the existing left conversation", async()=>{
   let focusedAgent=0;
   function EditorPanels(){
     const pane=useWorkspacePane();
+    const containerRef=React.useRef(null);
     const panels=useInlineAdvancedPanels({
       adapter:{id:"image",label:"Image"},item:base.item,siteId:"document",accent:"#123456",
       ownerId:"editor-panel-test",pluginThemeId:null,workbenchMaterials:null,
       showWorkspaceDetail:pane?.showDetail,clearWorkspaceDetail:pane?.clearDetail,
     });
-    return React.createElement("div",null,
+    return React.createElement("div",{ref:containerRef},
+      React.createElement(EditBarFloatingPanel,{controller:panels.floatingPanels,containerRef}),
       React.createElement("button",{ "data-open-assets":true,onClick:()=>panels.openDrawer("materials")},"Assets"),
       React.createElement("button",{ "data-open-agent":true,onClick:()=>panels.openDrawer("agent")},"Agent"));
   }
@@ -229,8 +234,8 @@ test("editor Assets replaces the Agent body in the shared left island and Agent 
   }));
   try {
     await click(m.container.querySelector("[data-open-assets]"));
-    assert.equal(m.container.querySelector('[data-workspace-pane="left"]').dataset.leftPanel,"tool-detail");
-    assert.ok(m.container.querySelector('[data-workspace-pane="left"] [data-materials-panel]'));
+    assert.equal(m.container.querySelector('[data-workspace-pane="left"]').dataset.leftPanel,"app");
+    assert.ok(document.body.querySelector('[data-edit-bar-floating-panel] [data-materials-panel]'));
     assert.equal(m.container.querySelectorAll("[data-workspace-split]").length,1,"tool panels must not add another split");
     await click(m.container.querySelector("[data-open-agent]"));
     assert.equal(focusedAgent,1);

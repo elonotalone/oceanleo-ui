@@ -90,6 +90,7 @@ function loadShell() {
         export function useInlineAdvancedPanels() {
           return {
             drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
             activeDrawerId: "",
             activeMaterialAction: null,
             transientPanel: null,

@@ -318,6 +318,7 @@ function loadShell() {
       export function useInlineAdvancedPanels() {
         return {
           drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
           activeDrawerId: "",
           activeMaterialAction: null,
           transientPanel: null,
@@ -492,6 +493,7 @@ function headerProps(overrides = {}) {
     activeDrawerId: "",
     activeLibraryPanelId: null,
     drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
     accent: "#6d5dfc",
     pluginThemeId: null,
     onBack() {},

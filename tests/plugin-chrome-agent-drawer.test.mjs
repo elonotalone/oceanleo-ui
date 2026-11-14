@@ -142,6 +142,7 @@ const agentPanelStubUrl = dataModule(`
   }
 `);
 const pluginThemeStubUrl = dataModule(`
+  export function PluginThemeScope({ children }) { return children; }
   export function usePluginTheme() {
     return { theme: "light", accent: "#4f46e5" };
   }
@@ -227,6 +228,13 @@ const floatingToolbarStubUrl = dataModule(`
 `);
 
 const toastStubUrl = dataModule(`
+  export const TOAST_MAX_VISIBLE = 3;
+  export function ToastProvider({children}) { return children; }
+  export function ToastViewport() { return null; }
+  export function resetToastStoreForTests() {}
+  export function ensureToastMotionStyles() {}
+  export const LEO_TOAST_MOTION_CSS = "";
+  export const TOAST_DWELL = { info: 4000, success: 4000, error: 6000 };
   export function useToast() {
     return {
       success() {},

@@ -102,6 +102,7 @@ function loadShell() {
         export function useInlineAdvancedPanels() {
           return {
             drawers: [],
+            floatingPanels: { active: null, close() {}, open() {}, update() {} },
             activeDrawerId: "",
             activeMaterialAction: null,
             transientPanel: null,
@@ -494,11 +495,11 @@ test("素材库抽屉第一项是「从本地上传」，点它触发宿主的�
         },
       });
       api = panels;
-      return panels.fallbackDetail
+      return panels.floatingPanels.active
         ? React.createElement(
             "div",
             { "data-probe-drawer": true },
-            panels.fallbackDetail.content,
+            panels.floatingPanels.active.content,
           )
         : null;
     }

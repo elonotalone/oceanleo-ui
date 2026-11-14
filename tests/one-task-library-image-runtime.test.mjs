@@ -410,9 +410,9 @@ test("Library ImageRoute survives first frame, selection, Assets toggles, and Ag
     assert.deepEqual(loops, []);
 
     await click('[data-workspace-library-panel="materials"]');
-    assert.equal(container.querySelector('[data-workspace-pane="left"]')?.getAttribute("data-left-panel"), "tool-detail");
-    assert.ok(container.querySelector('[data-workspace-pane="left"] [data-shell-materials]'));
-    await click('[aria-label="返回操作台"]');
+    assert.equal(container.querySelector('[data-workspace-pane="left"]')?.getAttribute("data-left-panel"), "app");
+    assert.ok(document.body.querySelector('[data-edit-bar-floating-panel] [data-shell-materials]'));
+    await click('[data-edit-bar-floating-panel] [aria-label="关闭"]');
     assert.ok(container.querySelector("[data-agent-runtime-pane]"));
 
     const beforeSelection = globalThis.__oneTaskImageHookRenders;
@@ -446,8 +446,8 @@ test("Library ImageRoute survives first frame, selection, Assets toggles, and Ag
     // not merely assert that production source contains the expected controls.
     for (let i = 0; i < 3; i += 1) {
       await click('[data-workspace-library-panel="materials"]');
-      assert.ok(container.querySelector('[data-workspace-pane="left"] [data-shell-materials]'));
-      await click('[aria-label="返回操作台"]');
+      assert.ok(document.body.querySelector('[data-edit-bar-floating-panel] [data-shell-materials]'));
+      await click('[data-edit-bar-floating-panel] [aria-label="关闭"]');
       await click("[data-fixture-selection-toggle]");
     }
 
