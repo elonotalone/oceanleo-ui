@@ -1,9 +1,8 @@
 "use client";
 
-import type { AdvancedEditorDraftAdapter } from "../advanced-editor-adapter";
 import type { AdvancedFlushResult } from "../advanced-session-context";
-import { ADVANCED_DRAFT_META_KEY, type AdvancedDraftPointer } from "../advanced-draft";
-import { DECK_DRAFT_SCHEMA, deckDocumentFromWorkingDraft, loadDeckServerDraft } from "../advanced-draft-deck";
+import { deckDocumentFromWorkingCopy, prepareDeckMedia } from "./deck-working-copy";
+import { durableEditorMediaUrl } from "./editor-insert-media";
 import { unzipSync } from "fflate";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -163,11 +162,13 @@ export interface DeckEditorState {
   reload: () => void;
   /** 用本地上传的 PPTX 顶掉当前演示文稿（.ppt/.odp 由调用方先归一化成 pptx）。 */
   importSource: (file: File) => Promise<void>;
-  draft: AdvancedEditorDraftAdapter;
+  captureRecovery: () => DeckDocument | null;
+  bindFlush: (flush: (() => Promise<AdvancedFlushResult>) | null) => void;
   flushBeforeExport: () => Promise<void>;
   persistInBackground: () => void;
   exportPptx: () => Promise<void>;
   save: () => Promise<PersistedEditorVersion | null>;
+  prepareSave: () => () => Promise<PersistedEditorVersion | null>;
   restoreRecovery: (payload: unknown, updatedAt?: number) => boolean;
   /**
    * 多人同改：把别人的最新状态套进编辑器。保住本人的选中页 / 选中元素、撤销栈（别人的改动同时套进栈里的旧快照，
@@ -373,7 +374,6 @@ export function deckSavedItemForHandoff(
 }
 
 interface DeckLoad {
-  serverDraft?: AdvancedDraftPointer;
   deck: DeckDocument;
 }
 
@@ -383,8 +383,6 @@ async function loadDeck(
   signal?: AbortSignal,
   onSourceAccessError?: () => void,
 ): Promise<DeckLoad> {
-  const serverDraft = await loadDeckServerDraft(item, signal);
-  if (serverDraft) return serverDraft;
   const deliveryUrl = deckDeliveryUrlFor(item);
   if (!deliveryUrl) throw new Error("没有可读取的 PPTX 文件，请上传 PPTX 后重试。");
   const extension = (
@@ -846,7 +844,6 @@ export function deckSourceLoadKey(
     item.url || "",
     item.previewUrl || "",
     deckDeliveryUrlFor(item),
-    item.meta[ADVANCED_DRAFT_META_KEY] ?? null,
     // `loadDeck` picks the unpacker by extension, so the format hints are load
     // inputs too: leaving them out turns "reloads too often" into "never
     // reloads when the same address is re-typed as another format".
@@ -954,9 +951,8 @@ export function useDeckEditor(
   const savingRef = useRef(false);
   const sourceFailedRef = useRef(false);
   const sourceLoadingRef = useRef(true);
-  const serverDraftRef = useRef<AdvancedDraftPointer | null>(null);
   const exportFlushRef = useRef<(() => Promise<AdvancedFlushResult>) | null>(null);
-  const bindDraftFlush = useCallback((flush: (() => Promise<AdvancedFlushResult>) | null) => { exportFlushRef.current = flush; }, []);
+  const bindFlush = useCallback((flush: (() => Promise<AdvancedFlushResult>) | null) => { exportFlushRef.current = flush; }, []);
   const flushBeforeExport = useCallback(async () => {
     const result = await exportFlushRef.current?.();
     if (result && !result.ok) throw new Error(result.error || "保存版本失败，请重试后导出");
@@ -1029,7 +1025,6 @@ export function useDeckEditor(
     setSourceFailed(false);
     sourceFailedRef.current = false;
     sourceLoadingRef.current = true;
-    serverDraftRef.current = null;
     setNotice("");
     revisionRef.current = 0;
     persistedItemRef.current = source;
@@ -1039,18 +1034,13 @@ export function useDeckEditor(
     workingHeadUrlRef.current =
       deckDeliveryUrlFor(source);
     void loadDeck(source, sourcePreview, abort.signal, notifySourceAccessError)
+      .then(async (loaded) => ({ ...loaded, deck: await prepareDeckMedia(loaded.deck, siteId) }))
       .then((loaded) => {
         if (abort.signal.aborted) return;
         const next = loaded.deck;
-        serverDraftRef.current = loaded.serverDraft || null;
-        if (loaded.serverDraft) {
-          revisionRef.current = typeof loaded.serverDraft.editRevision === "number" ? loaded.serverDraft.editRevision : 1;
-          setDirty(true);
-          applyDeckUserEditSession(source, "load");
-        }
         deckRef.current = next;
         const existingVersion = deckExistingVersion(source, deckDeliveryUrlFor(source) || source.url || "", "");
-        if (existingVersion && !loaded.serverDraft) lastSavedRef.current = { editRevision: revisionRef.current, item: source, version: existingVersion };
+        if (existingVersion) lastSavedRef.current = { editRevision: revisionRef.current, item: source, version: existingVersion };
         activeRef.current = next.slides[0].id;
         selectedElementRef.current = "";
         setDeckState(next);
@@ -1081,7 +1071,7 @@ export function useDeckEditor(
       mountedRef.current = false;
       abort.abort();
     };
-  }, [loadKey, notifySourceAccessError, reloadNonce, translate]);
+  }, [loadKey, notifySourceAccessError, reloadNonce, siteId, translate]);
 
   const reload = useCallback(() => {
     setReloadNonce((value) => value + 1);
@@ -1147,6 +1137,9 @@ export function useDeckEditor(
       const next = update(cloneDeckDocument(current));
       if (deckDocumentsEqual(next, current)) return false;
       deckRef.current = next;
+      revisionRef.current += 1;
+      setDirty(true);
+      applyDeckHistoryWriteIfChanged(persistedItemRef.current, current, next);
       setDeckState(next);
       setHistoryRevision((value) => value + 1);
       return true;
@@ -1165,7 +1158,6 @@ export function useDeckEditor(
     undoRef.current.push(base);
     if (undoRef.current.length > HISTORY_LIMIT) undoRef.current.shift();
     redoRef.current = [];
-    revisionRef.current += 1;
     setDirty(true);
     applyDeckHistoryWriteIfChanged(
       persistedItemRef.current,
@@ -1180,7 +1172,11 @@ export function useDeckEditor(
     const base = gestureRef.current;
     if (!base) return;
     gestureRef.current = null;
+    if (deckDocumentsEqual(base.deck, deckRef.current)) return;
     applySnapshot(base);
+    revisionRef.current += 1;
+    setDirty(true);
+    applyDeckUserEditSession(persistedItemRef.current, "local-history");
   }, [applySnapshot]);
 
   const activeIndex = Math.max(
@@ -1466,26 +1462,31 @@ export function useDeckEditor(
       const current = deckRef.current.slides.find(
         (slide) => slide.id === activeRef.current,
       );
-      addElement({
-        id: deckId("element"),
-        type: "image",
-        x: asset.x,
-        y: asset.y,
-        width: asset.width,
-        height: asset.height,
-        rotation: 0,
-        order:
-          Math.max(
-            0,
-            ...(current?.elements.map((element) => element.order) || []),
-          ) + 1,
-        src: asset.src,
-        alt: placement === "signature" ? tt("签名") : tt("画笔"),
-        imageFit: "fill",
-        opacity: 1,
+      void durableEditorMediaUrl(asset.src, siteId).then((src) => {
+        if (!mountedRef.current) return;
+        addElement({
+          id: deckId("element"),
+          type: "image",
+          x: asset.x,
+          y: asset.y,
+          width: asset.width,
+          height: asset.height,
+          rotation: 0,
+          order:
+            Math.max(
+              0,
+              ...(current?.elements.map((element) => element.order) || []),
+            ) + 1,
+          src,
+          alt: placement === "signature" ? tt("签名") : tt("画笔"),
+          imageFit: "fill",
+          opacity: 1,
+        });
+      }).catch((caught) => {
+        if (mountedRef.current) setError(caught instanceof Error ? tt(caught.message) : tt("图片读取失败"));
       });
     },
-    [addElement, tt],
+    [addElement, siteId, tt],
   );
 
   const addTableElement = useCallback(
@@ -1518,7 +1519,7 @@ export function useDeckEditor(
     [addElement],
   );
 
-  const insertImageElement = useCallback(
+  const insertDurableImage = useCallback(
     (
       src: string,
       alt = "",
@@ -1557,6 +1558,18 @@ export function useDeckEditor(
     },
     [addElement, insertionPlacement, patchElement],
   );
+
+  const insertImageElement = useCallback((src: string, alt = "", replace = false, placement?: WorkbenchMaterialPlacement) => {
+    if (!/^(?:data:|blob:)/i.test(src)) {
+      insertDurableImage(src, alt, replace, placement);
+      return;
+    }
+    void durableEditorMediaUrl(src, siteId, alt || "image").then((url) => {
+      if (mountedRef.current) insertDurableImage(url, alt, replace, placement);
+    }).catch((caught) => {
+      if (mountedRef.current) setError(caught instanceof Error ? tt(caught.message) : tt("图片读取失败"));
+    });
+  }, [insertDurableImage, siteId, tt]);
 
   const deleteElement = useCallback(() => {
     const id = selectedElementRef.current;
@@ -1685,8 +1698,8 @@ export function useDeckEditor(
     ) {
       setTextEditingElementId("");
     }
-    // 别人的改动让这份文稿和库里最近一版不同：存档人要存，所以记一次未保存（只在存档人那里真的会存）。
-    revisionRef.current += 1;
+    // Remote hydration updates the document without impersonating a user edit.
+    lastSavedRef.current = null;
     setDirty(true);
     applyDeckUserEditSession(persistedItemRef.current, "remote-collab");
     setHistoryRevision((value) => value + 1);
@@ -1763,15 +1776,13 @@ export function useDeckEditor(
     }
   }, [buildDelivery, exporting, flushBeforeExport, tt]);
 
-  const save = useCallback(async (): Promise<PersistedEditorVersion | null> => {
+  const publish = useCallback(async (snapshot: DeckDocument, savingRevision: number): Promise<PersistedEditorVersion | null> => {
     if (savingRef.current || sourceFailedRef.current || sourceLoadingRef.current) return null;
-    const savingRevision = revisionRef.current;
     // 外壳（会话补记、重试）可能对同一次改动再要一次保存：没有新改动就交回上次的回执（D11 §5.5）。
     const lastSaved = lastSavedRef.current;
     if (lastSaved && lastSaved.editRevision === savingRevision && lastSaved.item === persistedItemRef.current) {
       return lastSaved.version;
     }
-    const snapshot = cloneDeckDocument(deckRef.current);
     const baseItem = deckSaveBaseItem(persistedItemRef.current);
     const baseRevision = String(
       baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
@@ -1913,6 +1924,13 @@ export function useDeckEditor(
     }
   }, [buildDelivery, siteId, tt]);
 
+  const prepareSave = useCallback(() => {
+    const snapshot = cloneDeckDocument(deckRef.current);
+    const savingRevision = revisionRef.current;
+    return () => publish(snapshot, savingRevision);
+  }, [publish]);
+  const save = useCallback(() => prepareSave()(), [prepareSave]);
+
   /**
    * 本地上传的演示文稿接进编辑器。
    *
@@ -1929,7 +1947,7 @@ export function useDeckEditor(
         const bytes = await validateOfficePackageBlob(file, "pptx");
         const fallbackTitle =
           file.name.replace(/\.[^.]+$/, "") || item.title || "演示文稿";
-        const next = await importPptxDeck(bytes, fallbackTitle, "pptx");
+        const next = await prepareDeckMedia(await importPptxDeck(bytes, fallbackTitle, "pptx"), siteId);
         if (!mountedRef.current) return;
         commit(() => next, next.slides[0].id);
         setNotice(tt("已把上传的演示文稿接进编辑器，可以直接改了"));
@@ -1942,22 +1960,30 @@ export function useDeckEditor(
         );
       }
     },
-    [commit, item.title, tt],
+    [commit, item.title, siteId, tt],
   );
 
-  const restoreRecovery = useCallback(
-    (payload: unknown, updatedAt?: number): boolean => {
-      if (updatedAt !== undefined && serverDraftRef.current &&
-          Date.parse(serverDraftRef.current.savedAt) >= updatedAt) return false;
-      if (sourceFailedRef.current) return false;
-      const next = deckDocumentFromWorkingDraft(payload, item.title || "演示文稿");
-      if (!next) return false;
-      commit(() => next, next.slides[0].id);
-      setNotice(tt("已恢复上次未同步的本地草稿"));
-      return true;
-    },
-    [commit, item.title, tt],
-  );
+  const captureRecovery = useCallback(() =>
+    sourceLoadingRef.current || sourceFailedRef.current ? null : deckRef.current, []);
+  const restoreRecovery = useCallback((payload: unknown): boolean => {
+    if (sourceFailedRef.current || sourceLoadingRef.current) return false;
+    const next = deckDocumentFromWorkingCopy(payload);
+    if (!next) return false;
+    deckRef.current = next;
+    activeRef.current = next.slides[0].id;
+    selectedElementRef.current = "";
+    undoRef.current = [];
+    redoRef.current = [];
+    gestureRef.current = null;
+    lastSavedRef.current = null;
+    setDeckState(next);
+    setActiveId(activeRef.current);
+    setSelectedElementId("");
+    setTextEditingElementId("");
+    setDirty(true);
+    setHistoryRevision((value) => value + 1);
+    return true;
+  }, []);
 
   return {
     item,
@@ -1972,22 +1998,16 @@ export function useDeckEditor(
     exporting,
     dirty,
     editRevision: revisionRef.current,
-    draft: {
-      schema: DECK_DRAFT_SCHEMA,
-      capture: () => sourceLoadingRef.current || sourceFailedRef.current ? null : {
-        deck: cloneDeckDocument(deckRef.current),
-      },
-      restoredRevision: serverDraftRef.current ? (typeof serverDraftRef.current.editRevision === "number" ? serverDraftRef.current.editRevision : 1) : undefined,
-      bindFlush: bindDraftFlush,
-    },
+    captureRecovery,
+    prepareSave,
+    bindFlush,
     applyRemoteDeck,
     adoptExternalRevision,
     markCollabSaved,
     readOnly: Boolean(collab?.readOnly),
     flushBeforeExport,
     persistInBackground: () => {
-      // Reuse the host controller (and its session commit) when draft saving is
-      // connected. The unconnected legacy route keeps its existing behavior.
+      // Export/close gates publish through the shell when it is connected.
       const saving = exportFlushRef.current ? exportFlushRef.current() : save();
       void saving.catch(() => undefined);
     },

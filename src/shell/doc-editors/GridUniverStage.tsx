@@ -54,7 +54,7 @@ import "@univerjs/preset-sheets-hyper-link/lib/index.css";
 import { UniverSheetsThreadCommentPreset } from "@univerjs/preset-sheets-thread-comment";
 import UniverPresetSheetsThreadCommentZhCN from "@univerjs/preset-sheets-thread-comment/locales/zh-CN";
 import "@univerjs/preset-sheets-thread-comment/lib/index.css";
-import { UniverSheetsDrawingPreset } from "@univerjs/preset-sheets-drawing";
+import { UniverSheetsDrawingPreset, IImageIoService, ImageIoService, ImageSourceType } from "@univerjs/preset-sheets-drawing";
 import UniverPresetSheetsDrawingZhCN from "@univerjs/preset-sheets-drawing/locales/zh-CN";
 import "@univerjs/preset-sheets-drawing/lib/index.css";
 import { UniverSheetsTablePreset } from "@univerjs/preset-sheets-table";
@@ -69,7 +69,8 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import type { LibraryItem } from "../library-data";
 import { advancedSavedItem } from "../advanced-session";
 import { useGridMaterialAdapter } from "./grid-univer/use-grid-material";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { GRID_WORKING_COPY_SCHEMA, gridWorkingCopy } from "./grid-univer/working-copy";
+import { uploadEditorMedia } from "./editor-insert-media";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { downloadBlob, loadEditorProject, saveFileToLibrary } from "./doc-io";
 import { renderGridPreviewPng } from "./editor-preview-raster";
@@ -169,13 +170,11 @@ import { noteGridProbe, setGridProbe } from "./grid-univer/acceptance-probe";
 import { gridRecoveryReady } from "./grid-univer/open-settle";
 import {
   GRID_PRO_LABEL,
-  GRID_UNIVER_RECOVERY_EDITOR_ID,
   type GridLoadIdentity,
   gridExpectedSourcePresent,
   gridOpenFailedClosed,
   gridProjectSource,
   gridSnapshotIsUsable,
-  isUniverWorkbookSnapshot,
   listUniverSnapshotValues,
   planGridSameDocumentOpen,
   gridShouldSkipSourceReload,
@@ -287,7 +286,11 @@ export function GridUniverStage({
   const [reloadNonce, setReloadNonce] = useState(0);
   const [conversion, setConversion] = useState<GridConversionState>("converted");
   const [conversionNotice, setConversionNotice] = useState("");
+  const siteIdRef = useRef(siteId);
+  siteIdRef.current = siteId;
   const [editRevision, setEditRevision] = useState(0);
+  const editRevisionRef = useRef(0);
+  const publishingRef = useRef(false);
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
@@ -362,13 +365,24 @@ export function GridUniverStage({
   const liveItemRef = useRef(item);
   liveItemRef.current = item;
 
+  const currentSnapshot = useCallback((): Partial<IWorkbookData> => {
+    const workbook = handleRef.current?.api.getActiveWorkbook?.() as
+      | { save?: () => IWorkbookData; getSnapshot?: () => IWorkbookData }
+      | null
+      | undefined;
+    return workbook?.save?.() || workbook?.getSnapshot?.() || snapshotRef.current || {};
+  }, []);
+
   const bumpHistory = useCallback(() => {
+    // Univer.save() clones its model; keep that ready so capture is constant-time.
+    snapshotRef.current = currentSnapshot();
     noteGridProbe("person-write");
     applyGridUserEditSession(liveItemRef.current, "person-write");
-    setEditRevision((value) => value + 1);
+    editRevisionRef.current += 1;
+    setEditRevision(editRevisionRef.current);
     setDirty(true);
     setToolbarEpoch((value) => value + 1);
-  }, []);
+  }, [currentSnapshot]);
 
   /**
    * 取源那两样东西走 ref，不进加载 effect 的依赖数组。
@@ -424,8 +438,14 @@ export function GridUniverStage({
     ) {
       return;
     }
+    if (ownRevisionsRef.current.has(identity.revisionId) && loadedIdentityRef.current?.artifactId === identity.artifactId) {
+      loadedIdentityRef.current = identity;
+      return;
+    }
     loadedIdentityRef.current = null;
     sourceReadyRef.current = false;
+    editRevisionRef.current = 0;
+    setEditRevision(0);
     noteGridProbe("source-reload");
     let cancelled = false;
     const title = item.title || ttRef.current("工作簿");
@@ -569,7 +589,15 @@ export function GridUniverStage({
       return parkForDispose;
     }
     const preset = gridUniverCorePresetConfig(GRID_UNIVER_DEFAULT_MODE, container);
+    class LibraryImageIoService extends ImageIoService {
+      override async saveImage(file: File) {
+        const url = await uploadEditorMedia(file, file.name, siteIdRef.current);
+        const image = await super.saveImage(file);
+        return image ? { ...image, source: url, imageSourceType: ImageSourceType.URL } : image;
+      }
+    }
     const created = createUniver({
+      override: [[IImageIoService, { useClass: LibraryImageIoService }]],
       darkMode: darkRef.current,
       locale: LocaleType.ZH_CN,
       locales: {
@@ -745,7 +773,8 @@ export function GridUniverStage({
         // the snapshot installed before the room's initial apply.
         queueMicrotask(() => setGridProbe("liveCells", listUniverSnapshotValues(currentSnapshot())));
         applyGridUserEditSession(liveItemRef.current, "collab-activity");
-        setEditRevision((value) => value + 1);
+        // Remote hydration is not a user edit.
+        snapshotRef.current = currentSnapshot();
         setDirty(true);
       },
     });
@@ -799,16 +828,8 @@ export function GridUniverStage({
   }, [collabOn, collabRoom, item.artifactId]);
 
   useEffect(() => {
-    externalItemRef.current = null;
+    if (!ownRevisionsRef.current.has(String(item.revisionId || ""))) externalItemRef.current = null;
   }, [item.revisionId]);
-
-  const currentSnapshot = useCallback((): Partial<IWorkbookData> => {
-    const workbook = handleRef.current?.api.getActiveWorkbook?.() as
-      | { save?: () => IWorkbookData; getSnapshot?: () => IWorkbookData }
-      | null
-      | undefined;
-    return workbook?.save?.() || workbook?.getSnapshot?.() || snapshotRef.current || {};
-  }, []);
 
   const convertLegacy = useCallback(() => {
     setConversion((state) => nextGridConversionState(state, { type: "request" }));
@@ -951,8 +972,8 @@ export function GridUniverStage({
     [currentSnapshot, exportXlsx, item.title, tt, workbookBlob],
   );
 
-  const save = useCallback(async () => {
-    if (sourceFailedRef.current || !sourceReadyRef.current || !handleRef.current) {
+  const save = useCallback(async (prepared?: Partial<IWorkbookData>, preparedRevision?: number) => {
+    if (sourceFailedRef.current || !sourceReadyRef.current || (!prepared && !handleRef.current)) {
       setStatus(sourceFailureReason || tt("表格源尚未成功载入，未保存空白表。"));
       return null;
     }
@@ -962,8 +983,10 @@ export function GridUniverStage({
     }
     // 协同里只有房间里的保存者存版本；别人的画布内容会经房间同步给它。
     if (!collabSaveGate) return null;
+    if (publishingRef.current) return null;
+    const savingRevision = preparedRevision ?? editRevisionRef.current;
     const baseItem = externalItemRef.current ?? item;
-    const snapshot = currentSnapshot();
+    const snapshot = prepared ?? structuredClone(currentSnapshot());
     if (!gridSnapshotIsUsable(snapshot)) {
       setStatus(tt("表格源尚未成功载入，未保存空白表。"));
       return null;
@@ -976,12 +999,13 @@ export function GridUniverStage({
     const title = `${item.title || tt("工作簿")}-${tt("编辑版")}`;
     const fileStem =
       title.replace(/[\\/:*?"<>|]/g, "-").trim().slice(0, 180) || "workbook";
+    publishingRef.current = true;
     try {
       const result = await saveFileToLibrary({
         item: baseItem,
         siteId,
         fallbackSite: "excel",
-        idempotencyKey: `grid-univer:${editRevision}:${String(item.id).slice(-80)}`,
+        idempotencyKey: `grid-univer:${savingRevision}:${String(item.id).slice(-80)}`,
         createFile: async () => {
           const built = await buildGridXlsxFromUniverSnapshot(snapshot, {
             title,
@@ -1023,7 +1047,7 @@ export function GridUniverStage({
         artifactRevision: {
           artifactType: "grid",
           provenance: {
-            editorRevision: editRevision,
+            editorRevision: savingRevision,
             sheetCount: sheets.length,
           },
         },
@@ -1032,7 +1056,10 @@ export function GridUniverStage({
         setStatus(result.error || tt("保存失败"));
         return null;
       }
-      setDirty(false);
+      if (editRevisionRef.current === savingRevision) {
+        dirtyRef.current = false;
+        setDirty(false);
+      }
       noteGridProbe(`saved:${result.revisionId || ""}`);
       if (result.revisionId) ownRevisionsRef.current.add(String(result.revisionId));
       // Keep the server-confirmed head locally: the host may retain the opening
@@ -1046,13 +1073,14 @@ export function GridUniverStage({
     } catch (caught) {
       setStatus(caught instanceof Error ? caught.message : tt("保存失败"));
       return null;
+    } finally {
+      publishingRef.current = false;
     }
   }, [
     chipsManifest.chips,
     collabRoom,
     collabSaveGate,
     currentSnapshot,
-    editRevision,
     item,
     readonly,
     siteId,
@@ -1060,10 +1088,10 @@ export function GridUniverStage({
     tt,
   ]);
 
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (prepared?: Partial<IWorkbookData>, preparedRevision?: number) => {
     // 协同里不是保存者：没有要存的东西，别拦住「新开一轮对话」。
     if (!collabSaveGate) return { ok: true as const, item };
-    const saved = await save();
+    const saved = await save(prepared, preparedRevision);
     if (!saved) {
       return { ok: false as const, error: status || undefined };
     }
@@ -1400,26 +1428,32 @@ export function GridUniverStage({
           // 协同里只有保存者自动存版本；别人的改动由它存。
           autoSave: !readonly && collabSaveGate && !sourceFailed && snapshotReady,
           flush: saveBeforeNewConversation,
+          ...{ preparePublish: () => {
+            const snapshot = structuredClone(currentSnapshot());
+            const revision = editRevisionRef.current;
+            return () => saveBeforeNewConversation(snapshot, revision);
+          } },
           recovery: {
-            // 不接草稿层（不给 draftSchema）：草稿层下第 2 次起的改动只写隐藏「草稿」root、
-            // 顶栏照报「已保存」却不成新版本（R2 实测，同 W07）。每次保存都走版本提交（D11 §5.5）。
-            key: advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item),
+            draftSchema: GRID_WORKING_COPY_SCHEMA,
+            key: `grid:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: recoveryReady,
             capture: () => {
               if (sourceFailedRef.current || !sourceReadyRef.current || !snapshotReady || !handleRef.current) return null;
-              const snapshot = currentSnapshot();
+              const snapshot = snapshotRef.current;
               return gridSnapshotIsUsable(snapshot) ? snapshot : null;
             },
             restore: (payload) => {
               // 只认 Univer 工作簿快照：旧核写下的 `{sheets:[…]}` 草稿被拒，不灌进 Univer。
-              if (!isUniverWorkbookSnapshot(payload)) return false;
-              if (!gridSnapshotIsUsable(payload)) return false;
+              const snapshot = gridWorkingCopy(payload);
+              if (!snapshot) return false;
               const api = handleRef.current?.api;
               if (!api) return false;
               // 先建新簿再卸旧簿：先卸会让 Univer 空窗，新表常常不画。
-              replaceUniverWorkbookWithSnapshot(api, structuredClone(payload));
+              replaceUniverWorkbookWithSnapshot(api, structuredClone(snapshot));
               live.resetBaseline();
-              snapshotRef.current = payload as Partial<IWorkbookData>;
+              snapshotRef.current = snapshot;
+              dirtyRef.current = true;
+              setDirty(true);
               applyChrome(mode);
               return true;
             },

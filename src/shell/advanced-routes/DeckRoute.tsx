@@ -10,7 +10,8 @@ import {
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
 import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { DECK_WORKING_COPY_SCHEMA } from "../doc-editors/deck-working-copy";
+import { uploadEditorMedia } from "../doc-editors/editor-insert-media";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
@@ -235,11 +236,11 @@ export function DeckRoute({
     setPresentation({ surface: "stage-only", reason: "none" });
   }, [editor, presenterChannelName, tt]);
   useDeckMaterialAdapter(editor, item);
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (publish = editor.save) => {
     // Leaving a freshly opened document may force a flush even though nothing
     // changed. Return its existing version; exporting it would publish a phantom.
     if (!editor.dirty && editor.editRevision === 0) return { ok: true as const, item };
-    const saved = await editor.save();
+    const saved = await publish();
     if (!saved) return { ok: false as const };
     const receipt = advancedSavedItem(item, {
       url: saved.url,
@@ -258,6 +259,11 @@ export function DeckRoute({
       item: deckSavedItemForHandoff(receipt || item, saved),
     };
   }, [editor.save, editor.dirty, editor.editRevision, item]);
+  const bindPublishFlush = editor.bindFlush;
+  useEffect(() => {
+    bindPublishFlush(advancedSession?.flush ?? null);
+    return () => bindPublishFlush(null);
+  }, [advancedSession?.flush, bindPublishFlush]);
   const [importError, setImportError] = useState("");
   /**
    * 图片当插图插进当前页；演示文稿（pptx，以及先转成 pptx 的 ppt/odp/pot…）顶掉
@@ -265,21 +271,11 @@ export function DeckRoute({
    */
   const addLocalFiles = useCallback(
     async (files: File[]) => {
-      const read = (file: File) =>
-        new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = () => reject(new Error("图片读取失败"));
-          reader.onload = () =>
-            typeof reader.result === "string"
-              ? resolve(reader.result)
-              : reject(new Error("图片读取失败"));
-          reader.readAsDataURL(file);
-        });
       setImportError("");
       for (const file of files) {
         const outcome = await importDocFamilyFile(file, "deck");
         if (outcome.image) {
-          editor.insertImageElement(await read(outcome.file), outcome.file.name);
+          editor.insertImageElement(await uploadEditorMedia(outcome.file, outcome.file.name, siteId), outcome.file.name);
           continue;
         }
         if (!outcome.ok) {
@@ -289,7 +285,7 @@ export function DeckRoute({
         await editor.importSource(outcome.file);
       }
     },
-    [editor.importSource, editor.insertImageElement],
+    [editor.importSource, editor.insertImageElement, siteId],
   );
   /** PPTX 本地出；PDF 交给后端转一次，内容与下载的 PPTX 同源。 */
   const downloadAs = useCallback(
@@ -506,13 +502,15 @@ export function DeckRoute({
           editRevision: editor.editRevision,
           autoSave: collab.saveGate && !editor.sourceFailed,
           flush: saveBeforeNewConversation,
-          // 不接草稿层：草稿层下第 2 次起的改动只写隐藏「草稿」root、顶栏照报「已保存」，
-          // 却不成新版本（10-23 W07 实测 + SQL）。每次保存都走版本提交（D11 §5.5）。
+          ...{ preparePublish: () => {
+            const publish = editor.prepareSave();
+            return () => saveBeforeNewConversation(publish);
+          } },
           recovery: {
-            key: advancedRecoveryKey("deck", item),
+            draftSchema: DECK_WORKING_COPY_SCHEMA,
+            key: `deck:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: !editor.loading && !editor.sourceFailed,
-            capture: () =>
-              editor.sourceFailed ? null : structuredClone(editor.deck),
+            capture: editor.captureRecovery,
             restore: editor.restoreRecovery,
           },
         },

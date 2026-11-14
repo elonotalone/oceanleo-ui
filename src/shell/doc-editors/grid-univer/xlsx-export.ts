@@ -18,6 +18,8 @@
  * 超链接在单元格富文本 `p.body.customRanges`（rangeType 0）里，不在资源里。
  */
 import type { IWorkbookData } from "@univerjs/presets";
+import { fetchMediaBlob } from "../../../lib/media-proxy";
+import { gridImageDataUrlFromBlob } from "./material-image";
 import { sanitizeSheetName } from "../grid-model";
 import { formatWithNumberFormat, parseGridDateValue } from "../grid-format/number-format";
 import type { GridSheet } from "../grid-model";
@@ -960,7 +962,10 @@ export async function buildGridXlsxFromUniverSnapshot(
     const drawingData = drawingBlock && isObject(drawingBlock.data) ? drawingBlock.data : {};
     for (const raw of Object.values(drawingData)) {
       if (!isObject(raw)) continue;
-      const source = typeof raw.source === "string" ? raw.source : "";
+      let source = typeof raw.source === "string" ? raw.source : "";
+      if (/^https?:/i.test(source)) {
+        source = await gridImageDataUrlFromBlob(await fetchMediaBlob(source));
+      }
       const extension = imageExtension(source);
       const sheetTransform = isObject(raw.sheetTransform) ? raw.sheetTransform : null;
       const from = sheetTransform && isObject(sheetTransform.from) ? sheetTransform.from : null;

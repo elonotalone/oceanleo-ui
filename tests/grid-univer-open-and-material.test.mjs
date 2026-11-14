@@ -89,7 +89,8 @@ test("舞台：协同本地侧的活动不再标脏 / 加编辑序号（本人�
   assert.ok(block.length > 0);
   const guard = block.indexOf('if (origin !== "remote") return;');
   assert.ok(guard > 0, "本地活动必须在标脏之前返回");
-  assert.ok(guard < block.indexOf("setEditRevision"));
+  assert.doesNotMatch(block, /setEditRevision/, "remote hydration never impersonates a user edit");
+  assert.ok(guard < block.indexOf("setDirty"));
   // 撤销栈判据只在真只读 / 只能看时不算本人改动，等首同步时照算。
   assert.match(stage, /personWriteBlockedRef\.current = readonly \|\| \(collabOn && collabViewOnly\) \|\| loading \|\| !snapshotReady \|\| sourceFailed;/);
   assert.match(stage, /editBlockedRef: personWriteBlockedRef,/);

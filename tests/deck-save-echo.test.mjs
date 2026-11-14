@@ -111,7 +111,7 @@ test("deck saves are revisions, not the hidden draft tier", () => {
 
 test("a re-flush of an already committed edit returns the same receipt (no duplicate revision)", () => {
   const source = readFileSync(new URL("../src/shell/doc-editors/use-deck-editor.ts", import.meta.url), "utf8");
-  const save = source.slice(source.indexOf("const save = useCallback(async ()"), source.indexOf("const importSource = useCallback("));
+  const save = source.slice(source.indexOf("const publish = useCallback(async ("), source.indexOf("const importSource = useCallback("));
   assert.match(save, /lastSaved\.editRevision === savingRevision && lastSaved\.item === persistedItemRef\.current/);
   assert.match(save, /return lastSaved\.version;/);
   assert.match(save, /lastSavedRef\.current = \{ editRevision: savingRevision, item: handoff, version \}/);
@@ -125,6 +125,6 @@ test("closing a newly opened deck returns its existing identity before calling t
   const route = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
   const flush = route.slice(route.indexOf("const saveBeforeNewConversation = useCallback"), route.indexOf("const [importError"));
   assert.match(flush, /if \(!editor\.dirty && editor\.editRevision === 0\) return \{ ok: true as const, item \};/);
-  assert.ok(flush.indexOf("editor.editRevision === 0") < flush.indexOf("await editor.save()"));
+  assert.ok(flush.indexOf("editor.editRevision === 0") < flush.indexOf("await publish()"));
   assert.match(flush, /\[editor\.save, editor\.dirty, editor\.editRevision, item\]/);
 });

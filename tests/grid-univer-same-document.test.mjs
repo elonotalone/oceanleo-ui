@@ -32,6 +32,8 @@ import {
 } from "../src/shell/doc-editors/grid-univer/same-document.ts";
 
 const route = readFileSync("src/shell/advanced-routes/GridRoute.tsx", "utf8");
+import { GRID_WORKING_COPY_SCHEMA, gridWorkingCopy } from "../src/shell/doc-editors/grid-univer/working-copy.ts";
+
 const leaf = readFileSync("src/shell/doc-editors/GridUniverStage.tsx", "utf8");
 const sameDocument = readFileSync(
   "src/shell/doc-editors/grid-univer/same-document.ts",
@@ -52,7 +54,7 @@ test("typed native project survives legacy meta alias removal and validates real
   }
   assert.equal(gridSnapshotIsUsable({ sheets: { s: { rowCount: 20, columnCount: 8, cellData: {} } } }), true,
     "a validated blank sheet is legitimate; an uninitialized model is not");
-  assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !handleRef\.current/);
+  assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| \(!prepared && !handleRef\.current\)/);
   assert.match(leaf, /sourceFailedRef\.current \|\| !sourceReadyRef\.current \|\| !snapshotReady \|\| !handleRef\.current/);
   assert.match(leaf, /if \(!gridSnapshotIsUsable\(snapshot\)\)[\s\S]*?return null;/);
   assert.match(leaf, /if \(waitingForSource\) \{\s*sourceReadyRef\.current = sourceReadyRef\.current && gridShouldSkipSourceReload\(/,
@@ -339,13 +341,11 @@ test("舞台加载 effect 用 gridShouldSkipSourceReload 拦签名地址换发�
 
 // ---- 崩溃恢复（父 agent 收尾 W13 时补，浏览器实测：同键互灌导致 Univer 白画布） ----
 
-test("Univer 崩溃恢复键是 grid-univer：库里旧核留下的 grid:* 草稿不会被灌进来", () => {
-  assert.equal(GRID_UNIVER_RECOVERY_EDITOR_ID, "grid-univer");
-  assert.ok(
-    leaf.includes("advancedRecoveryKey(GRID_UNIVER_RECOVERY_EDITOR_ID, item)"),
-    "Univer 舞台必须用自己的恢复键",
-  );
-  assert.ok(!route.includes("advancedRecoveryKey("), "路由不再自己挂恢复");
+test("Univer working copies declare their schema and no longer depend on local recovery keys", () => {
+  assert.equal(GRID_WORKING_COPY_SCHEMA, "oceanleo.univer-working-document.v1");
+  assert.match(leaf, /draftSchema: GRID_WORKING_COPY_SCHEMA/);
+  assert.doesNotMatch(leaf, /advancedRecoveryKey/);
+  assert.ok(!route.includes("advancedRecoveryKey("));
 });
 
 test("Univer 只认工作簿快照：旧核 {sheets:[…]} 草稿被拒", () => {
@@ -356,7 +356,11 @@ test("Univer 只认工作簿快照：旧核 {sheets:[…]} 草稿被拒", () => 
 });
 
 test("恢复路径先过 isUniverWorkbookSnapshot，再先建后卸", () => {
-  assert.ok(leaf.includes("if (!isUniverWorkbookSnapshot(payload)) return false;"));
+  assert.equal(gridWorkingCopy({ sheets: [sheet("x")] }), null);
+  assert.equal(gridWorkingCopy({ sheets: {} }), null);
+  const valid = { sheets: { s1: { rowCount: 20, columnCount: 10, cellData: { 0: { 0: { v: "restored" } } } } } };
+  assert.deepEqual(gridWorkingCopy(valid), valid);
+  assert.match(leaf, /const snapshot = gridWorkingCopy\(payload\);\s*if \(!snapshot\) return false;/);
   assert.ok(
     !leaf.includes("if (unitId) api?.disposeUnit?.(unitId);\n              api?.createWorkbook?.(payload);"),
     "恢复不再先卸后建",

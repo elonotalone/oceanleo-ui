@@ -41,10 +41,10 @@ export function useGridMaterialAdapter(options: {
         const blob = await fetchMediaBlob(gridMaterialImageUrl(material), {
           maxBytes: GRID_IMAGE_MAX_BYTES,
         });
-        const dataUrl = await gridImageDataUrlFromBlob(blob).catch((error: Error) => {
+        await gridImageDataUrlFromBlob(blob).catch((error: Error) => {
           throw new Error(tt(error.message));
         });
-        if (!(await insertGridImageAtSelection(getApi() as GridImageInsertApi, dataUrl))) {
+        if (!(await insertGridImageAtSelection(getApi() as GridImageInsertApi, gridMaterialImageUrl(material)))) {
           throw new Error(tt("图片没有插进表格，请重试。"));
         }
       },

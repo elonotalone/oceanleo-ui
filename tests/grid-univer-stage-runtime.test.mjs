@@ -19,7 +19,7 @@ import { pathToFileURL } from "node:url";
 
 import React, { act } from "react";
 
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
 import { GRID_UNIVER_CHROME_ATTRS } from "../src/shell/doc-editors/grid-univer/stage-plan.ts";
 import {
   resetPluginModeCache,
@@ -114,6 +114,15 @@ const presetsStubUrl = dataModule(`
     counters.createUniver += 1;
     counters.lastConfig = config;
     let snapshot = null;
+    let topUndo = null;
+    let topRedo = null;
+    let commandCallback = null;
+    let statusCallback = null;
+    const undoService = {
+      pitchTopUndoElement: () => topUndo,
+      pitchTopRedoElement: () => topRedo,
+      undoRedoStatus$: { subscribe(cb) { statusCallback = cb; return { unsubscribe() { statusCallback = null; } }; } },
+    };
     const sheet = {
       getSheetId: () => "s1",
       getSheetName: () => "Sheet1",
@@ -126,8 +135,8 @@ const presetsStubUrl = dataModule(`
       getId: () => "wb",
       getActiveSheet: () => sheet,
       getSheets: () => [sheet],
-      getSnapshot: () => snapshot,
-      save: () => snapshot,
+      getSnapshot: () => structuredClone(snapshot),
+      save: () => structuredClone(snapshot),
       setEditable() {},
       onCommandExecuted: () => ({ dispose() {} }),
       undo() {}, redo() {},
@@ -138,11 +147,18 @@ const presetsStubUrl = dataModule(`
       disposeUnit() { snapshot = null; return true; },
       setUIVisible(part, visible) { counters.setUIVisible.push([part, visible]); },
       getFormula: () => ({ executeCalculation() {} }),
-      onCommandExecuted: () => ({ dispose() {} }),
+      onCommandExecuted: (cb) => { commandCallback = cb; return { dispose() { commandCallback = null; } }; },
       addEvent: () => ({ dispose() {} }),
       Event: {},
     };
+    counters.edit = (value = "Edited cell") => {
+      snapshot.sheets[Object.keys(snapshot.sheets)[0]].cellData = { 0: { 0: { v: value, t: 1 } } };
+      topUndo = {};
+      statusCallback?.();
+      commandCallback?.();
+    };
     const univer = {
+      __getInjector: () => ({ get: (id) => id === "IUndoRedoService" ? undoService : null }),
       dispose() { counters.dispose += 1; },
     };
     return { univer, univerAPI };
@@ -166,6 +182,7 @@ const presetNames = {
 const stubs = { "@univerjs/presets": presetsStubUrl };
 for (const [pkg, name] of Object.entries(presetNames)) {
   stubs[pkg] = dataModule(`export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService"; export const IRenderManagerService = "IRenderManagerService";`);
+  if (pkg.endsWith("drawing")) stubs[pkg] = dataModule(`export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const IImageIoService = "IImageIoService"; export class ImageIoService {async saveImage(){return {imageId:"native",source:"data:image/png;base64,AA==",imageSourceType:"BASE64",base64Cache:"AA==",status:"0"};}} export const ImageSourceType = { URL: "URL" };`);
   stubs[`${pkg}/locales/zh-CN`] = dataModule(`export default {};`);
   stubs[`${pkg}/lib/index.css`] = dataModule(``);
 }
@@ -215,11 +232,13 @@ stubs["../AdvancedWorkbenchShell"] = dataModule(`
   import { jsx, jsxs } from ${JSON.stringify(jsxRuntimeUrl)};
   export function AdvancedWorkbenchShell(props) {
     const adapter = props.adapter || {};
+    globalThis.__gridUniverRuntimeCounters.adapter = adapter;
     return jsxs("div", {
       "data-shell": "1",
       "data-status": adapter.status || "",
       children: [
         jsx("div", { "data-shell-stage": "1", children: adapter.stage || null }),
+        jsx("button", { "data-edit": "grid", onClick: () => { globalThis.__gridUniverRuntimeCounters.edit(); }, children: "Edit cell" }),
         jsx("div", {
           "data-shell-actions": (adapter.documentActions || []).map((a) => a.id).join(","),
         }),
@@ -228,11 +247,30 @@ stubs["../AdvancedWorkbenchShell"] = dataModule(`
   }
 `);
 
+stubs["./editor-insert-media"] = dataModule('export async function uploadEditorMedia(){globalThis.__gridUniverRuntimeCounters.imageUploads=(globalThis.__gridUniverRuntimeCounters.imageUploads||0)+1;return "https://example.invalid/upload.png";}');
+stubs["./doc-io"] = dataModule(`
+  export * from ${JSON.stringify(realModule("src/shell/doc-editors/doc-io.ts"))};
+  export async function saveFileToLibrary(input) {
+    const counters = globalThis.__gridUniverRuntimeCounters;
+    counters.publishInput = input;
+    return new Promise((resolve) => { counters.resolvePublish = () => resolve({ok:true,url:"https://example.invalid/saved.xlsx",versionId:"revision-grid",revisionId:"revision-grid",projectUrl:"https://example.invalid/grid.json",item:{...input.item,revisionId:"revision-grid"}}); });
+  }
+`);
+stubs["next/dynamic"] = dataModule(`
+  import {createElement,useEffect,useState} from ${JSON.stringify(pathToFileURL(require.resolve("react")).href)};
+  export default function dynamic(loader) {return function Dynamic(props) {
+    const [Component,setComponent]=useState(null);
+    useEffect(()=>{let alive=true;loader().then((component)=>{if(alive)setComponent(()=>component);});return ()=>{alive=false;};},[]);
+    return Component ? createElement(Component,props) : null;
+  };}
+`);
+
 const stageUrl = await compileModule(
   "src/shell/doc-editors/GridUniverStage.tsx",
   stubs,
 );
 const { GridUniverStage } = await import(stageUrl);
+const { GridRoute } = await import(await compileModule("src/shell/advanced-routes/GridRoute.tsx", stubs));
 
 /* -------------------------------- 工具 ---------------------------------- */
 
@@ -387,3 +425,106 @@ test("(b) 关掉文档：卸载当下 dispose 仍是 0，下一个宏任务里�
 // StrictMode 双挂双卸那条（收回停车的实例）在这里判不了：node 端 `react` 解析到
 // production 构建，StrictMode 不双跑 effect，写了也是空判。它的形状由
 // `grid-univer-stage-mode.test.mjs` 用 AST 盯着（parkedRef 收回分支）。
+
+
+test("working copy restores all workbook fields without a user revision and reports native edits", async () => {
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  resetCounters();
+  resetPluginModeCache();
+  const mounted = await mount(React.createElement(GridUniverStage, { item: blankItem(), onClose() {} }));
+  try {
+    await mounted.flush();
+    let persistence = counters.adapter.persistence;
+    assert.equal(persistence.editRevision, 0);
+    assert.equal(persistence.dirty, false);
+    assert.equal(persistence.recovery.draftSchema, "oceanleo.univer-working-document.v1");
+    const copy = persistence.recovery.capture();
+    copy.styles = { custom: { bl: 1, bg: { rgb: "#aabbcc" } } };
+    copy.resources = [{ name: "SHEET_NOTE_PLUGIN", data: JSON.stringify({ s1: { 0: { 0: "note" } } }) }];
+    await act(async () => { assert.equal(persistence.recovery.restore(copy), true); });
+    persistence = counters.adapter.persistence;
+    assert.equal(persistence.editRevision, 0, "server restoration is not a user edit");
+    assert.deepEqual(persistence.recovery.capture(), copy);
+    await act(async () => mounted.container.querySelector("[data-edit=grid]").click());
+    persistence = counters.adapter.persistence;
+    assert.equal(persistence.dirty, true);
+    assert.equal(persistence.editRevision, 1, "native undo-stack edit advances once");
+    assert.equal(persistence.recovery.capture().sheets[Object.keys(copy.sheets)[0]].cellData[0][0].v, "Edited cell");
+    const frozen = persistence.recovery.capture();
+    const next = structuredClone(frozen);
+    next.sheets[Object.keys(next.sheets)[0]].cellData[0][0].v = "Later";
+    await act(async () => { persistence.recovery.restore(next); });
+    assert.equal(frozen.sheets[Object.keys(copy.sheets)[0]].cellData[0][0].v, "Edited cell");
+    assert.equal(typeof persistence.preparePublish, "function");
+    assert.equal(errors.length, 0, errors.join("\n"));
+  } finally {
+    await mounted.unmount();
+    await nextMacrotask();
+    console.error = originalError;
+  }
+});
+
+
+test("real GridRoute: ready snapshot capture, concurrent edits and publication after unmount", async () => {
+  const errors = []; const originalError = console.error; console.error = (...args) => errors.push(args.join(" "));
+  resetCounters(); resetPluginModeCache(); counters.publishInput = null;
+  const mounted = await mount(React.createElement(GridRoute, { item: blankItem(), onClose() {} }));
+  try {
+    for (let i = 0; i < 20 && !mounted.container.querySelector("[data-edit=grid]"); i++) await mounted.flush();
+    await act(async () => mounted.container.querySelector("[data-edit=grid]").click());
+    let persistence = counters.adapter.persistence;
+    assert.equal(persistence.editRevision, 1); assert.equal(persistence.dirty, true);
+    const publish = persistence.preparePublish();
+    await act(async () => counters.edit("Later edit"));
+    let pending;
+    await act(async () => { pending = publish(); });
+    assert.equal(counters.publishInput.project.data.sheets[Object.keys(counters.publishInput.project.data.sheets)[0]].cellData[0][0].v, "Edited cell");
+    await act(async () => { counters.resolvePublish(); await pending; });
+    assert.equal(counters.adapter.persistence.dirty, true, "older publish cannot clear a newer edit");
+    const echoed = {...blankItem(),revisionId:"revision-grid",url:"https://example.invalid/saved.xlsx"};
+    await act(async () => mounted.root.render(React.createElement(GridRoute,{item:echoed,onClose(){}})));
+    assert.equal(counters.adapter.persistence.editRevision, 2, "own save echo is not a source reload");
+    const afterClose = counters.adapter.persistence.preparePublish();
+    await mounted.unmount(); await nextMacrotask();
+    pending = afterClose();
+    assert.equal(counters.publishInput.project.data.sheets[Object.keys(counters.publishInput.project.data.sheets)[0]].cellData[0][0].v, "Later edit");
+    counters.resolvePublish(); assert.equal((await pending).ok, true);
+    assert.deepEqual(errors, [], errors.join("\n"));
+  } finally {
+    if (mounted.container.isConnected) await mounted.unmount();
+    await nextMacrotask(); console.error = originalError;
+  }
+});
+
+
+test("real GridRoute capture stays within budget for a 72000-cell workbook", async () => {
+  const errors = []; const originalError = console.error; console.error = (...args) => errors.push(args.join(" "));
+  resetCounters(); resetPluginModeCache();
+  const mounted = await mount(React.createElement(GridRoute, {item:blankItem(),onClose(){}}));
+  try {
+    for (let i=0;i<20&&!mounted.container.querySelector("[data-edit=grid]");i++) await mounted.flush();
+    const doc = counters.adapter.persistence.recovery.capture();
+    const sheets = {};
+    for(let s=0;s<4;s++) { const cellData={};for(let r=0;r<1500;r++)cellData[r]=Object.fromEntries(Array.from({length:12},(_,c)=>[c,{v:`Row ${r} column ${c}`,t:1}]));sheets[`s${s}`]={id:`s${s}`,name:`Sheet ${s}`,rowCount:2000,columnCount:26,cellData}; }
+    const large={...doc,sheets,sheetOrder:Object.keys(sheets)};
+    await act(async()=>assert.equal(counters.adapter.persistence.recovery.restore(large),true));
+    const times=[];let copy;for(let i=0;i<9;i++){const start=performance.now();copy=counters.adapter.persistence.recovery.capture();times.push(performance.now()-start);}
+    times.sort((a,b)=>a-b);
+    console.log(`ROUTE_CAPTURE grid 4 sheets/72000 cells: bytes=${Buffer.byteLength(JSON.stringify(copy))} p50=${times[4].toFixed(2)}ms p95=${times[8].toFixed(2)}ms n=9`);
+    assert.ok(times[8]<=100);assert.deepEqual(copy,large);assert.deepEqual(errors,[]);
+  } finally {await mounted.unmount();await nextMacrotask();console.error=originalError;}
+});
+
+
+test("native Univer image insertion uploads the device file before returning a document reference", async () => {
+  resetCounters();resetPluginModeCache();counters.imageUploads=0;
+  const mounted=await mount(React.createElement(GridUniverStage,{item:blankItem(),onClose(){}}));
+  try {
+    await mounted.flush();
+    const ImageIo = counters.lastConfig.override[0][1].useClass;
+    const image=await new ImageIo().saveImage(new File(["image"],"local.png",{type:"image/png"}));
+    assert.equal(counters.imageUploads,1);assert.equal(image.source,"https://example.invalid/upload.png");assert.equal(image.imageSourceType,"URL");
+  } finally {await mounted.unmount();await nextMacrotask();}
+});
