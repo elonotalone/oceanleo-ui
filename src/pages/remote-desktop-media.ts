@@ -372,9 +372,11 @@ export async function openRemoteMedia(
   };
   const watchFrame = (_now?: number, metadata?: VideoFrameCallbackMetadata) => {
     if (closed) return;
-    const value = metadata as unknown as { presentationTime?: number; mediaTime?: number; rtpTimestamp?: number } | undefined;
+    const value = metadata as unknown as { expectedDisplayTime?: number; presentationTime?: number; mediaTime?: number; rtpTimestamp?: number } | undefined;
+    // Prefer the browser's expected scan-out time to submission-to-compositor time.
+    const presentedAt = Number.isFinite(value?.expectedDisplayTime) ? value!.expectedDisplayTime : value?.presentationTime;
     decodedFrame(value && {
-      ...(Number.isFinite(value.presentationTime) ? { presentation_time_ms: value.presentationTime } : {}),
+      ...(Number.isFinite(presentedAt) ? { presentation_time_ms: presentedAt } : {}),
       ...(value.mediaTime !== undefined && Number.isFinite(value.mediaTime) ? { media_time_ms: value.mediaTime * 1000 } : {}),
       ...(Number.isFinite(value.rtpTimestamp) ? { rtp_timestamp_90: value.rtpTimestamp } : {}),
     });

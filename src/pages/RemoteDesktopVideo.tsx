@@ -91,6 +91,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
           // C6 v3 measures only a validated code read from this displayed frame; unmarked age stays unknown.
           quality?.frame(); callbacks.current.onFrame(width, height);
           const measuring = measurementsRef.current, video = videoRef.current;
+          measuring?.invalidateFrame();
           const short = Math.min(width, height);
           if (measuring && video && short >= 256) {
             try {

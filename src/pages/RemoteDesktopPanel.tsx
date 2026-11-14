@@ -1105,7 +1105,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           {mediaMode === "artc" ? <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" data-remote-measure checked={measuring} onChange={event => setMeasuring(event.target.checked)} />{tt("测量延迟")}</label> : null}
           {measuring ? <small data-remote-measurements>
             {pictureMeasurements.picture_age_p50_ms !== undefined ? tt("画面延迟 p50/p95：{p50}/{p95} 毫秒", { p50: String(pictureMeasurements.picture_age_p50_ms), p95: String(pictureMeasurements.picture_age_p95_ms) }) : tt("画面延迟未知")}
-            {clockUncertainty !== undefined ? ` ±${Math.ceil(clockUncertainty)} ms` : ""}
+            {clockUncertainty !== undefined && pictureMeasurements.picture_age_p50_ms !== undefined ? ` ±${Math.ceil(clockUncertainty)} ms` : ""}
             {pictureMeasurements.input_to_picture_p50_ms !== undefined ? <><br />{tt("输入到画面标记 p50/p95：{p50}/{p95} 毫秒", { p50: String(pictureMeasurements.input_to_picture_p50_ms), p95: String(pictureMeasurements.input_to_picture_p95_ms) })}</> : null}
           </small> : null}
           <button type="button" onClick={() => fullscreen ? releaseRemoteDesktopFullscreen() : requestRemoteDesktopFullscreen()}>{tt(fullscreen ? "退出全屏" : "全屏")}</button>

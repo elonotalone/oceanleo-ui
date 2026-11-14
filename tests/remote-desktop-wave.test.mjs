@@ -104,3 +104,14 @@ test('measurement is opt-in; its switch sends C6 commands and reads only the tin
     await act(async()=>callbacks.frame(1440,900));assert.equal(reads,1,'off stops reading pixels');
   }finally{window.HTMLCanvasElement.prototype.getContext=getContext;}
 });
+
+
+test('rd_measure=1 explicitly opts into measuring while the controls remain collapsed',async()=>{
+  window.history.replaceState(null,'','/devices?rd_measure=1');
+  try{
+    await mount();const sent=[];
+    await act(async()=>callbacks.dataChannel({send(text){sent.push(JSON.parse(text));return true;},subscribe(){return ()=>{};}}));
+    assert.equal(panel(),null);assert.ok(sent.some(value=>value.t==='rd.measure'&&value.on===true));
+    await view.openToolbar();assert.equal(panel().querySelector('[data-remote-measure]').checked,true);
+  }finally{window.history.replaceState(null,'','/settings/devices');}
+});

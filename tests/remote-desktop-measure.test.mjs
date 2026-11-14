@@ -64,3 +64,11 @@ test('one-hour diagnostic traffic and frames have bounded histories; unmatched/s
   for(const key of ['ages','windowAges','inputAges','windowInputAges'])assert.ok(h.m[key].length<=2000,key);
   h.m.dispose();assert.equal(h.listeners.size,0);
 });
+
+
+test('an invalid or unmarked new frame cannot age the previously displayed marked picture',()=>{
+  const h=harness();h.calibrate();h.capture(50,0);h.m.takeWindow();
+  h.m.invalidateFrame();h.advance(2000);h.m.sampleCurrentPicture();
+  assert.deepEqual(h.m.takeWindow(),{});
+  h.m.displayed(-1,0);h.advance(2000);h.m.sampleCurrentPicture();assert.deepEqual(h.m.takeWindow(),{});
+});

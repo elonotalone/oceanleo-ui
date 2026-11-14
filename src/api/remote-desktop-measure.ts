@@ -74,8 +74,10 @@ export class RemoteDesktopMeasurements {
     // Retain only the latest 256 actual input writes, regardless of session length.
     while (this.inputs.size > 256) this.inputs.delete(this.inputs.keys().next().value!);
   }
+  invalidateFrame(): void { this.lastCapture = undefined; }
   /** The caller has validated the marker's sync pattern and parity on this displayed video frame. */
   displayed(captureLow24: number, appliedLow16: number, displayedAt = this.now()): void {
+    this.invalidateFrame();
     if (!this.enabled || this.offsets.length < 3 || !Number.isInteger(captureLow24) || captureLow24 < 0 || captureLow24 >= CAPTURE_WRAP || !Number.isInteger(appliedLow16) || appliedLow16 < 0 || appliedLow16 > 65535) return;
     const offset = this.clockOffset();
     if (offset === undefined) return;

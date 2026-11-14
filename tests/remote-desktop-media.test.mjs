@@ -30,7 +30,7 @@ function harness() {
   const abort = new AbortController();
   const handlers = { state: (...args) => states.push(args), frame: (...args) => frames.push(args), renew: async () => credentials() };
   return { engine, calls, states, frames, video, abort, handlers, events,
-    decoded(width = 1920, height = 1080) { video.videoWidth = width; video.videoHeight = height; video.readyState = 2; callback?.(); },
+    decoded(width = 1920, height = 1080, metadata) { video.videoWidth = width; video.videoHeight = height; video.readyState = 2; callback?.(0, metadata); },
     start: () => openRemoteMedia(credentials(), video, handlers, abort.signal, async () => ({ createEngine: () => engine })),
   };
 }
@@ -143,4 +143,15 @@ test("RTC renewal preserves a typed publisher failure and keeps untrusted except
     assert.equal(h.calls.filter(([name]) => name === "destroy").length, 1);
     await viewer.close();
   }
+});
+
+
+test("capture-to-display measurement prefers expected display time over compositor submission time",async()=>{
+  const h=harness(), viewer=await h.start();
+  try{
+    h.decoded(1920,1080,{expectedDisplayTime:150,presentationTime:134,mediaTime:2,rtpTimestamp:9000});
+    assert.equal(h.frames.at(-1)[2].presentation_time_ms,150);
+    h.decoded(1920,1080,{presentationTime:200});
+    assert.equal(h.frames.at(-1)[2].presentation_time_ms,200,"older browsers keep their available presentation estimate");
+  }finally{await viewer.close();}
 });
