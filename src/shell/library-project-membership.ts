@@ -34,16 +34,6 @@ export async function loadProjectMemberships(signal?: AbortSignal): Promise<Libr
   const result = await request<{ items?: LibraryProjectMembership[] }>("/v1/library/project-memberships", { signal });
   return Array.isArray(result.items) ? result.items : [];
 }
-export async function loadEditableProjects(signal?: AbortSignal): Promise<LibraryProject[]> {
-  const result = await request<{ items?: (LibraryProject & { role: string })[] }>("/v1/projects", { signal });
-  return (Array.isArray(result.items) ? result.items : []).filter(p => ["owner", "edit", "editor"].includes(p.role));
-}
-export async function addProjectLibraryReference(projectId: string, kind: "artifact" | "work", id: string): Promise<void> {
-  await request(`/v1/projects/${encodeURIComponent(projectId)}/library-items`, { method: "POST", body: JSON.stringify({ kind, id }) });
-}
-export async function removeProjectLibraryReference(projectId: string, kind: "artifact" | "work", id: string): Promise<void> {
-  await request(`/v1/projects/${encodeURIComponent(projectId)}/library-items/${kind}/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
 export async function loadLinkWorkItem(id: string, signal?: AbortSignal): Promise<LibraryItem | null> {
   const result = await request<{ work?: unknown }>(`/v1/works/${encodeURIComponent(id)}`, { signal });
   const work = normalizeLinkWork(result.work);

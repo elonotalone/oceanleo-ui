@@ -17,7 +17,6 @@ import {
 import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS } from "../../AppPageHeader";
 import type { ExplorePageProps } from "../../ExplorePage";
 import { BayAppShelf } from "../apps/BayAppShelf";
-import { BayInspirations } from "../BayInspirations";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
 import { BayLessonShelf } from "../lessons/BayLessonShelf";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
@@ -160,7 +159,6 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   const lesson = kind === "lesson";
   const [assetVisited, setAssetVisited] = useState(asset);
   const [view, setView] = useState<CollectionView>("grid");
-  const [inspirations, setInspirations] = useState(false);
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favoriteKeys, setFavoriteKeys] = useState<ReadonlySet<string> | null>(null);
   const search = useBaySearchText(filter);
@@ -205,19 +203,14 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           data-bay-page-feed
           data-bay-listing-view={view}
         >
-          {inspirations ? <header className={APP_PAGE_HEADER_ROW_CLASS}><h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1></header> : <Hero
+          <Hero
             filter={filter}
             search={search}
             view={view}
             onViewChange={setView}
             favoritesOnly={favoritesOnly}
             onFavoritesOnly={setFavoritesOnly}
-          />}
-          <nav aria-label="LeoBay" className="flex gap-3 py-2">
-            <button type="button" aria-pressed={!inspirations} onClick={() => setInspirations(false)} className={BTN_GHOST}>{tt("市场")}</button>
-            <button type="button" aria-pressed={inspirations} onClick={() => setInspirations(true)} className={BTN_GHOST}>{tt("灵感")}</button>
-          </nav>
-          {inspirations ? <BayInspirations siteKey={siteKey} /> : <>
+          />
           <CollectionFilterRow data-bay-page-toolbar="" data-bay-page-filters="">
             <BayViewSwitch filter={filter} />
             {asset ? <BayToolbarFilterSlot /> : <BayCategorySelect filter={filter} />}
@@ -247,7 +240,6 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
               />
             </div>
           )}
-          </>}
         </div>
       </BayListingChromeContext.Provider>
     </BayToolbarSlotProvider>

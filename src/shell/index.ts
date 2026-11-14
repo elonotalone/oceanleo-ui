@@ -232,6 +232,7 @@ export {
   getArtifactEditDecision,
   getArtifactItem,
   listPrimaryArtifacts,
+  listMyArtifacts,
   prepareArtifactForAction,
   refreshArtifactRendition,
   retireArtifact,

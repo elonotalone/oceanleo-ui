@@ -36,11 +36,6 @@ const { WorkspaceHome } = await import(await compileModule("src/shell/result-can
   "./inspirations/InspirationPanel": panelUrl,
   "./workspace-session-context": dataModule("export function useOptionalWorkspaceSession(){return null}"),
 }));
-const { BayInspirations } = await import(await compileModule("src/shell/bay/BayInspirations.tsx", {
-  "../../i18n/ui/useUI": ui,
-  "../../lib/auth/config": gateway,
-  "../inspirations/InspirationPanel": panelUrl,
-}));
 
 function composerFixture() {
   const split = document.createElement("div");
@@ -222,44 +217,6 @@ test("restored card requests its app and reveals/fills its own left agent", asyn
   }
 });
 
-test("LeoBay filters platform prompts by site/app without publication controls", async () => {
-  const host = document.createElement("div");
-  document.body.append(host);
-  const root = createRoot(host), original = globalThis.fetch, urls = [];
-  globalThis.__bayInspirationTest = { scope: null, focus: null };
-  globalThis.fetch = async (url, init) => {
-    urls.push(url);
-    assert.equal(init.credentials, "omit");
-    if (url.endsWith("/scopes")) return response({ items: [
-      { site_key: "website", app_id: "landing", count: 7 },
-      { site_key: "music", app_id: "song", count: 7 },
-    ] });
-    const params = new URL(url).searchParams;
-    return response({ items: [{ ...inspiration,
-      site_key: params.get("siteKey") || "website", app_id: params.get("appId") || "landing",
-      prompt: "Read-only prompt",
-    }], total: 1 });
-  };
-  try {
-    await act(async () => root.render(h(BayInspirations, { siteKey: "website" })));
-    assert.match(host.textContent, /Read-only prompt/);
-    assert.equal(host.querySelectorAll("[data-inspiration-id]").length, 0);
-    assert.equal([...host.querySelectorAll("button")].some(button => /发布|出售|购买/.test(button.textContent)), false);
-    const site = host.querySelector('select[aria-label="站点"]');
-    await act(async () => { site.value = "music"; site.dispatchEvent(new window.Event("change", { bubbles: true })); });
-    const app = host.querySelector('select[aria-label="应用"]');
-    assert.ok([...app.options].some(option => option.value === "song"));
-    await act(async () => { app.value = "song"; app.dispatchEvent(new window.Event("change", { bubbles: true })); });
-    const filtered = new URL(urls.at(-1)).searchParams;
-    assert.equal(filtered.get("siteKey"), "music");
-    assert.equal(filtered.get("appId"), "song");
-  } finally {
-    await act(async () => root.unmount());
-    host.remove();
-    globalThis.fetch = original;
-    delete globalThis.__bayInspirationTest;
-  }
-});
 
 test("API failures stay visible and retry reloads the same app", async () => {
   const host = document.createElement("div");

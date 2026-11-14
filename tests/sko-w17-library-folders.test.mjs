@@ -1,3 +1,4 @@
+import "./helpers/w1-jsdom-window.mjs";
 // skills-overhaul W17（2026-10-24）：Library「文件夹」类别。
 // 合同 §0 D5 / §1 A14：能列出、打开（左树右文）、下载、删除、上传 zip 成文件夹；
 // 技能文件夹带「技能」角标与开关。浏览器未授权（D15），这里用纯函数、SSR 渲染与源码断言。
@@ -8,7 +9,7 @@ import { createRequire, register } from "node:module";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
-import React from "react";
+import React, { act } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -28,6 +29,9 @@ const abs = (p) => /^https?:/.test(p) ? p : "${GATEWAY}" + (p.startsWith("/") ? 
 export const folderApi = {
   gatewayAbsoluteUrl: abs,
   folderDownloadUrl: (id) => abs("/v1/folders/" + id + "/download"),
+  async getFolder(){return globalThis.__wdFolderLoad;},
+  async downloadFromGateway(url,name){globalThis.__wdFolderCalls.push({url,name});return {ok:true};},
+  async updateFolder(id,body){globalThis.__wdFolderCalls.push({id,body});return {ok:true,data:{...globalThis.__wdFolder,skill:{...globalThis.__wdFolder.skill,...body}}};},
 };
 export function ConfigDialogShell(p) {
   return h("section", { "data-stub": "dialog", "data-test-id": p.testId },
@@ -37,7 +41,7 @@ export function ConfigDialogShell(p) {
 export function FolderTreeViewer(p) { return h("div", { "data-stub": "tree", "data-initial": p.initialPath || "" }); }
 export function SkillCover(p) { return h("img", { "data-stub": "cover", src: p.src || "", alt: "" }); }
 export function ConfigToggle(p) {
-  return h("button", { type: "button", role: "switch", "aria-checked": p.checked, "aria-label": p.label, disabled: p.disabled });
+  return h("button", { type: "button", role: "switch", "aria-checked": p.checked, "aria-label": p.label, disabled: p.disabled, onClick:()=>p.onChange(!p.checked) });
 }
 `);
 const authStub = dataModule(`export async function accessToken() { return null; }`);
@@ -109,17 +113,6 @@ test("upload accepts .zip/.skill within 20 MB; uploaded skills announce they sta
   assert.equal(mod.uploadNotice({ skill: null }), "文件包已上传");
 });
 
-test("copy-to-project lists only projects the user can write", () => {
-  const rows = mod.copyTargetProjects([
-    { id: "p1", name: "Mine", role: "owner" },
-    { id: "p2", name: "Shared edit", role: "edit" },
-    { id: "p3", name: "Shared view", role: "view" },
-    { id: "p4", name: "Site", role: "owner", kind: "website" },
-    { name: "no id" },
-    null,
-  ]);
-  assert.deepEqual(rows.map((row) => row.id), ["p1", "p2"]);
-});
 
 test("skill folder card: 技能 badge + switch; plain folder: folder icon, no switch; meta line counts files", () => {
   const skillCard = renderToStaticMarkup(
@@ -168,7 +161,7 @@ test("skill folder card: 技能 badge + switch; plain folder: folder icon, no sw
   assert.match(readOnly, /role="switch"[^>]*disabled=""/);
 });
 
-test("detail: big dialog with download / copy-to-project / delete; official shows 随官方更新; tree viewer after load", () => {
+test("detail: big dialog with download / delete without project copying; official shows 随官方更新; tree viewer after load", () => {
   const html = renderToStaticMarkup(
     React.createElement(mod.LibraryFolderDetail, {
       folderId: "f1",
@@ -181,10 +174,11 @@ test("detail: big dialog with download / copy-to-project / delete; official show
   assert.match(html, /data-test-id="library-folder-detail"/);
   assert.match(html, /<h2>Brand kit<\/h2>/);
   assert.match(html, /data-library-folder-official=""[^]*官方 · 随官方更新/);
-  for (const action of ["download", "copy", "delete"]) {
+  for (const action of ["download", "delete"]) {
     assert.match(html, new RegExp(`data-library-folder-action="${action}"`), action);
   }
   assert.match(html, /role="switch"/);
+  assert.doesNotMatch(html, /data-library-folder-action="copy"|复制到项目/);
   const viewOnly = renderToStaticMarkup(
     React.createElement(mod.LibraryFolderDetail, {
       folderId: "f2",
@@ -218,7 +212,7 @@ test("source wiring: Library mounts the folders view for the folders category an
   assert.match(folders, /folderApi\.importFolderZip\(file\)/);
   assert.match(folders, /folderApi\.deleteFolder\(/);
   assert.match(folders, /folderApi\.updateFolder\(folder\.id, \{ enabled: next \}\)/);
-  assert.match(folders, /folderApi\.copyFolderToProject\(/);
+  assert.doesNotMatch(folders, /folderApi\.copyFolderToProject\(/);
   assert.match(folders, /folderApi\.downloadFromGateway\(/);
   assert.match(folders, /<FolderTreeViewer/);
   assert.match(folders, /<FolderDeleteConfirm/);
@@ -317,4 +311,30 @@ test("folder strip: newest first, capped, compact cards with 技能 badge", () =
   assert.match(html, /文件包 · 3 个文件/);
   // 没有文件夹时整段不渲染（首帧 SSR 也是空的，不会闪一个空标题）。
   assert.equal(renderToStaticMarkup(React.createElement(mod.LibraryFoldersStrip, { onViewAll() {} })), "");
+});
+
+test("real folder detail loads, downloads and toggles skills without a project-copy entry", async()=>{
+ const {createRoot}=await import('react-dom/client');
+ globalThis.IS_REACT_ACT_ENVIRONMENT=true;
+ const fixture=folder({skill:{name:'brand-kit',description:'',enabled:false}});
+ globalThis.__wdFolder=fixture;globalThis.__wdFolderCalls=[];
+ let resolve;globalThis.__wdFolderLoad=new Promise(done=>{resolve=done;});
+ const errors=[],previous=console.error;console.error=(...args)=>errors.push(args.map(String).join(' '));
+ const host=document.createElement('div');document.body.append(host);const root=createRoot(host);
+ const changed=[];
+ try{
+  await act(async()=>root.render(React.createElement(mod.LibraryFolderDetail,{folderId:'f1',onClose(){},onChanged:value=>changed.push(value),onDeleted(){}})));
+  await act(async()=>resolve({ok:true,data:{folder:fixture,tree:[{type:'file',path:'SKILL.md'}]}}));
+  assert.equal(host.querySelectorAll('[data-library-folder-action="copy"]').length,0);
+  assert.doesNotMatch(host.textContent,/复制到项目|加入项目/);
+  assert.ok(host.querySelector('[data-stub="tree"]'));
+  await act(async()=>host.querySelector('[data-library-folder-action="download"]').click());
+  assert.deepEqual(globalThis.__wdFolderCalls[0],{url:'https://api.dev.example/v1/folders/f1/download',name:'Brand kit.zip'});
+  await act(async()=>host.querySelector('[role="switch"]').click());
+  assert.equal(changed[0].skill.enabled,true);
+  assert.equal(host.querySelector('[role="switch"]').getAttribute('aria-checked'),'true');
+ }finally{
+  resolve?.({ok:false,error:'cancelled'});await act(async()=>root.unmount());host.remove();console.error=previous;
+  assert.deepEqual(errors,[],'no console.error, including hook errors');
+ }
 });

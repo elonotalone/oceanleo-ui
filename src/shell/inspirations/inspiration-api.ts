@@ -9,7 +9,6 @@ export interface BayInspiration {
   position: number;
   source: "catalog";
 }
-export interface InspirationScope { site_key: string; app_id: string; count: number }
 
 export function inspirationUrl(base: string, scope: { siteKey?: string; appId?: string; offset?: number; limit?: number }): string {
   const params = new URLSearchParams({ limit: String(scope.limit ?? 200), offset: String(scope.offset ?? 0) });
@@ -22,10 +21,4 @@ export async function fetchInspirations(base: string, scope: { siteKey?: string;
   const response = await fetch(inspirationUrl(base, scope), { signal, credentials: "omit" });
   if (!response.ok) throw new Error("Inspiration catalog unavailable");
   return response.json();
-}
-
-export async function fetchInspirationScopes(base: string, signal?: AbortSignal): Promise<InspirationScope[]> {
-  const response = await fetch(`${base.replace(/\/$/, "")}/v1/bay/inspirations/scopes`, { signal, credentials: "omit" });
-  if (!response.ok) throw new Error("Inspiration scopes unavailable");
-  return (await response.json()).items;
 }

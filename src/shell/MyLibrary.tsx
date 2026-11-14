@@ -94,14 +94,13 @@ import {
   type WorkspaceLibraryEntry,
   workspaceEntryFromLibraryItem,
 } from "./WorkspaceLibrary";
-import type { WorkspaceEntryMenuItem } from "./workspace-library-view";
 import { adoptSavedEditorItem } from "./advanced-session";
 import { MaterialStandaloneEditor } from "./library-standalone-editor-host";
 import { preloadEditorFor } from "./editor-preload";
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 import type { WorkbenchMaterialActionAvailability } from "./workbench-material-registry";
 import type { WorkspaceActionEnvelope } from "./workspace-actions";
-import { addProjectLibraryReference, removeProjectLibraryReference, loadEditableProjects, loadProjectMemberships, loadLinkWorkItem, libraryReference, projectNames, LibraryProjectContext, type LibraryProjectMembership } from "./library-project-membership";
+import { loadProjectMemberships, loadLinkWorkItem, projectNames, LibraryProjectContext, type LibraryProjectMembership } from "./library-project-membership";
 import { FloatingMenu, FloatingMenuItem } from "../ui/menu/FloatingMenu";
 // Memo opens only on request; loading it with the Library would pull the IM client into every Library view.
 const LibraryMemoPage = lazy(() => import("./library-memo/LibraryMemoPage").then((module) => ({ default: module.LibraryMemoPage })));
@@ -1483,32 +1482,6 @@ export function MyLibrary({
     if (item) void preloadEditorFor(item);
   }, []);
 
-  const projectEntryMenuItems = useCallback((entry: WorkspaceLibraryEntry): readonly WorkspaceEntryMenuItem[] => {
-    const ref = entry.libraryItem && libraryReference(entry.libraryItem);
-    if (!ref) return [];
-    return [{ label: tt("加入项目"), children: async () => {
-      const projects = await loadEditableProjects();
-      return projects.map(project => {
-        const selected = memberships.some(m => m.kind === ref.kind && m.id === ref.id && m.projects.some(p => p.id === project.id));
-        return { label: project.name, selected, onSelect: async () => {
-          try {
-            await (selected ? removeProjectLibraryReference : addProjectLibraryReference)(project.id, ref.kind, ref.id);
-            // Ignore a slower initial read; reflect the successful mutation immediately.
-            const epoch = ++membershipEpoch.current;
-            setMemberships(current => {
-              const prior = current.find(m => m.kind === ref.kind && m.id === ref.id);
-              const next = (prior?.projects || []).filter(p => p.id !== project.id);
-              if (!selected) next.push(project);
-              next.sort((a, b) => a.name.localeCompare(b.name));
-              return [...current.filter(m => m.kind !== ref.kind || m.id !== ref.id), { ...ref, projects: next }];
-            });
-            void loadProjectMemberships().then(value => { if (epoch === membershipEpoch.current) setMemberships(value); }).catch(() => {});
-          } catch { setUploadError(tt("项目更新失败，请重试。")); }
-        } };
-      });
-    } }];
-  }, [memberships, tt]);
-
   const [directItem, setDirectItem] = useState<{ nonce: string; item: LibraryItem | null } | null>(null);
   const directItemId = action?.action.tab === "mine" && !action.action.intent && action.action.itemId !== "memo" ? action.action.itemId : undefined;
   useEffect(() => {
@@ -2369,7 +2342,6 @@ export function MyLibrary({
           onMaterialDragStart={onMaterialDragStart}
           onMaterialDragEnd={onMaterialDragEnd}
           toolbarActions={toolbar}
-          entryMenuItems={projectEntryMenuItems}
           searchPlaceholder="search"
           emptyTitle={
             displayLoading

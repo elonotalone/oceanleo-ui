@@ -192,6 +192,8 @@ async function mount(element) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
+  const errors = [], originalError = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(" "));
   await act(() => {
     root.render(element);
   });
@@ -203,6 +205,8 @@ async function mount(element) {
     async unmount() {
       await act(() => root.unmount());
       host.remove();
+      console.error = originalError;
+      assert.deepEqual(errors, [], "no console.error, including hook errors");
     },
   };
 }
@@ -213,6 +217,9 @@ const count = (text, pattern) => (text.match(pattern) || []).length;
 test("页头只有「我的」和「发布」两个键", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
+  assert.equal(view.host.querySelector("[data-bay-inspirations]"), null);
+  assert.equal([...view.host.querySelectorAll("button")].some(button => /^(灵感|市场|Inspirations?)$/.test(button.textContent)), false);
+  assert.ok(view.host.querySelector("[data-bay-page-toolbar]"));
   const actions = view.host.querySelector("[data-bay-page-actions]");
   assert.ok(actions);
   const actionKeys = [...actions.querySelectorAll("[data-bay-action]")].map((node) => node.getAttribute("data-bay-action"));

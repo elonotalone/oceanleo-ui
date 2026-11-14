@@ -4,7 +4,7 @@
 // Library「文件夹」类别（skills-overhaul W17，2026-10-24，合同 §0 D5 / §3.2 / §3.4）
 // ----------------------------------------------------------------------------
 // 技能就是一个装着文件树的条目。这份文件放文件夹类别的全部界面：卡片、详情
-// （左树右文 + 下载 / 删除 / 启用停用 / 复制到项目）、上传 .zip。其余 Library
+// （左树右文 + 下载 / 删除 / 启用停用）、上传 .zip。其余 Library
 // 文件只做接线（`ArtifactLibrary.tsx` 在选中「文件夹」类别时挂这里的整页视图）。
 //
 // 选「独立渲染分支」而不是新增 `LibraryKind`："folder" 一旦进 `LibraryKind`，
@@ -19,7 +19,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LibraryImportDialog, LibraryUploadQueue, LibraryPurchasedUpdates, type LibraryImportMode } from "./library-import";
 import { useUI } from "../i18n/ui/useUI";
-import { accessToken } from "../lib/auth/client";
 import { Modal, SkeletonCard, timeAgo } from "../ui";
 import { APP_PAGE_TITLE_CLASS } from "./AppPageHeader";
 import { LibraryToolbar } from "./LibraryLayout";
@@ -139,57 +138,6 @@ export function uploadNotice(folder: Pick<Folder, "skill">): string {
   return folder.skill ? "来自上传的技能默认关闭，确认内容后再启用" : "文件包已上传";
 }
 
-export interface CopyTargetProject {
-  id: string;
-  name: string;
-  icon?: string | null;
-  role?: string;
-}
-
-/** 只列能写的项目（owner / edit）；`kind='website'` 的行网关本来就不返回。 */
-export function copyTargetProjects(rows: readonly unknown[]): CopyTargetProject[] {
-  const out: CopyTargetProject[] = [];
-  for (const row of rows) {
-    if (!row || typeof row !== "object") continue;
-    const rec = row as Record<string, unknown>;
-    const id = typeof rec.id === "string" ? rec.id : "";
-    if (!id) continue;
-    const role = typeof rec.role === "string" ? rec.role : "owner";
-    if (role !== "owner" && role !== "edit") continue;
-    if (rec.kind === "website") continue;
-    out.push({
-      id,
-      name: typeof rec.name === "string" ? rec.name : "",
-      icon: typeof rec.icon === "string" ? rec.icon : null,
-      role,
-    });
-  }
-  return out;
-}
-
-async function listCopyTargetProjects(): Promise<
-  { ok: true; data: CopyTargetProject[] } | { ok: false; error: string }
-> {
-  let token: string | null = null;
-  try {
-    token = await accessToken();
-  } catch {
-    token = null;
-  }
-  if (!token) return { ok: false, error: "请先登录" };
-  try {
-    const res = await fetch(folderApi.gatewayAbsoluteUrl("/v1/projects"), {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-    if (!res.ok) return { ok: false, error: "项目列表不可用。" };
-    const body = (await res.json().catch(() => null)) as { items?: unknown[] } | null;
-    return { ok: true, data: copyTargetProjects(Array.isArray(body?.items) ? body!.items : []) };
-  } catch {
-    return { ok: false, error: "网络连接失败，请重试" };
-  }
-}
-
 // ---------------------------------------------------------------------------
 // 图标（线性，stroke 1.75，currentColor）
 // ---------------------------------------------------------------------------
@@ -239,14 +187,6 @@ function TrashGlyph() {
   );
 }
 
-function CopyGlyph() {
-  return (
-    <Svg>
-      <rect x="8.5" y="8.5" width="11" height="11" rx="2" />
-      <path d="M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2" />
-    </Svg>
-  );
-}
 
 function UploadGlyph() {
   return (
@@ -353,100 +293,6 @@ export function LibraryFolderCard({
 // 详情（左树右文 + 操作）
 // ---------------------------------------------------------------------------
 
-function CopyToProjectPicker({
-  folder,
-  onDone,
-  onClose,
-}: {
-  folder: Folder;
-  onDone: (message: string, vars?: Record<string, string | number>) => void;
-  onClose: () => void;
-}) {
-  const tt = useUI();
-  const [projects, setProjects] = useState<CopyTargetProject[] | null>(null);
-  const [error, setError] = useState("");
-  const [busyId, setBusyId] = useState("");
-
-  useEffect(() => {
-    let alive = true;
-    void listCopyTargetProjects().then((result) => {
-      if (!alive) return;
-      if (result.ok) setProjects(result.data);
-      else {
-        setProjects([]);
-        setError(result.error);
-      }
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  const copy = async (project: CopyTargetProject) => {
-    setBusyId(project.id);
-    setError("");
-    const result = await folderApi.copyFolderToProject(folder.id, project.id);
-    setBusyId("");
-    if (!result.ok) {
-      setError(result.error);
-      return;
-    }
-    onDone("已复制到项目「{name}」", { name: project.name || tt("未命名项目") });
-  };
-
-  return (
-    <div
-      role="dialog"
-      aria-label={tt("复制到项目")}
-      data-library-folder-copy-picker=""
-      className="absolute right-0 top-full z-20 mt-2 w-[min(320px,calc(100vw-48px))] rounded-2xl border border-neutral-200 bg-white p-2 shadow-lg"
-    >
-      <div className="flex items-center justify-between px-2 py-1.5">
-        <p className="text-[13px] font-semibold text-neutral-900">{tt("复制到项目")}</p>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md px-1.5 text-[12px] text-neutral-500 hover:bg-neutral-100"
-        >
-          {tt("取消")}
-        </button>
-      </div>
-      <p className="px-2 pb-2 text-[12px] leading-relaxed text-neutral-500">
-        {tt("会复制一份进项目，项目成员都能看到；你在 Library 里的这份不受影响。")}
-      </p>
-      {projects === null ? (
-        <p className="px-2 py-3 text-[12px] text-neutral-400">{tt("加载中…")}</p>
-      ) : projects.length === 0 && !error ? (
-        <p className="px-2 py-3 text-[12px] text-neutral-400">{tt("还没有可写入的项目")}</p>
-      ) : (
-        <div className="max-h-64 overflow-y-auto">
-          {projects.map((project) => (
-            <button
-              key={project.id}
-              type="button"
-              disabled={Boolean(busyId)}
-              onClick={() => void copy(project)}
-              data-library-folder-copy-target={project.id}
-              className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-[13px] text-neutral-800 hover:bg-neutral-50 disabled:opacity-50"
-            >
-              <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-neutral-100 text-[12px]">
-                {project.icon || <FolderGlyph className="h-3.5 w-3.5" />}
-              </span>
-              <span className="min-w-0 flex-1 truncate">{project.name || tt("未命名项目")}</span>
-              {busyId === project.id ? <span className="v-spinner text-[10px]" /> : null}
-            </button>
-          ))}
-        </div>
-      )}
-      {error ? (
-        <p role="alert" className="px-2 pb-1 pt-2 text-[12px] text-rose-600">
-          {tt(error)}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
 export function LibraryFolderDetail({
   folderId,
   initial,
@@ -466,7 +312,6 @@ export function LibraryFolderDetail({
   const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState<{ text: string; vars?: Record<string, string | number>; error?: boolean } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [busy, setBusy] = useState<"" | "download" | "toggle">("");
 
   useEffect(() => {
@@ -587,28 +432,6 @@ export function LibraryFolderDetail({
         <DownloadGlyph />
         {tt("下载 zip")}
       </button>
-      <div className="relative">
-        <button
-          type="button"
-          className={DETAIL_BTN}
-          onClick={() => setPickerOpen((value) => !value)}
-          aria-expanded={pickerOpen}
-          data-library-folder-action="copy"
-        >
-          <CopyGlyph />
-          {tt("复制到项目")}
-        </button>
-        {pickerOpen ? (
-          <CopyToProjectPicker
-            folder={folder}
-            onClose={() => setPickerOpen(false)}
-            onDone={(text, vars) => {
-              setPickerOpen(false);
-              setNotice({ text, vars });
-            }}
-          />
-        ) : null}
-      </div>
       {folder.can_edit ? (
         <button
           type="button"

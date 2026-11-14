@@ -588,8 +588,7 @@ export function ProjectConfigCard({
   };
   const onAddClick = (event: ReactMouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
-    if (onOpen) onOpen();
-    else addAction?.onClick();
+    addAction?.onClick();
   };
   return (
     <section

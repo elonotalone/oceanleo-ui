@@ -123,3 +123,25 @@ test('full Library pagination spinner clears after the final page',async()=>{
   assert.deepEqual(errors,[]);
  }finally{gate.resolve();if(mounted)await dispose(mounted);globalThis.fetch=originalFetch;console.error=originalError;}
 });
+
+test('real Library cards retain opening and have no project-add menu', async () => {
+ const originalFetch=globalThis.fetch, originalError=console.error, errors=[];
+ console.error=(...args)=>errors.push(args.map(String).join(' '));
+ globalThis.fetch=async(url)=>String(url).includes('/v1/library/mine') ? json(minePage()) : json({items:[]});
+ let mounted;
+ try {
+  mounted=await render(React.createElement(MyLibrary));
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,20));});
+  const card=mounted.host.querySelector('[data-collection-card-main]');
+  assert.ok(card, 'the Library item is still a card');
+  assert.equal(mounted.host.querySelectorAll('button[aria-label="更多操作"]').length,0,'the deleted project menu has no Library trigger');
+  assert.doesNotMatch(mounted.host.textContent,/加入项目|Add to project/);
+  await act(async()=>card.click());
+  assert.ok(mounted.host.querySelector('article'),'the item opens in the real Library detail host');
+  assert.match(mounted.host.querySelector('article').textContent,/oceandino/);
+  assert.doesNotMatch(mounted.host.textContent,/加入项目|Add to project/);
+ } finally {
+  if(mounted)await dispose(mounted);globalThis.fetch=originalFetch;console.error=originalError;
+  assert.deepEqual(errors,[], 'no console.error, including hook errors');
+ }
+});
