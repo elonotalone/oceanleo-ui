@@ -41,6 +41,7 @@ const splitUrl = await compileModule("src/shell/SplitWorkspace.tsx", {
 });
 const { SplitWorkspace, useWorkspacePane } = await import(splitUrl);
 const helpers = await import(await compileModule("src/shell/inline-advanced-shell-helpers.ts"));
+const { EditBarFloatingPanel } = await import(await compileModule("src/shell/EditBarFloatingPanel.tsx", { "../i18n/ui/useUI": ui, "./plugin-theme": dataModule(`export function PluginThemeScope({children}){return children;}`) }));
 const { useInlineAdvancedPanels } = await import(await compileModule("src/shell/use-inline-advanced-panels.tsx", {
   "../i18n/ui/useUI": ui,
   "../ui/Button": button,
@@ -136,10 +137,12 @@ function PanelsHarness({ leftHidden, onReady }) {
     activateMineItem: async () => ({ ok: true }),
   });
   onReady({ panels, library, pane });
-  return React.createElement("div", { "data-fallback": panels.fallbackDetail ? "open" : "closed" }, panels.fallbackDetail?.content);
+  return React.createElement(React.Fragment, null,
+    React.createElement(EditBarFloatingPanel, { controller: panels.floatingPanels, containerRef: { current: document.body } }),
+    React.createElement("div", { "data-fallback": panels.fallbackDetail ? "open" : "closed" }, panels.fallbackDetail?.content));
 }
 
-test("library buttons toggle, stay exclusive, and use the shell aside when the left pane is host-hidden", async () => {
+test("library buttons toggle, stay exclusive, and float when the left pane is host-hidden", async () => {
   let api;
   const m = await mount(React.createElement(SplitWorkspace, {
     left: "chat", right: React.createElement(PanelsHarness, { leftHidden: true, onReady: (v) => { api = v; } }),
@@ -149,19 +152,20 @@ test("library buttons toggle, stay exclusive, and use the shell aside when the l
     await act(async () => api.library.openLibraryPanel("materials"));
     assert.equal(api.library.activeLibraryPanelId, "materials");
     assert.equal(api.pane.detail, null, "hidden host pane is not used");
-    assert.equal(m.container.querySelector("[data-fallback]").dataset.fallback, "open");
-    assert.ok(m.container.querySelector("[data-materials-panel]"));
+    assert.equal(m.container.querySelector("[data-fallback]").dataset.fallback, "closed");
+    assert.ok(document.querySelector("[data-edit-bar-floating-panel]"));
+    assert.ok(document.querySelector("[data-materials-panel]"));
     await act(async () => api.library.openLibraryPanel("mine"));
     assert.equal(api.library.activeLibraryPanelId, "mine", "opening the other panel replaces the first");
-    assert.ok(m.container.querySelector("[data-inline-editor-mine-panel]"));
-    assert.equal(m.container.querySelector("[data-materials-panel]"), null);
+    assert.ok(document.querySelector("[data-inline-editor-mine-panel]"));
+    assert.equal(document.querySelector("[data-materials-panel]"), null);
     await act(async () => api.library.openLibraryPanel("mine"));
     assert.equal(api.library.activeLibraryPanelId, null, "second click closes");
     assert.equal(m.container.querySelector("[data-fallback]").dataset.fallback, "closed");
   } finally { await m.destroy(); }
 });
 
-test("with a visible left pane panels go there and an external close never leaves a stale pressed button", async () => {
+test("with a visible left pane panels still float and closing clears their pressed buttons", async () => {
   let api;
   const m = await mount(React.createElement(SplitWorkspace, {
     left: "chat", right: React.createElement(PanelsHarness, { leftHidden: false, onReady: (v) => { api = v; } }),
@@ -170,13 +174,14 @@ test("with a visible left pane panels go there and an external close never leave
   try {
     await act(async () => api.library.openLibraryPanel("materials"));
     const left = m.container.querySelector('[data-workspace-pane="left"]');
-    assert.equal(left.dataset.leftPanel, "tool-detail");
-    assert.ok(left.querySelector("[data-materials-panel]"));
+    assert.equal(left.querySelector("[data-materials-panel]"), null);
+    assert.ok(document.querySelector("[data-edit-bar-floating-panel] [data-materials-panel]"));
+    assert.equal(api.pane.detail, null);
     assert.equal(api.library.activeLibraryPanelId, "materials");
-    await click(left.querySelector('[aria-label="返回操作台"]'));
-    assert.equal(api.library.activeLibraryPanelId, null, "workspace closed it; the button is no longer pressed");
+    await click(document.querySelector('[data-edit-bar-floating-panel] [aria-label="关闭"]'));
+    assert.equal(api.library.activeLibraryPanelId, null);
     await act(async () => api.library.openLibraryPanel("materials"));
-    assert.equal(api.library.activeLibraryPanelId, "materials", "next click opens again (not a dead toggle)");
+    assert.equal(api.library.activeLibraryPanelId, "materials");
   } finally { await m.destroy(); }
 });
 
@@ -254,7 +259,7 @@ test("selection probe reports the selection kind so the collapsed edit-bar dot k
   assert.match(shell, /collapsedIcon=\{[\s\S]{0,120}editorToolsIconForSelection\(selectionKind\)/);
 });
 
-test("the shell's own left panel is visible and tells the floating edit bar to stay off it", async () => {
+test("the AI fallback left panel remains visible and tells the floating edit bar to stay off it", async () => {
   const open = await mount(React.createElement(FallbackDetailAside, {
     fallbackDetail: { label: "素材库", content: React.createElement("div", { "data-assets": true }) }, onClose() {},
   }));

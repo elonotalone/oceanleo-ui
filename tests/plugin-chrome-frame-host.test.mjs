@@ -90,6 +90,7 @@ const agentPanelStubUrl = dataModule(`
 `);
 const pluginThemeStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function PluginThemeScope({children}) { return children; }
   export function usePluginTheme() {
     return { theme: "light", accent: "#4f46e5" };
   }
@@ -107,6 +108,8 @@ const pluginThemeStubUrl = dataModule(`
 `);
 const splitWorkspaceStubUrl = dataModule(`
   export function useConsoleAgentFocus() { return null; }
+  export function useRightPaneSlot() { return null; }
+  export function useWorkspacePane() { return null; }
 `);
 const gestureLayerStubUrl = dataModule(`
   export function PluginChromeEditBarGestureLayer({ children }) {
@@ -167,6 +170,7 @@ const frameStubs = {
   "./agent-drawer-panel": agentPanelStubUrl,
   "./PluginAgentPanel": agentPanelStubUrl,
   "../SplitWorkspace": splitWorkspaceStubUrl,
+  "../InlineEditorMaterialPanel": dataModule(`export function InlineEditorMaterialPanel(){return null;}`),
   "../PluginChromeEditBarGestureLayer": gestureLayerStubUrl,
   "../FloatingContextToolbar": floatingToolbarStubUrl,
   "../inline-editor-mine-activate": dataModule(`export function libraryItemIdentityKey(){return "";} export function requestOpenLibraryItemInEditor(){}`),

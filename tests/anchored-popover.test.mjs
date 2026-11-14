@@ -569,7 +569,7 @@ test("fallback inspectors expose their controlled id and restore More focus", as
       panelId,
     );
 
-    const close = panel.querySelector('button[aria-label="关闭属性面板"]');
+    const close = panel.querySelector('button[aria-label="关闭"]');
     assert.equal(document.activeElement, close);
     await act(async () => {
       close.dispatchEvent(
@@ -602,7 +602,7 @@ test("selection More delegates placement to the portal instead of an in-pane abs
     new URL("../src/shell/selection-inspector-host.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(inspectorHostSource, /id=\{group\.panelId\}/);
+  assert.match(inspectorHostSource, /EditBarFloatingPanel/);
   assert.match(
     inspectorHostSource,
     /closest\("\[data-selection-overflow-control\]"\)/,
