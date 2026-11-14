@@ -743,3 +743,6 @@ export * from "./public-exports";
 // Platform inspiration prompts, scoped by the app console (family merge).
 export { InspirationProvider, useInspirationContext } from "./inspirations/inspiration-context";
 export type { InspirationContextValue } from "./inspirations/inspiration-context";
+
+export { SidebarSectionBadge } from "./badges/SidebarSectionBadge";
+export { useWebSectionBadges, badgeSectionForHref, type SectionBadgeCounts } from "./badges/section-badges";
