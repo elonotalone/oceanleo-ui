@@ -768,7 +768,7 @@ test("long rows load full text only on Expand, keep errors beside that row, and 
   } finally { await view.unmount(); }
 });
 
-test("a truncated image downloads its full row only when opened and renders the returned image", async () => {
+test("a truncated image expands into its own user chip without appending a conversation-tail image", async () => {
   const short = { ...row('client', { id: 704, method: 'session/prompt', params: { sessionId: 's1', prompt: [{ type: 'text', text: '截图' }, { type: 'image', data: '', mimeType: 'image/png' }] } }), truncated: { bytes: 70 * 1024 } };
   const full = { ...short, raw: short.raw.replace('"data":""', '"data":"aGVsbG8="'), truncated: undefined };
   let reads = 0;
@@ -776,10 +776,14 @@ test("a truncated image downloads its full row only when opened and renders the 
     acpRoute: (path) => path.includes('/history?') ? { body: historyPage([short]) } : path.endsWith(`/frames/${short.id}`) ? (reads++, { body: full }) : null });
   try {
     assert.equal(view.host.querySelector('[data-acp-full-image]'), null); assert.equal(reads, 0);
-    await act(async () => { [...view.host.querySelectorAll('[data-acp-truncated-row] button')].find((button) => button.textContent === '打开图片').click(); });
+    await act(async () => { view.host.querySelector('[data-acp-truncated-row] button').click(); });
     await settle();
     assert.equal(reads, 1);
-    assert.equal(view.host.querySelector('[data-acp-full-image]').getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
+    assert.equal(view.host.querySelector('[data-acp-full-image]'), null);
+    const chip = view.host.querySelector('[data-testid="task-user-bubble"] img');
+    assert.ok(chip);
+    assert.equal(chip.getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
+    assert.equal(chip.closest('button').style.width, '64px');
   } finally { await view.unmount(); }
 });
 

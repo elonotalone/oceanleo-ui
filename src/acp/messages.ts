@@ -113,7 +113,14 @@ function attachments(blocks: readonly ContentBlock[]): AgentAttachment[] {
   return blocks.flatMap((block): AgentAttachment[] => {
     if (block.type === "resource_link") return [{ url: "", name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}) }];
     // Other paths and links belong to the user's side and are never fetched; a Library reference is.
-    if (block.type === "image") return [{ url: "", name: block.uri?.split("/").pop() || block.mimeType, mime: block.mimeType, media_type: "image", ...libraryRefFromUri(block.uri) }];
+    if (block.type === "image") {
+      const ref = libraryRefFromUri(block.uri);
+      // Library images retain their private identity. Legacy inline bytes, once
+      // expanded, belong to this message's same small attachment tile.
+      const url = !ref && block.data && /^image\/(png|jpeg|gif|webp|avif)$/.test(block.mimeType)
+        ? `data:${block.mimeType};base64,${block.data}` : "";
+      return [{ url, name: block.uri?.split("/").pop() || block.mimeType, mime: block.mimeType, media_type: "image", ...ref }];
+    }
     if (block.type === "resource") return [{ url: "", name: block.resource.uri.split("/").pop() || block.resource.uri }];
     return [];
   });
