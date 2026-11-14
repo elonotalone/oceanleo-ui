@@ -8,9 +8,12 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 import { PDFDocument } from "pdf-lib";
+import { Doc } from "yjs";
 import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
+import { inlineSaveHost } from "./helpers/s3a-inline-save-host.mjs";
 import { createPdfViewerBridge } from "../src/shell/media-editors/pdf-viewer-bridge.ts";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
+import { DECK_WORKING_COPY_SCHEMA } from "../src/shell/doc-editors/deck-working-copy.ts";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
@@ -28,13 +31,29 @@ globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.windo
 const { createRoot } = await import("react-dom/client");
 const probe = globalThis.__s3a = { adapter: null, deck: null, input: null, saved: [], uploaded: [], release: null, fail: false, remote: null, pdfDoc: null };
 const empty = (...names) => dataModule(names.map((name) => `export function ${name}(){return null;}`).join("\n"));
+// Read S2's exact shared sources for integration verification without editing its files.
+const sharedPath=(path)=>resolve(process.env.S3A_SHARED_REPAIR_DIR||".",path);
 const authStubs = {
   "../lib/auth/client": dataModule('export async function accessToken(){return "test";}'),
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid";'),
+  "./user-edit-session": realModule("src/shell/user-edit-session.ts"),
 };
-const hookUrl = await compileModule("src/shell/use-advanced-autosave.ts", authStubs);
-const backgroundUrl = await compileModule("src/shell/advanced-background-saver.ts", authStubs);
+const hookUrl = await compileModule(sharedPath("src/shell/use-advanced-autosave.ts"), authStubs);
+const inlineUrl = await inlineSaveHost(hookUrl, authStubs, sharedPath);
+const backgroundUrl = await compileModule(sharedPath("src/shell/advanced-background-saver.ts"), authStubs);
 const { resetBackgroundSaverForTests } = await import(backgroundUrl);
+const collabIndex = dataModule(`
+  import {useSyncExternalStore} from ${JSON.stringify(reactUrl)};
+  import {canSaveVersion,isCollabReadOnly} from ${JSON.stringify(realModule("src/shell/collab/provider.ts"))};
+  export {bindJsonState} from ${JSON.stringify(realModule("src/shell/collab/bind-json-state.ts"))};
+  export function useCollabRoom(){return globalThis.__s3a.room??null;}
+  export function useCollabRoomVersion(room){return useSyncExternalStore(cb=>room?.subscribe(cb)??(()=>{}),()=>room?.version??0,()=>0);}
+  export function useCollabReadOnly(room){useCollabRoomVersion(room);return isCollabReadOnly(room);}
+  export function useCollabSaveGate(room){useCollabRoomVersion(room);return canSaveVersion(room);}
+`);
+const collabStubs={"../index":collabIndex,"../../../lib/im/client":dataModule('export function useImEnabled(){return true;}'),"../../../i18n/ui/useUI":dataModule('const tt=x=>x;export function useUI(){return tt;}')};
+const pdfCollabUrl=await compileModule("src/shell/collab/adapters/use-pdf-collab.ts",collabStubs);
+const entityCollabUrl=await compileModule("src/shell/collab/adapters/use-entity-collab.ts",collabStubs);
 const baseline = process.env.S3A_REPAIR_BASELINE === "1";
 const temporaryFiles=[];process.on("exit",()=>temporaryFiles.forEach(file=>{try{unlinkSync(file);}catch{}}));
 async function fromBaseline(path, overrides) {
@@ -44,10 +63,10 @@ async function fromBaseline(path, overrides) {
 }
 const stubs = {
   "../../i18n/ui/useUI": dataModule('const tt=(s)=>s; export function useUI(){return tt;}'),
-  "../AdvancedWorkbenchShell": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)}; export function AdvancedWorkbenchShell({adapter,item}) {const p=adapter.persistence;const save=useAdvancedAutoSave({item,editorId:adapter.id,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,session:null});globalThis.__s3a.adapter=adapter;globalThis.__s3a.save=save;return createElement("div",{"data-save-state":save.state},adapter.stage);}`),
+  "../AdvancedWorkbenchShell": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {InlineAdvancedWorkbenchShell} from ${JSON.stringify(inlineUrl)};function Bench({adapter,item}) {const p=adapter.persistence;const save=useAdvancedAutoSave({item,editorId:adapter.id,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,session:null});globalThis.__s3a.save=save;return createElement("div",{"data-save-state":save.state},adapter.stage);}export function AdvancedWorkbenchShell(props){globalThis.__s3a.adapter=props.adapter;return createElement(globalThis.__s3a.inline?InlineAdvancedWorkbenchShell:Bench,props);}`),
   "../advanced-session-context": dataModule('export function useAdvancedSession(){return null;}'),
   "../office-editor": dataModule('export function useOfficeArtifactSource(item){return {item, loading:false,error:"",resourceFailed(){},retry(){}};}'),
-  "../collab/adapters/use-entity-collab": dataModule('export function useEntityCollab(options){globalThis.__s3a.remote=options.applyRemote;return {readOnly:false,saveGate:true,markSaved(){},room:null,collab:null};}'),
+  "../collab/adapters/use-entity-collab": dataModule(`import {useEntityCollab as useReal} from ${JSON.stringify(entityCollabUrl)};export function useEntityCollab(options){globalThis.__s3a.remote=options.applyRemote;return useReal(options);}`),
   "../collab/adapters/visual-selection": dataModule('export function useCollabSelections(){return [];}'),
   "../plugin-command": dataModule('export function usePluginCommandSurface(){}'),
   "../doc-editors/use-deck-material-adapter": empty("useDeckMaterialAdapter"),
@@ -61,7 +80,7 @@ const stubs = {
   "./doc-io": dataModule(`export * from ${JSON.stringify(realModule("src/shell/doc-editors/doc-io.ts"))}; export async function saveFileToLibrary(input){return {ok:true,item:{...input.item,revisionId:"published"},url:"https://example.invalid/published.pptx",versionId:"published",revisionId:"published"};}`),
   "./editor-preview-raster": dataModule('export async function renderDeckPreviewPng(doc){globalThis.__s3a.frozenDeck=structuredClone(doc);return new Blob(["preview"]);}'),
   "./editor-insert-media": dataModule('export async function uploadEditorMedia(blob,name){globalThis.__s3a.uploaded.push({blob,name});return "https://example.invalid/upload.png";} export async function durableEditorMediaUrl(url){if(!/^(data:|blob:)/.test(url))return url;globalThis.__s3a.uploaded.push(url);return "https://example.invalid/upload.png";}'),
-  "../collab/adapters/use-pdf-collab": dataModule('export function usePdfCollab(){return {readOnly:false,mayWrite:true,room:null,markSaved(){}};}'),
+  "../collab/adapters/use-pdf-collab": pdfCollabUrl,
   "../plugin-theme": dataModule('export function PluginThemeScope({ children }) { return children; }\n  export function usePluginTheme(){return {theme:"light"};}'),
   "../workbench-material-provider": dataModule('export function useWorkbenchMaterialAdapter(){}'),
   "../media-editors/PdfControls": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)};export function PdfControls({onRotate}){return createElement("button",{"data-rotate":"pdf",onClick:()=>onRotate(0)},"Rotate");}`),
@@ -154,6 +173,62 @@ globalThis.fetch = async (url,init={}) => {
 };
 function reset(){resetBackgroundSaverForTests();copy=null;puts=[];getDelay=0;probe.putDelay=0;probe.exports=0;probe.buildCalls=0;probe.visualBarrier=null;}
 async function close(view){probe.visualBarrier=null;await view.unmount();await act(async()=>{await wait(20);});resetBackgroundSaverForTests();}
+
+function room(options={}) {
+  const listeners=new Set();
+  return {doc:new Doc(),role:"editor",status:"synced",isSaver:true,needsSeed:false,version:0,self:{id:"self",name:"Editor"},lock:null,
+    subscribe(cb){listeners.add(cb);return ()=>listeners.delete(cb);},
+    acquireLock:async()=>false,releaseLock(){},onExternalRevision:()=>()=>{},markSaved(){},completeSeed(){},
+    ...options};
+}
+for(const existing of [false,true])test(`run2 PDF real lock holder starts saving ${existing?"existing seq55":"a fresh copy"} without elected saver status`,async()=>noErrors(async()=>{
+  reset();probe.inline=true;probe.room=room({isSaver:false,lock:{holder:{id:"self"},mode:"pro",expires_at:"2099-01-01"}});
+  if(existing)copy={schema:"oceanleo.pdf-working-document.v1",seq:55,published_seq:0,base_revision_id:"initial",saved_at:new Date().toISOString(),doc:{version:1,source:{artifactId:"pdf-root",revisionId:"initial",purpose:"source",blank:false},operations:[],annotations:[],formValues:{},annotationOperationCount:0}};
+  let view;
+  try {
+    view=await mount(PdfRoute,item("pdf"));await act(async()=>{await wait(30);});
+    assert.equal(probe.adapter.persistence.autoSave,true,"the actual PDF hook authorizes its lock holder");
+    await act(async()=>view.container.querySelector("[data-rotate=pdf]").click());
+    await tickUntil(()=>puts.length===1||probe.save.conflict);
+    assert.equal(probe.save.conflict,false,"the shell must not reject the authorized PDF lock holder");
+    await tickUntil(()=>probe.save.state==="saved");
+    assert.equal(puts.length,1);assert.equal(puts[0].body.if_seq,existing?55:null);
+    assert.equal(copy.doc.operations[0].degrees,90);
+  } finally {if(view)await close(view);probe.room.doc.destroy();probe.room=null;probe.inline=false;}
+}));
+
+for(const viewer of [false,true])test(`run2 PDF ${viewer?"viewer":"other user's lock"} remains read-only and cannot issue a PUT`,async()=>noErrors(async()=>{
+  reset();probe.inline=true;probe.room=room({role:viewer?"viewer":"editor",lock:{holder:{id:viewer?"self":"other"},mode:"pro",expires_at:"2099-01-01"}});
+  let view;
+  try {
+    view=await mount(PdfRoute,item("pdf"));
+    assert.equal(probe.adapter.persistence.autoSave,false);
+    await act(async()=>view.container.querySelector("[data-rotate=pdf]").click());
+    await act(async()=>{await wait(30);});
+    assert.equal(probe.adapter.persistence.editRevision,0);assert.equal(puts.length,0);
+  } finally {if(view)await close(view);probe.room.doc.destroy();probe.room=null;probe.inline=false;}
+}));
+
+for(const slides of [3,40])test(`run2 Deck ${slides} slides: room bootstrap during GET is clean and the next PUT uses existing seq73`,async()=>noErrors(async()=>{
+  reset();probe.inline=true;probe.room=room();getDelay=100;
+  const saved=normalizeDeckDocument({title:"Acknowledged working copy",slides:Array.from({length:slides},(_,n)=>({id:`saved-${n}`,elements:[{id:`text-${n}`,type:"text",text:"Saved text",fontSize:56}]}))});
+  copy={schema:DECK_WORKING_COPY_SCHEMA,seq:73,published_seq:0,base_revision_id:"initial",saved_at:new Date().toISOString(),doc:saved};
+  const {writeJsonStateRoot}=await import("../src/shell/collab/bind-json-state.ts");
+  const {DECK_COLLAB_ROOT,deckToEntities}=await import("../src/shell/collab/adapters/deck.ts");
+  let view;
+  try {
+    view=await mount(DeckRoute,item("ppt"));
+    const stale={...saved,title:"Older room bootstrap"};
+    await act(async()=>writeJsonStateRoot(probe.room.doc,DECK_COLLAB_ROOT,deckToEntities(stale),probe.room));
+    await act(async()=>{await wait(130);});
+    assert.equal(probe.save.conflict,false,"room startup must not impersonate a local edit racing the existing copy");
+    assert.equal(probe.deck.editRevision,0);assert.equal(puts.length,0);
+    assert.equal(probe.deck.deck.title,saved.title);
+    await act(async()=>probe.deck.setTitle("User edit after restore"));
+    await tickUntil(()=>puts.length===1&&probe.save.state==="saved");
+    assert.equal(puts[0].body.if_seq,73);assert.equal(copy.doc.title,"User edit after restore");
+  } finally {if(view)await close(view);probe.room.doc.destroy();probe.room=null;probe.inline=false;}
+}));
 
 // This tests the real mutation path, not just reading an already cached getter.
 test("40-slide edits retain unchanged slides and send one PUT through the real shared saver",async()=>noErrors(async()=>{
@@ -321,6 +396,9 @@ test("VS fixtures: capture and 20 isolated edits plus three bursts at native and
   const modes=[0,150];
   try {
     for(const kind of ["deck","pdf"]){
+      probe.inline=true;probe.room=room(kind==="pdf"
+        ?{isSaver:false,lock:{holder:{id:"self"},mode:"pro",expires_at:"2099-01-01"}}
+        :{needsSeed:true,completeSeed(){this.needsSeed=false;}});
       reset();probe.fixturePdf=kind==="pdf"?pdfFixture:null;const view=await mount(kind==="deck"?DeckRoute:PdfRoute,item(kind==="deck"?"ppt":"pdf"));
       try {
         const captures=[];for(let i=0;i<20;i++){const at=performance.now();probe.adapter.persistence.recovery.capture();captures.push(performance.now()-at);}
@@ -353,7 +431,7 @@ test("VS fixtures: capture and 20 isolated edits plus three bursts at native and
           console.log(`VS_MATRIX ${kind} RTT=${rtt}ms gateway=33ms isolated=20 burst=3x10 p50=${timings[10].toFixed(2)}ms p95=${timings[18].toFixed(2)}ms max=${timings[19].toFixed(2)}ms burst-last-ack-max=${Math.max(...burstTimes).toFixed(2)}ms`);
           assert.ok(timings[19]<500);assert.ok(Math.max(...burstTimes)<500);
         }
-      } finally {await close(view);}
+      } finally {await close(view);probe.room.doc.destroy();probe.room=null;probe.inline=false;}
     }
   } finally {probe.fixtureDeck=null;probe.fixturePdf=null;}
 }));
