@@ -1,0 +1,60 @@
+import type { PdfAnnotationObject, PdfWidgetAnnoObject } from "@embedpdf/models";
+import { fetchMediaBlob } from "../../lib/media-proxy";
+import { openPdfEngineDocument } from "./pdf-engine-host";
+import { createBlankPdf, deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
+import { pdfLiveAnnotation, type PdfPageOperation, type PdfWorkingCopy } from "./pdf-recovery";
+
+export async function pdfWorkingSource(doc: PdfWorkingCopy): Promise<Uint8Array> {
+  return doc.source.blank ? createBlankPdf() : new Uint8Array(await (await fetchMediaBlob(doc.source.url)).arrayBuffer());
+}
+
+export async function applyPdfPageOperations(bytes: Uint8Array, operations: PdfPageOperation[]): Promise<Uint8Array> {
+  let result = bytes;
+  for (const op of operations) {
+    result = op.type === "rotate" ? await rotatePdfPage(result, op.pageIndex, op.degrees)
+      : op.type === "delete" ? await deletePdfPage(result, op.pageIndex)
+      : await movePdfPage(result, op.fromIndex, op.toIndex);
+  }
+  return result;
+}
+
+/** Independent PDFium document: no mounted viewer, canvas or React state is needed. */
+export async function buildPdfWorkingCopy(doc: PdfWorkingCopy, source?: Uint8Array): Promise<Uint8Array> {
+  const bytes = await applyPdfPageOperations(source ?? await pdfWorkingSource(doc), doc.operations);
+  const opened = await openPdfEngineDocument(bytes);
+  const { engine, doc: pdf } = opened;
+  try {
+    for (const page of pdf.pages) {
+      const existing = await engine.getPageAnnotations(pdf, page).toPromise();
+      const wanted = doc.annotations.filter(({ annotation }) => annotation.pageIndex === page.index);
+      const ids = new Set(wanted.map(({ annotation }) => annotation.id));
+      for (const annotation of existing) {
+        if (!ids.has(annotation.id)) if (!await engine.removePageAnnotation(pdf, page, annotation).toPromise()) throw new Error("PDF 保存失败");
+      }
+      for (const entry of wanted) {
+        const annotation = pdfLiveAnnotation(entry.annotation) as PdfAnnotationObject;
+        if (annotation.type === 20 && Object.hasOwn(doc.formValues, annotation.field.name)) {
+          annotation.field = { ...annotation.field, value: doc.formValues[annotation.field.name] };
+        }
+        if (existing.some((current) => current.id === annotation.id)) {
+          if (!await engine.updatePageAnnotation(pdf, page, annotation).toPromise()) throw new Error("PDF 保存失败");
+          if (annotation.type === 20 && (annotation as PdfWidgetAnnoObject).field) {
+            if (!await engine.setFormFieldState(pdf, page, annotation as PdfWidgetAnnoObject, (annotation as PdfWidgetAnnoObject).field).toPromise()) throw new Error("PDF 保存失败");
+          }
+        } else {
+          const context = entry.media ? {
+            data: await (await fetchMediaBlob(entry.media.url)).arrayBuffer(),
+            mimeType: entry.media.mimeType,
+          } : undefined;
+          if (!await engine.createPageAnnotation(pdf, page, annotation, context as never).toPromise()) throw new Error("PDF 保存失败");
+        }
+      }
+    }
+    let saved = new Uint8Array(await engine.saveAsCopy(pdf).toPromise());
+    if (doc.annotations.some(({ annotation }) => annotation.type === 3 && /[^\u0000-\u00ff]/u.test(String(annotation.contents ?? "")))) {
+      const { fixPdfCjkFreeTextAppearances } = await import("./pdf-cjk-appearance");
+      saved = new Uint8Array((await fixPdfCjkFreeTextAppearances(saved)).bytes);
+    }
+    return saved;
+  } finally { await opened.close(); }
+}

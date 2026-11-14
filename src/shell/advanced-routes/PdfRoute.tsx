@@ -18,7 +18,7 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { PDF_WORKING_COPY_SCHEMA } from "../media-editors/pdf-recovery";
 import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { editorToolLabel } from "../workbench-routes";
@@ -176,10 +176,10 @@ export function PdfRoute({
   );
   useWorkbenchMaterialAdapter(materialCommandAdapter);
 
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (publish = editor.save) => {
     // 只读（只有查看权限 / 别人在编辑）：不落库，别人保存后这里会自动更新。
     if (!collab.mayWrite) return { ok: true as const, item };
-    const result = await editor.save();
+    const result = await publish();
     if (!result.ok) return { ok: false as const, error: result.error };
     const saved = result.version;
     if (saved.versionId) collab.markSaved(String(saved.versionId));
@@ -354,9 +354,14 @@ export function PdfRoute({
           editRevision: editor.editRevision,
           autoSave: collab.mayWrite && Boolean(bridge),
           flush: saveBeforeNewConversation,
+          ...{ preparePublish: () => {
+            const publish = editor.prepareSave();
+            return () => saveBeforeNewConversation(publish);
+          } },
           recovery: {
-            key: advancedRecoveryKey("pdf", item),
-            ready: Boolean(bridge) && !editor.loading,
+            draftSchema: PDF_WORKING_COPY_SCHEMA,
+            key: `pdf:${item.artifactId || item.meta.artifact_id || item.id}`,
+            ready: Boolean(bridge) && !editor.loading && editor.workingCopyReady,
             capture: editor.captureRecovery,
             restore: editor.restoreRecovery,
           },

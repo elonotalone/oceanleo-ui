@@ -8,6 +8,8 @@
  * 用假 registry 就能钉住行为。注册表的形状实读自 `@embedpdf/plugin-*` 2.15.0 的 d.ts。
  */
 
+import { pdfLiveAnnotation, pdfWorkingJson, type PdfWorkingState } from "./pdf-recovery";
+
 export type PdfChromeMode = "basic" | "pro";
 
 /** 标准批注子类型（`@embedpdf/models` 的 `PdfAnnotationSubtype`，测试钉住同值）。 */
@@ -99,6 +101,7 @@ interface AnnotationScope {
   getState(): { selectedUids: string[]; activeToolId: string | null };
   getSelectedAnnotation(): { object: PdfAnnotationLike } | null;
   getAnnotations(options?: { pageIndex?: number }): { object: PdfAnnotationLike }[];
+  exportAnnotations(): TaskLike<{ annotation: PdfAnnotationLike; ctx?: { data?: ArrayBuffer; mimeType?: string } }[]>;
   setActiveTool(toolId: string | null): void;
   createAnnotation(pageIndex: number, annotation: unknown, context?: unknown): void;
   updateAnnotation(pageIndex: number, id: string, patch: Record<string, unknown>): void;
@@ -183,7 +186,13 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     forDocument(id: string): { renderThumb(page: number, dpr: number): TaskLike<Blob> };
     onRefreshPages: Hook<{ documentId: string; pages: number[] }>;
   }>("thumbnail");
-  const form = cap<{ onFieldValueChange?: Hook<{ documentId: string }> }>("form");
+  const form = cap<{
+    onFieldValueChange?: Hook<{ documentId: string }>;
+    forDocument(id: string): {
+      getFormValues(): Record<string, string>;
+      setFormValues(values: Record<string, string>): TaskLike<boolean>;
+    };
+  }>("form");
   const selection = cap<{
     forDocument(id: string): { clear(): void };
   }>("selection");
@@ -202,6 +211,8 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       /* 没有在编辑的框 */
     }
   };
+  let hydrating = 0;
+  const stampMedia = new Map<string, { url: string; mimeType: string }>();
   let proSecondary: string | null = null;
   let readOnly = false;
   const offs: Off[] = [];
@@ -266,6 +277,29 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     return id && annotations ? annotations.forDocument(id) : null;
   };
 
+  let workingState: PdfWorkingState | null = null;
+  let capturedObjects: PdfAnnotationLike[] = [];
+  let capturedMedia: unknown[] = [];
+  const refreshWorkingState = (): PdfWorkingState => {
+    const objects = (annotationScope()?.getAnnotations() ?? []).map(({ object }) => object);
+    const media = objects.map((object) => object.type === PDF_SUBTYPE.STAMP ? stampMedia.get(object.id) : undefined);
+    const id = doc();
+    const formValues = id ? form?.forDocument(id).getFormValues() ?? {} : {};
+    if (workingState && objects.length === capturedObjects.length && objects.every((object, index) => object === capturedObjects[index] && media[index] === capturedMedia[index]) &&
+        JSON.stringify(formValues) === JSON.stringify(workingState.formValues)) return workingState;
+    const annotations = objects.map((annotation, index) => {
+      if (annotation.type === PDF_SUBTYPE.STAMP && !media[index]) throw new Error("图片读取失败");
+      return { annotation, ...(media[index] ? { media: media[index] } : {}) };
+    });
+    workingState = pdfWorkingJson({ annotations, formValues });
+    capturedObjects = objects;
+    capturedMedia = media;
+    return workingState;
+  };
+  const refreshAfterEdit = () => {
+    try { refreshWorkingState(); } catch { workingState = null; }
+  };
+
   return {
     ready: Boolean(docs && exporter && annotations && ui),
     documentId: doc,
@@ -310,9 +344,11 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
         return false;
       }),
     updateAnnotation(annotation: PdfAnnotationLike, patch: Record<string, unknown>) {
+      workingState = null;
       annotationScope()?.updateAnnotation(annotation.pageIndex, annotation.id, patch);
     },
     deleteAnnotation(annotation: PdfAnnotationLike) {
+      workingState = null;
       annotationScope()?.deleteAnnotation(annotation.pageIndex, annotation.id);
     },
     deselect: () => {
@@ -327,6 +363,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     createAnnotation(pageIndex: number, annotation: Record<string, unknown>, context?: unknown) {
       const scope = annotationScope();
       if (!scope || readOnly) return false;
+      workingState = null;
       scope.createAnnotation(pageIndex, annotation, context);
       scope.selectAnnotation(pageIndex, String(annotation.id));
       return true;
@@ -372,6 +409,59 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       if (id && !readOnly) history?.forDocument(id).redo();
     },
 
+    // Working copies read the ready plugin snapshot, never PDF bytes or storage.
+    resetWorkingCopyMedia() {
+      workingState = null;
+      capturedObjects = [];
+      capturedMedia = [];
+      stampMedia.clear();
+    },
+    rememberStamp(id: string, url: string, mimeType: string) {
+      workingState = null;
+      stampMedia.set(id, { url, mimeType });
+    },
+    async prepareWorkingCopyMedia(upload: (bytes: ArrayBuffer, mime: string) => Promise<string>) {
+      const scope = annotationScope();
+      if (!scope) return;
+      const missing = scope.getAnnotations().filter(({ object }) => object.type === PDF_SUBTYPE.STAMP && !stampMedia.has(object.id));
+      if (!missing.length) { refreshWorkingState(); return; }
+      await scope.commit().toPromise();
+      const exported = await scope.exportAnnotations().toPromise();
+      await Promise.all(exported.filter((entry) => missing.some(({ object }) => object.id === entry.annotation.id)).map(async ({ annotation, ctx }) => {
+        if (!ctx?.data) throw new Error("图片读取失败");
+        const mimeType = ctx.mimeType || "application/pdf";
+        stampMedia.set(annotation.id, { url: await upload(ctx.data, mimeType), mimeType });
+      }));
+      refreshWorkingState();
+    },
+    captureWorkingState: () => workingState ?? refreshWorkingState(),
+    async restoreWorkingState(state: PdfWorkingState, readMedia: (url: string) => Promise<ArrayBuffer>) {
+      const scope = annotationScope();
+      const id = doc();
+      if (!scope || !id) throw new Error("查看器里没有打开的文档。");
+      hydrating += 1;
+      try {
+        const existing = new Map(scope.getAnnotations().map(({ object }) => [object.id, object]));
+        const desired = new Set(state.annotations.map(({ annotation }) => annotation.id));
+        for (const annotation of existing.values()) {
+          if (!desired.has(annotation.id)) scope.deleteAnnotation(annotation.pageIndex, annotation.id);
+        }
+        for (const entry of state.annotations) {
+          const annotation = pdfLiveAnnotation(entry.annotation);
+          if (entry.media) stampMedia.set(annotation.id, entry.media);
+          if (existing.has(annotation.id)) {
+            scope.updateAnnotation(annotation.pageIndex, annotation.id, annotation);
+          } else {
+            const context = entry.media ? { data: await readMedia(entry.media.url), mimeType: entry.media.mimeType } : undefined;
+            scope.createAnnotation(annotation.pageIndex, annotation, context);
+          }
+        }
+        await scope.commit().toPromise();
+        await form?.forDocument(id).setFormValues(state.formValues).toPromise();
+        refreshWorkingState();
+      } finally { hydrating -= 1; }
+    },
+
     // ---- 字节 ----
     /** 当前文档字节（批注先提交进引擎，再整份导出：标准 PDF 批注）。 */
     async exportBytes(): Promise<Uint8Array> {
@@ -389,6 +479,9 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
      */
     async replaceDocument(bytes: Uint8Array, keepPage?: number) {
       if (!docs) throw new Error("查看器没有文档管理能力。");
+      hydrating += 1;
+      workingState = null;
+      try {
       flush();
       const previous = doc();
       const opened = await docs
@@ -405,6 +498,7 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
         const total = scope.getTotalPages() || keepPage;
         scope.scrollToPage({ pageNumber: Math.min(keepPage, total), behavior: "instant" });
       }
+      } finally { hydrating -= 1; }
     },
 
     // ---- 查找 ----
@@ -499,9 +593,14 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
       const hold = (off: Off | void) => {
         if (typeof off === "function") own.push(off);
       };
-      hold(history?.onHistoryChange((event) => mine(event) && listeners.onEdit?.()));
-      hold(form?.onFieldValueChange?.((event) => mine(event) && listeners.onEdit?.()));
-      hold(annotations?.onStateChange((event) => mine(event) && listeners.onAnnotations?.()));
+      hold(history?.onHistoryChange((event) => {
+        const id = doc();
+        if (!id || !mine(event) || hydrating || (!history?.forDocument(id).canUndo() && !history?.forDocument(id).canRedo())) return;
+        refreshAfterEdit();
+        listeners.onEdit?.();
+      }));
+      hold(form?.onFieldValueChange?.((event) => { if (mine(event) && !hydrating) { refreshAfterEdit(); listeners.onEdit?.(); } }));
+      hold(annotations?.onStateChange((event) => { if (mine(event)) { refreshAfterEdit(); listeners.onAnnotations?.(); } }));
       hold(zoom?.onZoomChange((event) => mine(event) && listeners.onZoom?.(Math.round(event.newZoom * 100))));
       hold(scroll?.onPageChange((event) => mine(event) && listeners.onPage?.(event.pageNumber)));
       hold(thumbs?.onRefreshPages((event) => mine(event) && listeners.onThumbs?.(event.pages)));
@@ -522,6 +621,10 @@ export function createPdfViewerBridge(registry: PdfViewerRegistryLike, name: str
     },
     dispose() {
       offs.splice(0).forEach((off) => off());
+      workingState = null;
+      capturedObjects = [];
+      capturedMedia = [];
+      stampMedia.clear();
     },
   };
 }

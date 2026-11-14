@@ -18,7 +18,10 @@ import type { PersistedEditorVersion } from "../doc-editors/doc-io";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { savePdfBytesToLibrary } from "./pdf-library-save";
 import { loadInitialPdfSource } from "./pdf-source";
-import { decodePdfRecovery } from "./pdf-recovery";
+import { decodePdfRecovery, type PdfPageOperation, type PdfWorkingCopy } from "./pdf-recovery";
+import { applyPdfPageOperations, buildPdfWorkingCopy, pdfWorkingSource } from "./pdf-working-copy-publish";
+import { uploadEditorMedia } from "../doc-editors/editor-insert-media";
+import { fetchMediaBlob } from "../../lib/media-proxy";
 import { deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
 import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
 import { PDF_SUBTYPE, type PdfAnnotationLike, type PdfViewerBridge } from "./pdf-viewer-bridge";
@@ -26,11 +29,9 @@ import type { PdfStageHandle } from "./PdfStage";
 import { sourceFormatForBlob } from "./source-integrity.mjs";
 import { recordUserMutation, userEditItemKey, userMutationGeneration } from "../user-edit-session";
 
-const MAX_RECOVERY_BYTES = 96 * 1024 * 1024;
-
 interface PageOpEntry {
-  before: Uint8Array;
-  after: Uint8Array;
+  before: PdfWorkingCopy;
+  after: PdfWorkingCopy;
   page: number;
 }
 
@@ -124,6 +125,15 @@ export function usePdfWorkbench(
   const [thumbVersion, setThumbVersion] = useState(0);
   const [historyTick, setHistoryTick] = useState(0);
   const revisionRef = useRef(0);
+  const sourceRef = useRef<PdfWorkingCopy["source"] | null>(null);
+  const sourceBytesRef = useRef<Uint8Array | null>(null);
+  const operationsRef = useRef<PdfPageOperation[]>([]);
+  const [workingCopyReady, setWorkingCopyReady] = useState(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
   const undoOps = useRef<PageOpEntry[]>([]);
   const redoOps = useRef<PageOpEntry[]>([]);
   const navigating = useRef(false);
@@ -160,6 +170,7 @@ export function usePdfWorkbench(
     baseRef.current = item;
     const controller = new AbortController();
     setLoading(true);
+    setWorkingCopyReady(false);
     setError("");
     void (async () => {
       try {
@@ -172,6 +183,12 @@ export function usePdfWorkbench(
         });
         if (controller.signal.aborted) return;
         if (loaded.pageCount < 1) throw new Error(tt("PDF 没有可显示的页面"));
+        sourceRef.current = { url: loaded.durableUrl, blank: loaded.blank };
+        sourceBytesRef.current = loaded.bytes;
+        operationsRef.current = [];
+        revisionRef.current = 0;
+        setRevision(0);
+        setSavedRevision(0);
         const reloading = Boolean(loadedKey.current && handleRef.current);
         loadedKey.current = sourceKey;
         undoOps.current = [];
@@ -179,7 +196,11 @@ export function usePdfWorkbench(
         const shown = await displayablePdf(loaded.bytes);
         if (controller.signal.aborted) return;
         if (reloading) {
-          await handleRef.current!.bridge.replaceDocument(shown);
+          const bridge = handleRef.current!.bridge;
+          bridge.resetWorkingCopyMedia();
+          await bridge.replaceDocument(shown);
+          await bridge.prepareWorkingCopyMedia((data, mime) => uploadEditorMedia(new Blob([data], { type: mime }), "stamp", siteId));
+          if (!controller.signal.aborted) setWorkingCopyReady(true);
           setSavedRevision(revisionRef.current);
         } else {
           setInitialBytes(shown);
@@ -207,13 +228,31 @@ export function usePdfWorkbench(
       setZoom(bridge.zoomPercent());
     };
     syncPages();
-    return bridge.subscribe({
+    let alive = true;
+    let preparing: Promise<void> | null = null;
+    const prepareMedia = () => {
+      if (preparing) return;
+      setWorkingCopyReady(false);
+      preparing = bridge.prepareWorkingCopyMedia((data, mime) =>
+        uploadEditorMedia(new Blob([data], { type: mime }), "stamp", siteId));
+      void preparing.then(() => {
+        if (alive) setWorkingCopyReady(true);
+      }).catch((caught) => {
+        if (alive) setError(pdfErrorMessage(caught, tt("图片读取失败")));
+      }).finally(() => { preparing = null; });
+    };
+    prepareMedia();
+    const off = bridge.subscribe({
       onEdit: () => {
+        if (processingRef.current) return;
+        prepareMedia();
         if (!navigating.current && !bridge.canRedo()) redoOps.current = [];
         bump();
         setHistoryTick((value) => value + 1);
       },
-      onAnnotations: () => setAnnotationVersion((value) => value + 1),
+      onAnnotations: () => {
+        setAnnotationVersion((value) => value + 1);
+      },
       onZoom: setZoom,
       onPage: setCurrentPage,
       onDocument: () => {
@@ -223,20 +262,58 @@ export function usePdfWorkbench(
       },
       onThumbs: () => setThumbVersion((value) => value + 1),
     });
-  }, [bump, handle, readOnly]);
+    return () => { alive = false; off(); };
+  }, [bump, handle, readOnly, siteId, tt]);
+
+  const captureRecovery = useCallback((): PdfWorkingCopy | null => {
+    const bridge = handleRef.current?.bridge;
+    const source = sourceRef.current;
+    if (!bridge || !source) return null;
+    return { version: 1, source: { ...source }, operations: operationsRef.current.map((op) => ({ ...op })), ...bridge.captureWorkingState() };
+  }, []);
+  const restoreRecovery = useCallback(async (payload: unknown): Promise<boolean> => {
+    const bridge = handleRef.current?.bridge;
+    const doc = decodePdfRecovery(payload);
+    if (!bridge || !doc) return false;
+    processingRef.current = true;
+    try {
+      const source = sourceRef.current?.url === doc.source.url && sourceRef.current?.blank === doc.source.blank && sourceBytesRef.current
+        ? sourceBytesRef.current : await pdfWorkingSource(doc);
+      bridge.resetWorkingCopyMedia();
+      await bridge.replaceDocument(await applyPdfPageOperations(source, doc.operations));
+      await bridge.restoreWorkingState(doc, async (url) => (await fetchMediaBlob(url)).arrayBuffer());
+      sourceRef.current = doc.source;
+      sourceBytesRef.current = source;
+      operationsRef.current = doc.operations;
+      setPageCount(bridge.pages().length);
+      // This copy was already acknowledged by the server; restoration is not a user edit.
+      setSavedRevision(-1);
+      setWorkingCopyReady(true);
+      setHistoryTick((value) => value + 1);
+      return true;
+    } catch (caught) {
+      setError(pdfErrorMessage(caught, tt("PDF 加载失败")));
+      return false;
+    } finally { processingRef.current = false; }
+  }, [tt]);
 
   // ---- 页面整理（写进文件，可撤销）----
   const runPageOp = useCallback(
-    async (page: number, transform: (bytes: Uint8Array) => Promise<Uint8Array>) => {
+    async (page: number, operation: PdfPageOperation, transform: (bytes: Uint8Array) => Promise<Uint8Array>) => {
       const bridge = handleRef.current?.bridge;
       if (!bridge || readOnly || processingRef.current) return false;
       processingRef.current = true;
       setProcessing(true);
       setError("");
       try {
-        const before = await exportPdf(bridge);
-        const after = await transform(before);
-        await bridge.replaceDocument(after, page);
+        const before = captureRecovery();
+        if (!before) return false;
+        const afterBytes = await transform(await exportPdf(bridge));
+        await bridge.replaceDocument(afterBytes, page);
+        operationsRef.current = [...operationsRef.current, operation];
+        await bridge.prepareWorkingCopyMedia((data, mime) => uploadEditorMedia(new Blob([data], { type: mime }), "stamp", siteId));
+        const after = captureRecovery();
+        if (!after) return false;
         setPageCount(bridge.pages().length);
         undoOps.current.push({ before, after, page });
         redoOps.current = [];
@@ -251,11 +328,11 @@ export function usePdfWorkbench(
         setProcessing(false);
       }
     },
-    [bump, readOnly, tt],
+    [bump, captureRecovery, readOnly, siteId, tt],
   );
   const rotatePage = useCallback(
     (pageIndex: number, clockwise = true) =>
-      runPageOp(pageIndex + 1, (bytes) => rotatePdfPage(bytes, pageIndex, clockwise ? 90 : -90)),
+      runPageOp(pageIndex + 1, { type: "rotate", pageIndex, degrees: clockwise ? 90 : -90 }, (bytes) => rotatePdfPage(bytes, pageIndex, clockwise ? 90 : -90)),
     [runPageOp],
   );
   const deletePage = useCallback(
@@ -264,36 +341,28 @@ export function usePdfWorkbench(
         setError(tt("PDF 至少需要保留一页"));
         return Promise.resolve(false);
       }
-      return runPageOp(Math.max(1, pageIndex), (bytes) => deletePdfPage(bytes, pageIndex));
+      return runPageOp(Math.max(1, pageIndex), { type: "delete", pageIndex }, (bytes) => deletePdfPage(bytes, pageIndex));
     },
     [pageCount, runPageOp, tt],
   );
   const movePage = useCallback(
     (fromIndex: number, toIndex: number) =>
-      runPageOp(toIndex + 1, (bytes) => movePdfPage(bytes, fromIndex, toIndex)),
+      runPageOp(toIndex + 1, { type: "move", fromIndex, toIndex }, (bytes) => movePdfPage(bytes, fromIndex, toIndex)),
     [runPageOp],
   );
 
-  const swapTo = useCallback(
-    async (bytes: Uint8Array, page: number) => {
-      const bridge = handleRef.current?.bridge;
-      if (!bridge) return;
-      processingRef.current = true;
-      setProcessing(true);
-      try {
-        await bridge.replaceDocument(bytes, page);
-        setPageCount(bridge.pages().length);
+  const swapTo = useCallback(async (doc: PdfWorkingCopy, page: number) => {
+    setProcessing(true);
+    try {
+      if (await restoreRecovery(doc)) {
+        handleRef.current?.bridge.goToPage(page);
         bump();
-      } catch (caught) {
-        setError(pdfErrorMessage(caught, tt("撤销没有成功")));
-      } finally {
-        processingRef.current = false;
-        setProcessing(false);
-        setHistoryTick((value) => value + 1);
       }
-    },
-    [bump, tt],
-  );
+    } finally {
+      setProcessing(false);
+      setHistoryTick((value) => value + 1);
+    }
+  }, [bump, restoreRecovery]);
   const undo = useCallback(() => {
     const bridge = handleRef.current?.bridge;
     if (!bridge || readOnly || processingRef.current) return;
@@ -328,24 +397,24 @@ export function usePdfWorkbench(
   void historyTick;
 
   // ---- 保存 ----
-  const save = useCallback(async (): Promise<
+  const save = useCallback(async (prepared?: PdfWorkingCopy, preparedRevision?: number, preparedSource?: Uint8Array): Promise<
     { ok: true; version: PersistedEditorVersion } | { ok: false; error: string }
   > => {
-    const bridge = handleRef.current?.bridge;
-    if (!bridge) return { ok: false, error: tt("PDF 还没有载入，没有可保存的内容。") };
+    const doc = prepared ?? captureRecovery();
+    const source = preparedSource ?? sourceBytesRef.current;
+    if (!doc || !source) return { ok: false, error: tt("PDF 还没有载入，没有可保存的内容。") };
     if (savingRef.current) return { ok: false, error: tt("上一次保存还没结束，请稍后再试。") };
     savingRef.current = true;
-    setSaving(true);
-    setError("");
-    const savingRevision = revisionRef.current;
+    if (mountedRef.current) { setSaving(true); setError(""); }
+    const savingRevision = preparedRevision ?? revisionRef.current;
     try {
-      const bytes = await exportPdf(bridge);
+      const bytes = await buildPdfWorkingCopy(doc, source);
       const saved = await savePdfBytesToLibrary({
         item: baseRef.current,
         siteId,
         bytes,
         savingRevision,
-        pageCount: bridge.pages().length || pageCount,
+        pageCount: await import("./pdf-operations").then(({ inspectPdf }) => inspectPdf(bytes)),
       });
       if (!saved.ok) {
         throw new Error(saved.error || artifactSaveStepMessage("revision-publish", ""));
@@ -355,7 +424,7 @@ export function usePdfWorkbench(
         ownSources.current.add(sourceKeyOf(saved.item));
         baseRef.current = { ...baseRef.current, ...saved.item, key: baseRef.current.key };
       }
-      setSavedRevision(savingRevision);
+      if (mountedRef.current) setSavedRevision(savingRevision);
       const version: PersistedEditorVersion = {
         url: saved.url,
         versionId: saved.versionId,
@@ -371,13 +440,13 @@ export function usePdfWorkbench(
       return { ok: true, version };
     } catch (caught) {
       const message = pdfErrorMessage(caught, tt("PDF 保存失败"));
-      setError(message);
+      if (mountedRef.current) setError(message);
       return { ok: false, error: message };
     } finally {
       savingRef.current = false;
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
-  }, [pageCount, siteId, tt]);
+  }, [captureRecovery, siteId, tt]);
 
   const download = useCallback(async () => {
     const bridge = handleRef.current?.bridge;
@@ -390,34 +459,12 @@ export function usePdfWorkbench(
     }
   }, [item.title, tt]);
 
-  // ---- 恢复草稿 ----
-  const captureRecovery = useCallback(async () => {
-    const bridge = handleRef.current?.bridge;
-    if (!bridge) return null;
-    const bytes = await exportPdf(bridge);
-    return new Blob([Uint8Array.from(bytes)], { type: "application/pdf" });
-  }, []);
-  const restoreRecovery = useCallback(
-    async (payload: unknown) => {
-      const bridge = handleRef.current?.bridge;
-      if (!bridge) return false;
-      try {
-        const decoded = await decodePdfRecovery(payload, MAX_RECOVERY_BYTES);
-        if (!decoded) return false;
-        await bridge.replaceDocument(decoded.bytes);
-      } catch (caught) {
-        // 草稿坏了：留在服务器那一版上，并照实说，不许静默吞掉。
-        void caught;
-        setError(tt("PDF 本地草稿恢复失败"));
-        return false;
-      }
-      undoOps.current = [];
-      redoOps.current = [];
-      bump();
-      return true;
-    },
-    [bump, tt],
-  );
+  const prepareSave = useCallback(() => {
+    const doc = captureRecovery();
+    const revision = revisionRef.current;
+    const source = sourceBytesRef.current;
+    return () => save(doc ?? undefined, revision, source ?? undefined);
+  }, [captureRecovery, save]);
 
   // ---- 图章（素材图片 / 签名）----
   const insertImage = useCallback(
@@ -449,10 +496,15 @@ export function usePdfWorkbench(
       const cy = dropped?.y ?? placement.y ?? page.size.height / 2;
       const left = Math.min(Math.max(cx - width / 2, 0), Math.max(0, page.size.width - width));
       const top = Math.min(Math.max(cy - height / 2, 0), Math.max(0, page.size.height - height));
+      const documentId = bridge.documentId();
+      const id = globalThis.crypto?.randomUUID?.() || `stamp-${Date.now().toString(36)}`;
+      const url = await uploadEditorMedia(new Blob([data], { type: mime }), "stamp", siteId);
+      if (handleRef.current?.bridge !== bridge || bridge.documentId() !== documentId) return;
+      bridge.rememberStamp(id, url, mime);
       const ok = bridge.createAnnotation(
         pageIndex,
         {
-          id: globalThis.crypto?.randomUUID?.() || `stamp-${Date.now().toString(36)}`,
+          id,
           type: PDF_SUBTYPE.STAMP,
           pageIndex,
           rect: { origin: { x: left, y: top }, size: { width, height } },
@@ -464,7 +516,7 @@ export function usePdfWorkbench(
       );
       if (!ok) throw new Error(tt("现在不能修改这份 PDF。"));
     },
-    [readOnly, tt],
+    [readOnly, siteId, tt],
   );
 
   const selected: PdfAnnotationLike | null = useMemo(
@@ -504,6 +556,8 @@ export function usePdfWorkbench(
     fit: () => handle?.bridge.fitPage(),
     save,
     download,
+    workingCopyReady,
+    prepareSave,
     captureRecovery,
     restoreRecovery,
     insertImage,
