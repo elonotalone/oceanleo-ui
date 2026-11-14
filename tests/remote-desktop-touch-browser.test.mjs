@@ -267,12 +267,14 @@ test("移动触屏上下文：「键盘」按钮在真实点按里聚焦输入�
     assert.equal(await focused(), false, "连接成功本身不能聚焦手机软键盘输入口");
     assert.equal(await s.page.locator("[data-remote-input]").getAttribute("inputmode"), "none");
 
-    // 触摸点按画面不会自己弹键盘
-    const p = await s.at(0.5, 0.5);
+    // 触摸点按画面不会自己弹键盘。手机宽度下展开的面板挡住画面中部（它贴着右边缘的把手），所以点面板外的
+    // 左侧画面：这一下关掉面板，同时照常发给远端；再点把手打开面板去按「键盘」。
+    const p = await s.at(0.15, 0.5);
     await s.page.touchscreen.tap(p.x, p.y);
     await s.waitFor(1);
     assert.equal(await focused(), false);
 
+    await s.page.locator("[data-remote-toolbar-handle]").tap();
     await button.tap();
     assert.equal(await focused(), true);
     assert.equal(await button.getAttribute("aria-pressed"), "true");
