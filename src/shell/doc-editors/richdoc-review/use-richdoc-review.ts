@@ -55,6 +55,7 @@ export interface UseRichDocReviewOptions {
   /** 每次编辑自增的计数；驱动结算与视图重算。 */
   revision: number;
   attribution: RichDocAttribution;
+  onLocalMutation?: () => void;
 }
 
 /** 多人同改的桥（`review-collab.ts` 的 `RichDocReviewCollab` 实现它）。 */
@@ -110,6 +111,8 @@ export function useRichDocReview(
   options: UseRichDocReviewOptions,
 ): RichDocReviewApi {
   const { editor, revision, attribution } = options;
+  const onLocalMutation = useRef(options.onLocalMutation);
+  onLocalMutation.current = options.onLocalMutation;
   const [sidecar, setSidecar] = useState<RichDocReviewSidecar>(
     emptyReviewSidecar,
   );
@@ -140,7 +143,7 @@ export function useRichDocReview(
       if (next === prev) return;
       sidecarRef.current = next;
       setSidecar(next);
-      if (!silent) bridgeRef.current?.onLocalCommit(prev, next);
+      if (!silent) { bridgeRef.current?.onLocalCommit(prev, next); onLocalMutation.current?.(); }
     },
     [],
   );

@@ -115,6 +115,9 @@ export class CollabProvider implements CollabRoom {
   private readonly opts: CollabProviderOptions;
   private readonly WS: new (url: string) => WebSocketLike;
   private ws: WebSocketLike | null = null;
+  hasPendingUpdates = false;
+  private syncRequested = false;
+  private syncAgain = false;
   private wsReady = false;
   private gen = 0;
   private destroyed = false;
@@ -150,11 +153,18 @@ export class CollabProvider implements CollabRoom {
 
     this.onDocUpdate = (update, origin) => {
       if (origin === this) return;
-      if (this.role !== "editor" || !this.wsReady) return;
+      if (this.role !== "editor") return;
+      this.hasPendingUpdates = true;
+      this.emit();
+      if (!this.wsReady) return;
       const enc = encoding.createEncoder();
       encoding.writeVarUint(enc, MSG_SYNC);
       syncProtocol.writeUpdate(enc, update);
       this.sendBinary(encoding.toUint8Array(enc));
+      // A sync response follows earlier updates on the same WebSocket. If an
+      // older sync is pending, request one more barrier covering the latest edit.
+      if (this.syncRequested) this.syncAgain = true;
+      else this.sendStep1();
     };
     this.doc.on("update", this.onDocUpdate);
 
@@ -271,6 +281,8 @@ export class CollabProvider implements CollabRoom {
     socket.binaryType = "arraybuffer";
     this.ws = socket;
     this.wsReady = false;
+    this.syncRequested = false;
+    this.syncAgain = false;
     socket.onopen = () => {
       if (gen !== this.gen) return;
       socket.send(JSON.stringify({ type: "auth", ticket: ticket.ticket }));
@@ -300,6 +312,8 @@ export class CollabProvider implements CollabRoom {
   private deny(): void {
     this.clearTimers();
     this.wsReady = false;
+    this.syncRequested = false;
+    this.syncAgain = false;
     this.batch(() => {
       // 从没连上过 = 单人处理，可以存版本；连上过的，保持最后一次服务端给的值。
       if (!this.everReady) this.isSaver = true;
@@ -309,6 +323,8 @@ export class CollabProvider implements CollabRoom {
 
   private handleClose(code: number): void {
     this.wsReady = false;
+    this.syncRequested = false;
+    this.syncAgain = false;
     this.ws = null;
     if (this.readyTimer) {
       clearTimeout(this.readyTimer);
@@ -327,6 +343,8 @@ export class CollabProvider implements CollabRoom {
   private connectionLost(): void {
     this.stopRenew();
     this.wsReady = false;
+    this.syncRequested = false;
+    this.syncAgain = false;
     const others = Array.from(this.awareness.getStates().keys()).filter((id) => id !== this.awareness.clientID);
     if (others.length) removeAwarenessStates(this.awareness, others, this);
     this.batch(() => {
@@ -395,8 +413,14 @@ export class CollabProvider implements CollabRoom {
       if (syncType === syncProtocol.messageYjsSyncStep1 && encoding.length(reply) > 1 && this.role === "editor") {
         this.sendBinary(encoding.toUint8Array(reply));
       }
-      if (syncType === syncProtocol.messageYjsSyncStep2 && this.status === "syncing") {
-        this.setStatus("synced");
+      if (syncType === syncProtocol.messageYjsSyncStep2) {
+        this.syncRequested = false;
+        if (this.syncAgain) { this.syncAgain = false; this.sendStep1(); }
+        else {
+          this.hasPendingUpdates = false;
+          if (this.status === "syncing") this.setStatus("synced");
+          else this.emit();
+        }
       }
     } else if (type === MSG_AWARENESS) {
       applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), this);
@@ -488,6 +512,7 @@ export class CollabProvider implements CollabRoom {
   }
 
   private sendStep1(): void {
+    this.syncRequested = true;
     const enc = encoding.createEncoder();
     encoding.writeVarUint(enc, MSG_SYNC);
     syncProtocol.writeSyncStep1(enc, this.doc);
@@ -600,6 +625,8 @@ export class CollabProvider implements CollabRoom {
     const ws = this.ws;
     this.ws = null;
     this.wsReady = false;
+    this.syncRequested = false;
+    this.syncAgain = false;
     if (ws) {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
       try {

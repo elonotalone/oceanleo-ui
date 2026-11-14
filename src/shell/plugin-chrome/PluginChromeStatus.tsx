@@ -21,13 +21,11 @@ export function PluginChromeStatus({ state }: { state: PluginChromeSaveState }) 
 
   switch (state.kind) {
     case "clean":
-      text = state.revisionLabel
-        ? tt("版本 {label}", { label: state.revisionLabel })
-        : tt("无待保存改动");
+      text = tt("已保存");
       break;
     case "dirty":
       tone = "warn";
-      text = tt("有未保存改动");
+      text = tt("保存中…");
       break;
     case "saving":
       tone = "warn";

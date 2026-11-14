@@ -45,7 +45,6 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { withEditorHistoryCommand } from "../workbench-material-command";
-import { richDocDraftForRestore } from "../doc-editors/rich-doc-draft-restore";
 
 export function RichDocRoute({
   item,
@@ -151,10 +150,10 @@ export function RichDocRoute({
     [item, materialAdapter],
   );
   useWorkbenchMaterialAdapter(materialCommandAdapter);
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (prepared?: ReturnType<typeof editor.prepareSave>) => {
     // 协同里不是保存者：没有要存的东西（保存者会存），别拦住「新开一轮对话」。
     if (!collabSaveGate) return { ok: true as const, item };
-    const saved = await editor.save();
+    const saved = await (prepared ? prepared() : editor.save());
     if (!saved) {
       return {
         ok: false as const,
@@ -217,7 +216,7 @@ export function RichDocRoute({
     };
   }, [collabSaveGate, editor.error, editor.lastSaveError, editor.save, item]);
   const restoreWorkingDocument = useCallback(
-    (payload: unknown) => editor.restoreRecovery(richDocDraftForRestore(payload)),
+    (payload: unknown) => editor.restoreRecovery(payload),
     [editor.restoreRecovery],
   );
   const [importError, setImportError] = useState("");
@@ -512,13 +511,18 @@ export function RichDocRoute({
           dirty: collabSaveGate ? editor.dirty : false,
           editRevision: editor.editRevision,
           autoSave: collabSaveGate,
+          sharedSavePending: !collabSaveGate && Boolean(collabRoom?.hasPendingUpdates),
+          sharedSaveState: !collabSaveGate && collabRoom
+            ? collabRoom.status === "offline" ? "error"
+              : collabRoom.hasPendingUpdates || collabRoom.status !== "synced" ? "saving" : "saved"
+            : undefined,
           flush: saveBeforeNewConversation,
+          preparePublish: () => { const save = editor.prepareSave(); return () => saveBeforeNewConversation(save); },
           recovery: {
             draftSchema: "oceanleo.richdoc.edit.v1",
             key: advancedRecoveryKey("richdoc", item),
             ready: Boolean(editor.editor) && !editor.loading,
-            capture: () =>
-              editor.sourceReady ? editor.editor?.getJSON() || null : null,
+            capture: editor.captureRecovery,
             restore: restoreWorkingDocument,
           },
         },

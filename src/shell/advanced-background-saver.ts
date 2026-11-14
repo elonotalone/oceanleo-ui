@@ -1,309 +1,123 @@
-import {
-  ensureBackgroundSaveNoticeMounted,
-  unmountBackgroundSaveNoticeForTests,
-} from "./advanced-background-save-notice";
-import { subscribeAutosaveNudges } from "./advanced-autosave-nudge";
-import {
-  AUTOSAVE_BACKGROUND_RETRY_DELAYS,
-  type AdvancedPersistenceController,
-  type AdvancedPersistenceNudgeReason,
-} from "./advanced-persistence-controller";
-import type { LibraryItem } from "./library-data";
+import type { AdvancedFlushResult } from "./advanced-session-context";
+import type { WorkingCopySaver, WorkingCopyTransport } from "./editor-working-copy";
 
-type BackgroundController = AdvancedPersistenceController<LibraryItem>;
-
-/**
- * "saving": the job is saving or waiting for an automatic retry (transient
- * failures never leave this state). "failed": a permanent failure that retrying
- * cannot fix; the draft is kept and `reason` says why ("auth" resumes by itself
- * after sign-in).
- */
-export type BackgroundSaveStatus = "saving" | "failed";
-export type BackgroundSaveFailureReason = "auth" | "blocked";
-
-export interface BackgroundSaveJobView {
-  key: string;
-  status: BackgroundSaveStatus;
-  reason?: BackgroundSaveFailureReason;
+export type Publication = () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
+interface Publisher {
+  root?: string;
+  saver: WorkingCopySaver;
+  transport: WorkingCopyTransport;
+  prepare: () => Publication;
+  record: (result: AdvancedFlushResult) => Promise<void>;
+  timer?: ReturnType<typeof setTimeout>;
+  running?: Promise<AdvancedFlushResult>;
+  again: boolean;
+  closed: boolean;
+  prepared?: Publication;
+  preparedSeq?: number | null;
+  owed: boolean;
+  failure: boolean;
+  attempts: number;
+  last?: AdvancedFlushResult;
+  receipt?: { result: Extract<AdvancedFlushResult, { ok: true }>; seq: number | null };
 }
-
-interface BackgroundSaveJob extends BackgroundSaveJobView {
-  controller: BackgroundController;
-  retryTimer?: ReturnType<typeof setTimeout>;
-  retryAttempt: number;
-}
-
-const jobs = new Map<string, BackgroundSaveJob>();
+const jobs = new Set<Publisher>();
 const listeners = new Set<() => void>();
-let justSavedUntil = 0;
-let justSavedTimer: ReturnType<typeof setTimeout> | undefined;
-let noticeView = { failed: 0, auth: 0, saved: false };
-let unsubscribeNudges: (() => void) | undefined;
+const emit = () => { for (const listener of listeners) listener(); };
+export function subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; }
+export function hasPendingOrFailed() { return [...jobs].some((job) => job.closed && job.saver.snapshot().pending); }
+export function shouldWarnBeforeUnload(editorUnconfirmed: boolean) { return editorUnconfirmed || hasPendingOrFailed(); }
+const clear = (job: Publisher) => { if (job.timer !== undefined) clearTimeout(job.timer); job.timer = undefined; };
 
-function emit(): void {
-  const failed = failedBackgroundSaveCount();
-  let auth = 0;
-  for (const job of jobs.values()) if (job.status === "failed" && job.reason === "auth") auth += 1;
-  const saved = Date.now() < justSavedUntil && failed === 0;
-  if (noticeView.failed !== failed || noticeView.saved !== saved || noticeView.auth !== auth) {
-    noticeView = { failed, auth, saved };
-  }
-  for (const listener of [...listeners]) listener();
-}
-
-function markJustSaved(): void {
-  justSavedUntil = Date.now() + 4_000;
-  if (justSavedTimer !== undefined) clearTimeout(justSavedTimer);
-  justSavedTimer = setTimeout(() => {
-    justSavedTimer = undefined;
-    emit();
-  }, 4_000);
-}
-
-function ensureNotice(): void {
-  ensureBackgroundSaveNoticeMounted();
-}
-
-async function waitForQuiet(
-  key: string,
-  controller: BackgroundController,
-): Promise<void> {
-  for (let i = 0; i < 80; i += 1) {
-    if (jobs.get(key)?.controller !== controller) return;
-    if (controller.snapshot().running) {
-      await controller.whenIdle();
-      continue;
-    }
-    if (controller.hasScheduledWork()) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-      continue;
-    }
-    return;
+/** Reopening waits for the previous instance's pending PUT before reading its copy. */
+export async function waitForClosingWorkingCopy(root: string): Promise<void> {
+  for (const job of jobs) {
+    if (job.root !== root || !job.closed || !job.saver.snapshot().pending) continue;
+    if (!await job.saver.flush()) throw new Error(job.saver.snapshot().error || "保存失败，请重试");
   }
 }
 
-function clearJobTimer(job: BackgroundSaveJob): void {
-  if (job.retryTimer !== undefined) clearTimeout(job.retryTimer);
-  job.retryTimer = undefined;
-}
-
-function scheduleOwnRetry(job: BackgroundSaveJob): void {
-  clearJobTimer(job);
-  const delays = AUTOSAVE_BACKGROUND_RETRY_DELAYS;
-  const delay = delays[Math.min(job.retryAttempt, delays.length - 1)] ?? 60_000;
-  job.retryAttempt += 1;
-  job.retryTimer = setTimeout(() => {
-    job.retryTimer = undefined;
-    if (jobs.get(job.key) !== job) return;
-    void finish(job.key, job.controller, job.controller.retry());
-  }, delay);
-}
-
-async function finish(
-  key: string,
-  controller: BackgroundController,
-  operation: Promise<unknown>,
-): Promise<void> {
-  await operation;
-  const job = jobs.get(key);
-  if (!job || job.controller !== controller) return;
-  if (controller.isBusy()) {
-    job.status = "saving";
-    job.reason = undefined;
-    emit();
-    void waitForQuiet(key, controller).then(() =>
-      finish(key, controller, Promise.resolve()),
-    );
-    return;
-  }
-  if (!controller.hasUnconfirmedWork()) {
-    clearJobTimer(job);
-    jobs.delete(key);
-    controller.dispose();
-    markJustSaved();
-    emit();
-    return;
-  }
-  const failure = controller.snapshot().failure;
-  if (failure && !failure.retryable) {
-    // Retrying cannot help (sign-in needed, conflict, permission, integrity).
-    // The draft stays; sign-in resumes automatically through the nudges.
-    clearJobTimer(job);
-    job.status = "failed";
-    job.reason = failure.auth ? "auth" : "blocked";
-    emit();
-    return;
-  }
-  // Transient (or a controller that gave up on a caller-set retry cap): the
-  // saver keeps retrying on a capped backoff, never leaving it to the person.
-  job.status = "saving";
-  job.reason = undefined;
-  emit();
-  scheduleOwnRetry(job);
-}
-
-function nudgeAll(reason: AdvancedPersistenceNudgeReason): void {
-  for (const job of [...jobs.values()]) {
-    if (job.status === "failed") {
-      if (job.reason === "auth" && reason !== "visible") {
-        job.status = "saving";
-        job.reason = undefined;
-        emit();
-        void finish(job.key, job.controller, job.controller.retry());
+/** Only the prepared publication and the working-copy drain survive editor teardown. */
+export function createBackgroundPublisher(input: Omit<Publisher, "again" | "closed" | "owed" | "failure" | "attempts">) {
+  const job: Publisher = { ...input, again: false, closed: false, owed: false, failure: false, attempts: 0 };
+  jobs.add(job);
+  const later = (ms: number) => { clear(job); job.timer = setTimeout(() => { job.timer = undefined; void publish(); }, ms); };
+  const publish = (): Promise<AdvancedFlushResult> => {
+    clear(job);
+    if (job.running) { job.again = job.owed; return job.running.then(() => job.again ? publish() : job.last!); }
+    if (!job.owed && !job.saver.snapshot().pending) return Promise.resolve(job.last ?? { ok: true });
+    job.again = false;
+    const running = (async (): Promise<AdvancedFlushResult> => {
+      try {
+        if (!job.receipt) {
+          if (!await job.saver.flush()) return { ok: false, error: job.saver.snapshot().error || "保存失败，请重试" };
+          const seq = job.preparedSeq !== undefined ? job.preparedSeq : job.saver.snapshot().seq;
+          const run = job.prepared ?? job.prepare();
+          job.prepared = undefined;
+          job.preparedSeq = undefined;
+          job.owed = false;
+          const result = await run();
+          if (!result.ok) { if (!job.prepared) { job.prepared = run; job.preparedSeq = seq; } return result; }
+          job.receipt = { result, seq };
+        }
+        const { result, seq } = job.receipt;
+        await job.record(result);
+        const revisionId = result.item?.revisionId || result.item?.meta?.revision_id;
+        if (seq !== null && typeof revisionId === "string") await job.transport.published(seq, revisionId);
+        job.receipt = undefined;
+        job.owed = job.saver.snapshot().pending || (job.saver.snapshot().seq ?? 0) > (seq ?? 0);
+        return result;
+      } catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+    })();
+    job.running = running;
+    void running.then((result) => {
+      job.running = undefined;
+      job.last = result;
+      job.failure = !result.ok;
+      if (!result.ok) { job.owed = true; later(Math.min(30_000, 1000 * 2 ** job.attempts++)); }
+      else {
+        job.attempts = 0;
+        if (job.owed || job.again) later(job.closed ? 0 : 10_000);
+        else if (job.closed) { jobs.delete(job); job.saver.dispose(); }
       }
-      continue;
-    }
-    if (job.retryTimer !== undefined) {
-      clearJobTimer(job);
-      void finish(job.key, job.controller, job.controller.retry());
-      continue;
-    }
-    job.controller.nudge(reason);
-  }
-}
-
-function ensureNudges(): void {
-  if (!unsubscribeNudges) unsubscribeNudges = subscribeAutosaveNudges(nudgeAll);
-}
-
-export function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
+      emit();
+    });
+    return running;
+  };
+  return {
+    saved() { job.owed = true; if (!job.closed) later(10_000); emit(); },
+    publish,
+    async flushLatest(): Promise<AdvancedFlushResult> {
+      let result: AdvancedFlushResult;
+      do { result = await publish(); } while (result.ok && (job.owed || job.saver.snapshot().pending));
+      return result;
+    },
+    close() {
+      if (job.closed) return;
+      job.closed = true;
+      if (!job.owed && !job.saver.snapshot().pending) { clear(job); jobs.delete(job); job.saver.dispose(); return; }
+      job.owed = true;
+      // Capture even when a prior publication is in flight, before editor destruction.
+      job.saver.freeze();
+      job.prepared = job.prepare();
+      job.preparedSeq = undefined;
+      void publish();
+      emit();
+    },
+    cancelIdle() { clear(job); },
   };
 }
-
-export function hasPendingOrFailed(): boolean {
-  return jobs.size > 0;
-}
-
-export function shouldWarnBeforeUnload(editorUnconfirmed: boolean): boolean {
-  return editorUnconfirmed || hasPendingOrFailed();
-}
-
-export function failedBackgroundSaveCount(): number {
-  let count = 0;
-  for (const job of jobs.values()) {
-    if (job.status === "failed") count += 1;
-  }
-  return count;
-}
-
-export function snapshotBackgroundSaves(): readonly BackgroundSaveJobView[] {
-  return [...jobs.values()].map(({ key, status, reason }) => ({
-    key,
-    status,
-    ...(reason ? { reason } : {}),
-  }));
-}
-
-export function noticeSnapshot(): { failed: number; auth: number; saved: boolean } {
-  return noticeView;
-}
-
-export function justSavedVisible(): boolean {
-  return noticeView.saved;
-}
-
-export function handOff(
-  key: string,
-  controller: BackgroundController,
-): void {
-  if (!key) return;
-  controller.markHandedOff();
-  controller.prepareBackgroundRetries();
-  ensureNudges();
-  const existing = jobs.get(key);
-  if (existing?.controller === controller) {
-    if (existing.status !== "saving") {
-      existing.status = "saving";
-      existing.reason = undefined;
-      emit();
-      void finish(key, controller, controller.retry());
-    }
-    return;
-  }
-  if (existing && existing.status === "saving") {
-    return;
-  }
-  jobs.set(key, { key, controller, status: "saving", retryAttempt: 0 });
-  ensureNotice();
-  emit();
-  void finish(key, controller, controller.retry());
-}
-
-export function takeBack(
-  key: string,
-  draftTier?: boolean,
-): BackgroundController | null {
-  if (!key) return null;
-  const job = jobs.get(key);
-  if (!job) return null;
-  // Normal PPT and hosted PPTist have different document/revision sources.
-  // Keep the originating controller until it publishes its captured version.
-  if (draftTier !== undefined && job.controller.hasDraftTier() !== draftTier) return null;
-  clearJobTimer(job);
-  jobs.delete(key);
-  job.controller.clearHandedOff();
-  emit();
-  return job.controller;
-}
-
-export function retry(key: string): Promise<void> {
-  const job = jobs.get(key);
-  if (!job) return Promise.resolve();
-  job.status = "saving";
-  job.reason = undefined;
-  clearJobTimer(job);
-  emit();
-  return finish(key, job.controller, job.controller.retry());
-}
-
-export function retryAllFailed(): Promise<void> {
-  return Promise.all(
-    [...jobs.values()]
-      .filter((job) => job.status === "failed")
-      .map((job) => retry(job.key)),
-  ).then(() => undefined);
-}
-
 export function leaveAdvancedWorkbench(input: {
-  autoSaveEnabled: boolean;
-  handOff: () => void;
-  closeDetail: () => void;
-  onClose: () => void;
-  /** Opt-in only for editors whose serializer lives in the mounted iframe. */
+  autoSaveEnabled: boolean; handOff: () => void; closeDetail: () => void; onClose: () => void;
   flushMounted?: () => Promise<{ ok: boolean }>;
 }): void | Promise<boolean> {
-  if (input.flushMounted) {
-    return input.flushMounted().then((result) => {
-      if (!result.ok) return false;
-      input.closeDetail();
-      input.onClose();
-      return true;
-    }).catch(() => false);
-  }
+  if (input.flushMounted) return input.flushMounted().then((result) => {
+    if (!result.ok) return false;
+    input.closeDetail(); input.onClose(); return true;
+  }).catch(() => false);
   if (input.autoSaveEnabled) input.handOff();
-  input.closeDetail();
-  input.onClose();
+  input.closeDetail(); input.onClose();
 }
-
-export function resetBackgroundSaverForTests(): void {
-  unsubscribeNudges?.();
-  unsubscribeNudges = undefined;
-  for (const job of [...jobs.values()]) {
-    clearJobTimer(job);
-    try {
-      job.controller.dispose();
-    } catch {
-      // test reset
-    }
-  }
-  jobs.clear();
-  justSavedUntil = 0;
-  if (justSavedTimer !== undefined) clearTimeout(justSavedTimer);
-  justSavedTimer = undefined;
-  noticeView = { failed: 0, auth: 0, saved: false };
-  emit();
-  unmountBackgroundSaveNoticeForTests();
+export function resetBackgroundSaverForTests() {
+  for (const job of jobs) { clear(job); job.saver.dispose(); }
+  jobs.clear(); emit();
 }

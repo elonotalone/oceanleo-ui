@@ -1,4 +1,3 @@
-import type { AppSession } from "../lib/app-session";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
 import type { LibraryItem } from "./library-data";
 
@@ -38,71 +37,6 @@ export function normalizeAdvancedDraftPointer(
   if (identity && (p.rootId !== identity.rootId || p.baseRevisionId !== identity.baseRevisionId) || schema && p.schema !== schema) return null;
   return { rootId: p.rootId, baseRevisionId: p.baseRevisionId, url: p.url, schema: p.schema, editRevision: p.editRevision, savedAt: p.savedAt };
 }
-export function advancedDraftCovers(covered: AdvancedEditRevision | undefined, revision: AdvancedEditRevision): boolean {
-  return covered !== undefined && (Object.is(covered, revision) || typeof covered === "number" && typeof revision === "number" && covered >= revision);
-}
-/** A newer full working document remains valid on the just-published base. */
-export function advancedDraftAfterVersion(
-  draft: AdvancedDraftPointer | null, covered: AdvancedEditRevision | undefined, baseRevisionId: string,
-  coverage?: AdvancedDraftVersionCoverage,
-): AdvancedDraftPointer | null {
-  if (!draft) return null;
-  // Some graph carriers can only persist a session head, not publish a new
-  // artifact version. Their server draft remains the durable working document.
-  if (coverage && draft.baseRevisionId === baseRevisionId) return draft;
-  if (coverage && draft.schema !== coverage.schema) return { ...draft, baseRevisionId };
-  if (coverage?.restored && draft.url === coverage.restored.url &&
-      draft.savedAt === coverage.restored.savedAt && Object.is(draft.editRevision, coverage.restored.editRevision)) return null;
-  if (covered === undefined || advancedDraftCovers(covered, draft.editRevision)) return null;
-  return { ...draft, baseRevisionId };
-}
-
-/** Shared by draft and version CAS; receipts remain authoritative before React rerenders. */
-export class AdvancedDraftSnapshotQueue {
-  private tail: Promise<unknown> = Promise.resolve();
-  private receipt: AppSession | null = null;
-  run<T>(operation: () => Promise<T>): Promise<T> {
-    const run = this.tail.then(operation, operation);
-    this.tail = run.catch(() => undefined);
-    return run;
-  }
-  current(observed: AppSession | null): AppSession | null {
-    if (!observed || observed.id !== this.receipt?.id) return observed;
-    return this.receipt.revision > observed.revision ? this.receipt : observed;
-  }
-  accept(session: AppSession | undefined): void { if (session) this.receipt = session; }
-}
-
-export async function uploadAdvancedDraft(input: {
-  identity: AdvancedDraftIdentity; schema: string; revision: AdvancedEditRevision;
-  payload: unknown; siteId: string; title: string;
-}, dependencies?: { upload: typeof import("../lib/database").uploadFile; now?: () => string }): Promise<AdvancedDraftPointer> {
-  if (input.payload == null) throw new Error("编辑器尚未提供可保存的工作文档");
-  const savedAt = dependencies?.now?.() ?? new Date().toISOString();
-  const encoded = JSON.stringify({ ...input.identity, schema: input.schema, version: 1, editRevision: input.revision, savedAt, data: input.payload });
-  const file = new File([encoded], "working-document.oceanleo-project.json", { type: "application/json" });
-  if (file.size > ADVANCED_DRAFT_MAX_BYTES) throw new Error("工作文档超过 20MB 安全上限");
-  const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())), b => b.toString(16).padStart(2, "0")).join("");
-  const upload = dependencies?.upload ?? (await import("./advanced-draft-transport")).uploadPrivateWorkingDraft;
-  const uploaded = await upload(file, { siteId: input.siteId, title: `${input.title}草稿`, registerAsset: false,
-    idempotencyKey: `advanced-draft:${digest}` });
-  const receiptDigest = String(
-    uploaded.data?.file?.meta?.content_digest ||
-      uploaded.data?.file?.meta?.sha256 ||
-      "",
-  )
-    .trim()
-    .toLowerCase()
-    .replace(/^sha256:/, "");
-  if (receiptDigest && receiptDigest !== digest) {
-    throw new Error("草稿上传的校验和与本地文件不一致");
-  }
-  const pointer = normalizeAdvancedDraftPointer({ ...input.identity, schema: input.schema, editRevision: input.revision,
-    savedAt, url: uploaded.data?.file?.url });
-  if (!uploaded.ok || !pointer) throw new Error(uploaded.error || "存储服务没有确认草稿地址");
-  return pointer;
-}
-
 export async function loadAdvancedDraft(
   pointer: AdvancedDraftPointer, signal?: AbortSignal,
   read?: typeof fetch,

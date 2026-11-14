@@ -1,5 +1,7 @@
 "use client";
 
+import { WORKING_COPY_CONFLICT } from "./editor-working-copy";
+
 // ============================================================================
 // 编辑器第一行（编辑器整改波 2026-10-23，操作员裁定 D1：顶栏只剩一行）
 // ----------------------------------------------------------------------------
@@ -106,14 +108,8 @@ export function AdvancedWorkspaceActionBar({
   onUploadFiles?: (files: File[]) => void;
 }) {
   const tt = useUI();
-  const confirmation = adapter.persistence?.confirmation;
-  const reportedSaveState = confirmation?.state ?? observedAutoSaveState;
-  // 草稿回执到达之前（recovery.ready === false，PDF 处理中也会这样）槽照样在，
-  // 但绝不说「已保存」：服务器没确认就如实显示「尚未确认保存」。
-  const autoSaveState: AdvancedAutoSaveState | "unconfirmed" =
-    adapter.persistence?.recovery?.ready === false && reportedSaveState === "saved"
-      ? "unconfirmed"
-      : reportedSaveState;
+  const conflict = autoSaveError === WORKING_COPY_CONFLICT;
+  const autoSaveState: AdvancedAutoSaveState | "unconfirmed" = observedAutoSaveState;
   const rightPaneSlot = useRightPaneSlot();
   const rightMaximized = useSyncExternalStore(
     rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
@@ -165,24 +161,20 @@ export function AdvancedWorkspaceActionBar({
   const saveDestination: "cloud" | "local-device" =
     adapter.persistence?.destination === "local-device" ? "local-device" : "cloud";
   const saveStateLabel = tt(
-    autoSaveState === "unconfirmed"
-      ? "尚未确认保存"
-      : autoSaveState === "saving"
+    autoSaveState === "saving"
       ? saveDestination === "local-device"
         ? "正在保存到本机"
-        : "正在自动保存"
+        : "保存中…"
       : autoSaveState === "error"
-        ? "保存遇到问题"
+        ? "保存失败"
         : saveDestination === "local-device"
           ? "已保存到本机（未同步到云端）"
           : "已保存",
   );
   const saveErrorTitle =
     autoSaveState === "error"
-      ? tt(confirmation?.message || autoSaveError || "保存失败，点击重试")
-      : confirmation?.message
-        ? tt(confirmation.message)
-        : undefined;
+      ? tt(autoSaveError || "保存失败，点击重试")
+      : undefined;
   const saveMenuAvailable = saveActions.length > 0 || autoSaveState === "error";
 
   const triggerAction = async (action: WorkspaceAction) => {
@@ -333,7 +325,7 @@ export function AdvancedWorkspaceActionBar({
                     className="h-4 w-4 shrink-0"
                   />
                   <span className="min-w-0 flex-1 truncate">
-                    {tt("保存失败，点击重试")}
+                    {tt(conflict ? "重新加载" : "保存失败，点击重试")}
                   </span>
                 </Button>
               ) : null}

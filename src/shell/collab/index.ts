@@ -31,6 +31,8 @@ export interface CollabRoom {
   awareness: Awareness;
   role: CollabRole;
   status: CollabStatus;
+  /** Local changes awaiting the room’s existing Yjs sync response. */
+  hasPendingUpdates?: boolean;
   self: CollabUser;
   needsSeed: boolean;
   isSaver: boolean;

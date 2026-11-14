@@ -132,6 +132,8 @@ export interface RichDocEditorState {
   save: () => Promise<PersistedEditorVersion | null>;
   /** 上一次 `save()` 失败的原因（同步可读；React state 里的 `error` 要等下一次渲染）。 */
   lastSaveError: () => string;
+  captureRecovery: () => unknown;
+  prepareSave: () => () => Promise<PersistedEditorVersion | null>;
   isGenerated: () => boolean;
   exportMarkdown: () => Promise<void>;
   exportHtml: () => Promise<void>;
@@ -480,6 +482,13 @@ export function useRichDocEditor(
     editor,
     revision: reviewRevision,
     attribution: reviewAttribution,
+    onLocalMutation: () => {
+      if (!sourceReadyRef.current) return;
+      recordUserMutation(userEditItemKey(persistedItemRef.current));
+      revisionRef.current += 1;
+      setDirty(true);
+      setReviewRevision((value) => value + 1);
+    },
   });
   useEffect(() => {
     trackChangesEnabledRef.current = review.trackChangesEnabled;
@@ -771,6 +780,7 @@ export function useRichDocEditor(
   }, [editor, baseTitle, requireSourceReady]);
 
   const reviewSidecar = review.sidecar;
+  const getReviewSidecar = review.getSidecar;
   const exportDoc = useCallback(
     async (choice?: RevisionExportChoice) => {
       if (!editor || !requireSourceReady()) return;
@@ -851,19 +861,26 @@ export function useRichDocEditor(
     [tt],
   );
 
-  const saveOnce = useCallback(async (): Promise<PersistedEditorVersion | null> => {
+  const captureSave = useCallback(() => ({
+    json: editor?.getJSON(), html: editor?.getHTML() || "",
+    revision: revisionRef.current, review: getReviewSidecar(),
+    generated: generatedRef.current,
+  }), [editor, getReviewSidecar]);
+  const saveOnce = useCallback(async (snapshot?: ReturnType<typeof captureSave>): Promise<PersistedEditorVersion | null> => {
     const fail = (message: string) => {
       saveErrorRef.current = message;
       setError(message);
       return null;
     };
     saveErrorRef.current = "";
-    if (!editor) return fail(tt("文档编辑器还没有就绪"));
+    if (!snapshot && !editor) return fail(tt("文档编辑器还没有就绪"));
     if (!sourceReadyRef.current) {
       return fail(tt("文档源尚未成功载入；请刷新源或导入文件后再保存"));
     }
-    const savingRevision = revisionRef.current;
-    const json = editor.getJSON();
+    const captured = snapshot ?? captureSave();
+    const savingRevision = captured.revision;
+    const json = captured.json;
+    if (!json) return fail(tt("文档编辑器还没有就绪"));
     /**
      * 交付用的 docx **不能**拿带审阅 mark 的原始 json 去生成：
      * `docx-export.ts` 的白名单不认 `richdocDeletion`，被划掉的文字会以
@@ -875,7 +892,7 @@ export function useRichDocEditor(
      */
     const deliveryJson = applyRevisionExportChoice(json, "keep-markup");
     const textExcerpt = richDocTextExcerpt(json);
-    const html = editor.getHTML();
+    const html = captured.html;
     const baseItem = persistedItemRef.current;
     const baseRevision = String(
       baseItem.revisionId || baseItem.meta.revision_id || baseItem.id,
@@ -904,7 +921,7 @@ export function useRichDocEditor(
           createRichDocDeliveryFile({
             item: baseItem,
             title: baseTitle,
-            generated: generatedRef.current,
+            generated: captured.generated,
             html,
             json: persist.extension === "docx" ? deliveryJson : json,
           }),
@@ -938,7 +955,7 @@ export function useRichDocEditor(
           // 多余键，所以只认 `type`/`content` 的老读者读到的文档一模一样，
           // `RICHDOC_PROJECT_SCHEMA` 的版本号因此不动（任务书禁区第 3 条）。
           // 空 sidecar 原样剥离 ⇒ 没开审阅的文档零 diff。
-          data: { ...attachReviewSidecar(json, reviewSidecar), generatedOrigin: generatedRef.current },
+          data: { ...attachReviewSidecar(json, captured.review), generatedOrigin: captured.generated },
         },
         editorManifest: {
           id: RICHDOC_EDITOR_CAPABILITY,
@@ -948,7 +965,7 @@ export function useRichDocEditor(
           artifactType: "document",
           provenance: {
             editorRevision: savingRevision,
-            ...(generatedRef.current ? {} : { generatedOrigin: false }),
+            ...(captured.generated ? {} : { generatedOrigin: false }),
           },
           // 进 artifact_revisions.metadata：库卡片优先读它，不必再抓源文本。
           metadata: { text_excerpt: textExcerpt },
@@ -1009,7 +1026,7 @@ export function useRichDocEditor(
       savingRef.current = false;
       setSaving(false);
     }
-  }, [editor, siteId, baseTitle, reviewSidecar, tt]);
+  }, [editor, siteId, baseTitle, captureSave, tt]);
 
   /** 同一时刻只跑一次保存：并发的调用拿到同一个结果，而不是一个没有原因的 null。 */
   const save = useCallback((): Promise<PersistedEditorVersion | null> => {
@@ -1020,6 +1037,14 @@ export function useRichDocEditor(
     inflightSaveRef.current = running;
     return running;
   }, [saveOnce]);
+  const prepareSave = useCallback(() => {
+    const captured = captureSave();
+    return () => saveOnce(captured);
+  }, [captureSave, saveOnce]);
+  const captureRecovery = useCallback(() => {
+    if (!editor || !sourceReadyRef.current) return null;
+    return { ...attachReviewSidecar(editor.getJSON(), getReviewSidecar()), generatedOrigin: generatedRef.current };
+  }, [editor, getReviewSidecar]);
   const lastSaveError = useCallback(() => saveErrorRef.current, []);
 
   /** 协同里只有房间里的保存者存版本，存完告诉房间是哪个版本；不在协同里原样存。 */
@@ -1158,7 +1183,8 @@ export function useRichDocEditor(
       if (json.type !== "doc" || !Array.isArray(json.content)) return false;
       editor.commands.setContent(json, { emitUpdate: false });
       setCounts(countText(editor.getText()));
-      revisionRef.current += 1;
+      hydrateReview(json);
+      if (typeof (payload as { generatedOrigin?: unknown }).generatedOrigin === "boolean") generatedRef.current = (payload as { generatedOrigin: boolean }).generatedOrigin;
       setDirty(true);
       sourceReadyRef.current = true;
       setSourceReady(true);
@@ -1167,7 +1193,7 @@ export function useRichDocEditor(
       setError("");
       return true;
     },
-    [editor],
+    [editor, hydrateReview],
   );
 
   return {
@@ -1203,6 +1229,8 @@ export function useRichDocEditor(
     unsetLink,
     clearFormat,
     restoreRecovery,
+    captureRecovery,
+    prepareSave,
     collabPhase,
     collabReadOnly,
   };

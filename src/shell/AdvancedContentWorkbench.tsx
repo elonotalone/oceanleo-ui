@@ -1,7 +1,6 @@
 "use client";
 
-import { ADVANCED_DRAFT_META_KEY, AdvancedDraftSnapshotQueue, advancedDraftIdentity,
-  advancedDraftAfterVersion, advancedDraftCovers, type AdvancedDraftPointer, type AdvancedDraftVersionCoverage } from "./advanced-draft";
+import { SessionSnapshotQueue } from "./user-edit-session";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
 import { workspaceSnapshotFailureRetryable } from "./workspace-session-model";
 import dynamic from "next/dynamic";
@@ -39,7 +38,6 @@ import {
   advancedRootItemId,
   advancedSessionAppId,
   advancedSessionSnapshot,
-  advancedDraftFromSnapshot,
   mergeAdvancedSessionSnapshot,
   saveOwnedWorkspaceSnapshot,
   withInlineEditorHistoryEntry,
@@ -392,20 +390,7 @@ function AdvancedContentWorkbenchRuntime(
   }, [restoredSessionId, workspace.session]);
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
-  const draftQueueRef = useRef(new AdvancedDraftSnapshotQueue());
-  const versionCoveredRef = useRef<AdvancedEditRevision | undefined>(undefined);
-  const versionSchemaRef = useRef<string | undefined>(undefined);
-  const openingDraftRef = useRef({
-    item: activeItem, sessionId: restoredSessionId,
-    pointer: advancedDraftFromSnapshot(workspace.session?.snapshot, activeItem),
-  });
-  if (openingDraftRef.current.sessionId !== restoredSessionId || openingDraftRef.current.item.id !== activeItem.id ||
-      openingDraftRef.current.item.revisionId !== activeItem.revisionId ||
-      openingDraftRef.current.item.url !== activeItem.url) {
-    openingDraftRef.current = { item: activeItem, sessionId: restoredSessionId,
-      pointer: advancedDraftFromSnapshot(workspace.session?.snapshot, activeItem) };
-    versionCoveredRef.current = undefined;
-  }
+  const snapshotQueueRef = useRef(new SessionSnapshotQueue());
   const materialRef = useRef<LibraryItem>(activeItem);
   const materialSessionIdRef = useRef(restoredSessionId);
   const embeddedPinnedRevisionChanged = Boolean(
@@ -449,10 +434,7 @@ function AdvancedContentWorkbenchRuntime(
     editorHost.embedded && route.type === "richdoc"
       ? materialRef.current
       : activeItem;
-  const openingDraft = openingDraftRef.current.pointer;
-  const routeItem = useMemo(() => openingDraft
-    ? { ...baseRouteItem, meta: { ...baseRouteItem.meta, [ADVANCED_DRAFT_META_KEY]: openingDraft } }
-    : baseRouteItem, [baseRouteItem, openingDraft]);
+  const routeItem = baseRouteItem;
   const userEditKey = userEditItemKey(routeItem);
   useLayoutEffect(() => {
     syncOpenUserEditItem(userEditKey);
@@ -467,7 +449,6 @@ function AdvancedContentWorkbenchRuntime(
         materialRef.current,
         route.type,
         taskId === undefined ? workspace.taskId : taskId,
-        advancedDraftFromSnapshot(draftQueueRef.current.current(workspaceRef.current.session)?.snapshot, materialRef.current),
       ),
     [route.type, workspace.taskId],
   );
@@ -537,21 +518,19 @@ function AdvancedContentWorkbenchRuntime(
       const active = await ensure(taskId);
       if (!active || !sameItem()) return false;
       if (!editorHost.embedded) return true;
-      return draftQueueRef.current.run(async () => {
+      return snapshotQueueRef.current.run(async () => {
         const currentWorkspace = workspaceRef.current;
         const live =
-          draftQueueRef.current.current(currentWorkspace.session) ||
+          snapshotQueueRef.current.current(currentWorkspace.session) ||
           currentWorkspace.session ||
           active;
         if (!live || !sameItem()) return false;
-        const draft = advancedDraftFromSnapshot(live.snapshot, targetItem);
         const merge = (latest: unknown) =>
           withInlineEditorHistoryHead(
             latest,
             targetItem,
             route.type,
             taskId === undefined ? currentWorkspace.taskId : taskId,
-            draft,
           );
         const stored = await saveOwnedWorkspaceSnapshot({
           saveSnapshot: (snapshot, schemaVersion, options) =>
@@ -562,7 +541,7 @@ function AdvancedContentWorkbenchRuntime(
           title: live.title || targetItem.title,
           mergeFromLatest: merge,
         });
-        if (stored.ok) draftQueueRef.current.accept(stored.session);
+        if (stored.ok) snapshotQueueRef.current.accept(stored.session);
         else reportSaveFailure("active-file-association", true);
         return stored.ok;
       });
@@ -619,11 +598,10 @@ function AdvancedContentWorkbenchRuntime(
   };
   const writeOwnHistoryEntry = async (
     item: LibraryItem,
-    draft?: AdvancedDraftPointer | null,
   ) => {
     const currentWorkspace = workspaceRef.current;
     const live =
-      draftQueueRef.current.current(currentWorkspace.session) ||
+      snapshotQueueRef.current.current(currentWorkspace.session) ||
       currentWorkspace.session;
     if (!live) return true;
     const merge = (latest: unknown) =>
@@ -632,7 +610,6 @@ function AdvancedContentWorkbenchRuntime(
         item,
         route.type,
         currentWorkspace.taskId,
-        draft,
       );
     const stored = await saveOwnedWorkspaceSnapshot({
       saveSnapshot: (snapshot, schemaVersion, options) =>
@@ -644,7 +621,7 @@ function AdvancedContentWorkbenchRuntime(
       mergeFromLatest: merge,
     });
     if (stored.ok) {
-      draftQueueRef.current.accept(stored.session);
+      snapshotQueueRef.current.accept(stored.session);
     } else {
       const retryable = workspaceSnapshotFailureRetryable(stored);
       reportSaveFailure("record-history-entry", retryable);
@@ -656,92 +633,25 @@ function AdvancedContentWorkbenchRuntime(
     }
     return stored.ok;
   };
-  const recordDraft = useCallback(
-    async (draft: AdvancedDraftPointer): Promise<boolean> => {
-      const expectedSessionId = workspace.sessionId;
-      return draftQueueRef.current.run(async () => {
-        const currentWorkspace = workspaceRef.current;
-        const active = draftQueueRef.current.current(currentWorkspace.session);
-        const material = materialRef.current;
-        const identity = advancedDraftIdentity(material);
-        if (!stageAliveRef.current || !saveBelongsToCurrentStage(material)) {
-          if (
-            editorHost.embedded &&
-            draft.rootId === identity.rootId
-          ) {
-            const pointer = { ...draft, baseRevisionId: identity.baseRevisionId };
-            return writeOwnHistoryEntry(material, pointer);
-          }
-          return true;
-        }
-        if (!active || active.id !== expectedSessionId || draft.rootId !== identity.rootId) return false;
-        if (versionSchemaRef.current === draft.schema && advancedDraftCovers(versionCoveredRef.current, draft.editRevision)) return true;
-        const pointer = { ...draft, baseRevisionId: identity.baseRevisionId };
-        const merge = editorHost.embedded
-          ? (latest: unknown) =>
-              withInlineEditorHistoryHead(
-                latest,
-                material,
-                route.type,
-                currentWorkspace.taskId,
-                pointer,
-              )
-          : (latest: unknown) =>
-              mergeAdvancedSessionSnapshot(
-                latest,
-                material,
-                route.type,
-                currentWorkspace.taskId,
-                pointer,
-              );
-        const stored = await saveOwnedWorkspaceSnapshot({
-          saveSnapshot: (snapshot, schemaVersion, options) =>
-            currentWorkspace.saveSnapshot(snapshot, schemaVersion, options),
-          snapshot: merge(active.snapshot),
-          schemaVersion: editorHost.embedded
-            ? active.schema_version || 1
-            : ADVANCED_SESSION_SCHEMA_VERSION,
-          expectedSessionId: active.id,
-          title: active.title || material.title,
-          mergeFromLatest: merge,
-        });
-        if (!stored.ok) reportSaveFailure("record-draft", true);
-        else draftQueueRef.current.accept(stored.session);
-        return stored.ok;
-      });
-    },
-    [editorHost.embedded, route.type, workspace.sessionId],
-  );
   const recordSavedItem = useCallback(
-    async (savedItem: LibraryItem, coveredRevision?: AdvancedEditRevision, coverage?: AdvancedDraftVersionCoverage) => {
+    async (savedItem: LibraryItem, coveredRevision?: AdvancedEditRevision) => {
       const expectedSessionId = workspace.sessionId;
-      return draftQueueRef.current.run(async () => {
+      return snapshotQueueRef.current.run(async () => {
         const workspace = workspaceRef.current;
         if (expectedSessionId && workspace.sessionId !== expectedSessionId) return false;
         if (!saveBelongsToCurrentStage(savedItem)) {
           if (editorHost.embedded) {
-            const previousItem = materialRef.current;
-            const previousSession = draftQueueRef.current.current(workspace.session);
-            const draft = advancedDraftAfterVersion(
-              advancedDraftFromSnapshot(previousSession?.snapshot, previousItem),
-              coveredRevision, advancedDraftIdentity(savedItem).baseRevisionId, coverage,
-            );
-            return writeOwnHistoryEntry(savedItem, draft);
+            return writeOwnHistoryEntry(savedItem);
           }
           return true;
         }
-        const previousItem = materialRef.current;
-        const previousSession = draftQueueRef.current.current(workspace.session);
-        const draft = advancedDraftAfterVersion(
-          advancedDraftFromSnapshot(previousSession?.snapshot, previousItem),
-          coveredRevision, advancedDraftIdentity(savedItem).baseRevisionId, coverage,
-        );
+        const previousSession = snapshotQueueRef.current.current(workspace.session);
         if (editorHost.embedded) {
           const active = previousSession || await workspace.ensureActive({ title: savedItem.title, intent: "output" });
           if (!active) return false;
           const merge = (latest: unknown) =>
             withInlineEditorHistoryHead(
-              latest, savedItem, route.type, workspace.taskId, draft,
+              latest, savedItem, route.type, workspace.taskId,
             );
           const stored = await saveOwnedWorkspaceSnapshot({
             saveSnapshot: (snapshot, schemaVersion, options) =>
@@ -762,11 +672,11 @@ function AdvancedContentWorkbenchRuntime(
             }
             return false;
           }
-          draftQueueRef.current.accept(stored.session);
+          snapshotQueueRef.current.accept(stored.session);
         } else {
           const merge = (latest: unknown) =>
             mergeAdvancedSessionSnapshot(
-              latest, savedItem, route.type, workspace.taskId, draft,
+              latest, savedItem, route.type, workspace.taskId,
             );
           const snapshot = merge(previousSession?.snapshot);
           const session = previousSession || await workspace.ensureActive({ title: savedItem.title, snapshot,
@@ -791,14 +701,12 @@ function AdvancedContentWorkbenchRuntime(
             }
             return false;
           }
-          draftQueueRef.current.accept(saved.session);
+          snapshotQueueRef.current.accept(saved.session);
           // Draft-enabled editors keep their live document while publishing;
           // replacing the input source here could discard a newer edit.
           if (coveredRevision === undefined) setItem(savedItem);
         }
         materialRef.current = savedItem;
-        versionCoveredRef.current = coveredRevision;
-        versionSchemaRef.current = coverage?.schema;
         editorHost.onSavedItem?.(savedItem);
         return true;
       });
@@ -867,7 +775,6 @@ function AdvancedContentWorkbenchRuntime(
       startNew,
       renameTitle,
       recordSavedItem,
-      recordDraft,
       registerFlush,
       flush: async (): Promise<AdvancedFlushResult> => flushRef.current
         ? await flushRef.current()
@@ -879,7 +786,6 @@ function AdvancedContentWorkbenchRuntime(
       navigate,
       renameTitle,
       recordSavedItem,
-      recordDraft,
       registerFlush,
       startNew,
       workspace.sessionId,

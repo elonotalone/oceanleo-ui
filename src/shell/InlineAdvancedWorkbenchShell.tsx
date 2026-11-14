@@ -61,7 +61,6 @@ import { useWorkbenchMaterials } from "./workbench-material-provider";
 import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { editBarOwnershipForItem } from "./workbench-routes";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
-import { useAdvancedRecovery } from "./use-advanced-recovery";
 import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
 import { editBarVisibleOnPage } from "./plugin-chrome/plugin-pages";
 import { usePluginPage } from "./plugin-chrome/plugin-page-store";
@@ -205,12 +204,17 @@ export function InlineAdvancedWorkbenchShell({
     dirty: hostAutoSaveEnabled ? editorDirty : false,
     revision: editRevision,
     flush: adapter.persistence?.flush,
+    preparePublish: adapter.persistence?.preparePublish,
     draft: hostAutoSaveEnabled ? adapter.persistence?.draft : undefined,
     recovery: hostAutoSaveEnabled ? adapter.persistence?.recovery : undefined,
     item,
     editorId: adapter.id,
+    destination: adapter.persistence?.destination,
+    sharedSaveState: adapter.persistence?.sharedSaveState,
+    sharedSavePending: adapter.persistence?.sharedSavePending,
     session: advancedSession,
   });
+  const retrySave = autoSave.retry;
   const backgroundBusy = useSyncExternalStore(
     subscribeBackgroundSaves,
     hasPendingOrFailed,
@@ -242,13 +246,6 @@ export function InlineAdvancedWorkbenchShell({
     },
     [openDrawer],
   );
-  useAdvancedRecovery({
-    editorId: adapter.id,
-    revision: editRevision,
-    dirty: editorDirty,
-    persistenceState: autoSave.state,
-    recovery: adapter.persistence?.recovery,
-  });
   // Drop placement contract (implemented in useInlineAdvancedWorkbenchDrop):
   // source: "drop", clientX: event.clientX, clientY: event.clientY
   const { dropMessage, performUpload, handleDrop } =
@@ -324,7 +321,7 @@ export function InlineAdvancedWorkbenchShell({
     autoSaveEnabled: hostAutoSaveEnabled,
     requiresMountedFlush: adapter.persistence?.requiresMountedFlush,
     closeRequestRevision: adapter.closeRequestRevision,
-    editorUnconfirmed: hostAutoSaveEnabled ? editorDirty || autoSave.state !== "saved" : editorDirty,
+    editorUnconfirmed: hostAutoSaveEnabled ? autoSave.pending : editorDirty || autoSave.pending,
   });
 
   useEffect(
@@ -346,9 +343,7 @@ export function InlineAdvancedWorkbenchShell({
 
   // confirmation 只影响显式重试。Hosted iframe 的 mounted-flush 关闭闸单独声明；
   // 其余编辑器仍同步交给后台保存器，不因云朵状态阻塞离开。
-  const flushForExplicitSave = adapter.persistence?.confirmation
-    ? adapter.persistence.flush
-    : autoSave.flushLatest;
+  const flushForExplicitSave = autoSave.flushLatest;
   useEffect(() => {
     if (!advancedSession) return;
     advancedSession.registerFlush(flushForExplicitSave);
@@ -380,7 +375,7 @@ export function InlineAdvancedWorkbenchShell({
           showBack={siteId !== "plugin-gallery"}
           onBack={requestClose}
           onOpenLibrary={openLibraryPanel}
-          onRetrySave={() => void autoSave.retry()}
+          onRetrySave={() => void retrySave()}
           onClose={requestPaneClose}
         />
       </div>
@@ -403,7 +398,7 @@ export function InlineAdvancedWorkbenchShell({
         onCloseDrawer={closeDetail}
         onOpenTransientPanel={openTransientPanel}
         onOpenLibrary={openLibraryPanel}
-        onRetrySave={() => void (adapter.persistence?.confirmation ? flushForExplicitSave() : autoSave.retry())}
+        onRetrySave={() => void retrySave()}
         onUploadFiles={(files) => void performUpload(files)}
       />
     ),
@@ -413,8 +408,7 @@ export function InlineAdvancedWorkbenchShell({
       item,
       effectiveAccent,
       pluginThemeId,
-      autoSave.retry,
-      flushForExplicitSave,
+      retrySave,
       autoSaveError,
       autoSaveState,
       closeDetail,
@@ -426,7 +420,6 @@ export function InlineAdvancedWorkbenchShell({
       performUpload,
       requestClose,
       requestPaneClose,
-      rightPaneSlot,
       siteId,
       websitePreviewOnly,
       pluginPages,

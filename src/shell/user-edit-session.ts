@@ -1,3 +1,4 @@
+import type { AppSession } from "../lib/app-session";
 /**
  * Shared in-memory user-edit generation for every advanced editor.
  *
@@ -92,4 +93,20 @@ export function resetUserEditSession(): void {
   generations.clear();
   activeItemKey = null;
   emit();
+}
+
+/** Serialize history CAS writes and retain the last server receipt until React catches up. */
+export class SessionSnapshotQueue {
+  private tail: Promise<unknown> = Promise.resolve();
+  private receipt: AppSession | null = null;
+  run<T>(operation: () => Promise<T>): Promise<T> {
+    const run = this.tail.then(operation, operation);
+    this.tail = run.catch(() => undefined);
+    return run;
+  }
+  current(observed: AppSession | null): AppSession | null {
+    if (!observed || observed.id !== this.receipt?.id) return observed;
+    return this.receipt.revision > observed.revision ? this.receipt : observed;
+  }
+  accept(session: AppSession | undefined) { if (session) this.receipt = session; }
 }
