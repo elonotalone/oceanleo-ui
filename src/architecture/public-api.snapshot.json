@@ -5008,6 +5008,12 @@
         },
         {
           "kind": "named",
+          "name": "badgeSectionForHref",
+          "importedName": "badgeSectionForHref",
+          "source": "./badges/section-badges"
+        },
+        {
+          "kind": "named",
           "name": "bindArtifactToContext",
           "importedName": "bindArtifactToContext",
           "source": "./artifact-client"
@@ -6007,6 +6013,12 @@
           "name": "listLibraryDevices",
           "importedName": "listLibraryDevices",
           "source": "./library-scope-client"
+        },
+        {
+          "kind": "named",
+          "name": "listMyArtifacts",
+          "importedName": "listMyArtifacts",
+          "source": "./artifact-client"
         },
         {
           "kind": "named",
@@ -7024,6 +7036,12 @@
         },
         {
           "kind": "named",
+          "name": "SidebarSectionBadge",
+          "importedName": "SidebarSectionBadge",
+          "source": "./badges/SidebarSectionBadge"
+        },
+        {
+          "kind": "named",
           "name": "SiteAppDirectory",
           "importedName": "SiteAppDirectory",
           "source": "./material-scene-axis"
@@ -7411,6 +7429,12 @@
           "name": "useTaskWorkspaceState",
           "importedName": "useTaskWorkspaceState",
           "source": "./TaskWorkspaceShell"
+        },
+        {
+          "kind": "named",
+          "name": "useWebSectionBadges",
+          "importedName": "useWebSectionBadges",
+          "source": "./badges/section-badges"
         },
         {
           "kind": "named",
@@ -8069,6 +8093,12 @@
           "name": "RuntimeHydrationValue",
           "importedName": "RuntimeHydrationValue",
           "source": "./workspace-runtime-hydration"
+        },
+        {
+          "kind": "type",
+          "name": "SectionBadgeCounts",
+          "importedName": "SectionBadgeCounts",
+          "source": "./badges/section-badges"
         },
         {
           "kind": "type",
