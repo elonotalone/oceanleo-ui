@@ -1,3 +1,4 @@
+import type { EditBarPanelAnchor } from "./EditBarFloatingPanel";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
 import type { ReactNode } from "react";
 
@@ -138,6 +139,7 @@ export interface AdvancedContextToolbarHost {
   openDrawer: (
     drawerId: string,
     panelAction?: SelectionPanelAction,
+    anchor?: EditBarPanelAnchor,
   ) => void;
   closeDrawer: () => void;
 }
@@ -156,7 +158,7 @@ export interface AdvancedEditorAdapter {
   drawers?: readonly AdvancedWorkbenchDrawer[];
   /** Properties/actions for a real selected object; null when nothing is selected. */
   contextToolbar?: ReactNode;
-  /** Use when toolbar panel actions must explicitly target the host left pane. */
+  /** Use when toolbar panel actions target the shared floating panel host. */
   renderContextToolbar?: (host: AdvancedContextToolbarHost) => ReactNode;
   /** Default deliverable shown first inside the shared download menu. */
   directDownload?: AdvancedWorkbenchAction;

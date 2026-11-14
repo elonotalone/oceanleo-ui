@@ -20,6 +20,7 @@ import {
   FloatingContextToolbar,
   useFloatingContextToolbar,
 } from "./FloatingContextToolbar";
+import { EditBarFloatingPanel, EditBarPanelContext, type EditBarPanelAnchor } from "./EditBarFloatingPanel";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { editorToolsIconForSelection } from "./EditorToolsIcon";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
@@ -183,6 +184,7 @@ export function InlineAdvancedWorkbenchShell({
     activeMaterialAction,
     transientPanel,
     fallbackDetail,
+    floatingPanels,
     openDrawer,
     openTransientPanel,
     updateTransientPanel,
@@ -237,9 +239,9 @@ export function InlineAdvancedWorkbenchShell({
     [adapter.actions],
   );
   const triggerDocumentAction = useCallback(
-    (action: AdvancedWorkbenchAction) => {
+    (action: AdvancedWorkbenchAction, anchor?: EditBarPanelAnchor) => {
       if (action.panelId) {
-        openDrawer(action.panelId);
+        openDrawer(action.panelId, undefined, anchor);
         return;
       }
       return action.onTrigger?.();
@@ -258,19 +260,15 @@ export function InlineAdvancedWorkbenchShell({
 
   const ownedDetail =
     workspaceDetail?.ownerId === ownerIdRef.current ? workspaceDetail : null;
-  const panelVisible = Boolean(ownedDetail || fallbackDetail);
+  const panelVisible = Boolean(floatingPanels.active || ownedDetail || fallbackDetail);
+  const activeTransientPanelId = transientPanel && panels.isPanelOpen(transientPanel.id) ? transientPanel.id : "";
 
   const layoutState = useMemo(
     () => ({
       hostPanelVisible: panelVisible,
       editorToolActive: panelVisible,
-      activeDrawerId: showWorkspaceDetail
-        ? ownedDetail?.id || activeDrawerId
-        : activeDrawerId,
-      activeTransientPanelId:
-        transientPanel && panels.isPanelOpen(transientPanel.id)
-          ? transientPanel.id
-          : "",
+      activeDrawerId,
+      activeTransientPanelId,
       contextBarLeading: floatingToolbar.leading,
       // trailing 控件由 FloatingContextToolbar 的单行容器自己画。
       contextBarTrailing: undefined,
@@ -281,19 +279,13 @@ export function InlineAdvancedWorkbenchShell({
     }),
     [
       activeDrawerId,
+      activeTransientPanelId,
       floatingToolbar.leading,
-      floatingToolbar.trailing,
-      fallbackDetail,
-      closeDetail,
       closeDrawer,
       openDrawer,
       openTransientPanel,
       updateTransientPanel,
-      ownedDetail?.id,
-      panels.isPanelOpen,
       panelVisible,
-      showWorkspaceDetail,
-      transientPanel?.id,
     ],
   );
   const rawContextToolbar = adapter.renderContextToolbar
@@ -446,6 +438,7 @@ export function InlineAdvancedWorkbenchShell({
       : undefined;
   return (
     <PluginThemePortalContext.Provider value={pluginThemeId}>
+    <EditBarPanelContext.Provider value={floatingPanels}>
     <AdvancedLayoutContext.Provider value={layoutState}>
       {rightPaneSlot && headerHost && createPortal(actionBar, headerHost)}
       {showEditBar && (
@@ -496,6 +489,7 @@ export function InlineAdvancedWorkbenchShell({
           onFiles={(files) => void performUpload(files)}
         />
         <FallbackDetailAside fallbackDetail={fallbackDetail} onClose={closeDetail} />
+        <EditBarFloatingPanel controller={floatingPanels} containerRef={stageRef} editBarRef={editBarLayerRef} pluginThemeId={pluginThemeId} />
         <div
           ref={localEditBarLayerRef}
           data-edit-bar-layer-root={!rightPaneSlot || undefined}
@@ -554,6 +548,7 @@ export function InlineAdvancedWorkbenchShell({
         </div>
       </div>
     </AdvancedLayoutContext.Provider>
+    </EditBarPanelContext.Provider>
     </PluginThemePortalContext.Provider>
   );
 }

@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { EditBarPanelContext } from "./EditBarFloatingPanel";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AnchoredPopover, runAfterOverlayExit } from "./anchored-popover";
 import { useAdvancedLayout } from "./advanced-layout-context";
@@ -95,6 +97,7 @@ export function SelectionToolbar({
   trailing,
   variant = "bar",
 }: SelectionToolbarProps) {
+  const sharedEditBarPanels = useContext(EditBarPanelContext);
   const [moreOpen, setMoreOpen] = useState(false);
   const stableLive = useContentStableSelection(liveContext);
   const session = useEditBarSelectionSession(
@@ -329,7 +332,7 @@ export function SelectionToolbar({
     // 「执行了一个动作之后」才关 More。色板是连续取值：拖动取色器时每一次 onChange
     // 都会走到这里，关掉面板等于把人手里的取色器抽走，所以它留在原地。
     const closeMore =
-      presentation === "menu" && control.kind !== "color"
+      presentation === "menu" && control.kind !== "color" && !(control.kind === "panel" && sharedEditBarPanels)
         ? () => {
             setMoreOpen(false);
             if (control.kind !== "panel") moreButtonRef.current?.focus();

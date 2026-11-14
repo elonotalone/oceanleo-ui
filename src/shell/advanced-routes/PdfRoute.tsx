@@ -33,6 +33,7 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { PdfControls } from "../media-editors/PdfControls";
+import { EditBarPanelRequest } from "../EditBarFloatingPanel";
 import { PdfFindBar } from "../media-editors/PdfFindBar";
 import {
   PdfSelectionBar,
@@ -133,7 +134,7 @@ export function PdfRoute({
           }
           if (entry.id === "pdf-tool-signature") {
             bridge.setTool(null);
-            setSignatureOpen(true);
+            setSignatureOpen((open) => !open);
             return;
           }
           bridge.deselect();
@@ -340,10 +341,14 @@ export function PdfRoute({
                 <PdfToolPalette bridge={bridge} activeTool={activeTool} />
               ) : null}
               {findOpen && chrome === "basic" && bridge ? (
-                <PdfFindBar bridge={bridge} onClose={() => setFindOpen(false)} />
+                <EditBarPanelRequest id="pdf-find" label={tt("查找")} triggerSelector='[data-workspace-action-id="pdf-tool-find"]' onClose={() => setFindOpen(false)}>
+                  <PdfFindBar inline bridge={bridge} onClose={() => setFindOpen(false)} />
+                </EditBarPanelRequest>
               ) : null}
               {signatureOpen && chrome === "basic" ? (
-                <PdfSignatureDialog onPlace={placeSignature} onClose={() => setSignatureOpen(false)} />
+                <EditBarPanelRequest id="pdf-signature" label={tt("签名")} triggerSelector='[data-workspace-action-id="pdf-tool-signature"]' onClose={() => setSignatureOpen(false)}>
+                  <PdfSignatureDialog inline onPlace={placeSignature} onClose={() => setSignatureOpen(false)} />
+                </EditBarPanelRequest>
               ) : null}
             </div>
           </div>

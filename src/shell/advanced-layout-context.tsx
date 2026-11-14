@@ -8,6 +8,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import type { EditBarPanelAnchor } from "./EditBarFloatingPanel";
 import type { SelectionPanelAction } from "./selection-context";
 
 export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
@@ -127,11 +128,12 @@ export interface AdvancedLayoutState {
   activeTransientPanelId: string;
   contextBarLeading?: ReactNode;
   contextBarTrailing?: ReactNode;
-  openDrawer: (drawerId: string, panelAction?: SelectionPanelAction) => void;
+  openDrawer: (drawerId: string, panelAction?: SelectionPanelAction, anchor?: EditBarPanelAnchor) => void;
   openTransientPanel: (
     panelId: string,
     label: ReactNode,
     content: ReactNode,
+    anchor?: EditBarPanelAnchor,
   ) => void;
   updateTransientPanel: (panelId: string, content: ReactNode) => void;
   closeDrawer: () => void;

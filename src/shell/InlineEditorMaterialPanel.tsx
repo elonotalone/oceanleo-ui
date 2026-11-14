@@ -93,12 +93,12 @@ const IMAGE_INSERT_TYPES: ReadonlySet<string> = new Set(["pdf", "ppt", "document
  * 只接图片的插入型编辑器改列图片（`IMAGE_INSERT_TYPES`）。
  */
 export function resolveMaterialPanelType(
-  item: LibraryItem,
+  item: LibraryItem | null | undefined,
   declared: readonly string[] | undefined,
   actions: readonly WorkbenchMaterialAction[] | undefined,
 ): string {
   if (declared?.[0]) return declared[0];
-  const own = curatedTypeFor(item);
+  const own = item ? curatedTypeFor(item) : "all";
   if (IMAGE_INSERT_TYPES.has(own) && actions?.includes("insert")) return "image";
   return own;
 }
@@ -111,7 +111,7 @@ export function InlineEditorMaterialPanel({
   materials,
   primaryMaterialAction,
 }: {
-  item: LibraryItem;
+  item?: LibraryItem | null;
   taskId?: string | null;
   siteId?: string;
   accent: string;
@@ -179,7 +179,7 @@ export function InlineEditorMaterialPanel({
       <div className="min-h-0 flex-1">
       {materials && primaryMaterialAction ? <InlineInsertableMaterialShelf
         types={materials.materialTypes.length ? materials.materialTypes : [curatedType]}
-        siteId={siteId || ""} currentId={item.artifactId || item.id}
+        siteId={siteId || ""} currentId={item?.artifactId || item?.id || ""}
         featured={materials.entries} accent={accent} action={primaryMaterialAction}
         perform={onMaterialAction} canPerform={materials.canPerform}
         beginDrag={materials.beginMaterialDrag} endDrag={materials.endMaterialDrag}

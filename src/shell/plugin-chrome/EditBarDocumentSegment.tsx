@@ -1,5 +1,6 @@
 "use client";
 
+import type { EditBarPanelAnchor } from "../EditBarFloatingPanel";
 import { useUI } from "../../i18n/ui/useUI";
 import { Button } from "../../ui/Button";
 import {
@@ -37,11 +38,11 @@ export function EditBarDocumentSegment({
   onToggleDrawer,
 }: {
   actions: readonly AdvancedWorkbenchAction[];
-  onTrigger(a: AdvancedWorkbenchAction): void;
+  onTrigger(a: AdvancedWorkbenchAction, anchor?: EditBarPanelAnchor): void;
   emptyHint?: string;
   drawers?: readonly EditBarDrawerButton[];
   activeDrawerId?: string;
-  onToggleDrawer?(drawerId: string): void;
+  onToggleDrawer?(drawerId: string, anchor?: EditBarPanelAnchor): void;
 }) {
   const tt = useUI();
   const editActions = actions.filter(
@@ -58,7 +59,7 @@ export function EditBarDocumentSegment({
             aria-pressed={open}
             aria-label={label || drawer.id}
             onPointerDown={preserveEditBarSelection}
-            onClick={() => onToggleDrawer(drawer.id)}
+            onClick={(event) => onToggleDrawer(drawer.id, event.currentTarget)}
             variant="ghost"
             selected={open}
             pill
@@ -103,7 +104,7 @@ export function EditBarDocumentSegment({
             aria-busy={action.busy || undefined}
             aria-label={label || action.id}
             onPointerDown={preserveEditBarSelection}
-            onClick={() => onTrigger(action)}
+            onClick={(event) => onTrigger(action, event.currentTarget)}
             variant={action.variant === "danger" ? "danger" : "ghost"}
             selected={action.variant === "primary"}
             pill

@@ -17,6 +17,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
+import { EditBarPanelContext } from "./EditBarFloatingPanel";
 import { createPortal } from "react-dom";
 import {
   pluginWorkbenchStyle,
@@ -575,6 +576,9 @@ export function AnchoredPopover({
     setPreviousOpen(open);
     if (open) setOpenGeneration((generation) => generation + 1);
   }
+  const editBarPanels = useContext(EditBarPanelContext);
+  const hosted = Boolean(editBarPanels && anchorRef.current?.closest("[data-workspace-edit-bar], [data-edit-bar-floating-owner]"));
+  const nativeOpen = open && !hosted;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
@@ -625,7 +629,7 @@ export function AnchoredPopover({
   // 关掉之后**不**摘 portalRoot：元素得留在 DOM 里退场（§规范三）。第一次打开时
   // 挂上，此后由 `data-leo-overlay-state` 翻面，卸载交给 React 父级。
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!nativeOpen) return;
     ensureOverlayMotionStyles();
     const updatePortalRoot = () => {
       setPortalRoot(document.fullscreenElement ?? document.body);
@@ -634,7 +638,7 @@ export function AnchoredPopover({
     document.addEventListener("fullscreenchange", updatePortalRoot);
     return () =>
       document.removeEventListener("fullscreenchange", updatePortalRoot);
-  }, [open]);
+  }, [nativeOpen]);
 
   const updatePosition = useCallback(() => {
     const anchor = anchorRef.current?.getBoundingClientRect();
@@ -663,7 +667,7 @@ export function AnchoredPopover({
   }, [align, anchorRef, gap, margin, maxHeight, preferredPlacement, side]);
 
   useLayoutEffect(() => {
-    if (!open || !portalRoot) return;
+    if (!nativeOpen || !portalRoot) return;
     setPositioned(false);
     updatePosition();
     const observer =
@@ -683,15 +687,15 @@ export function AnchoredPopover({
       window.visualViewport?.removeEventListener("resize", updatePosition);
       window.visualViewport?.removeEventListener("scroll", updatePosition);
     };
-  }, [anchorRef, open, portalRoot, updatePosition]);
+  }, [anchorRef, nativeOpen, portalRoot, updatePosition]);
 
   useEffect(() => {
-    if (!open || !portalRoot || !lockScroll) return;
+    if (!nativeOpen || !portalRoot || !lockScroll) return;
     return lockBodyScroll();
-  }, [lockScroll, open, portalRoot]);
+  }, [lockScroll, nativeOpen, portalRoot]);
 
   useEffect(() => {
-    if (!open || !portalRoot) return;
+    if (!nativeOpen || !portalRoot) return;
     openPopoverStack.push(popoverId);
     const closeOnEscape = (event: KeyboardEvent) => {
       // Tab 循环与 Escape 同一条纪律：只有栈顶那层理会键盘，嵌套弹层不抢。
@@ -729,7 +733,7 @@ export function AnchoredPopover({
     };
   }, [
     anchorRef,
-    open,
+    nativeOpen,
     popoverId,
     portalRoot,
     restoreFocusOnEscape,
@@ -737,12 +741,39 @@ export function AnchoredPopover({
   ]);
 
   useLayoutEffect(() => {
-    if (!open || !portalRoot || initialFocusSelector === false) return;
+    if (!nativeOpen || !portalRoot || initialFocusSelector === false) return;
     const panel = internalPanelRef.current;
     const initial = panel?.querySelector<HTMLElement>(initialFocusSelector);
     (initial || panel)?.focus();
-  }, [initialFocusSelector, open, portalRoot]);
+  }, [initialFocusSelector, nativeOpen, portalRoot]);
 
+  const hostedBody = (
+    <div {...attributes} className={className} ref={setPanel} role={role} aria-label={ariaLabel} aria-labelledby={ariaLabelledBy} tabIndex={tabIndex} onKeyDown={moveCompositeFocus} style={{ ...style, position: "relative", inset: "auto", minWidth: 0, width: "100%", maxWidth: "100%", maxHeight: "none", boxShadow: "none", border: 0 }}>
+      {children}
+    </div>
+  );
+  const hostedBodyRef = useRef(hostedBody);
+  hostedBodyRef.current = hostedBody;
+  const openHostedPanel = editBarPanels?.open;
+  const dismissHostedPanel = editBarPanels?.dismiss;
+  const updateHostedPanel = editBarPanels?.update;
+  useLayoutEffect(() => {
+    if (!hosted || !open || !openHostedPanel) return;
+    const anchor = anchorRef.current;
+    openHostedPanel({
+      id: popoverId,
+      label: ariaLabel || (ariaLabelledBy ? document.getElementById(ariaLabelledBy)?.textContent : null) || anchor?.getAttribute("aria-label") || anchor?.getAttribute("title") || anchor?.textContent,
+      content: hostedBodyRef.current,
+      anchor: anchor ?? undefined,
+      onDismiss: () => onCloseRef.current("outside"),
+    });
+    return () => dismissHostedPanel?.(popoverId);
+  }, [anchorRef, ariaLabel, ariaLabelledBy, dismissHostedPanel, hosted, open, openHostedPanel, popoverId]);
+  useLayoutEffect(() => {
+    if (!hosted || !open || !updateHostedPanel) return;
+    updateHostedPanel(popoverId, hostedBodyRef.current);
+  }, [ariaLabel, ariaLabelledBy, attributes, children, className, hosted, moveCompositeFocus, open, popoverId, role, setPanel, style, tabIndex, updateHostedPanel]);
+  if (hosted) return null;
   if (!portalRoot) return null;
   return createPortal(
     <AnchoredPopoverLineageContext.Provider value={lineage}>

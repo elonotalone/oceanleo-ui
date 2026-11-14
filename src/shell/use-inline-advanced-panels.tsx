@@ -1,18 +1,6 @@
 "use client";
 
-// 左侧面板的开合与投递，从 InlineAdvancedWorkbenchShell 里拆出来的一整块。
-//
-// 拆的理由不是行数，是**这块有自己的完整故事**：编辑栏里的按钮点下去 →
-// 决定要开哪个抽屉 → 内容投到工作区窗格（或没有窗格时的本地兜底）→ 换主题作用域。
-// 壳里剩下的部分讲的是另一个故事（生命周期、保存、关闭、拖放）。
-// 两个故事挤在一个文件里时，谁改都得先读六百行。
-//
-// 面板内容走 LiveReactNode 而不是直接塞进 showDetail：抽屉内容每帧都可能变
-// （比如 agent 面板在流式输出），而 showDetail 会把节点存进工作区的 state，
-// 直接塞进去意味着每一帧都要惊动整棵工作区树。
-//
-// agent 抽屉：拿得到 ConsoleAgentFocus handler 就切左栏形态，绝不推 detail；
-// 拿不到才挂 PluginAgentPanel（独立页 / gallery 兜底）。
+// Editor tools float over the canvas. Only the agent uses the workspace left column.
 
 import {
   useCallback,
@@ -23,6 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useEditBarPanelStack, type EditBarPanelAnchor } from "./EditBarFloatingPanel";
 import { useUI } from "../i18n/ui/useUI";
 import { Button } from "../ui/Button";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
@@ -69,7 +58,7 @@ export interface InlineAdvancedPanelsInput {
   clearWorkspaceDetail?: (ownerId: string) => void;
   /**
    * 宿主把左栏整块收着（`/library?item=` 单开一份文件时 agent 隐藏）。这时面板不进那块
-   * 看不见的左栏，改走壳自己的 aside（10-23 W02 根因）。
+   * 看不见的左栏。只有 AI 可走本地 aside；编辑工具始终浮在画布上。
    */
   workspaceLeftHidden?: boolean;
   /** 工作区此刻显示的、属于本壳的面板 id；被别处清掉时本地开合状态跟着归零。 */
@@ -100,6 +89,8 @@ export function useInlineAdvancedPanels({
     ? undefined
     : showWorkspaceDetailInput;
   const tt = useUI();
+  const floatingPanels = useEditBarPanelStack();
+  const { close: closeFloating, open: openFloating, update: updateFloating } = floatingPanels;
   const consoleAgentFocus = useConsoleAgentFocus();
   const liveDetailStoreRef = useRef(createLiveReactNodeStore());
   const [fallbackDetail, setFallbackDetail] = useState<{
@@ -107,12 +98,6 @@ export function useInlineAdvancedPanels({
     content: ReactNode;
   } | null>(null);
   const [activeDrawerId, setActiveDrawerId] = useState("");
-  const [transientPanel, setTransientPanel] = useState<{
-    id: string;
-    label: ReactNode;
-  } | null>(null);
-  const transientPanelRef = useRef(transientPanel);
-  transientPanelRef.current = transientPanel;
   const [requestedMaterialAction, setRequestedMaterialAction] =
     useState<WorkbenchMaterialAction>();
 
@@ -215,26 +200,17 @@ export function useInlineAdvancedPanels({
       workbenchMaterials,
     ],
   );
-  const liveDrawerDetail = useMemo(
-    () =>
-      !transientPanel && activeDrawerId
-        ? panelFor(activeDrawerId, requestedMaterialAction)
-        : null,
-    [activeDrawerId, panelFor, requestedMaterialAction, transientPanel],
-  );
+  const liveDrawerId = floatingPanels.panels.find(panel => drawerById.has(panel.id) || panel.id === "materials")?.id ||
+    (activeDrawerId === PLUGIN_AGENT_DRAWER_ID ? activeDrawerId : "");
+  const liveDrawerDetail = useMemo(() => liveDrawerId ? panelFor(liveDrawerId, requestedMaterialAction) : null,
+    [liveDrawerId, panelFor, requestedMaterialAction]);
   useLayoutEffect(() => {
-    // Keep the last detail subtree available while InlineAdvancedWorkbenchShell
-    // animates its fallback pane closed. The next open publishes its new node;
-    // clearing here would blank the panel before its 300ms exit finishes.
-    if (transientPanel || !liveDrawerDetail) return;
-    publishLiveReactNode(
-      liveDetailStoreRef.current,
-      liveDrawerDetail.content,
-    );
-  }, [liveDrawerDetail?.content, transientPanel]);
+    if (!liveDrawerDetail) return;
+    if (liveDrawerId === PLUGIN_AGENT_DRAWER_ID) publishLiveReactNode(liveDetailStoreRef.current, liveDrawerDetail.content);
+    else updateFloating(liveDrawerId, liveDrawerDetail.content);
+  }, [liveDrawerDetail, liveDrawerId, updateFloating]);
 
-  // 抽屉/工具面板经 showWorkspaceDetail 传送到工作区窗格，DOM 在插件根之外，
-  // 必须重建插件主题作用域，token 才能盖过站点 html.dark 的翻转。
+  // The standalone agent fallback still needs its plugin theme outside the canvas.
   const liveDetailNode = useMemo(
     () =>
       pluginThemeId ? (
@@ -256,29 +232,27 @@ export function useInlineAdvancedPanels({
 
   const closeDetail = useCallback(() => {
     clearWorkspaceDetail?.(ownerId);
+    closeFloating();
     setFallbackDetail(null);
     setActiveDrawerId("");
-    transientPanelRef.current = null;
-    setTransientPanel(null);
     setRequestedMaterialAction(undefined);
-  }, [clearWorkspaceDetail, ownerId]);
+  }, [clearWorkspaceDetail, closeFloating, ownerId]);
 
   const closeDrawer = useCallback(() => {
     // The standalone Library host opts into a closeable conversation. Its
     // visible agent is an edit-bar state, not a second local drawer to clear.
     if (
-      activeDrawerId === "" &&
+      !floatingPanels.active &&
       !fallbackDetail &&
-      !transientPanelRef.current &&
       consoleAgentFocus?.agentVisible === true
     ) {
       consoleAgentFocus.hideAgent();
     }
     closeDetail();
-  }, [activeDrawerId, closeDetail, consoleAgentFocus, fallbackDetail]);
+  }, [closeDetail, consoleAgentFocus, fallbackDetail, floatingPanels.active]);
 
   const openDrawer = useCallback(
-    (drawerId: string, materialAction?: WorkbenchMaterialAction) => {
+    (drawerId: string, materialAction?: WorkbenchMaterialAction, anchor?: EditBarPanelAnchor) => {
       // 左栏已经挂着可切形态的操控台时，AI 键只切那一份，不再推第二棵 agent 树。
       // 判定是「此刻有没有 handler」，不是某个 featureId。
       if (drawerId === PLUGIN_AGENT_DRAWER_ID && consoleAgentFocus) {
@@ -287,13 +261,20 @@ export function useInlineAdvancedPanels({
         closeDetail();
         if (consoleAgentFocus.focusAgent()) return;
       }
-      transientPanelRef.current = null;
-      setTransientPanel(null);
-      setActiveDrawerId(drawerId);
+      if (drawerId === PLUGIN_AGENT_DRAWER_ID) closeFloating();
+      else {
+        clearWorkspaceDetail?.(ownerId);
+        setFallbackDetail(null);
+      }
+      setActiveDrawerId(drawerId === PLUGIN_AGENT_DRAWER_ID ? drawerId : "");
       setRequestedMaterialAction(
         drawerId === "materials" ? materialAction : undefined,
       );
       const next = panelFor(drawerId, materialAction);
+      if (drawerId !== PLUGIN_AGENT_DRAWER_ID) {
+        openFloating({ id: drawerId, ...next, anchor, width: drawerId === "materials" || drawerId === "mine" ? 420 : 320 });
+        return;
+      }
       publishLiveReactNode(liveDetailStoreRef.current, next.content);
       if (showWorkspaceDetail) {
         showWorkspaceDetail({
@@ -306,57 +287,38 @@ export function useInlineAdvancedPanels({
         setFallbackDetail({ label: next.label, content: liveDetailNode });
       }
     },
-    [closeDetail, consoleAgentFocus, liveDetailNode, ownerId, panelFor, showWorkspaceDetail],
+    [clearWorkspaceDetail, closeDetail, consoleAgentFocus, closeFloating, openFloating, liveDetailNode, ownerId, panelFor, showWorkspaceDetail],
   );
 
   const openTransientPanel = useCallback(
-    (panelId: string, label: ReactNode, content: ReactNode) => {
-      const panel = { id: panelId, label };
-      transientPanelRef.current = panel;
-      setTransientPanel(panel);
-      setActiveDrawerId(panelId);
-      setRequestedMaterialAction(undefined);
-      publishLiveReactNode(liveDetailStoreRef.current, content);
-      if (showWorkspaceDetail) {
-        showWorkspaceDetail({
-          ownerId,
-          id: panelId,
-          label,
-          content: liveDetailNode,
-        });
-      } else {
-        setFallbackDetail({ label, content: liveDetailNode });
-      }
+    (panelId: string, label: ReactNode, content: ReactNode, anchor?: EditBarPanelAnchor) => {
+      setActiveDrawerId("");
+      setFallbackDetail(null);
+      clearWorkspaceDetail?.(ownerId);
+      openFloating({ id: panelId, label, content, anchor, width: panelId === "mine" || panelId === "materials" ? 420 : 320 });
     },
-    [liveDetailNode, ownerId, showWorkspaceDetail],
+    [clearWorkspaceDetail, openFloating, ownerId],
   );
 
-  const updateTransientPanel = useCallback(
-    (panelId: string, content: ReactNode) => {
-      if (transientPanelRef.current?.id !== panelId) return;
-      publishLiveReactNode(liveDetailStoreRef.current, content);
-    },
-    [],
-  );
+  const updateTransientPanel = floatingPanels.update;
 
   // 工作区把我们的面板换掉/清掉（左栏「←」、别的面板顶替）时，本地状态跟着归零，
   // 否则顶栏按钮还亮着，下一次点击会去「收起」一个已经不在的面板——看起来就是死按钮。
   const placedInWorkspace = Boolean(showWorkspaceDetail);
   useEffect(() => {
-    if (!placedInWorkspace || !activeDrawerId) return;
+    if (!placedInWorkspace || activeDrawerId !== PLUGIN_AGENT_DRAWER_ID) return;
     if (ownedWorkspaceDetailId === activeDrawerId) return;
-    transientPanelRef.current = null;
-    setTransientPanel(null);
     setActiveDrawerId("");
     setRequestedMaterialAction(undefined);
   }, [activeDrawerId, ownedWorkspaceDetailId, placedInWorkspace]);
   const isPanelOpen = useCallback(
     (panelId: string) =>
-      activeDrawerId === panelId &&
+      floatingPanels.panels.some(panel => panel.id === panelId) ||
+      (panelId === PLUGIN_AGENT_DRAWER_ID && activeDrawerId === panelId &&
       (placedInWorkspace
         ? ownedWorkspaceDetailId === panelId
-        : Boolean(fallbackDetail)),
-    [activeDrawerId, fallbackDetail, ownedWorkspaceDetailId, placedInWorkspace],
+        : Boolean(fallbackDetail))),
+    [activeDrawerId, fallbackDetail, floatingPanels.panels, ownedWorkspaceDetailId, placedInWorkspace],
   );
 
   return {
@@ -365,15 +327,18 @@ export function useInlineAdvancedPanels({
     isPanelOpen,
     placedInWorkspace,
     activeMaterialAction,
-    transientPanel,
+    editBarDrawerId: floatingPanels.panels[0]?.id ?? "",
+    transientPanel: floatingPanels.active && !drawerById.has(floatingPanels.active.id) && floatingPanels.active.id !== "materials" ? { id: floatingPanels.active.id, label: floatingPanels.active.label } : null,
     fallbackDetail,
+    floatingPanels: { ...floatingPanels, close: closeDetail },
     openDrawer,
     openTransientPanel,
     updateTransientPanel,
     closeDetail,
     closeDrawer,
     activeDrawerId:
-      activeDrawerId ||
+      floatingPanels.active?.id ||
+      (activeDrawerId === PLUGIN_AGENT_DRAWER_ID ? activeDrawerId : "") ||
       (consoleAgentFocus?.agentVisible === true ? PLUGIN_AGENT_DRAWER_ID : ""),
   };
 }

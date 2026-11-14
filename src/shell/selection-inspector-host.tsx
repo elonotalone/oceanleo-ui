@@ -2,15 +2,14 @@
 
 import {
   useCallback,
+  useContext,
   useEffect,
-  useId,
   useLayoutEffect,
   useRef,
-  useState,
   type RefObject,
 } from "react";
 import type { AdvancedLayoutState } from "./advanced-layout-context";
-import { AnchoredPopover } from "./anchored-popover";
+import { EditBarFloatingPanel, EditBarPanelContext, useEditBarPanelStack } from "./EditBarFloatingPanel";
 import { SelectionInspectorPanel } from "./SelectionInspectorPanel";
 import type { SelectionInspectorGroup } from "./selection-inspector-groups";
 import type {
@@ -18,67 +17,6 @@ import type {
   SelectionContext,
   SelectionPanelAction,
 } from "./selection-context";
-
-function FallbackSelectionInspector({
-  group,
-  context,
-  onCommand,
-  accent,
-  anchorRef,
-  onClose,
-}: {
-  group: SelectionInspectorGroup;
-  context: SelectionContext;
-  onCommand: (command: SelectionCommand) => void;
-  accent: string;
-  anchorRef: RefObject<HTMLElement | null>;
-  onClose: (restoreFocus?: boolean) => void;
-}) {
-  const labelId = useId();
-  return (
-    <AnchoredPopover
-      open
-      anchorRef={anchorRef}
-      onClose={(reason) => onClose(reason !== "outside")}
-      id={group.panelId}
-      role="dialog"
-      ariaLabelledBy={labelId}
-      ariaModal={false}
-      align="end"
-      maxHeight={560}
-      attributes={{
-        "data-selection-inspector-fallback": true,
-      }}
-      className="z-[2147483600] flex min-h-0 flex-col overflow-hidden rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] shadow-2xl"
-      style={{ width: 352 }}
-    >
-      <div className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-[var(--border,#e7e5e4)] px-3">
-        <h2
-          id={labelId}
-          className="truncate text-[12px] font-semibold text-[var(--fg,#292524)]"
-        >
-          {group.label}
-        </h2>
-        <button
-          type="button"
-          onClick={() => onClose()}
-          aria-label="关闭属性面板"
-          className="grid h-8 w-8 place-items-center rounded-lg text-[var(--muted,#78716c)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.05))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
-        >
-          ×
-        </button>
-      </div>
-      <div className="min-h-0 flex-1">
-        <SelectionInspectorPanel
-          context={context}
-          controls={group.controls}
-          onCommand={onCommand}
-          accent={accent}
-        />
-      </div>
-    </AnchoredPopover>
-  );
-}
 
 export function useSelectionInspectorHost({
   layout,
@@ -102,7 +40,16 @@ export function useSelectionInspectorHost({
   anchorRef: RefObject<HTMLElement | null>;
   overflowTriggerRef?: RefObject<HTMLElement | null>;
 }) {
-  const [fallbackId, setFallbackId] = useState("");
+  const localPanels = useEditBarPanelStack();
+  const sharedPanels = useContext(EditBarPanelContext);
+  const fallbackPanels = sharedPanels ?? localPanels;
+  const fallbackActiveId = fallbackPanels.active?.id ?? "";
+  const fallbackId = !layout && (!sharedPanels || groups.some(group => group.panelId === fallbackActiveId)) ? fallbackActiveId : "";
+  const { open: openFallback, update: updateFallback } = fallbackPanels;
+  const fallbackContainerRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    fallbackContainerRef.current = anchorRef.current?.closest<HTMLElement>("[data-edit-bar-layer-root], [data-plugin-chrome]") ?? document.body;
+  });
   const onCommandRef = useRef(onCommand);
   useLayoutEffect(() => {
     onCommandRef.current = onCommand;
@@ -110,25 +57,21 @@ export function useSelectionInspectorHost({
   const dispatchCommand = useCallback((command: SelectionCommand) => {
     onCommandRef.current(command);
   }, []);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
   const fallbackGroup =
     groups.find((group) => group.panelId === fallbackId) || null;
   const hostedGroup =
     groups.find(
       (group) => group.panelId === layout?.activeTransientPanelId,
     ) || null;
-  const closeFallback = useCallback((restoreFocus = true) => {
-    setFallbackId("");
-    const returnFocus = returnFocusRef.current;
-    returnFocusRef.current = null;
-    if (restoreFocus) {
-      window.requestAnimationFrame(() => returnFocus?.focus());
-    }
-  }, []);
+  const closeFallback = fallbackPanels.close;
 
   useEffect(() => {
     if (fallbackId && (!fallbackGroup || !context)) closeFallback();
   }, [closeFallback, context, fallbackGroup, fallbackId]);
+  useLayoutEffect(() => {
+    if (!fallbackGroup || !context) return;
+    updateFallback(fallbackGroup.panelId, <SelectionInspectorPanel context={context} controls={fallbackGroup.controls} onCommand={dispatchCommand} accent={accent} />);
+  }, [accent, context, dispatchCommand, fallbackGroup, updateFallback]);
   const updateTransientPanel = layout?.updateTransientPanel;
   useLayoutEffect(() => {
     if (!updateTransientPanel || !hostedGroup || !context) return;
@@ -167,21 +110,13 @@ export function useSelectionInspectorHost({
         } else if (fallbackId === panelId) {
           closeFallback();
         } else {
-          const activeElement =
-            document.activeElement instanceof HTMLElement
-              ? document.activeElement
-              : null;
-          const overflowTrigger = overflowTriggerRef?.current || null;
-          returnFocusRef.current =
-            activeElement?.closest("[data-selection-overflow-control]") &&
-            overflowTrigger
-              ? overflowTrigger
-              : activeElement;
-          setFallbackId(panelId);
+          const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          const anchor = !sharedPanels && activeElement?.closest("[data-selection-overflow-control]") ? overflowTriggerRef?.current ?? undefined : undefined;
+          openFallback({ id: panelId, label: inspector.label, anchor, content: <SelectionInspectorPanel context={context} controls={inspector.controls} onCommand={dispatchCommand} accent={accent} /> });
         }
         return;
       }
-      setFallbackId("");
+      closeFallback();
       (onOpenPanel || layout?.openDrawer)?.(panelId, panelAction);
     },
     [
@@ -194,6 +129,8 @@ export function useSelectionInspectorHost({
       dispatchCommand,
       onOpenPanel,
       overflowTriggerRef,
+      openFallback,
+      sharedPanels,
     ],
   );
 
@@ -203,16 +140,6 @@ export function useSelectionInspectorHost({
       fallbackId ||
       hostedGroup?.panelId ||
       (layout?.hostPanelVisible ? layout.activeDrawerId : ""),
-    fallbackPanel:
-      fallbackGroup && context ? (
-        <FallbackSelectionInspector
-          group={fallbackGroup}
-          context={context}
-          onCommand={dispatchCommand}
-          accent={accent}
-          anchorRef={anchorRef}
-          onClose={closeFallback}
-        />
-      ) : null,
+    fallbackPanel: sharedPanels ? null : <EditBarFloatingPanel controller={fallbackPanels} containerRef={fallbackContainerRef} editBarRef={fallbackContainerRef} />,
   };
 }

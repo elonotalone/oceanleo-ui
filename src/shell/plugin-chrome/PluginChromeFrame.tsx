@@ -29,8 +29,12 @@ import {
   libraryItemIdentityKey,
   requestOpenLibraryItemInEditor,
 } from "../inline-editor-mine-activate";
+import { InlineEditorMaterialPanel } from "../InlineEditorMaterialPanel";
+import { resolveActiveMaterialAction } from "../inline-advanced-shell-helpers";
+import { useWorkbenchMaterials } from "../workbench-material-provider";
 import { InlineEditorMinePanel } from "../inline-editor-mine-panel";
 import type { LibraryItem } from "../library-data";
+import { EditBarFloatingPanel, EditBarPanelContext } from "../EditBarFloatingPanel";
 import { AdvancedLayoutContext } from "../advanced-layout-context";
 import * as SplitWorkspaceMod from "../SplitWorkspace";
 import { usePluginTheme, type PluginThemeId } from "../plugin-theme";
@@ -242,6 +246,7 @@ export function PluginChromeFrame({
 }: PluginChromeFrameProps) {
   const tt = useUI();
   const { theme, accent } = usePluginTheme(pluginId);
+  const workbenchMaterials = useWorkbenchMaterials();
 
   // ── AI 抽屉：外壳内建，全仓唯一注册点 ──────────────────────────────
   // 插件不注册、也不能覆盖。改造前视频画布就是自己包了一层 CanvasAgentPanel
@@ -264,6 +269,10 @@ export function PluginChromeFrame({
   const panelList = useMemo(
     () => [
       ...(panels || []).filter((panel) => panel.id !== PLUGIN_AGENT_DRAWER_ID),
+      ...(chrome !== "host" && showLibrary && !panels?.some(panel => panel.id === "materials") ? [{
+        id: "materials", label: "素材库", icon: "materials" as const,
+        content: <InlineEditorMaterialPanel item={item} siteId={siteId} accent={accent || "#4f46e5"} materials={workbenchMaterials} primaryMaterialAction={resolveActiveMaterialAction(undefined, workbenchMaterials?.actions)} />,
+      }] : []),
       ...(chrome !== "host" && showLibrary
         ? [
             {
@@ -282,21 +291,14 @@ export function PluginChromeFrame({
         : []),
       agentDrawer,
     ],
-    [agentDrawer, chrome, item, panels, showLibrary, siteId],
+    [accent, agentDrawer, chrome, item, panels, showLibrary, siteId, workbenchMaterials],
   );
   const controller = usePluginChromePanels(panelList);
-  const { activePanel, isOpen } = controller;
-  const { layout: chromeLayout, transientPanel, hostController } =
+  const { activePanel } = controller;
+  const { layout: chromeLayout, hostController, floatingPanels } =
     usePluginChromeLayout(controller);
   const consoleAgentFocus = SplitWorkspaceMod.useConsoleAgentFocus();
-  const rightPaneSlot =
-    typeof SplitWorkspaceMod.useRightPaneSlot === "function"
-      ? SplitWorkspaceMod.useRightPaneSlot()
-      : null;
-  const workspacePane =
-    typeof SplitWorkspaceMod.useWorkspacePane === "function"
-      ? SplitWorkspaceMod.useWorkspacePane()
-      : null;
+  const rightPaneSlot = SplitWorkspaceMod.useRightPaneSlot();
   const rightMaximized = useSyncExternalStore(
     rightPaneSlot?.subscribeRightMaximized ?? subscribeWithoutPane,
     () => rightPaneSlot?.rightMaximized === true,
@@ -316,11 +318,12 @@ export function PluginChromeFrame({
     if (!consoleAgentFocus) return chromeLayout;
     return {
       ...chromeLayout,
-      openDrawer(drawerId, panelAction) {
+      openDrawer(drawerId, panelAction, anchor) {
         if (drawerId === PLUGIN_AGENT_DRAWER_ID && consoleAgentFocus.focusAgent()) {
+          chromeLayout.closeDrawer();
           return;
         }
-        chromeLayout.openDrawer(drawerId, panelAction);
+        chromeLayout.openDrawer(drawerId, panelAction, anchor);
       },
     };
   }, [chromeLayout, consoleAgentFocus]);
@@ -385,32 +388,10 @@ export function PluginChromeFrame({
   const style = pluginChromeStyle(theme, accent || "#4f46e5");
   const [downloadActions, headerActions] = useMemo(() => splitDownloadActions(actions), [actions]);
 
-  // transient 面板（`layout.openTransientPanel`）顶掉常规面板占住左栏，
-  // 与基准一致（use-inline-advanced-panels.tsx:156-162）。
-  const sidePanel = useMemo((): {
-    id: string;
-    label: ReactNode;
-    icon?: WorkbenchIconName;
-    content: ReactNode;
-    pinned: boolean;
-    width?: number;
-  } | null => transientPanel
-    ? {
-        id: transientPanel.id,
-        label: transientPanel.label,
-        content: transientPanel.content,
-        pinned: false,
-      }
-    : activePanel
-      ? {
-          id: activePanel.id,
-          label: tt(activePanel.label),
-          icon: activePanel.icon,
-          content: activePanel.content,
-          pinned: Boolean(activePanel.pinned),
-          width: activePanel.width,
-        }
-      : null, [activePanel, transientPanel, tt]);
+  // Only the AI conversation belongs in the left column.
+  const sidePanel = useMemo(() => activePanel?.id === PLUGIN_AGENT_DRAWER_ID ? {
+    ...activePanel, label: tt(activePanel.label), pinned: Boolean(activePanel.pinned),
+  } : null, [activePanel, tt]);
   const [closingPanel, setClosingPanel] = useState<typeof sidePanel>(null);
   const lastOpenPanelRef = useRef<typeof sidePanel>(sidePanel);
   if (sidePanel) lastOpenPanelRef.current = sidePanel;
@@ -479,19 +460,15 @@ export function PluginChromeFrame({
   };
 
   const openLibrary = (id: "materials" | "mine") => {
-    if (onOpenLibrary) {
-      onOpenLibrary(id);
-      return;
-    }
-    if (workspacePane?.openLibraryPanel(id)) return;
-    if (id === "mine") hostController.togglePanel("mine");
+    hostController.togglePanel(id);
   };
   const libraryPressed =
     activeLibraryPanelId ||
-    (isOpen("mine") && !transientPanel ? ("mine" as const) : null);
+    (hostController.isOpen("materials") ? "materials" : hostController.isOpen("mine") ? "mine" : null);
 
   if (chrome === "host") {
     return (
+      <EditBarPanelContext.Provider value={floatingPanels}>
       <AdvancedLayoutContext.Provider value={layout}>
         <PanelContext.Provider value={hostController}>
           <div
@@ -509,14 +486,17 @@ export function PluginChromeFrame({
             >
               {children}
             </main>
+            <EditBarFloatingPanel controller={floatingPanels} containerRef={editBarGestures.stageRef} editBarRef={editBarGestures.layerRef} pluginThemeId={pluginId} />
           </div>
         </PanelContext.Provider>
       </AdvancedLayoutContext.Provider>
+      </EditBarPanelContext.Provider>
     );
   }
 
   return (
-    <AdvancedLayoutContext.Provider value={layout}>
+    <EditBarPanelContext.Provider value={floatingPanels}>
+      <AdvancedLayoutContext.Provider value={layout}>
     <PanelContext.Provider value={hostController}>
       <div
         ref={editBarGestures.layerRef}
@@ -549,7 +529,7 @@ export function PluginChromeFrame({
             ) : null}
             {showLibrary ? (
               <span data-global-row-slot="library" className="flex items-center">
-                {onOpenLibrary || workspacePane ? (
+                {(
                   <IconButton
                     selected={libraryPressed === "materials"}
                     aria-pressed={libraryPressed === "materials"}
@@ -560,7 +540,7 @@ export function PluginChromeFrame({
                       <AdvancedEditorIcon name="materials" className="h-4 w-4" />
                     }
                   />
-                ) : null}
+                )}
                 <IconButton
                   selected={libraryPressed === "mine"}
                   aria-pressed={libraryPressed === "mine"}
@@ -640,7 +620,7 @@ export function PluginChromeFrame({
             {headerActions.map((action) => {
               const iconOnly = action.variant === "icon";
               const active = action.panelId
-                ? !transientPanel && isOpen(action.panelId)
+                ? hostController.isOpen(action.panelId)
                 : false;
               return (
                 <button
@@ -791,7 +771,8 @@ export function PluginChromeFrame({
           </PluginChromeEditBarGestureLayer>
         </div>
 
-        {/* ---------------------------------------------- 行 3：左栏 + 舞台 */}
+        <EditBarFloatingPanel controller={floatingPanels} containerRef={editBarGestures.stageRef} editBarRef={editBarGestures.layerRef} pluginThemeId={pluginId} />
+        {/* ---------------------------------------------- 行 3：AI + 舞台 */}
         <div className="flex min-h-0 min-w-0 flex-1">
           <aside
             data-plugin-chrome-panel={sidePanel?.id}
@@ -873,5 +854,6 @@ export function PluginChromeFrame({
       </div>
     </PanelContext.Provider>
     </AdvancedLayoutContext.Provider>
+      </EditBarPanelContext.Provider>
   );
 }

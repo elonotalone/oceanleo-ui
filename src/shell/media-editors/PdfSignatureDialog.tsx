@@ -57,9 +57,11 @@ function trimmedPng(canvas: HTMLCanvasElement): { dataUrl: string; width: number
 export function PdfSignatureDialog({
   onPlace,
   onClose,
+  inline = false,
 }: {
   onPlace: (signature: PdfSavedSignature) => Promise<void> | void;
   onClose: () => void;
+  inline?: boolean;
 }) {
   const tt = useUI();
   const [userId, setUserId] = useState("");
@@ -107,7 +109,7 @@ export function PdfSignatureDialog({
     };
   };
 
-  const use = async (signature: PdfSavedSignature) => {
+  const placeSavedSignature = async (signature: PdfSavedSignature) => {
     setError("");
     try {
       await onPlace(signature);
@@ -127,7 +129,7 @@ export function PdfSignatureDialog({
     try {
       const entry = savePdfSignature(userId, image);
       setSaved(readPdfSignatures(userId));
-      await use(entry);
+      await placeSavedSignature(entry);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : tt("签名没有存下来。"));
     }
@@ -135,18 +137,18 @@ export function PdfSignatureDialog({
 
   return (
     <div
-      className="absolute inset-0 z-20 grid place-items-center bg-black/30"
+      className={inline ? "min-w-0" : "absolute inset-0 z-20 grid place-items-center bg-black/30"}
       onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onClose();
+        if (!inline && event.target === event.currentTarget) onClose();
       }}
     >
       <div
         role="dialog"
-        aria-modal="true"
+        aria-modal={inline ? undefined : true}
         aria-label={tt("签名")}
         data-pdf-signature-dialog=""
         onKeyDown={(event) => event.key === "Escape" && onClose()}
-        className="w-[528px] max-w-[94%] rounded-2xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-4 text-[var(--awb-text)] shadow-[var(--awb-shadow-floating)]"
+        className={inline ? "w-full min-w-0 p-3 text-[var(--awb-text)]" : "w-[528px] max-w-[94%] rounded-2xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-4 text-[var(--awb-text)] shadow-[var(--awb-shadow-floating)]"}
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-[14px] font-semibold">{tt("签名")}</h2>
@@ -251,7 +253,7 @@ export function PdfSignatureDialog({
                   <button
                     type="button"
                     data-pdf-saved-signature=""
-                    onClick={() => void use(signature)}
+                    onClick={() => void placeSavedSignature(signature)}
                     aria-label={tt("放这个签名")}
                     className="grid h-16 w-full place-items-center rounded-lg border border-[var(--awb-border)] p-1 hover:ring-2 hover:ring-[var(--awb-accent)]"
                     style={{ background: PDF_PAPER }}

@@ -6,7 +6,7 @@ import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 import type { PdfViewerBridge } from "./pdf-viewer-bridge";
 
-export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClose: () => void }) {
+export function PdfFindBar({ bridge, onClose, inline = false }: { bridge: PdfViewerBridge; onClose: () => void; inline?: boolean }) {
   const tt = useUI();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [query, setQuery] = useState("");
@@ -55,7 +55,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
     <div
       role="search"
       data-pdf-find-bar=""
-      className="absolute right-3 top-14 z-10 flex items-center gap-1 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1 text-[var(--awb-text)] shadow-[var(--awb-shadow-floating)]"
+      className={inline ? "flex flex-wrap items-center gap-1 p-2 text-[var(--awb-text)]" : "absolute right-3 top-14 z-10 flex items-center gap-1 rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] p-1 text-[var(--awb-text)] shadow-[var(--awb-shadow-floating)]"}
     >
       <input
         ref={inputRef}
@@ -67,7 +67,7 @@ export function PdfFindBar({ bridge, onClose }: { bridge: PdfViewerBridge; onClo
         }}
         placeholder={tt("在文档里查找")}
         aria-label={tt("在文档里查找")}
-        className="h-11 w-48 rounded-lg bg-transparent px-2 text-[13px] outline-none placeholder:text-[var(--awb-muted)]"
+        className="h-11 min-w-0 flex-1 rounded-lg bg-transparent px-2 text-[13px] outline-none placeholder:text-[var(--awb-muted)]"
       />
       <span aria-live="polite" className="min-w-14 px-1 text-center text-[12px] tabular-nums text-[var(--awb-muted)]">
         {count}
