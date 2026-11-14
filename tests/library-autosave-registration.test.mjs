@@ -4,7 +4,7 @@ import React, { act } from "react";
 import "./helpers/w1-jsdom-window.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { workspaceSnapshotFailureRetryable } from "../src/shell/workspace-session-model.ts";
-import { AdvancedPersistenceController } from "../src/shell/advanced-persistence-controller.ts";
+import {createBackgroundPublisher,resetBackgroundSaverForTests} from "../src/shell/advanced-background-saver.ts";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
@@ -62,10 +62,11 @@ test("transport outages retain status and retry only session registration of the
   let registrations = 0;
   const committed = { artifactId: "artifact-a", revisionId: "revision-2" };
   status = 0;
-  const controller = new AdvancedPersistenceController({
-    itemKey: "artifact-a", debounceMs: 0, retryDelays: [1], maxRetries: 1,
-    flushRevision: async () => { uploads++; return { ok: true, item: committed }; },
-    recordSavedItem: async item => {
+  const publisher = createBackgroundPublisher({
+    saver: { flush: async () => true, snapshot: () => ({ seq: 1, pending: false }), dispose() {} },
+    transport: { published: async () => {} },
+    prepare: () => async () => { uploads++; return { ok: true, item: committed }; },
+    record: async ({item}) => {
       registrations++;
       assert.equal(item, committed);
       const merge = latest => ({ ...latest, editor: item });
@@ -75,25 +76,24 @@ test("transport outages retain status and retry only session registration of the
         assert.equal(result.status, 0);
         assert.equal(workspaceSnapshotFailureRetryable(result), true);
         status = 200;
-        return false;
+        throw new Error("session unavailable");
       }
-      return true;
     },
   });
+  publisher.saved();
   try {
     let result;
-    await act(async () => { controller.observe({ revision: 2, dirty: true }); result = await controller.flushLatest(); });
+    await act(async () => { result = await publisher.publish(); });
     assert.equal(result.ok, false);
-    assert.equal(result.retryable, true);
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); });
-    assert.equal(controller.hasUnconfirmedWork(), false);
+    await act(async () => { result = await publisher.publish(); });
+    assert.equal(result.ok, true);
     assert.equal(uploads, 1);
     assert.equal(registrations, 2);
     assert.equal(writes.length, 2);
     assert.equal(stored.snapshot.taskContext, "preserve");
     assert.equal(stored.snapshot.editor.revisionId, "revision-2");
     assert.equal(stored.revision, 8);
-  } finally { controller.dispose(); await unmount(); }
+  } finally { resetBackgroundSaverForTests(); await unmount(); }
 });
 
 test("session HTTP failures remain visible and keep their retry classification", async () => {

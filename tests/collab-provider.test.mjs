@@ -505,3 +505,22 @@ test("没有任何 iframe/postMessage：provider 只用 WebSocket（静态检查
   const src = await readFile(new URL("../src/shell/collab/provider.ts", import.meta.url), "utf8");
   assert.equal(/postMessage|iframe|innerHTML|dangerouslySetInnerHTML/.test(src), false);
 });
+
+test('latest collaboration edit waits for a room sync barrier; earlier ack cannot show Saved', async () => {
+  const {provider,socket}=await connectReady({}, {is_saver:false});
+  const server=new Y.Doc();
+  try {
+    socket.serverBinary(frame(0,e=>syncProtocol.writeSyncStep2(e,server)));
+    assert.equal(provider.hasPendingUpdates,false);
+    provider.doc.getText('text').insert(0,'first');
+    assert.equal(provider.hasPendingUpdates,true);
+    provider.doc.getText('text').insert(5,' latest');
+    const before=socket.binaries().length;
+    socket.serverBinary(frame(0,e=>syncProtocol.writeSyncStep2(e,server)));
+    assert.equal(provider.hasPendingUpdates,true);
+    assert.equal(parseBinary(socket.binaries().at(-1)).kind,'step1');
+    assert.equal(socket.binaries().length,before+1);
+    socket.serverBinary(frame(0,e=>syncProtocol.writeSyncStep2(e,server)));
+    assert.equal(provider.hasPendingUpdates,false);
+  } finally {provider.destroy();server.destroy();}
+});

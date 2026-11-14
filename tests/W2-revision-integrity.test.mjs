@@ -7,7 +7,6 @@ import {
   artifactSaveFailureRetryable,
   revisionPublishLocalRefusal,
 } from "../src/shell/doc-editors/artifact-save-contract.ts";
-import { uploadAdvancedDraft } from "../src/shell/advanced-draft.ts";
 
 const DIGEST = "a".repeat(64);
 
@@ -247,32 +246,4 @@ test("W2: HTTP 200 that repeats the old revisionId is integrity-failed", async (
   } finally {
     globalThis.fetch = previousFetch;
   }
-});
-
-test("W2: draft upload does not accept a mismatched receipt digest", async () => {
-  await assert.rejects(
-    () =>
-      uploadAdvancedDraft(
-        {
-          identity: { rootId: "root-1", baseRevisionId: "r1" },
-          schema: "oceanleo.document.draft.v1",
-          revision: 1,
-          payload: { text: "未提交的草稿" },
-          siteId: "word",
-          title: "清单",
-        },
-        {
-          upload: async () => ({
-            ok: true,
-            data: {
-              file: {
-                url: "https://files.example/draft.json",
-                meta: { content_digest: "0".repeat(64) },
-              },
-            },
-          }),
-        },
-      ),
-    /校验和/,
-  );
 });

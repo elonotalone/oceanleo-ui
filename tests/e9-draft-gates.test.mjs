@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
 import { afterAdvancedDraftExport, bindAdvancedDraftGate, saveAdvancedEditorFromAgent } from '../src/shell/advanced-draft-gates.ts';
-import { advancedDraftAfterVersion } from '../src/shell/advanced-draft.ts';
 
 const handoff = await import(await compileModule('src/shell/advanced-routes/editor-handoff.ts', {
   '../office-editor/useOfficeArtifactSource': dataModule('export function useOfficeArtifactSource() { return {}; }'),
@@ -85,18 +84,6 @@ test('failed cloud save still enters pro from the in-memory document already on 
     assert.equal(result.handoff.kind, 'inline');
     assert.equal(result.handoff.json.text, 'on screen');
   } finally { gate(); normal(); }
-});
-
-test('complete version clears a restored receipt despite restarted editor counter, preserving a later or foreign draft', () => {
-  const pointer = { rootId: 'r', baseRevisionId: 'base', schema: 'oceanleo.richdoc.edit.v1', editRevision: 7, savedAt: '2026-09-27T00:00:00Z', url: 'https://files.example/seven.json' };
-  const coverage = { schema: pointer.schema, restored: pointer };
-  assert.equal(advancedDraftAfterVersion(pointer, 7, 'base', coverage), pointer,
-    'a session-only graph save must not erase its only durable working document');
-  assert.equal(advancedDraftAfterVersion(pointer, 1, 'new-base', coverage), null);
-  const newer = { ...pointer, editRevision: 2, url: 'https://files.example/newer.json' };
-  assert.equal(advancedDraftAfterVersion(newer, 1, 'new-base', coverage).url, newer.url);
-  const otherFace = { ...pointer, schema: 'oceanleo.richdoc.pro.v1', editRevision: 1 };
-  assert.equal(advancedDraftAfterVersion(otherFace, 99, 'new-base', coverage).schema, otherFace.schema);
 });
 
 test('download waits for full version and session confirmation and stops on failure', async () => {

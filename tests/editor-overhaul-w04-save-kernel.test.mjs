@@ -232,27 +232,6 @@ test("artifactRevision.metadata reaches the commit with only well-formed keys", 
   assert.deepEqual(state.commits[0].metadata, { text_excerpt: "第一行\n第二行" });
 });
 
-test("a failed save attempt is shown as 保存失败, never as saving forever or saved", async () => {
-  const { advancedAutoSaveDisplayState, advancedFlushFailureVisible } = await import(
-    "../src/shell/advanced-autosave-display.ts"
-  );
-  const failed = { ok: false, error: "保存失败：「上传交付文件」这一步没有完成 —— 网络不通", status: 0 };
-  assert.equal(advancedFlushFailureVisible(failed), true);
-  assert.equal(advancedFlushFailureVisible({ ok: false }), true, "a bare refusal is still a failure");
-  assert.equal(advancedFlushFailureVisible({ ok: true }), false);
-  // Controller still retrying in the background → top bar says error, with retry.
-  assert.equal(advancedAutoSaveDisplayState({ state: "saving", failedAttempt: true, restorationPaused: false }), "error");
-  // Only the server-confirmed transition clears it.
-  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: true, restorationPaused: false }), "saved");
-  assert.equal(advancedAutoSaveDisplayState({ state: "saving", failedAttempt: false, restorationPaused: false }), "saving");
-  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: false, restorationError: "草稿读取失败", restorationPaused: false }), "error");
-  // A draft acknowledged but not yet a version is not 「已保存」 (W08-to-W04 #1).
-  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: false, restorationPaused: false, versionOwed: true }), "saving");
-  assert.equal(advancedAutoSaveDisplayState({ state: "saved", failedAttempt: true, restorationPaused: false, versionOwed: true }), "error");
-  const { DRAFT_VERSION_IDLE_MS } = await import("../src/shell/advanced-autosave-display.ts");
-  assert.ok(DRAFT_VERSION_IDLE_MS <= 2000, "the version follows the draft within seconds, not 20 s");
-});
-
 test("website closure files staged by the editor ride along with the commit", async () => {
   resetOwnCommittedHeadsForTests();
   const { state, dependencies } = gateway();
@@ -262,42 +241,4 @@ test("website closure files staged by the editor ride along with the commit", as
     dependencies,
   );
   assert.deepEqual(state.commits[0].sourceDependencies, sourceDependencies);
-});
-
-test("restored local work is saved, not shown as 已保存 (draft-tier and plain editors)", async () => {
-  const { advancedRecoveredLocalWork } = await import("../src/shell/advanced-autosave-display.ts");
-  const base = { dirty: true, revision: 7, draftTier: true };
-  // Draft-tier editor restored its IndexedDB copy: only the restore time is known.
-  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000 }), true);
-  // A restored server draft is not resent (browser: republishing it made a duplicate revision on reopen).
-  assert.equal(advancedRecoveredLocalWork({ ...base, draftRestoredAt: 1000, serverRestoredRevision: 7 }), false);
-  // Nothing restored, or the document is clean: nothing to do.
-  assert.equal(advancedRecoveredLocalWork({ ...base }), false);
-  assert.equal(advancedRecoveredLocalWork({ ...base, dirty: false, draftRestoredAt: 1000 }), false);
-  // Plain (non-draft) editors keep the exact-revision local promotion rule.
-  const plain = { dirty: true, revision: 3, draftTier: false };
-  assert.equal(advancedRecoveredLocalWork({ ...plain, localPromotion: { revision: 3 } }), true);
-  assert.equal(advancedRecoveredLocalWork({ ...plain, localPromotion: { revision: 2 } }), false);
-  assert.equal(advancedRecoveredLocalWork({ ...plain, draftRestoredAt: 1000 }), false);
-  // The autosave hook feeds the draft-tier restore receipt into the rule.
-  const { readFileSync } = await import("node:fs");
-  const hook = readFileSync(new URL("../src/shell/use-advanced-autosave.ts", import.meta.url), "utf8");
-  assert.match(hook, /recoveredLocalDraft = advancedRecoveredLocalWork\(\{[\s\S]*?draftRestoredAt: recovery\?\.draftSchema \? advancedDraftRestoredAt\(/);
-});
-
-test("a local copy older than the opened revision is stale, not new work; draft failures are visible", async () => {
-  const { advancedRecoveredLocalWork, visibleDraftAttempt } = await import("../src/shell/advanced-autosave-display.ts");
-  const base = { dirty: true, revision: 7, draftTier: true, draftRestoredAt: 1000 };
-  assert.equal(advancedRecoveredLocalWork({ ...base, baseSavedAt: 2000 }), false, "saved after the last local edit");
-  assert.equal(advancedRecoveredLocalWork({ ...base, baseSavedAt: 500 }), true, "edited after the opened revision");
-  assert.equal(advancedRecoveredLocalWork({ ...base, baseSavedAt: Number.NaN }), true, "unknown base time keeps the edit");
-  // W09-to-W04 #3: a failing draft upload says why (retries continue), offline names the network.
-  const failures = [];
-  await assert.rejects(visibleDraftAttempt(async () => { throw new Error("存储服务没有确认草稿地址"); }, (e) => failures.push(e), () => false));
-  assert.deepEqual(failures, ["存储服务没有确认草稿地址"]);
-  assert.equal(await visibleDraftAttempt(async () => false, (e) => failures.push(e), () => true), false);
-  assert.match(failures[1], /网络/);
-  assert.equal(await visibleDraftAttempt(async () => false, (e) => failures.push(e), () => false), false);
-  assert.equal(await visibleDraftAttempt(async () => true, (e) => failures.push(e), () => true), true);
-  assert.equal(failures.length, 2, "a moved-on revision online and a success are not failures");
 });

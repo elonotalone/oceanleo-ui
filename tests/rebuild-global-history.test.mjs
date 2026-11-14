@@ -8,7 +8,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import { GLOBAL_ROW_SLOTS } from "../src/shell/plugin-chrome/plugin-pages.ts";
-import { AdvancedPersistenceController } from "../src/shell/advanced-persistence-controller.ts";
 
 const require = createRequire(import.meta.url);
 
@@ -244,54 +243,4 @@ test("standalone chrome uses yellow for dirty/saving and green for saved", () =>
   assert.match(saving, /pchrome-warn/);
   assert.match(saved, /data-plugin-chrome-status="saved"/);
   assert.match(saved, /pchrome-ok/);
-});
-
-test("save stays yellow through debounce and turns green only after latest revision is acknowledged", async () => {
-  let now = 0;
-  let timerId = 0;
-  const timers = new Map();
-  const states = [];
-  const flushResolvers = [];
-  const controller = new AdvancedPersistenceController({
-    debounceMs: 400,
-    setTimeout(callback, delay) {
-      const id = ++timerId;
-      timers.set(id, { callback, at: now + delay });
-      return id;
-    },
-    clearTimeout(id) { timers.delete(id); },
-    flushRevision: () => new Promise((resolve) => { flushResolvers.push(resolve); }),
-    recordSavedItem: () => true,
-    onStateChange: (state) => states.push(state),
-  });
-  const advanceTo = async (target) => {
-    now = target;
-    const due = [...timers.entries()].filter(([, timer]) => timer.at <= now);
-    for (const [id, timer] of due) {
-      timers.delete(id);
-      timer.callback();
-    }
-    await Promise.resolve();
-  };
-
-  controller.observe({ revision: 1, dirty: true, userEdited: true });
-  assert.equal(controller.snapshot().state, "saving");
-  await advanceTo(399);
-  assert.equal(controller.snapshot().state, "saving");
-  await advanceTo(400);
-  assert.equal(controller.snapshot().state, "saving");
-  assert.equal(flushResolvers.length, 1);
-  controller.observe({ revision: 2, dirty: true, userEdited: true });
-  flushResolvers.shift()({ ok: true });
-  await Promise.resolve();
-  await Promise.resolve();
-  assert.equal(controller.snapshot().acknowledgedRevision, 1);
-  assert.equal(controller.snapshot().state, "saving");
-  assert.equal(flushResolvers.length, 1, "newest revision should flush after the older one");
-  flushResolvers.shift()({ ok: true });
-  await controller.whenIdle();
-  assert.equal(controller.snapshot().acknowledgedRevision, 2);
-  assert.equal(controller.snapshot().state, "saved");
-  assert.deepEqual(states, ["saving", "saved"]);
-  controller.dispose();
 });
