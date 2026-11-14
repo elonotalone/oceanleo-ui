@@ -20,6 +20,14 @@ for (const name of ["window", "document", "navigator", "HTMLElement", "HTMLInput
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
 globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
+let nativeEventCheckpoints = false;
+const addListener = window.EventTarget.prototype.addEventListener;
+window.EventTarget.prototype.addEventListener = function(type, listener, options) {
+  const capture = typeof options === "boolean" ? options : options?.capture;
+  return addListener.call(this, type, type === "click" && !capture && typeof listener === "function"
+    ? event => nativeEventCheckpoints ? queueMicrotask(() => listener.call(this, event)) : listener.call(this, event)
+    : listener, options);
+};
 const { createRoot } = await import("react-dom/client");
 const react = JSON.stringify(pathToFileURL(require.resolve("react")).href);
 const ui = dataModule(`const tt = (s, vars) => String(s).replace(/\\{(\\w+)\\}/g, (m,k) => vars?.[k] ?? m); export function useUI(){return tt}`);
@@ -50,6 +58,7 @@ const { useInlineAdvancedPanels } = await compiled("src/shell/use-inline-advance
 const { useInlineLibraryPanels } = await compiled("src/shell/use-inline-library-panels.tsx");
 const { EditBarDocumentSegment } = await compiled("src/shell/plugin-chrome/EditBarDocumentSegment.tsx");
 const { RichDocControls } = await compiled("src/shell/doc-editors/RichDocControls.tsx");
+const { RichDocContextToolbar } = await compiled("src/shell/doc-editors/RichDocContextToolbar.tsx");
 const { DeckElementsPanel } = await compiled("src/shell/doc-editors/DeckControls.tsx");
 const { FabricImageShapePanel } = await compiled("src/shell/image-editor/FabricImageCreationPanels.tsx");
 moduleOverrides.set("src/shell/media-editors/AudioWorkbench.tsx",dataModule("export function useAudioWorkbench(){throw new Error('real waveform not used by controls')}"));
@@ -65,7 +74,8 @@ const { SelectionToolbar } = await compiled("src/shell/SelectionToolbar.tsx");
 const { EditBarRow } = await compiled("src/shell/FloatingContextToolbar.tsx");
 const { buildFabricImageToolbarControls } = await compiled("src/shell/image-editor/fabric-image-toolbar-controls.ts");
 const { AnchoredPopover } = await compiled("src/shell/anchored-popover.tsx");
-const { gridUniverSelectionContext } = await compiled("src/shell/doc-editors/grid-univer/stage-plan.ts");
+const { gridUniverSelectionContext, gridUniverCommandArgsFromValue } = await compiled("src/shell/doc-editors/grid-univer/stage-plan.ts");
+const { runGridUniverCommand } = await compiled("src/shell/doc-editors/grid-univer/facade-commands.ts");
 moduleOverrides.set("src/shell/plugin-chrome/agent-drawer-panel.tsx",dataModule(`import React from ${react}; export function createPluginAgentDrawer(){return {id:'agent',label:'AI',content:React.createElement('div',{'data-chrome-agent':true},'AI')}}`));
 const { PluginChromeFrame, usePluginChromePanelHost } = await compiled("src/shell/plugin-chrome/PluginChromeFrame.tsx");
 
@@ -82,10 +92,14 @@ let errors = [];
 const originalError = console.error;
 test.beforeEach(() => { errors = []; console.error = (...args) => errors.push(args.map(String).join(" ")); });
 test.afterEach(() => { console.error = originalError; assert.deepEqual(errors, [], "React render must not log errors"); });
-async function mount(element) {
+async function mount(element, { nativeCheckpoints = false } = {}) {
   const node = document.createElement("div"); document.body.append(node);
+  // Native browser dispatch can drain microtasks between the document capture
+  // listener and React's delegated bubble listener. jsdom dispatchEvent keeps
+  // one JS stack, so explicitly give that bubble listener the same checkpoint.
+  nativeEventCheckpoints = nativeCheckpoints;
   const root = createRoot(node); await act(async () => root.render(element));
-  return { node, async destroy(){ await act(async () => root.unmount()); node.remove(); } };
+  return { node, async destroy(){ await act(async () => root.unmount()); node.remove(); nativeEventCheckpoints = false; } };
 }
 async function click(node) { assert.ok(node, "click target exists"); await act(async () => node.dispatchEvent(new MouseEvent("click", { bubbles: true }))); }
 const textButton = (root, label) => [...root.querySelectorAll("button")].find(node => node.textContent.trim() === label || node.getAttribute("aria-label") === label);
@@ -392,4 +406,168 @@ test("browser regression: the real image Replace control closes its material pan
     await browserClick(trigger);assert.equal(floating(),null);assert.equal(api.panels.activeMaterialAction,'insert','closing Replace restores the normal insert action for later drops');
     await browserClick(trigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'materials');
   }finally{await m.destroy();}
+});
+
+test("VP run 2: Sheet More → Number format survives native event checkpoints and keeps Back",async()=>{
+  const commands=[],formats=[];
+  function Sheet(){
+    const [revision,setRevision]=React.useState(1);
+    const context={...gridUniverSelectionContext({revision,kind:"grid-cell",tt:s=>s}),bar:"text"};
+    // The real GridUniverStage routes every inspector command through this
+    // executor; its Facade mutation updates the live context revision.
+    const onCommand=command=>{
+      commands.push(command);
+      runGridUniverCommand(command.controlId,{range:{setNumberFormat(pattern){formats.push(pattern);setRevision(v=>v+1);}}},gridUniverCommandArgsFromValue(command.value));
+    };
+    return React.createElement(Harness,{body:null,toolbar:React.createElement(SelectionToolbar,{context,onCommand}),adapterId:"grid"});
+  }
+  const m=await mount(strict(React.createElement(Sheet)),{nativeCheckpoints:true});
+  try{
+    const more=[...m.node.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")??"").includes("更多"));
+    await browserClick(more);
+    const parent=floating().dataset.editBarFloatingPanel;
+    await browserClick(textButton(currentBody(),"数字格式"));
+    assert.equal(floating()?.dataset.editBarFloatingPanel,"selection-inspector-grid-number-format");
+    const number=currentBody().querySelector('input[type="number"]');assert.ok(number);
+    await act(async()=>{
+      Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set.call(number,"3");
+      number.dispatchEvent(new Event("input",{bubbles:true}));
+    });
+    await act(async()=>new Promise(requestAnimationFrame));
+    assert.ok(formats.includes("#,##0.000"),"format change reaches the real sheet executor");
+    assert.equal(currentBody().querySelector('input[type="number"]'),number,"live formatting keeps the focused field mounted");
+    await act(async()=>number.blur());
+    assert.ok(commands.some(command=>command.controlId==="decimals"));
+    await browserClick(floating().querySelector("[data-edit-bar-panel-back]"));
+    assert.equal(floating().dataset.editBarFloatingPanel,parent);
+    assert.equal(more.getAttribute("aria-expanded"),"true");
+    assert.ok(textButton(currentBody(),"数字格式"));
+  }finally{await m.destroy();}
+});
+
+test("VP run 2: Sheet overflow inspectors retain their parent, position and commands through Back",async()=>{
+  const commands=[];
+  const context={...gridUniverSelectionContext({revision:1,kind:"grid-cell",tt:s=>s}),bar:"text"};
+  const toolbar=React.createElement(SelectionToolbar,{context,onCommand:c=>commands.push(c)});
+  const m=await mount(strict(React.createElement(Harness,{body:null,toolbar,adapterId:"grid"})),{nativeCheckpoints:true});
+  try{
+    const more=[...m.node.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")??"").includes("更多"));
+    await browserClick(more);
+    const parent=floating().dataset.editBarFloatingPanel;
+    const position={left:floating().style.left,top:floating().style.top};
+    for(const label of ["行操作","列操作","排序与筛选","条件格式","数据验证"]){
+      const trigger=textButton(currentBody(),label);assert.ok(trigger,label);
+      trigger.getBoundingClientRect=()=>rect(610,200,80,30);
+      await browserClick(trigger);
+      assert.ok(floating()?.querySelector("[data-edit-bar-panel-back]"),`${label} keeps Back`);
+      assert.deepEqual({left:floating().style.left,top:floating().style.top},position,`${label} stays at its parent`);
+      assert.equal(document.querySelectorAll("[data-edit-bar-floating-panel]").length,1);
+      if(label==="行操作") await browserClick(textButton(currentBody(),"上方插入行"));
+      await browserClick(floating().querySelector("[data-edit-bar-panel-back]"));
+      assert.equal(floating().dataset.editBarFloatingPanel,parent);
+      assert.ok(textButton(currentBody(),label));
+    }
+    assert.ok(commands.some(command=>command.controlId==="row-before"));
+    await browserClick(more);assert.equal(floating(),null);
+  }finally{await m.destroy();}
+});
+
+test("VP run 2: real document Link, Paragraph settings and Review keep Back at their overflow parent's position",async()=>{
+  const actions=[];
+  const chain=new Proxy({}, {get:(_,name)=>name==="run"?()=>true:(...args)=>{actions.push([name,...args]);return chain;}});
+  const editor={state:{selection:{from:1,to:1},doc:{textBetween:()=>""}},isActive:()=>false,getAttributes:()=>({}),on(){},off(){},chain:()=>chain};
+  const toolbar=React.createElement(RichDocContextToolbar,{editor:{editor,editRevision:1}});
+  const m=await mount(strict(React.createElement(Harness,{body:null,toolbar})),{nativeCheckpoints:true});
+  try{
+    const more=[...m.node.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")??"").includes("更多"));
+    await browserClick(more);
+    const parent=floating().dataset.editBarFloatingPanel;
+    const position={left:floating().style.left,top:floating().style.top};
+    for(const label of ["超链接","段落设置","批注与修订"]){
+      const trigger=textButton(currentBody(),label);assert.ok(trigger,label);
+      trigger.getBoundingClientRect=()=>rect(610,240,80,30);
+      await browserClick(trigger);
+      assert.ok(floating()?.querySelector("[data-edit-bar-panel-back]"),`${label} keeps Back`);
+      assert.deepEqual({left:floating().style.left,top:floating().style.top},position,`${label} stays at its parent`);
+      if(label==="段落设置") await browserClick(textButton(currentBody(),"恢复默认排版"));
+      await browserClick(floating().querySelector("[data-edit-bar-panel-back]"));
+      assert.equal(floating().dataset.editBarFloatingPanel,parent);
+      assert.ok(textButton(currentBody(),label));
+    }
+    assert.ok(actions.some(([name])=>name==="updateAttributes"));
+    await browserClick(more);assert.equal(floating(),null);
+  }finally{await m.destroy();}
+});
+
+test("VP run 2: a nested panel replaces the body without moving to the child button",async()=>{
+  let api;
+  const body=React.createElement("button",{onClick:e=>api.panels.openTransientPanel("child","Child",React.createElement("input"),e.currentTarget)},"Child");
+  const m=await mount(strict(React.createElement(Harness,{body,onReady:v=>{api=v;}})));
+  try{
+    await browserClick(m.node.querySelector("[data-edit-bar-drawer]"));
+    const position={left:floating().style.left,top:floating().style.top};
+    const child=textButton(currentBody(),"Child");child.getBoundingClientRect=()=>rect(610,240,80,30);
+    await browserClick(child);
+    assert.ok(floating().querySelector("[data-edit-bar-panel-back]"));
+    assert.deepEqual({left:floating().style.left,top:floating().style.top},position);
+  }finally{await m.destroy();}
+});
+
+test("VP run 2: changing selection or available controls still closes the old inspector and cancels its gesture",async()=>{
+  for(const change of ["id","kind","epoch","controls"]){
+    let changeSelection;const commands=[];
+    const initial={...gridUniverSelectionContext({revision:1,kind:"grid-cell",tt:s=>s}),bar:"text"};
+    function Sheet(){
+      const [context,setContext]=React.useState(initial);
+      changeSelection=()=>setContext(current=>({...current,[change]:change==="controls"?current.controls.filter(control=>control.id!=="decimals"):"different"}));
+      return React.createElement(Harness,{body:null,toolbar:React.createElement(SelectionToolbar,{context,onCommand:c=>commands.push(c)}),adapterId:"grid"});
+    }
+    const m=await mount(strict(React.createElement(Sheet)),{nativeCheckpoints:true});
+    try{
+      await browserClick([...m.node.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")??"").includes("更多")));
+      await browserClick(textButton(currentBody(),"数字格式"));
+      assert.ok(commands.some(command=>command.phase==="start"));
+      await act(async()=>changeSelection());
+      assert.equal(floating(),null,`${change} invalidates the previous inspector`);
+      assert.ok(commands.some(command=>command.phase==="cancel"),`${change} cancels the old field gesture`);
+    }finally{await m.destroy();}
+  }
+});
+
+test("VP run 2: nested placement stays clamped at the parent in all three hosts at 1440 and 1280",async()=>{
+  const originalRect=window.HTMLElement.prototype.getBoundingClientRect;
+  const originalWidth=window.innerWidth,originalHeight=window.innerHeight;
+  try{
+    for(const host of ["library","task","project"]) for(const width of [1440,1280]){
+      Object.defineProperty(window,"innerWidth",{configurable:true,value:width});
+      Object.defineProperty(window,"innerHeight",{configurable:true,value:width===1440?900:720});
+      const left=host==="library"?262:739.515625;
+      window.HTMLElement.prototype.getBoundingClientRect=function(){
+        if(this.hasAttribute("data-editor-canvas")) return rect(left,110,width-6-left,window.innerHeight-154);
+        if(this.hasAttribute("data-workspace-edit-bar")) return rect(left+20,66,width-46-left,38);
+        if(this.hasAttribute("data-edit-bar-layer-root")) return rect(left,6,width-6-left,window.innerHeight-12);
+        if(this.hasAttribute("data-edit-bar-drawer")) return rect(width-80,70,40,28);
+        return originalRect.call(this);
+      };
+      let api;
+      const body=React.createElement("button",{onClick:e=>api.panels.openTransientPanel("child","Child",React.createElement("input"),e.currentTarget)},"Child");
+      const editor=React.createElement(Harness,{body,onReady:v=>{api=v;}});
+      const m=await mount(strict(host==="library"?editor:React.createElement(SplitWorkspace,{left:"Conversation",right:editor})));
+      try{
+        await browserClick(m.node.querySelector("[data-edit-bar-drawer]"));
+        const position={left:floating().style.left,top:floating().style.top};
+        assert.equal(position.left,`${width-330}px`);
+        assert.equal(position.top,"116px");
+        const child=textButton(currentBody(),"Child");child.getBoundingClientRect=()=>rect(left+5,250,100,30);
+        await browserClick(child);
+        assert.deepEqual({left:floating().style.left,top:floating().style.top},position,`${host}/${width}`);
+        await browserClick(floating().querySelector("[data-edit-bar-panel-back]"));
+        assert.deepEqual({left:floating().style.left,top:floating().style.top},position);
+      }finally{await m.destroy();}
+    }
+  }finally{
+    window.HTMLElement.prototype.getBoundingClientRect=originalRect;
+    Object.defineProperty(window,"innerWidth",{configurable:true,value:originalWidth});
+    Object.defineProperty(window,"innerHeight",{configurable:true,value:originalHeight});
+  }
 });

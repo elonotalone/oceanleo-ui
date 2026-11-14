@@ -75,7 +75,7 @@ export function SelectionToolbarControl({
   selectionRevision?: SelectionContext["revision"];
   selectionEpoch?: SelectionContext["epoch"];
   onCommand: (command: SelectionCommand) => void;
-  onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction) => void;
+  onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction, anchor?: HTMLElement) => void;
   accent: string;
   activePanel?: boolean;
   presentation?: "compact" | "menu";

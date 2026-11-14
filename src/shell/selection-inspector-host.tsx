@@ -35,6 +35,7 @@ export function useSelectionInspectorHost({
   onOpenPanel?: (
     panelId: string,
     panelAction?: SelectionPanelAction,
+    anchor?: HTMLElement,
   ) => void;
   accent: string;
   anchorRef: RefObject<HTMLElement | null>;
@@ -89,7 +90,7 @@ export function useSelectionInspectorHost({
   }, [accent, context, dispatchCommand, hostedGroup, updateTransientPanel]);
 
   const openPanel = useCallback(
-    (panelId: string, panelAction?: SelectionPanelAction) => {
+    (panelId: string, panelAction?: SelectionPanelAction, trigger?: HTMLElement) => {
       const inspector = groups.find((group) => group.panelId === panelId);
       if (inspector && context) {
         if (layout) {
@@ -105,13 +106,14 @@ export function useSelectionInspectorHost({
                 onCommand={dispatchCommand}
                 accent={accent}
               />,
+              trigger,
             );
           }
         } else if (fallbackId === panelId) {
           closeFallback();
         } else {
           const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-          const anchor = !sharedPanels && activeElement?.closest("[data-selection-overflow-control]") ? overflowTriggerRef?.current ?? undefined : undefined;
+          const anchor = trigger ?? (!sharedPanels && activeElement?.closest("[data-selection-overflow-control]") ? overflowTriggerRef?.current ?? undefined : undefined);
           openFallback({ id: panelId, label: inspector.label, anchor, content: <SelectionInspectorPanel context={context} controls={inspector.controls} onCommand={dispatchCommand} accent={accent} /> });
         }
         return;
@@ -123,7 +125,7 @@ export function useSelectionInspectorHost({
         return;
       }
       if (!sharedPanels) closeFallback();
-      (onOpenPanel || layout?.openDrawer)?.(panelId, panelAction);
+      (onOpenPanel || layout?.openDrawer)?.(panelId, panelAction, trigger);
     },
     [
       accent,

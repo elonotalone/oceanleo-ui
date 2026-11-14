@@ -64,6 +64,7 @@ function InspectorControl({
     draftRef.current = control.value;
     setDraft(control.value);
   }, [control.value]);
+  // The gesture itself can advance the revision; only a new selection cancels it.
   useEffect(() => {
     const cancelActiveGesture = () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
@@ -77,7 +78,7 @@ function InspectorControl({
       window.removeEventListener("blur", cancelActiveGesture);
       cancelActiveGesture();
     };
-  }, [context.id, context.revision]);
+  }, [context.id, context.epoch, context.kind]);
 
   const emitInstant = (value?: SelectionControlValue) => {
     onCommand({
@@ -441,7 +442,7 @@ export function SelectionInspectorPanel({
       <div className="space-y-3">
         {controls.map((control) => (
           <InspectorControl
-            key={`${context.id}:${String(context.revision ?? "")}:${control.id}`}
+            key={`${context.kind}:${context.id}:${String(context.epoch ?? "")}:${control.id}`}
             control={control}
             context={context}
             onCommand={onCommand}

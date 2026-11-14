@@ -31,6 +31,7 @@ export function SelectionToolbarButtonControl({
   onOpenPanel?: (
     panelId: string,
     panelAction?: SelectionPanelAction,
+    anchor?: HTMLElement,
   ) => void;
   onActivated?: () => void;
   emit: (value?: SelectionControlValue) => void;
@@ -50,9 +51,9 @@ export function SelectionToolbarButtonControl({
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
         onPointerDown={preserveEditBarSelection}
-        onClick={() => {
+        onClick={(event) => {
           if (control.kind === "panel" && onOpenPanel) {
-            onOpenPanel(control.panelId || control.id, control.panelAction);
+            onOpenPanel(control.panelId || control.id, control.panelAction, event.currentTarget);
           } else {
             emit();
           }

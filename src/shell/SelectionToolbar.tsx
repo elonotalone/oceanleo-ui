@@ -130,10 +130,10 @@ export function SelectionToolbar({
   const morePanelRef = useRef<HTMLDivElement | null>(null);
   const restoreMoreFocusRef = useRef(false);
   const morePanelId = `selection-more-${useId().replace(/:/g, "")}`;
+  // Editing a property changes the document revision, not the selected object.
+  // Keep its panels/controls mounted until the selection or control set changes.
   const identity = context
-    ? `${context.kind}:${context.id}:${String(context.epoch ?? "")}:${String(
-        context.revision ?? "",
-      )}`
+    ? `${context.kind}:${context.id}:${String(context.epoch ?? "")}`
     : "";
   const sourceControls = useMemo(
     () =>

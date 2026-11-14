@@ -133,12 +133,16 @@ export function EditBarFloatingPanel({
       const top = viewport?.offsetTop ?? 0;
       const visible = { left, top, right: left + (viewport?.width ?? window.innerWidth), bottom: top + (viewport?.height ?? window.innerHeight) };
       const container = containerRef.current?.getBoundingClientRect() ?? visible;
-      const triggerRect = isElement(active.anchor) ? active.trigger?.getBoundingClientRect() : undefined;
-      const anchor = triggerRect && triggerRect.width > 0 ? triggerRect : active.rect;
-      const bar = (active.trigger?.closest("[data-workspace-edit-bar]") ??
+      // Children replace the body in the same panel. Their button determines
+      // lineage and return focus; the root edit-bar button determines placement.
+      const root = panels[0] ?? active;
+      const triggerRect = isElement(root.anchor) ? root.trigger?.getBoundingClientRect() : undefined;
+      const anchor = triggerRect && triggerRect.width > 0 ? triggerRect : root.rect;
+      const bar = (root.trigger?.closest("[data-workspace-edit-bar]") ??
         editBarRef?.current?.querySelector("[data-workspace-edit-bar]"))?.getBoundingClientRect();
-      const barBottom = bar?.bottom ?? (panels[0]?.rect.bottom ?? anchor.bottom);
-      const next = editBarPanelGeometry({ anchor, container, viewport: visible, barBottom, width: active.width });
+      const barBottom = bar?.bottom ?? root.rect.bottom;
+      const base = editBarPanelGeometry({ anchor, container, viewport: visible, barBottom, width: root.width });
+      const next = root === active ? base : editBarPanelGeometry({ anchor: { ...anchor, left: base.left }, container, viewport: visible, barBottom, width: active.width });
       setPosition(previous => previous && Object.keys(next).every(key => next[key as keyof typeof next] === previous[key as keyof typeof next]) ? previous : next);
     };
     place();
@@ -148,7 +152,7 @@ export function EditBarFloatingPanel({
     window.visualViewport?.addEventListener("scroll", place);
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(place);
     if (containerRef.current) observer?.observe(containerRef.current);
-    if (active.trigger) observer?.observe(active.trigger);
+    if (panels[0]?.trigger) observer?.observe(panels[0].trigger);
     return () => {
       window.removeEventListener("resize", place);
       window.removeEventListener("scroll", place, true);

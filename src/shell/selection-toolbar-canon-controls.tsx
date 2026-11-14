@@ -163,7 +163,7 @@ export function SelectionToolbarFontFamilyButton({
   control: CanonicalSelectionControl;
   buttonClass: string;
   activePanel: boolean;
-  onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction) => void;
+  onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction, anchor?: HTMLElement) => void;
   onActivated?: () => void;
   forMeasurement?: boolean;
 }) {
@@ -174,9 +174,9 @@ export function SelectionToolbarFontFamilyButton({
       disabled={control.disabled}
       tabIndex={forMeasurement ? -1 : undefined}
       onPointerDown={preserveEditBarSelection}
-      onClick={() => {
+      onClick={(event) => {
         if (forMeasurement) return;
-        onOpenPanel?.(control.panelId || control.id, control.panelAction);
+        onOpenPanel?.(control.panelId || control.id, control.panelAction, event.currentTarget);
         onActivated?.();
       }}
       aria-haspopup="dialog"
