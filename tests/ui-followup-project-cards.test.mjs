@@ -49,8 +49,10 @@ const kitUrls = [];
 for (const file of ["ConfigDialogShell.tsx", "ConfigToolbar.tsx", "kit-icons.tsx"]) {
   kitUrls.push(await compileModule(`src/shell/skills/kit/${file}`, { "../../../i18n/ui/useUI": useUIStub, "../../anchored-popover": overlayFixture }));
 }
+// WD (wave 2026-11-15): the Assets card lists the user's Library itself to add items from Projects.
+const artifactListUrl = dataModule("export async function listMyArtifacts() { return {ok: true, data: {items: [], serverWorks: [], nextCursor: null}}; }");
 const shellUrl = dataModule(
-  [workspaceUrl, await compileModule("src/shell/collection-chrome.tsx", { "../i18n/ui/useUI": useUIStub }), ...kitUrls].map((url) => `export * from ${JSON.stringify(url)};`).join("\n"),
+  [workspaceUrl, await compileModule("src/shell/collection-chrome.tsx", { "../i18n/ui/useUI": useUIStub }), artifactListUrl, ...kitUrls].map((url) => `export * from ${JSON.stringify(url)};`).join("\n"),
 );
 const framedTab = (attr) => dataModule(`import React from ${JSON.stringify(reactUrl)};
   export function Tab(props) {
@@ -84,6 +86,7 @@ const stubs = {
     export async function listProjectAssets() {}
     export async function listProjectLibraryItems() {}
     export async function removeProjectLibraryItem() { throw new Error("unexpected project reference removal"); }
+    export async function addProjectLibraryItem() { throw new Error("unexpected project reference addition"); }
     export async function createProject(payload) {
       globalThis.__uiFollowupProjectCards.calls.push({payload});
       return {ok: true, data: {project: {id: "project-created", ...payload}}};
@@ -153,7 +156,9 @@ test("empty Plan header plus opens the plan dialog; the card itself creates noth
 
 // 2026-11-10 sidebar wave: the Assets card opens the product's shared right sidebar on the project's materials
 // (onOpenAssets) — operator: 「点击这个页面中的assets为什么不打开右侧侧边栏中的library？」. No Assets dialog any more.
-test("empty Assets header plus opens the shared sidebar on the project's materials; no dialog, no file input", async t => {
+test("empty Assets header plus opens the in-card Library picker (items are added from Projects); no dialog, no file input", async t => {
+  // Wave 2026-11-15 (operator): Library no longer has 「加入项目」; Library items are added from the project page, so the
+  // Assets 「+」 opens the card's own Library picker instead of the shared sidebar.
   if (skipMissing(t, ["assets", "preview"])) return;
   let opened = 0;
   await withCard(ProjectSideAssetsCard, { props: { onOpenAssets: () => { opened += 1; } } }, async ({ harness, find, click }) => {
@@ -162,7 +167,8 @@ test("empty Assets header plus opens the shared sidebar on the project's materia
     assert.equal(find('[data-project-config-action="open"]'), null);
     assert.equal(find('input[type="file"]'), null, "the card carries no file input");
     await click(plus);
-    assert.equal(opened, 1);
+    assert.ok(find("[data-project-library-picker]"), "the Library picker opens inside the card");
+    assert.equal(opened, 0, "the shared sidebar is not used for adding");
     assert.equal(find("[data-config-dialog]"), null);
     assert.deepEqual(harness.calls, []);
   });
