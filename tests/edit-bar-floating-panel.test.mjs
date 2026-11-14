@@ -60,7 +60,7 @@ const { PdfFindBar } = await compiled("src/shell/media-editors/PdfFindBar.tsx");
 moduleOverrides.set("src/lib/auth/client.ts",dataModule("export async function getUserId(){return null}"));
 const { PdfSignatureDialog } = await compiled("src/shell/media-editors/PdfSignatureDialog.tsx");
 moduleOverrides.delete("src/lib/auth/client.ts");
-const { PdfSelectionBar } = await compiled("src/shell/media-editors/PdfSelectionBar.tsx");
+const { PdfSelectionBar, PdfToolPalette } = await compiled("src/shell/media-editors/PdfSelectionBar.tsx");
 const { SelectionToolbar } = await compiled("src/shell/SelectionToolbar.tsx");
 const { AnchoredPopover } = await compiled("src/shell/anchored-popover.tsx");
 const { gridUniverSelectionContext } = await compiled("src/shell/doc-editors/grid-univer/stage-plan.ts");
@@ -292,4 +292,12 @@ test("PDF Signature renders its real inline body in the shared host and Cancel c
 test("C3 rectangle anchors clamp inside the editor and a programmatic open still closes on outside click",async()=>{
   let api;const m=await mount(React.createElement(Harness,{body:React.createElement('p',null,'Tools'),onReady:v=>{api=v;}}));
   try{await act(async()=>api.panels.openDrawer('editor-global',undefined,rect(950,90,50,40)));assert.equal(floating().style.left,'676px');await act(async()=>document.body.dispatchEvent(new MouseEvent('click',{bubbles:true})));assert.equal(floating(),null);}finally{await m.destroy();}
+});
+
+
+test("PDF tool colors use the floating host, apply colors, and outside close preserves the drawing tool",async()=>{
+  const changes=[];let toolChanges=0;const bridge={toolDefaults:()=>({strokeColor:'#FFCD45'}),setToolDefaults:(tool,patch)=>changes.push({tool,patch}),setTool(){toolChanges++;}};
+  const stageContent=React.createElement(PdfToolPalette,{inline:true,bridge,activeTool:'highlight',triggerId:'editor-global'});
+  const m=await mount(React.createElement(Harness,{body:null,stageContent,adapterId:'pdf'}));
+  try{assert.equal(floating()?.dataset.editBarFloatingPanel,'pdf-tool-palette-highlight');await click(currentBody().querySelector('[role="radio"][aria-label="#597CE2"]'));assert.equal(changes[0].tool,'highlight');assert.equal(changes[0].patch.strokeColor,'#597CE2');await act(async()=>document.body.dispatchEvent(new MouseEvent('pointerdown',{bubbles:true})));assert.equal(floating(),null);assert.equal(toolChanges,0,'closing a palette must not turn off the active drawing tool');}finally{await m.destroy();}
 });

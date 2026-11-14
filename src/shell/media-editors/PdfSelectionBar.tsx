@@ -12,6 +12,7 @@
  */
 import { useMemo, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { EditBarPanelRequest } from "../EditBarFloatingPanel";
 import { SelectionToolbar } from "../SelectionToolbar";
 import type { SelectionCommand, SelectionContext, SelectionControl } from "../selection-context";
 import { PDF_SUBTYPE, type PdfAnnotationLike, type PdfViewerBridge } from "./pdf-viewer-bridge";
@@ -102,22 +103,27 @@ export function pdfToolColorField(toolId: string): "strokeColor" | "fontColor" |
 export function PdfToolPalette({
   bridge,
   activeTool,
+  inline = false,
+  triggerId,
 }: {
   bridge: PdfViewerBridge;
   activeTool: string | null;
+  inline?: boolean;
+  triggerId?: string;
 }) {
   const tt = useUI();
   const [tick, setTick] = useState(0);
+  const [closed, setClosed] = useState(false);
   void tick;
   const field = activeTool ? pdfToolColorField(activeTool) : null;
-  if (!activeTool || !field) return null;
+  if (closed || !activeTool || !field) return null;
   const current = String(bridge.toolDefaults(activeTool)[field] || "").toLowerCase();
-  return (
+  const palette = (
     <div
       role="radiogroup"
       aria-label={tt("颜色")}
       data-pdf-tool-palette={activeTool}
-      className="absolute left-3 top-14 z-10 flex items-center rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-1 shadow-[var(--awb-shadow-floating)]"
+      className={inline ? "flex items-center p-2" : "absolute left-3 top-14 z-10 flex items-center rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-1 shadow-[var(--awb-shadow-floating)]"}
     >
       {PDF_TOOL_SWATCHES.map((color) => (
         <button
@@ -142,6 +148,7 @@ export function PdfToolPalette({
       ))}
     </div>
   );
+  return inline ? <EditBarPanelRequest id={`pdf-tool-palette-${activeTool}`} label={tt("颜色")} triggerSelector={`[data-workspace-action-id="${triggerId}"]`} onClose={() => setClosed(true)}>{palette}</EditBarPanelRequest> : palette;
 }
 
 function hex(value: unknown, fallback: string): string {

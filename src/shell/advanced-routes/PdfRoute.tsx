@@ -338,7 +338,7 @@ export function PdfRoute({
                 onFindShortcut={() => setFindOpen(true)}
               />
               {chrome === "basic" && bridge && !readOnly ? (
-                <PdfToolPalette bridge={bridge} activeTool={activeTool} />
+                <PdfToolPalette key={activeTool} inline bridge={bridge} activeTool={activeTool} triggerId={PDF_TOOLS.find((tool) => tool.tool === activeTool)?.id} />
               ) : null}
               {findOpen && chrome === "basic" && bridge ? (
                 <EditBarPanelRequest id="pdf-find" label={tt("查找")} triggerSelector='[data-workspace-action-id="pdf-tool-find"]' onClose={() => setFindOpen(false)}>
