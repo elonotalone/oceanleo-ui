@@ -135,12 +135,11 @@ test("P2: saveNow 文案键已从会露出的词典里拿掉", () => {
   );
 });
 
-test("P2: 无 save 组时云朵显示四态，且不出现立即保存 / flush-now", () => {
+test("P2: 无 save 组时云朵显示三态，且不出现立即保存 / flush-now", () => {
   const labels = {
     saved: "已保存",
-    saving: "正在自动保存",
-    unconfirmed: "尚未确认保存",
-    error: "保存遇到问题",
+    saving: "保存中…",
+    error: "保存失败",
   };
   for (const [state, label] of Object.entries(labels)) {
     const html = renderMarkup({ autoSaveState: state });
@@ -205,7 +204,7 @@ test("P2: 无动作时点云朵不弹菜单；失败时可点重试", async () =
       ),
     );
     const errorLauncher = find("[data-workspace-save-launcher]");
-    assert.match(errorLauncher.textContent || "", /保存遇到问题/);
+    assert.match(errorLauncher.textContent || "", /保存失败/);
     await click(errorLauncher);
     const menu = window.document.querySelector("[data-workspace-save-menu]");
     assert.ok(menu, "失败时应能打开重试菜单");

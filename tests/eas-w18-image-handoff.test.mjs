@@ -6,7 +6,7 @@ const route = readFileSync("src/shell/advanced-routes/ImageRoute.tsx", "utf8");
 
 test("ImageRoute 单一模式：保存只认画布 dirty，flush 走 Fabric editor.save", () => {
   assert.match(route, /flush: localSaveRunner \? localSaveRunner\.run : saveBeforeNewConversation/);
-  assert.match(route, /const saved = await editor\.save\(\)/);
+  assert.match(route, /const publish = editor\.prepareSave\(\)/);
   assert.match(route, /dirty: editor\.dirty && collab\.saveGate && imageAdmitted\.ok/);
   assert.match(route, /autoSave: true/);
   assert.equal(/bindProFaceHandoff|bindNormalFaceHandoff|togglePro|proSwitch/.test(route), false);

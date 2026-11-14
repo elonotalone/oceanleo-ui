@@ -44,7 +44,7 @@ const stubs = {
   "./editor-preview-raster": dataModule('export async function renderDeckPreviewPng(doc){globalThis.__s3a.frozenDeck=structuredClone(doc);return new Blob(["preview"]);}'),
   "./editor-insert-media": dataModule('export async function uploadEditorMedia(blob,name){globalThis.__s3a.uploaded.push({blob,name});return "https://example.invalid/upload.png";} export async function durableEditorMediaUrl(url){if(!/^(data:|blob:)/.test(url))return url;globalThis.__s3a.uploaded.push(url);return "https://example.invalid/upload.png";}'),
   "../collab/adapters/use-pdf-collab": dataModule('export function usePdfCollab(){return {readOnly:false,mayWrite:true,room:null,markSaved(){}};}'),
-  "../plugin-theme": dataModule('export function usePluginTheme(){return {theme:"light"};}'),
+  "../plugin-theme": dataModule('export function PluginThemeScope({ children }) { return children; }\n  export function usePluginTheme(){return {theme:"light"};}'),
   "../workbench-material-provider": dataModule('export function useWorkbenchMaterialAdapter(){}'),
   "../media-editors/PdfControls": empty("PdfControls"),
   "../media-editors/PdfFindBar": empty("PdfFindBar"),

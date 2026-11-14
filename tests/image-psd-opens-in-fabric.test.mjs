@@ -325,11 +325,12 @@ test("存一次再重开：图层 src 指向 PNG，不是 .psd", async () => {
   assert.doesNotMatch(reopened.json.objects[0].src, /\.psd/i);
 });
 
-test("非 PSD 的 data URL 不再被贴上 evidence 依赖", async () => {
+test("非 PSD 的 data URL 先上传为工作副本引用，不沿用 PSD evidence", async () => {
   const opened = await openFabricImagePixels({
     source: TINY_PNG,
     siteId: "image",
     title: "签名",
+    persistPng: async (file) => { assert.equal(file.type, "image/png"); return "https://lib.example/signature.png"; },
     evidence: {
       kind: "image",
       required: true,
@@ -337,8 +338,9 @@ test("非 PSD 的 data URL 不再被贴上 evidence 依赖", async () => {
       digest: "c".repeat(64),
     },
   });
-  assert.equal(opened.canvasUrl, TINY_PNG);
-  assert.equal(opened.dependency, null);
+  assert.match(opened.canvasUrl, /signature\.png/);
+  assert.equal(opened.dependency.url, "https://lib.example/signature.png");
+  assert.notEqual(opened.dependency.digest, "c".repeat(64));
 });
 
 test("生产解码不带 Node 假 canvas；打开链不再用 evidence 兜底 PSD", () => {

@@ -161,7 +161,7 @@ test("vector revision save commits svg delivery + fabric project + png preview o
   assert.match(persistence, /project: \{ schema: IMAGE_PROJECT_SCHEMA, data: snapshot \}/);
   const hook = read("src/shell/image-editor/use-fabric-image-editor.ts");
   assert.match(hook, /vectorSvgToSnapshot\(fabric, svgText\)/);
-  assert.match(hook, /exportVectorSvg\(canvas, doc\)/);
+  assert.match(hook, /exportVectorSvg\(controller\.getDocument\(\)\.canvas, controller\.getDocument\(\)\.doc\)/);
   assert.equal(isVectorImageItem({ artifactType: "vector_image" }), true);
   assert.equal(isVectorImageItem({ artifactType: "single_file_image" }), false);
 });

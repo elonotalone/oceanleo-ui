@@ -16,23 +16,23 @@ function render(ready) {
       dirty: false, editRevision: 0, flush: noop,
       recovery: { key: "draft", ready, capture: noop, restore: noop },
     } },
-    autoSaveState: "saved", activeLibraryPanelId: null,
+    autoSaveState: ready ? "saved" : "saving", activeLibraryPanelId: null,
     onBack: noop, onOpenLibrary: noop, onRetrySave: noop, onTriggerAction: noop,
   }));
 }
 
 // 编辑器整改波 D1/§6（2026-10-23）：保存状态槽恒在——以前 ready=false 时整槽隐藏，
 // PDF 处理中云朵就消失了。保护不放松：回执到达前照样绝不说「已保存」，如实显示「尚未确认保存」。
-test("D1 R4: before the draft receipt, the save slot stays visible but never claims saved", () => {
+test("D1 R4: before the working-copy acknowledgement, the save slot stays visible but never claims saved", () => {
   const pending = render(false);
   assert.match(pending, /data-global-row-slot="save-state"/, "ready=false 时保存状态槽被藏起来了");
   assert.match(pending, /data-workspace-save-launcher/);
-  assert.match(pending, /data-save-state="unconfirmed"/);
-  assert.match(pending, /尚未确认保存/);
+  assert.match(pending, /data-save-state="saving"/);
+  assert.match(pending, /保存中…/);
   assert.doesNotMatch(pending, /已保存|data-workspace-save-menu/);
 });
 
-test("D1 R4: the confirmed draft retains its original saved status", () => {
+test("D1 R4: the acknowledged working copy shows saved", () => {
   const confirmed = render(true);
   assert.match(confirmed, /已保存/);
   assert.match(confirmed, /data-workspace-save-launcher/);

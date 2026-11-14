@@ -223,7 +223,7 @@ test("first fork receipt keeps its source open; a second artifact on that root o
   );
 });
 
-test("useFabricImageEditor keeps the controller and undo history through a receipt, then autosaves undo", async () => {
+test("useFabricImageEditor keeps the controller and undo history through a receipt, then saves the working copy and publishes undo", async () => {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvasModule = require.cache[canvasEntry];
@@ -257,9 +257,13 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   const editSession = require("../src/shell/user-edit-session.ts");
   editSession.resetUserEditSession();
 
+  const renderErrors = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => renderErrors.push(args.map(String).join(" "));
   const pendingSaves = [];
   const controllers = [];
   let autoSave = null;
+  const workingCopies = [];
   const stubs = new Map([
     ["../../i18n/ui/useUI", { useUI: () => (value) => value }],
     ["../../lib/image-ai-edit", { aiEditImage: async () => "" }],
@@ -331,38 +335,13 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
       PsdCompositeError: class PsdCompositeError extends Error {},
       isPsdSource: () => false,
     }],
-    ["./advanced-draft-recovery", {
-      advancedLocalRecoveryPromotion: () => undefined,
-      capturePortableAdvancedDraft: async () => null,
-      clearAdvancedLocalRecoveryPromotion() {},
-      draftFromRecovery: () => null,
-      noteAdvancedDraftPublished() {},
-      subscribeAdvancedLocalRecovery: () => () => {},
-    }],
-    ["./advanced-draft-restore", {
-      DRAFT_READ_FAILED: "draft read failed",
-      DRAFT_OTHER_FACE: "other face",
-      useAdvancedDraftRestore: () => ({
-        paused: false,
-        restoredRevision: undefined,
-        restoredPointer: undefined,
-        error: undefined,
-        retry: async () => ({ ok: false }),
-      }),
-    }],
-    ["./advanced-draft", {
-      ADVANCED_DRAFT_META_KEY: "advanced_server_draft",
-      advancedDraftIdentity: (value) => ({ rootId: value.id, baseRevisionId: value.revisionId || value.id }),
-      normalizeAdvancedDraftPointer: () => null,
-      uploadAdvancedDraft: async () => null,
-    }],
     ["./advanced-draft-gates", { bindAdvancedDraftGate: () => () => {} }],
     ["../lib/auth/autosave-error-message", { mapAutosaveErrorMessage: () => "save failed" }],
-    ["./advanced-background-saver", { handOff: (_key, controller) => controller.dispose(), takeBack: () => null }],
-    ["./use-advanced-recovery", {
-      advancedRecoverySupersededBySave: () => false,
-      noteAdvancedSaveSucceeded() {},
-    }],
+    ["./editor-working-copy", { ...require("../src/shell/editor-working-copy.ts"), workingCopyTransport: () => ({
+      get: async () => null,
+      put: async (doc, seq) => { workingCopies.push(doc); return {ok:true,seq:(seq??0)+1,saved_at:new Date().toISOString(),server_ms:0}; },
+      published: async () => {},
+    }) }],
     ["fabric", {}],
   ]);
   const originalLoad = Module._load;
@@ -409,6 +388,8 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
         return result ? { ok: true } : { ok: false, error: "no image save" };
       },
       item: itemState,
+      recovery: { key: hook.openIdentity, draftSchema: "oceanleo.fabric-image.edit.v1", ready: hook.sourceReady, capture: hook.captureRecovery, restore: hook.restoreRecovery },
+      preparePublish: () => { const publish = hook.prepareSave(); return async () => await publish() ? {ok:true} : {ok:false,error:"no image save"}; },
       editorId: "image-editor",
       session: null,
     });
@@ -436,7 +417,8 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   assert.equal(hook.editRevision, capturedRevision, "recovery is not a user edit");
   await act(async () => controller.callbacks.onRemoteApplied("remote"));
   assert.equal(hook.editRevision, capturedRevision, "remote content is not a local user edit");
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 1_750)));
+  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
+  assert.equal(workingCopies.length, 1, "working copy acknowledges the deletion before publication");
   assert.equal(pendingSaves.length, 1);
   assert.deepEqual(pendingSaves[0].args[0].json.objects, [], "deleted layer is the saved snapshot");
   const initialPreview = await pendingSaves[0].args[6]();
@@ -466,7 +448,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   assert.equal(controller.disposed, undefined, "save receipt must not dispose the live controller");
   assert.equal(controller.undoStack.length, 2, "save receipt preserves both the deletion and in-flight edit steps");
 
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 1_750)));
+  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(pendingSaves.length, 2, "the in-flight first-save edit auto-flushes after the fork receipt");
   assert.equal(pendingSaves[1].args[0].json.objects[0].text, "edit during first save");
   assert.equal(pendingSaves[1].args[1].artifactId, "artifact-a",
@@ -518,7 +500,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   // undo starts an asynchronous Fabric restore; wait for loadFromJSON's
   // promise continuation before checking the restored object list.
   await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 1_750)));
+  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.deepEqual(controller.canvas.objects, []);
   assert.equal(pendingSaves.length, 3, "undo after the fork auto-flushes without a manual save call");
   assert.deepEqual(pendingSaves[2].args[0].json.objects, []);
@@ -561,7 +543,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   const legacyController = controllers[2];
   legacyController.canvas.objects = [];
   await act(async () => legacyController.commit());
-  await act(async () => new Promise((resolve) => setTimeout(resolve, 1_750)));
+  await act(async () => { void autoSave.flushLatest(); await new Promise((resolve) => setTimeout(resolve, 0)); });
   assert.equal(pendingSaves.length, 4);
   const legacyReceipt = {
     ...legacySource,
@@ -626,6 +608,9 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   assert.match(await (await pendingSaves[5].args[6]()).text(),/last edit/);
   pendingSaves[5].resolve({previewUrl:"https://cdn.example/close2.png",projectUrl:"https://cdn.example/close2.json",savedAt:"2026-11-15T00:00:01Z",versionId:"close2"});
   assert.equal((await lastClosingSave).versionId,"close2");
+  require("../src/shell/advanced-background-saver.ts").resetBackgroundSaverForTests();
+  console.error = originalConsoleError;
+  assert.deepEqual(renderErrors, [], "the real image hook must render and publish without console.error");
   Module._load = originalLoad;
   editSession.resetUserEditSession();
   dom.window.close();

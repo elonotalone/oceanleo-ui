@@ -240,11 +240,11 @@ test("composite autosave commits scene source with a revision-matched static pre
     "utf8",
   );
   const saveBlock = hook.slice(
-    hook.indexOf("const save = useCallback"),
+    hook.indexOf("const prepareSave = useCallback"),
     hook.indexOf("const runAiEdit = useCallback"),
   );
   assert.match(saveBlock, /persistCompositeImageProject/);
-  assert.match(saveBlock, /const sourceItem = artifactHeadRef\.current/);
+  assert.match(saveBlock, /const sourceItem = openIdentityRef\.current === savingIdentity \? artifactHeadRef\.current : capturedItem/);
   assert.match(saveBlock, /const head = sourceItem/);
   assert.match(saveBlock, /artifactHeadRef\.current = saved\.item/);
   assert.match(saveBlock, /makeStaticPreviewBlob/);

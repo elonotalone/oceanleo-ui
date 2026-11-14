@@ -77,9 +77,10 @@ test("ImageRoute chrome contract disables 结构/皮肤 and the AI drawer", () =
 
 // 10-23 W09：图片不再接草稿层——草稿层下「已保存」先于新版本出现（2 次保存只 +1 revision）、
 // 断网只转圈不报「保存失败」、每个会话写一个隐藏「…草稿」root。每次保存直接提交版本，本机恢复仍在。
-test("ImageRoute saves every change as a revision and keeps device recovery (no server draft tier)", () => {
-  assert.doesNotMatch(route, /draftSchema:/);
-  assert.match(route, /captureRevision:\s*editor\.captureRecoveryRevision/);
+test("ImageRoute exposes complete working copies and prepared background publication", () => {
+  assert.match(route, /draftSchema: "oceanleo.fabric-image.edit.v1"/);
+  assert.match(route, /preparePublish:/);
+  assert.match(route, /capture: editor\.captureRecovery/);
   assert.match(route, /editor\.restoreRecovery\(payload, updatedAt\)/);
   assert.match(route, /ready:\s*imageAdmitted\.ok\s*&&\s*editor\.sourceReady/);
   const editor = readFileSync(

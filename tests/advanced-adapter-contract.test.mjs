@@ -196,13 +196,13 @@ test("RichDoc groups DOCX Markdown HTML and JSON behind one download contract", 
   assert.doesNotMatch(retry, /group:\s*"download"/);
 });
 
-test("mutable native editors keep an independent local recovery log", () => {
+test("mutable native editors capture server working copies without a local recovery layer", () => {
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
-  const store = source("../src/shell/advanced-recovery-store.ts");
-  assert.match(shell, /useAdvancedRecovery/);
-  assert.match(store, /indexedDB\.open/);
-  assert.match(store, /mutationQueues/);
-  assert.match(store, /MAX_DRAFT_AGE_MS/);
+  const saver = source("../src/shell/use-advanced-autosave.ts");
+  assert.doesNotMatch(shell, /useAdvancedRecovery/);
+  assert.match(saver, /WorkingCopySaver/);
+  assert.match(saver, /source\.current\.recovery\?\.capture\(\)/);
+  assert.doesNotMatch(saver, /indexedDB|debounceMs/);
   for (const route of [
     "AudioRoute",
     "DeckRoute",

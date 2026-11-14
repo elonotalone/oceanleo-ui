@@ -136,7 +136,7 @@ test("image/video project autosave stays render-free; typed 3D save checkpoints 
   const cases = [
     {
       path: "../src/shell/image-editor/use-fabric-image-editor.ts",
-      start: "const save = useCallback",
+      start: "const prepareSave = useCallback",
       end: "const runAiEdit = useCallback",
       forbidden: /makeExportBlob|toDataURL|toBlob/,
     },
@@ -146,7 +146,7 @@ test("image/video project autosave stays render-free; typed 3D save checkpoints 
     // tests/audio-playable-revision.test.mjs pins that contract.
     {
       path: "../src/shell/video-editor/use-video-timeline.ts",
-      start: "const saveDraft = useCallback",
+      start: "const prepareSave = useCallback",
       end: "const exportVideo = useCallback",
       forbidden: /renderTimeline|uploadCoverPng|toBlob/,
     },
@@ -191,7 +191,7 @@ test("image/video project autosave stays render-free; typed 3D save checkpoints 
   // journal/commit checks as well: publishing bytes must cover the same edits.
   assert.match(modelSave, /createModel3DSavePlan/);
   assert.match(modelSave, /createModel3DSavePlan\(journal, \{\s*force: true,/);
-  assert.match(modelSave, /glb = await runtime\.exportGlb\(\);/);
+  assert.match(modelSave, /runtime\.exportGlb\(\)/);
   assert.match(modelSave, /persistModel3DProject\(\{[\s\S]*?\bglb,/);
   assert.match(modelSave, /operations: plan\.persistedOperations/);
   assert.match(modelSave, /runtime\.commitCheckpoint\(plan\.coveredOperationIds\)/);
@@ -210,7 +210,7 @@ test("image/video project autosave stays render-free; typed 3D save checkpoints 
   const pdfSave = section(
     "../src/shell/media-editors/use-pdf-workbench.ts",
     "const save = useCallback",
-    "const captureRecovery = useCallback",
+    "const download = useCallback",
   );
   assert.doesNotMatch(pdfSave, /render|canvas|toDataURL|toBlob/);
 });
@@ -250,7 +250,7 @@ test("Office saves persist real delivery packages and sidecars only for structur
       "const saveOnce = useCallback",
     ],
   ]) {
-    const save = section(path, start || "const save = useCallback", end);
+    const save = section(path, start || (extension === "pptx" ? "const publish = useCallback" : "const save = useCallback"), end);
     assert.match(save, new RegExp(exporter), path);
     assert.match(save, /saveFileToLibrary/, path);
     if (extension === "docx") {
@@ -286,7 +286,7 @@ test("delivery renderers remain attached to explicit export and download actions
   const modelExport = section(
     "../src/shell/media-editors/use-model3d-save.ts",
     "const checkpointForExport = useCallback",
-    "return { saving, saveCopy, checkpointForExport }",
+    "return { saving, saveCopy, prepareSave, checkpointForExport }",
   );
   // Download gets current GLB bytes without manufacturing a saved revision.
   assert.match(modelExport, /modelLoaded && runtimeRef\.current \? await runtimeRef\.current\.exportGlb\(\) : null/);
@@ -328,7 +328,7 @@ test("delivery renderers remain attached to explicit export and download actions
     section(
       "../src/shell/media-editors/AudioWorkbench.tsx",
       "const download = useCallback",
-      "const { save, captureRecovery, restoreRecovery } = useAudioPersistence",
+      "const { save, prepareSave, captureRecovery, restoreRecovery } = useAudioPersistence",
     ),
     /encodeWav/,
   );

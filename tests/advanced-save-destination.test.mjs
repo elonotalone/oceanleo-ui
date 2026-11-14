@@ -36,15 +36,15 @@ test("typed local-device destination: saved/saving say so, with a device icon an
   assert.doesNotMatch(saving, /已保存/);
 });
 
-test("local-device failures and unconfirmed stay honest and keep the retry affordance", () => {
+test("local-device failures and pending acknowledgements stay honest and keep the retry affordance", () => {
   const failed = render({ destination: "local-device", state: "error", error: "宿主拒绝保存" });
   assert.match(failed, /data-save-state="error"/);
-  assert.match(failed, /保存遇到问题/);
+  assert.match(failed, /保存失败/);
   assert.match(failed, /title="[^"]*宿主拒绝保存/);
   assert.doesNotMatch(failed, /已保存到本机/);
-  const unconfirmed = render({ destination: "local-device", state: "saved", recoveryReady: false });
-  assert.match(unconfirmed, /data-save-state="unconfirmed"/);
-  assert.match(unconfirmed, /尚未确认保存/);
+  const unconfirmed = render({ destination: "local-device", state: "saving", recoveryReady: false });
+  assert.match(unconfirmed, /data-save-state="saving"/);
+  assert.match(unconfirmed, /正在保存到本机/);
   assert.doesNotMatch(unconfirmed, /已保存到本机/);
 });
 
@@ -55,6 +55,6 @@ test("absent or cloud destination is exactly the old cloud slot", () => {
     assert.match(saved, /<span class="sr-only">已保存<\/span>/);
     assert.match(saved, /M7 18h10/);
     assert.doesNotMatch(saved, /本机/);
-    assert.match(render({ destination, state: "saving" }), /正在自动保存/);
+    assert.match(render({ destination, state: "saving" }), /保存中…/);
   }
 });

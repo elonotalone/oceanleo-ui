@@ -170,7 +170,7 @@ test("route: local callback is optional and typed; website path unchanged when a
   assert.match(route, /const hasLocalSave = Boolean\(onLocalSave\)/);
   assert.match(route, /flush: localSaveRunner \? localSaveRunner\.run : saveBeforeNewConversation/);
   // The cloud save callback itself is untouched.
-  assert.match(route, /const saved = await editor\.save\(\)/);
+  assert.match(route, /const publish = editor\.prepareSave\(\)/);
 });
 
 test("route: local save reads the live Fabric project and shares no cloud or token surface", () => {

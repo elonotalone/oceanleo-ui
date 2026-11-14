@@ -13,7 +13,7 @@ test("图片编辑器没有第二个模式页，也不挂第三方保存", () =>
 test("同一条 flush：Fabric editor.save 自动保存", () => {
   assert.match(route, /flush: localSaveRunner \? localSaveRunner\.run : saveBeforeNewConversation/);
   assert.match(route, /hasLocalSave\s*\? createLocalSaveRunner\(/);
-  assert.match(route, /const saved = await editor\.save\(\)/);
+  assert.match(route, /const publish = editor\.prepareSave\(\)/);
   assert.match(route, /autoSave: true/);
   assert.match(route, /dirty: editor\.dirty && collab\.saveGate && imageAdmitted\.ok/);
 });

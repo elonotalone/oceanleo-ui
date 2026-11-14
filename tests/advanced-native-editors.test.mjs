@@ -146,9 +146,8 @@ test("native editors preserve history and never clear newer unsaved revisions", 
     source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
     source("../src/shell/use-inline-workbench-leave.ts") +
     source("../src/shell/use-inline-advanced-panels.tsx");
-  const leaveNotice =
-    source("../src/shell/advanced-background-save-notice.ts") +
-    source("../src/i18n/ui/messages/eas-w14-copy.ts");
+  const saver = source("../src/shell/editor-working-copy.ts");
+  const publisher = source("../src/shell/advanced-background-saver.ts");
   const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const image = source("../src/shell/image-editor/use-fabric-image-editor.ts");
@@ -160,16 +159,13 @@ test("native editors preserve history and never clear newer unsaved revisions", 
 
   assert.match(shell, /useState\(""\)/);
   assert.match(shell, /activeDrawerId/);
-  assert.match(shell, /beforeunload/);
+  assert.match(saver, /beforeunload/);
   assert.match(shell, /handleDrop/);
   assert.match(shell, /source: "drop"/);
-  // W14 拆掉「仍要离开?」确认框。后台冲刷失败时人必须仍知道
-  // 改动在本机、还没同步到云端：钉新提示的文案 + DOM 钩子，壳必须接上离开。
   assert.match(shell, /leaveAdvancedWorkbench/);
-  assert.match(leaveNotice, /有 \{n\} 份修改暂时无法保存，草稿已保留/);
-  assert.match(leaveNotice, /data-advanced-background-save-notice/);
-  assert.doesNotMatch(leaveNotice, /data-advanced-background-save-retry|retryAllFailed/);
-  assert.match(shell, /useAdvancedRecovery/);
+  assert.match(publisher, /job\.saver\.flush\(\)/);
+  assert.match(publisher, /job\.prepare\(\)/);
+  assert.doesNotMatch(shell, /useAdvancedRecovery/);
   for (const [name, editor] of [
     ["richdoc", rich],
     // grid：Univer 自带撤销/重做与修订，宿主侧只记 editRevision/dirty，
@@ -192,7 +188,7 @@ test("native editors preserve history and never clear newer unsaved revisions", 
   // PDF（10-23 单实例）：脏 = 当前修订 ≠ 已存修订；保存成功只把「已存」推到发起
   // 保存那一刻的修订，保存途中又改的仍是脏的。
   assert.match(pdf, /revisionRef/);
-  assert.match(pdf, /const savingRevision = revisionRef\.current;/);
+  assert.match(pdf, /savingRevision = preparedRevision \?\? revisionRef\.current/);
   assert.match(pdf, /setSavedRevision\(savingRevision\)/);
   assert.match(pdf, /dirty: revision !== savedRevision/);
   assert.match(pdf, /const undo = useCallback/);

@@ -115,19 +115,19 @@ test("advanced editors autosave projects and reserve header actions for delivery
   const imagePersistence = source(
     "../src/shell/image-editor/editor-persistence.ts",
   );
-  assert.match(header, /正在自动保存/);
+  assert.match(header, /保存中…/);
   assert.match(header, /CloudAutoSaveIcon/);
   assert.match(header, /"已保存"/);
   assert.doesNotMatch(header, /已自动保存/);
-  assert.match(header, /保存遇到问题/);
+  assert.match(header, /保存失败/);
   assert.doesNotMatch(
     header,
     /<CloudAutoSaveIcon[\s\S]{0,200}\{autoSaveState ===/,
   );
-  assert.match(autosave, /AdvancedPersistenceController/);
-  assert.match(autosave, /const controller = observeLatestController\(\)/);
-  assert.match(autosave, /controller\.observe\(input\)/);
-  assert.match(autosave, /controller\.flushLatest\(\)/);
+  assert.match(autosave, /WorkingCopySaver/);
+  assert.match(autosave, /createBackgroundPublisher/);
+  assert.match(autosave, /slot\.saver\.edit\(\)/);
+  assert.match(autosave, /slot\.publisher\.flushLatest\(\)/);
   assert.doesNotMatch(autosave, /pendingItemRef|runningRef|queuedRef/);
   assert.match(imagePersistence, /persistImageProject/);
   assert.match(imagePersistence, /saveProjectWorkingHead/);

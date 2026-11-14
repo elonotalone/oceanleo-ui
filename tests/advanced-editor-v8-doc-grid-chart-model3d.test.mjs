@@ -45,7 +45,7 @@ test("v8 routes expose one real global history and semantic compact controls", (
   assert.match(modelRoute, /actualFormat === "gltf"/);
   assert.match(modelRoute, /editor\.openModelUrl\(\s*url,\s*actualFormat,/);
   assert.match(modelRoute, /material\.artifactId && material\.revisionId/);
-  assert.match(modelRoute, /editor\.saveCopy\(\)/);
+  assert.match(modelRoute, /editor\.prepareSave\(\)/);
   assert.match(modelRoute, /editor\.downloadModel/);
   assert.match(modelRoute, /checkpoint-glb\+operation-journal/);
   assert.match(modelRoute, /model_dependency_base_url/);
