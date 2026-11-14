@@ -217,6 +217,7 @@ export interface VideoTimelineState {
   // persistence
   captureCover: () => Promise<void>;
   saveDraft: () => Promise<PersistResult | null>;
+  prepareSave: () => () => Promise<PersistResult | null>;
   /** 渲染成 mp4 并存进我的库；返回产物地址，失败或取消是空串。 */
   exportVideo: () => Promise<string>;
   cancelExport: () => void;
@@ -1348,61 +1349,63 @@ export function useVideoTimeline(
     }
   }, [item.id, item.title, previewReady, siteId, tt]);
 
-  const saveDraft = useCallback(async (): Promise<PersistResult | null> => {
-    if (savingDraftRef.current) return null;
+  const prepareSave = useCallback((): (() => Promise<PersistResult | null>) => {
     if (!sourceReadyRef.current) {
       setError(tt("时间线源尚未成功载入；已阻止保存空回退工程"));
-      return null;
+      return async () => null;
     }
     const savingRevision = revisionRef.current;
-    let snapshot = structuredClone(docRef.current);
-    savingDraftRef.current = true;
-    setSavingDraft(true);
-    setError("");
-    try {
-      snapshot = await durableTimelineSources(
-        normalizeTimelineDoc(snapshot),
-        siteId || "video",
-        item.title,
-      );
-      await assertTimelineMediaSources(snapshot, tt);
-      const title = `${timelineTitleStem(item.title) || tt("视频")}-${tt("时间线草稿")}`;
-      const result = await uploadDraft(
-        snapshot,
-        item,
-        title,
-        siteId || "oceanleo",
-        `video-timeline:${item.id}:${savingRevision}`,
-        workingHeadUrlRef.current,
-        tt,
-        // §3.3：preview rendition 必须与源同分辨率，所以从引擎另取一块
-        // 与 doc 等大的离屏帧，而不是复用被限到 1280 宽的取景画布。
-        () =>
-          previewReady
-            ? timelinePreviewRenditionPng(engineRef.current, snapshot)
-            : Promise.resolve(null),
-      );
-      if (!result.url) {
-        setError(result.error || tt("草稿上传失败"));
+    const snapshot = structuredClone(docRef.current);
+    const preview = (previewReady
+      ? timelinePreviewRenditionPng(engineRef.current, snapshot)
+      : Promise.resolve(null)).then(blob => ({ blob }), error => ({ error }));
+    return async () => {
+      savingDraftRef.current = true;
+      setSavingDraft(true);
+      setError("");
+      try {
+        const captured = await preview;
+        if ("error" in captured) throw captured.error;
+        const previewBlob = captured.blob;
+        await assertTimelineMediaSources(snapshot, tt);
+        const title = `${timelineTitleStem(item.title) || tt("视频")}-${tt("时间线草稿")}`;
+        const result = await uploadDraft(
+          snapshot,
+          item,
+          title,
+          siteId || "oceanleo",
+          `video-timeline:${item.id}:${savingRevision}`,
+          workingHeadUrlRef.current,
+          tt,
+          // §3.3：preview rendition 必须与源同分辨率，所以从引擎另取一块
+          // 与 doc 等大的离屏帧，而不是复用被限到 1280 宽的取景画布。
+          () => Promise.resolve(previewBlob),
+        );
+        if (!result.url) {
+          setError(result.error || tt("草稿上传失败"));
+          return null;
+        }
+        if (!mountedRef.current || (itemRef.current.artifactId || itemRef.current.id) !==
+            (item.artifactId || item.id)) return result;
+        workingHeadUrlRef.current = result.url;
+        setDraftSavedUrl(result.url);
+        if (revisionRef.current === savingRevision) {
+          docRef.current = snapshot;
+          setDocState(snapshot);
+          setDirty(false);
+        }
+        setNotice("");
+        return result;
+      } catch (caught) {
+        setError(caught instanceof Error ? caught.message : tt("草稿保存失败"));
         return null;
+      } finally {
+        savingDraftRef.current = false;
+        setSavingDraft(false);
       }
-      workingHeadUrlRef.current = result.url;
-      setDraftSavedUrl(result.url);
-      if (revisionRef.current === savingRevision) {
-        docRef.current = snapshot;
-        setDocState(snapshot);
-        setDirty(false);
-      }
-      setNotice("");
-      return result;
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : tt("草稿保存失败"));
-      return null;
-    } finally {
-      savingDraftRef.current = false;
-      setSavingDraft(false);
-    }
+    };
   }, [item, previewReady, siteId, tt]);
+  const saveDraft = useCallback(() => prepareSave()(), [prepareSave]);
 
   // 返回渲染出来的 mp4 地址（失败/取消是空串）：要转成别的容器格式的调用方，
   // 拿不到这个地址就只能去猜 state 什么时候更新，那是必错的一步。
@@ -1464,7 +1467,6 @@ export function useVideoTimeline(
         if (latestChanged) {
           docRef.current = latest;
           setDocState(latest);
-          revisionRef.current += 1;
           setDirty(true);
           setDraftSavedUrl("");
           applyVideoTimelineUserEditSession(itemRef.current, "hydrate");
@@ -1524,16 +1526,14 @@ export function useVideoTimeline(
       redoStack.current = [];
       setSelectedClipId("");
       setPlayheadMs(0);
-      revisionRef.current += 1;
       setDirty(true);
       markSourceReady(true);
       setDraftSavedUrl("");
       setError("");
-      setNotice(tt("已恢复上次未同步的本地草稿"));
       applyVideoTimelineUserEditSession(itemRef.current, "hydrate");
       return true;
     },
-    [markSourceReady, tt],
+    [markSourceReady],
   );
 
   const applyRemoteDoc = useCallback((payload: unknown): boolean => {
@@ -1635,6 +1635,7 @@ export function useVideoTimeline(
     addTextClip,
     captureCover,
     saveDraft,
+    prepareSave,
     exportVideo,
     cancelExport,
     restoreRecovery,

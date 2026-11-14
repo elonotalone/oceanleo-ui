@@ -53,7 +53,6 @@ import {
   imageStageShowsSourceLoadOverlay,
 } from "../image-editor/image-source-ready";
 import { imageRouteChrome } from "../image-editor/image-editor-ui-offerings";
-import { advancedRecoveryKey, deleteAdvancedRecovery } from "../advanced-recovery-store";
 import {
   LOCAL_SAVED_NOTICE,
   createLocalSaveRunner,
@@ -282,7 +281,7 @@ export function ImageRoute({
     sceneDiagnostic: editor.sceneDiagnostic,
     sourceReady: editor.sourceReady,
   });
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (publish = editor.save) => {
     const admitted = imageSourcePersistenceAdmitted({
       loading: editor.loading,
       sceneDiagnostic: editor.sceneDiagnostic,
@@ -291,7 +290,7 @@ export function ImageRoute({
     if (!admitted.ok) {
       return { ok: false as const, error: admitted.error };
     }
-    const saved = await editor.save();
+    const saved = await publish();
     if (!saved) {
       return {
         ok: false as const,
@@ -594,21 +593,19 @@ export function ImageRoute({
           dirty: editor.dirty && collab.saveGate && imageAdmitted.ok,
           editRevision: editor.editRevision,
           flush: localSaveRunner ? localSaveRunner.run : saveBeforeNewConversation,
-          // 不接草稿层（10-23 W09，同 W07 演示）：草稿层让「已保存」先于新版本出现、断网只转圈不报失败，
-          // 且每个会话写一个隐藏「…草稿」root。每次保存都直接提交版本；本机恢复走 IndexedDB。
+          ...{ preparePublish: () => {
+            if (localSaveRunner) { const publication = localSaveRunner.run(); return () => publication; }
+            const publish = editor.prepareSave();
+            return () => saveBeforeNewConversation(publish);
+          } },
           recovery: {
-            key: advancedRecoveryKey("image", activeItem),
+            draftSchema: "oceanleo.fabric-image.edit.v1",
+            key: `image:${activeItem.artifactId || activeItem.meta.artifact_id || activeItem.id}`,
             ready: imageAdmitted.ok && editor.sourceReady,
             capture: editor.captureRecovery,
             captureRevision: editor.captureRecoveryRevision,
             restore: async (payload: unknown, updatedAt?: number) => {
               const result = await editor.restoreRecovery(payload, updatedAt);
-              if (result === "unchanged") {
-                // 保存后残留的本机记录：内容已在画布上，删掉，下次打开不再「恢复」。
-                await deleteAdvancedRecovery(
-                  advancedRecoveryKey("image", activeItem),
-                ).catch(() => undefined);
-              }
               if (result === true && onLocalSaveRef.current) {
                 // Native host save: the only thing the mount seeds into this slot is the
                 // host's own stored project, already persisted on this device. Restoring it

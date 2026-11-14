@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { clone as cloneSkeleton } from "three/addons/utils/SkeletonUtils.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
@@ -1136,10 +1137,28 @@ export class Model3DSceneRuntime {
   async exportGlb() {
     if (!this.contentScene) throw new Error("3D 模型尚未加载完成");
     const animationState = this.suspendAnimationForAuthoring();
+    let scene;
     try {
-      return await exportModel3DGlb(this.contentScene, this.animations);
+      scene = cloneSkeleton(this.contentScene);
+      scene.traverse((node) => {
+        if (node.geometry) node.geometry = node.geometry.clone();
+        const copyMaterial = (material) => {
+          const copy = material.clone();
+          for (const [key, value] of Object.entries(copy)) {
+            if (value?.isTexture) copy[key] = value.clone();
+          }
+          return copy;
+        };
+        if (Array.isArray(node.material)) node.material = node.material.map(copyMaterial);
+        else if (node.material) node.material = copyMaterial(node.material);
+      });
     } finally {
       this.resumeAnimationAfterAuthoring(animationState);
+    }
+    try {
+      return await exportModel3DGlb(scene, this.animations.map((clip) => clip.clone()));
+    } finally {
+      disposeModel3DObject(scene);
     }
   }
 

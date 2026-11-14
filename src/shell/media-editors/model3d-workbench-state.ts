@@ -8,6 +8,7 @@ import type {
 } from "./model3d-project";
 import type {
   Model3DAnnotation,
+  Model3DMaterialOverride,
 } from "./model3d-view";
 import type {
   Model3DDirectorCommand,
@@ -71,6 +72,7 @@ export interface Model3DWorkbenchState {
   animationTime: number;
   animationDuration: number;
   materials: Model3DMaterialState[];
+  materialOverrides?: Model3DMaterialOverride[];
   selectedMaterialIndex: number;
   annotations: Model3DAnnotation[];
   annotationScreens: Model3DAnnotationScreen[];
@@ -156,6 +158,7 @@ export interface Model3DWorkbenchState {
   saveScreenshot: () => Promise<void>;
   downloadModel: () => Promise<void>;
   saveCopy: () => Promise<PersistedModel3DVersion | null>;
+  prepareSave: () => () => Promise<PersistedModel3DVersion | null>;
   restoreRecovery: (payload: unknown) => boolean;
   /**
    * 多人同改：套用对方的改动。保住我的镜头（方位、仰角、缩放、自转）和选中的节点；

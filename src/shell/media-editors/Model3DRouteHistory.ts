@@ -1,7 +1,7 @@
 import type { Model3DOperation } from "./model3d-operations.mjs";
 import type { Model3DDirectorDocument } from "./model3d-director";
 import type { Model3DSourceProvenance } from "./model3d-project";
-import type { Model3DAnnotation } from "./model3d-view";
+import type { Model3DAnnotation, Model3DMaterialOverride } from "./model3d-view";
 import type { Model3DWorkbenchState } from "./model3d-workbench-state";
 
 export interface Model3DRouteSnapshot {
@@ -25,7 +25,7 @@ export interface Model3DRouteSnapshot {
     animationTime: number;
     environmentUrl: string;
     environmentIntensity: number;
-    materialOverrides: [];
+    materialOverrides: Model3DMaterialOverride[];
     annotations: Model3DAnnotation[];
     director: Readonly<Model3DDirectorDocument>;
   };
@@ -86,7 +86,7 @@ export function captureModel3DRouteSnapshot(
     | "environmentIntensity"
     | "annotations"
     | "director"
-  > & { sourceProvenance?: Model3DSourceProvenance },
+  > & { sourceProvenance?: Model3DSourceProvenance; materialOverrides?: Model3DMaterialOverride[] },
 ): Model3DRouteSnapshot {
   return cloneSnapshot({
     checkpointUrl: editor.sourceUrl,
@@ -111,7 +111,7 @@ export function captureModel3DRouteSnapshot(
       animationTime: editor.animationTime,
       environmentUrl: editor.environmentUrl,
       environmentIntensity: editor.environmentIntensity,
-      materialOverrides: [],
+      materialOverrides: editor.materialOverrides || [],
       annotations: editor.annotations,
       director: editor.director,
     },

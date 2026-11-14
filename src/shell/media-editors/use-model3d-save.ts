@@ -65,79 +65,82 @@ export function useModel3DSave({
 }): {
   saving: boolean;
   saveCopy: () => Promise<PersistedModel3DVersion | null>;
+  prepareSave: () => () => Promise<PersistedModel3DVersion | null>;
   checkpointForExport: () => Promise<ArrayBuffer | null>;
 } {
-  const busyRef = useRef(false);
   const receiptRef = useRef<{ generation: number; revision: number; inputRoot: string; saved: PersistedModel3DVersion } | null>(null);
   const [saving, setSaving] = useState(false);
-  const persist = useCallback(async () => {
-    if (busyRef.current || !modelLoaded) return null;
+  const prepareSave = useCallback((): (() => Promise<PersistedModel3DVersion | null>) => {
+    if (!modelLoaded) return async () => null;
     const runtime = runtimeRef.current;
-    if (!runtime || !checkpointUrl) return null;
+    if (!runtime || !checkpointUrl) return async () => null;
     const generation = sourceGenerationRef.current;
     const savingRevision = revisionRef.current;
     const inputRoot = item.artifactId || item.id;
-    const candidate = receiptRef.current;
-    const previous = candidate && (candidate.inputRoot === inputRoot || candidate.saved.artifactId === inputRoot) ? candidate : null;
-    if (previous?.generation === generation && previous.revision === savingRevision) return previous.saved;
     const journal = runtime.getOperationJournal();
+    const capturedView = structuredClone(view);
     const plan = createModel3DSavePlan(journal, {
       force: true,
     });
-    let glb: ArrayBuffer | undefined;
-    busyRef.current = true;
-    setSaving(true);
-    setError("");
-    try {
-      const title = item.title;
-      const poster = await runtime.capturePng();
-      // A typed revision must carry freshly hashed source bytes. The sidecar
-      // records view state, while the GLB is the canonical editable scene.
-      glb = await runtime.exportGlb();
-      const saved = await persistModel3DProject({
-        // Undo/import changes the scene generation, not the durable target's
-        // CAS head. Keep the last successful receipt across those operations.
-        item: previous?.saved.item || item,
-        siteId,
-        title,
-        checkpointUrl,
-        sourceProvenance,
-        glb,
-        poster,
-        operations: plan.persistedOperations,
-        checkpointReason: plan.checkpointReason,
-        thumbUrl:
-          posterUrl || item.thumbUrl || item.previewUrl || undefined,
-        view,
-        revision: savingRevision,
-      });
-      receiptRef.current = { generation, revision: savingRevision, inputRoot, saved };
-      if (saved.artifactId && saved.revisionId) ownSavedVersionKeys?.current.add(`${saved.artifactId}:${saved.revisionId}`);
-      if (!aliveRef.current || generation !== sourceGenerationRef.current) {
+    const capture = Promise.all([runtime.capturePng(), runtime.exportGlb()])
+      .then(results => ({ results }), error => ({ error }));
+    return async () => {
+      const candidate = receiptRef.current;
+      const previous = candidate && (candidate.inputRoot === inputRoot || candidate.saved.artifactId === inputRoot) ? candidate : null;
+      if (previous?.generation === generation && previous.revision === savingRevision) return previous.saved;
+      let glb: ArrayBuffer | undefined;
+      setSaving(true);
+      setError("");
+      try {
+        const title = item.title;
+        const captured = await capture;
+        if ("error" in captured) throw captured.error;
+        const poster = captured.results[0];
+        glb = captured.results[1];
+        const saved = await persistModel3DProject({
+          // Undo/import changes the scene generation, not the durable target's
+          // CAS head. Keep the last successful receipt across those operations.
+          item: previous?.saved.item || item,
+          siteId,
+          title,
+          checkpointUrl,
+          sourceProvenance,
+          glb,
+          poster,
+          operations: plan.persistedOperations,
+          checkpointReason: plan.checkpointReason,
+          thumbUrl:
+            posterUrl || item.thumbUrl || item.previewUrl || undefined,
+          view: capturedView,
+          revision: savingRevision,
+        });
+        receiptRef.current = { generation, revision: savingRevision, inputRoot, saved };
+        if (saved.artifactId && saved.revisionId) ownSavedVersionKeys?.current.add(`${saved.artifactId}:${saved.revisionId}`);
+        if (!aliveRef.current || generation !== sourceGenerationRef.current) {
+          return saved;
+        }
+        setSavedUrl(saved.url);
+        if (glb) {
+          runtime.commitCheckpoint(plan.coveredOperationIds);
+          onDurableModelUrl(saved.url, saved.sourceProvenance);
+        }
+        if (revisionRef.current === savingRevision) {
+          setDirty(false);
+        }
+        setNotice("");
+        onSaved?.(saved.url);
         return saved;
+      } catch (caught) {
+        if (aliveRef.current) {
+          setError(
+            caught instanceof Error ? caught.message : tt("保存 3D 副本失败"),
+          );
+        }
+        return null;
+      } finally {
+        if (aliveRef.current) setSaving(false);
       }
-      setSavedUrl(saved.url);
-      if (glb) {
-        runtime.commitCheckpoint(plan.coveredOperationIds);
-        onDurableModelUrl(saved.url, saved.sourceProvenance);
-      }
-      if (revisionRef.current === savingRevision) {
-        setDirty(false);
-      }
-      setNotice("");
-      onSaved?.(saved.url);
-      return saved;
-    } catch (caught) {
-      if (aliveRef.current) {
-        setError(
-          caught instanceof Error ? caught.message : tt("保存 3D 副本失败"),
-        );
-      }
-      return null;
-    } finally {
-      busyRef.current = false;
-      if (aliveRef.current) setSaving(false);
-    }
+    };
   }, [
     aliveRef,
     checkpointUrl,
@@ -160,12 +163,12 @@ export function useModel3DSave({
     view,
   ]);
   const saveCopy = useCallback(
-    async () => await persist(),
-    [persist],
+    async () => await prepareSave()(),
+    [prepareSave],
   );
   const checkpointForExport = useCallback(
     async () => modelLoaded && runtimeRef.current ? await runtimeRef.current.exportGlb() : null,
     [modelLoaded, runtimeRef],
   );
-  return { saving, saveCopy, checkpointForExport };
+  return { saving, saveCopy, prepareSave, checkpointForExport };
 }

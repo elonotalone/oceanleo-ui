@@ -1253,7 +1253,9 @@ export class FabricEditorCore {
   }
 
   getSnapshot(): EditorSnapshot {
-    return captureSnapshot(this.canvas, this.doc, this.canvasBackground);
+    // commit/endGesture/restore/remote apply already keep this JSON current.
+    // Capturing a working copy must not serialize the Fabric scene a second time.
+    return structuredClone(this.currentSnapshot);
   }
 
   /**

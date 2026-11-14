@@ -35,14 +35,12 @@ import {
 } from "./editor-objects";
 import { exportDocBlob } from "./editor-objects";
 import {
-  clearLocalImageDraft,
   createFabricImageProject,
+  createFabricImageWorkingCopy,
   downloadImageBlob,
-  loadLocalImageDraft,
   parseFabricImageProject,
   persistCompositeImageProject,
   persistImageProject,
-  saveLocalImageDraft,
 } from "./editor-persistence";
 import {
   LOCAL_SAVE_MAX_PIXELS,
@@ -796,9 +794,6 @@ export function useFabricImageEditor(
               if (cancelled) return;
               revisionRef.current += 1;
               localEditsRef.current += 1;
-              if (controller) {
-                saveLocalImageDraft(item, controller.getSnapshot());
-              }
               updateDirty(true);
               setSavedUrl("");
               setSavedProjectUrl("");
@@ -813,7 +808,6 @@ export function useFabricImageEditor(
               // 别人的改动：这份画布和库里最近一版不同了；不是本地的一步编辑。
               // 本人这次打开还没动过手时不标未保存（只打开不改 = 0 个新版本，10-23 W09 R3）：
               // 自动保存本来就只在本人编辑后才存，标脏只会留下本机恢复记录、下次打开被「恢复」并发布。
-              revisionRef.current += 1;
               if (localEditsRef.current > 0 || dirtyRef.current) updateDirty(true);
               setCollabTick((value) => value + 1);
             },
@@ -950,9 +944,6 @@ export function useFabricImageEditor(
             projectLoaded = await controller.loadSnapshot(project.snapshot);
             cloudProjectUpdatedAt = project.updatedAt;
             if (projectLoaded) {
-              if ("revision" in project) {
-                revisionRef.current = project.revision;
-              }
               setSavedUrl(sourceUrl);
               setSavedProjectUrl(projectUrl);
               setSavedAt(project.updatedAt);
@@ -1034,24 +1025,7 @@ export function useFabricImageEditor(
           }
           controller.setInitialBackground(image, imageDocumentSize(image));
         }
-        const localDraft = loadLocalImageDraft(item);
-        const cloudTime = Date.parse(cloudProjectUpdatedAt || projectSavedAt) || 0;
-        cloudSavedAtRef.current = cloudTime;
-        const localTime = Date.parse(localDraft?.updatedAt || "") || 0;
-        if (
-          localDraft &&
-          !seededFromHost &&
-          localTime > cloudTime &&
-          !cancelled &&
-          !abort.signal.aborted
-        ) {
-          const restored = await controller.loadSnapshot(localDraft.snapshot);
-          if (restored && !cancelled) {
-            revisionRef.current += 1;
-            updateDirty(true);
-            setNotice("已恢复这台设备上尚未同步的修改，正在继续自动保存");
-          }
-        }
+        cloudSavedAtRef.current = Date.parse(cloudProjectUpdatedAt || projectSavedAt) || 0;
         if (!cancelled) {
           sourceReadyRef.current = true;
           setSourceReady(true);
@@ -1330,7 +1304,11 @@ export function useFabricImageEditor(
       const dataUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
       setError("");
       try {
-        const image = await loadImageObject(fabric, dataUrl, abort.signal);
+        const pixels = optionsRef.current.localImport
+          ? { canvasUrl: dataUrl, dependency: null }
+          : await openFabricImagePixels({ source: dataUrl, siteId, title: item.title });
+        const image = await loadImageObject(fabric, pixels.canvasUrl, abort.signal);
+        if (pixels.dependency) tagImageDependency(image, pixels.dependency);
         if (abort.signal.aborted || controllerRef.current !== controller) {
           image.dispose();
           return;
@@ -1345,7 +1323,7 @@ export function useFabricImageEditor(
         finishAbort(abort);
       }
     },
-    [finishAbort, makeAbort],
+    [finishAbort, item.title, makeAbort, siteId],
   );
 
   const makeExportBlob = useCallback(
@@ -1389,7 +1367,9 @@ export function useFabricImageEditor(
   const captureRecovery = useCallback(() => {
     const controller = controllerRef.current;
     if (!controller || loading || !sourceReadyRef.current) return null;
-    return createFabricImageProject(controller.getSnapshot());
+    return optionsRef.current.localImport
+      ? createFabricImageProject(controller.getSnapshot())
+      : createFabricImageWorkingCopy(controller.getSnapshot());
   }, [loading]);
 
   const captureRecoveryRevision = useCallback((revision: string | number) => {
@@ -1399,7 +1379,9 @@ export function useFabricImageEditor(
       !sourceReadyRef.current ||
       !Object.is(revisionRef.current, revision)
     ) return null;
-    const payload = createFabricImageProject(controller.getSnapshot());
+    const payload = optionsRef.current.localImport
+      ? createFabricImageProject(controller.getSnapshot())
+      : createFabricImageWorkingCopy(controller.getSnapshot());
     // Keep the receipt tied to the exact bytes and monotonic revision that the
     // shared draft controller asked for. Selection-only changes do not advance
     // this revision and never schedule this capture themselves.
@@ -1467,13 +1449,11 @@ export function useFabricImageEditor(
         openIdentityRef.current !== identity ||
         localEditsRef.current !== startingEdits
       ) return false;
-      revisionRef.current += 1;
       updateDirty(true);
+      setCollabTick((value) => value + 1);
       setSavedUrl("");
       setSavedProjectUrl("");
       setSavedAt("");
-      setNotice("已恢复服务器工作草稿");
-      optionsRef.current.collab?.onLocalChange?.();
       return true;
     } finally {
       if (controllerRef.current === controller) {
@@ -1523,8 +1503,7 @@ export function useFabricImageEditor(
     }
   }, [exportScale, item.title, makeExportBlob]);
 
-  const save = useCallback(async (): Promise<FabricImageSaveResult | null> => {
-    if (savingRef.current) return null;
+  const prepareSave = useCallback((): (() => Promise<FabricImageSaveResult | null>) => {
     // 外壳在会话快照重试 / 会话补建后会再要一次保存：画布从上次提交后没动过，就交回上次回执，
     // 不再把同一份内容提交成一个新版本（10-23 W09 实测：一次改动出了两个 revision）。
     const last = lastSaveRef.current;
@@ -1534,7 +1513,7 @@ export function useFabricImageEditor(
       last.revision === revisionRef.current &&
       last.identity === openIdentityRef.current &&
       last.result.item === artifactHeadRef.current
-    ) return last.result;
+    ) return async () => last.result;
     const admitted = imageSaveAdmitted({
       loading,
       sourceReady: sourceReadyRef.current,
@@ -1542,193 +1521,175 @@ export function useFabricImageEditor(
     });
     if (!admitted.ok) {
       setError(admitted.error);
-      return null;
+      return async () => null;
     }
     if (
       artifactHeadRef.current.artifactType === "composite_image" &&
       !dirtyRef.current
     ) {
-      return null;
+      return async () => null;
     }
-    let savingRevision = revisionRef.current;
+    const savingRevision = revisionRef.current;
     const savingIdentity = openIdentityRef.current;
     const savingController = controllerRef.current;
-    const sourceItem = artifactHeadRef.current;
-    const head = sourceItem;
-    const workingHeadUrl = workingHeadUrlRef.current;
-    savingRef.current = true;
-    setSaving(true);
-    setError("");
-    try {
-      const controller = savingController;
-      if (!controller) throw new Error("图片画布尚未就绪");
-      // The static preview is rasterized from the live canvas. If a newer edit
-      // lands before it is captured, capture again so the persisted project and
-      // preview stay paired (连点几下时不再报「保存失败」). Edits after upload
-      // starts remain dirty for the next save.
-      let snapshot = controller.getSnapshot();
-      let previewBlob = await makeStaticPreviewBlob();
-      for (let attempt = 0; ; attempt += 1) {
+    const capturedItem = artifactHeadRef.current;
+    const controller = savingController;
+    if (!controller) return async () => null;
+    const snapshot = controller.getSnapshot();
+    const vector = isVectorImageItem(capturedItem)
+      ? exportVectorSvg(controller.getDocument().canvas, controller.getDocument().doc)
+      : null;
+    const preview = makeStaticPreviewBlob().then(blob => ({ blob }), error => ({ error }));
+    return async () => {
+      const sourceItem = openIdentityRef.current === savingIdentity ? artifactHeadRef.current : capturedItem;
+      const head = sourceItem;
+      const workingHeadUrl = workingHeadUrlRef.current;
+      savingRef.current = true;
+      setSaving(true);
+      setError("");
+      try {
+        const captured = await preview;
+        if ("error" in captured) throw captured.error;
+        const previewBlob = captured.blob;
+        const saved =
+          head.artifactType === "composite_image" && !isDesignDocumentItem(head)
+            ? await persistCompositeImageProject(
+                snapshot,
+                head,
+                siteId,
+                `image-scene:${head.id}:${head.revisionId}:${savingRevision}`,
+                savingRevision,
+                previewBlob,
+              )
+            : await persistImageProject(
+                snapshot,
+                sourceItem,
+                siteId,
+                `image:${sourceItem.artifactId || sourceItem.id}:${sourceItem.revisionId || "source"}:${savingRevision}`,
+                workingHeadUrl,
+                {
+                  uploadFailed: artifactSaveStepMessage("delivery-upload", ""),
+                  registerFailed: artifactSaveStepMessage(
+                    "creation-register",
+                    "图片工程已上传，但没有登记成功",
+                  ),
+                },
+                async () => previewBlob,
+                isVectorImageItem(sourceItem)
+                  ? {
+                      createSvg: () => vector!,
+                      createPreview: async () => previewBlob,
+                    }
+                  : undefined,
+              );
+        const result: FabricImageSaveResult = {
+          baseItem: sourceItem, url: saved.previewUrl, projectUrl: saved.projectUrl,
+          savedAt: saved.savedAt, versionId: saved.versionId, item: saved.item,
+          revisionDigest: saved.revisionDigest, sourceDigest: saved.sourceDigest,
+          dependencyClosureDigest: saved.dependencyClosureDigest,
+          dependencyRevisionIds: saved.dependencyRevisionIds,
+        };
+        if (openIdentityRef.current === savingIdentity && saved.item) artifactHeadRef.current = saved.item;
+        if (!aliveRef.current || openIdentityRef.current !== savingIdentity ||
+            controllerRef.current !== savingController) return result;
         if (
-          openIdentityRef.current !== savingIdentity ||
-          controllerRef.current !== savingController
-        ) return null;
-        if (revisionRef.current === savingRevision) break;
-        if (attempt >= 3) {
-          throw new Error("保存快照生成期间画布已变化，本次未提交，修改仍保留。");
+          saved.item &&
+          !isDurableLibraryItem(sourceItem) &&
+          isDurableLibraryItem(saved.item)
+        ) {
+          const rootAssetId = String(
+            sourceItem.meta.root_asset_id ||
+              sourceItem.meta.parent_asset_id ||
+              sourceItem.id,
+          );
+          firstForkReceiptRef.current = {
+            rootAssetId,
+            artifactId: saved.item.artifactId,
+          };
         }
-        savingRevision = revisionRef.current;
-        snapshot = controller.getSnapshot();
-        previewBlob = await makeStaticPreviewBlob();
-      }
-      const saved =
-        head.artifactType === "composite_image" && !isDesignDocumentItem(head)
-          ? await persistCompositeImageProject(
-              snapshot,
-              head,
-              siteId,
-              `image-scene:${head.id}:${head.revisionId}:${savingRevision}`,
-              savingRevision,
-              previewBlob,
-            )
-          : await persistImageProject(
-              snapshot,
-              sourceItem,
-              siteId,
-              `image:${sourceItem.artifactId || sourceItem.id}:${sourceItem.revisionId || "source"}:${savingRevision}`,
-              workingHeadUrl,
-              {
-                uploadFailed: artifactSaveStepMessage("delivery-upload", ""),
-                registerFailed: artifactSaveStepMessage(
-                  "creation-register",
-                  "图片工程已上传，但没有登记成功",
-                ),
-              },
-              async () => previewBlob,
-              isVectorImageItem(sourceItem)
-                ? {
-                    createSvg: () => {
-                      const { canvas, doc } = controller.getDocument();
-                      return exportVectorSvg(canvas, doc);
-                    },
-                    createPreview: async () => previewBlob,
-                  }
-                : undefined,
-            );
-      if (
-        !aliveRef.current ||
-        openIdentityRef.current !== savingIdentity ||
-        controllerRef.current !== savingController
-      ) return null;
-      if (
-        saved.item &&
-        !isDurableLibraryItem(sourceItem) &&
-        isDurableLibraryItem(saved.item)
-      ) {
-        const rootAssetId = String(
-          sourceItem.meta.root_asset_id ||
-            sourceItem.meta.parent_asset_id ||
-            sourceItem.id,
-        );
-        firstForkReceiptRef.current = {
-          rootAssetId,
-          artifactId: saved.item.artifactId,
+        if (
+          saved.item &&
+          !isDurableLibraryItem(sourceItem) &&
+          !isDurableLibraryItem(saved.item)
+        ) {
+          const rootAssetId = String(
+            sourceItem.meta.root_asset_id ||
+              sourceItem.meta.parent_asset_id ||
+              sourceItem.id,
+          );
+          const priorAlias = legacyReceiptAliasRef.current;
+          const itemIdentities =
+            priorAlias?.rootAssetId === rootAssetId &&
+            priorAlias.openIdentity === savingIdentity &&
+            priorAlias.nonce === reloadNonce
+              ? priorAlias.itemIdentities
+              : new Set<string>();
+          itemIdentities.add(imageArtifactInputIdentity(saved.item));
+          legacyReceiptAliasRef.current = {
+            rootAssetId,
+            itemIdentities,
+            openIdentity: savingIdentity,
+            nonce: reloadNonce,
+          };
+        }
+        if (saved.item) {
+          if (isDurableLibraryItem(saved.item)) {
+            const superseded = supersededArtifactRevisionsRef.current.get(saved.item.artifactId) || new Set<string>();
+            if (
+              isDurableLibraryItem(sourceItem) &&
+              sourceItem.artifactId === saved.item.artifactId &&
+              sourceItem.revisionId !== saved.item.revisionId
+            ) superseded.add(sourceItem.revisionId);
+            const previousRevisionId = String(saved.item.meta.previous_revision_id || "").trim();
+            if (previousRevisionId) superseded.add(previousRevisionId);
+            supersededArtifactRevisionsRef.current.set(saved.item.artifactId, superseded);
+          }
+          artifactHeadRef.current = saved.item;
+        }
+        workingHeadUrlRef.current = saved.previewUrl;
+        setSavedUrl(saved.previewUrl);
+        setSavedProjectUrl(saved.projectUrl);
+        setSavedAt(saved.savedAt);
+        cloudSavedAtRef.current = Date.parse(saved.savedAt) || Date.now();
+        if (revisionRef.current === savingRevision) {
+          updateDirty(false);
+        }
+        for (const id of [saved.item?.revisionId, saved.versionId]) {
+          if (id) ownRevisionIdsRef.current.add(String(id));
+        }
+        lastSaveRef.current = {
+          revision: savingRevision,
+          identity: savingIdentity,
+          result,
         };
-      }
-      if (
-        saved.item &&
-        !isDurableLibraryItem(sourceItem) &&
-        !isDurableLibraryItem(saved.item)
-      ) {
-        const rootAssetId = String(
-          sourceItem.meta.root_asset_id ||
-            sourceItem.meta.parent_asset_id ||
-            sourceItem.id,
-        );
-        const priorAlias = legacyReceiptAliasRef.current;
-        const itemIdentities =
-          priorAlias?.rootAssetId === rootAssetId &&
-          priorAlias.openIdentity === savingIdentity &&
-          priorAlias.nonce === reloadNonce
-            ? priorAlias.itemIdentities
-            : new Set<string>();
-        itemIdentities.add(imageArtifactInputIdentity(saved.item));
-        legacyReceiptAliasRef.current = {
-          rootAssetId,
-          itemIdentities,
-          openIdentity: savingIdentity,
-          nonce: reloadNonce,
-        };
-      }
-      if (saved.item) {
-        if (isDurableLibraryItem(saved.item)) {
-          const superseded = supersededArtifactRevisionsRef.current.get(saved.item.artifactId) || new Set<string>();
-          if (
-            isDurableLibraryItem(sourceItem) &&
-            sourceItem.artifactId === saved.item.artifactId &&
-            sourceItem.revisionId !== saved.item.revisionId
-          ) superseded.add(sourceItem.revisionId);
-          const previousRevisionId = String(saved.item.meta.previous_revision_id || "").trim();
-          if (previousRevisionId) superseded.add(previousRevisionId);
-          supersededArtifactRevisionsRef.current.set(saved.item.artifactId, superseded);
+        setNotice("");
+        optionsRef.current.onSaved?.(saved.previewUrl);
+        const savedRevisionId = String(saved.item?.revisionId || saved.versionId || "");
+        if (savedRevisionId) optionsRef.current.collab?.onSavedRevision?.(savedRevisionId);
+        return result;
+      } catch (caught) {
+        if (aliveRef.current && !isAbortError(caught)) {
+          const message =
+            caught instanceof Error ? caught.message : "图片保存失败";
+          setError(message);
+          if (caught instanceof ImageSceneSourceError) {
+            setSceneDiagnostic({
+              code: caught.code,
+              message,
+              ...(caught.dependencyId
+                ? { dependencyId: caught.dependencyId }
+                : {}),
+            });
+          }
         }
-        artifactHeadRef.current = saved.item;
+        return null;
+      } finally {
+        savingRef.current = false;
+        if (aliveRef.current) setSaving(false);
       }
-      workingHeadUrlRef.current = saved.previewUrl;
-      setSavedUrl(saved.previewUrl);
-      setSavedProjectUrl(saved.projectUrl);
-      setSavedAt(saved.savedAt);
-      cloudSavedAtRef.current = Date.parse(saved.savedAt) || Date.now();
-      if (revisionRef.current === savingRevision) {
-        updateDirty(false);
-        clearLocalImageDraft(sourceItem);
-      }
-      const result: FabricImageSaveResult = {
-        baseItem: sourceItem,
-        url: saved.previewUrl,
-        projectUrl: saved.projectUrl,
-        savedAt: saved.savedAt,
-        versionId: saved.versionId,
-        item: saved.item,
-        revisionDigest: saved.revisionDigest,
-        sourceDigest: saved.sourceDigest,
-        dependencyClosureDigest: saved.dependencyClosureDigest,
-        dependencyRevisionIds: saved.dependencyRevisionIds,
-      };
-      for (const id of [saved.item?.revisionId, saved.versionId]) {
-        if (id) ownRevisionIdsRef.current.add(String(id));
-      }
-      lastSaveRef.current = {
-        revision: savingRevision,
-        identity: savingIdentity,
-        result,
-      };
-      setNotice("");
-      optionsRef.current.onSaved?.(saved.previewUrl);
-      const savedRevisionId = String(saved.item?.revisionId || saved.versionId || "");
-      if (savedRevisionId) optionsRef.current.collab?.onSavedRevision?.(savedRevisionId);
-      return result;
-    } catch (caught) {
-      if (aliveRef.current && !isAbortError(caught)) {
-        const message =
-          caught instanceof Error ? caught.message : "图片保存失败";
-        setError(message);
-        if (caught instanceof ImageSceneSourceError) {
-          setSceneDiagnostic({
-            code: caught.code,
-            message,
-            ...(caught.dependencyId
-              ? { dependencyId: caught.dependencyId }
-              : {}),
-          });
-        }
-      }
-      return null;
-    } finally {
-      savingRef.current = false;
-      if (aliveRef.current) setSaving(false);
-    }
-  }, [item, loading, makeStaticPreviewBlob, siteId, updateDirty]);
+    };
+  }, [loading, makeStaticPreviewBlob, siteId, updateDirty]);
+  const save = useCallback(() => prepareSave()(), [prepareSave]);
 
   // 一次只跑一个保存；外壳在上一次还没结束时又要保存（关闭、会话重试），等它结束再存最新的，
   // 不再回 null（以前会被当成「保存失败」显示出来）。
@@ -1986,6 +1947,7 @@ export function useFabricImageEditor(
     downloadAs,
     downloadDefaultPng,
     save: saveSerialized,
+    prepareSave,
     aiAvailable: true,
     aiPrompt,
     setAiPrompt,

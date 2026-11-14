@@ -43,7 +43,6 @@ export const FABRIC_IMAGE_REVISION_SOURCE = {
   sourceMediaType: "image/png",
 } as const;
 const MAX_PROJECT_BYTES = 5_000_000;
-const LOCAL_DRAFT_PREFIX = "oceanleo:advanced:image-draft:v1:";
 
 function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
@@ -148,6 +147,26 @@ export function createFabricImageProject(
   };
 }
 
+/** Complete cloud document. No encoding, fetching or uploading on the edit path. */
+export function createFabricImageWorkingCopy(snapshot: EditorSnapshot): FabricImageProject {
+  // Fabric has just produced an owned JSON snapshot; rewrite only asset
+  // references in place instead of cloning its thousands of scalar properties.
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    const object = value as Record<string, unknown>;
+    if (typeof object.src === "string") {
+      const dependency = object.oceanleoDependency as { url?: string } | undefined;
+      const source = dependency?.url || object.src;
+      if (/^(?:data|blob):/i.test(source)) throw new Error("图片源尚未上传");
+      object.src = source;
+    }
+    Object.values(object).forEach(visit);
+  };
+  visit(snapshot);
+  return createFabricImageProject(snapshot);
+}
+
 export function parseFabricImageProject(
   value: unknown,
 ): FabricImageProject | null {
@@ -169,50 +188,6 @@ export function parseFabricImageProject(
     snapshot,
     typeof wrapped.updatedAt === "string" ? wrapped.updatedAt : "",
   );
-}
-
-function localDraftKey(item: LibraryItem): string {
-  const root = String(
-    item.meta.root_asset_id || item.meta.parent_asset_id || item.id || item.key,
-  ).slice(0, 600);
-  return `${LOCAL_DRAFT_PREFIX}${root}`;
-}
-
-export function saveLocalImageDraft(
-  item: LibraryItem,
-  snapshot: EditorSnapshot,
-): void {
-  if (typeof window === "undefined") return;
-  try {
-    const encoded = JSON.stringify(createFabricImageProject(snapshot));
-    if (byteLength(encoded) > MAX_PROJECT_BYTES) return;
-    window.localStorage.setItem(localDraftKey(item), encoded);
-  } catch {
-    // Cloud autosave still runs; local draft storage is a best-effort safety net.
-  }
-}
-
-export function loadLocalImageDraft(
-  item: LibraryItem,
-): FabricImageProject | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const encoded = window.localStorage.getItem(localDraftKey(item));
-    if (!encoded || byteLength(encoded) > MAX_PROJECT_BYTES) return null;
-    const parsed: unknown = JSON.parse(encoded);
-    return parseFabricImageProject(parsed);
-  } catch {
-    return null;
-  }
-}
-
-export function clearLocalImageDraft(item: LibraryItem): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.removeItem(localDraftKey(item));
-  } catch {
-    // A durable cloud version already exists, so quota/privacy failures are safe.
-  }
 }
 
 export async function loadImageProject(

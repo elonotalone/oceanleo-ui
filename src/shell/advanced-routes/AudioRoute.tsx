@@ -5,7 +5,6 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { usePluginCommandSurface } from "../plugin-command";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
@@ -226,15 +225,15 @@ export function AudioRoute({
     loading: editor.loading,
     capture: editor.captureRecovery(),
   });
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (publish = editor.save) => {
     // 协同房间里只有存档人落库；其余端的改动已在房间里。
     if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
     const admitted = audioSourcePersistenceAdmitted({
       loading: editor.loading,
-      capture: editor.captureRecovery(),
+      capture: collabLocal,
     });
     if (!admitted.ok) return { ok: false as const, error: admitted.error };
-    const saved = await editor.save();
+    const saved = await publish();
     if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
       ? {
@@ -250,10 +249,9 @@ export function AudioRoute({
         }
       : { ok: false as const };
   }, [
-    collab.markSaved,
-    collab.saveGate,
+    collab,
     collabReadOnly,
-    editor.captureRecovery,
+    collabLocal,
     editor.loading,
     editor.save,
     item,
@@ -347,10 +345,15 @@ export function AudioRoute({
               ? editor.dirty
               : false,
           editRevision: editor.editRevision,
+          autoSave: audioAdmitted.ok && collab.saveGate && !collabReadOnly,
           flush: saveBeforeNewConversation,
+          ...{ preparePublish: () => {
+            const publish = editor.prepareSave();
+            return () => saveBeforeNewConversation(publish);
+          } },
           recovery: {
             draftSchema: "oceanleo.audio.edit.v1",
-            key: advancedRecoveryKey("audio", item),
+            key: `audio:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: audioAdmitted.ok,
             capture: editor.captureRecovery,
             restore: editor.restoreRecovery,

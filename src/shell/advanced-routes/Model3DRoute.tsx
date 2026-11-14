@@ -11,7 +11,6 @@ import {
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedSavedItem } from "../advanced-session";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { threeDSubtypeFor } from "../library-data";
 import type { PersistedModel3DVersion } from "../media-editors/model3d-project";
@@ -96,10 +95,12 @@ function useModel3DDocumentHistory(
       editor.azimuth,
       editor.background,
       editor.elevation,
+      editor.director,
       editor.environmentIntensity,
       editor.environmentUrl,
       editor.exposure,
       editor.operationJournal,
+      editor.materialOverrides,
       editor.shadowEnabled,
       editor.shadowIntensity,
       editor.shadowSoftness,
@@ -153,7 +154,7 @@ function useModel3DDocumentHistory(
           : historyRef.current.redo(current);
       if (!target) return;
       skipObservedRevisionRef.current = true;
-      const restored: unknown = editor.restoreRecovery(target);
+      const restored: unknown = editor.applyLocalScene(target);
       if (restored === false) {
         skipObservedRevisionRef.current = false;
         if (direction === "undo") historyRef.current.rollbackUndo();
@@ -407,7 +408,7 @@ function Model3DModelRoute({
     loading: editor.loading,
     modelLoaded: editor.modelLoaded,
   });
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (publish = editor.saveCopy) => {
     // 协同房间里只有存档人落库；其余端的改动已在房间里。
     if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
     const admitted = model3dSourcePersistenceAdmitted({
@@ -416,19 +417,19 @@ function Model3DModelRoute({
     });
     if (!admitted.ok) return { ok: false as const, error: admitted.error };
     if (!editor.dirty) return { ok: true as const, item };
-    const saved = await editor.saveCopy();
+    const saved = await publish();
     if (saved?.versionId) collab.markSaved(String(saved.versionId));
     return saved
       ? { ok: true as const, item: buildSavedItem(saved) }
       : { ok: false as const };
   }, [
     buildSavedItem,
-    collab.markSaved,
-    collab.saveGate,
+    collab,
     collabReadOnly,
     editor.loading,
     editor.modelLoaded,
     editor.saveCopy,
+    editor.dirty,
     item,
   ]);
   const [importRejection, setImportRejection] = useState("");
@@ -548,10 +549,15 @@ function Model3DModelRoute({
               ? editor.dirty
               : false,
           editRevision: editor.editRevision,
+          autoSave: model3dAdmitted.ok && collab.saveGate && !collabReadOnly,
           flush: saveBeforeNewConversation,
+          ...{ preparePublish: () => {
+            const publish = editor.prepareSave();
+            return () => saveBeforeNewConversation(publish);
+          } },
           recovery: {
             draftSchema: "oceanleo.threed.edit.v1",
-            key: advancedRecoveryKey("threed", item),
+            key: `threed:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: model3dAdmitted.ok,
             capture: () => (model3dAdmitted.ok ? history.snapshot : null),
             restore: editor.restoreRecovery,

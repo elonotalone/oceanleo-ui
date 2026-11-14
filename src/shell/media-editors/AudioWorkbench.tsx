@@ -454,7 +454,7 @@ export function useAudioWorkbench(
     window.setTimeout(() => URL.revokeObjectURL(url), 0);
   }, [item.title]);
 
-  const { save, captureRecovery, restoreRecovery } = useAudioPersistence({
+  const { save, prepareSave, captureRecovery, restoreRecovery } = useAudioPersistence({
     item,
     siteId,
     requiresExistingSource,
@@ -572,6 +572,7 @@ export function useAudioWorkbench(
     importSource,
     download,
     save,
+    prepareSave,
     captureRecovery,
     restoreRecovery,
     applyRemoteProject,

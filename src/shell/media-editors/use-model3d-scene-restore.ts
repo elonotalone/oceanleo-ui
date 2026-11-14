@@ -84,13 +84,13 @@ export function useModel3DSceneRestore({
     setSourceUrl(recovered.checkpointUrl);
     setReloadToken((current) => current + 1);
     applyView(recovered.view);
-    revisionRef.current += 1;
     setDirty(true);
     setSavedUrl("");
     noteRecoveryRestore();
-    setNotice(tt("已恢复上次未同步的本地草稿"));
     return true;
-  }, [applyView, annotations, noteRecoveryRestore, sourceUrl, tt]);
+  }, [applyView, annotations, noteRecoveryRestore, sourceUrl,
+    loadedSourceRef, pendingOperationsRef, runtimeRef, setDirty, setReloadToken,
+    setSavedUrl, setSourceProvenance, setSourceUrl, sourceGenerationRef, viewRef]);
 
   /**
    * 多人同改：套用一份新的场景状态（检查点 + 操作日志 + 视图 + 批注）。

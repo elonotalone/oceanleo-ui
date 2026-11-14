@@ -13,7 +13,6 @@ import {
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
-import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { withEditorHistoryCommand } from "../workbench-material-command";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
@@ -375,11 +374,11 @@ function VideoTimelineBody({
       [collabReadOnly, deliver, item, view],
     ),
   );
-  const saveBeforeNewConversation = useCallback(async () => {
+  const saveBeforeNewConversation = useCallback(async (publish = editor.saveDraft) => {
     if (storedReadOnly) return { ok: true as const, item };
     // 协同房间里只有存档人落库；其余端的改动已在房间里，保存交给存档人。
     if (!collab.saveGate || collabReadOnly) return { ok: true as const, item };
-    const saved = await editor.saveDraft();
+    const saved = await publish();
     if (saved?.url && saved.versionId) collab.markSaved(String(saved.versionId));
     return saved?.url
       ? {
@@ -401,7 +400,7 @@ function VideoTimelineBody({
               ? "时间线源未成功载入，未保存空回退工程。"
               : "时间线草稿保存失败"),
         };
-  }, [collab.markSaved, collab.saveGate, collabReadOnly, editor.error, editor.saveDraft, editor.sourceReady, item, storedReadOnly]);
+  }, [collab, collabReadOnly, editor.error, editor.saveDraft, editor.sourceReady, item, storedReadOnly]);
   const addLocalMedia = useCallback(
     async (files: File[]) => {
       setDeliverNotice("");
@@ -537,9 +536,13 @@ function VideoTimelineBody({
           editRevision: editor.editRevision,
           autoSave: collab.saveGate && !collabReadOnly && editor.sourceReady,
           flush: saveBeforeNewConversation,
+          ...{ preparePublish: () => {
+            const publish = editor.prepareSave();
+            return () => saveBeforeNewConversation(publish);
+          } },
           recovery: {
             draftSchema: "oceanleo.video-timeline.edit.v1",
-            key: advancedRecoveryKey("video-timeline", item),
+            key: `video-timeline:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: !editor.loadingSource && editor.sourceReady,
             capture: () =>
               editor.sourceReady ? structuredClone(editor.doc) : null,

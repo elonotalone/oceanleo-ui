@@ -415,6 +415,7 @@ export interface FabricImageEditorState {
   downloadAs: (format: ExportFormat, quality?: number) => Promise<void>;
   downloadDefaultPng: () => Promise<void>;
   save: () => Promise<FabricImageSaveResult | null>;
+  prepareSave: () => () => Promise<FabricImageSaveResult | null>;
   // ---- AI 编辑 ----
   aiAvailable: boolean;
   aiPrompt: string;

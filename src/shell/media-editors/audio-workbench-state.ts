@@ -100,6 +100,7 @@ export interface AudioWorkbenchState {
   importSource: (file: File) => Promise<boolean>;
   download: () => void;
   save: () => Promise<PersistedEditorVersion | null>;
+  prepareSave: () => () => Promise<PersistedEditorVersion | null>;
   captureRecovery: () => AudioProjectData | null;
   restoreRecovery: (payload: unknown) => Promise<boolean>;
   /**

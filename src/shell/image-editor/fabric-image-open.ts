@@ -189,6 +189,22 @@ export async function openFabricImagePixels(input: {
     if (loaded.dependency) assertFabricImageOpenUrl(loaded.dependency.url);
     return loaded;
   }
+  if (/^(?:data|blob):/i.test(input.source)) {
+    const response = await fetch(input.source, { signal: input.hints?.signal });
+    const blob = await response.blob();
+    const mime = blob.type.toLowerCase().split(";")[0];
+    const extension = ({ "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp",
+      "image/svg+xml": "svg", "image/gif": "gif" } as Record<string, string>)[mime];
+    if (!extension || !blob.size || blob.size > MEDIA_FETCH_MAX_BYTES) {
+      throw new Error("图片上传失败");
+    }
+    const file = new File([blob], `image.${extension}`, { type: mime });
+    const url = await persist(file);
+    assertFabricImageOpenUrl(url);
+    return { canvasUrl: canvasSafeUrl(url), dependency: {
+      kind: "image", required: true, url, digest: await sha256Blob(file),
+    } };
+  }
   const loaded = await canvasImageSource(
     input.source,
     input.siteId,

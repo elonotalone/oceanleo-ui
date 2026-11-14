@@ -263,6 +263,7 @@ export function useModel3DWorkbench(
   const {
     saving: savingCopy,
     saveCopy,
+    prepareSave,
     checkpointForExport,
   } = useModel3DSave({
     ownSavedVersionKeys,
@@ -285,6 +286,11 @@ export function useModel3DWorkbench(
       loadedSourceRef.current = url;
       setSourceProvenance(provenance);
       setSourceUrl(url);
+      // The new GLB already contains legacy sidecar materials. Do not apply
+      // them again when restoring a working copy based on this checkpoint.
+      const next = { ...viewRef.current, sourceUrl: url, materialOverrides: [] };
+      viewRef.current = next;
+      setView(next);
     },
     onSaved,
     tt,
@@ -397,6 +403,7 @@ export function useModel3DWorkbench(
     animationTime: runtimeState.animationTime,
     animationDuration: runtimeState.animationDuration,
     materials: runtimeState.selection?.materials || [],
+    materialOverrides: view.materialOverrides,
     selectedMaterialIndex: selectedMaterial?.index ?? 0,
     annotations: sidecar.annotations,
     annotationScreens: sidecar.annotationScreens,
@@ -527,6 +534,7 @@ export function useModel3DWorkbench(
     },
     downloadModel: mediaActions.downloadModel,
     saveCopy,
+    prepareSave,
     restoreRecovery,
     applyRemoteScene,
     applyLocalScene,
