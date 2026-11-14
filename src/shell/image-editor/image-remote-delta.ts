@@ -65,6 +65,11 @@ function comparableObject(object: JsonObject, options: ImageContentCompareOption
   if (dependency && typeof dependency === "object" && !Array.isArray(dependency)) {
     const { id, kind, digest } = dependency as JsonObject;
     next.oceanleoDependency = options.ignoreIds ? { kind, digest } : { id, kind, digest };
+    // Fabric serializes the same locator twice: on the object and dependency.
+    // Signed/stable URL changes do not change an identified bitmap's content.
+    if (typeof digest === "string" && /^(?:sha256:)?[a-f0-9]{64}$/i.test(digest) && typeof next.src === "string") {
+      next.src = `sha256:${digest.replace(/^sha256:/i, "").toLowerCase()}`;
+    }
   }
   return next;
 }

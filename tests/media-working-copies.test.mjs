@@ -95,7 +95,7 @@ test("image: complete Fabric scene round trip; uploaded references; large captur
   measure(t,"image 100 Fabric objects",()=>image.createFabricImageWorkingCopy(typical.getSnapshot()),30);
   const project = measure(t,"image 1,200 Fabric objects",capture);
   const restored = image.parseFabricImageProject(JSON.parse(JSON.stringify(project)));
-  assert.deepEqual(restored,project);
+  assert.deepEqual(image.createFabricImageWorkingCopy(restored.snapshot),project);
   const bitmap = image.createFabricImageWorkingCopy({
     json:{objects:[{type:"Image",src:"blob:canvas-only",oceanleoDependency:{url:"https://media.test/layer.png"}}]},
     doc:{width:800,height:600},canvasBackground:"#fff",

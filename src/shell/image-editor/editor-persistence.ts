@@ -161,7 +161,7 @@ function imageReference(object: Record<string, unknown>): ArtifactAccessIdentity
 }
 
 /** Complete cloud document: stable asset identities, never temporary tickets. */
-export function createFabricImageWorkingCopy(snapshot: EditorSnapshot): FabricImageProject {
+export function createFabricImageWorkingCopy(snapshot: EditorSnapshot): Omit<FabricImageProject, "updatedAt"> {
   // The controller supplies an owned JSON copy. Rewrite asset locators in place.
   const visit = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
@@ -186,7 +186,9 @@ export function createFabricImageWorkingCopy(snapshot: EditorSnapshot): FabricIm
     Object.values(object).forEach(visit);
   };
   visit(snapshot);
-  return createFabricImageProject(snapshot);
+  // The working-copy row owns saved_at. A capture must not invent a new
+  // publication timestamp and change the document when the scene is unchanged.
+  return { schema: IMAGE_PROJECT_SCHEMA, version: 1, snapshot };
 }
 
 /** Resolve both current stable references and older ticket-bearing copies. */

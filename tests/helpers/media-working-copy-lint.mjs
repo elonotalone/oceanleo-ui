@@ -21,6 +21,7 @@ const paths = [
   "advanced-routes/Model3DRoute.tsx","advanced-routes/VideoTimelineRoute.tsx",
   "advanced-routes/non-richdoc-source-gate.ts",
   "image-editor/editor-persistence.ts","image-editor/fabric-image-open.ts",
+  "image-editor/image-remote-delta.ts",
   "image-editor/types.ts","image-editor/use-fabric-image-editor.ts",
   "image-editor/fabric-controller-core.ts",
   "media-editors/AudioWorkbench.tsx","media-editors/audio-workbench-state.ts",
