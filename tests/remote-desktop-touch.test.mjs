@@ -16,6 +16,7 @@ test("touch sends immediate press/release and compatibility mouse events do not 
 test("mobile keyboard is available only on coarse pointers and summons the native input", async () => {
   const view = await mount({ coarse: true });
   assert.equal(view.input().inputMode, "none");
+  await view.openToolbar();
   await act(async () => view.screen().querySelector("[data-remote-keyboard-toggle]").click());
   assert.equal(view.input().inputMode, "text");
 });

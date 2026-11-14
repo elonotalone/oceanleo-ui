@@ -6,21 +6,22 @@ import type { RemoteDesktopApiResult, RemoteDesktopClient, RemoteDesktopDataLane
 /** A negotiation the panel started right after session create, before the stream socket opened. */
 export interface RemoteEarlyMedia { sessionId: string; displayId?: string; response: Promise<RemoteDesktopApiResult<RemoteMediaResponse>>; consumed?: boolean }
 import { openRemoteMedia, RemotePublisherStatusError, type RemoteMediaDiagnostic, type RemoteMediaState, type RemoteMediaViewer, type RemoteMediaDiagnosticSnapshot, type RemoteMediaStartupTimings } from "./remote-desktop-media";
-import { agePercentile, videoStatSample, type RemoteDesktopQualityWindow, type RemoteDesktopViewerReport, type VideoStatSample } from "../api/remote-desktop-quality";
+import { decodeRemotePictureMarker, type RemoteDesktopMeasurements, type RemotePictureMeasurements } from "../api/remote-desktop-measure";
+import { videoStatSample, type RemoteDesktopQualityWindow, type RemoteDesktopViewerReport, type VideoStatSample } from "../api/remote-desktop-quality";
 
 /** Anonymous quality report cadence for the receiver's getStats (diagnostics only). */
 const QUALITY_STATS_MS = 1000;
 
-/** D7: fit-to-window (default) or the remote screen at its original pixel size. */
-export function remoteFrameStyle(fit: boolean, width?: number, height?: number): CSSProperties {
-  const ratio = typeof window !== "undefined" && window.devicePixelRatio > 0 ? window.devicePixelRatio : 1;
-  if (fit || !width || !height) return { width: "100%", height: "100%", maxWidth: "none", objectFit: "contain", display: "block" };
-  return { width: `${width / ratio}px`, height: `${height / ratio}px`, maxWidth: "none", objectFit: "contain", display: "block", flex: "none" };
+/** Remote pictures always fit the stage; input maps through the contained rectangle. */
+export function remoteFrameStyle(): CSSProperties {
+  return { width: "100%", height: "100%", maxWidth: "none", objectFit: "contain", display: "block" };
 }
 
-export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, early, onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, publisher, onDiagnostic, onDiagnostics, onTiming, displayId, fit, width, height, showFrame = true }: {
+export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, early, onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, publisher, onDiagnostic, onDiagnostics, onTiming, measurements, onMeasurements, displayId, showFrame = true }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string; early?: RemoteEarlyMedia | null;
-  videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; fit: boolean; width?: number; height?: number; showFrame?: boolean;
+  videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; showFrame?: boolean;
+  measurements?: RemoteDesktopMeasurements | null;
+  onMeasurements?(value: RemotePictureMeasurements, uncertainty?: number): void;
   onDataChannel?(lane: RemoteDesktopDataLane | null): void;
   onViewerReport?(report: RemoteDesktopViewerReport): void;
   onQualityWindow?(window: RemoteDesktopQualityWindow): void;
@@ -33,8 +34,9 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
   onLegacy(): void;
   onStatus(status: RemoteMediaStatus | null): void;
 }) {
-  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming });
-  callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming };
+  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming, onMeasurements });
+  callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming, onMeasurements };
+  const measurementsRef = useRef(measurements); measurementsRef.current = measurements;
   const previousClose = useRef<Promise<void>>(Promise.resolve());
   const earlyRef = useRef(early); earlyRef.current = early;
   // Publisher metrics are refreshed on every status response; their object identity
@@ -46,9 +48,11 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
     const quality = client.mediaQuality?.(sessionId) ?? null;
     let statsTimer: ReturnType<typeof setInterval> | undefined;
     let reportSeq = 0;
-    let minLagMs: number | null = null;
-    let ageSamples: number[] = [];
-    let qualityWindowAges: number[] = [];
+    let statsPending = false;
+    let directPublisher: Record<string, number> = {};
+    let markerCanvas: HTMLCanvasElement | null = null;
+    let latestReport: RemoteDesktopViewerReport = { t: "rd.viewer_report", v: 1, seq: 1 };
+    let latestReportAt = -Infinity;
     let qualityWindowStart = Date.now();
     let previousStats: VideoStatSample | null = null;
     let previousStatsAt = performance.now();
@@ -80,18 +84,29 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
       const credentials = await negotiate();
       if (abort.signal.aborted || !videoRef.current) return;
       viewer = await openRemoteMedia(credentials, videoRef.current, {
+        sessionId,
         state: (state, error, status) => { if (!abort.signal.aborted) { quality?.mediaState(state, error); callbacks.current.onState(state, error, status); } },
         frame: (width, height, sample) => {
           if (abort.signal.aborted) return;
-          if (sample?.rtp_timestamp_90 !== undefined) {
-            const presentation = performance.timeOrigin + (sample.presentation_time_ms ?? performance.now());
-            const lag = presentation - sample.rtp_timestamp_90 / 90;
-            minLagMs = minLagMs === null ? lag : Math.min(minLagMs, lag);
-            const age = Math.max(0, lag - (minLagMs ?? lag));
-            if (Number.isFinite(age)) { ageSamples.push(age); qualityWindowAges.push(age); }
-          }
+          // C6 v3 measures only a validated code read from this displayed frame; unmarked age stays unknown.
           quality?.frame(); callbacks.current.onFrame(width, height);
+          const measuring = measurementsRef.current, video = videoRef.current;
+          const short = Math.min(width, height);
+          if (measuring && video && short >= 256) {
+            try {
+              markerCanvas ??= document.createElement("canvas"); markerCanvas.width = 8; markerCanvas.height = 7;
+              const context = markerCanvas.getContext("2d", { willReadFrequently: true });
+              if (context) {
+                context.imageSmoothingEnabled = false;
+                const w = Math.round(short * 8 / 32), h = Math.round(short * 7 / 32);
+                context.drawImage(video, width - w, height - h, w, h, 0, 0, 8, 7);
+                const mark = decodeRemotePictureMarker(context.getImageData(0, 0, 8, 7).data);
+                if (mark) measuring.displayed(mark.captureLow24, mark.appliedLow16, performance.timeOrigin + (sample?.presentation_time_ms ?? performance.now()));
+              }
+            } catch { /* unavailable/tainted canvas means unknown measurement; picture remains live */ }
+          }
         },
+        publisherStats: metrics => { directPublisher = metrics; },
         renew: negotiate,
         dataChannel: (lane) => { callbacks.current.onDataChannel?.(abort.signal.aborted ? null : lane); },
         diagnostic: (detail) => { if (!abort.signal.aborted) callbacks.current.onDiagnostic?.(detail); },
@@ -101,6 +116,20 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
       const opened = viewer;
       if (opened?.stats && !abort.signal.aborted) {
         statsTimer = setInterval(() => {
+          const measuring = measurementsRef.current;
+          measuring?.tick(); measuring?.sampleCurrentPicture();
+          if (measuring) callbacks.current.onMeasurements?.(measuring.snapshot(), measuring.clockUncertainty());
+          if (Date.now() - qualityWindowStart >= 10_000) {
+            const ack = quality?.takeDirectAckWindow?.() ?? {};
+            const publisherMetrics = { ...publisherRef.current, ...directPublisher };
+            const currentReport = performance.now() - latestReportAt < 2500 ? latestReport : { t: "rd.viewer_report" as const, v: 1 as const, seq: Math.max(1, reportSeq) };
+            callbacks.current.onQualityWindow?.({ v: 1, device_id: deviceId, session_id: sessionId,
+              window_start_ms: qualityWindowStart, viewer: { ...currentReport, ...ack, ...measuring?.takeWindow() },
+              ...(Object.keys(publisherMetrics).length ? { publisher: publisherMetrics } : {}) });
+            qualityWindowStart = Date.now();
+          }
+          if (statsPending) return;
+          statsPending = true;
           void opened.stats!().then((reports) => {
             if (abort.signal.aborted) return;
             const sample = videoStatSample(reports as Parameters<typeof videoStatSample>[0]);
@@ -112,7 +141,6 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
               return typeof value === "number" && typeof previous === "number" && value >= previous ? (value - previous) / seconds : undefined;
             };
             const received = delta("packetsReceived"), lost = delta("packetsLost");
-            const ageP50 = agePercentile(ageSamples, 50), ageP95 = agePercentile(ageSamples, 95);
             const report: RemoteDesktopViewerReport = { t: "rd.viewer_report", v: 1, seq: ++reportSeq,
               ...(sample?.rttMs !== undefined ? { edge_rtt_ms: Math.round(sample.rttMs) } : {}),
               ...(received !== undefined && lost !== undefined && received + lost > 0 ? { loss_pct: Math.min(100, Math.max(0, Number((lost / (received + lost) * 100).toFixed(2)))) } : {}),
@@ -121,20 +149,11 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
               ...(delta("totalFreezesDuration") !== undefined ? { freeze_ms_2s: Math.min(2000, Math.max(0, Math.round(delta("totalFreezesDuration")! * 1000))) } : {}),
               ...(sample?.fps !== undefined ? { fps_decoded: Number(sample.fps.toFixed(2)) } : {}),
               ...(sample?.jitterBufferDelay !== undefined && sample.jitterBufferEmittedCount ? { jitter_ms: Math.round(sample.jitterBufferDelay / sample.jitterBufferEmittedCount * 1000) } : {}),
-              ...(ageP50 !== undefined ? { age_p50_ms: ageP50 } : {}), ...(ageP95 !== undefined ? { age_p95_ms: ageP95 } : {}),
             };
+            latestReport = report; latestReportAt = now;
             callbacks.current.onViewerReport?.(report);
-            if (Date.now() - qualityWindowStart >= 10_000) {
-              const windowP50 = agePercentile(qualityWindowAges, 50), windowP95 = agePercentile(qualityWindowAges, 95);
-              callbacks.current.onQualityWindow?.({ v: 1, device_id: deviceId, session_id: sessionId,
-                window_start_ms: qualityWindowStart, viewer: { ...report,
-                  ...(windowP50 !== undefined ? { age_p50_ms: windowP50 } : {}),
-                  ...(windowP95 !== undefined ? { age_p95_ms: windowP95 } : {}),
-                }, ...(publisherRef.current ? { publisher: publisherRef.current } : {}) });
-              qualityWindowStart = Date.now(); qualityWindowAges = [];
-            }
-            ageSamples = []; previousStats = sample; previousStatsAt = now;
-          }).catch(() => {});
+            previousStats = sample; previousStatsAt = now;
+          }).catch(() => {}).finally(() => { statsPending = false; });
         }, QUALITY_STATS_MS);
       }
     })().catch((error: unknown) => {
@@ -151,7 +170,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
       previousClose.current = start.then(async () => { await viewer?.close(); });
     };
   }, [client, deviceId, sessionId, videoRef, displayId]);
-  // No canvas copy: the SDK attaches the decoded MediaStream to this element directly (D5).
-  // Geometry changes hide obsolete pixels without detaching the decoder; stalls keep showFrame true.
-  return <video ref={videoRef} data-remote-video autoPlay muted playsInline style={{ ...remoteFrameStyle(fit, width, height), opacity: showFrame ? 1 : 0 }} />;
+  // The SDK displays the stream directly. Only opt-in measurement reads the 8×7 corner code.
+  // Stalls retain the last picture; publisher telemetry never gates decoded pixels.
+  return <video ref={videoRef} data-remote-video autoPlay muted playsInline style={{ ...remoteFrameStyle(), opacity: showFrame ? 1 : 0 }} />;
 }

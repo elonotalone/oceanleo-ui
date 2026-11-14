@@ -243,7 +243,7 @@ test("signed-out availability is not replaced by the legacy online flag", async 
   assert.equal((await api.remoteDesktopClient.getStatus("mac")).data.availability, "signed_out");
 });
 
-test("源码不含设备密钥 / 本机令牌 / 本地存储路径，画面不落盘", async () => {
+test("viewer never persists picture/input/secrets; localStorage contains only the per-user dock preference", async () => {
   const source = (
     await Promise.all(
       ["src/api/remote-desktop.ts", "src/pages/RemoteDesktopPanel.tsx", "src/pages/remote-desktop-input.ts"].map(
@@ -254,7 +254,6 @@ test("源码不含设备密钥 / 本机令牌 / 本地存储路径，画面不�
   for (const forbidden of [
     "device_secret",
     "Device ",
-    "localStorage",
     "sessionStorage",
     "indexedDB",
     "127.0.0.1",
@@ -263,6 +262,9 @@ test("源码不含设备密钥 / 本机令牌 / 本地存储路径，画面不�
   ]) {
     assert.ok(!source.includes(forbidden), `不该出现：${forbidden}`);
   }
+  const writes = [...source.matchAll(/localStorage\.setItem\(([^;]+)\);/g)].map(match => match[1]);
+  assert.deepEqual(writes, ["positionKey.current, JSON.stringify(dockRef.current)"]);
+
 });
 
 function binaryPacket(sequence = 1) {

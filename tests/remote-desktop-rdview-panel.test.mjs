@@ -37,7 +37,7 @@ test("a media stall keeps the picture and geometry visible, shows a pill, and bl
   assert.equal(view.video().style.opacity, "1", "last decoded pixels remain visible");
   assert.equal(view.input().disabled, true);
   assert.deepEqual(view.log.inputs.at(-1), { kind: "release_all" });
-  assert.match(view.screen().textContent, /1920×1080/);
+  assert.equal(view.screen().querySelector("[data-remote-toolbar]"), null);
   const pill = view.screen().querySelector("[data-remote-media-notice]");
   assert.match(pill.textContent, /连接不稳，正在重试/);
   assert.equal(pill.style.inset, "");
@@ -83,16 +83,12 @@ test("a pointer gesture begun during media loss cannot finish against the recove
   assert.equal(view.log.inputs.slice(before).some((action) => action.kind.startsWith("pointer")), false);
 });
 
-test("missing publisher geometry pauses input without discarding the last picture", async () => {
+test("missing publisher geometry leaves the decoded picture and input ready", async () => {
   const view = await mount(); await view.decoded(); const video = view.video();
   await act(async () => view.handlers().media(descriptor, null));
-  assert.equal(view.video(), video); assert.equal(video.style.opacity, "1");
-  assert.equal(view.input().disabled, true);
-  assert.match(view.screen().querySelector("[data-remote-media-notice]").textContent, /等这台电脑显示画面/);
-  await act(async () => view.handlers().media(descriptor, publishing()));
-  assert.equal(video.style.opacity, "1", "same geometry after a telemetry gap preserves pixels");
-  assert.equal(view.input().disabled, true);
-  await view.decoded(); assert.equal(view.input().disabled, false);
+  assert.equal(view.video(), video); assert.equal(video.style.opacity, "1"); assert.equal(view.input().disabled, false);
+  assert.equal(view.screen().querySelector("[data-remote-media-notice]"), null);
+  await act(async () => view.handlers().media(descriptor, publishing())); assert.equal(view.input().disabled, false);
 });
 
 test("socket reattachment keeps the video and releases held input before reacknowledging its frame", async () => {
@@ -117,26 +113,12 @@ test("socket reattachment keeps the video and releases held input before reackno
   assert.deepEqual(view.log.closes, []);
 });
 
-test("a genuine geometry change invalidates the old picture and waits for a matching decoded frame", async () => {
+test("late geometry and same-size display reports never hide decoded pixels; decoded dimensions update mapping", async () => {
   const view = await mount(); await view.decoded(); const video = view.video();
   await act(async () => view.handlers().media(descriptor, publishing({ display_id: "b", width: 1200, height: 1920 })));
-  assert.equal(view.video(), video); assert.equal(video.style.opacity, "0");
-  assert.equal(view.input().disabled, true);
-  await view.decoded();
-  assert.equal(view.input().disabled, true); assert.equal(video.style.opacity, "0");
-  await view.decoded(1200, 1920);
-  assert.equal(view.input().disabled, false); assert.equal(video.style.opacity, "1");
-});
-
-test("same-size display changes require a fresh decoded frame and media acknowledgement", async () => {
-  const view = await mount(); await view.decoded();
-  assert.equal(view.acknowledgements(), 1);
-  await act(async () => view.handlers().media(descriptor, publishing({ ...geometry, display_id: "b" })));
-  assert.equal(view.video().style.opacity, "0"); assert.equal(view.input().disabled, true);
-  await act(async () => view.media().state("playing"));
-  assert.equal(view.input().disabled, true);
-  await view.decoded(); assert.equal(view.input().disabled, false);
-  assert.equal(view.acknowledgements(), 2);
+  assert.equal(view.video(), video); assert.equal(video.style.opacity, "1"); assert.equal(view.input().disabled, false);
+  await view.decoded(1200,1920); assert.equal(view.input().disabled, false); assert.equal(video.style.opacity,"1");
+  assert.equal(view.acknowledgements(),2);
 });
 
 test("terminal media failure and session end remove retained pixels and tear down the receiver", async () => {

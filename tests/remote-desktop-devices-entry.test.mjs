@@ -260,6 +260,7 @@ test("desktop enters synchronously from the click, writes its URL, and closes it
     assert.equal(window.location.pathname, "/devices");
     assert.deepEqual(fullscreen, [{ id: "oceanleo-remote-desktop-screen", query: null, creates: 0 }]);
     assert.equal(document.querySelector('[data-device-dialog="remote-desktop"]'), null, "dedicated desktop has no DeviceDialog wrapper");
+    await view.click(document.querySelector("[data-remote-toolbar-handle]"));
     await view.click(view.button("退出桌面"));
     await view.tick(30);
     assert.deepEqual(remote.log.closes, ["s-1"]);
@@ -285,6 +286,7 @@ test("browser back/forward follows the desktop query and refresh restores only a
     // C11-FW (W 2026-10-27): navigation restores the view, only a click asks the computer.
     assert.equal(document.querySelector("[data-oceanleo-remote-desktop]").getAttribute("data-remote-phase"), "idle");
     assert.equal(remote.log.create.length, 1);
+    await view.click(document.querySelector("[data-remote-toolbar-handle]"));
     await view.click(view.button("连接"));
     assert.equal(remote.log.create.length, 2);
   } finally { await view.unmount(); }
@@ -293,6 +295,7 @@ test("browser back/forward follows the desktop query and refresh restores only a
   try {
     assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));
     assert.equal(remote.log.create.length, 2, "a refreshed page asks nothing until 连接");
+    await refreshed.click(document.querySelector("[data-remote-toolbar-handle]"));
     await refreshed.click(refreshed.button("退出桌面"));
     assert.equal(new URLSearchParams(window.location.search).get("desktop"), null);
   } finally { await refreshed.unmount(); }

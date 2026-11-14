@@ -194,7 +194,7 @@ function engineHarness() {
   };
   const video = Object.assign(new EventTarget(), { videoWidth: 0, videoHeight: 0, readyState: 0, currentTime: 0, srcObject: {}, requestVideoFrameCallback() { return 1; }, cancelVideoFrameCallback() {} });
   const lanes = [];
-  const handlers = { state() {}, frame() {}, renew: async () => credentials(), dataChannel: (value) => lanes.push(value) };
+  const handlers = { sessionId: "session-1", state() {}, frame() {}, renew: async () => credentials(), dataChannel: (value) => lanes.push(value) };
   const sdk = async () => ({ createEngine: () => engine, dataChannelMessage: (data) => ({ data, type: 2 }) });
   const track = { id: "synthetic", kind: "video" };
   let stopped = 0;
@@ -209,7 +209,7 @@ test("the viewer publishes a media-less data channel only when the gateway grant
 
   const h = engineHarness();
   const viewer = await h.start({ data_channel_input: true });
-  assert.deepEqual(h.calls.find(([n]) => n === "parameter")[1], { data: { enablePubDataChannel: true, enableSubDataChannel: false } });
+  assert.deepEqual(h.calls.find(([n]) => n === "parameter")[1], { data: { enablePubDataChannel: true, enableSubDataChannel: true } });
   // Sender must publish: only the synthetic track, as screen share, created before publish so the
   // SDK never asks for getDisplayMedia; mic and camera stay unpublished.
   const order = h.calls.filter(([n]) => ["screen-share", "publish-screen", "publish-audio", "publish-video"].includes(n));
@@ -294,4 +294,90 @@ test("decoded media receipt is sent over the authenticated stream without inject
     stream.acknowledgeMediaFrame();
     assert.deepEqual(socket.sent, [{ type: "media_ready" }]);
   } finally { stream.close(); }
+});
+
+function directLane() {
+  const peer=lane(); const listeners=new Set();
+  peer.subscribe=fn=>{listeners.add(fn);return ()=>listeners.delete(fn);};
+  peer.ack=seq=>{for(const fn of listeners)fn({t:'rd.input_ack',v:1,sid:'session-1',acked_seq:seq});};
+  peer.listenerCount=()=>listeners.size;
+  return peer;
+}
+test('C6 direct ACKs release eight peer credits without WS execution drain or a three-second fallback',async t=>{
+  const {socket,stream}=await streamHarness();
+  try {
+    for(let i=0;i<8;i++)stream.send({kind:'keypress',key:'ArrowRight'});
+    const peer=directLane(); stream.attachDataChannel(peer);
+    const probe=peer.sent.at(-1).seq;
+    assert.equal(peer.sent.at(-1).a.kind,'release_all');
+    peer.ack(probe);
+    for(let i=0;i<8;i++)stream.send({kind:'keypress',key:'ArrowLeft'});
+    assert.equal(peer.sent.length,9,'DC starts without old WS acceptance/execution');
+    stream.send({kind:'keypress',key:'Enter'}); assert.equal(peer.sent.length,9);
+    const last=peer.sent.at(-1).seq;
+    peer.ack(last); assert.equal(peer.sent.length,10,'cumulative native ACK frees the credit window');
+    t.mock.timers.enable({apis:['Date'],now:Date.now()}); t.mock.timers.tick(60000);
+    stream.send({kind:'key_up',key:'Shift'});
+    assert.equal(stream.inputPath(),'data_channel');
+    assert.equal(inputs(socket).length,8,'gateway silence never forces healthy direct input onto WS');
+  } finally {t.mock.timers.reset();stream.close();}
+});
+test('C6 loss discards queued old input, sends WS release then new input, and detaches its listener',async()=>{
+  const {socket,stream}=await streamHarness();
+  try {
+    const peer=directLane(); stream.attachDataChannel(peer); peer.ack(peer.sent.at(-1).seq);
+    for(let i=0;i<8;i++)stream.send({kind:'keypress',key:'ArrowLeft'});
+    stream.send({kind:'keypress',key:'Enter'}); // queued before the loss: never execute later
+    assert.equal(peer.listenerCount(),1);
+    stream.attachDataChannel(null); assert.equal(peer.listenerCount(),0);
+    stream.send({kind:'keypress',key:'Escape'});
+    assert.deepEqual(inputs(socket).map(m=>m.action.kind),['release_all','keypress']);
+    assert.equal(inputs(socket).at(-1).action.key,'Escape');
+    assert.equal(inputs(socket).some(m=>m.action.key==='Enter'),false);
+    peer.ack(999999); assert.equal(socket.readyState,1,'detached late ACK is inert');
+  } finally {stream.close();}
+});
+test('C6 SDK messages are publisher/session scoped, bounded, disposed and input ACKs return on the subscribed channel',async()=>{
+  const h=engineHarness();const viewer=await h.start({data_channel_input:true});
+  try {
+    h.events.get('dataPublishStateChanged')(1,3);
+    const got=[]; const unsubscribe=h.lanes.at(-1).subscribe(m=>got.push(m));
+    const message=(uid,value,type=2)=>h.events.get('dataChannelMsg')(uid,{type,data:new TextEncoder().encode(JSON.stringify(value)).buffer});
+    const ack={t:'rd.input_ack',v:1,sid:'session-1',acked_seq:8};
+    message('intruder',ack);message('desktop',{...ack,sid:'other'});message('desktop',ack,1);
+    message('desktop',{...ack,acked_seq:-1});message('desktop',{...ack,extra:'x'.repeat(1024)});
+    assert.deepEqual(got,[]);
+    message('desktop',ack); assert.deepEqual(got,[ack]);
+    unsubscribe(); message('desktop',{...ack,acked_seq:9}); assert.equal(got.length,1);
+  } finally {await viewer.close();}
+  assert.equal(h.events.size,0);
+});
+
+
+test('C6 oversized input is refused without moving a healthy lane onto WS; direct admission never confirms handback',async()=>{
+  const {socket,stream}=await streamHarness();
+  try {
+    const peer=directLane(); stream.attachDataChannel(peer); peer.ack(peer.sent.at(-1).seq);
+    assert.equal(stream.send({kind:'type',text:'界'.repeat(1000)}),false);
+    assert.equal(inputs(socket).length,0);
+    assert.equal(stream.send({kind:'type',text:'hello'}),true);
+    peer.ack(peer.sent.at(-1).seq);
+    let finished=false; const handback=stream.releaseForHandoff().then(()=>{finished=true;});
+    const release=peer.sent.at(-1); assert.equal(release.a.kind,'release_all');
+    peer.ack(release.seq); await Promise.resolve(); assert.equal(finished,false);
+    socket.message({type:'state',state:'active',acked_seq:0,input_diagnostics:{input_completed_seq:release.seq}}); await handback;
+    assert.equal(finished,true);assert.equal(inputs(socket).length,0);
+  } finally {stream.close();}
+});
+
+
+test('a real publisher data subscription loss drops the lane; resubscription restores it and unrelated users are ignored',async()=>{
+  const h=engineHarness();const viewer=await h.start({data_channel_input:true});
+  try{
+    h.events.get('dataPublishStateChanged')(1,3);const first=h.lanes.at(-1);assert.ok(first);
+    h.events.get('dataSubscribeStateChanged')('other',3,4);assert.equal(h.lanes.at(-1),first);
+    h.events.get('dataSubscribeStateChanged')('desktop',3,4);assert.equal(h.lanes.at(-1),null);
+    h.events.get('dataSubscribeStateChanged')('desktop',4,3);assert.ok(h.lanes.at(-1));
+    h.events.get('remoteUserOffLineNotify')('desktop');assert.equal(h.lanes.at(-1),null);
+  }finally{await viewer.close();}
 });

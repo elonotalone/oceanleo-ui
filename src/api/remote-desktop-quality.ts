@@ -24,6 +24,9 @@ export interface RemoteDesktopViewerReport {
   edge_rtt_ms?: number; loss_pct?: number; nack_ps?: number; pli_ps?: number;
   freeze_ms_2s?: number; fps_decoded?: number; jitter_ms?: number;
   age_p50_ms?: number; age_p95_ms?: number;
+  input_ack_p50_ms?: number; input_ack_p95_ms?: number;
+  picture_age_p50_ms?: number; picture_age_p95_ms?: number;
+  input_to_picture_p50_ms?: number; input_to_picture_p95_ms?: number;
 }
 /** K4 ten-second display window; publisher is fixed numeric data from the device. */
 export interface RemoteDesktopQualityWindow {
@@ -199,6 +202,7 @@ export interface RemoteMediaQualitySink {
   mediaState(state: QualityMediaState, error?: string): void;
   frame(): void;
   stats(sample: VideoStatSample | null): void;
+  takeDirectAckWindow?(): Pick<RemoteDesktopViewerReport, "input_ack_p50_ms" | "input_ack_p95_ms">;
 }
 
 export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
@@ -217,6 +221,7 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
   private lanes = { websocket: 0, data_channel: 0 };
   private accepted: number[] = [];
   private executed: number[] = [];
+  private directAckWindow: number[] = [];
   private samples: VideoStatSample[] = [];
   private sent = false;
   private sdkErrors: number[] = [];
@@ -250,8 +255,13 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
   legacyFrame(): void { if (this.legacyFirstFrame === undefined && this.mediaMode !== "artc") this.legacyFirstFrame = this.since(); }
   inputSent(lane: QualityLane): void { this.lanes[lane]++; }
   controlTiming(sample: RemoteControlTiming): void {
-    const list = sample.stage === "accepted" ? this.accepted : this.executed;
+    const list = sample.stage === "direct_ack" ? this.directAckWindow : sample.stage === "accepted" ? this.accepted : this.executed;
     if (list.length < MAX_SAMPLES) list.push(sample.elapsedMs);
+  }
+  takeDirectAckWindow(): Pick<RemoteDesktopViewerReport, "input_ack_p50_ms" | "input_ack_p95_ms"> {
+    const p50 = agePercentile(this.directAckWindow, 50), p95 = agePercentile(this.directAckWindow, 95);
+    this.directAckWindow = [];
+    return p50 === undefined ? {} : { input_ack_p50_ms: p50, input_ack_p95_ms: p95 };
   }
   mediaState(state: QualityMediaState, error?: string): void {
     if (state === "waiting_frame" || state === "playing") this.mark("artc_join_ms");
@@ -259,7 +269,7 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
     if (state === "reconnecting" && this.playing) { this.playing = false; this.reconnects++; }
     if (state === "error") this.fail(error || "media_error");
   }
-  frame(): void { this.mark("artc_join_ms"); this.mark("first_frame_ms"); }
+  frame(): void { this.mediaMode = "artc"; this.mark("artc_join_ms"); this.mark("first_frame_ms"); }
   mediaTiming(value: { [key: string]: unknown }): void {
     const keys: Array<[string, QualityStep]> = [["media_negotiate_started_ms", "media_negotiate_ms"], ["prepare_started_ms", "media_prepare_ms"], ["join_started_ms", "media_join_started_ms"], ["joined_ms", "media_joined_ms"]];
     for (const [source, target] of keys) {

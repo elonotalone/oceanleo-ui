@@ -15,7 +15,9 @@ test("desktop fills a dedicated portal, preserves aspect ratio and uses continuo
   assert.equal(view.log.httpFrames, 0);
   assert.equal(document.body.style.overflow, "hidden");
   const buttons = [...view.screen().querySelectorAll("button")].map((button) => button.textContent || button.getAttribute("aria-label"));
-  assert.deepEqual(buttons, ["原始大小", "全屏", "退出桌面"]);
+  assert.deepEqual(buttons, ["O"]);
+  await view.openToolbar();
+  assert.deepEqual([...view.screen().querySelector("[data-remote-toolbar]").querySelectorAll("button")].map(button => button.textContent), ["全屏", "退出桌面"]);
   await view.fire(view.image(), new window.Event("load"));
   assert.deepEqual(view.log.acknowledgements, [1], "capture credit follows actual image load");
   await view.unmount();
@@ -23,27 +25,21 @@ test("desktop fills a dedicated portal, preserves aspect ratio and uses continuo
   assert.deepEqual(view.log.closes, ["session-stream"]);
 });
 
-test("D6/D7: local OS cursor over the picture, no zoom select, one fit/original icon toggle", async () => {
-  const view = await mount();
-  const stage = view.screen().querySelector("[data-remote-stage]");
-  assert.equal(stage.style.cursor, "default", "the controller's own cursor is never hidden");
+test("local OS cursor stays visible and the desktop always fits without zoom or pan controls", async () => {
+  const view = await mount(); await view.openToolbar();
+  const stage = view.stage();
+  assert.equal(stage.style.cursor, "default");
   assert.equal(view.screen().querySelector("select[aria-label='画面缩放']"), null);
-  assert.equal(view.screen().querySelectorAll("[data-remote-cursor]").length, 0, "no remote cursor is drawn");
-  const toggle = view.screen().querySelector("[data-remote-fit-toggle]");
-  assert.equal(toggle.getAttribute("title"), "原始大小");
-  assert.equal(view.image().style.width, "100%", "fit to window by default");
-  await view.fire(toggle, new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(toggle.getAttribute("title"), "适应窗口");
-  assert.equal(toggle.getAttribute("aria-pressed"), "true");
-  assert.match(view.image().style.width, /px$/, "original size uses the frame's own pixels");
-  assert.equal(stage.style.overflow, "auto");
-  await view.fire(toggle, new window.MouseEvent("click", { bubbles: true }));
-  assert.equal(view.image().style.width, "100%");
+  assert.equal(view.screen().querySelectorAll("[data-remote-cursor]").length, 0);
+  assert.equal(view.screen().querySelector("[data-remote-fit-toggle]"), null);
+  assert.equal(view.image().style.width, "100%"); assert.equal(stage.style.overflow, "hidden");
+  assert.doesNotMatch(view.screen().textContent, /原始大小|适应窗口|移动画面/);
 });
 
 test("goal 6: view-only access and per-minute billing from the gateway are shown read-only; input is not sent", async () => {
   const view = await mount();
   await act(async () => view.handlers().session({ access: { input_allowed: false, audio: false }, billing: { per_minute: 0.096, currency: "CNY", charged_minutes: 3 } }));
+  await view.openToolbar();
   assert.equal(view.screen().querySelector("[data-remote-view-only]").textContent, "对方仅允许查看");
   assert.equal(view.screen().querySelector("[data-remote-billing]").textContent, "按分钟从账户余额扣费 · ¥0.096/分钟 · 已计 3 分钟");
   const before = view.log.inputs.filter((input) => input.kind !== "release_all").length;
@@ -227,6 +223,7 @@ test("a session the gateway closed is final: no automatic new session", async ()
   assert.equal(sessions, 1);
   assert.equal(view.screen().getAttribute("data-remote-phase"), "error");
   assert.match(view.screen().textContent, /网络连接中断，请重新连接/);
+  await view.openToolbar();
   await act(async () => view.screen().querySelector("[data-remote-connect]").click());
   await settle();
   assert.equal(sessions, 2, "only the person's click asks the computer again");
@@ -276,6 +273,7 @@ for (const [code, phase] of [["denied", "denied"], ["request_expired", "timed_ou
 
 test("close tears down and calls routing owner once", async () => {
   const view = await mount();
+  await view.openToolbar();
   const button = [...view.screen().querySelectorAll("button")].find((item) => item.textContent === "退出桌面");
   await act(async () => button.click());
   const count = view.log.inputs.length;
@@ -319,6 +317,7 @@ test("a late HTTP input response cannot drain or terminate a manually reconnecte
   view.client.getFrame = async () => ({ ok: true, data: { state: "closed", error: "expired" } });
   await settle();
   view.client.getFrame = async () => ({ ok: true, data: { state: "active", frame: { image: "data:image/jpeg;base64,/9j/AAAA", width: 1920, height: 1080, sequence: 1 } } });
+  await view.openToolbar();
   await act(async () => view.screen().querySelector("[data-remote-connect]").click());
   await settle();
   await view.key("keydown", "y");
@@ -349,12 +348,12 @@ for (const code of ["input_permission_required", "input_unavailable", "input_rel
   else assert.doesNotMatch(view.screen().textContent, /辅助功能|权限/);
 });
 
-for (const [code, reason] of [["remote_desktop_other_gateway", "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。"], ["remote_desktop_unavailable", "联系不上这台电脑上的 OceanLeo"]]) test(`${code}: top bar says only 已断开, the center shows the full reason once`, async () => {
+for (const [code, reason] of [["remote_desktop_other_gateway", "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。"], ["remote_desktop_unavailable", "联系不上这台电脑上的 OceanLeo"]]) test(`${code}: collapsed controls stay closed and the stage shows the full reason once`, async () => {
   // `pending` only skips the helper's initial frame injection; createSession itself fails.
   const view = await mount({ pending: true, overrides: { async createSession() { return { ok: false, error: code, status: 409 }; } } });
   await settle(40);
   const statuses = [...view.screen().querySelectorAll('[role="status"]')].map((node) => (node.textContent || "").trim());
-  assert.ok(statuses.includes("已断开"), `top bar: ${JSON.stringify(statuses)}`);
+  assert.equal(view.screen().querySelector("[data-remote-toolbar]"), null);
   const full = statuses.filter((text) => text.includes(reason));
   assert.equal(full.length, 1, `reason shown exactly once: ${JSON.stringify(statuses)}`);
   assert.equal(view.screen().textContent.split(reason).length - 1, 1);

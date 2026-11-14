@@ -8,6 +8,13 @@ import { LOCALES, type Locale } from "../../config";
 import { copyDictionaryFrom, type CopyMessagesOf } from "./shell-overhaul-copy-shared";
 
 const SOURCE = {
+  k152: "这台电脑还没有上报视频能力，请稍后重新连接。",
+  k153: "已锁定 — 可以输入密码解锁",
+  k154: "测量延迟",
+  k155: "画面延迟 p50/p95：{p50}/{p95} 毫秒",
+  k156: "输入到画面标记 p50/p95：{p50}/{p95} 毫秒",
+  k150: "远程桌面控制",
+  k151: "画面延迟未知",
   k00: "操作太快，部分输入被丢弃了。",
   k01: "连接不稳，正在重试…",
   k02: "远程会话已结束。",
@@ -143,6 +150,13 @@ const SOURCE = {
 type Messages = CopyMessagesOf<typeof SOURCE>;
 
 const EN: Messages = {
+  k152: "This computer has not reported video support yet. Please reconnect shortly.",
+  k153: "Locked — you can enter your password to unlock",
+  k154: "Measure delay",
+  k155: "Picture delay p50/p95: {p50}/{p95} ms",
+  k156: "Input to picture marker p50/p95: {p50}/{p95} ms",
+  k150: "Remote desktop controls",
+  k151: "Picture delay unknown",
   k00: "You're going too fast — some input was dropped.",
   k01: "The connection is unstable. Retrying…",
   k02: "The remote session has ended.",
@@ -276,6 +290,13 @@ const EN: Messages = {
 };
 
 const ZH_TW: Messages = {
+  k152: "這台電腦尚未回報視訊功能，請稍後重新連線。",
+  k153: "已鎖定 — 可以輸入密碼解鎖",
+  k154: "測量延遲",
+  k155: "畫面延遲 p50/p95：{p50}/{p95} 毫秒",
+  k156: "輸入到畫面標記 p50/p95：{p50}/{p95} 毫秒",
+  k150: "遠端桌面控制",
+  k151: "畫面延遲未知",
   k00: "操作太快，部分輸入被丟棄了。",
   k01: "連線不穩，正在重試…",
   k02: "遠端工作階段已結束。",
@@ -408,9 +429,110 @@ const ZH_TW: Messages = {
   k121: "這台電腦處於鎖定畫面或系統安全畫面，鍵盤和滑鼠暫時無法送達。請先在那台電腦上解鎖。",
 };
 
+const TOOLBAR_LABELS: Record<string, [string, string, string, string, string]> = {
+  "de": [
+    "Remotedesktop-Steuerung",
+    "Bildverzögerung unbekannt",
+    "Verzögerung messen",
+    "Bildverzögerung p50/p95: {p50}/{p95} ms",
+    "Eingabe bis Bildmarkierung p50/p95: {p50}/{p95} ms"
+  ],
+  "es": [
+    "Controles del escritorio remoto",
+    "Retardo de imagen desconocido",
+    "Medir retardo",
+    "Retardo de imagen p50/p95: {p50}/{p95} ms",
+    "Entrada a marca de imagen p50/p95: {p50}/{p95} ms"
+  ],
+  "es-419": [
+    "Controles del escritorio remoto",
+    "Retardo de imagen desconocido",
+    "Medir retardo",
+    "Retardo de imagen p50/p95: {p50}/{p95} ms",
+    "Entrada a marca de imagen p50/p95: {p50}/{p95} ms"
+  ],
+  "fr": [
+    "Commandes du bureau à distance",
+    "Délai de l’image inconnu",
+    "Mesurer le délai",
+    "Délai de l’image p50/p95 : {p50}/{p95} ms",
+    "Saisie au repère d’image p50/p95 : {p50}/{p95} ms"
+  ],
+  "it": [
+    "Controlli del desktop remoto",
+    "Ritardo dell’immagine sconosciuto",
+    "Misura il ritardo",
+    "Ritardo immagine p50/p95: {p50}/{p95} ms",
+    "Input al marcatore immagine p50/p95: {p50}/{p95} ms"
+  ],
+  "pt-BR": [
+    "Controles da área de trabalho remota",
+    "Atraso da imagem desconhecido",
+    "Medir atraso",
+    "Atraso da imagem p50/p95: {p50}/{p95} ms",
+    "Entrada até marcador da imagem p50/p95: {p50}/{p95} ms"
+  ],
+  "pt-PT": [
+    "Controlos do ambiente de trabalho remoto",
+    "Atraso da imagem desconhecido",
+    "Medir atraso",
+    "Atraso da imagem p50/p95: {p50}/{p95} ms",
+    "Entrada até marcador da imagem p50/p95: {p50}/{p95} ms"
+  ],
+  "vi": [
+    "Điều khiển máy tính từ xa",
+    "Chưa rõ độ trễ hình ảnh",
+    "Đo độ trễ",
+    "Độ trễ hình ảnh p50/p95: {p50}/{p95} ms",
+    "Đầu vào đến dấu hình ảnh p50/p95: {p50}/{p95} ms"
+  ],
+  "tr": [
+    "Uzak masaüstü denetimleri",
+    "Görüntü gecikmesi bilinmiyor",
+    "Gecikmeyi ölç",
+    "Görüntü gecikmesi p50/p95: {p50}/{p95} ms",
+    "Girişten görüntü işaretine p50/p95: {p50}/{p95} ms"
+  ],
+  "ja": [
+    "リモートデスクトップの操作",
+    "映像の遅延は不明",
+    "遅延を測定",
+    "映像の遅延 p50/p95：{p50}/{p95} ms",
+    "入力から映像マーカーまで p50/p95：{p50}/{p95} ms"
+  ],
+  "ko": [
+    "원격 데스크톱 제어",
+    "화면 지연 알 수 없음",
+    "지연 측정",
+    "화면 지연 p50/p95: {p50}/{p95} ms",
+    "입력부터 화면 표시까지 p50/p95: {p50}/{p95} ms"
+  ],
+  "ar": [
+    "عناصر التحكم بسطح المكتب البعيد",
+    "تأخير الصورة غير معروف",
+    "قياس التأخير",
+    "تأخير الصورة p50/p95: {p50}/{p95} مللي ثانية",
+    "من الإدخال إلى علامة الصورة p50/p95: {p50}/{p95} مللي ثانية"
+  ],
+  "hi": [
+    "रिमोट डेस्कटॉप नियंत्रण",
+    "चित्र का विलंब अज्ञात है",
+    "विलंब मापें",
+    "चित्र विलंब p50/p95: {p50}/{p95} मिलीसेकंड",
+    "इनपुट से चित्र चिह्न तक p50/p95: {p50}/{p95} मिलीसेकंड"
+  ],
+  "th": [
+    "การควบคุมเดสก์ท็อประยะไกล",
+    "ไม่ทราบความหน่วงของภาพ",
+    "วัดความหน่วง",
+    "ความหน่วงของภาพ p50/p95: {p50}/{p95} มิลลิวินาที",
+    "จากอินพุตถึงเครื่องหมายภาพ p50/p95: {p50}/{p95} มิลลิวินาที"
+  ]
+};
+
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
   LOCALES.map((locale) => {
     const table: Messages = locale === "zh" ? SOURCE : locale === "zh-TW" ? ZH_TW : EN;
-    return [locale, copyDictionaryFrom(SOURCE, table)];
+    return [locale, { ...copyDictionaryFrom(SOURCE, table), ...(TOOLBAR_LABELS[locale] ? { [SOURCE.k150]: TOOLBAR_LABELS[locale][0], [SOURCE.k151]: TOOLBAR_LABELS[locale][1], [SOURCE.k154]: TOOLBAR_LABELS[locale][2], [SOURCE.k155]: TOOLBAR_LABELS[locale][3], [SOURCE.k156]: TOOLBAR_LABELS[locale][4] } : {}) }];
   }),
 ) as Record<Locale, Record<string, string>>;

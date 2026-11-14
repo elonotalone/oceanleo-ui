@@ -219,3 +219,11 @@ test("panel: a real session reports once on exit with its session id and the cli
   assert.match(r.end_reason, /^(viewer_closed|page_hidden)$/);
   assert.deepEqual(view.log.closes, ["session-stream"], "close path unchanged");
 });
+
+test('direct native admission ACK p50/p95 is reported per window and never counted as executed input',()=>{
+  const collector=new q.RemoteDesktopQualityCollector({deviceId:'fixture',origin:0,attempt:0,now:()=>100,env:ENV,send(){}});
+  for(const elapsedMs of [10,20,30,40,50])collector.controlTiming({seq:1,stage:'direct_ack',elapsedMs});
+  assert.deepEqual(collector.takeDirectAckWindow(),{input_ack_p50_ms:30,input_ack_p95_ms:50});
+  assert.deepEqual(collector.takeDirectAckWindow(),{});
+  assert.equal(collector.report().input.executed,undefined);
+});

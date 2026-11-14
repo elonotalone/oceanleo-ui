@@ -72,7 +72,7 @@ const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_f
   // D4 receipt: highest data-channel seq the computer accepted (R1a/R1b publish it; absent = unproven lane).
   "dc_input_seq", ...REMOTE_INPUT_METRICS,
   // Publisher-elapsed first screen packet send, not encode/keyframe or viewer paint. Absent = unknown.
-  "first_packet_sent_ms"] as const;
+  "first_packet_sent_ms", "push_buffer_full", "push_backoff_ms", "capture_fps", "push_fps", "policy_level", "policy_seq", "policy_fps", "policy_kbps", "policy_width", "policy_height"] as const;
 /** Optional fixed numeric diagnostics only; never publisher tokens or arbitrary text. */
 export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
@@ -243,9 +243,17 @@ export interface RemoteDesktopClient {
   mediaQuality?(sessionId: string): RemoteMediaQualitySink | null;
 }
 
+/** C6 publisher-authenticated messages; admission and execution are different measurements. */
+export type RemoteDesktopDataMessage =
+  | { t: "rd.pong"; v: 1; sid: string; t_v: number; device_wall_ms: number }
+  | { t: "rd.input_ack"; v: 1; sid: string; acked_seq: number }
+  | { t: "rd.publisher_stats"; v: 1; sid: string; metrics: Record<string, number> }
+  | { t: "rd.capture"; v: 1; sid: string; capture_seq: number; capture_wall_ms: number; media_timestamp_ms: number; pushed_wall_ms: number };
 /** false proves no write; a throw is ambiguous and must never replay the action on another lane. */
 export interface RemoteDesktopDataLane {
   send(payload: string): boolean;
+  /** C6: publisher-authenticated session messages. The disposer removes this listener. */
+  subscribe?(listener: (message: RemoteDesktopDataMessage) => void): () => void;
 }
 
 /** Oldest pending peer write deadline; partial progress never restarts an older write's clock. */
@@ -277,8 +285,8 @@ export interface RemoteDesktopStream {
   acknowledgeFrame(sequence: number): void;
   acknowledgeMediaFrame?(): void;
   /**
-   * Both lanes share one bounded ordered queue. A trusted peer pauses new WS writes until older
-   * gateway writes retire; fallback waits for earlier peer credits. `null` detaches the lane.
+   * C6 lanes return direct admission receipts and have no gateway drain fence. Legacy lanes
+   * without subscribe keep their gateway receipt compatibility. `null` detaches without replay.
    */
   attachDataChannel?(lane: RemoteDesktopDataLane | null): void;
   /** Which path the last written input took (diagnostics/UI only). */
@@ -294,6 +302,8 @@ export interface RemoteDesktopStreamHandlers {
   activity?(activity: RemoteDesktopActivity | null): void;
   /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
   controlTiming?(sample: RemoteControlTiming): void;
+  /** Actual transport write, for opt-in applied-input picture measurement only. */
+  inputWritten?(seq: number, measurable?: boolean): void;
   /** Optional numeric samples at a one-second cadence using the existing input pump. */
   diagnostics?(sample: RemoteDesktopTransportDiagnostics): void;
   inputDiagnostics?(sample: RemoteInputDiagnostics): void;
@@ -382,11 +392,14 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let writeFailed = false;
   let handoff: Promise<void> | null = null;
   let lane: RemoteDesktopDataLane | null = null;
+  let unsubscribeLane: (() => void) | undefined;
+  let directReceipts = false;
   let lastPath: "data_channel" | "websocket" = "websocket";
   let lastPongAt = Date.now();
   let pingId = 0;
   /*
-   * The data channel has no per-message reply, so it is used only once the computer proved it
+   * Prove subscription with a harmless probe before real input. C6 replies directly; legacy peers
+   * without a subscribe listener use the gateway-relayed receipt. The computer proves it
    * receives it: a harmless `release_all` probe (sent only while nothing is held) must show up in
    * the publisher's `metrics.dc_input_seq`. Real writes then use a bounded shared scheduler window,
    * credited by input_completed_seq when supported, or explicitly weaker legacy admission receipts.
@@ -398,8 +411,9 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, probeRequested = false, peerProbesLost = 0;
   const diagnostics = new RemoteTransportDiagnostics(() => performance.now());
   let lastDiagnosticsAt = performance.now();
-  const dropLane = () => { lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; peerProbesLost = 0; };
+  const dropLane = () => { unsubscribeLane?.(); unsubscribeLane = undefined; directReceipts = false; lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; peerProbesLost = 0; };
   const peerHealthy = (now: number) => {
+    if (directReceipts) return; // A healthy C6 channel never falls back because the gateway is slow.
     const oldest = scheduler.oldestPeerPendingAt();
     if (oldest === undefined || now - oldest <= PEER_WRITE_RECEIPT_MS) return;
     // Receipts stopped: keep the session and video, move input back to the gateway behind a
@@ -409,6 +423,13 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (lane) probeRequested = true;
   };
   const notePeerReceipt = (value: number | undefined, completed?: number) => {
+    if (directReceipts) {
+      // Completion remains separate from admission, and is required only for explicit handback.
+      if (Number.isSafeInteger(completed) && completed! >= 0 && completed! <= scheduler.lastSequence()) {
+        scheduler.executedThrough(completed!); timings.completedThrough(completed!);
+      }
+      return; // Gateway admission snapshots cannot release direct-channel credits.
+    }
     if (value !== undefined) {
       peerReceipt = Math.max(peerReceipt, value);
       if (peerProbe && peerReceipt >= peerProbe) { peerTrusted = true; peerProbesLost = 0; }
@@ -419,22 +440,26 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const probeDue = () => !!lane && !peerTrusted && probeRequested && (peerProbe ? Date.now() - peerProbeAt > probeWait() : !peerProbesLost || Date.now() - peerProbeAt > probeWait());
   /** Probe only between retired writes and new queue writes, never inside a provisional write. */
   const probePeer = () => {
-    if (ended || !ready || state !== "active" || !probeDue() || !lane || !scheduler.probeAllowed() || !scheduler.gatewayDrained() || !scheduler.peerDrained()) return;
+    if (ended || !ready || state !== "active" || !probeDue() || !lane || !scheduler.probeAllowed() || !directReceipts && (!scheduler.gatewayDrained() || !scheduler.peerDrained())) return;
     if (peerProbe) peerProbesLost = Math.min(PEER_PROBE_BACKOFF_MAX, peerProbesLost + 1);
     peerProbe = scheduler.claimSequence();
     peerProbeAt = Date.now();
     probeRequested = false;
     const message = dataChannelMessage(sessionId, peerProbe, { kind: "release_all" });
-    try { if (message && lane.send(message)) { diagnostics.written("data_channel", peerProbe); return; } } catch { /* no real action to replay */ }
+    try { if (message && lane.send(message)) { diagnostics.written("data_channel", peerProbe); noteInputWritten(peerProbe, false); return; } } catch { /* no real action to replay */ }
     dropLane();
   };
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
   const timings = new RemoteControlTimings(() => performance.now(), sample => { diagnostics.control(sample); handlers.controlTiming?.(sample); });
-  const diagnosticSnapshot = (finishInterval = false) => diagnostics.snapshot(scheduler.diagnostics?.() ?? {
-    queued_count: 0, queued_soft_count: 0, outstanding_count: 0, retry_count: 0, last_seq: scheduler.lastSequence(),
-    execution_watermark: 0, held_key_count: 0, held_button_count: 0,
-  }, socket.bufferedAmount, finishInterval);
+  const noteInputWritten = (seq: number, measurable: boolean) => { try { handlers.inputWritten?.(seq, measurable); } catch { /* measurement cannot affect input */ } };
+  const diagnosticSnapshot = (finishInterval = false) => {
+    const value = diagnostics.snapshot(scheduler.diagnostics?.() ?? {
+      queued_count: 0, queued_soft_count: 0, outstanding_count: 0, retry_count: 0, last_seq: scheduler.lastSequence(),
+      execution_watermark: 0, held_key_count: 0, held_button_count: 0,
+    }, socket.bufferedAmount, finishInterval);
+    return directReceipts ? { ...value, dc_credit_basis: 1 as const } : value;
+  };
   const reportDiagnostics = () => {
     if (!handlers.diagnostics) return;
     try { handlers.diagnostics(diagnosticSnapshot(true)); } catch { /* measurement cannot affect input */ }
@@ -442,6 +467,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const dispose = () => {
     if (!ended) reportDiagnostics();
     ended = true;
+    unsubscribeLane?.(); unsubscribeLane = undefined;
     timings.dispose();
     diagnostics.dispose();
     clearInterval(heartbeat);
@@ -479,24 +505,24 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     now: Date.now,
     write: (seq, action, context) => {
       if (!context?.emergency) {
-        // A late lane needs the same brief WS drain as trusted handover. Let queued releases,
-        // held input and explicit retries drain first; never claim the probe's seq here.
+        // Probes run between scheduler writes. C6 receipt proofs do not wait for old WS retirement.
         if (!context?.retry && !context?.barrier && probeDue() && scheduler.probeAllowed()) return false;
-        const message = lane && peerTrusted && !context?.retry && !context?.barrier ? dataChannelMessage(sessionId, seq, action) : null;
+        const message = lane && peerTrusted && !context?.retry && (!context?.barrier || directReceipts) ? dataChannelMessage(sessionId, seq, action) : null;
         if (message && lane) {
-          // Queue admission is independent of lane readiness. Continuous input cannot refill WS
-          // while prior gateway writes drain; the same queued gesture/barriers later take DC.
-          if (!scheduler.gatewayDrained() || !scheduler.peerCreditReady()) return false;
+          // A proved C6 lane sends immediately. Only legacy peers retain the gateway drain fence.
+          if (!directReceipts && (!scheduler.gatewayDrained() || !scheduler.peerCreditReady())) return false;
           try {
-            if (lane.send(message)) { diagnostics.written("data_channel", seq); lastPath = "data_channel"; return { lane: "data_channel" }; }
+            if (lane.send(message)) { diagnostics.written("data_channel", seq); noteInputWritten(seq, action.kind !== "release_all"); timings.sent(seq, true); lastPath = "data_channel"; return { lane: "data_channel" }; }
           } catch { dropLane(); return "unknown"; }
+          const wasDirect = directReceipts;
           dropLane(); // explicit false: this action was never written
+          if (wasDirect) { queueMicrotask(() => { if (!ended) scheduler.abandonPeer(true); }); return false; }
         }
         // A definitely unwritten or oversized action may take WS only after older peer writes.
         if (!scheduler.peerDrained()) return false;
       }
       const written = send({ type: "input", seq, action });
-      if (written) { diagnostics.written("websocket", seq); timings.sent(seq); lastPath = "websocket"; }
+      if (written) { diagnostics.written("websocket", seq); noteInputWritten(seq, action.kind !== "release_all"); timings.sent(seq); lastPath = "websocket"; }
       return !written && writeFailed ? "unknown" : written;
     },
     congestion: (busy) => handlers.congestion?.(busy),
@@ -519,6 +545,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       if (ended || !ready || state !== "active") return false;
       peerHealthy(Date.now());
       if (ended) return false;
+      if (directReceipts && !dataChannelMessage(sessionId, scheduler.lastSequence() + 1, action)) { handlers.congestion?.(true); return false; }
       if (lane && !peerTrusted) probeRequested = true;
       probePeer();
       return scheduler.enqueue(action);
@@ -531,7 +558,25 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       } catch { /* report delivery is best effort */ }
       return send({ type: "viewer_report", report });
     },
-    attachDataChannel(next) { if (next !== lane) { dropLane(); lane = ended ? null : next; } },
+    attachDataChannel(next) {
+      if (next === lane) return;
+      const lostDirect = directReceipts;
+      dropLane(); lane = ended ? null : next;
+      if (lane?.subscribe) {
+        directReceipts = true; peerTrusted = false; probeRequested = true;
+        unsubscribeLane = lane.subscribe(message => {
+          if (ended || message.sid !== sessionId || message.t !== "rd.input_ack") return;
+          const seq = message.acked_seq;
+          if (!Number.isSafeInteger(seq) || seq < 0 || seq > scheduler.lastSequence()) return;
+          if (peerProbe && seq >= peerProbe && !peerTrusted) { peerTrusted = true; scheduler.usePeerCredits(); }
+          diagnostics.observe({ dc_input_seq: seq });
+          timings.admittedThrough(seq);
+          scheduler.peerAcknowledgedThrough(seq);
+        });
+      }
+      if (lostDirect) scheduler.abandonPeer(true);
+      probePeer(); scheduler.tick();
+    },
     inputPath: () => lastPath,
     lastSequence: () => scheduler.lastSequence(),
     diagnostics: () => diagnosticSnapshot(),

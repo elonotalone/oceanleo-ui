@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopBilling, type RemoteDesktopBrokerClient, type RemoteDesktopBrokerStatus, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopSession, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
 import { isNetworkFailure, newRequestId } from "../api/remote-desktop-retry";
@@ -10,6 +10,7 @@ import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNear
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
 import { CLOUD_AGENT_COPY, type RemoteConsent } from "../lib/local-agent-task";
 import { remoteDesktopTicket, type RemoteDesktopTicket } from "./remote-desktop-ticket";
+import { RemoteDesktopMeasurements, type RemotePictureMeasurements } from "../api/remote-desktop-measure";
 import { RemoteDesktopQualityHub } from "../api/remote-desktop-quality";
 import { RD_BROKER_COPY, rdBrokerErrorCopy, rdBrokerStatusCopy } from "../i18n/ui/messages/rd-broker-copy";
 import type { RemoteDesktopTransportDiagnostics, RemoteInputDiagnostics } from "../api/remote-desktop-diagnostics";
@@ -95,20 +96,6 @@ export function billingPrice(billing: RemoteDesktopBilling): string {
   return `${billing.currency === "CNY" ? "¥" : "$"}${Number(billing.per_minute.toFixed(4))}`;
 }
 
-/** Only the publisher's current geometry can authorize a fresh video's point mapping. */
-function mediaGeometryKey(status: RemoteMediaStatus | null): string | null {
-  const geometry = status?.state === "publishing" ? status.geometry : null;
-  if (!geometry || !Number.isFinite(geometry.width) || !Number.isFinite(geometry.height) || geometry.width <= 0 || geometry.height <= 0) return null;
-  return `${geometry.display_id}:${geometry.width}x${geometry.height}`;
-}
-
-/** Encoding may scale the display down and round one pixel; a stale aspect is never current. */
-function mediaFrameMatches(status: RemoteMediaStatus | null, width: number, height: number): boolean {
-  const geometry = status?.geometry;
-  return Boolean(geometry && mediaGeometryKey(status) && Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
-    && Math.abs(width * geometry.height - height * geometry.width) <= Math.max(geometry.width, geometry.height));
-}
-
 export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = remoteDesktopClient, onClose, frameIntervalMs = 250, doubleClickWindowMs = 220, agent, agentRequest = false, consent, ticket: requested, onDiagnostics }: RemoteDesktopPanelProps) {
   const tt = useUI();
   const qualityRef = useRef<RemoteDesktopQualityHub | null>(null);
@@ -153,7 +140,13 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const completedHandoff = useRef<{key?: string; callback: RemoteDesktopAgentBanner["onHandBack"]} | null>(null);
   const handoffRef = useRef<object | null>(null);
   const agentRef = useRef(agent); agentRef.current = agent;
-  const [toolbar, setToolbar] = useState(true);
+  const [toolbar, setToolbar] = useState(false);
+  const [measuring, setMeasuring] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("rd_measure") === "1");
+  const measuringRef = useRef(measuring); measuringRef.current = measuring;
+  const measurements = useRef<RemoteDesktopMeasurements | null>(null);
+  const [pictureMeasurements, setPictureMeasurements] = useState<RemotePictureMeasurements>({});
+  const [clockUncertainty, setClockUncertainty] = useState<number | undefined>();
+  useEffect(() => { measurements.current?.setEnabled(measuring); setPictureMeasurements({}); setClockUncertainty(undefined); }, [measuring]);
   const [coarse, setCoarse] = useState(false);
   const [keyboard, setKeyboard] = useState(false);
   const [mediaMode, setMediaMode] = useState<"legacy" | "artc">("legacy");
@@ -163,18 +156,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   /** Geometry for which a fresh decoded frame has arrived; an ACK never sets it. */
   const mediaFrameGeometry = useRef<string | null>(null);
   const [displayId, setDisplayId] = useState<string>();
-  /** D7: true = fit to window (default); false = original pixel size. */
-  const [fit, setFit] = useState(true);
   const [access, setAccess] = useState<RemoteDesktopAccess | null>(null);
   const viewOnlyRef = useRef(false);
   const [billing, setBilling] = useState<RemoteDesktopBilling | null>(null);
   const laneRef = useRef<RemoteDesktopDataLane | null>(null);
   /** Media failure evidence (blocked ARTC host / SDK code), kept on screen and on the root element. */
   const [mediaDiagnostic, setMediaDiagnostic] = useState<{ blocked_host?: string; sdk_error?: number } | null>(null);
-  const [panMode, setPanMode] = useState(false);
-  const panModeRef = useRef(false);
-  panModeRef.current = panMode;
-  const panRef = useRef<{ id: number; x: number; y: number; left: number; top: number } | null>(null);
   const [mediaNotice, setMediaNotice] = useState("");
   const [mediaReady, setMediaReady] = useState(false);
   const mediaReadyRef = useRef(false);
@@ -224,7 +211,37 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   const inputEpoch = useRef(0);
   const moveRef = useRef<RemoteDesktopAction | null>(null);
   const moveTimer = useRef<ReturnType<typeof setTimeout> | number | null>(null);
-  const toolbarTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toolbarRoot = useRef<HTMLDivElement>(null);
+  const toolbarPanel = useRef<HTMLDivElement>(null);
+  const positionKey = useRef<string | null>(null);
+  const [dock, setDock] = useState<{ edge: "left" | "right" | "top" | "bottom"; offset: number }>({ edge: "right", offset: .5 });
+  const dockRef = useRef(dock); dockRef.current = dock;
+  const dragging = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
+  const ignoreHandleClick = useRef(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  useEffect(() => {
+    let alive = true, identityRevision = 0;
+    const load = (userId: string | null) => {
+      positionKey.current = userId ? `oceanleo:remote-toolbar:${userId}` : null;
+      let saved: typeof dock | null = null;
+      try { saved = JSON.parse(positionKey.current ? window.localStorage.getItem(positionKey.current) || "null" : "null"); } catch { /* storage may be unavailable */ }
+      setDock(saved && ["left", "right", "top", "bottom"].includes(saved.edge) && Number.isFinite(saved.offset)
+        ? { edge: saved.edge, offset: Math.max(0, Math.min(1, saved.offset)) } : { edge: "right", offset: .5 });
+    };
+    const readIdentity = (revision: number) => {
+      void import("../lib/auth/client").then(auth => auth.getUserIdSnapshot()).then(value => { if (alive && identityRevision === revision && value.available) load(value.userId); }).catch(() => {});
+    };
+    readIdentity(0);
+    const identity = (event: Event) => {
+      const revision = ++identityRevision, detail = (event as CustomEvent<{ userId?: string | null }>).detail;
+      if (detail && "userId" in detail) load(detail.userId ?? null);
+      else readIdentity(revision);
+    };
+    const changed = () => setFullscreen(Boolean(document.fullscreenElement));
+    window.addEventListener("oceanleo:auth-state", identity);
+    document.addEventListener("fullscreenchange", changed); changed();
+    return () => { alive = false; window.removeEventListener("oceanleo:auth-state", identity); document.removeEventListener("fullscreenchange", changed); };
+  }, []);
   frameRef.current = frame;
 
   const updatePhase = useCallback((value: Phase) => {
@@ -234,15 +251,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     }
     phaseRef.current = value; setPhase(value);
   }, []);
-  const revealToolbar = useCallback(() => {
-    setToolbar(true);
-    if (toolbarTimer.current) clearTimeout(toolbarTimer.current);
-    toolbarTimer.current = setTimeout(() => { if (phaseRef.current === "active") setToolbar(false); }, 2200);
-  }, []);
-
   const canSend = useCallback(() => !handoffRef.current && !closedRef.current && !reconnectingRef.current && !viewOnlyRef.current && phaseRef.current === "active" && Boolean(frameRef.current)
     && (!brokerModeRef.current || brokerFrameReady.current)
-    && (mediaModeRef.current !== "artc" || Boolean(mediaReadyRef.current && mediaFrameGeometry.current && mediaFrameGeometry.current === mediaGeometryKey(mediaStatusRef.current))), []);
+    && (mediaModeRef.current !== "artc" || Boolean(mediaReadyRef.current)), []);
 
   const pump = useCallback(async () => {
     const sessionId = sessionRef.current;
@@ -278,7 +289,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         }
       }
     } finally { if (pumpingRef.current === signal) pumpingRef.current = null; }
-  }, [client, deviceId, updatePhase]);
+  }, [deviceId, updatePhase]);
 
   const send = useCallback((action: RemoteDesktopAction) => {
     if (!canSend()) return;
@@ -328,7 +339,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     moveRef.current = null;
     heldKeys.current.clear();
     pointerRef.current = null;
-    panRef.current = null;
     composing.current = false;
   }, []);
   const releaseInput = useCallback(() => {
@@ -378,32 +388,27 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }, [releaseInput]);
 
   const acceptMediaStatus = useCallback((status: RemoteMediaStatus | null) => {
-    const previous = mediaGeometryKey(mediaStatusRef.current) ?? mediaFrameGeometry.current;
-    const next = mediaGeometryKey(status);
     mediaStatusRef.current = status;
     setMediaStatus(status);
-    if (mediaModeRef.current === "artc") {
-      if (next && next !== previous) invalidateMediaFrame();
-      else if (!next) { releaseInput(); mediaReadyRef.current = false; setMediaReady(false); setMediaNotice("已发出请求，等这台电脑显示画面…"); }
-    }
-  }, [invalidateMediaFrame, releaseInput]);
+    // Publisher metadata describes layout; a late or missing report cannot hide decoded pixels.
+  }, []);
 
   const disconnect = useCallback(() => {
     if (closedRef.current) return;
     releaseInput();
     closedRef.current = true;
+    measurements.current?.dispose(); measurements.current = null;
     streamRef.current?.close();
     streamRef.current = null;
     abortRef.current?.abort();
     queueRef.current = [];
     pumpingRef.current = null;
-    if (toolbarTimer.current) clearTimeout(toolbarTimer.current);
     if (sessionRef.current) {
       const sessionId = sessionRef.current;
       sessionRef.current = null;
       previousCloseRef.current = sessionClientRef.current.closeSession(deviceId, sessionId).catch(() => {});
     }
-  }, [client, deviceId, releaseInput]);
+  }, [deviceId, releaseInput]);
 
   useEffect(() => {
     if (ticket !== reconnectTicket.current) reconnectAttempts.current = 0;
@@ -424,7 +429,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     mediaStatusRef.current = null;
     mediaFrameGeometry.current = null;
     mediaReadyRef.current = false;
-    setMediaMode("legacy"); setMediaReady(false); setMediaStatus(null); setDisplayId(undefined); setFit(true); setPanMode(false); setMediaNotice(""); setMessage("");
+    setMediaMode("legacy"); setMediaReady(false); setMediaStatus(null); setDisplayId(undefined); setMediaNotice(""); setMessage("");
     viewOnlyRef.current = false; setAccess(null); setBilling(null); laneRef.current = null; setMediaDiagnostic(null);
     const acceptAccess = (value: RemoteDesktopAccess | null) => {
       viewOnlyRef.current = value?.input_allowed === false;
@@ -465,7 +470,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       setMessage(error === "media_capabilities_stale"
         ? "这台电脑还没有上报视频能力，请稍后重新连接。"
         : rdBrokerErrorCopy(error) ?? remoteDesktopErrorCopy(error, status));
-      revealToolbar();
     };
     const connect = async () => {
       // Allow cleanup to finish first, but a broken network must not stall the retry indefinitely.
@@ -515,6 +519,9 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       if (!result.ok || !result.data) { end(result.error, result.status); return; }
       mark("session");
       sessionRef.current = result.data.session_id;
+      measurements.current = new RemoteDesktopMeasurements(result.data.session_id);
+      measurements.current.setEnabled(measuringRef.current);
+      setPictureMeasurements({}); setClockUncertainty(undefined);
       if (result.data.billing) setBilling(result.data.billing);
       updatePhase(result.data.state === "pending_consent" ? "waiting" : "connecting");
       // First-frame chain: negotiate video while the stream socket is still opening (cold TLS from the
@@ -531,6 +538,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         const handlers: RemoteDesktopStreamHandlers = {
           activity: acceptActivity,
           diagnostics: reportDiagnostics,
+          inputWritten: (seq, measurable) => measurements.current?.inputSent(seq, measurable),
           inputDiagnostics: (value) => reportDiagnostics({ v: 1, kind: 4, at_ms: performance.now(), ...value }),
           state(state, error) {
             if (abort.signal.aborted) return;
@@ -547,7 +555,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
               if (state === "active") mark("active");
               if (state === "reconnecting") {
                 releaseInput();
-                reconnectingRef.current = true; setReconnecting(true); revealToolbar();
+                reconnectingRef.current = true; setReconnecting(true);
               } else {
                 reconnectingRef.current = false; setReconnecting(false);
               }
@@ -621,7 +629,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           const floor = lost?.lastSequence ? lost.lastSequence() + 1 : 0;
           lost?.close();
           reconnectingRef.current = true; setReconnecting(true);
-          releaseInput(); revealToolbar();
+          releaseInput();
           reconnectAttempts.current++;
           const started = Date.now();
           setReconnectDeadline(started + recoveryWindow.current); setClockNow(started);
@@ -686,7 +694,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             failureStarted = Date.now();
             reconnectingRef.current = true; setReconnecting(true);
             setReconnectDeadline(failureStarted + recoveryWindow.current); setClockNow(failureStarted);
-            releaseInput(); revealToolbar();
+            releaseInput();
           }
           if (Date.now() - failureStarted >= recoveryWindow.current) { end("link_lost"); break; }
         } else {
@@ -735,19 +743,18 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       document.body.style.overflow = previousOverflow;
       releaseRemoteDesktopFullscreen();
     };
-  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, revealToolbar, updatePhase, ticket, acceptMediaStatus, reportDiagnostics]);
+  }, [client, deviceId, disconnect, frameIntervalMs, releaseInput, updatePhase, ticket, acceptMediaStatus, acceptActivity, agentRequest, reportDiagnostics]);
 
   useEffect(() => { if (mediaReady) markRef.current?.("frame_ready_commit"); }, [mediaReady]);
 
   useEffect(() => {
     if (phase === "active") {
-      revealToolbar();
       if (!window.matchMedia?.("(pointer: coarse)").matches) inputRef.current?.focus({ preventScroll: true });
     }
-  }, [phase, revealToolbar]);
+  }, [phase]);
 
   useEffect(() => {
-    const blur = () => { releaseInput(); revealToolbar(); };
+    const blur = () => { releaseInput(); };
     const visibility = () => { if (document.hidden) blur(); };
     window.addEventListener("blur", blur);
     window.addEventListener("pagehide", disconnect);
@@ -759,13 +766,13 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       document.removeEventListener("visibilitychange", visibility);
       document.removeEventListener("fullscreenchange", blur);
     };
-  }, [disconnect, releaseInput, revealToolbar]);
+  }, [disconnect, releaseInput]);
 
   const sendText = useCallback((text: string) => {
     flushClick();
     flushMove();
     const paste = clampPaste(sanitizeRemoteText(text));
-    for (const part of chunkText(paste.text)) send({ kind: "type", text: part });
+    for (const part of chunkText(paste.text, 200)) send({ kind: "type", text: part });
     if (paste.truncated) setMessage("文字太长，只发送了前面一部分。");
   }, [flushClick, flushMove, send]);
 
@@ -809,7 +816,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }, [canSend, flushClick, releaseInput, send, sendText]);
 
   const point = (event: { clientX: number; clientY: number }, strict = true) => {
-    if (mediaModeRef.current === "artc" && (!mediaReadyRef.current || !mediaFrameGeometry.current || mediaFrameGeometry.current !== mediaGeometryKey(mediaStatusRef.current))) return null;
+    if (mediaModeRef.current === "artc" && (!mediaReadyRef.current)) return null;
     const image = mediaModeRef.current === "artc" ? videoRef.current : imageRef.current, current = frameRef.current;
     if (!image || !current) return null;
     const rect = containedRect(image.getBoundingClientRect(), current.width, current.height);
@@ -836,12 +843,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
     if (phaseRef.current !== "active") return;
-    if (panModeRef.current && !fit) {
-      event.preventDefault(); releaseInput();
-      panRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, left: event.currentTarget.scrollLeft, top: event.currentTarget.scrollTop };
-      event.currentTarget.setPointerCapture?.(event.pointerId);
-      return;
-    }
     if (pointerRef.current && pointerRef.current.id !== event.pointerId) { releaseInput(); return; }
     const p = point(event), button = mouseButton(event.button);
     if (!p || !button) return;
@@ -856,14 +857,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }
 
   function pointerMove(event: PointerEvent<HTMLDivElement>) {
-    if (event.clientY < 70) revealToolbar();
-    const pan = panRef.current;
-    if (pan && pan.id === event.pointerId) {
-      event.currentTarget.scrollLeft = pan.left + pan.x - event.clientX;
-      event.currentTarget.scrollTop = pan.top + pan.y - event.clientY;
-      return;
-    }
-    if (panModeRef.current) return;
     if ((!streamModeRef.current && !brokerModeRef.current) || phaseRef.current !== "active") return;
     if (event.pointerType === "touch" && !pointerRef.current) return;
     const p = point(event, !pointerRef.current);
@@ -884,7 +877,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }
 
   function pointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (panRef.current?.id === event.pointerId) { panRef.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId); return; }
     const down = pointerRef.current;
     if (!down || down.id !== event.pointerId) return;
     const p = point(event, false);
@@ -915,7 +907,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
   }
 
   function keyDown(event: KeyboardEvent<HTMLDivElement>) {
-    if (event.key === "Escape" && event.ctrlKey && event.altKey && event.shiftKey) { event.preventDefault(); releaseInput(); revealToolbar(); return; }
+    if (event.key === "Escape" && event.ctrlKey && event.altKey && event.shiftKey) { event.preventDefault(); releaseInput(); return; }
     if (!canSend() || composing.current || event.nativeEvent.isComposing || event.keyCode === 229 || ["Process", "Dead", "Unidentified"].includes(event.key)) return;
     if (brokerModeRef.current) {
       event.preventDefault();
@@ -964,7 +956,6 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     const stage = stageRef.current;
     if (!stage) return;
     const wheel = (event: WheelEvent) => {
-      if (panModeRef.current) return;
       const p = point(event);
       if (!p || phaseRef.current !== "active") return;
       event.preventDefault(); flushClick(); flushMove();
@@ -975,6 +966,35 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
     stage.addEventListener("wheel", wheel, { passive: false });
     return () => stage.removeEventListener("wheel", wheel);
   }, [flushClick, flushMove, send]);
+
+  useEffect(() => {
+    const outside = (event: globalThis.PointerEvent) => { if (!toolbarRoot.current?.contains(event.target as Node)) setToolbar(false); };
+    const escape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (event.ctrlKey && event.altKey && event.shiftKey) { event.preventDefault(); event.stopPropagation(); releaseInput(); setToolbar(true); }
+      else if (toolbar) { event.preventDefault(); event.stopPropagation(); setToolbar(false); stageRef.current?.focus({ preventScroll: true }); }
+    };
+    document.addEventListener("pointerdown", outside, true); document.addEventListener("keydown", escape, true);
+    return () => { document.removeEventListener("pointerdown", outside, true); document.removeEventListener("keydown", escape, true); };
+  }, [toolbar, releaseInput]);
+
+  useLayoutEffect(() => {
+    if (!toolbar) return;
+    const place = () => {
+      const root = toolbarRoot.current, panel = toolbarPanel.current;
+      if (!root || !panel) return;
+      const handle = root.getBoundingClientRect(), size = panel.getBoundingClientRect();
+      const gap = 8, w = window.innerWidth, h = window.innerHeight;
+      const x = dock.edge === "left" ? handle.right + gap : dock.edge === "right" ? handle.left - size.width - gap : handle.left + 16 - size.width / 2;
+      const y = dock.edge === "top" ? handle.bottom + gap : dock.edge === "bottom" ? handle.top - size.height - gap : handle.top + 16 - size.height / 2;
+      panel.style.left = `${Math.max(8, Math.min(w - size.width - 8, x)) - handle.left}px`;
+      panel.style.top = `${Math.max(8, Math.min(h - size.height - 8, y)) - handle.top}px`;
+    };
+    place(); window.addEventListener("resize", place);
+    const observer = typeof ResizeObserver === "function" ? new ResizeObserver(place) : null;
+    if (toolbarPanel.current) observer?.observe(toolbarPanel.current);
+    return () => { window.removeEventListener("resize", place); observer?.disconnect(); };
+  }, [toolbar, dock]);
 
   if (!portal) return null;
   const active = phase === "active";
@@ -997,10 +1017,12 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
         onKeyDown={keyDown} onKeyUp={keyUp} onContextMenu={(event) => event.preventDefault()}
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
         /* D6: the controller's own OS cursor stays visible over the video; no remote cursor is drawn. */
-        style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: panMode && !fit ? "grab" : "default", overflow: fit ? "hidden" : "auto" }}>
+        style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: "default", overflow: "hidden" }}>
         {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo client={client} deviceId={deviceId} sessionId={sessionRef.current} videoRef={videoRef} displayId={displayId} early={earlyMediaRef.current}
-          fit={fit} width={frame?.width} height={frame?.height} showFrame={Boolean(frame)}
-          onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); }}
+          showFrame={Boolean(frame)}
+          onDataChannel={(lane) => { laneRef.current = lane; streamRef.current?.attachDataChannel?.(lane); measurements.current?.setLane(lane); }}
+          measurements={measuring ? measurements.current : null}
+          onMeasurements={(value, uncertainty) => { setPictureMeasurements(value); setClockUncertainty(uncertainty); }}
           onViewerReport={(report) => { streamRef.current?.sendViewerReport(report); }}
           onQualityWindow={(window) => { void client.reportQualityWindow?.(window).catch(() => {}); }}
           publisher={mediaStatus?.metrics as Record<string, number> | undefined}
@@ -1009,9 +1031,8 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
           onTiming={reportDiagnostics}
           onFrame={(width, height) => {
             markRef.current?.("first_frame");
-            const status = mediaStatusRef.current;
-            const geometry = mediaGeometryKey(status);
-            if (!geometry || (displayId && status?.geometry?.display_id !== displayId) || !mediaFrameMatches(status, width, height)) return;
+            if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+            const geometry = `${displayId || "decoded"}:${width}x${height}`;
             markRef.current?.("frame_accepted");
             if (mediaFrameGeometry.current !== geometry || !frameRef.current || frameRef.current.width !== width || frameRef.current.height !== height) {
               const next = { image: "", width, height, sequence: 0 }; frameRef.current = next; setFrame(next);
@@ -1027,7 +1048,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             // Input waits for a fresh frame; an SDK "playing" notification alone cannot enable it.
             if (value !== "playing") { releaseInput(); mediaReadyRef.current = false; setMediaReady(false); }
             setMediaNotice(value === "playing" && mediaReadyRef.current ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
-            if (value === "error") { disconnect(); updatePhase(terminal(error)); setMessage(remoteDesktopErrorCopy(error, status)); revealToolbar(); }
+            if (value === "error") { disconnect(); updatePhase(terminal(error)); setMessage(remoteDesktopErrorCopy(error, status)); }
           }}
           onLegacy={() => { mediaModeRef.current = "legacy"; setMediaMode("legacy"); setMediaNotice("「{name}」上的 OceanLeo 当前没有视频能力。"); }}
           onStatus={acceptMediaStatus} /> : frame && (active || brokerMode && ["connecting", "reconnecting"].includes(phase)) ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
@@ -1036,7 +1057,7 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
             if (brokerModeRef.current) { brokerDecodedImage.current = { image: frame.image, width: frame.width, height: frame.height }; brokerFrameReady.current = true; setBrokerDecoded(true); }
           }}
           onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
-          style={remoteFrameStyle(fit, frame.width, frame.height)} /> :
+          style={remoteFrameStyle()} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
         {reconnecting || mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" data-remote-reconnecting-notice={reconnecting || undefined} data-remote-media-notice={!reconnecting || undefined}
           style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>{reconnecting ? <>{tt("网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice)}</div> : null}
@@ -1047,31 +1068,51 @@ export function RemoteDesktopPanel({ deviceId, deviceName, client: baseClient = 
       {brokerStatus || brokerMode ? <div role="status" data-remote-broker-status style={{ position: "absolute", top: 68, left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>
         {tt(brokerStatus ? rdBrokerStatusCopy(brokerStatus) : RD_BROKER_COPY.unknown)}{brokerMode ? <> · {tt(RD_BROKER_COPY.limits)}</> : null}
       </div> : null}
-      <div onPointerEnter={revealToolbar} onFocus={revealToolbar} style={{ position: "absolute", top: "max(12px, env(safe-area-inset-top))", left: "50%", transform: `translate(-50%, ${toolbar || !active ? "0" : "-150%"})`, transition: "transform .18s", display: "flex", alignItems: "center", gap: 16, padding: "9px 14px", borderRadius: 12, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{deviceName}</span>
-        <span role="status" style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt(reconnecting ? reconnectCopy : active && mediaMode === "artc" && !mediaReady ? "已发出请求，等这台电脑显示画面…" : active ? "已连接" : ended ? "已断开" : status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}{frame && active ? ` · ${frame.width}×${frame.height}` : ""}</span>
-        {active && access?.input_allowed === false ? <span data-remote-view-only style={{ whiteSpace: "nowrap", color: "#f5c76b" }}>{tt("对方仅允许查看")}</span> : null}
-        {active && billing ? <span data-remote-billing style={{ opacity: .65, whiteSpace: "nowrap" }}>{tt("按分钟从账户余额扣费 · {price}/分钟 · 已计 {minutes} 分钟", { price: billingPrice(billing), minutes: String(billing.charged_minutes) })}</span> : null}
-        {/* D7: one icon toggle, the tooltip names what a click does. */}
-        {active ? <button type="button" data-remote-fit-toggle aria-pressed={!fit} aria-label={tt(fit ? "原始大小" : "适应窗口")} title={tt(fit ? "原始大小" : "适应窗口")}
-          onClick={() => { releaseInput(); setFit((value) => !value); setPanMode(false); }}
-          style={{ display: "inline-grid", placeItems: "center", width: 28, height: 24, padding: 0 }}>
-          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            {fit ? <><rect x="2.5" y="2.5" width="11" height="11" rx="1" /><path d="M6 6h4v4H6z" /></> : <path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10" />}
-          </svg>
-        </button> : null}
-        {active && !fit ? <button type="button" aria-pressed={panMode} onClick={() => { releaseInput(); setPanMode((value) => !value); }}>{tt(panMode ? "操作电脑" : "移动画面")}</button> : null}
-        {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { invalidateMediaFrame(); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
-        {coarse && active ? <button data-remote-keyboard-toggle type="button" aria-pressed={keyboard} onMouseDown={(event) => event.preventDefault()} onClick={() => {
-          const next = !keyboard; setKeyboard(next);
-          inputRef.current?.setAttribute("inputmode", next ? "text" : "none");
-          if (next) inputRef.current?.focus({ preventScroll: true });
-          else { inputRef.current?.blur(); stageRef.current?.focus({ preventScroll: true }); releaseInput(); }
-        }}>{tt("键盘")}</button> : null}
-        <button type="button" onClick={requestRemoteDesktopFullscreen} style={{ whiteSpace: "nowrap" }}>{tt("全屏")}</button>
-        {/* Manual clicks start a fresh request and reset the one-retry allowance. */}
-        {!active && !["starting", "waiting", "connecting"].includes(phase) ? <button type="button" data-remote-connect onClick={() => { disconnect(); setTicket(remoteDesktopTicket()); }}>{phase === "idle" ? tt("连接") : tt("重新连接")}</button> : null}
-        <button type="button" onClick={() => { disconnect(); onClose(); }} style={{ whiteSpace: "nowrap" }}>{tt("退出桌面")}</button>
+      <div ref={toolbarRoot} data-remote-toolbar-dock={dock.edge} style={{ position: "absolute", zIndex: 2,
+        ...(dock.edge === "left" || dock.edge === "right" ? { [dock.edge]: "max(8px, env(safe-area-inset-" + dock.edge + "))", top: `clamp(24px, ${dock.offset * 100}%, calc(100% - 24px))`, transform: "translateY(-50%)" }
+          : { [dock.edge]: "max(8px, env(safe-area-inset-" + dock.edge + "))", left: `clamp(24px, ${dock.offset * 100}%, calc(100% - 24px))`, transform: "translateX(-50%)" }) }}>
+        <button type="button" data-remote-toolbar-handle aria-label={tt("远程桌面控制")} aria-expanded={toolbar}
+          onPointerDown={(event) => { event.preventDefault(); releaseInput(); dragging.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false }; ignoreHandleClick.current = false; event.currentTarget.setPointerCapture?.(event.pointerId); }}
+          onPointerMove={(event) => {
+            const drag = dragging.current;
+            if (!drag || drag.id !== event.pointerId) return;
+            if (!drag.moved && Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 6) return;
+            drag.moved = true; ignoreHandleClick.current = true;
+            const w = window.innerWidth, h = window.innerHeight;
+            const distances = { left: event.clientX, right: w - event.clientX, top: event.clientY, bottom: h - event.clientY };
+            const edge = (Object.keys(distances) as Array<keyof typeof distances>).reduce((a, b) => distances[a] <= distances[b] ? a : b);
+            const next = { edge, offset: Math.max(0, Math.min(1, edge === "left" || edge === "right" ? event.clientY / h : event.clientX / w)) };
+            dockRef.current = next; setDock(next);
+          }}
+          onPointerUp={(event) => {
+            if (dragging.current?.moved && positionKey.current) { try { window.localStorage.setItem(positionKey.current, JSON.stringify(dockRef.current)); } catch { /* optional preference */ } }
+            dragging.current = null; event.currentTarget.releasePointerCapture?.(event.pointerId);
+          }}
+          onPointerCancel={() => { dragging.current = null; ignoreHandleClick.current = true; }}
+          onClick={() => { if (ignoreHandleClick.current) { ignoreHandleClick.current = false; return; } releaseInput(); setToolbar(value => !value); }}
+          style={{ width: 32, height: 32, borderRadius: "50%", border: "1px solid #ffffff40", background: "#25282deb", color: "white", touchAction: "none", padding: 0, position: "relative", cursor: "grab" }}>
+          <span aria-hidden="true">O</span><span aria-hidden="true" style={{ position: "absolute", width: 7, height: 7, borderRadius: "50%", right: 0, bottom: 0, background: ended ? "#f87171" : active && !reconnecting && (mediaMode !== "artc" || mediaReady) ? "#4ade80" : "#fbbf24" }} />
+        </button>
+        {toolbar ? <div ref={toolbarPanel} data-remote-toolbar role="dialog" aria-label={tt("远程桌面控制")} style={{ position: "absolute", width: 264, boxSizing: "border-box", maxWidth: "calc(100vw - 64px)", maxHeight: "calc(100dvh - 32px)", overflow: "auto", padding: 12, borderRadius: 12, background: "#191c20f5", fontSize: 12, boxShadow: "0 4px 24px #0006", display: "flex", flexDirection: "column", gap: 10 }}>
+          <strong style={{ overflowWrap: "anywhere" }}>{deviceName}</strong>
+          {active && (mediaMode !== "artc" || mediaReady) ? <span>{tt("已连接")}{frame ? ` · ${frame.width}×${frame.height}` : ""}{!measuring ? ` · ${tt("画面延迟未知")}` : ""}</span> : null}
+          {active && access?.input_allowed === false ? <span data-remote-view-only>{tt("对方仅允许查看")}</span> : null}
+          {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { invalidateMediaFrame(); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
+          {coarse && active ? <button data-remote-keyboard-toggle type="button" aria-pressed={keyboard} onMouseDown={(event) => event.preventDefault()} onClick={() => {
+            const next = !keyboard; setKeyboard(next); inputRef.current?.setAttribute("inputmode", next ? "text" : "none");
+            if (next) inputRef.current?.focus({ preventScroll: true }); else { inputRef.current?.blur(); stageRef.current?.focus({ preventScroll: true }); releaseInput(); }
+          }}>{tt("键盘")}</button> : null}
+          {mediaMode === "artc" ? <label style={{ display: "flex", alignItems: "center", gap: 8 }}><input type="checkbox" data-remote-measure checked={measuring} onChange={event => setMeasuring(event.target.checked)} />{tt("测量延迟")}</label> : null}
+          {measuring ? <small data-remote-measurements>
+            {pictureMeasurements.picture_age_p50_ms !== undefined ? tt("画面延迟 p50/p95：{p50}/{p95} 毫秒", { p50: String(pictureMeasurements.picture_age_p50_ms), p95: String(pictureMeasurements.picture_age_p95_ms) }) : tt("画面延迟未知")}
+            {clockUncertainty !== undefined ? ` ±${Math.ceil(clockUncertainty)} ms` : ""}
+            {pictureMeasurements.input_to_picture_p50_ms !== undefined ? <><br />{tt("输入到画面标记 p50/p95：{p50}/{p95} 毫秒", { p50: String(pictureMeasurements.input_to_picture_p50_ms), p95: String(pictureMeasurements.input_to_picture_p95_ms) })}</> : null}
+          </small> : null}
+          <button type="button" onClick={() => fullscreen ? releaseRemoteDesktopFullscreen() : requestRemoteDesktopFullscreen()}>{tt(fullscreen ? "退出全屏" : "全屏")}</button>
+          {!active && !["starting", "waiting", "connecting", "reconnecting"].includes(phase) && !reconnecting ? <button type="button" data-remote-connect onClick={() => { disconnect(); setTicket(remoteDesktopTicket()); }}>{tt(phase === "idle" ? "连接" : "重新连接")}</button> : null}
+          <button type="button" onClick={() => { disconnect(); onClose(); }}>{tt("退出桌面")}</button>
+          {billing ? <small data-remote-billing style={{ opacity: .65 }}>{tt("按分钟从账户余额扣费 · {price}/分钟 · 已计 {minutes} 分钟", { price: billingPrice(billing), minutes: String(billing.charged_minutes) })}</small> : null}
+        </div> : null}
       </div>
       {agent ? <div data-remote-agent-banner role="status" style={{ position: "absolute", left: "50%", bottom: "max(64px, calc(env(safe-area-inset-bottom) + 56px))", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 12, padding: "8px 12px", borderRadius: 10, background: "rgba(25,28,32,.92)", maxWidth: "calc(100% - 24px)", fontSize: 12, boxShadow: "0 4px 24px #0006" }}>
         <span>{tt(agent.text)}</span>

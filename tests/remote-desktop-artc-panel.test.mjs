@@ -68,18 +68,19 @@ test("consent precedes media negotiation and revocation removes pixels and recei
   assert.equal(view.stopped(), 1);
 });
 
-test("display switch gates input until publisher confirms the selected display AND another frame arrives", async () => {
+test("display switch waits for a decoded frame, independently of late publisher metadata", async () => {
   const view = await mount();
   const displays = [{ display_id: "a", label: "A", width: 1920, height: 1080 }, { display_id: "b", label: "B", width: 1920, height: 1080 }];
   await act(async () => view.handlers().media(media, { state: "publishing", geometry: displays[0], displays }));
   await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+  await view.openToolbar();
   const select = view.screen().querySelector('select[aria-label="显示器"]');
   await act(async () => { select.value = "b"; select.dispatchEvent(new window.Event("change", { bubbles: true })); });
   await settle();
   await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
-  assert.equal(view.input().disabled, true);
+  assert.equal(view.input().disabled, false, "fresh selected decoder output is sufficient");
   await act(async () => view.handlers().media(media, { state: "publishing", geometry: displays[1], displays }));
-  assert.equal(view.input().disabled, true, "publisher telemetry alone is not a rendered frame");
+  assert.equal(view.input().disabled, false, "late publisher metadata cannot hide the picture");
   await act(async () => view.mediaCallbacks().frame(1920, 1080));
   assert.equal(view.input().disabled, false);
 });
@@ -93,6 +94,7 @@ test("reconnect creates a new authorized session and never replays old input", a
   await view.key("keydown", "Enter");
   await act(async () => view.handlers().error("input_ack_unknown"));
   assert.equal(view.input().disabled, true);
+  await view.openToolbar();
   const reconnect = [...view.screen().querySelectorAll("button")].find((button) => button.textContent === "重新连接");
   await act(async () => reconnect.click());
   await settle();
@@ -130,6 +132,7 @@ test("session conflict stops after one request and only reconnect click requests
   assert.equal(requests, 1);
   assert.match(view.screen().textContent, /已有一个正在进行的远程会话/);
   assert.equal(view.negotiations(), 0);
+  await view.openToolbar();
   await act(async () => view.screen().querySelector("[data-remote-connect]").click());
   await settle();
   assert.equal(requests, 2);
@@ -190,6 +193,7 @@ test("capture failure waits for explicit retry and fresh video without replaying
   await settle(1600);
   assert.equal(sessions, 1, "capture failures never automatically reconnect");
   assert.equal(view.input().disabled, true);
+  await view.openToolbar();
   await act(async () => view.screen().querySelector("[data-remote-connect]").click());
   await settle();
   assert.equal(sessions, 2);

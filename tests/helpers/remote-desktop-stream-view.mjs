@@ -40,6 +40,7 @@ export async function mountStream({ pending = false, coarse = false, overrides =
   const view = {
     host, log, client, screen,
     async setAgent(next) { await act(async () => root.render(React.createElement(RemoteDesktopPanel, {deviceId: "d-1", deviceName: "Studio", client, onClose() {}, frameIntervalMs: 5, agent: next}))); },
+    async openToolbar() { if (!screen().querySelector("[data-remote-toolbar]")) await act(async () => screen().querySelector("[data-remote-toolbar-handle]").click()); },
     handlers: () => handlers,
     stage: () => screen().querySelector("[data-remote-stage]"),
     input: () => screen().querySelector("[data-remote-input]"),

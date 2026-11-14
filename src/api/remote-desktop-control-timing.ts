@@ -1,23 +1,23 @@
 /** Same-viewer monotonic intervals, not gateway/native clock subtraction or OS success. */
 export interface RemoteControlTiming {
   seq: number;
-  stage: "accepted" | "completion_watermark";
+  stage: "accepted" | "completion_watermark" | "direct_ack";
   elapsedMs: number;
 }
 export class RemoteControlTimings {
-  private pending = new Map<number, { sent: number; accepted: boolean }>();
+  private pending = new Map<number, { sent: number; accepted: boolean; direct: boolean }>();
   private now: () => number;
   private report: (sample: RemoteControlTiming) => void;
   constructor(now: () => number, report: (sample: RemoteControlTiming) => void) {
     this.now = now; this.report = report;
   }
-  sent(seq: number): void {
+  sent(seq: number, direct = false): void {
     if (!Number.isSafeInteger(seq) || seq < 1) return;
     const sent = this.now();
     if (!Number.isFinite(sent)) return;
     // A known rejection may be retried. Measure the latest actual write only.
     this.pending.delete(seq);
-    this.pending.set(seq, { sent, accepted: false });
+    this.pending.set(seq, { sent, accepted: false, direct });
     while (this.pending.size > 256) this.pending.delete(this.pending.keys().next().value!);
   }
   accepted(seq: number): void {
@@ -25,6 +25,12 @@ export class RemoteControlTimings {
     if (!entry || entry.accepted) return;
     entry.accepted = true;
     this.emit(seq, "accepted", entry.sent);
+  }
+  admittedThrough(seq: number): void {
+    if (!Number.isSafeInteger(seq) || seq < 0) return;
+    for (const [key, entry] of this.pending) if (key <= seq && entry.direct && !entry.accepted) {
+      entry.accepted = true; this.emit(key, "direct_ack", entry.sent);
+    }
   }
   completedThrough(seq: number): void {
     if (!Number.isSafeInteger(seq) || seq < 0) return;

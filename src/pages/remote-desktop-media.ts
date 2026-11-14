@@ -1,6 +1,6 @@
 import { prepareEngine, PUBLISH_STATE, type ArtcEngine } from "../shell/messages/call/engine/sdk";
 import { loadRemoteArtcSdk, type RemoteArtcSdk } from "./remote-desktop-sdk";
-import type { RemoteDesktopDataLane, RemoteMediaCredentials } from "../api/remote-desktop";
+import type { RemoteDesktopDataLane, RemoteDesktopDataMessage, RemoteMediaCredentials } from "../api/remote-desktop";
 import { videoStatSample } from "../api/remote-desktop-quality";
 
 /** A remote viewer owns a separate receive-only engine; never reuse the call singleton. */
@@ -12,6 +12,8 @@ export interface RemoteMediaViewer {
   diagnostics?(): RemoteMediaDiagnosticSnapshot;
 }
 export interface RemoteMediaHandlers {
+  /** Gateway session identity; ARTC channel_id is a separate random identifier. */
+  sessionId?: string;
   state(value: RemoteMediaState, error?: string, status?: number): void;
   frame(width: number, height: number, sample?: { presentation_time_ms?: number; media_time_ms?: number; rtp_timestamp_90?: number }): void;
   renew(): Promise<RemoteMediaCredentials>;
@@ -22,6 +24,7 @@ export interface RemoteMediaHandlers {
   /** Optional measurement hooks; never credentials, tracks, SDP or candidate addresses. */
   timing?(value: RemoteMediaStartupTimings): void;
   diagnostics?(value: RemoteMediaDiagnosticSnapshot): void;
+  publisherStats?(metrics: Record<string, number>): void;
 }
 
 export interface RemoteMediaDiagnostic { blocked_host?: string; sdk_error?: number; renew_reason?: string }
@@ -107,7 +110,9 @@ function recordPeers(): () => void {
     const original = Peer.prototype.setRemoteDescription;
     originalSetRemote = original;
     Peer.prototype.setRemoteDescription = function (this: RTCPeerConnection, ...args: Parameters<RTCPeerConnection["setRemoteDescription"]>) {
+      for (const peer of recordedPeers) if (peer.connectionState === "closed") recordedPeers.delete(peer);
       recordedPeers.add(this);
+      while (recordedPeers.size > 64) recordedPeers.delete(recordedPeers.values().next().value!);
       return original.apply(this, args);
     } as RTCPeerConnection["setRemoteDescription"];
   }
@@ -148,7 +153,7 @@ export async function receiverStats(video: HTMLVideoElement, peers: Iterable<{ g
   if (!ids.size) return [];
   const pending: Promise<unknown>[] = [];
   for (const peer of peers) {
-    if (peer.connectionState === "closed") continue;
+    if (peer.connectionState === "closed") { recordedPeers.delete(peer as RTCPeerConnection); continue; }
     for (const receiver of peer.getReceivers?.() ?? []) {
       if (receiver.track && ids.has(receiver.track.id) && typeof receiver.getStats === "function") pending.push(receiver.getStats().catch(() => null));
     }
@@ -172,6 +177,7 @@ function inboundVideoProgress(reports: unknown[], previous: Map<string, number>)
         // A replacement receiver may restart its counters. A zero snapshot is never traffic.
         if (value > 0 && (before === undefined || value !== before)) progressed = true;
         previous.set(key, value);
+        while (previous.size > 256) previous.delete(previous.keys().next().value!);
       }
     });
   }
@@ -241,13 +247,16 @@ export async function openRemoteMedia(
   // Peer input only when the gateway granted it for this controller and the SDK can carry it.
   const wantsDataChannel = credentials.data_channel_input === true && typeof sdk.dataChannelMessage === "function"
     && typeof engine.setParameter === "function" && typeof engine.sendDataChannelMessage === "function";
-  let laneOpen = false;
+  let laneOpen = false, dataPublished = false;
+  const dataListeners = new Set<(message: RemoteDesktopDataMessage) => void>();
   let synthetic: ReturnType<typeof syntheticScreenTrack> = null;
   const encoder = new TextEncoder();
   const setLane = (open: boolean) => {
     if (open === laneOpen || (open && closed)) return;
     laneOpen = open;
+    if (!open) dataListeners.clear();
     handlers.dataChannel?.(open ? {
+      subscribe(listener) { dataListeners.add(listener); return () => { dataListeners.delete(listener); }; },
       send(payload: string) {
         if (closed || !laneOpen) return false;
         const bytes = encoder.encode(payload);
@@ -267,10 +276,12 @@ export async function openRemoteMedia(
   let statsCalls = 0, statsFinished = 0, statsInFlight = 0, statsHighWater = 0, statsMaxMs = 0;
   let lastStatsAt: number | null = null, lastDecodedAt: number | null = null, decodedFrames = 0;
   let rtc: Partial<RemoteMediaDiagnosticSnapshot> = {};
+  let statsFlight: Promise<unknown[]> | null = null;
   const readStats = (): Promise<unknown[]> => {
+    if (statsFlight) return statsFlight;
     statsCalls++; statsInFlight++; statsHighWater = Math.max(statsHighWater, statsInFlight);
     const sampledAt = now();
-    return receiverStats(video).then((reports) => {
+    statsFlight = receiverStats(video).then((reports) => {
       try {
         const sample = videoStatSample(reports as Parameters<typeof videoStatSample>[0]);
         if (sample) {
@@ -285,7 +296,8 @@ export async function openRemoteMedia(
         }
       } catch { /* telemetry must not turn a successful stats read into a media failure */ }
       return reports;
-    }).finally(() => { statsFinished++; statsInFlight--; lastStatsAt = now(); statsMaxMs = Math.max(statsMaxMs, lastStatsAt - sampledAt); });
+    }).finally(() => { statsFlight = null; statsFinished++; statsInFlight--; lastStatsAt = now(); statsMaxMs = Math.max(statsMaxMs, lastStatsAt - sampledAt); });
+    return statsFlight;
   };
   const diagnosticSnapshot = (): RemoteMediaDiagnosticSnapshot => {
     const at = now();
@@ -348,8 +360,7 @@ export async function openRemoteMedia(
     decodedFrames++; lastDecodedAt = now(); mark("first_decoded_frame_ms");
     lastFrame = Date.now();
     lastInbound = lastFrame;
-    // Notify on every decoded frame so display-switch geometry can gate input even
-    // when two displays happen to have identical encoded dimensions.
+    // Every decoded frame establishes the picture and input mapping; publisher metadata may be late.
     if (sample) handlers.frame(video.videoWidth, video.videoHeight, sample);
     else handlers.frame(video.videoWidth, video.videoHeight);
     if (!playing) { playing = true; clearTimeout(subscribeFailure); subscribeFailure = undefined; lowerPlayoutDelay(video); handlers.state("playing"); }
@@ -418,9 +429,34 @@ export async function openRemoteMedia(
   on("remoteTrackAvailableNotify", (uid: string, _audio: number, track: number) => subscribe(uid, track));
   on("remoteUserOnLineNotify", (uid: string) => subscribe(uid));
   on("remoteUserOffLineNotify", (uid: string) => {
-    if (uid === credentials.publisher_id && !closed) { playing = false; handlers.state("reconnecting"); }
+    if (uid === credentials.publisher_id && !closed) { playing = false; setLane(false); handlers.state("reconnecting"); }
   });
-  on("dataPublishStateChanged", (_previous: number, next: number) => { if (!closed) setLane(next === PUBLISH_STATE.published); });
+  // SDK 7.3.8 index.d.ts:1515: dataChannelMsg(uid, AliRtcDataChannelMsg{type,data}).
+  on("dataChannelMsg", (uid: string, message: { type?: number; data?: ArrayBuffer }) => {
+    if (closed || uid !== credentials.publisher_id || message?.type !== 2 || !(message.data instanceof ArrayBuffer) || message.data.byteLength > 1024) return;
+    let value: RemoteDesktopDataMessage;
+    try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.data)); } catch { return; }
+    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_ack", "rd.capture", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
+    if (value.t === "rd.pong" && (!Number.isFinite(value.t_v) || !Number.isFinite(value.device_wall_ms))) return;
+    if (value.t === "rd.input_ack" && (!Number.isSafeInteger(value.acked_seq) || value.acked_seq < 0)) return;
+    if (value.t === "rd.publisher_stats") {
+      // Allow only the fixed numeric publisher fields, never arbitrary text or screen content.
+      const keys = ["push_buffer_full", "push_backoff_ms", "capture_fps", "push_fps", "policy_level", "policy_seq", "policy_fps", "policy_kbps", "policy_width", "policy_height", "sdk_encode_fps", "sdk_sent_fps", "pushes", "push_errors"];
+      const raw = value.metrics;
+      value = { ...value, metrics: Object.fromEntries(keys.filter(key => typeof raw?.[key] === "number" && Number.isFinite(raw[key]) && raw[key] >= 0).map(key => [key, raw[key]])) };
+      handlers.publisherStats?.(value.metrics);
+    }
+    // Capture metadata is intentionally not turned into displayed-picture age (C6).
+    if (value.t === "rd.capture") return;
+    for (const listener of dataListeners) listener(value);
+  });
+  on("dataPublishStateChanged", (_previous: number, next: number) => {
+    if (!closed) { dataPublished = next === PUBLISH_STATE.published; setLane(dataPublished); }
+  });
+  // index.d.ts:2361: subscribed=3, reconnecting=4. A lost inbound receipt channel is a real DC loss.
+  on("dataSubscribeStateChanged", (uid: string, _previous: number, next: number) => {
+    if (!closed && uid === credentials.publisher_id) setLane(dataPublished && next === 3);
+  });
   on("connectionStatusChange", (status: number) => {
     if (closed) return;
     if (status === 5) fail("media_connection_failed");
@@ -468,7 +504,7 @@ export async function openRemoteMedia(
     // index.d.ts ParameterData: documented publisher-side data channel; it rides the synthetic track below.
     let dataChannelEnabled = false;
     if (wantsDataChannel) {
-      try { engine.setParameter!(JSON.stringify({ data: { enablePubDataChannel: true, enableSubDataChannel: false } })); dataChannelEnabled = true; }
+      try { engine.setParameter!(JSON.stringify({ data: { enablePubDataChannel: true, enableSubDataChannel: true } })); dataChannelEnabled = true; }
       catch { /* input stays on the gateway path */ }
     }
     await untilAborted(engine.publishLocalAudioStream(false), lifetime.signal);

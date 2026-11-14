@@ -200,16 +200,32 @@ export class RemoteInputScheduler {
     this.tick();
   }
 
+  /** A proved direct lane has its own window; old WS outcomes are never replayed. */
+  usePeerCredits(): void {
+    if (this.handoff) return;
+    for (const [seq, entry] of this.outstanding) if (entry.lane !== "data_channel") this.outstanding.delete(seq);
+    this.retries = [];
+  }
+
+  /** C6 direct admission only: never changes the execution fence used by handback. */
+  peerAcknowledgedThrough(seq: number): void {
+    if (!Number.isSafeInteger(seq) || seq < 0 || seq > this.sequence) return;
+    this.peerAdmission = Math.max(this.peerAdmission, seq);
+    for (const [key, entry] of this.outstanding) if (entry.lane === "data_channel" && key <= seq) this.outstanding.delete(key);
+    this.tick();
+  }
+
   /**
    * Peer receipts stopped: forget its unretired writes (never replayed) and continue on WS behind
    * a release_all barrier. The host rejects a late lower-seq peer write once a higher WS seq has
    * settled into the shared sequence (native 2675+, same session/generation).
    */
-  abandonPeer(): void {
+  abandonPeer(discardQueued = false): void {
     if (this.ended) return;
     for (const [seq, entry] of this.outstanding) if (entry.lane === "data_channel") this.outstanding.delete(seq);
     this.peerAdmission = Math.max(this.peerAdmission, this.peerWritten);
     this.peerCompleted = undefined; this.peerUpgradeFence = 0; this.completionStalledSince = undefined;
+    if (discardQueued) { this.queue = []; this.retries = []; this.heldKeys.clear(); this.heldButtons.clear(); }
     this.queue.unshift({ action: { kind: "release_all" }, barrier: true });
     this.tick();
   }
@@ -320,7 +336,7 @@ export class RemoteInputScheduler {
       if (result === "unknown") { this.fail("input_ack_unknown"); return; }
       const lane = result === true ? "websocket" : result.lane;
       if (lane === "data_channel") this.peerWritten = Math.max(this.peerWritten, seq);
-      else { this.gatewayWritten = Math.max(this.gatewayWritten, seq); this.gatewayUnretired.push(seq); }
+      else { this.gatewayWritten = Math.max(this.gatewayWritten, seq); this.gatewayUnretired.push(seq); if (this.gatewayUnretired.length > 256) this.gatewayUnretired.splice(0, this.gatewayUnretired.length - 256); }
       if (head.barrier && this.handoff) this.handoff.seq = seq;
       this.outstanding.set(seq, { action, seq, barrier: head.barrier, lane, sentAt: now });
       if (this.retries.length) this.retries.shift(); else this.queue.shift();

@@ -209,6 +209,7 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
   });
+  await act(async () => document.querySelector("[data-remote-toolbar-handle]").click());
   const panel = document.querySelector("[data-oceanleo-remote-desktop]");
   assert.ok(panel, "面板打开");
   const panelText = [panel.textContent, panel.querySelector("img")?.getAttribute("alt"), panel.querySelector("[data-remote-stage]")?.getAttribute("aria-label"), panel.querySelector("[data-remote-input]")?.getAttribute("aria-label")].join("\n");

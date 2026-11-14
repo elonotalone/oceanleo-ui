@@ -159,15 +159,15 @@ test("media milestones expose load/prepare/join/frame/cleanup on one monotonic c
   assert.deepEqual(h.calls, ["join", "leave", "destroy"]);
 });
 
-test("media diagnostics measure concurrent pending stats without changing baseline overlap or watchdog policy", async (t) => {
+test("media diagnostics share one pending stats read across quality callers and watchdog", async (t) => {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Date.now() });
   const h = mediaHarness(t, true), viewer = await h.start();
   void viewer.stats(); void viewer.stats();
   t.mock.timers.tick(1000);
   const snapshot = viewer.diagnostics(); numeric(snapshot);
-  assert.equal(snapshot.stats_inflight_count, 3); assert.equal(snapshot.stats_inflight_high_water, 3);
-  assert.equal(snapshot.stats_calls_total, 3); assert.equal(snapshot.recorded_peer_count, 1);
+  assert.equal(snapshot.stats_inflight_count, 1); assert.equal(snapshot.stats_inflight_high_water, 1);
+  assert.equal(snapshot.stats_calls_total, 1); assert.equal(snapshot.recorded_peer_count, 1);
   t.mock.timers.tick(1000);
-  assert.equal(viewer.diagnostics().stats_calls_total, 3, "watchdog still single-flights; explicit quality calls above remain separate");
+  assert.equal(viewer.diagnostics().stats_calls_total, 1, "watchdog and quality callers share one pending native stats request");
   await viewer.close();
 });

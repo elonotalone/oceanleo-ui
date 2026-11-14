@@ -70,6 +70,7 @@ export class RemoteTransportDiagnostics {
     while (this.peer.size > 256) { this.peer.delete(this.peer.keys().next().value!); this.evicted++; }
   }
   control(sample: RemoteControlTiming): void {
+    if (sample.stage === "direct_ack") return; // Peer admission is measured by observe(), never as WS completion.
     if (!Number.isFinite(sample.elapsedMs) || sample.elapsedMs < 0) return;
     const prefix = sample.stage === "accepted" ? "ws_accepted" : "ws_completed";
     this.add(prefix, sample.elapsedMs);
