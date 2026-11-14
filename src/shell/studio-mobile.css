@@ -1,0 +1,45 @@
+/* One mounted operation tree at every width. Keep SplitWorkspace's providers,
+   panels and state; phone layout needs CSS, not a second rendering layer. */
+.leo-studio { min-width: 0; max-width: 100%; }
+@media (max-width: 767px) {
+  .leo-studio { overflow-x: clip; height: auto !important; }
+  .leo-studio[data-workspace-split] {
+    height: auto !important;
+    min-height: calc(100dvh - 56px);
+    flex-direction: column !important;
+    width: 100%;
+    gap: 12px;
+  }
+  .leo-studio [data-workspace-pane] {
+    flex-basis: auto !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .leo-studio [data-workspace-pane-state="closed"] { display: none; }
+  .leo-studio [data-workspace-pane="left"] { overflow: visible; }
+  .leo-studio [data-workspace-pane="left"] > div:not([data-pane-header]),
+  .leo-studio [data-workspace-pane="left"] > div > div:not(.hidden),
+  .leo-studio .leo-studio-ops {
+    height: auto;
+    overflow: visible;
+    flex: none;
+    min-width: 0;
+    max-width: 100%;
+  }
+  .leo-studio .leo-studio-ops { overflow-wrap: anywhere; }
+  .leo-studio .leo-studio-ops :is(input, select, textarea) { min-width: 0; max-width: 100%; font-size: 16px; }
+  .leo-studio .leo-studio-ops :is(button, input:not([type="checkbox"]):not([type="radio"]), select) { min-height: 44px; }
+  .leo-studio .leo-studio-ops :is(button[type="submit"], [data-leo-button="primary"]) {
+    position: sticky;
+    bottom: 12px;
+    z-index: 10;
+  }
+  .leo-studio [data-studio-run] { position: sticky; bottom: 12px; z-index: 10; }
+  .leo-studio [data-workspace-pane="main"][data-workspace-pane-state="open"] {
+    min-height: 360px;
+    height: min(70dvh, 640px) !important;
+    flex-shrink: 0;
+  }
+  .leo-studio [role="separator"][aria-orientation="vertical"] { display: none; }
+}

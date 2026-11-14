@@ -26,6 +26,7 @@
 import { useMemo, type ReactNode } from "react";
 import { SplitWorkspace, type SplitLibraryConfig } from "./SplitWorkspace";
 import { useUI } from "../i18n/ui/useUI";
+import "./studio-mobile.css";
 
 export interface StudioProps {
   /** 左侧操作列内容（通常是若干 <StudioSection> + 底部主按钮）。 */
@@ -91,18 +92,18 @@ export function Studio({
   return (
     <SplitWorkspace
       left={
-        <div className="v-scroll-stable h-full space-y-3 overflow-y-auto px-4 py-4">{ops}</div>
+        <div className="leo-studio-ops v-scroll-stable h-full space-y-3 overflow-y-auto px-4 py-4">{ops}</div>
       }
       // 宗旨 v11：右栏不再外包一层带内边距的 div——canvas（ResultCanvas）自己挂右栏
       // 标题位、自管内边距与滚动，避免「框中框」。canvas 直接填右栏 body。
-      right={<div className="flex h-full min-h-0 flex-col">{canvas}</div>}
+      right={<div className="leo-studio-result flex h-full min-h-0 flex-col">{canvas}</div>}
       defaultRatio={initialRatio}
       storageKey={storageKey}
       leftLabel={opsLabel ?? tt("操作台")}
       rightLabel={canvasLabel ?? tt("结果")}
       accent={accent}
       headerHeight={headerHeight}
-      className={className}
+      className={`leo-studio ${className}`}
       library={library}
       soloMaxWidth={soloMaxWidth}
     />

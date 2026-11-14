@@ -1737,7 +1737,7 @@ export function FunctionAgentChat({
             </FillNonceProvider>
           </div>
           {stickyAction != null && (
-            <div className="relative shrink-0">
+            <div data-studio-run className="relative shrink-0">
               {/* 半透明渐隐遮罩：从透明 → 白，盖住滚动内容与按钮之间的缝隙（不露输入框）。
                   高度收窄到 4（16px）并压在补出的 pb-8 空白上，卡片本体不会被吃掉。 */}
               <div
