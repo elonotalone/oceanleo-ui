@@ -767,7 +767,7 @@ export function AnchoredPopover({
       anchor: anchor ?? undefined,
       onDismiss: () => onCloseRef.current("outside"),
     });
-    return () => dismissHostedPanel?.(popoverId);
+    return () => dismissHostedPanel?.(popoverId, false);
   }, [anchorRef, ariaLabel, ariaLabelledBy, dismissHostedPanel, hosted, open, openHostedPanel, popoverId]);
   useLayoutEffect(() => {
     if (!hosted || !open || !updateHostedPanel) return;

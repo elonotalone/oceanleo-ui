@@ -62,6 +62,8 @@ const { PdfSignatureDialog } = await compiled("src/shell/media-editors/PdfSignat
 moduleOverrides.delete("src/lib/auth/client.ts");
 const { PdfSelectionBar, PdfToolPalette } = await compiled("src/shell/media-editors/PdfSelectionBar.tsx");
 const { SelectionToolbar } = await compiled("src/shell/SelectionToolbar.tsx");
+const { EditBarRow } = await compiled("src/shell/FloatingContextToolbar.tsx");
+const { buildFabricImageToolbarControls } = await compiled("src/shell/image-editor/fabric-image-toolbar-controls.ts");
 const { AnchoredPopover } = await compiled("src/shell/anchored-popover.tsx");
 const { gridUniverSelectionContext } = await compiled("src/shell/doc-editors/grid-univer/stage-plan.ts");
 moduleOverrides.set("src/shell/plugin-chrome/agent-drawer-panel.tsx",dataModule(`import React from ${react}; export function createPluginAgentDrawer(){return {id:'agent',label:'AI',content:React.createElement('div',{'data-chrome-agent':true},'AI')}}`));
@@ -90,19 +92,19 @@ const textButton = (root, label) => [...root.querySelectorAll("button")].find(no
 const floating = () => document.querySelector("[data-edit-bar-floating-panel]");
 const currentBody = () => floating()?.querySelector('[data-edit-bar-panel-current="true"]');
 const item = { id: "a", artifactId: "a", kind: "document", title: "Document", meta: {} };
-function Harness({ body, id = "editor-global", adapterId = "richdoc", onReady, materials, toolbar, stageContent }) {
+function Harness({ body, id = "editor-global", adapterId = "richdoc", onReady, materials, toolbar, stageContent, adapterInput }) {
   const pane = useWorkspacePane(); const stageRef = useRef(null); const layerRef = useRef(null);
-  const adapter = useMemo(() => ({ id: adapterId, label: "Editor", drawers: [{ id, label: "插入", icon: "add", content: body }], upload: { onFiles(){} } }), [adapterId, body, id]);
+  const adapter = useMemo(() => adapterInput ?? ({ id: adapterId, label: "Editor", drawers: [{ id, label: "插入", icon: "add", content: body }], upload: { onFiles(){} } }), [adapterId, body, id, adapterInput]);
   const panels = useInlineAdvancedPanels({ adapter, item, siteId: "oceanleo", accent: "#456", ownerId: "test-editor", pluginThemeId: "richdoc", workbenchMaterials: materials ?? null, showWorkspaceDetail: pane?.showDetail, clearWorkspaceDetail: pane?.clearDetail, workspaceLeftHidden: pane?.leftHidden, ownedWorkspaceDetailId: pane?.detail?.ownerId === "test-editor" ? pane.detail.id : null, onLocalUpload: () => onReady?.upload?.() });
   const library = useInlineLibraryPanels({ panels, item, siteId: "oceanleo", mineLabel: "我的库", activateMineItem: async () => ({ok:true}) });
   const layout = useMemo(() => ({ hostPanelVisible: Boolean(panels.floatingPanels.active), editorToolActive: Boolean(panels.floatingPanels.active), activeDrawerId: panels.activeDrawerId, activeTransientPanelId: panels.transientPanel?.id ?? "", openDrawer: panels.openDrawer, openTransientPanel: panels.openTransientPanel, updateTransientPanel: panels.updateTransientPanel, closeDrawer: panels.closeDrawer }), [panels]);
   if (typeof onReady === "function") onReady({ panels, library, pane });
   return React.createElement(EditBarPanelContext.Provider,{value:panels.floatingPanels}, React.createElement(AdvancedLayoutContext.Provider, { value: layout }, React.createElement("div", { ref: layerRef, "data-edit-bar-layer-root":true },
     React.createElement("div", { "data-workspace-edit-bar":true }, toolbar,
-      React.createElement(EditBarDocumentSegment, { actions: [], onTrigger(){}, drawers: panels.editBarDrawers, activeDrawerId: library.openDrawerId, onToggleDrawer: library.toggleDrawer }),
+      React.createElement(EditBarDocumentSegment, { actions: adapter.actions ?? [], onTrigger(action,anchor){ if(action.panelId) panels.openDrawer(action.panelId,undefined,anchor); else action.onTrigger?.(); }, drawers: panels.editBarDrawers, activeDrawerId: library.openDrawerId, onToggleDrawer: library.toggleDrawer }),
       React.createElement("button", { "data-assets-button": true, onClick: e => library.openLibraryPanel("materials", e.currentTarget) }, "素材库"),
       React.createElement("button", { "data-ai-button": true, onClick: () => panels.openDrawer("agent") }, "AI")),
-    React.createElement("div", { ref:stageRef, "data-editor-canvas": true }, stageContent ?? "Canvas"),
+    React.createElement("div", { ref:stageRef, "data-editor-canvas": true }, stageContent ?? adapterInput?.stage ?? "Canvas"),
     React.createElement(EditBarFloatingPanel, { controller:panels.floatingPanels, containerRef:stageRef, editBarRef:layerRef, pluginThemeId:"richdoc" }),
     panels.fallbackDetail && React.createElement("aside", null, panels.fallbackDetail.content))));
 }
@@ -300,4 +302,94 @@ test("PDF tool colors use the floating host, apply colors, and outside close pre
   const stageContent=React.createElement(PdfToolPalette,{inline:true,bridge,activeTool:'highlight',triggerId:'editor-global'});
   const m=await mount(React.createElement(Harness,{body:null,stageContent,adapterId:'pdf'}));
   try{assert.equal(floating()?.dataset.editBarFloatingPanel,'pdf-tool-palette-highlight');await click(currentBody().querySelector('[role="radio"][aria-label="#597CE2"]'));assert.equal(changes[0].tool,'highlight');assert.equal(changes[0].patch.strokeColor,'#597CE2');await act(async()=>document.body.dispatchEvent(new MouseEvent('pointerdown',{bubbles:true})));assert.equal(floating(),null);assert.equal(toolChanges,0,'closing a palette must not turn off the active drawing tool');}finally{await m.destroy();}
+});
+
+
+// Browser clicks include pointer/mouse events and native focus. Existing click-only
+// tests never mounted conditionally opened controls through Strict Mode replay.
+async function browserClick(target) {
+  assert.ok(target, "browser click target exists");
+  await act(async () => {
+    const pointer = new MouseEvent("pointerdown", { bubbles:true, cancelable:true, button:0 });
+    const pointerAllowed = target.dispatchEvent(pointer);
+    if (pointerAllowed && target.dispatchEvent(new MouseEvent("mousedown", {bubbles:true,cancelable:true,button:0}))) target.focus();
+  });
+  await act(async () => {
+    target.dispatchEvent(new MouseEvent("pointerup", {bubbles:true,cancelable:true,button:0}));
+    target.dispatchEvent(new MouseEvent("mouseup", {bubbles:true,cancelable:true,button:0}));
+    target.dispatchEvent(new MouseEvent("click", {bubbles:true,cancelable:true,button:0,detail:1}));
+  });
+}
+const strict = children => React.createElement(React.StrictMode,null,children);
+
+test("browser regression: More properties survives StrictMode effect replay and closes on its next real click",async()=>{
+  const context={...gridUniverSelectionContext({revision:1,kind:"grid-cell",tt:s=>s}),bar:"text"};
+  const toolbar=React.createElement(SelectionToolbar,{context,onCommand(){}});
+  const m=await mount(strict(React.createElement(Harness,{body:null,toolbar,adapterId:"grid"})));
+  try{
+    const more=[...m.node.querySelectorAll("button")].find(b=>(b.getAttribute("aria-label")??'').includes("更多"));
+    assert.equal(more.getAttribute("aria-expanded"),"false");
+    await browserClick(more);
+    assert.equal(more.getAttribute("aria-expanded"),"true");
+    assert.ok(floating());assert.ok(currentBody().textContent.includes("数字格式"));
+    await browserClick(more);assert.equal(more.getAttribute("aria-expanded"),"false");assert.equal(floating(),null);
+    await act(async()=>new Promise(requestAnimationFrame));assert.equal(document.activeElement,more);
+  }finally{await m.destroy();}
+});
+
+test("browser regression: narrow edit-bar More keeps the folded Insert drawer reachable in StrictMode",async()=>{
+  const originalRect=window.HTMLElement.prototype.getBoundingClientRect;
+  window.HTMLElement.prototype.getBoundingClientRect=function(){if(this.hasAttribute('data-edit-bar-document-measure')) return rect(600,90,1100,40);return originalRect.call(this);};
+  let api;
+  const segment=React.createElement('button',{'data-folded-insert':true,onClick:e=>api.panels.openDrawer('editor-global',undefined,e.currentTarget)},'Insert');
+  const toolbar=React.createElement(EditBarRow,{controller:{},documentSegment:segment,assistant:null},React.createElement('span',null,'Selection'));
+  const m=await mount(strict(React.createElement(Harness,{body:React.createElement(RichDocControls,{editor:{editor:null}}),toolbar,onReady:v=>{api=v;}})));
+  try{
+    const more=m.node.querySelector('[data-edit-bar-document-more] button');assert.ok(more);
+    await browserClick(more);assert.equal(more.getAttribute('aria-expanded'),'true');assert.ok(floating());
+    await browserClick(currentBody().querySelector('[data-folded-insert]'));
+    assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.ok(currentBody().textContent.includes('文档来源'));
+    assert.ok(floating().querySelector('[data-edit-bar-panel-back]'));
+  }finally{await m.destroy();window.HTMLElement.prototype.getBoundingClientRect=originalRect;}
+});
+
+test("browser regression: PDF Find and Signature stay open after their edit-bar click under StrictMode",async()=>{
+  const originalContext=window.HTMLCanvasElement.prototype.getContext;
+  window.HTMLCanvasElement.prototype.getContext=()=>({clearRect(){},fillText(){}});
+  const bridge={stopFind(){},find:async()=>({total:0,active:-1})};
+  function PdfTools(){
+    const [find,setFind]=React.useState(false),[signature,setSignature]=React.useState(false);
+    const actions=[{id:'pdf-tool-find',label:'查找',group:'edit',onTrigger:()=>setFind(v=>!v)},{id:'pdf-tool-signature',label:'签名',group:'edit',onTrigger:()=>setSignature(v=>!v)}];
+    const stage=React.createElement(React.Fragment,null,
+      find&&React.createElement(EditBarPanelRequest,{id:'pdf-find',label:'查找',triggerSelector:'[data-workspace-action-id="pdf-tool-find"]',onClose:()=>setFind(false)},React.createElement(PdfFindBar,{inline:true,bridge,onClose:()=>setFind(false)})),
+      signature&&React.createElement(EditBarPanelRequest,{id:'pdf-signature',label:'签名',triggerSelector:'[data-workspace-action-id="pdf-tool-signature"]',onClose:()=>setSignature(false)},React.createElement(PdfSignatureDialog,{inline:true,onPlace(){},onClose:()=>setSignature(false)})));
+    return React.createElement(Harness,{adapterInput:{id:'pdf',label:'PDF',actions,stage},body:null});
+  }
+  const m=await mount(strict(React.createElement(PdfTools)));
+  try{
+    for(const [id,panel,selector] of [['find','pdf-find','[data-pdf-find-bar]'],['signature','pdf-signature','[data-pdf-signature-dialog]']]){
+      const button=m.node.querySelector(`[data-workspace-action-id="pdf-tool-${id}"]`);
+      await browserClick(button);assert.equal(floating()?.dataset.editBarFloatingPanel,panel);assert.ok(currentBody().querySelector(selector));
+      await browserClick(button);assert.equal(floating(),null,'same PDF edit-bar action closes its panel');
+      await act(async()=>new Promise(requestAnimationFrame));assert.equal(document.activeElement,button);
+      await browserClick(button);assert.equal(floating()?.dataset.editBarFloatingPanel,panel);
+      await act(async()=>document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(floating(),null);
+    }
+  }finally{await m.destroy();window.HTMLCanvasElement.prototype.getContext=originalContext;}
+});
+
+test("browser regression: the real image Replace control closes its material panel on the second click",async()=>{
+  const controls=buildFabricImageToolbarControls({selected:{id:'image',kind:'image',locked:false,shadow:{enabled:false}},sourceReady:true,tt:s=>s});
+  const replace=controls.find(control=>control.id==='replace');assert.ok(replace);
+  const context={version:1,kind:'image-object',bar:'image',id:'image',controls:[replace]};
+  const toolbar=React.createElement(SelectionToolbar,{context,onCommand(){}});
+  let api;
+  const m=await mount(strict(React.createElement(Harness,{body:null,toolbar,adapterId:'image',onReady:v=>{api=v;},materials:{actions:['insert','replace'],perform(){}}})));
+  try{
+    const trigger=[...m.node.querySelectorAll('button')].find(b=>(b.getAttribute('aria-label')??'').includes('替换'));
+    await browserClick(trigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'materials');
+    assert.equal(api.panels.activeMaterialAction,'replace');
+    await browserClick(trigger);assert.equal(floating(),null);assert.equal(api.panels.activeMaterialAction,'insert','closing Replace restores the normal insert action for later drops');
+    await browserClick(trigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'materials');
+  }finally{await m.destroy();}
 });

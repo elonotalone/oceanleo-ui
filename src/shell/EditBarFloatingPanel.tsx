@@ -61,12 +61,18 @@ export function useEditBarPanelStack() {
     const trigger = current[0]?.trigger;
     if (trigger?.isConnected) trigger.focus({ preventScroll: true });
   }, [replace]);
-  const dismiss = useCallback((id: string) => {
+  // Effect cleanup releases its registration. It must not tell the source
+  // control to close. Restore focus only if that release still owns the next
+  // frame, so Strict Mode replay cannot pull focus out of a reopened panel.
+  const dismiss = useCallback((id: string, notify = true) => {
     const current = panelsRef.current;
     const index = current.findIndex(panel => panel.id === id);
     if (index < 0) return;
-    replace(current.slice(0, index), current.slice(index));
-    requestAnimationFrame(() => current[index]?.trigger?.focus({ preventScroll: true }));
+    const next = current.slice(0, index);
+    replace(next, notify ? current.slice(index) : []);
+    requestAnimationFrame(() => {
+      if (panelsRef.current === next) current[index]?.trigger?.focus({ preventScroll: true });
+    });
   }, [replace]);
   const open = useCallback((panel: EditBarPanel) => {
     const openingAnchor = panel.anchor ?? eventAnchor.current;
@@ -222,7 +228,7 @@ export function EditBarPanelRequest({ id, label, triggerSelector, onClose, child
     if (!open) return;
     const scope = markerRef.current?.closest("[data-edit-bar-layer-root], [data-plugin-chrome]") ?? markerRef.current?.closest("[data-inline-editor]");
     open({ id, label, content: contentRef.current, anchor: scope?.querySelector<HTMLElement>(triggerSelector) ?? undefined, onDismiss: () => closeRef.current() });
-    return () => dismiss?.(id);
+    return () => dismiss?.(id, false);
   }, [dismiss, id, label, open, triggerSelector]);
   useLayoutEffect(() => { update?.(id, children); }, [children, id, update]);
   return <><span hidden ref={markerRef} />{host ? null : children}</>;

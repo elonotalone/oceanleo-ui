@@ -116,7 +116,13 @@ export function useSelectionInspectorHost({
         }
         return;
       }
-      closeFallback();
+      // Toggle the shared drawer before forwarding a new request. Clearing it
+      // unconditionally would turn a second Replace click into close-then-open.
+      if (sharedPanels?.panels.some(panel => panel.id === panelId)) {
+        sharedPanels.close();
+        return;
+      }
+      if (!sharedPanels) closeFallback();
       (onOpenPanel || layout?.openDrawer)?.(panelId, panelAction);
     },
     [
