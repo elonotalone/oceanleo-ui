@@ -196,13 +196,18 @@ export function InlineAdvancedWorkbenchShell({
 
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
-  const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false;
+  const room = adapter.collab?.room;
+  const roomMaySave = adapter.persistence?.destination === "local-device" || !room || room.status === "denied" || room.status === "disabled" || room.isSaver;
+  const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false && roomMaySave;
   const materialKey =
     adapter.persistence?.userEditKey || advancedRootItemId(item) || item.id;
   const autoSave = useAdvancedAutoSave({
     // Website keeps dirty for close guards but disables observe-autosave so a
     // pending visual draft is not save→auto-Applied out from under Apply.
     key: materialKey,
+    writer: hostAutoSaveEnabled,
+    shared: Boolean(adapter.collab?.room),
+    room: adapter.collab?.room,
     dirty: hostAutoSaveEnabled ? editorDirty : false,
     revision: editRevision,
     flush: adapter.persistence?.flush,

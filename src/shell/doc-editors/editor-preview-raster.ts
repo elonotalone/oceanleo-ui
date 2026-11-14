@@ -1,3 +1,4 @@
+import { yieldToEditor } from "../editor-publish-yield";
 "use client";
 
 // ============================================================================
@@ -383,6 +384,7 @@ export async function renderRichDocPreviewPng(
   json: unknown,
   title: string,
 ): Promise<Blob | null> {
+  await yieldToEditor();
   const lines = richDocPreviewLines(json);
   const height = Math.round(PREVIEW_WIDTH * (297 / 210));
   const target = createRaster(PREVIEW_WIDTH, height);
@@ -404,7 +406,9 @@ export async function renderRichDocPreviewPng(
     }
     cursor += 16;
   }
+  let sliceStart = performance.now();
   for (const line of lines) {
+    if (performance.now() - sliceStart >= 8) { await yieldToEditor(); sliceStart = performance.now(); }
     if (cursor > canvas.height - margin) break;
     context.fillStyle = line.heading ? "#0f172a" : "#334155";
     context.font = previewFont(line.heading ? 32 : 24, line.heading);

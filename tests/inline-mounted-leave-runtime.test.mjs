@@ -21,12 +21,12 @@ const stubs = {
   "./InlineAdvancedWorkbenchHeader": dataModule(`${jsx} export function InlineAdvancedWorkbenchHeader(p){return jsxs("div",{children:[jsx("button",{"data-close-editor":true,onClick:p.onClose,children:"close"}),jsx("button",{"data-back-editor":true,onClick:p.onBack,children:"back"}),jsx("span",{"data-save-state":p.autoSaveState,children:p.autoSaveError})]});}`),
   "./inline-editor-mine-panel": noop("InlineEditorMinePanel"),
   "./inline-advanced-workbench-drop": dataModule('const drop={dropMessage:"",performUpload:async()=>{},handleDrop(){}};export function useInlineAdvancedWorkbenchDrop(){return drop;}'),
-  "./use-inline-advanced-panels": dataModule('const panels={drawers:[],editBarDrawers:[],isPanelOpen(){return false;},activeDrawerId:"",openDrawer(){},openTransientPanel(){},updateTransientPanel(){},closeDetail(){},closeDrawer(){}};export function useInlineAdvancedPanels(){return panels;}'),
+  "./use-inline-advanced-panels": dataModule('const panels={floatingPanels:{active:null,subscribe(){return ()=>{};},snapshot(){return null;},close(){}},drawers:[],editBarDrawers:[],isPanelOpen(){return false;},activeDrawerId:"",openDrawer(){},openTransientPanel(){},updateTransientPanel(){},closeDetail(){},closeDrawer(){}};export function useInlineAdvancedPanels(){return panels;}'),
   "./inline-advanced-shell-parts": dataModule('export function HiddenUploadInput(){return null;}export function StageNoticeCorner(){return null;}export function useEditBarDockPresentation(){return {};}export function FallbackDetailAside(){return null;}export function SelectionPresenceProbe(p){return p.children;}const pages=[{id:"normal",kind:"main"}];export function usePluginPagesForAdapter(){return pages;}'),
   "./advanced-session-context": dataModule('export function useAdvancedSession(){return null;}'),
   "./workbench-material-provider": dataModule('export function useWorkbenchMaterials(){return null;}'),
   "./SplitWorkspace": dataModule('export function useRightPaneSlot(){return null;}export function useWorkspacePane(){return null;}'),
-  "./plugin-theme": dataModule(`import {createContext} from ${JSON.stringify(react)};export const PluginThemePortalContext=createContext(null);export function usePluginThemePortal(){return null;}export function pluginThemeIdForAdapter(){return null;}export function pluginWorkbenchStyle(){return {};}const theme={};export function usePluginTheme(){return theme;}`),
+  "./plugin-theme": dataModule(`import {createContext} from ${JSON.stringify(react)};export const PluginThemePortalContext=createContext(null);export function PluginThemeScope({children}){return children;}export function usePluginThemePortal(){return null;}export function pluginThemeIdForAdapter(){return null;}export function pluginWorkbenchStyle(){return {};}const theme={};export function usePluginTheme(){return theme;}`),
   "./plugin-chrome/EditBarDocumentSegment": noop("EditBarDocumentSegment"),
   "./plugin-chrome/plugin-pages": dataModule('export function editBarVisibleOnPage(){return false;}'),
   "./plugin-chrome/plugin-page-store": dataModule('const page={pageId:"normal"};export function usePluginPage(){return page;}'),
@@ -125,4 +125,14 @@ for (const scenario of RECEIPT_CASES) test(`real Inline receipt adoption: ${scen
   } finally {
     await act(async () => { root.unmount(); resetBackgroundSaverForTests(); }); container.remove(); resetUserEditSession(initialItem.key);
   }
+});
+
+test('real Inline applies the room writer gate even when an editor advertises autoSave true',async()=>{
+ const {createRoot}=await import('react-dom/client');const {Doc}=await import('yjs');const room={doc:new Doc(),isSaver:false,status:'synced'};
+ const item={id:'peer-shell',artifactId:'peer-shell',key:'peer-shell',revisionId:'r1',kind:'image',meta:{}};
+ const node=document.createElement('div');document.body.append(node);const root=createRoot(node);
+ function Host(){const [revision,change]=React.useState(0);return React.createElement(React.Fragment,null,
+  React.createElement('button',{'data-edit-peer':true,onClick(){recordUserMutation('peer-shell');change(n=>n+1);}},'edit'),
+  React.createElement(InlineAdvancedWorkbenchShell,{item,onClose(){},adapter:{id:'image',label:'image',stage:React.createElement('div'),collab:{room,artifact:null},persistence:{autoSave:true,dirty:revision>0,editRevision:revision,flush:async()=>({ok:true}),recovery:{ready:true,key:'peer-shell',draftSchema:'test',capture:()=>({revision}),restore:()=>true}}}}));}
+ try{await act(async()=>root.render(React.createElement(Host)));await act(async()=>node.querySelector('[data-edit-peer]').click());assert.equal(node.querySelector('[data-save-state]').getAttribute('data-save-state'),'error');assert.match(node.querySelector('[data-save-state]').textContent,/其他标签页|重新加载/);}finally{await act(async()=>{root.unmount();resetBackgroundSaverForTests();});room.doc.destroy();node.remove();resetUserEditSession();}
 });

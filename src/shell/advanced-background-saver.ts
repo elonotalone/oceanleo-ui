@@ -1,3 +1,4 @@
+import { yieldToEditor } from "./editor-publish-yield";
 import type { AdvancedFlushResult } from "./advanced-session-context";
 import type { WorkingCopySaver, WorkingCopyTransport } from "./editor-working-copy";
 
@@ -50,11 +51,14 @@ export function createBackgroundPublisher(input: Omit<Publisher, "again" | "clos
       try {
         if (!job.receipt) {
           if (!await job.saver.flush()) return { ok: false, error: job.saver.snapshot().error || "保存失败，请重试" };
+          await yieldToEditor();
+          if (!await job.saver.flush()) return { ok: false, error: job.saver.snapshot().error || "保存失败，请重试" };
           const seq = job.preparedSeq !== undefined ? job.preparedSeq : job.saver.snapshot().seq;
           const run = job.prepared ?? job.prepare();
           job.prepared = undefined;
           job.preparedSeq = undefined;
           job.owed = false;
+          await yieldToEditor();
           const result = await run();
           if (!result.ok) { if (!job.prepared) { job.prepared = run; job.preparedSeq = seq; } return result; }
           job.receipt = { result, seq };

@@ -8,7 +8,7 @@ import type { AppSession } from "../lib/app-session";
  * `recordUserMutation`; the workbench resets it when the open item changes.
  */
 
-const generations = new Map<string, number>();
+const generations = new Map<string, { generation: number; at: number }>();
 const listeners = new Set<() => void>();
 let activeItemKey: string | null = null;
 
@@ -39,8 +39,11 @@ export function subscribeUserEditSession(onStoreChange: () => void): () => void 
 export function recordUserMutation(itemKey: string): number {
   const key = normalizeKey(itemKey);
   if (!key) return 0;
-  const next = (generations.get(key) ?? 0) + 1;
-  generations.set(key, next);
+  const next = (generations.get(key)?.generation ?? 0) + 1;
+  const now = performance.now();
+  const event = typeof window === "undefined" ? undefined : window.event;
+  const at = event?.isTrusted && event.timeStamp > 0 && event.timeStamp <= now ? event.timeStamp : now;
+  generations.set(key, { generation: next, at });
   emit();
   return next;
 }
@@ -48,17 +51,22 @@ export function recordUserMutation(itemKey: string): number {
 export function userMutationGeneration(itemKey: string): number {
   const key = normalizeKey(itemKey);
   if (!key) return 0;
-  return generations.get(key) ?? 0;
+  return generations.get(key)?.generation ?? 0;
+}
+
+/** Input timestamp retained through React rendering, for edit-to-ack measurements. */
+export function userMutationAt(itemKey: string): number | undefined {
+  return generations.get(normalizeKey(itemKey))?.at || undefined;
 }
 
 export function resetUserMutation(itemKey: string): void {
   const key = normalizeKey(itemKey);
   if (!key) return;
-  if ((generations.get(key) ?? 0) === 0) {
-    generations.set(key, 0);
+  if ((generations.get(key)?.generation ?? 0) === 0) {
+    generations.set(key, { generation: 0, at: 0 });
     return;
   }
-  generations.set(key, 0);
+  generations.set(key, { generation: 0, at: 0 });
   emit();
 }
 
@@ -81,9 +89,9 @@ export function syncOpenUserEditItem(itemKey: string): void {
   const key = normalizeKey(itemKey);
   const previous = activeItemKey;
   if (previous && previous !== key) {
-    generations.set(previous, 0);
+    generations.set(previous, { generation: 0, at: 0 });
   }
-  if (key) generations.set(key, 0);
+  if (key) generations.set(key, { generation: 0, at: 0 });
   activeItemKey = key || null;
   emit();
 }

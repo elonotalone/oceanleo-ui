@@ -9,7 +9,10 @@ export interface WorkingCopy {
   schema: string; seq: number; base_revision_id: string | null;
   published_seq: number | null; saved_at: string; doc: unknown;
 }
-export interface WorkingCopyReceipt { ok: true; seq: number; saved_at: string; server_ms: number }
+export interface WorkingCopyClientTiming {
+  auth_ms: number; encode_ms: number; gzip_ms: number; request_ms: number; bytes: number;
+}
+export interface WorkingCopyReceipt { ok: true; seq: number; saved_at: string; server_ms: number; client?: WorkingCopyClientTiming }
 export interface WorkingCopyTransport {
   get(): Promise<WorkingCopy | null>;
   put(doc: unknown, seq: number | null): Promise<WorkingCopyReceipt>;
@@ -25,26 +28,39 @@ export function workingCopyRoot(item: { artifactId?: string; id: string; meta?: 
 export function workingCopyTransport(root: string, schema: string, baseRevision: string | null): WorkingCopyTransport {
   const url = `${GATEWAY_BASE}/v1/editor-working-copies/${encodeURIComponent(root)}`;
   async function request(method: string, data?: unknown, suffix = "") {
+    const authAt = performance.now();
     const token = await accessToken();
+    const authMs = performance.now() - authAt;
     if (!token) throw new WorkingCopyError("登录已过期，重新登录后自动继续", 401);
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
     let body: BodyInit | undefined;
+    let encodeMs = 0, gzipMs = 0, bodyBytes = 0;
     if (data !== undefined) {
+      const encodeAt = performance.now();
       const json = JSON.stringify(data);
       headers["Content-Type"] = "application/json";
       const bytes = new TextEncoder().encode(json);
+      encodeMs = performance.now() - encodeAt;
+      bodyBytes = bytes.byteLength;
       if (bytes.byteLength > 8 * 1024 && typeof CompressionStream !== "undefined") {
+        const gzipAt = performance.now();
         body = await new Response(new Blob([bytes]).stream().pipeThrough(new CompressionStream("gzip"))).arrayBuffer();
+        gzipMs = performance.now() - gzipAt;
+        bodyBytes = body.byteLength;
         headers["Content-Encoding"] = "gzip";
       } else body = json;
     }
-    const response = await fetch(url + suffix, { method, headers, body });
+    const requestAt = performance.now();
+    const response = await globalThis.fetch(url + suffix, { method, headers, body });
     if (method === "GET" && response.status === 404) return null;
     if (!response.ok) {
       const message = response.status === 409 ? WORKING_COPY_CONFLICT : response.status === 401 ? "登录已过期，重新登录后自动继续" : mapAutosaveErrorMessage({ status: response.status }) || "保存失败，请重试";
       throw new WorkingCopyError(message, response.status);
     }
-    return response.status === 204 ? null : response.json();
+    if (response.status === 204) return null;
+    const receipt = await response.json();
+    return method === "PUT" ? { ...receipt, client: { auth_ms: authMs, encode_ms: encodeMs, gzip_ms: gzipMs,
+      request_ms: performance.now() - requestAt, bytes: bodyBytes } } : receipt;
   }
   return {
     get: () => request("GET"),
@@ -75,7 +91,9 @@ export class WorkingCopySaver {
   private generation = 0;
   private acknowledged = 0;
   private editAt = 0;
-  private latestAt = 0;
+  private queuedAt?: number;
+  private renderMs = 0;
+  private queuedRenderMs = 0;
   private initialized = false;
   private initialization?: Promise<void>;
   private running?: Promise<boolean>;
@@ -89,8 +107,8 @@ export class WorkingCopySaver {
   constructor(options: SaverOptions) {
     this.options = options;
     this.now = options.now ?? (() => performance.now());
-    this.setTimer = options.setTimer ?? setTimeout;
-    this.clearTimer = options.clearTimer ?? clearTimeout;
+    this.setTimer = (run: () => void, ms: number) => options.setTimer ? options.setTimer(run, ms) : globalThis.setTimeout(run, ms);
+    this.clearTimer = (timer: ReturnType<typeof setTimeout>) => options.clearTimer ? options.clearTimer(timer) : globalThis.clearTimeout(timer);
     options.events?.addEventListener("online", this.online);
     options.events?.addEventListener("beforeunload", this.beforeUnload);
   }
@@ -125,10 +143,11 @@ export class WorkingCopySaver {
     })();
     return this.initialization;
   };
-  edit(): void {
+  edit(occurredAt = this.now()): void {
     if (this.disposed) return;
-    if (this.generation === this.acknowledged) this.editAt = this.now();
-    this.latestAt = this.now();
+    const renderMs = Math.max(0, this.now() - occurredAt);
+    if (this.generation === this.acknowledged) { this.editAt = occurredAt; this.renderMs = renderMs; }
+    else if (this.running && this.queuedAt === undefined) { this.queuedAt = occurredAt; this.queuedRenderMs = renderMs; }
     this.generation += 1;
     if (this.view.state === "conflict") { this.update("conflict", this.view.error); return; }
     this.cancelRetry();
@@ -154,7 +173,9 @@ export class WorkingCopySaver {
       while (this.acknowledged < this.generation) {
         const target = this.generation;
         const started = this.editAt;
+        const captureAt = this.now();
         const doc = await this.options.capture();
+        const captureMs = this.now() - captureAt;
         if (doc === null || doc === undefined) throw new Error("保存失败，请重试");
         const result = await this.options.transport.put(doc, this.view.seq);
         if (!result.ok || !Number.isInteger(result.seq)) throw new Error("保存失败，请重试");
@@ -164,11 +185,15 @@ export class WorkingCopySaver {
         const ms = this.now() - started;
         this.options.measure?.(ms, result.seq);
         if (!this.options.measure) {
+          const phases = { render_ms: this.renderMs, queue_ms: Math.max(0, captureAt - started - this.renderMs), capture_ms: captureMs, ...result.client };
           emitTelemetry({ source: "autosave", name: "editor_save", severity: ms > 500 ? "warn" : "info", value: ms,
-            detail: { seq: result.seq, over_budget: ms > 500, server_ms: result.server_ms } });
-          if (process.env.NODE_ENV !== "production") console.debug("[editor_save]", { ms, seq: result.seq, over_budget: ms > 500 });
+            detail: { seq: result.seq, over_budget: ms > 500, server_ms: result.server_ms, ...phases } });
+          if (process.env.NODE_ENV !== "production") console.debug("[editor_save]", { ms, seq: result.seq, over_budget: ms > 500, ...phases });
         }
-        this.editAt = this.latestAt;
+        this.editAt = this.queuedAt ?? this.now();
+        this.queuedAt = undefined;
+        this.renderMs = this.queuedRenderMs;
+        this.queuedRenderMs = 0;
         this.update(this.acknowledged < this.generation ? "saving" : "saved");
         this.options.onSaved?.(result.seq);
       }

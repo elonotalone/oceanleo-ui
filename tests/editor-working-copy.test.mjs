@@ -68,3 +68,7 @@ test('every acknowledgement emits editor_save telemetry and flags >500ms without
 test('working copy older than a different opened Library revision is not restored',async()=>{
  let restored=false;const b=bed({baseSavedAt:Date.parse('2026-11-15T01:00:00Z'),transport:{get:async()=>({schema:'test',seq:4,published_seq:3,base_revision_id:'older-base',saved_at:'2026-11-15T00:00:00Z',doc:{text:'old'}})},restore:()=>restored=true});await b.saver.initialize();assert.equal(restored,false);assert.equal(b.saver.snapshot().state,'saved');b.dispose();
 });
+
+test('coalesced timing starts at the oldest unsent edit, including its wait behind the previous PUT',async()=>{
+ const first=deferred(),second=deferred();const b=bed({transport:{put:()=>b.puts.length++===0?first.promise:second.promise}});await b.saver.initialize();b.saver.edit();await settle();b.setTime(40);b.saver.edit();b.setTime(80);b.saver.edit();b.setTime(150);first.resolve({ok:true,seq:1});await settle();b.setTime(300);second.resolve({ok:true,seq:2});await settle();assert.equal(b.measured[1].ms,260);b.dispose();
+});

@@ -1,3 +1,4 @@
+import { yieldToEditor } from "../editor-publish-yield";
 import {
   AIGC_TEXT_NOTICE,
   aigcLabelActive,
@@ -301,7 +302,9 @@ async function blockChildren(
   inheritedPreset: RichDocNumberingPreset | null = null,
 ): Promise<unknown[]> {
   const output: unknown[] = [];
+  let sliceStart = performance.now();
   for (let index = 0; index < nodes.length; index += 1) {
+    if (performance.now() - sliceStart >= 8) { await yieldToEditor(); sliceStart = performance.now(); }
     const node = nodes[index];
     if (node.type === "bulletList" || node.type === "orderedList") {
       const ordered = node.type === "orderedList";
