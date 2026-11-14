@@ -82,7 +82,7 @@ test("remote apply diffs content only; recovery restore skips what is already on
   assert.match(hook, /localEditsRef\.current !== startingEdits/);
   assert.doesNotMatch(hook, /revisionRef\.current !== startingRevision/);
   const route = source("../src/shell/advanced-routes/ImageRoute.tsx");
-  assert.match(route, /result === "unchanged"[\s\S]{0,200}deleteAdvancedRecovery\(/);
+  assert.doesNotMatch(route, /deleteAdvancedRecovery/);
   assert.match(route, /result === "unchanged" \|\| result === "stale" \? true : result/);
   const stage = source("../src/shell/image-editor/FabricImageStage.tsx");
   for (const attribute of ["data-editor-dirty", "data-editor-revision", "data-editor-remote-delta"]) {
@@ -105,21 +105,21 @@ test("image material adapter registers the editor-history command contract", () 
 // session snapshot was still being recorded, and the image editor committed identical content again.
 test("a repeat flush with no canvas change returns the last receipt instead of a new revision", () => {
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
-  const save = hook.slice(hook.indexOf("const save = useCallback("));
-  assert.match(save.slice(0, 900), /!dirtyRef\.current &&\s*last\.revision === revisionRef\.current &&\s*last\.identity === openIdentityRef\.current &&\s*last\.result\.item === artifactHeadRef\.current\s*\) return last\.result;/);
+  const save = hook.slice(hook.indexOf("const prepareSave = useCallback("));
+  assert.match(save.slice(0, 900), /!dirtyRef\.current &&\s*last\.revision === revisionRef\.current &&\s*last\.identity === openIdentityRef\.current &&\s*last\.result\.item === artifactHeadRef\.current\s*\) return async \(\) => last\.result;/);
   assert.match(save, /lastSaveRef\.current = \{\s*revision: savingRevision,\s*identity: savingIdentity,\s*result,/);
 });
 
 // [实测] 09:59Z button sweep: quick successive edits showed 「保存失败」 seven times — a flush that
 // arrived while a save was running got null, and an edit during preview capture threw.
-test("overlapping saves wait for the running one; an edit during capture re-captures", () => {
+test("overlapping saves wait for the running one; publication freezes before encoding", () => {
   const hook = source("../src/shell/image-editor/use-fabric-image-editor.ts");
   const at = hook.indexOf("const saveSerialized = useCallback(");
   const wrapper = hook.slice(at, at + 500);
   assert.match(wrapper, /await saveRunRef\.current\.catch/);
   assert.match(wrapper, /const run = save\(\)/);
   assert.match(hook, /\n    save: saveSerialized,\n/);
-  assert.match(hook, /if \(revisionRef\.current === savingRevision\) break;\s*if \(attempt >= 3\)/);
+  assert.match(hook, /const snapshot = controller\.getSnapshot\(\);[\s\S]*const preview = makeStaticPreviewBlob\(\)/);
 });
 
 // [实测] 10:05Z: flip → undo while the save of the flip was in flight: the room pushed this page's

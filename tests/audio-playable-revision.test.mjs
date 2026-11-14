@@ -325,7 +325,7 @@ test("unmounting the editor cancels the pending render", async () => {
   assert.equal(h.refs.revision.current, revision);
 });
 
-test("a render superseded by an edit mid-flight is dropped and saved project-only", async () => {
+test("an edit during publication keeps the frozen playable delivery and newer work dirty", async () => {
   const h = await harness(durableAudio, CROP, { idleMs: 10 });
   try {
     // An edit lands while the WAV is being encoded (encodeWav reads the channel data).
@@ -338,8 +338,9 @@ test("a render superseded by an edit mid-flight is dropped and saved project-onl
     });
     calls.file.length = 0;
     await h.save();
-    assert.equal(calls.file.length, 0, "已经过时的渲染不能上传");
-    assert.equal(calls.projectOnly.length, 1);
+    assert.equal(calls.file.length, 1, "captured audio stays playable even when another edit arrives");
+    assert.equal(calls.projectOnly.length, 0);
+    assert.deepEqual(h.state.dirty, [], "old receipt does not clear newer work");
   } finally { await h.unmount(); }
 });
 

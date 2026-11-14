@@ -289,9 +289,10 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
     ["./editor-persistence", {
       clearLocalImageDraft() {},
       createFabricImageProject: (snapshot) => ({ snapshot }),
+      createFabricImageWorkingCopy: (snapshot) => ({ snapshot }),
       downloadImageBlob() {},
       loadLocalImageDraft: () => null,
-      parseFabricImageProject: () => null,
+      parseFabricImageProject: (value) => value?.snapshot ? value : null,
       persistCompositeImageProject: async () => { throw new Error("unexpected composite save"); },
       persistImageProject: (...args) => new Promise((resolve) => pendingSaves.push({ args, resolve })),
       saveLocalImageDraft() {},
@@ -357,7 +358,7 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
     }],
     ["./advanced-draft-gates", { bindAdvancedDraftGate: () => () => {} }],
     ["../lib/auth/autosave-error-message", { mapAutosaveErrorMessage: () => "save failed" }],
-    ["./advanced-background-saver", { handOff() {}, takeBack: () => null }],
+    ["./advanced-background-saver", { handOff: (_key, controller) => controller.dispose(), takeBack: () => null }],
     ["./use-advanced-recovery", {
       advancedRecoverySupersededBySave: () => false,
       noteAdvancedSaveSucceeded() {},
@@ -428,6 +429,13 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   controller.canvas.objects = [];
   await act(async () => controller.commit());
   assert.equal(hook.dirty, true);
+  const captured = hook.captureRecovery();
+  const capturedRevision = hook.editRevision;
+  assert.deepEqual(captured.snapshot.json.objects, []);
+  await act(async () => assert.equal(await hook.restoreRecovery(captured), "unchanged"));
+  assert.equal(hook.editRevision, capturedRevision, "recovery is not a user edit");
+  await act(async () => controller.callbacks.onRemoteApplied("remote"));
+  assert.equal(hook.editRevision, capturedRevision, "remote content is not a local user edit");
   await act(async () => new Promise((resolve) => setTimeout(resolve, 1_750)));
   assert.equal(pendingSaves.length, 1);
   assert.deepEqual(pendingSaves[0].args[0].json.objects, [], "deleted layer is the saved snapshot");
@@ -591,7 +599,33 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
   assert.equal(controllers.length, 4, "an unrelated same-root legacy item opens separately");
   assert.equal(legacyController.disposed, true);
 
+  // Prepare the latest scene while an older upload is still running. No
+  // graphics access is allowed when the queued publication starts after close.
+  const closingController = controllers[3];
+  closingController.canvas.objects = [{oceanleoId:"closing",text:"before close"}];
+  await act(async () => closingController.commit());
+  const restoreRevision = hook.editRevision;
+  const restoredProject = {snapshot:makeSnapshot([{oceanleoId:"closing",text:"restored"}])};
+  await act(async () => assert.equal(await hook.restoreRecovery(restoredProject),true));
+  assert.equal(hook.editRevision,restoreRevision);
+  assert.deepEqual(hook.captureRecovery(),restoredProject);
+  let firstClosingSave;
+  await act(async () => {firstClosingSave=hook.save();await Promise.resolve();});
+  assert.equal(pendingSaves.length,5);
+  closingController.canvas.objects = [{oceanleoId:"closing",text:"last edit"}];
+  await act(async () => closingController.commit());
+  const publishAfterClose=hook.prepareSave();
+  assert.equal(pendingSaves.length,5,"preparation does not start a concurrent upload");
   await act(async () => root.unmount());
+  pendingSaves[4].resolve({previewUrl:"https://cdn.example/close1.png",projectUrl:"https://cdn.example/close1.json",savedAt:"2026-11-15T00:00:00Z",versionId:"close1"});
+  assert.equal((await firstClosingSave).versionId,"close1");
+  const lastClosingSave=publishAfterClose();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(pendingSaves.length,6);
+  assert.equal(pendingSaves[5].args[0].json.objects[0].text,"last edit");
+  assert.match(await (await pendingSaves[5].args[6]()).text(),/last edit/);
+  pendingSaves[5].resolve({previewUrl:"https://cdn.example/close2.png",projectUrl:"https://cdn.example/close2.json",savedAt:"2026-11-15T00:00:01Z",versionId:"close2"});
+  assert.equal((await lastClosingSave).versionId,"close2");
   Module._load = originalLoad;
   editSession.resetUserEditSession();
   dom.window.close();

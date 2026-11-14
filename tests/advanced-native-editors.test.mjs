@@ -55,7 +55,8 @@ test("Fabric image editor exposes object, layer, filter, crop and durable-save t
   assert.match(stage, /"position-x"/);
   assert.match(stage, /"object-width"/);
   assert.match(hook, /persistImageProject/);
-  assert.match(hook, /saveLocalImageDraft/);
+  assert.doesNotMatch(hook, /saveLocalImageDraft/);
+  assert.match(hook, /createFabricImageWorkingCopy/);
   assert.match(hook, /loadEditableImageProject/);
   assert.match(hook, /structuredSourceRequired/);
   assert.match(hook, /replaceSelectedImageFromUrl/);

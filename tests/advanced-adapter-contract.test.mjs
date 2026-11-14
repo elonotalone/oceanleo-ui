@@ -217,6 +217,7 @@ test("mutable native editors keep an independent local recovery log", () => {
   const image = source(
     "../src/shell/image-editor/editor-persistence.ts",
   );
-  assert.match(image, /LOCAL_DRAFT_PREFIX/);
-  assert.match(image, /saveLocalImageDraft/);
+  assert.doesNotMatch(image, /LOCAL_DRAFT_PREFIX/);
+  assert.doesNotMatch(image, /saveLocalImageDraft/);
+  assert.match(image, /createFabricImageWorkingCopy/);
 });
