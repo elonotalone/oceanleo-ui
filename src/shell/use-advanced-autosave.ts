@@ -8,7 +8,7 @@ import type { LibraryItem } from "./library-data";
 import { bindAdvancedDraftGate } from "./advanced-draft-gates";
 import { createBackgroundPublisher, waitForClosingWorkingCopy, type Publication } from "./advanced-background-saver";
 import { subscribeUserEditSession, userMutationGeneration, userMutationAt } from "./user-edit-session";
-import { WORKING_COPY_CONFLICT, WorkingCopySaver, workingCopyRoot, workingCopyTransport, type WorkingCopySnapshot } from "./editor-working-copy";
+import { WORKING_COPY_CONFLICT, WorkingCopyError, WorkingCopySaver, workingCopyRoot, workingCopyTransport, type WorkingCopySnapshot } from "./editor-working-copy";
 export { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
 export type AdvancedAutoSaveState = "saved" | "saving" | "error";
 
@@ -29,21 +29,32 @@ export function useAdvancedAutoSave(input: Input) {
   const latest = sources.current.source;
   const mutationGeneration = useSyncExternalStore(subscribeUserEditSession,
     () => userMutationGeneration(input.key || "") + (root !== input.key ? userMutationGeneration(root || "") : 0), () => 0);
-  const baseline = useRef({ identity: sources.current.identity, generation: mutationGeneration });
+  const baseline = useRef({ identity: sources.current.identity, generation: mutationGeneration, revision: input.revision });
   if (baseline.current.identity !== sources.current.identity || mutationGeneration < baseline.current.generation)
-    baseline.current = { identity: sources.current.identity, generation: mutationGeneration };
-  const blockedPeer = Boolean(input.shared && input.writer === false && mutationGeneration > baseline.current.generation);
+    baseline.current = { identity: sources.current.identity, generation: mutationGeneration, revision: input.revision };
+  const [roomRevision, setRoomRevision] = useState(0);
+  const roomRevisionRef = useRef(0);
+  const peerBaseline = useRef({ identity: sources.current.identity, revision: roomRevision });
+  if (peerBaseline.current.identity !== sources.current.identity) peerBaseline.current = { identity: sources.current.identity, revision: roomRevision };
+  if (input.writer !== false) {
+    baseline.current.generation = mutationGeneration;
+    baseline.current.revision = input.revision;
+    peerBaseline.current.revision = roomRevision;
+  }
+  const blockedPeer = Boolean(input.shared && input.writer === false && (mutationGeneration > baseline.current.generation ||
+    (!input.room && !Object.is(input.revision, baseline.current.revision)) || roomRevision > peerBaseline.current.revision));
   const local = input.destination === "local-device";
   const available = Boolean(input.writer !== false && (input.recovery || local) && root);
   const ready = Boolean(input.writer !== false && (input.recovery ? input.recovery.ready : local) && root);
   const [view, setView] = useState<WorkingCopySnapshot>({ state: ready ? "saving" : "saved", error: "", seq: null, pending: false });
-  const [roomRevision, setRoomRevision] = useState(0);
-  const roomRevisionRef = useRef(0);
   useEffect(() => {
     const room = input.room;
     if (!room) return;
     const changed = (_update: Uint8Array, origin: unknown) => {
-      if (origin !== room || !room.isSaver) return;
+      // A room sync acknowledgement is not a working-copy receipt. Also
+      // observe local Yjs edits when the editor omits its mutation-feed event.
+      const current = rendered.current;
+      if (current.writer === false ? origin === room || (current.recovery && !current.recovery.ready) : origin !== room) return;
       roomRevisionRef.current += 1;
       setRoomRevision(roomRevisionRef.current);
     };
@@ -52,7 +63,7 @@ export function useAdvancedAutoSave(input: Input) {
   }, [input.room]);
   const active = useRef<{
     root: string; saver: WorkingCopySaver; publisher: ReturnType<typeof createBackgroundPublisher>;
-    revision: string | number; roomRevision: number;
+    revision: string | number; roomRevision: number; initialized: boolean; mutations: number; initialize: () => Promise<void>;
   } | null>(null);
 
   useEffect(() => {
@@ -73,10 +84,13 @@ export function useAdvancedAutoSave(input: Input) {
     } : { ...cloudTransport, get: async () => { await waitForClosingWorkingCopy(root); return cloudTransport.get(); } };
     let publisher: ReturnType<typeof createBackgroundPublisher>;
     let restoring = false;
+    const initialMutations = userMutationGeneration(initial.key || "") + (root !== initial.key ? userMutationGeneration(root) : 0);
     const saver = new WorkingCopySaver({ transport, schema, baseRevision: base,
       baseSavedAt: Date.parse(String(initial.item?.meta?.revision_created_at || initial.item?.createdAt || "")),
       capture: () => source.current.recovery?.capture() ?? (local ? {} : null),
       restore: async (doc, at) => {
+        const currentMutations = userMutationGeneration(source.current.key || "") + (root !== source.current.key ? userMutationGeneration(root) : 0);
+        if (currentMutations > initialMutations) { saver.edit(); throw new WorkingCopyError(WORKING_COPY_CONFLICT, 409); }
         restoring = true;
         try { return await source.current.recovery!.restore(doc, at); }
         finally {
@@ -105,17 +119,26 @@ export function useAdvancedAutoSave(input: Input) {
       },
       record: async () => {},
     });
-    const slot = { root, saver, publisher, revision: initial.revision, roomRevision: roomRevisionRef.current };
+    const slot = { root, saver, publisher, revision: initial.revision, roomRevision: roomRevisionRef.current, initialized: false, mutations: initialMutations,
+      initialize: async () => {
+        await saver.initialize();
+        if (active.current !== slot || slot.initialized || saver.snapshot().state === "error" || saver.snapshot().state === "conflict") return;
+        // Source/room hydration and recovery may change dirty/revision. They are
+        // the open handshake, not edits competing with the copy just read.
+        slot.initialized = true;
+        slot.revision = source.current.revision;
+        slot.roomRevision = roomRevisionRef.current;
+        const currentMutations = userMutationGeneration(source.current.key || "") + (root !== source.current.key ? userMutationGeneration(root) : 0);
+        if (currentMutations > slot.mutations) { slot.mutations = currentMutations; saver.edit(userMutationAt(source.current.key || root)); }
+        update();
+      },
+    };
     active.current = slot;
     const update = () => { if (active.current === slot && !restoring) setView(saver.snapshot()); };
     const unsubscribe = saver.subscribe(update);
     update();
     const initiallyReady = Boolean(initial.recovery?.ready || local);
-    if (initiallyReady && initial.dirty) saver.edit();
-    if (initiallyReady) void saver.initialize().then(() => {
-      if (active.current !== slot) return;
-      update();
-    });
+    if (initiallyReady) void slot.initialize();
     return () => {
       unsubscribe();
       if (active.current === slot) active.current = null;
@@ -126,7 +149,14 @@ export function useAdvancedAutoSave(input: Input) {
   useLayoutEffect(() => {
     const slot = active.current;
     if (!ready || !slot || slot.root !== root) return;
-    void slot.saver.initialize();
+    if (!slot.initialized) {
+      if (mutationGeneration > slot.mutations) {
+        slot.mutations = mutationGeneration;
+        slot.saver.edit(userMutationAt(input.key || root || ""));
+      }
+      if (slot.saver.snapshot().state !== "error" && slot.saver.snapshot().state !== "conflict") void slot.initialize();
+      return;
+    }
     const remoteChanged = slot.roomRevision !== roomRevision;
     if (Object.is(slot.revision, input.revision) && !remoteChanged) return;
     if (input.dirty || remoteChanged) {
@@ -135,9 +165,10 @@ export function useAdvancedAutoSave(input: Input) {
       slot.publisher.cancelIdle();
       slot.saver.edit(remoteChanged ? undefined : userMutationAt(input.key || root || ""));
     }
-  }, [input.dirty, input.revision, input.key, root, ready, roomRevision]);
+  }, [input.dirty, input.revision, input.key, root, ready, roomRevision, mutationGeneration, view.state]);
 
   const flushLatest = useCallback(async (): Promise<AdvancedFlushResult> => {
+    if (blockedPeer) return { ok: false, error: WORKING_COPY_CONFLICT };
     const slot = active.current;
     if (slot) {
       if (!Object.is(slot.revision, latest.current.revision)) {
@@ -160,7 +191,7 @@ export function useAdvancedAutoSave(input: Input) {
       if (current.dirty || !result.item || workingCopyRoot(result.item) !== rootOf(current) || result.item.revisionId !== current.item?.revisionId) return { ok: false, error: "编辑文档已切换，请重试保存" };
     }
     return result;
-  }, [latest]);
+  }, [latest, blockedPeer]);
   const retry = useCallback(async (): Promise<AdvancedFlushResult> => {
     const saver = active.current?.saver;
     if (blockedPeer || saver?.snapshot().state === "conflict") { window.location.reload(); return { ok: false, error: "保存冲突" }; }
@@ -185,7 +216,7 @@ export function useAdvancedAutoSave(input: Input) {
     input.draft?.bindFlush?.(flushLatest);
     return () => { unbind.forEach((fn) => fn()); input.draft?.bindFlush?.(null); };
   }, [root, ready, flushLatest, input.key, input.item?.key, input.item?.id, input.editorId, input.draft, input.item]);
-  return { state: blockedPeer ? "error" as const : !ready && input.sharedSaveState ? input.sharedSaveState : input.recovery && !ready ? "saving" : (view.state === "conflict" ? "error" : view.state) as AdvancedAutoSaveState,
+  return { state: blockedPeer ? "error" as const : !ready && input.sharedSaveState ? input.sharedSaveState : input.writer !== false && input.recovery && !ready ? "saving" : (view.state === "conflict" ? "error" : view.state) as AdvancedAutoSaveState,
     pending: blockedPeer || view.pending || Boolean(input.sharedSavePending),
     errorMessage: blockedPeer ? WORKING_COPY_CONFLICT : (!ready && input.sharedSaveState === "error") ? "网络不通，稍后自动重试" : view.error, conflict: blockedPeer || view.state === "conflict", flushLatest, retry, handOffToBackground };
 }

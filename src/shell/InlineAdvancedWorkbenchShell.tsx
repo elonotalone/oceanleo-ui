@@ -197,7 +197,7 @@ export function InlineAdvancedWorkbenchShell({
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
   const room = adapter.collab?.room;
-  const roomMaySave = adapter.persistence?.destination === "local-device" || !room || room.status === "denied" || room.status === "disabled" || room.isSaver;
+  const roomMaySave = adapter.persistence?.destination === "local-device" || !room || room.status === "denied" || room.status === "disabled" || room.isSaver || Boolean(room.lock && room.self && room.lock.holder.id === room.self.id);
   const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false && roomMaySave;
   const materialKey =
     adapter.persistence?.userEditKey || advancedRootItemId(item) || item.id;
@@ -213,7 +213,7 @@ export function InlineAdvancedWorkbenchShell({
     flush: adapter.persistence?.flush,
     preparePublish: adapter.persistence?.preparePublish,
     draft: hostAutoSaveEnabled ? adapter.persistence?.draft : undefined,
-    recovery: hostAutoSaveEnabled ? adapter.persistence?.recovery : undefined,
+    recovery: adapter.persistence?.recovery,
     item,
     editorId: adapter.id,
     destination: adapter.persistence?.destination,

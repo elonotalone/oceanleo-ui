@@ -10,7 +10,7 @@ A module-level background publisher builds Library revisions after 10 seconds wi
 
 **`persistence.preparePublish()` synchronously captures the complete document and returns an asynchronous publication function.** That function must remain valid after unmount: retain JSON/media inputs, revision bookkeeping and auth/upload functions, never require a mounted canvas, DOM, iframe or live editor. Capture must happen before the UI tears down, including when an older publication is running. The publisher serializes publication and follows it with the latest prepared snapshot. `flush()` remains the existing public explicit publication gate. Editors whose flush already snapshots synchronously may omit preparePublish only when no earlier publication can make it return an older receipt. Publication callbacks must not resurrect a closed editor or replace a different open item.
 
-Only the collaboration room's saver writes working copies and Library revisions. Other members rely on room acknowledgement.
+The collaboration room's saver writes working copies and Library revisions. Whole-document editors such as PDF instead allow the holder of their existing edit lock to save. A non-writer with local changes shows conflict/reload; room synchronization alone is not a durable working-copy receipt.
 
 ## Latency and rejected designs
 
@@ -20,7 +20,7 @@ Each working-copy acknowledgement records `editor_save` telemetry: edit-to-ack m
 
 Rejected: retaining storage drafts while changing the icon (storage plus two requests); IndexedDB-first Saved (the server has nothing); rendering delivery files server-side on every edit (renderers live in the browser). The remaining architecture is the working-copy saver, background publisher and indicator.
 
-Reopening while the previous editor's PUT is still pending waits for that retained saver before GET, so the reopened editor does not display an older server copy as Saved. A failed previous drain remains a visible read failure and retries. Device-only destinations use the same acknowledgement state machine with a host-local transport: no working-copy HTTP, session marker, or Library publisher. Collaboration peers that are not the room's saver follow its existing Yjs sync barrier; only the saver writes working copies.
+Reopening while the previous editor's PUT is still pending waits for that retained saver before GET, so the reopened editor does not display an older server copy as Saved. A failed previous drain remains a visible read failure and retries. Device-only destinations use the same acknowledgement state machine with a host-local transport: no working-copy HTTP, session marker, or Library publisher. Non-writer collaboration peers retain an unsaved conflict for local changes until they reload or become the writer; the existing Yjs sync barrier does not clear that conflict.
 
 ## Browser repair evidence (2026-11-15)
 
@@ -29,3 +29,7 @@ Timer and fetch calls keep their browser receiver. The saver lifetime follows th
 `editor_save` now separates input-to-observation `render_ms`, wait behind the previous PUT `queue_ms`, `capture_ms`, `auth_ms`, JSON/UTF-8 `encode_ms`, `gzip_ms`, `request_ms`, and wire `bytes`. Coalesced edits retain the oldest unsent input time. Only scalar timings are logged. Slow saves can therefore be assigned to the correct phase without exposing document data.
 
 Publication yields to queued input before preparing/building files. RichDoc DOCX conversion and preview rendering return control between approximately 8ms slices. These yields belong only to publication, never to the working-copy save path. The jsdom matrix measures each input against the first server acknowledgement containing that input; final-input-to-Saved is also measured separately for bursts.
+
+Opening completes the GET/restore handshake before consuming model revisions as edits. Hydration dirtiness and initial room seeding never compete with the copy being opened. The first subsequent PUT uses the GET receipt's sequence. A genuine local input while that GET is pending stays unsaved; an unpublished existing copy produces a conflict rather than overwriting that input. Adapter identity/schema survives writer-role changes.
+
+Authentication reads the shared auth-state-updated in-memory token first. Only a cold cache or a token rejected with 401 invokes the SDK session lookup. Refresh/sign-out changes are read on every request; no second token store or persistence layer exists.

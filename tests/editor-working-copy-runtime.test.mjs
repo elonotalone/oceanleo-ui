@@ -4,6 +4,7 @@ import React, {act} from 'react';
 import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {compileModule,dataModule} from './helpers/module-bench.mjs';
+import {resetBackgroundSaverForTests} from '../src/shell/advanced-background-saver.ts';
 const require=createRequire(import.meta.url),fabricRequire=createRequire(require.resolve('fabric/node'));
 const canvas=fabricRequire.resolve('canvas'),previous=require.cache[canvas];
 require.cache[canvas]={id:canvas,filename:canvas,loaded:true,exports:{}};
@@ -20,11 +21,11 @@ const config=dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUP
 const hookUrl=await compileModule('src/shell/use-advanced-autosave.ts',{'../lib/auth/client':auth,'../lib/auth/config':config});
 const statusUrl=await compileModule('src/shell/plugin-chrome/PluginChromeStatus.tsx',{'../../i18n/ui/useUI':translation});
 const host=dataModule(`import React from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {PluginChromeStatus} from ${JSON.stringify(statusUrl)};
-export function AdvancedWorkbenchShell({adapter,item}){globalThis.__wcAdapter=adapter;const p=adapter.persistence;const save=useAdvancedAutoSave({key:item.artifactId,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,item,editorId:'richdoc',session:null});globalThis.__wcSave=save;return React.createElement('div',null,React.createElement(PluginChromeStatus,{state:{kind:save.state,message:save.errorMessage}}),adapter.stage);}`);
+export function AdvancedWorkbenchShell({adapter,item}){globalThis.__wcAdapter=adapter;const p=adapter.persistence;const save=useAdvancedAutoSave({key:item.artifactId,writer:p.autoSave!==false,shared:Boolean(adapter.collab?.room),room:adapter.collab?.room,sharedSaveState:p.sharedSaveState,sharedSavePending:p.sharedSavePending,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,item,editorId:'richdoc',session:null});globalThis.__wcSave=save;return React.createElement('div',null,React.createElement(PluginChromeStatus,{state:{kind:save.state,message:save.errorMessage}}),adapter.stage);}`);
 const docio=dataModule(`export const downloadBlob=()=>{},downloadText=()=>{};export async function loadEditorProject(){return null};export async function saveFileToLibrary(input){globalThis.__wcPublications.push(input.project.data);await globalThis.__wcPublishBarrier;return {ok:true,url:'https://files.invalid/r2.docx',versionId:'v2',artifactId:'root',revisionId:'r2',previousRevisionId:'r1',item:{...input.item,revisionId:'r2',artifact:{...input.item.artifact,revisionId:'r2'},meta:input.item.meta}};}`);
 const editorModelUrl=await compileModule('src/shell/doc-editors/rich-doc-model.ts',{});
 const model=dataModule(`export * from ${JSON.stringify(editorModelUrl)};export async function loadRichDocSource(){return {source:'inline',json:globalThis.__wcInitialDocument??{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Original'}]}]},html:'<p>Original</p>'};}export const preloadRichDocDeliveryWriters=()=>{};`);
-const collab=dataModule('export const useCollabRoom=()=>null,useCollabSaveGate=()=>true,useCollabReadOnly=()=>false;');
+const collab=dataModule('export const useCollabRoom=()=>globalThis.__wcRoom??null,useCollabSaveGate=room=>!room||room.isSaver,useCollabReadOnly=()=>false;');
 const noComponent=dataModule('export const RichDocControls=()=>null,RichDocCommentRail=()=>null,RichDocContextToolbar=()=>null;');
 const pmStubs=Object.fromEntries(['state','model','view','transform'].map(name=>{const key='@tiptap/pm/'+name;const entry=require.resolve(key);const keys=Object.keys(require(key));return [key,dataModule(`import pkg from ${JSON.stringify(pathToFileURL(entry).href)};${keys.filter(k=>/^[a-zA-Z_$][\w$]*$/.test(k)&&k!=='default').map(k=>`export const ${k}=pkg.${k};`).join('')}`)];}));
 const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',{
@@ -72,7 +73,7 @@ globalThis.fetch=async(url,init={})=>{
 };
 const errors=[];const oldError=console.error;console.error=(...args)=>{errors.push(args.map(String).join(' '));};
 async function mount(){const container=document.createElement('div');document.body.append(container);const root=createRoot(container);await act(async()=>{root.render(React.createElement(RichDocRoute,{item,onClose:()=>{}}));await delay(30);});await act(async()=>{await delay(30);});return {container,unmount:async()=>{await act(async()=>{root.unmount();await delay(20);await settle();});container.remove();}};}
-test.after(()=>{console.error=oldError;globalThis.fetch=originalFetch;dom.window.close();});
+test.after(()=>{resetBackgroundSaverForTests();console.error=oldError;globalThis.fetch=originalFetch;dom.window.close();});
 test('REAL RichDoc route/editor: open → edit → Saving → gateway ack → Saved, background publish never changes icon, reopen restores native copy',async()=>{
  let resolve;putAck=new Promise(r=>resolve=r);const view=await mount();assert.equal(Boolean(globalThis.__wcEditor?.editor),true);assert.equal(globalThis.__wcEditor.loading,false);
  const before=performance.now();await act(async()=>{globalThis.__wcEditor.editor.commands.insertContent('Changed');await settle();});
@@ -123,4 +124,13 @@ test('VS1 document matrix: 20 isolated edits + 3 bursts, small/40-page native mo
   for(const event of measurements){for(const field of ['render_ms','queue_ms','capture_ms','auth_ms','encode_ms','gzip_ms','request_ms','bytes'])assert.equal(typeof event.detail[field],'number',field);}
   console.log('VS1 jsdom document matrix',JSON.stringify(summaries));assert.deepEqual(errors,[]);
  }finally{off();delete globalThis.__wcInitialDocument;delete globalThis.__wcRequestDelay;delete globalThis.__wcAckObserver;}
+});
+
+
+test('VS4 REAL RichDoc route: a non-writer local edit stays unsaved without a PUT after room synchronization',async()=>{
+ const {Doc}=require('yjs');const {Awareness}=require('y-protocols/awareness');
+ const room={doc:new Doc(),isSaver:false,status:'synced',role:'editor',needsSeed:true,self:{id:'peer',name:'Peer',color:'#6366f1'},hasPendingUpdates:false,subscribe:()=>()=>{},completeSeed(){this.needsSeed=false;},onExternalRevision:()=>()=>{},markSaved(){}};
+ room.awareness=new Awareness(room.doc);globalThis.__wcRoom=room;copy=null;putAck=null;globalThis.__wcPublishBarrier=undefined;const before=requests.length;let view;
+ try{view=await mount();assert.equal(globalThis.__wcEditor.loading,false);assert.equal(globalThis.__wcEditor.editor.isEditable,true);assert.equal(globalThis.__wcSave.conflict,false,'initial room seed is hydration');await act(async()=>{globalThis.__wcEditor.editor.commands.insertContent('VS-R2-check-93');await settle();});assert.ok(globalThis.__wcEditor.editor.getText().includes('VS-R2-check-93'));assert.equal(globalThis.__wcSave.state,'error');assert.equal(globalThis.__wcSave.pending,true);assert.equal(globalThis.__wcSave.conflict,true);assert.equal(requests.slice(before).filter(r=>r[1]==='PUT').length,0);assert.equal((await globalThis.__wcSave.flushLatest()).ok,false);assert.deepEqual(errors,[]);}
+ finally{if(view)await view.unmount();delete globalThis.__wcRoom;room.awareness.destroy();room.doc.destroy();}
 });

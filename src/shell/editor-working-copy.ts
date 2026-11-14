@@ -1,4 +1,4 @@
-import { accessToken } from "../lib/auth/client";
+import * as auth from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { emitTelemetry } from "../lib/telemetry/index";
 import { mapAutosaveErrorMessage } from "../lib/auth/autosave-error-message";
@@ -27,9 +27,13 @@ export function workingCopyRoot(item: { artifactId?: string; id: string; meta?: 
 }
 export function workingCopyTransport(root: string, schema: string, baseRevision: string | null): WorkingCopyTransport {
   const url = `${GATEWAY_BASE}/v1/editor-working-copies/${encodeURIComponent(root)}`;
+  let rejectedToken: string | null = null;
   async function request(method: string, data?: unknown, suffix = "") {
     const authAt = performance.now();
-    const token = await accessToken();
+    // Auth-state changes maintain this cache; SDK getSession may queue behind
+    // unrelated refresh/storage work. Only cold/previously rejected tokens wait.
+    const cached = auth.cachedAccessToken?.();
+    const token = cached && cached !== rejectedToken ? cached : await auth.accessToken();
     const authMs = performance.now() - authAt;
     if (!token) throw new WorkingCopyError("登录已过期，重新登录后自动继续", 401);
     const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
@@ -54,6 +58,7 @@ export function workingCopyTransport(root: string, schema: string, baseRevision:
     const response = await globalThis.fetch(url + suffix, { method, headers, body });
     if (method === "GET" && response.status === 404) return null;
     if (!response.ok) {
+      if (response.status === 401) rejectedToken = token;
       const message = response.status === 409 ? WORKING_COPY_CONFLICT : response.status === 401 ? "登录已过期，重新登录后自动继续" : mapAutosaveErrorMessage({ status: response.status }) || "保存失败，请重试";
       throw new WorkingCopyError(message, response.status);
     }
