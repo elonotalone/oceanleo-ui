@@ -26,6 +26,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { clearUserScopedCaches, setCacheUser } from "../src/lib/user-scoped-cache.ts";
 
 import React, { act } from "react";
 
@@ -56,6 +57,8 @@ for (const [name, value] of Object.entries({
 })) {
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
 }
+setCacheUser("send-test-user");
+test.afterEach(() => clearUserScopedCaches());
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
@@ -142,7 +145,7 @@ globalThis.fetch = async (url, init = {}) => {
   const body = init.body ? JSON.parse(init.body) : null;
   globalThis.__acpCalls.push({ path, method, body });
   const route = await globalThis.__acpRoute?.(path, method, body);
-  const payload = route?.body ?? (path.endsWith("/catalog") ? (globalThis.__catalog ?? {}) : { row_id: 1 });
+  const payload = route?.body ?? (path.endsWith("/catalog") ? (globalThis.__catalog ?? {}) : {});
   return new Response(JSON.stringify(payload), { status: route?.status ?? 200, headers: { "content-type": "application/json" } });
 };
 const acpFramesUrl = await compileModule("src/lib/acp-frames-api.ts", {
@@ -324,7 +327,7 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
     host,
     composer: (kind) => host.querySelector(`[data-leo-composer="${kind}"]`),
     rerender(next) { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...next })); },
-    async unmount() { await act(async () => root.unmount()); host.remove(); globalThis.__task = null; },
+    async unmount() { await act(async () => root.unmount()); host.remove(); globalThis.__task = null; clearUserScopedCaches(); },
   };
 }
 const visible = (node) => {
@@ -470,7 +473,7 @@ test("a send blocks silently only for its HTTP request, then accepts another mes
     await submit(view, "acp");
     assert.equal(view.composer("acp").__props.sendBlocked, true);
     assert.equal(view.composer("acp").__props.sendBlockedReason, null);
-    assert.doesNotMatch(view.host.textContent, /Sending|正在发送|发送中|上一条还在发送/i);
+    assert.match(view.host.querySelector("[data-acp-pending-state]").textContent, /发送中/);
     await type(view, "acp", "second request");
     await submit(view, "acp");
     assert.equal(posts("/send").length, 1, "the request itself still owns the Send button");
@@ -500,8 +503,8 @@ test("an ACP gateway failure keeps the optimistic bubble failed, restores empty 
     globalThis.__acpRoute = null;
     await act(async () => { view.host.querySelector("[data-acp-pending-retry]").click(); });
     await settle();
-    assert.equal(posts("/send").length, 2, "retry sends directly from its bubble");
-    assert.equal(posts("/send")[1].body.client_message_id, firstId);
+    assert.equal(posts("/send").length, 4, "three bounded attempts, then the explicit resend");
+    assert.ok(posts("/send").every((call) => call.body.client_message_id === firstId));
     assert.equal(view.host.querySelector("[data-acp-pending-send]").getAttribute("data-acp-pending-status"), "accepted");
     assert.equal(view.host.querySelector("[data-acp-pending-error]"), null);
   } finally { await view.unmount(); }

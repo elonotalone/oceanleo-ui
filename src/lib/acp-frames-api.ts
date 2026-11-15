@@ -3,10 +3,12 @@
 // The page side of the single conversation path for computer tasks (thin-gateway
 // wave 2026-11-07, contract §2.4). The gateway stores every JSON-RPC line once
 // (`acp_frames`) and this module only reads those rows and posts the user's own
-// actions. Nothing is queued, retried or resent here: a failed call throws the
-// gateway's answer as it came; a dropped socket is `disconnected` until the plain
+// actions. Idempotent sends have bounded retries; other failures throw the
+// gateway's answer as it came. A dropped socket is `disconnected` until the plain
 // backoff reconnects it from the last row it delivered.
 
+import { ACP_ATTACHMENT_DEADLINE_MS, ACP_SEND_DEADLINE_MS, reliableRequest } from "../shell/acp-task/reliable-request";
+import { pendingForMessage, settlePending } from "../shell/acp-task/pending-send";
 import { sharedGatewayFetch } from "./shared-get";
 import type { AcpFrameRow } from "../acp";
 import type { AgentAttachment } from "./agent";
@@ -161,13 +163,23 @@ export type AcpSendBody = AcpSessionChoices & {
 
 /** The gateway's receipt; the user's row itself arrives on the frames socket. */
 export type AcpSendResult = {
-  row_id?: number;
+  row_id?: number | null;
   settings?: { kind: string; id?: string; value: string | boolean; applied: boolean; error?: AcpRpcError | null }[];
   [key: string]: unknown;
 };
 
 export function send(taskId: string, body: AcpSendBody, options: { signal?: AbortSignal } = {}): Promise<AcpSendResult> {
-  return post<AcpSendResult>(taskPath(taskId, "send"), body, options.signal);
+  return reliableRequest<AcpSendResult>(`send:${taskId}`, body.client_message_id,
+    (signal) => post<AcpSendResult>(taskPath(taskId, "send"), body, signal), {
+      signal: options.signal,
+      timeoutMs: body.attachments?.length ? ACP_ATTACHMENT_DEADLINE_MS : ACP_SEND_DEADLINE_MS,
+      receipt: (rowId) => ({ row_id: rowId, duplicate: true }),
+    }).then((result) => {
+      const entry = pendingForMessage(body.client_message_id);
+      if (entry) settlePending(entry.id, { taskId, rowId: typeof result?.row_id === "number" ? result.row_id : null,
+        queued: result?.queued === true || result?.status === "queued", duplicate: result?.duplicate === true });
+      return result;
+    });
 }
 
 /** `session/cancel`: the turn ends, the agent stays. */

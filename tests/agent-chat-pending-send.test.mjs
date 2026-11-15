@@ -55,7 +55,8 @@ test("opened with a pending message: the bubble (text + files) and the task comp
     assert.equal(composer.__props.sendBlocked, true, "nothing else is sent while the first message is on its way");
     assert.equal(view.host.querySelector("[data-acp-pending-error]"), null);
     assert.equal(posts("/send").length, 0, "the home sends the message; the task view does not send it again");
-    assert.doesNotMatch(view.host.textContent, /在下方输入|正在加载任务|正在创建|Sending|正在发送|发送中|上一条还在发送/i);
+    assert.match(pendingBubble(view).textContent, /发送中/);
+    assert.doesNotMatch(view.host.textContent, /在下方输入|正在加载任务|正在创建|上一条还在发送/i);
     assert.equal(view.composer("acp").__props.sendBlockedReason, null);
   } finally { await view.unmount(); }
 });
@@ -107,7 +108,7 @@ test("the home send stays quiet while its request runs, then allows a distinct f
     await connect();
     assert.equal(view.composer("acp").__props.sendBlocked, true, "create did not finish POST /send");
     assert.equal(view.composer("acp").__props.sendBlockedReason, null);
-    assert.doesNotMatch(view.host.textContent, /Sending|正在发送|发送中|上一条还在发送/i);
+    assert.match(pendingBubble(view).textContent, /发送中/);
     await act(async () => { settlePending(pendingId, { taskId: "t1", rowId: null, queued: false }); });
     await settle();
     assert.equal(readPending(pendingId).status, "accepted");
@@ -200,5 +201,98 @@ test("the create failed (no task): the error under the bubble; the retry makes t
     await deliver(prompt(4, "修一下构建"));
     assert.equal(userBubbles(view).length, 1);
     assert.equal(pendingBubble(view), null);
+  } finally { await view.unmount(); }
+});
+
+// Recreate a tab's in-memory state while retaining only its persisted outbox.
+async function reloadOutbox(pendingId) {
+  const { clearUserScopedCaches, setCacheUser } = await import("../src/lib/user-scoped-cache.ts");
+  const key = `oceanleo.uc:send-test-user:acp-outbox:${pendingId}`;
+  const saved = localStorage.getItem(key);
+  assert.ok(saved, "the outgoing message was persisted before delivery");
+  clearUserScopedCaches();
+  await Promise.resolve();
+  setCacheUser("send-test-user");
+  localStorage.setItem(key, saved);
+}
+
+test("reopening a task resumes its saved send with the same id, choices and files and shows one bubble", async () => {
+  const pendingId = put({ taskId: "t1" });
+  await reloadOutbox(pendingId);
+  const view = await mount({ taskId: "t1" }, { task: { id: "t1", mode: "computer", status: "created" }, sessions: [session("cts_home", "acp", "claude")] });
+  try {
+    await settle();
+    const sent = posts("/v1/tasks/t1/send");
+    assert.equal(sent.length, 1, "recovery resumes on opening the task");
+    assert.equal(sent[0].body.client_message_id, "11111111-1111-4111-8111-111111111111");
+    assert.equal(sent[0].body.model, "opus");
+    assert.equal(sent[0].body.attachments[0].artifact_id, SPEC.artifact_id);
+    assert.equal(userBubbles(view).length, 1);
+    await connect();
+    await deliver(prompt(20, "修一下构建"));
+    assert.equal(userBubbles(view).length, 1);
+    assert.equal(pendingBubble(view), null);
+  } finally { await view.unmount(); }
+});
+
+test("home reopening without a created task shows the saved bubble and resend, with its text back in the input", async () => {
+  const pendingId = put({ attachments: [] });
+  await reloadOutbox(pendingId);
+  const view = await mount({}, { url: "/", sessions: [] });
+  try {
+    assert.equal(userBubbles(view).length, 1);
+    assert.match(pendingBubble(view).textContent, /没有发出/);
+    assert.match(pendingBubble(view).querySelector("[data-acp-pending-retry]").textContent, /重发/);
+    assert.equal(view.composer("acp").__props.value, "修一下构建");
+    assert.equal(posts("/send").length, 0, "a missing task waits for the person's resend");
+    await act(async () => { pendingBubble(view).querySelector("[data-acp-pending-retry]").click(); });
+    await settle();
+    const sent = posts("/v1/tasks/t_new/send");
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].body.client_message_id, "11111111-1111-4111-8111-111111111111");
+    assert.equal(userBubbles(view).length, 1);
+  } finally { await view.unmount(); }
+});
+
+test("one pending bubble says sending, retrying, then not sent with resend", async () => {
+  const { markPendingRetry } = await import("../src/shell/acp-task/pending-send.ts");
+  const pendingId = put({ attachments: [] });
+  const view = await mount({ pendingId }, { url: `/tasks/start?pending=${pendingId}` });
+  try {
+    assert.match(pendingBubble(view).querySelector("[data-acp-pending-state]").textContent, /发送中/);
+    await act(async () => { markPendingRetry(readPending(pendingId).clientMessageId); });
+    assert.match(pendingBubble(view).querySelector("[data-acp-pending-state]").textContent, /正在重试/);
+    assert.equal(userBubbles(view).length, 1);
+    await act(async () => { settlePending(pendingId, { error: new Error("offline") }); });
+    assert.match(pendingBubble(view).querySelector("[data-acp-pending-state]").textContent, /没有发出/);
+    assert.equal(userBubbles(view).length, 1);
+    assert.equal(view.composer("acp").__props.value, "修一下构建");
+  } finally { await view.unmount(); }
+});
+
+test("a known receipt waits for its exact row when an earlier message has the same text", async () => {
+  const pendingId = put({ taskId: "t1", attachments: [] });
+  settlePending(pendingId, { taskId: "t1", rowId: seq + 1000 });
+  const view = await mount({ taskId: "t1", pendingId }, { sessions: [session("cts_home", "acp", "claude")] });
+  try {
+    await connect();
+    await deliver(prompt(50, "修一下构建"));
+    assert.ok(pendingBubble(view), "a different earlier row cannot acknowledge this message");
+    assert.equal(userBubbles(view).length, 2, "these are two distinct messages with identical text");
+  } finally { await view.unmount(); }
+});
+
+test("refreshing the home task URL after create resumes send without creating the task again", async () => {
+  const pendingId = put({ attachments: [] });
+  settlePending(pendingId, { taskId: "t1", session: { ...claudeSession, task_id: "t1" } });
+  await reloadOutbox(pendingId);
+  const created = [];
+  const view = await mount({ pendingId, onTaskCreated: (id) => created.push(id) }, { url: `/tasks/start?pending=${pendingId}` });
+  try {
+    await settle();
+    assert.deepEqual(created, ["t1"]);
+    assert.equal(globalThis.__gateway.filter((call) => call.method === "POST" && call.path.endsWith("/task-sessions")).length, 0);
+    assert.equal(posts("/v1/tasks/t1/send").length, 1);
+    assert.equal(userBubbles(view).length, 1);
   } finally { await view.unmount(); }
 });

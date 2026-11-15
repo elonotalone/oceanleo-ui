@@ -1,4 +1,6 @@
 "use client";
+import { ACP_CREATE_DEADLINE_MS, reliableRequest } from "../shell/acp-task/reliable-request";
+import { pendingForMessage, settlePending } from "../shell/acp-task/pending-send";
 import { cloudComputerRequest, type Computer } from "./cloud-computer-api";
 import { boundedHistoryListRequest, HistoryListRequestError, validHistoryListRows } from "./history-list-api";
 import type { ExecutionTarget } from "./execution-target";
@@ -15,7 +17,11 @@ export type CreateComputerTaskSessionInput = Pick<ComputerTaskSession, "kind"> &
 };
 type Options = { signal?: AbortSignal };
 export async function createComputerTaskSession(computerId: string, input: CreateComputerTaskSessionInput, options: Options = {}) {
-  const result = await cloudComputerRequest<{task_id: string; session: ComputerTaskSession}>(`/v1/computers/${encodeURIComponent(computerId)}/task-sessions`, {method:"POST", body:JSON.stringify(input), ...options});
+  const result = await reliableRequest(`create:${computerId}`, input.request_id,
+    (signal) => cloudComputerRequest<{task_id: string; session: ComputerTaskSession}>(`/v1/computers/${encodeURIComponent(computerId)}/task-sessions`, {method:"POST", body:JSON.stringify(input), signal}),
+    { timeoutMs: ACP_CREATE_DEADLINE_MS, signal: options.signal });
+  const entry = pendingForMessage(input.request_id);
+  if (entry) settlePending(entry.id, { taskId: result.task_id, session: result.session });
   if (result?.session?.id) rememberComputerTaskSession(result.session);
   return result;
 }

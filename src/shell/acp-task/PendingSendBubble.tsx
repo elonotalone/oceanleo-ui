@@ -9,6 +9,8 @@ import { useUI } from "../../i18n/ui/useUI";
 import { knownComputer, lastKnownComputer } from "../../lib/computer-task-api";
 import type { ConversationTarget, NativeProgram } from "../native-thread/types";
 import type { PendingAttachment } from "../useAttachments";
+import { ACP_REQUEST_TIMEOUT_ERROR } from "./reliable-request";
+import { PENDING_STORAGE_ERROR } from "./pending-send";
 import type { PendingSend } from "./pending-send";
 
 /** The program's chat on that computer: the task view's dock and composer address it before the task exists. */
@@ -62,13 +64,16 @@ export function PendingSendBubble({
   onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }) {
   const tt = useUI();
-  const statusText = pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("发送失败") : "";
+  const statusText = pending.status === "sending" ? tt("发送中")
+    : pending.status === "retrying" ? tt("正在重试")
+    : pending.status === "queued" ? tt("已排队") : pending.status === "failed" ? tt("没有发出") : "";
+  const detail = (errorText === PENDING_STORAGE_ERROR || errorText === ACP_REQUEST_TIMEOUT_ERROR) ? tt(errorText) : errorText;
   return (
     <div className="space-y-1.5" data-acp-pending-send={pending.id} data-acp-pending-status={pending.status}>
       <AgentTranscriptBubble message={pendingMessage(pending)} onOpenAttachment={onOpenAttachment} />
       {(statusText || errorText) && <div className={`flex items-center justify-end gap-2 px-1 text-[12px] ${pending.status === "failed" ? "text-rose-500" : "text-stone-400"}`}>
         {statusText && <span data-acp-pending-state="">{statusText}</span>}
-        {errorText && <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" role="alert" data-acp-pending-error="">{errorText}</span>}
+        {detail && <span className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]" role="alert" data-acp-pending-error="">{detail}</span>}
         {pending.status === "failed" && onRetry && (
           <button
             type="button"
@@ -76,7 +81,7 @@ export function PendingSendBubble({
             onClick={onRetry}
             className="shrink-0 rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] text-stone-600 hover:bg-stone-50"
           >
-            {tt("重试")}
+            {tt("重发")}
           </button>
         )}
       </div>}

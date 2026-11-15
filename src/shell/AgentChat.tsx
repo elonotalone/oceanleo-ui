@@ -71,7 +71,7 @@ import {
   stopTask as stopAcpTask,
   type AcpSessionChoices,
 } from "../lib/acp-frames-api";
-import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, usePendingMany } from "./acp-task";
+import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, useTaskPending } from "./acp-task";
 import { PendingSendBubble, pendingAttachmentTiles, pendingConversation } from "./acp-task/PendingSendBubble";
 import { useTaskActivity, withTaskActivity } from "./acp-task/useTaskActivity";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
@@ -644,7 +644,7 @@ const NO_TASK_SESSIONS: ComputerTaskSession[] = [];
 
 /** One message = one text with its files: the same pair sent again keeps its `client_message_id`. */
 function acpMessageKey(text: string, attachments: readonly AgentAttachment[]): string {
-  return `${text}\u0000${attachments.map((attachment) => attachment.url).join("\u0001")}`;
+  return `${text}\u0000${attachments.map((attachment) => attachment.artifact_id ? `${attachment.artifact_id}:${attachment.revision_id || ""}` : attachment.url).join("\u0001")}`;
 }
 
 /** A send receipt normally carries row_id; the text fallback covers older gateways and queued receipts. */
@@ -652,7 +652,7 @@ function acpPromptRowVisible(
   pending: { rowId: number | null; afterRowId?: number; text: string },
   rows: readonly { id: number; direction: string; raw: string }[],
 ): boolean {
-  if (pending.rowId !== null && rows.some((row) => row.id === pending.rowId)) return true;
+  if (pending.rowId !== null) return rows.some((row) => row.id === pending.rowId);
   const after = pending.afterRowId || 0;
   return rows.some((row) => {
     if (row.direction !== "client" || row.id <= after) return false;
@@ -785,7 +785,6 @@ function AgentChatInner({
   const pending = usePending(pendingId);
   /** Task-page optimistic sends. The shared pending store also powers the home's first-message path. */
   const [acpPendingIds, setAcpPendingIds] = useState<string[]>([]);
-  const acpPendingSends = usePendingMany(acpPendingIds);
   /** Draft (no task yet) only: the OceanLeo target picked in the dock; undefined = today's remembered target. */
   const [draftConversation, setDraftConversation] = useState<ConversationTarget | undefined>(() => pendingConversation(pending));
   /** A native chat picked for a program this task (or draft) has no session for: created by the first send. */
@@ -804,14 +803,18 @@ function AgentChatInner({
     (explicitTaskId !== undefined
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
+  const acpPendingSends = useTaskPending(taskId, pendingId, acpPendingIds);
   // The route is enough to read our stored conversation. Start this before the
   // task-detail effect; a session or returned frame can identify a native task.
+  useEffect(() => {
+    if (!taskId && !pending && acpPendingSends[0]) setDraftConversation(pendingConversation(acpPendingSends[0]));
+  }, [taskId, pending, acpPendingSends]);
   const earlySessions = taskSessions.taskId === taskId ? taskSessions.items : taskId ? knownComputerTaskSessions(taskId) ?? [] : [];
   const earlyNativeSession = earlySessions.filter((row) => usableSession(row) && row.kind === "acp")
     .reduce<ComputerTaskSession | null>((latest, row) => !latest || row.created_at >= latest.created_at ? row : latest, null);
   const knownComputerTask = taskMode.taskId === taskId ? taskMode.computer
     : initialTask?.task?.id === taskId ? isComputerWorkspaceTask(initialTask.task) : undefined;
-  const nativeHint = knownComputerTask !== false && Boolean(earlyNativeSession);
+  const nativeHint = knownComputerTask !== false && Boolean(earlyNativeSession || acpPendingSends.length || pending?.taskId === taskId && taskId);
   const frames = useAcpFrames(taskId || null, nativeHint);
   const computerTask = knownComputerTask === true || (knownComputerTask !== false && (nativeHint || frames.rows.length > 0));
   const [messages, setMessages] = useState<AgentMessage[]>([]);
@@ -1416,8 +1419,8 @@ function AgentChatInner({
   // Stored rows render independently of the live socket. HTTP actions remain
   // usable while the background subscription reconnects from its last row.
   const acpTarget = conversation?.kind === "native" && conversation.view === "chat" ? conversation : null;
-  const acpProgram = acpTarget?.program ?? acpSession?.program ?? earlyNativeSession?.program ?? null;
-  const acpComputerId = acpTarget?.computerId ?? acpSession?.computer_id ?? earlyNativeSession?.computer_id ?? null;
+  const acpProgram = acpTarget?.program ?? acpSession?.program ?? earlyNativeSession?.program ?? acpPendingSends[0]?.program ?? null;
+  const acpComputerId = acpTarget?.computerId ?? acpSession?.computer_id ?? earlyNativeSession?.computer_id ?? acpPendingSends[0]?.computerId ?? null;
   const acpRowsProgram = acpSession?.program || acpProgram || "";
   /** The left pane shows this stream (a computer task, or a draft whose dock picked a program's chat). */
   const acpShown = nativeTask || (!taskId && Boolean(acpTarget));
@@ -1597,8 +1600,8 @@ function AgentChatInner({
   const [pendingRetried, setPendingRetried] = useState("");
   const pendingTask = pending && (!taskId || taskId === pending.taskId || pendingRetried === pending.id);
   const pendingShown = pending && pendingTask && !acpPromptRowVisible(pending, frames.rows) ? pending : null;
-  const pendingInFlight = Boolean(pending && pendingTask && pending.status === "sending");
-  const acpSendBlocked = acpBusy || pendingInFlight;
+  const pendingInFlight = Boolean(pending && pendingTask && (pending.status === "sending" || pending.status === "retrying"));
+  const acpSendBlocked = acpBusy || pendingInFlight || acpPendingSends.some((entry) => entry.status === "sending" || entry.status === "retrying");
   const acpSendBlockedReason = null;
   const [acpSettingNotices, setAcpSettingNotices] = useState<{ taskId: string; text: string; message: string; afterRowId: number }[]>([]);
   const acpStoredSettingNotices = useMemo(() => [
@@ -1608,18 +1611,19 @@ function AgentChatInner({
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
     && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
-  const acpPendingShown = acpPendingSends.filter((entry) => entry.status === "failed" || !acpPromptRowVisible(entry, frames.rows));
+  const acpPendingShown = acpPendingSends.filter((entry) => !acpPromptRowVisible(entry, frames.rows));
   useEffect(() => {
-    const settled = acpPendingSends.filter((entry) => entry.status !== "failed" && acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
+    const settled = acpPendingSends.filter((entry) => acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
+    if (pending && acpPromptRowVisible(pending, frames.rows)) forgetPending(pending.id);
     if (!settled.length) return;
     settled.forEach(forgetPending);
     setAcpPendingIds((current) => current.filter((id) => !settled.includes(id)));
-  }, [acpPendingSends, frames.rows]);
+  }, [acpPendingSends, frames.rows, pending]);
   const acpPendingRestoredRef = useRef(new Map<string, unknown>());
   useEffect(() => {
     for (const entry of acpPendingSends) {
-      if (entry.status !== "failed" || acpPendingRestoredRef.current.get(entry.id) === entry.error) continue;
-      acpPendingRestoredRef.current.set(entry.id, entry.error);
+      if (entry.status !== "failed" || acpPendingRestoredRef.current.get(entry.id) === (entry.error ?? entry.id)) continue;
+      acpPendingRestoredRef.current.set(entry.id, entry.error ?? entry.id);
       setInput((current) => current || entry.text);
       atts.restoreReady(pendingAttachmentTiles(entry.attachments));
       acpMessageIdRef.current = { key: acpMessageKey(entry.text, entry.attachments), id: entry.clientMessageId };
@@ -1633,8 +1637,8 @@ function AgentChatInner({
   // Same message id (the gateway dedupes it), except after a refusal: nothing went out, a new message.
   const pendingRestoredRef = useRef<unknown>(null);
   useEffect(() => {
-    if (!pending || pending.error == null || pendingRestoredRef.current === pending.error) return;
-    pendingRestoredRef.current = pending.error;
+    if (!pending || pending.status !== "failed" || pendingRestoredRef.current === (pending.error ?? pending.id)) return;
+    pendingRestoredRef.current = pending.error ?? pending.id;
     setInput(pending.text);
     atts.restoreReady(pendingAttachmentTiles(pending.attachments));
     acpMessageIdRef.current = refusedByAgent(pending.error) ? null
@@ -2221,9 +2225,9 @@ function AgentChatInner({
   async function sendAcpMessage(retry?: (typeof acpPendingSends)[number]) {
     const text = retry ? retry.text : input.trim();
     const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
-    if ((!text && uploaded.length === 0) || acpBusy || pendingInFlight || acpComposerDisabled || (!taskId && (!acpProgram || !acpComputerId))) return;
+    if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
-    const choice = acpPicker.forSend(retry?.choice);
+    const choice = retry?.choice ?? acpPicker.forSend();
     const key = acpMessageKey(text, uploaded);
     if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
@@ -2244,6 +2248,7 @@ function AgentChatInner({
       attachments: uploaded,
       choice,
       taskId: taskId || null,
+      ...(projectId ? { projectId } : {}),
       afterRowId: frames.rows.reduce((max, row) => Math.max(max, row.id), 0),
     });
     if (!reuseHomePending && !retryingTaskPending) setAcpPendingIds((current) => [...current, optimisticId]);
@@ -2254,13 +2259,13 @@ function AgentChatInner({
     }
     setAcpBusy(true);
     setAcpError(null);
-    let id = taskId || "";
+    let id = retry?.taskId || taskId || "";
     let created: { taskId: string; session: ComputerTaskSession } | null = null;
     try {
       if (!id) {
         const initialProjectId = retry?.projectId ?? pendingShown?.projectId ?? projectId;
-        const result = await createComputerTaskSession(acpComputerId!, {
-          kind: "acp", program: acpProgram!, request_id: clientMessageId,
+        const result = await createComputerTaskSession(retry?.computerId || acpComputerId!, {
+          kind: "acp", program: (retry?.program || acpProgram!) as ComputerTaskSession["program"], request_id: clientMessageId,
           ...(initialProjectId ? { project_id: initialProjectId } : {}),
         });
         created = { taskId: result.task_id, session: result.session };
@@ -2272,8 +2277,8 @@ function AgentChatInner({
       const sent = acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
       const body = {
         client_message_id: clientMessageId,
-        ...(acpProgram ? { program: acpProgram } : {}),
-        ...(acpComputerId ? { computer_id: acpComputerId } : {}),
+        ...((retry?.program || acpProgram) ? { program: retry?.program || acpProgram! } : {}),
+        ...((retry?.computerId || acpComputerId) ? { computer_id: retry?.computerId || acpComputerId! } : {}),
         text,
         ...(uploaded.length ? { attachments: uploaded } : {}),
         ...changedChoices(choice, sent),
@@ -2310,6 +2315,16 @@ function AgentChatInner({
     }
   }
 
+  const resumedAcpRef = useRef(new Set<string>());
+  useEffect(() => {
+    if (readOnly || acpBusy || (pendingInFlight && !pending?.restored) || acpComposerDisabled) return;
+    const entry = [pending, ...acpPendingSends].find((item) => item?.restored && item.taskId &&
+      item.status === "sending" && !resumedAcpRef.current.has(item.id));
+    if (!entry) return;
+    resumedAcpRef.current.add(entry.id);
+    void sendAcpMessage(entry);
+  }, [pending, acpPendingSends, readOnly, acpBusy, pendingInFlight, acpComposerDisabled]);
+
   /** Stop = `session/cancel` (the agent stays); its answer to the prompt ends the turn on the page. */
   const stopAcpTurn = useCallback(async () => {
     if (!taskId || readOnly) return false;
@@ -2344,10 +2359,11 @@ function AgentChatInner({
     const id = acpResend.taskId;
     setAcpBusy(true);
     void (async () => {
+      let optimisticId = "";
       try {
         for (const turn of again) {
           const clientMessageId = crypto.randomUUID();
-          const optimisticId = putPending({
+          optimisticId = putPending({
             clientMessageId,
             computerId: acpComputerId || "",
             program: acpProgram || "",
@@ -2371,7 +2387,7 @@ function AgentChatInner({
           });
         }
       }
-      catch (caught) { if (!refusedByAgent(caught)) setAcpError({ taskId: id, text: acpErrorText(caught) }); }
+      catch (caught) { if (optimisticId) settlePending(optimisticId, { error: caught }); }
       finally { setAcpBusy(false); }
     })();
   }, [acpComputerId, acpConnected, acpProgram, acpResend, acpView, taskId]);

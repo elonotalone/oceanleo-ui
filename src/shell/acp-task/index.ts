@@ -8,6 +8,7 @@ export {
   settlePending,
   usePending,
   usePendingMany,
+  useTaskPending,
   type PendingSend,
   type PendingSendInput,
   type PendingSendStatus,

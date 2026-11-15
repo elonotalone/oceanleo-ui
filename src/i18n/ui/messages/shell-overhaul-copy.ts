@@ -1,6 +1,7 @@
 // 2026-09-21 外壳整改词典聚合器：五张分表按语种合并成一张，index.ts / load.ts 只注册这一张。
 // 分表各归一个工作单元；本文件与 index.ts / load.ts 只由整合者改。
 
+import { PW_U1_MESSAGES } from "./pw-u1-copy";
 import { LOCALES, type Locale } from "../../config";
 import { SHELL_OVERHAUL_DOCK_MESSAGES } from "./shell-overhaul-dock-copy";
 import { SHELL_OVERHAUL_DEVICES_MESSAGES } from "./shell-overhaul-devices-copy";
@@ -215,6 +216,7 @@ const PARTS = [
   PUSH_NATIVE_MESSAGES,
   BUILD_1103_GAP_MESSAGES,
   RDLOGIN_ACT_MESSAGES,
+  PW_U1_MESSAGES,
 ];
 
 // 2026-11-03: shared words the base dictionary (or, for 任务, the enterprise table) already translates in every locale. Several 2026-11-03 tables
