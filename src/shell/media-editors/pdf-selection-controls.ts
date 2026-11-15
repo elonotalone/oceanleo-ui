@@ -3,7 +3,7 @@
  *
  * - 选中一条批注：编辑栏变成它的属性。加文字（FreeText）用文字组 + 底色 + 透明度；
  *   高亮用填充色；下划线 / 删除线 / 画笔 / ✓ / ✗ 用描边面板；便签用填充色 + 便签内容；
- *   图片 / 签名图章用透明度。都带对象组的「删除」。
+ *   图片 / 签名图章只提供引擎能保存的旋转。都带对象组的「删除」。
  * - 没选中、但开着某个工具：同一套控件改的是这个工具的默认值（「选颜色后拖选文字」）。
  * - 只出查看器真做得到的项：标准字体只有 Helvetica / Times / Courier 三族，所以
  *   字体下拉只列这三个；下划线、删除线、列表、行距、链接对批注文字做不到，不出。
@@ -33,6 +33,18 @@ export function pdfFontCode(family: string, bold: boolean, italic: boolean): num
 }
 
 const ALIGN = ["left", "center", "right"] as const;
+
+/** Capability ceiling verified against EmbedPDF 2.15 FreeText renderer and PDFium AP writer.
+ * DS/RC are read by the model but are not rendered by either writer or editing overlay.
+ * Exposing these as scalar patches would silently lose formatting on save/reopen.
+ */
+export const PDF_FREETEXT_ENGINE_GAPS = [
+  "underline", "strike", "highlight", "list", "line-height", "link", "letter-spacing",
+  "vertical-text", "indent-increase", "indent-decrease", "justify",
+] as const;
+export const PDF_STAMP_ENGINE_GAPS = [
+  "replace", "crop", "flip-x", "flip-y", "radius", "border", "opacity", "adjust", "alt", "image-fit", "remove-background",
+] as const;
 
 export type PdfSelectionKind = "freetext" | "highlight" | "line" | "ink" | "note" | "stamp" | null;
 
@@ -152,6 +164,8 @@ export function pdfSelectionControls(
         },
         { id: "fill", kind: "color", label: tt("底色"), value: hex(values.color ?? values.backgroundColor, "#ffffff") },
         opacityControl,
+        ...(deletable ? [{ id: "case", kind: "action" as const, label: tt("大小写"), placement: "more" as const }] : []),
+        { id: "clear-format", kind: "action", label: tt("清除格式"), placement: "more" },
         ...remove,
       ];
     }
@@ -205,7 +219,7 @@ export function pdfSelectionControls(
         ...remove,
       ];
     case "stamp":
-      return [opacityControl, ...remove];
+      return [{ id: "rotate", kind: "action", label: tt("旋转") }, ...remove];
     default:
       return [];
   }
@@ -218,8 +232,24 @@ export function pdfSelectionPatch(
   controlId: string,
   value: unknown,
 ): Record<string, unknown> | null {
+  // Reject controls not provided for this selection, even if an old caller sends them.
+  const available = pdfSelectionControls(kind, values, (label) => label, true);
+  const id = controlId === "opacity-value" ? "opacity" : controlId;
+  if (!available.some((control) => control.id === id)) return null;
   const font = pdfFontParts(values.fontFamily);
   switch (controlId) {
+    case "case": {
+      const text = String(values.contents ?? "");
+      if (value === undefined || value === null) return { contents: text === text.toUpperCase() ? text.toLowerCase() : text.toUpperCase() };
+      if (value === "upper") return { contents: text.toUpperCase() };
+      if (value === "lower") return { contents: text.toLowerCase() };
+      if (value === "title") return { contents: text.toLowerCase().replace(/(^|\s)(\S)/gu, (_all, space: string, char: string) => space + char.toUpperCase()) };
+      return null;
+    }
+    case "clear-format":
+      return { fontFamily: 4, fontSize: 12, fontColor: "#000000", richContent: "", defaultStyle: "" };
+    case "rotate":
+      return { rotation: ((Number(values.rotation) || 0) + 90) % 360 };
     case "font-family":
       return { fontFamily: pdfFontCode(String(value), font.bold, font.italic) };
     case "font-size":

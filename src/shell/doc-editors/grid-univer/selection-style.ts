@@ -18,6 +18,7 @@ export interface GridSelectionStyleRange {
   getWidth(): number;
   getHeight(): number;
   getCellStyleData?: () => (GridStyleDataLike & { n?: { pattern?: string } | null }) | null;
+  getCellData?: () => Record<string, unknown> | null;
   isMerged?: () => boolean;
   isPartOfMerge?: () => boolean;
 }
@@ -67,6 +68,7 @@ export function readGridSelectionStyle(
       style: gridCellTextStyleFromStyleData(data, {
         merged,
         multiCell: height > 1 || width > 1,
+        cell: range.getCellData?.(),
       }),
       numberType: gridNumberTypeFromPattern(data?.n?.pattern),
       selection: {

@@ -58,15 +58,25 @@ export function usePdfSelectionAdapter({
   const command = (message: SelectionCommand) => {
     if (readOnly || !bridge || !context || message.selectionId !== context.id) return;
     if (message.selectionRevision !== undefined && message.selectionRevision !== context.revision) return;
+    if (!context.controls.some((control) => control.id === (message.controlId === "opacity-value" ? "opacity" : message.controlId))) return;
     if (selected) {
+      let target = selected;
+      if (message.controlId === "case") {
+        // FreeText keeps typing in its editable DOM until blur. Commit it before
+        // transforming contents, then read the current native object rather than this render's snapshot.
+        bridge.flushTextEdit();
+        const current = bridge.selected();
+        if (!current || current.id !== selected.id) return;
+        target = current;
+      }
       if (message.controlId === "delete") {
         bridge.deleteAnnotation(selected);
         return;
       }
       const patch = message.controlId === "font-size"
         ? fontSizePatch(message.value)
-        : pdfSelectionPatch(pdfAnnotationKind(selected.type), selected, message.controlId, message.value);
-      if (patch) bridge.updateAnnotation(selected, patch);
+        : pdfSelectionPatch(pdfAnnotationKind(target.type), target, message.controlId, message.value);
+      if (patch) bridge.updateAnnotation(target, patch);
       return;
     }
     if (!activeTool) return;

@@ -157,6 +157,14 @@ export const EDIT_BAR_CANON_OPTIONS = {
 /** 锁定项在已锁定时的标签。 */
 export const EDIT_BAR_UNLOCK_LABEL = "取消锁定";
 
+/** Engine scope annotations for consumers of the canon projection (additive contract).
+ * Grid highlight is the whole cell background, including its empty area; other
+ * engines retain their own text-run highlight semantics.
+ */
+export const EDIT_BAR_CANON_ENGINE_SCOPES = {
+  "grid-cell": { highlight: { scope: "cell-background", label: "单元格底色", nativeProperty: "bg" } },
+} as const;
+
 /**
  * 别名：编辑器改成规范 id 之前，投影按这张表归一。`bars` 缺省 = 任何栏都认。
  * `color` 只在文字栏算文字色、在形状栏算填充（§4）。

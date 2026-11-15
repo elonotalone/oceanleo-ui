@@ -10,6 +10,8 @@ import {
 } from "../src/shell/doc-editors/grid-univer/stage-plan.ts";
 import { gridUniverCommand } from "../src/shell/doc-editors/grid-univer/facade-commands.ts";
 import { selectionControlUsesIconOnly } from "../src/shell/selection-toolbar-layout.ts";
+import { canonicalSelectionControls } from "../src/shell/edit-bar-canon-projection.ts";
+import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
 
 const toolbarModuleUrl = await compileModule(
   "src/shell/SelectionToolbarControl.tsx",
@@ -22,6 +24,7 @@ const toolbarModuleUrl = await compileModule(
 const iconModuleUrl = await compileModule("src/shell/AdvancedEditorIcon.tsx");
 const { SelectionToolbarControl } = await import(toolbarModuleUrl);
 const { AdvancedEditorIcon } = await import(iconModuleUrl);
+const { selectionAdapterContext, resolveSelectionAdapterContext } = await import(await compileModule("src/shell/selection-adapter.ts"));
 
 function renderGridControl(control, context, presentation = "compact") {
   return renderToStaticMarkup(
@@ -68,9 +71,13 @@ test("real generated grid controls render named glyphs for compact and overflow 
       "the rendered toolbar must come from every runnable grid facade control",
     );
 
-    for (const control of context.controls) {
-      const command = gridUniverCommand(control.id);
-      assert.ok(command?.run, `${control.id} must resolve to a real command adapter`);
+    const projected = partitionSelectionInspectorControls(canonicalSelectionControls(resolveSelectionAdapterContext(selectionAdapterContext(context))).controls).compact;
+    for (const input of context.controls) {
+      const command = gridUniverCommand(input.id);
+      assert.ok(command?.run, `${input.id} must resolve to a real command adapter`);
+      // Long text inputs live inside the real canon inspector; its trigger is what appears on the bar.
+      const control = input.kind === "text" ? projected.find(control => control.canonId === input.id) : input;
+      assert.ok(control, `${input.id} has a real compact control or inspector trigger`);
 
       const compact = renderGridControl(control, context);
       assert.ok(

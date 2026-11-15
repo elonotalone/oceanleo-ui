@@ -261,11 +261,10 @@ test("L1 粗体/对齐/颜色落到对应的 Facade 方法，右对齐经过翻�
   ]);
 });
 
-test("非法对齐值不递给 Facade——上游 default 分支是 throw", () => {
+test("缺少 native set-style 端口时拒绝 justify，不递给三向 Facade", () => {
   const { calls, port } = recordingPort();
   const outcome = runGridUniverCommand("align", port, { value: "justify" });
-  assert.equal(outcome.ok, true);
-  assert.equal(outcome.result, null);
+  assert.equal(outcome.ok, false);
   assert.deepEqual(calls, []);
 });
 
@@ -351,7 +350,7 @@ test("条件格式：数字操作符拿不到数就不建规则（不把「abc�
     operator: "greater-than",
     value: "abc",
   });
-  assert.equal(outcome.result, null);
+  assert.equal(outcome.ok, false);
   assert.deepEqual(calls, []);
 });
 
@@ -427,7 +426,7 @@ test("数据验证：between 少了上限就不建规则，不拿下限凑一个
     operator: "between",
     value: "1",
   });
-  assert.equal(outcome.result, null);
+  assert.equal(outcome.ok, false);
   assert.deepEqual(calls, []);
 });
 
@@ -438,7 +437,7 @@ test("数据验证：Invalid Date 不许进 builder（否则静默造一条永�
     operator: "greater-than",
     value: "不是日期",
   });
-  assert.equal(outcome.result, null);
+  assert.equal(outcome.ok, false);
   assert.deepEqual(calls, []);
 });
 
@@ -457,7 +456,7 @@ test("数据验证：日期各操作符落到对应的 require*，日期没有�
     operator: "not-equal",
     value: "2026-09-04",
   });
-  assert.equal(outcome.result, null, "上游没有日期不等于，不许自己拼公式");
+  assert.equal(outcome.ok, false, "上游没有日期不等于，不许自己拼公式");
   assert.deepEqual(ne.calls, []);
 });
 
@@ -496,6 +495,10 @@ test("grid.read-cell 是读，不写任何东西", () => {
   });
   assert.equal(outcome.result, "cell-value");
   assert.deepEqual(calls, [["sheet.getRange", 0, 0]]);
+  for (const value of [null, false]) {
+    const readPort = { ...port, sheet: { getRange: () => ({ getValue: () => value }) } };
+    assert.deepEqual(runGridUniverCommand("grid.read-cell", readPort), { ok: true, result: value }, "empty and boolean cells are successful reads");
+  }
 });
 
 test("排序方向：只有明确的 desc 才降序", () => {

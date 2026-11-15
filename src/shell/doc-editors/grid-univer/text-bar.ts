@@ -15,6 +15,7 @@ import type {
   SelectionControlOption,
 } from "../../selection-context-types";
 import type { UITranslate } from "../../../i18n/ui/useUI";
+import { gridRichTextState } from "./rich-text-commands";
 
 /** Univer `IStyleData` 里栏要读的那几位（鸭子类型，不拖进 Univer 的类型）。 */
 export interface GridStyleDataLike {
@@ -34,9 +35,10 @@ export interface GridStyleDataLike {
   tb?: number | null;
   /** 边框：上下左右各一项，有值 = 有这条边。 */
   bd?: { t?: unknown; b?: unknown; l?: unknown; r?: unknown } | null;
+  tr?: { a?: number; v?: number } | null;
 }
 
-export type GridHorizontalAlign = "left" | "center" | "right";
+export type GridHorizontalAlign = "left" | "center" | "right" | "justify";
 export type GridVerticalAlign = "top" | "middle" | "bottom";
 
 /** 栏上显示的当前格子样式。 */
@@ -60,6 +62,11 @@ export interface GridCellTextStyle {
   multiCell: boolean;
   /** 左上格的框线：all / none / 单边；几条边混着时为空串。 */
   border: string;
+  list: string;
+  lineHeight: number;
+  link: string;
+  verticalText: boolean;
+  indent: number;
 }
 
 /** Univer 的默认字体 / 字号（`DEFAULT_STYLES`：Arial 11）。 */
@@ -83,6 +90,11 @@ export const GRID_DEFAULT_TEXT_STYLE: GridCellTextStyle = {
   merged: false,
   multiCell: false,
   border: "none",
+  list: "none",
+  lineHeight: GRID_DEFAULT_FONT_SIZE * 1.2,
+  link: "",
+  verticalText: false,
+  indent: 0,
 };
 
 /**
@@ -150,13 +162,14 @@ function on(value: unknown): boolean {
 
 export function gridCellTextStyleFromStyleData(
   style: GridStyleDataLike | null | undefined,
-  extras: { merged?: boolean; multiCell?: boolean } = {},
+  extras: { merged?: boolean; multiCell?: boolean; cell?: Record<string, unknown> | null } = {},
 ): GridCellTextStyle {
   const s = style || {};
   const fontSize =
     typeof s.fs === "number" && Number.isFinite(s.fs) && s.fs > 0
       ? s.fs
       : GRID_DEFAULT_FONT_SIZE;
+  const rich = gridRichTextState(extras.cell);
   return {
     fontFamily:
       typeof s.ff === "string" && s.ff.trim()
@@ -169,13 +182,18 @@ export function gridCellTextStyleFromStyleData(
     strike: on(s.st?.s),
     textColor: gridHexColor(s.cl?.rgb, GRID_DEFAULT_TEXT_STYLE.textColor),
     highlight: gridHexColor(s.bg?.rgb, GRID_DEFAULT_TEXT_STYLE.highlight),
-    align: s.ht === 2 ? "center" : s.ht === 3 ? "right" : "left",
+    align: s.ht === 2 ? "center" : s.ht === 3 ? "right" : s.ht === 4 || s.ht === 5 ? "justify" : "left",
     // Univer 未设时按「靠下」画（与 Excel 一致）。
     verticalAlign: s.vt === 1 ? "top" : s.vt === 2 ? "middle" : "bottom",
     wrap: s.tb === 3,
     merged: Boolean(extras.merged),
     multiCell: Boolean(extras.multiCell),
     border: gridBorderState(s.bd),
+    list: rich.list,
+    lineHeight: rich.lineHeight ?? fontSize * 1.2,
+    link: rich.link,
+    verticalText: s.tr?.v === 1,
+    indent: rich.indent,
   };
 }
 
@@ -210,12 +228,12 @@ export function gridCellTextStyleKey(style: GridCellTextStyle): string {
     style.merged ? 1 : 0,
     style.multiCell ? 1 : 0,
     style.border,
+    style.list, style.lineHeight, style.link, style.verticalText, style.indent,
   ].join("|");
 }
 
 /**
- * 文字组的规范 id，顺序即显示顺序（§4）。表格做不到的 `list`、`line-height`
- * 不出；`link` 由 Univer 自己的链接面板承担（右键菜单），这里不另造输入框。
+ * 字距未被当前 Univer 字形排版读取，不宣告该能力。其余段落属性写入原生富文本。
  */
 export const GRID_TEXT_BAR_IDS = [
   "font-family",
@@ -227,7 +245,11 @@ export const GRID_TEXT_BAR_IDS = [
   "text-color",
   "highlight",
   "align",
+  "list", "line-height", "link",
 ] as const;
+
+/** Univer 0.25.1 does not apply per-run character spacing in its sheet shaper. */
+export const GRID_TEXT_ENGINE_GAPS = ["letter-spacing"] as const;
 
 /** 规范文字组之后的表格特有控件（不带规范图标，见 A-1）。 */
 export const GRID_CELL_BAR_IDS = [
@@ -238,7 +260,7 @@ export const GRID_CELL_BAR_IDS = [
 ] as const;
 
 /** 「更多」里的规范项。 */
-export const GRID_TEXT_MORE_IDS = ["clear-format"] as const;
+export const GRID_TEXT_MORE_IDS = ["case", "vertical-text", "indent-increase", "indent-decrease", "clear-format"] as const;
 
 export const GRID_BORDER_OPTIONS = [
   "all",
@@ -329,8 +351,13 @@ export function gridTextBarControls(
         { value: "left", label: tt("左") },
         { value: "center", label: tt("中") },
         { value: "right", label: tt("右") },
+        { value: "justify", label: tt("两端对齐") },
       ],
     },
+    { id: "list", kind: "select", label: tt("项目列表"), value: style.list,
+      options: [ { value: "none", label: tt("无列表") }, { value: "bullet", label: tt("项目符号列表") }, { value: "ordered", label: tt("编号列表") } ] },
+    { id: "line-height", kind: "number", label: tt("行间距"), value: style.lineHeight, min: 1, max: 300, step: 1 },
+    { id: "link", kind: "text", label: tt("链接"), value: style.link },
   ];
   const cell: SelectionControl[] = [
     {
@@ -379,6 +406,10 @@ export function gridTextBarControls(
     })),
   });
   const more: SelectionControl[] = [
+    { id: "case", kind: "action", label: tt("大小写"), placement: "more" },
+    { id: "vertical-text", kind: "toggle", label: tt("竖排文字"), value: style.verticalText, placement: "more" },
+    { id: "indent-increase", kind: "action", label: tt("增加缩进"), placement: "more" },
+    { id: "indent-decrease", kind: "action", label: tt("减少缩进"), placement: "more" },
     {
       id: "clear-format",
       kind: "action",

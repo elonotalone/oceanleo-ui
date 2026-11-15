@@ -16,6 +16,8 @@ import {
   GRID_FONT_SIZE_MIN,
   type GridBorderOption,
 } from "./text-bar";
+import { GRID_RICH_TEXT_COMMAND_IDS, runGridRichText } from "./rich-text-commands";
+import { EDIT_BAR_CANON } from "../../edit-bar-canon-table";
 
 /** 文字栏要用到的 FRange 方法（Univer 0.25.1 facade 实读）。 */
 export interface GridFacadeTextRange {
@@ -62,6 +64,14 @@ function fontLine(type: "ul" | "st") {
 }
 
 export const GRID_TEXT_COMMANDS: readonly GridUniverCommand[] = [
+  ...GRID_RICH_TEXT_COMMAND_IDS.map((id): GridUniverCommand => ({
+    id, label: EDIT_BAR_CANON[id].label, layer: "L1", run: (port, args) => runGridRichText(port, id, args.value),
+  })),
+  { id: "vertical-text", label: "竖排文字", layer: "L1", run: (port, args) =>
+    port.execute && port.unitId ? port.execute(GRID_SET_STYLE_COMMAND, {
+      unitId: port.unitId, subUnitId: port.sheet.getSheetId(), range: { ...port.selection },
+      style: { type: "tr", value: { a: 0, v: args.on === false ? 0 : 1 } },
+    }) : null },
   {
     id: "font-family",
     label: "字体",

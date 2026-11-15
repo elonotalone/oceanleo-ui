@@ -120,6 +120,10 @@ const ARG_OVERRIDES = {
   "font-size": { value: 12 },
   "grid-valign": { value: "top" },
   "grid-border": { value: "all" },
+  list: { value: "bullet" },
+  link: { value: "https://example.com" },
+  case: { value: "upper" },
+  "line-height": { value: 24 },
 };
 
 function argsFor(id) {
@@ -176,6 +180,8 @@ function recordingPort() {
   );
 
   const makeRange = (row, column) => ({
+    getCellData: () => ({ v: cells.get(`${row}:${column}`) ?? "", t: 1 }),
+    getCellStyleData: () => ({ fs: 11 }),
     setValue: write("setValue"),
     getValue: () => {
       hit("getValue", [row, column]);

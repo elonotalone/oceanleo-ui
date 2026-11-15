@@ -456,7 +456,7 @@ test("annotation bars use canonical ids in canonical order, one of each", () => 
   const text = pdfSelectionControls("freetext", { fontFamily: 5, fontSize: 12, textAlign: 1 }, tt, true);
   assert.deepEqual(
     text.map((control) => control.id),
-    ["font-family", "font-size", "bold", "italic", "text-color", "align", "fill", "opacity", "delete"],
+    ["font-family", "font-size", "bold", "italic", "text-color", "align", "fill", "opacity", "case", "clear-format", "delete"],
   );
   const font = text.find((control) => control.id === "font-family");
   assert.deepEqual(font.options.map((option) => option.value), ["Helvetica", "Times", "Courier"]);
@@ -476,7 +476,7 @@ test("annotation bars use canonical ids in canonical order, one of each", () => 
   assert.ok(ink.slice(0, 2).every((control) => control.inspectorGroup === "stroke"));
   assert.deepEqual(
     pdfSelectionControls("stamp", {}, tt, true).map((control) => control.id),
-    ["opacity", "delete"],
+    ["rotate", "delete"],
   );
   assert.deepEqual(
     pdfSelectionControls("note", { contents: "hi" }, tt, true).map((control) => control.id),
@@ -503,9 +503,10 @@ test("bar commands patch the annotation fields the viewer writes into the PDF", 
   });
   assert.deepEqual(pdfSelectionPatch("freetext", values, "font-size", 400), { fontSize: 96 });
   assert.deepEqual(pdfSelectionPatch("ink", {}, "opacity-value", 3), { opacity: 0.1 });
-  assert.deepEqual(pdfSelectionPatch("stamp", {}, "opacity", 73), { opacity: 0.73 });
-  assert.deepEqual(pdfSelectionPatch("stamp", {}, "opacity", 3), { opacity: 0.1 });
-  assert.deepEqual(pdfSelectionPatch("stamp", {}, "opacity", 150), { opacity: 1 });
+  assert.deepEqual(pdfSelectionPatch("freetext", {}, "opacity", 73), { opacity: 0.73 });
+  assert.deepEqual(pdfSelectionPatch("freetext", {}, "opacity", 3), { opacity: 0.1 });
+  assert.deepEqual(pdfSelectionPatch("freetext", {}, "opacity", 150), { opacity: 1 });
+  assert.equal(pdfSelectionPatch("stamp", {}, "opacity", 73), null, "STAMP opacity is not written by the native engine");
   assert.deepEqual(pdfSelectionPatch("highlight", {}, "fill", "#00ff00"), { strokeColor: "#00ff00", color: "#00ff00" });
   assert.deepEqual(pdfSelectionPatch("freetext", {}, "fill", "nope"), { color: "#ffffff", backgroundColor: "#ffffff" });
   assert.equal(pdfSelectionPatch("ink", {}, "no-such-control", 1), null);
