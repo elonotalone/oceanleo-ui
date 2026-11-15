@@ -30,6 +30,7 @@ import {
   updateLegacyTitle,
 } from "./legacy-workflow-node";
 import {
+  canvasImageAppearance,
   effectiveCanvasNode,
   advanceProject,
   addProjectNode,
@@ -65,8 +66,8 @@ import {
   type ProjectAsset,
   type VideoProject,
 } from "./project-model";
-import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
-import { timelineTextCasePatch, timelineTextListPatch } from "../../video-editor/timeline-model";
+import { TIMELINE_FONT_FAMILIES, type TimelineClip, type TimelineTextStyle } from "../../video-editor/types";
+import { timelineTextCasePatch, timelineTextListPatch, validTimelineLibrarySource } from "../../video-editor/timeline-model";
 import { canvasCompositionDocument, canvasNodeTextClip } from "./canvas-selection-adapter";
 export { canvasCompositionDocument } from "./canvas-selection-adapter";
 
@@ -188,6 +189,8 @@ export interface CanvasCommandEnvironment {
   getWorkspaceView(): CanvasWorkspaceView;
   setWorkspaceView(view: CanvasWorkspaceView): void;
   openMaterialLibrary(): void;
+  pickLibraryImage?(nodeId: string): Promise<import("../../library-data").LibraryItem | null>;
+  refreshLibraryImage?: typeof import("../../artifact-client").refreshArtifactRendition;
   requestMediaUpload(): void;
   getDurableVideoCapability(): CanvasCommandAvailability;
   getCommandSignal?(requestId: string): AbortSignal | undefined;
@@ -819,6 +822,84 @@ function gridSplitHandler(
 
 const definitions: CanvasCommandDefinition[] = [
   {
+    commandId: "canvas.node.image-style.update", scope: "selection",
+    surfaces: ["compact", "context-more", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.node.image-style.update.v1", mutates: "project", label: "Image style",
+    availability: (environment) => ({ enabled: selectedNode(environment)?.kind === "image" }),
+    handler: (environment, args) => {
+      const node = selectedNode(environment)!;
+      const params = (node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {};
+      const current = canvasImageAppearance(node as CanvasNodeDefinition & { params?: Record<string, unknown> });
+      const field = requireString(args, "field");
+      let value = args.value;
+      let operation: LocalEditOperation | undefined;
+      let patch: Record<string, unknown>;
+      if (["opacity", "radius", "border"].includes(field)) {
+        if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Unsupported image style.");
+        value = Math.max(0, Math.min(field === "opacity" ? 1 : field === "radius" ? 1000 : 100, value));
+        if (field === "border") {
+          patch = { border: { ...current.border, width: value } };
+          operation = { operation: "border", parameters: { width: value as number, color: current.border.color } };
+        } else {
+          patch = { [field]: value };
+          operation = { operation: field as "opacity" | "radius", parameters: { [field]: value as number } };
+        }
+      } else if (field === "borderColor" && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)) {
+        patch = { border: { ...current.border, color: value } };
+        operation = { operation: "border", parameters: { ...current.border, color: value } };
+      } else if (field === "fit" && ["contain", "cover", "stretch"].includes(String(value))) {
+        patch = { fit: value };
+        // The renderer derives the real frame from the composition dimensions and scale.
+        operation = { operation: "image-fit", parameters: { fit: String(value) } };
+      } else if (field === "alt" && typeof value === "string") patch = { alt: value.slice(0, 2000) };
+      else if (field === "includeInVideo" && typeof value === "boolean") patch = { includeInVideo: value };
+      else throw new Error("Unsupported image style.");
+      const project = advanceProject(environment.getProject(), "canvas.node.image-style.update", (version) => {
+        const target = version.graph.nodes.find((item) => item.nodeId === node.nodeId)!;
+        Object.assign(target, { params: { ...params, ...patch }, ...(operation ? {
+          localEditRecipe: [...target.localEditRecipe.filter((step) => step.operation !== operation!.operation), operation],
+        } : {}) });
+      });
+      return { project, message: "Image style updated.", cost: NO_COST };
+    },
+  },
+  {
+    commandId: "canvas.node.asset.replace-library", scope: "selection",
+    surfaces: ["compact", "context-more", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.node.asset.replace-library.v1", mutates: "asset", label: "Replace image",
+    availability: (environment) => ({ enabled: selectedNode(environment)?.kind === "image" }),
+    handler: async (environment) => {
+      const node = selectedNode(environment)!;
+      const snapshot = environment.getProject();
+      const epoch = environment.getSelectionEpoch();
+      const pick = environment.pickLibraryImage || (await import("./LeoNode")).requestCanvasLibraryImage;
+      const item = await pick(node.nodeId);
+      if (!item) return { message: "Image selection canceled.", cost: NO_COST };
+      const librarySource = { artifactId: String(item.artifactId), revisionId: String(item.revisionId), rendition: "full" as const };
+      if (!validTimelineLibrarySource(librarySource)) throw new Error("Invalid Library image reference.");
+      const checkSelection = () => {
+        if (environment.getProject().headVersionId !== snapshot.headVersionId || environment.getSelectedNodeId() !== node.nodeId || environment.getSelectionEpoch() !== epoch) throw new Error("Image selection changed.");
+      };
+      checkSelection();
+      const refresh = environment.refreshLibraryImage || (await import("../../artifact-client")).refreshArtifactRendition;
+      const source = await refresh(librarySource, "full");
+      if (!source.ok || !source.data?.url || !source.data.mediaType?.startsWith("image/")) throw new Error("Image source is unavailable.");
+      checkSelection();
+      const digest = source.data.digest?.replace(/^sha256:/i, "").toLowerCase();
+      if (!digest || !/^[a-f0-9]{64}$/.test(digest) || !Number.isSafeInteger(source.data.byteSize) || Number(source.data.byteSize) <= 0 || Number(source.data.byteSize) > 20 * 1024 * 1024) throw new Error("Image source metadata is incomplete.");
+      const registered = registerAsset(snapshot, { kind: "image", origin: "import", title: item.title, mime: source.data.mediaType,
+        contentDigest: digest, byteSize: source.data.byteSize!, ...(source.data.width ? { width: source.data.width } : {}), ...(source.data.height ? { height: source.data.height } : {}),
+        librarySource, libraryItem: { artifactId: librarySource.artifactId, revisionId: librarySource.revisionId } });
+      const project = advanceProject(registered.project, "canvas.node.asset.replace-library", (version) => {
+        Object.assign(version.graph.nodes.find((candidate) => candidate.nodeId === node.nodeId)!, { assetId: registered.asset.assetId, localEditRecipe: [] });
+        const shot = version.shots.find((candidate) => candidate.shotId === node.shotId);
+        const board = version.storyboards.find((candidate) => candidate.storyboardId === shot?.storyboardId);
+        if (board && node.assetId) board.frameAssetIds = [...new Set(board.frameAssetIds.map((id) => id === node.assetId ? registered.asset.assetId : id))];
+      });
+      return { project, message: "Image replaced; the previous asset remains in history.", assetIds: [registered.asset.assetId], cost: NO_COST };
+    },
+  },
+  {
     commandId: "canvas.node.asset.replace", scope: "selection",
     surfaces: ["compact", "protocol"], execution: "local", billing: "none",
     inputSchema: "canvas.node.asset.replace.v1", mutates: "project", label: "Replace image",
@@ -872,8 +953,11 @@ const definitions: CanvasCommandDefinition[] = [
       else {
         if (!(field === "font_size" && typeof value === "number" && Number.isFinite(value) && value >= 8 && value <= 300)
           && !(["color", "background"].includes(field) && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value))
-          && !(field === "bold" && typeof value === "boolean")
-          && !(field === "align" && ["left", "center", "right"].includes(String(value)))) throw new Error("Unsupported text style.");
+          && !(["bold", "italic", "underline", "strike", "vertical_text"].includes(field) && typeof value === "boolean")
+          && !(field === "font_family" && TIMELINE_FONT_FAMILIES.includes(value as typeof TIMELINE_FONT_FAMILIES[number]))
+          && !(field === "line_height" && typeof value === "number" && Number.isFinite(value) && value >= 0.5 && value <= 3)
+          && !(field === "letter_spacing" && typeof value === "number" && Number.isFinite(value) && value >= -10 && value <= 100)
+          && !(field === "align" && ["left", "center", "right", "justify"].includes(String(value)))) throw new Error("Unsupported text style.");
         patch = { textStyle: { ...(params.textStyle as TimelineTextStyle || {}), [field]: value } };
       }
       const project = advanceProject(environment.getProject(), "canvas.node.text-style.update", (version) => {

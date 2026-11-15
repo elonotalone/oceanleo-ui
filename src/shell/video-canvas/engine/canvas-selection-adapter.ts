@@ -10,8 +10,8 @@ import type {
   VideoProject,
 } from "./project-model";
 
-import { projectHead, projectTimelineDocument } from "./project-model";
-import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { canvasImageAppearance, projectHead, projectTimelineDocument } from "./project-model";
+import { TIMELINE_FONT_FAMILIES, type TimelineClip, type TimelineTextStyle } from "../../video-editor/types";
 import { normalizeTimelineDoc, timelineDocIssue, timelineTextListKind } from "../../video-editor/timeline-model";
 import { serializeVideoProjectEnvelope } from "../../video-editor/video-timeline-source";
 
@@ -182,13 +182,20 @@ function fieldControls(
     const params = (node as CanvasNodeDefinition & { params?: { textStyle?: Record<string, unknown>; includeInVideo?: boolean } }).params;
     const style = params?.textStyle || {};
     controls.push(
+      { id: "font-family", kind: "select", label: input.tt("字体"), value: String(style.font_family || "sans-serif"), options: TIMELINE_FONT_FAMILIES.map((value) => ({ value, label: value })) },
       { id: "font-size", kind: "number", label: input.tt("字号"), value: Number(style.font_size ?? 48), min: 8, max: 300, step: 1, unit: "px" },
       { id: "bold", kind: "toggle", label: input.tt("加粗"), value: style.bold === true },
+      { id: "italic", kind: "toggle", label: input.tt("斜体"), value: style.italic === true },
+      { id: "underline", kind: "toggle", label: input.tt("下划线"), value: style.underline === true },
+      { id: "strike", kind: "toggle", label: input.tt("删除线"), value: style.strike === true },
       { id: "text-color", kind: "color", label: input.tt("文字色"), value: String(style.color || "#ffffff") },
       { id: "highlight", kind: "color", label: input.tt("高亮色"), value: String(style.background || "#000000") },
       { id: "align", kind: "select", label: input.tt("对齐"), value: String(style.align || "center"), options: [
-        { value: "left", label: input.tt("左对齐") }, { value: "center", label: input.tt("居中") }, { value: "right", label: input.tt("右对齐") },
+        { value: "left", label: input.tt("左对齐") }, { value: "center", label: input.tt("居中") }, { value: "right", label: input.tt("右对齐") }, { value: "justify", label: input.tt("两端对齐") },
       ] },
+      { id: "line-height", kind: "number", label: input.tt("行距"), value: Number(style.font_size ?? 48) * Number(style.line_height ?? 1.3), min: Number(style.font_size ?? 48) * 0.5, max: Number(style.font_size ?? 48) * 3, step: 1, unit: "px", suffix: "px" },
+      { id: "letter-spacing", kind: "number", label: input.tt("字距"), value: Number(style.letter_spacing ?? 0), min: -10, max: 100, step: 1, unit: "px", suffix: "px" },
+      { id: "vertical-text", kind: "toggle", label: input.tt("竖排文字"), value: style.vertical_text === true, placement: "more" },
       { id: "clear-format", kind: "action", label: input.tt("清除样式"), placement: "more" },
       { id: "case", kind: "action", label: input.tt("大小写"), placement: "more" },
       { id: "list", kind: "select", label: input.tt("项目列表"), value: timelineTextListKind(content), options: [
@@ -262,6 +269,20 @@ function fieldControls(
     });
   }
   if (node.kind === "image") {
+    const appearance = canvasImageAppearance(node as CanvasNodeDefinition & { params?: Record<string, unknown> });
+    const params = (node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {};
+    controls.push(
+      { id: "opacity", value: appearance.opacity * 100, min: 0, max: 100, step: 1 } as SelectionControl,
+      { id: "radius", kind: "number", label: input.tt("圆角"), value: appearance.radius, min: 0, max: 1000, step: 1 },
+      inspector({ id: "border", kind: "number", label: input.tt("边框"), value: appearance.border.width, min: 0, max: 100, step: 1, unit: "px" }, "border", input.tt("边框"), "effects"),
+      inspector({ id: "canvas.selection.border-color.set", kind: "color", label: input.tt("颜色"), value: appearance.border.color, domain: "specific" }, "border", input.tt("边框"), "effects"),
+      { id: "image-fit", kind: "select", label: input.tt("显示方式"), value: appearance.fit, options: [
+        { value: "contain", label: input.tt("完整显示") }, { value: "cover", label: input.tt("铺满裁切") }, { value: "stretch", label: input.tt("拉伸铺满") },
+      ] },
+      { id: "alt", kind: "text", label: input.tt("替代文字"), value: appearance.alt, placement: "more" },
+      inspector({ id: "canvas.selection.include-in-video.set", kind: "toggle", label: "Include in video", value: params.includeInVideo === true, domain: "specific" }, "canvas-properties", "Properties", "effects"),
+      ...availableAction(input, inspector({ id: "canvas.selection.library.replace", kind: "action", label: input.tt("从资料库添加文件"), domain: "specific" }, "replace", "Replace image", "replace"), "canvas.node.asset.replace-library"),
+    );
     controls.push({
       id: "canvas.selection.image-mode.set",
       kind: "select",
@@ -742,8 +763,8 @@ export function canvasSelectionDispatch(
     command.selectionId !== context.id ||
     command.selectionRevision !== context.revision ||
     command.selectionEpoch !== context.epoch ||
-    !context.controls.some((control) => control.id === command.controlId ||
-      CANVAS_CANON_COMMANDS[control.id] === command.controlId) ||
+    !context.controls.some((control) => !control.disabled && (control.id === command.controlId ||
+      CANVAS_CANON_COMMANDS[control.id] === command.controlId)) ||
     Boolean(phase) !== Boolean(transactionId) ||
     (phase !== undefined &&
       !["start", "update", "commit", "cancel"].includes(phase))
@@ -774,7 +795,7 @@ export function canvasSelectionDispatch(
     | "canvas.selection.audio-mode.set"];
   let commandId = command.controlId;
   let args: Record<string, unknown> = {};
-  const styleField = ({ "font-size": "font_size", bold: "bold", "text-color": "color", highlight: "background", align: "align",
+  const styleField = ({ "font-family": "font_family", "font-size": "font_size", bold: "bold", italic: "italic", underline: "underline", strike: "strike", "line-height": "line_height", "letter-spacing": "letter_spacing", "vertical-text": "vertical_text", "text-color": "color", highlight: "background", align: "align",
     "clear-format": "clearFormat", case: "case", list: "list",
     "canvas.selection.include-in-video.set": "includeInVideo" } as Record<string, string>)[command.controlId];
   if (command.controlId === "canvas.create.text" || command.controlId === "canvas.create.audio") {
@@ -783,9 +804,14 @@ export function canvasSelectionDispatch(
   } else if (command.controlId === "canvas.selection.asset.replace") {
     commandId = "canvas.node.asset.replace";
     args = { assetId: value };
+  } else if (command.controlId === "canvas.selection.library.replace") {
+    commandId = "canvas.node.asset.replace-library";
+  } else if (context.bar === "image" && (["opacity", "radius", "border", "image-fit", "alt", "canvas.selection.border-color.set", "canvas.selection.include-in-video.set"] as string[]).includes(command.controlId)) {
+    commandId = "canvas.node.image-style.update";
+    args = { field: ({ "image-fit": "fit", "canvas.selection.border-color.set": "borderColor", "canvas.selection.include-in-video.set": "includeInVideo" } as Record<string, string>)[command.controlId] || command.controlId, value: command.controlId === "opacity" && typeof value === "number" ? value / 100 : value };
   } else if (styleField) {
     commandId = "canvas.node.text-style.update";
-    args = { field: styleField, value };
+    args = { field: styleField, value: styleField === "line_height" && typeof value === "number" ? value / Number(context.controls.find((control) => control.id === "font-size")?.value || 48) : value };
   } else if (field) {
     commandId = "canvas.node.field.update";
     args = { field, value };

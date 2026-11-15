@@ -2,8 +2,8 @@
 
 import { parseVideoProjectDoc } from "../../workflow-carrier/video-project-doc";
 import type { Edge, Node, Viewport, XYPosition } from "@xyflow/react";
-import { normalizeTimelineDoc, timelineDocIssue } from "../../video-editor/timeline-model";
-import type { TimelineDoc, TimelineClip } from "../../video-editor/types";
+import { normalizeTimelineDoc, normalizeTimelineCrop, validTimelineLibrarySource, timelineDocIssue } from "../../video-editor/timeline-model";
+import type { TimelineDoc, TimelineClip, TimelineLibraryImageSource } from "../../video-editor/types";
 import { serializeVideoProjectEnvelope, type CanvasTimelineSource } from "../../video-editor/video-timeline-source";
 
 export const VIDEO_PROJECT_SCHEMA = "oceanleo.video.project.v2" as const;
@@ -47,7 +47,11 @@ export interface LocalEditOperation {
     | "saturation"
     | "adjust"
     | "grayscale"
-    | "grid-cell";
+    | "grid-cell"
+    | "radius"
+    | "border"
+    | "opacity"
+    | "image-fit";
   parameters: Record<string, number | string | boolean>;
 }
 
@@ -79,6 +83,9 @@ export interface ProjectAsset {
   height?: number;
   durationSeconds?: number;
   contentDigest?: string;
+  byteSize?: number;
+  /** A private, immutable Library rendition identity; grants stay in runtime state. */
+  librarySource?: TimelineLibraryImageSource;
   /** Stable owner-checked reference into this artifact's source dependency closure. */
   sourceDependency?: VideoCanvasSourceDependency;
   provider?: AssetProviderMetadata;
@@ -369,6 +376,7 @@ export interface CanvasNodeViewData extends Record<string, unknown> {
   shotId?: string;
   cameraId?: string;
   localEditRecipe: LocalEditOperation[];
+  params?: Record<string, unknown>;
   /** Exact imported v1 node source, available to a guarded legacy view only. */
   legacySourceNode?: Record<string, unknown>;
   selectionEpoch: number;
@@ -503,6 +511,13 @@ export function recordArtifactRevisionReceipt(
 export function projectSourceForStorage(project: VideoProject): VideoProject {
   const snapshot = clone(project);
   delete snapshot.artifactRevisionReceipt;
+  for (const asset of Object.values(snapshot.assets)) {
+    if (!asset.librarySource) continue;
+    if (!validTimelineLibrarySource(asset.librarySource) || asset.kind !== "image") throw new Error("Invalid Library image reference.");
+    asset.librarySource = { artifactId: asset.librarySource.artifactId, revisionId: asset.librarySource.revisionId, rendition: "full" };
+    delete asset.url;
+    delete asset.previewUrl;
+  }
   return snapshot;
 }
 
@@ -907,6 +922,7 @@ export function registerAsset(
     assetId?: string;
   },
 ): { project: VideoProject; asset: ProjectAsset } {
+  if (input.librarySource && (!validTimelineLibrarySource(input.librarySource) || input.kind !== "image")) throw new Error("Invalid Library image reference.");
   if (input.url) {
     const url = new URL(input.url);
     if (url.protocol !== "https:" && url.protocol !== "http:") {
@@ -994,6 +1010,11 @@ export function deriveLocalAsset(
     width: parent.width,
     height: parent.height,
     durationSeconds: parent.durationSeconds,
+    sourceDependency: parent.sourceDependency,
+    libraryItem: parent.libraryItem,
+    librarySource: parent.librarySource,
+    contentDigest: parent.contentDigest,
+    byteSize: parent.byteSize,
   });
   const derivative: AssetDerivative = {
     derivativeId: stableId("derivative"),
@@ -1189,6 +1210,45 @@ function composeNumber(value: unknown, fallback: number, min = 0, max = Infinity
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
 }
 
+/** Canonical image settings shared by canvas preview and the composited film.
+ * Recipes remain non-destructive; only the timeline renderer creates pixels.
+ */
+export function canvasImageAppearance(node: Pick<CanvasNodeDefinition, "localEditRecipe"> & { params?: Record<string, unknown> }) {
+  const params = node.params || {};
+  const result: Partial<TimelineClip> = {};
+  for (const step of node.localEditRecipe || []) {
+    const values = step.parameters || {};
+    if (step.operation === "crop") {
+      const inset = composeNumber(values.insetPercent, 0, 0, 49.5) / 100;
+      result.crop = normalizeTimelineCrop(typeof values.x === "number" ? { x: values.x, y: Number(values.y), width: Number(values.width), height: Number(values.height) } : { x: inset, y: inset, width: 1 - inset * 2, height: 1 - inset * 2 });
+    } else if (step.operation === "grid-cell") {
+      const columns = composeNumber(values.columns, 1, 1, 25), rows = composeNumber(values.rows, 1, 1, 25);
+      result.crop = normalizeTimelineCrop({ x: composeNumber(values.column, 0, 0, columns - 1) / columns,
+        y: composeNumber(values.row, 0, 0, rows - 1) / rows, width: 1 / columns, height: 1 / rows });
+    } else if (step.operation === "rotate") result.rotation = (result.rotation || 0) + composeNumber(values.degrees, 0, -360, 360);
+    else if (step.operation === "flip-horizontal") result.flip_x = !result.flip_x;
+    else if (step.operation === "flip-vertical") result.flip_y = !result.flip_y;
+    else if (step.operation === "brightness") result.brightness = composeNumber(values.factor, 1, 0.25, 2) - 1;
+    else if (step.operation === "contrast") result.contrast = composeNumber(values.factor, 1, 0.25, 2);
+    else if (step.operation === "saturation") result.saturation = composeNumber(values.factor, 1, 0, 2);
+    else if (step.operation === "grayscale") result.saturation = 1 - composeNumber(values.amount, 1, 0, 1);
+    else if (step.operation === "adjust") {
+      result.brightness = Math.min(1, Math.max(-1, composeNumber(values.brightness, 1, 0.25, 2) * 2 ** composeNumber(values.exposure, 0, -2, 2) - 1));
+      result.contrast = composeNumber(values.contrast, 1, 0.25, 2);
+      result.saturation = composeNumber(values.saturation, 1, 0, 2);
+    } else if (step.operation === "radius") result.radius = composeNumber(values.radius, 0, 0, 1000);
+    else if (step.operation === "border") result.border = { width: composeNumber(values.width, 0, 0, 100), color: /^#[0-9a-f]{6}$/i.test(String(values.color)) ? String(values.color) : "#000000" };
+    else if (step.operation === "opacity") result.opacity = composeNumber(values.opacity, 1, 0, 1);
+    else if (step.operation === "image-fit" && ["contain", "cover", "stretch"].includes(String(values.fit))) result.fit = values.fit as TimelineClip["fit"];
+  }
+  const border = params.border && typeof params.border === "object" ? params.border as Record<string, unknown> : result.border;
+  return { ...result, fit: ["contain", "cover", "stretch"].includes(String(params.fit)) ? params.fit as NonNullable<TimelineClip["fit"]> : result.fit || "contain",
+    radius: composeNumber(params.radius, result.radius || 0, 0, 1000), opacity: composeNumber(params.opacity, result.opacity ?? 1, 0, 1),
+    border: { width: composeNumber(border?.width, 0, 0, 100), color: /^#[0-9a-f]{6}$/i.test(String(border?.color)) ? String(border?.color) : "#000000" },
+    ...(params.crop ? { crop: normalizeTimelineCrop(params.crop as TimelineClip["crop"]) } : {}),
+    alt: typeof params.alt === "string" ? params.alt.slice(0, 2000) : "" };
+}
+
 /** The one cut used by both FFmpeg export and the full timeline editor. */
 export function projectTimelineDocument(project: VideoProject): {
   timelineId: string;
@@ -1236,8 +1296,10 @@ export function projectTimelineDocument(project: VideoProject): {
   };
   const subtitles: TimelineClip[] = [];
   for (const node of version.graph.nodes) {
-    if (node.kind !== "audio" && node.kind !== "subtitle") continue;
     const params = composeNodeParams(node);
+    const textOverlay = node.kind === "subtitle" || ((node.kind === "text" || node.kind === "script") && params.includeInVideo === true);
+    const imageOverlay = node.kind === "image" && params.includeInVideo === true;
+    if (node.kind !== "audio" && !textOverlay && !imageOverlay) continue;
     const shot = node.shotId ? shotStarts.get(node.shotId) : undefined;
     // An audio/subtitle attached to an unapproved shot must not leak into the cut.
     if (node.shotId && !shot) continue;
@@ -1248,11 +1310,21 @@ export function projectTimelineDocument(project: VideoProject): {
     const duration = Math.min(cursor - start, Math.round(composeNumber(params.durationMs,
       composeNumber(params.durationSeconds, asset?.durationSeconds || (shot ? shot.duration / 1000 : (cursor - start) / 1000), 0.1) * 1000, 100)));
     const clip: TimelineClip = { id: `clip_${node.nodeId}`, start_ms: start, duration_ms: duration, label: node.title };
-    if (node.kind === "subtitle") {
-      const text = String(params.text || asset?.inlineText || "").trim();
-      if (!text) continue;
-      subtitles.push({ ...clip, text, style: { font_size: 48, color: "#ffffff", x: 0.5, y: 0.85, align: "center" } });
+    if (textOverlay) {
+      const text = String(params.text ?? asset?.inlineText ?? "");
+      if (!text.trim()) continue;
+      const textStyle = params.textStyle && typeof params.textStyle === "object" ? params.textStyle : {};
+      subtitles.push({ ...clip, text, ...(params.text_list ? { text_list: params.text_list as TimelineClip["text_list"] } : {}),
+        style: { font_size: 48, color: "#ffffff", x: 0.5, y: 0.85, align: "center", ...textStyle } });
       if (asset) inputAssetIds.add(asset.assetId);
+    } else if (imageOverlay) {
+      if (asset?.kind !== "image" || (!asset.url && !asset.sourceDependency && !asset.librarySource)) throw new Error("Image source is unavailable.");
+      inputAssetIds.add(asset.assetId);
+      document.tracks.push({ id: `track_${node.nodeId}`, kind: "image", clips: [{ ...clip,
+        ...(asset.sourceDependency ? { source_ref: { artifactId: asset.sourceDependency.artifactId, revisionId: asset.sourceDependency.revisionId, path: asset.sourceDependency.path } } : asset.librarySource ? { library_source: { ...asset.librarySource } } : { source_url: asset.url }),
+        ...canvasImageAppearance(node as CanvasNodeDefinition & { params?: Record<string, unknown> }),
+        x: composeNumber(params.x, 0.5, 0, 1), y: composeNumber(params.y, 0.5, 0, 1), scale: composeNumber(params.scale, 0.3, 0.05, 2),
+      }] });
     } else {
       if (asset?.kind !== "audio" || (!asset.url && !asset.sourceDependency)) throw new Error("音轨缺少可用音频，请重新选择素材。");
       inputAssetIds.add(asset.assetId);
@@ -1882,6 +1954,7 @@ export function projectToFlow(
       position: node.position,
       data: {
         ...makeData(effectiveCanvasNode(node), asset, derivative),
+        params: clone((node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {}),
         ...(node.legacySourceNode
           ? { legacySourceNode: clone(node.legacySourceNode) }
           : {}),
@@ -2110,6 +2183,7 @@ export function projectForTypedArtifactCommit(
       delete asset.previewUrl;
       continue;
     }
+    if (asset.librarySource) continue;
     const locator = asset.url || asset.previewUrl || "";
     if (!locator && typeof asset.inlineText !== "string") {
       throw new Error(`Asset ${asset.assetId} has no durable source dependency.`);
@@ -2354,6 +2428,7 @@ export function parseVideoProject(input: unknown): VideoProject {
     ) {
       throw new Error("Project contains a mutable or malformed Asset.");
     }
+    if (record.librarySource !== undefined && (!validTimelineLibrarySource(record.librarySource) || record.kind !== "image")) throw new Error("Invalid Library image reference.");
     if (
       record.sourceDependency !== undefined &&
       !validVideoCanvasSourceDependency(record.sourceDependency, record)
