@@ -138,6 +138,9 @@ export interface DurableVideoRun {
   status: string;
   createdAt: string;
   updatedAt: string;
+  message?: string;
+  outputAssetIds?: string[];
+  refundStatus?: string;
 }
 
 export interface DurableVideoProjectState {
@@ -301,6 +304,9 @@ export interface CanvasNodeDefinition {
   shotId?: string;
   cameraId?: string;
   localEditRecipe: LocalEditOperation[];
+  generation?: { status: string; message?: string; inputFingerprint?: string };
+  audioMode?: "voice" | "music";
+  voice?: string;
   /** Exact source node retained when the v1 workflow kind exceeds the v2 canvas model. */
   legacySourceNode?: Record<string, unknown>;
 }
@@ -526,6 +532,107 @@ export function updateDurableVideoRun(
     status: status.slice(0, 80),
     updatedAt: now(),
   });
+}
+
+export interface ResolvedCanvasInput {
+  nodeId: string;
+  edgeId: string;
+  type: "text" | "image" | "audio" | "video";
+  text?: string;
+  asset?: ProjectAsset;
+}
+
+export class CanvasInputError extends Error {
+  readonly code: "cycle" | "missing" | "type";
+  readonly nodeId: string;
+  readonly template: string;
+  readonly label: string;
+  constructor(code: "cycle" | "missing" | "type", label: string, nodeId: string) {
+    const template = code === "cycle" ? "连线形成循环：{node}" : code === "type" ? "连线的输入类型不匹配：{node}" : "连接的节点还没有可用输出：{node}";
+    super(template.replace("{node}", label));
+    this.code = code;
+    this.nodeId = nodeId;
+    this.template = template;
+    this.label = label;
+  }
+  translated(tt: (source: string, vars?: Record<string, string | number>) => string): string {
+    return tt(this.template, { node: this.label });
+  }
+}
+
+/** One traversal for validation and explicit chain ordering; edits never run it. */
+export function canvasUpstreamOrder(project: VideoProject, nodeId: string): CanvasNodeDefinition[] {
+  const graph = head(project).graph;
+  const byId = new Map(graph.nodes.map((node) => [node.nodeId, node]));
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const ordered: CanvasNodeDefinition[] = [];
+  const visit = (id: string) => {
+    const node = byId.get(id);
+    if (!node) throw new CanvasInputError("missing", id, nodeId);
+    if (visiting.has(id)) throw new CanvasInputError("cycle", node.title, id);
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const edge of graph.edges.filter((edge) => edge.targetNodeId === id)) visit(edge.sourceNodeId);
+    visiting.delete(id);
+    visited.add(id);
+    ordered.push(clone(node));
+  };
+  visit(nodeId);
+  return ordered;
+}
+
+export function canvasNodeHasOutput(project: VideoProject, node: CanvasNodeDefinition): boolean {
+  if (node.generation?.status === "failed") return false;
+  if (["text", "script", "subtitle"].includes(node.kind)) return Boolean(node.text?.trim());
+  const asset = node.assetId ? project.assets[node.assetId] : undefined;
+  return Boolean(asset && asset.kind === node.kind && (asset.url || asset.sourceDependency));
+}
+
+/** Direct incoming ports carry current output, never the upstream node's old prompt. */
+export function resolveCanvasInputs(project: VideoProject, nodeId: string): {
+  inputs: ResolvedCanvasInput[]; prompt: string; images: ProjectAsset[]; audio: ProjectAsset[]; videos: ProjectAsset[];
+} {
+  canvasUpstreamOrder(project, nodeId);
+  const graph = head(project).graph;
+  const target = graph.nodes.find((node) => node.nodeId === nodeId)!;
+  const inputs: ResolvedCanvasInput[] = [];
+  const portType = (handle?: string | null) => {
+    const match = handle?.match(/(?:^|[-_:])(text|script|image|audio|video|first-frame|reference)(?:$|[-_:])/);
+    return match ? (match[1] === "script" ? "text" : ["first-frame", "reference"].includes(match[1]) ? "image" : match[1]) : undefined;
+  };
+  for (const edge of graph.edges.filter((edge) => edge.targetNodeId === nodeId)) {
+    const source = graph.nodes.find((node) => node.nodeId === edge.sourceNodeId)!;
+    const asset = source.assetId ? project.assets[source.assetId] : undefined;
+    if (asset && ["image", "audio", "video"].includes(source.kind) && asset.kind !== source.kind) throw new CanvasInputError("type", source.title, source.nodeId);
+    const type = ["text", "script", "subtitle"].includes(source.kind) ? "text" : asset?.kind || source.kind;
+    if (!["text", "image", "audio", "video"].includes(type)) {
+      throw new CanvasInputError("type", source.title, source.nodeId);
+    }
+    for (const expected of [portType(edge.sourceHandle), portType(edge.targetHandle)]) {
+      if (expected && expected !== type) throw new CanvasInputError("type", source.title, source.nodeId);
+    }
+    const text = source.text?.trim() || asset?.inlineText?.trim();
+    if (type === "text" ? !text : !asset || (!asset.url && !asset.sourceDependency)) {
+      throw new CanvasInputError("missing", source.title, source.nodeId);
+    }
+    inputs.push({ nodeId: source.nodeId, edgeId: edge.edgeId, type: type as ResolvedCanvasInput["type"], ...(type === "text" ? { text } : { asset: clone(asset!) }) });
+  }
+  return {
+    inputs,
+    prompt: [target.prompt?.trim() || (["text", "script"].includes(target.kind) ? target.text?.trim() : ""), ...inputs.filter((input) => input.type === "text").map((input) => input.text)].filter(Boolean).join("\n\n"),
+    images: inputs.filter((input) => input.type === "image").map((input) => input.asset!),
+    audio: inputs.filter((input) => input.type === "audio").map((input) => input.asset!),
+    videos: inputs.filter((input) => input.type === "video").map((input) => input.asset!),
+  };
+}
+
+/** Status is saved with the graph, without minting history on every poll. */
+export function withCanvasNodeGeneration(project: VideoProject, nodeId: string, status: string, message?: string): VideoProject {
+  const next = clone(project);
+  const node = next.versions[next.headVersionId].graph.nodes.find((node) => node.nodeId === nodeId);
+  if (node) node.generation = { ...node.generation, status, message };
+  return next;
 }
 
 export function projectPreviewAtCurrentHead(
@@ -981,6 +1088,7 @@ export function attachGeneratedAssetSet(
     );
     if (!target) throw new Error("Generation target no longer exists.");
     target.assetId = assets[0].assetId;
+    target.generation = { status: "succeeded" };
     if (target.kind === "image" && target.shotId) {
       const shot = version.shots.find(
         (candidate) => candidate.shotId === target.shotId,

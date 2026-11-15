@@ -6,6 +6,7 @@ import { PW_U1_MESSAGES } from "./pw-u1-copy";
 import { PW_UD_MESSAGES } from "./pw-ud-copy";
 import { LOCALES, type Locale } from "../../config";
 import { PW_U4_MESSAGES } from "./pw-u4-copy";
+import { PW_VA_MESSAGES } from "./pw-va-copy";
 import { SHELL_OVERHAUL_DOCK_MESSAGES } from "./shell-overhaul-dock-copy";
 import { SHELL_OVERHAUL_DEVICES_MESSAGES } from "./shell-overhaul-devices-copy";
 import { SHELL_OVERHAUL_SETTINGS_MESSAGES } from "./shell-overhaul-settings-copy";
@@ -118,6 +119,7 @@ const PARTS = [
   PW_UD_MESSAGES,
   PW_U4_MESSAGES,
   PW_VM_MESSAGES,
+  PW_VA_MESSAGES,
   SHELL_OVERHAUL_DOCK_MESSAGES,
   SHELL_OVERHAUL_DEVICES_MESSAGES,
   SHELL_OVERHAUL_SETTINGS_MESSAGES,

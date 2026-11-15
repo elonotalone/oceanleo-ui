@@ -9,7 +9,7 @@ import { effectiveCanvasNode, CANVAS_EDGE_LIMIT, compareProjectVersions, project
 import type { CanvasMenuPoint } from "./CanvasCreateMenu";
 import { canvasSelectionContext, canvasSelectionDispatch } from "./canvas-selection-adapter";
 import { WorkflowGraphHistory, workflowHistoryActionForCommand } from "./workflow-graph-history";
-import { durableVideoCapability } from "./durable-video-adapter";
+import { durableVideoCapability, startDurableVideoPolling, prepareVideoQuote, getPreparedVideoQuote } from "./durable-video-adapter";
 import type { CanvasCollabPort } from "./canvas-collab";
 import { recordUserMutation } from "../../user-edit-session";
 
@@ -114,6 +114,9 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
   const [commandResults, setCommandResults] = useState<CanvasCommandResult[]>(
     [],
   );
+  const [nodeProgress, setNodeProgress] = useState<Record<string, { commandId: string; status: string; message?: string }>>({});
+  const [quoteEpoch, setQuoteEpoch] = useState(0);
+  const [quoteError, setQuoteError] = useState("");
   const [durableCapability, setDurableCapability] =
     useState<CanvasCommandAvailability>({
       enabled: false,
@@ -348,7 +351,27 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     return true;
   }, []);
 
+  useEffect(() => {
+    if (executionDegraded || projectLoadError) return;
+    return startDurableVideoPolling({
+      getProject: () => projectRef.current,
+      apply: (next) => { if (!collabPolicyRef.current.readOnly) setProject(next, false); },
+      onError: () => setStatus(tt("暂时无法读取视频进度，将自动重试。")),
+    });
+  }, [executionDegraded, projectLoadError, setProject, tt]);
+
+  useEffect(() => {
+    let live = true;
+    const node = projectHead(project).graph.nodes.find((item) => item.nodeId === selectedNodeId);
+    if (executionDegraded || node?.kind !== "video" || getPreparedVideoQuote(project, node)) return;
+    setQuoteError("");
+    void prepareVideoQuote(project, node).then(() => { if (live) setQuoteEpoch((value) => value + 1); })
+      .catch((error) => { if (live) setQuoteError(error instanceof Error ? error.message : String(error)); });
+    return () => { live = false; };
+  }, [executionDegraded, project, selectedNodeId]);
+
   environmentRef.current = {
+    translate: tt,
     getProject: () => projectRef.current,
     setProject,
     getSelectedNodeId: () => selectedNodeIdRef.current,
@@ -367,7 +390,13 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
       commandControllersRef.current.get(requestId)?.signal,
     reportCommandProgress,
     setProjectMetadata,
-    setStatus,
+    resolveAssetUrl: async (asset) => {
+      const url = runtimeDependencyUrlsRef.current[asset.assetId] || asset.url;
+      if (!url) throw new Error(tt("连接的素材尚未准备好。"));
+      return url;
+    },
+    reportNodeProgress: (nodeId, status, message) => setNodeProgress((current) => ({ ...current, [nodeId]: { commandId: "canvas.chain.run", status, message } })),
+    setStatus: (message) => setStatus(message.split("\n").map((part) => tt(part)).join("\n")),
     saveProject: (request) => saveRef.current(request),
     screenCenter,
   };
@@ -489,7 +518,7 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
       projectLoadError
         ? { enabled: false, reason: projectLoadError }
         : commandAvailability(commandId, environmentRef.current, args),
-    [durableCapability, project, selectedNodeId, imageMode, projectLoadError],
+    [durableCapability, project, selectedNodeId, imageMode, projectLoadError, quoteEpoch],
   );
 
   const flow = useMemo(
@@ -550,17 +579,17 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
               ? `Asset ${asset.assetId.slice(0, 16)}… + prompt`
               : "Prompt + Project context",
             estimatedCost:
-              asset?.provider?.pricing.label ||
+              (node.kind === "video" && getPreparedVideoQuote(project, node) ? `${getPreparedVideoQuote(project, node)!.amount} ${getPreparedVideoQuote(project, node)!.currency}` : undefined) ||
+              (node.kind === "video" && quoteError ? quoteError : undefined) || asset?.provider?.pricing.label ||
               (node.kind === "video"
                 ? "Provider-priced · durable receipt"
                 : "Provider-metered; exact credits returned in receipt"),
           },
           commandAvailability: commandAvailabilityMap,
           commandDisclosures: commandDisclosureMap,
-          commandState:
-            node.nodeId === selectedNodeId && commandState
-              ? commandState
-              : undefined,
+          commandState: nodeProgress[node.nodeId]?.status === "running" ? nodeProgress[node.nodeId]
+            : node.generation ? { commandId: "canvas.node.generate.video", status: node.generation.status, message: node.generation.message?.split("\n").map((part) => tt(part)).join("\n") }
+            : nodeProgress[node.nodeId] || (node.nodeId === selectedNodeId && commandState ? commandState : undefined),
           onCommand: (commandId, commandArgs) =>
             dispatchCommand(commandId, commandArgs, "compact"),
         };
@@ -568,6 +597,10 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     [
       availability,
       commandState,
+      nodeProgress,
+      quoteEpoch,
+      quoteError,
+      tt,
       dispatchCommand,
       false,
       hostOwnsChrome,

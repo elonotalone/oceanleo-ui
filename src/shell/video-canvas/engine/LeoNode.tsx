@@ -665,6 +665,7 @@ function VideoNode({
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-[var(--vc-media-scrim)] to-transparent p-3 pt-10 text-xs font-semibold text-[var(--vc-on-media)]">
           {data.title}
+          {selected && data.generateSummary?.estimatedCost && <span title={tt("价格")} className="ml-2 text-[10px] font-normal">{tt(data.generateSummary.estimatedCost)}</span>}
         </div>
       </div>
       {selected && hostHasNoEditBar(data) && (
@@ -696,7 +697,7 @@ function VideoNode({
           {!generate?.hidden && (
             <button
               type="button"
-              disabled={!generate?.enabled || !prompt.trim()}
+              disabled={!generate?.enabled}
               title={generate?.reason}
               onPointerDown={(event) => event.preventDefault()}
               onClick={() =>
@@ -720,6 +721,7 @@ function AudioNode({
   data: CanvasNodeViewData;
   selected: boolean;
 }) {
+  const tt = useUI();
   const src = data.asset?.url;
   const media = useBoundedMedia(src);
   return (
@@ -734,9 +736,8 @@ function AudioNode({
       <div className="absolute inset-0 flex flex-col justify-between p-4">
         <div>
           <p className="text-xs font-semibold text-[var(--vc-text)]">{data.title}</p>
-          <p className="mt-2 text-[10px] text-[var(--vc-text-2)]">
-            Waveform derivative unavailable — no synthetic waveform is shown.
-          </p>
+          <p className="mt-2 text-[10px] text-[var(--vc-text-2)]">{data.prompt || tt("添加文本或连接脚本。")}</p>
+          {selected && hostHasNoEditBar(data) && <div className="nodrag mt-2 flex gap-2">{(["voice", "music"] as const).map((mode) => <button key={mode} type="button" disabled={!data.commandAvailability[`canvas.node.generate.${mode}`]?.enabled} onClick={() => void data.onCommand(`canvas.node.generate.${mode}`)}>{tt(mode === "voice" ? "生成配音" : "生成音乐")}</button>)}</div>}
         </div>
         {src ? (
           <audio
@@ -1203,7 +1204,7 @@ function LegacyWorkflowNode({
   );
 }
 
-function LeoNodeBase({
+function LeoNodeContent({
   data,
   selected,
 }: NodeProps<CanvasFlowNode>) {
@@ -1241,4 +1242,13 @@ function LeoNodeBase({
   return <TextualNode data={data} selected={selected} />;
 }
 
+function LeoNodeBase(props: NodeProps<CanvasFlowNode>) {
+  const tt = useUI();
+  const state = props.data.commandState;
+  const availability = props.data.commandAvailability;
+  const command = props.data.kind === "video" ? "video" : props.data.kind === "image" ? "image" : ["text", "script"].includes(props.data.kind) ? "script" : "voice";
+  const issue = availability[`canvas.node.generate.${command}`];
+  const message = state?.message || (state?.status === "running" ? "正在运行…" : undefined) || (props.selected && issue?.reasonCode === "MISSING_REQUIRED_INPUT" ? issue.reason : undefined);
+  return <div className="relative h-full w-full"><LeoNodeContent {...props} />{message && <div role={state?.status === "failed" ? "alert" : "status"} className="pointer-events-none absolute bottom-0 left-0 right-0 rounded-b-xl bg-[var(--vc-surface)] px-3 py-1 text-[10px] text-[var(--vc-text)]">{message.split("\n").map((part) => tt(part)).join(" ")}</div>}</div>;
+}
 export const LeoNode = memo(LeoNodeBase);

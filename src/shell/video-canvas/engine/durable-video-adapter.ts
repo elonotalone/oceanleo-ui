@@ -6,11 +6,20 @@ import {
   createDurableVideoRun,
   getDurableVideoCapabilities,
   getDurableVideoRun,
+  listDurableVideoRuns,
   promoteDurableVideoVersion,
+  quoteDurableVideo,
+  registerDurableVideoInput,
+  type DurableVideoQuote,
+  type DurableVideoRunSnapshot,
   type DurableVideoCanvasGraph,
 } from "./canvas-gateway";
 import {
   deterministicDigest,
+  attachGeneratedAsset,
+  projectHead,
+  resolveCanvasInputs,
+  withCanvasNodeGeneration,
   recordDurableVideoRun,
   updateDurableVideoRun,
   withDurableVideoState,
@@ -63,37 +72,38 @@ function providerModel(model: string | undefined): string | undefined {
 
 export function durableGraphForVideoNode(
   node: CanvasNodeDefinition,
+  project?: VideoProject,
+  inputAssets: Record<string, string> = {},
+  quote?: DurableVideoQuote,
 ): DurableVideoCanvasGraph {
-  if (node.kind !== "video") {
-    throw new Error("Durable video generation requires a Video node.");
-  }
-  const prompt = (node.prompt || "").trim();
-  if (!prompt) throw new Error("Add a video prompt before Generate.");
-  const model = providerModel(node.model);
+  if (node.kind !== "video") throw new Error("Select a Video node first.");
+  const resolved = project ? resolveCanvasInputs(project, node.nodeId) : { prompt: node.prompt?.trim() || "", inputs: [], images: [], audio: [], videos: [] };
+  const prompt = [node.prompt?.trim(), ...resolved.inputs.filter((input) => input.type === "text").map((input) => input.text)].filter(Boolean).join("\n\n");
+  if (!prompt && !resolved.images.length) throw new Error("Add a prompt or connect a first-frame image.");
+  if (resolved.images.length > 1) throw new Error("Video generation accepts one first-frame image. Keep one image connection.");
+  if (resolved.audio.length || resolved.videos.length) throw new Error("This video model accepts text and one first-frame image; disconnect audio and video inputs.");
+  const image = resolved.images[0];
+  const imageId = image && inputAssets[image.assetId];
+  if (image && !imageId) throw new Error("The connected first frame has not been registered.");
   return {
     schema: "oceanleo.video.canvas.v2",
-    nodes: [
-      {
-        id: durableUuid(node.nodeId),
-        operation: DURABLE_OPERATION,
-        normalized_params: {
-          prompt: prompt.slice(0, 8_000),
-          ratio: node.ratio || "16:9",
-          duration: Math.max(
-            1,
-            Math.min(30, Math.round(node.durationSeconds || 5)),
-          ),
-          sharpness: "2K",
-        },
-        tool_version: DURABLE_TOOL_VERSION,
-        input_asset_ids: [],
-        depends_on: [],
-        output_slot: "video",
-        provider: DURABLE_PROVIDER,
-        ...(model ? { provider_model: model } : {}),
-        billing: "provider",
+    nodes: [{
+      id: durableUuid(node.nodeId),
+      operation: image ? "video.generate.image" : DURABLE_OPERATION,
+      normalized_params: {
+        prompt: prompt.slice(0, 8_000), ratio: node.ratio || "16:9",
+        duration: Math.max(1, Math.min(30, Math.round(node.durationSeconds || 5))), sharpness: "2K",
+        ...(imageId ? { image_asset_id: imageId } : {}),
+        // Upstream work is already materialized. Snapshot its ports/edges here;
+        // it must not be submitted as new billable provider work a second time.
+        input_nodes: resolved.inputs.map((input) => ({ node_id: durableUuid(input.nodeId), edge_id: durableUuid(input.edgeId), type: input.type, ...(input.text ? { text: input.text } : {}), ...(input.asset ? { asset_id: inputAssets[input.asset.assetId] } : {}) })),
       },
-    ],
+      tool_version: DURABLE_TOOL_VERSION,
+      input_asset_ids: imageId ? [imageId] : [], depends_on: [], output_slot: "video",
+      provider: DURABLE_PROVIDER,
+      ...(quote ? { provider_model: quote.provider_model, cost: quote.cost } : providerModel(node.model) ? { provider_model: providerModel(node.model) } : {}),
+      billing: "provider",
+    }],
     edges: [],
   };
 }
@@ -129,13 +139,37 @@ export async function durableVideoCapability(): Promise<{
   }
 }
 
+const videoQuotes = new Map<string, { quote: DurableVideoQuote; at: number }>();
+function quoteUsesImage(project: VideoProject, node: CanvasNodeDefinition): boolean {
+  const graph = projectHead(project).graph;
+  return graph.edges.some((edge) => edge.targetNodeId === node.nodeId && graph.nodes.some((source) => source.nodeId === edge.sourceNodeId && (source.kind === "image" || (source.assetId && project.assets[source.assetId]?.kind === "image"))));
+}
+function quoteKey(project: VideoProject, node: CanvasNodeDefinition): string {
+  return deterministicDigest({ projectId: project.projectId, nodeId: node.nodeId, model: providerModel(node.model), duration: node.durationSeconds || 5, ratio: node.ratio || "16:9", image: quoteUsesImage(project, node) });
+}
+export function getPreparedVideoQuote(project: VideoProject, node: CanvasNodeDefinition): DurableVideoQuote | undefined {
+  const cached = videoQuotes.get(quoteKey(project, node));
+  return cached && Date.now() - cached.at < 300_000 ? cached.quote : undefined;
+}
+export async function prepareVideoQuote(project: VideoProject, node: CanvasNodeDefinition): Promise<DurableVideoQuote> {
+  const key = quoteKey(project, node);
+  const quote = await quoteDurableVideo({ model: providerModel(node.model), image: quoteUsesImage(project, node), duration: node.durationSeconds || 5, ratio: node.ratio || "16:9" });
+  if (videoQuotes.size >= 100) videoQuotes.delete(videoQuotes.keys().next().value!);
+  videoQuotes.set(key, { quote, at: Date.now() });
+  return quote;
+}
+
 async function syncedProject(
   project: VideoProject,
   node: CanvasNodeDefinition,
   selectionEpoch: number,
 ): Promise<VideoProject> {
-  const graph = durableGraphForVideoNode(node);
-  const graphFingerprint = deterministicDigest(graph);
+  const inputs = resolveCanvasInputs(project, node.nodeId);
+  const quote = getPreparedVideoQuote(project, node) || await prepareVideoQuote(project, node);
+  // Bootstrap the Project before registering owner-bound inputs.
+  const initialGraph = durableGraphForVideoNode({ ...node, prompt: inputs.prompt || "First-frame video" }, undefined, {}, quote);
+  let graph = initialGraph;
+  let graphFingerprint = deterministicDigest(graph);
   let durable: DurableVideoProjectState | undefined = project.durable;
   if (!durable) {
     const workspaceId = durableUuid(`${project.projectId}:workspace`);
@@ -155,6 +189,13 @@ async function syncedProject(
       runs: [],
     };
   }
+  const registered: Record<string, string> = {};
+  for (const asset of inputs.images) {
+    const receipt = await registerDurableVideoInput({ projectId: durable.projectId, localAssetId: asset.assetId, url: asset.sourceDependency ? undefined : asset.url, sourceDependency: asset.sourceDependency });
+    registered[asset.assetId] = receipt.asset_id;
+  }
+  graph = durableGraphForVideoNode(node, project, registered, quote);
+  graphFingerprint = deterministicDigest(graph);
   if (
     durable.graphFingerprint !== graphFingerprint ||
     durable.syncedLocalVersionId !== project.headVersionId ||
@@ -224,21 +265,93 @@ export async function submitDurableVideoGeneration(input: {
   };
 }
 
-export async function refreshDurableVideoRun(
-  project: VideoProject,
-  runId: string,
-): Promise<{ project: VideoProject; status: string; message: string }> {
-  if (!project.durable?.runs.some((run) => run.runId === runId)) {
-    throw new Error("Durable Run receipt is not part of this Project.");
+export function reconcileDurableVideoRun(project: VideoProject, runId: string, snapshot: DurableVideoRunSnapshot): { project: VideoProject; status: string; message: string } {
+  const run = project.durable?.runs.find((candidate) => candidate.runId === runId);
+  if (!run) throw new Error("Durable Run receipt is not part of this Project.");
+  if (snapshot.project_id !== project.durable!.projectId || snapshot.project_version_id !== run.remoteProjectVersionId) throw new Error("Run snapshot belongs to another project version.");
+  const status = String(snapshot.status || "unknown");
+  const node = projectHead(project).graph.nodes.find((candidate) => candidate.nodeId === run.nodeId);
+  let next = project;
+  const outputAssetIds = [...(run.outputAssetIds || [])];
+  const laterFinished = project.durable!.runs.some((candidate) => candidate.nodeId === run.nodeId && candidate.createdAt > run.createdAt && candidate.outputAssetIds?.length);
+  const previousAssetId = node?.assetId;
+  if (node) for (const output of snapshot.output_assets || []) {
+    if (output.node_id !== durableUuid(run.nodeId) || outputAssetIds.includes(output.id)) continue;
+    if (!/^https?:\/\//.test(output.url)) throw new Error("Run output has no playable media URL.");
+    const attached = attachGeneratedAsset(next, run.nodeId, { kind: "video", origin: "provider", title: node.title, url: output.url, mime: output.mime_type || "video/mp4", durationSeconds: output.duration_ms ? output.duration_ms / 1000 : node.durationSeconds, contentDigest: output.content_sha256 }, "canvas.node.generate.video");
+    next = attached.project;
+    if (laterFinished && previousAssetId) {
+      const version = next.versions[next.headVersionId];
+      const target = version.graph.nodes.find((candidate) => candidate.nodeId === run.nodeId);
+      if (target) target.assetId = previousAssetId;
+    }
+    outputAssetIds.push(output.id);
   }
-  const snapshot = await getDurableVideoRun(runId);
-  const status = String(snapshot.status || "unknown").slice(0, 80);
-  const detail = snapshot.error_message || snapshot.error_code;
-  return {
-    project: updateDurableVideoRun(project, runId, status),
-    status,
-    message: detail ? `${status}: ${detail}` : `Durable Run is ${status}.`,
+  const detail = snapshot.error_message || snapshot.error_code || (snapshot.node_runs || []).map((row) => row.error_message || row.error_code).find(Boolean);
+  const message = status === "succeeded" ? (outputAssetIds.length ? "视频已生成，已加入镜头候选。" : "视频已完成，正在读取素材。")
+    : status === "failed" ? `视频生成失败。\n${detail || "请检查输入后重试。"}`
+    : status === "unknown_external_state" ? "供应商的提交结果未知。请先核实任务与费用，避免重复提交。"
+    : ["cancelled", "cancelling"].includes(status) ? "已请求停止跟踪；供应商可能继续生成和计费。" : "视频正在生成，关闭页面后仍会继续。";
+  const fullMessage = snapshot.refund_status ? `${message}\n${snapshot.refund_status === "refunded" ? "费用已退回。" : snapshot.refund_status === "charged" ? "已扣费，尚未确认退款。" : "费用状态暂时无法确认。"}` : message;
+  // Idempotent polls do not dirty/autosave an unchanged project.
+  const previous = project.durable!.runs.find((item) => item.runId === runId)!;
+  if (next === project && previous.status === status && previous.message === fullMessage && previous.refundStatus === snapshot.refund_status) return { project, status, message: fullMessage };
+  next = recordDurableVideoRun(next, { ...run, status, updatedAt: new Date().toISOString(), message: fullMessage, outputAssetIds, refundStatus: snapshot.refund_status });
+  if (!laterFinished) next = withCanvasNodeGeneration(next, run.nodeId, status, fullMessage);
+  return { project: next, status, message: fullMessage };
+}
+
+export async function refreshDurableVideoRun(project: VideoProject, runId: string): Promise<{ project: VideoProject; status: string; message: string }> {
+  return reconcileDurableVideoRun(project, runId, await getDurableVideoRun(runId));
+}
+
+export function durableRunNeedsPolling(run: NonNullable<VideoProject["durable"]>["runs"][number]): boolean {
+  return !["failed", "cancelled", "unknown_external_state"].includes(run.status) && (run.status !== "succeeded" || !run.outputAssetIds?.length);
+}
+
+/** Resume from saved receipts on mount. No provider re-submit, no stale head overwrite. */
+export function startDurableVideoPolling(input: {
+  getProject(): VideoProject;
+  apply(project: VideoProject): void;
+  onError?(error: unknown): void;
+  schedule?: (callback: () => void, ms: number) => ReturnType<typeof setTimeout>;
+  clear?: (timer: ReturnType<typeof setTimeout>) => void;
+}): () => void {
+  let stopped = false;
+  let delay = 1_000;
+  let timer: ReturnType<typeof setTimeout>;
+  const schedule = input.schedule || setTimeout;
+  const tick = async () => {
+    let changed = false;
+    const durable = input.getProject().durable;
+    if (durable) try {
+      const recovered = await listDurableVideoRuns(durable.projectId);
+      if (stopped) return;
+      for (const remote of recovered.items.slice().reverse()) {
+        const latest = input.getProject();
+        if (!latest.durable || latest.durable.projectId !== durable.projectId || latest.durable.runs.some((run) => run.runId === remote.id)) continue;
+        const node = projectHead(latest).graph.nodes.find((node) => remote.target_node_ids.includes(durableUuid(node.nodeId)));
+        if (!node) continue;
+        input.apply(recordDurableVideoRun(latest, { runId: remote.id, commandRequestId: remote.command_request_id, nodeId: node.nodeId, remoteProjectVersionId: remote.project_version_id, status: remote.status, createdAt: remote.created_at, updatedAt: remote.created_at }));
+        changed = true;
+      }
+    } catch (error) { if (!stopped) input.onError?.(error); }
+    for (const run of input.getProject().durable?.runs || []) {
+      if (stopped || !durableRunNeedsPolling(run)) continue;
+      try {
+        const snapshot = await getDurableVideoRun(run.runId);
+        if (stopped) return;
+        const latest = input.getProject();
+        if (!latest.durable?.runs.some((candidate) => candidate.runId === run.runId)) continue;
+        const result = reconcileDurableVideoRun(latest, run.runId, snapshot);
+        if (result.project !== latest) { input.apply(result.project); changed = true; }
+      } catch (error) { if (!stopped) input.onError?.(error); }
+    }
+    delay = changed ? 1_000 : Math.min(delay * 1.6, 15_000);
+    if (!stopped) timer = schedule(() => { void tick(); }, delay);
   };
+  timer = schedule(() => { void tick(); }, 0);
+  return () => { stopped = true; (input.clear || clearTimeout)(timer); };
 }
 
 export async function requestDurableVideoRunCancel(
@@ -251,7 +364,7 @@ export async function requestDurableVideoRunCancel(
   const response = await cancelDurableVideoRun(runId);
   const status = String(response.status || "cancelling").slice(0, 80);
   return {
-    project: updateDurableVideoRun(project, runId, status),
+    project: withCanvasNodeGeneration(updateDurableVideoRun(project, runId, status), project.durable!.runs.find((run) => run.runId === runId)!.nodeId, status, "已请求停止跟踪；供应商可能继续生成和计费。"),
     status,
   };
 }

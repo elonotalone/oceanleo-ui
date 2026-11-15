@@ -5,6 +5,8 @@ import {
   CanvasAdapterError,
   executeCanvasImageSemanticOperation,
   generateImage,
+  generateAudio,
+  getDurableVideoRun,
   generateScript,
   generateText,
   renderCanvasTimeline,
@@ -14,6 +16,10 @@ import {
 } from "./canvas-gateway";
 import {
   refreshDurableVideoRun,
+  reconcileDurableVideoRun,
+  durableRunNeedsPolling,
+  getPreparedVideoQuote,
+  prepareVideoQuote,
   requestDurableVideoRunCancel,
   submitDurableVideoGeneration,
 } from "./durable-video-adapter";
@@ -26,6 +32,11 @@ import {
 import {
   effectiveCanvasNode,
   addProjectNode,
+  canvasUpstreamOrder,
+  CanvasInputError,
+  canvasNodeHasOutput,
+  resolveCanvasInputs,
+  withCanvasNodeGeneration,
   attachFinalRenderAsset,
   attachGeneratedAsset,
   attachGeneratedAssetSet,
@@ -159,6 +170,9 @@ export interface CanvasCommandResult {
 
 export interface CanvasCommandEnvironment {
   getProject(): VideoProject;
+  translate?(source: string, vars?: Record<string, string | number>): string;
+  resolveAssetUrl?(asset: ProjectAsset): Promise<string>;
+  reportNodeProgress?(nodeId: string, status: string, message?: string): void;
   setProject(project: VideoProject): void;
   getSelectedNodeId(): string | null;
   setSelectedNodeId(nodeId: string | null): void;
@@ -189,6 +203,7 @@ export interface CanvasCommandEnvironment {
 }
 
 interface HandlerOutcome {
+  appliedHeadVersionId?: string;
   status?: "succeeded" | "accepted";
   message: string;
   project?: VideoProject;
@@ -394,6 +409,20 @@ function selectedAsset(
     : undefined;
 }
 
+function providerModelName(value?: string): string | undefined {
+  return value && !/^(?:platform[- ]default|平台默认)$/i.test(value) ? value : undefined;
+}
+
+function generationInputs(environment: CanvasCommandEnvironment, node: CanvasNodeDefinition, args: Record<string, unknown>) {
+  const project = environment.getProject();
+  const version = projectHead(project);
+  const requested = typeof args.prompt === "string" && args.prompt.trim() ? { ...node, prompt: args.prompt.trim() } : node;
+  const contextual = { ...project, versions: { ...project.versions, [project.headVersionId]: { ...version, graph: { ...version.graph, nodes: version.graph.nodes.map((item) => item.nodeId === node.nodeId ? requested : item) } } } };
+  const resolved = resolveCanvasInputs(contextual, node.nodeId);
+  if ((["script", "text", "audio"].includes(node.kind) && resolved.inputs.some((input) => input.type !== "text")) || (node.kind === "image" && (resolved.audio.length || resolved.videos.length))) throw new Error("此节点不支持连接的媒体类型。");
+  return resolved;
+}
+
 function imageDisclosure(
   environment: CanvasCommandEnvironment,
   args: Record<string, unknown>,
@@ -464,7 +493,7 @@ function imageGenerationAvailability(
       reason: "Select an Image node first.",
     };
   }
-  const prompt = requireString(args, "prompt", node.prompt || "");
+  const prompt = generationInputs(environment, node, args).prompt;
   return prompt
     ? { enabled: true }
     : {
@@ -486,7 +515,7 @@ function scriptGenerationAvailability(
       reason: "Select a Text or Script node first.",
     };
   }
-  const prompt = requireString(args, "prompt", node.prompt || node.text || "");
+  const prompt = generationInputs(environment, node, args).prompt;
   return prompt
     ? { enabled: true }
     : {
@@ -523,14 +552,12 @@ function videoGenerationAvailability(
         durable.reason || "Durable video generation is not available.",
     };
   }
-  const prompt = requireString(args, "prompt", node.prompt || "");
-  return prompt
-    ? { enabled: true }
-    : {
-        enabled: false,
-        reasonCode: "MISSING_REQUIRED_INPUT",
-        reason: "Add a video prompt before Generate.",
-      };
+  const active = environment.getProject().durable?.runs.find((run) => run.nodeId === node.nodeId && durableRunNeedsPolling(run));
+  if (active) return { enabled: false, reason: "这个节点的视频仍在生成。" };
+  const inputs = generationInputs(environment, node, args);
+  if (!inputs.prompt && !inputs.images.length) return { enabled: false, reasonCode: "MISSING_REQUIRED_INPUT", reason: "添加提示词或连接首帧图片。" };
+  if (!getPreparedVideoQuote(environment.getProject(), node)) return { enabled: false, reasonCode: "CAPABILITY_DISCOVERY_PENDING", reason: "正在估算视频费用…" };
+  return { enabled: true };
 }
 
 function sourceImageAvailability(
@@ -940,7 +967,7 @@ const definitions: CanvasCommandDefinition[] = [
         },
         {
           ratio: kind === "image" || kind === "video" ? "16:9" : undefined,
-          durationSeconds: kind === "video" ? 5 : undefined,
+          durationSeconds: kind === "video" ? 5 : kind === "audio" ? 30 : undefined,
           assetId,
         },
       );
@@ -977,6 +1004,8 @@ const definitions: CanvasCommandDefinition[] = [
               ? args.value.slice(0, 20_000)
               : "",
         };
+      } else if (field === "audioMode" && node.kind === "audio" && (args.value === "voice" || args.value === "music")) {
+        patch = { audioMode: args.value };
       } else if (
         field === "ratio" &&
         (node.kind === "image" || node.kind === "video") &&
@@ -987,7 +1016,7 @@ const definitions: CanvasCommandDefinition[] = [
         patch = { ratio: args.value };
       } else if (
         field === "durationSeconds" &&
-        (node.kind === "video" || node.kind === "subtitle") &&
+        (node.kind === "video" || node.kind === "subtitle" || node.kind === "audio") &&
         typeof args.value === "number" &&
         Number.isFinite(args.value)
       ) {
@@ -1297,14 +1326,16 @@ const definitions: CanvasCommandDefinition[] = [
     label: "Generate image",
     disclosure: (environment, args) => imageDisclosure(environment, args),
     availability: imageGenerationAvailability,
-    handler: async (environment, args) => {
+    handler: async (environment, args, request) => {
       const node = selectedNode(environment);
       if (!node) throw new Error("Selection changed.");
-      const prompt = requireString(args, "prompt", node.prompt || "");
-      const model = requireString(args, "model", node.model || "");
+      const inputs = generationInputs(environment, node, args);
+      const prompt = inputs.prompt;
+      const model = providerModelName(requireString(args, "model", node.model || ""));
       const result = await generateImage(prompt, node.ratio, {
         model,
-        quality: "2K",
+        quality: "2K", signal: environment.getCommandSignal?.(request.requestId),
+        sourceUrls: await Promise.all(inputs.images.map(async (asset) => environment.resolveAssetUrl ? environment.resolveAssetUrl(asset) : asset.url || "")),
       });
       const url = result.images[0];
       if (!url) throw new Error("The image provider returned no Asset URL.");
@@ -1408,8 +1439,8 @@ const definitions: CanvasCommandDefinition[] = [
     handler: async (environment, args) => {
       const node = selectedNode(environment);
       if (!node) throw new Error("Selection changed.");
-      const prompt = requireString(args, "prompt", node.prompt || node.text || "");
-      const model = requireString(args, "model", node.model || "");
+      const prompt = generationInputs(environment, node, args).prompt;
+      const model = providerModelName(requireString(args, "model", node.model || ""));
       const result =
         node.kind === "script"
           ? await generateScript(prompt, { model })
@@ -1420,7 +1451,7 @@ const definitions: CanvasCommandDefinition[] = [
           environment.getProject(),
           node.nodeId,
           "canvas.node.generate.script",
-          { text: result.text },
+          { text: result.text, generation: { status: "succeeded" } },
         ),
         cost: PROVIDER_PRICE,
       };
@@ -1446,7 +1477,7 @@ const definitions: CanvasCommandDefinition[] = [
         input: asset
           ? `Immutable Asset ${asset.assetId} + prompt`
           : "Prompt + versioned Project graph",
-        cost: "Provider-priced; durable Run records actual cost when available",
+        cost: (() => { const quote = node && getPreparedVideoQuote(environment.getProject(), node); return quote ? `${quote.amount} ${quote.currency}` : "正在估算视频费用…"; })(),
         contract:
           "GET /v1/video-canvas/capabilities + Project version + idempotent Run",
       };
@@ -1477,16 +1508,46 @@ const definitions: CanvasCommandDefinition[] = [
           return true;
         },
       });
+      const recorded = { ...environment.getProject(), durable: result.project.durable };
+      environment.setProjectMetadata(recorded);
       return {
         status: "accepted",
         message: result.created
           ? "Durable Run queued. It continues after this browser disconnects."
           : "The existing durable Run receipt was recovered without a duplicate submission.",
-        project: result.project,
+        project: recorded,
         runIds: [result.runId],
         cost: PROVIDER_PRICE,
       };
     },
+  },
+  ...(["voice", "music"] as const).map((mode): CanvasCommandDefinition => ({
+    commandId: `canvas.node.generate.${mode}`, scope: "selection", surfaces: ["compact", "protocol", "context-more"], mode: "generate", execution: "server", billing: "estimated", cancellation: "client-abort", inputSchema: `canvas.node.generate.${mode}.v1`, mutates: "asset", label: mode === "voice" ? "生成配音" : "生成音乐",
+    disclosure: () => ({ provider: "OceanLeo media gateway", model: "Platform default", input: "Text / script", cost: PROVIDER_PRICE.label, contract: mode === "voice" ? "POST /v1/audio/tts" : "POST /v1/music/generate" }),
+    availability: (environment, args) => {
+      const node = selectedNode(environment);
+      if (node?.kind !== "audio") return { enabled: false, reason: "Select an Audio node first." };
+      return generationInputs(environment, node, args).prompt ? { enabled: true } : { enabled: false, reason: "添加文本或连接脚本。" };
+    },
+    handler: async (environment, args, request) => {
+      const node = selectedNode(environment)!;
+      const result = await generateAudio({ mode, text: generationInputs(environment, node, args).prompt, model: providerModelName(node.model), voice: node.voice, duration: node.durationSeconds, signal: environment.getCommandSignal?.(request.requestId) });
+      if (!result.audio_url) throw new Error("生成失败，请重试。");
+      const attached = attachGeneratedAsset(environment.getProject(), node.nodeId, { kind: "audio", origin: "provider", title: node.title, url: result.audio_url }, `canvas.node.generate.${mode}`);
+      attached.project.versions[attached.project.headVersionId].graph.nodes.find((candidate) => candidate.nodeId === node.nodeId)!.audioMode = mode;
+      return { message: "已完成", project: attached.project, assetIds: [attached.asset.assetId], cost: PROVIDER_PRICE };
+    },
+  })),
+  {
+    commandId: "canvas.chain.run", scope: "selection", surfaces: ["compact", "toolbar", "protocol", "context-more"], execution: "server", billing: "estimated", cancellation: "client-abort", inputSchema: "canvas.chain.run.v1", mutates: "project", label: "运行这条链",
+    availability: (environment) => {
+      const node = selectedNode(environment);
+      if (!node || !["text", "script", "image", "video", "audio"].includes(node.kind)) return { enabled: false, reason: "Select a generation node first." };
+      canvasUpstreamOrder(environment.getProject(), node.nodeId);
+      return { enabled: true };
+    },
+    disclosure: () => ({ provider: "OceanLeo media gateway", model: "Each node's selected model", input: "Missing upstream outputs, then selected node", cost: "Provider-metered per generated node", contract: "Explicit ordered generation" }),
+    handler: runCanvasChain,
   },
   {
     commandId: "canvas.script.structure",
@@ -1827,7 +1888,7 @@ const definitions: CanvasCommandDefinition[] = [
         runId,
       );
       return {
-        message: `Durable Run is ${cancelled.status}.`,
+        message: "已请求停止跟踪；供应商可能继续生成和计费。",
         project: cancelled.project,
         runIds: [runId],
         cost: NO_COST,
@@ -1883,6 +1944,58 @@ const definitions: CanvasCommandDefinition[] = [
   },
 ];
 
+async function runCanvasChain(environment: CanvasCommandEnvironment, _args: Record<string, unknown>, request: CanvasCommandRequest): Promise<HandlerOutcome> {
+  const target = selectedNode(environment)!;
+  const ordered = canvasUpstreamOrder(environment.getProject(), target.nodeId);
+  const assetIds: string[] = [], runIds: string[] = [];
+  // Validate/quote every video before any paid upstream work is submitted.
+  for (const node of ordered.filter((node) => node.kind === "video")) await prepareVideoQuote(environment.getProject(), node);
+  for (const planned of ordered) {
+    if (environment.getCommandSignal?.(request.requestId)?.aborted) throw new Error("已停止这条链；已提交的视频可能继续生成和计费。");
+    const current = projectHead(environment.getProject()).graph.nodes.find((node) => node.nodeId === planned.nodeId);
+    if (!current) throw new Error("连接的素材尚未准备好。");
+    if (current.nodeId !== target.nodeId && canvasNodeHasOutput(environment.getProject(), current)) continue;
+    const kind = current.kind === "audio" ? current.audioMode || "voice" : ["text", "script"].includes(current.kind) ? "script" : current.kind;
+    const commandId = `canvas.node.generate.${kind}`;
+    const definition = entries.get(commandId);
+    if (!definition) throw new Error(`Cannot generate ${current.title}: ${current.kind}`);
+    const scoped = { ...environment, getSelectedNodeId: () => current.nodeId, getCommandSignal: () => environment.getCommandSignal?.(request.requestId) };
+    if (current.kind === "video") await prepareVideoQuote(environment.getProject(), current);
+    const availability = commandAvailability(commandId, scoped);
+    if (!availability.enabled) throw new Error(availability.reason || "Generation unavailable");
+    environment.reportNodeProgress?.(current.nodeId, "running", "正在运行…");
+    try {
+      const baseHead = environment.getProject().headVersionId;
+      const result = await definition.handler(scoped, {}, { ...request, commandId, requestId: `${request.requestId}:${current.nodeId}`.slice(0, 128), projectVersionId: baseHead });
+      if (environment.getProject().headVersionId !== baseHead || environment.getSelectionEpoch() !== request.selectionEpoch) throw new Error("工程已改变；这条链已停止。");
+      if (result.project) environment.setProject(result.project);
+      assetIds.push(...result.assetIds || []); runIds.push(...result.runIds || []);
+      if (current.kind === "video" && result.runIds?.[0]) {
+        const runId = result.runIds[0];
+        while (true) {
+          if (environment.getCommandSignal?.(request.requestId)?.aborted) throw new Error("已停止这条链；已提交的视频可能继续生成和计费。");
+          const snapshot = await getDurableVideoRun(runId);
+          const refreshed = reconcileDurableVideoRun(environment.getProject(), runId, snapshot);
+          environment.setProjectMetadata(refreshed.project);
+          const run = refreshed.project.durable!.runs.find((item) => item.runId === runId)!;
+          if (!durableRunNeedsPolling(run)) {
+            if (run.status !== "succeeded") throw new Error(refreshed.message);
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+        }
+      }
+      environment.reportNodeProgress?.(current.nodeId, "succeeded", "已完成");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      environment.reportNodeProgress?.(current.nodeId, "failed", message);
+      environment.setProjectMetadata(withCanvasNodeGeneration(environment.getProject(), current.nodeId, "failed", message));
+      throw error;
+    }
+  }
+  return { message: "已完成", appliedHeadVersionId: environment.getProject().headVersionId, assetIds, runIds };
+}
+
 const entries = new Map<string, CanvasCommandDefinition>();
 for (const definition of definitions) {
   if (entries.has(definition.commandId)) {
@@ -1922,7 +2035,8 @@ export function commandAvailability(
       reason: legacyBlock,
     };
   }
-  return definition.availability?.(environment, args) || { enabled: true };
+  try { return definition.availability?.(environment, args) || { enabled: true }; }
+  catch (error) { return { enabled: false, reasonCode: "MISSING_REQUIRED_INPUT", reason: error instanceof CanvasInputError && environment.translate ? error.translated(environment.translate) : error instanceof Error ? error.message : String(error) }; }
 }
 
 export function commandDisclosure(
@@ -1968,6 +2082,8 @@ function failedResult(
     },
   };
 }
+
+const activeGenerationNodes = new Set<string>();
 
 export async function executeCanvasCommand(
   request: CanvasCommandRequest,
@@ -2109,10 +2225,16 @@ export async function executeCanvasCommand(
       "Retouch must remain local and non-billable.",
     );
   }
+  const generating = request.commandId.startsWith("canvas.node.generate.") || request.commandId === "canvas.chain.run";
+  const node = selectedNode(environment);
+  const lockKeys = generating && node ? (request.commandId === "canvas.chain.run" ? canvasUpstreamOrder(environment.getProject(), node.nodeId) : [node]).map((item) => `${currentProject.projectId}:${item.nodeId}`) : [];
+  if (lockKeys.some((key) => activeGenerationNodes.has(key))) return failedResult(request, environment, "disabled", "ALREADY_RUNNING", "正在运行…");
+  lockKeys.forEach((key) => activeGenerationNodes.add(key));
+  if (generating && node && request.commandId !== "canvas.chain.run") environment.reportNodeProgress?.(node.nodeId, "running", "正在运行…");
   try {
     const outcome = await definition.handler(environment, args, request);
     if (
-      environment.getProject().headVersionId !== request.projectVersionId ||
+      environment.getProject().headVersionId !== (outcome.appliedHeadVersionId || request.projectVersionId) ||
       environment.getSelectionEpoch() !== request.selectionEpoch
     ) {
       return failedResult(
@@ -2125,6 +2247,7 @@ export async function executeCanvasCommand(
       );
     }
     if (outcome.project) environment.setProject(outcome.project);
+    if (generating && node && request.commandId !== "canvas.chain.run") environment.reportNodeProgress?.(node.nodeId, outcome.status === "accepted" ? "queued" : "succeeded", outcome.message);
     if (outcome.selectedNodeId !== undefined) {
       environment.setSelectedNodeId(outcome.selectedNodeId);
     }
@@ -2147,9 +2270,13 @@ export async function executeCanvasCommand(
       ...(outcome.progress ? { progress: outcome.progress } : {}),
     };
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Command execution failed.";
+    const message = error instanceof CanvasInputError && environment.translate ? error.translated(environment.translate)
+      : error instanceof Error ? error.message : "Command execution failed.";
     environment.setStatus(message);
+    if (generating && node && request.commandId !== "canvas.chain.run") {
+      environment.reportNodeProgress?.(node.nodeId, "failed", message);
+      environment.setProjectMetadata(withCanvasNodeGeneration(environment.getProject(), node.nodeId, "failed", message));
+    }
     if (error instanceof CanvasAdapterError && error.cancelled) {
       return failedResult(
         request,
@@ -2176,6 +2303,8 @@ export async function executeCanvasCommand(
           error instanceof CanvasAdapterError ? error.retryable : false,
       },
     );
+  } finally {
+    lockKeys.forEach((key) => activeGenerationNodes.delete(key));
   }
 }
 

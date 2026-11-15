@@ -79,7 +79,7 @@ function availableAction(
             disabled: true,
             unavailableReason: [
               availability.reasonCode,
-              availability.reason,
+              availability.reason ? input.tt(availability.reason) : undefined,
               availability.missingContract,
             ]
               .filter(Boolean)
@@ -129,6 +129,7 @@ function fieldControls(
     node.kind === "text" ||
     node.kind === "script" ||
     node.kind === "image" ||
+    node.kind === "audio" ||
     node.kind === "video"
   ) {
     controls.push(
@@ -169,12 +170,15 @@ function fieldControls(
       ],
     });
   }
-  if (node.kind === "video" || node.kind === "subtitle") {
+  if (node.kind === "audio") {
+    controls.push({ id: "canvas.selection.audio-mode.set", kind: "select", label: input.tt("音频"), value: node.audioMode || "voice", options: [{ value: "voice", label: input.tt("生成配音") }, { value: "music", label: input.tt("生成音乐") }] });
+  }
+  if (node.kind === "video" || node.kind === "subtitle" || node.kind === "audio") {
     controls.push({
       id: "canvas.selection.duration.set",
       kind: "number",
       label: input.tt("时长"),
-      value: node.durationSeconds || (node.kind === "subtitle" ? 3 : 5),
+      value: node.durationSeconds || (node.kind === "subtitle" ? 3 : node.kind === "audio" ? 30 : 5),
       min: 0.1,
       max: 3_600,
       step: 0.1,
@@ -558,6 +562,8 @@ export function canvasSelectionContext(
           { prompt: node.prompt || node.text || "" },
         )
       : []),
+    ...(node.kind === "audio" ? (["voice", "music"] as const).flatMap((mode) => availableAction(input, { id: `canvas.node.generate.${mode}`, kind: "action", label: input.tt(mode === "voice" ? "生成配音" : "生成音乐"), icon: "ai" }, `canvas.node.generate.${mode}`)) : []),
+    ...(["text", "script", "image", "video", "audio"].includes(node.kind) ? availableAction(input, { id: "canvas.chain.run", kind: "action", label: input.tt("运行这条链"), icon: "animate", placement: "more" }, "canvas.chain.run") : []),
     ...(node.kind === "script" || node.kind === "text"
       ? availableAction(
           input,
@@ -665,6 +671,7 @@ export function canvasSelectionDispatch(
       "canvas.selection.model.set": "model",
       "canvas.selection.ratio.set": "ratio",
       "canvas.selection.duration.set": "durationSeconds",
+      "canvas.selection.audio-mode.set": "audioMode",
     } as const
   )[command.controlId as
     | "canvas.selection.title.set"
@@ -672,7 +679,8 @@ export function canvasSelectionDispatch(
     | "canvas.selection.prompt.set"
     | "canvas.selection.model.set"
     | "canvas.selection.ratio.set"
-    | "canvas.selection.duration.set"];
+    | "canvas.selection.duration.set"
+    | "canvas.selection.audio-mode.set"];
   let commandId = command.controlId;
   let args: Record<string, unknown> = {};
   if (field) {
@@ -732,6 +740,7 @@ export function canvasSelectionDispatch(
       "canvas.node.update.local.grid-split-25",
       "canvas.node.generate.script",
       "canvas.script.structure",
+      "canvas.chain.run",
       "canvas.node.delete",
     ].includes(command.controlId)
   ) {

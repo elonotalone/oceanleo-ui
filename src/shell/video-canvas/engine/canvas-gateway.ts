@@ -237,6 +237,7 @@ export interface DurableVideoCanvasGraph {
     provider: string;
     provider_model?: string;
     billing: "provider";
+    cost?: DurableVideoQuote["cost"];
   }>;
   edges: Array<{
     id: string;
@@ -271,6 +272,13 @@ export interface DurableVideoRunSnapshot {
   attempts?: Array<Record<string, unknown>>;
   bindings?: Array<Record<string, unknown>>;
   costs?: Array<Record<string, unknown>>;
+  output_assets?: Array<{ id: string; node_id: string; url: string; mime_type?: string; duration_ms?: number; content_sha256?: string; created_at?: string }>;
+  refund_status?: string;
+}
+
+export interface DurableVideoQuote {
+  provider: string; provider_model: string; amount: number; currency: string;
+  cost: { estimated_cost_nano: number; currency: string; pricing_input: Record<string, unknown> };
 }
 
 export interface DurableVideoCapabilities {
@@ -313,10 +321,15 @@ export const EXECUTION_UNAVAILABLE_MESSAGE =
 type FetchJson = (url: string, init?: RequestInit) => Promise<unknown>;
 
 export interface CanvasGatewayImpl {
+  listDurableVideoRuns: (projectId: string) => Promise<{ items: Array<{ id: string; command_request_id: string; project_version_id: string; target_node_ids: string[]; status: string; created_at: string }> }>;
+  quoteDurableVideo: (input: { model?: string; image: boolean; duration: number; ratio: string }) => Promise<DurableVideoQuote>;
+  registerDurableVideoInput: (input: { projectId: string; localAssetId: string; url?: string; sourceDependency?: unknown }) => Promise<{ asset_id: string; content_sha256: string }>;
+  generateAudio: (input: { mode: "voice" | "music"; text: string; model?: string; voice?: string; duration?: number; signal?: AbortSignal }) => Promise<{ audio_url: string; model?: string }>;
+
   generateImage: (
     prompt: string,
     ratio?: string,
-    options?: { model?: string; quality?: string; signal?: AbortSignal },
+    options?: { model?: string; quality?: string; sourceUrls?: string[]; signal?: AbortSignal },
   ) => Promise<{ images: string[] }>;
   generateScript: (
     prompt: string,
@@ -418,19 +431,15 @@ async function viaFetch<T>(url: string, init?: RequestInit): Promise<T> {
 export function generateImage(
   prompt: string,
   ratio?: string,
-  options: { model?: string; quality?: string; signal?: AbortSignal } = {},
+  options: { model?: string; quality?: string; sourceUrls?: string[]; signal?: AbortSignal } = {},
 ) {
   if (boundImpl.generateImage) {
     return boundImpl.generateImage(prompt, ratio, options);
   }
-  return viaFetch<{ images: string[] }>(
-    "/gallery-editor/runtime/generate-image",
-    {
-      method: "POST",
-      signal: options.signal,
-      body: JSON.stringify({ prompt, ratio, options }),
-    },
-  );
+  return viaFetch<{ images: string[] }>(options.sourceUrls?.length ? "/v1/images/edit" : "/v1/images/generate", {
+    method: "POST", signal: options.signal,
+    body: JSON.stringify({ prompt, ratio, site_id: "video", ...(options.model ? { model: options.model } : {}), ...(options.sourceUrls?.length ? { image_urls: options.sourceUrls, function: "description_edit" } : {}) }),
+  });
 }
 
 export function generateScript(
@@ -443,11 +452,7 @@ export function generateScript(
   } = {},
 ) {
   if (boundImpl.generateScript) return boundImpl.generateScript(prompt, options);
-  return viaFetch<{ text: string }>("/gallery-editor/runtime/generate-script", {
-    method: "POST",
-    signal: options.signal,
-    body: JSON.stringify({ prompt, options }),
-  });
+  return chatText(prompt, { ...options, system: options.system || "Write a usable video script with scenes and shot descriptions." });
 }
 
 export function generateText(
@@ -460,11 +465,7 @@ export function generateText(
   } = {},
 ) {
   if (boundImpl.generateText) return boundImpl.generateText(prompt, options);
-  return viaFetch<{ text: string }>("/gallery-editor/runtime/generate-text", {
-    method: "POST",
-    signal: options.signal,
-    body: JSON.stringify({ prompt, options }),
-  });
+  return chatText(prompt, options);
 }
 
 export function executeCanvasImageSemanticOperation(input: {
@@ -546,7 +547,8 @@ export function createDurableVideoProject(input: {
     signal: input.signal,
     body: JSON.stringify({
       name: input.name,
-      workspaceId: input.workspaceId,
+      workspace_id: input.workspaceId,
+      idempotency_key: input.workspaceId,
       graph: input.graph,
     }),
   });
@@ -570,10 +572,11 @@ export function promoteDurableVideoVersion(input: {
       method: "POST",
       signal: input.signal,
       body: JSON.stringify({
-        expectedHeadVersionId: input.expectedHeadVersionId,
-        expectedHeadEpoch: input.expectedHeadEpoch,
+        expected_head_version_id: input.expectedHeadVersionId,
+        idempotency_key: input.expectedHeadVersionId,
+        expected_head_epoch: input.expectedHeadEpoch,
         graph: input.graph,
-        selectionEpoch: input.selectionEpoch,
+        selection_epoch: input.selectionEpoch,
         message: input.message,
       }),
     },
@@ -598,11 +601,12 @@ export function createDurableVideoRun(input: {
       method: "POST",
       signal: input.signal,
       body: JSON.stringify({
-        commandId: input.commandId,
-        commandRequestId: input.commandRequestId,
-        projectVersionId: input.projectVersionId,
-        expectedHeadEpoch: input.expectedHeadEpoch,
-        targetNodeIds: input.targetNodeIds,
+        command_id: input.commandId,
+        command_request_id: input.commandRequestId,
+        project_version_id: input.projectVersionId,
+        expected_head_epoch: input.expectedHeadEpoch,
+        target_node_ids: input.targetNodeIds,
+        kind: "generate",
       }),
     },
   );
@@ -626,4 +630,40 @@ export function cancelDurableVideoRun(runId: string, signal?: AbortSignal) {
     `/v1/video-canvas/runs/${encodeURIComponent(runId)}/cancel`,
     { method: "POST", signal },
   );
+}
+
+export function quoteDurableVideo(input: { model?: string; image: boolean; duration: number; ratio: string }): Promise<DurableVideoQuote> {
+  if (boundImpl.quoteDurableVideo) return boundImpl.quoteDurableVideo(input);
+  return viaFetch("/v1/video-canvas/quote", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function registerDurableVideoInput(input: { projectId: string; localAssetId: string; url?: string; sourceDependency?: unknown }): Promise<{ asset_id: string; content_sha256: string }> {
+  if (boundImpl.registerDurableVideoInput) return boundImpl.registerDurableVideoInput(input);
+  return viaFetch(`/v1/video-canvas/projects/${encodeURIComponent(input.projectId)}/inputs`, {
+    method: "POST", body: JSON.stringify({ local_asset_id: input.localAssetId, url: input.url || "", source_dependency: input.sourceDependency }),
+  });
+}
+
+export function generateAudio(input: { mode: "voice" | "music"; text: string; model?: string; voice?: string; duration?: number; signal?: AbortSignal }): Promise<{ audio_url: string; model?: string }> {
+  if (boundImpl.generateAudio) return boundImpl.generateAudio(input);
+  return viaFetch(input.mode === "voice" ? "/v1/audio/tts" : "/v1/music/generate", {
+    method: "POST", signal: input.signal,
+    body: JSON.stringify(input.mode === "voice"
+      ? { text: input.text, voice: input.voice || "Cherry", ...(input.model ? { model: input.model } : {}), site_id: "video" }
+      : { prompt: input.text, duration_s: input.duration || 30, ...(input.model ? { model: input.model } : {}), site_id: "video" }),
+  });
+}
+
+async function chatText(prompt: string, options: { model?: string; system?: string; maxTokens?: number; signal?: AbortSignal }): Promise<{ text: string }> {
+  const response = await viaFetch<{ text?: string; content?: string }>("/v1/chat", {
+    method: "POST", signal: options.signal, body: JSON.stringify({ site_id: "video", messages: [{ role: "user", content: prompt }], ...(options.model ? { model: options.model } : {}), system: options.system, max_tokens: options.maxTokens || 4096, enable_thinking: false }),
+  });
+  const text = response.text || response.content;
+  if (!text?.trim()) throw new CanvasAdapterError("EMPTY_RESULT", "生成失败，请重试。");
+  return { text };
+}
+
+export function listDurableVideoRuns(projectId: string): ReturnType<CanvasGatewayImpl["listDurableVideoRuns"]> {
+  if (boundImpl.listDurableVideoRuns) return boundImpl.listDurableVideoRuns(projectId);
+  return viaFetch(`/v1/video-canvas/projects/${encodeURIComponent(projectId)}/runs`);
 }
