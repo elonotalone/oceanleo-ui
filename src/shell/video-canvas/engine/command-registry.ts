@@ -65,8 +65,9 @@ import {
   type ProjectAsset,
   type VideoProject,
 } from "./project-model";
-import type { TimelineTextStyle } from "../../video-editor/types";
-import { canvasCompositionDocument } from "./canvas-selection-adapter";
+import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { timelineTextCasePatch, timelineTextListPatch } from "../../video-editor/timeline-model";
+import { canvasCompositionDocument, canvasNodeTextClip } from "./canvas-selection-adapter";
 export { canvasCompositionDocument } from "./canvas-selection-adapter";
 
 export type CanvasCommandSurface =
@@ -853,8 +854,21 @@ const definitions: CanvasCommandDefinition[] = [
       const field = requireString(args, "field");
       const value = args.value;
       let patch: Record<string, unknown>;
-      if (field === "clearFormat") patch = { textStyle: {} };
-      else if (field === "includeInVideo" && typeof value === "boolean") patch = { includeInVideo: value };
+      let contentPatch: Partial<TimelineClip> | undefined;
+      const content = canvasNodeTextClip(node, selectedAsset(environment)?.inlineText);
+      if (field === "clearFormat") {
+        patch = { textStyle: {} };
+        contentPatch = timelineTextListPatch(content, "none");
+      } else if (field === "list") {
+        if (value !== "none" && value !== "bullet" && value !== "ordered") throw new Error("Unsupported text list.");
+        contentPatch = timelineTextListPatch(content, value);
+        patch = {};
+      } else if (field === "case") {
+        if (value !== undefined && value !== "upper" && value !== "lower") throw new Error("Unsupported text case.");
+        const text = String(content.text ?? "");
+        contentPatch = timelineTextCasePatch(content, value || (text === text.toUpperCase() ? "lower" : "upper"));
+        patch = {};
+      } else if (field === "includeInVideo" && typeof value === "boolean") patch = { includeInVideo: value };
       else {
         if (!(field === "font_size" && typeof value === "number" && Number.isFinite(value) && value >= 8 && value <= 300)
           && !(["color", "background"].includes(field) && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value))
@@ -863,7 +877,15 @@ const definitions: CanvasCommandDefinition[] = [
         patch = { textStyle: { ...(params.textStyle as TimelineTextStyle || {}), [field]: value } };
       }
       const project = advanceProject(environment.getProject(), "canvas.node.text-style.update", (version) => {
-        Object.assign(version.graph.nodes.find((item) => item.nodeId === node.nodeId)!, { params: { ...params, ...patch } });
+        const nextParams = { ...params, ...patch };
+        if (contentPatch) {
+          nextParams.text = contentPatch.text;
+          if (contentPatch.text_list) nextParams.text_list = contentPatch.text_list;
+          else delete nextParams.text_list;
+        }
+        Object.assign(version.graph.nodes.find((item) => item.nodeId === node.nodeId)!, {
+          ...(contentPatch ? { text: contentPatch.text } : {}), params: nextParams,
+        });
       });
       return { project, message: "Text style updated.", cost: NO_COST };
     },
@@ -1087,6 +1109,11 @@ const definitions: CanvasCommandDefinition[] = [
               ? args.value.slice(0, 20_000)
               : "",
         };
+        if (field === "text" && ["text", "script", "subtitle"].includes(node.kind)) {
+          const params = { ...(node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params, text: patch.text };
+          delete (params as Record<string, unknown>).text_list;
+          Object.assign(patch, { params });
+        }
       } else if (field === "audioMode" && node.kind === "audio" && (args.value === "voice" || args.value === "music")) {
         patch = { audioMode: args.value };
       } else if (

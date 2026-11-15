@@ -11,11 +11,19 @@ import type {
 } from "./project-model";
 
 import { projectHead, projectTimelineDocument } from "./project-model";
-import type { TimelineTextStyle } from "../../video-editor/types";
-import { normalizeTimelineDoc, timelineDocIssue } from "../../video-editor/timeline-model";
+import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { normalizeTimelineDoc, timelineDocIssue, timelineTextListKind } from "../../video-editor/timeline-model";
 import { serializeVideoProjectEnvelope } from "../../video-editor/video-timeline-source";
 
-type TextNodeParams = { textStyle?: TimelineTextStyle; includeInVideo?: boolean };
+type TextNodeParams = { text?: string; textStyle?: TimelineTextStyle; includeInVideo?: boolean; text_list?: TimelineClip["text_list"] };
+
+/** Matches composeNodeParams precedence; list provenance is never inferred from user text. */
+export function canvasNodeTextClip(node: CanvasNodeDefinition, fallbackText = ""): TimelineClip {
+  const params = (node as CanvasNodeDefinition & { params?: TextNodeParams }).params;
+  return { id: `clip_${node.nodeId}`, start_ms: 0, duration_ms: 1,
+    text: typeof params?.text === "string" ? params.text : node.text ?? fallbackText,
+    text_list: params?.text_list };
+}
 
 /** Shared by preview, final render and timeline handoff; source versions stay immutable. */
 export function canvasCompositionDocument(project: VideoProject) {
@@ -34,7 +42,10 @@ export function canvasCompositionDocument(project: VideoProject) {
     track.kind !== "text" ? track : { ...track, clips: track.clips.map((clip) => {
       const node = nodes.get(clip.id);
       const style = (node as (CanvasNodeDefinition & { params?: TextNodeParams }) | undefined)?.params?.textStyle;
-      return style ? { ...clip, style: { ...clip.style, ...style } } : clip;
+      const content = node ? canvasNodeTextClip(node, clip.text) : clip;
+      return { ...clip, text: content.text,
+        ...(timelineTextListKind(content) !== "none" ? { text_list: content.text_list } : {}),
+        ...(style ? { style: { ...clip.style, ...style } } : {}) };
     }) }) });
   const issue = timelineDocIssue(document);
   if (issue) throw new Error(issue);
@@ -154,13 +165,14 @@ function fieldControls(
     node.kind === "script" ||
     node.kind === "subtitle"
   ) {
+    const content = canvasNodeTextClip(node, input.asset?.inlineText);
     controls.push(
       inspector(
         {
           id: "canvas.selection.text.set",
           kind: "text",
           label: node.kind === "subtitle" ? input.tt("副标题") : input.tt("文本"),
-          value: node.text || "",
+          value: content.text || "",
         },
         "canvas-properties",
         "Properties",
@@ -178,6 +190,11 @@ function fieldControls(
         { value: "left", label: input.tt("左对齐") }, { value: "center", label: input.tt("居中") }, { value: "right", label: input.tt("右对齐") },
       ] },
       { id: "clear-format", kind: "action", label: input.tt("清除样式"), placement: "more" },
+      { id: "case", kind: "action", label: input.tt("大小写"), placement: "more" },
+      { id: "list", kind: "select", label: input.tt("项目列表"), value: timelineTextListKind(content), options: [
+        { value: "none", label: input.tt("无列表") }, { value: "bullet", label: input.tt("项目符号列表") },
+        { value: "ordered", label: input.tt("编号列表") },
+      ] },
     );
     if (node.kind !== "subtitle") controls.push(inspector({
       id: "canvas.selection.include-in-video.set", kind: "toggle", label: "Include in video",
@@ -758,7 +775,8 @@ export function canvasSelectionDispatch(
   let commandId = command.controlId;
   let args: Record<string, unknown> = {};
   const styleField = ({ "font-size": "font_size", bold: "bold", "text-color": "color", highlight: "background", align: "align",
-    "clear-format": "clearFormat", "canvas.selection.include-in-video.set": "includeInVideo" } as Record<string, string>)[command.controlId];
+    "clear-format": "clearFormat", case: "case", list: "list",
+    "canvas.selection.include-in-video.set": "includeInVideo" } as Record<string, string>)[command.controlId];
   if (command.controlId === "canvas.create.text" || command.controlId === "canvas.create.audio") {
     commandId = "canvas.node.create";
     args = { entryId: command.controlId.slice("canvas.create.".length) };

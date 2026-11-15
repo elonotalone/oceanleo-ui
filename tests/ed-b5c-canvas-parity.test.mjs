@@ -74,7 +74,7 @@ test("text/script/subtitle expose only renderer-supported canon styles and round
     runtime.select(id);
     const context = runtime.context();
     assert.equal(context.bar, "text");
-    for (const id of ["font-size", "bold", "text-color", "highlight", "align"]) assert.ok(context.controls.some((c) => c.id === id), id);
+    for (const id of ["font-size", "bold", "text-color", "highlight", "align", "list", "case", "clear-format"]) assert.ok(context.controls.some((c) => c.id === id), id);
     for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "opacity"]) assert.ok(!context.controls.some((c) => c.id === id), id);
     assert.deepEqual([context.controls.find((c) => c.id === "font-size").unit, context.controls.find((c) => c.id === "font-size").step], ["px", 1]);
     await runtime.change("font-size", 72);
@@ -116,7 +116,7 @@ test("clear-format resets the supported text styles while preserving text, overl
   const reopened = await saveReopen(runtime.project);
   const node = projectHead(reopened).graph.nodes.find((node) => node.nodeId === added.nodeId);
   assert.equal(node.text, "Keep content");
-  assert.deepEqual(node.params, { includeInVideo: true, startMs: 100, durationMs: 700, unrelated: "keep", textStyle: {} });
+  assert.deepEqual(node.params, { includeInVideo: true, startMs: 100, durationMs: 700, unrelated: "keep", textStyle: {}, text: "Keep content" });
   assert.equal(reopened.versions[styled].graph.nodes.find((node) => node.nodeId === added.nodeId).params.textStyle.font_size, 96);
   const clip = canvasCompositionDocument(reopened).document.tracks.find((track) => track.kind === "text").clips[0];
   assert.deepEqual([clip.start_ms, clip.duration_ms, clip.text], [100, 700, "Keep content"]);
@@ -151,6 +151,66 @@ test("image replace is a real asset switch in a new version, appears only with a
   assert.equal((await local.run("canvas.node.asset.replace", { assetId: derivative.asset.assetId })).status, "disabled");
   assert.equal(local.project.headVersionId, before);
 });
+
+for (const kind of ["text", "script", "subtitle"]) {
+  test(`${kind} case/list use canonical controls and real content conversion, survive save/reopen and protect manual prefixes`, async () => {
+    const added = addProjectNode(fixture(), kind, { x: 0, y: 0 }, { text: "Obsolete raw content", shotId: "shot" });
+    Object.assign(added.project.versions[added.project.headVersionId].graph.nodes.find((node) => node.nodeId === added.nodeId), {
+      params: { text: "Alpha\n\n• original\n1. Manual", includeInVideo: true, startMs: 100, durationMs: 700, unrelated: "keep" },
+    });
+    let runtime = engine(added.project); runtime.select(added.nodeId);
+    const { controls } = canonicalSelectionControls(runtime.context(), (value) => value);
+    assert.equal(controls.find((control) => control.id === "case").kind, "action");
+    assert.equal(controls.find((control) => control.id === "list").kind, "select");
+    assert.equal(runtime.context().controls.find((control) => control.id === "canvas.selection.text.set").value, "Alpha\n\n• original\n1. Manual");
+    const original = JSON.stringify(runtime.project.versions);
+    await runtime.change("case");
+    await runtime.change("list", "bullet");
+    await runtime.change("list", "bullet");
+    const withList = await saveReopen(runtime.project);
+    let node = projectHead(withList).graph.nodes.find((item) => item.nodeId === added.nodeId);
+    assert.equal(node.text, "• ALPHA\n\n• • ORIGINAL\n• 1. MANUAL");
+    assert.equal(node.params.text, node.text);
+    assert.deepEqual(node.params.text_list, { kind: "bullet", source_text: "ALPHA\n\n• ORIGINAL\n1. MANUAL" });
+    runtime = engine(withList); runtime.select(added.nodeId);
+    assert.equal(runtime.context().controls.find((control) => control.id === "list").value, "bullet");
+    const cut = canvasCompositionDocument(withList);
+    const listClip = cut.document.tracks.find((track) => track.kind === "text").clips[0];
+    assert.equal(listClip.text, node.text);
+    assert.deepEqual(listClip.text_list, node.params.text_list);
+    assert.deepEqual(hydrateVideoTimelineDoc(cut.projectDocument), cut.document);
+    await runtime.change("list", "ordered");
+    await runtime.change("case", "lower");
+    node = projectHead(runtime.project).graph.nodes.find((item) => item.nodeId === added.nodeId);
+    assert.equal(node.text, "1. alpha\n\n2. • original\n3. 1. manual");
+    await runtime.change("font-size", 91);
+    await runtime.change("clear-format");
+    const cleared = await saveReopen(runtime.project);
+    node = projectHead(cleared).graph.nodes.find((item) => item.nodeId === added.nodeId);
+    assert.equal(node.text, "alpha\n\n• original\n1. manual");
+    assert.equal(node.params.text, node.text);
+    assert.equal(node.params.text_list, undefined);
+    assert.equal(node.params.includeInVideo, true);
+    assert.deepEqual([node.params.startMs, node.params.durationMs, node.params.unrelated], [100, 700, "keep"]);
+    assert.equal(canvasCompositionDocument(cleared).document.tracks.find((track) => track.kind === "text").clips[0].style.font_size, 48);
+    for (const [id, version] of Object.entries(JSON.parse(original))) assert.deepEqual(runtime.project.versions[id], version);
+    await runtime.change("list", "ordered");
+    await runtime.change("list", "none");
+    assert.equal(projectHead(runtime.project).graph.nodes.find((item) => item.nodeId === added.nodeId).text, "alpha\n\n• original\n1. manual");
+    await runtime.change("list", "bullet");
+    await runtime.change("canvas.selection.text.set", "• Manually edited\n2. Keep\n");
+    node = projectHead(runtime.project).graph.nodes.find((item) => item.nodeId === added.nodeId);
+    assert.equal(node.params.text_list, undefined);
+    assert.equal(node.params.text, "• Manually edited\n2. Keep\n");
+    assert.equal(runtime.context().controls.find((control) => control.id === "list").value, "none");
+    await runtime.change("clear-format");
+    const manual = await saveReopen(runtime.project);
+    node = projectHead(manual).graph.nodes.find((item) => item.nodeId === added.nodeId);
+    assert.equal(node.text, "• Manually edited\n2. Keep\n");
+    assert.equal(node.params.text, node.text);
+    assert.equal(canvasCompositionDocument(manual).document.tracks.find((track) => track.kind === "text").clips[0].text, node.text);
+  });
+}
 
 test("text and audio creation controls dispatch real node creation with and without a selection", async () => {
   const runtime = engine(createVideoProject("Empty"));
@@ -238,6 +298,7 @@ test("final render and timeline handoff dispatch the same styled cut through the
   const added = addProjectNode(fixture(), "subtitle", { x: 0, y: 0 }, { text: "Styled delivery", shotId: "shot" });
   const runtime = engine(added.project, commands.executeCanvasCommand); runtime.select(added.nodeId);
   await runtime.change("font-size", 83); await runtime.change("text-color", "#654321");
+  await runtime.change("case", "upper"); await runtime.change("list", "ordered");
   assert.equal((await runtime.run("canvas.timeline.handoff")).status, "succeeded");
   const beforeRender = runtime.project.headVersionId;
   assert.equal((await runtime.run("canvas.timeline.final-render")).status, "succeeded");
@@ -245,6 +306,8 @@ test("final render and timeline handoff dispatch the same styled cut through the
   assert.deepEqual(hydrateVideoTimelineDoc(handoff.projectDocument), render.timeline);
   const clip = render.timeline.tracks.find((t) => t.kind === "text").clips[0];
   assert.equal(clip.style.font_size, 83); assert.equal(clip.style.color, "#654321");
+  assert.equal(clip.text, "1. STYLED DELIVERY");
+  assert.deepEqual(clip.text_list, { kind: "ordered", source_text: "STYLED DELIVERY" });
   assert.equal(runtime.project.timelineHandoff.projectVersionId, beforeRender);
 });
 
