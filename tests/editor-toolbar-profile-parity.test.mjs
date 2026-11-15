@@ -264,8 +264,8 @@ test("seven native text selections resolve to the same canon shapes, px values a
     for (const id of ["underline", "strike", "list", "line-height", "link", "highlight", "clear-format"]) assert.equal(Boolean(metrics("PDF", id)), false, `PDF native annotations do not offer ${id}`);
     for (const id of ["font-family", "italic", "line-height", "letter-spacing"]) assert.equal(Boolean(metrics("Timeline", id)), false, `Timeline does not invent ${id}`);
     for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Timeline", id), `Timeline exposes the implemented ${id} command`);
-    assert.ok(metrics("Canvas", "clear-format"), "Canvas clears its supported text styles through the same canon action");
-    for (const id of ["font-family", "italic", "underline", "strike", "list", "line-height", "letter-spacing", "link", "case"]) assert.equal(Boolean(metrics("Canvas", id)), false, `Canvas does not invent ${id}`);
+    for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Canvas", id), `Canvas exposes the implemented ${id} command`);
+    for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "link"]) assert.equal(Boolean(metrics("Canvas", id)), false, `Canvas does not invent ${id}`);
   } finally { await native.close(); }
 });
 
