@@ -530,9 +530,77 @@ const TOOLBAR_LABELS: Record<string, [string, string, string, string, string]> =
   ]
 };
 
+const TRANSPORT_COPY: Partial<Record<Locale, [string, string]>> = {
+  "en": [
+    "Input connection lost. Reconnecting video; your action was not sent.",
+    "This computer requires ARTC video and input. Update the client and reconnect."
+  ],
+  "zh": [
+    "输入连接已中断，正在重新连接视频；操作未发送。",
+    "这台电脑需要 ARTC 视频和输入连接，请更新客户端后重新连接。"
+  ],
+  "zh-TW": [
+    "輸入連線已中斷，正在重新連接視訊；操作未傳送。",
+    "這台電腦需要 ARTC 視訊和輸入連線，請更新用戶端後重新連接。"
+  ],
+  "es-419": ["Se perdió la conexión de entrada. Reconectando el video; no se envió la acción.", "Esta computadora requiere video y entrada ARTC. Actualiza el cliente y vuelve a conectar."],
+  "es": [
+    "Se perdió la conexión de entrada. Reconectando el vídeo; no se envió la acción.",
+    "Este equipo requiere vídeo y entrada ARTC. Actualiza el cliente y vuelve a conectar."
+  ],
+  "fr": [
+    "Connexion de saisie perdue. Reconnexion vidéo ; votre action n’a pas été envoyée.",
+    "Cet ordinateur nécessite la vidéo et la saisie ARTC. Mettez le client à jour et reconnectez-vous."
+  ],
+  "de": [
+    "Eingabeverbindung unterbrochen. Video wird neu verbunden; die Aktion wurde nicht gesendet.",
+    "Dieser Computer benötigt ARTC-Video und -Eingabe. Client aktualisieren und erneut verbinden."
+  ],
+  "it": [
+    "Connessione di input persa. Riconnessione video; l’azione non è stata inviata.",
+    "Questo computer richiede video e input ARTC. Aggiorna il client e riconnettiti."
+  ],
+  "pt-BR": [
+    "Conexão de entrada perdida. Reconectando o vídeo; a ação não foi enviada.",
+    "Este computador exige vídeo e entrada ARTC. Atualize o cliente e reconecte."
+  ],
+  "pt-PT": [
+    "Ligação de entrada perdida. A voltar a ligar o vídeo; a ação não foi enviada.",
+    "Este computador requer vídeo e entrada ARTC. Atualize o cliente e volte a ligar."
+  ],
+  "vi": [
+    "Mất kết nối nhập liệu. Đang kết nối lại video; thao tác chưa được gửi.",
+    "Máy tính này cần video và nhập liệu ARTC. Hãy cập nhật ứng dụng rồi kết nối lại."
+  ],
+  "tr": [
+    "Giriş bağlantısı kesildi. Video yeniden bağlanıyor; işlem gönderilmedi.",
+    "Bu bilgisayar ARTC video ve giriş bağlantısı gerektirir. İstemciyi güncelleyip yeniden bağlanın."
+  ],
+  "ja": [
+    "入力接続が切断されました。映像に再接続中です。操作は送信されていません。",
+    "このコンピューターには ARTC 映像と入力接続が必要です。クライアントを更新して再接続してください。"
+  ],
+  "ko": [
+    "입력 연결이 끊겼습니다. 영상에 다시 연결 중이며 작업은 전송되지 않았습니다.",
+    "이 컴퓨터에는 ARTC 영상과 입력 연결이 필요합니다. 클라이언트를 업데이트하고 다시 연결하세요."
+  ],
+  "ar": [
+    "انقطع اتصال الإدخال. جارٍ إعادة اتصال الفيديو؛ لم يتم إرسال الإجراء.",
+    "يتطلب هذا الكمبيوتر فيديو وإدخال ARTC. حدّث التطبيق وأعد الاتصال."
+  ],
+  "hi": [
+    "इनपुट कनेक्शन टूट गया। वीडियो फिर जुड़ रहा है; कार्रवाई नहीं भेजी गई।",
+    "इस कंप्यूटर को ARTC वीडियो और इनपुट चाहिए। क्लाइंट अपडेट करके फिर कनेक्ट करें।"
+  ],
+  "th": [
+    "การเชื่อมต่ออินพุตขาด กำลังเชื่อมต่อวิดีโอใหม่ ยังไม่ได้ส่งการดำเนินการ",
+    "คอมพิวเตอร์นี้ต้องใช้วิดีโอและอินพุต ARTC โปรดอัปเดตไคลเอนต์แล้วเชื่อมต่อใหม่"
+  ]
+};
+
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
   LOCALES.map((locale) => {
     const table: Messages = locale === "zh" ? SOURCE : locale === "zh-TW" ? ZH_TW : EN;
-    return [locale, { ...copyDictionaryFrom(SOURCE, table), ...(TOOLBAR_LABELS[locale] ? { [SOURCE.k150]: TOOLBAR_LABELS[locale][0], [SOURCE.k151]: TOOLBAR_LABELS[locale][1], [SOURCE.k154]: TOOLBAR_LABELS[locale][2], [SOURCE.k155]: TOOLBAR_LABELS[locale][3], [SOURCE.k156]: TOOLBAR_LABELS[locale][4] } : {}) }];
+    return [locale, { ...copyDictionaryFrom(SOURCE, table), [TRANSPORT_COPY.zh![0]]: (TRANSPORT_COPY[locale] ?? TRANSPORT_COPY.en!)[0], [TRANSPORT_COPY.zh![1]]: (TRANSPORT_COPY[locale] ?? TRANSPORT_COPY.en!)[1], ...(TOOLBAR_LABELS[locale] ? { [SOURCE.k150]: TOOLBAR_LABELS[locale][0], [SOURCE.k151]: TOOLBAR_LABELS[locale][1], [SOURCE.k154]: TOOLBAR_LABELS[locale][2], [SOURCE.k155]: TOOLBAR_LABELS[locale][3], [SOURCE.k156]: TOOLBAR_LABELS[locale][4] } : {}) }];
   }),
 ) as Record<Locale, Record<string, string>>;

@@ -19,8 +19,8 @@ export interface RemoteInputSchedulerDiagnostics {
 }
 export interface RemoteDesktopTransportDiagnostics extends RemoteInputSchedulerDiagnostics {
   v: 1; kind: 1; transport_instance: number; at_ms: number; elapsed_ms: number; interval_ms: number; ws_buffered_bytes: number;
-  /** 0 = no receipt observed, 1 = legacy enqueue receipt, 2 = native attempt-retirement watermark. */
-  dc_credit_basis: 0 | 1 | 2;
+  /** 0 = no terminal receipt observed, 1 = terminal input receipt observed. */
+  dc_credit_basis: 0 | 1;
   dc_sent_seq: number; dc_receipt_seq: number; input_completed_seq?: number; input_injected_seq?: number;
   /** Sequence gaps include other-lane messages and gaps; they are NOT queue depths. */
   dc_receipt_seq_gap: number; dc_completion_seq_gap?: number;
@@ -53,10 +53,6 @@ export class RemoteTransportDiagnostics {
   private peerSent = 0;
   private peerReceipt = 0;
   private receiptSeen = false;
-  private completed: number | undefined;
-  private injected: number | undefined;
-  private receipts = false;
-  negotiateReceipts(): void { this.receipts = true; }
   private now: () => number;
   constructor(now: () => number, history = new RemoteInputHistory(now)) { this.now = now; this.history = history; this.started = this.intervalStarted = now(); }
 
@@ -78,26 +74,7 @@ export class RemoteTransportDiagnostics {
       if (!entry.probe && sample.status === "executed") this.add(entry.lane === "data_channel" ? "dc_completed" : "ws_completed", sample.elapsedMs);
       return;
     }
-    if (sample.stage === "direct_ack" || this.history.get(sample.seq)?.lane === "data_channel") return; // Peer admission is measured by observe(), never as WS completion.
-    if (!Number.isFinite(sample.elapsedMs) || sample.elapsedMs < 0) return;
-    const prefix = sample.stage === "accepted" ? "ws_accepted" : "ws_completed";
-    this.add(prefix, sample.elapsedMs);
-  }
-  observe(metrics: { dc_input_seq?: number; input_completed_seq?: number; input_injected_seq?: number } | null | undefined): void {
-    if (this.receipts) return;
-    if (!metrics) return;
-    if (validSequence(metrics.dc_input_seq)) { this.receiptSeen = true; this.peerReceipt = Math.max(this.peerReceipt, metrics.dc_input_seq); }
-    // Explicit zero proves support. Missing/stale snapshots never downgrade completion semantics.
-    if (validSequence(metrics.input_completed_seq)) this.completed = Math.max(this.completed ?? 0, metrics.input_completed_seq);
-    if (validSequence(metrics.input_injected_seq)) this.injected = Math.max(this.injected ?? 0, metrics.input_injected_seq);
-    const now = this.now();
-    for (const entry of this.history.values()) {
-      if (!entry.diagnosticPending) continue;
-      const seq = entry.seq;
-      if (!entry.diagnosticEnqueued && seq <= this.peerReceipt) { entry.diagnosticEnqueued = true; this.add("dc_enqueued", Math.max(0, now - entry.sentAt)); }
-      if (this.completed !== undefined && seq <= this.completed) { this.add("dc_completed", Math.max(0, now - entry.sentAt)); entry.diagnosticPending = false; }
-      else if (this.completed === undefined && entry.diagnosticEnqueued) entry.diagnosticPending = false;
-    }
+
   }
   private add(prefix: "ws_accepted" | "ws_completed" | "dc_enqueued" | "dc_completed", elapsed: number): void {
     this.values[`${prefix}_count`]++;
@@ -110,10 +87,8 @@ export class RemoteTransportDiagnostics {
     const oldest = pending[0];
     const value: RemoteDesktopTransportDiagnostics = { v: 1, kind: 1, transport_instance: this.instance, at_ms: now, elapsed_ms: Math.max(0, now - this.started), interval_ms: Math.max(0, now - this.intervalStarted),
       ...scheduler, ...this.values, ws_buffered_bytes: Number.isFinite(buffered) && buffered >= 0 ? buffered : 0,
-      dc_credit_basis: this.completed !== undefined ? 2 : this.receiptSeen ? 1 : 0,
+      dc_credit_basis: this.receiptSeen ? 1 : 0,
       dc_sent_seq: this.peerSent, dc_receipt_seq: this.peerReceipt, dc_receipt_seq_gap: Math.max(0, this.peerSent - this.peerReceipt),
-      ...(this.completed !== undefined ? { input_completed_seq: this.completed, dc_completion_seq_gap: Math.max(0, this.peerSent - this.completed) } : {}),
-      ...(this.injected !== undefined ? { input_injected_seq: this.injected } : {}),
       dc_pending_tracked_count: pending.length, dc_oldest_tracked_ms: oldest ? Math.max(0, now - oldest.sentAt) : 0, dc_tracking_evicted_total: this.history.peerEvicted };
     if (finishInterval) { this.values = interval(); this.intervalStarted = now; }
     return value;

@@ -18,8 +18,7 @@ test("desktop fills a dedicated portal, preserves aspect ratio and uses continuo
   assert.deepEqual(buttons, ["O"]);
   await view.openToolbar();
   assert.deepEqual([...view.screen().querySelector("[data-remote-toolbar]").querySelectorAll("button")].map(button => button.textContent), ["全屏", "退出桌面"]);
-  await view.fire(view.image(), new window.Event("load"));
-  assert.deepEqual(view.log.acknowledgements, [1], "capture credit follows actual image load");
+  assert.deepEqual(view.log.acknowledgements, [], "JPEG frame credits no longer exist");
   await view.unmount();
   assert.equal(document.body.style.overflow, "");
   assert.deepEqual(view.log.closes, ["session-stream"]);
@@ -284,79 +283,11 @@ test("close tears down and calls routing owner once", async () => {
   assert.equal(view.log.closes.length, 1);
 });
 
-for (const transport of [undefined, "http-v1"]) test(`an older target (${transport || "absent transport"}) retains HTTP frame and input compatibility`, async () => {
-  const view = await mount({ pending: true, overrides: {
-    async openStream() { assert.fail("an old target must never attempt WSS"); },
-    async createSession() { return { ok: true, data: { session_id: "legacy-session", state: "connecting", expires_at: "", transport } }; },
-    async getFrame() { return { ok: true, data: { state: "active", frame: { image: "data:image/jpeg;base64,/9j/AAAA", width: 1920, height: 1080, sequence: 1 } } }; },
-  } });
-  view.image().getBoundingClientRect = () => ({ left: 100, top: 50, width: 640, height: 360 });
-  await view.pointer("pointerdown");
-  await view.pointer("pointerup");
-  await view.key("keydown", "Enter");
-  assert.deepEqual(view.log.inputs, [{ kind: "click", x: .5, y: .5, button: "left" }, { kind: "keypress", key: "Enter" }]);
-  assert.equal(view.screen().querySelector("[data-remote-input-status]"), null, "HTTP compatibility does not invent a video-upgrade cause");
-});
-
-test("a late HTTP input response cannot drain or terminate a manually reconnected session", async () => {
-  let sessions = 0, finishInput;
-  const inputs = [];
-  const view = await mount({ pending: true, overrides: {
-    async createSession() { return { ok: true, data: { session_id: `http-${++sessions}`, state: "connecting", transport: "http-v1", expires_at: "" } }; },
-    async getFrame() { return { ok: true, data: { state: "active", frame: { image: "data:image/jpeg;base64,/9j/AAAA", width: 1920, height: 1080, sequence: 1 } } }; },
-    sendInput(_device, session, _seq, action) {
-      inputs.push({ session, action });
-      if (session === "http-1") return new Promise((resolve) => { finishInput = resolve; });
-      return Promise.resolve({ ok: true });
-    },
-  } });
-  view.image().getBoundingClientRect = () => ({ left: 100, top: 50, width: 640, height: 360 });
-  await view.key("keydown", "Enter");
-  await view.key("keydown", "x");
-  // Simulate a terminal frame response, then reconnect while the old input remains unresolved.
-  view.client.getFrame = async () => ({ ok: true, data: { state: "closed", error: "expired" } });
-  await settle();
-  view.client.getFrame = async () => ({ ok: true, data: { state: "active", frame: { image: "data:image/jpeg;base64,/9j/AAAA", width: 1920, height: 1080, sequence: 1 } } });
-  await view.openToolbar();
-  await act(async () => view.screen().querySelector("[data-remote-connect]").click());
-  await settle();
-  await view.key("keydown", "y");
-  await act(async () => finishInput({ ok: false, error: "network_error" }));
-  assert.equal(view.screen().getAttribute("data-remote-phase"), "active");
-  assert.deepEqual(inputs.map(({ session, action }) => [session, action.key ?? action.text]), [["http-1", "Enter"], ["http-2", "y"]]);
-});
-
-for (const code of ["input_permission_required", "input_unavailable", "input_release_failed", "input_failed"]) test(`${code} closes input without network retry or replay and shows only its fixed cause`, async () => {
-  let sessions = 0;
-  const view = await mount({ overrides: { async createSession() {
-    sessions++;
-    return { ok: true, data: { session_id: `input-${sessions}`, state: "connecting", expires_at: "", transport: "websocket-v2" } };
-  } } });
-  await view.key("keydown", "Enter");
-  await act(async () => view.handlers().state("closed", code));
-  const inputCount = view.log.inputs.length;
-  assert.equal(view.input().disabled, true);
-  await view.key("keydown", "Enter");
-  await view.pointer("pointerdown");
-  await settle(40);
-  assert.equal(sessions, 1, "input failure never automatically retries");
-  assert.equal(view.log.inputs.length, inputCount, "no input is replayed or accepted after termination");
-  assert.equal(view.log.closes.length, 1);
-  assert.match(view.screen().textContent, /控制已停止/);
-  assert.doesNotMatch(view.screen().textContent, /已关闭远程桌面|网络连接|失去联系|input_/);
-  if (code === "input_permission_required") assert.match(view.screen().textContent, /辅助功能/);
-  else assert.doesNotMatch(view.screen().textContent, /辅助功能|权限/);
-});
-
-for (const [code, reason] of [["remote_desktop_other_gateway", "这台电脑在线，但连在另一个 OceanLeo 服务上，当前页面无法控制。请让电脑连接到与此页面相同的 OceanLeo 站点后，再点「重新连接」。"], ["remote_desktop_unavailable", "联系不上这台电脑上的 OceanLeo"]]) test(`${code}: collapsed controls stay closed and the stage shows the full reason once`, async () => {
-  // `pending` only skips the helper's initial frame injection; createSession itself fails.
-  const view = await mount({ pending: true, overrides: { async createSession() { return { ok: false, error: code, status: 409 }; } } });
-  await settle(40);
-  const statuses = [...view.screen().querySelectorAll('[role="status"]')].map((node) => (node.textContent || "").trim());
-  assert.equal(view.screen().querySelector("[data-remote-toolbar]"), null);
-  const full = statuses.filter((text) => text.includes(reason));
-  assert.equal(full.length, 1, `reason shown exactly once: ${JSON.stringify(statuses)}`);
-  assert.equal(view.screen().textContent.split(reason).length - 1, 1);
+for (const transport of [undefined, "http-v1"]) test(`old transport hint ${transport} still uses ARTC control stream without HTTP input/media`, async () => {
+  const view = await mount({ overrides: { async createSession() { return { ok: true, data: { session_id: "session-stream", state: "connecting", transport } }; } } });
+  await view.pointer("pointerdown"); await view.pointer("pointerup");
+  assert.deepEqual(view.log.inputs.map(x => x.kind), ["pointer_down", "pointer_up"]);
+  assert.equal(view.log.httpFrames, 0); assert.ok(view.screen().querySelector("video")); assert.equal(view.screen().querySelector("img"), null);
 });
 
 test("unknown input error never displays private OS text or invents a permission requirement", async () => {

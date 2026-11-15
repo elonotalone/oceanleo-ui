@@ -15,6 +15,7 @@ import { document, window } from "./helpers/remote-desktop-dom.mjs";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { RemoteInputScheduler } from "../src/api/remote-desktop-scheduler.ts";
 
 for (const [name, value] of Object.entries({ CustomEvent: window.CustomEvent, localStorage: window.localStorage, sessionStorage: window.sessionStorage })) {
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
@@ -302,6 +303,7 @@ test("我的任务 sidebar: a refused delete reads as the sentence and the row c
 // ------------------------------------------------- 我的设备 → remote desktop banner
 
 const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.tsx", {
+  "./remote-desktop-media": dataModule(`export class RemotePublisherStatusError extends Error {} export async function openRemoteMedia(_descriptor,_video,handlers){ queueMicrotask(()=>{handlers.frame(1920,1080);handlers.state("playing");}); return {async close(){}}; }`),
   "../facades/devices": dataModule(`export const devicesFacade = { async listDevices(){ return { ok: true, data: [] }; } };`),
   "../api/remote-desktop": dataModule(`export const remoteDesktopClient = { async getStatus(){ return { ok: false, error: "x", status: 0 }; } };`),
   "../i18n/ui/useUI": ttStub,
@@ -314,14 +316,28 @@ const { DevicesPage } = await import(await compileModule("src/pages/DevicesPage.
 }));
 
 function rdClient(executable = false, releaseWait) {
-  const log = { create: 0, closes: 0, releases: 0 };
+  const log = { create: 0, closes: 0, releases: 0, dc: [], receipts: [] };
   return {
     log,
     async getStatus() { return { ok: true, data: { supported: true, enabled: true, online: true, session_id: null, availability: "online" } }; },
-    async createSession() { log.create += 1; return { ok: true, data: { session_id: `rd-${log.create}`, state: "pending_consent", expires_at: "", ...(executable ? {transport: "websocket-v2"} : {}) } }; },
-    async openStream(_device, _session, handlers) { handlers.state("active"); return {ok: true, data: {send(){return true;}, acknowledgeFrame(){}, close(){}, async releaseForHandoff(){log.releases++;if(releaseWait)await releaseWait;}, finishHandoff(){}}}; },
-    async getFrame() { await wait(5); return { ok: true, data: { state: "pending_consent", frame: null } }; },
-    async sendInput(deviceId, sessionId, seq) { return { ok: true, data: { accepted: true, seq } }; },
+    async createSession() { log.create += 1; return { ok: true, data: { session_id: `rd-${log.create}`, state: "pending_consent", expires_at: "", transport: "artc-v1" } }; },
+    async negotiateMedia() { return { ok: true, data: { media: { provider: "artc", transport: "artc-v1", data_channel_input: true }, media_status: { state: "publishing" } } }; },
+    async openStream(_device, sessionId, handlers) {
+      // The control stream carries state only. Input uses one DC sequence and terminal receipts.
+      const scheduler = new RemoteInputScheduler({ now: () => performance.now(), congestion() {}, failure(code) { handlers.error(code); },
+        write(seq, action) {
+          log.dc.push({ v: 1, sid: sessionId, seq, a: action });
+          const receipt = { v: 1, t: "rd.input_receipt", sid: sessionId, seq, status: "executed", executed_at_ms: Date.now() };
+          void Promise.resolve(action.kind === "release_all" ? releaseWait : undefined).then(() => {
+            log.receipts.push(receipt); scheduler.receipt(receipt);
+          });
+          return { lane: "data_channel" };
+        },
+      });
+      handlers.state(executable ? "active" : "pending_consent");
+      return { ok: true, data: { send(action) { return scheduler.enqueue(action); }, acknowledgeMediaFrame() {}, close() { scheduler.dispose(); },
+        releaseForHandoff() { log.releases++; return scheduler.releaseForHandoff(); }, finishHandoff() { scheduler.finishHandoff(); } } };
+    },
     async closeSession() { log.closes += 1; return { ok: true, data: { closed: true } }; },
   };
 }
@@ -381,6 +397,9 @@ test("我的设备 → remote desktop: the live session's task gives the task pa
     await click(handBack());
     await tick(20);
     assert.deepEqual(cloud.log.control, [["task-1", "resume", 7]]);
+    const release = remote.log.dc.find(message => message.a.kind === "release_all");
+    assert.ok(release, "handback writes release_all over DC");
+    assert.ok(remote.log.receipts.some(receipt => receipt.seq === release.seq && receipt.status === "executed"), "resume follows the exact executed terminal receipt");
     // Same as the task page: until the computer reports the AI back, the person is still in control.
     assert.equal(model.remoteDesktopAgentBanner(model.parseLocalAgentRun(state.controlRun)).text, model.CLOUD_AGENT_COPY.healthHuman);
     state.row = { remote_takeover: false, live_session: { ...live, owner: "ai", state: "running" } };

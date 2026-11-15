@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { RemoteTransportDiagnostics, parseRemoteInputDiagnostics } from "../src/api/remote-desktop-diagnostics.ts";
 import { RemoteInputScheduler } from "../src/api/remote-desktop-scheduler.ts";
-import { openRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+import { openRemoteMedia as actualOpenRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+const openRemoteMedia = (...args) => { args[5] ??= () => ({ track: { kind: "video", id: "synthetic" }, stop() {} }); return actualOpenRemoteMedia(...args); };
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const scheduler = { queued_count: 0, queued_soft_count: 0, outstanding_count: 0, retry_count: 0,
@@ -19,26 +20,6 @@ test("native/gateway diagnostic parsing admits only fixed unsigned safe integers
   numeric(parsed);
 });
 
-test("peer enqueue and attempt completion stay distinct; zero latches support across stale/omitted samples", () => {
-  let now = 0;
-  const d = new RemoteTransportDiagnostics(() => now);
-  now = 10; d.written("data_channel", 1);
-  now = 20; d.written("data_channel", 2);
-  now = 30; d.observe({ dc_input_seq: 2, input_completed_seq: 0, input_injected_seq: 1 });
-  let s = d.snapshot(scheduler, 0);
-  assert.equal(s.dc_credit_basis, 2); assert.equal(s.input_completed_seq, 0);
-  assert.equal(s.dc_pending_tracked_count, 2); assert.equal(s.dc_enqueued_count, 2);
-  assert.equal(s.dc_enqueued_sum_ms, 30); assert.equal(s.dc_completed_count, 0);
-  now = 50; d.observe({ input_completed_seq: 2 });
-  s = d.snapshot(scheduler, 0);
-  assert.equal(s.dc_pending_tracked_count, 0); assert.equal(s.dc_completed_count, 2);
-  assert.equal(s.dc_completed_sum_ms, 70); assert.equal(s.input_injected_seq, 1);
-  d.observe({ input_completed_seq: 1 }); d.observe({ dc_input_seq: 1 });
-  assert.equal(d.snapshot(scheduler, 0).input_completed_seq, 2);
-  assert.equal(d.snapshot(scheduler, 0).dc_credit_basis, 2);
-  numeric(s);
-});
-
 test("measurement stores a bounded tail with explicit eviction, and snapshots never consume an interval", () => {
   let now = 0;
   const d = new RemoteTransportDiagnostics(() => now);
@@ -48,30 +29,12 @@ test("measurement stores a bounded tail with explicit eviction, and snapshots ne
   assert.equal(first.dc_receipt_seq_gap, 1000); assert.equal(first.dc_write_count, 1000);
   assert.deepEqual(d.snapshot(scheduler, 64), first);
   assert.equal(d.snapshot(scheduler, 64, true).dc_write_count, 1000);
-  now += 100; d.written("websocket", 1001);
-  d.control({ seq: 1001, stage: "accepted", elapsedMs: 12 });
+  now += 100; d.written("data_channel", 1001);
+  d.control({ seq: 1001, stage: "input_receipt", status: "executed", elapsedMs: 12 });
   const next = d.snapshot(scheduler, 0);
-  assert.equal(next.interval_ms, 100); assert.equal(next.dc_write_count, 0);
-  assert.equal(next.ws_write_count, 1); assert.equal(next.ws_accepted_max_ms, 12);
+  assert.equal(next.interval_ms, 100); assert.equal(next.dc_write_count, 1);
+  assert.equal(next.ws_write_count, 0); assert.equal(next.dc_completed_max_ms, 12);
   d.dispose(); assert.equal(d.snapshot(scheduler, 0).dc_pending_tracked_count, 0);
-});
-
-test("legacy enqueue samples remain explicitly weaker than completion and scheduler reads do not pump", () => {
-  const d = new RemoteTransportDiagnostics(() => 0);
-  d.written("data_channel", 3); d.observe({ dc_input_seq: 3 });
-  const s = d.snapshot(scheduler, 0);
-  assert.equal(s.dc_credit_basis, 1); assert.equal(s.input_completed_seq, undefined);
-  assert.equal(s.dc_enqueued_count, 1); assert.equal(s.dc_completed_count, 0);
-  let writes = 0;
-  const input = new RemoteInputScheduler({ now: () => 0, write() { writes++; return false; }, congestion() {}, failure() {} });
-  input.enqueue({ kind: "pointer_down", x: 0, y: 0 });
-  input.enqueue({ kind: "move", x: .2, y: .2 });
-  input.enqueue({ kind: "type", text: "never record this" });
-  const before = writes, snapshot = input.diagnostics();
-  assert.equal(snapshot.queued_count, 3); assert.equal(snapshot.queued_soft_count, 1);
-  assert.deepEqual(input.diagnostics(), snapshot); assert.equal(writes, before);
-  assert.doesNotMatch(JSON.stringify(snapshot), /never record|pointer_down|text/);
-  input.dispose();
 });
 
 const storage = new Map();
@@ -80,41 +43,6 @@ const api = await import(await compileModule("src/api/remote-desktop.ts", {
   "../lib/auth/client": dataModule('export async function accessToken(){return "private-user-token";}'),
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://example.test";'),
 }));
-
-test("real stream exposes numeric snapshots without input changes or raw state credentials", async () => {
-  class Socket {
-    static OPEN = 1; static latest; readyState = 1; bufferedAmount = 12; sent = [];
-    constructor() { Socket.latest = this; }
-    send(value) { this.sent.push(JSON.parse(value)); }
-    close() { this.readyState = 3; }
-    message(value) { this.onmessage({ data: JSON.stringify(value) }); }
-  }
-  globalThis.WebSocket = Socket;
-  const observed = [];
-  const opening = api.remoteDesktopClient.openStream("private-device", "private-session", {
-    state() {}, frame() {}, error() {}, diagnostics(value) { observed.push(value); throw Error("observer failure"); },
-    inputDiagnostics(value) { numeric(value); throw Error("observer failure"); },
-  });
-  await new Promise((resolve) => setImmediate(resolve));
-  const socket = Socket.latest; socket.onopen(); socket.message({ type: "state", state: "active", acked_seq: 0 });
-  const stream = (await opening).data;
-  try {
-    assert.equal(stream.send({ kind: "type", text: "private-input" }), true);
-    socket.message({ type: "input_ack", seq: 1 });
-    socket.message({ type: "state", state: "active", acked_seq: 1,
-      input_diagnostics: { input_completed_seq: 0, input_queue_depth: 2, token: "private-media-token" } });
-    const snapshot = stream.diagnostics(); numeric(snapshot);
-    assert.equal(snapshot.ws_write_count, 1); assert.equal(snapshot.ws_accepted_count, 1);
-    assert.equal(snapshot.input_completed_seq, 0); assert.equal(snapshot.ws_buffered_bytes, 12);
-    assert.equal(socket.sent.filter((value) => value.type === "input").length, 1);
-    assert.doesNotMatch(JSON.stringify(snapshot), /private|token|session|device|text/);
-  } finally { assert.doesNotThrow(() => stream.close()); }
-  assert.ok(observed.length);
-  const status = api.parseRemoteMediaStatus({ state: "publishing", metrics: { version: 1, input_completed_seq: 0,
-    input_injected_seq: 2, input_queue_depth: 4, input_inject_us: 123, first_packet_sent_ms: 0, input_error_count: true, input_queue_oldest_ms: -1 } });
-  assert.deepEqual(status.metrics, { version: 1, input_queue_depth: 4, input_inject_us: 123, input_completed_seq: 0, input_injected_seq: 2, first_packet_sent_ms: 0 });
-  assert.equal(api.parseRemoteMediaStatus({ state: "publishing", metrics: { version: 1, first_packet_sent_ms: null } }).metrics.first_packet_sent_ms, undefined);
-});
 
 function mediaHarness(t, pendingStats = false) {
   const events = new Map(), milestones = [], snapshots = [], calls = [], samples = [];
@@ -131,23 +59,23 @@ function mediaHarness(t, pendingStats = false) {
   const video = Object.assign(new EventTarget(), { srcObject: { getVideoTracks: () => [{ id: "screen" }] },
     videoWidth: 0, videoHeight: 0, readyState: 0, currentTime: 0,
     requestVideoFrameCallback(fn) { frame = fn; return 1; }, cancelVideoFrameCallback() {} });
-  const engine = { on(name, fn) { events.set(name, fn); }, off(name) { events.delete(name); },
+  const engine = { setParameter() {}, sendDataChannelMessage() {}, startScreenShare() {}, stopScreenShare() {}, on(name, fn) { events.set(name, fn); }, off(name) { events.delete(name); },
     setChannelProfile() {}, setClientRole() {}, setDefaultSubscribeAllRemoteAudioStreams() {}, setDefaultSubscribeAllRemoteVideoStreams() {},
     publishLocalAudioStream() {}, publishLocalVideoStream() {}, publishLocalScreenShareStream() {},
     joinChannel() { calls.push("join"); return new Peer().setRemoteDescription(); }, leaveChannel() { calls.push("leave"); }, destroy() { calls.push("destroy"); },
     refreshAuthInfo() {}, setRemoteViewConfig() {}, getOnlineRemoteUsers: () => [], bizControl: { updateScreenWant() {} } };
-  const credentials = { token: "private-media-token", publisher_id: "private-publisher", user_id: "private-viewer", channel_id: "private-channel", expires_at: new Date(Date.now() + 120000).toISOString() };
+  const credentials = { data_channel_input: true, token: "private-media-token", publisher_id: "private-publisher", user_id: "private-viewer", channel_id: "private-channel", expires_at: new Date(Date.now() + 120000).toISOString() };
   const abort = new AbortController();
   return { milestones, snapshots, calls, samples, abort, video, frame() { video.videoWidth = 100; video.videoHeight = 100; video.readyState = 2; frame(); },
     start: () => openRemoteMedia(credentials, video, { state() {}, frame() {}, renew: async () => credentials,
-      timing(value) { milestones.push(value); }, diagnostics(value) { snapshots.push(value); }, stats(value) { samples.push(value); } }, abort.signal, async () => ({ createEngine: () => engine })) };
+      timing(value) { milestones.push(value); }, diagnostics(value) { snapshots.push(value); }, stats(value) { samples.push(value); } }, abort.signal, async () => ({ createEngine: () => engine, dataChannelMessage: data => ({ data, type: 2 }) })) };
 }
 
 test("media milestones expose load/prepare/join/frame/cleanup on one monotonic clock", async (t) => {
   const h = mediaHarness(t); const viewer = await h.start();
   h.frame();
   const value = h.milestones.at(-1); numeric(value);
-  for (const key of ["media_open_ms", "sdk_load_started_ms", "sdk_loaded_ms", "engine_created_ms", "prepare_started_ms", "prepared_ms", "publish_disabled_ms", "join_started_ms", "joined_ms", "synthetic_skipped_ms", "first_decoded_frame_ms"]) assert.equal(typeof value[key], "number", key);
+  for (const key of ["media_open_ms", "sdk_load_started_ms", "sdk_loaded_ms", "engine_created_ms", "prepare_started_ms", "prepared_ms", "publish_disabled_ms", "join_started_ms", "joined_ms", "synthetic_ready_ms", "first_decoded_frame_ms"]) assert.equal(typeof value[key], "number", key);
   assert.ok(value.sdk_loaded_ms >= value.sdk_load_started_ms); assert.ok(value.joined_ms >= value.join_started_ms);
   assert.doesNotMatch(JSON.stringify(value), /private|token|publisher|channel/);
   await viewer.stats();

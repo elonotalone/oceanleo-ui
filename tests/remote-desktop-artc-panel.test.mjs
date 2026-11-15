@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 import { mountStream, window, act, settle } from "./helpers/remote-desktop-stream-view.mjs";
-import { openRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+import { openRemoteMedia as actualOpenRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+const openRemoteMedia = (...args) => { args[5] ??= () => ({ track: { kind: "video", id: "synthetic" }, stop() {} }); return actualOpenRemoteMedia(...args); };
 
 const mounted = [];
 afterEach(async () => { while (mounted.length) await mounted.pop().unmount(); delete globalThis.__remoteMediaTestStart; });
-const media = { provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "channel", user_id: "viewer", publisher_id: "desktop", token: "secret", timestamp: 10000, expires_at: new Date(Date.now() + 120000).toISOString(), role: "viewer", track: "screen", camera: false, microphone: false };
+const media = { provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "channel", user_id: "viewer", publisher_id: "desktop", token: "secret", timestamp: 10000, expires_at: new Date(Date.now() + 120000).toISOString(), role: "viewer", track: "screen", camera: false, microphone: false, data_channel_input: true };
 async function mount(options = {}) {
   let callbacks, stopped = 0, negotiations = 0, statsCalls = 0;
   globalThis.__remoteMediaTestStart = async (_descriptor, _video, handlers, signal) => {
@@ -39,19 +40,14 @@ test("real panel waits for decoded video before enabling input, and a legacy JPE
   assert.deepEqual(view.log.inputs.at(-1), { kind: "release_all" });
 });
 
-test("ARTC unavailable stops and explains failure; explicit unsupported capability names the computer and retains pictures", async () => {
-  const failed = await mount({ overrides: { async negotiateMedia() { return { ok: false, error: "media_unavailable" }; } } });
-  assert.equal(failed.screen().getAttribute("data-remote-phase"), "error");
-  assert.equal(failed.image(), null);
-  assert.match(failed.screen().textContent, /视频服务暂不可用/);
-  await failed.unmount();
-  const legacy = await mount({ overrides: { async negotiateMedia() { return { ok: false, error: "media_unsupported" }; } } });
-  await legacy.frame();
-  assert.ok(legacy.image());
-  assert.match(legacy.screen().querySelector("[data-remote-input-status]").textContent, /「Studio」上的 OceanLeo 当前没有视频能力/);
-  assert.doesNotMatch(legacy.screen().textContent, /兼容画面|请更新|输入正在等待确认/);
-  await act(async () => legacy.handlers().state("active"));
-  assert.equal(legacy.screen().getAttribute("data-remote-media"), "legacy");
+test("ARTC unsupported stops without a JPEG fallback", async () => {
+  for (const code of ["media_unavailable", "media_unsupported"]) {
+    const view = await mount({ overrides: { async negotiateMedia() { return { ok: false, error: code }; } } });
+    await view.frame(); assert.equal(view.image(), null); assert.equal(view.screen().querySelector("video"), null);
+    assert.equal(view.input().disabled, true); assert.equal(view.log.httpFrames, 0);
+    assert.match(view.screen().textContent, code === "media_unsupported" ? /ARTC/ : /视频服务暂不可用/);
+    await view.unmount();
+  }
 });
 
 test("consent precedes media negotiation and revocation removes pixels and receiver", async () => {
@@ -216,6 +212,7 @@ test("real RTC renewal retains HTTP200 publisher failures, HTTP401/403 and neutr
     const events = new Map();
     let destroyed = 0, negotiations = 0;
     const engine = {
+      setParameter() {}, sendDataChannelMessage() {}, startScreenShare() {}, stopScreenShare() {}, startScreenShare() {}, stopScreenShare() {},
       on: (name, listener) => events.set(name, listener), off: name => events.delete(name),
       setChannelProfile() {}, setClientRole() {}, setDefaultSubscribeAllRemoteAudioStreams() {}, setDefaultSubscribeAllRemoteVideoStreams() {},
       publishLocalAudioStream() {}, publishLocalVideoStream() {}, publishLocalScreenShareStream() {},
@@ -223,7 +220,7 @@ test("real RTC renewal retains HTTP200 publisher failures, HTTP401/403 and neutr
       getOnlineRemoteUsers: () => [],
       refreshAuthInfo() { if (sdkFailure) throw Object.assign(new Error("SDK synthetic-private token=fixture-only"), { status: 403 }); },
     };
-    globalThis.__remoteMediaTestStart = (...args) => openRemoteMedia(...args, async () => ({ createEngine: () => engine }));
+    globalThis.__remoteMediaTestStart = (...args) => openRemoteMedia(...args, async () => ({ createEngine: () => engine, dataChannelMessage: data => ({ data, type: 2 }) }));
     const view = await mountStream({ overrides: {
       async negotiateMedia() {
         return ++negotiations === 1 ? { ok: true, data: { media, media_status: { state: "publishing" } }, status: 200 } : renewal;
@@ -342,4 +339,34 @@ test("ordinary viewer opens the standard stream/media path directly without a st
   assert.equal(view.screen().getAttribute("data-remote-media"), "artc");
   await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
   assert.equal(view.input().disabled, false);
+});
+
+for (const failure of ['media_data_channel_unavailable', 'media_data_channel_write_unknown']) test(`${failure} stops the old session and backs off into a fresh session without replay`, async () => {
+  let sessions = 0;
+  const view = await mount({ overrides: {
+    async createSession() { return { ok: true, data: { session_id: `dc-session-${++sessions}`, state: 'connecting', transport: 'websocket-v2' } }; },
+  } });
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state('playing'); });
+  await view.key('keydown', 'Shift');
+  await act(async () => view.handlers().error(failure));
+  assert.equal(view.input().disabled, true);
+  assert.match(view.screen().textContent, failure === 'media_data_channel_write_unknown' ? /无法确认最后的输入是否执行/ : /输入连接已中断/);
+  assert.deepEqual(view.log.closes, ['dc-session-1']);
+  assert.equal(sessions, 1, 'new session waits for backoff');
+  await settle(550);
+  assert.equal(sessions, 2);
+  const sentBeforeFreshFrame = view.log.inputs.length;
+  await view.key('keydown', 'Enter');
+  assert.equal(view.log.inputs.length, sentBeforeFreshFrame, 'fresh ARTC frame gates input');
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state('playing'); });
+  assert.equal(view.log.inputs.filter(x => x.kind === 'key_down' && x.key === 'Shift').length, 1, 'unknown action is never replayed');
+  assert.equal(view.log.httpFrames, 0);
+});
+
+test('closing during DC backoff cancels automatic recovery', async () => {
+  let sessions=0;
+  const view=await mount({overrides:{async createSession(){return {ok:true,data:{session_id:`dc-close-${++sessions}`,state:'connecting',transport:'websocket-v2'}};}}});
+  await act(async()=>view.handlers().error('media_data_channel_unavailable'));
+  await view.unmount(); await settle(550);
+  assert.equal(sessions,1);
 });

@@ -14,7 +14,7 @@ function hubWith(now, sent) {
 
 function fakeClient(now, sent, extra = {}) {
   let handlers;
-  const stream = { send() { handlers.inputWritten?.(1, true, stream.lane, false); return true; }, inputPath: () => stream.lane, lane: "websocket", close() {}, acknowledgeFrame() {}, releaseForHandoff: () => Promise.resolve(), finishHandoff() {} };
+  const stream = { send() { handlers.inputWritten?.(1, true, stream.lane, false); return true; }, inputPath: () => stream.lane, lane: "data_channel", close() {}, acknowledgeFrame() {}, releaseForHandoff: () => Promise.resolve(), finishHandoff() {} };
   const client = {
     async createSession() { now.t += 100; return { ok: true, data: { session_id: "s".repeat(24), state: "pending_consent", expires_at: "", transport: "websocket-v2" } }; },
     async openStream(_d, _s, h) { handlers = h; now.t += 50; return { ok: true, data: stream }; },
@@ -40,8 +40,8 @@ test("one report per session: click-relative steps, consent excluded separately,
   handlers().state("pending_consent");
   now.t += 3000; // person at the computer clicks 同意本次
   handlers().state("active");
-  handlers().controlTiming({ seq: 1, stage: "accepted", elapsedMs: 40 });
-  handlers().controlTiming({ seq: 1, stage: "completion_watermark", elapsedMs: 90 });
+  handlers().controlTiming({ seq: 1, stage: "input_receipt", status: "merged", elapsedMs: 40 });
+  handlers().controlTiming({ seq: 2, stage: "input_receipt", status: "executed", elapsedMs: 90 });
   opened.data.send({ kind: "click", x: 0.5, y: 0.5 });
   stream.lane = "data_channel";
   opened.data.send({ kind: "move", x: 0.5, y: 0.5 });
@@ -64,12 +64,12 @@ test("one report per session: click-relative steps, consent excluded separately,
   assert.equal(r.device_id, "dev-1");
   assert.equal(r.session_id, "s".repeat(24));
   assert.equal(r.media, "artc");
-  assert.equal(r.transport, "websocket-v2");
+  assert.equal(r.transport, "artc-v1");
   assert.equal(r.end_reason, "viewer_closed");
   assert.deepEqual(r.steps, { create_ms: 200, consent_ms: 3050, stream_open_ms: 250, active_ms: 3250, media_negotiate_ms: 3450, artc_join_ms: 3750, first_frame_ms: 4150 });
   assert.equal(r.reconnects, 1);
   assert.equal(r.media_renewals, 1);
-  assert.deepEqual(r.input, { ws_count: 1, dc_count: 2, accepted: { n: 1, p50: 40, p90: 40, p99: 40, max: 40 }, executed: { n: 1, p50: 90, p90: 90, p99: 90, max: 90 } });
+  assert.deepEqual(r.input, { ws_count: 0, dc_count: 3, executed: { n: 1, p50: 90, p90: 90, p99: 90, max: 90 } });
   assert.equal(r.video.frames_decoded, 160);
   assert.equal(r.video.packets_lost, 3);
   assert.equal(r.video.nack, 5);
@@ -148,7 +148,7 @@ test("first terminal code wins; gateway close reason and media errors are codes;
   assert.equal(sent.at(-1).media, "none");
 });
 
-test("legacy (no video lane) first frame comes from the WebSocket frames", async () => {
+test("a control websocket cannot invent first-frame billing or video quality", async () => {
   const now = { t: 0 }, sent = [];
   const hub = hubWith(now);
   const { client, handlers } = fakeClient(now, sent, { negotiateMedia: undefined });
@@ -161,8 +161,8 @@ test("legacy (no video lane) first frame comes from the WebSocket frames", async
   now.t += 700;
   handlers().frame({ image: "blob:x", width: 1, height: 1, sequence: 1 });
   await wrapped.closeSession("dev-1", created.data.session_id);
-  assert.equal(sent[0].media, "legacy");
-  assert.equal(sent[0].steps.first_frame_ms, 850);
+  assert.equal(sent[0].media, "none");
+  assert.equal(sent[0].steps.first_frame_ms, undefined);
 });
 
 test("getStats parsing: selected pair RTT, relay, codec; counters survive a receiver reset", () => {
@@ -212,8 +212,8 @@ test("panel: a real session reports once on exit with its session id and the cli
   const [r] = reports;
   assert.equal(r.session_id, "session-stream");
   assert.equal(r.device_id, "d-1");
-  assert.equal(r.transport, "websocket-v2");
-  assert.equal(r.media, "legacy");
+  assert.equal(r.transport, "artc-v1");
+  assert.equal(r.media, "artc");
   assert.equal(typeof r.steps.create_ms, "number");
   assert.equal(typeof r.steps.first_frame_ms, "number");
   assert.match(r.end_reason, /^(viewer_closed|page_hidden)$/);
@@ -222,7 +222,7 @@ test("panel: a real session reports once on exit with its session id and the cli
 
 test('direct native admission ACK p50/p95 is reported per window and never counted as executed input',()=>{
   const collector=new q.RemoteDesktopQualityCollector({deviceId:'fixture',origin:0,attempt:0,now:()=>100,env:ENV,send(){}});
-  for(const elapsedMs of [10,20,30,40,50])collector.controlTiming({seq:1,stage:'direct_ack',elapsedMs});
+  for(const elapsedMs of [10,20,30,40,50])collector.controlTiming({seq:1,stage:'input_receipt',status:'merged',elapsedMs});
   assert.deepEqual(collector.takeDirectAckWindow(),{input_ack_p50_ms:30,input_ack_p95_ms:50});
   assert.deepEqual(collector.takeDirectAckWindow(),{});
   assert.equal(collector.report().input.executed,undefined);

@@ -29,7 +29,7 @@ export interface RectLike {
 const clamp01 = (value: number) => (value < 0 ? 0 : value > 1 ? 1 : value);
 
 /**
- * `<img>` 用 `object-fit: contain` 时，元素矩形里会有上下或左右的留白；
+ * `<video>` 用 `object-fit: contain` 时，元素矩形里会有上下或左右的留白；
  * 画面真正占的是居中的这块。比例坐标必须相对**这块**算，否则点在留白旁边就会偏。
  */
 export function containedRect(rect: RectLike, contentWidth: number, contentHeight: number): RectLike {
@@ -353,6 +353,13 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "这台电脑处于锁屏或系统安全界面，画面无法显示，控制已停止。请先在那台电脑上解锁后重新连接。";
     case "display_asleep":
       return "这台电脑的显示器处于休眠状态，未能唤醒，控制已停止。请在那台电脑上按任意键或移动鼠标后重新连接。";
+    case "media_data_channel_unavailable":
+      return "输入连接已中断，正在重新连接视频；操作未发送。";
+    case "input_unsupported":
+    case "media_capabilities_stale":
+    case "media_artc_required":
+    case "media_unsupported":
+      return "这台电脑需要 ARTC 视频和输入连接，请更新客户端后重新连接。";
     case "media_unavailable":
     case "media_sdk_not_installed":
     case "media_sdk_start_failed":
@@ -376,6 +383,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "没有连上这台电脑的画面，会话已结束，未扣费。请重新连接。";
     case "viewer_replaced":
       return "这次远程会话已在另一个窗口打开。";
+    case "media_data_channel_write_unknown":
     case "input_ack_unknown":
     case "input_backlog_timeout":
       return "无法确认最后的输入是否执行，已停止控制并尝试释放按键。请检查电脑状态后重新连接，不要重复提交未确认的操作。";

@@ -26,7 +26,7 @@ export interface RemoteDesktopViewState {
   clockUncertainty: number | undefined;
   coarse: boolean;
   keyboard: boolean;
-  mediaMode: "legacy" | "artc";
+  mediaMode: "artc";
   mediaStatus: RemoteMediaStatus | null;
   displayId: string | undefined;
   access: RemoteDesktopAccess | null;
@@ -70,7 +70,7 @@ export function useRemoteDesktopPanelContext(requested: RemoteDesktopTicket | nu
     clockUncertainty: undefined,
     coarse: false,
     keyboard: false,
-    mediaMode: "legacy",
+    mediaMode: "artc",
     mediaStatus: null,
     displayId: undefined,
     access: null,
@@ -101,7 +101,7 @@ export function useRemoteDesktopPanelContext(requested: RemoteDesktopTicket | nu
     setClockUncertainty: (value: number | undefined | ((previous: number | undefined) => number | undefined)) => model.set("clockUncertainty", value),
     setCoarse: (value: boolean | ((previous: boolean) => boolean)) => model.set("coarse", value),
     setKeyboard: (value: boolean | ((previous: boolean) => boolean)) => model.set("keyboard", value),
-    setMediaMode: (value: "legacy" | "artc" | ((previous: "legacy" | "artc") => "legacy" | "artc")) => model.set("mediaMode", value),
+    setMediaMode: (value: "artc" | ((previous: "artc") => "artc")) => model.set("mediaMode", value),
     setMediaStatus: (value: RemoteMediaStatus | null | ((previous: RemoteMediaStatus | null) => RemoteMediaStatus | null)) => model.set("mediaStatus", value),
     setDisplayId: (value: string | undefined | ((previous: string | undefined) => string | undefined)) => model.set("displayId", value),
     setAccess: (value: RemoteDesktopAccess | null | ((previous: RemoteDesktopAccess | null) => RemoteDesktopAccess | null)) => model.set("access", value),

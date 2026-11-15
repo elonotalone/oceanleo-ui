@@ -250,8 +250,9 @@ export async function openRemoteMedia(
   mark("engine_created_ms");
   const releasePeers = recordPeers();
   // Peer input only when the gateway granted it for this controller and the SDK can carry it.
-  const wantsDataChannel = credentials.data_channel_input === true && typeof sdk.dataChannelMessage === "function"
-    && typeof engine.setParameter === "function" && typeof engine.sendDataChannelMessage === "function";
+  let wantsDataChannel = credentials.data_channel_input === true;
+  if (typeof credentials.data_channel_input !== "boolean" || wantsDataChannel && !(typeof sdk.dataChannelMessage === "function"
+    && typeof engine.setParameter === "function" && typeof engine.sendDataChannelMessage === "function")) { engine.destroy?.(); throw new Error("media_data_channel_unavailable"); }
   let laneOpen = false, dataPublished = false;
   const dataListeners = new Set<(message: RemoteDesktopDataMessage) => void>();
   let synthetic: ReturnType<typeof syntheticScreenTrack> = null;
@@ -401,6 +402,13 @@ export async function openRemoteMedia(
       const fresh = await handlers.renew();
       if (closed) return;
       if (fresh.channel_id !== credentials.channel_id || fresh.user_id !== credentials.user_id || fresh.publisher_id !== credentials.publisher_id) throw new Error("media_session_changed");
+      if (typeof fresh.data_channel_input !== "boolean") throw new Error("media_data_channel_unavailable");
+      if (wantsDataChannel && !fresh.data_channel_input) {
+        wantsDataChannel = false; setLane(false);
+        await engine.publishLocalScreenShareStream?.(false);
+        synthetic?.stop(); synthetic = null;
+        await engine.stopScreenShare?.();
+      } else if (!wantsDataChannel && fresh.data_channel_input) throw new Error("media_data_channel_unavailable");
       // SDK exceptions are not gateway HTTP or publisher status evidence.
       try { await engine.refreshAuthInfo(fresh.token); }
       catch { throw new Error("media_auth_failed"); }
@@ -445,10 +453,9 @@ export async function openRemoteMedia(
     if (closed || uid !== credentials.publisher_id || message?.type !== 2 || !(message.data instanceof ArrayBuffer) || message.data.byteLength > 1024) return;
     let value: RemoteDesktopDataMessage;
     try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.data)); } catch { return; }
-    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_ack", "rd.input_receipt", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
+    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_receipt", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
     if (value.t === "rd.input_receipt" && !parseRemoteInputReceipt(value)) return;
     if (value.t === "rd.pong" && (!Number.isFinite(value.t_v) || !Number.isFinite(value.device_wall_ms))) return;
-    if (value.t === "rd.input_ack" && (!Number.isSafeInteger(value.acked_seq) || value.acked_seq < 0)) return;
     if (value.t === "rd.publisher_stats") {
       // Allow only the fixed numeric publisher fields, never arbitrary text or screen content.
       const keys = ["push_buffer_full", "push_backoff_ms", "capture_fps", "push_fps", "policy_level", "policy_seq", "policy_fps", "policy_kbps", "policy_width", "policy_height", "sdk_encode_fps", "sdk_sent_fps", "pushes", "push_errors"];
@@ -459,7 +466,7 @@ export async function openRemoteMedia(
     for (const listener of dataListeners) listener(value);
   });
   on("dataPublishStateChanged", (_previous: number, next: number) => {
-    if (!closed) { dataPublished = next === PUBLISH_STATE.published; setLane(dataPublished); }
+    if (!closed) { dataPublished = wantsDataChannel && next === PUBLISH_STATE.published; setLane(dataPublished); }
   });
   // index.d.ts:2361: subscribed=3, reconnecting=4. A lost inbound receipt channel is a real DC loss.
   on("dataSubscribeStateChanged", (uid: string, _previous: number, next: number) => {
@@ -513,7 +520,7 @@ export async function openRemoteMedia(
     let dataChannelEnabled = false;
     if (wantsDataChannel) {
       try { engine.setParameter!(JSON.stringify({ data: { enablePubDataChannel: true, enableSubDataChannel: true } })); dataChannelEnabled = true; }
-      catch { /* input stays on the gateway path */ }
+      catch { throw new Error("media_data_channel_unavailable"); }
     }
     await untilAborted(engine.publishLocalAudioStream(false), lifetime.signal);
     await untilAborted(engine.publishLocalVideoStream(false), lifetime.signal);
@@ -531,7 +538,7 @@ export async function openRemoteMedia(
     for (const uid of engine.getOnlineRemoteUsers?.() ?? []) subscribe(uid);
     if (dataChannelEnabled) {
       // The custom track first, then publish: with a local screen stream present the SDK never
-      // falls back to getDisplayMedia. Any failure leaves input on the gateway path; video is unaffected.
+      // falls back to getDisplayMedia. Failure explicitly stops this ARTC attempt.
       mark("synthetic_started_ms");
       synthetic = inputTrack();
       if (synthetic) {
@@ -544,8 +551,9 @@ export async function openRemoteMedia(
           mark("synthetic_failed_ms");
           synthetic.stop(); synthetic = null;
           void Promise.resolve().then(() => engine.stopScreenShare()).catch(() => {});
+          throw new Error("media_data_channel_unavailable");
         }
-      } else mark("synthetic_skipped_ms");
+      } else { mark("synthetic_skipped_ms"); throw new Error("media_data_channel_unavailable"); }
     } else mark("synthetic_skipped_ms");
     scheduleRenew(credentials.expires_at);
     return { close, stats: () => closed ? Promise.resolve([]) : readStats(), diagnostics: diagnosticSnapshot };

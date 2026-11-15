@@ -1,11 +1,10 @@
-// D4/D5/goal 6 (2026-10-30): peer-to-peer input over the ARTC data channel with the gateway
-// WebSocket as automatic fallback, view-only refusals, billing/access snapshots, and the
-// lowest playout delay on the viewer's own screen receiver.
+// ARTC data channel is mandatory; gateway sockets only control the session.
 import assert from "node:assert/strict";
 import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { openRemoteMedia, lowerPlayoutDelay } from "../src/pages/remote-desktop-media.ts";
+import { openRemoteMedia as actualOpenRemoteMedia, lowerPlayoutDelay } from "../src/pages/remote-desktop-media.ts";
+const openRemoteMedia = (...args) => { args[5] ??= () => ({ track: { kind: "video", id: "synthetic" }, stop() {} }); return actualOpenRemoteMedia(...args); };
 
 const storage = new Map();
 globalThis.window = { localStorage: { getItem: (key) => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value) } };
@@ -45,144 +44,7 @@ async function streamHarness() {
 }
 
 const inputs = (socket) => socket.sent.filter((item) => item.type === "input");
-const receipt = (socket, seq, acked = 0) => socket.message({ type: "state", state: "active", acked_seq: acked, media: null, media_status: { state: "publishing", metrics: { version: 1, dc_input_seq: seq } } });
-/** Attach, probe while nothing is held, and let the computer prove receipt of the probe. */
-function trust(socket, stream, peer) {
-  stream.attachDataChannel(peer);
-  assert.equal(stream.send({ kind: "move", x: 0, y: 0 }), true, "untrusted lane: this input still goes to the gateway");
-  assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[1, "release_all"]], "harmless probe only");
-  assert.deepEqual(inputs(socket).map((m) => m.seq), [2]);
-  socket.message({ type: "input_ack", seq: 2 });
-  receipt(socket, 1, 2);
-}
-function lane() {
-  const sent = [];
-  return { sent, send(payload) { assert.ok(new TextEncoder().encode(payload).byteLength <= 1024); sent.push(JSON.parse(payload)); return true; } };
-}
-
-test("an attached data channel carries input with the contract envelope and no gateway round trip", async () => {
-  const { socket, stream } = await streamHarness();
-  try {
-    const peer = lane();
-    trust(socket, stream, peer);
-    peer.sent.length = 0;
-    for (const action of [{ kind: "move", x: .1, y: .2 }, { kind: "pointer_down", x: .1, y: .2, button: "left" }, { kind: "pointer_up", x: .1, y: .2, button: "left" }, { kind: "key_down", key: "a" }, { kind: "key_up", key: "a" }]) {
-      assert.equal(stream.send(action), true);
-    }
-    assert.deepEqual(peer.sent.map((m) => [m.v, m.sid, m.seq, m.a.kind]), [
-      [1, "session-1", 3, "move"], [1, "session-1", 4, "pointer_down"], [1, "session-1", 5, "pointer_up"], [1, "session-1", 6, "key_down"], [1, "session-1", 7, "key_up"],
-    ]);
-    assert.deepEqual(Object.keys(peer.sent[0]), ["v", "sid", "seq", "a"]);
-    assert.equal(inputs(socket).length, 1, "no stop-and-wait and nothing duplicated on the gateway");
-    assert.equal(stream.inputPath(), "data_channel");
-  } finally { stream.close(); }
-});
-
-test("an oversized peer message takes WS once and later peer input waits for its retirement", async () => {
-  const { socket, stream } = await streamHarness();
-  try {
-    const peer = lane();
-    trust(socket, stream, peer);
-    peer.sent.length = 0; socket.sent.length = 0;
-    stream.send({ kind: "key_down", key: "Shift" });
-    receipt(socket, 3, 2);
-    // Oversize (> 1 KB): this action takes the gateway; the next ones wait until it is executed.
-    stream.send({ kind: "type", text: "长".repeat(400) });
-    stream.send({ kind: "key_up", key: "Shift" });
-    assert.deepEqual(peer.sent.map((m) => m.seq), [3]);
-    assert.deepEqual(inputs(socket).map((m) => [m.seq, m.action.kind]), [[4, "type"]]);
-    socket.message({ type: "input_ack", seq: 4 });
-    socket.message({ type: "state", state: "active", acked_seq: 4 });
-    stream.send({ kind: "move", x: .5, y: .5 });
-    assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[3, "key_down"], [5, "key_up"], [6, "move"]]);
-    assert.equal(stream.inputPath(), "data_channel");
-  } finally { stream.close(); }
-});
-
-test("stop releases on both lanes; the gateway release has the higher seq", async () => {
-  const { socket, stream } = await streamHarness();
-  const peer = lane();
-  trust(socket, stream, peer);
-  stream.send({ kind: "key_down", key: "Control" });
-  stream.close();
-  assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[1, "release_all"], [3, "key_down"], [4, "release_all"]]);
-  assert.deepEqual(inputs(socket).map((m) => [m.seq, m.action.kind]), [[2, "move"], [5, "release_all"]]);
-});
-
-test("without a device receipt the lane is never trusted; stalled trusted input falls back to the gateway without replay", async (t) => {
-  const { socket, stream } = await streamHarness();
-  try {
-    const peer = lane();
-    stream.attachDataChannel(peer);
-    for (let i = 0; i < 3; i++) stream.send({ kind: "key_down", key: "a" }), stream.send({ kind: "key_up", key: "a" });
-    assert.deepEqual(peer.sent.map((m) => m.a.kind), ["release_all"], "one probe, never real input before proof");
-    assert.equal(inputs(socket).length, 6);
-  } finally { stream.close(); }
-
-  const second = await streamHarness();
-  try {
-    const peer = lane();
-    trust(second.socket, second.stream, peer);
-    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-    t.mock.method(performance, "now", () => Date.now() - performance.timeOrigin);
-    second.stream.send({ kind: "key_down", key: "b" });
-    assert.equal(peer.sent.at(-1).a.kind, "key_down");
-    const peerSeq = peer.sent.at(-1).seq;
-    t.mock.timers.tick(3100);
-    assert.equal(second.stream.send({ kind: "key_up", key: "b" }), true);
-    const later = inputs(second.socket).filter((m) => m.seq > peerSeq);
-    assert.deepEqual(later.map((m) => m.action.kind), ["release_all", "key_up"], "a release_all barrier precedes later gateway input; the host drops the late lower-seq peer write");
-    assert.equal(inputs(second.socket).some((m) => m.action.kind === "key_down"), false, "unresolved peer input is never replayed");
-    assert.deepEqual(second.log.errors, [], "the session and video stay up");
-    assert.equal(second.socket.readyState, 1);
-  } finally { t.mock.timers.reset(); second.stream.close(); }
-});
-
-test("a probe lost before the computer subscribed is re-sent with a fresh seq, then the lane is trusted", async (t) => {
-  const { socket, stream } = await streamHarness();
-  const executed = (seq) => { socket.message({ type: "input_ack", seq }); socket.message({ type: "state", state: "active", acked_seq: seq }); };
-  try {
-    t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
-    t.mock.method(performance, "now", () => Date.now() - performance.timeOrigin);
-    const peer = lane();
-    stream.attachDataChannel(peer);
-    stream.send({ kind: "move", x: 1, y: 1 });
-    assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[1, "release_all"]]);
-    executed(2);
-    stream.send({ kind: "move", x: 2, y: 2 });
-    assert.equal(peer.sent.length, 1, "within the receipt window: no second probe");
-    executed(3);
-    t.mock.timers.tick(1600);
-    stream.send({ kind: "move", x: 3, y: 3 });
-    assert.deepEqual(peer.sent.map((m) => [m.seq, m.a.kind]), [[1, "release_all"], [4, "release_all"]], "retry, higher seq");
-    assert.equal(inputs(socket).at(-1).seq, 5, "the input itself still took the gateway");
-    executed(5);
-    receipt(socket, 4, 5);
-    assert.equal(stream.send({ kind: "move", x: 4, y: 4 }), true);
-    assert.deepEqual(peer.sent.at(-1).a, { kind: "move", x: 4, y: 4 });
-    assert.equal(stream.inputPath(), "data_channel");
-  } finally { t.mock.timers.reset(); stream.close(); }
-});
-
-test("view-only refusal is final, never retried, keeps the session; access and billing reach the viewer", async () => {
-  const { socket, stream, log } = await streamHarness();
-  try {
-    socket.message({ type: "state", state: "active", acked_seq: 0, access: { input_allowed: false, audio: false }, billing: { per_minute: 0.096, currency: "CNY", charged_minutes: 2 } });
-    assert.deepEqual(log.sessions.at(-1), { access: { input_allowed: false, audio: false }, billing: { per_minute: 0.096, currency: "CNY", charged_minutes: 2 } });
-    stream.send({ kind: "key_down", key: "a" });
-    socket.message({ type: "input_rejected", seq: 1, error: "input_not_allowed" });
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    assert.deepEqual(log.refused, ["input_not_allowed"]);
-    assert.deepEqual(log.errors, []);
-    assert.equal(inputs(socket).length, 1, "not retried");
-    assert.equal(socket.readyState, 1);
-  } finally { stream.close(); }
-  assert.equal(api.parseRemoteBilling({ per_minute: -1, currency: "CNY", charged_minutes: 0 }), null);
-  assert.equal(api.parseRemoteBilling({ per_minute: 1, currency: "EUR", charged_minutes: 0 }), null);
-  assert.equal(api.parseRemoteAccess({ audio: true }), null);
-});
-
-const credentials = (extra = {}) => ({ provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "c", user_id: "viewer", publisher_id: "desktop", token: "t", timestamp: 1, expires_at: new Date(Date.now() + 120000).toISOString(), track: "screen", role: "viewer", camera: false, microphone: false, ...extra });
+const credentials = (extra = {}) => ({ provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "c", user_id: "viewer", publisher_id: "desktop", token: "t", timestamp: 1, expires_at: new Date(Date.now() + 120000).toISOString(), track: "screen", role: "viewer", camera: false, microphone: false, data_channel_input: true, ...extra });
 function engineHarness() {
   const events = new Map(), calls = [];
   const engine = {
@@ -201,13 +63,13 @@ function engineHarness() {
   const track = { id: "synthetic", kind: "video" };
   let stopped = 0;
   const inputTrack = () => ({ track, stop() { stopped++; } });
-  return { engine, events, calls, lanes, track, stopped: () => stopped, start: (extra) => openRemoteMedia(credentials(extra), video, handlers, new AbortController().signal, sdk, inputTrack) };
+  return { engine, events, calls, lanes, track, handlers, stopped: () => stopped, start: (extra) => openRemoteMedia(credentials(extra), video, handlers, new AbortController().signal, sdk, inputTrack) };
 }
 
 test("the viewer publishes a media-less data channel only when the gateway granted it, and exposes it once published", async () => {
   const off = engineHarness();
-  await (await off.start()).close();
-  assert.deepEqual(off.calls.filter(([n]) => n === "parameter" || n === "screen-share"), [], "no grant: nothing published, input stays on the gateway");
+  await (await off.start({ data_channel_input: false })).close();
+  assert.deepEqual(off.calls.filter(([n]) => n === "screen-share"), []);
 
   const h = engineHarness();
   const viewer = await h.start({ data_channel_input: true });
@@ -224,7 +86,7 @@ test("the viewer publishes a media-less data channel only when the gateway grant
   assert.equal(message.type, 2);
   assert.equal(new TextDecoder().decode(message.data), '{"v":1}');
   h.events.get("connectionStatusChange")(4);
-  assert.equal(h.lanes.at(-1), null, "reconnecting detaches the lane: input falls back to the gateway");
+  assert.equal(h.lanes.at(-1), null, "reconnecting detaches the lane: input pauses until ARTC reconnects");
   await viewer.close();
   assert.equal(h.lanes.at(-1), null);
   assert.equal(h.stopped(), 1, "the synthetic track stops with the viewer");
@@ -257,7 +119,7 @@ test("a CSP-blocked ARTC media host ends setup at once with media_host_blocked a
     const states = [], diagnostics = [];
     const video = Object.assign(new EventTarget(), { videoWidth: 0, videoHeight: 0, readyState: 0, srcObject: {}, requestVideoFrameCallback() { return 1; }, cancelVideoFrameCallback() {} });
     const viewer = await openRemoteMedia(credentials(), video, { state: (...a) => states.push(a), frame() {}, renew: async () => credentials(), diagnostic: (d) => diagnostics.push(d) },
-      new AbortController().signal, async () => ({ createEngine: () => h.engine }), () => null);
+      new AbortController().signal, async () => ({ createEngine: () => h.engine, dataChannelMessage: data => ({ data, type: 2 }) }));
     listeners.get("securitypolicyviolation")({ effectiveDirective: "connect-src", blockedURI: "https://r6-rtcsub.media-bj.alivecdn.com/pull" });
     assert.deepEqual(diagnostics, [{ blocked_host: "r6-rtcsub.media-bj.alivecdn.com" }]);
     assert.deepEqual(states.at(-1), ["error", "media_host_blocked"]);
@@ -273,7 +135,7 @@ test("a screen subscribe error with no frame afterwards becomes media_subscribe_
     const states = [], diagnostics = [];
     const video = Object.assign(new EventTarget(), { videoWidth: 0, videoHeight: 0, readyState: 0, srcObject: {}, requestVideoFrameCallback() { return 1; }, cancelVideoFrameCallback() {} });
     const viewer = await openRemoteMedia(credentials(), video, { state: (...a) => states.push(a), frame() {}, renew: async () => credentials(), diagnostic: (d) => diagnostics.push(d) },
-      new AbortController().signal, async () => ({ createEngine: () => h.engine }), () => null);
+      new AbortController().signal, async () => ({ createEngine: () => h.engine, dataChannelMessage: data => ({ data, type: 2 }) }));
     h.events.get("occurError")({ code: 16844116 }, "intruder");
     h.events.get("occurError")({ code: 1 }, "desktop");
     t.mock.timers.tick(6000);
@@ -305,73 +167,6 @@ function directLane() {
   peer.listenerCount=()=>listeners.size;
   return peer;
 }
-test('C6 direct ACKs release eight peer credits without WS execution drain or a three-second fallback',async t=>{
-  const {socket,stream}=await streamHarness();
-  try {
-    for(let i=0;i<8;i++)stream.send({kind:'keypress',key:'ArrowRight'});
-    const peer=directLane(); stream.attachDataChannel(peer);
-    const probe=peer.sent.at(-1).seq;
-    assert.equal(peer.sent.at(-1).a.kind,'release_all');
-    peer.ack(probe);
-    for(let i=0;i<8;i++)stream.send({kind:'keypress',key:'ArrowLeft'});
-    assert.equal(peer.sent.length,9,'DC starts without old WS acceptance/execution');
-    stream.send({kind:'keypress',key:'Enter'}); assert.equal(peer.sent.length,9);
-    const last=peer.sent.at(-1).seq;
-    peer.ack(last); assert.equal(peer.sent.length,10,'cumulative native ACK frees the credit window');
-    t.mock.timers.enable({apis:['Date'],now:Date.now()}); t.mock.timers.tick(60000);
-    stream.send({kind:'key_up',key:'Shift'});
-    assert.equal(stream.inputPath(),'data_channel');
-    assert.equal(inputs(socket).length,8,'gateway silence never forces healthy direct input onto WS');
-  } finally {t.mock.timers.reset();stream.close();}
-});
-test('C6 loss discards queued old input, sends WS release then new input, and detaches its listener',async()=>{
-  const {socket,stream}=await streamHarness();
-  try {
-    const peer=directLane(); stream.attachDataChannel(peer); peer.ack(peer.sent.at(-1).seq);
-    for(let i=0;i<8;i++)stream.send({kind:'keypress',key:'ArrowLeft'});
-    stream.send({kind:'keypress',key:'Enter'}); // queued before the loss: never execute later
-    assert.equal(peer.listenerCount(),1);
-    stream.attachDataChannel(null); assert.equal(peer.listenerCount(),0);
-    stream.send({kind:'keypress',key:'Escape'});
-    assert.deepEqual(inputs(socket).map(m=>m.action.kind),['release_all','keypress']);
-    assert.equal(inputs(socket).at(-1).action.key,'Escape');
-    assert.equal(inputs(socket).some(m=>m.action.key==='Enter'),false);
-    peer.ack(999999); assert.equal(socket.readyState,1,'detached late ACK is inert');
-  } finally {stream.close();}
-});
-test('C6 SDK messages are publisher/session scoped, bounded, disposed and input ACKs return on the subscribed channel',async()=>{
-  const h=engineHarness();const viewer=await h.start({data_channel_input:true});
-  try {
-    h.events.get('dataPublishStateChanged')(1,3);
-    const got=[]; const unsubscribe=h.lanes.at(-1).subscribe(m=>got.push(m));
-    const message=(uid,value,type=2)=>h.events.get('dataChannelMsg')(uid,{type,data:new TextEncoder().encode(JSON.stringify(value)).buffer});
-    const ack={t:'rd.input_ack',v:1,sid:'session-1',acked_seq:8};
-    message('intruder',ack);message('desktop',{...ack,sid:'other'});message('desktop',ack,1);
-    message('desktop',{...ack,acked_seq:-1});message('desktop',{...ack,extra:'x'.repeat(1024)});
-    message('desktop',{v:1,sid:'session-1',t:'rd.capture',capture_seq:1,capture_wall_ms:100,media_timestamp_ms:100,pushed_wall_ms:101});
-    assert.deepEqual(got,[]);
-    message('desktop',ack); assert.deepEqual(got,[ack]);
-    unsubscribe(); message('desktop',{...ack,acked_seq:9}); assert.equal(got.length,1);
-  } finally {await viewer.close();}
-  assert.equal(h.events.size,0);
-});
-
-
-test('C6 oversized input is refused without moving a healthy lane onto WS; direct admission never confirms handback',async()=>{
-  const {socket,stream}=await streamHarness();
-  try {
-    const peer=directLane(); stream.attachDataChannel(peer); peer.ack(peer.sent.at(-1).seq);
-    assert.equal(stream.send({kind:'type',text:'界'.repeat(1000)}),false);
-    assert.equal(inputs(socket).length,0);
-    assert.equal(stream.send({kind:'type',text:'hello'}),true);
-    peer.ack(peer.sent.at(-1).seq);
-    let finished=false; const handback=stream.releaseForHandoff().then(()=>{finished=true;});
-    const release=peer.sent.at(-1); assert.equal(release.a.kind,'release_all');
-    peer.ack(release.seq); await Promise.resolve(); assert.equal(finished,false);
-    socket.message({type:'state',state:'active',acked_seq:0,input_diagnostics:{input_completed_seq:release.seq}}); await handback;
-    assert.equal(finished,true);assert.equal(inputs(socket).length,0);
-  } finally {stream.close();}
-});
 
 
 test('a real publisher data subscription loss drops the lane; resubscription restores it and unrelated users are ignored',async()=>{
@@ -385,21 +180,29 @@ test('a real publisher data subscription loss drops the lane; resubscription res
   }finally{await viewer.close();}
 });
 
-test('ARTC delivers authenticated terminal receipts and versioned legacy ACKs while rejecting malformed input', async () => {
-  const h = engineHarness(), viewer = await h.start({ data_channel_input: true });
-  try {
-    h.events.get('dataPublishStateChanged')(1, 3);
-    const messages = [];
-    h.lanes[0].subscribe(value => messages.push(value));
-    const emit = (value, publisher = 'desktop') => h.events.get('dataChannelMsg')(publisher, {
-      type: 2, data: new TextEncoder().encode(JSON.stringify({ v: 1, sid: 'session-1', ...value })).buffer,
-    });
-    const receipt = { t: 'rd.input_receipt', seq: 3, status: 'executed', executed_at_ms: 1_800_000_000_000 };
-    emit(receipt, 'intruder'); emit({ ...receipt, sid: 'other' });
-    emit({ ...receipt, seq: 0 }); emit({ ...receipt, status: {} }); emit({ ...receipt, executed_at_ms: 0 });
-    assert.deepEqual(messages, []);
-    emit(receipt);
-    emit({ t: 'rd.input_ack', acked_seq: 3, input_receipt_version: 1 });
-    assert.deepEqual(messages, [ { v: 1, sid: 'session-1', ...receipt }, { v: 1, sid: 'session-1', t: 'rd.input_ack', acked_seq: 3, input_receipt_version: 1 } ]);
-  } finally { await viewer.close(); }
+test('an explicitly read-only descriptor receives video without creating a data channel', async () => {
+ const h=engineHarness();const viewer=await h.start({data_channel_input:false});
+ assert.equal(h.calls.some(([name])=>name==='parameter'||name==='screen-share'),false);
+ h.events.get('dataPublishStateChanged')(1,3);assert.deepEqual(h.lanes,[]);
+ await viewer.close();
+});
+test('renewal to read-only detaches DC and stops the synthetic publisher while keeping video', async () => {
+ const h=engineHarness(),viewer=await h.start({data_channel_input:true});
+ h.events.get('dataPublishStateChanged')(1,3);assert.ok(h.lanes.at(-1));
+ h.handlers.renew=async()=>credentials({data_channel_input:false});
+ h.events.get('authInfoWillExpire')();await new Promise(setImmediate);
+ assert.equal(h.lanes.at(-1),null);assert.equal(h.stopped(),1);
+ assert.ok(h.calls.some(([name,value])=>name==='publish-screen'&&value===false));
+ h.events.get('dataPublishStateChanged')(1,3);assert.equal(h.lanes.at(-1),null);
+ await viewer.close();
+});
+test('ARTC receipts are publisher/session scoped and reject legacy ACKs and malformed terminals', async () => {
+ const h=engineHarness(),viewer=await h.start({data_channel_input:true});h.events.get('dataPublishStateChanged')(1,3);
+ const received=[];h.lanes[0].subscribe(x=>received.push(x));
+ const emit=(uid,value)=>h.events.get('dataChannelMsg')(uid,{type:2,data:new TextEncoder().encode(JSON.stringify(value)).buffer});
+ const receipt={v:1,t:'rd.input_receipt',sid:'session-1',seq:1,status:'executed',executed_at_ms:123};
+ emit('other',receipt);emit('desktop',{...receipt,sid:'other'});emit('desktop',{...receipt,v:2});emit('desktop',{...receipt,status:'accepted'});emit('desktop',{...receipt,seq:0});emit('desktop',{v:1,t:'rd.input_ack',sid:'session-1',acked_seq:1});
+ assert.deepEqual(received,[]);for(const status of ['executed','merged','rejected'])emit('desktop',{...receipt,status});
+ assert.deepEqual(received.map(x=>x.status),['executed','merged','rejected']);
+ await viewer.close();assert.equal(h.events.has('dataChannelMsg'),false);
 });
