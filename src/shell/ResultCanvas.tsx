@@ -26,6 +26,7 @@ import type { AssetActionContext } from "./asset-detail/types";
 import { useWorkspaceEntryRequest, type TaskWorkspaceOpenEntry } from "./result-canvas-entry-state";
 import { BayAssetLibrary } from "./bay/asset/BayAssetLibrary";
 import { MyLibrary } from "./MyLibrary";
+import { libraryCurrentIdentityFromSearch } from "./library-current-identity";
 import { CloudBrowserPanel } from "./CloudBrowserPanel";
 import {
   WorkspaceLibrary,
@@ -570,8 +571,16 @@ export function ResultCanvas({
   // Park the Library after its first open/intent so reopening paints the same
   // list. Merely mounting a task must not start its private Library readers.
   const [libraryWarmed, setLibraryWarmed] = useState(false);
-  const libraryRequested = workspaceOpen !== false &&
-    (view === "mine" || workspacePane?.activeLibraryPanelId === "mine");
+  const location = typeof window === "undefined" ? null : window.location;
+  const path = location?.pathname.replace(/\/+$/, "") || "";
+  // These bookmarks have no catalog sender; mounting the reader lets the
+  // existing read-only item intent restore the requested file. Workspace URLs
+  // still wait for their catalog action and its app-readiness gate.
+  const itemBookmark = Boolean(location &&
+    (path === "/library" || path === "/history" || /^\/tasks\/[^/]+$/.test(path)) &&
+    libraryCurrentIdentityFromSearch(location.search)?.artifactId);
+  const libraryRequested = itemBookmark || (workspaceOpen !== false &&
+    (view === "mine" || workspacePane?.activeLibraryPanelId === "mine"));
   const libraryReady = libraryWarmed || libraryRequested;
   useEffect(() => {
     if (libraryRequested) setLibraryWarmed(true);

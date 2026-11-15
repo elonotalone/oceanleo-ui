@@ -357,6 +357,8 @@ test("exact completed legacy history survives /history → task → selected ite
     assert.match(container.textContent,/你好！有什么我可以帮你？/);
     assert.doesNotMatch(container.textContent,/帮我整理一份文档/);
 
+    assert.deepEqual(globalThis.__renderLoopCurrentArtifactRequests, [], "opening the task alone never reads Library items");
+
     window.history.replaceState(null,"",`/history?task=${historyTaskId}&item=${historyArtifactId}`);
     await render();
     await settle();

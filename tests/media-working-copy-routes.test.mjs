@@ -77,7 +77,7 @@ async function loadRoute(name) {
     const specifier=node.moduleSpecifier.text;
     if(!specifier.startsWith("."))continue;
     // Keep document snapshots, history and admission gates real.
-    if(/Model3DRouteHistory|model3d-collab-snapshot|non-richdoc-source-gate|library-data/.test(specifier))continue;
+    if(/Model3DRouteHistory|model3d-collab-snapshot|non-richdoc-source-gate|library-data|video-timeline-source/.test(specifier))continue;
     const named=node.importClause.namedBindings;
     if(!named||!ts.isNamedImports(named))continue;
     const exports=named.elements.filter(n=>!n.isTypeOnly).map(n=>(n.propertyName||n.name).text);
