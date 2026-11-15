@@ -140,3 +140,27 @@ for (const fit of ['contain', 'cover', 'fill']) test(`PPTX ${fit} fits the cropp
   if (fit === 'cover') assert.ok(rect[1] > 0 && rect[3] > 0);
   else assert.equal(rect[1] + rect[3], 0);
 });
+
+test('real cropped Deck image mounts, loads source dimensions and updates fit without React errors', async () => {
+  const errors = [], previous = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(' '));
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  const image = { ...element('image'), src: pixel, alt: 'Cropped photo', imageFit: 'contain', crop: { left: .15, top: .1, right: .2, bottom: .05 } };
+  try {
+    await act(async () => root.render(React.createElement(DeckElementContent, { element: image })));
+    const probe = host.querySelector('img');
+    Object.defineProperties(probe, { naturalWidth: { value: 200 }, naturalHeight: { value: 100 } });
+    await act(async () => probe.dispatchEvent(new window.Event('load')));
+    const bounds = host.querySelector('svg').getAttribute('viewBox').split(' ').map(Number);
+    for (const [index, value] of [30, 10, 130, 85].entries()) assert.ok(Math.abs(bounds[index] - value) < 1e-9);
+    assert.equal(host.querySelector('svg').getAttribute('aria-label'), 'Cropped photo');
+    assert.equal(host.querySelector('svg').getAttribute('preserveAspectRatio'), 'xMidYMid meet');
+    await act(async () => root.render(React.createElement(DeckElementContent, { element: { ...image, imageFit: 'cover' } })));
+    assert.equal(host.querySelector('svg').getAttribute('preserveAspectRatio'), 'xMidYMid slice');
+  } finally {
+    await act(async () => root.unmount()); host.remove(); console.error = previous;
+  }
+  assert.deepEqual(errors, []);
+});
