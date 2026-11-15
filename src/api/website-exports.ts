@@ -10,8 +10,11 @@ export type WebsiteExportErrorCode = "unauthorized" | "not-ready" | "too-large" 
 export interface WebsiteExportFile { blob: Blob; filename: string }
 
 export class WebsiteExportError extends Error {
-  constructor(readonly code: WebsiteExportErrorCode) {
+  readonly code: WebsiteExportErrorCode;
+
+  constructor(code: WebsiteExportErrorCode) {
     super("Website export failed");
+    this.code = code;
     this.name = "WebsiteExportError";
   }
 }

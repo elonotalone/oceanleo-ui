@@ -12,8 +12,11 @@ export interface WebsitePublicationResult extends WebsitePublication { stopConfi
 export type WebsitePublicationErrorCode = "unauthorized" | "missing" | "changed" | "busy" | "unavailable" | "failed";
 /** Closed code only; server text never reaches the UI. */
 export class WebsitePublicationError extends Error {
-  constructor(readonly code: WebsitePublicationErrorCode) {
+  readonly code: WebsitePublicationErrorCode;
+
+  constructor(code: WebsitePublicationErrorCode) {
     super("Website publication request failed");
+    this.code = code;
     this.name = "WebsitePublicationError";
   }
 }

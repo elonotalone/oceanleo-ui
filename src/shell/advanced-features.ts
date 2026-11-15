@@ -385,8 +385,10 @@ export function advancedFeatureHrefForItem(item: LibraryItem): string | null {
 
 /**
  * Public material shelves keep only items that map to one of the nine full
- * editors or works with a trusted typed capability. View-only reference rehosts fail.
+ * editors or editable works with a trusted typed capability. Opening a work's
+ * preview does not make it an editable material for another editor's shelf.
  */
 export function isAdvancedEditableShelfItem(item: LibraryItem): boolean {
+  if (isDurableLibraryItem(item) && item.artifact.editability === "view_only") return false;
   return advancedFeatureForItem(item) !== null;
 }

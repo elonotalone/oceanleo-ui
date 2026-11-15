@@ -56,8 +56,15 @@ export type VaultRecovery = {
 
 /** Never retain or render arbitrary transport text: it can contain submitted data. */
 export class VaultApiError extends Error {
-  constructor(readonly code: VaultErrorCode, readonly status: number, readonly retryAfter: number | null = null) {
+  readonly code: VaultErrorCode;
+  readonly status: number;
+  readonly retryAfter: number | null;
+
+  constructor(code: VaultErrorCode, status: number, retryAfter: number | null = null) {
     super(code);
+    this.code = code;
+    this.status = status;
+    this.retryAfter = retryAfter;
     this.name = "VaultApiError";
   }
 }
