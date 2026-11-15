@@ -226,8 +226,10 @@ test("Private Library image replacement stores immutable identity across save/re
   assert.equal(serializeVideoProjectEnvelope(e.doc).includes("runtime-grant"), false);
   const sent = timelineRenderRequestBody({ timeline: e.doc }).timeline.tracks[1].clips[0];
   assert.deepEqual(sent.library_source, source); assert.equal(sent.source_url, undefined);
-  const stale = normalizeTimelineDoc({ ...e.doc, tracks: [{ ...e.doc.tracks[1], clips: [{ ...clip, source_url: "https://private.example/expired-runtime-grant", source_ref: { artifactId: source.artifactId, revisionId: source.revisionId, path: "assets/old.png" } }] }] });
+  const stale = normalizeTimelineDoc({ ...e.doc, tracks: [{ ...e.doc.tracks[1], clips: [{ ...clip, library_source: { ...source, url: "https://private.example/hidden-runtime-grant" }, source_url: "https://private.example/expired-runtime-grant", source_ref: { artifactId: source.artifactId, revisionId: source.revisionId, path: "assets/old.png" } }] }] });
   assert.equal(stale.tracks[0].clips[0].source_url, undefined); assert.equal(stale.tracks[0].clips[0].source_ref, undefined);
+  assert.deepEqual(stale.tracks[0].clips[0].library_source, source);
+  assert.equal(serializeVideoProjectEnvelope(stale).includes("runtime-grant"), false);
 });
 
 test("Real shared Library picker lists images from another project and commits selected private identity", async () => {

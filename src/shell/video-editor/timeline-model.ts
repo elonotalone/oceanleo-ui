@@ -236,7 +236,11 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
         }
         if (track.kind === "image") {
           if (validTimelineLibrarySource(clip.library_source)) {
-            next.library_source = Object.freeze({ ...clip.library_source! });
+            next.library_source = Object.freeze({
+              artifactId: clip.library_source!.artifactId,
+              revisionId: clip.library_source!.revisionId,
+              rendition: "full",
+            });
             delete next.source_url;
             delete next.source_ref;
           } else delete next.library_source;
