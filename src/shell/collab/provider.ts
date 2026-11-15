@@ -10,8 +10,7 @@
  * - 断线按 1s → 2s → … → 30s 指数退避重连，每次重连**重新拿票**（票一次性）；
  *   重连后重发 step1，离线期间的本地改动随 step2 合进去。
  * - 锁拿到后每 20 秒发一次 `lock.renew`；页面关闭（`pagehide`）与 `destroy()` 时释放。
- * - 保存者：服务端说了算；从没连上过服务端（一开始就离线 / 被拒绝 / 未启用）时按「单人」处理，
- *   `isSaver` 为 true，免得谁都不存版本。
+ * - 每个可编辑标签页独立保存合并文档；Yjs 同步不代替工作副本的持久化回执。
  */
 import { Doc } from "yjs";
 import {
@@ -108,20 +107,15 @@ export class CollabProvider implements CollabRoom {
   status: CollabStatus = "connecting";
   self: CollabUser = PLACEHOLDER_SELF;
   needsSeed = false;
-  isSaver = false;
   lock: CollabLock | null = null;
   peers: CollabUser[] = [];
 
   private readonly opts: CollabProviderOptions;
   private readonly WS: new (url: string) => WebSocketLike;
   private ws: WebSocketLike | null = null;
-  hasPendingUpdates = false;
-  private syncRequested = false;
-  private syncAgain = false;
   private wsReady = false;
   private gen = 0;
   private destroyed = false;
-  private everReady = false;
   private failures = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private readyTimer: ReturnType<typeof setTimeout> | null = null;
@@ -154,17 +148,11 @@ export class CollabProvider implements CollabRoom {
     this.onDocUpdate = (update, origin) => {
       if (origin === this) return;
       if (this.role !== "editor") return;
-      this.hasPendingUpdates = true;
-      this.emit();
       if (!this.wsReady) return;
       const enc = encoding.createEncoder();
       encoding.writeVarUint(enc, MSG_SYNC);
       syncProtocol.writeUpdate(enc, update);
       this.sendBinary(encoding.toUint8Array(enc));
-      // A sync response follows earlier updates on the same WebSocket. If an
-      // older sync is pending, request one more barrier covering the latest edit.
-      if (this.syncRequested) this.syncAgain = true;
-      else this.sendStep1();
     };
     this.doc.on("update", this.onDocUpdate);
 
@@ -281,8 +269,6 @@ export class CollabProvider implements CollabRoom {
     socket.binaryType = "arraybuffer";
     this.ws = socket;
     this.wsReady = false;
-    this.syncRequested = false;
-    this.syncAgain = false;
     socket.onopen = () => {
       if (gen !== this.gen) return;
       socket.send(JSON.stringify({ type: "auth", ticket: ticket.ticket }));
@@ -312,19 +298,11 @@ export class CollabProvider implements CollabRoom {
   private deny(): void {
     this.clearTimers();
     this.wsReady = false;
-    this.syncRequested = false;
-    this.syncAgain = false;
-    this.batch(() => {
-      // 从没连上过 = 单人处理，可以存版本；连上过的，保持最后一次服务端给的值。
-      if (!this.everReady) this.isSaver = true;
-      this.setStatus("denied");
-    });
+    this.setStatus("denied");
   }
 
   private handleClose(code: number): void {
     this.wsReady = false;
-    this.syncRequested = false;
-    this.syncAgain = false;
     this.ws = null;
     if (this.readyTimer) {
       clearTimeout(this.readyTimer);
@@ -343,14 +321,9 @@ export class CollabProvider implements CollabRoom {
   private connectionLost(): void {
     this.stopRenew();
     this.wsReady = false;
-    this.syncRequested = false;
-    this.syncAgain = false;
     const others = Array.from(this.awareness.getStates().keys()).filter((id) => id !== this.awareness.clientID);
     if (others.length) removeAwarenessStates(this.awareness, others, this);
-    this.batch(() => {
-      if (!this.everReady) this.isSaver = true;
-      this.setStatus("offline");
-    });
+    this.setStatus("offline");
     const initial = this.opts.backoffInitialMs ?? 1000;
     const max = this.opts.backoffMaxMs ?? 30_000;
     const delay = Math.min(max, initial * 2 ** Math.min(this.failures, 16));
@@ -413,15 +386,7 @@ export class CollabProvider implements CollabRoom {
       if (syncType === syncProtocol.messageYjsSyncStep1 && encoding.length(reply) > 1 && this.role === "editor") {
         this.sendBinary(encoding.toUint8Array(reply));
       }
-      if (syncType === syncProtocol.messageYjsSyncStep2) {
-        this.syncRequested = false;
-        if (this.syncAgain) { this.syncAgain = false; this.sendStep1(); }
-        else {
-          this.hasPendingUpdates = false;
-          if (this.status === "syncing") this.setStatus("synced");
-          else this.emit();
-        }
-      }
+      if (syncType === syncProtocol.messageYjsSyncStep2 && this.status === "syncing") this.setStatus("synced");
     } else if (type === MSG_AWARENESS) {
       applyAwarenessUpdate(this.awareness, decoding.readVarUint8Array(decoder), this);
     }
@@ -436,26 +401,16 @@ export class CollabProvider implements CollabRoom {
         }
         this.batch(() => {
           this.wsReady = true;
-          this.everReady = true;
           this.failures = 0;
           if (typeof msg.room_key === "string" && msg.room_key) this.roomKey = msg.room_key;
           if (msg.role === "viewer" || msg.role === "editor") this.role = msg.role;
           this.needsSeed = Boolean(msg.needs_seed);
-          this.isSaver = Boolean(msg.is_saver);
           this.lock = parseLock(msg.lock);
           this.setStatus("syncing");
         });
         this.syncRenew();
         this.sendStep1();
         this.sendBinary(this.awarenessFrame([this.awareness.clientID]));
-        return;
-      }
-      case "saver": {
-        const next = Boolean(msg.is_saver);
-        if (this.isSaver !== next) {
-          this.isSaver = next;
-          this.emit();
-        }
         return;
       }
       case "lock": {
@@ -512,7 +467,6 @@ export class CollabProvider implements CollabRoom {
   }
 
   private sendStep1(): void {
-    this.syncRequested = true;
     const enc = encoding.createEncoder();
     encoding.writeVarUint(enc, MSG_SYNC);
     syncProtocol.writeSyncStep1(enc, this.doc);
@@ -625,8 +579,6 @@ export class CollabProvider implements CollabRoom {
     const ws = this.ws;
     this.ws = null;
     this.wsReady = false;
-    this.syncRequested = false;
-    this.syncAgain = false;
     if (ws) {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null;
       try {
@@ -658,9 +610,9 @@ export function isCollabReadOnly(room: CollabRoom | null): boolean {
   return Boolean(room.lock && room.lock.holder.id !== room.self.id);
 }
 
-/** 保存闸：不在协同里 → true；在协同里 → 房间里的保存者才存版本；没连上协同（拒绝/未启用）→ true。 */
+/** 每个可编辑标签页都可保存；仍遵守查看权限和现有的独占编辑锁。 */
 export function canSaveVersion(room: CollabRoom | null): boolean {
   if (!room) return true;
   if (room.status === "denied" || room.status === "disabled") return true;
-  return room.isSaver;
+  return !isCollabReadOnly(room);
 }

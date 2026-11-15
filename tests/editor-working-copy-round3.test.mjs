@@ -47,16 +47,6 @@ test('VS13: readiness, room seed and asynchronous restore never become a competi
  try{await view.update({dirty:true,revision:1,recovery:initial.recovery});await act(async()=>{room.doc.transact(()=>room.doc.getMap('seed').set('loaded',true),room);await settle();});await act(async()=>{pending.resolve();await settle();});assert.equal(view.current.state,'saved');assert.equal(view.current.conflict,false);assert.equal(puts.length,0);assert.equal(doc.value,58);doc={value:59};await view.update({revision:2});assert.equal(puts[0].if_seq,77);}finally{await view.close();room.doc.destroy();}
 });
 
-test('VS4: non-writer local Yjs update remains unsaved even without a user-edit feed notification',async()=>{
- const room={doc:new Doc(),isSaver:false,status:'synced'};const view=await mount({...spec(),writer:false,shared:true,room,recovery:undefined,sharedSaveState:'saved'});
- try{await act(async()=>{room.doc.getText('body').insert(0,'VS-R2-check-93');await settle();});await view.update({revision:1,dirty:false});assert.equal(puts.length,0);assert.equal(view.current.state,'error');assert.equal(view.current.pending,true);assert.equal(view.current.conflict,true);}finally{await view.close();room.doc.destroy();}
-});
-
-test('VS4: peer revision change cannot fall through to room-sync Saved without PUT',async()=>{
- const view=await mount({...spec(),writer:false,shared:true,recovery:undefined,sharedSaveState:'saved'});
- try{await view.update({revision:1});assert.equal(view.current.state,'error');assert.equal(view.current.pending,true);}finally{await view.close();}
-});
-
 test('VS1: warm authentication does not wait on SDK session work for GET or PUT',async()=>{
  globalThis.__r3AuthDelay=80;const transport=workingCopyTransport('root','test','r1');await transport.get();await transport.put(doc,null);assert.equal(globalThis.__r3AuthCalls,0);
  globalThis.__r3Token='refreshed-fixture-token';await transport.put({value:59},1);assert.equal(globalThis.__r3AuthCalls,0);globalThis.__r3Token=null;await assert.rejects(transport.put({},2),/登录/);assert.equal(puts.length,2,'sign-out must not reuse the old token');
@@ -67,9 +57,9 @@ test('VS1: 3D-size bursts at 150ms RTT wait only for the preceding PUT, without 
  try{await saver.initialize();const began=performance.now();saver.edit();await delay(20);doc={value:58,padding:'x'.repeat(2850)};saver.edit();await saver.flush();const ms=performance.now()-began;assert.equal(saver.snapshot().state,'saved');assert.equal(puts.length,2);assert.ok(ms<=500,`covering ack took ${ms.toFixed(1)}ms`);assert.equal(globalThis.__r3AuthCalls,0);console.log(`Round 3 burst: ${ms.toFixed(1)}ms, auth calls ${globalThis.__r3AuthCalls}, PUT bytes ${JSON.stringify(puts.at(-1)).length}`);}finally{saver.dispose();}
 });
 
-test('VS13: remote room hydration in a non-writer does not falsely conflict on open',async()=>{
- const room={doc:new Doc(),isSaver:false,status:'synced'};const view=await mount({...spec(),writer:false,shared:true,room,recovery:undefined,sharedSaveState:'saved'});
- try{await act(async()=>{room.doc.transact(()=>room.doc.getMap('body').set('loaded',true),room);await settle();});await view.update({revision:1});assert.equal(view.current.conflict,false);assert.equal(view.current.state,'saved');assert.equal(puts.length,0);}finally{await view.close();room.doc.destroy();}
+test('VS13: initial room hydration before recovery readiness does not conflict or autosave',async()=>{
+ const room={doc:new Doc(),status:'synced'};const initial=spec();const view=await mount({...initial,room,recovery:{...initial.recovery,ready:false}});
+ try{await act(async()=>{room.doc.transact(()=>room.doc.getMap('body').set('loaded',true),room);await settle();});await view.update({revision:1,recovery:initial.recovery});assert.equal(view.current.conflict,false);assert.equal(view.current.state,'saved');assert.equal(puts.length,0);}finally{await view.close();room.doc.destroy();}
 });
 
 test('opening GET 404: a real input remains pending until its first conditional PUT acknowledges',async()=>{

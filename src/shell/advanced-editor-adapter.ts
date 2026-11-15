@@ -51,9 +51,6 @@ export interface AdvancedEditorPersistenceAdapter {
   requiresMountedFlush?: boolean;
   /** Serializes and persists the revision current when this function starts. */
   flush: () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
-  /** Non-saver collaborators follow the room acknowledgement instead of PUT. */
-  sharedSaveState?: "saved" | "saving" | "error";
-  sharedSavePending?: boolean;
   /** Capture synchronously; returned publisher must remain valid after unmount. */
   preparePublish?: () => () => Promise<AdvancedFlushResult> | AdvancedFlushResult;
   recovery?: AdvancedEditorRecoveryAdapter;

@@ -181,13 +181,12 @@ export function seedRichDoc(input: {
 }
 
 export interface RichDocSaveRoom {
-  isSaver: boolean;
   status?: string;
   markSaved(revisionId: string): void;
 }
 
 /**
- * 保存：只有房间里的保存者存版本（不在协同里 → 照常存）；存成功后告诉房间这是哪个版本。
+ * 每个可编辑标签页都存当前版本；存成功后告诉房间这是哪个版本。
  * `save` 是原有的保存函数，返回的 `revisionId` 缺失时不通知（没产生新版本）。
  */
 export async function saveRichDocWithRoom<T extends { revisionId?: string } | null>(input: {
@@ -196,7 +195,6 @@ export async function saveRichDocWithRoom<T extends { revisionId?: string } | nu
 }): Promise<{ skipped: boolean; result: T | null }> {
   const { room } = input;
   const inCollab = Boolean(room) && room!.status !== "denied" && room!.status !== "disabled";
-  if (inCollab && !room!.isSaver) return { skipped: true, result: null };
   const result = await input.save();
   const revisionId = result && typeof result.revisionId === "string" ? result.revisionId : "";
   if (inCollab && revisionId) room!.markSaved(revisionId);

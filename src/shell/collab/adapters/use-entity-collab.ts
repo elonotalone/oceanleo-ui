@@ -87,7 +87,7 @@ export interface EntityCollab {
   room: CollabRoom | null;
   history: EntityCollabHistory;
   readOnly: boolean;
-  /** 自动保存闸：false 时本端不自动保存（由房间里的存档人保存）。 */
+  /** 自动保存闸：false 时本端没有编辑权限，或编辑锁在别人手里。 */
   saveGate: boolean;
   collab: EditorCollabBinding | undefined;
   /** 保存成功后调用，告诉房间这一版已落库。 */

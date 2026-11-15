@@ -61,6 +61,7 @@ import type { LibraryItem } from "./library-data";
 import { useWorkbenchMaterials } from "./workbench-material-provider";
 import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { editBarOwnershipForItem } from "./workbench-routes";
+import { canSaveVersion } from "./collab/provider";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
 import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
 import { editBarVisibleOnPage } from "./plugin-chrome/plugin-pages";
@@ -197,16 +198,14 @@ export function InlineAdvancedWorkbenchShell({
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
   const room = adapter.collab?.room;
-  const roomMaySave = adapter.persistence?.destination === "local-device" || !room || room.status === "denied" || room.status === "disabled" || room.isSaver || Boolean(room.lock && room.self && room.lock.holder.id === room.self.id);
-  const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false && roomMaySave;
+  const hostAutoSaveEnabled = adapter.persistence?.autoSave !== false && (adapter.persistence?.destination === "local-device" || canSaveVersion(room ?? null));
   const materialKey =
     adapter.persistence?.userEditKey || advancedRootItemId(item) || item.id;
   const autoSave = useAdvancedAutoSave({
     // Website keeps dirty for close guards but disables observe-autosave so a
     // pending visual draft is not save→auto-Applied out from under Apply.
     key: materialKey,
-    writer: hostAutoSaveEnabled,
-    shared: Boolean(adapter.collab?.room),
+    enabled: hostAutoSaveEnabled,
     room: adapter.collab?.room,
     dirty: hostAutoSaveEnabled ? editorDirty : false,
     revision: editRevision,
@@ -217,8 +216,6 @@ export function InlineAdvancedWorkbenchShell({
     item,
     editorId: adapter.id,
     destination: adapter.persistence?.destination,
-    sharedSaveState: adapter.persistence?.sharedSaveState,
-    sharedSavePending: adapter.persistence?.sharedSavePending,
     session: advancedSession,
   });
   const retrySave = autoSave.retry;

@@ -47,7 +47,7 @@ export function useCollabRoom(opts: UseCollabRoomOptions): CollabRoom | null {
   return room;
 }
 
-/** 订阅房间的状态变化（role/status/isSaver/lock/peers），变化时让调用方重画。 */
+/** 订阅房间的状态变化（role/status/lock/peers），变化时让调用方重画。 */
 export function useCollabRoomVersion(room: CollabRoom | null): number {
   const [version, bump] = useReducer((n: number) => n + 1, 0);
   useEffect(() => (room ? room.subscribe(bump) : undefined), [room]);

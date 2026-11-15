@@ -20,7 +20,7 @@ for (const [name, path] of [
   });
 }
 
-test("三个编辑器都保留 restoreRecovery 原行为，另有各自的远端改动入口", () => {
+test("三个编辑器都保留 restoreRecovery 和各自的远端改动入口，工作副本恢复保持静默", () => {
   const video = source("video-editor/use-video-timeline.ts");
   assert.match(video, /restoreRecovery/);
   assert.match(video, /applyRemoteDoc/);
@@ -30,7 +30,7 @@ test("三个编辑器都保留 restoreRecovery 原行为，另有各自的远端
   assert.match(source("media-editors/use-model3d-workbench.ts"), /useModel3DSceneRestore|restoreRecovery, applyRemoteScene/);
   const model = source("media-editors/use-model3d-scene-restore.ts");
   assert.match(model, /restoreRecovery/);
-  assert.match(model, /已恢复上次未同步的本地草稿/);
+  assert.doesNotMatch(model, /已恢复上次未同步的本地草稿/, "工作副本恢复不弹旧本地草稿提示");
   assert.match(model, /applyRemoteScene/);
 });
 

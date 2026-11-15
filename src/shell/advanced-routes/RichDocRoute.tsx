@@ -151,7 +151,7 @@ export function RichDocRoute({
   );
   useWorkbenchMaterialAdapter(materialCommandAdapter);
   const saveBeforeNewConversation = useCallback(async (prepared?: ReturnType<typeof editor.prepareSave>) => {
-    // 协同里不是保存者：没有要存的东西（保存者会存），别拦住「新开一轮对话」。
+    // 只读成员可以发送现有文件，不发起保存。
     if (!collabSaveGate) return { ok: true as const, item };
     const saved = await (prepared ? prepared() : editor.save());
     if (!saved) {
@@ -507,15 +507,10 @@ export function RichDocRoute({
             : "") ||
           (editor.loading || officeSource.loading ? "正在载入文档" : ""),
         persistence: {
-          // 协同里只有保存者自动存版本；别人的改动由它存，这里也不报「未保存」。
+          // 每个可编辑标签页都保存自己的当前合并文档。
           dirty: collabSaveGate ? editor.dirty : false,
           editRevision: editor.editRevision,
           autoSave: collabSaveGate,
-          sharedSavePending: !collabSaveGate && Boolean(collabRoom?.hasPendingUpdates),
-          sharedSaveState: !collabSaveGate && collabRoom
-            ? collabRoom.status === "offline" ? "error"
-              : collabRoom.hasPendingUpdates || collabRoom.status !== "synced" ? "saving" : "saved"
-            : undefined,
           flush: saveBeforeNewConversation,
           preparePublish: () => { const save = editor.prepareSave(); return () => saveBeforeNewConversation(save); },
           recovery: {

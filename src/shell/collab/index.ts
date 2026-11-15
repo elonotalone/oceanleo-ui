@@ -10,7 +10,7 @@
  *   //    room.needsSeed ? bind.seed(state) : 等 room.status === "synced" 后 bind.onRemote(setState)
  *   //    本地每次改动：bind.push(state)
  *   // 3) 只读：const readOnly = useCollabReadOnly(room);   // viewer 或专业模式锁在别人手里
- *   // 4) 保存：if (!useCollabSaveGate(room)) 不存版本（只有房间里的保存者存）；
+ *   // 4) 保存：if (!useCollabSaveGate(room)) 不存版本（遵守查看权限和编辑锁）；
  *   //    存成功后：room.markSaved(revisionId)
  *   // 5) 别人（AI / 专业模式）存了新版本：room.onExternalRevision((revisionId, origin) => 重新加载该版本)
  *
@@ -31,11 +31,8 @@ export interface CollabRoom {
   awareness: Awareness;
   role: CollabRole;
   status: CollabStatus;
-  /** Local changes awaiting the room’s existing Yjs sync response. */
-  hasPendingUpdates?: boolean;
   self: CollabUser;
   needsSeed: boolean;
-  isSaver: boolean;
   lock: CollabLock | null;
   /** 此刻在房间里的其他人（按用户去重，不含自己）。 */
   peers: CollabUser[];
@@ -45,7 +42,7 @@ export interface CollabRoom {
   acquireLock(): Promise<boolean>;
   releaseLock(): void;
   markSaved(revisionId: string): void;
-  /** 状态变化（role / status / isSaver / lock / peers）。配 useSyncExternalStore 用。 */
+  /** 状态变化（role / status / lock / peers）。配 useSyncExternalStore 用。 */
   subscribe(cb: () => void): () => void;
   destroy(): void;
 }

@@ -6,7 +6,7 @@ import * as syncProtocol from "y-protocols/sync";
 import * as decoding from "lib0/decoding";
 import * as encoding from "lib0/encoding";
 
-import { CollabTicketError, createCollabProvider } from "../src/shell/collab/provider.ts";
+import { CollabTicketError, createCollabProvider, canSaveVersion } from "../src/shell/collab/provider.ts";
 import { colorForUser } from "../src/shell/collab/color.ts";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -146,7 +146,7 @@ test("第一帧是 auth（带票），ready 之前不发任何二进制帧；rea
     assert.equal(fetchTicket.calls.length, 1);
     assert.equal(provider.status, "syncing");
     assert.equal(provider.role, "editor");
-    assert.equal(provider.isSaver, true);
+    assert.equal(canSaveVersion(provider), true);
     assert.equal(provider.roomKey, "artifact:a1");
     assert.deepEqual(provider.self, ME);
     const kinds = socket.binaries().map((b) => parseBinary(b).kind);
@@ -285,10 +285,11 @@ test("控制帧：saver / lock / external_revision / role", async () => {
     let notified = 0;
     provider.subscribe(() => (notified += 1));
     socket.serverText({ type: "saver", is_saver: false });
-    assert.equal(provider.isSaver, false);
+    assert.equal(canSaveVersion(provider), true);
     socket.serverText({ type: "saver", is_saver: true });
-    assert.equal(provider.isSaver, true);
+    assert.equal(canSaveVersion(provider), true);
 
+    assert.equal(notified, 0, "obsolete election announcements do not alter tab save eligibility");
     const lock = { holder: OTHER, mode: "pro", expires_at: new Date(Date.now() + 60000).toISOString() };
     socket.serverText({ type: "lock", lock });
     assert.equal(provider.lock.holder.id, "user-other");
@@ -306,7 +307,8 @@ test("控制帧：saver / lock / external_revision / role", async () => {
 
     socket.serverText({ type: "role", role: "viewer" });
     assert.equal(provider.role, "viewer");
-    assert.ok(notified >= 4);
+    assert.equal(canSaveVersion(provider), false, "viewers cannot save");
+    assert.ok(notified >= 3);
     socket.serverText("not json at all");
     socket.onmessage({ data: "{broken" });
     assert.equal(provider.role, "viewer", "坏帧被忽略");
@@ -393,7 +395,7 @@ test("断线：offline → 退避后重新拿票重连；离线时的本地改�
     assert.equal(provider.status, "connecting");
     s2.serverText({ ...READY, is_saver: false });
     assert.equal(provider.status, "syncing");
-    assert.equal(provider.isSaver, false);
+    assert.equal(canSaveVersion(provider), true);
 
     // 服务端的 step1（它还没有离线内容）→ 客户端 step2 带上离线改动
     const before = s2.binaries().length;
@@ -429,7 +431,7 @@ test("退避：连续失败按 50→100→100→100ms 递增（上限生效；�
     assert.ok(gaps[3] >= 90 && gaps[3] < 300, `gap3（上限）${gaps[3]}`);
     assert.equal(provider.status === "offline" || provider.status === "connecting", true);
     // 没连上过：按单人处理，可以存版本
-    assert.equal(provider.isSaver, true);
+    assert.equal(canSaveVersion(provider), true);
   } finally {
     provider.destroy();
   }
@@ -442,7 +444,7 @@ test("拿票被拒绝（403）→ denied，不再重试；没连上过时按单�
     await sleep(80);
     assert.equal(fetchTicket.calls.length, 1);
     assert.equal(FakeSocket.instances.length, 0);
-    assert.equal(provider.isSaver, true);
+    assert.equal(canSaveVersion(provider), true);
   } finally {
     provider.destroy();
   }
@@ -506,21 +508,17 @@ test("没有任何 iframe/postMessage：provider 只用 WebSocket（静态检查
   assert.equal(/postMessage|iframe|innerHTML|dangerouslySetInnerHTML/.test(src), false);
 });
 
-test('latest collaboration edit waits for a room sync barrier; earlier ack cannot show Saved', async () => {
+test('room updates send only their Yjs update; saving does not add a sync-ack barrier', async () => {
   const {provider,socket}=await connectReady({}, {is_saver:false});
   const server=new Y.Doc();
   try {
     socket.serverBinary(frame(0,e=>syncProtocol.writeSyncStep2(e,server)));
-    assert.equal(provider.hasPendingUpdates,false);
-    provider.doc.getText('text').insert(0,'first');
-    assert.equal(provider.hasPendingUpdates,true);
-    provider.doc.getText('text').insert(5,' latest');
+    assert.equal(canSaveVersion(provider),true);
     const before=socket.binaries().length;
-    socket.serverBinary(frame(0,e=>syncProtocol.writeSyncStep2(e,server)));
-    assert.equal(provider.hasPendingUpdates,true);
-    assert.equal(parseBinary(socket.binaries().at(-1)).kind,'step1');
-    assert.equal(socket.binaries().length,before+1);
-    socket.serverBinary(frame(0,e=>syncProtocol.writeSyncStep2(e,server)));
-    assert.equal(provider.hasPendingUpdates,false);
+    provider.doc.getText('text').insert(0,'first');
+    provider.doc.getText('text').insert(5,' latest');
+    assert.deepEqual(socket.binaries().slice(before).map(parseBinary).map(x=>x.kind),['update','update']);
+    assert.equal(Object.hasOwn(provider,'isSaver'),false);
+    assert.equal(Object.hasOwn(provider,'hasPendingUpdates'),false);
   } finally {provider.destroy();server.destroy();}
 });

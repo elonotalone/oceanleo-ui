@@ -64,7 +64,7 @@ test("种子：写内容 → 清撤销栈 → completeSeed 带上根名，顺序
   assert.equal(RICHDOC_COLLAB_FIELD, "oceanleo:richdoc");
 });
 
-test("保存：非保存者不存；保存者存完告诉房间版本号；不在协同里照旧；没产生新版本不通知", async () => {
+test("保存：每个可编辑标签页都存，存完通知房间；不在协同里照旧；没产生新版本不通知", async () => {
   const marked = [];
   const room = (isSaver, status = "synced") => ({
     isSaver,
@@ -77,17 +77,17 @@ test("保存：非保存者不存；保存者存完告诉房间版本号；不�
     return { revisionId: `rev-${saves}` };
   };
 
-  assert.deepEqual(await saveRichDocWithRoom({ room: room(false), save }), { skipped: true, result: null });
-  assert.equal(saves, 0);
+  assert.equal((await saveRichDocWithRoom({ room: room(false), save })).skipped, false);
+  assert.equal(saves, 1);
 
   const saved = await saveRichDocWithRoom({ room: room(true), save });
   assert.equal(saved.skipped, false);
-  assert.deepEqual(marked, ["rev-1"]);
+  assert.deepEqual(marked, ["rev-1", "rev-2"]);
 
   const solo = await saveRichDocWithRoom({ room: null, save });
   assert.equal(solo.skipped, false);
-  assert.equal(saves, 2);
-  assert.deepEqual(marked, ["rev-1"], "不在协同里不通知房间");
+  assert.equal(saves, 3);
+  assert.deepEqual(marked, ["rev-1", "rev-2"], "不在协同里不通知房间");
 
   const denied = await saveRichDocWithRoom({ room: room(false, "denied"), save });
   assert.equal(denied.skipped, false, "房间被拒绝时按没有协同处理");
@@ -96,7 +96,7 @@ test("保存：非保存者不存；保存者存完告诉房间版本号；不�
   assert.equal(failed.result, null);
   const noRevision = await saveRichDocWithRoom({ room: room(true), save: async () => ({}) });
   assert.deepEqual(noRevision.result, {});
-  assert.deepEqual(marked, ["rev-1"]);
+  assert.deepEqual(marked, ["rev-1", "rev-2"]);
 });
 
 test("外部新版本：读取 → 套进编辑器 → markSaved → 清未保存；只认最后一条；读取失败不动内容", async () => {

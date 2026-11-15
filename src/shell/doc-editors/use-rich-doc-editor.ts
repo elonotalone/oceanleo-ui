@@ -1047,7 +1047,7 @@ export function useRichDocEditor(
   }, [editor, getReviewSidecar]);
   const lastSaveError = useCallback(() => saveErrorRef.current, []);
 
-  /** 协同里只有房间里的保存者存版本，存完告诉房间是哪个版本；不在协同里原样存。 */
+  /** 每个可编辑标签页都能存版本；存完通知房间。 */
   const saveInRoom = useCallback(async (): Promise<PersistedEditorVersion | null> => {
     const room = collabHandlesRef.current ? collabRoomRef.current : null;
     const outcome = await saveRichDocWithRoom({ room, save });

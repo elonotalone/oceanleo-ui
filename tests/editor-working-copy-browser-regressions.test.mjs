@@ -39,10 +39,12 @@ test('VS3: browser-branded timers retain their receiver on failure and retry can
  finally{globalThis.setTimeout=oldSet;globalThis.clearTimeout=oldClear;saver.dispose();}
 });
 
-test('VS4: a non-writer tab never says Saved for a local edit that sent no PUT',async()=>{
- const view=await mount({...input(),recovery:undefined,writer:false,shared:true});
- try{await act(async()=>{recordUserMutation('root');});doc={value:58};await view.update({revision:1,dirty:false});assert.equal(puts.length,0);assert.equal(view.current.state,'error');assert.equal(view.current.conflict,true);assert.equal(view.current.pending,true);assert.match(view.current.errorMessage,/其他标签页|重新加载/);}
- finally{await view.close();}
+test('VS4: a room tab waits for its own PUT acknowledgement even without a local mutation-feed event',async()=>{
+ const {Doc}=await import('yjs');const room={doc:new Doc()};const oldFetch=globalThis.fetch;let release;
+ globalThis.fetch=async(...args)=>{const response=await oldFetch(...args);if(args[1].method==='PUT')await new Promise(r=>release=r);return response;};
+ const view=await mount({...input(),room});
+ try{doc={value:58};await act(async()=>{room.doc.getMap('test').set('value',58);await settle();});assert.equal(puts.length,1);assert.equal(view.current.state,'saving');assert.equal(view.current.pending,true);await act(async()=>{release();await settle();});assert.equal(view.current.state,'saved');assert.equal(view.current.pending,false);}
+ finally{globalThis.fetch=oldFetch;await view.close();room.doc.destroy();}
 });
 
 test('VS4: observing revision before dirty becomes true cannot consume the edit without PUT',async()=>{
@@ -69,7 +71,7 @@ test('VS1: long DOCX publication processes pending input before all paragraph co
  try{setTimeout(()=>{inputRan=true;},0);await tiptapJsonToDocxBlob('Long document',{type:'doc',content:Array.from({length:1500},(_,i)=>({type:'paragraph',content:[{type:'text',text:`Paragraph ${i} `+'coastal review '.repeat(15)}]}))});assert.equal(packed,1);assert.equal(inputAtPack,true,'building the DOCX must yield to editing before ZIP packaging');}finally{for(const [packer,original] of originals)packer.toBlob=original;}
 });
 
-test('VS4: room saver persists a remote edit even though hydration does not increment its local revision',async()=>{
+test('VS4: every room tab persists a remote edit even though hydration does not increment its local revision',async()=>{
  const {Doc}=await import('yjs');const room={doc:new Doc(),isSaver:true};const view=await mount({...input(),room});
  try{doc={value:58};await act(async()=>{room.doc.transact(()=>room.doc.getMap('test').set('value',58),room);await settle();});assert.equal(puts.length,1);assert.equal(puts[0].doc.value,58);assert.equal(view.current.state,'saved');}finally{await view.close();room.doc.destroy();}
 });

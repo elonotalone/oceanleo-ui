@@ -5,6 +5,7 @@ import {createRequire} from 'node:module';
 import {pathToFileURL} from 'node:url';
 import {compileModule,dataModule} from './helpers/module-bench.mjs';
 import {resetBackgroundSaverForTests} from '../src/shell/advanced-background-saver.ts';
+import {createCollabProvider} from '../src/shell/collab/provider.ts';
 const require=createRequire(import.meta.url),fabricRequire=createRequire(require.resolve('fabric/node'));
 const canvas=fabricRequire.resolve('canvas'),previous=require.cache[canvas];
 require.cache[canvas]={id:canvas,filename:canvas,loaded:true,exports:{}};
@@ -20,12 +21,14 @@ const auth=dataModule('export async function accessToken(){return "test-token"}'
 const config=dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid"');
 const hookUrl=await compileModule('src/shell/use-advanced-autosave.ts',{'../lib/auth/client':auth,'../lib/auth/config':config});
 const statusUrl=await compileModule('src/shell/plugin-chrome/PluginChromeStatus.tsx',{'../../i18n/ui/useUI':translation});
-const host=dataModule(`import React from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {PluginChromeStatus} from ${JSON.stringify(statusUrl)};
-export function AdvancedWorkbenchShell({adapter,item}){globalThis.__wcAdapter=adapter;const p=adapter.persistence;const save=useAdvancedAutoSave({key:item.artifactId,writer:p.autoSave!==false,shared:Boolean(adapter.collab?.room),room:adapter.collab?.room,sharedSaveState:p.sharedSaveState,sharedSavePending:p.sharedSavePending,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,item,editorId:'richdoc',session:null});globalThis.__wcSave=save;return React.createElement('div',null,React.createElement(PluginChromeStatus,{state:{kind:save.state,message:save.errorMessage}}),adapter.stage);}`);
+const realRoomHooks=await compileModule('src/shell/collab/use-collab-room.ts',{'../../lib/auth/client':auth,'../../lib/auth/config':config});
+const collab=dataModule(`import React from ${JSON.stringify(reactUrl)};export {useCollabSaveGate,useCollabReadOnly} from ${JSON.stringify(realRoomHooks)};export const RoomContext=React.createContext(null);export const useCollabRoom=()=>React.useContext(RoomContext)??globalThis.__wcRoom??null;`);
+const {RoomContext}=await import(collab);
+const host=dataModule(`import React from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {PluginChromeStatus} from ${JSON.stringify(statusUrl)};import {RoomContext} from ${JSON.stringify(collab)};
+export function AdvancedWorkbenchShell({adapter,item}){globalThis.__wcAdapter=adapter;const p=adapter.persistence;const save=useAdvancedAutoSave({key:item.artifactId,enabled:p.autoSave!==false,room:adapter.collab?.room,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,item,editorId:'richdoc',session:null});globalThis.__wcSave=save;const room=React.useContext(RoomContext);if(room)globalThis.__wcTabs[room.self.id].save=save;return React.createElement('div',null,React.createElement(PluginChromeStatus,{state:{kind:save.state,message:save.errorMessage}}),adapter.stage);}`);
 const docio=dataModule(`export const downloadBlob=()=>{},downloadText=()=>{};export async function loadEditorProject(){return null};export async function saveFileToLibrary(input){globalThis.__wcPublications.push(input.project.data);await globalThis.__wcPublishBarrier;return {ok:true,url:'https://files.invalid/r2.docx',versionId:'v2',artifactId:'root',revisionId:'r2',previousRevisionId:'r1',item:{...input.item,revisionId:'r2',artifact:{...input.item.artifact,revisionId:'r2'},meta:input.item.meta}};}`);
 const editorModelUrl=await compileModule('src/shell/doc-editors/rich-doc-model.ts',{});
 const model=dataModule(`export * from ${JSON.stringify(editorModelUrl)};export async function loadRichDocSource(){return {source:'inline',json:globalThis.__wcInitialDocument??{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Original'}]}]},html:'<p>Original</p>'};}export const preloadRichDocDeliveryWriters=()=>{};`);
-const collab=dataModule('export const useCollabRoom=()=>globalThis.__wcRoom??null,useCollabSaveGate=room=>!room||room.isSaver,useCollabReadOnly=()=>false;');
 const noComponent=dataModule('export const RichDocControls=()=>null,RichDocCommentRail=()=>null,RichDocContextToolbar=()=>null;');
 const pmStubs=Object.fromEntries(['state','model','view','transform'].map(name=>{const key='@tiptap/pm/'+name;const entry=require.resolve(key);const keys=Object.keys(require(key));return [key,dataModule(`import pkg from ${JSON.stringify(pathToFileURL(entry).href)};${keys.filter(k=>/^[a-zA-Z_$][\w$]*$/.test(k)&&k!=='default').map(k=>`export const ${k}=pkg.${k};`).join('')}`)];}));
 const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',{
@@ -39,7 +42,7 @@ const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',
  '../doc-editors/RichDocControls':noComponent,'../doc-editors/RichDocContextToolbar':noComponent,
  '../doc-editors/richdoc-review/RichDocCommentRail':noComponent,
  '../doc-editors/richdoc-review/use-richdoc-review-collab':dataModule('export const useRichDocReviewCollab=()=>{};'),
- '../doc-editors/RichDocStage':dataModule(`import React from ${JSON.stringify(reactUrl)};export const RichDocStage=({editor})=>{globalThis.__wcEditor=editor;return React.createElement('div',{'data-richdoc-stage':true});};`),
+ '../doc-editors/RichDocStage':dataModule(`import React from ${JSON.stringify(reactUrl)};import {RoomContext} from ${JSON.stringify(collab)};export const RichDocStage=({editor})=>{globalThis.__wcEditor=editor;const room=React.useContext(RoomContext);if(room)globalThis.__wcTabs[room.self.id].editor=editor;return React.createElement('div',{'data-richdoc-stage':true});};`),
  '../../lib/im/client':dataModule('export const imEnabledHere=()=>false;'),
  '../useAdvancedSession':dataModule('export const useAdvancedSession=()=>null;'),
  '../workbench-material-provider':dataModule('export const useWorkbenchMaterialAdapter=()=>{};'),
@@ -61,11 +64,11 @@ globalThis.fetch=async(url,init={})=>{
   if(init.method==='PUT'){
    const data=init.headers['Content-Encoding']==='gzip'
     ? await new Response(new Blob([init.body]).stream().pipeThrough(new DecompressionStream('gzip'))).json()
-    : JSON.parse(init.body);copy={...data,seq:(copy?.seq??0)+1,published_seq:0,saved_at:new Date().toISOString()};
-   if(putAck)await putAck;
+    : JSON.parse(init.body);if(data.if_seq!==(copy?.seq??null))return Response.json({ok:false,code:'stale',seq:copy?.seq??0},{status:409});copy={...data,seq:(copy?.seq??0)+1,published_seq:0,saved_at:new Date().toISOString()};
+   const receiptSeq=copy.seq;if(putAck)await putAck;
    if(globalThis.__wcRequestDelay)await delay(globalThis.__wcRequestDelay);
    globalThis.__wcAckObserver?.(data.doc,performance.now());
-   return Response.json({ok:true,seq:copy.seq,saved_at:copy.saved_at,server_ms:20});
+   return Response.json({ok:true,seq:receiptSeq,saved_at:copy.saved_at,server_ms:20});
   }
   return Response.json({ok:true});
  }
@@ -127,10 +130,29 @@ test('VS1 document matrix: 20 isolated edits + 3 bursts, small/40-page native mo
 });
 
 
-test('VS4 REAL RichDoc route: a non-writer local edit stays unsaved without a PUT after room synchronization',async()=>{
- const {Doc}=require('yjs');const {Awareness}=require('y-protocols/awareness');
- const room={doc:new Doc(),isSaver:false,status:'synced',role:'editor',needsSeed:true,self:{id:'peer',name:'Peer',color:'#6366f1'},hasPendingUpdates:false,subscribe:()=>()=>{},completeSeed(){this.needsSeed=false;},onExternalRevision:()=>()=>{},markSaved(){}};
- room.awareness=new Awareness(room.doc);globalThis.__wcRoom=room;copy=null;putAck=null;globalThis.__wcPublishBarrier=undefined;const before=requests.length;let view;
- try{view=await mount();assert.equal(globalThis.__wcEditor.loading,false);assert.equal(globalThis.__wcEditor.editor.isEditable,true);assert.equal(globalThis.__wcSave.conflict,false,'initial room seed is hydration');await act(async()=>{globalThis.__wcEditor.editor.commands.insertContent('VS-R2-check-93');await settle();});assert.ok(globalThis.__wcEditor.editor.getText().includes('VS-R2-check-93'));assert.equal(globalThis.__wcSave.state,'error');assert.equal(globalThis.__wcSave.pending,true);assert.equal(globalThis.__wcSave.conflict,true);assert.equal(requests.slice(before).filter(r=>r[1]==='PUT').length,0);assert.equal((await globalThis.__wcSave.flushLatest()).ok,false);assert.deepEqual(errors,[]);}
- finally{if(view)await view.unmount();delete globalThis.__wcRoom;room.awareness.destroy();room.doc.destroy();}
+for(const pages of [1,40]) for(const existing of [false,true]) test(`VS4 round 4 REAL two-tab RichDoc room: ${pages} pages, ${existing ? "existing" : "fresh"} copy, both tabs PUT their merged state`,async()=>{
+ const Y=require('yjs');
+ const room=id=>{const provider=createCollabProvider({manual:true,doc:new Y.Doc(),roomKey:'artifact:root',fetchTicket:async()=>{throw Error('test transport only');},wsUrl:()=>''});provider.status='synced';provider.role='editor';provider.needsSeed=id==='a';provider.self={id,name:id,color:'#6366f1',avatar_url:null};return provider;};
+ const a=room('a'),b=room('b');
+ const ab=(update,origin)=>{if(origin!==a)Y.applyUpdate(b.doc,update,b);},ba=(update,origin)=>{if(origin!==b)Y.applyUpdate(a.doc,update,a);};a.doc.on('update',ab);b.doc.on('update',ba);
+ globalThis.__wcTabs={a:{},b:{}};globalThis.__wcInitialDocument={type:'doc',content:Array.from({length:pages*20},(_,n)=>({type:'paragraph',content:[{type:'text',text:`Page ${n}: original document. `}]}))};
+ copy=existing?{schema:'oceanleo.richdoc.edit.v1',seq:17,published_seq:0,base_revision_id:'r1',saved_at:new Date().toISOString(),doc:structuredClone(globalThis.__wcInitialDocument)}:null;putAck=null;globalThis.__wcPublishBarrier=undefined;const views=[];
+ const open=async(room)=>{const node=document.createElement('div');document.body.append(node);const root=createRoot(node);views.push({node,root});await act(async()=>{root.render(React.createElement(RoomContext.Provider,{value:room},React.createElement(RichDocRoute,{item,onClose(){}})));await delay(30);});await act(async()=>{await delay(30);});return globalThis.__wcTabs[room.self.id];};
+ try{const first=await open(a),second=await open(b);assert.equal(first.editor.loading,false);assert.equal(second.editor.loading,false);assert.equal(first.editor.editor.getText(),second.editor.editor.getText());
+  const before=requests.length;let release;putAck=new Promise(r=>release=r);
+  await act(async()=>{second.editor.editor.commands.insertContent('VS-R3-check-93');await settle();await delay(20);});
+  assert.ok(second.editor.editor.getText().includes('VS-R3-check-93'));assert.ok(first.editor.editor.getText().includes('VS-R3-check-93'));
+  await act(async()=>{first.editor.editor.commands.insertContent('VS-R3-check-92');await settle();});
+  assert.equal(first.save.state,'saving');
+  assert.equal(second.save.state,'saving','peer must await its own working-copy acknowledgement');assert.equal(second.save.pending,true);assert.equal(second.save.conflict,false);
+  assert.ok(requests.slice(before).filter(r=>r[1]==='PUT').length>=2,'both room adapters own a PUT, including the formerly non-elected tab');
+  await act(async()=>{release();putAck=null;await delay(30);await settle();});
+  const until=performance.now()+2000;while((first.save.state!=='saved'||second.save.state!=='saved')&&performance.now()<until)await act(async()=>{await delay(5);});
+  assert.equal(first.save.state,'saved');assert.equal(second.save.state,'saved');assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-93'));
+  assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-92'));assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-93'));
+  const closed=views.shift();await act(async()=>{closed.root.unmount();await delay(20);});closed.node.remove();
+  await act(async()=>{second.editor.editor.commands.insertContent('VS-R3-check-94');await delay(30);await settle();});
+  const closingUntil=performance.now()+2000;while(second.save.state!=='saved'&&performance.now()<closingUntil)await act(async()=>{await delay(5);});
+  assert.equal(second.save.state,'saved');assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-94'));assert.deepEqual(errors,[]);
+ }finally{putAck=null;for(const view of views){await act(async()=>{view.root.unmount();await delay(20);});view.node.remove();}resetBackgroundSaverForTests();a.doc.off('update',ab);b.doc.off('update',ba);a.destroy();b.destroy();a.doc.destroy();b.doc.destroy();delete globalThis.__wcTabs;delete globalThis.__wcInitialDocument;}
 });

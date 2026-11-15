@@ -82,6 +82,8 @@ interface SaverOptions {
   schema: string;
   baseRevision: string | null;
   baseSavedAt?: number;
+  /** All editable room tabs persist their current merged model. */
+  collaborative?: () => boolean;
   now?: () => number;
   setTimer?: (run: () => void, ms: number) => ReturnType<typeof setTimeout>;
   clearTimer?: (timer: ReturnType<typeof setTimeout>) => void;
@@ -134,9 +136,9 @@ export class WorkingCopySaver {
           const newer = copy.base_revision_id === this.options.baseRevision ||
             !Number.isFinite(this.options.baseSavedAt) || Date.parse(copy.saved_at) > this.options.baseSavedAt!;
           const unpublished = copy.seq > (copy.published_seq ?? 0) && newer;
-          if (unpublished && this.generation > 0) throw new WorkingCopyError(WORKING_COPY_CONFLICT, 409);
+          if (unpublished && copy.schema !== this.options.schema) throw new WorkingCopyError("保存的修改暂时无法读取，请重新载入", 409);
+          if (unpublished && this.generation > 0 && !this.options.collaborative?.()) throw new WorkingCopyError(WORKING_COPY_CONFLICT, 409);
           if (unpublished && this.generation === 0) {
-            if (copy.schema !== this.options.schema) throw new WorkingCopyError("保存的修改暂时无法读取，请重新载入", 409);
             const restored = await this.options.restore(copy.doc, Date.parse(copy.saved_at));
             if (restored === false) throw new Error("保存的修改暂时无法读取，请重新载入");
             this.options.onSaved?.(copy.seq);
@@ -174,6 +176,7 @@ export class WorkingCopySaver {
   private async drain(): Promise<boolean> {
     await this.initialize();
     if (!this.initialized || this.disposed) return false;
+    let conflicts = 0;
     try {
       while (this.acknowledged < this.generation) {
         const target = this.generation;
@@ -182,7 +185,18 @@ export class WorkingCopySaver {
         const doc = await this.options.capture();
         const captureMs = this.now() - captureAt;
         if (doc === null || doc === undefined) throw new Error("保存失败，请重试");
-        const result = await this.options.transport.put(doc, this.view.seq);
+        let result: WorkingCopyReceipt;
+        try { result = await this.options.transport.put(doc, this.view.seq); }
+        catch (error) {
+          if (!(error instanceof WorkingCopyError) || error.status !== 409 || !this.options.collaborative?.() || ++conflicts >= 3) throw error;
+          const copy = await this.options.transport.get();
+          if (copy && copy.schema !== this.options.schema) throw error;
+          this.view = { ...this.view, seq: copy?.seq ?? null };
+          // The room already merged its document. Read only the CAS sequence;
+          // capture again so edits received during GET are included in this PUT.
+          continue;
+        }
+        conflicts = 0;
         if (!result.ok || !Number.isInteger(result.seq)) throw new Error("保存失败，请重试");
         this.view = { ...this.view, seq: result.seq };
         this.acknowledged = target;

@@ -129,14 +129,15 @@ for (const scenario of RECEIPT_CASES) test(`real Inline receipt adoption: ${scen
   }
 });
 
-test('real Inline applies the room writer gate even when an editor advertises autoSave true',async()=>{
- const {createRoot}=await import('react-dom/client');const {Doc}=await import('yjs');const room={doc:new Doc(),isSaver:false,status:'synced'};
+test('real Inline saves an editable room tab regardless of the obsolete election value',async()=>{
+ const {createRoot}=await import('react-dom/client');const {Doc}=await import('yjs');const room={doc:new Doc(),isSaver:false,status:'synced',role:'editor',lock:null,self:{id:'peer'}};
  const item={id:'peer-shell',artifactId:'peer-shell',key:'peer-shell',revisionId:'r1',kind:'image',meta:{}};
- const node=document.createElement('div');document.body.append(node);const root=createRoot(node);
+ const node=document.createElement('div');document.body.append(node);const root=createRoot(node);let puts=0;const oldFetch=globalThis.fetch;
+ globalThis.fetch=async(_url,init)=>{if(init.method==='GET')return new Response('',{status:404});if(init.method==='PUT')puts++;return Response.json({ok:true,seq:1});};
  function Host(){const [revision,change]=React.useState(0);return React.createElement(React.Fragment,null,
   React.createElement('button',{'data-edit-peer':true,onClick(){recordUserMutation('peer-shell');change(n=>n+1);}},'edit'),
   React.createElement(InlineAdvancedWorkbenchShell,{item,onClose(){},adapter:{id:'image',label:'image',stage:React.createElement('div'),collab:{room,artifact:null},persistence:{autoSave:true,dirty:revision>0,editRevision:revision,flush:async()=>({ok:true}),recovery:{ready:true,key:'peer-shell',draftSchema:'test',capture:()=>({revision}),restore:()=>true}}}}));}
- try{await act(async()=>root.render(React.createElement(Host)));await act(async()=>node.querySelector('[data-edit-peer]').click());assert.equal(node.querySelector('[data-save-state]').getAttribute('data-save-state'),'error');assert.match(node.querySelector('[data-save-state]').textContent,/其他标签页|重新加载/);}finally{await act(async()=>{root.unmount();resetBackgroundSaverForTests();});room.doc.destroy();node.remove();resetUserEditSession();}
+ try{await act(async()=>root.render(React.createElement(Host)));await act(async()=>node.querySelector('[data-edit-peer]').click());assert.equal(puts,1);assert.equal(node.querySelector('[data-save-state]').getAttribute('data-save-state'),'saved');}finally{await act(async()=>{root.unmount();resetBackgroundSaverForTests();});globalThis.fetch=oldFetch;room.doc.destroy();node.remove();resetUserEditSession();}
 });
 
 test('VS12: real Inline honors the PDF whole-document lock owner even when room.isSaver is false',async()=>{
