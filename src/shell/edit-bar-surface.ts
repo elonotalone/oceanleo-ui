@@ -10,9 +10,10 @@
 
 import type { CSSProperties } from "react";
 
-/** 控件 28 + 上下内边距 4 + 上下边框 1 = 38。 */
+/** 控件 32 + 上下内边距 4 + 上下边框 1 = 42。 */
 export const EDIT_BAR_PILL_PADDING_PX = 4;
-export const EDIT_BAR_CONTROL_SIZE_PX = 28;
+export const EDIT_BAR_CONTROL_SIZE_PX = 32;
+export const EDIT_BAR_CONTROL_GAP_PX = 4;
 export const EDIT_BAR_BORDER_PX = 1;
 /** 收起态圆形直径。32 + 触屏各向外 4 得到约 40 的可点区。 */
 export const EDIT_BAR_COLLAPSED_SIZE_PX = 32;
@@ -35,7 +36,18 @@ const SURFACE =
   "color-mix(in srgb, var(--pchrome-surface, var(--awb-chrome-bg, var(--card, #ffffff))) 94%, transparent)";
 const LINE =
   "var(--pchrome-line, var(--awb-border, var(--border, #e7e5e4)))";
-const INK = "var(--pchrome-ink, var(--awb-text, var(--fg, #292524)))";
+const INK = "var(--pchrome-ink, var(--awb-text, var(--fg, #17171c)))";
+
+export const EDIT_BAR_INK_CLASS = "text-[var(--pchrome-ink,var(--awb-text,var(--fg,#17171c)))]";
+export const EDIT_BAR_FIELD_CLASS = "rounded-xl border border-[var(--pchrome-line,var(--border,#d6d7df))] bg-transparent";
+
+/** 菜单保留触屏行高，紧凑栏所有入口共享 32px 尺寸与 4px 内间距。 */
+export function editBarControlClass(menu: boolean): string {
+  return `group/control ${menu
+    ? "flex min-h-11 min-w-0 w-full justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left"
+    : `inline-flex h-8 min-w-8 shrink-0 justify-center gap-1 rounded-xl px-2 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`
+  } items-center text-[12px] font-medium ${EDIT_BAR_INK_CLASS} outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35`;
+}
 
 /**
  * 双层阴影 + 内高光：内高光让胶囊在深色主题下有边缘，外阴影让它在浅色画布上
@@ -69,6 +81,7 @@ export function editBarPillStyle(lifted = false): CSSProperties {
     ...editBarSurfaceStyle(lifted),
     borderRadius: 9999,
     padding: EDIT_BAR_PILL_PADDING_PX,
+    gap: EDIT_BAR_CONTROL_GAP_PX,
   };
 }
 
@@ -87,4 +100,4 @@ export const EDIT_BAR_DIVIDER_CLASS =
 
 /** 段内单个图标按钮。圆形 hover 与胶囊外形呼应。 */
 export const EDIT_BAR_BUTTON_CLASS =
-  `grid h-7 w-7 shrink-0 place-items-center rounded-full text-[var(--pchrome-ink-mid,var(--awb-muted,#57534e))] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] hover:text-[var(--pchrome-ink,var(--awb-text,#292524))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;
+  `grid h-8 w-8 shrink-0 place-items-center rounded-full ${EDIT_BAR_INK_CLASS} outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;

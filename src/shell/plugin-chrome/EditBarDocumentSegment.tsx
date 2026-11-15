@@ -7,7 +7,9 @@ import {
   actionGroup,
   type AdvancedWorkbenchAction,
 } from "../advanced-workbench-chrome";
-import { AdvancedEditorIcon, type WorkbenchIconName } from "../AdvancedEditorIcon";
+import type { WorkbenchIconName } from "../AdvancedEditorIcon";
+import { EditBarIcon } from "../EditBarIcon";
+import { EDIT_BAR_CONTROL_SIZE_PX, EDIT_BAR_CONTROL_GAP_PX } from "../edit-bar-surface";
 import { preserveEditBarSelection } from "../edit-bar-selection-preserve";
 
 /**
@@ -63,9 +65,9 @@ export function EditBarDocumentSegment({
             variant="ghost"
             selected={open}
             pill
-            style={{ paddingInline: 6, gap: 6 }}
+            style={{ height: EDIT_BAR_CONTROL_SIZE_PX, minHeight: EDIT_BAR_CONTROL_SIZE_PX, paddingInline: 6, gap: EDIT_BAR_CONTROL_GAP_PX }}
           >
-            <AdvancedEditorIcon name={drawer.icon} className="h-4 w-4" />
+            <EditBarIcon name={drawer.icon} />
             <span>{label}</span>
           </Button>
         );
@@ -108,10 +110,10 @@ export function EditBarDocumentSegment({
             variant={action.variant === "danger" ? "danger" : "ghost"}
             selected={action.variant === "primary"}
             pill
-            style={{ paddingInline: 6, gap: 6 }}
+            style={{ height: EDIT_BAR_CONTROL_SIZE_PX, minHeight: EDIT_BAR_CONTROL_SIZE_PX, paddingInline: 6, gap: EDIT_BAR_CONTROL_GAP_PX }}
           >
             {action.icon ? (
-              <AdvancedEditorIcon name={action.icon} className="h-4 w-4" />
+              <EditBarIcon name={action.icon} />
             ) : null}
             <span>{label}</span>
           </Button>

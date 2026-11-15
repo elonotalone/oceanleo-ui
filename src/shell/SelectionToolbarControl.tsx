@@ -1,15 +1,13 @@
 "use client";
 
-import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
+import type { WorkbenchIconName } from "./AdvancedEditorIcon";
+import { EditBarIcon } from "./EditBarIcon";
 import {
   EDIT_BAR_CANON_OPTIONS,
   type CanonicalSelectionControl,
   type EditBarCanonId,
 } from "./edit-bar-canon";
-import {
-  SelectionToolbarFontFamilyButton,
-  SelectionToolbarFontSizeControl,
-} from "./selection-toolbar-canon-controls";
+import { SelectionToolbarFontFamilyButton } from "./selection-toolbar-canon-controls";
 import { SelectionAnimationGallery } from "./SelectionAnimationGallery";
 import { SelectionToolbarButtonControl } from "./SelectionToolbarButtonControl";
 import { SelectionToolbarNumberControl } from "./SelectionToolbarNumberControl";
@@ -22,8 +20,7 @@ import {
   type SelectionControlValue,
 } from "./selection-context";
 import { selectionControlUsesIconOnly } from "./selection-toolbar-layout";
-import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
-import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
+import { editBarControlClass } from "./edit-bar-surface";
 import { SelectionToolbarSelectControl } from "./SelectionToolbarSelectControl";
 
 /** 下拉规范项：栏上只画随值变化的图标（§4：对齐图标随当前值）。 */
@@ -99,11 +96,9 @@ export function SelectionToolbarControl({
       ...(history ? { history } : {}),
     });
   const icon = control.icon
-    ? <AdvancedEditorIcon name={control.icon} className="h-4 w-4" />
+    ? <EditBarIcon name={control.icon} />
     : null;
-  const buttonClass = menu
-    ? "group/control flex min-h-11 min-w-0 w-full items-center justify-start gap-2 overflow-hidden rounded-lg px-2.5 py-1.5 text-left text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35"
-    : `group/control inline-flex h-7 min-w-7 shrink-0 items-center justify-center gap-1.5 rounded-xl px-2 text-[12px] font-medium text-[var(--fg,#292524)] outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;
+  const buttonClass = editBarControlClass(menu);
 
   if (control.kind === "animation-gallery") {
     return (
@@ -121,10 +116,15 @@ export function SelectionToolbarControl({
   }
 
   const canonId = (control as CanonicalSelectionControl).canonId;
-  if (canonId === "font-size" && control.kind === "number" && !menu) {
+  if ((canonId === "font-size" || control.semantic === "font-size" || control.id === "font-size") &&
+      (control.kind === "number" || control.kind === "select")) {
     return (
-      <SelectionToolbarFontSizeControl
+      <SelectionToolbarNumberControl
         control={control}
+        fontSize
+        menu={menu}
+        iconOnly
+        icon={null}
         emit={emit}
         accent={accent}
         forMeasurement={forMeasurement}

@@ -93,8 +93,8 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   bold: <path d={paths.bold} />,
   border: (
     <>
-      <rect x="4" y="4" width="16" height="16" rx="2" />
-      <path d="M8 8h8v8H8z" />
+      <rect x="4" y="4" width="16" height="16" rx="1" />
+      <path d="M8 8h8v8H8z" strokeDasharray="1 3" />
     </>
   ),
   "bring-forward": (
@@ -106,7 +106,7 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   case: <path d={paths.case} />,
   crop: (
     <>
-      <path d="M7 3v14a2 2 0 002 2h12M3 7h14a2 2 0 012 2v12" />
+      <path d="M6 3v15h15M3 6h15v15" />
     </>
   ),
   color: (
@@ -150,14 +150,14 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   ),
   "flip-horizontal": (
     <>
-      <path d="M12 3v18" strokeDasharray="2 2" />
-      <path d="M4 7l6-3v16l-6-3zM20 7l-6-3v16l6-3z" />
+      <path d="M12 3v18" strokeDasharray="2 3" />
+      <path d="M3 18h5V7zM21 18h-5V7z" />
     </>
   ),
   "flip-vertical": (
     <>
-      <path d="M3 12h18" strokeDasharray="2 2" />
-      <path d="M7 4l-3 6h16l-3-6zM7 20l-3-6h16l-3 6z" />
+      <path d="M3 12h18" strokeDasharray="2 3" />
+      <path d="M6 3v5h11zM6 21v-5h11z" />
     </>
   ),
   font: <path d={paths.font} />,
@@ -204,19 +204,19 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
       <path d="M15 21v-6h6" />
     </>
   ),
-  // 透明度：右半渐疏的圆。旧字形是一滴水，和「颜色」那滴水一眼分不开。
+  // 半实心圆：24px 下用大块面表达透明度，避免密集竖线。
   opacity: (
     <>
       <circle cx="12" cy="12" r="8.5" />
-      <path d="M12 3.5v17M14.8 4v16M17.4 5.6v12.8M19.6 8.4v7.2" />
+      <path d="M12 3.5a8.5 8.5 0 000 17z" fill="currentColor" stroke="none" />
     </>
   ),
-  position: <path d={paths.position} />,
+  position: <><path d={paths.position} /><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" /></>,
   redo: <path d="M18 8l3 3-3 3M21 11h-8a7 7 0 00-7 7M6 5v4H2" />,
   rotate: (
     <>
-      <path d="M20 11a8 8 0 10-2.3 5.7" />
-      <path d="M20 4v7h-7" />
+      <path d="M20 9a8 8 0 10-1 9M20 3v6h-6" />
+      <path d="M10 9h5v6h-5z" />
     </>
   ),
   save: (
@@ -431,17 +431,19 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   "list-ordered": (
     <path d="M10 6.5h10M10 12h10M10 17.5h10M4.6 4.8l1.3-.8v4.6M4.2 8.6h3.2M4.2 14.4a1.5 1.5 0 012.9.5c0 1-2.9 2.3-2.9 3.4h3" />
   ),
-  replace: <path d="M4 8h13M14 4.5L17.5 8 14 11.5M20 16H7M10 12.5L6.5 16l3.5 3.5" />,
+  replace: <><path d="M3 5h15l-3-3M18 5l-3 3M21 19H6l3-3M6 19l3 3" /><rect x="6" y="9" width="12" height="6" rx="1.5" /></>,
   radius: (
     <>
-      <path d="M4 20v-7a9 9 0 019-9h7" />
-      <path d="M4 4h.01M8 4h.01M4 8h.01" />
+      <path d="M4 20V4h16" strokeDasharray="2 3" opacity=".45" />
+      <path d="M4 20v-6A10 10 0 0114 4h6" />
     </>
   ),
   adjust: (
     <>
-      <circle cx="12" cy="12" r="3.6" />
-      <path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7" />
+      <path d="M4 6h7M16 6h4M4 12h2M11 12h9M4 18h9M18 18h2" />
+      <circle cx="13.5" cy="6" r="2.5" />
+      <circle cx="8.5" cy="12" r="2.5" />
+      <circle cx="15.5" cy="18" r="2.5" />
     </>
   ),
   fill: (
@@ -452,7 +454,7 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
     </>
   ),
   // 描边：粗轮廓的圆角方块（三条粗细线在 16px 下像菜单键，弃用）。
-  stroke: <rect x="4.6" y="4.6" width="14.8" height="14.8" rx="4" strokeWidth={3.2} />,
+  stroke: <rect x="4.6" y="4.6" width="14.8" height="14.8" rx="4" />,
   shadow: (
     <>
       <rect x="7.5" y="7.5" width="12.5" height="12.5" rx="2.5" fill="currentColor" stroke="none" opacity=".32" />
@@ -461,9 +463,8 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   ),
   arrange: (
     <>
-      <path d="M3 9.2l6.8-3.4 6.8 3.4-6.8 3.4z" />
-      <path d="M3 13.6L9.8 17l6.8-3.4" />
-      <path d="M20 4.5v15M17.8 6.7L20 4.5l2.2 2.2M17.8 17.3l2.2 2.2 2.2-2.2" />
+      <path d="M3 7l7-4 7 4-7 4zM3 12l7 4 7-4M3 17l7 4 7-4" />
+      <path d="M21 5v14M19 7l2-2 2 2M19 17l2 2 2-2" />
     </>
   ),
   alt: (
@@ -492,7 +493,7 @@ const glyphs: Record<WorkbenchIconName, ReactNode> = {
   ),
   // PDF 基础编辑特有工具（D4）。不借用外壳的关闭「×」。
   "check-mark": <path d="M5 12.5l4.5 4.5L19 7.5" />,
-  "cross-mark": <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" strokeWidth="2.2" />,
+  "cross-mark": <path d="M6.5 6.5l11 11M17.5 6.5l-11 11" />,
   search: (
     <>
       <circle cx="11" cy="11" r="6.5" />
