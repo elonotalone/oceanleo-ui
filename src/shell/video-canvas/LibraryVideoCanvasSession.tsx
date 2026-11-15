@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { ReactFlowProvider } from "@xyflow/react";
+import type { AdvancedContextToolbarHost } from "../advanced-editor-adapter";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { SelectionToolbar } from "../SelectionToolbar";
@@ -50,6 +51,7 @@ function Session(props: Props) {
   const [mediaFailures, setMediaFailures] = useState<string[]>([]);
   const [savedRevision, setSavedRevision] = useState(0);
   const workflowRef = useRef<ReturnType<typeof useCanvasWorkflow>>(null!);
+  const toolbarHost = useRef<AdvancedContextToolbarHost | null>(null);
   const flush = useCallback(async () => {
     if (!lock.mayWrite) return { ok: false as const, error: tt("只能查看，不能修改") };
     const workflow = workflowRef.current;
@@ -86,7 +88,10 @@ function Session(props: Props) {
   }, [base, lock.mayWrite, tt]);
   const onMediaAfterUpload = useRef<(id: string, url: string) => void>(() => undefined);
   const workflow = useCanvasWorkflow({ initialProject, userEditKey: userEditItemKey(item), readOnly: !lock.mayWrite,
-    runtimeUrls, uploadMedia: insertUpload, save: async () => { const result = await flush(); if (!result.ok) throw new Error(result.error); } });
+    runtimeUrls, uploadMedia: insertUpload, openMaterials: () => {
+      if (!toolbarHost.current) throw new Error(tt("请稍后重试"));
+      toolbarHost.current.openDrawer("materials");
+    }, save: async () => { const result = await flush(); if (!result.ok) throw new Error(result.error); } });
   workflowRef.current = workflow;
   const onMedia = useCallback((id: string, url: string) => { setRuntimeUrls(current => current[id] === url ? current : { ...current, [id]: url }); }, []);
   onMediaAfterUpload.current = onMedia;
@@ -133,8 +138,11 @@ function Session(props: Props) {
     drawers: lock.mayWrite ? [{ id: "video-canvas-add-node", label: tt("加节点"), icon: "add",
       content: <div className="grid gap-1 p-3">{WORKFLOW_NATIVE_AGENT_NODE_KINDS.map(kind => <button key={kind} type="button"
         data-node-kind={kind} onClick={() => addNode(kind)} className="rounded-lg px-3 py-2 text-left hover:bg-[var(--surface-hover)]">{tt(videoKindSpec(kind).label)}</button>)}</div> }] : [],
-    contextToolbar: workflow.selectionContext ? <SelectionToolbar context={viewOnlyContext(workflow.selectionContext, !lock.mayWrite, tt)}
-      onCommand={workflow.dispatchSelectionCommand} accent={props.accent} /> : null,
+    renderContextToolbar: host => {
+      toolbarHost.current = host;
+      return workflow.selectionContext ? <SelectionToolbar context={viewOnlyContext(workflow.selectionContext, !lock.mayWrite, tt)}
+        onCommand={workflow.dispatchSelectionCommand} accent={props.accent} /> : null;
+    },
     notices: mediaFailures.length ? [{ id: "video-media-failed", text: tt("素材加载失败"), severity: "warn" }] : [],
     upload: lock.mayWrite ? { accept: "image/*,video/*,audio/*", onFiles: async files => { for (const file of files) await insertUpload(file); } } : undefined,
     stage: <CanvasWorkflow workflow={workflow} pluginTheme={theme} />,

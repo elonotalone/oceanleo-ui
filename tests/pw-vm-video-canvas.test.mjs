@@ -146,3 +146,13 @@ test("one shell owns floating panels, working-copy autosave and all five views",
   assert.doesNotMatch(hook, /host\.writeDoc|CANVAS_AUTOSAVE_MS|beforeunload|postMessage/);
   assert.match(readFileSync("src/shell/use-inline-advanced-panels.tsx", "utf8"), /EditBarFloatingPanel|Floating/);
 });
+
+test("official template parameter views preserve duration, ratio and an explicitly cleared prompt", () => {
+  const source = libraryFixture(); source.versions.head.graph.nodes[1].params.aspectRatio = "9:16";
+  const opened = parseVideoProject(source);
+  const view = effectiveCanvasNode(projectHead(opened).graph.nodes[1]);
+  assert.equal(view.durationSeconds, 4); assert.equal(view.ratio, "9:16");
+  const cleared = updateProjectNode(opened, "shot", "fixture.clear", { prompt: "" });
+  assert.equal(effectiveCanvasNode(projectHead(cleared).graph.nodes[1]).prompt, "");
+  assert.equal(projectHead(cleared).graph.nodes[1].kind, "generate");
+});

@@ -852,7 +852,7 @@ const definitions: CanvasCommandDefinition[] = [
       environment.openMaterialLibrary();
       return {
         message:
-          "Shared material panel opened. Insert and Replace remain command/history operations.",
+          "Shared material panel opened.",
         cost: NO_COST,
       };
     },

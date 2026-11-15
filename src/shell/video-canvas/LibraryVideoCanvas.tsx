@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import dynamic from "next/dynamic";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -20,12 +20,16 @@ const CanvasSession = dynamic(() => import("./LibraryVideoCanvasSession"), { ssr
 export function LibraryVideoCanvas(props: AdvancedContentWorkbenchProps) {
   const tt = useUI();
   const [externalItem, setExternalItem] = useState<LibraryItem | null>(null);
-  const shownItem = externalItem || props.item;
+  const propRoot = String(props.item.artifactId || props.item.key || props.item.id);
+  const shownItem = externalItem && String(externalItem.artifactId || externalItem.key || externalItem.id) === propRoot ? externalItem : props.item;
+  useEffect(() => setExternalItem(null), [propRoot, props.item.revisionId]);
   const lock = useLockedEditCollab({ item: props.item, editorKind: "workflow", onExternalItem: setExternalItem });
-  const [loaded, setLoaded] = useState<{ project: VideoProject; key: string } | null>(null);
+  const [loaded, setLoaded] = useState<{ project: VideoProject; key: string; base: MutableRefObject<LibraryItem> } | null>(null);
   const [error, setError] = useState("");
   const [nonce, setNonce] = useState(0);
-  const base = useRef(shownItem);
+  const sessionBase = useRef<MutableRefObject<LibraryItem> | null>(null);
+  const activeRoot = useRef(propRoot);
+  activeRoot.current = propRoot;
   const ownSaves = useRef(new Set<string>());
   const identity = `${shownItem.artifactId || shownItem.key || shownItem.id}:${shownItem.revisionId || ""}`;
   const root = String(shownItem.artifactId || shownItem.key || shownItem.id);
@@ -33,7 +37,7 @@ export function LibraryVideoCanvas(props: AdvancedContentWorkbenchProps) {
   useEffect(() => {
     if (opened.current.root === root && opened.current.nonce === nonce &&
       (opened.current.identity === identity || ownSaves.current.has(String(shownItem.revisionId)))) {
-      base.current = shownItem;
+      if (sessionBase.current) sessionBase.current.current = shownItem;
       opened.current.identity = identity;
       return;
     }
@@ -54,18 +58,24 @@ export function LibraryVideoCanvas(props: AdvancedContentWorkbenchProps) {
       if (!source.ok) throw new Error(source.error);
       const project = parseVideoProject(pinVideoProjectAssets(source.doc, root, String(shownItem.revisionId)));
       if (cancelled) return;
-      base.current = shownItem;
+      const base = { current: shownItem };
+      sessionBase.current = base;
       opened.current = { root, identity, nonce };
-      setLoaded({ project, key: `${identity}:${nonce}` });
+      setLoaded({ project, key: `${identity}:${nonce}`, base });
     })().catch(caught => { if (!cancelled) setError(caught instanceof Error ? caught.message : String(caught)); });
     return () => { cancelled = true; abort.abort(); };
     // Open identity controls loading; a refreshed signed URL never replaces edits.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root, identity, nonce]);
 
-  if (loaded && !error) return <CanvasSession key={loaded.key} {...props} initialProject={loaded.project}
-    base={base} lock={lock} onCommitted={item => {
-      ownSaves.current.add(String(item.revisionId)); base.current = item;
+  const current = opened.current.root === root && opened.current.nonce === nonce &&
+    (opened.current.identity === identity || ownSaves.current.has(String(shownItem.revisionId)));
+  if (loaded && current && !error) return <CanvasSession key={loaded.key} {...props} initialProject={loaded.project}
+    base={loaded.base} lock={lock} onCommitted={item => {
+      // A background save from an editor that just closed cannot re-open it
+      // or advance another item's CAS baseline.
+      if (activeRoot.current !== item.artifactId || sessionBase.current !== loaded.base) return;
+      ownSaves.current.add(String(item.revisionId)); loaded.base.current = item;
       lock.markSaved(String(item.revisionId)); props.onSavedItem?.(item);
     }} />;
   return <AdvancedWorkbenchShell {...props} adapter={{ id: "video-canvas", label: tt("视频画布"),

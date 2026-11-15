@@ -1,5 +1,6 @@
 "use client";
 
+import { parseVideoProjectDoc } from "../../workflow-carrier/video-project-doc";
 import type { Edge, Node, Viewport, XYPosition } from "@xyflow/react";
 
 export const VIDEO_PROJECT_SCHEMA = "oceanleo.video.project.v2" as const;
@@ -566,8 +567,13 @@ function head(project: VideoProject): ProjectVersion {
 export function effectiveCanvasNode(node: CanvasNodeDefinition): CanvasNodeDefinition {
   const kind = String(node.kind) === "prompt" ? "script"
     : String(node.kind) === "generate" ? "video" : node.kind;
-  const params = (node as CanvasNodeDefinition & { params?: Partial<CanvasNodeDefinition> }).params || {};
-  return { ...params, ...node, kind, localEditRecipe: node.localEditRecipe || [] };
+  const params = (node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {};
+  const ratio = node.ratio ?? params.ratio ?? params.aspectRatio;
+  const duration = node.durationSeconds ?? params.durationSeconds ?? (typeof params.durationMs === "number" ? params.durationMs / 1000 : undefined);
+  return { ...params, ...node, kind, localEditRecipe: node.localEditRecipe || [],
+    ...(["16:9", "9:16", "1:1"].includes(String(ratio)) ? { ratio: ratio as CanvasNodeDefinition["ratio"] } : {}),
+    ...(typeof duration === "number" && Number.isFinite(duration) ? { durationSeconds: duration } : {}),
+  };
 }
 
 export function projectHead(project: VideoProject): ProjectVersion {
@@ -2035,8 +2041,8 @@ function normalizeProjectVersions(project: VideoProject): void {
     version.graph.nodes.forEach((node, index) => {
       if (!Array.isArray(node.localEditRecipe)) node.localEditRecipe = [];
       const official = node as CanvasNodeDefinition & { params?: Record<string, unknown> };
-      if (!node.text && typeof official.params?.text === "string") node.text = official.params.text;
-      if (!node.prompt && typeof official.params?.prompt === "string") node.prompt = official.params.prompt;
+      if (node.text === undefined && typeof official.params?.text === "string") node.text = official.params.text;
+      if (node.prompt === undefined && typeof official.params?.prompt === "string") node.prompt = official.params.prompt;
       if (!node.position || !Number.isFinite(node.position.x) || !Number.isFinite(node.position.y)) {
         fail(path(`graph.nodes[${index}].position`), "缺失或坐标无效");
       }
@@ -2125,6 +2131,8 @@ export function parseVideoProject(input: unknown): VideoProject {
       throw new Error("Project JSON is invalid.");
     }
   }
+  const structural = parseVideoProjectDoc(value);
+  if (!structural.ok) throw new Error(structural.error);
   const project = objectRecord(value);
   if (
     !project ||

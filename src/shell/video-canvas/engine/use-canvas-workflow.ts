@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n";
 import { canvasExecutionAvailable, EXECUTION_UNAVAILABLE_MESSAGE, type CanvasProviderProgress } from "./canvas-gateway";
 import { CANVAS_COMMAND_REGISTRY, NODE_MENU_CAPABILITIES, commandAvailability, commandDisclosure, executeCanvasCommand, newCommandRequestId, type CanvasCommandAvailability, type CanvasCommandEnvironment, type CanvasCommandRequest, type CanvasCommandResult, type CanvasCommandStatus, type CanvasCommandSurface, type NodeMenuEntryId } from "./command-registry";
-import { effectiveCanvasNode, CANVAS_EDGE_LIMIT, compareProjectVersions, projectPreviewAtCurrentHead, projectHead, projectProjection, projectToFlow, replaceProjectGraph, stableId, updateProjectNode, workspaceViewForNodeKind, type CanvasEdgeDefinition, type CanvasFlowEdge, type CanvasFlowNode, type CanvasNodeDefinition, type CanvasWorkspaceView, type ProjectVersionComparison, type V1MigrationReport, type VideoProject } from "./project-model";
+import { effectiveCanvasNode, CANVAS_EDGE_LIMIT, compareProjectVersions, projectPreviewAtCurrentHead, projectHead, projectProjection, projectToFlow, replaceProjectGraph, stableId, updateProjectNode, workspaceViewForNodeKind, type CanvasEdgeDefinition, type CanvasFlowEdge, type CanvasFlowNode, type CanvasNodeDefinition, type CanvasWorkspaceView, type ProjectVersionComparison, type VideoProject } from "./project-model";
 import type { CanvasMenuPoint } from "./CanvasCreateMenu";
 import { canvasSelectionContext, canvasSelectionDispatch } from "./canvas-selection-adapter";
 import { WorkflowGraphHistory, workflowHistoryActionForCommand } from "./workflow-graph-history";
@@ -58,6 +58,7 @@ export interface LibraryCanvasSession {
   save: () => Promise<void>;
   runtimeUrls?: Record<string, string>;
   uploadMedia: (file: File) => Promise<boolean>;
+  openMaterials: () => void;
 }
 
 export function useCanvasWorkflow(session: LibraryCanvasSession) {
@@ -80,7 +81,6 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     useState<"retouch" | "generate">(initialImageMode);
   const [workspaceView, setWorkspaceView] =
     useState<CanvasWorkspaceView>("graph");
-  const [materialLibraryOpen, setMaterialLibraryOpen] = useState(false);
   const [mediaUploadRequest, setMediaUploadRequest] = useState(0);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [status, setStatus] = useState(
@@ -121,8 +121,6 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
       missingContract: "GET /v1/video-canvas/capabilities",
       reason: "Checking durable video capability…",
     });
-  const [migrationReport, setMigrationReport] =
-    useState<V1MigrationReport | null>(null);
   const projectRef = useRef(project);
   const workflowHistoryRef = useRef<WorkflowGraphHistory | null>(null);
   if (!workflowHistoryRef.current) {
@@ -361,9 +359,8 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     getWorkspaceView: () => workspaceView,
     setWorkspaceView: (view) => {
       setWorkspaceView(view);
-      setMaterialLibraryOpen(false);
     },
-    openMaterialLibrary: () => setMaterialLibraryOpen(true),
+    openMaterialLibrary: () => sessionRef.current.openMaterials(),
     requestMediaUpload: () => setMediaUploadRequest((value) => value + 1),
     getDurableVideoCapability: () => durableCapability,
     getCommandSignal: (requestId) =>
@@ -837,9 +834,7 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     setPositionOverrides({});
     setSelectedNodeId(null);
     setWorkspaceView("graph");
-    setMaterialLibraryOpen(false);
     setDirty(false);
-    setMigrationReport(null);
     viewportRef.current = projectHead(next).graph.viewport;
     window.requestAnimationFrame(() => {
       if (viewportRef.current) {
@@ -1022,7 +1017,6 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
       );
       if (!node) return;
       setSelectedNodeId(nodeId);
-      setMaterialLibraryOpen(false);
       setWorkspaceView(workspaceViewForNodeKind(node.kind));
     },
     [setSelectedNodeId],
@@ -1111,12 +1105,9 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     commandResults,
     availability,
     executionDegraded,
-    migrationReport,
     menuPoint,
-    materialLibraryOpen,
     mediaUploadRequest,
     closeCreateMenu: () => setMenuPoint(null),
-    closeMaterialLibrary: () => setMaterialLibraryOpen(false),
     openCreateMenu,
     createFromMenu,
     dropCreate,
