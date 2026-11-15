@@ -328,7 +328,9 @@ const SM_ALLOWED_FILES = [
  *   · 单个文件的点位数不许变多（`FILE_BUDGET`）；
  *   · `sm`/`md` 只许出现在 `SM_ALLOWED_FILES` 里。
  */
-const PENDING_HIT_TARGET = 98;
+const PENDING_HIT_TARGET = 93;
+// 历史基线另有本次移除的旧编辑器 5 处，当前树不再为它们保留预算。
+const REMOVED_HIT_TARGETS = 5;
 
 /**
  * `_COMMON.md §7b⑪` / `W33 R5`：上面那个 98 是在**哪一棵树**上量的。
@@ -377,7 +379,6 @@ const FILE_BUDGET = new Map([
   ["src/pages/GeneralPage.tsx", 1],
   ["src/pages/MyDatabasePage.tsx", 1],
   ["src/pages/PageHeader.tsx", 1],
-  ["src/shell/AdvancedStructuredEditors.tsx", 1],
   ["src/shell/AdvancedWorkbenchStage.tsx", 1],
   ["src/shell/AgentChat.tsx", 1],
   ["src/shell/AgentHiringPolicyPanel.tsx", 2],
@@ -406,7 +407,6 @@ const FILE_BUDGET = new Map([
   ["src/shell/doc-editors/DeckControls.tsx", 2],
   ["src/shell/doc-editors/DeckCreationPanels.tsx", 3],
   ["src/shell/doc-editors/DeckElementSelectionChrome.tsx", 7],
-  ["src/shell/doc-editors/DeckSlideRail.tsx", 1],
   ["src/shell/doc-editors/DeckStage.tsx", 1],
   ["src/shell/image-editor/FabricImageCreationPanels.tsx", 3],
   ["src/shell/media-editors/AudioWorkbenchView.tsx", 1],
@@ -419,8 +419,6 @@ const FILE_BUDGET = new Map([
   ["src/shell/result-canvas-view.tsx", 1],
   ["src/shell/selection-inspector-host.tsx", 1],
   ["src/shell/share/ShareActionBar.tsx", 1],
-  ["src/shell/vector-editor/VectorContextToolbar.tsx", 1],
-  ["src/shell/video-editor/ClipInspector.tsx", 2],
   // 操作员 2026-09-24：P10「按钮变高了」——CLI 设置面板改回当天放大之前的尺寸；
   // P11「编辑栏矮三分之一」——编辑栏上这两枚跟同条其它控件一样收到 28，
   // 触屏靠 EDIT_BAR_TOUCH_EXTEND_CLASS 扩点。
@@ -510,7 +508,7 @@ test("基线自检：PENDING_HIT_TARGET 的 98 是在 BASELINE_COMMIT 那棵干�
   );
   assert.equal(
     measured.value.total,
-    PENDING_HIT_TARGET,
+    PENDING_HIT_TARGET + REMOVED_HIT_TARGETS,
     `PENDING_HIT_TARGET 写的是 ${PENDING_HIT_TARGET}，但 ${BASELINE_COMMIT} 的`
       + `**干净检出**上用同一套扫描器实测 ${measured.value.total} 处。\n`
       + "两种可能：(a) 这个数是在脏工作树上量的——那就换一棵干净树重量；\n"

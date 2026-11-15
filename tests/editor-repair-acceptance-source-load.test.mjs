@@ -230,28 +230,6 @@ test("pdf loader refuses a missing source instead of opening blank", async () =>
   );
 });
 
-test("vector empty SVG stays empty; a real SVG hydrates", async () => {
-  const { loadVectorSource } = await import(
-    "../src/shell/vector-editor/vector-source.ts"
-  );
-  const emptyVector = loadVectorSource({ svg: "" });
-  assert.equal(emptyVector.state, "empty");
-  assert.equal(emptyVector.project, null);
-
-  const validVector = loadVectorSource({
-    svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 10"><rect width="8" height="8" fill="#111"/><circle cx="15" cy="5" r="4" fill="#c00"/></svg>',
-  });
-  assert.notEqual(validVector.state, "empty");
-  assert.notEqual(validVector.state, "invalid");
-  assert.ok(
-    validVector.project ||
-      ["parsed", "sanitized", "tokenized", "ready", "flattened-only"].includes(
-        validVector.state,
-      ),
-    `valid SVG must hydrate, got state=${validVector.state}`,
-  );
-});
-
 test("deck and image loaders fail closed on empty source bytes", async () => {
   const { deckDeliveryUrlFor } = await import(
     await compileModule("src/shell/doc-editors/use-deck-editor.ts", {

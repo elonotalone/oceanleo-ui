@@ -9,7 +9,7 @@ import {
 /**
  * Rail thumbnail paint. Prefer a single light-DOM geometry host from
  * DeckPreviewLayout (shadow-isolated). This component fills that host; when
- * used alone (legacy DeckSlideRail) it still exposes one aspect surface.
+ * used alone it still exposes one aspect surface.
  */
 export function DeckMiniSlide({
   slide,

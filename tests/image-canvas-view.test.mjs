@@ -63,11 +63,6 @@ test("点了必须真切：从结构到皮肤，状态档位要变", () => {
   assert.deepEqual(route, planned, "入口必须把 planEditorModeSwitch 的 route 原样交还");
 });
 
-test("ImageCanvasViewSwitch 点击只走 applyCanvasViewClick", () => {
-  const switchSrc = readFileSync("src/shell/image-editor/ImageCanvasViewSwitch.tsx", "utf8");
-  assert.match(switchSrc, /applyCanvasViewClick\(state, choice\.mode, document\)/);
-});
-
 test("ImageRoute does not mount the 结构/皮肤 switch", () => {
   const route = readFileSync("src/shell/advanced-routes/ImageRoute.tsx", "utf8");
   assert.doesNotMatch(route, /<ImageCanvasViewSwitch/);
@@ -117,9 +112,6 @@ test("a side-panel resize preserves the scene center and uniform custom zoom", (
 
 test("zoom widgets flatten to a 40px surface while keeping 44px controls", () => {
   const stage = readFileSync("src/shell/AdvancedStageControls.tsx", "utf8");
-  const viewSwitch = readFileSync("src/shell/image-editor/ImageCanvasViewSwitch.tsx", "utf8");
   assert.match(stage, /data-advanced-viewport-controls[\s\S]*?className="[^"]*h-10/);
   assert.match(stage, /className="h-11 w-24/);
-  assert.match(viewSwitch, /data-canvas-view-switch-placement="stage-bottom-right"[\s\S]*?className="[^"]*h-10/);
-  assert.match(viewSwitch, /className=\{\s*choice\.pressed[\s\S]*?"h-11 rounded-xl/);
 });

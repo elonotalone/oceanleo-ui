@@ -29,35 +29,14 @@ import {
   serializeGridIrProject,
   validateGridIrProject,
 } from "../src/shell/doc-editors/grid-model.ts";
-import {
-  GRID_FORMULA_MAX_LENGTH,
-  GRID_FORMULA_REJECTION_CODES,
-  GRID_FORMULA_WHITELIST,
-  GRID_IRR_MAX_ITERATIONS,
-  GRID_NONDETERMINISTIC_FUNCTIONS,
-  GridFormulaRejection,
-  assertGridFormulaAllowed,
-  evaluateGridCell,
-  evaluateGridCellTyped,
-  inspectGridFormula,
-  isGridFormulaFunctionAllowed,
-} from "../src/shell/doc-editors/grid-formula.ts";
-import {
-  GRID_ILLEGAL_TRANSITIONS,
-  GRID_XLSX_MEDIA_TYPE,
-  buildGridXlsxParts,
-  isLegalGridTransition,
-  judgeGridCompleteness,
-  proveGridIsNotDeadTable,
-  runGridEmitPipeline,
-  zipGridXlsxParts,
-} from "../src/shell/doc-editors/GridWorkbookExport.ts";
+import { GRID_FORMULA_MAX_LENGTH, GRID_FORMULA_REJECTION_CODES, GRID_FORMULA_WHITELIST, GRID_NONDETERMINISTIC_FUNCTIONS, GridFormulaRejection, assertGridFormulaAllowed, evaluateGridCell, evaluateGridCellTyped, inspectGridFormula, isGridFormulaFunctionAllowed } from "../src/shell/doc-editors/grid-formula.ts";
 import {
   GRID_EDITOR_CAPABILITY,
   GRID_SOURCE_FORMAT,
   GRID_SOURCE_MEDIA_TYPE,
 } from "../src/shell/doc-editors/grid-shared.ts";
 import { GRID_LEGACY_PROJECT_SCHEMA } from "../src/shell/doc-editors/grid-univer/legacy-conversion.ts";
+import { GRID_XLSX_MIME } from "../src/shell/doc-editors/grid-univer/xlsx-export.ts";
 const source = (relative) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
@@ -172,8 +151,6 @@ const HOLLOW_IR = {
   attribution: { entries: [] },
 };
 
-/* ------------------------------ C-1 四元组 ------------------------------ */
-
 test("C-1 落库四元组与 §1.1 逐字相同", () => {
   assert.equal(GRID_SOURCE_FORMAT, "xlsx");
   assert.equal(
@@ -184,7 +161,7 @@ test("C-1 落库四元组与 §1.1 逐字相同", () => {
   assert.equal(GRID_PROJECT_SCHEMA, "oceanleo.grid.v1");
   assert.equal(GRID_IR_SCHEMA, "oceanleo.grid.v1");
   assert.equal(GRID_IR_VERSION, 1);
-  assert.equal(GRID_XLSX_MEDIA_TYPE, GRID_SOURCE_MEDIA_TYPE);
+  assert.equal(GRID_XLSX_MIME, GRID_SOURCE_MEDIA_TYPE);
   assert.match(GRID_EDITOR_SOURCE, /artifactType:\s*"grid"/);
   assert.match(GRID_EDITOR_SOURCE, /editor_capability:\s*GRID_EDITOR_CAPABILITY/);
   // `adapter` 是舞台侧的字段：§1.1 的 adapter = grid 由 GridUniverStage
@@ -331,109 +308,6 @@ test("C-2 非 JSON 与不合规 IR 都是带 code 的受控失败", () => {
       error instanceof GridIrParseError &&
       error.code === "grid-ir-invalid" &&
       error.errors.length > 0,
-  );
-});
-
-/* ---------------------------- C-3 状态机 ------------------------------- */
-
-test("C-3 ready 路径按 §3.2 逐个迁移，且不触碰任何非法迁移", () => {
-  const result = runGridEmitPipeline(carrierFixture());
-  assert.equal(
-    result.state,
-    "ready",
-    `${result.state}: ${JSON.stringify(result.issues.slice(0, 4))}`,
-  );
-  assert.deepEqual(
-    result.transitions.map((entry) => `${entry.from}→${entry.to}`),
-    [
-      "empty→ir-validated",
-      "ir-validated→formula-linked",
-      "formula-linked→computed",
-      "computed→emitted",
-      "emitted→ready",
-    ],
-  );
-  for (const transition of result.transitions) {
-    assert.ok(
-      isLegalGridTransition(transition.from, transition.to),
-      `${transition.from}→${transition.to} 不是 §3.2 的合法迁移`,
-    );
-    assert.ok(
-      !GRID_ILLEGAL_TRANSITIONS.some(
-        (illegal) =>
-          illegal[0] === transition.from && illegal[1] === transition.to,
-      ),
-      `发生了非法迁移 ${transition.from}→${transition.to}`,
-    );
-  }
-});
-
-test("C-3 五条非法迁移在迁移表里都不成立", () => {
-  assert.equal(GRID_ILLEGAL_TRANSITIONS.length, 5);
-  for (const [from, to] of GRID_ILLEGAL_TRANSITIONS) {
-    assert.equal(
-      isLegalGridTransition(from, to),
-      false,
-      `${from}→${to} 必须是非法迁移`,
-    );
-  }
-});
-
-test("C-3 empty → invalid：空壳 IR 走不到 ir-validated", () => {
-  const result = runGridEmitPipeline(HOLLOW_IR);
-  assert.equal(result.state, "invalid");
-  assert.deepEqual(
-    result.transitions.map((entry) => `${entry.from}→${entry.to}`),
-    ["empty→invalid"],
-  );
-  assert.equal(result.xlsxBytes, undefined, "invalid 不得产出字节");
-});
-
-test("C-3 ir-validated → invalid：引用不存在的工作表（§3.2）", () => {
-  const project = carrierFixture();
-  // IR 本身合规（`Sheet!A1` 形状对），坏的是工作表不在本工作簿里，所以只能在
-  // 链接期被拦，不能被 §3.1 结构校验挡掉 —— 这正是 §3.2 那条迁移的语义。
-  assert.equal(validateGridIrProject(project).ok, true);
-  project.sheets[2].rows[0][1] = { f: "不存在的表!B62" };
-  const result = runGridEmitPipeline(project);
-  assert.equal(result.state, "invalid");
-  assert.ok(
-    result.issues.some((issue) => issue.code === "grid-formula-unknown-sheet"),
-    JSON.stringify(result.issues.slice(0, 3)),
-  );
-  assert.equal(result.computed, undefined, "链接失败 MUST NOT 求值");
-  assert.equal(result.xlsxBytes, undefined, "链接失败 MUST NOT 产出字节");
-});
-
-test("C-3 formula-linked → cyclic 并打印环上完整地址序列（§6 F4）", () => {
-  const project = carrierFixture();
-  // 利息 → 净利 → 现金 → 债务 → 利息 的闭环，直接写成互相引用。
-  project.sheets[2].rows[0][1] = { f: "B4" };
-  project.sheets[2].rows[2][1] = { f: "B2-B3" };
-  const result = runGridEmitPipeline(project);
-  assert.equal(result.state, "cyclic");
-  assert.ok(Array.isArray(result.cycle) && result.cycle.length >= 2);
-  assert.ok(
-    result.cycle.every((address) => /^[^!]+![A-Z]+\d+$/.test(address)),
-    `环上地址必须是完整单元格地址：${JSON.stringify(result.cycle)}`,
-  );
-  assert.ok(result.issues.some((issue) => issue.code === "grid-cyclic-reference"));
-  assert.equal(result.computed, undefined, "cyclic MUST NOT 求值");
-  assert.equal(result.xlsxBytes, undefined, "cyclic MUST NOT 当作可用");
-});
-
-test("C-3 除零与错误值不进交付物（§5.3 / §6 F5）", () => {
-  const project = carrierFixture();
-  project.sheets[2].rows[3][1] = { f: "B4/C4" };
-  const result = runGridEmitPipeline(project);
-  assert.equal(result.state, "invalid");
-  assert.ok(
-    result.issues.some(
-      (issue) =>
-        issue.code === GRID_FORMULA_REJECTION_CODES.unguardedDivision ||
-        issue.code === "grid-formula-error-value",
-    ),
-    JSON.stringify(result.issues.slice(0, 3)),
   );
 });
 
@@ -809,22 +683,6 @@ test("C-4 白名单外的函数在求值侧也是错误值而非猜测", () => {
   assert.equal(evaluateGridCell(rows, 0, 0), "#NAME?");
 });
 
-test("C-4 §5.4 确定性：同一工程重复求值得到同一结果", () => {
-  const first = runGridEmitPipeline(carrierFixture());
-  const second = runGridEmitPipeline(carrierFixture());
-  assert.equal(first.state, "ready");
-  assert.equal(
-    serializeGridIrProject(first.computed),
-    serializeGridIrProject(second.computed),
-  );
-  assert.deepEqual(
-    Array.from(first.xlsxBytes),
-    Array.from(second.xlsxBytes),
-    "同一输入必须产出同一字节（§6 F7 靠字节比对）",
-  );
-  assert.equal(GRID_IRR_MAX_ITERATIONS, GRID_CONSTANTS.C26_irrMaxIterations);
-});
-
 /* ----------------------------- C-5 数值 ------------------------------- */
 
 test("C-5 §4 常量表 C1–C38 逐值照规格", () => {
@@ -980,267 +838,6 @@ test("C-5 §7 A7 静态预算越界即拒", () => {
   }
 });
 
-/* ---------------------------- C-6 完备性 ------------------------------- */
-
-test("C-6 §8.2 每条判据都能单独把产物判不合格", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  assert.equal(ready.state, "ready");
-  assert.equal(ready.completeness.ok, true);
-  assert.ok(ready.completeness.cellCount >= GRID_CONSTANTS.C8_minCellCount);
-  assert.ok(ready.completeness.formulaCells >= GRID_CONSTANTS.C9_minFormulaCells);
-  assert.ok(
-    ready.completeness.formulaRatioPercent >=
-      GRID_CONSTANTS.C10_minFormulaRatioPercent,
-  );
-  assert.equal(
-    ready.completeness.cachedFormulaCells,
-    ready.completeness.formulaCells,
-    "每个 <f> 都必须配 <v>（§8.2 100%）",
-  );
-  assert.ok(ready.completeness.totalRows >= 1);
-
-  const deadTable = {
-    ...carrierFixture(),
-    sheets: [
-      {
-        name: "静态表",
-        headerRow: true,
-        columns: [
-          { name: "项目", type: "text" },
-          { name: "金额", type: "currency" },
-        ],
-        rows: [
-          ["收入", 100],
-          ["成本", 60],
-          ["税费", 8],
-          ["合计", 32],
-        ],
-        emphasisRows: [{ index: 3, kind: "total" }],
-      },
-    ],
-    namedRanges: [],
-  };
-  const dead = judgeGridCompleteness(deadTable);
-  assert.equal(dead.ok, false);
-  assert.ok(
-    dead.failures.some((failure) => failure.code === "grid-dead-table"),
-    "全静态数值的表必须被判为死表（§6 F2）",
-  );
-
-  const noCache = carrierFixture();
-  const noCacheJudged = judgeGridCompleteness(noCache);
-  assert.equal(noCacheJudged.ok, false);
-  assert.ok(
-    noCacheJudged.failures.some((failure) => failure.code === "grid-missing-cache"),
-    "未重算的工程缺缓存值，必须在 §8.2 被判不合格（§6 F3）",
-  );
-
-  const noTotal = { ...ready.computed, sheets: ready.computed.sheets.map((sheet) => ({ ...sheet, emphasisRows: [] })) };
-  assert.ok(
-    judgeGridCompleteness(noTotal).failures.some(
-      (failure) => failure.code === "grid-no-total-row",
-    ),
-  );
-  const noAttribution = { ...ready.computed, attribution: { entries: [] } };
-  assert.ok(
-    judgeGridCompleteness(noAttribution).failures.some(
-      (failure) => failure.code === "grid-no-attribution",
-    ),
-  );
-  const shortTitle = { ...ready.computed, title: "表格" };
-  assert.ok(
-    judgeGridCompleteness(shortTitle).failures.some(
-      (failure) => failure.code === "grid-title-too-short",
-    ),
-  );
-});
-
-test("C-6 §6 F1 空壳：194–199 B 的 IR 被 grid-hollow 拒绝", () => {
-  const bytes = new TextEncoder().encode(JSON.stringify(HOLLOW_IR)).length;
-  assert.ok(bytes < GRID_IR_MIN_BYTES, `空壳只有 ${bytes} B`);
-  const judged = judgeGridCompleteness(HOLLOW_IR);
-  assert.equal(judged.ok, false);
-  assert.ok(judged.failures.some((failure) => failure.code === "grid-hollow"));
-  assert.equal(runGridEmitPipeline(HOLLOW_IR).state, "invalid");
-});
-
-test("C-6 §8.1 两侧字节下限都可判，只满足一侧不算通过", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  assert.equal(ready.state, "ready");
-  assert.ok(
-    ready.irBytes >= GRID_IR_MIN_BYTES,
-    `IR ${ready.irBytes} B < ${GRID_IR_MIN_BYTES} B`,
-  );
-  assert.ok(ready.irBytes <= GRID_IR_MAX_BYTES);
-  assert.ok(
-    ready.xlsxBytes.length >= GRID_XLSX_MIN_BYTES,
-    `xlsx ${ready.xlsxBytes.length} B < ${GRID_XLSX_MIN_BYTES} B`,
-  );
-  assert.ok(ready.xlsxBytes.length <= GRID_XLSX_MAX_BYTES);
-
-  // A workbook that is structurally complete but too small on the xlsx side
-  // still fails: §1.2 forbids putting a floor on only one of the two forms.
-  // The thin sheet has to be self-contained — a cross-sheet reference left
-  // dangling would trip the link stage first and never reach the byte floor.
-  const thin = carrierFixture();
-  thin.sheets = [detailSheet("营收明细", 6, 120_000)];
-  thin.namedRanges = [];
-  const thinResult = runGridEmitPipeline(thin);
-  // §8.2 is judged on the computed project — cache values only exist after the
-  // compute stage — so the completeness verdict is read off the pipeline.
-  assert.deepEqual(
-    thinResult.completeness.failures,
-    [],
-    "thin fixture 必须先过 §8.2 完备判据，才能证明字节下限是独立可判的",
-  );
-  assert.equal(thinResult.liveness.ok, true);
-  assert.equal(thinResult.state, "invalid");
-  const floor = thinResult.issues.find((issue) => issue.code === "grid-hollow");
-  assert.ok(floor, JSON.stringify(thinResult.issues.slice(0, 3)));
-  assert.match(floor.message, /^xlsx \d+ B 不在/);
-});
-
-test("C-6 §5.1「不是死表」有可执行判据：改数字必须联动", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  const proof = proveGridIsNotDeadTable(ready.computed);
-  assert.equal(proof.ok, true, `惰性单元格：${proof.inertCells.slice(0, 5)}`);
-  assert.ok(proof.probes.length >= 100, `只探测了 ${proof.probes.length} 个数值输入`);
-  assert.deepEqual(proof.inertCells, []);
-  for (const probe of proof.probes) {
-    assert.ok(
-      probe.changedFormulas.length >= 1,
-      `${probe.address} 改动后没有任何公式缓存值变化`,
-    );
-  }
-
-  // 反例：把公式换成静态值后，同一判据必须判不通过。
-  const frozen = {
-    ...ready.computed,
-    sheets: ready.computed.sheets.map((sheet) => ({
-      ...sheet,
-      rows: sheet.rows.map((row) =>
-        row.map((cell) =>
-          cell !== null && typeof cell === "object" ? (cell.v ?? 0) : cell,
-        ),
-      ),
-    })),
-  };
-  const frozenProof = proveGridIsNotDeadTable(frozen);
-  assert.equal(frozenProof.ok, false);
-  assert.ok(frozenProof.inertCells.length > 0);
-});
-
-/* --------------------------- C-7 断言 A1–A12 --------------------------- */
-
-test("C-7 A3/A4 字节区间与 A5 重算联动", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  // A3: xlsx 字节介于 12288 与 52428800。
-  assert.ok(
-    ready.xlsxBytes.length > 12288 && ready.xlsxBytes.length < 52428800,
-  );
-  // A4: IR 字节介于 3072 与 2097152。
-  assert.ok(ready.irBytes > 3072 && ready.irBytes < 2097152);
-  // A5: 记录全部公式缓存值 → 改一个非公式单元格 → 重算联动。
-  const before = ready.computed.sheets[0].rows.at(-1)[1].v;
-  const mutated = structuredClone(ready.computed);
-  mutated.sheets[0].rows[0][1] = Number(mutated.sheets[0].rows[0][1]) + 50_000;
-  const after = runGridEmitPipeline(mutated);
-  assert.equal(after.state, "ready");
-  assert.equal(after.computed.sheets[0].rows.at(-1)[1].v, before + 50_000);
-});
-
-test("C-7 A9 下载物带署名：docProps 与署名工作表两处都有", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  const byName = Object.fromEntries(
-    ready.parts.map((part) => [part.name, part.data]),
-  );
-  // ECMA-376 core properties 没有 dc:rights，所以许可走 custom.xml。
-  assert.ok(!/dc:rights/.test(byName["docProps/core.xml"]));
-  assert.match(byName["docProps/core.xml"], /<dc:title>华东三区/);
-  assert.match(byName["docProps/core.xml"], /CC0-1\.0/);
-  assert.match(byName["docProps/custom.xml"], /name="License"/);
-  assert.match(byName["docProps/custom.xml"], /name="LicenseUrl"/);
-  assert.match(byName["docProps/custom.xml"], /creativecommons\.org/);
-  // 署名工作表：sheets 只有 3 张，未触 C2 上限，所以必须追加。
-  const attributionSheet = byName["xl/worksheets/sheet4.xml"];
-  assert.ok(attributionSheet, "缺少署名工作表");
-  assert.match(attributionSheet, /营收与成本口径参考公开年报披露格式/);
-  assert.match(ready.parts[6].data, /署名/);
-});
-
-test("C-7 A9 每个写出的 part 都有 Content_Types Override 与 rels 关系", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  const names = ready.parts.map((part) => part.name);
-  const contentTypes = ready.parts.find(
-    (part) => part.name === "[Content_Types].xml",
-  ).data;
-  const packageRels = ready.parts.find((part) => part.name === "_rels/.rels").data;
-  const workbookRels = ready.parts.find(
-    (part) => part.name === "xl/_rels/workbook.xml.rels",
-  ).data;
-  for (const name of names) {
-    if (name === "[Content_Types].xml" || name.includes("_rels/")) continue;
-    assert.ok(
-      contentTypes.includes(`PartName="/${name}"`),
-      `${name} 没有 Content_Types Override —— 孤儿 part 会让 Excel 弹修复提示`,
-    );
-  }
-  for (const part of ["docProps/core.xml", "docProps/app.xml", "docProps/custom.xml"]) {
-    assert.ok(packageRels.includes(`Target="${part}"`), `${part} 没有 rels 关系`);
-  }
-  for (const name of names.filter((entry) => entry.startsWith("xl/worksheets/"))) {
-    assert.ok(
-      workbookRels.includes(`Target="${name.replace("xl/", "")}"`),
-      `${name} 没有挂到 workbook.xml.rels`,
-    );
-  }
-  assert.ok(workbookRels.includes('Target="styles.xml"'));
-  assert.ok(contentTypes.includes('PartName="/xl/styles.xml"'));
-});
-
-test("C-7 A2 §1.2 第二种字节形态：xlsx 能被表格编辑器载回", async () => {
-  const { loadGridFile } = await import("../src/shell/doc-editors/grid-model.ts");
-  const ready = runGridEmitPipeline(carrierFixture());
-  const file = new File([ready.xlsxBytes], "carrier.xlsx", {
-    type: GRID_XLSX_MEDIA_TYPE,
-  });
-  const sheets = await loadGridFile(file);
-  assert.deepEqual(
-    sheets.map((sheet) => sheet.name),
-    ["营收明细", "成本明细", "Summary", "署名"],
-  );
-  // 公式与缓存值都要回来：只有 <f> 没有 <v> 就是 §6 F3。
-  const summary = sheets[2];
-  assert.match(summary.rows[3][1], /^=B2-B3$/);
-  const detail = sheets[0];
-  assert.match(detail.rows.at(-1)[1], /^=SUM\(B2:B61\)$/);
-  assert.equal(detail.formats["1:1"].type, "currency");
-});
-
-test("C-7 A6 首个工作表渲得出内容：非空且色彩数 ≥ 12", () => {
-  const ready = runGridEmitPipeline(carrierFixture());
-  const sheetXml = ready.parts.find(
-    (part) => part.name === "xl/worksheets/sheet1.xml",
-  ).data;
-  // 抓帧要真机渲染，此处判可渲染的前置条件:表头冻结、列宽、样式索引齐全。
-  assert.match(sheetXml, /<pane xSplit="1" ySplit="1" topLeftCell="B2"/);
-  assert.match(sheetXml, /<col min="1" max="1" width="25"/);
-  assert.match(sheetXml, /t="inlineStr"/);
-  assert.match(sheetXml, /<f>SUM\(B2:B61\)<\/f><v>/);
-  const styles = ready.parts.find((part) => part.name === "xl/styles.xml").data;
-  const colours = new Set(styles.match(/rgb="FF[0-9A-F]{6}"/g) || []);
-  assert.ok(
-    colours.size >= GRID_CONSTANTS.C36_minFrameColours / 2,
-    `样式里只有 ${colours.size} 种颜色，抓帧不可能达到 12 种`,
-  );
-  assert.ok(styles.includes(`FF${GRID_PALETTE.headerFill.slice(1)}`));
-  assert.ok(styles.includes(`FF${GRID_PALETTE.zebra.slice(1)}`));
-  assert.ok(styles.includes(`FF${GRID_PALETTE.border.slice(1)}`));
-  assert.ok(styles.includes(`FF${GRID_PALETTE.total.slice(1)}`));
-  assert.ok(styles.includes(`FF${GRID_PALETTE.negative.slice(1)}`));
-  assert.ok(styles.includes(`FF${GRID_PALETTE.formula.slice(1)}`));
-});
-
 test("C-7 A8 attribution 三字段齐全且许可可搬", () => {
   const project = carrierFixture();
   for (const entry of project.attribution.entries) {
@@ -1251,33 +848,6 @@ test("C-7 A8 attribution 三字段齐全且许可可搬", () => {
   const relative = carrierFixture();
   relative.attribution.entries[0].licenseUrl = "/licenses/cc0";
   assert.equal(validateGridIrProject(relative).ok, false);
-});
-
-test("C-7 §2.4 负值不得只用颜色表达", () => {
-  const project = carrierFixture();
-  project.sheets[2].rows[2][1] = -1234.5;
-  const parts = buildGridXlsxParts(project);
-  const styles = parts.find((part) => part.name === "xl/styles.xml").data;
-  const summary = parts.find(
-    (part) => part.name === "xl/worksheets/sheet3.xml",
-  ).data;
-  // 负号本身写在 <v> 里，颜色只是附加线索。
-  assert.match(summary, /<v>-1234\.5<\/v>/);
-  assert.ok(styles.includes(`FF${GRID_PALETTE.negative.slice(1)}`));
-});
-
-test("C-7 A1/A10/A11/A12 的承担层记录在案", () => {
-  // 这四条要落库后的只读 SQL 或全语料两两比对才成立，编辑器侧只能保证输入面:
-  // A1 四元组由 GridUniverStage 的 save() 钉死（见 C-1）；
-  // A10 需要 platform_assets 的 source + oss_key 查询（后端 W2 / V1）；
-  // A11/A12 需要同族与全语料 Jaccard（6 号批产侧）。
-  const ready = runGridEmitPipeline(carrierFixture());
-  assert.equal(ready.state, "ready");
-  assert.equal(GRID_CONSTANTS.C37_maxFamilyJaccard, 0.85);
-  assert.equal(GRID_CONSTANTS.C38_twinThreshold, 0.99);
-  // 字节确定性是 A11/A12 相似度比对的前置条件。
-  const again = zipGridXlsxParts(buildGridXlsxParts(ready.computed));
-  assert.deepEqual(Array.from(again), Array.from(ready.xlsxBytes));
 });
 
 test("CSV fetched by URL is decoded as UTF-8, not guessed as CP1252", async () => {

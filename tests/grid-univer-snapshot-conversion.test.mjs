@@ -372,11 +372,10 @@ test("导出：公式和算好的值同时在时，必须带走公式，不能�
 });
 
 test("导出：xlsx 打开后公式还在，不是写死的数字", async () => {
-  const sheets = univerSnapshotToGridSheets(liveUniverWorkbook());
-  const { buildGridRouteWorkbookBlob } = await import(
-    "../src/shell/doc-editors/GridWorkbookExport.ts"
+  const { buildGridXlsxFromUniverSnapshot } = await import(
+    "../src/shell/doc-editors/grid-univer/xlsx-export.ts"
   );
-  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: false });
+  const { blob } = await buildGridXlsxFromUniverSnapshot(liveUniverWorkbook());
   const imported = await import("exceljs");
   const ExcelJS = "Workbook" in imported ? imported : imported.default;
   const workbook = new ExcelJS.Workbook();
@@ -441,11 +440,10 @@ test("导出：合并区域要进 GridSheet，exceljs 才能合并格子", () =>
 });
 
 test("导出：xlsx 里的表名、合并、数字格式跟活快照一致", async () => {
-  const sheets = univerSnapshotToGridSheets(liveUniverWorkbook());
-  const { buildGridRouteWorkbookBlob } = await import(
-    "../src/shell/doc-editors/GridWorkbookExport.ts"
+  const { buildGridXlsxFromUniverSnapshot } = await import(
+    "../src/shell/doc-editors/grid-univer/xlsx-export.ts"
   );
-  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: false });
+  const { blob } = await buildGridXlsxFromUniverSnapshot(liveUniverWorkbook());
   const imported = await import("exceljs");
   const ExcelJS = "Workbook" in imported ? imported : imported.default;
   const workbook = new ExcelJS.Workbook();
@@ -463,11 +461,11 @@ test("导出：xlsx 里的表名、合并、数字格式跟活快照一致", asy
   assert.equal(summary.getCell("C1").alignment.horizontal, "center");
 });
 
-async function openRouteXlsx(sheets) {
-  const { buildGridRouteWorkbookBlob } = await import(
-    "../src/shell/doc-editors/GridWorkbookExport.ts"
+async function openRouteXlsx(snapshot) {
+  const { buildGridXlsxFromUniverSnapshot } = await import(
+    "../src/shell/doc-editors/grid-univer/xlsx-export.ts"
   );
-  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: false });
+  const { blob } = await buildGridXlsxFromUniverSnapshot(snapshot);
   const imported = await import("exceljs");
   const ExcelJS = "Workbook" in imported ? imported : imported.default;
   const workbook = new ExcelJS.Workbook();
@@ -545,7 +543,7 @@ test("导出：xlsx 打开后条件格式还在，金额 > 100 仍是一条规�
   const sheets = univerSnapshotToGridSheets(
     salesWorkbookWithCf(JSON.stringify({ s1: [greaterThanCfRule()] })),
   );
-  const workbook = await openRouteXlsx(sheets);
+  const workbook = await openRouteXlsx(salesWorkbookWithCf(JSON.stringify({ s1: [greaterThanCfRule()] })));
   const ws = workbook.getWorksheet("销售");
   assert.ok(ws, "导出的工作簿里必须有用户起的表名「销售」");
   const cfs = ws.conditionalFormattings || [];
@@ -561,33 +559,6 @@ test("导出：xlsx 打开后条件格式还在，金额 > 100 仍是一条规�
   const formulae = rule.formulae || [];
   assert.equal(String(formulae[0]), "100");
   assert.notEqual(ws.getCell("B1").value, undefined);
-});
-
-test("导出：GridSheet 上已有五操作符规则时，exceljs 链也必须写进 xlsx", async () => {
-  const sheets = [
-    sheet({
-      name: "销售",
-      rows: [["金额", "250"]],
-      conditionalFormats: [
-        {
-          id: "c1",
-          range: { firstRow: 0, lastRow: 9, firstCol: 1, lastCol: 1 },
-          operator: "greater-than",
-          value: "100",
-          background: "#ffebe9",
-          color: "#cf222e",
-          bold: true,
-        },
-      ],
-    }),
-  ];
-  const workbook = await openRouteXlsx(sheets);
-  const ws = workbook.getWorksheet("销售");
-  assert.equal(
-    (ws.conditionalFormattings || []).length,
-    1,
-    "即便跳过 snapshot 映射、直接把规则填进 GridSheet，新核这条 exceljs 链也要把规则写进文件。",
-  );
 });
 
 test("导出：xlsx 打开后「包含」规则还在，不是写丢", async () => {
@@ -612,7 +583,7 @@ test("导出：xlsx 打开后「包含」规则还在，不是写丢", async () 
   const sheets = univerSnapshotToGridSheets(snap, notes);
   assert.equal(sheets[0].conditionalFormats[0].operator, "contains");
   assert.equal(sheets[0].conditionalFormats[0].value, "逾期");
-  const workbook = await openRouteXlsx(sheets);
+  const workbook = await openRouteXlsx(snap);
   const rule = (workbook.getWorksheet("销售").conditionalFormattings || [])[0]
     ?.rules?.[0];
   assert.equal(rule?.type, "containsText");
@@ -646,7 +617,7 @@ test("导出：xlsx 打开后「不等于」仍是相对引用，整片不会跟
   const sheets = univerSnapshotToGridSheets(snap, notes);
   assert.equal(sheets[0].conditionalFormats[0].operator, "not-equal");
   assert.equal(sheets[0].conditionalFormats[0].value, "100");
-  const workbook = await openRouteXlsx(sheets);
+  const workbook = await openRouteXlsx(snap);
   const ws = workbook.getWorksheet("销售");
   const cfs = ws.conditionalFormattings || [];
   assert.equal(
@@ -756,8 +727,7 @@ test("导出：往下拖的从格只有 si、没有公式串，必须展开成�
 });
 
 test("导出：xlsx 打开后从格还是公式，不是写死的数字", async () => {
-  const sheets = univerSnapshotToGridSheets(sharedFormulaWorkbook());
-  const workbook = await openRouteXlsx(sheets);
+  const workbook = await openRouteXlsx(sharedFormulaWorkbook());
   const ws = workbook.getWorksheet("销售");
   const formulaOf = (addr) => {
     const value = ws.getCell(addr).value;
@@ -826,15 +796,14 @@ test("导出：格子只有富文本 p、没有 v 时，字必须还在，不能
 });
 
 test("导出：xlsx 打开后只有 p 的格子不是空的", async () => {
-  const sheets = univerSnapshotToGridSheets(richTextWorkbook());
-  const workbook = await openRouteXlsx(sheets);
+  const workbook = await openRouteXlsx(richTextWorkbook());
   const ws = workbook.getWorksheet("销售");
   assert.equal(
-    ws.getCell("A1").value,
+    ws.getCell("A1").text,
     "加粗标题",
     "用户打开导出的 xlsx，A1 必须还有字。切掉 getPlainText 只会留下空格。",
   );
   assert.notEqual(ws.getCell("A1").value, null);
   assert.notEqual(ws.getCell("A1").value, "");
-  assert.equal(ws.getCell("A2").value, "纯值标题");
+  assert.equal(ws.getCell("A2").text, "加粗标题", "现用导出器保留富文本正文，优先于缓存 v");
 });

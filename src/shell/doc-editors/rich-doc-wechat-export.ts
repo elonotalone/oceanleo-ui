@@ -9,7 +9,7 @@
  * `#42b983`、正文 16px / 1.75、引用左边线）手写进字符串。
  */
 
-import type { TiptapMark, TiptapNode } from "./rich-doc-umo-migration";
+import type { TiptapMark, TiptapNode } from "./rich-doc-tiptap-types";
 
 export const WECHAT_EXPORT_FORMAT = "doocs.md.wechat.v1";
 

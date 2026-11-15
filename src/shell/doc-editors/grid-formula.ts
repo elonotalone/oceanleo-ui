@@ -181,8 +181,7 @@ export type GridVolatileFunction = (typeof GRID_VOLATILE_FUNCTIONS)[number];
 
 /**
  * @deprecated Use {@link GRID_VOLATILE_FUNCTIONS}. Kept as an alias because
- * `GridWorkbookExport.ts` and `tests/grid-carrier-contract.test.mjs` import the
- * old name, and neither is this task's to edit.
+ * `tests/grid-carrier-contract.test.mjs` still checks the legacy carrier contract.
  */
 export const GRID_NONDETERMINISTIC_FUNCTIONS = GRID_VOLATILE_FUNCTIONS;
 
@@ -442,7 +441,7 @@ function cellPosition(reference: string): { row: number; col: number } {
   return { row: Number(match[2]) - 1, col: columnIndex(match[1]) };
 }
 
-/** A1 reference parser exposed for the linker in `GridWorkbookExport`. */
+/** A1 reference parser shared by workbook formula consumers. */
 export function parseGridReference(
   reference: string,
 ): { row: number; col: number } | null {

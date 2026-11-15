@@ -31,9 +31,9 @@ test("nothing under src imports waveform-playlist or the audio hosted frame", ()
   ];
   const hits = [];
   for (const file of files) {
-    // w10-editor-mounts / editor-core-flags / client-editor-adapters registry
+    // w10-editor-mounts / client-editor-adapters registry
     // belong to W01; their stale audio entries are tracked in the W02 delivery.
-    if (/w10-editor-mounts|editor-core-flags|client-editor-adapters/.test(file)) continue;
+    if (/w10-editor-mounts|client-editor-adapters/.test(file)) continue;
     const text = readFileSync(file, "utf8");
     for (const pattern of banned) {
       if (pattern.test(text)) hits.push(`${file}: ${pattern}`);

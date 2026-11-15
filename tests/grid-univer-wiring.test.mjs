@@ -19,10 +19,6 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import {
-  DEFAULT_EDITOR_CORE,
-  resolveEditorCore,
-} from "../src/shell/editor-core-flags.ts";
 import { DEFAULT_EDITOR_MODE } from "../src/shell/hosted-editor/index.ts";
 import {
   gridAgentChipsAreValid,
@@ -61,9 +57,6 @@ const leafCode = leaf
   .replace(/\/\/.*$/gm, "");
 
 test("路由只剩一条路：懒加载 Univer 叶子，不判 flag、不留旧核", () => {
-  // grid 已翻 flag（台账 defaultChoice），路由不再自己判核。
-  assert.equal(resolveEditorCore("grid"), "next");
-  assert.equal(DEFAULT_EDITOR_CORE, "legacy", "全局默认仍 legacy，只有 grid 翻了");
   assert.doesNotMatch(routeCode, /resolveEditorCore/);
   assert.doesNotMatch(routeCode, /renderGridNextOrLegacy|GridLegacy|GridStage|useGridEditor/);
   assert.match(route, /export async function loadGridUniverStage/);

@@ -102,17 +102,6 @@ test("R06 点名的通用页、数据库卡片、表格输入和开关恢复紧�
   assert.match(generalClass, /(?:^| )w-11(?: |$)/);
   assert.doesNotMatch(generalClass, /(?:^| )(?:h-11|w-14)(?: |$)/);
 
-  const sheet = await staticRender("src/shell/AdvancedStructuredEditors.tsx", "SheetWorkbenchCanvas", {
-    editor: { rows: [["A1"]], setCell() {} },
-  }, {
-    "../lib/database": dataModule("export async function uploadFile(){return {ok:false}} export async function saveCreations(){return {ok:false}}"),
-    "../i18n/ui/useUI": uiStub,
-    "./Markdown": dataModule("export function Markdown(){return null}"),
-  });
-  const sheetClass = classes(sheet, "input");
-  assert.match(sheetClass, /(?:^| )h-9(?: |$)/);
-  assert.doesNotMatch(sheetClass, /(?:^| )h-11(?: |$)/);
-
   const panel = await staticRender("src/shell/AgentHiringPolicyPanel.tsx", "AgentHiringPolicyPanel", {}, {
     "../i18n/ui/useUI": uiStub,
     "../lib/money": dataModule("export function useLedgerCurrency(){return 'USD'} export function formatFen(v){return String(v)}"),

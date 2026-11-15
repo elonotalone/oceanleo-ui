@@ -1,15 +1,4 @@
-// ============================================================================
-// L0 专业模式开关 + 双核 flag 的判据（W01 判据 3/4，editor-core-swap）
-//
-// 锁的是两条产品承诺，不是实现细节：
-//   1. **默认普通模式**（R3）：没存过就是 normal；开关点一次记住，按用户 × 编辑器分开记。
-//   2. **默认旧核**（§10 第 3 条）：全局默认 legacy；本波不换核的那几件翻了也没用。
-//      例外按件写在台账 `defaultChoice`：grid 自 2026-09-07（core-swap:delete grid）
-//      起默认 next，其余 12 件仍 legacy。
-//
-// 反面验证见 verdicts/W01-delivery.md：把默认档改成 pro / next，这里当场红。
-// 注释里不举任何真实 CSS 类名（_COMMON §7b⑧：判据文件会被 Tailwind 扫进产物）。
-// ============================================================================
+// 普通 / 专业模式的持久化与可用性判据。
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
@@ -21,15 +10,6 @@ import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 import { PRO_PAGE_EDITORS } from "../src/shell/plugin-chrome/plugin-pages.ts";
-import {
-  DEFAULT_EDITOR_CORE,
-  EDITOR_CORE_IDS,
-  EDITOR_CORE_SPECS,
-  editorCoreDefault,
-  editorSwapsCore,
-  resolveEditorCore,
-  setEditorCoreOverride,
-} from "../src/shell/editor-core-flags.ts";
 
 // localStorage 的最小替身：本文件只验读写与默认档，不需要真 DOM。
 function installStorage() {
@@ -47,119 +27,6 @@ function installStorage() {
 
 beforeEach(() => {
   delete globalThis.window;
-});
-
-// ─── 判据 4：双核 flag ──────────────────────────────────────────────────────
-
-test("九件编辑器每件一个 flag；grid 默认 next，其余八件默认 legacy", () => {
-  assert.equal(DEFAULT_EDITOR_CORE, "legacy", "全局默认档仍是 legacy");
-  assert.equal(EDITOR_CORE_IDS.length, 9, "11 件，一件不少（图表已删，设计画布并入图片）");
-  // 2026-09-07 core-swap:delete grid：自研旧表格已删，grid 无覆盖时必须是 next——
-  // 默认 legacy 就是渲染一个不存在的组件。签字写在台账那一行，不是改全局常量。
-  assert.equal(EDITOR_CORE_SPECS.grid.defaultChoice, "next", "台账 grid 行没写 defaultChoice");
-  assert.equal(editorCoreDefault("grid"), "next");
-  assert.equal(resolveEditorCore("grid"), "next", "grid 无覆盖时必须是 next");
-  const others = EDITOR_CORE_IDS.filter((id) => id !== "grid");
-  assert.equal(others.length, 8);
-  for (const id of others) {
-    assert.equal(EDITOR_CORE_SPECS[id].defaultChoice, undefined, `${id} 不该翻 flag`);
-    assert.equal(resolveEditorCore(id), "legacy", id);
-  }
-});
-
-test("grid 的 next 默认只是默认：本地覆盖仍能压回 legacy 档位值（flag 机制未被绕开）", () => {
-  installStorage();
-  assert.equal(resolveEditorCore("grid"), "next", "没存过就是台账默认");
-  assert.equal(resolveEditorCore("grid", "legacy"), "legacy", "显式入参最高");
-  setEditorCoreOverride("grid", "legacy");
-  assert.equal(resolveEditorCore("grid"), "legacy", "本地覆盖生效");
-  setEditorCoreOverride("grid", null);
-  assert.equal(resolveEditorCore("grid"), "next", "清掉覆盖回台账默认，不是回全局 legacy");
-});
-
-test("台账每件都指得回一个 owner 与一个接法", () => {
-  for (const id of EDITOR_CORE_IDS) {
-    const spec = EDITOR_CORE_SPECS[id];
-    assert.match(spec.owner, /^W\d\d$/, `${id} owner`);
-    assert.ok(
-      ["native", "hosted", "none"].includes(spec.hosting),
-      `${id} hosting`,
-    );
-    // 不换核的件必须显式写 null + hosting none，不许留半截状态。
-    if (spec.nextCore === null) {
-      assert.equal(spec.hosting, "none", `${id} 不换核就不该有接法`);
-    } else {
-      assert.notEqual(spec.hosting, "none", `${id} 换核就必须有接法`);
-    }
-  }
-});
-
-test("本波不换核的件恒为 legacy —— 翻 flag 也没用", () => {
-  const noSwap = EDITOR_CORE_IDS.filter((id) => !editorSwapsCore(id));
-  assert.ok(noSwap.length > 0, "至少有一件本波不换核（否则这条判据在空转）");
-  for (const id of noSwap) {
-    // 显式入参是最高优先级，连它都压不动 —— 因为没有新核可去，
-    // 翻了只会渲染一个不存在的组件。
-    assert.equal(resolveEditorCore(id, "next"), "legacy", id);
-    installStorage();
-    setEditorCoreOverride(id, "next");
-    assert.equal(resolveEditorCore(id), "legacy", `${id} 本地覆盖也压不动`);
-  }
-});
-
-test("换核的件：显式入参 > 本地覆盖 > 默认", () => {
-  const swap = EDITOR_CORE_IDS.filter((id) => editorSwapsCore(id));
-  assert.ok(swap.length >= 5, "仍换核的件应有 6 件（grid/image/pdf/richdoc/audio/website）");
-  // 取一件台账默认仍是 legacy 的（grid 已翻 next，另有专门一例）。
-  const id = swap.find((each) => editorCoreDefault(each) === "legacy");
-  assert.ok(id, "换核且默认 legacy 的件一件都没有，这条在空转");
-
-  assert.equal(resolveEditorCore(id), "legacy", "没存过就是默认档");
-  assert.equal(resolveEditorCore(id, "next"), "next", "显式入参生效");
-
-  installStorage();
-  setEditorCoreOverride(id, "next");
-  assert.equal(resolveEditorCore(id), "next", "本地覆盖生效");
-  assert.equal(
-    resolveEditorCore(id, "legacy"),
-    "legacy",
-    "显式入参压过本地覆盖",
-  );
-  setEditorCoreOverride(id, null);
-  assert.equal(resolveEditorCore(id), "legacy", "清掉覆盖回默认档");
-});
-
-test("非法档位不生效，回默认档（不是抛错，也不是当成 next）", () => {
-  const id = EDITOR_CORE_IDS.find(
-    (each) => editorSwapsCore(each) && editorCoreDefault(each) === "legacy",
-  );
-  const map = installStorage();
-  map.set(`oceanleo.editor-core.${id}`, "NEXT");
-  assert.equal(resolveEditorCore(id), "legacy");
-  map.set(`oceanleo.editor-core.${id}`, "");
-  assert.equal(resolveEditorCore(id), "legacy");
-});
-
-test("localStorage 抛异常时不炸，按默认档走", () => {
-  globalThis.window = {
-    localStorage: {
-      getItem() {
-        throw new Error("私密模式");
-      },
-      setItem() {
-        throw new Error("私密模式");
-      },
-      removeItem() {
-        throw new Error("私密模式");
-      },
-    },
-    addEventListener() {},
-  };
-  const id = EDITOR_CORE_IDS.find(
-    (each) => editorSwapsCore(each) && editorCoreDefault(each) === "legacy",
-  );
-  assert.equal(resolveEditorCore(id), "legacy");
-  assert.doesNotThrow(() => setEditorCoreOverride(id, "next"));
 });
 
 // ─── 判据 3：L0 专业模式开关的持久化 ────────────────────────────────────────
@@ -753,7 +620,6 @@ const CONCEAL_CLASS_TOKENS = new Set([
   "max-w-0",
   "max-h-0",
 ]);
-const FLEX_NO_SHRINK_TOKEN = "shrink-0";
 
 function classTokenSet(node) {
   const raw = node?.getAttribute?.("class") || "";
@@ -783,14 +649,6 @@ function concealmentOnAncestors(toggle, header) {
     node = node.parentElement;
   }
   return null;
-}
-
-function flexChildHolding(header, node) {
-  let current = node;
-  while (current.parentElement && current.parentElement !== header) {
-    current = current.parentElement;
-  }
-  return current;
 }
 
 function libraryItemFor(adapterId) {

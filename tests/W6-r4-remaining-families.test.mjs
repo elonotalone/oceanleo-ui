@@ -8,22 +8,9 @@ import test from "node:test";
 import { PDFDocument } from "pdf-lib";
 
 import { inspectPdf, rotatePdfPage } from "../src/shell/media-editors/pdf-operations.ts";
-import {
-  audioSourcePersistenceAdmitted,
-  model3dSourcePersistenceAdmitted,
-  pdfSourcePersistenceAdmitted,
-} from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
+import { audioSourcePersistenceAdmitted, pdfSourcePersistenceAdmitted } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
 import { audioCommandDefinitions } from "../src/shell/media-editors/audio-command-surface.ts";
 import { keepWindowsAfterCut } from "../src/shell/media-editors/audio-transcript.ts";
-import {
-  applyModel3DNextControl,
-  defaultModel3DNextView,
-} from "../src/shell/media-editors/model3d-next-plan.ts";
-import {
-  MODEL3D_NEXT_PROJECT_SCHEMA,
-  inspectModel3DProject,
-} from "../src/shell/media-editors/model3d-next-conversion.ts";
-import { inspectGltfDocument } from "../src/shell/media-editors/model3d-gltf-roundtrip.mjs";
 import { parseVideoProjectEnvelope } from "../src/shell/media-editors/source-integrity.mjs";
 import {
   addClipToTrack,
@@ -103,54 +90,6 @@ test("audio: stored project with source is admitted; cut windows serialize; no c
     { start: 0, end: 2 },
     { start: 4, end: 10 },
   ]);
-});
-
-test("threed: stored next project hydrates; toolbar background mutates and reopens", () => {
-  const project = {
-    schema: MODEL3D_NEXT_PROJECT_SCHEMA,
-    data: {
-      provenance: { sourceUrl: "https://files.example.test/model.glb" },
-    },
-  };
-  const loaded = inspectModel3DProject(project);
-  assert.equal(loaded.hasSource, true);
-  assert.equal(loaded.kind === "next" || loaded.kind === "unknown", true);
-  assert.equal(
-    model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: true }).ok,
-    true,
-  );
-  assert.equal(
-    model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: false }).ok,
-    false,
-  );
-
-  const gltf = {
-    asset: { version: "2.0", generator: "oceanleo-test" },
-    scenes: [{ nodes: [0] }],
-    nodes: [{ name: "Body", translation: [0, 1, 0] }],
-    meshes: [{ name: "BodyMesh", primitives: [{}] }],
-    materials: [{ name: "Paint", pbrMetallicRoughness: { baseColorFactor: [1, 0, 0, 1] } }],
-  };
-  const inspect = inspectGltfDocument(gltf);
-  assert.equal(inspect.nodeNames[0], "Body");
-
-  const view = defaultModel3DNextView();
-  const edited = applyModel3DNextControl(view, {
-    controlId: "background",
-    value: "#112233",
-    selectionId: "active-model",
-  });
-  assert.equal(edited.background, "#112233");
-  assert.notEqual(edited.revision, view.revision);
-  const committed = stubCommit(JSON.stringify({ ...project, view: edited }));
-  const reopened = JSON.parse(committed.payload);
-  assert.equal(reopened.view.background, "#112233");
-  const restored = applyModel3DNextControl(reopened.view, {
-    controlId: "azimuth",
-    value: 45,
-    selectionId: "active-model",
-  });
-  assert.equal(restored.azimuth, 45);
 });
 
 test("video-timeline: stored envelope loads, clip text mutates, reopen restores", () => {

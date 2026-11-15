@@ -18,26 +18,24 @@ test("deck source failure cannot be described or handed off as a blank draft", (
   assert.match(route, /editor\.sourceFailed/);
   // 源读取失败时舞台是失败面板（带重载），不是一张可编辑的空白稿。
   assert.match(route, /editor\.sourceFailed \? \(\s*<EditorSourceFailurePanel/);
-  assert.match(route, /editor\.dirty && collab\.saveGate && !editor\.sourceFailed/);
+  assert.match(route, /dirty: editor\.dirty && !editor\.sourceFailed/);
+  assert.match(route, /autoSave: !viewOnly && !editor\.sourceFailed/);
 });
 
 test("native deck and rich-doc routes reject persistence until source content loaded", () => {
   const deck = read("shell/advanced-routes/DeckRoute.tsx");
   const rich = read("shell/advanced-routes/RichDocRoute.tsx");
+  const deckEditor = read("shell/doc-editors/use-deck-editor.ts");
+  const richEditor = read("shell/doc-editors/use-rich-doc-editor.ts");
   assert.match(deck, /ready: !editor\.loading && !editor\.sourceFailed/);
-  assert.match(deck, /editor\.sourceFailed \? null : structuredClone\(editor\.deck\)/);
+  assert.match(deck, /capture: editor\.captureRecovery/);
+  assert.match(deckEditor, /const captureRecovery = useCallback\(\(\) =>\s*sourceLoadingRef\.current \|\| sourceFailedRef\.current \? null : deckRef\.current/);
   assert.match(rich, /ready: Boolean\(editor\.editor\) && !editor\.loading/);
-  assert.match(rich, /editor\.sourceReady \? editor\.editor\?\.getJSON\(\) \|\| null : null/);
+  assert.match(rich, /capture: editor\.captureRecovery/);
+  assert.match(richEditor, /const captureRecovery = useCallback\(\(\) => \{\s*if \(!editor \|\| !sourceReadyRef\.current\) return null/);
   assert.doesNotMatch(rich, /已按空白文档打开/);
   // The hosted route files are gone; they must not come back.
   for (const gone of ["DeckHostedRoute.tsx", "RichDocHostedRoute.tsx"]) {
     assert.equal(fs.existsSync(new URL(`shell/advanced-routes/${gone}`, root)), false, gone);
   }
-});
-
-test("structured text failure is not converted into an editable blank", () => {
-  const source = read("shell/AdvancedStructuredEditors.tsx");
-  assert.match(source, /sourceFailed/);
-  assert.match(source, /if \(sourceFailed\) return/);
-  assert.doesNotMatch(source, /新建可编辑版本/);
 });

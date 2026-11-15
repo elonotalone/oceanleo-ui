@@ -4,14 +4,8 @@
  * 两个方向都要，而且**必须是同一份代码的两半**：
  *
  * - 正向（`gridSheetsToUniverSnapshot`）是判据 5「存量文档只读打开 + 一键转换」的引擎；
- * - 反向（`univerSnapshotToGridSheets`）是判据 4「XLSX 导入导出走现有 exceljs」的接线。
- *   新核不自带我们要的 XLSX 保真度（那在 Pro 的 `-advanced` 里，仲裁 A-13 明令不许碰），
- *   所以导出这一步仍然交给 `GridWorkbookExport.ts` 那条已经被 21 份测试守住的老路：
- *   Univer 快照 → `GridSheet[]` → 现有 exceljs 链。**换核不等于把导出保真度一起换掉。**
- *
- * 类型从 `@univerjs/presets` 以 `import type` 取；运行时只从同一包拿
- * `getPlainText`（A-64：不许自写 dataStream 切片器）。`@univerjs/core`
- * 不是直接依赖，解析不到。本模块只被 Univer 叶子 `GridUniverStage` 与测试加载。
+ * - 反向（`univerSnapshotToGridSheets`）用于 CSV 与存量载体兼容。
+ * XLSX 保存与下载直接由 `grid-univer/xlsx-export.ts` 读取快照，不经过 GridSheet。
  */
 import { getPlainText } from "@univerjs/presets";
 import type {

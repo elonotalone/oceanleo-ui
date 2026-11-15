@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { buildFabricImageToolbarControls } from "../src/shell/image-editor/fabric-image-toolbar-controls.ts";
-import { fabricImageFilterControls } from "../src/shell/image-editor/fabric-image-filter-controls.ts";
 import { dispatchFabricImageCommand } from "../src/shell/image-editor/fabric-image-commands.ts";
 import { deckObjectGeometryControls } from "../src/shell/doc-editors/deck-object-geometry-controls.ts";
 import { applyDeckToolbarCommand } from "../src/shell/doc-editors/deck-toolbar-command.ts";
@@ -101,8 +100,6 @@ test("route toolbars keep panel controls semantic while canonical compact contro
   const cropping = buildFabricImageToolbarControls({ ...input, cropping: true });
   assert.ok(cropping.some(control => control.id === "crop-apply"));
   assert.ok(cropping.some(control => control.id === "crop-ratio"));
-  inspectors(fabricImageFilterControls({}, tt),
-    ["brightness", "contrast", "saturation", "grayscale", "filter-reset"]);
   const text = buildFabricImageToolbarControls({ ...input,
     selected: { ...selected, kind: "text", text: { value: "Hello", fontFamily: "Arial" } } });
   inspectors(text, ["text", "stroke-width"]);
