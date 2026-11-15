@@ -1,0 +1,12 @@
+# RD-W2 观看端单元任务书
+
+身份：viewer。仅 /root/wt/RD-W2-oceanleo-ui，分支 wt/RD-W2；中文commit，不push，不改主检出，不开新分支。先bootstrap，读内核、operator-rulings最新Convergence wave 1 synced、oceanleo/parallel-rollout packs。
+
+独占本worktree所有产品源码及相关tests（父进程负责总验证与集成，不与你重叠改动）。A3 Panel拆分：session controller（连接/鉴权/生命周期）、媒体模块（ARTC订阅/画面/首帧）、已有scheduler与quality collector复用。RemoteDesktopPanel.tsx<=300行，显示交互；无镜像state/ref对；不要只是重命名搬走巨组件，模块需责任清楚。
+A4 scheduler统一终态回执计时与释放额度/手动交还。旧三代入队/completion/direct ack解析保留标deprecated；旧native没有新字段时保持原逻辑。
+
+跨仓协议：gateway给publisher descriptor bool input_receipt_ack=true；native协商后在旧dc_ack及DC rd.input_ack加input_receipt_version:1；gateway的viewer state追加input_receipt_version:1（旧native不声明则不加）。新native DC {v:1,t:"rd.input_receipt",sid,seq,status,executed_at_ms}；WS {type:"input_receipt",session_id,seq,status,executed_at_ms}，seq>0，status executed|merged|rejected，Unix执行/终态决策毫秒。声明新版后，所有旧ack仅解析、不得计时/解锁；统一回执幂等且按确切seq确认，不能把merged/rejected算执行或使交还成功。重复多路交付不得双计数。新native每个输入终态都发，probe也是输入；需要保留probe链证明。旧native不声明能力保持当前行为。
+
+首帧当前media 20秒timeout；原生owner负责修WorkerStopped(7) retry退避，需协商时序，使timeout前至少一次重试完成。请给父进程建议并增加首帧/重试预算测试。避免无证据大幅放宽timeout。
+
+验证：io guard run-heavy typecheck/api:check/consumers:check；run-light相关测试；全量npm test由父进程唯一执行与/tmp/ui-baseline-fails.txt comm对照，你不要跑全量。受静态字符串约束的测试可合理迁移至新模块，不能删断言绕过功能。每30–60秒报告进度。完成中文≤200行报告 /tmp/RD-W2-viewer-report.md，含file:line、命令结果、未做；提交回传hash。父进程亲自复核。
