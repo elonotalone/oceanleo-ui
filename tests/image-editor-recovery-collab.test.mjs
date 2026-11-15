@@ -119,7 +119,7 @@ test("overlapping saves wait for the running one; publication freezes before enc
   assert.match(wrapper, /await saveRunRef\.current\.catch/);
   assert.match(wrapper, /const run = save\(\)/);
   assert.match(hook, /\n    save: saveSerialized,\n/);
-  assert.match(hook, /const snapshot = controller\.getSnapshot\(\);[\s\S]*const preview = makeStaticPreviewBlob\(\)/);
+  assert.match(hook, /const snapshot = controller\.getSnapshot\(\);[\s\S]*return async \(\) => \{[\s\S]*renderImagePublication\(snapshot/);
 });
 
 // [实测] 10:05Z: flip → undo while the save of the flip was in flight: the room pushed this page's

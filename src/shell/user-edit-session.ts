@@ -11,6 +11,20 @@ import type { AppSession } from "../lib/app-session";
 const generations = new Map<string, { generation: number; at: number }>();
 const listeners = new Set<() => void>();
 let activeItemKey: string | null = null;
+let inputIntent: { itemKey: string | null; at: number; target: EventTarget } | undefined;
+
+function inputTarget(target: EventTarget | null): EventTarget | null {
+  return typeof Element !== "undefined" && target instanceof Element
+    ? target.closest("button,input,textarea,select,[contenteditable=true]") || target
+    : target;
+}
+
+/** Retain the physical input clock; capture alone never makes a document dirty. */
+export function rememberUserEditInput(event: Pick<Event, "isTrusted" | "timeStamp" | "target">): void {
+  const target = inputTarget(event.target);
+  if (!event.isTrusted || !target || event.timeStamp <= 0 || event.timeStamp > performance.now()) return;
+  inputIntent = { itemKey: activeItemKey, at: event.timeStamp, target };
+}
 
 function emit(): void {
   for (const listener of [...listeners]) listener();
@@ -42,7 +56,13 @@ export function recordUserMutation(itemKey: string): number {
   const next = (generations.get(key)?.generation ?? 0) + 1;
   const now = performance.now();
   const event = typeof window === "undefined" ? undefined : window.event;
-  const at = event?.isTrusted && event.timeStamp > 0 && event.timeStamp <= now ? event.timeStamp : now;
+  const eventAt = event?.isTrusted && event.timeStamp > 0 && event.timeStamp <= now ? event.timeStamp : now;
+  const at = event?.isTrusted && inputIntent?.itemKey === activeItemKey && inputIntent.target === inputTarget(event.target)
+    ? Math.min(inputIntent.at, eventAt) : eventAt;
+  if (inputIntent && at === inputIntent.at && /^(click|input|change)$/.test(event?.type || "")) {
+    const consumed = inputIntent;
+    queueMicrotask(() => { if (inputIntent === consumed) inputIntent = undefined; });
+  }
   generations.set(key, { generation: next, at });
   emit();
   return next;
@@ -60,6 +80,7 @@ export function userMutationAt(itemKey: string): number | undefined {
 }
 
 export function resetUserMutation(itemKey: string): void {
+  inputIntent = undefined;
   const key = normalizeKey(itemKey);
   if (!key) return;
   if ((generations.get(key)?.generation ?? 0) === 0) {
@@ -73,6 +94,7 @@ export function resetUserMutation(itemKey: string): void {
 export function bindActiveUserEditItem(itemKey: string | null): void {
   const key = normalizeKey(itemKey) || null;
   if (activeItemKey === key) return;
+  inputIntent = undefined;
   activeItemKey = key;
   emit();
 }
@@ -86,6 +108,7 @@ export function activeUserEditItemKey(): string | null {
  * previous visit cannot autosave the newly opened body.
  */
 export function syncOpenUserEditItem(itemKey: string): void {
+  inputIntent = undefined;
   const key = normalizeKey(itemKey);
   const previous = activeItemKey;
   if (previous && previous !== key) {
@@ -98,6 +121,7 @@ export function syncOpenUserEditItem(itemKey: string): void {
 
 /** Test isolation. Not part of the W1/W3 import contract. */
 export function resetUserEditSession(): void {
+  inputIntent = undefined;
   generations.clear();
   activeItemKey = null;
   emit();

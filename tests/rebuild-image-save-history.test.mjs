@@ -313,6 +313,11 @@ test("useFabricImageEditor keeps the controller and undo history through a recei
       persistImageProject: (...args) => new Promise((resolve) => pendingSaves.push({ args, resolve })),
       saveLocalImageDraft() {},
     }],
+    ["./image-publication", {
+      renderImagePublication: async (snapshot) => ({
+        preview: new Blob([JSON.stringify(snapshot.json)], { type: "image/png" }),
+      }),
+    }],
     ["./fabric-controller", {
       FabricEditorController: function (_fabric, _element, _container, callbacks) {
         const controller = makeControllerForHistory([

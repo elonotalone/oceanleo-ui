@@ -16,6 +16,7 @@ import type {
 import type { SelectionContext } from "./selection-context";
 import type { SelectionInteractionChange } from "./edit-bar-hosted-selection-hold";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
+import { rememberUserEditInput } from "./user-edit-session";
 
 export const EditBarSelectionSessionContext = createContext<string | null>(
   null,
@@ -88,7 +89,7 @@ export function useEditBarSelectionSession(
   const heldSnapshotRef = useRef<SelectionContext | null>(null);
   const onInteractionChangeRef = useRef(onInteractionChange);
   onInteractionChangeRef.current = onInteractionChange;
-  const [holding, setHolding] = useState(false);
+  const [, refresh] = useState(0);
   const keepAliveRef = useRef(keepAlive);
   const timersRef = useRef(new Set<number>());
   keepAliveRef.current = keepAlive;
@@ -112,9 +113,9 @@ export function useEditBarSelectionSession(
   }, []);
 
   const releaseIfIdle = useCallback(() => {
-    if (ownActive()) return;
+    if (ownActive() || !heldSnapshotRef.current) return;
     heldSnapshotRef.current = null;
-    setHolding(false);
+    refresh((value) => value + 1);
     notify(null);
   }, [notify, ownActive]);
 
@@ -122,12 +123,14 @@ export function useEditBarSelectionSession(
     const next = lastRef.current;
     if (!next) return;
     heldSnapshotRef.current = next;
-    setHolding(true);
+    // The current context is already painted. A state update here would
+    // rerender the complete toolbar before pointer-up/click can mutate/save.
     notify(next);
   }, [notify]);
 
   const onPointerDownCapture = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
+      rememberUserEditInput(event.nativeEvent);
       hold();
       preserveEditBarSelection(event);
     },
@@ -136,6 +139,7 @@ export function useEditBarSelectionSession(
 
   const onKeyDownCapture = useCallback(
     (event: ReactKeyboardEvent<HTMLElement>) => {
+      rememberUserEditInput(event.nativeEvent);
       if (event.key !== "Enter" && event.key !== " ") return;
       hold();
     },
@@ -152,7 +156,7 @@ export function useEditBarSelectionSession(
   );
 
   useEffect(() => {
-    if (!liveContext || !holding) return;
+    if (!liveContext) return;
     const held = heldSnapshotRef.current;
     if (!held) return;
     if (
@@ -163,13 +167,13 @@ export function useEditBarSelectionSession(
       return;
     }
     heldSnapshotRef.current = null;
-    setHolding(false);
+    refresh((value) => value + 1);
     notify(null);
-  }, [holding, liveContext, notify]);
+  }, [liveContext, notify]);
 
   useEffect(() => {
-    if (!holding && !keepAlive) return;
     const later = () => {
+      if (!heldSnapshotRef.current && !keepAliveRef.current) return;
       const id = window.setTimeout(() => {
         timersRef.current.delete(id);
         releaseIfIdle();
@@ -205,14 +209,14 @@ export function useEditBarSelectionSession(
       window.removeEventListener("pointercancel", later, true);
       window.removeEventListener("focusout", later, true);
     };
-  }, [clearTimers, holding, keepAlive, releaseIfIdle, sessionId]);
+  }, [clearTimers, releaseIfIdle, sessionId]);
 
   useEffect(() => {
     if (!keepAlive) releaseIfIdle();
   }, [keepAlive, releaseIfIdle]);
 
-  const context =
-    liveContext ?? (holding || keepAlive ? lastRef.current : null);
+  const holding = Boolean(heldSnapshotRef.current);
+  const context = liveContext ?? (holding || keepAlive ? lastRef.current : null);
   return {
     context,
     holding: holding || keepAlive,

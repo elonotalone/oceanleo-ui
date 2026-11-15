@@ -17,11 +17,13 @@ const eslint = new ESLint({cwd:root,overrideConfigFile:true,overrideConfig:[{
 }]});
 const paths = [
   "editor-working-copy.ts",
+  "user-edit-session.ts","edit-bar-selection-session.tsx",
   "advanced-routes/AudioRoute.tsx","advanced-routes/ImageRoute.tsx",
   "advanced-routes/Model3DRoute.tsx","advanced-routes/VideoTimelineRoute.tsx",
   "advanced-routes/non-richdoc-source-gate.ts",
   "image-editor/editor-persistence.ts","image-editor/fabric-image-open.ts",
   "image-editor/image-remote-delta.ts",
+  "image-editor/image-publication.ts",
   "image-editor/types.ts","image-editor/use-fabric-image-editor.ts",
   "image-editor/fabric-controller-core.ts",
   "media-editors/AudioWorkbench.tsx","media-editors/audio-workbench-state.ts",
@@ -36,8 +38,8 @@ const counts = {files:paths.length,baseline:{errors:0,warnings:0},current:{error
 for(const path of paths) {
   const [current,baseline] = await Promise.all([
     eslint.lintFiles([path]),
-    eslint.lintText(execFileSync("git",["show",(process.argv[2]||"d212f88d")+":"+path],
-      {cwd:root,encoding:"utf8",maxBuffer:4*1024*1024}),{filePath:root+path}),
+    eslint.lintText(execFileSync("git",["ls-tree","--name-only",process.argv[2]||"d212f88d","--",path],{cwd:root,encoding:"utf8"}).trim()
+      ? execFileSync("git",["show",(process.argv[2]||"d212f88d")+":"+path],{cwd:root,encoding:"utf8",maxBuffer:4*1024*1024}) : "",{filePath:root+path}),
   ]);
   const before = new Set(baseline.flatMap(r=>r.messages.map(key)));
   for(const [name,results] of [["baseline",baseline],["current",current]]) {

@@ -34,6 +34,7 @@ import {
   type FabricNS,
 } from "./editor-objects";
 import { exportDocBlob } from "./editor-objects";
+import { renderImagePublication } from "./image-publication";
 import {
   createFabricImageProject,
   createFabricImageWorkingCopy,
@@ -84,7 +85,6 @@ import {
 } from "./types";
 import { PsdCompositeError, isPsdSource } from "./psd-composite";
 import {
-  exportVectorSvg,
   isVectorImageItem,
   vectorSvgToSnapshot,
   VectorSvgError,
@@ -1349,22 +1349,6 @@ export function useFabricImageEditor(
     },
     [exportFormat, exportQuality, exportScale],
   );
-  const makeStaticPreviewBlob = useCallback(async () => {
-    const controller = controllerRef.current;
-    if (!controller) throw new Error("图片画布尚未就绪");
-    if (viewRef.current.cropping) {
-      throw new Error("请先确认或取消当前裁剪");
-    }
-    const { canvas, doc } = controller.getDocument();
-    const blob = await exportDocBlob(canvas, doc, {
-      format: "png",
-      quality: 1,
-      multiplier: 1,
-    });
-    if (!blob) throw new Error("当前画布无法生成静态 preview");
-    return blob;
-  }, []);
-
   const captureRecovery = useCallback(() => {
     const controller = controllerRef.current;
     if (!controller || loading || !sourceReadyRef.current) return null;
@@ -1537,11 +1521,12 @@ export function useFabricImageEditor(
     const capturedItem = artifactHeadRef.current;
     const controller = savingController;
     if (!controller) return async () => null;
+    if (viewRef.current.cropping) {
+      setError("请先确认或取消当前裁剪");
+      return async () => null;
+    }
     const snapshot = controller.getSnapshot();
-    const vector = isVectorImageItem(capturedItem)
-      ? exportVectorSvg(controller.getDocument().canvas, controller.getDocument().doc)
-      : null;
-    const preview = makeStaticPreviewBlob().then(blob => ({ blob }), error => ({ error }));
+    let rendering: ReturnType<typeof renderImagePublication> | undefined;
     return async () => {
       const sourceItem = openIdentityRef.current === savingIdentity ? artifactHeadRef.current : capturedItem;
       const head = sourceItem;
@@ -1550,9 +1535,11 @@ export function useFabricImageEditor(
       setSaving(true);
       setError("");
       try {
-        const captured = await preview;
-        if ("error" in captured) throw captured.error;
-        const previewBlob = captured.blob;
+        const captured = await (rendering ??= renderImagePublication(snapshot, isVectorImageItem(capturedItem)).catch(error => {
+          rendering = undefined;
+          throw error;
+        }));
+        const previewBlob = captured.preview;
         const saved =
           head.artifactType === "composite_image" && !isDesignDocumentItem(head)
             ? await persistCompositeImageProject(
@@ -1579,7 +1566,7 @@ export function useFabricImageEditor(
                 async () => previewBlob,
                 isVectorImageItem(sourceItem)
                   ? {
-                      createSvg: () => vector!,
+                      createSvg: () => captured.svg!,
                       createPreview: async () => previewBlob,
                     }
                   : undefined,
@@ -1690,7 +1677,7 @@ export function useFabricImageEditor(
         if (aliveRef.current) setSaving(false);
       }
     };
-  }, [loading, makeStaticPreviewBlob, siteId, updateDirty]);
+  }, [loading, siteId, updateDirty]);
   const save = useCallback(() => prepareSave()(), [prepareSave]);
 
   // 一次只跑一个保存；外壳在上一次还没结束时又要保存（关闭、会话重试），等它结束再存最新的，

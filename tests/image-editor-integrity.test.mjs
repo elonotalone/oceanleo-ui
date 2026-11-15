@@ -247,7 +247,7 @@ test("composite autosave commits scene source with a revision-matched static pre
   assert.match(saveBlock, /const sourceItem = openIdentityRef\.current === savingIdentity \? artifactHeadRef\.current : capturedItem/);
   assert.match(saveBlock, /const head = sourceItem/);
   assert.match(saveBlock, /artifactHeadRef\.current = saved\.item/);
-  assert.match(saveBlock, /makeStaticPreviewBlob/);
+  assert.match(saveBlock, /renderImagePublication/);
   assert.doesNotMatch(saveBlock, /makeExportBlob|toBlob|toDataURL/);
 
   const persistence = readFileSync(
