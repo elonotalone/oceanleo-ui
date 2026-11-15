@@ -1,6 +1,15 @@
 import type { RemoteDesktopAction } from "./remote-desktop";
 
 export type RemoteInputLane = "websocket" | "data_channel";
+export type RemoteInputReceiptStatus = "executed" | "merged" | "rejected";
+export interface RemoteInputReceipt { seq: number; status: RemoteInputReceiptStatus; executed_at_ms: number }
+export function parseRemoteInputReceipt(value: unknown): RemoteInputReceipt | null {
+  if (!value || typeof value !== "object") return null;
+  const raw = value as Record<string, unknown>;
+  return Number.isSafeInteger(raw.seq) && Number(raw.seq) > 0 && typeof raw.status === "string" && ["executed", "merged", "rejected"].includes(raw.status)
+    && Number.isSafeInteger(raw.executed_at_ms) && Number(raw.executed_at_ms) > 0
+    ? { seq: raw.seq as number, status: raw.status as RemoteInputReceiptStatus, executed_at_ms: raw.executed_at_ms as number } : null;
+}
 /** One actual write, shared by scheduling, receipt timing, diagnostics and picture measurement. */
 export interface RemoteInputWrite {
   seq: number; sentAt: number; lane: RemoteInputLane; action: RemoteDesktopAction; barrier?: boolean;
@@ -8,6 +17,9 @@ export interface RemoteInputWrite {
   timingPending: boolean; timingAccepted: boolean;
   diagnosticPending: boolean; diagnosticEnqueued: boolean;
   picturePending: boolean;
+  receipt?: RemoteInputReceipt;
+  receiptTimed?: boolean;
+  creditPending?: boolean;
 }
 
 /** Only actual writes enter this bounded history. Queued/coalesced actions have no record. */
@@ -25,7 +37,7 @@ export class RemoteInputHistory {
     this.observeSequence(seq);
     this.records.delete(seq); this.records.set(seq, entry);
     while (this.records.size > 256) {
-      const first = this.records.values().next().value!;
+      const first = [...this.records.values()].find(value => !value.creditPending)!;
       if (first.diagnosticPending) this.peerEvicted++;
       this.records.delete(first.seq);
     }

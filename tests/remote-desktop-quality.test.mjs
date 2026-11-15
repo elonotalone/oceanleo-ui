@@ -227,3 +227,13 @@ test('direct native admission ACK p50/p95 is reported per window and never count
   assert.deepEqual(collector.takeDirectAckWindow(),{});
   assert.equal(collector.report().input.executed,undefined);
 });
+
+test('terminal receipt RTT includes every decision but merged/rejected never count as successful execution', () => {
+  const collector = new q.RemoteDesktopQualityCollector({ deviceId: 'fixture', origin: 0, attempt: 0, now: () => 100, env: ENV, send() {} });
+  collector.controlTiming({ seq: 1, stage: 'input_receipt', status: 'merged', elapsedMs: 11 });
+  collector.controlTiming({ seq: 2, stage: 'input_receipt', status: 'rejected', elapsedMs: 12 });
+  assert.equal(collector.report().input.executed, undefined);
+  collector.controlTiming({ seq: 3, stage: 'input_receipt', status: 'executed', elapsedMs: 13 });
+  assert.deepEqual(collector.report().input.executed, { n: 1, p50: 13, p90: 13, p99: 13, max: 13 });
+  assert.deepEqual(collector.takeDirectAckWindow(), { input_ack_p50_ms: 12, input_ack_p95_ms: 13 });
+});

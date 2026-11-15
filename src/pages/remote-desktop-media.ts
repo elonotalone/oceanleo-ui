@@ -2,6 +2,9 @@ import { prepareEngine, PUBLISH_STATE, type ArtcEngine } from "../shell/messages
 import { loadRemoteArtcSdk, type RemoteArtcSdk } from "./remote-desktop-sdk";
 import type { RemoteDesktopDataLane, RemoteDesktopDataMessage, RemoteMediaCredentials } from "../api/remote-desktop";
 import { videoStatSample, type VideoStatSample } from "../api/remote-desktop-quality";
+import { parseRemoteInputReceipt } from "../api/remote-desktop-input-history";
+
+export const REMOTE_MEDIA_FRAME_TIMEOUT_MS = 20_000;
 
 /** A remote viewer owns a separate receive-only engine; never reuse the call singleton. */
 export type RemoteMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
@@ -442,7 +445,8 @@ export async function openRemoteMedia(
     if (closed || uid !== credentials.publisher_id || message?.type !== 2 || !(message.data instanceof ArrayBuffer) || message.data.byteLength > 1024) return;
     let value: RemoteDesktopDataMessage;
     try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.data)); } catch { return; }
-    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_ack", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
+    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_ack", "rd.input_receipt", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
+    if (value.t === "rd.input_receipt" && !parseRemoteInputReceipt(value)) return;
     if (value.t === "rd.pong" && (!Number.isFinite(value.t_v) || !Number.isFinite(value.device_wall_ms))) return;
     if (value.t === "rd.input_ack" && (!Number.isSafeInteger(value.acked_seq) || value.acked_seq < 0)) return;
     if (value.t === "rd.publisher_stats") {
@@ -483,14 +487,14 @@ export async function openRemoteMedia(
     if (closed || (typeof document !== "undefined" && document.hidden)) return;
     const elapsed = Date.now() - (lastFrame ?? started);
     // Receiving bytes cannot hide a decoder that never produces a picture.
-    if (elapsed > 20_000) fail(lastFrame !== null ? "media_frame_timeout" : "media_first_frame_timeout");
+    if (elapsed > REMOTE_MEDIA_FRAME_TIMEOUT_MS) fail(lastFrame !== null ? "media_frame_timeout" : "media_first_frame_timeout");
     else if (lastFrame !== null && Date.now() - lastInbound > 6000 && playing) { playing = false; handlers.state("reconnecting"); }
   };
   watchdog = setInterval(() => {
     if (closed || (typeof document !== "undefined" && document.hidden)) return;
     reportDiagnostics();
     // A stuck getStats must not hold up either the traffic deadline or the hard frame deadline.
-    if (statsPending || Date.now() - (lastFrame ?? started) > 20_000) { checkLiveness(); return; }
+    if (statsPending || Date.now() - (lastFrame ?? started) > REMOTE_MEDIA_FRAME_TIMEOUT_MS) { checkLiveness(); return; }
     statsPending = true;
     const sampledAt = Date.now();
     void readStats().then((reports) => {

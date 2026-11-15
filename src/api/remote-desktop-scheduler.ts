@@ -1,4 +1,4 @@
-import { RemoteInputHistory } from "./remote-desktop-input-history";
+import { RemoteInputHistory, type RemoteInputReceipt } from "./remote-desktop-input-history";
 import type { RemoteDesktopAction } from "./remote-desktop";
 import type { RemoteInputSchedulerDiagnostics } from "./remote-desktop-diagnostics";
 
@@ -26,6 +26,7 @@ export class RemoteInputScheduler {
   private retryAt = 0;
   private sequence = 0;
   private executed = 0;
+  private receiptProtocol = false;
   private gatewayWritten = 0;
   /** Gateway writes above `executed` that were not refused; a refused seq never reaches acked_seq. */
   private gatewayUnretired: number[] = [];
@@ -82,6 +83,37 @@ export class RemoteInputScheduler {
 
 
   constructor(options: RemoteInputSchedulerOptions) { this.options = options; this.history = options.history ?? new RemoteInputHistory(options.now); }
+
+  /** Sticky negotiation: legacy watermarks cannot settle any later credit or handback. */
+  negotiateReceipts(): void {
+    this.receiptProtocol = true;
+    for (const entry of this.outstanding.values()) (entry as { creditPending?: boolean }).creditPending = true;
+  }
+  usesReceipts(): boolean { return this.receiptProtocol; }
+  receipt(value: RemoteInputReceipt): boolean {
+    this.negotiateReceipts();
+    const entry = this.history.get(value.seq);
+    if (!entry || entry.receipt) return false;
+    entry.receipt = value;
+    entry.creditPending = false;
+    this.outstanding.delete(value.seq);
+    this.gatewayUnretired = this.gatewayUnretired.filter(seq => seq !== value.seq);
+    const pending = this.handoff;
+    if (pending?.seq === value.seq && !pending.executed) {
+      if (value.status === "executed" && entry.action.kind === "release_all") {
+        pending.executed = true;
+        if (pending.timer !== undefined) clearTimeout(pending.timer);
+        pending.resolve();
+      } else {
+        if (pending.timer !== undefined) clearTimeout(pending.timer);
+        this.handoff = null;
+        pending.reject(new Error(`input_receipt_${value.status}`));
+      }
+    }
+    if (value.status === "executed") this.executed = Math.max(this.executed, value.seq);
+    this.tick();
+    return true;
+  }
 
   private keyBacklog(): number {
     return [...this.queue, ...this.retries].filter((entry) => !SOFT.has(entry.action.kind)).length;
@@ -143,7 +175,9 @@ export class RemoteInputScheduler {
     return !this.ended;
   }
 
+  /** @deprecated Legacy gateway admission credit. */
   accepted(seq: number): void {
+    if (this.receiptProtocol) return;
     if (!this.outstanding.has(seq) || this.outstanding.get(seq)?.lane === "data_channel") return;
     this.outstanding.delete(seq);
     this.tick();
@@ -159,6 +193,7 @@ export class RemoteInputScheduler {
 
   /** Ignore never-written queue entries when changing lanes; otherwise continuous input starves DC. */
   gatewayDrained(): boolean {
+    if (this.receiptProtocol) return !this.ended && !this.retries.length && ![...this.outstanding.values()].some(entry => entry.lane !== "data_channel");
     return !this.ended && !this.retries.length && ![...this.outstanding.values()].some(entry => entry.lane !== "data_channel") && this.executed >= this.gatewayWritten;
   }
 
@@ -168,10 +203,12 @@ export class RemoteInputScheduler {
   }
 
   /** Completion is preferred while the host reports it; legacy admission proves only native enqueue. */
-  peerDrained(): boolean { return (this.peerCompleted ?? this.peerAdmission) >= this.peerWritten; }
-  peerCreditReady(): boolean { return this.peerCompleted === undefined || this.peerCompleted >= this.peerUpgradeFence; }
+  peerDrained(): boolean { return this.receiptProtocol ? ![...this.outstanding.values()].some(entry => entry.lane === "data_channel") : (this.peerCompleted ?? this.peerAdmission) >= this.peerWritten; }
+  peerCreditReady(): boolean { return this.receiptProtocol || this.peerCompleted === undefined || this.peerCompleted >= this.peerUpgradeFence; }
 
+  /** @deprecated Legacy enqueue/completion credit; retained for publishers without version 1. */
   observePeerProgress(value: { admissionSeq?: number; completedSeq?: number }): void {
+    if (this.receiptProtocol) return;
     const valid = (seq: unknown): seq is number => typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0;
     // A valid report can race a resume floor. It cannot grant credits to future local writes;
     // epoch/floor synchronization needs a fresh stream rather than silently accepting input here.
@@ -205,13 +242,16 @@ export class RemoteInputScheduler {
 
   /** A proved direct lane has its own window; old WS outcomes are never replayed. */
   usePeerCredits(): void {
+    if (this.receiptProtocol) return;
     if (this.handoff) return;
     for (const [seq, entry] of this.outstanding) if (entry.lane !== "data_channel") this.outstanding.delete(seq);
     this.retries = [];
   }
 
   /** C6 direct admission only: never changes the execution fence used by handback. */
+  /** @deprecated C6 cumulative admission credit. */
   peerAcknowledgedThrough(seq: number): void {
+    if (this.receiptProtocol) return;
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > this.sequence) return;
     this.peerAdmission = Math.max(this.peerAdmission, seq);
     for (const [key, entry] of this.outstanding) if (entry.lane === "data_channel" && key <= seq) this.outstanding.delete(key);
@@ -225,6 +265,7 @@ export class RemoteInputScheduler {
    */
   abandonPeer(discardQueued = false): void {
     if (this.ended) return;
+    if (this.receiptProtocol) return; // An uncertain write retains its exact credit; never silently retire it.
     for (const [seq, entry] of this.outstanding) if (entry.lane === "data_channel") this.outstanding.delete(seq);
     this.peerAdmission = Math.max(this.peerAdmission, this.peerWritten);
     this.peerCompleted = undefined; this.peerUpgradeFence = 0; this.completionStalledSince = undefined;
@@ -246,7 +287,7 @@ export class RemoteInputScheduler {
   claimSequence(): number {
     this.sequence += 1;
     // Peer input has no gateway receipt; the gateway path only proves its own seqs.
-    this.executed = this.sequence;
+    if (!this.receiptProtocol) this.executed = this.sequence;
     return this.sequence;
   }
 
@@ -284,6 +325,7 @@ export class RemoteInputScheduler {
 
   /** A final refusal (e.g. `input_not_allowed`: the computer allows viewing only). Never retried. */
   refused(seq: number): boolean {
+    if (this.receiptProtocol) { this.fail("input_ack_unknown"); return false; }
     if (!this.outstanding.has(seq) || this.outstanding.get(seq)?.lane === "data_channel") return false;
     this.outstanding.delete(seq);
     // The gateway never executes a refused write, so it cannot be the retirement fence.
@@ -293,7 +335,9 @@ export class RemoteInputScheduler {
     return true;
   }
 
+  /** @deprecated Legacy retirement watermark; cannot confirm a negotiated handoff. */
   executedThrough(seq: number): void {
+    if (this.receiptProtocol) return;
     if (!Number.isSafeInteger(seq) || seq < 0 || seq > this.sequence) { this.fail("response_malformed"); return; }
     this.executed = Math.max(this.executed, seq);
     this.gatewayUnretired = this.gatewayUnretired.filter(written => written > this.executed);
@@ -301,6 +345,7 @@ export class RemoteInputScheduler {
   }
 
   rejected(seq: number, code: string, retryAfterMs: number): void {
+    if (this.receiptProtocol) { this.fail("input_ack_unknown"); return; }
     const entry = this.outstanding.get(seq);
     if (!entry || entry.lane === "data_channel" || !["input_queue_full", "rate_limited"].includes(code)) {
       this.fail("response_malformed"); return;
@@ -343,6 +388,7 @@ export class RemoteInputScheduler {
       if (head.barrier && this.handoff) this.handoff.seq = seq;
       const entry = (this.options.history && this.history.get(seq)) || this.history.written(seq, lane, action, false, head.barrier);
       entry.action = action; entry.barrier = head.barrier;
+      entry.creditPending = this.receiptProtocol;
       this.outstanding.set(seq, entry);
       if (this.retries.length) this.retries.shift(); else this.queue.shift();
       if (remainder) this.queue.unshift({ action: remainder });

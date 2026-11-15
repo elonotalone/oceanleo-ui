@@ -14,7 +14,7 @@ import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
 import { MEDIA_METRIC_KEYS, type RemoteMediaMetrics } from "./remote-metrics.generated";
 export type { RemoteMediaMetrics } from "./remote-metrics.generated";
-import { RemoteInputHistory, type RemoteInputLane } from "./remote-desktop-input-history";
+import { RemoteInputHistory, parseRemoteInputReceipt, type RemoteInputLane, type RemoteInputReceipt } from "./remote-desktop-input-history";
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
 import { isNetworkFailure, newRequestId } from "./remote-desktop-retry";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
@@ -239,7 +239,8 @@ export interface RemoteDesktopClient {
 /** C6 publisher-authenticated messages; admission and execution are different measurements. */
 export type RemoteDesktopDataMessage =
   | { t: "rd.pong"; v: 1; sid: string; t_v: number; device_wall_ms: number }
-  | { t: "rd.input_ack"; v: 1; sid: string; acked_seq: number }
+  | { t: "rd.input_ack"; v: 1; sid: string; acked_seq: number; input_receipt_version?: 1 }
+  | ({ t: "rd.input_receipt"; v: 1; sid: string } & RemoteInputReceipt)
   | { t: "rd.publisher_stats"; v: 1; sid: string; metrics: Record<string, number> };
 /** false proves no write; a throw is ambiguous and must never replay the action on another lane. */
 export interface RemoteDesktopDataLane {
@@ -408,7 +409,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   let lastDiagnosticsAt = performance.now();
   const dropLane = () => { unsubscribeLane?.(); unsubscribeLane = undefined; directReceipts = false; lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; peerProbesLost = 0; };
   const peerHealthy = (now: number) => {
-    if (directReceipts) return; // A healthy C6 channel never falls back because the gateway is slow.
+    if (directReceipts || scheduler.usesReceipts()) return;
     const oldest = scheduler.oldestPeerPendingAt();
     if (oldest === undefined || now - oldest <= PEER_WRITE_RECEIPT_MS) return;
     // Receipts stopped: keep the session and video, move input back to the gateway behind a
@@ -418,6 +419,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (lane) probeRequested = true;
   };
   const notePeerReceipt = (value: number | undefined, completed?: number) => {
+    if (scheduler.usesReceipts()) return;
     if (directReceipts) {
       // Completion remains separate from admission, and is required only for explicit handback.
       if (Number.isSafeInteger(completed) && completed! >= 0 && completed! <= scheduler.lastSequence()) {
@@ -530,6 +532,20 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     congestion: (busy) => handlers.congestion?.(busy),
     failure: fail,
   });
+  const negotiateReceipts = () => { scheduler.negotiateReceipts(); diagnostics.negotiateReceipts(); };
+  const terminalReceipt = (raw: unknown) => {
+    const value = parseRemoteInputReceipt(raw);
+    if (!value) return;
+    negotiateReceipts();
+    // A claimed probe whose send failed is a hole, never a valid receipt target.
+    const written = history.get(value.seq);
+    if (!written || !scheduler.receipt(value)) return;
+    timings.receipt(value);
+    if (written.probe && value.seq === peerProbe && value.status === "executed") {
+      peerTrusted = true; peerProbesLost = 0;
+    }
+    scheduler.tick();
+  };
   if (options?.sequenceFloor && !seedRemoteInputScheduler(scheduler, options.sequenceFloor)) {
     socket.close();
     return { ok: false, error: "response_malformed" };
@@ -540,7 +556,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       if (ended || !ready || state !== "active") return Promise.reject(new Error("input_ack_unknown"));
       if (!handoff) handoff = scheduler.releaseForHandoff().then(() => {
         if (ended || state !== "active") throw new Error("input_ack_unknown");
-      });
+      }).catch(error => { handoff = null; throw error; });
       return handoff;
     },
     finishHandoff() { if (!ended && state === "active") { scheduler.finishHandoff(); handoff = null; } },
@@ -568,9 +584,13 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
       if (lane?.subscribe) {
         directReceipts = true; peerTrusted = false; probeRequested = true;
         unsubscribeLane = lane.subscribe(message => {
-          if (ended || message.sid !== sessionId || message.t !== "rd.input_ack") return;
+          if (ended || message.sid !== sessionId) return;
+          if (message.t === "rd.input_receipt") { terminalReceipt(message); return; }
+          if (message.t !== "rd.input_ack") return;
+          if (message.input_receipt_version === 1) negotiateReceipts();
           const seq = message.acked_seq;
           if (!Number.isSafeInteger(seq) || seq < 0 || seq > scheduler.lastSequence()) return;
+          if (scheduler.usesReceipts()) return; // @deprecated C6 admission: parse only after negotiation.
           if (peerProbe && seq >= peerProbe && !peerTrusted) { peerTrusted = true; scheduler.usePeerCredits(); }
           diagnostics.observe({ dc_input_seq: seq });
           timings.admittedThrough(seq);
@@ -635,7 +655,9 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if (data.type === "pong" && Number.isSafeInteger(data.id) && Number(data.id) >= 1 && Number(data.id) <= pingId) {
       lastPongAt = Date.now(); handlers.pong?.(); return;
     }
-    if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { timings.accepted(data.seq as number); scheduler.accepted(data.seq as number); return; }
+    if (data.type === "input_receipt") { if (data.session_id === sessionId) terminalReceipt(data); return; }
+    // @deprecated Gateway admission, native completion and C6 admission remain for older publishers.
+    if (data.type === "input_ack" && Number.isSafeInteger(data.seq)) { if (!scheduler.usesReceipts()) timings.accepted(data.seq as number); scheduler.accepted(data.seq as number); return; }
     if (data.type === "input_rejected" && Number.isSafeInteger(data.seq) && data.error === "input_not_allowed") {
       // View-only computer: final, never retried; the session (and video) stays.
       if (scheduler.refused(data.seq as number)) handlers.inputRefused?.("input_not_allowed");
@@ -646,6 +668,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     }
     if (data.type !== "state" || !["pending_consent", "connecting", "active", "reconnecting", "closed"].includes(String(data.state))) { fail("response_malformed"); return; }
     state = data.state as RemoteDesktopSessionState;
+    if (data.input_receipt_version === 1) negotiateReceipts();
     if (handoff && state !== "active") { fail("input_ack_unknown"); return; }
     // First snapshot of a re-attached socket: continue above what the session already took.
     if (!ready && typeof data.input_seq === "number" && !seedRemoteInputScheduler(scheduler, data.input_seq)) {
@@ -654,7 +677,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     }
     if (state !== "closed" && typeof data.acked_seq === "number") {
       scheduler.executedThrough(data.acked_seq);
-      if (!ended) timings.completedThrough(data.acked_seq);
+      if (!ended && !scheduler.usesReceipts()) timings.completedThrough(data.acked_seq);
     }
     if (ended) return;
     if (!ready) { ready = true; clearTimeout(timeout); settle!({ ok: true, data: stream }); }

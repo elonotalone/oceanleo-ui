@@ -55,6 +55,8 @@ export class RemoteTransportDiagnostics {
   private receiptSeen = false;
   private completed: number | undefined;
   private injected: number | undefined;
+  private receipts = false;
+  negotiateReceipts(): void { this.receipts = true; }
   private now: () => number;
   constructor(now: () => number, history = new RemoteInputHistory(now)) { this.now = now; this.history = history; this.started = this.intervalStarted = now(); }
 
@@ -68,12 +70,21 @@ export class RemoteTransportDiagnostics {
   }
 
   control(sample: RemoteControlTiming): void {
+    if (sample.stage === "input_receipt") {
+      const entry = this.history.get(sample.seq);
+      if (!entry) return;
+      entry.diagnosticPending = false;
+      if (entry.lane === "data_channel") { this.receiptSeen = true; this.peerReceipt = Math.max(this.peerReceipt, sample.seq); }
+      if (!entry.probe && sample.status === "executed") this.add(entry.lane === "data_channel" ? "dc_completed" : "ws_completed", sample.elapsedMs);
+      return;
+    }
     if (sample.stage === "direct_ack" || this.history.get(sample.seq)?.lane === "data_channel") return; // Peer admission is measured by observe(), never as WS completion.
     if (!Number.isFinite(sample.elapsedMs) || sample.elapsedMs < 0) return;
     const prefix = sample.stage === "accepted" ? "ws_accepted" : "ws_completed";
     this.add(prefix, sample.elapsedMs);
   }
   observe(metrics: { dc_input_seq?: number; input_completed_seq?: number; input_injected_seq?: number } | null | undefined): void {
+    if (this.receipts) return;
     if (!metrics) return;
     if (validSequence(metrics.dc_input_seq)) { this.receiptSeen = true; this.peerReceipt = Math.max(this.peerReceipt, metrics.dc_input_seq); }
     // Explicit zero proves support. Missing/stale snapshots never downgrade completion semantics.

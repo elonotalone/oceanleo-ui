@@ -384,3 +384,22 @@ test('a real publisher data subscription loss drops the lane; resubscription res
     h.events.get('remoteUserOffLineNotify')('desktop');assert.equal(h.lanes.at(-1),null);
   }finally{await viewer.close();}
 });
+
+test('ARTC delivers authenticated terminal receipts and versioned legacy ACKs while rejecting malformed input', async () => {
+  const h = engineHarness(), viewer = await h.start({ data_channel_input: true });
+  try {
+    h.events.get('dataPublishStateChanged')(1, 3);
+    const messages = [];
+    h.lanes[0].subscribe(value => messages.push(value));
+    const emit = (value, publisher = 'desktop') => h.events.get('dataChannelMsg')(publisher, {
+      type: 2, data: new TextEncoder().encode(JSON.stringify({ v: 1, sid: 'session-1', ...value })).buffer,
+    });
+    const receipt = { t: 'rd.input_receipt', seq: 3, status: 'executed', executed_at_ms: 1_800_000_000_000 };
+    emit(receipt, 'intruder'); emit({ ...receipt, sid: 'other' });
+    emit({ ...receipt, seq: 0 }); emit({ ...receipt, status: {} }); emit({ ...receipt, executed_at_ms: 0 });
+    assert.deepEqual(messages, []);
+    emit(receipt);
+    emit({ t: 'rd.input_ack', acked_seq: 3, input_receipt_version: 1 });
+    assert.deepEqual(messages, [ { v: 1, sid: 'session-1', ...receipt }, { v: 1, sid: 'session-1', t: 'rd.input_ack', acked_seq: 3, input_receipt_version: 1 } ]);
+  } finally { await viewer.close(); }
+});
