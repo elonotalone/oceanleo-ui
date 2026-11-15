@@ -67,6 +67,8 @@ export const UI_METHODS = Object.freeze({
   TOOLS_CALL: "tools/call",
   /** app → host（request）：往对话里追加一句话。 */
   MESSAGE: "ui/message",
+  /** app → host (request): open an external HTTP(S) link without an opener. */
+  OPEN_LINK: "ui/open-link",
   /** app → host（request）：更新模型上下文（界面里发生的、模型该知道的状态）。 */
   UPDATE_MODEL_CONTEXT: "ui/update-model-context",
   /** app → host（notification）：界面想要的尺寸。 */
@@ -89,6 +91,7 @@ export const APP_TO_HOST_METHODS: ReadonlySet<string> = new Set<string>([
   UI_METHODS.INITIALIZED,
   UI_METHODS.TOOLS_CALL,
   UI_METHODS.MESSAGE,
+  UI_METHODS.OPEN_LINK,
   UI_METHODS.UPDATE_MODEL_CONTEXT,
   UI_METHODS.SIZE_CHANGED,
 ]);
@@ -249,9 +252,9 @@ export function boundedString(value: unknown, max: number, required = false): bo
   return typeof value === "string" && value.length <= max && (!required || value.length > 0);
 }
 
-function withinBudget(value: unknown): boolean {
+function withinBudget(value: unknown, limit = MAX_APP_MESSAGE_BYTES): boolean {
   try {
-    return JSON.stringify(value).length <= MAX_APP_MESSAGE_BYTES;
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= limit;
   } catch {
     return false;
   }
@@ -334,7 +337,12 @@ export function asAppToHostMessage(data: unknown): AppToHostMessage | null {
     }
     if (method === UI_METHODS.MESSAGE) {
       const params = recordValue(record.params);
-      if (!params || !boundedString(params.text, 20_000, true)) return null;
+      if (!params || appMessageText(params) === null) return null;
+      if (!hasId) return null;
+    }
+    if (method === UI_METHODS.OPEN_LINK) {
+      const params = recordValue(record.params);
+      if (!params || !externalAppLink(params.url)) return null;
       if (!hasId) return null;
     }
     if (method === UI_METHODS.UPDATE_MODEL_CONTEXT) {
@@ -356,6 +364,34 @@ export function asAppToHostMessage(data: unknown): AppToHostMessage | null {
   return record as unknown as JsonRpcResponse;
 }
 
+/** MCP Apps ui/message supports user text here; never silently discard other modalities. */
+export function appMessageText(params: Record<string, unknown>): string | null {
+  if (params.content !== undefined) {
+    if (params.role !== "user" || !Array.isArray(params.content) || !params.content.length) return null;
+    const texts: string[] = [];
+    for (const block of params.content) {
+      const part = recordValue(block);
+      if (!part || part.type !== "text" || typeof part.text !== "string") return null;
+      texts.push(part.text);
+    }
+    const text = texts.join("\n");
+    return boundedString(text, 20_000, true) && text.trim() ? text : null;
+  }
+  // Compatibility with apps using the host's earlier text-only message envelope.
+  return boundedString(params.text, 20_000, true) && (params.text as string).trim() ? params.text as string : null;
+}
+
+/** UC-6: this closed verb never opens executable URLs or a credential-bearing URL. */
+export function externalAppLink(value: unknown): string | null {
+  if (!boundedString(value, 4_000, true)) return null;
+  try {
+    const url = new URL(value as string);
+    return ["https:", "http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 /** host → app 通知。宿主自己发的也过一遍白名单：防止别处顺手加一个新方法。 */
 export function hostNotification(
   method: string,
@@ -363,7 +399,10 @@ export function hostNotification(
 ): JsonRpcNotification | null {
   if (!HOST_TO_APP_METHODS.has(method)) return null;
   const message: JsonRpcNotification = { jsonrpc: "2.0", method, params };
-  return withinBudget(message) ? message : null;
+  // I2 tool state comes from the gateway (1 MB cap), never from the untrusted frame.
+  // Keep the incoming frame's 200 KB budget unchanged.
+  const limit = method === UI_METHODS.TOOL_INPUT || method === UI_METHODS.TOOL_RESULT ? 1_000_000 : MAX_APP_MESSAGE_BYTES;
+  return withinBudget(message, limit) ? message : null;
 }
 
 /** `ui://` HTML 的体积上限。一段聊天框下的界面不该有 1 MB。 */

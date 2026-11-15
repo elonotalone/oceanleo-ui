@@ -18,6 +18,7 @@ import { writeClipboardText } from "./share/share-clipboard";
 import { ApprovalCard, parseApprovalMessage } from "./ApprovalCard";
 import { ChatTimeSeparator } from "./ChatTimeSeparator";
 import { cloudHealthTone, deviceStatusNoticeLine, deviceStatusNoticeTime } from "../lib/local-agent-task";
+import { TranscriptApp, transcriptAppCall } from "./mcp-apps/TranscriptApp";
 
 export function agentArtifactLabels(
   tt: UITranslate,
@@ -403,11 +404,13 @@ function TranscriptBody({
     );
   }
   if (message.kind === "step") {
-    return (
+    const fallback = (
       <div className="min-w-0 break-words px-1 text-[13px] font-medium text-stone-500 [overflow-wrap:anywhere]">
         <HighlightedText text={message.content} query={highlightQuery} />
       </div>
     );
+    const call = transcriptAppCall(message);
+    return call ? <TranscriptApp call={call} fallback={fallback} /> : fallback;
   }
   if (message.kind === "error") {
     return (

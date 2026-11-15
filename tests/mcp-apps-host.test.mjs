@@ -42,7 +42,7 @@ import {
   plainTextOfToolResult,
   sandboxLoadNotification,
 } from "../src/shell/mcp-apps/protocol.ts";
-import { appResourceFrom, createMcpAppsHost } from "../src/shell/mcp-apps/host.ts";
+import { appResourceFrom, createMcpAppsHost, gatewayTransport } from "../src/shell/mcp-apps/host.ts";
 import {
   UNTRUSTED_FRAME_SANDBOX,
   isUntrustedContentHostname,
@@ -233,7 +233,7 @@ test("CSP：缺省最严；`_meta.ui.csp` 只能加 https 第三方 origin，加
 test("协议方法集保持最小闭集；没有 proxy-fetch / eval 这类通用代理", () => {
   assert.deepEqual(
     [...APP_TO_HOST_METHODS].sort(),
-    ["tools/call", "ui/initialize", "ui/message", "ui/notifications/initialized", "ui/notifications/size-changed", "ui/update-model-context"].sort(),
+    ["tools/call", "ui/initialize", "ui/message", "ui/open-link", "ui/notifications/initialized", "ui/notifications/size-changed", "ui/update-model-context"].sort(),
   );
   assert.deepEqual(
     [...HOST_TO_APP_METHODS].sort(),
@@ -448,6 +448,11 @@ async function load(rel) {
 const { AppFrame, appFrameSrc } = await load("mcp-apps/AppFrame.tsx");
 const { ComposerAppsBar } = await load("mcp-apps/ComposerAppsBar.tsx");
 const { createMcpAppsHost: createHostForDom } = await load("mcp-apps/host.ts");
+const transcriptUrl = await compileModule("src/shell/mcp-apps/TranscriptApp.tsx", OVERRIDES);
+const { McpAppConversationProvider, TranscriptApp, transcriptAppCall } = await import(transcriptUrl);
+const { AgentProgress } = await import(await compileModule("src/shell/AgentProgress.tsx", {
+  ...OVERRIDES, "./mcp-apps/TranscriptApp": transcriptUrl,
+}));
 const { LeoComposer } = await load("LeoComposer.tsx");
 
 async function withDom(run) {
@@ -773,4 +778,227 @@ test("plainTextOfToolResult：content 文本块拼接；没有就 JSON；空→�
   assert.equal(plainTextOfToolResult({ x: 1 }), '{"x":1}');
   assert.equal(plainTextOfToolResult(undefined), "", "没有结果就没有文本，不许把 null 字样摆给用户");
   assert.equal(plainTextOfToolResult(null), "");
+});
+
+// Parity U4: exact G3 I2 stored row; reopening uses this, not another tool call.
+const STORED_APP_ROW = {
+  id: 123, task_id: "task-1", user_id: "owner-1", role: "assistant", kind: "step", content: "Gallery",
+  meta: { tool: "mcp__demo__gallery", status: "done", verified: true, error: "", gateway_tool_tier: true,
+    mcp_app: { connector_id: "demo", tool: "gallery", resource_uri: "ui://demo/gallery.html", arguments: { query: "invitation" },
+      result: { content: [{ type: "text", text: "2 templates" }], structuredContent: { templates: [{ id: "a" }, { id: "b" }] }, isError: false } } },
+};
+function transcriptHost(overrides = {}) {
+  const calls = { reads: [], tools: [] };
+  const host = createHostForDom({ transport: {
+    listTools: async () => { throw new Error("transcript must not need tools/list"); },
+    readResource: async (connector, uri) => {
+      calls.reads.push([connector, uri]);
+      if (overrides.readResource) return overrides.readResource(connector, uri);
+      return { contents: [{ uri, mimeType: "text/html;profile=mcp-app", text: "<p>Templates</p>" }] };
+    },
+    callTool: async (...args) => { calls.tools.push(args); return { content: [{ type: "text", text: "picked" }] }; },
+  } });
+  return { host, calls };
+}
+function TranscriptFixture({ host, row = STORED_APP_ROW, messages, isOwner = true, onMessage = () => {} }) {
+  const child = messages
+    ? React.createElement(AgentProgress, { messages, running: true })
+    : React.createElement(TranscriptApp, { call: transcriptAppCall(row), fallback: React.createElement("p", { "data-tool-fallback": "" }, row.content) });
+  return React.createElement(McpAppConversationProvider, { value: { taskId: "task-1", host, isOwner, onMessage } }, child);
+}
+async function connectTranscriptFrame({ find, messageListeners }) {
+  const frame = find("iframe");
+  assert.ok(frame);
+  const sent = [];
+  const port = { postMessage: (message) => sent.push(message), start() {}, close() {}, onmessage: null };
+  await act(async () => messageListeners.at(-1)({ origin: "null", source: frame.contentWindow,
+    data: { protocol: MCP_APPS_PROTOCOL, instanceId: frame.dataset.mcpAppInstance, type: "hello" }, ports: [port] }));
+  const fromApp = (data) => act(async () => port.onmessage({ data }));
+  await fromApp({ jsonrpc: "2.0", id: "init", method: UI_METHODS.INITIALIZE, params: {} });
+  await fromApp({ jsonrpc: "2.0", method: UI_METHODS.INITIALIZED });
+  return { frame, sent, fromApp };
+}
+
+test("I2 stored row: accepts cloud app metadata, leaves native and malformed tool rows as text", () => {
+  const call = transcriptAppCall(STORED_APP_ROW);
+  assert.equal(call.connectorId, "demo");
+  assert.deepEqual(call.arguments, { query: "invitation" });
+  assert.deepEqual(call.result, STORED_APP_ROW.meta.mcp_app.result);
+  assert.equal(transcriptAppCall({ ...STORED_APP_ROW, meta: { ...STORED_APP_ROW.meta, native: true } }), null);
+  assert.equal(transcriptAppCall({ ...STORED_APP_ROW, meta: { mcp_app: { ...STORED_APP_ROW.meta.mcp_app, resource_uri: "https://bad" } } }), null);
+  assert.equal(transcriptAppCall({ ...STORED_APP_ROW, role: "user" }), null);
+});
+
+test("transcript: mounts interface at tool position outside surrounding process folds", async () => {
+  await withDom(async (dom) => {
+    const { host, calls } = transcriptHost();
+    const before = { id: 122, role: "assistant", kind: "step", content: "Before", meta: { tool: "search", status: "done" } };
+    const after = { ...before, id: 124, content: "After" };
+    await dom.render(TranscriptFixture, { host, messages: [before, STORED_APP_ROW, after] });
+    const app = dom.find("[data-transcript-mcp-app]");
+    assert.ok(app.querySelector("iframe"));
+    assert.equal(app.closest("[data-agent-process]"), null, "interface cannot be hidden in a closed process fold");
+    const order = dom.findAll("[data-agent-process], [data-transcript-mcp-app]");
+    assert.equal(order[1], app);
+    assert.equal(order.length, 3);
+    assert.match(app.textContent, /Demo/);
+    assert.ok(app.querySelector("[data-connector-icon]"));
+    assert.deepEqual(calls.reads, [["demo", "ui://demo/gallery.html"]]);
+    assert.deepEqual(calls.tools, []);
+    const frame = app.querySelector("iframe");
+    await dom.render(TranscriptFixture, { host, messages: [before, structuredClone(STORED_APP_ROW), { ...after, content: "After streamed chunk" }] });
+    assert.equal(dom.find("iframe"), frame, "streamed process chunks retain the call's frame");
+  });
+});
+
+test("transcript: replay sends stored arguments and full result; ui/message uses the task send and tools/call stays scoped", async () => {
+  await withDom(async (dom) => {
+    const { host, calls } = transcriptHost();
+    const sentByComposer = [];
+    const onMessage = async (text) => { sentByComposer.push(text); };
+    await dom.render(TranscriptFixture, { host, onMessage, row: structuredClone(STORED_APP_ROW) });
+    const { sent, fromApp } = await connectTranscriptFrame(dom);
+    assert.deepEqual(sent.find((m) => m.method === UI_METHODS.TOOL_INPUT).params, { arguments: { query: "invitation" } });
+    assert.deepEqual(sent.find((m) => m.method === UI_METHODS.TOOL_RESULT).params, STORED_APP_ROW.meta.mcp_app.result);
+    assert.equal(sent.find((m) => m.method === UI_METHODS.TOOL_RESULT).params.result, undefined, "no nonstandard result wrapper");
+    assert.deepEqual(calls.tools, [], "reopen never repeats tools/call");
+    await fromApp({ jsonrpc: "2.0", id: "pick", method: UI_METHODS.MESSAGE,
+      params: { role: "user", content: [{ type: "text", text: "Use template a" }, { type: "text", text: "in blue" }] } });
+    assert.deepEqual(sentByComposer, ["Use template a\nin blue"]);
+    assert.deepEqual(sent.find((m) => m.id === "pick").result, {});
+    await fromApp({ jsonrpc: "2.0", id: "tool", method: UI_METHODS.TOOLS_CALL, params: { name: "select_template", arguments: { id: "a" } } });
+    assert.deepEqual(calls.tools, [["demo", "select_template", { id: "a" }]]);
+    await dom.render(React.Fragment, {});
+    await dom.render(TranscriptFixture, { host, onMessage, row: structuredClone(STORED_APP_ROW) });
+    assert.ok(dom.find("iframe"));
+    assert.equal(calls.reads.length, 1, "resource cache can serve reopened call");
+    assert.equal(calls.tools.length, 1, "reopening adds no tool invocation");
+  });
+});
+
+test("transcript: send failure is returned to app without claiming delivery", async () => {
+  await withDom(async (dom) => {
+    const { host } = transcriptHost();
+    await dom.render(TranscriptFixture, { host, onMessage: async () => { throw new Error("send refused"); } });
+    const { sent, fromApp } = await connectTranscriptFrame(dom);
+    await fromApp({ jsonrpc: "2.0", id: "failed", method: UI_METHODS.MESSAGE, params: { role: "user", content: [{ type: "text", text: "pick" }] } });
+    assert.deepEqual(sent.find((m) => m.id === "failed").result, { isError: true });
+  });
+});
+
+test("transcript: unreadable resource, wrong MIME and non-owner retain tool text without another tool invocation", async () => {
+  for (const readResource of [async () => { throw new Error("403"); }, async () => ({ contents: [{ uri: "ui://demo/gallery.html", mimeType: "text/html", text: "<p>wrong MIME</p>" }] })]) {
+    await withDom(async (dom) => {
+      const { host, calls } = transcriptHost({ readResource });
+      await dom.render(TranscriptFixture, { host });
+      assert.equal(dom.find("iframe"), null);
+      assert.match(dom.find("[data-tool-fallback]").textContent, /Gallery/);
+      assert.equal(calls.tools.length, 0);
+    });
+  }
+  await withDom(async (dom) => {
+    const { host, calls } = transcriptHost();
+    await dom.render(TranscriptFixture, { host, isOwner: false });
+    assert.equal(dom.find("iframe"), null);
+    assert.ok(dom.find("[data-tool-fallback]"));
+    assert.equal(calls.reads.length, 0, "non-owner never reads the resource");
+  });
+});
+
+test("transcript: near-viewport loading defers all offscreen reads, including many tool calls", async () => {
+  const original = globalThis.IntersectionObserver;
+  const observers = [];
+  globalThis.IntersectionObserver = class {
+    constructor(callback, options) { this.callback = callback; this.options = options; observers.push(this); }
+    observe(element) { this.element = element; }
+    disconnect() { this.disconnected = true; }
+  };
+  try {
+    await withDom(async (dom) => {
+      const { host, calls } = transcriptHost();
+      const rows = Array.from({ length: 12 }, (_, i) => ({ ...STORED_APP_ROW, id: 123 + i,
+        meta: { ...STORED_APP_ROW.meta, mcp_app: { ...STORED_APP_ROW.meta.mcp_app, resource_uri: `ui://demo/${i}.html` } } }));
+      await dom.render(TranscriptFixture, { host, messages: rows });
+      assert.equal(observers.length, 12);
+      assert.equal(calls.reads.length, 0);
+      assert.equal(dom.findAll("iframe").length, 0);
+      await act(async () => observers[4].callback([{ isIntersecting: true }]));
+      await dom.settle();
+      assert.deepEqual(calls.reads, [["demo", "ui://demo/4.html"]]);
+      assert.equal(dom.findAll("iframe").length, 1);
+      assert.equal(observers[4].options.rootMargin, "320px");
+    });
+  } finally {
+    if (original === undefined) delete globalThis.IntersectionObserver;
+    else globalThis.IntersectionObserver = original;
+  }
+});
+
+test("transcript: streaming results and expand/collapse retain frame identity; phone width stays bounded", async () => {
+  await withDom(async (dom) => {
+    const { host, calls } = transcriptHost();
+    await dom.render(TranscriptFixture, { host });
+    const { frame, sent } = await connectTranscriptFrame(dom);
+    Object.defineProperty(dom.window, "innerWidth", { value: 320, configurable: true });
+    assert.equal(dom.find("[data-transcript-mcp-app]").style.maxWidth, "100%");
+    assert.ok(frame.className.includes("max-w-full"));
+    const updated = structuredClone(STORED_APP_ROW);
+    updated.meta.mcp_app.result.structuredContent.templates.push({ id: "c" });
+    await dom.render(TranscriptFixture, { host, row: updated });
+    assert.equal(dom.find("iframe"), frame);
+    assert.deepEqual(sent.filter((m) => m.method === UI_METHODS.TOOL_RESULT).at(-1).params, updated.meta.mcp_app.result);
+    await dom.click("[data-mcp-app-expand]");
+    assert.equal(dom.find("iframe"), frame);
+    assert.equal(dom.find("[data-mcp-app-expanded]").style.position, "fixed");
+    await act(async () => dom.window.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "Escape" })));
+    assert.equal(dom.find("[data-mcp-app-expanded]").dataset.mcpAppExpanded, "false");
+    assert.equal(dom.find("iframe"), frame);
+    assert.equal(calls.reads.length, 1);
+  });
+});
+
+test("UC-6 ui/open-link rejects executable links and opens HTTP(S) with noopener; sandbox stays opaque", async () => {
+  // Rule mapping: docs/architecture/oceanleo-untrusted-content-isolation.md UC-3 / UC-6.
+  for (const url of ["javascript:alert(1)", "data:text/html,hi", "file:///etc/passwd", "https://user:pass@example.com", "/relative"]) {
+    assert.equal(asAppToHostMessage({ jsonrpc: "2.0", id: "x", method: UI_METHODS.OPEN_LINK, params: { url } }), null);
+  }
+  await withDom(async (dom) => {
+    const { host } = transcriptHost();
+    await dom.render(TranscriptFixture, { host });
+    const { frame, sent, fromApp } = await connectTranscriptFrame(dom);
+    const opened = [];
+    dom.window.open = (...args) => { opened.push(args); return null; };
+    await fromApp({ jsonrpc: "2.0", id: "open", method: UI_METHODS.OPEN_LINK, params: { url: "https://example.com/templates" } });
+    assert.deepEqual(opened, [["https://example.com/templates", "_blank", "noopener,noreferrer"]]);
+    assert.deepEqual(sent.find((m) => m.id === "open").result, {});
+    assert.equal(frame.getAttribute("sandbox"), "allow-scripts allow-forms");
+    const frameSource = MCP_APPS_SOURCES["AppFrame.tsx"];
+    assert.match(frameSource, /window\.open\(url, "_blank", "noopener,noreferrer"\)/);
+    assert.doesNotMatch(frameSource, /contentWindow\??\.postMessage/);
+  });
+});
+
+test("spec ui/message rejects mixed/non-user content; full gateway results keep their larger outbound budget", () => {
+  const message = (params) => asAppToHostMessage({ jsonrpc: "2.0", id: 1, method: UI_METHODS.MESSAGE, params });
+  assert.ok(message({ role: "user", content: [{ type: "text", text: "pick" }] }));
+  assert.equal(message({ role: "assistant", content: [{ type: "text", text: "pick" }] }), null);
+  assert.equal(message({ role: "user", content: [{ type: "image", data: "abc" }] }), null);
+  assert.equal(message({ role: "user", content: [{ type: "text", text: " " }] }), null);
+  const result = { content: [{ type: "text", text: "x".repeat(250_000) }], structuredContent: { items: [1] } };
+  assert.ok(hostNotification(UI_METHODS.TOOL_RESULT, result), "G3 caps stored tool state at 1 MB");
+  assert.equal(message({ text: "x".repeat(250_000) }), null, "incoming frame budget stays small");
+});
+
+test("transcript gateway transport includes task_id for owner checks on resource reads and tools/call", async () => {
+  const requests = [];
+  const transport = gatewayTransport({ taskId: "task-1", baseUrl: "https://gateway.example", token: async () => "test-only",
+    fetch: async (url, init) => { requests.push([url, JSON.parse(init.body), init.credentials]); return { ok: true, json: async () => ({}) }; },
+  });
+  await transport.readResource("demo", "ui://demo/gallery.html");
+  await transport.callTool("demo", "select", { id: "a" });
+  assert.deepEqual(requests.map((r) => r[1]), [
+    { connector_id: "demo", uri: "ui://demo/gallery.html", task_id: "task-1" },
+    { connector_id: "demo", name: "select", arguments: { id: "a" }, task_id: "task-1" },
+  ]);
+  assert.ok(requests.every((r) => r[2] === "omit"));
 });

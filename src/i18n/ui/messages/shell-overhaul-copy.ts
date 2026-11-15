@@ -3,6 +3,7 @@
 
 import { PW_U1_MESSAGES } from "./pw-u1-copy";
 import { LOCALES, type Locale } from "../../config";
+import { PW_U4_MESSAGES } from "./pw-u4-copy";
 import { SHELL_OVERHAUL_DOCK_MESSAGES } from "./shell-overhaul-dock-copy";
 import { SHELL_OVERHAUL_DEVICES_MESSAGES } from "./shell-overhaul-devices-copy";
 import { SHELL_OVERHAUL_SETTINGS_MESSAGES } from "./shell-overhaul-settings-copy";
@@ -112,6 +113,7 @@ import { BUILD_1103_GAP_MESSAGES } from "./build-1103-gap-copy";
 import { RDLOGIN_ACT_MESSAGES } from "./rdlogin-act-copy";
 
 const PARTS = [
+  PW_U4_MESSAGES,
   SHELL_OVERHAUL_DOCK_MESSAGES,
   SHELL_OVERHAUL_DEVICES_MESSAGES,
   SHELL_OVERHAUL_SETTINGS_MESSAGES,

@@ -33,6 +33,7 @@ import { AgentStepMark, agentStepState } from "./AgentStepMark";
 import { HighlightedText, Markdown, TypewriterMarkdown, splitHighlights } from "./Markdown";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useStepsFoldBlock } from "./steps-fold-preference";
+import { TranscriptApp, transcriptAppCall } from "./mcp-apps/TranscriptApp";
 
 type ToolEntry = Extract<ProcessEntry, { type: "tool" }>;
 type ThoughtEntry = Extract<ProcessEntry, { type: "thought" }>;
@@ -109,7 +110,35 @@ function summaryParts(tt: UITranslate, summary: ProcessSummary): ReactNode[] {
   return parts.flatMap((part, index) => (index ? [" · ", part] : [part]));
 }
 
-export const AgentProgress = memo(function AgentProgress({
+type AgentProgressProps = {
+  onBlockRender?: (kind: "bubble" | "process", id: number) => void;
+  messages: AgentMessage[];
+  running: boolean;
+  accent?: string;
+  highlightQuery?: string;
+};
+
+/** Connector interfaces stay visible between process folds at their original tool call. */
+export const AgentProgress = memo(function AgentProgress(props: AgentProgressProps) {
+  const segments: ReactNode[] = [];
+  let pending: AgentMessage[] = [];
+  const flush = (running: boolean) => {
+    if (!pending.length) return;
+    segments.push(<ProcessTimeline {...props} key={`process-${pending[0].id}`} messages={pending} running={running} />);
+    pending = [];
+  };
+  props.messages.forEach((message, index) => {
+    const call = transcriptAppCall(message);
+    if (!call) { pending.push(message); return; }
+    flush(false);
+    const fallback = <ProcessTimeline {...props} messages={[message]} running={props.running && index === props.messages.length - 1} />;
+    segments.push(<TranscriptApp key={`app-${message.id}`} call={call} fallback={fallback} />);
+  });
+  flush(props.running);
+  return <>{segments}</>;
+});
+
+const ProcessTimeline = memo(function ProcessTimeline({
   onBlockRender,
   messages,
   running,

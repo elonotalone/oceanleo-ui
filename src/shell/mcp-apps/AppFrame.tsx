@@ -49,8 +49,10 @@ import {
   UI_METHODS,
   acceptAppFrameMessage,
   asAppToHostMessage,
+  appMessageText,
   buildAppFrameCsp,
   hostNotification,
+  externalAppLink,
   isValidAppSandboxOrigin,
   plainTextOfToolResult,
   recordValue,
@@ -82,7 +84,7 @@ export interface AppFrameProps {
   /** 界面按钮回调工具。宿主把它代理回网关，**不在浏览器里直连 MCP 服务器**。 */
   onToolCall: (name: string, args: Record<string, unknown>) => Promise<unknown>;
   /** 界面想往对话里追加一句话。 */
-  onMessage?: (text: string) => void;
+  onMessage?: (text: string) => void | Promise<void>;
   /** 界面更新模型上下文。 */
   onContextUpdate?: (context: Record<string, unknown>) => void;
   /**
@@ -98,6 +100,8 @@ export interface AppFrameProps {
   className?: string;
   /** 降级文本为空时显示的占位（默认「此工具没有可显示的结果」由调用方 tt 后传入）。 */
   emptyFallback?: ReactNode;
+  /** Transcript callers retain their ordinary tool row when embedding is unavailable. */
+  fallback?: ReactNode;
 }
 
 /**
@@ -154,6 +158,11 @@ function reject(port: MessagePort, id: JsonRpcId, code: number, message: string)
   deliver(port, { jsonrpc: "2.0", id, error: { code, message } });
 }
 
+/** The spec takes CallToolResult directly as params, without a `result` wrapper. */
+function toolResultParams(result: unknown): Record<string, unknown> {
+  return recordValue(result) ?? { content: [{ type: "text", text: plainTextOfToolResult(result) }] };
+}
+
 export function AppFrame({
   resourceUri,
   html,
@@ -169,6 +178,7 @@ export function AppFrame({
   title,
   className = "",
   emptyFallback,
+  fallback,
 }: AppFrameProps) {
   const reactId = useId();
   // instanceId 进 fragment 与 hello 信封；每次挂载一个新值，旧 frame 的消息对不上就丢。
@@ -203,7 +213,7 @@ export function AppFrame({
     const inputMessage = hostNotification(UI_METHODS.TOOL_INPUT, { arguments: input ?? {} });
     if (inputMessage) deliver(port, inputMessage);
     if (result !== undefined) {
-      const resultMessage = hostNotification(UI_METHODS.TOOL_RESULT, { result });
+      const resultMessage = hostNotification(UI_METHODS.TOOL_RESULT, toolResultParams(result));
       if (resultMessage) deliver(port, resultMessage);
     }
   }, []);
@@ -219,8 +229,14 @@ export function AppFrame({
           if (!hasId) return;
           respond(port, request.id, {
             protocolVersion: MCP_APPS_PROTOCOL_VERSION,
-            hostCapabilities: { [MCP_APPS_CAPABILITY_KEY]: {} },
-            hostInfo: { name: "oceanleo", protocol: MCP_APPS_PROTOCOL },
+            hostCapabilities: {
+              [MCP_APPS_CAPABILITY_KEY]: {},
+              serverTools: {},
+              openLinks: {},
+              ...(latest.current.onMessage ? { message: { text: {} } } : {}),
+            },
+            hostInfo: { name: "oceanleo", version: "1.0.0" },
+            hostContext: { displayMode: "inline", platform: "web" },
           });
           return;
         }
@@ -244,8 +260,29 @@ export function AppFrame({
         }
         case UI_METHODS.MESSAGE: {
           if (!hasId) return;
-          latest.current.onMessage?.(params.text as string);
-          respond(port, request.id, {});
+          const text = appMessageText(params);
+          const send = latest.current.onMessage;
+          if (text === null || !send) {
+            respond(port, request.id, { isError: true });
+            return;
+          }
+          Promise.resolve().then(() => send(text)).then(
+            () => respond(port, request.id, {}),
+            () => respond(port, request.id, { isError: true }),
+          );
+          return;
+        }
+        case UI_METHODS.OPEN_LINK: {
+          if (!hasId) return;
+          const url = externalAppLink(params.url);
+          if (!url) return;
+          // UC-6: explicit URL verb, no opener and no frame access to host credentials.
+          try {
+            window.open(url, "_blank", "noopener,noreferrer");
+            respond(port, request.id, {});
+          } catch {
+            respond(port, request.id, { isError: true });
+          }
           return;
         }
         case UI_METHODS.UPDATE_MODEL_CONTEXT: {
@@ -318,11 +355,19 @@ export function AppFrame({
     const port = portRef.current;
     if (!port || !initializedRef.current) return;
     if (toolResult === undefined) return;
-    const message = hostNotification(UI_METHODS.TOOL_RESULT, { result: toolResult });
+    const message = hostNotification(UI_METHODS.TOOL_RESULT, toolResultParams(toolResult));
     if (message) deliver(port, message);
   }, [toolResult]);
 
+  useEffect(() => {
+    const port = portRef.current;
+    if (!port || !initializedRef.current) return;
+    const message = hostNotification(UI_METHODS.TOOL_INPUT, { arguments: toolInput ?? {} });
+    if (message) deliver(port, message);
+  }, [toolInput]);
+
   if (!canFrame) {
+    if (fallback !== undefined) return <>{fallback}</>;
     const text = plainTextOfToolResult(toolResult);
     return (
       <div
@@ -349,7 +394,7 @@ export function AppFrame({
       referrerPolicy="no-referrer"
       loading="lazy"
       style={{ height: `${height}px` }}
-      className={`w-full rounded-xl border border-neutral-200 bg-white ${className}`}
+      className={`min-w-0 max-w-full w-full rounded-xl border border-neutral-200 bg-white ${className}`}
       data-mcp-app-frame=""
       data-mcp-app-resource={resourceUri}
       data-mcp-app-instance={instanceId}

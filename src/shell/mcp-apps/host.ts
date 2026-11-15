@@ -67,6 +67,8 @@ export type AppRenderMode = "frame" | "text";
 
 export interface McpAppsHostOptions {
   transport?: McpAppsTransport;
+  /** Transcript calls bind reads/calls to a task for the gateway's owner check. */
+  taskId?: string;
   timeoutMs?: number;
   /** 承载面白名单注入点（测试用；生产恒为 `MCP_APPS_SANDBOX_ORIGINS`）。 */
   allowedOrigins?: readonly string[];
@@ -163,6 +165,7 @@ export function gatewayTransport(deps: {
   fetch?: typeof fetch;
   baseUrl?: string;
   token?: () => Promise<string | null>;
+  taskId?: string;
 } = {}): McpAppsTransport {
   const baseUrl = deps.baseUrl ?? GATEWAY_BASE;
   const token = deps.token ?? accessToken;
@@ -194,18 +197,18 @@ export function gatewayTransport(deps: {
     readResource: (connectorId, uri) =>
       request(MCP_APPS_GATEWAY_PATHS.RESOURCES_READ, {
         method: "POST",
-        body: { connector_id: connectorId, uri },
+        body: { connector_id: connectorId, uri, ...(deps.taskId ? { task_id: deps.taskId } : {}) },
       }),
     callTool: (connectorId, name, args) =>
       request(MCP_APPS_GATEWAY_PATHS.TOOLS_CALL, {
         method: "POST",
-        body: { connector_id: connectorId, name, arguments: args },
+        body: { connector_id: connectorId, name, arguments: args, ...(deps.taskId ? { task_id: deps.taskId } : {}) },
       }),
   };
 }
 
 export function createMcpAppsHost(options: McpAppsHostOptions = {}): McpAppsHost {
-  const transport = options.transport ?? gatewayTransport();
+  const transport = options.transport ?? gatewayTransport({ taskId: options.taskId });
   const timeoutMs = options.timeoutMs ?? DEFAULT_APP_TIMEOUT_MS;
   const allowed = options.allowedOrigins ?? MCP_APPS_SANDBOX_ORIGINS;
   const cache = new Map<string, Promise<AppResource | null>>();
