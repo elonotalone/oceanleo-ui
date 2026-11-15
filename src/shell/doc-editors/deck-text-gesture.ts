@@ -61,6 +61,14 @@ export function deckTextEditKeyStartsEditing(key: string): boolean {
   return key === "Enter" || key === "F2";
 }
 
+/** Keep clicks on the element until a drag has actually started (CSS pixels). */
+export function deckPointerStartsDragging(
+  start: { x: number; y: number },
+  current: { x: number; y: number },
+): boolean {
+  return Math.hypot(current.x - start.x, current.y - start.y) > 4;
+}
+
 export function deckTextGestureProps(
   editor: DeckEditorState,
   field: "title" | "body",
