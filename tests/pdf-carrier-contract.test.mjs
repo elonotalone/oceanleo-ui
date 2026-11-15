@@ -142,6 +142,7 @@ test("C-4 §0.3: the page operation module exports exactly the surveyed API", as
       ),
     ].map((match) => match[1]);
   assert.deepEqual(exported(operations).sort(), [
+    "applyPdfPageOperations",
     "createBlankPdf",
     "deletePdfPage",
     "inspectPdf",

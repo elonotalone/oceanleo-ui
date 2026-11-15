@@ -105,6 +105,14 @@ export function PdfRoute({
   const activeTool = bridge ? bridge.activeTool() : null;
   void editor.annotationVersion;
 
+  // Save, selection and tool state do not change the PDF page pixels.
+  const pageAspect = useCallback((index: number) => {
+    const page = bridge?.pages()[index];
+    return page ? page.size.height / page.size.width : 1.414;
+  }, [bridge]);
+  const renderThumb = useCallback((index: number) => bridge!.renderThumb(index, 1), [bridge]);
+  const openFind = useCallback(() => setFindOpen(true), []);
+
   const switchMode = useCallback((next: EditorMode) => {
     setFindOpen(false);
     setSignatureOpen(false);
@@ -313,17 +321,14 @@ export function PdfRoute({
                 pageCount={editor.pageCount}
                 currentPage={editor.currentPage}
                 version={editor.thumbVersion}
-                aspect={(index) => {
-                  const page = bridge.pages()[index];
-                  return page ? page.size.height / page.size.width : 1.414;
-                }}
-                renderThumb={(index) => bridge.renderThumb(index, 1)}
+                aspect={pageAspect}
+                renderThumb={renderThumb}
                 readOnly={readOnly}
                 busy={editor.processing}
                 onGoTo={editor.goToPage}
-                onRotate={(index) => void editor.rotatePage(index)}
-                onDelete={(index) => void editor.deletePage(index)}
-                onMove={(from, to) => void editor.movePage(from, to)}
+                onRotate={editor.rotatePage}
+                onDelete={editor.deletePage}
+                onMove={editor.movePage}
               />
             ) : null}
             <div className="relative min-h-0 min-w-0 flex-1">
@@ -335,7 +340,7 @@ export function PdfRoute({
                 dark={dark}
                 onHandle={editor.attach}
                 onFailure={editor.setError}
-                onFindShortcut={() => setFindOpen(true)}
+                onFindShortcut={openFind}
               />
               {chrome === "basic" && bridge && !readOnly ? (
                 <PdfToolPalette key={activeTool} inline bridge={bridge} activeTool={activeTool} triggerId={PDF_TOOLS.find((tool) => tool.tool === activeTool)?.id} />

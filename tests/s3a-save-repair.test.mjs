@@ -115,7 +115,7 @@ function makePdfStageHandle() {
   };
   const pages = probe.fixturePdf?.pages ?? Array.from({ length: 3 }, (_, index) => ({ index, rotation: 0, size: { width: 400, height: 600 } }));
   const plugins = {
-    export: {forDocument:()=>({saveAsCopy:()=>{probe.exports++;return {toPromise:async()=>{await new Promise(r=>setTimeout(r,300));return new ArrayBuffer(3);}};}})},
+    export: {forDocument:()=>({saveAsCopy:()=>{probe.exports++;return {toPromise:async()=>{if(probe.visualBarrier)await probe.visualBarrier;return new ArrayBuffer(3);}};}})},
     "document-manager": { getActiveDocumentId: () => active, getActiveDocument: () => ({ pages }), onDocumentOpened: () => () => {}, openDocumentBuffer: () => task({ documentId: "restored", task: task(undefined) }), setActiveDocument(id) { active = id; objects = []; }, closeDocument: () => task(undefined) },
     history: { forDocument: () => ({ canUndo: () => objects.length > 0, canRedo: () => false }), onHistoryChange(cb) { hooks.add(cb); return () => hooks.delete(cb); } },
     annotation: { forDocument: () => scope, onStateChange: () => () => {}, getTool: () => ({ defaults: {} }) },
@@ -418,7 +418,8 @@ test("PDF rotation sends the native edit before any slow PDF export or viewer re
     const started=performance.now();
     await act(async()=>view.container.querySelector("[data-rotate=pdf]").click());
     await tickUntil(()=>puts.length>0);
-    assert.equal(probe.exports,0,"a page edit must never export PDF bytes on the save path");
+    assert.equal(probe.buildCalls,0,"live page rendering must not reconstruct a second PDFium document");
+    assert.equal(view.container.querySelector("[data-pdf-processing]").dataset.pdfProcessing,"true","the PUT does not wait for the viewer export");
     assert.equal(copy.doc.operations.length,1);assert.equal(copy.doc.operations[0].degrees,90);
     assert.ok(puts[0].at-started<150);
     console.log(`REPAIR pdf rotation-to-PUT=${(puts[0].at-started).toFixed(2)}ms while rebuild is pending`);

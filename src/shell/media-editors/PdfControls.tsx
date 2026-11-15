@@ -5,7 +5,7 @@
  * 鼠标移到一页上出现「旋转」「删除」；拖动缩略图即可排序。三件事都写进文件、都能
  * 撤销（`use-pdf-workbench` 的页面整理栈）。多人同改只读时整栏只能看、能跳页。
  */
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { memo, useEffect, useRef, useState, type DragEvent, type RefObject } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
 
@@ -32,11 +32,13 @@ function Thumb({
   version,
   aspect,
   renderThumb,
+  queue,
 }: {
   pageIndex: number;
   version: number;
   aspect: number;
   renderThumb: (pageIndex: number) => Promise<Blob>;
+  queue: RefObject<Promise<void>>;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(typeof IntersectionObserver === "undefined");
@@ -57,19 +59,27 @@ function Thumb({
     if (!visible) return undefined;
     let alive = true;
     let objectUrl = "";
-    Promise.resolve()
-      .then(() => renderThumb(pageIndex))
-      .then((blob) => {
-        if (!alive) return;
-        objectUrl = URL.createObjectURL(blob);
-        setUrl(objectUrl);
-      })
-      .catch(() => undefined);
+    // Paint one thumbnail at a time, yielding between pages. Separate timers for
+    // every page can all become runnable together and starve a save response.
+    queue.current = queue.current.then(async () => {
+      if (!alive) return;
+      await new Promise<void>((done) => setTimeout(done, 0));
+      if (!alive) return;
+      const blob = await renderThumb(pageIndex);
+      if (!alive) return;
+      objectUrl = URL.createObjectURL(blob);
+      setUrl(objectUrl);
+      // Let React and the browser paint before starting the next page.
+      await new Promise<void>((done) => {
+        if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => done());
+        else setTimeout(done, 0);
+      });
+    }).catch(() => undefined);
     return () => {
       alive = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [pageIndex, renderThumb, version, visible]);
+  }, [pageIndex, queue, renderThumb, version, visible]);
   return (
     <div
       ref={ref}
@@ -81,7 +91,7 @@ function Thumb({
   );
 }
 
-export function PdfControls({
+export const PdfControls = memo(function PdfControls({
   pageCount,
   currentPage,
   version,
@@ -97,6 +107,7 @@ export function PdfControls({
   const tt = useUI();
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dropAt, setDropAt] = useState<number | null>(null);
+  const thumbQueue = useRef(Promise.resolve());
   const locked = readOnly || busy;
   const drop = (event: DragEvent, index: number) => {
     event.preventDefault();
@@ -158,6 +169,7 @@ export function PdfControls({
                 version={version}
                 aspect={aspect(index)}
                 renderThumb={renderThumb}
+                queue={thumbQueue}
               />
               <span className="mt-1 block text-center text-[11px] tabular-nums text-[var(--awb-muted)]">
                 {page}
@@ -198,4 +210,4 @@ export function PdfControls({
       })}
     </nav>
   );
-}
+});

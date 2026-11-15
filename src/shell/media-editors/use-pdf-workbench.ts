@@ -20,7 +20,7 @@ import { savePdfBytesToLibrary } from "./pdf-library-save";
 import { loadInitialPdfSource } from "./pdf-source";
 import { pdfSourceReference, samePdfSource } from "./pdf-source-reference";
 import { decodePdfRecovery, type PdfPageOperation, type PdfWorkingCopy } from "./pdf-recovery";
-import { buildPdfWorkingCopy, pdfWorkingSource } from "./pdf-working-copy-publish";
+import { applyPdfPageOperations, buildPdfWorkingCopy, pdfWorkingSource } from "./pdf-working-copy-publish";
 import { uploadEditorMedia } from "../doc-editors/editor-insert-media";
 import { pdfPageWorkingCopy } from "./pdf-page-working-copy";
 import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
@@ -149,11 +149,11 @@ export function usePdfWorkbench(
   const itemRef = useRef(item);
   itemRef.current = item;
   /** 本地编辑：记脏、并告诉外壳这是一次真人编辑（自动保存只认这个信号）。 */
-  const bump = useCallback(() => {
+  const bump = useCallback((refreshThumbs = true) => {
     applyPdfWorkbenchUserEditSession(itemRef.current, "local-annotation");
     revisionRef.current += 1;
     setRevision(revisionRef.current);
-    setThumbVersion((value) => value + 1);
+    if (refreshThumbs) setThumbVersion((value) => value + 1);
   }, []);
 
   // ---- 源装载 ----
@@ -317,7 +317,7 @@ export function usePdfWorkbench(
       operationsRef.current = after.operations;
       undoOps.current.push({ before, after, page });
       redoOps.current = [];
-      bump();
+      bump(false);
       processingRef.current = true;
       bridge.setReadOnly(true);
       setProcessing(true);
@@ -326,7 +326,10 @@ export function usePdfWorkbench(
         // Let React commit the edit and start its PUT before CPU-heavy PDF parsing.
         await new Promise<void>((done) => globalThis.setTimeout(done, 0));
         if (!mountedRef.current || !samePdfSource(sourceRef.current, after.source)) return true;
-        const bytes = await buildPdfWorkingCopy(after, source);
+        // The mounted viewer already contains the complete current document.
+        // Transform it once; replaying history through a second PDFium instance
+        // is only needed for restoration or detached publication.
+        const bytes = await applyPdfPageOperations(await exportPdf(bridge), [operation]);
         if (!mountedRef.current || handleRef.current?.bridge !== bridge) return true;
         await bridge.replaceDocument(bytes, page);
         bridge.adoptWorkingCopyMedia(after);
@@ -371,7 +374,7 @@ export function usePdfWorkbench(
     bridge.setReadOnly(true);
     workingDocumentRef.current = doc;
     operationsRef.current = doc.operations;
-    bump();
+    bump(false);
     setProcessing(true);
     try {
       await new Promise<void>((done) => globalThis.setTimeout(done, 0));

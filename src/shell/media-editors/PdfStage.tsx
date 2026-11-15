@@ -8,7 +8,7 @@
  * 未保存的批注都留在原处。查看器只在挂载时读一次 config，之后的主题变化走
  * `container.setTheme()`。
  */
-import { useEffect, useMemo, useRef, useState, type ComponentType } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type ComponentType } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { PDFIUM_INIT_TIMEOUT_MS, pdfiumInitWatch } from "./pdf-next-runtime";
 import { pdfEngineBuffer, resolvePdfiumLoadPlan } from "./pdf-engine-host";
@@ -48,7 +48,7 @@ interface ContainerLike {
 
 let instanceSeq = 0;
 
-export function PdfStage({
+export const PdfStage = memo(function PdfStage({
   bytes,
   name,
   mode,
@@ -304,4 +304,4 @@ export function PdfStage({
       ) : null}
     </div>
   );
-}
+});

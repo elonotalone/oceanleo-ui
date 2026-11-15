@@ -2,21 +2,13 @@ import type { PdfAnnotationObject, PdfWidgetAnnoObject } from "@embedpdf/models"
 import { resolvePdfMedia } from "./pdf-source-reference";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { openPdfEngineDocument } from "./pdf-engine-host";
-import { createBlankPdf, deletePdfPage, movePdfPage, rotatePdfPage } from "./pdf-operations";
-import { pdfLiveAnnotation, type PdfPageOperation, type PdfWorkingCopy } from "./pdf-recovery";
+import { applyPdfPageOperations, createBlankPdf } from "./pdf-operations";
+import { pdfLiveAnnotation, type PdfWorkingCopy } from "./pdf-recovery";
+
+export { applyPdfPageOperations } from "./pdf-operations";
 
 export async function pdfWorkingSource(doc: PdfWorkingCopy): Promise<Uint8Array> {
   return doc.source.blank ? createBlankPdf() : new Uint8Array(await (await fetchMediaBlob(await resolvePdfMedia(doc.source))).arrayBuffer());
-}
-
-export async function applyPdfPageOperations(bytes: Uint8Array, operations: PdfPageOperation[]): Promise<Uint8Array> {
-  let result = bytes;
-  for (const op of operations) {
-    result = op.type === "rotate" ? await rotatePdfPage(result, op.pageIndex, op.degrees)
-      : op.type === "delete" ? await deletePdfPage(result, op.pageIndex)
-      : await movePdfPage(result, op.fromIndex, op.toIndex);
-  }
-  return result;
 }
 
 /** Independent PDFium document: no mounted viewer, canvas or React state is needed. */

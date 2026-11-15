@@ -1,6 +1,7 @@
 "use client";
 
 import { PDFDocument, degrees } from "pdf-lib";
+import type { PdfPageOperation } from "./pdf-recovery";
 
 /**
  * 页面整理的字节级操作（pdf-lib，MIT）。查看器引擎没有「写旋转 / 挪页」的接口，
@@ -10,6 +11,7 @@ import { PDFDocument, degrees } from "pdf-lib";
 const LOAD_OPTIONS = {
   ignoreEncryption: false,
   updateMetadata: false,
+  parseSpeed: 25,
 } as const;
 
 function copyBytes(bytes: Uint8Array): Uint8Array {
@@ -48,13 +50,7 @@ export async function rotatePdfPage(
   pageIndex: number,
   clockwiseDegrees: number,
 ): Promise<Uint8Array> {
-  const document = await loadPdf(bytes);
-  assertPageIndex(document, pageIndex);
-  const page = document.getPage(pageIndex);
-  const current = page.getRotation().angle;
-  const normalized = ((current + clockwiseDegrees) % 360 + 360) % 360;
-  page.setRotation(degrees(normalized));
-  return savePdf(document);
+  return applyPdfPageOperations(bytes, [{ type: "rotate", pageIndex, degrees: clockwiseDegrees }]);
 }
 
 export async function movePdfPage(
@@ -62,27 +58,44 @@ export async function movePdfPage(
   fromIndex: number,
   toIndex: number,
 ): Promise<Uint8Array> {
-  const document = await loadPdf(bytes);
-  assertPageIndex(document, fromIndex);
-  assertPageIndex(document, toIndex);
-  if (fromIndex === toIndex) return copyBytes(bytes);
-  const page = document.getPage(fromIndex);
-  document.removePage(fromIndex);
-  document.insertPage(toIndex, page);
-  return savePdf(document);
+  return applyPdfPageOperations(bytes, [{ type: "move", fromIndex, toIndex }]);
 }
 
 export async function deletePdfPage(
   bytes: Uint8Array,
   pageIndex: number,
 ): Promise<Uint8Array> {
+  return applyPdfPageOperations(bytes, [{ type: "delete", pageIndex }]);
+}
+
+/** Replay the page history in one parse/save, yielding while parsing and between batches. */
+export async function applyPdfPageOperations(bytes: Uint8Array, operations: PdfPageOperation[]): Promise<Uint8Array> {
+  if (!operations.length) return bytes;
   const document = await loadPdf(bytes);
-  assertPageIndex(document, pageIndex);
-  if (document.getPageCount() <= 1) {
-    throw new Error("PDF 至少需要保留一页");
+  let changed = false;
+  for (let index = 0; index < operations.length; index++) {
+    const op = operations[index];
+    if (op.type === "move") {
+      assertPageIndex(document, op.fromIndex);
+      assertPageIndex(document, op.toIndex);
+      if (op.fromIndex === op.toIndex) continue;
+      const page = document.getPage(op.fromIndex);
+      document.removePage(op.fromIndex);
+      document.insertPage(op.toIndex, page);
+    } else {
+      assertPageIndex(document, op.pageIndex);
+      if (op.type === "rotate") {
+        const page = document.getPage(op.pageIndex);
+        page.setRotation(degrees(((page.getRotation().angle + op.degrees) % 360 + 360) % 360));
+      } else {
+        if (document.getPageCount() <= 1) throw new Error("PDF 至少需要保留一页");
+        document.removePage(op.pageIndex);
+      }
+    }
+    changed = true;
+    if (index % 25 === 24) await new Promise<void>((done) => setTimeout(done, 0));
   }
-  document.removePage(pageIndex);
-  return savePdf(document);
+  return changed ? savePdf(document) : copyBytes(bytes);
 }
 
 
