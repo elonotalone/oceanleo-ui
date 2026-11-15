@@ -111,6 +111,9 @@ export interface ShadowSettings {
 }
 
 export interface TextSettings {
+  list?: "none" | "bullet" | "ordered";
+  indent?: number;
+  verticalText?: boolean;
   value: string;
   fontFamily: string;
   fontSize: number;

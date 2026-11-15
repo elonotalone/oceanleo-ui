@@ -133,7 +133,7 @@ class FakeObject {
 }
 
 class FakeImage extends FakeObject {}
-class FakeText extends FakeObject {}
+class FakeText extends FakeObject { initDimensions() {} }
 class FakeRect extends FakeObject {}
 
 class FakeCanvas {
@@ -487,9 +487,11 @@ test("canonical commands reach the controller: highlight, lists, clear format, f
   dispatchFabricImageCommand(controller, command("highlight", "text-1", "#ffee00"));
   assert.equal(text.textBackgroundColor, "#ffee00");
   dispatchFabricImageCommand(controller, command("list", "text-1", "ordered"));
-  assert.equal(text.text, "1. one\n2. two");
+  assert.equal(text.text, "one\ntwo");
+  assert.equal(text.oceanleoList, "ordered");
   dispatchFabricImageCommand(controller, command("list", "text-1", "bullet"));
-  assert.equal(text.text, "• one\n• two", "switching list type replaces its own prefix");
+  assert.equal(text.text, "one\ntwo", "list markers are separate from source text");
+  assert.equal(text.oceanleoList, "bullet");
   dispatchFabricImageCommand(controller, command("list", "text-1", "none"));
   assert.equal(text.text, "one\ntwo");
   dispatchFabricImageCommand(controller, command("font-family", "text-1", "Georgia, Times New Roman, serif"));
@@ -549,9 +551,11 @@ test("actual controller text commands align, apply reversible case and list edit
   assert.equal(text.text, "Mixed Case\nsecond line", "second toggle restores original capitalization");
 
   dispatchFabricImageCommand(controller, command("list", "text-1", true));
-  assert.equal(text.text, "• Mixed Case\n• second line");
+  assert.equal(text.text, "Mixed Case\nsecond line");
+  assert.equal(text.oceanleoList, "bullet");
   dispatchFabricImageCommand(controller, command("list", "text-1", false));
-  assert.equal(text.text, "Mixed Case\nsecond line", "toggle removes only its own bullet prefix");
+  assert.equal(text.text, "Mixed Case\nsecond line", "toggle preserves the source text");
+  assert.equal(text.oceanleoList, "none");
   assert.ok(controller.commits >= 5);
 });
 

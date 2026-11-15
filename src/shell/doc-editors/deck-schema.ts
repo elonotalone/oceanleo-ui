@@ -74,6 +74,13 @@ export interface DeckElement {
   align?: DeckTextAlign;
   lineHeight?: number;
   letterSpacing?: number;
+  verticalText?: boolean;
+  /** Paragraph inset in logical CSS pixels. */
+  indent?: number;
+  /** Per-cell overrides; row and column form the key. */
+  cellStyles?: Record<string, Partial<DeckElement>>;
+  /** Removed fractions of the original image, before fit/flip. */
+  crop?: { left: number; top: number; right: number; bottom: number };
   borderColor?: string;
   borderWidth?: number;
   lineDash?: DeckLineDash;
@@ -330,6 +337,29 @@ function finite(
     : fallback;
 }
 
+export function normalizeDeckCrop(value: unknown): DeckElement["crop"] {
+  if (!value || typeof value !== "object") return undefined;
+  const source = record(value);
+  const left = finite(source.left, 0, 0, 0.95);
+  const top = finite(source.top, 0, 0, 0.95);
+  return { left, top, right: finite(source.right, 0, 0, 0.95 - left), bottom: finite(source.bottom, 0, 0, 0.95 - top) };
+}
+
+const CELL_TEXT_KEYS = ["fontFamily", "fontSize", "color", "bold", "italic", "underline", "strike", "highlight", "align", "list", "lineHeight", "letterSpacing", "link", "verticalText", "indent"] as const;
+function normalizeDeckCellStyles(value: unknown): DeckElement["cellStyles"] {
+  const result: NonNullable<DeckElement["cellStyles"]> = {};
+  for (const [key, raw] of Object.entries(record(value)).slice(0, 5000)) {
+    if (!/^(?:[0-9]|[1-9][0-9]):(?:[0-9]|[1-4][0-9])$/.test(key)) continue;
+    // Reuse the exact text normalizer, but never recurse into nested cells.
+    const source = record(raw);
+    const style = normalizeElement({ ...source, type: "text", cellStyles: undefined }, 0)!;
+    const picked: Record<string, unknown> = {};
+    for (const field of CELL_TEXT_KEYS) if (Object.hasOwn(source, field)) picked[field] = source[field] === "" || source[field] === false ? source[field] : style[field];
+    result[key] = picked;
+  }
+  return Object.keys(result).length ? result : undefined;
+}
+
 function normalizeElement(value: unknown, index: number): DeckElement | null {
   const source = record(value);
   const rawType = text(source.type).trim() as DeckElementType;
@@ -390,6 +420,10 @@ function normalizeElement(value: unknown, index: number): DeckElement | null {
         : undefined,
     lineHeight: finite(source.lineHeight, 1.15, 0.7, 4),
     letterSpacing: finite(source.letterSpacing, 0, -10, 40),
+    verticalText: source.verticalText === true,
+    indent: finite(source.indent, 0, 0, 240),
+    cellStyles: normalizeDeckCellStyles(source.cellStyles),
+    crop: normalizeDeckCrop(source.crop),
     borderColor: color(source.borderColor) || undefined,
     borderWidth: finite(source.borderWidth, 0, 0, 40),
     lineDash:
@@ -565,6 +599,8 @@ export function cloneDeckDocument(deck: DeckDocument): DeckDocument {
         ...element,
         animation: element.animation ? { ...element.animation } : undefined,
         rows: element.rows?.map((row) => [...row]),
+        crop: element.crop ? { ...element.crop } : undefined,
+        cellStyles: element.cellStyles ? Object.fromEntries(Object.entries(element.cellStyles).map(([key, style]) => [key, { ...style }])) : undefined,
       })),
     })),
     importWarnings: deck.importWarnings ? [...deck.importWarnings] : undefined,

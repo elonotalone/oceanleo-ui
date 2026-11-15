@@ -81,33 +81,6 @@ export function noteBackground(fabric: FabricNS, object: FabricObject): FabricOb
   );
 }
 
-const BULLET = /^• /;
-const ORDERED = /^\d+\.\s/;
-
-export function textListMode(value: string): TextListMode {
-  const lines = value.split("\n");
-  if (lines.every((line) => BULLET.test(line))) return "bullet";
-  if (lines.every((line) => ORDERED.test(line))) return "ordered";
-  return "none";
-}
-
-/** 先去掉本功能自己加过的前缀，再按目标形态重新加；别的文字不动。 */
-export function applyTextListMode(value: string, mode: TextListMode): string {
-  const current = textListMode(value);
-  const lines = value.split("\n").map((line) =>
-    current === "bullet"
-      ? line.replace(BULLET, "")
-      : current === "ordered"
-        ? line.replace(ORDERED, "")
-        : line,
-  );
-  if (mode === "bullet") return lines.map((line) => `• ${line}`).join("\n");
-  if (mode === "ordered") {
-    return lines.map((line, index) => `${index + 1}. ${line}`).join("\n");
-  }
-  return lines.join("\n");
-}
-
 /** Reset every supported inline style, including imported per-character overrides. */
 export const CLEARED_TEXT_PROPS = {
   fontFamily: "sans-serif",

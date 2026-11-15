@@ -8,6 +8,7 @@
 // 后传进来）。类型 import 会在编译期擦除，不产生运行时依赖。
 // ============================================================================
 
+import { FABRIC_TEXT_LAYOUT_PROPS, type FabricTextLayoutProps } from "./fabric-text-layout";
 import { readRectRadius, readStrokeDash } from "./fabric-style-ops";
 import type {
   Canvas,
@@ -47,7 +48,7 @@ export type FabricNS = typeof import("fabric");
 
 export type EditorRole = "background" | "docbg" | "crop";
 
-export interface EditorObjectProps {
+export interface EditorObjectProps extends FabricTextLayoutProps {
   oceanleoId?: string;
   oceanleoRole?: EditorRole;
   oceanleoKind?: string;
@@ -86,6 +87,7 @@ type ImageFilter = FabricImage["filters"][number];
 
 /** 序列化（undo 快照）时随对象保存的自定义/行为属性。 */
 export const SNAPSHOT_PROPS = [
+  ...FABRIC_TEXT_LAYOUT_PROPS,
   "oceanleoId",
   "oceanleoRole",
   "oceanleoKind",
@@ -397,6 +399,9 @@ export function buildSelectedSnapshot(
       linethrough: obj.linethrough === true,
       lineHeight: obj.lineHeight || 1.16,
       charSpacing: obj.charSpacing || 0,
+      list: target.oceanleoList || "none",
+      indent: target.oceanleoIndent || 0,
+      verticalText: target.oceanleoVerticalText === true,
       align:
         align === "center" || align === "right" || align === "justify"
           ? align
