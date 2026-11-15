@@ -22,6 +22,8 @@
 
 2026-11-16 共享测试追加独占：tests/media-editors.test.mjs、tests/collab-acceptance-convergence.test.mjs、tests/deck-audio-rogue-chrome.test.mjs。可用 tests/helpers/selection-adapter-host.mjs 的 compileSelectionAdapterHost。
 
+2026-11-16 第二断点：完成 media 后独占新增 tests/editor-toolbar-profile-parity.test.mjs（从父责任转交）。至少比较 RichDoc/Deck/Fabric/PDF/Grid/Timeline 实际 adapter/builder 支持的同类 canon 项，断言规范 id、数值形态、px 单位、canon group/menu placement 一致并显式检查引擎能力上下限；不能用人为相同输入替代真实宿主输出。增加真实 SelectionToolbar jsdom PDF 创建十工具 icon-only 与窄栏 More/菜单文字/点击执行/展开恢复测试。不得改其他父产品文件；如发现产品缺陷发父修复。
+
 独占：src/shell/media-editors/ 下 AudioContextToolbar.tsx、Model3DContextToolbar.tsx、PdfSelectionBar.tsx 及其迁移 hook/纯 builder/patch/palette；src/shell/advanced-routes/AudioRoute.tsx、Model3DRoute.tsx、PdfRoute.tsx、VideoTimelineRoute.tsx；src/shell/video-editor/VideoTimelineContextToolbar.tsx 与 video-edit-bar.ts 等其直接控件命令；只与上述功能相关的已有测试。不能改其他单元或父文件。
 
 Audio、Model3D、VideoTimeline 改 use-*-selection-adapter hook，删除 UI 包装；PDF 拆纯构建/patch 与 PdfToolPalette.tsx（palette 可有 UI，但不能另实例 SelectionToolbar），Route 交 selection 和 creationTools。PDF 十个工具必须创建域，原 identity/执行保留；PDF 字号 6–96 px；其他字号统一 px；clear-format 如支持则清全部能清的行内格式，不捏造未支持能力。回报 PDF 字体/原生批注差异。更新相关已有测试引用但不降低断言。
