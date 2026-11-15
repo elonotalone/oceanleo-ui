@@ -175,7 +175,7 @@ export function videoClipSelection(
         { id: "border-width", kind: "number", label: tt("边框宽度"), value: clip.border?.width ?? 0,
           min: 0, max: 100, step: 1, unit: "px", suffix: "px", ...panel("border", tt("边框")) },
         { id: "border-color", kind: "color", label: tt("边框颜色"), value: clip.border?.color ?? "#000000", ...panel("border", tt("边框")) },
-        { id: "alt", kind: "text", label: tt("替代文本"), value: clip.alt ?? "", ...panel("alt", tt("替代文本")) },
+        { id: "alt", kind: "text", label: tt("替代文字"), value: clip.alt ?? "", ...panel("alt", tt("替代文字")) },
       );
     }
     const replacements = imageReplacementSources(doc, located);
