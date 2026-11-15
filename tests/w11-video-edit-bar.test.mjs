@@ -110,7 +110,7 @@ test("W11 canonical ids and order per clip kind (D9)", () => {
   };
   assert.deepEqual(
     [...new Set(order("text"))],
-    ["font-size", "bold", "text-color", "highlight", "align", "duplicate", "delete"],
+    ["font-size", "bold", "text-color", "highlight", "align", "list", "case", "clear-format", "duplicate", "delete"],
   );
   assert.deepEqual(
     [...new Set(order("video"))],

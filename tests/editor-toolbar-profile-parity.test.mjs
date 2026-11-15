@@ -155,6 +155,17 @@ function canvasPictureContext() {
     availability: (id, args) => commandAvailability(id, environment, args) }));
 }
 
+function canvasTextContext() {
+  const added = addProjectNode(createVideoProject("Text profile"), "text", { x: 10, y: 20 }, {
+    text: "Canvas text", params: { includeInVideo: true, textStyle: { font_size: 30, bold: true, color: "#abcdef", align: "left" } },
+  });
+  const project = added.project;
+  const node = projectHead(project).graph.nodes[0];
+  const environment = { getProject: () => project, getSelectedNodeId: () => node.nodeId, getSelectionEpoch: () => 1, getImageMode: () => "retouch" };
+  return selectionAdapterContext(canvasSelectionContext({ project, node, selectionEpoch: 1, imageMode: "retouch", tt,
+    availability: (id, args) => commandAvailability(id, environment, args) }));
+}
+
 async function nativeProfiles() {
   const richEditor = new Editor({ extensions: [StarterKit, TextStyle, FontSize, FontFamily, Color, Highlight.configure({ multicolor: true }), RichDocTypography], content: '<p style="line-height:1.6"><span style="font-size:21px;font-family:Georgia;color:#123456"><strong>Document text</strong></span></p>', editorProps: { handleScrollToSelection: () => true } });
   richEditor.commands.setTextSelection({ from: 1, to: 10 });
@@ -179,6 +190,7 @@ async function nativeProfiles() {
       assert.ok(contexts.get(name), `${name} must supply a native text selection`);
     }
     contexts.set("Grid", selectionAdapterContext(gridUniverSelectionContext({ sheetId: "sheet", revision: 1, style: { fontSize: 19, fontFamily: "Arial", bold: true }, tt })));
+    contexts.set("Canvas", canvasTextContext());
     return { contexts, async close() { for (const mounted of mounts.reverse()) await mounted.close(); richEditor.destroy(); } };
   } catch (error) { for (const mounted of mounts.reverse()) await mounted.close(); richEditor.destroy(); throw error; }
 }
@@ -212,12 +224,12 @@ async function assertNativeSizeWidget(name, context, expected) {
   } finally { await mounted.close(); }
 }
 
-test("six native text selections resolve to the same canon shapes, px values and menu profiles with explicit engine limits", async () => {
+test("seven native text selections resolve to the same canon shapes, px values and menu profiles with explicit engine limits", async () => {
   const native = await nativeProfiles();
   try {
     const projected = new Map();
     const sameId = new Map();
-    const limits = { RichDoc: [21, 1, 1000], Deck: [27, 4, 300], Fabric: [32, 6, 320], PDF: [16, 6, 96], Grid: [19, 6, 96], Timeline: [44, 8, 300] };
+    const limits = { RichDoc: [21, 1, 1000], Deck: [27, 4, 300], Fabric: [32, 6, 320], PDF: [16, 6, 96], Grid: [19, 6, 96], Timeline: [44, 8, 300], Canvas: [30, 8, 300] };
     for (const [name, context] of native.contexts) {
       for (const input of context.controls.filter(control => control.domain !== "specific")) {
         for (const field of ["kind", "label", "icon", "iconOnly"]) assert.equal(field in input, false, `${name}:${input.id} must leave ${field} to the shell`);
@@ -242,7 +254,7 @@ test("six native text selections resolve to the same canon shapes, px values and
         else sameId.set(control.canonId, { name, profile: canonicalProfile(control) });
       }
     }
-    for (const id of ["font-size", "bold", "text-color", "align"]) assert.equal([...projected.values()].filter(profile => profile.controls.some(control => control.canonId === id)).length, 6, `${id} must compare all six engines`);
+    for (const id of ["font-size", "bold", "text-color", "align"]) assert.equal([...projected.values()].filter(profile => profile.controls.some(control => control.canonId === id)).length, 7, `${id} must compare all seven engines`);
     const metrics = (name, id) => projected.get(name).controls.find(control => control.canonId === id);
     assert.deepEqual([metrics("RichDoc", "line-height").value, metrics("Deck", "line-height").value, metrics("Fabric", "line-height").value], [33.6, 37.8, 40]);
     assert.deepEqual([metrics("Deck", "letter-spacing").value, metrics("Fabric", "letter-spacing").value], [3, 6.4]);
@@ -250,7 +262,9 @@ test("six native text selections resolve to the same canon shapes, px values and
     assert.deepEqual([metrics("Fabric", "letter-spacing").min, metrics("Fabric", "letter-spacing").max], [-6.4, 32]);
     assert.deepEqual(metrics("PDF", "font-family").options.map(option => option.value), ["Helvetica", "Times", "Courier"]);
     for (const id of ["underline", "strike", "list", "line-height", "link", "highlight", "clear-format"]) assert.equal(Boolean(metrics("PDF", id)), false, `PDF native annotations do not offer ${id}`);
-    for (const id of ["font-family", "italic", "line-height", "letter-spacing", "clear-format"]) assert.equal(Boolean(metrics("Timeline", id)), false, `Timeline does not invent ${id}`);
+    for (const id of ["font-family", "italic", "line-height", "letter-spacing"]) assert.equal(Boolean(metrics("Timeline", id)), false, `Timeline does not invent ${id}`);
+    for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Timeline", id), `Timeline exposes the implemented ${id} command`);
+    for (const id of ["font-family", "italic", "underline", "strike", "list", "line-height", "letter-spacing", "link", "case", "clear-format"]) assert.equal(Boolean(metrics("Canvas", id)), false, `Canvas does not invent ${id}`);
   } finally { await native.close(); }
 });
 
