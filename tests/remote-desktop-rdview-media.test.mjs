@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { openRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+import { openRemoteMedia as actualOpenRemoteMedia } from "../src/pages/remote-desktop-media.ts";
+const openRemoteMedia = (...args) => { args[5] ??= () => ({ track: { kind: "video", id: "synthetic" }, stop() {} }); return actualOpenRemoteMedia(...args); };
 
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 async function harness(t, { stats = true, trackId = "screen-track", kind = "video", counters = { bytesReceived: 100, packetsReceived: 1, framesReceived: 1 } } = {}) {
@@ -26,6 +27,7 @@ async function harness(t, { stats = true, trackId = "screen-track", kind = "vide
   const originalPeer = globalThis.RTCPeerConnection;
   globalThis.RTCPeerConnection = Peer;
   const engine = {
+    setParameter() {}, sendDataChannelMessage() {}, startScreenShare() {}, stopScreenShare() {},
     on(name, fn) { events.set(name, fn); }, off(name) { events.delete(name); },
     setChannelProfile() {}, setClientRole() {},
     setDefaultSubscribeAllRemoteAudioStreams() {}, setDefaultSubscribeAllRemoteVideoStreams() {},
@@ -36,14 +38,14 @@ async function harness(t, { stats = true, trackId = "screen-track", kind = "vide
   const credentials = {
     provider: "artc", transport: "artc-v1", app_id: "fixture-app", channel_id: "fixture-session",
     user_id: "viewer", publisher_id: "desktop", token: "fixture-token", expires_at: new Date(Date.now() + 120000).toISOString(),
-    track: "screen", role: "viewer", camera: false, microphone: false,
+    track: "screen", role: "viewer", camera: false, microphone: false, data_channel_input: true,
   };
   const abort = new AbortController();
   const viewer = await openRemoteMedia(credentials, video, {
     state: (...args) => states.push(args), frame: (...args) => frames.push(args),
     renew: async () => ({ ...credentials, expires_at: new Date(Date.now() + 120000).toISOString() }),
     stats: sample => samples.push(sample),
-  }, abort.signal, async () => ({ createEngine: () => engine }));
+  }, abort.signal, async () => ({ createEngine: () => engine, dataChannelMessage: data => ({ data, type: 2 }) }));
   t.after(async () => { await viewer.close(); globalThis.RTCPeerConnection = originalPeer; });
   return {
     video, states, frames, samples, counters, events, viewer, statsCalls: () => statsCalls,

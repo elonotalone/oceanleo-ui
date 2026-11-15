@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { openRemoteMedia, RemotePublisherStatusError } from "../src/pages/remote-desktop-media.ts";
+import { openRemoteMedia as actualOpenRemoteMedia, RemotePublisherStatusError } from "../src/pages/remote-desktop-media.ts";
+const openRemoteMedia = (...args) => { args[5] ??= () => ({ track: { kind: "video", id: "synthetic" }, stop() {} }); return actualOpenRemoteMedia(...args); };
 
-const credentials = () => ({ provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "session-channel", user_id: "viewer", publisher_id: "desktop", token: "opaque-token", timestamp: Math.floor(Date.now() / 1000) + 120, expires_at: new Date(Date.now() + 120000).toISOString(), track: "screen", role: "viewer", camera: false, microphone: false });
+const credentials = () => ({ provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "session-channel", user_id: "viewer", publisher_id: "desktop", token: "opaque-token", timestamp: Math.floor(Date.now() / 1000) + 120, expires_at: new Date(Date.now() + 120000).toISOString(), track: "screen", role: "viewer", camera: false, microphone: false, data_channel_input: true });
 function harness() {
   const events = new Map(), calls = [], states = [], frames = [];
   let callback;
@@ -12,6 +13,7 @@ function harness() {
     cancelVideoFrameCallback() { callback = null; },
   });
   const engine = {
+    setParameter() {}, sendDataChannelMessage() {}, startScreenShare() {}, stopScreenShare() {},
     on(name, fn) { events.set(name, fn); }, off(name) { events.delete(name); },
     setChannelProfile(value) { calls.push(["profile", value]); },
     setClientRole(value) { calls.push(["role", value]); },
@@ -31,7 +33,7 @@ function harness() {
   const handlers = { state: (...args) => states.push(args), frame: (...args) => frames.push(args), renew: async () => credentials() };
   return { engine, calls, states, frames, video, abort, handlers, events,
     decoded(width = 1920, height = 1080, metadata) { video.videoWidth = width; video.videoHeight = height; video.readyState = 2; callback?.(0, metadata); },
-    start: () => openRemoteMedia(credentials(), video, handlers, abort.signal, async () => ({ createEngine: () => engine })),
+    start: () => openRemoteMedia(credentials(), video, handlers, abort.signal, async () => ({ createEngine: () => engine, dataChannelMessage: data => ({ data, type: 2 }) })),
   };
 }
 
@@ -40,7 +42,7 @@ test("receive-only independent engine subscribes solely to the approved publishe
   try {
     assert.deepEqual(h.states, [["joining"], ["waiting_frame"]]);
     assert.deepEqual(h.frames, []);
-    assert.deepEqual(h.calls.filter(([name]) => name.startsWith("publish") || name.startsWith("auto")), [["auto-audio", false], ["auto-video", false], ["publish-audio", false], ["publish-video", false], ["publish-screen", false]]);
+    assert.deepEqual(h.calls.filter(([name]) => name.startsWith("publish") || name.startsWith("auto")), [["auto-audio", false], ["auto-video", false], ["publish-audio", false], ["publish-video", false], ["publish-screen", false], ["publish-screen", true]]);
     h.events.get("remoteTrackAvailableNotify")("intruder", 1, 3);
     h.events.get("remoteTrackAvailableNotify")("desktop", 1, 1);
     assert.deepEqual(h.calls.filter(([name]) => name === "screen"), [["screen", "desktop", true]]);

@@ -17,7 +17,7 @@ export function remoteFrameStyle(): CSSProperties {
   return { width: "100%", height: "100%", maxWidth: "none", objectFit: "contain", display: "block" };
 }
 
-export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, early, onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, publisher, onDiagnostic, onDiagnostics, onTiming, measurements, onMeasurements, displayId, showFrame = true }: {
+export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, early, onState, onFrame, onStatus, onDataChannel, onViewerReport, onQualityWindow, publisher, onDiagnostic, onDiagnostics, onTiming, measurements, onMeasurements, displayId, showFrame = true }: {
   client: RemoteDesktopClient; deviceId: string; sessionId: string; early?: RemoteEarlyMedia | null;
   videoRef: RefObject<HTMLVideoElement | null>; displayId?: string; showFrame?: boolean;
   measurements?: RemoteDesktopMeasurements | null;
@@ -31,11 +31,10 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
   onTiming?(value: RemoteMediaStartupTimings): void;
   onState(value: RemoteMediaState, error?: string, status?: number): void;
   onFrame(width: number, height: number): void;
-  onLegacy(): void;
   onStatus(status: RemoteMediaStatus | null): void;
 }) {
-  const callbacks = useRef({ onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming, onMeasurements });
-  callbacks.current = { onState, onFrame, onLegacy, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming, onMeasurements };
+  const callbacks = useRef({ onState, onFrame, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming, onMeasurements });
+  callbacks.current = { onState, onFrame, onStatus, onDataChannel, onViewerReport, onQualityWindow, onDiagnostic, onDiagnostics, onTiming, onMeasurements };
   const measurementsRef = useRef(measurements); measurementsRef.current = measurements;
   const previousClose = useRef<Promise<void>>(Promise.resolve());
   const earlyRef = useRef(early); earlyRef.current = early;
@@ -156,9 +155,8 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
     })().catch((error: unknown) => {
       if (abort.signal.aborted) return;
       const code = error instanceof Error ? error.message : "media_unavailable";
-      if (code !== "media_unsupported") quality?.mediaState("error", code);
-      if (code === "media_unsupported") callbacks.current.onLegacy();
-      else callbacks.current.onState("error", code, error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined);
+      quality?.mediaState("error", code);
+      callbacks.current.onState("error", code, error instanceof Error && "status" in error && typeof error.status === "number" ? error.status : undefined);
     });
     return () => {
       abort.abort();

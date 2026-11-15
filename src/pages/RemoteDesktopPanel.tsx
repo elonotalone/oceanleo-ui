@@ -39,7 +39,7 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
     streamRef, streamModeRef, queueRef, pointerRef, toolbarRoot, toolbarPanel, positionKey, dragging,
     ignoreHandleClick, model, releaseInput, updatePhase } = context;
   const session = useRemoteDesktopSession(context, props);
-  const { client, disconnect, pump, handBack } = session;
+  const { client, disconnect, handBack } = session;
   const { pointerDown, pointerMove, pointerUp, keyDown, keyUp } = useRemoteDesktopInput(context, session, props.doubleClickWindowMs);
   const { videoProps, invalidateMediaFrame } = useRemoteDesktopPanelMedia(context, session, deviceId);
   useRemoteDesktopToolbar(context);
@@ -64,15 +64,10 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
         /* D6: the controller's own OS cursor stays visible over the video; no remote cursor is drawn. */
         style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: "default", overflow: "hidden" }}>
-        {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo {...videoProps} sessionId={sessionRef.current} /> : frame && active ? <img ref={imageRef} data-remote-frame src={frame.image} alt={tt("远程桌面画面，点击后可用键盘")} draggable={false}
-          onLoad={() => {
-            streamRef.current?.acknowledgeFrame(frame.sequence);
-          }}
-          onError={() => { releaseInput(); disconnect(); updatePhase("error"); setFrame(null); setMessage("画面无法显示，请重新连接。"); }}
-          style={remoteFrameStyle()} /> :
+        {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo {...videoProps} sessionId={sessionRef.current} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
         {reconnecting || mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" data-remote-reconnecting-notice={reconnecting || undefined} data-remote-media-notice={!reconnecting || undefined}
-          style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>{reconnecting ? <>{tt("网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice)}</div> : null}
+          style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>{reconnecting ? <>{tt(message || "网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice)}</div> : null}
         <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />
@@ -136,10 +131,9 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
           // An explicit confirmation releases held input, on either existing transport.
           // Only the computer's execution receipt clears the server's idle prompt.
           if (streamModeRef.current) streamRef.current?.send({ kind: "release_all" });
-          else if (sessionRef.current) { queueRef.current.push({ kind: "release_all" }); void pump(); }
         }}>{tt("仍在使用")}</button>
       </div> : null}
-      {active && (message || (mediaMode === "legacy" && mediaNotice)) ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(message || mediaNotice, { name: deviceName })}</div> : null}
+      {active && message ? <div role="status" data-remote-input-status style={{ position: "absolute", bottom: 20, left: "50%", transform: "translateX(-50%)", background: "#25282d", padding: "8px 12px", borderRadius: 8, fontSize: 12 }}>{tt(message || mediaNotice, { name: deviceName })}</div> : null}
     </div>, portal,
   );
 }

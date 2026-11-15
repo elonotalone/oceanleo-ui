@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, type KeyboardEvent, type PointerEvent } from "react";
 
-import { chunkText, clampPaste, classifyInput, containedRect, insideRect, isNearby, isPointerDrag, keyEventToAction, mouseButton, remoteChordKey, remoteKeyboardKey, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
+import { chunkText, clampPaste, classifyInput, containedRect, insideRect, mouseButton, remoteChordKey, remoteKeyboardKey, sanitizeRemoteText, softInputKeyAction, toNormalized } from "./remote-desktop-input";
 
 import type { RemoteDesktopPanelContext } from "./remote-desktop-panel-state";
 /** Mouse moves are coalesced to one per display frame (latest wins). */
@@ -25,14 +25,6 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
     if (moveRef.current) send(moveRef.current);
     moveRef.current = null;
   }, [moveRef, moveTimer, send]);
-
-  const flushClick = useCallback(() => {
-    if (clickTimer.current) clearTimeout(clickTimer.current);
-    clickTimer.current = null;
-    const point = pendingClick.current;
-    pendingClick.current = null;
-    if (point) send({ kind: "click", ...point, button: "left" });
-  }, [clickTimer, pendingClick, send]);
 
   const clearInput = useCallback(() => {
     inputEpoch.current++;
@@ -70,25 +62,25 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
   }, [disconnect, releaseInput]);
 
   const sendText = useCallback((text: string) => {
-    flushClick();
+
     flushMove();
     const paste = clampPaste(sanitizeRemoteText(text));
     for (const part of chunkText(paste.text, 200)) send({ kind: "type", text: part });
     if (paste.truncated) setMessage("文字太长，只发送了前面一部分。");
-  }, [flushClick, flushMove, send, setMessage]);
+  }, [flushMove, send, setMessage]);
 
   useEffect(() => {
     const input = inputRef.current;
     if (!input) return;
     let claimed: string | null = null;
     let compositionEpoch: number | null = null;
-    const start = () => { flushClick(); releaseInput(); if (canSend()) { composing.current = true; compositionEpoch = inputEpoch.current; } };
+    const start = () => { releaseInput(); if (canSend()) { composing.current = true; compositionEpoch = inputEpoch.current; } };
     const end = (event: CompositionEvent) => { const valid = composing.current && compositionEpoch === inputEpoch.current; compositionEpoch = null; composing.current = false; input.value = ""; if (valid) sendText(event.data || ""); };
     const before = (event: InputEvent) => {
       const kind = classifyInput(event.inputType, composing.current || event.isComposing);
       const action = softInputKeyAction(kind);
       if (!action) return;
-      flushClick();
+
       if (event.cancelable) event.preventDefault();
       if (!event.defaultPrevented) { claimed = kind; setTimeout(() => { claimed = null; }, 0); }
       send(action);
@@ -100,11 +92,11 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
       input.value = "";
       const already = claimed; claimed = null;
       const action = softInputKeyAction(kind);
-      if (action) { if (already !== kind) { flushClick(); send(action); } return; }
+      if (action) { if (already !== kind) { send(action); } return; }
       if (kind !== "text" || (event.data && !value.includes(event.data))) return;
       sendText(event.data || value);
     };
-    const paste = (event: ClipboardEvent) => { event.preventDefault(); flushClick(); releaseInput(); sendText(event.clipboardData?.getData("text/plain") || ""); };
+    const paste = (event: ClipboardEvent) => { event.preventDefault(); releaseInput(); sendText(event.clipboardData?.getData("text/plain") || ""); };
     input.addEventListener("compositionstart", start);
     input.addEventListener("compositionend", end);
     input.addEventListener("beforeinput", before as EventListener);
@@ -114,16 +106,16 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
       input.removeEventListener("compositionstart", start); input.removeEventListener("compositionend", end);
       input.removeEventListener("beforeinput", before as EventListener); input.removeEventListener("input", insert as EventListener); input.removeEventListener("paste", paste);
     };
-  }, [canSend, composing, flushClick, inputEpoch, inputRef, releaseInput, send, sendText]);
+  }, [canSend, composing, inputEpoch, inputRef, releaseInput, send, sendText]);
 
   const point = useCallback((event: { clientX: number; clientY: number }, strict = true) => {
     if (model.getSnapshot().mediaMode === "artc" && (!model.getSnapshot().mediaReady)) return null;
-    const image = model.getSnapshot().mediaMode === "artc" ? videoRef.current : imageRef.current, current = model.getSnapshot().frame;
+    const image = videoRef.current, current = model.getSnapshot().frame;
     if (!image || !current) return null;
     const rect = containedRect(image.getBoundingClientRect(), current.width, current.height);
     if (strict && !insideRect(event.clientX, event.clientY, rect)) return null;
     return toNormalized(event.clientX, event.clientY, rect);
-  }, [model, videoRef, imageRef]);
+  }, [model, videoRef]);
 
   function syncModifiers(event: { ctrlKey: boolean; shiftKey: boolean; altKey: boolean; metaKey: boolean }, exclude?: string) {
     if (!streamModeRef.current || !canSend()) return;
@@ -181,25 +173,7 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
     const p = point(event, false);
     flushMove();
     if (p) {
-      if (streamModeRef.current) for (const button of down.buttons) send({ kind: "pointer_up", ...p, button });
-      else {
-        const current = model.getSnapshot().frame;
-        const image = imageRef.current;
-        const rect = image && current ? containedRect(image.getBoundingClientRect(), current.width, current.height) : null;
-        if (rect && isPointerDrag(down.pointerType, down, p, rect)) {
-          flushClick();
-          send({ kind: "drag", x: down.x, y: down.y, toX: p.x, toY: p.y, button: down.button });
-        } else if (down.button !== "left") {
-          flushClick(); send({ kind: "click", ...p, button: down.button });
-        } else if (pendingClick.current && isNearby(pendingClick.current, p)) {
-          if (clickTimer.current) clearTimeout(clickTimer.current);
-          clickTimer.current = null; pendingClick.current = null;
-          send({ kind: "double_click", ...p, button: "left" });
-        } else {
-          flushClick(); pendingClick.current = p;
-          clickTimer.current = setTimeout(flushClick, Math.max(0, doubleClickWindowMs));
-        }
-      }
+      for (const button of down.buttons) send({ kind: "pointer_up", ...p, button });
     } else releaseInput();
     pointerRef.current = null;
     event.currentTarget.releasePointerCapture?.(event.pointerId);
@@ -211,11 +185,6 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
     // Paste must reach the browser clipboard event so its text travels naturally.
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "v") return;
     flushMove();
-    if (!streamModeRef.current) {
-      const action = keyEventToAction(event);
-      if (action) { event.preventDefault(); flushClick(); send(action); }
-      return;
-    }
     const mappedKey = remoteKeyboardKey(remoteChordKey(event));
     if (!mappedKey) return;
     event.preventDefault();
@@ -245,14 +214,14 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
     const wheel = (event: WheelEvent) => {
       const p = point(event);
       if (!p || model.getSnapshot().phase !== "active") return;
-      event.preventDefault(); flushClick(); flushMove();
+      event.preventDefault(); flushMove();
       const factor = event.deltaMode === 1 ? 40 : event.deltaMode === 2 ? stage.clientHeight : 1;
       const clamp = (value: number) => Math.max(-10_000, Math.min(10_000, value * factor));
       send({ kind: "scroll", ...p, deltaX: clamp(event.deltaX), deltaY: clamp(event.deltaY) });
     };
     stage.addEventListener("wheel", wheel, { passive: false });
     return () => stage.removeEventListener("wheel", wheel);
-  }, [flushClick, flushMove, model, point, send, stageRef]);
+  }, [flushMove, model, point, send, stageRef]);
 
   return { pointerDown, pointerMove, pointerUp, keyDown, keyUp };
 }

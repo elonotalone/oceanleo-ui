@@ -47,7 +47,7 @@ export interface QualityEnvironment {
   site: "global" | "cn" | "oceanbizs" | "dev" | "other";
 }
 export interface RemoteDesktopQualityReport {
-  v: 1; device_id: string; session_id?: string; attempt: number; transport?: "websocket-v2" | "http-v1";
+  v: 1; device_id: string; session_id?: string; attempt: number; transport?: "artc-v1";
   media: "artc" | "legacy" | "none"; end_reason: string; duration_ms: number; reconnects: number; media_renewals: number;
   media_diagnostics?: { sdk_error_codes?: number[]; renew_reasons?: string[] };
   steps: Partial<Record<QualityStep, number>>;
@@ -216,13 +216,11 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
   private consentStarted: number | undefined;
   private consentWaited = 0;
   private negotiated = 0;
-  private mediaMode: "artc" | "legacy" | undefined;
-  private legacyFirstFrame: number | undefined;
+  private mediaMode: "artc" | undefined;
   private reason: string | undefined;
   private reconnects = 0;
   private playing = false;
   private lanes = { websocket: 0, data_channel: 0 };
-  private accepted: number[] = [];
   private executed: number[] = [];
   private directAckWindow: number[] = [];
   private samples: VideoStatSample[] = [];
@@ -252,10 +250,8 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
     this.negotiated++;
     if (this.negotiated === 1) {
       if (ok) { this.mediaMode = "artc"; this.mark("media_negotiate_ms"); }
-      else if (error === "media_unsupported") this.mediaMode = "legacy";
     }
   }
-  legacyFrame(): void { if (this.legacyFirstFrame === undefined && this.mediaMode !== "artc") this.legacyFirstFrame = this.since(); }
   inputSent(lane: QualityLane): void { this.lanes[lane]++; }
   controlTiming(sample: RemoteControlTiming): void {
     if (sample.stage === "input_receipt") {
@@ -263,8 +259,7 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
       if (sample.status === "executed" && this.executed.length < MAX_SAMPLES) this.executed.push(sample.elapsedMs);
       return;
     }
-    const list = sample.stage === "direct_ack" ? this.directAckWindow : sample.stage === "accepted" ? this.accepted : this.executed;
-    if (list.length < MAX_SAMPLES) list.push(sample.elapsedMs);
+
   }
   takeDirectAckWindow(): Pick<RemoteDesktopViewerReport, "input_ack_p50_ms" | "input_ack_p95_ms"> {
     const p50 = agePercentile(this.directAckWindow, 50), p95 = agePercentile(this.directAckWindow, 95);
@@ -303,13 +298,12 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
 
   report(defaultReason = "viewer_closed"): RemoteDesktopQualityReport {
     const steps = { ...this.steps };
-    const media = this.mediaMode ?? (this.legacyFirstFrame !== undefined ? "legacy" : "none");
+    const media = this.mediaMode ?? "none";
     if (media !== "artc") {
       delete steps.first_frame_ms;
       delete steps.artc_join_ms;
-      if (this.legacyFirstFrame !== undefined) steps.first_frame_ms = this.legacyFirstFrame;
     }
-    const accepted = percentiles(this.accepted), executed = percentiles(this.executed);
+    const executed = percentiles(this.executed);
     const video = summarizeVideoStats(this.samples);
     return {
       v: 1, device_id: this.options.deviceId, ...(this.sessionId ? { session_id: this.sessionId } : {}),
@@ -319,7 +313,7 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
       reconnects: Math.min(10_000, this.reconnects), media_renewals: Math.min(10_000, Math.max(0, this.negotiated - 1)),
       ...(this.mediaDiagnostics() ? { media_diagnostics: this.mediaDiagnostics() } : {}),
       steps,
-      input: { ws_count: this.lanes.websocket, dc_count: this.lanes.data_channel, ...(accepted ? { accepted } : {}), ...(executed ? { executed } : {}) },
+      input: { ws_count: this.lanes.websocket, dc_count: this.lanes.data_channel, ...(executed ? { executed } : {}) },
       ...(video ? { video } : {}),
       env: this.options.env,
     };
@@ -380,32 +374,10 @@ export class RemoteDesktopQualityHub {
           return result;
         }
         collector.sessionId = result.data.session_id;
-        collector.transport = result.data.transport ?? "http-v1";
+        collector.transport = "artc-v1";
         if (result.data.state === "pending_consent") collector.sessionState("pending_consent");
         hub.collectors.set(result.data.session_id, collector);
         while (hub.collectors.size > 8) hub.collectors.delete(hub.collectors.keys().next().value!);
-        return result;
-      },
-      async getFrame(deviceId, sessionId, options) {
-        const result = await client.getFrame(deviceId, sessionId, options);
-        const collector = hub.forSession(sessionId);
-        if (collector && result.ok && result.data) {
-          collector.sessionState(result.data.state, result.data.error);
-          if (result.data.frame) collector.legacyFrame();
-        }
-        return result;
-      },
-      async sendInput(deviceId, sessionId, seq, action, options) {
-        let writes = 0;
-        const result = await client.sendInput(deviceId, sessionId, seq, action, {
-          ...options,
-          inputWritten() {
-            writes++; hub.forSession(sessionId)?.inputSent("websocket");
-            try { options?.inputWritten?.(); } catch { /* measurement only */ }
-          },
-        });
-        // Older/custom clients do not expose writes; a successful reply is still proof of one.
-        if (!writes && result.ok) hub.forSession(sessionId)?.inputSent("websocket");
         return result;
       },
       async closeSession(deviceId, sessionId) {
@@ -421,7 +393,7 @@ export class RemoteDesktopQualityHub {
         const measured: RemoteDesktopStreamHandlers = {
           ...handlers,
           state(state, error) { collector.sessionState(state, error); handlers.state(state, error); },
-          frame(frame) { collector.legacyFrame(); handlers.frame(frame); },
+          frame() {},
           error(code) { collector.fail(code); handlers.error(code); },
           controlTiming(sample) { collector.controlTiming(sample); handlers.controlTiming?.(sample); },
           inputWritten(seq, measurable, lane, probe) {

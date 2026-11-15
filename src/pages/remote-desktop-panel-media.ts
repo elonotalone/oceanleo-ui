@@ -15,7 +15,7 @@ export function useRemoteDesktopPanelMedia(context: RemoteDesktopPanelContext, s
     setPictureMeasurements, setClockUncertainty, setMediaMode, setMediaDiagnostic, setMediaNotice,
     setMediaReady, earlyMediaRef, measurements, mediaFrameGeometry, laneRef, videoRef, streamRef, markRef,
     model, releaseInput, updatePhase, acceptMediaStatus } = context;
-  const { client, disconnect, reportDiagnostics } = session;
+  const { client, disconnect, reconnectDataChannel, reportDiagnostics } = session;
   useEffect(() => { measurements.current?.setEnabled(measuring); setPictureMeasurements({}); setClockUncertainty(undefined); }, [measurements, measuring, setClockUncertainty, setPictureMeasurements]);
   useEffect(() => { if (mediaReady) markRef.current?.("frame_ready_commit"); }, [markRef, mediaReady]);
   const invalidateMediaFrame = useCallback(() => {
@@ -51,10 +51,10 @@ export function useRemoteDesktopPanelMedia(context: RemoteDesktopPanelContext, s
             // Keep the last decoded picture and its geometry during a short media interruption.
             // Input waits for a fresh frame; an SDK "playing" notification alone cannot enable it.
             if (value !== "playing") { releaseInput(); setMediaReady(false); }
-            setMediaNotice(value === "playing" && model.getSnapshot().mediaReady ? "" : value === "reconnecting" ? "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
+            setMediaNotice(value === "playing" && model.getSnapshot().mediaReady ? "" : value === "reconnecting" ? error === "media_data_channel_unavailable" ? remoteDesktopErrorCopy(error) : "连接不稳，正在重试…" : "已发出请求，等这台电脑显示画面…");
+            if (error === "media_data_channel_unavailable") { reconnectDataChannel(); return; }
             if (value === "error") { disconnect(); updatePhase(error === "denied" ? "denied" : error === "request_expired" ? "timed_out" : error === "signed_out" ? "signed_out" : error === "revoked" || error === "controller_revoked" ? "revoked" : "error"); setMessage(remoteDesktopErrorCopy(error, status)); }
           },
-          onLegacy: () => { setMediaMode("legacy"); setMediaNotice("「{name}」上的 OceanLeo 当前没有视频能力。"); },
           onStatus: acceptMediaStatus,
   };
   return { videoProps, invalidateMediaFrame };

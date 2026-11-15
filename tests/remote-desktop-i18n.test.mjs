@@ -122,6 +122,7 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
         return (value, vars) => (dict[value] ?? value).replace(/\\{(\\w+)\\}/g, (_, k) => String(vars?.[k] ?? "{" + k + "}"));
       }
     `),
+    "./remote-desktop-media": dataModule(`export class RemotePublisherStatusError extends Error {} export async function openRemoteMedia(_c,_v,h){ queueMicrotask(()=>{h.frame(16,9);h.state("playing");});return {async close(){}};}`),
     "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
     "./PageHeader": dataModule(`
       import React from ${JSON.stringify(reactUrl)};
@@ -160,13 +161,8 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
     async createSession() {
       return { ok: true, data: { session_id: "s", state: "connecting", expires_at: "" } };
     },
-    async getFrame() {
-      frames.push(1);
-      return { ok: true, data: { state: "active", frame: { image: "data:image/jpeg;base64,AAAA", width: 16, height: 9, sequence: frames.length } } };
-    },
-    async sendInput(d, s, seq) {
-      return { ok: true, data: { accepted: true, seq } };
-    },
+    async openStream(_d,_s,h) { h.state("active"); return {ok:true,data:{send(){return true;},acknowledgeMediaFrame(){frames.push(1);},close(){},releaseForHandoff(){return Promise.resolve();},finishHandoff(){}}}; },
+    async negotiateMedia() {return {ok:true,data:{media:{data_channel_input:true},media_status:{state:"publishing"}}};},
     async closeSession() {
       return { ok: true, data: { closed: true } };
     },

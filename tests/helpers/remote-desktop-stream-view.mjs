@@ -21,11 +21,19 @@ export { document, window, act };
 export async function mountStream({ pending = false, coarse = false, overrides = {}, agent, streamOverrides = {} } = {}) {
   window.matchMedia = () => ({ matches: coarse });
   const log = { inputs: [], acknowledgements: [], closes: [], streamCloses: 0, handoffs: 0, httpFrames: 0, onClose: 0 };
-  let handlers;
+  let handlers, mediaHandlers;
+  const defaultStart = async (_descriptor, video, callbacks) => {
+    mediaHandlers = callbacks;
+    video.getBoundingClientRect = () => ({ left: 100, top: 50, width: 640, height: 360 });
+    return { async close() {} };
+  };
+  const useDefaultMedia = !globalThis.__remoteMediaTestStart;
+  if (useDefaultMedia) globalThis.__remoteMediaTestStart = defaultStart;
   const stream = { releaseForHandoff() { log.inputs.push({kind: "release_all"}); return Promise.resolve(); }, finishHandoff() { log.handoffs++; }, send(action) { log.inputs.push(action); return true; }, acknowledgeFrame(seq) { log.acknowledgements.push(seq); }, close() { log.streamCloses++; }, ...streamOverrides };
   const client = {
     async createSession() { return { ok: true, data: { session_id: "session-stream", state: pending ? "pending_consent" : "connecting", expires_at: "", transport: "websocket-v2" } }; },
     async openStream(_device, _session, callbacks) { handlers = callbacks; callbacks.state(pending ? "pending_consent" : "active"); return { ok: true, data: stream }; },
+    async negotiateMedia() { return { ok: true, data: { media: { provider: "artc", transport: "artc-v1", data_channel_input: true }, media_status: { state: "publishing" } } }; },
     async getFrame() { log.httpFrames++; return { ok: true, data: { state: "active", frame: null } }; },
     async sendInput(_device, _session, _seq, action) { log.inputs.push(action); return { ok: true }; },
     async closeSession(_device, id) { log.closes.push(id); return { ok: true, data: { closed: true } }; },
@@ -40,19 +48,21 @@ export async function mountStream({ pending = false, coarse = false, overrides =
   const view = {
     host, log, client, screen,
     async setAgent(next) { await act(async () => root.render(React.createElement(RemoteDesktopPanel, {deviceId: "d-1", deviceName: "Studio", client, onClose() {}, frameIntervalMs: 5, agent: next}))); },
+    mediaHandlers: () => mediaHandlers,
     async openToolbar() { if (!screen().querySelector("[data-remote-toolbar]")) await act(async () => screen().querySelector("[data-remote-toolbar-handle]").click()); },
     handlers: () => handlers,
     stage: () => screen().querySelector("[data-remote-stage]"),
     input: () => screen().querySelector("[data-remote-input]"),
-    image: () => screen().querySelector("[data-remote-frame]"),
+    image: () => screen().querySelector("[data-remote-frame]") ?? (useDefaultMedia && !view.input().disabled ? screen().querySelector("video") : null),
     async frame(sequence = 1) {
+      if (useDefaultMedia && mediaHandlers) { await act(async () => { mediaHandlers.frame(1920, 1080); mediaHandlers.state("playing"); }); return; }
       await act(async () => { handlers.frame({ image: "data:image/jpeg;base64,/9j/AAAA", width: 1920, height: 1080, sequence }); });
       if (view.image()) view.image().getBoundingClientRect = () => ({ left: 100, top: 50, width: 640, height: 360 });
     },
     async fire(target, event) { await act(async () => target.dispatchEvent(event)); },
     async pointer(type, x = 420, y = 230, options = {}) { await view.fire(view.stage(), new Pointer(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 0, ...options })); },
     async key(type, key, options = {}) { await view.fire(view.input().disabled ? view.stage() : view.input(), new window.KeyboardEvent(type, { bubbles: true, cancelable: true, key, ...options })); },
-    async unmount() { if (view.unmounted) return; view.unmounted = true; await act(async () => root.unmount()); host.remove(); await settle(0); },
+    async unmount() { if (view.unmounted) return; view.unmounted = true; await act(async () => root.unmount()); host.remove(); if (globalThis.__remoteMediaTestStart === defaultStart) delete globalThis.__remoteMediaTestStart; await settle(0); },
   };
   if (!pending) await view.frame();
   return view;
