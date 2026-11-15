@@ -448,7 +448,10 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   };
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
-  const timings = new RemoteControlTimings(history.now, sample => { diagnostics.control(sample); handlers.controlTiming?.(sample); }, history);
+  const timings = new RemoteControlTimings(history.now, sample => {
+    diagnostics.control(sample);
+    if (!history.get(sample.seq)?.probe) handlers.controlTiming?.(sample);
+  }, history);
   const noteInputWritten = (seq: number, lane: RemoteInputLane, action: RemoteDesktopAction, probe = false) => {
     const entry = history.written(seq, lane, action, probe);
     diagnostics.written(lane, seq);

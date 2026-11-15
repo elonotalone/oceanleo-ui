@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
 import { REMOTE_MEDIA_FRAME_TIMEOUT_MS } from '../src/pages/remote-desktop-media.ts';
+import { RemoteDesktopQualityHub } from '../src/api/remote-desktop-quality.ts';
 
 const api = await import(await compileModule('src/api/remote-desktop.ts', {
   '../lib/auth/client': dataModule('export async function accessToken(){return "fixture";}'),
@@ -17,13 +18,18 @@ class Socket {
   close() { this.readyState = 3; }
 }
 const actions = h => h.socket.sent.filter(value => value.type === 'input');
-async function harness(t, modern = true, floor = 0) {
+async function harness(t, modern = true, floor = 0, measureQuality = false) {
   let now = 100;
   t.mock.method(performance, 'now', () => now);
   globalThis.window = { location: { href: 'https://fixture.invalid/devices' } };
   globalThis.WebSocket = Socket;
   const samples = [], errors = [];
-  const opening = api.remoteDesktopClient.openStream('device', 'session', {
+  const hub = measureQuality ? new RemoteDesktopQualityHub(() => now, () => ({ browser: 'chrome', platform: 'macos', site: 'global' })) : null;
+  const client = hub ? hub.wrap({ ...api.remoteDesktopClient,
+    async createSession() { return { ok: true, data: { session_id: 'session', state: 'connecting', transport: 'websocket-v2' } }; },
+  }) : api.remoteDesktopClient;
+  if (hub) await client.createSession('device');
+  const opening = client.openStream('device', 'session', {
     state() {}, frame() {}, error: value => errors.push(value), controlTiming: value => samples.push(value),
   });
   await new Promise(setImmediate);
@@ -33,7 +39,7 @@ async function harness(t, modern = true, floor = 0) {
     ...(modern ? { input_receipt_version: 1 } : {}) });
   const stream = (await opening).data;
   t.after(() => stream.close());
-  const h = { socket, stream, samples, errors, advance(ms) { now += ms; },
+  const h = { socket, stream, samples, errors, collector: hub?.forSession('session'), advance(ms) { now += ms; },
     receipt(seq, status = 'executed', extra = {}) { socket.message({ type: 'input_receipt', session_id: 'session', seq, status, executed_at_ms: 1_800_000_000_000, ...extra }); },
     legacy(seq) { socket.message({ type: 'input_ack', seq }); socket.message({ type: 'state', state: 'active', acked_seq: seq }); },
   };
@@ -80,7 +86,42 @@ test('receipt RTT uses local monotonic clocks and deduplicates delivery across D
   assert.equal(h.samples.filter(value => value.seq === seq).length, 1);
   assert.equal(h.samples.find(value => value.seq === seq).elapsedMs, 23);
   assert.equal(h.stream.inputHistory.get(seq).receipt.executed_at_ms, 9_000_000_000_000);
-  assert.ok(h.samples.some(value => value.seq === probe), 'the input probe keeps its terminal proof');
+  assert.equal(h.stream.inputHistory.get(probe).probe, true);
+  assert.equal(h.stream.inputHistory.get(probe).receipt.status, 'executed', 'history retains the probe terminal proof');
+  assert.equal(h.samples.some(value => value.seq === probe), false, 'probe diagnostics are separate from business RTT');
+});
+
+test('probe receipts prove the DC lane without business samples; real input is counted once through the quality hub', async t => {
+  const h = await harness(t, true, 0, true), peer = direct(h);
+  const probe = peer.sent[0].seq;
+  h.advance(17);
+  peer.emit({ t: 'rd.input_receipt', seq: probe, status: 'executed', executed_at_ms: 1_800_000_000_000 });
+  h.receipt(probe);
+  assert.deepEqual(h.collector.report().input, { ws_count: 0, dc_count: 0 });
+  assert.deepEqual(h.collector.takeDirectAckWindow(), {});
+  assert.deepEqual(h.samples, []);
+  assert.equal(h.stream.inputHistory.get(probe).probe, true);
+  assert.equal(h.stream.inputHistory.get(probe).receipt.status, 'executed');
+  const probed = h.stream.diagnostics();
+  assert.equal(probed.dc_probe_write_count, 1);
+  assert.equal(probed.dc_write_count, 0);
+  assert.equal(probed.dc_completed_count, 0);
+  assert.equal(probed.dc_receipt_seq, probe);
+
+  assert.equal(h.stream.send(motion(.2)), true);
+  assert.equal(h.stream.inputPath(), 'data_channel', 'the probe receipt still proves the subscribed lane');
+  assert.equal(actions(h).length, 0);
+  const seq = peer.sent.at(-1).seq;
+  h.advance(23);
+  peer.emit({ t: 'rd.input_receipt', seq, status: 'executed', executed_at_ms: 1_800_000_000_023 });
+  h.receipt(seq);
+  assert.deepEqual(h.samples, [{ seq, stage: 'input_receipt', status: 'executed', elapsedMs: 23 }]);
+  assert.deepEqual(h.collector.report().input, { ws_count: 0, dc_count: 1,
+    executed: { n: 1, p50: 23, p90: 23, p99: 23, max: 23 } });
+  assert.deepEqual(h.collector.takeDirectAckWindow(), { input_ack_p50_ms: 23, input_ack_p95_ms: 23 });
+  assert.equal(h.stream.diagnostics().dc_completed_count, 1);
+  assert.equal(h.stream.inputHistory.get(probe).receipt.status, 'executed');
+  assert.deepEqual(h.errors, []);
 });
 
 test('new receipt arriving before state negotiation immediately fences every legacy ack', async t => {
