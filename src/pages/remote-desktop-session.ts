@@ -127,13 +127,13 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
   }, [abortRef, closedRef, deviceId, measurements, previousCloseRef, pumpingRef, queueRef, releaseInput, sessionClientRef, sessionRef, streamRef]);
 
   useEffect(() => () => { if (dcRetry.current) clearTimeout(dcRetry.current); }, []);
-  const reconnectDataChannel = useCallback(() => {
+  const reconnectDataChannel = useCallback((reason = "media_data_channel_unavailable") => {
     if (dcRetry.current || dcRecovering.current || closedRef.current) return;
     dcRecovering.current = true;
     disconnect();
     updatePhase("reconnecting"); setReconnecting(true); setMediaReady(false);
-    setMessage(remoteDesktopErrorCopy("media_data_channel_unavailable"));
-    setMediaNotice(remoteDesktopErrorCopy("media_data_channel_unavailable"));
+    setMessage(remoteDesktopErrorCopy(reason));
+    setMediaNotice(remoteDesktopErrorCopy(reason));
     const delay = Math.min(500 * 2 ** Math.min(reconnectAttempts.current++, 4), 8000);
     dcRetry.current = setTimeout(() => {
       dcRetry.current = null; dcRecovering.current = false;
@@ -285,7 +285,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
           error(code) {
             if (abort.signal.aborted) return;
             // The socket broke (lossy path, Wi-Fi switch, sleep): the session is still there.
-            if (code === "media_data_channel_unavailable") reconnectDataChannel();
+            if (code === "media_data_channel_unavailable" || code === "media_data_channel_write_unknown") reconnectDataChannel(code);
             else if (isNetworkFailure(code)) void reattach();
             else end(code);
           },

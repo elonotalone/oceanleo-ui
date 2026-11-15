@@ -341,16 +341,16 @@ test("ordinary viewer opens the standard stream/media path directly without a st
   assert.equal(view.input().disabled, false);
 });
 
-test('DC failure is visible, stops the old session and backs off into a fresh session without replay', async () => {
+for (const failure of ['media_data_channel_unavailable', 'media_data_channel_write_unknown']) test(`${failure} stops the old session and backs off into a fresh session without replay`, async () => {
   let sessions = 0;
   const view = await mount({ overrides: {
     async createSession() { return { ok: true, data: { session_id: `dc-session-${++sessions}`, state: 'connecting', transport: 'websocket-v2' } }; },
   } });
   await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state('playing'); });
   await view.key('keydown', 'Shift');
-  await act(async () => view.handlers().error('media_data_channel_unavailable'));
+  await act(async () => view.handlers().error(failure));
   assert.equal(view.input().disabled, true);
-  assert.match(view.screen().textContent, /输入连接已中断/);
+  assert.match(view.screen().textContent, failure === 'media_data_channel_write_unknown' ? /无法确认最后的输入是否执行/ : /输入连接已中断/);
   assert.deepEqual(view.log.closes, ['dc-session-1']);
   assert.equal(sessions, 1, 'new session waits for backoff');
   await settle(550);

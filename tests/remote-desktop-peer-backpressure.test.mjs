@@ -24,7 +24,7 @@ test('oversized input is refused without WS fallback or consuming a sequence',as
 });
 test('a throwing DC write reserves its sequence and never replays the business action',async t=>{
  const h=await harness(t);let calls=0;h.peer.send=()=>{calls++;throw Error('unknown write');};
- assert.equal(h.stream.send({kind:'click',x:.5,y:.5}),false);assert.ok(h.errors.includes('input_ack_unknown'));assert.equal(h.stream.lastSequence()>=1,true);
+ assert.equal(h.stream.send({kind:'click',x:.5,y:.5}),false);assert.ok(h.errors.includes('media_data_channel_write_unknown'));assert.equal(h.stream.lastSequence()>=1,true);
  assert.equal(h.socket.sent.some(x=>x.type==='input'),false);assert.equal(h.stream.send({kind:'click',x:.5,y:.5}),false);
 });
 test('legacy cumulative metrics cannot release any receipt credit',async t=>{

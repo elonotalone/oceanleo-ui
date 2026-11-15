@@ -315,6 +315,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const socket = new WebSocket(url.toString());
   socket.binaryType = "arraybuffer";
   let ended = false, ready = false, state: RemoteDesktopSessionState = "pending_consent";
+  let dcWriteUnknown = false;
   let inputAllowed = true;
   let writeFailed = false;
   let handoff: Promise<void> | null = null;
@@ -395,10 +396,10 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
         if (!lane.send(message)) { queueMicrotask(() => fail("media_data_channel_unavailable")); return false; }
         noteInputWritten(seq, "data_channel", action);
         return { lane: "data_channel" };
-      } catch { return "unknown"; }
+      } catch { dcWriteUnknown = true; return "unknown"; }
     },
     congestion: (busy) => handlers.congestion?.(busy),
-    failure: fail,
+    failure: code => fail(dcWriteUnknown && code === "input_ack_unknown" ? "media_data_channel_write_unknown" : code),
   });
   const terminalReceipt = (raw: unknown) => {
     const value = parseRemoteInputReceipt(raw);
