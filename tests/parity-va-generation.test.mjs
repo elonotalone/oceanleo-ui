@@ -285,8 +285,15 @@ test("canvas image canon controls translate to existing commands and reject stal
   ]) {
     assert.ok(context.controls.some(control => control.id === id), id);
     assert.equal(context.controls.some(control => control.id === commandId), false, "the shell receives canonical identity");
-    assert.equal(canvasSelectionDispatch({ ...message, controlId: id }, context).commandId, commandId);
-    assert.equal(canvasSelectionDispatch({ ...message, controlId: commandId }, context).commandId, commandId, "old engine callers remain compatible");
+    const canonical = canvasSelectionDispatch({ ...message, controlId: id }, context);
+    const engineAlias = canvasSelectionDispatch({ ...message, controlId: commandId }, context);
+    if (context.controls.find(control => control.id === id).disabled) {
+      assert.equal(canonical, null, "disabled controls cannot dispatch through their canon identity");
+      assert.equal(engineAlias, null, "old engine aliases cannot bypass the same availability gate");
+    } else {
+      assert.equal(canonical.commandId, commandId);
+      assert.equal(engineAlias.commandId, commandId, "old engine callers remain compatible");
+    }
     assert.equal(canvasSelectionDispatch({ ...message, controlId: id, selectionRevision: "stale" }, context), null);
     assert.equal(canvasSelectionDispatch({ ...message, controlId: id, selectionEpoch: 6 }, context), null);
   }
