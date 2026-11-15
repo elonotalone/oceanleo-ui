@@ -12,11 +12,14 @@
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
+import { MEDIA_METRIC_KEYS, type RemoteMediaMetrics } from "./remote-metrics.generated";
+export type { RemoteMediaMetrics } from "./remote-metrics.generated";
+import { RemoteInputHistory, type RemoteInputLane } from "./remote-desktop-input-history";
 import { RemoteInputScheduler } from "./remote-desktop-scheduler";
 import { isNetworkFailure, newRequestId } from "./remote-desktop-retry";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
 import type { RemoteDesktopQualityReport, RemoteDesktopViewerReport, RemoteDesktopQualityWindow, RemoteMediaQualitySink } from "./remote-desktop-quality";
-import { REMOTE_INPUT_METRICS, RemoteTransportDiagnostics, parseRemoteInputDiagnostics, type RemoteInputDiagnostics, type RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
+import { RemoteTransportDiagnostics, parseRemoteInputDiagnostics, type RemoteInputDiagnostics, type RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
 export { parseRemoteInputDiagnostics } from "./remote-desktop-diagnostics";
 export type { RemoteInputDiagnostics, RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
 export interface RemoteMediaCredentials {
@@ -68,13 +71,7 @@ export interface RemoteMediaStatus {
   displays?: Array<{ display_id: string; label: string; width: number; height: number }>;
   metrics?: RemoteMediaMetrics;
 }
-const MEDIA_METRICS = ["elapsed_ms", "tick_calls", "tick_max_gap_us", "capture_frames", "capture_idle", "capture_errors", "capture_us", "capture_max_us", "capture_lock_wait_us", "capture_lock_max_us", "last_capture_age_ms", "pushes", "push_errors", "repeated_pushes", "empty_ticks", "push_us", "push_max_us", "push_lock_wait_us", "push_lock_max_us", "sdk_samples", "sdk_age_ms", "sdk_capture_fps", "sdk_encode_fps", "sdk_sent_fps", "sdk_sent_kbps", "sdk_rtt_ms", "sdk_send_bytes", "first_capture_ms", "first_push_ms", "joined_ms", "first_encoded_stats_ms",
-  // D4 receipt: highest data-channel seq the computer accepted (R1a/R1b publish it; absent = unproven lane).
-  "dc_input_seq", ...REMOTE_INPUT_METRICS,
-  // Publisher-elapsed first screen packet send, not encode/keyframe or viewer paint. Absent = unknown.
-  "first_packet_sent_ms", "push_buffer_full", "push_backoff_ms", "capture_fps", "push_fps", "policy_level", "policy_seq", "policy_fps", "policy_kbps", "policy_width", "policy_height"] as const;
-/** Optional fixed numeric diagnostics only; never publisher tokens or arbitrary text. */
-export type RemoteMediaMetrics = { version: 1 } & Partial<Record<typeof MEDIA_METRICS[number], number>>;
+const MEDIA_METRICS = MEDIA_METRIC_KEYS;
 export interface RemoteMediaResponse { media: RemoteMediaCredentials; media_status: RemoteMediaStatus | null }
 
 export type RemoteDesktopSessionState = "pending_consent" | "connecting" | "active" | "reconnecting" | "closed";
@@ -157,8 +154,6 @@ export type RemoteDesktopButton = "left" | "right" | "middle";
 
 export interface RemoteDesktopAction {
   kind: RemoteDesktopStreamInputKind;
-  /** Physical KeyboardEvent.code; used only by the Windows secure broker. */
-  code?: string;
   x?: number;
   y?: number;
   toX?: number;
@@ -191,6 +186,8 @@ export interface RemoteDesktopRequestOptions {
   ownerDirect?: boolean;
   /** openStream on re-attach: continue input numbering above this (the previous socket's last seq). */
   sequenceFloor?: number;
+  /** sendInput only: an HTTP response proves this attempt was written, including refusals. */
+  inputWritten?(): void;
 }
 
 /** One HTTP attempt never waits longer than this for its reply (lossy paths drop replies). */
@@ -203,10 +200,6 @@ export const CREATE_RETRY_WINDOW_MS = 30_000;
 export { isNetworkFailure, newRequestId };
 
 export interface RemoteDesktopClient {
-  /** Optional boot/lock-screen owner path. Never uses device or restricted credentials in the browser. */
-  broker?: RemoteDesktopBrokerClient;
-  /** Explicit deployment opt-in; ordinary devices must not probe the broker route. */
-  brokerConfigured?: boolean;
   negotiateMedia?(deviceId: string, sessionId: string, displayId?: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteMediaResponse>>;
   openStream?(
     deviceId: string, sessionId: string, handlers: RemoteDesktopStreamHandlers,
@@ -247,8 +240,7 @@ export interface RemoteDesktopClient {
 export type RemoteDesktopDataMessage =
   | { t: "rd.pong"; v: 1; sid: string; t_v: number; device_wall_ms: number }
   | { t: "rd.input_ack"; v: 1; sid: string; acked_seq: number }
-  | { t: "rd.publisher_stats"; v: 1; sid: string; metrics: Record<string, number> }
-  | { t: "rd.capture"; v: 1; sid: string; capture_seq: number; capture_wall_ms: number; media_timestamp_ms: number; pushed_wall_ms: number };
+  | { t: "rd.publisher_stats"; v: 1; sid: string; metrics: Record<string, number> };
 /** false proves no write; a throw is ambiguous and must never replay the action on another lane. */
 export interface RemoteDesktopDataLane {
   send(payload: string): boolean;
@@ -277,6 +269,8 @@ export function dataChannelMessage(sessionId: string, seq: number, action: Remot
 }
 
 export interface RemoteDesktopStream {
+  /** Shared actual-write history; measurement never owns another seq/timestamp map. */
+  inputHistory?: RemoteInputHistory;
   releaseForHandoff(): Promise<void>;
   finishHandoff(): void;
   send(action: RemoteDesktopAction): boolean;
@@ -303,7 +297,7 @@ export interface RemoteDesktopStreamHandlers {
   /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
   controlTiming?(sample: RemoteControlTiming): void;
   /** Actual transport write, for opt-in applied-input picture measurement only. */
-  inputWritten?(seq: number, measurable?: boolean): void;
+  inputWritten?(seq: number, measurable?: boolean, lane?: RemoteInputLane, probe?: boolean): void;
   /** Optional numeric samples at a one-second cadence using the existing input pump. */
   diagnostics?(sample: RemoteDesktopTransportDiagnostics): void;
   inputDiagnostics?(sample: RemoteInputDiagnostics): void;
@@ -409,7 +403,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
    * unconfirmed probe is re-sent with a fresh seq after PEER_RECEIPT_MS instead of being waited on forever.
    */
   let peerTrusted = false, peerProbe = 0, peerProbeAt = 0, peerReceipt = 0, probeRequested = false, peerProbesLost = 0;
-  const diagnostics = new RemoteTransportDiagnostics(() => performance.now());
+  const history = new RemoteInputHistory(() => performance.now(), performance.timeOrigin);
+  const diagnostics = new RemoteTransportDiagnostics(history.now, history);
   let lastDiagnosticsAt = performance.now();
   const dropLane = () => { unsubscribeLane?.(); unsubscribeLane = undefined; directReceipts = false; lane = null; peerTrusted = false; peerProbe = 0; probeRequested = false; peerProbesLost = 0; };
   const peerHealthy = (now: number) => {
@@ -437,22 +432,27 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     scheduler.observePeerProgress({ admissionSeq: value, completedSeq: completed });
   };
   const probeWait = () => PEER_RECEIPT_MS * 2 ** peerProbesLost;
-  const probeDue = () => !!lane && !peerTrusted && probeRequested && (peerProbe ? Date.now() - peerProbeAt > probeWait() : !peerProbesLost || Date.now() - peerProbeAt > probeWait());
+  const probeDue = () => !!lane && !peerTrusted && probeRequested && (peerProbe ? performance.now() - peerProbeAt > probeWait() : !peerProbesLost || performance.now() - peerProbeAt > probeWait());
   /** Probe only between retired writes and new queue writes, never inside a provisional write. */
   const probePeer = () => {
     if (ended || !ready || state !== "active" || !probeDue() || !lane || !scheduler.probeAllowed() || !directReceipts && (!scheduler.gatewayDrained() || !scheduler.peerDrained())) return;
     if (peerProbe) peerProbesLost = Math.min(PEER_PROBE_BACKOFF_MAX, peerProbesLost + 1);
     peerProbe = scheduler.claimSequence();
-    peerProbeAt = Date.now();
+    peerProbeAt = performance.now();
     probeRequested = false;
     const message = dataChannelMessage(sessionId, peerProbe, { kind: "release_all" });
-    try { if (message && lane.send(message)) { diagnostics.written("data_channel", peerProbe); noteInputWritten(peerProbe, false); return; } } catch { /* no real action to replay */ }
+    try { if (message && lane.send(message)) { noteInputWritten(peerProbe, "data_channel", { kind: "release_all" }, true); return; } } catch { /* no real action to replay */ }
     dropLane();
   };
   let settle: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>((resolve) => { settle = resolve; });
-  const timings = new RemoteControlTimings(() => performance.now(), sample => { diagnostics.control(sample); handlers.controlTiming?.(sample); });
-  const noteInputWritten = (seq: number, measurable: boolean) => { try { handlers.inputWritten?.(seq, measurable); } catch { /* measurement cannot affect input */ } };
+  const timings = new RemoteControlTimings(history.now, sample => { diagnostics.control(sample); handlers.controlTiming?.(sample); }, history);
+  const noteInputWritten = (seq: number, lane: RemoteInputLane, action: RemoteDesktopAction, probe = false) => {
+    const entry = history.written(seq, lane, action, probe);
+    diagnostics.written(lane, seq);
+    if (!probe) timings.sent(seq, lane === "data_channel");
+    try { handlers.inputWritten?.(seq, entry.measurable, lane, probe); } catch { /* measurement cannot affect input */ }
+  };
   const diagnosticSnapshot = (finishInterval = false) => {
     const value = diagnostics.snapshot(scheduler.diagnostics?.() ?? {
       queued_count: 0, queued_soft_count: 0, outstanding_count: 0, retry_count: 0, last_seq: scheduler.lastSequence(),
@@ -476,6 +476,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     clearTimeout(timeout);
     options?.signal?.removeEventListener("abort", abort);
     scheduler.dispose();
+    history.clear();
     pendingFrameAck = null;
     if (currentUrl) URL.revokeObjectURL(currentUrl);
     currentUrl = null;
@@ -502,7 +503,8 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     return true;
   };
   const scheduler = new RemoteInputScheduler({
-    now: Date.now,
+    now: history.now,
+    history,
     write: (seq, action, context) => {
       if (!context?.emergency) {
         // Probes run between scheduler writes. C6 receipt proofs do not wait for old WS retirement.
@@ -512,7 +514,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
           // A proved C6 lane sends immediately. Only legacy peers retain the gateway drain fence.
           if (!directReceipts && (!scheduler.gatewayDrained() || !scheduler.peerCreditReady())) return false;
           try {
-            if (lane.send(message)) { diagnostics.written("data_channel", seq); noteInputWritten(seq, action.kind !== "release_all"); timings.sent(seq, true); lastPath = "data_channel"; return { lane: "data_channel" }; }
+            if (lane.send(message)) { noteInputWritten(seq, "data_channel", action); lastPath = "data_channel"; return { lane: "data_channel" }; }
           } catch { dropLane(); return "unknown"; }
           const wasDirect = directReceipts;
           dropLane(); // explicit false: this action was never written
@@ -522,7 +524,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
         if (!scheduler.peerDrained()) return false;
       }
       const written = send({ type: "input", seq, action });
-      if (written) { diagnostics.written("websocket", seq); noteInputWritten(seq, action.kind !== "release_all"); timings.sent(seq); lastPath = "websocket"; }
+      if (written) { noteInputWritten(seq, "websocket", action); lastPath = "websocket"; }
       return !written && writeFailed ? "unknown" : written;
     },
     congestion: (busy) => handlers.congestion?.(busy),
@@ -533,6 +535,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     return { ok: false, error: "response_malformed" };
   }
   const stream: RemoteDesktopStream = {
+    inputHistory: history,
     releaseForHandoff() {
       if (ended || !ready || state !== "active") return Promise.reject(new Error("input_ack_unknown"));
       if (!handoff) handoff = scheduler.releaseForHandoff().then(() => {
@@ -543,7 +546,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     finishHandoff() { if (!ended && state === "active") { scheduler.finishHandoff(); handoff = null; } },
     send(action) {
       if (ended || !ready || state !== "active") return false;
-      peerHealthy(Date.now());
+      peerHealthy(performance.now());
       if (ended) return false;
       if (directReceipts && !dataChannelMessage(sessionId, scheduler.lastSequence() + 1, action)) { handlers.congestion?.(true); return false; }
       if (lane && !peerTrusted) probeRequested = true;
@@ -592,14 +595,14 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
   const peerRelease = () => {
     if (!lane || ended) return;
     const message = dataChannelMessage(sessionId, scheduler.claimSequence(), { kind: "release_all" });
-    try { if (message && lane.send(message)) diagnostics.written("data_channel", scheduler.lastSequence()); } catch { /* the gateway release still follows */ }
+    try { if (message && lane.send(message)) noteInputWritten(scheduler.lastSequence(), "data_channel", { kind: "release_all" }); } catch { /* the gateway release still follows */ }
     dropLane();
   };
   const abort = () => { if (!ended) { peerRelease(); scheduler.emergencyRelease(); dispose(); settle!({ ok: false, error: "aborted" }); } };
   const timeout = setTimeout(() => fail("network_error"), 10_000);
   const inputPump = setInterval(() => {
     if (pendingFrameAck !== null && send({ type: "frame_ack", sequence: pendingFrameAck })) pendingFrameAck = null;
-    peerHealthy(Date.now());
+    peerHealthy(performance.now());
     probePeer();
     scheduler.tick();
     if (performance.now() - lastDiagnosticsAt >= 1000) { lastDiagnosticsAt = performance.now(); reportDiagnostics(); }
@@ -702,6 +705,7 @@ async function authed<T>(
   signal?: AbortSignal,
   timeoutMs = REQUEST_TIMEOUT_MS,
   retried401 = false,
+  written?: () => void,
 ): Promise<RemoteDesktopApiResult<T>> {
   const token = await accessToken();
   if (!token) return { ok: false, error: "unauthorized", status: 401 };
@@ -737,6 +741,7 @@ async function authed<T>(
       return failed();
     }
 
+    try { written?.(); } catch { /* measurement cannot affect input or retry semantics */ }
     let data: unknown = null;
     try {
       data = await response.json();
@@ -748,7 +753,7 @@ async function authed<T>(
       // A token can expire between accessToken() and the request. Refresh once on
       // the same idempotent request before surfacing an auth failure to the panel.
       if (response.status === 401 && !retried401 && !signal?.aborted) {
-        return authed<T>(path, init, signal, timeoutMs, true);
+        return authed<T>(path, init, signal, timeoutMs, true, written);
       }
       return { ok: false, error: errorCode(data, response.status), status: response.status };
     }
@@ -848,128 +853,7 @@ export function parseFrame(data: unknown): RemoteDesktopFrame | null {
   return out;
 }
 
-export type RemoteDesktopBrokerState = "loggedIn" | "locked" | "loggedOut" | "preBoot" | "unknown";
-export interface RemoteDesktopBrokerStatus {
-  deviceId: string;
-  generation: number;
-  online: boolean;
-  enabled: boolean;
-  state: RemoteDesktopBrokerState;
-  role: "broker" | "userAgent";
-  controlSupported: boolean;
-  captureVerified: boolean;
-  inputVerified: boolean;
-  reason: string | null;
-}
-export interface RemoteDesktopBrokerClient extends Pick<RemoteDesktopClient, "getFrame" | "sendInput" | "closeSession"> {
-  getStatus(deviceId: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteDesktopBrokerStatus>>;
-  createSession(deviceId: string, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<Omit<RemoteDesktopSession, "transport"> & { transport: "secure-broker-http-v1" }>>;
-}
-
-const BROKER_STATES = ["loggedIn", "locked", "loggedOut", "preBoot", "unknown"] as const;
-const BROKER_REASONS = ["broker_unavailable", "macos_loginwindow_not_supported", "broker_state_unavailable", "broker_device_verification_required", "os_not_running"];
-export function parseBrokerStatus(value: unknown, deviceId: string): RemoteDesktopBrokerStatus | null {
-  if (!isRecord(value) || value.deviceId !== deviceId || !Number.isSafeInteger(value.generation) || Number(value.generation) < 1
-    || !BROKER_STATES.includes(value.state as RemoteDesktopBrokerState) || !["broker", "userAgent"].includes(String(value.role))
-    || ["online", "enabled", "controlSupported", "captureVerified", "inputVerified"].some(key => typeof value[key] !== "boolean")) return null;
-  const online = value.online === true;
-  const supported = online && value.enabled === true && value.role === "broker" && ["locked", "loggedOut"].includes(String(value.state)) && value.controlSupported === true;
-  return { deviceId, generation: value.generation as number, online, enabled: value.enabled as boolean,
-    state: online ? value.state as RemoteDesktopBrokerState : "unknown", role: value.role as RemoteDesktopBrokerStatus["role"],
-    controlSupported: supported, captureVerified: supported && value.captureVerified === true,
-    inputVerified: supported && value.captureVerified === true && value.inputVerified === true,
-    reason: typeof value.reason === "string" && BROKER_REASONS.includes(value.reason) ? value.reason : null };
-}
-
-type BrokerEvent = { kind: "pointer"; x: number; y: number } | { kind: "button"; button: number; down: boolean }
-  | { kind: "key"; scan: number; extended: boolean; down: boolean };
-// Windows set-1 scan codes. Browser key text/layout never becomes a privileged command.
-const BROKER_KEYS: Record<string, [number, boolean?]> = {
-  Escape: [1], Digit1: [2], Digit2: [3], Digit3: [4], Digit4: [5], Digit5: [6], Digit6: [7], Digit7: [8], Digit8: [9], Digit9: [10], Digit0: [11],
-  Minus: [12], Equal: [13], Backspace: [14], Tab: [15], KeyQ: [16], KeyW: [17], KeyE: [18], KeyR: [19], KeyT: [20], KeyY: [21], KeyU: [22], KeyI: [23], KeyO: [24], KeyP: [25],
-  BracketLeft: [26], BracketRight: [27], Enter: [28], ControlLeft: [29], KeyA: [30], KeyS: [31], KeyD: [32], KeyF: [33], KeyG: [34], KeyH: [35], KeyJ: [36], KeyK: [37], KeyL: [38],
-  Semicolon: [39], Quote: [40], Backquote: [41], ShiftLeft: [42], Backslash: [43], KeyZ: [44], KeyX: [45], KeyC: [46], KeyV: [47], KeyB: [48], KeyN: [49], KeyM: [50],
-  Comma: [51], Period: [52], Slash: [53], ShiftRight: [54], AltLeft: [56], Space: [57], CapsLock: [58], F1: [59], F2: [60], F3: [61], F4: [62], F5: [63], F6: [64], F7: [65], F8: [66], F9: [67], F10: [68],
-  NumLock: [69], ScrollLock: [70], Numpad7: [71], Numpad8: [72], Numpad9: [73], NumpadSubtract: [74], Numpad4: [75], Numpad5: [76], Numpad6: [77], NumpadAdd: [78], Numpad1: [79], Numpad2: [80], Numpad3: [81], Numpad0: [82], NumpadDecimal: [83],
-  F11: [87], F12: [88], NumpadEnter: [28, true], ControlRight: [29, true], NumpadDivide: [53, true], AltRight: [56, true], Home: [71, true], ArrowUp: [72, true], PageUp: [73, true], ArrowLeft: [75, true], ArrowRight: [77, true], End: [79, true], ArrowDown: [80, true], PageDown: [81, true], Insert: [82, true], Delete: [83, true], MetaLeft: [91, true], MetaRight: [92, true], ContextMenu: [93, true],
-};
-export function brokerInputEvents(action: RemoteDesktopAction): BrokerEvent[] | null {
-  if (action.kind === "move" || action.kind === "pointer_down" || action.kind === "pointer_up") {
-    if (typeof action.x !== "number" || typeof action.y !== "number" || !Number.isFinite(action.x) || !Number.isFinite(action.y) || action.x < 0 || action.x > 1 || action.y < 0 || action.y > 1) return null;
-    const events: BrokerEvent[] = [{ kind: "pointer", x: Math.round(action.x * 65535), y: Math.round(action.y * 65535) }];
-    if (action.kind !== "move") {
-      const button = ["left", "right", "middle"].indexOf(action.button ?? "left");
-      if (button < 0) return null;
-      events.push({ kind: "button", button, down: action.kind === "pointer_down" });
-    }
-    return events;
-  }
-  if (action.kind === "key_down" || action.kind === "key_up") {
-    const key = BROKER_KEYS[action.code ?? ""];
-    return key ? [{ kind: "key", scan: key[0], extended: key[1] === true, down: action.kind === "key_down" }] : null;
-  }
-  return null;
-}
-
-const brokerBase = (id: string) => `/v1/secure-broker/devices/${encodeURIComponent(id)}`;
-const brokerInputs = new Map<string, { sequence: number; held: Map<string, BrokerEvent> }>();
-const brokerInputKey = (device: string, session: string) => JSON.stringify([device, session]);
-const heldId = (event: BrokerEvent) => event.kind === "key" ? `k:${event.scan}:${event.extended}` : event.kind === "button" ? `b:${event.button}` : "";
-const brokerClient: RemoteDesktopBrokerClient = {
-  async getStatus(deviceId, options) {
-    const result = await authed<unknown>(`${brokerBase(deviceId)}/status`, {}, options?.signal, 2000);
-    if (!result.ok) return result as RemoteDesktopApiResult<RemoteDesktopBrokerStatus>;
-    const data = parseBrokerStatus(result.data, deviceId);
-    return data ? { ...result, data } : { ok: false, error: "response_malformed", status: result.status };
-  },
-  async createSession(deviceId, options) {
-    const registered = await registerController(options?.signal);
-    if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
-    const body = JSON.stringify({ requestId: options?.requestId ?? newRequestId() });
-    let result = await authed<unknown>(`${brokerBase(deviceId)}/sessions`, { method: "POST", body }, options?.signal, 2000);
-    // One safe retry of a lost create reply: the same owner/controller/requestId replays its session.
-    if (!result.ok && isNetworkFailure(result.error) && !options?.signal?.aborted) {
-      result = await authed<unknown>(`${brokerBase(deviceId)}/sessions`, { method: "POST", body }, options?.signal, 2000);
-    }
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    const data = result.data;
-    // API v1's early replay returns the legacy HTTP marker; this authenticated route fixes transport.
-    if (!isRecord(data) || typeof data.session_id !== "string" || !data.session_id || !["connecting", "pending_consent"].includes(String(data.state))
-      || (data.transport !== undefined && !["secure-broker-http-v1", "http-v1"].includes(String(data.transport)))) return { ok: false, error: "response_malformed", status: result.status };
-    const key = brokerInputKey(deviceId, data.session_id);
-    if (!brokerInputs.has(key)) brokerInputs.set(key, { sequence: 0, held: new Map() });
-    return { ok: true, status: result.status, data: { session_id: data.session_id, state: data.state as RemoteDesktopSession["state"], expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
-      transport: "secure-broker-http-v1", ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}) } };
-  },
-  async getFrame(deviceId, sessionId, options) {
-    const result = await authed<unknown>(`${brokerBase(deviceId)}/sessions/${encodeURIComponent(sessionId)}/frame`, {}, options?.signal, 2000);
-    if (!result.ok) return { ok: false, error: result.error, status: result.status };
-    const data = parseFrame(result.data);
-    return data ? { ok: true, data, status: result.status } : { ok: false, error: "response_malformed", status: result.status };
-  },
-  async sendInput(deviceId, sessionId, seq, action, options) {
-    const input = brokerInputs.get(brokerInputKey(deviceId, sessionId));
-    if (!input) return { ok: false, error: "session_not_found", status: 404 };
-    const events = action.kind === "release_all" ? [...input.held.values()].map(event => ({ ...event, down: false }) as BrokerEvent) : brokerInputEvents(action);
-    if (!events) return { ok: false, error: "broker_input_unsupported", status: 422 };
-    for (const event of events) {
-      const sequence = input.sequence = Math.max(input.sequence + 1, seq);
-      const result = await authed<unknown>(`${brokerBase(deviceId)}/sessions/${encodeURIComponent(sessionId)}/input`, { method: "POST", body: JSON.stringify({ sequence, event }) }, options?.signal, INPUT_REQUEST_TIMEOUT_MS);
-      if (!result.ok) return { ok: false, error: result.error, status: result.status };
-      if (!isRecord(result.data) || result.data.accepted !== true || result.data.sequence !== sequence) return { ok: false, error: "response_malformed", status: result.status };
-      if (event.kind !== "pointer") { if (event.down) input.held.set(heldId(event), event); else input.held.delete(heldId(event)); }
-    }
-    return { ok: true, data: { accepted: true, seq } };
-  },
-  async closeSession(deviceId, sessionId) {
-    brokerInputs.delete(brokerInputKey(deviceId, sessionId));
-    return authed<{ closed: true }>(`${brokerBase(deviceId)}/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", keepalive: true }, undefined, 2000);
-  },
-};
-
 export const remoteDesktopClient: RemoteDesktopClient = {
-  broker: brokerClient,
-  brokerConfigured: false,
   openStream,
   async negotiateMedia(deviceId, sessionId, displayId, options) {
     const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport: "artc-v1", ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);
@@ -1050,6 +934,8 @@ export const remoteDesktopClient: RemoteDesktopClient = {
       { method: "POST", body: JSON.stringify({ seq, action }) },
       options?.signal,
       INPUT_REQUEST_TIMEOUT_MS,
+      false,
+      options?.inputWritten,
     );
     return result;
   },

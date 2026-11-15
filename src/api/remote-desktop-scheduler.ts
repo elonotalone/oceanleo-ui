@@ -1,3 +1,4 @@
+import { RemoteInputHistory } from "./remote-desktop-input-history";
 import type { RemoteDesktopAction } from "./remote-desktop";
 import type { RemoteInputSchedulerDiagnostics } from "./remote-desktop-diagnostics";
 
@@ -11,6 +12,7 @@ const RELEASE = new Set(["release_all", "pointer_up", "key_up"]);
 export interface RemoteInputSchedulerOptions {
   /** false means definitely unwritten. An ambiguous write reserves its seq and fails without replay. */
   write(seq: number, action: RemoteDesktopAction, context?: { retry: boolean; barrier: boolean; emergency?: boolean }): boolean | "unknown" | { lane: "websocket" | "data_channel" };
+  history?: RemoteInputHistory;
   now(): number;
   congestion(busy: boolean): void;
   failure(code: string): void;
@@ -40,6 +42,7 @@ export class RemoteInputScheduler {
   private heldKeys = new Set<string>();
   private heldButtons = new Set<string>();
   private options: RemoteInputSchedulerOptions;
+  private history: RemoteInputHistory;
   private handoff: { promise: Promise<void>; resolve(): void; reject(error: Error): void;
     deadline: number; seq?: number; executed: boolean; timer?: ReturnType<typeof setTimeout> } | null = null;
 
@@ -78,7 +81,7 @@ export class RemoteInputScheduler {
   }
 
 
-  constructor(options: RemoteInputSchedulerOptions) { this.options = options; }
+  constructor(options: RemoteInputSchedulerOptions) { this.options = options; this.history = options.history ?? new RemoteInputHistory(options.now); }
 
   private keyBacklog(): number {
     return [...this.queue, ...this.retries].filter((entry) => !SOFT.has(entry.action.kind)).length;
@@ -338,7 +341,9 @@ export class RemoteInputScheduler {
       if (lane === "data_channel") this.peerWritten = Math.max(this.peerWritten, seq);
       else { this.gatewayWritten = Math.max(this.gatewayWritten, seq); this.gatewayUnretired.push(seq); if (this.gatewayUnretired.length > 256) this.gatewayUnretired.splice(0, this.gatewayUnretired.length - 256); }
       if (head.barrier && this.handoff) this.handoff.seq = seq;
-      this.outstanding.set(seq, { action, seq, barrier: head.barrier, lane, sentAt: now });
+      const entry = (this.options.history && this.history.get(seq)) || this.history.written(seq, lane, action, false, head.barrier);
+      entry.action = action; entry.barrier = head.barrier;
+      this.outstanding.set(seq, entry);
       if (this.retries.length) this.retries.shift(); else this.queue.shift();
       if (remainder) this.queue.unshift({ action: remainder });
     }

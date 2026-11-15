@@ -7,10 +7,10 @@ import type { RemoteDesktopApiResult, RemoteDesktopClient, RemoteDesktopDataLane
 export interface RemoteEarlyMedia { sessionId: string; displayId?: string; response: Promise<RemoteDesktopApiResult<RemoteMediaResponse>>; consumed?: boolean }
 import { openRemoteMedia, RemotePublisherStatusError, type RemoteMediaDiagnostic, type RemoteMediaState, type RemoteMediaViewer, type RemoteMediaDiagnosticSnapshot, type RemoteMediaStartupTimings } from "./remote-desktop-media";
 import { decodeRemotePictureMarker, type RemoteDesktopMeasurements, type RemotePictureMeasurements } from "../api/remote-desktop-measure";
-import { videoStatSample, type RemoteDesktopQualityWindow, type RemoteDesktopViewerReport, type VideoStatSample } from "../api/remote-desktop-quality";
+import { type RemoteDesktopQualityWindow, type RemoteDesktopViewerReport, type VideoStatSample } from "../api/remote-desktop-quality";
 
-/** Anonymous quality report cadence for the receiver's getStats (diagnostics only). */
-const QUALITY_STATS_MS = 1000;
+/** Window and opt-in picture measurement cadence; RTC samples come from the media watchdog. */
+const QUALITY_WINDOW_TICK_MS = 1000;
 
 /** Remote pictures always fit the stage; input maps through the contained rectangle. */
 export function remoteFrameStyle(): CSSProperties {
@@ -46,9 +46,8 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
     const abort = new AbortController();
     let viewer: RemoteMediaViewer | undefined;
     const quality = client.mediaQuality?.(sessionId) ?? null;
-    let statsTimer: ReturnType<typeof setInterval> | undefined;
+    let windowTimer: ReturnType<typeof setInterval> | undefined;
     let reportSeq = 0;
-    let statsPending = false;
     let directPublisher: Record<string, number> = {};
     let markerCanvas: HTMLCanvasElement | null = null;
     let latestReport: RemoteDesktopViewerReport = { t: "rd.viewer_report", v: 1, seq: 1 };
@@ -107,16 +106,38 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
             } catch { /* unavailable/tainted canvas means unknown measurement; picture remains live */ }
           }
         },
+        stats: (sample) => {
+          if (abort.signal.aborted) return;
+          quality?.stats(sample);
+          const now = performance.now();
+          const seconds = Math.max(0.001, (now - previousStatsAt) / 1000);
+          const delta = (key: keyof VideoStatSample) => {
+            const value = sample?.[key], previous = previousStats?.[key];
+            return typeof value === "number" && typeof previous === "number" && value >= previous ? (value - previous) / seconds : undefined;
+          };
+          const received = delta("packetsReceived"), lost = delta("packetsLost");
+          const report: RemoteDesktopViewerReport = { t: "rd.viewer_report", v: 1, seq: ++reportSeq,
+            ...(sample?.rttMs !== undefined ? { edge_rtt_ms: Math.round(sample.rttMs) } : {}),
+            ...(received !== undefined && lost !== undefined && received + lost > 0 ? { loss_pct: Math.min(100, Math.max(0, Number((lost / (received + lost) * 100).toFixed(2)))) } : {}),
+            ...(delta("nackCount") !== undefined ? { nack_ps: Math.max(0, Number(delta("nackCount")!.toFixed(2))) } : {}),
+            ...(delta("pliCount") !== undefined ? { pli_ps: Math.max(0, Number(delta("pliCount")!.toFixed(2))) } : {}),
+            ...(delta("totalFreezesDuration") !== undefined ? { freeze_ms_2s: Math.min(2000, Math.max(0, Math.round(delta("totalFreezesDuration")! * 1000))) } : {}),
+            ...(sample?.fps !== undefined ? { fps_decoded: Number(sample.fps.toFixed(2)) } : {}),
+            ...(sample?.jitterBufferDelay !== undefined && sample.jitterBufferEmittedCount ? { jitter_ms: Math.round(sample.jitterBufferDelay / sample.jitterBufferEmittedCount * 1000) } : {}),
+          };
+          latestReport = report; latestReportAt = now;
+          callbacks.current.onViewerReport?.(report);
+          previousStats = sample; previousStatsAt = now;
+        },
         publisherStats: metrics => { directPublisher = metrics; },
         renew: negotiate,
         dataChannel: (lane) => { callbacks.current.onDataChannel?.(abort.signal.aborted ? null : lane); },
-        diagnostic: (detail) => { if (!abort.signal.aborted) callbacks.current.onDiagnostic?.(detail); },
+        diagnostic: (detail) => { if (!abort.signal.aborted) { quality?.mediaDiagnostic?.(detail); callbacks.current.onDiagnostic?.(detail); } },
         timing: (value) => { callbacks.current.onTiming?.(value); },
         diagnostics: (value) => { callbacks.current.onDiagnostics?.(value); },
       }, abort.signal);
-      const opened = viewer;
-      if (opened?.stats && !abort.signal.aborted) {
-        statsTimer = setInterval(() => {
+      if (!abort.signal.aborted) {
+        windowTimer = setInterval(() => {
           const measuring = measurementsRef.current;
           measuring?.tick(); measuring?.sampleCurrentPicture();
           if (measuring) callbacks.current.onMeasurements?.(measuring.snapshot(), measuring.clockUncertainty());
@@ -126,36 +147,11 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
             const currentReport = performance.now() - latestReportAt < 2500 ? latestReport : { t: "rd.viewer_report" as const, v: 1 as const, seq: Math.max(1, reportSeq) };
             callbacks.current.onQualityWindow?.({ v: 1, device_id: deviceId, session_id: sessionId,
               window_start_ms: qualityWindowStart, viewer: { ...currentReport, ...ack, ...measuring?.takeWindow() },
+              ...(quality?.mediaDiagnostics?.() ? { media_diagnostics: quality.mediaDiagnostics() } : {}),
               ...(Object.keys(publisherMetrics).length ? { publisher: publisherMetrics } : {}) });
             qualityWindowStart = Date.now();
           }
-          if (statsPending) return;
-          statsPending = true;
-          void opened.stats!().then((reports) => {
-            if (abort.signal.aborted) return;
-            const sample = videoStatSample(reports as Parameters<typeof videoStatSample>[0]);
-            quality?.stats(sample);
-            const now = performance.now();
-            const seconds = Math.max(0.001, (now - previousStatsAt) / 1000);
-            const delta = (key: keyof VideoStatSample) => {
-              const value = sample?.[key], previous = previousStats?.[key];
-              return typeof value === "number" && typeof previous === "number" && value >= previous ? (value - previous) / seconds : undefined;
-            };
-            const received = delta("packetsReceived"), lost = delta("packetsLost");
-            const report: RemoteDesktopViewerReport = { t: "rd.viewer_report", v: 1, seq: ++reportSeq,
-              ...(sample?.rttMs !== undefined ? { edge_rtt_ms: Math.round(sample.rttMs) } : {}),
-              ...(received !== undefined && lost !== undefined && received + lost > 0 ? { loss_pct: Math.min(100, Math.max(0, Number((lost / (received + lost) * 100).toFixed(2)))) } : {}),
-              ...(delta("nackCount") !== undefined ? { nack_ps: Math.max(0, Number(delta("nackCount")!.toFixed(2))) } : {}),
-              ...(delta("pliCount") !== undefined ? { pli_ps: Math.max(0, Number(delta("pliCount")!.toFixed(2))) } : {}),
-              ...(delta("totalFreezesDuration") !== undefined ? { freeze_ms_2s: Math.min(2000, Math.max(0, Math.round(delta("totalFreezesDuration")! * 1000))) } : {}),
-              ...(sample?.fps !== undefined ? { fps_decoded: Number(sample.fps.toFixed(2)) } : {}),
-              ...(sample?.jitterBufferDelay !== undefined && sample.jitterBufferEmittedCount ? { jitter_ms: Math.round(sample.jitterBufferDelay / sample.jitterBufferEmittedCount * 1000) } : {}),
-            };
-            latestReport = report; latestReportAt = now;
-            callbacks.current.onViewerReport?.(report);
-            previousStats = sample; previousStatsAt = now;
-          }).catch(() => {}).finally(() => { statsPending = false; });
-        }, QUALITY_STATS_MS);
+        }, QUALITY_WINDOW_TICK_MS);
       }
     })().catch((error: unknown) => {
       if (abort.signal.aborted) return;
@@ -166,7 +162,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
     });
     return () => {
       abort.abort();
-      clearInterval(statsTimer);
+      clearInterval(windowTimer);
       callbacks.current.onDataChannel?.(null);
       previousClose.current = start.then(async () => { await viewer?.close(); });
     };

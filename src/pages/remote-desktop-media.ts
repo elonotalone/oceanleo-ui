@@ -1,7 +1,7 @@
 import { prepareEngine, PUBLISH_STATE, type ArtcEngine } from "../shell/messages/call/engine/sdk";
 import { loadRemoteArtcSdk, type RemoteArtcSdk } from "./remote-desktop-sdk";
 import type { RemoteDesktopDataLane, RemoteDesktopDataMessage, RemoteMediaCredentials } from "../api/remote-desktop";
-import { videoStatSample } from "../api/remote-desktop-quality";
+import { videoStatSample, type VideoStatSample } from "../api/remote-desktop-quality";
 
 /** A remote viewer owns a separate receive-only engine; never reuse the call singleton. */
 export type RemoteMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
@@ -25,6 +25,8 @@ export interface RemoteMediaHandlers {
   timing?(value: RemoteMediaStartupTimings): void;
   diagnostics?(value: RemoteMediaDiagnosticSnapshot): void;
   publisherStats?(metrics: Record<string, number>): void;
+  /** The watchdog owns one receiver sample; all quality consumers read its parsed result. */
+  stats?(sample: VideoStatSample | null): void;
 }
 
 export interface RemoteMediaDiagnostic { blocked_host?: string; sdk_error?: number; renew_reason?: string }
@@ -284,6 +286,7 @@ export async function openRemoteMedia(
     statsFlight = receiverStats(video).then((reports) => {
       try {
         const sample = videoStatSample(reports as Parameters<typeof videoStatSample>[0]);
+        if (closed) return reports;
         if (sample) {
           const fields = { rtc_fps: sample.fps, rtc_frames_decoded: sample.framesDecoded, rtc_frames_dropped: sample.framesDropped,
             rtc_packets_received: sample.packetsReceived, rtc_packets_lost: sample.packetsLost, rtc_nack_count: sample.nackCount,
@@ -294,6 +297,7 @@ export async function openRemoteMedia(
             rtc_relay: sample.relay === undefined ? undefined : sample.relay ? 1 : 0 };
           rtc = Object.fromEntries(Object.entries(fields).filter(([, value]) => typeof value === "number" && Number.isFinite(value) && value >= 0));
         }
+        handlers.stats?.(sample);
       } catch { /* telemetry must not turn a successful stats read into a media failure */ }
       return reports;
     }).finally(() => { statsFlight = null; statsFinished++; statsInFlight--; lastStatsAt = now(); statsMaxMs = Math.max(statsMaxMs, lastStatsAt - sampledAt); });
@@ -438,7 +442,7 @@ export async function openRemoteMedia(
     if (closed || uid !== credentials.publisher_id || message?.type !== 2 || !(message.data instanceof ArrayBuffer) || message.data.byteLength > 1024) return;
     let value: RemoteDesktopDataMessage;
     try { value = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(message.data)); } catch { return; }
-    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_ack", "rd.capture", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
+    if (!value || value.v !== 1 || value.sid !== handlers.sessionId || !["rd.input_ack", "rd.publisher_stats", "rd.pong"].includes(value.t)) return;
     if (value.t === "rd.pong" && (!Number.isFinite(value.t_v) || !Number.isFinite(value.device_wall_ms))) return;
     if (value.t === "rd.input_ack" && (!Number.isSafeInteger(value.acked_seq) || value.acked_seq < 0)) return;
     if (value.t === "rd.publisher_stats") {
@@ -448,8 +452,6 @@ export async function openRemoteMedia(
       value = { ...value, metrics: Object.fromEntries(keys.filter(key => typeof raw?.[key] === "number" && Number.isFinite(raw[key]) && raw[key] >= 0).map(key => [key, raw[key]])) };
       handlers.publisherStats?.(value.metrics);
     }
-    // Capture metadata is intentionally not turned into displayed-picture age (C6).
-    if (value.t === "rd.capture") return;
     for (const listener of dataListeners) listener(value);
   });
   on("dataPublishStateChanged", (_previous: number, next: number) => {

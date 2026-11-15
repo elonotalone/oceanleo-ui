@@ -124,6 +124,7 @@ test("without a device receipt the lane is never trusted; stalled trusted input 
     const peer = lane();
     trust(second.socket, second.stream, peer);
     t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    t.mock.method(performance, "now", () => Date.now() - performance.timeOrigin);
     second.stream.send({ kind: "key_down", key: "b" });
     assert.equal(peer.sent.at(-1).a.kind, "key_down");
     const peerSeq = peer.sent.at(-1).seq;
@@ -142,6 +143,7 @@ test("a probe lost before the computer subscribed is re-sent with a fresh seq, t
   const executed = (seq) => { socket.message({ type: "input_ack", seq }); socket.message({ type: "state", state: "active", acked_seq: seq }); };
   try {
     t.mock.timers.enable({ apis: ["Date"], now: Date.now() });
+    t.mock.method(performance, "now", () => Date.now() - performance.timeOrigin);
     const peer = lane();
     stream.attachDataChannel(peer);
     stream.send({ kind: "move", x: 1, y: 1 });
@@ -346,6 +348,7 @@ test('C6 SDK messages are publisher/session scoped, bounded, disposed and input 
     const ack={t:'rd.input_ack',v:1,sid:'session-1',acked_seq:8};
     message('intruder',ack);message('desktop',{...ack,sid:'other'});message('desktop',ack,1);
     message('desktop',{...ack,acked_seq:-1});message('desktop',{...ack,extra:'x'.repeat(1024)});
+    message('desktop',{v:1,sid:'session-1',t:'rd.capture',capture_seq:1,capture_wall_ms:100,media_timestamp_ms:100,pushed_wall_ms:101});
     assert.deepEqual(got,[]);
     message('desktop',ack); assert.deepEqual(got,[ack]);
     unsubscribe(); message('desktop',{...ack,acked_seq:9}); assert.equal(got.length,1);

@@ -26,6 +26,7 @@ const peer=()=>({sent:[],send(payload){this.sent.push(JSON.parse(payload));retur
 const motion=x=>({kind:'move',x,y:.5});
 async function harness(t){
   t.mock.timers.enable({apis:['Date','setInterval','setTimeout'],now:1000});
+  t.mock.method(performance, 'now', () => Date.now());
   globalThis.window={location:{href:'https://fixture.invalid/devices'}};globalThis.WebSocket=Socket;
   const errors=[],callbacks=[];
   const pending=api.remoteDesktopClient.openStream('fixture-device','fixture-session',{state:s=>callbacks.push(['state',s]),frame(){},media:()=>callbacks.push(['media']),inputDiagnostics:()=>callbacks.push(['input_diagnostics']),error:e=>{errors.push(e);callbacks.push(['error',e]);}});

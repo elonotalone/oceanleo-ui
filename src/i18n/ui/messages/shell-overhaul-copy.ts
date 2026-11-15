@@ -108,7 +108,6 @@ import { NATIVE_MIDTURN_MESSAGES } from "./native-midturn-copy";
 import { W3_M4_MESSAGES } from "./w3-m4-copy";
 import { CN_HOST_MESSAGES } from "./cn-host-copy";
 import { RDLOGIN_MESSAGES } from "./rdlogin-copy";
-import { RD_BROKER_MESSAGES } from "./rd-broker-copy";
 import { TOOLUI_MESSAGES } from "./toolui-copy";
 import { W4_M5_MESSAGES } from "./w4-m5-copy";
 import { MOBILE_MIDTURN_MESSAGES } from "./mobile-midturn-copy";
@@ -221,7 +220,6 @@ const PARTS = [
   W3_M4_MESSAGES,
   CN_HOST_MESSAGES,
   RDLOGIN_MESSAGES,
-  RD_BROKER_MESSAGES,
   TOOLUI_MESSAGES,
   W4_M5_MESSAGES,
   MOBILE_MIDTURN_MESSAGES,

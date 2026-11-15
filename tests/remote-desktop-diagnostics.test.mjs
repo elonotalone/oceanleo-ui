@@ -117,7 +117,7 @@ test("real stream exposes numeric snapshots without input changes or raw state c
 });
 
 function mediaHarness(t, pendingStats = false) {
-  const events = new Map(), milestones = [], snapshots = [], calls = [];
+  const events = new Map(), milestones = [], snapshots = [], calls = [], samples = [];
   let frame;
   const receiver = { track: { id: "screen" }, getStats: () => pendingStats ? new Promise(() => {}) : Promise.resolve(new Map([
     ["in", { id: "in", type: "inbound-rtp", kind: "video", framesPerSecond: 30, framesDecoded: 100, jitterBufferDelay: .5, jitterBufferEmittedCount: 10 }],
@@ -138,9 +138,9 @@ function mediaHarness(t, pendingStats = false) {
     refreshAuthInfo() {}, setRemoteViewConfig() {}, getOnlineRemoteUsers: () => [], bizControl: { updateScreenWant() {} } };
   const credentials = { token: "private-media-token", publisher_id: "private-publisher", user_id: "private-viewer", channel_id: "private-channel", expires_at: new Date(Date.now() + 120000).toISOString() };
   const abort = new AbortController();
-  return { milestones, snapshots, calls, abort, video, frame() { video.videoWidth = 100; video.videoHeight = 100; video.readyState = 2; frame(); },
+  return { milestones, snapshots, calls, samples, abort, video, frame() { video.videoWidth = 100; video.videoHeight = 100; video.readyState = 2; frame(); },
     start: () => openRemoteMedia(credentials, video, { state() {}, frame() {}, renew: async () => credentials,
-      timing(value) { milestones.push(value); }, diagnostics(value) { snapshots.push(value); } }, abort.signal, async () => ({ createEngine: () => engine })) };
+      timing(value) { milestones.push(value); }, diagnostics(value) { snapshots.push(value); }, stats(value) { samples.push(value); } }, abort.signal, async () => ({ createEngine: () => engine })) };
 }
 
 test("media milestones expose load/prepare/join/frame/cleanup on one monotonic clock", async (t) => {
@@ -170,4 +170,21 @@ test("media diagnostics share one pending stats read across quality callers and 
   t.mock.timers.tick(1000);
   assert.equal(viewer.diagnostics().stats_calls_total, 1, "watchdog and quality callers share one pending native stats request");
   await viewer.close();
+});
+
+
+test("watchdog publishes one parsed RTC sample per read for all quality consumers and stops on close", async (t) => {
+  t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: Date.now() });
+  const h = mediaHarness(t), viewer = await h.start();
+  t.mock.timers.tick(1000); await new Promise(setImmediate);
+  assert.equal(viewer.diagnostics().stats_calls_total, 1);
+  assert.equal(h.samples.length, 1);
+  assert.equal(h.samples[0].fps, viewer.diagnostics().rtc_fps);
+  assert.equal(h.samples[0].rttMs, viewer.diagnostics().rtc_rtt_ms);
+  t.mock.timers.tick(1000); await new Promise(setImmediate);
+  assert.equal(viewer.diagnostics().stats_calls_total, 2);
+  assert.equal(h.samples.length, 2);
+  await viewer.close();
+  t.mock.timers.tick(3000); await new Promise(setImmediate);
+  assert.equal(h.samples.length, 2);
 });

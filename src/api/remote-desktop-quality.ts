@@ -13,7 +13,7 @@
  * Diagnostics never affect the session: every hook is try/catch-free arithmetic or swallowed.
  */
 import type {
-  RemoteDesktopClient, RemoteDesktopStream, RemoteDesktopStreamHandlers,
+  RemoteDesktopClient, RemoteDesktopStreamHandlers,
 } from "./remote-desktop";
 import type { RemoteControlTiming } from "./remote-desktop-control-timing";
 
@@ -32,6 +32,7 @@ export interface RemoteDesktopViewerReport {
 export interface RemoteDesktopQualityWindow {
   v: 1; device_id: string; session_id: string; window_start_ms: number;
   viewer: RemoteDesktopViewerReport; publisher?: Record<string, number>;
+  media_diagnostics?: RemoteDesktopQualityReport["media_diagnostics"];
 }
 export interface QualityPercentiles { n: number; p50?: number; p90?: number; p99?: number; max?: number }
 export interface QualityVideoSummary {
@@ -202,6 +203,8 @@ export interface RemoteMediaQualitySink {
   mediaState(state: QualityMediaState, error?: string): void;
   frame(): void;
   stats(sample: VideoStatSample | null): void;
+  mediaDiagnostic?(value: { sdk_error?: unknown; renew_reason?: unknown }): void;
+  mediaDiagnostics?(): RemoteDesktopQualityReport["media_diagnostics"];
   takeDirectAckWindow?(): Pick<RemoteDesktopViewerReport, "input_ack_p50_ms" | "input_ack_p95_ms">;
 }
 
@@ -278,8 +281,14 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
     }
   }
   mediaDiagnostic(value: { sdk_error?: unknown; renew_reason?: unknown }): void {
-    if (typeof value.sdk_error === "number" && Number.isInteger(value.sdk_error) && value.sdk_error >= 0 && this.sdkErrors.length < 20) this.sdkErrors.push(value.sdk_error);
+    if (typeof value.sdk_error === "number" && Number.isInteger(value.sdk_error) && value.sdk_error >= 0 && value.sdk_error <= 2 ** 31 - 1 && this.sdkErrors.length < 20) this.sdkErrors.push(value.sdk_error);
     if (typeof value.renew_reason === "string" && /^[a-z0-9_]{1,64}$/i.test(value.renew_reason) && this.renewReasons.length < 20) this.renewReasons.push(value.renew_reason.toLowerCase());
+  }
+  mediaDiagnostics(): RemoteDesktopQualityReport["media_diagnostics"] {
+    return this.sdkErrors.length || this.renewReasons.length ? {
+      ...(this.sdkErrors.length ? { sdk_error_codes: [...this.sdkErrors] } : {}),
+      ...(this.renewReasons.length ? { renew_reasons: [...this.renewReasons] } : {}),
+    } : undefined;
   }
   stats(sample: VideoStatSample | null): void {
     if (!sample || this.sent) return;
@@ -303,7 +312,7 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
       media, end_reason: this.reason ?? qualityCode(defaultReason),
       duration_ms: Math.max(0, Math.min(86_400_000, Math.round(this.options.now() - this.options.origin))),
       reconnects: Math.min(10_000, this.reconnects), media_renewals: Math.min(10_000, Math.max(0, this.negotiated - 1)),
-      ...(this.sdkErrors.length || this.renewReasons.length ? { media_diagnostics: { ...(this.sdkErrors.length ? { sdk_error_codes: [...this.sdkErrors] } : {}), ...(this.renewReasons.length ? { renew_reasons: [...this.renewReasons] } : {}) } } : {}),
+      ...(this.mediaDiagnostics() ? { media_diagnostics: this.mediaDiagnostics() } : {}),
       steps,
       input: { ws_count: this.lanes.websocket, dc_count: this.lanes.data_channel, ...(accepted ? { accepted } : {}), ...(executed ? { executed } : {}) },
       ...(video ? { video } : {}),
@@ -381,6 +390,19 @@ export class RemoteDesktopQualityHub {
         }
         return result;
       },
+      async sendInput(deviceId, sessionId, seq, action, options) {
+        let writes = 0;
+        const result = await client.sendInput(deviceId, sessionId, seq, action, {
+          ...options,
+          inputWritten() {
+            writes++; hub.forSession(sessionId)?.inputSent("websocket");
+            try { options?.inputWritten?.(); } catch { /* measurement only */ }
+          },
+        });
+        // Older/custom clients do not expose writes; a successful reply is still proof of one.
+        if (!writes && result.ok) hub.forSession(sessionId)?.inputSent("websocket");
+        return result;
+      },
       async closeSession(deviceId, sessionId) {
         hub.forSession(sessionId)?.finish();
         return client.closeSession(deviceId, sessionId);
@@ -397,6 +419,10 @@ export class RemoteDesktopQualityHub {
           frame(frame) { collector.legacyFrame(); handlers.frame(frame); },
           error(code) { collector.fail(code); handlers.error(code); },
           controlTiming(sample) { collector.controlTiming(sample); handlers.controlTiming?.(sample); },
+          inputWritten(seq, measurable, lane, probe) {
+            if (!probe && lane) collector.inputSent(lane);
+            handlers.inputWritten?.(seq, measurable, lane, probe);
+          },
           media(media, status) {
             if (status?.state === "failed") collector.fail(status.error || "media_capture_or_publish_failed");
             handlers.media?.(media, status);
@@ -405,15 +431,7 @@ export class RemoteDesktopQualityHub {
         const result = await open(deviceId, sessionId, measured, options);
         if (!result.ok || !result.data) { collector.fail(result.error ?? "stream_failed"); return result; }
         collector.mark("stream_open_ms");
-        const stream = result.data;
-        const instrumented: RemoteDesktopStream = Object.assign(Object.create(stream) as RemoteDesktopStream, {
-          send(action: Parameters<RemoteDesktopStream["send"]>[0]) {
-            const ok = stream.send(action);
-            if (ok) collector.inputSent(stream.inputPath?.() ?? "websocket");
-            return ok;
-          },
-        });
-        return { ...result, data: instrumented };
+        return result;
       };
     }
     if (client.negotiateMedia) {
