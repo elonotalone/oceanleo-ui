@@ -11,14 +11,8 @@
 import { useMemo } from "react";
 import { useUI } from "../../../i18n";
 import type {
-  PluginChromeAction,
-  PluginChromeNotice,
-  PluginChromeSaveState,
   PluginChromeView,
 } from "../../plugin-chrome";
-import type { useCanvasWorkflow } from "./use-canvas-workflow";
-
-type CanvasWorkflow = ReturnType<typeof useCanvasWorkflow>;
 
 /**
  * 五个投影共享同一个 head，只是看法不同，所以是 views 而不是 actions。
@@ -43,93 +37,3 @@ export function useCanvasViews(): readonly PluginChromeView[] {
   );
 }
 
-export function useCanvasChromeActions(
-  workflow: CanvasWorkflow,
-): readonly PluginChromeAction[] {
-  const tt = useUI();
-  return useMemo(
-    () => [
-      {
-        id: "add-media",
-        label: tt("添加媒体"),
-        icon: "uploads",
-        onTrigger: workflow.openCreateMenu,
-      },
-      {
-        id: "save",
-        label: tt("保存快照"),
-        icon: "save",
-        variant: "primary",
-        disabled: workflow.saving,
-        busy: workflow.saving,
-        busyLabel: "保存中…",
-        onTrigger: () =>
-          void workflow.dispatchCommand("canvas.project.save", {}, "toolbar"),
-      },
-    ],
-    [tt, workflow],
-  );
-}
-
-export function useCanvasSaveState(
-  workflow: CanvasWorkflow,
-): PluginChromeSaveState {
-  return useMemo(() => {
-    if (workflow.saving) return { kind: "saving" };
-    if (workflow.dirty) return { kind: "dirty" };
-    // 没接执行通道时存的只是本地文档，不许显示成「已保存」——那会让用户
-    // 以为快照进了 Durable Project，其实并没有。
-    if (workflow.executionDegraded) {
-      return {
-        kind: "local-only",
-        reason: "未注入执行通道，快照只写回陈列馆文档，不进 Durable Project。",
-      };
-    }
-    return {
-      kind: "clean",
-      revisionLabel: `r${workflow.head.revision}`,
-    };
-  }, [
-    workflow.saving,
-    workflow.dirty,
-    workflow.executionDegraded,
-    workflow.head.revision,
-  ]);
-}
-
-export function useCanvasNotices(
-  workflow: CanvasWorkflow,
-): readonly PluginChromeNotice[] {
-  return useMemo(() => {
-    const notices: PluginChromeNotice[] = [];
-    if (workflow.executionDegraded) {
-      notices.push({
-        id: "execution-degraded",
-        tone: "warn",
-        message: "纯编辑：未注入执行通道",
-        detail: "不执行 Durable Project/Run，也不走网关生成。编辑与保存照常。",
-      });
-    }
-    const report = workflow.migrationReport;
-    if (report) {
-      notices.push({
-        id: "migration-report",
-        tone: report.issues.length ? "warn" : "info",
-        message:
-          `v1 迁移：${report.migratedNodeCount}/${report.inputNodeCount} 节点 · ` +
-          `${report.migratedEdgeCount}/${report.inputEdgeCount} 边 · ` +
-          `${report.inaccessibleMedia.length} 处媒体问题 · ` +
-          `${report.externalTasksRequiringReview.length} 个外部任务待复核`,
-        ...(report.issues.length
-          ? {
-              detail: `迁移保持关闭：${report.issues
-                .slice(0, 2)
-                .map((issue) => issue.code)
-                .join("、")}`,
-            }
-          : {}),
-      });
-    }
-    return notices;
-  }, [workflow.executionDegraded, workflow.migrationReport]);
-}

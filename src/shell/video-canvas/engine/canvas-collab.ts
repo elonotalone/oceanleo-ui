@@ -15,6 +15,7 @@ import {
   CANVAS_EDGE_LIMIT,
   CANVAS_NODE_LIMIT,
   advanceProject,
+  projectHead,
   parseVideoProject,
   type CanvasEdgeDefinition,
   type CanvasNodeDefinition,
@@ -244,9 +245,9 @@ export function applyCollabPatch(project: VideoProject, patch: CollabPatchPayloa
   const edges = new Map<string, CanvasEdgeDefinition>(head.graph.edges.map((e) => [e.edgeId, { ...e }]));
   const assets: Record<string, ProjectAsset> = { ...project.assets };
   const known = (list: Array<Record<string, string>>, key: string) => new Set(list.map((item) => item[key]));
-  const scenes = known(head.scenes as unknown as Array<Record<string, string>>, "sceneId");
-  const shots = known(head.shots as unknown as Array<Record<string, string>>, "shotId");
-  const cameras = known(head.cameras as unknown as Array<Record<string, string>>, "cameraId");
+  const scenes = known((head.scenes || []) as unknown as Array<Record<string, string>>, "sceneId");
+  const shots = known((head.shots || []) as unknown as Array<Record<string, string>>, "shotId");
+  const cameras = known((head.cameras || []) as unknown as Array<Record<string, string>>, "cameraId");
 
   for (const entry of patch.nodes.upsert) {
     const existing = nodes.get(entry.id);
@@ -358,7 +359,7 @@ export interface CollabReply {
 export function answerCollabCapture(recoveryId: string, port: CanvasCollabPort): CollabReply {
   const project = port.getProject();
   const loaded = port.isLoaded();
-  const head = project.versions[project.headVersionId];
+  const head = projectHead(project);
   return {
     type: "recovery-snapshot",
     recoveryId,
@@ -430,7 +431,7 @@ export function answerCollabRestore(
   }
   if (expectedNativeRevision !== undefined) {
     const currentProject = port.getProject();
-    const currentHead = currentProject.versions[currentProject.headVersionId];
+    const currentHead = projectHead(currentProject);
     const currentRevision = currentHead?.revision;
     if (currentRevision !== expectedNativeRevision) {
       return {
@@ -452,7 +453,7 @@ export function answerCollabRestore(
   let nativeCasRejected = false;
   port.applyRemote((current) => {
     if (expectedNativeRevision !== undefined) {
-      const currentHead = current.versions[current.headVersionId];
+      const currentHead = projectHead(current);
       if (currentHead?.revision !== expectedNativeRevision) {
         nativeCasConflict = currentHead?.revision;
         return null;

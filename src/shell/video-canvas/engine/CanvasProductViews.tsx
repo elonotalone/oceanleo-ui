@@ -317,7 +317,7 @@ function TimelineView({
     commandState?.commandId === "canvas.timeline.final-render" &&
     commandState.status === "pending";
   const latestReceipt = Object.values(project.operationReceipts || {})
-    .filter((receipt) => receipt.commandId === "canvas.timeline.final-render")
+    .filter((receipt) => receipt?.commandId === "canvas.timeline.final-render" && typeof receipt.completedAt === "string" && Array.isArray(receipt.outputAssetIds))
     .sort((left, right) =>
       right.completedAt.localeCompare(left.completedAt),
     )[0];

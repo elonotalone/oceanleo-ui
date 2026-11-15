@@ -66,7 +66,10 @@ export class WorkflowGraphHistory {
   private redoStack: VersionContent[] = [];
   private current: VersionContent | null = null;
 
-  constructor(private readonly limit = 100, project?: VideoProject) {
+  private readonly limit: number;
+
+  constructor(limit = 100, project?: VideoProject) {
+    this.limit = limit;
     if (project) this.reset(project);
   }
 

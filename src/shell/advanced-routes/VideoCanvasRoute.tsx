@@ -13,7 +13,7 @@
  */
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { VideoCanvasStage } from "../workflow-carrier/VideoCanvasStage";
-import { VideoProjectStage } from "../workflow-carrier/VideoProjectStage";
+import { LibraryVideoCanvas } from "../video-canvas/LibraryVideoCanvas";
 import { isNativeVideoProjectItem } from "../workflow-carrier/workflow-graph-source";
 
 export {
@@ -24,7 +24,7 @@ export {
 
 export function VideoCanvasRoute(props: AdvancedContentWorkbenchProps) {
   return isNativeVideoProjectItem(props.item) ? (
-    <VideoProjectStage {...props} />
+    <LibraryVideoCanvas {...props} />
   ) : (
     <VideoCanvasStage {...props} />
   );

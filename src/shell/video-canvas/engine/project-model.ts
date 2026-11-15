@@ -553,7 +553,21 @@ export function projectPreviewAtCurrentHead(
 function head(project: VideoProject): ProjectVersion {
   const version = project.versions[project.headVersionId];
   if (!version) throw new Error("Project head does not resolve to a version.");
-  return version;
+  // Defaults and official-template projections belong to the view. Stored
+  // versions stay untouched, including fields introduced by another editor.
+  const runtime = clone(version);
+  runtime.versionId ||= project.headVersionId;
+  runtime.revision = Number.isSafeInteger(runtime.revision) ? runtime.revision : 1;
+  normalizeProjectVersions({ ...project, versions: { [project.headVersionId]: runtime } });
+  return runtime;
+}
+
+/** Read official template aliases without rewriting their stored kind. */
+export function effectiveCanvasNode(node: CanvasNodeDefinition): CanvasNodeDefinition {
+  const kind = String(node.kind) === "prompt" ? "script"
+    : String(node.kind) === "generate" ? "video" : node.kind;
+  const params = (node as CanvasNodeDefinition & { params?: Partial<CanvasNodeDefinition> }).params || {};
+  return { ...params, ...node, kind, localEditRecipe: node.localEditRecipe || [] };
 }
 
 export function projectHead(project: VideoProject): ProjectVersion {
@@ -816,7 +830,7 @@ export function operationReceiptForRequest(
   requestId: string,
 ): CanvasOperationReceipt | undefined {
   return Object.values(project.operationReceipts || {}).find(
-    (receipt) => receipt.requestId === requestId,
+    (receipt) => receipt?.requestId === requestId,
   );
 }
 
@@ -894,7 +908,7 @@ export function deriveLocalAsset(
         [derivative.derivativeId]: derivative,
       },
       lineage: [
-        ...registered.project.lineage,
+        ...(registered.project.lineage || []),
         {
           lineageId: stableId("lineage"),
           parentAssetId,
@@ -1195,7 +1209,7 @@ export function splitGridAsset(
     throw new Error("Grid split supports 4, 9, or 25 cells.");
   }
   let working = project;
-  const lineageStart = project.lineage.length;
+  const lineageStart = (project.lineage || []).length;
   const derivedAssets: ProjectAsset[] = [];
   const recipes: LocalEditOperation[] = [];
   for (let index = 0; index < gridSize; index += 1) {
@@ -1596,8 +1610,8 @@ export function compareProjectVersions(
   baseVersionId: string,
   targetVersionId = project.headVersionId,
 ): ProjectVersionComparison {
-  const base = project.versions[baseVersionId];
-  const target = project.versions[targetVersionId];
+  const base = head({ ...project, headVersionId: baseVersionId });
+  const target = head({ ...project, headVersionId: targetVersionId });
   if (!base || !target) throw new Error("History comparison version is missing.");
   const baseNodes = new Map(base.graph.nodes.map((node) => [node.nodeId, node]));
   const targetNodes = new Map(
@@ -1684,7 +1698,7 @@ export function projectToFlow(
   const version = head(project);
   const nodes = version.graph.nodes.map((node) => {
     const asset = node.assetId ? project.assets[node.assetId] : undefined;
-    const derivative = Object.values(project.derivatives).find(
+    const derivative = Object.values(project.derivatives || {}).find(
       (candidate) => candidate.assetId === node.assetId,
     );
     return {
@@ -1692,7 +1706,7 @@ export function projectToFlow(
       type: "leovideo-media" as const,
       position: node.position,
       data: {
-        ...makeData(node, asset, derivative),
+        ...makeData(effectiveCanvasNode(node), asset, derivative),
         ...(node.legacySourceNode
           ? { legacySourceNode: clone(node.legacySourceNode) }
           : {}),
@@ -1991,7 +2005,8 @@ function normalizeProjectVersions(project: VideoProject): void {
       if (!Array.isArray(graph![name])) fail(path(`graph.${name}`), "必须是列表");
     }
     for (const name of ["scenes", "shots", "storyboards", "takes", "timelines", "clips", "cameras"] as const) {
-      if (!Array.isArray(version[name])) fail(path(name), "必须是列表");
+      if (version[name] === undefined) (version[name] as unknown) = [];
+      else if (!Array.isArray(version[name])) fail(path(name), "必须是列表");
     }
     const ids = (rows: object[], field: string, name: string) => {
       const result = new Set<string>();
@@ -2020,8 +2035,6 @@ function normalizeProjectVersions(project: VideoProject): void {
     version.graph.nodes.forEach((node, index) => {
       if (!Array.isArray(node.localEditRecipe)) node.localEditRecipe = [];
       const official = node as CanvasNodeDefinition & { params?: Record<string, unknown> };
-      if (official.kind === ("prompt" as CanvasNodeKind)) official.kind = "script";
-      if (official.kind === ("generate" as CanvasNodeKind)) official.kind = "video";
       if (!node.text && typeof official.params?.text === "string") node.text = official.params.text;
       if (!node.prompt && typeof official.params?.prompt === "string") node.prompt = official.params.prompt;
       if (!node.position || !Number.isFinite(node.position.x) || !Number.isFinite(node.position.y)) {
@@ -2126,7 +2139,7 @@ export function parseVideoProject(input: unknown): VideoProject {
   }
   const versions = objectRecord(project.versions);
   const assets = objectRecord(project.assets);
-  const derivatives = objectRecord(project.derivatives);
+  const derivatives = project.derivatives === undefined ? {} : objectRecord(project.derivatives);
   const operationReceipts =
     project.operationReceipts === undefined
       ? {}
@@ -2137,7 +2150,7 @@ export function parseVideoProject(input: unknown): VideoProject {
   if (!assets) throw new Error("视频工程源文件不完整：assets 缺失。");
   if (!derivatives) throw new Error("视频工程源文件不完整：derivatives 缺失。");
   if (!operationReceipts) throw new Error("视频工程源文件不完整：operationReceipts 缺失或格式错误。");
-  if (!Array.isArray(project.lineage)) throw new Error("视频工程源文件不完整：lineage 缺失或必须是列表。");
+  if (project.lineage !== undefined && !Array.isArray(project.lineage)) throw new Error("视频工程源文件不完整：lineage 缺失或必须是列表。");
   if (!version) throw new Error(`视频工程源文件不完整：headVersionId ${project.headVersionId} 指向的版本不存在。`);
   if (!graph) throw new Error(`视频工程源文件不完整：${project.headVersionId}.graph 缺失。`);
   if (!Array.isArray(graph.nodes)) throw new Error(`视频工程源文件不完整：${project.headVersionId}.graph.nodes 必须是列表。`);
@@ -2154,16 +2167,13 @@ export function parseVideoProject(input: unknown): VideoProject {
   ) {
     throw new Error("Project artifact/revision receipt is malformed.");
   }
-  if (!validOperationReceipts(operationReceipts, versions, assets)) {
-    throw new Error("Project provider operation receipts are malformed.");
-  }
   assertProjectBudgets(graph.nodes.length, graph.edges.length);
   for (const asset of Object.values(assets)) {
     const record = objectRecord(asset);
     if (
       !record ||
-      record.immutable !== true ||
-      typeof record.assetId !== "string"
+      (record.immutable !== undefined && record.immutable !== true) ||
+      (record.assetId !== undefined && typeof record.assetId !== "string")
     ) {
       throw new Error("Project contains a mutable or malformed Asset.");
     }
@@ -2177,9 +2187,9 @@ export function parseVideoProject(input: unknown): VideoProject {
     }
   }
   const parsed = clone(value as VideoProject);
-  parsed.operationReceipts = clone(operationReceipts);
   normalizeProjectVersions(parsed);
-  return parsed;
+  // Validation must never become a migration of the source document.
+  return clone(value as VideoProject);
 }
 
 export function defaultNodeTitle(kind: CanvasNodeKind): string {

@@ -24,6 +24,7 @@ import {
   updateLegacyTitle,
 } from "./legacy-workflow-node";
 import {
+  effectiveCanvasNode,
   addProjectNode,
   attachFinalRenderAsset,
   attachGeneratedAsset,
@@ -231,6 +232,10 @@ export const NODE_MENU_ENTRY_IDS = [
   "composite",
   "director",
   "storyboard",
+  "model",
+  "subtitle",
+  "delivery",
+  "timeline",
   "material-library",
   "upload",
   "history",
@@ -324,6 +329,10 @@ export const NODE_MENU_CAPABILITIES: Record<
     commandId: "canvas.node.create",
     commandArgs: { entryId: "storyboard" },
   },
+  model: { label: "Model", purpose: "Model", aliases: [], visual: "MD", enabled: true, commandId: "canvas.node.create", commandArgs: { entryId: "model" } },
+  subtitle: { label: "Subtitles", purpose: "Subtitles", aliases: [], visual: "ST", enabled: true, commandId: "canvas.node.create", commandArgs: { entryId: "subtitle" } },
+  delivery: { label: "Final render", purpose: "Final render", aliases: [], visual: "FR", enabled: true, commandId: "canvas.node.create", commandArgs: { entryId: "delivery" } },
+  timeline: { label: "Timeline", purpose: "Timeline", aliases: [], visual: "TL", enabled: true, commandId: "canvas.node.create", commandArgs: { entryId: "timeline" } },
   "material-library": {
     label: "Material library",
     purpose: "Open registered shared materials with Insert / Replace history",
@@ -362,6 +371,7 @@ const CREATE_KIND_BY_ENTRY: Partial<
   composite: "composite",
   director: "director",
   storyboard: "storyboard",
+  model: "model", subtitle: "subtitle", delivery: "delivery", timeline: "timeline",
 };
 
 function selectedNode(
@@ -369,9 +379,10 @@ function selectedNode(
 ): CanvasNodeDefinition | undefined {
   const selectedNodeId = environment.getSelectedNodeId();
   if (!selectedNodeId) return undefined;
-  return projectHead(environment.getProject()).graph.nodes.find(
+  const node = projectHead(environment.getProject()).graph.nodes.find(
     (node) => node.nodeId === selectedNodeId,
   );
+  return node ? effectiveCanvasNode(node) : undefined;
 }
 
 function selectedAsset(
