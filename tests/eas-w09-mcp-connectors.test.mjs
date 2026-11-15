@@ -58,6 +58,8 @@ const mcpApiStub = dataModule(`
     const origin = mcpOauthReturnOrigin(portal);
     return origin ? origin + "/plugins#connect=" + encodeURIComponent(id || "") : "";
   }
+  export async function getMcpConnector() { return {}; }
+  export async function connectMcpGuided() { return { ok: true }; }
   export async function getMcpRegistry() {
     return { items: [
       { id: "github", name: "GitHub", desc: "代码托管", icon: "🐙", category: "开发", transport: "sse", auth: "oauth", auth_header: "", needs_endpoint: false, endpoint: "", help_url: "", docs: "GitHub MCP", supports_oauth: true },
@@ -271,11 +273,11 @@ test("目录弹窗：分类下拉与搜索并列；未连接的卡打开后有�
     await click(find('[role="option"][data-value="all"]'));
     const github = catalog.querySelector('[data-mcp-connector="github"]');
     assert.ok(github, "目录里有未连接的 GitHub");
-    assert.ok(github.querySelector("[data-mcp-oauth-tag]"), "支持一键授权的卡上只留小标签");
-    assert.match(github.textContent || "", /一键授权/);
-    assert.ok(catalog.querySelector('[data-mcp-connector="custom"] [data-mcp-connector-status="connected"]'), "已连接的卡标出状态");
+    assert.equal(github.querySelector("[data-mcp-oauth-tag]"), null, "卡片不再显示一键授权标签");
+    assert.match(github.textContent || "", /连接/);
+    assert.equal(catalog.querySelector('[data-mcp-connector="custom"]'), null, "自定义服务器使用独立添加入口");
     await click(github);
-    assert.ok(find("[data-mcp-oauth]") || find("[data-mcp-connect]"), "未连接的卡要有连接 / 一键授权入口");
+    assert.ok(find("[data-connector-detail=github] [data-connector-connect]"), "目录卡打开设置详情页的连接入口");
   });
 });
 
@@ -322,18 +324,18 @@ test("凭证连接失败时，网关原因写在对话框里，不依赖 toast",
   });
 });
 
-test("旧授权弹窗入口 #connect=github（/plugins 重定向过来）：直接弹出 GitHub 连接框", async () => {
+test("旧授权入口 #connect=github 打开 GitHub 详情页", async () => {
   await withDom(async ({ render, find }) => {
     await render();
-    const dialog = find('[data-in-tree-dialog="mcp-connect"]');
+    const dialog = find('[data-connector-detail="github"]');
     assert.ok(dialog, "#connect=github 应当直接打开连接框");
     assert.match(dialog.textContent || "", /GitHub/);
   }, "https://oceanleo.com/settings/connectors#connect=github");
 });
 
-test("initialConnectorId（设置中心转交，地址里的 hash 已被改写掉）同样直接弹出连接框", async () => {
+test("initialConnectorId 同样打开详情页", async () => {
   await withDom(async ({ render, find }) => {
     await render({ initialConnectorId: "github" });
-    assert.ok(find('[data-in-tree-dialog="mcp-connect"]'));
+    assert.ok(find('[data-connector-detail="github"]'));
   });
 });

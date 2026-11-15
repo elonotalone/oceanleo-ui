@@ -57,6 +57,7 @@ import { EAS_W22_MESSAGES } from "./eas-w22-copy";
 import { EAS_W23_MESSAGES } from "./eas-w23-copy";
 import { REGRESSION_0924_MESSAGES } from "./regression-0924-copy";
 import { SETTINGS_I18N_MESSAGES } from "./settings-i18n-copy";
+import { PW_U3_MESSAGES } from "./pw-u3-copy";
 import { MCP_CATALOG_MESSAGES } from "./mcp-catalog-copy";
 import { ACCOUNT_LAYOUT_MESSAGES } from "./account-layout-copy";
 import { MAIL_BOT_MESSAGES } from "./mail-bot-copy";
@@ -164,6 +165,7 @@ const PARTS = [
   REGRESSION_0924_MESSAGES,
   SETTINGS_I18N_MESSAGES,
   MCP_CATALOG_MESSAGES,
+  PW_U3_MESSAGES,
   ACCOUNT_LAYOUT_MESSAGES,
   MAIL_BOT_MESSAGES,
   APPROVAL_CARD_MESSAGES,

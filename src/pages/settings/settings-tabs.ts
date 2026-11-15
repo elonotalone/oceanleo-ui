@@ -196,6 +196,10 @@ export function settingsPath(tab: string, href?: string): string {
   const canonical = canonicalSettingsTab(tab) || "general";
   const extra = settingsSearch(source);
   const segments = encodeSettingsSegments(canonical);
+  if (canonical === "connectors") {
+    const current = settingsPathnameSegments(new URL(source, "https://settings.invalid").pathname);
+    if (current[0] === "connectors" && current[1]) return `/settings/connectors/${encodeURIComponent(current[1])}${extra}`;
+  }
   if (segments.startsWith("account/") || segments !== "account") {
     return `/settings/${segments}${extra}`;
   }

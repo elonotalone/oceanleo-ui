@@ -1,8 +1,8 @@
 "use client";
 
 // 设置中心「连接器」（skills-overhaul W10，合同 D3）。
-// 页面只列我已连接 / 已添加的连接器；「+ 添加连接器 ▾」打开目录大弹窗或自定义 MCP。
-// 一键授权、令牌连接、探活、停用、断开全部沿用 useConnectorController（原插件页逻辑）。
+// 页面列已连接的连接器；目录卡打开同一设置表面里的详情页，自定义 MCP 保留独立表单。
+// 连接、授权等待、探活、停用和断开共用 useConnectorController。
 // 国内版的阿里云市场目录并进目录弹窗的「阿里云市场」页签。
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -15,7 +15,9 @@ import { usePluginsCatalog } from "../../shell/usePluginsCatalog";
 import { ConnectorCatalogDialog, OVER_CONFIG_DIALOG_Z } from "../plugins/ConnectorCatalogDialog";
 import {
   CUSTOM_CONNECTOR_ID,
-  connectorIdFromLocationHash,
+  connectorDetailId,
+  connectorDetailPath,
+  connectedConnectorMeta,
   myConnectorRows,
   myConnectorStatus,
 } from "../plugins/connector-logic";
@@ -25,7 +27,7 @@ import { ConnectorList, ConnectorRow } from "./connectors/ConnectorRow";
 export interface ConnectorsSettingsPaneProps {
   /** 独立页（/plugins）上下排列两个 pane 时显示自己的标题；设置窗里标题由设置中心画。 */
   heading?: boolean;
-  /** 打开后直接弹出这个连接器的连接对话框（`/plugins#connect=<id>` 旧授权弹窗入口）。 */
+  /** 打开这个连接器的详情页（兼容 `/plugins#connect=<id>` 旧授权入口）。 */
   initialConnectorId?: string;
   accent?: string;
 }
@@ -68,9 +70,26 @@ export function ConnectorsSettingsPane({
 }: ConnectorsSettingsPaneProps) {
   const tt = useUI();
   const [catalogOpen, setCatalogOpen] = useState(false);
+  const [detailId, setDetailId] = useState(() => initialConnectorId || (typeof window !== "undefined" ? connectorDetailId(window.location.href) : ""));
+  function navigateDetail(id: string) {
+    if (typeof window !== "undefined") window.history.pushState(window.history.state, "", connectorDetailPath(id, window.location.href));
+    setDetailId(id);
+  }
   const controller = useConnectorController({
+    onDetailClose: () => navigateDetail(""),
     dialogZClassName: catalogOpen ? OVER_CONFIG_DIALOG_Z : undefined,
   });
+  const openConnector = (meta: (typeof controller.registry)[number]) => {
+    setCatalogOpen(false);
+    if (meta.id !== CUSTOM_CONNECTOR_ID) navigateDetail(meta.id);
+    controller.openConnector(meta);
+    openedRef.current = meta.id;
+  };
+  useEffect(() => {
+    const onLocation = () => setDetailId(connectorDetailId(window.location.href));
+    window.addEventListener("popstate", onLocation);
+    return () => window.removeEventListener("popstate", onLocation);
+  }, []);
   const market = usePluginsCatalog();
   const [q, setQ] = useState("");
   const [highlightedId, setHighlightedId] = useState("");
@@ -82,13 +101,16 @@ export function ConnectorsSettingsPane({
   );
   const customMeta = controller.registry.find((c) => c.id === CUSTOM_CONNECTOR_ID);
 
-  // `/plugins#connect=<id>`（子站一键授权打开的门户页）与设置中心转交的 id：目录到了就直接弹连接框。
+  // 兼容旧授权入口，规范为可刷新的连接器详情 URL。
   const openedRef = useRef("");
   useEffect(() => {
-    const wanted =
-      (initialConnectorId || "").trim() ||
-      connectorIdFromLocationHash(typeof window !== "undefined" ? window.location.hash : "");
-    if (!wanted || controller.registryStatus !== "ready") return;
+    const wanted = detailId;
+    if (!wanted) {
+      openedRef.current = "";
+      if (controller.selectedConnector && controller.selectedConnector.id !== CUSTOM_CONNECTOR_ID) controller.closeConnector(false);
+      return;
+    }
+    if (controller.registryStatus !== "ready") return;
     setHighlightedId(wanted);
     const row = rowRefs.current.get(wanted);
     if (row) {
@@ -96,12 +118,14 @@ export function ConnectorsSettingsPane({
       row.focus?.({ preventScroll: true });
     }
     if (openedRef.current === wanted) return;
-    const found = controller.registry.find((c) => c.id === wanted);
-    if (found) {
+    const connection = controller.connByConnector.get(wanted);
+    const found = controller.registry.find((c) => c.id === wanted) || (connection ? connectedConnectorMeta(connection) : undefined);
+    if (found && (found.listed !== false || controller.connByConnector.has(wanted))) {
       openedRef.current = wanted;
+      if (typeof window !== "undefined") window.history.replaceState(window.history.state, "", connectorDetailPath(wanted, window.location.href));
       controller.openConnector(found);
     }
-  }, [controller, initialConnectorId]);
+  }, [controller, initialConnectorId, detailId]);
 
   const addMenu = (variant: "primary" | "secondary") => (
     <AddMenu
@@ -113,8 +137,8 @@ export function ConnectorsSettingsPane({
           icon: <CatalogIcon />,
           title: tt("从连接器目录添加"),
           description: market.showMarketplace
-            ? tt("一键授权或粘贴令牌连接常用应用，也可浏览阿里云市场")
-            : tt("一键授权或粘贴令牌连接常用应用"),
+            ? tt("浏览应用与服务，也可查看阿里云市场")
+            : tt("浏览应用与服务"),
           onSelect: () => setCatalogOpen(true),
         },
         {
@@ -125,7 +149,7 @@ export function ConnectorsSettingsPane({
           disabled: !customMeta,
           separatorBefore: true,
           onSelect: () => {
-            if (customMeta) controller.openConnector(customMeta);
+            if (customMeta) openConnector(customMeta);
           },
         },
       ]}
@@ -149,7 +173,7 @@ export function ConnectorsSettingsPane({
           const id = connection.connector_id;
           const status = myConnectorStatus(connection, controller.staleIds.has(id));
           const open = () => {
-            if (meta) controller.openConnector(meta);
+            openConnector(meta || connectedConnectorMeta(connection));
           };
           return (
             <ConnectorRow
@@ -173,6 +197,9 @@ export function ConnectorsSettingsPane({
       </ConnectorList>
     </div>
   );
+
+  if (detailId && controller.registryStatus === "ready" && controller.connectionsReady && !controller.connByConnector.has(detailId) && !controller.registry.some((c) => c.id === detailId && (c.listed !== false || controller.connByConnector.has(detailId)))) return <section className="min-w-0 space-y-4"><button type="button" data-connector-back onClick={() => navigateDetail("")} className="min-h-11 text-[13px]">← {tt("返回连接器")}</button><p role="status">{tt("未找到这个连接器")}</p></section>;
+  if (detailId && controller.selectedConnector?.id === detailId && controller.detail) return <section data-settings-connectors-pane className="min-w-0">{controller.detail}{controller.dialogs}</section>;
 
   return (
     <section data-plugins-connectors data-settings-connectors-pane className="min-h-0 pb-10">
@@ -202,7 +229,7 @@ export function ConnectorsSettingsPane({
       <ConnectorCatalogDialog
         open={catalogOpen}
         onClose={() => setCatalogOpen(false)}
-        controller={controller}
+        controller={{ ...controller, openConnector }}
         marketplace={market}
         accent={accent}
       />

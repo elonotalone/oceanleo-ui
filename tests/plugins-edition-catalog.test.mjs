@@ -71,6 +71,8 @@ const mcpApiStub = dataModule(`
   export function mcpOauthMessageOrigin() { return "https://api.oceanleo.com"; }
   export function mcpOauthOpensPortalPage() { return false; }
   export function mcpOauthPortalPageHref() { return "https://oceanleo.com/plugins"; }
+  export async function getMcpConnector() { return {}; }
+  export async function connectMcpGuided() { return { ok: true }; }
   export async function getMcpRegistry() {
     return { items: [
       { id: "github", name: "GitHub", desc: "代码托管", icon: "🐙", category: "开发", transport: "sse", auth: "oauth", auth_header: "", needs_endpoint: false, endpoint: "", help_url: "", docs: "", supports_oauth: true },

@@ -26,7 +26,23 @@ export interface McpConnectorMeta {
   docs: string;
   /** 固定端点是标准 MCP OAuth 受保护资源 → 显示「一键授权」，不要求贴凭证。 */
   supports_oauth?: boolean;
+  listed?: boolean;
+  tagline?: string;
+  about?: string | string[];
+  examples?: string[];
+  made_by?: { name: string; url?: string };
+  links?: { docs?: string; support?: string; privacy?: string };
+  capabilities?: ("in_chat_ui")[];
+  sign_in?: "required" | "none";
+  tools?: { name: string; description: string }[];
+  connect?: McpConnectMode;
+  manual?: Partial<Pick<McpConnectorMeta, "auth" | "auth_header" | "needs_endpoint" | "endpoint" | "help_url" | "docs">>;
 }
+
+export type McpConnectMode =
+  | { mode: "oauth" }
+  | { mode: "input"; inputs: { id: string; label: string; placeholder: string; kind: "text" | "url" | "secret" }[]; then: "oauth" | "save" }
+  | { mode: "unavailable"; reason: "vendor_listing" | "vendor_registration" };
 
 export interface McpConnection {
   id: string;
@@ -38,6 +54,8 @@ export interface McpConnection {
   tools_count: number;
   enabled: boolean;
   auth_kind?: string; // 'token'|'bearer'|'url'|'url+token'|'oauth'
+  account_label?: string;
+  tools?: { name: string; description: string }[];
 }
 
 /**
@@ -120,9 +138,13 @@ async function authHeader(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function catalogLanguage(): "zh" | "en" {
+  return typeof document !== "undefined" && document.documentElement.lang.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
 export async function getMcpRegistry(): Promise<{ items: McpConnectorMeta[]; error?: string }> {
   try {
-    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/registry`, { cache: "default", credentials: "include" });
+    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/registry?lang=${catalogLanguage()}`, { cache: "default", credentials: "include" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       return { items: [], error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
@@ -138,10 +160,38 @@ export async function getMcpRegistry(): Promise<{ items: McpConnectorMeta[]; err
 export async function getMcpConnections(): Promise<McpConnection[]> {
   const headers = await authHeader();
   if (!headers.Authorization) return [];
-  const res = await fetch(`${GATEWAY_BASE}/v1/mcp/connections`, { headers, credentials: "include" });
+  const res = await fetch(`${GATEWAY_BASE}/v1/mcp/connections`, { headers, credentials: "include", signal: AbortSignal.timeout(CONNECT_MCP_TIMEOUT_MS) });
   if (!res.ok) return [];
   const data = await res.json().catch(() => ({}));
   return (data?.connections || []) as McpConnection[];
+}
+
+export async function getMcpConnector(connectorId: string): Promise<{ item?: McpConnectorMeta; error?: string }> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/connectors/${encodeURIComponent(connectorId)}?lang=${catalogLanguage()}`, { credentials: "include" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
+    return { item: (data.item ?? data) as McpConnectorMeta };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Guided inputs are resolved and validated by the gateway, never into endpoints in the page. */
+export async function connectMcpGuided(connectorId: string, inputs: Record<string, string>, label?: string): Promise<{ ok: boolean; authorize_url?: string; tools_count?: number; error?: string }> {
+  const headers = await authHeader();
+  if (!headers.Authorization) return { ok: false, error: "请先登录" };
+  try {
+    const res = await fetch(`${GATEWAY_BASE}/v1/mcp/connectors/${encodeURIComponent(connectorId)}/connect`, {
+      method: "POST", credentials: "include", headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ inputs, ...(label ? { label } : {}) }), signal: AbortSignal.timeout(CONNECT_MCP_TIMEOUT_MS),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: mcpGatewayDetail(data) || `HTTP ${res.status}` };
+    return { ok: true, authorize_url: data.authorize_url, tools_count: data.connection?.tools_count ?? data.tools_count };
+  } catch (err) {
+    return { ok: false, error: isAbortLike(err) ? "连接超时，请重试" : err instanceof Error ? err.message : String(err) };
+  }
 }
 
 const CONNECT_MCP_TIMEOUT_MS = 35_000;

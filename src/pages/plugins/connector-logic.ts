@@ -1,7 +1,36 @@
 // 「插件与连接器」页连接器卡片的判定。点下去会发生什么（一键授权还是贴凭证、按钮
 // 何时可点、等多久算超时、探活失败算不算失效）全在这里，页面只负责画。
 
-import type { McpConnection } from "../../lib/mcp-api";
+import type { McpConnection, McpConnectorMeta, McpConnectMode } from "../../lib/mcp-api";
+
+/** Older gateways must never send an unknown vendor to a token form. */
+export function connectorConnectMode(connector: Pick<McpConnectorMeta, "connect" | "supports_oauth" | "needs_endpoint">): McpConnectMode {
+  return connector.connect ?? (connector.supports_oauth && !connector.needs_endpoint
+    ? { mode: "oauth" }
+    : { mode: "unavailable", reason: "vendor_registration" });
+}
+
+export function connectorDetailId(href: string): string {
+  try {
+    const url = new URL(href, "https://settings.invalid");
+    const match = url.pathname.match(/^\/settings\/connectors\/([^/]+)\/?$/);
+    return match ? decodeURIComponent(match[1]) : connectorIdFromLocationHash(url.hash);
+  } catch { return ""; }
+}
+
+export function connectorDetailPath(id: string, href: string): string {
+  const url = new URL(href, "https://settings.invalid");
+  return `/settings/connectors${id ? `/${encodeURIComponent(id)}` : ""}${url.search}`;
+}
+
+/** Stored connectors remain accessible after their provider leaves the directory. */
+export function connectedConnectorMeta(connection: McpConnection): McpConnectorMeta {
+  return {
+    id: connection.connector_id, name: connection.connector_id, desc: "", icon: connection.connector_id,
+    category: "", transport: "streamable_http", auth: "url+token", auth_header: connection.auth_header,
+    needs_endpoint: true, endpoint: connection.endpoint || "", help_url: "", docs: "", listed: false,
+  };
+}
 
 /** 等对方授权的上限：超过就退出等待态，让用户重试。 */
 export const OAUTH_WAIT_MS = 180_000;
@@ -190,23 +219,24 @@ export function myConnectorRows<
 
 /** 目录弹窗的页签：全部 + 注册表分类（出现顺序）+ 国内版的「阿里云市场」。 */
 export function catalogTabs(
-  registry: { category: string }[],
+  registry: { category: string; listed?: boolean; id?: string }[],
   withMarketplace: boolean,
 ): string[] {
   const tabs = [CATALOG_ALL];
-  for (const c of registry) if (c.category && !tabs.includes(c.category)) tabs.push(c.category);
+  for (const c of registry) if (c.listed !== false && c.id !== CUSTOM_CONNECTOR_ID && c.category && !tabs.includes(c.category)) tabs.push(c.category);
   if (withMarketplace) tabs.push(CATALOG_MARKETPLACE);
   return tabs;
 }
 
 /** 目录弹窗里某个页签 + 搜索词下的注册表连接器（阿里云市场页签不含注册表项）。 */
-export function catalogRegistryItems<T extends { name: string; desc: string; category: string }>(
+export function catalogRegistryItems<T extends { name: string; desc: string; category: string; listed?: boolean; id?: string }>(
   registry: T[],
   tab: string,
   term: string,
 ): T[] {
   if (tab === CATALOG_MARKETPLACE) return [];
-  const inTab = tab === CATALOG_ALL ? registry : registry.filter((c) => c.category === tab);
+  const listed = registry.filter((c) => c.listed !== false && c.id !== CUSTOM_CONNECTOR_ID);
+  const inTab = tab === CATALOG_ALL ? listed : listed.filter((c) => c.category === tab);
   return filterRegistryItems(inTab, term);
 }
 
