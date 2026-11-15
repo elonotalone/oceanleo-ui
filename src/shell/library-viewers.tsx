@@ -83,6 +83,14 @@ import {
   useMaterialDetailTarget,
 } from "./material-detail-slot";
 import { AttachmentFileViewer, isAttachmentFilePreview } from "./attachment-file-viewer";
+import {
+  isVideoCanvasV2Item,
+  loadVideoCanvasSourcePreview,
+  videoCanvasBitmapPreview,
+  videoCanvasDurationLabel,
+  type VideoCanvasPreviewShot,
+  type VideoCanvasSourcePreview,
+} from "./video-canvas/library-preview";
 
 // PDFium is a wasm engine: only load it when a PDF is actually previewed.
 const LibraryPdfReader = lazy(() => import("./LibraryPdfReader"));
@@ -1610,76 +1618,73 @@ function XiaohongshuViewer({ item }: { item: LibraryItem }) {
 }
 
 function VideoCanvasViewer({ item }: { item: LibraryItem }) {
-  const clips =
-    asRecords(item.meta.timeline).length > 0
-      ? asRecords(item.meta.timeline)
-      : asRecords(item.meta.clips);
-  const mediaUrl =
-    stringValue(item.meta.video_url) ||
-    stringValue(item.meta.preview_url) ||
-    (["mp4", "webm", "mov", "m4v"].includes(extension(item.url))
-      ? item.url
-      : "");
-  if (
-    clips.length === 0 &&
-    item.url &&
-    /^https?:\/\//i.test(item.url) &&
-    !["mp4", "webm", "mov", "m4v", "mkv"].includes(extension(item.url))
-  ) {
-    // 域名后缀不构成信任依据：预览/UGC 主机（oceanleo.app 全域与迁移期残留的
-    // *.website.oceanleo.com 预览域）跑的是用户代码，绝不授予脚本同源能力。
-    const trustedInteractive =
-      item.siteId === "asset" &&
-      item.meta.asset_type === "video_workflow" &&
-      isTrustedInteractiveViewerUrl(item.url);
-    return (
-      <SandboxedWebViewer
-        url={item.url}
-        title={item.title}
-        trustedInteractive={trustedInteractive}
-      />
-    );
-  }
-  return (
-    <div className="flex min-h-[520px] flex-col bg-[#151515] text-white">
-      <div className="min-h-0 flex-1 p-4">
-        {mediaUrl ? (
-          // eslint-disable-next-line jsx-a11y/media-has-caption
-          <video
-            src={mediaUrl}
-            controls
-            className="mx-auto h-full max-h-[380px] max-w-full rounded-lg bg-black"
-          />
-        ) : (
-          <div className="grid h-full min-h-64 place-items-center rounded-lg border border-white/10 bg-black/40 text-sm text-white/40">
-            视频预览
-          </div>
-        )}
-      </div>
-      <div className="shrink-0 border-t border-white/10 bg-[#202020] p-3">
-        <div className="mb-2 flex items-center justify-between text-[11px] text-white/40">
-          <span>时间线</span>
-          <span>{clips.length} 个片段</span>
-        </div>
-        <div className="flex min-h-20 gap-1 overflow-x-auto">
-          {(clips.length ? clips : [{ title: "完整视频" }]).map((clip, index) => (
-            <div
-              key={String(clip.id || index)}
-              className="min-w-28 rounded-md border border-white/10 bg-white/5 p-2"
-            >
-              <p className="truncate text-[11px] text-white/80">
-                {stringValue(clip.title) ||
-                  stringValue(clip.label) ||
-                  `片段 ${index + 1}`}
-              </p>
-              <p className="mt-1 text-[10px] text-white/30">
-                {stringValue(clip.duration) || stringValue(clip.time) || "—"}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
+  const previewUrl = videoCanvasBitmapPreview(item);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
+  const [loaded, setLoaded] = useState<VideoCanvasSourcePreview | null>(null);
+  const [error, setError] = useState("");
+  const [nonce, setNonce] = useState(0);
+  const showPreview = Boolean(previewUrl) && !previewFailed;
+  useEffect(() => {
+    if (showPreview) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    setLoaded(null);
+    setError("");
+    void loadVideoCanvasSourcePreview(item, async url =>
+      (await fetchItemSourceBlob(item, url, controller.signal, () => undefined)).text(),
+    ).then(result => {
+      if (!cancelled) setLoaded(result);
+    }).catch(() => {
+      if (!cancelled) setError("这份视频画布的工程源暂时无法显示，请重试或通过编辑入口打开。");
+    });
+    return () => { cancelled = true; controller.abort(); };
+  }, [item, showPreview, nonce]);
+  if (showPreview) return (
+    <Center>
+      {/* The browser decodes the bitmap; a failed decode falls back to the stored project. */}
+      {!previewReady && <p role="status" className="text-sm text-stone-500">正在载入视频画布预览…</p>}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={previewUrl} alt={item.title} className="max-h-[640px] max-w-full rounded-lg object-contain"
+        hidden={!previewReady} onLoad={() => setPreviewReady(true)}
+        onError={() => setPreviewFailed(true)} />
+    </Center>
+  );
+  if (error) return (
+    <div className="grid min-h-64 place-content-center gap-3 p-6 text-center">
+      <p role="alert" className="text-sm text-stone-600">{error}</p>
+      <button type="button" className="mx-auto rounded-lg border border-stone-200 px-4 py-2 text-sm"
+        onClick={() => { setPreviewFailed(false); setPreviewReady(false); setNonce(value => value + 1); }}>重试</button>
     </div>
+  );
+  if (!loaded) return <div role="status" className="p-6 text-sm text-stone-500">正在读取视频画布工程…</div>;
+  if (loaded.kind === "web") {
+    const trustedInteractive = item.siteId === "asset" && item.meta.asset_type === "video_workflow" &&
+      typeof item.url === "string" && isTrustedInteractiveViewerUrl(item.url);
+    return <SandboxedWebViewer url={loaded.url} title={item.title} trustedInteractive={trustedInteractive} />;
+  }
+  const { summary } = loaded;
+  const shotList = (shots: VideoCanvasPreviewShot[]) => <ol className="mt-2 space-y-2">
+    {shots.map(shot => <li key={shot.id} className="flex justify-between gap-4 text-sm text-stone-600">
+      <span>{shot.title}</span><span className="shrink-0">{videoCanvasDurationLabel(shot.durationSeconds)}</span>
+    </li>)}
+  </ol>;
+  return (
+    <article className="min-h-64 space-y-5 bg-stone-50 p-6" aria-label="视频画布工程摘要">
+      <header>
+        <h2 className="text-lg font-semibold text-stone-900">{summary.title}</h2>
+        <p className="mt-2 text-sm text-stone-500">{summary.scenes.length} 个场景 · {summary.shotCount} 个镜头 · {videoCanvasDurationLabel(summary.durationSeconds)}</p>
+        <p className="mt-1 text-xs text-stone-500">{summary.nodeCount} 个节点 · {summary.edgeCount} 条连线</p>
+      </header>
+      {summary.scenes.map(scene => <section key={scene.id} className="rounded-xl border border-stone-200 bg-white p-4">
+        <h3 className="font-medium text-stone-800">{scene.title}</h3>
+        {scene.shots.length ? shotList(scene.shots) : <p className="mt-2 text-sm text-stone-500">尚未添加镜头</p>}
+      </section>)}
+      {summary.ungroupedShots.length > 0 && <section className="rounded-xl border border-stone-200 bg-white p-4">
+        <h3 className="font-medium text-stone-800">未分组镜头</h3>{shotList(summary.ungroupedShots)}
+      </section>}
+      {!summary.scenes.length && !summary.shotCount && <p className="text-sm text-stone-500">工程尚未添加场景或镜头，可通过编辑入口继续制作。</p>}
+    </article>
   );
 }
 
@@ -1912,6 +1917,9 @@ function LibraryItemViewerBody({
     // `["full","preview"]` 取 rendition（W3；接入约定见 tasks/W1-viewer-slot.md §4.3）。
     return <WebsiteArtifactViewer item={resolvedItem} />;
   }
+  if (resolvedItem.kind === "video_canvas" || isVideoCanvasV2Item(resolvedItem))
+    return <VideoCanvasViewer item={resolvedItem}
+      key={`${resolvedItem.artifactId || resolvedItem.key}:${resolvedItem.revisionId || ""}:${resolvedItem.url || ""}:${resolvedItem.previewUrl || ""}`} />;
   if (resolvedItem.kind === "canvas") {
     /**
      * 设计画布已并入图片类型（2026-10-22）：库里按图片看，只显示渲出的位图，
@@ -1974,8 +1982,6 @@ function LibraryItemViewerBody({
         onResourceError={rendition.resourceFailed}
       />
     );
-  if (resolvedItem.kind === "video_canvas")
-    return <VideoCanvasViewer item={resolvedItem} />;
   if (resolvedItem.kind === "xhs")
     return <XiaohongshuViewer item={resolvedItem} />;
   if (resolvedItem.kind === "threed")

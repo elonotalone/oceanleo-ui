@@ -488,7 +488,11 @@ test("官方模板不在本人库里，所以按 artifact id 直接取一次（�
   assert.match(editIntentSource, /isDurableLibraryItem\(item\)/);
   // 取不到时给可见失败态，不是空白面板。
   assert.match(editIntentSource, /onFailure\(\{/);
-  assert.match(myLibrarySource, /setFailed\(true\);/);
+  assert.match(
+    myLibrarySource,
+    /onFailure:\s*\(\{\s*status,\s*message\s*\}\)\s*=>\s*\{\s*reportFailure\(\{\s*stage:\s*"intent",\s*status,\s*diagnostic:\s*message/,
+  );
+  assert.match(myLibrarySource, /data-library-entry-error/);
 });
 
 test("编辑意图以 nonce 去重：重渲染不重复取数，晚到的列表不在背后再开一次", () => {

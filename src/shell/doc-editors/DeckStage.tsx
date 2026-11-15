@@ -1,19 +1,8 @@
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type PointerEvent as ReactPointerEvent,
-} from "react";
+import { useEffect, useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { AdvancedEditorIcon } from "../AdvancedEditorIcon";
-import {
-  moveDeckElement,
-  resizeDeckElement,
-  rotateDeckElement,
-  type DeckResizeHandle,
-} from "./deck-geometry";
 import {
   DECK_PREVIEW_FIT_ZOOM_PERCENT,
   deckPreviewLogicalSize,
@@ -21,7 +10,6 @@ import {
 import {
   deckMasterFor,
   deckTheme,
-  type DeckElement,
 } from "./deck-schema";
 import {
   DeckElementContent,
@@ -45,18 +33,9 @@ import {
   deckTextGestureProps,
 } from "./deck-text-gesture";
 import { DeckInkOverlay } from "./DeckInkOverlay";
+import { useDeckElementInteraction } from "./use-deck-element-interaction";
 import { useDeckStageShortcuts } from "./use-deck-stage-shortcuts";
 import type { DeckEditorState } from "./use-deck-editor";
-
-interface ElementInteraction {
-  id: string;
-  mode: "move" | "resize" | "rotate";
-  handle?: DeckResizeHandle;
-  startX: number;
-  startY: number;
-  origin: DeckElement;
-  preview: Partial<DeckElement>;
-}
 
 const NO_PEERS: readonly PeerSelection[] = [];
 
@@ -82,10 +61,10 @@ function PositionedSlideCanvas({
   inkStyle: DeckInkStyle;
   peers: readonly PeerSelection[];
 }) {
-  const canvasRef = useRef<HTMLDivElement>(null);
-  const [interaction, setInteraction] = useState<ElementInteraction | null>(
-    null,
-  );
+  const {
+    canvasRef, interaction, startInteraction, updateInteraction,
+    finishInteraction, cancelInteraction, clearInteraction,
+  } = useDeckElementInteraction(editor);
   const slide = editor.activeSlide;
   const theme = deckTheme(editor.deck.theme);
   const master = deckMasterFor(editor.deck, slide);
@@ -93,10 +72,6 @@ function PositionedSlideCanvas({
   const editingId = editor.textEditingElementId;
   const beginTextEditing = editor.beginTextEditing;
 
-  useEffect(() => {
-    editor.setCanvasElement(canvasRef.current);
-    return () => editor.setCanvasElement(null);
-  }, [editor.setCanvasElement]);
   useEffect(() => {
     if (
       editingId &&
@@ -109,65 +84,6 @@ function PositionedSlideCanvas({
   }, [editingId, editor.endTextEditing, slide.elements]);
   // 开档 / 换页不再自动进入文字编辑：那样永远是文字栏，点哪里都回不到「没选中」，
   // 空态抽屉也就看不到（10-23 W02/W07 实测）。编辑文字靠双击 / Enter / F2。
-
-  const startInteraction = (
-    event: ReactPointerEvent<HTMLElement>,
-    element: DeckElement,
-    mode: ElementInteraction["mode"],
-    handle?: DeckResizeHandle,
-  ) => {
-    if (event.button !== 0 || element.locked || editingId === element.id) return;
-    event.preventDefault();
-    event.stopPropagation();
-    editor.selectElement(element.id);
-    canvasRef.current?.setPointerCapture(event.pointerId);
-    setInteraction({
-      id: element.id,
-      mode,
-      handle,
-      startX: event.clientX,
-      startY: event.clientY,
-      origin: { ...element, rows: element.rows?.map((row) => [...row]) },
-      preview: {},
-    });
-  };
-
-  const updateInteraction = (event: ReactPointerEvent<HTMLDivElement>) => {
-    const rect = canvasRef.current?.getBoundingClientRect();
-    if (!interaction || !rect?.width || !rect.height) return;
-    const start = { x: interaction.startX, y: interaction.startY };
-    const current = { x: event.clientX, y: event.clientY };
-    let preview: Partial<DeckElement>;
-    if (interaction.mode === "move") {
-      preview = moveDeckElement(interaction.origin, start, current, rect);
-    } else if (interaction.mode === "resize" && interaction.handle) {
-      preview = resizeDeckElement(
-        interaction.origin,
-        interaction.handle,
-        start,
-        current,
-        rect,
-        event.shiftKey || interaction.origin.type === "image",
-      );
-    } else {
-      preview = rotateDeckElement(
-        interaction.origin,
-        start,
-        current,
-        rect,
-        event.shiftKey,
-      );
-    }
-    setInteraction((state) => (state ? { ...state, preview } : state));
-  };
-
-  const finishInteraction = () => {
-    if (!interaction) return;
-    if (Object.keys(interaction.preview).length) {
-      editor.patchElement(interaction.id, interaction.preview);
-    }
-    setInteraction(null);
-  };
 
   return (
     <div
@@ -190,7 +106,10 @@ function PositionedSlideCanvas({
       }}
       onPointerMove={updateInteraction}
       onPointerUp={finishInteraction}
-      onPointerCancel={() => setInteraction(null)}
+      onPointerCancel={cancelInteraction}
+      onLostPointerCapture={(event) => {
+        if (event.target === event.currentTarget) cancelInteraction(event);
+      }}
     >
       {!primaryEditableText && (
         <textarea
@@ -226,6 +145,9 @@ function PositionedSlideCanvas({
                 textEditability.reason ? `（${textEditability.reason}）` : ""
               }`}
               aria-pressed={selected}
+              title={selected && textEditability.editable && !editor.readOnly && !editor.loading && !editor.sourceFailed
+                ? "双击编辑文字（Enter / F2）"
+                : textEditability.reason || undefined}
               aria-keyshortcuts={
                 textEditability.textBearing ? "Enter F2" : undefined
               }
@@ -234,7 +156,7 @@ function PositionedSlideCanvas({
                   editing ||
                   !deckTextEditKeyStartsEditing(event.key) ||
                   !textEditability.textBearing ||
-                  editor.readOnly
+                  editor.readOnly || editor.loading || editor.sourceFailed
                 ) {
                   return;
                 }
@@ -245,10 +167,11 @@ function PositionedSlideCanvas({
               onPointerDown={(event) => {
                 editor.selectElement(element.id);
                 event.currentTarget.focus({ preventScroll: true });
-                if (editor.readOnly) return;
+                if (editor.readOnly || editor.loading || editor.sourceFailed) return;
                 if (event.detail >= 2 && textEditability.editable) {
                   event.preventDefault();
                   event.stopPropagation();
+                  clearInteraction();
                   beginTextEditing(element.id);
                   return;
                 }
@@ -257,7 +180,8 @@ function PositionedSlideCanvas({
               onDoubleClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (editor.readOnly) return;
+                if (editor.readOnly || editor.loading || editor.sourceFailed || element.locked) return;
+                clearInteraction();
                 if (textEditability.editable) {
                   beginTextEditing(element.id);
                   return;
@@ -270,7 +194,7 @@ function PositionedSlideCanvas({
                 selected
                   ? "after:pointer-events-none after:absolute after:-inset-[2px] after:rounded-[inherit] after:border-2 after:border-[var(--awb-accent,#8b5cf6)]"
                   : ""
-              } ${element.locked ? "cursor-default" : editing ? "cursor-text" : "cursor-move"}`}
+              } ${element.locked || editor.readOnly ? "cursor-default" : editing || (selected && textEditability.editable) ? "cursor-text" : "cursor-move"}`}
               data-deck-element={element.id}
               data-element-type={element.type}
               data-deck-text-bearing={
@@ -278,6 +202,7 @@ function PositionedSlideCanvas({
               }
               data-locked={element.locked ? "true" : "false"}
               style={{
+                userSelect: editing ? "text" : "none",
                 left: `${rendered.x}%`,
                 top: `${rendered.y}%`,
                 width: `${rendered.width}%`,
