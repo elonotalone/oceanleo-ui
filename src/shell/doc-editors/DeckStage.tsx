@@ -107,7 +107,9 @@ function PositionedSlideCanvas({
       onPointerMove={updateInteraction}
       onPointerUp={finishInteraction}
       onPointerCancel={cancelInteraction}
-      onLostPointerCapture={cancelInteraction}
+      onLostPointerCapture={(event) => {
+        if (event.target === event.currentTarget) cancelInteraction(event);
+      }}
     >
       {!primaryEditableText && (
         <textarea

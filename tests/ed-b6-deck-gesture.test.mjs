@@ -253,6 +253,19 @@ test("resize and rotate keep their geometry and a single commit after delayed ca
 });
 
 test("cancel and lost capture discard a drag and allow the next click to edit", async () => {
+  const transferred = await mountStage();
+  try {
+    await pointer(transferred.element(), "pointerdown");
+    await pointer(transferred.element(), "pointermove", { clientX: 150 });
+    const previewLeft = transferred.element().style.left;
+    await act(async () => transferred.element().dispatchEvent(new PointerEvent("lostpointercapture", {
+      pointerId: 7, bubbles: true,
+    })));
+    assert.equal(transferred.canvas.hasPointerCapture(7), true);
+    assert.equal(transferred.element().style.left, previewLeft);
+    await pointer(transferred.element(), "pointerup");
+    assert.equal(transferred.calls.patches.length, 1);
+  } finally { await transferred.close(); }
   for (const cancellation of ["pointercancel", "lostpointercapture"]) {
     const view = await mountStage();
     try {
