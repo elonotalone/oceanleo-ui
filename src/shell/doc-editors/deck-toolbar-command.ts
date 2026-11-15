@@ -175,6 +175,7 @@ export function applyDeckToolbarCommand(
     }
     case "clear-format":
       Object.assign(patch, DECK_CLEARED_INLINE);
+      if (element.type === "table") patch.fontSize = 18;
       break;
     case "case": {
       const transform = (value: string) => value === value.toUpperCase() ? value.toLowerCase() : value.toUpperCase();

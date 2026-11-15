@@ -69,7 +69,7 @@ for (const [id, value, field, expected] of cellCommands) test(`Deck table cell $
     assert.equal(deckCellElement(table, 0, 1).text, 'Unchanged');
     assert.equal(table.cellStyles?.['0:1'], undefined);
     assert.equal(table.color, '#123456');
-    if (id === 'clear-format') { assert.equal(cell.bold, false); assert.equal(cell.color, deck.masters[0].textColor); }
+    if (id === 'clear-format') { assert.equal(cell.bold, false); assert.equal(cell.color, ''); }
     if (id === 'vertical-text') assert.equal(host.querySelector('td').style.writingMode, 'vertical-rl');
     if (id === 'highlight') assert.ok(host.querySelector('td [style*="background-color"]'));
     if (id === 'letter-spacing') assert.equal(host.querySelector('td').style.letterSpacing, '3px');
@@ -167,4 +167,17 @@ test('real cropped Deck image mounts, loads source dimensions and updates fit wi
     await act(async () => root.unmount()); host.remove(); console.error = previous;
   }
   assert.deepEqual(errors, []);
+});
+
+test('cleared table text uses the same default color and font size in controls, DOM and PPTX', async () => {
+  const table = reopen(send({ ...element('table'), fontSize: 30, color: '#ff0000' }, 'clear-format'));
+  assert.equal(table.fontSize, 18);
+  const html = renderToStaticMarkup(React.createElement(DeckElementContent, { element: table }));
+  assert.match(html, /color:#292524/);
+  assert.equal(deckElementSelectionControls(table, tt, 'Georgia', font).find(control => control.id === 'text-color').value, '#292524');
+  const pptx = new PptxGenJS(), slide = pptx.addSlide();
+  slide.addTable(table.rows.map(row => row.map(value => ({ text: value }))), { x: 1, y: 1, w: 5, h: 2, color: 'F9FAFB', fontSize: 12, objectName: deckPptxVisualObjectName(table.id) });
+  const blob = await injectDeckPptxVisuals(await pptx.write({ outputType: 'blob' }), [normalized(table).slides[0]], '16:9');
+  const xml = strFromU8(unzipSync(new Uint8Array(await blob.arrayBuffer()))['ppt/slides/slide1.xml']);
+  assert.match(xml, /<a:rPr[^>]*sz="1800"[^>]*>[\s\S]*?<a:srgbClr val="292524"/);
 });

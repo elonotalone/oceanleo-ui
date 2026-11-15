@@ -109,7 +109,7 @@ export function useDeckSelectionAdapter({
           if (rows?.[activeCell.row]) rows[activeCell.row][activeCell.column] = patch.rows[activeCell.row]?.[activeCell.column] || "";
           return { rows };
         }
-        if (message.controlId === "clear-format") patch = { ...patch, fontFamily: editor.activeMaster.fontFamily || "", fontSize: 18, color: editor.activeMaster.textColor || "", link: "", strike: false, highlight: "" };
+        if (message.controlId === "clear-format") patch = { ...patch, fontFamily: editor.activeMaster.fontFamily || "", fontSize: 18, color: "", link: "", strike: false, highlight: "" };
         return { cellStyles: { ...element.cellStyles, [`${activeCell.row}:${activeCell.column}`]: { ...element.cellStyles?.[`${activeCell.row}:${activeCell.column}`], ...patch } } };
       };
       applyDeckToolbarCommand(cellEditor, formattedElement, message);

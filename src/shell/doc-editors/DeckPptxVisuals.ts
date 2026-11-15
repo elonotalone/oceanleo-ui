@@ -205,12 +205,12 @@ export function deckPptxTableImageData(
     Array.from({ length: columns }, (_, columnIndex) => {
       const cell = deckCellElement(element, rowIndex, columnIndex);
       const x = columnIndex * columnWidth, y = rowIndex * rowHeight;
-      const fontSize = scale(cell.fontSize || 16);
+      const fontSize = scale(cell.fontSize || 18);
       const lineHeight = fontSize * (cell.lineHeight || 1.15);
       const letterSpacing = scale((cell.letterSpacing || 0) * 0.75);
       const inset = scale((cell.indent || 0) * 0.75) + columnWidth * 0.05;
       const lines = deckTextListLines(row[columnIndex] || "", cell.list);
-      const color = escapeXml(cell.color || "#111827");
+      const color = escapeXml(cell.color || "#292524");
       const clipId = `cell-${rowIndex}-${columnIndex}`;
       const style = `fill="${color}" font-family="${escapeXml(cell.fontFamily || "Arial, sans-serif")}" font-size="${fontSize}" font-weight="${cell.bold ? 700 : 400}" font-style="${cell.italic ? "italic" : "normal"}" text-decoration="${deckTextDecoration(cell)}" letter-spacing="${letterSpacing}"`;
       const content = lines.map((line, index) => {
@@ -508,7 +508,7 @@ function paragraphXml(element: DeckElement, text: string, linkId?: string): stri
     const list = line.marker ? element.list : "none";
     const indent = Math.round((element.indent || 0) * EMU_PER_CSS_PIXEL);
     const marker = list === "ordered" ? `<a:buAutoNum type="arabicPeriod" startAt="${Number.parseInt(line.marker, 10)}"/>` : list === "bullet" ? '<a:buChar char="•"/>' : '<a:buNone/>';
-    const color = /^#([0-9a-f]{6})$/i.exec(element.color === "" ? "#111827" : element.color || "")?.[1];
+    const color = /^#([0-9a-f]{6})$/i.exec(element.color || "#292524")?.[1];
     const highlight = /^#([0-9a-f]{6})$/i.exec(element.highlight || "")?.[1];
     const props = `sz="${Math.round((element.fontSize || 18) * 100)}" b="${element.bold ? 1 : 0}" i="${element.italic ? 1 : 0}" u="${element.underline ? "sng" : "none"}" strike="${element.strike ? "sngStrike" : "noStrike"}" spc="${Math.round((element.letterSpacing || 0) * 75)}"`;
     const run = `<a:rPr ${props}>${color ? `<a:solidFill><a:srgbClr val="${color}"/></a:solidFill>` : ""}${highlight ? `<a:highlight><a:srgbClr val="${highlight}"/></a:highlight>` : ""}${element.fontFamily ? `<a:latin typeface="${escapeXml(element.fontFamily.split(",")[0])}"/><a:ea typeface="${escapeXml(element.fontFamily.split(",")[0])}"/>` : ""}${linkId ? `<a:hlinkClick r:id="${linkId}"/>` : ""}</a:rPr>`;
@@ -528,8 +528,7 @@ function applyTableText(block: string, element: DeckElement, elementIndex: numbe
     return tr.replace(/<a:tc>[\s\S]*?<\/a:tc>/g, tc => {
       column += 1;
       const cell = deckCellElement(element, row, column);
-      const inheritedColor = /<a:solidFill><a:srgbClr val="([0-9a-f]{6})"/i.exec(tc)?.[1];
-      if (cell.color === undefined) cell.color = inheritedColor ? `#${inheritedColor}` : "#292524";
+      if (cell.color === undefined) cell.color = "#292524";
       if (cell.fontFamily === undefined) cell.fontFamily = /<a:latin typeface="([^"]*)"/.exec(tc)?.[1];
       return tc.replace(/<a:txBody>[\s\S]*?<\/a:txBody>/, `<a:txBody><a:bodyPr vert="${cell.verticalText ? "eaVert" : "horz"}"/><a:lstStyle/>${paragraphXml(cell, cell.text || "", deckSafeLink(cell.link) ? tableLinkId(elementIndex, row, column) : undefined)}</a:txBody>`);
     });
