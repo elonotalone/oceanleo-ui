@@ -43,6 +43,7 @@
     "./shell/plugin-ai": "./src/shell/plugin-ai/index.ts",
     "./shell/plugin-store": "./src/shell/plugin-store/index.ts",
     "./shell/replay": "./src/shell/replay/index.ts",
+    "./shell/game-preview-host": "./src/shell/game-preview-host.ts",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
     "./shell/library-data.js": "./src/shell/library-data.ts",

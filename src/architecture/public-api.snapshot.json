@@ -36,6 +36,7 @@
     "./shell/design-document": "./src/shell/design-document-schema-public.ts",
     "./shell/EmbedChrome": "./src/shell/EmbedChrome.tsx",
     "./shell/FloatingContextToolbar": "./src/shell/FloatingContextToolbar.tsx",
+    "./shell/game-preview-host": "./src/shell/game-preview-host.ts",
     "./shell/library-data.js": "./src/shell/library-data.ts",
     "./shell/MaterialLibrary.js": "./src/shell/MaterialLibrary.tsx",
     "./shell/nav-source": "./src/shell/nav-source/index.ts",
@@ -8384,6 +8385,31 @@
         {
           "kind": "type",
           "name": "FloatingContextToolbarController",
+          "source": ""
+        }
+      ]
+    },
+    "./shell/game-preview-host": {
+      "target": "./src/shell/game-preview-host.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "registerGamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "useGamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GamePreviewHost",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "GamePreviewHostProps",
           "source": ""
         }
       ]
