@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { RemoteInputHistory } from '../src/api/remote-desktop-input-history.ts';
 import { RemoteDesktopMeasurements, decodeRemotePictureMarker } from '../src/api/remote-desktop-measure.ts';
 
 export function markerPixels(capture,seq) {
@@ -60,7 +61,7 @@ test('one-hour diagnostic traffic and frames have bounded histories; unmatched/s
     h.capture(100,0);
     for(let seq=second*40+1;seq<second*40+41;seq++)h.m.inputSent(seq);
   }
-  assert.ok(h.m.pings.size<=8);assert.ok(h.m.offsets.length<=32);assert.ok(h.m.inputs.size<=256);
+  assert.ok(h.m.pings.size<=8);assert.ok(h.m.offsets.length<=32);assert.ok(h.m.history.size<=256);
   for(const key of ['ages','windowAges','inputAges','windowInputAges'])assert.ok(h.m[key].length<=2000,key);
   h.m.dispose();assert.equal(h.listeners.size,0);
 });
@@ -71,4 +72,37 @@ test('an invalid or unmarked new frame cannot age the previously displayed marke
   h.m.invalidateFrame();h.advance(2000);h.m.sampleCurrentPicture();
   assert.deepEqual(h.m.takeWindow(),{});
   h.m.displayed(-1,0);h.advance(2000);h.m.sampleCurrentPicture();assert.deepEqual(h.m.takeWindow(),{});
+});
+
+
+test('same-session stream history replacement keeps a proved watermark beyond 16-bit half-wrap',()=>{
+  const h=harness();h.calibrate();
+  h.m.inputSent(30000);h.advance(10);h.capture(5,30000);
+  h.m.inputSent(60000);h.advance(10);h.capture(5,60000);
+  assert.equal(h.m.applied,60000);
+  const replacement=new RemoteInputHistory(()=>h.now());
+  h.m.setInputHistory(replacement);
+  assert.equal(h.m.applied,60000);
+  h.m.setLane(null);h.m.setLane(h.lane);h.calibrate();
+  assert.equal(h.m.applied,60000,"lane resubscription also keeps the proved watermark");
+  replacement.written(60001,'websocket',{kind:'move'});h.m.inputSent(60001);
+  h.advance(80);h.capture(10,60001);
+  assert.equal(h.m.inputAmbiguous,false);
+  assert.equal(h.m.takeWindow().input_to_picture_p95_ms,80);
+  assert.equal(replacement.get(60001).picturePending,false);
+  h.m.dispose();
+});
+
+
+test('disabled measurement keeps no write records or calibration traffic and resumes above the current sequence',()=>{
+  const h=harness();h.calibrate();
+  h.m.inputSent(30000);h.advance(10);h.capture(5,30000);
+  h.m.setEnabled(false);const messages=h.sent.length;
+  for(let seq=30001;seq<=60000;seq++)h.m.inputSent(seq);
+  h.m.tick();assert.equal(h.sent.length,messages);assert.equal(h.m.history.size,0);
+  assert.equal(h.m.pings.size,0);assert.equal(h.m.offsets.length,0);
+  h.m.setEnabled(true);h.calibrate();
+  h.m.inputSent(60001);h.advance(40);h.capture(10,60001);
+  assert.equal(h.m.snapshot().input_to_picture_p95_ms,40);
+  h.m.dispose();assert.equal(h.m.history.size,0);
 });

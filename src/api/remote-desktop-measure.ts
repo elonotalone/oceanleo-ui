@@ -1,4 +1,5 @@
 import type { RemoteDesktopDataLane, RemoteDesktopDataMessage } from './remote-desktop';
+import { RemoteInputHistory } from './remote-desktop-input-history';
 import { agePercentile } from './remote-desktop-quality';
 
 export interface RemotePictureMeasurements {
@@ -17,9 +18,9 @@ export class RemoteDesktopMeasurements {
   private enabled = false;
   private pings = new Map<number, number>();
   private offsets: Array<{ rtt: number; offset: number }> = [];
-  private inputs = new Map<number, number>();
+  private history: RemoteInputHistory;
+  private sharedHistory = false;
   private applied = 0;
-  private maxWritten = 0;
   private inputAmbiguous = false;
   private lastCapture: number | undefined;
   private lastDisplayedAt = 0;
@@ -30,18 +31,19 @@ export class RemoteDesktopMeasurements {
   private lastPing = -Infinity;
   readonly sessionId: string;
   private now: () => number;
-  constructor(sessionId: string, now = wallNow) { this.sessionId = sessionId; this.now = now; }
+  constructor(sessionId: string, now = wallNow) { this.sessionId = sessionId; this.now = now; this.history = new RemoteInputHistory(now); }
 
   setEnabled(enabled: boolean): void {
     if (enabled === this.enabled) return;
     this.enabled = enabled; this.clear();
+    if (enabled) this.applied = this.history.lastSequence;
     this.write({ t: 'rd.measure', on: enabled });
     if (enabled) this.tick();
   }
   setLane(lane: RemoteDesktopDataLane | null): void {
     if (lane === this.lane) return;
     this.unsubscribe?.(); this.unsubscribe = undefined;
-    this.lane = lane; this.clear();
+    this.lane = lane; this.clear(true);
     if (lane?.subscribe) this.unsubscribe = lane.subscribe(value => this.receive(value));
     if (this.enabled) { this.write({ t: 'rd.measure', on: true }); this.tick(); }
   }
@@ -66,13 +68,16 @@ export class RemoteDesktopMeasurements {
     this.offsets.push({ rtt, offset: value.device_wall_ms - (sent + received) / 2 });
     if (this.offsets.length > 32) this.offsets.shift();
   }
+  setInputHistory(history: RemoteInputHistory): void {
+    if (history === this.history) return;
+    for (const entry of this.history.values()) entry.picturePending = false;
+    this.history = history; this.sharedHistory = true;
+  }
   inputSent(seq: number, measurable = true): void {
     if (!Number.isSafeInteger(seq) || seq < 1) return;
-    this.maxWritten = Math.max(this.maxWritten, seq);
-    if (!this.enabled || !measurable) return;
-    this.inputs.set(seq, this.now());
-    // Retain only the latest 256 actual input writes, regardless of session length.
-    while (this.inputs.size > 256) this.inputs.delete(this.inputs.keys().next().value!);
+    if (!this.sharedHistory) this.history.observeSequence(seq);
+    const entry = this.history.get(seq) ?? (!this.sharedHistory && this.enabled ? this.history.written(seq, "websocket", { kind: "move" }) : undefined);
+    if (entry) entry.picturePending = this.enabled && measurable;
   }
   invalidateFrame(): void { this.lastCapture = undefined; }
   /** The caller has validated the marker's sync pattern and parity on this displayed video frame. */
@@ -89,14 +94,15 @@ export class RemoteDesktopMeasurements {
     this.add(this.ages, age); this.add(this.windowAges, age);
     // From the previous proved watermark, <32768 issued seqs has a unique low16 interpretation.
     // After a larger gap it cannot be proved: keep picture age, omit input-to-picture until a new session.
-    if (this.maxWritten - this.applied >= 32768) this.inputAmbiguous = true;
+    if (this.history.lastSequence - this.applied >= 32768) this.inputAmbiguous = true;
     if (this.inputAmbiguous) return;
     const delta = (appliedLow16 - this.applied % 65536 + 65536) % 65536;
-    if (delta >= 32768 || this.applied + delta > this.maxWritten) return;
+    if (delta >= 32768 || this.applied + delta > this.history.lastSequence) return;
     this.applied += delta;
-    for (const [seq, sent] of this.inputs) {
-      if (seq > this.applied || sent > capture - offset) continue;
-      this.inputs.delete(seq);
+    for (const entry of this.history.values()) {
+      const sent = this.history.wallTime(entry);
+      if (!entry.picturePending || entry.seq > this.applied || sent > capture - offset) continue;
+      entry.picturePending = false;
       const delay = displayedAt - sent;
       if (delay >= 0 && delay <= MAX_AGE_MS) { this.add(this.inputAges, delay); this.add(this.windowInputAges, delay); }
     }
@@ -131,11 +137,15 @@ export class RemoteDesktopMeasurements {
     const result = this.summary(this.windowAges, this.windowInputAges);
     this.windowAges = []; this.windowInputAges = []; return result;
   }
-  private clear(): void {
-    this.pings.clear(); this.offsets = []; this.inputs.clear(); this.applied = 0; this.inputAmbiguous = false; this.lastCapture = undefined; this.lastDisplayedAt = 0;
+  private clear(preserveProgress = false): void {
+    this.pings.clear(); this.offsets = [];
+    for (const entry of this.history.values()) entry.picturePending = false;
+    if (!this.sharedHistory) this.history.clearRecords();
+    if (!preserveProgress) { this.applied = 0; this.inputAmbiguous = false; }
+    this.lastCapture = undefined; this.lastDisplayedAt = 0;
     this.ages = []; this.inputAges = []; this.windowAges = []; this.windowInputAges = []; this.lastPing = -Infinity;
   }
-  dispose(): void { this.setEnabled(false); this.unsubscribe?.(); this.unsubscribe = undefined; this.lane = null; this.clear(); }
+  dispose(): void { this.setEnabled(false); this.unsubscribe?.(); this.unsubscribe = undefined; this.lane = null; this.clear(); if (!this.sharedHistory) this.history.clear(); }
 }
 
 /** Decode the C6 v3 bottom-right 8×7 grid. Eight sync bits and eight column parity bits guard it. */

@@ -9,7 +9,7 @@ import { SHELL_OVERHAUL_MESSAGES } from "../src/i18n/ui/messages/shell-overhaul-
 const TABLES = {
   ASSET_DETAIL_MESSAGES: "asset-detail-copy", ASSET_ACTIONS_MESSAGES: "asset-actions-copy", W3_L5D_MESSAGES: "w3-l5d-copy",
   W3_M3_MESSAGES: "w3-m3-copy", W3_M4_MESSAGES: "w3-m4-copy", CN_HOST_MESSAGES: "cn-host-copy", RDLOGIN_MESSAGES: "rdlogin-copy",
-  RD_GATEWAY_MESSAGES: "rd-gateway-copy", HOME_ASSET_CARDS_MESSAGES: "home-asset-cards-copy", RD_BROKER_MESSAGES: "rd-broker-copy",
+  RD_GATEWAY_MESSAGES: "rd-gateway-copy", HOME_ASSET_CARDS_MESSAGES: "home-asset-cards-copy",
   TOOLUI_MESSAGES: "toolui-copy", W4_M5_MESSAGES: "w4-m5-copy", MOBILE_MIDTURN_MESSAGES: "mobile-midturn-copy",
   NATIVE_MIDTURN_MESSAGES: "native-midturn-copy", PUSH_NATIVE_MESSAGES: "push-native-copy",
   BUILD_1103_GAP_MESSAGES: "build-1103-gap-copy",

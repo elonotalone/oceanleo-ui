@@ -1,12 +1,9 @@
 import type { RemoteControlTiming } from "./remote-desktop-control-timing";
 
-/** Fixed numeric fields only. Enqueue, attempt retirement and successful OS-post are distinct. */
-export const REMOTE_INPUT_METRICS = [
-  "input_queue_depth", "input_queue_high_water", "input_queue_oldest_ms",
-  "input_queue_wait_us", "input_queue_wait_max_us", "input_inject_us", "input_inject_max_us",
-  "input_completed_seq", "input_injected_seq", "input_error_count",
-] as const;
-const INPUT_DIAGNOSTICS = ["gateway_pending_count", "gateway_inflight_count", "gateway_last_seq", "gateway_acked_seq", ...REMOTE_INPUT_METRICS] as const;
+import { INPUT_METRIC_KEYS } from "./remote-metrics.generated";
+import { RemoteInputHistory } from "./remote-desktop-input-history";
+
+const INPUT_DIAGNOSTICS = ["gateway_pending_count", "gateway_inflight_count", "gateway_last_seq", "gateway_acked_seq", ...INPUT_METRIC_KEYS] as const;
 export type RemoteInputDiagnostics = Partial<Record<typeof INPUT_DIAGNOSTICS[number], number>>;
 
 export function parseRemoteInputDiagnostics(value: unknown): RemoteInputDiagnostics | null {
@@ -28,17 +25,17 @@ export interface RemoteDesktopTransportDiagnostics extends RemoteInputSchedulerD
   /** Sequence gaps include other-lane messages and gaps; they are NOT queue depths. */
   dc_receipt_seq_gap: number; dc_completion_seq_gap?: number;
   dc_pending_tracked_count: number; dc_oldest_tracked_ms: number; dc_tracking_evicted_total: number;
-  ws_write_count: number; dc_write_count: number;
+  ws_write_count: number; dc_write_count: number; dc_probe_write_count: number;
   ws_accepted_count: number; ws_accepted_sum_ms: number; ws_accepted_max_ms: number;
   ws_completed_count: number; ws_completed_sum_ms: number; ws_completed_max_ms: number;
   dc_enqueued_count: number; dc_enqueued_sum_ms: number; dc_enqueued_max_ms: number;
   dc_completed_count: number; dc_completed_sum_ms: number; dc_completed_max_ms: number;
 }
 type Interval = Pick<RemoteDesktopTransportDiagnostics,
-  "ws_write_count" | "dc_write_count" | "ws_accepted_count" | "ws_accepted_sum_ms" | "ws_accepted_max_ms"
+  "ws_write_count" | "dc_write_count" | "dc_probe_write_count" | "ws_accepted_count" | "ws_accepted_sum_ms" | "ws_accepted_max_ms"
   | "ws_completed_count" | "ws_completed_sum_ms" | "ws_completed_max_ms" | "dc_enqueued_count"
   | "dc_enqueued_sum_ms" | "dc_enqueued_max_ms" | "dc_completed_count" | "dc_completed_sum_ms" | "dc_completed_max_ms">;
-const interval = (): Interval => ({ ws_write_count: 0, dc_write_count: 0,
+const interval = (): Interval => ({ ws_write_count: 0, dc_write_count: 0, dc_probe_write_count: 0,
   ws_accepted_count: 0, ws_accepted_sum_ms: 0, ws_accepted_max_ms: 0,
   ws_completed_count: 0, ws_completed_sum_ms: 0, ws_completed_max_ms: 0,
   dc_enqueued_count: 0, dc_enqueued_sum_ms: 0, dc_enqueued_max_ms: 0,
@@ -52,25 +49,26 @@ export class RemoteTransportDiagnostics {
   private readonly started: number;
   private intervalStarted: number;
   private values = interval();
-  private peer = new Map<number, { sent: number; enqueued: boolean }>();
-  private evicted = 0;
+  private history: RemoteInputHistory;
   private peerSent = 0;
   private peerReceipt = 0;
   private receiptSeen = false;
   private completed: number | undefined;
   private injected: number | undefined;
   private now: () => number;
-  constructor(now: () => number) { this.now = now; this.started = this.intervalStarted = now(); }
+  constructor(now: () => number, history = new RemoteInputHistory(now)) { this.now = now; this.history = history; this.started = this.intervalStarted = now(); }
 
   written(lane: "websocket" | "data_channel", seq: number): void {
     if (lane === "websocket") { this.values.ws_write_count++; return; }
-    this.values.dc_write_count++;
     this.peerSent = Math.max(this.peerSent, seq);
-    this.peer.set(seq, { sent: this.now(), enqueued: false });
-    while (this.peer.size > 256) { this.peer.delete(this.peer.keys().next().value!); this.evicted++; }
+    const entry = this.history.get(seq) ?? this.history.written(seq, lane);
+    if (entry.probe) { this.values.dc_probe_write_count++; return; }
+    this.values.dc_write_count++;
+    entry.diagnosticPending = true; entry.diagnosticEnqueued = false;
   }
+
   control(sample: RemoteControlTiming): void {
-    if (sample.stage === "direct_ack") return; // Peer admission is measured by observe(), never as WS completion.
+    if (sample.stage === "direct_ack" || this.history.get(sample.seq)?.lane === "data_channel") return; // Peer admission is measured by observe(), never as WS completion.
     if (!Number.isFinite(sample.elapsedMs) || sample.elapsedMs < 0) return;
     const prefix = sample.stage === "accepted" ? "ws_accepted" : "ws_completed";
     this.add(prefix, sample.elapsedMs);
@@ -82,10 +80,12 @@ export class RemoteTransportDiagnostics {
     if (validSequence(metrics.input_completed_seq)) this.completed = Math.max(this.completed ?? 0, metrics.input_completed_seq);
     if (validSequence(metrics.input_injected_seq)) this.injected = Math.max(this.injected ?? 0, metrics.input_injected_seq);
     const now = this.now();
-    for (const [seq, entry] of this.peer) {
-      if (!entry.enqueued && seq <= this.peerReceipt) { entry.enqueued = true; this.add("dc_enqueued", Math.max(0, now - entry.sent)); }
-      if (this.completed !== undefined && seq <= this.completed) { this.add("dc_completed", Math.max(0, now - entry.sent)); this.peer.delete(seq); }
-      else if (this.completed === undefined && entry.enqueued) this.peer.delete(seq);
+    for (const entry of this.history.values()) {
+      if (!entry.diagnosticPending) continue;
+      const seq = entry.seq;
+      if (!entry.diagnosticEnqueued && seq <= this.peerReceipt) { entry.diagnosticEnqueued = true; this.add("dc_enqueued", Math.max(0, now - entry.sentAt)); }
+      if (this.completed !== undefined && seq <= this.completed) { this.add("dc_completed", Math.max(0, now - entry.sentAt)); entry.diagnosticPending = false; }
+      else if (this.completed === undefined && entry.diagnosticEnqueued) entry.diagnosticPending = false;
     }
   }
   private add(prefix: "ws_accepted" | "ws_completed" | "dc_enqueued" | "dc_completed", elapsed: number): void {
@@ -95,16 +95,17 @@ export class RemoteTransportDiagnostics {
   }
   snapshot(scheduler: RemoteInputSchedulerDiagnostics, buffered: number, finishInterval = false): RemoteDesktopTransportDiagnostics {
     const now = this.now();
-    const oldest = this.peer.values().next().value as { sent: number } | undefined;
+    const pending = [...this.history.values()].filter(entry => entry.diagnosticPending);
+    const oldest = pending[0];
     const value: RemoteDesktopTransportDiagnostics = { v: 1, kind: 1, transport_instance: this.instance, at_ms: now, elapsed_ms: Math.max(0, now - this.started), interval_ms: Math.max(0, now - this.intervalStarted),
       ...scheduler, ...this.values, ws_buffered_bytes: Number.isFinite(buffered) && buffered >= 0 ? buffered : 0,
       dc_credit_basis: this.completed !== undefined ? 2 : this.receiptSeen ? 1 : 0,
       dc_sent_seq: this.peerSent, dc_receipt_seq: this.peerReceipt, dc_receipt_seq_gap: Math.max(0, this.peerSent - this.peerReceipt),
       ...(this.completed !== undefined ? { input_completed_seq: this.completed, dc_completion_seq_gap: Math.max(0, this.peerSent - this.completed) } : {}),
       ...(this.injected !== undefined ? { input_injected_seq: this.injected } : {}),
-      dc_pending_tracked_count: this.peer.size, dc_oldest_tracked_ms: oldest ? Math.max(0, now - oldest.sent) : 0, dc_tracking_evicted_total: this.evicted };
+      dc_pending_tracked_count: pending.length, dc_oldest_tracked_ms: oldest ? Math.max(0, now - oldest.sentAt) : 0, dc_tracking_evicted_total: this.history.peerEvicted };
     if (finishInterval) { this.values = interval(); this.intervalStarted = now; }
     return value;
   }
-  dispose(): void { this.peer.clear(); }
+  dispose(): void { for (const entry of this.history.values()) entry.diagnosticPending = false; }
 }

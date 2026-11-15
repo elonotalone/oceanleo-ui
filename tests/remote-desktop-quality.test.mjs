@@ -14,7 +14,7 @@ function hubWith(now, sent) {
 
 function fakeClient(now, sent, extra = {}) {
   let handlers;
-  const stream = { send() { return true; }, inputPath: () => stream.lane, lane: "websocket", close() {}, acknowledgeFrame() {}, releaseForHandoff: () => Promise.resolve(), finishHandoff() {} };
+  const stream = { send() { handlers.inputWritten?.(1, true, stream.lane, false); return true; }, inputPath: () => stream.lane, lane: "websocket", close() {}, acknowledgeFrame() {}, releaseForHandoff: () => Promise.resolve(), finishHandoff() {} };
   const client = {
     async createSession() { now.t += 100; return { ok: true, data: { session_id: "s".repeat(24), state: "pending_consent", expires_at: "", transport: "websocket-v2" } }; },
     async openStream(_d, _s, h) { handlers = h; now.t += 50; return { ok: true, data: stream }; },

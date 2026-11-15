@@ -7,18 +7,18 @@ const mounted = [];
 afterEach(async () => { while (mounted.length) await mounted.pop().unmount(); delete globalThis.__remoteMediaTestStart; });
 const media = { provider: "artc", transport: "artc-v1", app_id: "app", channel_id: "channel", user_id: "viewer", publisher_id: "desktop", token: "secret", timestamp: 10000, expires_at: new Date(Date.now() + 120000).toISOString(), role: "viewer", track: "screen", camera: false, microphone: false };
 async function mount(options = {}) {
-  let callbacks, stopped = 0, negotiations = 0;
+  let callbacks, stopped = 0, negotiations = 0, statsCalls = 0;
   globalThis.__remoteMediaTestStart = async (_descriptor, _video, handlers, signal) => {
     callbacks = handlers;
     signal.addEventListener("abort", () => { stopped++; });
-    return { async close() {} };
+    return { async close() {}, async stats() { statsCalls++; return []; } };
   };
   const view = await mountStream({ ...options, overrides: {
     async negotiateMedia() { negotiations++; return { ok: true, data: { media, media_status: { state: "publishing", geometry: { display_id: "a", width: 1920, height: 1080 } } } }; },
     ...options.overrides,
   } });
   mounted.push(view);
-  return Object.assign(view, { mediaCallbacks: () => callbacks, stopped: () => stopped, negotiations: () => negotiations });
+  return Object.assign(view, { mediaCallbacks: () => callbacks, stopped: () => stopped, negotiations: () => negotiations, statsCalls: () => statsCalls });
 }
 
 test("real panel waits for decoded video before enabling input, and a legacy JPEG cannot masquerade as ARTC", async () => {
@@ -291,4 +291,55 @@ test("publisher metrics in every status never restart the receiver or renegotiat
   assert.equal(negotiations, 1, "one /media negotiation for the whole join");
   assert.equal(view.stopped(), 0, "the joining receiver was never aborted");
   assert.equal(starts, 0, "no second receiver was started");
+});
+
+
+test("real panel collects SDK diagnostics in both quality windows and the end summary from the shared media sample", async (t) => {
+  const reports = [], windows = [], viewerReports = [];
+  t.mock.timers.enable({ apis: ["Date", "setInterval"], now: Date.now() });
+  const view = await mount({
+    streamOverrides: { sendViewerReport(value) { viewerReports.push(value); return true; } },
+    overrides: {
+      async reportQuality(value) { reports.push(value); return { ok: true }; },
+      async reportQualityWindow(value) { windows.push(value); return { ok: true }; },
+    },
+  });
+  try {
+    await act(async () => {
+      view.mediaCallbacks().diagnostic({ sdk_error: 16844114 });
+      view.mediaCallbacks().diagnostic({ renew_reason: "auth_info_will_expire" });
+      view.mediaCallbacks().stats({ fps: 30, framesDecoded: 100, packetsReceived: 1000 });
+      view.mediaCallbacks().stats({ fps: 24, framesDecoded: 124, packetsReceived: 1100 });
+      t.mock.timers.tick(10_000);
+    });
+    const expected = { sdk_error_codes: [16844114], renew_reasons: ["auth_info_will_expire"] };
+    assert.equal(windows.length, 1);
+    assert.deepEqual(windows[0].media_diagnostics, expected);
+    assert.equal(viewerReports.length, 2);
+    assert.equal(viewerReports.at(-1).fps_decoded, 24);
+    assert.equal(view.statsCalls(), 0, "quality/window consumers never start a second RTC read");
+    await view.unmount();
+    assert.deepEqual(reports[0].media_diagnostics, expected);
+    assert.equal(reports[0].video.samples, 2);
+    const before = windows.length;
+    t.mock.timers.tick(30_000);
+    assert.equal(windows.length, before, "unmount clears the window timer");
+    view.mediaCallbacks().stats({ fps: 1 });
+    assert.equal(viewerReports.length, 2, "late media samples cannot survive cleanup");
+  } finally { await view.unmount(); t.mock.timers.reset(); }
+});
+
+test("ordinary viewer opens the standard stream/media path directly without a status preflight", async () => {
+  let statusRequests = 0, sessions = 0;
+  const view = await mount({ overrides: {
+    async getStatus() { statusRequests++; throw new Error("unexpected status preflight"); },
+    async createSession() { sessions++; return { ok: true, data: { session_id: "standard", state: "connecting", transport: "websocket-v2" } }; },
+  } });
+  assert.equal(statusRequests, 0);
+  assert.equal(sessions, 1);
+  assert.equal(view.negotiations(), 1);
+  assert.equal(view.log.httpFrames, 0);
+  assert.equal(view.screen().getAttribute("data-remote-media"), "artc");
+  await act(async () => { view.mediaCallbacks().frame(1920, 1080); view.mediaCallbacks().state("playing"); });
+  assert.equal(view.input().disabled, false);
 });
