@@ -21,7 +21,7 @@ import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { Plugin, type Transaction } from "@tiptap/pm/state";
 import { yUndoPluginKey } from "@tiptap/y-tiptap";
 import { TableKit } from "@tiptap/extension-table";
-import { Image } from "@tiptap/extension-image";
+import { RichDocImage } from "./rich-doc-image-transform";
 import { TextAlign } from "@tiptap/extension-text-align";
 import {
   Color,
@@ -59,7 +59,7 @@ import {
 } from "./doc-io";
 import { artifactSaveStepMessage } from "./artifact-save-contract";
 import { renderRichDocPreviewPng } from "./editor-preview-raster";
-import { tiptapJsonToDocxBlob } from "./docx-export";
+import { tiptapJsonToDocxBlob } from "./rich-doc-docx";
 import { recordUserMutation, userEditItemKey } from "../user-edit-session";
 import {
   notifyOfficeAccessDenied,
@@ -90,7 +90,7 @@ import {
   richDocTextExcerpt,
 } from "./rich-doc-text-delivery";
 import { richDocReviewExtensions } from "./richdoc-review/review-marks";
-import { richDocTrackChangesExtension } from "./richdoc-review/track-changes";
+import { clearRichDocFormatting, richDocTrackChangesExtension } from "./richdoc-review/track-changes";
 import {
   attachReviewSidecar,
   type RichDocAttribution,
@@ -384,8 +384,8 @@ export function useRichDocEditor(
         // 协同扩展自带 undo/redo（只撤销自己的改动），两套撤销栈不能同时在。
         ...(collabRoom ? { undoRedo: false as const } : {}),
       }),
-      TableKit.configure({ table: { resizable: false } }),
-      Image.configure({ inline: false, allowBase64: true }),
+      TableKit.configure({ table: { resizable: true } }),
+      RichDocImage.configure({ inline: false, allowBase64: true }),
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       TextStyle,
       Color,
@@ -1180,7 +1180,7 @@ export function useRichDocEditor(
 
   const clearFormat = useCallback(() => {
     if (!editor || !requireSourceReady()) return;
-    editor.chain().focus().clearNodes().unsetAllMarks().run();
+    clearRichDocFormatting(editor);
   }, [editor, requireSourceReady]);
 
   const restoreRecovery = useCallback(

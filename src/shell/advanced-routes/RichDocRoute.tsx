@@ -7,10 +7,11 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import { useAdvancedSession } from "../advanced-session-context";
 import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
+import { EditBarPanelRequest } from "../EditBarFloatingPanel";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
 import { useRichDocSelectionAdapter } from "../doc-editors/use-rich-doc-selection-adapter";
-import { RichDocControls } from "../doc-editors/RichDocControls";
+import { RichDocControls, RichDocFindReplace, RichDocImageCropControls } from "../doc-editors/RichDocControls";
 import { RichDocCommentRail } from "../doc-editors/richdoc-review/RichDocCommentRail";
 import { RichDocReviewReadOnlyContext } from "../doc-editors/richdoc-review/review-readonly-context";
 import { useRichDocReviewCollab } from "../doc-editors/richdoc-review/use-richdoc-review-collab";
@@ -19,7 +20,9 @@ import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText, loadEditorProject } from "../doc-editors/doc-io";
 import { richDocProjectUrl } from "../doc-editors/rich-doc-model";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
-import { tiptapJsonToDocxBlob } from "../doc-editors/docx-export";
+import { tiptapJsonToDocxBlob } from "../doc-editors/rich-doc-docx";
+import type { AdvancedContextToolbarHost } from "../advanced-editor-adapter";
+import { useRichDocFindShortcut } from "../doc-editors/use-rich-doc-find-shortcut";
 import { buildRichDocCommandSurface } from "../doc-editors/doc-family-commands";
 import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
 import {
@@ -94,7 +97,12 @@ export function RichDocRoute({
       : undefined,
     { room: collabRoom },
   );
-  const selection = useRichDocSelectionAdapter({ editor });
+  const panelHostRef = useRef<AdvancedContextToolbarHost | null>(null);
+  const [cropOpen, setCropOpen] = useState(false);
+  const openImageCrop = useCallback(() => setCropOpen((open) => !open), []);
+  const selection = useRichDocSelectionAdapter({ editor, onCrop: openImageCrop });
+  useRichDocFindShortcut(Boolean(editor.editor && !editor.loading && editor.sourceReady),
+    () => panelHostRef.current?.openDrawer("richdoc-find"));
   // 批注的内容、回复、已解决接进房间的共享评论字段（F09）；没有房间或房间被拒时什么都不做。
   useRichDocReviewCollab({
     review: editor.review,
@@ -418,12 +426,19 @@ export function RichDocRoute({
         // 申报了 `drawers` 之后 `resolveInlineAdvancedDrawers` 就直接返回它，
         // `toolbox` 那条合成回落整段不再执行（`inline-advanced-shell-helpers.ts:22`）。
         // 所以「插入」必须在这里原样重申一遍，漏了它插入面板当场从界面上消失。
+        panelHostRef,
         drawers: [
           {
             id: "editor-global",
             label: "插入",
             icon: "add",
             content: <RichDocControls editor={editor} accent={accent} />,
+          },
+          {
+            id: "richdoc-find",
+            label: "查找和替换",
+            icon: "search",
+            content: <RichDocFindReplace editor={editor} onClose={() => panelHostRef.current?.closeDrawer()} />,
           },
           {
             // 工具栏的「插入批注」只负责建，读/回复/解决三件事只有这条侧栏做得到。
@@ -435,6 +450,8 @@ export function RichDocRoute({
                 value={editor.review.readOnly}
               >
                 <RichDocCommentRail
+                  hasSelection={editor.review.hasSelection}
+                  onAddComment={editor.review.addComment}
                   comments={editor.review.comments}
                   changes={editor.review.changes}
                   activeCommentId={editor.review.activeCommentId}
@@ -515,7 +532,12 @@ export function RichDocRoute({
               onReload={editor.reload}
             />
           ) : (
-            <RichDocStage editor={editor} accent={accent} />
+            <>
+              <RichDocStage editor={editor} accent={accent} />
+              {cropOpen && <EditBarPanelRequest id="richdoc-image-crop" label={tt("裁剪")} triggerSelector='[data-selection-control-id="crop"]' onClose={() => setCropOpen(false)}>
+                <RichDocImageCropControls editor={editor} selection={selection} />
+              </EditBarPanelRequest>}
+            </>
           ),
         status:
           importError ||

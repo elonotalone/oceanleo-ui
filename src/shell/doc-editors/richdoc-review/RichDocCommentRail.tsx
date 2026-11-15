@@ -77,6 +77,8 @@ function shortWhen(value: string): string {
 }
 
 export interface RichDocCommentRailProps {
+  hasSelection?: boolean;
+  onAddComment?: (body: string) => string;
   comments: RichDocCommentView[];
   changes: RichDocChangeView[];
   activeCommentId: string;
@@ -97,6 +99,7 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
   useReviewStyles();
   const [replyingTo, setReplyingTo] = useState("");
   const [replyDraft, setReplyDraft] = useState("");
+  const [commentDraft, setCommentDraft] = useState("");
   const [showResolved, setShowResolved] = useState(false);
   const activeRef = useRef<HTMLDivElement | null>(null);
 
@@ -219,6 +222,14 @@ export function RichDocCommentRail(props: RichDocCommentRailProps) {
 
   return (
     <aside className="oleo-review-rail" aria-label={tt("批注与修订")}>
+      {props.onAddComment && <div className="oleo-review-reply-form">
+        <p className="oleo-review-rail__empty">{tt("选中一段文字即可插入批注。")}</p>
+        <textarea aria-label={tt("插入批注")} value={commentDraft}
+          disabled={readOnly || !props.hasSelection} onChange={(event) => setCommentDraft(event.target.value)} />
+        <Button disabled={readOnly || !props.hasSelection || !commentDraft.trim()} onClick={() => {
+          if (props.onAddComment?.(commentDraft.trim())) setCommentDraft("");
+        }}>{tt("插入批注")}</Button>
+      </div>}
       {readOnly ? (
         <div className="oleo-review-rail__empty" role="note">
           {tt("只读状态下可以看批注，但不能添加、回复、解决或删除。")}

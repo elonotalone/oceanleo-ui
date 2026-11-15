@@ -759,7 +759,7 @@ export async function createRichDocDeliveryFile(input: {
       : richDocHtmlToPlainText(input.html);
     return new File([richDocLabeledText(text, generated)], `${stem}.txt`, { type: target.sourceMediaType });
   }
-  const { tiptapJsonToDocxBlob } = await import("./docx-export");
+  const { tiptapJsonToDocxBlob } = await import("./rich-doc-docx");
   const json = input.json || { type: "doc", content: [] };
   const blob = await tiptapJsonToDocxBlob(input.title, json, { generated });
   return new File([blob], `${stem}.docx`, { type: target.sourceMediaType });
@@ -1322,11 +1322,32 @@ export const RICHDOC_IMAGE_WRAPS: readonly {
  * `use-rich-doc-editor.ts` 的 extensions 数组里加一行不会触发重复注册 throw。
  * 注册请求在 `signals/W15-request.md` §1.1。
  */
+/** 字距对外为 px；0 是显式值，空值才表示继承。 */
+export function richDocLetterSpacing(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  if (!/^-?\d+(?:\.\d+)?(?:px)?$/.test(String(value).trim())) return null;
+  const number = Number.parseFloat(String(value));
+  return Number.isFinite(number) ? Math.max(-20, Math.min(100, number)) : null;
+}
+
 export const RichDocTypography = Extension.create({
   name: "richDocTypography",
 
   addGlobalAttributes() {
     return [
+      {
+        types: ["textStyle"],
+        attributes: {
+          letterSpacing: {
+            default: null,
+            parseHTML: (element) => richDocLetterSpacing(element.style.letterSpacing),
+            renderHTML: (attrs) => {
+              const px = richDocLetterSpacing(attrs.letterSpacing);
+              return px === null ? {} : { style: `letter-spacing:${px}px` };
+            },
+          },
+        },
+      },
       {
         types: ["paragraph", "heading"],
         attributes: {
