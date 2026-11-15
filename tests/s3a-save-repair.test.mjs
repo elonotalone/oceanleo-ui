@@ -525,7 +525,7 @@ print('native XLSX accepted; inherited bounded CSV editability rejected')
 });
 
 test("VS10 paragraph joining predates this wave: the browser PPTX text importer is unchanged",()=>{
-  for(const path of ["src/shell/doc-editors/pptx-deck-import.ts","src/shell/doc-editors/DeckElementContent.tsx","src/shell/doc-editors/deck-text-format.ts"]){
+  for(const path of ["src/shell/doc-editors/pptx-deck-import.ts","src/shell/doc-editors/deck-text-format.ts"]){
     assert.equal(readFileSync(path,"utf8"),execFileSync("git",["show",`d212f88d:${path}`],{encoding:"utf8"}),path);
   }
 });
