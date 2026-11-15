@@ -31,6 +31,7 @@ import {
 } from "./legacy-workflow-node";
 import {
   effectiveCanvasNode,
+  advanceProject,
   addProjectNode,
   canvasUpstreamOrder,
   CanvasInputError,
@@ -46,7 +47,6 @@ import {
   deterministicDigest,
   operationReceiptForRequest,
   projectHead,
-  projectTimelineDocument,
   recordTimelineHandoff,
   configureTimelineNode,
   recordCanvasOperationReceipt,
@@ -65,6 +65,10 @@ import {
   type ProjectAsset,
   type VideoProject,
 } from "./project-model";
+import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { timelineTextCasePatch, timelineTextListPatch } from "../../video-editor/timeline-model";
+import { canvasCompositionDocument, canvasNodeTextClip } from "./canvas-selection-adapter";
+export { canvasCompositionDocument } from "./canvas-selection-adapter";
 
 export type CanvasCommandSurface =
   | "compact"
@@ -367,8 +371,8 @@ export const NODE_MENU_CAPABILITIES: Record<
     commandId: "canvas.asset.upload.request",
   },
   history: {
-    label: "History / compare",
-    purpose: "Compare immutable Project versions and review changes",
+    label: "History",
+    purpose: "Compare versions or restore a version as a new edit",
     aliases: ["versions", "diff", "restore"],
     visual: "HI",
     enabled: true,
@@ -815,6 +819,105 @@ function gridSplitHandler(
 
 const definitions: CanvasCommandDefinition[] = [
   {
+    commandId: "canvas.node.asset.replace", scope: "selection",
+    surfaces: ["compact", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.node.asset.replace.v1", mutates: "project", label: "Replace image",
+    availability: (environment, args) => {
+      const node = selectedNode(environment);
+      const asset = environment.getProject().assets[requireString(args, "assetId")];
+      return { enabled: node?.kind === "image" && asset?.kind === "image"
+        && (asset.origin !== "local-derivative" || asset.assetId === node.assetId) };
+    },
+    handler: (environment, args) => {
+      const node = selectedNode(environment)!;
+      const assetId = requireString(args, "assetId");
+      if (assetId === node.assetId) return { message: "This image is already selected.", cost: NO_COST };
+      const asset = environment.getProject().assets[assetId];
+      if (asset?.kind !== "image" || asset.origin === "local-derivative") throw new Error("Choose an image with a materialized source.");
+      const project = advanceProject(environment.getProject(), "canvas.node.asset.replace", (version) => {
+        Object.assign(version.graph.nodes.find((item) => item.nodeId === node.nodeId)!, { assetId, localEditRecipe: [] });
+        const shot = version.shots.find((item) => item.shotId === node.shotId);
+        const board = version.storyboards.find((item) => item.storyboardId === shot?.storyboardId);
+        if (board && node.assetId) board.frameAssetIds = [...new Set(board.frameAssetIds.map((id) => id === node.assetId ? assetId : id))];
+      });
+      return { project, message: "Image replaced; the previous asset remains in history.", cost: NO_COST };
+    },
+  },
+  {
+    commandId: "canvas.node.text-style.update", scope: "selection",
+    surfaces: ["compact", "context-more", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.node.text-style.update.v1", mutates: "project", label: "Text style",
+    availability: (environment) => ({ enabled: ["text", "script", "subtitle"].includes(selectedNode(environment)?.kind || "") }),
+    handler: (environment, args) => {
+      const node = selectedNode(environment)!;
+      const params = (node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {};
+      const field = requireString(args, "field");
+      const value = args.value;
+      let patch: Record<string, unknown>;
+      let contentPatch: Partial<TimelineClip> | undefined;
+      const content = canvasNodeTextClip(node, selectedAsset(environment)?.inlineText);
+      if (field === "clearFormat") {
+        patch = { textStyle: {} };
+        contentPatch = timelineTextListPatch(content, "none");
+      } else if (field === "list") {
+        if (value !== "none" && value !== "bullet" && value !== "ordered") throw new Error("Unsupported text list.");
+        contentPatch = timelineTextListPatch(content, value);
+        patch = {};
+      } else if (field === "case") {
+        if (value !== undefined && value !== "upper" && value !== "lower") throw new Error("Unsupported text case.");
+        const text = String(content.text ?? "");
+        contentPatch = timelineTextCasePatch(content, value || (text === text.toUpperCase() ? "lower" : "upper"));
+        patch = {};
+      } else if (field === "includeInVideo" && typeof value === "boolean") patch = { includeInVideo: value };
+      else {
+        if (!(field === "font_size" && typeof value === "number" && Number.isFinite(value) && value >= 8 && value <= 300)
+          && !(["color", "background"].includes(field) && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value))
+          && !(field === "bold" && typeof value === "boolean")
+          && !(field === "align" && ["left", "center", "right"].includes(String(value)))) throw new Error("Unsupported text style.");
+        patch = { textStyle: { ...(params.textStyle as TimelineTextStyle || {}), [field]: value } };
+      }
+      const project = advanceProject(environment.getProject(), "canvas.node.text-style.update", (version) => {
+        const nextParams = { ...params, ...patch };
+        if (contentPatch) {
+          nextParams.text = contentPatch.text;
+          if (contentPatch.text_list) nextParams.text_list = contentPatch.text_list;
+          else delete nextParams.text_list;
+        }
+        Object.assign(version.graph.nodes.find((item) => item.nodeId === node.nodeId)!, {
+          ...(contentPatch ? { text: contentPatch.text } : {}), params: nextParams,
+        });
+      });
+      return { project, message: "Text style updated.", cost: NO_COST };
+    },
+  },
+  {
+    commandId: "canvas.project.version.restore", scope: "project",
+    surfaces: ["toolbar", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.project.version.restore.v1", mutates: "project", label: "Restore version",
+    availability: (environment, args) => {
+      const project = environment.getProject();
+      const id = requireString(args, "versionId");
+      return { enabled: Object.hasOwn(project.versions, id) && project.versions[id].versionId === id && id !== project.headVersionId };
+    },
+    handler: (environment, args) => {
+      const project = environment.getProject();
+      const id = requireString(args, "versionId");
+      if (!Object.hasOwn(project.versions, id) || project.versions[id].versionId !== id || id === project.headVersionId) {
+        throw new Error("Select an earlier Project version.");
+      }
+      const target = project.versions[id];
+      const restored = advanceProject(project, "canvas.project.version.restore", (next) => {
+        const { versionId: _id, parentVersionId: _parent, revision: _revision, createdAt: _time, reason: _reason, ...content } = target;
+        const identity = new Set(["versionId", "parentVersionId", "revision", "createdAt", "reason"]);
+        for (const key of Object.keys(next)) {
+          if (!identity.has(key)) delete (next as unknown as Record<string, unknown>)[key];
+        }
+        Object.assign(next, structuredClone(content));
+      });
+      return { project: restored, selectedNodeId: null, message: "Version restored as a new edit. Save to keep this revision.", cost: NO_COST };
+    },
+  },
+  {
     commandId: "canvas.session.image-mode.set",
     scope: "selection",
     surfaces: ["compact", "keyboard", "protocol"],
@@ -1006,6 +1109,11 @@ const definitions: CanvasCommandDefinition[] = [
               ? args.value.slice(0, 20_000)
               : "",
         };
+        if (field === "text" && ["text", "script", "subtitle"].includes(node.kind)) {
+          const params = { ...(node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params, text: patch.text };
+          delete (params as Record<string, unknown>).text_list;
+          Object.assign(patch, { params });
+        }
       } else if (field === "audioMode" && node.kind === "audio" && (args.value === "voice" || args.value === "music")) {
         patch = { audioMode: args.value };
       } else if (
@@ -1679,7 +1787,7 @@ const definitions: CanvasCommandDefinition[] = [
     },
     availability: (environment) => {
       try {
-        projectTimelineDocument(environment.getProject());
+        canvasCompositionDocument(environment.getProject());
         return { enabled: true };
       } catch (error) {
         return {
@@ -1694,7 +1802,7 @@ const definitions: CanvasCommandDefinition[] = [
     },
     handler: async (environment, _args, request) => {
       const sourceProject = environment.getProject();
-      const timeline = projectTimelineDocument(sourceProject);
+      const timeline = canvasCompositionDocument(sourceProject);
       const receipt = await renderComposedCanvas({
         requestId: request.requestId,
         title: `${sourceProject.title} · Final Render`,
@@ -1777,12 +1885,12 @@ const definitions: CanvasCommandDefinition[] = [
     mutates: "project",
     label: "在时间线里精修",
     availability: (environment) => {
-      try { projectTimelineDocument(environment.getProject()); return { enabled: true }; }
+      try { canvasCompositionDocument(environment.getProject()); return { enabled: true }; }
       catch (error) { return { enabled: false, reason: error instanceof Error ? error.message : "请先在分镜中批准视频候选。" }; }
     },
     handler: async (environment, _args, request) => {
       const source = environment.getProject();
-      const composed = projectTimelineDocument(source);
+      const composed = canvasCompositionDocument(source);
       const item = await handoffCanvasTimeline({ projectDocument: composed.projectDocument,
         title: source.title, previous: source.timelineHandoff,
         signal: environment.getCommandSignal?.(request.requestId) });

@@ -3,9 +3,9 @@
 // ----------------------------------------------------------------------------
 // 选中片段 → 规范 id 的控件（词表见 edit-bar-canon.ts）+ 视频特有控件。
 // 只出预览与导出都做得到的项：
-//   文字片段：字号、加粗、文字色、高亮色（字底色块）、对齐、位置面板。
+//   文字片段：基础样式、清除样式、大小写/列表文字内容转换、位置面板。
 //   视频片段：水平/垂直翻转、顺时针 90°、不透明度、调色面板、显示方式、位置面板。
-//   贴图片段：翻转、旋转、不透明度、位置面板（贴图没有调色与显示方式）。
+//   贴图片段：替换为时间线已有图片、翻转、旋转、不透明度、位置面板。
 //   音频片段：只有特有控件（速度、静音、声音、时间、淡入）。
 // 面板型规范项按 §4 增补 A-1：子控件 slot "inspector" + inspectorGroup = 规范 id。
 // 特有控件不带规范图标（投影会改显示文字）。
@@ -20,10 +20,15 @@ import type { UITranslate } from "../../i18n/ui/useUI";
 import {
   MIN_CLIP_MS,
   availableTimelineDurationMs,
+  timelineTextCasePatch,
+  timelineTextListKind,
+  timelineTextListPatch,
+  validTimelineSourceReference,
   type ClipLocation,
 } from "./timeline-model";
 import type {
   TimelineClip,
+  TimelineDoc,
   TimelineTextStyle,
   TrackKind,
   TransitionType,
@@ -55,6 +60,7 @@ function transitionLabel(type: TransitionType, kind: TrackKind, tt: UITranslate)
 export function videoClipSelection(
   located: ClipLocation,
   tt: UITranslate,
+  doc?: TimelineDoc,
 ): SelectionContext {
   const { clip, track } = located;
   const kind = track.kind;
@@ -99,6 +105,23 @@ export function videoClipSelection(
         ],
       },
       {
+        id: "list",
+        kind: "select",
+        label: tt("项目列表"),
+        value: timelineTextListKind(clip),
+        options: [
+          { value: "none", label: tt("无列表") },
+          { value: "bullet", label: tt("项目符号列表") },
+          { value: "ordered", label: tt("编号列表") },
+        ],
+      },
+      {
+        id: "case",
+        kind: "action",
+        label: tt("大小写"),
+      },
+      { id: "clear-format", kind: "action", label: tt("清除样式") },
+      {
         id: "position-x",
         kind: "range",
         label: tt("横向位置"),
@@ -122,6 +145,20 @@ export function videoClipSelection(
   }
 
   if (visual) {
+    const replacements = imageReplacementSources(doc, located);
+    if (kind === "image" && replacements.length) {
+      controls.push({
+        id: "replace-source",
+        kind: "select",
+        label: tt("图片片段"),
+        value: "",
+        options: [
+          { value: "", label: tt("替换") },
+          ...replacements.map((source) => ({ value: source.id, label: source.label || source.id })),
+        ],
+        ...panel("replace", tt("替换")),
+      });
+    }
     controls.push(
       { id: "flip-x", kind: "toggle", label: tt("水平翻转"), value: clip.flip_x === true },
       { id: "flip-y", kind: "toggle", label: tt("垂直翻转"), value: clip.flip_y === true },
@@ -351,6 +388,7 @@ export function videoClipSelection(
 
 /** 编辑栏命令要用到的那部分时间线状态（`VideoTimelineState` 的子集，便于测试）。 */
 export interface VideoEditBarTarget {
+  doc?: TimelineDoc;
   patchClip: (clipId: string, patch: Partial<TimelineClip>) => void;
   patchClipTransient: (clipId: string, patch: Partial<TimelineClip>) => void;
   moveClip: (clipId: string, targetTrackId: string, desiredStartMs: number) => void;
@@ -365,6 +403,19 @@ export interface VideoEditBarTarget {
   beginGesture: () => void;
   endGesture: () => void;
   cancelGesture: () => void;
+}
+
+/** 替换只选择文档已接纳的图片，沿用其持久素材身份；不接收任意 URL 或新授权。 */
+function imageReplacementSources(doc: TimelineDoc | undefined, located: ClipLocation): TimelineClip[] {
+  if (!doc || located.track.kind !== "image") return [];
+  const identity = (clip: TimelineClip) => clip.source_ref
+    ? JSON.stringify([clip.source_ref.artifactId, clip.source_ref.revisionId, clip.source_ref.path])
+    : clip.source_url;
+  return doc.tracks.filter((track) => track.kind === "image")
+    .flatMap((track) => track.clips)
+    .filter((clip) => clip.id !== located.clip.id &&
+      (clip.source_ref ? validTimelineSourceReference(clip.source_ref) : Boolean(clip.source_url)) &&
+      identity(clip) !== identity(located.clip));
 }
 
 function finite(value: SelectionCommand["value"], fallback = 0): number {
@@ -416,6 +467,10 @@ export function runVideoClipCommand(
   const percent = (fallback: number) => finite(value, fallback) / 100;
   const textTrack = track.kind === "text";
 
+  // 未提供的能力也不能通过直接 dispatch 写进不可渲染的字段。
+  if (["font-size", "bold", "text-color", "highlight", "highlight-remove", "align", "list", "case", "clear-format", "text"].includes(message.controlId) && !textTrack) return false;
+  if (["brightness", "contrast", "saturation", "image-fit"].includes(message.controlId) && track.kind !== "video") return false;
+
   switch (message.controlId) {
     case "font-size":
       patchStyle({ font_size: clamp(Math.round(finite(value, 64)), 8, 300) });
@@ -437,6 +492,36 @@ export function runVideoClipCommand(
         patchStyle({ align: value });
       }
       return true;
+    case "list":
+      if (value !== "none" && value !== "bullet" && value !== "ordered") return false;
+      patch(timelineTextListPatch(clip, value));
+      return true;
+    case "case": {
+      if (value !== undefined && value !== "upper" && value !== "lower") return false;
+      const text = String(clip.text ?? "");
+      const casing = value || (text === text.toUpperCase() ? "lower" : "upper");
+      patch(timelineTextCasePatch(clip, casing));
+      return true;
+    }
+    case "clear-format":
+      patch({
+        ...timelineTextListPatch(clip, "none"),
+        style: {
+          font_size: 64, color: "#ffffff", bold: false, align: "center",
+          x: clip.style?.x ?? 0.5, y: clip.style?.y ?? 0.85,
+        },
+      });
+      return true;
+    case "replace-source": {
+      const source = imageReplacementSources(state.doc, located).find((candidate) => candidate.id === value);
+      if (!source) return false;
+      patch({
+        source_url: source.source_url,
+        source_ref: source.source_ref ? { ...source.source_ref } : undefined,
+        label: source.label,
+      });
+      return true;
+    }
     case "position-x":
       if (textTrack) patchStyle({ x: clamp(percent(50), 0, 1) });
       else patch({ x: clamp(percent(50), 0, 1) });
@@ -493,7 +578,7 @@ export function runVideoClipCommand(
       patch({ volume: clamp(percent(100), 0, 2) });
       return true;
     case "text":
-      patch({ text: String(value ?? "") });
+      patch({ text: String(value ?? ""), text_list: undefined });
       return true;
     case "start-time": {
       const startMs = Math.max(0, finite(value) * 1_000);

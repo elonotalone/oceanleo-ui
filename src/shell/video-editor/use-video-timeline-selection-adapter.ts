@@ -26,8 +26,8 @@ export function useVideoTimelineSelectionAdapter({
   const tt = useUI();
   const located = state.selected;
   const context = useMemo(
-    () => (enabled && located ? videoClipSelection(located, tt) : null),
-    [enabled, located, tt],
+    () => (enabled && located ? videoClipSelection(located, tt, state.doc) : null),
+    [enabled, located, state.doc, tt],
   );
   const viewContext = useMemo(
     () => viewOnlyContext(context, readOnly, tt),

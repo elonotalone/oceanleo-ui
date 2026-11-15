@@ -48,6 +48,8 @@ export interface TimelineClip {
   muted?: boolean;
   /** 文字 clip 内容。 */
   text?: string;
+  /** 编辑器的列表内容转换记录；渲染仍只读 text。仅在生成文字未被手工改动时可还原。 */
+  text_list?: Readonly<{ kind: "bullet" | "ordered"; source_text: string }>;
   style?: TimelineTextStyle;
   /** 视觉素材（视频/贴图）的中心点位置，0..1。 */
   x?: number;

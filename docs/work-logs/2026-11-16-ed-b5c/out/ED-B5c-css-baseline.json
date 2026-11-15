@@ -1,0 +1,42 @@
+{
+  "7be10456": {
+    "ok": true,
+    "sha": "7be10456837866fcaccd18991defd93f473710c5",
+    "value": {
+      "src/theme/ui.css": {
+        "identical": false,
+        "missing": [
+          ".overline{"
+        ],
+        "dead": [
+          ".\\[\\&_button\\]\\:h-7 button{"
+        ]
+      },
+      "src/theme/globals.css": {
+        "identical": true,
+        "missing": [],
+        "dead": []
+      }
+    }
+  },
+  "HEAD": {
+    "ok": true,
+    "sha": "e99e2af2a46d13964bffdf7345cf851dbf71783c",
+    "value": {
+      "src/theme/ui.css": {
+        "identical": false,
+        "missing": [
+          ".overline{"
+        ],
+        "dead": [
+          ".\\[\\&_button\\]\\:h-7 button{"
+        ]
+      },
+      "src/theme/globals.css": {
+        "identical": true,
+        "missing": [],
+        "dead": []
+      }
+    }
+  }
+}

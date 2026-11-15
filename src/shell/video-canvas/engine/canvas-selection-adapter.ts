@@ -10,6 +10,49 @@ import type {
   VideoProject,
 } from "./project-model";
 
+import { projectHead, projectTimelineDocument } from "./project-model";
+import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { normalizeTimelineDoc, timelineDocIssue, timelineTextListKind } from "../../video-editor/timeline-model";
+import { serializeVideoProjectEnvelope } from "../../video-editor/video-timeline-source";
+
+type TextNodeParams = { text?: string; textStyle?: TimelineTextStyle; includeInVideo?: boolean; text_list?: TimelineClip["text_list"] };
+
+/** Matches composeNodeParams precedence; list provenance is never inferred from user text. */
+export function canvasNodeTextClip(node: CanvasNodeDefinition, fallbackText = ""): TimelineClip {
+  const params = (node as CanvasNodeDefinition & { params?: TextNodeParams }).params;
+  return { id: `clip_${node.nodeId}`, start_ms: 0, duration_ms: 1,
+    text: typeof params?.text === "string" ? params.text : node.text ?? fallbackText,
+    text_list: params?.text_list };
+}
+
+/** Shared by preview, final render and timeline handoff; source versions stay immutable. */
+export function canvasCompositionDocument(project: VideoProject) {
+  const current = projectHead(project);
+  // Text and scripts remain working notes until explicitly included in the film.
+  const source = { ...project, versions: { ...project.versions, [current.versionId]: {
+    ...current, graph: { ...current.graph, nodes: current.graph.nodes.map((node) => {
+      const params = (node as CanvasNodeDefinition & { params?: TextNodeParams }).params;
+      return (node.kind === "text" || node.kind === "script") && params?.includeInVideo === true
+        ? { ...node, kind: "subtitle" as const } : node;
+    }) },
+  } } };
+  const composed = projectTimelineDocument(source);
+  const nodes = new Map(current.graph.nodes.map((node) => [`clip_${node.nodeId}`, node]));
+  const document = normalizeTimelineDoc({ ...composed.document, tracks: composed.document.tracks.map((track) =>
+    track.kind !== "text" ? track : { ...track, clips: track.clips.map((clip) => {
+      const node = nodes.get(clip.id);
+      const style = (node as (CanvasNodeDefinition & { params?: TextNodeParams }) | undefined)?.params?.textStyle;
+      const content = node ? canvasNodeTextClip(node, clip.text) : clip;
+      return { ...clip, text: content.text,
+        ...(timelineTextListKind(content) !== "none" ? { text_list: content.text_list } : {}),
+        ...(style ? { style: { ...clip.style, ...style } } : {}) };
+    }) }) });
+  const issue = timelineDocIssue(document);
+  if (issue) throw new Error(issue);
+  return { ...composed, document,
+    projectDocument: serializeVideoProjectEnvelope(document, composed.canvasSource) };
+}
+
 type SelectionAnchor = NonNullable<SelectionContext["anchor"]>;
 
 /** Only equivalent engine commands advertise a canonical selection capability. */
@@ -122,19 +165,41 @@ function fieldControls(
     node.kind === "script" ||
     node.kind === "subtitle"
   ) {
+    const content = canvasNodeTextClip(node, input.asset?.inlineText);
     controls.push(
       inspector(
         {
           id: "canvas.selection.text.set",
           kind: "text",
           label: node.kind === "subtitle" ? input.tt("副标题") : input.tt("文本"),
-          value: node.text || "",
+          value: content.text || "",
         },
         "canvas-properties",
         "Properties",
         "effects",
       ),
     );
+    const params = (node as CanvasNodeDefinition & { params?: { textStyle?: Record<string, unknown>; includeInVideo?: boolean } }).params;
+    const style = params?.textStyle || {};
+    controls.push(
+      { id: "font-size", kind: "number", label: input.tt("字号"), value: Number(style.font_size ?? 48), min: 8, max: 300, step: 1, unit: "px" },
+      { id: "bold", kind: "toggle", label: input.tt("加粗"), value: style.bold === true },
+      { id: "text-color", kind: "color", label: input.tt("文字色"), value: String(style.color || "#ffffff") },
+      { id: "highlight", kind: "color", label: input.tt("高亮色"), value: String(style.background || "#000000") },
+      { id: "align", kind: "select", label: input.tt("对齐"), value: String(style.align || "center"), options: [
+        { value: "left", label: input.tt("左对齐") }, { value: "center", label: input.tt("居中") }, { value: "right", label: input.tt("右对齐") },
+      ] },
+      { id: "clear-format", kind: "action", label: input.tt("清除样式"), placement: "more" },
+      { id: "case", kind: "action", label: input.tt("大小写"), placement: "more" },
+      { id: "list", kind: "select", label: input.tt("项目列表"), value: timelineTextListKind(content), options: [
+        { value: "none", label: input.tt("无列表") }, { value: "bullet", label: input.tt("项目符号列表") },
+        { value: "ordered", label: input.tt("编号列表") },
+      ] },
+    );
+    if (node.kind !== "subtitle") controls.push(inspector({
+      id: "canvas.selection.include-in-video.set", kind: "toggle", label: "Include in video",
+      value: params?.includeInVideo === true, domain: "specific",
+    }, "canvas-properties", "Properties", "effects"));
   }
   if (
     node.kind === "text" ||
@@ -381,9 +446,22 @@ export function canvasSelectionContext(
   input: CanvasSelectionAdapterInput,
 ): SelectionContext | null {
   const node = input.node;
-  if (!node) return null;
+  const creationControls: SelectionControl[] = (["text", "audio"] as const).flatMap((entryId) => availableAction(input, {
+    id: `canvas.create.${entryId}`, kind: "action", label: input.tt(entryId === "text" ? "文本" : "音频"), domain: "specific",
+  }, "canvas.node.create", { entryId }));
+  if (!node) return {
+    version: 1, kind: "video-canvas", id: input.project.projectId, bar: "object",
+    label: input.project.title, revision: input.project.headVersionId, epoch: input.selectionEpoch,
+    controls: creationControls,
+  };
   const controls = [
+    ...creationControls,
     ...fieldControls(input, node),
+    ...(node.kind === "image" && Object.values(input.project.assets).some((asset) => asset.kind === "image" && asset.origin !== "local-derivative" && asset.assetId !== node.assetId) ? [inspector({
+      id: "canvas.selection.asset.replace", kind: "select", label: "Image asset", value: node.assetId || "",
+      domain: "specific", options: Object.values(input.project.assets).filter((asset) => asset.kind === "image" && (asset.origin !== "local-derivative" || asset.assetId === node.assetId))
+        .map((asset) => ({ value: asset.assetId, label: asset.title })),
+    }, "replace", "Replace image", "replace")] : []),
     inspector(
       {
         id: "canvas.selection.position-x.set",
@@ -633,7 +711,7 @@ export function canvasSelectionContext(
     version: 1,
     kind: `video-canvas-${node.kind}`,
     id: node.nodeId,
-    bar: node.kind === "image" ? "image" : "object",
+    bar: node.kind === "image" ? "image" : ["text", "script", "subtitle"].includes(node.kind) ? "text" : "object",
     label: node.title,
     revision: input.project.headVersionId,
     epoch: input.selectionEpoch,
@@ -696,7 +774,19 @@ export function canvasSelectionDispatch(
     | "canvas.selection.audio-mode.set"];
   let commandId = command.controlId;
   let args: Record<string, unknown> = {};
-  if (field) {
+  const styleField = ({ "font-size": "font_size", bold: "bold", "text-color": "color", highlight: "background", align: "align",
+    "clear-format": "clearFormat", case: "case", list: "list",
+    "canvas.selection.include-in-video.set": "includeInVideo" } as Record<string, string>)[command.controlId];
+  if (command.controlId === "canvas.create.text" || command.controlId === "canvas.create.audio") {
+    commandId = "canvas.node.create";
+    args = { entryId: command.controlId.slice("canvas.create.".length) };
+  } else if (command.controlId === "canvas.selection.asset.replace") {
+    commandId = "canvas.node.asset.replace";
+    args = { assetId: value };
+  } else if (styleField) {
+    commandId = "canvas.node.text-style.update";
+    args = { field: styleField, value };
+  } else if (field) {
     commandId = "canvas.node.field.update";
     args = { field, value };
   } else if (

@@ -4,9 +4,9 @@ import { useEffect, useState } from "react";
 import { openCanvasLibraryItem } from "./canvas-delivery-client";
 import { useUI } from "../../../i18n";
 import type { CanvasCommandResult } from "./command-registry";
+import { canvasCompositionDocument } from "./canvas-selection-adapter";
 import {
   projectHead,
-  projectTimelineDocument,
   type CanvasWorkspaceView,
   type ProjectVersionComparison,
   type VideoProject,
@@ -203,6 +203,7 @@ function StoryboardView({
                         </p>
                       )}
                     </div>
+                    <DirectorView project={project} dispatch={dispatch} shotId={shot.shotId} />
                   </article>
                 );
               })}
@@ -217,14 +218,16 @@ function StoryboardView({
 function DirectorView({
   project,
   dispatch,
+  shotId,
 }: {
   project: VideoProject;
   dispatch: DispatchCommand;
+  shotId: string;
 }) {
   const head = projectHead(project);
   return (
     <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
-      {head.shots.map((shot) => {
+      {head.shots.filter((shot) => shot.shotId === shotId).map((shot) => {
         const camera = head.cameras.find(
           (candidate) => candidate.cameraId === shot.cameraId,
         );
@@ -268,7 +271,7 @@ function DirectorView({
               </dl>
             ) : (
               <p className="mt-4 rounded-lg border border-dashed border-[var(--vc-border)] p-5 text-center text-[10px] text-[var(--vc-text-3)]">
-                No camera is fabricated. Create a real editable plan.
+                Create a camera plan for this shot.
               </p>
             )}
             <button
@@ -297,9 +300,9 @@ function TimelineView({ project, dispatch, commandState, cancelActiveCommand }: 
 }) {
   const tt = useUI();
   const [openHandoff, setOpenHandoff] = useState(false);
-  let composition: ReturnType<typeof projectTimelineDocument> | null = null;
+  let composition: ReturnType<typeof canvasCompositionDocument> | null = null;
   let compositionError = "";
-  try { composition = projectTimelineDocument(project); } catch (error) { compositionError = error instanceof Error ? error.message : "请先在分镜中批准视频候选。"; }
+  try { composition = canvasCompositionDocument(project); } catch (error) { compositionError = error instanceof Error ? error.message : "请先在分镜中批准视频候选。"; }
   const rendering = commandState?.commandId === "canvas.timeline.final-render" && commandState.status === "pending";
   const handingOff = commandState?.commandId === "canvas.timeline.handoff" && commandState.status === "pending";
   const busy = rendering || handingOff;
@@ -392,7 +395,9 @@ function TimelineView({ project, dispatch, commandState, cancelActiveCommand }: 
         <h3 className="text-xs text-[var(--vc-text)]">{tt(track.kind === "video" ? "视频轨" : track.kind === "audio" ? "音轨" : "字幕轨")}</h3>
         {track.clips.map((clip) => <div key={clip.id} className="rounded-lg bg-[var(--vc-surface-2)] p-2 text-[10px] text-[var(--vc-text-2)]">
           {clip.label || clip.text} · {(clip.start_ms / 1000).toFixed(1)}–{((clip.start_ms + clip.duration_ms) / 1000).toFixed(1)} s
-          {clip.text && <p>{clip.text}</p>}
+          {clip.text && <p style={{ fontSize: clip.style?.font_size, color: clip.style?.color,
+            backgroundColor: clip.style?.background, fontWeight: clip.style?.bold ? "bold" : "normal",
+            textAlign: clip.style?.align, whiteSpace: "pre-wrap" }}>{clip.text}</p>}
         </div>)}
       </section>) : <EmptyState title={tt("还没有可合成的镜头")} detail={`${tt(compositionError)} ${tt("先在分镜中批准视频候选，再生成成片或交接到时间线。回到画布可调整字幕、音轨和成片规格。")}`} />}
     </div>
@@ -402,10 +407,24 @@ function TimelineView({ project, dispatch, commandState, cancelActiveCommand }: 
 function HistoryView({
   project,
   comparison,
+  dispatch,
 }: {
   project: VideoProject;
   comparison: ProjectVersionComparison | null;
+  dispatch: DispatchCommand;
 }) {
+  const [restoring, setRestoring] = useState(false);
+  const [message, setMessage] = useState("");
+  const restore = async (versionId: string) => {
+    setRestoring(true);
+    try {
+      const result = await dispatch("canvas.project.version.restore", { versionId }, "toolbar");
+      if (result.status !== "succeeded") { setMessage(result.message); return; }
+      const saved = await dispatch("canvas.project.save", {}, "toolbar");
+      setMessage(saved.status === "succeeded" ? "Restored version saved." : saved.message);
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Could not save restored version."); }
+    finally { setRestoring(false); }
+  };
   const versions = Object.values(project.versions).sort(
     (left, right) => right.revision - left.revision,
   );
@@ -432,6 +451,11 @@ function HistoryView({
             <p className="mt-1 truncate font-mono text-[8px] text-[var(--vc-text-3)]">
               {version.versionId}
             </p>
+            {version.versionId !== project.headVersionId && <button type="button" disabled={restoring}
+              data-restore-version={version.versionId} onClick={() => void restore(version.versionId)}
+              className="mt-2 rounded-lg border border-[var(--vc-border)] px-3 py-1.5 text-[10px] text-[var(--vc-text-2)] disabled:opacity-40">
+              Restore this version
+            </button>}
           </article>
         ))}
       </div>
@@ -462,9 +486,9 @@ function HistoryView({
           </p>
         )}
         <p className="mt-4 text-[9px] leading-relaxed text-[var(--vc-text-3)]">
-          History is compare-only here. Promoting an older head requires a
-          backend CAS contract; this UI does not pretend to restore it.
+          Restore creates and saves a new revision. Earlier versions and their assets stay in history.
         </p>
+        {message && <p role="status" className="mt-2 text-[10px] text-[var(--vc-text-2)]">{message}</p>}
       </aside>
     </div>
   );
@@ -529,10 +553,8 @@ export function CanvasProductView({
             </button>
           </div>
         </div>
-        {view === "storyboard" ? (
+        {view === "storyboard" || view === "director" ? (
           <StoryboardView project={project} dispatch={dispatch} />
-        ) : view === "director" ? (
-          <DirectorView project={project} dispatch={dispatch} />
         ) : view === "timeline" ? (
           <TimelineView
             project={project}
@@ -541,7 +563,7 @@ export function CanvasProductView({
             cancelActiveCommand={cancelActiveCommand}
           />
         ) : (
-          <HistoryView project={project} comparison={comparison} />
+          <HistoryView project={project} comparison={comparison} dispatch={dispatch} />
         )}
       </div>
     </section>

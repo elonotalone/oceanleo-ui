@@ -95,9 +95,6 @@ const stubs = {
   "../collab/adapters/visual-readonly": dataModule(
     "export function viewOnlyContext(context) { return context; }",
   ),
-  "./timeline-model": dataModule(
-    "export const MIN_CLIP_MS = 100; export function availableTimelineDurationMs() { return 10000; }",
-  ),
   "./SelectionAnimationGallery": dataModule(
     "export function SelectionAnimationGallery() { return null; }",
   ),
