@@ -13,8 +13,6 @@ export const FABRIC_TEXT_LAYOUT_PROPS = ["oceanleoList", "oceanleoIndent", "ocea
 type LayoutText = IText & FabricTextLayoutProps & {
   _styleMap?: Record<number, { line: number; offset: number }>;
 };
-// SVG decoration metadata must not register an unused Tailwind utility.
-const OVERLINE_DECORATION = "over" + "line";
 const installed = new WeakSet<object>();
 const measuring = new WeakSet<object>();
 const xml = (value: unknown) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
@@ -50,6 +48,8 @@ function verticalGlyphs(text: LayoutText): Glyph[] {
     });
     const length = advance.reduce((sum, value) => sum + value, 0);
     const spare = Math.max(0, text.height - gutter(text) - length);
+    const spaces = line.filter(value => /\s/.test(value)).length;
+    if (text.textAlign === "justify" && spaces) line.forEach((value, index) => { if (/\s/.test(value)) advance[index] += spare / spaces; });
     y += text.textAlign === "center" ? spare / 2 : text.textAlign === "right" ? spare : 0;
     const marker = markerByLine.get(lineIndex);
     if (marker) result.push({ line: lineIndex, char: 0, value: marker, x, y: -text.height / 2 + fabricTextIndent(text) + text.fontSize, size: text.fontSize });
@@ -64,14 +64,21 @@ function verticalGlyphs(text: LayoutText): Glyph[] {
 function glyphStyle(text: LayoutText, glyph: Glyph) {
   return text.getCompleteStyleDeclaration(glyph.line, glyph.char);
 }
+function verticalDecorationBoxes(text: LayoutText, glyph: Glyph) {
+  const style = glyphStyle(text, glyph);
+  return [style.underline ? glyph.x + glyph.size : null, style.linethrough ? glyph.x + glyph.size / 2 : null, style.overline ? glyph.x : null]
+    .filter((x): x is number => x !== null)
+    .map(x => ({ x, y: glyph.y - glyph.size, width: Math.max(1, glyph.size / 16), height: glyph.size }));
+}
 function verticalSvg(text: LayoutText): string {
-  return '<g>' + verticalGlyphs(text).map(glyph => {
+  const background = text.backgroundColor ? `<rect x="${-text.width / 2}" y="${-text.height / 2}" width="${text.width}" height="${text.height}" fill="${xml(text.backgroundColor)}"/>` : "";
+  return `<g opacity="${text.opacity}">` + background + verticalGlyphs(text).map(glyph => {
     const style = glyphStyle(text, glyph);
     const color = typeof style.fill === "string" ? style.fill : text.fill;
     const background = typeof style.textBackgroundColor === "string" ? style.textBackgroundColor : "";
-    const decoration = [style.underline ? "underline" : "", style.linethrough ? "line-through" : "", style.overline ? OVERLINE_DECORATION : ""].filter(Boolean).join(" ");
+    const decorations = verticalDecorationBoxes(text, glyph).map(box => `<rect x="${box.x}" y="${box.y}" width="${box.width}" height="${box.height}" fill="${xml(color)}"/>`).join("");
     return (background ? `<rect x="${glyph.x}" y="${glyph.y - glyph.size}" width="${glyph.size}" height="${glyph.size}" fill="${xml(background)}"/>` : "") +
-      `<text x="${glyph.x}" y="${glyph.y}" font-family="${xml(style.fontFamily)}" font-size="${glyph.size}" font-weight="${xml(style.fontWeight)}" font-style="${xml(style.fontStyle)}" fill="${xml(color)}" stroke="${xml(style.stroke || "none")}" stroke-width="${Number(style.strokeWidth) || 0}" text-decoration="${decoration}">${xml(glyph.value)}</text>`;
+      `<text x="${glyph.x}" y="${glyph.y + (Number(style.deltaY) || 0)}" font-family="${xml(style.fontFamily)}" font-size="${glyph.size}" font-weight="${xml(style.fontWeight)}" font-style="${xml(style.fontStyle)}" fill="${xml(color)}" stroke="${xml(style.stroke || "none")}" stroke-width="${Number(style.strokeWidth) || 0}">${xml(glyph.value)}</text>` + decorations;
   }).join("") + '</g>';
 }
 function markerSvg(text: LayoutText): string {
@@ -79,7 +86,7 @@ function markerSvg(text: LayoutText): string {
     let top = -text.height / 2;
     for (let index = 0; index < marker.line; index++) top += text.getHeightOfLine(index);
     const y = top + text.getHeightOfLine(marker.line) / text.lineHeight * (1 - text._fontSizeFraction);
-    return `<text x="${-text.width / 2 + fabricTextIndent(text)}" y="${y}" font-family="${xml(text.fontFamily)}" font-size="${text.fontSize}" fill="${xml(typeof text.fill === "string" ? text.fill : "#1c1917")}">${xml(marker.value)}</text>`;
+    return `<text x="${-text.width / 2 + fabricTextIndent(text)}" y="${y}" font-family="${xml(text.fontFamily)}" font-size="${text.fontSize}" opacity="${text.opacity}" fill="${xml(typeof text.fill === "string" ? text.fill : "#1c1917")}">${xml(marker.value)}</text>`;
   }).join("");
 }
 function cleanCharacterStyle(style: unknown): Record<string, unknown> {
@@ -88,7 +95,7 @@ function cleanCharacterStyle(style: unknown): Record<string, unknown> {
   for (const [key, value] of Object.entries(style)) {
     if (["fontFamily", "fontStyle", "fontWeight", "fill", "stroke", "textBackgroundColor"].includes(key) && typeof value === "string" && value.length < 400 && !/[<>]|url\s*\(/i.test(value)) clean[key] = value;
     if (["fontSize", "strokeWidth", "deltaY", "fontWeight"].includes(key) && typeof value === "number" && Number.isFinite(value) && Math.abs(value) < 1000) clean[key] = value;
-    if (["underline", OVERLINE_DECORATION, "linethrough"].includes(key) && typeof value === "boolean") clean[key] = value;
+    if (["underline", "overline", "linethrough"].includes(key) && typeof value === "boolean") clean[key] = value;
   }
   return clean;
 }
@@ -107,7 +114,7 @@ export function decodeFabricTextMetadata(value: string): Record<string, unknown>
     for (const key of ["fontFamily", "fontStyle", "fontWeight", "fill", "stroke", "textAlign", "textBackgroundColor", "backgroundColor", "originX", "originY"]) {
       if (typeof raw[key] === "string" && raw[key].length < 400 && !/[<>]/.test(raw[key])) result[key] = raw[key];
     }
-    for (const key of ["underline", OVERLINE_DECORATION, "linethrough", "flipX", "flipY", "oceanleoVerticalText"]) if (typeof raw[key] === "boolean") result[key] = raw[key];
+    for (const key of ["underline", "overline", "linethrough", "flipX", "flipY", "oceanleoVerticalText"]) if (typeof raw[key] === "boolean") result[key] = raw[key];
     if (typeof raw.fontWeight === "number" && raw.fontWeight >= 100 && raw.fontWeight <= 1000) result.fontWeight = raw.fontWeight;
     if (Array.isArray(raw.oceanleoSvgMatrix) && raw.oceanleoSvgMatrix.length === 6 && raw.oceanleoSvgMatrix.every((value: unknown) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) < 100000)) result.oceanleoSvgMatrix = raw.oceanleoSvgMatrix;
     if (Array.isArray(raw.styles)) {
@@ -158,7 +165,7 @@ export function installFabricTextLayout(fabric: FabricNS): void {
           this.oceanleoTextWidth = horizontalWidth;
           const columnHeight = Math.max(this.fontSize, ...this._textLines.map((line, index) => line.reduce((sum, _char, char) => sum + Number(this.getCompleteStyleDeclaration(index, char).fontSize || this.fontSize) + this.charSpacing * this.fontSize / 1000, 0))) + inset;
           this.width = this._textLines.reduce((sum, _line, index) => sum + this.getHeightOfLine(index), 0);
-          this.height = columnHeight;
+          this.height = Math.max(horizontalWidth, columnHeight);
         }
       } finally { measuring.delete(this); }
     };
@@ -194,7 +201,7 @@ export function installFabricTextLayout(fabric: FabricNS): void {
       if (style.stroke && style.strokeWidth) this._renderChar("strokeText", ctx, glyph.line, glyph.char, glyph.value, glyph.x, glyph.y);
       if (style.underline || style.linethrough || style.overline) {
         ctx.fillStyle = typeof style.fill === "string" ? style.fill : "#1c1917";
-        for (const x of [style.underline ? glyph.x + glyph.size : null, style.linethrough ? glyph.x + glyph.size / 2 : null, style.overline ? glyph.x : null]) if (x !== null) ctx.fillRect(x, glyph.y - glyph.size, Math.max(1, glyph.size / 16), glyph.size);
+        for (const box of verticalDecorationBoxes(this, glyph)) ctx.fillRect(box.x, box.y, box.width, box.height);
       }
     }
     ctx.restore();

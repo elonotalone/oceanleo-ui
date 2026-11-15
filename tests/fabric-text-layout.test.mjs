@@ -141,3 +141,28 @@ test('vertical text reflows for native IME editing and toggles back without widt
     assert.deepEqual([text.width, text.height], horizontal);
   }
 });
+
+test('vertical SVG preserves opacity, background and the Canvas decoration rectangles', async () => {
+  const text = new fabric.Textbox('AB', { width: 180, fontSize: 20, opacity: .4, backgroundColor: '#ffff00', underline: true, linethrough: true, textAlign: 'center' });
+  scene(text).setSelectedText({ verticalText: true });
+  assert.equal(text.height, 180, 'vertical alignment retains the available column length');
+  drawn = []; text._render(document.createElement('canvas').getContext('2d'));
+  const canvasRects = drawn.filter(args => args[0] === 'rect').map(args => args.slice(1));
+  assert.equal(canvasRects.length, 4);
+  const canvas = new fabric.StaticCanvas(undefined, { width: 300, height: 300 }); canvas.add(text);
+  const svg = exportVectorSvg(canvas, { width: 300, height: 300 });
+  const svgDocument = new window.DOMParser().parseFromString(svg, 'image/svg+xml');
+  const owner = svgDocument.querySelector('[data-oceanleo-text]');
+  assert.equal(owner.firstElementChild.getAttribute('opacity'), '0.4');
+  const rectangles = [...owner.querySelectorAll('rect')];
+  assert.equal(rectangles[0].getAttribute('fill'), '#ffff00');
+  const decorations = rectangles.slice(1).map(rect => ['x','y','width','height'].map(key => Number(rect.getAttribute(key))));
+  assert.deepEqual(decorations, canvasRects);
+  assert.ok([...owner.querySelectorAll('text')].every(node => !node.hasAttribute('text-decoration')));
+  await canvas.dispose();
+});
+test('horizontal structured-list markers carry the native object opacity into SVG', () => {
+  const text = new fabric.Textbox('Item', { width: 160, fontSize: 20, opacity: .35 });
+  scene(text).setSelectedTextList('bullet');
+  assert.match(text.toSVG(), /opacity="0.35"[^>]*>•<\/text>/);
+});
