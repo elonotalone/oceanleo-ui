@@ -44,24 +44,15 @@ export function richDocCaretUser(self: {
   };
 }
 
-interface DomLike {
-  createElement(tag: string): {
-    className: string;
-    textContent: string | null;
-    style: Record<string, string> & { setProperty?: (k: string, v: string) => void };
-    appendChild(child: unknown): unknown;
-    setAttribute(name: string, value: string): void;
-  };
-}
-
 /**
  * 别人的光标：一条带颜色的竖线 + 名字小牌。只用 `createElement` / `textContent` / `style`，
  * 名字与颜色都当纯文本处理（颜色先过白名单）。
  */
 export function renderRichDocCaret(
   user: Record<string, unknown>,
-  doc: DomLike = (globalThis as unknown as { document: DomLike }).document,
 ): HTMLElement {
+  // yCursorPlugin's second callback argument is a numeric clientID, not a DOM.
+  const doc = document;
   const color = safeCollabColor(user.color);
   const caret = doc.createElement("span");
   caret.className = "oleo-richdoc-caret";
@@ -86,7 +77,7 @@ export function renderRichDocCaret(
   label.style.background = color;
   label.style.userSelect = "none";
   caret.appendChild(label);
-  return caret as unknown as HTMLElement;
+  return caret;
 }
 
 /** 别人选中的文字：他的颜色的半透明底。 */

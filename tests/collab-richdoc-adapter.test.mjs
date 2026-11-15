@@ -180,12 +180,20 @@ test("别人的光标：名字当纯文本、颜色过白名单，不出现 inne
       return el;
     },
   };
-  const caret = renderRichDocCaret({ name: "<img src=x onerror=alert(1)>小王", color: "hsl(120, 70%, 45%)" }, doc);
-  assert.equal(caret.children.length, 1);
-  assert.equal(caret.children[0].textContent, "<img src=x onerror=alert(1)>小王");
-  assert.equal(caret.children[0].style.background, "hsl(120, 70%, 45%)");
-  const evil = renderRichDocCaret({ name: "x", color: "red;background:url(javascript:1)" }, doc);
-  assert.equal(evil.children[0].style.background, "#6366f1");
+  const previousDocument = globalThis.document;
+  globalThis.document = doc;
+  try {
+    // yCursorPlugin calls cursorBuilder(user, numericClientId), not (user, document).
+    const caret = renderRichDocCaret({ name: "<img src=x onerror=alert(1)>小王", color: "hsl(120, 70%, 45%)" }, 12345);
+    assert.equal(caret.children.length, 1);
+    assert.equal(caret.children[0].textContent, "<img src=x onerror=alert(1)>小王");
+    assert.equal(caret.children[0].style.background, "hsl(120, 70%, 45%)");
+    const evil = renderRichDocCaret({ name: "x", color: "red;background:url(javascript:1)" }, 67890);
+    assert.equal(evil.children[0].style.background, "#6366f1");
+  } finally {
+    if (previousDocument === undefined) delete globalThis.document;
+    else globalThis.document = previousDocument;
+  }
   assert.equal(safeCollabColor("#fff"), "#fff");
   assert.equal(safeCollabColor("expression(1)"), "#6366f1");
   assert.deepEqual(richDocCaretUser({ id: 7, name: "A".repeat(80), color: "bad" }), {

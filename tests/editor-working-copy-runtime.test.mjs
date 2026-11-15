@@ -153,6 +153,14 @@ for(const pages of [1,40]) for(const existing of [false,true]) test(`VS4 round 5
  copy=existing?{schema:'oceanleo.richdoc.edit.v1',seq:17,published_seq:0,base_revision_id:'r1',saved_at:new Date().toISOString(),doc:structuredClone(globalThis.__wcInitialDocument)}:null;putAck=null;globalThis.__wcPublishBarrier=undefined;const views=[];
  const open=async(room)=>{const node=document.createElement('div');document.body.append(node);const root=createRoot(node);views.push({node,root});await act(async()=>{root.render(React.createElement(RoomContext.Provider,{value:room},React.createElement(RichDocRoute,{item,onClose(){}})));await delay(30);});await act(async()=>{await delay(30);});return globalThis.__wcTabs[room.self.id];};
  try{const first=await open(a),second=await open(b);assert.equal(first.editor.loading,false);assert.equal(second.editor.loading,false);assert.equal(first.editor.editor.getText(),second.editor.editor.getText());assert.equal(document.querySelectorAll('[data-richdoc-stage] .ProseMirror').length,2,'both real editor views must be mounted');
+  // A shared Y.Doc has one clientID, so the two providers alone never render a
+  // peer caret. Include the real remote-awareness input present in VS's browser.
+  const awareness=require('y-protocols/awareness'),peerDoc=new Y.Doc(),peer=new awareness.Awareness(peerDoc);
+  const position=Y.createRelativePositionFromTypeIndex(sharedDoc.getXmlFragment('oceanleo:richdoc').get(0),0);
+  peer.setLocalState({user:{id:'peer',name:'Peer',color:'#6366f1'},cursor:{anchor:position,head:position}});
+  try {await act(async()=>{for(const room of [a,b])awareness.applyAwarenessUpdate(room.awareness,awareness.encodeAwarenessUpdate(peer,[peer.clientID]),'remote-peer');});}
+  finally {peer.destroy();peerDoc.destroy();}
+  assert.equal(document.querySelectorAll('.oleo-richdoc-caret').length,2,'both views render a real peer caret');
   const before=requests.length;let release;putAck=new Promise(r=>release=r);
   await act(async()=>{second.editor.editor.commands.insertContent('VS-R3-check-93');await settle();await delay(20);});
   assert.ok(second.editor.editor.getText().includes('VS-R3-check-93'));assert.ok(first.editor.editor.getText().includes('VS-R3-check-93'));assert.ok(views.every(view=>view.node.querySelector('.ProseMirror').textContent.includes('VS-R3-check-93')));
