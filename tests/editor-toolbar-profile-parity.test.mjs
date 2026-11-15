@@ -150,9 +150,9 @@ const pictureHarnesses = { Deck: DeckPictureToolbar, Fabric: FabricPictureToolba
 function canvasPictureContext() {
   const added = addProjectNode(createVideoProject("Picture profile"), "image", { x: 10, y: 20 });
   const registered = registerAsset(added.project, { kind: "image", origin: "upload", title: "Canvas image", url: "https://files.example/canvas.png" });
-  const project = updateProjectNode(registered.project, added.nodeId, "fixture", { assetId: registered.asset.assetId });
+  const project = updateProjectNode(registered.project, added.nodeId, "fixture", { assetId: registered.asset.assetId, params: { opacity: 0.64 } });
   const node = projectHead(project).graph.nodes[0];
-  const environment = { getProject: () => project, getSelectedNodeId: () => node.nodeId, getSelectionEpoch: () => 1, getImageMode: () => "retouch" };
+  const environment = { getProject: () => project, getSelectedNodeId: () => node.nodeId, getSelectionEpoch: () => 1, getImageMode: () => "retouch", getLibraryArtifactId: () => "11111111-1111-4111-8111-111111111111" };
   return selectionAdapterContext(canvasSelectionContext({ project, node, asset: project.assets[node.assetId], selectionEpoch: 1, imageMode: "retouch", tt,
     availability: (id, args) => commandAvailability(id, environment, args) }));
 }
@@ -268,10 +268,13 @@ test("seven native text selections resolve to the same canon shapes, px values a
     const gridCompact = partitionSelectionInspectorControls(projected.get("Grid").controls).compact;
     for (const id of ["list", "line-height", "link", "case", "vertical-text", "indent-increase", "indent-decrease"]) assert.ok(gridCompact.some(control => control.canonId === id || control.id === id), `Grid supports ${id}`);
     assert.equal(metrics("Grid", "highlight").engineScope, "cell-background");
-    for (const id of ["font-family", "italic", "line-height", "letter-spacing"]) assert.equal(Boolean(metrics("Timeline", id)), false, `Timeline does not invent ${id}`);
+    for (const name of ["Timeline", "Canvas"]) {
+      for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "vertical-text"]) assert.ok(metrics(name, id), `${name} supports the rendered ${id} field`);
+      assert.ok(metrics(name, "align").options.some(option => option.value === "justify"), `${name} supports rendered justification`);
+      assert.equal(Boolean(metrics(name, "link")), false, `${name} has no interactive link in rendered video`);
+    }
     for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Timeline", id), `Timeline exposes the implemented ${id} command`);
     for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Canvas", id), `Canvas exposes the implemented ${id} command`);
-    for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "link"]) assert.equal(Boolean(metrics("Canvas", id)), false, `Canvas does not invent ${id}`);
   } finally { await native.close(); }
 });
 
@@ -310,7 +313,7 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
         else sameId.set(control.canonId, { name, profile: canonicalProfile(control) });
       }
       const opacityInput = context.controls.find(control => control.id === "opacity");
-      if (name === "Canvas" || name === "PDF") {
+      if (name === "PDF") {
         assert.equal(opacityInput, undefined, `${name} does not invent picture opacity support`);
       } else {
         assert.ok(opacityInput);
@@ -323,7 +326,7 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
       }
     }
     for (const [id, names, kind] of [
-      ["border", ["Deck", "Fabric"], "panel"],
+      ["border", ["Deck", "Fabric", "Canvas"], "panel"],
       ["position", ["Deck", "Fabric", "Canvas"], "panel"],
       ["rotate", ["Deck", "Fabric", "Canvas", "PDF"], "action"],
     ]) for (const name of names) {
@@ -332,7 +335,7 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
       assert.deepEqual([control.kind, control.slot, control.placement], [kind, "compact", "primary"]);
     }
     assert.deepEqual(profiles.get("PDF").map(control => control.canonId), ["rotate", "delete"], "PDF stamps keep exactly their native supported capabilities");
-    for (const id of ["opacity", "border", "replace", "radius"]) assert.equal(profiles.get("Canvas").some(control => control.canonId === id), false, `canvas does not invent ${id}`);
+    for (const id of ["opacity", "border", "replace", "radius", "image-fit", "alt"]) assert.ok(profiles.get("Canvas").some(control => control.canonId === id), `canvas supports the rendered or persisted ${id} capability`);
   } finally { for (const item of mounted.reverse()) await item.close(); }
 });
 

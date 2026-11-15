@@ -15,6 +15,7 @@ import {
 import { createTimelineKernelState, createTimelineVersionSnapshot } from "../src/shell/video-editor/timeline-capability-engine.ts";
 
 const tt = (text) => text;
+const textDefaults = { font_family: "sans-serif", italic: false, underline: false, strike: false, line_height: 1.3, letter_spacing: 0, vertical_text: false };
 const useUi = dataModule("export const useUI = () => (text) => text;");
 const adapterModule = await import(await compileModule("src/shell/video-editor/use-video-timeline-selection-adapter.ts", {
   "../../i18n/ui/useUI": useUi,
@@ -58,7 +59,7 @@ function target(initial = fixture()) {
   };
 }
 
-test("Timeline declares only renderable text capabilities and a conditional replace inspector", () => {
+test("Timeline declares rendered text and image styles alongside the Library replacement entry", () => {
   const doc = fixture();
   const raw = videoClipSelection(findClip(doc, "text"), tt, doc);
   const resolved = resolveSelectionAdapterContext(selectionAdapterContext(raw), tt);
@@ -66,13 +67,16 @@ test("Timeline declares only renderable text capabilities and a conditional repl
   for (const id of ["list", "case", "clear-format"]) assert.ok(canon.controls.some((control) => control.canonId === id), id);
   assert.equal(resolved.controls.find((control) => control.id === "font-size").unit, "px");
   assert.equal(resolved.controls.find((control) => control.id === "case").kind, "action");
-  for (const id of ["font-family", "italic", "underline", "strike", "line-height", "link", "letter-spacing", "indent-increase", "indent-decrease"]) {
+  for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "vertical-text"]) {
+    assert.ok(raw.controls.some((control) => control.id === id), id);
+  }
+  for (const id of ["link", "indent-increase", "indent-decrease"]) {
     assert.equal(raw.controls.some((control) => control.id === id), false, id);
   }
-  assert.deepEqual(raw.controls.find((control) => control.id === "align").options.map((option) => option.value), ["left", "center", "right"]);
+  assert.deepEqual(raw.controls.find((control) => control.id === "align").options.map((option) => option.value), ["left", "center", "right", "justify"]);
   const image = videoClipSelection(findClip(doc, "image"), tt, doc);
-  for (const id of ["replace-source", "crop", "radius", "border", "brightness", "contrast", "saturation", "image-fit"]) {
-    assert.equal(image.controls.some((control) => control.id === id), false, id);
+  for (const id of ["crop-x", "crop-y", "crop-width", "crop-height", "radius", "border-width", "border-color", "brightness", "contrast", "saturation", "image-fit", "alt"]) {
+    assert.ok(image.controls.some((control) => control.id === id), id);
   }
   doc.tracks[1].clips.push({ ...doc.tracks[1].clips[0], id: "same-ref", source_ref: {
     path: "image/first.png", revisionId: "00000000-0000-0000-0000-000000000011", artifactId: "00000000-0000-0000-0000-000000000001",
@@ -144,7 +148,7 @@ test("Clear format resets supported and legacy styles while retaining timing, pl
   editor.reopen();
   const clip = editor.clip();
   assert.equal(clip.text, "Authored text");
-  assert.deepEqual(clip.style, { font_size: 64, color: "#ffffff", bold: false, align: "center", x: 0.7, y: 0.4 });
+  assert.deepEqual(clip.style, { ...textDefaults, font_size: 64, color: "#ffffff", background: undefined, bold: false, align: "center", x: 0.7, y: 0.4 });
   assert.equal(clip.start_ms, before.start_ms);
   assert.equal(clip.duration_ms, before.duration_ms);
   assert.equal(clip.id, before.id);
@@ -194,7 +198,7 @@ test("Public replacement clears an old private source reference and unsupported 
   editor.reopen();
   assert.equal(editor.clip("image").source_ref, undefined);
   assert.equal(editor.clip("image").source_url, "https://media.example/public.png");
-  for (const id of ["brightness", "contrast", "saturation", "image-fit", "italic", "indent-increase"]) assert.equal(editor.command(id, 1, "image"), false, id);
+  for (const id of ["italic", "indent-increase", "unknown-image-command"]) assert.equal(editor.command(id, 1, "image"), false, id);
 });
 
 test("Real preview paints transformed text, cleared styles and the replaced image source", async () => {
@@ -215,7 +219,7 @@ test("Real preview paints transformed text, cleared styles and the replaced imag
   const images = [];
   const ctx = new Proxy({
     measureText: (text) => ({ width: text.length * 20 }),
-    fillText(text) { texts.push({ text, font: this.font, color: this.fillStyle, align: this.textAlign }); },
+    fillText(text, x, y) { texts.push({ text, x, y, font: this.font, color: this.fillStyle, align: this.textAlign }); },
     drawImage(image) { images.push(image.src); },
   }, { get: (object, name) => object[name] ?? (() => {}) });
   const canvas = { width: 1280, height: 720, getContext: () => ctx };
@@ -233,7 +237,8 @@ test("Real preview paints transformed text, cleared styles and the replaced imag
     assert.equal(texts[0].text, "Reset");
     assert.match(texts[0].font, /^400 64px /);
     assert.equal(texts[0].color, "#ffffff");
-    assert.equal(texts[0].align, "center");
+    assert.equal(texts[0].align, "left", "glyph drawing uses a left anchor after calculating paragraph alignment");
+    assert.equal(texts[0].x + ctx.measureText("Reset").width / 2, editor.clip().style.x * canvas.width, "the visible text remains centered on its paragraph anchor");
     const doc = editor.doc;
     doc.tracks[1].clips.push({ id: "public", start_ms: 3000, duration_ms: 1000, source_url: "https://media.example/replaced.png" });
     editor.command("replace-source", "public", "image");
