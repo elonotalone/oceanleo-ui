@@ -1,0 +1,58 @@
+Device 菜单 / 原生对话 / 终端文件里先存成常量再 tt(x) 的中文同样有译文
+React's dev double effect (StrictMode) sends exactly one request and does not strand the panel
+S10 every GATEWAY_BASE fetch includes credentials
+a different display with identical dimensions still needs a new frame, including negotiation status updates
+a panel left in an error state sends nothing more until 重新连接 is clicked
+a reloaded /devices?desktop=<id> shows the desktop but asks the computer only after 连接
+all deny reasons render a human action on 那台电脑
+all five advanced editor paths enforce the shared source contract
+an open desktop survives polls and same-person auth events; only another account closes it
+artifact-client default timeout follows the host-aware helper
+clone-shell names host nav from ariaLabel or label on real links/buttons
+desktop OAuth exchanges a PKCE code through host HTTP and persists the resulting session
+desktop shared logout delegates host local removal and never requests global revocation
+flush 失败时云朵进入 error，切模式返回值仍是 true
+geometry loss and rotation discard stale point mapping; only a matching fresh frame restores input
+host-mode authFetch falls back to __OCEANLEO_CLIENT_WEB__.fetch
+host-mode authFetch uses injected fetch and skips the 2500ms rewrite
+host-mode library timeout is 45s
+hostBrowserClient pins storageKey to the website cookie name
+hosted native login waits for host durable completion and every provider uses the same browser entry
+inline fallback tool panel expands and contracts without blanking its content
+login dialog email, password, and continue have accessible names
+native SDK current revocation clears once without an unconditional null publication
+native SDK stale JS snapshot cannot remove native background or unsaved rotation
+native current revocation retries a failed durable clear conditionally and preserves later login
+native current revocation retries a refused clear without reviving the rejected snapshot
+native lost clear acknowledgement ends only the rejected JS snapshot and keeps retry conditional
+native mismatch reply B stays a reader snapshot after external logout or account C
+native session remains authoritative across SDK expiry margin and transient recovery
+no ticket (restored, not clicked) shows 连接; an omitted ticket keeps today's connect-on-open
+shared composer inputs and send retain accessible names
+src 里每一处「effect 依赖带 tt 且体内写 state」都必须有登记
+tests/e2-result-canvas-stability.test.mjs
+tests/e2-right-pane-claims.test.mjs
+tests/eas-w13-right-maximize.test.mjs
+tests/g3-website-material-restore.test.mjs
+the corner + opens the card exactly once and does not run addAction
+the panel sends one session request per click ticket; remounted with the spent ticket it waits for 连接
+unconfigured library timeout stays 20s
+不许内部对冲：单个文件的点位数不得超过它今天的数
+五个目录里的每一处本机命中，都要么在硬门里、要么在白名单里
+产物与 HEAD 的源码同步：在 HEAD 上重跑 build:css，结果必须逐字节一致
+全仓 tt() key 的缺口只在历史基线之内，没有长出新的
+判据 1b：仍跑 Tailwind 默认档的站点数只减不增
+判据 2a：清单外不许出现裸时长
+同一个文件里冒出第二处引信也拦得住（按登记条数核对）
+壳：默认后台离开，只有 mounted iframe 等待 flush；confirmation 只接重试
+当前素材搜索与空态文案在 17 语词典中都有真实译文
+手写段没有裸曲线、没有非零裸时长（红线 9）
+断言 A：裸时长只减不增
+欠账只减不增：写死了小命中区的交互点位不得超过预算
+欠账只减不增：剩余处数不得超过 PENDING_BUDGET
+没有测试拿未登记的仓外绝对路径当夹具
+电脑对话相关文件里的 tt() 字面量在 16 个语种里都有译文
+线程 store：只装该根消息下的回帖，发送自带 thread_root_id
+线程回帖不进主线；根消息的回复摘要会刷新
+表情：事件覆盖摘要并重算「我」；本地点击先改后发请求，失败回滚
+进入桌面 asks once; back closes; forward restores the view without asking again

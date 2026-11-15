@@ -1,0 +1,21 @@
+{
+  "source_base": "7be10456",
+  "verified_head": "e99e2af2",
+  "test_exit": 1,
+  "test_summary": {
+    "tests": 10181,
+    "pass": 10088,
+    "fail": 47,
+    "cancelled": 15,
+    "skipped": 31,
+    "duration_ms": 1052830.241959
+  },
+  "baseline_unique": 77,
+  "actual_unique": 58,
+  "added_titles": [
+    "产物与 HEAD 的源码同步：在 HEAD 上重跑 build:css，结果必须逐字节一致"
+  ],
+  "baseline_not_reproduced": 20,
+  "retained": 57,
+  "baseline_css_control_exit": 0
+}
