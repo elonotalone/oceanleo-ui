@@ -53,11 +53,10 @@ const REPO_ROOT = path.resolve(SOURCE_ROOT, "..");
  * 这个数只许改小。想让它变小就给调用点补上 workbook 上下文，或迁到
  * `evaluateGridCellInWorkbook`。
  */
-const UNSAFE_BUDGET = 4;
+const UNSAFE_BUDGET = 3;
 
 /** 那 4 处在哪儿，让 reviewer 不用 grep 就看得见欠账。 */
 const UNSAFE_BY_FILE = {
-  "shell/doc-editors/GridWorkbookExport.ts": 1,
   "shell/doc-editors/grid-format/conditional-format.ts": 1,
   "shell/doc-editors/grid-structure.ts": 2,
 };
@@ -68,7 +67,6 @@ const UNSAFE_BY_FILE = {
  * 二，谁哪天把上下文摘掉，这张表和上面那张会同时变，不会静悄悄从这边挪到那边。
  */
 const CONTEXTUAL_BY_FILE = {
-  "shell/doc-editors/GridWorkbookExport.ts": 3,
   "shell/doc-editors/grid-format/conditional-format.ts": 1,
   "shell/doc-editors/grid-format/data-validation.ts": 1,
 };
@@ -78,6 +76,9 @@ const CONTEXTUAL_BY_FILE = {
  * 共享工作树上随时挂着别人未提交的改动，在那儿量出来的数标定的是一棵 git 里
  * 并不存在的树。下面「基线自检」那条用例会把这个 commit 的 `src/` 解出来重量一遍。
  */
+// 固定历史基线仍包含当时存在的写入器；当前树预算已减去这一处缺陷。
+const BASELINE_UNSAFE_BY_FILE = { ...UNSAFE_BY_FILE, "shell/doc-editors/GridWorkbookExport.ts": 1 };
+const BASELINE_CONTEXTUAL_BY_FILE = { ...CONTEXTUAL_BY_FILE, "shell/doc-editors/GridWorkbookExport.ts": 3 };
 const BASELINE_COMMIT = "acd81924da31c0be9b6d7035b9de3a4bca8a051c";
 
 function sourceFiles(directory) {
@@ -215,7 +216,6 @@ test("旧求值入口里「够不着隔壁表」的调用点只减不增", () =>
   assert.deepEqual(
     SCAN.unsafe.map((site) => `${site.file}:${site.line}`).sort(),
     [
-      "shell/doc-editors/GridWorkbookExport.ts:132",
       "shell/doc-editors/grid-format/conditional-format.ts:447",
       "shell/doc-editors/grid-structure.ts:1583",
       "shell/doc-editors/grid-structure.ts:1608",
@@ -338,16 +338,16 @@ test("基线自检：两个数字与 BASELINE_COMMIT 那棵干净树逐字对得
   );
   assert.deepEqual(
     measured.value.unsafe,
-    UNSAFE_BY_FILE,
-    `UNSAFE_BY_FILE 写的是 ${JSON.stringify(UNSAFE_BY_FILE)}，但 ${BASELINE_COMMIT} 的` +
+    BASELINE_UNSAFE_BY_FILE,
+    `BASELINE_UNSAFE_BY_FILE 写的是 ${JSON.stringify(BASELINE_UNSAFE_BY_FILE)}，但 ${BASELINE_COMMIT} 的` +
       `**干净检出**上实测 ${JSON.stringify(measured.value.unsafe)}。` +
       `两种可能：(a) 这个分布是在脏工作树上量的——那就换一棵干净树重量；` +
       `(b) 欠账已经清掉了但 BASELINE_COMMIT 没跟着换——两个要一起改。`,
   );
-  assert.deepEqual(measured.value.contextual, CONTEXTUAL_BY_FILE);
+  assert.deepEqual(measured.value.contextual, BASELINE_CONTEXTUAL_BY_FILE);
   assert.equal(
     Object.values(measured.value.unsafe).reduce((sum, n) => sum + n, 0),
-    UNSAFE_BUDGET,
+    UNSAFE_BUDGET + 1,
     "UNSAFE_BUDGET 与干净树实测处数对不上",
   );
 });

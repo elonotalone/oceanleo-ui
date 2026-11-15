@@ -333,8 +333,8 @@ test("ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 vi
   assert.ok(body.indexOf("optionsRef.current.collab?.readOnly") > 0 && body.indexOf("optionsRef.current.collab?.readOnly") < body.indexOf("makeExportBlob"));
 });
 
-test("PPT 「新建一页」按钮（舞台栏与页面栏）只读时 disabled 且提示「你只能查看」；快捷键只读时只留翻页", () => {
-  for (const path of ["src/shell/doc-editors/DeckStage.tsx", "src/shell/doc-editors/DeckSlideRail.tsx"]) {
+test("PPT 「新建一页」按钮（舞台栏）只读时 disabled 且提示「你只能查看」；快捷键只读时只留翻页", () => {
+  for (const path of ["src/shell/doc-editors/DeckStage.tsx"]) {
     const src = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
     assert.match(src, /onClick=\{editor\.addSlide\}\s*disabled=\{editor\.readOnly\}/, path);
     assert.match(src, /title=\{editor\.readOnly \? tt\("你只能查看"\) : tt\("新建一页"\)\}/, path);
@@ -347,8 +347,8 @@ test("PPT 「新建一页」按钮（舞台栏与页面栏）只读时 disabled 
   assert.ok(gate < shortcuts.indexOf("patchElementTransient"));
 });
 
-test("PPT 「新建一页」按钮（舞台栏与页面栏）只读时 disabled 且提示「你只能查看」；快捷键只读时只留翻页", () => {
-  for (const path of ["src/shell/doc-editors/DeckStage.tsx", "src/shell/doc-editors/DeckSlideRail.tsx"]) {
+test("PPT 「新建一页」按钮（舞台栏）只读时 disabled 且提示「你只能查看」；快捷键只读时只留翻页", () => {
+  for (const path of ["src/shell/doc-editors/DeckStage.tsx"]) {
     const src = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
     assert.match(src, /onClick=\{editor\.addSlide\}\s*disabled=\{editor\.readOnly\}/, path);
     assert.match(src, /title=\{editor\.readOnly \? tt\("你只能查看"\) : tt\("新建一页"\)\}/, path);

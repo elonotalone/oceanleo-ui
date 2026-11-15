@@ -12,8 +12,11 @@ import {
 } from "../src/shell/media-editors/Model3DRouteHistory.ts";
 
 register("./ts-extension-loader.mjs", import.meta.url);
-const { buildGridRouteWorkbookBlob } = await import(
-  "../src/shell/doc-editors/GridWorkbookExport.ts"
+const { buildGridXlsxFromUniverSnapshot } = await import(
+  "../src/shell/doc-editors/grid-univer/xlsx-export.ts"
+);
+const { gridSheetsToUniverSnapshot } = await import(
+  "../src/shell/doc-editors/grid-univer/snapshot.ts"
 );
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
@@ -166,7 +169,13 @@ test("Grid formulas, formats, merges and sheets survive XLSX", async () => {
       conditionalFormats: [],
     },
   ];
-  const blob = await buildGridRouteWorkbookBlob(sheets, { headerRow: true });
+  const { data } = gridSheetsToUniverSnapshot(sheets);
+  // 真实快照的公式缓存由 Univer 计算；夹具给定对应结果。
+  data.sheets.budget.cellData[1][2].v = 135.6;
+  data.resources = [{ name: "SHEET_FILTER_PLUGIN", data: JSON.stringify({
+    budget: { ref: { startRow: 0, endRow: 1, startColumn: 0, endColumn: 2 } },
+  }) }];
+  const { blob } = await buildGridXlsxFromUniverSnapshot(data);
   const importedExcelJS = await import("exceljs");
   const ExcelJS =
     "Workbook" in importedExcelJS ? importedExcelJS : importedExcelJS.default;

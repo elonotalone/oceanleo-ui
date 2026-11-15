@@ -13,7 +13,7 @@ test("advanced editor surfaces use semantic theme tokens", () => {
     "../src/shell/WorkspaceLibrary.tsx",
     "../src/shell/MaterialLibrary.tsx",
     "../src/shell/LibraryLayout.tsx",
-    "../src/shell/doc-editors/RichDocEditor.tsx",
+    "../src/shell/doc-editors/RichDocStage.tsx",
     "../src/shell/doc-editors/GridUniverStage.tsx",
     "../src/shell/video-editor/VideoTimelineEditor.tsx",
     "../src/shell/video-editor/TimelineArea.tsx",

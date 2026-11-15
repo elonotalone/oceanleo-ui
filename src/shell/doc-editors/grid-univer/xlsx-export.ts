@@ -18,12 +18,14 @@
  * 超链接在单元格富文本 `p.body.customRanges`（rangeType 0）里，不在资源里。
  */
 import type { IWorkbookData } from "@univerjs/presets";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { fetchMediaBlob } from "../../../lib/media-proxy";
 import { gridImageDataUrlFromBlob } from "./material-image";
 import { sanitizeSheetName } from "../grid-model";
 import { formatWithNumberFormat, parseGridDateValue } from "../grid-format/number-format";
-import type { GridSheet } from "../grid-model";
+import type { GridIrAttributionEntry, GridSheet } from "../grid-model";
 import { translateGridFormula } from "../grid-structure";
+import { evaluateGridCellInWorkbookTyped, type GridWorkbookContext } from "../grid-formula";
 import { AUTOSAVE_ERROR_NETWORK } from "../../../lib/auth/autosave-error-message";
 
 type Json = Record<string, unknown>;
@@ -46,6 +48,14 @@ export interface GridUniverXlsxResult {
   blob: Blob;
   /** 没能写进 XLSX 的内容，每条一句人话；空数组 = 没有降级。 */
   dropped: string[];
+}
+
+interface GridXlsxExportOptions {
+  title?: string;
+  /** 旧载体的署名仍随 XLSX 携带；普通快照无需追加工作表。 */
+  attribution?: { entries: readonly GridIrAttributionEntry[] };
+  /** 给定时固定文件属性与 ZIP 时间，供需要可复现产物的调用者使用。 */
+  createdAt?: Date;
 }
 
 export const GRID_XLSX_MIME =
@@ -287,6 +297,61 @@ function textOf(cell: Json): string {
     : "";
 }
 
+function sharedFormulaMasters(cellData: Json) {
+  const masters = new Map<string, { formula: string; row: number; col: number }>();
+  for (const [row, line] of Object.entries(cellData)) {
+    if (!isObject(line)) continue;
+    for (const [col, raw] of Object.entries(line)) {
+      if (!isObject(raw) || typeof raw.f !== "string" || !raw.f.trim() || typeof raw.si !== "string" || !raw.si) continue;
+      if (!masters.has(raw.si)) masters.set(raw.si, { formula: raw.f.trim(), row: Number(row), col: Number(col) });
+    }
+  }
+  return masters;
+}
+
+function cellFormula(cell: Json, row: number, col: number, masters: ReturnType<typeof sharedFormulaMasters>): string {
+  const formula = typeof cell.f === "string" ? cell.f.trim() : "";
+  if (formula) return formula;
+  const master = typeof cell.si === "string" && cell.si ? masters.get(cell.si) : undefined;
+  return master ? translateGridFormula(master.formula.startsWith("=") ? master.formula : `=${master.formula}`, row - master.row, col - master.col) : "";
+}
+
+/** 仅在公式缺缓存时使用旧求值器补缓存；完整 Univer 函数仍由 Excel 重算。 */
+function formulaWorkbook(snapshot: Partial<IWorkbookData>): GridWorkbookContext {
+  const rowsByName = new Map<string, string[][]>();
+  const namedSheets = new Map<string, string[][]>();
+  for (const [id, sheet] of Object.entries(snapshot.sheets ?? {})) {
+    if (!isObject(sheet)) continue;
+    const cells = isObject(sheet.cellData) ? sheet.cellData : {};
+    const masters = sharedFormulaMasters(cells);
+    const rows: string[][] = [];
+    for (const [rowKey, line] of Object.entries(cells)) {
+      const row = Number(rowKey);
+      if (!Number.isInteger(row) || row < 0 || !isObject(line)) continue;
+      rows[row] = [];
+      for (const [colKey, raw] of Object.entries(line)) {
+        const col = Number(colKey);
+        if (!Number.isInteger(col) || col < 0 || !isObject(raw)) continue;
+        const formula = cellFormula(raw, row, col, masters);
+        rows[row][col] = formula ? `=${stripEq(formula)}` : textOf(raw);
+      }
+    }
+    rowsByName.set(id.toLowerCase(), rows);
+    namedSheets.set(String(sheet.name || id).toLowerCase(), rows);
+  }
+  // 与 gridWorkbookContext 一致：用户表名优先于另一张表碰巧相同的内部 ID。
+  for (const [name, rows] of namedSheets) rowsByName.set(name, rows);
+  const names = resourceJson(snapshot, "SHEET_DEFINED_NAME_PLUGIN");
+  const namedRanges = new Map<string, string>();
+  const visit = (entry: unknown): void => {
+    if (!isObject(entry)) return;
+    if (typeof entry.name === "string") namedRanges.set(entry.name.toUpperCase(), stripEq(entry.formulaOrRefString));
+    else Object.values(entry).forEach(visit);
+  };
+  visit(names);
+  return { sheetRows: (name) => rowsByName.get(name.toLowerCase()), namedRange: (name) => namedRanges.get(name.toUpperCase()) };
+}
+
 function cachedResult(
   cell: Json,
 ): number | string | boolean | Date | undefined {
@@ -429,7 +494,7 @@ function buildValidation(
     const source = String(rule.formula1 ?? "").trim();
     if (!source) return null;
     const rangeLike = /^=?(?:(?:'[^']+'|[A-Za-z0-9_一-龥.]+)!)?\$?[A-Za-z]{1,3}\$?\d+(?::\$?[A-Za-z]{1,3}\$?\d+)?$/.test(source);
-    if (rangeLike) {
+    if (rangeLike || source.startsWith("=")) {
       formulae = [stripEq(source)];
     } else {
       const list = source.replace(/^=/, "");
@@ -531,16 +596,27 @@ function textLiteral(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
 
+interface ConditionalXmlPatch {
+  stops: Set<number>;
+  nativeTypes: Map<number, "duplicateValues" | "uniqueValues">;
+}
+
 function applyConditionalFormats(
   worksheet: import("exceljs").Worksheet,
   rules: unknown[],
   maxRow: number,
   maxCol: number,
   dropped: Set<string>,
-): void {
+): ConditionalXmlPatch {
   let priority = 1;
+  const stopPriorities = new Set<number>();
+  const nativeTypes: ConditionalXmlPatch["nativeTypes"] = new Map();
   for (const entry of rules) {
     if (!isObject(entry) || !isObject(entry.rule)) continue;
+    if (entry.disabled === true) {
+      dropped.add("已停用的条件格式没有写入（XLSX 没有停用状态，写入会立即生效）");
+      continue;
+    }
     const rule = entry.rule;
     const rects = (Array.isArray(entry.ranges) ? entry.ranges : [])
       .map((range) => toRect(range, maxRow, maxCol))
@@ -567,6 +643,7 @@ function applyConditionalFormats(
     } else if (type === "dataBar") {
       const config = isObject(rule.config) ? rule.config : {};
       const color = argb(config.positiveColor) || "FF638EC6";
+      if (config.negativeColor) dropped.add("数据条的负值颜色没有写入（保留正值颜色）");
       built = {
         type: "dataBar",
         priority,
@@ -580,7 +657,7 @@ function applyConditionalFormats(
     } else if (type === "iconSet") {
       const config = (Array.isArray(rule.config) ? rule.config : []).filter(isObject);
       const iconType = String(config[0]?.iconType || "");
-      const known = /^[345](Arrows|ArrowsGray|Boxes|Quarters|Rating|Flags|Signs|Stars|Symbols|Symbols2|TrafficLights1|TrafficLights2|Triangles|RedToBlack|TrafficLights)$/.test(iconType);
+      const known = /^(?:5(?:Arrows|ArrowsGray|Boxes|Quarters|Rating)|4(?:Arrows|ArrowsGray|Rating|RedToBlack|TrafficLights)|3(?:Arrows|ArrowsGray|Flags|Signs|Stars|Symbols|Symbols2|TrafficLights1|TrafficLights2|Triangles))$/.test(iconType);
       if (known && config.length >= 2) {
         built = {
           type: "iconSet",
@@ -596,7 +673,18 @@ function applyConditionalFormats(
         } as import("exceljs").ConditionalFormattingRule;
       }
     } else if (type === "highlightCell") {
-      if (subType === "number" && (CF_CELLIS[operator] || numberExpression(operator, origin, ["0", "0"]))) {
+      if (subType === "duplicateValues" || subType === "uniqueValues") {
+        // 先让 ExcelJS 登记差异样式，再写回原生规则，避免 COUNTIF 把 * / ? 当通配符。
+        built = { type: "expression", formulae: ["FALSE"], priority, style };
+        nativeTypes.set(priority, subType);
+      } else if (subType === "text" && (operator === "containsBlanks" || operator === "notContainsBlanks")) {
+        built = {
+          type: "containsText",
+          operator,
+          priority,
+          style,
+        };
+      } else if (subType === "number" && (CF_CELLIS[operator] || numberExpression(operator, origin, ["0", "0"]))) {
         const value = rule.value;
         const formulae = Array.isArray(value)
           ? value.map(literal)
@@ -666,12 +754,14 @@ function applyConditionalFormats(
       dropped.add(`一条条件格式（${cfLabel(type, subType, operator)}）没有对应的 XLSX 规则`);
       continue;
     }
+    if (entry.stopIfTrue === true) stopPriorities.add(priority);
     worksheet.addConditionalFormatting({
       ref: rects.map(sqref).join(" "),
       rules: [built],
     });
     priority += 1;
   }
+  return { stops: stopPriorities, nativeTypes };
 }
 
 function cfLabel(type: string, subType: string, operator: string): string {
@@ -712,22 +802,69 @@ function quoteSheet(name: string): string {
   return /^[A-Za-z0-9_]+$/.test(name) ? name : `'${name.replace(/'/g, "''")}'`;
 }
 
+function xmlText(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+}
+
+/** 保留旧写入器的许可元数据；ExcelJS 本身没有 custom properties 接口。 */
+function attributionProperties(entries: readonly GridIrAttributionEntry[]): string {
+  const values = {
+    License: entries.map((entry) => entry.licenseCode).join("; "),
+    LicenseUrl: entries.map((entry) => entry.licenseUrl).join(" "),
+    Attribution: entries.map((entry) => entry.text).join(" / "),
+    ProjectSchema: "oceanleo.grid.v1",
+  };
+  return `<?xml version="1.0" encoding="UTF-8"?><Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/custom-properties" xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">${Object.entries(values).map(([name, value], index) => `<property fmtid="{D5CDD505-2E9C-101B-9397-08002B2CF9AE}" pid="${index + 2}" name="${name}"><vt:lpwstr>${xmlText(value)}</vt:lpwstr></property>`).join("")}</Properties>`;
+}
+
+function finishXlsx(
+  bytes: Uint8Array,
+  patches: Map<number, ConditionalXmlPatch>,
+  options: GridXlsxExportOptions,
+): Uint8Array<ArrayBuffer> {
+  if (!patches.size && !options.attribution && !options.createdAt) return new Uint8Array(bytes);
+  const files = unzipSync(bytes);
+  for (const [id, patch] of patches) {
+    const path = `xl/worksheets/sheet${id}.xml`;
+    let xml = strFromU8(files[path]).replace(/<cfRule\b[^>]*>/g, (tag) => {
+      const priority = Number(/\bpriority="(\d+)"/.exec(tag)?.[1]);
+      return patch.stops.has(priority) ? tag.replace(/(\/?)>$/, ' stopIfTrue="1"$1>') : tag;
+    });
+    xml = xml.replace(/<cfRule\b([^>]*\btype="expression"[^>]*)>[\s\S]*?<\/cfRule>/g, (rule, attrs: string) => {
+      const type = patch.nativeTypes.get(Number(/\bpriority="(\d+)"/.exec(attrs)?.[1]));
+      return type ? `<cfRule${attrs.replace('type="expression"', `type="${type}"`)}/>` : rule;
+    });
+    files[path] = strToU8(xml);
+  }
+  if (options.attribution) {
+    files["docProps/custom.xml"] = strToU8(attributionProperties(options.attribution.entries));
+    files["[Content_Types].xml"] = strToU8(strFromU8(files["[Content_Types].xml"]).replace("</Types>", '<Override PartName="/docProps/custom.xml" ContentType="application/vnd.openxmlformats-officedocument.custom-properties+xml"/></Types>'));
+    files["_rels/.rels"] = strToU8(strFromU8(files["_rels/.rels"]).replace("</Relationships>", '<Relationship Id="oceanleoAttribution" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/custom-properties" Target="docProps/custom.xml"/></Relationships>'));
+  }
+  // 固定创建时间时，ZIP 时间也固定；相同输入可重现旧写入器的确定性字节。
+  return new Uint8Array(zipSync(files, { level: 6, mtime: options.createdAt ?? new Date() }));
+}
+
 /** 从 `Univer 快照` 生成 XLSX；失败直接抛，不吞。 */
 export async function buildGridXlsxFromUniverSnapshot(
   data: Partial<IWorkbookData> | null | undefined,
-  options: { title?: string } = {},
+  options: GridXlsxExportOptions = {},
 ): Promise<GridUniverXlsxResult> {
   const snapshot = data || {};
   const imported = await loadExcelJs();
   const ExcelJS = imported.Workbook ? imported : (imported.default ?? imported);
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "OceanLeo";
-  workbook.created = new Date();
+  workbook.created = options.createdAt ?? new Date();
+  workbook.modified = workbook.created;
   workbook.title = options.title || String(snapshot.name || "");
   // 缓存值缺失的公式让 Excel 打开时重算，而不是显示 0。
   workbook.calcProperties = { fullCalcOnLoad: true };
 
   const dropped = new Set<string>();
+  const conditionalPatches = new Map<number, ConditionalXmlPatch>();
+  let calculation: GridWorkbookContext | undefined;
   const sheets = isObject(snapshot.sheets) ? snapshot.sheets : {};
   const order =
     Array.isArray(snapshot.sheetOrder) && snapshot.sheetOrder.length > 0
@@ -769,18 +906,7 @@ export async function buildGridXlsxFromUniverSnapshot(
     let maxCol = 0;
 
     // 共享公式：从格按偏移翻译主公式。
-    const masters = new Map<string, { formula: string; row: number; col: number }>();
-    for (const [rowKey, line] of Object.entries(cellData)) {
-      if (!isObject(line)) continue;
-      for (const [colKey, raw] of Object.entries(line)) {
-        if (!isObject(raw)) continue;
-        const f = typeof raw.f === "string" ? raw.f.trim() : "";
-        const si = typeof raw.si === "string" ? raw.si : "";
-        if (f && si && !masters.has(si)) {
-          masters.set(si, { formula: f.startsWith("=") ? f : `=${f}`, row: Number(rowKey), col: Number(colKey) });
-        }
-      }
-    }
+    const masters = sharedFormulaMasters(cellData);
 
     for (const [rowKey, line] of Object.entries(cellData)) {
       const row = Number(rowKey);
@@ -790,20 +916,20 @@ export async function buildGridXlsxFromUniverSnapshot(
         if (!Number.isInteger(col) || col < 0 || !isObject(raw)) continue;
         const cell = worksheet.getCell(row + 1, col + 1);
         const style = resolveStyle(raw.s, snapshot.styles);
-        let formula = typeof raw.f === "string" ? raw.f.trim() : "";
-        if (!formula && typeof raw.si === "string" && raw.si) {
-          const master = masters.get(raw.si);
-          if (master) {
-            formula = translateGridFormula(master.formula, row - master.row, col - master.col);
-          }
-        }
+        const formula = cellFormula(raw, row, col, masters);
         const body = documentBody(raw);
         const link = hyperlinkOf(body);
         const rich = richTextOf(body);
         let hasContent = true;
         if (formula) {
           const text = formula.startsWith("=") ? formula.slice(1) : formula;
-          const result = cachedResult(raw);
+          let result = cachedResult(raw);
+          if (result === undefined) {
+            calculation ??= formulaWorkbook(snapshot);
+            const computed = evaluateGridCellInWorkbookTyped(calculation, String(sheet.name || sheetId), row, col);
+            if (computed.ok) result = computed.value;
+            else dropped.add(`工作表「${sheetName}」${colName(col)}${row + 1} 的公式缺少缓存值，需在表格软件中重算`);
+          }
           cell.value = {
             formula: text,
             ...(result !== undefined ? { result } : {}),
@@ -911,7 +1037,8 @@ export async function buildGridXlsxFromUniverSnapshot(
 
     // 条件格式。
     const cfRules = Array.isArray(formats[sheetId]) ? (formats[sheetId] as unknown[]) : [];
-    applyConditionalFormats(worksheet, cfRules, Math.max(rowCount, 1) - 1, Math.max(colCount, 1) - 1, dropped);
+    const patch = applyConditionalFormats(worksheet, cfRules, Math.max(rowCount, 1) - 1, Math.max(colCount, 1) - 1, dropped);
+    if (patch.stops.size || patch.nativeTypes.size) conditionalPatches.set(worksheet.id, patch);
 
     // 筛选：范围写进去，具体的筛选条件 XLSX 里不重放。
     const filter = isObject(filters[sheetId]) ? (filters[sheetId] as Json) : null;
@@ -1008,9 +1135,19 @@ export async function buildGridXlsxFromUniverSnapshot(
     }
   }
 
+  if (options.attribution) {
+    const entries = options.attribution.entries;
+    const worksheet = workbook.addWorksheet(uniqueName("署名", usedNames));
+    worksheet.addRow(["来源与署名", "许可代码", "许可链接"]);
+    for (const entry of entries) worksheet.addRow([entry.text, entry.licenseCode, entry.licenseUrl]);
+    worksheet.views = [{ state: "frozen", ySplit: 1 }];
+    worksheet.getRow(1).font = { bold: true };
+    workbook.description = entries.map((entry) => `${entry.text}（${entry.licenseCode} ${entry.licenseUrl}）`).join(" / ");
+    workbook.keywords = entries.map((entry) => entry.licenseCode).join("; ");
+  }
   const bytes = await workbook.xlsx.writeBuffer();
   return {
-    blob: new Blob([new Uint8Array(bytes as ArrayBuffer)], { type: GRID_XLSX_MIME }),
+    blob: new Blob([finishXlsx(new Uint8Array(bytes as ArrayBuffer), conditionalPatches, options)], { type: GRID_XLSX_MIME }),
     dropped: [...dropped],
   };
 }

@@ -32,6 +32,11 @@ function javascriptModuleFormat(url) {
 
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    // 本用例只走 GridSheet → 快照。反向富文本提取在 snapshot 专项中验证，
+    // 这里不加载需要浏览器环境的 Univer UI 依赖；误走反向函数时立即失败。
+    if (specifier === "@univerjs/presets" && context.parentURL?.endsWith("/grid-univer/snapshot.ts")) {
+      return { url: 'data:text/javascript,export function getPlainText(){throw new Error("Unexpected rich-text extraction in XLSX fixture conversion")}', shortCircuit: true };
+    }
     if (specifier.startsWith(".") && context.parentURL) {
       const unresolved = new URL(specifier, context.parentURL);
       for (const extension of [".ts", ".tsx"]) {
@@ -95,8 +100,14 @@ const { importPptxDeck } = await import(
 const { normalizeDeckDocument } = await import(
   "../src/shell/doc-editors/deck-schema.ts"
 );
-const { buildGridWorkbookBlob, loadGridFile } = await import(
+const { loadGridFile } = await import(
   "../src/shell/doc-editors/grid-model.ts"
+);
+const { buildGridXlsxFromUniverSnapshot } = await import(
+  "../src/shell/doc-editors/grid-univer/xlsx-export.ts"
+);
+const { gridSheetsToUniverSnapshot } = await import(
+  "../src/shell/doc-editors/grid-univer/snapshot.ts"
 );
 const { tiptapJsonToDocxBlob } = await import(
   "../src/shell/doc-editors/docx-export.ts"
@@ -370,7 +381,7 @@ test("real XLSX load, mutate, save and reopen preserves sheets, formula and form
       conditionalFormats: [],
     },
   ];
-  const initial = await buildGridWorkbookBlob(fixture);
+  const { blob: initial } = await buildGridXlsxFromUniverSnapshot(gridSheetsToUniverSnapshot(fixture).data);
   assert.equal(initial.type, XLSX_MIME);
   await validateOfficePackageBlob(initial, "xlsx");
   const sheets = await loadGridFile(
@@ -380,7 +391,7 @@ test("real XLSX load, mutate, save and reopen preserves sheets, formula and form
   sheets[0].rows[1][1] = "168";
   sheets[1].rows[1][0] = "真实 XLSX 往返正文";
 
-  const saved = await buildGridWorkbookBlob(sheets);
+  const { blob: saved } = await buildGridXlsxFromUniverSnapshot(gridSheetsToUniverSnapshot(sheets).data);
   assert.equal(saved.type, XLSX_MIME);
   await validateOfficePackageBlob(saved, "xlsx");
   const reopened = await loadGridFile(

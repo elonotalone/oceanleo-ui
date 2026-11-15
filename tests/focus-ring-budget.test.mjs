@@ -264,7 +264,9 @@ const PENDING_OTHER_OWNERS = [];
  *     这种「环还在但看不见」，以及导出的类名契约常量。
  * 两个口径量的是不同的东西，37 才是「键盘用户真的会丢失位置」的点位数。
  */
-const PENDING_BUDGET = 37;
+const PENDING_BUDGET = 34;
+// 固定历史提交中另有已删除旧编辑器的 3 处；当前树不再给它留预算。
+const REMOVED_FOCUS_BUDGET = 3;
 
 /**
  * W04 本轮负责、已经清干净的文件：谁把没补偿的 `outline-none` 放回这些文件，立刻红。
@@ -285,7 +287,6 @@ const W04_CLEARED_FILES = [
 const FILE_BUDGET = new Map([
   ["src/pages/MyDatabasePage.tsx", 2],
   ["src/shell/AdvancedFontPicker.tsx", 1],
-  ["src/shell/AdvancedStructuredEditors.tsx", 3],
   ["src/shell/AiRecommendBox.tsx", 1],
   ["src/shell/AppMarket.tsx", 1],
   ["src/shell/AppShell.tsx", 1],
@@ -452,7 +453,7 @@ test("基线自检：三本冻结账与 BASELINE_COMMIT 那棵干净树逐字对
 
   assert.equal(
     probe.value.total,
-    PENDING_BUDGET,
+    PENDING_BUDGET + REMOVED_FOCUS_BUDGET,
     `PENDING_BUDGET 写的是 ${PENDING_BUDGET}，但 ${BASELINE_COMMIT.slice(0, 7)} 的` +
       `**干净检出**上实测 ${probe.value.total} 处。\n` +
       "三种可能：(a) 这个预算是在脏工作树上量的——换一棵干净树重量；\n" +
@@ -462,12 +463,13 @@ test("基线自检：三本冻结账与 BASELINE_COMMIT 那棵干净树逐字对
 
   // `FILE_BUDGET` 是「不许内部对冲」那条的全部依据，它自己必须也取自干净检出：
   // 逐文件对账，否则总数对得上而分布错了照样能糊过去。
+  const historicalFileBudget = new Map([...FILE_BUDGET, ["src/shell/AdvancedStructuredEditors.tsx", REMOVED_FOCUS_BUDGET]]);
   const mismatched = [];
   for (const [file, count] of [...probe.value.byFile].sort()) {
-    const budget = FILE_BUDGET.get(file);
+    const budget = historicalFileBudget.get(file);
     if (budget !== count) mismatched.push(`${file}：干净检出 ${count} 处，登记 ${budget ?? "无"}`);
   }
-  for (const file of [...FILE_BUDGET.keys()].sort()) {
+  for (const file of [...historicalFileBudget.keys()].sort()) {
     if (!probe.value.byFile.has(file)) mismatched.push(`${file}：干净检出上已清零，登记还留着`);
   }
   assert.deepEqual(

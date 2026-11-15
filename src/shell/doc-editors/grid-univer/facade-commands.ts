@@ -869,7 +869,7 @@ export const GRID_UNIVER_COMMANDS: readonly GridUniverCommand[] = [
     label: "导出",
     layer: "shell",
     delegatedTo:
-      "GridWorkbookExport.ts（exceljs）—— 新核的高保真导出在 Pro 包里，仲裁 A-13 不许用",
+      "grid-univer/xlsx-export.ts（exceljs），直接导出当前 Univer 快照",
   },
   {
     id: "grid.save",

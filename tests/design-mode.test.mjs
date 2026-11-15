@@ -33,14 +33,6 @@ import {
   importPsdToCarrier,
 } from "../src/shell/image-editor/design-mode/psd-import.ts";
 import {
-  PHOTO_ADJUST_SLIDERS,
-  PHOTO_ADJUST_TOGGLES,
-  PHOTO_CROP_PRESETS,
-  PHOTO_FILTER_PRESETS,
-  applyPhotoFilterPreset,
-  photoAdjustSectionsFor,
-} from "../src/shell/image-editor/design-mode/photo-adjust-panel.ts";
-import {
   AI_CAPABILITY_ENTRIES,
   applicableAiEntries,
   editBarAiEntries,
@@ -60,7 +52,6 @@ import {
   fabricCarrierStructureDigest,
   validateFabricCarrier,
 } from "../src/shell/image-editor/fabric-carrier-schema.ts";
-import { CROP_RATIOS, INITIAL_FILTERS } from "../src/shell/image-editor/types.ts";
 
 const rect = (left, top, width, height) => ({ left, top, width, height });
 
@@ -739,60 +730,6 @@ test("an empty PSD imports as an empty artboard and says so", () => {
   assert.equal(validateFabricCarrier(imported).ok, true);
   assert.deepEqual(imported.slots, []);
   assert.equal(warnings[0].code, "empty-layer");
-});
-
-// --------------------------------------------------------------------------
-// Photo adjustment panel
-// --------------------------------------------------------------------------
-
-test("every slider and toggle drives a filter the engine actually applies", () => {
-  const engineSource = readFileSync(
-    new URL("../src/shell/image-editor/editor-objects.ts", import.meta.url),
-    "utf8",
-  );
-  const buildFilters = engineSource.slice(engineSource.indexOf("function buildFilters"));
-
-  for (const control of [...PHOTO_ADJUST_SLIDERS, ...PHOTO_ADJUST_TOGGLES]) {
-    assert.ok(
-      Object.hasOwn(INITIAL_FILTERS, control.key),
-      `${control.key} is not a FilterSettings field`,
-    );
-    assert.ok(
-      buildFilters.includes(`settings.${control.key}`),
-      `buildFilters never reads settings.${control.key}, so this control would do nothing`,
-    );
-  }
-});
-
-test("crop presets only offer ratios the crop command accepts", () => {
-  for (const preset of PHOTO_CROP_PRESETS) {
-    assert.ok(CROP_RATIOS.includes(preset.id), `${preset.id} is not a CropRatio`);
-  }
-});
-
-test("filter presets layer over current values and 'original' resets", () => {
-  const current = { ...INITIAL_FILTERS, brightness: 40, invert: true };
-  const vivid = applyPhotoFilterPreset(
-    current,
-    PHOTO_FILTER_PRESETS.find((preset) => preset.id === "vivid"),
-  );
-  assert.equal(vivid.contrast, 20);
-  assert.equal(vivid.brightness, 40, "a preset must not silently discard manual work");
-
-  const reset = applyPhotoFilterPreset(
-    current,
-    PHOTO_FILTER_PRESETS.find((preset) => preset.id === "none"),
-  );
-  assert.deepEqual(reset, INITIAL_FILTERS);
-});
-
-test("crop and annotation are photo-mode only; colour work follows both modes", () => {
-  const photo = photoAdjustSectionsFor("photo").map((section) => section.group);
-  const design = photoAdjustSectionsFor("design").map((section) => section.group);
-  assert.ok(photo.includes("crop") && photo.includes("annotate"));
-  assert.equal(design.includes("crop"), false);
-  assert.equal(design.includes("annotate"), false);
-  assert.ok(design.includes("color") && design.includes("filter"));
 });
 
 // --------------------------------------------------------------------------

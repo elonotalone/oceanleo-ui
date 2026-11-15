@@ -242,8 +242,8 @@ test("批注、线程评论、筛选范围、色阶 / 数据条 / 高亮规则",
   assert.match(b1Text, /bob: 已核对/);
   assert.deepEqual(ws.autoFilter, "A1:B2");
   const kinds = ws.conditionalFormattings.flatMap((cf) => cf.rules.map((r) => r.type)).sort();
-  assert.deepEqual(kinds, ["cellIs", "colorScale", "dataBar"]);
-  assert.ok(dropped.some((line) => line.includes("重复值")), "unsupported rule must be reported");
+  assert.deepEqual(kinds, ["cellIs", "colorScale", "dataBar", "duplicateValues"]);
+  assert.deepEqual(dropped, [], "重复值规则应保留，不再降级");
 });
 
 test("多工作表、隐藏表、定义名称、图片", async () => {
@@ -405,5 +405,103 @@ test("exceljs 没有的比较 / 文本运算符改写成等价公式规则", asy
   assert.ok(formulas.includes("C2>=5"));
   assert.ok(formulas.includes("OR(C2<1,C2>3)"));
   assert.ok(formulas.includes('LEFT(C2,2)="ab"'));
+  assert.deepEqual(dropped, []);
+});
+
+test("旧规则能力迁入当前写入器：空白、唯一 / 重复值、禁用与命中后停止均保留", async () => {
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const range = { startRow: 0, endRow: 2, startColumn: 0, endColumn: 0 };
+  const rule = (cfId, subType, extra = {}, settings = {}) => ({
+    cfId, ranges: [range], ...settings,
+    rule: { type: "highlightCell", subType, style: { bg: { rgb: "#ffeeaa" } }, ...extra },
+  });
+  const input = snapshot({ cellData: { 0: { 0: { v: "重复" } }, 1: { 0: { v: "重复" } } } }, [
+    res("SHEET_CONDITIONAL_FORMATTING_PLUGIN", { s1: [
+      rule("disabled", "duplicateValues", {}, { disabled: true }),
+      rule("blank", "text", { operator: "containsBlanks" }, { stopIfTrue: true }),
+      rule("not-blank", "text", { operator: "notContainsBlanks" }),
+      rule("duplicates", "duplicateValues", {}, { ranges: [range, { ...range, startColumn: 2, endColumn: 2 }] }),
+      rule("unique", "uniqueValues"),
+      rule("rank", "rank", { value: 2 }, { stopIfTrue: true }),
+    ] }),
+  ]);
+  const exported = await buildGridXlsxFromUniverSnapshot(input);
+  assert.equal(exported.dropped.length, 1);
+  assert.match(exported.dropped[0], /已停用/);
+  const files = unzipSync(new Uint8Array(await exported.blob.arrayBuffer()));
+  const xml = strFromU8(files["xl/worksheets/sheet1.xml"]);
+  assert.match(xml, /<cfRule[^>]*type="containsBlanks"[^>]*priority="1"[^>]*stopIfTrue="1"/);
+  assert.match(xml, /<cfRule[^>]*type="notContainsBlanks"[^>]*priority="2"/);
+  assert.match(xml, /<cfRule[^>]*type="duplicateValues"[^>]*priority="3"[^>]*\/>/);
+  assert.match(xml, /<cfRule[^>]*type="uniqueValues"[^>]*priority="4"[^>]*\/>/);
+  assert.doesNotMatch(xml, /COUNTIF|<formula>FALSE<\/formula>/);
+  assert.match(xml, /<cfRule[^>]*type="top10"[^>]*priority="5"[^>]*stopIfTrue="1"\s*\/>/);
+  const opened = new ExcelJS.Workbook();
+  await opened.xlsx.load(Buffer.from(await exported.blob.arrayBuffer()));
+  const rules = opened.worksheets[0].conditionalFormattings.flatMap((cf) => cf.rules);
+  assert.equal(rules.length, 5);
+});
+
+test("旧写入器的署名随文件和固定时间导出能力在当前 XLSX 路径可用", async () => {
+  const { unzipSync, strFromU8 } = await import("fflate");
+  const input = snapshot({ name: "署名", cellData: { 0: { 0: { v: "用户原表" } } } });
+  const attribution = { entries: [{ text: "作者 <A> & B", licenseCode: "CC-BY-4.0", licenseUrl: "https://example.test/license?a=1&b=2" }] };
+  const options = { title: "许可随产物", attribution, createdAt: new Date("2026-01-01T00:00:00Z") };
+  const first = await buildGridXlsxFromUniverSnapshot(input, options);
+  const second = await buildGridXlsxFromUniverSnapshot(input, options);
+  const bytes = new Uint8Array(await first.blob.arrayBuffer());
+  assert.deepEqual(bytes, new Uint8Array(await second.blob.arrayBuffer()));
+  const files = unzipSync(bytes);
+  const props = strFromU8(files["docProps/custom.xml"]);
+  assert.match(props, /name="License"/);
+  assert.match(props, /CC-BY-4.0/);
+  assert.match(props, /作者 &lt;A&gt; &amp; B/);
+  assert.match(props, /a=1&amp;b=2/);
+  assert.match(strFromU8(files["[Content_Types].xml"]), /PartName="\/docProps\/custom.xml"/);
+  assert.match(strFromU8(files["_rels/.rels"]), /custom-properties" Target="docProps\/custom.xml"/);
+  const opened = new ExcelJS.Workbook();
+  await opened.xlsx.load(Buffer.from(bytes));
+  assert.deepEqual(opened.worksheets.map((sheet) => sheet.name), ["署名", "署名 (2)"]);
+  assert.equal(opened.worksheets[0].getCell("A1").value, "用户原表");
+  assert.deepEqual(opened.worksheets[1].getRow(2).values.slice(1), Object.values(attribution.entries[0]));
+  assert.match(opened.description, /CC-BY-4.0/);
+  assert.equal(opened.created.toISOString(), options.createdAt.toISOString());
+});
+
+test("下拉验证的命名区域引用写成公式，不改写成一个字面选项", async () => {
+  const { workbook, dropped } = await roundTrip(snapshot({ cellData: { 0: { 0: { v: "A" } } } }, [
+    res("SHEET_DEFINED_NAME_PLUGIN", { list: { name: "Allowed", formulaOrRefString: "Data!$A$1:$A$2" } }),
+    res("SHEET_DATA_VALIDATION_PLUGIN", { s1: [{ uid: "list", type: "list", formula1: "=Allowed", ranges: [{ startRow: 2, endRow: 2, startColumn: 0, endColumn: 0 }] }] }),
+  ]));
+  assert.deepEqual(workbook.worksheets[0].getCell("A3").dataValidation.formulae, ["Allowed"]);
+  assert.deepEqual(dropped, []);
+});
+
+test("缺少公式缓存时按旧能力补算跨表、命名区域和共享公式，已有缓存保持原值", async () => {
+  const input = snapshot({ name: "汇总", cellData: {
+    0: { 0: { f: "='明细'!A1*2", si: "shared" }, 1: { f: "=Total+1" }, 2: { f: "=SUM(A1:B1)", v: 99 }, 3: { f: "=NOT_A_REAL_FUNCTION(1)" } },
+    1: { 0: { si: "shared" } },
+  } }, [res("SHEET_DEFINED_NAME_PLUGIN", { n: { name: "Total", formulaOrRefString: "'明细'!$A$1" } })]);
+  input.sheetOrder.push("s2");
+  input.sheets.s2 = { id: "s2", name: "明细", cellData: { 0: { 0: { v: 12.5 } }, 1: { 0: { v: 7 } } } };
+  const { workbook, dropped } = await roundTrip(input);
+  const ws = workbook.getWorksheet("汇总");
+  assert.equal(ws.getCell("A1").value.result, 25);
+  assert.equal(ws.getCell("A2").value.result, 14);
+  assert.equal(ws.getCell("B1").value.result, 13.5);
+  assert.equal(ws.getCell("C1").value.result, 99, "已有缓存由 Univer 提供，不覆盖");
+  assert.equal(ws.getCell("D1").value.formula, "NOT_A_REAL_FUNCTION(1)");
+  assert.equal(ws.getCell("D1").value.result, undefined);
+  assert.equal(dropped.length, 1);
+  assert.match(dropped[0], /D1.*缺少缓存值/);
+});
+
+test("公式补算按用户表名查找；另一张表的内部 ID 不覆盖同名工作表", async () => {
+  const input = snapshot({ name: "s2", cellData: { 0: { 0: { v: 7 }, 1: { f: "=A1*2" } } } });
+  input.sheetOrder.push("s2");
+  input.sheets.s2 = { id: "s2", name: "Data", cellData: { 0: { 0: { v: 100 }, 1: { f: "=s2!A1+1" } } } };
+  const { workbook, dropped } = await roundTrip(input);
+  assert.equal(workbook.getWorksheet("s2").getCell("B1").value.result, 14);
+  assert.equal(workbook.getWorksheet("Data").getCell("B1").value.result, 8);
   assert.deepEqual(dropped, []);
 });
