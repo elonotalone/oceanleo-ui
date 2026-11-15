@@ -135,8 +135,8 @@ function FabricPictureToolbar() {
   } });
   return h(PictureToolbar, { name: "Fabric", adapter, nativeOpacity: nativeImage.opacity, setOpacity, setReadOnly });
 }
-function PdfStampToolbar() {
-  const [selected, setSelected] = React.useState({ id: "pdf-stamp", type: 13, opacity: 0.64 });
+function PdfAnnotationToolbar({ type = 13 }) {
+  const [selected, setSelected] = React.useState({ id: "pdf-annotation", type, opacity: 0.64, fontFamily: 4, fontSize: 12 });
   const [version, setVersion] = React.useState(1);
   const [readOnly, setReadOnly] = React.useState(false);
   const adapter = usePdfSelectionAdapter({ selected, version, activeTool: null, readOnly, bridge: {
@@ -144,6 +144,8 @@ function PdfStampToolbar() {
   } });
   return h(PictureToolbar, { name: "PDF", adapter, nativeOpacity: selected.opacity, setOpacity: opacity => setSelected(current => ({ ...current, opacity })), setReadOnly });
 }
+function PdfStampToolbar() { return h(PdfAnnotationToolbar, { type: 13 }); }
+function PdfFreeTextOpacityToolbar() { return h(PdfAnnotationToolbar, { type: 3 }); }
 const pictureHarnesses = { Deck: DeckPictureToolbar, Fabric: FabricPictureToolbar, PDF: PdfStampToolbar };
 function canvasPictureContext() {
   const added = addProjectNode(createVideoProject("Picture profile"), "image", { x: 10, y: 20 });
@@ -249,7 +251,11 @@ test("six native text selections resolve to the same canon shapes, px values and
     assert.deepEqual([metrics("Deck", "letter-spacing").min, metrics("Deck", "letter-spacing").max], [-10, 40]);
     assert.deepEqual([metrics("Fabric", "letter-spacing").min, metrics("Fabric", "letter-spacing").max], [-6.4, 32]);
     assert.deepEqual(metrics("PDF", "font-family").options.map(option => option.value), ["Helvetica", "Times", "Courier"]);
-    for (const id of ["underline", "strike", "list", "line-height", "link", "highlight", "clear-format"]) assert.equal(Boolean(metrics("PDF", id)), false, `PDF native annotations do not offer ${id}`);
+    for (const id of ["underline", "strike", "list", "line-height", "link", "highlight"]) assert.equal(Boolean(metrics("PDF", id)), false, `PDF native annotations do not offer ${id}`);
+    for (const id of ["case", "clear-format"]) assert.ok(metrics("PDF", id), `PDF native annotations support ${id}`);
+    const gridCompact = partitionSelectionInspectorControls(projected.get("Grid").controls).compact;
+    for (const id of ["list", "line-height", "link", "case", "vertical-text", "indent-increase", "indent-decrease"]) assert.ok(gridCompact.some(control => control.canonId === id || control.id === id), `Grid supports ${id}`);
+    assert.equal(metrics("Grid", "highlight").engineScope, "cell-background");
     for (const id of ["font-family", "italic", "line-height", "letter-spacing", "clear-format"]) assert.equal(Boolean(metrics("Timeline", id)), false, `Timeline does not invent ${id}`);
   } finally { await native.close(); }
 });
@@ -280,8 +286,8 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
         else sameId.set(control.canonId, { name, profile: canonicalProfile(control) });
       }
       const opacityInput = context.controls.find(control => control.id === "opacity");
-      if (name === "Canvas") {
-        assert.equal(opacityInput, undefined, "canvas does not invent opacity support");
+      if (name === "Canvas" || name === "PDF") {
+        assert.equal(opacityInput, undefined, `${name} does not invent picture opacity support`);
       } else {
         assert.ok(opacityInput);
         assert.equal(opacityInput.inspectorGroup, undefined);
@@ -295,19 +301,19 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
     for (const [id, names, kind] of [
       ["border", ["Deck", "Fabric"], "panel"],
       ["position", ["Deck", "Fabric", "Canvas"], "panel"],
-      ["rotate", ["Deck", "Fabric", "Canvas"], "action"],
+      ["rotate", ["Deck", "Fabric", "Canvas", "PDF"], "action"],
     ]) for (const name of names) {
       const control = profiles.get(name).find(control => control.canonId === id);
       assert.ok(control, `${name} genuinely supports ${id}`);
       assert.deepEqual([control.kind, control.slot, control.placement], [kind, "compact", "primary"]);
     }
-    assert.deepEqual(profiles.get("PDF").map(control => control.canonId), ["opacity", "delete"], "PDF stamps keep exactly their native supported capabilities");
+    assert.deepEqual(profiles.get("PDF").map(control => control.canonId), ["rotate", "delete"], "PDF stamps keep exactly their native supported capabilities");
     for (const id of ["opacity", "border", "replace", "radius"]) assert.equal(profiles.get("Canvas").some(control => control.canonId === id), false, `canvas does not invent ${id}`);
   } finally { for (const item of mounted.reverse()) await item.close(); }
 });
 
-test("real picture opacity +/- widgets round-trip native 0–1 values on the bar and in More, respect limits and readonly", async () => {
-  for (const [name, Harness] of Object.entries(pictureHarnesses)) {
+test("supported image and PDF FreeText opacity widgets round-trip native values on the bar and in More", async () => {
+  for (const [name, Harness] of Object.entries({ ...pictureHarnesses, PDF: PdfFreeTextOpacityToolbar })) {
     const mounted = await mount(h(Harness));
     const state = () => pictureStates.get(name);
     const toolbar = () => mounted.node.querySelector('[role="toolbar"]');
@@ -370,7 +376,8 @@ test("real picture opacity +/- widgets round-trip native 0–1 values on the bar
       const beforeReadonly = state().nativeOpacity;
       await act(async () => state().setReadOnly(true));
       const readonlyControl = toolbar() ? controlNode(toolbar(), "opacity") : null;
-      if (readonlyControl) assert.equal(readonlyControl.querySelector('input[type="number"]').disabled, true);
+      if (name === "PDF") assert.equal(state().adapter.context, null, "view-only PDF withdraws its writable selection even if text chrome retains a focus bookmark");
+      else if (readonlyControl) assert.equal(readonlyControl.querySelector('input[type="number"]').disabled, true);
       await act(async () => state().adapter.dispatch({ requestId: "readonly-picture", controlId: "opacity", selectionId: current.id, value: 20 }));
       assert.equal(state().nativeOpacity, beforeReadonly, `${name} refuses readonly mutations`);
     } finally { await mounted.close(); }
@@ -383,7 +390,12 @@ test("real picture opacity +/- widgets round-trip native 0–1 values on the bar
 let pdfAdapter;
 let pdfNativeTools;
 let pdfDeselects;
-const pdfBridge = { activeTool: () => null, pages: () => [], setTool(tool) { pdfNativeTools.push(tool); }, deselect() { pdfDeselects++; } };
+const pdfPatches = [];
+let pdfTypingDraft = null;
+const pdfBridge = { activeTool: () => null, pages: () => [], setTool(tool) { pdfNativeTools.push(tool); }, deselect() { pdfDeselects++; },
+  selected: () => pdfState.selected,
+  flushTextEdit() { if (pdfTypingDraft !== null) { pdfState.selected = { ...pdfState.selected, contents: pdfTypingDraft }; pdfTypingDraft = null; } },
+  updateAnnotation(annotation, patch) { pdfPatches.push({ id: annotation.id, patch }); } };
 const pdfState = { bridge: pdfBridge, selected: null, processing: false, annotationVersion: 1, loading: false, canUndo: false, canRedo: false, zoom: 100, initialBytes: new Uint8Array(), dirty: false, editRevision: 1, workingCopyReady: true };
 globalThis.__edB2PdfParity = { editor: pdfState };
 function PdfToolbarHost({ adapter }) {
@@ -391,7 +403,10 @@ function PdfToolbarHost({ adapter }) {
   const selected = resolveSelectionAdapterContext(adapter.selection?.context ?? null, tt);
   const tools = adapter.creationTools || [];
   const context = selected ? { ...selected, controls: [...selected.controls, ...tools.map(tool => creationToolControl(tool, tt))] } : { version: 1, id: "creation:pdf", kind: "creation", controls: tools.map(tool => creationToolControl(tool, tt)) };
-  return h("div", { "data-workspace-floating-toolbar-overlay": true, "data-workspace-floating-toolbar": true }, h(SelectionToolbar, { variant: "floating", context, onCommand: command => tools.find(tool => tool.id === command.controlId && !tool.disabled)?.execute?.() }));
+  return h("div", { "data-workspace-floating-toolbar-overlay": true, "data-workspace-floating-toolbar": true }, h(SelectionToolbar, { variant: "floating", context, onCommand: command => {
+    const tool = tools.find(tool => tool.id === command.controlId && !tool.disabled);
+    if (tool) tool.execute?.(); else adapter.selection?.dispatch(command);
+  } }));
 }
 globalThis.__edB2PdfParity.renderShell = props => h(PdfToolbarHost, props);
 const noop = (...names) => dataModule(names.map(name => `export function ${name}(){return null;}`).join("\n"));
@@ -431,8 +446,10 @@ test("real PDF ten creation tools are icon-only, overflow into labeled More, exe
       assert.equal(button.dataset.workspaceActionId, id);
       assert.equal(controlNode(toolbar(), id).hasAttribute("data-edit-bar-canon"), false, `${id} stays in the creation domain`);
     }
+    await resize(480);
+    assert.deepEqual(new Set([...visible(), ...overflow()]), new Set(ids), "all creation tools remain reachable at 480px");
     await resize(105);
-    assert.ok(overflow().length >= 8, "a narrow host actually moves creation tools into More");
+    assert.ok(overflow().length >= 8, "a narrow host moves creation tools into More");
     assert.deepEqual(new Set([...visible(), ...overflow()]), new Set(ids), "no tool disappears at the breakpoint");
     const nativeById = { "pdf-tool-highlight": "highlight", "pdf-tool-underline": "underline", "pdf-tool-strikeout": "strikeout", "pdf-tool-check": "oceanleo-check", "pdf-tool-cross": "oceanleo-cross", "pdf-tool-text": "freeText", "pdf-tool-ink": "ink", "pdf-tool-note": "textComment" };
     const menuIds = [...overflow()];
@@ -458,4 +475,35 @@ test("real PDF ten creation tools are icon-only, overflow into labeled More, exe
     await click(underline);
     assert.equal(pdfNativeTools.at(-1), "underline", "the restored control remains executable");
   } finally { await mounted.close(); }
+});
+
+test("PDF at 480px with FreeText selection folds into one More and every property/tool stays reachable", async () => {
+  pdfNativeTools = []; pdfDeselects = 0;
+  pdfState.selected = { id: "narrow-text", type: 3, pageIndex: 0, contents: "Hello", fontFamily: 4, fontSize: 12,
+    rect: { origin: { x: 20, y: 30 }, size: { width: 180, height: 50 } } };
+  const mounted = await mount(h(PdfRoute, { item: { id: "pdf-parity", kind: "pdf", title: "PDF", meta: {} }, onClose() {} }));
+  try {
+    await resize(480);
+    const toolbar = mounted.node.querySelector('[role="toolbar"]');
+    const shown = toolbar.dataset.selectionVisibleControls.split(" ").filter(Boolean);
+    const hidden = toolbar.dataset.selectionOverflowControls.split(" ").filter(Boolean);
+    assert.ok(hidden.length > 0);
+    const ids = [...pdfAdapter.selection.context.controls.map(control => control.id), ...pdfAdapter.creationTools.map(tool => tool.id)];
+    assert.deepEqual(new Set([...shown, ...hidden]), new Set(ids));
+    const more = toolbar.querySelector('button[aria-haspopup="dialog"]');
+    assert.ok(more);
+    await click(more);
+    const menu = document.getElementById(more.getAttribute("aria-controls"));
+    for (const id of hidden) assert.ok(menu.querySelector(`[data-selection-control-id="${id}"]`), `${id} is reachable in More at 480px`);
+    for (const id of shown) assert.ok(controlNode(toolbar, id), `${id} is reachable on the bar at 480px`);
+    assert.equal(toolbar.querySelectorAll('button[aria-haspopup="dialog"][aria-controls]').length, 1);
+    pdfPatches.length = 0;
+    pdfTypingDraft = "Unsaved typing";
+    await click(menu.querySelector('[data-selection-control-id="case"] button'));
+    assert.deepEqual(pdfPatches.at(-1), { id: "narrow-text", patch: { contents: "UNSAVED TYPING" } }, "case reads the freshly committed native text, not the stale selection snapshot");
+    if (more.getAttribute("aria-expanded") !== "true") await click(more);
+    const resetMenu = document.getElementById(more.getAttribute("aria-controls"));
+    await click(resetMenu.querySelector('[data-selection-control-id="clear-format"] button'));
+    assert.deepEqual(pdfPatches.at(-1), { id: "narrow-text", patch: { fontFamily: 4, fontSize: 12, fontColor: "#000000", richContent: "", defaultStyle: "" } });
+  } finally { pdfState.selected = null; await mounted.close(); }
 });

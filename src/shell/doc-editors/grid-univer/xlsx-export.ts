@@ -191,7 +191,9 @@ function applyStyle(
   else if (vt === 2) alignment.vertical = "middle";
   else if (vt === 3) alignment.vertical = "bottom";
   if (num(style.tb) === 3) alignment.wrapText = true;
-  if (isObject(style.tr) && num(style.tr.a)) {
+  if (isObject(style.tr) && style.tr.v === 1) {
+    alignment.textRotation = "vertical";
+  } else if (isObject(style.tr) && num(style.tr.a)) {
     alignment.textRotation = Math.max(-90, Math.min(90, style.tr.a as number));
   }
   if (Object.keys(alignment).length > 0) cell.alignment = alignment;
@@ -237,6 +239,59 @@ function documentBody(cell: Json): Json | null {
   const p = cell.p;
   if (!isObject(p) || !isObject(p.body)) return null;
   return p.body;
+}
+
+/** XLSX has no paragraph lists/fixed leading. Preserve visible list markers and
+ * disclose lost editing semantics instead of silently dropping them. */
+function exportParagraphText(body: Json | null): { text: string; prefixes: { offset: number; text: string }[] } | null {
+  if (!body || typeof body.dataStream !== "string" || !Array.isArray(body.paragraphs) ||
+      !body.paragraphs.some((p) => isObject(p) && p.bullet)) return null;
+  const lines: string[] = [];
+  const prefixes: { offset: number; text: string }[] = [];
+  let start = 0;
+  let number = 0;
+  for (const p of body.paragraphs) {
+    if (!isObject(p) || typeof p.startIndex !== "number") continue;
+    const bullet = isObject(p.bullet) ? p.bullet : null;
+    const prefix = bullet ? bullet.listType === "ORDER_LIST" ? `${++number}. ` : "● " : "";
+    if (prefix) prefixes.push({ offset: start, text: prefix });
+    lines.push(prefix + body.dataStream.slice(start, p.startIndex));
+    start = p.startIndex + 1;
+  }
+  return { text: lines.join("\n"), prefixes };
+}
+
+function listRichText(rich: import("exceljs").CellRichTextValue, prefixes: { offset: number; text: string }[]): import("exceljs").CellRichTextValue {
+  const parts: import("exceljs").RichText[] = [];
+  let offset = 0;
+  let marker = 0;
+  for (const part of rich.richText) {
+    const end = offset + part.text.length;
+    let cursor = 0;
+    while (marker < prefixes.length && prefixes[marker].offset < end) {
+      const prefix = prefixes[marker++];
+      const next = Math.max(cursor, prefix.offset - offset);
+      if (next > cursor) parts.push({ ...part, text: part.text.slice(cursor, next) });
+      parts.push({ ...part, text: prefix.text });
+      cursor = next;
+    }
+    if (cursor < part.text.length) parts.push({ ...part, text: part.text.slice(cursor) });
+    offset = end;
+  }
+  for (; marker < prefixes.length; marker++) parts.push({ text: prefixes[marker].text });
+  return { richText: parts };
+}
+
+function applyParagraphExport(cell: import("exceljs").Cell, body: Json | null, dropped: Set<string>) {
+  if (!body || !Array.isArray(body.paragraphs)) return;
+  const styles = body.paragraphs.map((p) => isObject(p) && isObject(p.paragraphStyle) ? p.paragraphStyle : {});
+  if (styles.some((style) => style.spacingRule === 2)) dropped.add("XLSX 不支持段落固定行距；原生项目保留像素行距");
+  const indent = styles[0]?.indentStart;
+  if (isObject(indent) && typeof indent.v === "number" && indent.v > 0) {
+    cell.alignment = { ...cell.alignment, indent: Math.round(indent.v / 24) };
+    dropped.add("XLSX 缩进按级数导出，原生项目保留像素缩进");
+  }
+  if (body.paragraphs.some((p) => isObject(p) && p.bullet)) dropped.add("XLSX 列表保留可见编号/符号，原生项目保留可编辑列表");
 }
 
 function hyperlinkOf(body: Json | null): CellLink | null {
@@ -920,6 +975,7 @@ export async function buildGridXlsxFromUniverSnapshot(
         const body = documentBody(raw);
         const link = hyperlinkOf(body);
         const rich = richTextOf(body);
+        const listText = exportParagraphText(body);
         let hasContent = true;
         if (formula) {
           const text = formula.startsWith("=") ? formula.slice(1) : formula;
@@ -935,10 +991,12 @@ export async function buildGridXlsxFromUniverSnapshot(
             ...(result !== undefined ? { result } : {}),
           } as import("exceljs").CellFormulaValue;
         } else if (link) {
-          cell.value = { text: link.text, hyperlink: toExcelLink(link.url, nameById) };
+          cell.value = { text: listText?.text ?? link.text, hyperlink: toExcelLink(link.url, nameById) };
           if (!link.whole) {
             dropped.add("只有部分文字带链接的格子，XLSX 里整格都成了链接");
           }
+        } else if (listText !== null) {
+          cell.value = rich ? listRichText(rich, listText.prefixes) : listText.text;
         } else if (rich) {
           cell.value = rich;
         } else {
@@ -947,6 +1005,18 @@ export async function buildGridXlsxFromUniverSnapshot(
           else cell.value = value;
         }
         applyStyle(cell, style, !rich);
+        if (link && rich) {
+          // ExcelJS's hyperlink value stores plain display text. Retain the
+          // first native run's font and disclose mixed fonts it cannot encode here.
+          const fonts = rich.richText.filter((part) => part.text).map((part) => part.font ?? excelFont(style ?? {}));
+          if (fonts.length) {
+            cell.font = fonts[0];
+            if (fonts.some((font) => JSON.stringify(font) !== JSON.stringify(fonts[0]))) {
+              dropped.add("XLSX 链接单元格使用首段字体；原生项目保留段内混合字体");
+            }
+          }
+        }
+        applyParagraphExport(cell, body, dropped);
         if (hasContent || style) {
           maxRow = Math.max(maxRow, row);
           maxCol = Math.max(maxCol, col);

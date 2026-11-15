@@ -115,6 +115,8 @@ export interface GridFacadeValidationBuilder {
 }
 
 export interface GridFacadeRange extends GridFacadeTextRange {
+  getCellData?(): Record<string, unknown> | null;
+  getCellStyleData?(): Record<string, unknown> | null;
   setValue(value: string | number | boolean): unknown;
   getValue(): string | number | boolean | null;
   setFontWeight(weight: "normal" | "bold" | null): unknown;
@@ -155,6 +157,8 @@ export interface GridFacadeWorksheet {
 }
 
 export interface GridFacadeWorkbook {
+  isCellEditing?(): boolean;
+  endEditingAsync?(save?: boolean): Promise<boolean>;
   getActiveSheet(): GridFacadeWorksheet;
   insertSheet(name?: string): unknown;
   undo(): unknown;
@@ -480,6 +484,10 @@ export const GRID_UNIVER_COMMANDS: readonly GridUniverCommand[] = [
     layer: "L1",
     run: (port, args) => {
       const raw = str(args, "value", "left");
+      if (raw === "justify") return port.execute && port.unitId ? port.execute("sheet.command.set-style", {
+        unitId: port.unitId, subUnitId: port.sheet.getSheetId(), range: { ...port.selection },
+        style: { type: "ht", value: 4 },
+      }) : null;
       if (raw !== "left" && raw !== "center" && raw !== "right") return null;
       return port.range.setHorizontalAlignment(gridFacadeAlignment(raw));
     },
@@ -919,5 +927,8 @@ export function runGridUniverCommand(
           : `「${command.label}」不走内核 API：${command.delegatedTo || "由宿主处理"}。`,
     };
   }
-  return { ok: true, result: command.run(port, args) };
+  const result = command.run(port, args);
+  return command.id !== "grid.read-cell" && (result === null || result === false)
+    ? { ok: false, reason: `「${command.label}」未应用，请检查选区和输入值。` }
+    : { ok: true, result };
 }

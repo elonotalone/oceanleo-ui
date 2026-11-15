@@ -141,6 +141,7 @@ import {
   univerSnapshotToGridSheets,
 } from "./grid-univer/snapshot";
 import { runGridUniverCommand } from "./grid-univer/facade-commands";
+import { GRID_RICH_TEXT_COMMAND_IDS, settleGridTextPort } from "./grid-univer/rich-text-commands";
 import {
   GRID_AGENT_CHIPS,
   gridToolsManifestChips,
@@ -860,7 +861,7 @@ export function GridUniverStage({
   }, [bumpHistory, item.title, tt]);
 
   const runControl = useCallback(
-    (command: SelectionCommand) => {
+    async (command: SelectionCommand) => {
       if (sourceFailedRef.current) {
         setStatus(sourceFailureReason || tt("表格源尚未成功载入，不能改。"));
         return;
@@ -873,10 +874,17 @@ export function GridUniverStage({
         setStatus(tt(collabPhase === "waiting" ? "正在与协作者同步…" : "现在是只读状态，不能修改。"));
         return;
       }
-      const port = livePort();
+      let port = livePort();
       if (!port) {
         setStatus(tt("表格内核还没准备好。"));
         return;
+      }
+      if (GRID_RICH_TEXT_COMMAND_IDS.some((id) => id === command.controlId) && port.workbook.isCellEditing?.()) {
+        port = await settleGridTextPort(port, livePort, () => editBlockedRef.current || sourceFailedRef.current);
+        if (!port) {
+          setStatus(tt("表格内核还没准备好。"));
+          return;
+        }
       }
       const outcome = runGridUniverCommand(
         command.controlId,

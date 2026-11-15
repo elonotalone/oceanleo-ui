@@ -36,13 +36,13 @@ import { gridNumberTypeFromPattern, readGridSelectionStyle } from "../src/shell/
 
 const tt = (zh) => zh;
 
-test("文字栏：规范 id、§4 顺序在前，表格特有控件在后，不出 list / line-height", () => {
+test("文字栏：规范 id、§4 顺序在前，表格特有控件在后", () => {
   const ids = gridTextBarControls(GRID_DEFAULT_TEXT_STYLE, tt).map((c) => c.id);
   assert.deepEqual(ids.slice(0, GRID_TEXT_BAR_IDS.length), [...GRID_TEXT_BAR_IDS]);
   assert.deepEqual(GRID_TEXT_BAR_IDS, [
-    "font-family", "font-size", "bold", "italic", "underline", "strike", "text-color", "highlight", "align",
+    "font-family", "font-size", "bold", "italic", "underline", "strike", "text-color", "highlight", "align", "list", "line-height", "link",
   ]);
-  assert.ok(!ids.includes("list") && !ids.includes("line-height"));
+  assert.ok(ids.includes("list") && ids.includes("line-height"));
   assert.ok(ids.indexOf("grid-valign") > ids.indexOf("align"));
   // 单个普通格子不出合并（点了没效果 = 死按钮）。
   assert.ok(!ids.includes("merge-cells"));

@@ -1,6 +1,13 @@
 import { ADVANCED_EDITOR_FONTS } from "./AdvancedFontPicker";
 import { EDIT_BAR_CANON, EDIT_BAR_CANON_OPTIONS, isEditBarCanonId } from "./edit-bar-canon-table";
 import type { CanonSelectionControlInput, SelectionAdapterContext, SelectionContext, SelectionControl, SelectionControlInput, SelectionControlKind } from "./selection-context-types";
+import { EDIT_BAR_CANON_ENGINE_SCOPES } from "./edit-bar-canon-table";
+
+/** Extra canon metadata survives the projection without changing any existing label or id. */
+export function selectionControlEngineScope(kind: string, id: string): { engineScope?: string; engineScopeLabel?: string } {
+  const scope = kind === "grid-cell" && id === "highlight" ? EDIT_BAR_CANON_ENGINE_SCOPES["grid-cell"].highlight : null;
+  return scope ? { engineScope: scope.scope, engineScopeLabel: scope.label } : {};
+}
 
 /** Convert engine data into the route contract, never carrying canon labels/icons. */
 export function selectionControlInputs(controls: readonly (SelectionControl | SelectionControlInput)[]): SelectionControlInput[] {
@@ -55,6 +62,7 @@ export function resolveSelectionAdapterContext(context: SelectionAdapterContext 
         : defaultOptions?.map((option) => ({ value: option.value, label: tt(option.label) })));
       const pixels = ["font-size", "line-height", "letter-spacing"].includes(input.id);
       return {
+        ...selectionControlEngineScope(context.kind, input.id),
         ...state, kind, label: tt(entry.label), icon: entry.icon,
         domain: "selection", iconOnly: true,
         ...(kind === "select" && options ? { options } : {}),
