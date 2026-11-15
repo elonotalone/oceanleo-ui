@@ -114,7 +114,7 @@ for (const key of ["window", "document", "navigator", "HTMLElement", "Element", 
   Object.defineProperty(globalThis, key, { configurable: true, writable: true, value: key === "window" ? dom.window : dom.window[key] });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
-const noopComponent = (name) => dataModule(`export function ${name}(){return null;}`);
+const noopComponent = (name) => dataModule(`export function ${name}(){return null;}${name === "ComposerLibraryPicker" ? "export function warmComposerLibraryFiles(){}" : ""}`);
 const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.tsx", {
   "../lib/attachment-url": dataModule("export const PRIVATE_ATTACHMENT_MAX_BYTES=20*1024*1024;"),
   "../i18n/ui/useUI": dataModule(`export function useUI(){return ${tt.toString()};}`),

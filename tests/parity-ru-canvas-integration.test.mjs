@@ -40,7 +40,7 @@ const { default: Session } = await import(await compileModule("src/shell/video-c
 }));
 
 const kinds = ["text", "image", "video", "audio", "script", "model", "subtitle", "composite", "delivery", "director", "storyboard", "timeline"];
-function fixture(aliases) {
+function fixture(aliases, readyText) {
   let project = createVideoProject("Integrated film");
   const ids = {};
   for (const kind of kinds) { const added = addProjectNode(project, kind, { x: Object.keys(ids).length * 300, y: 0 }); project = added.project; ids[kind] = added.nodeId; }
@@ -50,8 +50,8 @@ function fixture(aliases) {
   graph.edges = [[ids.script,ids.image],[ids.image,ids.video]].map(([sourceNodeId,targetNodeId],i)=>({edgeId:`wire-${i}`,sourceNodeId,targetNodeId}));
   if (aliases) {
     const script = graph.nodes.find(n=>n.nodeId===ids.script), video = graph.nodes.find(n=>n.nodeId===ids.video);
-    script.kind="prompt"; script.params={prompt:script.prompt}; delete script.prompt;
-    video.kind="generate"; video.params={durationMs:5000,aspectRatio:"16:9"};
+    script.kind="prompt"; script.params=readyText?{text:"Ocean waves"}:{prompt:script.prompt}; delete script.prompt;
+    video.kind="generate"; video.params={durationMs:9000,aspectRatio:"9:16"}; delete video.durationSeconds; delete video.ratio;
   }
   project.futureMetadata={preserved:true};
   return {project:parseVideoProject(JSON.stringify(project)),ids};
@@ -59,13 +59,13 @@ function fixture(aliases) {
 const workflow = () => globalThis.__ruAdapter.stage.props.workflow;
 async function command(id,args={}) { let result; await act(async()=>{result=await workflow().dispatchCommand(id,args,"protocol");}); assert.ok(["succeeded","accepted"].includes(result.status),`${id}: ${result.status}: ${result.message}`); return result; }
 
-for (const aliases of [false,true]) test(`merged Library v2 ${aliases?"official aliases":"workflow kinds"}: render all nodes, run wired generation, approve, compose and hand over`, async()=>{
-  const {project,ids}=fixture(aliases);
+for (const [aliases,readyText] of [[false,false],[true,false],[true,true]]) test(`merged Library v2 ${aliases?`official aliases${readyText?" with saved text":""}`:"workflow kinds"}: render all nodes, run wired generation, approve, compose and hand over`, async()=>{
+  const {project,ids}=fixture(aliases,readyText);
   const calls=[];
   for (const name of ["Saves","Renders","Handoffs","Opens"]) globalThis[`__ru${name}`]=[];
   bindCanvasGatewayImpl({
     getDurableVideoCapabilities:async()=>({providers:{"bailian-video":{available:true,supported_operations:["video.generate.text","video.generate.image"]}}}),
-    quoteDurableVideo:async()=>({provider:"bailian-video",provider_model:"wan2.7-i2v",amount:0.1,currency:"USD",cost:{estimated_cost_nano:100000000,currency:"USD_NANO",pricing_input:{}}}),
+    quoteDurableVideo:async(input)=>{if(aliases) assert.deepEqual([input.duration,input.ratio],[9,"9:16"]);return {provider:"bailian-video",provider_model:"wan2.7-i2v",amount:0.1,currency:"USD",cost:{estimated_cost_nano:100000000,currency:"USD_NANO",pricing_input:{}}};},
     generateScript:async(prompt)=>{assert.match(prompt,/ocean scene/);calls.push("script");return {text:"Ocean waves"};},
     generateImage:async(prompt)=>{assert.match(prompt,/Ocean waves/);calls.push("image");return {images:["https://files.example/frame.png"]};},
     generateAudio:async()=>({audio_url:"https://files.example/voice.mp3"}),
@@ -83,7 +83,7 @@ for (const aliases of [false,true]) test(`merged Library v2 ${aliases?"official 
     for (const id of Object.values(ids)) assert.ok(host.querySelector(`[data-node-id="${id}"]`),`render ${id}`);
     await act(async()=>workflow().onNodeClick(ids.video));
     await command("canvas.chain.run");
-    assert.deepEqual(calls,["script","image","input","video"]);
+    assert.deepEqual(calls,readyText?["image","input","video"]:["script","image","input","video"]);
     let current=workflow().captureProject(), take=projectHead(current).takes[0];
     assert.equal(take.status,"candidate"); assert.equal(current.durable.runs[0].status,"succeeded");
     await command("canvas.take.approve",{takeId:take.takeId});
