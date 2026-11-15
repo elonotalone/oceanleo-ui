@@ -78,6 +78,48 @@ function canonicalNumber(
   return clampNumber(Number.isFinite(numeric) ? numeric : fallback, min, max);
 }
 
+/** 列表是可见文字转换，预览与导出都读取同一份 text；不假装支持富文本列表。 */
+function listText(text: string, kind: "bullet" | "ordered"): string {
+  let item = 0;
+  return text.split("\n").map((line) => {
+    if (!line.trim()) return line;
+    item += 1;
+    return `${kind === "bullet" ? "•" : `${item}.`} ${line}`;
+  }).join("\n");
+}
+
+export function timelineTextListKind(clip: TimelineClip): "none" | "bullet" | "ordered" {
+  const record = clip.text_list;
+  return record &&
+    (record.kind === "bullet" || record.kind === "ordered") &&
+    typeof record.source_text === "string" &&
+    clip.text === listText(record.source_text, record.kind)
+    ? record.kind : "none";
+}
+
+/** 只撤销本编辑器生成且仍完整的前缀；原文字已有的项目符号和编号始终保留。 */
+export function timelineTextListPatch(
+  clip: TimelineClip,
+  kind: "none" | "bullet" | "ordered",
+): Partial<TimelineClip> {
+  const source = timelineTextListKind(clip) === "none"
+    ? String(clip.text ?? "") : clip.text_list!.source_text;
+  return kind === "none"
+    ? { text: source, text_list: undefined }
+    : { text: listText(source, kind), text_list: Object.freeze({ kind, source_text: source }) };
+}
+
+/** 大小写直接修改内容；已有受管列表继续保留可撤销的前缀记录。 */
+export function timelineTextCasePatch(
+  clip: TimelineClip,
+  kind: "upper" | "lower",
+): Partial<TimelineClip> {
+  const list = timelineTextListKind(clip);
+  const source = list === "none" ? String(clip.text ?? "") : clip.text_list!.source_text;
+  const text = kind === "upper" ? source.toUpperCase() : source.toLowerCase();
+  return timelineTextListPatch({ ...clip, text, text_list: undefined }, list);
+}
+
 /**
  * Canonical model consumed by both the canvas preview and the FFmpeg request.
  * Defaults and bounds mirror the converter contract so a reopened legacy
@@ -168,6 +210,8 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
           next.saturation = canonicalNumber(clip.saturation, 1, 0, 3);
         }
         if (track.kind === "text") {
+          if (timelineTextListKind(clip) === "none") delete next.text_list;
+          else next.text_list = Object.freeze({ ...clip.text_list! });
           const style = clip.style || {};
           next.style = {
             ...style,
