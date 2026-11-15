@@ -186,12 +186,15 @@ test("JSON 不能因 HTML 声明进入 iframe；网页分支必须有声明和�
   const legacy = item({ artifactId: undefined, url: "https://media.example.test/legacy", meta: { content_type: "text/html" } });
   const json = await loadVideoCanvasSourcePreview(legacy, async () => JSON.stringify(project()));
   assert.equal(json.kind, "project");
+  const markupInJson = { ...project(), title: "JSON 标题里的 <html> 仍是文字" };
+  const embedded = await loadVideoCanvasSourcePreview(legacy, async () => JSON.stringify(markupInJson));
+  assert.equal(embedded.kind, "project");
   const html = "<!doctype html><html><body><h1>Legacy workflow</h1></body></html>";
   assert.deepEqual(await loadVideoCanvasSourcePreview(legacy, async () => html), { kind: "web", url: legacy.url });
   await assert.rejects(loadVideoCanvasSourcePreview({ ...legacy, meta: {} }, async () => html), /JSON|视频画布/);
   await assert.rejects(loadVideoCanvasSourcePreview(item(), async () => html), /JSON|视频画布/);
   await assert.rejects(loadVideoCanvasSourcePreview({ ...legacy, url: "data:text/html,legacy" }, async () => html), /JSON|视频画布/);
-  const f = await mount(legacy, async () => new Blob([JSON.stringify(project())]));
-  try { assert.equal(f.host.querySelector("iframe"), null); assert.match(f.host.textContent, /工程中的标题/); }
+  const f = await mount(legacy, async () => new Blob([JSON.stringify(markupInJson)]));
+  try { assert.equal(f.host.querySelector("iframe"), null); assert.match(f.host.textContent, /JSON 标题里的 <html> 仍是文字/); }
   finally { await f.close(); }
 });

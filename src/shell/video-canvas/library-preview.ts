@@ -121,7 +121,7 @@ export async function loadVideoCanvasSourcePreview(
   const full = item.artifact?.renditions.full;
   const declared = mediaType(full?.url === url ? full.mediaType : item.meta.viewer_media_type || item.meta.content_type);
   if (!isVideoCanvasV2Item(item) && url === item.url && /^https?:\/\//i.test(url) && !jsonUrl(url) &&
-    declared === "text/html" && looksLikeHtmlDocument(source)) {
+    declared === "text/html" && /^\s*</.test(source) && looksLikeHtmlDocument(source)) {
     return { kind: "web", url };
   }
   return { kind: "project", summary: projectSummary(source, item.title) };
