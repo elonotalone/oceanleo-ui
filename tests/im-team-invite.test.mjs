@@ -320,7 +320,11 @@ test("点「邀请同事加入 Team」→ 生成：调 createInvite(org_id)，�
     assert.equal(view.q("[data-team-invite-url]").value, "https://oceanleo.com/join?code=tc9");
     assert.equal(globalThis.__COPIED, "https://oceanleo.com/join?code=tc9", "生成后已复制");
     assert.ok(view.q("[data-team-invite-note]").textContent.includes("链接已复制"));
-    assert.match(view.q("[data-team-invite-qr] img[data-invite-qr]").getAttribute("src"), /^data:image\/png;base64,/);
+    const qrSelector = "[data-team-invite-qr] img[data-invite-qr]";
+    const qrDeadline = performance.now() + 5000;
+    while (!view.q(qrSelector) && performance.now() < qrDeadline) await settle(1);
+    assert.ok(view.q(qrSelector), "the real asynchronous QR encoder completes before checking its output");
+    assert.match(view.q(qrSelector).getAttribute("src"), /^data:image\/png;base64,/);
     assert.equal(view.q('[data-team-invite-qr] a[data-action="download-qr"]').getAttribute("download"), "邀请二维码-加入-Team.png");
     assert.ok(view.q("[data-team-invite-result]").textContent.includes("有效期至"));
     globalThis.__COPIED = null;
