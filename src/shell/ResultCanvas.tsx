@@ -567,6 +567,15 @@ export function ResultCanvas({
     selected, layer, setLayer, panelAction, select, panels,
     onHome: () => onChangeRef.current?.("home"),
   });
+  // Park the Library after its first open/intent so reopening paints the same
+  // list. Merely mounting a task must not start its private Library readers.
+  const [libraryWarmed, setLibraryWarmed] = useState(false);
+  const libraryRequested = workspaceOpen !== false &&
+    (view === "mine" || workspacePane?.activeLibraryPanelId === "mine");
+  const libraryReady = libraryWarmed || libraryRequested;
+  useEffect(() => {
+    if (libraryRequested) setLibraryWarmed(true);
+  }, [libraryRequested]);
   useEffect(() => {
     if (typeof window === "undefined" || !imOn) return undefined;
     const receive = (event: Event) => {
@@ -761,7 +770,7 @@ export function ResultCanvas({
       />
     ),
     materials: null, // Compatibility inputs are routed to LeoBay; there is no standalone mount.
-    mine: (
+    mine: libraryReady ? (
       <div className="h-full min-h-0">
         <MyLibrary
           accent={accent}
@@ -781,7 +790,7 @@ export function ResultCanvas({
           onMaterialDragEnd={workbenchMaterials.endMaterialDrag}
         />
       </div>
-    ),
+    ) : null,
     browser: <div className="h-full min-h-0">{browserContent}</div>,
   };
 
@@ -943,7 +952,8 @@ export function ResultCanvas({
       >
         <div data-workspace-home data-workspace-home-active={!foregroundVisible && view === "home"}
              hidden={view !== "home"} inert={view !== "home" || undefined} className="h-full min-h-0 overflow-y-auto">
-          <WorkspaceHome slots={visibleSlots} panels={panels} onOpenSlot={openSlot} onOpenPanel={openPanel} previewCount={previewEntries.length} />
+          <WorkspaceHome slots={visibleSlots} panels={panels} onOpenSlot={openSlot} onOpenPanel={openPanel} previewCount={previewEntries.length}
+            onSlotIntent={(slot) => { if (slot === "mine") setLibraryWarmed(true); }} />
         </div>
         {visibleSlots.map((slot) => {
           const isActive = !foregroundVisible && view === slot;
@@ -959,7 +969,8 @@ export function ResultCanvas({
               inert={!isActive || undefined}
               className="h-full min-h-0 overflow-hidden"
             >
-              {content[slot] || empty || content.template}
+              {slot === "browser" && (!isActive || workspaceOpen === false)
+                ? null : content[slot] || empty || content.template}
             </div>
           );
         })}

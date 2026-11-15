@@ -44,7 +44,7 @@ import type { ConversationTarget } from "./native-thread/types";
 import { PuzzleIcon } from "./icons/PuzzleIcon";
 import { useComposerDraft } from "./composer-draft";
 import { useComposerMaxHeight } from "./composer-max-height";
-import { ComposerLibraryPicker } from "./ComposerLibraryPicker";
+import { ComposerLibraryPicker, warmComposerLibraryFiles } from "./ComposerLibraryPicker";
 import { AnchoredPopover } from "./anchored-popover";
 import { attachmentFailureText, failedAttachments, stopClickAllowed, stopPressArmed } from "./composer-send-guard";
 import {
@@ -944,6 +944,8 @@ function AttachMenu({
       <button
         ref={anchorRef}
         type="button"
+        onPointerEnter={() => { if (onAddAttachments) void warmComposerLibraryFiles(); }}
+        onFocus={() => { if (onAddAttachments) void warmComposerLibraryFiles(); }}
         onClick={() => {
           setOpen((v) => !v);
           setRecentOpen(false);

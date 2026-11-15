@@ -80,3 +80,32 @@ test("old owned Watch target loads by detail and user selection survives polling
     assert.equal(latest.selectedId, "");
   });
 });
+
+test("browser history refresh pauses with a hidden tab and refreshes on return", async () => {
+  let count = 0, tick;
+  const before = [window.setTimeout, window.clearTimeout];
+  window.setTimeout = fn => { tick = fn; return 1; };
+  window.clearTimeout = () => { tick = undefined; };
+  Object.defineProperty(document, "hidden", { configurable: true, value: false });
+  try {
+    await withRoot({list: () => { count += 1; return {ok:true,data:{items:[]}}; }, detail: () => ({ok:false,status:404})}, async (root) => {
+      await render(root, {});
+      assert.equal(count, 2);
+      await act(async () => { const callback = tick; callback(); });
+      assert.equal(count, 4);
+      await act(async () => {
+        Object.defineProperty(document, "hidden", { configurable: true, value: true });
+        document.dispatchEvent(new window.Event("visibilitychange"));
+        window.dispatchEvent(new window.Event("focus"));
+      });
+      assert.equal(tick, undefined);
+      assert.equal(count, 4);
+      await act(async () => {
+        Object.defineProperty(document, "hidden", { configurable: true, value: false });
+        document.dispatchEvent(new window.Event("visibilitychange"));
+      });
+      assert.equal(count, 6);
+    });
+    assert.equal(tick, undefined, "unmount cancels the next background read");
+  } finally { [window.setTimeout, window.clearTimeout] = before; }
+});

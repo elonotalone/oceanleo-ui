@@ -625,9 +625,32 @@ export function useCloudBrowserSessionData({
 
   useEffect(() => {
     if (liveRequested) return;
-    void reload();
-    const timer = window.setInterval(() => void reload(), 5_000);
-    return () => window.clearInterval(timer);
+    let timer = 0;
+    let disposed = false;
+    let reading = false;
+    const refresh = async () => {
+      window.clearTimeout(timer);
+      if (disposed || document.hidden || reading) return;
+      reading = true;
+      try { await reload(); } finally { reading = false; }
+      if (!disposed && !document.hidden) timer = window.setTimeout(() => void refresh(), 5_000);
+    };
+    const wake = () => { void refresh(); };
+    const visibility = () => {
+      window.clearTimeout(timer);
+      if (document.hidden) ++reloadGenerationRef.current;
+      else wake();
+    };
+    wake();
+    document.addEventListener("visibilitychange", visibility);
+    window.addEventListener("focus", wake);
+    return () => {
+      disposed = true;
+      ++reloadGenerationRef.current;
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", visibility);
+      window.removeEventListener("focus", wake);
+    };
   }, [liveRequested, reload]);
 
   useEffect(() => {

@@ -27,9 +27,9 @@ const pickerUrl = await compileModule("src/shell/ComposerLibraryPicker.tsx", {
   "./composer-upload": upload,
   "./artifact-client": dataModule("export async function listMyArtifacts(options){ return globalThis.__pickerLoad(options); }"),
 });
-const { ComposerLibraryPicker, loadComposerLibraryFiles } = await import(pickerUrl);
+const { ComposerLibraryPicker, loadComposerLibraryFiles, warmComposerLibraryFiles } = await import(pickerUrl);
 const popoverUrl = await compileModule("src/shell/anchored-popover.tsx", {
-  "./plugin-theme": dataModule("export function pluginWorkbenchStyle(){ return {}; } export function usePluginTheme(){ return {}; } export function usePluginThemePortal(){ return null; }"),
+  "./plugin-theme": dataModule("export function pluginWorkbenchStyle(){ return {}; } export function usePluginTheme(){ return {}; } export function usePluginThemePortal(){ return null; } export function PluginThemeScope({children}){ return children; }"),
 });
 const composerUrl = await compileModule("src/shell/LeoComposer.tsx", {
   "../i18n/ui/useUI": ui,
@@ -450,4 +450,27 @@ test("legacy hosts without private-add retain their Recent callback and custom a
     assert.deepEqual(custom, [true]);
     assert.equal(view.q("[data-composer-context-action]"), null, "legacy extras keep their menu semantics");
   } finally { await view.unmount(); }
+});
+
+
+test("attachment intent shares its read and reopening uses the recent owner-scoped list", async () => {
+  const {setCacheUser} = await import("../src/lib/user-scoped-cache.ts");
+  setCacheUser("picker-owner");
+  let reads = 0;
+  globalThis.__pickerLoad = async () => {reads += 1;return result([item(1)]);};
+  try {
+    await Promise.all([warmComposerLibraryFiles(), warmComposerLibraryFiles()]);
+    assert.equal(reads, 1);
+    const view = await mount(ComposerLibraryPicker, {onBack(){},onPick(){}});
+    try {
+      assert.equal(rows(view).length, 1);
+      assert.doesNotMatch(view.container.textContent, /加载中/);
+      assert.equal(reads, 1, "opening reuses the warm read");
+      await act(async () => setCacheUser(null));
+      assert.equal(rows(view).length, 0, "sign-out removes private rows immediately");
+    } finally {await view.unmount();}
+    setCacheUser("picker-owner-b");
+    await warmComposerLibraryFiles();
+    assert.equal(reads, 2, "another account reads its own Library");
+  } finally {setCacheUser(null);}
 });

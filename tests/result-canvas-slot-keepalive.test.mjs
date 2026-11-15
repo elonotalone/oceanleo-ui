@@ -290,7 +290,7 @@ async function click(target) {
   });
 }
 
-test("fixed right-panel slots preserve component instances and live tab state", async () => {
+test("Library loads on intent and stays mounted; browser mounts only while its panel is open", async () => {
   globalThis.__resultCanvasNextInstance = 0;
   globalThis.__resultCanvasMounts = {
     preview: 0,
@@ -338,8 +338,8 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     assert.deepEqual(globalThis.__resultCanvasMounts, {
       preview: 1,
       materials: 0,
-      mine: 1,
-      browser: 1,
+      mine: 0,
+      browser: 0,
     });
     const originalNodes = Object.fromEntries(
       ["preview", "mine", "browser"].map((slot) => [
@@ -354,6 +354,10 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     await click(
       mounted.container.querySelector('[data-increment-panel="preview"]'),
     );
+    await act(async () => { card("mine").dispatchEvent(new window.MouseEvent("pointerover", { bubbles: true })); });
+    const libraryNode = live("mine");
+    assert.ok(libraryNode, "Library card intent warms its readers before opening");
+    originalNodes.mine = libraryNode;
     await openSlot("mine");
     await click(mounted.container.querySelector('[data-increment-panel="mine"]'));
     await openSlot("browser");
@@ -363,7 +367,7 @@ test("fixed right-panel slots preserve component instances and live tab state", 
     await openSlot("preview");
     await openSlot("browser");
 
-    for (const slot of ["preview", "mine", "browser"]) {
+    for (const slot of ["preview", "mine"]) {
       assert.equal(live(slot), originalNodes[slot], `${slot} DOM instance`);
       assert.equal(
         mounted.container.querySelector(`[data-panel-state="${slot}"]`)
@@ -376,14 +380,17 @@ test("fixed right-panel slots preserve component instances and live tab state", 
       preview: 1,
       materials: 0,
       mine: 1,
-      browser: 1,
+      browser: 2,
     });
     assert.deepEqual(globalThis.__resultCanvasUnmounts, {
       preview: 0,
       materials: 0,
       mine: 0,
-      browser: 0,
+      browser: 1,
     });
+    assert.equal(mounted.container.querySelector('[data-panel-state="browser"]').textContent, "browser:0");
+    await mounted.render({ active: "browser", workspaceOpen: false });
+    assert.equal(live("browser"), null, "closing the workspace stops the browser reader");
   } finally {
     await mounted.unmount();
     delete globalThis.__resultCanvasNextInstance;

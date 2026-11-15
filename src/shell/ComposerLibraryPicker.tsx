@@ -14,12 +14,48 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { ComposerAttachment } from "./LeoComposer";
 import type { LibraryItem } from "./library-data";
+import { cacheUser, onUserScopedClear } from "../lib/user-scoped-cache";
 
 type LoadLibrary = (signal: AbortSignal) => Promise<{ ok: boolean; data?: { items: LibraryItem[] } }>;
 
 async function defaultLoadLibrary(signal: AbortSignal) {
   const { listMyArtifacts } = await import("./artifact-client");
   return listMyArtifacts({ limit: 100, signal });
+}
+
+const PICKER_READ_MAX_AGE_MS = 30_000;
+let recent: { user: string; at: number; files: ComposerAttachment[] } | undefined;
+let pending: { user: string; promise: Promise<ComposerAttachment[] | null> } | undefined;
+let generation = 0;
+function clearRecentFiles() { generation += 1; recent = undefined; pending = undefined; }
+onUserScopedClear(clearRecentFiles);
+if (typeof window !== "undefined") window.addEventListener("oceanleo:artifact-library-change", clearRecentFiles);
+
+function recentFiles(): ComposerAttachment[] | null {
+  return recent && recent.user === cacheUser() && Date.now() - recent.at < PICKER_READ_MAX_AGE_MS
+    ? recent.files : null;
+}
+
+/** Only a person's hover/focus or opening the picker starts this read. */
+export function warmComposerLibraryFiles(): Promise<ComposerAttachment[] | null> {
+  const user = cacheUser();
+  if (!user) return Promise.resolve(null);
+  const cached = recentFiles();
+  if (cached) return Promise.resolve(cached);
+  if (pending?.user === user) return pending.promise;
+  const epoch = generation;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12_000);
+  const promise = loadComposerLibraryFiles(controller.signal, defaultLoadLibrary).then((files) => {
+    if (epoch !== generation || cacheUser() !== user) return null;
+    if (files) recent = { user, at: Date.now(), files };
+    return files;
+  }).catch(() => null).finally(() => {
+    clearTimeout(timer);
+    if (pending?.promise === promise) pending = undefined;
+  });
+  pending = { user, promise };
+  return promise;
 }
 
 /** 资料库里能作为附件加进来的文件（有私有引用的）。 */
@@ -61,15 +97,20 @@ export function ComposerLibraryPicker({
   mode?: "library" | "recent";
 }) {
   const tt = useUI();
-  const [files, setFiles] = useState<ComposerAttachment[] | null>(null);
+  const [files, setFiles] = useState<ComposerAttachment[] | null>(() => load ? null : recentFiles());
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
-    setFiles(null);
+    const stop = onUserScopedClear(() => {
+      controller.abort();
+      setFiles(null);
+      setFailed(true);
+    });
+    setFiles(load ? null : recentFiles());
     setFailed(false);
-    void loadComposerLibraryFiles(controller.signal, load)
+    void (load || !cacheUser() ? loadComposerLibraryFiles(controller.signal, load) : warmComposerLibraryFiles())
       .then((list) => {
         if (controller.signal.aborted) return;
         if (list) setFiles(list);
@@ -78,7 +119,7 @@ export function ComposerLibraryPicker({
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
-    return () => controller.abort();
+    return () => { stop(); controller.abort(); };
   }, [load]);
 
   const shown = useMemo(() => {

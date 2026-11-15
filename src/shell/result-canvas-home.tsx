@@ -92,6 +92,7 @@ function WorkspaceCard({
   icon,
   count,
   onClick,
+  onIntent,
 }: {
   id: string;
   title: string;
@@ -99,12 +100,15 @@ function WorkspaceCard({
   icon: ReactElement;
   count: number;
   onClick: () => void;
+  onIntent?: () => void;
 }): ReactElement {
   return (
     <button
       type="button"
       data-workspace-card={id}
       onClick={onClick}
+      onPointerEnter={onIntent}
+      onFocus={onIntent}
       className={CARD_CLASS}
     >
       <span className="flex w-full min-w-0 items-center gap-2">
@@ -143,6 +147,7 @@ export interface WorkspaceHomeProps {
   slots: readonly WorkspaceSlotId[];
   panels: { bay: boolean; leochat: boolean };
   onOpenSlot: (slot: WorkspaceSlotId) => void;
+  onSlotIntent?: (slot: WorkspaceSlotId) => void;
   onOpenPanel: (panel: WorkspacePanelId | WorkspaceManagedPanelId) => void;
   previewCount?: number;
 }
@@ -193,6 +198,7 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
           description={tt(SLOT_DESC[id])}
           icon={slotIcon(id)}
           count={id === "preview" ? previewCount : 0}
+          onIntent={() => props.onSlotIntent?.(id)}
           onClick={() => id === "template" && scope?.siteKey && scope.appId ? setInspirationView({ scope: scopeKey, open: true }) : props.onOpenSlot(id)}
         />
         )
