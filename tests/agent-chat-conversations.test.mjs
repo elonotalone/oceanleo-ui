@@ -90,7 +90,8 @@ const agentLibStub = dataModule(`
   export async function branchTask() { return { ok: false, error: "stub" }; }
   export async function followUp(id, text, attachments, hiddenContext, orgId, computerId, clientWindow) {
     globalThis.__followUps.push(text);
-    globalThis.__followUpBodies.push({ id, text, client_window: clientWindow });
+    globalThis.__followUpBodies.push({ id, text, attachments, client_window: clientWindow });
+    if (globalThis.__followUpResponse) return typeof globalThis.__followUpResponse === "function" ? globalThis.__followUpResponse() : globalThis.__followUpResponse;
     return { ok: false, error: "stub" };
   }
   export async function stopTask() { globalThis.__stops++; return { ok: true }; }
@@ -153,7 +154,16 @@ const acpFramesUrl = await compileModule("src/lib/acp-frames-api.ts", {
   "./auth/config": dataModule("export function gatewayBase(){ return 'https://gw.test'; }"),
 });
 
+const mcpHostUrl = await compileModule("src/shell/mcp-apps/host.ts", {
+  "../../lib/auth/client": dataModule("export async function accessToken(){return 'test-token';}"),
+  "../../lib/auth/config": dataModule("export const GATEWAY_BASE='https://gw.test';export function gatewayBase(){return GATEWAY_BASE;}"),
+});
 const OVERRIDES = {
+  "./mcp-apps/host": dataModule(`
+    export * from ${JSON.stringify(mcpHostUrl)};
+    import { createMcpAppsHost as createHost } from ${JSON.stringify(mcpHostUrl)};
+    export function createMcpAppsHost(options){return createHost({...options,transport:globalThis.__mcpTransport});}
+  `),
   "../i18n/ui/useUI": uiStub,
   "./SplitWorkspace": splitWorkspaceUrl,
   "next/navigation": dataModule(
@@ -296,13 +306,15 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse } = {}) {
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
   globalThis.__listHang = listHang;
   globalThis.__createFails = createFails;
   globalThis.__computerMode = computerMode;
   globalThis.__barProps = null;
+  globalThis.__mcpTransport = mcpTransport;
+  globalThis.__followUpResponse = followUpResponse;
   globalThis.__task = task ?? null;
   globalThis.__taskRead = taskRead;
   globalThis.__sessions = sessions;
@@ -313,6 +325,7 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   globalThis.__catalog = catalog;
   globalThis.__pickerDialog = null;
   globalThis.__followUpBodies = [];
+  globalThis.__followUps = [];
   globalThis.__pushed = [];
   globalThis.__stops = 0;
   const host = document.createElement("div");

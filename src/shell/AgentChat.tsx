@@ -72,6 +72,7 @@ import {
   type AcpSessionChoices,
 } from "../lib/acp-frames-api";
 import { changedChoices, forgetPending, putPending, retryPending, settlePending, useAcpCatalogPicker, useAcpFrames, usePending, useTaskPending } from "./acp-task";
+import { McpAppConversationProvider } from "./mcp-apps/TranscriptApp";
 import { PendingSendBubble, pendingAttachmentTiles, pendingConversation } from "./acp-task/PendingSendBubble";
 import { useTaskActivity, withTaskActivity } from "./acp-task/useTaskActivity";
 import type { ConversationTarget, NativeProgram } from "./native-thread/types";
@@ -2400,28 +2401,32 @@ function AgentChatInner({
     void stopAcpTask(taskId, ref).catch((caught) => setAcpError({ taskId, text: acpErrorText(caught) }));
   }, [readOnly, taskId]);
 
-  async function send(orgId?: string, executionTarget?: ExecutionTarget) {
-    const prompt = input.trim();
+  async function send(orgId?: string, executionTarget?: ExecutionTarget, connectorText?: string): Promise<boolean> {
+    const fromConnector = connectorText !== undefined;
+    const prompt = (connectorText ?? input).trim();
     // Allow send when there's an attachment even if the text is empty. But block
     // while any attachment is still uploading.
     // 关掉输入工具时不存在任何用户附件来源，附件相关的分支一律走空集，
     // 免得留下「界面没有入口、提交路径却还认附件」的半开状态。
-    const uploaded = toolsOn ? atts.ready() : [];
-    if ((!prompt && uploaded.length === 0) || busy || (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))))
-      return;
-    if (taskStopRef.current.phase === "stopping") return;
+    const uploaded = !fromConnector && toolsOn ? atts.ready() : [];
+    if ((!prompt && uploaded.length === 0) || busy || (!fromConnector && toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))))
+      return false;
+    if (taskStopRef.current.phase === "stopping") return false;
     if (readOnly) {
       setError(tt("这段对话只能查看。"));
-      return;
+      return false;
     }
     const submittedInput = input;
     const submittedAttachments = toolsOn ? atts.attachments : [];
     const restoreSubmission = () => {
+      if (fromConnector) return;
       setInput((current) => (current ? current : submittedInput));
       atts.restoreReady(submittedAttachments);
     };
-    setInput("");
-    atts.clear();
+    if (!fromConnector) {
+      setInput("");
+      atts.clear();
+    }
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
     const turn = captureEditorTurn(effectivePrompt);
     noteUserTurn(turn.filePin);
@@ -2429,7 +2434,7 @@ function AgentChatInner({
     if (!taskId) {
       const started = await start(effectivePrompt, uploaded, orgId, turn, executionTarget);
       if (!started) restoreSubmission();
-      return;
+      return Boolean(started);
     }
     setBusy(true);
     if (branchFromMessageId) {
@@ -2437,7 +2442,7 @@ function AgentChatInner({
         setBusy(false);
         restoreSubmission();
         setError("右侧 Library 文件已切换；没有创建分支任务，请重新发送。");
-        return;
+        return false;
       }
       const filePersistence = await persistActiveAgentFile(
         workspace?.activeFileScopeId,
@@ -2447,13 +2452,13 @@ function AgentChatInner({
         setBusy(false);
         restoreSubmission();
         setError(filePersistence.error || "当前文件关联尚未保存；没有创建分支任务。");
-        return;
+        return false;
       }
       if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
         setBusy(false);
         restoreSubmission();
         setError("保存文件关联期间右侧 Library 文件已切换；没有创建分支任务。");
-        return;
+        return false;
       }
       const result = await branchTask(
         taskId,
@@ -2466,7 +2471,7 @@ function AgentChatInner({
       if (!result.ok || !result.data) {
         restoreSubmission();
         setError(result.error || tt("创建分支失败"));
-        return;
+        return false;
       }
       const createdTaskId = result.data.task_id;
       const createdSessionId = String(result.data.session_id || "");
@@ -2503,7 +2508,7 @@ function AgentChatInner({
         );
       }
       void refresh(createdTaskId);
-      return;
+      return true;
     }
     const optimisticMessageId = Date.now();
     setMessages((m) => [
@@ -2517,7 +2522,7 @@ function AgentChatInner({
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
       restoreSubmission();
       setError("右侧 Library 文件已切换；这条消息没有发送，请针对当前文件重试。");
-      return;
+      return false;
     }
     const filePersistence = await persistActiveAgentFile(
       workspace?.activeFileScopeId,
@@ -2528,16 +2533,27 @@ function AgentChatInner({
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
       restoreSubmission();
       setError(filePersistence.error || "当前文件关联尚未保存；这条消息没有发送。");
-      return;
+      return false;
     }
     if (activeAgentFilePin(readActiveAgentFileContext(workspace?.activeFileScopeId)) !== turn.filePin) {
       setBusy(false);
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
       restoreSubmission();
       setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
-      return;
+      return false;
     }
-    const r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId());
+    let r: Awaited<ReturnType<typeof followUp>>;
+    try {
+      r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId());
+    } catch (caught) {
+      setBusy(false);
+      setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
+      restoreSubmission();
+      const message = caught instanceof Error ? caught.message : tt("发送失败");
+      setError(message);
+      if (fromConnector) throw caught;
+      return false;
+    }
     setBusy(false);
     if (r.ok) kickAfterFollowUp(taskId);
     else {
@@ -2549,6 +2565,25 @@ function AgentChatInner({
       setError(failure?.text || r.error || tt("发送失败"));
       // Possibly committed on the computer: re-read this task; never re-send.
       if (failure?.kind === "unconfirmed") kickAfterFollowUp(taskId);
+      if (fromConnector) throw new Error(failure?.text || r.error || tt("发送失败"));
+    }
+    return r.ok;
+  }
+
+
+  // One connector action goes through the same cloud send as the composer. The
+  // person's in-progress draft and its files belong to them, not to the app.
+  const connectorSendingRef = useRef(false);
+  async function sendFromConnector(text: string): Promise<void> {
+    if (!taskId || readOnly || isLocalExecution || computerTask) throw new Error(tt("这段对话只能查看。"));
+    if (running || busy || connectorSendingRef.current || branchFromMessageId || taskStopRef.current.phase === "stopping") {
+      throw new Error(tt("这一轮还在进行，请结束后再发送。"));
+    }
+    connectorSendingRef.current = true;
+    try {
+      if (!await send(undefined, undefined, text)) throw new Error(tt("发送失败"));
+    } finally {
+      connectorSendingRef.current = false;
     }
   }
 
@@ -3379,7 +3414,7 @@ function AgentChatInner({
       <div className="py-10 text-center text-[15px] text-stone-400">{emptyHint}</div>
     ) : null,
     items: (
-      <>
+      <McpAppConversationProvider value={{ taskId: taskId || "", isOwner: !readOnly && !isLocalExecution && !computerTask, onMessage: sendFromConnector }}>
           {renderItems.map((item) =>
             item.type === "progress" ? (
               <AgentProgress
@@ -3449,7 +3484,7 @@ function AgentChatInner({
               <span className="v-spinner" /> {thinkingText}
             </div>
           )}
-      </>
+      </McpAppConversationProvider>
     ),
     tail: (
       <>
