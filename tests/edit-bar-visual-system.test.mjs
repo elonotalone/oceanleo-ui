@@ -188,6 +188,9 @@ test("font-size number and legacy select both use minus/value/plus and emit numb
     assert.ok(plus, JSON.stringify([...toolbar.querySelectorAll("button")].map((node) => node.getAttribute("aria-label"))));
     await click(plus);
     assert.equal(commands.at(-1).value, 96);
+    await render({ ...size, icon: "font-size" }, { presentation: "menu" });
+    assert.match(toolbar.textContent, /字号/);
+    assert.equal(toolbar.querySelector("svg")?.getAttribute("data-icon"), "font-size");
   });
 });
 

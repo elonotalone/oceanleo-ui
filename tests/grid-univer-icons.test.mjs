@@ -82,7 +82,12 @@ test("real generated grid controls render named glyphs for compact and overflow 
       if (selectionControlUsesIconOnly(control)) {
         assert.ok(control.icon, `${control.id} is icon-only but has no icon metadata`);
       }
-      if (control.icon) {
+      if (control.id === "font-size" || control.semantic === "font-size") {
+        // ED-B3：紧凑字号统一为 − 数值 +，图标与可见标签保留在 More 菜单。
+        assert.match(compact, /data-edit-bar-font-size/);
+        assert.match(compact, /type="number"/);
+        assert.equal(renderedSvg(compact), "");
+      } else if (control.icon) {
         const svg = renderedSvg(compact);
         assert.ok(svg, `${control.id} declares an icon but rendered no glyph`);
         assert.match(

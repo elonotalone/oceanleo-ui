@@ -123,8 +123,8 @@ export function SelectionToolbarControl({
         control={control}
         fontSize
         menu={menu}
-        iconOnly
-        icon={null}
+        iconOnly={!menu}
+        icon={menu ? icon : null}
         emit={emit}
         accent={accent}
         forMeasurement={forMeasurement}
