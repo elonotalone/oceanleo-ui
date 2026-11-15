@@ -2,6 +2,8 @@ import type { Locale } from '../../config';
 
 export const UT_COPY_A: Record<Locale, Record<string, string>> = {
   "zh": {
+    "图片（点击加载）": "图片（点击加载）",
+    "附件（点击加载）": "附件（点击加载）",
     "内容较长，已省略 {size} KB · 展开": "内容较长，已省略 {size} KB · 展开",
     "打开图片": "打开图片",
     "此处省略 {count} 条": "此处省略 {count} 条",
@@ -56,6 +58,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "加入项目"
   },
   "zh-TW": {
+    "图片（点击加载）": "圖片（點擊載入）",
+    "附件（点击加载）": "附件（點擊載入）",
     "内容较长，已省略 {size} KB · 展开": "內容較長，已省略 {size} KB · 展開",
     "打开图片": "開啟圖片",
     "此处省略 {count} 条": "此處省略 {count} 條",
@@ -110,6 +114,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "加入專案"
   },
   "en": {
+    "图片（点击加载）": "Image (click to load)",
+    "附件（点击加载）": "Attachment (click to load)",
     "内容较长，已省略 {size} KB · 展开": "Long content: {size} KB omitted · Expand",
     "打开图片": "Open image",
     "此处省略 {count} 条": "{count} entries omitted here",
@@ -164,6 +170,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Join project"
   },
   "ja": {
+    "图片（点击加载）": "画像（クリックして読み込む）",
+    "附件（点击加载）": "添付ファイル（クリックして読み込む）",
     "内容较长，已省略 {size} KB · 展开": "内容が長いため {size} KB を省略 · 展開",
     "打开图片": "画像を開く",
     "此处省略 {count} 条": "ここで {count} 件を省略",
@@ -218,6 +226,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "プロジェクトに参加"
   },
   "ko": {
+    "图片（点击加载）": "이미지(클릭하여 불러오기)",
+    "附件（点击加载）": "첨부 파일(클릭하여 불러오기)",
     "内容较长，已省略 {size} KB · 展开": "내용이 길어 {size} KB를 생략했습니다 · 펼치기",
     "打开图片": "이미지 열기",
     "此处省略 {count} 条": "여기에서 {count}개 항목 생략",
@@ -272,6 +282,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "프로젝트 참여"
   },
   "fr": {
+    "图片（点击加载）": "Image (cliquer pour charger)",
+    "附件（点击加载）": "Pièce jointe (cliquer pour charger)",
     "内容较长，已省略 {size} KB · 展开": "Contenu long : {size} Ko masqués · Développer",
     "打开图片": "Ouvrir l’image",
     "此处省略 {count} 条": "{count} éléments masqués ici",
@@ -326,6 +338,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Rejoindre le projet"
   },
   "de": {
+    "图片（点击加载）": "Bild (zum Laden klicken)",
+    "附件（点击加载）": "Anhang (zum Laden klicken)",
     "内容较长，已省略 {size} KB · 展开": "Langer Inhalt: {size} KB ausgelassen · Aufklappen",
     "打开图片": "Bild öffnen",
     "此处省略 {count} 条": "Hier wurden {count} Einträge ausgelassen",
@@ -380,6 +394,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Projekt beitreten"
   },
   "it": {
+    "图片（点击加载）": "Immagine (clicca per caricare)",
+    "附件（点击加载）": "Allegato (clicca per caricare)",
     "内容较长，已省略 {size} KB · 展开": "Contenuto lungo: {size} KB omessi · Espandi",
     "打开图片": "Apri immagine",
     "此处省略 {count} 条": "{count} voci omesse qui",
@@ -434,6 +450,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Unisciti al progetto"
   },
   "es": {
+    "图片（点击加载）": "Imagen (haz clic para cargar)",
+    "附件（点击加载）": "Archivo adjunto (haz clic para cargar)",
     "内容较长，已省略 {size} KB · 展开": "Contenido largo: se han omitido {size} KB · Expandir",
     "打开图片": "Abrir imagen",
     "此处省略 {count} 条": "Aquí se han omitido {count} entradas",
@@ -488,6 +506,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Unirse al proyecto"
   },
   "es-419": {
+    "图片（点击加载）": "Imagen (haz clic para cargar)",
+    "附件（点击加载）": "Archivo adjunto (haz clic para cargar)",
     "内容较长，已省略 {size} KB · 展开": "Contenido largo: se omitieron {size} KB · Expandir",
     "打开图片": "Abrir imagen",
     "此处省略 {count} 条": "Aquí se omitieron {count} entradas",
@@ -542,6 +562,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Unirse al proyecto"
   },
   "pt-BR": {
+    "图片（点击加载）": "Imagem (clique para carregar)",
+    "附件（点击加载）": "Anexo (clique para carregar)",
     "内容较长，已省略 {size} KB · 展开": "Conteúdo longo: {size} KB omitidos · Expandir",
     "打开图片": "Abrir imagem",
     "此处省略 {count} 条": "{count} entradas omitidas aqui",
@@ -596,6 +618,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Entrar no projeto"
   },
   "pt-PT": {
+    "图片（点击加载）": "Imagem (clique para carregar)",
+    "附件（点击加载）": "Anexo (clique para carregar)",
     "内容较长，已省略 {size} KB · 展开": "Conteúdo longo: {size} KB omitidos · Expandir",
     "打开图片": "Abrir imagem",
     "此处省略 {count} 条": "{count} entradas omitidas aqui",
@@ -650,6 +674,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Aderir ao projeto"
   },
   "vi": {
+    "图片（点击加载）": "Hình ảnh (nhấp để tải)",
+    "附件（点击加载）": "Tệp đính kèm (nhấp để tải)",
     "内容较长，已省略 {size} KB · 展开": "Nội dung dài, đã lược bỏ {size} KB · Mở rộng",
     "打开图片": "Mở hình ảnh",
     "此处省略 {count} 条": "Đã lược bỏ {count} mục tại đây",
@@ -704,6 +730,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Tham gia dự án"
   },
   "tr": {
+    "图片（点击加载）": "Görsel (yüklemek için tıklayın)",
+    "附件（点击加载）": "Ek (yüklemek için tıklayın)",
     "内容较长，已省略 {size} KB · 展开": "İçerik uzun, {size} KB atlandı · Genişlet",
     "打开图片": "Görseli aç",
     "此处省略 {count} 条": "Burada {count} kayıt atlandı",
@@ -758,6 +786,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Projeye katıl"
   },
   "ar": {
+    "图片（点击加载）": "صورة (انقر للتحميل)",
+    "附件（点击加载）": "مرفق (انقر للتحميل)",
     "内容较长，已省略 {size} KB · 展开": "المحتوى طويل، تم إخفاء {size} KB · توسيع",
     "打开图片": "فتح الصورة",
     "此处省略 {count} 条": "تم إخفاء {count} من العناصر هنا",
@@ -812,6 +842,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "الانضمام إلى المشروع"
   },
   "th": {
+    "图片（点击加载）": "รูปภาพ (คลิกเพื่อโหลด)",
+    "附件（点击加载）": "ไฟล์แนบ (คลิกเพื่อโหลด)",
     "内容较长，已省略 {size} KB · 展开": "เนื้อหายาว จึงซ่อน {size} KB · ขยาย",
     "打开图片": "เปิดรูปภาพ",
     "此处省略 {count} 条": "ซ่อน {count} รายการตรงนี้",
@@ -866,6 +898,8 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "เข้าร่วมโครงการ"
   },
   "hi": {
+    "图片（点击加载）": "चित्र (लोड करने के लिए क्लिक करें)",
+    "附件（点击加载）": "अटैचमेंट (लोड करने के लिए क्लिक करें)",
     "内容较长，已省略 {size} KB · 展开": "सामग्री लंबी है, {size} KB छोड़ा गया · विस्तार करें",
     "打开图片": "चित्र खोलें",
     "此处省略 {count} 条": "यहाँ {count} प्रविष्टियाँ छोड़ी गई हैं",

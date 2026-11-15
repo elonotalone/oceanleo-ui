@@ -8,7 +8,8 @@ import { createRequire } from "node:module";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
 
-import React from "react";
+import React, { act } from "react";
+import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -35,11 +36,18 @@ const uiStub = dataModule(`
 const clipboardStub = dataModule(`
   export async function writeClipboardText() { return true; }
 `);
+const attachmentUrlStub = dataModule(`
+  export * from ${JSON.stringify(new URL("../src/lib/attachment-url.ts", import.meta.url).href)};
+  export function useAttachmentDisplayUrl(attachment) {
+    return attachment?.artifact_id ? "/private-thumbnail/" + attachment.artifact_id : attachment?.url;
+  }
+`);
 
 const { AcpBackgroundTaskStrip, AcpTranscript } = await import(
   await compileModule("src/acp/AcpTranscript.tsx", {
     "../i18n/ui/useUI": uiStub,
     "./share/share-clipboard": clipboardStub,
+    "../lib/attachment-url": attachmentUrlStub,
   })
 );
 
@@ -89,6 +97,88 @@ function render(rows, props) {
 function occurrences(text, needle) {
   return text.split(needle).length - 1;
 }
+
+const privateImageUri = "oceanleo-attachment://aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/photo.png";
+const imagePrompt = (image) => client({ id: 800, method: "session/prompt", params: { sessionId: "s1", prompt: [
+  { type: "text", text: "看看截图…" }, { type: "image", mimeType: "image/png", ...image },
+] } });
+
+test("a reference-only picture shows a clickable thumbnail inside its user bubble", () => {
+  const row = imagePrompt({ uri: privateImageUri, width: 1200, height: 800 });
+  const body = render([row], { onOpenAttachment: () => {} });
+  const bubble = body.querySelector('[data-testid="task-user-bubble"]');
+  assert.equal(bubble.querySelector('img').getAttribute('src'), '/private-thumbnail/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  assert.ok(bubble.querySelector('[data-upload-kind="image"] button'));
+  assert.equal(body.querySelector('[data-acp-truncated-row]'), null);
+  // A historical binary-only compacted row with a usable URI needs no expansion notice either.
+  const historical = render([{ ...row, truncated: { bytes: 2164000, text: false, binary: true } }]);
+  assert.ok(historical.querySelector('[data-upload-kind="image"]'));
+  assert.doesNotMatch(historical.textContent, /内容较长|点击加载/);
+});
+
+test("a legacy binary-only frame offers image loading, including old bytes-only metadata", () => {
+  for (const truncated of [{ bytes: 2164000 }, { bytes: 2164000, text: false, binary: true }]) {
+    const row = { ...imagePrompt({ data: "" }), truncated };
+    const body = render([row], { onExpandRow: async () => {} });
+    const load = body.querySelector('[data-acp-load-attachment]');
+    assert.equal(load.textContent, '图片（点击加载）');
+    assert.equal(load.hasAttribute('disabled'), false);
+    assert.doesNotMatch(body.textContent, /内容较长|2164|image\/png/);
+  }
+});
+
+test("true long text keeps expansion, even when the same row also has a missing legacy image", () => {
+  const row = { ...prompt(801, '长文…'), truncated: { bytes: 50000, text: true, binary: false } };
+  const body = render([row], { onExpandRow: async () => {} });
+  assert.match(body.querySelector('[data-acp-truncated-row]').textContent, /内容较长，已省略 49 KB · 展开/);
+  assert.equal(body.querySelector('[data-acp-load-attachment]'), null);
+  const oldGateway = render([{ ...prompt(802, 'x'.repeat(8192) + '…'), truncated: { bytes: 50000 } }]);
+  assert.match(oldGateway.textContent, /内容较长/);
+  const mixed = imagePrompt({ data: '' });
+  const message = JSON.parse(mixed.raw);
+  message.params.prompt[0].text = '长文…';
+  const both = render([{ ...mixed, raw: JSON.stringify(message), truncated: { bytes: 50000, text: true, binary: true } }]);
+  assert.match(both.textContent, /内容较长/);
+  assert.match(both.textContent, /图片（点击加载）/);
+});
+
+test("loading legacy bytes replaces that row and opens its small thumbnail through the attachment callback", async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const saved = Object.fromEntries(['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
+  const root = createRoot(dom.window.document.getElementById('root'));
+  const compact = { ...imagePrompt({ data: '' }), truncated: { bytes: 50000, text: false, binary: true } };
+  const full = { ...compact, raw: imagePrompt({ data: 'aGVsbG8=' }).raw, truncated: undefined };
+  const expanded = [], opened = [];
+  let current = compact;
+  const props = () => ({ rows: [current], program: 'claude', onOpenAttachment: (attachment) => opened.push(attachment), onExpandRow: async (id) => {
+    expanded.push(id); current = full; root.render(React.createElement(AcpTranscript, props()));
+  } });
+  try {
+    await act(async () => root.render(React.createElement(AcpTranscript, props())));
+    await act(async () => dom.window.document.querySelector('[data-acp-load-attachment]').click());
+    assert.deepEqual(expanded, [compact.id]);
+    assert.equal(dom.window.document.querySelector('[data-acp-truncated-row]'), null);
+    const bubble = dom.window.document.querySelector('[data-testid="task-user-bubble"]');
+    assert.equal(bubble.querySelector('img').getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
+    await act(async () => bubble.querySelector('[data-upload-kind="image"] button').click());
+    assert.equal(opened.length, 1);
+    assert.equal(opened[0].url, 'data:image/png;base64,aGVsbG8=');
+    assert.equal(dom.window.document.querySelectorAll('img').length, 1);
+    current = imagePrompt({ uri: privateImageUri });
+    await act(async () => root.render(React.createElement(AcpTranscript, props())));
+    await act(async () => dom.window.document.querySelector('[data-upload-kind="image"] button').click());
+    assert.equal(opened[1].artifact_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+    assert.equal(opened[1].revision_id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  } finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete globalThis[key];
+    }
+  }
+});
 
 function renderStrip(tasks, onStopTask) {
   return renderToStaticMarkup(React.createElement(AcpBackgroundTaskStrip, { tasks, onStopTask }));

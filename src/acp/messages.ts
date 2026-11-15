@@ -111,17 +111,20 @@ export function libraryRefFromUri(uri: string | null | undefined): { artifact_id
 
 function attachments(blocks: readonly ContentBlock[]): AgentAttachment[] {
   return blocks.flatMap((block): AgentAttachment[] => {
-    if (block.type === "resource_link") return [{ url: "", name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}) }];
+    if (block.type === "resource_link") return [{ url: "", name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}), ...libraryRefFromUri(block.uri) }];
     // Other paths and links belong to the user's side and are never fetched; a Library reference is.
     if (block.type === "image") {
       const ref = libraryRefFromUri(block.uri);
+      if (!ref && !block.data) return []; // shortened legacy bytes have a row-level load button
       // Library images retain their private identity. Legacy inline bytes, once
       // expanded, belong to this message's same small attachment tile.
       const url = !ref && block.data && /^image\/(png|jpeg|gif|webp|avif)$/.test(block.mimeType)
         ? `data:${block.mimeType};base64,${block.data}` : "";
-      return [{ url, name: block.uri?.split("/").pop() || block.mimeType, mime: block.mimeType, media_type: "image", ...ref }];
+      let name = block.uri?.split("/").pop() || block.mimeType;
+      try { name = decodeURIComponent(name); } catch { /* legacy names may contain a literal percent */ }
+      return [{ url, name, mime: block.mimeType, media_type: "image", ...ref }];
     }
-    if (block.type === "resource") return [{ url: "", name: block.resource.uri.split("/").pop() || block.resource.uri }];
+    if (block.type === "resource") return [{ url: "", name: block.resource.uri.split("/").pop() || block.resource.uri, ...libraryRefFromUri(block.resource.uri) }];
     return [];
   });
 }

@@ -14,7 +14,7 @@ export type AcpFrameRow = {
   node_seq: number | null;
   raw: string;
   /** Full raw byte count when large values were shortened for history/live transport. */
-  truncated?: { bytes: number };
+  truncated?: { bytes: number; text?: boolean; binary?: boolean };
   received_at: string;
 };
 
@@ -26,7 +26,7 @@ export type JsonRpcError = { code: number; message: string; data?: unknown };
 
 export type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "image"; data: string; mimeType: string; uri?: string | null }
+  | { type: "image"; data?: string; mimeType: string; uri?: string | null; width?: number; height?: number }
   | { type: "audio"; data: string; mimeType: string }
   | { type: "resource_link"; uri: string; name: string; title?: string | null; mimeType?: string | null; size?: number | null }
   | { type: "resource"; resource: { uri: string; text?: string; blob?: string; mimeType?: string | null } };
