@@ -169,7 +169,7 @@ globalThis.fetch = async (url,init={}) => {
       const sender=init.headers.Authorization==="Bearer test-a"?"a":init.headers.Authorization==="Bearer test-b"?"b":"default";
       puts.push({at,body,sender});
       if(probe.putDelay)await wait(probe.putDelay);
-      if(probe.cas&&body.if_seq!==(copy?.seq??null)){probe.collisions++;return new Response("{}",{status:409});}
+      if(probe.cas&&body.if_seq!==(copy?.seq??null)){probe.collisions++;return new Response(JSON.stringify({ok:false,code:"stale",seq:copy?.seq??0,saved_at:copy?.saved_at??new Date().toISOString()}),{status:409});}
       const seq=(copy?.seq||0)+1;
       copy={schema:body.schema,seq,published_seq:0,base_revision_id:body.base_revision_id,saved_at:new Date().toISOString(),doc:body.doc};
       probe.acks.push({sender,seq,doc:body.doc});
