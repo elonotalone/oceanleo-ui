@@ -195,6 +195,78 @@ test("primary catalog scope filters by app while site scope keeps other apps and
   });
 });
 
+test("portal catalog includes all 120 specialist websites before legacy packages, across output pages", async () => {
+  const ctx = { contextId: "olctx:v1:oceanleo:app:prompt", siteKey: "oceanleo", appId: "prompt" };
+  const websites = Array.from({ length: 120 }, (_, i) => catalogRow(`site-${i}`, {
+    artifactType: "website", siteKey: "website", appId: `app-${i}`,
+  }));
+  const legacy = ["oceanleo", "prompt"].map((siteKey) => catalogRow(`old-${siteKey}`, {
+    artifactType: "website", siteKey, appId: "prompt",
+  }));
+  await withFetch((url) => {
+    if (url.pathname === "/v1/template-materials") {
+      assert.equal(url.searchParams.has("siteKey"), false);
+      assert.equal(url.searchParams.has("appId"), false);
+      assert.equal(url.searchParams.get("artifactType"), "website");
+      // An out-of-scope type is rejected even if a source returns it.
+      return response({ items: [...legacy, ...websites, catalogRow("wrong-type")] });
+    }
+    if (url.pathname === "/v1/library/primary") return response({ detail: "unauthorized" }, 401);
+    assert.equal(url.searchParams.get("originSiteKey"), "oceanleo", "typed visibility stays scoped");
+    return response({ scope: "public", items: [] });
+  }, async () => {
+    const options = { type: "website", context: ctx, signal: new AbortController().signal };
+    const first = await listBayOfficialTemplates({ ...options, limit: 30 });
+    assert.equal(first.total, 122);
+    assert.equal(first.hasMore, true);
+    assert.deepEqual(ids(first.items), new Set(websites.slice(0, 30).map((r) => r.artifactId)));
+    const last = await listBayOfficialTemplates({ ...options, offset: 120, limit: 30 });
+    assert.equal(last.hasMore, false);
+    assert.deepEqual(ids(last.items), new Set(legacy.map((r) => r.artifactId)));
+    const search = await listBayOfficialTemplates({ ...options, q: "site-119" });
+    assert.deepEqual(ids(search.items), new Set(["site-119"]));
+  });
+});
+
+test("portal game tab includes ten game-site cards with their catalog and preview identities", async () => {
+  const games = Array.from({ length: 10 }, (_, i) => catalogRow(`game-${i}`, {
+    artifactType: "game", siteKey: "game", appId: `arcade-${i}`,
+  }));
+  await withFetch((url) => url.pathname === "/v1/template-materials"
+    ? response({ items: games }) : response({ scope: "public", items: [] }), async (calls) => {
+    const result = await listBayOfficialTemplates({ type: "game", siteKey: "oceanleo", signal: new AbortController().signal });
+    assert.equal(result.total, 10);
+    for (const asset of result.items) {
+      assert.equal(asset.type, "game");
+      assert.equal(asset.catalog.siteKey, "game");
+      assert.equal(asset.catalog.catalogId, `catalog-${asset.catalog.artifactId}`);
+      const href = new URL(asset.openHref, "https://portal.test");
+      assert.equal(href.searchParams.get("item"), asset.catalog.artifactId);
+    }
+    assert.equal(calls.find((url) => url.pathname === "/v1/template-materials").searchParams.has("siteKey"), false);
+  });
+});
+
+test("website and game subsites retain their own catalog; portal primary remains app-scoped", async () => {
+  for (const siteKey of ["website", "game", "oceanleo"]) {
+    const type = siteKey === "game" ? "game" : "website";
+    const ctx = { contextId: `olctx:v1:${siteKey}:app:scoped`, siteKey, appId: "scoped" };
+    await withFetch((url) => {
+      if (url.pathname !== "/v1/template-materials") return response({ scope: "public", contextId: ctx.contextId, items: [] });
+      assert.equal(url.searchParams.get("siteKey"), siteKey);
+      return response({ items: [
+        catalogRow("local", { artifactType: type, siteKey, appId: "scoped" }),
+        catalogRow("foreign", { artifactType: type, siteKey: "foreign" }),
+        catalogRow("other-app", { artifactType: type, siteKey, appId: "other" }),
+      ] });
+    }, async () => {
+      const result = await listBayOfficialTemplates({ type, context: ctx,
+        level: siteKey === "oceanleo" ? "primary" : "site", signal: new AbortController().signal });
+      assert.deepEqual(ids(result.items), new Set(siteKey === "oceanleo" ? ["local"] : ["local", "other-app"]));
+    });
+  }
+});
+
 test("public search permission failure never returns a partial catalog or retries globally", async () => {
   await withFetch((url) => url.pathname === "/v1/template-materials"
     ? response({ items: [catalogRow("catalog-ok")] })
