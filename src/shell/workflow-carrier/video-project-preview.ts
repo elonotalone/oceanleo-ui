@@ -2,7 +2,7 @@
  * 库卡片封面：把当前节点图画成一张 PNG（D11 §5.2「库卡片随之更新」）。
  *
  * 封面是静态图，不跟网站明暗走：用浅色中性底，节点卡带种类色带和名称。
- * 画不出来（没有 canvas、空图）返回 null，由共享保存内核如实记成封面警告，
+ * 画不出来（没有 canvas）返回 null，由共享保存内核如实记成封面警告，
  * workflow 契约里 preview 是选配，不会因此假成功或假失败。
  */
 import { videoKindAccent, videoKindSpec } from "./video-canvas-kinds";
@@ -66,7 +66,6 @@ export async function renderVideoProjectPreview(
   label: (text: string) => string = (text) => text,
 ): Promise<Blob | null> {
   const { nodes, edges } = videoDocGraph(doc);
-  if (!nodes.length) return null;
   const canvas = makeCanvas();
   const ctx = canvas?.getContext("2d");
   if (!canvas || !ctx) return null;
@@ -79,6 +78,10 @@ export async function renderVideoProjectPreview(
   });
   ctx.fillStyle = "#f4f4f5";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  if (!nodes.length) {
+    ctx.fillStyle = "#18181b"; ctx.font = "600 32px system-ui, sans-serif";
+    ctx.fillText(String(doc.title || label("视频画布")), PAD, canvas.height / 2, canvas.width - PAD * 2);
+  }
   const byId = new Map(nodes.map((node) => [node.nodeId, node]));
   ctx.strokeStyle = "#a1a1aa";
   ctx.lineWidth = Math.max(1, 1.5 * layout.scale);

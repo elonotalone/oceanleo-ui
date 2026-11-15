@@ -35,6 +35,7 @@
     "./shell/nav-source/route-transition.css": "./src/shell/nav-source/route-transition.css",
     "./shell/nav-source/route-boundary": "./src/shell/nav-source/route-boundary.tsx",
     "./shell/selection-context": "./src/shell/selection-context.ts",
+    "./shell/video-canvas": "./src/shell/video-canvas/index.ts",
     "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/FloatingContextToolbar": "./src/shell/FloatingContextToolbar.tsx",
     "./shell/plugin-command": "./src/shell/plugin-command/index.ts",

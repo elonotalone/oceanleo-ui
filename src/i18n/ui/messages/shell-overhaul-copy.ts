@@ -1,3 +1,4 @@
+import { PW_VM_MESSAGES } from "./pw-vm-copy";
 // 2026-09-21 外壳整改词典聚合器：五张分表按语种合并成一张，index.ts / load.ts 只注册这一张。
 // 分表各归一个工作单元；本文件与 index.ts / load.ts 只由整合者改。
 
@@ -116,6 +117,7 @@ import { RDLOGIN_ACT_MESSAGES } from "./rdlogin-act-copy";
 const PARTS = [
   PW_UD_MESSAGES,
   PW_U4_MESSAGES,
+  PW_VM_MESSAGES,
   SHELL_OVERHAUL_DOCK_MESSAGES,
   SHELL_OVERHAUL_DEVICES_MESSAGES,
   SHELL_OVERHAUL_SETTINGS_MESSAGES,
