@@ -9,8 +9,8 @@ beforeEach(() => {
   globalThis.__remoteMediaTestStart=async (_descriptor,_video,handlers)=>{ callbacks=handlers; return {async close(){}}; };
 });
 afterEach(async()=>{ await view?.unmount(); view=null; delete globalThis.__remoteMediaTestStart; console.error=originalError; assert.deepEqual(errors,[], 'real panel must not emit console.error'); });
-async function mount(status=null, extra={}) {
-  view=await mountStream({overrides:{ async negotiateMedia(){return {ok:true,data:{media,media_status:status}};},...extra}});
+async function mount(status=null, extra={}, streamOverrides={}) {
+  view=await mountStream({streamOverrides,overrides:{ async negotiateMedia(){return {ok:true,data:{media,media_status:status}};},...extra}});
   return view;
 }
 const handle=()=>view.screen().querySelector('[data-remote-toolbar-handle]');
@@ -62,24 +62,26 @@ test('drag docks to edges and remembers a separate position for each account acr
   assert.equal(view.screen().querySelector('[data-remote-toolbar-dock]').getAttribute('data-remote-toolbar-dock'),'right');
   await act(async()=>identity(null)); assert.equal(window.localStorage.getItem('oceanleo:remote-toolbar:null'),null);
 });
-test('decoder statistics remain single flight for a simulated hour; relative RTP age is never reported as capture age',async t=>{
-  await mount();
-  await act(async()=>callbacks.frame(1440,900,{rtp_timestamp_90:0,presentation_time_ms:0}));
-  // The actual RemoteDesktopVideo timer reads this deferred viewer stats once, regardless of duration.
-  await view.unmount();
-  let calls=0, resolveStats; const windows=[];
-  globalThis.__remoteMediaTestStart=async(_descriptor,_video,handlers)=>{callbacks=handlers;return {close:async()=>{},stats(){calls++;return new Promise(resolve=>resolveStats=resolve);}};};
+test('quality windows share receiver samples for a simulated hour; relative RTP age is never reported as capture age',async t=>{
+  let calls=0; const windows=[];
+  globalThis.__remoteMediaTestStart=async(_descriptor,_video,handlers)=>{callbacks=handlers;return {close:async()=>{},async stats(){calls++;return [];}};};
   t.mock.timers.enable({apis:['setInterval','Date'],now:100000});
   try {
-    await mount(null,{async reportQualityWindow(value){windows.push(value);return {ok:true};}});
+    await mount(null,{async reportQualityWindow(value){windows.push(value);return {ok:true};}},{sendViewerReport(){return true;}});
+    await act(async()=>{
+      callbacks.frame(1440,900,{rtp_timestamp_90:0,presentation_time_ms:0});
+      callbacks.stats({fps:30,framesDecoded:1,packetsReceived:1});
+    });
     await act(async()=>callbacks.publisherStats({push_buffer_full:7,push_backoff_ms:17,sdk_encode_fps:30}));
     await act(async()=>{for(let second=0;second<3600;second++)t.mock.timers.tick(1000);});
     assert.equal(windows.length,360);
     assert.ok(windows.every(value=>value.viewer.seq>=1&&!Object.keys(value.viewer).some(key=>/^(age_|picture_age_|input_to_picture_)/.test(key))));
     assert.ok(windows.every(value=>value.publisher.push_buffer_full===7&&value.publisher.push_backoff_ms===17));
-    assert.equal(calls,1,'a stuck stats read creates no more promises/listeners');
-    await act(async()=>resolveStats([]));
-    await act(async()=>t.mock.timers.tick(1000)); assert.equal(calls,2);
+    assert.equal(calls,0,'quality windows never create a second receiver stats poller');
+    await act(async()=>callbacks.stats({fps:24,framesDecoded:25,packetsReceived:25}));
+    await act(async()=>t.mock.timers.tick(10000));
+    assert.equal(windows.at(-1).viewer.fps_decoded,24);
+    assert.equal(calls,0);
   } finally {t.mock.timers.reset();}
 });
 

@@ -5,8 +5,9 @@ import { openRemoteMedia } from "../src/pages/remote-desktop-media.ts";
 const flush = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 async function harness(t, { stats = true, trackId = "screen-track", kind = "video", counters = { bytesReceived: 100, packetsReceived: 1, framesReceived: 1 } } = {}) {
   t.mock.timers.enable({ apis: ["setInterval", "setTimeout", "Date"], now: 100000 });
-  const events = new Map(), states = [], frames = [];
-  let callback, statsMode = "ok", statsCalls = 0;
+  const events = new Map(), states = [], frames = [], samples = [];
+  let callback, statsMode = "ok", statsCalls = 0, completePendingStats;
+  const report = () => new Map([["screen-inbound", { id: "screen-inbound", type: "inbound-rtp", kind, ...counters }]]);
   const video = Object.assign(new EventTarget(), {
     videoWidth: 0, videoHeight: 0, readyState: 0,
     srcObject: { getVideoTracks: () => [{ id: "screen-track" }] },
@@ -18,8 +19,8 @@ async function harness(t, { stats = true, trackId = "screen-track", kind = "vide
     getReceivers() { return [{ track: { id: trackId }, getStats: async () => {
       statsCalls++;
       if (statsMode === "reject") throw new Error("stats unavailable");
-      if (statsMode === "pending") return new Promise(() => {});
-      return new Map([["screen-inbound", { id: "screen-inbound", type: "inbound-rtp", kind, ...counters }]]);
+      if (statsMode === "pending") return new Promise(resolve => { completePendingStats = () => resolve(report()); });
+      return report();
     } }]; }
   }
   const originalPeer = globalThis.RTCPeerConnection;
@@ -39,16 +40,33 @@ async function harness(t, { stats = true, trackId = "screen-track", kind = "vide
   };
   const abort = new AbortController();
   const viewer = await openRemoteMedia(credentials, video, {
-    state: (...args) => states.push(args), frame: (...args) => frames.push(args), renew: async () => credentials,
+    state: (...args) => states.push(args), frame: (...args) => frames.push(args),
+    renew: async () => ({ ...credentials, expires_at: new Date(Date.now() + 120000).toISOString() }),
+    stats: sample => samples.push(sample),
   }, abort.signal, async () => ({ createEngine: () => engine }));
   t.after(async () => { await viewer.close(); globalThis.RTCPeerConnection = originalPeer; });
   return {
-    video, states, frames, counters, events, viewer, statsCalls: () => statsCalls,
+    video, states, frames, samples, counters, events, viewer, statsCalls: () => statsCalls,
     statsMode(mode) { statsMode = mode; },
+    resolveStats() { const done = completePendingStats; completePendingStats = undefined; assert.ok(done); done(); },
     frame() { video.videoWidth = 1920; video.videoHeight = 1080; video.readyState = 2; callback?.(); },
     async tick(seconds = 1) { for (let i = 0; i < seconds; i++) { t.mock.timers.tick(1000); await flush(); } },
   };
 }
+
+test("the real watchdog keeps one unresolved receiver read across a simulated hour, then resumes and stops on close", async t => {
+  const h = await harness(t); h.frame(); h.statsMode("pending");
+  for (let second = 0; second < 3600; second++) { await h.tick(); h.frame(); }
+  assert.equal(h.states.some(([state]) => state === "error"), false);
+  assert.equal(h.statsCalls(), 1, "a stuck stats read creates no more promises/listeners");
+  assert.equal(h.samples.length, 0, "unfinished reads cannot publish a sample");
+  h.statsMode("ok"); h.resolveStats(); await flush();
+  assert.equal(h.samples.length, 1, "one completed read publishes one shared sample");
+  await h.tick();
+  assert.equal(h.statsCalls(), 2); assert.equal(h.samples.length, 2);
+  await h.viewer.close(); await h.tick(20);
+  assert.equal(h.statsCalls(), 2); assert.equal(h.samples.length, 2, "close stops both reads and sample delivery");
+});
 
 test("static desktop with four-second keyframes stays playing beyond the hard timeout window", async (t) => {
   const h = await harness(t); h.frame();
