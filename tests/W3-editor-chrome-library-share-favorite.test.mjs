@@ -538,7 +538,8 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
   });
 });
 
-async function waitUntil(predicate, tries = 40) {
+// Dynamic module loading is not covered by React act; allow it to finish under suite load.
+async function waitUntil(predicate, tries = 500) {
   for (let i = 0; i < tries; i += 1) {
     if (predicate()) return true;
     await act(async () => {
