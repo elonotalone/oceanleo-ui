@@ -50,7 +50,12 @@ for (const mode of ['bullet', 'ordered', 'none']) test(`structured ${mode} list 
   const parsed = parseFabricImageProject(JSON.parse(JSON.stringify(project)));
   assert.equal(parsed.snapshot.json.objects[0].oceanleoList, mode);
   const svg = copy.toSVG();
-  if (mode !== 'none') assert.match(svg, /data-oceanleo-text=/);
+  assert.match(svg, /data-oceanleo-text=/);
+  const canvas = new fabric.StaticCanvas(undefined, { width: 300, height: 300 }); canvas.add(copy);
+  const standalone = await vectorSvgToSnapshot(fabric, exportVectorSvg(canvas, { width: 300, height: 300 }));
+  assert.equal(standalone.snapshot.json.objects[1].text, source, 'removing a list preserves literal prefixes and blank lines in standalone SVG');
+  assert.equal(standalone.snapshot.json.objects[1].oceanleoList, mode);
+  await canvas.dispose();
 });
 for (const [name, patch] of [['indent-increase', { indent: 48 }], ['indent-decrease', { indent: 0 }], ['vertical-text', { verticalText: true }]]) test(`${name} changes actual rendering, survives repeated measurements, JSON and SVG reopen`, async () => {
   const text = new fabric.Textbox('中文\nAB', { width: 180, fontSize: 20, left: 40, top: 40 });

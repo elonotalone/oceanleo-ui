@@ -16,7 +16,7 @@ type LayoutText = IText & FabricTextLayoutProps & {
 const installed = new WeakSet<object>();
 const measuring = new WeakSet<object>();
 const xml = (value: unknown) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
-const enabled = (text: LayoutText) => Boolean(text.oceanleoVerticalText || text.oceanleoIndent || (text.oceanleoList && text.oceanleoList !== "none"));
+const enabled = (text: LayoutText) => text.oceanleoVerticalText != null || text.oceanleoIndent != null || text.oceanleoList != null;
 export const fabricTextIndent = (text: FabricTextLayoutProps) => Math.max(0, Math.min(240, Number(text.oceanleoIndent) || 0));
 function gutter(text: LayoutText): number {
   const list = text.oceanleoList && text.oceanleoList !== "none";
