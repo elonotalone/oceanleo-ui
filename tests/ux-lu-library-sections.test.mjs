@@ -53,6 +53,27 @@ async function settle() {
   }
 }
 
+function deferred() {
+  let resolve;
+  const promise = new Promise((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+async function waitForFolderUpload() {
+  const started = globalThis.__lu.folderUploadStarted.promise;
+  let timeout;
+  try {
+    await act(async () => {
+      await Promise.race([
+        started,
+        new Promise((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("Folder upload mock was not called within 5 seconds")), 5_000);
+        }),
+      ]);
+    });
+  } finally { clearTimeout(timeout); }
+}
+
 const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   "./library-import": dataModule(`
     export function LibraryImportDialog(){ throw new Error("unexpected import dialog"); }
@@ -144,6 +165,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export async function uploadDroppedFolder(folder, { onPhase } = {}){
       onPhase?.("creating");
       globalThis.__lu.folderUploads.push({ name: folder.name, paths: folder.entries.map((entry) => entry.path) });
+      globalThis.__lu.folderUploadStarted.resolve();
       return globalThis.__lu.folderResponses.shift() || { ok: true, folder: { id: "pkg-1" } };
     }
   `),
@@ -200,6 +222,7 @@ async function mount(props = {}, { items = ITEMS, favorites = [] } = {}) {
     uploadResponses: [],
     folderUploads: [],
     folderResponses: [],
+    folderUploadStarted: deferred(),
   };
   const container = document.createElement("div");
   document.body.append(container);
@@ -402,7 +425,7 @@ test("a dropped folder keeps its relative paths and uses the folder upload bound
     const folder = dirEntry("Brand kit", [fileEntry(a), dirEntry("assets", [fileEntry(b)])]);
     const zone = view.container.querySelector("[data-library-drop-zone]");
     await dispatchDrag(zone, "drop", transfer([folder]));
-    await settle();
+    await waitForFolderUpload();
     assert.deepEqual(globalThis.__lu.folderUploads, [{ name: "Brand kit", paths: ["a.md", "assets/b.md"] }]);
     assert.equal(globalThis.__lu.uploads.length, 0);
     assert.ok(sections.includes("upload"));
@@ -418,7 +441,7 @@ test("a folder upload error is shown as returned", async () => {
     globalThis.__lu.folderResponses.push({ ok: false, error: "文件夹上传失败：空间不足" });
     const zone = view.container.querySelector("[data-library-drop-zone]");
     await dispatchDrag(zone, "drop", transfer([dirEntry("Huge", [fileEntry(new window.File(["x"], "x.bin"))])]));
-    await settle();
+    await waitForFolderUpload();
     const alert = view.container.querySelector('[role="alert"]');
     assert.equal(alert?.firstChild?.textContent, "文件夹上传失败：空间不足");
     assert.equal(alert?.querySelector("a")?.getAttribute("href"), "/library#storage-capacity");
