@@ -84,6 +84,33 @@ export async function readHistoryListSource<T>(
   }
 }
 
+/** ETags are optional: old gateways keep returning ordinary successful lists. */
+export function createConditionalHistoryListReader() {
+  const snapshots = new Map<string, { etag: string; items: unknown[] }>();
+  let epoch = 0;
+  return {
+    clear() { epoch += 1; snapshots.clear(); },
+    async read<T>(key: string, read: (signal: AbortSignal, headers?: Record<string, string>) =>
+      Promise<AgentApiResult<{ items: T[] }>>, options: { signal?: AbortSignal } = {}) {
+      const generation = epoch;
+      const cached = snapshots.get(key);
+      return readHistoryListSource<T>(async (signal) => {
+        const result = await read(signal, cached ? { "If-None-Match": cached.etag } : undefined);
+        if (signal.aborted || generation !== epoch) return { ok: false, status: 0, error: "加载已取消" };
+        if (result.status === 304) {
+          return cached ? { ok: true, data: { items: cached.items as T[] } }
+            : { ok: false, status: 502, error: "加载失败" };
+        }
+        if (result.ok && validHistoryListRows(result.data?.items)) {
+          if (result.etag) snapshots.set(key, { etag: result.etag, items: result.data!.items });
+          else snapshots.delete(key);
+        } else snapshots.delete(key);
+        return result;
+      }, options);
+    },
+  };
+}
+
 /** First-read retries are quiet and bounded; successful lists retain their normal poll cadence. */
 export function historyInitialRetryDelayMs(failures: number): number {
   return Math.min(30_000, 2_000 * 2 ** Math.min(4, Math.max(0, failures)));

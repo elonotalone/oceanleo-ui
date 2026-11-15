@@ -47,6 +47,8 @@ export type AgentApiResult<T> = {
   status?: number;
   detail?: AgentApiErrorDetail;
   retryAfterSeconds?: number;
+  /** Conditional list reads can retain their last body on 304. */
+  etag?: string;
 };
 
 /** Ordinary history is unassigned-only; project-aware callers must opt into all. */
@@ -227,6 +229,8 @@ export async function authed<T>(
   } catch {
     return { ok: false, error: "网络错误：无法连接到 AI 网关。", status: 0 };
   }
+  const etag = res.headers?.get?.("ETag") || undefined;
+  if (res.status === 304) return { ok: true, status: 304, etag };
   let data: unknown = null;
   try {
     data = await res.json();
@@ -240,7 +244,7 @@ export async function authed<T>(
       res.headers?.get?.("Retry-After"),
     );
   }
-  return { ok: true, data: data as T };
+  return { ok: true, data: data as T, ...(etag ? { etag } : {}) };
 }
 
 /** 产物标记：引擎在产出「格式化可编辑结果」时写在 message.meta.artifact。 */
@@ -933,7 +937,7 @@ export function listTasks(
   pending = false,
   surface: "app" | "advanced" | "all" = "app",
   projectScope: ProjectScope = "unassigned",
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; headers?: Record<string, string> } = {},
 ) {
   const params = new URLSearchParams({ limit: String(limit) });
   const site = (siteId || "").trim();

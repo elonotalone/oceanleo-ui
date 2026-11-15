@@ -6,6 +6,7 @@ import {
   canDeleteHistoryEntry,
   HISTORY_WORKING_POLL_MS,
   historyPollDelayMs,
+  historyQuietPollDelayMs,
   isHistoryEntryWorking,
   isHistoryEntryFailed,
   isHistoryEntryOffline,
@@ -107,7 +108,7 @@ test("C-7: 侧栏任务行只有工作中动效，不再有红黄绿灰状态点
   assert.match(historySource, /SessionRunningIcon/);
   assert.match(historySource, /isHistoryEntryWorking\(x\) !== isHistoryEntryWorking\(y\)/);
   assert.match(historySource, /computer_run_status \?\? null\) !== \(y\.task\.computer_run_status/);
-  assert.match(historySource, /HISTORY_WORKING_POLL_MS/);
+  assert.match(historySource, /historyQuietPollDelayMs/);
 });
 
 test("session 优先，已归属 session 的多次 run 不再重复成历史项", () => {
@@ -316,7 +317,7 @@ test("我的任务包含 active 会话并实时接收新任务，离开历史页
   assert.match(historySource, /includeArchived:\s*true/);
   assert.match(historySource, /surface:\s*"all"/);
   // D11（2026-10-24，W11）：侧栏显式 project_scope=all，项目任务也列出（带项目标注）。
-  assert.match(historySource, /listTasks\(100, siteId, pending, "all", "all", \{ signal \}\)/);
+  assert.match(historySource, /listTasks\(100, siteId, pending, "all", "all", \{ signal, headers \}\)/);
   assert.doesNotMatch(historySource, /tt\("高级任务"\)/);
   assert.match(historySource, /historySessionHref\(entry\.id/);
   assert.doesNotMatch(historySource, /advancedFeatureHref/);
@@ -416,4 +417,10 @@ test("native execution rights do not prove work; explicit runtime projection ove
     [{ id: "w11-task", status: "running", mode: "computer", open_turn: false, session_id: "w11-session" }],
   );
   assert.equal(entries.some(isHistoryEntryWorking), false);
+});
+
+
+test("unchanged working and idle history reads settle to 30 seconds", () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 20].map(n => historyQuietPollDelayMs(n, true)), [3000, 6000, 12000, 24000, 30000, 30000]);
+  assert.deepEqual([0, 1, 2, 20].map(n => historyQuietPollDelayMs(n, false)), [8000, 16000, 30000, 30000]);
 });

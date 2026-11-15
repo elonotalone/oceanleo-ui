@@ -50,3 +50,44 @@ test("initial retries cap at 30 seconds and action failures never repeat transpo
   }
   assert.notEqual(historyActionFailureText({error:"LOCAL_AGENT_STOP_PENDING"}, "删除失败，请重试。"), "删除失败，请重试。");
 });
+
+test("conditional history reader reuses only its successful scoped body and falls back without ETag", async () => {
+  const { createConditionalHistoryListReader } = await import("../src/lib/history-list-api.ts");
+  const reader = createConditionalHistoryListReader();
+  const seen = [];
+  const first = await reader.read("tasks:a", async (_signal, headers) => {
+    seen.push(headers);
+    return { ok: true, etag: '"v1"', data: { items: [{ id: "task-1" }] } };
+  });
+  const same = await reader.read("tasks:a", async (_signal, headers) => {
+    seen.push(headers); return { ok: true, status: 304 };
+  });
+  assert.deepEqual(same.data, first.data);
+  assert.deepEqual(seen, [undefined, { "If-None-Match": '"v1"' }]);
+  await reader.read("tasks:b", async (_signal, headers) => {
+    assert.equal(headers, undefined); return { ok: true, data: { items: [] } };
+  });
+  reader.clear();
+  const invalid = await reader.read("tasks:a", async (_signal, headers) => {
+    assert.equal(headers, undefined); return { ok: true, status: 304 };
+  });
+  assert.equal(invalid.ok, false, "304 cannot invent an empty list after an account boundary");
+  await reader.read("tasks:a", async () => ({ ok: true, data: { items: [] } }));
+  await reader.read("tasks:a", async (_signal, headers) => {
+    assert.equal(headers, undefined, "old gateways need no ETag"); return { ok: true, data: { items: [] } };
+  });
+});
+
+test("a read started before clearing its owner cannot repopulate conditional snapshots", async () => {
+  const { createConditionalHistoryListReader } = await import("../src/lib/history-list-api.ts");
+  const reader = createConditionalHistoryListReader();
+  let resolve;
+  const pending = reader.read("tasks", () => new Promise(done => { resolve = done; }));
+  await Promise.resolve();
+  reader.clear();
+  resolve({ ok: true, etag: '"old"', data: { items: [{ id: "old-owner-task" }] } });
+  assert.equal((await pending).ok, false);
+  await reader.read("tasks", async (_signal, headers) => {
+    assert.equal(headers, undefined); return { ok: true, data: { items: [] } };
+  });
+});

@@ -45,3 +45,32 @@ test('the measured task-open GET fan-out shares each identical URL while all cal
   const failures = results.flatMap((result, index) => (index >= 28 && index < 32 ? Array.isArray(result.items) : result.ok === true) ? [] : [{ index, result }]);
   assert.deepEqual(failures, []);
 });
+
+test('task and session list clients preserve ETag and send conditional headers through the real transport', async (t) => {
+  const { createConditionalHistoryListReader } = await import('../src/lib/history-list-api.ts');
+  const reader = createConditionalHistoryListReader();
+  const calls = [];
+  let withEtag = true;
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const conditional = new Headers(init.headers).get('If-None-Match');
+    calls.push({ url: String(url), conditional });
+    if (withEtag && conditional) return new Response(null, { status: 304, headers: { ETag: '"rows-v1"' } });
+    return new Response(JSON.stringify({ items: [{ id: 'task-or-session' }] }), {
+      headers: { 'content-type': 'application/json', ...(withEtag ? { ETag: '"rows-v1"' } : {}) },
+    });
+  });
+  for (const [key, read] of [
+    ['tasks', (signal, headers) => agent.listTasks(100, undefined, false, 'all', 'all', { signal, headers })],
+    ['sessions', (signal, headers) => sessions.listAppSessions({ surface: 'all', signal, headers })],
+  ]) {
+    const first = await reader.read(key, read);
+    const second = await reader.read(key, read);
+    assert.deepEqual(second.data, first.data);
+    assert.equal(first.etag, '"rows-v1"');
+  }
+  assert.deepEqual(calls.map(call => call.conditional), [null, '"rows-v1"', null, '"rows-v1"']);
+  withEtag = false;
+  await reader.read('tasks', (signal, headers) => agent.listTasks(100, undefined, false, 'all', 'all', { signal, headers }));
+  await reader.read('tasks', (signal, headers) => agent.listTasks(100, undefined, false, 'all', 'all', { signal, headers }));
+  assert.equal(calls.at(-1).conditional, null, 'a gateway without ETag continues to return ordinary lists');
+});

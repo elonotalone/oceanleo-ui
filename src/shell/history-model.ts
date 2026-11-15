@@ -452,6 +452,12 @@ export const HISTORY_POLL_INTERVAL_MS = 8_000;
 export const HISTORY_WORKING_POLL_MS = 3_000;
 export const HISTORY_POLL_MAX_INTERVAL_MS = 60_000;
 
+/** Unchanged rows gradually settle to a bounded 30 s refresh, even while working. */
+export function historyQuietPollDelayMs(unchangedReads: number, active: boolean): number {
+  return Math.min(30_000, (active ? HISTORY_WORKING_POLL_MS : HISTORY_POLL_INTERVAL_MS) *
+    2 ** Math.min(4, Math.max(0, unchangedReads)));
+}
+
 /** Silent history refresh backs off while the gateway is 503/SSL failing. */
 export function historyPollDelayMs(consecutiveFailures: number): number {
   const failures = Math.max(0, Math.floor(consecutiveFailures));

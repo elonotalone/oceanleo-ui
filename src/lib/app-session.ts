@@ -76,6 +76,7 @@ export interface AppSession {
 
 export interface ListAppSessionsOptions {
   signal?: AbortSignal;
+  headers?: Record<string, string>;
   limit?: number;
   siteId?: string;
   appId?: string;
@@ -241,7 +242,7 @@ export async function listAppSessions(
   if (options.includeDraft === true) params.set("include_draft", "true");
   const result = await sessionRequest<SessionListEnvelope>(
     `?${params.toString()}`,
-    options.signal ? { signal: options.signal } : undefined,
+    { signal: options.signal, headers: options.headers },
     options.surface || "app",
   );
   if (!result.ok || !result.data) {

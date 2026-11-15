@@ -35,7 +35,7 @@ import {
 import { ConfirmDialog } from "../ui";
 import { browserClient } from "../lib/auth/client";
 import { onUserScopedClear, setCacheUser } from "../lib/user-scoped-cache";
-import { historyActionFailureText, historyInitialRetryDelayMs, readHistoryListSource } from "../lib/history-list-api";
+import { historyActionFailureText, historyInitialRetryDelayMs, createConditionalHistoryListReader } from "../lib/history-list-api";
 import {
   prefetchHistoryOpen,
   readHistorySession,
@@ -66,7 +66,7 @@ import {
   bumpHistoryEntries,
   canDeleteHistoryEntry,
   compareHistoryEntries,
-  HISTORY_WORKING_POLL_MS,
+  historyQuietPollDelayMs,
   historyEntryTimestamp,
   historyPollDelayMs,
   isHistoryEntryFinishing,
@@ -440,6 +440,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
   const listReadRef = useRef<{ key: string; request: Promise<boolean>; controller: AbortController } | null>(null);
   const deletingRef = useRef(new Set<string>());
   const pollFailuresRef = useRef(0);
+  const [conditionalLists] = useState(createConditionalHistoryListReader);
   // A change signal (chat phase change, user send, edit) that lands while a
   // read is on the wire must not be answered by that older read: it was sent
   // before the change (V1 U5 2026-11-04: a replying task kept its old place
@@ -538,13 +539,13 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       return Boolean(tasksResult?.ok && (sessionsResult?.ok || unavailable));
     };
     const request = Promise.all([
-      readHistoryListSource<AppSession>((signal) => listAppSessions({
-        limit: 100, siteId, includeArchived: true, surface: "all", projectScope: "all", signal,
+      conditionalLists.read<AppSession>(`${cacheKey}:sessions`, (signal, headers) => listAppSessions({
+        limit: 100, siteId, includeArchived: true, surface: "all", projectScope: "all", signal, headers,
       }), { signal: controller.signal }).then((result) => {
         sessionsResult = result;
         publish();
       }),
-      readHistoryListSource<AgentTask>((signal) => listTasks(100, siteId, pending, "all", "all", { signal }),
+      conditionalLists.read<AgentTask>(`${cacheKey}:tasks`, (signal, headers) => listTasks(100, siteId, pending, "all", "all", { signal, headers }),
         { signal: controller.signal }).then((result) => {
         tasksResult = result;
         publish();
@@ -553,16 +554,17 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       if (listReadRef.current?.request !== request) return;
       listReadRef.current = null;
       // Same generation = still mounted and nothing newer started.
-      if (followUpRef.current && generation === reloadGenerationRef.current) {
+      if (followUpRef.current && generation === reloadGenerationRef.current && !document.hidden) {
         followUpRef.current = false;
         void reloadRef.current(true);
       }
     });
     listReadRef.current = { key: cacheKey, request, controller };
     return request;
-  }, [cacheKey, siteId, pending, putItems, putLoading, putError]);
+  }, [cacheKey, siteId, pending, putItems, putLoading, putError, conditionalLists]);
   reloadRef.current = reload;
   useEffect(() => onUserScopedClear(() => {
+    conditionalLists.clear();
     ++reloadGenerationRef.current;
     listReadRef.current?.controller.abort();
     listReadRef.current = null;
@@ -588,30 +590,16 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       setItems(cached ?? []);
       setLoading(cached === undefined);
     }
-    void reload(false);
+    if (!document.hidden) void reload(false);
     return () => {
       ++reloadGenerationRef.current;
       listReadRef.current?.controller.abort();
       listReadRef.current = null;
     };
   }, [cacheKey, reload]);
-  useEffect(() => {
-    const refresh = () => {
-      void reload(true, true);
-    };
-    window.addEventListener(HISTORY_CHANGED_EVENT, refresh);
-    window.addEventListener("focus", refresh);
-    window.addEventListener("online", refresh);
-    return () => {
-      window.removeEventListener(HISTORY_CHANGED_EVENT, refresh);
-      window.removeEventListener("focus", refresh);
-      window.removeEventListener("online", refresh);
-    };
-  }, [reload]);
   // A chat on screen moved (native frame / Leo reply / user send): bump its row
   // right away (throttled at the source). The working mark itself still comes
-  // from the list, so a user send also refreshes it; otherwise the working poll
-  // (3s) and the regular poll pick up the server's order.
+  // from the list, so user sends and stream phase changes also refresh it.
   useEffect(() => {
     const onActivity = (event: Event) => {
       const detail = (event as CustomEvent<HistoryActivityDetail>).detail;
@@ -624,67 +612,81 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       if (bumpHistoryEntries(itemsRef.current, { ...detail, sessionId }) !== itemsRef.current) {
         setItems((prev) => bumpHistoryEntries(prev, { ...detail, sessionId }));
       }
-      if (detail.user) void reload(true, true);
     };
     window.addEventListener(HISTORY_ACTIVITY_EVENT, onActivity);
     return () => window.removeEventListener(HISTORY_ACTIVITY_EVENT, onActivity);
   }, [reload]);
-  // 全部任务静默刷新：active 会话也必须在创建后进入「我的任务」，不能因为当前列表
-  // 还没有 active 项就永远不再请求。sameHistory 保证无变化时不替换数组、不闪烁。
-  // Consecutive 503/SSL failures back off so the sidebar does not stampede
-  // the shared gateway (every plugin site mounts this list).
+  // One loop owns background reads. The open task's stream supplies changes;
+  // other tasks settle to a maximum 30 s delay while their rows stay unchanged.
   useEffect(() => {
     let cancelled = false;
     let timer = 0;
+    let unchangedReads = 0;
+    let refreshing = false;
+    let wakePending = false;
     const schedule = () => {
-      timer = window.setTimeout(() => {
-        void reload(true).then(
-          (ok) => {
-            if (cancelled) return;
-            pollFailuresRef.current = ok ? 0 : pollFailuresRef.current + 1;
-            schedule();
-          },
-          () => {
-            if (cancelled) return;
-            pollFailuresRef.current += 1;
-            schedule();
-          },
-        );
-      }, loadedOnceRef.current ? historyPollDelayMs(pollFailuresRef.current) : historyInitialRetryDelayMs(Math.max(0, pollFailuresRef.current - 1)));
+      window.clearTimeout(timer);
+      if (cancelled || document.hidden) return;
+      const active = itemsRef.current.some((entry) =>
+        isHistoryEntryWorking(entry) || isHistoryEntryWaiting(entry) ||
+        (entry.kind === "session" && entry.session.title_status === "pending"));
+      const delay = !loadedOnceRef.current
+        ? historyInitialRetryDelayMs(Math.max(0, pollFailuresRef.current - 1))
+        : pollFailuresRef.current
+          ? Math.min(30_000, historyPollDelayMs(pollFailuresRef.current))
+          : historyQuietPollDelayMs(unchangedReads, active);
+      timer = window.setTimeout(() => { void refresh(); }, delay);
     };
-    // Join the initial read; successful lists keep the ordinary 8 s cadence.
-    void reload(true).then((ok) => {
-      if (cancelled) return;
-      pollFailuresRef.current = ok ? 0 : 1;
-      schedule();
-    });
+    const refresh = async (fresh = false) => {
+      window.clearTimeout(timer);
+      if (cancelled || document.hidden) return;
+      if (refreshing) {
+        if (fresh) {
+          wakePending = true;
+          // Preserve the existing post-event read when an older read is in flight.
+          void reload(true, true);
+        }
+        return;
+      }
+      refreshing = true;
+      const before = itemsRef.current;
+      try {
+        const ok = await reload(true, fresh);
+        pollFailuresRef.current = ok ? 0 : pollFailuresRef.current + 1;
+        unchangedReads = fresh || before !== itemsRef.current ? 0 : unchangedReads + 1;
+      } finally {
+        refreshing = false;
+        if (!cancelled && wakePending) {
+          wakePending = false;
+          void refresh();
+        } else schedule();
+      }
+    };
+    const changed = () => { unchangedReads = 0; void refresh(true); };
+    const wake = () => { void refresh(); };
+    const activity = (event: Event) => {
+      if ((event as CustomEvent<HistoryActivityDetail>).detail?.user) changed();
+    };
+    const visibility = () => {
+      window.clearTimeout(timer);
+      if (!document.hidden) changed();
+    };
+    window.addEventListener(HISTORY_CHANGED_EVENT, changed);
+    window.addEventListener(HISTORY_ACTIVITY_EVENT, activity);
+    window.addEventListener("focus", wake);
+    window.addEventListener("online", changed);
+    document.addEventListener("visibilitychange", visibility);
+    void refresh(); // Join the first read instead of starting a second one.
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      window.removeEventListener(HISTORY_CHANGED_EVENT, changed);
+      window.removeEventListener(HISTORY_ACTIVITY_EVENT, activity);
+      window.removeEventListener("focus", wake);
+      window.removeEventListener("online", changed);
+      document.removeEventListener("visibilitychange", visibility);
     };
   }, [reload]);
-  const hasPendingSessionTitle = items.some(
-    (item) =>
-      item.kind === "session" &&
-      item.session.status === "archived" &&
-      item.session.title_status === "pending",
-  );
-  // AI history naming happens after archival. Poll only while a durable
-  // pending marker exists, then stop as soon as the generated/fallback title
-  // arrives; ordinary history remains completely idle.
-  useEffect(() => {
-    if (!hasPendingSessionTitle) return;
-    const timer = setInterval(() => reload(true), 2000);
-    return () => clearInterval(timer);
-  }, [hasPendingSessionTitle, reload]);
-  // Runs end without a client event: while any row shows the working mark,
-  // refresh every few seconds so the mark stops shortly after the run ends.
-  const hasWorkingEntry = items.some((entry) => isHistoryEntryWorking(entry) || isHistoryEntryWaiting(entry));
-  useEffect(() => {
-    if (!hasWorkingEntry) return;
-    const timer = setInterval(() => reload(true), HISTORY_WORKING_POLL_MS);
-    return () => clearInterval(timer);
-  }, [hasWorkingEntry, reload]);
   const remove = useCallback(async (entry: HistoryListEntry) => {
     if (!canDeleteHistoryEntry(entry)) return false;
     // Invalidate any older list request before applying the optimistic delete.
