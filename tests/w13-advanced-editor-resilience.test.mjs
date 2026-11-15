@@ -253,7 +253,7 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
   );
   assert.match(
     route,
-    /capture:\s*\(\) =>[\s\S]*editor\.sourceReady\s*\?\s*structuredClone\(editor\.doc\)\s*:\s*null/,
+    /capture:\s*\(\) =>[\s\S]*editor\.sourceReady\s*\?\s*structuredClone\(timelineDocForStorage\(editor\.doc\)\)\s*:\s*null/,
   );
   assert.match(
     controls,
