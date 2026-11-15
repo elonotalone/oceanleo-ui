@@ -822,7 +822,7 @@ export function MyLibrary({
     setPreviewIntentItem(null);
   }, []);
 
-  const rememberPreviewIntent = useCallback(
+  const rememberPreviewSelection = useCallback(
     (item: LibraryItem) => {
       previewRestoreRef.current = {
         item,
@@ -1496,8 +1496,8 @@ export function MyLibrary({
       (item) =>
         isDurableLibraryItem(item) && item.artifactId === identity.artifactId,
     );
-    if (known) rememberPreviewIntent(known);
-  }, [items, previewIntentItem, rememberPreviewIntent]);
+    if (known) rememberPreviewSelection(known);
+  }, [items, previewIntentItem, rememberPreviewSelection]);
 
   // 指名了一份具体 artifact 的深链：`intent: "open"` 走只读预览，旧的模板直编深链
   // （`intent: "edit"`）直接进 typed 编辑器（时序与兜底取数见 `library-edit-intent.ts`）。
@@ -1507,15 +1507,15 @@ export function MyLibrary({
     : action && intentRetry > 0
       ? { ...action, nonce: `${action.nonce}:retry:${intentRetry}` }
       : action;
-  const deliverIntentPreview = useCallback((item: LibraryItem) => {
-    rememberPreviewIntent(item);
+  const rememberPreviewIntent = useCallback((item: LibraryItem) => {
+    rememberPreviewSelection(item);
     clearFailures("intent");
-  }, [clearFailures, rememberPreviewIntent]);
+  }, [clearFailures, rememberPreviewSelection]);
   useLibraryEditIntent({
     action: editIntentAction,
     items,
     onOpenItem: openLibraryItem,
-    onPreviewItem: deliverIntentPreview,
+    onPreviewItem: rememberPreviewIntent,
     restoreGeneration,
     onFailure: ({ status, message }) => {
       reportFailure({ stage: "intent", status, diagnostic: message, retry: "intent" });
