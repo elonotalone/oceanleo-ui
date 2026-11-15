@@ -565,13 +565,14 @@ export function canvasUpstreamOrder(project: VideoProject, nodeId: string): Canv
     for (const edge of graph.edges.filter((edge) => edge.targetNodeId === id)) visit(edge.sourceNodeId);
     visiting.delete(id);
     visited.add(id);
-    ordered.push(clone(node));
+    ordered.push(effectiveCanvasNode(clone(node)));
   };
   visit(nodeId);
   return ordered;
 }
 
 export function canvasNodeHasOutput(project: VideoProject, node: CanvasNodeDefinition): boolean {
+  node = effectiveCanvasNode(node);
   if (node.generation?.status === "failed") return false;
   if (["text", "script", "subtitle"].includes(node.kind)) return Boolean(node.text?.trim());
   const asset = node.assetId ? project.assets[node.assetId] : undefined;
@@ -584,14 +585,14 @@ export function resolveCanvasInputs(project: VideoProject, nodeId: string): {
 } {
   canvasUpstreamOrder(project, nodeId);
   const graph = head(project).graph;
-  const target = graph.nodes.find((node) => node.nodeId === nodeId)!;
+  const target = effectiveCanvasNode(graph.nodes.find((node) => node.nodeId === nodeId)!);
   const inputs: ResolvedCanvasInput[] = [];
   const portType = (handle?: string | null) => {
     const match = handle?.match(/(?:^|[-_:])(text|script|image|audio|video|first-frame|reference)(?:$|[-_:])/);
     return match ? (match[1] === "script" ? "text" : ["first-frame", "reference"].includes(match[1]) ? "image" : match[1]) : undefined;
   };
   for (const edge of graph.edges.filter((edge) => edge.targetNodeId === nodeId)) {
-    const source = graph.nodes.find((node) => node.nodeId === edge.sourceNodeId)!;
+    const source = effectiveCanvasNode(graph.nodes.find((node) => node.nodeId === edge.sourceNodeId)!);
     const asset = source.assetId ? project.assets[source.assetId] : undefined;
     if (asset && ["image", "audio", "video"].includes(source.kind) && asset.kind !== source.kind) throw new CanvasInputError("type", source.title, source.nodeId);
     const type = ["text", "script", "subtitle"].includes(source.kind) ? "text" : asset?.kind || source.kind;
@@ -1068,7 +1069,7 @@ export function attachGeneratedAssetSet(
   }
   const extraNodeIds = assets.slice(1).map(() => stableId("node"));
   const takeIds =
-    sourceNode.kind === "video"
+    effectiveCanvasNode(sourceNode).kind === "video"
       ? assets.map(() => stableId("take"))
       : [];
   let next = advanceProject(working, commandId, (version) => {
@@ -1107,7 +1108,7 @@ export function attachGeneratedAssetSet(
         });
       });
     }
-    if (target.kind === "video" && target.shotId) {
+    if (effectiveCanvasNode(target).kind === "video" && target.shotId) {
       const shot = version.shots.find(
         (candidate) => candidate.shotId === target.shotId,
       );

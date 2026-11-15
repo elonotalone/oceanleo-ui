@@ -5,7 +5,8 @@ import http from "node:http";
 import { openLibraryVideoCanvas } from "../src/shell/video-canvas/library-entry.ts";
 import { createVideoProject } from "../src/shell/video-canvas/engine/project-model.ts";
 import { renderVideoProjectPreview } from "../src/shell/workflow-carrier/video-project-preview.ts";
-import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
+import * as gateway from "../src/shell/video-canvas/engine/canvas-gateway.ts";
 import { PW_VM_MESSAGES } from "../src/i18n/ui/messages/pw-vm-copy.ts";
 import { LOCALES } from "../src/i18n/config.ts";
 const item = { id: "root", artifactId: "root", revisionId: "r1", artifactType: "workflow", artifact: { sourceFormat: "oceanleo.video.project.v2" } };
@@ -54,7 +55,7 @@ test("generation uses the shared gateway from every editor entry (local HTTP)", 
   const server = http.createServer(async (req, res) => {
     let text = ""; for await (const chunk of req) text += chunk;
     calls.push({ path: req.url, method: req.method, body: text ? JSON.parse(text) : null });
-    const result = req.url === "/v1/chat" ? { text: "Fixture script" } : req.url === "/v1/images/generate" ? { images: ["https://media.invalid/fixture.png"] } : { providers: {} };
+    const result = req.url === "/v1/chat" ? { text: "Fixture script" } : req.url.startsWith("/v1/images/") ? { images: ["https://media.invalid/fixture.png"] } : { providers: {} };
     res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(result));
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -64,6 +65,7 @@ test("generation uses the shared gateway from every editor entry (local HTTP)", 
       "../../lib/auth/client": dataModule('export async function accessToken(){ return "fixture-token"; }'),
       "../../lib/auth/config": dataModule(`export const GATEWAY_BASE=${JSON.stringify(url)};`),
       "../../lib/operator-remark": dataModule("export const withOperatorRemarkRequest=value=>value;"),
+      "./engine/canvas-gateway": realModule("src/shell/video-canvas/engine/canvas-gateway.ts"),
     }));
     assert.deepEqual(await runtime.generateScript("Fixture"), { text: "Fixture script" });
     assert.equal((await runtime.generateImage("Fixture", "9:16")).images.length, 1);
@@ -71,7 +73,22 @@ test("generation uses the shared gateway from every editor entry (local HTTP)", 
     assert.deepEqual(calls.map(call => call.path), ["/v1/chat", "/v1/images/generate", "/v1/video-canvas/capabilities"]);
     assert.equal(calls[0].body.messages[0].content, "Fixture");
     assert.equal(calls[1].body.ratio, "9:16");
-  } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    const local = URL.createObjectURL(png);
+    try {
+      await gateway.generateImage("Connected image", "16:9", { sourceUrls: [local, "https://media.invalid/reference.png"] });
+    } finally { URL.revokeObjectURL(local); }
+    assert.equal(calls.at(-1).path, "/v1/images/edit");
+    assert.equal(calls.at(-1).body.image_urls[0], `data:image/png;base64,${Buffer.from(await png.arrayBuffer()).toString("base64")}`);
+    assert.equal(calls.at(-1).body.image_urls[1], "https://media.invalid/reference.png");
+    await gateway.quoteDurableVideo({ image: true, duration: 5, ratio: "16:9" });
+    await gateway.registerDurableVideoInput({ projectId: "project", localAssetId: "asset", sourceDependency: { artifactId: "owner-root", revisionId: "r1", path: "frame" } });
+    await gateway.listDurableVideoRuns("project");
+    await gateway.generateAudio({ mode: "voice", text: "Narration" });
+    await gateway.generateAudio({ mode: "music", text: "Ocean", duration: 15 });
+    assert.deepEqual(calls.slice(-5).map(call=>call.path), ["/v1/video-canvas/quote", "/v1/video-canvas/projects/project/inputs", "/v1/video-canvas/projects/project/runs", "/v1/audio/tts", "/v1/music/generate"]);
+    assert.equal(calls.at(-4).body.source_dependency.artifactId, "owner-root");
+    assert.equal(calls.at(-1).body.duration_s, 15);
+  } finally { gateway.bindCanvasGatewayImpl(); gateway.bindCanvasFetchJson(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
 });
 
 test("catalog capability descriptions have all UI locales", () => {

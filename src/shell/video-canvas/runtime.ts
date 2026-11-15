@@ -1266,11 +1266,29 @@ export function generateScript(
   }, options.signal);
 }
 
-export function generateImage(
+export async function generateImage(
   prompt: string,
   ratio?: string,
-  options: { model?: string; quality?: string; signal?: AbortSignal } = {},
+  options: { model?: string; quality?: string; sourceUrls?: string[]; signal?: AbortSignal } = {},
 ) {
+  if (options.sourceUrls?.length) {
+    const imageUrls = await Promise.all(options.sourceUrls.map(async url => {
+      if (!url.startsWith("blob:")) return url;
+      // Library object URLs contain owner-checked bytes. Send those bytes, never
+      // a browser-local address that the gateway/provider cannot read.
+      const response = await fetch(url, { signal: options.signal });
+      if (!response.ok) throw new CanvasError("连接的素材尚未准备好。");
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      let binary = "";
+      for (let offset = 0; offset < bytes.length; offset += 32768) {
+        binary += String.fromCharCode(...bytes.subarray(offset, offset + 32768));
+      }
+      return `data:${response.headers.get("content-type") || "image/png"};base64,${btoa(binary)}`;
+    }));
+    return semanticGatewayJson<{ images: string[] }>("/v1/images/edit", { method: "POST", signal: options.signal,
+      body: withOperatorRemarkRequest({ prompt, ratio: ratio || "16:9", model: selectedModel(options.model),
+        image_urls: imageUrls, function: "description_edit", site_id: "video", key_mode: "platform" }) });
+  }
   return canvasApi<{ images: string[] }>("generate_image", {
     prompt,
     ratio,
@@ -1281,7 +1299,12 @@ export function generateImage(
 
 
 // Every editor entry (Library, task and LeoVideo) uses this same gateway adapter.
-import { bindCanvasGatewayImpl } from "./engine/canvas-gateway";
+import { bindCanvasGatewayImpl, bindCanvasFetchJson } from "./engine/canvas-gateway";
+bindCanvasFetchJson((path, init) => semanticGatewayJson(path, {
+  method: init?.method as "GET" | "POST" | "DELETE" | undefined,
+  signal: init?.signal || undefined,
+  ...(typeof init?.body === "string" ? { body: JSON.parse(init.body) } : {}),
+}));
 bindCanvasGatewayImpl({ generateText, generateScript, generateImage, executeCanvasImageSemanticOperation,
   renderCanvasTimeline: input => renderCanvasTimeline({ ...input, timeline: input.timeline as CanvasTimelineDocument }), getDurableVideoCapabilities, createDurableVideoProject,
   promoteDurableVideoVersion, createDurableVideoRun, getDurableVideoRun, cancelDurableVideoRun });

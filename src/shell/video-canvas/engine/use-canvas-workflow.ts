@@ -362,7 +362,8 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
 
   useEffect(() => {
     let live = true;
-    const node = projectHead(project).graph.nodes.find((item) => item.nodeId === selectedNodeId);
+    const stored = projectHead(project).graph.nodes.find((item) => item.nodeId === selectedNodeId);
+    const node = stored ? effectiveCanvasNode(stored) : undefined;
     if (executionDegraded || node?.kind !== "video" || getPreparedVideoQuote(project, node)) return;
     setQuoteError("");
     void prepareVideoQuote(project, node).then(() => { if (live) setQuoteEpoch((value) => value + 1); })

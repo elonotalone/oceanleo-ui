@@ -1986,8 +1986,9 @@ async function runCanvasChain(environment: CanvasCommandEnvironment, _args: Reco
   for (const node of ordered.filter((node) => node.kind === "video")) await prepareVideoQuote(environment.getProject(), node);
   for (const planned of ordered) {
     if (environment.getCommandSignal?.(request.requestId)?.aborted) throw new Error("已停止这条链；已提交的视频可能继续生成和计费。");
-    const current = projectHead(environment.getProject()).graph.nodes.find((node) => node.nodeId === planned.nodeId);
-    if (!current) throw new Error("连接的素材尚未准备好。");
+    const stored = projectHead(environment.getProject()).graph.nodes.find((node) => node.nodeId === planned.nodeId);
+    if (!stored) throw new Error("连接的素材尚未准备好。");
+    const current = effectiveCanvasNode(stored);
     if (current.nodeId !== target.nodeId && canvasNodeHasOutput(environment.getProject(), current)) continue;
     const kind = current.kind === "audio" ? current.audioMode || "voice" : ["text", "script"].includes(current.kind) ? "script" : current.kind;
     const commandId = `canvas.node.generate.${kind}`;
