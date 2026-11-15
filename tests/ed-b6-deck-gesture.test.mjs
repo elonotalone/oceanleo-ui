@@ -151,7 +151,7 @@ test("clicks and movement through 4px retain the text target without capture or 
   try {
     assert.equal((await click(view)).defaultPrevented, false);
     assert.equal(view.element().getAttribute("aria-pressed"), "true");
-    assert.match(view.element().title, /双击编辑/);
+    assert.match(view.element().title, /再次单击编辑/);
     assert.match(view.element().className, /cursor-text/);
     assert.deepEqual(view.calls.edits, []);
     await pointer(view.element(), "pointerdown");
@@ -163,11 +163,12 @@ test("clicks and movement through 4px retain the text target without capture or 
   } finally { await view.close(); }
 });
 
-test("two stationary clicks then a real dblclick handler mount editable text", async () => {
+test("two stationary single clicks mount editable text and dblclick does not restart editing", async () => {
   const view = await mountStage();
   try {
     await click(view);
-    await click(view); // pointerdown.detail stays 0; dblclick is the reliable entry.
+    await click(view); // pointerdown.detail stays 0; a selected object edits on release.
+    assert.ok(view.element().querySelector('[contenteditable="true"]'));
     assert.deepEqual(captureCalls, []);
     await doubleClick(view.element());
     assert.deepEqual(view.calls.edits, ["text"]);

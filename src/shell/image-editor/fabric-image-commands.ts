@@ -83,6 +83,13 @@ export function dispatchFabricImageCommand(
         editor.toggleSelectedTextList();
       }
       break;
+    case "vertical-text":
+      editor.setSelectedText({ verticalText: message.value === true });
+      break;
+    case "indent-increase":
+    case "indent-decrease":
+      editor.setSelectedText({ indent: Math.max(0, Math.min(240, (selected?.text?.indent || 0) + (message.controlId === "indent-increase" ? 24 : -24))) });
+      break;
     case "clear-format":
       editor.clearSelectedTextFormat();
       break;

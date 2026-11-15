@@ -53,7 +53,6 @@ import {
   CLEARED_TEXT_PROPS,
   applyRectRadius,
   applyStrokeDash,
-  applyTextListMode,
   noteBackground,
   type StrokeDash,
   type TextListMode,
@@ -629,11 +628,22 @@ export class FabricEditorController extends FabricEditorCore {
       }
       if (patch.charSpacing != null) props.charSpacing = patch.charSpacing;
       if (patch.align != null) props.textAlign = patch.align;
+      if (patch.list != null) props.oceanleoList = patch.list;
+      if (patch.indent != null) props.oceanleoIndent = Math.max(0, Math.min(240, patch.indent));
+      if (patch.verticalText != null) {
+        const layout = text as IText & EditorObjectProps;
+        if (patch.verticalText && !layout.oceanleoVerticalText) props.oceanleoTextWidth = text.width;
+        if (!patch.verticalText && layout.oceanleoVerticalText) props.width = layout.oceanleoTextWidth || text.width;
+        props.oceanleoVerticalText = patch.verticalText;
+      }
       if (patch.stroke != null) props.stroke = patch.stroke || undefined;
       if (patch.strokeWidth != null) {
         props.strokeWidth = Math.max(0, patch.strokeWidth);
       }
       text.set(props);
+      text.initDimensions();
+      text.set("dirty", true);
+      text.setCoords();
     }, "content");
   }
 
@@ -659,25 +669,17 @@ export class FabricEditorController extends FabricEditorCore {
   toggleSelectedTextList(): void {
     const active = this.canvas.getActiveObject();
     if (!(active instanceof this.fabric.IText)) return;
-    const value = String((active as IText).text || "");
-    const lines = value.split("\n");
-    const isBulleted = lines.every((line) => line.startsWith("• "));
-    this.setSelectedText({
-      value: lines.map((line) => isBulleted ? line.slice(2) : `• ${line}`).join("\n"),
-    });
+    const mode = (active as IText & EditorObjectProps).oceanleoList;
+    this.setSelectedTextList(mode === "bullet" ? "none" : "bullet");
   }
 
   setSelectedTextList(mode: TextListMode): void {
-    const active = this.canvas.getActiveObject();
-    if (!(active instanceof this.fabric.IText)) return;
-    const value = String((active as IText).text || "");
-    const next = applyTextListMode(value, mode);
-    if (next !== value) this.setSelectedText({ value: next });
+    this.setSelectedText({ list: mode });
   }
 
   clearSelectedTextFormat(): void {
     this.mutateSelected((object) => {
-      if (object instanceof this.fabric.IText) object.set({ ...CLEARED_TEXT_PROPS, styles: {} });
+      if (object instanceof this.fabric.IText) { object.set({ ...CLEARED_TEXT_PROPS, styles: {} }); object.initDimensions(); object.setCoords(); }
     }, "content");
   }
 

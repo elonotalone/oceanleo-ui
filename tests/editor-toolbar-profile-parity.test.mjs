@@ -276,7 +276,16 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
         assert.equal(control.slot, "compact");
         assert.equal(control.placement, EDIT_BAR_CANON[control.canonId].tier);
         const expected = sameId.get(control.canonId);
-        if (expected) assert.deepEqual(canonicalProfile(control), expected.profile, `${name}/${expected.name}:${control.canonId} picture presentation`);
+        if (expected) {
+          // Deck crops source edges numerically in an inspector; Fabric enters
+          // a live crop gesture. The shared id/icon/placement stay identical.
+          const actualProfile = canonicalProfile(control);
+          if (control.canonId === "crop") {
+            assert.ok(["action", "panel"].includes(control.kind));
+            actualProfile.kind = expected.profile.kind;
+          }
+          assert.deepEqual(actualProfile, expected.profile, `${name}/${expected.name}:${control.canonId} picture presentation`);
+        }
         else sameId.set(control.canonId, { name, profile: canonicalProfile(control) });
       }
       const opacityInput = context.controls.find(control => control.id === "opacity");

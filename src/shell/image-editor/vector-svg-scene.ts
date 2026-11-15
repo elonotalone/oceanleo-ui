@@ -10,6 +10,7 @@
  * saving writes a new revision whose delivery bytes are `canvas.toSVG()`.
  */
 
+import { decodeFabricTextMetadata, installFabricTextLayout } from "./fabric-text-layout";
 import { sanitizeSvg } from "../vector-editor/vector-sanitize";
 import { makeId, SNAPSHOT_PROPS, type FabricNS } from "./editor-objects";
 import type { ImageEditorSnapshot } from "./image-document-contract";
@@ -110,7 +111,17 @@ export async function vectorSvgToSnapshot(
 ): Promise<VectorSceneResult> {
   const { svg, removed, rules } = sanitizeVectorSource(svgText);
   const losses = detectVectorLosses(svg, rules);
-  const parsed = await fabric.loadSVGFromString(svg);
+  installFabricTextLayout(fabric);
+  const enhanced = new Map<Element, Record<string, unknown>>();
+  const enhancedChildren = new Set<object>();
+  const parsed = await fabric.loadSVGFromString(svg, (element, object) => {
+    const owner = element.closest("[data-oceanleo-text]");
+    if (!owner) return;
+    const decoded = decodeFabricTextMetadata(owner.getAttribute("data-oceanleo-text") || "");
+    if (!decoded) return;
+    enhanced.set(owner, decoded);
+    enhancedChildren.add(object);
+  });
   const options = parsed.options as {
     width?: number;
     height?: number;
@@ -151,7 +162,7 @@ export async function vectorSvgToSnapshot(
     },
   ];
   for (const object of parsed.objects) {
-    if (!object) continue;
+    if (!object || enhancedChildren.has(object)) continue;
     if (minX || minY) {
       object.set({
         left: (object.left ?? 0) - minX,
@@ -163,6 +174,16 @@ export async function vectorSvgToSnapshot(
     if (json.type === "Text") json.type = "IText";
     json.oceanleoId = makeId();
     objects.push(json);
+  }
+  for (const encoded of enhanced.values()) {
+    const matrix = encoded.oceanleoSvgMatrix as [number, number, number, number, number, number] | undefined;
+    const position = matrix ? fabric.util.qrDecompose(matrix) : null;
+    const { oceanleoSvgMatrix: _matrix, ...text } = encoded;
+    objects.push({ ...text,
+      ...(position ? { left: position.translateX - minX, top: position.translateY - minY, angle: position.angle, scaleX: position.scaleX, scaleY: position.scaleY, skewX: position.skewX, skewY: position.skewY, flipX: false, flipY: false, originX: "center", originY: "center" }
+        : { left: Number(text.left || 0) - minX, top: Number(text.top || 0) - minY }),
+      oceanleoId: makeId(),
+    });
   }
   if (objects.length === 1) {
     throw new VectorSvgError("这份矢量图没有可编辑的图形元素。");

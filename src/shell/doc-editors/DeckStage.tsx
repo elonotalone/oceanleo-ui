@@ -83,7 +83,7 @@ function PositionedSlideCanvas({
     }
   }, [editingId, editor.endTextEditing, slide.elements]);
   // 开档 / 换页不再自动进入文字编辑：那样永远是文字栏，点哪里都回不到「没选中」，
-  // 空态抽屉也就看不到（10-23 W02/W07 实测）。编辑文字靠双击 / Enter / F2。
+  // 空态抽屉也就看不到（10-23 W02/W07 实测）。选中后再次单击 / Enter / F2 编辑文字。
 
   return (
     <div
@@ -146,7 +146,7 @@ function PositionedSlideCanvas({
               }`}
               aria-pressed={selected}
               title={selected && textEditability.editable && !editor.readOnly && !editor.loading && !editor.sourceFailed
-                ? "双击编辑文字（Enter / F2）"
+                ? "再次单击编辑文字（Enter / F2）"
                 : textEditability.reason || undefined}
               aria-keyshortcuts={
                 textEditability.textBearing ? "Enter F2" : undefined
@@ -165,6 +165,8 @@ function PositionedSlideCanvas({
                 if (textEditability.editable) beginTextEditing(element.id);
               }}
               onPointerDown={(event) => {
+                event.currentTarget.dataset.deckEditPointer = String(event.pointerId);
+                event.currentTarget.dataset.deckEditOnRelease = selected && !editing && textEditability.editable ? "true" : "false";
                 editor.selectElement(element.id);
                 event.currentTarget.focus({ preventScroll: true });
                 if (editor.readOnly || editor.loading || editor.sourceFailed) return;
@@ -177,7 +179,15 @@ function PositionedSlideCanvas({
                 }
                 if (!editing) startInteraction(event, element, "move");
               }}
+              onPointerUp={(event) => {
+                if (event.button !== 0 || event.currentTarget.dataset.deckEditPointer !== String(event.pointerId) || event.currentTarget.dataset.deckEditOnRelease !== "true") return;
+                delete event.currentTarget.dataset.deckEditOnRelease;
+                if (interaction?.dragging || editor.readOnly || editor.loading || editor.sourceFailed || element.locked) return;
+                clearInteraction();
+                beginTextEditing(element.id);
+              }}
               onDoubleClick={(event) => {
+                if (editing) { event.stopPropagation(); return; }
                 event.preventDefault();
                 event.stopPropagation();
                 if (editor.readOnly || editor.loading || editor.sourceFailed || element.locked) return;

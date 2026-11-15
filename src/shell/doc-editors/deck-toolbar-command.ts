@@ -5,6 +5,8 @@ import type {
 } from "./deck-schema";
 import type { DeckEditorState } from "./use-deck-editor";
 import { deckArrangedElements, deckArrangeMode } from "./deck-arrange";
+import { normalizeDeckCrop } from "./deck-schema";
+import { DECK_CLEARED_INLINE } from "./deck-table-format";
 import { deckSafeLink, deckTextList } from "./deck-text-format";
 
 function numeric(value: SelectionCommand["value"], fallback = 0): number {
@@ -172,18 +174,31 @@ export function applyDeckToolbarCommand(
       break;
     }
     case "clear-format":
-      Object.assign(patch, {
-        fontFamily: undefined,
-        fontSize: undefined,
-        color: undefined,
-        link: undefined,
-        bold: false,
-        italic: false,
-        underline: false,
-        strike: undefined,
-        highlight: undefined,
-        letterSpacing: 0,
-      });
+      Object.assign(patch, DECK_CLEARED_INLINE);
+      break;
+    case "case": {
+      const transform = (value: string) => value === value.toUpperCase() ? value.toLowerCase() : value.toUpperCase();
+      if (element.type === "table") patch.rows = element.rows?.map(row => row.map(transform));
+      else patch.text = transform(element.text || "");
+      break;
+    }
+    case "vertical-text":
+      patch.verticalText = message.value === true;
+      break;
+    case "indent-increase":
+    case "indent-decrease":
+      patch.indent = Math.max(0, Math.min(240, (element.indent || 0) + (message.controlId === "indent-increase" ? 24 : -24)));
+      break;
+    case "crop-left":
+    case "crop-top":
+    case "crop-right":
+    case "crop-bottom": {
+      const edge = message.controlId.slice(5);
+      patch.crop = normalizeDeckCrop({ ...element.crop, [edge]: numeric(message.value) / 100 });
+      break;
+    }
+    case "crop-reset":
+      patch.crop = undefined;
       break;
     case "stroke-color":
       patch.borderColor = String(message.value || "");

@@ -4,7 +4,6 @@ import type {
   SelectionControl,
   SelectionControlOption,
 } from "../selection-context-types";
-import { textListMode } from "./fabric-style-ops";
 import type {
   CropRatio,
   FilterSettings,
@@ -195,7 +194,7 @@ function textControls(
       id: "list",
       kind: "select",
       label: tt("列表"),
-      value: textListMode(text.value),
+      value: text.list || "none",
       options: [
         { value: "none", label: tt("无列表") },
         { value: "bullet", label: tt("项目符号列表") },
@@ -224,6 +223,9 @@ function textControls(
       placement: "more",
     },
     { id: "case", kind: "action", label: tt("更改大小写"), placement: "more" },
+    { id: "vertical-text", kind: "toggle", label: tt("竖排文字"), value: text.verticalText === true, placement: "more" },
+    { id: "indent-increase", kind: "action", label: tt("增加缩进"), placement: "more" },
+    { id: "indent-decrease", kind: "action", label: tt("减少缩进"), placement: "more" },
     { id: "clear-format", kind: "action", label: tt("清除样式"), placement: "more" },
     // 形状组里适用于文字的：文字描边。
     {

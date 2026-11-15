@@ -1,5 +1,6 @@
 "use client";
 
+import { installFabricTextLayout } from "./fabric-text-layout";
 import type { Canvas, FabricImage, FabricObject, Transform } from "fabric";
 import {
   type BrushSettings,
@@ -172,6 +173,7 @@ export class FabricEditorCore {
     protected readonly container: HTMLDivElement | null,
     protected readonly callbacks: ControllerCallbacks,
   ) {
+    installFabricTextLayout(fabric);
     this.canvas = new fabric.Canvas(canvasElement, {
       preserveObjectStacking: true,
       selection: false,

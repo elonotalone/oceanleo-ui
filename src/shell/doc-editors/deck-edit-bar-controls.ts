@@ -15,6 +15,7 @@ import {
   type SelectionBar,
 } from "../edit-bar-canon";
 import type { SelectionControl } from "../selection-context";
+import { deckTableUsesPicture } from "./deck-table-format";
 import type { DeckElement } from "./deck-schema";
 
 type Control = SelectionControl;
@@ -159,7 +160,7 @@ export function deckElementSelectionControls(
   const text: Control[] = [];
   if (element.type === "text" || element.type === "table") {
     const font = deckFontOptions(element.fontFamily, inheritedFont, fonts);
-    if (element.type === "text" && font.options.length) {
+    if (font.options.length) {
       text.push({
         ...canon("font-family"),
         kind: "select",
@@ -187,7 +188,7 @@ export function deckElementSelectionControls(
         value: element.color || (element.type === "table" ? "#292524" : "#111827"),
       },
     );
-    if (element.type === "text") {
+    {
       text.push(
         { ...canon("highlight"), kind: "color", iconOnly: true, value: element.highlight || "" },
         {
@@ -222,6 +223,10 @@ export function deckElementSelectionControls(
           step: 1,
           ...more,
         },
+        { ...action("case"), ...more },
+        { ...toggle("vertical-text", element.verticalText === true), ...more },
+        { ...action("indent-increase"), ...more },
+        { ...action("indent-decrease"), ...more },
         { ...action("clear-format"), ...more },
       );
     }
@@ -249,6 +254,11 @@ export function deckElementSelectionControls(
   } else if (element.type === "image") {
     typeGroup.push(
       { ...canon("replace"), kind: "panel", iconOnly: true, panelId: "materials", panelAction: "replace" },
+      ...(["left", "top", "right", "bottom"] as const).map((edge): Control => ({
+        id: `crop-${edge}`, kind: "number", label: tt({ left: "左侧裁剪", top: "顶部裁剪", right: "右侧裁剪", bottom: "底部裁剪" }[edge]),
+        value: (element.crop?.[edge] || 0) * 100, min: 0, max: 95, step: 1, suffix: "%", ...panel("crop"),
+      })),
+      { id: "crop-reset", kind: "action", label: tt("重置裁剪"), ...panel("crop") },
       action("flip-x"),
       action("flip-y"),
       action("rotate"),
@@ -391,5 +401,8 @@ export function deckElementSelectionControls(
           },
         ]
       : [];
-  return [...typeGroup, ...objectGroup, ...specific];
+  const controls = [...typeGroup, ...objectGroup, ...specific];
+  // A picture of a table cannot carry independent cell hyperlinks in PPTX.
+  return element.type === "table" && deckTableUsesPicture(element)
+    ? controls.filter(control => control.id !== "link") : controls;
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { DeckAspect, DeckElement, DeckSlide } from "./deck-schema";
+import { deckCellElement } from "./deck-table-format";
 import { deckFontSizeCqi } from "./deck-text-scale";
 import {
   deckSafeLink,
@@ -62,6 +63,35 @@ function DeckTextBody({
       )}
     </span>
   );
+}
+
+function DeckCroppedImage({ element }: { element: DeckElement }) {
+  const [size, setSize] = useState({ width: 1, height: 1 });
+  const crop = element.crop!;
+  return <span className="relative block h-full w-full">
+    <img src={element.src} alt="" aria-hidden="true" className="absolute h-0 w-0 opacity-0" onLoad={event => {
+      const image = event.currentTarget;
+      setSize({ width: image.naturalWidth || 1, height: image.naturalHeight || 1 });
+    }} />
+    <svg role="img" aria-label={element.alt || ""} width="100%" height="100%"
+      viewBox={`${crop.left * size.width} ${crop.top * size.height} ${(1 - crop.left - crop.right) * size.width} ${(1 - crop.top - crop.bottom) * size.height}`}
+      preserveAspectRatio={element.imageFit === "fill" ? "none" : element.imageFit === "cover" ? "xMidYMid slice" : "xMidYMid meet"}
+      style={{ overflow: "hidden", filter: `brightness(${element.brightness ?? 1}) contrast(${element.contrast ?? 1}) saturate(${element.saturation ?? 1}) blur(${element.blur ?? 0}px)`, transform: `scaleX(${element.flipX ? -1 : 1}) scaleY(${element.flipY ? -1 : 1})` }}>
+      <image href={element.src} width={size.width} height={size.height} preserveAspectRatio="none" />
+    </svg>
+  </span>;
+}
+
+function deckParagraphStyle(element: DeckElement, aspect: DeckAspect): CSSProperties {
+  return { fontFamily: element.fontFamily, color: element.color,
+    fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
+    fontWeight: element.bold ? 700 : 400, fontStyle: element.italic ? "italic" : "normal",
+    textDecoration: deckTextDecoration(element), textAlign: element.align || "left",
+    lineHeight: element.lineHeight || 1.15,
+    letterSpacing: `${deckFontSizeCqi(element.letterSpacing || 0, aspect)}cqi`,
+    writingMode: element.verticalText ? "vertical-rl" : "horizontal-tb",
+    textOrientation: "mixed", paddingInlineStart: `${deckFontSizeCqi(element.indent || 0, aspect)}cqi`,
+  };
 }
 
 export function deckShapeClipPath(shape?: string): string | undefined {
@@ -173,6 +203,7 @@ export function DeckElementContent({
   onCommitCell?: (row: number, column: number, text: string) => void;
   onCancelEditing?: () => void;
 }) {
+  if (element.type === "image" && element.src && element.crop) return <DeckCroppedImage element={element} />;
   if (element.type === "image" && element.src) {
     return (
       <img
@@ -213,6 +244,7 @@ export function DeckElementContent({
                   .map((cell, cellIndex) => (
                     <td
                       key={cellIndex}
+                      data-deck-cell={`${rowIndex}:${cellIndex}`}
                       contentEditable={editing && !miniature}
                       suppressContentEditableWarning
                       data-deck-editable-text={
@@ -225,6 +257,8 @@ export function DeckElementContent({
                         cellIndex === 0
                       }
                       style={{
+                        ...deckParagraphStyle(deckCellElement(element, rowIndex, cellIndex), aspect),
+                        color: deckCellElement(element, rowIndex, cellIndex).color || "#292524",
                         borderColor:
                           element.borderColor || "var(--divider,#d6d3d1)",
                         borderWidth: `${Math.max(
@@ -232,7 +266,7 @@ export function DeckElementContent({
                           element.borderWidth ?? 1,
                         )}px`,
                       }}
-                      className={`overflow-hidden border border-[var(--divider,#d6d3d1)] px-[0.2em] ${
+                      className={`overflow-hidden whitespace-pre-wrap border border-[var(--divider,#d6d3d1)] px-[0.2em] ${
                         editing
                           ? "cursor-text outline-none focus:bg-white/20 focus:ring-1 focus:ring-inset focus:ring-[var(--awb-accent,#7c3aed)]"
                           : ""
@@ -277,7 +311,7 @@ export function DeckElementContent({
                         }
                       }}
                     >
-                      {cell}
+                      {editing && !miniature ? cell : <DeckTextBody element={deckCellElement(element, rowIndex, cellIndex)} linkable={linkable} />}
                     </td>
                   ))}
               </tr>
@@ -365,6 +399,7 @@ export function DeckElementContent({
     );
   }
   const textStyle = {
+    ...deckParagraphStyle(element, aspect),
     alignItems: "center",
     justifyContent:
       element.align === "center"
@@ -380,7 +415,7 @@ export function DeckElementContent({
     fontStyle: element.italic ? "italic" : "normal",
     textDecoration: deckTextDecoration(element),
     lineHeight: element.lineHeight || 1.15,
-    letterSpacing: `${element.letterSpacing || 0}px`,
+    letterSpacing: `${deckFontSizeCqi(element.letterSpacing || 0, aspect)}cqi`,
   } as const;
   if (editing && !miniature) {
     return (
