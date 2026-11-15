@@ -26,7 +26,7 @@ import {
   fetchDeliverableBlob,
   withExtension,
 } from "../media-editors/visual-convert-client";
-import { timelineTitleStem } from "../video-editor/video-timeline-source";
+import { timelineTitleStem, timelineDocForStorage } from "../video-editor/video-timeline-source";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
   visualDownloadFormats,
@@ -237,7 +237,7 @@ function VideoTimelineBody({
     rootName: VIDEO_ROOT,
     toEntities: videoToEntities,
     fromEntities: (input, prev) => videoFromEntities(input, prev),
-    local: editor.sourceReady && !storedReadOnly ? editor.doc : null,
+    local: editor.sourceReady && !storedReadOnly ? timelineDocForStorage(editor.doc) : null,
     applyRemote,
     applyLocal,
     canRestoreEntity,
@@ -545,7 +545,7 @@ function VideoTimelineBody({
             key: `video-timeline:${item.artifactId || item.meta.artifact_id || item.id}`,
             ready: !editor.loadingSource && editor.sourceReady,
             capture: () =>
-              editor.sourceReady ? structuredClone(editor.doc) : null,
+              editor.sourceReady ? structuredClone(timelineDocForStorage(editor.doc)) : null,
             restore: (payload: unknown) => editor.restoreRecovery(payload),
           },
         },

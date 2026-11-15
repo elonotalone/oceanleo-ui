@@ -579,6 +579,17 @@ const MAX_TIMELINE_TRACKS = 64;
 const MAX_TIMELINE_CLIPS = 5_000;
 const MAX_TIMELINE_SOURCE_URL = 8_192;
 
+export function validTimelineSourceReference(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const ref = value as Record<string, unknown>;
+  const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+  return typeof ref.artifactId === "string" && uuid.test(ref.artifactId)
+    && typeof ref.revisionId === "string" && uuid.test(ref.revisionId)
+    && typeof ref.path === "string" && ref.path.length > 0 && ref.path.length <= 512
+    && !ref.path.startsWith("/") && !ref.path.includes("\\") && !ref.path.includes(":")
+    && ref.path.split("/").every((part) => Boolean(part) && part !== "." && part !== "..");
+}
+
 function validTimelineSourceUrl(value: unknown): boolean {
   if (
     typeof value !== "string" ||
@@ -661,7 +672,7 @@ export function timelineDocIssue(value: unknown): string {
       }
       if (
         track.kind !== "text" &&
-        !validTimelineSourceUrl(clip.source_url)
+        !validTimelineSourceUrl(clip.source_url) && !validTimelineSourceReference(clip.source_ref)
       ) {
         return `片段 ${clip.id} 缺少安全的 http(s) 媒体源`;
       }

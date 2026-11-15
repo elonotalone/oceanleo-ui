@@ -35,6 +35,8 @@ export interface TimelineClip {
   duration_ms: number;
   /** video/audio/image 源。 */
   source_url?: string;
+  /** Owner-checked immutable Library dependency; URLs are resolved only for playback/render. */
+  source_ref?: { artifactId: string; revisionId: string; path: string };
   /** 源内起点。 */
   in_ms?: number;
   /** 浏览器元数据探针得到的源总时长，用于阻止预览冻结而导出提前结束。 */

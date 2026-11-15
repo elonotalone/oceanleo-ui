@@ -78,6 +78,7 @@ import {
   VIDEO_TIMELINE_PLACEHOLDER_DURATION_MS,
   isExpiringArtifactGrantUrl,
   planVideoTimelineSeed,
+  resolveVideoTimelineReferences,
   timelineTitleStem,
   videoTimelineProjectSource,
 } from "./video-timeline-source";
@@ -87,6 +88,7 @@ import {
   healTimelineGrants,
   replaceClipSources,
   expiringGrantSources,
+  artifactGrantExpiresAt,
   type GrantHealDeps,
 } from "./grant-heal";
 import {
@@ -274,16 +276,15 @@ async function durableTimelineSources(
   title: string,
 ): Promise<TimelineDoc> {
   // 几分钟就过期的签名地址先换掉，否则下面的预检和重开都会 410。
-  doc = replaceClipSources(
-    doc,
-    await healTimelineGrants(doc, timelineGrantDeps(siteId, title)),
-  );
+  doc = await resolveVideoTimelineReferences(doc);
+  const publicSources = { ...doc, tracks: doc.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => !clip.source_ref) })) };
+  doc = replaceClipSources(doc, await healTimelineGrants(publicSources, timelineGrantDeps(siteId, title)));
   const replacements = new Map<string, string>();
   for (const track of doc.tracks) {
     if (track.kind === "text") continue;
     for (const clip of track.clips) {
       const source = clip.source_url || "";
-      if (!source || isFirstPartyMediaUrl(source) || replacements.has(source)) {
+      if (clip.source_ref || !source || isFirstPartyMediaUrl(source) || replacements.has(source)) {
         continue;
       }
       replacements.set(
@@ -738,7 +739,8 @@ export function useVideoTimeline(
   useEffect(() => {
     const known = new Map<string, string>();
     const pending: Array<[string, TrackKind]> = [];
-    for (const [url, kind] of expiringGrantSources(doc)) {
+    const ordinary = { ...doc, tracks: doc.tracks.map((track) => ({ ...track, clips: track.clips.filter((clip) => !clip.source_ref) })) };
+    for (const [url, kind] of expiringGrantSources(ordinary)) {
       const healed = healedGrantsRef.current.get(url);
       if (healed) known.set(url, healed);
       else if (!healingGrantsRef.current.has(url)) pending.push([url, kind]);
@@ -768,6 +770,31 @@ export function useVideoTimeline(
       apply(replacements);
     })();
   }, [doc, item.title, siteId, grantRefreshTick]);
+
+  // Private immutable references from saved projects/recovery/remote edits are
+  // resolved for playback, never imported into the public media bucket.
+  useEffect(() => {
+    const missing = doc.tracks.flatMap((track) => track.clips).some((clip) => clip.source_ref &&
+      (!clip.source_url || (artifactGrantExpiresAt(clip.source_url) || 0) <= Date.now() + 30_000));
+    if (!missing) return;
+    let active = true;
+    markSourceReady(false);
+    void resolveVideoTimelineReferences(doc).then((resolved) => {
+      if (!active) return;
+      const byId = new Map(resolved.tracks.flatMap((track) => track.clips).map((clip) => [clip.id, clip]));
+      setDocState((current) => {
+        const next = { ...current, tracks: current.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => {
+          const source = byId.get(clip.id);
+          return source?.source_ref && JSON.stringify(source.source_ref) === JSON.stringify(clip.source_ref)
+            ? { ...clip, source_url: source.source_url } : clip;
+        }) })) };
+        docRef.current = next;
+        return next;
+      });
+      markSourceReady(true);
+    }).catch((error) => { if (active) setError(error instanceof Error ? error.message : String(error)); });
+    return () => { active = false; };
+  }, [doc, grantRefreshTick, markSourceReady]);
 
   // ------------------------------------------------------------- history
 

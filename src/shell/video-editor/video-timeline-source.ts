@@ -27,12 +27,55 @@ export type VideoTimelineSourcePlan =
   | { kind: "blank"; doc: TimelineDoc }
   | { kind: "fail"; error: string; doc: TimelineDoc; projectExpected: boolean };
 
-export function serializeVideoProjectEnvelope(doc: TimelineDoc): string {
+/** Canvas provenance is data only; the timeline editor never imports canvas code. */
+export interface CanvasTimelineSource {
+  projectId: string;
+  projectVersionId: string;
+  artifactId?: string;
+  revisionId?: string;
+  shots: Array<{ shotId: string; takeId: string; assetId: string }>;
+  inputAssetIds: string[];
+}
+
+export function serializeVideoProjectEnvelope(doc: TimelineDoc, canvasSource?: CanvasTimelineSource): string {
   return JSON.stringify({
     schema: VIDEO_TIMELINE_PROJECT_SCHEMA,
     version: 1,
-    data: doc,
+    data: timelineDocForStorage(doc),
+    ...(canvasSource ? { canvasSource } : {}),
   });
+}
+
+/** Keep access capabilities out of saved projects, recovery and collaboration. */
+export function timelineDocForStorage(doc: TimelineDoc): TimelineDoc {
+  return { ...doc, tracks: doc.tracks.map((track) => ({ ...track, clips: track.clips.map((clip) => {
+    if (!clip.source_ref) return clip;
+    const { source_url: _runtimeUrl, ...stored } = clip;
+    return stored;
+  }) })) };
+}
+
+export async function resolveVideoTimelineReferences(doc: TimelineDoc,
+  grant?: (ref: NonNullable<TimelineClip["source_ref"]>) => Promise<string>,
+): Promise<TimelineDoc> {
+  const resolved = new Map<string, string>();
+  const resolve = grant || (async (ref) => {
+    const { authed } = await import("../../lib/agent");
+    const { GATEWAY_BASE } = await import("../../lib/auth/config");
+    const result = await authed<{ accessUrl?: string; access_url?: string }>(
+      `/v1/artifacts/${encodeURIComponent(ref.artifactId)}/revisions/${encodeURIComponent(ref.revisionId)}/source-dependencies/${ref.path.split("/").map(encodeURIComponent).join("/")}`);
+    const url = result.data?.accessUrl || result.data?.access_url;
+    if (!result.ok || !url) throw new Error(result.error || "当前视频 revision 缺少可验证的媒体源；已阻止用空时间线替代。");
+    return new URL(url, GATEWAY_BASE).href;
+  });
+  const next = structuredClone(doc);
+  for (const track of next.tracks) for (const clip of track.clips) {
+    if (!clip.source_ref) continue;
+    const key = JSON.stringify(clip.source_ref);
+    if (!resolved.has(key)) resolved.set(key, await resolve(clip.source_ref));
+    clip.source_url = resolved.get(key)!;
+  }
+  return next;
 }
 
 export function hydrateVideoTimelineDoc(text: string): TimelineDoc {

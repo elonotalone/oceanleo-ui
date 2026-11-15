@@ -4,6 +4,7 @@
 // Per-edit working-copy persistence belongs to the shared shell.
 // 文案经调用方传入的 tt（useUI）包裹，保持可本地化。
 
+import { timelineDocForStorage } from "./video-timeline-source";
 import { uploadFile } from "../../lib/database";
 import type { UITranslate } from "../../i18n/ui/useUI";
 import type { LibraryItem } from "../library-data";
@@ -127,7 +128,7 @@ export async function uploadDraft(
     mediaType: "video",
     kind: "video",
     meta: {
-      timeline_doc: doc,
+      timeline_doc: timelineDocForStorage(doc),
       is_draft: true,
       editor_capability: "video-timeline",
       // §3.3 的凭据面：交付的 preview 与源同分辨率，下游校验按这两个值对账。
@@ -137,7 +138,7 @@ export async function uploadDraft(
     },
     project: {
       schema: TIMELINE_PROJECT_SCHEMA_ID,
-      data: doc,
+      data: timelineDocForStorage(doc),
     },
     editorManifest: {
       id: "video-timeline",
