@@ -117,7 +117,7 @@ export function CanvasCreateMenu({
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold text-[var(--vc-text)]">Add to canvas</h2>
           <p className="mt-0.5 text-[11px] text-[var(--vc-text-3)]">
-            Every enabled entry dispatches one semantic canvas command
+            Add text, subtitles, audio, media, or a shot plan
           </p>
         </div>
         <button
