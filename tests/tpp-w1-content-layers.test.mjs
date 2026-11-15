@@ -34,6 +34,10 @@ test("pane content stays below edit chrome; only verified page notices and chrom
   const violations = [];
   for (const file of files) {
     const source = await readFile(new URL(file, root), "utf8");
+    // The single-window presentation is a body portal above editor chrome.
+    // Its notes sheet is local to that presentation, never pane content.
+    const presentationPortal = file === "doc-editors/DeckPresenterView.tsx"
+      && /return inWindow && typeof document !== "undefined" \? createPortal\(stage, document.body\) : stage/.test(source);
     const lines = source.split("\n");
     for (let index = 0; index < lines.length; index++) {
       const line = lines[index];
@@ -43,12 +47,16 @@ test("pane content stays below edit chrome; only verified page notices and chrom
         const pageNotice = file === "site-catalog-deeplink.tsx"
           && layer === 50
           && line.includes("fixed inset-x-0 bottom-6");
-        if (!pageNotice) violations.push(`${file}:${index + 1} z-${layer}`);
+        const presentationNotes = presentationPortal && layer === 40
+          && lines[index - 1]?.includes("data-deck-presenter-notes-sheet");
+        if (!pageNotice && !presentationNotes) violations.push(`${file}:${index + 1} z-${layer}`);
       }
       const inline = line.match(/zIndex:\s*(2_147_483_\d+|\d[\d_]*)/);
       if (inline) {
         const layer = Number(inline[1].replaceAll("_", ""));
-        if (layer > 30 && layer < 2_147_483_000) {
+        const presentationRoot = presentationPortal && layer === 10000
+          && line.includes('inWindow ? { position: "fixed", inset: 0');
+        if (layer > 30 && layer < 2_147_483_000 && !presentationRoot) {
           violations.push(`${file}:${index + 1} zIndex ${layer}`);
         }
       }

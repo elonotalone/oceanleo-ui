@@ -251,7 +251,8 @@ test("send first message from home, then leave it visible for 60 seconds",async(
   });
 });
 
-if(!baseline)test("hidden task pauses reads; visibility/focus and stream end refresh the row",async()=>{
+test("hidden task pauses reads; visibility/focus and stream end refresh the row",async(t)=>{
+  if (baseline) return t.skip("Baseline predates visibility-aware reads");
   await scenario(async({calls,timer,host,end,hidden})=>{
     await act(async()=>hidden(true));
     const count=calls.length;
@@ -268,7 +269,8 @@ if(!baseline)test("hidden task pauses reads; visibility/focus and stream end ref
   });
 });
 
-if(!baseline)test("other tasks that end without an open stream are refreshed within 30 seconds",async()=>{
+test("other tasks that end without an open stream are refreshed within 30 seconds",async(t)=>{
+  if (baseline) return t.skip("Baseline predates idle list backoff");
   await scenario(async({calls,timer,host,end})=>{
     await timer.advance(60000);
     assert.ok(host.querySelector("[data-history-working]"));
