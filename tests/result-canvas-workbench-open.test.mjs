@@ -179,6 +179,10 @@ const sessionStubUrl = dataModule(`
   export function useOptionalWorkspaceSession() { return null; }
 `);
 const libraryDataStubUrl = dataModule(`
+  export function isDurableLibraryItem(item) {
+    return Boolean(item.artifactId && item.revisionId && item.artifactType && item.artifact &&
+      item.artifact.artifactId === item.artifactId && item.artifact.revisionId === item.revisionId);
+  }
   export function libraryItemIdentityKey(item) { return item ? String(item.id || "") : ""; }
 `);
 const artifactStubUrl = dataModule(`
