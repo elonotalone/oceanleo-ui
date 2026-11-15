@@ -28,7 +28,7 @@ export function shouldPreserveDirtyWorkflowGraph(input: {
 
 /**
  * Small immutable snapshot stack for the local workflow graph editor. Generic
- * so the v2 project editor (`VideoProjectStage`) reuses the same stack.
+ * for the remaining unsaved v1 local draft stage.
  */
 export class VideoCanvasGraphHistory<T = VideoCanvasGraph> {
   private undoStack: T[] = [];

@@ -230,7 +230,7 @@ function nativeVideoProjectGraph(value: unknown): VideoCanvasGraph | null {
   return { nodes, edges, readOnlyNativeV2: true } as VideoCanvasGraph;
 }
 
-/** v2 project items open in the editable `VideoProjectStage`, not the v1 graph stage. */
+/** v2 project items open in the shared Library video canvas, not the v1 graph stage. */
 export function isNativeVideoProjectItem(item: LibraryItem | null | undefined): boolean {
   return Boolean(item && sourceFormatIsNativeVideo(item));
 }

@@ -5,7 +5,6 @@
  * 色带是节点卡左侧的细条和种类小标签，**不是**节点底色：底色跟主题走
  * （`video-canvas-theme.ts`）。两档各给一组色值，保证在各自底色上 ≥3:1。
  */
-import type { VideoCanvasNodeKind } from "./video-canvas-schema";
 
 export type VideoKindFamily = "input" | "media" | "structure" | "output" | "logic";
 
@@ -73,40 +72,3 @@ export function videoKindAccent(kind: string, theme: "light" | "dark"): string {
   return FAMILY_ACCENTS[videoKindSpec(kind).family][theme];
 }
 
-export interface VideoPaletteEntry {
-  kind: string;
-  label: string;
-  hint: string;
-}
-
-/** 「加节点」抽屉：v2 工程能加的节点（v2 core 的原生 kind）。 */
-export const VIDEO_DOC_PALETTE: readonly VideoPaletteEntry[] = [
-  { kind: "script", label: "脚本", hint: "写分镜文案或旁白" },
-  { kind: "video", label: "视频", hint: "一个镜头：提示词、时长、比例" },
-  { kind: "image", label: "图片", hint: "参考图或分镜画面" },
-  { kind: "audio", label: "音频", hint: "配乐、旁白或音效" },
-  { kind: "subtitle", label: "字幕", hint: "画面上的字幕文字" },
-  { kind: "composite", label: "合成", hint: "把多路素材合在一起" },
-  { kind: "delivery", label: "成片输出", hint: "最终导出的规格" },
-];
-
-/** v1 本地图（未入库的草稿）能加的节点。 */
-export const VIDEO_GRAPH_PALETTE: readonly VideoPaletteEntry[] = (
-  [
-    ["source", "素材进入流程的起点"],
-    ["trim", "截取一段"],
-    ["concat", "前后接起来"],
-    ["overlay", "画面叠在一起"],
-    ["transition", "两段之间的过渡"],
-    ["filter", "调色或特效"],
-    ["audio-mix", "多路声音混在一起"],
-    ["text", "加文字"],
-    ["branch", "按条件分开走"],
-    ["output", "流程的终点"],
-  ] as const satisfies ReadonlyArray<readonly [VideoCanvasNodeKind, string]>
-).map(([kind, hint]) => ({ kind, label: videoKindSpec(kind).label, hint }));
-
-export const VIDEO_PALETTE_HINTS: readonly string[] = [
-  ...VIDEO_DOC_PALETTE.map((entry) => entry.hint),
-  ...VIDEO_GRAPH_PALETTE.map((entry) => entry.hint),
-];
