@@ -391,7 +391,7 @@ export function useCanvasWorkflow(session: LibraryCanvasSession) {
     reportCommandProgress,
     setProjectMetadata,
     resolveAssetUrl: async (asset) => {
-      const url = runtimeDependencyUrlsRef.current[asset.assetId] || asset.url;
+      const url = (sessionRef.current.runtimeUrls || {})[asset.assetId] || asset.url;
       if (!url) throw new Error(tt("连接的素材尚未准备好。"));
       return url;
     },
