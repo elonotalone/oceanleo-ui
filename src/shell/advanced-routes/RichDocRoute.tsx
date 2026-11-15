@@ -16,7 +16,8 @@ import { RichDocReviewReadOnlyContext } from "../doc-editors/richdoc-review/revi
 import { useRichDocReviewCollab } from "../doc-editors/richdoc-review/use-richdoc-review-collab";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
 import { RichDocStage } from "../doc-editors/RichDocStage";
-import { downloadText } from "../doc-editors/doc-io";
+import { downloadText, loadEditorProject } from "../doc-editors/doc-io";
+import { richDocProjectUrl } from "../doc-editors/rich-doc-model";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import { tiptapJsonToDocxBlob } from "../doc-editors/docx-export";
 import { buildRichDocCommandSurface } from "../doc-editors/doc-family-commands";
@@ -37,7 +38,9 @@ import { isDurableLibraryItem } from "../library-data";
 import { useOfficeArtifactSource } from "../office-editor";
 import { imEnabledHere } from "../../lib/im/client";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
-import { useCollabRoom, useCollabSaveGate } from "../collab";
+import { useCollabRoom } from "../collab";
+import { workingCopyRoot, workingCopyTransport } from "../editor-working-copy";
+import { getCurrentArtifactItem } from "../artifact-client";
 import { RICHDOC_COLLAB_EDITOR_KIND } from "../collab/adapters/richdoc";
 import { editorToolLabel } from "../workbench-routes";
 import {
@@ -45,6 +48,14 @@ import {
   type WorkbenchMaterialAdapter,
 } from "../workbench-material-provider";
 import { withEditorHistoryCommand } from "../workbench-material-command";
+
+function samePublishedDocument(left: unknown, right: unknown): boolean {
+  const stable = (value: unknown) => JSON.stringify(value, (_key, next) =>
+    next && typeof next === "object" && !Array.isArray(next)
+      ? Object.fromEntries(Object.entries(next).sort(([a], [b]) => a.localeCompare(b)))
+      : next);
+  return stable(left) === stable(right);
+}
 
 export function RichDocRoute({
   item,
@@ -70,7 +81,6 @@ export function RichDocRoute({
     editorKind: RICHDOC_COLLAB_EDITOR_KIND,
     enabled: imEnabledHere(),
   });
-  const collabSaveGate = useCollabSaveGate(collabRoom);
   const editor = useRichDocEditor(
     officeSource.item,
     siteId,
@@ -150,9 +160,24 @@ export function RichDocRoute({
     [item, materialAdapter],
   );
   useWorkbenchMaterialAdapter(materialCommandAdapter);
-  const saveBeforeNewConversation = useCallback(async (prepared?: ReturnType<typeof editor.prepareSave>) => {
+  const saveBeforeNewConversation = useCallback(async (prepared?: ReturnType<typeof editor.prepareSave>, document = editor.captureRecovery()) => {
     // 只读成员可以发送现有文件，不发起保存。
-    if (!collabSaveGate) return { ok: true as const, item };
+    if (editor.collabReadOnly) return { ok: true as const, item };
+    // Another tab may already have published this acknowledged working copy.
+    // Reuse its pinned revision; avoid rebuilding files or creating a duplicate.
+    const root = workingCopyRoot(item);
+    const copy = await workingCopyTransport(root, "oceanleo.richdoc.edit.v1", item.revisionId || null).get();
+    if (copy) {
+      const current = await getCurrentArtifactItem(root);
+      if (!current.ok || !current.data) return { ok: false as const, error: current.error || "保存失败，请重试" };
+      if (copy.seq <= (copy.published_seq ?? 0) && current.data.revisionId === copy.base_revision_id) { editor.adoptPublishedItem(current.data); return { ok: true as const, item: current.data }; }
+      // Content also covers different seqs and delayed publication-marker writes.
+      const projectUrl = richDocProjectUrl(current.data);
+      if (projectUrl && samePublishedDocument(await loadEditorProject(projectUrl, "tiptap-json@1"), document)) {
+        editor.adoptPublishedItem(current.data);
+        return { ok: true as const, item: current.data };
+      }
+    }
     const saved = await (prepared ? prepared() : editor.save());
     if (!saved) {
       return {
@@ -214,7 +239,7 @@ export function RichDocRoute({
       ok: true as const,
       item: richDocSavedItemForHandoff(receipt || item, saved),
     };
-  }, [collabSaveGate, editor.error, editor.lastSaveError, editor.save, item]);
+  }, [editor.collabReadOnly, editor.adoptPublishedItem, editor.captureRecovery, editor.error, editor.lastSaveError, editor.save, item]);
   const restoreWorkingDocument = useCallback(
     (payload: unknown) => editor.restoreRecovery(payload),
     [editor.restoreRecovery],
@@ -508,11 +533,11 @@ export function RichDocRoute({
           (editor.loading || officeSource.loading ? "正在载入文档" : ""),
         persistence: {
           // 每个可编辑标签页都保存自己的当前合并文档。
-          dirty: collabSaveGate ? editor.dirty : false,
+          dirty: editor.dirty,
           editRevision: editor.editRevision,
-          autoSave: collabSaveGate,
+          autoSave: !editor.collabReadOnly,
           flush: saveBeforeNewConversation,
-          preparePublish: () => { const save = editor.prepareSave(); return () => saveBeforeNewConversation(save); },
+          preparePublish: () => { const document = editor.captureRecovery(); const save = editor.prepareSave(); return () => saveBeforeNewConversation(save, document); },
           recovery: {
             draftSchema: "oceanleo.richdoc.edit.v1",
             key: advancedRecoveryKey("richdoc", item),

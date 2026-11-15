@@ -68,3 +68,10 @@ test('a late working-copy acknowledgement cannot schedule publication for a remo
  b.publisher.saved();t.mock.timers.tick(30000);await settle();
  assert.deepEqual(b.calls,['dispose']);assert.equal(b.published.length,0);
 });
+
+test('same-root publishers wait for the earlier job; an unfinished session receipt never triggers a duplicate file publish',async()=>{
+ let builds=0,records=0,allowRecord=false,published=false;const barrier=deferred();const source=()=>({flush:async()=>true,snapshot:()=>({seq:1,pending:false}),freeze(){},dispose(){}});
+ const first=createBackgroundPublisher({root:'same-document',saver:source(),transport:{published:async()=>{published=true;}},prepare:()=>async()=>{builds++;await barrier.promise;return {ok:true,item:{revisionId:'r2'}};},record:async()=>{records++;if(!allowRecord)throw Error('required session guard');}});
+ const second=createBackgroundPublisher({root:'same-document',saver:source(),transport:{published:async()=>{}},prepare:()=>async()=>{if(!published)builds++;return {ok:true,item:{revisionId:published?'r2':'duplicate'}};},record:async()=>{}});
+ first.saved();second.saved();const a=first.publish(),b=second.publish();await settle();assert.equal(builds,1);barrier.resolve();const results=await Promise.all([a,b]);assert.ok(results.every(result=>!result.ok));assert.equal(builds,1);assert.equal(records,1);assert.equal((await second.publish()).ok,false);assert.equal(builds,1);allowRecord=true;const recovered=await Promise.all([first.publish(),second.publish()]);assert.ok(recovered.every(result=>result.ok));assert.equal(records,2);assert.equal(builds,1);
+});

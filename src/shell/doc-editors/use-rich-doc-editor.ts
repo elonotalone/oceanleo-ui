@@ -133,6 +133,8 @@ export interface RichDocEditorState {
   /** 上一次 `save()` 失败的原因（同步可读；React state 里的 `error` 要等下一次渲染）。 */
   lastSaveError: () => string;
   captureRecovery: () => unknown;
+  /** Advance a verified published pin without replacing live editor content. */
+  adoptPublishedItem: (next: LibraryItem) => void;
   prepareSave: () => () => Promise<PersistedEditorVersion | null>;
   isGenerated: () => boolean;
   exportMarkdown: () => Promise<void>;
@@ -1045,6 +1047,11 @@ export function useRichDocEditor(
     if (!editor || !sourceReadyRef.current) return null;
     return { ...attachReviewSidecar(editor.getJSON(), getReviewSidecar()), generatedOrigin: generatedRef.current };
   }, [editor, getReviewSidecar]);
+  const adoptPublishedItem = useCallback((next: LibraryItem) => {
+    if (userEditItemKey(next) !== userEditItemKey(persistedItemRef.current)) return;
+    persistedItemRef.current = next;
+    workingHeadUrlRef.current = richDocProjectUrl(next) || next.url || workingHeadUrlRef.current;
+  }, []);
   const lastSaveError = useCallback(() => saveErrorRef.current, []);
 
   /** 每个可编辑标签页都能存版本；存完通知房间。 */
@@ -1230,6 +1237,7 @@ export function useRichDocEditor(
     clearFormat,
     restoreRecovery,
     captureRecovery,
+    adoptPublishedItem,
     prepareSave,
     collabPhase,
     collabReadOnly,

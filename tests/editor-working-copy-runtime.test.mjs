@@ -26,7 +26,19 @@ const collab=dataModule(`import React from ${JSON.stringify(reactUrl)};export {u
 const {RoomContext}=await import(collab);
 const host=dataModule(`import React from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {PluginChromeStatus} from ${JSON.stringify(statusUrl)};import {RoomContext} from ${JSON.stringify(collab)};
 export function AdvancedWorkbenchShell({adapter,item}){globalThis.__wcAdapter=adapter;const p=adapter.persistence;const save=useAdvancedAutoSave({key:item.artifactId,enabled:p.autoSave!==false,room:adapter.collab?.room,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,item,editorId:'richdoc',session:null});globalThis.__wcSave=save;const room=React.useContext(RoomContext);if(room)globalThis.__wcTabs[room.self.id].save=save;return React.createElement('div',null,React.createElement(PluginChromeStatus,{state:{kind:save.state,message:save.errorMessage}}),adapter.stage);}`);
-const docio=dataModule(`export const downloadBlob=()=>{},downloadText=()=>{};export async function loadEditorProject(){return null};export async function saveFileToLibrary(input){globalThis.__wcPublications.push(input.project.data);await globalThis.__wcPublishBarrier;return {ok:true,url:'https://files.invalid/r2.docx',versionId:'v2',artifactId:'root',revisionId:'r2',previousRevisionId:'r1',item:{...input.item,revisionId:'r2',artifact:{...input.item.artifact,revisionId:'r2'},meta:input.item.meta}};}`);
+const docio=dataModule(`
+export const downloadBlob=()=>{},downloadText=()=>{};
+export async function loadEditorProject(){return globalThis.__wcPublishedDocument??null;}
+export async function saveFileToLibrary(input){
+ if(globalThis.__wcVerifyPin&&globalThis.__wcPublishedItem&&input.item.revisionId!==globalThis.__wcPublishedItem.revisionId)return {ok:false,error:'publication CAS pin was not adopted'};
+ globalThis.__wcPublications.push(input.project.data);await globalThis.__wcPublishBarrier;
+ const revisionId='r'+(globalThis.__wcPublications.length+1),previousRevisionId=input.item.revisionId;
+ const projectUrl='https://files.invalid/'+revisionId+'.project.json';
+ globalThis.__wcPublishedDocument=structuredClone(input.project.data);
+ globalThis.__wcPublishedItem={...input.item,revisionId,artifact:{...input.item.artifact,revisionId},meta:{...input.item.meta,editor_project_url:projectUrl}};
+ return {ok:true,url:'https://files.invalid/'+revisionId+'.docx',versionId:revisionId,artifactId:'root',revisionId,previousRevisionId,projectUrl,projectSchema:'tiptap-json@1',item:globalThis.__wcPublishedItem};
+}`);
+const artifactClient=dataModule(`export * from ${JSON.stringify(pathToFileURL(require.resolve('../src/shell/artifact-client.ts')).href)};export async function getArtifactItem(){return {ok:true,data:globalThis.__wcPublishedItem??{id:"root",artifactId:"root",revisionId:"r1",meta:{}}};}export const getCurrentArtifactItem=getArtifactItem;`);
 const editorModelUrl=await compileModule('src/shell/doc-editors/rich-doc-model.ts',{});
 const model=dataModule(`export * from ${JSON.stringify(editorModelUrl)};export async function loadRichDocSource(){return {source:'inline',json:globalThis.__wcInitialDocument??{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Original'}]}]},html:'<p>Original</p>'};}export const preloadRichDocDeliveryWriters=()=>{};`);
 const noComponent=dataModule('export const RichDocControls=()=>null,RichDocCommentRail=()=>null,RichDocContextToolbar=()=>null;');
@@ -36,13 +48,13 @@ const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',
  ...Object.fromEntries(['@tiptap/starter-kit','@tiptap/extension-collaboration','@tiptap/extension-collaboration-caret'].map(key=>[key,dataModule(`import pkg from ${JSON.stringify(pathToFileURL(require.resolve(key)).href)};export default pkg.default;`)])),
  '../AdvancedWorkbenchShell':host,'../../i18n/ui/useUI':translation,
  '../office-editor':dataModule('export const useOfficeArtifactSource=item=>({item,loading:false,resourceFailed:false,error:""});'),
- '../collab':collab,'../doc-editors/doc-io':docio,
+ '../collab':collab,'../doc-editors/doc-io':docio,'../artifact-client':artifactClient,
  '../doc-editors/rich-doc-model':model,
  '../doc-editors/rich-doc-text-delivery':dataModule(`export const preloadRichDocDeliveryWriters=()=>{},richDocRendersPreviewBitmap=()=>false,richDocTextExcerpt=()=>'';`),
  '../doc-editors/RichDocControls':noComponent,'../doc-editors/RichDocContextToolbar':noComponent,
  '../doc-editors/richdoc-review/RichDocCommentRail':noComponent,
  '../doc-editors/richdoc-review/use-richdoc-review-collab':dataModule('export const useRichDocReviewCollab=()=>{};'),
- '../doc-editors/RichDocStage':dataModule(`import React from ${JSON.stringify(reactUrl)};import {RoomContext} from ${JSON.stringify(collab)};export const RichDocStage=({editor})=>{globalThis.__wcEditor=editor;const room=React.useContext(RoomContext);if(room)globalThis.__wcTabs[room.self.id].editor=editor;return React.createElement('div',{'data-richdoc-stage':true});};`),
+ '../doc-editors/RichDocStage':dataModule(`import React from ${JSON.stringify(reactUrl)};import {RoomContext} from ${JSON.stringify(collab)};import {EditorContent} from ${JSON.stringify(pathToFileURL(require.resolve('@tiptap/react')).href)};export const RichDocStage=({editor})=>{globalThis.__wcEditor=editor;const room=React.useContext(RoomContext);if(room)globalThis.__wcTabs[room.self.id].editor=editor;return React.createElement('div',{'data-richdoc-stage':true},React.createElement(EditorContent,{editor:editor.editor}));};`),
  '../../lib/im/client':dataModule('export const imEnabledHere=()=>false;'),
  '../useAdvancedSession':dataModule('export const useAdvancedSession=()=>null;'),
  '../workbench-material-provider':dataModule('export const useWorkbenchMaterialAdapter=()=>{};'),
@@ -70,6 +82,7 @@ globalThis.fetch=async(url,init={})=>{
    globalThis.__wcAckObserver?.(data.doc,performance.now());
    return Response.json({ok:true,seq:receiptSeq,saved_at:copy.saved_at,server_ms:20});
   }
+  if(init.method==='POST'&&String(url).endsWith('/published')&&copy){const data=JSON.parse(init.body);copy.published_seq=Math.max(copy.published_seq??0,data.seq);copy.base_revision_id=data.revision_id;}
   return Response.json({ok:true});
  }
  return new Response('',{status:404});
@@ -130,18 +143,19 @@ test('VS1 document matrix: 20 isolated edits + 3 bursts, small/40-page native mo
 });
 
 
-for(const pages of [1,40]) for(const existing of [false,true]) test(`VS4 round 4 REAL two-tab RichDoc room: ${pages} pages, ${existing ? "existing" : "fresh"} copy, both tabs PUT their merged state`,async()=>{
- const Y=require('yjs');
- const room=id=>{const provider=createCollabProvider({manual:true,doc:new Y.Doc(),roomKey:'artifact:root',fetchTicket:async()=>{throw Error('test transport only');},wsUrl:()=>''});provider.status='synced';provider.role='editor';provider.needsSeed=id==='a';provider.self={id,name:id,color:'#6366f1',avatar_url:null};return provider;};
+for(const pages of [1,40]) for(const existing of [false,true]) test(`VS4 round 5 two real Tiptap editors on ONE Y.Doc: ${pages} pages, ${existing ? "existing" : "fresh"} copy, both tabs PUT their merged state`,async()=>{
+ const Y=require('yjs'),sharedDoc=new Y.Doc();
+ const room=id=>{const provider=createCollabProvider({manual:true,doc:sharedDoc,roomKey:'artifact:root',fetchTicket:async()=>{throw Error('test transport only');},wsUrl:()=>''});provider.status='synced';provider.role='editor';provider.needsSeed=id==='a';provider.self={id,name:id,color:'#6366f1',avatar_url:null};return provider;};
  const a=room('a'),b=room('b');
- const ab=(update,origin)=>{if(origin!==a)Y.applyUpdate(b.doc,update,b);},ba=(update,origin)=>{if(origin!==b)Y.applyUpdate(a.doc,update,a);};a.doc.on('update',ab);b.doc.on('update',ba);
+ assert.equal(a.doc,b.doc,'both real editor bindings must use exactly one Y.Doc');
  globalThis.__wcTabs={a:{},b:{}};globalThis.__wcInitialDocument={type:'doc',content:Array.from({length:pages*20},(_,n)=>({type:'paragraph',content:[{type:'text',text:`Page ${n}: original document. `}]}))};
+ globalThis.__wcPublishedItem=undefined;globalThis.__wcPublishedDocument=undefined;globalThis.__wcVerifyPin=true;
  copy=existing?{schema:'oceanleo.richdoc.edit.v1',seq:17,published_seq:0,base_revision_id:'r1',saved_at:new Date().toISOString(),doc:structuredClone(globalThis.__wcInitialDocument)}:null;putAck=null;globalThis.__wcPublishBarrier=undefined;const views=[];
  const open=async(room)=>{const node=document.createElement('div');document.body.append(node);const root=createRoot(node);views.push({node,root});await act(async()=>{root.render(React.createElement(RoomContext.Provider,{value:room},React.createElement(RichDocRoute,{item,onClose(){}})));await delay(30);});await act(async()=>{await delay(30);});return globalThis.__wcTabs[room.self.id];};
- try{const first=await open(a),second=await open(b);assert.equal(first.editor.loading,false);assert.equal(second.editor.loading,false);assert.equal(first.editor.editor.getText(),second.editor.editor.getText());
+ try{const first=await open(a),second=await open(b);assert.equal(first.editor.loading,false);assert.equal(second.editor.loading,false);assert.equal(first.editor.editor.getText(),second.editor.editor.getText());assert.equal(document.querySelectorAll('[data-richdoc-stage] .ProseMirror').length,2,'both real editor views must be mounted');
   const before=requests.length;let release;putAck=new Promise(r=>release=r);
   await act(async()=>{second.editor.editor.commands.insertContent('VS-R3-check-93');await settle();await delay(20);});
-  assert.ok(second.editor.editor.getText().includes('VS-R3-check-93'));assert.ok(first.editor.editor.getText().includes('VS-R3-check-93'));
+  assert.ok(second.editor.editor.getText().includes('VS-R3-check-93'));assert.ok(first.editor.editor.getText().includes('VS-R3-check-93'));assert.ok(views.every(view=>view.node.querySelector('.ProseMirror').textContent.includes('VS-R3-check-93')));
   await act(async()=>{first.editor.editor.commands.insertContent('VS-R3-check-92');await settle();});
   assert.equal(first.save.state,'saving');
   assert.equal(second.save.state,'saving','peer must await its own working-copy acknowledgement');assert.equal(second.save.pending,true);assert.equal(second.save.conflict,false);
@@ -150,9 +164,19 @@ for(const pages of [1,40]) for(const existing of [false,true]) test(`VS4 round 4
   const until=performance.now()+2000;while((first.save.state!=='saved'||second.save.state!=='saved')&&performance.now()<until)await act(async()=>{await delay(5);});
   assert.equal(first.save.state,'saved');assert.equal(second.save.state,'saved');assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-93'));
   assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-92'));assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-93'));
+  const beforePublish=globalThis.__wcPublications.length;let receipts;
+  await act(async()=>{receipts=await Promise.all([first.save.flushLatest(),second.save.flushLatest()]);});
+  assert.ok(receipts.every(result=>result.ok));assert.equal(globalThis.__wcPublications.length-beforePublish,1,'the same merged document creates one Library revision');assert.equal(copy.published_seq,copy.seq);
+  await act(async()=>{await Promise.all([first.save.flushLatest(),second.save.flushLatest()]);});assert.equal(globalThis.__wcPublications.length-beforePublish,1,'repeated gates reuse the same revision');
+  const equalSeq=copy.seq;copy.published_seq=0;copy.base_revision_id='r1';
+  await act(async()=>{const original=first.editor.editor.getJSON();first.editor.editor.commands.insertContent('temporary');first.editor.editor.commands.setContent(original,{emitUpdate:true});await delay(30);await settle();});
+  const equalUntil=performance.now()+2000;while((first.save.state!=='saved'||second.save.state!=='saved')&&performance.now()<equalUntil)await act(async()=>{await delay(5);});
+  assert.ok(copy.seq>equalSeq,'identical content was acknowledged at a new sequence');
+  await act(async()=>{const reused=await Promise.all([first.save.flushLatest(),second.save.flushLatest()]);assert.ok(reused.every(result=>result.ok));});assert.equal(globalThis.__wcPublications.length-beforePublish,1,'current native head also dedupes when publication-marker completion was delayed');
   const closed=views.shift();await act(async()=>{closed.root.unmount();await delay(20);});closed.node.remove();
   await act(async()=>{second.editor.editor.commands.insertContent('VS-R3-check-94');await delay(30);await settle();});
   const closingUntil=performance.now()+2000;while(second.save.state!=='saved'&&performance.now()<closingUntil)await act(async()=>{await delay(5);});
-  assert.equal(second.save.state,'saved');assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-94'));assert.deepEqual(errors,[]);
- }finally{putAck=null;for(const view of views){await act(async()=>{view.root.unmount();await delay(20);});view.node.remove();}resetBackgroundSaverForTests();a.doc.off('update',ab);b.doc.off('update',ba);a.destroy();b.destroy();a.doc.destroy();b.doc.destroy();delete globalThis.__wcTabs;delete globalThis.__wcInitialDocument;}
+  assert.equal(second.save.state,'saved');assert.ok(JSON.stringify(copy.doc).includes('VS-R3-check-94'));
+  let changed;await act(async()=>{changed=await second.save.flushLatest();});assert.equal(changed.ok,true);assert.equal(globalThis.__wcPublications.length-beforePublish,2,'a later genuine edit creates exactly one new revision from the adopted pin');assert.deepEqual(errors,[]);
+ }finally{putAck=null;for(const view of views){await act(async()=>{view.root.unmount();await delay(20);});view.node.remove();}resetBackgroundSaverForTests();a.destroy();b.destroy();sharedDoc.destroy();delete globalThis.__wcTabs;delete globalThis.__wcInitialDocument;delete globalThis.__wcVerifyPin;}
 });

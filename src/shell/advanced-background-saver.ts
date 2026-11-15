@@ -47,8 +47,18 @@ export function createBackgroundPublisher(input: Omit<Publisher, "again" | "clos
     if (job.running) { job.again = job.owed; return job.running.then(() => job.again ? publish() : job.last!); }
     if (!job.owed && !job.saver.snapshot().pending) return Promise.resolve(job.last ?? { ok: true });
     job.again = false;
+    // Reuse the existing jobs set to order publication for the same item.
+    // A committed receipt must finish required bookkeeping before another job
+    // may build a revision. Receipt retries themselves never wait on a peer.
+    const peer = !job.receipt && job.root ? [...jobs].find((other) => other !== job && other.root === job.root && (other.running || other.receipt)) : undefined;
+    const preceding = peer?.running;
     const running = (async (): Promise<AdvancedFlushResult> => {
       try {
+        if (preceding) {
+          const result = await preceding;
+          if (!result.ok) return result;
+        }
+        if (peer?.receipt) return peer.last?.ok === false ? peer.last : { ok: false, error: "保存失败，请重试" };
         if (!job.receipt) {
           if (!await job.saver.flush()) return { ok: false, error: job.saver.snapshot().error || "保存失败，请重试" };
           await yieldToEditor();
