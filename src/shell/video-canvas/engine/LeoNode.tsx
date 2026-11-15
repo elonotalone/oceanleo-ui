@@ -6,7 +6,8 @@ import { useUI } from "../../../i18n";
 import { canvasImageAppearance } from "./project-model";
 import { listMyArtifacts, refreshArtifactRendition } from "../../artifact-client";
 import { timelineFontStack } from "../../video-editor/timeline-model";
-import type { TimelineTextStyle } from "../../video-editor/types";
+import { drawTimelineImageFrame } from "../../video-editor/preview-engine";
+import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
 import { ComposerLibraryPicker } from "../../ComposerLibraryPicker";
 import type { LibraryItem } from "../../library-data";
 import { videoMaterialKind } from "../../workflow-carrier/video-project-material";
@@ -574,14 +575,28 @@ function ImageNode({
     if (!file.libraryItem || !file.artifactId || !file.revisionId) return;
     closePicker({ ...file.libraryItem, artifactId: file.artifactId, revisionId: file.revisionId });
   };
-  const crop = appearance.crop;
-  const style = {
-    transform: `rotate(${appearance.rotation || 0}deg) scale(${appearance.flip_x ? -1 : 1}, ${appearance.flip_y ? -1 : 1})`,
-    filter: `brightness(${1 + (appearance.brightness || 0)}) contrast(${appearance.contrast ?? 1}) saturate(${appearance.saturation ?? 1})`,
-    objectFit: appearance.fit === "stretch" ? "fill" as const : appearance.fit,
-    ...(crop ? { width: `${100 / crop.width}%`, height: `${100 / crop.height}%`, maxWidth: "none", position: "absolute" as const,
-      left: `${-crop.x * 100 / crop.width}%`, top: `${-crop.y * 100 / crop.height}%` } : {}),
+  const imageElement = useRef<HTMLImageElement>(null);
+  const canvasElement = useRef<HTMLCanvasElement>(null);
+  const signature = JSON.stringify(appearance);
+  const frame = data.imagePreviewFrame || { width: 1920, height: 1080, scale: 0.3 };
+  const paint = () => {
+    const image = imageElement.current, canvas = canvasElement.current;
+    if (!image?.naturalWidth || !canvas) return;
+    try {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Image preview is unavailable.");
+      const ratio = Math.min(canvas.width / (frame.width * frame.scale), canvas.height / (frame.height * frame.scale));
+      const width = frame.width * frame.scale * ratio, height = frame.height * frame.scale * ratio;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate((canvas.width - width) / 2, (canvas.height - height) / 2);
+      try {
+        drawTimelineImageFrame(ctx, image, { id: data.nodeId, start_ms: 0, duration_ms: 1, ...appearance, x: 0.5, y: 0.5, scale: 1 } as TimelineClip, width, height, ratio);
+      } finally { ctx.restore(); }
+      media.ready();
+    } catch { media.failed(); }
   };
+  useEffect(() => { paint(); }, [signature, src, frame.width, frame.height, frame.scale]);
   return (
     <div
       data-node-id={data.nodeId}
@@ -592,19 +607,13 @@ function ImageNode({
       }`}
     >
       <Ports kind={data.kind} />
-      <div className="absolute inset-0 overflow-hidden" style={{ borderRadius: appearance.radius, border: `${appearance.border.width}px solid ${appearance.border.color}`, opacity: appearance.opacity }}>
-        {src && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
-            alt={appearance.alt || data.title}
-            draggable={false}
-            onLoad={media.ready}
-            onError={media.failed}
-            className="block h-full w-full object-cover"
-            style={style}
-          />
-        )}
+      <div className="absolute inset-0 overflow-hidden rounded-2xl">
+        {src && <>
+          <canvas ref={canvasElement} width={432} height={270} role="img" aria-label={appearance.alt || data.title} className="block h-full w-full" />
+          {/* The same decoded source feeds the timeline pixel painter; grants remain runtime-only. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img ref={imageElement} src={src} crossOrigin="anonymous" alt="" draggable={false} onLoad={paint} onError={media.failed} className="hidden" />
+        </>}
         <MediaState
           state={libraryState}
           empty="No immutable image Asset yet. Use Generate or insert a verified library Asset."
@@ -772,7 +781,7 @@ function TextualNode({
   const [value, setValue] = useState(data.text || data.prompt || "");
   useEffect(() => setValue(data.text || data.prompt || ""), [data.prompt, data.text]);
   const textStyle = (data.params?.textStyle || {}) as TimelineTextStyle;
-  const previewText = textStyle.vertical_text ? Array.from(value).join("\n") : value;
+  const previewText = textStyle.vertical_text ? value.split("\n").map((line) => Array.from(line).join("\n")).join("\n") : value;
   const canGenerate =
     data.commandAvailability["canvas.node.generate.script"];
   const canStructure = data.commandAvailability["canvas.script.structure"];

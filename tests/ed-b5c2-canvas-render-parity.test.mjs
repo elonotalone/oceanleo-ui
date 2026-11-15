@@ -153,9 +153,27 @@ test("selected canvas image opens the actual Library picker, filters nonimages a
     assert.equal(container.querySelectorAll("[data-composer-library-item]").length, 1, container.textContent);
     await act(async () => container.querySelector("[data-composer-library-item]").click()); assert.deepEqual(await pending, identity);
     assert.equal(container.querySelector("[role=dialog]"), null);
+    const calls = [], pixelWrites = [];
+    const context = { clearRect() {}, save() {}, restore() {}, translate() {}, rotate() {}, scale() {}, beginPath() {}, clip() {}, stroke() {},
+      roundRect(...args) { calls.push(["radius", ...args]); }, drawImage(...args) { calls.push(["image", ...args]); },
+      getImageData() { return { data: new Uint8ClampedArray([0, 0, 0, 255]) }; }, putImageData(pixels) { pixelWrites.push([...pixels.data]); } };
+    const oldContext = window.HTMLCanvasElement.prototype.getContext;
+    window.HTMLCanvasElement.prototype.getContext = () => context;
+    try {
+      const styledImage = { ...base, asset: { assetId: "photo", url: "https://cdn.example.test/photo.png" },
+        imagePreviewFrame: { width: 1920, height: 1080, scale: 0.3 },
+        localEditRecipe: [{ operation: "adjust", parameters: { brightness: 1.2, contrast: 1, saturation: 1, exposure: 0 } }],
+        params: { crop: { x: 0.25, y: 0, width: 0.5, height: 1 }, fit: "cover", radius: 34, border: { width: 5, color: "#123456" }, opacity: 0.64, alt: "Image description" } };
+      await act(async () => root.render(React.createElement(loaded.LeoNode, { id: base.nodeId, data: styledImage, selected: true })));
+      const image = container.querySelector("img"); Object.defineProperties(image, { naturalWidth: { value: 400 }, naturalHeight: { value: 200 } });
+      await act(async () => image.dispatchEvent(new window.Event("load")));
+      assert.deepEqual(pixelWrites.at(-1), [51, 51, 51, 255]);
+      const draw = calls.filter(call => call[0] === "image").at(-1); draw.slice(2, 6).forEach((value, index) => assert.ok(Math.abs(value - [100, 43.75, 200, 112.5][index]) < 1e-9));
+      assert.equal(context.globalAlpha, 0.64); assert.ok(Math.abs(context.lineWidth - 3.75) < 1e-9); assert.equal(container.querySelector("canvas").getAttribute("aria-label"), "Image description");
+    } finally { window.HTMLCanvasElement.prototype.getContext = oldContext; }
     const text = { ...base, kind: "text", text: "\n甲A\n", params: { textStyle: { font_family: "serif", italic: true, underline: true, strike: true, line_height: 1.8, letter_spacing: 3, vertical_text: true } } };
     await act(async () => root.render(React.createElement(loaded.LeoNode, { id: base.nodeId, data: text, selected: true })));
-    const preview = container.querySelector("[data-canvas-text-preview]"); assert.equal(preview.style.fontStyle, "italic"); assert.ok(preview.style.textDecoration.includes("line-through")); assert.equal(preview.style.lineHeight, "1.8"); assert.equal(preview.style.letterSpacing, "3px"); assert.equal(preview.textContent, Array.from(text.text).join("\n"));
+    const preview = container.querySelector("[data-canvas-text-preview]"); assert.equal(preview.style.fontStyle, "italic"); assert.ok(preview.style.textDecoration.includes("line-through")); assert.equal(preview.style.lineHeight, "1.8"); assert.equal(preview.style.letterSpacing, "3px"); assert.equal(preview.textContent, text.text.split("\n").map(line => Array.from(line).join("\n")).join("\n"));
   } finally { await act(async () => root.unmount()); container.remove(); }
 });
 

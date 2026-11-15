@@ -377,6 +377,7 @@ export interface CanvasNodeViewData extends Record<string, unknown> {
   cameraId?: string;
   localEditRecipe: LocalEditOperation[];
   params?: Record<string, unknown>;
+  imagePreviewFrame?: { width: number; height: number; scale: number };
   /** Exact imported v1 node source, available to a guarded legacy view only. */
   legacySourceNode?: Record<string, unknown>;
   selectionEpoch: number;
@@ -1249,6 +1250,21 @@ export function canvasImageAppearance(node: Pick<CanvasNodeDefinition, "localEdi
     alt: typeof params.alt === "string" ? params.alt.slice(0, 2000) : "" };
 }
 
+function canvasCompositionFrame(version: ProjectVersion) {
+  const delivery = version.graph.nodes.find((node) => node.kind === "delivery");
+  const output = delivery ? composeNodeParams(delivery) : {};
+  const ratio = String(output.aspectRatio || output.ratio || "16:9");
+  const preset = ratio === "9:16" ? [1080, 1920] : ratio === "1:1" ? [1080, 1080] : [1920, 1080];
+  let width = Math.round(composeNumber(output.width, preset[0], 16, 3840));
+  let height = Math.round(composeNumber(output.height, preset[1], 16, 3840));
+  if (typeof output.width === "number" && typeof output.height !== "number") {
+    height = Math.round(composeNumber(width * preset[1] / preset[0], preset[1], 16, 3840));
+  } else if (typeof output.height === "number" && typeof output.width !== "number") {
+    width = Math.round(composeNumber(height * preset[0] / preset[1], preset[0], 16, 3840));
+  }
+  return { width, height, fps: Math.round(composeNumber(output.fps, 30, 1, 60)) };
+}
+
 /** The one cut used by both FFmpeg export and the full timeline editor. */
 export function projectTimelineDocument(project: VideoProject): {
   timelineId: string;
@@ -1279,19 +1295,9 @@ export function projectTimelineDocument(project: VideoProject): {
     cursor += duration;
     return clip;
   });
-  const delivery = version.graph.nodes.find((node) => node.kind === "delivery");
-  const output = delivery ? composeNodeParams(delivery) : {};
-  const ratio = String(output.aspectRatio || output.ratio || "16:9");
-  const preset = ratio === "9:16" ? [1080, 1920] : ratio === "1:1" ? [1080, 1080] : [1920, 1080];
-  let width = Math.round(composeNumber(output.width, preset[0], 16, 3840));
-  let height = Math.round(composeNumber(output.height, preset[1], 16, 3840));
-  if (typeof output.width === "number" && typeof output.height !== "number") {
-    height = Math.round(composeNumber(width * preset[1] / preset[0], preset[1], 16, 3840));
-  } else if (typeof output.height === "number" && typeof output.width !== "number") {
-    width = Math.round(composeNumber(height * preset[0] / preset[1], preset[0], 16, 3840));
-  }
+  const frame = canvasCompositionFrame(version);
   const document: TimelineDoc = {
-    width, height, fps: Math.round(composeNumber(output.fps, 30, 1, 60)),
+    ...frame,
     tracks: [{ id: `track_${timeline.timelineId}`, kind: "video", clips: videoClips }],
   };
   const subtitles: TimelineClip[] = [];
@@ -1943,6 +1949,7 @@ export function projectToFlow(
   ) => CanvasNodeViewData,
 ): { nodes: CanvasFlowNode[]; edges: CanvasFlowEdge[] } {
   const version = head(project);
+  const frame = canvasCompositionFrame(version);
   const nodes = version.graph.nodes.map((node) => {
     const asset = node.assetId ? project.assets[node.assetId] : undefined;
     const derivative = Object.values(project.derivatives || {}).find(
@@ -1955,6 +1962,7 @@ export function projectToFlow(
       data: {
         ...makeData(effectiveCanvasNode(node), asset, derivative),
         params: clone((node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {}),
+        ...(node.kind === "image" ? { imagePreviewFrame: { width: frame.width, height: frame.height, scale: composeNumber(composeNodeParams(node).scale, 0.3, 0.05, 2) } } : {}),
         ...(node.legacySourceNode
           ? { legacySourceNode: clone(node.legacySourceNode) }
           : {}),
