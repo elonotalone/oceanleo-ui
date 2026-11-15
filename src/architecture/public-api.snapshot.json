@@ -31,7 +31,6 @@
     "./pages": "./src/pages/index.ts",
     "./session": "./src/facades/session.ts",
     "./shell": "./src/shell/index.ts",
-    "./shell/advanced-routes/GameRoute": "./src/shell/advanced-routes/GameRoute.tsx",
     "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/ArtifactActions.js": "./src/shell/ArtifactActions.tsx",
     "./shell/design-document": "./src/shell/design-document-schema-public.ts",
@@ -5290,6 +5289,30 @@
         },
         {
           "kind": "named",
+          "name": "CreateWebsiteEntry",
+          "importedName": "CreateWebsiteEntry",
+          "source": "./website-platform/create-website-entry"
+        },
+        {
+          "kind": "named",
+          "name": "createWebsiteFromDescription",
+          "importedName": "createWebsiteFromDescription",
+          "source": "./website-platform/create-website"
+        },
+        {
+          "kind": "named",
+          "name": "CreateWorkEntry",
+          "importedName": "CreateWorkEntry",
+          "source": "./website-platform/create-website-entry"
+        },
+        {
+          "kind": "named",
+          "name": "createWorkFromDescription",
+          "importedName": "createWorkFromDescription",
+          "source": "./website-platform/create-website"
+        },
+        {
+          "kind": "named",
           "name": "currentPluginCommandSurface",
           "importedName": "currentPluginCommandSurface",
           "source": "./plugin-command"
@@ -5470,45 +5493,15 @@
         },
         {
           "kind": "named",
-          "name": "GameBundleDocument",
-          "importedName": "GameBundleDocument",
-          "source": "./advanced-routes/GameRoute"
-        },
-        {
-          "kind": "named",
-          "name": "GameBundleFormat",
-          "importedName": "GameBundleFormat",
-          "source": "./advanced-routes/GameRoute"
-        },
-        {
-          "kind": "named",
-          "name": "GameIterationRequest",
-          "importedName": "GameIterationRequest",
-          "source": "./advanced-routes/GameRoute"
-        },
-        {
-          "kind": "named",
-          "name": "GameIterationResult",
-          "importedName": "GameIterationResult",
-          "source": "./advanced-routes/GameRoute"
-        },
-        {
-          "kind": "named",
-          "name": "GameIterationRunner",
-          "importedName": "GameIterationRunner",
-          "source": "./advanced-routes/GameRoute"
-        },
-        {
-          "kind": "named",
           "name": "GamePreviewHost",
           "importedName": "GamePreviewHost",
-          "source": "./advanced-routes/GameRoute"
+          "source": "./game-preview-host"
         },
         {
           "kind": "named",
           "name": "GamePreviewHostProps",
           "importedName": "GamePreviewHostProps",
-          "source": "./advanced-routes/GameRoute"
+          "source": "./game-preview-host"
         },
         {
           "kind": "named",
@@ -6712,15 +6705,9 @@
         },
         {
           "kind": "named",
-          "name": "registerGameIterationRunner",
-          "importedName": "registerGameIterationRunner",
-          "source": "./advanced-routes/GameRoute"
-        },
-        {
-          "kind": "named",
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
-          "source": "./advanced-routes/GameRoute"
+          "source": "./game-preview-host"
         },
         {
           "kind": "named",
@@ -7725,6 +7712,18 @@
           "source": "./site-catalog-controller"
         },
         {
+          "kind": "named",
+          "name": "WorkWorkbench",
+          "importedName": "WorkWorkbench",
+          "source": "./works-workbench/WorkWorkbench"
+        },
+        {
+          "kind": "named",
+          "name": "WorkWorkbenchRoute",
+          "importedName": "WorkWorkbenchRoute",
+          "source": "./works-workbench/WorkWorkbenchRoute"
+        },
+        {
           "kind": "star",
           "source": "./artifact-contract"
         },
@@ -8231,149 +8230,6 @@
           "name": "WorkspaceShellProps",
           "importedName": "WorkspaceShellProps",
           "source": "./WorkspaceShell"
-        }
-      ]
-    },
-    "./shell/advanced-routes/GameRoute": {
-      "target": "./src/shell/advanced-routes/GameRoute.tsx",
-      "declarations": [
-        {
-          "kind": "named",
-          "name": "asGameWorkingDocument",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GAME_DUAL_ENGINE_HANDOFF",
-          "importedName": "GAME_DUAL_ENGINE_HANDOFF",
-          "source": "../game-editor/game-pages"
-        },
-        {
-          "kind": "named",
-          "name": "GAME_EDITOR_CAPABILITY",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GAME_PROJECT_SCHEMA",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GAME_REVISION_ORIGINS",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GAME_SOURCE_FORMAT",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GAME_SOURCE_MEDIA_TYPE",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GAME_WORKING_DOCUMENT_SCHEMA",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GameBundleFormat",
-          "importedName": "GameBundleFormat",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "gameLeavePolicy",
-          "importedName": "gameLeavePolicy",
-          "source": "../game-editor/game-pages"
-        },
-        {
-          "kind": "named",
-          "name": "GamePreviewHost",
-          "importedName": "GamePreviewHost",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GamePreviewHostProps",
-          "importedName": "GamePreviewHostProps",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "GameRoute",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "gameSourceAdmission",
-          "importedName": "gameSourceAdmission",
-          "source": "./non-richdoc-source-gate"
-        },
-        {
-          "kind": "named",
-          "name": "gameWorkingHeadKey",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "isAllowedGameRevisionOrigin",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "peekGameWorkingDocument",
-          "source": ""
-        },
-        {
-          "kind": "named",
-          "name": "registerGameIterationRunner",
-          "importedName": "registerGameIterationRunner",
-          "source": "../game-editor/game-iteration-runner"
-        },
-        {
-          "kind": "named",
-          "name": "registerGamePreviewHost",
-          "importedName": "registerGamePreviewHost",
-          "source": "../game-editor/preview-host"
-        },
-        {
-          "kind": "named",
-          "name": "stashGameWorkingDocument",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameBundleDocument",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameIterationRequest",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameIterationResult",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameIterationRunner",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameRevisionOrigin",
-          "source": ""
-        },
-        {
-          "kind": "type",
-          "name": "GameWorkingDocument",
-          "source": ""
         }
       ]
     },
