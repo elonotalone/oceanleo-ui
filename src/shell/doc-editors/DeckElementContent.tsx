@@ -88,9 +88,9 @@ function deckParagraphStyle(element: DeckElement, aspect: DeckAspect): CSSProper
     fontWeight: element.bold ? 700 : 400, fontStyle: element.italic ? "italic" : "normal",
     textDecoration: deckTextDecoration(element), textAlign: element.align || "left",
     lineHeight: element.lineHeight || 1.15,
-    letterSpacing: `${deckFontSizeCqi(element.letterSpacing || 0, aspect)}cqi`,
+    letterSpacing: `${element.letterSpacing || 0}px`,
     writingMode: element.verticalText ? "vertical-rl" : "horizontal-tb",
-    textOrientation: "mixed", paddingInlineStart: `${deckFontSizeCqi(element.indent || 0, aspect)}cqi`,
+    textOrientation: "mixed", paddingInlineStart: `${element.indent || 0}px`,
   };
 }
 
@@ -415,7 +415,7 @@ export function DeckElementContent({
     fontStyle: element.italic ? "italic" : "normal",
     textDecoration: deckTextDecoration(element),
     lineHeight: element.lineHeight || 1.15,
-    letterSpacing: `${deckFontSizeCqi(element.letterSpacing || 0, aspect)}cqi`,
+    letterSpacing: `${element.letterSpacing || 0}px`,
   } as const;
   if (editing && !miniature) {
     return (

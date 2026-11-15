@@ -207,8 +207,8 @@ export function deckPptxTableImageData(
       const x = columnIndex * columnWidth, y = rowIndex * rowHeight;
       const fontSize = scale(cell.fontSize || 16);
       const lineHeight = fontSize * (cell.lineHeight || 1.15);
-      const letterSpacing = scale(cell.letterSpacing || 0);
-      const inset = scale(cell.indent || 0) + columnWidth * 0.05;
+      const letterSpacing = scale((cell.letterSpacing || 0) * 0.75);
+      const inset = scale((cell.indent || 0) * 0.75) + columnWidth * 0.05;
       const lines = deckTextListLines(row[columnIndex] || "", cell.list);
       const color = escapeXml(cell.color || "#111827");
       const clipId = `cell-${rowIndex}-${columnIndex}`;
@@ -507,12 +507,12 @@ function paragraphXml(element: DeckElement, text: string, linkId?: string): stri
   return deckTextListLines(text, element.list).map(line => {
     const list = line.marker ? element.list : "none";
     const indent = Math.round((element.indent || 0) * EMU_PER_CSS_PIXEL);
-    const marker = list === "ordered" ? '<a:buAutoNum type="arabicPeriod"/>' : list === "bullet" ? '<a:buChar char="•"/>' : '<a:buNone/>';
+    const marker = list === "ordered" ? `<a:buAutoNum type="arabicPeriod" startAt="${Number.parseInt(line.marker, 10)}"/>` : list === "bullet" ? '<a:buChar char="•"/>' : '<a:buNone/>';
     const color = /^#([0-9a-f]{6})$/i.exec(element.color === "" ? "#111827" : element.color || "")?.[1];
     const highlight = /^#([0-9a-f]{6})$/i.exec(element.highlight || "")?.[1];
     const props = `sz="${Math.round((element.fontSize || 18) * 100)}" b="${element.bold ? 1 : 0}" i="${element.italic ? 1 : 0}" u="${element.underline ? "sng" : "none"}" strike="${element.strike ? "sngStrike" : "noStrike"}" spc="${Math.round((element.letterSpacing || 0) * 75)}"`;
     const run = `<a:rPr ${props}>${color ? `<a:solidFill><a:srgbClr val="${color}"/></a:solidFill>` : ""}${highlight ? `<a:highlight><a:srgbClr val="${highlight}"/></a:highlight>` : ""}${element.fontFamily ? `<a:latin typeface="${escapeXml(element.fontFamily.split(",")[0])}"/><a:ea typeface="${escapeXml(element.fontFamily.split(",")[0])}"/>` : ""}${linkId ? `<a:hlinkClick r:id="${linkId}"/>` : ""}</a:rPr>`;
-    return `<a:p><a:pPr algn="${element.align === "center" ? "ctr" : element.align === "right" ? "r" : element.align === "justify" ? "just" : "l"}" marL="${indent + (line.marker ? Math.round((element.fontSize || 18) * 1.4 * EMU_PER_CSS_PIXEL) : 0)}" indent="${line.marker ? -Math.round((element.fontSize || 18) * 1.4 * EMU_PER_CSS_PIXEL) : 0}"><a:lnSpc><a:spcPct val="${Math.round((element.lineHeight || 1.15) * 100000)}"/></a:lnSpc>${marker}</a:pPr><a:r>${run}<a:t>${escapeXml(line.text)}</a:t></a:r><a:endParaRPr ${props}/></a:p>`;
+    return `<a:p><a:pPr algn="${element.align === "center" ? "ctr" : element.align === "right" ? "r" : element.align === "justify" ? "just" : "l"}" marL="${indent + (line.marker ? Math.round((element.fontSize || 18) * 1.4 * 12700) : 0)}" indent="${line.marker ? -Math.round((element.fontSize || 18) * 1.4 * 12700) : 0}"><a:lnSpc><a:spcPct val="${Math.round((element.lineHeight || 1.15) * 100000)}"/></a:lnSpc>${marker}</a:pPr><a:r>${run}<a:t>${escapeXml(line.text)}</a:t></a:r><a:endParaRPr ${props}/></a:p>`;
   }).join("");
 }
 
@@ -539,7 +539,10 @@ function applyTableText(block: string, element: DeckElement, elementIndex: numbe
 function applyTextInset(block: string, element: DeckElement): string {
   if (!element.indent) return block;
   const margin = Math.round(element.indent * EMU_PER_CSS_PIXEL);
-  return block.replace(/<a:pPr([^>]*?)(\/?)>/g, (_all, attrs: string, close: string) => `<a:pPr${attrs.replace(/\s+marL="[^"]*"/g, "")} marL="${margin}"${close}>`);
+  return block.replace(/<a:pPr([^>]*?)(\/?)>/g, (_all, attrs: string, close: string) => {
+    const listMargin = Number(/\bmarL="([^"]*)"/.exec(attrs)?.[1] || 0);
+    return `<a:pPr${attrs.replace(/\s+marL="[^"]*"/g, "")} marL="${margin + listMargin}"${close}>`;
+  });
 }
 
 /** Crop the original source before fitting; the writer only knows its target box. */

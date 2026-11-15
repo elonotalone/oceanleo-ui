@@ -35,7 +35,7 @@ for (const [id, value, field, expected] of additions) test(`Deck text ${id} prof
   const copy = reopen(send(original, id, value)); assert.equal(copy[field], expected);
   const html = renderToStaticMarkup(React.createElement(DeckElementContent, { element: copy }));
   if (id === 'vertical-text') assert.match(html, /writing-mode:vertical-rl/);
-  if (id.startsWith('indent')) assert.match(html, /padding-inline-start:/);
+  if (id.startsWith('indent')) assert.match(html, new RegExp(`padding-inline-start:${expected}px`));
   if (id === 'case') assert.match(html, /HELLO/);
 });
 const cellCommands = [['font-family', 'Georgia', 'fontFamily', 'Georgia'], ['highlight', '#ffff00', 'highlight', '#ffff00'], ['align', 'right', 'align', 'right'], ['list', 'ordered', 'list', 'ordered'], ['line-height', 32, 'lineHeight', 1.6], ['link', 'example.com', 'link', 'https://example.com/'], ['letter-spacing', 3, 'letterSpacing', 3], ['case', undefined, 'text', 'HELLO\nWORLD'], ['vertical-text', true, 'verticalText', true], ['indent-increase', undefined, 'indent', 24], ['indent-decrease', undefined, 'indent', 0], ['clear-format', undefined, 'fontSize', 18]];
@@ -68,6 +68,8 @@ for (const [id, value, field, expected] of cellCommands) test(`Deck table cell $
     if (id === 'clear-format') { assert.equal(cell.bold, false); assert.equal(cell.color, deck.masters[0].textColor); }
     if (id === 'vertical-text') assert.equal(host.querySelector('td').style.writingMode, 'vertical-rl');
     if (id === 'highlight') assert.ok(host.querySelector('td [style*="background-color"]'));
+    if (id === 'letter-spacing') assert.equal(host.querySelector('td').style.letterSpacing, '3px');
+    if (id.startsWith('indent')) assert.equal(host.querySelector('td').style.paddingInlineStart, `${expected}px`);
   } finally { await act(async () => root.unmount()); host.remove(); console.error = previous; }
   assert.deepEqual(errors, []);
 });
