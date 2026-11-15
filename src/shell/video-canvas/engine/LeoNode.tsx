@@ -632,7 +632,7 @@ function ImageNode({
       {selected && hostHasNoEditBar(data) && <ImageCompactBar data={data} />}
       {pickerOpen && (
         <div role="dialog" aria-label={tt("从资料库添加文件")} onKeyDown={(event) => { if (event.key === "Escape") closePicker(); }}
-          className="nodrag nowheel absolute left-0 top-0 z-50 flex max-h-[32rem] w-80 flex-col overflow-auto rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-2 shadow-2xl">
+          style={{ maxHeight: "32rem" }} className="nodrag nowheel absolute left-0 top-0 z-50 flex w-80 flex-col overflow-auto rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-2 shadow-2xl">
           <ComposerLibraryPicker onBack={() => closePicker()} onPick={chooseImage} load={loadCanvasLibraryImages} />
         </div>
       )}
