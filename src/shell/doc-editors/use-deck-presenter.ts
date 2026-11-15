@@ -32,7 +32,7 @@ export type PresenterBlackout = "none" | "black" | "white";
  * `split-fallback` 不是「另一种界面」，是**被拒之后的同一件事**——
  * 所以它必须自己说出为什么（`DeckPresenterView` 里那条 `role="status"`）。
  */
-export type PresenterSurface = "stage-only" | "dual-window" | "split-fallback";
+export type PresenterSurface = "stage-only" | "dual-window" | "split-fallback" | "in-window";
 
 /** 降级的三种来源。`none` 表示没降级。 */
 export type PresenterFallbackReason =

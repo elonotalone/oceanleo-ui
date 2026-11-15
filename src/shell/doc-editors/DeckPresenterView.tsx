@@ -3,9 +3,9 @@
 // ============================================================================
 // 放出去给人看的那一面
 // ----------------------------------------------------------------------------
-// 三种面共用一份实现：`stage-only`（投影出去的那块屏）、`dual-window`
-// （讲者自己看的那块屏）、`split-fallback`（第二块屏开不出来时的单窗分屏）。
-// 之所以是一份而不是三份：三者的状态机、键位、计时、笔迹完全一样，
+// 四种面共用一份实现：`stage-only`（投影出去的那块屏）、`dual-window`
+// （讲者自己看的那块屏）、`split-fallback`（第二块屏开不出来时的单窗分屏）、
+// `in-window`（手机单窗放映，按需查看备注）。状态机、键位、计时、笔迹共用，
 // 差的只是把哪几块摆出来。拆成三份的代价是「B 键在分屏里失灵」这类漏改。
 //
 // 三处不容商量的地方，改之前先读：
@@ -39,6 +39,7 @@ import {
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 
 import type { UITranslate } from "../../i18n/ui/useUI";
 import { humanErrorMessage } from "../human-error-message";
@@ -390,6 +391,8 @@ export interface DeckPresenterViewProps {
   /** 主窗调一次 `useUI()` 把 `tt` 传进来；子窗 root 里没有 provider。 */
   translate?: UITranslate;
   onExit?: () => void;
+  /** Keep the editor selection at the slide that was last shown. */
+  onSlideChange?: (index: number) => void;
   /**
    * 排练表写回 deck 的接线。这份视图拿不到写操作，也不该拿到——
    * 集成方接 `editor.patchSlide` 即可，`deckRehearsalNoteLine(row)` 就是内容。
@@ -413,12 +416,14 @@ export function DeckPresenterView({
   fallbackReason = "none",
   translate,
   onExit,
+  onSlideChange,
   onApplyRehearsalNotes,
   linkFactory,
   now,
   autoStartTimer,
 }: DeckPresenterViewProps) {
   const tt = translate ?? identityTranslate;
+  const inWindow = surface === "in-window";
   const resolvedRole: PresenterRole =
     role ?? (surface === "dual-window" ? "presenter" : "stage");
   const {
@@ -441,7 +446,7 @@ export function DeckPresenterView({
     role: resolvedRole,
     channelName,
     onExit,
-    linkFactory,
+    linkFactory: inWindow ? null : linkFactory,
     now,
     autoStartTimer: autoStartTimer ?? surface !== "stage-only",
   });
@@ -452,6 +457,42 @@ export function DeckPresenterView({
   const [showRehearsal, setShowRehearsal] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [showNotes, setShowNotes] = useState(false);
+  const notesButtonRef = useRef<HTMLButtonElement>(null);
+  const notesSheetRef = useRef<HTMLDivElement>(null);
+  const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const swipedRef = useRef(false);
+  const slideChangeRef = useRef(onSlideChange);
+  slideChangeRef.current = onSlideChange;
+
+  useEffect(() => {
+    slideChangeRef.current?.(state.index);
+  }, [state.index]);
+
+  // Cover the host even when a phone WebView has no native fullscreen API.
+  useEffect(() => {
+    if (!inWindow) return;
+    const node = rootRef.current;
+    const doc = node?.ownerDocument;
+    if (!node || !doc) return;
+    const previousFocus = doc.activeElement as HTMLElement | null;
+    const previousOverflow = doc.body.style.overflow;
+    doc.body.style.overflow = "hidden";
+    node.focus();
+    return () => {
+      doc.body.style.overflow = previousOverflow;
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [inWindow]);
+
+  useEffect(() => {
+    if (showNotes) notesSheetRef.current?.focus();
+  }, [showNotes]);
+
+  const closeNotes = useCallback(() => {
+    setShowNotes(false);
+    notesButtonRef.current?.focus();
+  }, []);
 
   // 键盘挂在**自己这份文档**上，不是主窗的 document。演讲者窗是另一个 document，
   // 挂错地方的表现是「按键在讲者那块屏上全部失灵」，而那正是他唯一会去按的地方。
@@ -459,11 +500,32 @@ export function DeckPresenterView({
     const doc = rootRef.current?.ownerDocument;
     if (!doc) return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (inWindow && showNotes) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          closeNotes();
+          return;
+        }
+        if (event.key === "Tab") {
+          const buttons = notesSheetRef.current?.querySelectorAll<HTMLButtonElement>("button");
+          const first = buttons?.[0];
+          const last = buttons?.[buttons.length - 1];
+          if (first && last && (event.shiftKey
+            ? doc.activeElement === first || doc.activeElement === notesSheetRef.current
+            : doc.activeElement === last || doc.activeElement === notesSheetRef.current)) {
+            event.preventDefault();
+            (event.shiftKey ? last : first).focus();
+          }
+          return;
+        }
+      }
+      if (inWindow && (event.key === " " || event.key === "Enter") &&
+        (event.target as HTMLElement | null)?.closest?.("button")) return;
       handleKey(event);
     };
     doc.addEventListener("keydown", onKeyDown);
     return () => doc.removeEventListener("keydown", onKeyDown);
-  }, [handleKey]);
+  }, [handleKey, inWindow, showNotes, closeNotes]);
 
   // 窗口被直接关掉时 effect 的清理不一定跑得到，`pagehide` 补一条。
   useEffect(() => {
@@ -533,7 +595,7 @@ export function DeckPresenterView({
       ? fallbackReason
       : peerGone
         ? "peer-closed"
-        : surface !== "stage-only" && !linked
+        : surface !== "stage-only" && !inWindow && !linked
           ? "no-channel"
           : "none";
   const fallbackText =
@@ -653,13 +715,13 @@ export function DeckPresenterView({
           {tt("擦除笔迹")}
         </button>
       )}
-      <button
+      {!inWindow && <button
         type="button"
         className={CONTROL_CLASS}
         onClick={() => void toggleFullscreen()}
       >
         {fullscreen ? tt("退出全屏") : tt("全屏")}
-      </button>
+      </button>}
       <button
         type="button"
         className={CONTROL_CLASS}
@@ -688,7 +750,7 @@ export function DeckPresenterView({
   );
 
   const notesPanel = (
-    <section className="flex min-h-0 flex-1 flex-col gap-2">
+    <section className={inWindow ? "flex shrink-0 flex-col gap-2" : "flex min-h-0 flex-1 flex-col gap-2"}>
       <header className="flex items-center justify-between gap-2">
         <h2 className="text-[12px] font-medium uppercase tracking-wide text-white/50">
           {tt("演讲者备注")}
@@ -728,7 +790,7 @@ export function DeckPresenterView({
   );
 
   const nextPanel = (
-    <section className="flex flex-col gap-2">
+    <section className={inWindow ? "flex shrink-0 flex-col gap-2" : "flex flex-col gap-2"}>
       <h2 className="text-[12px] font-medium uppercase tracking-wide text-white/50">
         {tt("下一页")}
       </h2>
@@ -821,39 +883,101 @@ export function DeckPresenterView({
     "relative flex h-full min-h-0 w-full flex-col bg-[#0b0b0f] text-white outline-none focus-visible:ring-2 focus-visible:ring-white/60";
 
   // ── 投影出去的那一面 ──────────────────────────────────────────────────────
-  if (surface === "stage-only") {
-    return (
+  if (surface === "stage-only" || inWindow) {
+    const stageSlide = (
+      <PresenterSlideSurface
+        deck={source.deck}
+        slide={current}
+        index={state.index}
+        className="max-h-full w-full max-w-full"
+      >
+        {inkLayer}
+        {blackoutOverlay}
+      </PresenterSlideSurface>
+    );
+    const stage = (
       <div
         ref={rootRef}
-        data-deck-presenter-surface="stage-only"
+        data-deck-presenter-surface={surface}
         role="region"
         aria-label={tt("放映")}
         tabIndex={0}
         className={`${shellClass} items-center justify-center`}
+        style={inWindow ? { position: "fixed", inset: 0, height: "100%", zIndex: 10000 } : undefined}
       >
         <style>{DECK_PRESENTER_KEYFRAMES}</style>
-        <PresenterSlideSurface
-          deck={source.deck}
-          slide={current}
-          index={state.index}
-          className="max-h-full w-full max-w-full"
+        {inWindow ? <div
+          data-deck-presenter-gestures=""
+          className="flex h-full w-full items-center justify-center overflow-hidden"
+          style={{ touchAction: "none" }}
+          onPointerDown={(event) => {
+            if (tool !== "off" || showNotes) return;
+            swipedRef.current = false;
+            pointerStartRef.current = { x: event.clientX, y: event.clientY };
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerCancel={() => { pointerStartRef.current = null; }}
+          onPointerUp={(event) => {
+            const start = pointerStartRef.current;
+            pointerStartRef.current = null;
+            if (!start || tool !== "off" || showNotes) return;
+            const dx = event.clientX - start.x;
+            const dy = event.clientY - start.y;
+            if (Math.abs(dx) >= 40 && Math.abs(dx) > Math.abs(dy)) {
+              swipedRef.current = true;
+              event.preventDefault();
+              run({ kind: dx < 0 ? "next" : "previous" });
+            }
+          }}
+          onClick={(event) => {
+            if (swipedRef.current || tool !== "off" || showNotes) return;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            run({ kind: event.clientX - bounds.left < bounds.width / 3 ? "previous" : "next" });
+          }}
         >
-          {inkLayer}
-          {blackoutOverlay}
-        </PresenterSlideSurface>
+          <div className="w-full" style={{ maxWidth: `calc(100dvh * ${slideAspectRatio(source.deck)})` }}>
+            {stageSlide}
+          </div>
+        </div> : stageSlide}
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-3">
           <div className="pointer-events-auto flex flex-col gap-2">
             {fallbackNotice}
             {noticeLine}
             {jumpHint}
           </div>
-          <div className="pointer-events-auto flex items-center gap-3 opacity-40 transition-opacity duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-within:opacity-100 hover:opacity-100">
-            {transportControls}
+          <div className={inWindow ? "pointer-events-auto flex w-full flex-wrap items-center justify-center gap-2" : "pointer-events-auto flex items-center gap-3 opacity-40 transition-opacity duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] focus-within:opacity-100 hover:opacity-100"}>
+            {inWindow ? <>
+              <button type="button" className={CONTROL_CLASS} onClick={() => run({ kind: "previous" })}>{tt("上一页")}</button>
+              <button type="button" className={CONTROL_CLASS} onClick={() => run({ kind: "next" })}>{tt("下一页")}</button>
+              <button ref={notesButtonRef} type="button" className={CONTROL_CLASS} aria-expanded={showNotes} aria-haspopup="dialog" onClick={() => setShowNotes(true)}>{tt("查看演讲备注")}</button>
+              <button type="button" className={CONTROL_CLASS} onClick={() => run({ kind: "escape" })}>{tt("结束放映")}</button>
+            </> : transportControls}
             {pageIndicator}
           </div>
         </div>
+        {inWindow && showNotes && <div
+          ref={notesSheetRef}
+          role="dialog"
+          aria-modal="true"
+          aria-label={tt("演讲者备注")}
+          tabIndex={-1}
+          data-deck-presenter-notes-sheet
+          className="absolute inset-x-0 bottom-0 z-40 flex max-h-[85%] flex-col gap-4 overflow-auto rounded-t-xl bg-[#0b0b0f] p-4 text-white shadow-xl"
+          style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-[#0b0b0f]">
+            {clocks}
+            <button type="button" className={CONTROL_CLASS} onClick={closeNotes}>{tt("返回幻灯片")}</button>
+          </div>
+          <p role="status" className="text-[12px] text-white/70">{tt("当前环境只支持一个窗口。演讲备注、下一页和计时在这里查看。")}</p>
+          {notesPanel}
+          {nextPanel}
+          {transportControls}
+          {rehearsalPanel}
+        </div>}
       </div>
     );
+    return inWindow && typeof document !== "undefined" ? createPortal(stage, document.body) : stage;
   }
 
   // ── 讲者自己看的那一面 ────────────────────────────────────────────────────

@@ -5,6 +5,8 @@ import type { LibraryItem } from "./library-data";
 
 export interface AdvancedEditorHostValue {
   embedded: boolean;
+  /** Hosts can explicitly advertise whether they support a presenter window. */
+  canOpenSecondWindow?: boolean;
   onSavedItem?: (item: LibraryItem) => void;
 }
 

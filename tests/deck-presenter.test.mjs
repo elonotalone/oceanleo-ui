@@ -208,6 +208,119 @@ function sourceOf(deck, startIndex = 0) {
   return { deck, startIndex };
 }
 
+test("UD in-window stage covers its host; notes, next slide and running timer appear only on request", async () => {
+  let popupCalls = 0;
+  const previousOpen = window.open;
+  window.open = () => { popupCalls += 1; return null; };
+  const clock = createClock();
+  const mounted = await createMounted(DeckPresenterView, {
+    source: sourceOf(THREE_SLIDES(), 1),
+    surface: "in-window", channelName: "ud-notes", now: clock.now,
+    linkFactory: () => { throw new Error("Single-window presentation must not create a channel"); },
+  });
+  try {
+    const stage = document.querySelector('[data-deck-presenter-surface="in-window"]');
+    assert.ok(stage);
+    assert.equal(mounted.container.contains(stage), false, "Portal must escape the clipped editor stage");
+    assert.equal(stage.style.position, "fixed");
+    assert.equal(stage.style.inset, "0");
+    assert.equal(stage.querySelector("[data-deck-presenter-notes]"), null);
+    assert.equal(stage.querySelector("[data-deck-presenter-elapsed]"), null);
+    assert.equal(stage.querySelector("[data-deck-presenter-fallback]"), null);
+    assert.equal([...stage.querySelectorAll("button")].some((b) => b.textContent === "全屏"), false);
+    assert.equal(document.activeElement, stage);
+    assert.equal(document.body.style.overflow, "hidden");
+    clock.advance(5_000);
+    await click(buttonByText(stage, "查看演讲备注"));
+    const sheet = stage.querySelector('[role="dialog"]');
+    assert.ok(sheet);
+    assert.equal(sheet.querySelector("[data-deck-presenter-notes]").textContent, "这里放三组数据，别念屏幕。");
+    assert.equal(sheet.querySelector("[data-deck-presenter-next]").dataset.deckPresenterNext, "s3");
+    assert.equal(sheet.querySelector("[data-deck-presenter-elapsed]").textContent, "00:05");
+    assert.equal(sheet.querySelector("[data-deck-presenter-timer]").dataset.deckPresenterTimer, "running");
+    assert.match(sheet.textContent, /只支持一个窗口/);
+    await click(buttonByText(sheet, "返回幻灯片"));
+    assert.equal(stage.querySelector('[role="dialog"]'), null);
+    assert.equal(document.activeElement, buttonByText(stage, "查看演讲备注"));
+    assert.equal(popupCalls, 0);
+  } finally {
+    await mounted.unmount();
+    window.open = previousOpen;
+  }
+  assert.equal(document.body.style.overflow, "");
+});
+
+test("UD in-window swipe and tap navigate once; arrow keys navigate; notes Escape closes only the sheet", async () => {
+  const shown = [];
+  const mounted = await createMounted(DeckPresenterView, {
+    source: sourceOf(THREE_SLIDES()), surface: "in-window", channelName: "ud-gesture",
+    onSlideChange: (index) => shown.push(index), autoStartTimer: false,
+  });
+  try {
+    const stage = document.querySelector('[data-deck-presenter-surface="in-window"]');
+    const gestures = stage.querySelector("[data-deck-presenter-gestures]");
+    gestures.getBoundingClientRect = () => ({ left: 0, top: 0, width: 360, height: 640 });
+    const pointer = (type, x, y) => gestures.dispatchEvent(new window.MouseEvent(type, {
+      bubbles: true, cancelable: true, clientX: x, clientY: y,
+    }));
+    const page = () => stage.querySelector("[data-deck-presenter-page]").dataset.deckPresenterPage;
+    await act(async () => {
+      pointer("pointerdown", 300, 120);
+      pointer("pointerup", 90, 130);
+      pointer("click", 90, 130); // synthetic post-swipe click must not go back
+    });
+    assert.equal(page(), "2/3");
+    await act(async () => {
+      pointer("pointerdown", 300, 120);
+      pointer("pointerup", 300, 120);
+      pointer("click", 300, 120);
+    });
+    assert.equal(page(), "3/3");
+    await press("ArrowLeft");
+    assert.equal(page(), "2/3");
+    await click(buttonByText(stage, "查看演讲备注"));
+    await press("Escape");
+    assert.equal(stage.querySelector('[role="dialog"]'), null);
+    assert.equal(page(), "2/3");
+    assert.deepEqual(shown, [0, 1, 2, 1]);
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("UD notes sheet contains keyboard focus and keeps notes/preview in step with the stage", async () => {
+  const mounted = await createMounted(DeckPresenterView, {
+    source: sourceOf(THREE_SLIDES()), surface: "in-window", channelName: "ud-focus", autoStartTimer: false,
+  });
+  try {
+    const stage = document.querySelector('[data-deck-presenter-surface="in-window"]');
+    await click(buttonByText(stage, "查看演讲备注"));
+    const sheet = stage.querySelector('[role="dialog"]');
+    await press("Tab");
+    assert.equal(document.activeElement, sheet.querySelector("button"));
+    const buttons = sheet.querySelectorAll("button");
+    buttons[buttons.length - 1].focus();
+    await press("Tab");
+    assert.equal(document.activeElement, buttons[0]);
+    await click(buttonByText(sheet, "下一页"));
+    assert.equal(sheet.querySelector("[data-deck-presenter-notes]").textContent, "这里放三组数据，别念屏幕。");
+    assert.equal(sheet.querySelector("[data-deck-presenter-next]").dataset.deckPresenterNext, "s3");
+  } finally {
+    await mounted.unmount();
+  }
+});
+
+test("UD single-window presentation labels are translated in all 17 deck locales", async () => {
+  const { PW_UD_MESSAGES } = await import(await compileModule("src/i18n/ui/messages/pw-ud-copy.ts"));
+  assert.equal(Object.keys(PW_UD_MESSAGES).length, 17);
+  for (const [locale, messages] of Object.entries(PW_UD_MESSAGES)) {
+    for (const source of ["查看演讲备注", "返回幻灯片", "当前环境只支持一个窗口。演讲备注、下一页和计时在这里查看。"]) {
+      assert.ok(messages[source]?.trim(), `${locale} is missing ${source}`);
+      if (locale !== "zh") assert.notEqual(messages[source], source, `${locale} must have a translation`);
+    }
+  }
+});
+
 /**
  * `BroadcastChannel` 的替身。
  *

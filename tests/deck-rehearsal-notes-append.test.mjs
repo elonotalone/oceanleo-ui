@@ -197,6 +197,16 @@ const { DeckRoute } = await import(
 const engine = await import(engineStubUrl);
 const shell = await import(shellStubUrl);
 const presenter = await import(presenterStubUrl);
+const hostContextUrl = await compileModule("src/shell/advanced-editor-host-context.tsx");
+const { AdvancedEditorHostProvider } = await import(hostContextUrl);
+const realPresenterUrl = await compileModule("src/shell/doc-editors/DeckPresenterView.tsx");
+const { DeckRoute: RealPresenterRoute } = await import(await compileModule(
+  "src/shell/advanced-routes/DeckRoute.tsx", {
+    ...STUBS,
+    "../doc-editors/DeckPresenterView": realPresenterUrl,
+    "../advanced-editor-host-context": hostContextUrl,
+  },
+));
 const { deckRehearsalNoteLine } = await import(
   await compileModule("src/shell/doc-editors/use-deck-presenter.ts")
 );
@@ -219,7 +229,7 @@ const ITEM = {
   meta: {},
 };
 
-async function withDom(run) {
+async function withDom(run, component = DeckRoute) {
   const fabricRequire = createRequire(require.resolve("fabric/node"));
   const canvasEntry = fabricRequire.resolve("canvas");
   const previousCanvasModule = require.cache[canvasEntry];
@@ -283,7 +293,9 @@ async function withDom(run) {
   try {
     await run({
       render: () =>
-        act(async () => root.render(React.createElement(DeckRoute, { item: ITEM }))),
+        act(async () => root.render(React.createElement(component, { item: ITEM }))),
+      window,
+      container,
     });
   } finally {
     await act(async () => root.unmount());
@@ -317,6 +329,125 @@ async function mountedWriteBack(render) {
   );
   return props.onApplyRehearsalNotes;
 }
+
+function udDeck() {
+  return {
+    version: 2, title: "UD slides", aspect: "16:9", theme: "light", masters: [],
+    slides: ["a", "b", "c"].map((id) => ({
+      id, title: id, body: "", bullets: [], notes: `notes ${id}`, elements: [], layout: "title-body",
+    })),
+  };
+}
+
+for (const host of [
+  { name: "phone embedded host at landscape width", width: 1024, value: { embedded: true } },
+  { name: "narrow browser", width: 390, value: { embedded: false } },
+  { name: "explicit single-window host", width: 1024, value: { embedded: false, canOpenSecondWindow: false } },
+]) {
+  test(`UD ${host.name}: Present never opens a popup; exit resumes editing the displayed slide`, async () => {
+    engine.__setDeck(udDeck());
+    function HostedRoute(props) {
+      return React.createElement(AdvancedEditorHostProvider, { value: host.value },
+        React.createElement(RealPresenterRoute, props));
+    }
+    await withDom(async ({ render, window }) => {
+      window.innerWidth = host.width;
+      if (host.value.embedded) {
+        const phoneRoot = window.document.createElement("div");
+        phoneRoot.dataset.oceanleoEditorRoot = "deck";
+        window.document.body.append(phoneRoot);
+      }
+      let opens = 0;
+      window.open = () => { opens += 1; return null; };
+      await render();
+      await act(async () => {
+        await shell.__adapter().actions.find((entry) => entry.id === "deck-present").onTrigger();
+      });
+      const stage = window.document.querySelector('[data-deck-presenter-surface="in-window"]');
+      assert.ok(stage, "Expected a full in-window stage");
+      assert.equal(opens, 0);
+      assert.equal(stage.querySelector("[data-deck-presenter-notes]"), null);
+      const next = [...stage.querySelectorAll("button")].find((b) => b.textContent === "下一页");
+      await act(async () => next.click());
+      assert.equal(stage.querySelector("[data-deck-presenter-page]").dataset.deckPresenterPage, "2/3");
+      await act(async () => {
+        [...stage.querySelectorAll("button")].find((b) => b.textContent === "结束放映").click();
+      });
+      assert.equal(window.document.querySelector('[data-deck-presenter-surface="in-window"]'), null);
+      assert.equal(engine.__activeId(), "b");
+      assert.equal(engine.__patchLog().length, 0, "Presenting must not edit the deck");
+      assert.equal(window.document.body.style.overflow, "");
+      assert.equal(opens, 0);
+    }, HostedRoute);
+  });
+}
+
+test("UD a desktop host keeps the existing second-window entry and popup-blocked fallback", async () => {
+  engine.__setDeck(udDeck());
+  await withDom(async ({ render, window }) => {
+    window.innerWidth = 1280;
+    let opens = 0;
+    window.open = () => { opens += 1; return null; };
+    await render();
+    await act(async () => {
+      await shell.__adapter().actions.find((entry) => entry.id === "deck-present").onTrigger();
+    });
+    assert.equal(opens, 1);
+    assert.ok(window.document.querySelector('[data-deck-presenter-surface="split-fallback"]'));
+    assert.match(window.document.querySelector("[data-deck-presenter-fallback]").textContent, /拦截/);
+    assert.equal(window.document.querySelector('[data-deck-presenter-surface="in-window"]'), null);
+  }, RealPresenterRoute);
+});
+
+test("UD the embedded website Library still opens its desktop presenter window", async () => {
+  engine.__setDeck(udDeck());
+  function EmbeddedWebRoute(props) {
+    return React.createElement(AdvancedEditorHostProvider, { value: { embedded: true } },
+      React.createElement(RealPresenterRoute, props));
+  }
+  await withDom(async ({ render, window }) => {
+    window.innerWidth = 1280;
+    let opens = 0;
+    window.open = () => { opens += 1; return null; };
+    await render();
+    await act(async () => {
+      await shell.__adapter().actions.find((entry) => entry.id === "deck-present").onTrigger();
+    });
+    assert.equal(opens, 1);
+    assert.ok(window.document.querySelector('[data-deck-presenter-surface="split-fallback"]'));
+  }, EmbeddedWebRoute);
+});
+
+test("UD a two-window desktop presents the stage and presenter separately and closes the child on exit", async () => {
+  engine.__setDeck(udDeck());
+  await withDom(async ({ render, window }) => {
+    window.innerWidth = 1280;
+    let opens = 0;
+    let closed = false;
+    const child = {
+      document: window.document.implementation.createHTMLDocument("presenter"),
+      focus() {}, close() { closed = true; },
+      get closed() { return closed; },
+    };
+    window.open = () => { opens += 1; return child; };
+    await render();
+    await act(async () => {
+      await shell.__adapter().actions.find((entry) => entry.id === "deck-present").onTrigger();
+    });
+    try {
+      assert.equal(opens, 1);
+      assert.ok(window.document.querySelector('[data-deck-presenter-surface="stage-only"]'));
+      assert.ok(child.document.querySelector('[data-deck-presenter-surface="dual-window"]'));
+      assert.equal(window.document.querySelector('[data-deck-presenter-surface="in-window"]'), null);
+    } finally {
+      await act(async () => {
+        shell.__adapter().actions.find((entry) => entry.id === "deck-present").onTrigger();
+      });
+    }
+    assert.equal(closed, true);
+    assert.equal(child.document.querySelector('[data-deck-presenter-surface="dual-window"]'), null);
+  }, RealPresenterRoute);
+});
 
 // ── ② 追加不覆盖 ────────────────────────────────────────────────────────────
 

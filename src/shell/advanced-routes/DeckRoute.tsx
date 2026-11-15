@@ -9,6 +9,8 @@ import {
 } from "react";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
+import { useAdvancedEditorHost } from "../advanced-editor-host-context";
+import { canOpenDeckPresenterWindow } from "../doc-editors/deck-presenter-host";
 import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { DECK_WORKING_COPY_SCHEMA } from "../doc-editors/deck-working-copy";
 import { uploadEditorMedia } from "../doc-editors/editor-insert-media";
@@ -159,19 +161,26 @@ export function DeckRoute({
     opacity: 1,
   });
   const tt = useUI();
+  const editorHost = useAdvancedEditorHost();
   const [presentation, setPresentation] = useState<{
-    surface: "stage-only" | "split-fallback";
+    surface: "stage-only" | "split-fallback" | "in-window";
     reason: PresenterFallbackReason;
   } | null>(null);
   // 子窗的 dispose（先卸 root 再关窗）。退出放映时必须调，否则窗留在屏幕上。
   const presenterDisposeRef = useRef<(() => void) | null>(null);
   // 两个窗口必须同名才通道得上（W16-request §2）。
   const presenterChannelName = `deck-${item.id}`;
+  const presentedSlideRef = useRef<string | null>(null);
+  const onPresentationSlideChange = useCallback((index: number) => {
+    presentedSlideRef.current = editor.deck.slides[index]?.id ?? null;
+  }, [editor.deck.slides]);
   const exitPresentation = useCallback(() => {
     presenterDisposeRef.current?.();
     presenterDisposeRef.current = null;
+    if (presentedSlideRef.current) editor.selectSlide(presentedSlideRef.current);
+    presentedSlideRef.current = null;
     setPresentation(null);
-  }, []);
+  }, [editor.selectSlide]);
 
   /**
    * 排练读数写回备注。放映视图拿不到写操作（刻意的），所以这一寸只能由集成方接。
@@ -218,6 +227,10 @@ export function DeckRoute({
   );
 
   const startPresentation = useCallback(async () => {
+    if (!canOpenDeckPresenterWindow(editorHost)) {
+      setPresentation({ surface: "in-window", reason: "none" });
+      return;
+    }
     // 🛑 这一句必须是本函数的第一个 await，前面不许再 await 别的（存盘、取数都不行）。
     // openDeckPresenterWindow 在它自己的第一个 await 之前同步 window.open，
     // 靠的就是还留在用户手势的调用栈里；一旦出栈，浏览器一律按程序自发弹窗拦掉——
@@ -234,7 +247,7 @@ export function DeckRoute({
     }
     presenterDisposeRef.current = outcome.dispose;
     setPresentation({ surface: "stage-only", reason: "none" });
-  }, [editor, presenterChannelName, tt]);
+  }, [editor, editorHost, presenterChannelName, tt]);
   useDeckMaterialAdapter(editor, item);
   const saveBeforeNewConversation = useCallback(async (publish = editor.save) => {
     // Leaving a freshly opened document may force a flush even though nothing
@@ -474,6 +487,7 @@ export function DeckRoute({
             channelName={presenterChannelName}
             translate={tt}
             onExit={exitPresentation}
+            onSlideChange={onPresentationSlideChange}
             onApplyRehearsalNotes={applyRehearsalNotes}
           />
         ) : (

@@ -2,6 +2,7 @@
 // 分表各归一个工作单元；本文件与 index.ts / load.ts 只由整合者改。
 
 import { PW_U1_MESSAGES } from "./pw-u1-copy";
+import { PW_UD_MESSAGES } from "./pw-ud-copy";
 import { LOCALES, type Locale } from "../../config";
 import { PW_U4_MESSAGES } from "./pw-u4-copy";
 import { SHELL_OVERHAUL_DOCK_MESSAGES } from "./shell-overhaul-dock-copy";
@@ -113,6 +114,7 @@ import { BUILD_1103_GAP_MESSAGES } from "./build-1103-gap-copy";
 import { RDLOGIN_ACT_MESSAGES } from "./rdlogin-act-copy";
 
 const PARTS = [
+  PW_UD_MESSAGES,
   PW_U4_MESSAGES,
   SHELL_OVERHAUL_DOCK_MESSAGES,
   SHELL_OVERHAUL_DEVICES_MESSAGES,
