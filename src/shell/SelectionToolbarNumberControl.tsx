@@ -179,7 +179,8 @@ export function SelectionToolbarNumberControl({
           menu ? "min-w-10 flex-1" : "w-12"
         }`}
       />
-      {control.suffix && !fontSize && (
+      {/* The compact font-size pill is 「− 144 +」 like the reference; the roomier More layout shows the unit. */}
+      {control.suffix && (!fontSize || menu) && (
         <span className="-ml-1 pr-1 text-[10px] text-[var(--muted,#78716c)]">
           {control.suffix}
         </span>

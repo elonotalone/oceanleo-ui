@@ -104,11 +104,14 @@ test("edit bar uses 24px icons, 2.4 strokes, 32px buttons and theme ink througho
   assert.match(surface.EDIT_BAR_BUTTON_CLASS, /h-8 w-8/);
   assert.match(surface.EDIT_BAR_INK_CLASS, /awb-text/);
   assert.match(surface.editBarSurfaceStyle().color, /pchrome-ink.*awb-text.*fg/);
-  for (const file of ["SelectionToolbarControl.tsx", "SelectionToolbarSelectControl.tsx", "selection-toolbar-chrome.tsx", "plugin-chrome/EditBarDocumentSegment.tsx"]) {
+  for (const file of ["SelectionToolbarControl.tsx", "SelectionToolbarSelectControl.tsx", "selection-toolbar-chrome.tsx"]) {
     const source = readFileSync(`src/shell/${file}`, "utf8");
     assert.match(source, /EditBarIcon/);
     assert.doesNotMatch(source, /h-4 w-4/);
   }
+  // ED-B2: the document segment is data only (no buttons, no icons); creation glyphs share the edit-bar stroke.
+  assert.doesNotMatch(readFileSync("src/shell/plugin-chrome/EditBarDocumentSegment.tsx", "utf8"), /h-4 w-4|<Button|EditBarIcon/);
+  assert.match(readFileSync("src/shell/CreationToolIcon.tsx", "utf8"), /EDIT_BAR_ICON_STROKE_WIDTH/);
   assert.doesNotMatch(readFileSync("src/shell/SelectionToolbarControl.tsx", "utf8"), /SelectionToolbarFontSizeControl/);
 });
 
