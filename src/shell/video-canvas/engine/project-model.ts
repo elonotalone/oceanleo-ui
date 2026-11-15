@@ -1,0 +1,2927 @@
+"use client";
+
+import type { Edge, Node, Viewport, XYPosition } from "@xyflow/react";
+
+export const VIDEO_PROJECT_SCHEMA = "oceanleo.video.project.v2" as const;
+export const VIDEO_PROJECT_VERSION = 2 as const;
+export const CANVAS_NODE_LIMIT = 500;
+export const CANVAS_EDGE_LIMIT = 2_000;
+export const CANVAS_REFERENCE_NODE_BUDGET = 200;
+export const CANVAS_REFERENCE_EDGE_BUDGET = 400;
+
+export type ProjectView = "canvas" | "storyboard" | "director" | "timeline";
+export type CanvasWorkspaceView =
+  | "graph"
+  | "storyboard"
+  | "director"
+  | "timeline"
+  | "history";
+export type CanvasNodeKind =
+  | "text"
+  | "image"
+  | "video"
+  | "audio"
+  | "script"
+  | "model"
+  | "subtitle"
+  | "composite"
+  | "delivery"
+  | "director"
+  | "storyboard"
+  | "timeline";
+export type AssetKind = "image" | "video" | "audio" | "text" | "project";
+export type AssetOrigin = "upload" | "provider" | "import" | "local-derivative";
+
+export interface LocalEditOperation {
+  operation:
+    | "crop"
+    | "rotate"
+    | "flip-horizontal"
+    | "flip-vertical"
+    | "brightness"
+    | "contrast"
+    | "saturation"
+    | "adjust"
+    | "grayscale"
+    | "grid-cell";
+  parameters: Record<string, number | string | boolean>;
+}
+
+export interface AssetProviderMetadata {
+  receiptId: string;
+  provider: string;
+  model: string;
+  operation: string;
+  pricing: {
+    billing: "provider";
+    amount: number | null;
+    currency: string;
+    estimated: boolean;
+    label: string;
+  };
+}
+
+export interface ProjectAsset {
+  assetId: string;
+  kind: AssetKind;
+  origin: AssetOrigin;
+  immutable: true;
+  title: string;
+  url?: string;
+  previewUrl?: string;
+  inlineText?: string;
+  mime?: string;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  contentDigest?: string;
+  /** Stable owner-checked reference into this artifact's source dependency closure. */
+  sourceDependency?: VideoCanvasSourceDependency;
+  provider?: AssetProviderMetadata;
+  createdAt: string;
+  /** Original workflow-carrier metadata is retained verbatim during v1 migration. */
+  legacySourceAsset?: Record<string, unknown>;
+}
+
+export interface VideoCanvasSourceDependency {
+  artifactId: string;
+  revisionId: string;
+  path: string;
+  sha256: string;
+  mediaType: string;
+  byteSize: number;
+}
+
+export interface AssetDerivative {
+  derivativeId: string;
+  assetId: string;
+  derivedFromAssetId: string;
+  kind: "retouch" | "thumbnail" | "poster" | "waveform";
+  recipe: LocalEditOperation[];
+  status: "local" | "ready" | "failed";
+}
+
+export interface AssetLineage {
+  lineageId: string;
+  parentAssetId: string;
+  childAssetId: string;
+  relation: "retouched-from" | "generated-from" | "rendered-from";
+  commandId: string;
+  projectVersionId: string;
+  createdAt: string;
+}
+
+export interface CanvasOperationReceipt {
+  schema: "oceanleo.canvas-operation-receipt@1";
+  receiptId: string;
+  requestId: string;
+  requestFingerprint: string;
+  commandId: string;
+  projectVersionId: string;
+  status: "succeeded";
+  provider: string;
+  model: string;
+  pricing: AssetProviderMetadata["pricing"];
+  inputAssetIds: string[];
+  outputAssetIds: string[];
+  externalRunIds: string[];
+  startedAt: string;
+  completedAt: string;
+}
+
+export interface DurableVideoRun {
+  runId: string;
+  commandRequestId: string;
+  nodeId: string;
+  remoteProjectVersionId: string;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DurableVideoProjectState {
+  workspaceId: string;
+  projectId: string;
+  headVersionId: string;
+  headEpoch: number;
+  graphFingerprint: string;
+  syncedLocalVersionId: string;
+  syncedSelectionEpoch: number;
+  runs: DurableVideoRun[];
+}
+
+export interface ArtifactRevisionReceipt {
+  saveId: string;
+  projectVersionId: string;
+  artifactId: string;
+  revisionId: string;
+  url: string;
+  receivedAt: string;
+}
+
+export interface SceneDefinition {
+  sceneId: string;
+  title: string;
+  shotIds: string[];
+  summary?: string;
+  reviewStatus?: "draft" | "in-review" | "approved" | "rejected";
+}
+
+export interface ShotDefinition {
+  shotId: string;
+  sceneId: string;
+  title: string;
+  intendedDurationSeconds: number;
+  storyboardId: string;
+  takeIds: string[];
+  approvedTakeId?: string;
+  cameraId?: string;
+  description?: string;
+  reviewStatus?: "draft" | "in-review" | "approved" | "rejected";
+}
+
+export interface StoryboardDefinition {
+  storyboardId: string;
+  shotId: string;
+  frameAssetIds: string[];
+  reviewStatus?: "draft" | "in-review" | "approved" | "rejected";
+}
+
+export interface TakeDefinition {
+  takeId: string;
+  shotId: string;
+  assetId: string;
+  status: "candidate" | "in-review" | "approved" | "rejected";
+  reviewNote?: string;
+}
+
+export interface TimelineDefinition {
+  timelineId: string;
+  title: string;
+  clipIds: string[];
+}
+
+export interface ClipDefinition {
+  clipId: string;
+  timelineId: string;
+  takeId?: string;
+  assetId: string;
+  startSeconds: number;
+  durationSeconds: number;
+}
+
+export interface ProjectTimelineDocument {
+  width: number;
+  height: number;
+  fps: number;
+  tracks: Array<{
+    id: string;
+    kind: "video";
+    clips: Array<{
+      id: string;
+      start_ms: number;
+      duration_ms: number;
+      source_url: string;
+      source_duration_ms: number;
+      in_ms: number;
+      speed: number;
+      volume: number;
+      muted: boolean;
+      fit: "cover";
+    }>;
+  }>;
+}
+
+export interface CameraDefinition {
+  cameraId: string;
+  shotId: string;
+  lensMillimeters?: number;
+  fieldOfViewDegrees?: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  focusTarget?: [number, number, number];
+  safeArea: "16:9" | "9:16" | "1:1";
+  pathKeyframes: Array<{
+    timeSeconds: number;
+    position: [number, number, number];
+    rotation: [number, number, number];
+  }>;
+  planStatus?: "draft" | "ready" | "approved";
+}
+
+export interface ContinuityQcIssue {
+  issueId: string;
+  code:
+    | "MISSING_STORYBOARD_FRAME"
+    | "MISSING_APPROVED_TAKE"
+    | "BROKEN_APPROVED_TAKE"
+    | "MISSING_CAMERA_PLAN"
+    | "DURATION_MISMATCH";
+  severity: "warning" | "error";
+  sceneId?: string;
+  shotId?: string;
+  message: string;
+}
+
+export interface ContinuityQcReport {
+  status: "not-checked" | "pass" | "warning" | "blocked";
+  checkedAt?: string;
+  checkedProjectVersionId?: string;
+  issues: ContinuityQcIssue[];
+}
+
+export interface ProjectVersionComparison {
+  baseVersionId: string;
+  targetVersionId: string;
+  addedNodeIds: string[];
+  removedNodeIds: string[];
+  changedNodeIds: string[];
+  addedAssetIds: string[];
+  addedTakeIds: string[];
+  reviewChanges: Array<{
+    takeId: string;
+    from?: TakeDefinition["status"];
+    to?: TakeDefinition["status"];
+  }>;
+}
+
+export interface CanvasNodeDefinition {
+  nodeId: string;
+  kind: CanvasNodeKind;
+  title: string;
+  position: XYPosition;
+  assetId?: string;
+  prompt?: string;
+  text?: string;
+  model?: string;
+  ratio?: "16:9" | "9:16" | "1:1";
+  durationSeconds?: number;
+  sceneId?: string;
+  shotId?: string;
+  cameraId?: string;
+  localEditRecipe: LocalEditOperation[];
+  /** Exact source node retained when the v1 workflow kind exceeds the v2 canvas model. */
+  legacySourceNode?: Record<string, unknown>;
+}
+
+export interface CanvasEdgeDefinition {
+  edgeId: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  /** Exact source edge retained for round-trip-safe v1 workflow conversion. */
+  legacySourceEdge?: Record<string, unknown>;
+}
+
+export interface ProjectVersion {
+  versionId: string;
+  parentVersionId?: string;
+  revision: number;
+  createdAt: string;
+  reason: string;
+  graph: {
+    nodes: CanvasNodeDefinition[];
+    edges: CanvasEdgeDefinition[];
+    viewport?: Viewport;
+  };
+  scenes: SceneDefinition[];
+  shots: ShotDefinition[];
+  storyboards: StoryboardDefinition[];
+  takes: TakeDefinition[];
+  timelines: TimelineDefinition[];
+  clips: ClipDefinition[];
+  cameras: CameraDefinition[];
+  continuityQc?: ContinuityQcReport;
+}
+
+export interface VideoProject {
+  schema: typeof VIDEO_PROJECT_SCHEMA;
+  schemaVersion: typeof VIDEO_PROJECT_VERSION;
+  projectId: string;
+  title: string;
+  headVersionId: string;
+  versions: Record<string, ProjectVersion>;
+  assets: Record<string, ProjectAsset>;
+  derivatives: Record<string, AssetDerivative>;
+  lineage: AssetLineage[];
+  operationReceipts: Record<string, CanvasOperationReceipt>;
+  durable?: DurableVideoProjectState;
+  artifactRevisionReceipt?: ArtifactRevisionReceipt;
+  migration?: {
+    sourceSchema: string;
+    sourceDigest: string;
+    sourceDigestAlgorithm: "fnv1a-dual32";
+    sourceHeadVersionId?: string;
+    /** Complete original source; never used as executable code. */
+    sourceDocument?: unknown;
+  };
+}
+
+export interface CanvasNodeViewData extends Record<string, unknown> {
+  nodeId: string;
+  kind: CanvasNodeKind;
+  title: string;
+  asset?: ProjectAsset;
+  derivative?: AssetDerivative;
+  prompt?: string;
+  text?: string;
+  model?: string;
+  ratio?: "16:9" | "9:16" | "1:1";
+  durationSeconds?: number;
+  sceneId?: string;
+  shotId?: string;
+  cameraId?: string;
+  localEditRecipe: LocalEditOperation[];
+  /** Exact imported v1 node source, available to a guarded legacy view only. */
+  legacySourceNode?: Record<string, unknown>;
+  selectionEpoch: number;
+  hostOwnsChrome: boolean;
+  /**
+   * 宿主已经提供编辑栏：统一外壳的 PluginChromeFrame，或外嵌 postMessage
+   * 里声明自己拥有 chrome 的宿主。为 true 时节点不得再挂常驻浮动命令条。
+   * 只有「外嵌且宿主没有编辑栏」时为 false。
+   */
+  hostProvidesEditBar: boolean;
+  imageMode: "retouch" | "generate";
+  generateSummary?: {
+    provider: string;
+    model: string;
+    input: string;
+    estimatedCost: string;
+  };
+  commandAvailability: Record<
+    string,
+    {
+      enabled: boolean;
+      reason?: string;
+      reasonCode?: string;
+      missingContract?: string;
+      hidden?: boolean;
+    }
+  >;
+  commandDisclosures: Record<
+    string,
+    {
+      provider: string;
+      model: string;
+      input: string;
+      cost: string;
+      contract: string;
+    }
+  >;
+  commandState?: {
+    commandId: string;
+    status: string;
+    message?: string;
+    phase?: string;
+    progress?: number;
+    cancelable?: boolean;
+    externalRunId?: string;
+  };
+  onCommand: (
+    commandId: string,
+    args?: Record<string, unknown>,
+  ) => Promise<unknown>;
+}
+
+export type CanvasFlowNode = Node<CanvasNodeViewData, "leovideo-media">;
+export type CanvasFlowEdge = Edge;
+
+let fallbackSequence = 0;
+
+function now(): string {
+  return new Date().toISOString();
+}
+
+export function stableId(prefix: string): string {
+  const randomUuid = globalThis.crypto?.randomUUID?.();
+  if (randomUuid) return `${prefix}_${randomUuid}`;
+  fallbackSequence += 1;
+  return `${prefix}_${Math.random().toString(36).slice(2, 12)}_${fallbackSequence.toString(36)}`;
+}
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export function withDurableVideoState(
+  project: VideoProject,
+  durable: DurableVideoProjectState,
+): VideoProject {
+  return {
+    ...project,
+    durable: clone({
+      ...durable,
+      runs: durable.runs.slice(-100),
+    }),
+  };
+}
+
+export function recordDurableVideoRun(
+  project: VideoProject,
+  run: DurableVideoRun,
+): VideoProject {
+  if (!project.durable) {
+    throw new Error("A durable Run cannot be recorded before Project binding.");
+  }
+  const runs = project.durable.runs.filter(
+    (candidate) => candidate.runId !== run.runId,
+  );
+  return withDurableVideoState(project, {
+    ...project.durable,
+    runs: [...runs, clone(run)].slice(-100),
+  });
+}
+
+export function recordArtifactRevisionReceipt(
+  project: VideoProject,
+  receipt: ArtifactRevisionReceipt,
+): VideoProject {
+  if (!Object.hasOwn(project.versions, receipt.projectVersionId)) {
+    throw new Error("Artifact receipt references an unknown Project version.");
+  }
+  for (const [label, value, maximum] of [
+    ["save ID", receipt.saveId, 128],
+    ["artifact ID", receipt.artifactId, 300],
+    ["revision ID", receipt.revisionId, 300],
+  ] as const) {
+    if (!value || value.length > maximum) {
+      throw new Error(`Artifact receipt ${label} is missing or too long.`);
+    }
+  }
+  const parsedUrl = new URL(receipt.url);
+  if (parsedUrl.protocol !== "https:" && parsedUrl.protocol !== "http:") {
+    throw new Error("Artifact receipt URL must use HTTP or HTTPS.");
+  }
+  if (!Number.isFinite(Date.parse(receipt.receivedAt))) {
+    throw new Error("Artifact receipt timestamp is invalid.");
+  }
+  return {
+    ...project,
+    artifactRevisionReceipt: clone(receipt),
+  };
+}
+
+/** Artifact identity/URL receipts are host-session CAS state, not Project source. */
+export function projectSourceForStorage(project: VideoProject): VideoProject {
+  const snapshot = clone(project);
+  delete snapshot.artifactRevisionReceipt;
+  return snapshot;
+}
+
+export function updateDurableVideoRun(
+  project: VideoProject,
+  runId: string,
+  status: string,
+): VideoProject {
+  if (!project.durable) {
+    throw new Error("Durable Project binding is missing.");
+  }
+  const run = project.durable.runs.find((candidate) => candidate.runId === runId);
+  if (!run) throw new Error("Durable Run receipt is not part of this Project.");
+  return recordDurableVideoRun(project, {
+    ...run,
+    status: status.slice(0, 80),
+    updatedAt: now(),
+  });
+}
+
+export function projectPreviewAtCurrentHead(
+  base: VideoProject,
+  candidate: VideoProject,
+): VideoProject {
+  const baseVersion = head(base);
+  const candidateVersion = head(candidate);
+  return {
+    ...candidate,
+    headVersionId: base.headVersionId,
+    versions: {
+      ...base.versions,
+      [base.headVersionId]: {
+        ...candidateVersion,
+        versionId: baseVersion.versionId,
+        parentVersionId: baseVersion.parentVersionId,
+        revision: baseVersion.revision,
+        createdAt: baseVersion.createdAt,
+        reason: baseVersion.reason,
+      },
+    },
+  };
+}
+
+function head(project: VideoProject): ProjectVersion {
+  const version = project.versions[project.headVersionId];
+  if (!version) throw new Error("Project head does not resolve to a version.");
+  return version;
+}
+
+export function projectHead(project: VideoProject): ProjectVersion {
+  return clone(head(project));
+}
+
+function starterEntities() {
+  const sceneId = stableId("scene");
+  const shotId = stableId("shot");
+  const storyboardId = stableId("storyboard");
+  const timelineId = stableId("timeline");
+  return {
+    sceneId,
+    shotId,
+    storyboardId,
+    timelineId,
+    scenes: [{ sceneId, title: "Scene 1", shotIds: [shotId] }],
+    shots: [
+      {
+        shotId,
+        sceneId,
+        title: "Shot 1",
+        intendedDurationSeconds: 5,
+        storyboardId,
+        takeIds: [],
+      },
+    ],
+    storyboards: [{ storyboardId, shotId, frameAssetIds: [] }],
+    timelines: [{ timelineId, title: "Main timeline", clipIds: [] }],
+  };
+}
+
+export function createVideoProject(
+  title = "Untitled LeoVideo project",
+  withStarterNodes = false,
+): VideoProject {
+  const entities = starterEntities();
+  const versionId = stableId("projectVersion");
+  const nodes: CanvasNodeDefinition[] = withStarterNodes
+    ? [
+        {
+          nodeId: stableId("node"),
+          kind: "script",
+          title: "Story & shots",
+          position: { x: 60, y: 140 },
+          sceneId: entities.sceneId,
+          shotId: entities.shotId,
+          localEditRecipe: [],
+        },
+        {
+          nodeId: stableId("node"),
+          kind: "image",
+          title: "Storyboard frame",
+          position: { x: 440, y: 110 },
+          sceneId: entities.sceneId,
+          shotId: entities.shotId,
+          ratio: "16:9",
+          localEditRecipe: [],
+        },
+        {
+          nodeId: stableId("node"),
+          kind: "video",
+          title: "Candidate take",
+          position: { x: 930, y: 110 },
+          sceneId: entities.sceneId,
+          shotId: entities.shotId,
+          ratio: "16:9",
+          durationSeconds: 5,
+          localEditRecipe: [],
+        },
+      ]
+    : [];
+  const version: ProjectVersion = {
+    versionId,
+    revision: 1,
+    createdAt: now(),
+    reason: "project.created",
+    graph: { nodes, edges: [] },
+    scenes: entities.scenes,
+    shots: entities.shots,
+    storyboards: entities.storyboards,
+    takes: [],
+    timelines: entities.timelines,
+    clips: [],
+    cameras: [],
+  };
+  return {
+    schema: VIDEO_PROJECT_SCHEMA,
+    schemaVersion: VIDEO_PROJECT_VERSION,
+    projectId: stableId("project"),
+    title,
+    headVersionId: versionId,
+    versions: { [versionId]: version },
+    assets: {},
+    derivatives: {},
+    lineage: [],
+    operationReceipts: {},
+  };
+}
+
+export function advanceProject(
+  project: VideoProject,
+  reason: string,
+  mutate: (draft: ProjectVersion) => void,
+): VideoProject {
+  const current = head(project);
+  const next = clone(current);
+  next.parentVersionId = current.versionId;
+  next.versionId = stableId("projectVersion");
+  next.revision = current.revision + 1;
+  next.createdAt = now();
+  next.reason = reason;
+  mutate(next);
+  assertProjectBudgets(next.graph.nodes.length, next.graph.edges.length);
+  return {
+    ...project,
+    headVersionId: next.versionId,
+    versions: { ...project.versions, [next.versionId]: next },
+  };
+}
+
+export function addProjectNode(
+  project: VideoProject,
+  kind: CanvasNodeKind,
+  position: XYPosition,
+  patch: Partial<Omit<CanvasNodeDefinition, "nodeId" | "kind" | "position">> = {},
+): { project: VideoProject; nodeId: string } {
+  const nodeId = stableId("node");
+  const attachedTakeId =
+    kind === "video" && patch.assetId ? stableId("take") : undefined;
+  const current = head(project);
+  const firstShot = current.shots[0];
+  const node: CanvasNodeDefinition = {
+    nodeId,
+    kind,
+    title: patch.title || defaultNodeTitle(kind),
+    position,
+    sceneId: patch.sceneId ?? firstShot?.sceneId,
+    shotId: patch.shotId ?? firstShot?.shotId,
+    localEditRecipe: patch.localEditRecipe || [],
+    ...patch,
+  };
+  return {
+    project: advanceProject(project, "canvas.node.create", (version) => {
+      version.graph.nodes.push(node);
+      if (node.assetId && node.shotId && node.kind === "image") {
+        const shot = version.shots.find(
+          (candidate) => candidate.shotId === node.shotId,
+        );
+        const storyboard = version.storyboards.find(
+          (candidate) => candidate.storyboardId === shot?.storyboardId,
+        );
+        if (storyboard && !storyboard.frameAssetIds.includes(node.assetId)) {
+          storyboard.frameAssetIds.push(node.assetId);
+        }
+      }
+      if (
+        node.assetId &&
+        node.shotId &&
+        node.kind === "video" &&
+        attachedTakeId
+      ) {
+        const shot = version.shots.find(
+          (candidate) => candidate.shotId === node.shotId,
+        );
+        if (shot) {
+          version.takes.push({
+            takeId: attachedTakeId,
+            shotId: shot.shotId,
+            assetId: node.assetId,
+            status: "candidate",
+          });
+          shot.takeIds.push(attachedTakeId);
+        }
+      }
+    }),
+    nodeId,
+  };
+}
+
+export function updateProjectNode(
+  project: VideoProject,
+  nodeId: string,
+  reason: string,
+  patch: Partial<CanvasNodeDefinition>,
+): VideoProject {
+  return advanceProject(project, reason, (version) => {
+    const index = version.graph.nodes.findIndex((node) => node.nodeId === nodeId);
+    if (index < 0) throw new Error("Selected node no longer exists.");
+    version.graph.nodes[index] = {
+      ...version.graph.nodes[index],
+      ...patch,
+      nodeId,
+      localEditRecipe:
+        patch.localEditRecipe || version.graph.nodes[index].localEditRecipe,
+    };
+  });
+}
+
+export function removeProjectNode(
+  project: VideoProject,
+  nodeId: string,
+): VideoProject {
+  return advanceProject(project, "canvas.node.delete", (version) => {
+    version.graph.nodes = version.graph.nodes.filter(
+      (node) => node.nodeId !== nodeId,
+    );
+    version.graph.edges = version.graph.edges.filter(
+      (edge) =>
+        edge.sourceNodeId !== nodeId && edge.targetNodeId !== nodeId,
+    );
+  });
+}
+
+export function replaceProjectGraph(
+  project: VideoProject,
+  nodes: CanvasNodeDefinition[],
+  edges: CanvasEdgeDefinition[],
+  reason: string,
+  viewport?: Viewport,
+): VideoProject {
+  return advanceProject(project, reason, (version) => {
+    version.graph = {
+      nodes: clone(nodes),
+      edges: clone(edges),
+      viewport: viewport ? clone(viewport) : version.graph.viewport,
+    };
+  });
+}
+
+export function registerAsset(
+  project: VideoProject,
+  input: Omit<ProjectAsset, "assetId" | "immutable" | "createdAt"> & {
+    assetId?: string;
+  },
+): { project: VideoProject; asset: ProjectAsset } {
+  if (input.url) {
+    const url = new URL(input.url);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new Error("Asset URL must use HTTP or HTTPS.");
+    }
+  }
+  const asset: ProjectAsset = {
+    ...input,
+    assetId: input.assetId || stableId("asset"),
+    immutable: true,
+    createdAt: now(),
+  };
+  return {
+    project: {
+      ...project,
+      assets: { ...project.assets, [asset.assetId]: asset },
+    },
+    asset,
+  };
+}
+
+export function operationReceiptForRequest(
+  project: VideoProject,
+  requestId: string,
+): CanvasOperationReceipt | undefined {
+  return Object.values(project.operationReceipts || {}).find(
+    (receipt) => receipt.requestId === requestId,
+  );
+}
+
+export function recordCanvasOperationReceipt(
+  project: VideoProject,
+  receipt: CanvasOperationReceipt,
+): VideoProject {
+  if (
+    !receipt.receiptId ||
+    !receipt.requestId ||
+    !receipt.requestFingerprint ||
+    !receipt.commandId
+  ) {
+    throw new Error("Provider receipt identity is incomplete.");
+  }
+  if (!Object.hasOwn(project.versions, receipt.projectVersionId)) {
+    throw new Error("Provider receipt references an unknown Project version.");
+  }
+  for (const assetId of [
+    ...receipt.inputAssetIds,
+    ...receipt.outputAssetIds,
+  ]) {
+    if (!project.assets[assetId]) {
+      throw new Error("Provider receipt references an unknown immutable Asset.");
+    }
+  }
+  const existing = project.operationReceipts?.[receipt.receiptId];
+  if (existing) {
+    if (canonicalJson(existing) !== canonicalJson(receipt)) {
+      throw new Error("Provider receipt ID was reused with different content.");
+    }
+    return project;
+  }
+  return {
+    ...project,
+    operationReceipts: {
+      ...(project.operationReceipts || {}),
+      [receipt.receiptId]: clone(receipt),
+    },
+  };
+}
+
+export function deriveLocalAsset(
+  project: VideoProject,
+  parentAssetId: string,
+  operation: LocalEditOperation,
+  commandId: string,
+): { project: VideoProject; asset: ProjectAsset; derivative: AssetDerivative } {
+  const parent = project.assets[parentAssetId];
+  if (!parent) throw new Error("The immutable source Asset is missing.");
+  const registered = registerAsset(project, {
+    kind: parent.kind,
+    origin: "local-derivative",
+    title: `${parent.title} — ${operation.operation}`,
+    url: parent.url,
+    previewUrl: parent.previewUrl,
+    mime: parent.mime,
+    width: parent.width,
+    height: parent.height,
+    durationSeconds: parent.durationSeconds,
+  });
+  const derivative: AssetDerivative = {
+    derivativeId: stableId("derivative"),
+    assetId: registered.asset.assetId,
+    derivedFromAssetId: parentAssetId,
+    kind: "retouch",
+    recipe: [operation],
+    status: "local",
+  };
+  return {
+    project: {
+      ...registered.project,
+      derivatives: {
+        ...registered.project.derivatives,
+        [derivative.derivativeId]: derivative,
+      },
+      lineage: [
+        ...registered.project.lineage,
+        {
+          lineageId: stableId("lineage"),
+          parentAssetId,
+          childAssetId: registered.asset.assetId,
+          relation: "retouched-from",
+          commandId,
+          projectVersionId: registered.project.headVersionId,
+          createdAt: now(),
+        },
+      ],
+    },
+    asset: registered.asset,
+    derivative,
+  };
+}
+
+export function attachGeneratedAssetSet(
+  project: VideoProject,
+  nodeId: string,
+  assetInputs: Array<
+    Omit<ProjectAsset, "assetId" | "immutable" | "createdAt">
+  >,
+  commandId: string,
+): {
+  project: VideoProject;
+  assets: ProjectAsset[];
+  nodeIds: string[];
+} {
+  const sourceNode = head(project).graph.nodes.find(
+    (node) => node.nodeId === nodeId,
+  );
+  if (!sourceNode) throw new Error("Generation target no longer exists.");
+  if (assetInputs.length === 0) {
+    throw new Error("Generation returned no immutable Assets.");
+  }
+  let working = project;
+  let parentAssetId = sourceNode.assetId;
+  const prompt = (sourceNode.prompt || sourceNode.text || "").trim();
+  if (!parentAssetId && prompt) {
+    const promptAsset = registerAsset(working, {
+      kind: "text",
+      origin: "import",
+      title: `${sourceNode.title} — generation input`,
+      inlineText: prompt,
+      contentDigest: deterministicDigest({ prompt }),
+    });
+    working = promptAsset.project;
+    parentAssetId = promptAsset.asset.assetId;
+  }
+  const assets: ProjectAsset[] = [];
+  for (const input of assetInputs) {
+    const registered = registerAsset(working, input);
+    working = registered.project;
+    assets.push(registered.asset);
+  }
+  const extraNodeIds = assets.slice(1).map(() => stableId("node"));
+  const takeIds =
+    sourceNode.kind === "video"
+      ? assets.map(() => stableId("take"))
+      : [];
+  let next = advanceProject(working, commandId, (version) => {
+    const target = version.graph.nodes.find(
+      (candidate) => candidate.nodeId === nodeId,
+    );
+    if (!target) throw new Error("Generation target no longer exists.");
+    target.assetId = assets[0].assetId;
+    if (target.kind === "image" && target.shotId) {
+      const shot = version.shots.find(
+        (candidate) => candidate.shotId === target.shotId,
+      );
+      const storyboard = version.storyboards.find(
+        (candidate) => candidate.storyboardId === shot?.storyboardId,
+      );
+      if (storyboard) {
+        storyboard.frameAssetIds = [
+          ...storyboard.frameAssetIds,
+          ...assets
+            .map((asset) => asset.assetId)
+            .filter((assetId) => !storyboard.frameAssetIds.includes(assetId)),
+        ];
+      }
+      assets.slice(1).forEach((asset, index) => {
+        version.graph.nodes.push({
+          ...clone(target),
+          nodeId: extraNodeIds[index],
+          title: `${target.title} ${index + 2}`,
+          position: {
+            x: target.position.x + ((index % 4) + 1) * 48,
+            y: target.position.y + (Math.floor(index / 4) + 1) * 48,
+          },
+          assetId: asset.assetId,
+          localEditRecipe: [],
+        });
+      });
+    }
+    if (target.kind === "video" && target.shotId) {
+      const shot = version.shots.find(
+        (candidate) => candidate.shotId === target.shotId,
+      );
+      if (shot) {
+        assets.forEach((asset, index) => {
+          const takeId = takeIds[index];
+          version.takes.push({
+            takeId,
+            shotId: shot.shotId,
+            assetId: asset.assetId,
+            status: "candidate",
+          });
+          shot.takeIds.push(takeId);
+        });
+      }
+    }
+  });
+  if (parentAssetId && next.assets[parentAssetId]) {
+    next = {
+      ...next,
+      lineage: [
+        ...next.lineage,
+        ...assets.map((asset) => ({
+          lineageId: stableId("lineage"),
+          parentAssetId,
+          childAssetId: asset.assetId,
+          relation: "generated-from" as const,
+          commandId,
+          projectVersionId: next.headVersionId,
+          createdAt: now(),
+        })),
+      ],
+    };
+  }
+  return {
+    project: next,
+    assets,
+    nodeIds: [nodeId, ...extraNodeIds],
+  };
+}
+
+export function attachGeneratedAsset(
+  project: VideoProject,
+  nodeId: string,
+  assetInput: Omit<ProjectAsset, "assetId" | "immutable" | "createdAt">,
+  commandId: string,
+): { project: VideoProject; asset: ProjectAsset } {
+  const attached = attachGeneratedAssetSet(
+    project,
+    nodeId,
+    [assetInput],
+    commandId,
+  );
+  return { project: attached.project, asset: attached.assets[0] };
+}
+
+export function projectTimelineDocument(
+  project: VideoProject,
+): {
+  timelineId: string;
+  document: ProjectTimelineDocument;
+  inputAssetIds: string[];
+} {
+  const version = head(project);
+  const timeline = version.timelines[0];
+  if (!timeline) throw new Error("Final Render requires a Project Timeline.");
+  const clips = timeline.clipIds.map((clipId) => {
+    const clip = version.clips.find((candidate) => candidate.clipId === clipId);
+    if (!clip) {
+      throw new Error(`Timeline clip is missing: ${clipId}`);
+    }
+    const asset = project.assets[clip.assetId];
+    if (!asset || asset.kind !== "video" || !asset.url) {
+      throw new Error(
+        `Timeline clip ${clip.clipId} requires an immutable Video Asset URL.`,
+      );
+    }
+    return {
+      clip,
+      asset,
+    };
+  });
+  if (!clips.length) {
+    throw new Error("Final Render requires at least one Timeline clip.");
+  }
+  return {
+    timelineId: timeline.timelineId,
+    inputAssetIds: clips.map(({ asset }) => asset.assetId),
+    document: {
+      width: 1920,
+      height: 1080,
+      fps: 30,
+      tracks: [
+        {
+          id: `track_${timeline.timelineId}`,
+          kind: "video",
+          clips: clips.map(({ clip, asset }) => ({
+            id: clip.clipId,
+            start_ms: Math.round(clip.startSeconds * 1_000),
+            duration_ms: Math.max(
+              1,
+              Math.round(clip.durationSeconds * 1_000),
+            ),
+            source_url: asset.url!,
+            source_duration_ms: Math.max(
+              1,
+              Math.round(
+                (asset.durationSeconds || clip.durationSeconds) * 1_000,
+              ),
+            ),
+            in_ms: 0,
+            speed: 1,
+            volume: 1,
+            muted: false,
+            fit: "cover",
+          })),
+        },
+      ],
+    },
+  };
+}
+
+export function attachFinalRenderAsset(
+  project: VideoProject,
+  input: Omit<ProjectAsset, "assetId" | "immutable" | "createdAt">,
+  parentAssetIds: string[],
+  commandId: string,
+): { project: VideoProject; asset: ProjectAsset; nodeId: string } {
+  if (!parentAssetIds.length) {
+    throw new Error("Final Render requires immutable input Asset lineage.");
+  }
+  for (const parentAssetId of parentAssetIds) {
+    if (!project.assets[parentAssetId]) {
+      throw new Error("Final Render input Asset is missing.");
+    }
+  }
+  const registered = registerAsset(project, input);
+  const current = head(registered.project);
+  const existing = current.graph.nodes.find(
+    (node) => node.kind === "delivery",
+  );
+  const nodeId = existing?.nodeId || stableId("node");
+  let next = advanceProject(registered.project, commandId, (version) => {
+    const delivery = version.graph.nodes.find(
+      (node) => node.nodeId === nodeId,
+    );
+    if (delivery) {
+      delivery.assetId = registered.asset.assetId;
+      delivery.title = "Final render";
+    } else {
+      version.graph.nodes.push({
+        nodeId,
+        kind: "delivery",
+        title: "Final render",
+        position: {
+          x:
+            Math.max(
+              0,
+              ...version.graph.nodes.map((node) => node.position.x),
+            ) + 520,
+          y: 120,
+        },
+        assetId: registered.asset.assetId,
+        localEditRecipe: [],
+      });
+    }
+  });
+  next = {
+    ...next,
+    lineage: [
+      ...next.lineage,
+      ...parentAssetIds.map((parentAssetId) => ({
+        lineageId: stableId("lineage"),
+        parentAssetId,
+        childAssetId: registered.asset.assetId,
+        relation: "rendered-from" as const,
+        commandId,
+        projectVersionId: next.headVersionId,
+        createdAt: now(),
+      })),
+    ],
+  };
+  return { project: next, asset: registered.asset, nodeId };
+}
+
+export function splitGridAsset(
+  project: VideoProject,
+  nodeId: string,
+  gridSize: 4 | 9 | 25,
+  commandId: string,
+): { project: VideoProject; assetIds: string[]; nodeIds: string[] } {
+  const sourceNode = head(project).graph.nodes.find(
+    (node) => node.nodeId === nodeId,
+  );
+  const sourceAsset =
+    sourceNode?.assetId && project.assets[sourceNode.assetId];
+  if (!sourceNode || sourceNode.kind !== "image" || !sourceAsset) {
+    throw new Error("Grid split requires a selected Image Asset.");
+  }
+  const dimension = Math.sqrt(gridSize);
+  if (!Number.isInteger(dimension)) {
+    throw new Error("Grid split supports 4, 9, or 25 cells.");
+  }
+  let working = project;
+  const lineageStart = project.lineage.length;
+  const derivedAssets: ProjectAsset[] = [];
+  const recipes: LocalEditOperation[] = [];
+  for (let index = 0; index < gridSize; index += 1) {
+    const operation: LocalEditOperation = {
+      operation: "grid-cell",
+      parameters: {
+        columns: dimension,
+        rows: dimension,
+        column: index % dimension,
+        row: Math.floor(index / dimension),
+      },
+    };
+    const derived = deriveLocalAsset(
+      working,
+      sourceAsset.assetId,
+      operation,
+      commandId,
+    );
+    working = derived.project;
+    derivedAssets.push(derived.asset);
+    recipes.push(operation);
+  }
+  const nodeIds = derivedAssets.map(() => stableId("node"));
+  let next = advanceProject(working, commandId, (version) => {
+    derivedAssets.forEach((asset, index) => {
+      version.graph.nodes.push({
+        ...clone(sourceNode),
+        nodeId: nodeIds[index],
+        title: `${sourceNode.title} · cell ${index + 1}`,
+        position: {
+          x:
+            sourceNode.position.x +
+            (index % dimension) * (nodeDimensions("image").width + 24),
+          y:
+            sourceNode.position.y +
+            (Math.floor(index / dimension) + 1) *
+              (nodeDimensions("image").height + 24),
+        },
+        assetId: asset.assetId,
+        localEditRecipe: [recipes[index]],
+      });
+    });
+    if (sourceNode.shotId) {
+      const shot = version.shots.find(
+        (candidate) => candidate.shotId === sourceNode.shotId,
+      );
+      const storyboard = version.storyboards.find(
+        (candidate) => candidate.storyboardId === shot?.storyboardId,
+      );
+      if (storyboard) {
+        storyboard.frameAssetIds = [
+          ...storyboard.frameAssetIds,
+          ...derivedAssets.map((asset) => asset.assetId),
+        ];
+      }
+    }
+  });
+  next = {
+    ...next,
+    lineage: next.lineage.map((lineage, index) =>
+      index >= lineageStart
+        ? { ...lineage, projectVersionId: next.headVersionId }
+        : lineage,
+    ),
+  };
+  return {
+    project: next,
+    assetIds: derivedAssets.map((asset) => asset.assetId),
+    nodeIds,
+  };
+}
+
+export function structureScriptIntoProduction(
+  project: VideoProject,
+  nodeId: string,
+): {
+  project: VideoProject;
+  sceneIds: string[];
+  shotIds: string[];
+  storyboardIds: string[];
+} {
+  const scriptNode = head(project).graph.nodes.find(
+    (node) => node.nodeId === nodeId,
+  );
+  if (
+    !scriptNode ||
+    (scriptNode.kind !== "script" && scriptNode.kind !== "text")
+  ) {
+    throw new Error("Structure scenes requires a selected Script or Text node.");
+  }
+  const content = (scriptNode.text || scriptNode.prompt || "").trim();
+  if (!content) throw new Error("Add script content before structuring scenes.");
+  const blocks = content
+    .split(/\n\s*\n/)
+    .map((block) =>
+      block
+        .split(/\n/)
+        .map((line) => line.trim())
+        .filter(Boolean),
+    )
+    .filter((block) => block.length > 0)
+    .slice(0, 8);
+  const normalizedBlocks = blocks.length ? blocks : [[content]];
+  let remainingShots = 24;
+  const plan = normalizedBlocks.map((lines, sceneIndex) => {
+    const shotLines = lines.slice(0, Math.max(1, remainingShots));
+    remainingShots -= shotLines.length;
+    const sceneId = stableId("scene");
+    return {
+      sceneId,
+      title: `Scene ${sceneIndex + 1}`,
+      summary: lines.join(" ").slice(0, 500),
+      shots: shotLines.map((line, shotIndex) => ({
+        shotId: stableId("shot"),
+        storyboardId: stableId("storyboard"),
+        title: `Shot ${sceneIndex + 1}.${shotIndex + 1}`,
+        description: line.slice(0, 2_000),
+      })),
+    };
+  });
+  const sceneIds = plan.map((scene) => scene.sceneId);
+  const shotIds = plan.flatMap((scene) =>
+    scene.shots.map((shot) => shot.shotId),
+  );
+  const storyboardIds = plan.flatMap((scene) =>
+    scene.shots.map((shot) => shot.storyboardId),
+  );
+  const next = advanceProject(project, "canvas.script.structure", (version) => {
+    for (const scene of plan) {
+      version.scenes.push({
+        sceneId: scene.sceneId,
+        title: scene.title,
+        summary: scene.summary,
+        shotIds: scene.shots.map((shot) => shot.shotId),
+        reviewStatus: "draft",
+      });
+      for (const shot of scene.shots) {
+        version.shots.push({
+          shotId: shot.shotId,
+          sceneId: scene.sceneId,
+          title: shot.title,
+          description: shot.description,
+          intendedDurationSeconds: 5,
+          storyboardId: shot.storyboardId,
+          takeIds: [],
+          reviewStatus: "draft",
+        });
+        version.storyboards.push({
+          storyboardId: shot.storyboardId,
+          shotId: shot.shotId,
+          frameAssetIds: [],
+          reviewStatus: "draft",
+        });
+      }
+    }
+    const node = version.graph.nodes.find(
+      (candidate) => candidate.nodeId === nodeId,
+    );
+    if (node) {
+      node.sceneId = sceneIds[0];
+      node.shotId = shotIds[0];
+    }
+    version.continuityQc = { status: "not-checked", issues: [] };
+  });
+  return { project: next, sceneIds, shotIds, storyboardIds };
+}
+
+export function reviewTake(
+  project: VideoProject,
+  takeId: string,
+  decision: "approved" | "rejected" | "candidate" | "in-review",
+  note = "",
+): VideoProject {
+  return advanceProject(project, `canvas.take.${decision}`, (version) => {
+    const take = version.takes.find((candidate) => candidate.takeId === takeId);
+    if (!take) throw new Error("The reviewed Take no longer exists.");
+    const shot = version.shots.find(
+      (candidate) => candidate.shotId === take.shotId,
+    );
+    if (!shot) throw new Error("The reviewed Take has no Shot.");
+    if (decision === "approved") {
+      for (const candidate of version.takes) {
+        if (
+          candidate.shotId === shot.shotId &&
+          candidate.takeId !== take.takeId &&
+          candidate.status === "approved"
+        ) {
+          candidate.status = "candidate";
+        }
+      }
+      shot.approvedTakeId = take.takeId;
+      shot.reviewStatus = "approved";
+    } else if (shot.approvedTakeId === take.takeId) {
+      delete shot.approvedTakeId;
+      shot.reviewStatus = decision === "rejected" ? "rejected" : "in-review";
+    } else if (decision === "in-review") {
+      shot.reviewStatus = "in-review";
+    }
+    take.status = decision;
+    take.reviewNote = note.slice(0, 2_000);
+    version.continuityQc = { status: "not-checked", issues: [] };
+  });
+}
+
+export function createCameraPlan(
+  project: VideoProject,
+  shotId?: string,
+): { project: VideoProject; cameraId: string } {
+  const current = head(project);
+  const shot = current.shots.find((candidate) => candidate.shotId === shotId) ||
+    current.shots[0];
+  if (!shot) throw new Error("Create a Shot before planning a camera.");
+  const cameraId = stableId("camera");
+  const next = advanceProject(project, "canvas.director.camera-plan", (version) => {
+    const target = version.shots.find(
+      (candidate) => candidate.shotId === shot.shotId,
+    );
+    if (!target) throw new Error("The planned Shot no longer exists.");
+    version.cameras.push({
+      cameraId,
+      shotId: target.shotId,
+      lensMillimeters: 35,
+      fieldOfViewDegrees: 54,
+      position: [0, 1.6, 4],
+      rotation: [0, 180, 0],
+      focusTarget: [0, 1.4, 0],
+      safeArea: "16:9",
+      pathKeyframes: [
+        {
+          timeSeconds: 0,
+          position: [0, 1.6, 4],
+          rotation: [0, 180, 0],
+        },
+        {
+          timeSeconds: target.intendedDurationSeconds,
+          position: [0, 1.6, 3.25],
+          rotation: [0, 180, 0],
+        },
+      ],
+      planStatus: "ready",
+    });
+    target.cameraId = cameraId;
+    version.continuityQc = { status: "not-checked", issues: [] };
+  });
+  return { project: next, cameraId };
+}
+
+export function buildTimelineFromApprovedTakes(
+  project: VideoProject,
+): { project: VideoProject; clipIds: string[] } {
+  const current = head(project);
+  const timeline = current.timelines[0];
+  if (!timeline) throw new Error("The Project has no Timeline.");
+  const approved = current.shots
+    .map((shot) => ({
+      shot,
+      take: current.takes.find(
+        (take) =>
+          take.takeId === shot.approvedTakeId && take.status === "approved",
+      ),
+    }))
+    .filter(
+      (entry): entry is {
+        shot: ShotDefinition;
+        take: TakeDefinition;
+      } => Boolean(entry.take),
+    );
+  if (approved.length === 0) {
+    throw new Error("Approve at least one Take before building the Timeline.");
+  }
+  const clipIds = approved.map(() => stableId("clip"));
+  const next = advanceProject(project, "canvas.timeline.build", (version) => {
+    let cursor = 0;
+    const clips = approved.map(({ shot, take }, index): ClipDefinition => {
+      const asset = project.assets[take.assetId];
+      const duration = Math.max(
+        0.1,
+        asset?.durationSeconds || shot.intendedDurationSeconds,
+      );
+      const clip = {
+        clipId: clipIds[index],
+        timelineId: timeline.timelineId,
+        takeId: take.takeId,
+        assetId: take.assetId,
+        startSeconds: cursor,
+        durationSeconds: duration,
+      };
+      cursor += duration;
+      return clip;
+    });
+    version.clips = [
+      ...version.clips.filter(
+        (clip) => clip.timelineId !== timeline.timelineId,
+      ),
+      ...clips,
+    ];
+    const target = version.timelines.find(
+      (candidate) => candidate.timelineId === timeline.timelineId,
+    );
+    if (target) target.clipIds = clipIds;
+  });
+  return { project: next, clipIds };
+}
+
+function continuityIssues(
+  project: VideoProject,
+  version: ProjectVersion,
+): ContinuityQcIssue[] {
+  const issues: ContinuityQcIssue[] = [];
+  for (const shot of version.shots) {
+    const storyboard = version.storyboards.find(
+      (candidate) => candidate.storyboardId === shot.storyboardId,
+    );
+    if (!storyboard || storyboard.frameAssetIds.length === 0) {
+      issues.push({
+        issueId: stableId("qcIssue"),
+        code: "MISSING_STORYBOARD_FRAME",
+        severity: "warning",
+        sceneId: shot.sceneId,
+        shotId: shot.shotId,
+        message: `${shot.title} has no approved storyboard frame.`,
+      });
+    }
+    if (!shot.approvedTakeId) {
+      issues.push({
+        issueId: stableId("qcIssue"),
+        code: "MISSING_APPROVED_TAKE",
+        severity: "warning",
+        sceneId: shot.sceneId,
+        shotId: shot.shotId,
+        message: `${shot.title} has no approved Take.`,
+      });
+    } else {
+      const take = version.takes.find(
+        (candidate) =>
+          candidate.takeId === shot.approvedTakeId &&
+          candidate.status === "approved",
+      );
+      if (!take || !project.assets[take.assetId]) {
+        issues.push({
+          issueId: stableId("qcIssue"),
+          code: "BROKEN_APPROVED_TAKE",
+          severity: "error",
+          sceneId: shot.sceneId,
+          shotId: shot.shotId,
+          message: `${shot.title} references a missing approved Take Asset.`,
+        });
+      } else {
+        const duration = project.assets[take.assetId].durationSeconds;
+        if (
+          duration &&
+          Math.abs(duration - shot.intendedDurationSeconds) >
+            Math.max(1, shot.intendedDurationSeconds * 0.25)
+        ) {
+          issues.push({
+            issueId: stableId("qcIssue"),
+            code: "DURATION_MISMATCH",
+            severity: "warning",
+            sceneId: shot.sceneId,
+            shotId: shot.shotId,
+            message: `${shot.title} differs from its planned duration.`,
+          });
+        }
+      }
+    }
+    if (!shot.cameraId) {
+      issues.push({
+        issueId: stableId("qcIssue"),
+        code: "MISSING_CAMERA_PLAN",
+        severity: "warning",
+        sceneId: shot.sceneId,
+        shotId: shot.shotId,
+        message: `${shot.title} has no Director camera plan.`,
+      });
+    }
+  }
+  return issues;
+}
+
+export function runContinuityQc(project: VideoProject): VideoProject {
+  return advanceProject(project, "canvas.continuity-qc.check", (version) => {
+    const issues = continuityIssues(project, version);
+    version.continuityQc = {
+      status: issues.some((issue) => issue.severity === "error")
+        ? "blocked"
+        : issues.length
+          ? "warning"
+          : "pass",
+      checkedAt: now(),
+      checkedProjectVersionId: version.versionId,
+      issues,
+    };
+  });
+}
+
+export function compareProjectVersions(
+  project: VideoProject,
+  baseVersionId: string,
+  targetVersionId = project.headVersionId,
+): ProjectVersionComparison {
+  const base = project.versions[baseVersionId];
+  const target = project.versions[targetVersionId];
+  if (!base || !target) throw new Error("History comparison version is missing.");
+  const baseNodes = new Map(base.graph.nodes.map((node) => [node.nodeId, node]));
+  const targetNodes = new Map(
+    target.graph.nodes.map((node) => [node.nodeId, node]),
+  );
+  const baseAssetIds = new Set(
+    base.graph.nodes
+      .map((node) => node.assetId)
+      .filter((assetId): assetId is string => Boolean(assetId)),
+  );
+  const targetAssetIds = new Set(
+    target.graph.nodes
+      .map((node) => node.assetId)
+      .filter((assetId): assetId is string => Boolean(assetId)),
+  );
+  const baseTakes = new Map(base.takes.map((take) => [take.takeId, take]));
+  return {
+    baseVersionId,
+    targetVersionId,
+    addedNodeIds: [...targetNodes.keys()].filter((id) => !baseNodes.has(id)),
+    removedNodeIds: [...baseNodes.keys()].filter((id) => !targetNodes.has(id)),
+    changedNodeIds: [...targetNodes.entries()]
+      .filter(([id, node]) => {
+        const before = baseNodes.get(id);
+        return before && JSON.stringify(before) !== JSON.stringify(node);
+      })
+      .map(([id]) => id),
+    addedAssetIds: [...targetAssetIds].filter((id) => !baseAssetIds.has(id)),
+    addedTakeIds: target.takes
+      .filter((take) => !baseTakes.has(take.takeId))
+      .map((take) => take.takeId),
+    reviewChanges: target.takes
+      .filter((take) => baseTakes.get(take.takeId)?.status !== take.status)
+      .map((take) => ({
+        takeId: take.takeId,
+        from: baseTakes.get(take.takeId)?.status,
+        to: take.status,
+      })),
+  };
+}
+
+/** 宿主页面行 / project-view → 画布投影。graph 是成品页，director 是专业编辑。 */
+export function canvasViewFromHostPage(
+  viewId: string,
+): CanvasWorkspaceView | null {
+  if (
+    viewId === "artifact" ||
+    viewId === "edit" ||
+    viewId === "preview" ||
+    viewId === "graph"
+  ) {
+    return "graph";
+  }
+  if (viewId === "pro" || viewId === "director") return "director";
+  if (
+    viewId === "storyboard" ||
+    viewId === "timeline" ||
+    viewId === "history"
+  ) {
+    return viewId;
+  }
+  return null;
+}
+
+export function workspaceViewForNodeKind(
+  kind: CanvasNodeKind,
+): CanvasWorkspaceView {
+  if (kind === "script" || kind === "storyboard") return "storyboard";
+  if (kind === "director") return "director";
+  if (kind === "composite" || kind === "timeline" || kind === "delivery") {
+    return "timeline";
+  }
+  return "graph";
+}
+
+export function projectToFlow(
+  project: VideoProject,
+  makeData: (
+    node: CanvasNodeDefinition,
+    asset: ProjectAsset | undefined,
+    derivative: AssetDerivative | undefined,
+  ) => CanvasNodeViewData,
+): { nodes: CanvasFlowNode[]; edges: CanvasFlowEdge[] } {
+  const version = head(project);
+  const nodes = version.graph.nodes.map((node) => {
+    const asset = node.assetId ? project.assets[node.assetId] : undefined;
+    const derivative = Object.values(project.derivatives).find(
+      (candidate) => candidate.assetId === node.assetId,
+    );
+    return {
+      id: node.nodeId,
+      type: "leovideo-media" as const,
+      position: node.position,
+      data: {
+        ...makeData(node, asset, derivative),
+        ...(node.legacySourceNode
+          ? { legacySourceNode: clone(node.legacySourceNode) }
+          : {}),
+      },
+      style: nodeDimensions(node.kind),
+    };
+  });
+  const edges = version.graph.edges.map((edge) => ({
+    id: edge.edgeId,
+    source: edge.sourceNodeId,
+    target: edge.targetNodeId,
+    sourceHandle: edge.sourceHandle,
+    targetHandle: edge.targetHandle,
+    animated: false,
+    style: { stroke: "var(--vc-edge)", strokeWidth: 1.5 },
+  }));
+  return { nodes, edges };
+}
+
+export function projectProjection(project: VideoProject, view: ProjectView) {
+  const version = head(project);
+  const common = {
+    projectId: project.projectId,
+    headVersionId: project.headVersionId,
+    revision: version.revision,
+    view,
+  };
+  if (view === "canvas") {
+    return {
+      ...common,
+      nodeIds: version.graph.nodes.map((node) => node.nodeId),
+      edgeIds: version.graph.edges.map((edge) => edge.edgeId),
+    };
+  }
+  if (view === "storyboard") {
+    return {
+      ...common,
+      sceneIds: version.scenes.map((scene) => scene.sceneId),
+      shotIds: version.shots.map((shot) => shot.shotId),
+      storyboardIds: version.storyboards.map(
+        (storyboard) => storyboard.storyboardId,
+      ),
+    };
+  }
+  if (view === "director") {
+    return {
+      ...common,
+      shotIds: version.shots.map((shot) => shot.shotId),
+      cameraIds: version.cameras.map((camera) => camera.cameraId),
+    };
+  }
+  return {
+    ...common,
+    timelineIds: version.timelines.map((timeline) => timeline.timelineId),
+    clipIds: version.clips.map((clip) => clip.clipId),
+    takeIds: version.takes.map((take) => take.takeId),
+  };
+}
+
+export function assertProjectBudgets(nodeCount: number, edgeCount: number): void {
+  if (nodeCount > CANVAS_NODE_LIMIT || edgeCount > CANVAS_EDGE_LIMIT) {
+    throw new Error(
+      `Project exceeds the hard canvas budget (${CANVAS_NODE_LIMIT} nodes / ${CANVAS_EDGE_LIMIT} edges).`,
+    );
+  }
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function validDurableVideoState(value: unknown): boolean {
+  const durable = objectRecord(value);
+  if (
+    !durable ||
+    !UUID_RE.test(String(durable.workspaceId || "")) ||
+    !UUID_RE.test(String(durable.projectId || "")) ||
+    !UUID_RE.test(String(durable.headVersionId || "")) ||
+    !Number.isSafeInteger(durable.headEpoch) ||
+    Number(durable.headEpoch) < 1 ||
+    typeof durable.graphFingerprint !== "string" ||
+    !durable.graphFingerprint ||
+    typeof durable.syncedLocalVersionId !== "string" ||
+    !durable.syncedLocalVersionId ||
+    !Number.isSafeInteger(durable.syncedSelectionEpoch) ||
+    Number(durable.syncedSelectionEpoch) < 0 ||
+    !Array.isArray(durable.runs) ||
+    durable.runs.length > 100
+  ) {
+    return false;
+  }
+  return durable.runs.every((item) => {
+    const run = objectRecord(item);
+    return Boolean(
+      run &&
+        UUID_RE.test(String(run.runId || "")) &&
+        typeof run.commandRequestId === "string" &&
+        run.commandRequestId.length > 0 &&
+        run.commandRequestId.length <= 128 &&
+        typeof run.nodeId === "string" &&
+        run.nodeId.length > 0 &&
+        UUID_RE.test(String(run.remoteProjectVersionId || "")) &&
+        typeof run.status === "string" &&
+        run.status.length > 0 &&
+        run.status.length <= 80 &&
+        typeof run.createdAt === "string" &&
+        typeof run.updatedAt === "string",
+    );
+  });
+}
+
+function validArtifactRevisionReceipt(
+  value: unknown,
+  versions: Record<string, unknown>,
+): boolean {
+  const receipt = objectRecord(value);
+  if (
+    !receipt ||
+    typeof receipt.saveId !== "string" ||
+    !receipt.saveId ||
+    receipt.saveId.length > 128 ||
+    typeof receipt.projectVersionId !== "string" ||
+    !receipt.projectVersionId ||
+    !Object.hasOwn(versions, receipt.projectVersionId) ||
+    typeof receipt.artifactId !== "string" ||
+    !receipt.artifactId ||
+    receipt.artifactId.length > 300 ||
+    typeof receipt.revisionId !== "string" ||
+    !receipt.revisionId ||
+    receipt.revisionId.length > 300 ||
+    typeof receipt.url !== "string" ||
+    typeof receipt.receivedAt !== "string" ||
+    !Number.isFinite(Date.parse(receipt.receivedAt))
+  ) {
+    return false;
+  }
+  try {
+    const parsed = new URL(receipt.url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
+}
+
+function validVideoCanvasSourceDependency(
+  value: unknown,
+  asset: Record<string, unknown>,
+): value is VideoCanvasSourceDependency {
+  const dependency = objectRecord(value);
+  const path = typeof dependency?.path === "string" ? dependency.path : "";
+  const pathParts = path.split("/");
+  const digest = typeof dependency?.sha256 === "string"
+    ? dependency.sha256.toLowerCase().replace(/^sha256:/, "")
+    : "";
+  const mediaType = typeof dependency?.mediaType === "string"
+    ? dependency.mediaType.toLowerCase().split(";", 1)[0]
+    : "";
+  const assetDigest = typeof asset.contentDigest === "string"
+    ? asset.contentDigest.toLowerCase().replace(/^sha256:/, "")
+    : "";
+  const assetMediaType = typeof asset.mime === "string"
+    ? asset.mime.toLowerCase().split(";", 1)[0]
+    : "";
+  return Boolean(
+    dependency &&
+      typeof dependency.artifactId === "string" &&
+      UUID_RE.test(dependency.artifactId) &&
+      typeof dependency.revisionId === "string" &&
+      UUID_RE.test(dependency.revisionId) &&
+      path.length <= 1_024 &&
+      pathParts[0] === "assets" &&
+      pathParts.length >= 2 &&
+      pathParts.every((part) => part && part !== "." && part !== "..") &&
+      !/[?#%\\\0]/.test(path) &&
+      /^[a-f0-9]{64}$/.test(digest) &&
+      digest === assetDigest &&
+      /^(?:image|video|audio)\/[a-z0-9.+-]+$/.test(mediaType) &&
+      mediaType === assetMediaType &&
+      Number.isSafeInteger(dependency.byteSize) &&
+      Number(dependency.byteSize) > 0 &&
+      !(typeof asset.url === "string" && asset.url) &&
+      !(typeof asset.previewUrl === "string" && asset.previewUrl),
+  );
+}
+
+function isExpiringOrRuntimeLocator(value: string): boolean {
+  const candidate = value.trim();
+  if (/^(?:blob|data):/i.test(candidate)) return true;
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return true;
+    if (
+      parsed.username ||
+      parsed.password ||
+      /\/v1\/artifact-renditions\/access\//i.test(parsed.pathname)
+    ) {
+      return true;
+    }
+    return [...parsed.searchParams.keys()].some((key) =>
+      /^(?:token|access_token|signature|expires|expires_at|x-amz-|x-oss-)/i.test(key),
+    );
+  } catch {
+    return true;
+  }
+}
+
+/** Build an exact typed-commit snapshot without runtime blobs/grant URLs. */
+export function projectForTypedArtifactCommit(
+  project: VideoProject,
+  artifactId: string,
+): VideoProject {
+  if (!UUID_RE.test(String(artifactId || ""))) {
+    throw new Error("Video project commit requires a valid artifact root.");
+  }
+  const snapshot = projectSourceForStorage(project);
+  for (const asset of Object.values(snapshot.assets)) {
+    if (asset.sourceDependency) {
+      if (
+        asset.sourceDependency.artifactId !== artifactId ||
+        !validVideoCanvasSourceDependency(asset.sourceDependency, asset as unknown as Record<string, unknown>)
+      ) {
+        throw new Error(`Asset ${asset.assetId} has an invalid or cross-root source dependency.`);
+      }
+      // Runtime preview bindings are held separately; the durable reference
+      // is the only locator written into the Project source.
+      delete asset.url;
+      delete asset.previewUrl;
+      continue;
+    }
+    const locator = asset.url || asset.previewUrl || "";
+    if (!locator && typeof asset.inlineText !== "string") {
+      throw new Error(`Asset ${asset.assetId} has no durable source dependency.`);
+    }
+    if (locator && isExpiringOrRuntimeLocator(locator)) {
+      throw new Error(`Asset ${asset.assetId} uses a runtime or expiring source URL.`);
+    }
+  }
+  return snapshot;
+}
+
+function validOperationReceipts(
+  value: unknown,
+  versions: Record<string, unknown>,
+  assets: Record<string, unknown>,
+): value is Record<string, CanvasOperationReceipt> {
+  const receipts = objectRecord(value);
+  if (!receipts || Object.keys(receipts).length > 2_000) return false;
+  return Object.entries(receipts).every(([receiptId, candidate]) => {
+    const receipt = objectRecord(candidate);
+    const pricing = receipt && objectRecord(receipt.pricing);
+    return Boolean(
+      receipt &&
+        receipt.receiptId === receiptId &&
+        typeof receipt.requestId === "string" &&
+        receipt.requestId.length > 0 &&
+        receipt.requestId.length <= 128 &&
+        typeof receipt.requestFingerprint === "string" &&
+        receipt.requestFingerprint.length > 0 &&
+        typeof receipt.commandId === "string" &&
+        receipt.commandId.length > 0 &&
+        typeof receipt.projectVersionId === "string" &&
+        Object.hasOwn(versions, receipt.projectVersionId) &&
+        receipt.status === "succeeded" &&
+        typeof receipt.provider === "string" &&
+        typeof receipt.model === "string" &&
+        pricing &&
+        pricing.billing === "provider" &&
+        typeof pricing.currency === "string" &&
+        typeof pricing.estimated === "boolean" &&
+        Array.isArray(receipt.inputAssetIds) &&
+        receipt.inputAssetIds.every(
+          (assetId) =>
+            typeof assetId === "string" && Object.hasOwn(assets, assetId),
+        ) &&
+        Array.isArray(receipt.outputAssetIds) &&
+        receipt.outputAssetIds.every(
+          (assetId) =>
+            typeof assetId === "string" && Object.hasOwn(assets, assetId),
+        ) &&
+        Array.isArray(receipt.externalRunIds) &&
+        typeof receipt.startedAt === "string" &&
+        typeof receipt.completedAt === "string",
+    );
+  });
+}
+
+/** Adapt official child-to-parent v2 records to the editor's in-memory view model. */
+function normalizeProjectVersions(project: VideoProject): void {
+  const fail = (path: string, reason: string): never => {
+    throw new Error(`视频工程源文件不完整：${path} ${reason}。`);
+  };
+  for (const [versionId, version] of Object.entries(project.versions)) {
+    const path = (name: string) => `${versionId}.${name}`;
+    const graph = objectRecord(version?.graph);
+    if (!graph) fail(path("graph"), "缺失");
+    for (const name of ["nodes", "edges"] as const) {
+      if (!Array.isArray(graph![name])) fail(path(`graph.${name}`), "必须是列表");
+    }
+    for (const name of ["scenes", "shots", "storyboards", "takes", "timelines", "clips", "cameras"] as const) {
+      if (!Array.isArray(version[name])) fail(path(name), "必须是列表");
+    }
+    const ids = (rows: object[], field: string, name: string) => {
+      const result = new Set<string>();
+      rows.forEach((row, index) => {
+        const id = objectRecord(row)?.[field];
+        if (typeof id !== "string" || !id) fail(path(`${name}[${index}].${field}`), "缺失");
+        if (result.has(id as string)) fail(path(`${name}[${index}].${field}`), `重复引用 ${id}`);
+        result.add(id as string);
+      });
+      return result;
+    };
+    const scenes = ids(version.scenes, "sceneId", "scenes");
+    const shots = ids(version.shots, "shotId", "shots");
+    const timelines = ids(version.timelines, "timelineId", "timelines");
+    const nodes = ids(version.graph.nodes, "nodeId", "graph.nodes");
+    ids(version.clips, "clipId", "clips");
+    const storyboards = ids(version.storyboards, "storyboardId", "storyboards");
+    const cameras = ids(version.cameras, "cameraId", "cameras");
+    ids(version.takes, "takeId", "takes");
+    const reference = (row: object, field: string, parentIds: Set<string>, rowPath: string) => {
+      const id = objectRecord(row)?.[field];
+      if (typeof id !== "string" || !parentIds.has(id)) {
+        fail(path(`${rowPath}.${field}`), `引用的 ${String(id)} 不存在`);
+      }
+    };
+    version.graph.nodes.forEach((node, index) => {
+      if (!Array.isArray(node.localEditRecipe)) node.localEditRecipe = [];
+      const official = node as CanvasNodeDefinition & { params?: Record<string, unknown> };
+      if (official.kind === ("prompt" as CanvasNodeKind)) official.kind = "script";
+      if (official.kind === ("generate" as CanvasNodeKind)) official.kind = "video";
+      if (!node.text && typeof official.params?.text === "string") node.text = official.params.text;
+      if (!node.prompt && typeof official.params?.prompt === "string") node.prompt = official.params.prompt;
+      if (!node.position || !Number.isFinite(node.position.x) || !Number.isFinite(node.position.y)) {
+        fail(path(`graph.nodes[${index}].position`), "缺失或坐标无效");
+      }
+    });
+    version.graph.edges.forEach((edge, index) => {
+      reference(edge, "sourceNodeId", nodes, `graph.edges[${index}]`);
+      reference(edge, "targetNodeId", nodes, `graph.edges[${index}]`);
+    });
+    version.shots.forEach((shot, index) => {
+      reference(shot, "sceneId", scenes, `shots[${index}]`);
+      if (!Array.isArray(shot.takeIds)) {
+        shot.takeIds = version.takes.filter((take) => take.shotId === shot.shotId).map((take) => take.takeId);
+      }
+      if (typeof shot.intendedDurationSeconds !== "number") {
+        const ms = (shot as ShotDefinition & { durationMs?: number }).durationMs;
+        shot.intendedDurationSeconds = typeof ms === "number" ? ms / 1000 : 0;
+      }
+      if (!shot.storyboardId) {
+        const board = version.storyboards.find((candidate) =>
+          (candidate as StoryboardDefinition & { sceneId?: string }).sceneId === shot.sceneId,
+        );
+        if (board) shot.storyboardId = board.storyboardId;
+      }
+      if (shot.storyboardId) reference(shot, "storyboardId", storyboards, `shots[${index}]`);
+      if (shot.cameraId) reference(shot, "cameraId", cameras, `shots[${index}]`);
+    });
+    version.takes.forEach((take, index) => reference(take, "shotId", shots, `takes[${index}]`));
+    version.scenes.forEach((scene) => {
+      if (!Array.isArray(scene.shotIds)) {
+        scene.shotIds = version.shots.filter((shot) => shot.sceneId === scene.sceneId)
+          .sort((a, b) => Number((a as ShotDefinition & { order?: number }).order || 0) - Number((b as ShotDefinition & { order?: number }).order || 0))
+          .map((shot) => shot.shotId);
+      }
+      if (!scene.summary && typeof (scene as SceneDefinition & { synopsis?: string }).synopsis === "string") {
+        scene.summary = (scene as SceneDefinition & { synopsis?: string }).synopsis;
+      }
+    });
+    version.storyboards.forEach((board, index) => {
+      const official = board as StoryboardDefinition & { sceneId?: string; frames?: Array<{ shotId?: string; assetId?: string }> };
+      if (official.sceneId) reference(official, "sceneId", scenes, `storyboards[${index}]`);
+      if (official.shotId) reference(official, "shotId", shots, `storyboards[${index}]`);
+      official.frames?.forEach((frame, frameIndex) => {
+        if (frame.shotId) reference(frame, "shotId", shots, `storyboards[${index}].frames[${frameIndex}]`);
+        if (frame.assetId && !Object.hasOwn(project.assets, frame.assetId)) {
+          fail(path(`storyboards[${index}].frames[${frameIndex}].assetId`), `引用的 ${frame.assetId} 不存在`);
+        }
+      });
+      if (!Array.isArray(board.frameAssetIds)) {
+        board.frameAssetIds = Array.isArray(official.frames)
+          ? official.frames.map((frame) => frame.assetId).filter((id): id is string => typeof id === "string")
+          : [];
+      }
+    });
+    version.clips.forEach((clip, index) => {
+      reference(clip, "timelineId", timelines, `clips[${index}]`);
+      const official = clip as ClipDefinition & { sourceShotId?: string; startMs?: number; endMs?: number };
+      if (official.sourceShotId) reference(official, "sourceShotId", shots, `clips[${index}]`);
+      if (typeof clip.startSeconds !== "number") clip.startSeconds = Number(official.startMs || 0) / 1000;
+      if (typeof clip.durationSeconds !== "number") clip.durationSeconds =
+        (Number(official.endMs || 0) - Number(official.startMs || 0)) / 1000;
+    });
+    version.timelines.forEach((timeline) => {
+      if (!Array.isArray(timeline.clipIds)) {
+        timeline.clipIds = version.clips.filter((clip) => clip.timelineId === timeline.timelineId)
+          .sort((a, b) => {
+            const left = a as ClipDefinition & { track?: string; startMs?: number };
+            const right = b as ClipDefinition & { track?: string; startMs?: number };
+            return String(left.track || "").localeCompare(String(right.track || "")) ||
+              Number(left.startMs || 0) - Number(right.startMs || 0);
+          }).map((clip) => clip.clipId);
+      }
+    });
+    version.cameras.forEach((camera, index) => {
+      reference(camera, "shotId", shots, `cameras[${index}]`);
+      if (!Array.isArray(camera.pathKeyframes)) camera.pathKeyframes = [];
+    });
+  }
+}
+
+export function parseVideoProject(input: unknown): VideoProject {
+  let value = input;
+  if (typeof value === "string") {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      throw new Error("Project JSON is invalid.");
+    }
+  }
+  const project = objectRecord(value);
+  if (
+    !project ||
+    project.schema !== VIDEO_PROJECT_SCHEMA ||
+    project.schemaVersion !== VIDEO_PROJECT_VERSION ||
+    typeof project.projectId !== "string"
+  ) {
+    throw new Error("Input is not an oceanleo.video.project.v2 document.");
+  }
+  if (typeof project.headVersionId !== "string" || !project.headVersionId) {
+    throw new Error("视频工程源文件不完整：headVersionId 缺失。");
+  }
+  const versions = objectRecord(project.versions);
+  const assets = objectRecord(project.assets);
+  const derivatives = objectRecord(project.derivatives);
+  const operationReceipts =
+    project.operationReceipts === undefined
+      ? {}
+      : objectRecord(project.operationReceipts);
+  const version = versions && objectRecord(versions[project.headVersionId]);
+  const graph = version && objectRecord(version.graph);
+  if (!versions) throw new Error("视频工程源文件不完整：versions 缺失。");
+  if (!assets) throw new Error("视频工程源文件不完整：assets 缺失。");
+  if (!derivatives) throw new Error("视频工程源文件不完整：derivatives 缺失。");
+  if (!operationReceipts) throw new Error("视频工程源文件不完整：operationReceipts 缺失或格式错误。");
+  if (!Array.isArray(project.lineage)) throw new Error("视频工程源文件不完整：lineage 缺失或必须是列表。");
+  if (!version) throw new Error(`视频工程源文件不完整：headVersionId ${project.headVersionId} 指向的版本不存在。`);
+  if (!graph) throw new Error(`视频工程源文件不完整：${project.headVersionId}.graph 缺失。`);
+  if (!Array.isArray(graph.nodes)) throw new Error(`视频工程源文件不完整：${project.headVersionId}.graph.nodes 必须是列表。`);
+  if (!Array.isArray(graph.edges)) throw new Error(`视频工程源文件不完整：${project.headVersionId}.graph.edges 必须是列表。`);
+  if (
+    project.durable !== undefined &&
+    !validDurableVideoState(project.durable)
+  ) {
+    throw new Error("Project durable Run metadata is malformed.");
+  }
+  if (
+    project.artifactRevisionReceipt !== undefined &&
+    !validArtifactRevisionReceipt(project.artifactRevisionReceipt, versions)
+  ) {
+    throw new Error("Project artifact/revision receipt is malformed.");
+  }
+  if (!validOperationReceipts(operationReceipts, versions, assets)) {
+    throw new Error("Project provider operation receipts are malformed.");
+  }
+  assertProjectBudgets(graph.nodes.length, graph.edges.length);
+  for (const asset of Object.values(assets)) {
+    const record = objectRecord(asset);
+    if (
+      !record ||
+      record.immutable !== true ||
+      typeof record.assetId !== "string"
+    ) {
+      throw new Error("Project contains a mutable or malformed Asset.");
+    }
+    if (
+      record.sourceDependency !== undefined &&
+      !validVideoCanvasSourceDependency(record.sourceDependency, record)
+    ) {
+      throw new Error(
+        `Project Asset ${record.assetId} has a malformed stable source dependency.`,
+      );
+    }
+  }
+  const parsed = clone(value as VideoProject);
+  parsed.operationReceipts = clone(operationReceipts);
+  normalizeProjectVersions(parsed);
+  return parsed;
+}
+
+export function defaultNodeTitle(kind: CanvasNodeKind): string {
+  return (
+    {
+      text: "Text",
+      image: "Image",
+      video: "Video",
+      audio: "Audio",
+      script: "Script",
+      model: "Model",
+      subtitle: "Subtitles",
+      composite: "Composite",
+      delivery: "Final render",
+      director: "Director",
+      storyboard: "Storyboard",
+      timeline: "Timeline",
+    } satisfies Record<CanvasNodeKind, string>
+  )[kind];
+}
+
+export function nodeDimensions(kind: CanvasNodeKind): {
+  width: number;
+  height: number;
+} {
+  if (kind === "image") return { width: 432, height: 270 };
+  if (kind === "video") return { width: 432, height: 243 };
+  if (kind === "audio") return { width: 400, height: 144 };
+  if (kind === "composite" || kind === "delivery") {
+    return { width: 440, height: 190 };
+  }
+  if (
+    kind === "director" ||
+    kind === "storyboard" ||
+    kind === "timeline"
+  ) {
+    return { width: 420, height: 248 };
+  }
+  return { width: 336, height: 180 };
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+export function deterministicDigest(value: unknown): string {
+  const bytes = new TextEncoder().encode(canonicalJson(value));
+  let left = 0x811c9dc5;
+  let right = 0x9e3779b9;
+  for (const byte of bytes) {
+    left ^= byte;
+    left = Math.imul(left, 0x01000193) >>> 0;
+    right ^= byte + 0x9d;
+    right = Math.imul(right, 0x85ebca6b) >>> 0;
+  }
+  return `${left.toString(16).padStart(8, "0")}${right
+    .toString(16)
+    .padStart(8, "0")}`;
+}
+
+function deterministicLegacyId(
+  prefix: string,
+  digest: string,
+  legacyId: string,
+): string {
+  return `${prefix}_${deterministicDigest(`${digest}:${legacyId}`)}`;
+}
+
+interface MigrationIssue {
+  severity: "warning" | "error";
+  code: string;
+  message: string;
+  nodeId?: string;
+}
+
+export interface V1MigrationReport {
+  sourceDigest: string;
+  sourceDigestAlgorithm: "fnv1a-dual32";
+  inputNodeCount: number;
+  inputEdgeCount: number;
+  migratedNodeCount: number;
+  migratedEdgeCount: number;
+  importedAssetCount: number;
+  idMap: Record<string, string>;
+  discardedRuntimeFields: Array<{
+    nodeId: string;
+    fields: string[];
+  }>;
+  inaccessibleMedia: Array<{ nodeId: string; url: string }>;
+  externalTasksRequiringReview: Array<{ nodeId: string; taskId: string }>;
+  issues: MigrationIssue[];
+}
+
+export type V1MigrationResult =
+  | { ok: true; project: VideoProject; report: V1MigrationReport }
+  | { ok: false; project: null; report: V1MigrationReport };
+
+function objectRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function mappedKind(value: unknown): CanvasNodeKind {
+  if (value === "image" || value === "imageInput") return "image";
+  if (value === "video" || value === "videoInput") return "video";
+  if (value === "audioInput" || value === "bgm") return "audio";
+  if (value === "script") return "script";
+  if (value === "model") return "model";
+  if (value === "subtitle") return "subtitle";
+  if (value === "compose") return "composite";
+  if (value === "output") return "delivery";
+  return "text";
+}
+
+const VERSIONED_V1_WORKFLOW_SCHEMA = "oceanleo.video-canvas.v1";
+const VERSIONED_V1_NODE_KINDS = new Set([
+  "source", "trim", "concat", "overlay", "transition", "filter",
+  "audio-mix", "text", "branch", "output",
+]);
+const VERSIONED_V1_PORT_TYPES = new Set([
+  "video", "audio", "image", "text", "number", "any",
+]);
+
+function versionedV1NodeKind(
+  node: Record<string, unknown>,
+  assets: Map<string, Record<string, unknown>>,
+): CanvasNodeKind {
+  const kind = String(node.kind || "");
+  if (kind === "source") {
+    const assetId = typeof node.assetId === "string" ? node.assetId : "";
+    const mediaType = String(assets.get(assetId)?.mediaType || "");
+    if (mediaType.startsWith("image/")) return "image";
+    if (mediaType.startsWith("audio/")) return "audio";
+    if (mediaType.startsWith("video/")) return "video";
+    const ports = objectRecord(node.ports);
+    const outputs = Array.isArray(ports?.outputs) ? ports.outputs : [];
+    const type = String(objectRecord(outputs[0])?.dataType || "");
+    if (type === "image" || type === "audio" || type === "video" || type === "text") {
+      return type;
+    }
+    return "model";
+  }
+  if (kind === "trim") return "video";
+  if (kind === "audio-mix") return "audio";
+  if (kind === "text") return "text";
+  if (kind === "output") return "delivery";
+  return "composite";
+}
+
+function versionedV1AssetKind(mediaType: string): AssetKind {
+  if (mediaType.startsWith("image/")) return "image";
+  if (mediaType.startsWith("video/")) return "video";
+  if (mediaType.startsWith("audio/")) return "audio";
+  return "text";
+}
+
+/**
+ * The real workflow carrier is a versioned `schemaVersion` envelope. The
+ * video core uses a different v2 graph model, so retain the complete source
+ * and source records while projecting the active head for editing.
+ */
+function migrateVersionedV1Workflow(
+  input: unknown,
+  source: Record<string, unknown>,
+  options: { sourceDependencies?: Array<VideoCanvasSourceDependency & { assetId: string }> } = {},
+): V1MigrationResult {
+  const sourceDigest = deterministicDigest(input);
+  const versions = Array.isArray(source.versions) ? source.versions : [];
+  const assets = Array.isArray(source.assets) ? source.assets : [];
+  const rawHeadVersionId = source.headVersionId;
+  const headRecord = versions.find((candidate) =>
+    objectRecord(candidate)?.id === rawHeadVersionId,
+  );
+  const head = objectRecord(headRecord);
+  const headGraph = objectRecord(head?.graph);
+  const rawNodes = Array.isArray(headGraph?.nodes) ? headGraph.nodes : [];
+  const rawEdges = Array.isArray(headGraph?.edges) ? headGraph.edges : [];
+  const report: V1MigrationReport = {
+    sourceDigest,
+    sourceDigestAlgorithm: "fnv1a-dual32",
+    inputNodeCount: rawNodes.length,
+    inputEdgeCount: rawEdges.length,
+    migratedNodeCount: 0,
+    migratedEdgeCount: 0,
+    importedAssetCount: 0,
+    idMap: {},
+    discardedRuntimeFields: [],
+    inaccessibleMedia: [],
+    externalTasksRequiringReview: [],
+    issues: [],
+  };
+  const reject = (code: string, message: string): V1MigrationResult => {
+    report.issues.push({ severity: "error", code, message });
+    return { ok: false, project: null, report };
+  };
+
+  if (
+    source.schemaVersion !== VERSIONED_V1_WORKFLOW_SCHEMA ||
+    typeof rawHeadVersionId !== "string" ||
+    !rawHeadVersionId ||
+    !versions.length ||
+    !head ||
+    !headGraph ||
+    !Array.isArray(headGraph.nodes) ||
+    !Array.isArray(headGraph.edges) ||
+    !Array.isArray(source.assets) ||
+    !objectRecord(source.attribution) ||
+    !Array.isArray(objectRecord(source.attribution)?.entries) ||
+    !objectRecord(head.timeline)
+  ) {
+    return reject(
+      "INVALID_V1_DOCUMENT",
+      "Input is not a complete versioned oceanleo.video-canvas.v1 project.",
+    );
+  }
+
+  const versionIds = new Set<string>();
+  for (const [index, candidate] of versions.entries()) {
+    const version = objectRecord(candidate);
+    if (
+      !version ||
+      typeof version.id !== "string" ||
+      !version.id ||
+      versionIds.has(version.id)
+    ) {
+      return reject(
+        "INVALID_V1_VERSION",
+        `Version ${index} is malformed or has a duplicate ID.`,
+      );
+    }
+    versionIds.add(version.id);
+  }
+  if (!versionIds.has(rawHeadVersionId)) {
+    return reject(
+      "INVALID_V1_HEAD_VERSION",
+      `headVersionId ${rawHeadVersionId} does not exist in versions[].`,
+    );
+  }
+
+  try {
+    assertProjectBudgets(rawNodes.length, rawEdges.length);
+  } catch (error) {
+    return reject(
+      "GRAPH_BUDGET_EXCEEDED",
+      error instanceof Error ? error.message : "Graph is too large.",
+    );
+  }
+
+  const assetsById = new Map<string, Record<string, unknown>>();
+  for (const [index, candidate] of assets.entries()) {
+    const asset = objectRecord(candidate);
+    const id = asset?.id;
+    const mediaType = String(asset?.mediaType || "");
+    if (
+      !asset ||
+      typeof id !== "string" ||
+      !id ||
+      assetsById.has(id) ||
+      typeof asset.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/i.test(asset.sha256) ||
+      !Number.isSafeInteger(asset.byteSize) ||
+      Number(asset.byteSize) < 1 ||
+      !/^(image\/(png|jpeg|webp)|video\/mp4|audio\/(mpeg|wav)|font\/woff2)$/.test(mediaType)
+    ) {
+      return reject(
+        "INVALID_V1_ASSET",
+        `Asset ${index} is malformed or has a duplicate ID.`,
+      );
+    }
+    assetsById.set(id, asset);
+  }
+
+  const sourceDependenciesByAsset = new Map<
+    string,
+    VideoCanvasSourceDependency & { assetId: string }
+  >();
+  if (options.sourceDependencies !== undefined) {
+    if (options.sourceDependencies.length !== assetsById.size) {
+      return reject(
+        "INCOMPLETE_ASSET_DEPENDENCY_CLOSURE",
+        "The pinned source dependency set does not cover every v1 asset.",
+      );
+    }
+    let dependencyRootId = "";
+    for (const dependency of options.sourceDependencies) {
+      const assetId = dependency.assetId;
+      const sourceAsset = assetsById.get(assetId);
+      if (
+        !sourceAsset ||
+        sourceDependenciesByAsset.has(assetId) ||
+        (dependencyRootId && dependency.artifactId !== dependencyRootId) ||
+        !validVideoCanvasSourceDependency(dependency, {
+          contentDigest: sourceAsset.sha256,
+          mime: sourceAsset.mediaType,
+        })
+      ) {
+        return reject(
+          "INVALID_ASSET_DEPENDENCY",
+          `The pinned source dependency for ${assetId || "an asset"} does not match its source evidence.`,
+        );
+      }
+      dependencyRootId ||= dependency.artifactId;
+      sourceDependenciesByAsset.set(assetId, dependency);
+    }
+  }
+
+  const nodeIds = new Set<string>();
+  const sourceNodes = new Map<string, Record<string, unknown>>();
+  for (const [index, candidate] of rawNodes.entries()) {
+    const node = objectRecord(candidate);
+    const ports = objectRecord(node?.ports);
+    if (
+      !node ||
+      typeof node.id !== "string" ||
+      !node.id ||
+      nodeIds.has(node.id) ||
+      typeof node.kind !== "string" ||
+      !VERSIONED_V1_NODE_KINDS.has(node.kind) ||
+      typeof node.x !== "number" || !Number.isFinite(node.x) ||
+      typeof node.y !== "number" || !Number.isFinite(node.y) ||
+      (node.params !== undefined && !objectRecord(node.params)) ||
+      !ports ||
+      !Array.isArray(ports.inputs) ||
+      !Array.isArray(ports.outputs) ||
+      (node.assetId !== undefined && node.assetId !== null &&
+        (typeof node.assetId !== "string" || !assetsById.has(node.assetId)))
+    ) {
+      return reject(
+        "INVALID_V1_GRAPH",
+        `Node ${index} is malformed or references an unknown Asset.`,
+      );
+    }
+    for (const [direction, list] of [["inputs", ports.inputs], ["outputs", ports.outputs]] as const) {
+      const portNames = new Set<string>();
+      for (const portCandidate of list) {
+        const port = objectRecord(portCandidate);
+        if (
+          !port ||
+          typeof port.name !== "string" ||
+          !port.name ||
+          portNames.has(port.name) ||
+          typeof port.dataType !== "string" ||
+          !VERSIONED_V1_PORT_TYPES.has(port.dataType)
+        ) {
+          return reject(
+            "INVALID_V1_GRAPH",
+            `Node ${index} has a malformed ${direction} port.`,
+          );
+        }
+        portNames.add(port.name);
+      }
+    }
+    if (typeof node.label !== "string" || !node.label.trim()) {
+      return reject("INVALID_V1_GRAPH", `Node ${index} has no display label.`);
+    }
+    nodeIds.add(node.id);
+    sourceNodes.set(node.id, node);
+  }
+
+  const edgeIds = new Set<string>();
+  for (const [index, candidate] of rawEdges.entries()) {
+    const edge = objectRecord(candidate);
+    const from = typeof edge?.fromNodeId === "string" ? sourceNodes.get(edge.fromNodeId) : undefined;
+    const to = typeof edge?.toNodeId === "string" ? sourceNodes.get(edge.toNodeId) : undefined;
+    const fromPorts = objectRecord(from?.ports);
+    const toPorts = objectRecord(to?.ports);
+    const sourcePort = typeof edge?.fromPort === "string" ? edge.fromPort : "";
+    const targetPort = typeof edge?.toPort === "string" ? edge.toPort : "";
+    const sourcePortExists = Array.isArray(fromPorts?.outputs) &&
+      fromPorts.outputs.some((port) => objectRecord(port)?.name === sourcePort);
+    const targetPortExists = Array.isArray(toPorts?.inputs) &&
+      toPorts.inputs.some((port) => objectRecord(port)?.name === targetPort);
+    if (
+      !edge ||
+      typeof edge.id !== "string" ||
+      !edge.id ||
+      edgeIds.has(edge.id) ||
+      !from ||
+      !to ||
+      !sourcePort ||
+      !targetPort ||
+      !sourcePortExists ||
+      !targetPortExists ||
+      (edge.condition !== undefined && typeof edge.condition !== "string")
+    ) {
+      return reject(
+        "INVALID_V1_GRAPH",
+        `Edge ${index} is malformed, dangling, or references a missing port.`,
+      );
+    }
+    edgeIds.add(edge.id);
+  }
+
+  let project = createVideoProject(
+    typeof source.title === "string" && source.title.trim()
+      ? source.title
+      : typeof head.note === "string" && head.note.trim()
+        ? head.note
+        : "Migrated video-canvas project",
+    false,
+  );
+  const version = projectHead(project);
+  if (typeof head.createdAt === "string" && Number.isFinite(Date.parse(head.createdAt))) {
+    version.createdAt = head.createdAt;
+  }
+  version.reason = "project.migrate.video-canvas.v1";
+  const mappedAssets: Record<string, ProjectAsset> = {};
+  const sourcePathByAsset = new Map<string, string>();
+  for (const candidate of rawNodes) {
+    const node = objectRecord(candidate);
+    const assetId = typeof node?.assetId === "string"
+      ? node.assetId
+      : typeof node?.id === "string" && assetsById.has(node.id)
+        ? node.id
+        : "";
+    if (!assetId || !assetsById.has(assetId)) continue;
+    const path = objectRecord(node?.params)?.path;
+    if (typeof path !== "string") continue;
+    if (sourcePathByAsset.has(assetId) && sourcePathByAsset.get(assetId) !== path) {
+      return reject(
+        "AMBIGUOUS_ASSET_DEPENDENCY_PATH",
+        `V1 asset ${assetId} refers to more than one source path.`,
+      );
+    }
+    sourcePathByAsset.set(assetId, path);
+  }
+  for (const asset of assetsById.values()) {
+    const assetId = String(asset.id);
+    const sourceDependency = sourceDependenciesByAsset.get(assetId);
+    const sourcePath = sourcePathByAsset.get(assetId);
+    if (
+      sourceDependency &&
+      (!sourcePath || sourceDependency.path !== sourcePath)
+    ) {
+      return reject(
+        "ASSET_DEPENDENCY_PATH_MISMATCH",
+        `V1 asset ${assetId} source path does not match its owner-pinned dependency.`,
+      );
+    }
+    mappedAssets[assetId] = {
+      assetId,
+      kind: versionedV1AssetKind(String(asset.mediaType)),
+      origin: "import",
+      immutable: true,
+      title: assetId,
+      mime: String(asset.mediaType),
+      contentDigest: String(asset.sha256),
+      ...(sourceDependency
+        ? {
+            sourceDependency: {
+              artifactId: sourceDependency.artifactId,
+              revisionId: sourceDependency.revisionId,
+              path: sourceDependency.path,
+              sha256: sourceDependency.sha256,
+              mediaType: sourceDependency.mediaType,
+              byteSize: sourceDependency.byteSize,
+            },
+          }
+        : {}),
+      createdAt: version.createdAt,
+      legacySourceAsset: clone(asset),
+    };
+  }
+  version.graph.nodes = rawNodes.map((candidate) => {
+    const node = objectRecord(candidate)!;
+    const params = objectRecord(node.params) || {};
+    const kind = versionedV1NodeKind(node, assetsById);
+    const durationMs = params.durationMs;
+    const durationSeconds = typeof durationMs === "number" && Number.isFinite(durationMs)
+      ? durationMs / 1000
+      : typeof params.durationSeconds === "number" && Number.isFinite(params.durationSeconds)
+        ? params.durationSeconds
+        : undefined;
+    const ratio = params.ratio;
+    return {
+      nodeId: String(node.id),
+      kind,
+      title: String(node.label),
+      position: { x: Number(node.x), y: Number(node.y) },
+      ...(typeof node.assetId === "string" ? { assetId: node.assetId } : {}),
+      ...(typeof params.prompt === "string" ? { prompt: params.prompt } : {}),
+      ...(typeof params.text === "string" ? { text: params.text } : {}),
+      ...(typeof params.model === "string" ? { model: params.model } : {}),
+      ratio: ratio === "9:16" || ratio === "1:1" ? ratio : "16:9",
+      ...(durationSeconds === undefined ? {} : { durationSeconds }),
+      localEditRecipe: [],
+      legacySourceNode: clone(node),
+    };
+  });
+  version.graph.edges = rawEdges.map((candidate) => {
+    const edge = objectRecord(candidate)!;
+    return {
+      edgeId: String(edge.id),
+      sourceNodeId: String(edge.fromNodeId),
+      targetNodeId: String(edge.toNodeId),
+      sourceHandle: String(edge.fromPort),
+      targetHandle: String(edge.toPort),
+      legacySourceEdge: clone(edge),
+    };
+  });
+  report.idMap = Object.fromEntries(
+    rawNodes.map((candidate, index) => [
+      `${String(objectRecord(candidate)?.id)}:${index}`,
+      String(objectRecord(candidate)?.id),
+    ]),
+  );
+  report.migratedNodeCount = version.graph.nodes.length;
+  report.migratedEdgeCount = version.graph.edges.length;
+  project = {
+    ...project,
+    versions: { [version.versionId]: version },
+    assets: mappedAssets,
+    migration: {
+      sourceSchema: VERSIONED_V1_WORKFLOW_SCHEMA,
+      sourceDigest,
+      sourceDigestAlgorithm: "fnv1a-dual32",
+      sourceHeadVersionId: rawHeadVersionId,
+      sourceDocument: clone(source),
+    },
+  };
+  return { ok: true, project, report };
+}
+
+export function migrateV1Workflow(
+  input: unknown,
+  options: { sourceDependencies?: Array<VideoCanvasSourceDependency & { assetId: string }> } = {},
+): V1MigrationResult {
+  const source = objectRecord(input);
+  if (source?.schemaVersion === VERSIONED_V1_WORKFLOW_SCHEMA) {
+    return migrateVersionedV1Workflow(input, source, options);
+  }
+  const rawNodes = Array.isArray(source?.nodes) ? source.nodes : [];
+  const rawEdges = Array.isArray(source?.edges) ? source.edges : [];
+  const sourceDigest = deterministicDigest(input);
+  const report: V1MigrationReport = {
+    sourceDigest,
+    sourceDigestAlgorithm: "fnv1a-dual32",
+    inputNodeCount: rawNodes.length,
+    inputEdgeCount: rawEdges.length,
+    migratedNodeCount: 0,
+    migratedEdgeCount: 0,
+    importedAssetCount: 0,
+    idMap: {},
+    discardedRuntimeFields: [],
+    inaccessibleMedia: [],
+    externalTasksRequiringReview: [],
+    issues: [],
+  };
+  if (
+    !source ||
+    (source.schema !== undefined &&
+      source.schema !== "oceanleo.video.canvas.v1") ||
+    !Array.isArray(source.nodes) ||
+    !Array.isArray(source.edges)
+  ) {
+    report.issues.push({
+      severity: "error",
+      code: "INVALID_V1_DOCUMENT",
+      message: "Input is not an oceanleo.video.canvas.v1 graph.",
+    });
+    return { ok: false, project: null, report };
+  }
+  try {
+    assertProjectBudgets(rawNodes.length, rawEdges.length);
+  } catch (error) {
+    report.issues.push({
+      severity: "error",
+      code: "GRAPH_BUDGET_EXCEEDED",
+      message: error instanceof Error ? error.message : "Graph is too large.",
+    });
+    return { ok: false, project: null, report };
+  }
+
+  let project = createVideoProject(
+    typeof source.title === "string" ? source.title : "Migrated LeoVideo project",
+    false,
+  );
+  const version = projectHead(project);
+  const usedNodeIds = new Set<string>();
+  for (const [index, rawNode] of rawNodes.entries()) {
+    const candidate = objectRecord(rawNode);
+    const data = objectRecord(candidate?.data) || {};
+    if (!candidate) {
+      report.issues.push({
+        severity: "warning",
+        code: "INVALID_NODE_SKIPPED",
+        message: `Node ${index} is not an object and was skipped.`,
+      });
+      continue;
+    }
+    const legacyId =
+      typeof candidate.id === "string" && candidate.id
+        ? candidate.id
+        : `missing-${index}`;
+    let nodeId = legacyId;
+    if (!candidate.id || usedNodeIds.has(nodeId)) {
+      nodeId = deterministicLegacyId("node", sourceDigest, `${legacyId}:${index}`);
+    }
+    usedNodeIds.add(nodeId);
+    report.idMap[`${legacyId}:${index}`] = nodeId;
+    const position = objectRecord(candidate.position) || {};
+    const runtimeFields = ["status", "progress", "error", "taskId"].filter(
+      (field) => data[field] !== undefined,
+    );
+    if (runtimeFields.length) {
+      report.discardedRuntimeFields.push({ nodeId, fields: runtimeFields });
+    }
+    if (typeof data.taskId === "string" && data.taskId) {
+      report.externalTasksRequiringReview.push({
+        nodeId,
+        taskId: data.taskId,
+      });
+    }
+    const mediaUrls = [
+      data.imageUrl,
+      data.videoUrl,
+      data.audioUrl,
+      ...(Array.isArray(data.outputImages) ? data.outputImages : []),
+      ...(Array.isArray(data.outputVideos) ? data.outputVideos : []),
+      ...(Array.isArray(data.outputAudios) ? data.outputAudios : []),
+    ].filter((value): value is string => typeof value === "string" && Boolean(value));
+    for (const url of mediaUrls) {
+      report.inaccessibleMedia.push({ nodeId, url });
+      report.issues.push({
+        severity: "error",
+        code: "MEDIA_REQUIRES_VERIFIED_IMPORT",
+        nodeId,
+        message:
+          "A v1 media URL requires owner, SSRF, MIME, size, and digest verification before it can become an Asset.",
+      });
+    }
+    version.graph.nodes.push({
+      nodeId,
+      kind: mappedKind(data.kind),
+      title:
+        typeof data.title === "string" && data.title
+          ? data.title
+          : defaultNodeTitle(mappedKind(data.kind)),
+      position: {
+        x: Number.isFinite(position.x) ? Number(position.x) : index * 360,
+        y: Number.isFinite(position.y) ? Number(position.y) : 0,
+      },
+      prompt: typeof data.prompt === "string" ? data.prompt : undefined,
+      text:
+        typeof data.outputText === "string"
+          ? data.outputText
+          : typeof data.subtitleText === "string"
+            ? data.subtitleText
+            : undefined,
+      model: typeof data.model === "string" ? data.model : undefined,
+      ratio:
+        data.ratio === "9:16" || data.ratio === "1:1" ? data.ratio : "16:9",
+      durationSeconds:
+        typeof data.duration === "number" ? data.duration : undefined,
+      localEditRecipe: [],
+    });
+  }
+
+  const nodeIds = new Set(version.graph.nodes.map((node) => node.nodeId));
+  const usedEdgeIds = new Set<string>();
+  for (const [index, rawEdge] of rawEdges.entries()) {
+    const candidate = objectRecord(rawEdge);
+    if (
+      !candidate ||
+      typeof candidate.source !== "string" ||
+      typeof candidate.target !== "string"
+    ) {
+      report.issues.push({
+        severity: "warning",
+        code: "INVALID_EDGE_SKIPPED",
+        message: `Edge ${index} is malformed and was skipped.`,
+      });
+      continue;
+    }
+    const sourceId =
+      version.graph.nodes.find((node) => node.nodeId === candidate.source)
+        ?.nodeId ||
+      report.idMap[`${candidate.source}:${rawNodes.findIndex(
+        (node) => objectRecord(node)?.id === candidate.source,
+      )}`];
+    const targetId =
+      version.graph.nodes.find((node) => node.nodeId === candidate.target)
+        ?.nodeId ||
+      report.idMap[`${candidate.target}:${rawNodes.findIndex(
+        (node) => objectRecord(node)?.id === candidate.target,
+      )}`];
+    if (!sourceId || !targetId || !nodeIds.has(sourceId) || !nodeIds.has(targetId)) {
+      report.issues.push({
+        severity: "warning",
+        code: "DANGLING_EDGE_SKIPPED",
+        message: `Edge ${index} references a skipped node.`,
+      });
+      continue;
+    }
+    const legacyEdgeId =
+      typeof candidate.id === "string" && candidate.id
+        ? candidate.id
+        : `missing-edge-${index}`;
+    let edgeId = legacyEdgeId;
+    if (!candidate.id || usedEdgeIds.has(edgeId)) {
+      edgeId = deterministicLegacyId(
+        "edge",
+        sourceDigest,
+        `${legacyEdgeId}:${index}`,
+      );
+    }
+    usedEdgeIds.add(edgeId);
+    version.graph.edges.push({
+      edgeId,
+      sourceNodeId: sourceId,
+      targetNodeId: targetId,
+      sourceHandle:
+        typeof candidate.sourceHandle === "string"
+          ? candidate.sourceHandle
+          : undefined,
+      targetHandle:
+        typeof candidate.targetHandle === "string"
+          ? candidate.targetHandle
+          : undefined,
+    });
+  }
+  report.migratedNodeCount = version.graph.nodes.length;
+  report.migratedEdgeCount = version.graph.edges.length;
+  if (report.issues.some((issue) => issue.severity === "error")) {
+    return { ok: false, project: null, report };
+  }
+  project = {
+    ...project,
+    versions: { [version.versionId]: version },
+    migration: {
+      sourceSchema: "oceanleo.video.canvas.v1",
+      sourceDigest,
+      sourceDigestAlgorithm: "fnv1a-dual32",
+    },
+  };
+  return { ok: true, project, report };
+}
