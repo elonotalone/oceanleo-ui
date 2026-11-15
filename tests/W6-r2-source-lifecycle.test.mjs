@@ -35,7 +35,6 @@ import {
   isTimelineDoc,
   patchClipIn,
 } from "../src/shell/video-editor/timeline-model.ts";
-import { planGamePreviewControl } from "../src/shell/game-editor/game-preview-controls.ts";
 
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
@@ -201,20 +200,4 @@ test("video-timeline: valid stored envelope loads, clip edit serializes, reopen 
     reopened.tracks.find((track) => track.kind === "text").clips[0].text,
     "修订后的字幕",
   );
-});
-
-test("game Code preview buttons change playback state; play preview stays non-editable", () => {
-  const stopped = planGamePreviewControl({ paused: false, reloadKey: 3 }, "stop");
-  assert.equal(stopped.paused, true);
-  assert.equal(stopped.reloadKey, 3);
-  const reloaded = planGamePreviewControl(stopped, "reload");
-  assert.equal(reloaded.paused, false);
-  assert.equal(reloaded.reloadKey, 4);
-  const code = readFileSync("src/shell/game-editor/GameCodeStage.tsx", "utf8");
-  assert.match(code, /<GameProjectEditor/);
-  const editor = readFileSync("src/shell/game-editor/GameProjectEditor.tsx", "utf8");
-  assert.match(editor, /api.play/);
-  assert.match(editor, /sandbox="allow-scripts allow-pointer-lock"/);
-  const play = readFileSync("src/shell/advanced-routes/GameRoute.tsx", "utf8");
-  assert.doesNotMatch(play, /usePluginCommandSurface/);
 });

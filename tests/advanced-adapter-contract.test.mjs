@@ -14,7 +14,6 @@ const source = (path) =>
  */
 const ROUTE_LEAF = {
   GridRoute: "../src/shell/doc-editors/GridUniverStage.tsx",
-  GameRoute: "../src/shell/game-editor/GameProjectEditor.tsx",
 };
 const routeSource = (route) =>
   source(ROUTE_LEAF[route] || `../src/shell/advanced-routes/${route}.tsx`);
@@ -30,7 +29,7 @@ const routeSource = (route) =>
 //
 // **编辑器落地时把 14 / 13 翻回 16 / 15**：下面那条缺席断言会先红出来提醒。
 test("every trusted editor declares project, viewport, toolbar and persistence ownership", () => {
-  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 13);
+  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 9);
   for (const unshipped of ["geo-map", "interactive-doc"]) {
     assert.equal(
       Object.hasOwn(TRUSTED_EDITOR_REGISTRY, unshipped),
@@ -38,21 +37,11 @@ test("every trusted editor declares project, viewport, toolbar and persistence o
       `${unshipped} 有注册项了，说明编辑器落地：本组判据要翻回 16 / 15`,
     );
   }
-  assert.deepEqual(TRUSTED_EDITOR_REGISTRY.office, {
-    routeType: "none",
-    artifactCapabilities: [],
-    featureId: null,
-    routable: false,
-    roundTrip: [],
-    projectSchema: "office-file@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  });
+  assert.equal(TRUSTED_EDITOR_REGISTRY.office, undefined);
   assert.equal(
     Object.values(TRUSTED_EDITOR_REGISTRY).filter((entry) => entry.routable)
       .length,
-    12,
+    9,
   );
   for (const [id, contract] of Object.entries(TRUSTED_EDITOR_REGISTRY)) {
     if (!contract.routable) continue;
@@ -79,8 +68,6 @@ test("all route components use the single typed adapter prop", () => {
     "GridRoute",
     "RichDocRoute",
     "DeckRoute",
-    "WebsiteLocalRoute",
-    "GameRoute",
     "UnsupportedRoute",
   ];
   for (const route of routes) {
@@ -92,10 +79,6 @@ test("all route components use the single typed adapter prop", () => {
       route,
     );
   }
-  assert.match(
-    source("../src/shell/advanced-routes/GameRoute.tsx"),
-    /return <GameProjectEditor \{\.\.\.props\} \/>/,
-  );
   const contract = source("../src/shell/advanced-editor-adapter.ts");
   assert.match(contract, /interface AdvancedEditorAdapter/);
   assert.match(contract, /persistence\?: AdvancedEditorPersistenceAdapter/);

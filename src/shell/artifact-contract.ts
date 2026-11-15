@@ -79,8 +79,6 @@ export function gameSourceFormatAccess(
 
 export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "video-timeline",
-  "website",
-  "design-canvas",
   "deck",
   "richdoc",
   "grid",
@@ -89,7 +87,6 @@ export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "audio",
   "video-canvas",
   "threed",
-  "game",
 ] as const;
 
 export type AdvancedEditorAdapterId =
@@ -134,7 +131,7 @@ export interface AdvancedCapabilityContractEntry {
   sourceMediaType: string;
   editorCapability: string;
   artifactBindings: readonly AdvancedCapabilityArtifactBinding[];
-  adapter: AdvancedEditorAdapterId;
+  adapter: AdvancedEditorAdapterId | "work";
   projectSchema: string;
   editability: Exclude<ArtifactEditability, "view_only">;
   sourceIntegrity: "content_addressed" | "complete_dependency_closure";
@@ -181,7 +178,7 @@ const ADVANCED_CAPABILITY_ROWS = [
     artifactBindings: [
       { artifactType: "website", editorCapabilities: ["website-editor"] },
     ],
-    adapter: "website",
+    adapter: "work",
     projectSchema: "website-source@1",
     editability: "native",
     sourceIntegrity: "complete_dependency_closure",
@@ -215,7 +212,7 @@ const ADVANCED_CAPABILITY_ROWS = [
        */
       { artifactType: "vector_image", editorCapabilities: ["vector-editor"] },
     ],
-    adapter: "design-canvas",
+    adapter: "image",
     projectSchema: "oceanleo.design-document.v1",
     editability: "native",
     sourceIntegrity: "content_addressed",
@@ -437,7 +434,7 @@ const ADVANCED_CAPABILITY_ROWS = [
     artifactBindings: [
       { artifactType: "game", editorCapabilities: ["game-editor"] },
     ],
-    adapter: "game",
+    adapter: "work",
     projectSchema: GAME_PROJECT_SOURCE_FORMAT,
     editability: "bounded",
     sourceIntegrity: "content_addressed",
@@ -553,11 +550,12 @@ for (const entry of ADVANCED_CAPABILITY_MATRIX) {
   if (ADVANCED_CAPABILITY_BY_FEATURE.has(entry.featureId)) {
     throw new Error(`Duplicate advanced feature id: ${entry.featureId}`);
   }
-  if (ADVANCED_CAPABILITY_BY_ADAPTER.has(entry.adapter)) {
-    throw new Error(`Duplicate advanced adapter target: ${entry.adapter}`);
-  }
   ADVANCED_CAPABILITY_BY_FEATURE.set(entry.featureId, entry);
-  ADVANCED_CAPABILITY_BY_ADAPTER.set(entry.adapter, entry);
+  // Stored capability identities may share an editor; works have no editor adapter.
+  if (entry.adapter !== "work" &&
+      (!ADVANCED_CAPABILITY_BY_ADAPTER.has(entry.adapter) || entry.featureId === "image_editing")) {
+    ADVANCED_CAPABILITY_BY_ADAPTER.set(entry.adapter, entry);
+  }
 
   const canonicalBinding = entry.artifactBindings.find(
     (binding) =>
@@ -583,9 +581,9 @@ for (const entry of ADVANCED_CAPABILITY_MATRIX) {
   }
 }
 
-if (ADVANCED_CAPABILITY_MATRIX.length !== ADVANCED_EDITOR_ADAPTER_IDS.length) {
+if (ADVANCED_EDITOR_ADAPTER_IDS.some((id) => !ADVANCED_CAPABILITY_BY_ADAPTER.has(id))) {
   throw new Error(
-    "The shared advanced capability matrix and adapter list must have equal lengths",
+    "Every editor adapter must have a canonical capability",
   );
 }
 
@@ -1061,7 +1059,7 @@ export interface AdvancedCapabilityDispatchReceipt extends ArtifactIdentity {
   artifactType: ArtifactType;
   sourceFormat: string;
   editorCapability: string;
-  adapter: AdvancedEditorAdapterId;
+  adapter: AdvancedEditorAdapterId | "work";
   projectSchema: string;
   sourceRevisionId: string;
   sourceDigest: string;

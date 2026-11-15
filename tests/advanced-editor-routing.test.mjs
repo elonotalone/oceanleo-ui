@@ -42,17 +42,13 @@ test("advanced editor routing covers every durable material family", () => {
     [
       "audio",
       "deck",
-      "design-canvas",
-      "game",
       "grid",
       "image",
-      "office",
       "pdf",
       "richdoc",
       "threed",
       "video-canvas",
       "video-timeline",
-      "website",
     ],
   );
   for (const entry of Object.values(TRUSTED_EDITOR_REGISTRY)) {

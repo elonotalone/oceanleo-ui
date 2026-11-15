@@ -11,7 +11,6 @@ import { blankDesignDocument } from "../src/shell/design-canvas/blank-design-doc
 import {
   audioSourcePersistenceAdmitted,
   designCanvasLocalSourceAdmission,
-  gameSourceAdmission,
   imageSourcePersistenceAdmitted,
   model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
@@ -28,28 +27,6 @@ function persistFromAdmission(admitted, item) {
   return admitted.ok
     ? { ok: true, item }
     : { ok: false, error: admitted.error };
-}
-
-function durableGame(item = {}) {
-  return {
-    key: "artifact:game",
-    source: "artifact",
-    id: "game-1",
-    title: "已有游戏",
-    kind: "game",
-    siteId: "game",
-    favorite: false,
-    artifactId: "game-art",
-    revisionId: "game-rev",
-    artifactType: "game",
-    meta: {},
-    artifact: {
-      artifactId: "game-art",
-      revisionId: "game-rev",
-      renditions: {},
-    },
-    ...item,
-  };
 }
 
 test("grid: existing source plus empty plan is fail-closed; new local empty is not", () => {
@@ -226,41 +203,6 @@ test("image / pdf / audio / 3d persistence admission refuses load failure", () =
     model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: true }).ok,
     true,
   );
-});
-
-test("game: durable envelope missing is fail-closed; a new local draft is not", () => {
-  const missing = gameSourceAdmission(durableGame());
-  assert.equal(missing.ok, false);
-  assert.match(missing.error, /未改用空白稿覆盖原件/);
-  assert.equal(persistFromAdmission(missing, { title: "blank-game" }).ok, false);
-
-  const present = gameSourceAdmission(
-    durableGame({
-      artifact: {
-        artifactId: "game-art",
-        revisionId: "game-rev",
-        renditions: {
-          full: {
-            url: "https://cdn.test/game.json",
-            digest: "sha256:abc",
-          },
-        },
-      },
-    }),
-  );
-  assert.equal(present.ok, true);
-
-  const fresh = gameSourceAdmission({
-    key: "local:game",
-    source: "creation",
-    id: "local-game",
-    title: "新游戏",
-    kind: "game",
-    siteId: "game",
-    favorite: false,
-    meta: { advanced_editor_route: "game" },
-  });
-  assert.equal(fresh.ok, true);
 });
 
 test("audio command surface lists no mutate commands until source is ready", () => {

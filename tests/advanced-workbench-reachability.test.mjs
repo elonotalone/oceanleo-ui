@@ -245,18 +245,12 @@ const workbenchStubs = {
     "时间线剪辑",
     "about:blank",
   ),
-  "./advanced-routes/GameRoute": namedRouteStub(
-    "GameRoute",
-    "game",
-    "游戏编辑",
-    "about:blank",
-  ),
-  "./advanced-routes/WebsiteLocalRoute": namedRouteStub(
-    "WebsiteLocalRoute",
-    "website",
-    "网站编辑",
-    "about:blank",
-  ),
+  "./works-workbench/WorkWorkbenchRoute": dataModule(`
+    import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+    export function WorkWorkbenchRoute({ item }) {
+      return jsx("div", { "data-workbench-editor": "work", "data-work-item": item.id, children: "Works workbench" });
+    }
+  `),
   "./advanced-routes/VideoCanvasRoute": namedRouteStub(
     "VideoCanvasRoute",
     "video-canvas",
@@ -389,32 +383,10 @@ const CASES = [
     }),
   },
   {
-    id: "game",
-    userName: "游戏",
-    adapter: "game",
-    editorId: "game",
-    item: libraryItem({
-      id: "wb-game",
-      kind: "game",
-      meta: { advanced_editor_route: "game" },
-    }),
-  },
-  {
-    id: "website",
-    userName: "网站",
-    adapter: "website",
-    editorId: "website",
-    item: libraryItem({
-      id: "wb-website",
-      kind: "website",
-      meta: { website_id: "gate-site" },
-    }),
-  },
-  {
     id: "design",
     userName: "设计稿",
     // 设计画布并入图片编辑器：adapter 仍记 design-canvas，落点是 ImageRoute。
-    adapter: "design-canvas",
+    adapter: "image",
     editorId: "image",
     item: libraryItem({
       id: "wb-design",
@@ -433,10 +405,10 @@ const CASES = [
   },
 ];
 
-test("清单自检：CASES 覆盖 12 件插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
+test("清单自检：CASES 覆盖九件编辑器和设计画布插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
   // `table-driven-registration-guard` 判据 2：按命名表 for-of 注册的用例必须配长度正对照。
   // 12 = ADVANCED_PLUGIN_FEATURE_IDS 的件数（图表编辑器 2026-10-22 已删）（advanced-plugin-open.test.mjs 钉的同一个数）。
-  assert.equal(CASES.length, 12, `CASES 夹具应覆盖 12 件插件，实测 ${CASES.length} 件`);
+  assert.equal(CASES.length, 10, `CASES 夹具应覆盖九件编辑器和设计画布插件，实测 ${CASES.length} 件`);
   const editorIds = CASES.map((spec) => spec.editorId);
   // design 夹具与 image 夹具落在同一个编辑器（ImageRoute），editorId 允许重复一次。
   assert.equal(new Set(editorIds).size, editorIds.length - 1, `CASES 里有重复的 editorId：${editorIds}`);
@@ -589,3 +561,17 @@ test("slides / docs 不是工作台直达件：本闸不适用 hosted 叶子", (
     "工作台开始直达 hosted 叶子了，slides/docs 的不适用声明要收回",
   );
 });
+
+for (const type of ["website", "game"]) {
+  test(`${type} mounts WorkWorkbenchRoute without editor chrome or persistence`, async () => {
+    const item = libraryItem({ id: `work-${type}`, kind: type, artifactType: type });
+    assert.deepEqual(editorCapabilityFor(item).route, { type: "work" });
+    const mounted = await mountWorkbench(item);
+    try {
+      const work = await waitForEditor(mounted.container, "work");
+      assert.equal(work.dataset.workItem, item.id);
+      assert.equal(mounted.container.querySelector("[data-inline-editor], [data-workspace-floating-toolbar], [data-save-state]"), null);
+      assert.equal(mounted.container.querySelector("iframe"), null);
+    } finally { await mounted.unmount(); }
+  });
+}

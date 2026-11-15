@@ -45,9 +45,9 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     examples: "MP4 · MOV · WebM",
   },
   website_finetuning: {
-    title: "网站精调",
-    eyebrow: "Website finetuning",
-    description: "在真实页面预览中修改布局、内容与交互。",
+    title: "网站",
+    eyebrow: "Website work",
+    description: "通过 agent 修改作品。",
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Website · HTML",
   },
@@ -114,18 +114,17 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "GLB · GLTF · HDR",
   },
-  // 第 14 类 `game`（D7）。编辑面是 prompt 迭代 + 可玩预览，没有代码编辑面、
-  // 也没有任何上传入口（D8）；文案照此写，别暗示可以导入自己的文件。
+  // Stored capability identity stays; games open the common works workbench.
   game_editing: {
-    title: "游戏创作",
-    eyebrow: "Game editing",
-    description: "用提示词迭代玩法，边改边试玩并保存新版本。",
+    title: "游戏",
+    eyebrow: "Game work",
+    description: "通过 agent 修改作品。",
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "Playable · Canvas",
   },
 };
 
-export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] =
+const ALL_FEATURES: readonly AdvancedFeatureDefinition[] =
   Object.freeze(
     ADVANCED_CAPABILITY_MATRIX.map((capability) =>
       Object.freeze({
@@ -136,8 +135,13 @@ export const ADVANCED_FEATURES: readonly AdvancedFeatureDefinition[] =
     ),
   );
 
+/** Nine full editors; stored work/design feature IDs remain readable below. */
+export const ADVANCED_FEATURES = Object.freeze(ALL_FEATURES.filter(
+  ({ capability, id }) => capability.adapter !== "work" && id !== "design_canvas",
+));
+
 const FEATURE_BY_ID = new Map(
-  ADVANCED_FEATURES.map((feature) => [feature.id, feature]),
+  ALL_FEATURES.map((feature) => [feature.id, feature]),
 );
 
 export function advancedFeatureById(
@@ -168,14 +172,10 @@ function advancedFeatureForAdapterId(
       return advancedFeatureById("presentation_editing");
     case "threed":
       return advancedFeatureById("model_3d");
-    case "website":
-      return advancedFeatureById("website_finetuning");
     case "design-canvas":
       return advancedFeatureById("design_canvas");
     case "video-canvas":
       return advancedFeatureById("video_canvas");
-    case "game":
-      return advancedFeatureById("game_editing");
     default:
       return null;
   }
@@ -186,6 +186,13 @@ export function advancedFeatureForItem(
 ): AdvancedFeatureDefinition | null {
   const capability = editorCapabilityFor(item);
   if (!capability.available) return null;
+  if (capability.route.type === "work") {
+    const type = item.artifact?.artifactType || item.artifactType || item.kind;
+    const game = type === "game" ||
+      [item.meta.advanced_editor_route, item.meta.editor, item.meta.feature_id, item.meta.capability_id]
+        .some((value) => value === "game" || value === "game_editing");
+    return advancedFeatureById(game ? "game_editing" : "website_finetuning");
+  }
   if (isDurableLibraryItem(item)) {
     const contract = advancedCapabilityForArtifactFields({
       artifactType: item.artifact.artifactType,
@@ -377,8 +384,8 @@ export function advancedFeatureHrefForItem(item: LibraryItem): string | null {
 }
 
 /**
- * Public material shelves keep only items that map to one of the 15 advanced
- * editors with a trusted typed capability. View-only reference rehosts fail.
+ * Public material shelves keep only items that map to one of the nine full
+ * editors or works with a trusted typed capability. View-only reference rehosts fail.
  */
 export function isAdvancedEditableShelfItem(item: LibraryItem): boolean {
   return advancedFeatureForItem(item) !== null;

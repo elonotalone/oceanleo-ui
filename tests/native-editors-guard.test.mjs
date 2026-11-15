@@ -102,14 +102,12 @@ const EDITOR_DIRS = [
   "shell/doc-editors",
   "shell/image-editor",
   "shell/video-editor",
-  "shell/website-local",
   "shell/workflow-carrier",
 ];
 
 // Family merge: website materials render their isolated runtime instead of a cover image.
 // This is a read-only UGC preview, with its origin and sandbox checked below.
 const IFRAME_ALLOWLIST = new Map([
-  ["src/shell/website-local/WebsiteMaterialRuntimePreview.tsx", "Website material runtime preview on oceanleo.app"],
 ]);
 
 test("no editor directory mounts an iframe (third-party / sub-site web app)", () => {
@@ -196,7 +194,7 @@ function item(partial) {
 
 test("routing never produces an embed route; chart is read-only with a reason", () => {
   const cases = [
-    [item({ kind: "website", meta: { draft: true, blank: true } }), "website"],
+    [item({ kind: "website", meta: { draft: true, blank: true } }), "work"],
     [item({ kind: "video_canvas", meta: { advanced_editor_route: "embed" } }), "video-canvas"],
     [item({ kind: "canvas" }), "image"],
     [item({ kind: "canvas", meta: { advanced_editor_route: "embed" } }), "image"],

@@ -51,16 +51,16 @@ beforeEach(() => {
 
 // ─── 判据 4：双核 flag ──────────────────────────────────────────────────────
 
-test("11 件编辑器每件一个 flag；grid 已翻成 next，其余 10 件默认 legacy", () => {
+test("九件编辑器每件一个 flag；grid 默认 next，其余八件默认 legacy", () => {
   assert.equal(DEFAULT_EDITOR_CORE, "legacy", "全局默认档仍是 legacy");
-  assert.equal(EDITOR_CORE_IDS.length, 11, "11 件，一件不少（图表已删，设计画布并入图片）");
+  assert.equal(EDITOR_CORE_IDS.length, 9, "11 件，一件不少（图表已删，设计画布并入图片）");
   // 2026-09-07 core-swap:delete grid：自研旧表格已删，grid 无覆盖时必须是 next——
   // 默认 legacy 就是渲染一个不存在的组件。签字写在台账那一行，不是改全局常量。
   assert.equal(EDITOR_CORE_SPECS.grid.defaultChoice, "next", "台账 grid 行没写 defaultChoice");
   assert.equal(editorCoreDefault("grid"), "next");
   assert.equal(resolveEditorCore("grid"), "next", "grid 无覆盖时必须是 next");
   const others = EDITOR_CORE_IDS.filter((id) => id !== "grid");
-  assert.equal(others.length, 10);
+  assert.equal(others.length, 8);
   for (const id of others) {
     assert.equal(EDITOR_CORE_SPECS[id].defaultChoice, undefined, `${id} 不该翻 flag`);
     assert.equal(resolveEditorCore(id), "legacy", id);
@@ -109,7 +109,7 @@ test("本波不换核的件恒为 legacy —— 翻 flag 也没用", () => {
 
 test("换核的件：显式入参 > 本地覆盖 > 默认", () => {
   const swap = EDITOR_CORE_IDS.filter((id) => editorSwapsCore(id));
-  assert.ok(swap.length >= 6, "仍换核的件应有 6 件（grid/image/pdf/richdoc/audio/website）");
+  assert.ok(swap.length >= 5, "仍换核的件应有 6 件（grid/image/pdf/richdoc/audio/website）");
   // 取一件台账默认仍是 legacy 的（grid 已翻 next，另有专门一例）。
   const id = swap.find((each) => editorCoreDefault(each) === "legacy");
   assert.ok(id, "换核且默认 legacy 的件一件都没有，这条在空转");
@@ -540,11 +540,11 @@ function modeHost(Header, pluginId, calls, extraProps = {}) {
   return React.createElement(ModeHost);
 }
 
-test("共用顶栏一行：只有 grid / pdf / website 有专业编辑页签；不再挂开关", async () => {
+test("共用顶栏一行：只有 grid / pdf 有专业编辑页签；不再挂开关", async () => {
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   const pluginIds = await loadPluginThemeIds();
   assert.ok(
-    pluginIds.length >= 10,
+    pluginIds.length === 9,
     `插件清单只剩 ${pluginIds.length} 件。十件 Advanced 编辑器共用这一条顶栏，` +
       "清单缩到 10 以下说明取表取错了（这条判据会因此空转）。",
   );
@@ -863,7 +863,7 @@ test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏", async (
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   const { pluginThemeIdForAdapter } = await loadThemeMod();
   const pluginIds = await loadPluginThemeIds();
-  assert.ok(pluginIds.length >= 10, "主题表缩到 10 以下，这条会空转");
+  assert.ok(pluginIds.length === 9, "主题表缩到 10 以下，这条会空转");
 
   // 带版本后缀的 adapter id 必须归一化（生产函数的契约），不许只测裸名；
   // 旧的 design-canvas adapter id 读时别名到 image。

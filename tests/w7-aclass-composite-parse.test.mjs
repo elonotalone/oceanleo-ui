@@ -78,7 +78,7 @@ test("A 类 composite_image 三元组解析出 design_canvas，不为 null", () 
     const entry = resolve(triple);
     assert.ok(entry, "A 类三元组解析为 null");
     assert.equal(entry.featureId, "design_canvas");
-    assert.equal(entry.adapter, "design-canvas");
+    assert.equal(entry.adapter, "image");
   }
 });
 

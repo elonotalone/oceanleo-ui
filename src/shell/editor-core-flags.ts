@@ -76,8 +76,6 @@ export const EDITOR_CORE_SPECS: Record<EditorCoreId, EditorCoreSpec> = {
   "video-timeline": { nextCore: null, owner: "W09", hosting: "none" },
   audio: { nextCore: "wavesurfer.js", owner: "W10", hosting: "native" },
   threed: { nextCore: null, owner: "W11", hosting: "none" },
-  website: { nextCore: "Puck", owner: "W13", hosting: "native" },
-  game: { nextCore: null, owner: "W14", hosting: "none" },
   // 视频画布：本仓 React Flow 是唯一编辑面。
   "video-canvas": { nextCore: null, owner: "W15", hosting: "none" },
 };

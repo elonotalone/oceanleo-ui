@@ -96,7 +96,7 @@ export async function preloadEditorFor(
   item: LibraryItem,
 ): Promise<EditorPreloadResult> {
   const routeIds = routeIdsForItem(item);
-  const hint = sourceHintForItem(item);
+  const hint = routeIds.includes("work") ? { url: "" } : sourceHintForItem(item);
   const codeWork = Promise.all(routeIds.map((id) => preloadEditorRoute(id)));
   const sourceWork = hint.url
     ? prefetchOfficeSource(item).catch(() => null)
@@ -110,7 +110,7 @@ export async function preloadEditorFor(
 }
 
 const SITE_HOME_ROUTE: Record<string, string> = {
-  website: "website",
+  website: "work",
   design: "image",
   video: "video-timeline",
   image: "image",
@@ -127,12 +127,13 @@ const SITE_HOME_ROUTE: Record<string, string> = {
   grid: "grid",
   "3d": "threed",
   threed: "threed",
-  game: "game",
+  game: "work",
 };
 
 const FEATURE_HOME_ROUTE: Record<string, string> = {
   video_editing: "video-timeline",
-  website_finetuning: "website",
+  website_finetuning: "work",
+  game_editing: "work",
   design_canvas: "image",
   presentation_editing: "deck",
   document_editing: "richdoc",

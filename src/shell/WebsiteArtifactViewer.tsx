@@ -40,7 +40,7 @@ import {
  * 隔离面一个字没松：frame 仍用 `webViewerFrameSandbox(false)`
  * （UNTRUSTED_FRAME_SANDBOX，不含 same-origin 授权），页面字节仍来自网关那条
  * 带 `Content-Security-Policy: sandbox` 的只读通道，既不 `srcdoc` 也不 `blob:`
- * ——`advanced-routes/GameRoute.tsx:101` 已经写清 `srcdoc` 会让域隔离失效。
+ * 用户代码始终留在隔离域；srcdoc 会让域隔离失效。
  */
 const WEBSITE_PAGE_PURPOSES: readonly ArtifactRenditionPurpose[] = [
   "full",
@@ -211,7 +211,7 @@ function Panel({ children }: { children: ReactNode }) {
 
 /** 出口本身在详情工具条上（那是动作条的面），这里只把它们指出来。 */
 const EXIT_HINT =
-  "可用时，详情工具条上的「下载」保存完整网站源码 ZIP，「编辑」打开网站编辑器。";
+  "可用时，详情工具条上的「下载」保存完整网站源码 ZIP，「编辑」打开作品工作台。";
 
 function StaticCover({ url, title }: { url: string; title: string }) {
   return (

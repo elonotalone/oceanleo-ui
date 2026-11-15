@@ -2,6 +2,7 @@ import {
   ADVANCED_CAPABILITY_MATRIX,
   ARTIFACT_EDITOR_CAPABILITIES,
   advancedCapabilityForFeatureId,
+  advancedCapabilityForAdapter,
   type AdvancedEditorAdapterId,
   type AdvancedFeatureId,
   type ArtifactType,
@@ -17,14 +18,12 @@ export type EditorRoute =
   | { type: "grid" }
   | { type: "deck" }
   | { type: "threed" }
-  | { type: "game" }
+  | { type: "work" }
   // `advanced-session.ts` remains outside this task and still deserializes these
   // historical route labels. No adapter or workbench route is registered here.
   | { type: "geo-map" }
   | { type: "interactive-doc" }
-  // 网站 / 视频画布都是本地原生路由（WebsiteLocalRoute / VideoCanvasRoute）；
-  // 设计画布并入图片编辑器，走 `image`。不再有「整站嵌入」型路由。
-  | { type: "website" }
+  // 作品有独立工作台；设计画布并入图片编辑器。
   | { type: "video-canvas" }
   | { type: "none" };
 
@@ -62,7 +61,7 @@ export interface EditorCapability {
  *
  * 第三档是给非编辑类插件的：编辑栏是用来编辑一件素材的，而非编辑类插件没有素材
  * 输入，自身即体验，所以它一律没有编辑栏。这一档**不是适配器的属性**，因此下面
- * 15 个适配器一个都不写它：`grid` 一身二任（既是编辑类插件「表格编辑器」的内核，
+ * 九个适配器一个都不写它：`grid` 一身二任（既是编辑类插件「表格编辑器」的内核，
  * 又是台账/文献矩阵/三表模型的渲染内核），同一个适配器两种挂法。哪一次挂载落进
  * `none`，由 `workbench-routes.ts` 的 `editBarOwnershipForItem()` 按挂的是插件
  * 实例还是素材来判。
@@ -80,23 +79,6 @@ export interface RegistryEntry {
   toolbarOwnership: ToolbarOwnership;
   persistence: "project" | "native-callback";
 }
-
-export type LegacyOfficeRegistryEntry = Omit<
-  RegistryEntry,
-  | "routeType"
-  | "artifactCapabilities"
-  | "featureId"
-  | "routable"
-  | "roundTrip"
-  | "projectSchema"
-> & {
-  readonly routeType: "none";
-  readonly artifactCapabilities: readonly [];
-  readonly featureId: null;
-  readonly routable: false;
-  readonly roundTrip: readonly [];
-  readonly projectSchema: typeof LEGACY_OFFICE_PROJECT_SCHEMA;
-};
 
 type RegistryRuntime = Omit<
   RegistryEntry,
@@ -173,34 +155,6 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     toolbarOwnership: "shared",
     persistence: "project",
   },
-  /**
-   * 游戏走本地 route：完整游戏文档的可玩预览必须留在受控沙箱宿主里。
-   */
-  game: {
-    routeType: "game",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "game-project@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  website: {
-    routeType: "website",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "website-source@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  // 设计画布与图片合并为一个编辑器：同一个 `image` 路由。
-  "design-canvas": {
-    routeType: "image",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.design-document.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
   "video-canvas": {
     routeType: "video-canvas",
     roundTrip: ROUND_TRIP,
@@ -214,18 +168,10 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
 function artifactCapabilitiesForAdapter(
   adapter: Exclude<EditorAdapterId, "none">,
 ): readonly string[] {
-  const matrixEntry = ADVANCED_CAPABILITY_MATRIX.find(
-    (entry) => entry.adapter === adapter,
-  );
-  return matrixEntry
-    ? Object.freeze([
-        ...new Set(
-          matrixEntry.artifactBindings.flatMap(
-            (binding) => binding.editorCapabilities,
-          ),
-        ),
-      ])
-    : Object.freeze([]);
+  return Object.freeze([...new Set(
+    ADVANCED_CAPABILITY_MATRIX.filter((entry) => entry.adapter === adapter)
+      .flatMap((entry) => entry.artifactBindings.flatMap((binding) => binding.editorCapabilities)),
+  )]);
 }
 
 /** Executable projection of the canonical matrix plus adapter runtime mechanics. */
@@ -233,9 +179,7 @@ const ROUTABLE_EDITOR_REGISTRY = Object.freeze(
   Object.fromEntries(
     Object.entries(EDITOR_ADAPTER_RUNTIME).map(([adapterValue, runtime]) => {
       const adapter = adapterValue as Exclude<EditorAdapterId, "none">;
-      const matrixEntry = ADVANCED_CAPABILITY_MATRIX.find(
-        (entry) => entry.adapter === adapter,
-      );
+      const matrixEntry = advancedCapabilityForAdapter(adapter);
       return [
         adapter,
         Object.freeze({
@@ -249,37 +193,15 @@ const ROUTABLE_EDITOR_REGISTRY = Object.freeze(
   ),
 ) as Readonly<Record<Exclude<EditorAdapterId, "none">, RegistryEntry>>;
 
-const LEGACY_OFFICE_REGISTRY_ENTRY: LegacyOfficeRegistryEntry = Object.freeze({
-  routeType: "none",
-  artifactCapabilities: Object.freeze([] as const),
-  featureId: null,
-  routable: false,
-  roundTrip: Object.freeze([] as const),
-  projectSchema: LEGACY_OFFICE_PROJECT_SCHEMA,
-  viewportOwnership: "content",
-  toolbarOwnership: "shared",
-  persistence: "project",
-});
-
-/**
- * `office` is a rejection sentinel, not an EditorAdapterId. Keeping the
- * historical metadata contract explicit prevents callers from interpreting a
- * missing registry key as permission to guess a fallback editor.
- */
-export const TRUSTED_EDITOR_REGISTRY = Object.freeze({
-  ...ROUTABLE_EDITOR_REGISTRY,
-  office: LEGACY_OFFICE_REGISTRY_ENTRY,
-}) as Readonly<
-  Record<Exclude<EditorAdapterId, "none">, RegistryEntry> & {
-    office: LegacyOfficeRegistryEntry;
-  }
->;
+/** Exactly nine full editors. Historical Office metadata is rejected separately. */
+export const TRUSTED_EDITOR_REGISTRY = ROUTABLE_EDITOR_REGISTRY;
 
 const TRUSTED_ADAPTER_IDS = new Set<string>(
   Object.keys(ROUTABLE_EDITOR_REGISTRY),
 );
 
 for (const capability of ADVANCED_CAPABILITY_MATRIX) {
+  if (capability.adapter === "work") continue;
   if (!TRUSTED_ADAPTER_IDS.has(capability.adapter)) {
     throw new Error(
       `Advanced capability ${capability.featureId} references unknown adapter ${capability.adapter}`,
@@ -288,27 +210,12 @@ for (const capability of ADVANCED_CAPABILITY_MATRIX) {
   const registry = TRUSTED_EDITOR_REGISTRY[capability.adapter];
   if (
     !registry.routable ||
-    registry.featureId !== capability.featureId ||
-    registry.projectSchema !== capability.projectSchema ||
     !registry.artifactCapabilities.includes(capability.editorCapability)
   ) {
     throw new Error(
       `Advanced capability ${capability.featureId} drifted from adapter ${capability.adapter}`,
     );
   }
-}
-
-if (
-  TRUSTED_EDITOR_REGISTRY.office.routable ||
-  TRUSTED_EDITOR_REGISTRY.office.routeType !== "none" ||
-  TRUSTED_EDITOR_REGISTRY.office.featureId !== null ||
-  TRUSTED_EDITOR_REGISTRY.office.artifactCapabilities.length !== 0 ||
-  TRUSTED_EDITOR_REGISTRY.office.roundTrip.length !== 0 ||
-  TRUSTED_EDITOR_REGISTRY.office.projectSchema !== LEGACY_OFFICE_PROJECT_SCHEMA
-) {
-  throw new Error(
-    "Legacy Office/native-Chrome adapter must not be routable",
-  );
 }
 
 /**
@@ -324,7 +231,7 @@ export function registryEntryForAdvancedFeature(
   featureId: AdvancedFeatureId,
 ): RegistryEntry {
   const capability = advancedCapabilityForFeatureId(featureId);
-  if (!capability) {
+  if (!capability || capability.adapter === "work") {
     throw new Error(`Unknown advanced feature: ${featureId}`);
   }
   return TRUSTED_EDITOR_REGISTRY[capability.adapter];
@@ -337,6 +244,7 @@ const ARTIFACT_CAPABILITY_ADAPTER = new Map<
 const AMBIGUOUS_ARTIFACT_CAPABILITIES = new Set<string>();
 
 for (const entry of ADVANCED_CAPABILITY_MATRIX) {
+  if (entry.adapter === "work") continue;
   for (const binding of entry.artifactBindings) {
     for (const capability of binding.editorCapabilities) {
       const normalized = capability.trim().toLowerCase();
@@ -395,7 +303,7 @@ export function editorRouteHintForArtifactCapability(
  * 「用户能不能编辑这件东西」是另一件事，答案在这里：适配器注册表里
  * `routable` 为真、且承接了这一类声明的某个编辑能力。
  *
- * 注意 `website` / `video-canvas` 路由同样算数（它们是本地原生路由）。
+ * 网站和游戏走作品工作台，不属于编辑器。视频画布仍是本地编辑器。
  * 图表已无编辑器：合同矩阵与注册表都没有图表行，所以不算。
  *
  * 判据是推导出来的，不是又一份手抄清单：新增一个可路由适配器，这里自动跟上。

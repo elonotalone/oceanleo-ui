@@ -145,8 +145,8 @@ test("legacy Office sessions upgrade to typed lightweight routes only", () => {
         favorite: false,
         meta: { advanced_editor_route: "game" },
       },
-      "game",
-    ).startsWith("advanced:v2:game:"),
+      "work",
+    ).startsWith("advanced:v2:work:"),
     true,
   );
   assert.match(source, /const legacyOfficeAppId =/);
@@ -195,3 +195,17 @@ test("withInlineEditorHistoryEntry updates one head without claiming latestRootI
   assert.ok(items.some((item) => advancedRootItemId(item) === advancedRootItemId(ppt)));
   assert.ok(items.some((item) => advancedRootItemId(item) === advancedRootItemId(image)));
 });
+
+for (const kind of ["website", "game"]) {
+  test(`historical ${kind} editor snapshots reopen in the works workbench`, () => {
+    const item = { key: kind, id: kind, title: kind, source: "creation", kind, siteId: "oceanleo", favorite: false, meta: {} };
+    const snapshot = advancedSessionSnapshot(item, "work");
+    const restored = advancedSnapshotFromSession({
+      app_id: advancedSessionAppId(item, "work").replace("advanced:v2:work:", `advanced:v2:${kind}:`),
+      snapshot: { ...snapshot, editor_route: kind, item: { ...snapshot.item, meta: { advanced_editor_route: kind } } },
+    });
+    assert.ok(restored);
+    assert.equal(restored.editor_route, "work");
+    assert.equal(restored.item.meta.advanced_editor_route, "work");
+  });
+}

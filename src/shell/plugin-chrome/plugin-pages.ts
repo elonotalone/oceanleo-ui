@@ -90,7 +90,7 @@ export function buildPluginPages(
     (page) => page.kind === "aux" && !RESERVED_PAGE_IDS.has(page.id),
   );
   return [
-    { id: ARTIFACT_PAGE_ID, label: options.pluginId === "website" ? "预览" : "编辑", kind: "artifact", icon: "preview" },
+    { id: ARTIFACT_PAGE_ID, label: "编辑", kind: "artifact", icon: "preview" },
     ...(hasProPage(options.pluginId)
       ? [
           {

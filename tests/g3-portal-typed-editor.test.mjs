@@ -58,7 +58,7 @@ const pass = dataModule(`export function WorkbenchMaterialProvider({ children })
   export function AdvancedWorkbenchBlankStage() { throw new Error('No blank draft allowed'); }
   export function useWorkbenchOpenClaim() {}
 `);
-const routeNames = ['WebsiteLocalRoute', 'DeckRoute', 'RichDocRoute', 'GridRoute', 'ImageRoute', 'PdfRoute', 'Model3DRoute', 'GameRoute', 'VideoTimelineRoute', 'VideoCanvasRoute', 'AudioRoute', 'ChartRoute', 'UnsupportedRoute'];
+const routeNames = ['WorkWorkbenchRoute', 'DeckRoute', 'RichDocRoute', 'GridRoute', 'ImageRoute', 'PdfRoute', 'Model3DRoute', 'VideoTimelineRoute', 'VideoCanvasRoute', 'AudioRoute', 'ChartRoute', 'UnsupportedRoute'];
 const routes = dataModule(`import React from ${JSON.stringify(reactUrl)};\n` + routeNames.map(name => `export function ${name}(props) {
   globalThis.__g3library.editor = { route: '${name}', item: props.item, linkUrl: props.linkUrl, siteId: props.siteId, appId: props.appId };
   return React.createElement('div', { 'data-editor': '${name}', 'data-artifact': props.item.artifactId, 'data-revision': props.item.revisionId }, props.item.title);
@@ -119,6 +119,7 @@ const stubs = {
   './AgentChat': dataModule(`export function AgentChat({ workspaceContent }) { return workspaceContent; }`),
 };
 for (const name of routeNames) stubs[`./advanced-routes/${name}`] = routes;
+stubs['./works-workbench/WorkWorkbenchRoute'] = routes;
 // Keep real ArtifactActions, WorkspaceLibrary, MyLibrary and workbench dispatch.
 stubs['./ArtifactActions'] = await compileSubject('src/shell/ArtifactActions.tsx', stubs);
 const workbench = await compileSubject('src/shell/AdvancedContentWorkbench.tsx', stubs);
@@ -150,7 +151,7 @@ function material(kind, artifactType, capability, format, siteId) {
         preview: { purpose: 'preview', revisionId, url: `https://assets.test/${artifactId}.png` } } } };
 }
 const CASES = [
-  [material('website', 'website', 'website-editor', 'html', 'website'), 'WebsiteLocalRoute'],
+  [material('website', 'website', 'website-editor', 'html', 'website'), 'WorkWorkbenchRoute'],
   [material('ppt', 'deck', 'deck-editor', 'pptx', 'ppt'), 'DeckRoute'],
   [material('document', 'document', 'richdoc-editor', 'docx', 'word'), 'RichDocRoute'],
 ];
@@ -193,7 +194,7 @@ for (const [item, route] of CASES) {
       assert.equal(membershipReads, 1);
       assert.equal(globalThis.__g3library.editor.item, item);
       assert.equal(Object.hasOwn(globalThis.__g3library.editor.item.meta, 'library_projects'), false);
-      assert.equal(globalThis.__g3library.editor.linkUrl, item.url);
+      if (route !== "WorkWorkbenchRoute") assert.equal(globalThis.__g3library.editor.linkUrl, item.url);
       // The new Library task belongs to the current portal host, not the
       // artifact's origin app/site. Artifact identity and origin stay unchanged.
       assert.deepEqual(globalThis.__g3library.binding, { appId: 'library', siteId: 'oceanleo' });

@@ -11,7 +11,6 @@ import { PDFDocument } from "pdf-lib";
 
 import {
   audioSourcePersistenceAdmitted,
-  gameSourceAdmission,
   model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
@@ -64,7 +63,6 @@ import {
   parseVideoCanvasProject,
 } from "../src/shell/workflow-carrier/video-canvas-local-session.ts";
 import { flushVideoCanvasGraph } from "../src/shell/workflow-carrier/video-canvas-leave.ts";
-import { readGameProject, gameProjectEdits } from "../src/shell/game-editor/game-source.ts";
 
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
@@ -239,26 +237,6 @@ function liveModel3DEditor(initialView) {
     setAnimationPlaying() {},
   };
   return editor;
-}
-
-function durableGame(item = {}) {
-  return {
-    key: "artifact:game",
-    source: "artifact",
-    id: "game-1",
-    title: "已有游戏",
-    kind: "game",
-    artifactId: "game-art",
-    revisionId: "game-rev",
-    artifactType: "game",
-    meta: {},
-    artifact: {
-      artifactId: "game-art",
-      revisionId: "game-rev",
-      renditions: {},
-    },
-    ...item,
-  };
 }
 
 test("pdf: stored bytes hydrate, rotate command mutates, reopen restores rotation", async () => {
@@ -534,13 +512,4 @@ test("video-canvas: graph hydrates, add-node command mutates, flush reopens", as
     error: "工作流源未成功载入，未改用空白图画覆盖原件。",
   });
   assert.equal(refused.ok, false);
-});
-
-test("game project rejects missing source and wraps legacy HTML read-only", () => {
-  const missing = gameSourceAdmission(durableGame());
-  assert.equal(missing.ok, false);
-  assert.throws(() => readGameProject({}));
-  const legacy = readGameProject({ source: "<html>stored game</html>" });
-  assert.equal(legacy.readOnly, true);
-  assert.throws(() => gameProjectEdits(legacy, { "index.html": "changed" }));
 });

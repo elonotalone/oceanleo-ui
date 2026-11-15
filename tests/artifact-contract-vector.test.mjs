@@ -99,9 +99,8 @@ test("矢量素材不再走位图适配器", () => {
     editorCapability: "vector-editor",
   });
   assert.ok(capability, "svg + vector-editor 必须能在共享 matrix 里解析出能力");
-  assert.notEqual(capability.adapter, "image");
   assert.notEqual(capability.projectSchema, "oceanleo.fabric-image.v1");
-  assert.equal(capability.adapter, "design-canvas");
+  assert.equal(capability.adapter, "image");
   assert.equal(capability.projectSchema, "oceanleo.design-document.v1");
   // 矢量编辑是工程级往返，不是位图那套有界编辑。
   assert.equal(capability.editability, "native");
@@ -109,18 +108,18 @@ test("矢量素材不再走位图适配器", () => {
 });
 
 test("vector-editor 的运行时路由落在图层工程适配器上", () => {
-  assert.equal(editorAdapterForArtifactCapability("vector-editor"), "design-canvas");
+  assert.equal(editorAdapterForArtifactCapability("vector-editor"), "image");
   // 设计画布并入图片编辑器：适配器仍是 design-canvas，路由落点是 image。
   assert.equal(editorRouteHintForArtifactCapability("vector-editor"), "image");
   assert.equal(
-    TRUSTED_EDITOR_REGISTRY["design-canvas"].artifactCapabilities.includes(
+    TRUSTED_EDITOR_REGISTRY["image"].artifactCapabilities.includes(
       "vector-editor",
     ),
     true,
   );
   assert.equal(
     TRUSTED_EDITOR_REGISTRY.image.artifactCapabilities.includes("vector-editor"),
-    false,
+    true,
   );
 });
 
@@ -129,7 +128,7 @@ test("svg 素材派发出的收据带矢量该有的工程 schema", () => {
     scope: "global",
   });
   assert.equal(result.ok, true, result.ok ? "" : result.reason);
-  assert.equal(result.receipt.adapter, "design-canvas");
+  assert.equal(result.receipt.adapter, "image");
   assert.equal(result.receipt.projectSchema, "oceanleo.design-document.v1");
   assert.equal(result.receipt.editorCapability, "vector-editor");
   assert.equal(result.receipt.artifactType, "vector_image");
@@ -152,11 +151,11 @@ test("矢量下载仍交付 svg 源文件，不退化成 png", () => {
 test("deck / website / image / composite 四行未被这次修正碰到", () => {
   for (const [featureId, adapter, sourceFormat, projectSchema] of [
     ["presentation_editing", "deck", "pptx", "pptx"],
-    ["website_finetuning", "website", "website-source@1", "website-source@1"],
+    ["website_finetuning", "work", "website-source@1", "website-source@1"],
     ["image_editing", "image", "webp", "oceanleo.fabric-image.v1"],
     [
       "design_canvas",
-      "design-canvas",
+      "image",
       "oceanleo.design-document.v1",
       "oceanleo.design-document.v1",
     ],

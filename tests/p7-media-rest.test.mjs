@@ -11,30 +11,13 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 const repoFile = (relative) =>
   readFileSync(new URL(relative, import.meta.url), "utf8");
 
-const { asGameWorkingDocument, peekGameWorkingDocument, stashGameWorkingDocument, GAME_WORKING_DOCUMENT_SCHEMA } =
-  await import(
-    await compileModule("src/shell/advanced-routes/GameRoute.tsx", {
-      "../AdvancedWorkbenchShell": dataModule(
-        "export function AdvancedWorkbenchShell(){return null}",
-      ),
-      "../AdvancedContentWorkbench": dataModule(
-        "export function AdvancedContentWorkbench(){return null}",
-      ),
-    })
-  );
-
-test("owned audio/3D/PDF/game sources share one working schema and have no leave-pro lock", () => {
+test("owned audio/3D/PDF sources share one working schema and have no leave-pro lock", () => {
   const audioRoute = repoFile("../src/shell/advanced-routes/AudioRoute.tsx");
   const modelRoute = repoFile("../src/shell/advanced-routes/Model3DRoute.tsx");
   const pdfRoute = repoFile("../src/shell/advanced-routes/PdfRoute.tsx");
-  const gameRoute = repoFile("../src/shell/advanced-routes/GameRoute.tsx");
-  const gameCode = repoFile("../src/shell/game-editor/GameCodeStage.tsx");
   assert.match(audioRoute, /draftSchema:\s*"oceanleo\.audio\.edit\.v1"/);
   assert.match(modelRoute, /draftSchema:\s*"oceanleo\.threed\.edit\.v1"/);
-  assert.match(gameRoute, /GAME_WORKING_DOCUMENT_SCHEMA/);
-  assert.match(gameCode, /GameProjectEditor/);
-  assert.doesNotMatch(gameCode, /oceanleo\.game\.code\.v1/);
-  assert.doesNotMatch(pdfRoute, /draftSchema:/);
+  assert.match(pdfRoute, /draftSchema: PDF_WORKING_COPY_SCHEMA/);
   assert.doesNotMatch(pdfRoute, /W19_PRO_SAVED_AS_NEW_VERSION/);
   for (const body of [audioRoute, modelRoute, pdfRoute]) {
     assert.doesNotMatch(body, /saveBeforeLeavePro/);
@@ -51,29 +34,4 @@ test("audio and 3D no longer have hosted Pro leaf stages", () => {
   ]) {
     assert.equal(existsSync(new URL(gone, import.meta.url)), false, gone);
   }
-});
-
-test("P7 game: both faces read and write one working document", () => {
-  assert.equal(GAME_WORKING_DOCUMENT_SCHEMA, "oceanleo.game.edit.v1");
-  const item = { artifactId: "game-1", id: "game-1" };
-  const fromCode = asGameWorkingDocument({
-    envelopeUrl: "https://fixture.invalid/game.json",
-    envelopeDigest: "abc",
-    origin: "ai",
-    source: "<!doctype html><html><body><script></script></body></html>",
-    prompt: "jump",
-  });
-  assert.ok(fromCode);
-  stashGameWorkingDocument(item, fromCode);
-  const peeked = peekGameWorkingDocument(item);
-  assert.equal(peeked?.source, fromCode.source);
-  assert.equal(peeked?.envelopeUrl, fromCode.envelopeUrl);
-  const fromPlay = asGameWorkingDocument({
-    envelopeUrl: "https://fixture.invalid/game-2.json",
-    envelopeDigest: "def",
-    origin: "remix",
-  });
-  assert.ok(fromPlay);
-  assert.equal(fromPlay.source, undefined);
-  assert.equal(asGameWorkingDocument({ origin: "upload", source: "<html>" }), null);
 });

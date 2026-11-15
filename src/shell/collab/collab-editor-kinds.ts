@@ -10,15 +10,12 @@ const BY_ADAPTER: Readonly<Record<string, ImEditorKind | null>> = {
   deck: "deck",
   image: "image",
   // design-canvas 一个适配器托三种作品：合成图（默认）、矢量图、流程图；见下方 artifactType 细分。
-  "design-canvas": "image",
-  game: "game",
   threed: "model3d",
   audio: "audio",
   pdf: "pdf",
   "video-timeline": "video",
   // video-canvas 适配器的作品类型是 workflow（流程图），不是视频（artifact-contract.ts 的 video_canvas 条目）。
   "video-canvas": "workflow",
-  website: null,
   none: null,
 };
 
@@ -32,7 +29,7 @@ export function collabEditorKindForAdapter(
   artifactType?: string | null,
 ): ImEditorKind | null {
   const id = String(adapterId ?? "");
-  if (id === "design-canvas" && artifactType && BY_ARTIFACT_TYPE[artifactType]) {
+  if ((id === "image" || id === "design-canvas") && artifactType && BY_ARTIFACT_TYPE[artifactType]) {
     return BY_ARTIFACT_TYPE[artifactType]!;
   }
   return BY_ADAPTER[id] ?? null;

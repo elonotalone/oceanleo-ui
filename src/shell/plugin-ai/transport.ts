@@ -1110,10 +1110,7 @@ export function createGatewayAiTransport(
   return transportFromHandlers(
     "oceanleo-gateway",
     handlers,
-    (capability) =>
-      capability === "code.patch"
-        ? "网关没有部署 code.patch 这条路由；能改可运行产物的只有宿主注入的生成链（如 registerGameIterationRunner），共享包这边发不出这次请求。"
-        : `AI 网关没有 ${capability} 这条能力。`,
+    (capability) => `AI 网关没有 ${capability} 这条能力。`,
   );
 }
 

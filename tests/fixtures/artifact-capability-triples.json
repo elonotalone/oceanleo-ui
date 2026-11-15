@@ -71,7 +71,7 @@
       "liveRows": 234,
       "expect": {
         "featureId": "design_canvas",
-        "adapter": "design-canvas"
+        "adapter": "image"
       }
     },
     {
@@ -283,7 +283,7 @@
       "liveRows": 50416,
       "expect": {
         "featureId": "design_canvas",
-        "adapter": "design-canvas"
+        "adapter": "image"
       }
     },
     {
@@ -327,7 +327,7 @@
       "liveRows": 73,
       "expect": {
         "featureId": "website_finetuning",
-        "adapter": "website"
+        "adapter": "work"
       }
     },
     {
@@ -337,7 +337,7 @@
       "liveRows": 413,
       "expect": {
         "featureId": "website_finetuning",
-        "adapter": "website"
+        "adapter": "work"
       }
     },
     {
@@ -367,7 +367,7 @@
       "liveRows": 73,
       "expect": {
         "featureId": "design_canvas",
-        "adapter": "design-canvas"
+        "adapter": "image"
       }
     },
     {

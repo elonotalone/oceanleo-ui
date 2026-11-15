@@ -33,7 +33,6 @@ test("typed routes render real content in the inline App-library editor shell", 
   ].join("\n");
   const routeAdapters = [
     source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
-    source("../src/shell/advanced-routes/WebsiteLocalRoute.tsx"),
     source("../src/shell/advanced-routes/ImageRoute.tsx"),
     // grid 的 adapter 长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）。
     source("../src/shell/doc-editors/GridUniverStage.tsx"),
@@ -49,7 +48,7 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(workbench, /WorkbenchRouteLoading/);
   assert.match(workbench, /VideoTimelineRoute/);
   assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
-  assert.match(workbench, /WebsiteLocalRoute/);
+  assert.match(workbench, /WorkWorkbenchRoute/);
   assert.doesNotMatch(workbench, /EmbeddedRoute|ChartRoute/);
   assert.match(workbench, /AudioRoute/);
   assert.match(workbench, /RichDocRoute/);
@@ -58,7 +57,7 @@ test("typed routes render real content in the inline App-library editor shell", 
   assert.match(workbench, /DeckRoute/);
   assert.match(workbench, /PdfRoute/);
   assert.match(workbench, /Model3DRoute/);
-  assert.match(workbench, /GameRoute/);
+  assert.doesNotMatch(workbench, /GameRoute|WebsiteLocalRoute/);
   assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
   assert.match(routeAdapters, /AdvancedWorkbenchShell/);
   assert.match(shell, /data-inline-editor/);
@@ -79,8 +78,7 @@ test("typed routes render real content in the inline App-library editor shell", 
     "grid",
     "deck",
     "threed",
-    "game",
-    "website",
+    "work",
     "video-canvas",
   ]) {
     assert.match(routes, new RegExp(`type: "${type}"`));
@@ -178,7 +176,7 @@ test("library panels are static and no editor is a hosted shell website", () => 
   }
 });
 
-test("code-backed website starters reach the visual editor without a fake project id", () => {
+test("website starters reach the works workbench without editor source prerequisites", () => {
   const routes = source("../src/shell/workbench-routes.ts");
   const materials =
     source("../src/shell/MaterialLibrary.tsx") +
@@ -186,7 +184,7 @@ test("code-backed website starters reach the visual editor without a fake projec
     source("../src/shell/material-library-view.tsx");
   assert.match(
     routes,
-    /if \(!projectId && !starterId && !githubRepo\) \{[\s\S]*?return unavailable\(/,
+    /if \(isWorkItem\(item\)\) return workCapability\(\)/,
   );
   assert.match(materials, /workspace-starters/);
   assert.match(materials, /starter_id: starterId/);
@@ -348,7 +346,7 @@ test("editor protocol keeps the trusted origin and instance handshake; shell chr
   // Blank/draft website gate lives in the route resolver (no embed params any more).
   assert.match(
     source("../src/shell/workbench-routes.ts"),
-    /\(item\.meta\.draft === true \|\| item\.meta\.blank === true\) &&\s*!item\.url &&\s*!item\.previewUrl/,
+    /if \(isWorkItem\(item\)\) return workCapability\(\)/,
   );
   assert.match(shell, /data-advanced-context-row/);
   assert.match(shell, /adapter\.renderContextToolbar\(layoutState\)/);

@@ -7,7 +7,6 @@
 //   C. 直连网关：image-editor 的 /v1/images/edit、LeoAssistant 的 /v1/assistant/transform；
 //   D. host.fetchJson 逻辑 URL：设计画布的 design://ai/chat、design://ai/image-generate；
 //   E. 包内自建网关：视频画布的 canvas-gateway.ts；
-//   F. 注册式 runner：GameRoute 的 registerGameIterationRunner。
 // 六套里只有 B 和 E 天生带 signal / onProgress，另外四套发出去就既取消不掉、也说
 // 不出跑到哪一步。图片编辑器和视频画布因此各自把 relight/upscale/inpaint/grid-split
 // 重写了一遍——语义几乎逐字相同，类型却对不上，谁也不能复用谁。
@@ -205,8 +204,7 @@ export interface AiCodeFile {
 }
 
 /**
- * 「让 AI 改这段可运行的产物」。字段取自 GameRoute 的 GameIterationRequest——
- * 那条通道本来就是一次 code.patch，只是当年被写成了一个只有游戏能用的注册函数。
+ * 通用代码修改请求；作品修改使用工作台的 agent 会话。
  */
 export interface AiCodePatchInput {
   instruction: string;

@@ -40,11 +40,9 @@ export type PluginThemeId =
   | "audio"
   | "video-timeline"
   | "threed"
-  | "game"
   // 2026-08-30：三件 extracted 插件并入同一套主题。此前它们走站点主题别名，
   // 于是同一个陈列馆里并存三套 token（--awb-* / --wb-* / 站点语义变量），
   // 切插件会跳色。统一外壳要求 13 件同源，所以补进本表。
-  | "website"
   | "video-canvas";
 
 export interface PluginThemeSpec {
@@ -65,8 +63,6 @@ export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
   audio: { accent: { light: "#db2777", dark: "#f472b6" } },
   "video-timeline": { accent: { light: "#0891b2", dark: "#22d3ee" } },
   threed: { accent: { light: "#ea580c", dark: "#fdba74" } },
-  game: { accent: { light: "#16a34a", dark: "#4ade80" } },
-  website: { accent: { light: "#ea580c", dark: "#f97316" } },
   "video-canvas": { accent: { light: "#0d9488", dark: "#2dd4bf" } },
 };
 

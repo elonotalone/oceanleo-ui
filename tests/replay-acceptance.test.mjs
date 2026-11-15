@@ -16,7 +16,6 @@ import {
 import { gridToArtifactJson, gridToEntities, gridFromEntities } from "../src/shell/collab/adapters/grid.ts";
 import { deckToArtifactJson, deckToEntities, deckFromEntities } from "../src/shell/collab/adapters/deck.ts";
 import { vectorFromRevision, vectorToArtifactJson } from "../src/shell/collab/adapters/vector.ts";
-import { gameToArtifactJson, gameToEntities, gameFromEntities } from "../src/shell/collab/adapters/game.ts";
 import { videoToArtifactJson, videoToEntities, videoFromEntities } from "../src/shell/collab/adapters/video.ts";
 import { workflowToArtifactJson, workflowToEntities, workflowFromEntities } from "../src/shell/collab/adapters/workflow.ts";
 import * as Y from "yjs";
@@ -201,13 +200,6 @@ test("接手：toArtifactJson 与 fromEntities 往返，内容与那一步一致
   const deckBack = deckFromEntities(deckToEntities(deckSeed), null);
   assert.equal(deckToArtifactJson(deckBack).slides[0].title, "封面");
 
-  const game = { pages: [{ id: "main", label: "main", code: "hi()" }], origin: "ai" };
-  // 游戏代码在协同里是单独的文本字段，不在实体里；接手输出是 {source, origin}，不是 pages。
-  const gameBack = gameFromEntities(gameToEntities(game), null);
-  assert.equal(gameBack.pages[0].id, "main");
-  assert.equal(gameToArtifactJson(game).source, "hi()");
-  assert.equal(gameToArtifactJson(game).origin, "ai");
-
   const video = {
     width: 1280,
     height: 720,
@@ -320,10 +312,6 @@ test("[F04] 英文界面：12 个编辑器族的回放说明全部走 tt，输�
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
     ],
     vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
-    game: [
-      { pages: [{ id: "main", label: "main", code: "a()" }], origin: "ai" },
-      { pages: [{ id: "main", label: "main", code: "a();\nb();\nc();" }, { id: "two", label: "two", code: "" }], origin: "ai" },
-    ],
     model3d: [
       { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: true }], view: { annotations: [] } },
       { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: false }, { id: "o2", kind: "visibility", target: "Chair", visible: false }], view: { annotations: [{ id: "n1", text: "note" }] } },
@@ -415,10 +403,6 @@ test("[F04] en/ja：逐族回放说明、章节标题、专业模式进出不是
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
     ],
     vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
-    game: [
-      { pages: [{ id: "main", label: "main", code: "a()" }], origin: "ai" },
-      { pages: [{ id: "main", label: "main", code: "a();\nb();\nc();" }, { id: "two", label: "two", code: "" }], origin: "ai" },
-    ],
     model3d: [
       { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: true }], view: { annotations: [] } },
       { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: false }, { id: "o2", kind: "visibility", target: "Chair", visible: false }], view: { annotations: [{ id: "n1", text: "note" }] } },
@@ -517,8 +501,8 @@ test("[F04] 17 种语言：回放说明模板与章节/锁事件词条，en 无�
   }
   const scanned = new Set();
   const files = [
-    ...["image", "vector", "deck", "richdoc", "grid", "audio", "video", "game", "model3d", "pdf", "workflow"].map((k) => `src/shell/collab/adapters/${k}.ts`),
-    ...["audio", "deck", "game", "grid", "image", "model3d", "pdf", "richdoc", "vector", "video", "workflow", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
+    ...["image", "vector", "deck", "richdoc", "grid", "audio", "video", "model3d", "pdf", "workflow"].map((k) => `src/shell/collab/adapters/${k}.ts`),
+    ...["audio", "deck", "grid", "image", "model3d", "pdf", "richdoc", "vector", "video", "workflow", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
   ];
   for (const rel of files) {
     for (const key of scanReplayNoteTemplates(readSrc(rel))) scanned.add(key);

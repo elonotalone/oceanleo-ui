@@ -19,7 +19,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useGamePreviewHost } from "./game-editor/preview-host";
+import { useGamePreviewHost } from "./game-preview-host";
 import { useUI } from "../i18n/ui/useUI";
 import { getCurrentArtifactItem } from "./artifact-client";
 import {
@@ -316,10 +316,6 @@ export function GamePlayDetail({ item }: { item: LibraryItem }) {
   const [error, setError] = useState("");
   const frame = useRef<HTMLDivElement>(null);
   const href = artifactPlayHref(item);
-  const envelopeUrl = isDurableLibraryItem(item)
-    ? (item.artifact.renditions.full || item.artifact.renditions.source)?.url ||
-      ""
-    : String(item.url || "");
   // 已注册宿主 = 主站：就地开玩。没有宿主（其余站点）= 老行为：交给既有的开玩链接。
   const inPlace = Boolean(
     PreviewHost && item.artifactId && item.revisionId && isPlayableGameLibraryItem(item),
@@ -383,9 +379,6 @@ export function GamePlayDetail({ item }: { item: LibraryItem }) {
           <PreviewHost
             artifactId={item.artifactId || ""}
             revisionId={item.revisionId || ""}
-            envelopeUrl={envelopeUrl}
-            bundleFormat="html"
-            engineApiVersion={String(item.meta?.engine_api_version || "")}
             title={item.title}
             reloadKey={reloadKey}
             onRuntimeError={setError}

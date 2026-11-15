@@ -36,7 +36,7 @@ test("每一种 artifact 类型都有一个到得了的编辑器（图表除外�
   for (const artifactType of ARTIFACT_TYPES) {
     assert.equal(
       artifactTypeHasRoutableEditor(artifactType),
-      !READ_ONLY_ARTIFACT_TYPES.has(artifactType),
+      !READ_ONLY_ARTIFACT_TYPES.has(artifactType) && !["website", "game"].includes(artifactType),
       `${artifactType} 的可路由编辑器判定`,
     );
   }
@@ -74,20 +74,14 @@ test("旧的六项清单是真子集，说明这次是放宽而不是改判", ()
   assert.ok(gained.includes("website"), "网站必须在恢复之列");
 });
 
-test("网站走本地 website 路由（不再是 embed 落点）", () => {
-  // 2026-10-22：`website` 的 routeType 是 "website"（本地 Puck），设计画布并入 image，
-  // 视频画布是本地 "video-canvas"。没有任何适配器再是 "embed"。
-  const website = TRUSTED_EDITOR_REGISTRY["website"];
-  assert.equal(website.routeType, "website");
-  assert.equal(TRUSTED_EDITOR_REGISTRY["design-canvas"].routeType, "image");
+test("works keep stored capabilities without editor registrations", () => {
+  for (const type of ["website", "game"]) {
+    assert.equal(TRUSTED_EDITOR_REGISTRY[type], undefined);
+    assert.equal(artifactTypeHasRoutableEditor(type), false);
+    assert.ok(ARTIFACT_EDITOR_CAPABILITIES[type].has(`${type}-editor`));
+  }
+  assert.equal(TRUSTED_EDITOR_REGISTRY.image.routeType, "image");
   assert.equal(TRUSTED_EDITOR_REGISTRY["video-canvas"].routeType, "video-canvas");
-  assert.equal(
-    Object.values(TRUSTED_EDITOR_REGISTRY).some((entry) => entry.routeType === "embed"),
-    false,
-  );
-  assert.equal(website.routable, true);
-  assert.equal(website.featureId, "website_finetuning");
-  assert.ok(ARTIFACT_EDITOR_CAPABILITIES["website"].has("website-editor"));
 });
 
 test("不认识的类型一律 false，不猜", () => {
@@ -101,7 +95,7 @@ test("大小写与首尾空白是容错的，那是有意的", () => {
   // `"WEBSITE "` 这种判成没有编辑器，那又是一颗本该出现却消失的按钮。
   // 容错只到规范化为止：`"web site"` 仍然是 false（见上一条），不做模糊匹配。
   for (const spelling of ["WEBSITE", " website", "Website "]) {
-    assert.equal(artifactTypeHasRoutableEditor(spelling), true, spelling);
+    assert.equal(artifactTypeHasRoutableEditor(spelling), false, spelling);
   }
 });
 

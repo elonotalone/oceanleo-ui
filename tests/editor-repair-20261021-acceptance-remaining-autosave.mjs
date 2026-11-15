@@ -52,7 +52,7 @@ function univerStubs() {
   const stubs = { "@univerjs/presets": presets };
   for (const [pkg, name] of Object.entries(names)) {
     stubs[pkg] = data(
-      `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService"; export const IRenderManagerService = "IRenderManagerService";`,
+      `export function ${name}(config) { return { name: ${JSON.stringify(name)}, config }; } export const ICanvasColorService = "ICanvasColorService"; export const IRenderManagerService = "IRenderManagerService"; export const IImageIoService = "IImageIoService"; export class ImageIoService {} export const ImageSourceType = { URL: "URL", BASE64: "BASE64" };`,
     );
     stubs[`${pkg}/locales/zh-CN`] = data(`export default {};`);
     stubs[`${pkg}/lib/index.css`] = data(``);
@@ -315,33 +315,5 @@ test("3d: local markDirty records; bootstrap does not", async () => {
   const item = itemFor("model3d");
   assertRecords("3d", callPair, fn, item, "local-dirty");
   assertDoesNotRecord("3d", callPair, fn, item, ["bootstrap"]);
-});
-
-/* --------------------------------- W7 --------------------------------- */
-
-test("game: local textarea origin records; remote Yjs / writeThrough do not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/game-editor/GameCodeStage.tsx",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "GameCodeStage.tsx", [
-    "applyGameUserEditSession",
-  ]);
-  const localOrigin = Symbol("oceanleo-collab-textarea-local");
-  const item = itemFor("game");
-  assertRecords("game", callPair, fn, item, { kind: "local-type" });
-  resetUserEditSession();
-  callPair(fn, item, { kind: "ytext-observe", origin: localOrigin });
-  assert.equal(
-    generationOf(item),
-    1,
-    "game ytext-observe with bind-textarea local origin must record",
-  );
-  assertDoesNotRecord("game", callPair, fn, item, [
-    { kind: "ytext-observe", origin: "remote" },
-    { kind: "write-through" },
-    { kind: "restore" },
-    { kind: "load" },
-  ]);
 });
 

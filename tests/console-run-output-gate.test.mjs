@@ -472,7 +472,7 @@ const workbenchStubs = {
   "./advanced-routes/DeckRoute": routeStub("DeckRoute"),
   "./advanced-routes/EmbeddedRoute": routeStub("EmbeddedRoute"),
   "./advanced-routes/ChartRoute": routeStub("ChartRoute"),
-  "./advanced-routes/GameRoute": routeStub("GameRoute"),
+  "./works-workbench/WorkWorkbenchRoute": routeStub("WorkWorkbenchRoute"),
   "./advanced-routes/VideoCanvasRoute": routeStub("VideoCanvasRoute"),
 };
 

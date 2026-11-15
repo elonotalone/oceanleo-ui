@@ -26,12 +26,6 @@ import {
   imageToEntities,
 } from "../src/shell/collab/adapters/image.ts";
 import {
-  GAME_ROOT,
-  gameFromEntities,
-  gameTextName,
-  gameToEntities,
-} from "../src/shell/collab/adapters/game.ts";
-import {
   MODEL3D_ROOT,
   model3dFromEntities,
   model3dToEntities,
@@ -309,32 +303,6 @@ test("image：200 轮两人并发后两边一致", (t) => {
   });
 });
 
-test("game：200 轮页表+代码并发后两边一致", () => {
-  const a = new Y.Doc();
-  const b = new Y.Doc();
-  const net = link(a, b);
-  const seed = { pages: [{ id: "main", label: "main" }, { id: "two", label: "二" }], origin: "ai" };
-  writeJsonStateRoot(a, GAME_ROOT, gameToEntities(seed));
-  a.getText(gameTextName("main")).insert(0, "function main() {}\n");
-  net.flush();
-  const gen = rng(7);
-  for (let i = 0; i < ROUNDS; i += 1) {
-    const who = i % 2 === 0 ? a : b;
-    const text = who.getText(gameTextName("main"));
-    text.insert(Math.min(text.length, gen() % (text.length + 1)), i % 2 === 0 ? "A" : "B");
-    const pages = gameFromEntities(readJsonStateRoot(who, GAME_ROOT), seed);
-    const n = gen() % 3;
-    if (n === 0 && pages.pages.length < 6) pages.pages.push({ id: `p${i}`, label: `页${i}` });
-    if (n === 1 && pages.pages.length > 1) pages.pages.pop();
-    if (n === 2) pages.pages[pages.pages.length - 1].label = `L${i}`;
-    writeJsonStateRoot(who, GAME_ROOT, gameToEntities(pages));
-    net.flush();
-  }
-  net.flush();
-  assert.equal(canon(gameFromEntities(readJsonStateRoot(a, GAME_ROOT), seed)), canon(gameFromEntities(readJsonStateRoot(b, GAME_ROOT), seed)));
-  assert.equal(a.getText(gameTextName("main")).toString(), b.getText(gameTextName("main")).toString());
-});
-
 test("model3d：200 轮两人并发后两边一致", (t) => {
   const T = (position = [0, 0, 0]) => ({ position, rotation: [0, 0, 0], scale: [1, 1, 1] });
   runEntityFamily(t, {
@@ -526,7 +494,6 @@ import { createImageCommandSurface } from "../src/shell/image-editor/image-comma
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
 import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
-import { readGameProject, gameProjectEdits } from "../src/shell/game-editor/game-project.ts";
 import { runGridAgentCommand } from "../src/shell/doc-editors/grid-univer/agent-write-gate.ts";
 
 const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -714,7 +681,6 @@ const SURFACE_FILES = {
   grid: "doc-editors/GridUniverStage.tsx",
   deck: "advanced-routes/DeckRoute.tsx",
   image: "advanced-routes/ImageRoute.tsx",
-  game: "game-editor/GameProjectEditor.tsx",
   model3d: "advanced-routes/Model3DRoute.tsx",
   audio: "advanced-routes/AudioRoute.tsx",
   pdf: "advanced-routes/PdfRoute.tsx",
@@ -730,18 +696,12 @@ const SURFACE_BUILDERS = {
   model3d: ["media-editors/model3d-command-surface.ts"],
   audio: ["media-editors/audio-command-surface.ts", "media-editors/visual-command-kit.ts"],
   video: ["video-editor/video-command-surface.ts", "media-editors/visual-command-kit.ts"],
-  game: ["game-editor/game-project.ts"],
 };
 const READ_ONLY_GUARD = /readonly:\s|readonlyNotice|\.readOnly\b|\breadOnly\b|\bviewOnly\b|guardPluginSurface|guardVisualCommands|editBlocked/;
 
 for (const [family, rel] of Object.entries(SURFACE_FILES)) {
   test(`[只读/16] ${family}：Leo「帮我改」的指令入口在只读时被挡住`, () => {
     const text = src(rel);
-    if (family === "game") {
-      assert.match(text, /if \(readOnly \|\| dirty/);
-      assert.match(text, /api.iterate/);
-      return;
-    }
     const calls = [...text.matchAll(/usePluginCommandSurface\s*\(/g)];
     assert.ok(calls.length > 0, `${rel} 没有注册 Leo 指令入口`);
     const builders = (SURFACE_BUILDERS[family] ?? []).filter(has).map(src).join("\n");
@@ -763,7 +723,7 @@ for (const [family, rel] of Object.entries(SURFACE_FILES)) {
 }
 
 test("[只读/16] 浮条：每个 *ContextToolbar 拿到只读状态（传 prop，或组件自己读 editor 里的 collabReadOnly）", () => {
-  const files = ["RichDocRoute", "DeckRoute", "ImageRoute", "GridRoute", "GameRoute", "PdfRoute", "AudioRoute", "Model3DRoute", "VideoTimelineRoute"];
+  const files = ["RichDocRoute", "DeckRoute", "ImageRoute", "GridRoute", "PdfRoute", "AudioRoute", "Model3DRoute", "VideoTimelineRoute"];
   const bad = [];
   for (const name of files) {
     const rel = `advanced-routes/${name}.tsx`;
@@ -1036,10 +996,6 @@ test("[只读/16] 能拿到构造函数的指令面：只读时改动指令被�
   };
   await assertWrappedReadonly("model3d", createModel3DCommandSurface({ editor: modelEditor, deliver: async () => undefined }), model.calls);
   conclusions.push("model3d: 行为（createModel3DCommandSurface + guardPluginSurface）");
-
-  const legacyGame = readGameProject({ source: "<html>legacy</html>" });
-  assert.throws(() => gameProjectEdits(legacyGame, { "index.html": "changed" }));
-  conclusions.push("game: legacy project edits are refused; project UI read-only covered by game-project-render");
 
   const gridWrites = [];
   const gridResult = runGridAgentCommand({

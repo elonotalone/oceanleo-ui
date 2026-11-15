@@ -339,28 +339,9 @@ export {
   type PluginCommandSurface,
   type PluginCommandSurfaceInput,
 } from "./plugin-command";
-// LeoPlay 沙箱宿主与生成链的注入面（`advanced-routes/GameRoute`）。
-//
-// 这两个注册函数在共享包里存在很久了，但 `GameRoute` 只被 `AdvancedContentWorkbench`
-// 用 `dynamic()` 懒加载，从没出现在本导出面上，consumer 侧根本够不着 —— `game` 站为此
-// 写了 99 行 namespace-import 防御垫片（`game/app/_console/shared-game-host-registry.ts`
-// 开头记着整条因果）。H 波 W2 顺手补上：垫片那边零改动即变成真实调用。
-//
-// 注册状态是 `GameRoute` 的模块级变量，这里必须是**同一个模块实例**才注册得进去；
-// 静态 re-export 与 `dynamic()` 拿到的是同一份模块记录，所以两条路径不会各存一份。
-export {
-  registerGameIterationRunner,
-  registerGamePreviewHost,
-} from "./advanced-routes/GameRoute";
-export type {
-  GameBundleDocument,
-  GameBundleFormat,
-  GameIterationRequest,
-  GameIterationResult,
-  GameIterationRunner,
-  GamePreviewHost,
-  GamePreviewHostProps,
-} from "./advanced-routes/GameRoute";
+// Read-only game play hosts remain available to Library, feeds and marketplaces.
+export { registerGamePreviewHost } from "./game-preview-host";
+export type { GamePreviewHost, GamePreviewHostProps } from "./game-preview-host";
 // Shared timeline/director capability engines. Re-export only through the
 // owner-maintained public barrels so implementation modules remain private.
 export * from "./video-editor/capabilities";

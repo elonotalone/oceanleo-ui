@@ -350,3 +350,20 @@ for (const [kind, extension] of [["ppt", "pptx"], ["document", "docx"], ["sheet"
     assert.equal(parses, 2);
   });
 }
+
+for (const kind of ["website", "game"]) {
+  test(`${kind} preloads only the common work route and never Office source`, async () => {
+    resetEditorPreloadForTests();
+    resetOfficeSourceCacheForTests();
+    let fetches = 0;
+    let routes = 0;
+    registerEditorRouteLoader("work", async () => { routes++; return {}; });
+    configureOfficeSourceCacheForTests({ fetchBytes: async () => { fetches++; return new ArrayBuffer(8); }, parse: () => null });
+    const result = await preloadEditorFor({ ...pptItem(), key: kind, kind, artifactType: kind });
+    assert.deepEqual(result.routeIds, ["work"]);
+    assert.equal(routes, 1);
+    assert.equal(fetches, 0);
+    assert.equal(result.codeReady, true);
+    assert.equal(siteHomeEditorRouteId(kind), "work");
+  });
+}

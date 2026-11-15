@@ -166,13 +166,8 @@ const GridRoute = lazyRoute("grid", () =>
 const DeckRoute = lazyRoute("deck", () =>
   import("./advanced-routes/DeckRoute").then((module) => module.DeckRoute),
 );
-const WebsiteLocalRoute = lazyRoute("website", () =>
-  import("./advanced-routes/WebsiteLocalRoute").then(
-    (module) => module.WebsiteLocalRoute,
-  ),
-);
-const GameRoute = lazyRoute("game", () =>
-  import("./advanced-routes/GameRoute").then((module) => module.GameRoute),
+const WorkWorkbenchRoute = lazyRoute("work", () =>
+  import("./works-workbench/WorkWorkbenchRoute").then((module) => module.WorkWorkbenchRoute),
 );
 const VideoCanvasRoute = lazyRoute("video-canvas", () =>
   import("./advanced-routes/VideoCanvasRoute").then(
@@ -294,6 +289,7 @@ function AdvancedContentWorkbenchMounted(
   const inheritedWorkspace = useOptionalWorkspaceSession();
   const item = props.item;
   const route = editorRouteFor(props.item);
+  if (route.type === "work") return <WorkWorkbenchRoute {...props} />;
   const siteId = props.siteId || item.siteId || "oceanleo";
   const appId = props.embedded
     ? props.appId || "library"
@@ -830,11 +826,8 @@ function AdvancedContentWorkbenchRuntime(
     case "deck":
       editor = <DeckRoute {...activeProps} />;
       break;
-    case "game":
-      editor = <GameRoute {...activeProps} />;
-      break;
-    case "website":
-      editor = <WebsiteLocalRoute {...activeProps} />;
+    case "work":
+      editor = <WorkWorkbenchRoute {...activeProps} />;
       break;
     case "video-canvas":
       editor = <VideoCanvasRoute {...activeProps} />;

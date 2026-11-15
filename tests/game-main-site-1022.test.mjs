@@ -208,7 +208,7 @@ const slot = await import(
   await compileModule("src/shell/material-detail-slot.tsx", {
     react: reactUrl,
     "../i18n/ui/useUI": uiStub,
-    "./game-editor/preview-host": previewHostStub,
+    "./game-preview-host": previewHostStub,
     "./artifact-client": dataModule(
       `export async function getCurrentArtifactItem() { return { ok: false }; }`,
     ),

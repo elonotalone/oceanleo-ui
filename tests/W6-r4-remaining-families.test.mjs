@@ -10,7 +10,6 @@ import { PDFDocument } from "pdf-lib";
 import { inspectPdf, rotatePdfPage } from "../src/shell/media-editors/pdf-operations.ts";
 import {
   audioSourcePersistenceAdmitted,
-  gameSourceAdmission,
   model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
@@ -38,7 +37,6 @@ import {
 } from "../src/shell/workflow-carrier/workflow-graph-source.ts";
 import { addVideoCanvasNode } from "../src/shell/workflow-carrier/video-canvas-local-session.ts";
 import { flushVideoCanvasGraph } from "../src/shell/workflow-carrier/video-canvas-leave.ts";
-import { planGamePreviewControl } from "../src/shell/game-editor/game-preview-controls.ts";
 
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
@@ -209,29 +207,4 @@ test("video-canvas: stored graph loads, add-node mutates, flush reopens the node
     error: "工作流源未成功载入，未改用空白图画覆盖原件。",
   });
   assert.equal(refused.ok, false);
-});
-
-test("game: play preview stays non-editable; durable envelope missing is fail-closed", () => {
-  const play = planGamePreviewControl({ paused: true, reloadKey: 1 }, "play");
-  assert.equal(play.paused, false);
-  assert.equal(play.reloadKey, 1);
-  const admitted = gameSourceAdmission({
-    key: "artifact:game",
-    source: "artifact",
-    id: "game-1",
-    title: "已有游戏",
-    kind: "game",
-    siteId: "game",
-    favorite: false,
-    artifactId: "game-art",
-    revisionId: "game-rev",
-    artifactType: "game",
-    meta: {},
-    artifact: {
-      artifactId: "game-art",
-      revisionId: "game-rev",
-      renditions: {},
-    },
-  });
-  assert.equal(admitted.ok, false);
 });

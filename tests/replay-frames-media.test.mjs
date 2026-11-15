@@ -11,7 +11,7 @@ const useUIStub = dataModule(`export function useUI(){ return (zh, vars) => vars
 const stubs = { "../../../../i18n/ui/useUI": useUIStub };
 const load = async (name) => (await import(await compileModule(`src/shell/replay/work/frames/${name}.tsx`, stubs))).default;
 const R = {};
-for (const name of ["game", "model3d", "audio", "pdf", "video", "workflow"]) R[name] = await load(name);
+for (const name of ["model3d", "audio", "pdf", "video", "workflow"]) R[name] = await load(name);
 
 const html = (renderer, snapshot, prev, extra = {}) =>
   renderToStaticMarkup(createElement(renderer.Frame, { snapshot, prev, width: 360, height: 200, authorColor: "#ff00aa", ...extra }));
@@ -45,9 +45,6 @@ function seededPair(root, shape) {
   connect(a, b);
   return [a, b];
 }
-
-
-import { gameToEntities, gameTextName, GAME_ROOT } from "../src/shell/collab/adapters/game.ts";
 import { videoToEntities, VIDEO_ROOT } from "../src/shell/collab/adapters/video.ts";
 import { model3dToEntities, MODEL3D_ROOT } from "../src/shell/collab/adapters/model3d.ts";
 import { audioToEntities, AUDIO_ROOT } from "../src/shell/collab/adapters/audio.ts";
@@ -60,30 +57,6 @@ test("六个画法的 kind 与四个函数齐全", () => {
     for (const fn of ["fromY", "fromRevision", "describeChange", "toArtifactJson"]) assert.equal(typeof renderer[fn], "function", `${name}.${fn}`);
     assert.equal(typeof renderer.Frame, "function");
   }
-});
-
-// ── 游戏 ────────────────────────────────────────────────────────────────
-test("game：代码快照只读；改动的行用作者颜色标在行号旁；代码里的 <script> 只当文字", () => {
-  const prev = R.game.fromRevision({ source: "a\nb\nc", origin: "ai" });
-  const next = R.game.fromRevision({ source: "a\nB<script>alert(1)</script>\nc\nd", origin: "ai" });
-  const markup = html(R.game, next, prev);
-  assertSafe(markup);
-  assert.ok(markup.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
-  assert.equal((markup.match(/data-changed="true"/g) || []).length, 2); // 第 2 行、第 4 行
-  assert.ok(markup.includes("#ff00aa"));
-  assert.ok(!html(R.game, next, undefined).includes("data-changed"));
-  assert.ok(html(R.game, R.game.fromRevision({ source: "" })).includes("还没有代码"));
-});
-
-test("game：fromY 与 fromRevision 对同一内容得到等价快照；describeChange；toArtifactJson 往返", () => {
-  const doc = sync(GAME_ROOT, gameToEntities({ pages: [{ id: "main", label: "main" }], origin: "ai" }));
-  doc.getText(gameTextName("main")).insert(0, "let x = 1;\nlet y = 2;");
-  const fromY = R.game.fromY(doc);
-  const fromRev = R.game.fromRevision({ source: "let x = 1;\nlet y = 2;", origin: "ai" });
-  assert.deepEqual(fromY, fromRev);
-  assert.match(R.game.describeChange(R.game.fromRevision({ source: "let x = 1;" }), fromRev), /改了 1 行代码/);
-  const json = R.game.toArtifactJson(fromY);
-  assert.deepEqual(R.game.fromRevision(json), fromRev);
 });
 
 // ── 3D ──────────────────────────────────────────────────────────────────
@@ -267,7 +240,7 @@ test("六个画法里出现的中文字面量，要么在 W14 分表里（17 种
   const dir = new URL("../src/i18n/ui/messages/", import.meta.url);
   const others = readdirSync(dir).filter((file) => file.endsWith(".ts") && file !== "collab-media-copy.ts").map((file) => readFileSync(new URL(file, dir), "utf8")).join("\n");
   for (const key of keys) assert.ok(!others.includes(`"${key}":`), `「${key}」别的词典里已有，不要重复定义`);
-  for (const name of ["game", "model3d", "audio", "pdf", "video", "workflow"]) {
+  for (const name of ["model3d", "audio", "pdf", "video", "workflow"]) {
     const source = readFileSync(new URL(`../src/shell/replay/work/frames/${name}.tsx`, import.meta.url), "utf8");
     const literals = source.split("\n").filter((line) => !/^\s*(\/\/|\*)/.test(line)).join("\n").match(/"[^"\n]*[\u4e00-\u9fff][^"\n]*"/g) ?? [];
     for (const literal of literals) {

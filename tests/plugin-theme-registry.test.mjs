@@ -31,8 +31,6 @@ const EXPECTED_PLUGIN_IDS = [
   "audio",
   "video-timeline",
   "threed",
-  "game",
-  "website",
   "video-canvas",
 ];
 
@@ -68,7 +66,7 @@ test("adapter id 归一化只认登记过的，其余走站点主题别名", () 
   assert.equal(pluginThemeIdForAdapter("chart-editor@1"), null);
   assert.equal(pluginThemeIdForAdapter("design-canvas"), "image");
   assert.equal(pluginThemeIdForAdapter("image@1"), "image");
-  assert.equal(pluginThemeIdForAdapter("website"), "website");
+  assert.equal(pluginThemeIdForAdapter("website"), null);
   assert.equal(pluginThemeIdForAdapter("video-canvas"), "video-canvas");
   // 没登记的返回 null（而不是瞎猜一个），调用方据此走原站点别名。
   assert.equal(pluginThemeIdForAdapter("office-legacy"), null);

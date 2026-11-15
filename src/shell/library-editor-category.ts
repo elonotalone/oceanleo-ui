@@ -2,6 +2,7 @@ import { ADVANCED_CAPABILITY_MATRIX, type AdvancedFeatureId } from "./artifact-c
 import type { LibraryItem } from "./library-data";
 
 /**
+ * 网站和游戏是作品，分类 ID 保留以兼容存量筛选链接；这份列表不是编辑器清单。
  * 库的类型名就是**素材类别**（D5，2026-10-23）：「视频」而不是「视频编辑」。
  * 筛选菜单、卡片下方小字、详情角标用的是同一个名字。
  *

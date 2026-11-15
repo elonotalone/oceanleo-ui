@@ -1,6 +1,8 @@
-# Shared 12-feature capability plane
+# Shared capability plane: nine editors and one works workbench
 
 ## Product outcome
+
+The full editors are document, slides, sheet, PDF, image (including design canvas), audio, video timeline, video canvas and 3D. Websites and games open the shared works workbench before editor sessions, persistence or chrome mount. Stored `website_finetuning`, `game_editing` and `design_canvas` capability IDs stay readable: the first two route to `work`, and design canvas shares the `image` adapter. Library categories and standalone game play remain available.
 
 All OceanLeo consumers use one `@oceanleo/ui` feature → artifact → editor
 capability → adapter matrix. A site key selects an exact material context; it
@@ -34,12 +36,12 @@ The chosen chain is invalid if any of the 12 feature rows requires a different
 adapter for the same valid artifact receipt merely because the consumer site
 key changes.
 
-## Proof and acceptance
+## Historical proof and current acceptance
 
 Before production edits, a throwaway matrix proof must enumerate all 12 rows
 against the 32 shared-UI consumer contexts and show one adapter identity per
-feature, including distinct `design-canvas`, `image`, and `video-canvas`
-adapters and lightweight `richdoc`, `grid`, and `deck` document adapters.
+feature, including merged `image` and separate `video-canvas`
+adapters plus the non-editor `work` route and lightweight `richdoc`, `grid`, and `deck` document adapters.
 
 Production acceptance then enumerates the same feature/context cross-product,
 rejects incompatible source/capability pairs, distinguishes exact-context from

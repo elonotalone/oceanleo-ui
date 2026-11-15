@@ -1,11 +1,7 @@
 "use client";
 
-/** Compatibility registration for consumer play panels. New project editors use the
- * server's /play URL with the same opaque sandbox, never an inline document. */
+/** Host registration for read-only Library, feed and marketplace game play. */
 import { useEffect, useState, type ComponentType } from "react";
-
-/** 宿主桥仍保留旧的二值类型，但新载体只会交出 `html`。 */
-export type GameBundleFormat = "html" | "js";
 
 export interface GamePreviewHostProps {
   artifactId: string;
@@ -13,14 +9,6 @@ export interface GamePreviewHostProps {
   title: string;
   onRuntimeError?: (message: string) => void;
   reloadKey?: number;
-  paused?: boolean;
-  /** Deprecated transport hints, accepted only for consumer compatibility. */
-  envelopeUrl?: string;
-  source?: string;
-  bundleFormat?: GameBundleFormat;
-  engineApiVersion?: string;
-  paramDeclarations?: Record<string, unknown>;
-  paramValues?: Record<string, number>;
 }
 
 export type GamePreviewHost = ComponentType<GamePreviewHostProps>;

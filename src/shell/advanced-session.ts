@@ -35,7 +35,7 @@ const MAX_ARTIFACT_JSON = 120_000;
  * `office`、`embed` 只会出现在历史快照里：读时别名到本地编辑器，新写入永远不再产生。
  * `embed` = 旧的整站嵌入（网站 / 视频画布 / 设计画布）。
  */
-type StoredEditorRouteType = EditorRoute["type"] | "office" | "embed";
+type StoredEditorRouteType = EditorRoute["type"] | "office" | "embed" | "website" | "game";
 
 const CANONICAL_ROUTE_TYPES = new Set<EditorRoute["type"]>([
   "video-timeline",
@@ -46,8 +46,7 @@ const CANONICAL_ROUTE_TYPES = new Set<EditorRoute["type"]>([
   "grid",
   "deck",
   "threed",
-  "game",
-  "website",
+  "work",
   "video-canvas",
   "none",
 ]);
@@ -55,9 +54,11 @@ const STORED_ROUTE_TYPES = new Set<StoredEditorRouteType>([
   ...CANONICAL_ROUTE_TYPES,
   "office",
   "embed",
+  "website",
+  "game",
 ]);
 const LEGACY_EMBED_ALIAS_ROUTES = new Set<EditorRoute["type"]>([
-  "website",
+  "work",
   "video-canvas",
   "image",
 ]);
@@ -1054,6 +1055,9 @@ export function advancedSnapshotFromSession(
     if (!lightweightRoute) return null;
     route = lightweightRoute;
     meta.advanced_editor_route = lightweightRoute;
+  } else if (storedRoute === "website" || storedRoute === "game") {
+    route = "work";
+    meta.advanced_editor_route = "work";
   } else if (storedRoute === "embed") {
     // 占位；下面 restored 建好后按真实素材别名（网站 / 视频画布 / 图片编辑器）。
     route = "image";
@@ -1108,7 +1112,7 @@ export function advancedSnapshotFromSession(
   }
   const expectedAppId = advancedSessionAppId(restored, route);
   const legacyOfficeAppId =
-    storedRoute === "office" || storedRoute === "embed"
+    storedRoute === "office" || storedRoute === "embed" || storedRoute === "website" || storedRoute === "game"
       ? advancedSessionAppIdForStoredRoute(restored, storedRoute)
       : "";
   if (

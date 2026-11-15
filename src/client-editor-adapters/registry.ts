@@ -78,14 +78,6 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
       reason: "Local three.js view proven; hosted three.js editor face is deleted",
     },
     {
-      editorId: "game",
-      schema: "game-project@1",
-      core: "sandbox host; no IDE core",
-      license: "n/a",
-      status: "RED",
-      reason: "User HTML cannot run in the IPC-trusted editor",
-    },
-    {
       editorId: "video-canvas",
       schema: "oceanleo.video-canvas.v1",
       core: "VideoCanvasRoute local xyflow (W10)",

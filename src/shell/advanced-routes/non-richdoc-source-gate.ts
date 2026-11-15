@@ -4,14 +4,9 @@
  * are the shared refuse/admit answers tests can call without mounting React.
  */
 
-import { isDurableLibraryItem, type LibraryItem } from "../library-data";
 import { planDesignCanvasSource } from "../design-canvas/design-canvas-source";
 
 export { storedEditorProjectUrl } from "./stored-editor-project";
-export {
-  hydrateWebsiteLocalSource,
-  planWebsiteLocalSource,
-} from "../website-local/website-local-source";
 export {
   hydrateDesignCanvasSource,
   planDesignCanvasSource,
@@ -144,30 +139,4 @@ export function designCanvasLocalSourceAdmission(item: {
     return { ok: true };
   }
   return { ok: false, error: plan.error };
-}
-
-function gameEnvelopePresent(item: LibraryItem): boolean {
-  if (isDurableLibraryItem(item)) {
-    const envelope =
-      item.artifact.renditions.full || item.artifact.renditions.source;
-    return Boolean(envelope?.url && envelope?.digest);
-  }
-  const envelopeUrl = String(item.url || item.previewUrl || "").trim();
-  return Boolean(
-    envelopeUrl &&
-      (item.kind === "game" || item.meta.advanced_editor_route === "game"),
-  );
-}
-
-export function gameSourceAdmission(
-  item: LibraryItem,
-): NonRichdocSourceAdmission {
-  if (gameEnvelopePresent(item)) return { ok: true };
-  if (isDurableLibraryItem(item)) {
-    return {
-      ok: false,
-      error: "这份游戏没有可打开的可玩信封，未改用空白稿覆盖原件。",
-    };
-  }
-  return { ok: true };
 }

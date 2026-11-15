@@ -428,7 +428,7 @@ const workbenchStubs = {
   "./advanced-routes/AudioRoute": namedRouteStub("AudioRoute", "audio"),
   "./advanced-routes/Model3DRoute": namedRouteStub("Model3DRoute", "threed"),
   "./advanced-routes/VideoTimelineRoute": namedRouteStub("VideoTimelineRoute", "video-timeline"),
-  "./advanced-routes/GameRoute": namedRouteStub("GameRoute", "game"),
+  "./works-workbench/WorkWorkbenchRoute": namedRouteStub("WorkWorkbenchRoute", "work"),
   "./advanced-routes/ChartRoute": namedRouteStub("ChartRoute", "chart-editor@1"),
   "./advanced-routes/EmbeddedRoute": namedRouteStub("EmbeddedRoute", "embed"),
   "./advanced-routes/VideoCanvasRoute": namedRouteStub("VideoCanvasRoute", "video-canvas"),

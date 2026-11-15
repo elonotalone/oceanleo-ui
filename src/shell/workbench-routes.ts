@@ -12,7 +12,6 @@ import {
   advancedCapabilityForArtifactFields,
   artifactEditorCapabilityIsCompatible,
   artifactSourceFormatIsCompatible,
-  type AdvancedEditorAdapterId,
 } from "./artifact-contract";
 import {
   READ_ONLY_ARTIFACT_TYPES,
@@ -173,9 +172,17 @@ function isFamilyDesignTemplateDocUrl(value: string): boolean {
   }
 }
 
-/** 网站 → 本地 Puck 路由；视频画布 → 本地节点画布；设计画布 → 图片编辑器。 */
-function websiteEditor(): EditorCapability {
-  return available("website", { type: "website" });
+/** Works are routable without editor persistence, toolbar or source-format gates. */
+function workCapability(): EditorCapability {
+  return { available: true, adapter: "none", route: { type: "work" }, manifest: null, unavailableReason: "" };
+}
+
+function isWorkItem(item: LibraryItem): boolean {
+  const type = item.artifact?.artifactType || item.artifactType || item.meta.artifact_type;
+  if (type) return type === "website" || type === "game";
+  return item.kind === "website" || item.kind === "game" || contentTypeFor(item) === "website" || contentTypeFor(item) === "game" ||
+    [item.meta.advanced_editor_route, item.meta.editor, item.meta.feature_id, item.meta.capability_id]
+      .some((value) => ["work", "website", "game", "website_finetuning", "game_editing"].includes(String(value)));
 }
 
 function videoCanvasEditor(): EditorCapability {
@@ -183,7 +190,7 @@ function videoCanvasEditor(): EditorCapability {
 }
 
 function designCanvasEditor(): EditorCapability {
-  return available("design-canvas", { type: "image" });
+  return available("image", { type: "image" });
 }
 
 const CHART_EDITOR_REMOVED_REASON =
@@ -229,6 +236,7 @@ function durableEditorCapabilityFor(
   if (!artifact.access.canRead) {
     return unavailable("当前主体没有读取这个 revision 的权限。");
   }
+  if (isWorkItem(item)) return workCapability();
   if (!artifact.access.canEdit && !artifact.access.canFork) {
     return unavailable("当前主体没有编辑或 fork 这个 revision 的权限。");
   }
@@ -276,7 +284,7 @@ function durableEditorCapabilityFor(
   }
   if (READ_ONLY_ARTIFACT_TYPES.has(artifact.artifactType)) {
     // 图表编辑器已删除，只读打开，绝不静默改写已存文档。
-    // 矢量图（vector_image）走下面的 design-canvas 适配器 → 合并后的图片编辑器。
+    // 矢量图（vector_image）使用合并后的图片编辑器，保留图层工程格式。
     return unavailable(CHART_EDITOR_REMOVED_REASON);
   }
   const advancedContract = advancedCapabilityForArtifactFields({
@@ -289,14 +297,12 @@ function durableEditorCapabilityFor(
       "服务端 typed artifact 无法通过共享 feature/capability/adapter matrix。",
     );
   }
-  const adapter: AdvancedEditorAdapterId = advancedContract.adapter;
+  const adapter = advancedContract.adapter;
   switch (adapter) {
     case "video-timeline":
       return available(adapter, { type: "video-timeline" });
     case "audio":
       return available(adapter, { type: "audio" });
-    case "image":
-      return available(adapter, { type: "image" });
     case "pdf":
       return available(adapter, { type: "pdf" });
     case "richdoc":
@@ -307,13 +313,10 @@ function durableEditorCapabilityFor(
       return available(adapter, { type: "deck" });
     case "threed":
       return available(adapter, { type: "threed" });
-    case "game":
-      return available(adapter, { type: "game" });
-    case "website":
-      return websiteEditor();
-    case "design-canvas":
-      // 合同矩阵把 workflow（节点图）也挂在 design-canvas 能力下；节点图的本地编辑器
-      // 是视频画布，不是图片编辑器，所以按 artifactType 分流。
+    case "work":
+      return workCapability();
+    case "image":
+      // 存量 workflow 的 design_canvas 能力仍使用视频画布；图片与设计稿共用 image。
       return artifact.artifactType === "workflow"
         ? videoCanvasEditor()
         : designCanvasEditor();
@@ -327,6 +330,7 @@ function durableEditorCapabilityFor(
 export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   const durable = durableEditorCapabilityFor(item);
   if (durable) return durable;
+  if (isWorkItem(item)) return workCapability();
   const templateDocumentUrl = String(item.meta.template_doc_url || "");
   const url = item.url || item.previewUrl || "";
   const ext = extOf(url);
@@ -373,11 +377,6 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       ? available("threed", { type: "threed" })
       : unavailable("只有 3D 模型可进入场景/视图工作台。");
   }
-  // 必须留在下面 `item.kind === "website"` 分支之前：游戏 bundle 也是单文件 HTML，
-  // 落到那个分支就会被送进 Next 源码工作台（`01-decisions.md` D7 明令禁止）。
-  if (pinnedRoute === "game") {
-    return available("game", { type: "game" });
-  }
   if (pinnedRoute === "none") {
     return unavailable(
       String(item.meta.unavailable_reason || "") ||
@@ -411,7 +410,7 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       item.kind === "website" ||
       pinnedEditor === "website"
     ) {
-      return websiteEditor();
+      return workCapability();
     }
     if (
       pinnedRoute === "video-canvas" ||
@@ -431,31 +430,6 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   // 素材域按**当前家族**取，正则不再写死 `.com`。`.com` 站的判定逐字不变。
   if (isFamilyDesignTemplateDocUrl(templateDocumentUrl)) {
     return designCanvasEditor();
-  }
-
-  if (item.kind === "website" || contentType === "website") {
-    // Blank website drafts are isomorphic to design/video blank embeds: no URL
-    // yet, opened via ?blank=1 on the shared website adapter host.
-    if (
-      (item.meta.draft === true || item.meta.blank === true) &&
-      !item.url &&
-      !item.previewUrl
-    ) {
-      return websiteEditor();
-    }
-    const projectId =
-      item.meta.website_id ||
-      item.meta.project_id ||
-      item.meta.slug ||
-      item.meta.site_id;
-    const starterId = item.meta.starter_id;
-    const githubRepo = item.meta.github_repo;
-    if (!projectId && !starterId && !githubRepo) {
-      return unavailable(
-        "这个网站条目只有预览，没有可恢复的项目、模板或 GitHub 源码。",
-      );
-    }
-    return websiteEditor();
   }
 
   if (
@@ -570,10 +544,8 @@ export function editorToolLabel(route: EditorRoute): string {
       return "幻灯片编辑";
     case "threed":
       return "3D 场景与视图";
-    case "game":
-      return "游戏编辑";
-    case "website":
-      return "网站编辑";
+    case "work":
+      return "作品工作台";
     case "video-canvas":
       return "节点画布";
     default:
