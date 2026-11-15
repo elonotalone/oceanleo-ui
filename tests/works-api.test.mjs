@@ -96,7 +96,7 @@ test("work normalization keeps server locations and rejects unsafe preview urls"
   assert.equal(work.preview.url, undefined);
   assert.deepEqual(work.links.map((link) => link.label), ["safe"]);
   assert.equal(model.workLocationLabel(work), "Office · C:\\site");
-  assert.deepEqual(model.workDraftForPath("/projects/game-demo"), { kind: "game", start_command: "npm run dev", port: 3000 });
+  assert.deepEqual(model.workDraftForPath("/projects/game-demo"), { kind: "website", start_command: "npm run dev", port: 3000 });
 });
 
 test("works API no longer exposes removed server transfer methods", () => {

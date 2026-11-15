@@ -1,3 +1,4 @@
+import { workArtifactKind } from "./kinds";
 import type { LibraryItem } from "../library-data";
 import { normalizeServerWork, type ServerWork } from "./model";
 
@@ -7,7 +8,7 @@ export function serverWorkLibraryItem(work: ServerWork): LibraryItem {
     source: "creation",
     id: work.id,
     title: work.title,
-    kind: work.kind === "game" || work.kind === "website" ? work.kind : "website",
+    kind: workArtifactKind(work.kind),
     siteId: "",
     favorite: false,
     createdAt: work.updated_at,

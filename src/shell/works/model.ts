@@ -1,6 +1,8 @@
 import { normalizeLinkWork, type LinkWork } from "./link-work-item";
 
-export type WorkKind = "website" | "game" | "app" | "other";
+import { DEFAULT_WORK_KIND, normalizeWorkKind, fallbackKindLabel, type WorkKind } from "./kinds";
+export type { WorkKind } from "./kinds";
+export type WorkPreviewSource = { type: "url"; path?: string } | { type: "screen"; device_id: string; display_id?: number | null } | { type: "none" };
 export type WorkStatus = "draft" | "published" | "running" | "stopped" | "error" | "offline";
 export type WorkLocation =
   | { type: "cloud"; artifact_id?: string; project_id?: string }
@@ -25,6 +27,10 @@ export interface Work {
   links: WorkLink[];
   status: WorkStatus;
   updated_at: string;
+  access?: "owner" | "view";
+  play_url?: string;
+  orientation?: "portrait" | "landscape" | "any";
+  preview_source?: WorkPreviewSource;
 }
 
 export interface WorkPreviewResult {
@@ -79,7 +85,7 @@ export function normalizeServerWork(value: unknown): ServerWork | null {
   const path = text(home.path) || text(server.path);
   if (!computerId || !path) return null;
   const computerName = text(home.computer_name) || text(server.computer_name) || computerId;
-  const kind = KINDS.has(value.kind as WorkKind) ? value.kind as WorkKind : "other";
+  const kind = normalizeWorkKind(value.kind);
   const status = STATUSES.has(value.status as WorkStatus) ? value.status as WorkStatus : "draft";
   const previewValue = isRecord(value.preview) ? value.preview : {};
   return {
@@ -101,7 +107,6 @@ export interface WorkUpdate {
 
 export interface WorkLink { label: string; url: string }
 
-const KINDS = new Set<WorkKind>(["website", "game", "app", "other"]);
 const STATUSES = new Set<WorkStatus>(["draft", "published", "running", "stopped", "error", "offline"]);
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -111,7 +116,7 @@ export function isUserContentUrl(value: string | undefined): value is string {
   if (!value) return false;
   try {
     const url = new URL(value);
-    return url.protocol === "https:" && url.hostname.endsWith(".oceanleo.app");
+    return url.protocol === "https:" && url.hostname.endsWith(".oceanleo.app") && !url.username && !url.password && !url.port;
   } catch {
     return false;
   }
@@ -145,7 +150,7 @@ export function normalizeWork(value: unknown): Work | null {
   const title = text(value.title);
   const home = normalizeLocation(value.home);
   if (!id || !title || !home) return null;
-  const kind = KINDS.has(value.kind as WorkKind) ? value.kind as WorkKind : "other";
+  const kind = normalizeWorkKind(value.kind);
   const status = STATUSES.has(value.status as WorkStatus) ? value.status as WorkStatus : "draft";
   const previewValue = isRecord(value.preview) ? value.preview : {};
   const links = Array.isArray(value.links)
@@ -166,6 +171,10 @@ export function normalizeWork(value: unknown): Work | null {
       ...(isUserContentUrl(text(previewValue.url)) ? { url: text(previewValue.url) } : {}),
     },
     links,
+    ...(value.access === "view" || value.access === "owner" ? { access: value.access } : {}),
+    ...(isUserContentUrl(text(value.play_url)) ? { play_url: text(value.play_url) } : {}),
+    ...(value.orientation === "portrait" || value.orientation === "landscape" || value.orientation === "any" ? { orientation: value.orientation } : {}),
+    ...(isRecord(value.preview_source) ? { preview_source: value.preview_source as WorkPreviewSource } : {}),
     status,
     updated_at: text(value.updated_at) || new Date(0).toISOString(),
   };
@@ -177,16 +186,14 @@ export function workLocationLabel(work: Work): string {
 }
 
 export function workKindLabel(kind: WorkKind): string {
-  return ({ website: "网站", game: "游戏", app: "App", other: "其他" })[kind];
+  return fallbackKindLabel(kind);
 }
 
 export function workStatusLabel(status: WorkStatus): string {
   return ({ draft: "草稿", published: "已发布", running: "运行中", stopped: "已停止", error: "出错", offline: "离线" })[status];
 }
 
-export function workDraftForPath(path: string): { kind: WorkKind; start_command: string; port: number } {
-  const lower = path.toLocaleLowerCase();
-  if (lower.endsWith(".game") || lower.includes("game")) return { kind: "game", start_command: "npm run dev", port: 3000 };
-  if (lower.includes("app")) return { kind: "app", start_command: "npm run dev", port: 3000 };
-  return { kind: "website", start_command: "npm run dev", port: 3000 };
+/** Folder names do not choose a different execution path. */
+export function workDraftForPath(_path: string): { kind: WorkKind; start_command: string; port: number } {
+  return { kind: DEFAULT_WORK_KIND, start_command: "npm run dev", port: 3000 };
 }

@@ -2,7 +2,14 @@
 
 import { accessToken } from "./auth/client";
 import { gatewayBase } from "./auth/config";
-import { normalizeWork, type Work, type WorkPreviewResult, type WorkStopResult, type WorkUpdate, type WorkLink, type WorkKind } from "../shell/works/model";
+import { normalizeWork, type Work, type WorkPreviewResult, type WorkStopResult, type WorkUpdate, type WorkLink, type WorkKind, type WorkPreviewSource } from "../shell/works/model";
+
+import { DEFAULT_KIND_DEFINITION, WORK_KINDS, type WorkKindDefinition } from "../shell/works/kinds";
+
+export interface WorkPreviewSourceResult {
+  preview_source: WorkPreviewSource;
+  resolved: { type: WorkPreviewSource["type"]; url?: string; device_id?: string; device_name?: string; state: "ready" | "not_wired" | "unavailable"; detail: string };
+}
 
 export interface CreateLinkWorkInput { title: string; links: WorkLink[]; kind?: WorkKind; note?: string }
 export interface EmbedCheckResult { embeddable: boolean | null; reason: "ok" | "x-frame-options" | "csp-frame-ancestors" | "unreachable" | "invalid" }
@@ -91,6 +98,11 @@ function requireWorks(value: unknown): Work[] {
 
 export interface WorksApi {
   list(signal?: AbortSignal): Promise<Work[]>;
+  get(id: string, signal?: AbortSignal): Promise<Work>;
+  kinds(): Promise<WorkKindDefinition[]>;
+  open(artifactId: string, revisionId?: string, signal?: AbortSignal): Promise<Work>;
+  previewSource(id: string, signal?: AbortSignal): Promise<WorkPreviewSourceResult>;
+  setPreviewSource(id: string, source: WorkPreviewSource, signal?: AbortSignal): Promise<WorkPreviewSourceResult>;
   createLink(input: CreateLinkWorkInput, signal?: AbortSignal): Promise<Work>;
   update(id: string, input: WorkUpdate, signal?: AbortSignal): Promise<Work>;
   remove(id: string, signal?: AbortSignal): Promise<void>;
@@ -98,7 +110,41 @@ export interface WorksApi {
   stop(id: string, signal?: AbortSignal): Promise<WorkStopResult>;
 }
 
+let kindsPromise: Promise<WorkKindDefinition[]> | undefined;
 export const worksApi: WorksApi = {
+  async get(id, signal) {
+    const body = await request<WorkEnvelope>(`/v1/works/${encodeURIComponent(id)}`, { signal });
+    return requireWork(body.work ?? body);
+  },
+  kinds() {
+    // Shared across mounted workbenches. A failed read uses the website defaults
+    // only for this attempt, so a later mount may recover the real catalog.
+    return kindsPromise ??= request<{ kinds: WorkKindDefinition[] }>("/v1/works/kinds").then(body => {
+      const kinds = body?.kinds?.filter(entry => entry && WORK_KINDS.includes(entry.kind) &&
+        typeof entry.label === "string" && typeof entry.label_zh === "string" &&
+        ["browser", "phone", "game"].includes(entry.preview?.frame) &&
+        ["any", "portrait", "landscape"].includes(entry.preview?.orientation) &&
+        typeof entry.default_preset === "string" && Array.isArray(entry.default_boards));
+      if (!kinds?.length) throw new WorksApiError(502, "response_malformed");
+      return kinds;
+    }).catch(() => { kindsPromise = undefined; return [DEFAULT_KIND_DEFINITION]; });
+  },
+  async open(artifactId, revisionId, signal) {
+    const body = await request<WorkEnvelope>("/v1/works/open", {
+      method: "POST", body: JSON.stringify({ artifact_id: artifactId, ...(revisionId ? { revision_id: revisionId } : {}) }), signal,
+    });
+    const work = requireWork(body.work);
+    if (!work.access) throw new WorksApiError(502, "response_malformed");
+    return work;
+  },
+  previewSource(id, signal) {
+    return request<WorkPreviewSourceResult>(`/v1/works/${encodeURIComponent(id)}/preview-source`, { signal });
+  },
+  setPreviewSource(id, source, signal) {
+    return request<WorkPreviewSourceResult>(`/v1/works/${encodeURIComponent(id)}/preview-source`, {
+      method: "PUT", body: JSON.stringify({ preview_source: source }), signal,
+    });
+  },
   async list(signal) {
     return requireWorks(await request<WorksEnvelope>("/v1/works", { signal }));
   },
