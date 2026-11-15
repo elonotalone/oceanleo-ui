@@ -20,7 +20,11 @@ export interface WorkingCopyTransport {
 }
 export class WorkingCopyError extends Error {
   readonly status: number;
-  constructor(message: string, status: number) { super(message); this.status = status; }
+  readonly seq?: number;
+  constructor(message: string, status: number, seq?: number) {
+    super(message); this.status = status;
+    this.seq = Number.isSafeInteger(seq) && seq! > 0 ? seq : undefined;
+  }
 }
 export function workingCopyRoot(item: { artifactId?: string; id: string; meta?: Record<string, unknown> }): string {
   return String(item.artifactId || item.meta?.artifact_id || item.id);
@@ -60,7 +64,8 @@ export function workingCopyTransport(root: string, schema: string, baseRevision:
     if (!response.ok) {
       if (response.status === 401) rejectedToken = token;
       const message = response.status === 409 ? WORKING_COPY_CONFLICT : response.status === 401 ? "登录已过期，重新登录后自动继续" : mapAutosaveErrorMessage({ status: response.status }) || "保存失败，请重试";
-      throw new WorkingCopyError(message, response.status);
+      const stale = response.status === 409 ? await response.json().catch(() => null) : null;
+      throw new WorkingCopyError(message, response.status, stale?.code === "stale" ? stale.seq : undefined);
     }
     if (response.status === 204) return null;
     const receipt = await response.json();
@@ -188,12 +193,10 @@ export class WorkingCopySaver {
         let result: WorkingCopyReceipt;
         try { result = await this.options.transport.put(doc, this.view.seq); }
         catch (error) {
-          if (!(error instanceof WorkingCopyError) || error.status !== 409 || !this.options.collaborative?.() || ++conflicts >= 3) throw error;
-          const copy = await this.options.transport.get();
-          if (copy && copy.schema !== this.options.schema) throw error;
-          this.view = { ...this.view, seq: copy?.seq ?? null };
-          // The room already merged its document. Read only the CAS sequence;
-          // capture again so edits received during GET are included in this PUT.
+          if (!(error instanceof WorkingCopyError) || error.status !== 409 || error.seq === undefined || !this.options.collaborative?.() || ++conflicts >= 3) throw error;
+          this.view = { ...this.view, seq: error.seq };
+          // The stale receipt supplies the CAS sequence. Recapture the room's
+          // current merged model immediately, without another request.
           continue;
         }
         conflicts = 0;
