@@ -355,13 +355,16 @@ export async function listBayOfficialTemplates(options: BayOfficialScope & {
   const artifactType = templateArtifactTypeForBay(options.type);
   if (!artifactType) return { items: [], total: 0, hasMore: false, unavailableSources: [] };
   const siteKey = bayOfficialSiteKey(options);
+  // The portal's Bay is the platform catalog; app-level and subsite shelves
+  // retain their existing scope. Typed library queries still use that scope.
+  const platformCatalog = siteKey === "oceanleo" && options.level !== "primary";
+  const catalogSiteKey = platformCatalog ? "" : siteKey;
   const q = (options.q || "").trim().toLowerCase();
   // Fetch all sources before slicing: a catalog-only page can hide typed materials.
-  // The global call remains compatible; wave 3 supplies siteKey/context for both old tabs.
   const [result, typed] = await Promise.all([
     listTemplateMaterials({
       artifactType,
-      siteKey: siteKey || undefined,
+      siteKey: catalogSiteKey || undefined,
       appId: options.level === "primary" && options.context?.appId !== "default"
         ? options.context?.appId : undefined,
       signal: options.signal,
@@ -370,7 +373,7 @@ export async function listBayOfficialTemplates(options: BayOfficialScope & {
   ]);
   if (!result.ok) throw new Error(result.error || "官方成品暂时无法加载。");
   const templates = (result.data || []).filter((material) =>
-    material.artifactType === artifactType && (!siteKey || material.siteKey === siteKey) &&
+    material.artifactType === artifactType && (!catalogSiteKey || material.siteKey === catalogSiteKey) &&
     (options.level !== "primary" || options.context?.appId === "default" ||
       material.appId === options.context?.appId)
   ).map((material) => templateMaterialToBayAsset(material, options.type));
@@ -378,6 +381,13 @@ export async function listBayOfficialTemplates(options: BayOfficialScope & {
     templates,
     typed.items.map((material) => typedMaterialToBayAsset(material, options.type)),
   ], siteKey);
+  if (platformCatalog) {
+    // Keep the old portal/prompt source packages available, after the specialist
+    // catalogs. Stable ordering is preserved within each group, before paging.
+    const legacy = (asset: BayOfficialAsset) =>
+      Number(asset.catalog.siteKey === "oceanleo" || asset.catalog.siteKey === "prompt");
+    items.sort((a, b) => legacy(a) - legacy(b));
+  }
   if (q) items = items.filter((item) => matchesQuery(item, q));
   const total = items.length;
   const offset = Math.max(0, options.offset ?? 0);
