@@ -21,9 +21,11 @@ function source(path) {
 
 /** 失败面板整段（含它的重试按钮）在源码里的那一块。 */
 function failurePanelBlock(stage) {
-  const start = stage.indexOf("editor.sourceFailed");
-  if (start < 0) return "";
-  return stage.slice(start, start + 900);
+  // Editing guards also mention sourceFailed before the failure surface.
+  // Locate the positive rendering branch rather than the first identifier.
+  return stage.match(
+    /(?<!!)\beditor\.sourceFailed\s*&&\s*\(\s*<EditorSourceFailurePanel\b[\s\S]*?\/>/,
+  )?.[0] || "";
 }
 
 test("共用失败面板：说清原因的那段文案与真会重跑的入口在同一块地方", () => {
