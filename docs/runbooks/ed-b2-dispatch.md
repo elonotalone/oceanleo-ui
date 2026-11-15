@@ -32,6 +32,8 @@ Audio、Model3D、VideoTimeline 改 use-*-selection-adapter hook，删除 UI 包
 
 ## image 单元
 
+2026-11-16 图片 profile 补核对：确认 opacity 在 Deck 为 0–1 面板、Fabric 为 0–100 数字、PDF stamp 为 10–100 面板，非引擎强制差异。本单元追加独占整条 opacity 收敛链：selection-context-types.ts、selection-adapter.ts（仅 unit/opacity 默认形态）、doc-editors/deck-edit-bar-controls.ts、deck-toolbar-command.ts、media-editors/pdf-selection-controls.ts、use-pdf-selection-adapter.ts、tests/editor-toolbar-profile-parity.test.mjs，以及这条能力必要的 Deck/PDF/Fabric 已有测试。此追加覆盖原单元/父这些文件的责任，其他单元已完成不再写。目标：支持者统一 canon opacity / number / compact / primary、百分数值和 step 1；保留真实上下限，Deck 原生 0–1 换算留命令 adapter；PDF 不凭空补未支持的图片能力。共享 unit 可扩为 px|percent，shell 填百分数 suffix。新 parity 要使用真实图片选区/adapter，覆盖 Deck/Fabric/PDF stamp，兼查共同 border/position/rotate，canvas 未支持者明确不补；测试真实 +/- 命令与原生值 roundtrip。禁止浏览器/全量/提交；focused 经 run-light。完成后父重新跑全部静态门禁和最终 npm test。
+
 2026-11-16 共享测试追加独占：tests/collab-visual-readonly.test.mjs、tests/editor-repair-20261021-acceptance-image.mjs、tests/inline-library-editing.test.mjs。可用 tests/helpers/selection-adapter-host.mjs 的 compileSelectionAdapterHost。
 
 独占：src/shell/image-editor/FabricImageContextToolbar.tsx 与 fabric-image-toolbar-controls.ts、fabric-image-commands.ts 等其选区控件/命令；src/shell/advanced-routes/ImageRoute.tsx；src/shell/video-canvas/LibraryVideoCanvasSession.tsx、engine/canvas-selection-adapter.ts 及必要选区命令；只与上述功能相关的已有测试。不能改其他单元或父文件。
