@@ -74,6 +74,7 @@ test("document editors cover rich text, workbooks and PPTX freeform decks", () =
   const grid = source("../src/shell/doc-editors/GridUniverStage.tsx");
   const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
   const deckStage = source("../src/shell/doc-editors/DeckStage.tsx");
+  const deckInteraction = source("../src/shell/doc-editors/use-deck-element-interaction.ts");
   const deckLayout = source(
     "../src/shell/doc-editors/DeckPreviewLayout.tsx",
   );
@@ -110,7 +111,10 @@ test("document editors cover rich text, workbooks and PPTX freeform decks", () =
   assert.match(deckElementContent, /onCommitCell/);
   assert.match(deckStage, /RESIZE_HANDLES/);
   assert.match(deckStage, /data-deck-canvas/);
-  assert.match(deckStage, /rotateDeckElement/);
+  assert.match(deckStage, /useDeckElementInteraction\(editor\)/);
+  assert.match(deckInteraction, /moveDeckElement\(/);
+  assert.match(deckInteraction, /resizeDeckElement\(/);
+  assert.match(deckInteraction, /rotateDeckElement\(/);
   assert.match(deckStage, /<DeckPreviewLayout/);
   assert.match(deckLayout, /useCenteredWheelZoom/);
   assert.match(deckLayout, /contentWidth: geometry\.width/);
