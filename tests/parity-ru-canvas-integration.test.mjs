@@ -82,7 +82,8 @@ for (const [aliases,readyText] of [[false,false],[true,false],[true,true]]) test
     await act(async()=>root.render(React.createElement(Session,{item,base:{current:item},initialProject:project,lock:{mayWrite:true,collab:{room:null}},onClose(){},onCommitted(){}})));
     assert.ok(globalThis.__ruAdapter.panelHostRef, "materials use the workbench panel host");
     assert.equal(globalThis.__ruAdapter.renderContextToolbar, undefined);
-    assert.equal(globalThis.__ruAdapter.selection.context, null);
+    assert.equal(globalThis.__ruAdapter.selection.context.id, workflow().captureProject().projectId);
+    assert.deepEqual(globalThis.__ruAdapter.selection.context.controls.map(control=>control.id), ["canvas.create.text","canvas.create.audio"]);
     for (const id of Object.values(ids)) assert.ok(host.querySelector(`[data-node-id="${id}"]`),`render ${id}`);
     await act(async()=>workflow().onNodeClick(ids.video));
     assert.equal(globalThis.__ruAdapter.selection.context.id, ids.video);

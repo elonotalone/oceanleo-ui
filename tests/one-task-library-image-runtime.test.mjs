@@ -266,7 +266,6 @@ const stubs = {
     }
   `),
   "./edit-bar-dock-state": dataModule(`export function editBarDockStorageKey(){ return "fixture"; }`),
-  "./edit-bar-surface": dataModule(`export const EDIT_BAR_BUTTON_CLASS=""; export const EDIT_BAR_DIVIDER_CLASS=""; export const EDIT_BAR_TOUCH_EXTEND_CLASS=""; export function editBarCollapsedStyle(){return {};} export function editBarPillStyle(){return {};} `),
   "../ui/Button": buttonStub,
   "./collab/CollabActionSlot": nullComponent("CollabActionSlot"),
   "./editor-item-social-chrome": dataModule(`export function useEditorItemSocial(){ return { shareAvailable: false, favoriteAvailable: false, favorite: false, busy: "", error: "", artifactId: null, revisionId: null, async share(){}, async toggleFavorite(){} }; }`),
