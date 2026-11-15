@@ -25,6 +25,7 @@ import {
   timelineTextListPatch,
   normalizeTimelineCrop,
   timelineFontFamily,
+  validTimelineLibrarySource,
   validTimelineSourceReference,
   type ClipLocation,
 } from "./timeline-model";
@@ -443,11 +444,11 @@ function imageReplacementSources(doc: TimelineDoc | undefined, located: ClipLoca
   if (!doc || located.track.kind !== "image") return [];
   const identity = (clip: TimelineClip) => clip.source_ref
     ? JSON.stringify([clip.source_ref.artifactId, clip.source_ref.revisionId, clip.source_ref.path])
-    : clip.source_url;
+    : clip.library_source ? JSON.stringify(clip.library_source) : clip.source_url;
   return doc.tracks.filter((track) => track.kind === "image")
     .flatMap((track) => track.clips)
     .filter((clip) => clip.id !== located.clip.id &&
-      (clip.source_ref ? validTimelineSourceReference(clip.source_ref) : Boolean(clip.source_url)) &&
+      (clip.source_ref ? validTimelineSourceReference(clip.source_ref) : validTimelineLibrarySource(clip.library_source) || Boolean(clip.source_url)) &&
       identity(clip) !== identity(located.clip));
 }
 
@@ -591,6 +592,7 @@ export function runVideoClipCommand(
       patch({
         source_url: source.source_url,
         source_ref: source.source_ref ? { ...source.source_ref } : undefined,
+        library_source: source.library_source ? { ...source.library_source } : undefined,
         label: source.label,
       });
       return true;

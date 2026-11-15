@@ -14,6 +14,13 @@ export type TransitionType = "fade" | "crossfade" | "black";
 export const TIMELINE_FONT_FAMILIES = [
   "sans-serif", "serif", "monospace", "Noto Sans CJK SC", "DejaVu Sans",
 ] as const;
+export const TIMELINE_LIBRARY_IMAGE_ERROR_EVENT = "oceanleo:timeline-library-image-error";
+
+export interface TimelineLibraryImageSource {
+  artifactId: string;
+  revisionId: string;
+  rendition: "full";
+}
 
 export interface TimelineTransition {
   type: TransitionType;
@@ -52,6 +59,8 @@ export interface TimelineClip {
   source_url?: string;
   /** Owner-checked immutable Library dependency; URLs are resolved only for playback/render. */
   source_ref?: { artifactId: string; revisionId: string; path: string };
+  /** 普通 Library 图片固定 revision；播放 grant 只存在预览引擎内，不写入工程。 */
+  library_source?: TimelineLibraryImageSource;
   /** 源内起点。 */
   in_ms?: number;
   /** 浏览器元数据探针得到的源总时长，用于阻止预览冻结而导出提前结束。 */

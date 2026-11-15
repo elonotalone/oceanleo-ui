@@ -17,7 +17,7 @@ export function useVideoTimelineSelectionAdapter({
   state,
   readOnly = false,
   enabled = true,
-  canReplaceImage = false,
+  canReplaceImage = true,
 }: {
   state: VideoTimelineState;
   enabled?: boolean;

@@ -235,14 +235,19 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
           next.saturation = canonicalNumber(clip.saturation, 1, 0, 3);
         }
         if (track.kind === "image") {
-          if (clip.crop) next.crop = normalizeTimelineCrop(clip.crop);
+          if (validTimelineLibrarySource(clip.library_source)) {
+            next.library_source = Object.freeze({ ...clip.library_source! });
+            delete next.source_url;
+            delete next.source_ref;
+          } else delete next.library_source;
+          if (clip.crop) next.crop = Object.freeze(normalizeTimelineCrop(clip.crop));
           next.radius = canonicalNumber(clip.radius, 0, 0, 1000);
-          if (clip.border) next.border = {
+          if (clip.border) next.border = Object.freeze({
             width: canonicalNumber(clip.border.width, 0, 0, 100),
             color: canonicalColor(clip.border.color, "#000000"),
-          };
+          });
           next.alt = typeof clip.alt === "string" ? clip.alt.slice(0, 2000) : "";
-        }
+        } else delete next.library_source;
         if (track.kind === "text") {
           if (timelineTextListKind(clip) === "none") delete next.text_list;
           else next.text_list = Object.freeze({ ...clip.text_list! });
@@ -676,6 +681,15 @@ export function validTimelineSourceReference(value: unknown): boolean {
     && ref.path.split("/").every((part) => Boolean(part) && part !== "." && part !== "..");
 }
 
+export function validTimelineLibrarySource(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const ref = value as Record<string, unknown>;
+  const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+  return typeof ref.artifactId === "string" && uuid.test(ref.artifactId)
+    && typeof ref.revisionId === "string" && uuid.test(ref.revisionId)
+    && ref.rendition === "full";
+}
+
 function validTimelineSourceUrl(value: unknown): boolean {
   if (
     typeof value !== "string" ||
@@ -759,6 +773,7 @@ export function timelineDocIssue(value: unknown): string {
       if (
         track.kind !== "text" &&
         !validTimelineSourceUrl(clip.source_url) && !validTimelineSourceReference(clip.source_ref)
+        && !(track.kind === "image" && validTimelineLibrarySource(clip.library_source))
       ) {
         return `片段 ${clip.id} 缺少安全的 http(s) 媒体源`;
       }

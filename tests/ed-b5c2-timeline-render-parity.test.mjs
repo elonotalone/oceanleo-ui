@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import { findClip, normalizeTimelineDoc, patchClipIn, normalizeTimelineCrop, timelineFontStack } from "../src/shell/video-editor/timeline-model.ts";
+import { findClip, normalizeTimelineDoc, patchClipIn, normalizeTimelineCrop, timelineFontStack, timelineDocIssue } from "../src/shell/video-editor/timeline-model.ts";
 import { runVideoClipCommand, videoClipSelection, VIDEO_TIMELINE_REPLACE_IMAGE_EVENT } from "../src/shell/video-editor/video-edit-bar.ts";
 import { hydrateVideoTimelineDoc, serializeVideoProjectEnvelope } from "../src/shell/video-editor/video-timeline-source.ts";
+import { TIMELINE_LIBRARY_IMAGE_ERROR_EVENT } from "../src/shell/video-editor/types.ts";
 import { timelineRenderRequestBody } from "../src/shell/video-editor/render-contract.ts";
 
 const tt = text => text;
@@ -140,6 +141,11 @@ test("Real image preview crops before fit and scales corner/border in compositio
   assert.deepEqual(calls.find(c => c[0] === "stroke"), ["stroke", 5, "#ff0000"]);
   assert.ok(calls.some(c => c[0] === "scale" && c[1] === -1 && c[2] === 1));
   assert.deepEqual(normalizeTimelineCrop(undefined), { x: 0, y: 0, width: 1, height: 1 });
+  for (const [fit, expected] of [["contain", [-125, -125, 250, 250]], ["stretch", [-250, -125, 500, 250]]]) {
+    const sample = canvasContext();
+    preview.drawTimelineImageFrame(sample.ctx, { naturalWidth: 100, naturalHeight: 100 }, { scale: .5, fit }, 1000, 500, 1);
+    assert.deepEqual(sample.calls.find(c => c[0] === "image").slice(6, 10), expected, fit);
+  }
 });
 
 test("Mounted real selection adapter routes replace to its document and blocks read-only", async () => {
@@ -180,4 +186,122 @@ test("Image adjustments use additive brightness on black, preserve alpha and cac
     preview.drawTimelineImageFrame(canvasContext().ctx, image, clip, 100, 100, 1);
     assert.equal(reads, 1); assert.deepEqual([...writes], [64, 64, 64, 255]);
   } finally { globalThis.document = oldDocument; }
+});
+
+
+const source = { artifactId: "00000000-0000-0000-0000-000000000002", revisionId: "00000000-0000-0000-0000-000000000012", rendition: "full" };
+const libraryApi = dataModule(`export async function refreshArtifactRendition(...args) { return globalThis.__edB5c2Library.refresh(...args); }
+export async function listMyArtifacts(...args) { return globalThis.__edB5c2Library.list(...args); }`);
+const stage = await import(await compileModule("src/shell/video-editor/VideoTimelineStage.tsx", {
+  "../../i18n/ui/useUI": dataModule("export const useUI = () => text => text;"),
+  "../artifact-client": libraryApi,
+  "./TimelineArea": dataModule("export const TimelineArea = () => null;"),
+}));
+const libraryPreview = await import(await compileModule("src/shell/video-editor/preview-engine.ts", {
+  "../../lib/media-proxy": dataModule("export const canvasSafeUrl = url => url;"),
+  "../artifact-client": libraryApi,
+}));
+async function eventually(predicate) {
+  for (let i = 0; i < 80; i += 1) {
+    if (predicate()) return;
+    await act(async () => new Promise(resolve => setTimeout(resolve, 5)));
+  }
+  assert.fail("Expected async Library work to complete");
+}
+function fullImage() { return { ok: true, data: { url: "https://private.example/runtime-grant", mediaType: "image/png", revisionId: source.revisionId, expiresAt: new Date(Date.now() + 300_000).toISOString() } }; }
+function libraryItem(kind = "image", id = source.artifactId) { return { key: id, id, source: "artifact", title: "Other project image", kind, siteId: "another-project", artifactId: id, revisionId: source.revisionId, favorite: false, meta: {} }; }
+function libraryFile() { return { id: source.artifactId, name: "Other project image", artifactId: source.artifactId, revisionId: source.revisionId }; }
+
+test("Private Library image replacement stores immutable identity across save/reopen and render, without grants", async () => {
+  globalThis.__edB5c2Library = { refresh: async () => fullImage() };
+  const patch = await stage.timelineLibraryImageReplacement(libraryFile());
+  const e = editor(); const before = e.clip("image");
+  e.state.patchClip("image", patch); e.reopen();
+  const clip = e.clip("image");
+  assert.deepEqual(clip.library_source, source);
+  assert.ok(Object.isFrozen(clip.library_source));
+  assert.equal(clip.source_ref, undefined); assert.equal(clip.source_url, undefined);
+  for (const key of ["id", "start_ms", "duration_ms", "scale", "x", "y", "opacity"]) assert.equal(clip[key], before[key], key);
+  assert.equal(timelineDocIssue(e.doc), "");
+  assert.equal(serializeVideoProjectEnvelope(e.doc).includes("runtime-grant"), false);
+  const sent = timelineRenderRequestBody({ timeline: e.doc }).timeline.tracks[1].clips[0];
+  assert.deepEqual(sent.library_source, source); assert.equal(sent.source_url, undefined);
+  const stale = normalizeTimelineDoc({ ...e.doc, tracks: [{ ...e.doc.tracks[1], clips: [{ ...clip, source_url: "https://private.example/expired-runtime-grant", source_ref: { artifactId: source.artifactId, revisionId: source.revisionId, path: "assets/old.png" } }] }] });
+  assert.equal(stale.tracks[0].clips[0].source_url, undefined); assert.equal(stale.tracks[0].clips[0].source_ref, undefined);
+});
+
+test("Real shared Library picker lists images from another project and commits selected private identity", async () => {
+  await import("./helpers/w1-jsdom-window.mjs"); globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const { createRoot } = await import("react-dom/client"); const e = editor();
+  let limit; globalThis.__edB5c2Library = { refresh: async () => fullImage(), list: async options => { limit = options.limit; return { ok: true, data: { items: [libraryItem(), libraryItem("audio", "00000000-0000-0000-0000-000000000003")] } }; } };
+  const state = { ...e.state, doc: e.doc, selected: findClip(e.doc, "image") };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state })));
+    await act(async () => window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { doc: e.doc, clipId: "image" } })));
+    assert.ok(host.querySelector("[data-composer-library-picker]"));
+    await eventually(() => host.querySelector("[data-composer-library-item]"));
+    assert.equal(limit, 100);
+    const items = host.querySelectorAll("[data-composer-library-item]"); assert.equal(items.length, 1); assert.equal(items[0].textContent, "Other project image");
+    await act(async () => items[0].click());
+    assert.deepEqual(e.clip("image").library_source, source); assert.equal(host.querySelector("[role=dialog]"), null);
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state: { ...state, doc: e.doc, selected: findClip(e.doc, "image") } })));
+    await act(async () => window.dispatchEvent(new window.CustomEvent(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, { detail: { clipId: "image", source } })));
+    assert.equal(host.querySelector("[role=alert]").textContent, "这份素材没能插入，请重试", "A runtime media failure is visible outside the picker");
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("Picker ignores delayed choices after read-only or selection changes and displays loading failures", async () => {
+  const { createRoot } = await import("react-dom/client"); const e = editor(); let finish;
+  globalThis.__edB5c2Library = { refresh: () => new Promise(resolve => { finish = resolve; }), list: async () => ({ ok: true, data: { items: [libraryItem()] } }) };
+  const state = { ...e.state, doc: e.doc, selected: findClip(e.doc, "image") };
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const open = async () => { await act(async () => window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { doc: e.doc, clipId: "image" } }))); await eventually(() => host.querySelector("[data-composer-library-item]")); };
+  try {
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state })));
+    await open(); await act(async () => host.querySelector("[data-composer-library-item]").click());
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, readOnly: true })));
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, readOnly: false })));
+    await act(async () => finish(fullImage()));
+    assert.equal(e.clip("image").library_source, undefined, "A readonly transition permanently invalidates the pending mutation");
+    await open(); await act(async () => host.querySelector("[data-composer-library-item]").click());
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state: { ...state, selected: findClip(e.doc, "text") } })));
+    await act(async () => finish(fullImage()));
+    assert.equal(e.clip("image").library_source, undefined, "Selection changes invalidate delayed mutation");
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state })));
+    globalThis.__edB5c2Library.refresh = async () => ({ ok: false, error: "unavailable" });
+    await open(); await act(async () => host.querySelector("[data-composer-library-item]").click());
+    assert.equal(host.querySelector("[role=alert]").textContent, "这份素材没能插入，请重试");
+    assert.equal(e.clip("image").library_source, undefined);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+test("Preview resolves private Library identities into runtime-only media, ignores stale requests, and exposes failures", async () => {
+  const oldRaf = globalThis.requestAnimationFrame, oldCancel = globalThis.cancelAnimationFrame, oldImage = globalThis.Image;
+  globalThis.requestAnimationFrame = () => 1; globalThis.cancelAnimationFrame = () => {};
+  globalThis.Image = class { complete = true; naturalWidth = 100; naturalHeight = 100; removeAttribute() {} };
+  const e = editor(); e.state.patchClip("image", { library_source: source });
+  let finish; globalThis.__edB5c2Library = { refresh: () => new Promise(resolve => { finish = resolve; }) };
+  const engine = new libraryPreview.TimelinePreviewEngine(e.doc);
+  const errors = []; const listener = event => errors.push(event.detail); window.addEventListener(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, listener);
+  try {
+    const pending = [...engine.libraryImages.values()][0].pending;
+    await eventually(() => typeof finish === "function"); finish(fullImage()); await pending;
+    assert.equal(engine.media.get("image").el.src, "https://private.example/runtime-grant");
+    assert.equal(engine.doc.tracks[1].clips[0].source_url, undefined);
+    const { ctx, calls } = canvasContext(); engine.composite({ getContext: () => ctx }, 1000, 500, 1);
+    assert.equal(calls.filter(c => c[0] === "image").length, 1);
+    const newer = { ...source, revisionId: "00000000-0000-0000-0000-000000000013" };
+    e.state.patchClip("image", { library_source: newer }); engine.setDoc(e.doc);
+    finish = undefined;
+    const stale = [...engine.libraryImages.values()][0].pending; await eventually(() => typeof finish === "function");
+    e.state.patchClip("image", { library_source: undefined, source_url: "https://example.test/new-public.png" }); engine.setDoc(e.doc);
+    finish(fullImage()); await stale;
+    assert.equal(engine.media.get("image").el.src, "https://example.test/new-public.png");
+    globalThis.__edB5c2Library.refresh = async () => ({ ok: false });
+    e.state.patchClip("image", { library_source: newer }); engine.setDoc(e.doc);
+    await [...engine.libraryImages.values()][0].pending;
+    assert.equal(errors.length, 1); assert.equal(errors[0].clipId, "image");
+    assert.equal(engine.media.has("image"), false);
+  } finally { engine.dispose(); window.removeEventListener(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, listener); globalThis.requestAnimationFrame = oldRaf; globalThis.cancelAnimationFrame = oldCancel; globalThis.Image = oldImage; }
 });

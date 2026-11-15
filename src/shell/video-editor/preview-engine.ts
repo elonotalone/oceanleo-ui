@@ -25,7 +25,7 @@ import {
   thumbnailRenditionSize,
   TimelineCarrierError,
 } from "./timeline-carrier";
-import type { TimelineClip, TimelineDoc, TimelineTrack } from "./types";
+import { TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, type TimelineClip, type TimelineDoc, type TimelineTrack, type TimelineLibraryImageSource } from "./types";
 
 /**
  * 屏上取景宽度上限。这是视口,不是交付物 —— `preview` rendition 走
@@ -150,6 +150,8 @@ export class TimelinePreviewEngine {
   private durationMs = 0;
   private canvas: HTMLCanvasElement | null = null;
   private media = new Map<string, MediaEntry>();
+  private libraryImages = new Map<string, { url?: string; expiresAt?: number; pending?: Promise<void>; retryAt?: number }>();
+  private libraryClipKeys = new Map<string, string>();
   private clipIndex = new Map<string, ClipInfo>();
   private raf = 0;
   private playing = false;
@@ -196,19 +198,37 @@ export class TimelinePreviewEngine {
     for (const track of this.doc.tracks) {
       for (const clip of track.clips) {
         this.clipIndex.set(clip.id, { clip, trackId: track.id });
+        if (track.kind === "image" && clip.library_source) {
+          const source = clip.library_source;
+          const key = JSON.stringify([source.artifactId, source.revisionId, source.rendition]);
+          if (this.libraryClipKeys.get(clip.id) !== key) {
+            const previous = this.media.get(clip.id);
+            if (previous) this.releaseEntry(previous);
+            this.media.delete(clip.id);
+          }
+          this.libraryClipKeys.set(clip.id, key);
+          wanted.set(clip.id, { type: "image", url: "" });
+          this.ensureLibraryImage(clip.id, clip.library_source);
+          continue;
+        }
+        this.libraryClipKeys.delete(clip.id);
         if (!clip.source_url) continue;
         if (track.kind === "video") wanted.set(clip.id, { type: "video", url: clip.source_url });
         else if (track.kind === "audio") wanted.set(clip.id, { type: "audio", url: clip.source_url });
         else if (track.kind === "image") wanted.set(clip.id, { type: "image", url: clip.source_url });
       }
     }
-    for (const [id, spec] of wanted) this.ensureMedia(id, spec.type, spec.url);
+    for (const [id, spec] of wanted) if (spec.url) this.ensureMedia(id, spec.type, spec.url);
     for (const [id, entry] of [...this.media]) {
       if (!wanted.has(id)) {
         this.releaseEntry(entry);
         this.media.delete(id);
+        this.libraryClipKeys.delete(id);
       }
     }
+    for (const id of this.libraryClipKeys.keys()) if (!this.clipIndex.get(id)?.clip.library_source) this.libraryClipKeys.delete(id);
+    const libraryKeys = new Set(this.libraryClipKeys.values());
+    for (const key of this.libraryImages.keys()) if (!libraryKeys.has(key)) this.libraryImages.delete(key);
   }
 
   setTime(ms: number): void {
@@ -255,6 +275,8 @@ export class TimelinePreviewEngine {
     cancelAnimationFrame(this.raf);
     for (const entry of this.media.values()) this.releaseEntry(entry);
     this.media.clear();
+    this.libraryImages.clear();
+    this.libraryClipKeys.clear();
     void this.audioContext?.close().catch(() => undefined);
     this.audioContext = null;
     this.canvas = null;
@@ -264,6 +286,47 @@ export class TimelinePreviewEngine {
   }
 
   // -------------------------------------------------------------- internals
+
+  private ensureLibraryImage(clipId: string, source: TimelineLibraryImageSource): void {
+    const key = JSON.stringify([source.artifactId, source.revisionId, source.rendition]);
+    let cached = this.libraryImages.get(key);
+    if (!cached) { cached = {}; this.libraryImages.set(key, cached); }
+    if (cached.url && (cached.expiresAt ?? Infinity) > Date.now() + 30_000) {
+      this.ensureMedia(clipId, "image", cached.url);
+      return;
+    }
+    if (cached.pending || (cached.retryAt ?? 0) > Date.now()) return;
+    const entry = cached;
+    entry.pending = (async () => {
+      try {
+        const { refreshArtifactRendition } = await import("../artifact-client");
+        const result = await refreshArtifactRendition(source, "full");
+        if (!result.ok || !result.data?.url || !result.data.mediaType.startsWith("image/")) {
+          throw new Error(result.error || "这份素材没能插入，请重试");
+        }
+        if (this.disposed) return;
+        entry.url = result.data.url;
+        const expiresAt = Date.parse(result.data.expiresAt || "");
+        entry.expiresAt = Number.isFinite(expiresAt) ? expiresAt : Date.now() + 5 * 60_000;
+        entry.retryAt = undefined;
+        // A late response cannot reattach an image after replacement/deletion.
+        for (const [id, info] of this.clipIndex) {
+          const current = info.clip.library_source;
+          if (current && JSON.stringify([current.artifactId, current.revisionId, current.rendition]) === key) {
+            this.ensureMedia(id, "image", result.data.url);
+          }
+        }
+      } catch {
+        entry.retryAt = Date.now() + 30_000;
+        const current = this.clipIndex.get(clipId)?.clip.library_source;
+        if (!this.disposed && current && JSON.stringify(current) === JSON.stringify(source) && typeof window !== "undefined") {
+          window.dispatchEvent(new window.CustomEvent(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, {
+            detail: { clipId, source, error: "这份素材没能插入，请重试" },
+          }));
+        }
+      } finally { entry.pending = undefined; }
+    })();
+  }
 
   private ensureAudioRouting(entry: MediaEntry): void {
     if (entry.type === "image" || entry.gainNode) return;
@@ -304,6 +367,14 @@ export class TimelinePreviewEngine {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.decoding = "async";
+      img.onerror = () => {
+        const source = this.clipIndex.get(id)?.clip.library_source;
+        if (!this.disposed && source && typeof window !== "undefined") {
+          window.dispatchEvent(new window.CustomEvent(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, {
+            detail: { clipId: id, source, error: "这份素材没能插入，请重试" },
+          }));
+        }
+      };
       img.src = safe;
       this.media.set(id, { el: img, type, url: safe });
       return;
@@ -574,7 +645,8 @@ export class TimelinePreviewEngine {
     for (const track of this.doc.tracks) {
       if (track.kind !== "image") continue;
       for (const clip of this.activeClips(track, t)) {
-        if (!clip.source_url) continue;
+        if (!clip.source_url && !clip.library_source) continue;
+        if (clip.library_source) this.ensureLibraryImage(clip.id, clip.library_source);
         const el = this.media.get(clip.id)?.el as
           | HTMLImageElement
           | undefined;

@@ -11,18 +11,110 @@
 
 import {
   useCallback,
+  useEffect,
   useRef,
+  useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { TimelineArea } from "./TimelineArea";
-import { formatMs } from "./timeline-model";
+import { findClip, formatMs, validTimelineLibrarySource } from "./timeline-model";
+import { ComposerLibraryPicker } from "../ComposerLibraryPicker";
+import type { ComposerAttachment } from "../LeoComposer";
+import { videoMaterialKind } from "../workflow-carrier/video-project-material";
+import { VIDEO_TIMELINE_REPLACE_IMAGE_EVENT } from "./video-edit-bar";
+import { TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, type TimelineClip } from "./types";
 import {
   clampTimelinePxPerSecond,
   timelineAnchorMs,
   timelineScrollLeftForAnchor,
 } from "./timeline-viewport";
 import type { VideoTimelineState } from "./use-video-timeline";
+
+/** Reuse the private Library picker across projects, filtering by actual media kind. */
+export async function loadTimelineImageLibrary(signal: AbortSignal) {
+  const { listMyArtifacts } = await import("../artifact-client");
+  const result = await listMyArtifacts({ limit: 100, signal });
+  return result.ok && result.data
+    ? { ok: true, data: { items: result.data.items.filter(item => videoMaterialKind(item) === "image") } }
+    : { ok: false };
+}
+
+/** Validate owner-checked full image availability; persist only the immutable identity. */
+export async function timelineLibraryImageReplacement(file: ComposerAttachment): Promise<Partial<TimelineClip>> {
+  const library_source = { artifactId: file.artifactId || "", revisionId: file.revisionId || "", rendition: "full" as const };
+  if (!validTimelineLibrarySource(library_source)) throw new Error("这份素材没能插入，请重试");
+  const { refreshArtifactRendition } = await import("../artifact-client");
+  const result = await refreshArtifactRendition(library_source, "full");
+  if (!result.ok || !result.data?.url || !result.data.mediaType.startsWith("image/")) throw new Error("这份素材没能插入，请重试");
+  return { library_source, source_ref: undefined, source_url: undefined, label: file.name };
+}
+
+/** Every timeline stage hosts its own replacement picker; late async results are ignored. */
+export function TimelineImageReplacementPicker({ state, readOnly = false }: { state: VideoTimelineState; readOnly?: boolean }) {
+  const tt = useUI();
+  const latest = useRef({ state, readOnly });
+  latest.current = { state, readOnly };
+  const request = useRef(0);
+  const [clipId, setClipId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const close = () => { request.current += 1; setClipId(""); setBusy(false); setFailed(false); };
+  useEffect(() => {
+    const open = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      const current = latest.current;
+      if (current.readOnly || detail?.doc !== current.state.doc) return;
+      if (findClip(current.state.doc, detail.clipId)?.track.kind !== "image") return;
+      request.current += 1; setClipId(detail.clipId); setBusy(false); setFailed(false);
+    };
+    const failure = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      const clip = findClip(latest.current.state.doc, detail?.clipId)?.clip;
+      if (clip?.library_source && JSON.stringify(clip.library_source) === JSON.stringify(detail?.source)) setFailed(true);
+    };
+    window.addEventListener(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, open);
+    window.addEventListener(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, failure);
+    return () => {
+      request.current += 1;
+      window.removeEventListener(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, open);
+      window.removeEventListener(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, failure);
+    };
+  }, []);
+  useEffect(() => {
+    request.current += 1;
+    setClipId(""); setBusy(false);
+  }, [readOnly, state.selected?.clip.id]);
+  const pick = async (file: ComposerAttachment) => {
+    if (latest.current.readOnly || !clipId || busy) return;
+    const original = findClip(latest.current.state.doc, clipId)?.clip;
+    const id = ++request.current;
+    setBusy(true); setFailed(false);
+    try {
+      const patch = await timelineLibraryImageReplacement(file);
+      const current = latest.current;
+      if (request.current !== id || current.readOnly || current.state.selected?.clip.id !== clipId || findClip(current.state.doc, clipId)?.clip !== original) return;
+      current.state.patchClip(clipId, patch);
+      setClipId("");
+    } catch { if (request.current === id && !latest.current.readOnly) setFailed(true); }
+    finally { if (request.current === id) setBusy(false); }
+  };
+  return <>
+    {failed && !clipId && <p role="alert" className="px-3 py-2 text-[12px] text-[var(--awb-danger)]">{tt("这份素材没能插入，请重试")}</p>}
+    {clipId && !readOnly && <div role="dialog" aria-modal="true" aria-label={tt("替换")}
+      style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)" }}
+      onKeyDown={event => { event.stopPropagation(); if (event.key === "Escape") close(); }}>
+      <div className="rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-3" style={{ width: 360, maxWidth: "100%" }}>
+        {failed && <p role="alert" className="px-3 py-2 text-[12px] text-[var(--awb-danger)]">{tt("这份素材没能插入，请重试")}</p>}
+        {busy ? <p className="text-[12px] text-[var(--awb-muted)]">{tt("加载中…")}</p> : null}
+        <div style={{ pointerEvents: busy ? "none" : undefined, opacity: busy ? .6 : 1 }}>
+          <ComposerLibraryPicker load={loadTimelineImageLibrary} onBack={close} onPick={file => { void pick(file); }} />
+        </div>
+        {busy && <button type="button" onClick={close} className="px-2 py-1 text-[12px]">{tt("取消")}</button>}
+      </div>
+    </div>}
+  </>;
+}
 
 function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -122,12 +214,14 @@ export function VideoTimelineStage({
   return (
     <div
       ref={stageRef}
+      style={{ position: "relative" }}
       data-collab-readonly={readOnly ? "true" : undefined}
       tabIndex={0}
       onKeyDown={onKeyDown}
       onPointerDown={(event) => event.currentTarget.focus()}
       className="flex h-full min-h-0 flex-col outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/45"
     >
+      <TimelineImageReplacementPicker state={state} readOnly={readOnly} />
       {/* 预览窗 */}
       <div className="flex min-h-0 flex-[3] items-center justify-center bg-[var(--awb-stage-bg,#0c0a09)] p-3">
         {state.loadingSource ? (
