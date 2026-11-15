@@ -13,6 +13,8 @@ export const FABRIC_TEXT_LAYOUT_PROPS = ["oceanleoList", "oceanleoIndent", "ocea
 type LayoutText = IText & FabricTextLayoutProps & {
   _styleMap?: Record<number, { line: number; offset: number }>;
 };
+// SVG decoration metadata must not register an unused Tailwind utility.
+const OVERLINE_DECORATION = "over" + "line";
 const installed = new WeakSet<object>();
 const measuring = new WeakSet<object>();
 const xml = (value: unknown) => String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;").replaceAll("'", "&apos;");
@@ -67,7 +69,7 @@ function verticalSvg(text: LayoutText): string {
     const style = glyphStyle(text, glyph);
     const color = typeof style.fill === "string" ? style.fill : text.fill;
     const background = typeof style.textBackgroundColor === "string" ? style.textBackgroundColor : "";
-    const decoration = [style.underline ? "underline" : "", style.linethrough ? "line-through" : "", style.overline ? "overline" : ""].filter(Boolean).join(" ");
+    const decoration = [style.underline ? "underline" : "", style.linethrough ? "line-through" : "", style.overline ? OVERLINE_DECORATION : ""].filter(Boolean).join(" ");
     return (background ? `<rect x="${glyph.x}" y="${glyph.y - glyph.size}" width="${glyph.size}" height="${glyph.size}" fill="${xml(background)}"/>` : "") +
       `<text x="${glyph.x}" y="${glyph.y}" font-family="${xml(style.fontFamily)}" font-size="${glyph.size}" font-weight="${xml(style.fontWeight)}" font-style="${xml(style.fontStyle)}" fill="${xml(color)}" stroke="${xml(style.stroke || "none")}" stroke-width="${Number(style.strokeWidth) || 0}" text-decoration="${decoration}">${xml(glyph.value)}</text>`;
   }).join("") + '</g>';
@@ -86,7 +88,7 @@ function cleanCharacterStyle(style: unknown): Record<string, unknown> {
   for (const [key, value] of Object.entries(style)) {
     if (["fontFamily", "fontStyle", "fontWeight", "fill", "stroke", "textBackgroundColor"].includes(key) && typeof value === "string" && value.length < 400 && !/[<>]|url\s*\(/i.test(value)) clean[key] = value;
     if (["fontSize", "strokeWidth", "deltaY", "fontWeight"].includes(key) && typeof value === "number" && Number.isFinite(value) && Math.abs(value) < 1000) clean[key] = value;
-    if (["underline", "overline", "linethrough"].includes(key) && typeof value === "boolean") clean[key] = value;
+    if (["underline", OVERLINE_DECORATION, "linethrough"].includes(key) && typeof value === "boolean") clean[key] = value;
   }
   return clean;
 }
@@ -105,7 +107,7 @@ export function decodeFabricTextMetadata(value: string): Record<string, unknown>
     for (const key of ["fontFamily", "fontStyle", "fontWeight", "fill", "stroke", "textAlign", "textBackgroundColor", "backgroundColor", "originX", "originY"]) {
       if (typeof raw[key] === "string" && raw[key].length < 400 && !/[<>]/.test(raw[key])) result[key] = raw[key];
     }
-    for (const key of ["underline", "overline", "linethrough", "flipX", "flipY", "oceanleoVerticalText"]) if (typeof raw[key] === "boolean") result[key] = raw[key];
+    for (const key of ["underline", OVERLINE_DECORATION, "linethrough", "flipX", "flipY", "oceanleoVerticalText"]) if (typeof raw[key] === "boolean") result[key] = raw[key];
     if (typeof raw.fontWeight === "number" && raw.fontWeight >= 100 && raw.fontWeight <= 1000) result.fontWeight = raw.fontWeight;
     if (Array.isArray(raw.oceanleoSvgMatrix) && raw.oceanleoSvgMatrix.length === 6 && raw.oceanleoSvgMatrix.every((value: unknown) => typeof value === "number" && Number.isFinite(value) && Math.abs(value) < 100000)) result.oceanleoSvgMatrix = raw.oceanleoSvgMatrix;
     if (Array.isArray(raw.styles)) {

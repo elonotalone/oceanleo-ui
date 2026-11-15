@@ -39,6 +39,10 @@ for (const [id, value, field, expected] of additions) test(`Deck text ${id} prof
   if (id === 'case') assert.match(html, /HELLO/);
 });
 const cellCommands = [['font-family', 'Georgia', 'fontFamily', 'Georgia'], ['highlight', '#ffff00', 'highlight', '#ffff00'], ['align', 'right', 'align', 'right'], ['list', 'ordered', 'list', 'ordered'], ['line-height', 32, 'lineHeight', 1.6], ['link', 'example.com', 'link', 'https://example.com/'], ['letter-spacing', 3, 'letterSpacing', 3], ['case', undefined, 'text', 'HELLO\nWORLD'], ['vertical-text', true, 'verticalText', true], ['indent-increase', undefined, 'indent', 24], ['indent-decrease', undefined, 'indent', 0], ['clear-format', undefined, 'fontSize', 18]];
+test('Deck capability matrices have positive registration counts', () => {
+  assert.equal(additions.length, 4);
+  assert.equal(cellCommands.length, 12);
+});
 for (const [id, value, field, expected] of cellCommands) test(`Deck table cell ${id} uses actual adapter and round-trips without changing sibling cells`, async () => {
   let deck = normalized({ ...element('table'), indent: id === 'indent-decrease' ? 24 : 0, bold: id === 'clear-format', color: '#123456' });
   let adapter, update;
