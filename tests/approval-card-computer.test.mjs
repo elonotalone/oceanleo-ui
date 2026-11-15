@@ -71,6 +71,11 @@ async function mount(payload) {
   const root = createRoot(container);
   await act(async () => root.render(React.createElement(ApprovalCard, { payload })));
   await flush();
+  // The status module loads dynamically; empty act turns do not await its import.
+  const deadline = Date.now() + 5000;
+  while (![...container.querySelectorAll("button")].some(node => node.textContent === "允许这一次") && Date.now() < deadline) {
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)); });
+  }
   return {
     container,
     buttons: () => [...container.querySelectorAll("button")].map((node) => node.textContent).filter((text) => text !== "查看详情"),
