@@ -59,6 +59,8 @@ const mcpApiStub = dataModule(`
       { id: "github", name: "GitHub", desc: "代码托管", icon: "🐙", category: "开发", transport: "sse", auth: "oauth", auth_header: "", needs_endpoint: false, endpoint: "", help_url: "", docs: "", supports_oauth: true },
     ] };
   }
+  export async function getMcpConnector(id) { return (await getMcpRegistry()).items.find(item => item.id === id); }
+  export async function connectMcpGuided() { return { ok: true }; }
   export async function getMcpConnections() { return []; }
   export async function connectMcp() { return { ok: true }; }
   export async function startMcpOauth() { return { ok: false }; }
