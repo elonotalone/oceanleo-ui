@@ -1,6 +1,6 @@
 # RD-A5：远控波三交付报告
 
-代码已提交；最终网关联合套件仍在资源队列，UI 最终全量复跑中，尚不能声明全部验收通过。
+本单元代码与服务器验证完成并提交；UI 最终全量对给定基线无新增失败。未做设备或真实链路验收。
 
 ## 结论
 
@@ -30,6 +30,7 @@
 - N/src-tauri/src/remote_desktop.rs:2242：唯一输入线程及授权/代际/释放检查；N/src-tauri/src/remote_input_metrics.rs:160：终态源；N/src-tauri/src/remote_media.rs:652：回执出站，:1014：DC 失败；N/src-tauri/src/media_worker.rs:140：监督退避。
 - N/schema/remote-metrics.json、scripts/generate-remote-metrics.py；G/backend/app/remote_metrics_generated.py:8、remote_desktop_quality.py:76：废弃指标 null 兼容；U/src/api/remote-metrics.generated.ts：观看端生成物。
 - G/backend/app/remote_desktop.py:601、:695、:912、:1026：ARTC 会话、凭据、真实输入活动及首帧；G/backend/app/routers/remote_desktop_router.py：控制 WS 和薄 HTTP；G/backend/app/secure_broker/service.py:183、:274：保留授权边界并明确拒绝旧执行面。
+- U/tests/c11-fw-cloud-agent-polish.test.mjs:325、remote-desktop-receipts.test.mjs:1、remote-desktop-data-channel.test.mjs:183、remote-desktop-activity.test.ts:1：入口、终态、只读和活动回归。G/backend/tests/test_remote_desktop_artc_only.py:10、test_remote_metrics_retired_storage.py:1：退场和 null 入库回归。N/tests/remote_input_harness.rs:2、run_remote_native_tests.py:1：真实生产函数与 IPC 回归。
 
 以下 U 路径均相对 src/，N 相对 src-tauri/src/，G 相对 backend/app/。
 
@@ -37,7 +38,7 @@
 会话：U/pages/remote-desktop-session.ts → U/api/remote-desktop.ts
    → G/routers/remote_desktop_router.py → G/remote_desktop.py → G/remote_media.py
 媒体：N/remote_media_macos.mm（ScreenCaptureKit）或 remote_media_windows.cpp（DXGI）
-   → N/remote_media.rs（EncoderPolicy / ARTC SDK，受 media_worker.rs 监督）
+   → N/remote_media.rs + N/remote_encoder_policy.rs（受 media_worker.rs 监督）
    → ARTC → U/pages/remote-desktop-media.ts → U/pages/RemoteDesktopVideo.tsx
 输入：U/pages/remote-desktop-panel-input.ts → U/api/remote-desktop-scheduler.ts
    → U/api/remote-desktop.ts → ARTC DC → N/remote_media.rs（媒体进程）
@@ -72,8 +73,28 @@
 - 主代理最终 N/20c0f362 亲跑：cd src-tauri && TAURI_CONFIG="$(cat tauri.ws.json)" OCEANLEO_EDITION=ws cargo check --offline：exit 0，141 条既有 warning。
 - 同一最终版本 python3 tests/run_remote_native_tests.py：14+20+77=111 passed，2 ignored 为被其他测试调用的辅助入口；python3 -m unittest discover -s tests -p test_remote_metrics_schema.py：7 passed。
 - python3 scripts/generate-remote-metrics.py --gateway-root /root/wt/RD-A5-oceanleo --viewer-root /root/wt/RD-A5-oceanleo-ui --check：exit 0。以上原生主代理日志 /tmp/rd-a5-native-parent-final.log。
-- 网关核心主代理专项 70 passed；协议/公平/遥测续作 67 passed、107 subtests；secure broker/撤销/旧存储专项 80 passed、7 subtests。首轮联合 328 passed、146 subtests 及 4 个旧 commands 夹具断言失败；夹具修正并单文件 4/4+4 subtests 通过，最终联合重跑排队中 /tmp/rd-a5-gateway-final3.log（原排队器固定扫描旧槽，取消未运行等待后经同一门禁重新入队）。
-- UI 首轮 10108 tests / 10015 pass / 68 fail / 15 cancelled / 10 skip，日志 /tmp/rd-a5-ui-first.log；只有 5 个 c11 设备入口旧 HTTP/JPEG 夹具为基线外，已保留原行为断言迁移，主代理亲跑 15/15（/tmp/rd-a5-ui-parent-c11-final.log）。最终完整 npm test 已运行于 /tmp/rd-a5-ui-full.log；结果和 comm 待填，尚不能声明最终无新增失败。
+- 主代理最终网关联合：328 passed、150 subtests passed、35 条既有弃用警告，exit 0；/tmp/rd-a5-gateway-final3.log。命令在 G/backend 运行：python -m pytest -q tests/test_remote_desktop*.py tests/test_remote_media.py tests/test_secure_broker.py tests/test_secure_broker_owner_lifecycle.py tests/test_remote_metrics_retired_storage.py。解释器为已有 /root/projects/oceanleo/backend/.venv/bin/python，只读复用环境。
+- 主代理最终 npm test：10108 tests、10020 pass、63 fail、15 cancelled、10 skip，exit 1（既有基线失败）；/tmp/rd-a5-ui-full.log。顶层失败 75 条、含嵌套 78 条；对给定清单及原始基线日志均新增 0，未新增失败。远控测试文件失败 0。
+- 首轮 UI 的 5 个旧 HTTP/JPEG 测试夹具已保留原行为断言迁移，最终全量 5/5 通过；主代理专项 15/15，/tmp/rd-a5-ui-parent-c11-final.log。首轮原日志保留 /tmp/rd-a5-ui-first.log（68 fail / 15 cancelled），未用修改清单或跳过失败用例制造差集。
+
+最终完整命令（浏览器场景按本轮禁令及既有检测条件跳过）：
+
+```bash
+NODE_OPTIONS='--test-skip-pattern=^design-canvas.*remote.sites.are.blocked$' \
+PLAYWRIGHT_BROWSERS_PATH=/tmp/RD-A5-browser-disallowed \
+bash /opt/cursor-workspaces/oceandino/scripts/agent-io-guard.sh run-heavy -- npm test
+```
+
+失败清单与 comm（两种差集文件均 0 行；原始基线另用 Counter 比较也为 0）：
+
+```bash
+python3 /tmp/RD-A5-parse-tests.py
+LC_ALL=C sort /tmp/ui-baseline-fails.txt > /tmp/rd-a5-ui-baseline-sorted.txt
+LC_ALL=C sort /tmp/rd-a5-ui-fails.txt > /tmp/rd-a5-ui-current-sorted.txt
+LC_ALL=C comm -13 /tmp/rd-a5-ui-baseline-sorted.txt /tmp/rd-a5-ui-current-sorted.txt > /tmp/rd-a5-ui-new-vs-list.txt
+LC_ALL=C comm -13 /tmp/rd-a5-ui-baseline-all-c-sorted.txt /tmp/rd-a5-ui-current-all-sorted.txt > /tmp/rd-a5-ui-new-vs-raw-comm.txt
+```
+
 - 三库 diff --check 通过；LeoDev 既有槽 1 FRESH、0 STALE，未将候选工作树加载到主检出槽。UI/native 仅剩初始未跟踪 node_modules symlink，无依赖安装。
 
 ## 未证实 / 未做
