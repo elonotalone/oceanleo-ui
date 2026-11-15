@@ -5,6 +5,7 @@ import ts from "typescript";
 import { LOCALES } from "../src/i18n/config.ts";
 import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
 import { LBP_W11_MESSAGES } from "../src/i18n/ui/messages/lbp-w11-copy.ts";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const placeholders = (text) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
@@ -25,7 +26,7 @@ test("项目翻译：17 语种齐全，变量不丢失，非 CJK 译文没有中
   }
 });
 
-const portal = new URL("../../oceanleo/", import.meta.url);
+const portal = pairedRepoUrl("oceanleo");
 const files = [
   "app/projects/page.tsx",
   "components/project/ProjectPlanTab.tsx",

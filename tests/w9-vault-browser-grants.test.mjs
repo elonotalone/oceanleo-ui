@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 import ts from "typescript";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 // Offline DOM + actual vault API serialization; no browser, auth session or live data.
 const require = createRequire(import.meta.url);
@@ -134,7 +135,7 @@ test("browser origin validation rejects URLs outside the exact HTTPS contract be
 test("browser origin normalization agrees with the actual pure Python authority", (context) => {
   const h = harness();
   // Compare the actual pure Python authority without loading config, credentials or app code.
-  const corePath = fileURLToPath(new URL("../../oceanleo/backend/app/vault/service.py", import.meta.url));
+  const corePath = fileURLToPath(pairedRepoUrl("oceanleo", "backend/app/vault/service.py"));
   if (!existsSync(corePath)) { context.skip("sibling backend source is unavailable in this standalone UI checkout"); return; }
   const program = `import ast,json,re,sys\nfrom urllib.parse import urlsplit\ntree=ast.parse(open(sys.argv[1],encoding="utf-8").read())\ncls=next(n for n in tree.body if isinstance(n,ast.ClassDef) and n.name=="VaultService")\nfn=next(n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name=="_origin")\nfn.decorator_list=[]\nns={"re":re,"urlsplit":urlsplit,"VaultInvalid":ValueError}\nexec(compile(ast.Module(body=[fn],type_ignores=[]),"origin-policy","exec"),ns)\nprint(json.dumps([ns["_origin"](x) for x in json.load(sys.stdin)]))`;
   const python = JSON.parse(execFileSync("python3", ["-I", "-c", program, corePath], { input: JSON.stringify([...acceptedOrigins.keys()]), encoding: "utf8" }));

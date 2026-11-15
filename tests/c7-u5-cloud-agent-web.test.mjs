@@ -5,13 +5,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 import { document, window } from "./helpers/remote-desktop-dom.mjs";
 import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
@@ -476,12 +477,12 @@ test("source: the panel's media/input paths are untouched and the thumbnail is n
 // ------------------------------------------------------------------ portal gap
 // T3a found that the portal's createAgentTask (meeting minutes, project
 // workspace) returned `detail` objects as `error` ("[object Object]" toasts).
-const PORTAL = new URL("../../oceanleo/lib/oceanleo-ai.ts", import.meta.url);
+const PORTAL = pairedRepoUrl("oceanleo", "lib/oceanleo-ai.ts");
 test("portal createAgentTask: refusals are the translated sentence, unconfirmed opens the same task, cloud sends are confirmed", {
   skip: !(await import("node:fs")).existsSync(PORTAL),
 }, async () => {
   const uiLib = new URL("../src/lib/", import.meta.url);
-  const { createAgentTask } = await import(await compileModule("../oceanleo/lib/oceanleo-ai.ts", {
+  const { createAgentTask } = await import(await compileModule(fileURLToPath(PORTAL), {
     "@/lib/oceanleo-auth": dataModule(`
       export const GATEWAY_BASE = "https://api.dev.oceanleo.com";
       export function browserClient() { return { auth: { async getSession() { return { data: { session: { access_token: "t", user: { id: "u1" } } } }; } } }; }
@@ -529,10 +530,10 @@ test("portal createAgentTask: refusals are the translated sentence, unconfirmed 
     assert.deepEqual(posts[0].execution_target, { kind: "device", id: "mac-1", driver: "cloud", gui: false });
   } finally { globalThis.fetch = original; delete globalThis.__portalRefusal; delete globalThis.__portalPreflight; }
   // Family merge: home and projects now share the composer that translates refusals.
-  const composer = readFileSync(new URL("../../oceanleo/app/_components/task-composer.tsx", import.meta.url), "utf8");
+  const composer = readFileSync(pairedRepoUrl("oceanleo", "app/_components/task-composer.tsx"), "utf8");
   assert.match(composer, /result\.refusal \? tt\(result\.refusal\)/);
   for (const relative of ["home-content.tsx", "../../components/project/ProjectWorkspace.tsx"]) {
-    const host = readFileSync(new URL(`../../oceanleo/app/_components/${relative}`, import.meta.url), "utf8");
+    const host = readFileSync(pairedRepoUrl("oceanleo", `app/_components/${relative}`), "utf8");
     assert.match(host, /useTaskComposer\(/);
   }
 });

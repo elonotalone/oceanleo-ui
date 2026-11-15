@@ -22,6 +22,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ts from "typescript";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const require = createRequire(import.meta.url);
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -659,7 +660,7 @@ test("lbp-w10 分表只登记新词：不改写词典里已有的英文", async 
 // 门户 W10 文件里每一句 tt() / 动态词表，16 语都查得到
 // ---------------------------------------------------------------------------
 
-const PORTAL = resolve(REPO, "..", "oceanleo");
+const PORTAL = fileURLToPath(pairedRepoUrl("oceanleo"));
 const PORTAL_FILES = [
   "components/project/ProjectWorkspace.tsx",
   // skills-overhaul W14: the redone task area (title row, cards, … menu) is on the same page.

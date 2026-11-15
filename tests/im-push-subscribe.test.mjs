@@ -2,15 +2,14 @@
 // （用 node:vm 模拟 self / clients 跑真文件）。不联网、不开浏览器。
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
 import test from "node:test";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
-const HERE = fileURLToPath(new URL(".", import.meta.url));
-const SW_PATH = resolve(HERE, "..", "..", "oceanleo", "public", "im-sw.js");
+const SW_PATH = fileURLToPath(pairedRepoUrl("oceanleo", "public/im-sw.js"));
 
 function define(name, value) {
   Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import test from "node:test";
 import ts from "typescript";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const source = readFileSync(new URL("../src/lib/vault-api.ts", import.meta.url), "utf8");
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
@@ -104,7 +105,7 @@ test("unsafe runtime, loader, proxy and public environment variables fail before
 // UC-NONE
 // Pure source-policy comparison reads no credentials and changes no trust surfaces.
 test("UI runtime env policy and samples match the final Python authority", (context) => {
-  const corePath = fileURLToPath(new URL("../../oceanleo/backend/app/vault/client.py", import.meta.url));
+  const corePath = fileURLToPath(pairedRepoUrl("oceanleo", "backend/app/vault/client.py"));
   if (!existsSync(corePath)) { context.skip("sibling backend source is unavailable in this standalone UI checkout"); return; }
   const { api } = harness();
   const samples = ["SERVICE_KEY", "_PRIVATE", "A".repeat(128), "A".repeat(129), "", "1KEY", "lowercase", "KEY-NAME", "KEY\n", "KEY\r", "KEY\u2028", "KEY\u2029", null, 42,
