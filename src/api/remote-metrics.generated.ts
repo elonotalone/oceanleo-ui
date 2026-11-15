@@ -45,7 +45,6 @@ export const MEDIA_METRIC_KEYS = [
   "joined_ms",
   "first_encoded_stats_ms",
   "first_packet_sent_ms",
-  "dc_input_seq",
   "input_queue_depth",
   "input_queue_high_water",
   "input_queue_oldest_ms",
