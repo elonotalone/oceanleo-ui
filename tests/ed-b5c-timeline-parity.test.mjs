@@ -148,7 +148,7 @@ test("Clear format resets supported and legacy styles while retaining timing, pl
   editor.reopen();
   const clip = editor.clip();
   assert.equal(clip.text, "Authored text");
-  assert.deepEqual(clip.style, { ...textDefaults, font_size: 64, color: "#ffffff", background: undefined, bold: false, align: "center", x: 0.7, y: 0.4 });
+  assert.deepEqual(clip.style, { ...textDefaults, font_size: 64, color: "#ffffff", bold: false, align: "center", x: 0.7, y: 0.4 });
   assert.equal(clip.start_ms, before.start_ms);
   assert.equal(clip.duration_ms, before.duration_ms);
   assert.equal(clip.id, before.id);

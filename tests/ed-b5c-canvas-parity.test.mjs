@@ -121,7 +121,7 @@ test("clear-format resets the supported text styles while preserving text, overl
   assert.equal(reopened.versions[styled].graph.nodes.find((node) => node.nodeId === added.nodeId).params.textStyle.font_size, 96);
   const clip = canvasCompositionDocument(reopened).document.tracks.find((track) => track.kind === "text").clips[0];
   assert.deepEqual([clip.start_ms, clip.duration_ms, clip.text], [100, 700, "Keep content"]);
-  assert.deepEqual(clip.style, { ...textDefaults, font_size: 48, color: "#ffffff", background: undefined, x: 0.5, y: 0.85, align: "center", bold: false });
+  assert.deepEqual(clip.style, { ...textDefaults, font_size: 48, color: "#ffffff", x: 0.5, y: 0.85, align: "center", bold: false });
 });
 
 test("image replace is a real asset switch in a new version, appears only with an alternate and survives save/reopen", async () => {
