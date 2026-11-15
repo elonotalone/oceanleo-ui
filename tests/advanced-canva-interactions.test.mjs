@@ -32,8 +32,8 @@ test("large Canva workbench components stay split below the frontend limit", () 
     "../src/shell/AdvancedWorkbenchShell.tsx",
     "../src/shell/doc-editors/DeckStage.tsx",
     "../src/shell/doc-editors/DeckControls.tsx",
-    "../src/shell/doc-editors/DeckContextToolbar.tsx",
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/doc-editors/use-deck-selection-adapter.ts",
+    "../src/shell/image-editor/use-fabric-image-selection-adapter.ts",
     "../src/shell/SelectionToolbar.tsx",
     "../src/shell/SelectionInspectorPanel.tsx",
     "../src/shell/selection-inspector-host.tsx",
@@ -58,13 +58,13 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
     source("../src/shell/use-inline-advanced-panels.tsx") +
     source("../src/shell/InlineAdvancedWorkbenchHeader.tsx");
   const deckToolbar = source(
-    "../src/shell/doc-editors/DeckContextToolbar.tsx",
+    "../src/shell/doc-editors/use-deck-selection-adapter.ts",
   );
   const imageToolbar = source(
     "../src/shell/image-editor/fabric-image-toolbar-controls.ts",
   );
   const richToolbar = source(
-    "../src/shell/doc-editors/RichDocContextToolbar.tsx",
+    "../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
   );
   // 10-23 D3：演示只申报 模板 / 元素 / 画笔 / 线条 / 便签；字体、效果是统一栏控件，不再是抽屉。
   assert.deepEqual(

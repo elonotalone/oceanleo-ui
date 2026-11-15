@@ -14,7 +14,7 @@ import { advancedSavedItem } from "../advanced-session";
 import { fetchMediaBlob } from "../../lib/media-proxy";
 import { threeDSubtypeFor } from "../library-data";
 import type { PersistedModel3DVersion } from "../media-editors/model3d-project";
-import { Model3DContextToolbar } from "../media-editors/Model3DContextToolbar";
+import { useModel3DSelectionAdapter } from "../media-editors/use-model3d-selection-adapter";
 import {
   Model3DControls,
   Model3DStage,
@@ -450,6 +450,7 @@ function Model3DModelRoute({
     },
     [editor.importModel],
   );
+  const selection = useModel3DSelectionAdapter({ editor: view, readOnly: collabReadOnly });
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -472,9 +473,7 @@ function Model3DModelRoute({
             />
           ),
         },
-        contextToolbar: (view.selectedNode || view.selectedAnnotationId) && !collabReadOnly ? (
-          <Model3DContextToolbar editor={view} accent={accent} readOnly={collabReadOnly} />
-        ) : null,
+        selection,
         history: {
           canUndo: (collab.history.active ? collab.history.canUndo : history.canUndo) && !collabReadOnly,
           canRedo: (collab.history.active ? collab.history.canRedo : history.canRedo) && !collabReadOnly,

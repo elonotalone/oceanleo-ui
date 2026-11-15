@@ -41,7 +41,7 @@ export async function saveFileToLibrary(input){
 const artifactClient=dataModule(`export * from ${JSON.stringify(pathToFileURL(require.resolve('../src/shell/artifact-client.ts')).href)};export async function getArtifactItem(){return {ok:true,data:globalThis.__wcPublishedItem??{id:"root",artifactId:"root",revisionId:"r1",meta:{}}};}export const getCurrentArtifactItem=getArtifactItem;`);
 const editorModelUrl=await compileModule('src/shell/doc-editors/rich-doc-model.ts',{});
 const model=dataModule(`export * from ${JSON.stringify(editorModelUrl)};export async function loadRichDocSource(){return {source:'inline',json:globalThis.__wcInitialDocument??{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Original'}]}]},html:'<p>Original</p>'};}export const preloadRichDocDeliveryWriters=()=>{};`);
-const noComponent=dataModule('export const RichDocControls=()=>null,RichDocCommentRail=()=>null,RichDocContextToolbar=()=>null;');
+const noComponent=dataModule('export const RichDocControls=()=>null,RichDocCommentRail=()=>null,useRichDocSelectionAdapter=()=>({context:null,dispatch(){}});');
 const pmStubs=Object.fromEntries(['state','model','view','transform'].map(name=>{const key='@tiptap/pm/'+name;const entry=require.resolve(key);const keys=Object.keys(require(key));return [key,dataModule(`import pkg from ${JSON.stringify(pathToFileURL(entry).href)};${keys.filter(k=>/^[a-zA-Z_$][\w$]*$/.test(k)&&k!=='default').map(k=>`export const ${k}=pkg.${k};`).join('')}`)];}));
 const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',{
  ...pmStubs,
@@ -51,7 +51,7 @@ const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',
  '../collab':collab,'../doc-editors/doc-io':docio,'../artifact-client':artifactClient,
  '../doc-editors/rich-doc-model':model,
  '../doc-editors/rich-doc-text-delivery':dataModule(`export const preloadRichDocDeliveryWriters=()=>{},richDocRendersPreviewBitmap=()=>false,richDocTextExcerpt=()=>'';`),
- '../doc-editors/RichDocControls':noComponent,'../doc-editors/RichDocContextToolbar':noComponent,
+ '../doc-editors/RichDocControls':noComponent,'../doc-editors/use-rich-doc-selection-adapter':noComponent,
  '../doc-editors/richdoc-review/RichDocCommentRail':noComponent,
  '../doc-editors/richdoc-review/use-richdoc-review-collab':dataModule('export const useRichDocReviewCollab=()=>{};'),
  '../doc-editors/RichDocStage':dataModule(`import React from ${JSON.stringify(reactUrl)};import {RoomContext} from ${JSON.stringify(collab)};import {EditorContent} from ${JSON.stringify(pathToFileURL(require.resolve('@tiptap/react')).href)};export const RichDocStage=({editor})=>{globalThis.__wcEditor=editor;const room=React.useContext(RoomContext);if(room)globalThis.__wcTabs[room.self.id].editor=editor;return React.createElement('div',{'data-richdoc-stage':true},React.createElement(EditorContent,{editor:editor.editor}));};`),

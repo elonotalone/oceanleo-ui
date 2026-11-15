@@ -60,7 +60,8 @@ test("the route renders the single three.js workbench with no core flag or Pro p
 test("kept surfaces: workbench, director, collab, recovery, command surface", () => {
   assert.match(route, /useModel3DWorkbench/);
   assert.match(route, /<Model3DControls[\s\S]*editor=\{(?:editor|view)\}/);
-  assert.match(route, /<Model3DContextToolbar[\s\S]*editor=\{(?:editor|view)\}/);
+  assert.match(route, /useModel3DSelectionAdapter\(\{ editor: (?:editor|view), readOnly: collabReadOnly \}\)/);
+  assert.match(route, /selection,/);
   assert.match(route, /<Model3DStage[\s\S]*editor=\{(?:editor|view)\}/);
   assert.match(read("src/shell/media-editors/Model3DControls.tsx"), /Model3DDirectorPanel/);
   assert.match(

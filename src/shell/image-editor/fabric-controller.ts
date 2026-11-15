@@ -612,7 +612,7 @@ export class FabricEditorController extends FabricEditorCore {
       const props: Record<string, unknown> = {};
       if (patch.value != null) props.text = patch.value.slice(0, 2_000);
       if (patch.fontFamily != null) props.fontFamily = patch.fontFamily;
-      if (patch.fontSize != null) props.fontSize = Math.max(6, patch.fontSize);
+      if (patch.fontSize != null) props.fontSize = Math.min(320, Math.max(6, patch.fontSize));
       if (patch.fill != null) props.fill = patch.fill;
       if (patch.backgroundColor != null) {
         props.backgroundColor = patch.backgroundColor;
@@ -677,7 +677,7 @@ export class FabricEditorController extends FabricEditorCore {
 
   clearSelectedTextFormat(): void {
     this.mutateSelected((object) => {
-      if (object instanceof this.fabric.IText) object.set({ ...CLEARED_TEXT_PROPS });
+      if (object instanceof this.fabric.IText) object.set({ ...CLEARED_TEXT_PROPS, styles: {} });
     }, "content");
   }
 

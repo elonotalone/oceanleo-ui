@@ -9,7 +9,7 @@ import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { advancedRecoveryKey } from "../advanced-recovery-store";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { exportWechatFromTiptap } from "../doc-editors/rich-doc-wechat-export";
-import { RichDocContextToolbar } from "../doc-editors/RichDocContextToolbar";
+import { useRichDocSelectionAdapter } from "../doc-editors/use-rich-doc-selection-adapter";
 import { RichDocControls } from "../doc-editors/RichDocControls";
 import { RichDocCommentRail } from "../doc-editors/richdoc-review/RichDocCommentRail";
 import { RichDocReviewReadOnlyContext } from "../doc-editors/richdoc-review/review-readonly-context";
@@ -94,6 +94,7 @@ export function RichDocRoute({
       : undefined,
     { room: collabRoom },
   );
+  const selection = useRichDocSelectionAdapter({ editor });
   // 批注的内容、回复、已解决接进房间的共享评论字段（F09）；没有房间或房间被拒时什么都不做。
   useRichDocReviewCollab({
     review: editor.review,
@@ -451,9 +452,7 @@ export function RichDocRoute({
             ),
           },
         ],
-        contextToolbar: (
-          <RichDocContextToolbar editor={editor} accent={accent} />
-        ),
+        selection,
         history: {
           canUndo: editor.editor?.can().undo() ?? false,
           canRedo: editor.editor?.can().redo() ?? false,

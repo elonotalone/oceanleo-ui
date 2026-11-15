@@ -4,7 +4,8 @@ import { useMemo, useRef } from "react";
 import { isModel3DViewOnlyControl } from "./model3d-readonly";
 import { useUI } from "../../i18n/ui/useUI";
 import { SelectionCommandTransaction } from "../selection-command-transaction";
-import { SelectionToolbar } from "../SelectionToolbar";
+import { selectionAdapterContext } from "../selection-adapter";
+import type { SelectionAdapter } from "../selection-context";
 import type {
   SelectionCommand,
 } from "../selection-context";
@@ -12,16 +13,14 @@ import { model3dSelectionContext } from "./model3d-selection-controls";
 import { MODEL3D_STAGE_TOKENS } from "./model3d-framing.mjs";
 import type { Model3DWorkbenchState } from "./use-model3d-workbench";
 
-export function Model3DContextToolbar({
+export function useModel3DSelectionAdapter({
   editor,
-  accent = "#4f46e5",
   readOnly = false,
 }: {
   editor: Model3DWorkbenchState;
-  accent?: string;
   /** 只能看：所有改内容的控件置灰（悬停说明原因），命令不生效。 */
   readOnly?: boolean;
-}) {
+}): SelectionAdapter {
   const tt = useUI();
   const transactionRef = useRef(new SelectionCommandTransaction());
   const context = useMemo(() => model3dSelectionContext(editor, tt, readOnly), [editor, tt, readOnly]);
@@ -120,11 +119,5 @@ export function Model3DContextToolbar({
       case "annotation-delete": editor.deleteSelectedAnnotation(); break;
     }
   };
-  return (
-    <SelectionToolbar
-      context={context}
-      onCommand={command}
-      accent={accent}
-    />
-  );
+  return { context: selectionAdapterContext(context), dispatch: command };
 }

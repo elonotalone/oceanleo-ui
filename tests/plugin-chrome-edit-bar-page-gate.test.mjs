@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileDocumentToolsHost } from "./helpers/selection-adapter-host.mjs";
 import { readFileSync } from "node:fs";
 
 import { resetPluginModeCache } from "../src/shell/plugin-chrome/plugin-mode-store.ts";
@@ -44,8 +45,9 @@ function loadShell() {
         }
       `),
       "./advanced-layout-context": dataModule(`
-        import { createContext } from ${JSON.stringify(reactUrl)};
+        import { createContext, useContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
         export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
         export function focusAdvancedToolsTrigger() {}
         export function useAdvancedToolsLauncherRegistration() {}
@@ -247,18 +249,16 @@ test("编辑栏只在编辑页存在：无选中也在；切 pro / aux 后消失
   });
 });
 
-test("文档段按钮有可见文字；没有 icon 的动作不画缺省齿轮", async () => {
+test("文档动作作为创建域图标进入唯一工具条，保留无障碍名称", async () => {
   const source = readFileSync(
     "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
     "utf8",
   );
   assert.doesNotMatch(source, /action\.icon \|\| ["']settings["']/);
-  assert.match(source, /from ["']\.\.\/\.\.\/ui\/Button["']/);
-  assert.match(source, /<Button[\s\S]*?<span>\{label\}<\/span>/);
-  assert.doesNotMatch(source, /<IconButton/);
+  assert.match(source, /editBarDocumentTools/);
+  assert.doesNotMatch(source, /<Button|<button|<IconButton/);
 
-  const url = await compileModule(
-    "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
+  const url = await compileDocumentToolsHost(
     {
       "../../i18n/ui/useUI": ttStubUrl,
       "../../ui/Button": dataModule(`
@@ -294,14 +294,12 @@ test("文档段按钮有可见文字；没有 icon 的动作不画缺省齿轮",
     );
     const recalc = find('[data-workspace-action-id="grid-recalculate"]');
     assert.ok(recalc, "重新计算按钮没画出来");
-    assert.match(recalc.textContent || "", /重新计算/);
-    assert.equal(
-      recalc.querySelector("[data-icon]"),
-      null,
-      "没有 icon 的动作不该画出缺省齿轮",
-    );
+    assert.equal(recalc.getAttribute("aria-label"), "重新计算");
+    assert.equal(recalc.textContent, "");
+    assert.ok(recalc.querySelector("[data-creation-tool-icon]"));
     const withIcon = find('[data-workspace-action-id="with-icon"]');
-    assert.match(withIcon.textContent || "", /带图标/);
-    assert.equal(withIcon.querySelector("[data-icon]")?.getAttribute("data-icon"), "download");
+    assert.equal(withIcon.getAttribute("aria-label"), "带图标");
+    assert.ok(withIcon.querySelector("[data-creation-tool-icon]"));
+    assert.equal(withIcon.querySelector("[data-icon]"), null);
   });
 });

@@ -2,23 +2,22 @@
 
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { SelectionToolbar } from "../SelectionToolbar";
+import { selectionAdapterContext } from "../selection-adapter";
+import type { SelectionAdapter } from "../selection-context";
 import type {
   SelectionCommand,
   SelectionContext,
 } from "../selection-context";
 import type { AudioWorkbenchState } from "./AudioWorkbench";
 
-export function AudioContextToolbar({
+export function useAudioSelectionAdapter({
   editor,
-  accent = "#4f46e5",
   readOnly = false,
 }: {
   editor: AudioWorkbenchState;
-  accent?: string;
   /** 只能看：所有改内容的控件置灰（悬停说明原因），点击和命令都不生效。 */
   readOnly?: boolean;
-}) {
+}): SelectionAdapter {
   const tt = useUI();
   const selection = editor.selection;
   const context = useMemo<SelectionContext>(() => {
@@ -252,11 +251,5 @@ export function AudioContextToolbar({
         break;
     }
   };
-  return (
-    <SelectionToolbar
-      context={context}
-      onCommand={command}
-      accent={accent}
-    />
-  );
+  return { context: selectionAdapterContext(context), dispatch: command };
 }

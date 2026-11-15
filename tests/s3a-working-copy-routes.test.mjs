@@ -34,7 +34,7 @@ const stubs = {
   "../plugin-command": dataModule('export function usePluginCommandSurface(){}'),
   "../doc-editors/use-deck-material-adapter": empty("useDeckMaterialAdapter"),
   "../doc-editors/DeckStage": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)}; export function DeckStage({editor}) {globalThis.__s3a.deck=editor;return createElement("button",{"data-edit":"deck",onClick:()=>editor.setTitle("Edited slides")},"Edit slides");}`),
-  "../doc-editors/DeckContextToolbar": empty("DeckContextToolbar"),
+  "../doc-editors/use-deck-selection-adapter": dataModule('export function useDeckSelectionAdapter(){return {context:null,dispatch(){}};}'),
   "../doc-editors/DeckCreationPanels": empty("DeckDrawPanel", "DeckLinePanel", "DeckNotesPanel"),
   "../doc-editors/DeckControls": empty("DeckDesignPanel", "DeckElementsPanel", "DeckTextPanel"),
   "../doc-editors/DeckPresenterView": empty("DeckPresenterView", "openDeckPresenterWindow"),

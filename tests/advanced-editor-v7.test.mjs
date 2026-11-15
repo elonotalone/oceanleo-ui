@@ -197,8 +197,8 @@ test("all spreadsheet formats use the lightweight Grid route", () => {
   const leaf = source("../src/shell/doc-editors/GridUniverStage.tsx");
   assert.match(route, /dynamic\(loadGridUniverStage,/);
   assert.doesNotMatch(route, /GridStage|GridLegacy|useGridEditor/);
-  assert.match(leaf, /contextToolbar:\s*\n?\s*readonly \? null : \(/);
-  assert.match(leaf, /<SelectionToolbar/);
+  assert.match(leaf, /selection:\s*\{\s*context: readonly \? null : selectionAdapterContext\(selectionContext\), dispatch: runControl \}/);
+  assert.doesNotMatch(leaf, /<SelectionToolbar/);
   assert.match(leaf, /runGridUniverCommand\(/);
   assert.doesNotMatch(leaf, /筛选当前列/);
 });

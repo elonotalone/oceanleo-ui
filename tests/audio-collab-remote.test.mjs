@@ -349,20 +349,18 @@ test("音频（只读）：播放、停止、拖播放位置、音量、缩放�
 test("音频（只读）：选区工具栏的每个控件都置灰，命令不会触发任何改动", async () => {
   const calls = [];
   const toolbar = await import(
-    await compileModule("src/shell/media-editors/AudioContextToolbar.tsx", {
+    await compileModule("src/shell/media-editors/use-audio-selection-adapter.ts", {
       "../../i18n/ui/useUI": useUiStub,
-      "../SelectionToolbar": dataModule(`
-        export function SelectionToolbar({ context, onCommand }) {
-          globalThis.__audioSelection = { context, onCommand };
-          return null;
-        }
-      `),
     })
   );
+  function ToolbarHarness(props) {
+    globalThis.__audioSelection = toolbar.useAudioSelectionAdapter(props);
+    return null;
+  }
   const editor = spyEditor(calls);
-  const mounted = await mount(h(toolbar.AudioContextToolbar, { editor, readOnly: true }));
+  const mounted = await mount(h(ToolbarHarness, { editor, readOnly: true }));
   try {
-    const { context, onCommand } = globalThis.__audioSelection;
+    const { context, dispatch: onCommand } = globalThis.__audioSelection;
     assert.ok(context.controls.length >= 8);
     assert.ok(context.controls.every((control) => control.disabled === true), "每个控件都置灰");
     assert.ok(context.controls.every((control) => control.unavailableReason === "只能查看，不能修改"));
@@ -374,9 +372,9 @@ test("音频（只读）：选区工具栏的每个控件都置灰，命令不�
   } finally {
     await mounted.unmount();
   }
-  const open = await mount(h(toolbar.AudioContextToolbar, { editor: spyEditor(calls), readOnly: false }));
+  const open = await mount(h(ToolbarHarness, { editor: spyEditor(calls), readOnly: false }));
   try {
-    const { context, onCommand } = globalThis.__audioSelection;
+    const { context, dispatch: onCommand } = globalThis.__audioSelection;
     assert.ok(context.controls.some((control) => control.disabled !== true), "非只读时控件可用");
     onCommand({ selectionId: context.id, controlId: "crop" });
     assert.ok(calls.some((c) => c[0] === "cropSelection"));

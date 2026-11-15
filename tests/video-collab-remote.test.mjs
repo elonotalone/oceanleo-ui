@@ -410,16 +410,14 @@ void document;
 test("视频（只读）：片段浮条的每个改动控件置灰并提示「你只能查看」，命令不生效", async () => {
   const calls = [];
   const toolbar = await import(
-    await compileModule("src/shell/video-editor/VideoTimelineContextToolbar.tsx", {
+    await compileModule("src/shell/video-editor/use-video-timeline-selection-adapter.ts", {
       "../../i18n/ui/useUI": useUiStub,
-      "../SelectionToolbar": dataModule(`
-        export function SelectionToolbar({ context, onCommand }) {
-          globalThis.__videoSelection = { context, onCommand };
-          return null;
-        }
-      `),
     })
   );
+  function ToolbarHarness(props) {
+    globalThis.__videoSelection = toolbar.useVideoTimelineSelectionAdapter(props);
+    return null;
+  }
   const doc = DOC();
   const located = { clip: doc.tracks[0].clips[0], track: doc.tracks[0] };
   const state = new Proxy(
@@ -431,9 +429,9 @@ test("视频（只读）：片段浮条的每个改动控件置灰并提示「�
       },
     },
   );
-  const readOnly = await mount(h(toolbar.VideoTimelineContextToolbar, { state, readOnly: true }));
+  const readOnly = await mount(h(ToolbarHarness, { state, readOnly: true }));
   try {
-    const { context, onCommand } = globalThis.__videoSelection;
+    const { context, dispatch: onCommand } = globalThis.__videoSelection;
     assert.ok(context.controls.length >= 8, "素材片段的控件都在");
     assert.ok(context.controls.every((control) => control.disabled === true), "每个控件都置灰");
     assert.ok(context.controls.every((control) => control.unavailableReason === "你只能查看"));
@@ -442,9 +440,9 @@ test("视频（只读）：片段浮条的每个改动控件置灰并提示「�
   } finally {
     await readOnly.unmount();
   }
-  const editable = await mount(h(toolbar.VideoTimelineContextToolbar, { state, readOnly: false }));
+  const editable = await mount(h(ToolbarHarness, { state, readOnly: false }));
   try {
-    const { context, onCommand } = globalThis.__videoSelection;
+    const { context, dispatch: onCommand } = globalThis.__videoSelection;
     assert.ok(context.controls.every((control) => control.disabled !== true), "非只读时控件可用");
     onCommand({ selectionId: context.id, controlId: "delete" });
     assert.ok(calls.some((call) => call[0] === "deleteSelectedClip"));

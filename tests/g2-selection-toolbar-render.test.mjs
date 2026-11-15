@@ -25,9 +25,20 @@ for (const [name, value] of Object.entries({
   HTMLElement: window.HTMLElement, Element: window.Element, Node: window.Node,
   Event: window.Event, MouseEvent: window.MouseEvent,
 })) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value });
+window.scrollTo = () => {};
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+// jsdom cannot parse the animation stylesheet's modern CSS; geometry and real
+// popover lifecycle remain active while the test supplies the stylesheet host.
+const motionStyle = document.createElement("style");
+motionStyle.id = "leo-overlay-motion";
+document.head.append(motionStyle);
+
+const consoleError = console.error;
+let renderErrors = [];
+test.beforeEach(() => { renderErrors = []; console.error = (...args) => renderErrors.push(args.map(String).join(" ")); });
+test.afterEach(() => { console.error = consoleError; assert.deepEqual(renderErrors, [], "real toolbar mounts and state changes must not log errors"); });
 
 class ResizeObserverProbe {
   static instances = new Set();
@@ -52,8 +63,6 @@ window.HTMLElement.prototype.getBoundingClientRect = function () {
   if (this.hasAttribute("data-workspace-floating-toolbar-overlay")) return rect(stageWidth, 600);
   if (this.hasAttribute("data-selection-measure-control-id")) return rect(controlWidth);
   if (this.hasAttribute("data-selection-toolbar-viewport-capacity")) return rect(viewport.width - 32);
-  if (this.hasAttribute("data-edit-bar-document-measure") || this.hasAttribute("data-edit-bar-document-slot")) return rect(96);
-  if (this.hasAttribute("data-edit-bar-document-more")) return rect(28);
   if (this.hasAttribute("data-edit-bar-trailing-slot")) return rect(32);
   return rect(0, 0);
 };
@@ -74,6 +83,7 @@ const stubs = {
 };
 const load = async (path) => import(await compileModule(path, stubs));
 const { SelectionToolbar } = await load("src/shell/SelectionToolbar.tsx");
+const { creationToolControl } = await load("src/shell/creation-tools.ts");
 const { FloatingContextToolbar } = await load("src/shell/FloatingContextToolbar.tsx");
 const { useInlineAdvancedPanels } = await load("src/shell/use-inline-advanced-panels.tsx");
 const { AdvancedLayoutContext } = await load("src/shell/advanced-layout-context.tsx");
@@ -179,13 +189,19 @@ function useProbeInlineStoreLayout() {
   return { layout, transientPanel: panel ? { ...panel, content: React.createElement(LiveReactNode, { store: store.current }) } : null, store: store.current };
 }
 
-async function mount({ kind = "inline", selection = simpleSelection, freshOnRender = false, documentSegment = false } = {}) {
+async function mount({ kind = "inline", selection = simpleSelection, freshOnRender = false, creationTools = false } = {}) {
   const container = document.createElement("div");
   document.body.append(container);
   const errors = [];
   const root = createRoot(container, { onCaughtError() {} });
-  const api = { errors, commits: 0, commands: [], container };
-  const stableCommand = (command) => api.commands.push(command);
+  const api = { errors, commits: 0, commands: [], executed: [], container };
+  const creation = creationTools ? ["手机", "平板", "桌面"].map((label, index) => ({
+    id: `preview-${index}`, tool: "action", label, execute: () => api.executed.push(label),
+  })) : [];
+  const stableCommand = (command) => {
+    api.commands.push(command);
+    creation.find((tool) => tool.id === command.controlId)?.execute();
+  };
   function Host() {
     const [input, setInput] = React.useState(selection);
     const [mode, setMode] = React.useState("floating");
@@ -212,14 +228,19 @@ async function mount({ kind = "inline", selection = simpleSelection, freshOnRend
       offset: { x: 0, y: 0 }, rootProps: {}, collapsedProps: { onClick: () => setCollapsed(false) },
       canDock: true, toggleDock: () => setMode((m) => m === "floating" ? "docked" : "floating"),
     };
+    const source = hostedWebsiteEditBarSelection(freshOnRender ? clone(input) : input);
     return React.createElement(AdvancedLayoutContext.Provider, { value: bridge.layout },
       React.createElement("aside", { "data-inspector": true }, bridge.transientPanel?.content),
       React.createElement(FloatingContextToolbar, {
         controller, accent: "#6d5dfc", assistant: null,
-        documentSegment: documentSegment ? React.createElement("button", null, "手机 平板 桌面") : null,
       }, React.createElement(SelectionToolbar, {
-        context: hostedWebsiteEditBarSelection(freshOnRender ? clone(input) : input),
-        onCommand: freshOnRender ? (command) => api.commands.push({ ...command, callbackVersion }) : stableCommand,
+        context: source ? {
+          ...source,
+          controls: [...source.controls, ...creation.map((tool) => creationToolControl(tool))],
+        } : creation.length ? {
+          version: 1, kind: "creation", id: "creation:website", controls: creation.map((tool) => creationToolControl(tool)),
+        } : null,
+        onCommand: freshOnRender ? (command) => stableCommand({ ...command, callbackVersion }) : stableCommand,
       })),
     );
   }
@@ -310,32 +331,48 @@ test("real row keeps projection stable around fractional collapse thresholds", a
   } finally { await api.unmount(); }
 });
 
-test("document segment keeps a collapsed state until the expansion hysteresis clears", async () => {
-  stageWidth = 300;
-  const api = await mount({ documentSegment: true });
+test("creation tools share the measured row and enter More individually with expansion hysteresis", async () => {
+  stageWidth = 570;
+  const api = await mount({ creationTools: true });
   try {
-    const slot = () => api.container.querySelector("[data-edit-bar-document-slot]");
-    const more = () => api.container.querySelector("[data-edit-bar-document-more]");
-    assert.ok(slot(), "document segment starts visible with ample width");
-
-    // 原来写死 178.75 / 179.75 / 204.25：那是 10-22（07bf3412）删掉钉选键之前的行宽。
-    // 改成先从宽往窄量出真实折叠线 L，再判回差：L 以下折、L+0.5 仍折、L+24.5 才展开。
+    const creationIds = ["preview-0", "preview-1", "preview-2"];
+    const visible = () => api.projection().split(" ").filter(Boolean);
+    const overflow = () => (api.toolbar()?.getAttribute("data-selection-overflow-controls") || "").split(" ").filter(Boolean);
+    const visibleCreation = () => visible().filter((id) => creationIds.includes(id));
+    assert.deepEqual(visibleCreation(), creationIds);
+    assert.equal(api.container.querySelectorAll("[data-selection-id]").length, 1, "one real SelectionToolbar owns both domains");
+    assert.equal(api.container.querySelector("[data-edit-bar-document-slot], [data-edit-bar-document-more]"), null);
     let foldLine = 0;
-    for (let width = 300; width >= 60; width -= 1) {
+    for (let width = 570; width >= 60; width -= 1) {
       await api.resize(width);
-      if (more()) { foldLine = width + 1; break; }
+      if (visibleCreation().length < creationIds.length) { foldLine = width + 1; break; }
     }
-    assert.ok(foldLine > 0, "document segment folds when the external boundary narrows");
-    await api.resize(foldLine + 40);
-    assert.ok(slot(), "back to visible with ample width");
-    await api.resize(foldLine - 1.25);
-    assert.ok(more(), "document segment folds just below the fold line");
+    assert.ok(foldLine > 0);
+    assert.ok(visibleCreation().length > 0, "a narrow row keeps fitting creation tools visible");
+    const foldedIds = overflow().filter((id) => creationIds.includes(id));
+    assert.ok(foldedIds.length > 0 && foldedIds.length < creationIds.length, "creation tools enter More individually");
+    assert.deepEqual([...visibleCreation(), ...foldedIds].sort(), [...creationIds].sort(), "no tool is lost or duplicated");
+    const projection = api.projection();
     await api.resize(foldLine - 0.25);
-    assert.ok(more(), "a sub-pixel rebound must not re-expand the document segment");
+    assert.equal(api.projection(), projection, "sub-pixel rebound preserves the partition");
     await api.resize(foldLine + 0.5);
-    assert.ok(more(), "half a pixel above the line is still inside the hysteresis band");
-    await api.resize(foldLine + 24.5);
-    assert.ok(slot(), "a clearly wider boundary expands the document segment");
+    assert.equal(api.projection(), projection, "half a pixel remains inside expansion hysteresis");
+    const more = api.container.querySelector('button[aria-controls^="selection-more-"]');
+    assert.ok(more, "the shared More launcher stays reachable");
+    await act(async () => more.click());
+    for (const id of foldedIds) {
+      const button = document.querySelector(`[data-selection-overflow-control][data-selection-control-id="${id}"] button`);
+      assert.ok(button?.textContent.trim(), "overflow actions have visible labels");
+    }
+    const chosen = foldedIds[0];
+    const menuButton = document.querySelector(`[data-selection-overflow-control][data-selection-control-id="${chosen}"] button`);
+    await act(async () => menuButton.click());
+    assert.deepEqual(api.executed, [["手机", "平板", "桌面"][Number(chosen.slice(-1))]]);
+    assert.equal(api.commands.at(-1)?.selectionId, simpleSelection.id);
+    assert.equal(api.commands.at(-1)?.selectionRevision, simpleSelection.revision);
+    assert.equal(api.commands.at(-1)?.selectionEpoch, simpleSelection.epoch);
+    await api.resize(foldLine + 40);
+    assert.deepEqual(visibleCreation(), creationIds, "clearly wider capacity restores every tool");
     assert.deepEqual(api.errors, []);
   } finally { await api.unmount(); }
 });
@@ -351,7 +388,7 @@ for (const kind of ["inline", "plugin"]) test(`${kind} chain scans website selec
       stageWidth = 570;
       const selection = clone(websiteSelections[tag]);
       assert.ok(selection?.controls.length > 10, "必须使用真实网站选区投影");
-      const api = await mount({ kind, selection, documentSegment: true });
+      const api = await mount({ kind, selection, creationTools: true });
       try {
         await api.openInspector();
         for (const mode of ["docked", "floating"]) {
@@ -368,9 +405,12 @@ for (const kind of ["inline", "plugin"]) test(`${kind} chain scans website selec
         await act(async () => api.collapsed(true));
         await act(async () => api.collapsed(false));
         await act(async () => api.selection(null));
-        // 10-22 删了子站嵌入宿主（website-host-edit-bar.ts），没有选区时不再垫一条
-        // 「host:website」文档级选区：选中工具段整段消失，由编辑栏空态接手。
-        assert.equal(api.toolbar(), null);
+        assert.equal(api.toolbar()?.getAttribute("data-selection-kind"), "creation", "without a selection, creation tools remain in the same toolbar");
+        assert.deepEqual(
+          [...(api.toolbar()?.getAttribute("data-selection-visible-controls") || "").split(" "), ...(api.toolbar()?.getAttribute("data-selection-overflow-controls") || "").split(" ")].filter(Boolean).sort(),
+          ["preview-0", "preview-1", "preview-2"],
+          "creation tools stay reachable without retaining old selection controls",
+        );
         await act(async () => api.selection(clone(selection)));
         assert.equal(api.toolbar()?.getAttribute("data-selection-id"), selection.id);
         assert.deepEqual(api.errors, []);

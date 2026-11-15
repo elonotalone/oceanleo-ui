@@ -281,36 +281,13 @@ test("image AI capability lists used by the editor no longer offer the deleted t
 });
 
 test("image toolbar builder has no primary position-x / position-y", async () => {
-  const toolbarStub = dataModule(`
-    export function SelectionToolbar(props) {
-      globalThis.__V1_IMAGE_TOOLBAR = props;
-      return null;
-    }
-  `);
-  const { FabricImageContextToolbar, buildFabricImageToolbarControls } = await import(
-    await compileModule("src/shell/image-editor/FabricImageContextToolbar.tsx", {
-      "../../i18n/ui/useUI": useUiStub,
-      "../SelectionToolbar": toolbarStub,
-    })
+  const { buildFabricImageToolbarControls } = await import(
+    await compileModule("src/shell/image-editor/fabric-image-toolbar-controls.ts")
   );
-
-  let controls = [];
-  if (typeof buildFabricImageToolbarControls === "function") {
-    const built = buildFabricImageToolbarControls({
-      editor: fakeImageEditor(),
-      tt: (value) => String(value),
-    });
-    controls = built?.controls || built || [];
-  } else {
-    globalThis.__V1_IMAGE_TOOLBAR = null;
-    const { renderToStaticMarkup } = await import("react-dom/server");
-    renderToStaticMarkup(
-      React.createElement(FabricImageContextToolbar, {
-        editor: fakeImageEditor(),
-      }),
-    );
-    controls = globalThis.__V1_IMAGE_TOOLBAR?.context?.controls || [];
-  }
+  const controls = buildFabricImageToolbarControls({
+    editor: fakeImageEditor(),
+    tt: (value) => String(value),
+  });
   assert.ok(controls.length > 0, "toolbar must still offer some live controls");
   const primaryXy = controls.filter(
     (control) =>

@@ -16,7 +16,7 @@ import { DECK_WORKING_COPY_SCHEMA } from "../doc-editors/deck-working-copy";
 import { uploadEditorMedia } from "../doc-editors/editor-insert-media";
 import { advancedSavedItem } from "../advanced-session";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { DeckContextToolbar } from "../doc-editors/DeckContextToolbar";
+import { useDeckSelectionAdapter } from "../doc-editors/use-deck-selection-adapter";
 import {
   DeckDrawPanel,
   DeckLinePanel,
@@ -142,6 +142,7 @@ export function DeckRoute({
   }, [collab.readOnly]);
   // 工具条、面板、指令面、上传入口都按这一个值灰掉（编辑内核另有同一条拒绝，这里让入口自己就不动作）
   const viewOnly = collab.readOnly || editor.readOnly;
+  const selection = useDeckSelectionAdapter({ editor, readOnly: viewOnly });
   const selectionKeys = useMemo(
     () => [
       editor.activeSlide.id,
@@ -397,13 +398,7 @@ export function DeckRoute({
           },
         ],
         // 载入完成前不给编辑栏：占位稿上的改动会被真文稿顶掉。
-        contextToolbar: editor.loading ? undefined : (
-          <DeckContextToolbar
-            editor={editor}
-            accent={accent}
-            readOnly={viewOnly}
-          />
-        ),
+        selection,
         history: {
           canUndo: editor.canUndo && !viewOnly,
           canRedo: editor.canRedo && !viewOnly,

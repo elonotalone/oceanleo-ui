@@ -11,7 +11,9 @@ import type {
   AdvancedWorkbenchAction,
 } from "./advanced-workbench-chrome";
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
-import type { SelectionPanelAction } from "./selection-context";
+import type { SelectionPanelAction, SelectionAdapter } from "./selection-context";
+import type { AdvancedEditorCreationTool } from "./creation-tools";
+export type { AdvancedEditorCreationTool } from "./creation-tools";
 import type { EditorAdapterId } from "./workbench-routes";
 import type { AdvancedEditorPagesAdapter } from "./plugin-chrome/plugin-pages";
 import type { EditorCollabBinding } from "./collab";
@@ -153,14 +155,16 @@ export interface AdvancedEditorAdapter {
   status?: string;
   toolbox?: AdvancedEditorToolbox;
   drawers?: readonly AdvancedWorkbenchDrawer[];
-  /** Properties/actions for a real selected object; null when nothing is selected. */
-  contextToolbar?: ReactNode;
-  /** Use when toolbar panel actions target the shared floating panel host. */
-  renderContextToolbar?: (host: AdvancedContextToolbarHost) => ReactNode;
+  /** Engine values and commands. The shell is the sole SelectionToolbar owner. */
+  selection?: SelectionAdapter;
+  /** Creation commands share measurement and More with selection properties. */
+  creationTools?: readonly AdvancedEditorCreationTool[];
+  /** Optional connection for engine commands that open the shared panel host. */
+  panelHostRef?: { current: AdvancedContextToolbarHost | null };
   /** Default deliverable shown first inside the shared download menu. */
   directDownload?: AdvancedWorkbenchAction;
   /**
-   * 规范 v2 §4：宿主按 `group` 分发——`"edit"`（缺省）进编辑栏文档段（只在「编辑」页）；
+   * 规范 v2 §4：宿主按 `group` 分发——`"edit"`（缺省）转为编辑栏创建域控件（只在「编辑」页）；
    * `"save"` 进第一行保存菜单（套用草稿 / 保存 / 放弃草稿 / 重新加载 / 另存副本）；
    * `"download"` 进第一行下载菜单（含「截图存入我的库」这类导出）。
    * 编辑栏里**不允许**出现保存 / 上传 / 下载类动作；`upload` 走素材库抽屉。

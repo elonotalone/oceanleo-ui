@@ -420,8 +420,9 @@ test("W3: 独立库页点我的库打开面板且不卸编辑器", async () => {
       "../i18n/ui/useUI": ttStubUrl,
       "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
       "./advanced-layout-context": dataModule(`
-        import { createContext } from ${JSON.stringify(reactUrl)};
+        import { createContext, useContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
         export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
         export function focusAdvancedToolsTrigger() {}
         export function useAdvancedToolsLauncherRegistration() {}
@@ -792,8 +793,9 @@ test("W3-r2: 独立侧栏空对话与长对话走 stretch，控制面板自己�
       "../ui": dataModule(`export function ConfirmDialog() { return null; }`),
       "../ui/Toast": toastStubUrl,
       "./advanced-layout-context": dataModule(`
-        import { createContext } from ${JSON.stringify(reactUrl)};
+        import { createContext, useContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
         export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
         export function focusAdvancedToolsTrigger() {}
         export function useAdvancedToolsLauncherRegistration() {}

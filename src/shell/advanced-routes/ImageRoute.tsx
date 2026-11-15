@@ -16,7 +16,7 @@ import {
   visualUploadAccept,
 } from "../media-editors/visual-formats";
 import type { ExportFormat } from "../image-editor/types";
-import { FabricImageContextToolbar } from "../image-editor/FabricImageContextToolbar";
+import { useFabricImageSelectionAdapter } from "../image-editor/use-fabric-image-selection-adapter";
 import { FabricImageControls } from "../image-editor/FabricImageControls";
 import {
   FabricImageBrushPanel,
@@ -142,6 +142,7 @@ export function ImageRoute({
     collab.readOnly ||
     editor.collab.readOnly ||
     Boolean(editor.vectorConversion?.pending);
+  const selection = useFabricImageSelectionAdapter({ editor, readOnly: viewOnly });
   const selectedLayerIds = useMemo(
     () => editor.layers.filter((layer) => layer.selected).map((layer) => layer.id),
     [editor.layers],
@@ -475,9 +476,7 @@ export function ImageRoute({
             content: <FabricImageExportPanel editor={editor} />,
           },
         ],
-        contextToolbar: editor.selected ? (
-          <FabricImageContextToolbar editor={editor} accent={accent} readOnly={viewOnly} />
-        ) : null,
+        selection,
         history: {
           canUndo: editor.canUndo && !viewOnly,
           canRedo: editor.canRedo && !viewOnly,

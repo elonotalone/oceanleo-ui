@@ -10,6 +10,7 @@ import test from "node:test";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileDocumentToolsHost } from "./helpers/selection-adapter-host.mjs";
 import { dispatchFabricImageCommand } from "../src/shell/image-editor/fabric-image-commands.ts";
 import {
   editBarHistoryShortcut,
@@ -278,7 +279,7 @@ test("document-segment edit action actually fires on click", async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const jsxUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
   const { EditBarDocumentSegment } = await import(
-    await compileModule("src/shell/plugin-chrome/EditBarDocumentSegment.tsx", {
+    await compileDocumentToolsHost({
       "../../i18n/ui/useUI": dataModule(
         "export function useUI(){ return (value) => value; }",
       ),

@@ -700,12 +700,12 @@ test("源码：侧栏与工具栏的批注、修订按钮在只读时灰掉；�
   const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
   const rail = read(`${REVIEW_DIR}RichDocCommentRail.tsx`);
   assert.ok((rail.match(/disabled=\{readOnly/g) || []).length >= 8, "侧栏的 8 个动作按钮都按只读灰掉");
-  const toolbar = read("../src/shell/doc-editors/RichDocContextToolbar.tsx");
+  const toolbar = read("../src/shell/doc-editors/use-rich-doc-selection-adapter.ts");
   for (const id of ["add-comment", "toggle-track-changes", "delete-tracked", "accept-all-changes", "reject-all-changes"]) {
     const at = toolbar.indexOf(`id: "richdoc.${id}"`);
     assert.ok(at > 0, id);
     assert.match(toolbar.slice(at, at + 520), /reviewReadOnly/, `${id} 只读时灰掉`);
-    assert.match(toolbar, new RegExp(`case "richdoc\\.${id}"[\\s\\S]{0,160}if \\(reviewReadOnly\\) break;`), `${id} 命令入口也拦`);
+    assert.match(toolbar, new RegExp(`case "richdoc\\.${id}"[\\s\\S]{0,160}if \\(reviewReadOnly\\)\\s*break;`), `${id} 命令入口也拦`);
   }
   const route = read("../src/shell/advanced-routes/RichDocRoute.tsx");
   assert.match(route, /useRichDocReviewCollab\(\{[\s\S]*?review: editor\.review/);

@@ -83,7 +83,7 @@ test("tool bars stay single-line and keep viewport overflow reachable", () => {
     source("../src/shell/selection-inspector-host.tsx") +
     source("../src/shell/anchored-popover.tsx");
   const image = source(
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
+    "../src/shell/image-editor/use-fabric-image-selection-adapter.ts",
   );
   assert.match(toolbar, /if \(!context && !leading && !trailing\) return null/);
   assert.match(toolbar, /flex-nowrap items-center/);

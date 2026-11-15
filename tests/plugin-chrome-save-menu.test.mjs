@@ -65,12 +65,14 @@ function loadShell() {
         }
       `),
       "./advanced-layout-context": dataModule(`
-        import { createContext } from ${JSON.stringify(reactUrl)};
+        import { createContext, useContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
         export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
         export function focusAdvancedToolsTrigger() {}
         export function useAdvancedToolsLauncherRegistration() {}
       `),
+      "./useSelectionToolbarMeasure": dataModule(`export function useSelectionToolbarMeasure() {}`),
       "./AdvancedStageControls": dataModule(`
         export function AdvancedStageControls() { return null; }
       `),
@@ -327,8 +329,13 @@ test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单
 
     const editBar = find("[data-workspace-edit-bar]");
     assert.ok(editBar, "编辑栏没出现");
+    if (!editBar.querySelector('[data-workspace-action-id="recompute"]')) {
+      const more=editBar.querySelector('button[aria-haspopup="dialog"]');
+      assert.ok(more, "创建动作收纳后必须留在More");
+      await act(async()=>more.dispatchEvent(new window.MouseEvent("click",{bubbles:true})));
+    }
     assert.ok(
-      editBar.querySelector('[data-workspace-action-id="recompute"]'),
+      window.document.querySelector('[data-workspace-action-id="recompute"]'),
       "edit 组动作没进编辑栏文档段",
     );
     for (const id of ["apply-draft", "save-site", "export-xlsx", "local-upload"]) {
@@ -339,6 +346,7 @@ test("编辑栏只收 edit 组；save 进保存菜单、download 进下载菜单
       );
     }
     for (const button of editBar.querySelectorAll("button")) {
+      if (button.closest('[aria-hidden="true"], [inert]')) continue;
       const label = visibleLabel(button);
       assert.ok(label.length > 0, "编辑栏里有空标签按钮");
       assert.ok(

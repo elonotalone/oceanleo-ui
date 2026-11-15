@@ -8,6 +8,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileSelectionAdapterHost, compileDocumentToolsHost } from "./helpers/selection-adapter-host.mjs";
 import { dispatchFabricImageCommand } from "../src/shell/image-editor/fabric-image-commands.ts";
 
 const require = createRequire(import.meta.url);
@@ -109,19 +110,13 @@ const { SelectionToolbar } = await load("src/shell/SelectionToolbar.tsx");
 const { FloatingContextToolbar, useFloatingContextToolbar } = await load(
   "src/shell/FloatingContextToolbar.tsx",
 );
-const { FabricImageContextToolbar } = await load(
-  "src/shell/image-editor/FabricImageContextToolbar.tsx",
-);
-const { VideoTimelineContextToolbar } = await load(
-  "src/shell/video-editor/VideoTimelineContextToolbar.tsx",
-);
+const { FabricImageContextToolbar } = await import(await compileSelectionAdapterHost("src/shell/image-editor/use-fabric-image-selection-adapter.ts", "useFabricImageSelectionAdapter", "FabricImageContextToolbar", stubs));
+const { VideoTimelineContextToolbar } = await import(await compileSelectionAdapterHost("src/shell/video-editor/use-video-timeline-selection-adapter.ts", "useVideoTimelineSelectionAdapter", "VideoTimelineContextToolbar", stubs));
 const { isOwnEditBarSession, ownEditBarSessionOpen } = await load(
   "src/shell/edit-bar-selection-session.tsx",
 );
 const { GlobalRowHistoryControls } = await load("src/shell/EditBarDockControls.tsx");
-const { EditBarDocumentSegment } = await load(
-  "src/shell/plugin-chrome/EditBarDocumentSegment.tsx",
-);
+const { EditBarDocumentSegment } = await import(await compileDocumentToolsHost(stubs));
 const { createRoot } = await import("react-dom/client");
 
 function makeImageEditor(initial = { value: "Hello", bold: false, fontSize: 24 }) {

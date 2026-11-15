@@ -4,9 +4,9 @@
  * PDF 编辑器（2026-10-23 操作员裁定 D4）。
  *
  * 一个 EmbedPDF 查看器实例，两张页：
- * - 编辑（基础）：画面就是 PDF 页面；左侧缩略图栏整理页面；编辑栏没选中东西时
+ * - 编辑（基础）：画面就是 PDF 页面；左侧缩略图栏整理页面；编辑栏常驻
  *   直接列出十个工具（高亮、下划线、删除线、打勾、打叉、加文字、签名、画笔、便签、
- *   查找），选中批注时变成它的属性；
+ *   查找）的创建图标，选中批注的属性合入同一工具条，共用量宽与 More；
  * - 专业编辑：同一个实例显示 EmbedPDF 官方完整界面。切换只显隐工具，不重载。
  * 改动是标准 PDF 批注，自动保存成同一份 PDF 的新版本。
  */
@@ -15,7 +15,8 @@ import { useCallback, useMemo, useState } from "react";
 import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { useAdvancedSession } from "../advanced-session-context";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
-import type { AdvancedWorkbenchAction } from "../advanced-workbench-chrome";
+import type { AdvancedEditorCreationTool } from "../advanced-editor-adapter";
+import type { CreationToolId } from "../creation-tools";
 import { DEFAULT_EDITOR_MODE, type EditorMode } from "../hosted-editor";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { PDF_WORKING_COPY_SCHEMA } from "../media-editors/pdf-recovery";
@@ -35,11 +36,9 @@ import {
 import { PdfControls } from "../media-editors/PdfControls";
 import { EditBarPanelRequest } from "../EditBarFloatingPanel";
 import { PdfFindBar } from "../media-editors/PdfFindBar";
-import {
-  PdfSelectionBar,
-  PdfToolPalette,
-  pdfSelectionBarVisible,
-} from "../media-editors/PdfSelectionBar";
+import { PdfToolPalette } from "../media-editors/PdfToolPalette";
+import { pdfSelectionBarVisible } from "../media-editors/pdf-selection-controls";
+import { usePdfSelectionAdapter } from "../media-editors/use-pdf-selection-adapter";
 import { PdfSignatureDialog } from "../media-editors/PdfSignatureDialog";
 import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
 import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
@@ -54,23 +53,22 @@ const PdfStage = dynamic(
   { ssr: false, loading: () => null },
 );
 
-/** 编辑栏空态的十个工具（顺序即显示顺序）。 */
+/** 创建域的十个工具；nativeTool 保留 EmbedPDF 原生工具 identity。 */
 const PDF_TOOLS: readonly {
   id: string;
-  label: string;
-  tool?: string;
-  icon?: AdvancedWorkbenchAction["icon"];
+  tool: CreationToolId;
+  nativeTool?: string;
 }[] = [
-  { id: "pdf-tool-highlight", label: "高亮", tool: "highlight", icon: "highlight" },
-  { id: "pdf-tool-underline", label: "下划线", tool: "underline", icon: "underline" },
-  { id: "pdf-tool-strikeout", label: "删除线", tool: "strikeout", icon: "strike" },
-  { id: "pdf-tool-check", label: "打勾", tool: PDF_MARK_TOOL_IDS.check, icon: "check-mark" },
-  { id: "pdf-tool-cross", label: "打叉", tool: PDF_MARK_TOOL_IDS.cross, icon: "cross-mark" },
-  { id: "pdf-tool-text", label: "加文字", tool: "freeText", icon: "text" },
-  { id: "pdf-tool-signature", label: "签名", icon: "signature" },
-  { id: "pdf-tool-ink", label: "画笔", tool: "ink", icon: "draw" },
-  { id: "pdf-tool-note", label: "便签", tool: "textComment", icon: "note" },
-  { id: "pdf-tool-find", label: "查找", icon: "search" },
+  { id: "pdf-tool-highlight", tool: "highlight", nativeTool: "highlight" },
+  { id: "pdf-tool-underline", tool: "underline", nativeTool: "underline" },
+  { id: "pdf-tool-strikeout", tool: "strikeout", nativeTool: "strikeout" },
+  { id: "pdf-tool-check", tool: "check", nativeTool: PDF_MARK_TOOL_IDS.check },
+  { id: "pdf-tool-cross", tool: "cross", nativeTool: PDF_MARK_TOOL_IDS.cross },
+  { id: "pdf-tool-text", tool: "text", nativeTool: "freeText" },
+  { id: "pdf-tool-signature", tool: "signature" },
+  { id: "pdf-tool-ink", tool: "ink", nativeTool: "ink" },
+  { id: "pdf-tool-note", tool: "note", nativeTool: "textComment" },
+  { id: "pdf-tool-find", tool: "find" },
 ];
 
 function isImageMaterial(material: LibraryItem): boolean {
@@ -119,23 +117,21 @@ export function PdfRoute({
     setMode(next);
   }, []);
 
-  const toolActions = useMemo<AdvancedWorkbenchAction[]>(() => {
+  const creationTools = useMemo<AdvancedEditorCreationTool[]>(() => {
     const disabled = readOnly || !bridge || editor.processing;
     return PDF_TOOLS.map((entry) => {
-      const active = entry.tool
-        ? activeTool === entry.tool
+      const active = entry.nativeTool
+        ? activeTool === entry.nativeTool
         : entry.id === "pdf-tool-find"
           ? findOpen
           : signatureOpen;
       return {
         id: entry.id,
-        label: entry.label,
-        ...(entry.icon ? { icon: entry.icon } : {}),
-        group: "edit" as const,
-        variant: active ? ("primary" as const) : ("default" as const),
+        tool: entry.tool,
+        value: active,
         disabled: entry.id === "pdf-tool-find" ? !bridge : disabled,
-        onTrigger: () => {
-          if (!bridge) return;
+        execute: () => {
+          if (!bridge || (entry.id !== "pdf-tool-find" && disabled)) return;
           if (entry.id === "pdf-tool-find") {
             setFindOpen((open) => !open);
             return;
@@ -146,7 +142,7 @@ export function PdfRoute({
             return;
           }
           bridge.deselect();
-          bridge.setTool(active ? null : entry.tool ?? null);
+          bridge.setTool(active ? null : entry.nativeTool ?? null);
         },
       };
     });
@@ -243,6 +239,10 @@ export function PdfRoute({
     editor.notice ||
     (editor.loading ? tt("正在载入 PDF") : "");
 
+  const selection = usePdfSelectionAdapter({
+    bridge, selected: editor.selected, activeTool, version: editor.annotationVersion, readOnly,
+    enabled: chrome === "basic" && pdfSelectionBarVisible(editor.selected, activeTool, readOnly),
+  });
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -253,18 +253,8 @@ export function PdfRoute({
         collab: collab.collab,
         id: "pdf",
         label: editorToolLabel({ type: "pdf" }),
-        actions: chrome === "basic" ? toolActions : [],
-        contextToolbar:
-          chrome === "basic" && bridge && pdfSelectionBarVisible(editor.selected, activeTool, readOnly) ? (
-            <PdfSelectionBar
-              bridge={bridge}
-              selected={editor.selected}
-              activeTool={activeTool}
-              version={editor.annotationVersion}
-              readOnly={readOnly}
-              accent={accent}
-            />
-          ) : null,
+        creationTools: chrome === "basic" ? creationTools : [],
+        selection,
         history: {
           canUndo: editor.canUndo,
           canRedo: editor.canRedo,
@@ -343,7 +333,7 @@ export function PdfRoute({
                 onFindShortcut={openFind}
               />
               {chrome === "basic" && bridge && !readOnly ? (
-                <PdfToolPalette key={activeTool} inline bridge={bridge} activeTool={activeTool} triggerId={PDF_TOOLS.find((tool) => tool.tool === activeTool)?.id} />
+                <PdfToolPalette key={activeTool} inline bridge={bridge} activeTool={activeTool} triggerId={PDF_TOOLS.find((tool) => tool.nativeTool === activeTool)?.id} />
               ) : null}
               {findOpen && chrome === "basic" && bridge ? (
                 <EditBarPanelRequest id="pdf-find" label={tt("查找")} triggerSelector='[data-workspace-action-id="pdf-tool-find"]' onClose={() => setFindOpen(false)}>

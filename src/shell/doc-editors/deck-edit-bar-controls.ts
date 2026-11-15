@@ -119,7 +119,10 @@ export function deckElementSelectionControls(
   };
   if (locked) return element.type === "image" ? [lock, alt] : [lock];
 
-  const opacity = range("opacity", tt("透明度"), element.opacity ?? 1, 0, 1, 0.05, "opacity");
+  const opacity: Control = {
+    ...canon("opacity"), kind: "number", value: (element.opacity ?? 1) * 100,
+    min: 0, max: 100, step: 1,
+  };
   const shadow = { ...toggle("shadow", element.shadow === true), ...more };
   const radius: Control = {
     ...canon("radius"),
@@ -169,8 +172,8 @@ export function deckElementSelectionControls(
         ...canon("font-size"),
         kind: "number",
         value: element.fontSize || (element.type === "table" ? 16 : 18),
-        min: element.type === "table" ? 6 : 4,
-        max: element.type === "table" ? 72 : 300,
+        min: 4,
+        max: 300,
         step: 1,
       },
       toggle("bold", element.bold === true),
@@ -204,10 +207,10 @@ export function deckElementSelectionControls(
         {
           ...canon("line-height"),
           kind: "number",
-          value: element.lineHeight || 1.15,
-          min: 0.7,
-          max: 4,
-          step: 0.05,
+          value: (element.lineHeight || 1.15) * (element.fontSize || 18),
+          min: 0.7 * (element.fontSize || 18),
+          max: 4 * (element.fontSize || 18),
+          step: 1,
         },
         { id: "link", kind: "text", label: tt("链接地址"), value: element.link || "", ...panel("link") },
         {
@@ -216,7 +219,7 @@ export function deckElementSelectionControls(
           value: element.letterSpacing || 0,
           min: -10,
           max: 40,
-          step: 0.5,
+          step: 1,
           ...more,
         },
         { ...action("clear-format"), ...more },

@@ -46,7 +46,7 @@ export interface CanonicalSelectionControl extends SelectionControl {
   /** 这个控件（或它合成的面板入口）显示成哪个规范项；缺省 = 编辑器特有控件。 */
   canonId?: EditBarCanonId;
   /** 排在哪一组（`specific` = 编辑器特有，排在对象组之后）。 */
-  canonGroup?: EditBarCanonGroup | "specific";
+  canonGroup?: EditBarCanonGroup | "specific" | "creation";
   /** 这是哪个规范面板里的子控件（`inspectorGroup` 同值）。 */
   canonPanel?: EditBarCanonId;
   /** 编辑器原来的标签（字体面板把当前字体名写在 label 里），投影后当作值显示。 */
@@ -301,9 +301,9 @@ export function canonicalSelectionControls(
   const rank = new Map(sequence.map((item, index) => [item.id, index]));
   const groupOf = (id: EditBarCanonId) =>
     sequence.find((item) => item.id === id)?.group || "object";
-  const keepDisabled = wholeContextDisabled(context.controls);
+  const keepDisabled = wholeContextDisabled(context.controls.filter((control) => control.domain !== "creation"));
   const live = context.controls.filter(
-    (control) => keepDisabled || !control.disabled,
+    (control) => control.domain === "creation" || keepDisabled || !control.disabled,
   );
 
   // 一、编辑器按 A-1 写的规范面板：inspectorGroup 就是规范 id。
@@ -335,6 +335,10 @@ export function canonicalSelectionControls(
   };
 
   for (const control of live) {
+    if (control.domain === "creation") {
+      specific.push({ ...control, canonGroup: "creation" });
+      continue;
+    }
     const inGroup = control.inspectorGroup?.toLowerCase();
     if (
       control.slot === "inspector" &&

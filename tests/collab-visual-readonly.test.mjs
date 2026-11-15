@@ -6,6 +6,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileSelectionAdapterHost } from "./helpers/selection-adapter-host.mjs";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
 import {
   guardPluginSurface,
@@ -130,7 +131,7 @@ test("VisualViewOnlyPanel：只读时 fieldset disabled + 「你只能查看」�
 async function loadDeckToolbar() {
   return (
     await import(
-      await compileModule("src/shell/doc-editors/DeckContextToolbar.tsx", {
+      await compileSelectionAdapterHost("src/shell/doc-editors/use-deck-selection-adapter.ts", "useDeckSelectionAdapter", "DeckContextToolbar", {
         "../../i18n/ui/useUI": useUiStub,
         "../SelectionToolbar": toolbarStub,
       })
@@ -164,6 +165,8 @@ function deckEditorWith(selectedType) {
     selectedElement: selected || null,
     selectedElementId: selected?.id || "",
     readOnly: false,
+    loading: false,
+    sourceFailed: false,
   });
 }
 
@@ -229,7 +232,7 @@ function imageEditorWith() {
 
 test("图片浮条：只读时每个控件 disabled 并带「你只能查看」，命令不改画布", async () => {
   const { FabricImageContextToolbar } = await import(
-    await compileModule("src/shell/image-editor/FabricImageContextToolbar.tsx", {
+    await compileSelectionAdapterHost("src/shell/image-editor/use-fabric-image-selection-adapter.ts", "useFabricImageSelectionAdapter", "FabricImageContextToolbar", {
       "../../i18n/ui/useUI": useUiStub,
       "../SelectionToolbar": toolbarStub,
     })
@@ -310,7 +313,7 @@ test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / �
   const src = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
   assert.match(src, /usePluginCommandSurface\(\s*buildDeckCommandSurface\(editor, \{ download: downloadAs, save: \(\) => saveAdvancedEditorFromAgent\(item, advancedSession\?\.flush\) \}, viewOnly\)/);
   assert.match(src, /guardPluginSurface\(buildRawDeckCommandSurface\(editor, deps\), readOnly\)/);
-  assert.match(src, /<DeckContextToolbar[\s\S]*?readOnly=\{viewOnly\}/);
+  assert.match(src, /useDeckSelectionAdapter\(\{\s*editor,\s*readOnly:\s*viewOnly\s*\}\)/);
   assert.match(src, /viewOnlyUploadHandler\(viewOnly, addLocalFiles\)/);
   assert.match(src, /canUndo: editor\.canUndo && !viewOnly/);
   assert.equal((src.match(/<VisualViewOnlyPanel readOnly=\{viewOnly\}>/g) || []).length, 5, "五个抽屉（模板 / 元素 / 画笔 / 线条 / 便签，10-23 D3）都包了只读外壳");
@@ -318,7 +321,7 @@ test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / �
 
 test("ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 viewOnly；图片素材与 AI 入口各挡一次", () => {
   const image = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
-  assert.match(image, /<FabricImageContextToolbar editor=\{editor\} accent=\{accent\} readOnly=\{viewOnly\} \/>/);
+  assert.match(image, /useFabricImageSelectionAdapter\(\{\s*editor,\s*readOnly:\s*viewOnly\s*\}\)/);
   assert.match(image, /viewOnlyUploadHandler\(viewOnly, addLocalImages\)/);
   assert.match(image, /guardPluginSurface\(\s*createImageCommandSurface\(\{\s*editor,\s*deliver,\s*item: activeItem,[\s\S]*?\}\),\s*viewOnly/);
   assert.match(image, /if \(viewOnly\) throw new Error\(VIEW_ONLY_REFUSAL\);/);
@@ -379,7 +382,7 @@ function enabledMutatingTags(html, allowLabels = []) {
 for (const selectedType of ["text", "shape", "image"]) {
   test(`真渲染：PPT 浮条（选中${selectedType}）只读时没有可点的改动按钮；可写时有`, async () => {
     const { DeckContextToolbar } = await import(
-      await compileModule("src/shell/doc-editors/DeckContextToolbar.tsx", { "../../i18n/ui/useUI": useUiStub })
+      await compileSelectionAdapterHost("src/shell/doc-editors/use-deck-selection-adapter.ts", "useDeckSelectionAdapter", "DeckContextToolbar", { "../../i18n/ui/useUI": useUiStub })
     );
     const locked = renderToStaticMarkup(
       React.createElement(DeckContextToolbar, { editor: deckEditorWith(selectedType).editor, readOnly: true }),
@@ -395,7 +398,7 @@ for (const selectedType of ["text", "shape", "image"]) {
 
 test("真渲染：图片浮条只读时没有可点的改动按钮；可写时有", async () => {
   const { FabricImageContextToolbar } = await import(
-    await compileModule("src/shell/image-editor/FabricImageContextToolbar.tsx", { "../../i18n/ui/useUI": useUiStub })
+    await compileSelectionAdapterHost("src/shell/image-editor/use-fabric-image-selection-adapter.ts", "useFabricImageSelectionAdapter", "FabricImageContextToolbar", { "../../i18n/ui/useUI": useUiStub })
   );
   const locked = renderToStaticMarkup(
     React.createElement(FabricImageContextToolbar, { editor: imageEditorWith().editor, readOnly: true }),

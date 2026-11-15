@@ -27,10 +27,10 @@ test("v8 routes expose one real global history and semantic compact controls", (
   const gridRoute = source("../src/shell/doc-editors/GridUniverStage.tsx");
   const modelRoute = source("../src/shell/advanced-routes/Model3DRoute.tsx");
   const richToolbar = source(
-    "../src/shell/doc-editors/RichDocContextToolbar.tsx",
+    "../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
   );
   const modelToolbar = source(
-    "../src/shell/media-editors/Model3DContextToolbar.tsx",
+    "../src/shell/media-editors/use-model3d-selection-adapter.ts",
   );
   const modelControls = source("../src/shell/media-editors/model3d-selection-controls.ts");
 
@@ -57,7 +57,11 @@ test("v8 routes expose one real global history and semantic compact controls", (
   // grid 的浮条控件由 `gridUniverSelectionContext` 从命令表算出（stage-plan.ts），
   // 不是 JSX 字面量；它的 iconOnly / revision 语义由 grid-univer-wiring 判据钉住。
   for (const toolbar of [richToolbar, modelToolbar]) {
-    assert.match(toolbar === modelToolbar ? modelControls : toolbar, /iconOnly: true/);
+    if (toolbar === modelToolbar) assert.match(modelControls, /iconOnly: true/);
+    else {
+      assert.match(toolbar, /SelectionControlInput/);
+      assert.doesNotMatch(toolbar, /id: "bold", kind:/, "canon presentation belongs to the shell");
+    }
     assert.match(toolbar, /selectionRevision/);
     assert.match(toolbar, /editRevision/);
   }

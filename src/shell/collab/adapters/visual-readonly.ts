@@ -7,7 +7,7 @@
  *   guardVisualCommands    —— 指令面（Leo 的「帮我改」入口）：会改作品的指令在这一层直接拒绝，不管它是从哪个入口来的。
  *   viewOnlyUploadHandler  —— 宿主的上传 / 拖放入口：只读时不把文件交给编辑器。
  */
-import type { SelectionContext, SelectionControl } from "../../selection-context";
+import type { SelectionContext, SelectionAdapterContext } from "../../selection-context";
 import { fail, type VisualCommandDefinition } from "../../media-editors/visual-command-kit";
 import type { PluginCommandSurfaceInput } from "../../plugin-command/types";
 
@@ -24,7 +24,7 @@ type Translate = (key: string, vars?: Record<string, string | number>) => string
  * 把一份选择上下文变成只读版：除 `keepIds`（纯查看类，如切换当前系列）外，每个控件都 disabled，
  * 并带上 unavailableReason（按钮的 title / aria-label 会读它）。`readOnly` 为 false 原样返回同一个对象。
  */
-export function viewOnlyContext<T extends SelectionContext | null>(
+export function viewOnlyContext<T extends SelectionContext | SelectionAdapterContext | null>(
   context: T,
   readOnly: boolean,
   tt: Translate,
@@ -33,7 +33,7 @@ export function viewOnlyContext<T extends SelectionContext | null>(
   if (!readOnly || !context) return context;
   const reason = tt(VIEW_ONLY_HINT);
   const keep = new Set(keepIds);
-  const controls: SelectionControl[] = context.controls.map((control) =>
+  const controls = context.controls.map((control) =>
     keep.has(control.id)
       ? control
       : { ...control, disabled: true, unavailableReason: reason },

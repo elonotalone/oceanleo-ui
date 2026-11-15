@@ -121,7 +121,7 @@ test("route toolbars keep panel controls semantic while canonical compact contro
   inspectors(deckObjectGeometryControls({ x: 1, y: 2, width: 30, height: 40, rotation: 0 }, tt),
     ["x", "y", "width", "height", "rotation"]);
   assertInspectorControls("../src/shell/doc-editors/deck-slide-selection-context.ts", ["transition-duration", "notes"]);
-  assertInspectorControls("../src/shell/doc-editors/RichDocContextToolbar.tsx",
+  assertInspectorControls("../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
     ["link", "unlink", "row-add", "row-delete", "column-add", "column-delete", "table-delete"]);
 
   for (const kind of ["video", "image", "text", "audio"]) {
@@ -135,7 +135,7 @@ test("route toolbars keep panel controls semantic while canonical compact contro
       assert.notEqual(controls.find(control => control.id === "font-size")?.slot, "inspector");
     }
   }
-  assertInspectorControls("../src/shell/media-editors/AudioContextToolbar.tsx",
+  assertInspectorControls("../src/shell/media-editors/use-audio-selection-adapter.ts",
     ["fade-duration", "fade-in", "fade-out", "gain", "apply-gain", "effect-speed", "eq-low", "eq-mid", "eq-high", "apply-effects"]);
   const sceneView = readFileSync(new URL("../src/shell/media-editors/Model3DViewControls.tsx", import.meta.url), "utf8");
   for (const method of ["setOrbit", "setZoom", "setExposure", "setShadowIntensity", "setShadowSoftness",
@@ -208,7 +208,7 @@ test("route commands target the rendered selection and preserve gesture commit/c
 
 test("remaining editor controls retain their persistent engine bindings", () => {
   const richdoc = source(
-    "../src/shell/doc-editors/RichDocContextToolbar.tsx",
+    "../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
   );
   assert.match(richdoc, /toggleCodeBlock\(\)/);
   assert.match(richdoc, /setLinkHref/);
@@ -226,7 +226,7 @@ test("remaining editor controls retain their persistent engine bindings", () => 
   assert.match(audio, /operation\.type === "gain"/);
   assert.match(audio, /operation\.type === "effects"/);
   assert.doesNotMatch(
-    source("../src/shell/media-editors/AudioContextToolbar.tsx"),
+    source("../src/shell/media-editors/use-audio-selection-adapter.ts"),
     /denois|noise-reduction|降噪/i,
   );
 

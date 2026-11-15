@@ -153,12 +153,13 @@ const imageStageStub = dataModule(`${jsx}
   }
 `);
 
-const imageContextToolbarStub = dataModule(`${jsx}
-  export function FabricImageContextToolbar({editor}) {
-    return _jsx("div", {
-      "data-image-route-selection-toolbar": true,
-      children: editor.selected?.id || "no selection",
-    });
+const imageSelectionAdapterStub = dataModule(`
+  export function useFabricImageSelectionAdapter({editor}) {
+    return {
+      context: editor.selected ? { version: 1, kind: "image", bar: "image", id: editor.selected.id,
+        controls: [{id: "crop"}] } : null,
+      dispatch() {},
+    };
   }
 `);
 const visualControlsStub = dataModule(`${jsx}
@@ -186,7 +187,7 @@ const stubs = {
   "../image-editor/psd-composite": dataModule(`export function isPsdSource(){ return false; }`),
   "../media-editors/visual-import-normalize": dataModule(`export async function normalizeVisualUploads(){ return { files: [], notes: [] }; }`),
   "../media-editors/visual-formats": dataModule(`export const DEFAULT_LOSSY_QUALITY=90; export function imageCanvasFormat(value){ return value; } export function visualDownloadFormats(){ return [{label:"PNG", format:"png"}]; } export function visualUploadAccept(){ return "image/*"; }`),
-  "../image-editor/FabricImageContextToolbar": imageContextToolbarStub,
+  "../image-editor/use-fabric-image-selection-adapter": imageSelectionAdapterStub,
   "../image-editor/FabricImageControls": visualControlsStub,
   "../image-editor/FabricImageCreationPanels": visualControlsStub,
   "../image-editor/FabricImageStage": imageStageStub,
@@ -243,7 +244,6 @@ const stubs = {
   "./workbench-routes": dataModule(`export function editBarOwnershipForItem(){ return "material"; }`),
   "./use-advanced-autosave": dataModule(`export function useAdvancedAutoSave(){ return {state:"saved", errorMessage:"", handOffToBackground(){}, flushLatest:async()=>{}, retry:async()=>{}}; }`),
   "./use-advanced-recovery": dataModule(`export function useAdvancedRecovery(){}`),
-  "./plugin-chrome/EditBarDocumentSegment": nullComponent("EditBarDocumentSegment"),
   "./plugin-chrome/plugin-pages": dataModule(`export function editBarVisibleOnPage(){ return true; } export function buildPluginPages(){ return [{id:"normal", kind:"main", label:"编辑"}]; }`),
   "./plugin-chrome/plugin-page-store": dataModule(`import { useState } from ${JSON.stringify(reactUrl)}; export function usePluginPage(){ const [pageId,setPage]=useState("normal"); return {pageId,setPage}; }`),
   "./advanced-background-saver": dataModule(`export function hasPendingOrFailed(){ return false; } export function leaveAdvancedWorkbench({onClose}){ onClose?.(); } export function shouldWarnBeforeUnload(){ return false; } export function subscribe(){ return ()=>{}; }`),
@@ -266,14 +266,13 @@ const stubs = {
     }
   `),
   "./edit-bar-dock-state": dataModule(`export function editBarDockStorageKey(){ return "fixture"; }`),
-  "./edit-bar-surface": dataModule(`export const EDIT_BAR_BUTTON_CLASS=""; export const EDIT_BAR_DIVIDER_CLASS=""; export function editBarCollapsedStyle(){return {};} export function editBarPillStyle(){return {};} `),
+  "./edit-bar-surface": dataModule(`export const EDIT_BAR_BUTTON_CLASS=""; export const EDIT_BAR_DIVIDER_CLASS=""; export const EDIT_BAR_TOUCH_EXTEND_CLASS=""; export function editBarCollapsedStyle(){return {};} export function editBarPillStyle(){return {};} `),
   "../ui/Button": buttonStub,
   "./collab/CollabActionSlot": nullComponent("CollabActionSlot"),
   "./editor-item-social-chrome": dataModule(`export function useEditorItemSocial(){ return { shareAvailable: false, favoriteAvailable: false, favorite: false, busy: "", error: "", artifactId: null, revisionId: null, async share(){}, async toggleFavorite(){} }; }`),
   "./workspace-download-icon-button": dataModule(`export function downloadIconButtonProps(){ return {}; }`),
   "./plugin-chrome/plugin-mode": nullComponent("PluginModeAdapterBridge"),
   "./plugin-chrome/PluginPageRow": nullComponent("PluginPageRow"),
-  "./selection-toolbar-measure": dataModule(`export function editBarRowCapacity(){ return 0; } export function elementOuterInlineSize(){ return 0; }`),
   "./plugin-chrome/agent-drawer": dataModule(`export const PLUGIN_AGENT_DRAWER_ID="agent";`),
   "./edit-bar-row-context": dataModule(`import { createContext, useContext } from ${JSON.stringify(reactUrl)}; export const EditBarRowContext=createContext(false); export function useInsideEditBarRow(){ return useContext(EditBarRowContext); }`),
   "./workbench-open-store": dataModule(`export function useWorkbenchOpenClaim(){}`),
@@ -422,7 +421,7 @@ test("Library ImageRoute survives first frame, selection, Assets toggles, and Ag
       "image-layer-1",
     );
     assert.equal(
-      document.body.querySelector("[data-image-route-selection-toolbar]")?.textContent,
+      document.body.querySelector('[data-selection-kind="image"]')?.getAttribute("data-selection-id"),
       "image-layer-1",
     );
     assert.ok(

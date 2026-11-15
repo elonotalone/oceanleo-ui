@@ -349,8 +349,9 @@ test("editor protocol keeps the trusted origin and instance handshake; shell chr
     /if \(isWorkItem\(item\)\) return workCapability\(\)/,
   );
   assert.match(shell, /data-advanced-context-row/);
-  assert.match(shell, /adapter\.renderContextToolbar\(layoutState\)/);
-  assert.match(shell, /\{contextToolbar\}/);
+  assert.match(shell, /resolveSelectionAdapterContext\(adapter\.selection\?\.context/);
+  assert.equal((shell.match(/<SelectionToolbar\b/g) || []).length, 1);
+  assert.doesNotMatch(shell, /adapter\.(?:renderContextToolbar|contextToolbar)/);
   assert.match(
     shell,
     /const clearWorkspaceDetail = workspacePane\?\.clearDetail/,

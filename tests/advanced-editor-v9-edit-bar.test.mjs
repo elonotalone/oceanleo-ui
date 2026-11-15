@@ -339,19 +339,22 @@ test("route capability ownership is artifact-based, including edu website artifa
 
 test("all advanced route adapters project through the shared SelectionToolbar chrome", () => {
   for (const path of [
-    "../src/shell/image-editor/FabricImageContextToolbar.tsx",
-    "../src/shell/doc-editors/DeckContextToolbar.tsx",
-    "../src/shell/doc-editors/RichDocContextToolbar.tsx",
+    "../src/shell/image-editor/use-fabric-image-selection-adapter.ts",
+    "../src/shell/doc-editors/use-deck-selection-adapter.ts",
+    "../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
     "../src/shell/doc-editors/GridUniverStage.tsx",
     // 2026-10-23 D4（W06）：旧基础版 PdfContextToolbar 删除，选中批注 / 文字的栏是 PdfSelectionBar。
-    "../src/shell/media-editors/PdfSelectionBar.tsx",
-    "../src/shell/media-editors/AudioContextToolbar.tsx",
-    "../src/shell/video-editor/VideoTimelineContextToolbar.tsx",
-    "../src/shell/media-editors/Model3DContextToolbar.tsx",
+    "../src/shell/media-editors/use-pdf-selection-adapter.ts",
+    "../src/shell/media-editors/use-audio-selection-adapter.ts",
+    "../src/shell/video-editor/use-video-timeline-selection-adapter.ts",
+    "../src/shell/media-editors/use-model3d-selection-adapter.ts",
   ]) {
-    assert.match(source(path), /SelectionToolbar/, path);
+    const adapterSource = source(path);
+    assert.doesNotMatch(adapterSource, /<SelectionToolbar\b|import \{ SelectionToolbar \}/, path);
+    assert.match(adapterSource, path.endsWith("GridUniverStage.tsx") ? /selection: \{ context:/ : /SelectionAdapter/, path);
   }
   const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
+  assert.equal((shell.match(/<SelectionToolbar\b/g) || []).length, 1, "one shared selection renderer");
   // 2026-10-21 操作员改口：撤销重做回到第一行 history 槽，不再注入编辑栏。
   // dock 控件仍必须从同一处进来——不允许另起一条来源。
   assert.match(
@@ -374,8 +377,9 @@ test("all advanced route adapters project through the shared SelectionToolbar ch
   assert.match(shell, /contextBarTrailing:\s*undefined/);
   assert.doesNotMatch(shell, /contextBarTrailing:\s*floatingToolbar\.trailing/);
   assert.equal((shell.match(/<FloatingContextToolbar/g) || []).length, 1);
-  // 文档段走 documentSegment prop（signals/X2-interface.md），不再由壳自己拼
-  // `[data-workspace-edit-bar]` 容器。
-  assert.match(shell, /documentSegment=\{/);
+  // 文档动作与抽屉变成 creation tools，汇入同一个工具条的数据源。
+  assert.match(shell, /editBarDocumentTools\(\{/);
+  assert.match(shell, /creationTools\.map\(\(tool\) => creationToolControl\(tool, tt\)\)/);
+  assert.doesNotMatch(shell, /documentSegment=\{/);
   assert.doesNotMatch(shell, /<div\s[^>]*data-workspace-edit-bar/);
 });

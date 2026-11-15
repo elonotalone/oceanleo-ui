@@ -8,6 +8,7 @@ import React, { act } from "react";
 import { createRoot } from "react-dom/client";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileSelectionAdapterHost } from "./helpers/selection-adapter-host.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -273,8 +274,10 @@ test("deck 选中态不再画独立 5 键条，缩放柄还在", async () => {
 // 10-23 D9：统一编辑栏「做不到就不出、不放灰按钮」；「编辑文字」键删了（双击 / Enter / F2 编辑），
 // 所以原来「未选中时露出并禁用」「锁定时灰掉」的断言改成「不出」。
 test("DeckContextToolbar：对象组只在选中对象时出现；锁定只剩取消锁定；没有「编辑文字」键", async () => {
-  const toolbarUrl = await compileModule(
-    "src/shell/doc-editors/DeckContextToolbar.tsx",
+  const toolbarUrl = await compileSelectionAdapterHost(
+    "src/shell/doc-editors/use-deck-selection-adapter.ts",
+    "useDeckSelectionAdapter",
+    "DeckContextToolbar",
     {
       react: reactUrl,
       "../../i18n/ui/useUI": uiStubUrl,

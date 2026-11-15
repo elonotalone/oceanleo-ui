@@ -444,7 +444,7 @@ test("signature store refuses non-PNG data and reports a full device instead of 
 // 统一编辑栏：选中批注时的控件
 
 const selectionBar = await import(
-  await compileModule("src/shell/media-editors/PdfSelectionBar.tsx", {
+  await compileModule("src/shell/media-editors/pdf-selection-controls.ts", {
     "../../i18n/ui/useUI": dataModule("const tt = (zh) => zh; export function useUI() { return tt; }"),
     "../SelectionToolbar": dataModule("export function SelectionToolbar() { return null; }"),
   })
@@ -456,30 +456,31 @@ test("annotation bars use canonical ids in canonical order, one of each", () => 
   const text = pdfSelectionControls("freetext", { fontFamily: 5, fontSize: 12, textAlign: 1 }, tt, true);
   assert.deepEqual(
     text.map((control) => control.id),
-    ["font-family", "font-size", "bold", "italic", "text-color", "align", "fill", "opacity-value", "delete"],
+    ["font-family", "font-size", "bold", "italic", "text-color", "align", "fill", "opacity", "delete"],
   );
   const font = text.find((control) => control.id === "font-family");
   assert.deepEqual(font.options.map((option) => option.value), ["Helvetica", "Times", "Courier"]);
   assert.equal(font.value, "Helvetica");
   assert.equal(text.find((control) => control.id === "bold").value, true);
   assert.equal(text.find((control) => control.id === "align").value, "center");
-  const opacity = text.find((control) => control.id === "opacity-value");
-  assert.equal(opacity.inspectorGroup, "opacity");
-  assert.equal(opacity.slot, "inspector");
+  const opacity = text.find((control) => control.id === "opacity");
+  assert.deepEqual([opacity.kind, opacity.min, opacity.max, opacity.step, opacity.suffix], ["number", 10, 100, 1, "%"]);
+  assert.equal(opacity.inspectorGroup, undefined);
+  assert.equal(opacity.slot, undefined, "opacity is a scalar on the bar, not an inspector panel");
   // 批注文字做不到的规范项不出（不放灰按钮）。
   for (const id of ["underline", "strike", "list", "line-height", "link", "highlight"]) {
     assert.equal(text.some((control) => control.id === id), false, id);
   }
   const ink = pdfSelectionControls("ink", { strokeColor: "#112233", strokeWidth: 4 }, tt, true);
-  assert.deepEqual(ink.map((control) => control.id), ["stroke-color", "stroke-width", "opacity-value", "delete"]);
+  assert.deepEqual(ink.map((control) => control.id), ["stroke-color", "stroke-width", "opacity", "delete"]);
   assert.ok(ink.slice(0, 2).every((control) => control.inspectorGroup === "stroke"));
   assert.deepEqual(
     pdfSelectionControls("stamp", {}, tt, true).map((control) => control.id),
-    ["opacity-value", "delete"],
+    ["opacity", "delete"],
   );
   assert.deepEqual(
     pdfSelectionControls("note", { contents: "hi" }, tt, true).map((control) => control.id),
-    ["fill", "opacity-value", "pdf-note-text", "delete"],
+    ["fill", "opacity", "pdf-note-text", "delete"],
   );
   for (const kind of ["freetext", "highlight", "line", "ink", "note", "stamp"]) {
     const ids = pdfSelectionControls(kind, {}, tt, true).map((control) => control.id);
@@ -488,7 +489,12 @@ test("annotation bars use canonical ids in canonical order, one of each", () => 
 });
 
 test("bar commands patch the annotation fields the viewer writes into the PDF", () => {
-  const { pdfSelectionPatch, pdfFontCode, pdfFontParts, pdfSelectionBarVisible } = selectionBar;
+  const { pdfSelectionPatch, pdfFontCode, pdfFontParts, pdfSelectionBarVisible, pdfFontSizePixels, pdfFontSizePoints } = selectionBar;
+  assert.equal(pdfFontSizePixels(12), 16);
+  assert.equal(pdfFontSizePoints(16), 12);
+  assert.equal(pdfFontSizePoints(1), 4.5);
+  assert.equal(pdfFontSizePoints(400), 72);
+  assert.equal(pdfFontSizePoints(NaN), null);
   const values = { fontFamily: pdfFontCode("Times", false, false) };
   assert.deepEqual(pdfFontParts(pdfSelectionPatch("freetext", values, "bold", true).fontFamily), {
     family: "Times",
@@ -497,6 +503,9 @@ test("bar commands patch the annotation fields the viewer writes into the PDF", 
   });
   assert.deepEqual(pdfSelectionPatch("freetext", values, "font-size", 400), { fontSize: 96 });
   assert.deepEqual(pdfSelectionPatch("ink", {}, "opacity-value", 3), { opacity: 0.1 });
+  assert.deepEqual(pdfSelectionPatch("stamp", {}, "opacity", 73), { opacity: 0.73 });
+  assert.deepEqual(pdfSelectionPatch("stamp", {}, "opacity", 3), { opacity: 0.1 });
+  assert.deepEqual(pdfSelectionPatch("stamp", {}, "opacity", 150), { opacity: 1 });
   assert.deepEqual(pdfSelectionPatch("highlight", {}, "fill", "#00ff00"), { strokeColor: "#00ff00", color: "#00ff00" });
   assert.deepEqual(pdfSelectionPatch("freetext", {}, "fill", "nope"), { color: "#ffffff", backgroundColor: "#ffffff" });
   assert.equal(pdfSelectionPatch("ink", {}, "no-such-control", 1), null);
@@ -508,14 +517,70 @@ test("bar commands patch the annotation fields the viewer writes into the PDF", 
   assert.equal(pdfSelectionBarVisible({ id: "a", type: 99 }, null, false), false);
 });
 
+test("PDF selection adapter uses px, rejects stale edits and keeps view-only transitions safe", async () => {
+  const { React, act, mount } = await import("./collab-media-sim.mjs");
+  const { usePdfSelectionAdapter } = await import(await compileModule("src/shell/media-editors/use-pdf-selection-adapter.ts", {
+    "../../i18n/ui/useUI": dataModule("const tt = zh => zh; export function useUI(){return tt;}"),
+  }));
+  const updates = [];
+  const defaults = { fontSize: 12, fontFamily: selectionBar.pdfFontCode("Times", true, true) };
+  const bridge = {
+    updateAnnotation: (selected, patch) => updates.push([selected.id, patch]),
+    deleteAnnotation: selected => updates.push([selected.id, "delete"]),
+    toolDefaults: () => defaults,
+    setToolDefaults: (_tool, patch) => Object.assign(defaults, patch),
+  };
+  const selected = { id: "text-1", type: PDF_SUBTYPE.FREETEXT, ...defaults };
+  let current;
+  function Harness(props) { current = usePdfSelectionAdapter(props); return null; }
+  const props = { bridge: null, selected: null, activeTool: null, version: 1, readOnly: false };
+  const errors = [];
+  const originalError = console.error;
+  console.error = (...args) => errors.push(args.map(String).join(" "));
+  let mounted;
+  try {
+    mounted = await mount(React.createElement(Harness, props));
+    assert.equal(current.context, null, "loading has no selection");
+    await mounted.rerender(React.createElement(Harness, { ...props, bridge, selected }));
+    const size = current.context.controls.find(control => control.id === "font-size");
+    assert.deepEqual([size.value, size.min, size.max, size.step], [16, 6, 96, 1]);
+    for (const control of current.context.controls.filter(control => control.domain !== "specific")) {
+      for (const field of ["kind", "label", "icon", "iconOnly"]) assert.equal(field in control, false, `${control.id}:${field}`);
+    }
+    current.dispatch({ selectionId: "wrong", controlId: "delete" });
+    current.dispatch({ selectionId: current.context.id, selectionRevision: 0, controlId: "font-size", value: 17 });
+    assert.deepEqual(updates, [], "wrong identity and old revision cannot edit");
+    current.dispatch({ selectionId: current.context.id, selectionRevision: 1, controlId: "font-size", value: 17 });
+    assert.deepEqual(updates.pop(), ["text-1", { fontSize: 12.75 }], "+1px converts to +0.75pt");
+    await mounted.rerender(React.createElement(Harness, { ...props, bridge, selected, readOnly: true }));
+    assert.equal(current.context, null);
+    current.dispatch({ selectionId: "annotation:text-1", controlId: "delete" });
+    assert.deepEqual(updates, [], "read-only dispatch stays closed");
+    await mounted.rerender(React.createElement(Harness, { ...props, bridge, activeTool: "freeText", version: 2 }));
+    assert.equal(current.context.id, "tool:freeText");
+    await act(async () => current.dispatch({ selectionId: current.context.id, selectionRevision: "2:0", controlId: "font-size", value: 20 }));
+    assert.equal(defaults.fontSize, 15);
+    assert.equal(current.context.revision, "2:1");
+    assert.equal(current.context.controls.find(control => control.id === "font-size").value, 20);
+    await mounted.rerender(React.createElement(Harness, { ...props, bridge, selected, enabled: false }));
+    assert.equal(current.context, null, "native Pro chrome hides shell selection");
+  } finally {
+    if (mounted) await mounted.unmount();
+    console.error = originalError;
+  }
+  assert.deepEqual(errors, [], "hook state changes must not log React errors");
+});
+
 // ---------------------------------------------------------------------------
 // 路由接线
 
 test("the PDF route: ten basic tools on the bar, one stage, no legacy toolbox, single zoom", () => {
   const route = read("src/shell/advanced-routes/PdfRoute.tsx");
-  const tools = [...route.matchAll(/\{ id: "(pdf-tool-[a-z]+)", label: "([^"]+)"/g)].map((match) => match[2]);
-  assert.deepEqual(tools, ["高亮", "下划线", "删除线", "打勾", "打叉", "加文字", "签名", "画笔", "便签", "查找"]);
-  assert.match(route, /actions: chrome === "basic" \? toolActions : \[\]/);
+  const tools = [...route.matchAll(/\{ id: "(pdf-tool-[a-z]+)", tool: "([^"]+)"/g)].map((match) => [match[1], match[2]]);
+  assert.deepEqual(tools, ["highlight", "underline", "strikeout", "check", "cross", "text", "signature", "ink", "note", "find"].map(tool => [`pdf-tool-${tool}`, tool]));
+  assert.match(route, /creationTools: chrome === "basic" \? creationTools : \[\]/);
+  assert.match(route, /usePdfSelectionAdapter\(\{/);
+  assert.match(route, /selection,/);
   assert.doesNotMatch(route, /toolbox|drawers:|PdfContextToolbar|ModeSwitchGate|addBlankPage|merge|extract/i);
   // 只有一个缩放：专业档官方工具栏有缩放，外壳那个藏起来。
   assert.match(route, /nativeChrome: \{ viewport: chrome === "pro" \}/);

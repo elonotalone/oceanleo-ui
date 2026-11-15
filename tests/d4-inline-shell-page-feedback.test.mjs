@@ -93,7 +93,7 @@ test('host-reported Pro page switches settle in the workspace header slot (grid 
       id:'grid', label:'表格',
       pages:{activePageId:pageId}, mode:{current:mode,setMode},
       stage:h('div',{'data-design-content':mode}, 'public design'),
-      contextToolbar:h(Selection),
+      selection:{context:{version:1,kind:"cells",id:"cell",controls:[{id:"bold",value:false}]},dispatch(){}},
     }});
   }
   function Host() {
@@ -143,14 +143,11 @@ test('inline fallback tool panel expands and contracts without blanking its cont
     id:'image', label:'图片编辑',
     stage:h('div',{'data-inline-stage':true},'canvas'),
     drawers:[{id:'tools',label:'额外功能',content:h('div',{'data-inline-panel-content':true},'tools')}],
-    renderContextToolbar:(layout)=>h('button',{
-      'data-open-inline-panel':true,
-      onClick:()=>layout.openDrawer('tools'),
-    },'tools'),
+    creationTools:[{id:'tools-open',tool:'properties',label:'tools',panelId:'tools'}],
   };
   try {
     await act(async()=>root.render(h(InlineAdvancedWorkbenchShell,{item,siteId:'image',onClose(){},adapter})));
-    const open = container.querySelector('[data-open-inline-panel]');
+    const open = container.querySelector('[data-workspace-action-id="tools-open"]');
     assert.ok(open);
     await act(async()=>open.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
     const aside = container.querySelector('[data-left-panel="tool-detail"]');

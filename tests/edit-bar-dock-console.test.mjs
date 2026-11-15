@@ -171,8 +171,9 @@ const workbenchRoutesUrl = pathToFileURL(
   resolve("src/shell/workbench-routes.ts"),
 ).href;
 const layoutContextStubUrl = dataModule(`
-  import { createContext } from ${JSON.stringify(reactUrl)};
+  import { createContext, useContext } from ${JSON.stringify(reactUrl)};
   export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
 `);
 const inertComponentStubUrl = dataModule(`
   export function AdvancedStageControls() { return null; }
@@ -1635,11 +1636,7 @@ function shellAdapter() {
     id: "grid",
     label: "表格",
     stage: React.createElement("div", { "data-test-adapter-stage": true }),
-    contextToolbar: React.createElement(
-      "span",
-      { "data-test-context-toolbar": true },
-      "对象属性",
-    ),
+    selection: { context:{version:1,kind:"cells",id:"cell",controls:[{id:"bold",value:false}]},dispatch(){} },
   };
 }
 
@@ -1673,7 +1670,7 @@ test("素材挂载后 DOM 里照旧有编辑栏", async () => {
       "素材照旧有编辑栏",
     );
     assert.ok(
-      materialMount.container.querySelector("[data-test-context-toolbar]"),
+      materialMount.container.querySelector('[data-selection-kind="cells"]'),
     );
   } finally {
     await materialMount.unmount();

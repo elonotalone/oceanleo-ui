@@ -48,12 +48,14 @@ function loadShell() {
         }
       `),
       "./advanced-layout-context": dataModule(`
-        import { createContext } from ${JSON.stringify(reactUrl)};
+        import { createContext, useContext } from ${JSON.stringify(reactUrl)};
         export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
         export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
         export function focusAdvancedToolsTrigger() {}
         export function useAdvancedToolsLauncherRegistration() {}
       `),
+      "./useSelectionToolbarMeasure": dataModule(`export function useSelectionToolbarMeasure() {}`),
       "./AdvancedStageControls": dataModule(`
         import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
         export function AdvancedStageControls() { return null; }
@@ -270,8 +272,13 @@ test("第一行可点击元素全部落在 GLOBAL_ROW_SLOTS；非 download 动�
     );
     const editBar = find("[data-workspace-edit-bar]");
     assert.ok(editBar, "编辑栏没出现");
+    if (!editBar.querySelector('[data-workspace-action-id="recompute"]')) {
+      const more=editBar.querySelector('button[aria-haspopup="dialog"]');
+      assert.ok(more, "创建动作收纳后必须留在More");
+      await act(async()=>more.dispatchEvent(new window.MouseEvent("click",{bubbles:true})));
+    }
     assert.ok(
-      editBar.querySelector('[data-workspace-action-id="recompute"]'),
+      window.document.querySelector('[data-workspace-action-id="recompute"]'),
       "非 download 动作没有进编辑栏文档段",
     );
     assert.equal(

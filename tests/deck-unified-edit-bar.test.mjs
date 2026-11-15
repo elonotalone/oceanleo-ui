@@ -63,7 +63,7 @@ test("text box bar: text group → shape items → object group, canonical ids o
     assert.ok(!controls.some((control) => control.id === old), `${old} still emitted`);
   }
   const panels = new Set(controls.filter((c) => c.slot === "inspector").map((c) => c.inspectorGroup));
-  assert.deepEqual([...panels].sort(), ["animation", "link", "opacity", "position", "stroke"]);
+  assert.deepEqual([...panels].sort(), ["animation", "link", "position", "stroke"]);
   // 规范顺序：与 editBarCanonSequence("text") 一致。
   const sequence = editBarCanonSequence("text").map((item) => item.id);
   const canonOrder = [...compact(controls).map((c) => c.id), ...panels]
@@ -109,9 +109,12 @@ test("image bar uses image group + A-1 panels; shape bar uses shape group", () =
     assert.ok(imageIds.includes(id), id);
   }
   const groups = new Set(image.filter((c) => c.slot === "inspector").map((c) => c.inspectorGroup));
-  for (const group of ["border", "opacity", "adjust", "alt", "position", "animation"]) {
+  for (const group of ["border", "adjust", "alt", "position", "animation"]) {
     assert.ok(groups.has(group), group);
   }
+  const opacity = image.find(control => control.id === "opacity");
+  assert.deepEqual([opacity.kind, opacity.value, opacity.min, opacity.max, opacity.step], ["number", 100, 0, 100, 1]);
+  assert.equal(opacity.slot, undefined, "opacity is a scalar on the bar, not an inspector panel");
   const shape = deckElementSelectionControls(element("shape"), tt, "", FONTS);
   assert.deepEqual(
     compact(shape).slice(0, 2).map((c) => c.id),
@@ -185,6 +188,40 @@ test("canonical commands patch the deck element", () => {
     { borderColor: "#00ff00" },
     { list: undefined },
   ]);
+});
+
+test("text metrics use px and the same 4–300 size bounds for text and tables", () => {
+  const text = element("text", { fontSize: 24, lineHeight: 1.5, letterSpacing: 2 });
+  const controls = deckElementSelectionControls(text, tt, "", FONTS);
+  const height = controls.find((control) => control.id === "line-height");
+  assert.equal(height.value, 36);
+  assert.equal(height.step, 1);
+  assert.equal(controls.find((control) => control.id === "letter-spacing").step, 1);
+  for (const type of ["text", "table"]) {
+    const size = deckElementSelectionControls(element(type), tt, "", FONTS).find((control) => control.id === "font-size");
+    assert.deepEqual([size.min, size.max, size.step], [4, 300, 1]);
+  }
+  const editor = fakeEditor([text]);
+  send(editor, text, "line-height", 37);
+  send(editor, text, "font-size", 500);
+  assert.deepEqual(editor.calls.map((call) => call[2]), [{ lineHeight: 37 / 24 }, { fontSize: 300 }]);
+});
+
+test("clear-format removes all inline text fields while retaining paragraph and object layout", () => {
+  const text = element("text", {
+    fontFamily: "Georgia", fontSize: 30, color: "#aabbcc", link: "https://example.com",
+    bold: true, italic: true, underline: true, strike: true, highlight: "#ffff00", letterSpacing: 5,
+    align: "center", list: "ordered", lineHeight: 1.5,
+  });
+  const editor = fakeEditor([text]);
+  send(editor, text, "clear-format");
+  assert.deepEqual(editor.calls, [["patch", text.id, {
+    fontFamily: undefined, fontSize: undefined, color: undefined, link: undefined,
+    bold: false, italic: false, underline: false, strike: undefined, highlight: undefined, letterSpacing: 0,
+  }]]);
+  for (const field of ["align", "list", "lineHeight", "x", "y", "width", "height"]) {
+    assert.equal(Object.hasOwn(editor.calls[0][2], field), false, `${field} is not an inline mark`);
+  }
 });
 
 test("arrange reorders the stack in one slide patch with integer orders", () => {

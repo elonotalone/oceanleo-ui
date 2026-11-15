@@ -157,8 +157,9 @@ let shellPromise;
 function loadShell() {
   shellPromise ??= (async () => {
     const layoutStubUrl = dataModule(`
-      import { createContext } from ${JSON.stringify(reactUrl)};
+      import { createContext, useContext } from ${JSON.stringify(reactUrl)};
       export const AdvancedLayoutContext = createContext(null);
+        export function useAdvancedLayout(){return useContext(AdvancedLayoutContext);}
       export const ADVANCED_TOOLS_PANEL_ID = "advanced-workbench-tools-panel";
       export function focusAdvancedToolsTrigger() {}
       export function useAdvancedToolsLauncherRegistration() {}

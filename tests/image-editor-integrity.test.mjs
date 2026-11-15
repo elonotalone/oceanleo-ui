@@ -133,7 +133,7 @@ test("image lock flags and continuous controls participate in snapshot/history c
   // 10-23 W09：调色滑杆从左侧面板移进编辑栏 `adjust` 面板；一次拖动 = 一次撤销步，
   // 由编辑栏事务（start → beginGesture，commit → endGesture）保证。
   const contextToolbar = readFileSync(
-    new URL("../src/shell/image-editor/FabricImageContextToolbar.tsx", import.meta.url),
+    new URL("../src/shell/image-editor/use-fabric-image-selection-adapter.ts", import.meta.url),
     "utf8",
   );
   assert.match(contextToolbar, /phase === "start"[\s\S]*editor\.beginGesture\(\)/);

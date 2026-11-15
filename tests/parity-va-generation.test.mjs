@@ -270,6 +270,42 @@ test("shared edit bar exposes audio generation and explicit chain actions with v
   }
 });
 
+test("canvas image canon controls translate to existing commands and reject stale revisions and epochs", () => {
+  const { project, ids: [image] } = fixture(["image"]);
+  const node = projectHead(project).graph.nodes[0];
+  const context = canvasSelectionContext({ project, node, selectionEpoch: 7, imageMode: "retouch", tt: source => source,
+    availability: commandId => commandId.endsWith(".crop") ? { enabled: false, reasonCode: "source-missing", reason: "Missing source" } : { enabled: true } });
+  const message = { requestId: "request", selectionId: image, selectionRevision: project.headVersionId, selectionEpoch: 7 };
+  for (const [id, commandId] of [
+    ["crop", "canvas.node.update.local.crop"],
+    ["rotate", "canvas.node.update.local.rotate"],
+    ["flip-x", "canvas.node.update.local.flip-horizontal"],
+    ["flip-y", "canvas.node.update.local.flip-vertical"],
+    ["delete", "canvas.node.delete"],
+  ]) {
+    assert.ok(context.controls.some(control => control.id === id), id);
+    assert.equal(context.controls.some(control => control.id === commandId), false, "the shell receives canonical identity");
+    assert.equal(canvasSelectionDispatch({ ...message, controlId: id }, context).commandId, commandId);
+    assert.equal(canvasSelectionDispatch({ ...message, controlId: commandId }, context).commandId, commandId, "old engine callers remain compatible");
+    assert.equal(canvasSelectionDispatch({ ...message, controlId: id, selectionRevision: "stale" }, context), null);
+    assert.equal(canvasSelectionDispatch({ ...message, controlId: id, selectionEpoch: 6 }, context), null);
+  }
+  assert.equal(context.controls.find(control => control.id === "crop").disabled, true);
+  assert.match(context.controls.find(control => control.id === "crop").unavailableReason, /source-missing/);
+  const specific = context.controls.find(control => control.id === "canvas.node.update.local.grid-split-4");
+  assert.equal(specific.domain, "specific");
+  assert.equal(specific.icon, undefined, "grid split does not borrow the crop capability");
+  assert.equal(context.controls.find(control => control.id === "canvas.selection.adjust.brightness.set").inspectorGroup, "adjust");
+  assert.equal(context.controls.find(control => control.id === "canvas.selection.position-x.set").inspectorGroup, "position");
+  assert.equal(context.controls.find(control => control.id === "canvas.selection.prompt.set").inspectorIcon, undefined);
+  const transaction = canvasSelectionDispatch({ ...message, controlId: "rotate", phase: "commit", transactionId: "rotation-1" }, context);
+  assert.equal(transaction.phase, "commit");
+  assert.equal(transaction.transactionId, "rotation-1");
+  assert.equal(transaction.incoming.projectVersionId, project.headVersionId);
+  assert.equal(transaction.incoming.selectionEpoch, 7);
+  assert.equal(canvasSelectionDispatch({ ...message, controlId: "rotate", phase: "commit" }, context), null);
+});
+
 test("audio mode chosen in node properties is saved and used by Run this chain", async () => {
   let { project, ids: [audio] } = fixture(["audio"]);
   project = updateProjectNode(project, audio, "prompt", { prompt: "Calm ocean music" });

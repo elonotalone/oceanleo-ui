@@ -34,7 +34,7 @@ export function SelectionToolbarButtonControl({
     anchor?: HTMLElement,
   ) => void;
   onActivated?: () => void;
-  emit: (value?: SelectionControlValue) => void;
+  emit: (value?: SelectionControlValue, anchor?: HTMLElement) => void;
   forMeasurement?: boolean;
 }) {
   const accessibleLabel =
@@ -48,6 +48,8 @@ export function SelectionToolbarButtonControl({
     return (
       <button
         type="button"
+        data-workspace-action-id={!forMeasurement && control.domain === "creation" ? control.id : undefined}
+        data-edit-bar-drawer={!forMeasurement && control.id.startsWith("creation:drawer:") ? control.id.slice("creation:drawer:".length) : undefined}
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
         onPointerDown={preserveEditBarSelection}
@@ -55,7 +57,7 @@ export function SelectionToolbarButtonControl({
           if (control.kind === "panel" && onOpenPanel) {
             onOpenPanel(control.panelId || control.id, control.panelAction, event.currentTarget);
           } else {
-            emit();
+            emit(undefined, event.currentTarget);
           }
           onActivated?.();
         }}
@@ -68,6 +70,7 @@ export function SelectionToolbarButtonControl({
         }`}
         title={namedLabel}
         aria-label={namedLabel}
+        aria-pressed={control.domain === "creation" && typeof control.value === "boolean" ? control.value : undefined}
         aria-haspopup={control.kind === "panel" ? "dialog" : undefined}
         aria-expanded={control.kind === "panel" ? activePanel : undefined}
         aria-controls={
@@ -97,12 +100,14 @@ export function SelectionToolbarButtonControl({
     return (
       <button
         type="button"
+        data-workspace-action-id={!forMeasurement && control.domain === "creation" ? control.id : undefined}
+        data-edit-bar-drawer={!forMeasurement && control.id.startsWith("creation:drawer:") ? control.id.slice("creation:drawer:".length) : undefined}
         aria-pressed={active}
         disabled={control.disabled}
         tabIndex={forMeasurement ? -1 : undefined}
         onPointerDown={preserveEditBarSelection}
-        onClick={() => {
-          emit(!active);
+        onClick={(event) => {
+          emit(!active, event.currentTarget);
           onActivated?.();
         }}
         className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""} ${

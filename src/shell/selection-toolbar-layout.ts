@@ -169,6 +169,7 @@ const OVERFLOW_GROUP_LABELS: Readonly<Record<string, string>> = {
   "canon-image": "图片",
   "canon-shape": "形状",
   "canon-object": "对象操作",
+  creation: "编辑工具",
 };
 
 function overflowGroupLabel(

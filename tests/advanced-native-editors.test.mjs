@@ -88,7 +88,7 @@ test("document editors cover rich text, workbooks and PPTX freeform decks", () =
   const deckControls = source("../src/shell/doc-editors/DeckControls.tsx");
   // 10-23 D9：字体抽屉、效果抽屉删了，字体是统一栏下拉，层级是规范 arrange 下拉。
   const deckBar = source("../src/shell/doc-editors/deck-edit-bar-controls.ts");
-  const deckToolbar = source("../src/shell/doc-editors/DeckContextToolbar.tsx");
+  const deckToolbar = source("../src/shell/doc-editors/use-deck-selection-adapter.ts");
   const deckToolbarCommand = source(
     "../src/shell/doc-editors/deck-toolbar-command.ts",
   );

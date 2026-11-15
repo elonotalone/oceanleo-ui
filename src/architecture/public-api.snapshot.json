@@ -6851,6 +6851,18 @@
         },
         {
           "kind": "named",
+          "name": "SelectionAdapter",
+          "importedName": "SelectionAdapter",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAdapterContext",
+          "importedName": "SelectionAdapterContext",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
           "name": "SelectionAnchorRect",
           "importedName": "SelectionAnchorRect",
           "source": "./selection-context"
@@ -6913,6 +6925,12 @@
           "kind": "named",
           "name": "SelectionControlIcon",
           "importedName": "SelectionControlIcon",
+          "source": "./selection-context"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionControlInput",
+          "importedName": "SelectionControlInput",
           "source": "./selection-context"
         },
         {
@@ -9892,6 +9910,12 @@
         },
         {
           "kind": "named",
+          "name": "CanonSelectionControlInput",
+          "importedName": "CanonSelectionControlInput",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
           "name": "normalizeSelectionCommand",
           "source": ""
         },
@@ -9909,6 +9933,18 @@
           "kind": "named",
           "name": "SELECTION_PROTOCOL",
           "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAdapter",
+          "importedName": "SelectionAdapter",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SelectionAdapterContext",
+          "importedName": "SelectionAdapterContext",
+          "source": "./selection-context-types"
         },
         {
           "kind": "named",
@@ -9972,6 +10008,12 @@
         },
         {
           "kind": "named",
+          "name": "SelectionControlInput",
+          "importedName": "SelectionControlInput",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
           "name": "SelectionControlKind",
           "importedName": "SelectionControlKind",
           "source": "./selection-context-types"
@@ -10021,6 +10063,12 @@
           "kind": "named",
           "name": "SelectionRevision",
           "importedName": "SelectionRevision",
+          "source": "./selection-context-types"
+        },
+        {
+          "kind": "named",
+          "name": "SpecificSelectionControlInput",
+          "importedName": "SpecificSelectionControlInput",
           "source": "./selection-context-types"
         }
       ]

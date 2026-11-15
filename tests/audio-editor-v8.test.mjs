@@ -36,7 +36,7 @@ test("Audio actions are icon controls while host owns export and history", async
       "utf8",
     ),
     readFile(
-      resolve("src/shell/media-editors/AudioContextToolbar.tsx"),
+      resolve("src/shell/media-editors/use-audio-selection-adapter.ts"),
       "utf8",
     ),
     readFile(

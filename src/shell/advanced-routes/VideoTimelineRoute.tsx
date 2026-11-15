@@ -32,9 +32,9 @@ import {
   visualDownloadFormats,
   visualUploadAccept,
 } from "../media-editors/visual-formats";
+import { useVideoTimelineSelectionAdapter } from "../video-editor/use-video-timeline-selection-adapter";
 import {
   VideoTimelineControls,
-  VideoTimelineContextToolbar,
   VideoTimelineStage,
   useVideoTimeline,
   type VideoTimelineState,
@@ -411,6 +411,7 @@ function VideoTimelineBody({
     },
     [editor.addMediaFile],
   );
+  const selection = useVideoTimelineSelectionAdapter({ state: view, readOnly: collabReadOnly, enabled: editor.sourceReady });
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -426,11 +427,7 @@ function VideoTimelineBody({
           icon: "timeline",
           content: <VideoTimelineControls state={view} accent={accent} readOnly={collabReadOnly} />,
         },
-        contextToolbar: (
-          editor.sourceReady ? (
-            <VideoTimelineContextToolbar state={view} accent={accent} readOnly={collabReadOnly} />
-          ) : null
-        ),
+        selection,
         history: {
           canUndo: editor.sourceReady && view.canUndo && !collabReadOnly,
           canRedo: editor.sourceReady && view.canRedo && !collabReadOnly,

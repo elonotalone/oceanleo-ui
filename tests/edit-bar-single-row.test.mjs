@@ -1,14 +1,6 @@
-// 规范 v2 §4：编辑栏严格单行（plugin-chrome X2）。
-//
-//   [选中对象工具…] | [documentSegment] | [trailing] [AI 助手]
-//   撤销 / 重做在第一行 history 槽（操作员 2026-10-21），不在编辑栏。
-//
-// 全部内联在 FloatingContextToolbar 自己画的 `[data-workspace-edit-bar]` 一行里，
-// 永不换行；宽度不足先由 SelectionToolbar 把选中工具折进它的 More，再由行把
-// 文档段折进「更多选项」。「收起编辑栏」按钮已删；无 aria-label / 文字的按钮不得渲染。
-//
-// jsdom 没有布局，所以「所有可见按钮 y 同一 36px 带」那条由浏览器探针
-// （signals/X2-journal.md 判据 2）兜；这里钉的是结构与折叠判定。
+// 编辑栏严格单行：一个 SelectionToolbar 量宽选区和创建工具，右段固定 AI。
+// 创建工具逐项进入同一个 More；宽度恢复后逐项展开。撤销 / 重做属于顶栏。
+// jsdom 使用受控几何，验证真实工具条分区、可访问名称、点击和选区保持。
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -65,6 +57,10 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.requestAnimationFrame = window.requestAnimationFrame.bind(window);
 globalThis.cancelAnimationFrame = window.cancelAnimationFrame.bind(window);
+const consoleError = console.error;
+let renderErrors = [];
+test.beforeEach(() => { renderErrors = []; console.error = (...args) => renderErrors.push(args.map(String).join(" ")); });
+test.afterEach(() => { console.error = consoleError; assert.deepEqual(renderErrors, [], "real toolbar mounts and state changes must not log errors"); });
 
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;
@@ -91,6 +87,9 @@ const pluginThemeStubUrl = dataModule(`
   export function pluginWorkbenchStyle(_theme, accent) {
     return { "--awb-accent": accent };
   }
+  export function usePluginTheme() { return {theme:"light"}; }
+  export function usePluginThemePortal() { return null; }
+  export function PluginThemeScope({children}) { return children; }
 `);
 const iconStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
@@ -106,8 +105,10 @@ const layoutContextStubUrl = dataModule(`
 // 「更多选项」弹层：真身 portal 到 body 并要插件主题；这里只需要它把 children 画出来。
 const popoverStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-  export function AnchoredPopover({ open, children }) {
-    return open ? jsx("div", { "data-test-popover": true, children }) : null;
+  export function AnchoredPopover({ open, children, id, role, ariaLabel, attributes, panelRef }) {
+    return open ? jsx("div", { id, role, "aria-label":ariaLabel, ref:panelRef,
+      "data-test-popover":true, "data-anchored-popover":true, "data-leo-overlay-state":"open",
+      ...attributes, children }) : null;
   }
   export function runAfterOverlayExit(_el, done) { done(); return () => {}; }
 `);
@@ -144,6 +145,14 @@ const floatingUrl = await compileModule(
 const { FloatingContextToolbar, useFloatingContextToolbar } =
   await import(floatingUrl);
 const { AdvancedLayoutContext } = await import(layoutContextStubUrl);
+const { SelectionToolbar } = await import(await compileModule("src/shell/SelectionToolbar.tsx", {
+  "../i18n/ui/useUI": uiStubUrl,
+  "./plugin-theme": pluginThemeStubUrl,
+  "./AdvancedEditorIcon": iconStubUrl,
+  "./advanced-layout-context": layoutContextStubUrl,
+  "./anchored-popover": popoverStubUrl,
+}));
+const { creationToolControl } = await import(await compileModule("src/shell/creation-tools.ts"));
 
 /* ------------------------------------------------------------------ 几何桩 */
 
@@ -151,9 +160,6 @@ const { AdvancedLayoutContext } = await import(layoutContextStubUrl);
 const geometry = { overlayWidth: 1000 };
 const SEGMENT_WIDTHS = [
   ["data-edit-bar-trailing-slot", 100],
-  ["data-edit-bar-document-measure", 200],
-  ["data-edit-bar-document-slot", 200],
-  ["data-edit-bar-selection-slot", 240],
 ];
 
 function installRectStub() {
@@ -172,6 +178,8 @@ function installRectStub() {
     if (this.hasAttribute("data-edit-bar-test-stage")) {
       return rect(geometry.overlayWidth, 500);
     }
+    if (this.hasAttribute("data-selection-measure-control-id")) return rect(40, 28);
+    if (this.hasAttribute("data-selection-toolbar-viewport-capacity")) return rect(window.innerWidth - 32, 28);
     for (const [attribute, width] of SEGMENT_WIDTHS) {
       if (this.hasAttribute(attribute)) return rect(width);
     }
@@ -190,6 +198,7 @@ function installRectStub() {
 function fakeLayout(overrides = {}) {
   return {
     activeDrawerId: "",
+    activeTransientPanelId: "",
     openDrawer() {},
     closeDrawer() {},
     contextBarLeading: null,
@@ -197,7 +206,16 @@ function fakeLayout(overrides = {}) {
   };
 }
 
-function RowHarness({ storageKey, selection, documentSegment, trailing, layout }) {
+function RowHarness({ storageKey, selection, creationTools = [], trailing, layout, onCommand }) {
+  const context = selection ? {
+    ...selection, controls: [...selection.controls, ...creationTools.map((tool) => creationToolControl(tool))],
+  } : creationTools.length ? {
+    version: 1, kind: "creation", id: "creation:document", controls: creationTools.map((tool) => creationToolControl(tool)),
+  } : null;
+  const dispatch = (command) => {
+    onCommand?.(command);
+    creationTools.find((tool) => tool.id === command.controlId)?.execute?.();
+  };
   const rootRef = useRef(null);
   const stageRef = useRef(null);
   const dockRef = useRef(null);
@@ -218,8 +236,8 @@ function RowHarness({ storageKey, selection, documentSegment, trailing, layout }
       React.createElement("div", { ref: stageRef, "data-edit-bar-test-stage": true }),
       React.createElement(
         FloatingContextToolbar,
-        { controller, accent: "#6d5dfc", documentSegment, trailing },
-        selection,
+        { controller, accent: "#6d5dfc", trailing },
+        context ? React.createElement(SelectionToolbar, { context, onCommand: dispatch }) : null,
       ),
     ),
   );
@@ -254,29 +272,30 @@ async function resizeOverlay(width) {
   });
 }
 
-const selectionTools = React.createElement(
-  "div",
-  { "data-test-selection": true },
-  React.createElement("button", { type: "button", "aria-label": "加粗" }, "B"),
-  React.createElement("button", { type: "button", "aria-label": "斜体" }, "I"),
-);
-const documentSegment = React.createElement(
-  "div",
-  { "data-test-document": true },
-  React.createElement("button", { type: "button" }, "重新计算"),
-  React.createElement("button", { type: "button", "aria-label": "手机预览" }, "📱"),
-);
+const selectionTools = {
+  version: 1, kind: "richdoc-text", id: "selection:text", revision: 7, epoch: 2,
+  controls: [
+    { id: "bold", kind: "toggle", label: "加粗", value: false },
+    { id: "italic", kind: "toggle", label: "斜体", value: false },
+  ],
+};
+const documentTools = [
+  { id: "recalculate", tool: "action", label: "重新计算" },
+  { id: "phone-preview", tool: "properties", label: "手机预览" },
+];
+const visibleControls = (container) => (container.querySelector("[data-selection-id]")?.getAttribute("data-selection-visible-controls") || "").split(" ").filter(Boolean);
+const overflowControls = (container) => (container.querySelector("[data-selection-id]")?.getAttribute("data-selection-overflow-controls") || "").split(" ").filter(Boolean);
 
 /* -------------------------------------------------------------------- 用例 */
 
-test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定，AI 键唯一且无固定柄/收起键", async () => {
+test("一行共享工具和右段：容器由 FloatingContextToolbar 自己画，顺序固定，AI 键唯一且无固定柄/收起键", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   geometry.overlayWidth = 1000;
   const mounted = await mount({
     storageKey: "test:edit-bar-single-row:contract",
     selection: selectionTools,
-    documentSegment,
+    creationTools: documentTools,
     trailing: React.createElement("button", { type: "button", "aria-label": "附加" }, "+"),
   });
   try {
@@ -290,16 +309,19 @@ test("一行三段：容器由 FloatingContextToolbar 自己画，顺序固定�
     const slots = Array.from(row.children)
       .filter((child) => child.getAttribute("aria-hidden") !== "true")
       .map((child) =>
-        ["selection", "document", "trailing"].find((name) =>
+        ["selection", "trailing"].find((name) =>
           child.hasAttribute(`data-edit-bar-${name}-slot`),
         ) || (child.tagName === "SPAN" ? "|" : child.tagName),
       );
     assert.deepEqual(
       slots,
-      ["selection", "|", "document", "trailing"],
-      "三段顺序：[选中工具] | [文档段] [右段]；撤销不在编辑栏",
+      ["selection", "trailing"],
+      "选区与创建工具共用一个段，右段固定在其后；撤销不在编辑栏",
     );
 
+    assert.equal(row.querySelectorAll("[data-selection-id]").length, 1, "only one real SelectionToolbar renders the controls");
+    assert.equal(row.querySelector("[data-edit-bar-document-slot], [data-edit-bar-document-more]"), null);
+    assert.deepEqual(visibleControls(row), ["bold", "italic", "recalculate", "phone-preview"]);
     const trailingSlot = row.querySelector("[data-edit-bar-trailing-slot]");
     const trailingLabels = Array.from(trailingSlot.querySelectorAll("button")).map(
       (button) => button.getAttribute("aria-label"),
@@ -334,7 +356,7 @@ test("没选中也没有文档动作：栏仍在，data-empty 为真，右段照
   const mounted = await mount({
     storageKey: "test:edit-bar-single-row:empty",
     selection: null,
-    documentSegment: undefined,
+    creationTools: [],
   });
   try {
     const row = mounted.container.querySelector("[data-workspace-edit-bar]");
@@ -349,66 +371,71 @@ test("没选中也没有文档动作：栏仍在，data-empty 为真，右段照
   }
 });
 
-test("宽度不足：文档段折进「更多选项」，只在有选中工具时才折；宽度回来再展开", async () => {
+test("宽度不足：创建工具逐项进入同一个 More，点击与选区保持有效，宽度回来再展开", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
   geometry.overlayWidth = 1000;
-  const mounted = await mount({
-    storageKey: "test:edit-bar-single-row:fold",
-    selection: selectionTools,
-    documentSegment,
-  });
+  const executed = [];
+  const commands = [];
+  const creationTools = documentTools.map((tool) => ({ ...tool, execute: () => executed.push(tool.id) }));
+  const props = { storageKey: "test:edit-bar-single-row:fold", selection: selectionTools, creationTools, onCommand: (command) => commands.push(command) };
+  const mounted = await mount(props);
   try {
     const row = () => mounted.container.querySelector("[data-workspace-edit-bar]");
-    assert.ok(
-      row().querySelector(":scope > [data-edit-bar-document-slot]"),
-      "1000 宽时文档段直接在行里",
-    );
-    assert.equal(row().querySelector("[data-edit-bar-document-more]"), null);
-
-    // 容量 = 280 − 16（两侧保留）= 264；固定段 trailing 100 + 分隔线，文档 200，
-    // 选中段至少保 52 → 装不下，文档段折进「更多选项」。
-    // 撤销已离开编辑栏，不再占 96px history 槽。
-    await resizeOverlay(280);
-    const more = row().querySelector("[data-edit-bar-document-more]");
-    assert.ok(more, "宽度不足时文档段应折进「更多选项」");
-    assert.equal(
-      row().querySelector(":scope > [data-edit-bar-document-slot]"),
-      null,
-      "折进去后行里不再有直接的文档段",
-    );
-    const moreButton = more.querySelector("button");
-    assert.equal(moreButton.getAttribute("aria-label"), "更多选项");
-    assert.ok(row().querySelector("[data-edit-bar-selection-slot]"), "选中工具段仍在行里");
-    assert.ok(row().querySelector("[data-edit-bar-agent]"), "AI 键不许被折");
-
-    await act(async () => {
-      moreButton.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-    assert.ok(
-      mounted.container.querySelector("[data-test-popover] [data-test-document]"),
-      "点「更多选项」应看到文档动作",
-    );
-
+    assert.deepEqual(visibleControls(row()), ["bold", "italic", "recalculate", "phone-preview"]);
+    let partialWidth = 0;
+    for (let width = 600; width >= 140; width -= 2) {
+      await resizeOverlay(width);
+      const visibleCreation = visibleControls(row()).filter((id) => documentTools.some((tool) => tool.id === id));
+      if (visibleCreation.length === 1) { partialWidth = width; break; }
+    }
+    assert.ok(partialWidth, "creation tools must fit and overflow individually");
+    const visibleCreation = visibleControls(row()).filter((id) => creationTools.some((tool) => tool.id === id));
+    const overflowCreation = overflowControls(row()).filter((id) => creationTools.some((tool) => tool.id === id));
+    assert.equal(visibleCreation.length, 1);
+    assert.equal(overflowCreation.length, 1);
+    assert.deepEqual([...visibleCreation, ...overflowCreation].sort(), creationTools.map((tool) => tool.id).sort());
+    assert.equal(row().querySelector("[data-edit-bar-document-slot], [data-edit-bar-document-more]"), null);
+    assert.equal(row().querySelectorAll("[data-selection-id]").length, 1);
+    assert.equal(row().querySelectorAll("[data-edit-bar-agent]").length, 1, "AI never enters overflow");
+    assert.ok(row().querySelector("[data-edit-bar-selection-slot]"));
+    const moreButton = row().querySelector('button[aria-controls^="selection-more-"]');
+    assert.ok(moreButton?.getAttribute("aria-label"), "More has an accessible name");
+    const text = document.createTextNode("selected editor text");
+    mounted.container.prepend(text);
+    const range = document.createRange(); range.selectNodeContents(text);
+    const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    const pointer = new window.MouseEvent("pointerdown", { bubbles: true, cancelable: true, button: 0 });
+    await act(async () => moreButton.dispatchEvent(pointer));
+    assert.equal(pointer.defaultPrevented, true, "toolbar presses preserve the editor selection");
+    await act(async () => moreButton.click());
+    const menu = mounted.container.querySelector('[data-test-popover][role="dialog"]');
+    assert.ok(menu?.getAttribute("aria-label"), "More content is an accessible dialog");
+    const hiddenId = overflowCreation[0];
+    const action = menu.querySelector(`[data-selection-overflow-control][data-selection-control-id="${hiddenId}"] button`);
+    assert.ok(action);
+    assert.equal(action.textContent.trim(), creationTools.find((tool) => tool.id === hiddenId).label, "overflow actions show their full labels");
+    await act(async () => action.click());
+    assert.deepEqual(executed, [hiddenId], "the chosen creation action executes once");
+    assert.equal(commands.at(-1).selectionId, selectionTools.id);
+    assert.equal(commands.at(-1).selectionRevision, selectionTools.revision);
+    assert.equal(commands.at(-1).selectionEpoch, selectionTools.epoch);
+    assert.equal(selection.toString(), "selected editor text");
+    assert.equal(row().querySelectorAll("[data-edit-bar-agent]").length, 1);
     await resizeOverlay(1000);
-    assert.ok(
-      row().querySelector(":scope > [data-edit-bar-document-slot]"),
-      "宽度回来后文档段应重新展开到行里",
-    );
-    assert.equal(row().querySelector("[data-edit-bar-document-more]"), null);
-
-    // 没有选中工具时文档段就是主内容，不折。
-    await mounted.rerender({
-      storageKey: "test:edit-bar-single-row:fold",
-      selection: null,
-      documentSegment,
-    });
+    assert.deepEqual(visibleControls(row()), ["bold", "italic", "recalculate", "phone-preview"], "all controls return when width grows");
+    assert.deepEqual(overflowControls(row()), []);
+    await mounted.rerender({ ...props, selection: null });
     await resizeOverlay(300);
-    assert.ok(
-      row().querySelector(":scope > [data-edit-bar-document-slot]"),
-      "没有选中工具时文档段不折",
-    );
+    assert.deepEqual(visibleControls(row()), creationTools.map((tool) => tool.id), "creation remains usable without a selection");
+    await resizeOverlay(140);
+    assert.deepEqual([...visibleControls(row()), ...overflowControls(row())].sort(), creationTools.map((tool) => tool.id).sort());
+    assert.ok(overflowControls(row()).length > 0, "creation-only rows use the same individual overflow");
+    assert.equal(row().querySelectorAll("[data-edit-bar-agent]").length, 1);
+    await resizeOverlay(1000);
+    assert.deepEqual(visibleControls(row()), creationTools.map((tool) => tool.id));
   } finally {
+    window.getSelection().removeAllRanges();
     await mounted.unmount();
     restoreRect();
   }
@@ -416,7 +443,7 @@ test("宽度不足：文档段折进「更多选项」，只在有选中工具�
 
 test("源码闸：prop 名、收起/固定键已删、所有 edit bar 共用新 agent glyph", () => {
   const floating = readFileSync(resolve("src/shell/FloatingContextToolbar.tsx"), "utf8");
-  assert.match(floating, /documentSegment\?: ReactNode;/);
+  assert.doesNotMatch(floating, /data-edit-bar-document-more|documentCollapsed/, "whole document-segment overflow must not return");
   assert.match(floating, /trailing\?: ReactNode;/);
   // 行本体的 className 必须 flex-nowrap（折进弹层里的文档动作允许换行，那不是行）。
   const rowClass = /data-workspace-edit-bar\n[\s\S]{0,400}?className="([^"]*)"/.exec(
@@ -455,5 +482,7 @@ test("源码闸：prop 名、收起/固定键已删、所有 edit bar 共用新 
     /<div\s[^>]*data-workspace-edit-bar/,
     "壳不许再自己拼 [data-workspace-edit-bar]，容器归 FloatingContextToolbar",
   );
-  assert.match(shell, /documentSegment=\{/);
+  assert.doesNotMatch(shell, /documentSegment=\{/);
+  assert.match(shell, /editBarDocumentTools\(\{/);
+  assert.match(shell, /creationTools\.map\(\(tool\) => creationToolControl\(tool, tt\)\)/);
 });

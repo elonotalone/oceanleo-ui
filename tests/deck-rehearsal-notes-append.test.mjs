@@ -148,7 +148,7 @@ const emptyPanelStubUrl = dataModule(`
   export const DeckTextPanel = Panel;
   export const DeckUploadPanel = Panel;
   export const DeckFontPanel = Panel;
-  export const DeckContextToolbar = Panel;
+  export const useDeckSelectionAdapter = () => ({context:null,dispatch(){}});
   export const DeckStage = Panel;
 `);
 
@@ -159,7 +159,7 @@ const STUBS = {
   "../doc-editors/DeckCreationPanels": emptyPanelStubUrl,
   "../doc-editors/DeckControls": emptyPanelStubUrl,
   "../doc-editors/DeckFontPanel": emptyPanelStubUrl,
-  "../doc-editors/DeckContextToolbar": emptyPanelStubUrl,
+  "../doc-editors/use-deck-selection-adapter": emptyPanelStubUrl,
   "../doc-editors/DeckStage": emptyPanelStubUrl,
   "../doc-editors/doc-family-commands": dataModule(
     "export function buildDeckCommandSurface(){ return { commands: [] }; }",

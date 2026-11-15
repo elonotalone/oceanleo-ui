@@ -20,7 +20,7 @@ import {
   FloatingContextToolbar,
   useFloatingContextToolbar,
 } from "./FloatingContextToolbar";
-import { EditBarFloatingPanel, EditBarPanelContext, type EditBarPanelAnchor } from "./EditBarFloatingPanel";
+import { EditBarFloatingPanel, EditBarPanelContext } from "./EditBarFloatingPanel";
 import { EditBarDockHost } from "./EditBarDockHost";
 import { editorToolsIconForSelection } from "./EditorToolsIcon";
 import { InlineAdvancedWorkbenchHeader } from "./InlineAdvancedWorkbenchHeader";
@@ -38,7 +38,6 @@ import {
 import {
   FallbackDetailAside,
   HiddenUploadInput,
-  SelectionPresenceProbe,
   StageNoticeCorner,
   useEditBarDockPresentation,
   usePluginPagesForAdapter,
@@ -48,7 +47,6 @@ import { advancedRootItemId } from "./advanced-session";
 import {
   actionGroup,
   advancedWorkbenchStyle,
-  type AdvancedWorkbenchAction,
 } from "./advanced-workbench-chrome";
 import {
   PluginThemePortalContext,
@@ -63,7 +61,11 @@ import { useRightPaneSlot, useWorkspacePane } from "./SplitWorkspace";
 import { editBarOwnershipForItem } from "./workbench-routes";
 import { canSaveVersion } from "./collab/provider";
 import { useAdvancedAutoSave } from "./use-advanced-autosave";
-import { EditBarDocumentSegment } from "./plugin-chrome/EditBarDocumentSegment";
+import { editBarDocumentTools } from "./plugin-chrome/EditBarDocumentSegment";
+import { SelectionToolbar } from "./SelectionToolbar";
+import { creationToolControl } from "./creation-tools";
+import { resolveSelectionAdapterContext } from "./selection-adapter";
+import type { SelectionCommand, SelectionContext } from "./selection-context";
 import { editBarVisibleOnPage } from "./plugin-chrome/plugin-pages";
 import { usePluginPage } from "./plugin-chrome/plugin-page-store";
 
@@ -187,8 +189,8 @@ export function InlineAdvancedWorkbenchShell({
     closeDetail,
     closeDrawer,
   } = panels;
-  const [selectionPresent, setSelectionPresent] = useState(false);
-  const [selectionKind, setSelectionKind] = useState<string | null>(null);
+  const selectionPresent = Boolean(adapter.selection?.context?.controls.length);
+  const selectionKind = adapter.selection?.context?.kind ?? null;
 
   const editorDirty = adapter.persistence?.dirty || false;
   const editRevision = adapter.persistence?.editRevision || 0;
@@ -235,16 +237,6 @@ export function InlineAdvancedWorkbenchShell({
       ),
     [adapter.actions],
   );
-  const triggerDocumentAction = useCallback(
-    (action: AdvancedWorkbenchAction, anchor?: EditBarPanelAnchor) => {
-      if (action.panelId) {
-        openDrawer(action.panelId, undefined, anchor);
-        return;
-      }
-      return action.onTrigger?.();
-    },
-    [openDrawer],
-  );
   // Drop placement contract (implemented in useInlineAdvancedWorkbenchDrop):
   // source: "drop", clientX: event.clientX, clientY: event.clientY
   const { dropMessage, performUpload, handleDrop } =
@@ -285,22 +277,15 @@ export function InlineAdvancedWorkbenchShell({
       panelVisible,
     ],
   );
-  const rawContextToolbar = adapter.renderContextToolbar
-    ? adapter.renderContextToolbar(layoutState)
-    : adapter.contextToolbar;
-  // 合同：没选中时 contextToolbar 为 null；多数编辑器仍交包装组件，由探针看它画没画出控件。
-  const contextToolbar =
-    rawContextToolbar == null ? null : (
-      <SelectionPresenceProbe
-        onChange={setSelectionPresent}
-        onKindChange={setSelectionKind}
-      >
-        {rawContextToolbar}
-      </SelectionPresenceProbe>
-    );
+  useLayoutEffect(() => {
+    const ref = adapter.panelHostRef;
+    if (!ref) return;
+    ref.current = layoutState;
+    return () => { if (ref.current === layoutState) ref.current = null; };
+  }, [adapter.panelHostRef, layoutState]);
   const noSelection = editBarShowsDrawers({
     adapterId: adapter.id,
-    hasContextToolbar: rawContextToolbar != null,
+    hasContextToolbar: adapter.selection?.context != null,
     selectionPresent,
     selectionKind,
   });
@@ -348,6 +333,39 @@ export function InlineAdvancedWorkbenchShell({
       mineLabel: tt("我的库"),
       activateMineItem,
     });
+  const creationTools = useMemo(() => {
+    const tools = [
+      ...(adapter.creationTools || []),
+      ...editBarDocumentTools({
+        actions: documentActions,
+        drawers: noSelection ? panels.editBarDrawers : [],
+        activeDrawerId: openDrawerId,
+        onToggleDrawer: toggleDrawer,
+      }),
+    ];
+    return tools.filter((tool, index) => tools.findIndex((candidate) => candidate.id === tool.id) === index);
+  }, [adapter.creationTools, documentActions, noSelection, panels.editBarDrawers, openDrawerId, toggleDrawer]);
+  const toolbarContext = useMemo<SelectionContext | null>(() => {
+    const selected = resolveSelectionAdapterContext(adapter.selection?.context ?? null, tt);
+    const controls = [...(selected?.controls || []), ...creationTools.map((tool) => creationToolControl(tool, tt))];
+    if (!controls.length) return null;
+    return selected ? { ...selected, controls } : {
+      version: 1, kind: "creation", id: `creation:${adapter.id.replace(/[^a-z0-9_.:-]/gi, "-")}`, controls,
+    };
+  }, [adapter.selection?.context, adapter.id, creationTools, tt]);
+  const dispatchToolbarCommand = useCallback((message: SelectionCommand, anchor?: HTMLElement) => {
+    if (!toolbarContext || message.selectionId !== toolbarContext.id) return;
+    if (toolbarContext.epoch !== undefined && message.selectionEpoch !== toolbarContext.epoch) return;
+    const creation = creationTools.find((tool) => tool.id === message.controlId);
+    if (creation) {
+      if (toolbarContext.revision !== undefined && message.selectionRevision !== toolbarContext.revision) return;
+      if (!creation.disabled) creation.execute?.(anchor);
+      return;
+    }
+    // Engine revisions may advance inside one gesture; its adapter owns the
+    // transaction-aware revision gate and must still receive commit/cancel.
+    adapter.selection?.dispatch(message);
+  }, [toolbarContext, creationTools, adapter.selection]);
   const actionBar = useMemo(
     () => (
       <InlineAdvancedWorkbenchHeader
@@ -430,22 +448,10 @@ export function InlineAdvancedWorkbenchShell({
           }
           // 单行容器 `[data-workspace-edit-bar]` 由 FloatingContextToolbar 自己画
           // （signals/X2-interface.md）：撤销重做在第一行 history 槽，
-          // 文档段走 documentSegment，AI 助手由容器最右段统一画。
-          documentSegment={
-            documentActions.length > 0 ||
-            (noSelection && panels.editBarDrawers.length > 0) ? (
-              <EditBarDocumentSegment
-                actions={documentActions}
-                onTrigger={triggerDocumentAction}
-                drawers={noSelection ? panels.editBarDrawers : []}
-                activeDrawerId={openDrawerId}
-                onToggleDrawer={toggleDrawer}
-              />
-            ) : undefined
-          }
+          // 创建工具与选区共用 SelectionToolbar，AI 助手由容器最右段统一画。
           emptyHint="在画面里选中元素后，可在此编辑"
         >
-          {contextToolbar}
+          {toolbarContext && <SelectionToolbar context={toolbarContext} onCommand={dispatchToolbarCommand} accent={effectiveAccent} />}
         </FloatingContextToolbar>
       )}
       <div

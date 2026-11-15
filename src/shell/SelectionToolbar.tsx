@@ -76,7 +76,7 @@ function useContentStableSelection(
 
 export interface SelectionToolbarProps {
   context: SelectionContext | null;
-  onCommand: (command: SelectionCommand) => void;
+  onCommand: (command: SelectionCommand, anchor?: HTMLElement) => void;
   onSelectionInteractionChange?: SelectionInteractionChange;
   onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction) => void;
   className?: string;
@@ -165,9 +165,9 @@ export function SelectionToolbar({
   const orderedControls = useMemo(() => finalizeEditBarIcons(controls), [controls]);
   // 合成的规范下拉（arrange ← layer-up/down）发出的命令还原成编辑器自己的 id。
   const dispatchCommand = useCallback(
-    (command: SelectionCommand) => {
+    (command: SelectionCommand, anchor?: HTMLElement) => {
       const translated = projection ? projection.translate(command) : command;
-      if (translated) onCommand(translated);
+      if (translated) onCommand(translated, anchor);
     },
     [onCommand, projection],
   );
@@ -332,7 +332,7 @@ export function SelectionToolbar({
     // 「执行了一个动作之后」才关 More。色板是连续取值：拖动取色器时每一次 onChange
     // 都会走到这里，关掉面板等于把人手里的取色器抽走，所以它留在原地。
     const closeMore =
-      presentation === "menu" && control.kind !== "color" && !(control.kind === "panel" && sharedEditBarPanels)
+      presentation === "menu" && control.kind !== "color" && !((control.kind === "panel" || control.domain === "creation") && sharedEditBarPanels)
         ? () => {
             setMoreOpen(false);
             if (control.kind !== "panel") moreButtonRef.current?.focus();

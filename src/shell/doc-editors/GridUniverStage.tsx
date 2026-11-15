@@ -112,7 +112,7 @@ import { editorToolLabel } from "../workbench-routes";
 import { usePluginCommandSurface } from "../plugin-command";
 import { boundedAgentContent } from "../plugin-command/bounded-agent-content";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
-import { SelectionToolbar } from "../SelectionToolbar";
+import { selectionAdapterContext } from "../selection-adapter";
 import type { EditorMode } from "../hosted-editor/index";
 import type { SelectionCommand } from "../selection-context";
 import { usePluginMode } from "../plugin-chrome/plugin-mode";
@@ -1319,14 +1319,7 @@ export function GridUniverStage({
               }
             : null,
         },
-        contextToolbar:
-          readonly ? null : (
-            <SelectionToolbar
-              context={selectionContext}
-              onCommand={runControl}
-              accent={accent}
-            />
-          ),
+        selection: { context: readonly ? null : selectionAdapterContext(selectionContext), dispatch: runControl },
         history: {
           canUndo: live.history.canUndo,
           canRedo: live.history.canRedo,

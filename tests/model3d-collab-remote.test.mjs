@@ -352,16 +352,14 @@ test("3D（只读）：不渲染变更浮条，Scene里的本地相机可用而�
   const uiStub = dataModule(`export const useUI = () => (text, vars) =>
     vars ? String(text).replace(/\\{(\\w+)\\}/g, (_, key) => String(vars[key] ?? "")) : String(text);`);
   const toolbar = await import(
-    await compileModule("src/shell/media-editors/Model3DContextToolbar.tsx", {
+    await compileModule("src/shell/media-editors/use-model3d-selection-adapter.ts", {
       "../../i18n/ui/useUI": uiStub,
-      "../SelectionToolbar": dataModule(`
-        export function SelectionToolbar({ context, onCommand }) {
-          globalThis.__model3dSelection = { context, onCommand };
-          return null;
-        }
-      `),
     })
   );
+  function ToolbarHarness(props) {
+    globalThis.__model3dSelection = toolbar.useModel3DSelectionAdapter(props);
+    return null;
+  }
   const sceneControls = await import(await compileModule("src/shell/media-editors/Model3DViewControls.tsx", {
     "../../i18n/ui/useUI": uiStub,
   }));
@@ -388,9 +386,9 @@ test("3D（只读）：不渲染变更浮条，Scene里的本地相机可用而�
       },
     },
   );
-  const mounted = await mount(h(toolbar.Model3DContextToolbar, { editor, readOnly: true }));
+  const mounted = await mount(h(ToolbarHarness, { editor, readOnly: true }));
   try {
-    const { context, onCommand } = globalThis.__model3dSelection;
+    const { context, dispatch: onCommand } = globalThis.__model3dSelection;
     assert.equal(context, null, "只读时不出不可用变更浮条");
     for (const controlId of ["duplicate", "delete", "position-x", "material-color"]) onCommand({ selectionId: "node:1", controlId, value: 1 });
     assert.deepEqual(calls, [], "只读时命令不触发任何改动");

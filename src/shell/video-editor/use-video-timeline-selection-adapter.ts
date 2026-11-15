@@ -2,7 +2,8 @@
 
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { SelectionToolbar } from "../SelectionToolbar";
+import { selectionAdapterContext } from "../selection-adapter";
+import type { SelectionAdapter } from "../selection-context";
 import type { SelectionCommand } from "../selection-context";
 import { viewOnlyContext } from "../collab/adapters/visual-readonly";
 import type { VideoTimelineState } from "./use-video-timeline";
@@ -10,38 +11,31 @@ import { runVideoClipCommand, videoClipSelection } from "./video-edit-bar";
 
 /**
  * 选中时间线片段时的编辑栏。控件清单与命令都在 `video-edit-bar.ts`（规范 id，D9 / D10）；
- * 这里只把它接到共享 SelectionToolbar 上。
+ * 外壳统一渲染控件；这里仅提供选区数据和命令。
  */
-export function VideoTimelineContextToolbar({
+export function useVideoTimelineSelectionAdapter({
   state,
-  accent = "#4f46e5",
   readOnly = false,
+  enabled = true,
 }: {
   state: VideoTimelineState;
-  accent?: string;
+  enabled?: boolean;
   /** 只能查看：浮条里所有改片段的控件置灰并提示「你只能查看」，命令也不生效（播放 / 拖播放头在舞台上，不受影响）。 */
   readOnly?: boolean;
-}) {
+}): SelectionAdapter {
   const tt = useUI();
   const located = state.selected;
   const context = useMemo(
-    () => (located ? videoClipSelection(located, tt) : null),
-    [located, tt],
+    () => (enabled && located ? videoClipSelection(located, tt) : null),
+    [enabled, located, tt],
   );
   const viewContext = useMemo(
     () => viewOnlyContext(context, readOnly, tt),
     [context, readOnly, tt],
   );
-  if (!viewContext || !located) return null;
   const command = (message: SelectionCommand) => {
-    if (readOnly) return;
+    if (readOnly || !enabled || !viewContext || !located) return;
     runVideoClipCommand(state, located, message);
   };
-  return (
-    <SelectionToolbar
-      context={viewContext}
-      onCommand={command}
-      accent={accent}
-    />
-  );
+  return { context: selectionAdapterContext(viewContext), dispatch: command };
 }

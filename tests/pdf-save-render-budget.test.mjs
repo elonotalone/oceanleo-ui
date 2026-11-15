@@ -49,7 +49,7 @@ const bytes = await sample.save();
 const parsed = await PDFDocument.load(bytes);
 const pagesOf = (pdf) => pdf.getPages().map((p, index) => ({ index, rotation: p.getRotation().angle / 90, size: p.getSize() }));
 const sourcePages = pagesOf(parsed);
-const probe = globalThis.__pdfBudget = { thumbs: [], viewers: 0, commits: [], thumbCost: 0, ack: 0, requestAt: 0, builds: 0, published: 0 };
+const probe = globalThis.__pdfBudget = { thumbs: [], viewers: 0, commits: [], thumbCost: 0, ack: 0, requestAt: 0, builds: 0, published: 0, tools: [], deselections: 0 };
 globalThis.__s3a = {};
 const wait = (ms) => new Promise((done) => setTimeout(done, ms));
 const tick = () => act(async () => { await wait(0); });
@@ -61,7 +61,7 @@ probe.registry = () => {
   const history = new Set(), annotations = new Set(), opened = new Set(), pageEvents = new Set();
   const scope = {
     getState: () => ({ activeToolId: null, selectedUids: [] }), getSelectedAnnotation: () => null,
-    getAnnotations: () => objects.map((object) => ({ object })), setActiveTool() {}, setLocked() {},
+    getAnnotations: () => objects.map((object) => ({ object })), setActiveTool(tool) { probe.tools.push(tool); }, deselectAnnotation() { probe.deselections++; }, setLocked() {},
     commit: () => task(true), exportAnnotations: () => task([]),
     createAnnotation(_page, object) { objects.push(object); for (const cb of history) cb({ documentId: active }); },
   };
@@ -114,7 +114,8 @@ const stubs = {
   "../plugin-theme": dataModule('export function usePluginTheme(){return {theme:"light"};}'),
   "../plugin-command": noop("usePluginCommandSurface"),
   "../workbench-material-provider": noop("useWorkbenchMaterialAdapter"),
-  "../media-editors/PdfSelectionBar": dataModule('export function PdfSelectionBar(){return null;}export function PdfToolPalette(){return null;}export function pdfSelectionBarVisible(){return false;}'),
+  "../media-editors/PdfToolPalette": noop("PdfToolPalette"),
+  "../media-editors/use-pdf-selection-adapter": dataModule('export function usePdfSelectionAdapter(){return {context:null,dispatch(){}};}'),
   "../media-editors/PdfSignatureDialog": noop("PdfSignatureDialog"),
   "../media-editors/PdfFindBar": noop("PdfFindBar"),
   "../EditBarFloatingPanel": dataModule('export function EditBarPanelRequest({children}){return children;}'),
@@ -143,7 +144,7 @@ globalThis.fetch = async (_url, init = {}) => {
 };
 const item = { key: "library:pdf-render-budget", id: "pdf-render-budget", artifactId: "pdf-render-budget", revisionId: "r1", source: "library", kind: "pdf", title: "PDF render budget", url: "https://example.invalid/source.pdf", meta: {} };
 async function mounted(run) {
-  resetBackgroundSaverForTests(); stored = null; probe.thumbs = []; probe.thumbCost = 0; probe.viewers = 0; probe.commits = [];
+  resetBackgroundSaverForTests(); stored = null; probe.thumbs = []; probe.thumbCost = 0; probe.viewers = 0; probe.commits = []; probe.tools = []; probe.deselections = 0;
   const errors = [], previous = console.error; console.error = (...args) => errors.push(args.join(" "));
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
   const render = () => root.render(React.createElement(React.Profiler, { id: "real-pdf-route", onRender: (_id, phase, actualDuration) => probe.commits.push({ phase, ms: actualDuration }) }, React.createElement(PdfRoute, { item, onClose() {} })));
@@ -162,6 +163,33 @@ async function mounted(run) {
     await tick(); container.remove(); console.error = previous; resetBackgroundSaverForTests();
   }
 }
+
+test("PDF creation tools retain native identities, execute every action and share the existing panels", async () => mounted(async () => {
+  const expected = [
+    ["highlight", "highlight"], ["underline", "underline"], ["strikeout", "strikeout"],
+    ["check", "oceanleo-check"], ["cross", "oceanleo-cross"], ["text", "freeText"],
+    ["ink", "ink"], ["note", "textComment"],
+  ];
+  assert.deepEqual(probe.adapter.creationTools.map(tool => tool.id), ["highlight", "underline", "strikeout", "check", "cross", "text", "signature", "ink", "note", "find"].map(tool => `pdf-tool-${tool}`));
+  const find = tool => probe.adapter.creationTools.find(entry => entry.tool === tool);
+  for (const [tool, native] of expected) {
+    assert.equal(find(tool).disabled, false, tool);
+    await act(async () => find(tool).execute());
+    assert.equal(probe.tools.at(-1), native, `${tool} uses its original EmbedPDF tool`);
+  }
+  assert.equal(probe.deselections, expected.length, "drawing tools release the previous selection");
+  await act(async () => find("signature").execute());
+  assert.equal(probe.tools.at(-1), null, "signature leaves drawing mode");
+  assert.equal(find("signature").value, true, "signature opens its existing panel");
+  await act(async () => find("signature").execute());
+  assert.equal(find("signature").value, false);
+  await act(async () => find("find").execute());
+  assert.equal(find("find").value, true, "search opens its existing panel");
+  await act(async () => find("find").execute());
+  assert.equal(find("find").value, false);
+  await act(async () => probe.adapter.mode.setMode("pro"));
+  assert.deepEqual(probe.adapter.creationTools, [], "native Pro chrome owns its tools");
+}));
 
 test("run6 PDF real route: selection and parent updates do not repaint pages/thumbnails", async () => mounted(async ({ render }) => {
   const before = probe.thumbs.length, viewers = probe.viewers;

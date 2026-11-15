@@ -108,14 +108,21 @@ export function applyTextListMode(value: string, mode: TextListMode): string {
   return lines.join("\n");
 }
 
-/** 清除样式：粗斜体、下划线、删除线、高亮、字距、文字描边回到默认；字体、字号、颜色保留。 */
+/** Reset every supported inline style, including imported per-character overrides. */
 export const CLEARED_TEXT_PROPS = {
+  fontFamily: "sans-serif",
+  fontSize: 16,
+  fill: "#1c1917",
   fontWeight: "normal",
   fontStyle: "normal",
   underline: false,
+  overline: false,
   linethrough: false,
+  backgroundColor: "",
   textBackgroundColor: "",
+  lineHeight: 1.16,
   charSpacing: 0,
+  deltaY: 0,
   stroke: undefined,
   strokeWidth: 0,
 } as const;

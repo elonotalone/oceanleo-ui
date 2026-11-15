@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * PDF 的统一编辑栏内容（D9，词表 `00-dispatch.md` §4 + 增补 A-1）。
  *
@@ -10,12 +8,8 @@
  * - 只出查看器真做得到的项：标准字体只有 Helvetica / Times / Courier 三族，所以
  *   字体下拉只列这三个；下划线、删除线、列表、行距、链接对批注文字做不到，不出。
  */
-import { useMemo, useState } from "react";
-import { useUI } from "../../i18n/ui/useUI";
-import { EditBarPanelRequest } from "../EditBarFloatingPanel";
-import { SelectionToolbar } from "../SelectionToolbar";
-import type { SelectionCommand, SelectionContext, SelectionControl } from "../selection-context";
-import { PDF_SUBTYPE, type PdfAnnotationLike, type PdfViewerBridge } from "./pdf-viewer-bridge";
+import type { SelectionControl } from "../selection-context";
+import { PDF_SUBTYPE, type PdfAnnotationLike } from "./pdf-viewer-bridge";
 import { PDF_MARK_TOOL_IDS } from "./pdf-mark-tools";
 
 /** 标准 14 字体里三族 × 粗 / 斜（`PdfStandardFont`）。 */
@@ -40,9 +34,9 @@ export function pdfFontCode(family: string, bold: boolean, italic: boolean): num
 
 const ALIGN = ["left", "center", "right"] as const;
 
-type Kind = "freetext" | "highlight" | "line" | "ink" | "note" | "stamp" | null;
+export type PdfSelectionKind = "freetext" | "highlight" | "line" | "ink" | "note" | "stamp" | null;
 
-export function pdfAnnotationKind(type: number | undefined): Kind {
+export function pdfAnnotationKind(type: number | undefined): PdfSelectionKind {
   switch (type) {
     case PDF_SUBTYPE.FREETEXT:
       return "freetext";
@@ -62,7 +56,7 @@ export function pdfAnnotationKind(type: number | undefined): Kind {
   }
 }
 
-const TOOL_KIND: Record<string, Kind> = {
+export const PDF_TOOL_KIND: Record<string, PdfSelectionKind> = {
   freeText: "freetext",
   highlight: "highlight",
   underline: "line",
@@ -95,60 +89,9 @@ export const PDF_TOOL_SWATCHES: readonly string[] = [
 ];
 
 export function pdfToolColorField(toolId: string): "strokeColor" | "fontColor" | null {
-  const kind = TOOL_KIND[toolId];
+  const kind = PDF_TOOL_KIND[toolId];
   if (kind === "freetext") return "fontColor";
   return kind ? "strokeColor" : null;
-}
-
-export function PdfToolPalette({
-  bridge,
-  activeTool,
-  inline = false,
-  triggerId,
-}: {
-  bridge: PdfViewerBridge;
-  activeTool: string | null;
-  inline?: boolean;
-  triggerId?: string;
-}) {
-  const tt = useUI();
-  const [tick, setTick] = useState(0);
-  const [closed, setClosed] = useState(false);
-  void tick;
-  const field = activeTool ? pdfToolColorField(activeTool) : null;
-  if (closed || !activeTool || !field) return null;
-  const current = String(bridge.toolDefaults(activeTool)[field] || "").toLowerCase();
-  const palette = (
-    <div
-      role="radiogroup"
-      aria-label={tt("颜色")}
-      data-pdf-tool-palette={activeTool}
-      className={inline ? "flex items-center p-2" : "absolute left-3 top-14 z-10 flex items-center rounded-xl border border-[var(--awb-border)] bg-[var(--awb-popover-bg)] px-1 shadow-[var(--awb-shadow-floating)]"}
-    >
-      {PDF_TOOL_SWATCHES.map((color) => (
-        <button
-          key={color}
-          type="button"
-          role="radio"
-          aria-checked={current === color.toLowerCase()}
-          aria-label={color}
-          onClick={() => {
-            bridge.setToolDefaults(activeTool, { [field]: color, ...(field === "strokeColor" ? { color } : {}) });
-            setTick((value) => value + 1);
-          }}
-          className="grid h-11 w-8 place-items-center"
-        >
-          <span
-            className={`h-5 w-5 rounded-full ring-1 ring-[var(--awb-border)] ${
-              current === color.toLowerCase() ? "outline outline-2 outline-offset-2 outline-[var(--awb-accent)]" : ""
-            }`}
-            style={{ background: color }}
-          />
-        </button>
-      ))}
-    </div>
-  );
-  return inline ? <EditBarPanelRequest id={`pdf-tool-palette-${activeTool}`} label={tt("颜色")} triggerSelector={`[data-workspace-action-id="${triggerId}"]`} onClose={() => setClosed(true)}>{palette}</EditBarPanelRequest> : palette;
 }
 
 function hex(value: unknown, fallback: string): string {
@@ -157,23 +100,21 @@ function hex(value: unknown, fallback: string): string {
 
 /** 选区 / 工具 → 编辑栏控件（纯函数，测试直接断言）。 */
 export function pdfSelectionControls(
-  kind: Kind,
+  kind: PdfSelectionKind,
   values: Record<string, unknown>,
   tt: (zh: string) => string,
   deletable: boolean,
 ): SelectionControl[] {
   const opacity = Math.round((Number(values.opacity ?? 1) || 1) * 100);
   const opacityControl: SelectionControl = {
-    id: "opacity-value",
-    kind: "range",
+    id: "opacity",
+    kind: "number",
     label: tt("透明度"),
     value: opacity,
     min: 10,
     max: 100,
-    step: 5,
+    step: 1,
     suffix: "%",
-    slot: "inspector",
-    inspectorGroup: "opacity",
   };
   const remove: SelectionControl[] = deletable
     ? [{ id: "delete", kind: "action", label: tt("删除"), danger: true }]
@@ -272,7 +213,7 @@ export function pdfSelectionControls(
 
 /** 一条控件命令 → 批注字段补丁（工具默认值用同一份）。 */
 export function pdfSelectionPatch(
-  kind: Kind,
+  kind: PdfSelectionKind,
   values: Record<string, unknown>,
   controlId: string,
   value: unknown,
@@ -299,6 +240,7 @@ export function pdfSelectionPatch(
       return { strokeColor: hex(value, "#e44234"), color: hex(value, "#e44234") };
     case "stroke-width":
       return { strokeWidth: Math.max(1, Math.min(20, Number(value) || 1)) };
+    case "opacity":
     case "opacity-value":
       return { opacity: Math.max(0.1, Math.min(1, Number(value) / 100)) };
     case "pdf-note-text":
@@ -308,72 +250,13 @@ export function pdfSelectionPatch(
   }
 }
 
-export function PdfSelectionBar({
-  bridge,
-  selected,
-  activeTool,
-  version,
-  readOnly,
-  accent,
-}: {
-  bridge: PdfViewerBridge;
-  selected: PdfAnnotationLike | null;
-  activeTool: string | null;
-  /** 批注 / 工具状态变了就变，控件值跟着刷新。 */
-  version: number;
-  readOnly: boolean;
-  accent: string;
-}) {
-  const tt = useUI();
-  const [toolTick, setToolTick] = useState(0);
-  const context = useMemo<SelectionContext | null>(() => {
-    if (readOnly) return null;
-    if (selected) {
-      const kind = pdfAnnotationKind(selected.type);
-      const controls = pdfSelectionControls(kind, selected, tt, true);
-      if (!controls.length) return null;
-      return {
-        version: 1,
-        kind: "pdf-annotation",
-        bar: kind === "freetext" ? "text" : kind === "stamp" ? "image" : "shape",
-        id: `annotation:${selected.id}`,
-        revision: version,
-        label: tt("PDF 批注"),
-        controls,
-      };
-    }
-    const kind = activeTool ? TOOL_KIND[activeTool] ?? null : null;
-    if (!activeTool || !kind) return null;
-    const controls = pdfSelectionControls(kind, bridge.toolDefaults(activeTool), tt, false);
-    return {
-      version: 1,
-      kind: "pdf-tool",
-      bar: kind === "freetext" ? "text" : "shape",
-      id: `tool:${activeTool}`,
-      revision: `${version}:${toolTick}`,
-      label: tt("工具设置"),
-      controls,
-    };
-  }, [activeTool, bridge, readOnly, selected, tt, version, toolTick]);
-  if (!context) return null;
-  const command = (message: SelectionCommand) => {
-    if (message.selectionId !== context.id) return;
-    if (selected) {
-      if (message.controlId === "delete") {
-        bridge.deleteAnnotation(selected);
-        return;
-      }
-      const patch = pdfSelectionPatch(pdfAnnotationKind(selected.type), selected, message.controlId, message.value);
-      if (patch) bridge.updateAnnotation(selected, patch);
-      return;
-    }
-    if (!activeTool) return;
-    const defaults = bridge.toolDefaults(activeTool);
-    const patch = pdfSelectionPatch(TOOL_KIND[activeTool] ?? null, defaults, message.controlId, message.value);
-    if (patch) {
-      bridge.setToolDefaults(activeTool, patch);
-      setToolTick((value) => value + 1);
-    }
-  };
-  return <SelectionToolbar context={context} onCommand={command} accent={accent} />;
+/** PDF font sizes are points; selection chrome uses CSS pixels at 96 dpi. */
+export function pdfFontSizePixels(points: unknown): number {
+  const value = Number(points ?? 14);
+  return (Number.isFinite(value) ? value : 14) * 4 / 3;
+}
+
+export function pdfFontSizePoints(pixels: unknown): number | null {
+  const value = Number(pixels);
+  return Number.isFinite(value) ? Math.max(6, Math.min(96, value)) * 3 / 4 : null;
 }

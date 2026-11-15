@@ -12,6 +12,18 @@ import type {
 
 type SelectionAnchor = NonNullable<SelectionContext["anchor"]>;
 
+/** Only equivalent engine commands advertise a canonical selection capability. */
+const CANVAS_CANON_COMMANDS: Readonly<Record<string, string>> = {
+  crop: "canvas.node.update.local.crop",
+  rotate: "canvas.node.update.local.rotate",
+  "flip-x": "canvas.node.update.local.flip-horizontal",
+  "flip-y": "canvas.node.update.local.flip-vertical",
+  delete: "canvas.node.delete",
+};
+const CANVAS_CANON_CONTROLS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(CANVAS_CANON_COMMANDS).map(([id, commandId]) => [commandId, id]),
+);
+
 export interface CanvasSelectionAdapterInput {
   project: VideoProject;
   node: CanvasNodeDefinition | null;
@@ -20,10 +32,8 @@ export interface CanvasSelectionAdapterInput {
   imageMode: "retouch" | "generate";
   anchor?: SelectionAnchor;
   /**
-   * 这些 label 会被送进 @oceanleo/ui 的共享 SelectionToolbar，
-   * 和 DeckContextToolbar / FabricImageContextToolbar 产出的 label **并排显示在同一条工具条上**。
-   * 那两个是 oceanleo-ui 内部组件、能直接 useUI()，这里是纯函数，所以把 tt 传进来。
-   * 不传就会重演本轮那个缺陷：一条工具条上「水平翻转」和「Flip horizontal」并排。
+   * Specific fields keep their engine-owned copy. Canon labels are resolved by
+   * the shared shell when it consumes this builder's selection data.
    */
   tt: UITranslate;
   availability(
@@ -59,7 +69,7 @@ function inspector(
     slot: "inspector",
     inspectorGroup: group,
     inspectorLabel: label,
-    inspectorIcon: icon,
+    ...(group === "adjust" || group === "position" ? { inspectorIcon: icon } : {}),
   };
 }
 
@@ -73,6 +83,7 @@ function availableAction(
   return [
     {
       ...control,
+      id: CANVAS_CANON_CONTROLS[control.id] || control.id,
       ...(availability.enabled
         ? {}
         : {
@@ -234,9 +245,9 @@ function retouchAdjustControls(
         max: 2,
         step: 0.05,
       },
-      "canvas-adjust",
+      "adjust",
       "Adjust",
-      "effects",
+      "adjust",
     ),
     inspector(
       {
@@ -248,9 +259,9 @@ function retouchAdjustControls(
         max: 2,
         step: 0.05,
       },
-      "canvas-adjust",
+      "adjust",
       "Adjust",
-      "effects",
+      "adjust",
     ),
     inspector(
       {
@@ -262,9 +273,9 @@ function retouchAdjustControls(
         max: 2,
         step: 0.05,
       },
-      "canvas-adjust",
+      "adjust",
       "Adjust",
-      "effects",
+      "adjust",
     ),
     inspector(
       {
@@ -276,9 +287,9 @@ function retouchAdjustControls(
         max: 2,
         step: 0.1,
       },
-      "canvas-adjust",
+      "adjust",
       "Adjust",
-      "effects",
+      "adjust",
     ),
     ...availableAction(
       input,
@@ -289,9 +300,9 @@ function retouchAdjustControls(
           label: "Apply locally",
           icon: "effects",
         },
-        "canvas-adjust",
+        "adjust",
         "Adjust",
-        "effects",
+        "adjust",
       ),
       "canvas.node.update.local.adjust",
       current,
@@ -380,7 +391,7 @@ export function canvasSelectionContext(
         label: "X",
         value: node.position.x,
       },
-      "canvas-position",
+      "position",
       "Position",
       "position",
     ),
@@ -391,18 +402,15 @@ export function canvasSelectionContext(
         label: "Y",
         value: node.position.y,
       },
-      "canvas-position",
+      "position",
       "Position",
       "position",
     ),
     ...(node.kind === "image" && input.imageMode === "retouch"
       ? (
           [
-            // ⚠ 这张表产出的 label 与 FabricImageContextToolbar / DeckContextToolbar 的
-            // label 会**并排出现在同一条 SelectionToolbar 上**。那两处早就走了 tt()，
-            // 这里没走，于是同一条工具条上「水平翻转」和 "Flip horizontal" 并排显示。
-            // 词典里有 key 的一律接上；没有 key 的（Crop / Adjust / Contrast …）
-            // 保持英文原样并留在预算锁里——硬填中文只会把 15 个非中文档一起弄坏。
+            // Only the mapped native operations become canon controls. One-shot
+            // effects and grid splits remain explicitly specific actions.
             ["canvas.node.update.local.crop", "Crop", "crop", false],
             ["canvas.node.update.local.rotate", input.tt("旋转"), "rotate", false],
             [
@@ -467,7 +475,7 @@ export function canvasSelectionContext(
               id: commandId,
               kind: "action",
               label,
-              icon,
+              ...(CANVAS_CANON_CONTROLS[commandId] ? { icon } : { domain: "specific" as const }),
               ...(more ? { placement: "more" as const } : {}),
             },
             commandId,
@@ -603,7 +611,7 @@ export function canvasSelectionContext(
         ]
       : []),
     {
-      id: "canvas.node.delete",
+      id: "delete",
       kind: "action",
       label: input.tt("删除"),
       icon: "delete",
@@ -617,7 +625,7 @@ export function canvasSelectionContext(
           "canvas.selection.title.set",
           "canvas.selection.position-x.set",
           "canvas.selection.position-y.set",
-          "canvas.node.delete",
+          "delete",
         ].includes(control.id),
       )
     : controls;
@@ -625,6 +633,7 @@ export function canvasSelectionContext(
     version: 1,
     kind: `video-canvas-${node.kind}`,
     id: node.nodeId,
+    bar: node.kind === "image" ? "image" : "object",
     label: node.title,
     revision: input.project.headVersionId,
     epoch: input.selectionEpoch,
@@ -655,13 +664,17 @@ export function canvasSelectionDispatch(
     command.selectionId !== context.id ||
     command.selectionRevision !== context.revision ||
     command.selectionEpoch !== context.epoch ||
-    !context.controls.some((control) => control.id === command.controlId) ||
+    !context.controls.some((control) => control.id === command.controlId ||
+      CANVAS_CANON_COMMANDS[control.id] === command.controlId) ||
     Boolean(phase) !== Boolean(transactionId) ||
     (phase !== undefined &&
       !["start", "update", "commit", "cancel"].includes(phase))
   ) {
     return null;
   }
+  // Retain the engine command registry and its original IDs. Existing callers
+  // using those IDs still pass the same selection revision/epoch checks above.
+  command = { ...command, controlId: CANVAS_CANON_COMMANDS[command.controlId] || command.controlId };
   const value = scalar(command.value);
   const field = (
     {

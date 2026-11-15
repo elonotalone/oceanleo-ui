@@ -117,7 +117,7 @@ const stubs = {
   "../plugin-command": dataModule("export function usePluginCommandSurface() {}"),
   "../image-editor/image-command-surface": dataModule("export function createImageCommandSurface() { return {}; }"),
   "../image-editor/use-fabric-image-editor": dataModule(FAKE_HOOK),
-  "../image-editor/FabricImageContextToolbar": nullComponent("FabricImageContextToolbar"),
+  "../image-editor/use-fabric-image-selection-adapter": dataModule("export function useFabricImageSelectionAdapter() { return { context: null, dispatch() {} }; }"),
   "../image-editor/FabricImageControls": nullComponent("FabricImageControls"),
   "../image-editor/FabricImageStage": dataModule(`export function FabricImageStage() { return globalThis.__fakeImageEditor.createStage(); }`),
   "../image-editor/FabricImageCreationPanels": nullComponent(

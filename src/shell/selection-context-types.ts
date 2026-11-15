@@ -1,3 +1,6 @@
+import type { EditBarCanonId } from "./edit-bar-canon-table";
+import type { CreationToolId } from "./creation-tools";
+
 export type AnimationPresetId =
   | "typewriter"
   | "ascend"
@@ -116,6 +119,10 @@ export interface SelectionAnimationGalleryCapability {
 
 export interface SelectionControl {
   id: string;
+  domain?: "selection" | "specific" | "creation";
+  creationTool?: CreationToolId;
+  mixed?: boolean;
+  unit?: "px" | "percent";
   kind: SelectionControlKind;
   label: string;
   icon?: SelectionControlIcon;
@@ -140,6 +147,31 @@ export interface SelectionControl {
   tone?: "danger";
   animationGallery?: SelectionAnimationGalleryCapability;
   placement?: SelectionControlPlacement;
+}
+
+/** Engines report capabilities and values; the shell owns canon presentation. */
+export interface CanonSelectionControlInput extends Omit<SelectionControl,
+  "id" | "kind" | "label" | "icon" | "iconOnly" | "group" | "semantic" | "suffix" | "placement" | "domain" | "creationTool"
+> {
+  id: EditBarCanonId;
+  domain?: "selection";
+  /** A command may open an engine-owned panel instead of editing a scalar. */
+  capabilities?: { panel?: boolean; action?: boolean; toggle?: boolean };
+}
+
+export interface SpecificSelectionControlInput extends SelectionControl {
+  domain: "specific";
+}
+
+export type SelectionControlInput = CanonSelectionControlInput | SpecificSelectionControlInput;
+
+export interface SelectionAdapterContext extends Omit<SelectionContext, "controls"> {
+  controls: SelectionControlInput[];
+}
+
+export interface SelectionAdapter {
+  context: SelectionAdapterContext | null;
+  dispatch: (command: SelectionCommand) => void;
 }
 
 export interface SelectionAnchorRect {

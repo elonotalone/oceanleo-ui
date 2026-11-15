@@ -25,6 +25,11 @@ import type {
 } from "./selection-context-types";
 
 export type {
+  CanonSelectionControlInput,
+  SpecificSelectionControlInput,
+  SelectionControlInput,
+  SelectionAdapterContext,
+  SelectionAdapter,
   AnimationPresetId,
   SelectionAnchorRect,
   SelectionAnimationGalleryCapability,

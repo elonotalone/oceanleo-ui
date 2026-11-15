@@ -634,12 +634,14 @@ test("[F07] 视频/音频/3D：只读不再整块 inert；撤销栈按自己的�
 // ------------------------------------------------------------------ F08 PPT、图表、图片、矢量图
 test("[F08] PPT/图片：浮条与面板拿到只读（图表编辑器与嵌入矢量画布已删除）", () => {
   for (const [name, rel, tag] of [
-    ["deck", "advanced-routes/DeckRoute.tsx", "DeckContextToolbar"],
-    ["image", "advanced-routes/ImageRoute.tsx", "FabricImageContextToolbar"],
+    ["deck", "advanced-routes/DeckRoute.tsx", "useDeckSelectionAdapter"],
+    ["image", "advanced-routes/ImageRoute.tsx", "useFabricImageSelectionAdapter"],
   ]) {
-    const m = new RegExp(`<${tag}\\b([\\s\\S]*?)/>`).exec(src(rel));
-    assert.ok(m, `${name}: 找不到 <${tag}>`);
-    assert.match(m[1], /readOnly=/, `${name}: <${tag}> 没拿到 readOnly`);
+    const route = src(rel);
+    const m = new RegExp(`${tag}\\(\\{([\\s\\S]*?)\\}\\)`).exec(route);
+    assert.ok(m, `${name}: 找不到 ${tag} 调用`);
+    assert.match(m[1], /readOnly:/, `${name}: ${tag} 没拿到 readOnly`);
+    assert.match(route, /selection,/, `${name}: 选区 adapter 没交给外壳`);
   }
   const copy = readFileSync(join(UI_ROOT, "src/i18n/ui/messages/collab-visual-copy.ts"), "utf8");
   for (const phrase of ["保存我的", "看新版本"]) assert.ok(copy.includes(phrase), `collab-visual-copy.ts 缺「${phrase}」`);
@@ -722,22 +724,26 @@ for (const [family, rel] of Object.entries(SURFACE_FILES)) {
   });
 }
 
-test("[只读/16] 浮条：每个 *ContextToolbar 拿到只读状态（传 prop，或组件自己读 editor 里的 collabReadOnly）", () => {
-  const files = ["RichDocRoute", "DeckRoute", "ImageRoute", "GridRoute", "PdfRoute", "AudioRoute", "Model3DRoute", "VideoTimelineRoute"];
-  const bad = [];
-  for (const name of files) {
-    const rel = `advanced-routes/${name}.tsx`;
-    const text = src(rel);
-    for (const m of text.matchAll(/<([A-Za-z0-9]*ContextToolbar)\b([\s\S]*?)\/>/g)) {
-      if (/readOnly=|viewOnly=/.test(m[2])) continue;
-      // 组件自己读 editor 状态里的只读：看它的源文件
-      const imp = new RegExp(`import\\s*\\{[^}]*\\b${m[1]}\\b[^}]*\\}\\s*from\\s*"(\\.[^"]+)"`).exec(text);
-      const file = imp ? join(dirname(rel), imp[1]).replace(/\\/g, "/") : null;
-      const comp = file && (has(`${file}.tsx`) ? src(`${file}.tsx`) : "");
-      if (!comp || !/\b(readOnly|collabReadOnly|viewOnly)\b/.test(comp)) bad.push(`${name}: <${m[1]}> 既没传只读，组件本身也不读只读状态`);
-    }
+test("[只读/16] 每个选区 adapter 拿到只读状态，Grid 的数据入口与命令也有只读门禁", () => {
+  for (const [name, hook, adapter] of [
+    ["RichDocRoute", "useRichDocSelectionAdapter", "doc-editors/use-rich-doc-selection-adapter.ts"],
+    ["DeckRoute", "useDeckSelectionAdapter", "doc-editors/use-deck-selection-adapter.ts"],
+    ["ImageRoute", "useFabricImageSelectionAdapter", "image-editor/use-fabric-image-selection-adapter.ts"],
+    ["PdfRoute", "usePdfSelectionAdapter", "media-editors/use-pdf-selection-adapter.ts"],
+    ["AudioRoute", "useAudioSelectionAdapter", "media-editors/use-audio-selection-adapter.ts"],
+    ["Model3DRoute", "useModel3DSelectionAdapter", "media-editors/use-model3d-selection-adapter.ts"],
+    ["VideoTimelineRoute", "useVideoTimelineSelectionAdapter", "video-editor/use-video-timeline-selection-adapter.ts"],
+  ]) {
+    const text = src(`advanced-routes/${name}.tsx`);
+    const call = new RegExp(`${hook}\\(\\{([\\s\\S]*?)\\}\\)`).exec(text);
+    assert.ok(call, `${name}: 缺 ${hook} 调用`);
+    assert.ok(/\b(?:readOnly|viewOnly)\s*(?::|,|$)/.test(call[1]) || /\bstate\.collabReadOnly\b/.test(src(adapter)), `${name}: adapter 没拿到只读`);
+    assert.match(text, /selection,/, `${name}: 选区 adapter 没交给外壳`);
+    assert.doesNotMatch(text, /contextToolbar:|renderContextToolbar:/, `${name}: 仍有私有浮条入口`);
   }
-  assert.deepEqual(bad, [], bad.join("\n"));
+  const grid = src("doc-editors/GridUniverStage.tsx");
+  assert.match(grid, /selection:\s*\{ context: readonly \? null : selectionAdapterContext\(selectionContext\), dispatch: runControl \}/);
+  assert.match(grid, /const runControl = useCallback\([\s\S]*?if \(readonly\)/);
 });
 
 function dummyCommandParams(spec) {

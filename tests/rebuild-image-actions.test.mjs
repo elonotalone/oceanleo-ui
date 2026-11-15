@@ -54,6 +54,10 @@ const toolbarControlModuleUrl = await compileModule(
 );
 const { SelectionToolbarControl } = await import(toolbarControlModuleUrl);
 const { createRoot } = await import("react-dom/client");
+const { useFabricImageSelectionAdapter } = await import(await compileModule(
+  "src/shell/image-editor/use-fabric-image-selection-adapter.ts",
+  { "../../i18n/ui/useUI": dataModule("const tt = value => value; export const useUI = () => tt;") },
+));
 
 const coreUrl = await compileModule(
   "src/shell/image-editor/fabric-controller-core.ts",
@@ -279,6 +283,73 @@ function toolbar(selected) {
   });
 }
 
+test("Fabric selection adapter survives load and selection changes, converts px, and retains readonly/gesture guards", async () => {
+  const calls = [];
+  const textSelection = selectedText();
+  textSelection.text = { ...textSelection.text, fontSize: 24, lineHeight: 1.5, charSpacing: 125 };
+  const editor = {
+    selected: null, loading: true, sourceReady: false, cropping: false, cropRatio: "free",
+    layers: [{ id: "text-1", locked: false }], transformInfo: null, filterInfo: null,
+    selectLayer() {},
+    setSelectedText(patch) { calls.push(patch); },
+    beginGesture() { calls.push("start"); },
+    cancelGesture() { calls.push("cancel"); },
+    endGesture() { calls.push("commit"); },
+  };
+  let adapter;
+  function Probe(props) {
+    adapter = useFabricImageSelectionAdapter(props);
+    return React.createElement("button", {
+      onClick: () => adapter.dispatch(command("line-height", "text-1", 48)),
+    }, "Change line height");
+  }
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const errors = [];
+  const previousError = console.error;
+  console.error = (...args) => errors.push(args.join(" "));
+  try {
+    await act(async () => root.render(React.createElement(Probe, { editor })));
+    assert.equal(adapter.context, null);
+    editor.selected = textSelection;
+    editor.loading = false;
+    editor.sourceReady = true;
+    await act(async () => root.render(React.createElement(Probe, { editor })));
+    assert.equal(adapter.context.id, "text-1");
+    const control = id => adapter.context.controls.find(control => control.id === id);
+    assert.equal(control("line-height").value, 36);
+    assert.equal(control("letter-spacing").value, 3);
+    assert.equal(control("font-size").label, undefined, "canon presentation belongs to the shell");
+    assert.equal(control("font-size").kind, undefined);
+    await act(async () => container.querySelector("button").click());
+    assert.deepEqual(calls, [{ lineHeight: 2 }]);
+    adapter.dispatch(command("letter-spacing", "text-1", 6));
+    assert.deepEqual(calls.at(-1), { charSpacing: 250 });
+    const beforeStale = calls.length;
+    adapter.dispatch(command("bold", "old-selection", true));
+    assert.equal(calls.length, beforeStale);
+    adapter.dispatch({ ...command("line-height", "text-1", 48), phase: "start", transactionId: "spacing-1" });
+    adapter.dispatch({ ...command("line-height", "text-1", 49), phase: "commit", transactionId: "spacing-1" });
+    assert.deepEqual(calls.slice(-3), ["start", { lineHeight: 49 / 24 }, "commit"]);
+    adapter.dispatch({ ...command("line-height", "text-1", 48), phase: "cancel", transactionId: "spacing-1" });
+    assert.equal(calls.at(-1), "cancel");
+    await act(async () => root.render(React.createElement(Probe, { editor, readOnly: true })));
+    assert.ok(adapter.context.controls.every(control => control.disabled && control.unavailableReason));
+    const beforeReadonly = calls.length;
+    await act(async () => container.querySelector("button").click());
+    assert.equal(calls.length, beforeReadonly);
+    editor.selected = null;
+    await act(async () => root.render(React.createElement(Probe, { editor })));
+    assert.equal(adapter.context, null);
+    assert.deepEqual(errors, []);
+  } finally {
+    await act(async () => root.unmount());
+    console.error = previousError;
+    container.remove();
+  }
+});
+
 test("text bar uses canonical ids in canonical order and A-1 panels", () => {
   const controls = toolbar(selectedText());
   const ids = primaryImageToolbarControlIds(controls);
@@ -301,7 +372,14 @@ test("text bar uses canonical ids in canonical order and A-1 panels", () => {
   assert.equal(font?.kind, "select");
   assert.equal(font?.value, "Inter");
   assert.equal(font?.options?.[0]?.value, "Inter", "current font stays selectable");
-  assert.equal(controls.find((control) => control.id === "font-size")?.step, 0.1);
+  assert.equal(controls.find((control) => control.id === "font-size")?.step, 1);
+  assert.equal(controls.find((control) => control.id === "font-size")?.min, 6);
+  assert.equal(controls.find((control) => control.id === "font-size")?.max, 320);
+  assert.equal(controls.find((control) => control.id === "line-height")?.value, 23.3 * 1.16);
+  for (const id of ["font-size", "line-height", "letter-spacing"]) {
+    assert.equal(controls.find((control) => control.id === id)?.suffix, "px");
+    assert.equal(controls.find((control) => control.id === id)?.step, 1);
+  }
   assert.deepEqual(
     controls.find((control) => control.id === "align")?.options.map((option) => option.value),
     ["left", "center", "right", "justify"],
@@ -398,7 +476,9 @@ test("a locked layer shows only unlock and an unready source shows no bar", () =
 });
 
 test("canonical commands reach the controller: highlight, lists, clear format, font, arrange, dash, radius", () => {
-  const text = new FakeText({ oceanleoId: "text-1", text: "one\ntwo", fontWeight: "bold", underline: true });
+  const text = new FakeText({ oceanleoId: "text-1", text: "one\ntwo", fontWeight: "bold", underline: true,
+    fontSize: 80, fill: "#ff0000", lineHeight: 2, charSpacing: 200, deltaY: 8,
+    styles: { 0: { 0: { fill: "#00ff00", fontFamily: "Georgia", fontSize: 100, overline: true } } } });
   const back = new FakeImage({ oceanleoId: "back", oceanleoKind: "image" });
   const rect = new FakeRect({ oceanleoId: "rect-1", width: 100, height: 60, strokeWidth: 4 });
   const controller = controllerWith([back, text, rect]);
@@ -414,6 +494,10 @@ test("canonical commands reach the controller: highlight, lists, clear format, f
   assert.equal(text.text, "one\ntwo");
   dispatchFabricImageCommand(controller, command("font-family", "text-1", "Georgia, Times New Roman, serif"));
   assert.equal(text.fontFamily, "Georgia, Times New Roman, serif");
+  dispatchFabricImageCommand(controller, command("font-size", "text-1", 500));
+  assert.equal(text.fontSize, 320);
+  dispatchFabricImageCommand(controller, command("font-size", "text-1", 1));
+  assert.equal(text.fontSize, 6);
   dispatchFabricImageCommand(controller, command("strike", "text-1", true));
   assert.equal(text.linethrough, true);
   dispatchFabricImageCommand(controller, command("align", "text-1", "justify"));
@@ -423,7 +507,15 @@ test("canonical commands reach the controller: highlight, lists, clear format, f
   assert.equal(text.underline, false);
   assert.equal(text.linethrough, false);
   assert.equal(text.textBackgroundColor, "");
-  assert.equal(text.fontFamily, "Georgia, Times New Roman, serif", "clear format keeps the font");
+  assert.equal(text.fontFamily, "sans-serif");
+  assert.equal(text.fontSize, 16);
+  assert.equal(text.fill, "#1c1917");
+  assert.equal(text.lineHeight, 1.16);
+  assert.equal(text.charSpacing, 0);
+  assert.equal(text.deltaY, 0);
+  assert.equal(text.overline, false);
+  assert.deepEqual(text.styles, {}, "imported character styles must be cleared too");
+  assert.equal(text.text, "one\ntwo", "clear format preserves the text content");
 
   dispatchFabricImageCommand(controller, command("arrange", "text-1", "back"));
   assert.equal(controller.canvas.getObjects()[0], text);

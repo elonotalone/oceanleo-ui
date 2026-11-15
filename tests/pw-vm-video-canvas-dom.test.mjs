@@ -38,7 +38,7 @@ test("mounted Library session edits, agent-writes, undoes, saves and respects th
     let adapter = globalThis.__vmAdapter;
     assert.equal(adapter.persistence.recovery.ready, true);
     const openedPanels = [];
-    adapter.renderContextToolbar({ openDrawer: id => openedPanels.push(id), closeDrawer() {} });
+    adapter.panelHostRef.current = { openDrawer: id => openedPanels.push(id), closeDrawer() {} };
     let materialResult;
     await act(async () => { materialResult = await globalThis.__vmWorkflow.dispatchCommand("canvas.panel.material-library.open", {}, "toolbar"); });
     assert.equal(materialResult.status, "succeeded");

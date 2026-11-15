@@ -21,7 +21,7 @@ import {
   visualUploadAccept,
 } from "../media-editors/visual-formats";
 import { AudioTranscriptSection } from "../media-editors/AudioTranscriptSection";
-import { AudioContextToolbar } from "../media-editors/AudioContextToolbar";
+import { useAudioSelectionAdapter } from "../media-editors/use-audio-selection-adapter";
 import {
   AudioControls,
   AudioStage,
@@ -267,6 +267,7 @@ export function AudioRoute({
     },
     [editor.importSource],
   );
+  const selection = useAudioSelectionAdapter({ editor: view, readOnly: collabReadOnly });
   return (
     <AdvancedWorkbenchShell
       item={item}
@@ -292,7 +293,7 @@ export function AudioRoute({
             </>
           ),
         },
-        contextToolbar: <AudioContextToolbar editor={view} accent={accent} readOnly={collabReadOnly} />,
+        selection,
         history: {
           canUndo: view.canUndo,
           canRedo: view.canRedo,

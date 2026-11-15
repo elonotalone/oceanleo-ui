@@ -1,6 +1,7 @@
 "use client";
 
 import { AdvancedEditorIcon, type WorkbenchIconName } from "./AdvancedEditorIcon";
+import { CreationToolIcon } from "./CreationToolIcon";
 import {
   EDIT_BAR_CANON_OPTIONS,
   type CanonicalSelectionControl,
@@ -74,7 +75,7 @@ export function SelectionToolbarControl({
   selectionId: string;
   selectionRevision?: SelectionContext["revision"];
   selectionEpoch?: SelectionContext["epoch"];
-  onCommand: (command: SelectionCommand) => void;
+  onCommand: (command: SelectionCommand, anchor?: HTMLElement) => void;
   onOpenPanel?: (panelId: string, panelAction?: SelectionPanelAction, anchor?: HTMLElement) => void;
   accent: string;
   activePanel?: boolean;
@@ -88,6 +89,7 @@ export function SelectionToolbarControl({
     value?: SelectionControlValue,
     controlId = control.id,
     history?: SelectionCommand["history"],
+    anchor?: HTMLElement,
   ) =>
     onCommand({
       requestId: selectionRequestId(),
@@ -97,8 +99,10 @@ export function SelectionToolbarControl({
       ...(selectionRevision !== undefined ? { selectionRevision } : {}),
       ...(selectionEpoch !== undefined ? { selectionEpoch } : {}),
       ...(history ? { history } : {}),
-    });
-  const icon = control.icon
+    }, anchor);
+  const icon = control.domain === "creation" && control.creationTool
+    ? <CreationToolIcon tool={control.creationTool} className="h-4 w-4" />
+    : control.icon
     ? <AdvancedEditorIcon name={control.icon} className="h-4 w-4" />
     : null;
   const buttonClass = menu
@@ -157,10 +161,10 @@ export function SelectionToolbarControl({
         iconOnly={iconOnly}
         icon={icon}
         accent={accent}
-        activePanel={activePanel}
+        activePanel={activePanel || (control.domain === "creation" && control.value === true)}
         onOpenPanel={onOpenPanel}
         onActivated={onActivated}
-        emit={emit}
+        emit={(value, anchor) => emit(value, control.id, undefined, anchor)}
         forMeasurement={forMeasurement}
       />
     );

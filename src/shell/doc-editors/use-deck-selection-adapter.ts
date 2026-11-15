@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { ADVANCED_EDITOR_FONTS } from "../AdvancedFontPicker";
-import { SelectionToolbar } from "../SelectionToolbar";
+import { selectionAdapterContext } from "../selection-adapter";
 import type {
+  SelectionAdapter,
   SelectionCommand,
   SelectionContext,
 } from "../selection-context";
@@ -26,15 +27,13 @@ export { deckObjectGeometryControls };
  * 没选中对象时出页面级控件（版式、背景、过渡……）。编辑文字靠双击 / Enter / F2，
  * 栏上不再有单独的「编辑文字」键（10-23 D9：不许借用 T / A 图标）。
  */
-export function DeckContextToolbar({
+export function useDeckSelectionAdapter({
   editor,
-  accent = "#4f46e5",
   readOnly: readOnlyProp,
 }: {
   editor: DeckEditorState;
-  accent?: string;
   readOnly?: boolean; // 只能查看：整条灰掉、悬停「你只能查看」；缺省取 editor.readOnly
-}) {
+}): SelectionAdapter {
   const tt = useUI();
   const element = editor.selectedElement;
   const slide = editor.activeSlide;
@@ -71,19 +70,16 @@ export function DeckContextToolbar({
     [context, readOnlyProp, editor.readOnly, tt],
   );
 
+  const latest = useRef({ editor, context, element, readOnly: readOnlyProp ?? editor.readOnly });
+  latest.current = { editor, context, element, readOnly: readOnlyProp ?? editor.readOnly };
   const command = (message: SelectionCommand) => {
-    if (readOnlyProp ?? editor.readOnly) return;
+    const { editor, context, element, readOnly } = latest.current;
+    if (readOnly || editor.loading || editor.sourceFailed) return;
     if (!context || message.selectionId !== context.id) return;
     if (element && !deckToolbarControlAllowed(element, message.controlId)) {
       return;
     }
     applyDeckToolbarCommand(editor, element, message);
   };
-  return (
-    <SelectionToolbar
-      context={viewContext}
-      onCommand={command}
-      accent={accent}
-    />
-  );
+  return { context: editor.loading ? null : selectionAdapterContext(viewContext), dispatch: command };
 }

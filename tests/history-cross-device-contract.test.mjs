@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { execFileSync } from "node:child_process";
 import test from "node:test";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
@@ -18,7 +19,8 @@ test("history APIs resolve the injected desktop gateway at request time", () => 
 });
 
 test("desktop history is account-wide while the web portal keeps main-site scope", () => {
-  const portal = ["../oceanleo", "../../oceanleo"].find((path) => existsSync(resolve(root, path, "app/history/page.tsx")));
+  const commonDir = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: root, encoding: "utf8" }).trim();
+  const portal = ["../oceanleo", "../../oceanleo", resolve(dirname(commonDir), "../oceanleo")].find((path) => existsSync(resolve(root, path, "app/history/page.tsx")));
   assert.ok(portal, "portal checkout is present alongside main or worktree root");
   const page = source(`${portal}/app/history/page.tsx`);
   assert.match(page, /useOptionalClientHost/);

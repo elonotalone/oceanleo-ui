@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileDocumentToolsHost } from "./helpers/selection-adapter-host.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -63,7 +64,7 @@ const minePanelUrl = await compileModule("src/shell/inline-editor-mine-panel.tsx
 const { useInlineLibraryPanels, editBarDrawersAlwaysVisible, editBarShowsDrawers } = await import(await compileModule("src/shell/use-inline-library-panels.tsx", {
   "./inline-editor-mine-panel": minePanelUrl,
 }));
-const { EditBarDocumentSegment } = await import(await compileModule("src/shell/plugin-chrome/EditBarDocumentSegment.tsx", {
+const { EditBarDocumentSegment } = await import(await compileDocumentToolsHost({
   "../../i18n/ui/useUI": ui,
   "../../ui/Button": button,
   "../AdvancedEditorIcon": icon,
@@ -207,10 +208,12 @@ test("edit bar shows labeled drawer buttons with a pressed state and toggles the
   }));
   try {
     const buttons = [...m.container.querySelectorAll("[data-edit-bar-drawer]")];
-    assert.deepEqual(buttons.map((b) => b.textContent), ["模板", "画笔"]);
-    assert.equal(buttons[0].style.paddingInline, "6px", "compact inline padding leaves space for the page rail without changing control height");
+    assert.deepEqual(buttons.map((b) => b.getAttribute("aria-label")), ["模板", "画笔"]);
+    assert.ok(buttons.every((b) => b.textContent === ""), "创建工具在主栏只显示图标");
+    assert.ok(buttons.every((b) => b.querySelector("[data-creation-tool-icon]")), "创建域使用独立图标");
     assert.equal(buttons[0].getAttribute("aria-pressed"), "false");
     assert.equal(buttons[1].getAttribute("aria-pressed"), "true");
+    assert.equal(buttons[1].getAttribute("aria-expanded"), "true");
     await click(buttons[0]);
     await click(buttons[1]);
     assert.deepEqual(toggled, ["deck-design", "deck-draw"]);

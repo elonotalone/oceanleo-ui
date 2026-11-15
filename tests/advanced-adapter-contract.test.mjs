@@ -127,8 +127,10 @@ test("fixed workspace row owns download only; semantic actions live in the edit 
   assert.doesNotMatch(actions, /data-global-row-slot="download"/);
   assert.match(shell, /EditBarDocumentSegment/);
   assert.match(shell, /action\.group !== "download"/);
-  assert.match(shell, /action\.panelId/);
-  assert.match(editBar, /data-workspace-action-id/);
+  assert.match(editBar, /action\.panelId/);
+  assert.match(editBar, /editBarDocumentTools/);
+  assert.doesNotMatch(editBar, /<Button|<button/);
+  assert.match(source("../src/shell/SelectionToolbarButtonControl.tsx"), /data-workspace-action-id/);
   assert.doesNotMatch(header, /absolute left-2 right-2 top-2/);
 });
 

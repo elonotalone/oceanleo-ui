@@ -2,8 +2,8 @@
 
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { SelectionToolbar } from "../SelectionToolbar";
-import type { SelectionCommand, SelectionContext } from "../selection-context";
+import type { SelectionAdapter, SelectionCommand, SelectionContext } from "../selection-context";
+import { selectionAdapterContext } from "../selection-adapter";
 import { dispatchFabricImageCommand } from "./fabric-image-commands";
 import {
   buildFabricImageToolbarControls,
@@ -23,16 +23,15 @@ const FONT_OPTIONS = ADVANCED_EDITOR_FONTS.map((font) => ({
   label: font.label,
 }));
 
-export function FabricImageContextToolbar({
+/** Native Fabric state and commands; the workbench owns the rendered toolbar. */
+export function useFabricImageSelectionAdapter({
   editor,
-  accent = "#4f46e5",
   readOnly: readOnlyProp,
 }: {
   editor: FabricImageEditorState & { collab?: { readOnly: boolean } };
-  accent?: string;
   /** 只能查看（浏览者，或别人正占着编辑）：改动类控件全灰、悬停提示「你只能查看」。缺省取编辑器自己的只读状态。 */
   readOnly?: boolean;
-}) {
+}): SelectionAdapter {
   const tt = useUI();
   const readOnly = readOnlyProp ?? Boolean(editor.collab?.readOnly);
   const selected = editor.selected;
@@ -75,7 +74,7 @@ export function FabricImageContextToolbar({
 
   // 这条浮条里没有纯查看类控件（缩放、导出在宿主栏）：只读时整条灰掉
   const viewContext = useMemo(
-    () => viewOnlyContext(context, readOnly, tt),
+    () => selectionAdapterContext(viewOnlyContext(context, readOnly, tt)),
     [context, readOnly, tt],
   );
 
@@ -91,17 +90,19 @@ export function FabricImageContextToolbar({
       editor.cancelGesture();
       return;
     }
-    dispatchFabricImageCommand(editor, message);
+    // Fabric stores line-height as a multiplier and char-spacing in 1/1000 em.
+    // The shared toolbar always reads and changes these lengths in pixels.
+    const fontSize = selected?.text?.fontSize || 16;
+    const value = typeof message.value === "number" && Number.isFinite(message.value)
+      ? message.controlId === "line-height" ? message.value / fontSize
+        : message.controlId === "letter-spacing" ? message.value * 1_000 / fontSize
+          : message.value
+      : message.value;
+    dispatchFabricImageCommand(editor, { ...message, value });
     if (message.transactionId && message.phase === "commit") {
       editor.endGesture();
     }
   };
 
-  return (
-    <SelectionToolbar
-      context={viewContext}
-      onCommand={command}
-      accent={accent}
-    />
-  );
+  return { context: viewContext, dispatch: command };
 }

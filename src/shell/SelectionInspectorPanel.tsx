@@ -89,6 +89,9 @@ function InspectorControl({
       ...(context.revision !== undefined
         ? { selectionRevision: context.revision }
         : {}),
+      ...(context.epoch !== undefined
+        ? { selectionEpoch: context.epoch }
+        : {}),
     });
   };
   const begin = () => {

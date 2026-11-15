@@ -210,7 +210,8 @@ test("L1/L2 facade control ids are wired into the Univer selection context", () 
   for (const id of ids) {
     assert.ok(controlIds.includes(id), id);
   }
-  assert.match(leaf, /<SelectionToolbar/);
+  assert.doesNotMatch(leaf, /<SelectionToolbar/);
+  assert.match(leaf, /selection:\s*\{\s*context: readonly \? null : selectionAdapterContext\(selectionContext\), dispatch: runControl \}/);
   assert.match(leaf, /runGridUniverCommand/);
 });
 

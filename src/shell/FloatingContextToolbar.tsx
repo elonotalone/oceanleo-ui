@@ -1,9 +1,7 @@
 "use client";
 
 import {
-  useLayoutEffect,
   useRef,
-  useState,
   type ReactNode,
   type RefObject,
 } from "react";
@@ -18,23 +16,15 @@ import { EditBarCollapsedPill } from "./EditBarDockControls";
 import { editBarDockStorageKey } from "./edit-bar-dock-state";
 import {
   EDIT_BAR_BUTTON_CLASS,
-  EDIT_BAR_DIVIDER_CLASS,
   editBarCollapsedStyle,
   editBarPillStyle,
 } from "./edit-bar-surface";
 import type { WorkbenchIconName } from "./AdvancedEditorIcon";
-import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { EditBarAgentIcon } from "./EditBarAgentIcon";
-import { AnchoredPopover, runAfterOverlayExit } from "./anchored-popover";
 import { useAdvancedLayout } from "./advanced-layout-context";
 import { PLUGIN_AGENT_DRAWER_ID } from "./plugin-chrome/agent-drawer";
 import { useUI } from "../i18n/ui/useUI";
-import {
-  editBarRowCapacity,
-  elementOuterInlineSize,
-} from "./selection-toolbar-measure";
 import { EditBarRowContext } from "./edit-bar-row-context";
-import { SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX } from "./selection-toolbar-layout";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 
 export { useInsideEditBarRow } from "./edit-bar-row-context";
@@ -70,160 +60,11 @@ export function useFloatingContextToolbar({
   });
 }
 
-/** 文档段折进「更多」前，选中工具那一段至少保住 More 键 + 一个间隙。 */
-const SELECTION_SEGMENT_MIN_PX = 36;
-
-/**
- * 行里宽度与本判定无关的「固定段」：分隔线、右段。选中段、文档段
- * （含它的 More 键）与不可见的量宽克隆都不算——前两者是本判定的输出。
- */
-function isFixedRowSegment(child: HTMLElement): boolean {
-  if (child.getAttribute("aria-hidden") === "true" || child.hidden) return false;
-  return !(
-    child.hasAttribute("data-edit-bar-document-slot") ||
-    child.hasAttribute("data-edit-bar-document-more") ||
-    child.hasAttribute("data-edit-bar-document-measure") ||
-    child.hasAttribute("data-edit-bar-selection-slot")
-  );
-}
-
-/**
- * 文档段要不要折进「更多」。判据全部来自与栏自身宽度无关的量：
- * 容量（外部边界）、右段、文档段克隆的自然宽度、选中段的最小保留。
- * 所以它不会与 SelectionToolbar 的 More 分区互相追赶。
- */
-function useDocumentSegmentFold({
-  rowRef,
-  measureRef,
-  hasSelection,
-  hasDocument,
-}: {
-  rowRef: RefObject<HTMLDivElement | null>;
-  measureRef: RefObject<HTMLDivElement | null>;
-  hasSelection: boolean;
-  hasDocument: boolean;
-}): boolean {
-  const [visible, setVisible] = useState(true);
-  useLayoutEffect(() => {
-    const row = rowRef.current;
-    if (!row || !hasDocument) {
-      setVisible(true);
-      return;
-    }
-    const read = () => {
-      const capacity = editBarRowCapacity(row);
-      if (!(capacity > 0)) return;
-      const style = window.getComputedStyle(row);
-      const gap = Number.parseFloat(style.columnGap) || 0;
-      let fixed = 0;
-      let segments = 0;
-      for (const child of Array.from(row.children)) {
-        if (!(child instanceof HTMLElement)) continue;
-        if (!isFixedRowSegment(child)) continue;
-        const width = elementOuterInlineSize(child);
-        if (width <= 0) continue;
-        fixed += width;
-        segments += 1;
-      }
-      const documentWidth = elementOuterInlineSize(measureRef.current);
-      const selectionMin = hasSelection ? SELECTION_SEGMENT_MIN_PX : 0;
-      const needed =
-        fixed +
-        documentWidth +
-        selectionMin +
-        Math.max(0, segments + 1 + (hasSelection ? 1 : 0) - 1) * gap;
-      setVisible((current) => {
-        const next =
-          !hasSelection ||
-          needed <=
-            capacity +
-              0.5 -
-              (current ? 0 : SELECTION_TOOLBAR_EXPAND_HYSTERESIS_PX);
-        return current === next ? current : next;
-      });
-    };
-    read();
-    const observer =
-      typeof ResizeObserver === "undefined" ? null : new ResizeObserver(read);
-    const boundary = row.closest<HTMLElement>(
-      "[data-workspace-floating-toolbar-overlay]",
-    );
-    if (boundary) observer?.observe(boundary);
-    if (measureRef.current) observer?.observe(measureRef.current);
-    for (const child of Array.from(row.children)) {
-      if (!(child instanceof HTMLElement) || !isFixedRowSegment(child)) continue;
-      observer?.observe(child);
-    }
-    window.addEventListener("resize", read);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", read);
-    };
-  }, [hasDocument, hasSelection, measureRef, rowRef]);
-  return visible;
-}
-
-function DocumentSegmentMore({ children }: { children: ReactNode }) {
-  const tt = useUI();
-  const [open, setOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    if (open) {
-      setMounted(true);
-      return;
-    }
-    return runAfterOverlayExit(panelRef.current, () => setMounted(false));
-  }, [open]);
-  const label = tt("更多选项");
-  return (
-    <div data-edit-bar-document-more className="relative flex shrink-0">
-      <button
-        ref={buttonRef}
-        type="button"
-        data-edit-bar-interactive
-        aria-expanded={open}
-        aria-haspopup="dialog"
-        onPointerDown={preserveEditBarSelection}
-        onClick={() => setOpen((value) => !value)}
-        className={EDIT_BAR_BUTTON_CLASS}
-        aria-label={label}
-        title={label}
-      >
-        <AdvancedEditorIcon name="more" />
-      </button>
-      {(open || mounted) && (
-        <AnchoredPopover
-          open={open}
-          anchorRef={buttonRef}
-          panelRef={panelRef}
-          onClose={() => setOpen(false)}
-          role="dialog"
-          ariaLabel={label}
-          ariaModal={false}
-          align="end"
-          maxHeight={512}
-          className="z-[2147483500] grid w-72 max-w-[calc(100dvw-1rem)] gap-1 overflow-x-hidden overflow-y-auto rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-2 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <div
-            data-edit-bar-document-slot
-            data-edit-bar-document-folded
-            className="flex min-w-0 flex-wrap items-center gap-1"
-          >
-            {children}
-          </div>
-        </AnchoredPopover>
-      )}
-    </div>
-  );
-}
-
 /**
  * 单行编辑栏本体（规范 v2 §4，2026-10-21：撤销重做已离开编辑栏）：
- * `[选中对象工具…] | [编辑类文档动作] | [trailing] [AI 助手]`
+ * `[选区属性与创建工具…] | [trailing] [AI 助手]`
  * 全部内联在一个 `inline-flex flex-nowrap` 里，永不换行；宽度不足先由
- * SelectionToolbar 把选中工具折进它的 More，再由这里把文档段折进「更多选项」。
+ * SelectionToolbar 统一量宽并将创建工具与选区控件收进同一个 More。
  */
 export function EditBarRow({
   controller,
@@ -243,16 +84,9 @@ export function EditBarRow({
   const tt = useUI();
   const layout = useAdvancedLayout();
   const rowRef = useRef<HTMLDivElement | null>(null);
-  const documentMeasureRef = useRef<HTMLDivElement | null>(null);
   const hostTrailing = layout?.contextBarTrailing ?? null;
   const hasSelection = Boolean(children);
   const hasDocument = Boolean(documentSegment);
-  const documentVisible = useDocumentSegmentFold({
-    rowRef,
-    measureRef: documentMeasureRef,
-    hasSelection,
-    hasDocument,
-  });
   // AI 固定在右段，13 个插件同一个位置。点它把左侧操控台换成 agent 对话。
   // `assistant === null`：宿主已在 children 里画了自己的 AI 键（PluginChromeFrame，
   // 被 tests/plugin-chrome-agent-drawer 钉死），这里不再画第二个。
@@ -315,21 +149,11 @@ export function EditBarRow({
           </EditBarRowContext.Provider>
         </div>
       )}
-      {hasSelection && hasDocument && (
-        <span className={EDIT_BAR_DIVIDER_CLASS} />
+      {hasDocument && (
+        <div data-edit-bar-document-slot className="flex min-w-0 items-center gap-0.5">
+          {documentSegment}
+        </div>
       )}
-      {hasDocument &&
-        (documentVisible ? (
-          <div
-            data-edit-bar-document-slot
-            // 文档段按键统一 28px 高：与 AI 同一条 y 带，探针按 y 聚类才是 1 行。
-            className="flex shrink-0 items-center gap-0.5 [&_button]:h-7 [&_button]:min-h-7"
-          >
-            {documentSegment}
-          </div>
-        ) : (
-          <DocumentSegmentMore>{documentSegment}</DocumentSegmentMore>
-        ))}
       {trailingVisible && (
         <div
           data-edit-bar-trailing-slot
@@ -342,20 +166,6 @@ export function EditBarRow({
           {trailing}
           {hostTrailing}
           {agentButton}
-        </div>
-      )}
-      {hasDocument && (
-        // 文档段的量宽克隆：不可见、不可交互、不进无障碍树，也不在
-        // `[data-workspace-edit-bar]` 的可见按钮之列（绝对定位、visibility:hidden）。
-        <div
-          ref={documentMeasureRef}
-          aria-hidden="true"
-          inert
-          data-edit-bar-document-measure
-          className="pointer-events-none invisible absolute left-0 top-0 flex w-max flex-nowrap items-center gap-0.5 [&_button]:h-7 [&_button]:min-h-7"
-          style={{ contain: "layout style paint" }}
-        >
-          {documentSegment}
         </div>
       )}
     </div>
@@ -385,7 +195,7 @@ export function FloatingContextToolbar({
   collapsedLabel?: string;
   busy?: boolean;
   dirty?: boolean;
-  /** 选中对象工具（宿主 renderContextToolbar 的 SelectionToolbar）；没选中时传 null，栏照样在。 */
+  /** 选中对象工具（宿主唯一的 SelectionToolbar）；没选中时传 null，栏照样在。 */
   children?: ReactNode;
   /** 编辑类文档动作（`group === "edit"`），与选中工具同一行。 */
   documentSegment?: ReactNode;

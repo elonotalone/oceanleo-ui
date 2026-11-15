@@ -173,6 +173,10 @@ export function applyDeckToolbarCommand(
     }
     case "clear-format":
       Object.assign(patch, {
+        fontFamily: undefined,
+        fontSize: undefined,
+        color: undefined,
+        link: undefined,
         bold: false,
         italic: false,
         underline: false,
@@ -224,7 +228,7 @@ export function applyDeckToolbarCommand(
       patch.fontFamily = String(message.value || "");
       break;
     case "font-size":
-      patch.fontSize = numeric(message.value, 18);
+      patch.fontSize = Math.max(4, Math.min(300, numeric(message.value, 18)));
       break;
     case "bold":
     case "italic":
@@ -239,7 +243,7 @@ export function applyDeckToolbarCommand(
       patch.imageFit = String(message.value) as DeckElement["imageFit"];
       break;
     case "line-height":
-      patch.lineHeight = numeric(message.value, 1.15);
+      patch.lineHeight = Math.max(0.7, Math.min(4, numeric(message.value, (element.fontSize || 18) * 1.15) / (element.fontSize || 18)));
       break;
     case "letter-spacing":
       patch.letterSpacing = numeric(message.value);
@@ -263,7 +267,7 @@ export function applyDeckToolbarCommand(
       patch.borderRadius = numeric(message.value);
       break;
     case "opacity":
-      patch.opacity = numeric(message.value, 1);
+      patch.opacity = Math.max(0, Math.min(100, numeric(message.value, 100))) / 100;
       break;
     case "animation":
     case "animation-type": {

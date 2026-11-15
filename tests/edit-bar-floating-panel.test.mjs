@@ -5,6 +5,7 @@ import test from "node:test";
 import { dirname, relative } from "node:path";
 import React, { act, useMemo, useRef } from "react";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { compileSelectionAdapterHost, compileDocumentToolsHost } from "./helpers/selection-adapter-host.mjs";
 
 const require = createRequire(import.meta.url);
 const fr = createRequire(require.resolve("fabric/node"));
@@ -56,9 +57,12 @@ moduleOverrides.set("src/shell/InlineEditorMaterialPanel.tsx",dataModule(`import
 moduleOverrides.set("src/shell/plugin-chrome/PluginAgentPanel.tsx",dataModule(`import React from ${react}; export function PluginAgentPanel(){return React.createElement('div',{'data-agent-conversation':true},'Agent')}`));
 const { useInlineAdvancedPanels } = await compiled("src/shell/use-inline-advanced-panels.tsx");
 const { useInlineLibraryPanels } = await compiled("src/shell/use-inline-library-panels.tsx");
-const { EditBarDocumentSegment } = await compiled("src/shell/plugin-chrome/EditBarDocumentSegment.tsx");
+const { editBarDocumentTools } = await compiled("src/shell/plugin-chrome/EditBarDocumentSegment.tsx");
+const { creationToolControl } = await compiled("src/shell/creation-tools.ts");
+const { resolveSelectionAdapterContext } = await compiled("src/shell/selection-adapter.ts");
 const { RichDocControls } = await compiled("src/shell/doc-editors/RichDocControls.tsx");
-const { RichDocContextToolbar } = await compiled("src/shell/doc-editors/RichDocContextToolbar.tsx");
+const { useRichDocSelectionAdapter } = await compiled("src/shell/doc-editors/use-rich-doc-selection-adapter.ts");
+function RichDocContextToolbar(props) { const a=useRichDocSelectionAdapter(props); return React.createElement(SelectionToolbar,{context:resolveSelectionAdapterContext(a.context),onCommand:a.dispatch}); }
 const { DeckElementsPanel } = await compiled("src/shell/doc-editors/DeckControls.tsx");
 const { FabricImageShapePanel } = await compiled("src/shell/image-editor/FabricImageCreationPanels.tsx");
 moduleOverrides.set("src/shell/media-editors/AudioWorkbench.tsx",dataModule("export function useAudioWorkbench(){throw new Error('real waveform not used by controls')}"));
@@ -69,9 +73,16 @@ const { PdfFindBar } = await compiled("src/shell/media-editors/PdfFindBar.tsx");
 moduleOverrides.set("src/lib/auth/client.ts",dataModule("export async function getUserId(){return null}"));
 const { PdfSignatureDialog } = await compiled("src/shell/media-editors/PdfSignatureDialog.tsx");
 moduleOverrides.delete("src/lib/auth/client.ts");
-const { PdfSelectionBar, PdfToolPalette } = await compiled("src/shell/media-editors/PdfSelectionBar.tsx");
+const { PdfToolPalette } = await compiled("src/shell/media-editors/PdfToolPalette.tsx");
+const { usePdfSelectionAdapter } = await compiled("src/shell/media-editors/use-pdf-selection-adapter.ts");
+function PdfSelectionBar(props) { const a=usePdfSelectionAdapter(props); return React.createElement(SelectionToolbar,{context:resolveSelectionAdapterContext(a.context),onCommand:a.dispatch}); }
 const { SelectionToolbar } = await compiled("src/shell/SelectionToolbar.tsx");
 const { EditBarRow } = await compiled("src/shell/FloatingContextToolbar.tsx");
+function EditBarDocumentSegment(props) {
+  const tools=editBarDocumentTools(props);
+  return React.createElement(SelectionToolbar,{context:{version:1,kind:'creation',id:'test-creation',controls:tools.map(t=>creationToolControl(t))},onCommand:(c,anchor)=>tools.find(t=>t.id===c.controlId)?.execute?.(anchor)});
+}
+
 const { buildFabricImageToolbarControls } = await compiled("src/shell/image-editor/fabric-image-toolbar-controls.ts");
 const { AnchoredPopover } = await compiled("src/shell/anchored-popover.tsx");
 const { gridUniverSelectionContext, gridUniverCommandArgsFromValue } = await compiled("src/shell/doc-editors/grid-univer/stage-plan.ts");
@@ -81,6 +92,9 @@ const { PluginChromeFrame, usePluginChromePanelHost } = await compiled("src/shel
 
 const rect = (left, top, width, height) => ({ left, top, right: left + width, bottom: top + height, width, height, x: left, y: top, toJSON(){} });
 window.HTMLElement.prototype.getBoundingClientRect = function() {
+  if (this.hasAttribute("data-selection-toolbar-viewport-capacity")) return rect(0,0,992,28);
+  if (this.hasAttribute("data-selection-measure-control-id")) return rect(0,0,28,28);
+  if (this.hasAttribute("data-selection-toolbar-suffix")) return rect(0,0,32,28);
   if (this.hasAttribute("data-workspace-edit-bar")) return rect(600, 90, 380, 40);
   if (this.hasAttribute("data-editor-canvas") || this.hasAttribute("data-plugin-chrome-stage")) return rect(600, 130, 400, 570);
   if (this.hasAttribute("data-edit-bar-layer-root") || this.hasAttribute("data-plugin-chrome")) return rect(600, 40, 400, 660);
@@ -106,7 +120,7 @@ const textButton = (root, label) => [...root.querySelectorAll("button")].find(no
 const floating = () => document.querySelector("[data-edit-bar-floating-panel]");
 const currentBody = () => floating()?.querySelector('[data-edit-bar-panel-current="true"]');
 const item = { id: "a", artifactId: "a", kind: "document", title: "Document", meta: {} };
-function Harness({ body, id = "editor-global", adapterId = "richdoc", onReady, materials, toolbar, stageContent, adapterInput }) {
+function Harness({ body, id = "editor-global", adapterId = "richdoc", onReady, materials, toolbar, stageContent, adapterInput, hideDocumentTools = false }) {
   const pane = useWorkspacePane(); const stageRef = useRef(null); const layerRef = useRef(null);
   const adapter = useMemo(() => adapterInput ?? ({ id: adapterId, label: "Editor", drawers: [{ id, label: "插入", icon: "add", content: body }], upload: { onFiles(){} } }), [adapterId, body, id, adapterInput]);
   const panels = useInlineAdvancedPanels({ adapter, item, siteId: "oceanleo", accent: "#456", ownerId: "test-editor", pluginThemeId: "richdoc", workbenchMaterials: materials ?? null, showWorkspaceDetail: pane?.showDetail, clearWorkspaceDetail: pane?.clearDetail, workspaceLeftHidden: pane?.leftHidden, ownedWorkspaceDetailId: pane?.detail?.ownerId === "test-editor" ? pane.detail.id : null, onLocalUpload: () => onReady?.upload?.() });
@@ -115,7 +129,7 @@ function Harness({ body, id = "editor-global", adapterId = "richdoc", onReady, m
   if (typeof onReady === "function") onReady({ panels, library, pane });
   return React.createElement(EditBarPanelContext.Provider,{value:panels.floatingPanels}, React.createElement(AdvancedLayoutContext.Provider, { value: layout }, React.createElement("div", { ref: layerRef, "data-edit-bar-layer-root":true },
     React.createElement("div", { "data-workspace-edit-bar":true }, toolbar,
-      React.createElement(EditBarDocumentSegment, { actions: adapter.actions ?? [], onTrigger(action,anchor){ if(action.panelId) panels.openDrawer(action.panelId,undefined,anchor); else action.onTrigger?.(); }, drawers: panels.editBarDrawers, activeDrawerId: library.openDrawerId, onToggleDrawer: library.toggleDrawer }),
+      !hideDocumentTools && React.createElement(EditBarDocumentSegment, { actions: adapter.actions ?? [], onTrigger(action,anchor){ if(action.panelId) panels.openDrawer(action.panelId,undefined,anchor); else action.onTrigger?.(); }, drawers: panels.editBarDrawers, activeDrawerId: library.openDrawerId, onToggleDrawer: library.toggleDrawer }),
       React.createElement("button", { "data-assets-button": true, onClick: e => library.openLibraryPanel("materials", e.currentTarget) }, "素材库"),
       React.createElement("button", { "data-ai-button": true, onClick: () => panels.openDrawer("agent") }, "AI")),
     React.createElement("div", { ref:stageRef, "data-editor-canvas": true }, stageContent ?? adapterInput?.stage ?? "Canvas"),
@@ -206,10 +220,10 @@ test("3D Scene toolbox adds a camera and keeps the director controls usable",asy
   try{await click(m.node.querySelector("[data-edit-bar-drawer]"));await click(textButton(currentBody(),"添加相机"));assert.equal(adds,1);assert.ok(currentBody().querySelector('[data-testid="model3d-director-panel"]'));}finally{await m.destroy();}
 });
 
-test("PDF annotation opacity inspector opens in the floating host and edits the annotation",async()=>{
+test("PDF annotation opacity uses the shared compact percentage control and edits the annotation",async()=>{
   const updates=[]; const toolbar=React.createElement(PdfSelectionBar,{bridge:{updateAnnotation:(_s,p)=>updates.push(p)},selected:{id:"note",type:1,contents:"Hello",opacity:1},activeTool:null,version:1,readOnly:false,accent:"#456"});
   const m=await mount(React.createElement(Harness,{body:null,toolbar,adapterId:"pdf"}));
-  try{const buttons=[...m.node.querySelectorAll("button")];const trigger=buttons.find(b=>/透明度/.test(b.getAttribute("aria-label")??b.textContent));await click(trigger);assert.ok(floating());const number=currentBody().querySelector('input[type="number"]');assert.ok(number);await act(async()=>{Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set.call(number,"50");number.dispatchEvent(new Event("input",{bubbles:true}));number.dispatchEvent(new Event("change",{bubbles:true}));});await act(async()=>number.dispatchEvent(new Event("blur",{bubbles:true})));assert.ok(currentBody().textContent.includes("透明度")); assert.ok(updates.length > 0,"opacity gesture reaches the PDF bridge");}finally{await m.destroy();}
+  try{const control=m.node.querySelector('[data-selection-control-id="opacity"]');assert.ok(control);assert.equal(control.querySelector('[aria-haspopup="dialog"]'),null);const number=control.querySelector('input[type="number"]');assert.equal(number.valueAsNumber,100);assert.deepEqual([number.min,number.max,number.step],["10","100","1"]);assert.match(control.textContent,/%/);await click(control.querySelector('button[aria-label="不透明度 -"]'));assert.deepEqual(updates.at(-1),{opacity:0.99},"the real scalar command reaches the PDF bridge in native 0–1 units");assert.equal(floating(),null,"opacity does not open a separate inspector");}finally{await m.destroy();}
 });
 test("Grid selection inspector uses the shared floating host and dispatches its real field action",async()=>{
   const commands=[];const context={...gridUniverSelectionContext({revision:1,kind:"grid-cell",tt:s=>s}),bar:"text"};
@@ -292,7 +306,7 @@ test("the real InlineAdvancedWorkbenchShell mounts the floating host for RichDoc
   const body=React.createElement(RichDocControls,{editor:{editor:null,importing:false}});
   const adapter={id:'richdoc',label:'Document',stage:React.createElement('div',{'data-document-stage':true},'Saved document'),drawers:[{id:'editor-global',label:'插入',icon:'add',content:body}]};
   const m=await mount(React.createElement(InlineAdvancedWorkbenchShell,{item:{...item,meta:{advanced_editor_route:"richdoc"}},adapter,onClose(){}}));
-  try{assert.ok(m.node.querySelector('[data-inline-editor] [data-document-stage]'));const trigger=m.node.querySelector('[data-edit-bar-drawer="editor-global"]');await click(trigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.equal(floating().closest('aside'),null);assert.ok(currentBody().textContent.includes('文档来源'));await click(trigger);assert.equal(floating(),null);}finally{await m.destroy();}
+  try{assert.ok(m.node.querySelector('[data-inline-editor] [data-document-stage]'));const trigger=m.node.querySelector('[data-edit-bar-drawer="editor-global"]');if(!trigger){const more=textButton(m.node,"更多属性");await click(more);} const actualTrigger=trigger || document.querySelector('[data-edit-bar-drawer="editor-global"]');assert.ok(actualTrigger,"创建工具应可在工具条或More访问");await click(actualTrigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.equal(floating().closest('aside'),null);assert.ok(currentBody().textContent.includes('文档来源'));await click(actualTrigger);assert.equal(floating(),null);}finally{await m.destroy();}
 });
 
 
@@ -351,19 +365,24 @@ test("browser regression: More properties survives StrictMode effect replay and 
   }finally{await m.destroy();}
 });
 
-test("browser regression: narrow edit-bar More keeps the folded Insert drawer reachable in StrictMode",async()=>{
+test("browser regression: narrow edit-bar More keeps the Insert creation tool reachable in StrictMode",async()=>{
   const originalRect=window.HTMLElement.prototype.getBoundingClientRect;
-  window.HTMLElement.prototype.getBoundingClientRect=function(){if(this.hasAttribute('data-edit-bar-document-measure')) return rect(600,90,1100,40);return originalRect.call(this);};
+  window.HTMLElement.prototype.getBoundingClientRect=function(){
+    if(this.hasAttribute('data-workspace-edit-bar')) return rect(600,90,60,40);
+    if(this.hasAttribute('data-selection-measure-control-id')) return rect(0,0,100,28);
+    return originalRect.call(this);
+  };
   let api;
-  const segment=React.createElement('button',{'data-folded-insert':true,onClick:e=>api.panels.openDrawer('editor-global',undefined,e.currentTarget)},'Insert');
-  const toolbar=React.createElement(EditBarRow,{controller:{},documentSegment:segment,assistant:null},React.createElement('span',null,'Selection'));
-  const m=await mount(strict(React.createElement(Harness,{body:React.createElement(RichDocControls,{editor:{editor:null}}),toolbar,onReady:v=>{api=v;}})));
+  const insert=creationToolControl({id:'creation:drawer:editor-global',tool:'elements',label:'插入',panelId:'editor-global'});
+  const controls=[...Array.from({length:8},(_,i)=>({id:`extra-${i}`,kind:'action',label:`Extra ${i}`})),insert];
+  const toolbar=React.createElement(EditBarRow,{controller:{},assistant:null},React.createElement(SelectionToolbar,{context:{version:1,kind:'creation',id:'narrow-creation',controls},onCommand:(command,anchor)=>{if(command.controlId===insert.id) api.library.toggleDrawer('editor-global',anchor);}}));
+  const m=await mount(strict(React.createElement(Harness,{body:React.createElement(RichDocControls,{editor:{editor:null}}),toolbar,hideDocumentTools:true,onReady:v=>{api=v;}})));
   try{
-    const more=m.node.querySelector('[data-edit-bar-document-more] button');assert.ok(more);
+    assert.equal(m.node.querySelector('[data-edit-bar-document-more]'),null);
+    const more=m.node.querySelector('[aria-label="更多属性"]');assert.ok(more);
     await browserClick(more);assert.equal(more.getAttribute('aria-expanded'),'true');assert.ok(floating());
-    await browserClick(currentBody().querySelector('[data-folded-insert]'));
+    const insertButton=document.querySelector('[data-selection-overflow-control][data-selection-control-id="creation:drawer:editor-global"] button');assert.ok(insertButton, '创建入口在窄栏时必须进入同一个More');await browserClick(insertButton);
     assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.ok(currentBody().textContent.includes('文档来源'));
-    assert.ok(floating().querySelector('[data-edit-bar-panel-back]'));
   }finally{await m.destroy();window.HTMLElement.prototype.getBoundingClientRect=originalRect;}
 });
 
@@ -570,4 +589,20 @@ test("VP run 2: nested placement stays clamped at the parent in all three hosts 
     Object.defineProperty(window,"innerWidth",{configurable:true,value:originalWidth});
     Object.defineProperty(window,"innerHeight",{configurable:true,value:originalHeight});
   }
+});
+
+
+test("instant inspector actions preserve the selection epoch",async()=>{
+  const commands=[];
+  const context={version:1,kind:'canvas-node',id:'node:epoch',revision:4,epoch:9,controls:[{id:'apply-local',kind:'action',label:'Apply locally',slot:'inspector',inspectorGroup:'adjust',inspectorLabel:'调色'}]};
+  const toolbar=React.createElement(SelectionToolbar,{context,onCommand:command=>commands.push(command)});
+  const m=await mount(React.createElement(Harness,{body:null,toolbar,hideDocumentTools:true}));
+  try{
+    const trigger=m.node.querySelector('[data-edit-bar-inspector-trigger]') || textButton(m.node,'调色');
+    await click(trigger);
+    await click(textButton(currentBody(),'Apply locally'));
+    assert.equal(commands.length,1);
+    assert.equal(commands[0].selectionRevision,4);
+    assert.equal(commands[0].selectionEpoch,9);
+  }finally{await m.destroy();}
 });
