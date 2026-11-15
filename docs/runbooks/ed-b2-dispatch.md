@@ -12,17 +12,23 @@
 
 ## docs 单元
 
+2026-11-16 共享测试追加独占：advanced-editor-v8-doc-grid-chart-model3d、advanced-native-editors、advanced-canva-interactions、advanced-editor-v9-edit-bar、route-context-editors、editor-working-copy-runtime、collab-richdoc-review（均 tests/*.test.mjs）。可用 tests/helpers/selection-adapter-host.mjs 的 compileSelectionAdapterHost 仅在测试内将真 hook 接到真 SelectionToolbar/已有捕获桩；生产旧包装必须删除。
+
 独占：src/shell/doc-editors/ 下 RichDocContextToolbar.tsx、DeckContextToolbar.tsx 的迁移 hook 与控件/命令相关文件；src/shell/advanced-routes/RichDocRoute.tsx、DeckRoute.tsx；src/shell/doc-editors/GridUniverStage.tsx、grid-univer/ 下选区工具条相关文件；只与上述功能相关的已有测试。不能改父进程文件或其他单元文件。
 
 把两 ContextToolbar 改成 use-rich-doc-selection-adapter.ts / use-deck-selection-adapter.ts（保留 builder 导出需要时迁移引用），删除 UI 包装，Route 调 hook 后交 selection。Grid 直接交数据。统一文字单位（deck 字号 4–300）。统一 clear-format 含内联全部可清格式。保留复杂 RichDoc revision/epoch 与事务。自己的测试如因旧包装路径需更新可改，但不得降低断言。返回变更 file:line、focused tests、差异与风险。父进程负责 parity 新测试。
 
 ## media 单元
 
+2026-11-16 共享测试追加独占：tests/media-editors.test.mjs、tests/collab-acceptance-convergence.test.mjs、tests/deck-audio-rogue-chrome.test.mjs。可用 tests/helpers/selection-adapter-host.mjs 的 compileSelectionAdapterHost。
+
 独占：src/shell/media-editors/ 下 AudioContextToolbar.tsx、Model3DContextToolbar.tsx、PdfSelectionBar.tsx 及其迁移 hook/纯 builder/patch/palette；src/shell/advanced-routes/AudioRoute.tsx、Model3DRoute.tsx、PdfRoute.tsx、VideoTimelineRoute.tsx；src/shell/video-editor/VideoTimelineContextToolbar.tsx 与 video-edit-bar.ts 等其直接控件命令；只与上述功能相关的已有测试。不能改其他单元或父文件。
 
 Audio、Model3D、VideoTimeline 改 use-*-selection-adapter hook，删除 UI 包装；PDF 拆纯构建/patch 与 PdfToolPalette.tsx（palette 可有 UI，但不能另实例 SelectionToolbar），Route 交 selection 和 creationTools。PDF 十个工具必须创建域，原 identity/执行保留；PDF 字号 6–96 px；其他字号统一 px；clear-format 如支持则清全部能清的行内格式，不捏造未支持能力。回报 PDF 字体/原生批注差异。更新相关已有测试引用但不降低断言。
 
 ## image 单元
+
+2026-11-16 共享测试追加独占：tests/collab-visual-readonly.test.mjs、tests/editor-repair-20261021-acceptance-image.mjs、tests/inline-library-editing.test.mjs。可用 tests/helpers/selection-adapter-host.mjs 的 compileSelectionAdapterHost。
 
 独占：src/shell/image-editor/FabricImageContextToolbar.tsx 与 fabric-image-toolbar-controls.ts、fabric-image-commands.ts 等其选区控件/命令；src/shell/advanced-routes/ImageRoute.tsx；src/shell/video-canvas/LibraryVideoCanvasSession.tsx、engine/canvas-selection-adapter.ts 及必要选区命令；只与上述功能相关的已有测试。不能改其他单元或父文件。
 
