@@ -1,9 +1,12 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { openCanvasLibraryItem } from "./canvas-delivery-client";
 import { useUI } from "../../../i18n";
 import type { CanvasCommandResult } from "./command-registry";
 import {
   projectHead,
+  projectTimelineDocument,
   type CanvasWorkspaceView,
   type ProjectVersionComparison,
   type VideoProject,
@@ -56,7 +59,8 @@ function StoryboardView({
   return (
     <div className="space-y-5">
       {head.scenes.map((scene) => {
-        const shots = head.shots.filter((shot) => shot.sceneId === scene.sceneId);
+        const shots = head.shots.filter((shot) => shot.sceneId === scene.sceneId)
+          .sort((a, b) => scene.shotIds.indexOf(a.shotId) - scene.shotIds.indexOf(b.shotId));
         return (
           <section key={scene.sceneId} className="space-y-3">
             <div>
@@ -287,211 +291,110 @@ function DirectorView({
   );
 }
 
-function TimelineView({
-  project,
-  dispatch,
-  commandState,
-  cancelActiveCommand,
-}: {
-  project: VideoProject;
-  dispatch: DispatchCommand;
-  commandState?: ProductCommandState | null;
+function TimelineView({ project, dispatch, commandState, cancelActiveCommand }: {
+  project: VideoProject; dispatch: DispatchCommand; commandState?: ProductCommandState | null;
   cancelActiveCommand: () => boolean;
 }) {
   const tt = useUI();
-  const head = projectHead(project);
-  const timeline = head.timelines[0];
-  const clips = timeline
-    ? timeline.clipIds
-        .map((clipId) => head.clips.find((clip) => clip.clipId === clipId))
-        .filter((clip): clip is NonNullable<typeof clip> => Boolean(clip))
-    : [];
-  const canBuild = head.takes.some((take) => take.status === "approved");
-  const canRender =
-    clips.length > 0 &&
-    clips.every((clip) => {
-      const asset = project.assets[clip.assetId];
-      return asset?.kind === "video" && Boolean(asset.url);
+  const [openHandoff, setOpenHandoff] = useState(false);
+  let composition: ReturnType<typeof projectTimelineDocument> | null = null;
+  let compositionError = "";
+  try { composition = projectTimelineDocument(project); } catch (error) { compositionError = error instanceof Error ? error.message : "请先在分镜中批准视频候选。"; }
+  const rendering = commandState?.commandId === "canvas.timeline.final-render" && commandState.status === "pending";
+  const handingOff = commandState?.commandId === "canvas.timeline.handoff" && commandState.status === "pending";
+  const busy = rendering || handingOff;
+  const receipt = Object.values(project.operationReceipts || {})
+    .filter((item) => item?.commandId === "canvas.timeline.final-render" && typeof item.completedAt === "string" && Array.isArray(item.outputAssetIds))
+    .sort((a, b) => b.completedAt.localeCompare(a.completedAt))[0];
+  const finalAsset = receipt?.outputAssetIds.map((id) => project.assets[id]).find(Boolean);
+  const handoff = project.timelineHandoff;
+  const nodes = projectHead(project).graph.nodes;
+  const delivery = nodes.find((node) => node.kind === "delivery");
+  const configure = (nodeId: string, field: string, value: unknown) => void dispatch("canvas.timeline.configure", { nodeId, field, value }, "toolbar");
+  useEffect(() => {
+    if (!openHandoff || !handoff) return;
+    setOpenHandoff(false);
+    // Persist the link back to this canvas before leaving its editor.
+    void dispatch("canvas.project.save", {}, "toolbar").then((result) => {
+      if (result.status === "succeeded") openCanvasLibraryItem(handoff);
     });
-  const rendering =
-    commandState?.commandId === "canvas.timeline.final-render" &&
-    commandState.status === "pending";
-  const latestReceipt = Object.values(project.operationReceipts || {})
-    .filter((receipt) => receipt?.commandId === "canvas.timeline.final-render" && typeof receipt.completedAt === "string" && Array.isArray(receipt.outputAssetIds))
-    .sort((left, right) =>
-      right.completedAt.localeCompare(left.completedAt),
-    )[0];
-  const finalAsset = latestReceipt?.outputAssetIds
-    .map((assetId) => project.assets[assetId])
-    .find(Boolean);
+  }, [openHandoff, handoff, dispatch]);
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-4">
         <div>
-          <p className="text-sm font-semibold text-[var(--vc-text)]">
-            {timeline?.title || "Main timeline"}
-          </p>
-          <p className="mt-1 text-[10px] text-[var(--vc-text-3)]">
-            Composite order is derived only from approved Takes.
-          </p>
+          <p className="text-sm font-semibold text-[var(--vc-text)]">{tt("合成与交付")}</p>
+          <p className="mt-1 text-[10px] text-[var(--vc-text-3)]">{tt("按分镜顺序合成已批准的镜头，包含字幕与音轨。")}</p>
+          {composition && <p className="mt-1 text-[10px] text-[var(--vc-text-3)]">{composition.document.width} × {composition.document.height} · {composition.document.fps} fps</p>}
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            disabled={!canBuild}
-            title={
-              canBuild
-                ? "Create real clip records from approved Takes."
-                : "Approve at least one Take first."
-            }
-            onClick={() =>
-              void dispatch("canvas.timeline.build-approved", {}, "toolbar")
-            }
-            className="rounded-lg border border-[var(--vc-accent-border)] px-3 py-2 text-[10px] font-semibold text-[var(--vc-accent-text)] disabled:border-[var(--vc-border)] disabled:text-[var(--vc-text-3)]"
-          >
-            Build from approved Takes
+        <div className="flex flex-wrap gap-2">
+          <button type="button" data-command-id="canvas.timeline.final-render" disabled={!composition || busy}
+            onClick={() => void dispatch("canvas.timeline.final-render", {}, "toolbar")}
+            className="rounded-lg bg-[var(--vc-accent-strong)] px-3 py-2 text-[10px] font-semibold text-[var(--vc-on-accent)] disabled:opacity-40">
+            {tt(rendering ? "正在生成成片…" : "生成成片")}
           </button>
-          <button
-            type="button"
-            data-command-id="canvas.timeline.final-render"
-            disabled={!canRender || rendering}
-            title={
-              canRender
-                ? "OceanLeo timeline renderer · oceanleo-convert · metered · idempotent receipt"
-                : "Build a Timeline with durable Video Asset URLs first."
-            }
-            onClick={() =>
-              void dispatch("canvas.timeline.final-render", {}, "toolbar")
-            }
-            className="rounded-lg bg-[var(--vc-accent-strong)] px-3 py-2 text-[10px] font-semibold text-[var(--vc-on-accent)] disabled:bg-[var(--vc-surface-2)] disabled:text-[var(--vc-text-3)]"
-          >
-            {rendering ? "Rendering…" : "Final Render"}
+          <button type="button" data-command-id="canvas.timeline.handoff" disabled={!composition || busy}
+            onClick={() => void dispatch("canvas.timeline.handoff", {}, "toolbar").then((result) => {
+              if (result.status === "succeeded") setOpenHandoff(true);
+            })}
+            className="rounded-lg border border-[var(--vc-border)] px-3 py-2 text-[10px] text-[var(--vc-text-2)] disabled:opacity-40">
+            {tt(handingOff ? "正在交接…" : "在时间线里精修")}
           </button>
-          {rendering && commandState.cancelable && (
-            <button
-              type="button"
-              onClick={() => cancelActiveCommand()}
-              className="rounded-lg border border-[var(--vc-danger-border)] px-3 py-2 text-[10px] font-semibold text-[var(--vc-danger)]"
-            >
-              Cancel render
-            </button>
-          )}
+          {rendering && commandState?.cancelable && <button type="button" onClick={() => cancelActiveCommand()}
+            className="rounded-lg border border-[var(--vc-danger-border)] px-3 py-2 text-[10px] text-[var(--vc-danger)]">{tt("取消渲染")}</button>}
         </div>
       </div>
-      {rendering && (
-        <div
-          role="status"
-          aria-label="Final Render progress"
-          className="rounded-xl border border-[var(--vc-accent-border)] bg-[var(--vc-accent-soft)] p-3 text-[10px] text-[var(--vc-text)]"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <span>
-              {commandState.phase || "validating"} ·{" "}
-              {Math.round((commandState.progress || 0) * 100)}%
-            </span>
-            <span className="font-mono text-[8px] text-[var(--vc-accent-text)]">
-              {commandState.externalRunId || "admitting durable job"}
-            </span>
-          </div>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[var(--vc-surface-2)]">
-            <div
-              className="h-full rounded-full bg-[var(--vc-accent)] transition-[width]"
-              style={{
-                width: `${Math.max(
-                  0,
-                  Math.min(100, (commandState.progress || 0) * 100),
-                )}%`,
-              }}
-            />
-          </div>
-          {commandState.message && (
-            <p className="mt-2 text-[var(--vc-accent-text)]">{commandState.message}</p>
-          )}
+      <div className="flex flex-wrap gap-3 rounded-xl border border-[var(--vc-border)] p-3">
+        {(["width", "height", "fps"] as const).map((field) => <label key={field} className="text-[10px] text-[var(--vc-text-2)]">
+          {tt(field === "width" ? "宽度" : field === "height" ? "高度" : "帧率")}
+          <input type="number" key={`${delivery?.nodeId}:${composition?.document[field]}`} min={field === "fps" ? 1 : 16} max={field === "fps" ? 60 : 3840}
+            defaultValue={composition?.document[field] || (field === "width" ? 1920 : field === "height" ? 1080 : 30)}
+            onBlur={(event) => configure(delivery?.nodeId || "", field, Number(event.currentTarget.value))}
+            className="ml-2 w-20 rounded border border-[var(--vc-border)] bg-[var(--vc-surface)] p-1" />
+        </label>)}
+        <label className="text-[10px] text-[var(--vc-text-2)]">{tt("比例")}
+          <select aria-label={tt("比例")} defaultValue={String((delivery as typeof delivery & { params?: Record<string, unknown> })?.params?.ratio || delivery?.ratio || "16:9")}
+            onChange={(event) => configure(delivery?.nodeId || "", "ratio", event.currentTarget.value)}
+            className="ml-2 rounded border border-[var(--vc-border)] bg-[var(--vc-surface)] p-1">
+            <option value="16:9">16:9</option><option value="9:16">9:16</option><option value="1:1">1:1</option>
+          </select>
+        </label>
+      </div>
+      {nodes.filter((node) => node.kind === "audio" || node.kind === "subtitle").map((node) => {
+        const params = (node as typeof node & { params?: Record<string, unknown> }).params || {};
+        return <div key={node.nodeId} className="flex flex-wrap gap-3 rounded-xl border border-[var(--vc-border)] p-3 text-[10px] text-[var(--vc-text-2)]">
+          <span>{node.title}</span>
+          {(node.kind === "audio" ? ["startMs", "durationMs", "volume"] : ["startMs", "durationMs"]).map((field) => <label key={field}>
+            {tt(field === "startMs" ? "起点（毫秒）" : field === "durationMs" ? "时长（毫秒）" : "音量")}
+            <input type="number" min={0} step={field === "volume" ? 0.1 : 100} max={field === "volume" ? 2 : 1800000}
+              defaultValue={Number(params[field] ?? (field === "volume" ? 1 : field === "startMs" ? 0 : (node.durationSeconds || 3) * 1000))}
+              onBlur={(event) => configure(node.nodeId, field, Number(event.currentTarget.value))}
+              className="ml-2 w-24 rounded border border-[var(--vc-border)] bg-[var(--vc-surface)] p-1" />
+          </label>)}
+        </div>;
+      })}
+      <p className="text-[10px] text-[var(--vc-text-3)]">{tt("渲染期间若网关重启，未完成的渲染会取消并退款；已交付的成片保留在我的库。")}</p>
+      {handoff && <button type="button" onClick={() => openCanvasLibraryItem(handoff)}
+        className="text-xs text-[var(--vc-accent-text)] underline">{tt("打开时间线工程")}</button>}
+      {commandState && (rendering || handingOff || commandState.commandId.startsWith("canvas.timeline.")) &&
+        <p role="status" className="text-xs text-[var(--vc-text-2)]">{tt(commandState.message || (rendering ? "正在生成成片…" : "正在交接…"))}</p>}
+      {finalAsset?.url && <article className="grid gap-4 rounded-2xl border border-[var(--vc-accent-border)] bg-[var(--vc-surface)] p-4 lg:grid-cols-2">
+        <video src={finalAsset.url} controls preload="metadata" className="w-full rounded-xl bg-[var(--vc-letterbox)] object-contain" />
+        <div className="space-y-3">
+          <p className="text-xs font-semibold text-[var(--vc-text)]">{tt("已交付成片")}</p>
+          <p className="text-[10px] text-[var(--vc-text-3)]">{tt("成片已保存到我的库，来源镜头和工程版本已记录。")}</p>
+          {finalAsset.libraryItem && <button type="button" onClick={() => openCanvasLibraryItem(finalAsset.libraryItem!)}
+            className="text-xs text-[var(--vc-accent-text)] underline">{tt("在我的库打开")}</button>}
         </div>
-      )}
-      {latestReceipt && finalAsset?.url && (
-        <article className="grid gap-4 rounded-2xl border border-[var(--vc-accent-border)] bg-[var(--vc-surface)] p-4 lg:grid-cols-[minmax(0,36rem)_1fr]">
-          <video
-            src={finalAsset.url}
-            controls
-            preload="metadata"
-            className="aspect-video w-full rounded-xl bg-[var(--vc-letterbox)] object-contain"
-          />
-          <div className="min-w-0">
-            <p className="text-xs font-semibold text-[var(--vc-text)]">
-              Latest immutable Final Render
-            </p>
-            <p className="mt-2 break-all font-mono text-[8px] text-[var(--vc-text-3)]">
-              Receipt {latestReceipt.receiptId}
-            </p>
-            <dl className="mt-3 grid gap-2 text-[9px]">
-              <div className="rounded-lg bg-[var(--vc-surface-2)] p-2">
-                <dt className="text-[var(--vc-text-3)]">Provider / model</dt>
-                <dd className="mt-1 text-[var(--vc-text-2)]">
-                  {latestReceipt.provider} · {latestReceipt.model}
-                </dd>
-              </div>
-              <div className="rounded-lg bg-[var(--vc-surface-2)] p-2">
-                <dt className="text-[var(--vc-text-3)]">{tt("价格")}</dt>
-                <dd className="mt-1 text-[var(--vc-text-2)]">
-                  {latestReceipt.pricing.label}
-                </dd>
-              </div>
-              <div className="rounded-lg bg-[var(--vc-surface-2)] p-2">
-                <dt className="text-[var(--vc-text-3)]">Lineage</dt>
-                <dd className="mt-1 text-[var(--vc-text-2)]">
-                  {latestReceipt.inputAssetIds.length} input Assets →{" "}
-                  {latestReceipt.outputAssetIds.length} output Asset
-                </dd>
-              </div>
-            </dl>
-          </div>
-        </article>
-      )}
-      {clips.length ? (
-        <div className="overflow-x-auto rounded-2xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-5">
-          <div className="flex min-w-max items-stretch gap-2">
-            {clips.map((clip) => {
-              const asset = project.assets[clip.assetId];
-              return (
-                <article
-                  key={clip.clipId}
-                  data-timeline-clip-id={clip.clipId}
-                  className="w-64 overflow-hidden rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface-2)]"
-                >
-                  {asset?.url ? (
-                    <video
-                      src={asset.url}
-                      poster={asset.previewUrl}
-                      preload="metadata"
-                      controls
-                      className="aspect-video w-full bg-[var(--vc-letterbox)] object-cover"
-                    />
-                  ) : (
-                    <div className="grid aspect-video place-items-center text-[10px] text-[var(--vc-text-3)]">
-                      Missing clip Asset
-                    </div>
-                  )}
-                  <div className="p-3 text-[9px] text-[var(--vc-text-2)]">
-                    <p className="truncate font-semibold text-[var(--vc-text-2)]">
-                      {asset?.title || clip.clipId}
-                    </p>
-                    <p className="mt-1">
-                      {clip.startSeconds.toFixed(1)}s →{" "}
-                      {(clip.startSeconds + clip.durationSeconds).toFixed(1)}s
-                    </p>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </div>
-      ) : (
-        <EmptyState
-          title="No Timeline clips"
-          detail="Review and approve candidate Takes, then build the Timeline. This surface never fabricates preview clips."
-        />
-      )}
+      </article>}
+      {composition ? composition.document.tracks.map((track) => <section key={track.id}
+        className="space-y-2 rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-3">
+        <h3 className="text-xs text-[var(--vc-text)]">{tt(track.kind === "video" ? "视频轨" : track.kind === "audio" ? "音轨" : "字幕轨")}</h3>
+        {track.clips.map((clip) => <div key={clip.id} className="rounded-lg bg-[var(--vc-surface-2)] p-2 text-[10px] text-[var(--vc-text-2)]">
+          {clip.label || clip.text} · {(clip.start_ms / 1000).toFixed(1)}–{((clip.start_ms + clip.duration_ms) / 1000).toFixed(1)} s
+          {clip.text && <p>{clip.text}</p>}
+        </div>)}
+      </section>) : <EmptyState title={tt("还没有可合成的镜头")} detail={`${tt(compositionError)} ${tt("先在分镜中批准视频候选，再生成成片或交接到时间线。回到画布可调整字幕、音轨和成片规格。")}`} />}
     </div>
   );
 }

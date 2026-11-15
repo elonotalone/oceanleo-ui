@@ -4,6 +4,7 @@ import { PW_VM_MESSAGES } from "./pw-vm-copy";
 
 import { PW_U1_MESSAGES } from "./pw-u1-copy";
 import { PW_UD_MESSAGES } from "./pw-ud-copy";
+import { PW_VB_MESSAGES } from "./pw-vb-copy";
 import { LOCALES, type Locale } from "../../config";
 import { PW_U4_MESSAGES } from "./pw-u4-copy";
 import { PW_VA_MESSAGES } from "./pw-va-copy";
@@ -120,6 +121,7 @@ const PARTS = [
   PW_U4_MESSAGES,
   PW_VM_MESSAGES,
   PW_VA_MESSAGES,
+  PW_VB_MESSAGES,
   SHELL_OVERHAUL_DOCK_MESSAGES,
   SHELL_OVERHAUL_DEVICES_MESSAGES,
   SHELL_OVERHAUL_SETTINGS_MESSAGES,

@@ -2,6 +2,9 @@
 
 import { parseVideoProjectDoc } from "../../workflow-carrier/video-project-doc";
 import type { Edge, Node, Viewport, XYPosition } from "@xyflow/react";
+import { normalizeTimelineDoc, timelineDocIssue } from "../../video-editor/timeline-model";
+import type { TimelineDoc, TimelineClip } from "../../video-editor/types";
+import { serializeVideoProjectEnvelope, type CanvasTimelineSource } from "../../video-editor/video-timeline-source";
 
 export const VIDEO_PROJECT_SCHEMA = "oceanleo.video.project.v2" as const;
 export const VIDEO_PROJECT_VERSION = 2 as const;
@@ -80,6 +83,7 @@ export interface ProjectAsset {
   sourceDependency?: VideoCanvasSourceDependency;
   provider?: AssetProviderMetadata;
   createdAt: string;
+  libraryItem?: { artifactId: string; revisionId: string };
   /** Original workflow-carrier metadata is retained verbatim during v1 migration. */
   legacySourceAsset?: Record<string, unknown>;
 }
@@ -214,27 +218,7 @@ export interface ClipDefinition {
   durationSeconds: number;
 }
 
-export interface ProjectTimelineDocument {
-  width: number;
-  height: number;
-  fps: number;
-  tracks: Array<{
-    id: string;
-    kind: "video";
-    clips: Array<{
-      id: string;
-      start_ms: number;
-      duration_ms: number;
-      source_url: string;
-      source_duration_ms: number;
-      in_ms: number;
-      speed: number;
-      volume: number;
-      muted: boolean;
-      fit: "cover";
-    }>;
-  }>;
-}
+export type ProjectTimelineDocument = TimelineDoc;
 
 export interface CameraDefinition {
   cameraId: string;
@@ -355,6 +339,11 @@ export interface VideoProject {
   operationReceipts: Record<string, CanvasOperationReceipt>;
   durable?: DurableVideoProjectState;
   artifactRevisionReceipt?: ArtifactRevisionReceipt;
+  timelineHandoff?: {
+    artifactId: string;
+    revisionId: string;
+    projectVersionId: string;
+  };
   migration?: {
     sourceSchema: string;
     sourceDigest: string;
@@ -1175,70 +1164,154 @@ export function attachGeneratedAsset(
   return { project: attached.project, asset: attached.assets[0] };
 }
 
-export function projectTimelineDocument(
-  project: VideoProject,
-): {
+/** Scene order, then each scene's storyboard shot order; orphan shots keep their order. */
+function approvedTimelineTakes(version: ProjectVersion) {
+  const ordered = [...new Set([
+    ...version.scenes.flatMap((scene) => scene.shotIds),
+    ...version.shots.map((shot) => shot.shotId),
+  ])];
+  return ordered.flatMap((shotId) => {
+    const shot = version.shots.find((item) => item.shotId === shotId);
+    const take = shot && version.takes.find((item) =>
+      item.takeId === shot.approvedTakeId && item.shotId === shotId && item.status === "approved");
+    return shot && take ? [{ shot, take }] : [];
+  });
+}
+
+function composeNodeParams(node: CanvasNodeDefinition): Record<string, unknown> {
+  const raw = node as CanvasNodeDefinition & { params?: Record<string, unknown> };
+  return { ...raw.legacySourceNode, ...raw, ...raw.params };
+}
+
+function composeNumber(value: unknown, fallback: number, min = 0, max = Infinity): number {
+  const number = typeof value === "number" ? value : Number.NaN;
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+/** The one cut used by both FFmpeg export and the full timeline editor. */
+export function projectTimelineDocument(project: VideoProject): {
   timelineId: string;
   document: ProjectTimelineDocument;
+  projectDocument: string;
+  canvasSource: CanvasTimelineSource;
   inputAssetIds: string[];
 } {
   const version = head(project);
-  const timeline = version.timelines[0];
-  if (!timeline) throw new Error("Final Render requires a Project Timeline.");
-  const clips = timeline.clipIds.map((clipId) => {
-    const clip = version.clips.find((candidate) => candidate.clipId === clipId);
-    if (!clip) {
-      throw new Error(`Timeline clip is missing: ${clipId}`);
-    }
-    const asset = project.assets[clip.assetId];
-    if (!asset || asset.kind !== "video" || !asset.url) {
-      throw new Error(
-        `Timeline clip ${clip.clipId} requires an immutable Video Asset URL.`,
-      );
-    }
-    return {
-      clip,
-      asset,
+  const timeline = version.timelines[0] || { timelineId: `canvas_${project.projectId}`, title: project.title, clipIds: [] };
+  const approved = approvedTimelineTakes(version);
+  if (!approved.length) throw new Error("请先在分镜中批准视频候选。");
+  const inputAssetIds = new Set<string>();
+  const shotStarts = new Map<string, { start: number; duration: number }>();
+  let cursor = 0;
+  const videoClips: TimelineClip[] = approved.map(({ shot, take }) => {
+    const asset = project.assets[take.assetId];
+    if (asset?.kind !== "video" || (!asset.url && !asset.sourceDependency)) throw new Error("已批准的镜头缺少可用视频，请重新选择候选。");
+    const duration = Math.round(composeNumber(asset.durationSeconds, shot.intendedDurationSeconds, 0.1) * 1000);
+    const clip: TimelineClip = {
+      id: `clip_${take.takeId}`, start_ms: cursor, duration_ms: duration,
+      ...(asset.sourceDependency ? { source_ref: { artifactId: asset.sourceDependency.artifactId,
+        revisionId: asset.sourceDependency.revisionId, path: asset.sourceDependency.path } } : { source_url: asset.url }), source_duration_ms: duration, in_ms: 0,
+      speed: 1, volume: 1, muted: false, fit: "cover", label: shot.title,
     };
+    shotStarts.set(shot.shotId, { start: cursor, duration });
+    inputAssetIds.add(asset.assetId);
+    cursor += duration;
+    return clip;
   });
-  if (!clips.length) {
-    throw new Error("Final Render requires at least one Timeline clip.");
+  const delivery = version.graph.nodes.find((node) => node.kind === "delivery");
+  const output = delivery ? composeNodeParams(delivery) : {};
+  const ratio = String(output.aspectRatio || output.ratio || "16:9");
+  const preset = ratio === "9:16" ? [1080, 1920] : ratio === "1:1" ? [1080, 1080] : [1920, 1080];
+  let width = Math.round(composeNumber(output.width, preset[0], 16, 3840));
+  let height = Math.round(composeNumber(output.height, preset[1], 16, 3840));
+  if (typeof output.width === "number" && typeof output.height !== "number") {
+    height = Math.round(composeNumber(width * preset[1] / preset[0], preset[1], 16, 3840));
+  } else if (typeof output.height === "number" && typeof output.width !== "number") {
+    width = Math.round(composeNumber(height * preset[0] / preset[1], preset[0], 16, 3840));
   }
-  return {
-    timelineId: timeline.timelineId,
-    inputAssetIds: clips.map(({ asset }) => asset.assetId),
-    document: {
-      width: 1920,
-      height: 1080,
-      fps: 30,
-      tracks: [
-        {
-          id: `track_${timeline.timelineId}`,
-          kind: "video",
-          clips: clips.map(({ clip, asset }) => ({
-            id: clip.clipId,
-            start_ms: Math.round(clip.startSeconds * 1_000),
-            duration_ms: Math.max(
-              1,
-              Math.round(clip.durationSeconds * 1_000),
-            ),
-            source_url: asset.url!,
-            source_duration_ms: Math.max(
-              1,
-              Math.round(
-                (asset.durationSeconds || clip.durationSeconds) * 1_000,
-              ),
-            ),
-            in_ms: 0,
-            speed: 1,
-            volume: 1,
-            muted: false,
-            fit: "cover",
-          })),
-        },
-      ],
-    },
+  const document: TimelineDoc = {
+    width, height, fps: Math.round(composeNumber(output.fps, 30, 1, 60)),
+    tracks: [{ id: `track_${timeline.timelineId}`, kind: "video", clips: videoClips }],
   };
+  const subtitles: TimelineClip[] = [];
+  for (const node of version.graph.nodes) {
+    if (node.kind !== "audio" && node.kind !== "subtitle") continue;
+    const params = composeNodeParams(node);
+    const shot = node.shotId ? shotStarts.get(node.shotId) : undefined;
+    // An audio/subtitle attached to an unapproved shot must not leak into the cut.
+    if (node.shotId && !shot) continue;
+    const offset = composeNumber(params.startMs, composeNumber(params.startSeconds, 0) * 1000);
+    const start = Math.round((shot?.start || 0) + offset);
+    if (start >= cursor) continue;
+    const asset = node.assetId ? project.assets[node.assetId] : undefined;
+    const duration = Math.min(cursor - start, Math.round(composeNumber(params.durationMs,
+      composeNumber(params.durationSeconds, asset?.durationSeconds || (shot ? shot.duration / 1000 : (cursor - start) / 1000), 0.1) * 1000, 100)));
+    const clip: TimelineClip = { id: `clip_${node.nodeId}`, start_ms: start, duration_ms: duration, label: node.title };
+    if (node.kind === "subtitle") {
+      const text = String(params.text || asset?.inlineText || "").trim();
+      if (!text) continue;
+      subtitles.push({ ...clip, text, style: { font_size: 48, color: "#ffffff", x: 0.5, y: 0.85, align: "center" } });
+      if (asset) inputAssetIds.add(asset.assetId);
+    } else {
+      if (asset?.kind !== "audio" || (!asset.url && !asset.sourceDependency)) throw new Error("音轨缺少可用音频，请重新选择素材。");
+      inputAssetIds.add(asset.assetId);
+      document.tracks.push({ id: `track_${node.nodeId}`, kind: "audio", clips: [{ ...clip,
+        ...(asset.sourceDependency ? { source_ref: { artifactId: asset.sourceDependency.artifactId,
+          revisionId: asset.sourceDependency.revisionId, path: asset.sourceDependency.path } } : { source_url: asset.url }), in_ms: Math.round(composeNumber(params.inMs, 0)),
+        ...(asset.durationSeconds ? { source_duration_ms: Math.round(asset.durationSeconds * 1000) } : {}),
+        volume: composeNumber(params.volume, 1, 0, 2), muted: params.muted === true, speed: 1,
+      }] });
+    }
+  }
+  if (subtitles.length) document.tracks.push({ id: `subtitles_${timeline.timelineId}`, kind: "text", clips: subtitles });
+  const receipt = project.artifactRevisionReceipt;
+  const canvasSource: CanvasTimelineSource = {
+    projectId: project.projectId, projectVersionId: project.headVersionId,
+    ...(receipt ? { artifactId: receipt.artifactId, revisionId: receipt.revisionId } : {}),
+    shots: approved.map(({ shot, take }) => ({ shotId: shot.shotId, takeId: take.takeId, assetId: take.assetId })),
+    inputAssetIds: [...inputAssetIds],
+  };
+  if (document.tracks.length > 32 || document.tracks.reduce((count, track) => count + track.clips.length, 0) > 120) {
+    throw new Error("成片的片段或音轨太多，请减少后重试。");
+  }
+  const normalized = normalizeTimelineDoc(document);
+  const issue = timelineDocIssue(normalized);
+  if (issue) throw new Error(issue);
+  return { timelineId: timeline.timelineId, document: normalized, canvasSource,
+    inputAssetIds: [...inputAssetIds], projectDocument: serializeVideoProjectEnvelope(normalized, canvasSource) };
+}
+
+export function configureTimelineNode(project: VideoProject, nodeId: string, field: string, value: unknown): VideoProject {
+  let next = project;
+  let node = head(project).graph.nodes.find((item) => item.nodeId === nodeId);
+  if (!node && !nodeId) {
+    const created = addProjectNode(project, "delivery", { x: 960, y: 120 });
+    next = created.project;
+    node = head(next).graph.nodes.find((item) => item.nodeId === created.nodeId);
+  }
+  const fields = node?.kind === "delivery" ? ["width", "height", "fps", "ratio"]
+    : node?.kind === "audio" ? ["startMs", "durationMs", "volume"]
+    : node?.kind === "subtitle" ? ["startMs", "durationMs"] : [];
+  if (!node || !fields.includes(field)) throw new Error("无法修改这个合成参数。");
+  if (field === "ratio") {
+    if (!["16:9", "9:16", "1:1"].includes(String(value))) throw new Error("无法修改这个合成参数。");
+  } else if (typeof value !== "number" || !Number.isFinite(value)
+      || value < (field === "width" || field === "height" ? 16 : field === "fps" ? 1 : field === "durationMs" ? 100 : 0)
+      || value > (field === "width" || field === "height" ? 3840 : field === "fps" ? 60 : field === "volume" ? 2 : 1800000)) {
+    throw new Error("无法修改这个合成参数。");
+  }
+  const raw = node as CanvasNodeDefinition & { params?: Record<string, unknown> };
+  const params = { ...(raw.params || {}), [field]: value };
+  // Ratio changes select its matching size; explicit dimensions may then override it.
+  if (field === "ratio") { delete params.width; delete params.height; delete params.aspectRatio; }
+  return advanceProject(next, "canvas.timeline.configure", (version) => {
+    const target = version.graph.nodes.find((item) => item.nodeId === node!.nodeId)!;
+    Object.assign(target, { params });
+  });
+}
+
+export function recordTimelineHandoff(project: VideoProject, item: { artifactId: string; revisionId: string }, projectVersionId: string): VideoProject {
+  return { ...project, timelineHandoff: { ...item, projectVersionId } };
 }
 
 export function attachFinalRenderAsset(
@@ -1575,22 +1648,8 @@ export function buildTimelineFromApprovedTakes(
   project: VideoProject,
 ): { project: VideoProject; clipIds: string[] } {
   const current = head(project);
-  const timeline = current.timelines[0];
-  if (!timeline) throw new Error("The Project has no Timeline.");
-  const approved = current.shots
-    .map((shot) => ({
-      shot,
-      take: current.takes.find(
-        (take) =>
-          take.takeId === shot.approvedTakeId && take.status === "approved",
-      ),
-    }))
-    .filter(
-      (entry): entry is {
-        shot: ShotDefinition;
-        take: TakeDefinition;
-      } => Boolean(entry.take),
-    );
+  const timeline = current.timelines[0] || { timelineId: `canvas_${project.projectId}`, title: project.title, clipIds: [] };
+  const approved = approvedTimelineTakes(current);
   if (approved.length === 0) {
     throw new Error("Approve at least one Take before building the Timeline.");
   }
@@ -1624,6 +1683,7 @@ export function buildTimelineFromApprovedTakes(
       (candidate) => candidate.timelineId === timeline.timelineId,
     );
     if (target) target.clipIds = clipIds;
+    else version.timelines.push({ ...timeline, clipIds });
   });
   return { project: next, clipIds };
 }

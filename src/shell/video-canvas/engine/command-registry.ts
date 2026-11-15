@@ -9,11 +9,11 @@ import {
   getDurableVideoRun,
   generateScript,
   generateText,
-  renderCanvasTimeline,
   type CanvasAdapterCancellation,
   type CanvasImageProviderOperation,
   type CanvasProviderProgress,
 } from "./canvas-gateway";
+import { renderComposedCanvas, handoffCanvasTimeline } from "./canvas-delivery-client";
 import {
   refreshDurableVideoRun,
   reconcileDurableVideoRun,
@@ -47,6 +47,8 @@ import {
   operationReceiptForRequest,
   projectHead,
   projectTimelineDocument,
+  recordTimelineHandoff,
+  configureTimelineNode,
   recordCanvasOperationReceipt,
   registerAsset,
   removeProjectNode,
@@ -1664,10 +1666,10 @@ const definitions: CanvasCommandDefinition[] = [
       const current = projectHead(environment.getProject());
       const timeline = current.timelines[0];
       return {
-        provider: "OceanLeo durable timeline renderer",
+        provider: "OceanLeo timeline renderer",
         model: "oceanleo-convert · FFmpeg",
         input: `${timeline?.title || "Main timeline"} · ${
-          timeline?.clipIds.length || 0
+          current.shots.filter((shot) => current.takes.some((take) => take.takeId === shot.approvedTakeId && take.status === "approved")).length
         } immutable clips · Project ${environment.getProject().headVersionId}`,
         cost:
           "Metered video compose; charge, settlement, and output are pinned to the idempotent render job",
@@ -1693,10 +1695,11 @@ const definitions: CanvasCommandDefinition[] = [
     handler: async (environment, _args, request) => {
       const sourceProject = environment.getProject();
       const timeline = projectTimelineDocument(sourceProject);
-      const receipt = await renderCanvasTimeline({
+      const receipt = await renderComposedCanvas({
         requestId: request.requestId,
         title: `${sourceProject.title} · Final Render`,
         timeline: timeline.document,
+        canvasSource: timeline.canvasSource,
         signal: environment.getCommandSignal?.(request.requestId),
         onProgress: (progress) =>
           environment.reportCommandProgress?.(request.requestId, progress),
@@ -1709,6 +1712,7 @@ const definitions: CanvasCommandDefinition[] = [
           title: `${sourceProject.title} · Final Render`,
           url: receipt.url,
           mime: receipt.mimeType,
+          libraryItem: receipt.libraryItem,
           provider: {
             receiptId: receipt.receiptId,
             provider: receipt.provider,
@@ -1726,7 +1730,7 @@ const definitions: CanvasCommandDefinition[] = [
         requestId: request.requestId,
         requestFingerprint: commandRequestFingerprint(request),
         commandId: "canvas.timeline.final-render",
-        projectVersionId: attached.project.headVersionId,
+        projectVersionId: sourceProject.headVersionId,
         status: "succeeded",
         provider: receipt.provider,
         model: receipt.model,
@@ -1740,7 +1744,7 @@ const definitions: CanvasCommandDefinition[] = [
       environment.setWorkspaceView("timeline");
       return {
         message:
-          "Final Render completed through the durable timeline backend; output lineage and the idempotent job receipt were recorded.",
+          "成片已保存到我的库，来源镜头和工程版本已记录。",
         project,
         selectedNodeId: attached.nodeId,
         assetIds: [attached.asset.assetId],
@@ -1754,6 +1758,36 @@ const definitions: CanvasCommandDefinition[] = [
           message: "Final Render complete.",
         },
       };
+    },
+  },
+  {
+    commandId: "canvas.timeline.configure",
+    scope: "project", surfaces: ["toolbar", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.timeline.configure.v1", mutates: "project", label: "合成参数",
+    handler: (environment, args) => ({ message: "合成参数已更新。", cost: NO_COST,
+      project: configureTimelineNode(environment.getProject(), String(args.nodeId || ""), String(args.field || ""), args.value) }),
+  },
+  {
+    commandId: "canvas.timeline.handoff",
+    scope: "project",
+    surfaces: ["toolbar", "compact", "protocol"],
+    execution: "server",
+    billing: "none",
+    inputSchema: "oceanleo.timeline.v1",
+    mutates: "project",
+    label: "在时间线里精修",
+    availability: (environment) => {
+      try { projectTimelineDocument(environment.getProject()); return { enabled: true }; }
+      catch (error) { return { enabled: false, reason: error instanceof Error ? error.message : "请先在分镜中批准视频候选。" }; }
+    },
+    handler: async (environment, _args, request) => {
+      const source = environment.getProject();
+      const composed = projectTimelineDocument(source);
+      const item = await handoffCanvasTimeline({ projectDocument: composed.projectDocument,
+        title: source.title, previous: source.timelineHandoff,
+        signal: environment.getCommandSignal?.(request.requestId) });
+      return { message: "时间线已保存到我的库，可继续精修。",
+        project: recordTimelineHandoff(environment.getProject(), item, source.headVersionId), cost: NO_COST };
     },
   },
   ...(
@@ -2233,10 +2267,14 @@ export async function executeCanvasCommand(
   if (generating && node && request.commandId !== "canvas.chain.run") environment.reportNodeProgress?.(node.nodeId, "running", "正在运行…");
   try {
     const outcome = await definition.handler(environment, args, request);
-    if (
+    // Delivery operates on its captured cut and attaches the resulting Library
+    // identity to the latest canvas. Changing selection or editing while it
+    // renders must not discard an already-published film or timeline link.
+    const isDelivery = request.commandId === "canvas.timeline.final-render" || request.commandId === "canvas.timeline.handoff";
+    if (!isDelivery && (
       environment.getProject().headVersionId !== (outcome.appliedHeadVersionId || request.projectVersionId) ||
       environment.getSelectionEpoch() !== request.selectionEpoch
-    ) {
+    )) {
       return failedResult(
         request,
         environment,
