@@ -103,11 +103,23 @@ test("office saves never publish an editor-manifest-only payload", () => {
       editorManifest: MANIFEST,
     });
     assert.equal(withDelivery.ok, true, artifactType);
-    assert.deepEqual(purposes(withDelivery), ["full", "editor_manifest"]);
+    assert.deepEqual(purposes(withDelivery), artifactType === "deck" ? ["full"] : ["full", "editor_manifest"]);
     assert.equal(withDelivery.displayablePrimary, "delivery");
     // Matrix §3.2: the office bytes are an accepted native cover, but they do
     // not pass the read-side has_displayable_primary_cover() shelf check.
     assert.equal(withDelivery.nativeCover, true, artifactType);
+  }
+});
+
+test("native Deck publishes PPTX and cover without an editor manifest; document/grid still require one", () => {
+  const plan = planArtifactSaveRenditions("deck", { delivery: DELIVERY, previewBitmap: BITMAP });
+  assert.equal(plan.ok, true);
+  assert.deepEqual(purposes(plan), ["preview", "full"]);
+  assert.equal(planArtifactSaveRenditions("deck", { previewBitmap: BITMAP }).ok, false);
+  for (const type of ["document", "grid"]) {
+    const missing = planArtifactSaveRenditions(type, { delivery: DELIVERY, previewBitmap: BITMAP });
+    assert.equal(missing.ok, false);
+    assert.deepEqual(missing.missing, ["editor_manifest"]);
   }
 });
 
@@ -119,7 +131,7 @@ test("a rendered cover becomes the displayable primary for the office three", ()
       previewBitmap: BITMAP,
     });
     assert.equal(plan.ok, true, artifactType);
-    assert.deepEqual(purposes(plan), ["preview", "full", "editor_manifest"]);
+    assert.deepEqual(purposes(plan), artifactType === "deck" ? ["preview", "full"] : ["preview", "full", "editor_manifest"]);
     assert.equal(plan.displayablePrimary, "bitmap");
     const byPurpose = Object.fromEntries(
       plan.renditions.map((entry) => [entry.purpose, entry.url]),
@@ -129,7 +141,7 @@ test("a rendered cover becomes the displayable primary for the office three", ()
     // bitmap would leave users unable to download their own document.
     assert.equal(byPurpose.preview, BITMAP.url, artifactType);
     assert.equal(byPurpose.full, DELIVERY.url, artifactType);
-    assert.equal(byPurpose.editor_manifest, MANIFEST.url, artifactType);
+    assert.equal(byPurpose.editor_manifest, artifactType === "deck" ? undefined : MANIFEST.url, artifactType);
     assert.equal(plan.nativeCover, false, artifactType);
   }
 });
@@ -926,8 +938,6 @@ test("a dropped contract rendition is refused at the verify step", async () => {
       kind: "deck",
       idempotencyKey: "deck:verify:r1",
       meta: {},
-      project: { schema: "pptx", data: {} },
-      editorManifest: { id: "deck-editor", format: "pptx" },
       artifactRevision: { artifactType: "deck" },
     },
     {
@@ -981,18 +991,6 @@ test("a dropped contract rendition is refused at the verify step", async () => {
                 mediaType:
                   "application/vnd.openxmlformats-officedocument.presentationml.presentation",
                 digest: `sha256:${commit.source.digest}`,
-              },
-              editor_manifest: {
-                purpose: "editor_manifest",
-                revisionId: "r2",
-                url: "https://signed.test/deck-r2.json",
-                format: "pptx",
-                mediaType: "application/json",
-                digest: `sha256:${
-                  commit.renditions.find(
-                    (entry) => entry.purpose === "editor_manifest",
-                  ).digest
-                }`,
               },
             },
           },

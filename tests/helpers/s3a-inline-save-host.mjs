@@ -3,6 +3,8 @@ import {pathToFileURL} from "node:url";
 import {compileModule,dataModule} from "./module-bench.mjs";
 const require=createRequire(import.meta.url);
 const react=pathToFileURL(require.resolve("react")).href;
+export const tabContextUrl=dataModule(`import {createContext} from ${JSON.stringify(react)};export const TabContext=createContext(null);`);
+export const {TabContext}=await import(tabContextUrl);
 const jsx=`import {jsx,jsxs} from ${JSON.stringify(pathToFileURL(require.resolve("react/jsx-runtime")).href)};`;
 const noop = (name) => dataModule(`export function ${name}(){return null;}`);
 const stubs = {
@@ -29,6 +31,6 @@ const stubs = {
 export async function inlineSaveHost(hookUrl, authStubs, sharedPath) {
   return compileModule(sharedPath("src/shell/InlineAdvancedWorkbenchShell.tsx"), {
     ...stubs, ...authStubs,
-    "./use-advanced-autosave": dataModule(`import {useAdvancedAutoSave as useSave} from ${JSON.stringify(hookUrl)};export function useAdvancedAutoSave(input){const save=useSave(input);globalThis.__s3a.save=save;return save;}`),
+    "./use-advanced-autosave": dataModule(`import {useContext} from ${JSON.stringify(react)};import {TabContext} from ${JSON.stringify(tabContextUrl)};import {useAdvancedAutoSave as useSave} from ${JSON.stringify(hookUrl)};export function useAdvancedAutoSave(input){const tab=useContext(TabContext);const useTabSave=tab?.useSave??useSave;const save=useTabSave(input);if(tab)tab.save=save;globalThis.__s3a.save=save;return save;}`),
   });
 }

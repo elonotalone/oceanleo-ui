@@ -316,9 +316,8 @@ const ARTIFACT_SAVE_CONTRACT: Readonly<
   },
   // ---- 矩阵 §3.2 的「允许原生 cover」五类 ----
   //
-  // `editor_manifest` 在后端是可选的，这里对办公三件套设成必需：这三个编辑器全都
-  // 靠工程 JSON 重开，少了它下一次打开就只剩一份不可编辑的二进制。这是客户端比
-  // 后端更严的一处，且不会误伤——三个编辑器每次保存都产出它。
+  // Document/Grid reopen their editor JSON. Deck reopens native PPTX, so its
+  // source/full delivery is complete; the backend rejects Deck editor manifests.
   document: {
     displayablePrimary: "native",
     fullSource: "delivery",
@@ -336,7 +335,7 @@ const ARTIFACT_SAVE_CONTRACT: Readonly<
   deck: {
     displayablePrimary: "native",
     fullSource: "delivery",
-    required: ["full", "editor_manifest"],
+    required: ["full"],
     requiredAnyOf: [],
     optional: ["preview"],
   },

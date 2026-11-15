@@ -8,9 +8,11 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import React, { act } from "react";
 import { PDFDocument } from "pdf-lib";
-import { Doc } from "yjs";
+import { Doc, applyUpdate } from "yjs";
+import { createHash } from "node:crypto";
+import { unzipSync } from "fflate";
 import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
-import { inlineSaveHost } from "./helpers/s3a-inline-save-host.mjs";
+import { inlineSaveHost, tabContextUrl, TabContext } from "./helpers/s3a-inline-save-host.mjs";
 import { createPdfViewerBridge } from "../src/shell/media-editors/pdf-viewer-bridge.ts";
 import { normalizeDeckDocument } from "../src/shell/doc-editors/deck-schema.ts";
 import { DECK_WORKING_COPY_SCHEMA } from "../src/shell/doc-editors/deck-working-copy.ts";
@@ -43,10 +45,11 @@ const inlineUrl = await inlineSaveHost(hookUrl, authStubs, sharedPath);
 const backgroundUrl = await compileModule(sharedPath("src/shell/advanced-background-saver.ts"), authStubs);
 const { resetBackgroundSaverForTests } = await import(backgroundUrl);
 const collabIndex = dataModule(`
-  import {useSyncExternalStore} from ${JSON.stringify(reactUrl)};
+  import {useContext,useSyncExternalStore} from ${JSON.stringify(reactUrl)};
+  import {TabContext} from ${JSON.stringify(tabContextUrl)};
   import {canSaveVersion,isCollabReadOnly} from ${JSON.stringify(realModule("src/shell/collab/provider.ts"))};
   export {bindJsonState} from ${JSON.stringify(realModule("src/shell/collab/bind-json-state.ts"))};
-  export function useCollabRoom(){return globalThis.__s3a.room??null;}
+  export function useCollabRoom(){return useContext(TabContext)?.room??globalThis.__s3a.room??null;}
   export function useCollabRoomVersion(room){return useSyncExternalStore(cb=>room?.subscribe(cb)??(()=>{}),()=>room?.version??0,()=>0);}
   export function useCollabReadOnly(room){useCollabRoomVersion(room);return isCollabReadOnly(room);}
   export function useCollabSaveGate(room){useCollabRoomVersion(room);return canSaveVersion(room);}
@@ -63,21 +66,21 @@ async function fromBaseline(path, overrides) {
 }
 const stubs = {
   "../../i18n/ui/useUI": dataModule('const tt=(s)=>s; export function useUI(){return tt;}'),
-  "../AdvancedWorkbenchShell": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {InlineAdvancedWorkbenchShell} from ${JSON.stringify(inlineUrl)};function Bench({adapter,item}) {const p=adapter.persistence;const save=useAdvancedAutoSave({item,editorId:adapter.id,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,session:null});globalThis.__s3a.save=save;return createElement("div",{"data-save-state":save.state},adapter.stage);}export function AdvancedWorkbenchShell(props){globalThis.__s3a.adapter=props.adapter;return createElement(globalThis.__s3a.inline?InlineAdvancedWorkbenchShell:Bench,props);}`),
+  "../AdvancedWorkbenchShell": dataModule(`import {createElement,useContext} from ${JSON.stringify(reactUrl)};import {TabContext} from ${JSON.stringify(tabContextUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {InlineAdvancedWorkbenchShell} from ${JSON.stringify(inlineUrl)};function Bench({adapter,item}) {const p=adapter.persistence;const save=useAdvancedAutoSave({item,editorId:adapter.id,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,session:null});globalThis.__s3a.save=save;return createElement("div",{"data-save-state":save.state},adapter.stage);}export function AdvancedWorkbenchShell(props){const tab=useContext(TabContext);if(tab)tab.adapter=props.adapter;globalThis.__s3a.adapter=props.adapter;return createElement(globalThis.__s3a.inline?InlineAdvancedWorkbenchShell:Bench,props);}`),
   "../advanced-session-context": dataModule('export function useAdvancedSession(){return null;}'),
   "../office-editor": dataModule('export function useOfficeArtifactSource(item){return {item, loading:false,error:"",resourceFailed(){},retry(){}};}'),
   "../collab/adapters/use-entity-collab": dataModule(`import {useEntityCollab as useReal} from ${JSON.stringify(entityCollabUrl)};export function useEntityCollab(options){globalThis.__s3a.remote=options.applyRemote;return useReal(options);}`),
   "../collab/adapters/visual-selection": dataModule('export function useCollabSelections(){return [];}'),
   "../plugin-command": dataModule('export function usePluginCommandSurface(){}'),
   "../doc-editors/use-deck-material-adapter": empty("useDeckMaterialAdapter"),
-  "../doc-editors/DeckStage": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)}; export function DeckStage({editor}) {globalThis.__s3a.deck=editor;return createElement("button",{"data-edit":"deck",onClick:()=>editor.setTitle("Edited slides")},"Edit slides");}`),
+  "../doc-editors/DeckStage": dataModule(`import {createElement,useContext} from ${JSON.stringify(reactUrl)};import {TabContext} from ${JSON.stringify(tabContextUrl)}; export function DeckStage({editor}) {const tab=useContext(TabContext);if(tab)tab.editor=editor;globalThis.__s3a.deck=editor;return createElement("button",{"data-edit":"deck",onClick:()=>editor.setTitle("Edited slides")},"Edit slides");}`),
   "../doc-editors/DeckContextToolbar": empty("DeckContextToolbar"),
   "../doc-editors/DeckCreationPanels": empty("DeckDrawPanel", "DeckLinePanel", "DeckNotesPanel"),
   "../doc-editors/DeckControls": empty("DeckDesignPanel", "DeckElementsPanel", "DeckTextPanel"),
   "../doc-editors/DeckPresenterView": empty("DeckPresenterView", "openDeckPresenterWindow"),
   "./office-file": dataModule('export async function fetchValidatedOfficePackage(){return {arrayBuffer:new ArrayBuffer(4)};} export function notifyOfficeAccessDenied(){} export async function validateOfficePackageBlob(){return new ArrayBuffer(4);}'),
   "./pptx-deck-import": dataModule(`import {normalizeDeckDocument} from ${JSON.stringify(realModule("src/shell/doc-editors/deck-schema.ts"))}; export async function importPptxDeck(){if(globalThis.__s3a.fixtureDeck)return globalThis.__s3a.fixtureDeck;return normalizeDeckDocument({title:"Opened slides",slides:[{id:"slide",elements:[{id:"text",type:"text",text:"Hello"},{id:"picture",type:"image",src:"https://example.invalid/media.png"}]}]});}`),
-  "./doc-io": dataModule(`export * from ${JSON.stringify(realModule("src/shell/doc-editors/doc-io.ts"))}; export async function saveFileToLibrary(input){return {ok:true,item:{...input.item,revisionId:"published"},url:"https://example.invalid/published.pptx",versionId:"published",revisionId:"published"};}`),
+  "./doc-io": dataModule(`export * from ${JSON.stringify(realModule("src/shell/doc-editors/doc-io.ts"))};import {saveFileToLibraryWithDependencies} from ${JSON.stringify(realModule("src/shell/doc-editors/doc-io.ts"))}; export async function saveFileToLibrary(input){if(globalThis.__s3a.publicationDeps)return saveFileToLibraryWithDependencies(input,globalThis.__s3a.publicationDeps);return {ok:true,item:{...input.item,revisionId:"published"},url:"https://example.invalid/published.pptx",versionId:"published",revisionId:"published"};}`),
   "./editor-preview-raster": dataModule('export async function renderDeckPreviewPng(doc){globalThis.__s3a.frozenDeck=structuredClone(doc);return new Blob(["preview"]);}'),
   "./editor-insert-media": dataModule('export async function uploadEditorMedia(blob,name){globalThis.__s3a.uploaded.push({blob,name});return "https://example.invalid/upload.png";} export async function durableEditorMediaUrl(url){if(!/^(data:|blob:)/.test(url))return url;globalThis.__s3a.uploaded.push(url);return "https://example.invalid/upload.png";}'),
   "../collab/adapters/use-pdf-collab": pdfCollabUrl,
@@ -132,13 +135,14 @@ const { DeckRoute } = await import(await compileModule("src/shell/advanced-route
 const { PdfRoute } = await import(await compileModule("src/shell/advanced-routes/PdfRoute.tsx", stubs));
 
 const item = (kind) => ({ key: `library:${kind}`, id: "initial", artifactId: `${kind}-root`, revisionId: "initial", title: kind, source: "library", kind, url: `https://example.invalid/source.${kind === "ppt" ? "pptx" : "pdf"}`, meta: {} });
-async function mount(Component, source) {
+async function mount(Component, source, tab=null) {
   const container = document.createElement("div"); document.body.append(container);
   const root = createRoot(container);
-  await act(async () => { root.render(React.createElement(Component, { item: source, onClose() {} })); });
-  for (let i = 0; i < 30 && !probe.adapter?.persistence?.recovery?.ready; i++) await tick();
+  const element=(source)=>React.createElement(TabContext.Provider,{value:tab},React.createElement(Component,{item:source,onClose(){}}));
+  await act(async () => { root.render(element(source)); });
+  for (let i = 0; i < 30 && !(tab?.adapter??probe.adapter)?.persistence?.recovery?.ready; i++) await tick();
   await tick();
-  return { container, async render(source) { await act(async () => root.render(React.createElement(Component, {item:source,onClose(){}}))); await tick(); }, async unmount() { await act(async () => root.unmount()); container.remove(); } };
+  return { container, async render(source) { await act(async () => root.render(element(source))); await tick(); }, async unmount() { await act(async () => root.unmount()); container.remove(); } };
 }
 async function tick() { await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); }); }
 async function noErrors(run) {
@@ -155,23 +159,26 @@ globalThis.fetch = async (url,init={}) => {
   const method=init.method||"GET";
   if(String(url).includes("editor-working-copies")) {
     if(method==="GET") {if(getDelay)await wait(getDelay);return new Response(copy?JSON.stringify(copy):"{}",{status:copy?200:404});}
-    if(method==="POST") return new Response("{}");
+    if(method==="POST") {probe.pointers.push(JSON.parse(init.body));return new Response("{}");}
     if(method==="PUT") {
       const at=performance.now();
       let text;
       if(typeof init.body==="string")text=init.body;
       else {const {gunzipSync}=await import("node:zlib");text=gunzipSync(new Uint8Array(init.body)).toString();}
       const body=JSON.parse(text);
-      puts.push({at,body});
+      const sender=init.headers.Authorization==="Bearer test-a"?"a":init.headers.Authorization==="Bearer test-b"?"b":"default";
+      puts.push({at,body,sender});
       if(probe.putDelay)await wait(probe.putDelay);
+      if(probe.cas&&body.if_seq!==(copy?.seq??null)){probe.collisions++;return new Response("{}",{status:409});}
       const seq=(copy?.seq||0)+1;
       copy={schema:body.schema,seq,published_seq:0,base_revision_id:body.base_revision_id,saved_at:new Date().toISOString(),doc:body.doc};
+      probe.acks.push({sender,seq,doc:body.doc});
       return new Response(JSON.stringify({ok:true,seq,saved_at:copy.saved_at,server_ms:0}));
     }
   }
   throw new Error("Unexpected network endpoint");
 };
-function reset(){resetBackgroundSaverForTests();copy=null;puts=[];getDelay=0;probe.putDelay=0;probe.exports=0;probe.buildCalls=0;probe.visualBarrier=null;}
+function reset(){resetBackgroundSaverForTests();copy=null;puts=[];getDelay=0;probe.putDelay=0;probe.exports=0;probe.buildCalls=0;probe.visualBarrier=null;probe.cas=false;probe.collisions=0;probe.acks=[];probe.pointers=[];}
 async function close(view){probe.visualBarrier=null;await view.unmount();await act(async()=>{await wait(20);});resetBackgroundSaverForTests();}
 
 function room(options={}) {
@@ -181,6 +188,158 @@ function room(options={}) {
     acquireLock:async()=>false,releaseLock(){},onExternalRevision:()=>()=>{},markSaved(){},completeSeed(){},
     ...options};
 }
+
+function deckPublication(source) {
+  const staged=new Map(),commits=[];
+  return {staged,commits,dependencies:{
+    now:()=>new Date("2026-11-15T01:30:00Z"),
+    uploadFile(){throw new Error("typed Deck uses private staging");},
+    saveCreations(){throw new Error("publishing must retain the same root");},
+    async stageArtifactBlob(root,file){
+      assert.equal(root,source.artifactId);
+      const bytes=new Uint8Array(await file.arrayBuffer());
+      const blobId=`blob-${staged.size+1}`,digest=createHash("sha256").update(bytes).digest("hex");
+      staged.set(blobId,{file,bytes,digest});
+      return {ok:true,data:{blobId,digest}};
+    },
+    async createArtifactRevision(root,commit){
+      commits.push(commit);const revisionId=`published-${commits.length}`;
+      if(probe.publishBarrier)await probe.publishBarrier;
+      const rendition=(part,purpose)=>({purpose,revisionId,digest:part.digest,url:`https://example.invalid/${revisionId}/${purpose}`,mediaType:purpose==="preview"?"image/png":"application/vnd.openxmlformats-officedocument.presentationml.presentation"});
+      assert.equal(staged.get(commit.source.blobId||commit.source.url).digest,commit.source.digest);
+      return {ok:true,data:{...source,artifactId:root,revisionId,artifactType:"deck",meta:{},artifact:{sourceFormat:"pptx",renditions:{source:rendition(commit.source,"source"),...Object.fromEntries(commit.renditions.map(part=>[part.purpose,rendition(part,part.purpose)]))}}}};
+    },
+  }};
+}
+
+test("run4 native Deck source/full and bitmap cover satisfy the actual backend contract without a manifest",()=>{
+  const script=`
+from app.typed_artifact_models import ArtifactContentInput
+from pydantic import ValidationError
+a,b,c='a'*64,'b'*64,'c'*64
+mime='application/vnd.openxmlformats-officedocument.presentationml.presentation'
+blob=lambda sha,media:{'sha256':sha,'byte_size':1000,'media_type':media,'storage_bucket':'project-assets','storage_key':'tests/'+sha}
+rendition=lambda purpose,sha,media,fmt:{'purpose':purpose,'blob_sha256':sha,'media_type':media,'format':fmt,'metadata':{'derivation':{'sourceDigest':a}}}
+doc={'title':'Native Deck','artifact_type':'deck','roles':['document'],'editability':'native','editor_capability':'deck-editor','source_format':'pptx','content_digest':a,'blobs':[blob(a,mime),blob(b,'image/png')],'renditions':[rendition('source',a,mime,'pptx'),rendition('full',a,mime,'pptx'),rendition('preview',b,'image/png','png'),rendition('thumbnail',b,'image/png','png')],'provenance':{'source_kind':'user_upload','rights_asserted':True}}
+ArtifactContentInput.model_validate(doc)
+doc['blobs'].append(blob(c,'application/json'))
+doc['renditions'].append(rendition('editor_manifest',c,'application/json','oceanleo.deck.v1'))
+try:
+ ArtifactContentInput.model_validate(doc)
+ raise AssertionError('legacy Deck manifest unexpectedly accepted')
+except ValidationError as error:
+ assert 'deck editor manifests are no longer supported' in str(error),str(error)
+print('native Deck accepted; obsolete manifest rejected')
+`;
+  const out=execFileSync("/root/projects/oceanleo/backend/.venv/bin/python",["-c",script],{env:{...process.env,PYTHONPATH:"/root/projects/oceanleo/backend",PYTHONDONTWRITEBYTECODE:"1"},encoding:"utf8"});
+  assert.match(out,/native Deck accepted/);
+});
+
+for(const slides of [3,40])test(`run4 Deck ${slides}: idle publication completes from PPTX and cover through real doc-io`,async()=>noErrors(async()=>{
+  reset();probe.inline=true;
+  probe.fixtureDeck=normalizeDeckDocument({title:"Opened Deck",slides:Array.from({length:slides},(_,n)=>({id:`pub-${n}`,elements:[{id:`t-${n}`,type:"text",text:`Page ${n}`}]}))});
+  const source={...item("ppt"),artifactId:`pub-root-${slides}`,artifactType:"deck"};
+  const publication=deckPublication(source);probe.publicationDeps=publication.dependencies;
+  const originalSet=globalThis.setTimeout;let idle;
+  globalThis.setTimeout=function(run,ms,...args){if(ms===10000){idle=()=>run(...args);return originalSet(()=>{},0);}return originalSet(run,ms,...args);};
+  let view;
+  try {
+    view=await mount(DeckRoute,source);
+    await act(async()=>probe.deck.setTitle(`Published Deck ${slides}`));
+    await tickUntil(()=>puts.length===1&&probe.save.state==="saved");
+    assert.equal(typeof idle,"function","an acknowledged edit schedules idle publication");
+    await act(async()=>idle());
+    await tickUntil(()=>publication.commits.length>0||Boolean(probe.deck.error));
+    assert.equal(publication.commits.length,1,probe.deck.error||"native Deck publication must reach the revision API");
+    await tickUntil(()=>probe.pointers.length===1);
+    assert.equal(probe.save.state,"saved","publication never changes working-copy acknowledgement");
+    assert.equal(probe.pointers[0].seq,1);assert.equal(probe.pointers[0].revision_id,"published-1");
+    const commit=publication.commits[0];
+    assert.deepEqual(commit.renditions.map(part=>part.purpose).sort(),["full","preview"]);
+    assert.equal(commit.source.format,"pptx");
+    const bytes=publication.staged.get(commit.source.blobId).bytes;
+    assert.equal(Object.keys(unzipSync(bytes)).filter(path=>/^ppt\/slides\/slide\d+\.xml$/.test(path)).length,slides);
+  } finally {globalThis.setTimeout=originalSet;if(view)await close(view);probe.publicationDeps=null;probe.fixtureDeck=null;probe.inline=false;}
+}));
+
+test("run4 Deck remote edits arriving during publication cannot reuse the earlier publication receipt",async()=>noErrors(async()=>{
+  reset();const source={...item("ppt"),artifactId:"remote-during-publish",artifactType:"deck"};
+  const publication=deckPublication(source);probe.publicationDeps=publication.dependencies;
+  let release;probe.publishBarrier=new Promise(done=>release=done);
+  const view=await mount(DeckRoute,source);let pending;
+  try {
+    await act(async()=>probe.deck.setTitle("First publication"));
+    const revision=probe.deck.editRevision;
+    await act(async()=>{pending=probe.adapter.persistence.preparePublish()();});
+    await tickUntil(()=>publication.commits.length===1);
+    await act(async()=>probe.deck.applyRemoteDeck({...probe.deck.deck,title:"Merged remote publication"}));
+    assert.equal(probe.deck.editRevision,revision,"a merged remote change is not a local edit");
+    await act(async()=>{release();await pending;});probe.publishBarrier=null;
+    assert.equal(probe.deck.dirty,true,"publishing an earlier snapshot cannot clear merged remote edits");
+    await act(async()=>{assert.equal((await probe.adapter.persistence.preparePublish()()).ok,true);});
+    assert.equal(publication.commits.length,2,"the current merged document needs a new publication despite unchanged local revision");
+    const latest=publication.staged.get(publication.commits[1].source.blobId).bytes;
+    assert.match(new TextDecoder().decode(unzipSync(latest)["docProps/core.xml"]),/Merged remote publication/);
+    await act(async()=>{assert.equal((await probe.adapter.persistence.preparePublish()()).ok,true);});
+    assert.equal(publication.commits.length,2,"repeating publication of the same document reuses its receipt");
+  } finally {release?.();probe.publishBarrier=null;await close(view);probe.publicationDeps=null;}
+}));
+
+test("run4 Deck failed publication cannot reuse uploaded bytes after a merged remote edit",async()=>noErrors(async()=>{
+  reset();const source={...item("ppt"),artifactId:"remote-after-failure",artifactType:"deck"};
+  const publication=deckPublication(source),stage=publication.dependencies.stageArtifactBlob,commit=publication.dependencies.createArtifactRevision;
+  publication.dependencies.stageArtifactBlob=undefined;
+  publication.dependencies.uploadFile=async(file)=>{
+    const {data}=await stage(source.artifactId,file),url=`https://example.invalid/${data.blobId}`;
+    publication.staged.set(url,publication.staged.get(data.blobId));
+    return {ok:true,data:{file:{url,meta:{content_digest:data.digest}}}};
+  };
+  let fail=true;publication.dependencies.createArtifactRevision=(...args)=>fail?Promise.resolve({ok:false,error:"temporary revision failure"}):commit(...args);
+  probe.publicationDeps=publication.dependencies;
+  const view=await mount(DeckRoute,source);
+  try {
+    await act(async()=>probe.deck.setTitle("Failed first snapshot"));
+    await act(async()=>assert.equal((await probe.adapter.persistence.preparePublish()()).ok,false));
+    await act(async()=>probe.deck.applyRemoteDeck({...probe.deck.deck,title:"Merged after failure"}));
+    fail=false;
+    await act(async()=>assert.equal((await probe.adapter.persistence.preparePublish()()).ok,true));
+    const bytes=publication.staged.get(publication.commits[0].source.url).bytes;
+    assert.match(new TextDecoder().decode(unzipSync(bytes)["docProps/core.xml"]),/Merged after failure/);
+  } finally {await close(view);probe.publicationDeps=null;}
+}));
+
+for(const slides of [3,40])for(const existing of [false,true])test(`run4 Deck ${slides} ${existing?"existing":"fresh"}: both real room tabs save their merged edits`,async()=>noErrors(async()=>{
+  reset();probe.inline=true;probe.cas=true;probe.putDelay=30;
+  const deck=normalizeDeckDocument({title:"Shared Deck",slides:Array.from({length:slides},(_,n)=>({id:`room-${n}`,elements:[{id:`left-${n}`,type:"text",text:"Left",fontSize:20},{id:`right-${n}`,type:"text",text:"Right",fontSize:20}]}))});
+  probe.fixtureDeck=deck;
+  if(existing)copy={schema:DECK_WORKING_COPY_SCHEMA,seq:55,published_seq:0,base_revision_id:"initial",saved_at:new Date().toISOString(),doc:deck};
+  const a={room:room({needsSeed:true,completeSeed(){this.needsSeed=false;}})},b={room:room({isSaver:false})};
+  // WebSocket frames arrive in later tasks, never re-enter another tab's React commit.
+  a.room.doc.on("update",(update,origin)=>{if(origin!==a.room)setTimeout(()=>applyUpdate(b.room.doc,update,b.room),0);});
+  b.room.doc.on("update",(update,origin)=>{if(origin!==b.room)setTimeout(()=>applyUpdate(a.room.doc,update,a.room),0);});
+  for(const [tab,token] of [[a,"test-a"],[b,"test-b"]]){
+    tab.useSave=(await import(await compileModule(sharedPath("src/shell/use-advanced-autosave.ts"),{...authStubs,"../lib/auth/client":dataModule(`export async function accessToken(){return ${JSON.stringify(token)};}`)}))).useAdvancedAutoSave;
+  }
+  let first,second;
+  try {
+    first=await mount(DeckRoute,item("ppt"),a);second=await mount(DeckRoute,item("ppt"),b);
+    assert.equal(b.adapter.persistence.autoSave,true,"a writable non-elected Deck tab saves itself");
+    await tickUntil(()=>a.save.state==="saved"&&b.save.state==="saved");
+    const opened=performance.now();
+    await act(async()=>{a.editor.patchElement("left-0",{fontSize:71});b.editor.patchElement("right-0",{fontSize:93});});
+    await tickUntil(()=>a.save.state==="saved"&&b.save.state==="saved"&&probe.acks.some(ack=>ack.sender==="a")&&probe.acks.some(ack=>ack.sender==="b"));
+    assert.ok(probe.collisions>0,"the two conditional saves collide and exercise room retry");
+    for(const tab of [a,b])assert.deepEqual(JSON.parse(JSON.stringify(tab.editor.captureRecovery())),copy.doc);
+    assert.equal(copy.doc.slides[0].elements[0].fontSize,71);assert.equal(copy.doc.slides[0].elements[1].fontSize,93);
+    for(const sender of ["a","b"])assert.deepEqual(probe.acks.filter(ack=>ack.sender===sender).at(-1).doc,copy.doc,"each tab acknowledges the merged document");
+    console.log(`ROOM_DECK slides=${slides} existing=${existing} merged-edit-to-acks=${(performance.now()-opened).toFixed(2)}ms collisions=${probe.collisions}`);
+  } finally {
+    if(first)await first.unmount();if(second)await second.unmount();
+    await act(async()=>{await wait(20);});resetBackgroundSaverForTests();
+    a.room.doc.destroy();b.room.doc.destroy();probe.fixtureDeck=null;probe.inline=false;
+  }
+}));
+
 for(const existing of [false,true])test(`run2 PDF real lock holder starts saving ${existing?"existing seq55":"a fresh copy"} without elected saver status`,async()=>noErrors(async()=>{
   reset();probe.inline=true;probe.room=room({isSaver:false,lock:{holder:{id:"self"},mode:"pro",expires_at:"2099-01-01"}});
   if(existing)copy={schema:"oceanleo.pdf-working-document.v1",seq:55,published_seq:0,base_revision_id:"initial",saved_at:new Date().toISOString(),doc:{version:1,source:{artifactId:"pdf-root",revisionId:"initial",purpose:"source",blank:false},operations:[],annotations:[],formValues:{},annotationOperationCount:0}};
@@ -209,7 +368,7 @@ for(const viewer of [false,true])test(`run2 PDF ${viewer?"viewer":"other user's 
   } finally {if(view)await close(view);probe.room.doc.destroy();probe.room=null;probe.inline=false;}
 }));
 
-for(const slides of [3,40])test(`run2 Deck ${slides} slides: room bootstrap during GET is clean and the next PUT uses existing seq73`,async()=>noErrors(async()=>{
+for(const slides of [3,40])test(`run2 Deck ${slides} slides: room bootstrap keeps local revision clean and starts from read seq73`,async()=>noErrors(async()=>{
   reset();probe.inline=true;probe.room=room();getDelay=100;
   const saved=normalizeDeckDocument({title:"Acknowledged working copy",slides:Array.from({length:slides},(_,n)=>({id:`saved-${n}`,elements:[{id:`text-${n}`,type:"text",text:"Saved text",fontSize:56}]}))});
   copy={schema:DECK_WORKING_COPY_SCHEMA,seq:73,published_seq:0,base_revision_id:"initial",saved_at:new Date().toISOString(),doc:saved};
@@ -222,11 +381,14 @@ for(const slides of [3,40])test(`run2 Deck ${slides} slides: room bootstrap duri
     await act(async()=>writeJsonStateRoot(probe.room.doc,DECK_COLLAB_ROOT,deckToEntities(stale),probe.room));
     await act(async()=>{await wait(130);});
     assert.equal(probe.save.conflict,false,"room startup must not impersonate a local edit racing the existing copy");
-    assert.equal(probe.deck.editRevision,0);assert.equal(puts.length,0);
+    assert.equal(probe.deck.editRevision,0);
+    await tickUntil(()=>probe.save.state==="saved");
+    if(puts.length)assert.equal(puts[0].body.if_seq,73);
     assert.equal(probe.deck.deck.title,saved.title);
+    const before=puts.length,base=copy.seq;
     await act(async()=>probe.deck.setTitle("User edit after restore"));
-    await tickUntil(()=>puts.length===1&&probe.save.state==="saved");
-    assert.equal(puts[0].body.if_seq,73);assert.equal(copy.doc.title,"User edit after restore");
+    await tickUntil(()=>puts.length===before+1&&probe.save.state==="saved");
+    assert.equal(puts.at(-1).body.if_seq,base);assert.equal(copy.doc.title,"User edit after restore");
   } finally {if(view)await close(view);probe.room.doc.destroy();probe.room=null;probe.inline=false;}
 }));
 

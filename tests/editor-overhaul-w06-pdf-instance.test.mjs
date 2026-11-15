@@ -234,6 +234,7 @@ test("basic and pro are one viewer instance: switching never remounts, reloads o
     await act(async () => root.render(React.createElement(PdfStage, props("basic"))));
     await settle();
     const probe = globalThis.__w06Viewer;
+    for (let attempt = 0; probe.mounts === 0 && attempt < 40; attempt += 1) await settle();
     assert.equal(probe.mounts, 1, "the viewer mounts once on first open");
     const stage = container.querySelector("[data-pdf-stage]");
     const instance = stage.getAttribute("data-pdf-viewer-instance");

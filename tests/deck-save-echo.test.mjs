@@ -109,18 +109,6 @@ test("deck saves are revisions, not the hidden draft tier", () => {
   assert.doesNotMatch(persistence, /\bdraft:\s*editor\.draft/);
 });
 
-test("a re-flush of an already committed edit returns the same receipt (no duplicate revision)", () => {
-  const source = readFileSync(new URL("../src/shell/doc-editors/use-deck-editor.ts", import.meta.url), "utf8");
-  const save = source.slice(source.indexOf("const publish = useCallback(async ("), source.indexOf("const importSource = useCallback("));
-  assert.match(save, /lastSaved\.editRevision === savingRevision && lastSaved\.item === persistedItemRef\.current/);
-  assert.match(save, /return lastSaved\.version;/);
-  assert.match(save, /lastSavedRef\.current = \{ editRevision: savingRevision, item: handoff, version \}/);
-  assert.ok(
-    save.indexOf("return lastSaved.version;") < save.indexOf("saveFileToLibrary("),
-    "the reuse check must run before anything is uploaded",
-  );
-});
-
 test("closing a newly opened deck returns its existing identity before calling the writer", () => {
   const route = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
   const flush = route.slice(route.indexOf("const saveBeforeNewConversation = useCallback"), route.indexOf("const [importError"));

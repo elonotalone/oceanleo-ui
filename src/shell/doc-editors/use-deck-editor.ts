@@ -961,9 +961,10 @@ export function useDeckEditor(
   /** Revisions this editor committed since the last real load (`deck-save-echo.ts`). */
   const ownSavedRevisionsRef = useRef<Set<string>>(new Set());
   /** Receipt of the last commit; a re-flush of the same edit returns it instead of a duplicate revision. */
-  const lastSavedRef = useRef<{ editRevision: number; item: LibraryItem; version: PersistedEditorVersion } | null>(null);
+  const lastSavedRef = useRef<{ editRevision: number; deck: DeckDocument; item: LibraryItem; version: PersistedEditorVersion } | null>(null);
   const preparedSaveRef = useRef<{
     key: string;
+    deck: DeckDocument;
     delivery?: PreparedDeliveryUpload;
     preview?: PreparedPreviewUpload;
   } | null>(null);
@@ -1040,7 +1041,7 @@ export function useDeckEditor(
         const next = loaded.deck;
         deckRef.current = next;
         const existingVersion = deckExistingVersion(source, deckDeliveryUrlFor(source) || source.url || "", "");
-        if (existingVersion) lastSavedRef.current = { editRevision: revisionRef.current, item: source, version: existingVersion };
+        if (existingVersion) lastSavedRef.current = { editRevision: revisionRef.current, deck: next, item: source, version: existingVersion };
         activeRef.current = next.slides[0].id;
         selectedElementRef.current = "";
         setDeckState(next);
@@ -1776,7 +1777,7 @@ export function useDeckEditor(
     if (savingRef.current || sourceFailedRef.current || sourceLoadingRef.current) return null;
     // 外壳（会话补记、重试）可能对同一次改动再要一次保存：没有新改动就交回上次的回执（D11 §5.5）。
     const lastSaved = lastSavedRef.current;
-    if (lastSaved && lastSaved.editRevision === savingRevision && lastSaved.item === persistedItemRef.current) {
+    if (lastSaved && lastSaved.editRevision === savingRevision && lastSaved.deck === snapshot && lastSaved.item === persistedItemRef.current) {
       return lastSaved.version;
     }
     const baseItem = deckSaveBaseItem(persistedItemRef.current);
@@ -1793,7 +1794,7 @@ export function useDeckEditor(
     const saveKey =
       `deck:${savingRevision}:${baseRevision.slice(-80)}:${rootId.slice(-80)}`;
     const prepared =
-      preparedSaveRef.current?.key === saveKey
+      preparedSaveRef.current?.key === saveKey && preparedSaveRef.current.deck === snapshot
         ? preparedSaveRef.current
         : null;
     savingRef.current = true;
@@ -1852,6 +1853,7 @@ export function useDeckEditor(
           result.preparedPreview
             ? {
                 key: saveKey,
+                deck: snapshot,
                 delivery: result.preparedDelivery,
                 preview: result.preparedPreview,
               }
@@ -1874,7 +1876,7 @@ export function useDeckEditor(
         result.url;
       if (mountedRef.current) {
         setSavedUrl(result.url);
-        if (revisionRef.current === savingRevision) {
+        if (revisionRef.current === savingRevision && deckRef.current === snapshot) {
           setDirty(false);
         }
         setNotice("");
@@ -1898,7 +1900,7 @@ export function useDeckEditor(
             preparedProject: result.preparedProject,
             preparedDelivery: result.preparedDelivery,
           };
-      lastSavedRef.current = { editRevision: savingRevision, item: handoff, version };
+      lastSavedRef.current = { editRevision: savingRevision, deck: snapshot, item: handoff, version };
       return version;
     } catch (caught) {
       // Keep the in-memory deck, dirty flag, and reusable upload receipts.

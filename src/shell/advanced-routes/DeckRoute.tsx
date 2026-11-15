@@ -497,10 +497,9 @@ export function DeckRoute({
           (editor.loading || officeSource.loading ? "正在载入演示文稿" : ""),
         collab: collab.collab,
         persistence: {
-          // 房间里只有存档人自动保存；别的人改了也由存档人那边存
-          dirty: editor.dirty && collab.saveGate && !editor.sourceFailed,
+          dirty: editor.dirty && !editor.sourceFailed,
           editRevision: editor.editRevision,
-          autoSave: collab.saveGate && !editor.sourceFailed,
+          autoSave: !viewOnly && !editor.sourceFailed,
           flush: saveBeforeNewConversation,
           ...{ preparePublish: () => {
             const publish = editor.prepareSave();
