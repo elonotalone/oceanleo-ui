@@ -18,7 +18,7 @@ document.elementFromPoint = () => null;
 window.Range.prototype.getBoundingClientRect = () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 });
 window.Range.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: function* () {} });
 
-const noop = (name) => dataModule(`export function ${name}(){return null;}`);
+const noop = (name) => dataModule(`export function ${name}(){return null;}${name === "ComposerLibraryPicker" ? "export function warmComposerLibraryFiles(){}" : ""}`);
 // Use the actual TemplateFillArea, Tiptap and ProseMirror keymaps, all from ESM.
 const tiptap = ["@tiptap/react", "@tiptap/core", "@tiptap/pm/state", "@tiptap/extension-document",
   "@tiptap/extension-paragraph", "@tiptap/extension-text", "@tiptap/extension-placeholder", "@tiptap/extension-history"];

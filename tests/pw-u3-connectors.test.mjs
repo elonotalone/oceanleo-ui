@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
@@ -211,6 +212,28 @@ test("unavailable has one plain sentence, no primary form fields and no initial 
     assert.equal(find('[data-connector-detail] form'), null);
     assert.equal(find('[data-mcp-connect-status]'), null);
   }, "https://oceanleo.com/settings/connectors/slack");
+});
+
+test("G2 CONTRACT I1 record opens from the directory with real details and manual input only on request", async () => {
+  const record = JSON.parse(readFileSync(new URL("./fixtures/parity-i1-slack.json", import.meta.url), "utf8"));
+  fixtures([record]);
+  await withDom(async ({ render, find, click }) => {
+    await render();
+    await openCatalog(find, click);
+    await click(find('[data-mcp-connector="slack"]'));
+    const detail = find('[data-connector-detail="slack"]');
+    assert.ok(detail);
+    assert.ok(detail.textContent.includes(record.tagline));
+    for (const example of record.examples) assert.ok(detail.textContent.includes(example));
+    assert.equal(detail.querySelectorAll('input, form').length, 0);
+    assert.equal(find('[data-connector-connect]'), null);
+    assert.ok(find('[data-connector-unavailable]'));
+    assert.equal(globalThis.__PW_CALLS__.length, 0);
+    await click(find('[data-connector-advanced]'));
+    assert.equal(find('[data-connector-manual]').querySelectorAll('input[type="password"]').length, 1);
+    assert.equal(find('[data-connector-manual]').querySelector('input:not([type="password"])')?.value, "", "advanced accepts the person's own MCP address");
+    assert.equal(globalThis.__PW_CALLS__.length, 0);
+  });
 });
 
 test("advanced manual form has no Name field and validates only after submit", async () => {

@@ -30,6 +30,7 @@ function fixture(approved = true) {
   const head = project.versions[project.headVersionId];
   head.scenes = [{ sceneId: "s", title: "Scene", shotIds: ["shot"] }];
   head.shots = [{ shotId: "shot", sceneId: "s", title: "Shot", intendedDurationSeconds: 3, storyboardId: "sb", takeIds: ["take"], approvedTakeId: "take" }];
+  head.storyboards = [{ storyboardId: "sb", shotId: "shot", frameAssetIds: [] }];
   head.takes = [{ takeId: "take", shotId: "shot", assetId: "video", status: approved ? "approved" : "candidate" }];
   project.assets.video = { assetId: "video", kind: "video", immutable: true, origin: "provider", title: "Shot", url: "https://cdn.example.test/shot.mp4", durationSeconds: 3, createdAt: "2026-11-15T00:00:00Z" };
   return project;

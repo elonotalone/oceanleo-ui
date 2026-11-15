@@ -12,6 +12,7 @@ function fixture() {
   version.scenes = [{ sceneId: "scene", title: "Scene", shotIds: ["shot-b", "shot-a", "shot-c"] }];
   version.shots = ["a", "b", "c"].map((id) => ({ shotId: `shot-${id}`, sceneId: "scene", title: id,
     intendedDurationSeconds: 3, storyboardId: `sb-${id}`, takeIds: [`take-${id}`], approvedTakeId: `take-${id}` }));
+  version.storyboards = ["a", "b", "c"].map(id => ({ storyboardId: `sb-${id}`, shotId: `shot-${id}`, frameAssetIds: [] }));
   version.takes = ["a", "b", "c"].map((id) => ({ takeId: `take-${id}`, shotId: `shot-${id}`, assetId: id, status: id === "c" ? "candidate" : "approved" }));
   version.timelines = [{ timelineId: "main", title: "Cut", clipIds: [] }];
   version.clips = [];

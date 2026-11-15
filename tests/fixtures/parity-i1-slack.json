@@ -1,0 +1,47 @@
+{
+  "id": "slack",
+  "name": "Slack",
+  "desc": "读取与发送 Slack 消息、检索频道与线程、汇总讨论。用自然语言协同团队沟通。",
+  "icon": "slack",
+  "category": "效率办公",
+  "transport": "streamable_http",
+  "auth": "url+token",
+  "auth_header": "",
+  "needs_endpoint": false,
+  "endpoint": "https://mcp.slack.com/mcp",
+  "help_url": "https://docs.slack.dev/ai/slack-mcp-server/",
+  "docs": "Slack 只允许已上架 Slack Marketplace 的应用使用 MCP，我们的应用还在上架流程中，所以这里暂时没有一键授权。请按 Slack 官方 MCP 文档在自己的工作区创建内部应用后，把专属服务地址和令牌粘贴到下方。",
+  "supports_oauth": false,
+  "editions": [
+    "com"
+  ],
+  "listed": true,
+  "tagline": "Read and send Slack messages, search channels and threads, and summarize discussions.",
+  "about": "Read and send Slack messages, search channels and threads, and summarize discussions. Collaborate in natural language.\n\nThe connection can access only content permitted by your account. The tool list below comes from an actual connection.",
+  "examples": [
+    "Find release discussions in the channel",
+    "Summarize this message thread"
+  ],
+  "made_by": {
+    "name": "Slack",
+    "url": "https://docs.slack.dev/ai/slack-mcp-server/"
+  },
+  "links": {
+    "docs": "https://docs.slack.dev/ai/slack-mcp-server/"
+  },
+  "capabilities": [],
+  "sign_in": "required",
+  "tools": [],
+  "connect": {
+    "mode": "unavailable",
+    "reason": "vendor_listing"
+  },
+  "manual": {
+    "auth": "url+token",
+    "auth_header": "",
+    "needs_endpoint": false,
+    "endpoint": "https://mcp.slack.com/mcp",
+    "help_url": "https://docs.slack.dev/ai/slack-mcp-server/",
+    "docs": "Slack 只允许已上架 Slack Marketplace 的应用使用 MCP，我们的应用还在上架流程中，所以这里暂时没有一键授权。请按 Slack 官方 MCP 文档在自己的工作区创建内部应用后，把专属服务地址和令牌粘贴到下方。"
+  }
+}

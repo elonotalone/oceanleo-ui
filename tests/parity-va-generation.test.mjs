@@ -82,7 +82,7 @@ test("resolver names cycle, missing upstream output, dangling node, and mismatch
   connect(project, b, a);
   assert.throws(() => resolveCanvasInputs(project, b), /形成循环/);
   const missing = fixture(["video"]); connect(missing.project, "deleted", missing.ids[0]);
-  assert.throws(() => resolveCanvasInputs(missing.project, missing.ids[0]), /还没有可用输出/);
+  assert.throws(() => resolveCanvasInputs(missing.project, missing.ids[0]), /graph\.edges\[0\]\.sourceNodeId.*deleted.*不存在/);
 });
 
 test("t2v and i2v graphs snapshot wired input edges and durable first-frame asset ID", () => {
