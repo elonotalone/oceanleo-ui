@@ -15,6 +15,8 @@ import {
   clipEndMs,
   docDurationMs,
   normalizeTimelineDoc,
+  normalizeTimelineCrop,
+  timelineFontStack,
 } from "./timeline-model";
 import { drawTimelineVideoFrame } from "./preview-contract";
 import {
@@ -34,6 +36,100 @@ export const DEFAULT_TEXT_FONT_SIZE = 64;
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
+}
+
+/** Eq-style additive luma adjustment; alpha is immutable. */
+export function adjustTimelineImagePixels(data: Uint8ClampedArray, clip: TimelineClip): void {
+  const brightness = clip.brightness ?? 0;
+  const contrast = clip.contrast ?? 1;
+  const saturation = clip.saturation ?? 1;
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i] / 255, g = data[i + 1] / 255, b = data[i + 2] / 255;
+    const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+    const adjusted = clamp01((luma - 0.5) * contrast + 0.5 + brightness);
+    data[i] = clamp01(adjusted + (r - luma) * saturation) * 255;
+    data[i + 1] = clamp01(adjusted + (g - luma) * saturation) * 255;
+    data[i + 2] = clamp01(adjusted + (b - luma) * saturation) * 255;
+  }
+}
+
+const adjustedImageCache = new WeakMap<HTMLImageElement, { signature: string; canvas: HTMLCanvasElement }>();
+
+function adjustedTimelineImage(image: HTMLImageElement, clip: TimelineClip): HTMLImageElement | HTMLCanvasElement {
+  if (!(clip.brightness ?? 0) && (clip.contrast ?? 1) === 1 && (clip.saturation ?? 1) === 1) return image;
+  const signature = [image.currentSrc || image.src, image.naturalWidth, image.naturalHeight, clip.brightness ?? 0, clip.contrast ?? 1, clip.saturation ?? 1].join("|");
+  const cached = adjustedImageCache.get(image);
+  if (cached?.signature === signature) return cached.canvas;
+  const canvas = document.createElement("canvas");
+  const ratio = Math.min(1, 4096 / Math.max(image.naturalWidth, image.naturalHeight));
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * ratio));
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * ratio));
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) throw new TimelineCarrierError("image-adjustment-unavailable", "图片调色预览暂时无法读取像素。");
+  try {
+    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    adjustTimelineImagePixels(pixels.data, clip);
+    ctx.putImageData(pixels, 0, 0);
+  } catch {
+    // Never substitute multiplicative CSS brightness for the additive wire value.
+    throw new TimelineCarrierError("image-adjustment-unavailable", "图片调色预览暂时无法读取像素。");
+  }
+  adjustedImageCache.set(image, { signature, canvas });
+  return canvas;
+}
+
+/** Source crop is applied before fitting into the composition-shaped image box. */
+export function drawTimelineImageFrame(
+  ctx: CanvasRenderingContext2D, image: HTMLImageElement, clip: TimelineClip,
+  width: number, height: number, scale: number, alpha = 1,
+): void {
+  const source = adjustedTimelineImage(image, clip);
+  const sourceWidth = source === image ? image.naturalWidth : source.width;
+  const sourceHeight = source === image ? image.naturalHeight : source.height;
+  const crop = normalizeTimelineCrop(clip.crop);
+  let sx = crop.x * sourceWidth;
+  let sy = crop.y * sourceHeight;
+  let sw = crop.width * sourceWidth;
+  let sh = crop.height * sourceHeight;
+  const boxWidth = width * (clip.scale ?? 0.35);
+  const boxHeight = height * (clip.scale ?? 0.35);
+  let dw = boxWidth;
+  let dh = boxHeight;
+  if (clip.fit === "cover") {
+    const fit = Math.max(boxWidth / sw, boxHeight / sh);
+    const croppedWidth = boxWidth / fit;
+    const croppedHeight = boxHeight / fit;
+    sx += (sw - croppedWidth) / 2;
+    sy += (sh - croppedHeight) / 2;
+    sw = croppedWidth; sh = croppedHeight;
+  } else if (clip.fit !== "stretch") {
+    const fit = Math.min(boxWidth / sw, boxHeight / sh);
+    dw = sw * fit; dh = sh * fit;
+  }
+  const radius = Math.min((clip.radius ?? 0) * scale, dw / 2, dh / 2);
+  ctx.save();
+  ctx.translate((clip.x ?? 0.5) * width, (clip.y ?? 0.5) * height);
+  ctx.rotate(((clip.rotation ?? 0) * Math.PI) / 180);
+  if (clip.flip_x || clip.flip_y) ctx.scale(clip.flip_x ? -1 : 1, clip.flip_y ? -1 : 1);
+  ctx.globalAlpha = clamp01(alpha * (clip.opacity ?? 1));
+  ctx.save();
+  if (radius > 0) {
+    ctx.beginPath(); ctx.roundRect(-dw / 2, -dh / 2, dw, dh, radius); ctx.clip();
+  }
+  ctx.filter = "none";
+  ctx.drawImage(source, sx, sy, sw, sh, -dw / 2, -dh / 2, dw, dh);
+  ctx.restore();
+  const border = Math.min((clip.border?.width ?? 0) * scale, dw / 2, dh / 2);
+  if (border > 0) {
+    ctx.strokeStyle = clip.border?.color ?? "#000000";
+    ctx.lineWidth = border;
+    ctx.beginPath();
+    ctx.roundRect(-dw / 2 + border / 2, -dh / 2 + border / 2,
+      Math.max(0, dw - border), Math.max(0, dh - border), Math.max(0, radius - border / 2));
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 interface MediaEntry {
@@ -488,28 +584,10 @@ export class TimelinePreviewEngine {
         }
         const type = clip.transition_in?.type;
         const alpha =
-          (clip.opacity ?? 1) *
           (type === "fade" || type === "crossfade"
             ? this.transitionProgress(clip, t)
             : 1);
-        const drawWidth = width * (clip.scale ?? 0.35);
-        const drawHeight = drawWidth * (el.naturalHeight / el.naturalWidth);
-        const cx = (clip.x ?? 0.5) * width;
-        const cy = (clip.y ?? 0.5) * height;
-        const rotation = ((clip.rotation ?? 0) * Math.PI) / 180;
-        ctx.save();
-        ctx.translate(cx, cy);
-        ctx.rotate(rotation);
-        if (clip.flip_x || clip.flip_y) ctx.scale(clip.flip_x ? -1 : 1, clip.flip_y ? -1 : 1);
-        ctx.globalAlpha = clamp01(alpha);
-        ctx.drawImage(
-          el,
-          -drawWidth / 2,
-          -drawHeight / 2,
-          drawWidth,
-          drawHeight,
-        );
-        ctx.restore();
+        drawTimelineImageFrame(ctx, el, clip, width, height, scale, alpha);
       }
     }
 
@@ -604,22 +682,25 @@ export class TimelinePreviewEngine {
   ): void {
     const style = clip.style ?? {};
     const fontPx = (style.font_size ?? DEFAULT_TEXT_FONT_SIZE) * scale;
-    const lines = String(clip.text ?? "").split("\n");
-    const lineHeight = fontPx * 1.3;
+    const rawLines = String(clip.text ?? "").split("\n");
+    const lines = style.vertical_text
+      ? rawLines.map(line => Array.from(line).join("\n")).join("\n").split("\n") : rawLines;
+    const lineHeight = fontPx * (style.line_height ?? 1.3);
+    const letterSpacing = (style.letter_spacing ?? 0) * scale;
     const totalHeight = lines.length * lineHeight;
     const align = style.align ?? "center";
     ctx.save();
     ctx.globalAlpha = clamp01(alpha);
-    ctx.font = `${style.bold ? "700" : "400"} ${fontPx}px system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif`;
-    ctx.textAlign = align;
+    ctx.font = `${style.italic ? "italic " : ""}${style.bold ? "700" : "400"} ${fontPx}px ${timelineFontStack(style.font_family)}`;
+    ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     const maxLine = Math.max(
-      ...lines.map((line) => ctx.measureText(line).width),
+      ...lines.map((line) => ctx.measureText(line).width + Math.max(0, Array.from(line).length - 1) * letterSpacing),
       0,
     );
     const requestedX = (style.x ?? 0.5) * width;
     const anchorX =
-      align === "left"
+      align === "left" || align === "justify"
         ? Math.max(0, Math.min(Math.max(0, width - maxLine), requestedX))
         : align === "right"
           ? Math.max(maxLine, Math.min(width, requestedX))
@@ -638,7 +719,7 @@ export class TimelinePreviewEngine {
       const pad = fontPx * 0.35;
       const blockWidth = maxLine + pad * 2;
       const blockX =
-        align === "left"
+        align === "left" || align === "justify"
           ? anchorX - pad
           : align === "right"
             ? anchorX - blockWidth + pad
@@ -659,11 +740,27 @@ export class TimelinePreviewEngine {
     }
     ctx.fillStyle = style.color ?? "#ffffff";
     lines.forEach((line, index) => {
-      ctx.fillText(
-        line,
-        anchorX,
-        anchorY - totalHeight / 2 + lineHeight * (index + 0.5),
-      );
+      const chars = Array.from(line);
+      const naturalWidth = ctx.measureText(line).width + Math.max(0, chars.length - 1) * letterSpacing;
+      const justify = align === "justify" && index < lines.length - 1 && chars.length > 1;
+      const spacing = letterSpacing + (justify ? (maxLine - naturalWidth) / (chars.length - 1) : 0);
+      const lineWidth = justify ? maxLine : naturalWidth;
+      const left = align === "right" ? anchorX - lineWidth : align === "center" ? anchorX - lineWidth / 2 : anchorX;
+      const y = anchorY - totalHeight / 2 + lineHeight * (index + 0.5);
+      if (spacing === 0 || chars.length === 0) ctx.fillText(line, left, y);
+      else {
+        let x = left;
+        chars.forEach((char, i) => {
+          ctx.fillText(char, x, y);
+          // Prefix measurements retain kerning advances when spacing is added.
+          const before = chars.slice(0, i).join("");
+          const through = chars.slice(0, i + 1).join("");
+          x += ctx.measureText(through).width - ctx.measureText(before).width + spacing;
+        });
+      }
+      const thickness = Math.max(scale, fontPx * 0.055);
+      if (style.underline && chars.length) ctx.fillRect(left, y + fontPx * 0.38, lineWidth, thickness);
+      if (style.strike && chars.length) ctx.fillRect(left, y - fontPx * 0.06, lineWidth, thickness);
     });
     ctx.restore();
   }

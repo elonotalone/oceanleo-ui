@@ -10,6 +10,11 @@ export type TrackKind = "video" | "audio" | "text" | "image";
 
 export type TransitionType = "fade" | "crossfade" | "black";
 
+/** 浏览器和渲染器共享的安全字体；每一项均带中文字体回退。 */
+export const TIMELINE_FONT_FAMILIES = [
+  "sans-serif", "serif", "monospace", "Noto Sans CJK SC", "DejaVu Sans",
+] as const;
+
 export interface TimelineTransition {
   type: TransitionType;
   duration_ms: number;
@@ -17,14 +22,24 @@ export interface TimelineTransition {
 
 export interface TimelineTextStyle {
   font_size?: number;
+  font_family?: string;
   color?: string;
   background?: string;
   /** 文字锚点横向位置，0..1（合成画面宽度的比例）。 */
   x?: number;
   /** 文字块纵向中心位置，0..1（合成画面高度的比例）。 */
   y?: number;
-  align?: "left" | "center" | "right";
+  align?: "left" | "center" | "right" | "justify";
   bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  /** 行高倍数，0.5..3，默认 1.3。 */
+  line_height?: number;
+  /** 字符间距（px），-10..100，默认 0。 */
+  letter_spacing?: number;
+  /** 逐 Unicode 字符换行，保留原有首尾空行。 */
+  vertical_text?: boolean;
 }
 
 export interface TimelineClip {
@@ -65,9 +80,16 @@ export interface TimelineClip {
   flip_y?: boolean;
   /** 时间线片段块上显示的名字（素材标题）；渲染端不读。 */
   label?: string;
-  /** 视频适配方式；贴图始终按原始比例。 */
+  /** 视觉素材在合成画面比例的缩放框内适配。 */
   fit?: "contain" | "cover" | "stretch";
-  /** 视频基础调色（FFmpeg eq 范围）。 */
+  /** 源图片裁剪矩形，0..1，相对原图；缺省为完整图片。 */
+  crop?: { x: number; y: number; width: number; height: number };
+  /** 图片圆角（合成画面的 px），0..1000。 */
+  radius?: number;
+  border?: { width: number; color: string };
+  /** 无障碍文字，仅元数据，不绘入视频。 */
+  alt?: string;
+  /** 视觉素材基础调色（FFmpeg eq 范围）。 */
   brightness?: number;
   contrast?: number;
   saturation?: number;

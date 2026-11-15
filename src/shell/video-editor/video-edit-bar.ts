@@ -3,9 +3,9 @@
 // ----------------------------------------------------------------------------
 // 选中片段 → 规范 id 的控件（词表见 edit-bar-canon.ts）+ 视频特有控件。
 // 只出预览与导出都做得到的项：
-//   文字片段：基础样式、清除样式、大小写/列表文字内容转换、位置面板。
+//   文字片段：字体/装饰/字行距/竖排/对齐、清除样式、内容转换、位置面板。
 //   视频片段：水平/垂直翻转、顺时针 90°、不透明度、调色面板、显示方式、位置面板。
-//   贴图片段：替换为时间线已有图片、翻转、旋转、不透明度、位置面板。
+//   贴图片段：Library 替换、裁剪/圆角/边框/适配/调色、翻转、旋转、不透明度。
 //   音频片段：只有特有控件（速度、静音、声音、时间、淡入）。
 // 面板型规范项按 §4 增补 A-1：子控件 slot "inspector" + inspectorGroup = 规范 id。
 // 特有控件不带规范图标（投影会改显示文字）。
@@ -23,6 +23,8 @@ import {
   timelineTextCasePatch,
   timelineTextListKind,
   timelineTextListPatch,
+  normalizeTimelineCrop,
+  timelineFontFamily,
   validTimelineSourceReference,
   type ClipLocation,
 } from "./timeline-model";
@@ -33,6 +35,9 @@ import type {
   TrackKind,
   TransitionType,
 } from "./types";
+import { TIMELINE_FONT_FAMILIES } from "./types";
+
+export const VIDEO_TIMELINE_REPLACE_IMAGE_EVENT = "oceanleo:timeline-replace-image";
 
 export const VIDEO_CLIP_SPEEDS = [0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4] as const;
 
@@ -61,6 +66,7 @@ export function videoClipSelection(
   located: ClipLocation,
   tt: UITranslate,
   doc?: TimelineDoc,
+  options: { canReplaceImage?: boolean } = {},
 ): SelectionContext {
   const { clip, track } = located;
   const kind = track.kind;
@@ -71,6 +77,8 @@ export function videoClipSelection(
 
   if (kind === "text") {
     controls.push(
+      { id: "font-family", kind: "select", label: tt("字体"), value: timelineFontFamily(style.font_family),
+        options: TIMELINE_FONT_FAMILIES.map(value => ({ value, label: value })) },
       {
         id: "font-size",
         kind: "number",
@@ -81,6 +89,14 @@ export function videoClipSelection(
         step: 1,
       },
       { id: "bold", kind: "toggle", label: tt("加粗"), value: style.bold === true },
+      { id: "italic", kind: "toggle", label: tt("斜体"), value: style.italic === true },
+      { id: "underline", kind: "toggle", label: tt("下划线"), value: style.underline === true },
+      { id: "strike", kind: "toggle", label: tt("删除线"), value: style.strike === true },
+      { id: "line-height", kind: "number", label: tt("行高"), value: (style.font_size ?? 64) * (style.line_height ?? 1.3),
+        min: (style.font_size ?? 64) * 0.5, max: (style.font_size ?? 64) * 3, step: 1, unit: "px", suffix: "px" },
+      { id: "letter-spacing", kind: "number", label: tt("字距"), value: style.letter_spacing ?? 0,
+        min: -10, max: 100, step: 1, unit: "px", suffix: "px" },
+      { id: "vertical-text", kind: "toggle", label: tt("竖排文字"), value: style.vertical_text === true },
       {
         id: "text-color",
         kind: "color",
@@ -102,6 +118,7 @@ export function videoClipSelection(
           { value: "left", label: tt("左对齐") },
           { value: "center", label: tt("居中") },
           { value: "right", label: tt("右对齐") },
+          { value: "justify", label: tt("两端对齐") },
         ],
       },
       {
@@ -145,6 +162,21 @@ export function videoClipSelection(
   }
 
   if (visual) {
+    if (kind === "image") {
+      const crop = normalizeTimelineCrop(clip.crop);
+      if (options.canReplaceImage) controls.push({ id: "replace", kind: "action", label: tt("替换") });
+      for (const [field, label] of [["x", "横向位置"], ["y", "纵向位置"], ["width", "宽度"], ["height", "高度"]] as const) {
+        controls.push({ id: `crop-${field}`, kind: "range", label: tt(label), value: crop[field] * 100,
+          min: field === "width" || field === "height" ? 1 : 0, max: 100, step: 1, suffix: "%", ...panel("crop", tt("裁剪")) });
+      }
+      controls.push(
+        { id: "radius", kind: "number", label: tt("圆角"), value: clip.radius ?? 0, min: 0, max: 1000, step: 1, unit: "px", suffix: "px" },
+        { id: "border-width", kind: "number", label: tt("边框宽度"), value: clip.border?.width ?? 0,
+          min: 0, max: 100, step: 1, unit: "px", suffix: "px", ...panel("border", tt("边框")) },
+        { id: "border-color", kind: "color", label: tt("边框颜色"), value: clip.border?.color ?? "#000000", ...panel("border", tt("边框")) },
+        { id: "alt", kind: "text", label: tt("替代文本"), value: clip.alt ?? "", ...panel("alt", tt("替代文本")) },
+      );
+    }
     const replacements = imageReplacementSources(doc, located);
     if (kind === "image" && replacements.length) {
       controls.push({
@@ -173,7 +205,7 @@ export function videoClipSelection(
         max: 100,
       },
     );
-    if (kind === "video") {
+    if (visual) {
       controls.push(
         {
           id: "brightness",
@@ -403,6 +435,7 @@ export interface VideoEditBarTarget {
   beginGesture: () => void;
   endGesture: () => void;
   cancelGesture: () => void;
+  replaceImage?: (clipId: string) => void;
 }
 
 /** 替换只选择文档已接纳的图片，沿用其持久素材身份；不接收任意 URL 或新授权。 */
@@ -468,15 +501,31 @@ export function runVideoClipCommand(
   const textTrack = track.kind === "text";
 
   // 未提供的能力也不能通过直接 dispatch 写进不可渲染的字段。
-  if (["font-size", "bold", "text-color", "highlight", "highlight-remove", "align", "list", "case", "clear-format", "text"].includes(message.controlId) && !textTrack) return false;
-  if (["brightness", "contrast", "saturation", "image-fit"].includes(message.controlId) && track.kind !== "video") return false;
+  if (["font-family", "font-size", "bold", "italic", "underline", "strike", "line-height", "letter-spacing", "vertical-text", "text-color", "highlight", "highlight-remove", "align", "list", "case", "clear-format", "text"].includes(message.controlId) && !textTrack) return false;
+  if (["brightness", "contrast", "saturation", "image-fit"].includes(message.controlId) && track.kind !== "video" && track.kind !== "image") return false;
+  if (["replace", "replace-source", "crop-x", "crop-y", "crop-width", "crop-height", "radius", "border-width", "border-color", "alt"].includes(message.controlId) && track.kind !== "image") return false;
 
   switch (message.controlId) {
+    case "font-family":
+      patchStyle({ font_family: timelineFontFamily(value) });
+      return true;
     case "font-size":
       patchStyle({ font_size: clamp(Math.round(finite(value, 64)), 8, 300) });
       return true;
     case "bold":
       patchStyle({ bold: value === true });
+      return true;
+    case "italic": case "underline": case "strike":
+      patchStyle({ [message.controlId]: value === true });
+      return true;
+    case "vertical-text":
+      patchStyle({ vertical_text: value === true });
+      return true;
+    case "line-height":
+      patchStyle({ line_height: clamp(finite(value, (clip.style?.font_size ?? 64) * 1.3) / (clip.style?.font_size ?? 64), 0.5, 3) });
+      return true;
+    case "letter-spacing":
+      patchStyle({ letter_spacing: clamp(finite(value), -10, 100) });
       return true;
     case "text-color":
       if (typeof value === "string" && value) patchStyle({ color: value });
@@ -488,7 +537,7 @@ export function runVideoClipCommand(
       patchStyle({ background: undefined });
       return true;
     case "align":
-      if (value === "left" || value === "center" || value === "right") {
+      if (value === "left" || value === "center" || value === "right" || value === "justify") {
         patchStyle({ align: value });
       }
       return true;
@@ -508,9 +557,33 @@ export function runVideoClipCommand(
         ...timelineTextListPatch(clip, "none"),
         style: {
           font_size: 64, color: "#ffffff", bold: false, align: "center",
+          font_family: "sans-serif", italic: false, underline: false, strike: false,
+          line_height: 1.3, letter_spacing: 0, vertical_text: false,
           x: clip.style?.x ?? 0.5, y: clip.style?.y ?? 0.85,
         },
       });
+      return true;
+    case "replace":
+      if (!state.replaceImage) return false;
+      state.replaceImage(clip.id);
+      return true;
+    case "crop-x": case "crop-y": case "crop-width": case "crop-height": {
+      const field = message.controlId.slice(5) as keyof NonNullable<TimelineClip["crop"]>;
+      patch({ crop: normalizeTimelineCrop({ ...normalizeTimelineCrop(clip.crop), [field]: percent(field === "width" || field === "height" ? 100 : 0) }) });
+      return true;
+    }
+    case "radius":
+      patch({ radius: clamp(finite(value), 0, 1000) });
+      return true;
+    case "border-width":
+      patch({ border: { color: clip.border?.color ?? "#000000", width: clamp(finite(value), 0, 100) } });
+      return true;
+    case "border-color":
+      if (typeof value !== "string" || !/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value)) return false;
+      patch({ border: { width: clip.border?.width ?? 0, color: value } });
+      return true;
+    case "alt":
+      patch({ alt: String(value ?? "").slice(0, 2000) });
       return true;
     case "replace-source": {
       const source = imageReplacementSources(state.doc, located).find((candidate) => candidate.id === value);
