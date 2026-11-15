@@ -12,10 +12,6 @@ import test from "node:test";
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
-import {
-  ensureOwnGameCopy,
-  gameEditAccess,
-} from "../src/shell/game-editor/game-edit-access.ts";
 
 const require = createRequire(import.meta.url);
 const jsxRuntimeUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
@@ -291,39 +287,6 @@ test("没有注册宿主（其余站点）：保持老行为，开始游玩是 /
   }
 });
 
-// ── 2. 编辑权限（纯函数）──────────────────────────────────────────────────
-
-test("编辑权限：自己的作品直接改；别人的先 fork；只读明说", async () => {
-  assert.equal(gameEditAccess(gameItem()), "own");
-  assert.equal(gameEditAccess(gameItem({ canEdit: false })), "fork");
-  assert.equal(
-    gameEditAccess(gameItem({ canEdit: false, canFork: false })),
-    "view-only",
-  );
-  const forks = [];
-  const mine = gameItem({ artifactId: "copy" });
-  const forked = await ensureOwnGameCopy(
-    gameItem({ canEdit: false }),
-    async (item) => {
-      forks.push(item.artifactId);
-      return { ok: true, data: mine };
-    },
-  );
-  assert.deepEqual(forks, ["art-own"]);
-  assert.equal(forked.ok && forked.item.artifactId, "copy");
-  assert.equal(forked.ok && forked.forked, true);
-  const same = await ensureOwnGameCopy(gameItem(), async () => {
-    throw new Error("自己的作品不该 fork");
-  });
-  assert.equal(same.ok && same.forked, false);
-  const denied = await ensureOwnGameCopy(
-    gameItem({ canEdit: false, canFork: false }),
-    async () => {
-      throw new Error("只读条目不该 fork");
-    },
-  );
-  assert.equal(denied.ok, false);
-  assert.match(denied.error, /只开放了试玩/);
-});
+// 编辑权限（自己的 / 先创建副本 / 只能预览）现在由作品工作台处理：tests/works-workbench*.test.mjs。
 
 // Retired single-document editing is covered by game-project-render.test.mjs.
