@@ -10,3 +10,6 @@ A4 scheduler统一终态回执计时与释放额度/手动交还。旧三代入�
 首帧当前media 20秒timeout；原生owner负责修WorkerStopped(7) retry退避，需协商时序，使timeout前至少一次重试完成。请给父进程建议并增加首帧/重试预算测试。避免无证据大幅放宽timeout。
 
 验证：io guard run-heavy typecheck/api:check/consumers:check；run-light相关测试；全量npm test由父进程唯一执行与/tmp/ui-baseline-fails.txt comm对照，你不要跑全量。受静态字符串约束的测试可合理迁移至新模块，不能删断言绕过功能。每30–60秒报告进度。完成中文≤200行报告 /tmp/RD-W2-viewer-report.md，含file:line、命令结果、未做；提交回传hash。父进程亲自复核。
+
+## 验证路径补修（父进程集成裁定）
+诊断全量发现同一相邻仓目录假设造成新失败与若干非浏览器跨仓测试被错误skip。仅允许tests/**补通用配对仓路径解析（优先同前缀RD-W2-oceanleo，兼容main位置），修复错误skip的URL/compileModule路径；保留全部业务断言和真实不存在仓库时的skip，不硬编码/root，不改产品源码，不扩大到无关测试行为。先列文件边界，与基线失败名对照相关测试真跑，中文追加commit并更新/tmp报告。父进程继续收集当前诊断全量，之后唯一最终全量以新hash运行。
