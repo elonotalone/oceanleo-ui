@@ -1,154 +1,123 @@
 "use client";
 
-/**
- * 统一编辑栏里两件「显示值、不显示图标」的规范控件（D9）：
- * - 字号：数字输入 + 常用字号下拉（编辑器给 `kind:"number"` 时）。
- * - 字体：旧写法是 `kind:"panel"`、把当前字体名写在 label 里——按钮上写字体名。
- * 字体给 `kind:"select"` 时直接走 `SelectionToolbarSelectControl`（显示当前选项名）。
- */
-import { useId, useRef, useState } from "react";
-import { AnchoredPopover } from "./anchored-popover";
-import type {
-  SelectionControl,
-  SelectionControlValue,
-  SelectionPanelAction,
-} from "./selection-context";
-import { EDIT_BAR_TOUCH_EXTEND_CLASS } from "./edit-bar-surface";
-import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
-import { useEditBarSessionId } from "./edit-bar-selection-session";
+import { useEffect, useState } from "react";
 import type { CanonicalSelectionControl } from "./edit-bar-canon";
+import type { SelectionControl, SelectionPanelAction } from "./selection-context";
+import { EDIT_BAR_FIELD_CLASS } from "./edit-bar-surface";
+import { isEditBarSurface, preserveEditBarSelection } from "./edit-bar-selection-preserve";
 
-/** 常用字号；只列落在编辑器给的 min / max 之内的。 */
 export const EDIT_BAR_FONT_SIZE_PRESETS = [
   8, 9, 10, 11, 12, 14, 16, 18, 20, 24, 28, 32, 36, 40, 48, 60, 72, 96,
 ] as const;
 
-const FIELD_CLASS =
-  "flex h-7 shrink-0 items-center overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)]";
+type TextStyle = { fontFamily: string; fontSize: number | null; mixedFamily: boolean; mixedSize: boolean };
+export type EditBarTextBookmark = {
+  range: Range;
+  editor: HTMLElement;
+  anchor: Node | null;
+  anchorOffset: number;
+  focus: Node | null;
+  focusOffset: number;
+};
 
-export function SelectionToolbarFontSizeControl({
-  control,
-  emit,
-  accent,
-  forMeasurement = false,
-}: {
-  control: SelectionControl;
-  emit: (value?: SelectionControlValue) => void;
-  accent: string;
-  forMeasurement?: boolean;
-}) {
-  const sessionId = useEditBarSessionId();
-  const [open, setOpen] = useState(false);
-  const composingRef = useRef(false);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
-  const listboxId = `edit-bar-font-size-${useId().replace(/:/g, "")}`;
-  const value =
-    typeof control.value === "number" && Number.isFinite(control.value)
-      ? control.value
-      : 0;
-  const min = control.min ?? 1;
-  const max = control.max ?? 999;
-  const clamp = (next: number) => Math.min(max, Math.max(min, next));
-  const presets = EDIT_BAR_FONT_SIZE_PRESETS.filter(
-    (size) => size >= min && size <= max,
-  );
-  const label = forMeasurement ? undefined : control.label;
-  const commit = (raw: string) => {
-    const next = Number(raw);
-    if (raw.trim() !== "" && Number.isFinite(next)) emit(clamp(next));
-  };
-  return (
-    <div
-      className={`${FIELD_CLASS} ${EDIT_BAR_TOUCH_EXTEND_CLASS}`}
-      title={label ? `${label}：${value}` : undefined}
-      data-edit-bar-font-size
-    >
-      <input
-        type="number"
-        inputMode="decimal"
-        value={value}
-        min={control.min}
-        max={control.max}
-        step={control.step || 1}
-        disabled={control.disabled}
-        tabIndex={forMeasurement ? -1 : undefined}
-        aria-label={label}
-        onCompositionStart={() => {
-          composingRef.current = true;
-        }}
-        onCompositionEnd={(event) => {
-          composingRef.current = false;
-          commit(event.currentTarget.value);
-        }}
-        onChange={(event) => {
-          if (
-            (event.nativeEvent as InputEvent).isComposing ||
-            composingRef.current
-          ) {
-            return;
-          }
-          commit(event.target.value);
-        }}
-        className="h-full w-11 border-0 bg-transparent pl-2 text-center text-[12px] font-semibold tabular-nums text-[var(--fg,#292524)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/45 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-      />
-      {presets.length > 0 && (
-        <button
-          ref={buttonRef}
-          type="button"
-          disabled={control.disabled}
-          tabIndex={forMeasurement ? -1 : undefined}
-          onPointerDown={preserveEditBarSelection}
-          onClick={() => {
-            if (!forMeasurement) setOpen((current) => !current);
-          }}
-          aria-haspopup={forMeasurement ? undefined : "listbox"}
-          aria-expanded={forMeasurement ? undefined : open}
-          aria-controls={!forMeasurement && open ? listboxId : undefined}
-          aria-label={label ? `${label} ▾` : undefined}
-          className="grid h-full w-6 place-items-center text-[9px] text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))]"
-        >
-          ⌄
-        </button>
-      )}
-      <AnchoredPopover
-        open={!forMeasurement && open}
-        anchorRef={buttonRef}
-        panelRef={menuRef}
-        onClose={() => setOpen(false)}
-        id={listboxId}
-        role="listbox"
-        ariaLabel={control.label}
-        align="start"
-        maxHeight={288}
-        attributes={sessionId ? { "data-edit-bar-session": sessionId } : undefined}
-        className="z-[2147483500] w-24 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-      >
-        {presets.map((size) => (
-          <button
-            key={size}
-            type="button"
-            role="option"
-            aria-selected={size === value}
-            tabIndex={size === value ? 0 : -1}
-            onPointerDown={preserveEditBarSelection}
-            onClick={() => {
-              emit(size);
-              setOpen(false);
-            }}
-            className={`flex w-full items-center justify-between rounded-lg px-3 py-1.5 text-left text-[12px] tabular-nums ${
-              size === value
-                ? "bg-[var(--surface-hover,rgba(0,0,0,.06))] font-semibold text-[var(--fg,#292524)]"
-                : "text-[var(--fg-2,#57534e)] hover:bg-[var(--surface-hover,rgba(0,0,0,.04))]"
-            }`}
-          >
-            {size}
-            {size === value && <span style={{ color: accent }}>✓</span>}
-          </button>
-        ))}
-      </AnchoredPopover>
-    </div>
-  );
+function editableFor(node: Node | null): HTMLElement | null {
+  const element = node?.nodeType === 1 ? node as Element : node?.parentElement;
+  return element?.closest<HTMLElement>('[contenteditable]:not([contenteditable="false"])') || null;
+}
+
+/** DOM 书签只属于同一可编辑宿主；不会把弹层搜索框或另一篇文档当成选区。 */
+export function captureEditBarTextBookmark(): EditBarTextBookmark | null {
+  if (typeof document === "undefined") return null;
+  const selection = document.getSelection();
+  const editor = editableFor(selection?.anchorNode || null);
+  if (!selection?.rangeCount || !editor || isEditBarSurface(editor) ||
+      !editor.contains(selection.focusNode)) return null;
+  return { range: selection.getRangeAt(0).cloneRange(), editor,
+    anchor: selection.anchorNode, anchorOffset: selection.anchorOffset,
+    focus: selection.focusNode, focusOffset: selection.focusOffset };
+}
+
+export function restoreEditBarTextBookmark(bookmark: EditBarTextBookmark | null, focus = true): void {
+  if (!bookmark?.editor.isConnected || !bookmark.range.startContainer.isConnected ||
+      !bookmark.range.endContainer.isConnected) return;
+  const selection = bookmark.editor.ownerDocument.getSelection();
+  if (!selection) return;
+  if (focus) bookmark.editor.focus({ preventScroll: true });
+  // cloneRange 随 DOM 变化跟踪边界；保留反向选区时使用原端点。
+  selection.removeAllRanges();
+  selection.addRange(bookmark.range);
+  if (bookmark.anchor?.isConnected && bookmark.focus?.isConnected &&
+      typeof selection.setBaseAndExtent === "function") {
+    try {
+      selection.setBaseAndExtent(bookmark.anchor, bookmark.anchorOffset, bookmark.focus, bookmark.focusOffset);
+    } catch { /* 节点被宿主替换后仍保留 live Range 的有效边界。 */ }
+  }
+}
+
+function computedTextStyle(element: Element): { fontFamily: string; fontSize: number | null } {
+  let fontFamily = "";
+  let fontSize: number | null = null;
+  // 浏览器会返回计算后的继承值；祖先兜底同时覆盖无布局的 DOM 测试环境。
+  for (let current: Element | null = element; current && (!fontFamily || fontSize === null); current = current.parentElement) {
+    const style = current.ownerDocument.defaultView?.getComputedStyle(current);
+    if (!fontFamily && style?.fontFamily && !/^(inherit|initial|unset)$/i.test(style.fontFamily)) fontFamily = style.fontFamily;
+    if (fontSize === null && style?.fontSize.endsWith("px")) fontSize = Number.parseFloat(style.fontSize);
+  }
+  return { fontFamily, fontSize };
+}
+
+export function readEditBarTextStyle(): TextStyle | null {
+  const bookmark = captureEditBarTextBookmark();
+  if (!bookmark) return null;
+  const { range, editor } = bookmark;
+  const samples: ReturnType<typeof computedTextStyle>[] = [];
+  const root = range.commonAncestorContainer;
+  if (range.collapsed || root.nodeType === 3) {
+    samples.push(computedTextStyle(root.nodeType === 1 ? root as Element : root.parentElement || editor));
+  } else {
+    const walker = editor.ownerDocument.createTreeWalker(root, 4 /* SHOW_TEXT */);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (!node.textContent?.length || !range.intersectsNode(node) ||
+          (node === range.startContainer && range.startOffset === node.textContent.length) ||
+          (node === range.endContainer && range.endOffset === 0)) continue;
+      samples.push(computedTextStyle(node.parentElement || editor));
+    }
+  }
+  if (!samples.length) samples.push(computedTextStyle(editor));
+  const families = new Set(samples.map((sample) => normalizeEditBarFontFamily(sample.fontFamily)));
+  const sizes = new Set(samples.map((sample) => sample.fontSize));
+  return { ...samples[0], mixedFamily: families.size > 1, mixedSize: sizes.size > 1 };
+}
+
+export function normalizeEditBarFontFamily(value: string): string {
+  return value.split(",")[0].trim().replace(/^["']|["']$/g, "");
+}
+
+export function useEditBarTextStyle(forMeasurement = false): TextStyle | null {
+  const [style, setStyle] = useState<TextStyle | null>(null);
+  useEffect(() => {
+    if (forMeasurement) return;
+    const update = () => {
+      const next = readEditBarTextStyle();
+      // 弹层搜索 / 键盘导航期间保留宿主值，离开编辑栏后释放旧值。
+      if (!next && isEditBarSurface(document.activeElement)) return;
+      setStyle((previous) => JSON.stringify(previous) === JSON.stringify(next) ? previous : next);
+    };
+    update();
+    document.addEventListener("selectionchange", update);
+    return () => document.removeEventListener("selectionchange", update);
+  }, [forMeasurement]);
+  return style;
+}
+
+export function editBarFontName(control: SelectionControl, inherited: TextStyle | null): string {
+  if (control.value === null || control.value === "mixed" || inherited?.mixedFamily) return "多种";
+  const value = typeof control.value === "string" && !/^(default|inherit|unset)$/i.test(control.value) ? control.value : "";
+  const canonical = (control as CanonicalSelectionControl).canonValueLabel;
+  const effective = value || inherited?.fontFamily || canonical || "";
+  const family = normalizeEditBarFontFamily(effective);
+  const option = control.options?.find((item) => normalizeEditBarFontFamily(item.value).toLocaleLowerCase() === family.toLocaleLowerCase());
+  return option?.label || family || "字体";
 }
 
 /** 旧写法的字体面板键：按钮上写当前字体名，点开编辑器自己的字体面板。 */
@@ -167,7 +136,8 @@ export function SelectionToolbarFontFamilyButton({
   onActivated?: () => void;
   forMeasurement?: boolean;
 }) {
-  const fontName = control.canonValueLabel || control.label;
+  const inherited = useEditBarTextStyle(forMeasurement);
+  const fontName = editBarFontName(control, inherited);
   return (
     <button
       type="button"
@@ -183,10 +153,10 @@ export function SelectionToolbarFontFamilyButton({
       aria-expanded={activePanel}
       aria-label={forMeasurement ? undefined : `${control.label}：${fontName}`}
       title={forMeasurement ? undefined : `${control.label}：${fontName}`}
-      className={`${buttonClass} max-w-40`}
+      className={`${buttonClass} ${EDIT_BAR_FIELD_CLASS} min-w-28 max-w-48`}
       data-edit-bar-font-family
     >
-      <span className="min-w-0 truncate font-semibold" style={{ fontFamily: fontName }}>
+      <span className="min-w-0 truncate font-semibold" style={{ fontFamily: typeof control.value === "string" && control.value !== "default" ? control.value : inherited?.fontFamily || fontName }}>
         {fontName}
       </span>
       <span className="shrink-0 text-[9px] opacity-50">⌄</span>

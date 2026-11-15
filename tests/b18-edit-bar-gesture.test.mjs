@@ -28,10 +28,10 @@ test("B18：拖动会话吞掉按钮 click，静止按下仍回放普通 click",
   );
 });
 
-test("B18：编辑条本体高度为 38px", () => {
+test("B18：编辑条本体高度为 42px", () => {
   assert.match(surface, /export const EDIT_BAR_HEIGHT_PX =/);
-  assert.match(surface, /EDIT_BAR_CONTROL_SIZE_PX = 28/);
+  assert.match(surface, /EDIT_BAR_CONTROL_SIZE_PX = 32/);
   assert.match(surface, /EDIT_BAR_PILL_PADDING_PX = 4/);
   assert.match(surface, /EDIT_BAR_BORDER_PX = 1/);
-  assert.equal(28 + 4 * 2 + 1 * 2, 38);
+  assert.equal(32 + 4 * 2 + 1 * 2, 42);
 });

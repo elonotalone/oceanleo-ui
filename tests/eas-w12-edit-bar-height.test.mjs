@@ -1,6 +1,6 @@
 /**
- * W12 源码门禁：编辑栏 58 px → 38 px.
- * 控件 28、内边距 4、边框 1+1、总高 38；dock host is zero-height with an h-10 overlay sentinel.
+ * W12 源码门禁：编辑栏 32px 控件配方.
+ * 控件 32、内边距 4、边框 1+1、总高 42；dock host is zero-height with an h-10 overlay sentinel.
  */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -33,12 +33,12 @@ function slotSource(rel) {
   return readFileSync(resolve(rel), "utf8");
 }
 
-test("edit-bar constants are the 38 px recipe", () => {
-  assert.equal(surface.EDIT_BAR_CONTROL_SIZE_PX, 28);
+test("edit-bar constants are the 42 px recipe", () => {
+  assert.equal(surface.EDIT_BAR_CONTROL_SIZE_PX, 32);
   assert.equal(surface.EDIT_BAR_PILL_PADDING_PX, 4);
   assert.equal(surface.EDIT_BAR_BORDER_PX, 1);
   assert.equal(surface.EDIT_BAR_COLLAPSED_SIZE_PX, 32);
-  assert.equal(surface.EDIT_BAR_HEIGHT_PX, 38);
+  assert.equal(surface.EDIT_BAR_HEIGHT_PX, 42);
   assert.equal(
     surface.EDIT_BAR_CONTROL_SIZE_PX +
       surface.EDIT_BAR_PILL_PADDING_PX * 2 +
@@ -53,7 +53,7 @@ test("edit-bar constants are the 38 px recipe", () => {
   assert.match(tokens, /PLUGIN_CHROME_EDITBAR_MIN_H\s*=\s*"min-h-10"/);
 });
 
-test("pill style plus compact class derive the measured 38 px bar root", () => {
+test("pill style plus compact class derive the measured 42 px bar root", () => {
   const pill = surface.editBarPillStyle();
   assert.equal(pill.padding, surface.EDIT_BAR_PILL_PADDING_PX);
   assert.equal(pill.borderWidth, `${surface.EDIT_BAR_BORDER_PX}px`);
@@ -63,8 +63,8 @@ test("pill style plus compact class derive the measured 38 px bar root", () => {
     Number(pill.padding) * 2 +
     Number.parseFloat(String(pill.borderWidth)) * 2;
   assert.equal(derived, surface.EDIT_BAR_HEIGHT_PX);
-  assert.match(surface.EDIT_BAR_BUTTON_CLASS, /\bh-7\b/);
-  assert.match(surface.EDIT_BAR_BUTTON_CLASS, /\bw-7\b/);
+  assert.match(surface.EDIT_BAR_BUTTON_CLASS, /\bh-8\b/);
+  assert.match(surface.EDIT_BAR_BUTTON_CLASS, /\bw-8\b/);
   assert.doesNotMatch(surface.EDIT_BAR_BUTTON_CLASS, COMPACT_H11);
   assert.match(surface.EDIT_BAR_DIVIDER_CLASS, /\bh-4\b/);
   assert.match(surface.EDIT_BAR_BUTTON_CLASS, /pointer:coarse/);

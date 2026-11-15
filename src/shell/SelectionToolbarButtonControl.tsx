@@ -7,6 +7,7 @@ import type {
   SelectionPanelAction,
 } from "./selection-context";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
+import { EDIT_BAR_CONTROL_SIZE_PX } from "./edit-bar-surface";
 
 export function SelectionToolbarButtonControl({
   control,
@@ -61,7 +62,7 @@ export function SelectionToolbarButtonControl({
           }
           onActivated?.();
         }}
-        className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""} ${
+        className={`${buttonClass} ${iconOnly ? "w-8 px-0" : ""} ${
           activePanel ? "bg-[var(--surface-hover,rgba(0,0,0,.06))]" : ""
         } ${
           control.danger || control.tone === "danger"
@@ -76,14 +77,13 @@ export function SelectionToolbarButtonControl({
         aria-controls={
           control.kind === "panel" ? control.panelId || control.id : undefined
         }
-        style={
-          activePanel
-            ? {
+        style={{
+          ...(!menu ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : {}),
+          ...(activePanel ? {
                 color: accent,
                 boxShadow: `inset 0 -2px 0 ${accent}`,
-              }
-            : undefined
-        }
+              } : {}),
+        }}
       >
         {icon}
         {!iconOnly && (
@@ -110,10 +110,11 @@ export function SelectionToolbarButtonControl({
           emit(!active, event.currentTarget);
           onActivated?.();
         }}
-        className={`${buttonClass} ${iconOnly ? "w-7 px-0" : ""} ${
-          active ? "text-[var(--awb-on-accent,#fff)] shadow-sm" : ""
-        }`}
-        style={active ? { background: accent } : undefined}
+        className={`${buttonClass} ${iconOnly ? "w-8 px-0" : ""}`}
+        style={{
+          ...(!menu ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : {}),
+          ...(active ? { background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent } : {}),
+        }}
         title={namedLabel}
         aria-label={namedLabel}
       >
@@ -135,11 +136,12 @@ export function SelectionToolbarButtonControl({
     return (
       <label
         className={`${buttonClass} relative ${
-          iconOnly ? "w-7 px-0" : ""
+          iconOnly ? "w-8 px-0" : ""
         } focus-within:ring-2 focus-within:ring-[var(--awb-accent,#7c3aed)]/40`}
         title={namedLabel}
+        style={!menu ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : undefined}
       >
-        <span className="relative grid h-5 w-5 place-items-center">
+        <span className="relative grid h-6 w-6 place-items-center">
           {icon}
           <span
             className="absolute -bottom-0.5 left-0 right-0 h-1 rounded-full ring-1 ring-[var(--awb-border)]"

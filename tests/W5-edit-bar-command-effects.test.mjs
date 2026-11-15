@@ -424,7 +424,7 @@ test("W5-number stepper changes Fabric font size", async () => {
   const editor = makeImageEditor();
   const api = await mountToolbar(editor);
   try {
-    // 2026-10-23 D9：字号是「数字输入 + 常用字号下拉」（原来是 −/+ 步进器）。
+    // ED-B3：统一为 − 数值 +；点击数值打开预设，不再有独立下拉按钮。
     const input = api.container.querySelector(
       '[data-selection-control-id="font-size"] input[type="number"]',
     );
@@ -439,7 +439,7 @@ test("W5-number stepper changes Fabric font size", async () => {
     });
     assert.equal(editor.text.fontSize, 25);
     const presets = api.container.querySelector(
-      '[data-selection-control-id="font-size"] button[aria-haspopup="listbox"]',
+      '[data-selection-control-id="font-size"] input[aria-haspopup="listbox"]',
     );
     assert.ok(presets, "font-size preset dropdown must render");
     await act(async () => presets.click());

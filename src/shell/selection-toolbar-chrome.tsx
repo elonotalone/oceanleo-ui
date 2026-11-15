@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode, RefObject } from "react";
+import { EDIT_BAR_ICON_CLASS } from "./EditBarIcon";
 import { EditBarAgentIcon } from "./EditBarAgentIcon";
 import type { ResolvedAdvancedLayoutState } from "./advanced-layout-context";
 import { EDIT_BAR_BUTTON_CLASS } from "./edit-bar-surface";
@@ -50,7 +51,7 @@ export function SelectionToolbarAgentButton({
       aria-label={tt("AI 助手")}
       title={tt("AI 助手：在左侧和 agent 对话，同时继续改右边")}
     >
-      <EditBarAgentIcon className="h-4 w-4" />
+      <EditBarAgentIcon className={EDIT_BAR_ICON_CLASS} />
     </button>
   );
 }

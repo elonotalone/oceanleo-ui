@@ -1,3 +1,4 @@
+import { EDIT_BAR_ICON_STROKE_WIDTH } from "./EditBarIcon";
 import type { CreationToolId } from "./creation-tools";
 
 // A creation glyph always carries its own add marker. It is not a formatting icon.
@@ -30,7 +31,7 @@ const PATHS: Record<CreationToolId, string> = {
 };
 
 export function CreationToolIcon({ tool, className }: { tool: CreationToolId; className?: string }) {
-  return <svg aria-hidden="true" data-creation-tool-icon={tool} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.65" strokeLinecap="round" strokeLinejoin="round">
+  return <svg aria-hidden="true" data-creation-tool-icon={tool} className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={EDIT_BAR_ICON_STROKE_WIDTH} strokeLinecap="round" strokeLinejoin="round">
     <path d={PATHS[tool]} />
     <path d="M19 15v7 M15.5 18.5h7" />
   </svg>;
