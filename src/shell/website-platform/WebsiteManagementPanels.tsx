@@ -7,17 +7,18 @@ import {
   type WebsiteDomain,
   type WebsitePlatformApi,
 } from "../../lib/website-platform-api";
-import { useUI } from "../../i18n/ui/useUI";
+import { WorkNotWired } from "../works-workbench/WorkNotWired";
+import { useWebsiteUI } from "./website-preview-i18n";
 
 function usePanelData<T>(load: (signal: AbortSignal) => Promise<T>, deps: readonly unknown[]) {
-  const [state, setState] = useState<{ value?: T; error?: string; loading: boolean }>({ loading: true });
+  const [state, setState] = useState<{ value?: T; error?: string; notWired?: boolean; loading: boolean }>({ loading: true });
   useEffect(() => {
     const controller = new AbortController();
     setState({ loading: true });
     load(controller.signal).then(value => {
       if (!controller.signal.aborted) setState({ value, loading: false });
     }).catch(error => {
-      if (!controller.signal.aborted) setState({ error: error instanceof Error ? error.message : String(error), loading: false });
+      if (!controller.signal.aborted) setState({ error: error instanceof Error ? error.message : String(error), notWired: [404, 501].includes(Number((error as { status?: number })?.status)), loading: false });
     });
     return () => controller.abort();
     // Dependencies are supplied by each panel and intentionally stable.
@@ -26,14 +27,16 @@ function usePanelData<T>(load: (signal: AbortSignal) => Promise<T>, deps: readon
   return state;
 }
 
-function PanelState({ loading, error, children }: { loading: boolean; error?: string; children: ReactNode }) {
-  if (loading) return <p role="status">加载中…</p>;
+function PanelState({ loading, error, notWired, children }: { loading: boolean; error?: string; notWired?: boolean; children: ReactNode }) {
+  const tt = useWebsiteUI();
+  if (notWired) return <WorkNotWired page="dashboard" />;
+  if (loading) return <p role="status">{tt("加载中…")}</p>;
   if (error) return <p role="alert" className="text-red-600">{error}</p>;
   return <>{children}</>;
 }
 
 function DomainPanel({ projectId, api }: { projectId: string; api: WebsitePlatformApi }) {
-  const tt = useUI();
+  const tt = useWebsiteUI();
   const [reload, setReload] = useState(0);
   const state = usePanelData(signal => api.domains(projectId, signal), [api, projectId, reload]);
   const [draft, setDraft] = useState("");
@@ -75,7 +78,7 @@ function DomainPanel({ projectId, api }: { projectId: string; api: WebsitePlatfo
 }
 
 function LoginPanel({ projectId, api }: { projectId: string; api: WebsitePlatformApi }) {
-  const tt = useUI();
+  const tt = useWebsiteUI();
   const [reload, setReload] = useState(0);
   const state = usePanelData(signal => api.websiteAccess(projectId, signal), [api, projectId, reload]);
   const [busy, setBusy] = useState(false);
@@ -91,13 +94,13 @@ function LoginPanel({ projectId, api }: { projectId: string; api: WebsitePlatfor
   };
   return <section className="rounded border p-3" data-testid="website-management-login">
     <h3 className="font-medium">{tt("登录")}</h3>
-    <p className="mt-1 text-xs opacity-70">{tt("使用网站配置中的托管后端认证服务。")}</p>
-    <PanelState {...state}><div className="mt-3 flex items-center justify-between gap-2 text-xs"><span>{tt("登录与认证")}: {enabled ? tt("已启用") : tt("未启用")}</span>{!enabled && <button type="button" disabled={busy} className="underline" onClick={() => void enable()}>{busy ? tt("启用中…") : tt("启用网站登录")}</button>}</div>{actionError && <p role="alert" className="mt-2 text-red-600">{actionError}</p>}</PanelState>
+    <p className="mt-1 text-xs opacity-70">{tt("使用作品配置中的托管后端认证服务。")}</p>
+    <PanelState {...state}>{!access ? <WorkNotWired page="dashboard" /> : <div className="mt-3 flex items-center justify-between gap-2 text-xs"><span>{tt("登录与认证")}: {enabled ? tt("已启用") : tt("未启用")}</span>{!enabled && <button type="button" disabled={busy} className="underline" onClick={() => void enable()}>{busy ? tt("启用中…") : tt("启用作品登录")}</button>}</div>}{actionError && <p role="alert" className="mt-2 text-red-600">{actionError}</p>}</PanelState>
   </section>;
 }
 
 function UsersPanel({ projectId, api }: { projectId: string; api: WebsitePlatformApi }) {
-  const tt = useUI();
+  const tt = useWebsiteUI();
   const state = usePanelData(signal => api.authUsers(projectId, signal), [api, projectId]);
   return <section className="rounded border p-3" data-testid="website-management-users">
     <h3 className="font-medium">{tt("注册用户")}</h3>
@@ -106,7 +109,7 @@ function UsersPanel({ projectId, api }: { projectId: string; api: WebsitePlatfor
 }
 
 function StatisticsPanel({ projectId, api }: { projectId: string; api: WebsitePlatformApi }) {
-  const tt = useUI();
+  const tt = useWebsiteUI();
   const state = usePanelData<WebsiteAnalyticsSummary>(signal => api.analytics(projectId, undefined, undefined, signal), [api, projectId]);
   return <section className="rounded border p-3" data-testid="website-management-statistics">
     <h3 className="font-medium">{tt("访问统计")}</h3>
@@ -114,11 +117,12 @@ function StatisticsPanel({ projectId, api }: { projectId: string; api: WebsitePl
   </section>;
 }
 
-export function WebsiteManagementPanels({ projectId, api = websitePlatformApi }: { projectId: string; api?: WebsitePlatformApi }) {
-  return <div className="space-y-3" data-testid="website-management-panels">
-    <DomainPanel projectId={projectId} api={api} />
-    <LoginPanel projectId={projectId} api={api} />
-    <UsersPanel projectId={projectId} api={api} />
-    <StatisticsPanel projectId={projectId} api={api} />
+export function WebsiteManagementPanels({ projectId, api = websitePlatformApi, defaultBoards = [] }: { projectId: string; api?: WebsitePlatformApi; defaultBoards?: string[] }) {
+  const rank = (id: string) => { const index = defaultBoards.indexOf(id); return index < 0 ? defaultBoards.length : index; };
+  return <div className="contents" data-testid="website-management-panels">
+    <div id="work-board-domain" style={{ order: rank("domain") }}><DomainPanel projectId={projectId} api={api} /></div>
+    <div id="work-board-auth" style={{ order: rank("auth") }}><LoginPanel projectId={projectId} api={api} /></div>
+    <div id="work-board-users" style={{ order: rank("users") }}><UsersPanel projectId={projectId} api={api} /></div>
+    <div id="work-board-statistics" style={{ order: rank("statistics") }}><StatisticsPanel projectId={projectId} api={api} /></div>
   </div>;
 }

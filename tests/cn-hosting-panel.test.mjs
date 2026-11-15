@@ -9,7 +9,7 @@ import { CN_HOST_MESSAGES } from "../src/i18n/ui/messages/cn-host-copy.ts";
 import { LOCALES } from "../src/i18n/config.ts";
 
 const panel = readFileSync(new URL("../src/shell/website-platform/CnHostingPanel.tsx", import.meta.url), "utf8");
-const workbench = readFileSync(new URL("../src/shell/website-platform/WebsiteWorkbenchPanels.tsx", import.meta.url), "utf8");
+const workbench = readFileSync(new URL("../src/shell/website-platform/WebsiteResourceBoards.tsx", import.meta.url), "utf8");
 const { cnHostingApi } = await import(await compileModule("src/lib/cn-hosting-api.ts", {
   "./auth/client": dataModule('export async function accessToken(){return "test-owner-token";}'),
   "./auth/config": dataModule('export function gatewayBase(){return "https://cn.test.invalid";}'),
@@ -19,7 +19,7 @@ test("CN hosting copy covers every panel string for all locales", () => {
   const source = ts.createSourceFile("panel.tsx", panel, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const keys = new Set();
   function walk(node) {
-    if (ts.isStringLiteral(node) && /[\u3400-\u9fff]/.test(node.text)) keys.add(node.text);
+    if (ts.isStringLiteral(node) && node.text !== "作品" && /[\u3400-\u9fff]/.test(node.text)) keys.add(node.text);
     ts.forEachChild(node, walk);
   }
   walk(source);

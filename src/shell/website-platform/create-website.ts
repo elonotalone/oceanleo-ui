@@ -3,6 +3,7 @@
 import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { getArtifactItem } from "../artifact-client";
+import { DEFAULT_WORK_KIND, type WorkKind } from "../works/kinds";
 import type { LibraryItem } from "../library-data";
 
 export interface CreatedWebsite {
@@ -16,10 +17,13 @@ export interface CreatedWebsite {
 /** Create a website from the one description the Library asks the user for. */
 export async function createWebsiteFromDescription(
   description: string,
+  kindOrSignal: WorkKind | AbortSignal = DEFAULT_WORK_KIND,
   signal?: AbortSignal,
 ): Promise<CreatedWebsite> {
+  const kind = typeof kindOrSignal === "string" ? kindOrSignal : DEFAULT_WORK_KIND;
+  signal = typeof kindOrSignal === "string" ? signal : kindOrSignal;
   const request = String(description || "").trim();
-  if (!request) throw new Error("先描述你想做的网站，再开始创建。");
+  if (!request) throw new Error("先描述你想做的作品，再开始创建。");
   const token = await accessToken().catch(() => null);
   const response = await fetch(`${GATEWAY_BASE}/v1/website-projects/create-flow`, {
     method: "POST",
@@ -31,7 +35,7 @@ export async function createWebsiteFromDescription(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ request }),
+    body: JSON.stringify({ request, kind }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -39,7 +43,7 @@ export async function createWebsiteFromDescription(
     const message =
       (detail && typeof detail.message === "string" && detail.message) ||
       (typeof body.detail === "string" && body.detail) ||
-      "网站创建失败，请稍后重试。";
+      "作品创建失败，请稍后重试。";
     throw new Error(message);
   }
   const project = body && typeof body.project === "object" ? body.project : {};
@@ -55,11 +59,11 @@ export async function createWebsiteFromDescription(
       "",
   ).trim();
   if (!projectId || !artifactId || !artifactRevisionId) {
-    throw new Error("网站已创建，但 Library 没收到完整的素材身份，请重试。 ");
+    throw new Error("作品已创建，但 Library 没收到完整的素材身份，请重试。 ");
   }
   const item = await getArtifactItem(artifactId, artifactRevisionId, signal);
   if (!item.ok || !item.data) {
-    throw new Error(item.error || "网站已创建，但打开 Library 素材失败，请重试。");
+    throw new Error(item.error || "作品已创建，但打开 Library 素材失败，请重试。");
   }
   return {
     projectId,
@@ -70,3 +74,5 @@ export async function createWebsiteFromDescription(
   };
 }
 
+
+export const createWorkFromDescription = createWebsiteFromDescription;

@@ -104,6 +104,7 @@ const REQUESTED_KEYS = [
 // Caller retirements are supported by the implementing commits, not an i18n allowance.
 // 6fa2162b moved device settings and replaced the owner lease/consent controls.
 // 9b1116ac replaced the website toolbar/panel picker with dashboard/configuration views.
+// 2026-11-15-works removed the seven-tab website wrapper and changed the surviving UI to work-neutral copy.
 // All 88 keys remain mandatory in the translation assertions below for compatibility.
 const COMPATIBILITY_ONLY_COPY = {
   "4 小时": "6fa2162b: owner lease duration selector removed when controls moved into Settings",
@@ -115,7 +116,34 @@ const COMPATIBILITY_ONLY_COPY = {
   "关闭后，Agent 申请仍会显示，但不会自动获得远程控制。": "6fa2162b: replaced by the durable Agent consent description",
   "暂无看板": "9b1116ac: old website panel picker removed; dashboard now says 暂无网站看板",
   "查看运行日志": "9b1116ac: toolbar log trigger moved into the dashboard and renamed 运行日志",
-  "返回预览": "9b1116ac: old selected-panel return action replaced by preview/dashboard tabs",
+  "SQL 控制台": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "主域名": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "仓库": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "以下读数来自网站项目 API；没有返回的计量保持不可用。": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "例如：一个展示作品集和联系方式的简洁网站": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "分析状态": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "创建网站": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "取消点选": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "域名已添加": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "存储用量": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "已创建恢复提交 {commit}": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "当前提交": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "恢复为新提交": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "恢复网站版本 {commit}": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "技术栈": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "描述你想做的网站": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "新建网站": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "无法打开此网站的 agent 对话，请重试。": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "正在读取网站数据…": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "此网站还没有成本记录。": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "点选元素": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "环境": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "环境变量引用": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "网站工作台": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "网站预览": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "该看板尚未接线。": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "路径须以 / 开头，且只能在当前网站内跳转。": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
+  "运行 SQL": "2026-11-15-works: old website-only copy or manual editor control retired by the shared optional workbench",
 };
 
 const SOURCE_PATHS = [
@@ -130,7 +158,7 @@ const SOURCE_PATHS = [
   "shell/website-platform/WebsitePanelView.tsx",
   "shell/website-platform/WebsitePreviewPicker.tsx",
   "shell/website-platform/WebsitePreviewWorkbench.tsx",
-  "shell/website-platform/WebsiteWorkbenchPanels.tsx",
+  "shell/website-platform/WebsiteResourceBoards.tsx",
   "shell/website-platform/create-website-entry.tsx",
 ];
 const sorted = (keys) => [...keys].sort();
@@ -153,10 +181,10 @@ test("all 88 requested gaps retain live callers or documented compatibility tran
     visit(ast);
   }
   assert.deepEqual(sorted(REQUESTED_KEYS.filter((key) => !literals.has(key))), sorted(Object.keys(COMPATIBILITY_ONLY_COPY)));
-  assert.equal(Object.keys(COMPATIBILITY_ONLY_COPY).length, 10);
+  assert.equal(Object.keys(COMPATIBILITY_ONLY_COPY).length, 37);
   for (const [key, evidence] of Object.entries(COMPATIBILITY_ONLY_COPY)) {
     assert.ok(REQUESTED_KEYS.includes(key), key);
-    assert.match(evidence, /^(6fa2162b|9b1116ac): .{20,}/, key);
+    assert.match(evidence, /^(6fa2162b|9b1116ac|2026-11-15-works): .{20,}/, key);
   }
 });
 

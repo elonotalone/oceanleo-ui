@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const owned = ["src/lib/cn-hosting-api.ts", "src/shell/website-platform/CnHostingPanel.tsx",
-  "src/shell/website-platform/WebsiteWorkbenchPanels.tsx", "src/i18n/ui/messages/cn-host-copy.ts"].map(f => path.join(root, f));
+  "src/shell/website-platform/WebsiteResourceBoards.tsx", "src/i18n/ui/messages/cn-host-copy.ts"].map(f => path.join(root, f));
 const config = ts.readConfigFile(path.join(root, "tsconfig.json"), ts.sys.readFile);
 const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
 const program = ts.createProgram(owned, parsed.options);

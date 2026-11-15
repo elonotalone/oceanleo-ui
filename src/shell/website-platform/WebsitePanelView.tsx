@@ -2,22 +2,22 @@
 import type { WebsitePanel, WebsitePanelData } from "../../api/website-panels";
 import { useWebsiteUI } from "./website-preview-i18n";
 
-export const PANEL_STATE_LABEL = { not_wired: "未接线", wired: "已接线", error: "错误" } as const;
+export const PANEL_STATE_LABEL = { not_wired: "未接入", wired: "已接入", error: "错误" } as const;
 const CATALOG_ERRORS = new Map([
-  ["app_catalog_invalid_manifest", "网站看板清单格式不正确，请让 agent 修复。"],
-  ["app_catalog_timeout", "读取网站看板清单超时，请重试。"],
-  ["app_catalog_access_denied", "网站看板清单暂不可访问，请检查服务连接。"],
-  ["app_catalog_unsafe_origin", "网站看板地址未通过安全检查。"],
-  ["app_catalog_unavailable", "暂时无法读取网站看板清单，请重试。"],
+  ["app_catalog_invalid_manifest", "作品看板清单格式不正确，请让 agent 修复。"],
+  ["app_catalog_timeout", "读取作品看板清单超时，请重试。"],
+  ["app_catalog_access_denied", "作品看板清单暂不可访问，请检查服务连接。"],
+  ["app_catalog_unsafe_origin", "作品看板地址未通过安全检查。"],
+  ["app_catalog_unavailable", "暂时无法读取作品看板清单，请重试。"],
 ]);
 // Closed platform reason codes; anything else keeps the generic copy (not_wired) or the raw reason (error).
 const PANEL_REASONS = new Map([
-  ["analytics_collector_not_observed", "还没有收到这个环境的访问数据，网站被访问后这里会显示访问量。"],
+  ["analytics_collector_not_observed", "还没有收到这个环境的访问数据，作品被访问后这里会显示访问量。"],
   ["auth_connector_not_connected", "登录服务尚未连接，可在「配置」中选择登录服务。"],
   ["auth_connector_registry_unavailable", "暂时无法读取登录服务配置，请稍后重试。"],
   ["selected_auth_users_provider_not_ready", "所选登录服务尚未就绪，连接完成后会显示注册用户。"],
-  ["site_runtime_not_started", "网站未运行，启动后可查看此看板。"],
-  ["panel_not_declared", "网站尚未提供此看板的数据。"],
+  ["site_runtime_not_started", "作品未运行，启动后可查看此看板。"],
+  ["panel_not_declared", "作品尚未提供此看板的数据。"],
 ]);
 /** Fractional metrics are rounded for reading; the exact value stays in the title. */
 export function formatMetricValue(value: string | number): string {
@@ -42,7 +42,7 @@ export function WebsitePanelView({ panel, data, loading, error, pending, onWire 
     <h2 className="mb-3 text-sm font-semibold">{catalogError ? tt("应用看板清单") : panel.title} · {tt(PANEL_STATE_LABEL[panel.state])}</h2>
     {panel.state === "error" || error ? <p role="alert">{catalogError ? tt(catalogError) : reason ? tt(reason) : panel.error || error || tt("看板数据暂不可用。")}</p>
       : panel.state === "not_wired" ? <div data-testid="website-panel-not-wired">
-        <p>{tt(reason || "该看板尚未接线。")}</p>
+        <p>{tt(reason || "该看板尚未接入，可让 agent 提供看板数据。")}</p>
         {panel.source === "app" && <button type="button" disabled={pending} onClick={onWire}>{tt("让 agent 配置此看板")}</button>}
       </div>
       : loading ? <p role="status">{tt("加载中…")}</p>

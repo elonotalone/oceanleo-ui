@@ -39,13 +39,13 @@ test("live runtime: stop is one click; unconfirmed stop says still stopping, nev
     unpublish: async () => { throw new Error("unexpected"); } };
   const view = await mount(api);
   try {
-    assert.match(view.host.textContent, /网站发布 · 在线/);
+    assert.match(view.host.textContent, /作品发布 · 在线/);
     const link = view.host.querySelector("a");
     assert.equal(link.getAttribute("href"), LIVE.url); assert.equal(link.getAttribute("rel"), "noopener noreferrer"); assert.equal(link.getAttribute("target"), "_blank");
     await click(byId(view.host, "website-publication-stop"));
     assert.deepEqual(calls, [["stop", "p1"]]);
     assert.match(byId(view.host, "website-publication-status").textContent, /仍在停止中/);
-    assert.match(view.host.textContent, /网站发布 · 已停止/);
+    assert.match(view.host.textContent, /作品发布 · 已停止/);
     assert.equal(view.host.querySelector("a"), null);
   } finally { await view.destroy(); }
 });
@@ -66,7 +66,7 @@ test("unpublish needs a confirm click; cancel sends nothing", async () => {
     await click(byId(view.host, "website-publication-unpublish-confirm"));
     assert.deepEqual(calls, ["p1"]);
     assert.match(view.host.textContent, /已取消发布/);
-    assert.match(view.host.textContent, /网站发布 · 未发布/);
+    assert.match(view.host.textContent, /作品发布 · 未发布/);
     assert.equal(byId(view.host, "website-publication-unpublish"), null);
   } finally { await view.destroy(); }
 });

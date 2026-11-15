@@ -84,7 +84,7 @@ test("management panels render data, copy records, verify DNS, add domains, enab
   assert.equal(button(view.container, "添加").disabled, false);
   await act(async () => button(view.container, "添加").click()); await settle();
   assert.deepEqual(state.addCalls, ["shop.example.org"]);
-  await act(async () => button(view.container, "启用网站登录").click()); await settle();
+  await act(async () => button(view.container, "启用作品登录").click()); await settle();
   assert.deepEqual(state.enableCalls, ["authenticated"]);
   assert.match(view.container.querySelector('[data-testid="website-management-users"]').textContent, /user@example\.org/);
   assert.match(view.container.querySelector('[data-testid="website-management-statistics"]').textContent, /12/);

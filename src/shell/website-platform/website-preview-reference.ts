@@ -1,6 +1,6 @@
 import type { OcEditorBridge } from "../PromptHighlightArea";
 export interface PreviewReference {
-  projectId: string; url: string; x: number; y: number; width: number; height: number;
+  projectId?: string; workId?: string; source?: "url" | "screen"; url?: string; x: number; y: number; width: number; height: number;
   text?: string; tag?: string; className?: string; selector?: string; screenshot?: File;
 }
 /** Agent references are locations, never owner capabilities or URL credentials. */
@@ -10,16 +10,19 @@ export function previewReferenceUrl(value: string): string {
     if (url.protocol !== "https:" && url.protocol !== "http:") return "";
     url.username = ""; url.password = "";
     // URLSearchParams decodes key names and removes every duplicate value.
-    url.searchParams.delete("__oceanleo_owner");
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(?:__oceanleo_owner|access_token|token|capability|ticket|authorization|signature)$/i.test(key)) url.searchParams.delete(key);
+    }
     return url.href;
   } catch { return ""; }
 }
 export function previewReferenceText(ref: PreviewReference): string {
-  return "[Website preview reference]\n" + JSON.stringify({
-    project_id: ref.projectId, url: previewReferenceUrl(ref.url),
+  return "[Preview reference]\n" + JSON.stringify({
+    work_id: ref.workId || (ref.projectId ? `cloud:${ref.projectId}` : ""), source: ref.source || "url",
+    ...(ref.source !== "screen" && ref.url ? { url: previewReferenceUrl(ref.url) } : {}),
     point: { x: Math.round(ref.x), y: Math.round(ref.y) },
     viewport: { width: Math.round(ref.width), height: Math.round(ref.height) },
-    ...(ref.tag ? { tag: ref.tag, text: ref.text?.slice(0, 500), class: ref.className?.slice(0, 300), selector: ref.selector?.slice(0, 300) } : { dom: "unavailable_cross_origin" }),
+    dom: ref.tag ? { tag: ref.tag, text: ref.text?.slice(0, 500), class: ref.className?.slice(0, 300), selector: ref.selector?.slice(0, 300) } : "unavailable",
   }, null, 2);
 }
 /** Uses the composer's existing paste intake and input handler; never sends a message. */

@@ -13,7 +13,8 @@ const buttonClass = "rounded bg-[var(--awb-accent)] px-3 py-1 text-xs text-white
 export function CnHostingPanel({ projectId, api }: { projectId: string; api: WebsitePlatformApi }) {
   const locale = normalizeLocale(useLocale());
   // Keep this independently localised while the parent registers the copy file.
-  const tt = (key: string) => CN_HOST_MESSAGES[locale][key] || CN_HOST_MESSAGES.en[key] || key;
+  const tt = (key: string) => (CN_HOST_MESSAGES[locale][key] || CN_HOST_MESSAGES.en[key] || key)
+    .replace(/网站|網站/g, "作品").replace(/websites/gi, "works").replace(/Website/g, "Work").replace(/website/g, "work");
   const [account, setAccount] = useState<CnHostingAccount>();
   const [status, setStatus] = useState<CnHostingStatus>();
   const [target, setTarget] = useState<CnHostingTarget>({ account_id: "", region: "cn-shanghai", bucket: "", domain: "", icp_number: "" });

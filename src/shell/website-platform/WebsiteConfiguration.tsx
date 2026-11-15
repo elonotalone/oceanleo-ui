@@ -11,6 +11,7 @@ import {
   websiteExportsApi, websiteDatabaseExportConnection, saveWebsiteExport, WebsiteExportError,
   type WebsiteExportsApi, type WebsiteExportKind,
 } from "../../api/website-exports";
+import { WorkNotWired } from "../works-workbench/WorkNotWired";
 import { SiteVaultPanel } from "./SiteVaultPanel";
 import { useWebsiteLanguage, useWebsiteUI } from "./website-preview-i18n";
 
@@ -46,9 +47,9 @@ const TASK_ERRORS: Record<string, string> = {
   adapter_module_unavailable: "此连接器暂不可用，请选择其他服务。",
   connector_migration_required: "配置存储尚未就绪，暂时无法保存。",
   connector_rate_or_quota_exceeded: "配置请求过于频繁或已达额度，请稍后重试。",
-  connector_owner_mismatch: "你没有修改此网站配置的权限。",
+  connector_owner_mismatch: "你没有修改此作品配置的权限。",
   connector_persistence_unavailable: "配置存储暂不可用，请先刷新状态，勿重复提交。",
-  connector_project_read_unavailable: "暂时无法读取此网站的配置，请稍后重试。",
+  connector_project_read_unavailable: "暂时无法读取此作品的配置，请稍后重试。",
 };
 const hasTaskError = (code: string) => Object.prototype.hasOwnProperty.call(TASK_ERRORS, code);
 const taskStateLabel = (state: string) => Object.prototype.hasOwnProperty.call(TASK_STATES, state) ? TASK_STATES[state] : "状态暂不可用";
@@ -74,7 +75,7 @@ type OutcomeReceipt = { change_id?: string; task_id?: string };
 type ExportJob = { kind: WebsiteExportKind; environment: WebsiteConnectorEnvironment; database: string; controller: AbortController };
 const SLOT_LABELS: Record<string, string> = {
   dev_runtime: "开发与运行服务", code: "代码仓库", database: "数据库", auth: "登录与认证",
-  storage: "文件存储", hosting: "网站托管", domain: "域名", analytics: "访问统计", scheduler: "定时任务",
+  storage: "文件存储", hosting: "作品托管", domain: "域名", analytics: "访问统计", scheduler: "定时任务",
 };
 
 function useConnectorText() {
@@ -164,23 +165,24 @@ function ConnectorChange({ change, catalog }: { change: WebsiteConnectorChange; 
 }
 
 type WebsiteConfigurationProps = {
-  projectId: string; api?: WebsiteConnectorsApi; exportsApi?: WebsiteExportsApi; onTaskCreated: (taskId: string) => void;
+  projectId: string; defaultPreset?: string; api?: WebsiteConnectorsApi; exportsApi?: WebsiteExportsApi; onTaskCreated: (taskId: string) => void;
 };
 
 export function WebsiteConfiguration(props: WebsiteConfigurationProps) {
   return <ProjectConfiguration key={props.projectId} {...props} />;
 }
 
-function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsApi = websiteExportsApi, onTaskCreated }: WebsiteConfigurationProps) {
+function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConnectorsApi, exportsApi = websiteExportsApi, onTaskCreated }: WebsiteConfigurationProps) {
   const tt = useWebsiteUI();
   const text = useConnectorText();
   const [environment, setEnvironment] = useState<WebsiteConnectorEnvironment>("preview");
   const [snapshot, setSnapshot] = useState<WebsiteConnectorsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notWired, setNotWired] = useState(false);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [pending, setPending] = useState(false);
-  const [preset, setPreset] = useState("");
+  const [preset, setPreset] = useState(defaultPreset);
   const [refresh, setRefresh] = useState(0);
   const [uncertain, setUncertain] = useState(false);
   const [receipt, setReceipt] = useState<OutcomeReceipt | null>(null);
@@ -239,7 +241,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
         : code === "busy" ? "导出请求正在处理中或过于频繁，请稍后重试。"
         : code === "invalid-file" ? "收到的文件不完整或格式不正确，未开始下载。"
         : kind === "database" ? "当前环境的数据库暂时无法导出，请检查连接或稍后重试。"
-        : "网站源码暂时无法导出，请确认源码已保存后重试。";
+        : "作品源码暂时无法导出，请确认源码已保存后重试。";
       setExportNotice({ text: tt(message), error: true });
     } finally {
       if (activeExport.current === job) { activeExport.current = null; if (mounted.current) setExportPending(null); }
@@ -269,7 +271,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
       setError(tt("暂时无法确认此环境的配置状态，请刷新后重试。"));
       return;
     }
-    currentSnapshot.current = next; setSnapshot(next); setError("");
+    currentSnapshot.current = next; setSnapshot(next); setError(""); setNotWired(false);
     if (activeExport.current?.kind === "database" && activeExport.current.database !== next.slots.find(slot => slot.slot === "database")?.connector_id) {
       cancelExport(tt("数据库配置已变更或暂不可确认，请重新下载。"));
     }
@@ -305,12 +307,15 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     let timer: ReturnType<typeof setTimeout>;
     scope.current = environment;
     currentSnapshot.current = null;
-    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset("");
+    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset(defaultPreset);
     const poll = async () => {
       try {
         await readSnapshot(environment, epoch, controller.signal);
-      } catch {
-        if (!controller.signal.aborted && epoch === generation.current) setError(tt("暂时无法读取配置状态，请刷新后重试。"));
+      } catch (caught) {
+        if (!controller.signal.aborted && epoch === generation.current) {
+          if ([404, 501].includes(Number((caught as { status?: number })?.status))) { setNotWired(true); setError(""); }
+          else setError(tt("暂时无法读取配置状态，请刷新后重试。"));
+        }
       } finally {
         if (!controller.signal.aborted && epoch === generation.current) { setLoading(false); timer = setTimeout(poll, 5000); }
       }
@@ -326,7 +331,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     generation.current++; mutation.current++;
     reconciliation.current?.abort();
     currentSnapshot.current = null;
-    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset("");
+    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset(defaultPreset);
     setEnvironment(next);
   }
 
@@ -350,7 +355,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
         await reconcileCurrent();
         return;
       }
-      currentSnapshot.current = next; setSnapshot(next); setError("");
+      currentSnapshot.current = next; setSnapshot(next); setError(""); setNotWired(false);
     } catch (caught) {
       if (!mounted.current) return;
       const failure = caught instanceof WebsiteRequestError ? caught : null;
@@ -368,6 +373,8 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     }
   }
 
+  if (notWired) return <WorkNotWired page="configuration" />;
+
   const selectedPreset = snapshot?.presets.find(item => item.id === preset);
   const available = snapshot?.persistence.available === true;
   const databaseExportSupported = Boolean(websiteDatabaseExportConnection(snapshot?.slots.find(slot => slot.slot === "database")?.connector_id || ""));
@@ -377,7 +384,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     return !option || option.available === false;
   });
   return <section className="h-full overflow-auto p-3 text-sm" data-testid="website-configuration" data-connector-inspection-environment={environment} aria-busy={pending}>
-    <h2 className="font-semibold">{tt("网站配置")}</h2>
+    <h2 className="font-semibold">{tt("作品配置")}</h2>
     <label className="my-3 flex items-center gap-3 text-xs">
       <span>{tt("连接环境")}</span>
       <select data-testid="website-connector-environment" aria-label={tt("连接环境")} value={environment}
@@ -387,8 +394,8 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     </label>
     <p className="mt-1 text-xs opacity-65">{tt("所有服务均可单独选择。应用选择后，agent 会创建迁移或部署任务。")}</p>
     <p className="mt-1 text-xs opacity-65">{tt("连接状态来自实际服务检查，保存选择不代表已连接。费用按成本计算，不加价。")}</p>
-    <p className="mt-1 text-xs opacity-65">{tt("服务选择对整个网站生效；连接状态和配置任务会注明环境。开发服务固定为预览环境，托管与域名固定为生产环境。")}</p>
-    <p className="mt-1 text-xs opacity-65">{tt("保存选择不会授予服务权限、建立连接或发布网站。")}</p>
+    <p className="mt-1 text-xs opacity-65">{tt("服务选择对整个作品生效；连接状态和配置任务会注明环境。开发服务固定为预览环境，托管与域名固定为生产环境。")}</p>
+    <p className="mt-1 text-xs opacity-65">{tt("保存选择不会授予服务权限、建立连接或发布作品。")}</p>
     {loading && <p role="status" className="mt-4">{tt("加载中…")}</p>}
     {error && <p role="alert" className="mt-3 text-xs text-red-600">{error} <button type="button" className="underline" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></p>}
     {actionError && <p role="alert" className="mt-3 text-xs text-red-600">{actionError}</p>}
@@ -402,7 +409,7 @@ function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsAp
     </p>}
     {snapshot && <>
       <section className="my-4 rounded border border-[var(--awb-border)] p-3">
-        <h3 className="font-semibold">{tt("下载网站文件")}</h3>
+        <h3 className="font-semibold">{tt("下载作品文件")}</h3>
         <div className="my-3 flex flex-wrap gap-2">
           <button type="button" data-testid="website-export-code" disabled={!!exportPending} className="rounded border px-3 py-2 text-xs disabled:opacity-50"
             onClick={() => void downloadExport("code")}>{tt("下载源码 ZIP")}</button>

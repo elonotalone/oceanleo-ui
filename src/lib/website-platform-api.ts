@@ -243,11 +243,9 @@ async function request<T>(path: string, init: RequestInit = {}, signal?: AbortSi
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
-      typeof body?.detail === "string"
-        ? body.detail
-        : `Website request failed (${response.status})`,
-    );
+    throw Object.assign(new Error(
+      typeof body?.detail === "string" ? body.detail : `Work request failed (${response.status})`,
+    ), { status: response.status });
   }
   return body as T;
 }

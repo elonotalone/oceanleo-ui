@@ -12,6 +12,9 @@ const i18n = dataModule('const tt=(s,v)=>v?s.replace(/\\{(\\w+)\\}/g,(_,k)=>v[k]
 const panelModule = await compileModule("src/shell/website-platform/WebsitePanelView.tsx", {"./website-preview-i18n":i18n});
 const { WebsitePanelView, WebsitePanelDataView } = await import(panelModule);
 const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/website-platform/WebsitePreviewWorkbench.tsx", {
+  "../works-workbench/WorkScreenPreview": dataModule("export function WorkScreenPreview(){return null;}"),
+  "../works-workbench/WebsiteCodeSourceViewer": dataModule("export function WebsiteCodeSourceViewer(){return null;}"),
+  "../works-workbench/WorkPreviewSourceControl": dataModule("export function WorkPreviewSourceControl(){return null;}"),
   "./website-preview-i18n":i18n, "./WebsitePanelView":panelModule,
   // Publication route absent (404) keeps the Dashboard publication card hidden.
   "../../api/website-runtime":dataModule("export const websiteRuntimeApi={}; export class WebsiteRequestError extends Error{constructor(s){super(\"HTTP \"+s);this.status=s;}} export async function websiteRequest(){throw new WebsiteRequestError(404);}"),
@@ -76,11 +79,11 @@ test("not_wired app panel offers wiring, error panel displays reason and never d
 });
 test("platform not_wired reasons explain the cause and fractional metrics are rounded",()=>{
   const visits=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{id:"visits",title:"访问统计",kind:"metric",source:"platform",state:"not_wired",error:"analytics_collector_not_observed"},onWire(){}}));
-  assert.match(visits,/还没有收到这个环境的访问数据/); assert.doesNotMatch(visits,/analytics_collector_not_observed|该看板尚未接线|让 agent 配置此看板/);
+  assert.match(visits,/还没有收到这个环境的访问数据/); assert.doesNotMatch(visits,/analytics_collector_not_observed|该看板尚未接入，可让 agent 提供看板数据|让 agent 配置此看板/);
   const users=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{id:"users",title:"已注册用户",kind:"table",source:"platform",state:"not_wired",error:"auth_connector_not_connected"},onWire(){}}));
   assert.match(users,/登录服务尚未连接/);
   const unknown=renderToStaticMarkup(React.createElement(WebsitePanelView,{panel:{id:"x",title:"X",kind:"table",source:"platform",state:"not_wired",error:"something_new"},onWire(){}}));
-  assert.match(unknown,/该看板尚未接线/); assert.doesNotMatch(unknown,/something_new/);
+  assert.match(unknown,/该看板尚未接入，可让 agent 提供看板数据/); assert.doesNotMatch(unknown,/something_new/);
   const metric=renderToStaticMarkup(React.createElement(WebsitePanelDataView,{data:{kind:"metric",items:[
     {label:"min",value:94.53998071666666,unit:"min"},{label:"usd",value:0.012623541,unit:"USD"},{label:"rate",value:1.0729,unit:"x"},{label:"big",value:12345.6},{label:"count",value:3},{label:"text",value:"n/a"}]}}));
   assert.match(metric,/>94.54 min</); assert.match(metric,/title="94.53998071666666"/); assert.match(metric,/>0.0126 USD</);
@@ -99,8 +102,9 @@ test("UC-3 preview keeps scripts without same-origin, no frame messaging or inli
   };
   locked(source);
   assert.throws(() => locked(source.replace('allow-scripts"', 'allow-scripts allow-same-origin"')));
-  const shell=readFileSync("src/shell/InlineAdvancedWorkbenchShell.tsx","utf8");
-  assert.match(shell,/editBarSuppressed = websitePreviewOnly \|\|/);
+  const route=readFileSync("src/shell/works-workbench/WorkWorkbenchRoute.tsx","utf8");
+  assert.match(route,/id: "none"/);
+  assert.doesNotMatch(route,/persistence:|onLocalSave|writeFiles/);
 });
 // UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
 // C10 composer transaction appends coordinates while preserving draft; no frame messaging, origin acceptance or HTML execution is tested.
@@ -114,7 +118,7 @@ test("picker inserts a coordinate reference through the existing composer transa
   input.__ocGetText=()=>draft; input.__ocSetText=text=>{draft=text;};
   const ok=insertPreviewReference({projectId:"p",url:"https://p.ws.oceanleo.app/admin",x:20.3,y:40,width:390,height:700});
   assert.equal(ok,true); assert.match(draft,/Please adjust/); assert.match(draft,/"x": 20/);
-  assert.match(draft,/unavailable_cross_origin/); assert.match(draft,/\/admin/); host.remove();
+  assert.match(draft,/unavailable/); assert.match(draft,/\/admin/); host.remove();
 });
 test("runtime logs use cursor and fix shows returned task next to the composer",async()=>{
   const host=document.createElement("div"); document.body.append(host);
@@ -173,7 +177,7 @@ test("English preview vocabulary covers every runtime state, panel state and int
     "../../i18n/ui/useUI":dataModule("export function useUI(){return s=>s;}"),
   }));
   for(const meta of Object.values(RUNTIME_STATES)) {assert.ok(WEBSITE_PREVIEW_EN[meta.label]);assert.ok(WEBSITE_PREVIEW_EN[meta.description]);}
-  for(const label of ["未接线","已接线","错误","共 {total} 条"]) assert.ok(WEBSITE_PREVIEW_EN[label]);
+  for(const label of ["未接入","已接入","错误","共 {total} 条"]) assert.ok(WEBSITE_PREVIEW_EN[label]);
 });
 // UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
 // C7 wiring UI dispatches a panel task and shows its returned id; the mocked API does not test authorization or content isolation.
@@ -186,7 +190,7 @@ test("C7 not_wired website dashboard panel invokes wire and exposes the returned
   };
   await act(async()=>root.render(React.createElement(WebsitePreviewWorkbench,{projectId:"p",runtimeApi:{get:async()=>({state:"running",preview_url:"https://p.ws.oceanleo.app/"})},panelsApi})));
   await act(async()=>host.querySelector('[data-testid="website-view-dashboard"]').click());
-  assert.match(host.textContent,/未接线/);
+  assert.match(host.textContent,/未接入/);
   await act(async()=>Array.from(host.querySelectorAll("button")).find(b=>b.textContent==="让 agent 配置此看板").click());
   assert.deepEqual(wired,[["p","users"]]); assert.equal(host.querySelector('[data-testid="website-agent-task"] a').getAttribute("href"),"/tasks/wire-task");
   await act(async()=>root.unmount()); host.remove();

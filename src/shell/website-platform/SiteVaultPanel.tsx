@@ -130,18 +130,18 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
       const result = await createProjectVaultReference(projectId, { secret_id: secretId, purpose: "runtime_env", env_name: envName.trim(), environment }, signal);
       if (!signal.aborted) {
         setReferences((current) => [...current.filter((reference) => reference.id !== result.reference.id), result.reference]);
-        setSecretId(""); setEnvName(""); setNotice(text("引用已添加。此网站使用主保险箱的当前版本。", "Reference added. This website uses the current version from your main vault."));
+        setSecretId(""); setEnvName(""); setNotice(text("引用已添加。此作品使用主保险箱的当前版本。", "Reference added. This work uses the current version from your main vault."));
       }
     });
   }
 
-  return <section data-site-vault-panel="" aria-label={text("网站小保险箱", "Website vault")} aria-busy={loading || busy} className="space-y-3 text-[13px] text-neutral-700 dark:text-neutral-300">
+  return <section data-site-vault-panel="" aria-label={text("作品小保险箱", "Work vault")} aria-busy={loading || busy} className="space-y-3 text-[13px] text-neutral-700 dark:text-neutral-300">
     <div className="flex flex-wrap items-center justify-between gap-2">
       <h3 className="font-medium text-neutral-900 dark:text-neutral-100">{text("小保险箱", "Small vault")}</h3>
       {onOpenMainVault && <button type="button" className={BUTTON} disabled={busy} onClick={onOpenMainVault}>{text("管理主保险箱", "Manage main vault")}</button>}
     </div>
-    <p className="text-[12px] leading-relaxed text-neutral-500">{text("这里只保存主保险箱的引用。主密钥更新后自动跟随；移除引用会立即撤销此网站的使用权限。agent 无法读取密钥值。", "This vault stores references to your main vault. References follow rotations; removing one immediately revokes this website’s access. Agents cannot read the secret values.")}</p>
-    {!projectId && <p role="status">{text("先打开一个网站项目。", "Open a website project first.")}</p>}
+    <p className="text-[12px] leading-relaxed text-neutral-500">{text("这里只保存主保险箱的引用。主密钥更新后自动跟随；移除引用会立即撤销此作品的使用权限。agent 无法读取密钥值。", "This vault stores references to your main vault. References follow rotations; removing one immediately revokes this work’s access. Agents cannot read the secret values.")}</p>
+    {!projectId && <p role="status">{text("先打开一个作品项目。", "Open a work project first.")}</p>}
     {loading && <p role="status">{text("正在读取引用…", "Loading references…")}</p>}
     {error && <div role="alert" className="space-y-2 rounded-lg bg-red-50 p-3 text-red-700 dark:bg-red-950/30"><p>{error}</p><button type="button" disabled={busy || !projectId} className={BUTTON} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 p-3 text-[12px] dark:bg-neutral-800">{notice}</p>}
@@ -149,7 +149,7 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
     {committed && <div data-site-vault-committed="" role="status" className="space-y-2 rounded-lg bg-amber-50 p-3 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200"><p>{vaultCommittedNotice(text)}</p><button type="button" disabled={busy} className={BUTTON} onClick={() => void act(async () => {})}>{text("刷新", "Refresh")}</button></div>}
     {vault && !vault.enabled && <p role="status" className="rounded-xl border border-dashed border-neutral-200 p-4 dark:border-neutral-700">{text("当前服务尚未启用保险箱，暂时不能添加或移除引用。", "Vault is not enabled on this service. Adding and removing references are unavailable.")}</p>}
     {vault?.enabled && <>
-      {loaded && !references.length && <p className="text-[12px] text-neutral-500">{text("此网站还没有密钥引用。", "This website has no secret references yet.")}</p>}
+      {loaded && !references.length && <p className="text-[12px] text-neutral-500">{text("此作品还没有密钥引用。", "This work has no secret references yet.")}</p>}
       <ul className="divide-y divide-neutral-100 dark:divide-neutral-800">
         {references.map((reference) => <li key={reference.id} data-vault-reference={reference.id} className="space-y-2 py-3">
           <div className="flex items-start justify-between gap-3">
@@ -162,13 +162,13 @@ function SiteVaultContent({ projectId, accent, onOpenMainVault, onChanged }: Sit
             </div>
             {reference.scope !== "connector" && <button type="button" className={`${BUTTON} shrink-0 text-red-600`} disabled={busy} onClick={() => setRemoving(reference.id)}>{text("移除引用", "Remove")}</button>}
           </div>
-          {removing === reference.id && <div role="alert" className="space-y-2 rounded-lg border border-red-200 p-3 text-[12px] dark:border-red-900"><p>{text("移除后，此网站将无法继续使用这项密钥；主保险箱项目和其他网站的引用会保留。", "Removing this reference revokes this website’s use of the secret. The main item and other websites’ references remain available.")}</p><div className="flex gap-2">
+          {removing === reference.id && <div role="alert" className="space-y-2 rounded-lg border border-red-200 p-3 text-[12px] dark:border-red-900"><p>{text("移除后，此作品将无法继续使用这项密钥；主保险箱项目和其他作品的引用会保留。", "Removing this reference revokes this work’s use of the secret. The main item and other works’ references remain available.")}</p><div className="flex gap-2">
             <button type="button" disabled={busy} className={`${BUTTON} text-red-600`} onClick={() => void act(async (signal) => {
               if (reference.scope === "browser") await deleteVaultBrowserBinding(reference.id, signal);
               else await deleteProjectVaultReference(projectId, reference.id, signal);
               if (!signal.aborted) {
                 setReferences((current) => current.filter((item) => item.id !== reference.id));
-                setRemoving(null); setNotice(text("引用已移除，此网站的使用权限已撤销。", "Reference removed. This website’s access has been revoked."));
+                setRemoving(null); setNotice(text("引用已移除，此作品的使用权限已撤销。", "Reference removed. This work’s access has been revoked."));
               }
             })}>{text("确认移除", "Remove reference")}</button><button type="button" className={BUTTON} disabled={busy} onClick={() => setRemoving(null)}>{text("取消", "Cancel")}</button>
           </div></div>}

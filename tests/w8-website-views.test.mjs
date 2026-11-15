@@ -10,6 +10,9 @@ import { fitPreviewViewport } from "../src/shell/website-platform/website-previe
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const i18n = dataModule('const tt=(s,v)=>v?s.replace(/\\{(\\w+)\\}/g,(_,k)=>v[k]):s; export function useWebsiteUI(){return tt;}');
 const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/website-platform/WebsitePreviewWorkbench.tsx", {
+  "../works-workbench/WorkScreenPreview": dataModule("export function WorkScreenPreview(){return null;}"),
+  "../works-workbench/WebsiteCodeSourceViewer": dataModule("export function WebsiteCodeSourceViewer(){return null;}"),
+  "../works-workbench/WorkPreviewSourceControl": dataModule("export function WorkPreviewSourceControl(){return null;}"),
   "./website-preview-i18n": i18n,
   // Publication route absent (404) keeps the Dashboard publication card hidden.
   "../../api/website-runtime": dataModule("export const websiteRuntimeApi={}; export class WebsiteRequestError extends Error{constructor(s){super(\"HTTP \"+s);this.status=s;}} export async function websiteRequest(){throw new WebsiteRequestError(404);}"),
@@ -64,7 +67,7 @@ test("ResizeObserver fits a desktop layout into the sidebar and cleans up when c
     assert.equal(iframe.width, "390"); assert.equal(iframe.height, "844");
     assert.ok(Math.abs(parseFloat(m.host.querySelector('[data-testid="website-preview-viewport"]').style.height) - 600) < .001);
     assert.equal(m.host.querySelectorAll('[role="tab"]').length, 3);
-    assert.doesNotMatch(m.host.querySelector('[role="toolbar"]').textContent, /日志|看板/);
+    assert.match(m.host.querySelector('[role="toolbar"]').textContent, /运行日志/);
     await act(async () => m.host.querySelector('[data-testid="website-view-dashboard"]').click());
     assert.equal(m.host.querySelector("iframe"), null); assert.equal(observers[0].disconnected, true);
     assert.ok(m.host.querySelector('[data-testid="website-dashboard"]'));
@@ -116,7 +119,7 @@ test("Dashboard explains a rejected site catalog without hiding platform panels 
   try {
     await act(async () => m.host.querySelector('[data-testid="website-view-dashboard"]').click());
     const card = m.host.querySelector('[data-testid="website-dashboard-catalog"]');
-    assert.match(card.querySelector('[role="alert"]').textContent, /网站看板清单格式不正确，请让 agent 修复/);
+    assert.match(card.querySelector('[role="alert"]').textContent, /作品看板清单格式不正确，请让 agent 修复/);
     assert.doesNotMatch(card.textContent, /app_catalog_/);
     assert.equal(card.querySelector("button"), null);
     for (const id of ["visits", "users", "runtime_cost", "domain", "errors"]) {

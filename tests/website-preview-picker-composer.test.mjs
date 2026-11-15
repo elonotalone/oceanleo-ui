@@ -72,17 +72,17 @@ async function mount(props = {}) {
   return { record, host, root, async destroy() { await act(async () => root.unmount()); host.remove(); } };
 }
 async function pick(m) {
-  await act(async () => m.host.querySelector('[aria-label="点选元素"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 52, clientY: 75 })));
+  await act(async () => m.host.querySelector('[aria-label="指位置给 agent"]').dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 52, clientY: 75 })));
 }
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 70)); }); }
 function assertReference(record) {
-  assert.match(record.draft, /^Keep my draft\n\[Website preview reference\]/);
-  const payload = JSON.parse(record.draft.split("[Website preview reference]\n")[1]);
-  assert.equal(payload.project_id, reference.projectId);
+  assert.match(record.draft, /^Keep my draft\n\[Preview reference\]/);
+  const payload = JSON.parse(record.draft.split("[Preview reference]\n")[1]);
+  assert.equal(payload.work_id, `cloud:${reference.projectId}`);
   assert.equal(payload.url, reference.url);
   assert.deepEqual(payload.point, { x: 42, y: 55 });
   assert.deepEqual(payload.viewport, { width: 390, height: 700 });
-  assert.equal(payload.dom, "unavailable_cross_origin");
+  assert.equal(payload.dom, "unavailable");
   assert.equal(record.writes, 1);
   assert.equal(record.closed, 1);
 }
@@ -117,7 +117,7 @@ test("unready editor times out visibly and retry inserts the retained reference"
     t.mock.timers.enable({ apis: ["setTimeout", "Date"] });
     await pick(m);
     assert.match(m.host.textContent, /正在打开 agent 对话并等待输入框/);
-    assert.equal(m.host.querySelector('[aria-label="点选元素"]').disabled, true);
+    assert.equal(m.host.querySelector('[aria-label="指位置给 agent"]').disabled, true);
     await act(async () => t.mock.timers.tick(PREVIEW_REFERENCE_TIMEOUT_MS + 1));
     assert.match(m.host.querySelector('[role="alert"]').textContent, /等待 agent 对话输入框超时，引用已保留/);
     assert.equal(m.record.closed, 0); assert.equal(m.record.writes, 0);
@@ -134,7 +134,7 @@ test("closing the picker cancels its pending write even if the bridge becomes re
   const m = await mount({ ready: false });
   try {
     await pick(m);
-    await act(async () => [...m.host.querySelectorAll("button")].find(b => b.textContent === "取消点选").click());
+    await act(async () => [...m.host.querySelectorAll("button")].find(b => b.textContent === "取消指位置").click());
     const input = m.host.querySelector("[data-oc-slot-editor]");
     input.__ocGetText = () => m.record.draft;
     input.__ocSetText = text => { m.record.draft = text; m.record.writes++; };
@@ -218,8 +218,8 @@ test("pending reference retains DOM metadata and screenshot for the existing pas
       },
     });
     assert.equal(result, "inserted"); assert.equal(opened, 1); assert.equal(pasted, screenshot);
-    const payload = JSON.parse(draft.split("[Website preview reference]\n")[1]);
-    assert.equal(payload.text, "Buy"); assert.equal(payload.class, "primary"); assert.equal(payload.selector, "#buy");
+    const payload = JSON.parse(draft.split("[Preview reference]\n")[1]);
+    assert.equal(payload.dom.text, "Buy"); assert.equal(payload.dom.class, "primary"); assert.equal(payload.dom.selector, "#buy");
     assert.deepEqual(payload.point, { x: 42, y: 55 });
   } finally { globalThis.DataTransfer = oldTransfer; globalThis.ClipboardEvent = oldClipboard; }
 });

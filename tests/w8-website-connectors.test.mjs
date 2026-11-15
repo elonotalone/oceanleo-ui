@@ -144,7 +144,7 @@ test("environment inspection defaults to Preview, labels fixed slots and keeps a
     }
     assert.deepEqual(reads.map(read => read.environment), ["preview", "production", "preview"]);
     assert.equal(reads[0].signal.aborted, true);
-    assert.match(m.host.textContent, /保存选择不会授予服务权限、建立连接或发布网站/);
+    assert.match(m.host.textContent, /保存选择不会授予服务权限、建立连接或发布作品/);
   } finally { await m.destroy(); }
 });
 
@@ -751,4 +751,14 @@ test("database selection changes abort stale dumps without cancelling code expor
     await act(async () => sources[0].resolve(zipExport()));
     assert.equal(probe.clicks.length, 1);
   } finally { await m.destroy(); probe.restore(); t.mock.timers.reset(); }
+});
+
+// UC-NONE: an optional configuration route that has not been connected is not a broken work.
+test("configuration missing route renders not wired without fake service choices or errors", async () => {
+  const host=document.createElement("div");document.body.append(host);const root=createRoot(host);
+  try {
+    await act(async()=>root.render(React.createElement(WebsiteConfiguration,{projectId:"optional",api:{get:async()=>{throw Object.assign(new Error("missing"),{status:404});}},onTaskCreated(){}})));
+    assert.match(host.querySelector('[data-testid="work-configuration-not-wired"]').textContent,/未接入.*agent/s);
+    assert.equal(host.querySelector('[role="alert"]'),null);assert.equal(host.querySelector("select"),null);
+  } finally {await act(async()=>root.unmount());host.remove();}
 });

@@ -29,7 +29,7 @@ test("scaled desktop selection reports original page coordinates and viewport di
     await act(async () => root.render(React.createElement(WebsitePreviewPicker, {
       projectId: "p-8", url: "https://p-8.ws.oceanleo.app/", frame, onClose: () => closed++,
     })));
-    await act(async () => host.querySelector('[aria-label="点选元素"]').dispatchEvent(new window.MouseEvent("click", {
+    await act(async () => host.querySelector('[aria-label="指位置给 agent"]').dispatchEvent(new window.MouseEvent("click", {
       bubbles: true, clientX: 100, clientY: 65,
     })));
     const ref = globalThis.__w8PickedReference;

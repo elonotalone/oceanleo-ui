@@ -8,8 +8,8 @@ const STATE_LABEL = { live: "在线", stopped: "已停止", not_published: "未�
 
 const FAILURES = {
   changed: "发布状态已变化，已刷新，请确认后重试。", missing: "发布状态已变化，已刷新，请确认后重试。",
-  unauthorized: "需要项目所有者权限。", busy: "这个网站的另一项操作还在进行，请稍后重试。",
-  unavailable: "暂时无法确认网站状态，请稍后重试。", failed: "操作失败，请稍后重试。",
+  unauthorized: "需要项目所有者权限。", busy: "这个作品的另一项操作还在进行，请稍后重试。",
+  unavailable: "暂时无法确认作品状态，请稍后重试。", failed: "操作失败，请稍后重试。",
 } as const;
 const failureCopy = (caught: unknown) => FAILURES[caught instanceof WebsitePublicationError ? caught.code : "failed"];
 const reloads = (caught: unknown) => caught instanceof WebsitePublicationError && (caught.code === "changed" || caught.code === "missing");
@@ -58,7 +58,7 @@ export function WebsitePublicationCard({ projectId, api = websitePublicationApi 
     const poll = async () => {
       const next = await load(controller.signal);
       if (controller.signal.aborted) return;
-      if (next && !next.stoppingSessions) { setMessage("网站进程已停止。"); return; }
+      if (next && !next.stoppingSessions) { setMessage("作品进程已停止。"); return; }
       if (++attempts < 12) timer = setTimeout(poll, 5000);
     };
     timer = setTimeout(poll, 5000);
@@ -73,8 +73,8 @@ export function WebsitePublicationCard({ projectId, api = websitePublicationApi 
       const result = await (operation === "stop" ? api.stop(projectId) : api.unpublish(projectId));
       if (generation.current !== mine) return;
       setPublication(result);
-      setMessage(!result.stopConfirmed ? "网站已下线，运行进程仍在停止中。"
-        : operation === "stop" ? "网站已停止，重新发布会在同一地址恢复。" : "已取消发布，网站地址不再可访问。");
+      setMessage(!result.stopConfirmed ? "作品已下线，运行进程仍在停止中。"
+        : operation === "stop" ? "作品已停止，重新发布会在同一地址恢复。" : "已取消发布，作品地址不再可访问。");
     } catch (caught) {
       if (generation.current !== mine) return;
       setFailure(failureCopy(caught));
@@ -89,19 +89,19 @@ export function WebsitePublicationCard({ projectId, api = websitePublicationApi 
   const canStop = state === "live" && publication?.kind === "runtime";
   const canUnpublish = state === "live" || state === "stopped";
   return <div className="mb-4 rounded border border-[var(--awb-border)] p-3" data-testid="website-publication">
-    <strong>{tt("网站发布")} · {state ? tt(STATE_LABEL[state]) : tt("状态暂不可用")}</strong>
+    <strong>{tt("作品发布")} · {state ? tt(STATE_LABEL[state]) : tt("状态暂不可用")}</strong>
     {publication?.url && <p className="mt-2 break-all text-xs">
       <a href={publication.url} target="_blank" rel="noopener noreferrer" className="underline">{publication.url}</a></p>}
-    {state === "stopped" && !message && <p className="mt-2 text-xs opacity-65">{tt("网站已停止，重新发布会在同一地址恢复。")}</p>}
+    {state === "stopped" && !message && <p className="mt-2 text-xs opacity-65">{tt("作品已停止，重新发布会在同一地址恢复。")}</p>}
     {message && <p role="status" className="mt-2 text-xs" data-testid="website-publication-status">{tt(message)}</p>}
     {failure && <p role="alert" className="mt-2 text-xs text-red-600">{tt(failure)}</p>}
     {(canStop || canUnpublish) && <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
       {canStop && !confirming && <button type="button" disabled={!!busy} className="underline" data-testid="website-publication-stop"
-        onClick={() => void run("stop")}>{busy === "stop" ? tt("正在停止…") : tt("停止已发布网站")}</button>}
+        onClick={() => void run("stop")}>{busy === "stop" ? tt("正在停止…") : tt("停止已发布作品")}</button>}
       {canUnpublish && !confirming && <button type="button" disabled={!!busy} className="underline" data-testid="website-publication-unpublish"
         onClick={() => setConfirming(true)}>{busy === "unpublish" ? tt("正在取消发布…") : tt("取消发布")}</button>}
       {confirming && <>
-        <span>{tt("取消发布后网站地址将无法访问，发布记录会被清除。")}</span>
+        <span>{tt("取消发布后作品地址将无法访问，发布记录会被清除。")}</span>
         <button type="button" className="underline text-red-600" data-testid="website-publication-unpublish-confirm"
           onClick={() => void run("unpublish")}>{tt("确认取消发布")}</button>
         <button type="button" className="underline" onClick={() => setConfirming(false)}>{tt("取消")}</button>

@@ -11,6 +11,9 @@ import { insertPreviewReference, previewReferenceText, previewReferenceUrl } fro
 // This suite does not validate signatures or execute untrusted iframe code. Random assertion markers are never printed.
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { WebsitePreviewWorkbench } = await import(await compileModule("src/shell/website-platform/WebsitePreviewWorkbench.tsx", {
+  "../works-workbench/WorkScreenPreview": dataModule("export function WorkScreenPreview(){return null;}"),
+  "../works-workbench/WebsiteCodeSourceViewer": dataModule("export function WebsiteCodeSourceViewer(){return null;}"),
+  "../works-workbench/WorkPreviewSourceControl": dataModule("export function WorkPreviewSourceControl(){return null;}"),
   "./website-preview-i18n": dataModule("export function useWebsiteUI(){return s=>s;}"),
   "../../api/website-runtime": dataModule("export const websiteRuntimeApi={};"),
   "../../api/website-panels": dataModule("export const websitePanelsApi={};"),
@@ -71,7 +74,7 @@ test("ticket-only polls and live source commits preserve the iframe document, ph
       assert.equal(frame.getAttribute("data-live-state"), "kept");
       await act(async () => [...m.host.querySelectorAll("button")].find(button => button.textContent === "电脑").click());
       assert.ok(m.host.querySelector("iframe") === frame); assert.equal(frame.width, "390"); assert.equal(frame.height, "844");
-      await act(async () => [...m.host.querySelectorAll("button")].find(button => button.textContent === "点选元素").click());
+      await act(async () => [...m.host.querySelectorAll("button")].find(button => button.textContent === "指位置给 agent").click());
       const pickerUrl = globalThis.__w8LifetimePickerUrl;
       assert.ok(!pickerUrl.includes(first) && !pickerUrl.includes(second));
       current = running(third, { commit: "commit-3" }); await tick(t);
@@ -252,10 +255,10 @@ test("a signed iframe reference reaches the composer without its assertion and p
     assert.ok(ownerMatches(frame, ticket));
     assert.equal(insertPreviewReference({ projectId: "project-a", url: frame.getAttribute("src"), x: 20.3, y: 41.8, width: 1440, height: 900, screenshot }, workspace), true);
     assert.ok(!draft.includes(ticket));
-    assert.ok(draft.startsWith("Keep my draft\n[Website preview reference]\n"));
-    const payload = JSON.parse(draft.split("[Website preview reference]\n")[1]);
+    assert.ok(draft.startsWith("Keep my draft\n[Preview reference]\n"));
+    const payload = JSON.parse(draft.split("[Preview reference]\n")[1]);
     assert.equal(new URL(payload.url).searchParams.getAll("__oceanleo_owner").length, 0);
     assert.deepEqual(payload.point, { x: 20, y: 42 }); assert.deepEqual(payload.viewport, { width: 1440, height: 900 });
-    assert.equal(payload.dom, "unavailable_cross_origin"); assert.ok(pasted === screenshot);
+    assert.equal(payload.dom, "unavailable"); assert.ok(pasted === screenshot);
   } finally { workspace.remove(); globalThis.DataTransfer = oldTransfer; globalThis.ClipboardEvent = oldClipboard; await m.destroy(); }
 });
