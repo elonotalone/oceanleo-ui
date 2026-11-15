@@ -24,10 +24,11 @@ import test from "node:test";
 import React, { act } from "react";
 
 import { compileModule, dataModule, realModule } from "./helpers/module-bench.mjs";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const require = createRequire(import.meta.url);
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const PORTAL = resolve(REPO, "..", "oceanleo");
+const PORTAL = fileURLToPath(pairedRepoUrl("oceanleo"));
 const HAVE_PORTAL = existsSync(join(PORTAL, "components/project/ProjectSidePlanCard.tsx"));
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 const reactDomUrl = pathToFileURL(require.resolve("react-dom")).href;

@@ -258,6 +258,11 @@ export class RemoteDesktopQualityCollector implements RemoteMediaQualitySink {
   legacyFrame(): void { if (this.legacyFirstFrame === undefined && this.mediaMode !== "artc") this.legacyFirstFrame = this.since(); }
   inputSent(lane: QualityLane): void { this.lanes[lane]++; }
   controlTiming(sample: RemoteControlTiming): void {
+    if (sample.stage === "input_receipt") {
+      if (this.directAckWindow.length < MAX_SAMPLES) this.directAckWindow.push(sample.elapsedMs);
+      if (sample.status === "executed" && this.executed.length < MAX_SAMPLES) this.executed.push(sample.elapsedMs);
+      return;
+    }
     const list = sample.stage === "direct_ack" ? this.directAckWindow : sample.stage === "accepted" ? this.accepted : this.executed;
     if (list.length < MAX_SAMPLES) list.push(sample.elapsedMs);
   }

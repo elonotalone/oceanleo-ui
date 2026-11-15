@@ -425,3 +425,25 @@ test('panel unknown release never invokes resume and explains the existing failu
 for(const mode of ['unmount','replacement'])test(`old panel release after ${mode} cannot resume any task`,async()=>{const d=deferred();let calls=0;const agent={text:'AI paused',handBack:true,busy:false,handoffKey:'old',onHandBack:async()=>{calls++;return true;}};const view=await mount({agent,streamOverrides:{releaseForHandoff:()=>d.promise}});await view.fire(view.screen().querySelector('[data-remote-agent-hand-back]'),new window.MouseEvent('click',{bubbles:true}));if(mode==='unmount')await view.unmount();else await view.setAgent({...agent,handoffKey:'new'});await act(async()=>d.resolve());assert.equal(calls,0);});
 
 test('composition started before handback is not replayed after CAS confirms',async()=>{const view=await mount({agent:{text:'AI paused',handBack:true,busy:false,handoffKey:'task',onHandBack:async()=>true}});await view.fire(view.input(),new window.CompositionEvent('compositionstart',{bubbles:true}));await view.fire(view.screen().querySelector('[data-remote-agent-hand-back]'),new window.MouseEvent('click',{bubbles:true}));await view.fire(view.input(),new window.CompositionEvent('compositionend',{bubbles:true,data:'stale'}));assert.equal(view.log.inputs.filter(x=>x.kind==='type').length,0);});
+
+test('negative terminal handoff keeps manual control and permits an explicit retry without resuming AI', async () => {
+  const consoleErrors = [];
+  const originalError = console.error;
+  console.error = (...args) => consoleErrors.push(args.map(String).join(' '));
+  try {
+    let attempts = 0, resumed = 0;
+    const view = await mount({ agent: { text: 'AI 已暂停', handBack: true, busy: false, handoffKey: 'negative', onHandBack: async () => { resumed++; return true; } },
+      streamOverrides: { releaseForHandoff() { attempts++; return Promise.reject(new Error('input_receipt_rejected')); } } });
+    const button = view.screen().querySelector('[data-remote-agent-hand-back]');
+    await act(async () => button.click());
+    assert.equal(button.disabled, false);
+    assert.equal(resumed, 0);
+    await view.key('keydown', 'Enter');
+    assert.equal(view.log.inputs.at(-1).kind, 'key_down');
+    await act(async () => button.click());
+    assert.equal(attempts, 2);
+    assert.equal(resumed, 0);
+    await view.unmount();
+    assert.deepEqual(consoleErrors, [], 'real changed panel mounts, changes phase and handles clicks without React errors');
+  } finally { console.error = originalError; }
+});

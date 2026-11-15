@@ -266,7 +266,7 @@ const stubs = {
     }
   `),
   "./edit-bar-dock-state": dataModule(`export function editBarDockStorageKey(){ return "fixture"; }`),
-  "./edit-bar-surface": dataModule(`export const EDIT_BAR_BUTTON_CLASS=""; export const EDIT_BAR_DIVIDER_CLASS=""; export const EDIT_BAR_TOUCH_EXTEND_CLASS=""; export function editBarCollapsedStyle(){return {};} export function editBarPillStyle(){return {};} `),
+  "./edit-bar-surface": dataModule(`export const EDIT_BAR_BUTTON_CLASS=""; export const EDIT_BAR_DIVIDER_CLASS=""; export const EDIT_BAR_TOUCH_EXTEND_CLASS=""; export const EDIT_BAR_COLLAPSED_TOUCH_EXTEND_CLASS=""; export const EDIT_BAR_INK_CLASS=""; export const EDIT_BAR_FIELD_CLASS=""; export const EDIT_BAR_PILL_PADDING_PX=4; export const EDIT_BAR_CONTROL_SIZE_PX=32; export const EDIT_BAR_CONTROL_GAP_PX=4; export const EDIT_BAR_BORDER_PX=1; export const EDIT_BAR_COLLAPSED_SIZE_PX=32; export const EDIT_BAR_HEIGHT_PX=42; export function editBarControlClass(){return "";} export function editBarSurfaceStyle(){return {};} export function editBarCollapsedStyle(){return {};} export function editBarPillStyle(){return {};} `),
   "../ui/Button": buttonStub,
   "./collab/CollabActionSlot": nullComponent("CollabActionSlot"),
   "./editor-item-social-chrome": dataModule(`export function useEditorItemSocial(){ return { shareAvailable: false, favoriteAvailable: false, favorite: false, busy: "", error: "", artifactId: null, revisionId: null, async share(){}, async toggleFavorite(){} }; }`),

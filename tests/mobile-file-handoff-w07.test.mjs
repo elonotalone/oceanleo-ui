@@ -31,6 +31,7 @@ import { createRoot } from "react-dom/client";
 import ts from "typescript";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -467,12 +468,7 @@ test("那台电脑离线时，多片文件当场说清楚，不留半个文件�
 });
 
 test("手机上算出来的一片上限与网关的 MAX_FILE_WRITE_B64_CHARS 相等", (t) => {
-  const gateway = fileURLToPath(
-    new URL(
-      "../../oceanleo/backend/app/routers/device_tasks_router.py",
-      import.meta.url,
-    ),
-  );
+  const gateway = fileURLToPath(pairedRepoUrl("oceanleo", "backend/app/routers/device_tasks_router.py"));
   if (!existsSync(gateway)) {
     t.skip(`网关源码不在这台机器上（${gateway}），这条只在同时有两个仓时才判`);
     return;

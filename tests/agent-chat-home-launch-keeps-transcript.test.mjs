@@ -16,13 +16,14 @@
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 import { existsSync } from "node:fs";
 
 import React, { act } from "react";
 
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { pairedRepoUrl } from "./helpers/paired-repo-url.mjs";
 
 const require = createRequire(import.meta.url);
 const fabricRequire = createRequire(require.resolve("fabric/node"));
@@ -692,7 +693,7 @@ test("a right-pane render loop stays contained and retry preserves the live conv
   }
 });
 
-const HOME_CONTENT_URL = new URL("../../oceanleo/app/_components/home-content.tsx", import.meta.url);
+const HOME_CONTENT_URL = pairedRepoUrl("oceanleo", "app/_components/home-content.tsx");
 let homeContentModule = null;
 /** The real portal HomeContent with the real AgentChat; the computer-task lib calls are recorded. */
 async function loadHomeContent() {
@@ -771,7 +772,7 @@ async function loadHomeContent() {
     "./auth-modal": dataModule("export function AuthModal(){return null;}"),
     "sonner": dataModule("globalThis.__toasts = []; export const toast = {error(text){ globalThis.__toasts.push(text); },loading(){},success(){}};"),
   };
-  homeContentModule = await import(await compileModule("../oceanleo/app/_components/home-content.tsx", portalOverrides, { missingPackageStub: lazyStub }));
+  homeContentModule = await import(await compileModule(fileURLToPath(HOME_CONTENT_URL), portalOverrides, { missingPackageStub: lazyStub }));
   return homeContentModule;
 }
 

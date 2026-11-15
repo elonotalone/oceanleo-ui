@@ -155,3 +155,18 @@ test("capture-to-display measurement prefers expected display time over composit
     assert.equal(h.frames.at(-1)[2].presentation_time_ms,200,"older browsers keep their available presentation estimate");
   }finally{await viewer.close();}
 });
+
+test('first frame after the native health/restart budget arrives before the unchanged viewer deadline', async t => {
+  t.mock.timers.enable({ apis: ['setInterval', 'setTimeout', 'Date'], now: 100000 });
+  const h = harness(), viewer = await h.start();
+  try {
+    t.mock.timers.tick(10_000); // Native 8s health window + 2s confirmed-stop grace.
+    assert.equal(h.states.some(([state]) => state === 'error'), false);
+    t.mock.timers.tick(8_000); // SDK rebuild + decoded first picture still has 2s margin.
+    h.decoded();
+    assert.deepEqual(h.states.at(-1), ['playing']);
+    t.mock.timers.tick(3_000);
+    assert.equal(h.states.some(([, code]) => code === 'media_first_frame_timeout'), false);
+    assert.equal(h.frames.length, 1);
+  } finally { await viewer.close(); }
+});

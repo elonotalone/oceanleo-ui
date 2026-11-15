@@ -246,7 +246,7 @@ test("signed-out availability is not replaced by the legacy online flag", async 
 test("viewer never persists picture/input/secrets; localStorage contains only the per-user dock preference", async () => {
   const source = (
     await Promise.all(
-      ["src/api/remote-desktop.ts", "src/pages/RemoteDesktopPanel.tsx", "src/pages/remote-desktop-input.ts"].map(
+      ["src/api/remote-desktop.ts", "src/pages/RemoteDesktopPanel.tsx", "src/pages/remote-desktop-input.ts", "src/pages/remote-desktop-panel-state.ts", "src/pages/remote-desktop-session.ts", "src/pages/remote-desktop-panel-media.ts", "src/pages/remote-desktop-panel-input.ts", "src/pages/remote-desktop-toolbar.ts"].map(
         (file) => readFile(resolve(file), "utf8"),
       ),
     )
@@ -263,7 +263,7 @@ test("viewer never persists picture/input/secrets; localStorage contains only th
     assert.ok(!source.includes(forbidden), `不该出现：${forbidden}`);
   }
   const writes = [...source.matchAll(/localStorage\.setItem\(([^;]+)\);/g)].map(match => match[1]);
-  assert.deepEqual(writes, ["positionKey.current, JSON.stringify(dockRef.current)"]);
+  assert.deepEqual(writes, ["positionKey.current, JSON.stringify(model.getSnapshot().dock)"]);
 
 });
 
