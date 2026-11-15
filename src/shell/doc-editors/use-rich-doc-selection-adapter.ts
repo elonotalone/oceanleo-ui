@@ -6,8 +6,9 @@ import { ADVANCED_EDITOR_FONTS } from "../AdvancedFontPicker";
 import { viewOnlyContext } from "../collab/adapters/visual-readonly";
 import { richDocFontSizePx, richDocLineHeightPx, richDocLineHeightFromPx } from "./rich-doc-selection-units";
 import type { SelectionAdapter, SelectionCommand, SelectionAdapterContext, SelectionControlInput, SelectionControlIcon, } from "../selection-context";
-import { RICHDOC_CN_PARAGRAPH_PRESET, RICHDOC_DEFAULT_PARAGRAPH_PRESET, RICHDOC_IMAGE_WRAPS, RICHDOC_NUMBERING_PRESETS, applyRichDocParagraphAttrs, } from "./rich-doc-model";
+import { richDocLetterSpacing, RICHDOC_IMAGE_WRAPS, RICHDOC_NUMBERING_PRESETS, applyRichDocParagraphAttrs, } from "./rich-doc-model";
 import { RICHDOC_IMAGE_BORDER_MAX, RICHDOC_IMAGE_RADIUS_MAX, normalizeRichDocImageStyle, } from "./rich-doc-image-style";
+import { normalizeRichDocImageTransform, patchRichDocImageTransform, richDocImageFrameAttrs } from "./rich-doc-image-transform";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
 /** 「增加/减少缩进」一档走 24 磅（≈2 个中文字符），和 Word 的默认档一致。 */
 const INDENT_STEP_PT = 24;
@@ -60,8 +61,9 @@ function pickImageFile(onFile: (file: File) => void) {
     };
     input.click();
 }
-export function useRichDocSelectionAdapter({ editor: state, }: {
+export function useRichDocSelectionAdapter({ editor: state, onCrop, }: {
     editor: RichDocEditorState;
+    onCrop?: () => void;
 }): SelectionAdapter {
     const tt = useUI();
     const editor = state.editor;
@@ -84,6 +86,7 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
         if (selectedNode) {
             const image = selectedNode.type?.name === "image";
             const attrs = selectedNode.attrs || {};
+            const transform = normalizeRichDocImageTransform(attrs);
             const borderPanel = inspector("border", tt("边框样式"));
             return {
                 version: 1,
@@ -97,6 +100,18 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
                     ...(image
                         ? ([
                             { id: "replace" },
+                            ...(onCrop ? [{ id: "crop" as const }] : []),
+                            { id: "flip-x", value: transform.flipX },
+                            { id: "flip-y", value: transform.flipY },
+                            { id: "rotate", value: transform.rotation },
+                            ...(["brightness", "contrast", "saturation"] as const).map((key, index) => ({
+                                id: `richdoc.${key}`, kind: "number" as const,
+                                label: tt(["亮度", "对比度", "饱和度"][index]), suffix: "%", min: 0, max: 200, step: 1,
+                                value: transform[key], ...inspector("adjust", tt("调色")), domain: "specific" as const,
+                            })),
+                            { id: "image-fit", value: transform.imageFit, options: [
+                                { value: "contain", label: tt("完整") }, { value: "cover", label: tt("铺满裁切") }, { value: "fill", label: tt("拉伸铺满") },
+                            ] },
                             {
                                 id: "radius",
                                 min: 0,
@@ -231,6 +246,9 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
                     max: 1333,
                     step: 1
                 },
+                { id: "letter-spacing", value: richDocLetterSpacing(textStyle.letterSpacing) ?? 0, min: -20, max: 100, step: 1 },
+                ...(from < to ? [{ id: "case" as const, capabilities: { action: true } }] : []),
+                // 竖排需段落/页面布局及 DOCX 支持；当前不申报 vertical-text。
                 // 超链接是面板型规范项（A-1）：地址输入框与「移除链接」都在同一个面板里。
                 { id: "link", value: String(link.href || ""), ...linkGroup },
                 ...(editor.isActive("link")
@@ -268,9 +286,6 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
                 { id: "indent-right", kind: "number", label: tt("右缩进"), suffix: tt("磅"), min: 0, max: 720, step: 6, value: Number(blockAttrs.indentRight) || 0, ...typographyGroup, domain: "specific" as const },
                 { id: "space-before", kind: "number", label: tt("段前"), suffix: tt("磅"), min: 0, max: 720, step: 3, value: Number(blockAttrs.spaceBefore) || 0, ...typographyGroup, domain: "specific" as const },
                 { id: "space-after", kind: "number", label: tt("段后"), suffix: tt("磅"), min: 0, max: 720, step: 3, value: Number(blockAttrs.spaceAfter) || 0, ...typographyGroup, domain: "specific" as const },
-                // 中文公文的硬约定：首行缩进 2 字符 + 1.5 倍行距。一键给全。
-                { id: "cn-typography", kind: "action", label: tt("中文排版"), ...typographyGroup, domain: "specific" as const },
-                { id: "typography-reset", kind: "action", label: tt("恢复默认排版"), ...typographyGroup, domain: "specific" as const },
                 // --- 多级编号（P3）---------------------------------------------------
                 ...(inOrderedList
                     ? [
@@ -353,12 +368,13 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
         state.review?.hasSelection,
         state.review?.trackChangesEnabled,
         reviewReadOnly,
+        onCrop,
         tt,
     ]);
-    const latest = useRef({ state, context });
-    latest.current = { state, context };
+    const latest = useRef({ state, context, onCrop });
+    latest.current = { state, context, onCrop };
     const command = (message: SelectionCommand) => {
-        const { state, context } = latest.current;
+        const { state, context, onCrop } = latest.current;
         const editor = state.editor;
         const reviewReadOnly = Boolean(state.collabReadOnly || state.review?.readOnly);
         if (!editor || !context || state.collabReadOnly || state.sourceReady === false || state.loading || state.sourceFailed)
@@ -389,6 +405,29 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
             case "replace":
                 pickImageFile((file) => void state.replaceSelectedImage(file));
                 break;
+            case "crop":
+                onCrop?.();
+                break;
+            case "flip-x":
+            case "flip-y":
+            case "rotate":
+            case "image-fit":
+            case "richdoc.cropTop":
+            case "richdoc.cropRight":
+            case "richdoc.cropBottom":
+            case "richdoc.cropLeft":
+            case "richdoc.brightness":
+            case "richdoc.contrast":
+            case "richdoc.saturation": {
+                if (selectedNodeOf(editor)?.type?.name !== "image") break;
+                const current = normalizeRichDocImageTransform(editor.getAttributes("image"));
+                const key = message.controlId.startsWith("richdoc.") ? message.controlId.slice(8)
+                    : ({ "flip-x": "flipX", "flip-y": "flipY", rotate: "rotation", "image-fit": "imageFit" } as Record<string, string>)[message.controlId];
+                const nextValue = key === "flipX" ? !current.flipX : key === "flipY" ? !current.flipY
+                    : key === "rotation" ? current.rotation + 90 : value;
+                patchRichDocImageTransform(editor, { ...current, [key]: nextValue });
+                break;
+            }
             case "radius":
             case "border-width":
             case "border-color":
@@ -404,7 +443,7 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
                 if (key === "borderWidth" && next.borderWidth && !editor.getAttributes("image").borderColor) {
                     next.borderColor = "#a8a29e";
                 }
-                chain.updateAttributes("image", next).run();
+                chain.updateAttributes("image", { ...richDocImageFrameAttrs(editor), ...next }).run();
                 break;
             }
             case "format": {
@@ -431,6 +470,31 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
                     chain.setFontSize(size).run();
                 else
                     chain.unsetFontSize().run();
+                break;
+            }
+            case "letter-spacing": {
+                const px = richDocLetterSpacing(value);
+                if (px !== null) chain.setMark("textStyle", { letterSpacing: px }).run();
+                break;
+            }
+            case "case": {
+                const { from, to } = editor.state.selection;
+                const selectedText = editor.state.doc.textBetween(from, to, " ");
+                const mode = value === "upper" || value === "lower" ? value
+                    : selectedText === selectedText.toUpperCase() ? "lower" : "upper";
+                const spans: Array<{ from: number; to: number; text: string; marks: typeof editor.state.doc.marks }> = [];
+                editor.state.doc.nodesBetween(from, to, (node, pos) => {
+                    if (!node.isText) return true;
+                    const start = Math.max(from, pos), end = Math.min(to, pos + node.nodeSize);
+                    const text = (node.text || "").slice(start - pos, end - pos);
+                    const next = mode === "upper" ? text.toUpperCase() : text.toLowerCase();
+                    if (next !== text) spans.push({ from: start, to: end, text: next, marks: node.marks });
+                });
+                if (spans.length) {
+                    const tr = editor.state.tr;
+                    for (const span of spans.reverse()) tr.replaceWith(span.from, span.to, editor.schema.text(span.text, span.marks));
+                    editor.view.dispatch(tr);
+                }
                 break;
             }
             case "bold":
@@ -540,12 +604,6 @@ export function useRichDocSelectionAdapter({ editor: state, }: {
                 break;
             case "space-after":
                 applyRichDocParagraphAttrs(chain, { spaceAfter: numberOrNull(value) });
-                break;
-            case "cn-typography":
-                applyRichDocParagraphAttrs(chain, RICHDOC_CN_PARAGRAPH_PRESET);
-                break;
-            case "typography-reset":
-                applyRichDocParagraphAttrs(chain, RICHDOC_DEFAULT_PARAGRAPH_PRESET);
                 break;
             case "numbering":
                 chain.updateAttributes("orderedList", { numbering: String(value || "decimal") }).run();

@@ -69,10 +69,6 @@ export const EDITOR_PANELS_COPY_SOURCE = {
   rightIndent: "右缩进",
   spaceBefore: "段前",
   spaceAfter: "段后",
-  // 中文公文的硬约定（首行缩进 2 字符 + 1.5 倍行距）一键给全，
-  // 所以译文要说清「这是中文/CJK 排版预设」，不是「把界面切成中文」。
-  cjkTypesetting: "中文排版",
-  resetTypesetting: "恢复默认排版",
   numberingFormat: "编号格式",
   multilevelNumbering: "多级编号",
   insertComment: "插入批注",

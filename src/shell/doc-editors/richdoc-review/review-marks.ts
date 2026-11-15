@@ -178,6 +178,11 @@ export const RichDocFormatChangeMark = Mark.create({
   addAttributes() {
     return {
       ...attribution(),
+      contributors: {
+        default: "[]",
+        parseHTML: (element: HTMLElement) => element.getAttribute("data-format-contributors") || "[]",
+        renderHTML: (attributes: Record<string, unknown>) => ({ "data-format-contributors": String(attributes.contributors ?? "[]") }),
+      },
       before: {
         default: "[]",
         parseHTML: (element: HTMLElement) =>

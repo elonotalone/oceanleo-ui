@@ -3,8 +3,8 @@
 // ----------------------------------------------------------------------------
 // 只做 `addGlobalAttributes`，不重名任何已注册扩展。属性落在 image 节点上，
 // 进工程 JSON（重开编辑器原样还在），渲染成内联 style（html 交付同样带着）。
-// docx / md / txt 这三种格式本身装不下这些样式，交付件里不出现，不算丢：
-// 编辑器重开读的是工程 JSON。
+// RichDoc DOCX 写入器把这些样式与裁剪/变换一起烘焙进图片；
+// Markdown/TXT 不承诺富样式，编辑器重开读工程 JSON。
 // ============================================================================
 
 import { Extension } from "@tiptap/core";
@@ -50,6 +50,11 @@ export function normalizeRichDocImageStyle(
   return out;
 }
 
+function imageStyleElement(element: HTMLElement): HTMLElement {
+  const frame = element.closest<HTMLElement>("[data-richdoc-image]");
+  return frame || element;
+}
+
 export const RichDocImageStyle = Extension.create({
   name: "richDocImageStyle",
 
@@ -60,7 +65,7 @@ export const RichDocImageStyle = Extension.create({
         attributes: {
           radius: {
             default: null,
-            parseHTML: (element) => bounded(element.style.borderRadius, 0, RICHDOC_IMAGE_RADIUS_MAX),
+            parseHTML: (element) => bounded(imageStyleElement(element).style.borderRadius, 0, RICHDOC_IMAGE_RADIUS_MAX),
             renderHTML: (attributes) => {
               const radius = bounded(attributes.radius, 0, RICHDOC_IMAGE_RADIUS_MAX);
               return radius === null ? {} : { style: `border-radius:${radius}px` };
@@ -69,7 +74,7 @@ export const RichDocImageStyle = Extension.create({
           borderWidth: {
             default: null,
             parseHTML: (element) =>
-              bounded(element.style.borderWidth, 0, RICHDOC_IMAGE_BORDER_MAX) || null,
+              bounded(imageStyleElement(element).style.borderWidth, 0, RICHDOC_IMAGE_BORDER_MAX) || null,
             renderHTML: (attributes) => {
               const width = bounded(attributes.borderWidth, 0, RICHDOC_IMAGE_BORDER_MAX);
               if (!width) return {};
@@ -79,14 +84,14 @@ export const RichDocImageStyle = Extension.create({
           },
           borderColor: {
             default: null,
-            parseHTML: (element) => richDocImageBorderColor(element.style.borderColor),
+            parseHTML: (element) => richDocImageBorderColor(imageStyleElement(element).style.borderColor),
             // 颜色并进 border 简写里输出；单独再写一次会和宽度为 0 的情况打架。
             renderHTML: () => ({}),
           },
           opacity: {
             default: null,
             parseHTML: (element) => {
-              const raw = element.style.opacity;
+              const raw = imageStyleElement(element).style.opacity;
               if (!raw) return null;
               const value = Number.parseFloat(raw);
               return Number.isFinite(value) && value < 1

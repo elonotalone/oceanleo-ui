@@ -8,13 +8,14 @@ import {
   type ChangeEvent,
   type ReactNode,
 } from "react";
+import { useEditorState } from "@tiptap/react";
+import { normalizeRichDocImageTransform, selectedRichDocImageAttrs } from "./rich-doc-image-transform";
 import { useUI } from "../../i18n/ui/useUI";
-import { AdvancedFontPicker } from "../AdvancedFontPicker";
 import {
   findEveryOccurrence,
-  isRichDocFindShortcut,
   replaceEveryOccurrence,
 } from "./doc-family-commands";
+import type { SelectionAdapter } from "../selection-context";
 import type { RichDocEditorState } from "./use-rich-doc-editor";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -93,48 +94,12 @@ export function RichDocControls({
 }) {
   const tt = useUI();
   const editor = state.editor;
+  const canEdit = Boolean(editor?.isEditable && !state.collabReadOnly && !state.loading && state.sourceReady !== false && !state.sourceFailed);
   const [imageInput, setImageInput] = useState("");
-  const sourceFileRef = useRef<HTMLInputElement>(null);
+  const [tableOpen, setTableOpen] = useState(false);
+  const [rows, setRows] = useState(3);
+  const [cols, setCols] = useState(3);
   const imageFileRef = useRef<HTMLInputElement>(null);
-  const findInputRef = useRef<HTMLInputElement>(null);
-  const [findOpen, setFindOpen] = useState(false);
-  const [findText, setFindText] = useState("");
-  const [replaceText, setReplaceText] = useState("");
-  const [matchCase, setMatchCase] = useState(true);
-  const [wholeWord, setWholeWord] = useState(false);
-  const [replaceReport, setReplaceReport] = useState("");
-
-  // Ctrl/Cmd+F 打开面板。用捕获阶段接管浏览器自带的查找框——页面内的查找
-  // 才能替换，浏览器的那个只能看。
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (!isRichDocFindShortcut(event)) return;
-      event.preventDefault();
-      setFindOpen(true);
-      window.setTimeout(() => findInputRef.current?.focus(), 0);
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, []);
-
-  const matchCount =
-    findOpen && editor && findText
-      ? findEveryOccurrence(editor, findText, { matchCase, wholeWord }).length
-      : 0;
-
-  const runReplaceAll = useCallback(() => {
-    if (!editor || !findText) return;
-    const count = replaceEveryOccurrence(editor, findText, replaceText, {
-      matchCase,
-      wholeWord,
-    });
-    setReplaceReport(
-      count
-        ? tt("已替换 {n} 处，按一次撤销可以全部还原。", { n: count })
-        : tt("没有找到「{q}」。", { q: findText }),
-    );
-  }, [editor, findText, replaceText, matchCase, wholeWord, tt]);
-
   const onImageFile = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) void state.uploadImage(file);
@@ -146,123 +111,26 @@ export function RichDocControls({
   };
 
   return (
-    <div className="space-y-4 bg-[var(--card,#fff)] p-4">
-      <Section title={tt("文档来源")}>
-        <input
-          ref={sourceFileRef}
-          type="file"
-          accept=".doc,.docx,.md,.markdown,.txt,.html,.htm,text/plain,text/markdown,text/html,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            event.target.value = "";
-            if (file) void state.importSource(file);
-          }}
-          className="hidden"
-        />
-        <ToolButton
-          label={state.importing ? tt("导入中…") : tt("导入文档")}
-          disabled={state.importing}
-          onClick={() => sourceFileRef.current?.click()}
-        />
-        <p className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]">
-          {tt("选中文字后，排版与颜色会直接出现在内容上方。")}
-        </p>
-      </Section>
-
-      <Section title={tt("查找和替换")}>
-        {findOpen ? (
-          <div className="space-y-2">
-            <input
-              ref={findInputRef}
-              value={findText}
-              onChange={(event) => {
-                setFindText(event.target.value);
-                setReplaceReport("");
-              }}
-              placeholder={tt("查找内容")}
-              aria-label={tt("查找内容")}
-              className="min-h-11 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
-            />
-            <input
-              value={replaceText}
-              onChange={(event) => setReplaceText(event.target.value)}
-              placeholder={tt("替换为")}
-              aria-label={tt("替换为")}
-              className="min-h-11 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
-            />
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              <CheckRow
-                label={tt("区分大小写")}
-                checked={matchCase}
-                onChange={setMatchCase}
-              />
-              <CheckRow
-                label={tt("全字匹配")}
-                checked={wholeWord}
-                onChange={setWholeWord}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-1.5">
-              <ToolButton
-                label={tt("全部替换")}
-                disabled={!editor || !findText || matchCount === 0}
-                onClick={runReplaceAll}
-              />
-              <ToolButton
-                label={tt("关闭")}
-                onClick={() => {
-                  setFindOpen(false);
-                  setReplaceReport("");
-                }}
-              />
-            </div>
-            <p
-              aria-live="polite"
-              className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]"
-            >
-              {replaceReport ||
-                (findText
-                  ? tt("找到 {n} 处。", { n: matchCount })
-                  : tt("全部替换是一步操作，撤销一次就全部还原。"))}
-            </p>
-          </div>
-        ) : (
-          <ToolButton
-            label={tt("查找和替换（Ctrl/Cmd+F）")}
-            onClick={() => {
-              setFindOpen(true);
-              window.setTimeout(() => findInputRef.current?.focus(), 0);
-            }}
-          />
-        )}
-      </Section>
-
-      <Section title={tt("字体")}>
-        <div className="-mx-1 overflow-hidden rounded-xl border border-[var(--border,#e7e5e4)]">
-          <AdvancedFontPicker
-            selectedFamily={String(
-              editor?.getAttributes("textStyle").fontFamily || "",
-            )}
-            disabled={!editor}
-            onSelect={(family) =>
-              editor?.chain().focus().setFontFamily(family).run()
-            }
-          />
-        </div>
-      </Section>
-
+    <fieldset disabled={!canEdit} className="min-w-0 space-y-4 border-0 bg-[var(--card,#fff)] p-4">
       <Section title={tt("插入内容")}>
+        {tableOpen && <div className="space-y-2" data-richdoc-table-picker>
+          {([["行数", rows, setRows], ["列数", cols, setCols]] as const).map(([label, value, setValue]) => (
+            <label key={label} className="flex items-center gap-2 text-xs">
+              {tt(label)}<input aria-label={tt(label)} type="number" min={1} max={20} value={value}
+                className="min-h-11 w-20 rounded-xl border bg-transparent px-2"
+                onChange={(event) => setValue(Math.max(1, Math.min(20, Math.trunc(Number(event.currentTarget.value)) || 1)))} />
+            </label>
+          ))}
+          <ToolButton label={tt("插入表格")} disabled={!editor} onClick={() => {
+            editor?.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+            setTableOpen(false);
+          }} />
+        </div>}
         <div className="grid grid-cols-2 gap-1.5">
           <ToolButton
-            label={tt("3×3 表格")}
+            label={tt("表格")}
             disabled={!editor}
-            onClick={() =>
-              editor
-                ?.chain()
-                .focus()
-                .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                .run()
-            }
+            onClick={() => setTableOpen((open) => !open)}
           />
           <ToolButton
             label={tt("分割线")}
@@ -312,6 +180,123 @@ export function RichDocControls({
           />
         </div>
       </Section>
-    </div>
+    </fieldset>
   );
+}
+
+/** 独立浮层；快捷键由常驻路由接管，不依赖 Insert 面板。 */
+export function RichDocFindReplace({ editor: state, onClose }: {
+  editor: RichDocEditorState; onClose?: () => void;
+}) {
+  const tt = useUI();
+  const editor = state.editor;
+  const canEdit = Boolean(editor?.isEditable && !state.collabReadOnly && !state.loading && state.sourceReady !== false && !state.sourceFailed);
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const [findText, setFindText] = useState("");
+  const [replaceText, setReplaceText] = useState("");
+  const [matchCase, setMatchCase] = useState(true);
+  const [wholeWord, setWholeWord] = useState(false);
+  const [replaceReport, setReplaceReport] = useState("");
+
+  useEffect(() => { findInputRef.current?.focus(); }, []);
+
+  const matchCount =
+    editor && findText
+      ? findEveryOccurrence(editor, findText, { matchCase, wholeWord }).length
+      : 0;
+
+  const runReplaceAll = useCallback(() => {
+    if (!editor || !canEdit || !findText) return;
+    const count = replaceEveryOccurrence(editor, findText, replaceText, {
+      matchCase,
+      wholeWord,
+    });
+    setReplaceReport(
+      count
+        ? tt("已替换 {n} 处，按一次撤销可以全部还原。", { n: count })
+        : tt("没有找到「{q}」。", { q: findText }),
+    );
+  }, [editor, canEdit, findText, replaceText, matchCase, wholeWord, tt]);
+
+  return <div className="space-y-4 p-4">
+      <Section title={tt("查找和替换")}>
+          <div className="space-y-2">
+            <input
+              ref={findInputRef}
+              value={findText}
+              onChange={(event) => {
+                setFindText(event.target.value);
+                setReplaceReport("");
+              }}
+              placeholder={tt("查找内容")}
+              aria-label={tt("查找内容")}
+              className="min-h-11 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+            />
+            <input
+              value={replaceText}
+              onChange={(event) => setReplaceText(event.target.value)}
+              placeholder={tt("替换为")}
+              aria-label={tt("替换为")}
+              className="min-h-11 w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-2.5 py-2 text-[11px] text-[var(--fg,#292524)] outline-none focus:border-[var(--awb-accent,#7c3aed)]"
+            />
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
+              <CheckRow
+                label={tt("区分大小写")}
+                checked={matchCase}
+                onChange={setMatchCase}
+              />
+              <CheckRow
+                label={tt("全字匹配")}
+                checked={wholeWord}
+                onChange={setWholeWord}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <ToolButton
+                label={tt("全部替换")}
+                disabled={!canEdit || !findText || matchCount === 0}
+                onClick={runReplaceAll}
+              />
+              <ToolButton
+                label={tt("关闭")}
+                onClick={() => {
+                  onClose?.();
+                  setReplaceReport("");
+                }}
+              />
+            </div>
+            <p
+              aria-live="polite"
+              className="text-[10px] leading-relaxed text-[var(--muted,#78716c)]"
+            >
+              {replaceReport ||
+                (findText
+                  ? tt("找到 {n} 处。", { n: matchCount })
+                  : tt("全部替换是一步操作，撤销一次就全部还原。"))}
+            </p>
+          </div>
+      </Section>
+  </div>;
+}
+
+/** canon crop 仍为动作按钮；尺寸在同一个共享浮层 host 中编辑。 */
+export function RichDocImageCropControls({ editor: state, selection: adapter }: { editor: RichDocEditorState; selection: SelectionAdapter }) {
+  const tt = useUI();
+  const editor = state.editor;
+  useEditorState({ editor, selector: ({ transactionNumber }) => transactionNumber });
+  const image = selectedRichDocImageAttrs(editor);
+  const transform = normalizeRichDocImageTransform(image || {});
+  const liveId = editor ? `text:${editor.state.selection.from}-${editor.state.selection.to}` : "";
+  const canEdit = Boolean(editor?.isEditable && image && adapter.context?.id === liveId && !state.collabReadOnly && !state.loading && state.sourceReady !== false && !state.sourceFailed);
+  return <fieldset disabled={!canEdit} className="min-w-0 space-y-3 border-0 p-4">
+    {(["cropTop", "cropRight", "cropBottom", "cropLeft"] as const).map((key, index) => <label key={key} className="flex items-center justify-between gap-3 text-xs">
+      {tt(["顶端", "右", "底端", "左"][index])}
+      <span><input aria-label={tt(["顶端", "右", "底端", "左"][index])} type="number" min={0} max={90} step={1} value={transform[key]}
+        className="min-h-11 w-20 rounded-xl border bg-transparent px-2"
+        onChange={(event) => { if (canEdit && adapter.context) adapter.dispatch({
+          requestId: `richdoc-crop-${crypto.randomUUID()}`, selectionId: adapter.context.id,
+          selectionRevision: state.editRevision, controlId: `richdoc.${key}`, value: Number(event.target.value),
+        }); }} /> %</span>
+    </label>)}
+  </fieldset>;
 }

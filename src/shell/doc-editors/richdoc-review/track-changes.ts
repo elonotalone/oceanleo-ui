@@ -15,13 +15,13 @@
 //    录制发生在插件的 `appendTransaction` 里，`isEnabled()` 返回 false 时
 //    那段代码整个不跑；本文件没有任何一处会因为开关而去清标记。
 //
-// 本轮的缩小承诺（写进交付说明）：**只追踪 inline 内容的 `ReplaceStep`。**
+// 追踪 inline ReplaceStep 与 AddMarkStep / RemoveMarkStep；结构性改动不追踪。
 // 结构性改动（合并段落、删掉整个表格行、改变节点类型）不被记录为修订。
 // 理由是它们没有「盖个删除线留在原地」的对应物——一个被删掉的段落边界无法
 // 既存在又不存在。做半套结构追踪比不做更危险：用户会以为它罩住了。
 // ============================================================================
 
-import { Extension } from "@tiptap/core";
+import { Extension, type Editor } from "@tiptap/core";
 import {
   Fragment,
   Mark,
@@ -31,7 +31,7 @@ import {
   type Schema,
 } from "@tiptap/pm/model";
 import { Plugin, PluginKey, type Transaction } from "@tiptap/pm/state";
-import { ReplaceStep } from "@tiptap/pm/transform";
+import { AddMarkStep, RemoveMarkStep, Mapping, ReplaceStep } from "@tiptap/pm/transform";
 import {
   RICHDOC_CHANGE_MARKS,
   RICHDOC_DELETION_MARK,
@@ -76,6 +76,8 @@ export interface RichDocChangeSegment {
 }
 
 export interface RichDocChangeView extends RichDocAttribution {
+  /** 同一区域的待决格式修订合并时保留全部参与者；author 是最后操作者。 */
+  contributors?: RichDocAttribution[];
   changeId: string;
   kind: RichDocChangeKind;
   at: string;
@@ -85,6 +87,30 @@ export interface RichDocChangeView extends RichDocAttribution {
   /** 全部分段按文档顺序拼起来的文字。 */
   text: string;
   segments: RichDocChangeSegment[];
+}
+
+function mergeFormatContributors(values: readonly unknown[]): RichDocAttribution[] {
+  const byAuthor = new Map<string, RichDocAttribution>();
+  for (const value of values) {
+    if (!value || typeof value !== "object") continue;
+    const source = value as Record<string, unknown>;
+    const author = typeof source.author === "string" ? source.author.slice(0, 120) : "";
+    const authorName = typeof source.authorName === "string" ? source.authorName.slice(0, 200) : "";
+    byAuthor.set(author || authorName, { author, authorName });
+  }
+  return [...byAuthor.values()];
+}
+function formatContributors(mark: Mark): RichDocAttribution[] {
+  let values: unknown[] = [];
+  try {
+    const raw = String(mark.attrs.contributors ?? "[]");
+    const parsed = raw.length <= 131072 ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) values = parsed.slice(0, 256);
+  } catch { /* 旧工程没有参与者列表时仍保留原作者。 */ }
+  return mergeFormatContributors([...values, { author: mark.attrs.author, authorName: mark.attrs.authorName }]);
+}
+function contributorLabel(values: readonly RichDocAttribution[], fallback: string): string {
+  return values.length > 1 ? values.map((value) => value.authorName || value.author).filter(Boolean).join(", ") : fallback;
 }
 
 function markAttribution(mark: Mark): RichDocAttribution & { at: string } {
@@ -120,16 +146,22 @@ export function listChanges(doc: ProseMirrorNode): RichDocChangeView[] {
       const existing = byId.get(changeId);
       if (!existing) {
         const attribution = markAttribution(mark);
+        const contributors = kind === "format" ? formatContributors(mark) : undefined;
         byId.set(changeId, {
           changeId,
           kind,
           ...attribution,
+          ...(contributors ? { contributors, authorName: contributorLabel(contributors, attribution.authorName) } : {}),
           from: segment.from,
           to: segment.to,
           text: segment.text,
           segments: [segment],
         });
         continue;
+      }
+      if (kind === "format") {
+        existing.contributors = mergeFormatContributors([...(existing.contributors || []), ...formatContributors(mark)]);
+        existing.authorName = contributorLabel(existing.contributors, existing.authorName);
       }
       const last = existing.segments[existing.segments.length - 1];
       // 相邻分段合并回一段：文本节点会因为加粗、拆分等原因被切开，
@@ -285,11 +317,22 @@ export function trackedDelete(
 }
 
 
+/** 清除可见格式时保留批注与修订标记，原生 mark 步骤仍由监听器录制。 */
+export function clearRichDocFormatting(editor: Editor): boolean {
+  const chain = editor.chain().focus().clearNodes();
+  for (const name of Object.keys(editor.schema.marks)) {
+    if (!REVIEW_MARK_NAMES.has(name)) chain.unsetMark(name);
+  }
+  return chain.run();
+}
+
 export interface TrackedFormatChange {
   /** 要加上的 mark（已经带好 attrs）。 */
   add?: readonly Mark[];
   /** 要摘掉的 mark 类型。 */
   remove?: readonly MarkType[];
+  /** 事务监听已执行命令时携带最早快照；不向调用入口重复派发格式命令。 */
+  before?: string;
 }
 
 /**
@@ -318,7 +361,7 @@ export function trackedFormat(
   const removed = change.remove ?? [];
   if (!added.length && !removed.length) return "";
 
-  const spans: Array<{ from: number; to: number; before: string; after: string }> =
+  const spans: Array<{ from: number; to: number; before: string; after: string; contributors: string }> =
     [];
   tr.doc.nodesBetween(from, to, (node, pos) => {
     if (!node.isInline) return true;
@@ -334,13 +377,17 @@ export function trackedFormat(
     spans.push({
       from: start,
       to: end,
-      before: nonReviewMarksJson(node.marks),
+      before: change.before ?? String(node.marks.find((mark) => mark.type.name === RICHDOC_FORMAT_MARK)?.attrs.before ?? nonReviewMarksJson(node.marks)),
       after: nonReviewMarksJson(after),
+      contributors: JSON.stringify(mergeFormatContributors([
+        ...node.marks.filter((mark) => mark.type.name === RICHDOC_FORMAT_MARK).flatMap(formatContributors), attribution,
+      ])),
     });
     return true;
   });
   if (!spans.length) return "";
 
+  tr.removeMark(from, to, formatType);
   for (const type of removed) tr.removeMark(from, to, type);
   for (const mark of added) tr.addMark(from, to, mark);
   for (const span of spans) {
@@ -351,6 +398,7 @@ export function trackedFormat(
         ...attributionAttrs(attribution, changeId, at),
         before: span.before,
         after: span.after,
+        contributors: span.contributors,
       }),
     );
   }
@@ -556,7 +604,7 @@ function inlineOnlySurvivors(
  * 删除 —— 把被移除的内容从**改动前的文档**里取回来，盖 `richdocDeletion` 重新插回去。
  * 这是 track-changes 的标准手法：编辑器照常执行删除，插件随后把它撤销成一个标记。
  *
- * 只处理 inline 的 `ReplaceStep`；结构性改动不追踪，见文件头的缩小承诺。
+ * 处理 inline ReplaceStep 与格式 mark 步骤；结构性改动不追踪，见文件头。
  */
 export function richDocTrackChangesPlugin(options: TrackChangesPluginOptions) {
   return new Plugin({
@@ -579,6 +627,51 @@ export function richDocTrackChangesPlugin(options: TrackChangesPluginOptions) {
       const base = tr.mapping.maps.length;
       const remap = (pos: number, assoc: 1 | -1) =>
         tr.mapping.slice(base).map(pos, assoc);
+
+      // 先记录原生 mark 步骤。工具栏、键盘和 agent 共用同一个监听点。
+      // 一次字体更新可能先 removeMark 再 addMark：只保存最早 before 与最终 after。
+      const formats: Array<{ from: number; to: number; before: string }> = [];
+      for (let sourceIndex = 0; sourceIndex < transactions.length; sourceIndex += 1) {
+        const source = transactions[sourceIndex];
+        if (!relevant.includes(source)) continue;
+        for (let index = 0; index < source.steps.length; index += 1) {
+          const step = source.steps[index];
+          if (!(step instanceof AddMarkStep || step instanceof RemoveMarkStep) || REVIEW_MARK_NAMES.has(step.mark.type.name)) continue;
+          const mapping = new Mapping();
+          mapping.appendMapping(source.mapping.slice(index + 1));
+          for (const later of transactions.slice(sourceIndex + 1)) mapping.appendMapping(later.mapping);
+          source.docs[index].nodesBetween(step.from, step.to, (node, pos) => {
+            if (!node.isInline) return true;
+            const from = mapping.map(Math.max(step.from, pos), 1);
+            const to = mapping.map(Math.min(step.to, pos + node.nodeSize), -1);
+            const pending = node.marks.find((mark) => mark.type.name === RICHDOC_FORMAT_MARK);
+            if (to > from) formats.push({ from, to, before: String(pending?.attrs.before ?? nonReviewMarksJson(node.marks)) });
+            return false;
+          });
+        }
+      }
+      const boundaries = new Set(formats.flatMap((span) => [span.from, span.to]));
+      for (const span of formats) newState.doc.nodesBetween(span.from, span.to, (node, pos) => {
+        if (node.isInline) { boundaries.add(Math.max(pos, span.from)); boundaries.add(Math.min(pos + node.nodeSize, span.to)); }
+      });
+      const ordered = [...boundaries].sort((a, b) => a - b);
+      const formatChangeId = createReviewId("chg");
+      const removedTypes = Object.values(schema.marks).filter((type) => !REVIEW_MARK_NAMES.has(type.name));
+      for (let index = 0; index < ordered.length - 1; index += 1) {
+        const from = ordered[index], to = ordered[index + 1];
+        const snapshot = formats.find((span) => span.from <= from && span.to >= to);
+        if (!snapshot) continue;
+        const marks = newState.doc.resolve(from).nodeAfter?.marks ?? [];
+        const after = nonReviewMarksJson(marks);
+        if (snapshot.before === after) {
+          const type = schema.marks[RICHDOC_FORMAT_MARK];
+          if (type) tr.removeMark(from, to, type);
+          continue;
+        }
+        trackedFormat(tr, from, to, { before: snapshot.before,
+          add: marks.filter((mark) => !REVIEW_MARK_NAMES.has(mark.type.name)), remove: removedTypes,
+        }, attribution, { changeId: formatChangeId, at });
+      }
 
       for (const source of relevant) {
         for (let index = 0; index < source.steps.length; index += 1) {
