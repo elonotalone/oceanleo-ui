@@ -12,6 +12,8 @@
 
 ## docs 单元
 
+2026-11-16 第三断点：独占迁移 tests/g2-selection-toolbar-render.test.mjs、tests/edit-bar-single-row.test.mjs 的旧文档段整段折叠断言，改验证实际一个 SelectionToolbar 内创建工具逐项收纳，保留单行/固定AI/可访问/点击/选择保持等原有行为覆盖。仅改这两份测试；不得恢复生产整段折叠。
+
 2026-11-16 共享测试追加独占：advanced-editor-v8-doc-grid-chart-model3d、advanced-native-editors、advanced-canva-interactions、advanced-editor-v9-edit-bar、route-context-editors、editor-working-copy-runtime、collab-richdoc-review（均 tests/*.test.mjs）。可用 tests/helpers/selection-adapter-host.mjs 的 compileSelectionAdapterHost 仅在测试内将真 hook 接到真 SelectionToolbar/已有捕获桩；生产旧包装必须删除。
 
 独占：src/shell/doc-editors/ 下 RichDocContextToolbar.tsx、DeckContextToolbar.tsx 的迁移 hook 与控件/命令相关文件；src/shell/advanced-routes/RichDocRoute.tsx、DeckRoute.tsx；src/shell/doc-editors/GridUniverStage.tsx、grid-univer/ 下选区工具条相关文件；只与上述功能相关的已有测试。不能改父进程文件或其他单元文件。
