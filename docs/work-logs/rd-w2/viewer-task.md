@@ -16,3 +16,6 @@ A4 scheduler统一终态回执计时与释放额度/手动交还。旧三代入�
 
 ## 验证异步边界补修（父进程集成裁定）
 第二轮全量已完成，新增1项 ux-lu-library-sections.test.mjs 的 a dropped folder... 断言：动态import尚未触达mock上传入口时就检查数组。仅允许这个测试文件消除固定4次settle的竞争：等待真实mock上传边界deferred（有界失败），原目录名/相对路径/接口调用/section等断言全部保留，不增加固定sleep，不改业务源码、不跳过。先证实该文件及相关业务与基线字节一致、隔离/延迟条件下表现，再修测试同步并真跑、中文commit、更新报告。最终全量由本单元主代理按新hash重跑。
+
+## 探测遥测分流补审（父进程集成裁定）
+已用真实API+QualityHub证明probe回执误计业务RTT/executed（用户输入0而executed.n=1）。只改src/api/remote-desktop.ts与tests/remote-desktop-receipts.test.mjs：保留diagnostics.control，按唯一history.probe仅向业务controlTiming转发真实输入；不得改wire/type/scheduler/collector。probe仍须证明DC可用、保留历史与诊断，并验证真实输入跨路重复仅计一次。修正旧probe业务sample断言，移到history/diagnostics证明，不弱化能力/调度断言。真跑相关远控测试和三项UI门禁，中文commit、更新报告后冻结；主代理按新hash重新全量，之前部分全量不作最终证据。
