@@ -58,6 +58,10 @@ const cases=[
   ["website","browser","any",1440,900], ["game","game","landscape",1280,720],
   ["app","phone","portrait",390,844],["miniprogram","phone","portrait",390,844],["other","browser","any",1440,900],
 ];
+test("work kind preview defaults cover all five kinds", () => {
+  assert.equal(cases.length, 5);
+  assert.deepEqual(cases.map(([kind]) => kind), ["website", "game", "app", "miniprogram", "other"]);
+});
 for(const [id,frame,orientation,width,height] of cases) test(`kind ${id} gets only the catalog frame and defaults`,async()=>{
   const config={kind:id,label:`Label ${id}`,label_zh:`Label ${id}`,preview:{frame,orientation},default_preset:"small_app",default_boards:["users","storage"]};
   const api=apiFor(work({kind:id}),config);const m=await mount(api);

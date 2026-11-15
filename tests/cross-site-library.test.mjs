@@ -138,7 +138,7 @@ test("Design template series keeps its layered document for Advanced editing", (
   assert.match(routesSource, /item\.meta\.template_doc_url/);
   // 2026-10-22：设计画布并入图片编辑器——带分层文档的模板条目落到 image 路由，不再是子站嵌入。
   assert.match(routesSource, /function designCanvasEditor\(\)/);
-  assert.match(routesSource, /available\("design-canvas", \{ type: "image" \}\)/);
+  assert.match(routesSource, /available\("image", \{ type: "image" \}\)/);
   assert.doesNotMatch(routesSource, /subsite: "design"/);
 });
 

@@ -864,19 +864,19 @@ const EXPECTED_EDITOR_ROUTE = {
   composite_image: ["image", "image"],
   // 矢量走图层工程适配器：svg 被位图适配器打开时拿不到锚点/配色/图形替换。
   // 2026-10-22：图表没有本地编辑器，只读（见 READ_ONLY_ARTIFACT_TYPES）；
-  // 矢量图由合并后的图片编辑器打开（适配器仍是 design-canvas，路由落点 image）。
-  vector_image: ["design-canvas", "image"],
+  // 矢量图和设计画布共用图片编辑器与适配器。
+  vector_image: ["image", "image"],
   chart: ["none", "none"],
   document: ["richdoc", "richdoc"],
   grid: ["grid", "grid"],
   deck: ["deck", "deck"],
   pdf: ["pdf", "pdf"],
-  website: ["website", "website"],
+  website: ["none", "work"],
   video: ["video-timeline", "video-timeline"],
   audio: ["audio", "audio"],
   model_3d: ["threed", "threed"],
   workflow: ["video-canvas", "video-canvas"],
-  game: ["game", "game"],
+  game: ["none", "work"],
   // 两个非编辑类内核也是 artifact 类型：库里躺着的那一件由对应内核打开。
   geo_map: ["geo-map", "geo-map"],
   interactive_doc: ["interactive-doc", "interactive-doc"],

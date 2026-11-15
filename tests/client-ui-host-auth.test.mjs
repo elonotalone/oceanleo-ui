@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { createGoTrueSession, SESSION_STORAGE_KEY } from "../../oceanleo-app/desktop/src/gotrue-session.js";
-import { createClientHostConfig } from "../../oceanleo-app/desktop/src/boot.js";
+import { siblingRepoUrl } from "./helpers/sibling-repo-url.mjs";
+
+const { createGoTrueSession, SESSION_STORAGE_KEY } = await import(siblingRepoUrl("oceanleo-app", "desktop/src/gotrue-session.js"));
+const { createClientHostConfig } = await import(siblingRepoUrl("oceanleo-app", "desktop/src/boot.js"));
 
 import { authFetch } from "../src/lib/auth/auth-fetch.ts";
 import { browserClient, getUserEmail, startOauthSignIn, startDesktopBrowserSignIn, signOutEverywhere } from "../src/lib/auth/client.ts";

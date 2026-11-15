@@ -288,9 +288,9 @@ test("route capability ownership is artifact-based, including edu website artifa
   };
   assert.deepEqual(editorCapabilityFor(eduWebsite), {
     available: true,
-    adapter: "website",
-    // Website always opens in the local Puck route (no sub-site iframe).
-    route: { type: "website" },
+    adapter: "none",
+    // Works share one light workbench, with no standalone website editor.
+    route: { type: "work" },
     manifest: null,
     unavailableReason: "",
   });
@@ -301,7 +301,7 @@ test("route capability ownership is artifact-based, including edu website artifa
     siteId: "video",
     meta: {},
   };
-  assert.equal(editorCapabilityFor(videoNamedCanvas).adapter, "design-canvas");
+  assert.equal(editorCapabilityFor(videoNamedCanvas).adapter, "image");
   assert.equal(
     editorCapabilityFor({
       ...eduWebsite,

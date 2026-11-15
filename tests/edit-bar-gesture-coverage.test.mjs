@@ -62,10 +62,10 @@ const TOOLBAR_HEIGHT =
  * 两表差集在 HEAD 上变成空集，而 `a498867` 那棵树上差集仍是三件
  * ⇒ 清单清空必须与这个 commit 同一笔改，否则末尾那条自检当场红。
  */
-const BASELINE_COMMIT = "6bee8857775266835976d1f14019511cd9b37e18";
-// 2026-10-22 native-editors（W14）：12 件 = 13 件减去已删的图表编辑器（墓碑不计），
-// 设计画布并入 image 不再有自己的主题条目（THEME_SPEC_PENDING 登记它）。
-// 冻结点换成 W08 之后的干净 commit，数字与 BASELINE_COMMIT 是一组。
+const BASELINE_COMMIT = "0cdd3cf7";
+// Works integration: nine full editors; design canvas shares image; works have no edit bar.
+// 2026-11-15 works integration: website/game leave the editor inventory, and
+// design-canvas aliases image. Both tables now contain the same nine editors.
 
 function read(relPath) {
   return readFileSync(resolve(relPath), "utf8");
@@ -199,10 +199,11 @@ for (const adapter of adapters) {
  * 2026-10-22 重新登记一件：`design-canvas` 并入 `image` 编辑器，主题表不再有它的条目
  * （`pluginThemeIdForAdapter("design-canvas")` 读时别名到 `image`）。适配器表还留着它的行，
  * 因为存量设计画布素材仍按这个 id 解析。
+ * 2026-11-15：读取时别名保留，适配器行也并入 image；差集重新清空。
  *
  * ⚠️ 这是**清单，不是豁免**：留着不清的清单会把下一次真回归静静放过去。
  */
-const THEME_SPEC_PENDING = Object.freeze(["design-canvas"]);
+const THEME_SPEC_PENDING = Object.freeze([]);
 
 /** 两张表的路径，`git archive` 只解这两个文件，不解整棵树。 */
 const TABLE_PATHS = [
@@ -210,11 +211,11 @@ const TABLE_PATHS = [
   `${SHELL}/workbench-capability-registry.ts`,
 ];
 
-test("清单本身：12 件，全部走共享外壳，没有任何一件还走 chrome 那条路径", () => {
+test("清单本身：9 件，全部走共享外壳，没有任何一件还走 chrome 那条路径", () => {
   assert.equal(
     PLUGIN_IDS.length,
-    12,
-    `插件数从 12 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
+    9,
+    `插件数从 9 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
       "改这个数字之前先确认新那件落在下面两条路径的哪一条",
   );
   assert.equal(
@@ -224,13 +225,12 @@ test("清单本身：12 件，全部走共享外壳，没有任何一件还走 c
       "版本后缀被剥掉之后撞了名，逐件断言会有一件跑两遍、另一件不跑",
   );
   const native = PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "native");
-  // native-editors 波：website / video-canvas / design-canvas 都已是本地原生编辑器，
-  // 手势一律由共享外壳给；不许再有哪件悄悄改回 chrome 路径而没人登记。
+  // Every remaining full editor uses the shared edit bar. Works have no edit bar.
   assert.deepEqual(native, [], "不应再有走 chrome 的插件");
   assert.equal(
     PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "shared").length,
-    12,
-    "走共享外壳的必须是这十二件",
+    9,
+    "走共享外壳的必须是这九件",
   );
 });
 
@@ -262,13 +262,13 @@ test("两表对齐：主题表不许出现适配器表没有的插件，缺的�
   // 所以先证明「我确实读到了两张有内容的表」，再谈差集。
   assert.equal(
     pluginIds.length,
-    12,
-    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 12）。` +
+    9,
+    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 9）。` +
       "读不出内容时下面的差集判据会空转全绿，这条正对照就是为了让它当场露出来",
   );
   assert.ok(
-    themeIds.length >= 11,
-    `HEAD 上主题表只读出来 ${themeIds.length} 件（至少 11）。理由同上`,
+    themeIds.length === 9,
+    `HEAD 上主题表只读出来 ${themeIds.length} 件（期望 9）。理由同上`,
   );
 
   // 方向一（硬红）：主题表里冒出来一个适配器表没有的 id，说明它问不出归哪条外壳路径
@@ -724,7 +724,7 @@ function translateOf(element) {
 }
 
 /** 三件 extracted 插件走的是同一个 frame，逐件跑一遍才是「逐件可达」。 */
-for (const pluginId of ["image", "website", "video-canvas"]) {
+for (const pluginId of ["image", "video-canvas"]) {
   test(`真渲染 · ${pluginId}：第一次按下拖得动、点得出圆、圆也拖得动`, async () => {
     window.localStorage.clear();
     const restoreRect = installRectStub();
@@ -887,7 +887,7 @@ test("W04 场景 A：按键上 350ms 后再按下并拖 60px，条子跟手（�
   const restoreRect = installRectStub();
   let clicks = 0;
   const mounted = await mountFrame(
-    "design-canvas",
+    "image",
     React.createElement(
       "button",
       {
@@ -956,7 +956,7 @@ test("W04 场景 A：按键上 350ms 后再按下并拖 60px，条子跟手（�
 test("W04 场景 B：空白上 350ms 后再按下并拖 60px，条子跟手", async () => {
   window.localStorage.clear();
   const restoreRect = installRectStub();
-  const mounted = await mountFrame("design-canvas");
+  const mounted = await mountFrame("image");
   try {
     const anywhere = mounted.container.querySelector("[data-test-edit-bar]");
     const bar = () =>
@@ -998,7 +998,7 @@ test("W04 场景 C：按键上 150ms 内再按下并拖，快路仍跟手", asyn
   window.localStorage.clear();
   const restoreRect = installRectStub();
   const mounted = await mountFrame(
-    "design-canvas",
+    "image",
     React.createElement(
       "button",
       { type: "button", "data-test-edit-bar-btn": true },
@@ -1046,7 +1046,7 @@ test("W04 场景 D：第一次按下移动就能拖；隔 1501ms 再按下仍能
   window.localStorage.clear();
   const restoreRect = installRectStub();
   const mounted = await mountFrame(
-    "design-canvas",
+    "image",
     React.createElement(
       "button",
       { type: "button", "data-test-edit-bar-btn": true },
@@ -1148,7 +1148,7 @@ test("整名匹配器本身：改名必须判成没了，同前缀的别名不�
  * 脏工作树上量出来的数字过不了这一关，因为那棵树 git 里没有。
  * ========================================================================= */
 
-test("基线自检：12 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
+test("基线自检：9 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
   const probe = measureOnCommittedTree({
     repo: REPO,
     commit: BASELINE_COMMIT,
@@ -1159,11 +1159,11 @@ test("基线自检：12 件与两表差集，都与 BASELINE_COMMIT 那棵干净
   assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
 
   const short = BASELINE_COMMIT.slice(0, 7);
-  // 冻的是「12 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
+  // 冻的是「9 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
   assert.equal(
     probe.value.pluginIds.length,
-    12,
-    `「12 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
+    9,
+    `「9 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
       `（${probe.value.pluginIds.join(", ")}）。\n` +
       "`W31` 原先的 13 取自主题表、且量在脏工作树上，干净检出只有 10 ⇒ 闸必红。\n" +
       "改冻结数字要连 BASELINE_COMMIT 一起改，两个是一组。",

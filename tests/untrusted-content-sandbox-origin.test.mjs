@@ -186,7 +186,7 @@ test("UC-3 W8/1 子站嵌入白名单已清空：workbench-routes.ts 不再有�
     meta,
   });
   const expected = [
-    [item("website", { draft: true }), "website"],
+    [item("website", { draft: true }), "work"],
     [item("canvas", { blank: true }), "image"],
     [item("video_canvas", {}), "video-canvas"],
   ];

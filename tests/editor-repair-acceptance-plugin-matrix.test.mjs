@@ -124,46 +124,6 @@ const PLUGINS = [
     },
   },
   {
-    adapter: "game",
-    themeId: "game",
-    artifactType: "game",
-    capability: "game-editor",
-    item: {
-      kind: "game",
-      title: "play.html",
-      url: "https://files.test/play.html",
-      meta: {
-        mime: "text/html",
-        filename: "play.html",
-        advanced_editor_route: "game",
-      },
-    },
-  },
-  {
-    adapter: "design-canvas",
-    // Design canvas merged into the image editor: one theme id, read-time alias.
-    themeId: "image",
-    artifactType: "composite_image",
-    capability: "design-canvas-editor",
-    item: {
-      kind: "canvas",
-      title: "poster",
-      url: "https://files.test/poster.json",
-      meta: { advanced_editor_route: "embed", editor: "design-canvas" },
-    },
-  },
-  {
-    adapter: "website",
-    themeId: "website",
-    artifactType: "website",
-    capability: "website-editor",
-    item: {
-      kind: "website",
-      title: "site",
-      meta: { draft: true, blank: true },
-    },
-  },
-  {
     adapter: "video-canvas",
     themeId: "video-canvas",
     artifactType: "video",
@@ -190,8 +150,9 @@ function libraryItem(plugin, extra = {}) {
   };
 }
 
-test("12 plugin adapters have static theme, registry roundTrip labels, and save contracts", () => {
-  assert.equal(PLUGINS.length, 12);
+test("nine editor adapters have static theme, registry roundTrip labels, and save contracts", () => {
+  assert.equal(PLUGINS.length, 9);
+  assert.deepEqual(PLUGINS.map(({ adapter }) => adapter).sort(), Object.keys(TRUSTED_EDITOR_REGISTRY).sort());
   assert.deepEqual(Object.keys(PLUGIN_THEME_SPECS).sort(), [
     ...new Set(PLUGINS.map((plugin) => plugin.themeId)),
   ].sort());

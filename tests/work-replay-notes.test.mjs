@@ -18,7 +18,7 @@ const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) 
 
 // ---- ① 源码里的模板都已登记 ---------------------------------------------------
 const ADAPTERS = ["image", "vector", "deck", "richdoc", "grid", "pdf"].map((n) => `src/shell/collab/adapters/${n}.ts`);
-const FRAMES = ["video", "audio", "model3d", "game", "pdf", "workflow"].map((n) => `src/shell/replay/work/frames/${n}.tsx`);
+const FRAMES = ["video", "audio", "model3d", "pdf", "workflow"].map((n) => `src/shell/replay/work/frames/${n}.tsx`);
 
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
@@ -92,7 +92,7 @@ const useUIStub = dataModule(`export function useUI(){ return (zh, vars) => zh; 
 const stubs = { "../../../../i18n/ui/useUI": useUIStub };
 const frame = async (name) => (await import(await compileModule(`src/shell/replay/work/frames/${name}.tsx`, stubs))).default;
 const R = {};
-for (const name of ["image", "vector", "deck", "richdoc", "grid", "video", "audio", "model3d", "game", "pdf", "workflow"]) R[name] = await frame(name);
+for (const name of ["image", "vector", "deck", "richdoc", "grid", "video", "audio", "model3d", "pdf", "workflow"]) R[name] = await frame(name);
 
 function assertTranslated(label, produce) {
   const zh = produce(makeTt("zh"));
@@ -146,10 +146,8 @@ test("画法说明：audio", () => {
   assertTranslated("audio 撤操作", (tt) => R.audio.describeChange(a, fewer, tt));
 });
 
-test("画法说明：game / model3d / pdf / workflow", () => {
-  const g1 = R.game.fromRevision({ source: "let x = 1;" });
-  const g2 = R.game.fromRevision({ source: "let x = 2;\nlet y = 3;" });
-  assertTranslated("game 改代码", (tt) => R.game.describeChange(g1, g2, tt));
+test("画法说明：model3d / pdf / workflow", () => {
+  // The standalone game editor and its source-code replay frame were removed.
 
   const scene = () => ({
     checkpointUrl: "https://m/a.glb",
