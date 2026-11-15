@@ -16,3 +16,7 @@
 参考：/root/projects/oceandino/docs/work-logs/2026-11-15-editor-audit/30-ED-TOOLBAR-report.md §A/G，10-ED-BUGS-report.md §8；ED-B2 报告 /root/projects/oceandino/docs/work-logs/2026-11-16-convergence-wave2/out/ED-B2-report.md。字号/行距/字距外部 px，透明度百分数。
 
 每新增能力测试 parity + 保存重开往返；使用真实引擎命令/生成合同，不写镜像实现测试。通过 agent-io-guard.sh run-light 执行专项，重任务 run-heavy。不要运行全量/typecheck（父进程运行）。只 stage 自己文件，中文 commit；有疑问及时发父进程，至少每分钟回报。最终报告含改动 file:line、测试命令与结果、引擎缺口及未做。
+
+## 二次复核补齐：大小写与列表
+
+父进程复核认为 case/list 可复用本轮时间线的真实内容转换，在允许文件内完整闭环，不应留作未实现项。追加同一owner工作：text/script/subtitle增加canon case action与list select；复用timelineTextCasePatch/timelineTextListPatch/timelineTextListKind，metadata放节点params，统一处理raw text与params.text避免合成读取旧内容。清格式同步移除本编辑器生成的列表，保护原始前缀/手动改字。保持Include in video默认及只读/epoch合同。不要新增虚渲染字段或改其他owner文件。专项覆盖三个节点、大小写/列表切换与清除、手工编辑保护、实际保存重开及render/handoff一致性。父进程已取消尚未获CPU名额的全量等待；完成后将重新走守卫执行最终全量。只stage本owner原6文件，中文commit，更新报告和缺口。
