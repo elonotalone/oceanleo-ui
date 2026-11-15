@@ -50,6 +50,7 @@
     "./shell/plugin-theme": "./src/shell/plugin-theme.tsx",
     "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
+    "./shell/video-canvas": "./src/shell/video-canvas/index.ts",
     "./tailwind-preset": "./src/theme/tailwind-preset.ts",
     "./theme": "./src/theme/index.ts",
     "./theme/globals.css": "./src/theme/globals.css",
@@ -7408,6 +7409,12 @@
         },
         {
           "kind": "named",
+          "name": "useTaskPending",
+          "importedName": "useTaskPending",
+          "source": "./acp-task"
+        },
+        {
+          "kind": "named",
           "name": "useTaskRowActions",
           "importedName": "useTaskRowActions",
           "source": "./task-row-actions"
@@ -10015,6 +10022,23 @@
           "name": "SelectionRevision",
           "importedName": "SelectionRevision",
           "source": "./selection-context-types"
+        }
+      ]
+    },
+    "./shell/video-canvas": {
+      "target": "./src/shell/video-canvas/index.ts",
+      "declarations": [
+        {
+          "kind": "named",
+          "name": "videoCanvasDigest",
+          "importedName": "deterministicDigest",
+          "source": "./engine/project-model"
+        },
+        {
+          "kind": "named",
+          "name": "VideoCanvasLibraryEntry",
+          "importedName": "VideoCanvasLibraryEntry",
+          "source": "./VideoCanvasLibraryEntry"
         }
       ]
     },
