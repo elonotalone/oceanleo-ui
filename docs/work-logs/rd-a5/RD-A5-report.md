@@ -1,6 +1,6 @@
 # RD-A5：远控波三交付报告
 
-代码已提交；最终网关联合套件仍在资源队列，UI 首轮全量运行中，尚不能声明全部验收通过。
+代码已提交；最终网关联合套件仍在资源队列，UI 最终全量复跑中，尚不能声明全部验收通过。
 
 ## 结论
 
@@ -68,12 +68,12 @@
 所有重型命令经 agent-io-guard.sh run-heavy，专项经 run-light；未绕过资源队列。
 
 - 本单元主代理亲跑 npm run typecheck、npm run api:check、npm run consumers:check：exit 0；35 consumers / 38 exports。最终 be6a1914 再跑 typecheck：exit 0，/tmp/rd-a5-ui-parent-typecheck-final.log。
-- 主代理真实组件与输入专项：panel / receipts / data-channel 三文件 60/60；最终日志 /tmp/rd-a5-ui-parent-focused-final.log；其余边界专项 48/48（含原 TS 活动断言改用现有 Node runner），/tmp/rd-a5-ui-parent-extra-focused-final.log。hooks lint CURRENT 0 errors / 0 warnings，/tmp/rd-a5-ui-parent-lint.log。
+- 主代理真实组件与输入专项：panel / receipts / data-channel 三文件 60/60；最终日志 /tmp/rd-a5-ui-parent-focused-final.log；其余边界专项 48/48（含原 TS 活动断言改用现有 Node runner），/tmp/rd-a5-ui-parent-extra-focused-final.log。hooks lint CURRENT 0 errors / 0 warnings，/tmp/rd-a5-ui-parent-lint-final.log。
 - 主代理最终 N/20c0f362 亲跑：cd src-tauri && TAURI_CONFIG="$(cat tauri.ws.json)" OCEANLEO_EDITION=ws cargo check --offline：exit 0，141 条既有 warning。
 - 同一最终版本 python3 tests/run_remote_native_tests.py：14+20+77=111 passed，2 ignored 为被其他测试调用的辅助入口；python3 -m unittest discover -s tests -p test_remote_metrics_schema.py：7 passed。
 - python3 scripts/generate-remote-metrics.py --gateway-root /root/wt/RD-A5-oceanleo --viewer-root /root/wt/RD-A5-oceanleo-ui --check：exit 0。以上原生主代理日志 /tmp/rd-a5-native-parent-final.log。
-- 网关核心主代理专项 70 passed；协议/公平/遥测续作 67 passed、107 subtests；secure broker/撤销/旧存储专项 80 passed、7 subtests。首轮联合 328 passed、146 subtests 及 4 个旧 commands 夹具断言失败；夹具修正并单文件 4/4+4 subtests 通过，最终联合重跑排队中 /tmp/rd-a5-gateway-final2.log。
-- UI 首轮 npm test 运行中，/tmp/rd-a5-ui-full.log；发现 5 个 c11 设备入口旧 HTTP/JPEG 夹具失败，已保留原行为断言迁移，主代理亲跑 15/15（/tmp/rd-a5-ui-parent-c11-final.log）。待首轮结束后执行最终全量及 comm，尚不能声明无新增失败。
+- 网关核心主代理专项 70 passed；协议/公平/遥测续作 67 passed、107 subtests；secure broker/撤销/旧存储专项 80 passed、7 subtests。首轮联合 328 passed、146 subtests 及 4 个旧 commands 夹具断言失败；夹具修正并单文件 4/4+4 subtests 通过，最终联合重跑排队中 /tmp/rd-a5-gateway-final3.log（原排队器固定扫描旧槽，取消未运行等待后经同一门禁重新入队）。
+- UI 首轮 10108 tests / 10015 pass / 68 fail / 15 cancelled / 10 skip，日志 /tmp/rd-a5-ui-first.log；只有 5 个 c11 设备入口旧 HTTP/JPEG 夹具为基线外，已保留原行为断言迁移，主代理亲跑 15/15（/tmp/rd-a5-ui-parent-c11-final.log）。最终完整 npm test 已运行于 /tmp/rd-a5-ui-full.log；结果和 comm 待填，尚不能声明最终无新增失败。
 - 三库 diff --check 通过；LeoDev 既有槽 1 FRESH、0 STALE，未将候选工作树加载到主检出槽。UI/native 仅剩初始未跟踪 node_modules symlink，无依赖安装。
 
 ## 未证实 / 未做
