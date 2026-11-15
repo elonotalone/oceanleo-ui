@@ -102,7 +102,8 @@ test("edit bar uses 24px icons, 2.4 strokes, 32px buttons and theme ink througho
   assert.equal(surface.EDIT_BAR_HEIGHT_PX, 42);
   assert.equal(surface.editBarPillStyle().gap, 4);
   assert.match(surface.EDIT_BAR_BUTTON_CLASS, /h-8 w-8/);
-  assert.match(surface.EDIT_BAR_INK_CLASS, /pchrome-ink.*awb-text.*fg/);
+  assert.match(surface.EDIT_BAR_INK_CLASS, /awb-text/);
+  assert.match(surface.editBarSurfaceStyle().color, /pchrome-ink.*awb-text.*fg/);
   for (const file of ["SelectionToolbarControl.tsx", "SelectionToolbarSelectControl.tsx", "selection-toolbar-chrome.tsx", "plugin-chrome/EditBarDocumentSegment.tsx"]) {
     const source = readFileSync(`src/shell/${file}`, "utf8");
     assert.match(source, /EditBarIcon/);

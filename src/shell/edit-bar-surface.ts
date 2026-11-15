@@ -38,14 +38,15 @@ const LINE =
   "var(--pchrome-line, var(--awb-border, var(--border, #e7e5e4)))";
 const INK = "var(--pchrome-ink, var(--awb-text, var(--fg, #17171c)))";
 
-export const EDIT_BAR_INK_CLASS = "text-[var(--pchrome-ink,var(--awb-text,var(--fg,#17171c)))]";
-export const EDIT_BAR_FIELD_CLASS = "rounded-xl border border-[var(--pchrome-line,var(--border,#d6d7df))] bg-transparent";
+// 复用已分发的 utilities；无插件 token 时继承 surface 的 INK 兜底。
+export const EDIT_BAR_INK_CLASS = "text-[var(--awb-text)]";
+export const EDIT_BAR_FIELD_CLASS = "rounded-xl border border-[var(--border,#e7e5e4)] bg-transparent";
 
 /** 菜单保留触屏行高，紧凑栏所有入口共享 32px 尺寸与 4px 内间距。 */
 export function editBarControlClass(menu: boolean): string {
   return `group/control ${menu
     ? "flex min-h-11 min-w-0 w-full justify-start gap-2 rounded-lg px-2.5 py-1.5 text-left"
-    : `inline-flex h-8 min-w-8 shrink-0 justify-center gap-1 rounded-xl px-2 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`
+    : `inline-flex h-8 min-w-0 shrink-0 justify-center gap-1 rounded-xl px-2 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`
   } items-center text-[12px] font-medium ${EDIT_BAR_INK_CLASS} outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40 disabled:pointer-events-none disabled:opacity-35`;
 }
 
@@ -100,4 +101,4 @@ export const EDIT_BAR_DIVIDER_CLASS =
 
 /** 段内单个图标按钮。圆形 hover 与胶囊外形呼应。 */
 export const EDIT_BAR_BUTTON_CLASS =
-  `grid h-8 w-8 shrink-0 place-items-center rounded-full ${EDIT_BAR_INK_CLASS} outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;
+  `grid h-8 w-8 shrink-0 place-items-center rounded-full ${EDIT_BAR_INK_CLASS} outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-[var(--pchrome-muted,var(--awb-hover,rgba(0,0,0,.06)))] hover:text-[var(--pchrome-ink,var(--awb-text,#292524))] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/40 ${EDIT_BAR_TOUCH_EXTEND_CLASS}`;

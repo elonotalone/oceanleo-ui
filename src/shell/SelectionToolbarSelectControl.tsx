@@ -14,7 +14,7 @@ import {
   type SelectionControl,
   type SelectionControlValue,
 } from "./selection-context";
-import { editBarControlClass, EDIT_BAR_FIELD_CLASS } from "./edit-bar-surface";
+import { editBarControlClass, EDIT_BAR_FIELD_CLASS, EDIT_BAR_CONTROL_SIZE_PX } from "./edit-bar-surface";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
 import { useEditBarSessionId } from "./edit-bar-selection-session";
 import { selectionControlUsesIconOnly } from "./selection-toolbar-layout";
@@ -138,6 +138,7 @@ export function SelectionToolbarSelectControl({
         aria-label={namedLabel}
         aria-describedby={forMeasurement ? undefined : valueDescriptionId}
         className={buttonClass}
+        style={!menu && !fontFamily ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : undefined}
         data-edit-bar-font-family={fontFamily ? "" : undefined}
       >
         {(menu || showIcon) && (triggerIcon || control.icon) && (
@@ -197,7 +198,7 @@ export function SelectionToolbarSelectControl({
           onChange={(event) => setQuery(event.target.value)}
           aria-label={`${control.label} 搜索`}
           placeholder="搜索字体"
-          className="mb-1 w-full rounded-lg border border-[var(--border,#d6d7df)] bg-transparent px-2 py-2 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+          className="mb-1 w-full rounded-lg border border-[var(--border,#e7e5e4)] bg-transparent px-2 py-2 text-[12px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
         />}
         {options.map((option) => {
           const active = fontFamily ? selectedLabel !== "多种" && normalizeEditBarFontFamily(option.value).toLocaleLowerCase() === normalizeEditBarFontFamily(fontPreview || selectedLabel).toLocaleLowerCase() : option.value === String(control.value ?? "");

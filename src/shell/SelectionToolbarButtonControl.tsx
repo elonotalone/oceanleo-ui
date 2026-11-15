@@ -7,6 +7,7 @@ import type {
   SelectionPanelAction,
 } from "./selection-context";
 import { preserveEditBarSelection } from "./edit-bar-selection-preserve";
+import { EDIT_BAR_CONTROL_SIZE_PX } from "./edit-bar-surface";
 
 export function SelectionToolbarButtonControl({
   control,
@@ -73,14 +74,13 @@ export function SelectionToolbarButtonControl({
         aria-controls={
           control.kind === "panel" ? control.panelId || control.id : undefined
         }
-        style={
-          activePanel
-            ? {
+        style={{
+          ...(!menu ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : {}),
+          ...(activePanel ? {
                 color: accent,
                 boxShadow: `inset 0 -2px 0 ${accent}`,
-              }
-            : undefined
-        }
+              } : {}),
+        }}
       >
         {icon}
         {!iconOnly && (
@@ -106,7 +106,10 @@ export function SelectionToolbarButtonControl({
           onActivated?.();
         }}
         className={`${buttonClass} ${iconOnly ? "w-8 px-0" : ""}`}
-        style={active ? { background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent } : undefined}
+        style={{
+          ...(!menu ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : {}),
+          ...(active ? { background: `color-mix(in srgb, ${accent} 12%, transparent)`, color: accent } : {}),
+        }}
         title={namedLabel}
         aria-label={namedLabel}
       >
@@ -131,6 +134,7 @@ export function SelectionToolbarButtonControl({
           iconOnly ? "w-8 px-0" : ""
         } focus-within:ring-2 focus-within:ring-[var(--awb-accent,#7c3aed)]/40`}
         title={namedLabel}
+        style={!menu ? { minWidth: EDIT_BAR_CONTROL_SIZE_PX } : undefined}
       >
         <span className="relative grid h-6 w-6 place-items-center">
           {icon}

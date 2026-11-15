@@ -113,7 +113,7 @@ export function SelectionToolbarNumberControl({
         tabIndex={forMeasurement ? -1 : undefined}
         onPointerDown={preserveEditBarSelection}
         onClick={() => emitValue(value - step)}
-        className="grid h-full w-8 shrink-0 place-items-center rounded-l-xl text-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+        className="grid h-full w-8 shrink-0 place-items-center rounded-xl text-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
         aria-label={namedLabel ? `${namedLabel} -` : undefined}
       >
         −
@@ -175,7 +175,7 @@ export function SelectionToolbarNumberControl({
           commit(event.target.value);
         }}
         aria-label={namedLabel}
-        className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+        className={`h-full border-0 bg-transparent px-0 text-center text-[12px] font-semibold tabular-nums outline-none focus-visible:ring-2 ${fontSize ? "focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,#7c3aed))]/45" : "focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"} [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
           menu ? "min-w-10 flex-1" : "w-12"
         }`}
       />
@@ -190,7 +190,7 @@ export function SelectionToolbarNumberControl({
         tabIndex={forMeasurement ? -1 : undefined}
         onPointerDown={preserveEditBarSelection}
         onClick={() => emitValue(value + step)}
-        className="grid h-full w-8 shrink-0 place-items-center rounded-r-xl text-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
+        className="grid h-full w-8 shrink-0 place-items-center rounded-xl text-lg hover:bg-[var(--surface-hover,rgba(0,0,0,.06))] focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/40"
         aria-label={namedLabel ? `${namedLabel} +` : undefined}
       >
         +
@@ -210,7 +210,7 @@ export function SelectionToolbarNumberControl({
         align="start"
         maxHeight={288}
         attributes={sessionId ? { "data-edit-bar-session": sessionId } : undefined}
-        className="z-[2147483500] w-24 overflow-y-auto rounded-xl border border-[var(--border,#d6d7df)] bg-[var(--card,#fff)] p-1.5 shadow-2xl"
+        className="z-[2147483500] w-24 overflow-y-auto rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-1.5 shadow-2xl"
       >
         {presets.map((size) => <button
           key={size}
