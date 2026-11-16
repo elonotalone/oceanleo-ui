@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {descriptor,FakePeer,FakeVideo,harness,settle,WALL} from './helpers/remote-desktop-webrtc.mjs';
+import {WebRtcRemoteDesktopViewer} from '../src/api/remote-desktop-webrtc.ts';
 
 test('viewer offers recvonly video with reliable input/control, unreliable move and low playout delay',async t=>{
   const h=await harness(t);await h.viewer.start();const pc=h.viewer.pc;
@@ -8,6 +9,29 @@ test('viewer offers recvonly video with reliable input/control, unreliable move 
   assert.deepEqual(pc.transceiver.options,{direction:'recvonly'});assert.equal(pc.transceiver.receiver.jitterBufferTarget,0);
   assert.deepEqual(pc.channel('rd-input').options,{ordered:true});assert.deepEqual(pc.channel('rd-fast').options,{ordered:false,maxRetransmits:0});
   assert.deepEqual(pc.channel('rd-ctl').options,{ordered:true});assert.equal(h.signals[0].k,'offer');assert.equal(h.signals[0].sdp,'v=0\r\nfixture-offer');
+});
+test('create+offer adopts the exact peer and SDP, configures TURN before ICE, and waits before an early answer',async t=>{
+  const h=await harness(t);const pc=new FakePeer({iceServers:[]});
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'RTCPeerConnection');
+  Object.defineProperty(globalThis,'RTCPeerConnection',{configurable:true,writable:true,value:function(){return pc;}});
+  t.after(()=>{if(previous)Object.defineProperty(globalThis,'RTCPeerConnection',previous);else delete globalThis.RTCPeerConnection;});
+  const prepared=await WebRtcRemoteDesktopViewer.prepareInitialPeer();assert.ok(prepared);
+  assert.equal(pc.localDescription,undefined);assert.equal(pc.channels.length,3);
+  const ice=[{urls:'turn:authorized.invalid:3478',username:'ephemeral',credential:'private'}];
+  h.viewer.updateDescriptor(descriptor({ice_servers:ice}));h.viewer.options.initialPeer={...prepared,offeredAt:50};
+  let release;const localGate=new Promise(resolve=>{release=resolve;});
+  pc.setLocalDescription=async value=>{assert.deepEqual(pc.configuration.iceServers,ice);await localGate;pc.localDescription=value;};
+  const start=h.viewer.start();await settle();
+  const answer=h.viewer.signal({k:'answer',gen:1,sdp:'early-answer'});await settle();assert.equal(pc.remoteDescription,undefined);
+  release();await start;await answer;
+  assert.equal(h.viewer.pc,pc);assert.equal(pc.localDescription.sdp,prepared.offer.sdp);assert.equal(pc.remoteDescription.sdp,'early-answer');
+  assert.equal(pc.offers.length,1);assert.equal(pc.channels.length,3);assert.equal(h.signals.some(value=>value.k==='offer'),false);
+  pc.onicecandidate({candidate:{candidate:'trickled',sdpMid:'0',sdpMLineIndex:0}});assert.equal(h.signals.at(-1).k,'candidate');
+  pc.state('failed');await h.advance(200);assert.equal(h.viewer.gen,2);assert.notEqual(h.viewer.pc,pc);assert.equal(h.signals.at(-1).k,'offer');
+  h.viewer.close();assert.equal(h.reports.at(-1).report.steps.offer_sent_ms,50);
+});
+test('closing before start disposes an unadopted prepared peer',async t=>{
+  const h=await harness(t);const pc=new FakePeer({});h.viewer.options.initialPeer={pc};h.viewer.close();assert.equal(pc.closed,1);
 });
 test('candidate buffering and generation checks reject early, stale and future peer signals',async t=>{
   const h=await harness(t);await h.viewer.signal({k:'candidate',gen:1,candidate:'before-start'});await h.viewer.start();const pc=h.viewer.pc;

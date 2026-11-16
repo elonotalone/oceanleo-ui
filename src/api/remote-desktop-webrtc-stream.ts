@@ -39,6 +39,8 @@ export async function openRemoteWebRtcStream(
   if (options.descriptor && !initialDescriptor) return { ok: false, error: "response_malformed" };
   if (options.sequenceFloor !== undefined && (!Number.isSafeInteger(options.sequenceFloor) || options.sequenceFloor < 0)) return { ok: false, error: "response_malformed" };
   if (options.signal?.aborted) return { ok: false, error: "aborted" };
+  let createdSocket = takeCreatedRemoteWebRtcSocket(sessionId, controller);
+  let initialPeer = createdSocket?.initialPeer;
 
   const url = new URL(`${GATEWAY_BASE}/v1/devices/${encodeURIComponent(deviceId)}/remote-desktop/sessions/${encodeURIComponent(sessionId)}/stream`, window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
@@ -56,7 +58,7 @@ export async function openRemoteWebRtcStream(
   let mediaReady = false, mediaReadySent = false;
   let incomingSignals: Record<string, unknown>[] = [], outgoingSignals: Record<string, unknown>[] = [];
   let signalTimes: number[] = [];
-  let firstOfferSentAt: number | undefined;
+  let firstOfferSentAt = initialPeer?.offeredAt;
   let resolve!: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>(done => { resolve = done; });
   const settle = (result: RemoteDesktopApiResult<RemoteDesktopStream>) => { if (!settled) { settled = true; resolve(result); } };
@@ -70,6 +72,8 @@ export async function openRemoteWebRtcStream(
     if (ended || ending) return;
     if (inputFault(reason)) { handlers.webrtcState?.("input_reconnecting"); return; }
     ending = true;
+    initialPeer?.pc.close(); initialPeer = undefined;
+    if (createdSocket) { createdSocket.socket.close(); createdSocket = null; }
     // Let an intentional leave send its peer bye before the signalling socket closes.
     if (peer) peer.close(reason);
     else report({
@@ -181,6 +185,7 @@ export async function openRemoteWebRtcStream(
     peer = new WebRtcRemoteDesktopViewer({
       descriptor: value, deviceId, clickedAt, sequenceFloor: options.sequenceFloor,
       sessionCreatedAt: options.sessionCreatedAt, descriptorReceivedAt: receivedAt,
+      initialPeer,
       sendSignal: enqueueSignal,
       onState: (next, path) => { if (!ended) handlers.webrtcState?.(next, path); },
       onFrame: (width, height) => {
@@ -191,6 +196,7 @@ export async function openRemoteWebRtcStream(
       },
       onTerminal: reason => finish(reason), onReport: report,
     });
+    initialPeer = undefined;
     peer.attachVideo(video);
     const pending = incomingSignals; incomingSignals = [];
     void peer.start().then(async () => { for (const signal of pending) { if (ended) break; await peer?.signal(signal); } }).catch(() => {
@@ -246,7 +252,8 @@ export async function openRemoteWebRtcStream(
     try { fresh = token ?? await accessToken(); } catch { reconnect(); return; }
     if (ended) return;
     if (!fresh) { finish("unauthorized"); return; }
-    const created = takeCreatedRemoteWebRtcSocket(sessionId, controller);
+    const created = createdSocket ?? takeCreatedRemoteWebRtcSocket(sessionId, controller);
+    createdSocket = null;
     const prepared = created?.socket ?? takePreparedRemoteWebRtcSocket(deviceId, controller);
     let active: WebSocket;
     try { active = prepared ?? new WebSocket(url.toString()); } catch { reconnect(); return; }

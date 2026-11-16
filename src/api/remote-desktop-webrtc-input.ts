@@ -85,7 +85,7 @@ export class WebRtcInputScheduler {
   }
   private write(label: InputLabel, item: Queued): boolean {
     const lane = this.lanes.get(label);
-    if (!lane || lane.readyState !== "open" || lane.bufferedAmount > WEBRTC_BUFFER_BYTES) return false;
+    if (!lane || lane.readyState !== "open" || lane.bufferedAmount > (label === "rd-fast" ? 0 : WEBRTC_BUFFER_BYTES)) return false;
     const seq = ++this.sequence;
     const entry: WebRtcInputWrite = { seq, action: item.action, sentAt: this.options.now(), sentWall: this.options.wallNow() };
     // Register before send: synchronous test transports may immediately return a receipt.

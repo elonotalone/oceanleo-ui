@@ -32,6 +32,15 @@ test('buffer backpressure keeps 32 non-move actions and coalesces moves without 
   assert.equal(h.viewer.lastSequence(),0);reliable.low();fast.low();assert.equal(reliable.sent.length,32);assert.equal(fast.sent.length,1);assert.equal(fast.sent[0].a.x,.99);
   h.viewer.send({kind:'keypress',key:'no credit gate'});assert.equal(reliable.sent.length,33);
 });
+test('even a small fast-channel backlog keeps only the newest move while reliable actions continue',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc,fast=pc.channel('rd-fast'),reliable=pc.channel('rd-input');
+  assert.equal(fast.bufferedAmountLowThreshold,0);assert.equal(reliable.bufferedAmountLowThreshold,128*1024);
+  fast.bufferedAmount=1;
+  for(let i=0;i<100;i++)assert.equal(h.viewer.send({kind:'move',x:i/100,y:.5}),true);
+  assert.equal(fast.sent.length,0);h.viewer.send({kind:'keypress',key:'A'});assert.equal(reliable.sent.length,1);
+  fast.low();assert.equal(fast.sent.length,1);assert.equal(fast.sent[0].a.x,.99);
+  assert.equal(pc.closed,0);assert.equal(h.viewer.gen,1);
+});
 test('16KiB UTF-8 packet limit is independent of removed ARTC 1KiB cap',async t=>{
   const h=await harness(t);await h.viewer.start();h.open();assert.equal(h.viewer.send({kind:'type',text:'中'.repeat(1000)}),true);
   assert.equal(h.viewer.send({kind:'type',text:'中'.repeat(6000)}),false);assert.equal(h.viewer.lastSequence(),1);

@@ -52,3 +52,40 @@ test('warm create timeout allows HTTP fallback with the same idempotency body',a
   const body={request_id:'same-request-id'};const promise=api.createPreparedRemoteWebRtcSession('warm-timeout',body);await drain();
   t.mock.timers.tick(8000);assert.equal(await promise,null);assert.deepEqual(ws.sent.at(-1),{type:'create',body});assert.equal(ws.readyState,3);
 });
+class InitialPeer {
+  static all=[];closed=0;channels=[];
+  constructor(configuration){this.configuration=configuration;InitialPeer.all.push(this);}
+  addTransceiver(){return {receiver:{},setCodecPreferences(){}};}
+  createDataChannel(label,options){const channel={label,options};this.channels.push(channel);return channel;}
+  async createOffer(){return {type:'offer',sdp:'prepared-sdp'};}
+  close(){this.closed++;}
+}
+function preparedPeer(t){
+  InitialPeer.all=[];
+  for(const [key,value] of Object.entries({RTCPeerConnection:InitialPeer,RTCRtpReceiver:{getCapabilities:()=>({codecs:[{mimeType:'video/VP8'}]})}})){
+    const previous=Object.getOwnPropertyDescriptor(globalThis,key);Object.defineProperty(globalThis,key,{configurable:true,writable:true,value});
+    t.after(()=>{if(previous)Object.defineProperty(globalThis,key,previous);else delete globalThis[key];});
+  }
+}
+test('warm create carries SDP before descriptor arrives and transfers that peer with its stream',async t=>{
+  setup(t);preparedPeer(t);const release=api.prepareRemoteWebRtcSocket('warm-offer');t.after(release);await drain();const ws=Socket.all[0];ws.open();ws.ready();
+  const promise=api.createPreparedRemoteWebRtcSession('warm-offer',{request_id:'offer-id'});await drain();
+  assert.deepEqual(ws.sent.at(-1),{type:'create',body:{request_id:'offer-id'},offer:{k:'offer',gen:1,sdp:'prepared-sdp'}});
+  const pc=InitialPeer.all[0];assert.deepEqual(pc.configuration.iceServers,[]);assert.equal(pc.localDescription,undefined);
+  ws.onmessage({data:JSON.stringify({type:'pong'})});assert.equal(ws.readyState,1);
+  ws.onmessage({data:JSON.stringify({type:'created',session:{session_id:'offered-session',transport:'webrtc-v1'}})});await promise;
+  ws.onmessage({data:JSON.stringify({type:'signal',data:{k:'answer',gen:1,sdp:'early-answer'}})});
+  const adopted=api.takeCreatedRemoteWebRtcSocket('offered-session','controller');assert.equal(adopted.initialPeer.pc,pc);
+  assert.equal(adopted.messages.length,1);assert.equal(pc.closed,0);pc.close();ws.close();
+});
+test('warm create failure closes its speculative peer and retains ordinary HTTP fallback',async t=>{
+  setup(t);preparedPeer(t);const release=api.prepareRemoteWebRtcSocket('warm-offer-fail');t.after(release);await drain();const ws=Socket.all[0];ws.open();ws.ready();
+  const promise=api.createPreparedRemoteWebRtcSession('warm-offer-fail',{request_id:'same-id'});await drain();ws.close();
+  assert.equal(await promise,null);assert.equal(InitialPeer.all[0].closed,1);
+});
+test('unclaimed create disposes its prepared peer after the adoption deadline',async t=>{
+  setup(t);preparedPeer(t);const release=api.prepareRemoteWebRtcSocket('warm-offer-unused');t.after(release);await drain();const ws=Socket.all[0];ws.open();ws.ready();
+  const promise=api.createPreparedRemoteWebRtcSession('warm-offer-unused',{});await drain();
+  ws.onmessage({data:JSON.stringify({type:'created',session:{session_id:'unclaimed-session',transport:'webrtc-v1'}})});await promise;
+  t.mock.timers.tick(10000);assert.equal(ws.readyState,3);assert.equal(InitialPeer.all[0].closed,1);
+});

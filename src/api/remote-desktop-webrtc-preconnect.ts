@@ -1,10 +1,11 @@
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders } from "./device-settings";
+import { WebRtcRemoteDesktopViewer, type PreparedWebRtcPeer } from "./remote-desktop-webrtc";
 
 type Prepared = { socket: WebSocket; controller: string; ready: boolean; claimed: boolean; timer?: ReturnType<typeof setInterval> };
 const prepared = new Map<string, Prepared>();
-type CreatedSocket = { socket: WebSocket; controller: string; messages: string[]; timer: ReturnType<typeof setTimeout> };
+type CreatedSocket = { socket: WebSocket; controller: string; messages: string[]; timer: ReturnType<typeof setTimeout>; initialPeer?: PreparedWebRtcPeer };
 const created = new Map<string, CreatedSocket>();
 
 /** Preparing signalling creates no remote session, consent request or billing. */
@@ -65,12 +66,17 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
   try { controller = controllerHeaders()["X-OceanLeo-Controller"]; } catch { return null; }
   const socket = takePreparedRemoteWebRtcSocket(deviceId, controller);
   if (!socket) return null;
+  const initialPeer = await WebRtcRemoteDesktopViewer.prepareInitialPeer();
+  if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
+    initialPeer?.pc.close(); socket.close(); return null;
+  }
   return new Promise(resolve => {
     let settled = false;
     const fail = () => {
       if (settled) return;
       settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", fail);
       socket.onmessage = socket.onerror = socket.onclose = null;
+      initialPeer?.pc.close();
       try { socket.close(); } catch { /* HTTP retries the SAME request id. */ }
       resolve(null);
     };
@@ -81,21 +87,29 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
       if (typeof event.data !== "string" || event.data.length > 65_536) { fail(); return; }
       let data: any;
       try { data = JSON.parse(event.data); } catch { fail(); return; }
+      if (data.type === "pong" || data.type === "ready") return;
       if (data.type !== "created" || !data.session || typeof data.session.session_id !== "string") { fail(); return; }
       settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", fail);
       const sessionId = data.session.session_id as string;
+      const acceptedPeer = data.session.transport === "webrtc-v1" ? initialPeer : undefined;
+      if (initialPeer && !acceptedPeer) initialPeer.pc.close();
       const messages: string[] = [];
-      const timer = setTimeout(() => { if (created.get(sessionId)?.socket === socket) { created.delete(sessionId); socket.close(); } }, 10_000);
-      const item = { socket, controller, messages, timer };
+      let disposed = false;
+      const dispose = () => { if (disposed) return; disposed = true; clearTimeout(timer); created.delete(sessionId); acceptedPeer?.pc.close(); };
+      const timer = setTimeout(() => { if (created.get(sessionId)?.socket === socket) { dispose(); socket.close(); } }, 10_000);
+      const item = { socket, controller, messages, timer, initialPeer: acceptedPeer };
       created.set(sessionId, item);
       socket.onmessage = next => {
-        if (typeof next.data !== "string" || next.data.length > 65_536 || messages.length >= 64) { clearTimeout(timer); created.delete(sessionId); socket.close(); return; }
+        if (typeof next.data !== "string" || next.data.length > 65_536 || messages.length >= 64) { dispose(); socket.close(); return; }
         messages.push(next.data);
       };
-      socket.onclose = socket.onerror = () => { clearTimeout(timer); created.delete(sessionId); };
+      socket.onclose = socket.onerror = dispose;
       resolve(data.session);
     };
-    try { socket.send(JSON.stringify({ type: "create", body })); } catch { fail(); }
+    try {
+      if (initialPeer) initialPeer.offeredAt = performance.now();
+      socket.send(JSON.stringify({ type: "create", body, ...(initialPeer ? { offer: { k: "offer", gen: 1, sdp: initialPeer.offer.sdp } } : {}) }));
+    } catch { fail(); }
   });
 }
 

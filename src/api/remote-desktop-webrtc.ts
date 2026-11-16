@@ -14,6 +14,10 @@ export type WebRtcSignal =
   | { k: "offer" | "answer"; sdp: string; gen: number }
   | { k: "candidate"; candidate: string; sdpMid?: string | null; sdpMLineIndex?: number | null; gen: number }
   | { k: "bye"; reason?: string; gen?: number };
+export interface PreparedWebRtcPeer {
+  pc: RTCPeerConnection; transceiver: RTCRtpTransceiver; channels: Map<Label, RTCDataChannel>;
+  offer: RTCSessionDescriptionInit; offeredAt?: number;
+}
 export interface WebRtcViewerOptions {
   descriptor: RemoteWebRtcDescriptor;
   sendSignal(data: WebRtcSignal): boolean;
@@ -24,6 +28,7 @@ export interface WebRtcViewerOptions {
   clickedAt?: number; sessionCreatedAt?: number; descriptorReceivedAt?: number; sequenceFloor?: number;
   deviceId?: string; now?: () => number; wallNow?: () => number;
   createPeer?: (configuration: RTCConfiguration) => RTCPeerConnection;
+  initialPeer?: PreparedWebRtcPeer;
 }
 type Label = InputLabel | "rd-ctl";
 type FrameMetadata = VideoFrameCallbackMetadata & { captureTime?: number; receiveTime?: number };
@@ -57,6 +62,28 @@ function viewerPathSelection(): boolean {
 
 /** The peer owns media/input only. Authentication, HTTP and stream reconnects belong to the caller. */
 export class WebRtcRemoteDesktopViewer {
+  /** Make SDP during session creation; ICE gathering waits for authorized TURN credentials. */
+  static async prepareInitialPeer(): Promise<PreparedWebRtcPeer | undefined> {
+    if (typeof RTCPeerConnection === "undefined") return undefined;
+    let pc: RTCPeerConnection | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      pc = new RTCPeerConnection({ iceServers: [], iceTransportPolicy: viewerIcePolicy(), bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" });
+      const active = pc;
+      const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
+      this.lowDelay(transceiver.receiver); this.receiveExtensions(transceiver);
+      if (!this.preferCodecs(transceiver)) { pc.close(); return undefined; }
+      const channels = new Map<Label, RTCDataChannel>();
+      for (const label of labels) channels.set(label, pc.createDataChannel(label, label === "rd-fast" ? { ordered: false, maxRetransmits: 0 } : { ordered: true }));
+      const offer = await Promise.race([
+        pc.createOffer(),
+        new Promise<undefined>(resolve => { timer = setTimeout(() => { swallow(() => active.close()); resolve(undefined); }, 200); }),
+      ]);
+      if (!offer?.sdp) { swallow(() => active.close()); return undefined; }
+      return { pc, transceiver, channels, offer };
+    } catch { if (pc) swallow(() => pc!.close()); return undefined; }
+    finally { clearTimeout(timer); }
+  }
   gen = 0;
   pc: RTCPeerConnection | null = null;
   private options: WebRtcViewerOptions;
@@ -158,21 +185,28 @@ export class WebRtcRemoteDesktopViewer {
       this.candidates = []; this.pendingSignals = []; this.recovery.clear(); this.answerDue = undefined;
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
+      const initial = this.options.initialPeer; this.options.initialPeer = undefined;
+      const prepared = gen === 1 && !route ? initial : undefined;
+      if (initial && !prepared) swallow(() => initial.pc.close());
       let pc: RTCPeerConnection;
-      try { pc = create({ iceServers: route?.kind === "relay" ? route.servers : this.iceServers(), iceTransportPolicy: route ? (route.kind === "relay" ? "relay" : "all") : this.icePolicy, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
-      catch { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
+      try {
+        const configuration: RTCConfiguration = { iceServers: route?.kind === "relay" ? route.servers : this.iceServers(), iceTransportPolicy: route ? (route.kind === "relay" ? "relay" : "all") : this.icePolicy, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" };
+        pc = prepared?.pc ?? create(configuration);
+        if (prepared) pc.setConfiguration(configuration);
+      }
+      catch { if (prepared) swallow(() => prepared.pc.close()); this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
       this.pc = pc;
-      const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
-      this.lowDelay(transceiver.receiver);
-      this.receiveExtensions(transceiver);
-      if (!this.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
+      const transceiver = prepared?.transceiver ?? pc.addTransceiver("video", { direction: "recvonly" });
+      WebRtcRemoteDesktopViewer.lowDelay(transceiver.receiver);
+      WebRtcRemoteDesktopViewer.receiveExtensions(transceiver);
+      if (!WebRtcRemoteDesktopViewer.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
       pc.onicecandidate = event => {
         if (this.pc !== pc || this.ended || !event.candidate) return;
         this.transmit({ k: "candidate", candidate: event.candidate.candidate, sdpMid: event.candidate.sdpMid, sdpMLineIndex: event.candidate.sdpMLineIndex, gen });
       };
       pc.ontrack = event => {
         if (this.pc !== pc || this.ended || event.track.kind !== "video") return;
-        this.lowDelay(event.receiver);
+        WebRtcRemoteDesktopViewer.lowDelay(event.receiver);
         this.trackGeneration = gen;
         this.mediaStream = event.streams[0] ?? new MediaStream([event.track]);
         if (this.video) { this.video.srcObject = this.mediaStream; this.play(); }
@@ -192,20 +226,25 @@ export class WebRtcRemoteDesktopViewer {
           this.emitState("picture_reconnecting"); this.peerRetryDue = this.now() + 200;
         } else if (["connected", "completed"].includes(pc.iceConnectionState)) this.connected();
       };
-      for (const label of labels) this.createChannel(label);
-      await this.offer(pc, false);
+      for (const label of labels) this.createChannel(label, prepared?.channels.get(label));
+      if (prepared) {
+        // The create envelope already carried this offer. Configure ICE first,
+        // then install exactly that SDP; no duplicate offer or second peer.
+        await pc.setLocalDescription(prepared.offer);
+        if (this.pc === pc && !this.ended) this.telemetry.step("offer_sent_ms", prepared.offeredAt);
+      } else await this.offer(pc, false);
     })().catch(() => {
       if (!this.ended) { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); }
     }).finally(() => { this.creating = undefined; });
     return this.creating;
   }
-  private lowDelay(receiver: RTCRtpReceiver): void {
+  private static lowDelay(receiver: RTCRtpReceiver): void {
     const low = receiver as RTCRtpReceiver & { jitterBufferTarget?: number; playoutDelayHint?: number };
     if ("jitterBufferTarget" in low) { try { low.jitterBufferTarget = 0; } catch { /* try the older hint */ } }
     try { low.playoutDelayHint = 0; } catch { /* platform may expose read-only hints */ }
   }
   private iceServers(): RTCIceServer[] { return this.descriptor.ice_servers.map(({ region: _region, ...server }) => server); }
-  private receiveExtensions(transceiver: RTCRtpTransceiver): void {
+  private static receiveExtensions(transceiver: RTCRtpTransceiver): void {
     // Enable capture timing and the sender's playout bounds before the offer.
     // Receiver hints express a minimum; the RTP extension also conveys a maximum.
     // No audio transceiver is created, so audio synchronization adds no delay.
@@ -224,7 +263,7 @@ export class WebRtcRemoteDesktopViewer {
       headers.setHeaderExtensionsToNegotiate(extensions.map(extension => receive.has(extension.uri) ? { ...extension, direction: "recvonly" } : extension));
     } catch { /* Unsupported timing metadata must never prevent the picture. */ }
   }
-  private preferCodecs(transceiver: RTCRtpTransceiver): boolean {
+  private static preferCodecs(transceiver: RTCRtpTransceiver): boolean {
     try {
       const caps = typeof RTCRtpReceiver === "undefined" ? undefined : RTCRtpReceiver.getCapabilities?.("video");
       if (!caps?.codecs || !transceiver.setCodecPreferences) return false;
@@ -286,6 +325,8 @@ export class WebRtcRemoteDesktopViewer {
     }
   }
   async signal(value: unknown): Promise<void> {
+    // A create+offer answer can arrive before initial setLocalDescription ends.
+    if (this.creating) await this.creating;
     if (this.ended || !value || typeof value !== "object") return;
     const data = value as WebRtcSignal;
     if (data.gen !== undefined && (!Number.isSafeInteger(data.gen) || data.gen < this.gen)) return;
@@ -334,14 +375,14 @@ export class WebRtcRemoteDesktopViewer {
     if (this.activeRoute && !relay) { this.pathProbe.stop(); this.pathSwitch = undefined; this.fallbackPath(); if (this.pc) void this.offer(this.pc, true); }
     this.flushSignals();
   }
-  private createChannel(label: Label): void {
+  private createChannel(label: Label, prepared?: RTCDataChannel): void {
     const pc = this.pc; if (!pc || this.ended) return;
     let channel: RTCDataChannel;
-    try { channel = pc.createDataChannel(label, label === "rd-fast" ? { ordered: false, maxRetransmits: 0 } : { ordered: true }); }
+    try { channel = prepared ?? pc.createDataChannel(label, label === "rd-fast" ? { ordered: false, maxRetransmits: 0 } : { ordered: true }); }
     catch { this.channelFault(label, "input_channel_create_failed"); return; }
     const previous = this.channels.get(label);
     if (previous) { previous.onopen = previous.onclose = previous.onerror = previous.onmessage = previous.onbufferedamountlow = null; swallow(() => previous.close()); }
-    this.channels.set(label, channel); channel.bufferedAmountLowThreshold = 128 * 1024;
+    this.channels.set(label, channel); channel.bufferedAmountLowThreshold = label === "rd-fast" ? 0 : 128 * 1024;
     if (label !== "rd-ctl") this.input.setLane(label, channel);
     const current = () => !this.ended && this.pc === pc && this.channels.get(label) === channel;
     channel.onopen = () => {
@@ -580,6 +621,7 @@ export class WebRtcRemoteDesktopViewer {
   }
   close(reason = "viewer_left"): void {
     if (this.ended) return;
+    if (this.options.initialPeer) { swallow(() => this.options.initialPeer!.pc.close()); this.options.initialPeer = undefined; }
     this.pathProbe.reset();
     this.input.close();
     if (reason === "viewer_left") { try { this.options.sendSignal({ k: "bye", reason, gen: this.gen }); } catch { /* best effort */ } }
