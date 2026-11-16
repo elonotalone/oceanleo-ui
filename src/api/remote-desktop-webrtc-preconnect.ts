@@ -4,6 +4,8 @@ import { controllerHeaders } from "./device-settings";
 
 type Prepared = { socket: WebSocket; controller: string; ready: boolean; claimed: boolean; timer?: ReturnType<typeof setInterval> };
 const prepared = new Map<string, Prepared>();
+type CreatedSocket = { socket: WebSocket; controller: string; messages: string[]; timer: ReturnType<typeof setTimeout> };
+const created = new Map<string, CreatedSocket>();
 
 /** Preparing signalling creates no remote session, consent request or billing. */
 export function prepareRemoteWebRtcSocket(deviceId: string): () => void {
@@ -54,4 +56,53 @@ export function takePreparedRemoteWebRtcSocket(deviceId: string, controller: str
   entry.claimed = true; clearInterval(entry.timer); prepared.delete(deviceId);
   entry.socket.onopen = entry.socket.onmessage = entry.socket.onerror = entry.socket.onclose = null;
   return entry.socket;
+}
+
+/** Reuse the ordinary create body/idempotency key on the already-open connection. */
+export async function createPreparedRemoteWebRtcSession(deviceId: string, body: object, signal?: AbortSignal): Promise<unknown | null> {
+  if (signal?.aborted) return null;
+  let controller: string;
+  try { controller = controllerHeaders()["X-OceanLeo-Controller"]; } catch { return null; }
+  const socket = takePreparedRemoteWebRtcSocket(deviceId, controller);
+  if (!socket) return null;
+  return new Promise(resolve => {
+    let settled = false;
+    const fail = () => {
+      if (settled) return;
+      settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", fail);
+      socket.onmessage = socket.onerror = socket.onclose = null;
+      try { socket.close(); } catch { /* HTTP retries the SAME request id. */ }
+      resolve(null);
+    };
+    const timeout = setTimeout(fail, 8000);
+    signal?.addEventListener("abort", fail, { once: true });
+    socket.onerror = socket.onclose = fail;
+    socket.onmessage = event => {
+      if (typeof event.data !== "string" || event.data.length > 65_536) { fail(); return; }
+      let data: any;
+      try { data = JSON.parse(event.data); } catch { fail(); return; }
+      if (data.type !== "created" || !data.session || typeof data.session.session_id !== "string") { fail(); return; }
+      settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", fail);
+      const sessionId = data.session.session_id as string;
+      const messages: string[] = [];
+      const timer = setTimeout(() => { if (created.get(sessionId)?.socket === socket) { created.delete(sessionId); socket.close(); } }, 10_000);
+      const item = { socket, controller, messages, timer };
+      created.set(sessionId, item);
+      socket.onmessage = next => {
+        if (typeof next.data !== "string" || next.data.length > 65_536 || messages.length >= 64) { clearTimeout(timer); created.delete(sessionId); socket.close(); return; }
+        messages.push(next.data);
+      };
+      socket.onclose = socket.onerror = () => { clearTimeout(timer); created.delete(sessionId); };
+      resolve(data.session);
+    };
+    try { socket.send(JSON.stringify({ type: "create", body })); } catch { fail(); }
+  });
+}
+
+export function takeCreatedRemoteWebRtcSocket(sessionId: string, controller: string): CreatedSocket | null {
+  const item = created.get(sessionId);
+  if (!item || item.controller !== controller || item.socket.readyState !== WebSocket.OPEN) return null;
+  clearTimeout(item.timer); created.delete(sessionId);
+  item.socket.onopen = item.socket.onmessage = item.socket.onclose = item.socket.onerror = null;
+  return item;
 }
