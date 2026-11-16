@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { TaskAccessMock, ownerAccess } from "./helpers/task-access-mock.ts";
 import { act } from "react";
 
 // 「分享」 on a computer task's page (UX wave 2026-11-07, unit SH), on the real AgentChat mount harness of
@@ -29,7 +30,7 @@ async function click(node) {
   await act(async () => { node.click(); await new Promise((resolve) => setTimeout(resolve, 0)); });
 }
 const stream = (view) => view.host.querySelector('[data-agent-stream="acp"]');
-const button = (view, title) => view.host.querySelector(`button[title="${title}"]`);
+const button = (view, title) => document.querySelector(`[data-access-popover] button[title="${title}"]`) || view.host.querySelector(`button[title="${title}"]`);
 
 test("a computer task's header shows 「分享」, never 「关闭对话」", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
@@ -44,16 +45,16 @@ test("a computer task's header shows 「分享」, never 「关闭对话」", as
   } finally { await view.unmount(); }
 });
 
-test("an empty computer task has nothing to share: no 「分享」 until a message is on screen", async () => {
+test("an empty computer task still offers member sharing in the header", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
   try {
     await connect();
-    assert.equal(view.host.querySelector("[data-share-entry]"), null);
+    assert.ok(view.host.querySelector("[data-share-entry]"));
     assert.equal(view.host.querySelector("[data-acp-close]"), null);
   } finally { await view.unmount(); }
 });
 
-test("「分享」 selects the prompt and the reply (not the tool step); 复制文本 copies them as Codex; 取消 restores the composer", async () => {
+test("Share selects transcript messages and exposes export actions at the top while keeping the composer", async () => {
   const view = await mount({ taskId: "t1" }, { task: computerTask(), sessions });
   try {
     await connect();
@@ -70,8 +71,9 @@ test("「分享」 selects the prompt and the reply (not the tool step); 复制�
     const boxes = [...stream(view).querySelectorAll('[role="checkbox"]')];
     assert.equal(boxes.length, 2, "the prompt and the reply; the tool step has none");
     assert.deepEqual(boxes.map((box) => box.getAttribute("aria-checked")), ["true", "true"], "entering from the header picks all");
-    assert.equal(view.composer("acp"), null, "the action bar replaces the composer");
-    assert.ok(button(view, "复制链接"));
+    assert.ok(view.composer("acp"), "selection preserves the composer");
+    assert.ok(document.querySelector("[data-task-share-actions]"));
+    assert.equal(view.host.querySelector('[data-agent-chat-footer] [data-task-share-actions]'), null);
 
     await click(button(view, "复制文本"));
     const text = copied.at(-1);
@@ -86,7 +88,7 @@ test("「分享」 selects the prompt and the reply (not the tool step); 复制�
     assert.doesNotMatch(copied.at(-1), /列出文件/);
     assert.match(copied.at(-1), /目录里有三个文件。/);
 
-    await click(button(view, "取消"));
+    await click([...document.querySelectorAll("[data-task-share-actions] button")].find(node => node.textContent === "清除选择"));
     assert.equal(stream(view).querySelectorAll('[role="checkbox"]').length, 0);
     assert.ok(view.composer("acp"), "the composer is back");
   } finally { await view.unmount(); }
@@ -96,5 +98,39 @@ test("an OceanLeo cloud task keeps its 「分享」", async () => {
   const view = await mount({ taskId: "t1" }, { task: cloudTask(), sessions });
   try {
     assert.ok(view.host.querySelector("[data-share-entry]"));
+  } finally { await view.unmount(); }
+});
+
+
+test("invitation composer accepts Collaborate, hides owner settings, and becomes read-only live after removal", async () => {
+  const access = new TaskAccessMock();
+  access.access = { ...ownerAccess(), role: "view", state: "invited", invite_role: "collaborate", can_send: false, can_manage: false, general_access: "restricted" };
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), taskAccess: access });
+  try {
+    assert.equal(view.composer("cloud"), null);
+    assert.ok(view.host.textContent.includes("接受邀请"));
+    assert.ok(view.host.textContent.includes("拒绝"));
+    await click([...view.host.querySelectorAll("[data-task-access-composer] button")].find(node => node.textContent === "接受邀请"));
+    assert.ok(view.composer("cloud"));
+    assert.equal(view.composer("cloud").__props.showModelPicker, false);
+    assert.equal(view.composer("cloud").__props.showComputerDock, false);
+    access.access = { ...access.access, role: "view", state: "removed", can_send: false, visible_until: { message_id: 1, frame_id: 0 } };
+    await act(async () => { window.dispatchEvent(new CustomEvent("oceanleo:task-access-changed", { detail: { taskId: "t1" } })); await new Promise(resolve => setTimeout(resolve, 30)); });
+    assert.equal(view.composer("cloud"), null);
+    assert.ok(view.host.textContent.includes("作为我的任务继续"));
+    assert.ok(view.host.textContent.includes("帮我算个同比"));
+    assert.equal(view.host.textContent.includes("同比增长 12%"), false, "history is clamped at the removal marker");
+  } finally { await view.unmount(); }
+});
+
+test("declining an invitation keeps a public task readable without enabling sends", async () => {
+  const access = new TaskAccessMock();
+  access.access = { ...ownerAccess(), role: "view", state: "invited", invite_role: "view", can_send: false, can_manage: false, general_access: "public_view" };
+  const view = await mount({ taskId: "t1" }, { task: cloudTask(), taskAccess: access });
+  try {
+    await click([...view.host.querySelectorAll("[data-task-access-composer] button")].find(node => node.textContent === "拒绝"));
+    assert.equal(view.composer("cloud"), null);
+    assert.equal(view.host.querySelector("[data-task-access-composer]").dataset.taskAccessComposer, "public");
+    assert.ok(view.host.textContent.includes("同比增长 12%"));
   } finally { await view.unmount(); }
 });

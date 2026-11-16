@@ -42,6 +42,9 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
   pinned?: boolean;
   favorite?: boolean;
   canDelete?: boolean;
+  /** Shared task visitors may read/copy; only the owner changes the task. */
+  canManage?: boolean;
+  onShare?: () => void;
   inProject?: boolean;
   href: string;
   taskId?: string;
@@ -53,7 +56,7 @@ export interface TaskActionsMenuProps extends TaskActionCallbacks {
 /** The one task menu used by My Tasks rows and task headers. */
 export function TaskActionsMenu({
   open, onOpenChange, active = false, variant = "row", pinned = false, favorite = false,
-  canDelete = true, inProject = false, href, taskId, taskTitle = "", trigger,
+  canDelete = true, canManage = true, onShare, inProject = false, href, taskId, taskTitle = "", trigger,
   onRename, onTogglePin, onToggleFavorite, onMove, onRemoveFromProject, onDelete, onQuote,
 }: TaskActionsMenuProps) {
   const tt = useUI();
@@ -66,6 +69,7 @@ export function TaskActionsMenu({
     try { if (!navigator.clipboard) return; await navigator.clipboard.writeText(absoluteHref); toast.success(tt("已复制")); onOpenChange(false); } catch { /* denied */ }
   };
   const share = () => {
+    if (onShare) { onOpenChange(false); onShare(); return; }
     if (navigator.share) { onOpenChange(false); void navigator.share({ title: document.title, url: absoluteHref }).catch(() => {}); }
     else void copyLink();
   };
@@ -89,14 +93,15 @@ export function TaskActionsMenu({
   return <div className="relative shrink-0">{button}<FloatingMenu open={open} anchorRef={anchorRef} onClose={() => onOpenChange(false)} align="end" ariaLabel={tt("更多操作")}>
     <FloatingMenuItem icon={<Icon name="open" />} label={tt("在新标签打开")} href={href} external onSelect={() => onOpenChange(false)} />
     <FloatingMenuItem icon={<Icon name="link" />} label={tt("复制链接")} onSelect={() => void copyLink()} />
-    <FloatingMenuItem icon={<Icon name="share" />} label={tt("分享")} onSelect={share} />
+    {canManage && <FloatingMenuItem icon={<Icon name="share" />} label={tt("分享")} onSelect={share} />}
     {taskId && <FloatingMenuItem icon={<Icon name="quote" />} label={tt("在新任务中引用")} onSelect={quote} />}
-    <FloatingMenuSeparator />
+    {canManage && <><FloatingMenuSeparator />
     <FloatingMenuItem icon={<Icon name="rename" />} label={tt("重命名")} onSelect={closeAnd(onRename)} />
     <FloatingMenuItem icon={<Icon name="pin" />} label={pinned ? tt("取消置顶") : tt("置顶")} onSelect={closeAnd(onTogglePin)} />
     <FloatingMenuItem icon={<Icon name="star" />} label={favorite ? tt("取消收藏") : tt("收藏")} onSelect={closeAnd(onToggleFavorite)} />
     {inProject ? <><FloatingMenuItem icon={<Icon name="folder" />} label={tt("换项目")} onSelect={closeAnd(onMove)} />{onRemoveFromProject && <FloatingMenuItem icon={<Icon name="folderOut" />} label={tt("移出项目")} onSelect={closeAnd(onRemoveFromProject)} />}</> : <FloatingMenuItem icon={<Icon name="folder" />} label={tt("移动到项目")} onSelect={closeAnd(onMove)} />}
     {canDelete && <><FloatingMenuSeparator /><FloatingMenuItem icon={<Icon name="delete" />} label={tt("删除")} danger onSelect={closeAnd(onDelete)} /></>}
+    </>}
   </FloatingMenu></div>;
 }
 

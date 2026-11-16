@@ -79,16 +79,16 @@ export function acpErrorText(error: unknown): string {
 }
 
 /** One gateway route call with the user's token; a refusal throws `AcpSendError` with the body as it came. */
-export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, init: RequestInit = {}, allowAnonymous = false): Promise<T> {
   const token = await accessToken();
-  if (!token) throw new AcpSendError(401, "未登录", null, null);
+  if (!token && !allowAnonymous) throw new AcpSendError(401, "未登录", null, null);
   let res: Response;
   try {
     res = await sharedGatewayFetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init.headers || {}),
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
@@ -113,12 +113,12 @@ const taskPath = (taskId: string, tail: string) => `/v1/tasks/${encodeURICompone
 /** Rows after a row id, ascending (`GET /v1/tasks/{id}/frames`). */
 export function getFrames(taskId: string, after = 0, limit = 500, options: { signal?: AbortSignal } = {}): Promise<AcpFrameRow[]> {
   const query = new URLSearchParams({ after: String(after), limit: String(limit) });
-  return request<AcpFrameRow[]>(`${taskPath(taskId, "frames")}?${query}`, { signal: options.signal });
+  return request<AcpFrameRow[]>(`${taskPath(taskId, "frames")}?${query}`, { signal: options.signal }, true);
 }
 
 /** Load a shortened row in full only when the reader expands it. */
 export function getFrame(taskId: string, rowId: number): Promise<AcpFrameRow> {
-  return request<AcpFrameRow>(taskPath(taskId, `frames/${encodeURIComponent(String(rowId))}`));
+  return request<AcpFrameRow>(taskPath(taskId, `frames/${encodeURIComponent(String(rowId))}`), {}, true);
 }
 
 /** Cursor based history window (C9). Older gateways may return 404; callers fall back to frames. */
@@ -142,7 +142,7 @@ export function getHistoryWindow(taskId: string, options: { before?: number; aft
   if (options.after != null) query.set("after", String(options.after));
   if (options.anchor != null) query.set("anchor", String(options.anchor));
   query.set("turns", String(options.turns ?? 8));
-  return request<AcpHistoryWindow>(`${taskPath(taskId, "history")}?${query}`, { signal: options.signal });
+  return request<AcpHistoryWindow>(`${taskPath(taskId, "history")}?${query}`, { signal: options.signal }, true);
 }
 
 /** Per-session choices sent with a message; the gateway applies them (session/set_*) before the prompt. */
@@ -240,8 +240,7 @@ const RETRY_MAX_MS = 10_000;
 /** Bearer token in the query string, as the other task sockets. */
 export async function framesWsUrl(taskId: string, after: number): Promise<string> {
   const token = await accessToken();
-  if (!token) throw new AcpSendError(401, "未登录", null, null);
-  const query = new URLSearchParams({ token, after: String(after) });
+  const query = new URLSearchParams({ ...(token ? { token } : {}), after: String(after) });
   return `${gatewayBase().replace(/^http/i, "ws")}${taskPath(taskId, "frames")}?${query}`;
 }
 

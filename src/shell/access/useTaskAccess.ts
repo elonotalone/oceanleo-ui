@@ -19,11 +19,21 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     if (!taskId) return;
     const controller = new AbortController();
     let active = false;
+    let participantCount = 1;
+    let membersReadAt = 0;
     const read = async () => {
       if (active || controller.signal.aborted) return;
       active = true;
       try {
         const [access, signedIn] = await Promise.all([client.getAccess(taskId, controller.signal), client.signedIn()]);
+        if (access.role === "owner" && access.general_access !== "private" && access.participant_count === undefined) {
+          if (Date.now() - membersReadAt > 5000) {
+            const members = await client.members(taskId);
+            participantCount = 1 + members.filter(row => row.role !== "owner" && row.status !== "declined").length;
+            membersReadAt = Date.now();
+          }
+          access.participant_count = participantCount;
+        }
         if (generation.current === current && !controller.signal.aborted) setSnapshot({ id: taskId, access, signedIn, error: false });
       } catch {
         // Loss of access or a failed revalidation locks sends immediately; no stale write permissions.
@@ -35,11 +45,12 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     const timer = setInterval(() => { if (document.visibilityState !== "hidden") void read(); }, 2000);
     const changed = (event: Event) => {
       const id = (event as CustomEvent<{ taskId?: string }>).detail?.taskId;
-      if (!id || id === taskId) void read();
+      if (!id || id === taskId) { membersReadAt = 0; void read(); }
     };
     window.addEventListener(TASK_ACCESS_CHANGED, changed);
     window.addEventListener("focus", changed);
     window.addEventListener("online", changed);
+    window.addEventListener("oceanleo:auth-state", changed);
     document.addEventListener("visibilitychange", changed);
     return () => {
       ++generation.current;
@@ -48,6 +59,7 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
       window.removeEventListener(TASK_ACCESS_CHANGED, changed);
       window.removeEventListener("focus", changed);
       window.removeEventListener("online", changed);
+      window.removeEventListener("oceanleo:auth-state", changed);
       document.removeEventListener("visibilitychange", changed);
     };
   }, [taskId, client]);

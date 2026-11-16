@@ -93,6 +93,9 @@ export {
 export type { LeoAssistantProps, AiAssistantProps } from "./LeoAssistant";
 export { LeoComposer } from "./LeoComposer";
 export { TaskActionsMenu, taskQuoteHref } from "./TaskActionsMenu";
+export * from "./access";
+export { TaskSharePanel } from "./share/TaskSharePanel";
+export type { TaskSharePanelProps } from "./share/TaskSharePanel";
 export type { TaskActionsMenuProps, TaskActionCallbacks } from "./TaskActionsMenu";
 export { MoveTaskProjectDialog } from "./HistoryRowActions";
 export { useTaskRowActions, updateTaskRow, deleteTaskRow } from "./task-row-actions";

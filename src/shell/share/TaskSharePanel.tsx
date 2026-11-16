@@ -82,14 +82,14 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
     void client.members(taskId).then(rows => { setMembers(rows); onParticipants?.(1 + rows.filter(row => row.role !== "owner" && row.status !== "removed" && row.status !== "declined").length); }).catch(() => {});
     return result;
   };
-  const actionClass = "w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
+  const actionClass = "w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
   return <>
     <button ref={anchorRef} type="button" data-share-entry={open ? "active" : "idle"} aria-label={tt(copy.share)} title={tt(copy.share)}
       aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? panelId : undefined}
       onClick={() => {
         if (!open) { setPage("actions"); if (!share.active && share.selectable.length) share.enter("all"); }
         setOpen(!open);
-      }} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-[var(--foreground)] hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]">
+      }} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm text-[var(--foreground)] hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)]">
       <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.7"><path d="M12 16V3m-5 5 5-5 5 5M5 13v7h14v-7" /></svg>
       <span className="hidden sm:inline">{tt(copy.share)}</span>
     </button>
@@ -107,7 +107,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
         {share.notice && <p role="status" className="px-3 pt-2 text-xs">{share.notice.text}</p>}
       </div> : <div data-task-share-members>
         <div className="mb-3 flex items-center gap-2">
-          <button type="button" aria-label={tt(copy.back)} onClick={() => setPage("actions")} className="rounded-lg p-2 hover:bg-[var(--muted)]">←</button>
+          <button type="button" aria-label={tt(copy.back)} onClick={() => setPage("actions")} className="rounded-lg p-2 hover:bg-[var(--surface)]">←</button>
           <h2 className="font-semibold">{tt(copy.share)}</h2>
         </div>
         <label className="block text-sm" htmlFor={`${panelId}-general`}>{tt(copy.generalAccess)}</label>
@@ -116,7 +116,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
           className="my-2 w-full rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-sm">
           <option value="public_view">{tt(copy.publicView)}</option><option value="restricted">{tt(copy.restricted)}</option>
         </select>
-        <button type="button" className="mb-3 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--muted)]" disabled={busy || general === "private"}
+        <button type="button" className="mb-3 rounded-lg border border-[var(--border)] px-3 py-2 text-sm hover:bg-[var(--surface)]" disabled={busy || general === "private"}
           onClick={() => void writeClipboardText(taskUrl).then(ok => { setNotice(ok ? tt("链接已复制。") : tt("复制失败，请手动复制链接。")); })}>{tt(copy.copyLink)}</button>
         {error && <div role="alert" className="mb-2 text-sm">{error} <button type="button" onClick={() => void openMembers()} className="underline">{tt(copy.retry)}</button></div>}
         {notice && <p role="status" className="mb-2 text-xs">{notice}</p>}

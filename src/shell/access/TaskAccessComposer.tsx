@@ -39,14 +39,14 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
       else setFailure(tt(copy.saveFailed));
     } finally { setBusy(false); }
   };
-  const buttonClass = "rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2 text-sm hover:bg-[var(--muted)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
+  const buttonClass = "rounded-xl border border-[var(--border)] bg-[var(--background)] px-4 py-2 text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
   return <div data-task-access-composer={loading ? "loading" : access?.state ?? "unavailable"} className="space-y-2 py-2 text-[var(--foreground)]" aria-busy={busy || loading}>
     {loading ? <span role="status" className="v-spinner" /> : error || !access || access.state === "none" ? <p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p> : <>
       <p className="text-sm text-[var(--muted-foreground)]">{tt(access.state === "removed" ? copy.removed : copy.readOnly)}</p>
       {access.state === "invited" ? <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("accept")}>{tt(copy.accept)}</button>
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("decline")}>{tt(copy.decline)}</button>
-      </div> : access.can_fork && <>
+      </div> : (access.can_fork || !signedIn && access.state === "public") && <>
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("fork")}>{tt(copy.continueOwn)}</button>
         <p className="text-xs text-[var(--muted-foreground)]">{tt(copy.forkNote)}</p>
       </>}

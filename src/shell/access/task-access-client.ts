@@ -13,7 +13,7 @@ export interface TaskAccess {
   can_send: boolean;
   can_manage: boolean;
   can_fork: boolean;
-  visible_until?: number | string | null;
+  visible_until?: { message_id: number; frame_id: number; removed_at?: string | null } | null;
   owner: { name: string; initial: string };
   participant_count?: number;
 }
@@ -32,9 +32,11 @@ export interface TaskAccessClient {
 }
 
 export class TaskAccessError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  constructor(status: number) {
     super(status === 401 ? "请先登录，再继续此任务。" : status === 404 ? "无法打开此任务。" : "未能保存更改，请重试。");
     this.name = "TaskAccessError";
+    this.status = status;
   }
 }
 
