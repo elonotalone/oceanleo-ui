@@ -139,13 +139,15 @@ export class WebRtcRemoteDesktopViewer {
     if (this.now() >= this.leaseDeadline) { this.close("lease_expired"); return; }
     await this.createConnection();
   }
-  private async createConnection(): Promise<void> {
+  private async createConnection(route?: PathRoute): Promise<void> {
     if (this.ended) return;
     if (this.creating) return this.creating;
     this.creating = (async () => {
       const old = this.pc;
-      this.pathProbe.reset(); this.pathSelector.reset(pathRoutes(this.descriptor.ice_servers));
-      this.pathSwitch = undefined; this.activeRoute = undefined; this.selectedPath = undefined; this.pingTimes.clear();
+      this.pathProbe.reset();
+      if (!route) { this.pathSelector.reset(pathRoutes(this.descriptor.ice_servers)); this.pathSwitch = undefined; }
+      this.activeRoute = route?.kind === "relay" ? route.key : undefined;
+      this.selectedPath = undefined; this.pingTimes.clear();
       this.detachPeer();
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
       this.captureTimes.clear(); this.presentedTimes.clear(); this.captureMappingAvailable = false;
@@ -156,7 +158,7 @@ export class WebRtcRemoteDesktopViewer {
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
       let pc: RTCPeerConnection;
-      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: this.icePolicy, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
+      try { pc = create({ iceServers: route?.kind === "relay" ? route.servers : this.iceServers(), iceTransportPolicy: route ? (route.kind === "relay" ? "relay" : "all") : this.icePolicy, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
       catch { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
@@ -536,11 +538,8 @@ export class WebRtcRemoteDesktopViewer {
     if (this.pathSwitch && now - this.pathSwitch.started >= 10_000) {
       const change = this.pathSwitch; this.pathSwitch = undefined; this.pathSelector.failed(change.route.key, now);
       const previous = routes.find(route => route.key === change.previousRoute);
-      try {
-        pc.setConfiguration({ ...pc.getConfiguration(), iceTransportPolicy: previous ? "relay" : "all", iceServers: previous?.servers ?? this.iceServers() });
-        this.activeRoute = previous?.key;
-      } catch { this.fallbackPath(); }
-      void this.offer(pc, true); return;
+      // Rebuild for rollback too: Chromium may keep the old selected pair on an ICE restart.
+      void this.createConnection(previous ?? routes.find(route => route.kind === "direct")); return;
     }
     const allowed = this.hasFrame && !this.pathSwitch && !this.creating && !this.negotiatingPeer && !this.pendingSignals.length && this.disconnectedAt === undefined && this.peerRetryDue === undefined && pc.connectionState === "connected" && (!pc.signalingState || pc.signalingState === "stable") && this.channels.get("rd-ctl")?.readyState === "open";
     this.pathProbe.tick(routes, this.selectedPath?.key, this.gen, allowed);
@@ -548,12 +547,10 @@ export class WebRtcRemoteDesktopViewer {
     const route = this.pathSelector.choose(this.selectedPath.key, now);
     if (!route) return;
     this.pathSelector.attempted(now); this.pathProbe.stop();
-    const previous = pc.getConfiguration();
-    try {
-      pc.setConfiguration({ ...previous, iceServers: route.kind === "relay" ? route.servers : this.iceServers(), iceTransportPolicy: route.kind === "relay" ? "relay" : "all" });
-      this.pathSwitch = { route, previousRoute: this.activeRoute, started: now, answered: false }; this.activeRoute = route.kind === "relay" ? route.key : undefined;
-      void this.offer(pc, true);
-    } catch { this.pathSelector.failed(route.key, now); }
+    // A fresh generation makes the selected relay mandatory; setConfiguration +
+    // ICE restart can retain an already nominated direct pair in Chromium.
+    this.pathSwitch = { route, previousRoute: this.activeRoute, started: now, answered: false };
+    void this.createConnection(route);
   }
   private detachPeer(): void {
     this.input.setReceiptsAvailable(false);
