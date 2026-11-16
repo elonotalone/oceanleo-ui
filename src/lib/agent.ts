@@ -841,7 +841,15 @@ export function unsaveTeam(teamId: string) {
   );
 }
 
-export function followUp(
+export interface TaskFollowUpOptions {
+  /** A collaborator keeps the owner's agent/model/payer settings. */
+  preserveTaskSettings?: boolean;
+  /** Only an owned continued copy may bind a target on its first new turn. */
+  bindExecutionTarget?: boolean;
+  executionTarget?: ExecutionTarget;
+}
+
+export async function followUp(
   taskId: string,
   prompt: string,
   attachments?: AgentAttachment[],
@@ -849,8 +857,11 @@ export function followUp(
   orgId?: string,
   computerId?: string,
   clientWindow?: string,
+  options?: TaskFollowUpOptions,
 ) {
-  const backbone = followUpBackboneField();
+  const backbone = options?.preserveTaskSettings ? "" : followUpBackboneField();
+  const selectedTarget = options?.bindExecutionTarget && !options.preserveTaskSettings
+    ? options.executionTarget ?? readExecutionTarget(await getUserId().catch(() => null)) : undefined;
   return authed<{ task_id: string; status: string }>(
     `/v1/agent/tasks/${encodeURIComponent(taskId)}/messages`,
     {
@@ -860,9 +871,9 @@ export function followUp(
         hidden_context: hiddenContext,
         attachments: attachments || [],
         ...(backbone ? { agent_model: backbone } : {}),
-        ...payerRequestFields(orgId),
-        ...leoRunRequestFields(),
-        ...(computerId ? computerIdRequestField(computerId) : {}),
+        ...(options?.preserveTaskSettings ? {} : payerRequestFields(orgId)),
+        ...(options?.preserveTaskSettings ? {} : leoRunRequestFields()),
+        ...(selectedTarget ? executionTargetRequestFields(selectedTarget) : !options?.preserveTaskSettings && computerId ? computerIdRequestField(computerId) : {}),
         ...(clientWindow ? { client_window: clientWindow } : {}),
       }),
     },

@@ -89,9 +89,9 @@ const agentLibStub = dataModule(`
     return { ok: false, error: "stub" };
   }
   export async function branchTask() { return { ok: false, error: "stub" }; }
-  export async function followUp(id, text, attachments, hiddenContext, orgId, computerId, clientWindow) {
+  export async function followUp(id, text, attachments, hiddenContext, orgId, computerId, clientWindow, options) {
     globalThis.__followUps.push(text);
-    globalThis.__followUpBodies.push({ id, text, attachments, client_window: clientWindow });
+    globalThis.__followUpBodies.push({ id, text, attachments, client_window: clientWindow, options });
     if (globalThis.__followUpResponse) return typeof globalThis.__followUpResponse === "function" ? globalThis.__followUpResponse() : globalThis.__followUpResponse;
     return { ok: false, error: "stub" };
   }

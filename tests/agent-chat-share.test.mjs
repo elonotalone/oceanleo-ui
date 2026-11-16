@@ -153,3 +153,30 @@ test("a collaborator uses the public program descriptor and sends without owner-
     assert.match(copied.at(-1), /Codex/);
   } finally { await view.unmount(); }
 });
+
+
+test("a fork's first composer target is selectable and travels with its first follow-up", async () => {
+  const task=cloudTask();
+  task.task.forked_from_task_id="source-task";
+  task.task.plan={continued_copy:true,context_kind:"computer_transcript"};
+  const {type}=globalThis.__agentChatHarness;
+  const view=await mount({taskId:"t1"},{task});
+  try {
+    const composer=view.composer("cloud");
+    assert.ok(composer);
+    assert.equal(composer.__props.boundExecutionTarget,undefined);
+    assert.equal(composer.__props.conversation,undefined);
+    await type(view,"cloud","Continue on my computer");
+    const target={kind:"device",id:"my-computer",name:"My computer"};
+    await act(async()=>{view.composer("cloud").__props.onSubmit(undefined,undefined,{executionTarget:target});await new Promise(resolve=>setTimeout(resolve,20));});
+    assert.deepEqual(globalThis.__followUpBodies.at(-1).options,{preserveTaskSettings:false,bindExecutionTarget:true,executionTarget:target});
+  } finally {await view.unmount();}
+});
+
+test("shared native agent follow-ups retain the owner's settings", async()=>{
+ const access=new TaskAccessMock(); access.access={...ownerAccess(),role:"collaborate",state:"member",can_manage:false};
+ const {type,submit}=globalThis.__agentChatHarness;
+ const view=await mount({taskId:"t1"},{task:cloudTask(),taskAccess:access});
+ try {await type(view,"cloud","Use the same agent");await submit(view,"cloud");assert.equal(globalThis.__followUpBodies.at(-1).options.preserveTaskSettings,true);assert.equal(globalThis.__followUpBodies.at(-1).options.bindExecutionTarget,false);}
+ finally {await view.unmount();}
+});

@@ -815,6 +815,8 @@ function AgentChatInner({
   // Its input/send controls remain locked until the server grants access.
   const replaceComposer = Boolean(taskId && !accessRights.canSend && !accessState.loading);
   const [knownParticipants, setKnownParticipants] = useState({ taskId: "", count: 1 });
+  const [continuedCopy, setContinuedCopy] = useState({ taskId: "", unbound: false });
+  const unboundCopy = canManageTask && continuedCopy.taskId === taskId && continuedCopy.unbound;
   const [shareOpenRequest, setShareOpenRequest] = useState(0);
   const showAuthors = (accessState.access?.participant_count ?? 1) > 1 ||
     knownParticipants.taskId === taskId && knownParticipants.count > 1 ||
@@ -1065,6 +1067,9 @@ function AgentChatInner({
     // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
     if (data.task?.title) setTaskTitle(data.task.title);
     if (data.task?.participant_count) setKnownParticipants({taskId: id, count: data.task.participant_count});
+    const plan = data.task?.plan as { continued_copy?: boolean; _fork_bound?: boolean } | null;
+    const unbound = Boolean(data.task?.forked_from_task_id && plan?.continued_copy && !plan?._fork_bound);
+    setContinuedCopy(current => current.taskId === id && current.unbound === unbound ? current : { taskId: id, unbound });
     return { status, changed, streaming: status === "running" && settled.some(
       (message) => message.role === "assistant" && message.meta?.streaming === true,
     ) };
@@ -2177,7 +2182,7 @@ function AgentChatInner({
         setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
         return;
       }
-      const result = await followUp(id, effectivePrompt, uploaded, turn.context, undefined, undefined, getClientWindowId());
+      const result = await followUp(id, effectivePrompt, uploaded, turn.context, undefined, undefined, getClientWindowId(), { preserveTaskSettings: !canManageTask, bindExecutionTarget: unboundCopy });
       setBusy(false);
       if (!result.ok) {
         const failure = localAgentFailure(result, isLocalExecution);
@@ -2208,6 +2213,8 @@ function AgentChatInner({
       noteUserTurn,
       onTaskCreated,
       readOnly,
+      canManageTask,
+      unboundCopy,
       refresh,
       returnToComposer,
       tt,
@@ -2577,7 +2584,7 @@ function AgentChatInner({
     }
     let r: Awaited<ReturnType<typeof followUp>>;
     try {
-      r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId());
+      r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId(), { preserveTaskSettings: !canManageTask, bindExecutionTarget: unboundCopy, executionTarget });
     } catch (caught) {
       setBusy(false);
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
@@ -2792,7 +2799,7 @@ function AgentChatInner({
         setError("保存文件关联期间右侧 Library 文件已切换；这条追问没有发送。");
         return;
       }
-      const r = await followUp(taskId, text, undefined, turn.context, undefined, undefined, getClientWindowId());
+      const r = await followUp(taskId, text, undefined, turn.context, undefined, undefined, getClientWindowId(), { preserveTaskSettings: !canManageTask, bindExecutionTarget: unboundCopy });
       setBusy(false);
       if (r.ok) kickAfterFollowUp(taskId);
       else {
@@ -2810,6 +2817,8 @@ function AgentChatInner({
       messages,
       noteOutgoingTurn,
       readOnly,
+      canManageTask,
+      unboundCopy,
       tt,
       captureEditorTurn,
       noteUserTurn,
@@ -3376,7 +3385,7 @@ function AgentChatInner({
   // What the composer (and the bar under CLI/terminal) needs to show and switch conversations.
   // An OceanLeo task has no program conversations (the dock only shows its target).
   const conversationProps = {
-    conversation,
+    conversation: unboundCopy ? undefined : conversation,
     // Existing tasks are bound to the program and computer of their ACP session.
     // Model/effort/mode remain editable in the composer pill; changing the agent
     // requires a new task.
@@ -3571,7 +3580,7 @@ function AgentChatInner({
           )}
           <LeoComposer
             optimizeImages
-            boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
+            boundExecutionTarget={taskId && !unboundCopy ? resolvedBoundTarget : undefined}
             value={input}
             onChange={setInput}
             onSubmit={(_, _payer, context) => void send(undefined, context?.executionTarget)}
