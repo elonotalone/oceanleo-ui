@@ -163,3 +163,85 @@ test("quality hub preserves WebRTC video methods and emits no duplicate ARTC rep
   const reports = h.calls.filter(call => call.url.endsWith("/quality")).map(call => JSON.parse(call.init.body));
   assert.equal(reports.length, 1); assert.equal(reports[0].transport, "webrtc-v1");
 });
+
+test("consent waits before media negotiation; active state obtains the first descriptor", async t => {
+  const h = setup(t, () => ({ media: descriptor(), media_status: { state: "starting" } }));
+  const v = await open(h, { descriptor: undefined }, { state: "pending_consent" });
+  assert.equal(Peer.all.length, 0); assert.equal(h.calls.length, 0);
+  await h.tick(1000); assert.equal(h.calls.length, 0);
+  v.socket.message({ type: "state", state: "active" }); await drain();
+  assert.equal(Peer.all.length, 1); assert.deepEqual(JSON.parse(h.calls[0].init.body), { transport: "webrtc-v1" });
+  assert.ok(v.socket.sent.some(item => item.type === "signal" && item.data.k === "offer"));
+});
+
+test("frequent state snapshots do not postpone periodic auth refresh; revocation closes explicitly", async t => {
+  const h = setup(t); const v = await open(h);
+  for (let n = 0; n < 20; n++) { await h.tick(1000); v.socket.message({ type: "state", state: "active" }); }
+  assert.ok(v.socket.sent.some(item => item.type === "auth.refresh" && item.token === "viewer-token"));
+  assert.ok(v.socket.sent.some(item => item.type === "ping"));
+  v.socket.message({ type: "state", state: "closed", error: "controller_revoked" });
+  assert.deepEqual(v.states.at(-1), ["closed", "controller_revoked"]); assert.equal(Peer.all[0].closed, true);
+  assert.deepEqual(v.errors, []); assert.ok(h.calls.every(call => call.init.method !== "DELETE"));
+});
+
+test("failed renewal and repeated stale descriptors cannot extend an expiring lease", async t => {
+  const h = setup(t, () => { throw new TypeError("network failed"); });
+  const short = descriptor({ lease_expires_at: new Date(epoch + 2000).toISOString() });
+  const v = await open(h, { descriptor: short });
+  await h.tick(1000); assert.equal(Peer.all[0].closed, false);
+  v.socket.message({ type: "state", state: "active", media: short });
+  await h.tick(1000);
+  assert.equal(Peer.all[0].closed, true); assert.deepEqual(v.states.at(-1), ["closed", "lease_expired"]);
+  assert.deepEqual(v.errors, []); assert.ok(h.calls.every(call => call.init.method !== "DELETE"));
+});
+
+test("only an exhausted reconnect window ends a lost signalling stream", async t => {
+  const h = setup(t); const v = await open(h, {}, { activity: { reconnect_window_s: 2 } });
+  const peer = Peer.all[0]; v.socket.onclose(); await h.tick(200);
+  assert.equal(peer.closed, false); assert.equal(v.stream.send({ kind: "move", x: .5, y: .5 }), true);
+  await h.tick(1800);
+  assert.equal(peer.closed, true); assert.deepEqual(v.states.at(-1), ["closed", "viewer_reconnect_timeout"]);
+  assert.deepEqual(v.errors, []); assert.ok(h.calls.every(call => call.init.method !== "DELETE"));
+});
+
+test("foreign-session snapshot fails closed while malformed signalling only reconnects its socket", async t => {
+  const h = setup(t); const v = await open(h); const peer = Peer.all[0];
+  v.socket.onmessage({ data: "invalid JSON" }); assert.equal(peer.closed, false); assert.deepEqual(v.errors, []);
+  await h.tick(200); const socket = Socket.all.at(-1); socket.onopen();
+  socket.message({ type: "state", state: "active", media: descriptor({ session_id: "foreign" }) });
+  assert.equal(peer.closed, true); assert.deepEqual(v.states.at(-1), ["closed", "response_malformed"]);
+  assert.ok(h.calls.every(call => call.init.method !== "DELETE"));
+});
+
+test("leaving before a descriptor still reports one WebRTC session without inventing picture timing", async t => {
+  const h = setup(t); const v = await open(h, { descriptor: undefined }, { state: "pending_consent" });
+  assert.equal(Peer.all.length, 0); v.stream.close(); v.stream.close(); await drain();
+  const reports = h.calls.filter(call => call.url.endsWith("/quality")); assert.equal(reports.length, 1);
+  const body = JSON.parse(reports[0].init.body); assert.equal(body.transport, "webrtc-v1"); assert.equal(body.media, "none"); assert.equal(body.end_reason, "viewer_left"); assert.equal(body.video.frames_rendered, 0);
+  assert.equal(body.steps.first_frame_presented_ms, undefined); assert.ok(h.calls.every(call => call.init.method !== "DELETE"));
+});
+
+test("intentional leave sends peer bye before closing its socket and preserves a reconnect sequence floor", async t => {
+  const h = setup(t); const v = await open(h, { sequenceFloor: 40 });
+  v.stream.send({ kind: "click", x: .5, y: .5 }); assert.ok(v.stream.lastSequence() > 40);
+  v.stream.close();
+  assert.ok(v.socket.sent.some(item => item.type === "signal" && item.data.k === "bye" && item.data.reason === "viewer_left"));
+  assert.equal(v.socket.readyState, 3); assert.equal(Peer.all[0].closed, true);
+});
+
+test("a pre-renewal descriptor cannot regress ICE or extend the renewed lease", async t => {
+  let renewals = 0;
+  const renewed = descriptor({ server_now: (epoch + 60_000) / 1000, lease_expires_at: new Date(epoch + 180_000).toISOString(), display_id: "new-display", ice_servers: [{ urls: ["stun:new.test:3478"] }] });
+  const h = setup(t, url => {
+    if (!url.endsWith("/media")) return { stored: true };
+    if (++renewals === 1) return { media: renewed, media_status: null };
+    throw new TypeError("renewal unavailable");
+  });
+  const v = await open(h); const peer = Peer.all[0];
+  const pulse = async seconds => { for (let n = 0; n < seconds; n++) { await h.tick(1000); Socket.all.at(-1)?.message({ type: "state", state: "active" }); } };
+  await pulse(80); assert.equal(peer.configuration.iceServers[0].urls[0], "stun:new.test:3478");
+  v.socket.message({ type: "state", state: "active", media: descriptor() });
+  assert.equal(peer.configuration.iceServers[0].urls[0], "stun:new.test:3478", "stale snapshot does not regress renewed credentials");
+  await pulse(99); assert.equal(peer.closed, false);
+  await h.tick(1000); assert.equal(peer.closed, true); assert.deepEqual(v.states.at(-1), ["closed", "lease_expired"]);
+});

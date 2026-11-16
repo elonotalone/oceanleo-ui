@@ -20,7 +20,7 @@ interface Parsers {
 const record = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const monotonic = () => typeof performance !== "undefined" ? performance.now() : Date.now();
 const terminalAuth = (code?: string) => ["unauthorized", "revoked", "controller_revoked", "signed_out", "account_mismatch", "session_not_found", "session_closed", "remote_desktop_disabled", "input_consent_revoked", "lease_expired"].includes(code ?? "");
-const inputFault = (code?: string) => !terminalAuth(code) && /^(?:input_|webrtc_input_|input_receipt_|media_data_channel_)/.test(code ?? "");
+const inputFault = (code?: string) => !terminalAuth(code) && /^(?:input_|webrtc_input_|input_receipt_|host_input_|media_data_channel_|data_channel_|control_send_failed$)/.test(code ?? "");
 const MAX_SIGNAL_BYTES = 65_536;
 
 /** The authenticated socket carries signalling only; its lifetime never owns the direct peer. */
@@ -36,15 +36,17 @@ export async function openRemoteWebRtcStream(
   catch { return { ok: false, error: "controller_identity_unavailable" }; }
   const initialDescriptor = options.descriptor ? parsers.descriptor(options.descriptor, sessionId) : null;
   if (options.descriptor && !initialDescriptor) return { ok: false, error: "response_malformed" };
+  if (options.sequenceFloor !== undefined && (!Number.isSafeInteger(options.sequenceFloor) || options.sequenceFloor < 0)) return { ok: false, error: "response_malformed" };
   if (options.signal?.aborted) return { ok: false, error: "aborted" };
 
   const url = new URL(`${GATEWAY_BASE}/v1/devices/${encodeURIComponent(deviceId)}/remote-desktop/sessions/${encodeURIComponent(sessionId)}/stream`, window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   let socket: WebSocket | null = null, peer: WebRtcRemoteDesktopViewer | null = null;
-  let ended = false, settled = false, authenticated = false, inputAllowed = true;
+  let ended = false, ending = false, settled = false, authenticated = false, inputAllowed = true;
+  const clickedAt = Number.isFinite(options.clickedAt) ? options.clickedAt! : monotonic();
   let state: RemoteDesktopSessionState = "pending_consent";
   let video: HTMLVideoElement | null = null, descriptor: RemoteWebRtcDescriptor | null = null;
-  let leaseDeadline = Infinity, renewalAt = Infinity, leaseIdentity = "";
+  let leaseDeadline = Infinity, renewalAt = Infinity, leaseIdentity = -Infinity;
   let reconnectWindow = 180_000, disconnectedAt = monotonic(), retryDelay = 200;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let socketTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -63,15 +65,29 @@ export async function openRemoteWebRtcStream(
     if (old) { old.onopen = old.onmessage = old.onerror = old.onclose = null; try { old.close(); } catch { /* already closed */ } }
   };
   const finish = (reason: string, notify = true) => {
-    if (ended) return;
+    if (ended || ending) return;
     if (inputFault(reason)) { handlers.webrtcState?.("input_reconnecting"); return; }
+    ending = true;
+    // Let an intentional leave send its peer bye before the signalling socket closes.
+    if (peer) peer.close(reason);
+    else report({
+      v: 1, transport: "webrtc-v1", media: "webrtc", device_id: deviceId, session_id: sessionId,
+      attempt: 0, end_reason: reason, duration_ms: Math.max(0, Math.min(86_400_000, Math.round(monotonic() - clickedAt))),
+      reconnects: 0, media_renewals: 0,
+      steps: {
+        ...(options.sessionCreatedAt !== undefined ? { session_created_ms: Math.max(0, Math.min(600_000, Math.round(options.sessionCreatedAt - clickedAt))) } : {}),
+        ...(options.descriptorReceivedAt !== undefined ? { descriptor_received_ms: Math.max(0, Math.min(600_000, Math.round(options.descriptorReceivedAt - clickedAt))) } : {}),
+      },
+      input: { ws_count: 0, dc_count: 0 },
+      video: { picture_age_source: "unknown", frames_rendered: 0, freeze_count: 0, freeze_ms: 0 },
+      env: qualityEnvironment(), window_start_ms: Date.now(), viewer: { t: "rd.viewer_report", v: 1, seq: 1 },
+    }, true);
     ended = true;
     clearInterval(heartbeat);
     if (reconnectTimer) clearTimeout(reconnectTimer);
     options.signal?.removeEventListener("abort", abort);
     closeSocket();
     outgoingSignals = []; incomingSignals = [];
-    peer?.close(reason);
     settle({ ok: false, error: reason });
     if (notify) handlers.state("closed", reason);
   };
@@ -112,7 +128,7 @@ export async function openRemoteWebRtcStream(
       } : undefined;
       if (final) {
         const payload: RemoteDesktopQualityReport = {
-          ...common, media: "webrtc", attempt: value.attempt ?? 0,
+          ...common, media: peer ? "webrtc" : "none", attempt: value.attempt ?? 0,
           duration_ms: value.duration_ms ?? 0, reconnects: value.reconnects ?? 0, media_renewals: value.media_renewals ?? 0,
           end_reason: qualityCode(value.end_reason ?? "viewer_closed"), steps: value.steps ?? {},
           input: { ...value.input, ws_count: value.input?.ws_count ?? 0, dc_count: value.input?.dc_count ?? 0 },
@@ -130,18 +146,20 @@ export async function openRemoteWebRtcStream(
       }
     } catch { /* best effort */ }
   };
-  const applyDescriptor = (value: RemoteWebRtcDescriptor, receivedAt = monotonic()) => {
-    if (ended) return;
-    const deadline = receivedAt + Math.max(0, Date.parse(value.lease_expires_at) - value.server_now * 1000);
+  const applyDescriptor = (value: RemoteWebRtcDescriptor, receivedAt = monotonic()): boolean => {
+    if (ended) return false;
+    const expiresAt = Date.parse(value.lease_expires_at);
+    if (descriptor && (expiresAt < leaseIdentity || value.server_now < descriptor.server_now)) return false;
+    const deadline = receivedAt + Math.max(0, expiresAt - value.server_now * 1000);
     // Repeated snapshots of one lease must not turn a stale timestamp into extra time.
-    leaseDeadline = value.lease_expires_at === leaseIdentity ? Math.min(leaseDeadline, deadline) : deadline;
-    leaseIdentity = value.lease_expires_at;
+    leaseDeadline = expiresAt === leaseIdentity ? Math.min(leaseDeadline, deadline) : deadline;
+    leaseIdentity = expiresAt;
     renewalAt = leaseDeadline - 60_000;
     descriptor = value;
-    if (leaseDeadline <= monotonic()) { finish("lease_expired"); return; }
-    if (peer) { peer.updateDescriptor(value); return; }
+    if (leaseDeadline <= monotonic()) { finish("lease_expired"); return false; }
+    if (peer) { peer.updateDescriptor(value); return true; }
     peer = new WebRtcRemoteDesktopViewer({
-      descriptor: value, deviceId, clickedAt: options.clickedAt,
+      descriptor: value, deviceId, clickedAt, sequenceFloor: options.sequenceFloor,
       sessionCreatedAt: options.sessionCreatedAt, descriptorReceivedAt: receivedAt,
       sendSignal: enqueueSignal,
       onState: (next, path) => { if (!ended) handlers.webrtcState?.(next, path); },
@@ -159,6 +177,7 @@ export async function openRemoteWebRtcStream(
       // The peer owns same-session recovery; a rejected start never deletes the session.
       if (!ended) handlers.webrtcState?.("picture_reconnecting");
     });
+    return true;
   };
   const negotiate = () => {
     if (ended || negotiation || !client.negotiateMedia || monotonic() < nextNegotiation) return;
@@ -173,7 +192,7 @@ export async function openRemoteWebRtcStream(
         const media = parsers.descriptor(result.data.media, sessionId);
         if (!media) { finish("response_malformed"); return; }
         negotiationBackoff = 1000; nextNegotiation = monotonic() + 1000;
-        applyDescriptor(media);
+        if (!applyDescriptor(media)) return;
         handlers.media?.(media, result.data.media_status);
         if (result.data.media_status?.state === "failed") finish(result.data.media_status.error || "media_capture_or_publish_failed");
       } catch { nextNegotiation = monotonic() + negotiationBackoff; negotiationBackoff = Math.min(8000, negotiationBackoff * 2); }
@@ -190,7 +209,7 @@ export async function openRemoteWebRtcStream(
     inputPath: () => "data_channel",
     acknowledgeFrame() {},
     acknowledgeMediaFrame() { mediaReady = true; if (!mediaReadySent) mediaReadySent = write({ type: "media_ready" }); },
-    close: () => finish("viewer_closed", false),
+    close: () => finish("viewer_left", false),
   };
   const abort = () => finish("aborted", false);
   const reconnect = () => {
@@ -250,11 +269,13 @@ export async function openRemoteWebRtcStream(
       if ("media" in data && data.media !== null) {
         const media = parsers.descriptor(data.media, sessionId);
         if (!media) { finish("response_malformed"); return; }
-        applyDescriptor(media);
+        const accepted = applyDescriptor(media);
         if (ended) return;
-        const status = parsers.mediaStatus(data.media_status);
-        handlers.media?.(media, status);
-        if (status?.state === "failed") { finish(status.error || "media_capture_or_publish_failed"); return; }
+        if (accepted) {
+          const status = parsers.mediaStatus(data.media_status);
+          handlers.media?.(media, status);
+          if (status?.state === "failed") { finish(status.error || "media_capture_or_publish_failed"); return; }
+        }
       } else if (parsers.mediaStatus(data.media_status)?.state === "failed") {
         const status = parsers.mediaStatus(data.media_status)!;
         handlers.media?.(descriptor, status); finish(status.error || "media_capture_or_publish_failed"); return;
