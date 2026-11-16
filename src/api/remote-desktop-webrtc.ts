@@ -116,6 +116,7 @@ export class WebRtcRemoteDesktopViewer {
   private restartBackoff = 1000;
   private peerRetryDue: number | undefined;
   private answerDue: number | undefined;
+  private coldOffer: { pc: RTCPeerConnection; signal: WebRtcSignal; started: number; attempt: number } | undefined;
   private lastPing = -Infinity;
   private lastStats = -Infinity;
   private lastReport: number;
@@ -231,7 +232,10 @@ export class WebRtcRemoteDesktopViewer {
         // The create envelope already carried this offer. Configure ICE first,
         // then install exactly that SDP; no duplicate offer or second peer.
         await pc.setLocalDescription(prepared.offer);
-        if (this.pc === pc && !this.ended) this.telemetry.step("offer_sent_ms", prepared.offeredAt);
+        if (this.pc === pc && !this.ended) {
+          this.telemetry.step("offer_sent_ms", prepared.offeredAt);
+          this.armColdOffer({ k: "offer", sdp: prepared.offer.sdp ?? "", gen });
+        }
       } else await this.offer(pc, false);
     })().catch(() => {
       if (!this.ended) { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); }
@@ -301,7 +305,7 @@ export class WebRtcRemoteDesktopViewer {
   private transmit(data: WebRtcSignal): void {
     if (this.ended) return;
     let sent = false; try { sent = this.options.sendSignal(data); } catch { /* the direct peer remains alive */ }
-    if (sent) { if (data.k === "offer") this.offerAccepted(); return; }
+    if (sent) { if (data.k === "offer") this.offerAccepted(data); return; }
     if (data.k === "offer") {
       this.pendingSignals = this.pendingSignals.filter(s => s.k !== "offer" && (s.k !== "candidate" || s.gen === data.gen));
       this.pendingSignals.unshift(data);
@@ -309,8 +313,15 @@ export class WebRtcRemoteDesktopViewer {
     const candidates = this.pendingSignals.filter(s => s.k === "candidate");
     if (candidates.length > 64) this.pendingSignals.splice(this.pendingSignals.indexOf(candidates[0]), 1);
   }
-  private offerAccepted(): void {
+  private armColdOffer(data: WebRtcSignal): void {
+    const pc = this.pc;
+    if (data.k !== "offer" || !pc || this.hasFrame || pc.remoteDescription || pc.connectionState === "connected") return;
+    if (this.coldOffer?.pc === pc && JSON.stringify(this.coldOffer.signal) === JSON.stringify(data)) return;
+    this.coldOffer = { pc, signal: { ...data }, started: this.now(), attempt: 0 };
+  }
+  private offerAccepted(data: WebRtcSignal): void {
     this.telemetry.step("offer_sent_ms");
+    this.armColdOffer(data);
     // A dropped recovery offer otherwise leaves a new peer waiting forever.
     // Cold signalling may take seconds; an existing connected picture is healthy.
     if (this.hasFrame && !this.pathSwitch && this.pc?.connectionState !== "connected") this.answerDue = this.now() + 5000;
@@ -320,7 +331,7 @@ export class WebRtcRemoteDesktopViewer {
     while (this.pendingSignals.length) {
       let sent = false; try { sent = this.options.sendSignal(this.pendingSignals[0]); } catch { /* retry on next tick */ }
       if (!sent) break;
-      if (this.pendingSignals[0].k === "offer") this.offerAccepted();
+      if (this.pendingSignals[0].k === "offer") this.offerAccepted(this.pendingSignals[0]);
       this.pendingSignals.shift();
     }
   }
@@ -351,6 +362,7 @@ export class WebRtcRemoteDesktopViewer {
         await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
         if (this.pc !== pc || this.ended) return;
         this.answerDue = undefined;
+        this.coldOffer = undefined;
         if (this.pathSwitch) this.pathSwitch.answered = true;
         this.telemetry.step("answer_received_ms");
         for (const candidate of this.candidates.splice(0)) { if (this.pc === pc && !this.ended) await pc.addIceCandidate(candidate); }
@@ -513,6 +525,18 @@ export class WebRtcRemoteDesktopViewer {
     // Decoder recovery uses the browser's RTCP PLI/FIR. A freeze is telemetry only;
     // there is no application keyframe timer or periodic-keyframe wait.
     this.flushSignals(); this.input.tick(); this.telemetry.tick();
+    const cold = this.coldOffer;
+    if (cold && !this.creating && !this.negotiatingPeer) {
+      if (this.pc !== cold.pc || cold.signal.gen !== this.gen || this.hasFrame || cold.pc.remoteDescription || cold.pc.connectionState === "connected") this.coldOffer = undefined;
+      else if (now - cold.started >= 2500) {
+        // A host which retained this gen but lost its peer refuses same-gen offers.
+        // Recover on the same authorized session; input sequences are not replayed.
+        this.coldOffer = undefined; this.peerRetryDue = now;
+      } else if (cold.attempt < 3 && now - cold.started >= [300, 600, 1200][cold.attempt]) {
+        cold.attempt++;
+        try { this.options.sendSignal({ ...cold.signal }); } catch { /* bounded next retry */ }
+      }
+    }
     for (const [label, retry] of this.recovery) if (now >= retry.due) {
       // Give DCEP time to open. Retiring a connecting replacement every 200ms can starve a slow path.
       retry.due = now + Math.max(2000, retry.backoff); retry.backoff = Math.min(2000, retry.backoff * 2); this.createChannel(label);
@@ -610,6 +634,7 @@ export class WebRtcRemoteDesktopViewer {
     void this.createConnection(route);
   }
   private detachPeer(): void {
+    this.coldOffer = undefined;
     this.input.setReceiptsAvailable(false);
     for (const channel of this.channels.values()) { channel.onopen = channel.onclose = channel.onerror = channel.onmessage = channel.onbufferedamountlow = null; swallow(() => channel.close()); }
     this.channels.clear(); this.input.setLane("rd-input", null); this.input.setLane("rd-fast", null);

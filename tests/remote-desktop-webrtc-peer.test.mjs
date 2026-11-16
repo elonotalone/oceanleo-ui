@@ -251,8 +251,31 @@ test('lost recovery answer retries a fresh generation while preserving session a
  await h.viewer.signal({k:'answer',gen,sdp:'late'});assert.equal(h.viewer.pc.remoteDescription,undefined);
  await h.viewer.signal({k:'answer',gen:h.viewer.gen,sdp:'current'});const answered=h.viewer.pc;await h.advance(6000);assert.equal(h.viewer.pc,answered);
 });
-test('cold unanswered offer and a connected picture do not get a recovery-answer timeout',async t=>{
- const h=await harness(t);await h.viewer.start();const cold=h.viewer.pc;await h.advance(11000);assert.equal(h.viewer.pc,cold);
+test('cold unanswered offer retries exact SDP before replacing only its peer; connected picture stays healthy',async t=>{
+ const h=await harness(t);await h.viewer.start();const cold=h.viewer.pc,first={...h.signals[0]};
+ await h.advance(1200);assert.equal(h.viewer.pc,cold);assert.equal(h.viewer.gen,1);assert.equal(cold.offers.length,1);
+ assert.deepEqual(h.signals.filter(s=>s.k==='offer'),[first,first,first,first]);
+ await h.advance(1300);assert.notEqual(h.viewer.pc,cold);assert.equal(h.viewer.gen,2);assert.equal(h.peers.length,2);assert.deepEqual(h.terminals,[]);
+ const healthy=h.viewer.pc;
+ healthy.ontrack({track:{kind:'video'},receiver:{},streams:[{}]});
  h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
- await h.viewer.offer(cold,true);await h.advance(6000);assert.equal(h.viewer.pc,cold);assert.equal(h.frames.length,1);assert.deepEqual(h.terminals,[]);
+ await h.viewer.offer(healthy,true);await h.advance(6000);assert.equal(h.viewer.pc,healthy);assert.equal(h.frames.length,1);assert.deepEqual(h.terminals,[]);
+});
+test('cold answer cancels retries and close fences scheduled offers without replaying input',async t=>{
+ const h=await harness(t);await h.viewer.start();const pc=h.viewer.pc;
+ await h.advance(300);assert.equal(h.signals.filter(s=>s.k==='offer').length,2);
+ await h.viewer.signal({k:'answer',gen:1,sdp:'answer'});await h.advance(3000);
+ assert.equal(h.viewer.pc,pc);assert.equal(h.signals.filter(s=>s.k==='offer').length,2);
+ assert.equal(pc.channels.flatMap(c=>c.sent).some(v=>v.a),false);
+ h.viewer.close();const count=h.signals.length;await h.advance(3000);assert.equal(h.signals.length,count);
+});
+test('prepared cold offer is replayed unchanged without making a second peer or SDP',async t=>{
+ const h=await harness(t);const pc=new FakePeer({});const transceiver=pc.addTransceiver('video',{direction:'recvonly'});
+ const channels=new Map(['rd-input','rd-fast','rd-ctl'].map(label=>[label,pc.createDataChannel(label,{})]));
+ const offer={type:'offer',sdp:'exact-prepared-sdp'};h.viewer.options.initialPeer={pc,transceiver,channels,offer,offeredAt:50};
+ await h.viewer.start();await h.advance(300);
+ assert.equal(h.viewer.pc,pc);assert.equal(pc.offers.length,0);assert.equal(h.peers.length,0);
+ assert.deepEqual(h.signals.find(s=>s.k==='offer'),{k:'offer',gen:1,sdp:'exact-prepared-sdp'});
+ pc.state('failed');await h.advance(200);const gen=h.viewer.gen;await h.advance(300);
+ assert.equal(gen,2);assert.equal(h.signals.filter(s=>s.k==='offer'&&s.gen===1).length,1);
 });
