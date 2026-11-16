@@ -204,23 +204,32 @@ export function agentApiFailureFromPayload<T>(
   };
 }
 
-export async function authed<T>(
+export function authed<T>(
   path: string,
   init?: RequestInit,
+): Promise<AgentApiResult<T>> {
+  return agentRequest<T>(path, init);
+}
+
+/** Public task reads still let the gateway decide visibility; all writes require a token. */
+async function agentRequest<T>(
+  path: string,
+  init?: RequestInit,
+  allowAnonymous = false,
 ): Promise<AgentApiResult<T>> {
   // keepalive（尤其 pagehide flush）若已有内存 token，必须在当前事件回调内同步发起
   // fetch；先 await Supabase getSession 会让浏览器在请求创建前就销毁页面。
   const token =
     (init?.keepalive ? cachedAccessToken() : null) ||
     (await accessToken());
-  if (!token) return { ok: false, error: "未登录", status: 401 };
+  if (!token && !allowAnonymous) return { ok: false, error: "未登录", status: 401 };
   let res: Response;
   try {
     res = await sharedGatewayFetch(`${gatewayBase()}${path}`, {
       ...init,
       headers: {
         ...(init?.headers || {}),
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       cache: "no-store",
@@ -261,6 +270,13 @@ export interface ArtifactMeta {
   site_id?: string;
 }
 
+/** A public display identity; deliberately excludes email and computer identifiers. */
+export interface MessageAuthor {
+  user_id?: string | null;
+  name?: string | null;
+  initial?: string | null;
+}
+
 export interface AgentMessage {
   id: number;
   role: "user" | "assistant";
@@ -290,6 +306,12 @@ export interface AgentMessage {
     mentions?: string[];
     [k: string]: unknown;
   };
+  /** Sending account, added to shared tasks by the gateway. */
+  author?: MessageAuthor | null;
+  sender?: MessageAuthor | null;
+  sender_user_id?: string | null;
+  sender_name?: string | null;
+  sender_initial?: string | null;
   created_at?: string;
 }
 
@@ -305,6 +327,10 @@ export interface AgentArtifact {
 
 export interface AgentTask {
   id: string;
+  /** Present for an accepted task shared to the current viewer. */
+  shared_by?: MessageAuthor | string | null;
+  participant_count?: number;
+  forked_from_task_id?: string | null;
   title?: string;
   status: "running" | "finishing" | "done" | "failed" | "stopped" | string;
   mode: "agent" | "chat" | "skill" | string;
@@ -922,7 +948,7 @@ export function getTask(taskId: string, options?: GetTaskOptions) {
     params.set("message_limit", String(limit));
   }
   const query = params.size ? `?${params}` : "";
-  return authed<TaskDetail>(`/v1/agent/tasks/${encodeURIComponent(taskId)}${query}`);
+  return agentRequest<TaskDetail>(`/v1/agent/tasks/${encodeURIComponent(taskId)}${query}`, undefined, true);
 }
 
 /**

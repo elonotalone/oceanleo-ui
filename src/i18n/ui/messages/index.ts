@@ -29,6 +29,7 @@ import { AGENT_PROGRESS_MESSAGES } from "./agent-progress-copy";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { localBrowserCopy } from "./local-browser-copy";
 import { SHARE_COPY_MESSAGES } from "./share-copy";
+import { SHARE_ACCESS_MESSAGES } from "./share-access-copy";
 import { ACCOUNT_SECURITY_MESSAGES } from "./account-security-copy";
 import { AUTH_OAUTH_MESSAGES } from "./auth-oauth-copy";
 import { AUTH_LEGAL_MESSAGES } from "./auth-legal-copy";
@@ -528,6 +529,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...COMPUTER_TASK_WORKSPACE_MESSAGES[language],
       ...NATIVE_ATTACHMENTS_MESSAGES[language],
       ...TASK_PAGE_PACK_MESSAGES[language],
+      ...SHARE_ACCESS_MESSAGES[language],
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

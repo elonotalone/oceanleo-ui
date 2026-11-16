@@ -6,7 +6,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
-import type { AgentAttachment } from "../lib/agent";
+import type { AgentAttachment, MessageAuthor } from "../lib/agent";
 import { useUI } from "../i18n/ui/useUI";
 import { cursorAnswerResult, isCursorQuestion, libraryRefFromUri, resendable, viewBlocks, type AcpBlock, type AcpLabels } from "./messages";
 import { reduceRows } from "./reduce";
@@ -14,6 +14,8 @@ import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId 
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
+  showAuthors?: boolean;
+  ownerAuthor?: MessageAuthor;
   /** Fetch a shortened row in full; the owner replaces it in the stored window. */
   onExpandRow?: (rowId: number) => Promise<void>;
   /** Optional render diagnostic; omitted by production callers. */
@@ -238,7 +240,7 @@ function blockRowId(block: AcpBlock): number {
       : Math.min(...block.messages.map((message) => message.id));
 }
 
-export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow }: AcpTranscriptProps) {
+export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, ownerAuthor }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const labels: AcpLabels = useMemo(
@@ -280,6 +282,8 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
         return <div key={block.key} data-history-item="" data-history-key={block.key}>
           <TranscriptBlock
             block={block}
+            showAuthors={showAuthors}
+            ownerAuthor={ownerAuthor}
             highlightQuery={highlightQuery}
             onAnswer={block.type === "bubble" && block.request ? onAnswer : undefined}
             onStopAndSend={block.type === "bubble" && block.queued ? onStopAndSend : undefined}
@@ -299,7 +303,7 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
 }
 
 type TranscriptBlockProps = Pick<AcpTranscriptProps,
-  "onAnswer" | "onStopAndSend" | "onOpenAttachment" | "highlightQuery" | "onBlockRender"> & {
+  "onAnswer" | "onStopAndSend" | "onOpenAttachment" | "highlightQuery" | "onBlockRender" | "showAuthors" | "ownerAuthor"> & {
   block: AcpBlock;
   selectMode: boolean;
   selected: boolean;
@@ -326,7 +330,7 @@ function sameBlockData(a: unknown, b: unknown): boolean {
 
 const TranscriptBlock = memo(function TranscriptBlock({
   block, onAnswer, onStopAndSend, onOpenAttachment, highlightQuery,
-  selectMode, selected, onToggle, onBlockRender,
+  selectMode, selected, onToggle, onBlockRender, showAuthors, ownerAuthor,
 }: TranscriptBlockProps) {
   const request = block.type === "bubble" ? block.request : undefined;
   const id = block.type === "bubble" ? block.message.id : null;
@@ -343,6 +347,8 @@ const TranscriptBlock = memo(function TranscriptBlock({
   return <>
     <AgentTranscriptBubble
       message={block.message}
+      showAuthors={showAuthors}
+      ownerAuthor={ownerAuthor}
       streaming={block.streaming}
       stopped={block.stopped}
       highlightQuery={highlightQuery}
@@ -356,6 +362,8 @@ const TranscriptBlock = memo(function TranscriptBlock({
     {block.queued && <QueuedLine turn={block.queued} onStopAndSend={onStopAndSend} />}
   </>;
 }, (previous, next) =>
+  previous.showAuthors === next.showAuthors &&
+  sameBlockData(previous.ownerAuthor, next.ownerAuthor) &&
   previous.highlightQuery === next.highlightQuery &&
   previous.onAnswer === next.onAnswer &&
   previous.onStopAndSend === next.onStopAndSend &&

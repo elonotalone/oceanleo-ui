@@ -68,6 +68,8 @@ import {
   compareHistoryEntries,
   historyQuietPollDelayMs,
   historyEntryTimestamp,
+  historyEntrySharedBy,
+  historySharedByName,
   historyPollDelayMs,
   isHistoryEntryFinishing,
   isHistoryEntryWaiting,
@@ -296,6 +298,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     const y = b[i];
     if (x.kind !== y.kind || x.id !== y.id) return false;
     if ((x.created_by ?? null) !== (y.created_by ?? null)) return false;
+    if (JSON.stringify(historyEntrySharedBy(x) ?? null) !== JSON.stringify(historyEntrySharedBy(y) ?? null)) return false;
     if (isHistoryEntryWorking(x) !== isHistoryEntryWorking(y)) return false;
     if ((x.activity_state ?? null) !== (y.activity_state ?? null)) return false;
     if (
@@ -733,6 +736,7 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       /** 换项目时用于乐观显示的项目标注；只进本地列表，绝不写进数据库。 */
       projectBadge?: HistoryProjectBadge | null,
     ): Promise<boolean> => {
+      if (historyEntrySharedBy(entry)) return false;
       const id = entry.id;
       const prev = items;
       const movesProject = Object.prototype.hasOwnProperty.call(patch, "project_id");
@@ -1037,7 +1041,8 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
         const favorite = isSession
           ? Boolean(entry.session.favorite)
           : Boolean(entry.task.favorite);
-        const renaming = renameFor === entry.id;
+        const sharedBy = historyEntrySharedBy(entry);
+        const renaming = !sharedBy && renameFor === entry.id;
         const project = historyEntryProject(entry);
         const openEntry = () => {
           if (mountedHistoryDetails > 0 && typeof window !== "undefined") {
@@ -1137,7 +1142,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                         <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
                       </svg>
                     )}
-                    <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate" data-history-title="">{title}</span>
+                      {sharedBy && <span data-task-shared-by="" className="block truncate text-[11px] text-[var(--muted-foreground)]">{tt("由 {name} 分享", { name: historySharedByName(entry) || tt("参与者") })}</span>}
+                    </span>
                     {isHistoryEntryFinishing(entry) && <span data-history-finishing="" className="shrink-0 text-[11px] text-neutral-500">{tt("正在确认结束")}</span>}
                     {entry.created_by === "leo" && <LeoCreatedMark />}
                     {favorite && (
@@ -1158,6 +1166,7 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                 active={on}
                 pinned={pinned}
                 favorite={favorite}
+                canManage={!sharedBy}
                 canDelete={canDeleteHistoryEntry(entry)}
                 inProject={Boolean(project)}
                 href={historyHrefFor(entry, pathname)}

@@ -2,7 +2,7 @@
 
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import type { AgentAttachment, AgentMessage } from "../lib/agent";
+import type { AgentAttachment, AgentMessage, MessageAuthor } from "../lib/agent";
 import {
   AIGC_LABEL_TEXT,
   aigcLabelActive,
@@ -37,6 +37,10 @@ export function agentArtifactLabels(
 
 export interface AgentTranscriptBubbleProps {
   message: AgentMessage;
+  /** Show each sending account once this task has multiple participants. */
+  showAuthors?: boolean;
+  /** Earlier messages without author metadata belong to the task owner. */
+  ownerAuthor?: MessageAuthor;
   /** Optional render diagnostic; omitted by production callers. */
   onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   /**
@@ -128,6 +132,17 @@ export const AgentTranscriptBubble = memo(function AgentTranscriptBubble(props: 
   );
 });
 
+/** Read only display fields; agent-to-agent sender metadata has its own existing label. */
+function messageAuthor(message: AgentMessage, owner?: MessageAuthor): MessageAuthor | null {
+  const metaSender = message.meta?.sender;
+  if (metaSender && typeof metaSender === "object" && (metaSender as {kind?: unknown}).kind === "agent") return null;
+  const candidate = message.author ?? message.sender ?? message.meta?.author ?? metaSender;
+  const record = candidate && typeof candidate === "object" ? candidate as MessageAuthor : null;
+  const name = typeof record?.name === "string" ? record.name : message.sender_name || (!record && !message.sender_user_id ? owner?.name : "") || "";
+  const initial = typeof record?.initial === "string" && record.initial ? record.initial : message.sender_initial || (name ? [...name.trim()][0] : owner?.initial) || "?";
+  return { name, initial };
+}
+
 function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnType<typeof useUI>) {
   const {
     message,
@@ -138,7 +153,14 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
     streaming = false,
     turnCopyText,
   } = props;
-  const body = <TranscriptBody {...props} />;
+  const author = props.showAuthors && message.role === "user" ? messageAuthor(message, props.ownerAuthor) : null;
+  const body = <>
+    {author && <div data-message-author="" className="mb-1 flex items-center gap-1.5 text-[12px] text-[var(--muted-foreground)]">
+      <span aria-hidden="true" className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-[var(--background-secondary)] font-medium text-[var(--foreground)]">{author.initial}</span>
+      <span className="min-w-0 truncate">{author.name || tt("参与者")}</span>
+    </div>}
+    <TranscriptBody {...props} />
+  </>;
   const engineLabel = typeof message.meta?.engine_label === "string" ? message.meta.engine_label : "";
   const labelledBody = engineLabel ? (
     <div className="space-y-0.5">

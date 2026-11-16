@@ -435,6 +435,8 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
           rowId: row.id,
           requestId: parsed.id,
           sessionId: parsed.sessionId,
+          ...(row.author || row.sender ? { author: row.author || row.sender } :
+            row.sender_user_id || row.sender_name || row.sender_initial ? { author: { user_id: row.sender_user_id, name: row.sender_name, initial: row.sender_initial } } : {}),
           prompt: parsed.prompt,
           text: blocksText(parsed.prompt),
           items: [],
