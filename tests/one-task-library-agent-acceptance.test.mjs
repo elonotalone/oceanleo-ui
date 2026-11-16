@@ -463,6 +463,9 @@ async function libraryFetch(input, init = {}) {
       return Promise.resolve(jsonResponse({ error: "History detail fixture stopped a repeated session/task fetch loop after 300 calls." }, 508));
     }
   }
+  if (/^\/v1\/tasks\/[^/]+\/access$/.test(url.pathname) && method === "GET") {
+    return jsonResponse({role:"owner",state:"owner",general_access:"private",can_send:true,can_manage:true,can_fork:true,owner:{name:"Library owner",initial:"L"}});
+  }
   const workingCopyPath = url.pathname.match(/^\/v1\/editor-working-copies\/([^/]+)(\/published)?$/);
   if (workingCopyPath) {
     const root = workingCopyPath[1];

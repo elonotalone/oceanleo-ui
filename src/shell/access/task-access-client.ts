@@ -31,6 +31,19 @@ export interface TaskAccessClient {
   signedIn(): Promise<boolean>;
 }
 
+export function isTaskAccess(value: unknown): value is TaskAccess {
+  if (!value || typeof value !== "object") return false;
+  const item = value as TaskAccess;
+  if (item.state === "removed" && (!item.visible_until ||
+    !Number.isSafeInteger(item.visible_until.message_id) || item.visible_until.message_id < 0 ||
+    !Number.isSafeInteger(item.visible_until.frame_id) || item.visible_until.frame_id < 0)) return false;
+  return ["owner", "collaborate", "view", "none"].includes(item.role) &&
+    ["owner", "member", "invited", "public", "removed", "none"].includes(item.state) &&
+    ["private", "restricted", "public_view"].includes(item.general_access) &&
+    typeof item.can_send === "boolean" && typeof item.can_manage === "boolean" && typeof item.can_fork === "boolean" &&
+    Boolean(item.owner && typeof item.owner.name === "string" && typeof item.owner.initial === "string");
+}
+
 export class TaskAccessError extends Error {
   readonly status: number;
   constructor(status: number) {
@@ -60,7 +73,11 @@ export function createTaskAccessClient(options: {
     return await response.json() as T;
   };
   return {
-    getAccess: (id, signal) => request(id, "/access", "GET", undefined, signal),
+    getAccess: async (id, signal) => {
+      const value = await request<unknown>(id, "/access", "GET", undefined, signal);
+      if (!isTaskAccess(value)) throw new TaskAccessError(502);
+      return value;
+    },
     setAccess: (id, general_access) => request(id, "/access", "PUT", { general_access }),
     members: async (id) => {
       const result = await request<AccessMember[] | { members?: AccessMember[]; items?: AccessMember[] }>(id, "/members");
@@ -86,6 +103,6 @@ export function taskAccessRights(access: TaskAccess | null, taskId?: string | nu
   return {
     canSend: Boolean(access?.can_send && (access.state === "owner" || access.state === "member" && access.role === "collaborate")),
     canManage: Boolean(access?.can_manage && access.state === "owner" && access.role === "owner"),
-    canView: Boolean(access && access.state !== "none"),
+    canView: Boolean(access && ["owner", "member", "invited", "public", "removed"].includes(access.state) && access.role !== "none"),
   };
 }

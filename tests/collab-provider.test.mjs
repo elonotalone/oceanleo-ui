@@ -127,6 +127,22 @@ function setup(over = {}) {
 
 const READY = { type: "ready", room_key: "artifact:a1", role: "editor", needs_seed: false, is_saver: true, lock: null };
 
+test("task room access changes reach the task composer immediately", async () => {
+  const previousWindow = globalThis.window;
+  const events = [];
+  globalThis.window = { dispatchEvent(event) { events.push(event); } };
+  const previousCustomEvent = globalThis.CustomEvent;
+  globalThis.CustomEvent ??= class CustomEvent { constructor(type, init) { this.type = type; this.detail = init.detail; } };
+  const { provider, socket } = await connectReady({}, { room_key: "task:t1" });
+  try {
+    const access = { role: "view", state: "removed", can_send: false };
+    socket.serverText({ type: "access_changed", access });
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, "oceanleo:task-access-changed");
+    assert.deepEqual(events[0].detail, { taskId: "t1", access });
+  } finally { provider.destroy(); globalThis.window = previousWindow; globalThis.CustomEvent = previousCustomEvent; }
+});
+
 async function connectReady(over = {}, ready = {}) {
   const ctx = setup(over);
   await until(() => FakeSocket.instances.length === 1, "socket");

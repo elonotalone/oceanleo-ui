@@ -85,3 +85,23 @@ test("view-only, removed and anonymous public visitors can continue; anonymous a
     } finally { await view.close(); }
   }
 });
+
+test("narrow Share is a top sheet whose height stops before the composer; Escape restores focus", async () => {
+  const width = window.innerWidth;
+  Object.defineProperty(window,"innerWidth",{configurable:true,value:390});
+  const footer = document.createElement("div"); footer.setAttribute("data-agent-chat-footer","");
+  footer.getBoundingClientRect = () => ({top:300,bottom:700,left:0,right:390,width:390,height:400}); document.body.append(footer);
+  const client = new TaskAccessMock();
+  const view = await mount(TaskSharePanel,{taskId:"t",taskUrl:"/tasks/t",access:client.access,share:shareState(),client});
+  try {
+    const entry = view.host.querySelector("[data-share-entry]");
+    entry.getBoundingClientRect = () => ({top:12,bottom:48,left:330,right:380,width:50,height:36});
+    await click(entry);
+    const panel = document.querySelector('[data-access-popover="sheet"]');
+    assert.ok(panel);
+    assert.ok(parseFloat(panel.style.maxHeight) <= 244, "panel ends before the footer begins");
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+    assert.equal(entry.getAttribute("aria-expanded"),"false");
+    assert.equal(document.activeElement,entry);
+  } finally { await view.close(); footer.remove(); Object.defineProperty(window,"innerWidth",{configurable:true,value:width}); }
+});

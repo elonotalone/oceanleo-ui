@@ -6,10 +6,11 @@ const { createTaskAccessClient, TaskAccessError, taskAccessRights } = await impo
   "../../lib/auth/client": dataModule("export async function accessToken(){return null;}"),
   "../../lib/auth/config": dataModule("export const GATEWAY_BASE='https://gateway.test';"),
 }));
+const access = {role:"owner",state:"owner",general_access:"private",can_send:true,can_manage:true,can_fork:true,owner:{name:"O",initial:"O"}};
 const calls = [];
 const fetchImpl = async (url, init) => {
   calls.push({ url, ...init });
-  return new Response(JSON.stringify(url.endsWith("/members") && init.method === "GET" ? { members: [] } : url.endsWith("/fork") ? { task_id: "forked" } : {}));
+  return new Response(JSON.stringify(url.endsWith("/access") ? access : url.endsWith("/members") && init.method === "GET" ? { members: [] } : url.endsWith("/fork") ? { task_id: "forked" } : {}));
 };
 test("task client uses contract paths and bodies; anonymous reads omit credentials header", async () => {
   calls.length = 0;

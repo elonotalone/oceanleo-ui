@@ -394,6 +394,14 @@ export class CollabProvider implements CollabRoom {
 
   private handleControl(msg: Record<string, unknown>): void {
     switch (msg.type) {
+      case "access_changed": {
+        if (this.roomKey.startsWith("task:") && typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("oceanleo:task-access-changed", {
+            detail: { taskId: this.roomKey.slice(5), access: msg.access },
+          }));
+        }
+        return;
+      }
       case "ready": {
         if (this.readyTimer) {
           clearTimeout(this.readyTimer);

@@ -8,7 +8,7 @@ import { act } from "react";
 //   - the header has 「分享」 where 「关闭对话」 was; the task page has no Close at all (ending a program is the
 //     device panel's);
 //   - 「分享」 puts the frames stream in select mode: the prompt and the program's reply get checkboxes, the tool
-//     step does not; the composer becomes the share action bar; 复制文本 copies the picked words with the program's
+//     step does not; the composer stays, actions are in the header panel; 复制文本 copies the picked words with the program's
 //     name; 取消 brings the composer back.
 await import("./agent-chat-conversations.test.mjs");
 const { mount, session, computerTask, cloudTask, rows, connect, deliver } = globalThis.__agentChatHarness;
@@ -132,5 +132,24 @@ test("declining an invitation keeps a public task readable without enabling send
     assert.equal(view.composer("cloud"), null);
     assert.equal(view.host.querySelector("[data-task-access-composer]").dataset.taskAccessComposer, "public");
     assert.ok(view.host.textContent.includes("同比增长 12%"));
+  } finally { await view.unmount(); }
+});
+
+test("a collaborator uses the public program descriptor and sends without owner-only settings or computer ids", async () => {
+  const access = new TaskAccessMock();
+  access.access = { ...ownerAccess(), role: "collaborate", state: "member", can_manage: false, general_access: "restricted" };
+  const sharedSession = {task_id:"t1",kind:"acp",program:"codex"};
+  const { type, submit, posts } = globalThis.__agentChatHarness;
+  const view = await mount({taskId:"t1"}, {task:computerTask(),sessions:[sharedSession],taskAccess:access});
+  try {
+    await connect(); await deliver(rows.prompt(1,"Previous message"), rows.chunk("Codex answer"), rows.done(1));
+    assert.ok(view.composer("acp"));
+    assert.equal(view.composer("acp").__props.showModelPicker, false);
+    await type(view,"acp","Continue the same agent"); await submit(view,"acp");
+    const body = posts("/send").at(-1).body;
+    assert.equal(body.text,"Continue the same agent");
+    for (const key of ["model","mode","config","computer_id","program"]) assert.equal(key in body,false,key);
+    await click(view.host.querySelector("[data-share-entry]")); await click(button(view,"复制文本"));
+    assert.match(copied.at(-1), /Codex/);
   } finally { await view.unmount(); }
 });

@@ -811,6 +811,9 @@ function AgentChatInner({
   const accessRights = taskAccessRights(accessState.access, taskId);
   const canManageTask = accessRights.canManage && !hostReadOnly;
   const readOnly = hostReadOnly || !accessRights.canSend;
+  // Keep a newly created task's composer mounted while identity is checked.
+  // Its input/send controls remain locked until the server grants access.
+  const replaceComposer = Boolean(taskId && !accessRights.canSend && !accessState.loading);
   const [knownParticipants, setKnownParticipants] = useState({ taskId: "", count: 1 });
   const [shareOpenRequest, setShareOpenRequest] = useState(0);
   const showAuthors = (accessState.access?.participant_count ?? 1) > 1 ||
@@ -2258,7 +2261,7 @@ function AgentChatInner({
     const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
-    const choice = retry?.choice ?? acpPicker.forSend();
+    const choice = canManageTask ? retry?.choice ?? acpPicker.forSend() : {};
     const key = acpMessageKey(text, uploaded);
     if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
@@ -2308,8 +2311,8 @@ function AgentChatInner({
       const sent = acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
       const body = {
         client_message_id: clientMessageId,
-        ...((retry?.program || acpProgram) ? { program: retry?.program || acpProgram! } : {}),
-        ...((retry?.computerId || acpComputerId) ? { computer_id: retry?.computerId || acpComputerId! } : {}),
+        ...(canManageTask && (retry?.program || acpProgram) ? { program: retry?.program || acpProgram! } : {}),
+        ...(canManageTask && (retry?.computerId || acpComputerId) ? { computer_id: retry?.computerId || acpComputerId! } : {}),
         text,
         ...(uploaded.length ? { attachments: uploaded } : {}),
         ...changedChoices(choice, sent),
@@ -2851,7 +2854,7 @@ function AgentChatInner({
     assistantLabel: acpSharePane ? PROGRAM_LABEL[acpRowsProgram as keyof typeof PROGRAM_LABEL] || acpRowsProgram || undefined : undefined,
   });
   // W5 share fix (2026-10-31): the select mode lives in the shown conversation's
-  // own stream (its footer becomes the action bar).
+  // own stream; selection actions stay in the header panel.
   const sharePaneShown = cloudPaneShown || acpSharePane;
   const exitShare = share.exit;
   useEffect(() => {
@@ -3410,7 +3413,8 @@ function AgentChatInner({
       <div data-agent-chat-footer className="shrink-0 border-t border-stone-100 px-3 py-3">
         {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，
             与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。
-            选段模式下**这一整块**换成操作条，退出即恢复。宽度与正文列同一常量。 */}
+            Selection actions stay in the header; the composer keeps its place. */}
+        {/* Width follows the transcript column. */}
         <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-2`}>
           {pane.footer}
         </div>
@@ -3535,7 +3539,7 @@ function AgentChatInner({
       </>
     ),
     overlay: backToLatest,
-    footer: taskId && !accessRights.canSend ? (
+    footer: taskId && replaceComposer ? (
       <TaskAccessComposer taskId={taskId} {...accessState} onRefresh={accessState.refresh} />
     ) : (
             <>
@@ -3665,7 +3669,7 @@ function AgentChatInner({
       </>
     ),
     overlay: null,
-    footer: taskId && !accessRights.canSend ? (
+    footer: taskId && replaceComposer ? (
       <TaskAccessComposer taskId={taskId} {...accessState} onRefresh={accessState.refresh} />
     ) : (
       <>

@@ -17,7 +17,7 @@ export function AccessPopover({ open, anchorRef, onClose, title, id, width = 480
       const footer = document.querySelector<HTMLElement>('[data-agent-chat-footer]:not([hidden])');
       const footerTop = footer?.getBoundingClientRect().top;
       const bottom = footerTop && footerTop > (anchor?.bottom ?? 0) ? footerTop - 8 : window.innerHeight - 16;
-      setRoom(Math.max(80, Math.min(560, bottom - (anchor?.bottom ?? 56) - 8)));
+      setRoom(Math.max(0, Math.min(560, bottom - (anchor?.bottom ?? 56) - 8)));
       setNarrow(window.innerWidth < 640);
     };
     measure();
