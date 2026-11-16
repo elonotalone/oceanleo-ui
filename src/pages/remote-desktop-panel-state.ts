@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import { type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteMediaStatus } from "../api/remote-desktop";
+import { type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopBilling, type RemoteDesktopClient, type RemoteDesktopDataLane, type RemoteDesktopFrameData, type RemoteDesktopStream, type RemoteDesktopStreamHandlers, type RemoteMediaStatus } from "../api/remote-desktop";
 
 import { type RemoteEarlyMedia } from "./RemoteDesktopVideo";
 
@@ -26,7 +26,9 @@ export interface RemoteDesktopViewState {
   clockUncertainty: number | undefined;
   coarse: boolean;
   keyboard: boolean;
-  mediaMode: "artc";
+  mediaMode: "artc" | "webrtc";
+  mediaStream: RemoteDesktopStream | null;
+  connectionPath: Parameters<NonNullable<RemoteDesktopStreamHandlers["webrtcState"]>>[1] | null;
   mediaStatus: RemoteMediaStatus | null;
   displayId: string | undefined;
   access: RemoteDesktopAccess | null;
@@ -71,6 +73,8 @@ export function useRemoteDesktopPanelContext(requested: RemoteDesktopTicket | nu
     coarse: false,
     keyboard: false,
     mediaMode: "artc",
+    mediaStream: null,
+    connectionPath: null,
     mediaStatus: null,
     displayId: undefined,
     access: null,
@@ -101,7 +105,9 @@ export function useRemoteDesktopPanelContext(requested: RemoteDesktopTicket | nu
     setClockUncertainty: (value: number | undefined | ((previous: number | undefined) => number | undefined)) => model.set("clockUncertainty", value),
     setCoarse: (value: boolean | ((previous: boolean) => boolean)) => model.set("coarse", value),
     setKeyboard: (value: boolean | ((previous: boolean) => boolean)) => model.set("keyboard", value),
-    setMediaMode: (value: "artc" | ((previous: "artc") => "artc")) => model.set("mediaMode", value),
+    setMediaMode: (value: "artc" | "webrtc") => model.set("mediaMode", value),
+    setMediaStream: (value: RemoteDesktopStream | null) => model.set("mediaStream", value),
+    setConnectionPath: (value: RemoteDesktopViewState["connectionPath"]) => model.set("connectionPath", value),
     setMediaStatus: (value: RemoteMediaStatus | null | ((previous: RemoteMediaStatus | null) => RemoteMediaStatus | null)) => model.set("mediaStatus", value),
     setDisplayId: (value: string | undefined | ((previous: string | undefined) => string | undefined)) => model.set("displayId", value),
     setAccess: (value: RemoteDesktopAccess | null | ((previous: RemoteDesktopAccess | null) => RemoteDesktopAccess | null)) => model.set("access", value),
@@ -165,10 +171,28 @@ export function useRemoteDesktopPanelContext(requested: RemoteDesktopTicket | nu
     model.set("phase", value);
   }, [model]);
   const canSend = useCallback(() => !handoffRef.current && !closedRef.current && !model.getSnapshot().reconnecting && !(model.getSnapshot().access?.input_allowed === false) && model.getSnapshot().phase === "active" && Boolean(model.getSnapshot().frame)
-    && (model.getSnapshot().mediaMode !== "artc" || Boolean(model.getSnapshot().mediaReady)), [model]);
+    && Boolean(model.getSnapshot().mediaReady), [model]);
+
+  // Both receivers acknowledge the same decoded geometry before input can start.
+  const acceptMediaFrame = useCallback((width: number, height: number) => {
+    if (closedRef.current) return;
+    markRef.current?.("first_frame");
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
+    const current = model.getSnapshot();
+    const geometry = `${current.displayId || "decoded"}:${width}x${height}`;
+    markRef.current?.("frame_accepted");
+    if (mediaFrameGeometry.current !== geometry || !current.frame || current.frame.width !== width || current.frame.height !== height) {
+      model.set("frame", { image: "", width, height, sequence: 0 });
+    }
+    if (mediaFrameGeometry.current !== geometry) streamRef.current?.acknowledgeMediaFrame?.();
+    mediaFrameGeometry.current = geometry;
+    model.set("mediaReady", true);
+    // Input recovery is independent of decoded frames; only the peer's playing state clears that notice.
+    if (current.mediaMode === "artc") model.set("mediaNotice", "");
+  }, [model]);
 
   const acceptMediaStatus = useCallback((value: RemoteMediaStatus | null) => model.set("mediaStatus", value), [model]);
-  return { ...snapshot, ...setters, model, canSend, clearLocalInput, releaseInput, updatePhase, acceptMediaStatus, inputCleanup,
+  return { ...snapshot, ...setters, model, canSend, clearLocalInput, releaseInput, updatePhase, acceptMediaStatus, acceptMediaFrame, inputCleanup,
     qualityRef, sessionRef, diagnosticsRef, earlyMediaRef, sessionClientRef, completedHandoff, handoffRef, agentRef, measurements, mediaFrameGeometry, laneRef, videoRef, stageRef, imageRef, inputRef, streamRef, streamModeRef, closedRef, abortRef, previousCloseRef, reconnectAttempts, reconnectTicket, recoveryWindow, markRef, queueRef, pumpingRef, sequenceRef, heldKeys, pointerRef, pendingClick, clickTimer, composing, inputEpoch, moveRef, moveTimer, toolbarRoot, toolbarPanel, positionKey, dragging, ignoreHandleClick };
 }
 export type RemoteDesktopPanelContext = ReturnType<typeof useRemoteDesktopPanelContext>;

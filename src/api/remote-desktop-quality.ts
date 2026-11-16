@@ -31,15 +31,26 @@ export interface RemoteDesktopViewerReport {
 /** K4 ten-second display window; publisher is fixed numeric data from the device. */
 export interface RemoteDesktopQualityWindow {
   v: 1; device_id: string; session_id: string; window_start_ms: number;
-  viewer: RemoteDesktopViewerReport; publisher?: Record<string, number>;
+  viewer: Partial<RemoteDesktopViewerReport>; publisher?: Record<string, number>;
   media_diagnostics?: RemoteDesktopQualityReport["media_diagnostics"];
+  transport?: "artc-v1" | "webrtc-v1";
+  steps?: Partial<Record<QualityStep, number>>;
+  input?: { sent_executed?: QualityPercentiles };
+  video?: Partial<QualityVideoSummary>;
+  path?: QualityPath;
 }
-export interface QualityPercentiles { n: number; p50?: number; p90?: number; p99?: number; max?: number }
+export interface QualityPercentiles { n: number; p50?: number; p90?: number; p95?: number; p99?: number; max?: number }
+export interface QualityPath {
+  local_type?: "host" | "srflx" | "prflx" | "relay"; remote_type?: "host" | "srflx" | "prflx" | "relay";
+  address_family?: "ipv4" | "ipv6"; protocol?: "udp" | "tcp"; relay_region?: string; rtt_ms?: number;
+}
 export interface QualityVideoSummary {
   samples: number; fps_p50?: number; fps_p10?: number; jitter_buffer_ms_avg?: number; rtt_p50_ms?: number; rtt_p90_ms?: number;
   packets_received?: number; packets_lost?: number; nack?: number; pli?: number; fir?: number; freeze_count?: number; freeze_ms?: number;
   frames_decoded?: number; frames_dropped?: number; width?: number; height?: number;
   codec?: "h264" | "h265" | "vp8" | "vp9" | "av1" | "other"; relay?: boolean;
+  picture_age?: QualityPercentiles; frames_rendered?: number;
+  picture_age_source?: "captureTime" | "receiveTime" | "unknown";
 }
 export interface QualityEnvironment {
   browser: "chrome" | "edge" | "firefox" | "safari" | "webview" | "oceanleo_app" | "other";
@@ -47,14 +58,14 @@ export interface QualityEnvironment {
   site: "global" | "cn" | "oceanbizs" | "dev" | "other";
 }
 export interface RemoteDesktopQualityReport {
-  v: 1; device_id: string; session_id?: string; attempt: number; transport?: "artc-v1";
-  media: "artc" | "legacy" | "none"; end_reason: string; duration_ms: number; reconnects: number; media_renewals: number;
+  v: 1; device_id: string; session_id?: string; attempt: number; transport?: "artc-v1" | "webrtc-v1";
+  media: "artc" | "webrtc" | "legacy" | "none"; end_reason: string; duration_ms: number; reconnects: number; media_renewals: number;
   media_diagnostics?: { sdk_error_codes?: number[]; renew_reasons?: string[] };
   steps: Partial<Record<QualityStep, number>>;
-  input: { ws_count: number; dc_count: number; accepted?: QualityPercentiles; executed?: QualityPercentiles };
-  video?: QualityVideoSummary; env: QualityEnvironment;
+  input: { ws_count: number; dc_count: number; accepted?: QualityPercentiles; executed?: QualityPercentiles; sent_executed?: QualityPercentiles };
+  video?: QualityVideoSummary; env: QualityEnvironment; path?: QualityPath;
 }
-export type QualityStep = "create_ms" | "consent_ms" | "stream_open_ms" | "active_ms" | "media_negotiate_ms" | "media_prepare_ms" | "media_join_started_ms" | "media_joined_ms" | "artc_join_ms" | "first_frame_ms";
+export type QualityStep = "create_ms" | "consent_ms" | "stream_open_ms" | "active_ms" | "media_negotiate_ms" | "media_prepare_ms" | "media_join_started_ms" | "media_joined_ms" | "artc_join_ms" | "first_frame_ms" | "session_created_ms" | "descriptor_received_ms" | "offer_sent_ms" | "answer_received_ms" | "ice_connected_ms" | "first_frame_decoded_ms" | "first_frame_presented_ms";
 export type QualityMediaState = "joining" | "waiting_frame" | "playing" | "reconnecting" | "error";
 
 const MAX_MS = 600_000;
@@ -373,6 +384,8 @@ export class RemoteDesktopQualityHub {
           if (result.error !== "aborted") collector.finish(qualityCode(result.error ?? (result.status ? `http_${result.status}` : "unknown")));
           return result;
         }
+        // The WebRTC peer owns its window/final telemetry for this transport.
+        if (result.data.transport === "webrtc-v1") return result;
         collector.sessionId = result.data.session_id;
         collector.transport = "artc-v1";
         if (result.data.state === "pending_consent") collector.sessionState("pending_consent");
@@ -388,6 +401,7 @@ export class RemoteDesktopQualityHub {
     if (client.openStream) {
       const open = client.openStream.bind(client);
       wrapped.openStream = async (deviceId, sessionId, handlers, options) => {
+        if (options?.transport === "webrtc-v1") { hub.collectors.delete(sessionId); return open(deviceId, sessionId, handlers, options); }
         const collector = hub.forSession(sessionId);
         if (!collector) return open(deviceId, sessionId, handlers, options);
         const measured: RemoteDesktopStreamHandlers = {

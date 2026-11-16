@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { remoteDesktopClient, type RemoteDesktopBilling } from "../api/remote-desktop";
 
 import { RemoteDesktopVideo, remoteFrameStyle } from "./RemoteDesktopVideo";
+import { RemoteDesktopWebRtcVideo } from "./RemoteDesktopWebRtcVideo";
 import { useUI } from "../i18n/ui/useUI";
 import { remoteDesktopRemainingSeconds } from "./remote-desktop-input";
 import { remoteDesktopPortal, releaseRemoteDesktopFullscreen, requestRemoteDesktopFullscreen } from "./remote-desktop-fullscreen";
@@ -33,10 +34,10 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
   const context = useRemoteDesktopPanelContext(props.ticket, baseClient, agent, props.onDiagnostics);
   const { ticket, phase, frame, message, handingBack, handoffFrozen, handoffDone, toolbar, measuring,
     pictureMeasurements, clockUncertainty, coarse, keyboard, mediaMode, mediaStatus, displayId, access,
-    billing, mediaDiagnostic, mediaNotice, mediaReady, reconnecting, reconnectDeadline, idleDeadline,
+    billing, mediaDiagnostic, mediaNotice, mediaReady, mediaStream, connectionPath, reconnecting, reconnectDeadline, idleDeadline,
     clockNow, connectTiming, dock, fullscreen, setTicket, setFrame, setMessage, setToolbar, setMeasuring,
     setKeyboard, setDisplayId, setDock, sessionRef, completedHandoff, stageRef, imageRef, inputRef,
-    streamRef, streamModeRef, queueRef, pointerRef, toolbarRoot, toolbarPanel, positionKey, dragging,
+    streamRef, streamModeRef, queueRef, pointerRef, videoRef, toolbarRoot, toolbarPanel, positionKey, dragging,
     ignoreHandleClick, model, releaseInput, updatePhase } = context;
   const session = useRemoteDesktopSession(context, props);
   const { client, disconnect, handBack } = session;
@@ -64,11 +65,13 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
         onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) releaseInput(); }}
         /* D6: the controller's own OS cursor stays visible over the video; no remote cursor is drawn. */
         style={{ position: "absolute", inset: 0, outline: "none", touchAction: "none", userSelect: "none", cursor: "default", overflow: "hidden" }}>
-        {mediaMode === "artc" && (active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? <RemoteDesktopVideo {...videoProps} sessionId={sessionRef.current} /> :
+        {(active || phase === "connecting" || phase === "reconnecting") && sessionRef.current ? mediaMode === "webrtc"
+          ? <RemoteDesktopWebRtcVideo stream={mediaStream} videoRef={videoRef} showFrame={Boolean(frame)} />
+          : <RemoteDesktopVideo {...videoProps} sessionId={sessionRef.current} /> :
           <div role="status" style={{ height: "100%", display: "grid", placeItems: "center", fontSize: 14 }}>{tt(status, { host: mediaDiagnostic?.blocked_host ?? "", code: String(mediaDiagnostic?.sdk_error ?? "") })}</div>}
-        {reconnecting || mediaMode === "artc" && (active || phase === "connecting") && !mediaReady ? <div role="status" data-remote-reconnecting-notice={reconnecting || undefined} data-remote-media-notice={!reconnecting || undefined}
-          style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "rgba(25,28,32,.92)", pointerEvents: "none" }}>{reconnecting ? <>{tt(message || "网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice)}</div> : null}
-        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || (mediaMode === "artc" && !mediaReady)} inputMode={coarse && !keyboard ? "none" : "text"}
+        {reconnecting || (active || phase === "connecting") && (!mediaReady || Boolean(mediaNotice)) ? <div role="status" data-remote-reconnecting-notice={reconnecting || undefined} data-remote-media-notice={!reconnecting || undefined}
+          style={{ position: "absolute", bottom: "max(16px, env(safe-area-inset-bottom))", left: "50%", transform: "translateX(-50%)", maxWidth: "calc(100% - 32px)", padding: "7px 12px", borderRadius: 16, fontSize: 12, background: "var(--panel)", color: "var(--text)", pointerEvents: "none" }}>{reconnecting ? <>{tt(message || "网络连接中断，正在重新连接…")} · {reconnectCopy}</> : tt(mediaNotice || "已发出请求，等这台电脑显示画面…")}</div> : null}
+        <textarea ref={inputRef} data-remote-input aria-label={tt("远程桌面键盘输入")} disabled={!active || !frame || !mediaReady} inputMode={coarse && !keyboard ? "none" : "text"}
           autoCapitalize="off" autoComplete="off" autoCorrect="off" spellCheck={false}
           style={{ position: "absolute", left: "50%", top: "50%", width: 1, height: 1, opacity: 0, padding: 0, border: 0, resize: "none" }} />
       </div>
@@ -95,11 +98,16 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
           onPointerCancel={() => { dragging.current = null; ignoreHandleClick.current = true; }}
           onClick={() => { if (ignoreHandleClick.current) { ignoreHandleClick.current = false; return; } releaseInput(); setToolbar(value => !value); }}
           style={{ width: 32, height: 32, borderRadius: "50%", border: "1px solid #ffffff40", background: "#25282deb", color: "white", touchAction: "none", padding: 0, position: "relative", cursor: "grab" }}>
-          <span aria-hidden="true">O</span><span aria-hidden="true" style={{ position: "absolute", width: 7, height: 7, borderRadius: "50%", right: 0, bottom: 0, background: ended ? "#f87171" : active && !reconnecting && (mediaMode !== "artc" || mediaReady) ? "#4ade80" : "#fbbf24" }} />
+          <span aria-hidden="true">O</span><span aria-hidden="true" style={{ position: "absolute", width: 7, height: 7, borderRadius: "50%", right: 0, bottom: 0, background: ended ? "#f87171" : active && !reconnecting && mediaReady ? "#4ade80" : "#fbbf24" }} />
         </button>
         {toolbar ? <div ref={toolbarPanel} data-remote-toolbar role="dialog" aria-label={tt("远程桌面控制")} style={{ position: "absolute", width: 264, boxSizing: "border-box", maxWidth: "calc(100vw - 64px)", maxHeight: "calc(100dvh - 32px)", overflow: "auto", padding: 12, borderRadius: 12, background: "#191c20f5", fontSize: 12, boxShadow: "0 4px 24px #0006", display: "flex", flexDirection: "column", gap: 10 }}>
           <strong style={{ overflowWrap: "anywhere" }}>{deviceName}</strong>
-          {active && (mediaMode !== "artc" || mediaReady) ? <span>{tt("已连接")}{frame ? ` · ${frame.width}×${frame.height}` : ""}{!measuring ? ` · ${tt("画面延迟未知")}` : ""}</span> : null}
+          {active && mediaReady ? <span>{tt("已连接")}{frame ? ` · ${frame.width}×${frame.height}` : ""}{!measuring ? ` · ${tt("画面延迟未知")}` : ""}</span> : null}
+          {mediaMode === "webrtc" && connectionPath?.local_type && connectionPath.remote_type ? <details data-remote-connection-details style={{ color: "inherit", overflowWrap: "anywhere" }}>
+            <summary>{tt(connectionPath.local_type === "relay" || connectionPath.remote_type === "relay" ? "通过中继连接" : "设备直接连接")}</summary>
+            <small>{connectionPath.local_type} → {connectionPath.remote_type} · {connectionPath.protocol} · {connectionPath.address_family}{connectionPath.relay_region ? ` · ${connectionPath.relay_region}` : ""}</small>
+            {connectionPath.rtt_ms !== undefined ? <div>{tt("往返延迟：{ms} 毫秒", { ms: String(Math.round(connectionPath.rtt_ms)) })}</div> : null}
+          </details> : null}
           {active && access?.input_allowed === false ? <span data-remote-view-only>{tt("对方仅允许查看")}</span> : null}
           {active && (mediaStatus?.displays?.length ?? 0) > 1 ? <select aria-label={tt("显示器")} value={displayId || mediaStatus?.geometry?.display_id || ""} onChange={(event) => { invalidateMediaFrame(); setDisplayId(event.target.value); }}>{mediaStatus?.displays?.map((display) => <option key={display.display_id} value={display.display_id}>{display.label} · {display.width}×{display.height}</option>)}</select> : null}
           {coarse && active ? <button data-remote-keyboard-toggle type="button" aria-pressed={keyboard} onMouseDown={(event) => event.preventDefault()} onClick={() => {

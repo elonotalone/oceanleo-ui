@@ -69,6 +69,7 @@ export function RemoteDesktopVideo({ client, deviceId, sessionId, videoRef, earl
       if (!negotiated) { negotiated = true; timing("media_negotiated_ms"); }
       if (abort.signal.aborted) throw new Error("aborted");
       if (!response.ok || !response.data) throw Object.assign(new Error(response.error || "media_unavailable"), { status: response.status });
+      if (response.data.media.transport !== "artc-v1") throw new Error("media_artc_required");
       callbacks.current.onStatus(response.data.media_status);
       if (response.data.media_status?.state === "failed") {
         throw new RemotePublisherStatusError(response.data.media_status.error);
