@@ -48,6 +48,21 @@ export interface BayDigitalPurchase {
   entitled?: boolean;
 }
 
+/** Official receipts share the purchase feed without inventing seller listings. */
+export type BayAssetPurchase = Omit<BayDigitalPurchase, "listing_id"> & {
+  listing_id: string | null;
+  ref?: AssetRef;
+  template_id?: string;
+  title?: string;
+  summary?: string;
+  libraryIdentity?: { kind: "artifact" | "folder"; id: string };
+  updateAvailable?: boolean;
+};
+
+export function listPurchasedBayAssets(limit = 100): Promise<{ items: BayAssetPurchase[] }> {
+  return bayGet(`/v1/bay/assets/purchases?${new URLSearchParams({ limit: String(limit) })}`);
+}
+
 export function listBayAssets(params: { site?: string; q?: string; limit?: number } = {}): Promise<{ items: BayDigitalAsset[] }> {
   const query = new URLSearchParams();
   if (params.site) query.set("site", params.site);
@@ -95,15 +110,15 @@ export function resolveBayAsset(ref: AssetRef, options?: { signal?: AbortSignal 
 }
 
 export interface BayAssetClaim extends BayResolvedAsset {
-  ref?: Extract<AssetRef, { kind: "platform" }>;
-  libraryIdentity: Extract<AssetRef, { kind: "platform" | "listing" }>;
+  ref?: Extract<AssetRef, { kind: "platform" | "template" }>;
+  libraryIdentity: AssetRef;
   collectionAssetId?: string;
   claim?: { id: string; status: "settled"; created_at?: string };
   purchase?: BayDigitalPurchase;
 }
 
 /** Platform identity is intentionally separate from a paid seller listing id. */
-export function claimBayAsset(ref: Extract<AssetRef, { kind: "platform" | "listing" }>): Promise<BayAssetClaim> {
+export function claimBayAsset(ref: Extract<AssetRef, { kind: "platform" | "template" | "listing" }>): Promise<BayAssetClaim> {
   return bayPost<BayAssetClaim>("/v1/bay/assets/claim", { ref });
 }
 
