@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
+import { mockRtpReceiver } from "./helpers/remote-desktop-webrtc.mjs";
 
 const api = await import(await compileModule("src/api/remote-desktop.ts", {
   "../lib/auth/client": dataModule('export async function accessToken(){ return globalThis.__webrtcToken === undefined ? "viewer-token" : globalThis.__webrtcToken; }'),
@@ -22,11 +23,11 @@ class Channel {
   close() { this.readyState = "closed"; }
 }
 class Peer {
-  static all = []; channels = []; connectionState = "new"; iceConnectionState = "new"; remoteDescription = null; closed = false; configurations = [];
+  static all = []; channels = []; offers = []; connectionState = "new"; iceConnectionState = "new"; remoteDescription = null; closed = false; configurations = [];
   constructor(configuration) { this.configuration = configuration; Peer.all.push(this); }
   addTransceiver() { return { receiver: { jitterBufferTarget: 100 }, setCodecPreferences() {} }; }
   createDataChannel(label) { const channel = new Channel(label); this.channels.push(channel); return channel; }
-  async createOffer() { return { type: "offer", sdp: "opaque-offer" }; }
+  async createOffer(options) { this.offers.push(options); return { type: "offer", sdp: "opaque-offer" }; }
   async setLocalDescription(value) { this.localDescription = value; }
   async setRemoteDescription(value) { this.remoteDescription = value; }
   async addIceCandidate(value) { this.candidate = value; }
@@ -43,6 +44,7 @@ class Socket {
   message(data) { this.onmessage?.({ data: JSON.stringify(data) }); }
 }
 function setup(t, reply = () => ({ stored: true })) {
+  mockRtpReceiver(t);
   Peer.all = []; Socket.all = [];
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval"] });
   let now = 1000;
@@ -106,6 +108,22 @@ test("signalling reconnect keeps the same actual peer, video and input channels 
   assert.equal(Peer.all.length, 1); assert.equal(peer.remoteDescription.sdp, "opaque-answer");
   assert.equal(input.readyState, "open"); assert.equal(peer.closed, false); assert.deepEqual(v.errors, []);
   assert.ok(h.calls.every(call => call.init.method !== "DELETE"));
+});
+
+for (const reason of ["peer_failed", "ice_restart_required"]) test(`signalled ${reason} recovers within the existing authenticated session`, async t => {
+  const h = setup(t); const v = await open(h); const old = Peer.all[0];
+  v.socket.message({ type: "signal", data: { k: "bye", gen: 1, reason } });
+  await h.tick(200);
+  const replacement = reason === "peer_failed";
+  const current = Peer.all.at(-1);
+  assert.equal(Peer.all.length, replacement ? 2 : 1); assert.equal(old.closed, replacement);
+  assert.deepEqual(current.offers.at(-1), replacement ? undefined : { iceRestart: true });
+  assert.deepEqual(v.socket.sent.filter(item => item.type === "signal" && item.data.k === "offer").map(item => item.data.gen), [1, replacement ? 2 : 1]);
+  assert.equal(Socket.all.length, 1); assert.equal(v.socket.readyState, Socket.OPEN);
+  assert.ok(v.states.every(([state]) => state !== "closed")); assert.deepEqual(v.errors, []);
+  assert.equal(v.stream.send({ kind: "click", x: .5, y: .5 }), true);
+  assert.equal(current.channels.find(channel => channel.label === "rd-input").sent.at(-1).sid, "sid");
+  assert.ok(h.calls.every(call => call.init.method !== "DELETE" && !call.url.endsWith("/sessions") && !call.url.endsWith("/quality")));
 });
 
 test("first decoded frame drives video acknowledgement and nested final telemetry", async t => {
