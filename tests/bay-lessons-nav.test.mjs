@@ -12,9 +12,9 @@ function src(rel) {
   return readFileSync(join(REPO, "src", rel), "utf8");
 }
 
-test("BAY_FEED_KINDS 常量是六值（URL 合同，含 other），逛页是两个下拉而不是并排的键", () => {
+test("BAY_FEED_KINDS 常量是六值（URL 合同，含 other），默认栏是现成文件（运营方 2026-11-17：分类优先）", () => {
   assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "lesson", "other", "request"]);
-  assert.equal(links.DEFAULT_BAY_FEED_KIND, "service");
+  assert.equal(links.DEFAULT_BAY_FEED_KIND, "asset");
   const list = src("shell/bay/shell/BayList.tsx");
   assert.match(list, /data-bay-browse-intent=\{selling \? "sell" : "buy"\}/);
   assert.doesNotMatch(list, /BAY_FEED_KINDS\.map\(/);
