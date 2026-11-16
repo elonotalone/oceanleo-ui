@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { imageSaveReceiptItem } from "../image-editor/image-save-receipt";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
@@ -48,7 +49,7 @@ import {
 import { withEditorHistoryCommand } from "../workbench-material-command";
 import { advancedRootItemId } from "../advanced-session";
 import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePanel";
-import { imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
+import { imageSourceFailureMessage, imageSourcePersistenceAdmitted } from "./non-richdoc-source-gate";
 import {
   imageStageShowsSourceLoadOverlay,
 } from "../image-editor/image-source-ready";
@@ -70,6 +71,7 @@ export function ImageRoute({
   localProject,
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const tt = useUI();
   const [activeItem, setActiveItem] = useState(item);
   useEffect(() => {
     // Same picture, new revision / preview URL: adopt the receipt in place.
@@ -105,13 +107,13 @@ export function ImageRoute({
   editorCollabRef.current = editor.collab;
   // 载入完成：补齐旧稿对象的 id，把画布现状交给协同层（它据此种子或对齐）
   useEffect(() => {
-    if (editor.loading) {
+    if (editor.loading || !editor.sourceReady) {
       setLocalSnapshot(null);
       return;
     }
     editor.collab.ensureIds();
     setLocalSnapshot(editor.collab.snapshot());
-  }, [editor.loading]);
+  }, [editor.loading, editor.sourceReady, editor.openIdentity]);
   const adoptingRevisionRef = useRef(false);
   const collab = useEntityCollab<ImageSnapshot>({
     item: { artifactId: activeItem.artifactId, title: activeItem.title },
@@ -119,7 +121,7 @@ export function ImageRoute({
     rootName: IMAGE_COLLAB_ROOT,
     toEntities: imageToEntities,
     fromEntities: imageFromEntities,
-    local: editor.loading ? null : localSnapshot,
+    local: editor.loading || !editor.sourceReady ? null : localSnapshot,
     applyRemote: (state) => {
       editor.collab.applyRemote(state);
       if (adoptingRevisionRef.current) {
@@ -566,9 +568,7 @@ export function ImageRoute({
               {!editor.loading && !editor.sourceReady ? (
                 <EditorSourceFailurePanel
                   message={
-                    imageAdmitted.ok
-                      ? editor.error || "图片源未成功载入，未改用空白画布覆盖原件。"
-                      : imageAdmitted.error
+                    tt(imageSourceFailureMessage(editor))
                   }
                   onReload={editor.reload}
                   variant="overlay"

@@ -130,17 +130,23 @@ export async function vectorSvgToSnapshot(
     minX?: number;
     minY?: number;
   };
-  const width = Math.max(
-    1,
-    Math.round(options.viewBoxWidth || options.width || 0),
-  );
-  const height = Math.max(
-    1,
-    Math.round(options.viewBoxHeight || options.height || 0),
-  );
-  if (!width || !height) throw new VectorSvgError("矢量图缺少画布尺寸（width/height 或 viewBox）。");
-  const minX = Number(options.minX) || 0;
-  const minY = Number(options.minY) || 0;
+  let width = Math.round(options.viewBoxWidth || options.width || 0);
+  let height = Math.round(options.viewBoxHeight || options.height || 0);
+  let minX = Number(options.minX) || 0;
+  let minY = Number(options.minY) || 0;
+  if (!(width > 0 && height > 0)) {
+    // Kenney and other path icons may omit all viewport metadata and draw
+    // around (0, 0), including negative coordinates. Use Fabric's transformed
+    // geometry rather than a 1px/default page that silently clips the artwork.
+    const bounds = parsed.objects.filter((object) => object !== null).map((object) => object.getBoundingRect());
+    minX = Math.floor(Math.min(...bounds.map((box) => box.left)));
+    minY = Math.floor(Math.min(...bounds.map((box) => box.top)));
+    width = Math.ceil(Math.max(...bounds.map((box) => box.left + box.width))) - minX;
+    height = Math.ceil(Math.max(...bounds.map((box) => box.top + box.height))) - minY;
+  }
+  if (![minX, minY, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new VectorSvgError("这份矢量图没有可编辑的图形元素。");
+  }
   const objects: Record<string, unknown>[] = [
     {
       type: "Rect",

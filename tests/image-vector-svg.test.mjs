@@ -5,6 +5,7 @@
  */
 import "./helpers/w1-jsdom-window.mjs";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
@@ -262,7 +263,7 @@ test("features Fabric keeps open editable directly (no conversion gate)", async 
 test("lossy SVG opens view-only until the explicit convert action; the original is untouched", () => {
   const hook = read("src/shell/image-editor/use-fabric-image-editor.ts");
   assert.match(hook, /const conversionPending = vectorLosses\.length > 0 && !vectorConverted/);
-  assert.match(hook, /setReadOnly\(collabReadOnly \|\| conversionPending\)/);
+  assert.match(hook, /setReadOnly\(!sourceReady \|\| collabReadOnly \|\| conversionPending\)/);
   assert.match(hook, /confirmVectorConversion: \(\) => setVectorConverted\(true\)/);
   // a gated open never marks the document dirty, so nothing autosaves
   assert.match(hook, /setVectorLosses\(scene\.losses\)/);
@@ -280,4 +281,30 @@ test("the project schema sent with a vector revision is the fabric-image project
   assert.match(persistence, /"vector-editor"/);
   const project = createFabricImageProject({ json: { objects: [] }, doc: { width: 1, height: 1 }, canvasBackground: "#fff" });
   assert.equal(project.schema, "oceanleo.fabric-image.v1");
+});
+
+test("Kenney Board Game Info 18+ has safe paths without viewport metadata; fit the full drawing", async () => {
+  const svg = read("tests/fixtures/kenney-board-game-info-18.svg");
+  assert.equal(createHash("sha256").update(svg).digest("hex"), "112eafe9a5f414a4b2ce1f9546b718de647abd2856bf9ad83c51a27f311f13ca");
+  assert.doesNotMatch(svg, /viewBox=|width=|height=/);
+  const clean = sanitizeVectorSource(svg);
+  assert.equal(clean.removed, 0);
+  const { snapshot, layerCount } = await vectorSvgToSnapshot(fabric, svg);
+  assert.equal(layerCount, 4);
+  assert.deepEqual(snapshot.doc, { width: 130, height: 130 });
+  const canvas = canvasFor(snapshot);
+  try {
+    await canvas.loadFromJSON(snapshot.json);
+    for (const object of canvas.getObjects().slice(1)) {
+      const box = object.getBoundingRect();
+      assert.ok(box.left >= -0.01 && box.top >= -0.01, JSON.stringify(box));
+      assert.ok(box.left + box.width <= 130.01 && box.top + box.height <= 130.01, JSON.stringify(box));
+    }
+  } finally { await canvas.dispose(); }
+});
+
+test("explicit SVG width/height do not require a viewBox; a non-SVG root still fails", async () => {
+  const {snapshot} = await vectorSvgToSnapshot(fabric, '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="50"><rect width="30" height="20"/></svg>');
+  assert.deepEqual(snapshot.doc, {width:80,height:50});
+  assert.throws(() => sanitizeVectorSource('<html viewBox="0 0 20 20"><path d="M0 0L10 10"/></html>'), /无法解析/);
 });
