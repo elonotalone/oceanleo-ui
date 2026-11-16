@@ -219,3 +219,16 @@ test('page reload advances the same session peer generation without storing cred
   assert.deepEqual([...saved], [['oceanleo.rd.generation.sid','2']]);
   await resumed.viewer.signal({k:'answer',gen:1,sdp:'stale'});assert.equal(resumed.viewer.pc.remoteDescription,undefined);
 });
+
+test('lost recovery answer retries a fresh generation while preserving session and input sequence',async t=>{
+ const h=await harness(t);await h.viewer.start();h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
+ h.viewer.send({kind:'keypress',key:'A'});const seq=h.viewer.lastSequence();h.viewer.pc.state('failed');await h.advance(200);const waiting=h.viewer.pc,gen=h.viewer.gen;
+ await h.advance(5100);assert.notEqual(h.viewer.pc,waiting);assert.equal(h.viewer.gen,gen+1);assert.equal(h.viewer.lastSequence(),seq);assert.deepEqual(h.terminals,[]);
+ await h.viewer.signal({k:'answer',gen,sdp:'late'});assert.equal(h.viewer.pc.remoteDescription,undefined);
+ await h.viewer.signal({k:'answer',gen:h.viewer.gen,sdp:'current'});const answered=h.viewer.pc;await h.advance(6000);assert.equal(h.viewer.pc,answered);
+});
+test('cold unanswered offer and a connected picture do not get a recovery-answer timeout',async t=>{
+ const h=await harness(t);await h.viewer.start();const cold=h.viewer.pc;await h.advance(11000);assert.equal(h.viewer.pc,cold);
+ h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
+ await h.viewer.offer(cold,true);await h.advance(6000);assert.equal(h.viewer.pc,cold);assert.equal(h.frames.length,1);assert.deepEqual(h.terminals,[]);
+});

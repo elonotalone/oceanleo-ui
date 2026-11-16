@@ -88,6 +88,7 @@ export class WebRtcRemoteDesktopViewer {
   private restartDue: number | undefined;
   private restartBackoff = 1000;
   private peerRetryDue: number | undefined;
+  private answerDue: number | undefined;
   private lastPing = -Infinity;
   private lastStats = -Infinity;
   private lastReport: number;
@@ -154,7 +155,7 @@ export class WebRtcRemoteDesktopViewer {
       this.gen++; const gen = this.gen;
       try { sessionStorage.setItem(`oceanleo.rd.generation.${this.descriptor.session_id}`, String(gen)); } catch { /* optional continuity */ }
       this.hostRelayRegion = undefined; this.telemetry.path = undefined;
-      this.candidates = []; this.pendingSignals = []; this.recovery.clear();
+      this.candidates = []; this.pendingSignals = []; this.recovery.clear(); this.answerDue = undefined;
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
       let pc: RTCPeerConnection;
@@ -242,6 +243,7 @@ export class WebRtcRemoteDesktopViewer {
     } catch { return false; /* Never send an unfiltered offer when preferences cannot be applied. */ }
   }
   private connected(): void {
+    this.answerDue = undefined;
     this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000; this.peerRetryDue = undefined;
     this.telemetry.step("ice_connected_ms"); this.updateState();
   }
@@ -260,7 +262,7 @@ export class WebRtcRemoteDesktopViewer {
   private transmit(data: WebRtcSignal): void {
     if (this.ended) return;
     let sent = false; try { sent = this.options.sendSignal(data); } catch { /* the direct peer remains alive */ }
-    if (sent) { if (data.k === "offer") this.telemetry.step("offer_sent_ms"); return; }
+    if (sent) { if (data.k === "offer") this.offerAccepted(); return; }
     if (data.k === "offer") {
       this.pendingSignals = this.pendingSignals.filter(s => s.k !== "offer" && (s.k !== "candidate" || s.gen === data.gen));
       this.pendingSignals.unshift(data);
@@ -268,12 +270,18 @@ export class WebRtcRemoteDesktopViewer {
     const candidates = this.pendingSignals.filter(s => s.k === "candidate");
     if (candidates.length > 64) this.pendingSignals.splice(this.pendingSignals.indexOf(candidates[0]), 1);
   }
+  private offerAccepted(): void {
+    this.telemetry.step("offer_sent_ms");
+    // A dropped recovery offer otherwise leaves a new peer waiting forever.
+    // Cold signalling may take seconds; an existing connected picture is healthy.
+    if (this.hasFrame && !this.pathSwitch && this.pc?.connectionState !== "connected") this.answerDue = this.now() + 5000;
+  }
   flushSignals(): void {
     if (this.ended) return;
     while (this.pendingSignals.length) {
       let sent = false; try { sent = this.options.sendSignal(this.pendingSignals[0]); } catch { /* retry on next tick */ }
       if (!sent) break;
-      if (this.pendingSignals[0].k === "offer") this.telemetry.step("offer_sent_ms");
+      if (this.pendingSignals[0].k === "offer") this.offerAccepted();
       this.pendingSignals.shift();
     }
   }
@@ -301,6 +309,7 @@ export class WebRtcRemoteDesktopViewer {
       if (data.k === "answer" && typeof data.sdp === "string") {
         await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
         if (this.pc !== pc || this.ended) return;
+        this.answerDue = undefined;
         if (this.pathSwitch) this.pathSwitch.answered = true;
         this.telemetry.step("answer_received_ms");
         for (const candidate of this.candidates.splice(0)) { if (this.pc === pc && !this.ended) await pc.addIceCandidate(candidate); }
@@ -466,6 +475,9 @@ export class WebRtcRemoteDesktopViewer {
     for (const [label, retry] of this.recovery) if (now >= retry.due) {
       // Give DCEP time to open. Retiring a connecting replacement every 200ms can starve a slow path.
       retry.due = now + Math.max(2000, retry.backoff); retry.backoff = Math.min(2000, retry.backoff * 2); this.createChannel(label);
+    }
+    if (this.answerDue !== undefined && now >= this.answerDue && !this.creating && !this.negotiatingPeer && this.pc?.connectionState !== "connected") {
+      this.answerDue = undefined; this.peerRetryDue = now;
     }
     if (this.peerRetryDue !== undefined && now >= this.peerRetryDue) { this.peerRetryDue = undefined; void this.createConnection(); }
     else if (this.restartDue !== undefined && now >= this.restartDue && this.pc) {
