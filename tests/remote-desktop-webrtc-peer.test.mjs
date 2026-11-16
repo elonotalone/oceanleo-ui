@@ -285,3 +285,40 @@ test('cold answer connected before its deadline cancels the ICE watchdog',async 
  await h.viewer.signal({k:'answer',gen:1,sdp:'answer'});await h.advance(4900);h.open();await h.advance(7000);
  assert.equal(h.viewer.pc,pc);assert.equal(h.viewer.gen,1);assert.deepEqual(h.terminals,[]);
 });
+
+for (const online of [true, false]) test(`local ICE waits behind its offer while local SDP is pending (online=${online})`, async t => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  const h = await harness(t, { createPeer: configuration => {
+    const pc = new FakePeer(configuration);
+    pc.setLocalDescription = async value => {
+      pc.onicecandidate({ candidate: { candidate: 'early-local', sdpMid: '0', sdpMLineIndex: 0 } });
+      await gate;
+      pc.localDescription = value;
+    };
+    return pc;
+  } });
+  h.signalAvailable(online);
+  const starting = h.viewer.start(); await settle();
+  h.viewer.flushSignals();
+  assert.deepEqual(h.signals, [], 'neither tick nor candidate callback can send before local SDP');
+  release(); await starting;
+  h.signalAvailable(true); h.viewer.flushSignals();
+  assert.deepEqual(h.signals.map(signal => signal.k), ['offer', 'candidate']);
+  assert.equal(h.signals[1].candidate, 'early-local');
+  assert.equal(h.signals[0].gen, h.signals[1].gen);
+});
+
+test('failed local SDP discards candidates that have no transmitted offer', async t => {
+  const h = await harness(t, { createPeer: configuration => {
+    const pc = new FakePeer(configuration);
+    pc.setLocalDescription = async () => {
+      pc.onicecandidate({ candidate: { candidate: 'failed-local', sdpMid: '0', sdpMLineIndex: 0 } });
+      throw new Error('local SDP failed');
+    };
+    return pc;
+  } });
+  await h.viewer.start(); h.viewer.flushSignals();
+  assert.deepEqual(h.signals, []);
+  assert.equal(h.viewer.pendingSignals.length, 0);
+});
