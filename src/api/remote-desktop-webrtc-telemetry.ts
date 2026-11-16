@@ -115,13 +115,20 @@ export class WebRtcTelemetry {
     const source = Number.isFinite(metadata.captureTime) ? "captureTime" : Number.isFinite(metadata.receiveTime) ? "receiveTime" : "unknown";
     if (captured !== undefined && Number.isFinite(captured) && presentedAt >= captured) { this.add("ages", presentedAt - captured); if (source !== "unknown") this.add(source, presentedAt - captured); }
   }
+  /** Exact RTP match from the authenticated host, corrected with the rolling minimum-RTT clock. */
+  captureFrameTime(presentedAt: number, captureUnixMs: number): void {
+    const offset = this.clock.offset(this.options.now());
+    if (offset === undefined || !Number.isFinite(presentedAt) || !Number.isFinite(captureUnixMs)) return;
+    const age = this.options.wallNow() + presentedAt - this.options.now() - (captureUnixMs - offset);
+    if (age >= 0 && age < 600_000) this.add("captureTime", age);
+  }
   report(final: boolean, reason = "active"): WebRtcQualityReport {
     const b = final ? this.total : this.window;
     const result: WebRtcQualityReport = {
       v: 1, transport: "webrtc-v1", media: "webrtc", device_id: this.options.deviceId ?? "", session_id: this.options.sessionId,
       attempt: 1, end_reason: reason, duration_ms: integer(this.options.now() - this.options.clickedAt), reconnects: this.reconnects, media_renewals: 0,
       steps: { ...this.steps }, input: { ws_count: 0, dc_count: b.writes, sent_executed: histogramPercentiles(b.input) },
-      video: { picture_age: histogramPercentiles(b.ages), picture_age_source: b.captureTime.size && !b.receiveTime.size ? "captureTime" : b.receiveTime.size && !b.captureTime.size ? "receiveTime" : "unknown", picture_age_by_source: { captureTime: histogramPercentiles(b.captureTime), receiveTime: histogramPercentiles(b.receiveTime) }, frames_rendered: b.frames, freeze_count: b.freezes, freeze_ms: integer(b.freezeMs) },
+      video: { picture_age: histogramPercentiles(b.captureTime.size ? b.captureTime : b.ages), picture_age_source: b.captureTime.size ? "captureTime" : b.receiveTime.size ? "receiveTime" : "unknown", picture_age_by_source: { captureTime: histogramPercentiles(b.captureTime), receiveTime: histogramPercentiles(b.receiveTime) }, frames_rendered: b.frames, freeze_count: b.freezes, freeze_ms: integer(b.freezeMs) },
       path: this.path ? { ...this.path } : undefined, env: qualityEnvironment(), window_start_ms: integer(this.windowStart, Number.MAX_SAFE_INTEGER),
       viewer: { t: "rd.viewer_report", v: 1, seq: ++this.sequence }, publisher: this.publisher,
     };

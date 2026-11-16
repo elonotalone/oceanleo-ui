@@ -29,7 +29,7 @@ test('picture age uses rVFC local timestamps without applying host wall offset; 
   await h.advance(20);ctl.message({t:'rd.pong',t_v:ping.t_v,device_wall_ms:ping.t_v+10000});
   const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({presentationTime:125,expectedDisplayTime:130,captureTime:100,receiveTime:120});
   video.frame({presentationTime:145,expectedDisplayTime:150,receiveTime:140});video.frame({presentationTime:155,expectedDisplayTime:160});h.viewer.close();
-  const report=h.reports.at(-1).report;assert.deepEqual(report.video.picture_age,{n:2,p50:10,p95:30,max:30});assert.equal(report.video.picture_age_source,'unknown');
+  const report=h.reports.at(-1).report;assert.deepEqual(report.video.picture_age,{n:1,p50:30,p95:30,max:30});assert.equal(report.video.picture_age_source,'captureTime');
   assert.equal(report.video.picture_age_by_source.captureTime.n,1);assert.equal(report.video.picture_age_by_source.receiveTime.n,1);
   assert.equal(report.steps.session_created_ms,15);assert.equal(report.steps.descriptor_received_ms,40);assert.equal(report.steps.first_frame_decoded_ms,125);assert.equal(report.steps.first_frame_presented_ms,130);
 });
@@ -82,4 +82,13 @@ test('host relay hint cannot replace known local TURN region or label a direct p
   pc.statsEntries=[{id:'p',type:'candidate-pair',selected:true,localCandidateId:'l',remoteCandidateId:'r'},local,remote];await h.advance(100);
   assert.equal(h.states.at(-1).path.relay_region,'local-region');local.candidateType='host';remote.candidateType='host';await h.advance(1000);
   assert.equal(h.states.at(-1).path.relay_region,undefined);
+});
+
+
+test('late exact RTP capture timestamps use presentation time and clock offset, without double counting frames',()=>{
+ let now=100,wall=1000100;const t=new WebRtcTelemetry({sessionId:'sid',clickedAt:0,now:()=>now,wallNow:()=>wall});
+ t.clock.sample(1000000,1000110,1000110,1000020,100);
+ t.frame(100,{receiveTime:80});now=160;wall=1000160;t.captureFrameTime(100,1000150);
+ const report=t.report(true);assert.equal(report.video.frames_rendered,1);assert.deepEqual(report.video.picture_age,{n:1,p50:50,p95:50,max:50});
+ assert.equal(report.video.picture_age_source,'captureTime');assert.equal(report.video.picture_age_by_source.receiveTime.n,1);
 });

@@ -62,6 +62,9 @@ export class WebRtcRemoteDesktopViewer {
   private video: HTMLVideoElement | null = null;
   private mediaStream: MediaStream | null = null;
   private frameCallback: number | undefined;
+  private captureTimes = new Map<number, number>();
+  private presentedTimes = new Map<number, number>();
+  private captureMappingAvailable = false;
   private lastFrameCount: number | undefined;
   private hasFrame = false;
   private pictureRebuilding = false;
@@ -122,6 +125,7 @@ export class WebRtcRemoteDesktopViewer {
       const old = this.pc;
       this.detachPeer();
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
+      this.captureTimes.clear(); this.presentedTimes.clear(); this.captureMappingAvailable = false;
       this.gen++; const gen = this.gen;
       try { sessionStorage.setItem(`oceanleo.rd.generation.${this.descriptor.session_id}`, String(gen)); } catch { /* optional continuity */ }
       this.hostRelayRegion = undefined; this.telemetry.path = undefined;
@@ -330,6 +334,17 @@ export class WebRtcRemoteDesktopViewer {
       const received = data.host_receive_ms ?? data.t_h_recv ?? data.device_wall_ms;
       const sent = data.host_send_ms ?? data.t_h_send ?? data.device_wall_ms;
       if (typeof received === "number" && typeof sent === "number") this.telemetry.clock.sample(data.t_v, received, sent, this.wallNow(), this.now());
+    } else if (data.t === "rd.frame_time" && data.gen === this.gen && Array.isArray(data.frames) && data.frames.length <= 128) {
+      this.captureMappingAvailable = true;
+      for (const pair of data.frames) {
+        if (!Array.isArray(pair) || pair.length !== 2) continue;
+        const [rtp, capture] = pair;
+        if (!Number.isInteger(rtp) || rtp < 0 || rtp > 0xffff_ffff || !Number.isSafeInteger(capture) || capture <= 0) continue;
+        const presented = this.presentedTimes.get(rtp);
+        if (presented !== undefined) { this.telemetry.captureFrameTime(presented, capture); this.presentedTimes.delete(rtp); }
+        else this.captureTimes.set(rtp, capture);
+      }
+      while (this.captureTimes.size > 512) this.captureTimes.delete(this.captureTimes.keys().next().value!);
     } else if (data.t === "rd.publisher_stats" && data.metrics && typeof data.metrics === "object") {
       this.telemetry.publisher = Object.fromEntries(Object.entries(data.metrics).filter(([key, value]) => /^[a-z][a-z0-9_]{0,63}$/.test(key) && typeof value === "number" && Number.isFinite(value)) as [string, number][]);
       const region = data.path && typeof data.path === "object" ? (data.path as Record<string, unknown>).relay_region : undefined;
@@ -382,10 +397,17 @@ export class WebRtcRemoteDesktopViewer {
     this.play();
   }
   private play(): void { try { const playing = this.video?.play(); playing?.catch(() => {}); } catch { /* attach before autoplay is permitted */ } }
-  private frame(video: HTMLVideoElement, at: number, metadata: { captureTime?: number; receiveTime?: number; presentationTime?: number }): void {
+  private frame(video: HTMLVideoElement, at: number, metadata: { captureTime?: number; receiveTime?: number; presentationTime?: number; rtpTimestamp?: number }): void {
     if (this.ended || !video.videoWidth || !video.videoHeight) return;
     if (this.pictureRebuilding && this.trackGeneration !== this.gen) return;
-    this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, metadata); this.updateState();
+    this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, this.captureMappingAvailable ? { ...metadata, captureTime: undefined } : metadata);
+    if (Number.isInteger(metadata.rtpTimestamp)) {
+      const rtp = metadata.rtpTimestamp!; const captured = this.captureTimes.get(rtp);
+      if (captured !== undefined) { this.telemetry.captureFrameTime(at, captured); this.captureTimes.delete(rtp); }
+      else this.presentedTimes.set(rtp, at);
+      while (this.presentedTimes.size > 512) this.presentedTimes.delete(this.presentedTimes.keys().next().value!);
+    }
+    this.updateState();
     swallow(() => this.options.onFrame(video.videoWidth, video.videoHeight));
   }
   private updateState(): void {
