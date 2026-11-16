@@ -6478,6 +6478,8 @@ const it: Record<string, string> = {
   "节点图": "Grafo dei nodi",
   "分镜": "Storyboard",
   "导演台": "Regia",
+  "镜头计划": "Piano camera",
+  "镜头计划（分镜内）": "Piano camera (nello storyboard)",
   "时间线": "Linea temporale",
   "添加媒体": "Aggiungi media",
   "保存快照": "Salva istantanea",

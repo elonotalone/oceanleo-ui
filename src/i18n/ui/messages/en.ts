@@ -6605,6 +6605,8 @@ const en: Record<string, string> = {
   "节点图": "Node graph",
   "分镜": "Storyboard",
   "导演台": "Director",
+  "镜头计划": "Camera plan",
+  "镜头计划（分镜内）": "Camera plan (in Storyboard)",
   "时间线": "Timeline",
   "添加媒体": "Add media",
   "保存快照": "Save snapshot",

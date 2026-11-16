@@ -30,7 +30,7 @@ const KIND_SPECS: Readonly<Record<string, VideoKindSpec>> = {
   audio: { label: "音频", family: "media" },
   model: { label: "模型", family: "media" },
   storyboard: { label: "分镜", family: "structure" },
-  director: { label: "导演台", family: "structure" },
+  director: { label: "镜头计划", family: "structure" },
   timeline: { label: "时间线", family: "structure" },
   composite: { label: "合成", family: "structure" },
   delivery: { label: "成片输出", family: "output" },

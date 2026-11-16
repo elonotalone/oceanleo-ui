@@ -70,7 +70,7 @@ interface SurfaceSpec {
 const CANVAS_VIEW_VALUES: { value: string; label: string }[] = [
   { value: "graph", label: "节点图" },
   { value: "storyboard", label: "分镜" },
-  { value: "director", label: "导演台" },
+  { value: "director", label: "镜头计划（分镜内）" },
   { value: "timeline", label: "时间线" },
   { value: "history", label: "历史" },
 ];
@@ -208,7 +208,7 @@ const SPECS: readonly SurfaceSpec[] = [
   {
     id: "video-canvas.director.camera-plan",
     label: "为镜头做机位方案",
-    summary: "给镜头加一台 35mm 机位与推轨路径，并切到导演台。不计费。",
+    summary: "给镜头加一台 35mm 机位与推轨路径，并在分镜卡片里显示。不计费。",
     mutates: true,
     commandId: "canvas.director.camera-plan.create",
   },
@@ -236,7 +236,7 @@ const SPECS: readonly SurfaceSpec[] = [
   {
     id: "video-canvas.view.set",
     label: "切换视图",
-    summary: "在节点图、分镜、导演台、时间线、历史之间切换。只换看法，不改内容。",
+    summary: "在节点图、分镜、时间线、历史之间切换。只换看法，不改内容。",
     mutates: false,
     commandId: "canvas.session.view.set",
     params: [

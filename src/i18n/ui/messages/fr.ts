@@ -6478,6 +6478,8 @@ const fr: Record<string, string> = {
   "节点图": "Graphe de nœuds",
   "分镜": "Storyboard",
   "导演台": "Réalisation",
+  "镜头计划": "Plan caméra",
+  "镜头计划（分镜内）": "Plan caméra (dans le storyboard)",
   "时间线": "Chronologie",
   "添加媒体": "Ajouter un média",
   "保存快照": "Enregistrer l'instantané",

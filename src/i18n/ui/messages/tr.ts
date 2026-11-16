@@ -6478,6 +6478,8 @@ const tr: Record<string, string> = {
   "节点图": "Düğüm grafiği",
   "分镜": "Storyboard",
   "导演台": "Yönetmen",
+  "镜头计划": "Kamera planı",
+  "镜头计划（分镜内）": "Kamera planı (storyboard içinde)",
   "时间线": "Zaman çizelgesi",
   "添加媒体": "Medya ekle",
   "保存快照": "Anlık görüntüyü kaydet",

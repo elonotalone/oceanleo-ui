@@ -1917,7 +1917,8 @@ const definitions: CanvasCommandDefinition[] = [
         environment.getProject(),
         requireString(args, "shotId", selected?.shotId || "") || undefined,
       );
-      environment.setWorkspaceView("director");
+      // The camera plan is shown inside its Storyboard card (ED-B5c): no separate Director view.
+      environment.setWorkspaceView("storyboard");
       return {
         message: "A 35 mm camera and dolly path were added as a real plan.",
         project: planned.project,

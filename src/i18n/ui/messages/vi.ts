@@ -6478,6 +6478,8 @@ const vi: Record<string, string> = {
   "节点图": "Sơ đồ nút",
   "分镜": "Bảng phân cảnh",
   "导演台": "Đạo diễn",
+  "镜头计划": "Kế hoạch máy quay",
+  "镜头计划（分镜内）": "Kế hoạch máy quay (trong bảng phân cảnh)",
   "时间线": "Dòng thời gian",
   "添加媒体": "Thêm phương tiện",
   "保存快照": "Lưu ảnh chụp",

@@ -6478,6 +6478,8 @@ const ptPT: Record<string, string> = {
   "节点图": "Grafo de nós",
   "分镜": "Storyboard",
   "导演台": "Realização",
+  "镜头计划": "Plano de câmara",
+  "镜头计划（分镜内）": "Plano de câmara (no storyboard)",
   "时间线": "Linha temporal",
   "添加媒体": "Adicionar multimédia",
   "保存快照": "Guardar instantâneo",

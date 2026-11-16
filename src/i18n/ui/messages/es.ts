@@ -6478,6 +6478,8 @@ const es: Record<string, string> = {
   "节点图": "Grafo de nodos",
   "分镜": "Guion gráfico",
   "导演台": "Dirección",
+  "镜头计划": "Plan de cámara",
+  "镜头计划（分镜内）": "Plan de cámara (en el storyboard)",
   "时间线": "Línea de tiempo",
   "添加媒体": "Añadir medios",
   "保存快照": "Guardar instantánea",

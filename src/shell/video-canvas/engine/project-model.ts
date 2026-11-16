@@ -2464,7 +2464,7 @@ export function defaultNodeTitle(kind: CanvasNodeKind): string {
       subtitle: "Subtitles",
       composite: "Composite",
       delivery: "Final render",
-      director: "Director",
+      director: "Camera plan",
       storyboard: "Storyboard",
       timeline: "Timeline",
     } satisfies Record<CanvasNodeKind, string>
