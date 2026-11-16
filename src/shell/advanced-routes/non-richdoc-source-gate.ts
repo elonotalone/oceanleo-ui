@@ -27,6 +27,14 @@ function diagnosticMessage(value: unknown, fallback: string): string {
   return fallback;
 }
 
+/** Opening errors and save refusal are separate user actions. */
+export function imageSourceFailureMessage(input: { error: string; sceneDiagnostic: unknown }): string {
+  return input.error.trim() || diagnosticMessage(
+    input.sceneDiagnostic,
+    "图片源未成功载入，未改用空白画布覆盖原件。",
+  );
+}
+
 export function imageSourcePersistenceAdmitted(input: {
   loading: boolean;
   sceneDiagnostic: unknown;

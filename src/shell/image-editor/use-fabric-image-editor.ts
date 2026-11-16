@@ -105,6 +105,8 @@ import {
   firstForkReceiptMatches,
   imageEditorOpenIdentity,
   imageSaveAdmitted,
+  imageSnapshotHasArtwork,
+  IMAGE_EMPTY_SOURCE_ERROR,
   isNewImageSourceSession,
 } from "./image-source-ready";
 import { recordUserMutation, resetUserMutation } from "../user-edit-session";
@@ -747,6 +749,14 @@ export function useFabricImageEditor(
       : "";
 
   useEffect(() => {
+    // Readiness belongs to this canvas/controller, including effect replays of
+    // the same source and a temporarily unmounted canvas.
+    setLoading(true);
+    setError("");
+    setSceneDiagnostic(null);
+    sceneDiagnosticRef.current = null;
+    sourceReadyRef.current = false;
+    setSourceReady(false);
     if (!canvasElement || typeof window === "undefined") return;
     let cancelled = false;
     const abort = makeAbort();
@@ -765,13 +775,7 @@ export function useFabricImageEditor(
     sourceSessionRef.current = session;
     if (isNewSourceSession) {
       resetUserMutation(openIdentity);
-      setLoading(true);
-      setError("");
       setNotice("");
-      setSceneDiagnostic(null);
-      sceneDiagnosticRef.current = null;
-      sourceReadyRef.current = false;
-      setSourceReady(false);
       setSavedUrl("");
       setSavedProjectUrl("");
       setSavedAt("");
@@ -797,7 +801,7 @@ export function useFabricImageEditor(
               if (!cancelled) setView(next);
             },
             onDocumentChange: () => {
-              if (cancelled) return;
+              if (cancelled || !sourceReadyRef.current) return;
               revisionRef.current += 1;
               localEditsRef.current += 1;
               updateDirty(true);
@@ -828,7 +832,11 @@ export function useFabricImageEditor(
             },
           },
         );
+        controller.setReadOnly(true);
         controllerRef.current = controller;
+        const assertLoadedArtwork = (snapshot: ImageSnapshot) => {
+          if (!imageSnapshotHasArtwork(snapshot)) throw new Error(IMAGE_EMPTY_SOURCE_ERROR);
+        };
         let cloudProjectUpdatedAt = "";
         let projectLoaded = false;
         // Native local editor: the host's own stored project (already matched to this artifact and
@@ -836,10 +844,9 @@ export function useFabricImageEditor(
         // offline and after any signed URL expired. If it cannot be loaded the original opens with a
         // notice; nothing is saved or cleared by this step.
         let seededFromHost = false;
-        const hostProject = isNewSourceSession
-          ? parseFabricImageProject(optionsRef.current.localProject)
-          : null;
+        const hostProject = parseFabricImageProject(optionsRef.current.localProject);
         if (hostProject) {
+          assertLoadedArtwork(hostProject.snapshot);
           try {
             seededFromHost = await controller.loadSnapshot(hostProject.snapshot);
           } catch (caught) {
@@ -947,6 +954,7 @@ export function useFabricImageEditor(
               ? await loadCompositeImageScene(item, abort.signal)
               : await loadEditableImageProject(projectUrl, abort.signal);
             if (cancelled || abort.signal.aborted) return;
+            assertLoadedArtwork(project.snapshot);
             projectLoaded = await controller.loadSnapshot(project.snapshot);
             cloudProjectUpdatedAt = project.updatedAt;
             if (projectLoaded) {
@@ -1032,10 +1040,14 @@ export function useFabricImageEditor(
           controller.setInitialBackground(image, imageDocumentSize(image));
         }
         cloudSavedAtRef.current = Date.parse(cloudProjectUpdatedAt || projectSavedAt) || 0;
-        if (!cancelled) {
+        if (!cancelled && !abort.signal.aborted && controllerRef.current === controller) {
+          if (projectLoaded || sourceUrl || structuredSourceRequired) {
+            assertLoadedArtwork(controller.getCollabSnapshot());
+          }
           sourceReadyRef.current = true;
           setSourceReady(true);
           setLoading(false);
+          controller.setReadOnly(Boolean(optionsRef.current.collab?.readOnly) || conversionPendingRef.current);
         }
       } catch (caught) {
         if (!cancelled && !isAbortError(caught)) {
@@ -1046,10 +1058,8 @@ export function useFabricImageEditor(
                 ? caught.message
                 : "图片画布初始化失败";
           setError(message);
-          if (isNewSourceSession) {
-            sourceReadyRef.current = false;
-            setSourceReady(false);
-          }
+          sourceReadyRef.current = false;
+          setSourceReady(false);
           if (caught instanceof ImageSceneSourceError) {
             const diagnostic = {
               code: caught.code,
@@ -1072,6 +1082,7 @@ export function useFabricImageEditor(
       abort.abort();
       finishAbort(abort);
       if (controllerRef.current === controller) controllerRef.current = null;
+      sourceReadyRef.current = false;
       controller?.dispose();
       if (fabricRef.current) fabricRef.current = null;
     };
@@ -1339,7 +1350,7 @@ export function useFabricImageEditor(
       scale = exportScale,
     ) => {
       const controller = controllerRef.current;
-      if (!controller) throw new Error("图片画布尚未就绪");
+      if (!controller || !sourceReadyRef.current) throw new Error("图片画布尚未就绪");
       if (viewRef.current.cropping) {
         throw new Error("请先确认或取消当前裁剪");
       }
@@ -1417,6 +1428,7 @@ export function useFabricImageEditor(
     if (!project || !controller || !sourceReadyRef.current) return false;
     // 已经在画布上（保存后残留的本机记录）：什么也不用恢复，也不把画布标成未保存。
     if (sameImageContent(project.snapshot, controller.getSnapshot(), { ignoreIds: true })) return "unchanged";
+    if (!imageSnapshotHasArtwork(project.snapshot)) return false;
     // 比画布所基于的云端版本还旧：不拿旧内容盖掉更新的版本（记录本身保留，不删）。
     if (
       typeof updatedAt === "number" &&
@@ -1432,6 +1444,7 @@ export function useFabricImageEditor(
     controller.setReadOnly(true);
     try {
       const fresh = optionsRef.current.localImport ? project : await resolveFabricImageWorkingCopy(project);
+      if (!imageSnapshotHasArtwork(fresh.snapshot)) return false;
       const restored = await controller.loadSnapshot(fresh.snapshot);
       if (
         !restored ||
@@ -1449,7 +1462,7 @@ export function useFabricImageEditor(
     } finally {
       if (controllerRef.current === controller) {
         controller.setReadOnly(
-          Boolean(optionsRef.current.collab?.readOnly) || conversionPendingRef.current,
+          !sourceReadyRef.current || Boolean(optionsRef.current.collab?.readOnly) || conversionPendingRef.current,
         );
       }
     }
@@ -1511,7 +1524,6 @@ export function useFabricImageEditor(
       sceneDiagnostic: sceneDiagnosticRef.current,
     });
     if (!admitted.ok) {
-      setError(admitted.error);
       return async () => null;
     }
     if (
@@ -1776,17 +1788,25 @@ export function useFabricImageEditor(
 
   const collabReadOnly = Boolean(options.collab?.readOnly);
   useEffect(() => {
-    controllerRef.current?.setReadOnly(collabReadOnly || conversionPending);
-  }, [collabReadOnly, conversionPending, loading]);
+    controllerRef.current?.setReadOnly(!sourceReady || collabReadOnly || conversionPending);
+  }, [collabReadOnly, conversionPending, loading, sourceReady]);
   const collabHandle: FabricImageCollabHandle = {
     readOnly: collabReadOnly,
     tick: collabTick,
     remoteDelta,
-    snapshot: () => (controllerRef.current ? (controllerRef.current.getCollabSnapshot() as ImageSnapshot) : null),
+    snapshot: () => (sourceReadyRef.current && controllerRef.current ? (controllerRef.current.getCollabSnapshot() as ImageSnapshot) : null),
     ensureIds: () => {
-      controllerRef.current?.ensureObjectIds();
+      if (sourceReadyRef.current) controllerRef.current?.ensureObjectIds();
     },
     applyRemote: (snapshot) => {
+      if (!sourceReadyRef.current) return;
+      if (!imageSnapshotHasArtwork(snapshot)) {
+        sourceReadyRef.current = false;
+        setSourceReady(false);
+        setError(IMAGE_EMPTY_SOURCE_ERROR);
+        controllerRef.current?.setReadOnly(true);
+        return;
+      }
       void controllerRef.current?.applyRemote(snapshot as never);
     },
     objectBoxes: (ids) => controllerRef.current?.collabObjectBoxes(ids) ?? [],
@@ -1814,6 +1834,7 @@ export function useFabricImageEditor(
         const abort = makeAbort();
         try {
           const project = await loadEditableImageProject(url, abort.signal);
+          if (!sourceReadyRef.current || !imageSnapshotHasArtwork(project.snapshot)) return null;
           artifactHeadRef.current = revisionItem;
           workingHeadUrlRef.current = String(
             revisionItem.meta.editor_working_head_url || source?.url || revisionItem.url || revisionItem.previewUrl || "",
@@ -1841,7 +1862,7 @@ export function useFabricImageEditor(
     loading,
     saving,
     aiBusy,
-    error,
+    error: tt(error),
     notice,
     sceneDiagnostic,
     sourceReady,

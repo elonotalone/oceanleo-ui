@@ -3,7 +3,7 @@
 // 从 asset 站 lib/assets.ts + lib/type-page-views.ts 搬来，请求打 GATEWAY_BASE。
 
 import {
-  BAY_ASSET_TYPE_ORDER,
+  BAY_ASSET_TYPE_LABELS,
   listBayCategories,
   liveSearchAvailable,
   searchBayLibrary,
@@ -134,7 +134,7 @@ export function normSeriesFlag(
 }
 
 export function isBayAssetType(value: string | null | undefined): value is BayAssetType {
-  return Boolean(value && (BAY_ASSET_TYPE_ORDER as readonly string[]).includes(value));
+  return Boolean(value && Object.prototype.hasOwnProperty.call(BAY_ASSET_TYPE_LABELS, value));
 }
 
 export function parseAssetBrowseSearch(search: string | URLSearchParams): AssetBrowseParams {

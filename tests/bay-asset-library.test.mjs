@@ -35,5 +35,5 @@ test("三类视图：老地址落到 service/asset/request", () => {
   assert.equal(normalizeBayFeedKind("material"), "asset");
   assert.equal(normalizeBayFeedKind("supply"), "service");
   assert.equal(normalizeBayFeedKind("demand"), "request");
-  assert.equal(canonicalBayFeedKind(undefined), "service");
+  assert.equal(canonicalBayFeedKind(undefined), "asset");
 });

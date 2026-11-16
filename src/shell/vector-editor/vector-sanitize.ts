@@ -590,12 +590,16 @@ export function sanitizeSvg(input: string): SvgSanitizeReport {
   const sanitizedNodes = walk(withoutDoctype);
   const svg = serialize(sanitizedNodes);
   const residual = residualDangerousConstructs(svg);
+  const roots = sanitizedNodes.filter((node) => node.kind === "element");
+  const hasSvgRoot = roots.length === 1 && roots[0].kind === "element" && localName(roots[0].name) === "svg";
 
   return {
     svg,
     removals,
     residual,
-    renderable: hasViewBox && graphicElementCount > 0 && residual.length === 0,
+    // viewBox is optional SVG viewport metadata, not a safety requirement.
+    // The editing importer can fit dimensionless artwork to its actual bounds.
+    renderable: hasSvgRoot && graphicElementCount > 0 && residual.length === 0,
     graphicElementCount,
     hasViewBox,
   };

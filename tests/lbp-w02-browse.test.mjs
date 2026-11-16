@@ -1,4 +1,4 @@
-// leobay-projects W02：LeoBay「逛」——出售/求购下拉、五个种类的新名字、每一类里显示的就是按这一类发布的东西。
+// LeoBay：五个种类标签、出售/求购开关，每类按发布种类取内容。
 //
 // 盯的是：
 //   1. 种类合同：六个 URL 值（含 other）、五个种类的中文名、旧地址值照认、种类 → 发布种类（listing_kind）；
@@ -102,7 +102,7 @@ const optionTexts = (menu) => [...menu.querySelectorAll('[role="option"]')].map(
 // ---------------------------------------------------------------------------
 test("六个 URL 值含 other；五个种类的顺序与名字就是操作员拍板的那一组", () => {
   assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "lesson", "other", "request"]);
-  assert.deepEqual([...links.BAY_SELL_KINDS], ["service", "asset", "app", "lesson", "other"]);
+  assert.deepEqual([...links.BAY_SELL_KINDS], ["asset", "service", "app", "lesson", "other"]);
   assert.deepEqual(links.BAY_SELL_KIND_LABEL, {
     service: "人工服务",
     asset: "现成文件",
@@ -136,7 +136,7 @@ test("other 认得出来，旧地址值照认", () => {
   }
   assert.equal(links.normalizeBayFeedKind("bogus"), null);
   assert.equal(links.normalizeBayFeedKind(""), null);
-  assert.equal(links.canonicalBayFeedKind("bogus"), "service");
+  assert.equal(links.canonicalBayFeedKind("bogus"), "asset");
   assert.equal(links.isBaySellKind("other"), true);
   assert.equal(links.isBaySellKind("request"), false);
   assert.equal(links.isBaySellKind(undefined), false);
@@ -189,7 +189,7 @@ test("bayFeedRequestFor：出售侧每一类带自己的 listing_kind", () => {
   for (const [kind, listing] of Object.entries(want)) {
     assert.deepEqual(bayFeedRequestFor({ kind }), { kind: "supply", listing_kind: listing }, kind);
   }
-  assert.deepEqual(bayFeedRequestFor({}), { kind: "supply", listing_kind: "service" });
+  assert.deepEqual(bayFeedRequestFor({}), { kind: "supply", listing_kind: "digital" });
 });
 
 test("bayFeedRequestFor：求购侧取 offer 对应的发布种类，没写就是人工服务；other 也行", () => {
@@ -332,24 +332,33 @@ function Switch({ initial }) {
 }
 
 async function pick(host, name, value) {
+  if (name === "kind" || name === "intent") {
+    const target = host.querySelector(name === "kind" ? `[data-bay-kind-tab="${value}"]` : `[data-bay-intent="${value}"]`);
+    assert.ok(target); await click(target); return;
+  }
   const { menu } = await openSelect(host, name);
   const option = menu.querySelector(`[data-value="${value}"]`);
-  assert.ok(option, `${name} 里应有 ${value}`);
-  await click(option);
+  assert.ok(option); await click(option);
 }
+const selectedKind = (host) => host.querySelector('[data-bay-kind-tab][aria-selected="true"]')?.dataset.bayKindTab;
+const selectedIntent = (host) => host.querySelector('[data-bay-intent][aria-pressed="true"]')?.dataset.bayIntent;
 
-test("种类下拉五个选项，名字是新的一组，当前值只显示一个名字", async () => {
+test("BAY 回归：五个种类直接展开，现成文件在首位，交易意图是两段开关", async () => {
   resetBay();
-  const view = await mount(React.createElement(Switch, { initial: { kind: "service" } }));
-  const kind = view.host.querySelector('[data-bay-filter="kind"]');
-  assert.equal(kind.getAttribute("data-value"), "service");
-  assert.match(kind.textContent, /人工服务/);
-  const { menu } = await openSelect(view.host, "kind");
-  assert.deepEqual(optionValues(menu), ["service", "asset", "app", "lesson", "other"]);
-  assert.deepEqual(optionTexts(menu), ["人工服务", "现成文件", "网站与软件服务", "课程", "其他"]);
-  for (const retired of ["服务", "素材", "作品"]) {
-    assert.ok(!optionTexts(menu).includes(retired), `${retired} 不再是种类名`);
-  }
+  const view = await mount(React.createElement(Switch, { initial: { kind: "asset" } }));
+  try {
+    assert.deepEqual([...view.host.querySelectorAll("[data-bay-kind-tab]")].map((node) => node.dataset.bayKindTab),
+      ["asset", "service", "app", "lesson", "other"]);
+    assert.equal(view.host.querySelectorAll("[data-bay-intent]").length, 2);
+    assert.equal(view.host.querySelector('[data-bay-filter="kind"]'), null);
+    assert.equal(view.host.querySelector('[data-bay-filter="intent"]'), null);
+  } finally { await view.unmount(); }
+});
+
+test("五个种类直接展开，名字沿用约定，现成文件在首位", async () => {
+  resetBay(); const view = await mount(React.createElement(Switch, { initial: { kind: "service" } }));
+  assert.equal(selectedKind(view.host), "service");
+  assert.deepEqual([...view.host.querySelectorAll('[data-bay-kind-tab]')].map(node => node.textContent), ["现成文件", "人工服务", "网站与软件服务", "课程", "其他"]);
   await view.unmount();
 });
 
@@ -362,7 +371,7 @@ test("出售下选每个种类：filter.kind 换成这一类，其余筛选原�
     assert.equal(last.kind, kind);
     assert.equal(last.category, "ppt");
     assert.equal(last.q, "海报");
-    assert.equal(view.host.querySelector('[data-bay-filter="kind"]').getAttribute("data-value"), kind);
+    assert.equal(selectedKind(view.host), kind);
   }
   await view.unmount();
 });
@@ -376,33 +385,33 @@ test("离开人工服务时清掉「专业咨询」，其余站点不动", async
   await view.unmount();
 });
 
-test("出售/求购是一个下拉：选求购带上当前种类，选出售回到上次卖的种类", async () => {
+test("出售/求购是两段开关：选求购带上当前种类，选出售回到上次卖的种类", async () => {
   resetBay();
   const view = await mount(React.createElement(Switch, { initial: { kind: "other" } }));
-  assert.equal(view.host.querySelector('[data-bay-filter="intent"]').getAttribute("data-value"), "sell");
+  assert.equal(selectedIntent(view.host), "sell");
   assert.equal(view.host.querySelector("[data-bay-browse-intent]").getAttribute("data-bay-browse-intent"), "sell");
   await pick(view.host, "intent", "buy");
   assert.deepEqual(
     { kind: bayState.filters.at(-1).kind, offer: bayState.filters.at(-1).offer },
     { kind: "request", offer: "other" },
   );
-  assert.equal(view.host.querySelector('[data-bay-filter="intent"]').getAttribute("data-value"), "buy");
-  assert.equal(view.host.querySelector('[data-bay-filter="kind"]').getAttribute("data-value"), "other");
+  assert.equal(selectedIntent(view.host), "buy");
+  assert.equal(selectedKind(view.host), "other");
   await pick(view.host, "intent", "sell");
   assert.equal(bayState.filters.at(-1).kind, "other");
   await view.unmount();
 });
 
-test("求购侧种类下拉改的是 offer，且五个种类（含其他）都能选", async () => {
+test("求购侧种类标签改的是 offer，且五个种类（含其他）都能选", async () => {
   resetBay();
   const view = await mount(React.createElement(Switch, { initial: { kind: "request" } }));
-  assert.equal(view.host.querySelector('[data-bay-filter="kind"]').getAttribute("data-value"), "service");
+  assert.equal(selectedKind(view.host), "service");
   for (const offer of ["asset", "app", "lesson", "other", "service"]) {
     await pick(view.host, "kind", offer);
     const last = bayState.filters.at(-1);
     assert.equal(last.kind, "request");
     assert.equal(last.offer, offer);
-    assert.equal(view.host.querySelector('[data-bay-filter="kind"]').getAttribute("data-value"), offer);
+    assert.equal(selectedKind(view.host), offer);
   }
   await view.unmount();
 });
@@ -410,9 +419,9 @@ test("求购侧种类下拉改的是 offer，且五个种类（含其他）都�
 test("求购侧显示的种类永远是真正在取的那一类（没有 offer 就是人工服务）", async () => {
   resetBay();
   const view = await mount(React.createElement(BayViewSwitch, { filter: { kind: "request" } }));
-  assert.equal(view.host.querySelector('[data-bay-filter="kind"]').getAttribute("data-value"), "service");
+  assert.equal(selectedKind(view.host), "service");
   await view.rerender(React.createElement(BayViewSwitch, { filter: { kind: "request", offer: "app" } }));
-  assert.equal(view.host.querySelector('[data-bay-filter="kind"]').getAttribute("data-value"), "app");
+  assert.equal(selectedKind(view.host), "app");
   await view.unmount();
 });
 
@@ -499,7 +508,7 @@ test("发布键：当前栏是哪一类就按哪一类发布（含其他、现�
     ["app", "app"],
     ["lesson", "lesson"],
     ["other", "other"],
-    [undefined, "service"],
+    [undefined, "digital"],
   ];
   for (const [feedKind, listing] of expected) {
     remembered.length = 0;
@@ -717,242 +726,10 @@ test("两个货架都不手写接口地址、不 fetch", () => {
 
 // ---------------------------------------------------------------------------
 // 5. 现成文件：来源第一项「卖家在售」
-// ---------------------------------------------------------------------------
-const lib = {
-  bayOn: true,
-  signedIn: true,
-  probe: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  sellers: { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  calls: [],
-};
-globalThis.__lbpW02Lib = lib;
-
-function resetLib(patch = {}) {
-  lib.bayOn = true;
-  lib.signedIn = true;
-  lib.probe = { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} };
-  lib.sellers = { items: [], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} };
-  lib.calls.length = 0;
-  Object.assign(lib, patch);
-  window.history.replaceState(window.history.state, "", "https://video.oceanleo.com/bay?kind=asset");
-}
-
-const { BayAssetLibrary } = await import(
-  await compileModule("src/shell/bay/asset/BayAssetLibrary.tsx", {
-    "../../../i18n/ui/useUI": uiStub,
-    "../shell/bay-state": dataModule(`
-      export function bayEnabledHere(){ return globalThis.__lbpW02Lib.bayOn; }
-      export function useBaySignedIn(){ return globalThis.__lbpW02Lib.signedIn; }
-    `),
-    "../shell/BayMine": dataModule(`
-      const createElement = (...args) => globalThis.__lbpW02React.createElement(...args);
-      export function BaySignInPrompt({ text }) { return createElement("p", { "data-stub-signin": "1" }, text); }
-    `),
-    "../shell/use-bay-data": dataModule(`
-      export function useBayFeed(filter, signedIn, options){
-        const lib = globalThis.__lbpW02Lib;
-        lib.calls.push({ filter, options });
-        return options && options.limit === 1 ? lib.probe : lib.sellers;
-      }
-      export function useBayCategories(){
-        return { categories: [{ slug: "ppt", name_zh: "LeoSlides", name_en: "LeoSlides", icon: "ppt" }], loading: false, failed: false };
-      }
-    `),
-    "../shell/BayList": dataModule(`export function useBayCategoryName(){ return (category) => category.name_zh.replace(/^Leo/, ""); }`),
-    "../shell/BayFeedItemCard": dataModule(`
-      const createElement = (...args) => globalThis.__lbpW02React.createElement(...args);
-      export function FeedCard({ item, variant }) { return createElement("span", { "data-stub-posted": item.id, "data-variant": variant }, item.title); }
-    `),
-    "./bay-template-shelf": dataModule(`
-      export const BAY_OFFICIAL_PREVIEW_COUNT = 4;
-      export const BAY_TEMPLATE_PAGE_SIZE = 30;
-      export const OFFICIAL_TEMPLATE_CATEGORY = "official-templates";
-      export async function listBayOfficialTemplates(){ return { items: [], total: 0, hasMore: false }; }
-      export async function listBayMineArtifacts(){ return { items: [], total: 0, hasMore: false, unauthenticated: false }; }
-      export function mergeOwnedAssets(a, b){ return [...a, ...b]; }
-      export function templateArtifactTypeForBay(){ return null; }
-      export function originLibraryTypeForBay(){ return null; }
-      export function originShelfOptional(){ return true; }
-    `),
-    "./BayAssetLive": dataModule(`export function BayAssetLive(){ return null; }`),
-    "./BayAssetSeries": dataModule(`export function BayAssetSeries(){ return null; }`),
-    "./BayAssetDetail": dataModule(`export function BayAssetDetail(){ return null; }`),
-    "./BayArtifactDeepLink": dataModule(`
-      export function BayArtifactDeepLink(){ return null; }
-      export function bayAssetRefForCard(asset){ return { kind: "listing", id: asset.id }; }
-      export function useBayAssetRoute(){ return { target: null, open(){}, close(){} }; }
-    `),
-    "./BayLicensesView": dataModule(`export function BayLicensesView(){ return null; }`),
-    "./BayAssetCard": dataModule(`export function BayAssetCard(){ return null; }`),
-    "../../../lib/auth/config": dataModule(`export const GATEWAY_BASE = ""; export function gatewayBase(){ return ""; } export function isLeoDevPreviewHost(){ return false; }`),
-    "../../../lib/auth/client": dataModule(`
-      export const AUTH_STATE_EVENT = "oceanleo:auth-state";
-      export async function accessToken(){ return null; }
-      export function cachedAccessToken(){ return null; }
-      export async function getUserId(){ return null; }
-    `),
-  })
-);
-
-const libraryEl = (props = {}) =>
-  React.createElement(BayAssetLibrary, { filter: { kind: "asset" }, siteKey: "word", accent: "#0ea5e9", ...props });
-
-const sellerFile = (id, title) => ({
-  kind: "service",
-  id,
-  title,
-  summary: "",
-  author: { display_name: "Leo", handle: "leo" },
-  price: null,
-  listing_kind: "digital",
-});
-
-const originOf = (host) => host.querySelector('[data-bay-filter="view"]')?.getAttribute("data-value");
-
-test("来源下拉：第一项「卖家在售」，然后是 OceanLeo 自有 / 我上传的 / 开源专区（已入库）/ 实时搜索", async () => {
-  resetLib();
-  const view = await mount(libraryEl());
-  const { menu } = await openSelect(view.host, "view");
-  assert.deepEqual(optionValues(menu), ["sellers", "owned", "mine", "stocked", "live"]);
-  const names = [...menu.querySelectorAll('[role="option"]')].map((node) => node.textContent.replace(/\d+$/, "").trim());
-  assert.deepEqual(names.slice(0, 3), ["卖家在售", "OceanLeo 自有", "我上传的"]);
-  assert.ok(!names.includes("我的"), "来源里的「我的」改名「我上传的」");
-  await view.unmount();
-});
-
-test("有已发布的卖家现成文件时默认来源就是「卖家在售」：列表是卖家的条目，类型 / 目录 / 授权说明收起，多一个站点下拉", async () => {
-  resetLib({
-    probe: { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-    sellers: { items: [sellerFile("f1", "年报模板"), sellerFile("f2", "汇报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  });
-  const view = await mount(libraryEl());
-  assert.equal(originOf(view.host), "sellers");
-  const list = view.host.querySelector("[data-bay-asset-sellers]");
-  assert.ok(list);
-  assert.deepEqual(
-    [...list.querySelectorAll("[data-stub-posted]")].map((node) => node.getAttribute("data-stub-posted")),
-    ["f1", "f2"],
-  );
-  assert.equal(view.host.querySelector('[data-bay-filter="type"]'), null);
-  assert.equal(view.host.querySelector('[data-bay-filter="cat"]'), null);
-  assert.equal(view.host.querySelector("[data-bay-asset-licenses-open]"), null);
-  const site = view.host.querySelector('[data-bay-filter="seller-site"]');
-  assert.ok(site);
-  assert.ok(site.textContent.includes("全部站点"));
-  // 探测只取一条、与搜索词无关；卖家列表按现成文件（digital）取。
-  assert.ok(lib.calls.some((call) => call.options?.limit === 1 && call.options?.listingKind === "digital" && call.options?.enabled === true));
-  assert.ok(lib.calls.some((call) => call.options?.listingKind === "digital" && call.options?.limit === undefined));
-  await view.unmount();
-});
-
-test("没有卖家发布的现成文件时保持原来的默认来源，来源下拉里「卖家在售」仍在", async () => {
-  resetLib();
-  const view = await mount(libraryEl());
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
-  assert.equal(originOf(view.host), "owned");
-  assert.equal(view.host.querySelector("[data-bay-asset-sellers]"), null);
-  assert.ok(view.host.querySelector('[data-bay-filter="type"]'));
-  await view.unmount();
-});
-
-test("探测还没回来时先不下结论（不先画自有再跳去卖家在售）", async () => {
-  resetLib({ probe: { items: [], loading: true, loaded: false, error: null, hasMore: false, loadMore() {}, retry() {} } });
-  const view = await mount(libraryEl());
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
-  assert.equal(view.host.querySelector("[data-bay-asset-sellers]"), null);
-  assert.ok(view.host.querySelector("[data-bay-asset-loading]"), "等探测期间画骨架，不先画自有内容");
-  lib.probe = { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} };
-  lib.sellers = lib.probe;
-  await view.rerender(libraryEl());
-  assert.equal(originOf(view.host), "sellers");
-  await view.unmount();
-});
-
-test("用户换了来源或类型之后，「卖家在售」不再抢默认", async () => {
-  resetLib({
-    probe: { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-    sellers: { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  });
-  const view = await mount(libraryEl());
-  assert.equal(originOf(view.host), "sellers");
-  await pick(view.host, "view", "owned");
-  assert.equal(originOf(view.host), "owned");
-  assert.equal(view.host.querySelector("[data-bay-asset-sellers]"), null);
-  assert.ok(view.host.querySelector('[data-bay-filter="type"]'), "离开卖家在售后类型下拉回来");
-  await pick(view.host, "type", "pdf");
-  assert.equal(originOf(view.host), "owned", "换类型不会被拉回卖家在售");
-  await pick(view.host, "view", "sellers");
-  assert.equal(originOf(view.host), "sellers");
-  await view.unmount();
-});
-
-test("地址里钉住的来源优先于默认：view=owned 不被卖家在售抢走；view=sellers 即使探测为空也停在卖家在售", async () => {
-  resetLib({
-    probe: { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  });
-  window.history.replaceState(window.history.state, "", "https://video.oceanleo.com/bay?kind=asset&view=owned");
-  const pinned = await mount(libraryEl());
-  assert.equal(originOf(pinned.host), "owned");
-  await pinned.unmount();
-
-  resetLib();
-  window.history.replaceState(window.history.state, "", "https://video.oceanleo.com/bay?kind=asset&view=sellers");
-  const sellers = await mount(libraryEl());
-  assert.equal(originOf(sellers.host), "sellers");
-  assert.ok(sellers.host.querySelector("[data-bay-asset-sellers]"));
-  assert.ok(sellers.host.querySelector("[data-bay-asset-empty]"));
-  await sellers.unmount();
-});
-
-test("境内使用完整能力契约：保留卖家在售、探测与 view=sellers 深链", async () => {
-  const { domainFamilyFeatures } = await import("../src/contracts/domain-family.ts");
-  resetLib({ bayOn: domainFamilyFeatures("cn").bay });
-  window.history.replaceState(window.history.state, "", "https://video.oceanleo.com/bay?kind=asset&view=sellers");
-  const view = await mount(libraryEl());
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
-  assert.equal(originOf(view.host), "sellers");
-  assert.ok(view.host.querySelector("[data-bay-asset-sellers]"));
-  const { menu } = await openSelect(view.host, "view");
-  assert.deepEqual(optionValues(menu), ["sellers", "owned", "mine", "stocked", "live"]);
-  assert.ok(lib.calls.some((call) => call.options?.limit === 1 && call.options?.enabled === true), "境内同样探测卖家在售");
-  await view.unmount();
-});
-
-test("卖家在售：站点下拉选一个站点，列表按这个站点取；搜索词一起带", async () => {
-  resetLib({
-    probe: { items: [sellerFile("f1", "年报模板")], loading: false, loaded: true, error: null, hasMore: false, loadMore() {}, retry() {} },
-  });
-  const view = await mount(libraryEl({ filter: { kind: "asset", q: "年报" } }));
-  assert.equal(originOf(view.host), "sellers");
-  await pick(view.host, "seller-site", "ppt");
-  const last = [...lib.calls].reverse().find((call) => call.options?.listingKind === "digital" && call.options?.limit === undefined);
-  assert.equal(last.filter.category, "ppt");
-  assert.equal(last.filter.q, "年报");
-  await view.unmount();
-});
-
-test("素材库各下拉的「全部」都带名词：目录「全部目录」；类型下拉的名字不再和种类下拉同名", async () => {
-  resetLib();
-  const view = await mount(libraryEl());
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
-  const cat = view.host.querySelector('[data-bay-filter="cat"]');
-  assert.ok(cat);
-  assert.ok(cat.textContent.includes("全部目录"));
-  const { menu } = await openSelect(view.host, "cat");
-  assert.equal(optionTexts(menu)[0], "全部目录");
-  await click(view.host.querySelector('[data-bay-filter="cat"]'));
+test("现成文件页面以种类卡和分栏货架浏览，删除五个旧下拉与基础来源切换", () => {
   const text = src("shell/bay/asset/BayAssetLibrary.tsx");
-  assert.doesNotMatch(text, /allLabel=\{tt\("全部"\)\}/);
-  assert.match(text, /label=\{tt\("文件类型"\)\}/);
-  await view.unmount();
+  assert.match(text, /data-bay-ready-kind=/); assert.match(text, /data-bay-ready-shelf=/);
+  assert.doesNotMatch(text, /BayFilterSelect|BayAssetLive|BayAssetSeries|listBayMineArtifacts/);
 });
 
 // ---------------------------------------------------------------------------
@@ -1064,7 +841,7 @@ test("英文界面：五个种类、出售/求购的名字就是约定的那一�
   const en = UI_MESSAGES.en;
   assert.deepEqual(
     links.BAY_SELL_KINDS.map((kind) => en[links.BAY_SELL_KIND_LABEL[kind]]),
-    ["Human service", "Ready-made files", "Website & software service", "Lessons", "Other"],
+    ["Ready-made files", "Human service", "Website & software service", "Lessons", "Other"],
   );
   assert.deepEqual([en["出售"], en["求购"]], ["For sale", "Wanted"]);
   assert.deepEqual([en["全部站点"], en["全部类型"], en["全部目录"]], ["All sites", "All types", "All categories"]);

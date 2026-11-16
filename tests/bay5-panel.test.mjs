@@ -262,8 +262,9 @@ async function mount(element) {
   };
 }
 
-test("没有 request：browse，有搜索框和类目下拉", async () => {
+test("没有 request：browse，人工服务有搜索框和类目下拉", async () => {
   resetRelated({ items: [], match: "none", q: "", site: null });
+  bayState.setBayFilter({ kind: "service" });
   const view = await mount(panelEl({ request: null, active: true }));
   const root = view.host.querySelector("[data-bay-panel-root]");
   assert.equal(root.getAttribute("data-bay-panel-mode"), "browse");

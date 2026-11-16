@@ -667,8 +667,12 @@ export function WorkspaceLibrary({
 
   useEffect(() => {
     if (!selectedId) return;
+    // The openEntryId effect has queued the new selection, but this render
+    // still holds the previous attachment. Do not close the host while it
+    // is switching to a valid replacement.
+    if (openEntryId && openEntryId !== selectedId && entries.some((entry) => entry.id === openEntryId)) return;
     if (!entries.some((entry) => entry.id === selectedId)) setDetailSelection("");
-  }, [entries, selectedId, setDetailSelection]);
+  }, [entries, openEntryId, selectedId, setDetailSelection]);
 
   useEffect(() => {
     setDetailIdentityFailed(false);

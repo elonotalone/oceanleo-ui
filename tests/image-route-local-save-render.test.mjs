@@ -70,9 +70,9 @@ export function useFabricImageEditor(_item, _siteId, options) {
     return { url: "https://cdn.example.test/p.png", projectUrl: "https://cdn.example.test/p.json", savedAt: "2026-10-24T00:00:00.000Z", versionId: "v1", item: undefined, baseItem: undefined };
   }, []);
   return {
-    collab: { readOnly: false, tick: 0, remoteDelta: "", snapshot: () => null, ensureIds() {}, applyRemote() {}, objectBoxes: () => [], adoptRevision: async () => null, markClean() {} },
+    collab: { readOnly: false, tick: 0, remoteDelta: "", snapshot: () => ({ json: { objects: [{ type: "Rect", oceanleoRole: "docbg", width: 1080, height: 1080 }] }, doc: { width: 1080, height: 1080 }, canvasBackground: "#fff" }), ensureIds() {}, applyRemote() {}, objectBoxes: () => [], adoptRevision: async () => null, markClean() {} },
     vectorConversion: null, confirmVectorConversion() {}, openIdentity: "image-1", loading: false, saving: false, aiBusy: false,
-    error: ctl.failed ? "图片源未成功载入" : "", notice: "", sceneDiagnostic: null, sourceReady: !ctl.failed, reload() { ctl.reloads += 1; ctl.failed = false; ctl.rerender && ctl.rerender(); }, savedUrl: "", savedProjectUrl: "", savedAt: "",
+    error: ctl.failed ? (ctl.sourceError ?? "这份矢量图无法解析为可编辑的 SVG。") : "", notice: "", sceneDiagnostic: ctl.diagnostic ?? null, sourceReady: !ctl.failed, reload() { ctl.reloads += 1; ctl.failed = false; ctl.rerender && ctl.rerender(); }, savedUrl: "", savedProjectUrl: "", savedAt: "",
     dirty, editRevision: rev, captureRecovery: () => ({ snapshot: { json: {objects: [{ type: "textbox", text: "OLEO-" + revRef.current }]}, doc: {width: 8, height: 8}, canvasBackground: "#fff" } }), captureRecoveryRevision: () => null, captureLocalSave, markLocalSaved,
     restoreRecovery: async () => false, stageCanvasRef() {}, stageContainerRef() {}, zoom: 1, setZoom() {}, zoomFit() {},
     layers: [], selected: null, cropping: false, canUndo: false, canRedo: false, undo() {}, redo() {},
@@ -125,7 +125,7 @@ const stubs = {
     "FabricImageShapePanel", "FabricImageSignaturePanel", "FabricImageTablePanel", "FabricImageTextPanel",
   ),
   "../collab/adapters/use-entity-collab": dataModule(
-    "export function useEntityCollab() { return { collab: undefined, readOnly: false, saveGate: true, room: null, markSaved() {} }; }",
+    "export function useEntityCollab(opts) { globalThis.__fakeImageEditor.collabInput = opts; return { collab: undefined, readOnly: false, saveGate: true, room: null, markSaved() {} }; }",
   ),
   "../collab/adapters/visual-selection": dataModule("export function useCollabSelections() { return []; }"),
   "../collab/adapters/VisualViewOnlyPanel": dataModule("export function VisualViewOnlyPanel({children}) { return children; }"),
@@ -322,6 +322,7 @@ test("a failed source load keeps the stage mounted under the failure panel, and 
     await act(async () => ctl.rerender());
     const panel = container.querySelector("[data-editor-source-failure]");
     assert.ok(panel, "failure is shown");
+    assert.match(panel.textContent, /这份矢量图无法解析为可编辑的 SVG/);
     assert.ok(container.querySelector("[data-fake-stage]"), "the canvas stage is still mounted so Fabric can be re-initialised");
     assert.match(panel.className, /absolute inset-0/, "the panel overlays the stage (variant overlay)");
     assert.equal(slot(container).getAttribute("data-save-state"), "saving", "no blank overwrite and no success while the source failed");
@@ -330,5 +331,26 @@ test("a failed source load keeps the stage mounted under the failure panel, and 
     assert.equal(ctl.reloads, 1);
     assert.equal(container.querySelector("[data-editor-source-failure]"), null);
     assert.ok(container.querySelector("[data-fake-stage]"));
+  });
+});
+
+test("scene diagnostic is shown when the source error is empty; failed source never feeds collaboration", async () => {
+  await withRoute({}, async ({ container, ctl }) => {
+    ctl.failed = true;
+    ctl.sourceError = "";
+    ctl.diagnostic = { code: "invalid-scene", message: "图层依赖无法读取" };
+    await act(async () => ctl.rerender());
+    assert.match(container.querySelector("[data-editor-source-failure]").textContent, /图层依赖无法读取/);
+    assert.equal(ctl.collabInput.local, null);
+  });
+});
+
+
+test("a failed source cannot seed or push the constructor canvas into a room", async () => {
+  await withRoute({}, async ({ ctl }) => {
+    assert.ok(ctl.collabInput.local, "the loaded controller has a snapshot");
+    ctl.failed = true;
+    await act(async () => ctl.rerender());
+    assert.equal(ctl.collabInput.local, null, "the failed source revokes the snapshot");
   });
 });
