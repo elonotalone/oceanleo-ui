@@ -32,11 +32,11 @@ test('supported capture timestamp extension is enabled before offering, other he
   const other = {uri:'urn:ietf:params:rtp-hdrext:sdes:mid',direction:'sendrecv'};
   t.mock.method(FakePeer.prototype,'addTransceiver',function(...args){
     const tr=add.apply(this,args);
-    tr.getHeaderExtensionsToNegotiate=()=>[other,{uri:'http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time',direction:'stopped'}];
+    tr.getHeaderExtensionsToNegotiate=()=>[other,{uri:'http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time',direction:'stopped'},{uri:'http://www.webrtc.org/experiments/rtp-hdrext/playout-delay',direction:'stopped'}];
     tr.setHeaderExtensionsToNegotiate=value=>{assert.equal(this.offers.length,0);selected=value;};return tr;
   });
   const h=await harness(t);await h.viewer.start();
-  assert.equal(selected[0],other);assert.equal(selected[1].direction,'recvonly');assert.equal(h.viewer.pc.offers.length,1);
+  assert.equal(selected[0],other);assert.equal(selected[1].direction,'recvonly');assert.equal(selected[2].direction,'recvonly');assert.equal(h.viewer.pc.offers.length,1);
 });
 test('timing header API failures leave the picture negotiation alive', async t => {
   const { FakePeer } = await import('./helpers/remote-desktop-webrtc.mjs');const add=FakePeer.prototype.addTransceiver;
