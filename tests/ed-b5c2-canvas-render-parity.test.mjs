@@ -144,15 +144,35 @@ test("selected canvas image opens the actual Library picker, filters nonimages a
     "../../artifact-client": dataModule(`export * from "${new URL("../src/shell/artifact-client.ts", import.meta.url).href}"; export async function refreshArtifactRendition(){return {ok:false}}; export async function listMyArtifacts(){return {ok:true,data:{items:[${JSON.stringify(identity)}, {artifactId:'44444444-4444-4444-8444-444444444444',revisionId:'44444444-4444-4444-8444-444444444444',title:'A document',kind:'doc'}]}}}`),
   }));
   const container = document.createElement("div"); document.body.append(container); const root = createRoot(container);
-  const base = { nodeId: "preview-image", title: "Image", kind: "image", text: "Hello", params: {}, localEditRecipe: [], commandAvailability: {}, hostProvidesEditBar: true, onCommand() {} };
+  const toolbar = document.createElement("div"); toolbar.setAttribute("data-selection-id", "preview-image");
+  const replaceTrigger = document.createElement("button"); replaceTrigger.setAttribute("data-selection-control-id", "replace"); toolbar.append(replaceTrigger); document.body.append(toolbar);
+  const directTrigger = document.createElement("button"); directTrigger.setAttribute("data-selection-control-id", "canvas.selection.library.replace"); document.body.append(directTrigger);
+  const rect = (left, top, width, height) => ({ left, top, right: left + width, bottom: top + height, width, height });
+  directTrigger.getBoundingClientRect = () => rect(240, 160, 80, 32); replaceTrigger.getBoundingClientRect = () => rect(80, 60, 60, 32);
+  const base = { nodeId: "preview-image", selectionEpoch: 1, title: "Image", kind: "image", text: "Hello", params: {}, localEditRecipe: [], commandAvailability: {}, hostProvidesEditBar: true, onCommand() {} };
   try {
     await act(async () => root.render(React.createElement(loaded.LeoNode, { id: base.nodeId, data: base, selected: true })));
+    container.querySelector("[data-node-id]").getBoundingClientRect = () => rect(480, 300, 432, 270);
+    directTrigger.focus();
     let pending; await act(async () => { pending = loaded.requestCanvasLibraryImage(base.nodeId); await new Promise(resolve => setTimeout(resolve, 5)); });
-    assert.ok(container.querySelector("[data-composer-library-picker]"));
-    for (let attempt = 0; attempt < 20 && !container.querySelector("[data-composer-library-item]"); attempt++) await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
-    assert.equal(container.querySelectorAll("[data-composer-library-item]").length, 1, container.textContent);
-    await act(async () => container.querySelector("[data-composer-library-item]").click()); assert.deepEqual(await pending, identity);
-    assert.equal(container.querySelector("[role=dialog]"), null);
+    const directPanel = document.querySelector("[data-anchored-popover]"); assert.ok(directPanel); assert.equal(directPanel.style.position, "fixed"); assert.deepEqual([directPanel.style.left, directPanel.style.top], ["240px", "198px"]);
+    assert.ok(document.querySelector("[data-composer-library-picker]")); assert.equal(container.querySelector("[role=dialog]"), null);
+    for (let attempt = 0; attempt < 20 && !document.querySelector("[data-composer-library-item]"); attempt++) await act(async () => new Promise(resolve => setTimeout(resolve, 10)));
+    assert.equal(document.querySelectorAll("[data-composer-library-item]").length, 1);
+    await act(async () => document.querySelector("[data-composer-library-item]").click()); assert.deepEqual(await pending, identity); assert.equal(document.querySelector("[role=dialog]"), null);
+    directTrigger.remove();
+    let canceled; await act(async () => { canceled = loaded.requestCanvasLibraryImage(base.nodeId); });
+    const toolbarPanel = document.querySelector("[data-anchored-popover]"); assert.deepEqual([toolbarPanel.style.left, toolbarPanel.style.top], ["80px", "98px"]);
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }))); assert.equal(await canceled, null); assert.equal(document.querySelector("[role=dialog]"), null);
+    toolbar.remove();
+    let stale; await act(async () => { stale = loaded.requestCanvasLibraryImage(base.nodeId); });
+    const fallbackPanel = document.querySelector("[data-anchored-popover]"); assert.deepEqual([fallbackPanel.style.left, fallbackPanel.style.top], ["480px", "576px"]);
+    await act(async () => root.render(React.createElement(loaded.LeoNode, { id: base.nodeId, data: { ...base, selectionEpoch: 2 }, selected: true })));
+    assert.equal(await stale, null); assert.equal(document.querySelector("[role=dialog]"), null);
+    let outside; await act(async () => { outside = loaded.requestCanvasLibraryImage(base.nodeId); });
+    await act(async () => document.body.dispatchEvent(new window.Event("pointerdown", { bubbles: true }))); assert.equal(await outside, null); assert.equal(document.querySelector("[role=dialog]"), null);
+    await act(async () => root.render(React.createElement(loaded.LeoNode, { id: base.nodeId, data: { ...base, selectionEpoch: 2 }, selected: false })));
+    assert.equal(await loaded.requestCanvasLibraryImage(base.nodeId), null);
     const calls = [], pixelWrites = [];
     const context = { clearRect() {}, save() {}, restore() {}, translate() {}, rotate() {}, scale() {}, beginPath() {}, clip() {}, stroke() {},
       roundRect(...args) { calls.push(["radius", ...args]); }, drawImage(...args) { calls.push(["image", ...args]); },
@@ -174,7 +194,7 @@ test("selected canvas image opens the actual Library picker, filters nonimages a
     const text = { ...base, kind: "text", text: "\n甲A\n", params: { textStyle: { font_family: "serif", italic: true, underline: true, strike: true, line_height: 1.8, letter_spacing: 3, vertical_text: true } } };
     await act(async () => root.render(React.createElement(loaded.LeoNode, { id: base.nodeId, data: text, selected: true })));
     const preview = container.querySelector("[data-canvas-text-preview]"); assert.equal(preview.style.fontStyle, "italic"); assert.ok(preview.style.textDecoration.includes("line-through")); assert.equal(preview.style.lineHeight, "1.8"); assert.equal(preview.style.letterSpacing, "3px"); assert.equal(preview.textContent, text.text.split("\n").map(line => Array.from(line).join("\n")).join("\n"));
-  } finally { await act(async () => root.unmount()); container.remove(); }
+  } finally { await act(async () => root.unmount()); container.remove(); toolbar.remove(); directTrigger.remove(); }
 });
 
 test("Library replacement works without canvas root identity, disabled read-only controls do not dispatch, and opacity converts percent to scalar", async () => {

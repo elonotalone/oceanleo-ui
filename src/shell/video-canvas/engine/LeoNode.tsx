@@ -8,6 +8,7 @@ import { listMyArtifacts, refreshArtifactRendition } from "../../artifact-client
 import { timelineFontStack } from "../../video-editor/timeline-model";
 import { drawTimelineImageFrame } from "../../video-editor/preview-engine";
 import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { AnchoredPopover } from "../../anchored-popover";
 import { ComposerLibraryPicker } from "../../ComposerLibraryPicker";
 import type { LibraryItem } from "../../library-data";
 import { videoMaterialKind } from "../../workflow-carrier/video-project-material";
@@ -29,6 +30,20 @@ const imageLibraryPickers = new Map<string, () => Promise<LibraryItem | null>>()
 /** The command opens the existing private Library selector on its selected node. */
 export function requestCanvasLibraryImage(nodeId: string): Promise<LibraryItem | null> {
   return imageLibraryPickers.get(nodeId)?.() || Promise.resolve(null);
+}
+
+function canvasLibraryAnchor(nodeId: string, fallback: HTMLElement | null): HTMLElement | null {
+  const buttonIn = (element: Element | null) => element?.matches('button:not(:disabled), [role="button"]:not([aria-disabled="true"])')
+    ? element as HTMLElement : element?.querySelector<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])') || null;
+  const directSelector = '[data-selection-control-id="canvas.selection.library.replace"]';
+  const active = document.activeElement?.closest(directSelector);
+  if (active && !active.closest('[hidden], [inert], [aria-hidden="true"]')) return buttonIn(active) || fallback;
+  const direct = [...document.querySelectorAll(directSelector)].filter((element) => !element.closest('[hidden], [inert], [aria-hidden="true"]'));
+  const matching = direct.find((element) => element.closest('[data-selection-id]')?.getAttribute("data-selection-id") === nodeId);
+  const directButton = buttonIn(matching || direct.find((element) => !element.closest('[data-selection-id]')) || null);
+  if (directButton) return directButton;
+  const toolbar = [...document.querySelectorAll('[data-selection-id]')].find((element) => element.getAttribute("data-selection-id") === nodeId && !element.closest('[hidden], [inert], [aria-hidden="true"]'));
+  return buttonIn(toolbar?.querySelector('[data-selection-control-id="replace"]') || null) || fallback;
 }
 
 async function loadCanvasLibraryImages(signal: AbortSignal) {
@@ -550,6 +565,8 @@ function ImageNode({
   const libraryState: MediaLoadState = source && !src ? (libraryMedia.identity === identity && libraryMedia.failed ? "error" : "loading") : media.state;
   const appearance = canvasImageAppearance(data);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const nodeAnchorRef = useRef<HTMLDivElement>(null);
+  const libraryAnchorRef = useRef<HTMLElement | null>(null);
   const libraryResolve = useRef<((item: LibraryItem | null) => void) | null>(null);
   const closePicker = (item: LibraryItem | null = null) => {
     libraryResolve.current?.(item);
@@ -561,6 +578,7 @@ function ImageNode({
     const open = () => new Promise<LibraryItem | null>((resolve) => {
       libraryResolve.current?.(null);
       libraryResolve.current = resolve;
+      libraryAnchorRef.current = canvasLibraryAnchor(data.nodeId, nodeAnchorRef.current);
       setPickerOpen(true);
     });
     imageLibraryPickers.set(data.nodeId, open);
@@ -570,7 +588,7 @@ function ImageNode({
       libraryResolve.current = null;
       setPickerOpen(false);
     };
-  }, [data.nodeId, selected]);
+  }, [data.nodeId, data.selectionEpoch, data.asset?.assetId, selected]);
   const chooseImage = (file: ComposerAttachment) => {
     if (!file.libraryItem || !file.artifactId || !file.revisionId) return;
     closePicker({ ...file.libraryItem, artifactId: file.artifactId, revisionId: file.revisionId });
@@ -599,6 +617,7 @@ function ImageNode({
   useEffect(() => { paint(); }, [signature, src, frame.width, frame.height, frame.scale]);
   return (
     <div
+      ref={nodeAnchorRef}
       data-node-id={data.nodeId}
       data-asset-id={data.asset?.assetId}
       data-derived-from-asset-id={data.derivative?.derivedFromAssetId}
@@ -631,10 +650,10 @@ function ImageNode({
       </div>
       {selected && hostHasNoEditBar(data) && <ImageCompactBar data={data} />}
       {pickerOpen && (
-        <div role="dialog" aria-label={tt("从资料库添加文件")} onKeyDown={(event) => { if (event.key === "Escape") closePicker(); }}
-          style={{ maxHeight: "32rem" }} className="nodrag nowheel absolute left-0 top-0 z-50 flex w-80 flex-col overflow-auto rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-2 shadow-2xl">
+        <AnchoredPopover open anchorRef={libraryAnchorRef} onClose={() => closePicker()} role="dialog" ariaLabel={tt("从资料库添加文件")}
+          maxHeight={512} lockScroll={false} className="nodrag nowheel z-50 flex w-80 flex-col overflow-auto rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-2 shadow-2xl">
           <ComposerLibraryPicker onBack={() => closePicker()} onPick={chooseImage} load={loadCanvasLibraryImages} />
-        </div>
+        </AnchoredPopover>
       )}
     </div>
   );
