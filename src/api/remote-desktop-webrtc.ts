@@ -161,7 +161,7 @@ export class WebRtcRemoteDesktopViewer {
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
       this.lowDelay(transceiver.receiver);
-      this.captureTimestamp(transceiver);
+      this.receiveExtensions(transceiver);
       if (!this.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
       pc.onicecandidate = event => {
         if (this.pc !== pc || this.ended || !event.candidate) return;
@@ -198,13 +198,14 @@ export class WebRtcRemoteDesktopViewer {
   }
   private lowDelay(receiver: RTCRtpReceiver): void {
     const low = receiver as RTCRtpReceiver & { jitterBufferTarget?: number; playoutDelayHint?: number };
-    if ("jitterBufferTarget" in low) { try { low.jitterBufferTarget = 0; return; } catch { /* try the older hint */ } }
+    if ("jitterBufferTarget" in low) { try { low.jitterBufferTarget = 0; } catch { /* try the older hint */ } }
     try { low.playoutDelayHint = 0; } catch { /* platform may expose read-only hints */ }
   }
   private iceServers(): RTCIceServer[] { return this.descriptor.ice_servers.map(({ region: _region, ...server }) => server); }
-  private captureTimestamp(transceiver: RTCRtpTransceiver): void {
-    // Chromium exposes ACT as supported but stopped by default. Enable it through
-    // the transceiver API before the offer, keeping every other extension intact.
+  private receiveExtensions(transceiver: RTCRtpTransceiver): void {
+    // Enable capture timing and the sender's playout bounds before the offer.
+    // Receiver hints express a minimum; the RTP extension also conveys a maximum.
+    // No audio transceiver is created, so audio synchronization adds no delay.
     type Extension = { uri: string; direction: RTCRtpTransceiverDirection | "stopped" };
     const headers = transceiver as RTCRtpTransceiver & {
       getHeaderExtensionsToNegotiate?(): Extension[];
@@ -212,9 +213,12 @@ export class WebRtcRemoteDesktopViewer {
     };
     try {
       const extensions = headers.getHeaderExtensionsToNegotiate?.();
-      const uri = "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time";
-      if (!extensions?.some(extension => extension.uri === uri) || !headers.setHeaderExtensionsToNegotiate) return;
-      headers.setHeaderExtensionsToNegotiate(extensions.map(extension => extension.uri === uri ? { ...extension, direction: "recvonly" } : extension));
+      const receive = new Set([
+        "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time",
+        "http://www.webrtc.org/experiments/rtp-hdrext/playout-delay",
+      ]);
+      if (!extensions || !headers.setHeaderExtensionsToNegotiate) return;
+      headers.setHeaderExtensionsToNegotiate(extensions.map(extension => receive.has(extension.uri) ? { ...extension, direction: "recvonly" } : extension));
     } catch { /* Unsupported timing metadata must never prevent the picture. */ }
   }
   private preferCodecs(transceiver: RTCRtpTransceiver): boolean {
