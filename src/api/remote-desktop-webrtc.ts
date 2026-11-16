@@ -195,7 +195,9 @@ export class WebRtcRemoteDesktopViewer {
       const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === "video/vp8");
       // An empty preference list restores defaults, including the host's unsupported profiles.
       if (!h264.length && !vp8.length) return false;
-      transceiver.setCodecPreferences([...h264, ...vp8]);
+      // RTX repairs lost packets; it is not an additional picture codec/profile.
+      const repair = caps.codecs.filter(c => c.mimeType.toLowerCase() === "video/rtx");
+      transceiver.setCodecPreferences([...h264, ...vp8, ...repair]);
       return true;
     } catch { return false; /* Never send an unfiltered offer when preferences cannot be applied. */ }
   }

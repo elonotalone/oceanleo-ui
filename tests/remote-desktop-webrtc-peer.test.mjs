@@ -105,7 +105,8 @@ for(const [browser,codecs] of Object.entries(codecFixtures)){
     const available=exactProfile?codecs:codecs.filter(c=>c!==h264);
     const h=await harness(t,{rtpReceiver:{getCapabilities:kind=>{assert.equal(kind,'video');return {codecs:available};}}});
     await h.viewer.start();const pc=h.viewer.pc;
-    assert.deepEqual(pc.codecs,exactProfile?[h264,vp8]:[vp8]);
+    const repair=available.filter(c=>c.mimeType.toLowerCase()==='video/rtx');
+    assert.deepEqual(pc.codecs,exactProfile?[h264,vp8,...repair]:[vp8,...repair]);
     for(const preferred of pc.codecs)assert.ok(available.includes(preferred),'use original capability objects');
     assert.deepEqual(pc.offers,[undefined]);assert.equal(h.signals[0].sdp,'v=0\r\nfixture-offer');
     assert.deepEqual(h.terminals,[]);
@@ -114,6 +115,7 @@ for(const [browser,codecs] of Object.entries(codecFixtures)){
 for(const [name,rtpReceiver,breakPreferences] of [
   ['no permitted codec',{getCapabilities:()=>({codecs:[codec('H264','profile-level-id=42001f;packetization-mode=1'),codec('VP9')]})}],
   ['empty capabilities',{getCapabilities:()=>({codecs:[]})}],
+  ['repair codecs only',{getCapabilities:()=>({codecs:[codec('rtx')]})}],
   ['missing capabilities',{}],['unavailable receiver',null],
   ['capability lookup throws',{getCapabilities(){throw Error('unsupported');}}],
   ['missing setCodecPreferences',undefined,'missing'],['setCodecPreferences throws',undefined,'throws'],
