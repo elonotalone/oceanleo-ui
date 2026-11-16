@@ -99,8 +99,8 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
           <Avatar name={name} initial={member.initial} />
           <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{name}</span>{member.name && member.email && <span className="block truncate text-xs text-[var(--muted)]">{member.email}</span>}
             {member.status === "invited" && <span className="block text-xs text-[var(--muted)]">{tt(copy.invited)}</span>}</span>
-          {canManage ? <><RolePicker value={member.role === "collaborate" ? "collaborate" : "view"} memberName={name} disabled={disabled} onChange={(role) => void changeRole(member.id, role)} />
-            <button type="button" disabled={disabled} aria-label={tt(copy.removeMember, { name })} onClick={(event) => { removalAnchorRef.current = event.currentTarget; setRemoving(member); }}
+          {canManage ? <><RolePicker value={member.role === "collaborate" ? "collaborate" : "view"} memberName={name} disabled={disabled || member.id.startsWith("pending:")} onChange={(role) => void changeRole(member.id, role)} />
+            <button type="button" disabled={disabled || member.id.startsWith("pending:")} aria-label={tt(copy.removeMember, { name })} onClick={(event) => { removalAnchorRef.current = event.currentTarget; setRemoving(member); }}
               className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></svg>
             </button></> : <span className="shrink-0 text-xs text-[var(--muted)]">{tt(member.role === "collaborate" ? copy.collaborate : copy.view)}</span>}

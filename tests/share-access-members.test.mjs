@@ -91,7 +91,7 @@ test("role menu exposes checked options, full computer and billing warning, keyb
     assert.equal(options[0].getAttribute("aria-checked"),"true");assert.match(options[1].textContent,/你的电脑/);assert.match(options[1].textContent,/费用由你承担/);
     await act(async()=>{options[0].focus();options[0].dispatchEvent(new window.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));});
     assert.equal(document.activeElement,options[1]);await click(options[1]);
-    assert.deepEqual(changed,["m1","collaborate"]);assert.match(row(view).textContent,/协作/);
+    assert.deepEqual(changed,["m1","collaborate"]);assert.match(row(view).textContent,/协作/);assert.equal(document.activeElement,trigger);
     await act(async()=>pending.reject(Error("no")));assert.match(row(view).textContent,/仅查看/);assert.ok(view.host.querySelector('[role="alert"]'));
   }finally{await view.close();}
 });

@@ -43,7 +43,7 @@ export function RolePicker({ value, memberName, disabled, onChange }: RolePicker
       style={{ width: 360 }}>
       <div id={menuId}>
         {roles.map((role) => <button key={role} type="button" role="menuitemradio" aria-checked={value === role}
-          onKeyDown={navigate} onClick={() => { setOpen(false); if (role !== value) onChange(role); }}
+          onKeyDown={navigate} onClick={() => { setOpen(false); anchorRef.current?.focus(); if (role !== value) onChange(role); }}
           className="flex w-full items-start gap-2 rounded-lg p-3 text-start hover:bg-[var(--surface)] focus-visible:bg-[var(--surface)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
           <span className="w-4 shrink-0" aria-hidden="true">{value === role ? "✓" : ""}</span>
           <span className="min-w-0"><span className="block text-sm font-medium">{tt(role === "collaborate" ? copy.collaborate : copy.view)}</span>
