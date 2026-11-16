@@ -58,6 +58,7 @@ type SelectionAnchor = NonNullable<SelectionContext["anchor"]>;
 /** Only equivalent engine commands advertise a canonical selection capability. */
 const CANVAS_CANON_COMMANDS: Readonly<Record<string, string>> = {
   crop: "canvas.node.update.local.crop",
+  "remove-background": "canvas.node.generate.remove-background",
   rotate: "canvas.node.update.local.rotate",
   "flip-x": "canvas.node.update.local.flip-horizontal",
   "flip-y": "canvas.node.update.local.flip-vertical",
@@ -272,6 +273,7 @@ function fieldControls(
     const appearance = canvasImageAppearance(node as CanvasNodeDefinition & { params?: Record<string, unknown> });
     const params = (node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {};
     controls.push(
+      ...availableAction(input, { id: "remove-background" } as SelectionControl, "canvas.node.generate.remove-background"),
       { id: "opacity", value: appearance.opacity * 100, min: 0, max: 100, step: 1 } as SelectionControl,
       { id: "radius", kind: "number", label: input.tt("圆角"), value: appearance.radius, min: 0, max: 1000, step: 1 },
       inspector({ id: "border", kind: "number", label: input.tt("边框"), value: appearance.border.width, min: 0, max: 100, step: 1, unit: "px" }, "border", input.tt("边框"), "effects"),

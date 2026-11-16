@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { addProjectNode, createVideoProject, projectHead, parseVideoProject, projectSourceForStorage, projectTimelineDocument, projectToFlow, canvasImageAppearance, projectForTypedArtifactCommit } from "../src/shell/video-canvas/engine/project-model.ts";
 import { canvasSelectionContext, canvasSelectionDispatch, canvasCompositionDocument } from "../src/shell/video-canvas/engine/canvas-selection-adapter.ts";
-import { executeCanvasCommand, commandAvailability } from "../src/shell/video-canvas/engine/command-registry.ts";
+import { executeCanvasCommand, commandAvailability, commandDisclosure } from "../src/shell/video-canvas/engine/command-registry.ts";
 import { hydrateVideoTimelineDoc } from "../src/shell/video-editor/video-timeline-source.ts";
 import { pinVideoProjectAssets } from "../src/shell/workflow-carrier/video-project-material.ts";
 import { saveVideoProject } from "../src/shell/workflow-carrier/video-project-save.ts";
@@ -185,4 +185,78 @@ test("Library replacement works without canvas root identity, disabled read-only
   assert.equal(canvasSelectionDispatch({ controlId: "canvas.selection.library.replace", selectionId: readOnly.id, selectionRevision: readOnly.revision, selectionEpoch: 1, requestId: "read-only" }, readOnly), null);
   await runtime.change("opacity", 64); const opacity = runtime.context().controls.find((control) => control.id === "opacity"); assert.deepEqual([opacity.value, opacity.min, opacity.max, opacity.step], [64, 0, 100, 1]);
   assert.equal(projectHead(runtime.project).graph.nodes.find((node) => node.nodeId === added.nodeId).params.opacity, 0.64);
+});
+
+const removeBgCommand = "canvas.node.generate.remove-background";
+const transparentPng = Uint8Array.from(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR42mNgAAIAAAUAAXpeqz8AAAAASUVORK5CYII=", "base64"));
+const outputUrl = "https://cdn.example.test/removed-background.png";
+function removeBgEngine(overrides = {}) {
+  const added = addProjectNode(fixture(), "image", { x: 9, y: 17 }, { assetId: "image", shotId: "shot" });
+  const node = added.project.versions[added.project.headVersionId].graph.nodes.find(node => node.nodeId === added.nodeId);
+  node.params = { includeInVideo: true, startMs: 100, durationMs: 900, radius: 8, opacity: 0.64 };
+  const runtime = engine(added.project, {
+    requestRemoveBackground: async (path, init) => { assert.equal(path, "/v1/images/remove-bg"); assert.equal(init.method, "POST"); const body = JSON.parse(init.body); assert.deepEqual(Object.keys(body).sort(), ["image_url", "site_id"]); assert.equal(body.site_id, "video"); assert.match(body.image_url, /^https:/);
+      return { ok: true, data: { image: outputUrl, model: "imageseg-matting", credits_spent: 2, request_id: `provider-${++serial}` } }; },
+    readRemoveBackgroundImage: async (url, options) => { assert.equal(url, outputUrl); assert.equal(options.maxBytes, 20 * 1024 * 1024); return new Blob([transparentPng], { type: "image/png" }); }, ...overrides,
+  }); runtime.select(added.nodeId); return { runtime, nodeId: added.nodeId };
+}
+
+test("remove-background calls the actual endpoint contract, hashes real transparent PNG bytes and preserves history through save/render", async () => {
+  const { runtime, nodeId } = removeBgEngine(); const oldProject = structuredClone(runtime.project), oldHead = runtime.project.headVersionId;
+  const control = runtime.context().controls.find(control => control.id === "remove-background"); assert.ok(control); assert.equal(control.disabled, undefined);
+  const disclosure = commandDisclosure(removeBgCommand, runtime.env, {}); assert.equal(disclosure.contract, "POST /v1/images/remove-bg"); assert.match(disclosure.cost, /metered/);
+  const result = await runtime.change("remove-background"); assert.equal(result.cost.billing, "actual"); assert.equal(result.cost.actualAmount, 2);
+  const current = projectHead(runtime.project).graph.nodes.find(node => node.nodeId === nodeId); assert.notEqual(current.assetId, "image");
+  const output = runtime.project.assets[current.assetId]; assert.equal(output.immutable, true); assert.equal(output.url, outputUrl); assert.equal(output.byteSize, transparentPng.length); assert.equal(output.mime, "image/png");
+  const expected = [...new Uint8Array(await crypto.subtle.digest("SHA-256", transparentPng))].map(byte => byte.toString(16).padStart(2, "0")).join(""); assert.equal(output.contentDigest, expected);
+  assert.deepEqual(runtime.project.versions[oldHead], oldProject.versions[oldHead]); assert.deepEqual(runtime.project.assets.image, oldProject.assets.image);
+  assert.ok(runtime.project.lineage.some(item => item.parentAssetId === "image" && item.childAssetId === output.assetId && item.commandId === removeBgCommand));
+  const reopened = await saveReopen(runtime.project); const clip = projectTimelineDocument(reopened).document.tracks.find(track => track.kind === "image").clips[0];
+  assert.equal(clip.source_url, outputUrl); assert.deepEqual([clip.start_ms, clip.duration_ms, clip.radius, clip.opacity], [100, 900, 8, 0.64]);
+  assert.equal(reopened.assets[current.assetId].contentDigest, expected); const pin = pinVideoProjectAssets(reopened, rootId, "22222222-2222-4222-8222-222222222222"); assert.ok(pin.assets[current.assetId].sourceDependency.path.startsWith("assets/"));
+});
+
+test("remove-background resolves Library full and pinned dependency inputs without forwarding a blob URL", async () => {
+  for (const sourceKind of ["library", "dependency"]) {
+    let read = 0;
+    const { runtime } = removeBgEngine({
+      refreshLibraryImage: async (identity, purpose) => { read++; assert.equal(purpose, "full"); assert.equal(identity.artifactId, pickedLibraryImage.artifactId); return { ok: true, data: fullRendition }; },
+      resolveImageReferences: async (doc) => { read++; assert.equal(doc.tracks[0].clips[0].source_ref.path, "assets/photo.png"); return { ...doc, tracks: [{ ...doc.tracks[0], clips: [{ ...doc.tracks[0].clips[0], source_url: fullRendition.url }] }] }; },
+    });
+    const source = runtime.project.assets.image; delete source.url;
+    if (sourceKind === "library") source.librarySource = { artifactId: pickedLibraryImage.artifactId, revisionId: pickedLibraryImage.revisionId, rendition: "full" };
+    else source.sourceDependency = { artifactId: rootId, revisionId: rootId, path: "assets/photo.png", sha256: "a".repeat(64), mediaType: "image/png", byteSize: 3 };
+    assert.equal((await runtime.run(removeBgCommand)).status, "succeeded"); assert.equal(read, 1);
+  }
+  const { runtime } = removeBgEngine({ requestRemoveBackground: async () => { assert.fail("blob URLs must not reach the provider"); } });
+  runtime.project.assets.image.url = "blob:runtime-image"; const old = structuredClone(runtime.project); assert.equal((await runtime.run(removeBgCommand)).status, "failed"); assert.deepEqual(runtime.project, old);
+});
+
+test("remove-background rejects permission errors, invalid bytes, oversized and expiring outputs without mutating any version", async () => {
+  const bad = [
+    { requestRemoveBackground: async () => ({ ok: false, status: 403, error: "Forbidden" }) },
+    { readRemoveBackgroundImage: async () => new Blob(["not image"], { type: "image/png" }) },
+    { readRemoveBackgroundImage: async () => new Blob([transparentPng], { type: "text/html" }) },
+    { readRemoveBackgroundImage: async () => ({ size: 20 * 1024 * 1024 + 1, type: "image/png" }) },
+    { requestRemoveBackground: async () => ({ ok: true, data: { image: fullRendition.url, model: "imageseg-matting", credits_spent: 2, request_id: "ephemeral" } }) },
+  ];
+  for (const overrides of bad) { const { runtime } = removeBgEngine(overrides); const old = structuredClone(runtime.project); const result = await runtime.run(removeBgCommand); assert.equal(result.status, "failed"); assert.deepEqual(runtime.project, old); }
+});
+
+test("remove-background blocks stale revisions, read-only selection dispatch, concurrent calls and canceled/late results", async () => {
+  let submit = 0, complete;
+  const { runtime } = removeBgEngine({ requestRemoveBackground: async () => { submit++; return new Promise(resolve => { complete = resolve; }); } });
+  const old = structuredClone(runtime.project);
+  assert.equal((await runtime.run(removeBgCommand, {}, { selectionEpoch: 0 })).status, "rejected"); assert.equal(submit, 0);
+  assert.equal((await runtime.run(removeBgCommand, {}, { projectVersionId: "old" })).status, "rejected"); assert.equal(submit, 0);
+  const context = runtime.context(); context.controls.find(control => control.id === "remove-background").disabled = true;
+  assert.equal(canvasSelectionDispatch({ controlId: "remove-background", requestId: "readonly-remove", selectionId: context.id, selectionRevision: context.revision, selectionEpoch: context.epoch }, context), null);
+  const pending = runtime.run(removeBgCommand); for (let tick = 0; tick < 10 && !complete; tick++) await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal((await runtime.run(removeBgCommand)).error.code, "ALREADY_RUNNING"); assert.equal(submit, 1);
+  runtime.select(projectHead(runtime.project).graph.nodes.find(node => node.kind === "image").nodeId);
+  complete({ ok: true, data: { image: outputUrl, model: "imageseg-matting", credits_spent: 2, request_id: "late-provider" } });
+  assert.equal((await pending).status, "rejected"); assert.deepEqual(runtime.project, old);
+  const controller = new AbortController(); let send = 0;
+  const canceled = removeBgEngine({ getCommandSignal: () => controller.signal, requestRemoveBackground: async () => { send++; controller.abort(); return { ok: false, status: 0 }; } });
+  const before = structuredClone(canceled.runtime.project); const result = await canceled.runtime.run(removeBgCommand); assert.equal(result.status, "cancelled"); assert.equal(send, 1); assert.deepEqual(canceled.runtime.project, before); assert.equal(result.cancellation.disposition, "client-aborted-provider-may-continue");
 });
