@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { Modal } from "../ui";
+import type { BayAssetPurchase } from "../lib/bay/assets";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { libraryRequest, pendingLibraryUploads, pauseLibraryUpload, resumeLibraryUpload, LIBRARY_UPLOAD_EVENT, type PendingLibraryUpload } from "../lib/library-uploads";
 import { formatBytes } from "../lib/upload/progress";
@@ -28,15 +29,15 @@ export function LibraryStorageLink() {
 
 export function LibraryPurchasedUpdates({ items, onUpdated }: { items: readonly LibraryItem[]; onUpdated: () => void }) {
   const tt = useUI();
-  const [updates, setUpdates] = useState<{ id: string; title: string; updateAvailable: boolean; libraryIdentity?: { id: string; kind: string } }[]>([]);
+  const [updates, setUpdates] = useState<{ id: string; listingId?: string; title: string; updateAvailable: boolean; libraryIdentity?: { id: string; kind: string } }[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const titles = JSON.stringify(items.map((item) => ({ id: item.artifactId || item.id, title: item.title })));
   useEffect(() => {
     let live = true;
     const known = JSON.parse(titles) as { id: string; title: string }[];
-    void libraryRequest<{ items: (BayEntitlement & { listing_id: string; title?: string; libraryIdentity?: { id: string; kind: string } })[] }>("/v1/bay/assets/purchases").then((data) => {
-      if (live) setUpdates(data.items.filter((item) => item.entitled).map((item) => ({ id: item.listing_id, title: item.title || known.find((row) => row.id === item.libraryIdentity?.id)?.title || "", updateAvailable: item.updateAvailable, libraryIdentity: item.libraryIdentity })));
+    void libraryRequest<{ items: (BayEntitlement & Partial<BayAssetPurchase>)[] }>("/v1/bay/assets/purchases").then((data) => {
+      if (live) setUpdates(data.items.filter((item) => item.entitled).map((item) => ({ id: item.id || item.listing_id || `${item.ref?.kind}:${item.template_id || item.libraryIdentity?.id}`, listingId: item.ref?.kind === "template" ? undefined : item.listing_id || undefined, title: item.title || known.find((row) => row.id === item.libraryIdentity?.id)?.title || "", updateAvailable: Boolean(item.listing_id && item.ref?.kind !== "template" && item.updateAvailable), libraryIdentity: item.libraryIdentity })));
     }).catch(() => { /* Library remains usable when entitlement refresh is unavailable. */ });
     return () => { live = false; };
   }, [titles]);
@@ -48,7 +49,7 @@ export function LibraryPurchasedUpdates({ items, onUpdated }: { items: readonly 
       {item.updateAvailable && <><span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">{tt("有新版本")}</span>
         <button type="button" disabled={Boolean(busy)} onClick={() => {
           setBusy(item.id); setError("");
-          void libraryRequest<BayEntitlement>(`/v1/bay/assets/${encodeURIComponent(item.id)}/update`, {}).then((entitlement) => { setUpdates((rows) => rows.map((row) => row.id === item.id ? { ...row, updateAvailable: entitlement.updateAvailable } : row)); onUpdated(); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "更新失败，请重试")).finally(() => setBusy(""));
+          void libraryRequest<BayEntitlement>(`/v1/bay/assets/${encodeURIComponent(item.listingId!)}/update`, {}).then((entitlement) => { setUpdates((rows) => rows.map((row) => row.id === item.id ? { ...row, updateAvailable: entitlement.updateAvailable } : row)); onUpdated(); }).catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "更新失败，请重试")).finally(() => setBusy(""));
         }} className="underline disabled:opacity-50">{tt(busy === item.id ? "正在更新…" : "更新到我的库")}</button></>}
     </div>)}
     {error && <p role="alert">{tt(error)}</p>}

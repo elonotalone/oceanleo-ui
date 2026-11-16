@@ -243,6 +243,8 @@ export function templateMaterialToBayAsset(
       material.siteKey,
     ),
     shelfKind: "official",
+    price_fen: 0,
+    currency: "CNY",
   }, {
     source: "template-materials",
     catalogId: material.id,
@@ -329,6 +331,8 @@ export function typedMaterialToBayAsset(
       material.context?.siteKey || artifact.owner.originSiteKey || "",
     ),
     shelfKind: "official",
+    price_fen: 0,
+    currency: "CNY",
   }, {
     source: material.source,
     catalogId: null,

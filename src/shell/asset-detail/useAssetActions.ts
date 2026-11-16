@@ -75,7 +75,7 @@ const defaultServices: AssetActionServices = {
     return resolveAssetDetail(ref, options);
   },
   claim: async (ref) => {
-    if (ref.kind === "platform") return claimedLibraryRef(await bayPost<unknown>("/v1/bay/assets/claim", { ref }));
+    if (ref.kind === "platform" || ref.kind === "template") return claimedLibraryRef(await bayPost<unknown>("/v1/bay/assets/claim", { ref }));
     if (ref.kind === "listing") {
       const { purchaseBayAsset } = await import("../../lib/bay/assets");
       await purchaseBayAsset(ref.id);

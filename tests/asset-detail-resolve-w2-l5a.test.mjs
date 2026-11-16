@@ -127,6 +127,17 @@ test('platform claims and seller purchases use distinct endpoints and identities
   assert.equal(requests[1].path, '/v1/bay/assets/seller-listing/purchase');
 });
 
+test('official template claims preserve the template identity and purchases use the existing private feed', async () => {
+  requests.length = 0;
+  const template = { kind: 'template', id: 'official-game' };
+  await clients.claimBayAsset(template);
+  await clients.listPurchasedBayAssets(30);
+  assert.deepEqual(requests[0].body, { ref: template });
+  assert.equal(requests[0].path, '/v1/bay/assets/claim');
+  assert.equal(requests[1].path, '/v1/bay/assets/purchases?limit=30');
+  assert.equal(requests[1].options?.anonymous, undefined);
+});
+
 test('resolve client carries identity kind, revision and auth-preserving anonymous option', async () => {
   requests.length = 0;
   const signal = new AbortController().signal;
