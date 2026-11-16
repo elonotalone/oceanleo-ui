@@ -37,6 +37,12 @@ test('signalling loss preserves input and frame callbacks; queued offer/candidat
   assert.equal(h.frames.length,1);assert.equal(pc.closed,0);h.signalAvailable(true);h.viewer.updateDescriptor(descriptor());
   assert.equal(h.signals[0].k,'offer');assert.equal(h.signals.length,65);assert.equal(h.signals[1].candidate,'6');assert.equal(h.terminals.length,0);
 });
+test('offline queued offer is marked sent only when signalling accepts its flush',async t=>{
+  const h=await harness(t);h.signalAvailable(false);await h.viewer.start();await h.advance(10000);
+  assert.equal(h.reports[0].report.steps.offer_sent_ms,undefined);
+  h.signalAvailable(true);h.viewer.flushSignals();h.viewer.close();
+  assert.equal(h.reports.at(-1).report.steps.offer_sent_ms,10100);assert.equal(h.signals[0].k,'offer');
+});
 test('new track uses plain video; receiver hint falls back when jitterBufferTarget setter rejects',async t=>{
   const h=await harness(t);await h.viewer.start();const video=new FakeVideo();h.viewer.attachVideo(video);const receiver={};
   Object.defineProperty(receiver,'jitterBufferTarget',{set(){throw Error('unsupported');}});

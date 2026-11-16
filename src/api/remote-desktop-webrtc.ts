@@ -170,14 +170,13 @@ export class WebRtcRemoteDesktopViewer {
       await pc.setLocalDescription(offer);
       if (this.ended || this.pc !== pc) return;
       this.transmit({ k: "offer", sdp: pc.localDescription?.sdp ?? offer.sdp ?? "", gen: this.gen });
-      this.telemetry.step("offer_sent_ms");
     } catch { if (!this.ended && this.pc === pc) this.restartDue = this.now() + this.restartBackoff; }
     finally { if (this.negotiatingPeer === pc) this.negotiatingPeer = null; }
   }
   private transmit(data: WebRtcSignal): void {
     if (this.ended) return;
     let sent = false; try { sent = this.options.sendSignal(data); } catch { /* the direct peer remains alive */ }
-    if (sent) return;
+    if (sent) { if (data.k === "offer") this.telemetry.step("offer_sent_ms"); return; }
     if (data.k === "offer") {
       this.pendingSignals = this.pendingSignals.filter(s => s.k !== "offer" && (s.k !== "candidate" || s.gen === data.gen));
       this.pendingSignals.unshift(data);
@@ -190,6 +189,7 @@ export class WebRtcRemoteDesktopViewer {
     while (this.pendingSignals.length) {
       let sent = false; try { sent = this.options.sendSignal(this.pendingSignals[0]); } catch { /* retry on next tick */ }
       if (!sent) break;
+      if (this.pendingSignals[0].k === "offer") this.telemetry.step("offer_sent_ms");
       this.pendingSignals.shift();
     }
   }
