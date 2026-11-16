@@ -51,7 +51,7 @@ export class WebRtcRemoteDesktopViewer {
   private ended = false;
   private started = false;
   private creating: Promise<void> | undefined;
-  private negotiating = false;
+  private negotiatingPeer: RTCPeerConnection | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
   private disconnectedAt: number | undefined;
   private restartDue: number | undefined;
@@ -162,8 +162,8 @@ export class WebRtcRemoteDesktopViewer {
     this.telemetry.step("ice_connected_ms"); this.updateState();
   }
   private async offer(pc: RTCPeerConnection, restart: boolean): Promise<void> {
-    if (this.negotiating || this.ended || this.pc !== pc) return;
-    this.negotiating = true;
+    if (this.negotiatingPeer === pc || this.ended || this.pc !== pc) return;
+    this.negotiatingPeer = pc;
     try {
       const offer = await pc.createOffer(restart ? { iceRestart: true } : undefined);
       if (this.ended || this.pc !== pc) return;
@@ -172,7 +172,7 @@ export class WebRtcRemoteDesktopViewer {
       this.transmit({ k: "offer", sdp: pc.localDescription?.sdp ?? offer.sdp ?? "", gen: this.gen });
       this.telemetry.step("offer_sent_ms");
     } catch { if (!this.ended && this.pc === pc) this.restartDue = this.now() + this.restartBackoff; }
-    finally { this.negotiating = false; }
+    finally { if (this.negotiatingPeer === pc) this.negotiatingPeer = null; }
   }
   private transmit(data: WebRtcSignal): void {
     if (this.ended) return;
@@ -198,8 +198,10 @@ export class WebRtcRemoteDesktopViewer {
     const data = value as WebRtcSignal;
     if (data.gen !== undefined && (!Number.isSafeInteger(data.gen) || data.gen < this.gen)) return;
     if (data.k === "bye") {
+      if (data.gen !== undefined && data.gen !== this.gen) return;
       const reason = typeof data.reason === "string" && data.reason ? data.reason : "host_left";
-      if (/^(?:input_|host_input_|media_data_channel_|data_channel_)/.test(reason)) this.channelFault("rd-input", reason);
+      const authorityLost = /consent|revok|disabled|signed_out|signout|billing|lease/.test(reason);
+      if (!authorityLost && /^(?:input_|host_input_|media_data_channel_|data_channel_)/.test(reason)) this.channelFault("rd-input", reason);
       else this.close(reason);
       return;
     }
@@ -220,6 +222,8 @@ export class WebRtcRemoteDesktopViewer {
   }
   updateDescriptor(descriptor: RemoteWebRtcDescriptor): void {
     if (this.ended || descriptor.transport !== "webrtc-v1" || descriptor.session_id !== this.descriptor.session_id || descriptor.role !== "viewer") return;
+    // A delayed pre-renewal snapshot must not replace current credentials or grant a fresh relative lease.
+    if (Date.parse(descriptor.lease_expires_at) < Date.parse(this.descriptor.lease_expires_at) || descriptor.server_now < this.descriptor.server_now) return;
     const sameExpiry = descriptor.lease_expires_at === this.descriptor.lease_expires_at;
     const deadline = this.deadline(descriptor);
     this.leaseDeadline = sameExpiry ? Math.min(this.leaseDeadline, deadline) : deadline;

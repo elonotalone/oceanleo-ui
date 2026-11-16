@@ -87,3 +87,13 @@ test('ICE region metadata is kept for URL path mapping and stripped from RTC con
   pc.statsEntries=[{id:'p',type:'candidate-pair',selected:true,localCandidateId:'l',remoteCandidateId:'r'},{id:'l',type:'local-candidate',candidateType:'relay',url:'turn:fixture.invalid:3478'},{id:'r',type:'remote-candidate',candidateType:'host'}];
   await h.advance(100);assert.equal(h.states.at(-1).path.relay_region,'ap-east');
 });
+test('delayed pre-renewal descriptor cannot extend current lease or regress ICE credentials',async t=>{
+  const h=await harness(t);await h.viewer.start();await h.advance(60000);
+  h.viewer.updateDescriptor(descriptor({server_now:WALL/1000+60,lease_expires_at:new Date(WALL+180000).toISOString(),ice_servers:[{urls:['turn:new.invalid:3478'],username:'new',credential:'new'}]}));
+  await h.advance(20000);h.viewer.updateDescriptor(descriptor());assert.equal(h.viewer.pc.configuration.iceServers[0].username,'new');
+  await h.advance(100000);assert.deepEqual(h.terminals,['lease_expired']);
+});
+test('future-generation bye is ignored and input_consent_revoked remains terminal',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();await h.viewer.signal({k:'bye',gen:2,reason:'viewer_left'});assert.equal(h.viewer.pc.closed,0);
+  await h.viewer.signal({k:'bye',gen:1,reason:'input_consent_revoked'});assert.deepEqual(h.terminals,['input_consent_revoked']);
+});
