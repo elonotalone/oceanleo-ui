@@ -28,6 +28,8 @@ export interface LibraryUploadOptions {
   folderId?: string;
   path?: string;
   projectId?: string;
+  idempotencyKey?: string;
+  taskUpload?: { taskId?: string; sessionId?: string; pending?: boolean };
   signal?: AbortSignal;
   onProgress?: (loaded: number, total: number) => void;
 }
@@ -46,7 +48,7 @@ export interface PendingLibraryUpload {
 interface SavedUpload extends PendingLibraryUpload {
   file: File;
   lastModified: number;
-  options: Pick<LibraryUploadOptions, "folderId" | "path" | "projectId">;
+  options: Pick<LibraryUploadOptions, "folderId" | "path" | "projectId" | "taskUpload" | "idempotencyKey">;
 }
 export class LibraryUploadError extends Error {
   // Explicit fields (no TypeScript parameter properties): the node test loader strips types only.
@@ -207,10 +209,22 @@ async function sendTus(session: UploadSession, file: File, record: SavedUpload, 
   }
 }
 
+function uploadIdentityScope(options: LibraryUploadOptions): string {
+  const location = `${options.folderId || ""}:${options.path || ""}:${options.projectId || ""}`;
+  // Keep every pre-existing Library recovery key valid; only composer uploads gain a task scope.
+  return options.taskUpload
+    ? `${location}:task:${JSON.stringify(options.taskUpload)}:${options.idempotencyKey || ""}` : location;
+}
+
+function sessionOptions(options: SavedUpload["options"]) {
+  const { idempotencyKey: _key, ...context } = options;
+  return context;
+}
+
 export async function uploadLibraryFile(file: File, options: LibraryUploadOptions = {}): Promise<FileItem> {
   if (options.signal?.aborted) throw new LibraryUploadError("上传已暂停");
   const scope = await ownerScope();
-  const identity = await deriveUploadIdentity(file, { filename: file.name, contentType: file.type, siteId: `${options.folderId || ""}:${options.path || ""}:${options.projectId || ""}`, registerAsset: true });
+  const identity = await deriveUploadIdentity(file, { filename: file.name, contentType: file.type, siteId: uploadIdentityScope(options), registerAsset: true });
   const key = `library-upload:${scope}:${identity.idempotencyKey}`;
   if (active.has(key)) throw new LibraryUploadError("这个文件正在上传");
   const finished = await readAdvancedRecovery(`${key}:complete`).catch(() => null);
@@ -222,7 +236,7 @@ export async function uploadLibraryFile(file: File, options: LibraryUploadOption
   const prior = memory.get(key) || stored?.payload as SavedUpload | undefined;
   // Cache reads yield; another caller may have claimed this file meanwhile.
   if (active.has(key)) throw new LibraryUploadError("这个文件正在上传");
-  const record: SavedUpload = prior || { key, uploadId: "", name: file.name, size: file.size, loaded: 0, state: "uploading", persisted: false, file, lastModified: file.lastModified, options: { folderId: options.folderId, path: options.path, projectId: options.projectId } };
+  const record: SavedUpload = prior || { key, uploadId: "", name: file.name, size: file.size, loaded: 0, state: "uploading", persisted: false, file, lastModified: file.lastModified, options: { folderId: options.folderId, path: options.path, projectId: options.projectId, taskUpload: options.taskUpload, idempotencyKey: options.idempotencyKey } };
   record.file = file; record.state = "uploading"; record.error = undefined;
   const controller = new AbortController();
   const abort = () => controller.abort();
@@ -240,11 +254,11 @@ export async function uploadLibraryFile(file: File, options: LibraryUploadOption
         if (!(error instanceof LibraryUploadError) || ![404, 410].includes(error.status)) throw error;
         record.uploadId = "";
         record.loaded = 0;
-        session = await libraryRequest<UploadSession>("/v1/library/uploads", { filename: file.name, size: file.size, contentType: file.type || "application/octet-stream", ...record.options }, signal);
+        session = await libraryRequest<UploadSession>("/v1/library/uploads", { filename: file.name, size: file.size, contentType: file.type || "application/octet-stream", ...sessionOptions(record.options) }, signal);
         record.uploadId = session.uploadId;
       }
     } else {
-      session = await libraryRequest<UploadSession>("/v1/library/uploads", { filename: file.name, size: file.size, contentType: file.type || "application/octet-stream", ...record.options }, signal);
+      session = await libraryRequest<UploadSession>("/v1/library/uploads", { filename: file.name, size: file.size, contentType: file.type || "application/octet-stream", ...sessionOptions(record.options) }, signal);
       record.uploadId = session.uploadId;
     }
     if (!session.uploadId || typeof session.method !== "string") throw new LibraryUploadError("上传未返回会话编号，请重试");
@@ -314,9 +328,9 @@ export async function uploadLibraryFile(file: File, options: LibraryUploadOption
 }
 export async function queueLibraryFile(file: File, options: LibraryUploadOptions): Promise<void> {
   const scope = await ownerScope();
-  const identity = await deriveUploadIdentity(file, { filename: file.name, contentType: file.type, siteId: `${options.folderId || ""}:${options.path || ""}:${options.projectId || ""}`, registerAsset: true });
+  const identity = await deriveUploadIdentity(file, { filename: file.name, contentType: file.type, siteId: uploadIdentityScope(options), registerAsset: true });
   const key = `library-upload:${scope}:${identity.idempotencyKey}`;
-  await save({ key, uploadId: "", name: file.name, size: file.size, loaded: 0, state: "queued", persisted: false, file, lastModified: file.lastModified, options: { folderId: options.folderId, path: options.path, projectId: options.projectId } }, scope);
+  await save({ key, uploadId: "", name: file.name, size: file.size, loaded: 0, state: "queued", persisted: false, file, lastModified: file.lastModified, options: { folderId: options.folderId, path: options.path, projectId: options.projectId, taskUpload: options.taskUpload, idempotencyKey: options.idempotencyKey } }, scope);
 }
 export async function resumeLibraryUpload(key: string): Promise<FileItem | undefined> {
   const scope = await ownerScope();

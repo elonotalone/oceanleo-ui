@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：English。人工翻译。
 const en: Record<string, string> = {
+  "任务附件": "Task attachments",
+  "尚未发送到任务": "Not sent to a task yet",
+  "还没有任务附件": "No task attachments yet",
+  "在任务中上传的文件会出现在这里。": "Files uploaded in tasks will appear here.",
+  "任务附件来源读取失败": "Could not load task attachment origins",
+
   "在 Library 中查看": "View in Library",
   "AI 模型": "AI Models",
   "+ 在「AI 模型」页管理模型": "+ Manage models on the AI Models page",

@@ -105,3 +105,13 @@ test("private files exceeding 20 MiB use resumable Library sessions", async () =
     assert.equal(calls.length, 0, "no small-file or public route is used");
   });
 });
+
+test("task marker crosses both multipart and large upload transport", async () => {
+  const taskUpload = { taskId: "11111111-2222-4333-8444-555555555555" };
+  await withFetch(200, async calls => {
+    await uploadFile(new File(["# doc"], "notes.md"), { privateUpload: true, taskUpload });
+    assert.deepEqual(JSON.parse(calls[0].init.body.get("task_upload")), taskUpload);
+    await uploadFile(new File([new Uint8Array(20 * 1024 * 1024 + 1)], "large.pdf"), { privateUpload: true, taskUpload });
+    assert.deepEqual(globalThis.__largePrivateUpload.opts.taskUpload, taskUpload);
+  });
+});

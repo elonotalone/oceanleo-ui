@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Deutsch. 人工翻译。
 const de: Record<string, string> = {
+  "任务附件": "Aufgabenanhänge",
+  "尚未发送到任务": "Noch keiner Aufgabe gesendet",
+  "还没有任务附件": "Noch keine Aufgabenanhänge",
+  "在任务中上传的文件会出现在这里。": "In Aufgaben hochgeladene Dateien erscheinen hier.",
+  "任务附件来源读取失败": "Herkunft der Aufgabenanhänge konnte nicht geladen werden",
+
   "AI 模型": "KI-Modelle",
   "+ 在「AI 模型」页管理模型": "+ Modelle auf der Seite „KI-Modelle“ verwalten",
   "前往 AI 模型页 →": "Zur KI-Modelle-Seite →",

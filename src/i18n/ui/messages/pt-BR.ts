@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Português Brasil (pt-BR)。人工翻译。
 const ptBR: Record<string, string> = {
+  "任务附件": "Anexos das tarefas",
+  "尚未发送到任务": "Ainda não enviado a uma tarefa",
+  "还没有任务附件": "Nenhum anexo de tarefa",
+  "在任务中上传的文件会出现在这里。": "Os arquivos enviados nas tarefas aparecerão aqui.",
+  "任务附件来源读取失败": "Não foi possível carregar a origem dos anexos",
+
   "AI 模型": "Modelos de IA",
   "+ 在「AI 模型」页管理模型": "+ Gerenciar modelos na página \"Modelos de IA\"",
   "前往 AI 模型页 →": "Ir para a página Modelos de IA →",

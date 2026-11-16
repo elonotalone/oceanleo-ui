@@ -53,7 +53,7 @@ import {
   translateLibraryTypeLabel,
 } from "./library-editor-category";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
-import { DEFAULT_LIBRARY_SECTION, LibrarySectionTabs } from "./library-sections";
+import { DEFAULT_LIBRARY_SECTION } from "./library-sections";
 import type { LibrarySource } from "./artifact-contract";
 import { APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
 
@@ -330,6 +330,7 @@ function LibraryTypeFilterRow({
  * tab content; ResultCanvas replaces those tabs with MyLibrary centrally.
  */
 export function ArtifactLibrary(props: ArtifactLibraryProps) {
+  const tt = useUI();
   const libraryAction = useStandaloneMineEditReceipt({
     enabled: !props.fill,
   });
@@ -359,14 +360,14 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
   // In the 文件包 view a section click goes back to that section's list (文件包 are not split by section).
   const folderFilterRow = (
     <>
-      <LibrarySectionTabs
-        value={section}
-        onChange={(next) => {
-          setSection(next);
-          changeCategory("all");
-        }}
-        className="mt-4"
-      />
+      <div className="mt-4 flex gap-2" data-library-source-row="">
+        <button type="button" className="min-h-8 rounded-full border border-[var(--border)] px-3 text-xs" data-library-section="creation" onClick={() => {
+          setSection("creation"); changeCategory("all");
+        }}>{tt("我的库")}</button>
+        <button type="button" className="min-h-8 rounded-full border border-[var(--border)] px-3 text-xs" data-library-section="task" onClick={() => {
+          setSection("task"); changeCategory("all");
+        }}>{tt("任务附件")}</button>
+      </div>
       <LibraryTypeFilterRow value={LIBRARY_FOLDER_CATEGORY_ID} onChange={changeCategory} />
     </>
   );
@@ -407,7 +408,7 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
             // 「全部」时在网格上方放最近的文件包（仲裁 A-04）；收藏视图与具体类别不放。
             // 函数形式（A-21）：跟着 MyLibrary 的搜索词过滤，「仅看收藏」打开时不显示；
             // 只在「上传的」分区（2026-11-07 UX 波：上传的文件夹在那里变成文件包）。
-            (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module
+            section !== "task" && (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module
               ? ({ query, favoritesOnly, section: shown }: { query: string; favoritesOnly: boolean; section: LibrarySource }) => {
                   const Strip = folders.module?.LibraryFoldersStrip;
                   return Strip && !favoritesOnly && shown === "upload" ? (

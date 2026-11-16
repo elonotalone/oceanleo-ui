@@ -755,6 +755,8 @@ type UploadProgressReporter = ReturnType<typeof createUploadProgressReporter>;
 export interface UploadFileOptions {
   /** Owner-only Library storage; never fall back to a public bucket. */
   privateUpload?: boolean;
+  /** Composer origin; absent for uploads made directly in My Library. */
+  taskUpload?: { taskId?: string; sessionId?: string; pending?: boolean };
   siteId?: string;
   title?: string;
   registerAsset?: boolean;
@@ -798,7 +800,7 @@ export async function uploadFile(
   const progress = createUploadProgressReporter(file, opts);
   if (opts.privateUpload && file.size > 20 * 1024 * 1024) {
     try {
-      const uploaded = await uploadLibraryFile(file, { signal: opts.signal, onProgress: (loaded) => progress.report(loaded) });
+      const uploaded = await uploadLibraryFile(file, { taskUpload: opts.taskUpload, idempotencyKey: opts.idempotencyKey, signal: opts.signal, onProgress: (loaded) => progress.report(loaded) });
       progress.finish();
       return { ok: true, data: { ok: true, file: uploaded } };
     } catch (error) {
@@ -1019,6 +1021,7 @@ export async function uploadFile(
   const fd = new FormData();
   fd.append("file", file);
   if (opts.siteId) fd.append("site_id", opts.siteId);
+  if (opts.privateUpload && opts.taskUpload) fd.append("task_upload", JSON.stringify(opts.taskUpload));
   if (opts.title) fd.append("title", opts.title);
   if (opts.registerAsset === false) fd.append("register_asset", "false");
   if (opts.idempotencyKey) fd.append("idempotency_key", opts.idempotencyKey);

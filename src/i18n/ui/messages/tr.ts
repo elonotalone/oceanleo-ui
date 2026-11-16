@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Türkçe (tr)。人工翻译。
 const tr: Record<string, string> = {
+  "任务附件": "Görev ekleri",
+  "尚未发送到任务": "Henüz bir göreve gönderilmedi",
+  "还没有任务附件": "Henüz görev eki yok",
+  "在任务中上传的文件会出现在这里。": "Görevlerde yüklenen dosyalar burada görünür.",
+  "任务附件来源读取失败": "Görev eklerinin kaynağı yüklenemedi",
+
   "AI 模型": "Yapay Zekâ Modelleri",
   "+ 在「AI 模型」页管理模型": "+ Modelleri \"Yapay Zekâ Modelleri\" sayfasında yönet",
   "前往 AI 模型页 →": "Yapay Zekâ Modelleri sayfasına git →",
