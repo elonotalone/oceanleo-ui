@@ -12,7 +12,9 @@ const clientUrl = await compileModule("src/shell/access/task-access-client.ts", 
   "../../lib/auth/client": dataModule("export async function accessToken(){return 't';}"),
   "../../lib/auth/config": dataModule("export const GATEWAY_BASE='https://gateway.test';"),
 });
+const authDialogStub = dataModule(`import React from ${JSON.stringify(import.meta.resolve("react"))}; export function AuthDialog(p){return React.createElement("div",{role:"dialog","aria-label":"sign in"},React.createElement("button",{onClick:p.onSuccess},"signed in"));}`);
 const overrides = {
+  "../../pages/AuthDialog": authDialogStub,
   "../../i18n/ui/useUI": dataModule("export function useUI(){return (text, params={}) => text.replace(/\\{(\\w+)\\}/g,(_,k)=>params[k] ?? k);}"),
   "../access/task-access-client": clientUrl,
 };
@@ -104,4 +106,18 @@ test("narrow Share is a top sheet whose height stops before the composer; Escape
     assert.equal(entry.getAttribute("aria-expanded"),"false");
     assert.equal(document.activeElement,entry);
   } finally { await view.close(); footer.remove(); Object.defineProperty(window,"innerWidth",{configurable:true,value:width}); }
+});
+
+
+test("anonymous Continue opens the shared sign-in dialog in place and refreshes after sign-in", async () => {
+  let refreshed=0;
+  const access={...ownerAccess(),state:"public",role:"view",can_send:false,can_manage:false,can_fork:false};
+  const view=await mount(TaskAccessComposer,{taskId:"t",access,signedIn:false,onRefresh:async()=>{refreshed++;}});
+  try {
+    await click(button("作为我的任务继续"));
+    assert.ok(document.querySelector('[role="dialog"][aria-label="sign in"]'));
+    await click(button("signed in"));
+    assert.equal(refreshed,1);
+    assert.equal(document.querySelector('[aria-label="sign in"]'),null);
+  } finally {await view.close();}
 });
