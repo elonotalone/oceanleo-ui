@@ -119,6 +119,14 @@ async function click(node) { assert.ok(node, "click target exists"); await act(a
 const textButton = (root, label) => [...root.querySelectorAll("button")].find(node => node.textContent.trim() === label || node.getAttribute("aria-label") === label);
 const floating = () => document.querySelector("[data-edit-bar-floating-panel]");
 const currentBody = () => floating()?.querySelector('[data-edit-bar-panel-current="true"]');
+function assertInsertBody() {
+  assert.match(currentBody().textContent, /插入内容/);
+  for (const label of ["表格", "分割线", "代码块", "引用块", "上传本地图片"]) {
+    assert.ok(textButton(currentBody(), label), `Insert keeps ${label}`);
+  }
+  assert.ok(currentBody().querySelector('[aria-label="图片 URL"]'));
+  assert.doesNotMatch(currentBody().textContent, /文档来源|查找和替换|Aptos/);
+}
 const item = { id: "a", artifactId: "a", kind: "document", title: "Document", meta: {} };
 function Harness({ body, id = "editor-global", adapterId = "richdoc", onReady, materials, toolbar, stageContent, adapterInput, hideDocumentTools = false }) {
   const pane = useWorkspacePane(); const stageRef = useRef(null); const layerRef = useRef(null);
@@ -155,9 +163,9 @@ test("geometry uses viewport coordinates after scrolling and visual viewport shi
 
 test("RichDoc Insert floats at its button in Library, task sidebar and project hosts; all close paths restore focus", async () => {
   for (const host of ["library", "task", "project"]) {
-    let api; let font;
-    const chain = new Proxy({}, {get:(_,name) => name === "run" ? () => true : value => { if(name === "setFontFamily") font=value; return chain; }});
-    const state = { editor:{getAttributes:()=>({}), chain:()=>chain}, importing:false };
+    let api; const tables = [];
+    const chain = new Proxy({}, {get:(_,name) => name === "run" ? () => true : value => { if(name === "insertTable") tables.push(value); return chain; }});
+    const state = { editor:{isEditable:true, chain:()=>chain}, importing:false };
     const body = React.createElement(RichDocControls, { editor:state });
     const editor = React.createElement(Harness, { body, onReady: value => {api=value;} });
     const m = await mount(host === "library" ? editor : React.createElement(SplitWorkspace, { left:"Conversation", right:editor, library:{open:true}, fillParent:true }));
@@ -168,15 +176,17 @@ test("RichDoc Insert floats at its button in Library, task sidebar and project h
       assert.equal(floating().style.left,"676px"); assert.equal(floating().style.top,"136px");
       assert.ok(floating().parentElement.closest('[data-test-plugin-theme="richdoc"]'));
       assert.equal(api.pane?.detail ?? null, null);
-      await click(textButton(currentBody(), "查找和替换（Ctrl/Cmd+F）"));
-      assert.ok(currentBody().querySelector('[aria-label="查找内容"]'));
-      await click([...currentBody().querySelectorAll("button")].find(b => b.textContent.includes("Aptos")));
-      assert.match(font,/Aptos/);
+      assertInsertBody();
+      await click(textButton(currentBody(), "表格"));
+      assert.ok(currentBody().querySelector('[aria-label="行数"]'));
+      assert.ok(currentBody().querySelector('[aria-label="列数"]'));
+      await click(textButton(currentBody(), "插入表格"));
+      assert.deepEqual(tables,[{rows:3,cols:3,withHeaderRow:true}]);
       await act(async () => document.dispatchEvent(new KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
       assert.equal(floating(),null); assert.equal(document.activeElement,trigger);
-      await click(trigger); await click(trigger); assert.equal(floating(),null,"same button closes");
-      await click(trigger); await act(async()=>document.body.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true}))); assert.equal(floating(),null,"outside closes");
-      await click(trigger); await click(textButton(floating(),"关闭")); assert.equal(floating(),null);
+      await click(trigger); await click(trigger); assert.equal(floating(),null,"same button closes"); assert.equal(document.activeElement,trigger);
+      await click(trigger); await act(async()=>document.body.dispatchEvent(new MouseEvent("pointerdown",{bubbles:true}))); assert.equal(floating(),null,"outside closes"); assert.equal(document.activeElement,trigger);
+      await click(trigger); await click(textButton(floating(),"关闭")); assert.equal(floating(),null); assert.equal(document.activeElement,trigger);
     } finally { await m.destroy(); }
   }
 });
@@ -306,7 +316,7 @@ test("the real InlineAdvancedWorkbenchShell mounts the floating host for RichDoc
   const body=React.createElement(RichDocControls,{editor:{editor:null,importing:false}});
   const adapter={id:'richdoc',label:'Document',stage:React.createElement('div',{'data-document-stage':true},'Saved document'),drawers:[{id:'editor-global',label:'插入',icon:'add',content:body}]};
   const m=await mount(React.createElement(InlineAdvancedWorkbenchShell,{item:{...item,meta:{advanced_editor_route:"richdoc"}},adapter,onClose(){}}));
-  try{assert.ok(m.node.querySelector('[data-inline-editor] [data-document-stage]'));const trigger=m.node.querySelector('[data-edit-bar-drawer="editor-global"]');if(!trigger){const more=textButton(m.node,"更多属性");await click(more);} const actualTrigger=trigger || document.querySelector('[data-edit-bar-drawer="editor-global"]');assert.ok(actualTrigger,"创建工具应可在工具条或More访问");await click(actualTrigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.equal(floating().closest('aside'),null);assert.ok(currentBody().textContent.includes('文档来源'));await click(actualTrigger);assert.equal(floating(),null);}finally{await m.destroy();}
+  try{assert.ok(m.node.querySelector('[data-inline-editor] [data-document-stage]'));const trigger=m.node.querySelector('[data-edit-bar-drawer="editor-global"]');if(!trigger){const more=textButton(m.node,"更多属性");await click(more);} const actualTrigger=trigger || document.querySelector('[data-edit-bar-drawer="editor-global"]');assert.ok(actualTrigger,"创建工具应可在工具条或More访问");await click(actualTrigger);assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.equal(floating().closest('aside'),null);assertInsertBody();await click(actualTrigger);assert.equal(floating(),null);}finally{await m.destroy();}
 });
 
 
@@ -382,7 +392,7 @@ test("browser regression: narrow edit-bar More keeps the Insert creation tool re
     const more=m.node.querySelector('[aria-label="更多属性"]');assert.ok(more);
     await browserClick(more);assert.equal(more.getAttribute('aria-expanded'),'true');assert.ok(floating());
     const insertButton=document.querySelector('[data-selection-overflow-control][data-selection-control-id="creation:drawer:editor-global"] button');assert.ok(insertButton, '创建入口在窄栏时必须进入同一个More');await browserClick(insertButton);
-    assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assert.ok(currentBody().textContent.includes('文档来源'));
+    assert.equal(floating()?.dataset.editBarFloatingPanel,'editor-global');assertInsertBody();
   }finally{await m.destroy();window.HTMLElement.prototype.getBoundingClientRect=originalRect;}
 });
 
@@ -508,12 +518,22 @@ test("VP run 2: real document Link, Paragraph settings and Review keep Back at t
       await browserClick(trigger);
       assert.ok(floating()?.querySelector("[data-edit-bar-panel-back]"),`${label} keeps Back`);
       assert.deepEqual({left:floating().style.left,top:floating().style.top},position,`${label} stays at its parent`);
-      if(label==="段落设置") await browserClick(textButton(currentBody(),"恢复默认排版"));
+      if(label==="段落设置") {
+        const field=[...currentBody().querySelectorAll("label")].find(node=>node.querySelector("span")?.textContent.trim()==="段前");
+        const input=field?.querySelector('input[type="number"]');
+        assert.ok(input,"段落设置 keeps the paragraph spacing control");
+        await act(async()=>{
+          input.focus();
+          Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set.call(input,"3");
+          input.dispatchEvent(new Event("input",{bubbles:true}));
+        });
+        await act(async()=>input.blur());
+      }
       await browserClick(floating().querySelector("[data-edit-bar-panel-back]"));
       assert.equal(floating().dataset.editBarFloatingPanel,parent);
       assert.ok(textButton(currentBody(),label));
     }
-    assert.ok(actions.some(([name])=>name==="updateAttributes"));
+    assert.ok(actions.some(([name,type,attrs])=>name==="updateAttributes"&&type==="paragraph"&&attrs.spaceBefore===3));
     await browserClick(more);assert.equal(floating(),null);
   }finally{await m.destroy();}
 });

@@ -213,7 +213,7 @@ test("W29 A1: 富文档路由申报的 drawers 同时有「插入」与批注两
 });
 
 // ---------------------------------------------------------------------------
-// A1 判据 2：侧栏的 12 个 prop 与引擎 API 逐条对得上
+// A1 判据 2：侧栏的 14 个 prop（含 ED-B4 新增批注入口）与引擎 API 逐条对得上
 //
 // 形状断言，不是快照：下面这张表同时与**三处**对拴 ——
 //   · `RichDocCommentRailProps`（侧栏要什么）：少接一个就红；
@@ -226,6 +226,8 @@ test("W29 A1: 富文档路由申报的 drawers 同时有「插入」与批注两
 // 必须靠这张一一对应表。
 // ---------------------------------------------------------------------------
 const REVIEW_RAIL_WIRING = {
+  hasSelection: "hasSelection",
+  onAddComment: "addComment",
   comments: "comments",
   changes: "changes",
   activeCommentId: "activeCommentId",
@@ -249,7 +251,7 @@ test("W29 A1: 批注侧栏拿到的每个 prop 都接在引擎 API 的对应成�
   const api = interfaceMembers(engine, "RichDocReviewApi");
   const wired = jsxAttributes(route, "RichDocCommentRail");
 
-  // ① 表覆盖侧栏要求的全部必填 prop（`?:` 可选的不强求）。
+  // ① 表覆盖侧栏的全部 prop，新增的可选批注入口也必须在路由接好。
   assert.deepEqual(
     [...required].sort(),
     Object.keys(REVIEW_RAIL_WIRING).sort(),
