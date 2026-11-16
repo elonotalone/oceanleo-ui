@@ -43,7 +43,14 @@ export class FakeVideo {
   frame(metadata){const [id,callback]=this.callbacks.entries().next().value;this.callbacks.delete(id);callback(metadata.expectedDisplayTime??0,metadata);}
 }
 export async function settle(){for(let i=0;i<8;i++)await Promise.resolve();}
+export function mockRtpReceiver(t, receiver={getCapabilities:()=>({codecs:[{mimeType:'video/VP8',clockRate:90000}]})}) {
+  const previous=Object.getOwnPropertyDescriptor(globalThis,'RTCRtpReceiver');
+  Object.defineProperty(globalThis,'RTCRtpReceiver',{configurable:true,writable:true,value:receiver});
+  t.after(()=>{if(previous)Object.defineProperty(globalThis,'RTCRtpReceiver',previous);else delete globalThis.RTCRtpReceiver;});
+}
 export async function harness(t, options={}) {
+  const {rtpReceiver,...viewerOptions}=options;
+  mockRtpReceiver(t,rtpReceiver);
   let now=options.initialNow??100;let wall=WALL;const timers=new Map();let timerId=0;
   t.mock.method(globalThis,'setInterval',(callback,ms)=>{const id=++timerId;timers.set(id,{callback,ms,due:now+ms});return id;});
   t.mock.method(globalThis,'clearInterval',id=>timers.delete(id));
@@ -52,7 +59,7 @@ export async function harness(t, options={}) {
   const viewer=new WebRtcRemoteDesktopViewer({descriptor:descriptor(),deviceId:'device',clickedAt:0,
     now:()=>now,wallNow:()=>wall,createPeer:configuration=>{const pc=new FakePeer(configuration);peers.push(pc);return pc;},
     sendSignal:data=>{if(!signalAvailable)return false;signals.push(data);return true;},onState:(state,path)=>states.push({state,path}),
-    onFrame:(...args)=>frames.push(args),onTerminal:reason=>terminals.push(reason),onReport:(report,final)=>reports.push({report,final}),...options});
+    onFrame:(...args)=>frames.push(args),onTerminal:reason=>terminals.push(reason),onReport:(report,final)=>reports.push({report,final}),...viewerOptions});
   t.after(()=>viewer.close());
   const advance=async ms=>{const target=now+ms;while(now<target){const step=Math.min(100,target-now);now+=step;wall+=step;for(const timer of timers.values())if(now>=timer.due){timer.due+=timer.ms;timer.callback();}await settle();}};
   const receipt=(seq,status='executed',extra={})=>peers.at(-1).channel('rd-ctl').message({t:'rd.input_receipt',seq,status,executed_at_ms:wall,...extra});

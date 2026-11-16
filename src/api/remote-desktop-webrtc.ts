@@ -26,6 +26,12 @@ export interface WebRtcViewerOptions {
 type Label = InputLabel | "rd-ctl";
 type FrameMetadata = VideoFrameCallbackMetadata & { captureTime?: number; receiveTime?: number };
 const labels: Label[] = ["rd-input", "rd-fast", "rd-ctl"];
+// Host EndReason::code(), codec refusal and existing viewer terminal aliases.
+const terminalByeReasons = new Set([
+  "remote_access_disabled", "signed_out", "consent_revoked", "viewer_left", "billing_stopped", "lease_expired",
+  "reconnect_window_expired", "capture_restart_failed", "peer_generation_exhausted", "unsupported_h264_profile",
+  "input_consent_revoked", "capture_recovery_failed",
+]);
 const swallow = (fn: () => void): void => { try { fn(); } catch { /* observers cannot stop media */ } };
 
 /** The peer owns media/input only. Authentication, HTTP and stream reconnects belong to the caller. */
@@ -110,7 +116,7 @@ export class WebRtcRemoteDesktopViewer {
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
       this.lowDelay(transceiver.receiver);
-      this.preferCodecs(transceiver);
+      if (!this.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
       pc.onicecandidate = event => {
         if (this.pc !== pc || this.ended || !event.candidate) return;
         this.transmit({ k: "candidate", candidate: event.candidate.candidate, sdpMid: event.candidate.sdpMid, sdpMLineIndex: event.candidate.sdpMLineIndex, gen });
@@ -150,15 +156,21 @@ export class WebRtcRemoteDesktopViewer {
     try { low.playoutDelayHint = 0; } catch { /* platform may expose read-only hints */ }
   }
   private iceServers(): RTCIceServer[] { return this.descriptor.ice_servers.map(({ region: _region, ...server }) => server); }
-  private preferCodecs(transceiver: RTCRtpTransceiver): void {
+  private preferCodecs(transceiver: RTCRtpTransceiver): boolean {
     try {
       const caps = typeof RTCRtpReceiver === "undefined" ? undefined : RTCRtpReceiver.getCapabilities?.("video");
-      if (!caps?.codecs || !transceiver.setCodecPreferences) return;
-      const codecs = caps.codecs;
-      const h264 = codecs.filter(c => /h264/i.test(c.mimeType) && /(?:^|;)\s*packetization-mode=1(?:;|$)/.test(c.sdpFmtpLine ?? ""));
-      const vp8 = codecs.filter(c => /vp8/i.test(c.mimeType));
-      transceiver.setCodecPreferences([...h264, ...vp8, ...codecs.filter(c => !h264.includes(c) && !vp8.includes(c))]);
-    } catch { /* unsupported preferences leave standard codec negotiation intact */ }
+      if (!caps?.codecs || !transceiver.setCodecPreferences) return false;
+      const h264 = caps.codecs.filter(c => {
+        if (c.mimeType.toLowerCase() !== "video/h264") return false;
+        const parameters = (c.sdpFmtpLine ?? "").split(";").map(value => value.trim().toLowerCase());
+        return parameters.includes("profile-level-id=42e01f") && parameters.includes("packetization-mode=1");
+      });
+      const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === "video/vp8");
+      // An empty preference list restores defaults, including the host's unsupported profiles.
+      if (!h264.length && !vp8.length) return false;
+      transceiver.setCodecPreferences([...h264, ...vp8]);
+      return true;
+    } catch { return false; /* Never send an unfiltered offer when preferences cannot be applied. */ }
   }
   private connected(): void {
     this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000; this.peerRetryDue = undefined;
@@ -202,9 +214,16 @@ export class WebRtcRemoteDesktopViewer {
     if (data.gen !== undefined && (!Number.isSafeInteger(data.gen) || data.gen < this.gen)) return;
     if (data.k === "bye") {
       if (data.gen !== undefined && data.gen !== this.gen) return;
-      const reason = typeof data.reason === "string" && data.reason ? data.reason : "host_left";
+      const reason = typeof data.reason === "string" ? data.reason : "";
       if (isWebRtcInputFault(reason)) this.channelFault("rd-input", reason);
-      else this.close(reason);
+      else if (reason === "peer_failed" && this.pc) {
+        this.peerRetryDue ??= this.now() + 200;
+        this.emitState("picture_reconnecting");
+      } else if (reason === "ice_restart_required" && this.pc) {
+        this.disconnectedAt ??= this.now();
+        this.restartDue ??= this.now();
+        this.emitState("picture_reconnecting");
+      } else if (terminalByeReasons.has(reason)) this.close(reason);
       return;
     }
     if (data.gen !== this.gen || !this.pc) return;
@@ -342,6 +361,8 @@ export class WebRtcRemoteDesktopViewer {
     if (this.ended) return;
     const now = this.now();
     if (now >= this.leaseDeadline) { this.close("lease_expired"); return; }
+    // Decoder recovery uses the browser's RTCP PLI/FIR. A freeze is telemetry only;
+    // there is no application keyframe timer or periodic-keyframe wait.
     this.flushSignals(); this.input.tick(); this.telemetry.tick();
     for (const [label, retry] of this.recovery) if (now >= retry.due) {
       // Give DCEP time to open. Retiring a connecting replacement every 200ms can starve a slow path.
