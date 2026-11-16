@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { DeckAspect, DeckElement, DeckSlide } from "./deck-schema";
 import { deckCellElement } from "./deck-table-format";
 import { deckFontSizeCqi } from "./deck-text-scale";
+import { deckDisplayFontFamily } from "./deck-display-font";
 import {
   deckSafeLink,
   deckTextDecoration,
@@ -83,7 +84,7 @@ function DeckCroppedImage({ element }: { element: DeckElement }) {
 }
 
 function deckParagraphStyle(element: DeckElement, aspect: DeckAspect): CSSProperties {
-  return { fontFamily: element.fontFamily, color: element.color,
+  return { fontFamily: deckDisplayFontFamily(element.fontFamily), color: element.color,
     fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
     fontWeight: element.bold ? 700 : 400, fontStyle: element.italic ? "italic" : "normal",
     textDecoration: deckTextDecoration(element), textAlign: element.align || "left",
@@ -409,7 +410,7 @@ export function DeckElementContent({
           : "flex-start",
     textAlign: element.align || "left",
     color: element.color,
-    fontFamily: element.fontFamily,
+    fontFamily: deckDisplayFontFamily(element.fontFamily),
     fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
     fontWeight: element.bold ? 700 : 400,
     fontStyle: element.italic ? "italic" : "normal",

@@ -3,6 +3,7 @@ import { deckImageAspectRatio } from "./deck-image-size";
 import { deckCellElement, deckTableUsesPicture } from "./deck-table-format";
 import { deckSafeLink, deckTextDecoration, deckTextListLines } from "./deck-text-format";
 import { deckFontSizePx } from "./deck-text-scale";
+import { deckDisplayFontFamily } from "./deck-display-font";
 
 import type {
   DeckAspect,
@@ -15,6 +16,7 @@ import {
   deckPptxObjectName,
   normalizeDeckPptxSlideObjectIdentity,
   reportDeckPptxEnhancementWarning,
+  readDeckPptxTextInheritance,
   type DeckPptxEnhancementOptions,
 } from "./deck-pptx-ooxml";
 
@@ -691,4 +693,85 @@ export async function injectDeckPptxVisuals(
   }
   const bytes = Uint8Array.from(zipSync(archive, { level: 6 }));
   return new Blob([bytes], { type: PPTX_MIME });
+}
+
+function previewRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+/** Also call synchronously before cloning a rendered slide for the page rail. */
+export function paintDeckPptxPreviewImages(root: Element): void {
+  const pictures = [...(root.matches("img[width][height]") ? [root] : []), ...root.querySelectorAll("img[width][height]")];
+  for (const picture of pictures) {
+    const image = picture as HTMLImageElement;
+    for (const dimension of ["width", "height"] as const) {
+      const pixels = Number(image.getAttribute(dimension));
+      if (Number.isFinite(pixels) && pixels > 0) image.style.setProperty(dimension, `${pixels}px`);
+    }
+    image.style.maxWidth = "none";
+    image.style.maxHeight = "none";
+  }
+}
+
+/**
+ * Install after preview.load and before the first render. The preview model is
+ * transient: font aliases never reach the original bytes or the editable deck.
+ * Call the returned cleanup alongside preview.destroy().
+ */
+export function applyDeckPptxPreviewVisuals(
+  wrapper: HTMLElement,
+  model: unknown,
+  bytes: ArrayBuffer,
+): () => void {
+  const inherited = readDeckPptxTextInheritance(bytes);
+  const slides = previewRecord(model).slides;
+  if (Array.isArray(slides)) slides.forEach((slide, slideIndex) => {
+    const shapes = [...(inherited[slideIndex] || [])];
+    const patchNodes = (nodes: unknown) => {
+      if (!Array.isArray(nodes)) return;
+      for (const value of nodes) {
+        const node = previewRecord(value);
+        patchNodes(node.nodes);
+        const source = previewRecord(node.source);
+        const name = previewRecord(previewRecord(previewRecord(source["p:nvSpPr"])["p:cNvPr"]).attrs).name;
+        const match = shapes.findIndex((shape) => shape.type === "text" && shape.name === name);
+        const paragraphs = previewRecord(node.textBody).paragraphs;
+        if (match < 0 || !Array.isArray(paragraphs)) continue;
+        const [shape] = shapes.splice(match, 1);
+        paragraphs.forEach((value, paragraphIndex) => {
+          const paragraph = previewRecord(value);
+          const props = previewRecord(paragraph.props);
+          const defaults = { ...previewRecord(paragraph.inheritRProps), ...previewRecord(props.defRPr) };
+          const runs = paragraph.rows;
+          if (!Array.isArray(runs)) return;
+          runs.forEach((value, runIndex) => {
+            const run = previewRecord(value);
+            if (run.isBr) return;
+            const style = shape.paragraphs[paragraphIndex]?.[runIndex]?.style;
+            const effective = { ...defaults, ...previewRecord(run.props) };
+            if (style?.fontSize !== undefined) effective.size = style.fontSize;
+            if (style?.color) effective.color = { type: "solidFill", color: style.color };
+            if (style?.bold !== undefined) effective.bold = style.bold;
+            if (style?.italic !== undefined) effective.italic = style.italic;
+            if (style?.underline !== undefined) effective.underline = style.underline ? "sng" : "none";
+            const face = style?.fontFamily || (typeof effective.typeface === "string" ? effective.typeface : undefined);
+            if (face) effective.typeface = deckDisplayFontFamily(face);
+            run.props = effective;
+            if (style?.align) props.align = { left: "l", center: "ctr", right: "r", justify: "dist" }[style.align];
+          });
+        });
+      }
+    };
+    patchNodes(previewRecord(slide).nodes);
+  });
+
+  // Tailwind's img reset overrides HTML width/height attributes. In cropped
+  // pictures these dimensions intentionally exceed the clipping frame.
+  paintDeckPptxPreviewImages(wrapper);
+  const Observer = wrapper.ownerDocument.defaultView?.MutationObserver;
+  const observer = Observer ? new Observer((records) => {
+    for (const record of records) for (const added of record.addedNodes) if (added.nodeType === 1) paintDeckPptxPreviewImages(added as Element);
+  }) : undefined;
+  observer?.observe(wrapper, { childList: true, subtree: true });
+  return () => observer?.disconnect();
 }
