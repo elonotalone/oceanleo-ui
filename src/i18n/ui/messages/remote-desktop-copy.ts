@@ -598,9 +598,29 @@ const TRANSPORT_COPY: Partial<Record<Locale, [string, string]>> = {
   ]
 };
 
+const WEBRTC_COPY: Record<Locale, [string, string, string, string, string]> = {
+  zh: ["输入正在重新连接，画面继续显示。", "画面正在重新连接，保留最后一帧。", "设备直接连接", "通过中继连接", "往返延迟：{ms} 毫秒"],
+  en: ["Input is reconnecting. The picture stays on.", "Picture is reconnecting. Keeping the last frame.", "Direct device connection", "Connected through a relay", "Round-trip delay: {ms} ms"],
+  "zh-TW": ["輸入正在重新連線，畫面繼續顯示。", "畫面正在重新連線，保留最後一幀。", "裝置直接連線", "透過中繼連線", "往返延遲：{ms} 毫秒"],
+  de: ["Die Eingabe wird neu verbunden. Das Bild bleibt sichtbar.", "Das Bild wird neu verbunden. Das letzte Bild bleibt sichtbar.", "Direkte Geräteverbindung", "Über einen Relay verbunden", "Hin- und Rücklaufzeit: {ms} ms"],
+  es: ["Reconectando la entrada. La imagen sigue visible.", "Reconectando la imagen. Se conserva el último fotograma.", "Conexión directa entre dispositivos", "Conectado mediante un relé", "Retardo de ida y vuelta: {ms} ms"],
+  "es-419": ["Reconectando la entrada. La imagen sigue visible.", "Reconectando la imagen. Se conserva el último cuadro.", "Conexión directa entre dispositivos", "Conectado mediante un relé", "Retardo de ida y vuelta: {ms} ms"],
+  fr: ["Reconnexion de la saisie. L’image reste visible.", "Reconnexion de l’image. La dernière image est conservée.", "Connexion directe entre appareils", "Connexion via un relais", "Délai aller-retour : {ms} ms"],
+  it: ["Riconnessione dell’input. L’immagine resta visibile.", "Riconnessione dell’immagine. L’ultimo fotogramma resta visibile.", "Connessione diretta tra dispositivi", "Connessione tramite relay", "Ritardo di andata e ritorno: {ms} ms"],
+  "pt-BR": ["Reconectando a entrada. A imagem continua visível.", "Reconectando a imagem. O último quadro é mantido.", "Conexão direta entre dispositivos", "Conectado por um retransmissor", "Latência de ida e volta: {ms} ms"],
+  "pt-PT": ["A voltar a ligar a entrada. A imagem continua visível.", "A voltar a ligar a imagem. O último fotograma é mantido.", "Ligação direta entre dispositivos", "Ligado através de um retransmissor", "Latência de ida e volta: {ms} ms"],
+  vi: ["Đang kết nối lại đầu vào. Hình ảnh vẫn hiển thị.", "Đang kết nối lại hình ảnh. Giữ khung hình cuối.", "Kết nối trực tiếp giữa thiết bị", "Kết nối qua máy chủ chuyển tiếp", "Độ trễ khứ hồi: {ms} ms"],
+  tr: ["Giriş yeniden bağlanıyor. Görüntü açık kalır.", "Görüntü yeniden bağlanıyor. Son kare korunuyor.", "Cihazlar arası doğrudan bağlantı", "Aktarıcı üzerinden bağlı", "Gidiş dönüş gecikmesi: {ms} ms"],
+  ja: ["入力に再接続中です。映像は表示を続けます。", "映像に再接続中です。最後のフレームを保持します。", "デバイス間の直接接続", "中継経由で接続", "往復遅延：{ms} ミリ秒"],
+  ko: ["입력을 다시 연결하고 있습니다. 영상은 계속 표시됩니다.", "영상을 다시 연결하고 있습니다. 마지막 프레임을 유지합니다.", "기기 간 직접 연결", "중계 서버를 통해 연결됨", "왕복 지연: {ms}밀리초"],
+  ar: ["جارٍ إعادة اتصال الإدخال. تبقى الصورة ظاهرة.", "جارٍ إعادة اتصال الصورة. يُحتفظ بآخر إطار.", "اتصال مباشر بين الجهازين", "متصل عبر خادم ترحيل", "زمن الذهاب والإياب: {ms} مللي ثانية"],
+  hi: ["इनपुट फिर जुड़ रहा है। चित्र दिखता रहेगा।", "चित्र फिर जुड़ रहा है। अंतिम फ़्रेम बना रहेगा।", "उपकरणों के बीच सीधा कनेक्शन", "रिले के ज़रिए कनेक्शन", "आने-जाने का विलंब: {ms} मिलीसेकंड"],
+  th: ["กำลังเชื่อมต่ออินพุตใหม่ ภาพยังคงแสดงอยู่", "กำลังเชื่อมต่อภาพใหม่ โดยคงเฟรมสุดท้ายไว้", "เชื่อมต่ออุปกรณ์โดยตรง", "เชื่อมต่อผ่านเซิร์ฟเวอร์รีเลย์", "ความหน่วงไปกลับ: {ms} มิลลิวินาที"],
+};
+
 export const REMOTE_DESKTOP_MESSAGES: Record<Locale, Record<string, string>> = Object.fromEntries(
   LOCALES.map((locale) => {
     const table: Messages = locale === "zh" ? SOURCE : locale === "zh-TW" ? ZH_TW : EN;
-    return [locale, { ...copyDictionaryFrom(SOURCE, table), [TRANSPORT_COPY.zh![0]]: (TRANSPORT_COPY[locale] ?? TRANSPORT_COPY.en!)[0], [TRANSPORT_COPY.zh![1]]: (TRANSPORT_COPY[locale] ?? TRANSPORT_COPY.en!)[1], ...(TOOLBAR_LABELS[locale] ? { [SOURCE.k150]: TOOLBAR_LABELS[locale][0], [SOURCE.k151]: TOOLBAR_LABELS[locale][1], [SOURCE.k154]: TOOLBAR_LABELS[locale][2], [SOURCE.k155]: TOOLBAR_LABELS[locale][3], [SOURCE.k156]: TOOLBAR_LABELS[locale][4] } : {}) }];
+    return [locale, { ...copyDictionaryFrom(SOURCE, table), ...Object.fromEntries(WEBRTC_COPY.zh.map((source, index) => [source, WEBRTC_COPY[locale][index]])), [TRANSPORT_COPY.zh![0]]: (TRANSPORT_COPY[locale] ?? TRANSPORT_COPY.en!)[0], [TRANSPORT_COPY.zh![1]]: (TRANSPORT_COPY[locale] ?? TRANSPORT_COPY.en!)[1], ...(TOOLBAR_LABELS[locale] ? { [SOURCE.k150]: TOOLBAR_LABELS[locale][0], [SOURCE.k151]: TOOLBAR_LABELS[locale][1], [SOURCE.k154]: TOOLBAR_LABELS[locale][2], [SOURCE.k155]: TOOLBAR_LABELS[locale][3], [SOURCE.k156]: TOOLBAR_LABELS[locale][4] } : {}) }];
   }),
 ) as Record<Locale, Record<string, string>>;

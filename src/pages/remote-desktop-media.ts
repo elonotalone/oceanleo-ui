@@ -1,6 +1,6 @@
 import { prepareEngine, PUBLISH_STATE, type ArtcEngine } from "../shell/messages/call/engine/sdk";
 import { loadRemoteArtcSdk, type RemoteArtcSdk } from "./remote-desktop-sdk";
-import type { RemoteDesktopDataLane, RemoteDesktopDataMessage, RemoteMediaCredentials } from "../api/remote-desktop";
+import type { RemoteDesktopDataLane, RemoteDesktopDataMessage, ArtcRemoteMediaCredentials } from "../api/remote-desktop";
 import { videoStatSample, type VideoStatSample } from "../api/remote-desktop-quality";
 import { parseRemoteInputReceipt } from "../api/remote-desktop-input-history";
 
@@ -19,7 +19,7 @@ export interface RemoteMediaHandlers {
   sessionId?: string;
   state(value: RemoteMediaState, error?: string, status?: number): void;
   frame(width: number, height: number, sample?: { presentation_time_ms?: number; media_time_ms?: number; rtp_timestamp_90?: number }): void;
-  renew(): Promise<RemoteMediaCredentials>;
+  renew(): Promise<ArtcRemoteMediaCredentials>;
   /** D4: the viewer's published ARTC data channel, or null when it is (no longer) usable. */
   dataChannel?(lane: RemoteDesktopDataLane | null): void;
   /** Why media setup failed, before the matching `state("error")`; host names and numeric SDK codes only. */
@@ -226,7 +226,7 @@ async function boundedCleanup(action: () => Promise<unknown> | unknown): Promise
 }
 
 export async function openRemoteMedia(
-  credentials: RemoteMediaCredentials,
+  credentials: ArtcRemoteMediaCredentials,
   video: HTMLVideoElement,
   handlers: RemoteMediaHandlers,
   signal: AbortSignal,

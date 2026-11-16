@@ -162,7 +162,7 @@ test("英文页面：设备卡入口与查看面板渲染出来的是英文，�
       return { ok: true, data: { session_id: "s", state: "connecting", expires_at: "" } };
     },
     async openStream(_d,_s,h) { h.state("active"); return {ok:true,data:{send(){return true;},acknowledgeMediaFrame(){frames.push(1);},close(){},releaseForHandoff(){return Promise.resolve();},finishHandoff(){}}}; },
-    async negotiateMedia() {return {ok:true,data:{media:{data_channel_input:true},media_status:{state:"publishing"}}};},
+    async negotiateMedia() {return {ok:true,data:{media:{transport:"artc-v1",data_channel_input:true},media_status:{state:"publishing"}}};},
     async closeSession() {
       return { ok: true, data: { closed: true } };
     },

@@ -394,6 +394,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
       return "这台电脑不在线。";
     case "revoked":
     case "controller_revoked":
+    case "input_consent_revoked":
       return "访问权限已撤销。";
     case "insufficient_balance":
       return "账户余额不足一分钟的远程桌面费用，请充值后再连接。";
@@ -449,6 +450,7 @@ export function remoteDesktopErrorCopy(code?: string, status?: number): string {
     case "input_queue_full":
       return "输入队列暂时繁忙，请稍后重试。";
     case "session_expired":
+    case "lease_expired":
     case "expired":
       return "会话已到期，请重新进入。";
     case "session_not_found":

@@ -16,7 +16,9 @@ import type { RemoteMediaDiagnostic, RemoteMediaStartupTimings } from "./remote-
 
 import type { Phase, PanelTimingStep, RemoteDesktopPanelProps, RemoteDesktopDiagnosticSample } from "./remote-desktop-panel-types";
 import type { RemoteDesktopPanelContext } from "./remote-desktop-panel-state";
-const terminal = (code?: string): Phase => code === "denied" ? "denied" : code === "request_expired" ? "timed_out" : code === "signed_out" ? "signed_out" : code === "revoked" || code === "controller_revoked" ? "revoked" : "error";
+const terminal = (code?: string): Phase => code === "denied" ? "denied" : code === "request_expired" ? "timed_out" : code === "signed_out" ? "signed_out" : code === "revoked" || code === "controller_revoked" || code === "input_consent_revoked" ? "revoked" : "error";
+const webRtcInputFault = (code?: string) => Boolean(code && code !== "input_consent_revoked" && /^(input_|media_data_channel_|webrtc_input_|webrtc_data_channel_|data_channel_)/.test(code));
+const webRtcSignallingFault = (code?: string) => isNetworkFailure(code) || Boolean(code && /^(signal|websocket)/.test(code));
 /** Recovery budget for the same session, matching the gateway default. */
 export const RECONNECT_WINDOW_MS = 180_000;
 const wait = (ms: number, signal: AbortSignal) => new Promise<void>((resolve) => {
@@ -30,11 +32,11 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
     reconnectDeadline, idleDeadline, setTicket, setFrame, setMessage, setHandingBack, setHandoffFrozen,
     setHandoffDone, setPictureMeasurements, setClockUncertainty, setCoarse, setKeyboard, setMediaMode,
     setMediaStatus, setDisplayId, setAccess, setBilling, setMediaDiagnostic, setMediaNotice,
-    setMediaReady, setReconnecting, setReconnectDeadline, setIdleDeadline, setClockNow, setConnectTiming,
+    setMediaReady, setMediaStream, setConnectionPath, setReconnecting, setReconnectDeadline, setIdleDeadline, setClockNow, setConnectTiming,
     qualityRef, sessionRef, diagnosticsRef, earlyMediaRef, sessionClientRef, completedHandoff, handoffRef,
     agentRef, measurements, mediaFrameGeometry, laneRef, streamRef, streamModeRef, closedRef, abortRef,
     previousCloseRef, reconnectAttempts, reconnectTicket, recoveryWindow, markRef, queueRef, pumpingRef,
-    sequenceRef, model, clearLocalInput, releaseInput, updatePhase, acceptMediaStatus, canSend } = context;
+    sequenceRef, model, clearLocalInput, releaseInput, updatePhase, acceptMediaStatus, acceptMediaFrame, canSend } = context;
   const { deviceId, client: baseClient = remoteDesktopClient, frameIntervalMs = 250, agentRequest = false, ticket: requested } = props;
   const reportDiagnostics = useCallback((value: RemoteDesktopDiagnosticSample) => {
     try {
@@ -116,6 +118,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
     measurements.current?.dispose(); measurements.current = null;
     streamRef.current?.close();
     streamRef.current = null;
+    setMediaStream(null);
     abortRef.current?.abort();
     queueRef.current = [];
     pumpingRef.current = null;
@@ -124,10 +127,15 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
       sessionRef.current = null;
       previousCloseRef.current = sessionClientRef.current.closeSession(deviceId, sessionId).catch(() => {});
     }
-  }, [abortRef, closedRef, deviceId, measurements, previousCloseRef, pumpingRef, queueRef, releaseInput, sessionClientRef, sessionRef, streamRef]);
+  }, [abortRef, closedRef, deviceId, measurements, previousCloseRef, pumpingRef, queueRef, releaseInput, sessionClientRef, sessionRef, setMediaStream, streamRef]);
 
   useEffect(() => () => { if (dcRetry.current) clearTimeout(dcRetry.current); }, []);
   const reconnectDataChannel = useCallback((reason = "media_data_channel_unavailable") => {
+    if (model.getSnapshot().mediaMode === "webrtc") {
+      clearLocalInput();
+      setMediaNotice("输入正在重新连接，画面继续显示。");
+      return;
+    }
     if (dcRetry.current || dcRecovering.current || closedRef.current) return;
     dcRecovering.current = true;
     disconnect();
@@ -139,7 +147,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
       dcRetry.current = null; dcRecovering.current = false;
       const next = remoteDesktopTicket(); reconnectTicket.current = next; setTicket(next);
     }, delay);
-  }, [closedRef, disconnect, reconnectAttempts, reconnectTicket, setMediaNotice, setMediaReady, setMessage, setReconnecting, setTicket, updatePhase]);
+  }, [clearLocalInput, closedRef, disconnect, model, reconnectAttempts, reconnectTicket, setMediaNotice, setMediaReady, setMessage, setReconnecting, setTicket, updatePhase]);
 
   useEffect(() => {
     if (ticket !== reconnectTicket.current) reconnectAttempts.current = 0;
@@ -150,6 +158,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
     sessionRef.current = null;
     sessionClientRef.current = client;
     streamRef.current = null;
+    setMediaStream(null); setConnectionPath(null);
     streamModeRef.current = false;
     sequenceRef.current = 0;
     setKeyboard(false);
@@ -190,6 +199,8 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
     const online = () => wakeRetry?.();
     window.addEventListener("online", online);
     const end = (error?: string, status?: number) => {
+      if (model.getSnapshot().mediaMode === "webrtc" && webRtcInputFault(error)) { reconnectDataChannel(error); return; }
+      if (model.getSnapshot().mediaMode === "webrtc" && webRtcSignallingFault(error)) return;
       // A closed session is final. Network trouble on a live session never comes here first:
       // `reattach` re-joins the same session (no second request, consent prompt or bill).
       disconnect();
@@ -225,6 +236,10 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
       if (!result.ok || !result.data) { end(result.error, result.status); return; }
       mark("session");
       sessionRef.current = result.data.session_id;
+      const transport = result.data.transport === "webrtc-v1" ? "webrtc-v1" : "artc-v1";
+      setMediaMode(transport === "webrtc-v1" ? "webrtc" : "artc");
+      const descriptor = result.data.media?.media.transport === "webrtc-v1" ? result.data.media.media : undefined;
+      const streamOptions = { signal: abort.signal, transport, descriptor, clickedAt } as const;
       measurements.current = new RemoteDesktopMeasurements(result.data.session_id);
       measurements.current.setEnabled(model.getSnapshot().measuring);
       setPictureMeasurements({}); setClockUncertainty(undefined);
@@ -233,7 +248,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
       // First-frame chain: negotiate video while the stream socket is still opening (cold TLS from the
       // controller's network). The gateway refuses media while consent is pending, so only for a live session
       // or the owner's own idle-computer handshake (the computer still publishes only after it answers).
-      earlyMediaRef.current = result.data.media
+      earlyMediaRef.current = transport === "webrtc-v1" ? null : result.data.media
         ? { sessionId: result.data.session_id, response: Promise.resolve({ ok: true, data: result.data.media }) }
         : (result.data.state === "connecting" || result.data.owner_handshake === true) && client.openStream && client.negotiateMedia
           ? { sessionId: result.data.session_id, response: client.negotiateMedia(deviceId, result.data.session_id, undefined, { signal: abort.signal }).catch(() => ({ ok: false, error: "media_unavailable" })) }
@@ -254,11 +269,13 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
               // Negotiate video the moment the computer consents: the gateway counts the session
               // as live (and bills) only once that video is publishing, so waiting for "active"
               // here would deadlock, and it used to cost a full device report round trip.
-              if ((state === "connecting" || state === "active") && client.negotiateMedia && !mediaAttempted) {
+              if (transport === "artc-v1" && (state === "connecting" || state === "active") && client.negotiateMedia && !mediaAttempted) {
                 mediaAttempted = true;
                 setMediaMode("artc"); setFrame(null);
               }
               if (state === "active") mark("active");
+              // The WebRTC stream reconnects signalling in place. Direct picture and input stay usable.
+              if (transport === "webrtc-v1" && (state === "connecting" || state === "reconnecting") && model.getSnapshot().phase === "active") return;
               if (state === "reconnecting") {
                 releaseInput();
                 setReconnecting(true);
@@ -270,20 +287,37 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
           },
           serverTiming(timing) { gatewayTiming = timing; if (!abort.signal.aborted) { mark("gateway"); publishTiming(); } },
           frame() {},
+          webrtcFrame: acceptMediaFrame,
+          webrtcState(state, path) {
+            if (abort.signal.aborted || closedRef.current) return;
+            if (path) setConnectionPath(path);
+            if (state === "input_reconnecting") {
+              clearLocalInput();
+              setMediaNotice("输入正在重新连接，画面继续显示。");
+            } else if (state === "picture_reconnecting") {
+              setMediaNotice("画面正在重新连接，保留最后一帧。");
+            } else if (state === "playing") {
+              setMediaNotice("");
+            }
+          },
           media(media, status) {
             if (abort.signal.aborted) return;
             acceptMediaStatus(status);
-            if (media?.data_channel_input === false) { laneRef.current = null; streamRef.current?.attachDataChannel?.(null); }
+            if (media?.transport === "artc-v1" && media.data_channel_input === false) { laneRef.current = null; streamRef.current?.attachDataChannel?.(null); }
+            if (transport === "webrtc-v1" && webRtcInputFault(status?.error)) { reconnectDataChannel(status?.error); return; }
             if (status?.state === "failed" && status.error !== "screen_locked") { end(status.error || "media_capture_or_publish_failed"); return; }
             // Video is fine but input cannot reach the target (admin window, lock screen): say so, keep the session.
             const notice = remoteDesktopNoticeCopy(status?.error);
             setMessage((current) => status?.state === "locked" || status?.error === "screen_locked" ? "已锁定 — 可以输入密码解锁" : notice ? notice : current && [remoteDesktopNoticeCopy("input_target_elevated"), remoteDesktopNoticeCopy("screen_locked")].includes(current) ? "" : current);
             // A missing descriptor before negotiation is normal. After activation it revokes video.
             if (media) mediaDescriptorSeen = true;
-            else if (mediaDescriptorSeen) end("media_session_closed");
+            else if (transport === "artc-v1" && mediaDescriptorSeen) end("media_session_closed");
           },
           error(code) {
             if (abort.signal.aborted) return;
+            if (transport === "webrtc-v1" && webRtcInputFault(code)) { reconnectDataChannel(code); return; }
+            // Signalling recovery belongs to the same stream, which keeps the peer attached.
+            if (transport === "webrtc-v1" && webRtcSignallingFault(code)) return;
             // The socket broke (lossy path, Wi-Fi switch, sleep): the session is still there.
             if (code === "media_data_channel_unavailable" || code === "media_data_channel_write_unknown") reconnectDataChannel(code);
             else if (isNetworkFailure(code)) void reattach();
@@ -309,8 +343,9 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
           if (abort.signal.aborted || closedRef.current) { opened.data?.close(); return true; }
           if (!opened.ok || !opened.data) return false;
           streamRef.current = opened.data;
+          if (transport === "webrtc-v1") setMediaStream(opened.data);
           if (opened.data.inputHistory) measurements.current?.setInputHistory(opened.data.inputHistory);
-          opened.data.attachDataChannel?.(laneRef.current);
+          if (transport === "artc-v1") opened.data.attachDataChannel?.(laneRef.current);
           // Back on the same session: let go of anything held before the drop, first.
           // openStream may deliver "active" synchronously before returning the replacement stream.
           if (resuming || model.getSnapshot().reconnecting) {
@@ -341,7 +376,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
           for (let delay = 500; !abort.signal.aborted && !closedRef.current; delay = Math.min(delay * 2, 4000)) {
             // Offline: wait for the browser's "online" (or the next backoff tick) before trying.
             if (typeof navigator === "undefined" || navigator.onLine !== false) {
-              const opened = await client.openStream!(deviceId, sessionId, handlers, { signal: abort.signal, sequenceFloor: floor });
+              const opened = await client.openStream!(deviceId, sessionId, handlers, { ...streamOptions, sequenceFloor: floor });
               if (adopt(opened, true)) { reattaching = false; return; }
               if (!isNetworkFailure(opened.error)) { end(opened.error, opened.status); return; }
             }
@@ -356,7 +391,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
           }
           if (!abort.signal.aborted && !closedRef.current) end("link_lost");
         };
-        const opened = await client.openStream(deviceId, sessionId, handlers, { signal: abort.signal });
+        const opened = await client.openStream(deviceId, sessionId, handlers, streamOptions);
         if (!adopt(opened)) {
           mark("stream_failed");
           if (isNetworkFailure(opened.error)) void reattach();
@@ -388,7 +423,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
       document.body.style.overflow = previousOverflow;
       releaseRemoteDesktopFullscreen();
     };
-  }, [client, deviceId, disconnect, reconnectDataChannel, frameIntervalMs, releaseInput, updatePhase, ticket, acceptMediaStatus, acceptActivity, agentRequest, reportDiagnostics, reconnectTicket, reconnectAttempts, abortRef, closedRef, handoffRef, completedHandoff, setHandoffDone, setHandingBack, setHandoffFrozen, sessionRef, sessionClientRef, streamRef, streamModeRef, sequenceRef, setKeyboard, setFrame, setMediaMode, setMediaStatus, mediaFrameGeometry, setMediaReady, setDisplayId, setMediaNotice, setMessage, setAccess, setBilling, laneRef, setMediaDiagnostic, setCoarse, setReconnecting, setReconnectDeadline, setIdleDeadline, setConnectTiming, markRef, previousCloseRef, measurements, model, setPictureMeasurements, setClockUncertainty, earlyMediaRef, recoveryWindow, setClockNow, qualityRef]);
+  }, [client, deviceId, disconnect, reconnectDataChannel, frameIntervalMs, releaseInput, updatePhase, ticket, acceptMediaStatus, acceptActivity, agentRequest, reportDiagnostics, reconnectTicket, reconnectAttempts, abortRef, closedRef, handoffRef, completedHandoff, setHandoffDone, setHandingBack, setHandoffFrozen, sessionRef, sessionClientRef, streamRef, streamModeRef, sequenceRef, setKeyboard, setFrame, setMediaMode, setMediaStatus, mediaFrameGeometry, setMediaReady, setMediaStream, setConnectionPath, acceptMediaFrame, clearLocalInput, setDisplayId, setMediaNotice, setMessage, setAccess, setBilling, laneRef, setMediaDiagnostic, setCoarse, setReconnecting, setReconnectDeadline, setIdleDeadline, setConnectTiming, markRef, previousCloseRef, measurements, model, setPictureMeasurements, setClockUncertainty, earlyMediaRef, recoveryWindow, setClockNow, qualityRef]);
 
   return { client, reportDiagnostics, reconnectDataChannel, send, handBack, disconnect };
 }

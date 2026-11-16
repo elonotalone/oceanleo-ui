@@ -109,7 +109,7 @@ export function useRemoteDesktopInput(context: RemoteDesktopPanelContext, sessio
   }, [canSend, composing, inputEpoch, inputRef, releaseInput, send, sendText]);
 
   const point = useCallback((event: { clientX: number; clientY: number }, strict = true) => {
-    if (model.getSnapshot().mediaMode === "artc" && (!model.getSnapshot().mediaReady)) return null;
+    if (!model.getSnapshot().mediaReady) return null;
     const image = videoRef.current, current = model.getSnapshot().frame;
     if (!image || !current) return null;
     const rect = containedRect(image.getBoundingClientRect(), current.width, current.height);
