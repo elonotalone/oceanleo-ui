@@ -1,14 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
 import { notifyTaskAccessChanged } from "./useTaskAccess";
 import { TaskAccessError, taskAccessClient, type TaskAccess, type TaskAccessClient } from "./task-access-client";
 
-export function taskSignIn(taskUrl: string) {
-  window.location.assign(`/account?next=${encodeURIComponent(taskUrl)}`);
-}
+const TaskSignInDialog = lazy(() => import("../../pages/AuthDialog").then(module => ({ default: module.AuthDialog })));
 
 /** Replaces the whole composer for invitation, viewer and retained-history states. */
 export function TaskAccessComposer({ taskId, access, signedIn, loading, error, onRefresh, client = taskAccessClient, onSignIn, onFork }: {
@@ -18,7 +16,8 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
   const tt = useUI();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState("");
-  const signIn = onSignIn ?? (() => taskSignIn(`/tasks/${encodeURIComponent(taskId)}`));
+  const [showAuth, setShowAuth] = useState(false);
+  const signIn = onSignIn ?? (() => setShowAuth(true));
   const action = async (kind: "accept" | "decline" | "fork") => {
     if (!signedIn) { signIn(); return; }
     if (busy) return;
@@ -52,5 +51,8 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
       </>}
     </>}
     {failure && <p role="alert" className="text-sm">{failure}</p>}
+    {showAuth && <Suspense fallback={<span role="status" className="v-spinner" />}>
+      <TaskSignInDialog onClose={() => setShowAuth(false)} onSuccess={() => { setShowAuth(false); void onRefresh(); }} />
+    </Suspense>}
   </div>;
 }

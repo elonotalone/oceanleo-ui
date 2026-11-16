@@ -7,7 +7,7 @@ export { ProjectAccessPanel, ProjectInvitationActions, ProjectAccessBoundary } f
 export type { ProjectAccessPanelProps, ProjectInvitationActionsProps, ProjectAccessBoundaryProps } from "./ProjectAccessPanel";
 export { createProjectAccessClient, projectAccessClient, ProjectAccessError } from "./project-access-client";
 export type { ProjectAccess, ProjectAccessClient, ProjectMembers } from "./project-access-client";
-export { TaskAccessComposer, taskSignIn } from "./TaskAccessComposer";
+export { TaskAccessComposer } from "./TaskAccessComposer";
 export { createTaskAccessClient, taskAccessClient, taskAccessRights, TaskAccessError } from "./task-access-client";
 export type { TaskAccess, TaskAccessClient, GeneralAccess } from "./task-access-client";
 export { useTaskAccess, notifyTaskAccessChanged, TASK_ACCESS_CHANGED } from "./useTaskAccess";

@@ -2850,6 +2850,7 @@ function AgentChatInner({
     acpRowIds: acpSharePane ? acpShare.rowIds : undefined,
     taskId,
     title: taskTitle,
+    taskUrl: taskId ? taskQuoteHref(taskId) : undefined,
     siteLabel: shareSiteLabel,
     assistantLabel: acpSharePane ? PROGRAM_LABEL[acpRowsProgram as keyof typeof PROGRAM_LABEL] || acpRowsProgram || undefined : undefined,
   });
