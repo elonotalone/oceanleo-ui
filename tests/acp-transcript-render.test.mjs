@@ -325,3 +325,117 @@ test('a refused carried setting is one plain notice; it does not hide the follow
   assert.match(body.textContent, /这条消息照常发送/);
   assert.doesNotMatch(body.textContent, /hidden-data|not_offered|session\/set_config_option/);
 });
+
+
+async function toolImageDom(run) {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: 'https://p-test.dev.oceanleo.com/tasks/test' });
+  const saved = Object.fromEntries(['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
+  Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
+  const root = createRoot(dom.window.document.getElementById('root'));
+  try { await run(root, dom.window.document); }
+  finally {
+    await act(async () => root.unmount());
+    dom.window.close();
+    for (const [key, descriptor] of Object.entries(saved)) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor); else delete globalThis[key];
+    }
+  }
+}
+const toolImage = image => update({ sessionUpdate: 'tool_call_update', toolCallId: 'tp-image', title: 'Screenshot', kind: 'read', status: 'completed', content: [
+  { type: 'content', content: { type: 'text', text: 'Screenshot output' } },
+  { type: 'content', content: { type: 'image', mimeType: 'image/png', ...image } },
+] });
+
+test('TP: loading a tool image renders a thumbnail inside its step and opens the existing attachment callback', () => toolImageDom(async (root, doc) => {
+  let row = { ...toolImage({ data: '' }), truncated: { bytes: 50000, text: false, binary: true } };
+  const opened = [];
+  const renderCurrent = () => root.render(React.createElement(AcpTranscript, { rows: [row], program: 'claude', onOpenAttachment: a => opened.push(a), onExpandRow: async () => {
+    row = { ...row, raw: toolImage({ data: 'aGVsbG8=' }).raw, truncated: undefined };
+    renderCurrent();
+  } }));
+  await act(async () => renderCurrent());
+  const load = doc.querySelector('[data-acp-load-attachment]');
+  assert.ok(load.querySelector('svg'), 'image placeholder has an icon');
+  assert.match(load.className, /border/);
+  await act(async () => load.click());
+  assert.equal(doc.querySelector('[data-acp-truncated-row]'), null);
+  const tile = doc.querySelector('[data-agent-process-tool-body] [data-agent-process-image]');
+  assert.ok(tile, 'loading the placeholder reveals the image inside its step without extra clicks');
+  assert.equal(tile.querySelector('img').getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
+  await act(async () => tile.querySelector('button').click());
+  assert.equal(opened.length, 1);
+  assert.equal(opened[0].url, 'data:image/png;base64,aGVsbG8=');
+  assert.ok(doc.querySelector('[data-agent-process-tool-body]'), 'opening an image does not collapse its step');
+  await act(async () => doc.querySelector('[data-agent-process-tool] > button').click());
+  await act(async () => renderCurrent());
+  assert.equal(doc.querySelector('[data-agent-process-tool-body]'), null, 'manual collapse stays closed after the image was revealed');
+  await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
+  assert.equal(doc.querySelector('[data-agent-process-entries]'), null, 'manual process collapse stays closed too');
+}));
+
+test('TP: failed loading keeps the image button and shows the error reason', () => toolImageDom(async (root, doc) => {
+  const row = { ...toolImage({ data: '' }), truncated: { bytes: 50000, text: false, binary: true } };
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [row], program: 'claude', onExpandRow: async () => { throw Error('归档读取失败'); } })));
+  await act(async () => doc.querySelector('[data-acp-load-attachment]').click());
+  assert.match(doc.querySelector('[role="alert"]').textContent, /归档读取失败/);
+  assert.equal(doc.querySelector('[data-acp-load-attachment]').disabled, false);
+}));
+
+test('TP: a fetched row still missing image data explicitly says the image is unavailable', () => {
+  const body = render([toolImage({ data: '' })]);
+  assert.match(body.textContent, /图片已不可用/);
+  assert.equal(body.querySelector('[data-acp-load-attachment]'), null);
+});
+
+
+test('TP: a successful fetch with no image bytes replaces the button with an unavailable message', () => toolImageDom(async (root, doc) => {
+  let row = { ...toolImage({}), truncated: { bytes: 50000, text: false, binary: true } };
+  const renderCurrent = () => root.render(React.createElement(AcpTranscript, { rows: [row], program: 'claude', onExpandRow: async () => {
+    row = { ...row, truncated: undefined }; renderCurrent();
+  } }));
+  await act(async () => renderCurrent());
+  await act(async () => doc.querySelector('[data-acp-load-attachment]').click());
+  assert.equal(doc.querySelector('[data-acp-load-attachment]'), null);
+  assert.match(doc.querySelector('[data-acp-image-unavailable]').textContent, /图片已不可用/);
+}));
+
+test('TP: multiple inline and private images retain their identity; decode failures show a reason', () => toolImageDom(async (root, doc) => {
+  const row = toolImage({ data: 'aGVsbG8=' });
+  const raw = JSON.parse(row.raw);
+  raw.params.update.content.push({ type: 'content', content: { type: 'image', mimeType: 'image/png', uri: privateImageUri } });
+  const opened = [];
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [{ ...row, raw: JSON.stringify(raw) }], program: 'claude', onOpenAttachment: a => opened.push(a) })));
+  await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
+  const tiles = doc.querySelectorAll('[data-agent-process-image]');
+  assert.equal(tiles.length, 2);
+  await act(async () => tiles[1].querySelector('button').click());
+  assert.equal(opened[0].artifact_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+  assert.equal(opened[0].revision_id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
+  await act(async () => tiles[0].querySelector('img').dispatchEvent(new window.Event('error')));
+  assert.match(tiles[0].querySelector('[role="alert"]').textContent, /图片加载失败.*无法解码/);
+  assert.ok(doc.querySelector('[data-agent-process-tool-body]'));
+}));
+
+test('TP: child tool screenshots render inside their child step and use the attachment opener', () => toolImageDom(async (root, doc) => {
+  const rows = [update({ sessionUpdate: 'tool_call', toolCallId: 'parent-task', title: 'Subtask', kind: 'other', status: 'completed' })];
+  const row = toolImage({ data: 'aGVsbG8=' });
+  const raw = JSON.parse(row.raw);
+  raw.params.update._meta = { claudeCode: { parentToolUseId: 'parent-task' } };
+  rows.push({ ...row, raw: JSON.stringify(raw) });
+  const opened = [];
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows, program: 'claude', onOpenAttachment: a => opened.push(a) })));
+  await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
+  const tile = doc.querySelector('[data-agent-process-substep-list] [data-agent-process-image]');
+  assert.ok(tile);
+  await act(async () => tile.querySelector('button').click());
+  assert.equal(opened[0].url, 'data:image/png;base64,aGVsbG8=');
+}));
+
+test('TP: attachment errors have translations in every UI locale', async () => {
+  const { LOCALES } = await import('../src/i18n/config.ts');
+  const { UT_COPY_A } = await import('../src/i18n/ui/messages/pages-bay-wave-copy-a.ts');
+  for (const locale of LOCALES) for (const key of ['图片已不可用', '图片加载失败：{reason}', '图片数据无法解码']) {
+    assert.ok(UT_COPY_A[locale][key], `${locale}: ${key}`);
+    if (key.includes('{reason}')) assert.ok(UT_COPY_A[locale][key].includes('{reason}'));
+  }
+});
