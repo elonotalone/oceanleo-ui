@@ -124,6 +124,16 @@ export async function openRemoteWebRtcStream(
     if (outgoingSignals.length > 68) outgoingSignals.splice(0, outgoingSignals.length - 68);
     flushSignals(); return true;
   };
+  const persistQuality = async <T extends { path?: unknown }>(write: (payload: T) => Promise<RemoteDesktopApiResult<unknown>>, payload: T): Promise<void> => {
+    const result = await write(payload);
+    // Older strict gateways can still store the media/input evidence while optional
+    // comparison telemetry is being rolled out. Never retry another validation error.
+    if (result.status !== 422 || !payload.path || typeof payload.path !== "object") return;
+    const extended = new Set(["direct_rtt_ms", "relay_rtt_ms", "comparison_source", "selection_state", "best_relay_region"]);
+    const entries = Object.entries(payload.path);
+    if (!entries.some(([key]) => extended.has(key))) return;
+    await write({ ...payload, path: Object.fromEntries(entries.filter(([key]) => !extended.has(key))) });
+  };
   const report = (value: WebRtcQualityReport, final: boolean) => {
     // Reports are diagnostics only: a refused report cannot alter either transport.
     try {
@@ -144,14 +154,14 @@ export async function openRemoteWebRtcStream(
           video: { ...videoSummary, samples: Math.min(10_000, value.video?.frames_rendered ?? 0) },
           ...(value.path ? { path: value.path } : {}), env: value.env ?? qualityEnvironment(),
         };
-        void client.reportQuality?.(payload).catch(() => {});
+        if (client.reportQuality) void persistQuality(client.reportQuality.bind(client), payload).catch(() => {});
       } else {
         const payload: RemoteDesktopQualityWindow = { ...common, window_start_ms: value.window_start_ms ?? Date.now(), viewer: value.viewer ?? {},
           steps, input: value.input, video: videoSummary,
           ...(value.path ? { path: value.path } : {}),
           ...(value.publisher ? { publisher: Object.fromEntries(Object.entries(value.publisher).filter(([key, number]) => /^[a-z][a-z0-9_]{0,47}$/.test(key) && Number.isFinite(number) && number >= 0 && number <= Number.MAX_SAFE_INTEGER).slice(0, 64)) } : {}),
         };
-        void client.reportQualityWindow?.(payload).catch(() => {});
+        if (client.reportQualityWindow) void persistQuality(client.reportQualityWindow.bind(client), payload).catch(() => {});
       }
     } catch { /* best effort */ }
   };
