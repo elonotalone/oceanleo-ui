@@ -44,6 +44,11 @@ import {
 import { officeSourceCacheKey } from "./office-editor/office-source-identity";
 import { importPptxDeck } from "./doc-editors/pptx-deck-import";
 import {
+  applyDeckPptxPreviewVisuals,
+  loadDeckPptxPreviewFonts,
+  paintDeckPptxPreviewImages,
+} from "./doc-editors/DeckPptxVisuals";
+import {
   absoluteMediaUrl,
   fetchMediaBlobRefreshing,
   signedMediaRefreshPurpose,
@@ -452,6 +457,7 @@ function startPptxThumbnailPass({
   let cancelled = false;
   let cancelScheduled = () => {};
   let previewer: PptxPreviewInstance | null = null;
+  let stopVisuals: (() => void) | undefined;
   const host = document.createElement("div");
   host.setAttribute("aria-hidden", "true");
   host.setAttribute("data-pptx-thumbnail-workshop", "");
@@ -462,6 +468,8 @@ function startPptxThumbnailPass({
 
   const teardown = () => {
     cancelScheduled();
+    stopVisuals?.();
+    stopVisuals = undefined;
     try {
       previewer?.destroy();
     } catch {
@@ -482,12 +490,16 @@ function startPptxThumbnailPass({
       previewer = activePreviewer;
       const model = await activePreviewer.load(arrayBuffer);
       if (cancelled) return;
+      stopVisuals = applyDeckPptxPreviewVisuals(activePreviewer.wrapper, model, arrayBuffer);
+      await loadDeckPptxPreviewFonts(model, activePreviewer.wrapper.ownerDocument);
+      if (cancelled) return;
       applyPptxLogicalSize(activePreviewer, logicalSize);
       let index = 0;
       const step = () => {
         if (cancelled || !previewer) return;
         try {
           activePreviewer.renderSingleSlide(index);
+          paintDeckPptxPreviewImages(activePreviewer.wrapper);
           const rendered = activePreviewer.wrapper.querySelector<HTMLElement>(
             `.pptx-preview-slide-wrapper-${index}`,
           );
@@ -643,6 +655,7 @@ function PptViewer({
   const tt = useUI();
   const host = useRef<HTMLDivElement | null>(null);
   const previewerRef = useRef<PptxPreviewInstance | null>(null);
+  const stopVisualsRef = useRef<(() => void) | undefined>(undefined);
   /**
    * `DeckPreviewLayout` 在舞台的逻辑页上挂着 `key={activeSlideId}`，所以**换一次页，
    * 整棵 children 就被卸载重建一次**，这个宿主 div 会换成一个全新的空节点。
@@ -775,6 +788,9 @@ function PptViewer({
           model.width / model.height,
         );
         applyPptxLogicalSize(activePreviewer, nextLogicalSize);
+        stopVisualsRef.current = applyDeckPptxPreviewVisuals(activePreviewer.wrapper, model, arrayBuffer);
+        await loadDeckPptxPreviewFonts(model, activePreviewer.wrapper.ownerDocument);
+        if (cancelled) return;
 
         /**
          * 首帧只做**一页**的活。
@@ -787,6 +803,7 @@ function PptViewer({
          * 所以先把第 1 页交出去，缩略图交给下面的后台补渲。
          */
         activePreviewer.renderSingleSlide(0);
+        paintDeckPptxPreviewImages(activePreviewer.wrapper);
         if (
           !activePreviewer.wrapper.querySelector(
             ".pptx-preview-slide-wrapper-0",
@@ -835,6 +852,8 @@ function PptViewer({
         }
       } catch (reason) {
         if (cancelled) return;
+        stopVisualsRef.current?.();
+        stopVisualsRef.current = undefined;
         if (previewerRef.current === previewer) previewerRef.current = null;
         previewer?.destroy();
         // 清的是**当下挂着的**宿主，不是 effect 起跑时那个：中途换过页的话
@@ -848,6 +867,8 @@ function PptViewer({
       cancelled = true;
       abort.abort();
       stopThumbnailPass?.();
+      stopVisualsRef.current?.();
+      stopVisualsRef.current = undefined;
       if (previewerRef.current === previewer) previewerRef.current = null;
       previewer?.destroy();
       host.current?.replaceChildren();
@@ -910,7 +931,10 @@ function PptViewer({
     if (state === "ready" && renderedSlide && previewerRef.current) {
       try {
         previewerRef.current.renderSingleSlide(renderedSlide.index);
+        paintDeckPptxPreviewImages(previewerRef.current.wrapper);
       } catch (reason) {
+        stopVisualsRef.current?.();
+        stopVisualsRef.current = undefined;
         setError(reason instanceof Error ? reason.message : String(reason));
         setState("error");
         return;

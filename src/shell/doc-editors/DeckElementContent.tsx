@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { DeckAspect, DeckElement, DeckSlide } from "./deck-schema";
 import { deckCellElement } from "./deck-table-format";
 import { deckFontSizeCqi } from "./deck-text-scale";
-import { deckDisplayFontFamily } from "./deck-display-font";
+import { deckDisplayFontFamily, deckGenericFontFamily, loadDeckDisplayFonts } from "./deck-display-font";
 import {
   deckSafeLink,
   deckTextDecoration,
@@ -83,8 +83,8 @@ function DeckCroppedImage({ element }: { element: DeckElement }) {
   </span>;
 }
 
-function deckParagraphStyle(element: DeckElement, aspect: DeckAspect): CSSProperties {
-  return { fontFamily: deckDisplayFontFamily(element.fontFamily), color: element.color,
+function deckParagraphStyle(element: DeckElement, aspect: DeckAspect, fallback = false): CSSProperties {
+  return { fontFamily: fallback ? deckGenericFontFamily(element.fontFamily) : deckDisplayFontFamily(element.fontFamily), color: element.color,
     fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
     fontWeight: element.bold ? 700 : 400, fontStyle: element.italic ? "italic" : "normal",
     textDecoration: deckTextDecoration(element), textAlign: element.align || "left",
@@ -119,11 +119,13 @@ export function deckEditableTextValue(element: HTMLElement): string {
 function DeckEditableText({
   element,
   textStyle,
+  fontHostRef,
   onCommitText,
   onCancelEditing,
 }: {
   element: DeckElement;
   textStyle: CSSProperties;
+  fontHostRef: { current: HTMLElement | null };
   onCommitText?: (text: string) => void;
   onCancelEditing?: () => void;
 }) {
@@ -148,7 +150,7 @@ function DeckEditableText({
   };
   return (
     <div
-      ref={editorRef}
+      ref={(node) => { editorRef.current = node; fontHostRef.current = node; }}
       role="textbox"
       aria-multiline="true"
       contentEditable
@@ -204,6 +206,26 @@ export function DeckElementContent({
   onCommitCell?: (row: number, column: number, text: string) => void;
   onCancelEditing?: () => void;
 }) {
+  const visibleText = element.type === "table"
+    ? (element.rows || []).slice(0, miniature ? 4 : 100).flatMap((row, rowIndex) =>
+      row.slice(0, miniature ? 4 : 50).map((_cell, column) => deckCellElement(element, rowIndex, column)))
+    : element.text ? [element] : [];
+  const fontKey = JSON.stringify(visibleText.map((text) => ({
+    text: text.text,
+    fontFamily: text.fontFamily,
+    fontWeight: text.bold ? 700 : 400,
+  })));
+  const [fonts, setFonts] = useState<{ key: string; loaded: boolean } | null>(null);
+  const fontHostRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void loadDeckDisplayFonts(JSON.parse(fontKey), fontHostRef.current?.ownerDocument).then((loaded) => {
+      if (!cancelled) setFonts({ key: fontKey, loaded });
+    });
+    return () => { cancelled = true; };
+  }, [fontKey]);
+  const pendingFonts = visibleText.length > 0 && fonts?.key !== fontKey;
+  const fallbackFonts = fonts?.key === fontKey && !fonts.loaded;
   if (element.type === "image" && element.src && element.crop) return <DeckCroppedImage element={element} />;
   if (element.type === "image" && element.src) {
     return (
@@ -223,8 +245,10 @@ export function DeckElementContent({
   if (element.type === "table") {
     return (
       <table
+        ref={(node) => { fontHostRef.current = node; }}
         className="h-full w-full table-fixed border-collapse text-[0.7em]"
         style={{
+          visibility: pendingFonts ? "hidden" : undefined,
           background: element.fill || "#ffffff",
           color: element.color || "#292524",
           fontSize: `${deckFontSizeCqi(element.fontSize || 16, aspect)}cqi`,
@@ -258,7 +282,7 @@ export function DeckElementContent({
                         cellIndex === 0
                       }
                       style={{
-                        ...deckParagraphStyle(deckCellElement(element, rowIndex, cellIndex), aspect),
+                        ...deckParagraphStyle(deckCellElement(element, rowIndex, cellIndex), aspect, fallbackFonts),
                         color: deckCellElement(element, rowIndex, cellIndex).color || "#292524",
                         borderColor:
                           element.borderColor || "var(--divider,#d6d3d1)",
@@ -400,7 +424,8 @@ export function DeckElementContent({
     );
   }
   const textStyle = {
-    ...deckParagraphStyle(element, aspect),
+    ...deckParagraphStyle(element, aspect, fallbackFonts),
+    visibility: pendingFonts ? "hidden" : undefined,
     alignItems: "center",
     justifyContent:
       element.align === "center"
@@ -410,7 +435,7 @@ export function DeckElementContent({
           : "flex-start",
     textAlign: element.align || "left",
     color: element.color,
-    fontFamily: deckDisplayFontFamily(element.fontFamily),
+    fontFamily: fallbackFonts ? deckGenericFontFamily(element.fontFamily) : deckDisplayFontFamily(element.fontFamily),
     fontSize: `${deckFontSizeCqi(element.fontSize || 18, aspect)}cqi`,
     fontWeight: element.bold ? 700 : 400,
     fontStyle: element.italic ? "italic" : "normal",
@@ -423,6 +448,7 @@ export function DeckElementContent({
       <DeckEditableText
         element={element}
         textStyle={textStyle}
+        fontHostRef={fontHostRef}
         onCommitText={onCommitText}
         onCancelEditing={onCancelEditing}
       />
@@ -430,6 +456,7 @@ export function DeckElementContent({
   }
   return (
     <span
+      ref={(node) => { fontHostRef.current = node; }}
       className="flex h-full w-full overflow-hidden whitespace-pre-wrap leading-tight"
       style={textStyle}
       title={!linkable && element.link ? deckSafeLink(element.link) : undefined}

@@ -3,7 +3,7 @@ import { deckImageAspectRatio } from "./deck-image-size";
 import { deckCellElement, deckTableUsesPicture } from "./deck-table-format";
 import { deckSafeLink, deckTextDecoration, deckTextListLines } from "./deck-text-format";
 import { deckFontSizePx } from "./deck-text-scale";
-import { deckDisplayFontFamily } from "./deck-display-font";
+import { deckDisplayFontFamily, deckGenericFontFamily, loadDeckDisplayFonts } from "./deck-display-font";
 
 import type {
   DeckAspect,
@@ -697,6 +697,35 @@ export async function injectDeckPptxVisuals(
 
 function previewRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+/** Read the transient runs after inheritance/aliasing, before either preview paints. */
+export async function loadDeckPptxPreviewFonts(model: unknown, ownerDocument?: Document): Promise<void> {
+  const runs: Record<string, unknown>[] = [];
+  const seen = new WeakSet<object>();
+  const visit = (value: unknown) => {
+    if (!value || typeof value !== "object" || seen.has(value)) return;
+    seen.add(value);
+    if (Array.isArray(value)) { value.forEach(visit); return; }
+    const record = previewRecord(value);
+    if (typeof record.text === "string" && record.text && record.props) {
+      const props = previewRecord(record.props);
+      if (typeof props.typeface === "string") props.typeface = deckDisplayFontFamily(props.typeface);
+      runs.push(record);
+    }
+    // Vendor nodes link back to their entire presentation via ctx/pptx/group.
+    // Walk only rendered content, never those cycles or raw OOXML sources.
+    for (const key of ["nodes", "textBody", "paragraphs", "rows", "tr", "td"]) visit(record[key]);
+  };
+  visit(previewRecord(model).slides);
+  const loaded = await loadDeckDisplayFonts(runs.map((run) => {
+    const props = previewRecord(run.props);
+    return { text: run.text as string, fontFamily: props.typeface as string | undefined, fontWeight: props.bold ? 700 : 400 };
+  }), ownerDocument);
+  if (!loaded) for (const run of runs) {
+    const props = previewRecord(run.props);
+    props.typeface = deckGenericFontFamily(props.typeface as string | undefined);
+  }
 }
 
 /** Also call synchronously before cloning a rendered slide for the page rail. */
