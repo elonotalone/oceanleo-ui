@@ -124,3 +124,11 @@ test("anonymous Continue opens the shared sign-in dialog in place and refreshes 
     assert.equal(document.querySelector('[aria-label="sign in"]'),null);
   } finally {await view.close();}
 });
+
+test("accepting an invitation refreshes My Tasks immediately",async()=>{
+ const client=new TaskAccessMock();client.access={...ownerAccess(),state:"invited",role:"view",can_send:false,can_manage:false,invite_role:"view"};
+ let changes=0;const changed=()=>{changes++;};window.addEventListener("oceanleo:history-changed",changed);
+ const view=await mount(TaskAccessComposer,{taskId:"t",access:client.access,signedIn:true,client,onRefresh:async()=>{}});
+ try {await click(button("接受邀请"));assert.equal(changes,1);}
+ finally {await view.close();window.removeEventListener("oceanleo:history-changed",changed);}
+});

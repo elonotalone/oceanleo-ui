@@ -3,6 +3,7 @@
 import { lazy, Suspense, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
+import { notifyHistoryChanged } from "../../lib/history-events";
 import { notifyTaskAccessChanged } from "./useTaskAccess";
 import { TaskAccessError, taskAccessClient, type TaskAccess, type TaskAccessClient } from "./task-access-client";
 
@@ -26,10 +27,12 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
       if (kind === "fork") {
         const result = await client.fork(taskId);
         if (!result.task_id) throw new Error("missing task");
+        notifyHistoryChanged();
         if (onFork) onFork(result.task_id);
         else window.location.assign(`/tasks/${encodeURIComponent(result.task_id)}`);
       } else {
         await client[kind](taskId);
+        notifyHistoryChanged();
         notifyTaskAccessChanged(taskId);
         await onRefresh();
       }
