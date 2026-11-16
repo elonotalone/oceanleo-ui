@@ -101,7 +101,7 @@ export const taskAccessClient = createTaskAccessClient();
 export function taskAccessRights(access: TaskAccess | null, taskId?: string | null) {
   if (!taskId) return { canSend: true, canManage: true, canView: true };
   return {
-    canSend: Boolean(access?.can_send && (access.state === "owner" || access.state === "member" && access.role === "collaborate")),
+    canSend: Boolean(access?.can_send && (access.state === "owner" && access.role === "owner" || access.state === "member" && access.role === "collaborate")),
     canManage: Boolean(access?.can_manage && access.state === "owner" && access.role === "owner"),
     canView: Boolean(access && ["owner", "member", "invited", "public", "removed"].includes(access.state) && access.role !== "none"),
   };

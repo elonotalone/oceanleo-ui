@@ -38,6 +38,7 @@ test("access state and role both constrain composer and management rights", () =
     assert.equal(taskAccessRights({ ...yes, state, role: "owner" }, "t").canManage, false);
   }
   assert.equal(taskAccessRights({ ...yes, state: "member", role: "view" }, "t").canSend, false);
+  assert.equal(taskAccessRights({ ...yes, state: "owner", role: "view" }, "t").canSend, false);
   assert.equal(taskAccessRights({ ...yes, state: "member", role: "collaborate" }, "t").canSend, true);
   assert.deepEqual(taskAccessRights(null, "t"), { canSend: false, canManage: false, canView: false });
 });
