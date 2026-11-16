@@ -160,6 +160,8 @@ test("connection details distinguish direct and relay paths and show the selecte
   await act(async () => view.handlers().webrtcState("playing", { local_type: "relay", remote_type: "host", protocol: "tcp", address_family: "ipv4", relay_region: "sg", rtt_ms: 80 }));
   details = view.screen().querySelector("[data-remote-connection-details]");
   assert.match(details.textContent, /通过中继连接/); assert.match(details.textContent, /sg/); assert.match(details.textContent, /80 毫秒/);
+  await act(async () => view.handlers().webrtcState("picture_reconnecting"));
+  assert.equal(view.screen().querySelector("[data-remote-connection-details]"), null, "a replacement peer must not retain the previous candidate pair");
 });
 
 test("WebRTC display selection negotiates its pinned transport while keeping the video and stream attached", async () => {

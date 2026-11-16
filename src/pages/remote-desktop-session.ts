@@ -290,7 +290,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
           webrtcFrame: acceptMediaFrame,
           webrtcState(state, path) {
             if (abort.signal.aborted || closedRef.current) return;
-            if (path) setConnectionPath(path);
+            setConnectionPath(path ?? null);
             if (state === "input_reconnecting") {
               clearLocalInput();
               setMediaNotice("输入正在重新连接，画面继续显示。");
