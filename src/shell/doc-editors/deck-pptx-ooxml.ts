@@ -681,3 +681,206 @@ export async function injectDeckPptxOoxml(
   const bytes = Uint8Array.from(zipSync(archive, { level: 6 }));
   return new Blob([bytes], { type: PPTX_MIME });
 }
+
+// Read character defaults directly from the package. Keep this independent of
+// both preview vendors: they do not implement the same DrawingML cascade.
+interface DeckXmlNode {
+  name: string;
+  attrs: Record<string, string>;
+  children: DeckXmlNode[];
+  text: string;
+}
+
+function deckXmlText(value: string): string {
+  return value.replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, entity: string) => {
+    if (entity[0] === "#") {
+      const code = entity[1].toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "";
+    }
+    return ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" } as Record<string, string>)[entity] || "";
+  });
+}
+
+/** Small non-DOM XML reader; no DTD, external entities, HTML or executable data. */
+function deckReadXml(xml: string): DeckXmlNode {
+  if (/<!DOCTYPE|<!ENTITY/i.test(xml)) throw new SyntaxError();
+  const root: DeckXmlNode = { name: "", attrs: {}, children: [], text: "" };
+  const stack = [root];
+  const tokens = xml.match(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<(?:"[^"]*"|'[^']*'|[^'">])*>|[^<]+/g) || [];
+  for (const token of tokens) {
+    if (token.startsWith("<!--") || token.startsWith("<?")) continue;
+    if (token.startsWith("<![CDATA[")) { stack[stack.length - 1].text += token.slice(9, -3); continue; }
+    if (token.startsWith("</")) {
+      if (stack.length === 1 || stack.pop()!.name !== token.slice(2, -1).trim().split(":").pop()) throw new SyntaxError();
+    } else if (token.startsWith("<")) {
+      const name = /^<([^\s/>]+)/.exec(token)?.[1];
+      if (!name) throw new SyntaxError();
+      const node: DeckXmlNode = { name: name.split(":").pop()!, attrs: {}, children: [], text: "" };
+      for (const match of token.matchAll(/([\w:.-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) node.attrs[match[1]] = deckXmlText(match[2] ?? match[3]);
+      stack[stack.length - 1].children.push(node);
+      if (!token.endsWith("/>")) stack.push(node);
+    } else stack[stack.length - 1].text += deckXmlText(token);
+  }
+  if (stack.length !== 1) throw new SyntaxError();
+  return root.children[0] || root;
+}
+
+function deckChild(node: DeckXmlNode | undefined, name: string): DeckXmlNode | undefined {
+  return node?.children.find((child) => child.name === name);
+}
+function deckPath(node: DeckXmlNode | undefined, ...names: string[]): DeckXmlNode | undefined {
+  return names.reduce<DeckXmlNode | undefined>((value, name) => deckChild(value, name), node);
+}
+function deckDescendants(node: DeckXmlNode | undefined, name: string): DeckXmlNode[] {
+  return node ? node.children.flatMap((child) => [...(child.name === name ? [child] : []), ...deckDescendants(child, name)]) : [];
+}
+function deckPartPath(base: string, target: string): string {
+  const parts = target.startsWith("/") ? [] : base.split("/").slice(0, -1);
+  for (const part of target.split("/")) {
+    if (part === "..") parts.pop();
+    else if (part && part !== ".") parts.push(part);
+  }
+  return parts.join("/");
+}
+
+type DeckInheritedStyle = Partial<Pick<DeckElement,
+  "fontSize" | "fontFamily" | "color" | "bold" | "italic" | "underline" | "strike" | "align" | "lineHeight" | "letterSpacing"
+>>;
+export interface DeckPptxInheritedRun {
+  text: string;
+  style: DeckInheritedStyle;
+}
+export interface DeckPptxInheritedShape {
+  name: string;
+  type: "text" | "image";
+  geometry?: { left: number; top: number; width: number; height: number };
+  paragraphs: DeckPptxInheritedRun[][];
+}
+
+/** Resolve run → paragraph → list → layout/master placeholder → txStyles/default. */
+export function readDeckPptxTextInheritance(bytes: ArrayBuffer): DeckPptxInheritedShape[][] {
+  const archive = unzipSync(new Uint8Array(bytes));
+  const cache = new Map<string, DeckXmlNode>();
+  const read = (path: string): DeckXmlNode | undefined => {
+    if (!archive[path]) return undefined;
+    if (!cache.has(path)) cache.set(path, deckReadXml(strFromU8(archive[path])));
+    return cache.get(path);
+  };
+  const rels = (path: string) => read(path.replace(/([^/]+)$/, "_rels/$1.rels"))?.children || [];
+  const related = (path: string, kind: string): string => {
+    const rel = rels(path).find((node) => node.attrs.Type?.endsWith(`/${kind}`) && node.attrs.TargetMode !== "External");
+    return rel ? deckPartPath(path, rel.attrs.Target) : "";
+  };
+  const presentation = read("ppt/presentation.xml");
+  const presentationRels = rels("ppt/presentation.xml");
+  const slides = deckPath(presentation, "sldIdLst")?.children.map((id) => {
+    const rel = presentationRels.find((entry) => entry.attrs.Id === id.attrs["r:id"] && entry.attrs.TargetMode !== "External");
+    return rel ? deckPartPath("ppt/presentation.xml", rel.attrs.Target) : "";
+  }) || [];
+  const shapeNodes = (root: DeckXmlNode | undefined) => deckDescendants(root, "sp");
+  const placeholder = (shape: DeckXmlNode | undefined) => deckPath(shape, "nvSpPr", "nvPr", "ph");
+  const phType = (shape: DeckXmlNode | undefined) => placeholder(shape)?.attrs.type || "obj";
+  const matchPlaceholder = (root: DeckXmlNode | undefined, shape: DeckXmlNode | undefined, master = false): DeckXmlNode | undefined => {
+    const ph = placeholder(shape);
+    if (!ph) return undefined;
+    const nodes = shapeNodes(root).filter((node) => placeholder(node));
+    return (master ? undefined : nodes.find((node) => (placeholder(node)!.attrs.idx || "0") === (ph.attrs.idx || "0"))) ||
+      nodes.find((node) => phType(node) === phType(shape)) ||
+      nodes.find((node) => /^(?:title|ctrTitle)$/.test(phType(node)) && /^(?:title|ctrTitle)$/.test(phType(shape)));
+  };
+  return slides.map((slidePath) => {
+    const slide = read(slidePath);
+    const layoutPath = related(slidePath, "slideLayout");
+    const layout = read(layoutPath);
+    const masterPath = related(layoutPath, "slideMaster");
+    const master = read(masterPath);
+    const theme = read(related(masterPath, "theme") || related("ppt/presentation.xml", "theme"));
+    const scheme = deckPath(theme, "themeElements", "clrScheme");
+    const colorMap = { bg1: "lt1", tx1: "dk1", bg2: "lt2", tx2: "dk2", ...deckChild(master, "clrMap")?.attrs,
+      ...deckPath(layout, "clrMapOvr", "overrideClrMapping")?.attrs, ...deckPath(slide, "clrMapOvr", "overrideClrMapping")?.attrs } as Record<string, string>;
+    const readColor = (fill: DeckXmlNode | undefined): string | undefined => {
+      const color = fill?.children[0];
+      if (!color) return undefined;
+      // Retain the parser's colour engine for transformed/alpha fills rather
+      // than approximate DrawingML luminance operations in RGB space.
+      if (color.children.length) return undefined;
+      let value = color.name === "srgbClr" ? color.attrs.val : color.name === "sysClr" ? color.attrs.lastClr : "";
+      if (color.name === "schemeClr") {
+        const key = colorMap[color.attrs.val] || color.attrs.val;
+        const themeColor = deckChild(scheme, key)?.children[0];
+        value = (themeColor?.name === "sysClr" ? themeColor.attrs.lastClr : themeColor?.attrs.val) || "";
+      }
+      if (!/^[\da-f]{6}$/i.test(value)) return undefined;
+      return `#${value.toUpperCase()}`;
+    };
+    const resolveFont = (value: string, cjk: boolean, language: string): string => {
+      const themeFont = /^\+(mj|mn)-(lt|ea|cs)$/.exec(value);
+      if (!themeFont) return value;
+      const family = deckPath(theme, "themeElements", "fontScheme", themeFont[1] === "mj" ? "majorFont" : "minorFont");
+      const script = /^ja/.test(language) ? "Jpan" : /^ko/.test(language) ? "Hang" : /TW|HK|Hant/i.test(language) ? "Hant" : "Hans";
+      return (cjk ? family?.children.find((n) => n.name === "font" && n.attrs.script === script)?.attrs.typeface : "") ||
+        deckChild(family, themeFont[2] === "ea" ? "ea" : themeFont[2] === "cs" ? "cs" : "latin")?.attrs.typeface ||
+        deckChild(family, "latin")?.attrs.typeface || value;
+    };
+    const levelProps = (style: DeckXmlNode | undefined, level: number) => [deckChild(style, "defPPr"), deckChild(style, `lvl${level + 1}pPr`)];
+    const shapeList = (shape: DeckXmlNode | undefined) => deckPath(shape, "txBody", "lstStyle");
+    const inheritedParagraph = (shape: DeckXmlNode | undefined, index: number) => {
+      const paras = deckChild(shape, "txBody")?.children.filter((node) => node.name === "p") || [];
+      return deckChild(paras[index] || paras[0], "pPr");
+    };
+    const shapes = [...deckDescendants(slide, "sp"), ...deckDescendants(slide, "pic")];
+    return shapes.map((shape): DeckPptxInheritedShape => {
+      const layoutShape = matchPlaceholder(layout, shape);
+      const masterShape = matchPlaceholder(master, layoutShape || shape, true);
+      const inherited = [masterShape, layoutShape, shape];
+      const type = shape.name === "pic" ? "image" : "text";
+      const name = deckDescendants(shape, "cNvPr")[0]?.attrs.name || "";
+      const xfrm = inherited.map((node) => deckPath(node, "spPr", "xfrm")).reverse().find(Boolean);
+      const off = deckChild(xfrm, "off"), ext = deckChild(xfrm, "ext");
+      const geometry = off && ext ? { left: Number(off.attrs.x) / 12700, top: Number(off.attrs.y) / 12700, width: Number(ext.attrs.cx) / 12700, height: Number(ext.attrs.cy) / 12700 } : undefined;
+      const paragraphs = (deckChild(shape, "txBody")?.children || []).filter((node) => node.name === "p").map((paragraph, index) => {
+        const own = deckChild(paragraph, "pPr");
+        const level = Math.max(0, Math.min(8, Number(own?.attrs.lvl || 0)));
+        const ph = phType(layoutShape || shape);
+        const textStyle = /^(?:title|ctrTitle)$/.test(ph) ? "titleStyle" : ph === "body" || ph === "subTitle" ? "bodyStyle" : "otherStyle";
+        const props = [
+          ...levelProps(deckChild(presentation, "defaultTextStyle"), level),
+          ...levelProps(deckPath(master, "txStyles", textStyle), level),
+          ...levelProps(shapeList(masterShape), level), inheritedParagraph(masterShape, index),
+          ...levelProps(shapeList(layoutShape), level), inheritedParagraph(layoutShape, index),
+          ...levelProps(shapeList(shape), level), own,
+        ].filter((node): node is DeckXmlNode => Boolean(node));
+        return paragraph.children.filter((node) => node.name === "r" || node.name === "fld" || node.name === "br").map((run): DeckPptxInheritedRun => {
+          const text = run.name === "br" ? "\n" : deckChild(run, "t")?.text || "";
+          const cjk = /[\u2e80-\u9fff\uac00-\ud7af\uf900-\ufaff]/.test(text);
+          const style: DeckInheritedStyle = {};
+          let latin = "", eastAsian = "", language = "zh-CN";
+          const rProps = [...props.map((node) => deckChild(node, "defRPr")), deckChild(run, "rPr")].filter((node): node is DeckXmlNode => Boolean(node));
+          for (const rPr of rProps) {
+            const a = rPr.attrs;
+            if (a.sz !== undefined) style.fontSize = Number(a.sz) / 100;
+            if (a.b !== undefined) style.bold = a.b === "1" || a.b === "true";
+            if (a.i !== undefined) style.italic = a.i === "1" || a.i === "true";
+            if (a.u !== undefined) style.underline = a.u !== "none";
+            if (a.strike !== undefined) style.strike = a.strike !== "noStrike";
+            if (a.spc !== undefined) style.letterSpacing = Number(a.spc) / 100 / 0.75;
+            const color = readColor(deckChild(rPr, "solidFill"));
+            if (color) style.color = color;
+            latin = deckChild(rPr, "latin")?.attrs.typeface || latin;
+            eastAsian = deckChild(rPr, "ea")?.attrs.typeface || eastAsian;
+            language = a.lang || language;
+          }
+          const font = cjk ? eastAsian || latin : latin || eastAsian;
+          if (font) style.fontFamily = resolveFont(font, cjk, language);
+          for (const pPr of props) {
+            if (pPr.attrs.algn) style.align = ({ ctr: "center", r: "right", just: "justify", dist: "justify" } as const)[pPr.attrs.algn as "ctr"] || "left";
+            const spacing = deckPath(pPr, "lnSpc", "spcPct");
+            if (spacing) style.lineHeight = Number(spacing.attrs.val) / 100000;
+          }
+          return { text, style };
+        });
+      });
+      return { name, type, geometry, paragraphs };
+    });
+  });
+}
