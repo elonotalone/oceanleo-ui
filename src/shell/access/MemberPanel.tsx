@@ -48,11 +48,11 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
 
   const invite = async (event: FormEvent) => {
     event.preventDefault();
-    const normalized = email.trim().toLocaleLowerCase();
+    const normalized = email.trim().toLowerCase();
     if (!normalized || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) { setError(tt(copy.invalidEmail)); inputRef.current?.focus(); return; }
     if (!begin()) return;
     const previous = items;
-    const existing = items.find((member) => member.email?.toLocaleLowerCase() === normalized && ["invited", "accepted"].includes(member.status));
+    const existing = items.find((member) => member.email?.toLowerCase() === normalized && ["invited", "accepted"].includes(member.status));
     const optimistic: AccessMember = existing ?? { id: `pending:${normalized}`, email: normalized, role: "view", status: "invited" };
     setItems(existing ? items : [...items, optimistic]);
     setEmail("");

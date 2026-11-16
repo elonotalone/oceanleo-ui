@@ -51,3 +51,12 @@ test("cloud and computer task headers expose the same action labels", async () =
     assert.deepEqual(labels(native.host).slice(-expected.length), expected);
   } finally { await cloud.close(); await native.close(); }
 });
+
+test("task visitors can open and copy the task but never receive owner management controls", async () => {
+  const view = await render({open:true,onOpenChange(){},canManage:false,canDelete:true,href:"/tasks/shared",taskId:"shared",taskTitle:"Shared task"});
+  try {
+    const labels=[...view.host.querySelectorAll('[role="menu"] button')].map(node=>node.textContent);
+    assert.deepEqual(labels,["在新标签打开","复制链接","在新任务中引用"]);
+    for(const label of ["分享","重命名","置顶","收藏","移动到项目","删除"]) assert.equal(labels.includes(label),false,label);
+  } finally {await view.close();}
+});

@@ -115,6 +115,9 @@ test("anonymous Continue opens the shared sign-in dialog in place and refreshes 
   const view=await mount(TaskAccessComposer,{taskId:"t",access,signedIn:false,onRefresh:async()=>{refreshed++;}});
   try {
     await click(button("作为我的任务继续"));
+    for (let attempt=0;attempt<50 && !document.querySelector('[role="dialog"][aria-label="sign in"]');attempt++) {
+      await act(async()=>new Promise(resolve=>setTimeout(resolve,10)));
+    }
     assert.ok(document.querySelector('[role="dialog"][aria-label="sign in"]'));
     await click(button("signed in"));
     assert.equal(refreshed,1);
