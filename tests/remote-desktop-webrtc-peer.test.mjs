@@ -207,3 +207,15 @@ test('packets during a freeze longer than 1s need no application keyframe reques
   assert.equal(h.states.at(-1).state,'playing');assert.deepEqual(h.terminals,[]);
   h.viewer.close('viewer_left');assert.ok(h.reports.at(-1).report.video.freeze_ms>1000);
 });
+
+
+test('page reload advances the same session peer generation without storing credentials', async t => {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'sessionStorage');
+  const saved = new Map();
+  Object.defineProperty(globalThis, 'sessionStorage', {configurable:true,value:{getItem:key=>saved.get(key)??null,setItem:(key,value)=>saved.set(key,value)}});
+  t.after(()=>previous?Object.defineProperty(globalThis,'sessionStorage',previous):delete globalThis.sessionStorage);
+  const first=await harness(t);await first.viewer.start();assert.equal(first.viewer.gen,1);
+  const resumed=await harness(t);await resumed.viewer.start();assert.equal(resumed.viewer.gen,2);
+  assert.deepEqual([...saved], [['oceanleo.rd.generation.sid','2']]);
+  await resumed.viewer.signal({k:'answer',gen:1,sdp:'stale'});assert.equal(resumed.viewer.pc.remoteDescription,undefined);
+});

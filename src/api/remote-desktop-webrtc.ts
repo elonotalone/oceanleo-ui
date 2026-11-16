@@ -85,6 +85,12 @@ export class WebRtcRemoteDesktopViewer {
   private pingTimes = new Map<number, number>();
   constructor(options: WebRtcViewerOptions) {
     this.options = options; this.descriptor = options.descriptor;
+    // A reload re-attaches to the same authorized session with a NEW peer generation.
+    // This stores no auth, descriptor, action or credential; host authority is unchanged.
+    try {
+      const saved = Number(sessionStorage.getItem(`oceanleo.rd.generation.${this.descriptor.session_id}`));
+      if (Number.isSafeInteger(saved) && saved > 0 && saved < Number.MAX_SAFE_INTEGER) this.gen = saved;
+    } catch { /* Restricted storage keeps the normal initial negotiation. */ }
     this.now = options.now ?? (() => performance.now()); this.wallNow = options.wallNow ?? Date.now;
     const clickedAt = options.clickedAt ?? this.now();
     this.lastReport = this.now();
@@ -117,6 +123,7 @@ export class WebRtcRemoteDesktopViewer {
       this.detachPeer();
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
       this.gen++; const gen = this.gen;
+      try { sessionStorage.setItem(`oceanleo.rd.generation.${this.descriptor.session_id}`, String(gen)); } catch { /* optional continuity */ }
       this.hostRelayRegion = undefined; this.telemetry.path = undefined;
       this.candidates = []; this.pendingSignals = []; this.recovery.clear();
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
