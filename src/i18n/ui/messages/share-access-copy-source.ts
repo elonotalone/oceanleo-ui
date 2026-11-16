@@ -8,7 +8,8 @@ export const SHARE_ACCESS_COPY_SOURCE = {
   email: "输入邮箱地址",
   invite: "邀请",
   view: "仅查看",
-  collaborate: "协作",
+  // A role label has its own key; generic “协作” means the noun Collaboration.
+  collaborate: "协作权限",
   owner: "所有者",
   invited: "已邀请",
   confirmRemoval: "确认移除",

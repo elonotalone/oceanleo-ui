@@ -11,6 +11,9 @@ test("access copy preserves established global labels in aggregate and request d
   assert.equal(en["登录"], "Log in");
   assert.equal(UI_MESSAGES.en["登录"], en["登录"]);
   assert.equal(runtime["登录"], en["登录"]);
+  assert.equal(runtime[source.collaborate], "Collaborate");
+  assert.equal(UI_MESSAGES.zh[source.collaborate], "协作");
+  assert.equal(UI_MESSAGES.en["协作"], en["协作"], "the role must not rename the generic collaboration label");
 });
 
 test("every access key reaches all 16 request languages with the same precedence as the aggregate", async () => {

@@ -188,7 +188,7 @@ export function ProjectAccessBoundary({
   if (access.state !== "invited") return <p className="p-4 text-[var(--fg)]">{tt("无法打开项目")}</p>;
   return <section data-project-invitation className="mx-auto w-full max-w-md space-y-4 p-6 text-[var(--fg)]">
     <h1 className="text-lg font-semibold">{access.project.name}</h1>
-    <p className="text-sm text-[var(--muted)]">{tt(access.invite_role === "collaborate" ? "协作" : "仅查看")}</p>
+    <p className="text-sm text-[var(--muted)]">{tt(access.invite_role === "collaborate" ? "协作权限" : "仅查看")}</p>
     <ProjectInvitationActions
       projectId={projectId} signedIn={signedIn} onSignIn={onSignIn} client={client}
       onAccepted={() => { callbacks.current.onMembershipChange?.(); setVersion(value => value + 1); }}
