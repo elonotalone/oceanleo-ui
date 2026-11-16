@@ -1,5 +1,7 @@
 "use client";
 
+import { prepareRemoteWebRtcSocket } from "../api/remote-desktop-webrtc-preconnect";
+
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { deviceErrorCopy } from "../api/device-error-copy";
 import { deviceSettingsClient as defaultSettingsClient, type DeviceSettingsClient } from "../api/device-settings";
@@ -140,6 +142,13 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
       legacyImportErrorProp !== undefined ? legacyImportErrorProp : legacyImportErrorFromLocation(),
     );
   }, [legacyImportErrorProp]);
+  const warmDeviceIds = devices.filter(device => isComputer(device) && deviceAvailability(device) === "online")
+    .slice(0, 4).map(device => device.device_id).join(",");
+  useEffect(() => {
+    if (loginRequired || remoteDesktopClient !== defaultRemoteDesktopClient) return;
+    const releases = warmDeviceIds.split(",").filter(Boolean).map(prepareRemoteWebRtcSocket);
+    return () => releases.forEach(release => release());
+  }, [warmDeviceIds, loginRequired, remoteDesktopClient, authRevision]);
   const generation = useRef(0);
   const order = useRef<string[]>([]);
   /** Apply a fresh list in the page's stable card order. */
