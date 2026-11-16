@@ -28,9 +28,11 @@ export interface ProjectAccessClient {
 }
 
 export class ProjectAccessError extends Error {
-  constructor(readonly status: number) {
+  readonly status: number;
+  constructor(status: number) {
     super("未能保存更改，请重试。");
     this.name = "ProjectAccessError";
+    this.status = status;
   }
 }
 
@@ -38,7 +40,6 @@ type Json = Record<string, unknown>;
 const record = (value: unknown): Json => value && typeof value === "object" ? value as Json : {};
 const text = (value: unknown): string => typeof value === "string" ? value : "";
 export const projectUiRole = (role: unknown): AccessRole => role === "edit" || role === "collaborate" ? "collaborate" : "view";
-export const projectStoredRole = (role: AccessRole): "edit" | "view" => role === "collaborate" ? "edit" : "view";
 
 function memberRow(value: unknown, invited = false): AccessMember {
   const raw = record(value);
@@ -116,11 +117,18 @@ export function createProjectAccessClient(options: {
       return projectMembersFromResponse(await request(path(id, "/members"), "GET", undefined, signal));
     },
     async invite(id, email, role = "view") {
-      const raw = record(await request(path(id, "/invites"), "POST", { contact: email.trim().toLocaleLowerCase(), role: projectStoredRole(role) }));
-      return memberRow(raw.invite, true);
+      const normalized = email.trim().toLocaleLowerCase();
+      const raw = record(await request(path(id, "/invites"), "POST", { contact: normalized, role }));
+      if (text(record(raw.invite).id)) return memberRow(raw.invite, true);
+      // The new account-independent create response can omit the row id.
+      // Recover it from the owner-only list before presenting editable controls.
+      const rows = projectMembersFromResponse(await request(path(id, "/members")));
+      const invited = rows.members.find(member => member.status === "invited" && member.email?.toLocaleLowerCase() === normalized);
+      if (!invited) throw new ProjectAccessError(502);
+      return invited;
     },
     async changeRole(id, memberId, role) {
-      await request(memberPath(id, memberId), "PATCH", { role: projectStoredRole(role) });
+      await request(memberPath(id, memberId), "PATCH", { role });
     },
     async remove(id, memberId) { await request(memberPath(id, memberId), "DELETE"); },
     async accept(id) { await request(path(id, "/join"), "POST", {}); },

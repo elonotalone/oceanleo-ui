@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { MemberPanel } from "./MemberPanel";
 import {
@@ -183,7 +183,8 @@ export function ProjectAccessBoundary({
   </div>;
   const access = snapshot?.id === projectId ? snapshot.access : null;
   if (!access) return <div role="status" aria-busy="true" className="p-4"><span className="v-spinner" aria-hidden="true" /><span className="sr-only">{tt("分享")}</span></div>;
-  if (access.state === "owner" || access.state === "member") return <>{children}</>;
+  // A role downgrade remounts host configuration/task controls with fresh rights.
+  if (access.state === "owner" || access.state === "member") return <Fragment key={`${projectId}:${access.role}`}>{children}</Fragment>;
   if (access.state !== "invited") return <p className="p-4 text-[var(--fg)]">{tt("无法打开项目")}</p>;
   return <section data-project-invitation className="mx-auto w-full max-w-md space-y-4 p-6 text-[var(--fg)]">
     <h1 className="text-lg font-semibold">{access.project.name}</h1>

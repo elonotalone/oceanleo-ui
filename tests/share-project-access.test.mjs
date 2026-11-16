@@ -11,6 +11,9 @@ const clientUrl = await compileModule("src/shell/access/project-access-client.ts
   "../../lib/auth/config": dataModule("export function gatewayBase(){ return 'https://api.example.test'; }"),
 });
 const { createProjectAccessClient, ProjectAccessError, projectMembersFromResponse } = await import(clientUrl);
+const { createMockProjectAccessClient: fakeClient, ownerProjectAccess: ownerAccess } = await import(
+  await compileModule("tests/helpers/project-access-mock.ts"),
+);
 const ui = await import(await compileModule("src/shell/access/ProjectAccessPanel.tsx", {
   "../../i18n/ui/useUI": dataModule("export function useUI(){ return value => value; }"),
   "./project-access-client": clientUrl,
@@ -46,7 +49,7 @@ test("project API preserves separate pending/accepted routes and defaults to vie
     ["/v1/projects/project%2Fid/join", "POST"],
     ["/v1/projects/project%2Fid/decline", "POST"],
   ]);
-  assert.deepEqual(calls[1].body, { role: "edit" });
+  assert.deepEqual(calls[1].body, { role: "collaborate" });
   assert.equal(calls[0].headers.Authorization, "Bearer session");
   assert.equal(calls.some(call => /notification|message/.test(call.url)), false);
 });
@@ -70,6 +73,20 @@ test("project responses normalize roles without inventing contacts or including 
   assert.equal((await client.getAccess("p")).invite_role, "collaborate");
 });
 
+test("project invite recovers the pending row when the account-independent create response omits its id", async () => {
+  const calls = [];
+  const client = createProjectAccessClient({ tokenImpl: async () => "session", fetchImpl: async (url, init) => {
+    calls.push(init.method);
+    return Response.json(init.method === "POST"
+      ? { ok: true, invite: { contact_kind: "email", contact: "pending@example.test", role: "collaborate", status: "pending" } }
+      : { members: [], invites: [{ id: "server-id", contact_kind: "email", contact: "pending@example.test", role: "collaborate", status: "pending" }] });
+  } });
+  const row = await client.invite("p", "pending@example.test", "collaborate");
+  assert.equal(row.id, "invite:server-id");
+  assert.equal(row.role, "collaborate");
+  assert.deepEqual(calls, ["POST", "GET"]);
+});
+
 test("project client requires sign-in and propagates forbidden/missing access", async () => {
   let called = false;
   const anonymous = createProjectAccessClient({ tokenImpl: async () => null, fetchImpl: async () => { called = true; return Response.json({}); } });
@@ -91,12 +108,6 @@ async function click(host, label) {
   assert.ok(button, `missing ${label}`);
   await act(async () => { button.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
 }
-const ownerAccess = { state: "owner", role: "owner", invite_role: null, project: { id: "p", name: "Project" } };
-const fakeClient = (overrides = {}) => ({
-  async getAccess() { return ownerAccess; },
-  async getMembers() { return { owner: { name: "Owner", initial: "O" }, members: [{ id: "invite:1", email: "pending@example.test", role: "view", status: "invited" }] }; },
-  async invite() {}, async changeRole() {}, async remove() {}, async accept() {}, async decline() {}, ...overrides,
-});
 
 test("project panel uses the shared member component, offers no general access and limits management to the owner", async () => {
   const client = fakeClient();
@@ -181,5 +192,25 @@ test("an open project unmounts configuration and clears host caches when members
     await act(async () => { window.dispatchEvent(new window.Event("focus")); await new Promise(resolve => setTimeout(resolve, 0)); });
     assert.equal(view.host.querySelector("[data-private-config]"), null);
     assert.equal(cacheClears, 1);
+  } finally { await view.close(); }
+});
+
+test("a collaborator role downgrade remounts project controls to refresh permissions", async () => {
+  let role = "collaborate";
+  let mounts = 0;
+  function Configuration() {
+    React.useEffect(() => { mounts += 1; }, []);
+    return React.createElement("div", { "data-private-config": true });
+  }
+  const view = await mount(ui.ProjectAccessBoundary, {
+    projectId: "p", signedIn: true, onSignIn() {},
+    client: fakeClient({ async getAccess() { return { ...ownerAccess, state: "member", role }; } }),
+    children: React.createElement(Configuration),
+  });
+  try {
+    assert.equal(mounts, 1);
+    role = "view";
+    await act(async () => { window.dispatchEvent(new window.Event("focus")); await new Promise(resolve => setTimeout(resolve, 0)); });
+    assert.equal(mounts, 2);
   } finally { await view.close(); }
 });
