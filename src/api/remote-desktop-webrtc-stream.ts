@@ -42,7 +42,7 @@ export async function openRemoteWebRtcStream(
   const url = new URL(`${GATEWAY_BASE}/v1/devices/${encodeURIComponent(deviceId)}/remote-desktop/sessions/${encodeURIComponent(sessionId)}/stream`, window.location.href);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   let socket: WebSocket | null = null, peer: WebRtcRemoteDesktopViewer | null = null;
-  let ended = false, ending = false, settled = false, authenticated = false, inputAllowed = true;
+  let ended = false, ending = false, settled = false, authenticated = false, authFrameSent = false, inputAllowed = true;
   const clickedAt = Number.isFinite(options.clickedAt) ? options.clickedAt! : monotonic();
   let state: RemoteDesktopSessionState = "pending_consent";
   let video: HTMLVideoElement | null = null, descriptor: RemoteWebRtcDescriptor | null = null;
@@ -61,7 +61,7 @@ export async function openRemoteWebRtcStream(
   const settle = (result: RemoteDesktopApiResult<RemoteDesktopStream>) => { if (!settled) { settled = true; resolve(result); } };
 
   const closeSocket = () => {
-    const old = socket; socket = null; authenticated = false;
+    const old = socket; socket = null; authenticated = false; authFrameSent = false;
     if (socketTimeout) clearTimeout(socketTimeout);
     if (old) { old.onopen = old.onmessage = old.onerror = old.onclose = null; try { old.close(); } catch { /* already closed */ } }
   };
@@ -99,11 +99,14 @@ export async function openRemoteWebRtcStream(
     catch { queueMicrotask(() => { if (socket === active) reconnect(); }); return false; }
   };
   const flushSignals = () => {
-    if (!authenticated || ended) return;
+    // The server reads/authenticates the first envelope before processing any signal.
+    // Queueing offers immediately behind that envelope saves one network round trip;
+    // other traffic still waits for the server's authenticated state.
+    if ((!authenticated && !authFrameSent) || ended) return;
     const now = monotonic(); signalTimes = signalTimes.filter(at => now - at < 10_000);
     while (outgoingSignals.length && signalTimes.length < 180) {
       const data = outgoingSignals[0];
-      if (!write({ type: "signal", data })) break;
+      if (!write({ type: "signal", data }, authFrameSent)) break;
       if (data.k === "offer" && firstOfferSentAt === undefined) firstOfferSentAt = monotonic();
       outgoingSignals.shift(); signalTimes.push(now);
     }
@@ -236,7 +239,7 @@ export async function openRemoteWebRtcStream(
     try { active = new WebSocket(url.toString()); } catch { reconnect(); return; }
     socket = active;
     socketTimeout = setTimeout(() => { if (socket === active) reconnect(); }, 10_000);
-    active.onopen = () => { if (socket === active) write({ type: "auth", token: fresh, controller }, true); };
+    active.onopen = () => { if (socket === active) { authFrameSent = write({ type: "auth", token: fresh, controller }, true); if (authFrameSent) flushSignals(); } };
     active.onmessage = event => {
       if (ended || socket !== active) return;
       if (typeof event.data !== "string" || new TextEncoder().encode(event.data).byteLength > MAX_SIGNAL_BYTES) { reconnect(); return; }

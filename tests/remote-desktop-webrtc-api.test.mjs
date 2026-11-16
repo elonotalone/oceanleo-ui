@@ -290,3 +290,11 @@ test("offer timing starts at its actual socket write while session creation reta
   const final = JSON.parse(h.calls.find(call => call.url.endsWith("/quality")).init.body);
   assert.equal(final.steps.session_created_ms, 100); assert.equal(final.steps.offer_sent_ms, 10_300);
 });
+
+
+test('offer queues behind auth before the first state acknowledgement',async t=>{
+ const h=setup(t);const pending=api.remoteDesktopClient.openStream('device/1','sid',{state(){},error(){},frame(){}},{transport:'webrtc-v1',descriptor:descriptor()});
+ await drain();const socket=Socket.all.at(-1);assert.equal(socket.sent.length,0);socket.onopen();await drain();
+ assert.equal(socket.sent[0].type,'auth');assert.ok(socket.sent.slice(1).some(x=>x.type==='signal'&&x.data.k==='offer'));
+ socket.message({type:'state',state:'active',transport:'webrtc-v1'});const result=await pending;assert.equal(result.ok,true);h.streams.push(result.data);
+});
