@@ -84,29 +84,14 @@ export interface BaySeries {
   covers: string[];
 }
 
+/** LeoBay 成品种类；旧类型继续由 API、编辑器插入面板和深链解析支持。 */
 export const BAY_ASSET_TYPE_ORDER: readonly BayAssetType[] = [
-  "image",
-  "poster",
-  "prompt",
-  "chart",
-  "grid",
-  "vector",
-  "sticker",
-  "ppt",
-  "document",
-  "pdf",
-  "website",
-  "workflow",
-  "game",
-  "video",
-  "3d",
-  "audio",
-  "font",
+  "document", "image", "poster", "ppt", "vector", "3d", "grid", "pdf", "audio", "website", "game",
 ];
 
 export const BAY_ASSET_TYPE_LABELS: Record<BayAssetType, string> = {
   image: "图片",
-  poster: "海报",
+  poster: "设计稿（多图层）",
   vector: "矢量图",
   sticker: "贴纸",
   video: "视频",
@@ -114,7 +99,7 @@ export const BAY_ASSET_TYPE_LABELS: Record<BayAssetType, string> = {
   music: "音乐",
   "3d": "3D 模型",
   font: "字体",
-  ppt: "PPT 模板",
+  ppt: "PPT",
   document: "文档",
   pdf: "PDF",
   chart: "图表",

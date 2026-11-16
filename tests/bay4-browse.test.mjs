@@ -197,45 +197,11 @@ test("页头只有两个 data-bay-action：mine 和 publish；没有 data-bay-ki
   await view.unmount();
 });
 
-test("逛页顶栏是出售/求购、种类两个下拉，五个种类在第二个里", async () => {
-  reset();
-  const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
+test("逛页展开五个种类，右侧是出售/求购小开关", async () => {
+  reset(); const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const bar = view.host.querySelector("[data-bay-view]");
-  assert.ok(bar);
-  assert.equal(bar.querySelectorAll('[role="tab"]').length, 0);
-  assert.equal(bar.querySelector("[data-bay-browse-intent]").getAttribute("data-bay-browse-intent"), "sell");
-  const intentTrigger = bar.querySelector('[data-bay-filter="intent"]');
-  assert.ok(intentTrigger);
-  await act(async () => {
-    intentTrigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  });
-  const intentMenu = document.querySelector('[data-bay-filter-menu="intent"]');
-  assert.ok(intentMenu);
-  assert.deepEqual(
-    [...intentMenu.querySelectorAll("[data-view]")].map((node) => node.getAttribute("data-view")),
-    ["sell", "buy"],
-  );
-  assert.deepEqual(
-    [...intentMenu.querySelectorAll('[role="option"]')].map((node) => node.textContent.trim()),
-    ["出售", "求购"],
-  );
-  await act(async () => {
-    intentTrigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  });
-  const kind = bar.querySelector("[data-bay-browse-kind]");
-  assert.ok(kind);
-  assert.ok(kind.querySelector('[data-bay-filter="kind"]'));
-  assert.equal(kind.querySelector("select"), null);
-  const trigger = kind.querySelector('[data-bay-filter="kind"]');
-  await act(async () => {
-    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  });
-  const menu = document.querySelector('[data-bay-filter-menu="kind"]');
-  assert.ok(menu);
-  const views = [...menu.querySelectorAll("[data-view]")].map((node) => node.getAttribute("data-view"));
-  assert.deepEqual(views, ["service", "asset", "app", "lesson", "other"]);
-  const names = [...menu.querySelectorAll('[role="option"]')].map((node) => node.textContent.trim());
-  assert.deepEqual(names, ["人工服务", "现成文件", "网站与软件服务", "课程", "其他"]);
+  assert.deepEqual([...bar.querySelectorAll("[data-bay-kind-tab]")].map(node => node.textContent), ["现成文件", "人工服务", "网站与软件服务", "课程", "其他"]);
+  assert.deepEqual([...bar.querySelectorAll("[data-bay-intent]")].map(node => node.textContent), ["出售", "求购"]);
   await view.unmount();
 });
 
@@ -251,18 +217,8 @@ function SwitchProbe({ initialKind = "service" }) {
 }
 
 async function pickIntent(host, value) {
-  const trigger = host.querySelector('[data-bay-filter="intent"]');
-  assert.ok(trigger, "应有「出售 / 求购」下拉");
-  if (!document.querySelector('[data-bay-filter-menu="intent"]')) {
-    await act(async () => {
-      trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-  }
-  const option = document.querySelector(`[data-bay-filter-menu="intent"] [data-value="${value}"]`);
-  assert.ok(option, `意向选项 ${value} 应在菜单里`);
-  await act(async () => {
-    option.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  });
+  const button = host.querySelector(`[data-bay-intent="${value}"]`); assert.ok(button);
+  await act(async () => button.click());
 }
 
 test("选求购落到 request；选出售从 request 回到上次卖的种类，没有则 service", async () => {
@@ -288,38 +244,20 @@ test("求购改种类只改 offer，不离开 request", async () => {
   reset();
   const view = await mount(React.createElement(SwitchProbe, { initialKind: "request" }));
   assert.ok(view.host.querySelector("[data-bay-browse-kind]"));
-  const trigger = view.host.querySelector('[data-bay-filter="kind"]');
-  assert.ok(trigger);
-  await act(async () => {
-    trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  });
-  const option = document.querySelector('[data-bay-filter-menu="kind"] [data-value="app"]');
-  assert.ok(option);
-  await act(async () => {
-    option.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  });
+  const option = view.host.querySelector('[data-bay-kind-tab="app"]'); assert.ok(option);
+  await act(async () => option.click());
   const last = globalThis.__bay4Filters.at(-1);
   assert.equal(last?.kind, "request");
   assert.equal(last?.offer, "app");
   await view.unmount();
 });
 
-test("种类下拉能切到现成文件 / 网站与软件服务 / 课程 / 其他", async () => {
+test("种类标签能切到现成文件 / 网站与软件服务 / 课程 / 其他", async () => {
   reset();
   const view = await mount(React.createElement(SwitchProbe, { initialKind: "service" }));
-  const trigger = view.host.querySelector('[data-bay-filter="kind"]');
-  assert.ok(trigger);
   async function pickKind(kind) {
-    if (!document.querySelector('[data-bay-filter-menu="kind"]')) {
-      await act(async () => {
-        trigger.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-      });
-    }
-    const option = document.querySelector(`[data-bay-filter-menu="kind"] [data-value="${kind}"]`);
-    assert.ok(option, `种类选项 ${kind} 应在菜单里`);
-    await act(async () => {
-      option.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
+    const option = view.host.querySelector(`[data-bay-kind-tab="${kind}"]`); assert.ok(option);
+    await act(async () => option.click());
   }
   await pickKind("app");
   assert.equal(globalThis.__bay4Filters.at(-1)?.kind, "app");

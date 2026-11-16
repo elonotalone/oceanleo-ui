@@ -140,6 +140,11 @@ const stubs = {
     const createElement = (...args) => globalThis.__bay3React.createElement(...args);
     export function BayAssetLibrary(){ return createElement("div", { "data-bay-asset-library": "1" }); }
   `),
+  "../asset/BayArtifactDeepLink": dataModule(`
+    const h = (...args) => globalThis.__bay3React.createElement(...args);
+    export function useBayAssetRoute(){ return { target: new URLSearchParams(window.location.search).has("asset") ? {kind:"template",id:"ppt"} : null, close(){} }; }
+    export function BayArtifactDeepLink(){ return h("section", {"data-bay-asset-detail":""}, "返回 · PPT"); }
+  `),
   "../needs/LibraryWorkPicker": dataModule(`export function LibraryWorkPickerHost(){ return null; }`),
   "./bay-auth-host": dataModule(`export function BayAuthHost(){ return null; }`),
   "./bay-state": stateStub,
@@ -155,6 +160,20 @@ const stubs = {
 
 const { LeoBayPage } = await import(await compileModule("src/shell/bay/shell/LeoBayPage.tsx", stubs));
 const { BayViewSwitch, BayFeed } = await import(await compileModule("src/shell/bay/shell/BayList.tsx", stubs));
+
+test("BAY 回归：素材深链独占详情页，浏览页头和种类行不在 DOM 中", async () => {
+  reset({ filter: { kind: "asset" } });
+  window.history.replaceState({}, "", "/bay?kind=asset&asset=template:ppt");
+  const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
+  try {
+    assert.equal(view.host.querySelector("[data-bay-page-hero]"), null);
+    assert.equal(view.host.querySelector("[data-bay-page-toolbar]"), null);
+    assert.ok(view.host.querySelector("[data-bay-asset-detail]"));
+  } finally {
+    await view.unmount();
+    window.history.replaceState({}, "", "/bay");
+  }
+});
 
 const AUTH_SIGNED_OUT = dataModule(`
   export const AUTH_STATE_EVENT = "oceanleo:auth-state";
@@ -232,20 +251,14 @@ test("页头只有「我的」和「发布」两个键", async () => {
   await view.unmount();
 });
 
-test("顶栏是「出售 / 求购」「种类」两个下拉，不再是并排的键", async () => {
+test("顶栏展开五个种类并保留出售/求购开关", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const bar = view.host.querySelector("[data-bay-view]");
   assert.ok(bar);
-  assert.equal(bar.querySelectorAll('[role="tab"]').length, 0);
-  const intent = bar.querySelector('[data-bay-filter="intent"]');
-  assert.ok(intent);
-  assert.equal(intent.getAttribute("data-value"), "sell");
-  assert.match(intent.textContent, /出售/);
-  const kind = bar.querySelector('[data-bay-filter="kind"]');
-  assert.ok(kind);
-  assert.equal(kind.getAttribute("data-value"), "service");
-  assert.match(kind.textContent, /人工服务/);
+  assert.equal(bar.querySelectorAll('[role="tab"]').length, 5);
+  assert.equal(bar.querySelectorAll("[data-bay-intent]").length, 2);
+  assert.equal(bar.querySelectorAll("[data-bay-kind-tab]").length, 5);
   await view.unmount();
 });
 
@@ -255,7 +268,7 @@ test("停在「素材」时渲染素材库和三类切换，没有返回键，�
   assert.ok(view.host.querySelector("[data-bay-asset-library]"));
   assert.equal(view.host.querySelector("[data-bay-materials-back]"), null);
   assert.ok(view.host.querySelector("[data-bay-view]"));
-  assert.ok(view.host.querySelector("[data-bay-toolbar-slot]"));
+  assert.equal(view.host.querySelector("[data-bay-toolbar-slot]"), null);
   assert.equal(view.host.querySelector('[data-bay-filter="category"]'), null);
   assert.equal(view.host.querySelector("[data-bay-feed]"), null);
   await view.unmount();
@@ -360,19 +373,19 @@ test("信息流：首屏骨架、出错给重试、滑到底接下页", () => {
   assert.doesNotMatch(more, />加载更多</);
 });
 
-test("出售/求购与种类是两个下拉，连成一组，自身不换行", () => {
+test("种类标签可横向滚动，交易开关保持紧凑", () => {
   const out = html(React.createElement(BayViewSwitch, { filter: { kind: "service" }, accent: "#0ea5e9" }));
   assert.doesNotMatch(out, /\bflex-wrap\b/);
   assert.match(out, /inline-flex/);
-  assert.doesNotMatch(out, /overflow-x-auto/);
-  assert.equal(count(out, /role="tab"/g), 0);
-  assert.equal(count(out, /aria-haspopup="listbox"/g), 2);
+  assert.match(out, /overflow-x-auto/);
+  assert.equal(count(out, /role="tab"/g), 5);
+  assert.equal(count(out, /aria-haspopup="listbox"/g), 0);
   assert.match(out, />出售</);
   assert.match(out, />人工服务</);
   assert.doesNotMatch(out, /#0ea5e9/);
   assert.doesNotMatch(out, /bg-stone-100/);
-  assert.match(out, /data-bay-filter="intent"/);
-  assert.match(out, /data-bay-filter="kind"/);
+  assert.match(out, /data-bay-intent="sell"/);
+  assert.match(out, /data-bay-kind-tab="asset"/);
   assert.doesNotMatch(out, /<select/);
 });
 
@@ -428,7 +441,7 @@ test("源码是服务/素材/需求切换，没有五种种类标签", () => {
   const list = src("shell/bay/shell/BayList.tsx");
   assert.match(list, /data-bay-view/);
   assert.match(list, /data-bay-browse-kind/);
-  assert.match(list, /name="kind"/);
+  assert.match(list, /data-bay-kind-tab/);
   assert.match(list, /专业咨询/);
   assert.doesNotMatch(list, /KIND_TABS/);
   assert.doesNotMatch(list, /data-bay-kinds/);
@@ -445,8 +458,8 @@ test("源码：不在 /bay 页上的 openBay 写成 /bay?bay=；交易会话走�
 test("素材栏来源含我的；官方卡走 workspaceTemplatePreviewHref", () => {
   const library = src("shell/bay/asset/BayAssetLibrary.tsx");
   const shelf = src("shell/bay/asset/bay-template-shelf.ts");
-  assert.match(library, /data-bay-asset-mine/);
-  assert.match(library, /官方成品/);
+  assert.doesNotMatch(library, /data-bay-asset-mine/);
+  assert.match(library, /loadReadyOfficial/);
   assert.match(shelf, /workspaceTemplatePreviewHref/);
   assert.doesNotMatch(library, /getArtifactEditDecision/);
   assert.doesNotMatch(shelf, /getArtifactEditDecision/);

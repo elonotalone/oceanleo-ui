@@ -1,7 +1,6 @@
 "use client";
 
-// LeoBay 页的信息流部件：搜索、出售/求购下拉 + 种类下拉（两边都有种类）、站点下拉（含专业咨询）、信息流本体。
-// 整行读起来是「出售 ⌄ · 人工服务 ⌄ · 全部站点 ⌄」。LeoBay 只有 `/bay` 这一张页（见 LeoBayPage），不在 LeoChat 小窗里。
+// LeoBay 页的信息流部件：五个种类标签、出售/求购开关、紧凑站点筛选与信息流。
 import { createContext, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
@@ -88,7 +87,7 @@ export function startPublishLesson(): void {
 }
 
 export function startServiceEditor(): void {
-  startPublish();
+  startPublish(undefined, "service");
 }
 
 export function openMine(): void {
@@ -103,7 +102,7 @@ export function activeFeedKey(target: BayTarget): string | null {
   return null;
 }
 
-/** 没有搜索词、没有站点：种类本身是下拉里选的，不算「筛选」，空了也没有可清的东西。 */
+/** 没有搜索词、没有站点：种类本身是标签里选的，不算「筛选」，空了也没有可清的东西。 */
 function isDefaultFilter(filter: BayFeedFilter): boolean {
   return !filter.category && !filter.q;
 }
@@ -153,15 +152,10 @@ export function useBaySearchText(filter: BayFeedFilter): { text: string; change:
 
 // ---- 种类 ---------------------------------------------------------------------
 
-type IntentValue = "sell" | "buy";
 
-/**
- * 顶栏两个下拉：「出售 / 求购」和「种类」（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他）。
- * 出售改种类会换栏（人工服务信息流 / 现成文件 / 网站与软件服务 / 课程 / 其他）；求购改种类只改 offer，不离开 request。
- * 从出售切到求购时带上当前出售种类；从求购切回出售时回到上次卖的种类，没有就是人工服务。
- * 键盘与读屏由 BayFilterSelect 负责（方向键、Home/End、Enter、Esc；listbox + option）。
- */
-export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: string }) {
+
+/** 五个种类优先展示；右侧保留站点筛选与出售/求购的原有语义。 */
+export function BayViewSwitch({ filter, showSite = false }: { filter: BayFeedFilter; accent?: string; showSite?: boolean }) {
   const tt = useUI();
   const value = canonicalBayFeedKind(filter.kind);
   const lastSellRef = useRef<BaySellKind>(isBaySellKind(value) ? value : "service");
@@ -171,18 +165,6 @@ export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: stri
   // 求购栏的种类只看筛选里的 offer：显示的永远是真正在取的那一类。
   const wantedKind: BaySellKind = filter.offer && isBaySellKind(filter.offer) ? filter.offer : "service";
   const typeValue = selling ? sellKind : wantedKind;
-  const intentOptions = useMemo<BayFilterOption[]>(
-    () => [
-      { value: "sell", label: tt("出售") },
-      { value: "buy", label: tt("求购") },
-    ],
-    [tt],
-  );
-  const kindOptions = useMemo<BayFilterOption[]>(
-    () => BAY_SELL_KINDS.map((kind) => ({ value: kind, label: tt(BAY_SELL_KIND_LABEL[kind]) })),
-    [tt],
-  );
-
   const applySell = (kind: BaySellKind) => {
     lastSellRef.current = kind;
     setBayFilter({
@@ -202,32 +184,37 @@ export function BayViewSwitch({ filter }: { filter: BayFeedFilter; accent?: stri
   };
 
   return (
-    <div data-bay-view className="inline-flex shrink-0 items-center gap-2">
-      <div data-bay-browse-intent={selling ? "sell" : "buy"}>
-        <BayFilterSelect
-          label={tt("出售还是求购")}
-          name="intent"
-          value={selling ? "sell" : "buy"}
-          options={intentOptions}
-          onChange={(next) => {
-            const intent = next as IntentValue;
-            if (intent === "sell") applySell(selling ? sellKind : lastSellRef.current);
-            else if (intent === "buy") applyWanted(selling ? sellKind : wantedKind);
-          }}
-        />
+    <div data-bay-view className="flex min-w-0 flex-1 items-center gap-3">
+      <div data-bay-browse-kind role="tablist" aria-label={tt("种类")} className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        {BAY_SELL_KINDS.map((kind) => (
+          <button key={kind} type="button" role="tab" data-bay-kind-tab={kind} aria-selected={typeValue === kind}
+            onClick={() => selling ? applySell(kind) : applyWanted(kind)}
+            onKeyDown={(event) => {
+              const index = BAY_SELL_KINDS.indexOf(kind);
+              const next = event.key === "Home" ? 0 : event.key === "End" ? BAY_SELL_KINDS.length - 1
+                : event.key === "ArrowRight" ? (index + 1) % BAY_SELL_KINDS.length
+                : event.key === "ArrowLeft" ? (index + BAY_SELL_KINDS.length - 1) % BAY_SELL_KINDS.length : -1;
+              if (next < 0) return;
+              event.preventDefault();
+              (event.currentTarget.parentElement?.children[next] as HTMLElement)?.focus();
+              selling ? applySell(BAY_SELL_KINDS[next]!) : applyWanted(BAY_SELL_KINDS[next]!);
+            }}
+            tabIndex={typeValue === kind ? 0 : -1}
+            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-2 text-[13px] font-medium focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-400 ${typeValue === kind ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"}`}>
+            {tt(BAY_SELL_KIND_LABEL[kind])}
+          </button>
+        ))}
       </div>
-      <div data-bay-browse-kind>
-        <BayFilterSelect
-          label={tt("种类")}
-          name="kind"
-          value={typeValue}
-          options={kindOptions}
-          onChange={(next) => {
-            if (!isBaySellKind(next)) return;
-            if (selling) applySell(next);
-            else applyWanted(next);
-          }}
-        />
+      {showSite && typeValue !== "asset" ? <BayCategorySelect filter={filter} /> : null}
+      <div data-bay-browse-intent={selling ? "sell" : "buy"} role="group" aria-label={tt("出售还是求购")}
+        className="inline-flex shrink-0 items-center rounded-full border border-neutral-200 p-0.5">
+        {(["sell", "buy"] as const).map((intent) => (
+          <button key={intent} type="button" data-bay-intent={intent} aria-pressed={selling === (intent === "sell")}
+            onClick={() => intent === "sell" ? applySell(selling ? sellKind : lastSellRef.current) : applyWanted(selling ? sellKind : wantedKind)}
+            className={`whitespace-nowrap rounded-full px-2.5 py-1 text-[12px] font-medium focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-neutral-400 ${selling === (intent === "sell") ? "bg-neutral-900 text-white" : "text-neutral-500 hover:bg-neutral-100"}`}>
+            {tt(intent === "sell" ? "出售" : "求购")}
+          </button>
+        ))}
       </div>
     </div>
   );

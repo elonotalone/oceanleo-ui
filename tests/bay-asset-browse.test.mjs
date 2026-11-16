@@ -289,14 +289,9 @@ test("官方来源分区标出国家编号，自有分区不冒充官方", () =>
   assert.equal(resume.licenseLabel, "OceanLeo 自有");
 });
 
-test("文档分区页头画授权标签和格式说明，空区不再画「整理中」空盒子", () => {
-  assert.doesNotMatch(LIBRARY, /整理中/);
-  assert.match(LIBRARY, /官方原文/);
-  assert.match(LIBRARY, /许可来源/);
-  assert.match(LIBRARY, /可下载格式/);
-  assert.match(LIBRARY, /素材数/);
-  assert.match(LIBRARY, /文档分区/);
-  assert.doesNotMatch(LIBRARY, /throw /);
+test("页面不再展示基础文档分区 UI；底层目录与许可数据仍保留", () => {
+  assert.doesNotMatch(LIBRARY, /DocumentZoneHeader|data-bay-asset-doc-zone/);
+  assert.match(LIBRARY, /BayAssetCard/);
 });
 
 test("地址参数解析与写回，不碰别人管的参数", () => {
@@ -341,26 +336,12 @@ test("地址参数解析与写回，不碰别人管的参数", () => {
   assert.equal(clearedParams.get("type"), "image");
 });
 
-test("BayAssetLibrary 筛选进工具条下拉，不再出现 flex-wrap 筛选排", () => {
-  assert.match(LIBRARY, /BayToolbarFilters/);
-  assert.match(LIBRARY, /BayFilterSelect/);
-  assert.match(LIBRARY, /name="type"/);
-  assert.match(LIBRARY, /name="view"/);
-  assert.match(LIBRARY, /name="cat"/);
-  assert.match(LIBRARY, /授权说明/);
-  assert.match(LIBRARY, /BayLicensesView/);
-  assert.match(LIBRARY, /BayAssetCard/);
-  assert.match(LIBRARY, /BayArtifactDeepLink/);
-  assert.match(LIBRARY, /BayAssetSeries/);
-  assert.match(LIBRARY, /BayAssetLive/);
-  assert.match(LIBRARY, /history\.replaceState|replaceBrowseUrl/);
-  assert.match(LIBRARY, /useBayAssetRoute/);
-  assert.doesNotMatch(LIBRARY, /flex-wrap/);
-  assert.doesNotMatch(LIBRARY, /data-bay-asset-types/);
-  assert.doesNotMatch(LIBRARY, /data-bay-asset-zones/);
-  assert.doesNotMatch(LIBRARY, /data-bay-asset-rooms/);
+test("BayAssetLibrary 用成品种类卡与分栏货架，保留共享详情和独立基础素材能力", () => {
+  assert.doesNotMatch(LIBRARY, /BayToolbarFilters|BayFilterSelect|BayAssetSeries|BayAssetLive/);
+  assert.match(LIBRARY, /data-bay-ready-kind=/);
+  assert.match(LIBRARY, /data-bay-ready-shelf=/);
+  assert.match(LIBRARY, /BayLicensesView|licensesOpen/);
+  assert.match(LIBRARY, /BayAssetCard|BayArtifactDeepLink|useBayAssetRoute/);
   assert.match(LIVE, /searchBayLive/);
-  assert.doesNotMatch(LIVE, /<input/);
   assert.match(SERIES, /listBaySeries/);
-  assert.ok(fileURLToPath(new URL("../src/shell/bay/asset/origin-index.ts", import.meta.url)));
 });

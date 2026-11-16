@@ -40,7 +40,7 @@ const { BayAssetCard } = await import(await compileModule("src/shell/bay/asset/B
 const { BayWebsiteCatalog, bayWebsiteCatalog, bayWebsiteSelection } = await import(await compileModule("src/shell/bay/asset/BayWebsiteCatalog.tsx", {
  ...stubs,
  "../shell/BayFilterSelect": dataModule('export function BayFilterSelect(){return null;}'),
- "../../collection-chrome": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)}; export function CollectionCardGrid({children,...props}){return h("div",props,children);}`),
+ "../../collection-chrome": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)}; export const COLLECTION_ACTION_BTN_GHOST=""; export function CollectionInfiniteSentinel(){return null;} export function CollectionCardGrid({children,...props}){return h("div",props,children);}`),
  "../../collection-items": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)}; export function CollectionItemList({children,...props}){return h("div",props,children);}`),
 }));
 const asset = {id:"library:e11", type:"image", title:"E11 forest", source:"oceanleo", origin:"first-party", author:"OceanLeo", created_at:"2026-07-02T18:36:00.885642Z", thumb_url:"https://assets.example/thumb.jpg", preview_url:"https://assets.example/preview.jpg", full_url:"https://assets.example/full.jpg", price_fen:0, currency:"USD", license:{code:"OceanLeo-Free-1.0"}};
@@ -136,7 +136,7 @@ test("a refreshed direct detail link closes in place and retains browse filters"
 test("owned routes contain no modal/portal/body lock and no unsafe asset casts or navigation-away",()=>{
  const source=(name)=>readFileSync(new URL(`../src/shell/bay/asset/${name}.tsx`,import.meta.url),"utf8");
  for(const name of ["BayAssetLibrary","BayArtifactDeepLink","BayAssetCard"]){assert.doesNotMatch(source(name),/fixed inset|createPortal|document\.body\.style\.overflow|as never|as unknown as|window\.location\.assign/);}
- const library=source("BayAssetLibrary");assert.match(library,/siteKey,\s+context,\s+q: query/g);assert.match(library,/data-bay-asset-seller-item/);assert.match(library,/target=\{route\.target\}/);assert.match(library,/hidden=\{Boolean\(route\.target\)\}/);
+ const library=source("BayAssetLibrary");assert.match(library,/loadReadyOfficial\(type, \{ siteKey, context/);assert.match(library,/loadReadySellers/);assert.match(library,/target=\{route\.target\}/);assert.match(library,/hidden=\{Boolean\(route\.target\)\}/);
 });
 
 // Exercise the actual catalog host as well as its detail component. Only data
@@ -144,10 +144,18 @@ test("owned routes contain no modal/portal/body lock and no unsafe asset casts o
 globalThis.__w3CatalogCalls=[];
 globalThis.__w3Official=[];
 globalThis.__w3Mine=[];
+globalThis.__w3Sellers=[];
 globalThis.__w3LegacyOpens=0;
 const originUrl = pathToFileURL(new URL("../src/shell/bay/asset/origin-index.ts",import.meta.url).pathname).href;
 const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asset/BayAssetLibrary.tsx", {
  ...stubs,
+ "../shell/bay-ready-files": dataModule(`
+ export async function loadReadyOfficial(type,options){globalThis.__w3CatalogCalls.push({type,...options});return globalThis.__w3Official.filter(item=>item.type===type);}
+ export async function loadReadyLegacyPpt(){return [];}
+ export async function loadReadySellers(){return globalThis.__w3Sellers;}
+ export function readyTypeFromSearch(search){return new URLSearchParams(search).get("type")||null;}
+ export function readyShelfCover(items){return items.find(item=>item.thumb_url)?.thumb_url||"";}
+ `),
  "./BayArtifactDeepLink": routeModule,
  "../shell/bay-state": dataModule('export function bayEnabledHere(){return true;} export function useBaySignedIn(){return true;}'),
  "../shell/BayMine": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function BaySignInPrompt({text}){return h("div",null,text);}`),
@@ -155,7 +163,7 @@ const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asse
  "../shell/BayFilterSelect": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};
  export function BayToolbarFilters({children}){return h("div",{"data-toolbar":true},children);}
  export function BayFilterSelect({name,value,options,onChange,allLabel,label}){return h("select",{"data-filter":name,"aria-label":label,value,onChange:(event)=>onChange(event.target.value)},h("option",{value:""},allLabel||"All"),...options.map((option)=>h("option",{key:option.value,value:option.value},option.label)));}`),
- "../../collection-chrome": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function CollectionCardGrid({children,...props}){return h("div",props,children);}`),
+ "../../collection-chrome": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export const COLLECTION_ACTION_BTN_GHOST=""; export function CollectionInfiniteSentinel(){return null;} export function CollectionCardGrid({children,...props}){return h("div",props,children);}`),
  "../../collection-items": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function CollectionItemList({children,...props}){return h("div",props,children);}`),
  "./BayAssetSellers": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function BayAssetSellerSite(){return null;}export function BayAssetSellers(){return h("div",{"data-bay-asset-seller-item":"seller-42"},h("button",{onClick:()=>globalThis.__w3LegacyOpens++},"Seller file"));}`),
  "./BayAssetLive": dataModule('export function BayAssetLive(){return null;}'),
@@ -170,30 +178,40 @@ const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asse
  export async function listBayOfficialTemplates(options){globalThis.__w3CatalogCalls.push(options);const items=globalThis.__w3Official.map((item)=>options.offset?{...item,id:item.id+"-page2",entry:item.entry?{...item.entry,id:item.entry.id+"-page2"}:undefined}:item);return {items,total:options.type==="website"?items.length:60,hasMore:options.type!=="website"&&!options.offset,unavailableSources:[]};}
  export async function listBayMineArtifacts(){return {items:globalThis.__w3Mine,total:globalThis.__w3Mine.length,hasMore:false,unauthenticated:false};}`),
 }));
-function resetCatalog(search){window.history.replaceState({},"",`/bay${search}`);globalThis.__w3CatalogCalls=[];globalThis.__w3Official=[];globalThis.__w3Mine=[];globalThis.__w3Resolve=async(ref)=>resolved(ref);}
+function resetCatalog(search){window.history.replaceState({},"",`/bay${search}`);globalThis.__w3CatalogCalls=[];globalThis.__w3Official=[];globalThis.__w3Mine=[];globalThis.__w3Sellers=[];globalThis.__w3Resolve=async(ref)=>resolved(ref);}
 async function historyClose(host){await act(async()=>{await new Promise((done)=>{window.addEventListener("popstate",done,{once:true});host.container.querySelector('button[aria-label="Back to list"]').click();});});}
-test("catalog initial/load-more calls carry exact app/site context; official click and back keep page data",async()=>{
+test("finished-file loads retain app/site scope; local pagination, official click and back keep data",async()=>{
  resetCatalog("?kind=asset&type=image&view=owned&cat=official-templates&app=draw");
- globalThis.__w3Official=[{...asset,id:"template-material:cat",entry:{id:"template-material:cat",title:"Official card",kind:"image"},catalogIdentities:[{catalogId:"cat",artifactId:"official",revisionId:null}]}];
+ globalThis.__w3Official=Array.from({length:35},(_,index)=>({...asset,id:`template-material:cat-${index}`,entry:{id:`template-material:cat-${index}`,title:"Official card",kind:"image"},catalogIdentities:[{catalogId:`cat-${index}`,artifactId:`official-${index}`,revisionId:null}]}));
  const host=await mount(React.createElement(BayAssetLibrary,{siteKey:"image",filter:{q:"forest"}}));
- try{assert.equal(globalThis.__w3CatalogCalls.length,1);const initial=globalThis.__w3CatalogCalls[0];assert.deepEqual(initial.context,{contextId:"olctx:v1:image:app:draw",siteKey:"image",appId:"draw"});assert.equal(initial.siteKey,"image");assert.equal(initial.q,"forest");
- await click([...host.container.querySelectorAll("button")].find((node)=>node.textContent==="加载更多"));assert.equal(globalThis.__w3CatalogCalls.length,2);assert.deepEqual(globalThis.__w3CatalogCalls[1].context,initial.context);assert.equal(globalThis.__w3CatalogCalls[1].siteKey,"image");assert.equal(globalThis.__w3CatalogCalls[1].q,"forest");
- let selected;globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};await click(host.container.querySelector('[data-bay-asset-card] button'));assert.deepEqual(selected,{kind:"template",id:"cat"});assert.equal(host.container.querySelector('[data-bay-asset-browse]').hidden,true);assert.equal(host.container.querySelector('[data-toolbar]').textContent,"");
- await historyClose(host);assert.equal(host.container.querySelector('[data-bay-asset-browse]').hidden,false);assert.equal(host.container.querySelector('[data-filter="cat"]').value,"official-templates");assert.equal(globalThis.__w3CatalogCalls.length,2);
+ try{
+  const initial=globalThis.__w3CatalogCalls.find(call=>call.type==="image");
+  assert.deepEqual(initial.context,{contextId:"olctx:v1:image:app:draw",siteKey:"image",appId:"draw"});assert.equal(initial.siteKey,"image");
+  assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,30);
+  await click([...host.container.querySelectorAll("button")].find(node=>node.textContent==="加载更多"));
+  assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,35);
+  let selected;globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};
+  await click(host.container.querySelector('[data-bay-asset-card] button'));assert.deepEqual(selected,{kind:"template",id:"cat-0"});
+  assert.equal(host.container.querySelector('[data-bay-asset-browse]').hidden,true);
+  await historyClose(host);assert.equal(host.container.querySelector('[data-bay-asset-browse]').hidden,false);
+  assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,35);
  }finally{await host.close();}
 });
-test("Mine cards open their artifact in place; seller buttons are intercepted before legacy listing dispatch",async()=>{
- resetCatalog("?kind=asset&type=image&view=mine");globalThis.__w3Mine=[{...asset,id:"artifact:mine:r-fixed",openHref:"/wrong-workspace"}];let selected;
+test("old mine/sellers views land on finished-file kinds and seller cards retain listing identity",async()=>{
+ resetCatalog("?kind=asset&type=image&view=mine");globalThis.__w3Official=[asset];let selected;
  globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};let host=await mount(React.createElement(BayAssetLibrary,{siteKey:"image",filter:{}}));
- try{await click(host.container.querySelector('[data-bay-asset-card] button'));assert.deepEqual(selected,{kind:"artifact",artifactId:"mine",revisionId:"r-fixed"});assert.equal(window.location.pathname,"/bay");await historyClose(host);}finally{await host.close();}
- resetCatalog("?kind=asset&type=image&view=sellers");globalThis.__w3LegacyOpens=0;globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};host=await mount(React.createElement(BayAssetLibrary,{siteKey:"image",filter:{}}));
- try{await click(host.container.querySelector('[data-bay-asset-seller-item] button'));assert.deepEqual(selected,{kind:"listing",id:"seller-42"});assert.equal(globalThis.__w3LegacyOpens,0);await historyClose(host);}finally{await host.close();}
+ try{await click(host.container.querySelector('[data-bay-asset-card] button'));assert.deepEqual(selected,{kind:"platform",id:"e11"});await historyClose(host);}finally{await host.close();}
+ resetCatalog("?kind=asset&type=image&view=sellers");globalThis.__w3Sellers=[{...asset,id:"listing:seller-42"}];
+ globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};host=await mount(React.createElement(BayAssetLibrary,{siteKey:"image",filter:{}}));
+ try{await click(host.container.querySelector('[data-bay-asset-card] button'));assert.deepEqual(selected,{kind:"listing",id:"seller-42"});await historyClose(host);}finally{await host.close();}
 });
-test("website catalog requests the full scoped set and retains filters/version choice after detail back",async()=>{
+test("website kind keeps every finished version as a card and preserves old deep-link parameters after back",async()=>{
  resetCatalog("?kind=asset&type=website&view=owned&websiteIndustry=business&websiteSub=law&websiteSkin=glass");globalThis.__w3Official=[website("a","glass","first",true),website("b","glass","second")];let selected;globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};
  const host=await mount(React.createElement(BayAssetLibrary,{siteKey:"website",context:{contextId:"actual-context",siteKey:"website",appId:"law"},filter:{}}));
- try{assert.equal(globalThis.__w3CatalogCalls[0].limit,undefined);assert.equal(globalThis.__w3CatalogCalls[0].context.contextId,"actual-context");assert.ok(host.container.querySelector('[data-filter="website-skin"]'));
- await click(host.container.querySelector('[aria-label="Version 2 of 2"]'));assert.equal(JSON.parse(new URLSearchParams(window.location.search).get("websiteVersions"))["law-s3"],"second");await click(host.container.querySelector('[data-bay-asset-card] button'));assert.deepEqual(selected,{kind:"artifact",artifactId:"b",revisionId:"r-b"});await historyClose(host);assert.equal(host.container.querySelector('[aria-label="Version 2 of 2"]').getAttribute("aria-pressed"),"true");assert.equal(host.container.querySelector('[data-filter="website-skin"]').value,"glass");
+ try{assert.equal(globalThis.__w3CatalogCalls[0].limit,undefined);assert.equal(globalThis.__w3CatalogCalls[0].context.contextId,"actual-context");
+  assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,2);
+  await click(host.container.querySelectorAll('[data-bay-asset-card] button')[1]);assert.deepEqual(selected,{kind:"artifact",artifactId:"b",revisionId:"r-b"});
+  await historyClose(host);assert.equal(new URLSearchParams(window.location.search).get("websiteSkin"),"glass");
  }finally{await host.close();}
 });
 
