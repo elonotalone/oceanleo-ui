@@ -20,9 +20,12 @@ import { isNetworkFailure, newRequestId } from "./remote-desktop-retry";
 import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop-control-timing";
 import type { RemoteDesktopQualityReport, RemoteDesktopViewerReport, RemoteDesktopQualityWindow, RemoteMediaQualitySink } from "./remote-desktop-quality";
 import { RemoteTransportDiagnostics, parseRemoteInputDiagnostics, type RemoteInputDiagnostics, type RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
+import { openRemoteWebRtcStream } from "./remote-desktop-webrtc-stream";
+import type { RemoteWebRtcDescriptor, WebRtcPath } from "./remote-desktop-webrtc";
+export type { RemoteWebRtcDescriptor } from "./remote-desktop-webrtc";
 export { parseRemoteInputDiagnostics } from "./remote-desktop-diagnostics";
 export type { RemoteInputDiagnostics, RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
-export interface RemoteMediaCredentials {
+export interface ArtcRemoteMediaCredentials {
   provider: "artc";
   transport: "artc-v1";
   app_id: string;
@@ -44,6 +47,10 @@ export interface RemoteMediaCredentials {
    */
   data_channel_input: boolean;
 }
+export type RemoteMediaCredentials = ArtcRemoteMediaCredentials | RemoteWebRtcDescriptor;
+export type RemoteWebRtcViewerState = "connecting" | "playing" | "input_reconnecting" | "picture_reconnecting";
+export type RemoteWebRtcPath = WebRtcPath;
+const webRtcSessionTimes = new Map<string, { sessionCreatedAt: number; descriptorReceivedAt?: number }>();
 
 /** What the controlled computer allows (its 允许访问 options, enforced there). */
 export interface RemoteDesktopAccess {
@@ -115,7 +122,7 @@ export interface RemoteDesktopSession {
   session_id: string;
   state: "pending_consent" | "connecting";
   expires_at: string;
-  transport?: "artc-v1";
+  transport?: "artc-v1" | "webrtc-v1";
   billing?: RemoteDesktopBilling | null;
   /** Owner request waiting only for an idle computer's own answer; its video may be negotiated now. */
   owner_handshake?: true;
@@ -179,6 +186,10 @@ export interface RemoteDesktopRequestOptions {
   ownerDirect?: boolean;
   /** openStream on re-attach: continue input numbering above this (the previous socket's last seq). */
   sequenceFloor?: number;
+  transport?: "artc-v1" | "webrtc-v1";
+  descriptor?: RemoteWebRtcDescriptor;
+  /** Monotonic timestamp of the user's original click, shared by connection telemetry. */
+  clickedAt?: number;
 }
 
 /** One HTTP attempt never waits longer than this for its reply (lossy paths drop replies). */
@@ -237,6 +248,8 @@ export function dataChannelMessage(sessionId: string, seq: number, action: Remot
 }
 
 export interface RemoteDesktopStream {
+  transport?: "artc-v1" | "webrtc-v1";
+  attachVideo?(video: HTMLVideoElement | null): void;
   /** Shared actual-write history; measurement never owns another seq/timestamp map. */
   inputHistory?: RemoteInputHistory;
   releaseForHandoff(): Promise<void>;
@@ -258,6 +271,8 @@ export interface RemoteDesktopStream {
 }
 
 export interface RemoteDesktopStreamHandlers {
+  webrtcState?(state: RemoteWebRtcViewerState, path?: RemoteWebRtcPath): void;
+  webrtcFrame?(width: number, height: number): void;
   activity?(activity: RemoteDesktopActivity | null): void;
   /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
   controlTiming?(sample: RemoteControlTiming): void;
@@ -304,6 +319,10 @@ export function parseRemoteBilling(data: unknown): RemoteDesktopBilling | null {
 
 /** Authenticated session control and telemetry. Media and input use ARTC exclusively. */
 async function openStream(deviceId: string, sessionId: string, handlers: RemoteDesktopStreamHandlers, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteDesktopStream>> {
+  if (options?.transport === "webrtc-v1") return openRemoteWebRtcStream(deviceId, sessionId, handlers, { ...webRtcSessionTimes.get(sessionId), ...options }, remoteDesktopClient, {
+    descriptor: parseRemoteWebRtcDescriptor, mediaStatus: parseRemoteMediaStatus,
+    access: parseRemoteAccess, billing: parseRemoteBilling, activity: parseRemoteDesktopActivity,
+  });
   const token = await accessToken();
   if (!token) return { ok: false, error: "unauthorized" };
   let controller: string;
@@ -502,7 +521,7 @@ async function openStream(deviceId: string, sessionId: string, handlers: RemoteD
     if ("media" in data) {
       const media = data.media === null ? null : parseRemoteMedia(data.media);
       if (data.media !== null && !media) { fail("response_malformed"); return; }
-      if (media?.data_channel_input === false) { inputAllowed = false; scheduler.discardQueued(); }
+      if (media?.transport === "artc-v1" && media.data_channel_input === false) { inputAllowed = false; scheduler.discardQueued(); }
       const mediaStatus = parseRemoteMediaStatus(data.media_status);
       if (ended) return;
       handlers.media?.(media, mediaStatus);
@@ -601,7 +620,28 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
-export function parseRemoteMedia(data: unknown): RemoteMediaCredentials | null {
+export function parseRemoteWebRtcDescriptor(data: unknown, sessionId?: string): RemoteWebRtcDescriptor | null {
+  if (!isRecord(data) || data.transport !== "webrtc-v1" || data.role !== "viewer" || typeof data.session_id !== "string" || !data.session_id || (sessionId !== undefined && data.session_id !== sessionId)) return null;
+  if (data.display_id !== null && (typeof data.display_id !== "string" || !data.display_id)) return null;
+  if (typeof data.server_now !== "number" || !Number.isFinite(data.server_now) || data.server_now <= 0) return null;
+  for (const key of ["ice_expires_at", "lease_expires_at"]) if (typeof data[key] !== "string" || !Number.isFinite(Date.parse(data[key] as string))) return null;
+  if (!Array.isArray(data.ice_servers) || data.ice_servers.length > 64) return null;
+  const iceServers: RTCIceServer[] = [];
+  for (const server of data.ice_servers) {
+    if (!isRecord(server)) return null;
+    const urls = typeof server.urls === "string" ? [server.urls] : server.urls;
+    if (!Array.isArray(urls) || !urls.length || urls.length > 16 || urls.some(url => typeof url !== "string" || url.length > 2048 || !/^(stun|stuns|turn|turns):[^\s]+$/i.test(url))) return null;
+    if ((server.username !== undefined && (typeof server.username !== "string" || !server.username)) || (server.credential !== undefined && (typeof server.credential !== "string" || !server.credential))) return null;
+    if (urls.some(url => /^turns?:/i.test(url)) && (typeof server.username !== "string" || typeof server.credential !== "string")) return null;
+    if (server.region !== undefined && (typeof server.region !== "string" || !/^[a-zA-Z0-9_-]{1,32}$/.test(server.region))) return null;
+    iceServers.push({ urls: [...urls], ...(typeof server.username === "string" ? { username: server.username } : {}), ...(typeof server.credential === "string" ? { credential: server.credential } : {}), ...(typeof server.region === "string" ? { region: server.region } : {}) });
+  }
+  return { transport: "webrtc-v1", role: "viewer", session_id: data.session_id, display_id: data.display_id as string | null,
+    ice_servers: iceServers, ice_expires_at: data.ice_expires_at as string, server_now: data.server_now, lease_expires_at: data.lease_expires_at as string };
+}
+
+export function parseRemoteMedia(data: unknown, sessionId?: string): RemoteMediaCredentials | null {
+  if (isRecord(data) && data.transport === "webrtc-v1") return parseRemoteWebRtcDescriptor(data, sessionId);
   if (!isRecord(data) || data.provider !== "artc" || data.transport !== "artc-v1" || data.track !== "screen" || data.role !== "viewer" || data.camera !== false || data.microphone !== false || typeof data.data_channel_input !== "boolean") return null;
   for (const field of ["app_id", "channel_id", "user_id", "publisher_id", "token", "expires_at"]) if (typeof data[field] !== "string" || !data[field]) return null;
   if (typeof data.timestamp !== "number" || !Number.isFinite(data.timestamp) || !Number.isFinite(Date.parse(data.expires_at as string))) return null;
@@ -653,14 +693,15 @@ function parseStatus(data: unknown): RemoteDesktopStatus | null {
 export const remoteDesktopClient: RemoteDesktopClient = {
   openStream,
   async negotiateMedia(deviceId, sessionId, displayId, options) {
-    const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport: "artc-v1", ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);
+    const transport = options?.transport ?? "artc-v1";
+    const result = await authed<unknown>(`${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}/media`, { method: "POST", body: JSON.stringify({ transport, ...(displayId ? { display_id: displayId } : {}) }) }, options?.signal);
     if (!result.ok) {
       // Missing endpoint is a gateway version mismatch, not missing device consent.
       const missingRoute = result.status === 405 || result.status === 501 || (result.status === 404 && ["Not Found", "HTTP 404"].includes(result.error ?? ""));
       return { ok: false, error: missingRoute ? "media_gateway_unsupported" : result.error, status: result.status };
     }
-    const media = isRecord(result.data) ? parseRemoteMedia(result.data.media) : null;
-    if (!media) return { ok: false, error: "response_malformed", status: result.status };
+    const media = isRecord(result.data) ? parseRemoteMedia(result.data.media, sessionId) : null;
+    if (!media || media.transport !== transport) return { ok: false, error: "response_malformed", status: result.status };
     return { ok: true, data: { media, media_status: parseRemoteMediaStatus((result.data as Record<string, unknown>).media_status) }, status: result.status };
   },
   async getStatus(deviceId, options) {
@@ -678,7 +719,7 @@ export const remoteDesktopClient: RemoteDesktopClient = {
     if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
     // One request id for every attempt: the gateway hands a retry the session the first
     // attempt created (its reply lost on the way) instead of a second consent request.
-    const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), media: ["artc-v1"],
+    const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"],
       ...(options?.ownerDirect === true ? { owner_direct: true } : {}) });
     const started = Date.now();
     let result: RemoteDesktopApiResult<unknown>;
@@ -698,22 +739,32 @@ export const remoteDesktopClient: RemoteDesktopClient = {
     if (!isRecord(data) || typeof data.session_id !== "string" || !data.session_id || (data.state !== "pending_consent" && data.state !== "connecting")) {
       return { ok: false, error: "response_malformed", status: result.status };
     }
+    // Old gateways used websocket-v2 for the control socket while still returning ARTC media.
+    const transport = data.transport === "webrtc-v1" ? "webrtc-v1" : data.transport === undefined || data.transport === "artc-v1" || data.transport === "websocket-v2" ? "artc-v1" : null;
+    const media = isRecord(data.media) ? parseRemoteMedia(data.media.media, data.session_id) : null;
+    if (!transport || (data.media != null && (!media || media.transport !== transport))) return { ok: false, error: "response_malformed", status: result.status };
+    if (transport === "webrtc-v1") {
+      const receivedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+      webRtcSessionTimes.set(data.session_id, { sessionCreatedAt: receivedAt, ...(media ? { descriptorReceivedAt: receivedAt } : {}) });
+      while (webRtcSessionTimes.size > 32) webRtcSessionTimes.delete(webRtcSessionTimes.keys().next().value!);
+    }
     return {
       ok: true,
       data: {
         session_id: data.session_id,
         state: data.state,
         expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
-        transport: "artc-v1",
+        transport,
         ...("billing" in data ? { billing: parseRemoteBilling(data.billing) } : {}),
         ...(data.state === "pending_consent" && data.owner_handshake === true ? { owner_handshake: true as const } : {}),
-        ...(isRecord(data.media) && parseRemoteMedia(data.media.media) ? { media: { media: parseRemoteMedia(data.media.media)!, media_status: parseRemoteMediaStatus(data.media.media_status) } } : {}),
+        ...(media && isRecord(data.media) ? { media: { media, media_status: parseRemoteMediaStatus(data.media.media_status) } } : {}),
       },
       status: result.status,
     };
   },
 
   closeSession(deviceId, sessionId) {
+    webRtcSessionTimes.delete(sessionId);
     return authed<{ closed: true }>(
       `${base(deviceId)}/sessions/${encodeURIComponent(sessionId)}`,
       { method: "DELETE", keepalive: true },

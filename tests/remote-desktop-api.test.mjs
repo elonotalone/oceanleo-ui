@@ -99,7 +99,7 @@ test("owner-direct sessions carry an explicit owner bit; ordinary and agent requ
   const result = await api.remoteDesktopClient.createSession("device-1", { ownerDirect: true, requestId: "owner_1234" });
   assert.equal(result.ok, true);
   assert.deepEqual(JSON.parse(calls.find((call) => call.url.endsWith("/sessions")).init.body), {
-    request_id: "owner_1234", media: ["artc-v1"], owner_direct: true,
+    request_id: "owner_1234", transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"], owner_direct: true,
   });
   const ordinary = await api.remoteDesktopClient.createSession("device-1", { requestId: "agent_1234" });
   assert.equal(ordinary.ok, true);
@@ -236,7 +236,7 @@ test("createSession retries a lost reply with the SAME request id and declares A
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.equal(result.data.session_id, "s-1");
   const bodies = calls.filter((call) => call.url.endsWith("/sessions")).map((call) => JSON.parse(call.init.body));
-  assert.deepEqual(bodies, [{ request_id: "rq_test_0001", media: ["artc-v1"] }, { request_id: "rq_test_0001", media: ["artc-v1"] }]);
+  assert.deepEqual(bodies, [{ request_id: "rq_test_0001", transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"] }, { request_id: "rq_test_0001", transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"] }]);
   assert.ok(calls.every((call) => call.init.signal), "every attempt carries its own timeout signal");
 });
 
