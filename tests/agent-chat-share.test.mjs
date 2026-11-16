@@ -180,3 +180,14 @@ test("shared native agent follow-ups retain the owner's settings", async()=>{
  try {await type(view,"cloud","Use the same agent");await submit(view,"cloud");assert.equal(globalThis.__followUpBodies.at(-1).options.preserveTaskSettings,true);assert.equal(globalThis.__followUpBodies.at(-1).options.bindExecutionTarget,false);}
  finally {await view.unmount();}
 });
+
+test("an explicit task view keeps its historical initialPrompt behavior while access loads",async()=>{
+ const access=new TaskAccessMock();let release;access.getAccess=async()=>new Promise(resolve=>{release=resolve;});
+ const view=await mount({taskId:"t1",initialPrompt:"Continue from the task URL"},{task:cloudTask(),taskAccess:access});
+ try {
+  assert.equal(globalThis.__followUps.length,0);
+  access.getAccess=TaskAccessMock.prototype.getAccess;
+  await act(async()=>{release(ownerAccess());await new Promise(resolve=>setTimeout(resolve,30));});
+  assert.deepEqual(globalThis.__followUps,[],"explicit task views ignore initialPrompt as before");
+ } finally {await view.unmount();}
+});

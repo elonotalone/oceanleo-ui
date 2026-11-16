@@ -5,7 +5,7 @@ const calls=[];
 globalThis.__taskSharingSendCalls=calls;
 const {followUp}=await import(await compileModule("src/lib/agent.ts",{
   "./auth/client":dataModule("export async function accessToken(){return 'token';} export function cachedAccessToken(){return null;} export async function getUserId(){return 'viewer';}"),
-  "./auth/config":dataModule("export function gatewayBase(){return 'https://gateway.test';}"),
+  "./auth/config":dataModule("export const GATEWAY_BASE='https://gateway.test'; export function gatewayBase(){return GATEWAY_BASE;}"),
   "./shared-get":dataModule("export async function sharedGatewayFetch(url,init){globalThis.__taskSharingSendCalls.push({url,body:JSON.parse(init.body)});return new Response(JSON.stringify({task_id:'task',status:'running'}));}"),
   "./cursor-model-choice":dataModule("export function followUpBackboneField(){return 'cursor:my-model';} export function createBackboneField(){return {}; }"),
   "./payer":dataModule("export function payerRequestFields(){return {org_id:'my-other-org'};}"),

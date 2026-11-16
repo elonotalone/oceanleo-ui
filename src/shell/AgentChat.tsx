@@ -1913,9 +1913,9 @@ function AgentChatInner({
   // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
   // 手上的消息还属于上一段对话时先不看，免得把新对话的历史当成刚说的话。
   useEffect(() => {
-    if (messagesTaskId !== (taskId || "")) return;
+    if (readOnly || messagesTaskId !== (taskId || "")) return;
     ingestEditorCommands(messages, taskId || "");
-  }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
+  }, [messages, messagesTaskId, taskId, ingestEditorCommands, readOnly]);
 
   // 「我的任务」何时出现这条会话由服务端决定：task 出生时已绑在会话上，第一条 AI
   // 回答落地时服务端盖 `first_output_at`。不再"看到 assistant 消息就建档"：恢复一段
@@ -2227,6 +2227,7 @@ function AgentChatInner({
   useEffect(() => {
     if (startedRef.current) return;
     if (workspace?.availability === "loading") return;
+    if (taskId && accessState.loading) return;
     startedRef.current = true;
     // Provider 用 runtimeEpoch 重挂载过本组件（「新建」）：首条提示词已经发过，不再重发。
     if (launchOnceRef?.current) return;
@@ -2252,6 +2253,7 @@ function AgentChatInner({
     continueInitialTask,
     initialAtts,
     initialPrompt,
+    accessState.loading,
     initialExecutionTarget,
     returnToComposer,
     start,
