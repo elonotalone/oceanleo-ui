@@ -1142,10 +1142,10 @@ export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string;
                         <path d="M14 4l6 6-3 1-4 4-1 5-3-3-4 4-1-1 4-4-3-3 5-1 4-4 1-3z" />
                       </svg>
                     )}
-                    <span className="min-w-0 flex-1">
+                    {sharedBy ? <span className="min-w-0 flex-1">
                       <span className="block truncate" data-history-title="">{title}</span>
-                      {sharedBy && <span data-task-shared-by="" className="block truncate text-[11px] text-[var(--muted-foreground)]">{tt("由 {name} 分享", { name: historySharedByName(entry) || tt("参与者") })}</span>}
-                    </span>
+                      <span data-task-shared-by="" className="block truncate text-[11px] text-[var(--muted-foreground)]">{tt("由 {name} 分享", { name: historySharedByName(entry) || tt("参与者") })}</span>
+                    </span> : <span className="min-w-0 flex-1 truncate" data-history-title="">{title}</span>}
                     {isHistoryEntryFinishing(entry) && <span data-history-finishing="" className="shrink-0 text-[11px] text-neutral-500">{tt("正在确认结束")}</span>}
                     {entry.created_by === "leo" && <LeoCreatedMark />}
                     {favorite && (
