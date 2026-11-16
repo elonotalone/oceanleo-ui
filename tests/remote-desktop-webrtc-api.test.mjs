@@ -245,3 +245,25 @@ test("a pre-renewal descriptor cannot regress ICE or extend the renewed lease", 
   await pulse(99); assert.equal(peer.closed, false);
   await h.tick(1000); assert.equal(peer.closed, true); assert.deepEqual(v.states.at(-1), ["closed", "lease_expired"]);
 });
+
+test("offer timing starts at its actual socket write while session creation retains its receipt time", async t => {
+  const h = setup(t, url => url.endsWith("/sessions")
+    ? { session_id: "sid", state: "connecting", transport: "webrtc-v1", media: { media: descriptor() } }
+    : { stored: true });
+  const created = await api.remoteDesktopClient.createSession("device/1"); assert.equal(created.ok, true);
+  const pending = api.remoteDesktopClient.openStream("device/1", "sid", { state() {}, frame() {}, error() {} }, {
+    transport: "webrtc-v1", descriptor: created.data.media.media, clickedAt: 900,
+  });
+  await drain();
+  assert.equal(Peer.all.length, 1); assert.equal(Socket.all[0].sent.length, 0);
+  await h.tick(10_000);
+  const window = JSON.parse(h.calls.find(call => call.url.endsWith("/quality/windows")).init.body);
+  assert.equal(window.steps.session_created_ms, 100);
+  assert.equal(window.steps.offer_sent_ms, undefined, "an offer queued while offline has no wire timestamp");
+  await h.tick(200); const socket = Socket.all.at(-1); socket.onopen(); socket.message({ type: "state", state: "active" });
+  const result = await pending; h.streams.push(result.data);
+  assert.ok(socket.sent.some(item => item.type === "signal" && item.data.k === "offer"));
+  result.data.close(); await drain();
+  const final = JSON.parse(h.calls.find(call => call.url.endsWith("/quality")).init.body);
+  assert.equal(final.steps.session_created_ms, 100); assert.equal(final.steps.offer_sent_ms, 10_300);
+});

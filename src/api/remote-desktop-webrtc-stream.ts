@@ -55,6 +55,7 @@ export async function openRemoteWebRtcStream(
   let mediaReady = false, mediaReadySent = false;
   let incomingSignals: Record<string, unknown>[] = [], outgoingSignals: Record<string, unknown>[] = [];
   let signalTimes: number[] = [];
+  let firstOfferSentAt: number | undefined;
   let resolve!: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>(done => { resolve = done; });
   const settle = (result: RemoteDesktopApiResult<RemoteDesktopStream>) => { if (!settled) { settled = true; resolve(result); } };
@@ -101,7 +102,9 @@ export async function openRemoteWebRtcStream(
     if (!authenticated || ended) return;
     const now = monotonic(); signalTimes = signalTimes.filter(at => now - at < 10_000);
     while (outgoingSignals.length && signalTimes.length < 180) {
-      if (!write({ type: "signal", data: outgoingSignals[0] })) break;
+      const data = outgoingSignals[0];
+      if (!write({ type: "signal", data })) break;
+      if (data.k === "offer" && firstOfferSentAt === undefined) firstOfferSentAt = monotonic();
       outgoingSignals.shift(); signalTimes.push(now);
     }
   };
@@ -122,6 +125,9 @@ export async function openRemoteWebRtcStream(
     // Reports are diagnostics only: a refused report cannot alter either transport.
     try {
       const common = { v: 1 as const, device_id: deviceId, session_id: sessionId, transport: "webrtc-v1" as const };
+      const steps = { ...value.steps };
+      delete steps.offer_sent_ms;
+      if (firstOfferSentAt !== undefined) steps.offer_sent_ms = Math.max(0, Math.min(600_000, Math.round(firstOfferSentAt - clickedAt)));
       const videoSummary = value.video ? {
         picture_age: value.video.picture_age, picture_age_source: value.video.picture_age_source,
         frames_rendered: value.video.frames_rendered, freeze_count: value.video.freeze_count, freeze_ms: value.video.freeze_ms,
@@ -130,7 +136,7 @@ export async function openRemoteWebRtcStream(
         const payload: RemoteDesktopQualityReport = {
           ...common, media: peer ? "webrtc" : "none", attempt: value.attempt ?? 0,
           duration_ms: value.duration_ms ?? 0, reconnects: value.reconnects ?? 0, media_renewals: value.media_renewals ?? 0,
-          end_reason: qualityCode(value.end_reason ?? "viewer_closed"), steps: value.steps ?? {},
+          end_reason: qualityCode(value.end_reason ?? "viewer_closed"), steps,
           input: { ...value.input, ws_count: value.input?.ws_count ?? 0, dc_count: value.input?.dc_count ?? 0 },
           video: { ...videoSummary, samples: Math.min(10_000, value.video?.frames_rendered ?? 0) },
           ...(value.path ? { path: value.path } : {}), env: value.env ?? qualityEnvironment(),
@@ -138,7 +144,7 @@ export async function openRemoteWebRtcStream(
         void client.reportQuality?.(payload).catch(() => {});
       } else {
         const payload: RemoteDesktopQualityWindow = { ...common, window_start_ms: value.window_start_ms ?? Date.now(), viewer: value.viewer ?? {},
-          steps: value.steps, input: value.input, video: videoSummary,
+          steps, input: value.input, video: videoSummary,
           ...(value.path ? { path: value.path } : {}),
           ...(value.publisher ? { publisher: Object.fromEntries(Object.entries(value.publisher).filter(([key, number]) => /^[a-z][a-z0-9_]{0,47}$/.test(key) && Number.isFinite(number) && number >= 0 && number <= Number.MAX_SAFE_INTEGER).slice(0, 64)) } : {}),
         };
