@@ -23,6 +23,7 @@ export const SHARE_ACCESS_COPY_SOURCE = {
   signIn: "登录",
   saveFailed: "未能保存更改，请重试。",
   loadFailed: "无法读取访问权限，请重试。",
+  readFileFailed: "无法读取文件，请重试。",
   retry: "重试",
   back: "返回",
   clearSelection: "清除选择",
