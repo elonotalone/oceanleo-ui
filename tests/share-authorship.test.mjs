@@ -58,6 +58,17 @@ test("ACP prompt rows retain authors through reducer and transcript view model",
   assert.match(html, /Alex/);
 });
 
+test("final gateway sender shape labels native and ACP user messages without private fields", () => {
+  const native = markup({ showAuthors: true, message: { ...message, author: undefined, sender_user_id: author.user_id, sender: author, meta: { sender: author } } });
+  assert.match(native, /Alex/);
+  assert.doesNotMatch(native, /viewer-id/);
+  const row = { ...prompt(51), sender_user_id: author.user_id, sender: author };
+  const view = reduceRows([row], "claude");
+  assert.deepEqual(view.turns[0].author, author);
+  const users = viewBlocks(view, labels).filter(block => block.type === "bubble" && block.message.role === "user");
+  assert.deepEqual(users[0].message.author, author);
+});
+
 test("ACP memoized bubbles update when a task becomes shared and when author display identity changes", async () => {
   const host = document.createElement("div"); document.body.append(host);
   const root = createRoot(host);
