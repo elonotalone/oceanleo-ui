@@ -7,7 +7,29 @@ import type { SelectionAdapter } from "../selection-context";
 import type { SelectionCommand } from "../selection-context";
 import { viewOnlyContext } from "../collab/adapters/visual-readonly";
 import type { VideoTimelineState } from "./use-video-timeline";
-import { runVideoClipCommand, videoClipSelection } from "./video-edit-bar";
+import { runVideoClipCommand, videoClipSelection, VIDEO_TIMELINE_REPLACE_IMAGE_EVENT } from "./video-edit-bar";
+
+function replacementButton(clipId: string): HTMLElement | undefined {
+  const toolbars = [...document.querySelectorAll<HTMLElement>("[data-selection-id]")]
+    .filter(element => element.dataset.selectionId === clipId);
+  const sessions = new Set(toolbars.map(element => element.dataset.editBarSession).filter(Boolean));
+  const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const panel = active?.closest<HTMLElement>("[data-edit-bar-floating-panel]");
+  if (panel?.dataset.editBarFloatingPanel?.startsWith("selection-inspector-replace")) {
+    const button = active?.closest<HTMLElement>("button, [role='button'], select");
+    if (button && !button.closest("[hidden], [inert], [aria-hidden='true']")) return button;
+  }
+  const controls = [...document.querySelectorAll<HTMLElement>("[data-selection-control-id]")]
+    .filter(element => ["replace", "replace-source"].includes(element.dataset.selectionControlId || ""))
+    .filter(element => {
+      const selection = element.closest<HTMLElement>("[data-selection-id]");
+      const session = element.closest<HTMLElement>("[data-edit-bar-session]");
+      return selection?.dataset.selectionId === clipId || sessions.has(session?.dataset.editBarSession);
+    })
+    .filter(element => !element.closest("[hidden], [inert], [aria-hidden='true']"));
+  const buttons = controls.map(element => element.querySelector<HTMLElement>("button, [role='button'], select")).filter((element): element is HTMLElement => Boolean(element));
+  return buttons.find(element => element === active || element.contains(active)) || buttons.at(-1);
+}
 
 /**
  * 选中时间线片段时的编辑栏。控件清单与命令都在 `video-edit-bar.ts`（规范 id，D9 / D10）；
@@ -17,17 +39,20 @@ export function useVideoTimelineSelectionAdapter({
   state,
   readOnly = false,
   enabled = true,
+  canReplaceImage = true,
 }: {
   state: VideoTimelineState;
   enabled?: boolean;
+  /** 只有宿主已挂载 Library picker 时才声明替换入口。 */
+  canReplaceImage?: boolean;
   /** 只能查看：浮条里所有改片段的控件置灰并提示「你只能查看」，命令也不生效（播放 / 拖播放头在舞台上，不受影响）。 */
   readOnly?: boolean;
 }): SelectionAdapter {
   const tt = useUI();
   const located = state.selected;
   const context = useMemo(
-    () => (enabled && located ? videoClipSelection(located, tt, state.doc) : null),
-    [enabled, located, state.doc, tt],
+    () => (enabled && located ? videoClipSelection(located, tt, state.doc, { canReplaceImage }) : null),
+    [enabled, located, state.doc, tt, canReplaceImage],
   );
   const viewContext = useMemo(
     () => viewOnlyContext(context, readOnly, tt),
@@ -35,7 +60,10 @@ export function useVideoTimelineSelectionAdapter({
   );
   const command = (message: SelectionCommand) => {
     if (readOnly || !enabled || !viewContext || !located) return;
-    runVideoClipCommand(state, located, message);
+    runVideoClipCommand(state, located, message, canReplaceImage ? (clipId) => {
+      const anchor = replacementButton(clipId);
+      window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { clipId, doc: state.doc, ...(anchor ? { anchor } : {}) } }));
+    } : undefined);
   };
   return { context: selectionAdapterContext(viewContext), dispatch: command };
 }

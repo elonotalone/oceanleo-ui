@@ -14,6 +14,7 @@ import { partitionSelectionInspectorControls } from "../src/shell/selection-insp
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const { createRoot } = await import("react-dom/client");
 const rootId = "11111111-1111-4111-8111-111111111111";
+const textDefaults = { font_family: "sans-serif", italic: false, underline: false, strike: false, line_height: 1.3, letter_spacing: 0, vertical_text: false };
 let serial = 0;
 function fixture() {
   const project = createVideoProject("Canvas parity");
@@ -74,8 +75,8 @@ test("text/script/subtitle expose only renderer-supported canon styles and round
     runtime.select(id);
     const context = runtime.context();
     assert.equal(context.bar, "text");
-    for (const id of ["font-size", "bold", "text-color", "highlight", "align", "list", "case", "clear-format"]) assert.ok(context.controls.some((c) => c.id === id), id);
-    for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "opacity"]) assert.ok(!context.controls.some((c) => c.id === id), id);
+    for (const id of ["font-size", "bold", "text-color", "highlight", "align", "list", "case", "clear-format", "font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "vertical-text"]) assert.ok(context.controls.some((c) => c.id === id), id);
+    assert.ok(!context.controls.some((c) => c.id === "opacity"));
     assert.deepEqual([context.controls.find((c) => c.id === "font-size").unit, context.controls.find((c) => c.id === "font-size").step], ["px", 1]);
     await runtime.change("font-size", 72);
     await runtime.change("bold", true);
@@ -88,7 +89,7 @@ test("text/script/subtitle expose only renderer-supported canon styles and round
   const cut = canvasCompositionDocument(reopened);
   const clips = cut.document.tracks.find((t) => t.kind === "text").clips;
   assert.deepEqual(clips.map((clip) => clip.text), ["text content", "script content", "subtitle content"]);
-  for (const clip of clips) assert.deepEqual(clip.style, { font_size: 72, color: "#123456", background: "#abcdef", bold: true, align: "right", x: 0.5, y: 0.85 });
+  for (const clip of clips) assert.deepEqual(clip.style, { ...textDefaults, font_size: 72, color: "#123456", background: "#abcdef", bold: true, align: "right", x: 0.5, y: 0.85 });
   assert.deepEqual(hydrateVideoTimelineDoc(cut.projectDocument), cut.document);
   assert.equal(projectHead(reopened).graph.nodes.find((n) => n.nodeId === ids.script).kind, "script");
 });
@@ -98,7 +99,7 @@ test("scripts and text are excluded from the film until explicitly included; uns
   const runtime = engine(added.project); runtime.select(added.nodeId);
   assert.equal(canvasCompositionDocument(runtime.project).document.tracks.some((t) => t.kind === "text"), false);
   const head = runtime.project.headVersionId;
-  assert.equal((await runtime.run("canvas.node.text-style.update", { field: "italic", value: true })).status, "failed");
+  assert.equal((await runtime.run("canvas.node.text-style.update", { field: "unknown_style", value: true })).status, "failed");
   assert.equal(runtime.project.headVersionId, head);
   assert.equal((await runtime.run("canvas.node.text-style.update", { field: "font_size", value: 60 }, { selectionEpoch: 0 })).status, "rejected");
   assert.equal(runtime.project.headVersionId, head);
@@ -120,7 +121,7 @@ test("clear-format resets the supported text styles while preserving text, overl
   assert.equal(reopened.versions[styled].graph.nodes.find((node) => node.nodeId === added.nodeId).params.textStyle.font_size, 96);
   const clip = canvasCompositionDocument(reopened).document.tracks.find((track) => track.kind === "text").clips[0];
   assert.deepEqual([clip.start_ms, clip.duration_ms, clip.text], [100, 700, "Keep content"]);
-  assert.deepEqual(clip.style, { font_size: 48, color: "#ffffff", x: 0.5, y: 0.85, align: "center", bold: false });
+  assert.deepEqual(clip.style, { ...textDefaults, font_size: 48, color: "#ffffff", x: 0.5, y: 0.85, align: "center", bold: false });
 });
 
 test("image replace is a real asset switch in a new version, appears only with an alternate and survives save/reopen", async () => {

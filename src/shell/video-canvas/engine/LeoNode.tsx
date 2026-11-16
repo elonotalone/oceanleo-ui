@@ -1,12 +1,21 @@
 "use client";
 
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useUI } from "../../../i18n";
+import { canvasImageAppearance } from "./project-model";
+import { listMyArtifacts, refreshArtifactRendition } from "../../artifact-client";
+import { timelineFontStack } from "../../video-editor/timeline-model";
+import { drawTimelineImageFrame } from "../../video-editor/preview-engine";
+import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
+import { AnchoredPopover } from "../../anchored-popover";
+import { ComposerLibraryPicker } from "../../ComposerLibraryPicker";
+import type { LibraryItem } from "../../library-data";
+import { videoMaterialKind } from "../../workflow-carrier/video-project-material";
+import type { ComposerAttachment } from "../../LeoComposer";
 import type {
   CanvasFlowNode,
   CanvasNodeViewData,
-  LocalEditOperation,
 } from "./project-model";
 import {
   isLegacyWorkflowSource,
@@ -15,6 +24,32 @@ import {
   legacyWorkflowPorts,
   type LegacyParameterView,
 } from "./legacy-workflow-node";
+
+const imageLibraryPickers = new Map<string, () => Promise<LibraryItem | null>>();
+
+/** The command opens the existing private Library selector on its selected node. */
+export function requestCanvasLibraryImage(nodeId: string): Promise<LibraryItem | null> {
+  return imageLibraryPickers.get(nodeId)?.() || Promise.resolve(null);
+}
+
+function canvasLibraryAnchor(nodeId: string, fallback: HTMLElement | null): HTMLElement | null {
+  const buttonIn = (element: Element | null) => element?.matches('button:not(:disabled), [role="button"]:not([aria-disabled="true"])')
+    ? element as HTMLElement : element?.querySelector<HTMLElement>('button:not(:disabled), [role="button"]:not([aria-disabled="true"])') || null;
+  const directSelector = '[data-selection-control-id="canvas.selection.library.replace"]';
+  const active = document.activeElement?.closest(directSelector);
+  if (active && !active.closest('[hidden], [inert], [aria-hidden="true"]')) return buttonIn(active) || fallback;
+  const direct = [...document.querySelectorAll(directSelector)].filter((element) => !element.closest('[hidden], [inert], [aria-hidden="true"]'));
+  const matching = direct.find((element) => element.closest('[data-selection-id]')?.getAttribute("data-selection-id") === nodeId);
+  const directButton = buttonIn(matching || direct.find((element) => !element.closest('[data-selection-id]')) || null);
+  if (directButton) return directButton;
+  const toolbar = [...document.querySelectorAll('[data-selection-id]')].find((element) => element.getAttribute("data-selection-id") === nodeId && !element.closest('[hidden], [inert], [aria-hidden="true"]'));
+  return buttonIn(toolbar?.querySelector('[data-selection-control-id="replace"]') || null) || fallback;
+}
+
+async function loadCanvasLibraryImages(signal: AbortSignal) {
+  const result = await listMyArtifacts({ limit: 100, signal });
+  return result.ok && result.data ? { ...result, data: { ...result.data, items: result.data.items.filter((item) => videoMaterialKind(item) === "image") } } : result;
+}
 
 type MediaLoadState = "idle" | "loading" | "ready" | "error" | "timeout";
 
@@ -57,72 +92,6 @@ function MediaState({
       {message}
     </div>
   );
-}
-
-function editTransform(recipe: LocalEditOperation[]) {
-  let rotation = 0;
-  let scaleX = 1;
-  let scaleY = 1;
-  let inset = 0;
-  let brightness = 1;
-  let contrast = 1;
-  let saturation = 1;
-  let grayscale = 0;
-  let grid:
-    | { columns: number; rows: number; column: number; row: number }
-    | undefined;
-  for (const operation of recipe) {
-    if (operation.operation === "rotate") {
-      rotation += Number(operation.parameters.degrees || 0);
-    } else if (operation.operation === "flip-horizontal") {
-      scaleX *= -1;
-    } else if (operation.operation === "flip-vertical") {
-      scaleY *= -1;
-    } else if (operation.operation === "crop") {
-      inset = Math.max(inset, Number(operation.parameters.insetPercent || 0));
-    } else if (operation.operation === "brightness") {
-      brightness *= Number(operation.parameters.factor || 1);
-    } else if (operation.operation === "contrast") {
-      contrast *= Number(operation.parameters.factor || 1);
-    } else if (operation.operation === "saturation") {
-      saturation *= Number(operation.parameters.factor || 1);
-    } else if (operation.operation === "adjust") {
-      brightness *=
-        Number(operation.parameters.brightness || 1) *
-        2 ** Number(operation.parameters.exposure || 0);
-      contrast *= Number(operation.parameters.contrast || 1);
-      saturation *= Number(operation.parameters.saturation ?? 1);
-    } else if (operation.operation === "grayscale") {
-      grayscale = Math.max(
-        grayscale,
-        Number(operation.parameters.amount || 0),
-      );
-    } else if (operation.operation === "grid-cell") {
-      grid = {
-        columns: Math.max(1, Number(operation.parameters.columns || 1)),
-        rows: Math.max(1, Number(operation.parameters.rows || 1)),
-        column: Math.max(0, Number(operation.parameters.column || 0)),
-        row: Math.max(0, Number(operation.parameters.row || 0)),
-      };
-    }
-  }
-  const gridTransform = grid
-    ? `translate(-${(grid.column / grid.columns) * 100}%, -${(grid.row / grid.rows) * 100}%) `
-    : "";
-  return {
-    transform: `${gridTransform}rotate(${rotation}deg) scale(${scaleX}, ${scaleY})`,
-    transformOrigin: "top left",
-    clipPath: inset ? `inset(${inset}%)` : undefined,
-    filter: `brightness(${brightness}) contrast(${contrast}) saturate(${saturation}) grayscale(${grayscale})`,
-    ...(grid
-      ? {
-          width: `${grid.columns * 100}%`,
-          height: `${grid.rows * 100}%`,
-          maxWidth: "none",
-          maxHeight: "none",
-        }
-      : {}),
-  };
 }
 
 /** 宿主已经出了编辑栏时，节点自己不许再挂常驻命令条。 */
@@ -576,14 +545,79 @@ function ImageNode({
   data: CanvasNodeViewData;
   selected: boolean;
 }) {
-  const src = data.asset?.previewUrl || data.asset?.url;
+  const tt = useUI();
+  const source = data.asset?.sourceDependency ? undefined : data.asset?.librarySource;
+  const identity = source ? `${source.artifactId}:${source.revisionId}` : "";
+  const [libraryMedia, setLibraryMedia] = useState({ identity: "", url: "", failed: false });
+  useEffect(() => {
+    if (!source) return;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => { setLibraryMedia({ identity, url: "", failed: true }); controller.abort(); }, 8_000);
+    void refreshArtifactRendition(source, "full", controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      const valid = result.ok && result.data?.url && result.data.mediaType?.startsWith("image/");
+      setLibraryMedia({ identity, url: valid ? result.data!.url : "", failed: !valid });
+    }).catch(() => { if (!controller.signal.aborted) setLibraryMedia({ identity, url: "", failed: true }); }).finally(() => window.clearTimeout(timeout));
+    return () => { controller.abort(); window.clearTimeout(timeout); };
+  }, [identity, source?.artifactId, source?.revisionId]);
+  const src = source ? (libraryMedia.identity === identity ? libraryMedia.url || undefined : undefined) : data.asset?.previewUrl || data.asset?.url;
   const media = useBoundedMedia(src);
-  const style = useMemo(
-    () => editTransform(data.localEditRecipe),
-    [data.localEditRecipe],
-  );
+  const libraryState: MediaLoadState = source && !src ? (libraryMedia.identity === identity && libraryMedia.failed ? "error" : "loading") : media.state;
+  const appearance = canvasImageAppearance(data);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const nodeAnchorRef = useRef<HTMLDivElement>(null);
+  const libraryAnchorRef = useRef<HTMLElement | null>(null);
+  const libraryResolve = useRef<((item: LibraryItem | null) => void) | null>(null);
+  const closePicker = (item: LibraryItem | null = null) => {
+    libraryResolve.current?.(item);
+    libraryResolve.current = null;
+    setPickerOpen(false);
+  };
+  useEffect(() => {
+    if (!selected) return;
+    const open = () => new Promise<LibraryItem | null>((resolve) => {
+      libraryResolve.current?.(null);
+      libraryResolve.current = resolve;
+      libraryAnchorRef.current = canvasLibraryAnchor(data.nodeId, nodeAnchorRef.current);
+      setPickerOpen(true);
+    });
+    imageLibraryPickers.set(data.nodeId, open);
+    return () => {
+      if (imageLibraryPickers.get(data.nodeId) === open) imageLibraryPickers.delete(data.nodeId);
+      libraryResolve.current?.(null);
+      libraryResolve.current = null;
+      setPickerOpen(false);
+    };
+  }, [data.nodeId, data.selectionEpoch, data.asset?.assetId, selected]);
+  const chooseImage = (file: ComposerAttachment) => {
+    if (!file.libraryItem || !file.artifactId || !file.revisionId) return;
+    closePicker({ ...file.libraryItem, artifactId: file.artifactId, revisionId: file.revisionId });
+  };
+  const imageElement = useRef<HTMLImageElement>(null);
+  const canvasElement = useRef<HTMLCanvasElement>(null);
+  const signature = JSON.stringify(appearance);
+  const frame = data.imagePreviewFrame || { width: 1920, height: 1080, scale: 0.3 };
+  const paint = () => {
+    const image = imageElement.current, canvas = canvasElement.current;
+    if (!image?.naturalWidth || !canvas) return;
+    try {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Image preview is unavailable.");
+      const ratio = Math.min(canvas.width / (frame.width * frame.scale), canvas.height / (frame.height * frame.scale));
+      const width = frame.width * frame.scale * ratio, height = frame.height * frame.scale * ratio;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.save();
+      ctx.translate((canvas.width - width) / 2, (canvas.height - height) / 2);
+      try {
+        drawTimelineImageFrame(ctx, image, { id: data.nodeId, start_ms: 0, duration_ms: 1, ...appearance, x: 0.5, y: 0.5, scale: 1 } as TimelineClip, width, height, ratio);
+      } finally { ctx.restore(); }
+      media.ready();
+    } catch { media.failed(); }
+  };
+  useEffect(() => { paint(); }, [signature, src, frame.width, frame.height, frame.scale]);
   return (
     <div
+      ref={nodeAnchorRef}
       data-node-id={data.nodeId}
       data-asset-id={data.asset?.assetId}
       data-derived-from-asset-id={data.derivative?.derivedFromAssetId}
@@ -593,20 +627,14 @@ function ImageNode({
     >
       <Ports kind={data.kind} />
       <div className="absolute inset-0 overflow-hidden rounded-2xl">
-        {src && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={src}
-            alt={data.title}
-            draggable={false}
-            onLoad={media.ready}
-            onError={media.failed}
-            className="block h-full w-full object-cover"
-            style={style}
-          />
-        )}
+        {src && <>
+          <canvas ref={canvasElement} width={432} height={270} role="img" aria-label={appearance.alt || data.title} className="block h-full w-full" />
+          {/* The same decoded source feeds the timeline pixel painter; grants remain runtime-only. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img ref={imageElement} src={src} crossOrigin="anonymous" alt="" draggable={false} onLoad={paint} onError={media.failed} className="hidden" />
+        </>}
         <MediaState
-          state={media.state}
+          state={libraryState}
           empty="No immutable image Asset yet. Use Generate or insert a verified library Asset."
         />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between bg-gradient-to-t from-[var(--vc-media-scrim)] to-transparent p-3 pt-10">
@@ -621,6 +649,12 @@ function ImageNode({
         </div>
       </div>
       {selected && hostHasNoEditBar(data) && <ImageCompactBar data={data} />}
+      {pickerOpen && (
+        <AnchoredPopover open anchorRef={libraryAnchorRef} onClose={() => closePicker()} role="dialog" ariaLabel={tt("从资料库添加文件")}
+          maxHeight={512} lockScroll={false} className="nodrag nowheel z-50 flex w-80 flex-col overflow-auto rounded-xl border border-[var(--vc-border)] bg-[var(--vc-surface)] p-2 shadow-2xl">
+          <ComposerLibraryPicker onBack={() => closePicker()} onPick={chooseImage} load={loadCanvasLibraryImages} />
+        </AnchoredPopover>
+      )}
     </div>
   );
 }
@@ -765,6 +799,8 @@ function TextualNode({
 }) {
   const [value, setValue] = useState(data.text || data.prompt || "");
   useEffect(() => setValue(data.text || data.prompt || ""), [data.prompt, data.text]);
+  const textStyle = (data.params?.textStyle || {}) as TimelineTextStyle;
+  const previewText = textStyle.vertical_text ? value.split("\n").map((line) => Array.from(line).join("\n")).join("\n") : value;
   const canGenerate =
     data.commandAvailability["canvas.node.generate.script"];
   const canStructure = data.commandAvailability["canvas.script.structure"];
@@ -782,7 +818,15 @@ function TextualNode({
           {data.kind}
         </span>
       </div>
-      <textarea
+      <div data-canvas-text-preview="" className="min-h-0 flex-1 overflow-auto whitespace-pre-wrap break-words px-4 py-3"
+        style={{ fontFamily: timelineFontStack(textStyle.font_family), fontSize: textStyle.font_size || 48,
+          fontWeight: textStyle.bold ? 700 : 400, fontStyle: textStyle.italic ? "italic" : "normal",
+          textDecoration: [textStyle.underline ? "underline" : "", textStyle.strike ? "line-through" : ""].filter(Boolean).join(" ") || "none",
+          lineHeight: textStyle.line_height ?? 1.3, letterSpacing: textStyle.letter_spacing || 0,
+          textAlign: textStyle.align || "center", color: textStyle.color || "#ffffff", backgroundColor: textStyle.background || "transparent" }}>
+        {previewText}
+      </div>
+      {selected && <textarea
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onBlur={() =>
@@ -794,7 +838,7 @@ function TextualNode({
         aria-label={`${data.title} content`}
         className="nodrag nowheel min-h-0 flex-1 resize-none bg-transparent px-4 py-3 text-[11px] leading-relaxed text-[var(--vc-text-2)] outline-none"
         placeholder="Write the content or generation prompt…"
-      />
+      />}
       {(data.kind === "script" || data.kind === "text") &&
         selected &&
         hostHasNoEditBar(data) && (

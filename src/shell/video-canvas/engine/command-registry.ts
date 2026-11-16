@@ -1,5 +1,9 @@
 "use client";
 
+import { authed, type AgentApiResult } from "../../../lib/agent";
+import { fetchMediaBlob } from "../../../lib/media-proxy";
+import { resolveVideoTimelineReferences } from "../../video-editor/video-timeline-source";
+
 import {
   CANVAS_IMAGE_OPERATION_CAPABILITIES,
   CanvasAdapterError,
@@ -30,6 +34,7 @@ import {
   updateLegacyTitle,
 } from "./legacy-workflow-node";
 import {
+  canvasImageAppearance,
   effectiveCanvasNode,
   advanceProject,
   addProjectNode,
@@ -65,8 +70,8 @@ import {
   type ProjectAsset,
   type VideoProject,
 } from "./project-model";
-import type { TimelineClip, TimelineTextStyle } from "../../video-editor/types";
-import { timelineTextCasePatch, timelineTextListPatch } from "../../video-editor/timeline-model";
+import { TIMELINE_FONT_FAMILIES, type TimelineClip, type TimelineTextStyle } from "../../video-editor/types";
+import { timelineTextCasePatch, timelineTextListPatch, validTimelineLibrarySource } from "../../video-editor/timeline-model";
 import { canvasCompositionDocument, canvasNodeTextClip } from "./canvas-selection-adapter";
 export { canvasCompositionDocument } from "./canvas-selection-adapter";
 
@@ -174,6 +179,13 @@ export interface CanvasCommandResult {
   };
 }
 
+export interface CanvasRemoveBackgroundResponse {
+  image: string;
+  model: string;
+  credits_spent: number;
+  request_id: string;
+}
+
 export interface CanvasCommandEnvironment {
   getProject(): VideoProject;
   translate?(source: string, vars?: Record<string, string | number>): string;
@@ -188,6 +200,11 @@ export interface CanvasCommandEnvironment {
   getWorkspaceView(): CanvasWorkspaceView;
   setWorkspaceView(view: CanvasWorkspaceView): void;
   openMaterialLibrary(): void;
+  pickLibraryImage?(nodeId: string): Promise<import("../../library-data").LibraryItem | null>;
+  refreshLibraryImage?: typeof import("../../artifact-client").refreshArtifactRendition;
+  requestRemoveBackground?: (path: string, init: RequestInit) => Promise<AgentApiResult<CanvasRemoveBackgroundResponse>>;
+  readRemoveBackgroundImage?: typeof fetchMediaBlob;
+  resolveImageReferences?: typeof resolveVideoTimelineReferences;
   requestMediaUpload(): void;
   getDurableVideoCapability(): CanvasCommandAvailability;
   getCommandSignal?(requestId: string): AbortSignal | undefined;
@@ -719,6 +736,91 @@ function semanticImageHandler(
   };
 }
 
+const REMOVE_BACKGROUND_COMMAND = "canvas.node.generate.remove-background";
+const REMOVE_BACKGROUND_MAX_BYTES = 20 * 1024 * 1024;
+
+function checkImageOperationCanceled(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new CanvasAdapterError("image_operation_canceled", "Image operation canceled.", {
+    cancelled: true, cancellation: { scope: "client-request", disposition: "client-aborted-provider-may-continue",
+      message: "The client stopped waiting; the image provider may finish the submitted request." },
+  });
+}
+
+function remoteImageUrl(value: unknown): string {
+  if (typeof value !== "string") throw new Error("Image source is unavailable.");
+  const parsed = new URL(value);
+  if (!["https:", "http:"].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error("Image source requires an authorized HTTP URL.");
+  return parsed.href;
+}
+
+async function removeBackgroundSource(environment: CanvasCommandEnvironment, source: ProjectAsset, signal?: AbortSignal): Promise<string> {
+  checkImageOperationCanceled(signal);
+  if (source.sourceDependency) {
+    const reference = source.sourceDependency;
+    const resolve = environment.resolveImageReferences || resolveVideoTimelineReferences;
+    const resolved = await resolve({ width: 16, height: 16, fps: 1, tracks: [{ id: "source", kind: "image", clips: [{ id: source.assetId,
+      start_ms: 0, duration_ms: 1000, source_ref: { artifactId: reference.artifactId, revisionId: reference.revisionId, path: reference.path } }] }] });
+    checkImageOperationCanceled(signal);
+    return remoteImageUrl(resolved.tracks[0]?.clips[0]?.source_url);
+  }
+  if (source.librarySource) {
+    const refresh = environment.refreshLibraryImage || (await import("../../artifact-client")).refreshArtifactRendition;
+    const resolved = await refresh(source.librarySource, "full", signal);
+    checkImageOperationCanceled(signal);
+    if (!resolved.ok || !resolved.data?.mediaType?.startsWith("image/")) throw new Error(resolved.error || "Image source is unavailable.");
+    return remoteImageUrl(resolved.data.url);
+  }
+  return remoteImageUrl(source.url);
+}
+
+/** Validates actual provider bytes before any immutable graph mutation. */
+async function removeBackgroundHandler(environment: CanvasCommandEnvironment, _args: Record<string, unknown>, request: CanvasCommandRequest): Promise<HandlerOutcome> {
+  const snapshot = environment.getProject();
+  const node = selectedNode(environment), source = selectedAsset(environment);
+  if (!node || node.kind !== "image" || source?.kind !== "image") throw new Error("Select an Image node first.");
+  const signal = environment.getCommandSignal?.(request.requestId);
+  const startedAt = new Date().toISOString();
+  const imageUrl = await removeBackgroundSource(environment, source, signal);
+  checkImageOperationCanceled(signal);
+  if (snapshot.headVersionId !== environment.getProject().headVersionId || request.selectionEpoch !== environment.getSelectionEpoch()) throw new Error("Image selection changed.");
+  environment.reportCommandProgress?.(request.requestId, { phase: "submitting", progress: 0.1 });
+  const init = { method: "POST", signal, body: JSON.stringify({ site_id: "video", image_url: imageUrl }) };
+  const response = environment.requestRemoveBackground ? await environment.requestRemoveBackground("/v1/images/remove-bg", init)
+    : await authed<CanvasRemoveBackgroundResponse>("/v1/images/remove-bg", init);
+  checkImageOperationCanceled(signal);
+  if (!response.ok || !response.data) throw new CanvasAdapterError("remove_background_failed", response.error || "Image operation failed.", { status: response.status });
+  const output = response.data;
+  const outputUrl = remoteImageUrl(output.image);
+  const locator = new URL(outputUrl);
+  if (outputUrl === imageUrl || /\/v1\/artifact-renditions\/access\//i.test(locator.pathname) || [...locator.searchParams.keys()].some((key) => /^(?:token|access_token|signature|expires|expires_at|x-amz-|x-oss-)/i.test(key))) throw new Error("Image output requires a durable URL.");
+  if (!output.request_id || !output.model || !Number.isFinite(output.credits_spent) || output.credits_spent < 0) throw new Error("Image operation receipt is incomplete.");
+  environment.reportCommandProgress?.(request.requestId, { phase: "finalizing", progress: 0.8 });
+  const blob = await (environment.readRemoveBackgroundImage || fetchMediaBlob)(outputUrl, { signal, maxBytes: REMOVE_BACKGROUND_MAX_BYTES, cache: "no-store" });
+  checkImageOperationCanceled(signal);
+  if (!blob.size || blob.size > REMOVE_BACKGROUND_MAX_BYTES) throw new Error("Image source bytes failed verification.");
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const mime = blob.type.toLowerCase().split(";", 1)[0];
+  const png = mime === "image/png" && bytes.length >= 24 && [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte);
+  const jpeg = mime === "image/jpeg" && bytes.length >= 4 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
+  const webp = mime === "image/webp" && bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP";
+  if (!png && !jpeg && !webp) throw new Error("Image source bytes failed verification.");
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  checkImageOperationCanceled(signal);
+  const pricing = { amount: output.credits_spent, currency: "OCEANLEO_CREDITS", estimated: false, label: "Provider-metered" };
+  const provider = "OceanLeo media gateway";
+  const attached = attachGeneratedAssetSet(snapshot, node.nodeId, [{ kind: "image", origin: "provider", title: node.title,
+    url: outputUrl, mime, contentDigest: digest, byteSize: bytes.length,
+    provider: { receiptId: output.request_id, provider, model: output.model, operation: "remove-background", pricing: { billing: "provider", ...pricing } },
+  }], REMOVE_BACKGROUND_COMMAND);
+  const project = recordCanvasOperationReceipt(attached.project, { schema: "oceanleo.canvas-operation-receipt@1", receiptId: output.request_id,
+    requestId: request.requestId, requestFingerprint: commandRequestFingerprint(request), commandId: REMOVE_BACKGROUND_COMMAND,
+    projectVersionId: attached.project.headVersionId, status: "succeeded", provider, model: output.model, pricing: { billing: "provider", ...pricing },
+    inputAssetIds: [source.assetId], outputAssetIds: attached.assets.map((asset) => asset.assetId), externalRunIds: [output.request_id],
+    startedAt, completedAt: new Date().toISOString() });
+  return { project, assetIds: attached.assets.map((asset) => asset.assetId), receiptIds: [output.request_id], runIds: [output.request_id],
+    message: "Image operation complete.", cost: canvasProviderCost({ provider, model: output.model, pricing }) };
+}
+
 function localRetouchHandler(
   commandId: string,
   operation: LocalEditOperation,
@@ -819,6 +921,95 @@ function gridSplitHandler(
 
 const definitions: CanvasCommandDefinition[] = [
   {
+    commandId: REMOVE_BACKGROUND_COMMAND, scope: "selection", surfaces: ["compact", "context-more", "protocol"],
+    execution: "server", billing: "estimated", cancellation: "client-abort", inputSchema: "canvas.node.remove-background.v1", mutates: "asset", label: "Remove background",
+    disclosure: (environment) => ({ provider: "OceanLeo media gateway", model: "imageseg-matting", input: selectedAsset(environment)?.title || "Image",
+      cost: "Provider-metered; credits and model are returned in the immutable receipt", contract: "POST /v1/images/remove-bg" }),
+    availability: (environment) => {
+      const source = selectedAsset(environment);
+      return { enabled: selectedNode(environment)?.kind === "image" && source?.kind === "image" && Boolean(source.url || source.sourceDependency || source.librarySource) };
+    },
+    handler: removeBackgroundHandler,
+  },
+  {
+    commandId: "canvas.node.image-style.update", scope: "selection",
+    surfaces: ["compact", "context-more", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.node.image-style.update.v1", mutates: "project", label: "Image style",
+    availability: (environment) => ({ enabled: selectedNode(environment)?.kind === "image" }),
+    handler: (environment, args) => {
+      const node = selectedNode(environment)!;
+      const params = (node as CanvasNodeDefinition & { params?: Record<string, unknown> }).params || {};
+      const current = canvasImageAppearance(node as CanvasNodeDefinition & { params?: Record<string, unknown> });
+      const field = requireString(args, "field");
+      let value = args.value;
+      let operation: LocalEditOperation | undefined;
+      let patch: Record<string, unknown>;
+      if (["opacity", "radius", "border"].includes(field)) {
+        if (typeof value !== "number" || !Number.isFinite(value)) throw new Error("Unsupported image style.");
+        value = Math.max(0, Math.min(field === "opacity" ? 1 : field === "radius" ? 1000 : 100, value));
+        if (field === "border") {
+          patch = { border: { ...current.border, width: value } };
+          operation = { operation: "border", parameters: { width: value as number, color: current.border.color } };
+        } else {
+          patch = { [field]: value };
+          operation = { operation: field as "opacity" | "radius", parameters: { [field]: value as number } };
+        }
+      } else if (field === "borderColor" && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value)) {
+        patch = { border: { ...current.border, color: value } };
+        operation = { operation: "border", parameters: { ...current.border, color: value } };
+      } else if (field === "fit" && ["contain", "cover", "stretch"].includes(String(value))) {
+        patch = { fit: value };
+        // The renderer derives the real frame from the composition dimensions and scale.
+        operation = { operation: "image-fit", parameters: { fit: String(value) } };
+      } else if (field === "alt" && typeof value === "string") patch = { alt: value.slice(0, 2000) };
+      else if (field === "includeInVideo" && typeof value === "boolean") patch = { includeInVideo: value };
+      else throw new Error("Unsupported image style.");
+      const project = advanceProject(environment.getProject(), "canvas.node.image-style.update", (version) => {
+        const target = version.graph.nodes.find((item) => item.nodeId === node.nodeId)!;
+        Object.assign(target, { params: { ...params, ...patch }, ...(operation ? {
+          localEditRecipe: [...target.localEditRecipe.filter((step) => step.operation !== operation!.operation), operation],
+        } : {}) });
+      });
+      return { project, message: "Image style updated.", cost: NO_COST };
+    },
+  },
+  {
+    commandId: "canvas.node.asset.replace-library", scope: "selection",
+    surfaces: ["compact", "context-more", "protocol"], execution: "local", billing: "none",
+    inputSchema: "canvas.node.asset.replace-library.v1", mutates: "asset", label: "Replace image",
+    availability: (environment) => ({ enabled: selectedNode(environment)?.kind === "image" }),
+    handler: async (environment) => {
+      const node = selectedNode(environment)!;
+      const snapshot = environment.getProject();
+      const epoch = environment.getSelectionEpoch();
+      const pick = environment.pickLibraryImage || (await import("./LeoNode")).requestCanvasLibraryImage;
+      const item = await pick(node.nodeId);
+      if (!item) return { message: "Image selection canceled.", cost: NO_COST };
+      const librarySource = { artifactId: String(item.artifactId), revisionId: String(item.revisionId), rendition: "full" as const };
+      if (!validTimelineLibrarySource(librarySource)) throw new Error("Invalid Library image reference.");
+      const checkSelection = () => {
+        if (environment.getProject().headVersionId !== snapshot.headVersionId || environment.getSelectedNodeId() !== node.nodeId || environment.getSelectionEpoch() !== epoch) throw new Error("Image selection changed.");
+      };
+      checkSelection();
+      const refresh = environment.refreshLibraryImage || (await import("../../artifact-client")).refreshArtifactRendition;
+      const source = await refresh(librarySource, "full");
+      if (!source.ok || !source.data?.url || !source.data.mediaType?.startsWith("image/")) throw new Error("Image source is unavailable.");
+      checkSelection();
+      const digest = source.data.digest?.replace(/^sha256:/i, "").toLowerCase();
+      if (!digest || !/^[a-f0-9]{64}$/.test(digest) || !Number.isSafeInteger(source.data.byteSize) || Number(source.data.byteSize) <= 0 || Number(source.data.byteSize) > 20 * 1024 * 1024) throw new Error("Image source metadata is incomplete.");
+      const registered = registerAsset(snapshot, { kind: "image", origin: "import", title: item.title, mime: source.data.mediaType,
+        contentDigest: digest, byteSize: source.data.byteSize!, ...(source.data.width ? { width: source.data.width } : {}), ...(source.data.height ? { height: source.data.height } : {}),
+        librarySource, libraryItem: { artifactId: librarySource.artifactId, revisionId: librarySource.revisionId } });
+      const project = advanceProject(registered.project, "canvas.node.asset.replace-library", (version) => {
+        Object.assign(version.graph.nodes.find((candidate) => candidate.nodeId === node.nodeId)!, { assetId: registered.asset.assetId, localEditRecipe: [] });
+        const shot = version.shots.find((candidate) => candidate.shotId === node.shotId);
+        const board = version.storyboards.find((candidate) => candidate.storyboardId === shot?.storyboardId);
+        if (board && node.assetId) board.frameAssetIds = [...new Set(board.frameAssetIds.map((id) => id === node.assetId ? registered.asset.assetId : id))];
+      });
+      return { project, message: "Image replaced; the previous asset remains in history.", assetIds: [registered.asset.assetId], cost: NO_COST };
+    },
+  },
+  {
     commandId: "canvas.node.asset.replace", scope: "selection",
     surfaces: ["compact", "protocol"], execution: "local", billing: "none",
     inputSchema: "canvas.node.asset.replace.v1", mutates: "project", label: "Replace image",
@@ -872,8 +1063,11 @@ const definitions: CanvasCommandDefinition[] = [
       else {
         if (!(field === "font_size" && typeof value === "number" && Number.isFinite(value) && value >= 8 && value <= 300)
           && !(["color", "background"].includes(field) && typeof value === "string" && /^#[0-9a-f]{6}$/i.test(value))
-          && !(field === "bold" && typeof value === "boolean")
-          && !(field === "align" && ["left", "center", "right"].includes(String(value)))) throw new Error("Unsupported text style.");
+          && !(["bold", "italic", "underline", "strike", "vertical_text"].includes(field) && typeof value === "boolean")
+          && !(field === "font_family" && TIMELINE_FONT_FAMILIES.includes(value as typeof TIMELINE_FONT_FAMILIES[number]))
+          && !(field === "line_height" && typeof value === "number" && Number.isFinite(value) && value >= 0.5 && value <= 3)
+          && !(field === "letter_spacing" && typeof value === "number" && Number.isFinite(value) && value >= -10 && value <= 100)
+          && !(field === "align" && ["left", "center", "right", "justify"].includes(String(value)))) throw new Error("Unsupported text style.");
         patch = { textStyle: { ...(params.textStyle as TimelineTextStyle || {}), [field]: value } };
       }
       const project = advanceProject(environment.getProject(), "canvas.node.text-style.update", (version) => {
@@ -2422,7 +2616,7 @@ export async function executeCanvasCommand(
     environment.setStatus(message);
     if (generating && node && request.commandId !== "canvas.chain.run") {
       environment.reportNodeProgress?.(node.nodeId, "failed", message);
-      environment.setProjectMetadata(withCanvasNodeGeneration(environment.getProject(), node.nodeId, "failed", message));
+      if (request.commandId !== REMOVE_BACKGROUND_COMMAND) environment.setProjectMetadata(withCanvasNodeGeneration(environment.getProject(), node.nodeId, "failed", message));
     }
     if (error instanceof CanvasAdapterError && error.cancelled) {
       return failedResult(

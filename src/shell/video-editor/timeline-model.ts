@@ -12,6 +12,7 @@ import type {
   TimelineTrack,
   TrackKind,
 } from "./types";
+import { TIMELINE_FONT_FAMILIES } from "./types";
 
 export const MIN_CLIP_MS = 100;
 export const DEFAULT_IMAGE_CLIP_MS = 4000;
@@ -76,6 +77,30 @@ function canonicalNumber(
 ): number {
   const numeric = Number(value);
   return clampNumber(Number.isFinite(numeric) ? numeric : fallback, min, max);
+}
+
+export function timelineFontFamily(value: unknown): string {
+  return TIMELINE_FONT_FAMILIES.includes(value as typeof TIMELINE_FONT_FAMILIES[number])
+    ? String(value) : "sans-serif";
+}
+
+export function timelineFontStack(value: unknown): string {
+  const family = timelineFontFamily(value);
+  const resolved = ({ "sans-serif": "Noto Sans CJK SC", serif: "DejaVu Serif", monospace: "DejaVu Sans Mono" } as Record<string, string>)[family] || family;
+  return `${JSON.stringify(resolved)}, "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei", ${family === "serif" || family === "monospace" ? family : "sans-serif"}`;
+}
+
+/** Crop bounds always describe a non-empty rectangle contained in the source. */
+export function normalizeTimelineCrop(crop: TimelineClip["crop"]): NonNullable<TimelineClip["crop"]> {
+  const x = canonicalNumber(crop?.x, 0, 0, 0.99);
+  const y = canonicalNumber(crop?.y, 0, 0, 0.99);
+  return { x, y,
+    width: canonicalNumber(crop?.width, 1, 0.01, 1 - x),
+    height: canonicalNumber(crop?.height, 1, 0.01, 1 - y) };
+}
+
+function canonicalColor(value: unknown, fallback: string): string {
+  return typeof value === "string" && /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/i.test(value) ? value : fallback;
 }
 
 /** 列表是可见文字转换，预览与导出都读取同一份 text；不假装支持富文本列表。 */
@@ -199,7 +224,7 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
           if (clip.flip_y === true) next.flip_y = true;
           else delete next.flip_y;
         }
-        if (track.kind === "video") {
+        if (track.kind === "video" || track.kind === "image") {
           next.fit = ["contain", "cover", "stretch"].includes(
             String(clip.fit),
           )
@@ -209,6 +234,24 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
           next.contrast = canonicalNumber(clip.contrast, 1, 0, 2);
           next.saturation = canonicalNumber(clip.saturation, 1, 0, 3);
         }
+        if (track.kind === "image") {
+          if (validTimelineLibrarySource(clip.library_source)) {
+            next.library_source = Object.freeze({
+              artifactId: clip.library_source!.artifactId,
+              revisionId: clip.library_source!.revisionId,
+              rendition: "full",
+            });
+            delete next.source_url;
+            delete next.source_ref;
+          } else delete next.library_source;
+          if (clip.crop) next.crop = Object.freeze(normalizeTimelineCrop(clip.crop));
+          next.radius = canonicalNumber(clip.radius, 0, 0, 1000);
+          if (clip.border) next.border = Object.freeze({
+            width: canonicalNumber(clip.border.width, 0, 0, 100),
+            color: canonicalColor(clip.border.color, "#000000"),
+          });
+          next.alt = typeof clip.alt === "string" ? clip.alt.slice(0, 2000) : "";
+        } else delete next.library_source;
         if (track.kind === "text") {
           if (timelineTextListKind(clip) === "none") delete next.text_list;
           else next.text_list = Object.freeze({ ...clip.text_list! });
@@ -216,13 +259,21 @@ export function normalizeTimelineDoc(doc: TimelineDoc): TimelineDoc {
           next.style = {
             ...style,
             font_size: canonicalNumber(style.font_size, 64, 8, 300),
-            color: style.color || "#ffffff",
+            font_family: timelineFontFamily(style.font_family),
+            color: canonicalColor(style.color, "#ffffff"),
+            ...(style.background ? { background: canonicalColor(style.background, "#000000") } : {}),
             x: canonicalNumber(style.x, 0.5, 0, 1),
             y: canonicalNumber(style.y, 0.85, 0, 1),
-            align: ["left", "center", "right"].includes(String(style.align))
+            align: ["left", "center", "right", "justify"].includes(String(style.align))
               ? style.align
               : "center",
             bold: style.bold === true,
+            italic: style.italic === true,
+            underline: style.underline === true,
+            strike: style.strike === true,
+            line_height: canonicalNumber(style.line_height, 1.3, 0.5, 3),
+            letter_spacing: canonicalNumber(style.letter_spacing, 0, -10, 100),
+            vertical_text: style.vertical_text === true,
           };
         }
         return next;
@@ -634,6 +685,15 @@ export function validTimelineSourceReference(value: unknown): boolean {
     && ref.path.split("/").every((part) => Boolean(part) && part !== "." && part !== "..");
 }
 
+export function validTimelineLibrarySource(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const ref = value as Record<string, unknown>;
+  const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+  return typeof ref.artifactId === "string" && uuid.test(ref.artifactId)
+    && typeof ref.revisionId === "string" && uuid.test(ref.revisionId)
+    && ref.rendition === "full";
+}
+
 function validTimelineSourceUrl(value: unknown): boolean {
   if (
     typeof value !== "string" ||
@@ -717,6 +777,7 @@ export function timelineDocIssue(value: unknown): string {
       if (
         track.kind !== "text" &&
         !validTimelineSourceUrl(clip.source_url) && !validTimelineSourceReference(clip.source_ref)
+        && !(track.kind === "image" && validTimelineLibrarySource(clip.library_source))
       ) {
         return `片段 ${clip.id} 缺少安全的 http(s) 媒体源`;
       }

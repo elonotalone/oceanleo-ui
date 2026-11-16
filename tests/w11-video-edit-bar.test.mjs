@@ -110,7 +110,7 @@ test("W11 canonical ids and order per clip kind (D9)", () => {
   };
   assert.deepEqual(
     [...new Set(order("text"))],
-    ["font-size", "bold", "text-color", "highlight", "align", "list", "case", "clear-format", "duplicate", "delete"],
+    ["font-family", "font-size", "bold", "italic", "underline", "strike", "text-color", "highlight", "align", "list", "line-height", "letter-spacing", "case", "vertical-text", "clear-format", "duplicate", "delete"],
   );
   assert.deepEqual(
     [...new Set(order("video"))],
@@ -128,10 +128,9 @@ test("W11 canonical ids and order per clip kind (D9)", () => {
     video.controls.filter((c) => c.inspectorGroup === "position").map((c) => c.id),
     ["position-x", "position-y", "position-scale", "position-angle"],
   );
-  // 贴图没有调色与显示方式（预览/导出都不做）；音频没有视觉项。
+  // 贴图与视频共享调色与显示方式；音频没有视觉项。
   const image = videoClipSelection(located("image"), tt).controls.map((c) => c.id);
-  assert.equal(image.includes("brightness"), false);
-  assert.equal(image.includes("image-fit"), false);
+  for (const id of ["brightness", "contrast", "saturation", "image-fit", "radius", "border-width", "border-color", "crop-x", "crop-y", "crop-width", "crop-height"]) assert.ok(image.includes(id), id);
   const audio = videoClipSelection(located("audio"), tt).controls.map((c) => c.id);
   for (const id of ["flip-x", "opacity", "position-x", "font-size"]) {
     assert.equal(audio.includes(id), false, id);
