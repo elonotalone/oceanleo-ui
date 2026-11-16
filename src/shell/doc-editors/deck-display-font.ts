@@ -1,3 +1,25 @@
+import { loadEditorTextFonts, type EditorFontText } from "../image-editor/editor-fonts";
+
+export function deckGenericFontFamily(family?: string): string {
+  return /serif|宋体/i.test(family || "") && !/sans/i.test(family || "") ? "serif" : "sans-serif";
+}
+
+/** Use the shared Noto loader/cache; a failed download must not block a deck. */
+export async function loadDeckDisplayFonts(nodes: readonly EditorFontText[], ownerDocument?: Document): Promise<boolean> {
+  if (!nodes.some((node) => node.text)) return true;
+  try {
+    const Font = ownerDocument?.defaultView?.FontFace ?? (typeof FontFace === "undefined" ? undefined : FontFace);
+    if (ownerDocument && (!ownerDocument.fonts || !Font)) return false;
+    await loadEditorTextFonts(nodes.map((node) => ({
+      ...node,
+      fontFamily: deckDisplayFontFamily(node.fontFamily),
+    })), ownerDocument && Font ? { fonts: ownerDocument.fonts, FontFace: Font } : undefined);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Browser aliases only. The stored face is still used by PPTX save/export. */
 export function deckDisplayFontFamily(family: string | undefined): string | undefined {
   if (!family) return family;
