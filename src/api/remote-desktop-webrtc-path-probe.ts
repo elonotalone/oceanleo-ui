@@ -15,10 +15,11 @@ export class WebRtcPathProbe {
   private nextId = 0;
   private cursor = 0;
   private due = 0;
-  constructor(private options: {
+  private options: {
     sid: string; now(): number; wallNow(): number; createPeer(configuration: RTCConfiguration): RTCPeerConnection;
     send(message: object): boolean; sample(route: PathRoute, rtt: number, at: number, identity: string): void;
-  }) {}
+  };
+  constructor(options: WebRtcPathProbe["options"]) { this.options = options; }
   enable(): void { this.enabled = true; }
   reset(): void { this.stop(); this.enabled = false; }
   stop(): void {

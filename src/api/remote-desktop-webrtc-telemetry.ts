@@ -6,6 +6,8 @@ export interface WebRtcPath {
   local_type?: "host" | "srflx" | "prflx" | "relay";
   remote_type?: "host" | "srflx" | "prflx" | "relay";
   address_family?: "ipv4" | "ipv6"; protocol?: "udp" | "tcp"; relay_region?: string; rtt_ms?: number;
+  direct_rtt_ms?: number; relay_rtt_ms?: number; best_relay_region?: string;
+  comparison_source?: "ice" | "ctl"; selection_state?: "measuring" | "stable" | "switching" | "unavailable";
 }
 export interface WebRtcPercentiles { n: number; p50?: number; p95?: number; max?: number }
 export type WebRtcPictureAgeSource = "captureTime" | "receiveTime" | "unknown";

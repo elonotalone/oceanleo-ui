@@ -2,6 +2,8 @@ import type { RemoteDesktopAction } from "./remote-desktop";
 import { isWebRtcInputFault } from "./remote-desktop-webrtc-errors";
 import { WebRtcInputScheduler, WEBRTC_MESSAGE_BYTES, type InputLabel } from "./remote-desktop-webrtc-input";
 import { WebRtcTelemetry, type WebRtcPath, type WebRtcQualityReport, type WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
+import { boundedRtt, pathRoutes, readPathStats, WebRtcPathSelector, type PathRoute } from "./remote-desktop-webrtc-path";
+import { WebRtcPathProbe } from "./remote-desktop-webrtc-path-probe";
 export type { WebRtcPath, WebRtcQualityReport, WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
 
 export interface RemoteWebRtcDescriptor {
@@ -44,6 +46,14 @@ function viewerIcePolicy(): RTCIceTransportPolicy {
   } catch { /* SSR and non-browser clients keep normal candidate selection. */ }
   return "all";
 }
+function viewerPathSelection(): boolean {
+  try {
+    const { hostname, search } = window.location;
+    const development = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname) || hostname.endsWith(".dev.oceanleo.com");
+    const query = new URLSearchParams(search);
+    return !(development && query.get("__rd_debug") === "1" && query.get("__rd_path") === "off");
+  } catch { return true; }
+}
 
 /** The peer owns media/input only. Authentication, HTTP and stream reconnects belong to the caller. */
 export class WebRtcRemoteDesktopViewer {
@@ -85,7 +95,14 @@ export class WebRtcRemoteDesktopViewer {
   private leaseDeadline: number;
   private state: WebRtcViewerState = "connecting";
   private hostRelayRegion: string | undefined;
-  private pingTimes = new Map<number, number>();
+  private pingTimes = new Map<number, { at: number; key?: string; pairId?: string }>();
+  private icePolicy = viewerIcePolicy();
+  private pathEnabled = this.icePolicy === "all" && viewerPathSelection();
+  private pathSelector: WebRtcPathSelector;
+  private pathProbe: WebRtcPathProbe;
+  private selectedPath: { key: string; pairId: string; at: number } | undefined;
+  private activeRoute: string | undefined;
+  private pathSwitch: { route: PathRoute; previous: RTCConfiguration; started: number; answered: boolean } | undefined;
   constructor(options: WebRtcViewerOptions) {
     this.options = options; this.descriptor = options.descriptor;
     // A reload re-attaches to the same authorized session with a NEW peer generation.
@@ -95,6 +112,10 @@ export class WebRtcRemoteDesktopViewer {
       if (Number.isSafeInteger(saved) && saved > 0 && saved < Number.MAX_SAFE_INTEGER) this.gen = saved;
     } catch { /* Restricted storage keeps the normal initial negotiation. */ }
     this.now = options.now ?? (() => performance.now()); this.wallNow = options.wallNow ?? Date.now;
+    this.pathSelector = new WebRtcPathSelector(pathRoutes(this.descriptor.ice_servers));
+    this.pathProbe = new WebRtcPathProbe({ sid: this.descriptor.session_id, now: this.now, wallNow: this.wallNow,
+      createPeer: configuration => (this.options.createPeer ?? (config => new RTCPeerConnection(config)))(configuration),
+      send: message => this.sendControl(message), sample: (route, rtt, at, identity) => this.pathSelector.observe(route.key, rtt, at, "ctl", identity) });
     const clickedAt = options.clickedAt ?? this.now();
     this.lastReport = this.now();
     this.telemetry = new WebRtcTelemetry({ sessionId: this.descriptor.session_id, deviceId: options.deviceId, clickedAt, now: this.now, wallNow: this.wallNow });
@@ -123,6 +144,8 @@ export class WebRtcRemoteDesktopViewer {
     if (this.creating) return this.creating;
     this.creating = (async () => {
       const old = this.pc;
+      this.pathProbe.reset(); this.pathSelector.reset(pathRoutes(this.descriptor.ice_servers));
+      this.pathSwitch = undefined; this.activeRoute = undefined; this.selectedPath = undefined; this.pingTimes.clear();
       this.detachPeer();
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
       this.captureTimes.clear(); this.presentedTimes.clear(); this.captureMappingAvailable = false;
@@ -133,7 +156,7 @@ export class WebRtcRemoteDesktopViewer {
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
       let pc: RTCPeerConnection;
-      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: viewerIcePolicy(), bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
+      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: this.icePolicy, bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
       catch { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
@@ -272,6 +295,7 @@ export class WebRtcRemoteDesktopViewer {
       if (data.k === "answer" && typeof data.sdp === "string") {
         await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
         if (this.pc !== pc || this.ended) return;
+        if (this.pathSwitch) this.pathSwitch.answered = true;
         this.telemetry.step("answer_received_ms");
         for (const candidate of this.candidates.splice(0)) { if (this.pc === pc && !this.ended) await pc.addIceCandidate(candidate); }
       } else if (data.k === "candidate" && typeof data.candidate === "string") {
@@ -289,7 +313,10 @@ export class WebRtcRemoteDesktopViewer {
     const deadline = this.deadline(descriptor);
     this.leaseDeadline = sameExpiry ? Math.min(this.leaseDeadline, deadline) : deadline;
     this.descriptor = descriptor;
-    try { this.pc?.setConfiguration({ ...this.pc.getConfiguration(), iceServers: this.iceServers() }); } catch { /* use fresh credentials on next restart */ }
+    const routes = pathRoutes(descriptor.ice_servers); this.pathSelector.updateRoutes(routes);
+    const relay = routes.find(route => route.key === this.activeRoute);
+    try { this.pc?.setConfiguration({ ...this.pc.getConfiguration(), iceServers: relay?.servers ?? this.iceServers() }); } catch { /* use fresh credentials on next restart */ }
+    if (this.activeRoute && !relay) { this.pathProbe.stop(); this.pathSwitch = undefined; this.fallbackPath(); if (this.pc) void this.offer(this.pc, true); }
     this.flushSignals();
   }
   private createChannel(label: Label): void {
@@ -315,6 +342,7 @@ export class WebRtcRemoteDesktopViewer {
   }
   private channelFault(label: Label, _reason: string): void {
     if (this.ended) return;
+    if (label === "rd-ctl") this.pathProbe.reset();
     const previous = this.recovery.get(label);
     const backoff = previous?.backoff ?? 200;
     this.recovery.set(label, { due: this.now() + backoff, backoff: Math.min(2000, backoff * 2) });
@@ -329,8 +357,15 @@ export class WebRtcRemoteDesktopViewer {
     let data: Record<string, unknown>; try { data = JSON.parse(raw); } catch { return; }
     if (!data || data.v !== 1 || data.sid !== this.descriptor.session_id) return;
     if (data.t === "rd.input_receipt") this.input.receipt(data);
+    else if (data.t === "rd.path_probe_ready" && data.version === 1 && this.pathEnabled) this.pathProbe.enable();
+    else if (data.t === "rd.path_probe" && this.pathEnabled) void this.pathProbe.receive(data, this.gen);
     else if (data.t === "rd.pong" && typeof data.t_v === "number" && this.pingTimes.has(data.t_v)) {
+      const ping = this.pingTimes.get(data.t_v)!;
       this.pingTimes.delete(data.t_v);
+      const selected = this.selectedPath, rtt = boundedRtt(this.now() - ping.at);
+      if (this.pathEnabled && selected && ping.key === selected.key && ping.pairId === selected.pairId && this.now() - selected.at <= 1500 && rtt !== undefined && rtt <= 3000) {
+        this.pathSelector.observe(selected.key, rtt, this.now(), "ctl", `${this.gen}:${selected.pairId}`);
+      }
       const received = data.host_receive_ms ?? data.t_h_recv ?? data.device_wall_ms;
       const sent = data.host_send_ms ?? data.t_h_send ?? data.device_wall_ms;
       if (typeof received === "number" && typeof sent === "number") this.telemetry.clock.sample(data.t_v, received, sent, this.wallNow(), this.now());
@@ -354,7 +389,7 @@ export class WebRtcRemoteDesktopViewer {
   private ping(): void {
     const sent = this.wallNow();
     if (this.sendControl({ t: "rd.ping", t_v: sent })) {
-      this.pingTimes.set(sent, this.now()); if (this.pingTimes.size > 32) this.pingTimes.delete(this.pingTimes.keys().next().value!);
+      this.pingTimes.set(sent, { at: this.now(), key: this.selectedPath?.key, pairId: this.selectedPath?.pairId }); if (this.pingTimes.size > 32) this.pingTimes.delete(this.pingTimes.keys().next().value!);
     }
     this.lastPing = this.now();
   }
@@ -428,8 +463,10 @@ export class WebRtcRemoteDesktopViewer {
     }
     if (this.peerRetryDue !== undefined && now >= this.peerRetryDue) { this.peerRetryDue = undefined; void this.createConnection(); }
     else if (this.restartDue !== undefined && now >= this.restartDue && this.pc) {
+      if (this.activeRoute) { this.pathSwitch = undefined; this.fallbackPath(); }
       this.restartDue = now + this.restartBackoff; this.restartBackoff = Math.min(8000, this.restartBackoff * 2); void this.offer(this.pc, true);
     }
+    this.pathTick();
     if (now - this.lastPing >= 1000) this.ping();
     if (now - this.lastStats >= 1000) { this.lastStats = now; void this.stats(); }
     if (now - this.lastReport >= 10_000) { this.lastReport = now; const report = this.telemetry.report(false); swallow(() => this.options.onReport(report, false)); }
@@ -449,22 +486,63 @@ export class WebRtcRemoteDesktopViewer {
       if (typeof inbound?.framesDecoded === "number" && inbound.framesDecoded > 0) this.telemetry.step("first_frame_decoded_ms");
       if (inbound) this.telemetry.hostSample(typeof inbound.bytesReceived === "number" ? inbound.bytesReceived : undefined, typeof inbound.framesReceived === "number" ? inbound.framesReceived : undefined);
       if (!pair) return;
+      const readings = readPathStats(all, pathRoutes(this.descriptor.ice_servers));
+      if (this.pathEnabled && readings.selected && pair.state === "succeeded") {
+        const selected = readings.selected;
+        this.selectedPath = { key: selected.route?.key ?? `selected:${selected.id}`, pairId: selected.id, at: this.now() };
+        this.pathSelector.selected(this.selectedPath.key, this.now());
+        for (const reading of readings.succeeded) this.pathSelector.ice(reading, this.now());
+        if (!selected.route) this.pathSelector.ice({ ...selected, route: { key: this.selectedPath.key, kind: "relay", servers: [] } }, this.now());
+        if (this.pathSwitch?.answered && selected.route?.key === this.pathSwitch.route.key) this.pathSwitch = undefined;
+      } else this.selectedPath = undefined;
       const path: WebRtcPath = {};
       if (local && ["host", "srflx", "prflx", "relay"].includes(String(local.candidateType))) path.local_type = local.candidateType as WebRtcPath["local_type"];
       if (remote && ["host", "srflx", "prflx", "relay"].includes(String(remote.candidateType))) path.remote_type = remote.candidateType as WebRtcPath["remote_type"];
       const address = String(remote?.address ?? local?.address ?? "");
       if (address.includes(":")) path.address_family = "ipv6"; else if (/^\d+\.\d+\.\d+\.\d+$/.test(address)) path.address_family = "ipv4";
       if (["udp", "tcp"].includes(String(local?.protocol))) path.protocol = local?.protocol as WebRtcPath["protocol"];
-      if (typeof pair.currentRoundTripTime === "number" && Number.isFinite(pair.currentRoundTripTime)) path.rtt_ms = Math.max(0, Math.round(pair.currentRoundTripTime * 1000));
+      const rtt = boundedRtt(typeof pair.currentRoundTripTime === "number" ? pair.currentRoundTripTime * 1000 : undefined);
+      if (rtt !== undefined) path.rtt_ms = rtt;
       // A relay region is reported only when supplied as coarse metadata; never derive or expose an IP/hostname.
       const relayUrl = path.local_type === "relay" ? local?.url : path.remote_type === "relay" ? remote?.url : undefined;
       const mappedRegion = this.descriptor.ice_servers.find(server => (Array.isArray(server.urls) ? server.urls : [server.urls]).includes(String(relayUrl)))?.region;
       // Remote candidate stats often omit url; the authenticated host can identify its own selected TURN region.
       const region = mappedRegion ?? (path.remote_type === "relay" ? this.hostRelayRegion : undefined);
       if ((path.local_type === "relay" || path.remote_type === "relay") && typeof region === "string" && /^[a-z0-9-]{1,32}$/.test(region)) path.relay_region = region;
+      if (this.pathEnabled) {
+        Object.assign(path, this.pathSelector.comparison(this.selectedPath?.key, this.now()));
+        path.selection_state = this.pathSwitch ? "switching" : !pathRoutes(this.descriptor.ice_servers).some(route => route.kind === "relay") ? "unavailable"
+          : path.direct_rtt_ms !== undefined && path.relay_rtt_ms !== undefined ? "stable" : "measuring";
+      }
       this.telemetry.path = path; this.emitState(this.state);
     } catch { /* stats are optional and never affect connection lifetime */ }
     finally { this.statsPending = false; }
+  }
+  private fallbackPath(): void {
+    if (!this.pc || !this.activeRoute) return;
+    this.pathSelector.failed(this.activeRoute, this.now()); this.activeRoute = undefined;
+    try { this.pc.setConfiguration({ ...this.pc.getConfiguration(), iceTransportPolicy: this.icePolicy, iceServers: this.iceServers() }); } catch { /* peer recovery uses all routes */ }
+  }
+  private pathTick(): void {
+    if (!this.pathEnabled || !this.pc) return;
+    const now = this.now(), pc = this.pc, routes = pathRoutes(this.descriptor.ice_servers);
+    if (this.pathSwitch && now - this.pathSwitch.started >= 10_000) {
+      const change = this.pathSwitch; this.pathSwitch = undefined; this.pathSelector.failed(change.route.key, now);
+      try { pc.setConfiguration(change.previous); this.activeRoute = change.previous.iceTransportPolicy === "relay" ? routes.find(route => route.kind === "relay" && JSON.stringify(route.servers) === JSON.stringify(change.previous.iceServers))?.key : undefined; } catch { this.fallbackPath(); }
+      void this.offer(pc, true); return;
+    }
+    const allowed = this.hasFrame && !this.pathSwitch && !this.creating && !this.negotiatingPeer && !this.pendingSignals.length && this.disconnectedAt === undefined && this.peerRetryDue === undefined && pc.connectionState === "connected" && (!pc.signalingState || pc.signalingState === "stable") && this.channels.get("rd-ctl")?.readyState === "open";
+    this.pathProbe.tick(routes, this.selectedPath?.key, this.gen, allowed);
+    if (!allowed || !this.selectedPath || now - this.selectedPath.at > 1500) return;
+    const route = this.pathSelector.choose(this.selectedPath.key, now);
+    if (!route) return;
+    this.pathSelector.attempted(now); this.pathProbe.stop();
+    const previous = pc.getConfiguration();
+    try {
+      pc.setConfiguration({ ...previous, iceServers: route.kind === "relay" ? route.servers : this.iceServers(), iceTransportPolicy: route.kind === "relay" ? "relay" : "all" });
+      this.pathSwitch = { route, previous, started: now, answered: false }; this.activeRoute = route.kind === "relay" ? route.key : undefined;
+      void this.offer(pc, true);
+    } catch { this.pathSelector.failed(route.key, now); }
   }
   private detachPeer(): void {
     this.input.setReceiptsAvailable(false);
@@ -478,6 +556,7 @@ export class WebRtcRemoteDesktopViewer {
   }
   close(reason = "viewer_left"): void {
     if (this.ended) return;
+    this.pathProbe.reset();
     this.input.close();
     if (reason === "viewer_left") { try { this.options.sendSignal({ k: "bye", reason, gen: this.gen }); } catch { /* best effort */ } }
     this.ended = true;

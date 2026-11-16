@@ -52,7 +52,8 @@ export class WebRtcPathSelector {
   private blocked = new Map<string, number>();
   private lastAttempt = -Infinity;
   private selectedKey: string | undefined;
-  constructor(private routes: PathRoute[]) {}
+  private routes: PathRoute[];
+  constructor(routes: PathRoute[]) { this.routes = routes; }
   reset(routes = this.routes): void { this.routes = routes; this.series.clear(); this.counters.clear(); this.blocked.clear(); this.selectedKey = undefined; }
   updateRoutes(routes: PathRoute[]): void {
     this.routes = routes;
@@ -64,7 +65,7 @@ export class WebRtcPathSelector {
     this.selectedKey = key;
   }
   observe(key: string, rtt: number, now: number, source: RttSource, identity: string): void {
-    if (boundedRtt(rtt) === undefined || !this.routes.some(route => route.key === key)) return;
+    if (boundedRtt(rtt) === undefined || key !== this.selectedKey && !this.routes.some(route => route.key === key)) return;
     const seriesKey = `${source}:${key}`;
     let series = this.series.get(seriesKey);
     if (!series || series.identity !== identity) { series = { identity, samples: [] }; this.series.set(seriesKey, series); }
