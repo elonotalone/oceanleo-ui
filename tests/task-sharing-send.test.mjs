@@ -24,3 +24,10 @@ test("an owned fork binds its selected execution target on the first follow-up",
   await followUp("shared","hello",[],"",undefined,undefined,undefined,{preserveTaskSettings:true,bindExecutionTarget:true,executionTarget:target});
   assert.equal("execution_target" in calls.at(-1).body,false);
 });
+
+
+test("an ordinary owner follow-up retains the owner's selected fast mode",async()=>{
+ await followUp("owned","hello");
+ assert.equal(calls.at(-1).body.fast_mode,true);
+ assert.equal(calls.at(-1).body.agent_model,"cursor:my-model");
+});
