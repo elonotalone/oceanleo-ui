@@ -39,6 +39,7 @@ export const IMAGE_OBJECT_MUTATION_CONTROLS = [
   // 统一编辑栏规范 id（2026-10-23 D9）与面板子控件
   "text",
   "font-family",
+  "font-weight",
   "font-size",
   "bold",
   "italic",

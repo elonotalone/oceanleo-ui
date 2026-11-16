@@ -1,3 +1,4 @@
+import { NOTO_SANS_STACK } from "./editor-fonts";
 /**
  * 统一编辑栏（D9）补上的几项样式能力：描边虚线、矩形圆角、便签底色、
  * 文字列表（无 / 项目符号 / 编号）、清除文字样式。
@@ -83,7 +84,7 @@ export function noteBackground(fabric: FabricNS, object: FabricObject): FabricOb
 
 /** Reset every supported inline style, including imported per-character overrides. */
 export const CLEARED_TEXT_PROPS = {
-  fontFamily: "sans-serif",
+  fontFamily: NOTO_SANS_STACK,
   fontSize: 16,
   fill: "#1c1917",
   fontWeight: "normal",

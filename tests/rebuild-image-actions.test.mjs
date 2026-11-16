@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
 import React, { act } from "react";
+import { NOTO_SANS_STACK } from "../src/shell/image-editor/editor-fonts.ts";
 import { Rect as FabricRect } from "fabric";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
@@ -367,7 +368,9 @@ test("text bar uses canonical ids in canonical order and A-1 panels", () => {
   }
   assert.equal(controls.some((control) => control.id === "link"), false, "raster text cannot carry links");
   const more = controls.filter((control) => control.placement === "more").map((control) => control.id);
-  for (const id of ["letter-spacing", "case", "clear-format", "shadow"]) assert.ok(more.includes(id), id);
+  for (const id of ["font-weight", "letter-spacing", "case", "clear-format", "shadow"]) assert.ok(more.includes(id), id);
+  const weight = controls.find((control) => control.id === "font-weight");
+  assert.deepEqual(weight?.options?.map(option => option.value), ["400", "500", "700", "900"]);
   const font = controls.find((control) => control.id === "font-family");
   assert.equal(font?.kind, "select");
   assert.equal(font?.value, "Inter");
@@ -509,7 +512,7 @@ test("canonical commands reach the controller: highlight, lists, clear format, f
   assert.equal(text.underline, false);
   assert.equal(text.linethrough, false);
   assert.equal(text.textBackgroundColor, "");
-  assert.equal(text.fontFamily, "sans-serif");
+  assert.equal(text.fontFamily, NOTO_SANS_STACK);
   assert.equal(text.fontSize, 16);
   assert.equal(text.fill, "#1c1917");
   assert.equal(text.lineHeight, 1.16);

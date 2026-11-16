@@ -1,4 +1,5 @@
 /** Text stays editable source data. Lists/indent/vertical layout never rewrite it. */
+import { installFabricFontShaping } from "./fabric-font-shaping";
 import type { IText } from "fabric";
 import type { FabricNS } from "./editor-objects";
 
@@ -145,6 +146,7 @@ function metadata(text: LayoutText): string {
 
 /** Install once on the dynamically imported engine, covering both new and restored IText/Textbox. */
 export function installFabricTextLayout(fabric: FabricNS): void {
+  installFabricFontShaping(fabric);
   if (installed.has(fabric.IText)) return;
   installed.add(fabric.IText);
   fabric.FabricObject.customProperties = [...new Set([...fabric.FabricObject.customProperties, ...FABRIC_TEXT_LAYOUT_PROPS])];

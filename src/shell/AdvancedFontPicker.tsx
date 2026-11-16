@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { EDITOR_FONT_OPTIONS, loadEditorTextFonts } from "./image-editor/editor-fonts";
+import { EDITOR_FONT_OPTIONS, EDITOR_FONT_WEIGHTS, loadEditorTextFonts } from "./image-editor/editor-fonts";
 
 export interface AdvancedFontOption {
   family: string;
@@ -15,10 +15,16 @@ export const ADVANCED_EDITOR_FONTS: readonly AdvancedFontOption[] = EDITOR_FONT_
 
 export function AdvancedFontPicker({
   selectedFamily,
+  selectedWeight = 400,
+  text,
+  onWeightSelect,
   disabled = false,
   onSelect,
 }: {
   selectedFamily?: string;
+  selectedWeight?: number;
+  text?: string;
+  onWeightSelect?: (weight: number) => void;
   disabled?: boolean;
   onSelect: (family: string) => void;
 }) {
@@ -66,6 +72,19 @@ export function AdvancedFontPicker({
           className="min-w-0 flex-1 border-0 bg-transparent text-[12px] text-[var(--fg,#1e293b)] outline-none placeholder:text-[var(--muted,#94a3b8)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
       </label>
+      {onWeightSelect && <label className="mt-3 flex items-center gap-2 text-[12px]">
+        {tt("字重")}
+        <select aria-label={tt("字重")} value={selectedWeight} disabled={disabled || loadingFont}
+          onChange={async event => {
+            const weight = Number(event.target.value);
+            setLoadingFont(true); setFontError("");
+            try { await loadEditorTextFonts([{ text: text || tt(EDITOR_FONT_OPTIONS[0].preview), fontFamily: selectedFamily, fontWeight: weight }]); }
+            catch { setFontError("字体加载失败，请检查网络后重试。"); }
+            finally { onWeightSelect(weight); setLoadingFont(false); }
+          }}>
+          {EDITOR_FONT_WEIGHTS.map(weight => <option key={weight} value={weight}>{weight}</option>)}
+        </select>
+      </label>}
       {fontError && <p role="alert">{tt(fontError)}</p>}
       <div className="mt-4 space-y-1">
         {fonts.map((font) => {
@@ -87,10 +106,9 @@ export function AdvancedFontPicker({
               onClick={async () => {
                 setLoadingFont(true); setFontError("");
                 try {
-                  await loadEditorTextFonts([{ text: font.preview, fontFamily: font.family }]);
-                  onSelect(font.family);
+                  await loadEditorTextFonts([{ text: text || tt(font.preview), fontFamily: font.family, fontWeight: selectedWeight }]);
                 } catch { setFontError("字体加载失败，请检查网络后重试。"); }
-                finally { setLoadingFont(false); }
+                finally { onSelect(font.family); setLoadingFont(false); }
               }}
               className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-40 ${
  active

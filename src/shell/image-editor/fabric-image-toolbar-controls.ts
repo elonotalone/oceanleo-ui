@@ -162,6 +162,10 @@ function textControls(
       step: 1,
       suffix: "px",
     },
+    {
+      id: "font-weight", kind: "select", placement: "more", label: tt("字重"), value: String(text.fontWeight ?? (text.bold ? 700 : 400)),
+      options: [400, 500, 700, 900].map(weight => ({ value: String(weight), label: String(weight) })),
+    },
     { id: "bold", kind: "toggle", label: tt("粗体"), value: text.bold },
     { id: "italic", kind: "toggle", label: tt("斜体"), value: text.italic },
     { id: "underline", kind: "toggle", label: tt("下划线"), value: text.underline },

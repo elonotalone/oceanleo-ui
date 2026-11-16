@@ -1,3 +1,5 @@
+import { withEditorFonts, type EditorFontText } from "./editor-fonts";
+
 export interface ImageEditorSnapshot {
   json: Record<string, unknown>;
   doc: { width: number; height: number };
@@ -38,6 +40,7 @@ export function normalizeImageEditorSnapshot(
 type Viewport = [number, number, number, number, number, number];
 
 export interface FrozenRasterCanvas {
+  getObjects?(): EditorFontText[];
   viewportTransform: readonly number[];
   setViewportTransform(transform: Viewport): void;
   requestRenderAll(): void;
@@ -67,23 +70,25 @@ export async function exportFrozenImageDocument(
     multiplier: number;
   },
 ): Promise<Blob | null> {
-  const previous = [...canvas.viewportTransform] as Viewport;
-  canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
-  let exported: ReturnType<FrozenRasterCanvas["toCanvasElement"]>;
-  try {
-    exported = canvas.toCanvasElement(options.multiplier, {
-      left: 0,
-      top: 0,
-      width: doc.width,
-      height: doc.height,
+  return withEditorFonts({ getObjects: () => canvas.getObjects?.() || [] }, async () => {
+    const previous = [...canvas.viewportTransform] as Viewport;
+    canvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    let exported: ReturnType<FrozenRasterCanvas["toCanvasElement"]>;
+    try {
+      exported = canvas.toCanvasElement(options.multiplier, {
+        left: 0,
+        top: 0,
+        width: doc.width,
+        height: doc.height,
+      });
+    } finally {
+      canvas.setViewportTransform(previous);
+      canvas.requestRenderAll();
+    }
+    const mime =
+      options.format === "jpeg" ? "image/jpeg" : `image/${options.format}`;
+    return new Promise<Blob | null>((resolve) => {
+      exported.toBlob(resolve, mime, options.quality);
     });
-  } finally {
-    canvas.setViewportTransform(previous);
-    canvas.requestRenderAll();
-  }
-  const mime =
-    options.format === "jpeg" ? "image/jpeg" : `image/${options.format}`;
-  return new Promise<Blob | null>((resolve) => {
-    exported.toBlob(resolve, mime, options.quality);
   });
 }
