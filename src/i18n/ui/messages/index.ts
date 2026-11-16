@@ -512,6 +512,8 @@ export const UI_MESSAGES = Object.fromEntries(
   Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => {
     const language = locale as Locale;
     return [locale, {
+      // Access copy supplies new keys; established global labels keep their wording.
+      ...SHARE_ACCESS_MESSAGES[language],
       ...localBrowserCopy(language),
       ...deviceExperienceCopy(language),
       ...taskLiveCopy(language),
@@ -529,7 +531,6 @@ export const UI_MESSAGES = Object.fromEntries(
       ...COMPUTER_TASK_WORKSPACE_MESSAGES[language],
       ...NATIVE_ATTACHMENTS_MESSAGES[language],
       ...TASK_PAGE_PACK_MESSAGES[language],
-      ...SHARE_ACCESS_MESSAGES[language],
     }];
   }),
 ) as Record<Locale, Record<string, string>>;
