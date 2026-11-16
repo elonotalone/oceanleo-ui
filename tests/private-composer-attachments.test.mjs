@@ -165,6 +165,18 @@ async function compileComposerUpload(responses) {
   );
 }
 
+test("composer marks task uploads and separates task identities", async () => {
+  const { uploadComposerFile } = await compileComposerUpload([okUpload, okUpload, okUpload]);
+  const file = new File(["x"], "notes.md", { lastModified: 8 });
+  await uploadComposerFile(file, { siteId: "oceanleo", taskUpload: { taskId: ART, sessionId: REV } });
+  await uploadComposerFile(file, { siteId: "oceanleo", taskUpload: { taskId: REV } });
+  await uploadComposerFile(file, { siteId: "oceanleo" });
+  const calls = globalThis.__w6Uploads;
+  assert.deepEqual(calls[0].opts.taskUpload, { taskId: ART, sessionId: REV });
+  assert.deepEqual(calls[2].opts.taskUpload, { pending: true });
+  assert.notEqual(calls[0].opts.idempotencyKey, calls[1].opts.idempotencyKey);
+});
+
 const okUpload = {
   ok: true,
   data: { ok: true, file: { id: ART, url: "", title: "a.png", mime: "image/png", artifact_id: ART, revision_id: REV } },
@@ -180,7 +192,7 @@ test("uploadComposerFile: private route with an idempotency key, reference resul
   assert.equal(result.upload.attachment.artifact_id, ART);
   const call = globalThis.__w6Uploads[0];
   assert.equal(call.opts.privateUpload, true);
-  assert.equal(call.opts.idempotencyKey, "composer-upload-v1:oceanleo:a.png:10:7");
+  assert.match(call.opts.idempotencyKey, /^composer-upload-v2:\{"pending":true\}:[^:]+:oceanleo:a.png:10:7$/);
 });
 
 test("uploadComposerFile: big attachments use the same private upload path", async () => {
@@ -347,4 +359,15 @@ test("useAttachments: a legacy public URL from a picked file is gateway-proxied 
     assert.equal(hostOf(tile.previewUrl), "gateway.test");
     assert.equal(hostOf(tile.url), "gateway.test");
   });
+});
+
+test("pending upload intents differ between new file picks but stay stable for a retry", async () => {
+  const { uploadComposerFile } = await compileComposerUpload([okUpload, okUpload, okUpload]);
+  const first = new File(["same"], "same.md", { lastModified: 99 });
+  const second = new File(["same"], "same.md", { lastModified: 99 });
+  await uploadComposerFile(first, { siteId: "oceanleo" });
+  await uploadComposerFile(first, { siteId: "oceanleo" });
+  await uploadComposerFile(second, { siteId: "oceanleo" });
+  const keys = globalThis.__w6Uploads.map(call => call.opts.idempotencyKey);
+  assert.equal(keys[0], keys[1]); assert.notEqual(keys[0], keys[2]);
 });

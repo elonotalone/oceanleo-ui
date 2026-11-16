@@ -28,10 +28,11 @@ test("big private file: create → chunks → pause → page reload → authorit
   const previous = globalThis.fetch;
   const first = await client();
   const file = new File([new Uint8Array(25 * 1024 * 1024 + 5)], "big.mp4", { type: "video/mp4", lastModified: 123 });
+  const taskUpload = { pending: true };
   let offset = 0; let interrupted = false; const calls = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url, init });
-    if (String(url).endsWith("/v1/library/uploads")) return json(session(0));
+    if (String(url).endsWith("/v1/library/uploads")) { assert.deepEqual(JSON.parse(init.body).taskUpload, taskUpload); assert.equal(JSON.parse(init.body).idempotencyKey, undefined); return json(session(0)); }
     if (String(url).startsWith("https://storage.test")) {
       assert.equal(init.credentials, "omit");
       assert.equal(init.headers.Authorization, undefined, "storage gets no account token");
@@ -50,7 +51,7 @@ test("big private file: create → chunks → pause → page reload → authorit
     return json(session(offset));
   };
   try {
-    await assert.rejects(first.uploadLibraryFile(file), /暂停/);
+    await assert.rejects(first.uploadLibraryFile(file, { taskUpload, idempotencyKey: "composer-intent" }), /暂停/);
     assert.equal(offset, 6 * 1024 * 1024);
     const reloaded = await client();
     const pending = await reloaded.pendingLibraryUploads();
@@ -63,7 +64,7 @@ test("big private file: create → chunks → pause → page reload → authorit
     assert.ok(calls.some((call) => call.url.endsWith("/session-1") && call.init.method === "GET"));
     assert.equal([...records.values()].filter((record) => record.editorId === "library-upload").length, 0);
     const beforeRetry = calls.length;
-    const cached = await reloaded.uploadLibraryFile(file);
+    const cached = await reloaded.uploadLibraryFile(file, { taskUpload, idempotencyKey: "composer-intent" });
     assert.equal(cached.artifact_id, "art-1");
     assert.equal(calls.length, beforeRetry, "a composer retry can reuse the completed resumed upload");
   } finally { globalThis.fetch = previous; }
@@ -114,4 +115,18 @@ test("an ambiguous network failure resumes from server bytes and refreshes an ex
     assert.equal(result.id, "done"); assert.equal(offset, 6); assert.equal(refreshed, 2);
     assert.deepEqual(ranges, [0, 0, 3], "bytes already in storage are not resent after the lost response");
   } finally { globalThis.fetch = old; }
+});
+
+test("ordinary Library uploads retain the pre-task recovery namespace", async () => {
+  records.clear(); store.clear();
+  const { deriveUploadIdentity } = await import(await compileModule("src/lib/upload/chunked.ts", {}));
+  const file = new File(["abc"], "existing.pdf", { type: "application/pdf", lastModified: 12 });
+  const identity = await deriveUploadIdentity(file, { filename: file.name, contentType: file.type, siteId: "::", registerAsset: true });
+  const previous = globalThis.fetch;
+  globalThis.fetch = async (url) => String(url).endsWith("/complete")
+    ? json({ file: { artifact_id: "ordinary", revision_id: "r1", url: "" } }) : json(session(file.size));
+  try {
+    const api = await client(); await api.uploadLibraryFile(file);
+    assert.ok([...records.keys()].some(key => key.endsWith(`:${identity.idempotencyKey}:complete`)));
+  } finally { globalThis.fetch = previous; }
 });

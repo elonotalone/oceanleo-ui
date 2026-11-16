@@ -110,18 +110,29 @@ export function agentAttachmentFromComposer(att: ComposerAttachment): AgentAttac
   };
 }
 
+const pendingUploadScopes = new WeakMap<File, string>();
+
 export async function uploadComposerFile(
   file: File,
   opts: {
     siteId: string;
+    taskUpload?: { taskId?: string; sessionId?: string; pending?: boolean };
     signal?: AbortSignal;
     onProgress?: (loaded: number, total: number) => void;
   },
 ): Promise<ComposerUploadResult> {
   const siteId = opts.siteId || "home";
+  const taskUpload = opts.taskUpload?.taskId ? opts.taskUpload : { pending: true as const };
+  let uploadScope = "";
+  if (!opts.taskUpload?.taskId) {
+    uploadScope = pendingUploadScopes.get(file) || crypto.randomUUID();
+    pendingUploadScopes.set(file, uploadScope);
+  }
   const keyStartedAt = uploadTimingNow();
   const idempotencyKey = await normalizeUploadIdempotencyKey([
-    "composer-upload-v1",
+    "composer-upload-v2",
+    JSON.stringify(taskUpload),
+    uploadScope,
     siteId,
     file.name,
     file.size,
@@ -132,6 +143,7 @@ export async function uploadComposerFile(
     siteId,
     title: file.name,
     privateUpload: true,
+    taskUpload,
     idempotencyKey,
     signal: opts.signal,
     onProgress: opts.onProgress,

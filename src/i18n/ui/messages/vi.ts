@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Tiếng Việt (vi)。人工翻译。
 const vi: Record<string, string> = {
+  "任务附件": "Tệp đính kèm tác vụ",
+  "尚未发送到任务": "Chưa gửi vào tác vụ",
+  "还没有任务附件": "Chưa có tệp đính kèm tác vụ",
+  "在任务中上传的文件会出现在这里。": "Các tệp tải lên trong tác vụ sẽ xuất hiện ở đây.",
+  "任务附件来源读取失败": "Không thể tải nguồn tệp đính kèm tác vụ",
+
   "AI 模型": "Mô hình AI",
   "+ 在「AI 模型」页管理模型": "+ Quản lý mô hình ở trang \"Mô hình AI\"",
   "前往 AI 模型页 →": "Đến trang Mô hình AI →",

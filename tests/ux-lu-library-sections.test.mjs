@@ -98,7 +98,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   `),
   "./collection-chrome": dataModule(`
     export const COLLECTION_ACTION_BTN_PRIMARY = "";
-    export function CollectionFilterRow(){ return null; }
+    export function CollectionFilterRow({children}){ return children; }
     export function CollectionFilterSelect(){ return null; }
   `),
   "../lib/database": dataModule(`
@@ -148,12 +148,12 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   "./WorkspaceLibrary": dataModule(`
     import { createElement as h } from "${reactUrl}";
     export function workspaceEntryFromLibraryItem(item, options = {}){
-      return { id: item.artifactId, title: item.title, kind: item.kind, category: options.category, libraryItem: item };
+      return { description: options.description, id: item.artifactId, title: item.title, kind: item.kind, category: options.category, libraryItem: item };
     }
     export function WorkspaceLibrary({entries = [], emptyTitle, onOpenItem, action}){
       return h("div", {"data-grid": "", "data-action-item":action?.action?.itemId || ""},
         entries.length === 0 ? h("div", {"data-empty-title": ""}, emptyTitle) : null,
-        ...entries.map((entry) => h("button", {key: entry.id, "data-library-item": entry.id, onClick:()=>onOpenItem?.(entry.libraryItem)}, entry.title)));
+        ...entries.map((entry) => h("button", {key: entry.id, "data-library-item": entry.id, onClick:()=>onOpenItem?.(entry.libraryItem)}, entry.title, entry.description)));
     }
   `),
   "./library-chat-files": dataModule(`
@@ -491,8 +491,8 @@ test("an upload answer without librarySource is never guessed: the complete shel
 const contractUrl = await compileModule("src/shell/artifact-contract.ts", {});
 const { librarySourceFromWire, LIBRARY_SOURCES, normalizeArtifactProjection } = await import(contractUrl);
 
-test("librarySource on the wire: the four values pass, anything else is null", () => {
-  assert.deepEqual([...LIBRARY_SOURCES], ["creation", "upload", "leobay", "leochat"]);
+test("librarySource on the wire: the five values pass, anything else is null", () => {
+  assert.deepEqual([...LIBRARY_SOURCES], ["creation", "upload", "leobay", "leochat", "task"]);
   for (const value of LIBRARY_SOURCES) assert.equal(librarySourceFromWire(value), value);
   for (const value of [undefined, null, "", "Upload", "bay", 3]) assert.equal(librarySourceFromWire(value), null);
 });
@@ -543,4 +543,41 @@ test("listMyArtifacts sends source= for a section and leaves the request unchang
   assert.deepEqual(Object.fromEntries(seen[0].searchParams), { limit: "10", source: "upload" });
   await listMyArtifacts({ limit: 10 });
   assert.deepEqual(Object.fromEntries(seen[1].searchParams), { limit: "10" });
+});
+
+test("task attachments stay out of the default shelf and have a dedicated searchable place", async () => {
+  const view = await mount({ pageTitle: "我的库" });
+  try {
+    globalThis.__lu.items.push(item("task-file", "task", { title: "task-file", meta: { taskUpload: { taskId: "task-123456789" } } }));
+    await view.render({ pageTitle: "我的库", refreshNonce: "task-files" });
+    assert.ok(!view.shown().includes("task-file"));
+    const button = view.container.querySelector('[data-library-section="task"]');
+    assert.ok(button, "dedicated task attachments entry exists");
+    await act(async () => button.click()); await settle();
+    assert.deepEqual(view.shown(), ["task-file"]);
+    assert.ok(globalThis.__lu.mineCalls.some(call => call.source === "task"));
+    assert.match(view.container.textContent, /task-123/);
+  } finally { await view.unmount(); }
+});
+
+test("task attachment pages hydrate task ids without changing the artifact projection", async () => {
+  const fixture = JSON.parse(readFileSync(new URL("./fixtures/oceanleo-artifact-library-pages.json", import.meta.url))).mineOwnerAPage;
+  fixture.items[0].librarySource = "task";
+  fixture.items[0].roles = ["user_upload", "task_attachment"];
+  const revision = fixture.items[0].revision_id;
+  const previous = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input)); seen.push(url);
+    return new Response(JSON.stringify(url.pathname.endsWith("/context")
+      ? { [revision]: { taskId: "task-12345678", sessionId: "session-1" } } : fixture), { status: 200 });
+  };
+  try {
+    const result = await listMyArtifacts({ source: "task", limit: 10 });
+    assert.equal(result.ok, true, result.error);
+    assert.equal(result.data.items[0].meta.taskUpload.taskId, "task-12345678");
+    assert.equal(result.data.items[0].artifact.librarySource, "task");
+    assert.equal(seen[1].searchParams.get("revisionIds"), revision);
+    assert.equal(seen[0].searchParams.get("source"), "task");
+  } finally { globalThis.fetch = previous; }
 });

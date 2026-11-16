@@ -1008,8 +1008,8 @@ export interface ArtifactProjection extends ArtifactIdentity {
   librarySource?: LibrarySource | null;
 }
 
-/** The four Library sections (我的创作 / 上传的 / 来自 LeoBay / 来自 LeoChat). */
-export const LIBRARY_SOURCES = ["creation", "upload", "leobay", "leochat"] as const;
+/** Library sources, including composer-only task attachments. */
+export const LIBRARY_SOURCES = ["creation", "upload", "leobay", "leochat", "task"] as const;
 export type LibrarySource = (typeof LIBRARY_SOURCES)[number];
 
 export function librarySourceFromWire(value: unknown): LibrarySource | null {

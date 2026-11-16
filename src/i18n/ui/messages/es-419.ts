@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Español (Latinoamérica). 人工翻译。
 const es419: Record<string, string> = {
+  "任务附件": "Archivos adjuntos de tareas",
+  "尚未发送到任务": "Aún no se envió a una tarea",
+  "还没有任务附件": "Aún no hay archivos adjuntos de tareas",
+  "在任务中上传的文件会出现在这里。": "Aquí aparecerán los archivos que subas en las tareas.",
+  "任务附件来源读取失败": "No se pudo cargar el origen de los archivos adjuntos",
+
   "AI 模型": "Modelos de IA",
   "+ 在「AI 模型」页管理模型": "+ Administra los modelos en la página «Modelos de IA»",
   "前往 AI 模型页 →": "Ir a la página de Modelos de IA →",
