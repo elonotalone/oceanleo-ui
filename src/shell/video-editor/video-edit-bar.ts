@@ -471,6 +471,7 @@ export function runVideoClipCommand(
   state: VideoEditBarTarget,
   located: ClipLocation,
   message: SelectionCommand,
+  replaceImage?: (clipId: string) => void,
 ): boolean {
   const { clip, track } = located;
   if (message.selectionId !== clip.id) return false;
@@ -565,6 +566,10 @@ export function runVideoClipCommand(
       });
       return true;
     case "replace":
+      if (replaceImage) {
+        replaceImage(clip.id);
+        return true;
+      }
       if (!state.replaceImage) return false;
       state.replaceImage(clip.id);
       return true;

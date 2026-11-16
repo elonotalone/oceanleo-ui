@@ -153,19 +153,31 @@ test("Mounted real selection adapter routes replace to its document and blocks r
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   const { createRoot } = await import("react-dom/client");
   const doc = fixture(); let active;
-  function Harness({ readOnly = false }) { active = adapter.useVideoTimelineSelectionAdapter({ state: { doc, selected: findClip(doc, "image") }, readOnly, canReplaceImage: true }); return React.createElement("div"); }
+  const calls = [];
+  const state = new Proxy({ doc, selected: findClip(doc, "image") }, {
+    ownKeys() { throw new Error("Timeline state must retain its original Proxy identity"); },
+    get(target, key) { return key === "deleteSelectedClip" ? () => calls.push("delete") : target[key]; },
+  });
+  function Harness({ readOnly = false }) { active = adapter.useVideoTimelineSelectionAdapter({ state, readOnly, canReplaceImage: true }); return React.createElement("div"); }
   const events = []; const listen = event => events.push(event.detail);
+  const toolbar = document.createElement("div"); toolbar.dataset.selectionId = "image";
+  const control = document.createElement("div"); control.dataset.selectionControlId = "replace";
+  const trigger = document.createElement("button"); control.append(trigger); toolbar.append(control); document.body.append(toolbar);
   window.addEventListener(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, listen);
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
   try {
     await act(async () => root.render(React.createElement(Harness)));
     assert.ok(active.context.controls.some(c => c.id === "replace"));
     active.dispatch({ selectionId: "image", requestId: "replace", controlId: "replace" });
-    assert.deepEqual(events, [{ doc, clipId: "image" }]);
+    assert.deepEqual(events, [{ doc, clipId: "image", anchor: trigger }], "The event carries the actual selection toolbar trigger");
+    active.dispatch({ selectionId: "image", requestId: "delete", controlId: "delete" });
+    assert.deepEqual(calls, ["delete"], "Proxy-backed editing methods remain accessible");
     await act(async () => root.render(React.createElement(Harness, { readOnly: true })));
     active.dispatch({ selectionId: "image", requestId: "blocked", controlId: "replace" });
     assert.equal(events.length, 1);
-  } finally { await act(async () => root.unmount()); host.remove(); window.removeEventListener(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, listen); }
+    active.dispatch({ selectionId: "image", requestId: "blocked-delete", controlId: "delete" });
+    assert.deepEqual(calls, ["delete"]);
+  } finally { await act(async () => root.unmount()); host.remove(); toolbar.remove(); window.removeEventListener(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, listen); }
 });
 
 test("Image adjustments use additive brightness on black, preserve alpha and cache source pixels", () => {
@@ -238,19 +250,31 @@ test("Real shared Library picker lists images from another project and commits s
   let limit; globalThis.__edB5c2Library = { refresh: async () => fullImage(), list: async options => { limit = options.limit; return { ok: true, data: { items: [libraryItem(), libraryItem("audio", "00000000-0000-0000-0000-000000000003")] } }; } };
   const state = { ...e.state, doc: e.doc, selected: findClip(e.doc, "image") };
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  const fallbackAnchorRef = { current: host };
+  const trigger = document.createElement("button"); document.body.append(trigger);
+  trigger.getBoundingClientRect = () => ({ left: 400, top: 100, right: 440, bottom: 130, width: 40, height: 30 });
+  const open = async () => act(async () => window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { doc: e.doc, clipId: "image", anchor: trigger } })));
   try {
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state })));
-    await act(async () => window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { doc: e.doc, clipId: "image" } })));
-    assert.ok(host.querySelector("[data-composer-library-picker]"));
-    await eventually(() => host.querySelector("[data-composer-library-item]"));
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, fallbackAnchorRef })));
+    await open();
+    const panel = document.querySelector("[data-anchored-popover]");
+    assert.equal(panel.style.left, "400px"); assert.equal(panel.style.top, "136px", "Chooser opens beside the actual button");
+    await act(async () => document.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+    assert.equal(document.querySelector("[role=dialog]"), null, "Escape closes the chooser");
+    await open();
+    await act(async () => document.body.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true })));
+    assert.equal(document.querySelector("[role=dialog]"), null, "Outside pointer closes the chooser");
+    await open();
+    assert.ok(document.querySelector("[data-composer-library-picker]"));
+    await eventually(() => document.querySelector("[data-composer-library-item]"));
     assert.equal(limit, 100);
-    const items = host.querySelectorAll("[data-composer-library-item]"); assert.equal(items.length, 1); assert.equal(items[0].textContent, "Other project image");
+    const items = document.querySelectorAll("[data-composer-library-item]"); assert.equal(items.length, 1); assert.equal(items[0].textContent, "Other project image");
     await act(async () => items[0].click());
-    assert.deepEqual(e.clip("image").library_source, source); assert.equal(host.querySelector("[role=dialog]"), null);
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state: { ...state, doc: e.doc, selected: findClip(e.doc, "image") } })));
+    assert.deepEqual(e.clip("image").library_source, source); assert.equal(document.querySelector("[role=dialog]"), null);
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state: { ...state, doc: e.doc, selected: findClip(e.doc, "image") }, fallbackAnchorRef })));
     await act(async () => window.dispatchEvent(new window.CustomEvent(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, { detail: { clipId: "image", source } })));
-    assert.equal(host.querySelector("[role=alert]").textContent, "这份素材没能插入，请重试", "A runtime media failure is visible outside the picker");
-  } finally { await act(async () => root.unmount()); host.remove(); }
+    assert.equal(document.querySelector("[role=alert]").textContent, "这份素材没能插入，请重试", "A runtime media failure is visible outside the picker");
+  } finally { await act(async () => root.unmount()); host.remove(); trigger.remove(); }
 });
 
 test("Picker ignores delayed choices after read-only or selection changes and displays loading failures", async () => {
@@ -258,22 +282,23 @@ test("Picker ignores delayed choices after read-only or selection changes and di
   globalThis.__edB5c2Library = { refresh: () => new Promise(resolve => { finish = resolve; }), list: async () => ({ ok: true, data: { items: [libraryItem()] } }) };
   const state = { ...e.state, doc: e.doc, selected: findClip(e.doc, "image") };
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const open = async () => { await act(async () => window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { doc: e.doc, clipId: "image" } }))); await eventually(() => host.querySelector("[data-composer-library-item]")); };
+  const fallbackAnchorRef = { current: host };
+  const open = async () => { await act(async () => window.dispatchEvent(new window.CustomEvent(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, { detail: { doc: e.doc, clipId: "image" } }))); await eventually(() => document.querySelector("[data-composer-library-item]")); };
   try {
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state })));
-    await open(); await act(async () => host.querySelector("[data-composer-library-item]").click());
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, readOnly: true })));
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, readOnly: false })));
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, fallbackAnchorRef })));
+    await open(); await act(async () => document.querySelector("[data-composer-library-item]").click());
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, readOnly: true, fallbackAnchorRef })));
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, readOnly: false, fallbackAnchorRef })));
     await act(async () => finish(fullImage()));
     assert.equal(e.clip("image").library_source, undefined, "A readonly transition permanently invalidates the pending mutation");
-    await open(); await act(async () => host.querySelector("[data-composer-library-item]").click());
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state: { ...state, selected: findClip(e.doc, "text") } })));
+    await open(); await act(async () => document.querySelector("[data-composer-library-item]").click());
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state: { ...state, selected: findClip(e.doc, "text") }, fallbackAnchorRef })));
     await act(async () => finish(fullImage()));
     assert.equal(e.clip("image").library_source, undefined, "Selection changes invalidate delayed mutation");
-    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state })));
+    await act(async () => root.render(React.createElement(stage.TimelineImageReplacementPicker, { state, fallbackAnchorRef })));
     globalThis.__edB5c2Library.refresh = async () => ({ ok: false, error: "unavailable" });
-    await open(); await act(async () => host.querySelector("[data-composer-library-item]").click());
-    assert.equal(host.querySelector("[role=alert]").textContent, "这份素材没能插入，请重试");
+    await open(); await act(async () => document.querySelector("[data-composer-library-item]").click());
+    assert.equal(document.querySelector("[role=alert]").textContent, "这份素材没能插入，请重试");
     assert.equal(e.clip("image").library_source, undefined);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

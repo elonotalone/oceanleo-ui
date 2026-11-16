@@ -14,6 +14,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type RefObject,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -24,6 +25,7 @@ import type { ComposerAttachment } from "../LeoComposer";
 import { videoMaterialKind } from "../workflow-carrier/video-project-material";
 import { VIDEO_TIMELINE_REPLACE_IMAGE_EVENT } from "./video-edit-bar";
 import { TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, type TimelineClip } from "./types";
+import { AnchoredPopover } from "../anchored-popover";
 import {
   clampTimelinePxPerSecond,
   timelineAnchorMs,
@@ -51,11 +53,12 @@ export async function timelineLibraryImageReplacement(file: ComposerAttachment):
 }
 
 /** Every timeline stage hosts its own replacement picker; late async results are ignored. */
-export function TimelineImageReplacementPicker({ state, readOnly = false }: { state: VideoTimelineState; readOnly?: boolean }) {
+export function TimelineImageReplacementPicker({ state, readOnly = false, fallbackAnchorRef }: { state: VideoTimelineState; readOnly?: boolean; fallbackAnchorRef?: RefObject<HTMLElement | null> }) {
   const tt = useUI();
   const latest = useRef({ state, readOnly });
   latest.current = { state, readOnly };
   const request = useRef(0);
+  const anchorRef = useRef<HTMLElement | null>(null);
   const [clipId, setClipId] = useState("");
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -66,6 +69,8 @@ export function TimelineImageReplacementPicker({ state, readOnly = false }: { st
       const current = latest.current;
       if (current.readOnly || detail?.doc !== current.state.doc) return;
       if (findClip(current.state.doc, detail.clipId)?.track.kind !== "image") return;
+      anchorRef.current = detail.anchor instanceof HTMLElement && detail.anchor.isConnected
+        ? detail.anchor : fallbackAnchorRef?.current ?? null;
       request.current += 1; setClipId(detail.clipId); setBusy(false); setFailed(false);
     };
     const failure = (event: Event) => {
@@ -80,7 +85,7 @@ export function TimelineImageReplacementPicker({ state, readOnly = false }: { st
       window.removeEventListener(VIDEO_TIMELINE_REPLACE_IMAGE_EVENT, open);
       window.removeEventListener(TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, failure);
     };
-  }, []);
+  }, [fallbackAnchorRef]);
   useEffect(() => {
     request.current += 1;
     setClipId(""); setBusy(false);
@@ -101,18 +106,17 @@ export function TimelineImageReplacementPicker({ state, readOnly = false }: { st
   };
   return <>
     {failed && !clipId && <p role="alert" className="px-3 py-2 text-[12px] text-[var(--awb-danger)]">{tt("这份素材没能插入，请重试")}</p>}
-    {clipId && !readOnly && <div role="dialog" aria-modal="true" aria-label={tt("替换")}
-      style={{ position: "absolute", inset: 0, zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", background: "rgba(0,0,0,.3)" }}
-      onKeyDown={event => { event.stopPropagation(); if (event.key === "Escape") close(); }}>
-      <div className="rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-3" style={{ width: 360, maxWidth: "100%" }}>
+    {clipId && !readOnly && <AnchoredPopover open anchorRef={anchorRef} onClose={close}
+      role="dialog" ariaLabel={tt("替换")} ariaModal={false} lockScroll={false}
+      className="rounded-lg border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-3"
+      style={{ width: 360, zIndex: 2_147_483_500 }}>
         {failed && <p role="alert" className="px-3 py-2 text-[12px] text-[var(--awb-danger)]">{tt("这份素材没能插入，请重试")}</p>}
         {busy ? <p className="text-[12px] text-[var(--awb-muted)]">{tt("加载中…")}</p> : null}
         <div style={{ pointerEvents: busy ? "none" : undefined, opacity: busy ? .6 : 1 }}>
           <ComposerLibraryPicker load={loadTimelineImageLibrary} onBack={close} onPick={file => { void pick(file); }} />
         </div>
         {busy && <button type="button" onClick={close} className="px-2 py-1 text-[12px]">{tt("取消")}</button>}
-      </div>
-    </div>}
+    </AnchoredPopover>}
   </>;
 }
 
@@ -221,7 +225,7 @@ export function VideoTimelineStage({
       onPointerDown={(event) => event.currentTarget.focus()}
       className="flex h-full min-h-0 flex-col outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#7c3aed)]/45"
     >
-      <TimelineImageReplacementPicker state={state} readOnly={readOnly} />
+      <TimelineImageReplacementPicker state={state} readOnly={readOnly} fallbackAnchorRef={stageRef} />
       {/* 预览窗 */}
       <div className="flex min-h-0 flex-[3] items-center justify-center bg-[var(--awb-stage-bg,#0c0a09)] p-3">
         {state.loadingSource ? (
