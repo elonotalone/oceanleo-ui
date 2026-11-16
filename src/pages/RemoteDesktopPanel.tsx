@@ -103,7 +103,7 @@ export function RemoteDesktopPanel(props: RemoteDesktopPanelProps) {
         {toolbar ? <div ref={toolbarPanel} data-remote-toolbar role="dialog" aria-label={tt("远程桌面控制")} style={{ position: "absolute", width: 264, boxSizing: "border-box", maxWidth: "calc(100vw - 64px)", maxHeight: "calc(100dvh - 32px)", overflow: "auto", padding: 12, borderRadius: 12, background: "#191c20f5", fontSize: 12, boxShadow: "0 4px 24px #0006", display: "flex", flexDirection: "column", gap: 10 }}>
           <strong style={{ overflowWrap: "anywhere" }}>{deviceName}</strong>
           {active && mediaReady ? <span>{tt("已连接")}{frame ? ` · ${frame.width}×${frame.height}` : ""}{!measuring ? ` · ${tt("画面延迟未知")}` : ""}</span> : null}
-          {mediaMode === "webrtc" && connectionPath?.local_type && connectionPath.remote_type ? <details data-remote-connection-details style={{ color: "var(--text)", overflowWrap: "anywhere" }}>
+          {mediaMode === "webrtc" && connectionPath?.local_type && connectionPath.remote_type ? <details data-remote-connection-details style={{ color: "inherit", overflowWrap: "anywhere" }}>
             <summary>{tt(connectionPath.local_type === "relay" || connectionPath.remote_type === "relay" ? "通过中继连接" : "设备直接连接")}</summary>
             <small>{connectionPath.local_type} → {connectionPath.remote_type} · {connectionPath.protocol} · {connectionPath.address_family}{connectionPath.relay_region ? ` · ${connectionPath.relay_region}` : ""}</small>
             {connectionPath.rtt_ms !== undefined ? <div>{tt("往返延迟：{ms} 毫秒", { ms: String(Math.round(connectionPath.rtt_ms)) })}</div> : null}
