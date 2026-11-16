@@ -15,7 +15,7 @@ class Socket {
   close(){this.readyState=3;this.onclose?.();}
 }
 const drain=async()=>{for(let i=0;i<8;i++)await Promise.resolve();};
-function setup(t){t.mock.timers.enable({apis:['setInterval']});t.mock.property(globalThis,'WebSocket',Socket);Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{href:'https://oceanbizs.com/devices'}}});t.after(()=>delete globalThis.window);Socket.all=[];}
+function setup(t){t.mock.timers.enable({apis:['setInterval','setTimeout']});t.mock.property(globalThis,'WebSocket',Socket);Object.defineProperty(globalThis,'window',{configurable:true,value:{location:{href:'https://oceanbizs.com/devices'}}});t.after(()=>delete globalThis.window);Socket.all=[];}
 test('preparing authenticates before click without creating or attaching any session',async t=>{
   setup(t);const release=api.prepareRemoteWebRtcSocket('warm-one');t.after(release);await drain();
   const ws=Socket.all[0];assert.match(ws.url,/viewer-stream$/);ws.open();ws.ready();
@@ -34,4 +34,21 @@ test('old gateway rejection removes warm connection for legacy fallback',async t
 });
 test('unmount during token read prevents a socket opening later',async t=>{
   setup(t);const release=api.prepareRemoteWebRtcSocket('warm-four');release();await drain();assert.equal(Socket.all.length,0);
+});
+
+test('create reuses warm socket and preserves early stream events until adoption',async t=>{
+  setup(t);const release=api.prepareRemoteWebRtcSocket('warm-create');t.after(release);await drain();const ws=Socket.all[0];ws.open();ws.ready();
+  const body={request_id:'stable-id',transports:['webrtc-v1'],owner_direct:true};
+  const promise=api.createPreparedRemoteWebRtcSession('warm-create',body);
+  await drain();assert.deepEqual(ws.sent.at(-1),{type:'create',body});
+  const session={session_id:'session-id',state:'connecting',transport:'webrtc-v1'};
+  ws.onmessage({data:JSON.stringify({type:'created',session})});assert.deepEqual(await promise,session);
+  ws.onmessage({data:JSON.stringify({type:'state',state:'connecting'})});
+  const adopted=api.takeCreatedRemoteWebRtcSocket('session-id','controller');assert.equal(adopted.socket,ws);assert.equal(adopted.messages.length,1);
+  assert.equal(api.takeCreatedRemoteWebRtcSocket('session-id','controller'),null);ws.close();
+});
+test('warm create timeout allows HTTP fallback with the same idempotency body',async t=>{
+  setup(t);const release=api.prepareRemoteWebRtcSocket('warm-timeout');t.after(release);await drain();const ws=Socket.all[0];ws.open();ws.ready();
+  const body={request_id:'same-request-id'};const promise=api.createPreparedRemoteWebRtcSession('warm-timeout',body);await drain();
+  t.mock.timers.tick(8000);assert.equal(await promise,null);assert.deepEqual(ws.sent.at(-1),{type:'create',body});assert.equal(ws.readyState,3);
 });

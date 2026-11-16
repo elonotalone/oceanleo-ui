@@ -1,4 +1,4 @@
-import { takePreparedRemoteWebRtcSocket } from "./remote-desktop-webrtc-preconnect";
+import { takePreparedRemoteWebRtcSocket, takeCreatedRemoteWebRtcSocket } from "./remote-desktop-webrtc-preconnect";
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders } from "./device-settings";
@@ -246,7 +246,8 @@ export async function openRemoteWebRtcStream(
     try { fresh = token ?? await accessToken(); } catch { reconnect(); return; }
     if (ended) return;
     if (!fresh) { finish("unauthorized"); return; }
-    const prepared = takePreparedRemoteWebRtcSocket(deviceId, controller);
+    const created = takeCreatedRemoteWebRtcSocket(sessionId, controller);
+    const prepared = created?.socket ?? takePreparedRemoteWebRtcSocket(deviceId, controller);
     let active: WebSocket;
     try { active = prepared ?? new WebSocket(url.toString()); } catch { reconnect(); return; }
     socket = active;
@@ -314,7 +315,8 @@ export async function openRemoteWebRtcStream(
       // The socket already authenticated before click. Refresh identity, bind the
       // ordinary session lease and pipeline SDP on that same open connection.
       authFrameSent = write({ type: "auth.refresh", token: fresh }, true)
-        && write({ type: "attach", session_id: sessionId }, true);
+        && (Boolean(created) || write({ type: "attach", session_id: sessionId }, true));
+      if (created) for (const data of created.messages) active.onmessage?.({ data } as MessageEvent);
       if (authFrameSent) flushSignals(); else reconnect();
     }
   };

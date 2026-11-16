@@ -9,6 +9,7 @@
  * `error` 一律是**码**不是句子（同 `devices.ts`）：句子在渲染处用 `tt` 取。
  */
 
+import { createPreparedRemoteWebRtcSession } from "./remote-desktop-webrtc-preconnect";
 import { accessToken } from "../lib/auth/client";
 import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders, registerController, type DeviceAvailability } from "./device-settings";
@@ -723,8 +724,10 @@ export const remoteDesktopClient: RemoteDesktopClient = {
       ...(options?.ownerDirect === true ? { owner_direct: true } : {}) });
     const started = Date.now();
     let result: RemoteDesktopApiResult<unknown>;
+    const prepared = await createPreparedRemoteWebRtcSession(deviceId, JSON.parse(body), options?.signal);
     for (let delay = 500; ; delay = Math.min(delay * 2, 4000)) {
-      result = await authed<unknown>(`${base(deviceId)}/sessions`, { method: "POST", body }, options?.signal);
+      result = prepared !== null ? { ok: true, data: prepared, status: 200 }
+        : await authed<unknown>(`${base(deviceId)}/sessions`, { method: "POST", body }, options?.signal);
       if (result.ok || !isNetworkFailure(result.error) || options?.signal?.aborted) break;
       if (Date.now() - started + delay >= CREATE_RETRY_WINDOW_MS) break;
       await new Promise<void>((resolve) => {
