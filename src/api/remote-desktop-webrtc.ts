@@ -34,6 +34,17 @@ const terminalByeReasons = new Set([
 ]);
 const swallow = (fn: () => void): void => { try { fn(); } catch { /* observers cannot stop media */ } };
 
+/** Explicit development-only TURN acceptance switch; never changes a public viewer. */
+function viewerIcePolicy(): RTCIceTransportPolicy {
+  try {
+    const { hostname, search } = window.location;
+    const development = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname) || hostname.endsWith(".dev.oceanleo.com");
+    const query = new URLSearchParams(search);
+    if (development && query.get("__rd_debug") === "1" && query.get("__rd_ice") === "relay") return "relay";
+  } catch { /* SSR and non-browser clients keep normal candidate selection. */ }
+  return "all";
+}
+
 /** The peer owns media/input only. Authentication, HTTP and stream reconnects belong to the caller. */
 export class WebRtcRemoteDesktopViewer {
   gen = 0;
@@ -111,7 +122,7 @@ export class WebRtcRemoteDesktopViewer {
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
       let pc: RTCPeerConnection;
-      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: "all", bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
+      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: viewerIcePolicy(), bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
       catch { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
