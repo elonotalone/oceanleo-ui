@@ -116,7 +116,7 @@ export class WebRtcRemoteDesktopViewer {
   private restartBackoff = 1000;
   private peerRetryDue: number | undefined;
   private answerDue: number | undefined;
-  private coldOffer: { pc: RTCPeerConnection; signal: WebRtcSignal; started: number; attempt: number } | undefined;
+  private coldOffer: { pc: RTCPeerConnection; gen: number; started: number; answeredAt?: number } | undefined;
   private lastPing = -Infinity;
   private lastStats = -Infinity;
   private lastReport: number;
@@ -316,8 +316,8 @@ export class WebRtcRemoteDesktopViewer {
   private armColdOffer(data: WebRtcSignal): void {
     const pc = this.pc;
     if (data.k !== "offer" || !pc || this.hasFrame || pc.remoteDescription || pc.connectionState === "connected") return;
-    if (this.coldOffer?.pc === pc && JSON.stringify(this.coldOffer.signal) === JSON.stringify(data)) return;
-    this.coldOffer = { pc, signal: { ...data }, started: this.now(), attempt: 0 };
+    if (this.coldOffer?.pc === pc && this.coldOffer.gen === data.gen) return;
+    this.coldOffer = { pc, gen: data.gen, started: this.now() };
   }
   private offerAccepted(data: WebRtcSignal): void {
     this.telemetry.step("offer_sent_ms");
@@ -362,7 +362,7 @@ export class WebRtcRemoteDesktopViewer {
         await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
         if (this.pc !== pc || this.ended) return;
         this.answerDue = undefined;
-        this.coldOffer = undefined;
+        if (this.coldOffer?.pc === pc && this.coldOffer.gen === data.gen) this.coldOffer.answeredAt ??= this.now();
         if (this.pathSwitch) this.pathSwitch.answered = true;
         this.telemetry.step("answer_received_ms");
         for (const candidate of this.candidates.splice(0)) { if (this.pc === pc && !this.ended) await pc.addIceCandidate(candidate); }
@@ -527,14 +527,12 @@ export class WebRtcRemoteDesktopViewer {
     this.flushSignals(); this.input.tick(); this.telemetry.tick();
     const cold = this.coldOffer;
     if (cold && !this.creating && !this.negotiatingPeer) {
-      if (this.pc !== cold.pc || cold.signal.gen !== this.gen || this.hasFrame || cold.pc.remoteDescription || cold.pc.connectionState === "connected") this.coldOffer = undefined;
-      else if (now - cold.started >= 2500) {
-        // A host which retained this gen but lost its peer refuses same-gen offers.
-        // Recover on the same authorized session; input sequences are not replayed.
+      if (this.pc !== cold.pc || cold.gen !== this.gen || this.hasFrame || cold.pc.connectionState === "connected") this.coldOffer = undefined;
+      else if (now >= (cold.answeredAt === undefined ? cold.started + 2500 : cold.answeredAt + 5000)) {
+        // Same-gen duplicate SDP re-enters native answer negotiation, so never replay it.
+        // Bound both missing answers and answers stuck checking on the same authorized
+        // session; input sequences are not replayed and the session lease still bounds retries.
         this.coldOffer = undefined; this.peerRetryDue = now;
-      } else if (cold.attempt < 3 && now - cold.started >= [300, 600, 1200][cold.attempt]) {
-        cold.attempt++;
-        try { this.options.sendSignal({ ...cold.signal }); } catch { /* bounded next retry */ }
       }
     }
     for (const [label, retry] of this.recovery) if (now >= retry.due) {
