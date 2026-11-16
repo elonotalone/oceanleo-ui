@@ -17,7 +17,8 @@
 // borrowed from agent-dialog components or server-page/tone.
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import type { AgentMessage } from "../lib/agent";
+import type { AgentAttachment, AgentMessage } from "../lib/agent";
+import { useAttachmentDisplayUrl } from "../lib/attachment-url";
 import {
   buildProcessEntries,
   normalizeProcessText,
@@ -35,9 +36,32 @@ import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useStepsFoldBlock } from "./steps-fold-preference";
 import { TranscriptApp, transcriptAppCall } from "./mcp-apps/TranscriptApp";
 
-type ToolEntry = Extract<ProcessEntry, { type: "tool" }>;
+type ToolEntry = Omit<Extract<ProcessEntry, { type: "tool" }>, "children"> & {
+  images?: AgentAttachment[];
+  children?: ToolEntry[];
+};
 type ThoughtEntry = Extract<ProcessEntry, { type: "thought" }>;
 type PlanEntry = Extract<ProcessEntry, { type: "plan" }>;
+
+/** The shared text/diff parser leaves binary attachments to this renderer.
+ * Each step message produces one tool entry; child cards keep that same order. */
+function progressEntries(messages: AgentMessage[]): ProcessEntry[] {
+  const cards = messages.filter((message) => message.kind === "step").map((message) => message.meta?.tool_card);
+  const withImages = (entry: ToolEntry, value: unknown): ToolEntry => {
+    if (!value || typeof value !== "object") return entry;
+    const card = value as Record<string, unknown>;
+    const images = (Array.isArray(card.content) ? card.content : []).flatMap((part): AgentAttachment[] =>
+      part?.type === "image" && part.attachment && typeof part.attachment === "object" ? [part.attachment] : []);
+    const children = Array.isArray(card.children) ? card.children : [];
+    return { ...entry, images, children: entry.children?.map((child, index) => withImages(child, children[index])) };
+  };
+  let step = 0;
+  return buildProcessEntries(messages).map((entry) => entry.type === "tool" ? withImages(entry, cards[step++]) : entry);
+}
+
+function toolImageCount(entry: ToolEntry): number {
+  return (entry.images?.length || 0) + (entry.children || []).reduce((count, child) => count + toolImageCount(child), 0);
+}
 
 const WRAP = "min-w-0 break-words [overflow-wrap:anywhere]";
 const ROW =
@@ -111,6 +135,7 @@ function summaryParts(tt: UITranslate, summary: ProcessSummary): ReactNode[] {
 }
 
 type AgentProgressProps = {
+  onOpenAttachment?: (attachment: AgentAttachment) => void | Promise<boolean>;
   onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   messages: AgentMessage[];
   running: boolean;
@@ -139,23 +164,15 @@ export const AgentProgress = memo(function AgentProgress(props: AgentProgressPro
 });
 
 const ProcessTimeline = memo(function ProcessTimeline({
+  onOpenAttachment,
   onBlockRender,
   messages,
   running,
   highlightQuery,
-}: {
-  /** Optional render diagnostic; omitted by production callers. */
-  onBlockRender?: (kind: "bubble" | "process", id: number) => void;
-  messages: AgentMessage[];
-  running: boolean;
-  /** Kept for callers; the timeline is neutral now (the step mark replaced the accent dot). */
-  accent?: string;
-  /** The task page's search words: step titles wrap hits in `<mark data-leo-search-hit>`. */
-  highlightQuery?: string;
-}) {
+}: AgentProgressProps) {
   onBlockRender?.("process", messages[0]?.id ?? 0);
   const tt = useUI();
-  const entries = useMemo(() => buildProcessEntries(messages), [messages]);
+  const entries = useMemo(() => progressEntries(messages), [messages]);
   const summary = useMemo(() => summarizeProcess(messages, entries), [messages, entries]);
   const engineLabel = typeof messages[0]?.meta?.engine_label === "string" ? messages[0].meta.engine_label : "";
   // A folded block is not on the page: while a step title matches the search, the block stays open so the hit shows.
@@ -165,10 +182,11 @@ const ProcessTimeline = memo(function ProcessTimeline({
   );
   if (!entries.length) return null;
   return <ProgressFold entries={entries} summary={summary} running={running} highlightQuery={highlightQuery}
-    engineLabel={engineLabel} tt={tt} searchHit={searchHit} />;
+    engineLabel={engineLabel} tt={tt} searchHit={searchHit} onOpenAttachment={onOpenAttachment} />;
 });
 
 type ProgressFoldProps = {
+  onOpenAttachment?: AgentProgressProps["onOpenAttachment"];
   entries: ProcessEntry[];
   summary: ProcessSummary;
   running: boolean;
@@ -186,11 +204,20 @@ function ProgressFold(props: ProgressFoldProps) {
   useLayoutEffect(() => { actions.current = { toggle, close }; }, [toggle, close]);
   const onToggle = useCallback(() => actions.current.toggle(), []);
   const onClose = useCallback(() => actions.current.close(), []);
+  const images = props.entries.reduce((count, entry) => count + (entry.type === "tool" ? toolImageCount(entry) : 0), 0);
+  const previousImages = useRef(images);
+  useEffect(() => {
+    const added = images > previousImages.current;
+    previousImages.current = images;
+    // A click-to-load result must become visible even in a folded history block.
+    // Only newly restored images open it; a later manual collapse stays closed.
+    if (added && !open) onToggle();
+  }, [images, open, onToggle]);
   return <ProgressContent {...props} elementRef={elementRef} open={open || props.searchHit} toggle={onToggle} close={onClose} />;
 }
 
 const ProgressContent = memo(function ProgressContent({
-  entries, summary, running, highlightQuery, engineLabel, tt, elementRef, open, toggle, close,
+  entries, summary, running, highlightQuery, engineLabel, tt, elementRef, open, toggle, close, onOpenAttachment,
 }: ProgressFoldProps & {
   elementRef: RefObject<HTMLDivElement | null>;
   open: boolean;
@@ -244,7 +271,7 @@ const ProgressContent = memo(function ProgressContent({
               const live = running && (index === last || (entry.type === "thought" && entry.streaming));
               if (entry.type === "thought") return <ThoughtView key={entry.key} entry={entry} live={live} />;
               if (entry.type === "tool") {
-                return <ToolView key={entry.key} entry={entry} running={running} highlightQuery={highlightQuery} />;
+                return <ToolView key={entry.key} entry={entry} running={running} highlightQuery={highlightQuery} onOpenAttachment={onOpenAttachment} />;
               }
               return (
                 <PlanView
@@ -336,17 +363,48 @@ function prettyPreview(value: string): string {
   }
 }
 
+function ToolImage({ attachment, onOpenAttachment }: {
+  attachment: AgentAttachment;
+  onOpenAttachment?: AgentProgressProps["onOpenAttachment"];
+}) {
+  const tt = useUI();
+  const displayUrl = useAttachmentDisplayUrl(attachment, "thumbnail");
+  const [error, setError] = useState("");
+  useEffect(() => setError(""), [displayUrl]);
+  const open = async () => {
+    if (!onOpenAttachment) return;
+    setError("");
+    try {
+      if (await onOpenAttachment(attachment) === false) setError(tt("图片已不可用"));
+    } catch (caught) {
+      setError(tt("图片加载失败：{reason}", { reason: caught instanceof Error ? caught.message : String(caught) }));
+    }
+  };
+  return <div data-agent-process-image="">
+    {displayUrl && !error ? <button type="button" onClick={() => void open()} disabled={!onOpenAttachment}
+      aria-label={tt("打开图片")} className="block h-16 w-16 overflow-hidden rounded-lg border border-stone-200 hover:border-stone-400 disabled:cursor-default">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={displayUrl} alt={attachment.name || tt("图片")} className="h-full w-full object-cover"
+        onError={() => setError(tt("图片加载失败：{reason}", { reason: tt("图片数据无法解码") }))} />
+    </button> : <p role={error ? "alert" : undefined} className="text-[12px] text-stone-500">{error || tt("图片已不可用")}</p>}
+  </div>;
+}
+
 function ToolView({
   entry,
   running,
   highlightQuery,
+  onOpenAttachment,
 }: {
   entry: ToolEntry;
   running: boolean;
   highlightQuery?: string;
+  onOpenAttachment?: AgentProgressProps["onOpenAttachment"];
 }) {
   const tt = useUI();
-  const [open, setOpen] = useState(false);
+  const images = toolImageCount(entry);
+  const [open, setOpen] = useState(images > 0);
+  useEffect(() => { if (images > 0) setOpen(true); }, [images]);
   const status = statusText(tt, entry.status, running);
   const title = entry.title || tt("执行步骤");
   // A Task/Agent step: its background sub-agent's steps live inside it.
@@ -409,6 +467,9 @@ function ToolView({
         >
           <p className={`whitespace-pre-wrap text-stone-600 ${WRAP}`}>{title}</p>
           <ToolRawFolds tool={entry} />
+          {Boolean(entry.images?.length) && <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
+            {entry.images?.map((attachment, index) => <ToolImage key={index} attachment={attachment} onOpenAttachment={onOpenAttachment} />)}
+          </div>}
           {entry.content.map((part, index) => {
             if (part.type === "diff") {
               return (
@@ -481,7 +542,7 @@ function ToolView({
               onClick={(event) => event.stopPropagation()}
             >
               {children.map((child) => (
-                <ToolView key={child.key} entry={child} running={running} />
+                <ToolView key={child.key} entry={child} running={running} onOpenAttachment={onOpenAttachment} />
               ))}
             </div>
           )}

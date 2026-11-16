@@ -2,6 +2,9 @@ import type { Locale } from '../../config';
 
 export const UT_COPY_A: Record<Locale, Record<string, string>> = {
   "zh": {
+    "图片已不可用": "图片已不可用",
+    "图片加载失败：{reason}": "图片加载失败：{reason}",
+    "图片数据无法解码": "图片数据无法解码",
     "图片（点击加载）": "图片（点击加载）",
     "附件（点击加载）": "附件（点击加载）",
     "内容较长，已省略 {size} KB · 展开": "内容较长，已省略 {size} KB · 展开",
@@ -58,6 +61,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "加入项目"
   },
   "zh-TW": {
+    "图片已不可用": "圖片已無法使用",
+    "图片加载失败：{reason}": "圖片載入失敗：{reason}",
+    "图片数据无法解码": "無法解碼圖片資料",
     "图片（点击加载）": "圖片（點擊載入）",
     "附件（点击加载）": "附件（點擊載入）",
     "内容较长，已省略 {size} KB · 展开": "內容較長，已省略 {size} KB · 展開",
@@ -114,6 +120,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "加入專案"
   },
   "en": {
+    "图片已不可用": "Image is no longer available",
+    "图片加载失败：{reason}": "Image failed to load: {reason}",
+    "图片数据无法解码": "Image data could not be decoded",
     "图片（点击加载）": "Image (click to load)",
     "附件（点击加载）": "Attachment (click to load)",
     "内容较长，已省略 {size} KB · 展开": "Long content: {size} KB omitted · Expand",
@@ -170,6 +179,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Join project"
   },
   "ja": {
+    "图片已不可用": "画像は利用できなくなりました",
+    "图片加载失败：{reason}": "画像を読み込めませんでした：{reason}",
+    "图片数据无法解码": "画像データをデコードできません",
     "图片（点击加载）": "画像（クリックして読み込む）",
     "附件（点击加载）": "添付ファイル（クリックして読み込む）",
     "内容较长，已省略 {size} KB · 展开": "内容が長いため {size} KB を省略 · 展開",
@@ -226,6 +238,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "プロジェクトに参加"
   },
   "ko": {
+    "图片已不可用": "이미지를 더 이상 사용할 수 없습니다",
+    "图片加载失败：{reason}": "이미지를 불러오지 못했습니다: {reason}",
+    "图片数据无法解码": "이미지 데이터를 디코딩할 수 없습니다",
     "图片（点击加载）": "이미지(클릭하여 불러오기)",
     "附件（点击加载）": "첨부 파일(클릭하여 불러오기)",
     "内容较长，已省略 {size} KB · 展开": "내용이 길어 {size} KB를 생략했습니다 · 펼치기",
@@ -282,6 +297,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "프로젝트 참여"
   },
   "fr": {
+    "图片已不可用": "Image indisponible",
+    "图片加载失败：{reason}": "Échec du chargement de l’image : {reason}",
+    "图片数据无法解码": "Impossible de décoder les données de l’image",
     "图片（点击加载）": "Image (cliquer pour charger)",
     "附件（点击加载）": "Pièce jointe (cliquer pour charger)",
     "内容较长，已省略 {size} KB · 展开": "Contenu long : {size} Ko masqués · Développer",
@@ -338,6 +356,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Rejoindre le projet"
   },
   "de": {
+    "图片已不可用": "Bild ist nicht mehr verfügbar",
+    "图片加载失败：{reason}": "Bild konnte nicht geladen werden: {reason}",
+    "图片数据无法解码": "Bilddaten konnten nicht dekodiert werden",
     "图片（点击加载）": "Bild (zum Laden klicken)",
     "附件（点击加载）": "Anhang (zum Laden klicken)",
     "内容较长，已省略 {size} KB · 展开": "Langer Inhalt: {size} KB ausgelassen · Aufklappen",
@@ -394,6 +415,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Projekt beitreten"
   },
   "it": {
+    "图片已不可用": "Immagine non più disponibile",
+    "图片加载失败：{reason}": "Caricamento immagine non riuscito: {reason}",
+    "图片数据无法解码": "Impossibile decodificare i dati dell’immagine",
     "图片（点击加载）": "Immagine (clicca per caricare)",
     "附件（点击加载）": "Allegato (clicca per caricare)",
     "内容较长，已省略 {size} KB · 展开": "Contenuto lungo: {size} KB omessi · Espandi",
@@ -450,6 +474,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Unisciti al progetto"
   },
   "es": {
+    "图片已不可用": "La imagen ya no está disponible",
+    "图片加载失败：{reason}": "No se pudo cargar la imagen: {reason}",
+    "图片数据无法解码": "No se pudieron decodificar los datos de la imagen",
     "图片（点击加载）": "Imagen (haz clic para cargar)",
     "附件（点击加载）": "Archivo adjunto (haz clic para cargar)",
     "内容较长，已省略 {size} KB · 展开": "Contenido largo: se han omitido {size} KB · Expandir",
@@ -506,6 +533,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Unirse al proyecto"
   },
   "es-419": {
+    "图片已不可用": "La imagen ya no está disponible",
+    "图片加载失败：{reason}": "No se pudo cargar la imagen: {reason}",
+    "图片数据无法解码": "No se pudieron decodificar los datos de la imagen",
     "图片（点击加载）": "Imagen (haz clic para cargar)",
     "附件（点击加载）": "Archivo adjunto (haz clic para cargar)",
     "内容较长，已省略 {size} KB · 展开": "Contenido largo: se omitieron {size} KB · Expandir",
@@ -562,6 +592,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Unirse al proyecto"
   },
   "pt-BR": {
+    "图片已不可用": "A imagem não está mais disponível",
+    "图片加载失败：{reason}": "Não foi possível carregar a imagem: {reason}",
+    "图片数据无法解码": "Não foi possível decodificar os dados da imagem",
     "图片（点击加载）": "Imagem (clique para carregar)",
     "附件（点击加载）": "Anexo (clique para carregar)",
     "内容较长，已省略 {size} KB · 展开": "Conteúdo longo: {size} KB omitidos · Expandir",
@@ -618,6 +651,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Entrar no projeto"
   },
   "pt-PT": {
+    "图片已不可用": "A imagem já não está disponível",
+    "图片加载失败：{reason}": "Não foi possível carregar a imagem: {reason}",
+    "图片数据无法解码": "Não foi possível descodificar os dados da imagem",
     "图片（点击加载）": "Imagem (clique para carregar)",
     "附件（点击加载）": "Anexo (clique para carregar)",
     "内容较长，已省略 {size} KB · 展开": "Conteúdo longo: {size} KB omitidos · Expandir",
@@ -674,6 +710,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Aderir ao projeto"
   },
   "vi": {
+    "图片已不可用": "Hình ảnh không còn khả dụng",
+    "图片加载失败：{reason}": "Không thể tải hình ảnh: {reason}",
+    "图片数据无法解码": "Không thể giải mã dữ liệu hình ảnh",
     "图片（点击加载）": "Hình ảnh (nhấp để tải)",
     "附件（点击加载）": "Tệp đính kèm (nhấp để tải)",
     "内容较长，已省略 {size} KB · 展开": "Nội dung dài, đã lược bỏ {size} KB · Mở rộng",
@@ -730,6 +769,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Tham gia dự án"
   },
   "tr": {
+    "图片已不可用": "Görsel artık kullanılamıyor",
+    "图片加载失败：{reason}": "Görsel yüklenemedi: {reason}",
+    "图片数据无法解码": "Görsel verileri çözülemedi",
     "图片（点击加载）": "Görsel (yüklemek için tıklayın)",
     "附件（点击加载）": "Ek (yüklemek için tıklayın)",
     "内容较长，已省略 {size} KB · 展开": "İçerik uzun, {size} KB atlandı · Genişlet",
@@ -786,6 +828,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "Projeye katıl"
   },
   "ar": {
+    "图片已不可用": "لم تعد الصورة متاحة",
+    "图片加载失败：{reason}": "تعذر تحميل الصورة: {reason}",
+    "图片数据无法解码": "تعذر فك ترميز بيانات الصورة",
     "图片（点击加载）": "صورة (انقر للتحميل)",
     "附件（点击加载）": "مرفق (انقر للتحميل)",
     "内容较长，已省略 {size} KB · 展开": "المحتوى طويل، تم إخفاء {size} KB · توسيع",
@@ -842,6 +887,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "الانضمام إلى المشروع"
   },
   "th": {
+    "图片已不可用": "รูปภาพนี้ไม่พร้อมใช้งานแล้ว",
+    "图片加载失败：{reason}": "โหลดรูปภาพไม่สำเร็จ: {reason}",
+    "图片数据无法解码": "ไม่สามารถถอดรหัสข้อมูลรูปภาพได้",
     "图片（点击加载）": "รูปภาพ (คลิกเพื่อโหลด)",
     "附件（点击加载）": "ไฟล์แนบ (คลิกเพื่อโหลด)",
     "内容较长，已省略 {size} KB · 展开": "เนื้อหายาว จึงซ่อน {size} KB · ขยาย",
@@ -898,6 +946,9 @@ export const UT_COPY_A: Record<Locale, Record<string, string>> = {
     "加入项目": "เข้าร่วมโครงการ"
   },
   "hi": {
+    "图片已不可用": "छवि अब उपलब्ध नहीं है",
+    "图片加载失败：{reason}": "छवि लोड नहीं हो सकी: {reason}",
+    "图片数据无法解码": "छवि डेटा डिकोड नहीं किया जा सका",
     "图片（点击加载）": "चित्र (लोड करने के लिए क्लिक करें)",
     "附件（点击加载）": "अटैचमेंट (लोड करने के लिए क्लिक करें)",
     "内容较长，已省略 {size} KB · 展开": "सामग्री लंबी है, {size} KB छोड़ा गया · विस्तार करें",

@@ -56,6 +56,7 @@ function toolCard(tool: AcpToolCall, children: AcpToolCall[]): Json {
     if (part.type === "diff") return [{ type: "diff", path: part.path, old_text: part.oldText ?? "", new_text: part.newText }];
     if (part.type === "content" && isRecord(part.content)) {
       const block = part.content as ContentBlock;
+      if (block.type === "image") return attachments([block]).map((attachment) => ({ type: "image", attachment }));
       if (block.type === "text") return [{ type: "text", text: block.text }];
       if (block.type === "resource" && typeof block.resource?.text === "string") return [{ type: "text", text: block.resource.text }];
       if (block.type === "resource_link") return [{ type: "text", text: block.uri }];

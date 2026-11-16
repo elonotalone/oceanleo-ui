@@ -6,6 +6,18 @@ export interface ImageSourceSession {
   rootAssetId?: string;
 }
 
+/** The constructor's page background is editor chrome, never proof of a loaded picture. */
+export function imageSnapshotHasArtwork(snapshot: { json: Record<string, unknown> }): boolean {
+  const objects = snapshot.json.objects;
+  return Array.isArray(objects) && objects.some((object: unknown) => {
+    if (!object || typeof object !== "object") return false;
+    const value = object as Record<string, unknown>;
+    return value.oceanleoRole !== "docbg" && value.oceanleoRole !== "crop";
+  });
+}
+
+export const IMAGE_EMPTY_SOURCE_ERROR = "图片工程只有空白画布，已停止载入和保存。请重新载入原图。";
+
 function trimmed(value: unknown): string {
   return String(value || "").trim();
 }
