@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
-import { Modal } from "../../ui";
+import { AnchoredPopover } from "../anchored-popover";
 import { RolePicker } from "./RolePicker";
 import type { AccessMember, AccessOwner, AccessRole } from "./access-types";
 
@@ -36,6 +36,7 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
   membersRef.current = members;
   const mutationSourceRef = useRef(members);
   const inputRef = useRef<HTMLInputElement>(null);
+  const removalAnchorRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const errorId = useId();
   const disabled = busy || saving;
@@ -68,6 +69,7 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
     setItems(items.map((member) => member.id === id ? { ...member, role } : member));
     try { await onChangeRole(id, role); } catch { setItems(previous); setError(tt(copy.saveFailed)); } finally { end(); }
   };
+  const closeRemoval = () => { setRemoving(null); removalAnchorRef.current?.focus(); };
   const remove = async () => {
     if (!removing || !begin()) return;
     const member = removing;
@@ -98,22 +100,22 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
           <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{name}</span>{member.name && member.email && <span className="block truncate text-xs text-[var(--muted)]">{member.email}</span>}
             {member.status === "invited" && <span className="block text-xs text-[var(--muted)]">{tt(copy.invited)}</span>}</span>
           {canManage ? <><RolePicker value={member.role === "collaborate" ? "collaborate" : "view"} memberName={name} disabled={disabled} onChange={(role) => void changeRole(member.id, role)} />
-            <button type="button" disabled={disabled} aria-label={tt(copy.removeMember, { name })} onClick={() => setRemoving(member)}
+            <button type="button" disabled={disabled} aria-label={tt(copy.removeMember, { name })} onClick={(event) => { removalAnchorRef.current = event.currentTarget; setRemoving(member); }}
               className="grid size-9 shrink-0 place-items-center rounded-lg text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fg)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></svg>
             </button></> : <span className="shrink-0 text-xs text-[var(--muted)]">{tt(member.role === "collaborate" ? copy.collaborate : copy.view)}</span>}
         </li>;
       })}
     </ul>
-    {removing && canManage && <Modal labelledBy={titleId} onClose={() => setRemoving(null)} className="max-w-sm !border-[var(--border)] !bg-[var(--card)] !text-[var(--fg)]">
-      <div className="p-5" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); setRemoving(null); } }}>
+    {removing && canManage && <AnchoredPopover open anchorRef={removalAnchorRef} role="dialog" ariaModal ariaLabelledBy={titleId} onClose={closeRemoval} align="end" style={{ width: 384 }} className="z-[1200] rounded-2xl border border-[var(--border)] bg-[var(--card)] text-[var(--fg)] shadow-xl">
+      <div className="p-5">
         <h2 id={titleId} className="text-base font-semibold">{tt(copy.confirmRemoval)}</h2>
         <p className="mt-2 text-sm leading-relaxed text-[var(--muted)]">{tt(copy.removalDescription, { name: removing.name || removing.email || tt(copy.sender) })}</p>
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={() => setRemoving(null)} className="min-h-10 rounded-lg border border-[var(--border)] px-4 text-sm focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{tt(copy.cancel)}</button>
+          <button type="button" onClick={closeRemoval} className="min-h-10 rounded-lg border border-[var(--border)] px-4 text-sm focus-visible:outline-2 focus-visible:outline-[var(--accent)]">{tt(copy.cancel)}</button>
           <button type="button" disabled={disabled} onClick={() => void remove()} className="min-h-10 rounded-lg bg-[var(--fg)] px-4 text-sm text-[var(--card)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:opacity-50">{tt(copy.remove)}</button>
         </div>
       </div>
-    </Modal>}
+    </AnchoredPopover>}
   </section>;
 }
