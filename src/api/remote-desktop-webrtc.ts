@@ -1,4 +1,5 @@
 import type { RemoteDesktopAction } from "./remote-desktop";
+import { isWebRtcInputFault } from "./remote-desktop-webrtc-errors";
 import { WebRtcInputScheduler, WEBRTC_MESSAGE_BYTES, type InputLabel } from "./remote-desktop-webrtc-input";
 import { WebRtcTelemetry, type WebRtcPath, type WebRtcQualityReport, type WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
 export type { WebRtcPath, WebRtcQualityReport, WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
@@ -202,8 +203,7 @@ export class WebRtcRemoteDesktopViewer {
     if (data.k === "bye") {
       if (data.gen !== undefined && data.gen !== this.gen) return;
       const reason = typeof data.reason === "string" && data.reason ? data.reason : "host_left";
-      const authorityLost = /consent|revok|disabled|signed_out|signout|billing|lease/.test(reason);
-      if (!authorityLost && /^(?:input_|host_input_|media_data_channel_|data_channel_)/.test(reason)) this.channelFault("rd-input", reason);
+      if (isWebRtcInputFault(reason)) this.channelFault("rd-input", reason);
       else this.close(reason);
       return;
     }

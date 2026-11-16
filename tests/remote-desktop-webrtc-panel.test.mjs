@@ -117,7 +117,7 @@ test("WebRTC input recovery keeps decoded pixels, geometry, the peer attachment,
 test("every WebRTC input fault origin is barred from disconnect and DELETE", async () => {
   const view = await mount(); await view.frame();
   const video = view.video();
-  for (const code of ["media_data_channel_unavailable", "media_data_channel_write_unknown", "input_ack_unknown", "input_executor_failed", "input_receipt_rejected", "input_release_failed", "input_backlog_timeout", "input_failed"]) {
+  for (const code of ["media_data_channel_unavailable", "media_data_channel_write_unknown", "input_ack_unknown", "input_executor_failed", "host_input_executor_failed", "webrtc_data_channel_lost", "data_channel_lost", "control_send_failed", "input_receipt_rejected", "input_release_failed", "input_backlog_timeout", "input_failed"]) {
     for (const deliver of [() => view.handlers().error(code), () => view.handlers().media(descriptor, { state: "failed", error: code }), () => view.handlers().state("closed", code)]) {
       await act(async () => deliver());
       assert.equal(view.video(), video, code);

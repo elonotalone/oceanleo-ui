@@ -4,6 +4,7 @@ import { controllerHeaders } from "./device-settings";
 import { parseRemoteInputDiagnostics } from "./remote-desktop-diagnostics";
 import { qualityCode, qualityEnvironment, type RemoteDesktopQualityReport, type RemoteDesktopQualityWindow } from "./remote-desktop-quality";
 import { WebRtcRemoteDesktopViewer, type RemoteWebRtcDescriptor, type WebRtcQualityReport } from "./remote-desktop-webrtc";
+import { isWebRtcInputFault as inputFault } from "./remote-desktop-webrtc-errors";
 import type {
   RemoteDesktopAccess, RemoteDesktopActivity, RemoteDesktopApiResult, RemoteDesktopBilling,
   RemoteDesktopClient, RemoteDesktopRequestOptions, RemoteDesktopSessionState, RemoteDesktopStream,
@@ -20,7 +21,6 @@ interface Parsers {
 const record = (v: unknown): v is Record<string, unknown> => Boolean(v) && typeof v === "object" && !Array.isArray(v);
 const monotonic = () => typeof performance !== "undefined" ? performance.now() : Date.now();
 const terminalAuth = (code?: string) => ["unauthorized", "revoked", "controller_revoked", "signed_out", "account_mismatch", "session_not_found", "session_closed", "remote_desktop_disabled", "input_consent_revoked", "lease_expired"].includes(code ?? "");
-const inputFault = (code?: string) => !terminalAuth(code) && /^(?:input_|webrtc_input_|input_receipt_|host_input_|media_data_channel_|data_channel_|control_send_failed$)/.test(code ?? "");
 const MAX_SIGNAL_BYTES = 65_536;
 
 /** The authenticated socket carries signalling only; its lifetime never owns the direct peer. */

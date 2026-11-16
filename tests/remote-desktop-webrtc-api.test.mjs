@@ -141,6 +141,11 @@ test("input failures remain recoverable; explicit capture and authority endings 
   assert.equal(peer.closed, false); assert.ok(v.peerStates.includes("input_reconnecting")); assert.deepEqual(v.errors, []);
   v.socket.message({ type: "state", state: "closed", error: "input_ack_unknown" });
   assert.equal(peer.closed, false); assert.ok(!v.states.some(([state]) => state === "closed"));
+  for (const code of ["host_input_executor_failed", "webrtc_data_channel_lost", "data_channel_lost", "control_send_failed"]) {
+    v.socket.message({ type: "state", state: "active", media: descriptor(), media_status: { state: "failed", error: code } });
+    assert.equal(peer.closed, false, code);
+    assert.ok(!v.states.some(([state]) => state === "closed"), code);
+  }
   v.socket.message({ type: "state", state: "active", media: descriptor(), media_status: { state: "failed", error: "capture_restart_failed" } });
   assert.equal(peer.closed, true); assert.deepEqual(v.states.at(-1), ["closed", "capture_restart_failed"]);
   assert.ok(h.calls.every(call => call.init.method !== "DELETE"));

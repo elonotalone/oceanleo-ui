@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { remoteDesktopClient, type RemoteDesktopActivity, type RemoteDesktopAccess, type RemoteDesktopAction, type RemoteDesktopApiResult, type RemoteDesktopStream, type RemoteDesktopStreamHandlers } from "../api/remote-desktop";
 import { isNetworkFailure, newRequestId } from "../api/remote-desktop-retry";
+import { isWebRtcInputFault as webRtcInputFault } from "../api/remote-desktop-webrtc-errors";
 
 import { remoteDesktopTicket } from "./remote-desktop-ticket";
 import { remoteDesktopErrorCopy, remoteDesktopNoticeCopy } from "./remote-desktop-input";
@@ -17,7 +18,6 @@ import type { RemoteMediaDiagnostic, RemoteMediaStartupTimings } from "./remote-
 import type { Phase, PanelTimingStep, RemoteDesktopPanelProps, RemoteDesktopDiagnosticSample } from "./remote-desktop-panel-types";
 import type { RemoteDesktopPanelContext } from "./remote-desktop-panel-state";
 const terminal = (code?: string): Phase => code === "denied" ? "denied" : code === "request_expired" ? "timed_out" : code === "signed_out" ? "signed_out" : code === "revoked" || code === "controller_revoked" || code === "input_consent_revoked" ? "revoked" : "error";
-const webRtcInputFault = (code?: string) => Boolean(code && code !== "input_consent_revoked" && /^(input_|media_data_channel_|webrtc_input_|webrtc_data_channel_|data_channel_)/.test(code));
 const webRtcSignallingFault = (code?: string) => isNetworkFailure(code) || Boolean(code && /^(signal|websocket)/.test(code));
 /** Recovery budget for the same session, matching the gateway default. */
 export const RECONNECT_WINDOW_MS = 180_000;
