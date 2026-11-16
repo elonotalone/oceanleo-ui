@@ -106,7 +106,7 @@ viewer = new WebRtcRemoteDesktopViewer({
 const poll = setInterval(async () => {
   try {
     if (finished || channels.size !== 3 || [...channels.values()].some(channel => channel.readyState !== 'open')) return;
-    if (!acknowledged) { viewer.send({ kind: 'click', x: 10, y: 10 }); return; }
+    if (!acknowledged) { viewer.send({ kind: 'click', x: 0.5, y: 0.5 }); return; }
     const stats = await viewer.pc.getStats();
     const video = [...stats.values()].find(row => row.type === 'inbound-rtp' && (row.kind === 'video' || row.mediaType === 'video'));
     if (source && !(video?.framesDecoded > 0)) return;
