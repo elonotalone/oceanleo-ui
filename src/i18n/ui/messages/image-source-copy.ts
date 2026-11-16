@@ -1,0 +1,30 @@
+import { LOCALES, type Locale } from "../../config";
+
+const SOURCE = {
+  blank: "图片工程只有空白画布，已停止载入和保存。请重新载入原图。",
+  failed: "图片源未成功载入，未改用空白画布覆盖原件。",
+  invalidSvg: "这份矢量图无法解析为可编辑的 SVG。",
+  noShapes: "这份矢量图没有可编辑的图形元素。",
+};
+type Copy = Record<keyof typeof SOURCE, string>;
+const translations: Record<Exclude<Locale, "zh">, Copy> = {
+  en: { blank: "The image project contains only a blank canvas. Loading and saving have stopped. Reload the original image.", failed: "The image source could not be loaded. The original has not been replaced with a blank canvas.", invalidSvg: "This vector image could not be parsed as an editable SVG.", noShapes: "This vector image has no editable shapes." },
+  de: { blank: "Das Bildprojekt enthält nur eine leere Leinwand. Laden und Speichern wurden gestoppt. Laden Sie das Originalbild neu.", failed: "Die Bildquelle konnte nicht geladen werden. Das Original wurde nicht durch eine leere Leinwand ersetzt.", invalidSvg: "Dieses Vektorbild konnte nicht als bearbeitbare SVG-Datei gelesen werden.", noShapes: "Dieses Vektorbild enthält keine bearbeitbaren Formen." },
+  es: { blank: "El proyecto de imagen solo contiene un lienzo vacío. Se han detenido la carga y el guardado. Vuelve a cargar la imagen original.", failed: "No se pudo cargar la imagen de origen. El original no se ha sustituido por un lienzo vacío.", invalidSvg: "No se pudo interpretar esta imagen vectorial como un SVG editable.", noShapes: "Esta imagen vectorial no contiene formas editables." },
+  "es-419": { blank: "El proyecto de imagen solo contiene un lienzo vacío. Se detuvieron la carga y el guardado. Vuelve a cargar la imagen original.", failed: "No se pudo cargar la imagen de origen. El original no se reemplazó por un lienzo vacío.", invalidSvg: "No se pudo interpretar esta imagen vectorial como un SVG editable.", noShapes: "Esta imagen vectorial no contiene formas editables." },
+  fr: { blank: "Le projet d’image ne contient qu’une toile vide. Le chargement et l’enregistrement sont arrêtés. Rechargez l’image originale.", failed: "La source de l’image n’a pas pu être chargée. L’original n’a pas été remplacé par une toile vide.", invalidSvg: "Cette image vectorielle n’a pas pu être lue comme un SVG modifiable.", noShapes: "Cette image vectorielle ne contient aucune forme modifiable." },
+  it: { blank: "Il progetto immagine contiene solo una tela vuota. Caricamento e salvataggio sono stati interrotti. Ricarica l’immagine originale.", failed: "Impossibile caricare l’immagine di origine. L’originale non è stato sostituito con una tela vuota.", invalidSvg: "Impossibile interpretare questa immagine vettoriale come SVG modificabile.", noShapes: "Questa immagine vettoriale non contiene forme modificabili." },
+  "pt-BR": { blank: "O projeto de imagem contém apenas uma tela vazia. O carregamento e o salvamento foram interrompidos. Recarregue a imagem original.", failed: "Não foi possível carregar a imagem de origem. O original não foi substituído por uma tela vazia.", invalidSvg: "Não foi possível interpretar esta imagem vetorial como um SVG editável.", noShapes: "Esta imagem vetorial não contém formas editáveis." },
+  "pt-PT": { blank: "O projeto de imagem contém apenas uma tela vazia. O carregamento e a gravação foram interrompidos. Volte a carregar a imagem original.", failed: "Não foi possível carregar a imagem de origem. O original não foi substituído por uma tela vazia.", invalidSvg: "Não foi possível interpretar esta imagem vetorial como um SVG editável.", noShapes: "Esta imagem vetorial não contém formas editáveis." },
+  ja: { blank: "画像プロジェクトには空白のキャンバスしかありません。読み込みと保存を停止しました。元の画像を再読み込みしてください。", failed: "画像ソースを読み込めませんでした。元の画像は空白のキャンバスで置き換えられていません。", invalidSvg: "このベクター画像を編集可能な SVG として解析できませんでした。", noShapes: "このベクター画像には編集可能な図形がありません。" },
+  ko: { blank: "이미지 프로젝트에 빈 캔버스만 있습니다. 불러오기와 저장을 중단했습니다. 원본 이미지를 다시 불러오세요.", failed: "이미지 원본을 불러오지 못했습니다. 원본을 빈 캔버스로 대체하지 않았습니다.", invalidSvg: "이 벡터 이미지를 편집 가능한 SVG로 해석할 수 없습니다.", noShapes: "이 벡터 이미지에는 편집 가능한 도형이 없습니다." },
+  ar: { blank: "لا يحتوي مشروع الصورة إلا على لوحة فارغة. تم إيقاف التحميل والحفظ. أعد تحميل الصورة الأصلية.", failed: "تعذّر تحميل مصدر الصورة. لم يتم استبدال الأصل بلوحة فارغة.", invalidSvg: "تعذّر تحليل هذه الصورة المتجهة كملف SVG قابل للتحرير.", noShapes: "لا تحتوي هذه الصورة المتجهة على أشكال قابلة للتحرير." },
+  hi: { blank: "चित्र परियोजना में केवल खाली कैनवास है। लोड करना और सहेजना रोक दिया गया है। मूल चित्र फिर से लोड करें।", failed: "चित्र का स्रोत लोड नहीं हो सका। मूल चित्र को खाली कैनवास से नहीं बदला गया है।", invalidSvg: "इस वेक्टर चित्र को संपादन योग्य SVG के रूप में पढ़ा नहीं जा सका।", noShapes: "इस वेक्टर चित्र में संपादन योग्य आकृतियाँ नहीं हैं।" },
+  th: { blank: "โปรเจกต์รูปภาพมีเพียงผืนผ้าใบว่าง จึงหยุดโหลดและบันทึกแล้ว โปรดโหลดรูปภาพต้นฉบับอีกครั้ง", failed: "โหลดแหล่งรูปภาพไม่สำเร็จ ไม่ได้แทนที่ต้นฉบับด้วยผืนผ้าใบว่าง", invalidSvg: "ไม่สามารถแยกวิเคราะห์ภาพเวกเตอร์นี้เป็น SVG ที่แก้ไขได้", noShapes: "ภาพเวกเตอร์นี้ไม่มีรูปร่างที่แก้ไขได้" },
+  tr: { blank: "Görüntü projesinde yalnızca boş bir tuval var. Yükleme ve kaydetme durduruldu. Özgün görüntüyü yeniden yükleyin.", failed: "Görüntü kaynağı yüklenemedi. Özgün görüntü boş bir tuvalle değiştirilmedi.", invalidSvg: "Bu vektör görüntüsü düzenlenebilir bir SVG olarak ayrıştırılamadı.", noShapes: "Bu vektör görüntüsünde düzenlenebilir şekil yok." },
+  vi: { blank: "Dự án hình ảnh chỉ có khung vẽ trống. Đã dừng tải và lưu. Hãy tải lại ảnh gốc.", failed: "Không tải được nguồn ảnh. Bản gốc không bị thay bằng khung vẽ trống.", invalidSvg: "Không thể phân tích ảnh véc-tơ này thành SVG có thể chỉnh sửa.", noShapes: "Ảnh véc-tơ này không có hình dạng nào có thể chỉnh sửa." },
+  "zh-TW": { blank: "圖片專案只有空白畫布，已停止載入和儲存。請重新載入原圖。", failed: "圖片來源未成功載入，未改用空白畫布覆蓋原件。", invalidSvg: "這份向量圖無法解析為可編輯的 SVG。", noShapes: "這份向量圖沒有可編輯的圖形元素。" },
+};
+export const IMAGE_SOURCE_MESSAGES = Object.fromEntries(LOCALES.map((locale) => [
+  locale, Object.fromEntries(Object.entries(SOURCE).map(([name, key]) => [key, (locale === "zh" ? SOURCE : translations[locale])[name as keyof Copy]])),
+])) as Record<Locale, Record<string, string>>;

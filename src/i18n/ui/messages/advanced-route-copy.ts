@@ -17,6 +17,7 @@
 // 原始错误消息收进「技术细节」折叠里，不再当正文印给用户。
 
 import { LOCALES, type Locale } from "../../config";
+import { IMAGE_SOURCE_MESSAGES } from "./image-source-copy";
 
 /** 中文原文即 key。语义名只用来让 17 张表按同一把尺子对齐。 */
 export const ADVANCED_ROUTE_COPY_SOURCE = {
@@ -632,10 +633,13 @@ export const ADVANCED_ROUTE_MESSAGES: Record<Locale, Record<string, string>> =
   Object.fromEntries(
     LOCALES.map((locale) => [
       locale,
-      advancedRouteDictionaryFrom(
-        locale === "zh"
-          ? ADVANCED_ROUTE_COPY_ZH
-          : ADVANCED_ROUTE_TRANSLATIONS[locale],
-      ),
+      {
+        ...IMAGE_SOURCE_MESSAGES[locale],
+        ...advancedRouteDictionaryFrom(
+          locale === "zh"
+            ? ADVANCED_ROUTE_COPY_ZH
+            : ADVANCED_ROUTE_TRANSLATIONS[locale],
+        ),
+      },
     ]),
   ) as Record<Locale, Record<string, string>>;
