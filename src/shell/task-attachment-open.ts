@@ -21,7 +21,7 @@
 // 非图片仍可由宿主传 `showLibrary`，打开右侧资料库并定位条目。
 // ============================================================================
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import type { AgentAttachment } from "../lib/agent";
 import {
   attachmentDisplayUrl,
@@ -37,6 +37,8 @@ import {
 } from "./TaskWorkspaceShell";
 import type { TaskWorkspaceOpenItem } from "./ResultCanvas";
 import type { WorkspaceActionV1 } from "./workspace-actions";
+import { hasTaskAttachmentPath, taskAttachmentPath } from "../lib/task-content-path";
+import { loadTaskAttachmentBlobUrl } from "./access/task-content-client";
 import {
   withTaskAttachmentActions,
   type TaskAttachmentGallery,
@@ -112,6 +114,8 @@ export interface TaskAttachmentDeps {
   ) => Promise<string | undefined>;
   /** inbox 文件 → 本地 `blob:` 地址（默认走网关路由 + 读字节）。 */
   loadNativeArchive?: (path: string, mime: string) => Promise<string | null>;
+  /** Visible shared reference → optional-auth task-scoped bytes, never caller Library. */
+  loadTaskAttachment?: (path: string, mime: string) => Promise<string | null>;
 }
 
 const NATIVE_ROUTE =
@@ -173,6 +177,7 @@ export function uploadLibraryCategory(mime: string | undefined, name: string | u
  * Null means there is no durable Library identity yet.
  */
 export function taskAttachmentLibraryAction(att: TaskOpenableAttachment): WorkspaceActionV1 | null {
+  if (hasTaskAttachmentPath(att)) return null;
   const openable = taskOpenable(att);
   const item = openable.libraryItem || null;
   const archive = nativeArchiveOf(att);
@@ -231,6 +236,7 @@ export function immediateTaskAttachment(
   siteId = "oceanleo",
 ): TaskAttachmentTarget | null {
   if (attachmentPending(att)) return null;
+  if (hasTaskAttachmentPath(att)) return null;
   const openable = taskOpenable(att);
   if (openable.libraryItem) {
     return { item: openable.libraryItem, mode: taskAttachmentMode(openable.libraryItem) };
@@ -290,6 +296,18 @@ export async function resolveTaskAttachment(
   deps: TaskAttachmentDeps = {},
 ): Promise<TaskAttachmentTarget | null> {
   if (attachmentPending(att)) return null;
+  if (hasTaskAttachmentPath(att)) {
+    const path = taskAttachmentPath(att);
+    if (!path) return null;
+    const openable = taskOpenable(att);
+    const url = await (deps.loadTaskAttachment || loadTaskAttachmentBlobUrl)(path, openable.mime || "").catch(() => null);
+    if (!url) return null;
+    // No artifactId/revisionId/libraryItem: the viewer must not re-sign this
+    // immutable shared file against the current person's unrelated Library.
+    const item = attachmentWorkspaceItem({ id: path, name: openable.name, mime: openable.mime, url }, siteId);
+    item.meta = { ...item.meta, task_scoped_attachment: true };
+    return { item, mode: "preview" };
+  }
   const immediate = immediateTaskAttachment(att, siteId);
   if (immediate) return immediate;
   const openable = taskOpenable(att);
@@ -343,6 +361,17 @@ export function useTaskAttachmentOpener(
   const showLibraryRef = useRef(showLibrary);
   showLibraryRef.current = showLibrary;
   const seqRef = useRef(0);
+  const scopedUrlsRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      seqRef.current += 1;
+      for (const url of scopedUrlsRef.current) URL.revokeObjectURL(url);
+      scopedUrlsRef.current.clear();
+    };
+  }, []);
   return useCallback(async function openTaskAttachment(attachment: TaskOpenableAttachment): Promise<boolean> {
     const seq = ++seqRef.current;
     if (attachmentPending(attachment)) return false;
@@ -383,6 +412,11 @@ export function useTaskAttachmentOpener(
     }
     const target = await resolveTaskAttachment(attachment, siteId);
     if (!target) return false;
+    if (!mountedRef.current) {
+      if (hasTaskAttachmentPath(attachment) && target.item.url?.startsWith("blob:")) URL.revokeObjectURL(target.item.url);
+      return false;
+    }
+    if (hasTaskAttachmentPath(attachment) && target.item.url?.startsWith("blob:")) scopedUrlsRef.current.add(target.item.url);
     if (seq === seqRef.current) showTarget(target);
     return true;
   }, [siteId]);
