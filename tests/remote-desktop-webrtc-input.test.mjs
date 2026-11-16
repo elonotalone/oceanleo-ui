@@ -44,7 +44,7 @@ test('handoff waits for exact executed release, ignores forged/duplicate receipt
   h.viewer.finishHandoff();assert.equal(h.viewer.send({kind:'keypress',key:'B'}),true);
 });
 for(const status of ['merged','rejected'])test(`handoff ${status} rejects exact barrier and resumes input`,async t=>{
-  const h=await harness(t);await h.viewer.start();h.open();const handoff=h.viewer.releaseForHandoff();h.receipt(h.viewer.lastSequence(),status);await assert.rejects(handoff,new RegExp(status));assert.equal(h.viewer.send({kind:'keypress',key:'B'}),true);
+  const h=await harness(t);await h.viewer.start();h.open();const handoff=h.viewer.releaseForHandoff();h.receipt(h.viewer.lastSequence(),status);await assert.rejects(handoff,{message:`input_receipt_${status}`});assert.equal(h.viewer.send({kind:'keypress',key:'B'}),true);
 });
 test('handoff timeout rejects and recovers input without closing picture',async t=>{
   const h=await harness(t);await h.viewer.start();h.open();const handoff=h.viewer.releaseForHandoff();const rejected=assert.rejects(handoff,/timeout/);await h.advance(1500);await rejected;assert.equal(h.viewer.pc.closed,0);

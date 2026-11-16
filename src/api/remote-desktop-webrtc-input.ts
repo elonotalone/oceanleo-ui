@@ -120,7 +120,7 @@ export class WebRtcInputScheduler {
     if (this.handoff?.seq === receipt.seq) {
       const pending = this.handoff; this.handoff = undefined;
       if (receipt.status === "executed") pending.resolve();
-      else { this.frozen = false; pending.reject(new Error(`release_all_${receipt.status}`)); }
+      else { this.frozen = false; pending.reject(new Error(`input_receipt_${receipt.status}`)); }
     }
     if (receipt.status === "rejected" && /executor|execution|input_failed/.test(receipt.reason ?? "")) this.options.fault("rd-input", "host_input_executor_failed");
     return true;
