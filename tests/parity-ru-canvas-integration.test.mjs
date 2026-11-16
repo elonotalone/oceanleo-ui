@@ -22,7 +22,6 @@ const { default: Session } = await import(await compileModule("src/shell/video-c
     export function ReactFlow({nodes,nodeTypes,children}) {const Node=nodeTypes['leovideo-media'];return React.createElement('div',{},nodes.map(n=>React.createElement(Node,{key:n.id,id:n.id,data:n.data,selected:false})),children);}`),
   "../AdvancedWorkbenchShell": dataModule("export const AdvancedWorkbenchShell=({adapter})=>{globalThis.__ruAdapter=adapter;return adapter.stage;};"),
   "../SelectionToolbar": dataModule("export const SelectionToolbar=()=>null;"),
-  "../plugin-theme": dataModule("export const usePluginTheme=()=>({theme:'light'});"),
   "../workbench-material-provider": dataModule("export const useWorkbenchMaterialAdapter=()=>{};"),
   "../workbench-material-command": dataModule("export const withEditorHistoryCommand=a=>a;"),
   "../plugin-command": dataModule("export const usePluginCommandSurface=()=>{};"),
