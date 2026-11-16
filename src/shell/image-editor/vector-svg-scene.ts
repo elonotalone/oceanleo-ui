@@ -13,6 +13,7 @@
 import { decodeFabricTextMetadata, installFabricTextLayout } from "./fabric-text-layout";
 import { sanitizeSvg } from "../vector-editor/vector-sanitize";
 import { makeId, SNAPSHOT_PROPS, type FabricNS } from "./editor-objects";
+import { prepareEditorFonts, type EditorFontText } from "./editor-fonts";
 import type { ImageEditorSnapshot } from "./image-document-contract";
 
 export const VECTOR_SVG_MAX_BYTES = 8 * 1024 * 1024;
@@ -105,12 +106,31 @@ export interface VectorSceneResult {
   losses: string[];
 }
 
+/** Read font inheritance without attaching untrusted SVG to the live DOM. */
+export function svgEditorFontTexts(svg: string, fabric: FabricNS): EditorFontText[] {
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  // Use Fabric's own cascade/shorthand/inheritance parser, before it creates Text.
+  const cssRules = fabric.getCSSRules(doc);
+  const result: EditorFontText[] = [];
+  for (const element of doc.querySelectorAll("text, tspan")) {
+    const attributes = fabric.parseAttributes(element as unknown as HTMLElement, fabric.FabricText.ATTRIBUTE_NAMES, cssRules);
+    result.push({ text: element.textContent || "", fontFamily: attributes.fontFamily,
+      fontWeight: attributes.fontWeight, fontStyle: attributes.fontStyle });
+  }
+  for (const element of doc.querySelectorAll("[data-oceanleo-text]")) {
+    const metadata = decodeFabricTextMetadata(element.getAttribute("data-oceanleo-text") || "");
+    if (metadata) result.push(metadata as EditorFontText);
+  }
+  return result;
+}
+
 export async function vectorSvgToSnapshot(
   fabric: FabricNS,
   svgText: string,
 ): Promise<VectorSceneResult> {
   const { svg, removed, rules } = sanitizeVectorSource(svgText);
   const losses = detectVectorLosses(svg, rules);
+  await prepareEditorFonts(svgEditorFontTexts(svg, fabric), () => fabric.cache.clearFontCache());
   installFabricTextLayout(fabric);
   const enhanced = new Map<Element, Record<string, unknown>>();
   const enhancedChildren = new Set<object>();

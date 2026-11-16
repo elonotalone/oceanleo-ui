@@ -1,5 +1,6 @@
-/** Noto OFL families. The workflow uses these exact upstream files and stacks. */
+/** Noto OFL families, from the same pinned TTFs as material-text-layers. */
 import { EDITOR_FONT_MANIFEST } from "./editor-font-manifest";
+import { resolvePublicFontAsset } from "../../lib/asset-delivery";
 export { EDITOR_FONT_MANIFEST };
 
 export const EDITOR_FONT_WEIGHTS = [400, 500, 700, 900] as const;
@@ -9,18 +10,30 @@ export const EDITOR_FONT_OPTIONS = [
   { family: NOTO_SANS_STACK, label: "思源黑体", category: "推荐", preview: "清晰表达每一个想法" },
   { family: NOTO_SERIF_STACK, label: "思源宋体", category: "推荐", preview: "山海之间，自有文章" },
 ] as const;
-
 export const EDITOR_FONT_LOAD_ERROR = "字体加载失败，请检查网络后重试。";
 export type EditorFontText = {
   text?: string; fontFamily?: string; fontWeight?: string | number; fontStyle?: string;
   styles?: Record<string, Record<string, Partial<EditorFontText>>>;
   getObjects?: () => EditorFontText[]; objects?: EditorFontText[];
-  initDimensions?: () => unknown; setCoords?: () => unknown; dirty?: boolean;
+  initDimensions?: () => unknown; setCoords?: () => unknown; triggerLayout?: () => void; dirty?: boolean;
 };
-type FontEnvironment = { fonts: Pick<FontFaceSet, "add" | "load" | "ready">; FontFace: typeof FontFace; baseUrl?: string; timeoutMs?: number; clearFontCache?: () => void };
+export type FontEnvironment = { fonts: Pick<FontFaceSet, "add" | "load" | "ready">; FontFace: typeof FontFace; baseUrl?: string; timeoutMs?: number; clearFontCache?: () => void };
 const installed = new WeakMap<object, Map<string, Promise<void>>>();
+type Subset = { path: string; unicodeRange: string };
+const rangeCache = new WeakMap<Subset, number[][]>();
+const supports = (subset: Subset, point: number) => {
+  let ranges = rangeCache.get(subset);
+  if (!ranges) {
+    ranges = subset.unicodeRange.split(",").map(part => {
+      const [first, last] = part.trim().replace(/^U\+/i, "").split("-").map(n => parseInt(n, 16));
+      return [first, last ?? first];
+    });
+    rangeCache.set(subset, ranges);
+  }
+  return ranges.some(([a, b]) => point >= a && point <= b);
+};
 
-/** Locale-specific CJK can be chosen by placing TC/JP/KR first in a saved stack. */
+/** Additional script families for generic/legacy stacks. Explicit regional order wins. */
 export function editorFontFamilies(text: string, family: string): string[] {
   const serif = /Serif|(?:^|,)\s*serif(?:,|$)/i.test(family) && !/sans-serif/i.test(family);
   const prefix = serif ? "Noto Serif" : "Noto Sans";
@@ -37,67 +50,123 @@ export function editorFontFamilies(text: string, family: string): string[] {
   return [...families];
 }
 
-export async function loadEditorTextFonts(nodes: readonly EditorFontText[], environment?: FontEnvironment): Promise<void> {
-  const env = environment ?? (typeof document !== "undefined" && document.fonts && typeof FontFace !== "undefined"
-    ? { fonts: document.fonts, FontFace } : undefined);
-  if (!env) throw new Error(EDITOR_FONT_LOAD_ERROR);
-  let cache = installed.get(env.fonts);
-  if (!cache) { cache = new Map(); installed.set(env.fonts, cache); }
-  const requests: { text: string; family: string; weight: string }[] = [];
+function textNodes(nodes: readonly EditorFontText[]): EditorFontText[] {
+  const result: EditorFontText[] = [];
   const visit = (node: EditorFontText) => {
-    if (typeof node.text === "string" && node.text) {
-      const weight = node.fontWeight === "bold" ? "700" : node.fontWeight === "normal" ? "400" : String(node.fontWeight || 400);
-      for (const family of editorFontFamilies(node.text, node.fontFamily || NOTO_SANS_STACK)) requests.push({text: node.text, family, weight});
+    if (node.text) {
+      result.push(node);
       for (const line of Object.values(node.styles || {})) for (const style of Object.values(line)) {
-        // A styled run may use a different family/weight. Load its full text to cover every glyph.
-        if (style.fontFamily || style.fontWeight) visit({ ...node, ...style, styles: undefined, objects: undefined, getObjects: undefined });
+        if (style.fontFamily || style.fontWeight) result.push({ ...node, ...style, styles: undefined });
       }
     }
-    for (const child of node.getObjects?.() || node.objects || []) visit(child);
+    (node.getObjects?.() || node.objects || []).forEach(visit);
   };
   nodes.forEach(visit);
+  return result;
+}
+async function bounded<T>(work: Promise<T>, timeout: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timedOut = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error(EDITOR_FONT_LOAD_ERROR)), env.timeoutMs ?? 30000);
-  });
   try {
-    await Promise.race([(async () => {
-    for (const request of requests) {
-      const spec = EDITOR_FONT_MANIFEST.fonts.find(font => font.family === request.family)!;
-      const base = env.baseUrl || EDITOR_FONT_MANIFEST.cdn;
-      const url = base.replace(/\/?$/, "/") + spec.path.split("/").map(encodeURIComponent).join("/");
-      const key = `${spec.family}:${url}`;
-      let promise = cache.get(key);
-      if (!promise) {
-        promise = (async () => {
-          const face = new env.FontFace(spec.family, `url("${url}")`, { weight: "100 900", style: "normal", display: "block" });
-          env.fonts.add(await face.load());
-        })();
-        cache.set(key, promise);
-        promise.catch(() => cache!.delete(key));
-      }
-      await promise;
-      const loaded = await env.fonts.load(`${request.weight} 16px "${spec.family}"`, request.text);
-      if (!loaded.length) throw new Error(EDITOR_FONT_LOAD_ERROR);
-    }
-    await env.fonts.ready;
-    })(), timedOut]);
-  } catch (cause) {
-    installed.delete(env.fonts);
-    throw Object.assign(new Error(EDITOR_FONT_LOAD_ERROR), { cause });
+    return await Promise.race([work, new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(EDITOR_FONT_LOAD_ERROR)), timeout);
+    })]);
   } finally { clearTimeout(timer); }
 }
 
-/** Parent integrates this around open/export, before Fabric measures or rasterizes. */
+/** Only matching unicode ranges are fetched. Failed/timed-out faces remain retryable. */
+export async function loadEditorTextFonts(nodes: readonly EditorFontText[], environment?: FontEnvironment): Promise<void> {
+  const texts = textNodes(nodes);
+  if (!texts.length) return;
+  const env = environment ?? (typeof document !== "undefined" && document.fonts && typeof FontFace !== "undefined"
+    ? { fonts: document.fonts, FontFace } : undefined);
+  if (!env) throw new Error(EDITOR_FONT_LOAD_ERROR);
+  const timeout = env.timeoutMs ?? 8000;
+  const cache = installed.get(env.fonts) ?? new Map<string, Promise<void>>();
+  installed.set(env.fonts, cache);
+  let cancelled = false;
+  const requests = new Map<string, { family: string; text: string; weight: string; subsets: Map<string, Subset> }>();
+  for (const node of texts) {
+    const text = node.text!;
+    const family = node.fontFamily || NOTO_SANS_STACK;
+    const weight = node.fontWeight === "bold" ? "700" : node.fontWeight === "normal" ? "400" : String(node.fontWeight || 400);
+    const names = [...new Set([...family.split(",").map(n => n.trim().replace(/["']/g, "")), ...editorFontFamilies(text, family)])];
+    const specs = names.map(name => EDITOR_FONT_MANIFEST.fonts.find(font => font.family === name)).filter(spec => spec != null);
+    // Follow CSS fallback order, including Latin glyphs in SC/TC/JP/KR-first documents.
+    for (const character of text) {
+      const point = character.codePointAt(0)!;
+      for (const spec of specs) {
+        const subset = spec.subsets.find(s => supports(s, point));
+        if (!subset) continue;
+        const key = `${spec.family}:${weight}`;
+        let request = requests.get(key);
+        if (!request) { request = { family: spec.family, weight, text, subsets: new Map() }; requests.set(key, request); }
+        request.subsets.set(subset.path, subset);
+        break;
+      }
+    }
+  }
+  try {
+    await bounded(Promise.all([...requests.values()].map(async request => {
+      await Promise.all([...request.subsets.values()].map(async subset => {
+        const url = env.baseUrl
+          ? env.baseUrl.replace(/\/?$/, "/") + subset.path
+          : resolvePublicFontAsset(`${EDITOR_FONT_MANIFEST.prefix}/${subset.path}`);
+        const key = `${request.family}:${url}`;
+        let promise = cache.get(key);
+        if (!promise) {
+          promise = (async () => {
+            const spec = EDITOR_FONT_MANIFEST.fonts.find(font => font.family === request.family)!;
+            // The global mirror is populated separately. Fall back to the owned
+            // source until a version is mirrored, and during CDN outages.
+            const sources = env.baseUrl ? [url] : [...new Set([url, resolvePublicFontAsset(`${EDITOR_FONT_MANIFEST.prefix}/${subset.path}`, "cn")])];
+            const face = new env.FontFace(request.family, sources.map(source => `url("${source}") format("woff2")`).join(", "), {
+              weight: `${spec.axes.wght[0]} ${spec.axes.wght[2]}`, unicodeRange: subset.unicodeRange,
+              style: "normal", display: "swap",
+            });
+            // A timed-out download must not install a late face with stale Fabric metrics.
+            const loadedFace = await bounded(face.load(), timeout);
+            if (cancelled) throw new Error(EDITOR_FONT_LOAD_ERROR);
+            env.fonts.add(loadedFace);
+          })();
+          cache.set(key, promise);
+          promise.catch(() => { if (cache.get(key) === promise) cache.delete(key); });
+        }
+        await promise;
+      }));
+      const loaded = await env.fonts.load(`${request.weight} 16px "${request.family}"`, request.text);
+      if (!loaded.length) throw new Error(EDITOR_FONT_LOAD_ERROR);
+    })), timeout);
+  } catch (cause) {
+    cancelled = true;
+    throw Object.assign(new Error(EDITOR_FONT_LOAD_ERROR), { cause });
+  }
+}
+
+/** Open/save must continue with CSS generic fallback if the network/font API fails. */
+export async function prepareEditorFonts(nodes: readonly EditorFontText[], clearFontCache?: () => void, environment?: FontEnvironment): Promise<void> {
+  if (!textNodes(nodes).length) return;
+  try { await loadEditorTextFonts(nodes, environment); } catch { /* Preserve saved family intent; CSS supplies generic fallback. */ }
+  if (clearFontCache) clearFontCache();
+  else if (environment?.clearFontCache) environment.clearFontCache();
+  else (await import("fabric")).cache.clearFontCache();
+}
+
+/** Remeasure before rasterizing; walk groups as well as individual text objects. */
 export async function withEditorFonts<T>(canvas: { getObjects(): EditorFontText[] }, render: () => Promise<T>, environment?: FontEnvironment): Promise<T> {
   const nodes = canvas.getObjects();
-  await loadEditorTextFonts(nodes, environment);
-  if (environment?.clearFontCache) environment.clearFontCache();
-  else (await import("fabric")).cache.clearFontCache();
+  await prepareEditorFonts(nodes, undefined, environment);
+  refreshEditorFontMetrics(nodes);
+  return render();
+}
+
+export function refreshEditorFontMetrics(nodes: EditorFontText[]): void {
   const refresh = (node: EditorFontText) => {
     if (node.text) { node.initDimensions?.(); node.setCoords?.(); node.dirty = true; }
-    (node.getObjects?.() || node.objects || []).forEach(refresh);
+    const children = node.getObjects?.() || node.objects || [];
+    children.forEach(refresh);
+    if (children.length) { node.triggerLayout?.(); node.setCoords?.(); }
+    // Fabric caches groups separately from their text children.
+    node.dirty = true;
   };
   nodes.forEach(refresh);
-  return render();
 }

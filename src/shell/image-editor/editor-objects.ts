@@ -8,6 +8,7 @@
 // 后传进来）。类型 import 会在编译期擦除，不产生运行时依赖。
 // ============================================================================
 
+import { NOTO_SANS_STACK, NOTO_SERIF_STACK } from "./editor-fonts";
 import { FABRIC_TEXT_LAYOUT_PROPS, type FabricTextLayoutProps } from "./fabric-text-layout";
 import { readRectRadius, readStrokeDash } from "./fabric-style-ops";
 import type {
@@ -389,6 +390,7 @@ export function buildSelectedSnapshot(
       value: String(obj.text || "").slice(0, 2_000),
       fontFamily: obj.fontFamily || "sans-serif",
       fontSize: Math.round(obj.fontSize),
+      fontWeight: weight === "bold" ? 700 : weight === "normal" ? 400 : Number(weight) || 400,
       fill: typeof obj.fill === "string" ? obj.fill : "#1c1917",
       backgroundColor: obj.backgroundColor || "",
       highlight:
@@ -498,7 +500,7 @@ export function createTextbox(
     fontSize,
     fontWeight: preset === "heading" ? "bold" : "normal",
     fill: INK,
-    fontFamily: "sans-serif",
+    fontFamily: NOTO_SANS_STACK,
     textAlign: preset === "body" ? "left" : "center",
     originX: "center",
     originY: "center",
@@ -535,7 +537,7 @@ export function createStickyNote(
     width: width * 0.74,
     originX: "center",
     originY: "center",
-    fontFamily: "Noto Sans SC, sans-serif",
+    fontFamily: NOTO_SANS_STACK,
     fontSize: Math.max(18, Math.round(width * 0.09)),
     fill: "#3f3420",
     textAlign: "center",
@@ -571,7 +573,7 @@ export function createSignatureText(
       top: doc.height / 2 + nudge,
       originX: "center",
       originY: "center",
-      fontFamily: "Segoe Script, Brush Script MT, cursive",
+      fontFamily: NOTO_SERIF_STACK,
       fontStyle: "italic",
       fontSize: Math.round(Math.min(120, Math.max(42, doc.width * 0.08))),
       fill: color,
@@ -637,7 +639,7 @@ export function createTable(
           width: Math.max(20, cellWidth - 20),
           originX: "center",
           originY: "center",
-          fontFamily: "Noto Sans SC, sans-serif",
+          fontFamily: NOTO_SANS_STACK,
           fontSize: Math.max(12, Math.min(28, cellHeight * 0.28)),
           fontWeight: row === 0 ? "bold" : "normal",
           fill: tableStyle.textColor,

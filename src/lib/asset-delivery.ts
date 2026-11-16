@@ -81,3 +81,11 @@ export function resolvePublicAssetMedia(
     : purpose === "thumb" ? ".thumb.webp" : ".webp";
   return `${origin}/${objectPath}${suffix}`;
 }
+
+/** Versioned, public editor fonts use the same regional mirror rules as other assets. */
+export function resolvePublicFontAsset(key: string, family?: DomainFamily): string {
+  if (!/^assets\/fonts\/noto\/[a-zA-Z0-9-]+\/(?:[a-z0-9-]+\/)?(?:[a-zA-Z0-9.-]+\.(?:woff2|txt)|manifest\.json)$/.test(key)) {
+    throw new Error("Invalid public font asset path");
+  }
+  return resolvePublicAssetMedia(`${PUBLIC_ASSET_ORIGIN}/${key}`, { purpose: "full", family });
+}

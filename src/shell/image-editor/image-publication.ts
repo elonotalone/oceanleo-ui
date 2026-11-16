@@ -2,13 +2,17 @@ import { yieldToEditor } from "../editor-publish-yield";
 import type { FabricObject } from "fabric";
 import type { EditorSnapshot } from "./editor-runtime";
 import { createFabricImageProject, resolveFabricImageWorkingCopy } from "./editor-persistence";
+import { installFabricFontShaping } from "./fabric-font-shaping";
+import { prepareEditorFonts } from "./editor-fonts";
 import { exportVectorSvg } from "./vector-svg-scene";
 
 /** Detached publication rendering. Preparation keeps only the owned JSON scene. */
 export async function renderImagePublication(snapshot: EditorSnapshot, vector = false): Promise<{ preview: Blob; svg?: string }> {
   await yieldToEditor();
   const fabric = await import("fabric");
+  installFabricFontShaping(fabric);
   const fresh = await resolveFabricImageWorkingCopy(createFabricImageProject(snapshot));
+  await prepareEditorFonts(fresh.snapshot.json.objects as Record<string, unknown>[], () => fabric.cache.clearFontCache());
   const { width, height } = snapshot.doc;
   const canvas = new fabric.StaticCanvas(undefined, { width, height, enableRetinaScaling: false, renderOnAddRemove: false });
   // No scheduled full-frame render may escape the bounded tile loop below.

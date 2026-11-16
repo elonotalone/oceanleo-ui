@@ -19,13 +19,16 @@ test('loading waits, checks FontFaceSet results, retries failure and loads mixed
   const calls=[]; let release; let finish;
   const gate=new Promise(r=>{release=r;});
   const fonts={add:f=>calls.push(['add',f.family]),load:async(f,text)=>{calls.push(['load',f,text]);return [{}];},ready:gate};
-  class Face { constructor(family,url,desc){Object.assign(this,{family,url,desc});} async load(){calls.push(['face',this.family]);return this;} }
+  class Face { constructor(family,url,desc){Object.assign(this,{family,url,desc});} async load(){await gate;calls.push(['face',this.family]);return this;} }
   const task=loadEditorTextFonts([{text:'Hello 中文 العربية हिन्दी ไทย',fontFamily:'Noto Sans SC, sans-serif',fontWeight:900}], {fonts,FontFace:Face});
   task.then(()=>{finish=true;});
   await new Promise(r=>setImmediate(r));
   assert.equal(finish,undefined);
   release(); await task;
-  for(const name of ['Noto Sans','Noto Sans SC','Noto Sans Arabic','Noto Sans Devanagari','Noto Sans Thai']) assert.ok(calls.some(c=>c[0]==='face' && c[1]===name),name);
+  for(const name of ['Noto Sans SC','Noto Sans','Noto Sans Arabic','Noto Sans Thai']) assert.ok(calls.some(c=>c[0]==='face' && c[1]===name),name);
+  // This pinned Noto Sans also contains Devanagari; CSS uses it before the script fallback.
+  await loadEditorTextFonts([{text:'हिन्दी',fontFamily:'Noto Sans Devanagari',fontWeight:500}],{fonts,FontFace:Face});
+  assert.ok(calls.some(c=>c[0]==='face' && c[1]==='Noto Sans Devanagari'));
   const broken={...fonts,ready:Promise.resolve(),load:async()=>[]};
   await assert.rejects(loadEditorTextFonts([{text:'abc',fontFamily:'Noto Sans'}],{fonts:broken,FontFace:Face}),/字体/);
   broken.load=async()=>[{}];
@@ -52,5 +55,5 @@ test('font requests time out and do not leave a picker waiting forever', async (
 test('new font labels and failures have all sixteen non-Chinese translations', async () => {
   const {EDITOR_NOTO_FONT_COPY}=await import('../src/i18n/ui/messages/editor-noto-font-copy.ts');
   assert.equal(Object.keys(EDITOR_NOTO_FONT_COPY).length,16);
-  for(const [locale,copy] of Object.entries(EDITOR_NOTO_FONT_COPY))for(const key of ['思源黑体','思源宋体','字体加载失败，请检查网络后重试。'])assert.ok(copy[key]?.trim(),`${locale}:${key}`);
+  for(const [locale,copy] of Object.entries(EDITOR_NOTO_FONT_COPY))for(const key of ['思源黑体','思源宋体','字重','字体加载失败，请检查网络后重试。'])assert.ok(copy[key]?.trim(),`${locale}:${key}`);
 });
