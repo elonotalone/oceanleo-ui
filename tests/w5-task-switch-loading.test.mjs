@@ -8,8 +8,8 @@
 // 2. Real AgentChat under a gate: covered until its first task read is in.
 // 3. First open lands at the bottom on the placed frame (scrollTop, no smooth
 //    scrollTo); a remembered scrolled-up spot comes back on the next mount.
-// 4. Header share entry stays mounted while selecting (pressed), opens the action
-//    bar with every message ticked, and 「复制链接」 is usable at once.
+// 4. Header Share opens the top panel with every message selected and keeps the
+//    composer mounted. Share opens member controls, where Copy link uses the task URL.
 // Harness copied from agent-chat-single-header.test.mjs (same stubs).
 // ============================================================================
 
@@ -136,6 +136,11 @@ const agentLibStub = dataModule(`
 `);
 
 const OVERRIDES = {
+  "./access/task-access-client": dataModule(`
+    export * from ${JSON.stringify(await compileModule("src/shell/access/task-access-client.ts"))};
+    import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
+    export const taskAccessClient = new TaskAccessMock();
+  `),
   "../i18n/ui/useUI": dataModule(
     "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
   ),
@@ -389,26 +394,55 @@ test("first open lands at the bottom without a smooth scroll; a scrolled-up spot
   }
 });
 
-test("header share entry stays while selecting, ticks every message, and Copy Link is usable", async () => {
+test("header Share keeps the composer, selects messages, and copies the task URL from its member subpage", async () => {
   globalThis.__task = taskData("t-share");
+  const copied = [];
+  const clipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
+  Object.defineProperty(window.navigator, "clipboard", { configurable: true, value: { async writeText(text) { copied.push(text); } } });
   const view = await mount(React.createElement(AgentChat, { siteId: "leoimage", taskId: "t-share" }));
   try {
     await settle(80);
     const header = view.host.querySelector("[data-oceanleo-pane-header]");
-    const entry = () => [...header.querySelectorAll('button[title="分享"]')].find((button) => !button.querySelector("circle"));
-    assert.ok(entry(), "share entry in the header");
+    const entry = () => header.querySelector("[data-share-entry]");
+    assert.ok(entry(), "Share entry in the header");
+    const composer = view.host.querySelector("[data-composer]");
+    assert.ok(composer);
     await click(entry());
-    assert.ok(entry(), "the entry does not vanish on click");
-    assert.equal(entry().getAttribute("aria-pressed"), "true");
-    assert.match(view.host.textContent, /已选 2 条/, "every message ticked on entry");
-    const copyLink = [...view.host.querySelectorAll("button")].find((button) => button.getAttribute("title") === "复制链接");
-    assert.ok(copyLink, "the share action bar is shown");
-    assert.equal(copyLink.disabled, false, "Copy Link usable straight away");
+    assert.equal(entry().getAttribute("aria-expanded"), "true");
+    assert.equal(view.host.querySelector("[data-composer]"), composer, "the composer remains mounted while selecting");
+    const actions = document.querySelector("[data-task-share-actions]");
+    assert.ok(actions, "the actions live in the top panel");
+    assert.match(actions.textContent, /已选 2 条/);
+    assert.deepEqual([...actions.querySelectorAll("button")].slice(0, 5).map(button => button.textContent), ["分享", "复制文本", "生成长图", "生成文档", "清除选择"]);
+    const ticks = () => [...view.host.querySelectorAll('[role="checkbox"]')];
+    assert.equal(ticks().length, 2);
+    assert.ok(ticks().every(box => box.getAttribute("aria-checked") === "true"));
     await click(entry());
-    assert.equal(entry().getAttribute("aria-pressed"), "false", "a second click leaves select mode");
-    assert.equal([...view.host.querySelectorAll("button")].find((button) => button.getAttribute("title") === "复制链接"), undefined);
+    assert.equal(entry().getAttribute("aria-expanded"), "false");
+    const closedPanel = document.querySelector("[data-task-share-actions]").closest("[data-leo-overlay-state]");
+    assert.equal(closedPanel.getAttribute("data-leo-overlay-state"), "closed");
+    assert.equal(closedPanel.getAttribute("aria-hidden"), "true", "the retained overlay is hidden from assistive technology");
+    assert.equal(ticks().length, 2, "closing the popup preserves selection");
+    await click(entry());
+    await click(document.querySelector("[data-task-share-actions] button"));
+    await settle(20);
+    const members = document.querySelector("[data-task-share-members]");
+    assert.ok(members, "Share opens the member subpage");
+    const copyLink = [...members.querySelectorAll("button")].find(button => button.textContent === "复制链接");
+    assert.ok(copyLink);
+    assert.equal(copyLink.disabled, false);
+    await click(copyLink);
+    assert.equal(new URL(copied.at(-1)).pathname, "/tasks/t-share", "Copy link uses this task, not a snapshot");
+    await click(members.querySelector('button[aria-label="返回"]'));
+    const clear = [...document.querySelectorAll("[data-task-share-actions] button")].find(button => button.textContent === "清除选择");
+    await click(clear);
+    assert.equal(ticks().length, 0, "Clear selection leaves select mode");
+    assert.equal(entry().getAttribute("aria-expanded"), "false");
+    assert.equal(view.host.querySelector("[data-composer]"), composer);
   } finally {
     await view.unmount();
+    if (clipboard) Object.defineProperty(window.navigator, "clipboard", clipboard);
+    else delete window.navigator.clipboard;
     globalThis.__task = null;
   }
 });

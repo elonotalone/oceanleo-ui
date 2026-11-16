@@ -39,6 +39,11 @@ const lazyStub = dataModule(
 // 只桩「要联网 / 要 Next 运行时 / 要浏览器才跑得起来」的那几个，其余编真源码。
 // `../lib/sse` **绝不桩**：这份测试的全部意义就是证明真的解析器接对了。
 const OVERRIDES = {
+  "./access/task-access-client": dataModule(`
+    export * from ${JSON.stringify(await compileModule("src/shell/access/task-access-client.ts"))};
+    import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
+    export const taskAccessClient = new TaskAccessMock();
+  `),
   "../i18n/ui/useUI": dataModule(
     "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
   ),

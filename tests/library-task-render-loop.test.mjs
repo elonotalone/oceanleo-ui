@@ -168,6 +168,11 @@ const workspaceSessionStub = dataModule(`
  export function useOptionalWorkspaceSession(){return null;}
 `);
 const agentChatUrl = await compileModule("src/shell/AgentChat.tsx", {
+  "./access/task-access-client": dataModule(`
+    export * from ${JSON.stringify(await compileModule("src/shell/access/task-access-client.ts"))};
+    import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
+    export const taskAccessClient = new TaskAccessMock();
+  `),
   "../i18n/ui/useUI": uiStubUrl,
   "next/navigation": dataModule(`export function useRouter(){return {push(){},replace(){}};} export function useSearchParams(){return new URLSearchParams(globalThis.window.location.search);}
  export function usePathname(){return '/history';}`),

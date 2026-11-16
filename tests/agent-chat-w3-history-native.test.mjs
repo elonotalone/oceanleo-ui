@@ -105,6 +105,11 @@ const splitWorkspaceUrl = await compileModule("src/shell/SplitWorkspace.tsx", { 
 const cloudComputerApiUrl = await compileModule("src/lib/cloud-computer-api.ts", {}, { missingPackageStub: lazyStub });
 
 const OVERRIDES = {
+  "./access/task-access-client": dataModule(`
+    export * from ${JSON.stringify(await compileModule("src/shell/access/task-access-client.ts"))};
+    import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
+    export const taskAccessClient = new TaskAccessMock();
+  `),
   "../i18n/ui/useUI": uiStub,
   "./SplitWorkspace": splitWorkspaceUrl,
   "next/navigation": dataModule(

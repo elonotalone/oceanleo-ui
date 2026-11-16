@@ -264,6 +264,11 @@ test("没传 orgId 时 createTask 回落到持久化的选择", async () => {
 const agentLib = dataModule(`export * from ${JSON.stringify(realAgentUrl)};`);
 
 const OVERRIDES = {
+  "./access/task-access-client": dataModule(`
+    export * from ${JSON.stringify(await compileModule("src/shell/access/task-access-client.ts"))};
+    import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
+    export const taskAccessClient = new TaskAccessMock();
+  `),
   "../lib/agent": agentLib,
   "../i18n/ui/useUI": dataModule(
     "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
