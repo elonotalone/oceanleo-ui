@@ -732,10 +732,15 @@ export function useFabricImageEditor(
       : typeof item.meta.editor_project_url === "string"
         ? item.meta.editor_project_url
         : "";
+  // A vector_image's source rendition is always the SVG itself (the Fabric
+  // project of an earlier save rides in `fabric_document_url`). Its contract is
+  // "structured", but the SVG is not a Fabric project: reading it as one failed
+  // and left every stored SVG unopenable. Only a persisted project counts here.
   const projectUrl =
     compositeSourceRequired
       ? editorSource?.url || ""
-      : persistedProjectUrl || (editorSource?.structured ? editorSource.url : "");
+      : persistedProjectUrl ||
+        (editorSource?.structured && !vectorImageItem ? editorSource.url : "");
   const projectSavedAt =
     typeof item.meta.fabric_saved_at === "string"
       ? item.meta.fabric_saved_at
