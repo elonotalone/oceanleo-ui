@@ -127,6 +127,7 @@ export class WebRtcRemoteDesktopViewer {
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
       this.lowDelay(transceiver.receiver);
+      this.captureTimestamp(transceiver);
       if (!this.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
       pc.onicecandidate = event => {
         if (this.pc !== pc || this.ended || !event.candidate) return;
@@ -167,6 +168,21 @@ export class WebRtcRemoteDesktopViewer {
     try { low.playoutDelayHint = 0; } catch { /* platform may expose read-only hints */ }
   }
   private iceServers(): RTCIceServer[] { return this.descriptor.ice_servers.map(({ region: _region, ...server }) => server); }
+  private captureTimestamp(transceiver: RTCRtpTransceiver): void {
+    // Chromium exposes ACT as supported but stopped by default. Enable it through
+    // the transceiver API before the offer, keeping every other extension intact.
+    type Extension = { uri: string; direction: RTCRtpTransceiverDirection | "stopped" };
+    const headers = transceiver as RTCRtpTransceiver & {
+      getHeaderExtensionsToNegotiate?(): Extension[];
+      setHeaderExtensionsToNegotiate?(extensions: Extension[]): void;
+    };
+    try {
+      const extensions = headers.getHeaderExtensionsToNegotiate?.();
+      const uri = "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time";
+      if (!extensions?.some(extension => extension.uri === uri) || !headers.setHeaderExtensionsToNegotiate) return;
+      headers.setHeaderExtensionsToNegotiate(extensions.map(extension => extension.uri === uri ? { ...extension, direction: "recvonly" } : extension));
+    } catch { /* Unsupported timing metadata must never prevent the picture. */ }
+  }
   private preferCodecs(transceiver: RTCRtpTransceiver): boolean {
     try {
       const caps = typeof RTCRtpReceiver === "undefined" ? undefined : RTCRtpReceiver.getCapabilities?.("video");
