@@ -821,7 +821,7 @@ function AgentChatInner({
   const [shareOpenRequest, setShareOpenRequest] = useState(0);
   const showAuthors = (accessState.access?.participant_count ?? 1) > 1 ||
     knownParticipants.taskId === taskId && knownParticipants.count > 1 ||
-    ["member", "invited", "removed"].includes(accessState.access?.state ?? "") ||
+    ["member", "invited", "public", "removed"].includes(accessState.access?.state ?? "") ||
     (initialTask?.task.id === taskId && (initialTask.task.participant_count ?? 1) > 1);
   const ownerAuthor = accessState.access?.owner;
   const acpPendingSends = useTaskPending(taskId, pendingId, acpPendingIds);

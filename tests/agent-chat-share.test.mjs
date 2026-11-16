@@ -191,3 +191,11 @@ test("an explicit task view keeps its historical initialPrompt behavior while ac
   assert.deepEqual(globalThis.__followUps,[],"explicit task views ignore initialPrompt as before");
  } finally {await view.unmount();}
 });
+
+test("public task viewers see each participant's authorship",async()=>{
+ const access=new TaskAccessMock();access.access={...ownerAccess(),role:"view",state:"public",general_access:"public_view",can_send:false,can_manage:false};
+ const task=cloudTask();task.messages[0].sender={user_id:"owner",name:"Owner",initial:"O"};task.messages.push({id:3,role:"user",kind:"text",content:"A teammate prompt",sender:{user_id:"teammate",name:"Teammate",initial:"T"}});
+ const view=await mount({taskId:"t1"},{task,taskAccess:access});
+ try {const labels=[...view.host.querySelectorAll('[data-message-author]')].map(node=>node.textContent);assert.equal(labels.length,2);assert.ok(labels.some(label=>label.includes("Teammate")));}
+ finally {await view.unmount();}
+});
