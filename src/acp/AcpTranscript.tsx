@@ -222,15 +222,20 @@ function TruncatedRow({ row, onExpand }: { row: AcpFrameRow; onExpand?: AcpTrans
     if (!onExpand || busy) return;
     setBusy(true); setError("");
     try { await onExpand(row.id); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
+    catch (caught) {
+      const reason = caught instanceof Error ? caught.message : String(caught);
+      setError(content.image ? tt("图片加载失败：{reason}", { reason }) : reason);
+    }
     finally { setBusy(false); }
   };
   if (!content.text && !content.image && !content.attachment) return null;
+  if (!row.truncated) return content.image ? <p className="px-1 text-[12px] text-stone-500" data-acp-image-unavailable={row.id}>{tt("图片已不可用")}</p> : null;
   return <div className="flex flex-wrap gap-2 px-1 text-[12px] text-stone-500" data-acp-truncated-row={row.id}>
     {content.text && <button type="button" disabled={!onExpand || busy} onClick={() => void expand()} aria-busy={busy}>
       {tt("内容较长，已省略 {size} KB · 展开", { size: Math.ceil((row.truncated?.bytes || 0) / 1024) })}
     </button>}
-    {(content.image || content.attachment) && <button type="button" data-acp-load-attachment={row.id} disabled={!onExpand || busy} onClick={() => void expand()} aria-busy={busy}>
+    {(content.image || content.attachment) && <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-stone-600 hover:bg-stone-100 disabled:opacity-50" data-acp-load-attachment={row.id} disabled={!onExpand || busy} onClick={() => void expand()} aria-busy={busy}>
+      <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8" cy="8" r="1.5" /><path d="m3 17 5-5 4 4 3-3 6 6" /></svg>
       {content.image ? tt("图片（点击加载）") : tt("附件（点击加载）")}
     </button>}
     {error && <p role="alert">{error}</p>}
@@ -278,7 +283,7 @@ export function AcpTranscript({ rows, taskId, program, view: providedView, onAns
   const shortened = useMemo(() => {
     const assigned = new Map<string, AcpFrameRow[]>();
     for (const row of rows) {
-      if (!row.truncated) continue;
+      if (!row.truncated && (!/"type"\s*:\s*"image"/.test(row.raw) || !shortenedContent(row).image)) continue;
       const block = blocks.findLast((item) => blockRowId(item) <= row.id);
       const key = block?.key ?? "";
       assigned.set(key, [...(assigned.get(key) ?? []), row]);
@@ -298,7 +303,7 @@ export function AcpTranscript({ rows, taskId, program, view: providedView, onAns
             highlightQuery={highlightQuery}
             onAnswer={block.type === "bubble" && block.request ? onAnswer : undefined}
             onStopAndSend={block.type === "bubble" && block.queued ? onStopAndSend : undefined}
-            onOpenAttachment={block.type === "bubble" ? onOpenAttachment : undefined}
+            onOpenAttachment={block.type === "raw-request" ? undefined : onOpenAttachment}
             selectMode={Boolean(pick)}
             selected={Boolean(pick && block.type === "bubble" && select?.selected.has(block.message.id))}
             onToggle={pick ? select?.onToggle : undefined}
@@ -352,7 +357,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
     if (id !== null) onToggle?.(id);
   }, [id, onToggle]);
   if (block.type === "process") {
-    return <AgentProgress messages={block.messages} running={block.running} highlightQuery={highlightQuery} onBlockRender={onBlockRender} />;
+    return <AgentProgress messages={block.messages} running={block.running} highlightQuery={highlightQuery} onBlockRender={onBlockRender} onOpenAttachment={onOpenAttachment} />;
   }
   if (block.type === "raw-request") return <RawRequest request={block.request} />;
   return <>
