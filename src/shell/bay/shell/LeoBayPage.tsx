@@ -18,6 +18,7 @@ import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS }
 import type { ExplorePageProps } from "../../ExplorePage";
 import { BayAppShelf } from "../apps/BayAppShelf";
 import { BayAssetLibrary } from "../asset/BayAssetLibrary";
+import { BayArtifactDeepLink, useBayAssetRoute } from "../asset/BayArtifactDeepLink";
 import { BayLessonShelf } from "../lessons/BayLessonShelf";
 import { LibraryWorkPickerHost } from "../needs/LibraryWorkPicker";
 import { BayAuthHost } from "./bay-auth-host";
@@ -36,9 +37,8 @@ import {
   type BayTarget,
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
-import { BayToolbarFilterSlot, BayToolbarSlotProvider } from "./BayFilterSelect";
+
 import {
-  BayCategorySelect,
   BayFeed,
   BayListingChromeContext,
   BayViewSwitch,
@@ -91,6 +91,7 @@ function Hero({
   onViewChange,
   favoritesOnly,
   onFavoritesOnly,
+  onLicenses,
 }: {
   filter: BayFeedFilter;
   search: { text: string; change: (value: string) => void; commit: (value: string) => void };
@@ -98,6 +99,7 @@ function Hero({
   onViewChange: (view: CollectionView) => void;
   favoritesOnly: boolean;
   onFavoritesOnly: (value: boolean) => void;
+  onLicenses?: () => void;
 }) {
   const tt = useUI();
   const viewOptions: CollectionViewOption[] = [
@@ -108,6 +110,7 @@ function Hero({
       onSelect: () => onFavoritesOnly(!favoritesOnly),
     },
   ];
+  if (onLicenses) viewOptions.push({ id: "licenses", label: "授权说明", onSelect: onLicenses });
   return (
     <section data-bay-page-hero className="shrink-0">
       <header className={APP_PAGE_HEADER_ROW_CLASS} data-collection-toolbar="">
@@ -142,17 +145,12 @@ function Hero({
   );
 }
 
-/**
- * 逛 LeoBay：页头（搜索 / 查看选项 / 网格列表）、第二行是出售/求购、种类、站点/现成文件的筛选。
- * 看详情时这一整块只是藏起来（`visible` 为 false）；回来时把信息流滚回离开时的位置。
- * 工具条和现成文件库包在同一个 `BayToolbarSlotProvider` 里，现成文件的筛选才能送到那一行。
- */
+/** 浏览目录始终挂载，详情打开时卸下页头两行，返回时恢复原滚动位置。 */
 function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const savedTop = useRef(0);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
-  const tt = useUI();
   const kind = canonicalBayFeedKind(filter.kind);
   const asset = kind === "asset";
   const app = kind === "app";
@@ -160,6 +158,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   const [assetVisited, setAssetVisited] = useState(asset);
   const [view, setView] = useState<CollectionView>("grid");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [licensesOpen, setLicensesOpen] = useState(false);
   const [favoriteKeys, setFavoriteKeys] = useState<ReadonlySet<string> | null>(null);
   const search = useBaySearchText(filter);
   const listingChrome = useMemo(() => ({ view, favoritesOnly }), [favoritesOnly, view]);
@@ -192,8 +191,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
   }, [visible]);
 
   return (
-    <BayToolbarSlotProvider>
-      <BayListingChromeContext.Provider value={listingChrome}>
+    <BayListingChromeContext.Provider value={listingChrome}>
         <div
           ref={scrollRef}
           onScroll={(event) => {
@@ -203,21 +201,21 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           data-bay-page-feed
           data-bay-listing-view={view}
         >
-          <Hero
+          {visible ? <Hero
             filter={filter}
             search={search}
             view={view}
             onViewChange={setView}
             favoritesOnly={favoritesOnly}
             onFavoritesOnly={setFavoritesOnly}
-          />
-          <CollectionFilterRow data-bay-page-toolbar="" data-bay-page-filters="">
-            <BayViewSwitch filter={filter} />
-            {asset ? <BayToolbarFilterSlot /> : <BayCategorySelect filter={filter} />}
-          </CollectionFilterRow>
+            onLicenses={asset ? () => setLicensesOpen(true) : undefined}
+          /> : null}
+          {visible ? <CollectionFilterRow data-bay-page-toolbar="" data-bay-page-filters="">
+            <BayViewSwitch filter={filter} showSite />
+          </CollectionFilterRow> : null}
           {assetVisited ? (
             <div className={asset ? "flex min-h-[32rem] flex-1 flex-col" : "hidden"} data-bay-page-materials>
-              <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} view={view} />
+              <BayAssetLibrary filter={filter} siteKey={siteKey} accent={accent} view={view} detailInPage licensesOpen={licensesOpen && visible} onCloseLicenses={() => setLicensesOpen(false)} />
             </div>
           ) : null}
           {asset ? null : app ? (
@@ -241,8 +239,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
             </div>
           )}
         </div>
-      </BayListingChromeContext.Provider>
-    </BayToolbarSlotProvider>
+    </BayListingChromeContext.Provider>
   );
 }
 
@@ -342,7 +339,8 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   const filter = useBayFilter();
   const { current } = useBayState();
   const storeSiteKey = useBaySiteKey();
-  const browsing = current.kind === "feed";
+  const assetRoute = useBayAssetRoute();
+  const browsing = current.kind === "feed" && !assetRoute.target;
   const paperPage = current.kind !== "feed" && PAPER_DETAILS.has(current.kind);
 
   useEffect(() => {
@@ -365,7 +363,10 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   if (availability === "off") {
     return (
       <div className={FRAME_CLASS} data-bay-page="materials-only">
-        <BayAssetLibrary filter={filter} siteKey={storeSiteKey || siteKey} accent={accent} />
+        <div className={assetRoute.target ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-y-auto"}>
+          <BayAssetLibrary filter={filter} siteKey={storeSiteKey || siteKey} accent={accent} detailInPage />
+        </div>
+        {assetRoute.target ? <BayArtifactDeepLink target={assetRoute.target} onBack={assetRoute.close} accent={accent} siteKey={storeSiteKey || siteKey} /> : null}
       </div>
     );
   }
@@ -375,7 +376,7 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
       <div className={browsing ? "flex min-h-0 flex-1 flex-col" : "hidden"} data-bay-page-browse>
         <Browse filter={filter} accent={accent} visible={browsing} siteKey={storeSiteKey || siteKey} />
       </div>
-      {current.kind === "feed" ? null : <Detail target={current} siteKey={storeSiteKey || siteKey} />}
+      {current.kind === "feed" ? (assetRoute.target ? <BayArtifactDeepLink target={assetRoute.target} onBack={assetRoute.close} accent={accent} siteKey={storeSiteKey || siteKey} /> : null) : <Detail target={current} siteKey={storeSiteKey || siteKey} />}
       <LibraryWorkPickerHost />
       <BayAuthHost />
     </div>

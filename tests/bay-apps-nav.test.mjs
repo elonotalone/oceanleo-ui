@@ -12,9 +12,9 @@ function src(rel) {
   return readFileSync(join(REPO, "src", rel), "utf8");
 }
 
-test("BAY_FEED_KINDS 常量是六值（URL 合同，含 other），逛页是两个下拉而不是并排的键", () => {
+test("BAY_FEED_KINDS 常量是六值（URL 合同，含 other），逛页展开五类并默认现成文件", () => {
   assert.deepEqual([...links.BAY_FEED_KINDS], ["service", "asset", "app", "lesson", "other", "request"]);
-  assert.equal(links.DEFAULT_BAY_FEED_KIND, "service");
+  assert.equal(links.DEFAULT_BAY_FEED_KIND, "asset");
   const list = src("shell/bay/shell/BayList.tsx");
   assert.match(list, /data-bay-browse-intent=\{selling \? "sell" : "buy"\}/);
   assert.doesNotMatch(list, /BAY_FEED_KINDS\.map\(/);
@@ -33,7 +33,7 @@ test("normalizeBayFeedKind 认 app，老值仍落到原来的栏", () => {
   assert.equal(links.normalizeBayFeedKind("help"), "request");
   assert.equal(links.normalizeBayFeedKind("material"), "asset");
   assert.equal(links.normalizeBayFeedKind("bogus"), null);
-  assert.equal(links.canonicalBayFeedKind(""), "service");
+  assert.equal(links.canonicalBayFeedKind(""), "asset");
 });
 
 test("parseBayParam / formatBayParam 对 app 与 app-editor 互逆；非法 id 为 null", () => {

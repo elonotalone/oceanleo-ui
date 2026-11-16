@@ -133,7 +133,7 @@ test("normalizeBayFeedKind：现用值原样，老值 supply/all/consult→servi
   assert.equal(links.normalizeBayFeedKind("bogus"), null);
   assert.equal(links.normalizeBayFeedKind(""), null);
   assert.equal(links.canonicalBayFeedKind("supply"), "service");
-  assert.equal(links.canonicalBayFeedKind(""), "service");
+  assert.equal(links.canonicalBayFeedKind(""), "asset");
 });
 
 test("normalizeBayMineTab：现用六块原样，老值 needs/services/help→published、proposals→sold、orders→bought、card→page", () => {
@@ -220,7 +220,7 @@ test("CN SSR still starts with Bay disabled to keep hydration stable", async () 
 
 test("目标栈：打开详情、返回、回到信息流；任务上下文与站点", async () => {
   const state = await loadState("com");
-  assert.deepEqual(state.bayStateSnapshot(), { current: { kind: "feed", filter: { kind: "service" } }, canGoBack: false });
+  assert.deepEqual(state.bayStateSnapshot(), { current: { kind: "feed", filter: { kind: "asset" } }, canGoBack: false });
   state.openBay({ kind: "demand", id: "d1" });
   assert.deepEqual(state.bayStateSnapshot().current, { kind: "demand", id: "d1" });
   assert.equal(state.bayStateSnapshot().canGoBack, true);
@@ -238,8 +238,8 @@ test("目标栈：打开详情、返回、回到信息流；任务上下文与�
     canGoBack: false,
   });
   state.setBayFilter({ kind: "bogus", category: "Not A Slug", q: "  logo  " });
-  assert.deepEqual(state.bayStateSnapshot().current, { kind: "feed", filter: { kind: "service", q: "logo" } });
-  assert.equal(state.bayPageHrefNow(), "/bay", "默认 service 不往地址里写 kind");
+  assert.deepEqual(state.bayStateSnapshot().current, { kind: "feed", filter: { kind: "asset", q: "logo" } });
+  assert.equal(state.bayPageHrefNow(), "/bay", "默认 asset 不往地址里写 kind");
   state.setBayFilter({ kind: "demand" });
   assert.equal(state.bayPageHrefNow(), "/bay?kind=request");
   state.setBayFilter({ kind: "service" });
@@ -352,7 +352,7 @@ test("consumeDeepLink：别的页面带 ?bay= → 跳到 /bay 页", async () => 
   assert.ok(replaced.length >= 1, "从原地址清掉 ?bay=");
   assert.equal(state.bayStateSnapshot().current.kind, "demand");
   assert.equal(state.bayStateSnapshot().current.id, "d1");
-  assert.deepEqual(assigned, ["/bay?bay=demand:d1"]);
+  assert.deepEqual(assigned, ["/bay?bay=demand:d1&kind=service"]);
   off();
 });
 

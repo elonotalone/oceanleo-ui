@@ -196,16 +196,16 @@ test("服务栏渲染出站点下拉 data-bay-filter=category", async () => {
   reset({ filter: { kind: "service" } });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.ok(view.host.querySelector('[data-bay-filter="category"]'));
-  assert.ok(view.host.querySelector('[data-bay-filter="kind"]'));
+  assert.equal(view.host.querySelectorAll("[data-bay-kind-tab]").length, 5);
   assert.equal(view.host.querySelector("[data-bay-browse-kind] select"), null);
   assert.equal(view.host.querySelector("[data-bay-toolbar-slot]"), null);
   await view.unmount();
 });
 
-test("素材栏渲染出 data-bay-toolbar-slot 且不渲染站点下拉", async () => {
+test("素材栏不再使用筛选插槽，也不渲染站点下拉", async () => {
   reset({ filter: { kind: "asset" } });
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
-  assert.ok(view.host.querySelector("[data-bay-toolbar-slot]"));
+  assert.equal(view.host.querySelector("[data-bay-toolbar-slot]"), null);
   assert.equal(view.host.querySelector('[data-bay-filter="category"]'), null);
   await view.unmount();
 });
