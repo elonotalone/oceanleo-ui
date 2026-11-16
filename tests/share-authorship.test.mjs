@@ -14,12 +14,12 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const tt = dataModule(`export function useUI(){return (value,vars)=>value.replace(/\\{(\\w+)\\}/g,(_,key)=>String(vars?.[key]??"{"+key+"}"));}`);
 const { AgentTranscriptBubble } = await import(await compileModule("src/shell/AgentTranscriptBubble.tsx", {
   "../i18n/ui/useUI": tt,
-  "./Markdown": dataModule(`export const Markdown=({children})=>children; export const TypewriterMarkdown=({children})=>children; export const HighlightedText=({text})=>text;`),
+  "./Markdown": dataModule(`export const Markdown=({children})=>children; export const TypewriterMarkdown=({children})=>children; export const HighlightedText=({text})=>text; export const splitHighlights=(text)=>[{text,match:false}];`),
   "next/link": dataModule(`export default function Link(p){return globalThis.React.createElement("a",p,p.children);}`),
 }));
 const { AcpTranscript } = await import(await compileModule("src/acp/AcpTranscript.tsx", {
   "../i18n/ui/useUI": tt,
-  "./Markdown": dataModule(`export const Markdown=({children})=>children; export const TypewriterMarkdown=({children})=>children; export const HighlightedText=({text})=>text;`),
+  "./Markdown": dataModule(`export const Markdown=({children})=>children; export const TypewriterMarkdown=({children})=>children; export const HighlightedText=({text})=>text; export const splitHighlights=(text)=>[{text,match:false}];`),
   "next/link": dataModule(`export default function Link(p){return globalThis.React.createElement("a",p,p.children);}`),
 }));
 const author = { user_id: "viewer-id", name: "Alex", initial: "A" };
@@ -97,7 +97,7 @@ globalThis.__authorshipToken = () => token;
 globalThis.__authorshipFetch = async(url,init)=>{requests.push({url,init});return new Response(JSON.stringify({task:task("public"),messages:[],artifacts:[]}),{status:200,headers:{"Content-Type":"application/json"}});};
 const api = await import(await compileModule("src/lib/agent.ts", {
   "./auth/client":dataModule(`export async function accessToken(){return globalThis.__authorshipToken();} export function cachedAccessToken(){return globalThis.__authorshipToken();} export function getUserId(){return null;}`),
-  "./auth/config":dataModule(`export function gatewayBase(){return "https://gateway.test";}`),
+  "./auth/config":dataModule(`export const GATEWAY_BASE="https://gateway.test"; export function gatewayBase(){return GATEWAY_BASE;}`),
   "./shared-get":dataModule(`export async function sharedGatewayFetch(...args){return globalThis.__authorshipFetch(...args);}`),
 }));
 test("anonymous task details reach gateway access enforcement; writes still reject anonymous locally",async()=>{

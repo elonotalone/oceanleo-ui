@@ -138,8 +138,9 @@ function messageAuthor(message: AgentMessage, owner?: MessageAuthor): MessageAut
   if (metaSender && typeof metaSender === "object" && (metaSender as {kind?: unknown}).kind === "agent") return null;
   const candidate = message.author ?? message.sender ?? message.meta?.author ?? metaSender;
   const record = candidate && typeof candidate === "object" ? candidate as MessageAuthor : null;
-  const name = typeof record?.name === "string" ? record.name : message.sender_name || (!record && !message.sender_user_id ? owner?.name : "") || "";
-  const initial = typeof record?.initial === "string" && record.initial ? record.initial : message.sender_initial || (name ? [...name.trim()][0] : owner?.initial) || "?";
+  const displayName = typeof record?.name === "string" ? record.name : message.sender_name || (!record && !message.sender_user_id ? owner?.name : "") || "";
+  const name = displayName.includes("@") ? "" : displayName;
+  const initial = typeof record?.initial === "string" && record.initial ? record.initial : message.sender_initial || (name ? [...name.trim()][0] : !record && !message.sender_user_id ? owner?.initial : "") || "?";
   return { name, initial };
 }
 
