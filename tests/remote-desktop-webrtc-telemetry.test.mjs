@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {WebRtcClock,WebRtcTelemetry,webRtcPercentiles} from '../src/api/remote-desktop-webrtc-telemetry.ts';
-import {FakeVideo,harness,WALL} from './helpers/remote-desktop-webrtc.mjs';
+import {descriptor,FakeVideo,harness,WALL} from './helpers/remote-desktop-webrtc.mjs';
 
 test('NTP clock keeps minimum RTT in rolling 30s and excludes malformed samples',()=>{
   const clock=new WebRtcClock();clock.sample(1000,1510,1512,1022,0);assert.equal(clock.offset(0),500);
@@ -58,4 +58,28 @@ test('ten-second windows reset local counts, final keeps session totals, path ne
 test('inbound stats mark decode/sending even when selected candidate stats are absent',async t=>{
   const h=await harness(t);await h.viewer.start();h.open();h.viewer.pc.statsEntries=[{id:'video',type:'inbound-rtp',kind:'video',framesDecoded:10,framesReceived:10,bytesReceived:1000}];
   await h.advance(100);h.viewer.close();assert.equal(h.reports.at(-1).report.steps.first_frame_decoded_ms,200);assert.equal(h.reports.at(-1).report.steps.session_created_ms,undefined);
+});
+test('authenticated host stats supply URL-less remote relay region and generation replacement clears it',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;
+  const entries=[{id:'pair',type:'candidate-pair',selected:true,localCandidateId:'local',remoteCandidateId:'remote'},
+    {id:'local',type:'local-candidate',candidateType:'host',protocol:'udp'},{id:'remote',type:'remote-candidate',candidateType:'relay'}];
+  pc.statsEntries=entries;const ctl=pc.channel('rd-ctl');
+  ctl.message({t:'rd.publisher_stats',metrics:{fps:30},path:{relay_region:'https://private.invalid'}});await h.advance(100);
+  assert.equal(h.states.at(-1).path.relay_region,undefined);
+  ctl.message({t:'rd.publisher_stats',metrics:{fps:30},path:{relay_region:'ap-southeast-1'},sid:'other'});await h.advance(1000);
+  assert.equal(h.states.at(-1).path.relay_region,undefined);
+  ctl.message({t:'rd.publisher_stats',metrics:{fps:30},path:{relay_region:'ap-southeast-1'}});await h.advance(1000);
+  assert.equal(h.states.at(-1).path.relay_region,'ap-southeast-1');assert.equal(JSON.stringify(h.states.at(-1).path).includes('private.invalid'),false);
+  pc.state('failed');await h.advance(200);h.open();h.viewer.pc.statsEntries=entries;await h.advance(1000);
+  assert.equal(h.viewer.gen,2);assert.equal(h.states.at(-1).path.relay_region,undefined);
+});
+test('host relay hint cannot replace known local TURN region or label a direct path',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const pc=h.viewer.pc;
+  h.viewer.updateDescriptor(descriptor({ice_servers:[{urls:['turn:fixture.invalid:3478'],region:'local-region'}]}));
+  pc.channel('rd-ctl').message({t:'rd.publisher_stats',metrics:{},path:{relay_region:'host-region'}});
+  const local={id:'l',type:'local-candidate',candidateType:'relay',url:'turn:fixture.invalid:3478'};
+  const remote={id:'r',type:'remote-candidate',candidateType:'relay'};
+  pc.statsEntries=[{id:'p',type:'candidate-pair',selected:true,localCandidateId:'l',remoteCandidateId:'r'},local,remote];await h.advance(100);
+  assert.equal(h.states.at(-1).path.relay_region,'local-region');local.candidateType='host';remote.candidateType='host';await h.advance(1000);
+  assert.equal(h.states.at(-1).path.relay_region,undefined);
 });

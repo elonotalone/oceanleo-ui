@@ -63,6 +63,7 @@ export class WebRtcRemoteDesktopViewer {
   private statsPending = false;
   private leaseDeadline: number;
   private state: WebRtcViewerState = "connecting";
+  private hostRelayRegion: string | undefined;
   private pingTimes = new Map<number, number>();
   constructor(options: WebRtcViewerOptions) {
     this.options = options; this.descriptor = options.descriptor;
@@ -98,6 +99,7 @@ export class WebRtcRemoteDesktopViewer {
       this.detachPeer();
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
       this.gen++; const gen = this.gen;
+      this.hostRelayRegion = undefined; this.telemetry.path = undefined;
       this.candidates = []; this.pendingSignals = []; this.recovery.clear();
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
@@ -275,6 +277,8 @@ export class WebRtcRemoteDesktopViewer {
       if (typeof received === "number" && typeof sent === "number") this.telemetry.clock.sample(data.t_v, received, sent, this.wallNow(), this.now());
     } else if (data.t === "rd.publisher_stats" && data.metrics && typeof data.metrics === "object") {
       this.telemetry.publisher = Object.fromEntries(Object.entries(data.metrics).filter(([key, value]) => /^[a-z][a-z0-9_]{0,63}$/.test(key) && typeof value === "number" && Number.isFinite(value)) as [string, number][]);
+      const region = data.path && typeof data.path === "object" ? (data.path as Record<string, unknown>).relay_region : undefined;
+      if (typeof region === "string" && /^[a-z0-9-]{1,32}$/.test(region)) this.hostRelayRegion = region;
     } else if (data.t === "rd.input_error") this.channelFault("rd-input", "host_input_executor_failed");
   }
   private ping(): void {
@@ -375,7 +379,9 @@ export class WebRtcRemoteDesktopViewer {
       if (typeof pair.currentRoundTripTime === "number" && Number.isFinite(pair.currentRoundTripTime)) path.rtt_ms = Math.max(0, Math.round(pair.currentRoundTripTime * 1000));
       // A relay region is reported only when supplied as coarse metadata; never derive or expose an IP/hostname.
       const relayUrl = path.local_type === "relay" ? local?.url : path.remote_type === "relay" ? remote?.url : undefined;
-      const region = this.descriptor.ice_servers.find(server => (Array.isArray(server.urls) ? server.urls : [server.urls]).includes(String(relayUrl)))?.region;
+      const mappedRegion = this.descriptor.ice_servers.find(server => (Array.isArray(server.urls) ? server.urls : [server.urls]).includes(String(relayUrl)))?.region;
+      // Remote candidate stats often omit url; the authenticated host can identify its own selected TURN region.
+      const region = mappedRegion ?? (path.remote_type === "relay" ? this.hostRelayRegion : undefined);
       if ((path.local_type === "relay" || path.remote_type === "relay") && typeof region === "string" && /^[a-z0-9-]{1,32}$/.test(region)) path.relay_region = region;
       this.telemetry.path = path; this.emitState(this.state);
     } catch { /* stats are optional and never affect connection lifetime */ }
