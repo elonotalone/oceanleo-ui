@@ -74,7 +74,7 @@ host.ondatachannel = ({ channel }) => {
         control.send(JSON.stringify({ t: 'rd.pong', v: 1, sid, t_v: message.t_v, device_wall_ms: now, host_receive_ms: now, host_send_ms: Date.now() }));
       } else if (message.a && control?.readyState === 'open') {
         assert.ok(channel.label === (message.a.kind === 'move' ? 'rd-fast' : 'rd-input'));
-        control.send(JSON.stringify({ t: 'rd.input_receipt', v: 1, sid, seq: message.seq, status: 'executed', receive_at_ms: Date.now(), executed_at_ms: Date.now() }));
+        control.send(JSON.stringify({ t: 'rd.input_receipt', v: 1, sid, seq: message.seq, status: 'executed', received_at_ms: Date.now(), executed_at_ms: Date.now() }));
         if (message.a.kind === 'click') acknowledged = true;
       }
     } catch (error) { fail(error); }
