@@ -6,3 +6,7 @@
 
 ## Owner canvas
 工作树 /root/wt/ED-B5c2-oceanleo-ui。独占 src/shell/video-canvas/engine/{project-model.ts,LeoNode.tsx,canvas-selection-adapter.ts,command-registry.ts}；独占 tests/ed-b5c2-canvas-render-parity.test.mjs（可新增）。不得改 timeline/types 和旧测试。实现画布所有上述文字样式完整 controls/commands、projectTimelineDocument 透传（text/script 的明确 include in video 语义保留），图片 radius/border/opacity/fit 预览与落像素配方、alt 元数据；若 backend 无 remove-background 不声明。图片替换从 Library 选图复用现有素材选择器，在允许边界落地，必要越界通知父。与 backend owner 协调 localEditRecipe 字段/operation 合同并保证后端实际支持。尽早发具体配方合同给 backend。你不改 types.ts，由 timeline owner 供给。不得跑全量/公共门禁。先看现有 Library picker，和 timeline owner 共享可行模式。
+
+## 最终合同补充：remove-background 条件已满足
+父复核找到既有 backend/app/routers/images_router.py:653-726 POST /v1/images/remove-bg，body={site_id,image_url,model?,key_mode?,org_id?}，返回{image,model,credits_spent,request_id,key_mode,...}，imageseg-matting，已由后端计费并host为durable image URL。按用户第3项「若后端有现成能力就接」必须接，不能记作不存在。仍仅在原4个允许源文件及原新增测试内实现。
+独占canvas-selection-adapter.ts/command-registry.ts追加canon remove-background→真实后端入口，沿用现有remote/paid披露、busy/readOnly/selectionRevision/epoch/cancel门禁；输入支持普通durable URL、新Library full身份和已pin sourceDependency（复用既有解析helper，禁止blobURL上传模型）。输出不得只是同源recipe：读取返回真实image bytes，校验MIME/大小、SHA256、保持旧asset+head不改，注册新immutable asset并切换当前图像；保存必须携带contentDigest/mime/byteSize使既有typed closure可验证。必要资产lineage保持。不得调用真实付费模型或改后端endpoint；测试mock transport/provider，但真实字节hash、head和渲染clip要走真实代码。至少覆盖成功导出/保存/旧版本、失败/返回非图片、迟到/取消/只读/权限与epoch，不声明不可用能力。复用已有「抠图」词条/canon label，不新增未译key/CSS utility/预算登记。父已有最终full前回归修复，所有改动完成后先ready，串行提交再最终公共验证。
