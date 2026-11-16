@@ -9,6 +9,16 @@ const api = await import(await compileModule("src/api/remote-desktop.ts", {
   "./device-settings": dataModule('export function controllerHeaders(){return {"X-OceanLeo-Controller":"controller"}}; export async function registerController(){return {ok:true}}'),
 }));
 const { RemoteDesktopQualityHub } = await import(await compileModule("src/api/remote-desktop-quality.ts"));
+const warmApi = await import(await compileModule("src/api/remote-desktop.ts", {
+  "../lib/auth/client": dataModule('export async function accessToken(){return "viewer-token";}'),
+  "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.test";'),
+  "./device-settings": dataModule('export function controllerHeaders(){return {"X-OceanLeo-Controller":"controller"}};export async function registerController(){return {ok:true}}'),
+  "./remote-desktop-webrtc-preconnect": dataModule(`
+    export async function createPreparedRemoteWebRtcSession(){return null;}
+    export function takePreparedRemoteWebRtcSocket(){return null;}
+    export function takeCreatedRemoteWebRtcSocket(){const item=globalThis.__webrtcCreated;globalThis.__webrtcCreated=null;return item??null;}
+  `),
+}));
 const epoch = Date.parse("2026-11-16T12:00:00Z");
 function descriptor(extra = {}) {
   return { transport: "webrtc-v1", role: "viewer", session_id: "sid", display_id: null,
@@ -81,6 +91,25 @@ test("create negotiates WebRTC beside ARTC and parses inline descriptor with str
   assert.deepEqual(JSON.parse(h.calls[0].init.body), { request_id: "stable-request", transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"] });
   assert.equal(result.data.media.media.ice_servers[1].region, "sg");
   for (const invalid of [descriptor({ role: "host" }), descriptor({ session_id: "other" }), descriptor({ server_now: NaN }), descriptor({ lease_expires_at: "bad" }), descriptor({ ice_servers: [{ urls: ["https://bad.test"] }] }), descriptor({ ice_servers: [{ urls: ["turn:relay.test"] }] })]) assert.equal(api.parseRemoteMedia(invalid, "sid"), null);
+});
+test("created-stream adoption keeps its offered peer, replays early answer after local SDP, and reports original offer time",async t=>{
+  const h=setup(t);const pc=new Peer({iceServers:[]}),socket=new Socket('wss://gateway.test/viewer-stream');
+  const transceiver=pc.addTransceiver();const channels=new Map(['rd-input','rd-fast','rd-ctl'].map(label=>[label,pc.createDataChannel(label)]));
+  globalThis.__webrtcCreated={socket,controller:'controller',messages:[
+    JSON.stringify({type:'state',state:'active',transport:'webrtc-v1',session_id:'sid'}),
+    JSON.stringify({type:'signal',data:{k:'answer',gen:1,sdp:'early-warm-answer'}}),
+  ],initialPeer:{pc,transceiver,channels,offer:{type:'offer',sdp:'created-offer'},offeredAt:950}};
+  t.after(()=>delete globalThis.__webrtcCreated);
+  const result=await warmApi.remoteDesktopClient.openStream('device','sid',{state(){},frame(){}},
+    {transport:'webrtc-v1',descriptor:descriptor(),clickedAt:900});
+  assert.equal(result.ok,true);h.streams.push(result.data);await drain();
+  assert.equal(Peer.all.length,1);assert.equal(Socket.all.length,1);assert.equal(pc.channels.length,3);
+  assert.equal(pc.offers.length,0);assert.equal(pc.localDescription.sdp,'created-offer');assert.equal(pc.remoteDescription.sdp,'early-warm-answer');
+  assert.equal(pc.configuration.iceServers[1].username,'ephemeral');
+  assert.deepEqual(socket.sent[0],{type:'auth.refresh',token:'viewer-token'});
+  assert.equal(socket.sent.some(value=>value.type==='attach'||value.type==='signal'&&value.data.k==='offer'),false);
+  result.data.close();await drain();const report=h.calls.find(call=>call.url.endsWith('/remote-desktop/quality'));
+  assert.equal(JSON.parse(report.init.body).steps.offer_sent_ms,50);
 });
 
 test("WebRTC media renewal uses the pinned transport and rejects mismatched descriptor sessions", async t => {
