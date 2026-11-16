@@ -1,3 +1,4 @@
+import { EDITOR_NOTO_FONT_COPY } from "./editor-noto-font-copy";
 // @oceanleo/ui — 2026-10-23 编辑器整改波的新文案聚合（17 语）。
 //
 // 为什么一人一册：这一波 16 位 owner 同时加文案。共用一张表的话，谁 `git commit`
@@ -26,6 +27,7 @@ import { EDITOR_OVERHAUL_W16_COPY } from "./editor-overhaul-copy-w16";
 import { EDITOR_OVERHAUL_PARENT_COPY } from "./editor-overhaul-copy-parent";
 
 const PARTS: readonly EditorOverhaulCopy[] = [
+  EDITOR_NOTO_FONT_COPY,
   EDITOR_OVERHAUL_PARENT_COPY,
   EDITOR_OVERHAUL_W01_COPY,
   EDITOR_OVERHAUL_W02_COPY,
