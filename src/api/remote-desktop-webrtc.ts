@@ -34,6 +34,17 @@ const terminalByeReasons = new Set([
 ]);
 const swallow = (fn: () => void): void => { try { fn(); } catch { /* observers cannot stop media */ } };
 
+/** Explicit development-only TURN acceptance switch; never changes a public viewer. */
+function viewerIcePolicy(): RTCIceTransportPolicy {
+  try {
+    const { hostname, search } = window.location;
+    const development = ["localhost", "127.0.0.1", "[::1]", "::1"].includes(hostname) || hostname.endsWith(".dev.oceanleo.com");
+    const query = new URLSearchParams(search);
+    if (development && query.get("__rd_debug") === "1" && query.get("__rd_ice") === "relay") return "relay";
+  } catch { /* SSR and non-browser clients keep normal candidate selection. */ }
+  return "all";
+}
+
 /** The peer owns media/input only. Authentication, HTTP and stream reconnects belong to the caller. */
 export class WebRtcRemoteDesktopViewer {
   gen = 0;
@@ -111,11 +122,12 @@ export class WebRtcRemoteDesktopViewer {
       this.disconnectedAt = undefined; this.restartDue = undefined; this.restartBackoff = 1000;
       const create = this.options.createPeer ?? (configuration => new RTCPeerConnection(configuration));
       let pc: RTCPeerConnection;
-      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: "all", bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
+      try { pc = create({ iceServers: this.iceServers(), iceTransportPolicy: viewerIcePolicy(), bundlePolicy: "max-bundle", rtcpMuxPolicy: "require" }); }
       catch { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
       this.pc = pc;
       const transceiver = pc.addTransceiver("video", { direction: "recvonly" });
       this.lowDelay(transceiver.receiver);
+      this.captureTimestamp(transceiver);
       if (!this.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
       pc.onicecandidate = event => {
         if (this.pc !== pc || this.ended || !event.candidate) return;
@@ -156,6 +168,21 @@ export class WebRtcRemoteDesktopViewer {
     try { low.playoutDelayHint = 0; } catch { /* platform may expose read-only hints */ }
   }
   private iceServers(): RTCIceServer[] { return this.descriptor.ice_servers.map(({ region: _region, ...server }) => server); }
+  private captureTimestamp(transceiver: RTCRtpTransceiver): void {
+    // Chromium exposes ACT as supported but stopped by default. Enable it through
+    // the transceiver API before the offer, keeping every other extension intact.
+    type Extension = { uri: string; direction: RTCRtpTransceiverDirection | "stopped" };
+    const headers = transceiver as RTCRtpTransceiver & {
+      getHeaderExtensionsToNegotiate?(): Extension[];
+      setHeaderExtensionsToNegotiate?(extensions: Extension[]): void;
+    };
+    try {
+      const extensions = headers.getHeaderExtensionsToNegotiate?.();
+      const uri = "http://www.webrtc.org/experiments/rtp-hdrext/abs-capture-time";
+      if (!extensions?.some(extension => extension.uri === uri) || !headers.setHeaderExtensionsToNegotiate) return;
+      headers.setHeaderExtensionsToNegotiate(extensions.map(extension => extension.uri === uri ? { ...extension, direction: "recvonly" } : extension));
+    } catch { /* Unsupported timing metadata must never prevent the picture. */ }
+  }
   private preferCodecs(transceiver: RTCRtpTransceiver): boolean {
     try {
       const caps = typeof RTCRtpReceiver === "undefined" ? undefined : RTCRtpReceiver.getCapabilities?.("video");
@@ -168,7 +195,9 @@ export class WebRtcRemoteDesktopViewer {
       const vp8 = caps.codecs.filter(c => c.mimeType.toLowerCase() === "video/vp8");
       // An empty preference list restores defaults, including the host's unsupported profiles.
       if (!h264.length && !vp8.length) return false;
-      transceiver.setCodecPreferences([...h264, ...vp8]);
+      // RTX repairs lost packets; it is not an additional picture codec/profile.
+      const repair = caps.codecs.filter(c => c.mimeType.toLowerCase() === "video/rtx");
+      transceiver.setCodecPreferences([...h264, ...vp8, ...repair]);
       return true;
     } catch { return false; /* Never send an unfiltered offer when preferences cannot be applied. */ }
   }
