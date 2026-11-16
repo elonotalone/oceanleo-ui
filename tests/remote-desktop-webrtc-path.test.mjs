@@ -106,56 +106,56 @@ async function connected(t, iceServers = servers) {
 async function iceWindow(h, options = {}, count = 5) {
   for (let i = 0; i < count; i++) { h.pc.statsEntries = stats({ ...options, responses: 10 + i }); await h.advance(1000); }
 }
-test('live switch is one same-gen ICE restart, preserving peer, picture, channels and input sequence', async t => {
-  const h = await connected(t), pc = h.pc;
-  assert.equal(h.viewer.send({ kind: 'keypress', key: 'A' }), true); const seq = h.viewer.lastSequence(); h.receipt(seq);
-  await iceWindow(h);
-  assert.equal(h.viewer.pc, pc); assert.equal(h.viewer.gen, 1); assert.equal(pc.closed, 0);
-  assert.equal(pc.configuration.iceTransportPolicy, 'relay'); assert.deepEqual(pc.configuration.iceServers, relayA.servers);
-  assert.deepEqual(pc.offers, [undefined, { iceRestart: true }]); assert.equal(h.peers.length, 1, 'no unadvertised probe');
-  assert.equal(h.viewer.send({ kind: 'keypress', key: 'B' }), true); assert.ok(h.viewer.lastSequence() > seq); h.receipt(h.viewer.lastSequence());
-  h.video.frame({ expectedDisplayTime: h.now(), receiveTime: h.now() - 10 });
-  await h.viewer.signal({ k: 'answer', gen: 1, sdp: 'restart-answer' });
-  h.pc.statsEntries = stats({ selected: 'a', responses: 20 }); await h.advance(1000);
-  assert.equal(h.states.at(-1).state, 'playing'); assert.deepEqual(h.terminals, []);
-  assert.equal(h.states.at(-1).path.relay_region, 'guangzhou');
+test('measured relay migration creates a relay-only gen+1 on the same authorized session', async t => {
+  const h = await connected(t), old = h.pc;
+  h.viewer.send({ kind: 'keypress', key: 'A' }); const seq = h.viewer.lastSequence(); h.receipt(seq);
+  await iceWindow(h); const next = h.viewer.pc;
+  assert.notEqual(next, old); assert.equal(h.viewer.gen, 2); assert.equal(old.closed, 1);
+  assert.equal(next.configuration.iceTransportPolicy, 'relay'); assert.deepEqual(next.configuration.iceServers, relayA.servers);
+  assert.deepEqual(next.offers, [undefined]); assert.equal(h.peers.length, 2);
+  assert.equal(h.signals.filter(s => s.k === 'offer').at(-1).gen, 2);
+  h.open(); await h.viewer.signal({ k: 'answer', gen: 2, sdp: 'relay-answer' });
+  next.statsEntries = stats({ selected: 'a', responses: 20 }); await h.advance(1000);
+  assert.equal(h.viewer.send({ kind: 'keypress', key: 'B' }), true); assert.ok(h.viewer.lastSequence() > seq);
+  assert.deepEqual(h.terminals, []); assert.equal(h.states.at(-1).path.relay_region, 'guangzhou');
 });
-test('relay ICE disconnection falls back to all routes on the same peer after the existing 2s grace', async t => {
-  const h = await connected(t); await iceWindow(h);
-  await h.viewer.signal({ k: 'answer', gen: 1, sdp: 'restart-answer' }); h.pc.statsEntries = stats({ selected: 'a', responses: 25 }); await h.advance(1000);
-  h.pc.ice('disconnected'); await h.advance(2000);
-  assert.equal(h.pc.configuration.iceTransportPolicy, 'all'); assert.equal(h.pc.closed, 0); assert.equal(h.viewer.gen, 1); assert.deepEqual(h.terminals, []);
+test('relay disconnection retains existing grace and recovers on the migrated peer', async t => {
+  const h = await connected(t); await iceWindow(h); const pc = h.viewer.pc;
+  h.open(); await h.viewer.signal({ k: 'answer', gen: 2, sdp: 'relay-answer' });
+  pc.statsEntries = stats({ selected: 'a', responses: 25 }); await h.advance(1000);
+  pc.ice('disconnected'); await h.advance(2000);
+  assert.equal(pc.configuration.iceTransportPolicy, 'all'); assert.equal(pc.closed, 0); assert.equal(h.viewer.gen, 2); assert.deepEqual(h.terminals, []);
 });
-test('unconfirmed switch rolls back within 10s, same session and generation, without repeatedly selecting failed relay', async t => {
-  const h = await connected(t); await iceWindow(h); await h.advance(10_000);
-  assert.equal(h.pc.configuration.iceTransportPolicy, 'all'); assert.equal(h.pc.closed, 0); assert.equal(h.viewer.gen, 1);
-  const offers = h.pc.offers.length; await iceWindow(h); assert.equal(h.pc.offers.length, offers); assert.deepEqual(h.terminals, []);
+test('unconfirmed migration rolls back using another fresh peer and cools the failed relay', async t => {
+  const h = await connected(t); await iceWindow(h); const failed = h.viewer.pc; await h.advance(10_000);
+  assert.notEqual(h.viewer.pc, failed); assert.equal(failed.closed, 1); assert.equal(h.viewer.gen, 3);
+  assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'all'); assert.deepEqual(h.terminals, []);
 });
 test('getStats rejection does not restart or end the session', async t => {
   const h = await connected(t); h.pc.getStats = async () => { throw Error('unavailable'); }; await h.advance(12_000);
   assert.equal(h.pc.offers.length, 1); assert.equal(h.pc.closed, 0); assert.deepEqual(h.terminals, []);
 });
-test('confirmed relay can return to direct once dwell expires, with no new peer or session', async t => {
-  const h = await connected(t); await iceWindow(h);
-  await h.viewer.signal({ k: 'answer', gen: 1, sdp: 'relay-answer' });
-  h.pc.statsEntries = stats({ selected: 'a', responses: 20 }); await h.advance(1000);
+test('confirmed relay returns to direct with another generation after the minimum dwell', async t => {
+  const h = await connected(t); await iceWindow(h); const relay = h.viewer.pc;
+  h.open(); await h.viewer.signal({ k: 'answer', gen: 2, sdp: 'relay-answer' });
+  relay.statsEntries = stats({ selected: 'a', responses: 20 }); await h.advance(1000);
   for (let i = 0; i < 59; i++) {
-    h.pc.statsEntries = stats({ selected: 'a', directRtt: 20, relayRtt: 100, otherRtt: 110, responses: 100 + i }); await h.advance(1000);
+    relay.statsEntries = stats({ selected: 'a', directRtt: 20, relayRtt: 100, otherRtt: 110, responses: 100 + i }); await h.advance(1000);
   }
-  assert.equal(h.pc.configuration.iceTransportPolicy, 'relay');
-  h.pc.statsEntries = stats({ selected: 'a', directRtt: 20, relayRtt: 100, otherRtt: 110, responses: 200 }); await h.advance(1500);
-  assert.equal(h.pc.configuration.iceTransportPolicy, 'all'); assert.equal(h.pc.offers.length, 3);
-  assert.equal(h.viewer.gen, 1); assert.equal(h.pc.closed, 0); assert.equal(h.peers.length, 1);
+  assert.equal(h.viewer.pc, relay);
+  relay.statsEntries = stats({ selected: 'a', directRtt: 20, relayRtt: 100, otherRtt: 110, responses: 200 }); await h.advance(1500);
+  assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'all'); assert.equal(h.viewer.gen, 3);
+  assert.equal(relay.closed, 1); assert.equal(h.peers.length, 3);
 });
-test('comparisons expire when stats fail; an unconfirmed restart rolls back with renewed credentials', async t => {
+test('unconfirmed migration rolls back with renewed credentials when stats fail', async t => {
   const h = await connected(t); await iceWindow(h);
   const renewed = servers.map(server => ({ ...server, credential: 'renewed' }));
   h.viewer.updateDescriptor(descriptor({ ice_servers: renewed, server_now: WALL / 1000 + 1, lease_expires_at: new Date(WALL + 180000).toISOString() }));
-  h.pc.getStats = async () => { throw Error('unavailable'); }; await h.advance(11_000);
-  assert.equal(h.pc.configuration.iceTransportPolicy, 'all');
-  assert.ok(h.pc.configuration.iceServers.every(server => server.credential === 'renewed'));
+  h.viewer.pc.getStats = async () => { throw Error('unavailable'); }; await h.advance(11_000);
+  assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'all');
+  assert.ok(h.viewer.pc.configuration.iceServers.every(server => server.credential === 'renewed'));
   h.viewer.close(); const path = h.reports.at(-1).report.path;
-  assert.equal(path.direct_rtt_ms, undefined); assert.equal(path.relay_rtt_ms, undefined);
+  assert.equal(path?.direct_rtt_ms, undefined); assert.equal(path?.relay_rtt_ms, undefined);
 });
 
 function probeHarness(t, probeRoutes = [direct, relayA]) {
@@ -245,7 +245,7 @@ test('capability-gated pong survey actually switches the live media peer with fr
   h.pc.channel('rd-ctl').message({ t: 'rd.path_probe_ready', version: 1 }); await h.advance(100);
   const probe = h.peers[1]; probe.statsEntries = stats({ selected: 'a' }); probe.open();
   const delivered = new Set();
-  for (let i = 0; i < 160 && h.pc.configuration.iceTransportPolicy !== 'relay'; i++) {
+  for (let i = 0; i < 160 && h.viewer.pc === h.pc; i++) {
     await h.advance(50);
     for (const [peer, latency] of [[h.pc, 200], [probe, 50]]) {
       const channel = peer.channel('rd-ctl');
@@ -258,7 +258,7 @@ test('capability-gated pong survey actually switches the live media peer with fr
     }
   }
   await h.advance(100);
-  assert.equal(h.pc.configuration.iceTransportPolicy, 'relay'); assert.equal(h.viewer.pc, h.pc);
-  assert.equal(h.viewer.gen, 1); assert.equal(h.pc.closed, 0); assert.equal(h.pc.offers.length, 2);
+  assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'relay'); assert.notEqual(h.viewer.pc, h.pc);
+  assert.equal(h.viewer.gen, 2); assert.equal(h.pc.closed, 1); assert.equal(h.viewer.pc.offers.length, 1);
   assert.deepEqual(h.terminals, []);
 });
