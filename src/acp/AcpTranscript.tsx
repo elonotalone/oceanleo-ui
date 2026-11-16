@@ -7,6 +7,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
 import type { AgentAttachment, MessageAuthor } from "../lib/agent";
+import { taskAttachmentRoute } from "../lib/task-content-path";
 import { useUI } from "../i18n/ui/useUI";
 import { cursorAnswerResult, isCursorQuestion, libraryRefFromUri, resendable, viewBlocks, type AcpBlock, type AcpLabels } from "./messages";
 import { reduceRows } from "./reduce";
@@ -14,6 +15,8 @@ import type { AcpBackgroundTask, AcpFrameRow, AcpPermission, AcpTurn, JsonRpcId 
 
 export type AcpTranscriptProps = {
   rows: AcpFrameRow[];
+  /** Scopes referenced files to this visible prompt, rather than the viewer's Library. */
+  taskId?: string;
   showAuthors?: boolean;
   ownerAuthor?: MessageAuthor;
   /** Fetch a shortened row in full; the owner replaces it in the stored window. */
@@ -240,7 +243,7 @@ function blockRowId(block: AcpBlock): number {
       : Math.min(...block.messages.map((message) => message.id));
 }
 
-export function AcpTranscript({ rows, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, ownerAuthor }: AcpTranscriptProps) {
+export function AcpTranscript({ rows, taskId, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, ownerAuthor }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const labels: AcpLabels = useMemo(
@@ -263,7 +266,15 @@ export function AcpTranscript({ rows, program, view: providedView, onAnswer, onS
     }),
     [tt],
   );
-  const blocks = useMemo(() => viewBlocks(view, labels), [view, labels]);
+  const blocks = useMemo(() => viewBlocks(view, labels).map(block => {
+    if (!taskId || block.type !== "bubble" || !block.message.meta?.attachments?.length) return block;
+    const attachments = block.message.meta.attachments.map(attachment => {
+      const url = taskAttachmentRoute({ taskId, kind: "frames", rowId: block.message.id,
+        artifactId: attachment.artifact_id || "", revisionId: attachment.revision_id });
+      return url ? { ...attachment, url } : attachment;
+    });
+    return { ...block, message: { ...block.message, meta: { ...block.message.meta, attachments } } };
+  }), [view, labels, taskId]);
   const shortened = useMemo(() => {
     const assigned = new Map<string, AcpFrameRow[]>();
     for (const row of rows) {

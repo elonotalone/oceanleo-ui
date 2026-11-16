@@ -3,6 +3,7 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { AgentAttachment, AgentMessage, MessageAuthor } from "../lib/agent";
+import { taskAttachmentPath } from "../lib/task-content-path";
 import {
   AIGC_LABEL_TEXT,
   aigcLabelActive,
@@ -1087,7 +1088,7 @@ function UserUploadTile({
       previewUrl={isImage ? displayUrl : undefined}
       size={64}
       tt={tt}
-      onOpen={onOpen ? () => onOpen({ ...attachment, url: displayUrl || "" }) : undefined}
+      onOpen={onOpen ? () => onOpen({ ...attachment, url: taskAttachmentPath(attachment) || displayUrl || "" }) : undefined}
     />
   );
 }

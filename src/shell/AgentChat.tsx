@@ -100,6 +100,7 @@ import { TaskSharePanel } from "./share/TaskSharePanel";
 import { useTaskAccess } from "./access/useTaskAccess";
 import { taskAccessRights } from "./access/task-access-client";
 import { TaskAccessComposer } from "./access/TaskAccessComposer";
+import { TaskContentPanel } from "./access/TaskContentPanel";
 import { TaskActionsMenu, type TaskActionCallbacks, taskQuoteHref } from "./TaskActionsMenu";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
@@ -3548,6 +3549,8 @@ function AgentChatInner({
           {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
           {/* A failed computer pick / unreadable session list shows here too (the pick did not switch). */}
           {conversationNotice}
+          {taskId && accessRights.canView && !canManageTask && <TaskContentPanel taskId={taskId}
+            accessKey={`${accessState.access?.state}:${JSON.stringify(accessMarker ?? null)}`} />}
       </>
     ),
     overlay: backToLatest,
@@ -3647,6 +3650,7 @@ function AgentChatInner({
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onRetry={() => void sendAcpMessage(pendingShown)} onOpenAttachment={openTaskAttachment} />}
       <AcpTranscript
         rows={frames.rows}
+        taskId={taskId || undefined}
         showAuthors={showAuthors}
         ownerAuthor={ownerAuthor}
         onExpandRow={frames.expandRow}
@@ -3675,6 +3679,8 @@ function AgentChatInner({
       <>
         {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
         {conversationNotice}
+        {taskId && accessRights.canView && !canManageTask && <TaskContentPanel taskId={taskId}
+          accessKey={`${accessState.access?.state}:${JSON.stringify(accessMarker ?? null)}`} />}
         {acpSettingNotices.filter((notice) => notice.taskId === taskId && !acpStoredSettingNotices.some((stored) => stored.rowId > notice.afterRowId && stored.text.includes(notice.message))).map((notice, index) => (
           <p key={index} className="px-1 text-[13px] text-stone-500" role="status" data-acp-setting-refused="">{notice.text}</p>
         ))}
