@@ -290,6 +290,11 @@ test("a pre-renewal descriptor cannot regress ICE or extend the renewed lease", 
     throw new TypeError("renewal unavailable");
   });
   const v = await open(h); const peer = Peer.all[0];
+  // This exercises lease renewal on an established peer, not cold-start recovery.
+  v.socket.message({ type: "signal", data: { k: "answer", gen: 1, sdp: "renewal-answer" } });
+  await drain();
+  peer.connectionState = "connected"; peer.iceConnectionState = "connected";
+  peer.onconnectionstatechange?.();
   const pulse = async seconds => { for (let n = 0; n < seconds; n++) { await h.tick(1000); Socket.all.at(-1)?.message({ type: "state", state: "active" }); } };
   await pulse(80); assert.equal(peer.configuration.iceServers[0].urls[0], "stun:new.test:3478");
   v.socket.message({ type: "state", state: "active", media: descriptor() });
