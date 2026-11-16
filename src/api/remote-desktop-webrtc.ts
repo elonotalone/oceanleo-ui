@@ -102,7 +102,7 @@ export class WebRtcRemoteDesktopViewer {
   private pathProbe: WebRtcPathProbe;
   private selectedPath: { key: string; pairId: string; at: number } | undefined;
   private activeRoute: string | undefined;
-  private pathSwitch: { route: PathRoute; previous: RTCConfiguration; started: number; answered: boolean } | undefined;
+  private pathSwitch: { route: PathRoute; previousRoute?: string; started: number; answered: boolean } | undefined;
   constructor(options: WebRtcViewerOptions) {
     this.options = options; this.descriptor = options.descriptor;
     // A reload re-attaches to the same authorized session with a NEW peer generation.
@@ -526,9 +526,20 @@ export class WebRtcRemoteDesktopViewer {
   private pathTick(): void {
     if (!this.pathEnabled || !this.pc) return;
     const now = this.now(), pc = this.pc, routes = pathRoutes(this.descriptor.ice_servers);
+    if (this.telemetry.path) {
+      const path = this.telemetry.path;
+      delete path.direct_rtt_ms; delete path.relay_rtt_ms; delete path.best_relay_region; delete path.comparison_source;
+      Object.assign(path, this.pathSelector.comparison(this.selectedPath && now - this.selectedPath.at <= 1500 ? this.selectedPath.key : undefined, now));
+      path.selection_state = this.pathSwitch ? "switching" : !routes.some(route => route.kind === "relay") ? "unavailable"
+        : path.direct_rtt_ms !== undefined && path.relay_rtt_ms !== undefined ? "stable" : "measuring";
+    }
     if (this.pathSwitch && now - this.pathSwitch.started >= 10_000) {
       const change = this.pathSwitch; this.pathSwitch = undefined; this.pathSelector.failed(change.route.key, now);
-      try { pc.setConfiguration(change.previous); this.activeRoute = change.previous.iceTransportPolicy === "relay" ? routes.find(route => route.kind === "relay" && JSON.stringify(route.servers) === JSON.stringify(change.previous.iceServers))?.key : undefined; } catch { this.fallbackPath(); }
+      const previous = routes.find(route => route.key === change.previousRoute);
+      try {
+        pc.setConfiguration({ ...pc.getConfiguration(), iceTransportPolicy: previous ? "relay" : "all", iceServers: previous?.servers ?? this.iceServers() });
+        this.activeRoute = previous?.key;
+      } catch { this.fallbackPath(); }
       void this.offer(pc, true); return;
     }
     const allowed = this.hasFrame && !this.pathSwitch && !this.creating && !this.negotiatingPeer && !this.pendingSignals.length && this.disconnectedAt === undefined && this.peerRetryDue === undefined && pc.connectionState === "connected" && (!pc.signalingState || pc.signalingState === "stable") && this.channels.get("rd-ctl")?.readyState === "open";
@@ -540,7 +551,7 @@ export class WebRtcRemoteDesktopViewer {
     const previous = pc.getConfiguration();
     try {
       pc.setConfiguration({ ...previous, iceServers: route.kind === "relay" ? route.servers : this.iceServers(), iceTransportPolicy: route.kind === "relay" ? "relay" : "all" });
-      this.pathSwitch = { route, previous, started: now, answered: false }; this.activeRoute = route.kind === "relay" ? route.key : undefined;
+      this.pathSwitch = { route, previousRoute: this.activeRoute, started: now, answered: false }; this.activeRoute = route.kind === "relay" ? route.key : undefined;
       void this.offer(pc, true);
     } catch { this.pathSelector.failed(route.key, now); }
   }

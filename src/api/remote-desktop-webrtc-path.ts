@@ -17,9 +17,9 @@ export function pathRoutes(servers: PathServer[]): PathRoute[] {
     const relayUrls = urls(server).filter(turn);
     if (!relayUrls.length) continue;
     const key = `relay:${[...relayUrls].sort().join("|")}`;
-    const region = typeof server.region === "string" && /^[a-z0-9-]{1,32}$/.test(server.region) ? server.region : undefined;
+    const region = typeof server.region === "string" && /^[a-zA-Z0-9_-]{1,32}$/.test(server.region) ? server.region : undefined;
     relays.set(key, { key, kind: "relay", servers: [{ ...rtcServer(server), urls: relayUrls }], region });
-    if (relays.size === 16) break;
+    if (relays.size === 32) break; // Gateway configuration has the same 32-region bound.
   }
   return [direct, ...relays.values()];
 }
@@ -54,11 +54,12 @@ export class WebRtcPathSelector {
   private selectedKey: string | undefined;
   private routes: PathRoute[];
   constructor(routes: PathRoute[]) { this.routes = routes; }
-  reset(routes = this.routes): void { this.routes = routes; this.series.clear(); this.counters.clear(); this.blocked.clear(); this.selectedKey = undefined; }
+  reset(routes = this.routes): void { this.updateRoutes(routes); this.series.clear(); this.counters.clear(); this.selectedKey = undefined; }
   updateRoutes(routes: PathRoute[]): void {
     this.routes = routes;
     const keys = new Set(routes.map(route => route.key));
     for (const key of this.series.keys()) if (!keys.has(key.slice(key.indexOf(":") + 1))) this.series.delete(key);
+    for (const key of this.blocked.keys()) if (!keys.has(key)) this.blocked.delete(key);
   }
   selected(key: string | undefined, now: number): void {
     if (key && this.selectedKey && key !== this.selectedKey) this.lastAttempt = now;
@@ -69,6 +70,7 @@ export class WebRtcPathSelector {
     const seriesKey = `${source}:${key}`;
     let series = this.series.get(seriesKey);
     if (!series || series.identity !== identity) { series = { identity, samples: [] }; this.series.set(seriesKey, series); }
+    if (this.series.size > 128) this.series.delete(this.series.keys().next().value!);
     if (now - (series.samples.at(-1)?.at ?? -Infinity) < 750) return;
     series.samples = [...series.samples.filter(sample => now - sample.at <= 8000), { at: now, rtt }].slice(-8);
   }
@@ -76,10 +78,10 @@ export class WebRtcPathSelector {
     if (!reading.route || reading.responses === undefined) return;
     const key = reading.id;
     const previous = this.counters.get(key); this.counters.set(key, reading.responses);
+    if (this.counters.size > 256) this.counters.delete(this.counters.keys().next().value!);
     // Stats timestamp/unchanged currentRoundTripTime does not prove a new ICE check.
     if (previous === undefined || reading.responses <= previous || reading.rtt === undefined) return;
     this.observe(reading.route.key, reading.rtt, now, "ice", reading.id);
-    if (this.counters.size > 256) this.counters.delete(this.counters.keys().next().value!);
   }
   private samples(key: string, source: RttSource, now: number): Sample[] {
     const samples = this.series.get(`${source}:${key}`)?.samples.filter(sample => now - sample.at <= 8000) ?? [];
@@ -104,15 +106,18 @@ export class WebRtcPathSelector {
   attempted(now: number): void { this.lastAttempt = now; }
   failed(key: string, now: number): void { this.attempted(now); this.blocked.set(key, now + 120_000); this.series.delete(`ctl:${key}`); this.series.delete(`ice:${key}`); }
   comparison(selected: string | undefined, now: number): PathComparison {
+    let fallback: PathComparison = {};
     for (const source of ["ctl", "ice"] as const) {
       if (!selected || !this.samples(selected, source, now).length) continue;
       const direct = this.samples("direct", source, now);
       const relays = this.routes.filter(route => route.kind === "relay" && this.samples(route.key, source, now).length)
         .sort((a, b) => this.median(this.samples(a.key, source, now)) - this.median(this.samples(b.key, source, now)));
       const best = relays[0];
-      return { comparison_source: source, ...(direct.length ? { direct_rtt_ms: Math.round(this.median(direct)) } : {}),
+      const comparison: PathComparison = { comparison_source: source, ...(direct.length ? { direct_rtt_ms: Math.round(this.median(direct)) } : {}),
         ...(best ? { relay_rtt_ms: Math.round(this.median(this.samples(best.key, source, now))), best_relay_region: best.region } : {}) };
+      if (direct.length && best) return comparison;
+      if (!fallback.comparison_source) fallback = comparison;
     }
-    return {};
+    return fallback;
   }
 }

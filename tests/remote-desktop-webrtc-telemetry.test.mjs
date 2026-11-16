@@ -52,7 +52,7 @@ test('ten-second windows reset local counts, final keeps session totals, path ne
     {id:'remote',type:'remote-candidate',candidateType:'srflx',address:'2001:db8::1'}];
   const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,captureTime:80});await h.advance(10000);
   assert.equal(h.reports.length,1);const window=h.reports[0].report;assert.equal(h.reports[0].final,false);assert.equal(window.video.frames_rendered,1);
-  assert.deepEqual(window.path,{local_type:'relay',remote_type:'srflx',address_family:'ipv6',protocol:'udp',rtt_ms:23});assert.equal(JSON.stringify(window).includes('2001:'),false);
+  assert.deepEqual(window.path,{local_type:'relay',remote_type:'srflx',address_family:'ipv6',protocol:'udp',rtt_ms:23,selection_state:'unavailable'});assert.equal(JSON.stringify(window).includes('2001:'),false);
   await h.advance(10000);assert.equal(h.reports[1].report.video.frames_rendered,0);h.viewer.close();assert.equal(h.reports.at(-1).report.video.frames_rendered,1);assert.ok(window.viewer);
 });
 test('inbound stats mark decode/sending even when selected candidate stats are absent',async t=>{
