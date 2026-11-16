@@ -473,3 +473,21 @@ test("一轮一排：turnCopyText 为 null 的回答没有操作；最后一段�
   assert.equal(streaming.host.querySelectorAll("button").length, 0, "never while streaming");
   streaming.unmount();
 });
+
+test("identity-bound task exports use the task URL and create no snapshot share", async () => {
+  globalThis.__shareCalls = [];
+  globalThis.__clipboard = [];
+  const url = "https://oceanleo.test/tasks/task-acp";
+  const view = mountShare({messages:acpMessages,acpRowIds,taskId:"task-acp",taskUrl:url,title:"Shared task"});
+  try {
+    act(() => view.get().enter("all"));
+    await act(async () => { await view.get().copyLink(); });
+    assert.equal(globalThis.__clipboard.at(-1), url);
+    assert.equal(globalThis.__shareCalls.length,0);
+    await act(async () => { await view.get().generateImage(); });
+    assert.equal(globalThis.__shareCalls.length,0,"image QR uses the same task URL");
+    assert.equal(globalThis.__imageCalls.at(-1).link,url);
+    await act(async () => { await view.get().generateDocument(); });
+    assert.equal(globalThis.__docxCalls.at(-2).linkText,url);
+  } finally { view.unmount(); }
+});

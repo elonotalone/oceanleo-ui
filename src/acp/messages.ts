@@ -340,7 +340,7 @@ export function turnBlocks(turn: AcpTurn, live: boolean, labels: AcpLabels): Acp
   const prompt: AcpBlock = {
     type: "bubble",
     key: turn.key,
-    message: { id: turn.rowId, role: "user", kind: "text", content: turn.text, ...(files.length ? { meta: { attachments: files } } : {}) },
+    message: { id: turn.rowId, role: "user", kind: "text", content: turn.text, ...(turn.author ? { author: turn.author } : {}), ...(files.length ? { meta: { attachments: files } } : {}) },
     ...(turn.open && turn.queued ? { queued: turn } : {}),
   };
   const blocks = [prompt, ...itemBlocks(turn.items, live, labels)];

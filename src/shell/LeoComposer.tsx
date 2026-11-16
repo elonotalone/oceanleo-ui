@@ -810,9 +810,9 @@ export function LeoComposer({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {modelPickerSlot !== undefined || nativeModelPickerSlot !== undefined
+          {showModelPicker && (modelPickerSlot !== undefined || nativeModelPickerSlot !== undefined
             ? (modelPickerSlot ?? nativeModelPickerSlot)
-            : showModelPicker && !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" computerId={oceanleoComputerId} />}
+            : !nativeProgramConversation && <ModelGroupPicker compact placement="top" align="right" computerId={oceanleoComputerId} />)}
           {onMeetingRecording && (
             <button
               type="button"

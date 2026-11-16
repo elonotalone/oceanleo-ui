@@ -1,10 +1,10 @@
 "use client";
 
 // ============================================================================
-// @oceanleo/ui — 选段模式的底部操作条
+// @oceanleo/ui — 旧版选段操作条与共享消息选择框
 // ----------------------------------------------------------------------------
-// 进入选段模式后，**输入框整块**换成这一条（对标 Kimi）；`取消` 退回普通模式。
-// 它是临时页面模式的一部分，不是常驻工具栏——普通模式下这个组件根本不渲染。
+// Task pages use TaskSharePanel in the header. The legacy bar stays available to
+// existing consumers; neither task transcript mounts it anymore.
 // ============================================================================
 
 import type { ReactNode } from "react";
@@ -170,8 +170,8 @@ export function ShareCheckbox({
       }}
       className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] active:scale-90 ${
  checked
- ? "border-stone-900 bg-stone-900 text-white"
- : "border-stone-300 bg-white text-transparent hover:border-stone-400"
+ ? "border-[var(--foreground)] bg-[var(--foreground)] text-[var(--background)]"
+ : "border-[var(--border)] bg-[var(--background)] text-transparent hover:border-[var(--foreground)]"
  }`}
     >
       <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">

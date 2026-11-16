@@ -7169,6 +7169,18 @@
         },
         {
           "kind": "named",
+          "name": "TaskSharePanel",
+          "importedName": "TaskSharePanel",
+          "source": "./share/TaskSharePanel"
+        },
+        {
+          "kind": "named",
+          "name": "TaskSharePanelProps",
+          "importedName": "TaskSharePanelProps",
+          "source": "./share/TaskSharePanel"
+        },
+        {
+          "kind": "named",
           "name": "TaskWorkspaceShell",
           "importedName": "TaskWorkspaceShell",
           "source": "./TaskWorkspaceShell"
@@ -7748,6 +7760,10 @@
           "name": "WorkWorkbenchRoute",
           "importedName": "WorkWorkbenchRoute",
           "source": "./works-workbench/WorkWorkbenchRoute"
+        },
+        {
+          "kind": "star",
+          "source": "./access"
         },
         {
           "kind": "star",

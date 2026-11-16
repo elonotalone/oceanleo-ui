@@ -96,7 +96,11 @@ import {
   type ComputerTaskSession,
 } from "../lib/computer-task-api";
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
-import { ShareActionBar, ShareEntryButton } from "./share/ShareActionBar";
+import { TaskSharePanel } from "./share/TaskSharePanel";
+import { useTaskAccess } from "./access/useTaskAccess";
+import { taskAccessRights } from "./access/task-access-client";
+import { TaskAccessComposer } from "./access/TaskAccessComposer";
+import { TaskContentPanel } from "./access/TaskContentPanel";
 import { TaskActionsMenu, type TaskActionCallbacks, taskQuoteHref } from "./TaskActionsMenu";
 import { ShareCardPreview } from "./share/ShareCard";
 import { useShareMode, type ShareModeState } from "./share/useShareMode";
@@ -761,7 +765,7 @@ function AgentChatInner({
     workspaceValue && (!siteId || workspaceValue.siteId === siteId)
       ? workspaceValue
       : null;
-  const readOnly = readOnlyProp || Boolean(workspace?.readOnly);
+  const hostReadOnly = readOnlyProp || Boolean(workspace?.readOnly);
   // 团队/组织页与所有生成结果都归入固定「预览」槽的卡片，不再占一级标签。
   const hasOrgPanel = Boolean(renderOrgPanel);
   // 团队默认开库；主页普通 agent 始终默认收起。新产物只在隐藏的库内更新，
@@ -804,6 +808,22 @@ function AgentChatInner({
     (explicitTaskId !== undefined
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
+  const accessState = useTaskAccess(taskId);
+  const accessRights = taskAccessRights(accessState.access, taskId);
+  const canManageTask = accessRights.canManage && !hostReadOnly;
+  const readOnly = hostReadOnly || !accessRights.canSend;
+  // Keep a newly created task's composer mounted while identity is checked.
+  // Its input/send controls remain locked until the server grants access.
+  const replaceComposer = Boolean(taskId && !accessRights.canSend && !accessState.loading);
+  const [knownParticipants, setKnownParticipants] = useState({ taskId: "", count: 1 });
+  const [continuedCopy, setContinuedCopy] = useState({ taskId: "", unbound: false });
+  const unboundCopy = canManageTask && continuedCopy.taskId === taskId && continuedCopy.unbound;
+  const [shareOpenRequest, setShareOpenRequest] = useState(0);
+  const showAuthors = (accessState.access?.participant_count ?? 1) > 1 ||
+    knownParticipants.taskId === taskId && knownParticipants.count > 1 ||
+    ["member", "invited", "public", "removed"].includes(accessState.access?.state ?? "") ||
+    (initialTask?.task.id === taskId && (initialTask.task.participant_count ?? 1) > 1);
+  const ownerAuthor = accessState.access?.owner;
   const acpPendingSends = useTaskPending(taskId, pendingId, acpPendingIds);
   // The route is enough to read our stored conversation. Start this before the
   // task-detail effect; a session or returned frame can identify a native task.
@@ -816,9 +836,15 @@ function AgentChatInner({
   const knownComputerTask = taskMode.taskId === taskId ? taskMode.computer
     : initialTask?.task?.id === taskId ? isComputerWorkspaceTask(initialTask.task) : undefined;
   const nativeHint = knownComputerTask !== false && Boolean(earlyNativeSession || acpPendingSends.length || pending?.taskId === taskId && taskId);
-  const frames = useAcpFrames(taskId || null, nativeHint);
+  const rawFrames = useAcpFrames(taskId || null, nativeHint);
+  const accessMarker = accessState.access?.visible_until;
+  const frames = useMemo(() => accessMarker ? {
+    ...rawFrames, rows: rawFrames.rows.filter(row => row.id <= accessMarker.frame_id),
+  } : rawFrames, [rawFrames, accessMarker]);
   const computerTask = knownComputerTask === true || (knownComputerTask !== false && (nativeHint || frames.rows.length > 0));
   const [messages, setMessages] = useState<AgentMessage[]>([]);
+  const retainedAccessRef = useRef(accessMarker);
+  retainedAccessRef.current = accessMarker;
   // 手上这份消息属于哪段对话。换对话时它先归零，等服务端那份到齐才跟上；
   // 编辑器指令只在两者一致时才看，否则会拿上一段对话的消息去对新对话记账。
   const [messagesTaskId, setMessagesTaskId] = useState("");
@@ -904,6 +930,13 @@ function AgentChatInner({
   const [streamNotice, setStreamNotice] = useState("");
   // 停止键要真的把流掐掉，而不是丢弃结果——取消要省下的是上游的算力。
   const streamAbortRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!accessMarker) return;
+    setMessages(current => current.filter(message => message.id <= accessMarker.message_id));
+    serverMessagesRef.current = serverMessagesRef.current.filter(message => message.id <= accessMarker.message_id);
+    setStreamText("");
+    streamAbortRef.current?.abort();
+  }, [accessMarker?.message_id, accessMarker?.frame_id]);
   const resolveUploadError = useCallback((message: string) => {
     setUploadError((current) => current === message ? null : current);
   }, []);
@@ -967,6 +1000,8 @@ function AgentChatInner({
    * `changed` 是轮询节奏的输入：还在出字就跟紧，没动静就退避。
    */
   const applyTask = useCallback((id: string, pull: AgentThreadPull, data: TaskDetail): TaskPollResult => {
+    const marker = retainedAccessRef.current;
+    if (marker) data = { ...data, messages: data.messages.filter(message => message.id <= marker.message_id) };
     const settled = threadSyncRef.current.settle(
       pull,
       serverMessagesRef.current,
@@ -1032,6 +1067,10 @@ function AgentChatInner({
     if (data.task?.site_id) setTaskSiteId(data.task.site_id);
     // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
     if (data.task?.title) setTaskTitle(data.task.title);
+    if (data.task?.participant_count) setKnownParticipants({taskId: id, count: data.task.participant_count});
+    const plan = data.task?.plan as { continued_copy?: boolean; _fork_bound?: boolean } | null;
+    const unbound = Boolean(data.task?.forked_from_task_id && plan?.continued_copy && !plan?._fork_bound);
+    setContinuedCopy(current => current.taskId === id && current.unbound === unbound ? current : { taskId: id, unbound });
     return { status, changed, streaming: status === "running" && settled.some(
       (message) => message.role === "assistant" && message.meta?.streaming === true,
     ) };
@@ -1406,7 +1445,7 @@ function AgentChatInner({
         : taskId
           ? resolvedBoundTarget && conversationResolved ? {kind: "oceanleo", target: resolvedBoundTarget} : undefined
           : draftConversation;
-  const surfaceActive = Boolean(activeSession && activeSession.kind !== "acp");
+  const surfaceActive = canManageTask && Boolean(activeSession && activeSession.kind !== "acp");
   useEffect(() => {
     if (activeSession && activeSession.kind !== "acp") {
       const id = activeSession.id;
@@ -1470,7 +1509,7 @@ function AgentChatInner({
   const acpPicker = useAcpCatalogPicker({
     computerId: acpComputerId,
     program: acpProgram,
-    disabled: readOnly,
+    disabled: !canManageTask,
     // A program's catalog fills with its first session: read it again when the agent attaches.
     reloadKey: frames.link,
     taskId,
@@ -1720,7 +1759,7 @@ function AgentChatInner({
   // 轮询在旁边照常跑，所以这条流唯一的职责是让正文**早一点**出现；
   // 它挂了就只是回到轮询的节奏，不会少任何内容——因此回落不需要重试，只需要告知。
   useEffect(() => {
-    if (!agentStreamEndpoint || !taskId) return;
+    if (!agentStreamEndpoint || !taskId || accessState.access?.state === "removed" || !accessRights.canView) return;
     if (status && status !== "running") return;
     let cancelled = false;
     const controller = new AbortController();
@@ -1747,7 +1786,7 @@ function AgentChatInner({
       controller.abort();
       streamAbortRef.current = null;
     };
-  }, [agentStreamEndpoint, taskId, status]);
+  }, [agentStreamEndpoint, taskId, status, accessState.access?.state, accessRights.canView]);
 
   // ---------------------------------------------------------------------
   // 粘底滚动
@@ -1875,9 +1914,9 @@ function AgentChatInner({
   // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
   // 手上的消息还属于上一段对话时先不看，免得把新对话的历史当成刚说的话。
   useEffect(() => {
-    if (messagesTaskId !== (taskId || "")) return;
+    if (readOnly || messagesTaskId !== (taskId || "")) return;
     ingestEditorCommands(messages, taskId || "");
-  }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
+  }, [messages, messagesTaskId, taskId, ingestEditorCommands, readOnly]);
 
   // 「我的任务」何时出现这条会话由服务端决定：task 出生时已绑在会话上，第一条 AI
   // 回答落地时服务端盖 `first_output_at`。不再"看到 assistant 消息就建档"：恢复一段
@@ -2144,7 +2183,7 @@ function AgentChatInner({
         setError("保存文件关联期间右侧 Library 文件已切换；这条消息没有发送。");
         return;
       }
-      const result = await followUp(id, effectivePrompt, uploaded, turn.context, undefined, undefined, getClientWindowId());
+      const result = await followUp(id, effectivePrompt, uploaded, turn.context, undefined, undefined, getClientWindowId(), { preserveTaskSettings: !canManageTask, bindExecutionTarget: unboundCopy });
       setBusy(false);
       if (!result.ok) {
         const failure = localAgentFailure(result, isLocalExecution);
@@ -2175,6 +2214,8 @@ function AgentChatInner({
       noteUserTurn,
       onTaskCreated,
       readOnly,
+      canManageTask,
+      unboundCopy,
       refresh,
       returnToComposer,
       tt,
@@ -2187,6 +2228,7 @@ function AgentChatInner({
   useEffect(() => {
     if (startedRef.current) return;
     if (workspace?.availability === "loading") return;
+    if (taskId && accessState.loading) return;
     startedRef.current = true;
     // Provider 用 runtimeEpoch 重挂载过本组件（「新建」）：首条提示词已经发过，不再重发。
     if (launchOnceRef?.current) return;
@@ -2212,6 +2254,7 @@ function AgentChatInner({
     continueInitialTask,
     initialAtts,
     initialPrompt,
+    accessState.loading,
     initialExecutionTarget,
     returnToComposer,
     start,
@@ -2228,7 +2271,7 @@ function AgentChatInner({
     const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
     if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
-    const choice = retry?.choice ?? acpPicker.forSend();
+    const choice = canManageTask ? retry?.choice ?? acpPicker.forSend() : {};
     const key = acpMessageKey(text, uploaded);
     if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
     if (acpMessageIdRef.current?.key !== key) acpMessageIdRef.current = { key, id: crypto.randomUUID() };
@@ -2278,8 +2321,8 @@ function AgentChatInner({
       const sent = acpSentRef.current?.taskId === id ? acpSentRef.current.choices : null;
       const body = {
         client_message_id: clientMessageId,
-        ...((retry?.program || acpProgram) ? { program: retry?.program || acpProgram! } : {}),
-        ...((retry?.computerId || acpComputerId) ? { computer_id: retry?.computerId || acpComputerId! } : {}),
+        ...(canManageTask && (retry?.program || acpProgram) ? { program: retry?.program || acpProgram! } : {}),
+        ...(canManageTask && (retry?.computerId || acpComputerId) ? { computer_id: retry?.computerId || acpComputerId! } : {}),
         text,
         ...(uploaded.length ? { attachments: uploaded } : {}),
         ...changedChoices(choice, sent),
@@ -2544,7 +2587,7 @@ function AgentChatInner({
     }
     let r: Awaited<ReturnType<typeof followUp>>;
     try {
-      r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId());
+      r = await followUp(taskId, effectivePrompt, uploaded, turn.context, orgId, undefined, getClientWindowId(), { preserveTaskSettings: !canManageTask, bindExecutionTarget: unboundCopy, executionTarget });
     } catch (caught) {
       setBusy(false);
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
@@ -2759,7 +2802,7 @@ function AgentChatInner({
         setError("保存文件关联期间右侧 Library 文件已切换；这条追问没有发送。");
         return;
       }
-      const r = await followUp(taskId, text, undefined, turn.context, undefined, undefined, getClientWindowId());
+      const r = await followUp(taskId, text, undefined, turn.context, undefined, undefined, getClientWindowId(), { preserveTaskSettings: !canManageTask, bindExecutionTarget: unboundCopy });
       setBusy(false);
       if (r.ok) kickAfterFollowUp(taskId);
       else {
@@ -2777,6 +2820,8 @@ function AgentChatInner({
       messages,
       noteOutgoingTurn,
       readOnly,
+      canManageTask,
+      unboundCopy,
       tt,
       captureEditorTurn,
       noteUserTurn,
@@ -2805,7 +2850,7 @@ function AgentChatInner({
     return () => window.removeEventListener("oceanleo-l4-chip", onChip);
   }, [fireAgentText]);
 
-  // 选段模式（对标 Kimi）：点右上角「分享」→ 整页进入选择模式，底部输入框换成操作条。
+  // Selection stays in the transcript; its actions live in the header Share panel.
   const shareSiteLabel =
     appLabelProp || (taskSiteId ? appNames?.[taskSiteId] || "" : "") || undefined;
   // A computer task picks from its own rows: the prompts and the program's replies (UX wave 2026-11-07).
@@ -2817,13 +2862,13 @@ function AgentChatInner({
     acpRowIds: acpSharePane ? acpShare.rowIds : undefined,
     taskId,
     title: taskTitle,
+    taskUrl: taskId ? taskQuoteHref(taskId) : undefined,
     siteLabel: shareSiteLabel,
     assistantLabel: acpSharePane ? PROGRAM_LABEL[acpRowsProgram as keyof typeof PROGRAM_LABEL] || acpRowsProgram || undefined : undefined,
   });
   // W5 share fix (2026-10-31): the select mode lives in the shown conversation's
-  // own stream (its footer becomes the action bar).
+  // own stream; selection actions stay in the header panel.
   const sharePaneShown = cloudPaneShown || acpSharePane;
-  const shareAvailable = sharePaneShown && share.selectable.length > 0;
   const exitShare = share.exit;
   useEffect(() => {
     if (!sharePaneShown && share.active) exitShare();
@@ -2934,7 +2979,7 @@ function AgentChatInner({
 
   const handleGate = useCallback(
     async (decision: "approve" | "reject", feedback: string) => {
-      if (!onGate || gateBusy) return;
+      if (!onGate || gateBusy || readOnly) return;
       setGateBusy(true);
       setError(null);
       try {
@@ -2948,7 +2993,7 @@ function AgentChatInner({
         setGateBusy(false);
       }
     },
-    [gateBusy, onGate, refresh, taskId, tt],
+    [gateBusy, onGate, refresh, taskId, tt, readOnly],
   );
 
   // 每一个 artifact 都是「预览」中的独立卡片；新产物到达时只消费一次并打开该卡。
@@ -3181,24 +3226,20 @@ function AgentChatInner({
           {tt("所属 app · {app}", { app: resolvedApp })}
         </span>
       )}
-      {workspace && workspace.mode !== "history" && (
+      {canManageTask && workspace && workspace.mode !== "history" && (
         <RestartDraftButton
           label={tt("新建")}
           className="inline-flex shrink-0 items-center rounded-lg border border-stone-200 px-2.5 py-1 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:border-stone-300 hover:bg-stone-50 active:scale-95 disabled:opacity-50"
         />
       )}
-      <CollabTaskPresence taskId={taskId} />
-      {headerExtra}
+      {accessRights.canSend && <CollabTaskPresence taskId={taskId} />}
+      {canManageTask && headerExtra}
       {searchControl}
-      {/* 「分享」：点它整页进入选段模式（对标 Kimi）。只在这里出现一次。 */}
-      {/* Stays in place while selecting (pressed; a second click leaves). It used to be
-          unmounted on click, so the header looked like it lost the button. Entering
-          from here selects every message: 「复制链接」 works straight away. */}
-      {(share.active || shareAvailable) && (
-        <ShareEntryButton
-          active={share.active}
-          onClick={() => (share.active ? share.exit() : share.enter("all"))}
-        />
+      {taskId && accessState.access && accessRights.canView && sharePaneShown && (
+        <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
+          access={{...accessState.access, can_manage: canManageTask}} share={share}
+          openRequest={shareOpenRequest}
+          onParticipants={count => setKnownParticipants({taskId, count})} />
       )}
       {taskId && (
         <TaskActionsMenu
@@ -3209,6 +3250,9 @@ function AgentChatInner({
           taskId={taskId}
           taskTitle={taskTitle}
           {...taskActions}
+          canManage={canManageTask}
+          canDelete={canManageTask}
+          onShare={() => { if (!share.active && share.selectable.length) share.enter("all"); setShareOpenRequest(value => value + 1); }}
         />
       )}
     </div>
@@ -3344,7 +3388,7 @@ function AgentChatInner({
   // What the composer (and the bar under CLI/terminal) needs to show and switch conversations.
   // An OceanLeo task has no program conversations (the dock only shows its target).
   const conversationProps = {
-    conversation,
+    conversation: unboundCopy ? undefined : conversation,
     // Existing tasks are bound to the program and computer of their ACP session.
     // Model/effort/mode remain editable in the composer pill; changing the agent
     // requires a new task.
@@ -3373,16 +3417,17 @@ function AgentChatInner({
             Never a horizontal scrollbar: long paths / URLs / commands wrap here. */}
         <div className={`mx-auto w-full min-w-0 ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-3 break-words [overflow-wrap:anywhere]`} data-agent-stream-column="">
           {pane.empty}
-          {pane.items}
-          {pane.tail}
+          {(!taskId || accessRights.canView) && pane.items}
+          {(!taskId || accessRights.canView) && pane.tail}
         </div>
       </div>
         {pane.overlay}
       </div>
-      <div className="shrink-0 border-t border-stone-100 px-3 py-3">
+      <div data-agent-chat-footer className="shrink-0 border-t border-stone-100 px-3 py-3">
         {/* 输入框收窄居中（操作员 2026-07-01）：不再铺满整栏，限宽 + 居中，
             与主站首页 max-w-3xl 输入框的占比观感一致，左右不再过宽。
-            选段模式下**这一整块**换成操作条，退出即恢复。宽度与正文列同一常量。 */}
+            Selection actions stay in the header; the composer keeps its place. */}
+        {/* Width follows the transcript column. */}
         <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-2`}>
           {pane.footer}
         </div>
@@ -3414,7 +3459,7 @@ function AgentChatInner({
       <div className="py-10 text-center text-[15px] text-stone-400">{emptyHint}</div>
     ) : null,
     items: (
-      <McpAppConversationProvider value={{ taskId: taskId || "", isOwner: !readOnly && !isLocalExecution && !computerTask, onMessage: sendFromConnector }}>
+      <McpAppConversationProvider value={{ taskId: taskId || "", isOwner: canManageTask && !isLocalExecution && !computerTask, onMessage: sendFromConnector }}>
           {renderItems.map((item) =>
             item.type === "progress" ? (
               <AgentProgress
@@ -3427,6 +3472,8 @@ function AgentChatInner({
               <div key={item.key} className="contents">
                 <AgentTranscriptBubble
                   message={messageForBubble(item)}
+                  showAuthors={showAuthors}
+                  ownerAuthor={ownerAuthor}
                   timeAbove={timeSeparators.get(item.index)}
                   streaming={running && item.index === lastAssistantIdx &&
                     item.index > lastUserIdx && item.message.meta?.done !== true &&
@@ -3456,7 +3503,7 @@ function AgentChatInner({
                   }
                   gateActive={item.message.id === activeGateId}
                   gateBusy={gateBusy}
-                  onGate={onGate ? handleGate : undefined}
+                  onGate={onGate && !readOnly ? handleGate : undefined}
                   taskRunning={running}
                   onContinue={
                     readOnly
@@ -3502,12 +3549,14 @@ function AgentChatInner({
           {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
           {/* A failed computer pick / unreadable session list shows here too (the pick did not switch). */}
           {conversationNotice}
+          {taskId && accessRights.canView && !canManageTask && <TaskContentPanel taskId={taskId}
+            accessKey={`${accessState.access?.state}:${JSON.stringify(accessMarker ?? null)}`} />}
       </>
     ),
     overlay: backToLatest,
-    footer: share.active ? (
-            <ShareActionBar share={share} />
-          ) : (
+    footer: taskId && replaceComposer ? (
+      <TaskAccessComposer taskId={taskId} {...accessState} onRefresh={accessState.refresh} />
+    ) : (
             <>
           {composerHeader}
           <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />
@@ -3536,7 +3585,7 @@ function AgentChatInner({
           )}
           <LeoComposer
             optimizeImages
-            boundExecutionTarget={taskId ? resolvedBoundTarget : undefined}
+            boundExecutionTarget={taskId && !unboundCopy ? resolvedBoundTarget : undefined}
             value={input}
             onChange={setInput}
             onSubmit={(_, _payer, context) => void send(undefined, context?.executionTarget)}
@@ -3546,6 +3595,8 @@ function AgentChatInner({
             stopError={stopErrorText(tt, taskStop)}
             onOpenAttachment={openTaskAttachment}
             disabled={readOnly}
+            showModelPicker={canManageTask}
+            showComputerDock={canManageTask}
             leoSuggest
             leoContext={{ page: "task", taskId: taskId || undefined }}
             inlineSlot={inlineSlot}
@@ -3599,6 +3650,9 @@ function AgentChatInner({
       {pendingShown && <PendingSendBubble pending={pendingShown} errorText={pendingErrorText} onRetry={() => void sendAcpMessage(pendingShown)} onOpenAttachment={openTaskAttachment} />}
       <AcpTranscript
         rows={frames.rows}
+        taskId={taskId || undefined}
+        showAuthors={showAuthors}
+        ownerAuthor={ownerAuthor}
         onExpandRow={frames.expandRow}
         program={acpRowsProgram}
         view={acpView}
@@ -3625,13 +3679,17 @@ function AgentChatInner({
       <>
         {uploadError && <p className="break-words text-[14px] text-rose-500 [overflow-wrap:anywhere]" data-agent-chat-error data-agent-chat-upload-error>{tt(uploadError)}</p>}
         {conversationNotice}
+        {taskId && accessRights.canView && !canManageTask && <TaskContentPanel taskId={taskId}
+          accessKey={`${accessState.access?.state}:${JSON.stringify(accessMarker ?? null)}`} />}
         {acpSettingNotices.filter((notice) => notice.taskId === taskId && !acpStoredSettingNotices.some((stored) => stored.rowId > notice.afterRowId && stored.text.includes(notice.message))).map((notice, index) => (
           <p key={index} className="px-1 text-[13px] text-stone-500" role="status" data-acp-setting-refused="">{notice.text}</p>
         ))}
       </>
     ),
     overlay: null,
-    footer: share.active ? <ShareActionBar share={share} /> : (
+    footer: taskId && replaceComposer ? (
+      <TaskAccessComposer taskId={taskId} {...accessState} onRefresh={accessState.refresh} />
+    ) : (
       <>
         <AcpBackgroundTaskStrip tasks={acpView.backgroundTasks} onStopTask={acpConnected && !readOnly ? stopAcpBackgroundTask : undefined} />
         <LeoComposer
@@ -3662,7 +3720,9 @@ function AgentChatInner({
           showPlugins={false}
           showPayerSelector={false}
           showAppsBar={false}
-          modelPickerSlot={acpPicker.picker}
+          showModelPicker={canManageTask}
+          showComputerDock={canManageTask}
+          modelPickerSlot={canManageTask ? acpPicker.picker : null}
           {...conversationProps}
         />
         {acpErrorLine && (
@@ -3679,7 +3739,7 @@ function AgentChatInner({
     ? [...openedSurfaces, activeSession.id] : openedSurfaces;
   const surfaceSessions = surfaceIds
     .map((id) => sessions.find((session) => session.id === id))
-    .filter((session): session is ComputerTaskSession => Boolean(session));
+    .filter((session): session is ComputerTaskSession => Boolean(session) && canManageTask);
   const leftPane = (
     <div className="flex h-full min-h-0 flex-col">
       {acpShown
@@ -3698,7 +3758,7 @@ function AgentChatInner({
           </div>
         );
       })}
-      {surfaceActive && (
+      {surfaceActive && canManageTask && (
         <div className="shrink-0 border-t border-stone-100">
           <div className={`mx-auto w-full ${AGENT_CONVERSATION_MAX_WIDTH_CLASS}`}>
             {conversationNotice && <div className="space-y-1 px-4 pt-2">{conversationNotice}</div>}

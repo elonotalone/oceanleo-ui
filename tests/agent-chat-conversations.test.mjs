@@ -26,6 +26,7 @@ import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import test from "node:test";
+import { TaskAccessMock } from "./helpers/task-access-mock.ts";
 import { clearUserScopedCaches, setCacheUser } from "../src/lib/user-scoped-cache.ts";
 
 import React, { act } from "react";
@@ -88,9 +89,9 @@ const agentLibStub = dataModule(`
     return { ok: false, error: "stub" };
   }
   export async function branchTask() { return { ok: false, error: "stub" }; }
-  export async function followUp(id, text, attachments, hiddenContext, orgId, computerId, clientWindow) {
+  export async function followUp(id, text, attachments, hiddenContext, orgId, computerId, clientWindow, options) {
     globalThis.__followUps.push(text);
-    globalThis.__followUpBodies.push({ id, text, attachments, client_window: clientWindow });
+    globalThis.__followUpBodies.push({ id, text, attachments, client_window: clientWindow, options });
     if (globalThis.__followUpResponse) return typeof globalThis.__followUpResponse === "function" ? globalThis.__followUpResponse() : globalThis.__followUpResponse;
     return { ok: false, error: "stub" };
   }
@@ -149,6 +150,14 @@ globalThis.fetch = async (url, init = {}) => {
   const payload = route?.body ?? (path.endsWith("/catalog") ? (globalThis.__catalog ?? {}) : {});
   return new Response(JSON.stringify(payload), { status: route?.status ?? 200, headers: { "content-type": "application/json" } });
 };
+const taskAccessUrl = await compileModule("src/shell/access/task-access-client.ts", {
+  "../../lib/auth/client": dataModule("export async function accessToken(){ return 'tok'; }"),
+  "../../lib/auth/config": dataModule("export const GATEWAY_BASE = 'https://gw.test';"),
+});
+const taskAccessStub = dataModule(`
+  export * from ${JSON.stringify(taskAccessUrl)};
+  export const taskAccessClient = new Proxy({}, {get: (_, key) => (...args) => globalThis.__taskAccessMock[key](...args)});
+`);
 const acpFramesUrl = await compileModule("src/lib/acp-frames-api.ts", {
   "./auth/client": dataModule("export async function accessToken(){ return 'tok'; }"),
   "./auth/config": dataModule("export function gatewayBase(){ return 'https://gw.test'; }"),
@@ -159,6 +168,7 @@ const mcpHostUrl = await compileModule("src/shell/mcp-apps/host.ts", {
   "../../lib/auth/config": dataModule("export const GATEWAY_BASE='https://gw.test';export function gatewayBase(){return GATEWAY_BASE;}"),
 });
 const OVERRIDES = {
+  "./access/task-access-client": taskAccessStub,
   "./mcp-apps/host": dataModule(`
     export * from ${JSON.stringify(mcpHostUrl)};
     import { createMcpAppsHost as createHost } from ${JSON.stringify(mcpHostUrl)};
@@ -306,7 +316,8 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse, taskAccess } = {}) {
+  globalThis.__taskAccessMock = taskAccess ?? new TaskAccessMock();
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
   globalThis.__listHang = listHang;

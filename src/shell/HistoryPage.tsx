@@ -18,7 +18,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
 import { historyActionFailureText, historyInitialRetryDelayMs, readHistoryListSource } from "../lib/history-list-api";
-import { isTaskWorking } from "./history-model";
+import { historySharedByName, isTaskWorking } from "./history-model";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
@@ -122,7 +122,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 
   async function confirmDelete() {
     const task = pendingDelete;
-    if (!task) return;
+    if (!task || task.shared_by) return;
     setDeletingId(task.id);
     setPendingDelete(null);
     setDeleteError(null);
@@ -208,6 +208,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[14px] font-medium text-stone-800">{t.title || tt("未命名任务")}</p>
+                      {t.shared_by && <p data-task-shared-by="" className="truncate text-[11px] text-[var(--muted-foreground)]">{tt("由 {name} 分享", { name: historySharedByName({kind:"task",id:t.id,task:t}) || tt("参与者") })}</p>}
                       <p className="mt-0.5 text-[11px] text-stone-400">
                         {MODE_LABEL[t.mode] || t.mode} · {fmt(t.created_at)}
                         {!siteId && t.site_id ? ` · ${t.site_id}` : ""}
@@ -217,7 +218,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
                   <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${st.cls}`}>
                     {st.text}
                   </span>
-                  <button
+                  {!t.shared_by && <button
                     type="button"
                     onClick={() => setPendingDelete(t)}
                     disabled={removing}
@@ -233,7 +234,7 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
                       />
                       <path d="M10 11v6M14 11v6" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
-                  </button>
+                  </button>}
                   <svg
                     className="h-4 w-4 shrink-0 text-stone-300"
                     viewBox="0 0 24 24"

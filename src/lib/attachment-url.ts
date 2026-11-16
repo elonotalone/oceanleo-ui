@@ -18,6 +18,8 @@ import type { AgentAttachment } from "./agent";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
 import type { FileItem, MediaType } from "./database";
+import { hasTaskAttachmentPath, taskAttachmentPath } from "./task-content-path";
+import { loadTaskAttachmentBlobUrl, TASK_IMAGE_MAX_BYTES } from "../shell/access/task-content-client";
 
 /** @deprecated Library upload sessions enforce the owner’s storage quota. */
 export const PRIVATE_ATTACHMENT_MAX_BYTES = Number.POSITIVE_INFINITY;
@@ -33,6 +35,8 @@ export interface AttachmentLike {
   revisionId?: string;
   artifact_id?: string;
   revision_id?: string;
+  /** Retained when a shared image also has a local display URL. */
+  taskScopedUrl?: string;
 }
 
 export interface AttachmentRef {
@@ -90,6 +94,9 @@ export function gatewayProxiedUrl(url: string): string {
  */
 export function attachmentDisplayUrl(att: AttachmentLike | null | undefined): string | undefined {
   if (!att) return undefined;
+  // Shared URLs need optional-auth byte reads. Never hand them to a native
+  // image element or fall back to a caller's Library rendition grant.
+  if (hasTaskAttachmentPath(att)) return undefined;
   const candidates = [att.previewUrl, att.url]
     .map((value) => String(value || "").trim())
     .filter(Boolean);
@@ -149,6 +156,13 @@ export async function resolveAttachmentDisplayUrl(
   att: AttachmentLike | null | undefined,
   purpose: AttachmentRenditionPurpose = "thumbnail",
 ): Promise<string | undefined> {
+  if (hasTaskAttachmentPath(att)) {
+    const path = taskAttachmentPath(att);
+    if (!path) return undefined;
+    return loadTaskAttachmentBlobUrl(path, att?.mime, {
+      ...(purpose === "thumbnail" ? { maxBytes: TASK_IMAGE_MAX_BYTES } : {}),
+    }).catch(() => undefined);
+  }
   const direct = attachmentDisplayUrl(att);
   if (direct) return direct;
   const ref = attachmentRef(att);
@@ -172,16 +186,23 @@ export function useAttachmentDisplayUrl(
 ): string | undefined {
   const direct = attachmentDisplayUrl(att);
   const ref = attachmentRef(att);
-  const refKey = ref ? `${ref.artifactId}:${ref.revisionId}` : "";
+  const scopedPath = taskAttachmentPath(att);
+  const refKey = scopedPath || (hasTaskAttachmentPath(att) ? "" : ref ? `${ref.artifactId}:${ref.revisionId}` : "");
   const [resolved, setResolved] = useState<{ key: string; url?: string }>({ key: "" });
   useEffect(() => {
     if (direct || !refKey) return;
     let alive = true;
+    let ownedUrl: string | undefined;
     void resolveAttachmentDisplayUrl(att, purpose).then((url) => {
+      if (scopedPath && url?.startsWith("blob:")) {
+        ownedUrl = url;
+        if (!alive) { URL.revokeObjectURL(url); return; }
+      }
       if (alive) setResolved({ key: `${refKey}:${purpose}`, url });
     });
     return () => {
       alive = false;
+      if (ownedUrl) URL.revokeObjectURL(ownedUrl);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed by the reference, not object identity
   }, [direct, refKey, purpose]);

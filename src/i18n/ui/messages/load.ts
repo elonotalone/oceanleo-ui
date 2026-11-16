@@ -71,6 +71,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     recent,
     progress,
     share,
+    shareAccess,
     accountSecurity,
     authOauth,
     authLegal,
@@ -99,6 +100,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./recent-model-and-task-copy"),
     import("./agent-progress-copy"),
     import("./share-copy"),
+    import("./share-access-copy"),
     import("./account-security-copy"),
     import("./auth-oauth-copy"),
     import("./auth-legal-copy"),
@@ -124,6 +126,8 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     import("./pages-bay-wave-copy-b"),
   ]);
   return {
+    // Same lowest precedence as index.ts: do not rename existing global labels.
+    ...shareAccess.SHARE_ACCESS_MESSAGES[locale],
     ...localBrowserCopy(locale),
     ...deviceExperienceCopy(locale),
     ...taskLiveCopy(locale),

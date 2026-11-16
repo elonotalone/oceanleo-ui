@@ -3,6 +3,8 @@ import type { AppSession } from "../lib/app-session";
 
 /** Ordering times `mergeHistoryEntries` resolved for a row (see `HistoryEntryActivity`). */
 type HistoryEntryTimes = {
+  /** Display identity of the owner for a task shared with the current viewer. */
+  shared_by?: AgentTask["shared_by"];
   /** Latest conversation activity the row stands for; the list sorts by it. */
   activity_at?: string;
   /** Latest user message, retained for activity reconciliation. */
@@ -300,6 +302,7 @@ export function mergeHistoryEntries(
   const legacyTasks = tasks
     .filter((task) => !isShellTask(task))
     .filter((task) => options.sessionApiUnavailable || !task.session_id ||
+      (Boolean(task.shared_by) && !sessions.some((session) => session.id === task.session_id || session.task_id === task.id)) ||
       (options.sessionApiFailed && !sessions.some((session) => session.id === task.session_id)));
   // A session row is opened from /tasks/<task id>; the list API does not compute
   // `task_id`, so link each session to its latest task here (2026-11-02: the
@@ -339,6 +342,7 @@ export function mergeHistoryEntries(
             ? { ...session, created_by: "leo" }
             : session,
         created_by,
+        ...(stateTask?.shared_by ? { shared_by: stateTask.shared_by } : {}),
         ...(working ? { working: true as const } : {}),
         ...(activity_state ? { activity_state } : {}),
         ...definedTimes(sessionTimes(session)),
@@ -349,6 +353,7 @@ export function mergeHistoryEntries(
         kind: "task",
         id: task.id,
         task,
+        ...(task.shared_by ? { shared_by: task.shared_by } : {}),
         created_by: task.created_by,
         ...(isTaskWorking(task) ? { working: true as const } : {}),
         ...(activityStateOf(task) ? { activity_state: activityStateOf(task) } : {}),
@@ -395,8 +400,21 @@ export function bumpHistoryEntries(
   return changed ? next.sort(compareHistoryEntries) : entries;
 }
 
+/** Shared identity survives the task → session projection used by sidebar history. */
+export function historyEntrySharedBy(entry: HistoryListEntry): AgentTask["shared_by"] {
+  return entry.shared_by ?? (entry.kind === "task" ? entry.task.shared_by : (entry.session as { shared_by?: AgentTask["shared_by"] }).shared_by);
+}
+
+/** Keep private emails out of a public display label, including legacy server responses. */
+export function historySharedByName(entry: HistoryListEntry): string {
+  const owner = historyEntrySharedBy(entry);
+  const name = typeof owner === "string" ? owner : owner?.name;
+  return typeof name === "string" && !name.includes("@") ? name : "";
+}
+
 /** session 走聚合删除；只有无 session 的 legacy task 走旧 task 删除。 */
 export function canDeleteHistoryEntry(entry: HistoryListEntry): boolean {
+  if (historyEntrySharedBy(entry)) return false;
   return entry.kind === "session" || !entry.task.session_id;
 }
 

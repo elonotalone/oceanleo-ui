@@ -1,3 +1,5 @@
+import type { MessageAuthor } from "../lib/agent";
+
 // ACP wire types the page renders, and the view model built from them.
 //
 // The schema subset is copied from `@agentclientprotocol/sdk` 1.8.0
@@ -16,6 +18,11 @@ export type AcpFrameRow = {
   /** Full raw byte count when large values were shortened for history/live transport. */
   truncated?: { bytes: number; text?: boolean; binary?: boolean };
   received_at: string;
+  author?: MessageAuthor | null;
+  sender?: MessageAuthor | null;
+  sender_user_id?: string | null;
+  sender_name?: string | null;
+  sender_initial?: string | null;
 };
 
 export type JsonRpcId = number | string;
@@ -230,6 +237,7 @@ export type AcpItem =
 
 export type AcpTurn = {
   key: string;
+  author?: MessageAuthor | null;
   /** Client prompt row. */
   rowId: number;
   requestId: JsonRpcId;

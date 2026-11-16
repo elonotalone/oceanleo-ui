@@ -29,6 +29,7 @@ import { AGENT_PROGRESS_MESSAGES } from "./agent-progress-copy";
 import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { localBrowserCopy } from "./local-browser-copy";
 import { SHARE_COPY_MESSAGES } from "./share-copy";
+import { SHARE_ACCESS_MESSAGES } from "./share-access-copy";
 import { ACCOUNT_SECURITY_MESSAGES } from "./account-security-copy";
 import { AUTH_OAUTH_MESSAGES } from "./auth-oauth-copy";
 import { AUTH_LEGAL_MESSAGES } from "./auth-legal-copy";
@@ -511,6 +512,8 @@ export const UI_MESSAGES = Object.fromEntries(
   Object.entries(BASE_UI_MESSAGES).map(([locale, messages]) => {
     const language = locale as Locale;
     return [locale, {
+      // Access copy supplies new keys; established global labels keep their wording.
+      ...SHARE_ACCESS_MESSAGES[language],
       ...localBrowserCopy(language),
       ...deviceExperienceCopy(language),
       ...taskLiveCopy(language),

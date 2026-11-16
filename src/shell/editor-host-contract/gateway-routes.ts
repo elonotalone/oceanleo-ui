@@ -63,6 +63,11 @@ export const EDITOR_GATEWAY_ROUTES: readonly EditorGatewayRoute[] = [
   read("/v1/folders", "folders"),
   post("/v1/folders", "folder-create"),
   read("/v1/media/proxy", "media-proxy", stream),
+  // Task membership is checked on every read; revoked content never uses an offline cache.
+  read("/v1/tasks/{task_id}/artifacts", "task-artifacts", { ...live, fresh: true }),
+  read("/v1/tasks/{task_id}/artifacts/{artifact_id}", "task-artifact", { ...live, fresh: true }),
+  read("/v1/tasks/{task_id}/messages/{message_id}/attachments/{artifact_id}", "task-message-attachment", { ...live, response: "binary", fresh: true }),
+  read("/v1/tasks/{task_id}/frames/{row_id}/attachments/{artifact_id}", "task-frame-attachment", { ...live, response: "binary", fresh: true }),
   ...["office", "image", "media"].map(kind => post(`/v1/convert/${kind}`, `convert-${kind}`, { ...stream, body: "multipart", maxRequestBytes: 48 * MiB })),
   post("/v1/video/render-timeline/handoff", "timeline-handoff"),
   read("/v1/video-canvas/capabilities", "canvas-capabilities", live),

@@ -242,10 +242,12 @@ test("OceanLeo agent: same menu — 模型 (groups with notes) and 快速模式;
   } finally { await m.unmount(); }
 });
 
-test("Leo fast mode rides on both send paths (new task and follow-up)", () => {
+test("Leo fast mode rides on owner send paths while shared follow-ups keep task settings", () => {
   const src = readFileSync(new URL("../src/lib/agent.ts", import.meta.url), "utf8");
   const create = src.slice(src.indexOf('"/v1/agent/tasks",'), src.indexOf("export function createConsoleRun"));
   assert.match(create, /\.\.\.leoRunRequestFields\(\)/);
-  const follow = src.slice(src.indexOf("export function followUp("), src.indexOf("export const followupTask"));
-  assert.match(follow, /\.\.\.leoRunRequestFields\(\)/);
+  const start = src.search(/export (?:async )?function followUp\(/);
+  assert.ok(start >= 0, "followUp exists");
+  const follow = src.slice(start, src.indexOf("export const followupTask"));
+  assert.match(follow, /options\?\.preserveTaskSettings \? \{\} : leoRunRequestFields\(\)/);
 });

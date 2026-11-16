@@ -8,6 +8,8 @@
 // address) falls back to the caller's file chip.
 
 import { useEffect, useState, type ReactNode } from "react";
+import { hasTaskAttachmentPath, taskAttachmentPath } from "../../lib/task-content-path";
+import { loadTaskAttachmentBlobUrl } from "../access/task-content-client";
 
 const ROUTE = /^\/v1\/computer-task-sessions\/[A-Za-z0-9_-]{1,128}\/attachments\/[A-Za-z0-9_-]{1,128}$/;
 const RASTER = /^image\/(?:png|jpeg|gif|webp)$/i;
@@ -27,11 +29,16 @@ const thumbs = new Map<string, Promise<string | null>>();
 
 export function archivedImageEligible(mime: string, size: unknown, path: unknown): path is string {
   return RASTER.test(mime || "")
-    && typeof path === "string" && ROUTE.test(path)
+    && typeof path === "string" && (ROUTE.test(path) || Boolean(taskAttachmentPath(path)))
     && (typeof size !== "number" || (size > 0 && size <= ARCHIVED_THUMB_MAX_BYTES));
 }
 
 export async function loadArchivedThumb(path: string, mime: string, load: Load = signedUrl): Promise<string | null> {
+  if (hasTaskAttachmentPath(path)) {
+    const scoped = taskAttachmentPath(path);
+    if (!scoped || !RASTER.test(mime)) return null;
+    return loadTaskAttachmentBlobUrl(scoped, mime, { maxBytes: ARCHIVED_THUMB_MAX_BYTES }).catch(() => null);
+  }
   const parsed = new URL(await load(path));
   if (parsed.protocol !== "https:" || parsed.username || parsed.password) return null;
   const res = await fetch(parsed.href, { credentials: "omit", referrerPolicy: "no-referrer" });
@@ -44,6 +51,9 @@ export async function loadArchivedThumb(path: string, mime: string, load: Load =
 }
 
 function thumbFor(path: string, mime: string): Promise<string | null> {
+  // A shared task read is checked for the current identity each time; it never
+  // reuses an owner-session thumbnail cache entry.
+  if (hasTaskAttachmentPath(path)) return loadArchivedThumb(path, mime).catch(() => null);
   let hit = thumbs.get(path);
   if (!hit) {
     hit = loadArchivedThumb(path, mime).catch(() => null);
@@ -77,14 +87,19 @@ export function NativeArchivedImage({
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let alive = true;
+    let ownedUrl: string | null = null;
     setUrl("");
     setFailed(false);
     void thumbFor(path, mime).then((value) => {
+      if (taskAttachmentPath(path) && value) {
+        ownedUrl = value;
+        if (!alive) { URL.revokeObjectURL(value); return; }
+      }
       if (!alive) return;
       if (value) setUrl(value);
       else setFailed(true);
     });
-    return () => { alive = false; };
+    return () => { alive = false; if (ownedUrl) URL.revokeObjectURL(ownedUrl); };
   }, [path, mime]);
   if (failed) return <>{fallback}</>;
   if (!url) {

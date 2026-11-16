@@ -5,6 +5,7 @@ import { cloudComputerRequest, type Computer } from "./cloud-computer-api";
 import { boundedHistoryListRequest, HistoryListRequestError, validHistoryListRows } from "./history-list-api";
 import type { ExecutionTarget } from "./execution-target";
 import { cacheUser, onUserScopedClear, readUserJson, writeUserJson } from "./user-scoped-cache";
+import { request as taskReadRequest } from "./acp-frames-api";
 export type ComputerTaskSession = {
   id: string; task_id: string; computer_id: string; computer_name: string;
   kind: "acp" | "cli" | "terminal";
@@ -34,9 +35,28 @@ const sessionListsInFlight = new Map<string, {at: number; request: Promise<{sess
 export function listComputerTaskSessions(taskId: string, options: Options & { timeoutMs?: number } = {}) {
   const path = `/v1/computer-task-sessions?${new URLSearchParams({task_id:taskId})}`;
   const read = () => boundedHistoryListRequest(
-    (signal) => cloudComputerRequest<{sessions: ComputerTaskSession[]}>(path, { signal }),
+    async (signal) => {
+      try { return await cloudComputerRequest<{sessions: ComputerTaskSession[]}>(path, { signal }); }
+      catch (error) {
+        if ((error as {status?: number})?.status !== 401) throw error;
+        // A public task may be opened before sign-in. This route returns only
+        // the fixed program to visitors, never machine or native-session ids.
+        return taskReadRequest<{sessions: ComputerTaskSession[]}>(path, { signal }, true);
+      }
+    },
     options,
   ).then((result) => {
+    if (Array.isArray(result?.sessions)) {
+      result.sessions = result.sessions.map(row => {
+        if (row && !row.id && row.task_id === taskId && row.kind === "acp" &&
+          row.program && ["cursor", "claude", "codex", "hermes"].includes(row.program)) {
+          // Local display identity only. It grants no computer/session capability.
+          return { id: `shared:${taskId}`, task_id: taskId, kind: "acp" as const, program: row.program,
+            computer_id: "", computer_name: "", native_session_id: null, created_at: "", updated_at: "" };
+        }
+        return row;
+      });
+    }
     if (!validHistoryListRows(result?.sessions)) {
       throw new HistoryListRequestError("加载失败", 502, "history_list_invalid_response");
     }

@@ -292,6 +292,11 @@ const appSessionStub = dataModule(`
 const cloudComputerApiUrl = await compileModule("src/lib/cloud-computer-api.ts", {}, { missingPackageStub: lazyStub });
 
 const OVERRIDES = {
+  "./access/task-access-client": dataModule(`
+    export * from ${JSON.stringify(await compileModule("src/shell/access/task-access-client.ts"))};
+    import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
+    export const taskAccessClient = new TaskAccessMock();
+  `),
   "../i18n/ui/useUI": dataModule(
     "export function useUI(){ return (zh, vars) => String(zh).replace(/\\{(\\w+)\\}/g, (m, k) => (vars && k in vars ? String(vars[k]) : m)); }",
   ),
@@ -706,6 +711,7 @@ async function loadHomeContent() {
   const portalShell = dataModule(`
     import { createElement } from ${JSON.stringify(reactUrl)};
     export { AgentChat } from ${JSON.stringify(agentChatUrl)};
+    export { useTaskPending } from ${JSON.stringify(new URL("../src/shell/acp-task/pending-send.ts", import.meta.url).href)};
     export { TaskWorkspaceShell, useTaskWorkspaceState, attachmentWorkspaceItem, attachmentOpenMode } from ${JSON.stringify(taskWorkspaceShellUrl)};
     export { openTaskWorkspaceLibrary, taskAttachmentLibraryAction } from ${JSON.stringify(taskAttachmentOpenUrl)};
     // A native chat's catalog pill and its pending first message; no case here picks a program for a chat.
