@@ -428,3 +428,11 @@ test('matching native start refusal ends only the claimed standby without a new 
   pc.channel('rd-ctl').message({t:'rd.start_failed',request_id:'start_refused_request',error:'start_not_authorized'});
   assert.deepEqual(h.terminals,['start_not_authorized']);assert.equal(pc.closed,1);await h.advance(5000);assert.equal(h.peers.length,1);
 });
+test('promotion seeds above the final old release sequence and never reuses its input number',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const old=h.viewer.pc,video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
+  h.viewer.send({kind:'key_down',key:'Shift'});old.channel('rd-ctl').message({t:'rd.input_receipt',seq:h.viewer.lastSequence(),status:'executed',executed_at_ms:h.wall()});
+  await h.viewer.createConnection();const pending=h.viewer.pending,next=h.viewer.pc;next.open();
+  h.viewer.send({kind:'keypress',key:'A'});old.channel('rd-ctl').message({t:'rd.input_receipt',seq:h.viewer.lastSequence(),status:'executed',executed_at_ms:h.wall()});
+  pending.video.onloadeddata();const last=old.channel('rd-input').sent.at(-1);assert.equal(last.a.kind,'release_all');
+  h.viewer.send({kind:'key_up',key:'Shift'});assert.ok(next.channel('rd-input').sent.at(-1).seq>last.seq);
+});

@@ -288,9 +288,9 @@ export class WebRtcRemoteDesktopViewer {
       next.sessionFrameCount = this.sessionFrameCount;
       next.lastPresentedAt = this.lastPresentedAt;
       next.options = this.options;
-      next.input.sequenceFloor(this.lastSequence());
       this.pending = undefined;
       this.retire();
+      next.input.sequenceFloor(this.lastSequence());
       this.replacement = next;
       next.attachVideo(visible);
     };
