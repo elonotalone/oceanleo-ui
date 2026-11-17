@@ -25,6 +25,8 @@ export interface WebRtcViewerOptions {
   onState(state: WebRtcViewerState, path?: WebRtcPath): void;
   onFrame(width: number, height: number): void;
   onPresentation?(sample: WebRtcPresentation): void;
+  /** Numeric observations only; packet/decode observations are upper bounds, never media authority. */
+  onTiming?(sample: Record<string, number>): void;
   onTerminal(reason: string): void;
   onReport(report: WebRtcQualityReport, final: boolean): void;
   clickedAt?: number; sessionCreatedAt?: number; descriptorReceivedAt?: number; sequenceFloor?: number;
@@ -139,6 +141,7 @@ export class WebRtcRemoteDesktopViewer {
   private peerRetryDue: number | undefined;
   private answerDue: number | undefined;
   private connectingOffer: { pc: RTCPeerConnection; gen: number; started: number; answeredAt?: number } | undefined;
+  private timingStages = new Set<string>();
   private lastPing = -Infinity;
   private lastStats = -Infinity;
   private lastReport: number;
@@ -186,6 +189,16 @@ export class WebRtcRemoteDesktopViewer {
     return Number.isFinite(expires) && Number.isFinite(descriptor.server_now)
       ? receivedAt + Math.max(0, expires - descriptor.server_now * 1000) : receivedAt;
   }
+  private timing(stage: number, at = this.now(), fields: Record<string, number> = {}): void {
+    const key = `${this.generation}:${stage}`;
+    if (this.timingStages.has(key) || !this.options.onTiming) return;
+    this.timingStages.add(key);
+    const observed = this.now(), wall = this.wallNow();
+    const sample = { viewer_stage: stage, viewer_generation: this.generation,
+      viewer_mono_us: Math.round(at * 1000), viewer_wall_ms: Math.round(wall + at - observed),
+      viewer_observed_mono_us: Math.round(observed * 1000), viewer_observed_wall_ms: Math.round(wall), ...fields };
+    swallow(() => this.options.onTiming!(Object.fromEntries(Object.entries(sample).filter(([, value]) => Number.isFinite(value)))));
+  }
   async start(route?: PathRoute): Promise<void> {
     if (this.replacement) return this.replacement.start(route);
     if (this.ended || this.started) return;
@@ -213,6 +226,7 @@ export class WebRtcRemoteDesktopViewer {
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
       this.captureTimes.clear(); this.presentedTimes.clear(); this.captureMappingAvailable = false;
       this.generation++; const gen = this.generation;
+      this.timingStages.clear();
       try { sessionStorage.setItem(`oceanleo.rd.generation.${this.descriptor.session_id}`, String(gen)); } catch { /* optional continuity */ }
       this.hostRelayRegion = undefined; this.telemetry.path = undefined;
       this.candidates = []; this.pendingSignals = []; this.recovery.clear(); this.answerDue = undefined;
@@ -266,6 +280,7 @@ export class WebRtcRemoteDesktopViewer {
         await pc.setLocalDescription(prepared.offer);
         if (this.connection === pc && !this.ended) {
           this.telemetry.step("offer_sent_ms", prepared.offeredAt);
+          this.timing(8, prepared.offeredAt ?? this.now(), { viewer_embedded_offer: 1 });
           this.armConnectingOffer({ k: "offer", sdp: prepared.offer.sdp ?? "", gen });
         }
       } else await this.offer(pc, false);
@@ -420,6 +435,7 @@ export class WebRtcRemoteDesktopViewer {
     this.connectingOffer = { pc, gen: data.gen, started: this.now() };
   }
   private offerAccepted(data: WebRtcSignal): void {
+    this.timing(8);
     this.telemetry.step("offer_sent_ms");
     this.armConnectingOffer(data);
     // Repeated ICE offers must not keep postponing recovery of a lost host.
@@ -439,6 +455,7 @@ export class WebRtcRemoteDesktopViewer {
   async signal(value: unknown): Promise<void> {
     if (this.replacement) return this.replacement.signal(value);
     if (this.pending && value && typeof value === "object" && (value as WebRtcSignal).gen === this.pending.viewer.gen) return this.pending.viewer.signal(value);
+    if (value && typeof value === "object" && (value as WebRtcSignal).k === "answer" && (value as WebRtcSignal).gen === this.generation) this.timing(4);
     // A create+offer answer can arrive before initial setLocalDescription ends.
     if (this.creating) await this.creating;
     if (this.ended || !value || typeof value !== "object") return;
@@ -536,6 +553,7 @@ export class WebRtcRemoteDesktopViewer {
     if (data.t === "rd.started" && this.activation && data.request_id === this.activation.requestId) {
       if (this.activation.approved) return;
       this.activation.approved = true;
+      this.timing(9);
       this.captureTimes.clear(); this.presentedTimes.clear(); this.unverifiedFrames.clear();
       this.descriptor = { ...this.descriptor, standby: false };
       this.leaseDeadline = this.activeLeaseDeadline;
@@ -605,7 +623,7 @@ export class WebRtcRemoteDesktopViewer {
   private startStandby(): void {
     if (!this.activation || this.activation.sent) return;
     this.activation.sent = this.sendControl({ t: "rd.start", seq: this.lastSequence() + 1, request_id: this.activation.requestId });
-    if (this.activation.sent) this.input.sequenceFloor(this.lastSequence() + 1);
+    if (this.activation.sent) { this.timing(3); this.input.sequenceFloor(this.lastSequence() + 1); }
   }
   send(action: RemoteDesktopAction): boolean { return this.replacement ? this.replacement.send(action) : !this.ended && !this.descriptor.standby && (!this.requireStartCapture || this.activation?.approved === true) && this.input.send(action); }
   releaseForHandoff(): Promise<void> { return this.replacement ? this.replacement.releaseForHandoff() : this.input.releaseForHandoff(); }
@@ -621,7 +639,7 @@ export class WebRtcRemoteDesktopViewer {
     if (!video || this.ended) return;
     if (this.requireStartCapture && !this.firstCaptureVerified && video.style) { this.guardedVideo = { video, visibility: video.style.visibility }; video.style.visibility = "hidden"; }
     video.autoplay = true; video.muted = true; video.playsInline = true;
-    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); } else if (!this.requireStartCapture || this.firstCaptureVerified) this.telemetry.step("first_frame_decoded_ms"); } };
+    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { this.timing(6, this.now(), { viewer_decode_exact: 0, viewer_decode_upper_bound: 1, viewer_decode_source: 1 }); if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); } else if (!this.requireStartCapture || this.firstCaptureVerified) this.telemetry.step("first_frame_decoded_ms"); } };
     if (typeof video.requestVideoFrameCallback === "function") {
       const frame: VideoFrameRequestCallback = (_now, raw) => {
         if (this.ended || this.video !== video || this.videoAttachment !== attachment) return;
@@ -648,6 +666,14 @@ export class WebRtcRemoteDesktopViewer {
   private play(): void { try { const playing = this.video?.play(); playing?.catch(() => {}); } catch { /* attach before autoplay is permitted */ } }
   private frame(video: HTMLVideoElement, at: number, metadata: Partial<FrameMetadata>): void {
     if (this.ended || !video.videoWidth || !video.videoHeight) return;
+    // rVFC observes a decoded frame, not a decoder completion or first RTP packet.
+    // receiveTime is this frame's LAST packet; keep it distinct from stats receipt.
+    this.timing(6, Number.isFinite(metadata.presentationTime) ? metadata.presentationTime : this.now(), { viewer_decode_exact: 0, viewer_decode_upper_bound: 1, viewer_decode_source: 2 });
+    const frameTiming: Record<string, number> = {};
+    for (const [source, target, scale] of [["receiveTime", "viewer_frame_last_packet_mono_us", 1000], ["presentationTime", "viewer_compositor_mono_us", 1000], ["expectedDisplayTime", "viewer_expected_display_mono_us", 1000], ["processingDuration", "viewer_processing_us", 1_000_000], ["rtpTimestamp", "viewer_rtp_timestamp", 1]] as const) {
+      const value = metadata[source]; if (typeof value === "number" && Number.isFinite(value)) frameTiming[target] = Math.round(value * scale);
+    }
+    this.timing(10, this.now(), frameTiming);
     if (this.requireStartCapture && !this.firstCaptureVerified) {
       if (!this.activation?.approved) return;
       const rtp = metadata.rtpTimestamp;
@@ -673,6 +699,7 @@ export class WebRtcRemoteDesktopViewer {
     if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); return; }
     if (this.pictureRebuilding && this.trackGeneration !== this.generation) return;
     this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, this.captureMappingAvailable ? { ...metadata, captureTime: undefined } : metadata);
+    this.timing(7, at, { viewer_frame_verified: this.requireStartCapture ? 1 : 0 });
     const captured = Number.isInteger(metadata.rtpTimestamp) ? this.captureTimes.get(metadata.rtpTimestamp!) : undefined;
     const sample: WebRtcPresentation = { ...(captured !== undefined ? { host_capture_wall_ms: captured } : {}), session_frame_count: ++this.sessionFrameCount, peer_generation: this.generation, presented_at_ms: at };
     if (this.lastPresentedAt !== undefined && at >= this.lastPresentedAt) sample.gap_ms = at - this.lastPresentedAt;
@@ -745,6 +772,10 @@ export class WebRtcRemoteDesktopViewer {
       const pair = (transport && byId.get(transport.selectedCandidatePairId)) ?? all.find(value => value.type === "candidate-pair" && (value.selected || value.nominated && value.state === "succeeded"));
       const local = pair && byId.get(pair.localCandidateId); const remote = pair && byId.get(pair.remoteCandidateId);
       const inbound = all.find(value => value.type === "inbound-rtp" && (value.kind === "video" || value.mediaType === "video"));
+      if (typeof inbound?.packetsReceived === "number" && inbound.packetsReceived > 0) {
+        this.timing(5, this.now(), { viewer_first_packet_exact: 0, viewer_first_rtp_upper_bound: 1, viewer_packets_received: inbound.packetsReceived,
+          ...(typeof inbound.lastPacketReceivedTimestamp === "number" ? { viewer_last_packet_wall_ms: inbound.lastPacketReceivedTimestamp } : {}) });
+      }
       if ((!this.requireStartCapture || this.firstCaptureVerified) && typeof inbound?.framesDecoded === "number" && inbound.framesDecoded > 0) this.telemetry.step("first_frame_decoded_ms");
       if (inbound && (!this.requireStartCapture || this.firstCaptureVerified)) this.telemetry.hostSample(typeof inbound.bytesReceived === "number" ? inbound.bytesReceived : undefined, typeof inbound.framesReceived === "number" ? inbound.framesReceived : undefined);
       if (!pair) return;

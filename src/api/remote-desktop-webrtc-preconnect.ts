@@ -6,7 +6,7 @@ import { WebRtcRemoteDesktopViewer, type PreparedWebRtcPeer } from "./remote-des
 type PreparationOptions = { ready?(capabilities: string[]): void; unavailable?(): void };
 type Prepared = { socket: WebSocket; controller: string; ready: boolean; claimed: boolean; capabilities: string[]; owners: Set<PreparationOptions>; timer?: ReturnType<typeof setInterval> };
 const prepared = new Map<string, Prepared>();
-type ClickSocket = { socket: WebSocket; deviceId: string; startIntent: boolean; requestId?: string; createSent: boolean };
+type ClickSocket = { socket: WebSocket; deviceId: string; startIntent: boolean; requestId?: string; createSent: boolean; startIntentSentAt?: number; startIntentSentWall?: number };
 type CreatedSocket = ClickSocket & { controller: string; messages: string[]; timer: ReturnType<typeof setTimeout>; initialPeer?: PreparedWebRtcPeer };
 const created = new Map<string, CreatedSocket>();
 const creating = new Map<string, ClickSocket>();
@@ -18,7 +18,10 @@ export function queuePreparedRemoteWebRtcStart(deviceId: string, requestId: stri
   if (item.requestId) return item.requestId === requestId;
   item.requestId = requestId;
   if (item.createSent) {
-    try { item.socket.send(JSON.stringify({ type: "standby.start", request_id: requestId })); }
+    try {
+      item.socket.send(JSON.stringify({ type: "standby.start", request_id: requestId }));
+      item.startIntentSentAt = performance.now(); item.startIntentSentWall = Date.now();
+    }
     catch { return false; }
   }
   return true;
@@ -156,6 +159,7 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
     try {
       if (initialPeer) initialPeer.offeredAt = performance.now();
       socket.send(JSON.stringify({ type: "create", body: { ...body, ...(click.requestId ? { activation_request_id: click.requestId } : {}) }, ...(initialPeer ? { offer: { k: "offer", gen: 1, sdp: initialPeer.offer.sdp } } : {}) }));
+      if (click.requestId) { click.startIntentSentAt = performance.now(); click.startIntentSentWall = Date.now(); }
       click.createSent = true;
     } catch { fail(); }
   });

@@ -114,6 +114,17 @@ test("created-stream adoption keeps its offered peer, replays early answer after
   result.data.close();await drain();const report=h.calls.find(call=>call.url.endsWith('/remote-desktop/quality'));
   assert.equal(JSON.parse(report.init.body).steps.offer_sent_ms,50);
 });
+test('existing timing handler receives separate click, WS intent and DC start observations',async t=>{
+  const h=setup(t),timings=[];
+  const pending=api.remoteDesktopClient.openStream('device','sid',{state(){},frame(){},serverTiming:value=>timings.push(value)},
+    {transport:'webrtc-v1',standby:true,standbyStartIntent:true,activationRequestId:'timeline_click_key',clickedAt:900,
+      descriptor:descriptor({standby:true,standby_expires_at:new Date(epoch+30000).toISOString()})});
+  await drain();const result=await pending;h.streams.push(result.data);const ws=Socket.all.at(-1);ws.onopen();await drain();
+  assert.ok(timings.some(value=>value.viewer_stage===1));assert.ok(timings.some(value=>value.viewer_stage===2));assert.ok(timings.some(value=>value.viewer_stage===3));
+  const click=timings.find(value=>value.viewer_stage===1);assert.equal(click.viewer_mono_us,900000);assert.equal(click.viewer_wall_projected,1);
+  assert.ok(ws.sent.some(value=>value.type==='standby.start'&&value.request_id==='timeline_click_key'));
+  for(const value of timings.filter(value=>'viewer_stage' in value))assert.ok(Object.values(value).every(Number.isFinite));
+});
 
 test("WebRTC media renewal uses the pinned transport and rejects mismatched descriptor sessions", async t => {
   let media = descriptor(); const h = setup(t, () => ({ media, media_status: null }));

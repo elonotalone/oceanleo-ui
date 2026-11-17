@@ -108,3 +108,14 @@ test('DC click preceding gateway WS delivery carries a wait key only when its ex
     assert.deepEqual(c.log.activated,[[expected,3]],'DC start may arrive before WS confirmation, preserving the same wait-only key');release();
   }
 });
+test('startup timings retain the bounded event sequence before stream handlers are claimed',async t=>{
+  setup(t);const {c,accept}=client();const release=api.prepareRemoteDesktopStandby('timeline-adoption',c);t.after(release);
+  preparation.at(-1).options.ready(['remote-desktop-standby-v1']);accept();await settle();
+  const proxy=c.log.opens[0].handlers;
+  for(let i=0;i<70;i++)proxy.serverTiming({viewer_stage:i,viewer_mono_us:i*1000});
+  proxy.serverTiming({created:1});
+  await api.claimRemoteDesktopStandbySession('timeline-adoption',{requestId:'timeline_adoption'});
+  const timings=[];const opened=await api.claimRemoteDesktopStandbyStream('timeline-adoption','standby-session',{state(){},serverTiming:row=>timings.push(row)},{});
+  assert.equal(timings.length,65);assert.equal(timings[0].viewer_stage,6);assert.equal(timings[63].viewer_stage,69);assert.deepEqual(timings[64],{created:1});
+  proxy.serverTiming({viewer_stage:71});assert.equal(timings.at(-1).viewer_stage,71);opened.data.close();
+});

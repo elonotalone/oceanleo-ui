@@ -9,6 +9,33 @@ test('viewer offers recvonly video with reliable input/control, unreliable move 
   assert.deepEqual(pc.transceiver.options,{direction:'recvonly'});assert.equal(pc.transceiver.receiver.jitterBufferTarget,0);
   assert.deepEqual(pc.channel('rd-input').options,{ordered:true});assert.deepEqual(pc.channel('rd-fast').options,{ordered:false,maxRetransmits:0});
   assert.deepEqual(pc.channel('rd-ctl').options,{ordered:true});assert.equal(h.signals[0].k,'offer');assert.equal(h.signals[0].sdp,'v=0\r\nfixture-offer');
+  assert.equal(pc.transceiver.receiver.playoutDelayHint,0);
+});
+test('numeric startup observations distinguish raw decode, stats packet bounds and verified presentation without authorizing a frame',async t=>{
+  const timings=[];
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30000).toISOString()}),onTiming:value=>timings.push(value)});
+  await h.viewer.start();h.viewer.activateStandby('timeline_request',h.now());h.open();
+  const pc=h.viewer.pc,video=new FakeVideo();video.style={visibility:'visible'};h.viewer.attachVideo(video);
+  video.frame({expectedDisplayTime:100,presentationTime:95,receiveTime:90,processingDuration:.003,rtpTimestamp:17});
+  assert.equal(h.frames.length,0);assert.equal(video.style.visibility,'hidden');
+  assert.equal(timings.find(v=>v.viewer_stage===6).viewer_decode_exact,0);
+  const raw=timings.find(v=>v.viewer_stage===10);assert.equal(raw.viewer_frame_last_packet_mono_us,90000);assert.equal(raw.viewer_processing_us,3000);
+  assert.equal(timings.some(v=>v.viewer_stage===7),false);
+  pc.statsEntries=[{id:'in',type:'inbound-rtp',kind:'video',packetsReceived:4,lastPacketReceivedTimestamp:WALL+50}];
+  await h.advance(1000);
+  const packets=timings.find(v=>v.viewer_stage===5);assert.equal(packets.viewer_first_packet_exact,0);assert.equal(packets.viewer_packets_received,4);
+  assert.equal(packets.viewer_last_packet_wall_ms,WALL+50);assert.equal(h.frames.length,0);
+  const ctl=pc.channel('rd-ctl');ctl.message({t:'rd.started',request_id:'timeline_request'});ctl.message({t:'rd.frame_time',gen:1,frames:[[18,WALL+100]]});
+  video.frame({expectedDisplayTime:1100,rtpTimestamp:18});assert.equal(timings.some(v=>v.viewer_stage===7),false);
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[19,WALL+101]]});video.frame({expectedDisplayTime:1133,rtpTimestamp:19});
+  assert.equal(timings.find(v=>v.viewer_stage===7).viewer_frame_verified,1);
+  for(const item of timings)for(const value of Object.values(item))assert.equal(Number.isFinite(value),true);
+  assert.ok(timings.some(v=>v.viewer_stage===3));assert.ok(timings.some(v=>v.viewer_stage===9));
+});
+test('startup observation exceptions cannot block an offer, decode or presented frame',async t=>{
+  const h=await harness(t,{onTiming(){throw Error('diagnostics');}});await h.viewer.start();h.open();
+  const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
+  assert.equal(h.signals[0].k,'offer');assert.equal(h.frames.length,1);assert.equal(h.terminals.length,0);
 });
 test('create+offer adopts the exact peer and SDP, configures TURN before ICE, and waits before an early answer',async t=>{
   const h=await harness(t);const pc=new FakePeer({iceServers:[]});

@@ -11,6 +11,7 @@ type Entry = {
   value?: RemoteDesktopSession; live?: RemoteDesktopStream; releaseSocket?: () => void;
   fail?(): void; renew?: ReturnType<typeof setInterval>; requestId?: string; clickedAt?: number; firstPresentedMs?: number;
   startIntent?: boolean;
+  timing?: Record<string, number>[];
 };
 // One visible owner card, one socket/peer. Never build a hidden pool.
 const entries = new Map<string, Entry>();
@@ -38,7 +39,11 @@ export function prepareRemoteDesktopStandby(deviceId: string, client: RemoteDesk
   entries.set(deviceId, entry);
   const handlers = new Proxy({} as RemoteDesktopStreamHandlers, { get: (_target, key) => (...args: unknown[]) => {
     if (entry.disposed) return;
-    entry.snapshots.set(key, args);
+    const viewerTiming = key === "serverTiming" && typeof (args[0] as Record<string, unknown>)?.viewer_stage === "number";
+    if (viewerTiming && !entry.handlers) {
+      (entry.timing ??= []).push(args[0] as Record<string, number>);
+      if (entry.timing.length > 64) entry.timing.shift();
+    } else if (!viewerTiming) entry.snapshots.set(key, args);
     if (key === "standbyState") entry.state = args[0] as Entry["state"];
     if (key === "webrtcPresentation" && entry.clickedAt !== undefined && entry.firstPresentedMs === undefined) {
       const at = (args[0] as { presented_at_ms?: number })?.presented_at_ms;
@@ -117,6 +122,8 @@ export function claimRemoteDesktopStandbyStream(deviceId: string, sessionId: str
   const entry = entries.get(deviceId);
   if (!entry?.claimed || !entry.stream || entry.value?.session_id !== sessionId || entry.disposed) return null;
   entry.handlers = handlers;
+  for (const sample of entry.timing ?? []) { try { handlers.serverTiming?.(sample); } catch { /* diagnostic observer */ } }
+  entry.timing = undefined;
   for (const [key, args] of entry.snapshots) {
     const listener = handlers[key as keyof RemoteDesktopStreamHandlers];
     if (listener) (listener as (...values: unknown[]) => void)(...args);

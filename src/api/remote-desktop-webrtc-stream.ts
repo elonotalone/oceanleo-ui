@@ -66,6 +66,15 @@ export async function openRemoteWebRtcStream(
   let resolve!: (result: RemoteDesktopApiResult<RemoteDesktopStream>) => void;
   const connected = new Promise<RemoteDesktopApiResult<RemoteDesktopStream>>(done => { resolve = done; });
   const settle = (result: RemoteDesktopApiResult<RemoteDesktopStream>) => { if (!settled) { settled = true; resolve(result); } };
+  const timing = (stage: number, at = monotonic(), fields: Record<string, number> = {}) => {
+    const observed = monotonic(), wall = Date.now();
+    try { handlers.serverTiming?.({ viewer_stage: stage, viewer_generation: peer?.gen ?? 1,
+      viewer_mono_us: Math.round(at * 1000), viewer_wall_ms: Math.round(wall + at - observed),
+      viewer_observed_mono_us: Math.round(observed * 1000), viewer_observed_wall_ms: wall, ...fields }); } catch { /* observations never drive start */ }
+  };
+  if (createdSocket?.startIntentSentAt !== undefined) timing(2, createdSocket.startIntentSentAt,
+    { ...(createdSocket.startIntentSentWall !== undefined ? { viewer_wall_ms: createdSocket.startIntentSentWall } : {}), viewer_preconnected_intent: 1 });
+  if (!options.standby) timing(1, clickedAt, { viewer_wall_projected: 1 });
 
   const closeSocket = () => {
     const old = socket; socket = null; authenticated = false; authFrameSent = false;
@@ -116,13 +125,17 @@ export async function openRemoteWebRtcStream(
     while (outgoingSignals.length && signalTimes.length < 180) {
       const data = outgoingSignals[0];
       if (!write({ type: "signal", data }, authFrameSent)) break;
-      if (data.k === "offer" && firstOfferSentAt === undefined) firstOfferSentAt = monotonic();
+      if (data.k === "offer") {
+        if (firstOfferSentAt === undefined) firstOfferSentAt = monotonic();
+        timing(8, monotonic(), { viewer_generation: Number(data.gen), viewer_socket_sent: 1 });
+      }
       outgoingSignals.shift(); signalTimes.push(now);
     }
   };
   const flushStartIntent = () => {
     if (!options.standbyStartIntent || !activation || startIntentSent || (!authenticated && !authFrameSent)) return;
     startIntentSent = write({ type: "standby.start", request_id: activation.requestId }, authFrameSent);
+    if (startIntentSent) timing(2);
   };
   const enqueueSignal = (data: Record<string, unknown>): boolean => {
     if (ended || new TextEncoder().encode(JSON.stringify({ type: "signal", data })).byteLength > MAX_SIGNAL_BYTES) return false;
@@ -214,6 +227,7 @@ export async function openRemoteWebRtcStream(
         handlers.standbyState?.(state, at);
       },
       onPresentation: sample => { if (!ended) handlers.webrtcPresentation?.(sample); },
+      onTiming: sample => { if (!ended) handlers.serverTiming?.(sample); },
       onFrame: (width, height) => {
         if (ended) return;
         handlers.webrtcFrame?.(width, height);
@@ -256,6 +270,7 @@ export async function openRemoteWebRtcStream(
     activateStandby: (requestId, at) => {
       if (ended || activation || !/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) return;
       activation = { requestId, at }; clickedAt = at;
+      timing(1, at, { viewer_wall_projected: 1 });
       flushStartIntent(); peer?.activateStandby(requestId, at);
     },
     renewStandby: () => write({ type: "standby.renew" }),
