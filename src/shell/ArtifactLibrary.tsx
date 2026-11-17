@@ -90,6 +90,8 @@ export type ArtifactFilter =
   | "game"
   // 「文件夹」类别（skills-overhaul D5）：数据走 `/v1/folders`，不是 artifact。
   | "folders"
+  | "files"
+  | "links"
   | "favorites";
 
 const KIND_SETS: Record<string, string[]> = {
@@ -99,12 +101,13 @@ const KIND_SETS: Record<string, string[]> = {
   presentations: ["slides", "slide", "presentation", "ppt"],
   slides: ["slides", "slide", "presentation", "ppt"],
   images: ["image", "canvas", "design"],
-  documents: ["markdown", "document", "text"],
+  documents: ["markdown", "document", "text", "pdf"],
   spreadsheets: ["sheet", "spreadsheet", "grid", "xlsx"],
   pdf: ["pdf"],
   videos: ["video"],
   audio: ["audio", "music", "voice"],
-  charts: ["chart"],
+  files: ["file", "binary", "zip", "archive"],
+  links: ["link", "url"],
   threed: ["3d", "threed", "model", "mesh"],
   game: ["game"],
 };
@@ -406,10 +409,10 @@ export function ArtifactLibrary(props: ArtifactLibraryProps) {
             // 「全部」时在网格上方放最近的文件包（仲裁 A-04）；收藏视图与具体类别不放。
             // 函数形式（A-21）：跟着 MyLibrary 的搜索词过滤，「仅看收藏」打开时不显示；
             // 只在「上传的」分区（2026-11-07 UX 波：上传的文件夹在那里变成文件包）。
-            section !== "task" && (myLibraryCategory ?? "all") === "all" && filter !== "favorites" && folders.module
+            section !== "task" && ["all", "files"].includes(myLibraryCategory ?? "all") && filter !== "favorites" && folders.module
               ? ({ query, favoritesOnly, section: shown }: { query: string; favoritesOnly: boolean; section: LibrarySource }) => {
                   const Strip = folders.module?.LibraryFoldersStrip;
-                  return Strip && !favoritesOnly && shown === "upload" ? (
+                  return Strip && !favoritesOnly && shown !== "task" ? (
                     <Strip query={query} onViewAll={() => changeCategory(LIBRARY_FOLDER_CATEGORY_ID)} />
                   ) : null;
                 }

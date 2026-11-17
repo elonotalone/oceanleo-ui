@@ -1,3 +1,5 @@
+import { SHEET_NAMING_MESSAGES } from "./sheet-naming-copy";
+import { MATERIAL_TAXONOMY_MESSAGES } from "./material-taxonomy-copy";
 import { LIVE_MATERIAL_MESSAGES } from "./live-material-copy";
 // @oceanleo/ui — UI 文案词典聚合（17 语言）。
 // key = 简体中文原文（规范来源见 zh.ts）；每种语言一张平表 { 中文原文: 译文 }。
@@ -535,6 +537,8 @@ export const UI_MESSAGES = Object.fromEntries(
       ...TASK_PAGE_PACK_MESSAGES[language],
       ...LIBRARY_PREVIEW_MESSAGES[language],
       ...LIVE_MATERIAL_MESSAGES[language],
+      ...MATERIAL_TAXONOMY_MESSAGES[language],
+      ...SHEET_NAMING_MESSAGES[language],
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

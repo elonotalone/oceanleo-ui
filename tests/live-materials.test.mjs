@@ -181,7 +181,7 @@ test('untrusted media links and OAuth redirects reject executable schemes and ot
 test('old live variants, stock origin code and collection snapshots are gone; official shelf and chat mount share live search',()=>{
   for(const file of ['BayAssetLive.tsx','BayAssetSeries.tsx','origin-index.ts'])assert.equal(existsSync(new URL('../src/shell/bay/asset/'+file,import.meta.url)),false);
   const bay=readFileSync(new URL('../src/shell/bay/asset/BayAssetLibrary.tsx',import.meta.url),'utf8');
-  assert.match(bay,/LiveMaterialSearch/);assert.match(bay,/loadReadyOfficial/);assert.match(bay,/loadReadySellers/);
+  assert.match(bay,/LiveMaterialSearch/);assert.match(bay,/ReadyMaterialCatalog/);
   const chat=readFileSync(new URL('../src/shell/ResultCanvas.tsx',import.meta.url),'utf8');assert.match(chat,/LiveMaterialSearch key=\{bayRequest.nonce\}/);
   assert.match(chat,/workspaceEntryFromLibraryItem\(item\)/);
 });

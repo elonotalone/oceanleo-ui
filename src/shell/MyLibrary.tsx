@@ -92,6 +92,8 @@ import {
 } from "./artifact-contract";
 import {
   LIBRARY_EDITOR_CATEGORIES,
+  libraryDocumentFormat,
+  libraryMatchesDocumentFormat,
   libraryEditorCategory,
   normalizeLibraryCategory,
   translateLibraryTypeLabel,
@@ -749,6 +751,7 @@ export function MyLibrary({
       return false;
     }
   });
+  const [documentFormat, setDocumentFormat] = useState("");
   const [internalCategory, setInternalCategory] = useState(category ?? "all");
   const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
   const [attachmentSection, setAttachmentSection] = useState(section === "task");
@@ -880,6 +883,7 @@ export function MyLibrary({
   }, [onlyFavorites]);
   const activeCategory = normalizeLibraryCategory(category ?? internalCategory);
   const changeCategory = (next: string) => {
+    setDocumentFormat("");
     if (category === undefined) setInternalCategory(next);
     onCategoryChange?.(next);
   };
@@ -1954,9 +1958,9 @@ export function MyLibrary({
   );
   const shownSectionItems = useMemo(
     () => orderedItems.filter(
-      (item) => (attachmentSection ? libraryItemSection(item) === "task" : libraryItemSection(item) !== "task") && (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)),
+      (item) => (attachmentSection ? libraryItemSection(item) === "task" : libraryItemSection(item) !== "task") && (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)) && (activeCategory !== "document_editing" || libraryMatchesDocumentFormat(item, documentFormat)),
     ),
-    [attachmentSection, favoritesOnly, itemFilter, orderedItems],
+    [attachmentSection, favoritesOnly, itemFilter, orderedItems, activeCategory, documentFormat],
   );
   const entries = useMemo(
     () =>
@@ -2195,6 +2199,11 @@ export function MyLibrary({
                 onChange={(value) => changeCategory(value || "all")}
                 allLabel={tt("全部类型")}
               />
+              {activeCategory === "document_editing" ? <CollectionFilterSelect
+                label={tt("格式")} name="format" value={documentFormat}
+                options={[...new Set(orderedItems.filter((item) => libraryEditorCategory(item) === "document_editing").map(libraryDocumentFormat).filter(Boolean))].sort().map((format) => ({ value: format, label: format.toUpperCase() }))}
+                onChange={setDocumentFormat} allLabel={tt("全部格式")}
+              /> : null}
             </CollectionFilterRow>
           ) : null}
           {uploadError && <StorageCapacityStrip accent={accent} />}

@@ -14,7 +14,7 @@ import { safeMediaUrl } from "./AttachmentView";
 
 export const EDITOR_KIND_LABEL: Record<ImEditorKind, string> = {
   richdoc: "文档",
-  grid: "表格",
+  grid: "Sheet",
   deck: "演示文稿",
   image: "图片",
   vector: "矢量图",

@@ -1144,7 +1144,7 @@ export const MEDIA_TYPE_LABEL: Record<MediaType, string> = {
   audio: "音频",
   logo: "Logo",
   ppt: "演示文稿",
-  sheet: "表格",
+  sheet: "Sheet",
   doc: "文档",
   website: "网站",
   canvas: "画布",

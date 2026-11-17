@@ -57,7 +57,7 @@ export const WORKSPACE_KIND_LABELS: Partial<Record<LibraryKind, string>> = {
   website: "网站",
   canvas: "画布",
   ppt: "PPT",
-  sheet: "表格",
+  sheet: "Sheet",
   document: "文档",
   image: "图片",
   video: "视频",

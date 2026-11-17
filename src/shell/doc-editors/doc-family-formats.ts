@@ -191,7 +191,7 @@ const DOC_FAMILY_EXTENSION_OWNER: Readonly<Record<string, DocFamilyEditorId>> = 
 
 const DOC_FAMILY_EDITOR_NAMES: Readonly<Record<DocFamilyEditorId, string>> = {
   richdoc: "文档编辑器",
-  grid: "表格编辑器",
+  grid: "Sheet 编辑器",
   deck: "演示编辑器",
   pdf: "PDF 编辑器",
 };

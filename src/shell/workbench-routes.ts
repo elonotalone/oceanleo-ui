@@ -460,7 +460,7 @@ export function editorToolLabel(route: EditorRoute): string {
     case "richdoc":
       return "文档编辑";
     case "grid":
-      return "表格编辑";
+      return "Sheet 编辑";
     case "deck":
       return "幻灯片编辑";
     case "work":

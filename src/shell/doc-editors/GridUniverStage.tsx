@@ -230,7 +230,7 @@ async function readGridRevisionSnapshot(
   const { schema, url } = gridProjectSource(revision);
   if (schema === GRID_UNIVER_PROJECT_SCHEMA && url) {
     const snapshot = await loadEditorProject<Partial<IWorkbookData>>(url, GRID_UNIVER_PROJECT_SCHEMA);
-    if (!gridSnapshotIsUsable(snapshot)) throw new Error("表格源尚未成功载入，未保存空白表。");
+    if (!gridSnapshotIsUsable(snapshot)) throw new Error("Sheet 源尚未成功载入，未保存空白表。");
     return snapshot;
   }
   const officeSheets = await loadGridSheets(revision);
@@ -421,7 +421,7 @@ export function GridUniverStage({
         loaded: loadedIdentityRef.current, next: identity, dirty: dirtyRef.current,
       });
       setLoading(true);
-      setStatus(ttRef.current("正在载入表格"));
+      setStatus(ttRef.current("正在载入 Sheet"));
       return;
     }
     // 只是签名地址换发（同一 artifact / revision）：不重载、不清未保存的编辑。
@@ -450,7 +450,7 @@ export function GridUniverStage({
     sourceFailedRef.current = false;
     setSourceFailureReason("");
     setDirty(false);
-    setStatus(ttRef.current("正在载入表格"));
+    setStatus(ttRef.current("正在载入 Sheet"));
     const failClosed = (reason: string) => {
       sourceReadyRef.current = false;
       loadedIdentityRef.current = null;
@@ -474,7 +474,7 @@ export function GridUniverStage({
             projectUrl,
             GRID_UNIVER_PROJECT_SCHEMA,
           );
-          if (!gridSnapshotIsUsable(univerSnapshot)) throw new Error(ttRef.current("表格源尚未成功载入，未保存空白表。"));
+          if (!gridSnapshotIsUsable(univerSnapshot)) throw new Error(ttRef.current("Sheet 源尚未成功载入，未保存空白表。"));
         } else if (projectUrl && schema !== GRID_UNIVER_PROJECT_SCHEMA) {
           // 存量用户的旧核工程档（`oceanleo.grid.v1`）：读进来、转成快照、只读打开。
           // 这是旧文档进新核的入口，旧核运行时删了它也必须在。
@@ -553,7 +553,7 @@ export function GridUniverStage({
           gridSourceFailureMessage(
             caught instanceof Error
               ? caught.message
-              : ttRef.current("表格载入失败。"),
+              : ttRef.current("Sheet 载入失败。"),
             ttRef.current,
           ),
         );
@@ -758,7 +758,7 @@ export function GridUniverStage({
       }),
       onFullReplace: (reason) => {
         noteGridProbe(`collab-replace:${reason}`);
-        setStatus(ttRef.current("别人调整了表格的一部分设置，表格已重新载入。"));
+        setStatus(ttRef.current("别人调整了 Sheet 的一部分设置，Sheet 已重新载入。"));
       },
       onActivity: (origin) => {
         noteGridProbe(`collab-${origin}`);
@@ -832,7 +832,7 @@ export function GridUniverStage({
     const sheets = legacySheetsRef.current;
     if (!sheets || sheets.length === 0) {
       setConversion((state) => nextGridConversionState(state, { type: "reject" }));
-      setConversionNotice(tt("找不到可以转换的旧表格。"));
+      setConversionNotice(tt("找不到可以转换的旧 Sheet。"));
       return;
     }
     const planned = planGridLegacyConversion({
@@ -858,7 +858,7 @@ export function GridUniverStage({
   const runControl = useCallback(
     async (command: SelectionCommand) => {
       if (sourceFailedRef.current) {
-        setStatus(sourceFailureReason || tt("表格源尚未成功载入，不能改。"));
+        setStatus(sourceFailureReason || tt("Sheet 源尚未成功载入，不能改。"));
         return;
       }
       if (readonly) {
@@ -871,13 +871,13 @@ export function GridUniverStage({
       }
       let port = livePort();
       if (!port) {
-        setStatus(tt("表格内核还没准备好。"));
+        setStatus(tt("Sheet 内核还没准备好。"));
         return;
       }
       if (GRID_RICH_TEXT_COMMAND_IDS.some((id) => id === command.controlId) && port.workbook.isCellEditing?.()) {
         port = await settleGridTextPort(port, livePort, () => editBlockedRef.current || sourceFailedRef.current);
         if (!port) {
-          setStatus(tt("表格内核还没准备好。"));
+          setStatus(tt("Sheet 内核还没准备好。"));
           return;
         }
       }
@@ -933,7 +933,7 @@ export function GridUniverStage({
 
   const save = useCallback(async (prepared?: Partial<IWorkbookData>, preparedRevision?: number) => {
     if (sourceFailedRef.current || !sourceReadyRef.current || (!prepared && !handleRef.current)) {
-      setStatus(sourceFailureReason || tt("表格源尚未成功载入，未保存空白表。"));
+      setStatus(sourceFailureReason || tt("Sheet 源尚未成功载入，未保存空白表。"));
       return null;
     }
     if (readonly) {
@@ -947,7 +947,7 @@ export function GridUniverStage({
     const baseItem = externalItemRef.current ?? item;
     const snapshot = prepared ?? structuredClone(currentSnapshot());
     if (!gridSnapshotIsUsable(snapshot)) {
-      setStatus(tt("表格源尚未成功载入，未保存空白表。"));
+      setStatus(tt("Sheet 源尚未成功载入，未保存空白表。"));
       return null;
     }
     collabBinderRef.current?.flush();
@@ -1076,7 +1076,7 @@ export function GridUniverStage({
     const api = handleRef.current?.api;
     const formula = api?.getFormula?.();
     if (!formula?.executeCalculation) {
-      setStatus(tt("表格内核还没准备好。"));
+      setStatus(tt("Sheet 内核还没准备好。"));
       return;
     }
     formula.executeCalculation();
@@ -1216,7 +1216,7 @@ export function GridUniverStage({
       sourceFailedRef.current
         ? {
             ok: false,
-            message: sourceFailureReason || "表格源尚未成功载入，指令没有执行。",
+            message: sourceFailureReason || "Sheet 源尚未成功载入，指令没有执行。",
           }
         : runGridAgentCommand({
             id,
@@ -1298,7 +1298,7 @@ export function GridUniverStage({
             ? [
                 {
                   id: "grid-convert-legacy",
-                  label: tt("转换为新表格"),
+                  label: tt("转换为新 Sheet"),
                   disabled: conversion === "converting",
                   onTrigger: convertLegacy,
                 },
@@ -1354,7 +1354,7 @@ export function GridUniverStage({
             ? gridSourceFailureMessage(officeSource.error, tt)
             : "") ||
           status ||
-          (loading || officeSource.loading ? tt("正在载入表格") : ""),
+          (loading || officeSource.loading ? tt("正在载入 Sheet") : ""),
         persistence: {
           dirty: dirty && !sourceFailed && snapshotReady,
           editRevision,

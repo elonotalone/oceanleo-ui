@@ -48,7 +48,7 @@ const SHELF_SOURCES: ShelfSource[] = [
     duty: "免费下载 · 可商用 · 禁止再分发" },
   { key: "oceanleo-chart", name: "OceanLeo 自制图表", origin: "first-party", count: 44, types: "图表",
     duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "oceanleo-curated", name: "OceanLeo 精选成品", origin: "first-party", count: 29, types: "文档 / PDF / 表格 / 网站",
+  { key: "oceanleo-curated", name: "OceanLeo 精选成品", origin: "first-party", count: 29, types: "文档 / PDF / Sheet / 网站",
     duty: "免费下载 · 可商用 · 禁止再分发" },
   { key: "oceanleo-design-template", name: "LeoDesign 可编辑模板", origin: "first-party", count: 29, types: "图片",
     duty: "免费下载 · 可商用 · 禁止再分发" },

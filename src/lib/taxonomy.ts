@@ -73,7 +73,7 @@ export const INDUSTRIES: TaxonomyOption[] = [
 export const CONTENTS: TaxonomyOption[] = [
   { id: "all", label: "全部", icon: "✦" },
   { id: "doc", label: "文档", icon: "📄" },
-  { id: "sheet", label: "表格", icon: "📊" },
+  { id: "sheet", label: "Sheet", icon: "📊" },
   { id: "slide", label: "演示", icon: "📑" },
   { id: "image", label: "图像", icon: "🖼️" },
   { id: "video", label: "视频", icon: "🎞️" },

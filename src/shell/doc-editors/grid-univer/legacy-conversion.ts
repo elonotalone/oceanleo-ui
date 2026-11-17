@@ -25,7 +25,7 @@ export const GRID_UNIVER_PROJECT_SCHEMA = "oceanleo.grid.univer.v1";
 
 /** 打开旧文档时告诉用户当前是什么状态。写成常量是为了让测试能钉住这句话在。 */
 export const GRID_LEGACY_READONLY_NOTICE =
-  "这份表格是用旧引擎存的，现在是只读打开的。点「转换为新表格」之后才会改动它。";
+  "这份 Sheet 是用旧引擎存的，现在是只读打开的。点「转换为新 Sheet」之后才会改动它。";
 
 /** 新核目前接得住的规模。超了不转换，因为转出来也是卡死的。 */
 export const GRID_UNIVER_MAX_ROWS = 10_000;

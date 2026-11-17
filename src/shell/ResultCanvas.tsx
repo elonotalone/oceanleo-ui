@@ -777,7 +777,7 @@ export function ResultCanvas({
         onOpenItem={openCanvasItem}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有生成内容"
-        emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
+        emptyDescription="生成后的 PPT、网站、图片、Sheet、文档和画布会逐项显示在这里；点开即可继续编辑。"
       />
     ),
     materials: null, // Compatibility inputs are routed to LeoBay; there is no standalone mount.
@@ -908,7 +908,7 @@ export function ResultCanvas({
         }}
         searchPlaceholder="搜索生成结果和当前应用页面"
         emptyTitle="还没有生成内容"
-        emptyDescription="生成后的 PPT、网站、图片、表格、文档和画布会逐项显示在这里；点开即可继续编辑。"
+        emptyDescription="生成后的 PPT、网站、图片、Sheet、文档和画布会逐项显示在这里；点开即可继续编辑。"
       />
     ) : null;
   const pluginHost = useMemo<PluginHost | null>(() => {

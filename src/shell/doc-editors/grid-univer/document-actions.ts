@@ -37,11 +37,11 @@ export function gridSourceFailureMessage(
   reason: string,
   tt: UITranslate = passthrough,
 ): string {
-  const detail = String(reason || "").trim();
+  const detail = tt(String(reason || "").trim());
   const head = detail
-    ? tt("没能读到这份表格的源文件（{detail}）。", { detail })
-    : tt("没能读到这份表格的源文件。");
-  const tail = tt("点「重新载入表格」再试一次，或者关掉这份文档重新打开。");
+    ? tt("没能读到这份 Sheet 的源文件（{detail}）。", { detail })
+    : tt("没能读到这份 Sheet 的源文件。");
+  const tail = tt("点「重新载入 Sheet」再试一次，或者关掉这份文档重新打开。");
   return `${head}${tail}`;
 }
 
@@ -63,7 +63,7 @@ export function buildGridDocumentActions(
   if (editor.sourceFailed && typeof editor.reload === "function") {
     actions.push({
       id: "grid-reload-source",
-      label: tt("重新载入表格"),
+      label: tt("重新载入 Sheet"),
       onTrigger: editor.reload,
     });
   }

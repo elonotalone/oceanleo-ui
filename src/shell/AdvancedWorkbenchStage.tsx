@@ -166,7 +166,7 @@ export function AdvancedWorkbenchStage({
 
 const UPLOAD_TARGET_LABELS: Record<UploadEditorTarget, string> = {
   richdoc: "文档",
-  grid: "表格",
+  grid: "Sheet",
   deck: "演示",
   pdf: "PDF",
   image: "图片",

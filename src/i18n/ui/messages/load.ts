@@ -1,4 +1,6 @@
 import { LIBRARY_PREVIEW_MESSAGES } from "./library-preview-copy";
+import { SHEET_NAMING_MESSAGES } from "./sheet-naming-copy";
+import { MATERIAL_TAXONOMY_MESSAGES } from "./material-taxonomy-copy";
 import { LIVE_MATERIAL_MESSAGES } from "./live-material-copy";
 import {
   DEFAULT_LOCALE,
@@ -170,7 +172,9 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...computerTaskWorkspace.COMPUTER_TASK_WORKSPACE_MESSAGES[locale],
     ...nativeAttachments.NATIVE_ATTACHMENTS_MESSAGES[locale],
     ...taskPagePack.TASK_PAGE_PACK_MESSAGES[locale],
-    ...LIVE_MATERIAL_MESSAGES[locale],
     ...LIBRARY_PREVIEW_MESSAGES[locale],
+    ...LIVE_MATERIAL_MESSAGES[locale],
+    ...MATERIAL_TAXONOMY_MESSAGES[locale],
+    ...SHEET_NAMING_MESSAGES[locale],
   };
 };

@@ -640,7 +640,7 @@ export async function loadGridSheets(
   if (!hasWorkbookUrl && !hasCsvContent) {
     if (item.artifactId) {
       throw new Error(
-        "当前表格 revision 缺少可验证的 source/full 内容；已阻止用空白工作簿替代。",
+        "当前 Sheet revision 缺少可验证的 source/full 内容；已阻止用空白工作簿替代。",
       );
     }
     return [];
@@ -659,7 +659,7 @@ export async function loadGridSheets(
   if (sheets.length > 0) return sheets;
   if (item.artifactId) {
     throw new Error(
-      "表格源没有可读的工作表，未改用空白表覆盖原件。",
+      "Sheet 源没有可读的工作表，未改用空白表覆盖原件。",
     );
   }
   return [];

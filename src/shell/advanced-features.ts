@@ -73,8 +73,8 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     examples: "DOCX · DOC · RTF",
   },
   spreadsheet_editing: {
-    title: "表格编辑",
-    eyebrow: "Spreadsheet editing",
+    title: "Sheet 编辑",
+    eyebrow: "Sheet editing",
     description: "处理工作表、公式、数据与结构化表格。",
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "XLSX · XLS · CSV",

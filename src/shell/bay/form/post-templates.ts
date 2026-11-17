@@ -31,7 +31,7 @@ export const DIGITAL_MATERIAL_LABEL: Record<DigitalMaterialKind, string> = {
   ppt: "PPT",
   document: "文档",
   pdf: "PDF",
-  sheet: "表格",
+  sheet: "Sheet",
   website: "网站",
   video: "视频",
   audio: "音频",

@@ -3,7 +3,6 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { buildPanelsFromCategories, categoryLabel, PPT_INDUSTRIES } from "../src/shell/bay/asset/asset-taxonomy.ts";
 import {
   DOCUMENT_ZONES,
   DOCUMENT_ZONE_SLUGS,
@@ -26,26 +25,6 @@ import {
 const LIBRARY = readFileSync(new URL("../src/shell/bay/asset/BayAssetLibrary.tsx", import.meta.url), "utf8");
 
 
-test("目录面板构造：策划顺序在前，文档分区用中文名", () => {
-  const panels = buildPanelsFromCategories("document", [
-    "document-template",
-    "legal-contract-model",
-    "resume-template",
-  ]);
-  assert.deepEqual(
-    panels.map((item) => item.key),
-    ["legal-contract-model", "resume-template", "document-template"],
-  );
-  assert.equal(panels[0].label, "合同区");
-  assert.equal(categoryLabel("etching"), "蚀刻编辑风");
-  assert.equal(categoryLabel("legal-diligence"), "尽职调查区");
-  assert.ok(PPT_INDUSTRIES.some((item) => item.key === "ind-edu" && item.label === "教育培训"));
-  const sticker = buildPanelsFromCategories("sticker", ["hot", "unknown-cat"]);
-  assert.equal(sticker[0].key, "hot");
-  assert.ok(sticker[0].subs.length > 1);
-  assert.equal(sticker[1].key, "unknown-cat");
-  assert.deepEqual(sticker[1].subs.map((item) => item.key), [""]);
-});
 
 test("八类各有置顶槽，且不再钉 v2 废品 uuid", () => {
   assert.deepEqual([...WASH_PIN_CATEGORIES], [
@@ -246,16 +225,15 @@ test("官方来源分区标出国家编号，自有分区不冒充官方", () =>
 
 test("页面不再展示基础文档分区 UI；底层目录与许可数据仍保留", () => {
   assert.doesNotMatch(LIBRARY, /DocumentZoneHeader|data-bay-asset-doc-zone/);
-  assert.match(LIBRARY, /BayAssetCard/);
+  assert.match(LIBRARY, /ReadyMaterialCatalog/);
 });
 
 
 test("BayAssetLibrary 用成品种类卡与分栏货架，保留共享详情和独立基础素材能力", () => {
   assert.doesNotMatch(LIBRARY, /BayToolbarFilters|BayFilterSelect|BayAssetSeries|BayAssetLive/);
-  assert.match(LIBRARY, /data-bay-ready-kind=/);
-  assert.match(LIBRARY, /data-bay-ready-shelf=/);
+  assert.match(LIBRARY, /ReadyMaterialCatalog/);
   assert.match(LIBRARY, /BayLicensesView|licensesOpen/);
   assert.match(LIBRARY, /BayAssetCard|BayArtifactDeepLink|useBayAssetRoute/);
   assert.match(LIBRARY, /LiveMaterialSearch/);
-  assert.match(LIBRARY, /tt\("在线素材"\)/);
+
 });

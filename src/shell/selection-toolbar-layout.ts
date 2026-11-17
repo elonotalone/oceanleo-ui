@@ -218,7 +218,7 @@ const LIVE_CAPABILITY_BY_PREFIX: ReadonlyArray<{
   prefix: string;
   capability: SelectionLiveCapability;
 }> = [
-  { prefix: "grid", capability: { id: "grid", label: "表格" } },
+  { prefix: "grid", capability: { id: "grid", label: "Sheet" } },
   { prefix: "chart", capability: { id: "chart", label: "图表" } },
   { prefix: "design", capability: { id: "design", label: "设计" } },
   { prefix: "deck", capability: { id: "deck", label: "幻灯片" } },

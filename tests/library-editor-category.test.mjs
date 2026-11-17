@@ -2,151 +2,90 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 import { compileModule } from "./helpers/module-bench.mjs";
+import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
+import { loadUiMessages } from "../src/i18n/ui/messages/load.ts";
+import { SHEET_NAMING_MESSAGES } from "../src/i18n/ui/messages/sheet-naming-copy.ts";
+import { LOCALES } from "../src/i18n/config.ts";
 
 const contractUrl = await compileModule("src/shell/artifact-contract.ts");
 const contract = await import(contractUrl);
 const taxonomyUrl = await compileModule("src/shell/library-editor-category.ts", { "./artifact-contract": contractUrl });
 const taxonomy = await import(taxonomyUrl);
 const model = await import(await compileModule("src/shell/workspace-library-model.ts", { "./library-editor-category": taxonomyUrl }));
-const itemFor = (row, overrides = {}) => ({
-  key: row.featureId, id: row.featureId, title: "sample", source: "artifact",
-  kind: "document", siteId: "", favorite: false, meta: { library_source: "upload" },
-  artifactType: row.artifactType,
-  artifact: { artifactType: row.artifactType, editorCapability: row.editorCapability,
-    sourceFormat: row.sourceFormat, editability: "view_only", source: null },
-  ...overrides,
-});
+const item = (artifactType, kind = "document", extra = {}) => ({ id: artifactType, key: artifactType, title: artifactType,
+  kind, source: "artifact", meta: {}, artifactType, ...extra });
+const MENU = ["演示文稿", "图像", "文档", "电子表格", "网站与应用", "游戏", "视频", "3D 模型", "音频", "文件", "链接"];
 
-// D5（2026-10-23）：菜单是素材类别，顺序与名字由操作员定死。
-const MENU = ["视频", "网站", "演示文稿", "文档", "表格", "图片", "PDF", "游戏", "音频", "3D 模型"];
-
-// skills-overhaul W17（2026-10-24，合同 D5）：编辑器类别之后追加这个类别。它不是编辑器、
-// 不进能力矩阵，所以只追加在菜单末尾；上面 11 个的顺序与名字不变。
-// 2026-11-07 UX 波（LU-R）：对用户改叫「文件包」，id / 筛选值仍是 `folders`。
-const FOLDERS = "文件包";
-
-test("the Type menu lists the 11 material categories in order, then 文件包, with no editor names", () => {
+test("Library lists professional categories in the agreed order without a separate PDF category", () => {
   const rows = taxonomy.LIBRARY_EDITOR_CATEGORIES;
-  assert.deepEqual(rows.map((row) => row.typeLabel), [...MENU, FOLDERS]);
-  assert.deepEqual(rows.map((row) => row.label), [...MENU, FOLDERS], "the menu label is the type name, never the editor name");
-  assert.deepEqual(rows.at(-1), { value: "folders", label: FOLDERS, typeLabel: FOLDERS, filter: "folders" });
-  for (const row of rows) {
-    assert.doesNotMatch(row.label, /编辑|创作|editing|设计画布/i);
+  assert.deepEqual(rows.map((row) => row.typeLabel), MENU);
+  assert.deepEqual(rows.map((row) => row.label), MENU);
+  assert.equal(rows.some((row) => ["pdf_editing", "video_canvas", "chart", "geo_map", "interactive_doc"].includes(row.value)), false);
+  assert.equal(rows.find((row) => row.filter === "files").label, "文件");
+});
+
+test("Documents filter includes both document and PDF while editor capabilities stay distinct", () => {
+  const doc = item("document"), pdf = item("pdf");
+  assert.equal(taxonomy.libraryEditorFeatureId(pdf), "pdf_editing");
+  assert.equal(taxonomy.libraryEditorFeatureId(doc), "document_editing");
+  for (const value of [doc, pdf]) {
+    assert.equal(taxonomy.libraryEditorCategory(value), "document_editing");
+    assert.equal(taxonomy.libraryEditorLabel(value), "文档");
   }
-  assert.equal(rows.some((row) => row.value === "design_canvas"), false);
+  const entries = [doc, pdf, item("grid", "sheet")].map((value) => model.workspaceEntryFromLibraryItem(value));
+  assert.deepEqual(model.filterWorkspaceLibraryEntries(entries, "", "documents").map((row) => row.id), ["document", "pdf"]);
+  assert.deepEqual(model.filterWorkspaceLibraryEntries([], "", "documents"), []);
+});
+
+test("document format filtering uses stored source format, not file titles", () => {
+  const pdf = item("pdf", "document", { title: "report.docx", artifact: { sourceFormat: "pdf" } });
+  const docx = item("document", "document", { meta: { format: "DOCX" } });
+  assert.equal(taxonomy.libraryMatchesDocumentFormat(pdf, "pdf"), true);
+  assert.equal(taxonomy.libraryMatchesDocumentFormat(docx, "pdf"), false);
+  assert.equal(taxonomy.libraryMatchesDocumentFormat(pdf, ""), true);
   const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
-  assert.match(mine, /translateLibraryTypeLabel\(tt, option\.typeLabel\)/);
-  assert.doesNotMatch(mine, /tt\(option\.label\)/);
+  assert.match(mine, /libraryMatchesDocumentFormat\(item, documentFormat\)/);
+  assert.match(mine, /name="format"/);
 });
 
-test("every capability family selects its own entries; design canvas folds into images", () => {
-  const rows = contract.ADVANCED_CAPABILITY_MATRIX;
-  assert.equal(rows.length, 9, "the capability plane itself keeps design_canvas");
-  const entries = rows.map((row) => model.workspaceEntryFromLibraryItem(itemFor(row)));
-  for (const row of rows) {
-    // Shelf identity is still the real capability; only the library category folds.
-    assert.equal(taxonomy.libraryEditorFeatureId(itemFor(row)), row.featureId);
-    if (row.featureId === "design_canvas" || row.featureId === "image_editing") continue;
-    const matches = model.filterWorkspaceLibraryEntries(entries, "", row.featureId);
-    assert.deepEqual(matches.map((entry) => entry.id), [row.featureId]);
+test("all image carriers share Images and unsupported carriers are generic files", () => {
+  for (const type of ["single_file_image", "vector_image", "composite_image"]) {
+    assert.equal(taxonomy.libraryEditorCategory(item(type, "image")), "image_editing");
+    assert.equal(taxonomy.libraryEditorLabel(item(type, "image")), "图像");
   }
-  const images = model.filterWorkspaceLibraryEntries(entries, "", "image_editing");
-  assert.deepEqual(images.map((entry) => entry.id).sort(), ["design_canvas", "image_editing"]);
-  const design = itemFor(rows.find((row) => row.featureId === "design_canvas"));
-  assert.equal(taxonomy.libraryEditorCategory(design), "image_editing");
-  assert.equal(taxonomy.libraryEditorLabel(design), "图片");
-});
-
-test("legacy ?category=design, design_canvas and old editor names land on the image category", () => {
-  const rows = contract.ADVANCED_CAPABILITY_MATRIX;
-  const design = model.workspaceEntryFromLibraryItem(itemFor(rows.find((row) => row.featureId === "design_canvas")));
-  for (const alias of ["design", "design_canvas", "设计画布", "画布", "canvas", "图片编辑", "images", "图片"]) {
-    assert.equal(taxonomy.normalizeLibraryCategory(alias), "image_editing", alias);
-    assert.equal(model.filterWorkspaceLibraryEntries([design], "", alias).length, 1, alias);
+  for (const type of ["chart", "geo_map", "interactive_doc", "unknown"]) {
+    assert.equal(taxonomy.libraryEditorCategory(item(type, "file")), "files");
+    assert.equal(taxonomy.libraryEditorLabel(item(type, "file")), "文件");
   }
-  assert.equal(taxonomy.normalizeLibraryCategory("视频编辑"), "video_editing");
-  assert.equal(taxonomy.normalizeLibraryCategory("视频工作流"), "视频工作流");
-  assert.equal(taxonomy.normalizeLibraryCategory("3D"), "threed");
-  assert.equal(taxonomy.libraryCategoryLabel("design"), "图片");
-  assert.equal(taxonomy.libraryCategoryLabel("threed"), "3D 模型");
 });
 
-test("PDF/document, chart/image and workflow variants stay distinct without available editors", () => {
-  const make = (type, capability, kind) => itemFor({ featureId: type, artifactType: type, editorCapability: capability }, { kind });
-  assert.equal(taxonomy.libraryEditorLabel(make("pdf", "pdf-editor", "document")), "PDF");
-  assert.equal(taxonomy.libraryEditorLabel(make("document", "richdoc-editor", "document")), "文档");
-  assert.equal(taxonomy.libraryEditorLabel(make("chart", "chart-editor", "image")), "图表");
-  assert.equal(taxonomy.libraryEditorLabel(make("composite_image", "design-canvas", "image")), "图片");
-  assert.equal(taxonomy.libraryEditorLabel(make("composite_image", "composite-image-editor", "image")), "图片");
-  assert.equal(taxonomy.libraryEditorLabel({ key: "c", title: "", kind: "canvas", meta: {} }), "图片");
-  assert.equal(taxonomy.libraryEditorLabel(make("model_3d", "model-3d-editor", "threed")), "3D 模型");
+test("links and generic files can be selected independently of website and document capabilities", () => {
+  const link = item("website", "website", { meta: { link_work: { id: "l" } } });
+  assert.equal(taxonomy.libraryEditorCategory(link), "links");
+  assert.equal(taxonomy.libraryEditorLabel(link), "链接");
+  const entries = [link, item("website", "website"), item("unknown", "file")].map((value) => model.workspaceEntryFromLibraryItem(value));
+  assert.equal(model.filterWorkspaceLibraryEntries(entries, "", "links").length, 1);
+  assert.equal(model.filterWorkspaceLibraryEntries(entries, "", "files").length, 1);
+  assert.equal(model.filterWorkspaceLibraryEntries(entries, "", "website").length, 1);
 });
 
-test("legacy slides and translated labels select canonical entries; unknown files remain available", () => {
-  const slides = contract.ADVANCED_CAPABILITY_MATRIX.find((row) => row.featureId === "presentation_editing");
-  const entries = [model.workspaceEntryFromLibraryItem(itemFor(slides))];
-  for (const alias of ["slides", "presentations", "PPT", "演示文稿"]) {
-    assert.equal(model.filterWorkspaceLibraryEntries(entries, "", alias).length, 1);
-  }
-  const file = { key: "unknown", title: "chart website.pdf", kind: "file", meta: {}, artifactType: "unknown" };
-  assert.equal(taxonomy.libraryEditorFeatureId(file), null);
-  assert.equal(taxonomy.libraryEditorLabel(file), "文件");
-  assert.equal(model.filterWorkspaceLibraryEntries([model.workspaceEntryFromLibraryItem(file)], "", "all").length, 1);
-});
-
-test("type names translate through context keys where the flat dictionary is ambiguous", async () => {
-  const { register } = await import("node:module");
-  register("./ts-extension-loader.mjs", import.meta.url);
-  const { UI_MESSAGES } = await import("../src/i18n/ui/messages/index.ts");
-  const ttFor = (locale) => (zh) => UI_MESSAGES[locale][zh] || zh;
-  const label = (locale, zh) => taxonomy.translateLibraryTypeLabel(ttFor(locale), zh);
-  // The plain keys keep their other meanings (deck "Table" tool, "Games" channel)…
-  assert.equal(UI_MESSAGES.en["表格"], "Table");
-  // …while the library type menu reads as material categories.
-  assert.deepEqual(MENU.map((zh) => label("en", zh)), [
-    "Video", "Website", "Presentation", "Document", "Spreadsheet", "Image", "PDF",
-    "Game", "Audio", "3D model",
-  ]);
-  assert.deepEqual(MENU.map((zh) => label("zh", zh)), MENU, "Chinese falls back to the type name, never the context key");
-  for (const locale of Object.keys(UI_MESSAGES).filter((value) => value !== "zh")) {
-    for (const zh of MENU) {
-      const text = label(locale, zh);
-      assert.ok(text, `${locale} ${zh} has a label`);
-      assert.doesNotMatch(text, /素材类别/, `${locale} ${zh} never shows the context key`);
-      if (!["zh-TW", "ja"].includes(locale)) {
-        assert.doesNotMatch(text, /[一-鿿]/, `${locale} ${zh} → ${text}`);
-      }
+test("Library and Sheet names translate in every locale; in-document Table stays Table", async () => {
+  for (const locale of LOCALES) {
+    const runtime = await loadUiMessages(locale);
+    const tt = (key) => UI_MESSAGES[locale][key] || key;
+    for (const label of MENU) {
+      const result = taxonomy.translateLibraryTypeLabel(tt, label);
+      assert.ok(result);
+      assert.doesNotMatch(result, /素材类别/);
+      if (!["zh", "zh-TW", "ja"].includes(locale)) assert.doesNotMatch(result, /[一-鿿]/, `${locale}: ${result}`);
+    }
+    for (const key of [...Object.keys(SHEET_NAMING_MESSAGES.en), "Sheet", "Sheet 编辑", "Sheet 编辑器", "网站与应用", "全部格式", "其他文档格式"]) {
+      assert.ok(UI_MESSAGES[locale][key], `${locale}: ${key}`);
+      if (locale !== "zh") assert.equal(runtime[key], UI_MESSAGES[locale][key]);
     }
   }
-  assert.equal(label("zh-TW", "表格"), "試算表");
-  assert.equal(label("ja", "游戏"), "ゲーム");
-});
-
-test("valid empty categories return empty results and the component never resets selection based on loaded rows", () => {
-  assert.deepEqual(model.filterWorkspaceLibraryEntries([], "", "pdf_editing"), []);
-  const source = readFileSync(new URL("../src/shell/WorkspaceLibrary.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(source, /categories\.some\([\s\S]{0,120}setCategory\("all"\)/);
-  assert.match(source, /setCategory\(next\.category\)/);
-  const mine = readFileSync(new URL("../src/shell/MyLibrary.tsx", import.meta.url), "utf8");
-  assert.match(mine, /category: libraryEditorCategory\(item\)/);
-});
-
-test("the folders category stays out of the capability matrix and never captures artifact entries", () => {
-  const rows = contract.ADVANCED_CAPABILITY_MATRIX;
-  assert.equal(rows.length, 9, "folders is not a capability row");
-  assert.equal(rows.some((row) => row.featureId === "folders"), false);
-  for (const alias of ["folders", "folder", "文件夹", "文件包"]) {
-    assert.equal(taxonomy.normalizeLibraryCategory(alias), "folders", alias);
-    assert.equal(taxonomy.isLibraryFolderCategory(alias), true, alias);
-  }
-  assert.equal(taxonomy.isLibraryFolderCategory("images"), false);
-  assert.equal(taxonomy.isLibraryFolderCategory(undefined), false);
-  assert.equal(taxonomy.libraryCategoryLabel("folders"), "文件包");
-  assert.equal(taxonomy.libraryCategoryLabel("文件夹"), "文件包", "the old name still lands on the renamed category");
-  const entries = rows.map((row) => model.workspaceEntryFromLibraryItem(itemFor(row)));
-  assert.deepEqual(model.filterWorkspaceLibraryEntries(entries, "", "folders"), []);
-  assert.equal(model.filterWorkspaceLibraryEntries(entries, "", "all").length, entries.length);
-  const artifacts = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
-  // ARTIFACT_FILTERS 由 LIBRARY_EDITOR_CATEGORIES 推导，URL / 筛选值是 `folders`。
-  assert.match(artifacts, /\.\.\.LIBRARY_EDITOR_CATEGORIES\.map\(\(row\) => \(\{ id: row\.filter, label: row\.typeLabel \}\)\)/);
+  assert.equal(UI_MESSAGES.en["表格"], "Table");
+  assert.equal(UI_MESSAGES.en.Sheet, "Sheet");
+  assert.equal(UI_MESSAGES.zh.Sheet, "Sheet");
+  assert.equal(taxonomy.translateLibraryTypeLabel((key) => UI_MESSAGES.en[key] || key, "电子表格"), "Spreadsheet");
 });

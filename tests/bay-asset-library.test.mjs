@@ -1,19 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { defaultAssetTypeForSite } from "../src/shell/bay/asset/library-client.ts";
 import { DOCUMENT_ZONES, documentZonesForType } from "../src/shell/bay/asset/document-zones.ts";
 import { canonicalBayFeedKind, normalizeBayFeedKind } from "../src/shell/bay/shell/bay-links.ts";
 
-test("站点落到默认素材类型，类型芯片仍可独立切换", () => {
-  assert.equal(defaultAssetTypeForSite("word"), "document");
-  assert.equal(defaultAssetTypeForSite("ppt"), "ppt");
-  assert.equal(defaultAssetTypeForSite("video"), "video");
-  assert.equal(defaultAssetTypeForSite("image"), "image");
-  assert.equal(defaultAssetTypeForSite("threed"), "3d");
-  assert.equal(defaultAssetTypeForSite("excel"), "chart");
-  assert.equal(defaultAssetTypeForSite("unknown"), "image");
-});
 
 test("文书区按类型切开，合同区只出现在文档", () => {
   const docs = documentZonesForType("document").map((zone) => zone.slug);

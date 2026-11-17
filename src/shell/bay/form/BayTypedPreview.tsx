@@ -14,7 +14,7 @@ const KIND_LABEL: Record<PreviewFileKind, string> = {
   video: "视频",
   audio: "音频",
   ppt: "PPT",
-  sheet: "表格",
+  sheet: "Sheet",
   document: "文档",
   website: "网站",
   file: "文件",

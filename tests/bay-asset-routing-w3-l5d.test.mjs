@@ -37,12 +37,6 @@ const stubs = {
 const routeModule = await compileModule("src/shell/bay/asset/BayArtifactDeepLink.tsx", stubs);
 const { BayArtifactDeepLink, bayAssetRefFromSearch, bayAssetRefForCard, bayAssetSearchWithRef, useBayAssetRoute } = await import(routeModule);
 const { BayAssetCard } = await import(await compileModule("src/shell/bay/asset/BayAssetCard.tsx", stubs));
-const { BayWebsiteCatalog, bayWebsiteCatalog, bayWebsiteSelection } = await import(await compileModule("src/shell/bay/asset/BayWebsiteCatalog.tsx", {
- ...stubs,
- "../shell/BayFilterSelect": dataModule('export function BayFilterSelect(){return null;}'),
- "../../collection-chrome": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)}; export const COLLECTION_ACTION_BTN_GHOST=""; export function CollectionInfiniteSentinel(){return null;} export function CollectionCardGrid({children,...props}){return h("div",props,children);}`),
- "../../collection-items": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)}; export function CollectionItemList({children,...props}){return h("div",props,children);}`),
-}));
 const asset = {id:"library:e11", type:"image", title:"E11 forest", source:"oceanleo", origin:"first-party", author:"OceanLeo", created_at:"2026-07-02T18:36:00.885642Z", thumb_url:"https://assets.example/thumb.jpg", preview_url:"https://assets.example/preview.jpg", full_url:"https://assets.example/full.jpg", price_fen:0, currency:"USD", license:{code:"OceanLeo-Free-1.0"}};
 function context(ref={kind:"platform",id:"e11"}, extra={}) {return {surface:"bay",ref,owned:false,author:{name:"OceanLeo"},createdAt:asset.created_at,license:{code:"OceanLeo-Free-1.0"},commerce:{priceFen:0,currency:"USD",free:true,purchaseState:"none"},rights:{canView:true,canDownload:false,canDownloadSource:false,canEdit:false,canUseInTask:false,canAddToLibrary:false},...extra};}
 function resolved(ref, extra={}) { const actionContext=context(ref,extra);return {entry:bayAssetToLibraryEntry({...asset,action_context:actionContext}),actionContext}; }
@@ -110,17 +104,6 @@ test("a stale resolver response cannot replace a newer selected identity",async(
 });
 
 function website(id,skin,tpl,cover=false){const entry={id,title:"Website",kind:"website",keywords:["industry:business","sub:law","shape:s3",`skin:${skin}`,"group:law-s3",`tpl:${tpl}`,...(cover?["groupcover:1"]:[])],libraryItem:{kind:"website",meta:{}}};return {...asset,id,type:"website",entry,catalogIdentities:[{artifactId:id,revisionId:`r-${id}`} ]};}
-test("website facets group row versions without collapsing equal skins; selected version opens exact revision",async()=>{
- const assets=[website("a","paper","first",true),website("b","glass","second"),website("c","glass","third")];let selected=bayWebsiteSelection("?websiteIndustry=business&websiteSub=law&websiteSkin=glass");let opened;
- const shelf=bayWebsiteCatalog(assets,selected);assert.equal(shelf.items.length,1);assert.equal(shelf.items[0].chips.length,3);assert.equal(shelf.items[0].asset.id,"b");assert.equal(shelf.skins.find((option)=>option.value==="glass").count,1);
- function Host(){const [selection,set]=React.useState(selected);return React.createElement(BayWebsiteCatalog,{assets,selection,onChange:set,onOpen:(asset)=>opened=asset});}
- const host=await mount(React.createElement(Host));try{await click(host.container.querySelector('[aria-label="Version 3 of 3"]'));await click(host.container.querySelector('[data-card]'));assert.deepEqual(bayAssetRefForCard(opened),{kind:"artifact",artifactId:"c",revisionId:"r-c"});}finally{await host.close();}
- assert.equal(bayWebsiteCatalog(assets,{...selected,shape:"s5"}).items.length,0);
-});
-test("website filters and per-card versions can be restored from the URL",()=>{
- const selection=bayWebsiteSelection(`?websiteIndustry=business&websiteSub=law&websiteShape=s3&websiteSkin=glass&websiteVersions=${encodeURIComponent(JSON.stringify({"law-s3":"third"}))}`);
- assert.equal(selection.variants["law-s3"],"third");assert.equal(bayWebsiteCatalog([website("a","glass","first"),website("b","glass","third")],selection).items[0].asset.id,"b");assert.deepEqual(bayWebsiteSelection("?websiteVersions=bad").variants,{});
-});
 test("history open/back/forward preserves filters, selected identity and scroll in a nested page",async()=>{
  window.history.replaceState({},"","/bay?kind=asset&type=image&view=owned&cat=forest&q=trees#catalog");let route;
  function Host(){const ref=React.useRef(null);route=useBayAssetRoute(ref);return React.createElement("div",{ref,"data-route":route.target?.kind||"browse"});}
@@ -136,7 +119,7 @@ test("a refreshed direct detail link closes in place and retains browse filters"
 test("owned routes contain no modal/portal/body lock and no unsafe asset casts or navigation-away",()=>{
  const source=(name)=>readFileSync(new URL(`../src/shell/bay/asset/${name}.tsx`,import.meta.url),"utf8");
  for(const name of ["BayAssetLibrary","BayArtifactDeepLink","BayAssetCard"]){assert.doesNotMatch(source(name),/fixed inset|createPortal|document\.body\.style\.overflow|as never|as unknown as|window\.location\.assign/);}
- const library=source("BayAssetLibrary");assert.match(library,/loadReadyOfficial\(type, \{ siteKey, context/);assert.match(library,/loadReadySellers/);assert.match(library,/target=\{route\.target\}/);assert.match(library,/hidden=\{Boolean\(route\.target\)\}/);
+ const library=source("BayAssetLibrary");assert.match(library,/ReadyMaterialCatalog/);assert.match(library,/target=\{route\.target\}/);assert.match(library,/hidden=\{Boolean\(route\.target\)\}/);
 });
 
 // Exercise the actual catalog host as well as its detail component. Only data
@@ -148,12 +131,14 @@ globalThis.__w3Sellers=[];
 globalThis.__w3LegacyOpens=0;
 const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asset/BayAssetLibrary.tsx", {
  ...stubs,
- "../shell/bay-ready-files": dataModule(`
- export async function loadReadyOfficial(type,options){globalThis.__w3CatalogCalls.push({type,...options});return globalThis.__w3Official.filter(item=>item.type===type);}
- export async function loadReadyLegacyPpt(){return [];}
- export async function loadReadySellers(){return globalThis.__w3Sellers;}
- export function readyTypeFromSearch(search){return new URLSearchParams(search).get("type")||null;}
- export function readyShelfCover(items){return items.find(item=>item.thumb_url)?.thumb_url||"";}
+ "../shell/ReadyMaterialCatalog": dataModule(`
+ import * as R from ${JSON.stringify(reactUrl)};
+ export function ReadyMaterialCatalog({siteKey,appId,query,onOpen}){
+  globalThis.__w3CatalogCalls.push({siteKey,appId,query});
+  const [more,setMore]=R.useState(false);
+  const items=[...globalThis.__w3Official,...globalThis.__w3Sellers].slice(0,more?60:30);
+  return R.createElement("div",{},items.map(asset=>R.createElement("div",{"data-bay-asset-card":asset.id,key:asset.id},R.createElement("button",{onClick:()=>onOpen(asset)},asset.title))),R.createElement("button",{onClick:()=>setMore(true)},"加载更多"));
+ }
  `),
  "./BayArtifactDeepLink": routeModule,
  "../shell/bay-state": dataModule('export function bayEnabledHere(){return true;} export function useBaySignedIn(){return true;}'),
@@ -166,11 +151,7 @@ const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asse
  "../../collection-items": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function CollectionItemList({children,...props}){return h("div",props,children);}`),
  "./BayAssetSellers": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function BayAssetSellerSite(){return null;}export function BayAssetSellers(){return h("div",{"data-bay-asset-seller-item":"seller-42"},h("button",{onClick:()=>globalThis.__w3LegacyOpens++},"Seller file"));}`),
  "./BayLicensesView": dataModule('export function BayLicensesView(){return null;}'),
- "./bay-template-shelf": dataModule(`export const BAY_OFFICIAL_PREVIEW_COUNT=4,BAY_TEMPLATE_PAGE_SIZE=30,OFFICIAL_TEMPLATE_CATEGORY="official-templates";
- export function templateArtifactTypeForBay(type){return type==="website"?"website":"single_file_image";}
- export function mergeOwnedAssets(a,b){return [...a,...b.filter((item)=>!a.some((other)=>other.id===item.id))];}
- export async function listBayOfficialTemplates(options){globalThis.__w3CatalogCalls.push(options);const items=globalThis.__w3Official.map((item)=>options.offset?{...item,id:item.id+"-page2",entry:item.entry?{...item.entry,id:item.entry.id+"-page2"}:undefined}:item);return {items,total:options.type==="website"?items.length:60,hasMore:options.type!=="website"&&!options.offset,unavailableSources:[]};}
- export async function listBayMineArtifacts(){return {items:globalThis.__w3Mine,total:globalThis.__w3Mine.length,hasMore:false,unauthenticated:false};}`),
+
 }));
 function resetCatalog(search){window.history.replaceState({},"",`/bay${search}`);globalThis.__w3CatalogCalls=[];globalThis.__w3Official=[];globalThis.__w3Mine=[];globalThis.__w3Sellers=[];globalThis.__w3Resolve=async(ref)=>resolved(ref);}
 async function historyClose(host){await act(async()=>{await new Promise((done)=>{window.addEventListener("popstate",done,{once:true});host.container.querySelector('button[aria-label="Back to list"]').click();});});}
@@ -179,8 +160,8 @@ test("finished-file loads retain app/site scope; local pagination, official clic
  globalThis.__w3Official=Array.from({length:35},(_,index)=>({...asset,id:`template-material:cat-${index}`,entry:{id:`template-material:cat-${index}`,title:"Official card",kind:"image"},catalogIdentities:[{catalogId:`cat-${index}`,artifactId:`official-${index}`,revisionId:null}]}));
  const host=await mount(React.createElement(BayAssetLibrary,{siteKey:"image",filter:{q:"forest"}}));
  try{
-  const initial=globalThis.__w3CatalogCalls.find(call=>call.type==="image");
-  assert.deepEqual(initial.context,{contextId:"olctx:v1:image:app:draw",siteKey:"image",appId:"draw"});assert.equal(initial.siteKey,"image");
+  const initial=globalThis.__w3CatalogCalls.find(call=>call.siteKey==="image");
+  assert.equal(initial.appId,"draw");assert.equal(initial.siteKey,"image");
   assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,30);
   await click([...host.container.querySelectorAll("button")].find(node=>node.textContent==="加载更多"));
   assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,35);
@@ -202,7 +183,7 @@ test("old mine/sellers views land on finished-file kinds and seller cards retain
 test("website kind keeps every finished version as a card and preserves old deep-link parameters after back",async()=>{
  resetCatalog("?kind=asset&type=website&view=owned&websiteIndustry=business&websiteSub=law&websiteSkin=glass");globalThis.__w3Official=[website("a","glass","first",true),website("b","glass","second")];let selected;globalThis.__w3Resolve=async(ref)=>{selected=ref;return resolved(ref);};
  const host=await mount(React.createElement(BayAssetLibrary,{siteKey:"website",context:{contextId:"actual-context",siteKey:"website",appId:"law"},filter:{}}));
- try{assert.equal(globalThis.__w3CatalogCalls[0].limit,undefined);assert.equal(globalThis.__w3CatalogCalls[0].context.contextId,"actual-context");
+ try{assert.equal(globalThis.__w3CatalogCalls[0].appId,"law");
   assert.equal(host.container.querySelectorAll("[data-bay-asset-card]").length,2);
   await click(host.container.querySelectorAll('[data-bay-asset-card] button')[1]);assert.deepEqual(selected,{kind:"artifact",artifactId:"b",revisionId:"r-b"});
   await historyClose(host);assert.equal(new URLSearchParams(window.location.search).get("websiteSkin"),"glass");

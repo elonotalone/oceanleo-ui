@@ -210,8 +210,8 @@ export function editorCommandKey(editorId: string, id: string): string {
 const EDITOR_LABELS: Record<string, string> = {
   richdoc: "文档",
   doc: "文档",
-  grid: "表格",
-  sheet: "表格",
+  grid: "Sheet",
+  sheet: "Sheet",
   deck: "演示文稿",
   pdf: "PDF",
   image: "图片",

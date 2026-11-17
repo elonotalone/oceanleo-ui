@@ -48,7 +48,7 @@ export const GRID_AGENT_CHIPS: readonly EditorAgentChip[] = [
     kind: "generate",
     appliesTo: ["grid-range", "grid-column", "grid-sheet"],
     prompt:
-      "请为这段表格数据推荐最合适的图表类型并生成图表：{selection}。说明你为什么选这种图。",
+      "请为这段 Sheet 数据推荐最合适的图表类型并生成图表：{selection}。说明你为什么选这种图。",
   },
   {
     id: "grid.chip.summarize-column",
@@ -85,7 +85,7 @@ export const GRID_AGENT_CHIPS: readonly EditorAgentChip[] = [
     kind: "generate",
     appliesTo: [CHIP_ANY_SELECTION],
     prompt:
-      "我要在 {selection} 处做这件事，请给出对应的表格公式并解释每一段的含义：",
+      "我要在 {selection} 处做这件事，请给出对应的 Sheet 公式并解释每一段的含义：",
   },
   {
     id: "grid.chip.duplicates",

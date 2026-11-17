@@ -679,7 +679,7 @@ export const CATALOG_LIBRARY_KIND_CATEGORY: Record<LibraryKind, string> = {
   website: "网站",
   canvas: "图片",
   ppt: "演示文稿",
-  sheet: "表格",
+  sheet: "Sheet",
   document: "文档",
   image: "图片",
   video: "视频",

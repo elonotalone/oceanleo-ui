@@ -29,7 +29,7 @@ export function agentArtifactLabels(
     canvas: tt("画布"),
     novel: tt("小说"),
     ppt: tt("演示文稿"),
-    sheet: tt("表格"),
+    sheet: tt("Sheet"),
     doc: tt("文档"),
     markdown: tt("结果文档"),
     image: tt("图片"),

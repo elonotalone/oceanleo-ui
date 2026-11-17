@@ -9,21 +9,23 @@ import type { LibraryItem } from "./library-data";
  * 设计画布并进图片（10-22 的决定）。这里只改**读与展示**：`design_canvas` 仍是
  * 能力矩阵里的一行、存量行一个字不改写，库层面把它归到 `image_editing`。
  */
-export type LibraryCategoryId = Exclude<AdvancedFeatureId, "design_canvas"> | "audio" | "threed";
+export type LibraryCategoryId = Exclude<AdvancedFeatureId, "design_canvas" | "pdf_editing"> | "audio" | "threed" | "links" | "files";
 
 const FOLDED_FEATURES: Partial<Record<AdvancedFeatureId, LibraryCategoryId>> = {
   design_canvas: "image_editing",
+  pdf_editing: "document_editing",
 };
 
 // [类型名, URL / 筛选 id]
 const PRESENTATION: Record<LibraryCategoryId, readonly [string, string]> = {
   video_editing: ["视频", "videos"],
-  website_finetuning: ["网站", "website"],
+  website_finetuning: ["网站与应用", "website"],
   presentation_editing: ["演示文稿", "presentations"],
   document_editing: ["文档", "documents"],
-  spreadsheet_editing: ["表格", "spreadsheets"],
-  image_editing: ["图片", "images"],
-  pdf_editing: ["PDF", "pdf"],
+  spreadsheet_editing: ["电子表格", "spreadsheets"],
+  image_editing: ["图像", "images"],
+  links: ["链接", "links"],
+  files: ["文件", "files"],
   audio: ["音频", "audio"],
   threed: ["3D 模型", "threed"],
   game_editing: ["游戏", "game"],
@@ -48,7 +50,9 @@ const LEGACY_ALIASES: Record<string, LibraryCategoryId> = {
   文档编辑: "document_editing",
   表格编辑: "spreadsheet_editing",
   图片编辑: "image_editing",
-  "PDF 编辑": "pdf_editing",
+  "PDF 编辑": "document_editing",
+  pdf: "document_editing",
+  pdf_editing: "document_editing",
   "3D": "threed",
   游戏创作: "game_editing",
 };
@@ -64,20 +68,14 @@ export function libraryCategoryForFeature(feature: AdvancedFeatureId): LibraryCa
   return FOLDED_FEATURES[feature] || (feature as LibraryCategoryId);
 }
 
-/**
- * 「文件包」类别（skills-overhaul D5，2026-10-24；2026-11-07 起对用户由「文件夹」改叫「文件包」，
- * id 仍是 `folders`，旧名「文件夹」作为别名继续可用）：技能就是一个装着文件树的条目。
- * 它**不是**编辑器类别，不进能力矩阵（`ADVANCED_CAPABILITY_MATRIX` 一行不动），
- * 只作为额外类别追加在编辑器类别之后。数据另走 `/v1/folders`（`library-folders.tsx`），
- * `MyLibrary` 的条目永远不会落进这个类别。
- */
+/** Folder navigation remains separate from the generic files category. */
 export const LIBRARY_FOLDER_CATEGORY_ID = "folders" as const;
 export type LibraryFolderCategoryId = typeof LIBRARY_FOLDER_CATEGORY_ID;
 
 export const LIBRARY_FOLDER_CATEGORY = {
   value: LIBRARY_FOLDER_CATEGORY_ID,
-  label: "文件包",
-  typeLabel: "文件包",
+  label: "文件",
+  typeLabel: "文件",
   filter: LIBRARY_FOLDER_CATEGORY_ID,
 } as const;
 
@@ -85,35 +83,26 @@ export function isLibraryFolderCategory(value: string | null | undefined): boole
   return normalizeLibraryCategory(String(value || "")) === LIBRARY_FOLDER_CATEGORY_ID;
 }
 
-/**
- * 菜单顺序跟能力矩阵走：视频、网站、演示文稿、文档、表格、图片、PDF、游戏、音频、3D 模型，
- * 最后是不属于编辑器的「文件包」。
- */
+/** Professional material names; Documents includes PDF, independently of editor routing. */
 export const LIBRARY_EDITOR_CATEGORIES: readonly {
   value: LibraryCategoryId | LibraryFolderCategoryId;
   label: string;
   typeLabel: string;
   filter: string;
 }[] = [
-  ...ADVANCED_CAPABILITY_MATRIX
-    .filter(({ featureId }) => !FOLDED_FEATURES[featureId])
-    .map(({ featureId }) => {
-      const value = featureId as LibraryCategoryId;
+  ...(["presentation_editing", "image_editing", "document_editing", "spreadsheet_editing",
+    "website_finetuning", "game_editing", "video_editing", "threed", "audio"] as const).map((value) => {
       const [typeLabel, filter] = PRESENTATION[value];
       return { value, label: typeLabel, typeLabel, filter };
     }),
-  { value: "audio", label: "音频", typeLabel: "音频", filter: "audio" },
-  { value: "threed", label: "3D 模型", typeLabel: "3D 模型", filter: "threed" },
-  LIBRARY_FOLDER_CATEGORY,
+  { value: "files", label: "文件", typeLabel: "文件", filter: "files" },
+  { value: "links", label: "链接", typeLabel: "链接", filter: "links" },
 ];
 
 const KIND_FEATURE: Partial<Record<LibraryItem["kind"], AdvancedFeatureId>> = {
   website: "website_finetuning", canvas: "design_canvas", ppt: "presentation_editing",
   document: "document_editing", sheet: "spreadsheet_editing", image: "image_editing",
   video: "video_editing", game: "game_editing",
-};
-const OTHER_LABELS: Record<string, string> = {
-  file: "文件", xhs: "小红书", geo_map: "地图", interactive_doc: "交互文档",
 };
 
 /**
@@ -136,20 +125,20 @@ export function libraryEditorFeatureId(item: LibraryItem): AdvancedFeatureId | n
 }
 
 export function libraryEditorLabel(item: LibraryItem): string {
+  if (isLibraryLink(item)) return "链接";
   if (item.kind === "audio") return "音频";
   if (item.kind === "threed") return "3D 模型";
   const feature = libraryEditorFeatureId(item);
   if (feature) return PRESENTATION[libraryCategoryForFeature(feature)][0];
-  // 图表编辑器已删除；存量图表仍按「图表」归类（只读）。
-  if ((item.artifact?.artifactType || item.artifactType) === "chart") return "图表";
-  return OTHER_LABELS[item.kind] || "文件";
+  return "文件";
 }
 
 export function libraryEditorCategory(item: LibraryItem): string {
+  if (isLibraryLink(item)) return "links";
   if (item.kind === "audio") return "audio";
   if (item.kind === "threed") return "threed";
   const feature = libraryEditorFeatureId(item);
-  return feature ? libraryCategoryForFeature(feature) : libraryEditorLabel(item);
+  return feature ? libraryCategoryForFeature(feature) : "files";
 }
 
 export function normalizeLibraryCategory(value: string): string {
@@ -163,14 +152,9 @@ export function libraryCategoryLabel(value: string): string {
   return LIBRARY_EDITOR_CATEGORIES.find((row) => row.value === normalizeLibraryCategory(value))?.typeLabel || value;
 }
 
-/**
- * 词典是「中文原文即 key」的平铺表，没有语境。「表格」在演示 / 图片编辑器里是插入
- * 表格的工具（Table），「游戏」在别处是频道名（Games）；改那两条会把别处一起改坏。
- * 所以这两个类型名用带语境的 key 取译文（Spreadsheet / Game）。中文站对这种 key
- * 原样回显（聚合册 zh 是 identity），这时退回中文类型名本身。
- */
+/** Context keys keep material type names independent of in-document tools. */
 const CATEGORY_CONTEXT_KEYS: Record<string, string> = {
-  表格: "素材类别：表格",
+  电子表格: "素材类别：电子表格",
   游戏: "素材类别：游戏",
 };
 
@@ -182,4 +166,18 @@ export function translateLibraryTypeLabel(
   if (!key) return tt(label);
   const translated = tt(key);
   return translated && translated !== key ? translated : label;
+}
+
+function isLibraryLink(item: LibraryItem): boolean {
+  return Boolean(item.meta?.link_work);
+}
+
+/** Source format remains independent from the merged document category. */
+export function libraryDocumentFormat(item: LibraryItem): string {
+  const raw = item.artifact?.sourceFormat || item.meta?.source_format || item.meta?.format || "";
+  return String(raw).toLowerCase().replace(/^\./, "");
+}
+
+export function libraryMatchesDocumentFormat(item: LibraryItem, format: string): boolean {
+  return !format || libraryDocumentFormat(item) === format;
 }

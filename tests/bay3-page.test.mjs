@@ -459,7 +459,7 @@ test("素材栏来源含我的；官方卡走 workspaceTemplatePreviewHref", () 
   const library = src("shell/bay/asset/BayAssetLibrary.tsx");
   const shelf = src("shell/bay/asset/bay-template-shelf.ts");
   assert.doesNotMatch(library, /data-bay-asset-mine/);
-  assert.match(library, /loadReadyOfficial/);
+  assert.match(library, /ReadyMaterialCatalog/);
   assert.match(shelf, /workspaceTemplatePreviewHref/);
   assert.doesNotMatch(library, /getArtifactEditDecision/);
   assert.doesNotMatch(shelf, /getArtifactEditDecision/);

@@ -75,9 +75,9 @@ export async function insertGridImageAtSelection(
 
 /** 校验类型和大小 → 转 data URL。错误信息是给用户看的原文（调用方 tt）。 */
 export async function gridImageDataUrlFromBlob(blob: Blob): Promise<string> {
-  if (blob.size > GRID_IMAGE_MAX_BYTES) throw new Error("图片太大，表格里最多插入 5 MB 的图片。");
+  if (blob.size > GRID_IMAGE_MAX_BYTES) throw new Error("图片太大，Sheet 里最多插入 5 MB 的图片。");
   const bytes = new Uint8Array(await blob.arrayBuffer());
   const type = sniffGridImageType(bytes);
-  if (!type) throw new Error("表格只能插入 PNG、JPEG 或 GIF 图片。");
+  if (!type) throw new Error("Sheet 只能插入 PNG、JPEG 或 GIF 图片。");
   return bytesToDataUrl(bytes, type);
 }

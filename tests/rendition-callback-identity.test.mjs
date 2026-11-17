@@ -467,7 +467,7 @@ const PROMISED_WAYS_OUT = [
 test("失败文案里承诺的每一条出路，界面都必须真的支持", async () => {
   const cases = [
     {
-      // grid：文案与「重新载入表格」按钮都在 Univer 的 document-actions 里，
+      // grid：文案与「重新载入 Sheet」按钮都在 Univer 的 document-actions 里，
       // 舞台把 `officeSource.error` 喂给文案、`officeSource.retry` 喂给按钮。
       hookPath: "src/shell/doc-editors/grid-univer/document-actions.ts",
       fn: "gridSourceFailureMessage",
@@ -530,10 +530,10 @@ test("grid 的失败态是本波真正交付的那一份：文案与按钮两边
       "gridSourceFailureMessage",
       actions,
     ),
-    /重新载入表格/,
+    /重新载入 Sheet/,
   );
-  // 按钮文案与承诺同字：按钮叫「重新载入表格」，文案也让用户点「重新载入表格」。
-  assert.match(actions, /label: tt\("重新载入表格"\)/);
+  // 按钮文案与承诺同字：按钮叫「重新载入 Sheet」，文案也让用户点「重新载入 Sheet」。
+  assert.match(actions, /label: tt\("重新载入 Sheet"\)/);
   // 舞台真把失败文案送上状态栏、把 retry 接到按钮。
   assert.match(stage, /gridSourceFailureMessage\(officeSource\.error, tt\)/);
   assert.match(stage, GRID_RELOAD_WIRING);
@@ -546,7 +546,7 @@ test("grid 的失败态是本波真正交付的那一份：文案与按钮两边
     ).href
   );
   const message = gridSourceFailureMessage("签名地址已过期（HTTP 403）");
-  assert.match(message, /没能读到这份表格的源文件/);
+  assert.match(message, /没能读到这份 Sheet 的源文件/);
   assert.match(message, /HTTP 403/, "失败文案要带上真实原因");
   assert.match(message, /重新载入/, "失败文案要指出重试入口");
   let reloaded = 0;
@@ -557,7 +557,7 @@ test("grid 的失败态是本波真正交付的那一份：文案与按钮两边
     },
   });
   const button = failed.find((action) => action.id === "grid-reload-source");
-  assert.ok(button, "失败时要有「重新载入表格」按钮");
+  assert.ok(button, "失败时要有「重新载入 Sheet」按钮");
   button.onTrigger();
   assert.equal(reloaded, 1, "按钮真的触发重试");
   assert.equal(

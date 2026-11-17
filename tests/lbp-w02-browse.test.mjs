@@ -728,7 +728,7 @@ test("两个货架都不手写接口地址、不 fetch", () => {
 // 5. 现成文件：来源第一项「卖家在售」
 test("现成文件页面以种类卡和分栏货架浏览，删除五个旧下拉与基础来源切换", () => {
   const text = src("shell/bay/asset/BayAssetLibrary.tsx");
-  assert.match(text, /data-bay-ready-kind=/); assert.match(text, /data-bay-ready-shelf=/);
+  assert.match(text, /ReadyMaterialCatalog/);
   assert.doesNotMatch(text, /BayFilterSelect|BayAssetLive|BayAssetSeries|listBayMineArtifacts/);
 });
 
