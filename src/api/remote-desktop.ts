@@ -1,5 +1,5 @@
-import { claimRemoteDesktopStandbySession, claimRemoteDesktopStandbyStream } from "./remote-desktop-webrtc-standby";
 "use client";
+import { claimRemoteDesktopStandbySession, claimRemoteDesktopStandbyStream } from "./remote-desktop-webrtc-standby";
 
 /**
  * 网站 → 自己的电脑「远程桌面」固定接口 v1（合同 REMOTE.md §三方固定接口）。
