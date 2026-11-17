@@ -22,7 +22,7 @@ const { InlineInsertableMaterialShelf } = await import(await compileModule('src/
 const { createRoot } = await import('react-dom/client');
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
-test('insert shelf loads compatible own media and site templates, excludes wrong types and inserts directly', async () => {
+test('personal shelf loads compatible owned media including SVG, never queries stock or public templates, and inserts directly', async () => {
   const host = document.createElement('div'); document.body.append(host);
   const root = createRoot(host);
   const inserted = [];
@@ -33,10 +33,8 @@ test('insert shelf loads compatible own media and site templates, excludes wrong
       canPerform: () => true,
     })));
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 20)); });
-    assert.deepEqual(requests.filter(request => request.own).map(request => request.own).sort(), ['audio', 'composite_image', 'single_file_image']);
-    const publicRequest = requests.find(request => request.originSiteKey);
-    assert.equal(publicRequest.originSiteKey, 'video', 'public catalog scope is not widened');
-    assert.equal(publicRequest.role, 'template');
+    assert.deepEqual(requests.filter(request => request.own).map(request => request.own).sort(), ['audio', 'composite_image', 'single_file_image', 'vector_image']);
+    assert.equal(requests.some(request => request.originSiteKey), false, 'my Library source never queries public templates');
     assert.equal(host.querySelector('[data-item="wrong-pdf"]'), null);
     const card = host.querySelector('[data-item="own-single_file_image"]');
     assert.ok(card);

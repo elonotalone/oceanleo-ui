@@ -865,15 +865,15 @@ test("我改动的文件里每一句 tt() 中文都有 16 语译文（五个种�
     "shell/bay/shell/BayFeedItemCard.tsx",
     "shell/bay/asset/BayAssetSellers.tsx",
     "shell/bay/asset/BayAssetLibrary.tsx",
-    "shell/bay/asset/origin-index.ts",
+    "shell/bay/asset/LiveMaterialSearch.tsx",
     "shell/bay/panel/PanelBrowse.tsx",
     "shell/bay/apps/BayAppShelf.tsx",
     "shell/bay/lessons/BayLessonShelf.tsx",
   ];
   const keys = new Set(Object.values(links.BAY_SELL_KIND_LABEL));
   for (const file of files) for (const key of ttKeysOf(file)) keys.add(key);
-  // 经 tt(ZONE_LABELS[…]) 画出来的来源名。
-  for (const label of ["卖家在售", "OceanLeo 自有", "我上传的", "开源专区（已入库）", "实时搜索"]) keys.add(label);
+  // Live search and personal Library are the material sources.
+  for (const label of ["在线素材", "我的库", "现成文件"]) keys.add(label);
   assert.ok(keys.size >= 20, `只收到 ${keys.size} 条`);
   const missing = [];
   for (const key of keys) {

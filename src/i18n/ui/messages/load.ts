@@ -1,3 +1,4 @@
+import { LIVE_MATERIAL_MESSAGES } from "./live-material-copy";
 import {
   DEFAULT_LOCALE,
   normalizeLocale,
@@ -168,5 +169,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...computerTaskWorkspace.COMPUTER_TASK_WORKSPACE_MESSAGES[locale],
     ...nativeAttachments.NATIVE_ATTACHMENTS_MESSAGES[locale],
     ...taskPagePack.TASK_PAGE_PACK_MESSAGES[locale],
+    ...LIVE_MATERIAL_MESSAGES[locale],
   };
 };

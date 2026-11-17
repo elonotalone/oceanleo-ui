@@ -3,13 +3,11 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
-  BAY_OWNED_ORIGIN_TYPE,
   BAY_TEMPLATE_ARTIFACT_TYPE,
   listBayOfficialTemplates,
   mergeOwnedAssets,
   mineArtifactTypeForBay,
   officialTemplatePreviewHref,
-  originLibraryTypeForBay,
   templateArtifactTypeForBay,
   templateMaterialToBayAsset,
 } from "../src/shell/bay/asset/bay-template-shelf.ts";
@@ -17,12 +15,6 @@ import {
   BAY_ASSET_TYPE_LABELS,
   BAY_ASSET_TYPE_ORDER,
 } from "../src/shell/bay/asset/library-client.ts";
-import {
-  TYPE_ZONES,
-  ZONE_LABELS,
-  isBayAssetType,
-  parseZone,
-} from "../src/shell/bay/asset/origin-index.ts";
 import {
   invalidateTemplateMaterialCache,
   listTemplateMaterials,
@@ -57,7 +49,7 @@ function stubFetch(handler) {
   };
 }
 
-test("Bay 类型映射到模板 artifactType 与原件货架 type", () => {
+test("Bay 成品类型仍映射到模板 artifactType", () => {
   const expected = {
     website: ["website", "website"],
     image: ["single_file_image", "image"],
@@ -77,18 +69,14 @@ test("Bay 类型映射到模板 artifactType 与原件货架 type", () => {
   for (const [bayType, [artifactType, originType]] of Object.entries(expected)) {
     assert.equal(templateArtifactTypeForBay(bayType), artifactType, bayType);
     assert.equal(BAY_TEMPLATE_ARTIFACT_TYPE[bayType], artifactType, bayType);
-    assert.equal(originLibraryTypeForBay(bayType), originType, bayType);
-    assert.equal(BAY_OWNED_ORIGIN_TYPE[bayType] || null, originType, bayType);
   }
   assert.equal(templateArtifactTypeForBay("image"), "single_file_image");
-  assert.equal(originLibraryTypeForBay("image"), "image");
   assert.equal(mineArtifactTypeForBay("image"), "single_file_image");
   assert.equal(mineArtifactTypeForBay("ppt"), "deck");
 });
 
 test("成品种类卡展示设计稿 / 表格 / 游戏 / PDF，工作流仅保留底层接口", () => {
   for (const type of ["poster", "grid", "game", "pdf"]) {
-    assert.equal(isBayAssetType(type), true, type);
     assert.ok(BAY_ASSET_TYPE_ORDER.includes(type), type);
     assert.ok(BAY_ASSET_TYPE_LABELS[type], type);
   }
@@ -99,18 +87,6 @@ test("成品种类卡展示设计稿 / 表格 / 游戏 / PDF，工作流仅保�
   assert.equal(BAY_ASSET_TYPE_LABELS.pdf, "PDF");
 });
 
-test("来源第一档是「卖家在售」，「我上传的」一档，stocked / live 还在", () => {
-  assert.deepEqual(TYPE_ZONES, ["sellers", "owned", "mine", "stocked", "live"]);
-  assert.equal(ZONE_LABELS.sellers, "卖家在售");
-  assert.equal(ZONE_LABELS.mine, "我上传的");
-  assert.equal(ZONE_LABELS.owned, "OceanLeo 自有");
-  assert.equal(ZONE_LABELS.stocked, "开源专区（已入库）");
-  assert.equal(ZONE_LABELS.live, "实时搜索");
-  assert.equal(parseZone("mine", "website"), "mine");
-  assert.equal(parseZone("owned", "website"), "owned");
-  assert.doesNotMatch(LIBRARY, /data-bay-asset-mine/);
-  assert.doesNotMatch(LIBRARY, /BaySignInPrompt/);
-});
 
 test("listTemplateMaterials({ artifactType: \"website\" }) 会打 artifactType=website", async () => {
   invalidateTemplateMaterialCache();

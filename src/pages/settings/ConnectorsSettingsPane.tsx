@@ -22,6 +22,7 @@ import {
   myConnectorStatus,
 } from "../plugins/connector-logic";
 import { useConnectorController } from "../plugins/ConnectorsSection";
+import { SketchfabConnection } from "./SketchfabConnection";
 import { ConnectorList, ConnectorRow } from "./connectors/ConnectorRow";
 
 export interface ConnectorsSettingsPaneProps {
@@ -225,6 +226,7 @@ export function ConnectorsSettingsPane({
           <div className="shrink-0">{addMenu("primary")}</div>
         </div>
       ) : null}
+      <SketchfabConnection />
       {list}
       <ConnectorCatalogDialog
         open={catalogOpen}

@@ -733,3 +733,5 @@ export type { InspirationContextValue } from "./inspirations/inspiration-context
 export { SidebarSectionBadge } from "./badges/SidebarSectionBadge";
 export { useWebSectionBadges, badgeSectionForHref, type SectionBadgeCounts } from "./badges/section-badges";
 export { WorkWorkbench } from "./works-workbench/WorkWorkbench"; export { WorkWorkbenchRoute } from "./works-workbench/WorkWorkbenchRoute"; export { CreateWebsiteEntry, CreateWorkEntry } from "./website-platform/create-website-entry"; export { createWebsiteFromDescription, createWorkFromDescription } from "./website-platform/create-website";
+
+export { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";

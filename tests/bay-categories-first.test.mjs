@@ -54,6 +54,7 @@ const loads = dataModule(`
 `);
 const libraryUrl = await compileModule("src/shell/bay/asset/BayAssetLibrary.tsx", {
  "../../../i18n/ui/useUI":ui, "../shell/bay-state":state, "./BayArtifactDeepLink":routeUrl,
+ "./LiveMaterialSearch":dataModule('export function LiveMaterialSearch({initialQuery}){return globalThis.__readyReact.createElement("div", {"data-live-material-search":true},initialQuery);}'),
  "../shell/bay-ready-files":loads,
  "./BayAssetCard":dataModule(`export function BayAssetCard({asset,onOpen,view}){return globalThis.__readyReact.createElement("button",{"data-bay-asset-card":asset.id,"data-view":view,onClick:()=>onOpen(asset)},asset.title);}`),
  "./BayLicensesView":dataModule('export function BayLicensesView(){return null;}'),
@@ -183,4 +184,17 @@ test("新增中文文案补齐 16 语，保留件数占位符",()=>{
  for(const locale of LOCALES){
   assert.ok(UI_MESSAGES[locale]["设计稿（多图层）"]);assert.ok(UI_MESSAGES[locale]["{n} 件"]?.includes("{n}"));
  }
+});
+
+
+test("在线素材 entry mounts the shared picker; returning retains official and seller works",async()=>{
+ reset("/bay?type=ppt"); const v=await mount(library({filter:{kind:"asset",q:""}}));
+ try {
+  const original=[...v.host.querySelectorAll("[data-bay-asset-card]")].map(node=>node.getAttribute("data-bay-asset-card"));
+  await click([...v.host.querySelectorAll("button")].find(node=>node.textContent==="在线素材"));
+  assert.ok(v.host.querySelector("[data-live-material-search]"));assert.equal(new URLSearchParams(window.location.search).get("view"),"online");
+  await click([...v.host.querySelectorAll("button")].find(node=>node.textContent==="现成文件"));
+  assert.equal(v.host.querySelector("[data-live-material-search]"),null);
+  assert.deepEqual([...v.host.querySelectorAll("[data-bay-asset-card]")].map(node=>node.getAttribute("data-bay-asset-card")),original);
+ }finally{await v.close();}
 });

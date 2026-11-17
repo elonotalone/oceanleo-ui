@@ -74,3 +74,8 @@ export {
   type AcpSendResult,
   type AcpSessionChoices,
 } from "./acp-frames-api";
+
+// Live provider discovery and private Library acquisition; shared by editor and site consumers.
+export { LIVE_MATERIAL_TYPES, LIVE_MATERIAL_LABELS, liveTypesForEditor, materialHttpUrl, searchLiveMaterials, useLiveMaterial,
+  materialConnections, startSketchfabConnection, disconnectSketchfab } from "./live-materials";
+export type { LiveMaterial, LiveMaterialType, LiveMaterialPage, MaterialConnection } from "./live-materials";

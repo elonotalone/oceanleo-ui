@@ -24,6 +24,8 @@ import { WorkspacePaneSkeleton } from "./WorkspacePaneSkeleton";
 import { BayAssetActions } from "./asset-detail/BayAssetActions";
 import type { AssetActionContext } from "./asset-detail/types";
 import { useWorkspaceEntryRequest, type TaskWorkspaceOpenEntry } from "./result-canvas-entry-state";
+import { LIVE_MATERIAL_TYPES } from "../lib/live-materials";
+import { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";
 import { BayAssetLibrary } from "./bay/asset/BayAssetLibrary";
 import { MyLibrary } from "./MyLibrary";
 import { libraryCurrentIdentityFromSearch } from "./library-current-identity";
@@ -987,8 +989,11 @@ export function ResultCanvas({
           <div data-workspace-panel="bay" data-workspace-panel-active={!foregroundVisible && view === "bay"}
                hidden={view !== "bay"} inert={view !== "bay" || undefined} className="h-full min-h-0 overflow-hidden">
             {bayRequest?.view === "materials" ? <div className="h-full min-h-0 overflow-auto" data-workspace-bay-materials>
-              <BayAssetLibrary key={bayRequest.nonce} siteKey={materialSiteId} context={materialContext || { contextId: materialContextId, siteKey: materialSiteId, appId: materialAppId }}
+              {bayRequest.target ? <BayAssetLibrary key={bayRequest.nonce} siteKey={materialSiteId} context={materialContext || { contextId: materialContextId, siteKey: materialSiteId, appId: materialAppId }}
                 filter={{ kind: "asset", q: bayRequest.query }} onEdit={(entry) => openResolvedEntry({ entry }, "edit", false)} onUseInTask={onUseWorkspaceEntry} />
+                : <LiveMaterialSearch key={bayRequest.nonce} initialQuery={bayRequest.query} initialType={LIVE_MATERIAL_TYPES.find(type => type === bayRequest.category)} actionLabel="使用" onUse={async item => {
+                  await onUseWorkspaceEntry?.(workspaceEntryFromLibraryItem(item));
+                }} />}
             </div> : <BayPanel siteKey={effectiveSiteId || "oceanleo"} active={!foregroundVisible && view === "bay"} request={bayRequest}
                       onBackChange={(back) => { bayBackRef.current = back; }} onOpenConversation={openChat} />}
           </div>

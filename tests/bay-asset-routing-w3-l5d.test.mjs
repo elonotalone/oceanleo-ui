@@ -146,7 +146,6 @@ globalThis.__w3Official=[];
 globalThis.__w3Mine=[];
 globalThis.__w3Sellers=[];
 globalThis.__w3LegacyOpens=0;
-const originUrl = pathToFileURL(new URL("../src/shell/bay/asset/origin-index.ts",import.meta.url).pathname).href;
 const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asset/BayAssetLibrary.tsx", {
  ...stubs,
  "../shell/bay-ready-files": dataModule(`
@@ -166,12 +165,7 @@ const { BayAssetLibrary } = await import(await compileModule("src/shell/bay/asse
  "../../collection-chrome": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export const COLLECTION_ACTION_BTN_GHOST=""; export function CollectionInfiniteSentinel(){return null;} export function CollectionCardGrid({children,...props}){return h("div",props,children);}`),
  "../../collection-items": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function CollectionItemList({children,...props}){return h("div",props,children);}`),
  "./BayAssetSellers": dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};export function BayAssetSellerSite(){return null;}export function BayAssetSellers(){return h("div",{"data-bay-asset-seller-item":"seller-42"},h("button",{onClick:()=>globalThis.__w3LegacyOpens++},"Seller file"));}`),
- "./BayAssetLive": dataModule('export function BayAssetLive(){return null;}'),
- "./BayAssetSeries": dataModule('export function BayAssetSeries(){return null;}'),
  "./BayLicensesView": dataModule('export function BayLicensesView(){return null;}'),
- "./origin-index": dataModule(`export * from ${JSON.stringify(originUrl)};
- export async function loadTypeOriginIndex(type){return {type,categories:[],totalByOrigin:{"first-party":0,external:0},shelfTotal:0};}
- export async function searchAssetsInZone(){return {items:[],has_more:false};}export function resetOriginIndexCache(){}`),
  "./bay-template-shelf": dataModule(`export const BAY_OFFICIAL_PREVIEW_COUNT=4,BAY_TEMPLATE_PAGE_SIZE=30,OFFICIAL_TEMPLATE_CATEGORY="official-templates";
  export function templateArtifactTypeForBay(type){return type==="website"?"website":"single_file_image";}
  export function mergeOwnedAssets(a,b){return [...a,...b.filter((item)=>!a.some((other)=>other.id===item.id))];}

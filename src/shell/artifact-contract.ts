@@ -758,6 +758,12 @@ export interface ArtifactProvenance {
   generatedOrigin?: boolean;
   id: string;
   sourceKind: string;
+  /** Provider acquisition metadata survives normalization and editor insertion. */
+  provider?: string;
+  providerAssetId?: string;
+  sourceUrl?: string;
+  author?: string;
+  termsSnapshot?: Record<string, unknown>;
   licenseCode: string;
   /**
    * 服务端已核验过「这份东西的权利归我们/上传者」。第一方素材（`owned` /
@@ -1633,13 +1639,18 @@ function normalizeProvenance(value: unknown): ArtifactProvenance | null {
     id,
     sourceKind,
     licenseCode,
+    ...(text(raw.provider) ? { provider: text(raw.provider) } : {}),
+    ...(text(raw.providerAssetId, raw.provider_asset_id) ? { providerAssetId: text(raw.providerAssetId, raw.provider_asset_id) } : {}),
+    ...(text(raw.sourceUrl, raw.source_url) ? { sourceUrl: text(raw.sourceUrl, raw.source_url) } : {}),
+    ...(text(raw.author) ? { author: text(raw.author) } : {}),
+    ...(record(raw.termsSnapshot ?? raw.terms_snapshot) ? { termsSnapshot: { ...record(raw.termsSnapshot ?? raw.terms_snapshot)! } } : {}),
     ...(raw.generatedOrigin === false || raw.generated_origin === false
       ? { generatedOrigin: false }
       : raw.generatedOrigin === true || raw.generated_origin === true
         ? { generatedOrigin: true }
         : {}),
     licenseUrl: text(raw.licenseUrl, raw.license_url),
-    attribution: text(raw.attribution, raw.attribution_text),
+    attribution: text(raw.attribution, raw.attributionText, raw.attribution_text),
     // 缺这个 key 的老部署按 `false` 处理，与后端 `ProvenanceProjection` 的默认值一致。
     rightsAsserted:
       raw.rightsAsserted === true || raw.rights_asserted === true,

@@ -87,26 +87,6 @@ export const BAY_TEMPLATE_ARTIFACT_TYPE: Partial<
   pdf: "pdf",
 };
 
-/** 自有栏还要并上的原件货架 type。海报/游戏没有原件。表格走 sheet，工作流走 video_workflow。 */
-export const BAY_OWNED_ORIGIN_TYPE: Partial<Record<BayAssetType, string>> = {
-  website: "website",
-  ppt: "ppt",
-  document: "document",
-  image: "image",
-  chart: "chart",
-  vector: "vector",
-  "3d": "3d",
-  video: "video",
-  audio: "audio",
-  music: "audio",
-  font: "font",
-  sticker: "sticker",
-  prompt: "prompt",
-  grid: "sheet",
-  workflow: "video_workflow",
-  pdf: "pdf",
-};
-
 const DEFAULT_APP_FOR_BAY_TYPE: Partial<Record<BayAssetType, string>> = {
   website: "website",
   ppt: "ppt",
@@ -133,20 +113,6 @@ export function templateArtifactTypeForBay(
 export function mineArtifactTypeForBay(type: BayAssetType): ArtifactType | null {
   if (type === "image") return "single_file_image";
   return templateArtifactTypeForBay(type);
-}
-
-export function originLibraryTypeForBay(type: BayAssetType): string | null {
-  return BAY_OWNED_ORIGIN_TYPE[type] || null;
-}
-
-export function originShelfOptional(type: BayAssetType): boolean {
-  return (
-    type === "poster" ||
-    type === "game" ||
-    type === "grid" ||
-    type === "workflow" ||
-    type === "pdf"
-  );
 }
 
 /**

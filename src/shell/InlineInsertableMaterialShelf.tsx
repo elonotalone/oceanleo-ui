@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import { useUI } from "../i18n/ui/useUI";
-import { listMyArtifacts, searchArtifactLibrary } from "./artifact-client";
+import { listMyArtifacts } from "./artifact-client";
 import type { ArtifactType } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import { WorkspaceCard } from "./workspace-library-view";
@@ -10,7 +10,7 @@ import { workspaceEntryFromLibraryItem, type WorkspaceLibraryEntry } from "./wor
 import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 
 const TYPE_ALIASES: Record<string, readonly string[]> = {
-  image: ["single_file_image", "composite_image"], video: ["video"], audio: ["audio"],
+  image: ["single_file_image", "composite_image", "vector_image"], video: ["video"], audio: ["audio"],
   document: ["document"], ppt: ["deck"], sheet: ["grid"], pdf: ["pdf"],
   "3d": ["model_3d"], video_workflow: ["workflow"],
 };
@@ -19,9 +19,8 @@ export function insertableArtifactTypes(declared: readonly string[]): ArtifactTy
   return [...new Set(declared.flatMap(type => TYPE_ALIASES[type] || [type]))] as ArtifactType[];
 }
 
-/** Insertable bytes are different from the current app's editable documents.
- * Keep public materials site-scoped; the user's own media may come from any
- * app. Card activation inserts into the current editor, never navigates it. */
+/** The personal source only reads the user's own typed files. Activation
+ * inserts through the editor command path without navigating away. */
 export function InlineInsertableMaterialShelf({ types, siteId, currentId, featured, accent, action, perform, canPerform, beginDrag, endDrag }: {
   types: readonly string[]; siteId: string; currentId: string;
   featured: readonly WorkspaceLibraryEntry[]; accent: string; action: WorkbenchMaterialAction;
@@ -42,8 +41,7 @@ export function InlineInsertableMaterialShelf({ types, siteId, currentId, featur
     setLoading(true); setError("");
     const accepted = typeKey.split(",").filter(Boolean) as ArtifactType[];
     const own = accepted.map(artifactType => listMyArtifacts({ artifactType, limit: 40, signal: controller.signal }));
-    const publicSite = siteId ? [searchArtifactLibrary({ artifactTypes: typeKey, originSiteKey: siteId, role: "template", limit: 40, signal: controller.signal })] : [];
-    void Promise.allSettled([...own, ...publicSite]).then(results => {
+    void Promise.allSettled(own).then(results => {
       if (controller.signal.aborted) return;
       const loaded: LibraryItem[] = [];
       let failure = "";
@@ -58,7 +56,7 @@ export function InlineInsertableMaterialShelf({ types, siteId, currentId, featur
   const entries = useMemo(() => {
     const accepted = new Set(typeKey.split(","));
     const unique = new Map<string, WorkspaceLibraryEntry>();
-    for (const entry of [...featured, ...items.map(item => workspaceEntryFromLibraryItem(item))]) {
+    for (const entry of items.map(item => workspaceEntryFromLibraryItem(item))) {
       const item = entry.libraryItem;
       if (!item || !item.artifactType || !accepted.has(item.artifactType)) continue;
       if (canPerform && !canPerform(action, item)) continue;

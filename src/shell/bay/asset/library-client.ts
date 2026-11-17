@@ -24,8 +24,6 @@ export type BayAssetType =
   | "game";
 
 export type BayAssetOrigin = "first-party" | "external";
-/** 现成文件的来源分区：卖家在售 / OceanLeo 自有 / 我上传的 / 开源专区（已入库）/ 实时搜索。 */
-export type BayAssetZone = "sellers" | "owned" | "mine" | "stocked" | "live";
 
 export interface BayAssetLicense {
   code: string;
@@ -76,13 +74,7 @@ export interface BayAsset {
   shelfKind?: "official" | "origin" | "mine";
 }
 
-export interface BaySeries {
-  series_id: string;
-  series_name: string;
-  type: BayAssetType;
-  count: number;
-  covers: string[];
-}
+
 
 /** LeoBay 成品种类；旧类型继续由 API、编辑器插入面板和深链解析支持。 */
 export const BAY_ASSET_TYPE_ORDER: readonly BayAssetType[] = [
@@ -109,14 +101,6 @@ export const BAY_ASSET_TYPE_LABELS: Record<BayAssetType, string> = {
   workflow: "工作流",
   game: "游戏",
 };
-
-export const LIVE_SEARCH_TYPES: readonly BayAssetType[] = [
-  "image",
-  "vector",
-  "video",
-  "audio",
-  "3d",
-];
 
 export const SITE_DEFAULT_ASSET_TYPE: Readonly<Record<string, BayAssetType>> = {
   image: "image",
@@ -167,20 +151,6 @@ export function defaultAssetTypeForSite(siteOrCategory: string | null | undefine
   return SITE_DEFAULT_ASSET_TYPE[key] ?? "image";
 }
 
-export function zoneIsLive(zone: BayAssetZone): boolean {
-  return zone === "live";
-}
-
-export function zoneOrigin(zone: BayAssetZone): BayAssetOrigin | null {
-  if (zone === "owned") return "first-party";
-  if (zone === "stocked") return "external";
-  return null;
-}
-
-export function liveSearchAvailable(type: BayAssetType): boolean {
-  return LIVE_SEARCH_TYPES.includes(type);
-}
-
 async function getJson<T>(path: string): Promise<T> {
   let resp: Response;
   try {
@@ -216,7 +186,7 @@ export interface BayAssetSearchResult {
 
 export async function searchBayLibrary(params: {
   q?: string;
-  type: string;
+  type: "ppt" | "document" | "sheet" | "pdf" | "website" | "chart";
   origin?: BayAssetOrigin;
   category?: string;
   subtab?: string;
@@ -288,21 +258,6 @@ export async function searchBayLibrary(params: {
   };
 }
 
-export async function listBayCategories(
-  type: string,
-  origin?: BayAssetOrigin,
-): Promise<{ categories: string[] }> {
-  const qs = new URLSearchParams({ type });
-  if (origin) qs.set("origin", origin);
-  return getJson<{ categories: string[] }>(`/v1/assets/library/categories?${qs.toString()}`);
-}
-
-export async function listBaySeries(type?: BayAssetType): Promise<{ series: BaySeries[] }> {
-  const qs = type ? `?type=${encodeURIComponent(type)}` : "";
-  const data = await getJson<{ series?: BaySeries[] }>(`/v1/assets/library/series${qs}`);
-  return { series: Array.isArray(data.series) ? data.series : [] };
-}
-
 export async function fetchBayAssetById(id: string, options?: { signal?: AbortSignal }): Promise<BayAsset> {
   const raw = (id || "").trim();
   if (!raw) throw new Error("素材没读出来，请稍后再试。");
@@ -310,31 +265,6 @@ export async function fetchBayAssetById(id: string, options?: { signal?: AbortSi
   return bayGet<BayAsset>(`/v1/assets/detail?id=${encodeURIComponent(assetId)}`, { anonymous: true, signal: options?.signal });
 }
 
-export async function searchBayLive(params: {
-  q?: string;
-  type: BayAssetType;
-  page?: number;
-  pageSize?: number;
-}): Promise<BayAssetSearchResult> {
-  const page = params.page || 1;
-  const qs = new URLSearchParams({
-    q: params.q || "",
-    type: params.type,
-    license: "commercial",
-    page: String(page),
-    page_size: String(params.pageSize || 24),
-  });
-  const live = await getJson<{
-    items?: BayAsset[];
-    has_more?: boolean;
-  }>(`/v1/assets/search?${qs.toString()}`);
-  const items = Array.isArray(live.items) ? live.items : [];
-  return {
-    items,
-    page,
-    has_more: Boolean(live.has_more),
-  };
-}
 
 export function bayAssetDownloadHref(id: string): string {
   return `${GATEWAY_BASE}/v1/assets/download?id=${encodeURIComponent(id)}`;

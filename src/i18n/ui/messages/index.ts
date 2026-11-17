@@ -1,3 +1,4 @@
+import { LIVE_MATERIAL_MESSAGES } from "./live-material-copy";
 // @oceanleo/ui — UI 文案词典聚合（17 语言）。
 // key = 简体中文原文（规范来源见 zh.ts）；每种语言一张平表 { 中文原文: 译文 }。
 // useUI() 按当前 locale 选表，未命中回退中文原文（见 ../useUI.ts）。
@@ -533,6 +534,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...NATIVE_ATTACHMENTS_MESSAGES[language],
       ...TASK_PAGE_PACK_MESSAGES[language],
       ...LIBRARY_PREVIEW_MESSAGES[language],
+      ...LIVE_MATERIAL_MESSAGES[language],
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

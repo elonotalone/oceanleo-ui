@@ -12,17 +12,6 @@ import {
   documentZonesForType,
 } from "../src/shell/bay/asset/document-zones.ts";
 import {
-  applyAssetBrowseSearch,
-  browseViewFor,
-  defaultZone,
-  hasSeriesFilter,
-  parseAssetBrowseSearch,
-  parseZone,
-  seriesZoneOf,
-  zoneCategories,
-  zoneTotal,
-} from "../src/shell/bay/asset/origin-index.ts";
-import {
   SHELF_PIN_LIMIT,
   WASH_PIN_CATEGORIES,
   applyMatcherPins,
@@ -35,41 +24,7 @@ import {
 } from "../src/shell/bay/asset/shelf-pins.ts";
 
 const LIBRARY = readFileSync(new URL("../src/shell/bay/asset/BayAssetLibrary.tsx", import.meta.url), "utf8");
-const LIVE = readFileSync(new URL("../src/shell/bay/asset/BayAssetLive.tsx", import.meta.url), "utf8");
-const SERIES = readFileSync(new URL("../src/shell/bay/asset/BayAssetSeries.tsx", import.meta.url), "utf8");
 
-test("索引里的分区件数与默认分区选择", () => {
-  const index = {
-    type: "image",
-    categories: [
-      { key: "food", origin: "first-party", total: 170, sample: [] },
-      { key: "icon", origin: "external", total: 3, sample: [] },
-    ],
-    shelfTotal: 173,
-    totalByOrigin: { "first-party": 170, external: 3 },
-    mixedCategories: [],
-    failed: false,
-    incomplete: false,
-    countsFromServer: true,
-  };
-  assert.equal(zoneTotal(index, "first-party"), 170);
-  assert.equal(zoneTotal(index, "external"), 3);
-  assert.deepEqual(
-    zoneCategories(index, "first-party").map((item) => item.key),
-    ["food"],
-  );
-  assert.equal(defaultZone("image", { owned: 170, stocked: 3 }), "owned");
-  assert.equal(defaultZone("vector", { owned: 0, stocked: 40607 }), "stocked");
-  assert.equal(defaultZone("document", { owned: 0, stocked: 0 }), "owned");
-  assert.equal(defaultZone("image", { owned: 0, stocked: 0 }), "live");
-  assert.equal(hasSeriesFilter("image", "owned"), true);
-  assert.equal(hasSeriesFilter("image", "stocked"), false);
-  assert.equal(seriesZoneOf("vector"), "stocked");
-  assert.equal(parseZone("library", "image"), "owned");
-  assert.equal(parseZone("open", "image"), "live");
-  assert.equal(parseZone("open", "document"), "owned");
-  assert.equal(parseZone("series", "ppt"), "owned");
-});
 
 test("目录面板构造：策划顺序在前，文档分区用中文名", () => {
   const panels = buildPanelsFromCategories("document", [
@@ -294,47 +249,6 @@ test("页面不再展示基础文档分区 UI；底层目录与许可数据仍�
   assert.match(LIBRARY, /BayAssetCard/);
 });
 
-test("地址参数解析与写回，不碰别人管的参数", () => {
-  const parsed = parseAssetBrowseSearch(
-    "?kind=asset&type=ppt&view=owned&cat=etching&series=1&asset=library:abc&q=海报&category=word&bay=feed",
-  );
-  assert.equal(parsed.type, "ppt");
-  assert.equal(parsed.view, "owned");
-  assert.equal(parsed.cat, "etching");
-  assert.equal(parsed.series, true);
-  assert.equal(parsed.asset, "library:abc");
-
-  const slug = parseAssetBrowseSearch("?cat=contract");
-  assert.equal(slug.cat, "legal-contract-model");
-
-  const liveOnDoc = parseAssetBrowseSearch("?type=document&view=live");
-  assert.equal(browseViewFor("document", liveOnDoc), "owned");
-
-  const written = applyAssetBrowseSearch(
-    "?kind=asset&q=海报&category=word&bay=feed&foo=1",
-    { type: "image", view: "stocked", cat: "food", series: false, asset: "library:xyz" },
-  );
-  const next = new URLSearchParams(written);
-  assert.equal(next.get("kind"), "asset");
-  assert.equal(next.get("q"), "海报");
-  assert.equal(next.get("category"), "word");
-  assert.equal(next.get("bay"), "feed");
-  assert.equal(next.get("foo"), "1");
-  assert.equal(next.get("type"), "image");
-  assert.equal(next.get("view"), "stocked");
-  assert.equal(next.get("cat"), "food");
-  assert.equal(next.get("series"), null);
-  assert.equal(next.get("asset"), "library:xyz");
-  assert.match(written, /library:xyz/);
-
-  const cleared = applyAssetBrowseSearch(written, { cat: "", asset: "", view: null });
-  const clearedParams = new URLSearchParams(cleared);
-  assert.equal(clearedParams.get("cat"), null);
-  assert.equal(clearedParams.get("asset"), null);
-  assert.equal(clearedParams.get("view"), null);
-  assert.equal(clearedParams.get("kind"), "asset");
-  assert.equal(clearedParams.get("type"), "image");
-});
 
 test("BayAssetLibrary 用成品种类卡与分栏货架，保留共享详情和独立基础素材能力", () => {
   assert.doesNotMatch(LIBRARY, /BayToolbarFilters|BayFilterSelect|BayAssetSeries|BayAssetLive/);
@@ -342,6 +256,6 @@ test("BayAssetLibrary 用成品种类卡与分栏货架，保留共享详情和�
   assert.match(LIBRARY, /data-bay-ready-shelf=/);
   assert.match(LIBRARY, /BayLicensesView|licensesOpen/);
   assert.match(LIBRARY, /BayAssetCard|BayArtifactDeepLink|useBayAssetRoute/);
-  assert.match(LIVE, /searchBayLive/);
-  assert.match(SERIES, /listBaySeries/);
+  assert.match(LIBRARY, /LiveMaterialSearch/);
+  assert.match(LIBRARY, /tt\("在线素材"\)/);
 });

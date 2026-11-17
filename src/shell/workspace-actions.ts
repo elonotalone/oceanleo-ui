@@ -267,7 +267,7 @@ export function workspaceMaterialAssetRef(action: WorkspaceActionV1): AssetRef |
       if (id.startsWith(prefix)) return { kind: "template", id: id.slice(prefix.length) };
     }
     if (id.startsWith("listing:")) return { kind: "listing", id: id.slice(8) };
-    if (/^(openverse|pexels|pixabay|unsplash|iconify|google-fonts):/.test(id)) return { kind: "platform", id };
+    if (/^(openverse|pexels|polyhaven|ambientcg|sketchfab|iconify|fontsource|google-fonts):/.test(id)) return { kind: "platform", id };
     const [artifactId, pinnedRevision] = id.replace(/^artifact:/, "").split(":");
     return { kind: "artifact", artifactId, ...(action.revisionId || pinnedRevision ? { revisionId: action.revisionId || pinnedRevision } : {}) };
   }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { defaultAssetTypeForSite, liveSearchAvailable } from "../src/shell/bay/asset/library-client.ts";
+import { defaultAssetTypeForSite } from "../src/shell/bay/asset/library-client.ts";
 import { DOCUMENT_ZONES, documentZonesForType } from "../src/shell/bay/asset/document-zones.ts";
 import { canonicalBayFeedKind, normalizeBayFeedKind } from "../src/shell/bay/shell/bay-links.ts";
 
@@ -23,13 +23,7 @@ test("文书区按类型切开，合同区只出现在文档", () => {
   assert.equal(DOCUMENT_ZONES.length, 8);
 });
 
-test("实时搜索只开给有上游的类型", () => {
-  assert.equal(liveSearchAvailable("image"), true);
-  assert.equal(liveSearchAvailable("video"), true);
-  assert.equal(liveSearchAvailable("document"), false);
-  assert.equal(liveSearchAvailable("ppt"), false);
-  assert.equal(liveSearchAvailable("website"), false);
-});
+
 
 test("三类视图：老地址落到 service/asset/request", () => {
   assert.equal(normalizeBayFeedKind("material"), "asset");

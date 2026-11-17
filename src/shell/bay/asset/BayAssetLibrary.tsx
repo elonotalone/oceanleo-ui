@@ -8,6 +8,7 @@ import { CollectionItemList } from "../../collection-items";
 import { bayEnabledHere, type BayFeedFilter } from "../shell/bay-state";
 import { canonicalArtifactContextId, type ArtifactContextRef } from "../../artifact-contract";
 import type { WorkspaceLibraryEntry } from "../../workspace-library-model";
+import { LiveMaterialSearch } from "./LiveMaterialSearch";
 import { BayAssetCard } from "./BayAssetCard";
 import { BayArtifactDeepLink, bayAssetRefForCard, useBayAssetRoute } from "./BayArtifactDeepLink";
 import { BayLicensesView } from "./BayLicensesView";
@@ -36,6 +37,7 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
   onCloseLicenses?: () => void;
 }) {
   const tt = useUI();
+  const [online, setOnline] = useState(() => new URLSearchParams(readSearch()).get("view") === "online");
   const Items = view === "list" ? CollectionItemList : CollectionCardGrid;
   const rootRef = useRef<HTMLDivElement>(null);
   const route = useBayAssetRoute(rootRef);
@@ -68,6 +70,7 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
 
   useEffect(() => {
     const restore = () => {
+      setOnline(new URLSearchParams(readSearch()).get("view") === "online");
       setType(readyTypeFromSearch(readSearch()));
       setCat(new URLSearchParams(readSearch()).get("cat") || "");
     };
@@ -96,6 +99,14 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
   const shown = gridItems.slice(0, limit);
   const openAsset = useCallback((asset: BayAsset) => route.open(bayAssetRefForCard(asset)), [route.open]);
 
+  function chooseSource(next: boolean) {
+    setOnline(next);
+    const params = new URLSearchParams(readSearch());
+    if (next) params.set("view", "online"); else params.delete("view");
+    const search = params.toString();
+    window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
+  }
+
   function chooseType(next: BayAssetType | null) {
     setType(next);
     setCat("");
@@ -108,6 +119,11 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
 
   return <div ref={rootRef} data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
     <div hidden={Boolean(route.target)} className="min-h-0 flex-1" data-bay-asset-browse>
+      <div role="tablist" aria-label={tt("素材来源")} className="mb-4 flex gap-2">
+        <button type="button" role="tab" aria-selected={!online} className={COLLECTION_ACTION_BTN_GHOST} onClick={() => chooseSource(false)}>{tt("现成文件")}</button>
+        <button type="button" role="tab" aria-selected={online} className={COLLECTION_ACTION_BTN_GHOST} onClick={() => chooseSource(true)}>{tt("在线素材")}</button>
+      </div>
+      {online ? <LiveMaterialSearch initialQuery={filter.q || ""} /> : <>
       <div role="group" aria-label={tt("文件类型")} data-bay-ready-kinds className="mb-6 flex items-stretch gap-3 overflow-x-auto pb-2">
         <button type="button" data-bay-ready-all aria-pressed={!type} onClick={() => chooseType(null)}
           className={`${COLLECTION_ACTION_BTN_GHOST} shrink-0 ${!type ? "bg-neutral-100" : ""}`}>{tt("全部")}</button>
@@ -146,6 +162,7 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
       {loading ? <div role="status" data-bay-asset-loading aria-label={tt("正在加载…")} className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         {Array.from({ length: 4 }, (_, index) => <div key={index} className="aspect-video animate-pulse rounded-xl bg-neutral-100" />)}
       </div> : !error && (type ? gridItems.length === 0 : shelves.length === 0) ? <p data-bay-asset-empty className="py-12 text-center text-[13px] text-neutral-500">{tt("这里还没有这个分类的素材。")}</p> : null}
+      </>}
     </div>
     {!detailInPage ? <BayArtifactDeepLink target={route.target} onBack={route.close} accent={accent} siteKey={siteKey} onEdit={onEdit} onUseInTask={onUseInTask} /> : null}
     {licensesOpen && onCloseLicenses ? <BayLicensesView onClose={onCloseLicenses} /> : null}

@@ -5,6 +5,8 @@ import { useUI } from "../i18n/ui/useUI";
 import { canonicalArtifactContextId } from "./artifact-contract";
 import { humanErrorMessage } from "./human-error-message";
 import type { LibraryItem } from "./library-data";
+import { liveTypesForEditor } from "../lib/live-materials";
+import { LiveMaterialSearch } from "./bay/asset/LiveMaterialSearch";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { InlineInsertableMaterialShelf } from "./InlineInsertableMaterialShelf";
 import type {
@@ -119,6 +121,8 @@ export function InlineEditorMaterialPanel({
   primaryMaterialAction?: WorkbenchMaterialAction;
 }) {
   const tt = useUI();
+  const [source, setSource] = useState<"mine" | "online">("mine");
+  const liveTypes = liveTypesForEditor(item?.kind || "", materials?.materialTypes, materials?.appId);
   // 外壳负责插入的反馈（D2）：成功说插进了哪一份，失败说人话原因，几秒后自动消失。
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
@@ -176,8 +180,15 @@ export function InlineEditorMaterialPanel({
           {feedback.text}
         </p>
       ) : null}
-      <div className="min-h-0 flex-1">
-      {materials && primaryMaterialAction ? <InlineInsertableMaterialShelf
+      {liveTypes.length > 0 && materials && primaryMaterialAction ? <div role="tablist" aria-label={tt("素材来源")} className="flex shrink-0 gap-2 px-3 pt-3">
+        <button type="button" role="tab" aria-selected={source === "mine"} className="min-h-11 rounded-lg border px-3" onClick={() => setSource("mine")}>{tt("我的库")}</button>
+        <button type="button" role="tab" aria-selected={source === "online"} className="min-h-11 rounded-lg border px-3" onClick={() => setSource("online")}>{tt("在线素材")}</button>
+      </div> : null}
+      <div className="min-h-0 flex-1 overflow-auto">
+      {source === "online" && liveTypes.length > 0 && materials && primaryMaterialAction ? <LiveMaterialSearch types={liveTypes} actionLabel="使用" onUse={async material => {
+        const result = await onMaterialAction(primaryMaterialAction, material);
+        if (!result.ok) throw new Error(result.error);
+      }} /> : materials && primaryMaterialAction ? <InlineInsertableMaterialShelf
         types={materials.materialTypes.length ? materials.materialTypes : [curatedType]}
         siteId={siteId || ""} currentId={item?.artifactId || item?.id || ""}
         featured={materials.entries} accent={accent} action={primaryMaterialAction}
