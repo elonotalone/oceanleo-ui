@@ -5,16 +5,9 @@ import { useUI } from "../../i18n/ui/useUI";
 import { ArtifactActionButtons, artifactActionMatrix } from "../ArtifactActions";
 import { artifactDownloadEvidence } from "../artifact-client";
 import { useAssetActions, type UseAssetActionsOptions } from "./useAssetActions";
-import type { AssetActionContext } from "./types";
 
-/** null stays unavailable; a missing price must never become a free claim. */
-export function assetPriceText(context: AssetActionContext, locale: string, tt: (key: string) => string): string | null {
-  const price = context.commerce;
-  if (!price) return null;
-  if (price.priceFen === null || !Number.isSafeInteger(price.priceFen) || price.priceFen < 0) return tt("价格暂不可用");
-  if (price.free && price.priceFen === 0) return tt("免费");
-  return new Intl.NumberFormat(locale, { style: "currency", currency: price.currency }).format(price.priceFen / 100);
-}
+import { assetPriceText } from "./asset-price";
+export { assetPriceText } from "./asset-price";
 
 /** Action slot for the shared detail header. Library keeps its existing toolbar. */
 export function BayAssetActions(props: UseAssetActionsOptions) {

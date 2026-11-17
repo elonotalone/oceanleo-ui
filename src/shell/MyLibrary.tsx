@@ -195,6 +195,7 @@ type LibraryPageResult = Awaited<ReturnType<typeof listMyArtifacts>>;
 const DEFAULT_LIBRARY_SORT: LibrarySort = { by: "none", direction: "desc" };
 
 const SECTION_EMPTY_COPY: Record<LibrarySource, { title: string; description: string }> = {
+  task: { title: "还没有任务附件", description: "在任务中上传的文件会出现在这里。" },
   creation: { title: "还没有创作", description: "生成的作品会自动出现在这里。" },
   upload: { title: "还没有上传的文件", description: "把文件或文件夹拖到这里就能上传。" },
   leobay: { title: "还没有来自 LeoBay 的内容", description: "在 LeoBay 获取的内容会出现在这里。" },
@@ -353,7 +354,7 @@ async function collectCompleteLibrarySnapshot(
     collectCompleteLibraryPages(
       mineFirst,
       (offset, pageSignal) =>
-        listMyArtifacts({ offset, source, limit: LIBRARY_SORT_PAGE_SIZE, signal: pageSignal }),
+        listMyArtifacts({ offset, ...(source === "task" ? { source } : {}), limit: LIBRARY_SORT_PAGE_SIZE, signal: pageSignal }),
       ownerPrincipalId,
       signal,
       "mine",
@@ -599,16 +600,20 @@ export function assetAsWork(item: AssetItem): Creation {
 function toEntry(
   item: LibraryItem,
   onDelete?: () => Promise<void>,
+  tt: (key: string) => string = (key) => key,
 ) {
+  const taskUpload = item.meta?.taskUpload as { taskId?: string } | undefined;
+  const taskCaption = libraryItemSection(item) === "task"
+    ? `${tt("任务附件")} · ${taskUpload?.taskId ? taskUpload.taskId.slice(0, 8) : tt("尚未发送到任务")}` : "";
   const uploaded = isUploadedLibraryItem(item);
   const userAsset = item.meta.library_source === "asset";
   const publicFavorite =
     isDurableLibraryItem(item) &&
     item.favorite &&
     item.artifact.owner.visibility === "public";
-  return workspaceEntryFromLibraryItem(item, {
+  return workspaceEntryFromLibraryItem(taskCaption ? { ...item, meta: { ...item.meta, library_source_label: taskCaption } } : item, {
     category: libraryEditorCategory(item),
-    description:
+    description: taskCaption ||
       (publicFavorite
         ? "公共收藏"
         : uploaded
@@ -620,6 +625,7 @@ function toEntry(
               : "我的作品") +
       (item.siteId ? ` · ${item.siteId}` : ""),
     keywords: [
+      taskUpload?.taskId || "",
       item.kind,
       item.siteId,
       uploaded ? "上传 文件" : userAsset ? "素材 收藏" : "作品 生成",
@@ -745,11 +751,13 @@ export function MyLibrary({
   });
   const [internalCategory, setInternalCategory] = useState(category ?? "all");
   const [favoritesOnly, setFavoritesOnly] = useState(onlyFavorites);
-  // Deprecated compatibility props: the unified Library no longer scopes by section.
-  const activeSection: LibrarySource = "creation";
+  const [attachmentSection, setAttachmentSection] = useState(section === "task");
+  useEffect(() => { if (section !== undefined) setAttachmentSection(section === "task"); }, [section]);
+  const activeSection: LibrarySource = attachmentSection ? "task" : "creation";
   // Every list read takes the section from here (`source=`), so a read started
   // right after a section click already asks for the new one.
-  const sectionRef = useRef<LibrarySource>("creation");
+  const sectionRef = useRef<LibrarySource>(activeSection);
+  sectionRef.current = activeSection;
   const loadedSectionRef = useRef<LibrarySource | null>(null);
   const [ownedItems, setOwnedItems] = useState<LibraryItem[]>([]);
   // 来自 LeoChat files, mapped to Library items once loaded (the client module is loaded on demand).
@@ -876,7 +884,8 @@ export function MyLibrary({
     onCategoryChange?.(next);
   };
   const changeSection = useCallback((next: LibrarySource) => {
-    // Kept for legacy hosts; there are no section tabs in the unified shelf.
+    sectionRef.current = next === "task" ? "task" : "creation";
+    setAttachmentSection(next === "task");
     onSectionChange?.(next);
   }, [onSectionChange]);
   const favoriteViewOptions: CollectionViewOption[] = [
@@ -907,10 +916,10 @@ export function MyLibrary({
             ? withFavoriteState(item, true)
             : item,
         ),
-        ...favoriteItems,
+        ...(attachmentSection ? [] : favoriteItems),
       ]),
     );
-  }, [chatItems, favoriteItems, ownedItems]);
+  }, [attachmentSection, chatItems, favoriteItems, ownedItems]);
 
   const clearLibraryAuthority = useCallback((preservePreviewForPrincipal = "") => {
     sortAbortRef.current?.abort();
@@ -997,16 +1006,19 @@ export function MyLibrary({
     const [documentSettled, pdfSettled, mineSettled, favoritesSettled] =
       await Promise.allSettled([
         listMyArtifacts({
+          ...(requestedSection === "task" ? { source: "task" as const } : {}),
           artifactType: "document",
           limit: 100,
           signal: controller.signal,
         }),
         listMyArtifacts({
+          ...(requestedSection === "task" ? { source: "task" as const } : {}),
           artifactType: "pdf",
           limit: 100,
           signal: controller.signal,
         }),
         listMyArtifacts({
+          ...(requestedSection === "task" ? { source: "task" as const } : {}),
           limit: 100,
           signal: controller.signal,
         }),
@@ -1542,7 +1554,7 @@ export function MyLibrary({
       const options = { cursor, limit: 100, signal: controller.signal };
       return collection === "favorites"
         ? listFavoriteArtifacts(options)
-        : listMyArtifacts({ ...options, ...(collection !== "mine" ? { artifactType: collection } : {}) });
+        : listMyArtifacts({ ...options, ...(sectionRef.current === "task" ? { source: "task" as const } : {}), ...(collection !== "mine" ? { artifactType: collection } : {}) });
     }));
     if (controller.signal.aborted || epoch !== requestEpochRef.current) return;
     const results = settled.map(libraryPageFromSettled);
@@ -1635,7 +1647,7 @@ export function MyLibrary({
       void (async () => {
         try {
           const [mineFirst, favoritesFirst] = await Promise.all([
-            listMyArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
+            listMyArtifacts({ ...(expectedSection === "task" ? { source: "task" as const } : {}), limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
             listFavoriteArtifacts({ limit: LIBRARY_SORT_PAGE_SIZE, signal: controller.signal }),
           ]);
           if (
@@ -1942,9 +1954,9 @@ export function MyLibrary({
   );
   const shownSectionItems = useMemo(
     () => orderedItems.filter(
-      (item) => (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)),
+      (item) => (attachmentSection ? libraryItemSection(item) === "task" : libraryItemSection(item) !== "task") && (!favoritesOnly || item.favorite) && (!itemFilter || itemFilter(item)),
     ),
-    [favoritesOnly, itemFilter, orderedItems],
+    [attachmentSection, favoritesOnly, itemFilter, orderedItems],
   );
   const entries = useMemo(
     () =>
@@ -1958,6 +1970,7 @@ export function MyLibrary({
             return toEntry(
               item,
               owned ? () => removeItem(item) : undefined,
+              tt,
             );
           }),
         ...(favoritesOnly
@@ -1979,13 +1992,14 @@ export function MyLibrary({
             )),
         // 深链指名的只读预览排在最后：万一它本来就在我的库里，前面那份（带删除
         // 能力）会被 dedupe 保留，这里不会把它降级成一张只读卡。
-        ...(previewIntentItem ? [toEntry(previewIntentItem)] : []),
-        ...(resolvedDirectItem ? [toEntry(resolvedDirectItem)] : []),
+        ...(previewIntentItem ? [toEntry(previewIntentItem, undefined, tt)] : []),
+        ...(resolvedDirectItem ? [toEntry(resolvedDirectItem, undefined, tt)] : []),
       ]).map(entry => ({
         ...entry,
         keywords: [...(entry.keywords || []), ...(entry.libraryItem ? projectNames(entry.libraryItem, projectLookup) : [])],
       })),
     [
+      tt,
       featuredEntries,
       shownSectionItems,
       favoritesOnly,
@@ -2128,7 +2142,7 @@ export function MyLibrary({
     return <Suspense fallback={null}><LibraryMemoPage className={className} /></Suspense>;
   }
 
-  const emptyCopy = SECTION_EMPTY_COPY.creation;
+  const emptyCopy = SECTION_EMPTY_COPY[activeSection];
   return (
     <LibraryProjectContext.Provider value={projectLookup}>
     <div
@@ -2166,6 +2180,10 @@ export function MyLibrary({
           />
           {pageTitle ? (
             <CollectionFilterRow>
+              <button type="button" data-library-section="creation" aria-pressed={!attachmentSection}
+                className="min-h-8 rounded-full border border-[var(--border)] px-3 text-xs" onClick={() => changeSection("creation")}>{tt("我的库")}</button>
+              <button type="button" data-library-section="task" aria-pressed={attachmentSection}
+                className="min-h-8 rounded-full border border-[var(--border)] px-3 text-xs" onClick={() => changeSection("task")}>{tt("任务附件")}</button>
               <CollectionFilterSelect
                 label={tt("类型")}
                 name="type"

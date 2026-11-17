@@ -525,8 +525,20 @@ print('native XLSX accepted; inherited bounded CSV editability rejected')
 });
 
 test("VS10 paragraph joining predates this wave: the browser PPTX text importer is unchanged",()=>{
-  for(const path of ["src/shell/doc-editors/pptx-deck-import.ts","src/shell/doc-editors/deck-text-format.ts"]){
-    assert.equal(readFileSync(path,"utf8"),execFileSync("git",["show",`d212f88d:${path}`],{encoding:"utf8"}),path);
+  const at=(path)=>execFileSync("git",["show",`d212f88d:${path}`],{encoding:"utf8"});
+  const format="src/shell/doc-editors/deck-text-format.ts";
+  assert.equal(readFileSync(format,"utf8"),at(format),format);
+  // 2026-11-17 PPT 预览修复（运营方下令）给导入器加了母版/版式文字继承与图片裁切；
+  // 除被替换的两行外，d212f88d 的每一行必须原样保留，新增内容只能是增量。
+  const importer="src/shell/doc-editors/pptx-deck-import.ts";
+  const replaced=(line)=>line.startsWith("    new RegExp(`${property}")||line==="    if (string(source.content).trim()) shape.content = source.content;";
+  const now=readFileSync(importer,"utf8").split("\n");
+  let cursor=0;
+  for(const line of at(importer).split("\n")){
+    if(replaced(line)) continue;
+    const found=now.indexOf(line,cursor);
+    assert.notEqual(found,-1,`${importer}: 原有行被改动或乱序：${line}`);
+    cursor=found+1;
   }
 });
 

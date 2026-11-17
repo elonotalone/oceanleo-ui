@@ -129,8 +129,9 @@ test("PPT 详情舞台在解析完成与换页之后都留着当前页的内容"
     }
   `);
   const officeStubUrl = dataModule(`
+    import { sampleBytes } from ${JSON.stringify(new URL("./helpers/ppt-style-fixture.mjs", import.meta.url).href)};
     export async function fetchValidatedOfficePackage() {
-      return { arrayBuffer: new ArrayBuffer(8) };
+      return { arrayBuffer: await sampleBytes() };
     }
     export async function fetchValidatedSpreadsheetSource() {
       return { arrayBuffer: new ArrayBuffer(8) };

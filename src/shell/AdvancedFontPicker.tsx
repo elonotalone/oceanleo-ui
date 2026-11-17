@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
+import { EDITOR_FONT_OPTIONS, EDITOR_FONT_WEIGHTS, loadEditorTextFonts } from "./image-editor/editor-fonts";
 
 export interface AdvancedFontOption {
   family: string;
@@ -10,80 +11,27 @@ export interface AdvancedFontOption {
   preview: string;
 }
 
-export const ADVANCED_EDITOR_FONTS: readonly AdvancedFontOption[] = [
-  {
-    family: "Inter, Arial, sans-serif",
-    label: "Modern Sans",
-    category: "推荐",
-    preview: "清晰表达每一个想法",
-  },
-  {
-    family: "Aptos, Arial, sans-serif",
-    label: "Aptos",
-    category: "推荐",
-    preview: "Beautiful ideas, clearly told",
-  },
-  {
-    family: "Noto Sans SC, PingFang SC, Microsoft YaHei, sans-serif",
-    label: "思源黑体",
-    category: "中文",
-    preview: "让好设计自然发生",
-  },
-  {
-    family: "Noto Serif SC, Songti SC, SimSun, serif",
-    label: "思源宋体",
-    category: "中文",
-    preview: "山海之间，自有文章",
-  },
-  {
-    family: "PingFang SC, Microsoft YaHei, sans-serif",
-    label: "苹方",
-    category: "中文",
-    preview: "简洁、现代、从容",
-  },
-  {
-    family: "KaiTi, STKaiti, serif",
-    label: "楷体",
-    category: "中文",
-    preview: "落笔成章，温润有力",
-  },
-  {
-    family: "Georgia, Times New Roman, serif",
-    label: "Georgia",
-    category: "经典",
-    preview: "Stories deserve a timeless voice",
-  },
-  {
-    family: "Arial, Helvetica, sans-serif",
-    label: "Arial",
-    category: "经典",
-    preview: "Simple, useful and universal",
-  },
-  {
-    family: "Courier New, monospace",
-    label: "Courier",
-    category: "经典",
-    preview: "Build • test • create",
-  },
-  {
-    family: "Segoe Script, Brush Script MT, cursive",
-    label: "Signature",
-    category: "手写",
-    preview: "Make it personal",
-  },
-] as const;
+export const ADVANCED_EDITOR_FONTS: readonly AdvancedFontOption[] = EDITOR_FONT_OPTIONS;
 
 export function AdvancedFontPicker({
   selectedFamily,
+  selectedWeight = 400,
+  text,
+  onWeightSelect,
   disabled = false,
   onSelect,
 }: {
   selectedFamily?: string;
+  selectedWeight?: number;
+  text?: string;
+  onWeightSelect?: (weight: number) => void;
   disabled?: boolean;
   onSelect: (family: string) => void;
 }) {
   const tt = useUI();
   const [query, setQuery] = useState("");
+  const [fontError, setFontError] = useState("");
+  const [loadingFont, setLoadingFont] = useState(false);
   const fonts = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
     return needle
@@ -124,6 +72,20 @@ export function AdvancedFontPicker({
           className="min-w-0 flex-1 border-0 bg-transparent text-[12px] text-[var(--fg,#1e293b)] outline-none placeholder:text-[var(--muted,#94a3b8)] focus-visible:ring-2 focus-visible:ring-[var(--pchrome-accent,var(--awb-accent,var(--accent,#7c3aed)))]/45"
         />
       </label>
+      {onWeightSelect && <label className="mt-3 flex items-center gap-2 text-[12px]">
+        {tt("字重")}
+        <select aria-label={tt("字重")} value={selectedWeight} disabled={disabled || loadingFont}
+          onChange={async event => {
+            const weight = Number(event.target.value);
+            setLoadingFont(true); setFontError("");
+            try { await loadEditorTextFonts([{ text: text || tt(EDITOR_FONT_OPTIONS[0].preview), fontFamily: selectedFamily, fontWeight: weight }]); }
+            catch { setFontError("字体加载失败，请检查网络后重试。"); }
+            finally { onWeightSelect(weight); setLoadingFont(false); }
+          }}>
+          {EDITOR_FONT_WEIGHTS.map(weight => <option key={weight} value={weight}>{weight}</option>)}
+        </select>
+      </label>}
+      {fontError && <p role="alert">{tt(fontError)}</p>}
       <div className="mt-4 space-y-1">
         {fonts.map((font) => {
           const active =
@@ -138,10 +100,16 @@ export function AdvancedFontPicker({
             );
           return (
             <button
-              key={font.label}
+              key={font.family}
               type="button"
-              disabled={disabled}
-              onClick={() => onSelect(font.family)}
+              disabled={disabled || loadingFont}
+              onClick={async () => {
+                setLoadingFont(true); setFontError("");
+                try {
+                  await loadEditorTextFonts([{ text: text || tt(font.preview), fontFamily: font.family, fontWeight: selectedWeight }]);
+                } catch { setFontError("字体加载失败，请检查网络后重试。"); }
+                finally { onSelect(font.family); setLoadingFont(false); }
+              }}
               className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:opacity-40 ${
  active
  ? "bg-[color-mix(in_srgb,var(--awb-accent,#7c3aed)_10%,transparent)]"
@@ -151,7 +119,7 @@ export function AdvancedFontPicker({
               <span className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <strong className="truncate text-[12px] font-semibold text-[var(--fg,#1e293b)]">
-                    {font.label}
+                    {tt(font.label)}
                   </strong>
                   <small className="rounded-full bg-[var(--surface,#f1f5f9)] px-1.5 py-0.5 text-[8px] font-medium text-[var(--muted,#64748b)]">
                     {tt(font.category)}

@@ -1,4 +1,5 @@
 import { deckSafeLink } from "./deck-text-format";
+import { readDeckPptxTextInheritance, type DeckPptxInheritedShape } from "./deck-pptx-ooxml";
 import {
   normalizeDeckDocument,
   type DeckDocument,
@@ -16,6 +17,7 @@ function record(value: unknown): JsonRecord {
 }
 
 function number(value: unknown, fallback = 0): number {
+  if (value == null || value === "") return fallback;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -125,7 +127,7 @@ function plainText(html: unknown): string {
 
 function cssValue(html: string, property: string): string {
   const match = html.match(
-    new RegExp(`${property}\\s*:\\s*([^;"']+)`, "i"),
+    new RegExp(`(?:^|[\\s;"'])${property}\\s*:\\s*([^;"']+)`, "i"),
   );
   return match?.[1]?.trim() || "";
 }
@@ -294,6 +296,8 @@ function convertElement(
       borderWidth: Math.max(0, number(source.borderWidth)),
       lineDash: lineDash(source.borderType),
       ...textStyle(content),
+      ...record(source.ooxmlTextStyle),
+      ...(typeof source.ooxmlText === "string" ? { text: source.ooxmlText } : {}),
     };
   }
   if (type === "shape") {
@@ -313,6 +317,8 @@ function convertElement(
       borderWidth: Math.max(0, number(source.borderWidth)),
       lineDash: lineDash(source.borderType),
       ...textStyle(content),
+      ...record(source.ooxmlTextStyle),
+      ...(typeof source.ooxmlText === "string" ? { text: source.ooxmlText || undefined } : {}),
     };
   }
   if (type === "image") {
@@ -333,6 +339,17 @@ function convertElement(
       brightness: number(filters.brightness, 1),
       contrast: number(filters.contrast, 1),
       saturation: number(filters.saturation, 1),
+      // DrawingML srcRect crops the source, then stretch fills the frame.
+      // pptxtojson exposes srcRect as percentages; the deck stores fractions.
+      imageFit: "fill",
+      ...(Object.keys(record(source.rect)).length ? {
+        crop: {
+          left: number(record(source.rect).l) / 100,
+          top: number(record(source.rect).t) / 100,
+          right: number(record(source.rect).r) / 100,
+          bottom: number(record(source.rect).b) / 100,
+        },
+      } : {}),
     };
   }
   if (type === "table") {
@@ -407,7 +424,11 @@ function mergeOceanLeoShapeLabels(values: unknown[]): unknown[] {
     if (identity?.part !== "label" || source.type !== "text") return true;
     const shape = mainShapes.get(`${identity.id}\u0000${identity.occurrence}`);
     if (!shape) return true;
-    if (string(source.content).trim()) shape.content = source.content;
+    if (string(source.content).trim()) {
+      shape.content = source.content;
+      shape.ooxmlTextStyle = source.ooxmlTextStyle;
+      shape.ooxmlText = source.ooxmlText;
+    }
     return false;
   });
 }
@@ -688,5 +709,29 @@ export async function importPptxDeck(
     videoMode: "none",
     audioMode: "none",
   });
+  const inherited = readDeckPptxTextInheritance(bytes);
+  for (const [index, rawSlide] of (Array.isArray(parsed.slides) ? parsed.slides : []).entries()) {
+    const shapes = [...(inherited[index] || [])];
+    const supplement = (values: unknown[]) => {
+      for (const value of values) {
+        const source = record(value);
+        if (Array.isArray(source.elements)) supplement(source.elements);
+        if (source.type !== "text" && source.type !== "shape") continue;
+        const match = shapes.findIndex((shape) => shape.type === "text" && shape.name === source.name);
+        if (match < 0) continue;
+        const [shape] = shapes.splice(match, 1);
+        applyInheritedText(source, shape);
+      }
+    };
+    const slide = record(rawSlide);
+    supplement(Array.isArray(slide.elements) ? slide.elements : []);
+  }
   return mapPptxPresentationToDeck(parsed, fallbackTitle, sourceExtension);
+}
+
+function applyInheritedText(source: JsonRecord, shape: DeckPptxInheritedShape): void {
+  const first = shape.paragraphs.flat().find((run) => run.text.trim());
+  if (!first) return;
+  source.ooxmlTextStyle = first.style;
+  source.ooxmlText = shape.paragraphs.map((paragraph) => paragraph.map((run) => run.text).join("")).join("\n");
 }

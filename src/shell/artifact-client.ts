@@ -1724,6 +1724,19 @@ export async function listMyArtifacts(options: {
   }
   // scope 已校验为 mine，这就是权威的「我是谁」；喂给 owner 判定省掉探测请求。
   primeCurrentPrincipalId(normalized.ownerPrincipalId);
+  let taskOrigins: Record<string, unknown> = {};
+  if (options.source === "task" && normalized.projections.length) {
+    const ids = normalized.projections.map((item) => item.revisionId).join(",");
+    const origins = await artifactRequest<unknown>(
+      `/v1/library/task-attachments/context?${new URLSearchParams({ revisionIds: ids })}`,
+      { signal: options.signal },
+    );
+    if (!origins.ok) return origins as ArtifactApiResult<ArtifactSearchResult>;
+    if (!origins.data || typeof origins.data !== "object" || Array.isArray(origins.data)) {
+      return { ok: false, status: 502, code: "invalid-response", error: "任务附件来源读取失败", retryable: true };
+    }
+    taskOrigins = origins.data as Record<string, unknown>;
+  }
   const rawServerWorks =
     result.data && typeof result.data === "object" && !Array.isArray(result.data)
       ? (result.data as { serverWorks?: unknown }).serverWorks
@@ -1734,9 +1747,12 @@ export async function listMyArtifacts(options: {
   return {
     ...result,
     data: {
-      items: normalized.projections.map((artifact) =>
-        artifactItemFromProjection(artifact),
-      ),
+      items: normalized.projections.map((artifact) => {
+        const item = artifactItemFromProjection(artifact);
+        const origin = taskOrigins[artifact.revisionId];
+        return origin && typeof origin === "object" && !Array.isArray(origin)
+          ? { ...item, meta: { ...item.meta, taskUpload: origin } } : item;
+      }),
       nextCursor: normalized.nextCursor,
       total: normalized.total,
       ownerPrincipalId: normalized.ownerPrincipalId,

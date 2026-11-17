@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Français。人工翻译。
 const fr: Record<string, string> = {
+  "任务附件": "Pièces jointes des tâches",
+  "尚未发送到任务": "Pas encore envoyé à une tâche",
+  "还没有任务附件": "Aucune pièce jointe de tâche",
+  "在任务中上传的文件会出现在这里。": "Les fichiers importés dans les tâches apparaîtront ici.",
+  "任务附件来源读取失败": "Impossible de charger l’origine des pièces jointes",
+
   "AI 模型": "Modèles IA",
   "+ 在「AI 模型」页管理模型": "+ Gérer les modèles dans la page « Modèles IA »",
   "前往 AI 模型页 →": "Aller à la page Modèles IA →",

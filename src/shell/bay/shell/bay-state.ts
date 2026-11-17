@@ -30,7 +30,7 @@ export type BayOfferKind = Exclude<BayFeedKind, "request">;
 
 export type BayFeedFilter = {
   /**
-   * `service`（默认）= 服务（含答疑）；`asset` = 素材库（不走人才信息流）；
+   * `asset`（默认）= 现成文件（不走人才信息流）；`service` = 服务（含答疑）；
    * `app` = 作品栏；`lesson` = 课程栏；`request` = 需求（含求助）。老值 `supply`/`demand`/`material` 在写入时归一。
    */
   kind?: BayFeedKind;
@@ -470,12 +470,12 @@ function writePageFilter(filter: BayFeedFilter): void {
 function readPageKind(search: string): BayFeedFilter["kind"] | null {
   const params = new URLSearchParams(search || "");
   const raw = params.get(BAY_KIND_PARAM);
-  if (!raw && (params.has("asset") || (params.has("type") && params.has("view")))) {
+  if (!raw && (params.has("asset") || params.has("artifactId") || params.has("listingId") || params.has("type"))) {
     // 2026-11-03: legacy/shared asset links (`/bay?type=image&view=owned&asset=library:<id>`) carry no `kind`;
     // they still mean the asset browser and must open that item, never fall back to human services.
     return "asset";
   }
-  return normalizeBayFeedKind(raw);
+  return normalizeBayFeedKind(raw) ?? DEFAULT_BAY_FEED_KIND;
 }
 
 function readPageOffer(search: string): BayOfferKind | undefined {

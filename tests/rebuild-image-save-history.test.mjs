@@ -84,6 +84,8 @@ function makeControllerForHistory(initialObjects) {
   };
   Object.assign(controller, {
     canvas,
+    // Font preparation clears Fabric's glyph cache before history restores.
+    fabric: { cache: { clearFontCache() {} } },
     container: null,
     doc: { width: 100, height: 80 },
     canvasBackground: "#ffffff",

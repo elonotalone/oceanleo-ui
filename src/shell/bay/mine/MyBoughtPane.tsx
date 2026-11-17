@@ -3,6 +3,8 @@
 // 「我的」→「我买到的」：人工服务、课程、网站与软件服务的订单合成一张列表，行右边标明付款金额与类别。
 // 有订单（合同）的行多一个「查看对账单」，点开在这一行下面展开那一单的对账单（只读）。
 import { useUI } from "../../../i18n/ui/useUI";
+import { listPurchasedBayAssets } from "../../../lib/bay/assets";
+import { portalHref } from "../../../contracts/domain-family";
 import { listBoughtBayApps } from "../../../lib/bay/app-paid";
 import { hiddenKey, listBayMineHidden } from "../../../lib/bay/mine-hidden";
 import { listBoughtBayLessonOrders } from "../../../lib/bay/lessons";
@@ -29,6 +31,7 @@ import { hideRowProps } from "./mine-hide";
 import { MineTradeList, type MineTradeRow } from "./MineTradeList";
 
 type BoughtBundle = {
+  assets: Awaited<ReturnType<typeof listPurchasedBayAssets>>["items"];
   orders: Awaited<ReturnType<typeof listBayOrders>>;
   lessons: Awaited<ReturnType<typeof listBoughtBayLessonOrders>>["items"];
   apps: Awaited<ReturnType<typeof listBoughtBayApps>>;
@@ -37,7 +40,7 @@ type BoughtBundle = {
 };
 
 async function loadBought(): Promise<BoughtBundle> {
-  const [orders, lessons, apps, hidden] = await Promise.all([
+  const [orders, lessons, apps, hidden, assets] = await Promise.all([
     listBayOrders({ role: "buyer", limit: 200 }).then(
       (rows) => rows.filter((row) => row.my_role === "buyer"),
       () => [] as BoughtBundle["orders"],
@@ -56,11 +59,12 @@ async function loadBought(): Promise<BoughtBundle> {
       () => ({ purchases: [], subscriptions: [], trials: [], apps: [] }),
     ),
     listBayMineHidden(),
+    listPurchasedBayAssets().then((body) => body.items || [], () => [] as BoughtBundle["assets"]),
   ]);
   const paidIds = paidContractIds(lessons, apps.purchases);
   const tradeOrders = orders.filter((order) => !isMergedPaidOrder(order, paidIds));
   const serviceCards = await loadServiceCards(tradeOrders.map((order) => order.source_service_id || ""));
-  return { orders: tradeOrders, lessons, apps, serviceCards, hidden };
+  return { orders: tradeOrders, lessons, apps, serviceCards, hidden, assets };
 }
 
 export function MyBoughtPane({ category = "all", query = "", display = "grid" }: MinePaneProps) {
@@ -79,6 +83,21 @@ export function MyBoughtPane({ category = "all", query = "", display = "grid" }:
     return formatBayFen(value, currency || ledger, locale);
   };
   if (data) {
+    for (const row of data.assets) {
+      if (!row.entitled || !row.libraryIdentity || !rowMatchesCategory(category, "digital")) continue;
+      const identity = row.libraryIdentity;
+      const query = identity.kind === "folder"
+        ? `category=folders&folder=${encodeURIComponent(identity.id)}`
+        : `item=${encodeURIComponent(identity.id)}`;
+      rows.push({
+        id: `asset:${row.id}`,
+        title: row.title || tt("未命名"),
+        subtitle: tt(purchaseStatusText(row.status)),
+        amount: paid(row.price_fen, row.currency),
+        category: "digital",
+        onOpen: () => window.location.assign(portalHref(`/library?${query}`)),
+      });
+    }
     for (const order of data.orders) {
       if (data.hidden.has(hiddenKey("order", order.id))) continue;
       const card = data.serviceCards[order.source_service_id || ""];

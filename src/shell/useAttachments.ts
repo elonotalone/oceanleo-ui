@@ -20,6 +20,7 @@ import {
   mediaTypeFromMime,
 } from "../lib/attachment-url";
 import type { ComposerAttachment } from "./LeoComposer";
+import { useOptionalWorkspaceSession } from "./workspace-session-context";
 import { uploadComposerFile } from "./composer-upload";
 import { dimensionsForPreparedFile, originalForPreparedFile } from "../lib/upload/image-preparation";
 import type { LibraryItem } from "./library-data";
@@ -79,6 +80,12 @@ export function useAttachments(
   /** Clear only a matching upload error; unrelated host errors remain owned by the host. */
   onErrorResolved?: (message: string) => void,
 ): UseAttachments {
+  const workspace = useOptionalWorkspaceSession();
+  const taskUpload = workspace?.siteId === siteId && workspace.taskId
+    ? { taskId: workspace.taskId, ...(workspace.sessionId ? { sessionId: workspace.sessionId } : {}) }
+    : undefined;
+  const taskUploadRef = useRef(taskUpload);
+  taskUploadRef.current = taskUpload;
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
 
   // The original File of every tile that has not finished, so a failed one can retry.
@@ -109,7 +116,7 @@ export function useAttachments(
       uploadsRef.current.get(id)?.abort();
       const controller = new AbortController();
       uploadsRef.current.set(id, controller);
-      void uploadComposerFile(file, { siteId, signal: controller.signal }).then((r) => {
+      void uploadComposerFile(file, { siteId, taskUpload: taskUploadRef.current, signal: controller.signal }).then((r) => {
         // Removed while uploading: the late result never brings the tile back or toasts.
         if (controller.signal.aborted) return;
         if (uploadsRef.current.get(id) === controller) uploadsRef.current.delete(id);

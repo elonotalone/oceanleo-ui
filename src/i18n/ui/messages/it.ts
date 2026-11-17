@@ -1,5 +1,11 @@
 // @oceanleo/ui — UI 文案词典：Italiano. 人工翻译。
 const it: Record<string, string> = {
+  "任务附件": "Allegati delle attività",
+  "尚未发送到任务": "Non ancora inviato a un’attività",
+  "还没有任务附件": "Nessun allegato delle attività",
+  "在任务中上传的文件会出现在这里。": "I file caricati nelle attività appariranno qui.",
+  "任务附件来源读取失败": "Impossibile caricare l’origine degli allegati",
+
   "AI 模型": "Modelli IA",
   "+ 在「AI 模型」页管理模型": "+ Gestisci i modelli nella pagina «Modelli IA»",
   "前往 AI 模型页 →": "Vai alla pagina Modelli IA →",

@@ -1,5 +1,6 @@
 "use client";
 
+import { NOTO_SERIF_STACK } from "./editor-fonts";
 import {
   useRef,
   useState,
@@ -412,7 +413,7 @@ export function FabricImageSignaturePanel({
           onChange={(event) => setTypedName(event.target.value)}
           placeholder={tt("输入姓名")}
           className="w-full rounded-xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] px-3 py-2.5 text-[20px] outline-none focus-visible:ring-2 focus-visible:ring-[var(--awb-accent,#6d5dfc)]/45"
-          style={{ fontFamily: "Segoe Script, Brush Script MT, cursive" }}
+          style={{ fontFamily: NOTO_SERIF_STACK }}
         />
         <div className="mt-2 grid grid-cols-2 gap-2">
           <button

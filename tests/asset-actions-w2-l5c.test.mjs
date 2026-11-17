@@ -115,6 +115,28 @@ test("claim identities accept explicit server artifact or platform Library ident
   for (const input of [null, { purchased: true }, { ref: { kind: "platform", id: "public" } }, { artifact_id: " " }]) assert.equal(claimedLibraryRef(input), null);
 });
 
+test("official template Get records a purchase before exposing the delivered copy", async () => {
+  const ref = { kind: "template", id: "official-game" };
+  const ctx = context({ ref });
+  const posts = [], forks = [], resolved = [];
+  globalThis.__assetActions = {
+    post: async (path, body) => {
+      posts.push({ path, body });
+      return { claim: { status: "settled" }, libraryIdentity: { kind: "artifact", artifactId: "owned-1", revisionId: "r1" } };
+    },
+    fork: async () => { forks.push(true); throw new Error("must purchase first"); },
+    resolve: async (requested) => { resolved.push(requested); return owned(); },
+  };
+  const mounted = await mount(BayAssetActions, { entry, actionContext: ctx });
+  try {
+    await click(mounted.container, "get");
+    await until(() => Boolean(mounted.container.querySelector('[data-asset-action="download"]')));
+    assert.deepEqual(posts, [{ path: "/v1/bay/assets/claim", body: { ref } }]);
+    assert.deepEqual(forks, []);
+    assert.deepEqual(resolved, [{ kind: "artifact", artifactId: "owned-1", revisionId: "r1" }]);
+  } finally { await mounted.close(); }
+});
+
 test("the real platform claim response stays a Library collection item, supports download/use, and never invents edit rights", async () => {
   const libraryContext = context({ owned: true, surface: "library", commerce: { priceFen: 0, currency: "USD", free: true, purchaseState: "settled" }, rights: { ...noRights, canDownload: true, canUseInTask: true } });
   const libraryEntry = { ...entry, id: "bay:library:platform-1", libraryItem: { ...entry.libraryItem, url: "https://media.invalid/image.png", meta: { bay_asset_id: "library:platform-1" } } };

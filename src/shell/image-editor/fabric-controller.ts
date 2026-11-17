@@ -110,6 +110,7 @@ export class FabricEditorController extends FabricEditorCore {
     this.styleObject(object);
     this.canvas.add(object);
     this.commitAndSelect(object);
+    this.refreshTextFonts([object]);
   }
 
   addText(preset: TextPreset = "body"): void {
@@ -618,6 +619,7 @@ export class FabricEditorController extends FabricEditorCore {
       }
       if (patch.highlight != null) props.textBackgroundColor = patch.highlight;
       if (patch.bold != null) props.fontWeight = patch.bold ? "bold" : "normal";
+      if (patch.fontWeight != null && [400, 500, 700, 900].includes(patch.fontWeight)) props.fontWeight = patch.fontWeight;
       if (patch.italic != null) {
         props.fontStyle = patch.italic ? "italic" : "normal";
       }
@@ -645,6 +647,7 @@ export class FabricEditorController extends FabricEditorCore {
       text.set("dirty", true);
       text.setCoords();
     }, "content");
+    this.refreshTextFonts();
   }
 
   toggleSelectedTextCase(): void {

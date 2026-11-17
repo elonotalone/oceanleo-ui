@@ -13,6 +13,7 @@
 import { decodeFabricTextMetadata, installFabricTextLayout } from "./fabric-text-layout";
 import { sanitizeSvg } from "../vector-editor/vector-sanitize";
 import { makeId, SNAPSHOT_PROPS, type FabricNS } from "./editor-objects";
+import { prepareEditorFonts, type EditorFontText } from "./editor-fonts";
 import type { ImageEditorSnapshot } from "./image-document-contract";
 
 export const VECTOR_SVG_MAX_BYTES = 8 * 1024 * 1024;
@@ -105,12 +106,31 @@ export interface VectorSceneResult {
   losses: string[];
 }
 
+/** Read font inheritance without attaching untrusted SVG to the live DOM. */
+export function svgEditorFontTexts(svg: string, fabric: FabricNS): EditorFontText[] {
+  const doc = new DOMParser().parseFromString(svg, "image/svg+xml");
+  // Use Fabric's own cascade/shorthand/inheritance parser, before it creates Text.
+  const cssRules = fabric.getCSSRules(doc);
+  const result: EditorFontText[] = [];
+  for (const element of doc.querySelectorAll("text, tspan")) {
+    const attributes = fabric.parseAttributes(element as unknown as HTMLElement, fabric.FabricText.ATTRIBUTE_NAMES, cssRules);
+    result.push({ text: element.textContent || "", fontFamily: attributes.fontFamily,
+      fontWeight: attributes.fontWeight, fontStyle: attributes.fontStyle });
+  }
+  for (const element of doc.querySelectorAll("[data-oceanleo-text]")) {
+    const metadata = decodeFabricTextMetadata(element.getAttribute("data-oceanleo-text") || "");
+    if (metadata) result.push(metadata as EditorFontText);
+  }
+  return result;
+}
+
 export async function vectorSvgToSnapshot(
   fabric: FabricNS,
   svgText: string,
 ): Promise<VectorSceneResult> {
   const { svg, removed, rules } = sanitizeVectorSource(svgText);
   const losses = detectVectorLosses(svg, rules);
+  await prepareEditorFonts(svgEditorFontTexts(svg, fabric), () => fabric.cache.clearFontCache());
   installFabricTextLayout(fabric);
   const enhanced = new Map<Element, Record<string, unknown>>();
   const enhancedChildren = new Set<object>();
@@ -130,17 +150,23 @@ export async function vectorSvgToSnapshot(
     minX?: number;
     minY?: number;
   };
-  const width = Math.max(
-    1,
-    Math.round(options.viewBoxWidth || options.width || 0),
-  );
-  const height = Math.max(
-    1,
-    Math.round(options.viewBoxHeight || options.height || 0),
-  );
-  if (!width || !height) throw new VectorSvgError("矢量图缺少画布尺寸（width/height 或 viewBox）。");
-  const minX = Number(options.minX) || 0;
-  const minY = Number(options.minY) || 0;
+  let width = Math.round(options.viewBoxWidth || options.width || 0);
+  let height = Math.round(options.viewBoxHeight || options.height || 0);
+  let minX = Number(options.minX) || 0;
+  let minY = Number(options.minY) || 0;
+  if (!(width > 0 && height > 0)) {
+    // Kenney and other path icons may omit all viewport metadata and draw
+    // around (0, 0), including negative coordinates. Use Fabric's transformed
+    // geometry rather than a 1px/default page that silently clips the artwork.
+    const bounds = parsed.objects.filter((object) => object !== null).map((object) => object.getBoundingRect());
+    minX = Math.floor(Math.min(...bounds.map((box) => box.left)));
+    minY = Math.floor(Math.min(...bounds.map((box) => box.top)));
+    width = Math.ceil(Math.max(...bounds.map((box) => box.left + box.width))) - minX;
+    height = Math.ceil(Math.max(...bounds.map((box) => box.top + box.height))) - minY;
+  }
+  if (![minX, minY, width, height].every(Number.isFinite) || width <= 0 || height <= 0) {
+    throw new VectorSvgError("这份矢量图没有可编辑的图形元素。");
+  }
   const objects: Record<string, unknown>[] = [
     {
       type: "Rect",

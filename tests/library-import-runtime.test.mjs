@@ -253,3 +253,15 @@ test("recovering 1,000 queued folder files refreshes the Library and folder once
     });
   } finally { delete globalThis.__luPending; }
 });
+
+test("template receipts with null listing ids retain distinct Library links and never offer seller updates", async () => {
+  const requests=[];
+  globalThis.__luRequest=async (path,body)=>{ requests.push({path,body}); return {items:[1,2].map(n=>({id:`claim-${n}`,listing_id:null,ref:{kind:"template",id:`tpl-${n}`},title:`模板${n}`,entitled:true,updateAvailable:true,libraryIdentity:{kind:"artifact",id:`copy-${n}`}}))}; };
+  await domTest(async ({root,container})=>{
+    await render(root,mod.LibraryPurchasedUpdates,{items:[],onUpdated(){}});
+    assert.equal(container.querySelectorAll('a').length,2);
+    assert.equal(container.querySelector('button'),null);
+    assert.deepEqual([...container.querySelectorAll('a')].map(a=>a.getAttribute('href')),['/library?item=copy-1','/library?item=copy-2']);
+    assert.equal(requests.length,1);
+  });
+});

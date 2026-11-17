@@ -1,5 +1,6 @@
 "use client";
 
+import { prepareEditorFonts, refreshEditorFontMetrics, type EditorFontText } from "./editor-fonts";
 import { installFabricTextLayout } from "./fabric-text-layout";
 import type { Canvas, FabricImage, FabricObject, Transform } from "fabric";
 import {
@@ -497,6 +498,7 @@ export class FabricEditorCore {
         editable.exitEditing?.();
         this.canvas.requestRenderAll();
       }),
+      this.canvas.on("text:changed", ({ target }) => this.refreshTextFonts([target])),
       this.canvas.on("text:editing:exited", () => this.commit()),
       this.canvas.on("mouse:dblclick", ({ subTargets }) => {
         const editableText = [...(subTargets || [])]
@@ -756,6 +758,16 @@ export class FabricEditorCore {
     };
   }
 
+  protected refreshTextFonts(nodes: EditorFontText[] = this.canvas.getObjects()): void {
+    if (this.destroyed || this.restoring) return;
+    void prepareEditorFonts(nodes, () => this.fabric.cache?.clearFontCache()).then(() => {
+      if (this.destroyed || this.restoring) return;
+      refreshEditorFontMetrics(nodes);
+      this.canvas.requestRenderAll();
+      this.emit();
+    });
+  }
+
   protected emit(): void {
     if (!this.destroyed) this.callbacks.onChange(this.readView());
   }
@@ -972,6 +984,8 @@ export class FabricEditorCore {
     const abort = new AbortController();
     this.restoreAbort = abort;
     try {
+      await prepareEditorFonts(snapshot.json.objects as EditorFontText[], () => this.fabric.cache?.clearFontCache());
+      if (this.destroyed || abort.signal.aborted) return false;
       await this.canvas.loadFromJSON(snapshot.json, undefined, {
         signal: abort.signal,
       });
@@ -999,6 +1013,8 @@ export class FabricEditorCore {
         (caught instanceof DOMException && caught.name === "AbortError");
       if (!aborted) {
         try {
+          await prepareEditorFonts(fallback.json.objects as EditorFontText[], () => this.fabric.cache?.clearFontCache());
+          if (this.destroyed || abort.signal.aborted) return false;
           await this.canvas.loadFromJSON(fallback.json, undefined, {
             signal: abort.signal,
           });
@@ -1168,6 +1184,7 @@ export class FabricEditorCore {
     // 本人此刻正在动的对象：别人对它的改动先不覆盖（本人这一手结束后会推送，后写者胜）
     const heldId = active && (this.gestureBase || active.isEditing) ? active.oceanleoId : undefined;
     const toBuild = [...delta.changed].filter((id) => remoteById.has(id) && id !== heldId);
+    await prepareEditorFonts(toBuild.map(id => remoteById.get(id) as EditorFontText), () => this.fabric.cache?.clearFontCache());
     const built = toBuild.length
       ? await this.fabric.util.enlivenObjects<FabricObject>(toBuild.map((id) => remoteById.get(id) as Record<string, unknown>))
       : [];

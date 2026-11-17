@@ -35,9 +35,9 @@ export function normalizeBayMineTab(raw: string | null | undefined): BayMineTab 
 }
 export const BAY_SETTINGS_PANES: readonly ("profile" | "vetting" | "money")[] = ["profile", "vetting", "money"];
 /**
- * `/bay?kind=<值>`（六值 URL 合同，界面不再并排摆键）：
- * `service`（默认，不写进地址）= 人工服务（含答疑）；
- * `asset` = 现成文件（素材库 + 卖家在售；类型、来源分区、文书区）；`app` = 网站与软件服务；`lesson` = 课程；
+ * `/bay?kind=<值>`（六值 URL 合同，五个交易种类以标签展开）：
+ * `service` = 人工服务（含答疑）；
+ * `asset`（默认，不写进地址）= 现成文件（官方成品 + 卖家作品，按文件种类浏览）；`app` = 网站与软件服务；`lesson` = 课程；
  * `other` = 其他；`request` = 求购（这个类目里的需求，含求助）。
  * 老值 `supply`/`all`/`consult` → service，`demand`/`help` → request，`material` → asset。
  */
@@ -46,10 +46,10 @@ export const BAY_KIND_PARAM = "kind";
 export const BAY_OFFER_PARAM = "offer";
 export const BAY_FEED_KINDS = ["service", "asset", "app", "lesson", "other", "request"] as const;
 export type BayFeedKind = (typeof BAY_FEED_KINDS)[number];
-export const DEFAULT_BAY_FEED_KIND: BayFeedKind = "service";
-/** 出售栏的五个种类（求购栏的 `offer` 取同一组值）。顺序就是下拉里的顺序。 */
+export const DEFAULT_BAY_FEED_KIND: BayFeedKind = "asset";
+/** 出售栏的五个种类（求购栏的 `offer` 取同一组值）。顺序就是页面标签的顺序。 */
 export type BaySellKind = Exclude<BayFeedKind, "request">;
-export const BAY_SELL_KINDS: readonly BaySellKind[] = BAY_FEED_KINDS.filter((kind): kind is BaySellKind => kind !== "request");
+export const BAY_SELL_KINDS: readonly BaySellKind[] = ["asset", "service", "app", "lesson", "other"];
 
 /**
  * 五个种类的名字（中文原文；界面里经 `tt()` 显示）。操作员 2026-10-23 拍板，全站统一：

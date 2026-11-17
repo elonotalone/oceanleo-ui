@@ -86,13 +86,13 @@ test("Bay 类型映射到模板 artifactType 与原件货架 type", () => {
   assert.equal(mineArtifactTypeForBay("ppt"), "deck");
 });
 
-test("新类型进下拉：海报 / 表格 / 工作流 / 游戏 / PDF", () => {
-  for (const type of ["poster", "grid", "workflow", "game", "pdf"]) {
+test("成品种类卡展示设计稿 / 表格 / 游戏 / PDF，工作流仅保留底层接口", () => {
+  for (const type of ["poster", "grid", "game", "pdf"]) {
     assert.equal(isBayAssetType(type), true, type);
     assert.ok(BAY_ASSET_TYPE_ORDER.includes(type), type);
     assert.ok(BAY_ASSET_TYPE_LABELS[type], type);
   }
-  assert.equal(BAY_ASSET_TYPE_LABELS.poster, "海报");
+  assert.equal(BAY_ASSET_TYPE_LABELS.poster, "设计稿（多图层）");
   assert.equal(BAY_ASSET_TYPE_LABELS.grid, "表格");
   assert.equal(BAY_ASSET_TYPE_LABELS.workflow, "工作流");
   assert.equal(BAY_ASSET_TYPE_LABELS.game, "游戏");
@@ -108,8 +108,8 @@ test("来源第一档是「卖家在售」，「我上传的」一档，stocked 
   assert.equal(ZONE_LABELS.live, "实时搜索");
   assert.equal(parseZone("mine", "website"), "mine");
   assert.equal(parseZone("owned", "website"), "owned");
-  assert.match(LIBRARY, /data-bay-asset-mine/);
-  assert.match(LIBRARY, /BaySignInPrompt/);
+  assert.doesNotMatch(LIBRARY, /data-bay-asset-mine/);
+  assert.doesNotMatch(LIBRARY, /BaySignInPrompt/);
 });
 
 test("listTemplateMaterials({ artifactType: \"website\" }) 会打 artifactType=website", async () => {
@@ -264,7 +264,7 @@ test("官方成品保留兼容 previewHref，Bay 卡片由宿主打开共享详�
   assert.doesNotMatch(CARD, /getArtifactEditDecision/);
   assert.match(CARD, /onOpen\(asset\)/);
   assert.doesNotMatch(CARD, /window\.location/);
-  assert.match(LIBRARY, /官方成品/);
+  assert.match(LIBRARY, /loadReadyOfficial/);
 });
 
 test("LeoDev 门户上的网站成品链到网站槽，不落到正式站", () => {

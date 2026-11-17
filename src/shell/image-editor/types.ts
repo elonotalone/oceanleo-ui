@@ -116,6 +116,7 @@ export interface TextSettings {
   verticalText?: boolean;
   value: string;
   fontFamily: string;
+  fontWeight?: number;
   fontSize: number;
   fill: string;
   backgroundColor: string;

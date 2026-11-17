@@ -93,6 +93,11 @@ export function dispatchFabricImageCommand(
     case "clear-format":
       editor.clearSelectedTextFormat();
       break;
+    case "font-weight": {
+      const weight = Number(message.value);
+      if ([400, 500, 700, 900].includes(weight)) editor.setSelectedText({ fontWeight: weight });
+      break;
+    }
     case "font-family":
       if (typeof message.value === "string" && message.value.trim()) {
         editor.setSelectedText({ fontFamily: message.value.trim().slice(0, 300) });

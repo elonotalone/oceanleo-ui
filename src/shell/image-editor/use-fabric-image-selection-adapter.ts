@@ -48,7 +48,7 @@ export function useFabricImageSelectionAdapter({
       transformInfo: editor.transformInfo,
       filters,
       layers: editor.layers,
-      fonts: FONT_OPTIONS,
+      fonts: FONT_OPTIONS.map(font => ({ ...font, label: tt(font.label) })),
       tt,
     });
     return {
