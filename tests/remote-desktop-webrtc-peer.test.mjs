@@ -247,9 +247,29 @@ test('page reload advances the same session peer generation without storing cred
 test('lost recovery answer retries a fresh generation while preserving session and input sequence',async t=>{
  const h=await harness(t);await h.viewer.start();h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
  h.viewer.send({kind:'keypress',key:'A'});const seq=h.viewer.lastSequence();h.viewer.pc.state('failed');await h.advance(200);const waiting=h.viewer.pc,gen=h.viewer.gen;
- await h.advance(5100);assert.notEqual(h.viewer.pc,waiting);assert.equal(h.viewer.gen,gen+1);assert.equal(h.viewer.lastSequence(),seq);assert.deepEqual(h.terminals,[]);
+ await h.advance(2400);assert.equal(h.viewer.pc,waiting);await h.advance(100);
+ assert.notEqual(h.viewer.pc,waiting);assert.equal(h.viewer.gen,gen+1);assert.equal(h.viewer.lastSequence(),seq);assert.deepEqual(h.terminals,[]);
  await h.viewer.signal({k:'answer',gen,sdp:'late'});assert.equal(h.viewer.pc.remoteDescription,undefined);
- await h.viewer.signal({k:'answer',gen:h.viewer.gen,sdp:'current'});const answered=h.viewer.pc;await h.advance(6000);assert.equal(h.viewer.pc,answered);
+ await h.viewer.signal({k:'answer',gen:h.viewer.gen,sdp:'current'});const answered=h.viewer.pc;h.open();await h.advance(6000);assert.equal(h.viewer.pc,answered);
+});
+test('a retained old frame cannot disable the replacement peer ICE checking deadline',async t=>{
+ const h=await harness(t);await h.viewer.start();h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
+ h.viewer.send({kind:'keypress',key:'A'});const seq=h.viewer.lastSequence();h.viewer.pc.state('failed');await h.advance(200);const waiting=h.viewer.pc,gen=h.viewer.gen;
+ await h.viewer.signal({k:'answer',gen,sdp:'answer-without-connection'});
+ await h.advance(4900);assert.equal(h.viewer.pc,waiting);assert.equal(h.frames.length,1);
+ await h.advance(100);assert.notEqual(h.viewer.pc,waiting);assert.equal(h.viewer.gen,gen+1);
+ assert.equal(h.viewer.lastSequence(),seq);assert.deepEqual(h.terminals,[]);
+ await h.viewer.signal({k:'answer',gen,sdp:'retired-answer'});assert.equal(h.viewer.pc.remoteDescription,undefined);
+ h.open();assert.equal(h.viewer.pc.channel('rd-input').sent.some(message=>message.a?.kind==='keypress'),false);
+});
+test('unanswered repeated ICE restarts cannot postpone the first recovery deadline',async t=>{
+ const h=await harness(t);await h.viewer.start();await h.viewer.signal({k:'answer',gen:1,sdp:'initial-answer'});h.open();
+ const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
+ const old=h.viewer.pc;old.state('disconnected');old.ice('disconnected');await h.advance(2000);
+ assert.equal(old.offers.length,2);assert.equal(h.viewer.gen,1);
+ await h.advance(4900);assert.equal(h.viewer.pc,old);assert.ok(old.offers.length>2);
+ await h.advance(100);assert.notEqual(h.viewer.pc,old);assert.equal(h.viewer.gen,2);assert.deepEqual(h.terminals,[]);
+ await h.viewer.signal({k:'bye',gen:1,reason:'peer_failed'});await h.advance(200);assert.equal(h.viewer.gen,2);
 });
 test('cold unanswered offer is never replayed before replacing only its peer; connected picture stays healthy',async t=>{
  const h=await harness(t);await h.viewer.start();const cold=h.viewer.pc,first={...h.signals[0]};
