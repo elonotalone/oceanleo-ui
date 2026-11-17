@@ -171,12 +171,12 @@ test("chatFileMatches filters by query (name / conversation / sender) and by MyL
   assert.equal(client.chatFileMatches(pdf, { query: "张三", category: "all" }), true);
   assert.equal(client.chatFileMatches(png, { query: "photo", category: "all" }), true, "query is case-insensitive");
   assert.equal(client.chatFileMatches(png, { query: "季度", category: "all" }), false);
-  assert.equal(client.chatFileCategory(pdf), "pdf_editing", "a PDF lands in 「PDF」 like an uploaded PDF");
+  assert.equal(client.chatFileCategory(pdf), "document_editing", "a PDF lands in Documents like an uploaded PDF");
   assert.equal(client.chatFileCategory(png), "image_editing");
   assert.equal(client.chatFileCategory(docx), "document_editing");
   assert.equal(client.chatFileCategory(voice), "audio");
-  assert.equal(client.chatFileMatches(pdf, { query: "", category: "pdf_editing" }), true);
-  assert.equal(client.chatFileMatches(png, { query: "", category: "pdf_editing" }), false);
+  assert.equal(client.chatFileMatches(pdf, { query: "", category: "document_editing" }), true);
+  assert.equal(client.chatFileMatches(png, { query: "", category: "document_editing" }), false);
   assert.equal(client.chatFileMatches(png, { query: "", category: "images" }), true, "filter ids are normalized");
   assert.equal(client.chatFileMatches(zip, { query: "", category: "document_editing" }), false);
   assert.equal(client.chatFileMatches(pdf, { query: "张三", category: "image_editing" }), false);
@@ -195,7 +195,7 @@ test("grid lists name, size, conversation, sender and date; Download and 「打�
   assert.match(first.textContent, /张三 · 产品群 · 2\.0 KB · T\(2026-11-05T08:00:00Z\)/);
   assert.match(second.textContent, /我发送的 · 李四 · 1\.5 MB · T\(2026-11-06T09:00:00Z\)/);
   assert.doesNotMatch(second.textContent, /我自己/, "sent files show 我发送的, not the sender name");
-  assert.equal(first.querySelector("[data-kind-icon]").textContent, "PDF");
+  assert.equal(first.querySelector("[data-kind-icon]").textContent, "文档");
   const download = first.querySelector("a[data-library-chat-file-download]");
   assert.equal(download.getAttribute("href"), received.url);
   assert.equal(download.getAttribute("download"), received.name);
@@ -216,9 +216,9 @@ test("list view uses the collection rows; query and category filter the loaded f
   assert.ok(ui.container.querySelector(".divide-y"), "list uses CollectionItemList");
   await ui.render({ query: "PHOTO", category: "all", view: "list" });
   assert.deepEqual(cards(ui.container).map((node) => node.getAttribute("data-library-chat-file")), ["m2:0"]);
-  await ui.render({ query: "", category: "pdf_editing", view: "list" });
+  await ui.render({ query: "", category: "document_editing", view: "list" });
   assert.deepEqual(cards(ui.container).map((node) => node.getAttribute("data-library-chat-file")), ["m1:0"]);
-  await ui.render({ query: "李四", category: "pdf_editing", view: "list" });
+  await ui.render({ query: "李四", category: "document_editing", view: "list" });
   assert.equal(cards(ui.container).length, 0);
   assert.equal(ui.container.querySelector("[data-empty-title]").textContent, "没有匹配内容");
   assert.equal(state.calls.length, 1, "filters never refetch");

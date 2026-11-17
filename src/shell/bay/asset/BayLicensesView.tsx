@@ -11,60 +11,6 @@ export interface BayLicensesViewProps {
   onClose: () => void;
 }
 
-const SHELF_GENERATED_AT = "2026-08-07";
-
-type Origin = "first-party" | "external";
-
-interface ShelfSource {
-  key: string;
-  name: string;
-  origin: Origin;
-  count: number;
-  types: string;
-  codes?: string;
-  duty: string;
-}
-
-const SHELF_SOURCES: ShelfSource[] = [
-  { key: "svgrepo", name: "SVG Repo", origin: "external", count: 46303, types: "矢量图",
-    codes: "CC0 / PDM / MIT", duty: "多数无附加义务；标 MIT 的那部分用在成品里必须附带许可证原文" },
-  { key: "openmoji", name: "OpenMoji", origin: "external", count: 1644, types: "贴纸",
-    codes: "CC-BY-SA", duty: "需署名，且衍生作品必须沿用同一授权" },
-  { key: "oceanleo-design", name: "OceanLeo 自制 PPT 模板", origin: "first-party", count: 243, types: "PPT 模板",
-    duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "polyhaven", name: "Poly Haven", origin: "external", count: 220, types: "3D 模型",
-    codes: "CC0", duty: "无附加义务" },
-  { key: "tabler", name: "Tabler Icons", origin: "external", count: 182, types: "矢量图",
-    codes: "MIT", duty: "用在成品里必须附带许可证原文" },
-  { key: "freesound", name: "Freesound", origin: "external", count: 138, types: "音频",
-    codes: "CC0 / CC-BY", duty: "标 CC-BY 的需署名，标 CC0 的无附加义务" },
-  { key: "fine-t2i", name: "fine-t2i 开源文生图数据集", origin: "external", count: 120, types: "Prompt 示例",
-    codes: "Apache-2.0", duty: "用在成品里必须附带许可证原文与版权声明" },
-  { key: "oceanleo-aigen", name: "OceanLeo AI 生成", origin: "first-party", count: 94, types: "图片",
-    duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "opensource-font", name: "开源字体", origin: "external", count: 73, types: "字体",
-    codes: "OFL / Free-Commercial", duty: "标 OFL 的随字体附带许可证原文，且字体本身不得单独售卖" },
-  { key: "oceanleo", name: "OceanLeo 自制图片", origin: "first-party", count: 47, types: "图片",
-    duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "oceanleo-chart", name: "OceanLeo 自制图表", origin: "first-party", count: 44, types: "图表",
-    duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "oceanleo-curated", name: "OceanLeo 精选成品", origin: "first-party", count: 29, types: "文档 / PDF / Sheet / 网站",
-    duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "oceanleo-design-template", name: "LeoDesign 可编辑模板", origin: "first-party", count: 29, types: "图片",
-    duty: "免费下载 · 可商用 · 禁止再分发" },
-  { key: "worldbank", name: "世界银行公开数据", origin: "external", count: 18, types: "图表",
-    codes: "CC-BY", duty: "需署名" },
-  { key: "met-museum", name: "大都会艺术博物馆", origin: "external", count: 3, types: "图片",
-    codes: "CC0", duty: "无附加义务" },
-  { key: "lucide", name: "Lucide", origin: "external", count: 2, types: "矢量图",
-    codes: "ISC", duty: "用在成品里必须附带许可证原文" },
-];
-
-const FIRST_PARTY_COUNT = SHELF_SOURCES.filter((s) => s.origin === "first-party")
-  .reduce((sum, s) => sum + s.count, 0);
-const EXTERNAL_COUNT = SHELF_SOURCES.filter((s) => s.origin === "external")
-  .reduce((sum, s) => sum + s.count, 0);
-
 interface DutyRow {
   codes: string;
   what: string;
@@ -137,25 +83,15 @@ const subscribeNever = () => () => {};
 
 function LicensesBody() {
   const tt = useUI();
-  const total = FIRST_PARTY_COUNT + EXTERNAL_COUNT;
   const termsUrl = `${currentDomainProfile().portalOrigin}/legal/first-party-assets`;
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-6">
       <h1 className="text-2xl font-semibold text-stone-900">{tt("产权与授权说明")}</h1>
-      <p className="mt-2 text-sm leading-relaxed text-stone-600">
-        {tt(
-          "素材库里的每一件东西，要么是 OceanLeo 自己做的，要么是从外部开源平台收进来的。这两种的规矩不一样，下面分开讲清楚。",
-        )}
-      </p>
-
       <div className="mt-6 grid gap-3 sm:grid-cols-2">
         <div>
           <p className="text-sm font-semibold text-sky-900">
             {tt("OceanLeo 自产")}
-            <span className="ml-2 font-normal text-sky-700">
-              {tt("{n} 件", { n: FIRST_PARTY_COUNT })}
-            </span>
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-stone-700">
             {tt(
@@ -174,9 +110,6 @@ function LicensesBody() {
         <div>
           <p className="text-sm font-semibold text-stone-900">
             {tt("外部素材")}
-            <span className="ml-2 font-normal text-stone-600">
-              {tt("{n} 件", { n: EXTERNAL_COUNT })}
-            </span>
           </p>
           <p className="mt-1.5 text-xs leading-relaxed text-stone-700">
             {tt(
@@ -204,49 +137,6 @@ function LicensesBody() {
         ))}
       </div>
 
-      <h2 className="mt-8 text-lg font-semibold text-stone-800">{tt("货架上的素材来自哪里")}</h2>
-      <p className="mt-1 text-xs text-stone-500">
-        {tt(
-          "下面是当前货架上真实存在的全部来源，共 {sources} 个来源、{total} 件。数据截至 {date}。",
-          { sources: SHELF_SOURCES.length, total, date: SHELF_GENERATED_AT },
-        )}
-      </p>
-      <div className="mt-3 overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-stone-50 text-xs uppercase text-stone-500">
-            <tr>
-              <th className="px-4 py-2">{tt("来源")}</th>
-              <th className="px-4 py-2">{tt("类型")}</th>
-              <th className="px-4 py-2 text-right">{tt("件数")}</th>
-              <th className="px-4 py-2">{tt("你要做什么")}</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-stone-100">
-            {SHELF_SOURCES.map((s) => (
-              <tr key={s.key} className={s.origin === "first-party" ? "bg-sky-50/40" : undefined}>
-                <td className="px-4 py-2">
-                  <span className="font-medium text-stone-800">{tt(s.name)}</span>
-                  <span
-                    className={`ml-2 inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${
-                      s.origin === "first-party"
-                        ? "border-sky-200 bg-sky-50 text-sky-700"
-                        : "border-stone-200 bg-white text-stone-500"
-                    }`}
-                  >
-                    {s.origin === "first-party" ? tt("自产") : tt("外部")}
-                  </span>
-                  {s.codes ? (
-                    <span className="mt-0.5 block text-[11px] text-stone-400">{s.codes}</span>
-                  ) : null}
-                </td>
-                <td className="px-4 py-2 text-stone-600">{tt(s.types)}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-stone-600">{s.count}</td>
-                <td className="px-4 py-2 text-xs text-stone-600">{tt(s.duty)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
 
       <p className="mt-6 text-xs leading-relaxed text-stone-400">
         {tt(

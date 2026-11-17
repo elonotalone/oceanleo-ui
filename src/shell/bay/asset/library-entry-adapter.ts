@@ -5,10 +5,10 @@ import { workspaceEntryFromLibraryItem, type WorkspaceLibraryEntry } from '../..
 
 type AssetInput = BayDigitalAsset | BayAsset;
 const KINDS: Record<string, LibraryKind> = {
-  image: 'image', single_file_image: 'image', composite_image: 'image', poster: 'image', vector: 'image', vector_image: 'image', sticker: 'image',
-  video: 'video', audio: 'audio', music: 'audio',
+  image: 'image', single_file_image: 'image', composite_image: 'image', poster: 'image', vector_image: 'image',
+  video: 'video', audio: 'audio',
   '3d': 'threed', model_3d: 'threed', ppt: 'ppt', deck: 'ppt', document: 'document', pdf: 'document',
-  grid: 'sheet', sheet: 'sheet', chart: 'image', website: 'website', game: 'game', prompt: 'document', interactive_doc: 'interactive_doc',
+  grid: 'sheet', sheet: 'sheet', website: 'website', game: 'game', interactive_doc: 'interactive_doc',
 };
 function text(value: unknown): string { return typeof value === 'string' ? value.trim() : ''; }
 function sellerName(asset: AssetInput): string { return text(asset.author) || ('seller_id' in asset ? text(asset.seller_id) : '') || ''; }

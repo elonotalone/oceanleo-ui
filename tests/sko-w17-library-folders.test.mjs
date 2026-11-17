@@ -275,10 +275,10 @@ test("「全部」: MyLibrary renders the host slot after the type row; Library 
   const artifact = readFileSync(new URL("../src/shell/ArtifactLibrary.tsx", import.meta.url), "utf8");
   assert.match(
     artifact,
-    /\(myLibraryCategory \?\? "all"\) === "all" && filter !== "favorites" && folders\.module\s*\? \(\{ query, favoritesOnly, section: shown \}/,
+    /section !== "task" && \["all", "files"\]\.includes\(myLibraryCategory \?\? "all"\) && filter !== "favorites" && folders\.module\s*\? \(\{ query, favoritesOnly, section: shown \}/,
   );
   // 「仅看收藏」打开时不显示；横排跟着搜索词；只在「上传的」分区（上传的文件夹在那里变成文件包）。
-  assert.match(artifact, /return Strip && !favoritesOnly && shown === "upload" \? \(\s*<Strip query=\{query\} onViewAll=/);
+  assert.match(artifact, /return Strip && !favoritesOnly && shown !== "task" \? \(\s*<Strip query=\{query\} onViewAll=/);
 });
 
 test("folder strip: newest first, capped, compact cards with 技能 badge", () => {

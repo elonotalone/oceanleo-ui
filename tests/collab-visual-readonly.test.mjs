@@ -221,3 +221,101 @@ test("DeckRoute 接线：只读上下文与后台任务锁，工具条 / 面板 
   const src = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
   assert.match(src, /useEditorContext\(buildDeckContext\(editor\)\)/);
   assert.match(src, /readOnly: collabReadOnly \|\| aiReadOnly/);
+  assert.match(src, /useDeckSelectionAdapter\(\{\s*editor,\s*readOnly:\s*viewOnly\s*\}\)/);
+  assert.match(src, /viewOnlyUploadHandler\(viewOnly, addLocalFiles\)/);
+  assert.match(src, /canUndo: editor\.canUndo && !viewOnly/);
+  assert.equal((src.match(/<VisualViewOnlyPanel readOnly=\{viewOnly\}>/g) || []).length, 5, "五个抽屉（模板 / 元素 / 画笔 / 线条 / 便签，10-23 D3）都包了只读外壳");
+});
+
+test("ImageRoute 接线：工具条、面板、上传、撤销都吃同一个 viewOnly；图片素材与 AI 入口各挡一次", () => {
+  const image = readFileSync(new URL("../src/shell/advanced-routes/ImageRoute.tsx", import.meta.url), "utf8");
+  assert.match(image, /useFabricImageSelectionAdapter\(\{\s*editor,\s*readOnly:\s*viewOnly\s*\}\)/);
+  assert.match(image, /viewOnlyUploadHandler\(viewOnly, addLocalImages\)/);
+  assert.match(image, /useEditorContext\(createImageContext\(\{ editor, item: activeItem \}\)\)/);
+  assert.match(image, /readOnly: collabReadOnly \|\| aiReadOnly/);
+  assert.match(image, /if \(viewOnly\) throw new Error\(VIEW_ONLY_REFUSAL\);/);
+  assert.doesNotMatch(image, /FabricImageAiPanel/);
+  // 导出面板是查看类，不包
+  assert.doesNotMatch(image, /<VisualViewOnlyPanel[^>]*><FabricImageExportPanel/);
+  // 内核入口：AI 改图在导出画布、调模型之前就挡住
+  const hook = readFileSync(new URL("../src/shell/image-editor/use-fabric-image-editor.ts", import.meta.url), "utf8");
+  const start = hook.indexOf("const runAiEdit = useCallback");
+  assert.ok(start > 0);
+  const body = hook.slice(start, start + 700);
+  assert.ok(body.indexOf("optionsRef.current.collab?.readOnly") > 0 && body.indexOf("optionsRef.current.collab?.readOnly") < body.indexOf("makeExportBlob"));
+});
+
+test("PPT 「新建一页」按钮（舞台栏）只读时 disabled 且提示「你只能查看」；快捷键只读时只留翻页", () => {
+  for (const path of ["src/shell/doc-editors/DeckStage.tsx"]) {
+    const src = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+    assert.match(src, /onClick=\{editor\.addSlide\}\s*disabled=\{editor\.readOnly\}/, path);
+    assert.match(src, /title=\{editor\.readOnly \? tt\("你只能查看"\) : tt\("新建一页"\)\}/, path);
+  }
+  const shortcuts = readFileSync(new URL("../src/shell/doc-editors/use-deck-stage-shortcuts.ts", import.meta.url), "utf8");
+  const gate = shortcuts.indexOf("if (currentEditor.readOnly) {");
+  assert.ok(gate > 0, "只读分支存在");
+  assert.ok(gate < shortcuts.indexOf("currentEditor.undo()"), "只读分支在撤销 / 复制 / 删除 / 挪动之前就返回");
+  assert.ok(gate < shortcuts.indexOf("currentEditor.deleteElement()"));
+  assert.ok(gate < shortcuts.indexOf("patchElementTransient"));
+});
+
+test("PPT 「新建一页」按钮（舞台栏）只读时 disabled 且提示「你只能查看」；快捷键只读时只留翻页", () => {
+  for (const path of ["src/shell/doc-editors/DeckStage.tsx"]) {
+    const src = readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+    assert.match(src, /onClick=\{editor\.addSlide\}\s*disabled=\{editor\.readOnly\}/, path);
+    assert.match(src, /title=\{editor\.readOnly \? tt\("你只能查看"\) : tt\("新建一页"\)\}/, path);
+  }
+  const shortcuts = readFileSync(new URL("../src/shell/doc-editors/use-deck-stage-shortcuts.ts", import.meta.url), "utf8");
+  const gate = shortcuts.indexOf("if (currentEditor.readOnly) {");
+  assert.ok(gate > 0, "只读分支存在");
+  assert.ok(gate < shortcuts.indexOf("currentEditor.undo()"), "只读分支在撤销 / 复制 / 删除 / 挪动之前就返回");
+  assert.ok(gate < shortcuts.indexOf("currentEditor.deleteElement()"));
+  assert.ok(gate < shortcuts.indexOf("patchElementTransient"));
+});
+
+// ---------------------------------------------------------------- 真渲染：用真的 SelectionToolbar 画出来看按钮
+
+/** 渲染结果里「还能点」的改动类控件：没 disabled 的、不是「打开面板」的 button / select / input。 */
+function enabledMutatingTags(html, allowLabels = []) {
+  const tags = html.match(/<(?:button|select|input|textarea)\b[^>]*>/g) || [];
+  return tags.filter((tag) => {
+    if (/\sdisabled=""/.test(tag)) return false;
+    if (/tabindex="-1"/.test(tag)) return false; // 量宽用的隐藏副本，用户点不到
+    if (/aria-haspopup="dialog"/.test(tag)) return false; // 打开面板的入口：面板里的控件另有 disabled
+    if (/data-edit-bar-interactive/.test(tag)) return false; // 「更多属性」入口
+    if (allowLabels.some((label) => tag.includes(`aria-label="${label}"`))) return false;
+    return true;
+  });
+}
+
+for (const selectedType of ["text", "shape", "image"]) {
+  test(`真渲染：PPT 浮条（选中${selectedType}）只读时没有可点的改动按钮；可写时有`, async () => {
+    const { DeckContextToolbar } = await import(
+      await compileSelectionAdapterHost("src/shell/doc-editors/use-deck-selection-adapter.ts", "useDeckSelectionAdapter", "DeckContextToolbar", { "../../i18n/ui/useUI": useUiStub })
+    );
+    const locked = renderToStaticMarkup(
+      React.createElement(DeckContextToolbar, { editor: deckEditorWith(selectedType).editor, readOnly: true }),
+    );
+    assert.match(locked, /你只能查看/);
+    assert.deepEqual(enabledMutatingTags(locked), []);
+    const open = renderToStaticMarkup(
+      React.createElement(DeckContextToolbar, { editor: deckEditorWith(selectedType).editor, readOnly: false }),
+    );
+    assert.ok(enabledMutatingTags(open).length > 0);
+  });
+}
+
+test("真渲染：图片浮条只读时没有可点的改动按钮；可写时有", async () => {
+  const { FabricImageContextToolbar } = await import(
+    await compileSelectionAdapterHost("src/shell/image-editor/use-fabric-image-selection-adapter.ts", "useFabricImageSelectionAdapter", "FabricImageContextToolbar", { "../../i18n/ui/useUI": useUiStub })
+  );
+  const locked = renderToStaticMarkup(
+    React.createElement(FabricImageContextToolbar, { editor: imageEditorWith().editor, readOnly: true }),
+  );
+  assert.match(locked, /你只能查看/);
+  assert.deepEqual(enabledMutatingTags(locked), []);
+  const open = renderToStaticMarkup(
+    React.createElement(FabricImageContextToolbar, { editor: imageEditorWith().editor, readOnly: false }),
+  );
+  assert.ok(enabledMutatingTags(open).length > 0);
+});

@@ -23,6 +23,7 @@ const viewer = dataModule(`import { createElement as h } from ${JSON.stringify(r
  export const WorkspaceListRow=WorkspaceCard;`);
 const stubs = {
  "../../../i18n/ui/useUI": ui,
+ "../plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
  "../../i18n/ui/useUI": ui,
  "../i18n/ui/useUI": ui,
  "next-intl": dataModule('export function useLocale(){return "en";}'),

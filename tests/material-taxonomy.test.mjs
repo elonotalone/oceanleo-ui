@@ -19,6 +19,8 @@ const signal = () => new AbortController().signal;
 
 test("navigation comes from validated API data, including empty categories and video", () => {
   const parsed = taxonomy.parseMaterialTaxonomy(fixture);
+  assert.equal(client.materialBayType("vector_image"), "image");
+  for (const removed of ["workflow", "chart", "vector", "sticker", "music", "font", "prompt"]) assert.equal(client.materialBayType(removed), null);
   assert.deepEqual(parsed.shelves.map((row) => row.id), ["deck", "design", "document", "sheet", "website", "game", "video", "model_3d", "audio"]);
   assert.deepEqual(parsed.shelves.find((row) => row.id === "document").artifactTypes, ["document", "pdf"]);
   assert.throws(() => taxonomy.parseMaterialTaxonomy({ shelves: [] }));

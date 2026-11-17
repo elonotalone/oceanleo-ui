@@ -1160,3 +1160,169 @@ export function GridUniverStage({
       return port ? { sheetId: port.sheet.getSheetId(), range: port.selection } : null;
     },
   }));
+
+  // 恢复草稿等协同首同步把房间内容套进画布之后再开始（`grid-univer/open-settle.ts`）。
+  const recoveryReady = gridRecoveryReady({
+    snapshotReady, loading, sourceFailed, collabOn, collabPhase, collabBound,
+  });
+  useEffect(() => {
+    setGridProbe("state", { editRevision, dirty, collab: collabPhase, ready: recoveryReady });
+  }, [collabPhase, dirty, editRevision, recoveryReady]);
+
+  const selectionContext = useMemo(
+    () =>
+      ({
+        ...gridUniverSelectionContext({
+          revision: editRevision + toolbarEpoch,
+          kind: "grid-cell",
+          tt,
+          selection: live.read?.selection,
+          sheetId: live.read?.sheetId,
+          style: live.read?.style,
+          numberType: live.read?.numberType,
+        }),
+        bar: "text" as const,
+      }),
+    [editRevision, live.read, toolbarEpoch, tt],
+  );
+
+  return (
+    <AdvancedWorkbenchShell
+      item={item}
+      taskId={taskId}
+      siteId={siteId}
+      accent={accent}
+      adapter={{
+        id: "grid",
+        label: editorToolLabel({ type: "grid" }),
+        collab: {
+          room: collabRoom,
+          artifact: item.artifactId
+            ? {
+                id: String(item.artifactId),
+                title: item.title || "",
+                editorKind: GRID_COLLAB_EDITOR_KIND,
+              }
+            : null,
+        },
+        selection: { context: readonly ? null : selectionAdapterContext(selectionContext), dispatch: runControl },
+        history: {
+          canUndo: live.history.canUndo,
+          canRedo: live.history.canRedo,
+          undo,
+          redo,
+        },
+        mode: {
+          current: mode,
+          setMode: (next) => {
+            setMode(next);
+          },
+        },
+        pages: { proLabel: GRID_PRO_LABEL },
+        directDownload: exportDownloads[0],
+        actions: [
+          // 文档段：「重新计算」在最前（规范 v2 §6 grid 行），其后是失败时的重载/重试。
+          ...documentActions,
+          ...(readonly
+            ? [
+                {
+                  id: "grid-convert-legacy",
+                  label: tt("转换为新表格"),
+                  disabled: conversion === "converting",
+                  onTrigger: convertLegacy,
+                },
+              ]
+            : []),
+          ...exportDownloads.slice(1),
+        ],
+        upload: {
+          accept: docFamilyAcceptAttribute("grid"),
+          onFiles: importLocalFile,
+        },
+        stage: (
+          // 普通模式留出停靠编辑栏的高度，栏不盖列头（`gridStageTopInset`）。
+          <div
+            className="relative h-full w-full"
+            style={{ paddingTop: gridStageTopInset(mode) }}
+          >
+            {/*
+              容器永远在树上：Univer 只认这个元素，加载态不能替换它，
+              否则 snapshot 就位时 `containerRef.current` 还是 null。
+            */}
+            <div
+              ref={containerRef}
+              className="h-full w-full"
+              {...{ [GRID_UNIVER_STAGE_ATTR]: "true" }}
+              {...{ [GRID_UNIVER_MODE_ATTR]: mode }}
+            />
+            {sourceFailed ? (
+              <EditorSourceFailurePanel
+                message={sourceFailureReason || gridSourceFailureMessage("", tt)}
+                onReload={() => {
+                  officeSource.retry();
+                  setReloadNonce((value) => value + 1);
+                }}
+                variant="overlay"
+              />
+            ) : !snapshotReady ? (
+              // 首次载入（读工程档 / xlsx、建实例之前）舞台不留白。
+              <div
+                className="absolute inset-0"
+                data-grid-univer-loading="true"
+              >
+                <WorkbenchRouteLoading />
+              </div>
+            ) : null}
+          </div>
+        ),
+        status:
+          conversionNotice ||
+          (collabPhase === "waiting" ? tt("正在与协作者同步…") : "") ||
+          sourceFailureReason ||
+          (officeSource.error
+            ? gridSourceFailureMessage(officeSource.error, tt)
+            : "") ||
+          status ||
+          (loading || officeSource.loading ? tt("正在载入表格") : ""),
+        persistence: {
+          dirty: dirty && !sourceFailed && snapshotReady,
+          editRevision,
+          // 协同里只有保存者自动存版本；别人的改动由它存。
+          autoSave: !readonly && collabSaveGate && !sourceFailed && snapshotReady,
+          flush: saveBeforeNewConversation,
+          ...{ preparePublish: () => {
+            const snapshot = structuredClone(currentSnapshot());
+            const revision = editRevisionRef.current;
+            return () => saveBeforeNewConversation(snapshot, revision);
+          } },
+          recovery: {
+            draftSchema: GRID_WORKING_COPY_SCHEMA,
+            key: `grid:${item.artifactId || item.meta.artifact_id || item.id}`,
+            ready: recoveryReady,
+            capture: () => {
+              if (sourceFailedRef.current || !sourceReadyRef.current || !snapshotReady || !handleRef.current) return null;
+              const snapshot = snapshotRef.current;
+              return gridSnapshotIsUsable(snapshot) ? snapshot : null;
+            },
+            restore: (payload) => {
+              // 只认 Univer 工作簿快照：旧核写下的 `{sheets:[…]}` 草稿被拒，不灌进 Univer。
+              const snapshot = gridWorkingCopy(payload);
+              if (!snapshot) return false;
+              const api = handleRef.current?.api;
+              if (!api) return false;
+              // 先建新簿再卸旧簿：先卸会让 Univer 空窗，新表常常不画。
+              replaceUniverWorkbookWithSnapshot(api, structuredClone(snapshot));
+              live.resetBaseline();
+              snapshotRef.current = snapshot;
+              dirtyRef.current = true;
+              setDirty(true);
+              applyChrome(mode);
+              return true;
+            },
+          },
+        },
+      }}
+      onClose={onClose}
+    />
+  );
+}

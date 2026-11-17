@@ -40,7 +40,7 @@ export const AssetDetail = forwardRef<HTMLDivElement, AssetDetailProps>(function
   const visibleEntry = labelItem && labelItem !== baseItem ? { ...entry, ...workspaceEntryFromLibraryItem(labelItem), detail: entry.detail } : entry;
   const canAiEdit = actionContext
     ? actionContext.surface === "library" && actionContext.owned && actionContext.rights.canUseInTask && actionContext.license?.modifyOk !== false
-    : baseItem?.artifact?.owner.visibility === "private" && baseItem.artifact.access.canEdit;
+    : baseItem?.artifact?.owner?.visibility === "private" && baseItem.artifact.access?.canEdit;
   const kind = labelItem?.kind || entry.kind;
   return (
     <div ref={ref} data-asset-detail data-asset-surface={actionContext?.surface || "library"}

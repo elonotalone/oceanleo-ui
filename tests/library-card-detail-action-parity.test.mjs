@@ -323,6 +323,7 @@ const WorkspaceLibrary = (
   await import(
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
+ "./plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
       "./artifact-client": clientStubUrl,
       "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
       "./library-data": libraryDataStubUrl,

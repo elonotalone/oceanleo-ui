@@ -208,7 +208,7 @@ test("制表符分隔的 .tsv 由表格自己认，不再白跑一趟后端", ()
 
 test("送错门的文件被指到对的编辑器，而不是给一句办不到的建议", () => {
   const sheetInDoc = docFamilyRefusalReason("richdoc", "报表.xlsx");
-  assert.match(sheetInDoc, /表格编辑器/);
+  assert.match(sheetInDoc, /Sheet 编辑器/);
   assert.ok(
     !sheetInDoc.includes("另存为 .xlsx"),
     "对着文档编辑器的用户说「另存为 .xlsx」是办不到的建议",

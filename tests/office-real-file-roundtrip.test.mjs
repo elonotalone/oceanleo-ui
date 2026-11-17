@@ -388,8 +388,9 @@ test("real XLSX load, mutate, save and reopen preserves sheets, formula and form
     new File([initial], "loaded.xlsx", { type: XLSX_MIME }),
   );
   assert.equal(sheets[0].rows[1][2], "=B2*1.13");
-  sheets[0].rows[1][1] = "168";
-  sheets[1].rows[1][0] = "真实 XLSX 往返正文";
+  // XLSX imports retain their full native workbook; rows are only a bounded display projection.
+  sheets[0].xlsxImport.worksheet.cellData[1][1].v = "168";
+  sheets[1].xlsxImport.worksheet.cellData[1][0].v = "真实 XLSX 往返正文";
 
   const { blob: saved } = await buildGridXlsxFromUniverSnapshot(gridSheetsToUniverSnapshot(sheets).data);
   assert.equal(saved.type, XLSX_MIME);

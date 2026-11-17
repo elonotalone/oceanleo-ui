@@ -9,7 +9,6 @@ export type BayBilling = "delivery" | "session" | "hour";
 export const DIGITAL_MATERIAL_KINDS = [
   "image",
   "poster",
-  "vector",
   "ppt",
   "document",
   "pdf",
@@ -19,15 +18,12 @@ export const DIGITAL_MATERIAL_KINDS = [
   "audio",
   "threed",
   "game",
-  "chart",
-  "workflow",
 ] as const;
 export type DigitalMaterialKind = (typeof DIGITAL_MATERIAL_KINDS)[number];
 
 export const DIGITAL_MATERIAL_LABEL: Record<DigitalMaterialKind, string> = {
   image: "图片",
   poster: "海报",
-  vector: "矢量图",
   ppt: "PPT",
   document: "文档",
   pdf: "PDF",
@@ -37,8 +33,6 @@ export const DIGITAL_MATERIAL_LABEL: Record<DigitalMaterialKind, string> = {
   audio: "音频",
   threed: "3D 模型",
   game: "游戏",
-  chart: "图表",
-  workflow: "工作流",
 };
 
 export type BayPostSnapshot = {
@@ -125,16 +119,6 @@ const PRESETS: BayPostSnapshot[] = [
     artifactId: "7d2444a9-112c-439a-addb-3dbeb75b3575",
     priceFen: 2900,
     license: "personal",
-    categoryLabel: "设计与视觉",
-  }),
-  digitalPreset({
-    kind: "vector",
-    title: "叶片无缝纹样",
-    description: "矢量花纹，可平铺做底纹和包装。",
-    cover: "assets/image/tpl-material/image-svg-pattern-1.webp",
-    artifactId: "4069a608-4307-4c68-a3bc-788e9536fa99",
-    priceFen: 1900,
-    license: "commercial",
     categoryLabel: "设计与视觉",
   }),
   digitalPreset({
@@ -226,16 +210,6 @@ const PRESETS: BayPostSnapshot[] = [
     priceFen: 0,
     license: "personal",
     categoryLabel: "网站与前端",
-  }),
-  digitalPreset({
-    kind: "chart",
-    title: "预期寿命对比图",
-    description: "图表成品，换数据就能用。",
-    cover: "assets/image/tpl-material/WO-G-W10-chart-excel-chart-maker-0.webp",
-    artifactId: "c26793b2-c129-45c5-841d-90a795f23bac",
-    priceFen: 4900,
-    license: "commercial",
-    categoryLabel: "文档与表格",
   }),
   {
     id: "preset:service:logo",

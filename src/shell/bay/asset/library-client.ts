@@ -5,7 +5,6 @@ import type { AssetActionContext } from "../../asset-detail/types";
 export type BayAssetType =
   | "image"
   | "poster"
-  | "vector"
   | "video"
   | "audio"
   | "3d"
@@ -53,7 +52,6 @@ export interface BayAsset {
   author: string;
   source_url: string;
   license: BayAssetLicense;
-  prompt?: string;
   tags?: string[];
   oss_key?: string;
   file_size?: number | null;

@@ -44,7 +44,7 @@ function counts(raw: unknown): Record<string, number> {
 
 /** Detail carriers stay typed independently of the broader shelf grouping. */
 export function materialBayType(artifactType: string): BayAssetType | null {
-  const types: Record<string, BayAssetType> = { deck: "ppt", single_file_image: "image", vector_image: "vector", composite_image: "poster",
+  const types: Record<string, BayAssetType> = { deck: "ppt", single_file_image: "image", vector_image: "image", composite_image: "poster",
     document: "document", pdf: "pdf", grid: "grid", website: "website", app: "website", game: "game", video: "video", model_3d: "3d", audio: "audio" };
   return types[artifactType] || null;
 }

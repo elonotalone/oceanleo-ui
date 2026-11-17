@@ -80,6 +80,8 @@ const view = dataModule(`import React from ${JSON.stringify(reactUrl)};
   export function WorkspaceLibraryEntryViewer({ entry }) { return React.createElement('div', { 'data-preview': entry.libraryItem.artifactId }, entry.title); }
 `);
 const stubs = {
+ "./plugin-command/use-library-edit": dataModule("export function useLibraryEditReload(){return 0;}"),
+ "./plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
   "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
   '../i18n/ui/useUI': ui,
   './artifact-client': client,

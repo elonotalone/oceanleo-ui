@@ -212,7 +212,7 @@ const workbenchStubs = {
   "./advanced-routes/GridRoute": namedRouteStub(
     "GridRoute",
     "grid",
-    "表格编辑",
+    "Sheet 编辑",
     "about:blank",
   ),
   "./advanced-routes/PdfRoute": namedRouteStub(

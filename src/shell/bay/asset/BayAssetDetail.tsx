@@ -27,7 +27,7 @@ const subscribeToHydration = () => () => {};
 export function bayOriginViewerItem(asset: BayAssetFull): import("../../library-data").LibraryItem {
   const kinds: Record<string, import("../../library-data").LibraryKind> = {
     ppt: "ppt", deck: "ppt", grid: "sheet", sheet: "sheet", document: "document", pdf: "document",
-    "3d": "threed", audio: "audio", music: "audio", video: "video", image: "image", vector: "image", poster: "image",
+    "3d": "threed", audio: "audio", video: "video", image: "image", poster: "image",
   };
   const url = safeHttpUrl(asset.full_url) || safeHttpUrl(asset.download_url || "") || "";
   const poster = safeHttpUrl(asset.preview_url) || safeHttpUrl(asset.thumb_url) || "";
@@ -162,20 +162,6 @@ export function BayAssetDetail({
           ) : null}
 
           <BayAssetProvenance asset={full} />
-
-          {full.type === "prompt" && full.prompt ? (
-            <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 px-4 py-3">
-              <div className="mb-2 flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">
-                  {tt("生成 Prompt")}
-                </p>
-                <CopyButton text={full.prompt} label="复制 Prompt" />
-              </div>
-              <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-stone-800">
-                {full.prompt}
-              </p>
-            </div>
-          ) : null}
 
           {full.license.attribution_required ? (
             <div className="mt-4 flex items-start justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">

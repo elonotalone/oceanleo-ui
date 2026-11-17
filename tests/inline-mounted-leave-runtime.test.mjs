@@ -13,6 +13,7 @@ const react = pathToFileURL(require.resolve("react")).href;
 const jsx = `import {jsx,jsxs} from ${JSON.stringify(pathToFileURL(require.resolve("react/jsx-runtime")).href)};`;
 const noop = (name) => dataModule(`export function ${name}(){return null;}`);
 const stubs = {
+ "./plugin-command/use-library-edit": dataModule("export function useLibraryEditorBinding(){return {phase:'idle'};} export function useLibraryEditState(){return [{}, {phase:'idle'}];} export function LibraryEditStatus(){return null;}"),
   "../lib/auth/client": dataModule('export const accessToken=async()=>"test-token",cachedAccessToken=()=>"test-token";'),
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.invalid";'),
   "../i18n/ui/useUI": dataModule('const tt=x=>x;export function useUI(){return tt;}'),

@@ -441,6 +441,7 @@ const MaterialLibrary = (
     await compileModule("src/shell/material-library-view.tsx", {
       "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
       "../i18n/ui/useUI": uiStubUrl,
+ "./plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
       "./artifact-client": artifactClientUrl,
       "./library-data": libraryDataUrl,
       "./artifact-contract": contractUrl,
@@ -511,6 +512,7 @@ const myLibraryModule = (
       "./AgentChat": dataModule(`export function AgentChat({workspaceContent}) { return workspaceContent; }`),
       "./WorkspaceSession": sessionStubUrl,
       "../i18n/ui/useUI": uiStubUrl,
+ "./plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
       "../lib/auth/client": authStubUrl,
       "../lib/database": databaseStubUrl,
       "./library-import": dataModule(`
@@ -694,6 +696,7 @@ const RenderedWorkspaceLibrary = (
   await import(
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
+ "./plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
       "./artifact-client": actionClientStubUrl,
       "./library-data": libraryDataUrl,
       "./LibraryLayout": libraryLayoutStubUrl,
@@ -702,6 +705,7 @@ const RenderedWorkspaceLibrary = (
         "src/shell/library-detail-app-actions.tsx",
         {
           "../i18n/ui/useUI": uiStubUrl,
+ "./plugin-command/LibraryEditEntry": dataModule("export function LibraryDetailEditEntry(){return null;} export function EditorLibraryEditEntry(){return null;}"),
           "./artifact-client": actionClientStubUrl,
           "./library-data": libraryDataUrl,
           "./material-library-scope": materialScopeUrl,
@@ -1851,7 +1855,7 @@ test("material cards and generic rows show type and source without machine copy"
   });
   try {
     assert.match(materialRow.container.textContent || "", /Quiet material/);
-    assert.match(materialRow.container.textContent || "", /图片/, 'D5 exposes the material category, not internal provenance');
+    assert.match(materialRow.container.textContent || "", /图像/, 'D5 exposes the material category, not internal provenance');
     assert.doesNotMatch(
       materialRow.container.textContent || "",
       /OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
@@ -1867,7 +1871,7 @@ test("material cards and generic rows show type and source without machine copy"
   });
   try {
     assert.match(materialCard.container.textContent || "", /Quiet material/);
-    assert.match(materialCard.container.textContent || "", /图片/);
+    assert.match(materialCard.container.textContent || "", /图像/);
     assert.doesNotMatch(
       materialCard.container.textContent || "",
       /OceanLeo owned|acceptance_fixture|预览|编辑|下载|收藏/,
@@ -1894,7 +1898,7 @@ test("material cards and generic rows show type and source without machine copy"
   });
   try {
     assert.match(genericRow.container.textContent || "", /Generic entry/);
-    assert.match(genericRow.container.textContent || "", /图片 · 我的创作/);
+    assert.match(genericRow.container.textContent || "", /图像 · 我的创作/);
     assert.doesNotMatch(genericRow.container.textContent || "", /用户自定义说明|acceptance_fixture/);
   } finally {
     await genericRow.unmount();
@@ -3237,7 +3241,7 @@ test("rendered My Library pins owned documents above the mixed mine page", async
       mounted.container
         .querySelector('[data-entry-title="Pinned PDF"]')
         ?.getAttribute("data-entry-category"),
-      "pdf_editing",
+      "document_editing",
     );
     await act(async () => { releaseMemberships(); });
     await settle();
