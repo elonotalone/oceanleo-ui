@@ -4,7 +4,7 @@ export interface ExportTarget { target: string; where: "client" | "server"; labe
 export interface ExportCapabilities { sources: Record<string, readonly ExportTarget[]> }
 const client = (...targets: string[]): ExportTarget[] => targets.map(target => ({ target, where: "client", label: exportTargetLabel(target) }));
 export const CLIENT_EXPORT_TARGETS: Record<ExportEditor, readonly ExportTarget[]> = {
-  richdoc: client("docx", "md", "html", "txt", "json"),
+  richdoc: client("docx", "md", "html", "txt"),
   deck: client("pptx"), grid: client("xlsx", "csv"), pdf: client("pdf"),
   image: client("png", "jpg", "webp", "pdf"), vector_image: client("png", "jpg", "webp", "pdf", "svg"),
   "video-timeline": client("mp4"), audio: client("wav"),

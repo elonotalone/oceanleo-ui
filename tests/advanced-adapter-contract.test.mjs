@@ -136,7 +136,7 @@ test("fixed workspace row owns download only; semantic actions live in the edit 
 // This contract only checks the offline generators; server formats come from capabilities.
 test("RichDoc local targets are unique and source formats remain editable", () => {
   const targets=DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.map(format=>format.extension);
-  assert.deepEqual(targets,["docx","md","html","txt","json"]);
+  assert.deepEqual(targets,["docx","md","html","txt"]);
   assert.equal(new Set(targets).size,targets.length);
 });
 
