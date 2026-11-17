@@ -1,7 +1,7 @@
 /** ExcelJS → native Univer data. Do not flatten this through the legacy string grid. */
 import type { ICellData, IStyleData, IWorksheetData } from "@univerjs/presets";
 import type * as Excel from "exceljs";
-import { strFromU8, unzipSync } from "fflate";
+import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { DELIVERED_EDITOR_FONT_FAMILIES } from "../../image-editor/editor-font-registry";
 import { bytesToDataUrl } from "../grid-univer/material-image";
 
@@ -28,6 +28,28 @@ const elements = (xml: string, name: string) => [...xml.matchAll(new RegExp(`<(?
 
 export function xlsxArchive(source: ArrayBuffer): Record<string, Uint8Array> {
   return unzipSync(new Uint8Array(source));
+}
+
+/**
+ * ExcelJS 4.4 only indexes xl/commentsN.xml, then dereferences every comments
+ * relationship unconditionally. Valid nested/absolute targets therefore abort
+ * the entire workbook. Read notes ourselves; exclude their relationships only
+ * from ExcelJS's disposable copy (including VML, whose namespaces also vary).
+ * Keep the original archive intact for native note import and other resources.
+ */
+export function xlsxWithoutNoteRelationships(files: Record<string, Uint8Array>, source: ArrayBuffer): ArrayBuffer {
+  const copy = { ...files };
+  let changed = false;
+  for (const path of Object.keys(files)) {
+    if (!/^xl\/worksheets\/_rels\/[^/]+\.rels$/.test(path)) continue;
+    const xml = strFromU8(files[path]);
+    const clean = xml.replace(/<(?:[\w]+:)?Relationship(?=[\s/>])[^>]*?(?:\/>|>[\s\S]*?<\/(?:[\w]+:)?Relationship>)/g, (entry) => {
+      const type = attr(entry, "Type");
+      return /\/(?:comments|vmlDrawing)$/.test(type) ? "" : entry;
+    });
+    if (clean !== xml) { copy[path] = strToU8(clean); changed = true; }
+  }
+  return changed ? zipSync(copy).buffer as ArrayBuffer : source;
 }
 export function xlsxTheme(files: Record<string, Uint8Array>): string[] {
   const xml = files["xl/theme/theme1.xml"] ? strFromU8(files["xl/theme/theme1.xml"]) : "";
@@ -331,7 +353,12 @@ export function importXlsxSheet(book: Excel.Workbook, sheet: Excel.Worksheet, fi
     if (!name || name.startsWith("_xlnm.")) return;
     names[`xlsx-name-${i}`] = { id: `xlsx-name-${i}`, name, formulaOrRefString: unescapeXml(entry[2] ?? ""), ...(attr(entry[1], "localSheetId") !== "" ? { localSheetId: attr(entry[1], "localSheetId") } : {}), ...(attr(entry[1], "hidden") === "1" ? { hidden: true } : {}), ...(attr(entry[1], "comment") ? { comment: attr(entry[1], "comment") } : {}) };
   });
-  return { worksheet, names, resources: { SHEET_CONDITIONAL_FORMATTING_PLUGIN: cf, SHEET_DATA_VALIDATION_PLUGIN: validations(sheet, cf, book), ...(drawings.order.length ? { SHEET_DRAWING_PLUGIN: drawings } : {}) } };
+  const notes = worksheetNotes(files, sheet.name);
+  for (const [row, line] of Object.entries(notes)) {
+    worksheet.rowCount = Math.max(worksheet.rowCount ?? 20, Number(row) + 1);
+    for (const col of Object.keys(line)) worksheet.columnCount = Math.max(worksheet.columnCount ?? 8, Number(col) + 1);
+  }
+  return { worksheet, names, resources: { SHEET_CONDITIONAL_FORMATTING_PLUGIN: cf, SHEET_DATA_VALIDATION_PLUGIN: validations(sheet, cf, book), ...(drawings.order.length ? { SHEET_DRAWING_PLUGIN: drawings } : {}), ...(Object.keys(notes).length ? { SHEET_NOTE_PLUGIN: notes } : {}) } };
 }
 
 function imageEnd(start: Json, ext: { width: number; height: number } | undefined, sheet: Partial<IWorksheetData>): Json {
@@ -345,15 +372,42 @@ function imageEnd(start: Json, ext: { width: number; height: number } | undefine
   return { row, column, rowOffset, columnOffset };
 }
 
-function worksheetXml(files: Record<string, Uint8Array>, name: string): string {
+function worksheetPath(files: Record<string, Uint8Array>, name: string): string {
   const workbook = files["xl/workbook.xml"] ? strFromU8(files["xl/workbook.xml"]) : "";
   const sheet = elements(workbook, "sheet").find((item) => attr(item[1], "name") === name);
   const id = sheet ? attr(sheet[1], "r:id") : "";
   const rels = files["xl/_rels/workbook.xml.rels"] ? strFromU8(files["xl/_rels/workbook.xml.rels"]) : "";
   const rel = elements(rels, "Relationship").find((item) => attr(item[1], "Id") === id);
   const target = rel ? attr(rel[1], "Target") : "";
-  const path = packagePath("xl", target);
+  return packagePath("xl", target);
+}
+
+function worksheetXml(files: Record<string, Uint8Array>, name: string): string {
+  const path = worksheetPath(files, name);
   return files[path] ? strFromU8(files[path]) : "";
+}
+
+/** Legacy Excel comments become editable native cell notes, including empty cells. */
+function worksheetNotes(files: Record<string, Uint8Array>, name: string): Record<number, Record<number, Json>> {
+  const path = worksheetPath(files, name);
+  const split = path.lastIndexOf("/"), base = path.slice(0, split);
+  const rels = files[`${base}/_rels/${path.slice(split + 1)}.rels`];
+  const notes: Record<number, Record<number, Json>> = {};
+  for (const rel of elements(rels ? strFromU8(rels) : "", "Relationship")) {
+    if (!/\/comments$/.test(attr(rel[1], "Type")) || attr(rel[1], "TargetMode") === "External") continue;
+    const bytes = files[packagePath(base, attr(rel[1], "Target"))];
+    if (!bytes) continue;
+    for (const comment of elements(strFromU8(bytes), "comment")) {
+      const ref = attr(comment[1], "ref"), range = xlsxRange(ref);
+      if (!range || !/^\$?[A-Z]{1,3}\$?[1-9]\d*$/i.test(ref)) continue;
+      const row = range.startRow, col = range.startColumn;
+      if (row > 1048575 || col > 16383) continue;
+      const text = elements(comment[2] ?? "", "text")[0]?.[2] ?? "";
+      const note = elements(text, "t").map((run) => unescapeXml(run[2] ?? "")).join("");
+      (notes[row] ??= {})[col] = { id: `xlsx-note-${row}-${col}`, row, col, width: 200, height: 80, note };
+    }
+  }
+  return notes;
 }
 
 /** Complete inline document data required by Univer's cell-image resize/render controller. */

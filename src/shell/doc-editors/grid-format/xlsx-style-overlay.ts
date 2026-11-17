@@ -1,6 +1,6 @@
 /** XLSX legacy display projection plus the native payload consumed by snapshot.ts. */
 import type { GridCellFormat } from "../grid-model";
-import { importXlsxSheet, xlsxArchive, type GridXlsxImport } from "./xlsx-import";
+import { importXlsxSheet, xlsxArchive, xlsxWithoutNoteRelationships, type GridXlsxImport } from "./xlsx-import";
 
 export interface GridStyleOverlayTarget {
   /** 原文件里的工作表名（SheetJS 的 `SheetNames[i]`，不是去重后的显示名）。 */
@@ -50,9 +50,9 @@ export async function overlayXlsxStyles(
     };
     const ExcelJS = imported.Workbook ? imported : (imported.default ?? imported);
     const book = new ExcelJS.Workbook();
-    await book.xlsx.load(source);
-    workbook = book;
     files = xlsxArchive(source);
+    await book.xlsx.load(xlsxWithoutNoteRelationships(files, source));
+    workbook = book;
   } catch {
     // 不是 OOXML（csv / xls / ods）或 exceljs 读不动：保留 SheetJS 那一遍的结果。
     return;
