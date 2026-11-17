@@ -16,6 +16,11 @@ type Entry = {
 const entries = new Map<string, Entry>();
 const now = () => typeof performance === "undefined" ? Date.now() : performance.now();
 const visible = () => typeof document !== "undefined" && document.visibilityState === "visible";
+// R8 hosts validate rd.start keys strictly. Encode wait-for-gateway intent in the
+// existing valid request id, so those hosts retain their ordinary HTTP fallback.
+function gatewayIntentKey(entry: Entry): void {
+  if (entry.startIntent && entry.requestId && !entry.requestId.startsWith("gwi_")) entry.requestId = `gwi_${entry.requestId.slice(0, 76)}`;
+}
 function dispose(entry: Entry): void {
   if (entry.disposed) return;
   entry.disposed = true; entry.state = "closed";
@@ -71,6 +76,7 @@ export function prepareRemoteDesktopStandby(deviceId: string, client: RemoteDesk
       if (!capabilities.includes("remote-desktop-standby-v1") || !visible()) { entry.fail?.(); return; }
       begun = true; entry.state = "connecting";
       entry.startIntent = capabilities.includes("remote-desktop-start-intent-v1");
+      gatewayIntentKey(entry);
       void client.createSession(deviceId, { standby: true, ownerDirect: true, requestId: newRequestId(), signal: entry.abort.signal,
         standbyStartIntent: entry.startIntent, get activationRequestId() { return entry.requestId; },
       }).then(result => {
@@ -100,6 +106,7 @@ export function claimRemoteDesktopStandbySession(deviceId: string, options?: Rem
   const entry = entries.get(deviceId);
   if (!entry?.session || entry.claimed || entry.disposed || !visible() || options?.signal?.aborted) return null;
   entry.claimed = true; entry.requestId = options?.requestId ?? newRequestId(); entry.clickedAt = options?.clickedAt ?? now();
+  gatewayIntentKey(entry);
   entry.state = "starting";
   if (entry.startIntent) queuePreparedRemoteWebRtcStart(deviceId, entry.requestId);
   entry.live?.activateStandby?.(entry.requestId, entry.clickedAt);

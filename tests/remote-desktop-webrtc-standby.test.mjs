@@ -78,20 +78,33 @@ test('click intent reaches an in-flight create immediately and keeps the same ke
   setup(t);const {c,accept}=client();const release=api.prepareRemoteDesktopStandby('intent-inflight',c);t.after(release);
   preparation.at(-1).options.ready(['remote-desktop-standby-v1','remote-desktop-start-intent-v1']);
   const pending=api.claimRemoteDesktopStandbySession('intent-inflight',{requestId:'inflight_click_key',clickedAt:123});
-  assert.deepEqual(intents.at(-1),['intent-inflight','inflight_click_key']);
-  assert.equal(c.log.creates[0].options.activationRequestId,'inflight_click_key','late click remains readable while controller registration is in flight');
+  assert.deepEqual(intents.at(-1),['intent-inflight','gwi_inflight_click_key']);
+  assert.equal(c.log.creates[0].options.activationRequestId,'gwi_inflight_click_key','late click remains readable while controller registration is in flight');
   accept();await pending;await settle();
-  assert.equal(c.log.opens[0].options.activationRequestId,'inflight_click_key');
+  assert.equal(c.log.opens[0].options.activationRequestId,'gwi_inflight_click_key');
   assert.equal(c.log.opens[0].options.standbyStartIntent,true);
   const opened=await api.claimRemoteDesktopStandbyStream('intent-inflight','standby-session',{state(){}},{});
-  assert.deepEqual(c.log.activated,[['inflight_click_key',123]]);opened.data.close();
+  assert.deepEqual(c.log.activated,[['gwi_inflight_click_key',123]]);opened.data.close();
 });
 test('a pre-create click is attached to the eventual create only after capability negotiation',async t=>{
   setup(t);for(const supported of [true,false]){
     const {c,accept}=client();const id=`before-create-${supported}`,release=api.prepareRemoteDesktopStandby(id,c);t.after(release);
     const pending=api.claimRemoteDesktopStandbySession(id,{requestId:'precreate_click_key'});
     preparation.at(-1).options.ready(['remote-desktop-standby-v1',...(supported?['remote-desktop-start-intent-v1']:[])]);
-    assert.equal(c.log.creates[0].options.activationRequestId,'precreate_click_key');
+    assert.equal(c.log.creates[0].options.activationRequestId,supported?'gwi_precreate_click_key':'precreate_click_key');
     assert.equal(c.log.creates[0].options.standbyStartIntent,supported);accept();await pending;await settle();release();
+  }
+});
+
+test('DC click preceding gateway WS delivery carries a wait key only when its exact gateway intent was queued',async t=>{
+  setup(t);for(const supported of [true,false]){
+    const {c,accept}=client();const id=`lan-race-${supported}`,release=api.prepareRemoteDesktopStandby(id,c);t.after(release);
+    preparation.at(-1).options.ready(['remote-desktop-standby-v1',...(supported?['remote-desktop-start-intent-v1']:[])]);
+    accept();await settle();const n=intents.length;
+    const pending=api.claimRemoteDesktopStandbySession(id,{requestId:'lan_click_key',clickedAt:3});await pending;
+    const expected=supported?'gwi_lan_click_key':'lan_click_key';
+    assert.equal(intents.length,n+Number(supported));
+    if(supported)assert.deepEqual(intents.at(-1),[id,expected]);
+    assert.deepEqual(c.log.activated,[[expected,3]],'DC start may arrive before WS confirmation, preserving the same wait-only key');release();
   }
 });
