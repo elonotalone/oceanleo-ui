@@ -105,7 +105,7 @@ export function isUntrustedContentUrl(value: string): boolean {
  */
 const EMBED_EDITOR_ROUTES: readonly { subsite: string; path: string }[] = [
   // 2026-10-22：website / design / video 子站不再作为编辑器被嵌入
-  // （网站 = 本地 Puck，设计画布 = 图片编辑器，视频画布 = 本地节点画布）。
+  // （网站 = 本地 Puck，设计画布 = 图片编辑器）。
   // 表清空 ⇒ 任何 base 都拿不到 same-origin 沙箱，嵌入路径整条 fail closed。
 ];
 

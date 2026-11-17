@@ -35,7 +35,7 @@ import {
 } from "./image-scene-source";
 import type { ExportFormat } from "./types";
 import { artifactGrantIdentity } from "../video-editor/grant-heal";
-import type { ArtifactAccessIdentity } from "../media-editors/audio-project-source";
+import type { ArtifactAccessIdentity } from "../artifact-access-identity";
 
 export const IMAGE_PROJECT_SCHEMA = "oceanleo.fabric-image.v1";
 /** Durable working copy schema; distinct from the published image project. */

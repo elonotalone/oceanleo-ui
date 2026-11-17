@@ -7,7 +7,7 @@
 // 操作员对编辑栏提过三条：「先单击一下，再按住拖动 edit bar 任何位置」
 // 「点击后缩为一个圆形，再点击展开」「缩小版也可以拖拽到各个位置」。这三条在走
 // `InlineAdvancedWorkbenchShell` 的 10 件插件上成立，在走 `PluginChromeFrame`
-// 的三件 extracted 插件（设计画布 / 网站编辑 / 视频画布）上**一条都不成立**
+// 的三件 extracted 插件（设计画布 / 网站编辑）上**一条都不成立**
 // ——`V1` 实测：那三个包对 `useEditBarDockController` / `FloatingContextToolbar`
 // 零命中，chrome 的 edit bar 是版式契约里一行静态 DOM，不是可拖拽浮层
 // （`verdicts/V1-verdict.md` A1-缺口）。

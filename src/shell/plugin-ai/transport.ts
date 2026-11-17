@@ -1252,7 +1252,7 @@ export function createHostFetchJsonAiTransport(
       });
     }
     context.onProgress({ phase: "finalizing", progress: 0.85 });
-    // 站点适配器可以回包一层 { output }，也可以直接回裸负载（视频画布现有的
+    // 站点适配器可以回包一层 { output }，也可以直接回裸负载（媒体编辑器的
     // { text } / { images } 就是裸的）。两种都收，省得每个站再各写一遍适配。
     const body = record(data);
     return body.output && typeof body.output === "object"

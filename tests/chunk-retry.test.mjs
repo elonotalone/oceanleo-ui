@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // 这份测试锁的是操作员亲眼看到的那个故障的修法：
 //
-//     …Model3DRoute_tsx_….js:1
+//     …DeckRoute_tsx_….js:1
 //     Failed to load resource: net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH
 //
 // 在 W09 之前，11 条编辑器路由都是裸的
@@ -56,7 +56,7 @@ const loadingUrl = await compileModule(
 );
 const { WorkbenchRouteChunkError, WorkbenchRouteLoading } = await import(loadingUrl);
 
-const CHUNK_URL = "https://cdn.oceanleo.com/_next/static/chunks/Model3DRoute-abc123.js";
+const CHUNK_URL = "https://cdn.oceanleo.com/_next/static/chunks/DeckRoute-abc123.js";
 
 /** webpack 5 的形状：`error.request` + 消息里带 URL，`name = "ChunkLoadError"`。 */
 function chunkError(url = CHUNK_URL) {
@@ -109,7 +109,7 @@ test("重试三次之后成功：退避档位带抖动，每次都带 cache-bust
     async () => {
       calls += 1;
       if (calls <= 3) throw chunkError();
-      return "Model3DRoute";
+      return "DeckRoute";
     },
     {
       sleep: async (ms) => void sleeps.push(ms),
@@ -119,7 +119,7 @@ test("重试三次之后成功：退避档位带抖动，每次都带 cache-bust
   );
 
   assert.equal(outcome.ok, true);
-  assert.equal(outcome.value, "Model3DRoute");
+  assert.equal(outcome.value, "DeckRoute");
   // 一次首发 + 三次重试。
   assert.equal(outcome.attempts, 4);
   assert.equal(calls, 4);
@@ -296,7 +296,7 @@ test("失败态可重试：点了重试，loader 真的再跑一轮并解析出�
     async () => {
       calls += 1;
       if (calls <= 4) throw chunkError();
-      return "Model3DRoute";
+      return "DeckRoute";
     },
     { sleep: async () => {}, random: () => 0.5, probe },
   );
@@ -316,7 +316,7 @@ test("失败态可重试：点了重试，loader 真的再跑一轮并解析出�
   requestChunkRetry("threed");
   await pending;
 
-  assert.equal(resolved, "Model3DRoute");
+  assert.equal(resolved, "DeckRoute");
   assert.equal(chunkRouteState("threed").phase, "loading");
   assert.equal(calls, 5);
 });

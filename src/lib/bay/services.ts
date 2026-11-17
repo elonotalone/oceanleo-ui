@@ -108,7 +108,6 @@ const LIBRARY_KINDS = new Set<LibraryItem["kind"]>([
   "document",
   "image",
   "video",
-  "video_canvas",
   "audio",
   "xhs",
   "threed",

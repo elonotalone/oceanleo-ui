@@ -5,7 +5,7 @@
 // ----------------------------------------------------------------------------
 // 这一份对应操作员亲眼看到的那片红：
 //
-//     …Model3DRoute_tsx_….js:1
+//     …DeckRoute_tsx_….js:1
 //     Failed to load resource: net::ERR_SSL_VERSION_OR_CIPHER_MISMATCH
 //
 // 在此之前，`AdvancedContentWorkbench` 的 11 条编辑器路由全是

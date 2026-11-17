@@ -364,8 +364,8 @@ function supportsVideoCover(
   kind: LibraryKind,
 ): boolean {
   return (
-    artifactType === "video" || artifactType === "workflow" ||
-    kind === "video" || kind === "video_canvas"
+    artifactType === "video" ||
+    kind === "video"
   );
 }
 
@@ -396,8 +396,8 @@ function supportsWebsiteCover(
   }
   if (kind === "geo_map" || kind === "interactive_doc") return false;
   return (
-    artifactType === "website" || artifactType === "workflow" ||
-    kind === "website" || kind === "canvas" || kind === "video_canvas"
+    artifactType === "website" ||
+    kind === "website" || kind === "canvas"
   );
 }
 

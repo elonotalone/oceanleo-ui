@@ -864,7 +864,7 @@ export function WorkspaceLibrary({
       "";
     const refreshable =
       Boolean(externalUrl) &&
-      (kind === "website" || kind === "canvas" || kind === "video_canvas");
+      (kind === "website" || kind === "canvas");
     const workbenchItem: LibraryItem =
       detailAppPlan.item || {
         key: selected.id,

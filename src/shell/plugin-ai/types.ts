@@ -6,9 +6,9 @@
 //   B. plugin-command：describe/state/run，「agent 改文档」那条总线（本契约不碰它）；
 //   C. 直连网关：image-editor 的 /v1/images/edit、LeoAssistant 的 /v1/assistant/transform；
 //   D. host.fetchJson 逻辑 URL：设计画布的 design://ai/chat、design://ai/image-generate；
-//   E. 包内自建网关：视频画布的 canvas-gateway.ts；
+//   E. 包内自建网关：图片与时间线的网关适配器；
 // 六套里只有 B 和 E 天生带 signal / onProgress，另外四套发出去就既取消不掉、也说
-// 不出跑到哪一步。图片编辑器和视频画布因此各自把 relight/upscale/inpaint/grid-split
+// 不出跑到哪一步。图片编辑器把 relight/upscale/inpaint/grid-split
 // 重写了一遍——语义几乎逐字相同，类型却对不上，谁也不能复用谁。
 //
 // 于是这一层按**能力**收敛，而不是按端点：调用方只说「我要 image.relight」，
@@ -249,7 +249,7 @@ export type AiOutputFor<K extends AiCapability> = AiCapabilityIo[K]["output"];
 // ── 进度 / 回执 ─────────────────────────────────────────────────────────────
 
 /**
- * 阶段名与 image-capability-engine 的 ImageProgressMetadata、视频画布的
+ * 阶段名与 image-capability-engine 的 ImageProgressMetadata、媒体编辑器的
  * CanvasProviderProgress 都能对上——迁移时不必再翻译一次阶段词表。
  */
 export type AiProgressPhase =

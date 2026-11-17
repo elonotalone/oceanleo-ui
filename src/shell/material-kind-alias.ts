@@ -25,7 +25,7 @@ export function isLegacyDesignItem(item: AliasProbe | null | undefined): boolean
   if (String(meta.editor_project_schema || "") === DESIGN_DOCUMENT_SCHEMA) return true;
   if (meta.designDocument && typeof meta.designDocument === "object") return true;
   const capability = item.artifact?.editorCapability;
-  return capability === "design-canvas" && item.artifactType !== "workflow";
+  return capability === "design-canvas";
 }
 
 /** Map a stored kind string (`canvas`, `design`, ...) to the one `image` type. */

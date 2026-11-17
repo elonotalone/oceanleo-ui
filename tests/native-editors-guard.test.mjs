@@ -39,7 +39,6 @@ const ALL_EDITOR_IDS = [
   "threed",
   "game",
   "website",
-  "video-canvas",
   // ids that no longer exist must not get a Pro page either
   "chart-editor",
   "design-canvas",
@@ -195,7 +194,6 @@ function item(partial) {
 test("routing never produces an embed route; chart is read-only with a reason", () => {
   const cases = [
     [item({ kind: "website", meta: { draft: true, blank: true } }), "work"],
-    [item({ kind: "video_canvas", meta: { advanced_editor_route: "embed" } }), "video-canvas"],
     [item({ kind: "canvas" }), "image"],
     [item({ kind: "canvas", meta: { advanced_editor_route: "embed" } }), "image"],
   ];

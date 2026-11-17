@@ -2,11 +2,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { boundedAgentContent } from "../src/shell/plugin-command/bounded-agent-content.ts";
-import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
-import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import { guardPluginSurface } from "../src/shell/collab/adapters/visual-readonly.ts";
-import { model3dAgentSource, recolorModel3DMaterial } from "../src/shell/media-editors/model3d-agent-source.ts";
 
 const deliver = async () => {};
 
@@ -23,37 +20,6 @@ test("video Agent context carries actual clip text, source placement and current
   assert.equal(context.content.selectedClipId, "caption");
   assert.match(context.note, /不能据此声称看过/);
   editor.loadingSource = true;
-  assert.equal(surface.agentContext().ready, false);
-});
-
-test("3D Agent context exposes actual node/material/annotation data rather than filenames", () => {
-  const editor = { modelLoaded: true, loading: false,
-    selectedNode: { id: "wheel", position: [1, 2, 3] },
-    sceneNodes: [{ id: "wheel", name: "前轮", visible: true }],
-    materials: [{ name: "轮胎", color: "#202020" }],
-    annotations: [{ text: "这里要改成红色" }],
-    operationJournal: [{ kind: "transform", nodeId: "wheel" }],
-  };
-  const surface = createModel3DCommandSurface({ editor, deliver });
-  assert.deepEqual(surface.agentContext().content.selectedNode.position, [1, 2, 3]);
-  assert.equal(surface.agentContext().content.materials[0].color, "#202020");
-  editor.materials[0].color = "#ff0000";
-  assert.equal(surface.agentContext().content.materials[0].color, "#ff0000");
-  editor.modelLoaded = false;
-  assert.equal(surface.agentContext().ready, false);
-});
-
-test("audio Agent context reads current edit operations and does not pretend to transcribe", () => {
-  const project = { sourceUrl: "/authorized-audio-source", operations: [{ kind: "crop", start: 1, end: 4 }] };
-  const editor = { loading: false, duration: 3, currentTime: 1, selection: { start: 0, end: 2 },
-    captureRecovery: () => project,
-  };
-  const surface = createAudioCommandSurface({ editor, deliver });
-  assert.equal(surface.agentContext().content.project.operations[0].end, 4);
-  assert.match(surface.agentContext().note, /不是语音转写/);
-  project.operations.push({ kind: "gain", percent: 80 });
-  assert.equal(surface.agentContext().content.project.operations.length, 2);
-  editor.loading = true;
   assert.equal(surface.agentContext().ready, false);
 });
 
@@ -89,49 +55,4 @@ test("view-only guard preserves current-file identity/content while still refusi
   assert.equal(guarded.workspaceScopeId, "workspace-a");
   assert.equal((await guarded.run("richdoc.write", {})).ok, false);
   assert.equal(writes, 0);
-});
-
-test("3D next context reads source nodes/materials and rejects malformed or unavailable bytes", () => {
-  const json = { asset: { version: "2.0" }, nodes: [{ name: "车门", translation: [1, 2, 3] }],
-    materials: [{ name: "车漆", pbrMetallicRoughness: { baseColorFactor: [1, 0, 0, 1] } }] };
-  const bytes = new TextEncoder().encode(JSON.stringify(json));
-  const context = model3dAgentSource(bytes.buffer, "gltf", { selectedNodeName: "车门" });
-  assert.equal(context.ready, true);
-  assert.equal(context.content.nodes[0].name, "车门");
-  assert.deepEqual(context.content.materials[0].pbrMetallicRoughness.baseColorFactor, [1, 0, 0, 1]);
-  assert.equal(model3dAgentSource(null, "glb", {}).ready, false);
-  assert.equal(model3dAgentSource(new ArrayBuffer(10), "glb", {}).ready, false);
-});
-
-test("3D material mutation preserves the same GLB binary payload and unrelated source fields", () => {
-  const source = { asset: { version: "2.0" }, extras: { important: "保留原工程信息" },
-    nodes: [{ name: "车门", mesh: 0 }],
-    materials: [{ name: "车漆", pbrMetallicRoughness: { metallicFactor: 0.7, baseColorFactor: [1, 1, 1, 0.5] } }] };
-  const json = new TextEncoder().encode(JSON.stringify(source));
-  const padded = Math.ceil(json.length / 4) * 4;
-  const input = new Uint8Array(20 + padded + 16);
-  const header = new DataView(input.buffer);
-  header.setUint32(0, 0x46546c67, true);
-  header.setUint32(4, 2, true);
-  header.setUint32(8, input.length, true);
-  header.setUint32(12, padded, true);
-  header.setUint32(16, 0x4e4f534a, true);
-  input.fill(32, 20, 20 + padded);
-  input.set(json, 20);
-  const tail = new Uint8Array([8, 0, 0, 0, 66, 73, 78, 0, 1, 2, 3, 4, 5, 6, 7, 8]);
-  input.set(tail, 20 + padded);
-  const before = input.slice();
-  const result = recolorModel3DMaterial(input.buffer, "glb", 0, "#ff0000");
-  assert.equal(result.ok, true, result.reason);
-  const output = new Uint8Array(result.bytes);
-  assert.deepEqual(output.slice(-16), tail, "geometry/buffer chunk is byte-for-byte unchanged");
-  const outputLength = new DataView(result.bytes).getUint32(12, true);
-  const after = JSON.parse(new TextDecoder().decode(output.slice(20, 20 + outputLength)));
-  assert.deepEqual(after.materials[0].pbrMetallicRoughness.baseColorFactor, [1, 0, 0, 0.5]);
-  assert.equal(after.materials[0].pbrMetallicRoughness.metallicFactor, 0.7);
-  assert.deepEqual(after.extras, source.extras);
-  assert.deepEqual(after.nodes, source.nodes);
-  assert.deepEqual(input, before, "pre-review/source bytes are not mutated in place");
-  assert.equal(recolorModel3DMaterial(input.buffer, "glb", 99, "#ff0000").ok, false);
-  assert.equal(recolorModel3DMaterial(input.buffer, "glb", 0, "red").ok, false);
 });

@@ -28,7 +28,6 @@ export type LibraryKind =
   | "document"
   | "image"
   | "video"
-  | "video_canvas"
   | "audio"
   | "xhs"
   | "threed"
@@ -281,7 +280,6 @@ const ARTIFACT_KIND: Record<ArtifactType, LibraryKind> = {
   video: "video",
   audio: "audio",
   model_3d: "threed",
-  workflow: "canvas",
   game: "game",
   geo_map: "geo_map",
   interactive_doc: "interactive_doc",
@@ -351,13 +349,12 @@ function popularityForProjection(
 export function artifactTypeForLibraryKind(kind: LibraryKind): ArtifactType {
   return ({
     website: "website",
-    canvas: "workflow",
+    canvas: "composite_image",
     ppt: "deck",
     sheet: "grid",
     document: "document",
     image: "single_file_image",
     video: "video",
-    video_canvas: "workflow",
     audio: "audio",
     xhs: "document",
     threed: "model_3d",
@@ -471,11 +468,7 @@ export function artifactProjectionToLibraryItem(
   artifact: ArtifactProjection,
   options: { forEdit?: boolean } = {},
 ): LibraryItem {
-  const kind =
-    artifact.artifactType === "workflow" &&
-    artifact.editorCapability === "video-canvas"
-      ? "video_canvas"
-      : ARTIFACT_KIND[artifact.artifactType];
+  const kind = ARTIFACT_KIND[artifact.artifactType];
   const preview = artifactDisplayRendition(artifact, "preview");
   const thumbnail = artifactDisplayRendition(artifact, "thumbnail");
   const full = artifact.renditions.full?.revisionId === artifact.revisionId
@@ -795,9 +788,6 @@ const KIND_ALIASES: Record<string, LibraryKind> = {
   logo: "image",
   poster: "image",
   video: "video",
-  video_canvas: "video_canvas",
-  videocanvas: "video_canvas",
-  timeline: "video_canvas",
   audio: "audio",
   music: "audio",
   voice: "audio",
@@ -984,10 +974,6 @@ function metaString(meta: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
-function hasCanvasPayload(meta: Record<string, unknown>): boolean {
-  return Array.isArray(meta.nodes) || Array.isArray(meta.scenes) || Array.isArray(meta.timeline);
-}
-
 /**
  * Resolve a viewer kind using explicit metadata first, then media/kind, then
  * file extension. `siteId` is deliberately only a final hint: a site can emit
@@ -1015,7 +1001,6 @@ export function inferLibraryKind(input: {
   // Generic "file/other" carries no viewer information; let the extension
   // resolve a real PPT/Excel/Word/media kind before falling back to file.
   if (KIND_ALIASES[rawKind] && KIND_ALIASES[rawKind] !== "file") {
-    if (rawKind === "video" && hasCanvasPayload(meta)) return "video_canvas";
     return KIND_ALIASES[rawKind];
   }
 
@@ -1029,7 +1014,6 @@ export function inferLibraryKind(input: {
   if (site === "ppt" || site === "ppt_maker") return "ppt";
   if (site === "excel" || site === "excel_ai") return "sheet";
   if (site === "word" || site === "word_ai" || site === "paper") return "document";
-  if (site === "video" && hasCanvasPayload(meta)) return "video_canvas";
   if (site === "threed") return "threed";
   return "file";
 }

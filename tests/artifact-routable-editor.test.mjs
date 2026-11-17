@@ -32,7 +32,7 @@ test("每一种 artifact 类型都有一个到得了的编辑器（图表除外�
   // 为每一种能力都备了可路由的适配器。所以正确答案是「全是 true」——
   // 这正是那份六项清单错得有多远的度量。
   // 2026-10-22：图表编辑器已删除，只读（READ_ONLY_ARTIFACT_TYPES）。矢量图由合并后的图片编辑器打开。
-  assert.deepEqual([...READ_ONLY_ARTIFACT_TYPES].sort(), ["chart"]);
+  assert.deepEqual([...READ_ONLY_ARTIFACT_TYPES].sort(), ["audio", "chart", "model_3d"]);
   for (const artifactType of ARTIFACT_TYPES) {
     assert.equal(
       artifactTypeHasRoutableEditor(artifactType),
@@ -70,7 +70,7 @@ test("旧的六项清单是真子集，说明这次是放宽而不是改判", ()
   const gained = ARTIFACT_TYPES.filter(
     (t) => !PACKS_NOT_EDITORS.includes(t) && !READ_ONLY_ARTIFACT_TYPES.has(t),
   );
-  assert.equal(gained.length, 10, "应当恰好恢复 10 类（chart 只读）");
+  assert.equal(gained.length, 7, "应当恰好恢复 7 类（chart 只读）");
   assert.ok(gained.includes("website"), "网站必须在恢复之列");
 });
 
@@ -81,7 +81,7 @@ test("works keep stored capabilities without editor registrations", () => {
     assert.ok(ARTIFACT_EDITOR_CAPABILITIES[type].has(`${type}-editor`));
   }
   assert.equal(TRUSTED_EDITOR_REGISTRY.image.routeType, "image");
-  assert.equal(TRUSTED_EDITOR_REGISTRY["video-canvas"].routeType, "video-canvas");
+  assert.equal(TRUSTED_EDITOR_REGISTRY["video-canvas"], undefined);
 });
 
 test("不认识的类型一律 false，不猜", () => {

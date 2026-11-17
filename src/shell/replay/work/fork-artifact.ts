@@ -5,7 +5,7 @@
 // （那个是复制「已有作品」用的）。
 //
 // 哪些编辑器族能接手：只有「工程 JSON 本身就是合法 source」的两族——video（`oceanleo.timeline.v1`）
-// 和 audio（`oceanleo.audio-project.v1`），它们本来就是 projectOnly 保存。其余各族（富文本 / 表格 / 演示 /
+// 采用 projectOnly 保存。其余各族（富文本 / 表格 / 演示 /
 // 图片 / 矢量 / 图表 / 游戏 / 3D / PDF / 工作流）的新建必须带真实交付文件（docx、xlsx、pptx、png、glb…）
 // 和封面位图，那是各编辑器自己的导出器才造得出来的，回放里还原出的 JSON 造不出来——这些族不显示接手按钮。
 import type { UITranslate } from "../../../i18n/ui/useUI";
@@ -63,10 +63,9 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// 与 `video-editor/timeline-carrier.ts`、`media-editors/audio-project-carrier.ts` 里的常量同值；
+// 与 `video-editor/timeline-carrier.ts` 的常量同值；
 // 这里不 import 它们，免得回放播放层把两个编辑器的依赖拖进首屏（测试里逐字核对同值）。
 export const FORK_TIMELINE_SCHEMA = "oceanleo.timeline.v1";
-export const FORK_AUDIO_SCHEMA = "oceanleo.audio-project.v1";
 
 const SPECS: Partial<Record<ImEditorKind, ForkSpec>> = {
   video: {
@@ -83,20 +82,6 @@ const SPECS: Partial<Record<ImEditorKind, ForkSpec>> = {
       preview_resolution_contract: `${FORK_TIMELINE_SCHEMA}#3.3`,
       preview_width: json.width,
       preview_height: json.height,
-    }),
-  },
-  audio: {
-    schema: FORK_AUDIO_SCHEMA,
-    mediaType: "audio",
-    kind: "audio",
-    manifestId: "audio-editor",
-    artifactType: "audio",
-    valid: (json) => isRecord(json) && typeof json.sourceUrl === "string" && Array.isArray(json.operations),
-    meta: (json) => ({
-      editor: "audio-v3",
-      editor_capability: "audio-editor",
-      audio_source_url: json.sourceUrl,
-      audio_operation_count: Array.isArray(json.operations) ? json.operations.length : 0,
     }),
   },
 };

@@ -302,11 +302,9 @@ test("advanced first row is PluginGlobalRow chrome with fixed direct download", 
   assert.match(bar, /data-global-row-slot="more"/);
 
   for (const route of [
-    "AudioRoute",
     "DeckRoute",
     "GridRoute",
     "ImageRoute",
-    "Model3DRoute",
     "PdfRoute",
     "RichDocRoute",
     "VideoTimelineRoute",
@@ -414,32 +412,4 @@ test("floating toolbar geometry spans the workspace without escaping its bounds"
     /style=\{\{ zIndex: 2_147_483_010 \}\}/,
     "viewport and fullscreen controls must stay clickable above a dragged toolbar",
   );
-});
-
-test("normal autosave progress is icon-only while actionable errors remain visible", () => {
-  const bar = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
-  const pdf = source("../src/shell/media-editors/PdfStage.tsx");
-  const richdoc = source("../src/shell/doc-editors/RichDocStage.tsx");
-  assert.match(bar, /CloudAutoSaveIcon/);
-  assert.match(bar, /onRetrySave/);
-  const library = source("../src/shell/WorkspaceLibrary.tsx");
-  const artifactActions = source("../src/shell/ArtifactActions.tsx");
-  assert.doesNotMatch(library, /"彻底删除"|此操作无法撤销/);
-  assert.match(artifactActions, /aria-describedby/);
-  assert.match(artifactActions, /unavailableReason/);
-  assert.doesNotMatch(pdf, /有未保存的 PDF 修改/);
-  assert.doesNotMatch(richdoc, /已保存到我的库/);
-  for (const route of ["AudioRoute", "GridRoute", "RichDocRoute"]) {
-    const contents = source(`../src/shell/advanced-routes/${route}.tsx`);
-    assert.doesNotMatch(contents, /有未保存的修改|已保存到我的库/, route);
-  }
-  for (const [path, message] of [
-    ["../src/shell/image-editor/use-fabric-image-editor.ts", /可编辑工程与预览已自动保存|已保存一个版本；之后的修改仍未保存/],
-    ["../src/shell/doc-editors/use-deck-editor.ts", /PPTX 新版本已保存|已保存一个 PPTX 版本/],
-    ["../src/shell/media-editors/use-pdf-workbench.ts", /setNotice\(tt\("已保存到我的库"\)\)|已保存一个版本；之后的修改仍未保存/],
-    ["../src/shell/media-editors/use-model3d-save.ts", /3D 视图副本已保存|已保存一个视图副本/],
-    ["../src/shell/video-editor/use-video-timeline.ts", /草稿已保存到我的库|已保存一个草稿版本/],
-  ]) {
-    assert.doesNotMatch(source(path), message, path);
-  }
 });

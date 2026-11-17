@@ -29,7 +29,7 @@ const routeSource = (route) =>
 //
 // **编辑器落地时把 14 / 13 翻回 16 / 15**：下面那条缺席断言会先红出来提醒。
 test("every trusted editor declares project, viewport, toolbar and persistence ownership", () => {
-  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 9);
+  assert.equal(Object.keys(TRUSTED_EDITOR_REGISTRY).length, 6);
   for (const unshipped of ["geo-map", "interactive-doc"]) {
     assert.equal(
       Object.hasOwn(TRUSTED_EDITOR_REGISTRY, unshipped),
@@ -41,7 +41,7 @@ test("every trusted editor declares project, viewport, toolbar and persistence o
   assert.equal(
     Object.values(TRUSTED_EDITOR_REGISTRY).filter((entry) => entry.routable)
       .length,
-    9,
+    6,
   );
   for (const [id, contract] of Object.entries(TRUSTED_EDITOR_REGISTRY)) {
     if (!contract.routable) continue;
@@ -62,9 +62,7 @@ test("all route components use the single typed adapter prop", () => {
   const routes = [
     "ImageRoute",
     "VideoTimelineRoute",
-    "AudioRoute",
     "PdfRoute",
-    "Model3DRoute",
     "GridRoute",
     "RichDocRoute",
     "DeckRoute",
@@ -189,10 +187,8 @@ test("mutable native editors capture server working copies without a local recov
   assert.match(saver, /source\.current\.recovery\?\.capture\(\)/);
   assert.doesNotMatch(saver, /indexedDB|debounceMs/);
   for (const route of [
-    "AudioRoute",
     "DeckRoute",
     "GridRoute",
-    "Model3DRoute",
     "PdfRoute",
     "RichDocRoute",
     "VideoTimelineRoute",

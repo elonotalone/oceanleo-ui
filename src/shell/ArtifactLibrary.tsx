@@ -86,7 +86,6 @@ export type ArtifactFilter =
   | "videos"
   | "audio"
   | "charts"
-  | "video-canvas"
   | "threed"
   | "game"
   // 「文件夹」类别（skills-overhaul D5）：数据走 `/v1/folders`，不是 artifact。
@@ -106,7 +105,6 @@ const KIND_SETS: Record<string, string[]> = {
   videos: ["video"],
   audio: ["audio", "music", "voice"],
   charts: ["chart"],
-  "video-canvas": ["video_canvas"],
   threed: ["3d", "threed", "model", "mesh"],
   game: ["game"],
 };

@@ -21,12 +21,6 @@ import {
   rotatePdfPage,
 } from "../src/shell/media-editors/pdf-operations.ts";
 import { loadInitialPdfSource } from "../src/shell/media-editors/pdf-source.ts";
-import {
-  applyAudioSampleOperation,
-  isAudioEditOperation,
-} from "../src/shell/media-editors/audio-operations.ts";
-import { validAudioOperationProject } from "../src/shell/media-editors/audio-checkpoint.mjs";
-import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
 import {
   addClipToTrack,
@@ -44,25 +38,6 @@ import {
   serializeVideoProjectEnvelope,
 } from "../src/shell/video-editor/video-timeline-source.ts";
 import { parseVideoProjectEnvelope } from "../src/shell/media-editors/source-integrity.mjs";
-import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
-import {
-  DEFAULT_MODEL3D_VIEW,
-  isModel3DSourceItem,
-} from "../src/shell/media-editors/model3d-workbench-defaults.ts";
-import { normalizeModel3DRecovery } from "../src/shell/media-editors/model3d-project.ts";
-import {
-  applyVideoCanvasCommand,
-  createVideoCanvasCommandSurface,
-} from "../src/shell/workflow-carrier/video-canvas-command-surface.ts";
-import {
-  hydrateWorkflowGraph,
-  planWorkflowGraphFromItem,
-} from "../src/shell/workflow-carrier/workflow-graph-source.ts";
-import {
-  exportVideoCanvasProject,
-  parseVideoCanvasProject,
-} from "../src/shell/workflow-carrier/video-canvas-local-session.ts";
-import { flushVideoCanvasGraph } from "../src/shell/workflow-carrier/video-canvas-leave.ts";
 
 function stubCommit(payload) {
   return { revisionId: "rev-next", payload };
@@ -107,49 +82,6 @@ function livePdfEditor(initialBytes, pageCount) {
   return editor;
 }
 
-function liveAudioEditor(samples, sourceUrl) {
-  let current = {
-    sampleRate: samples.sampleRate,
-    channels: samples.channels.map((channel) => Float32Array.from(channel)),
-  };
-  const operations = [];
-  const editor = {
-    loading: false,
-    error: "",
-    dirty: false,
-    editRevision: 0,
-    duration: current.channels[0].length / current.sampleRate,
-    currentTime: 0,
-    playing: false,
-    selection: null,
-    fadeDuration: 0.2,
-    gain: 100,
-    samples: () => current,
-    project: () => ({ sourceUrl, operations: [...operations] }),
-    applyFade(edge) {
-      const operation = {
-        type: "fade",
-        edge,
-        duration: editor.fadeDuration,
-      };
-      current = applyAudioSampleOperation(current, operation);
-      operations.push(operation);
-      editor.editRevision += 1;
-      editor.dirty = true;
-    },
-    async editRange() {
-      return false;
-    },
-    async applyGainRange() {
-      return false;
-    },
-    seekTo(seconds) {
-      editor.currentTime = seconds;
-    },
-  };
-  return editor;
-}
-
 function liveVideoEditor(initialDoc) {
   let doc = structuredClone(initialDoc);
   const editor = {
@@ -184,57 +116,6 @@ function liveVideoEditor(initialDoc) {
     seek(ms) {
       editor.playheadMs = ms;
     },
-  };
-  return editor;
-}
-
-function liveModel3DEditor(initialView) {
-  const view = { ...initialView };
-  const editor = {
-    loading: false,
-    modelLoaded: true,
-    downloading: false,
-    capturing: false,
-    saving: false,
-    dirty: false,
-    editRevision: 0,
-    sourceFormat: "glb",
-    get azimuth() {
-      return view.azimuth;
-    },
-    get elevation() {
-      return view.elevation;
-    },
-    get zoom() {
-      return view.zoom;
-    },
-    get autoRotate() {
-      return view.autoRotate;
-    },
-    background: view.background,
-    animations: [],
-    animationPlaying: false,
-    sceneNodes: [{ id: "mesh-1" }],
-    materials: [],
-    annotations: [],
-    view: () => ({ ...view }),
-    setOrbit(azimuth, elevation) {
-      view.azimuth = azimuth;
-      view.elevation = elevation;
-      editor.editRevision += 1;
-      editor.dirty = true;
-    },
-    setZoom(percent) {
-      view.zoom = percent;
-      editor.editRevision += 1;
-    },
-    resetCamera() {},
-    setAutoRotate(enabled) {
-      view.autoRotate = enabled;
-      editor.editRevision += 1;
-    },
-    selectAnimation() {},
-    setAnimationPlaying() {},
   };
   return editor;
 }
@@ -280,51 +161,6 @@ test("pdf: stored bytes hydrate, rotate command mutates, reopen restores rotatio
       failure: "PDF 源未成功载入",
       hasBytes: false,
     }).ok,
-    false,
-  );
-});
-
-test("audio: operations journal hydrates, fade command mutates, reopen replays", async () => {
-  const stored = {
-    sourceUrl: "https://cdn.test/voice.wav",
-    operations: [],
-  };
-  assert.equal(validAudioOperationProject(stored, isAudioEditOperation), true);
-  const samples = {
-    sampleRate: 10,
-    channels: [Float32Array.from([1, 1, 1, 1, 1, 1, 1, 1, 1, 1])],
-  };
-  const editor = liveAudioEditor(samples, stored.sourceUrl);
-  const surface = createAudioCommandSurface({
-    editor,
-    deliver: async () => {},
-  });
-  assert.ok(surface.describe().some((spec) => spec.id === "audio.fade"));
-  const result = await surface.run("audio.fade", { edge: "in" });
-  assert.equal(result.ok, true);
-  const faded = editor.samples();
-  assert.ok(faded.channels[0][0] < samples.channels[0][0]);
-
-  const project = editor.project();
-  assert.equal(project.operations.length, 1);
-  assert.equal(project.operations[0].type, "fade");
-  const committed = stubCommit(JSON.stringify(project));
-  const reopened = JSON.parse(committed.payload);
-  assert.equal(validAudioOperationProject(reopened, isAudioEditOperation), true);
-  const replayed = reopened.operations.reduce(
-    (block, operation) => applyAudioSampleOperation(block, operation),
-    {
-      sampleRate: samples.sampleRate,
-      channels: samples.channels.map((channel) => Float32Array.from(channel)),
-    },
-  );
-  assert.equal(replayed.channels[0][0], faded.channels[0][0]);
-  assert.equal(
-    audioSourcePersistenceAdmitted({ loading: false, capture: null }).ok,
-    false,
-  );
-  assert.equal(
-    validAudioOperationProject({ sourceUrl: "", operations: [{}] }, isAudioEditOperation),
     false,
   );
 });
@@ -388,128 +224,4 @@ test("video-timeline: envelope hydrates, volume command mutates, reopen restores
     () => parseVideoProjectEnvelope("{not-json"),
     /无法解析/,
   );
-});
-
-test("threed: view sidecar hydrates, set-view command mutates, reopen restores", async () => {
-  const stored = {
-    ...DEFAULT_MODEL3D_VIEW,
-    sourceUrl: "https://cdn.test/model.glb",
-    azimuth: 35,
-    elevation: 65,
-  };
-  const loaded = normalizeModel3DRecovery(stored, DEFAULT_MODEL3D_VIEW);
-  assert.ok(loaded);
-  assert.equal(loaded.azimuth, 35);
-
-  const editor = liveModel3DEditor(loaded);
-  const surface = createModel3DCommandSurface({
-    editor,
-    deliver: async () => {},
-  });
-  assert.ok(surface.describe().some((spec) => spec.id === "threed.set-view"));
-  const result = await surface.run("threed.set-view", {
-    azimuth: 120,
-    elevation: 20,
-  });
-  assert.equal(result.ok, true);
-  assert.equal(editor.azimuth, 120);
-  assert.equal(editor.elevation, 20);
-
-  const committed = stubCommit(JSON.stringify(editor.view()));
-  const reopened = normalizeModel3DRecovery(
-    JSON.parse(committed.payload),
-    DEFAULT_MODEL3D_VIEW,
-  );
-  assert.equal(reopened.azimuth, 120);
-  assert.equal(reopened.elevation, 20);
-
-  assert.equal(
-    model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: false }).ok,
-    false,
-  );
-  assert.equal(
-    isModel3DSourceItem({
-      kind: "threed",
-      url: "https://cdn.test/sky.hdr",
-      meta: { subtype: "hdri" },
-    }),
-    false,
-  );
-});
-
-test("video-canvas: graph hydrates, add-node command mutates, flush reopens", async () => {
-  const graph = {
-    nodes: [
-      {
-        id: "src",
-        kind: "source",
-        label: "素材",
-        x: 0,
-        y: 0,
-        ports: { outputs: [{ name: "out", dataType: "video" }] },
-      },
-    ],
-    edges: [],
-  };
-  const item = {
-    key: "local:wf",
-    id: "wf-1",
-    title: "流程图",
-    kind: "video_canvas",
-    meta: { graph },
-  };
-  const plan = planWorkflowGraphFromItem(item);
-  assert.equal(plan.kind, "ready");
-  const loaded = await hydrateWorkflowGraph(plan, async () => {
-    throw new Error("inline graph must not fetch");
-  });
-  assert.equal(loaded.ok, true);
-
-  let current = loaded.graph;
-  let revision = 0;
-  const surface = createVideoCanvasCommandSurface({
-    graph: () => current,
-    revision: () => revision,
-    sourceReady: () => true,
-    sourceError: () => "",
-    apply(next) {
-      current = next;
-      revision += 1;
-    },
-  });
-  assert.ok(surface.describe().some((spec) => spec.id === "workflow.add-node"));
-  const ran = await surface.run("workflow.add-node", { kind: "filter", label: "滤镜" });
-  assert.equal(ran.ok, true);
-  assert.equal(current.nodes.length, 2);
-  assert.equal(current.nodes.at(-1).label, "滤镜");
-
-  const applied = applyVideoCanvasCommand(current, "workflow.add-node", {
-    kind: "filter",
-    label: "第二节点",
-  }, revision);
-  assert.equal(applied.ok, true);
-  const flushed = flushVideoCanvasGraph(item, applied.graph, { sourceReady: true });
-  assert.equal(flushed.ok, true);
-  const committed = stubCommit(exportVideoCanvasProject(flushed.item.meta.graph));
-  const reopened = parseVideoCanvasProject(JSON.parse(committed.payload));
-  assert.equal(reopened.nodes.length, 3);
-  assert.equal(reopened.nodes.at(-1).label, "第二节点");
-
-  const durableMissing = planWorkflowGraphFromItem({
-    key: "artifact:wf",
-    source: "artifact",
-    id: "wf-2",
-    title: "库里的流程",
-    artifactId: "wf-art",
-    revisionId: "wf-rev",
-    artifactType: "workflow",
-    meta: {},
-    artifact: { artifactId: "wf-art", revisionId: "wf-rev", renditions: {} },
-  });
-  assert.equal(durableMissing.kind, "fail");
-  const refused = flushVideoCanvasGraph(item, { nodes: [], edges: [] }, {
-    sourceReady: false,
-    error: "工作流源未成功载入，未改用空白图画覆盖原件。",
-  });
-  assert.equal(refused.ok, false);
 });

@@ -18,7 +18,7 @@ const itemFor = (row, overrides = {}) => ({
 });
 
 // D5（2026-10-23）：菜单是素材类别，顺序与名字由操作员定死。
-const MENU = ["视频", "网站", "演示文稿", "文档", "表格", "图片", "PDF", "音频", "视频画布", "3D 模型", "游戏"];
+const MENU = ["视频", "网站", "演示文稿", "文档", "表格", "图片", "PDF", "游戏", "音频", "3D 模型"];
 
 // skills-overhaul W17（2026-10-24，合同 D5）：编辑器类别之后追加这个类别。它不是编辑器、
 // 不进能力矩阵，所以只追加在菜单末尾；上面 11 个的顺序与名字不变。
@@ -41,7 +41,7 @@ test("the Type menu lists the 11 material categories in order, then 文件包, w
 
 test("every capability family selects its own entries; design canvas folds into images", () => {
   const rows = contract.ADVANCED_CAPABILITY_MATRIX;
-  assert.equal(rows.length, 12, "the capability plane itself keeps design_canvas");
+  assert.equal(rows.length, 9, "the capability plane itself keeps design_canvas");
   const entries = rows.map((row) => model.workspaceEntryFromLibraryItem(itemFor(row)));
   for (const row of rows) {
     // Shelf identity is still the real capability; only the library category folds.
@@ -65,10 +65,10 @@ test("legacy ?category=design, design_canvas and old editor names land on the im
     assert.equal(model.filterWorkspaceLibraryEntries([design], "", alias).length, 1, alias);
   }
   assert.equal(taxonomy.normalizeLibraryCategory("视频编辑"), "video_editing");
-  assert.equal(taxonomy.normalizeLibraryCategory("视频工作流"), "video_canvas");
-  assert.equal(taxonomy.normalizeLibraryCategory("3D"), "model_3d");
+  assert.equal(taxonomy.normalizeLibraryCategory("视频工作流"), "视频工作流");
+  assert.equal(taxonomy.normalizeLibraryCategory("3D"), "threed");
   assert.equal(taxonomy.libraryCategoryLabel("design"), "图片");
-  assert.equal(taxonomy.libraryCategoryLabel("model_3d"), "3D 模型");
+  assert.equal(taxonomy.libraryCategoryLabel("threed"), "3D 模型");
 });
 
 test("PDF/document, chart/image and workflow variants stay distinct without available editors", () => {
@@ -78,8 +78,6 @@ test("PDF/document, chart/image and workflow variants stay distinct without avai
   assert.equal(taxonomy.libraryEditorLabel(make("chart", "chart-editor", "image")), "图表");
   assert.equal(taxonomy.libraryEditorLabel(make("composite_image", "design-canvas", "image")), "图片");
   assert.equal(taxonomy.libraryEditorLabel(make("composite_image", "composite-image-editor", "image")), "图片");
-  assert.equal(taxonomy.libraryEditorLabel(make("workflow", "design-canvas", "video_canvas")), "图片");
-  assert.equal(taxonomy.libraryEditorLabel(make("workflow", "video-canvas", "video_canvas")), "视频画布");
   assert.equal(taxonomy.libraryEditorLabel({ key: "c", title: "", kind: "canvas", meta: {} }), "图片");
   assert.equal(taxonomy.libraryEditorLabel(make("model_3d", "model-3d-editor", "threed")), "3D 模型");
 });
@@ -107,7 +105,7 @@ test("type names translate through context keys where the flat dictionary is amb
   // …while the library type menu reads as material categories.
   assert.deepEqual(MENU.map((zh) => label("en", zh)), [
     "Video", "Website", "Presentation", "Document", "Spreadsheet", "Image", "PDF",
-    "Audio", "Video canvas", "3D model", "Game",
+    "Game", "Audio", "3D model",
   ]);
   assert.deepEqual(MENU.map((zh) => label("zh", zh)), MENU, "Chinese falls back to the type name, never the context key");
   for (const locale of Object.keys(UI_MESSAGES).filter((value) => value !== "zh")) {
@@ -135,7 +133,7 @@ test("valid empty categories return empty results and the component never resets
 
 test("the folders category stays out of the capability matrix and never captures artifact entries", () => {
   const rows = contract.ADVANCED_CAPABILITY_MATRIX;
-  assert.equal(rows.length, 12, "folders is not a capability row");
+  assert.equal(rows.length, 9, "folders is not a capability row");
   assert.equal(rows.some((row) => row.featureId === "folders"), false);
   for (const alias of ["folders", "folder", "文件夹", "文件包"]) {
     assert.equal(taxonomy.normalizeLibraryCategory(alias), "folders", alias);

@@ -41,7 +41,6 @@ export type MaterialBoardId =
   | "canvas"
   | "slides"
   | "video"
-  | "video_canvas"
   | "poster"
   | "xhs"
   | "design"
@@ -72,7 +71,6 @@ export const MATERIAL_BOARDS: { id: MaterialBoardId; label: string }[] = [
   { id: "canvas", label: "画布" },
   { id: "slides", label: "幻灯" },
   { id: "video", label: "视频" },
-  { id: "video_canvas", label: "视频工作流" },
   { id: "xhs", label: "小红书" },
   { id: "audio", label: "音频" },
   { id: "threed", label: "3D" },
@@ -86,10 +84,9 @@ const BOARD_ARTIFACT_TYPE: Record<MaterialBoardId, ArtifactType> = {
   image: "single_file_image",
   doc: "document",
   sheet: "grid",
-  canvas: "workflow",
+  canvas: "composite_image",
   slides: "deck",
   video: "video",
-  video_canvas: "workflow",
   poster: "composite_image",
   xhs: "document",
   design: "vector_image",

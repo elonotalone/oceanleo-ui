@@ -13,11 +13,8 @@ export const FRAME_LOADERS: Partial<Record<ImEditorKind, FrameLoader>> = {
   deck: () => import("./deck"),
   image: () => import("./image"),
   vector: () => import("./vector"),
-  model3d: () => import("./model3d"),
-  audio: () => import("./audio"),
   pdf: () => import("./pdf"),
   video: () => import("./video"),
-  workflow: () => import("./workflow"),
 };
 
 const cache = new Map<ImEditorKind, ReplayFrameRenderer | null>();

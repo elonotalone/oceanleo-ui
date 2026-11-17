@@ -93,27 +93,6 @@ const ADVANCED_FEATURE_PRESENTATION: Readonly<
     accent: ADVANCED_PRODUCT_ACCENT,
     examples: "PDF",
   },
-  audio_editing: {
-    title: "音频编辑",
-    eyebrow: "Audio editing",
-    description: "裁剪、淡入淡出、音量与多轨混音。",
-    accent: ADVANCED_PRODUCT_ACCENT,
-    examples: "MP3 · WAV · M4A",
-  },
-  video_canvas: {
-    title: "视频画布",
-    eyebrow: "Video canvas",
-    description: "用无限画布编排镜头、素材与生成流程。",
-    accent: ADVANCED_PRODUCT_ACCENT,
-    examples: "Storyboard · Canvas",
-  },
-  model_3d: {
-    title: "3D 模型",
-    eyebrow: "3D workspace",
-    description: "查看模型、环境贴图并保存场景版本。",
-    accent: ADVANCED_PRODUCT_ACCENT,
-    examples: "GLB · GLTF · HDR",
-  },
   // Stored capability identity stays; games open the common works workbench.
   game_editing: {
     title: "游戏",
@@ -135,7 +114,7 @@ const ALL_FEATURES: readonly AdvancedFeatureDefinition[] =
     ),
   );
 
-/** Nine full editors; stored work/design feature IDs remain readable below. */
+/** Six full editors; stored work/design feature IDs remain readable below. */
 export const ADVANCED_FEATURES = Object.freeze(ALL_FEATURES.filter(
   ({ capability, id }) => capability.adapter !== "work" && id !== "design_canvas",
 ));
@@ -158,8 +137,6 @@ function advancedFeatureForAdapterId(
   switch (adapter) {
     case "video-timeline":
       return advancedFeatureById("video_editing");
-    case "audio":
-      return advancedFeatureById("audio_editing");
     case "image":
       return advancedFeatureById("image_editing");
     case "pdf":
@@ -170,12 +147,8 @@ function advancedFeatureForAdapterId(
       return advancedFeatureById("spreadsheet_editing");
     case "deck":
       return advancedFeatureById("presentation_editing");
-    case "threed":
-      return advancedFeatureById("model_3d");
     case "design-canvas":
       return advancedFeatureById("design_canvas");
-    case "video-canvas":
-      return advancedFeatureById("video_canvas");
     default:
       return null;
   }

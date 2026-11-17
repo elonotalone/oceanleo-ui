@@ -6,10 +6,6 @@ import test from "node:test";
 import { unzipSync } from "fflate";
 
 import { tiptapJsonToDocxBlob } from "../src/shell/doc-editors/docx-export.ts";
-import {
-  Model3DRouteHistory,
-  captureModel3DRouteSnapshot,
-} from "../src/shell/media-editors/Model3DRouteHistory.ts";
 
 register("./ts-extension-loader.mjs", import.meta.url);
 const { buildGridXlsxFromUniverSnapshot } = await import(
@@ -20,57 +16,6 @@ const { gridSheetsToUniverSnapshot } = await import(
 );
 
 const source = (path) => readFileSync(new URL(path, import.meta.url), "utf8");
-
-test("v8 routes expose one real global history and semantic compact controls", () => {
-  const richRoute = source("../src/shell/advanced-routes/RichDocRoute.tsx");
-  // 表格只剩 Univer 舞台（core-swap:delete grid）：adapter 长在懒加载叶子里。
-  const gridRoute = source("../src/shell/doc-editors/GridUniverStage.tsx");
-  const modelRoute = source("../src/shell/advanced-routes/Model3DRoute.tsx");
-  const richToolbar = source(
-    "../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
-  );
-  const modelToolbar = source(
-    "../src/shell/media-editors/use-model3d-selection-adapter.ts",
-  );
-  const modelControls = source("../src/shell/media-editors/model3d-selection-controls.ts");
-
-  for (const route of [richRoute, gridRoute, modelRoute]) {
-    assert.match(route, /history: \{/);
-    assert.match(route, /recovery: \{/);
-    assert.match(route, /directDownload: \{/);
-  }
-  assert.doesNotMatch(richToolbar, /case "undo"|case "redo"/);
-  assert.doesNotMatch(modelToolbar, /id: "undo"|id: "redo"/);
-  assert.match(modelRoute, /showNativeControls=\{false\}/);
-  assert.match(modelRoute, /showDeliveryActions=\{false\}/);
-  assert.match(modelRoute, /model3d-download-screenshot/);
-  assert.match(modelRoute, /assertBlobSource\(blob, "model3d"\)/);
-  assert.match(modelRoute, /actualFormat === "gltf"/);
-  assert.match(modelRoute, /editor\.openModelUrl\(\s*url,\s*actualFormat,/);
-  assert.match(modelRoute, /material\.artifactId && material\.revisionId/);
-  assert.match(modelRoute, /editor\.prepareSave\(\)/);
-  assert.match(modelRoute, /editor\.downloadModel/);
-  assert.match(modelRoute, /checkpoint-glb\+operation-journal/);
-  assert.match(modelRoute, /model_dependency_base_url/);
-  assert.match(modelRoute, /model_source_identity/);
-
-  // grid 的浮条控件由 `gridUniverSelectionContext` 从命令表算出（stage-plan.ts），
-  // 不是 JSX 字面量；它的 iconOnly / revision 语义由 grid-univer-wiring 判据钉住。
-  for (const toolbar of [richToolbar, modelToolbar]) {
-    if (toolbar === modelToolbar) assert.match(modelControls, /iconOnly: true/);
-    else {
-      assert.match(toolbar, /SelectionControlInput/);
-      assert.doesNotMatch(toolbar, /id: "bold", kind:/, "canon presentation belongs to the shell");
-    }
-    assert.match(toolbar, /selectionRevision/);
-    assert.match(toolbar, /editRevision/);
-  }
-  assert.match(richToolbar, /"embedded-object"/);
-  assert.match(richToolbar, /id: "link"/);
-  assert.match(richToolbar, /id: "row-add"/);
-  for (const id of ["duplicate", "delete"]) assert.match(modelControls, new RegExp(`id: "${id}"`));
-  assert.match(modelControls, /inspectorGroup: "position"/);
-});
 
 test("RichDoc table, link and inline formats survive a real DOCX package", async () => {
   const document = {
@@ -199,75 +144,4 @@ test("Grid formulas, formats, merges and sheets survive XLSX", async () => {
   assert.ok(budget.autoFilter);
   // 路由级 undo/redo（GridRouteHistory）已随旧核删除：Univer 自带撤销栈，
   // 宿主只转发 `api.undo()` / `api.redo()`（GridUniverStage）。
-});
-
-test("Model3D authored state history preserves viewport while undoing scene state", () => {
-  const editor = {
-    sourceUrl: "https://asset.oceanleo.com/model.glb",
-    operationJournal: [],
-    azimuth: 35,
-    elevation: 65,
-    zoom: 110,
-    autoRotate: false,
-    exposure: 1,
-    shadowIntensity: 1,
-    shadowSoftness: 1,
-    shadowEnabled: true,
-    background: "#f5f5f4",
-    animationName: "Idle",
-    animationPlaying: false,
-    animationSpeed: 1,
-    animationTime: 0,
-    environmentUrl: "",
-    environmentIntensity: 1,
-    annotations: [],
-  };
-  const initial = captureModel3DRouteSnapshot(editor);
-  const navigated = {
-    ...initial,
-    view: { ...initial.view, zoom: 240, azimuth: 80 },
-  };
-  const edited = {
-    ...navigated,
-    operations: [
-      {
-        id: "material-1",
-        kind: "material",
-        target: "base:0",
-        materialIndex: 0,
-        value: { color: "#33aa77", metalness: 0.6, roughness: 0.3 },
-      },
-    ],
-    view: {
-      ...navigated.view,
-      background: "#112233",
-      animationSpeed: 1.5,
-      environmentUrl: "https://asset.oceanleo.com/studio.hdr",
-    },
-  };
-  const history = new Model3DRouteHistory();
-  history.reset(0, initial);
-  assert.equal(history.observe(1, navigated), false);
-  assert.equal(history.canUndo, false, "viewport navigation is not document history");
-  assert.equal(history.observe(2, edited), true);
-  const undone = history.undo(edited);
-  assert.equal(undone.view.background, initial.view.background);
-  assert.equal(undone.view.zoom, 240);
-  assert.equal(undone.view.azimuth, 80);
-  assert.equal(undone.operations.length, 0);
-  const redone = history.redo(undone);
-  assert.equal(redone.view.background, "#112233");
-  assert.equal(redone.view.animationSpeed, 1.5);
-  assert.equal(redone.operations[0].kind, "material");
-  const reopenedProject = JSON.parse(
-    JSON.stringify({
-      schema: "oceanleo.model3d.project.v2",
-      checkpointUrl: redone.checkpointUrl,
-      operations: redone.operations,
-      view: redone.view,
-    }),
-  );
-  assert.equal(reopenedProject.checkpointUrl, editor.sourceUrl);
-  assert.equal(reopenedProject.operations[0].target, "base:0");
-  assert.equal(reopenedProject.view.background, "#112233");
 });

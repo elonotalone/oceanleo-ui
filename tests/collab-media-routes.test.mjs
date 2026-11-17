@@ -8,8 +8,6 @@ const source = (path) => readFileSync(new URL(`../src/shell/${path}`, import.met
 // 只读不再整块 inert：播放、转视角照常，改内容的入口各自置灰。
 for (const [name, path] of [
   ["视频", "advanced-routes/VideoTimelineRoute.tsx"],
-  ["音频", "advanced-routes/AudioRoute.tsx"],
-  ["3D", "advanced-routes/Model3DRoute.tsx"],
 ]) {
   test(`${name}路由：只读时不再整块 inert，对方改动不走「恢复本地草稿」入口`, () => {
     const text = source(path);
@@ -19,32 +17,6 @@ for (const [name, path] of [
     assert.match(text, /applyLocal/, "撤销 / 重做算出的本端改动有单独入口");
   });
 }
-
-test("三个编辑器都保留 restoreRecovery 和各自的远端改动入口，工作副本恢复保持静默", () => {
-  const video = source("video-editor/use-video-timeline.ts");
-  assert.match(video, /restoreRecovery/);
-  assert.match(video, /applyRemoteDoc/);
-  assert.match(source("media-editors/use-audio-persistence.ts"), /restoreRecovery/);
-  assert.match(source("media-editors/use-audio-remote-apply.ts"), /applyRemoteProject/);
-  // Whole-scene restore/apply moved into its own hook (W03 split); the workbench still wires it.
-  assert.match(source("media-editors/use-model3d-workbench.ts"), /useModel3DSceneRestore|restoreRecovery, applyRemoteScene/);
-  const model = source("media-editors/use-model3d-scene-restore.ts");
-  assert.match(model, /restoreRecovery/);
-  assert.doesNotMatch(model, /已恢复上次未同步的本地草稿/, "工作副本恢复不弹旧本地草稿提示");
-  assert.match(model, /applyRemoteScene/);
-});
-
-test("远端改动入口不标未保存、不加改动版本号、不弹提示", () => {
-  const video = source("video-editor/use-video-timeline.ts");
-  const remote = /const applyRemoteDoc = useCallback\([^]*?\n  \}, \[\]\);/.exec(video)?.[0] ?? "";
-  assert.ok(remote.length > 100, "找到 applyRemoteDoc");
-  assert.doesNotMatch(remote, /setDirty|revisionRef\.current \+= 1|setNotice|undoStack|redoStack/);
-  const audio = source("media-editors/use-audio-remote-apply.ts");
-  const remoteBranch = /operationsRef\.current = \[\.\.\.project\.operations\];[^]*?bumpContent\(\);/.exec(audio)?.[0] ?? "";
-  assert.match(remoteBranch, /if \(mode === "local"\)/, "改动版本号与未保存标记只在本端撤销 / 重做时设置");
-  assert.doesNotMatch(audio, /undoRef|redoRef|setCanUndo/, "不碰本机撤销栈");
-  assert.match(audio, /if \(!quiet\) \{\s*setError/, "对方的改动失败时不弹错误");
-});
 
 test("新增文案：17 种语言都有，且不含「上线」", () => {
   const keys = [

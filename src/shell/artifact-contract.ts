@@ -22,7 +22,6 @@ export const ARTIFACT_TYPES = [
   "video",
   "audio",
   "model_3d",
-  "workflow",
   "game",
 ] as const;
 
@@ -84,9 +83,6 @@ export const ADVANCED_EDITOR_ADAPTER_IDS = [
   "grid",
   "image",
   "pdf",
-  "audio",
-  "video-canvas",
-  "threed",
 ] as const;
 
 export type AdvancedEditorAdapterId =
@@ -202,7 +198,6 @@ const ADVANCED_CAPABILITY_ROWS = [
         artifactType: "composite_image",
         editorCapabilities: ["design-canvas"],
       },
-      { artifactType: "workflow", editorCapabilities: ["design-canvas"] },
       /**
        * 矢量素材（svg/ai/eps）走图层工程适配器，不走位图适配器。
        *
@@ -356,72 +351,6 @@ const ADVANCED_CAPABILITY_ROWS = [
       schema: null,
       requiredPaths: [],
       dependencyClosure: "not_required",
-    },
-  },
-  {
-    featureId: "audio_editing",
-    artifactType: "audio",
-    sourceFormat: "mp3",
-    sourceMediaType: "audio/mpeg",
-    editorCapability: "audio-editor",
-    artifactBindings: [
-      { artifactType: "audio", editorCapabilities: ["audio-editor"] },
-    ],
-    adapter: "audio",
-    projectSchema: "oceanleo.audio-project.v1",
-    editability: "bounded",
-    sourceIntegrity: "content_addressed",
-    openMode: "native-file",
-    previewPurposes: ["full", "preview"],
-    requirement: {
-      kind: "none",
-      schema: null,
-      requiredPaths: [],
-      dependencyClosure: "not_required",
-    },
-  },
-  {
-    featureId: "video_canvas",
-    artifactType: "workflow",
-    sourceFormat: "oceanleo.video.project.v2",
-    sourceMediaType: "application/json",
-    editorCapability: "video-canvas",
-    artifactBindings: [
-      { artifactType: "workflow", editorCapabilities: ["video-canvas"] },
-    ],
-    adapter: "video-canvas",
-    projectSchema: "oceanleo.video-canvas.v1",
-    editability: "native",
-    sourceIntegrity: "complete_dependency_closure",
-    openMode: "structured-project",
-    previewPurposes: ["preview", "full"],
-    requirement: {
-      kind: "manifest",
-      schema: "oceanleo.video.project.v2",
-      requiredPaths: ["schemaVersion", "headVersionId", "versions", "assets"],
-      dependencyClosure: "complete",
-    },
-  },
-  {
-    featureId: "model_3d",
-    artifactType: "model_3d",
-    sourceFormat: "gltf",
-    sourceMediaType: "model/gltf+json",
-    editorCapability: "model-3d-editor",
-    artifactBindings: [
-      { artifactType: "model_3d", editorCapabilities: ["model-3d-editor"] },
-    ],
-    adapter: "threed",
-    projectSchema: "oceanleo.model-view@1",
-    editability: "bounded",
-    sourceIntegrity: "complete_dependency_closure",
-    openMode: "native-file",
-    previewPurposes: ["full", "preview"],
-    requirement: {
-      kind: "manifest",
-      schema: "gltf/2.0",
-      requiredPaths: ["asset.version", "buffers"],
-      dependencyClosure: "complete",
     },
   },
   {
@@ -671,7 +600,7 @@ const FLATTENED_RENDER_SOURCE_FORMATS: ReadonlySet<string> = new Set([
  *
  * 两档 fail-closed：
  *   1. 退役的五槽 game bundle 只许读/下载，绝不能当新写入适配器的别名（原地保留）；
- *   2. 结构化工程能力（设计画布、网站、图表、视频画布、游戏文档）拿不到压平的成品。
+ *   2. 结构化工程能力（设计画布、网站、图表、游戏文档）拿不到压平的成品。
  *      一件 `composite_image` 声明 `editor_capability = design-canvas`、而落库的
  *      source 是一张 webp，图层工程编辑器打开它只会失败——把「编辑」按钮亮给用户
  *      比不给更糟，所以这里解析成 null。
@@ -2210,7 +2139,6 @@ export function viewerRenditionOrder(
     artifactType === "vector_image" ||
     artifactType === "chart" ||
     artifactType === "website" ||
-    artifactType === "workflow" ||
     // `full` 是可玩 bundle（text/html），卡片位图只能来自封面 `preview`。
     artifactType === "game"
   ) {

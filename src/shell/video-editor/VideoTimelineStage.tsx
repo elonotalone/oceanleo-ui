@@ -22,7 +22,7 @@ import { TimelineArea } from "./TimelineArea";
 import { findClip, formatMs, validTimelineLibrarySource } from "./timeline-model";
 import { ComposerLibraryPicker } from "../ComposerLibraryPicker";
 import type { ComposerAttachment } from "../LeoComposer";
-import { videoMaterialKind } from "../workflow-carrier/video-project-material";
+import { videoMaterialKind } from "./video-material";
 import { VIDEO_TIMELINE_REPLACE_IMAGE_EVENT } from "./video-edit-bar";
 import { TIMELINE_LIBRARY_IMAGE_ERROR_EVENT, type TimelineClip } from "./types";
 import { AnchoredPopover } from "../anchored-popover";

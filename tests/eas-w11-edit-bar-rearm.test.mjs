@@ -37,9 +37,8 @@ const PLUGIN_IDS = [
   "game",
   "design-canvas",
   "website",
-  "video-canvas",
 ];
-const CHROME_HOSTS = ["design-canvas", "website", "video-canvas"];
+const CHROME_HOSTS = ["image", "richdoc"];
 
 function surfaceNumber(name) {
   const src = readFileSync(resolve(REPO, "src/shell/edit-bar-surface.ts"), "utf8");

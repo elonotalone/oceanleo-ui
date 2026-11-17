@@ -20,11 +20,8 @@ export const EDITOR_KIND_LABEL: Record<ImEditorKind, string> = {
   vector: "矢量图",
   chart: "图表",
   game: "游戏",
-  model3d: "3D 模型",
-  audio: "音频",
   pdf: "PDF",
   video: "视频",
-  workflow: "流程图",
 };
 
 /** 作品卡「打开」允许的目标：同源，或 OceanLeo 家族站（com / cn / ws）。用户内容域（oceanleo.app）永远不行。 */

@@ -25,12 +25,6 @@ const mod = await import(await compileModule("src/shell/library-viewers.tsx", {
   "./WebsiteArtifactViewer": dataModule("export function WebsiteArtifactViewer(){ return null; }"),
   "./artifact-client": dataModule("export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }"),
   "./material-detail-slot": dataModule('export function useMaterialDetailTarget(item){ return {status:"passthrough",item}; } export function MaterialDetailUnavailable(){return null;} export function GamePlayDetail(){return null;} export function gamePlayEmbedHref(){return "";}'),
-  "./media-editors/use-audio-project-playback": dataModule(`
-    export function useAudioProjectPlayback(item, enabled){
-      globalThis.__projectPlaybackCalls.push(enabled);
-      return enabled ? globalThis.__projectPlayback : {status:"idle",src:"",error:""};
-    }
-  `),
   "./ArtifactRendition": dataModule(`
     export function useArtifactRendition(item){
       const mediaType = globalThis.__renditionMediaType;
@@ -92,7 +86,7 @@ test("audio item whose selected rendition is image/png never mounts <audio>", as
     assert.equal(f.host.querySelector("audio"), null, "PNG 不能喂给 <audio>");
     const note = f.host.querySelector("[data-audio-no-playable-rendition]");
     assert.ok(note, "必须说明这一版没有可播放音频");
-    assert.match(note.textContent, /没有可直接播放的音频文件/);
+    assert.match(note.textContent, /没有可用的查看器数据/);
     assert.doesNotMatch(note.textContent, /取不到|打不开/);
     assert.equal(globalThis.__mediaErrors, 0);
   } finally { await f.close(); }
@@ -106,33 +100,6 @@ test("audio item with an audio/mpeg rendition still gets the player", async () =
   } finally { await f.close(); }
 });
 
-test("project-only audio revision plays the audio its project references", async () => {
-  const f = await mount("image/png", { playback: { status: "ready", src: "blob:https://p-test/restored-audio", error: "" } });
-  try {
-    assert.ok(f.calls().includes(true), "必须按工程还原音频");
-    const audio = f.host.querySelector("audio");
-    assert.ok(audio, "工程引用的音频还原成功后要给播放器");
-    assert.equal(audio.getAttribute("src"), "blob:https://p-test/restored-audio");
-    assert.equal(f.host.querySelector("[data-audio-no-playable-rendition]"), null);
-  } finally { await f.close(); }
-});
-
-test("project audio still restoring shows progress, not the failure note", async () => {
-  const f = await mount("image/png", { playback: { status: "loading", src: "", error: "" } });
-  try {
-    assert.equal(f.host.querySelector("audio"), null);
-    assert.equal(f.host.querySelector("[data-audio-no-playable-rendition]"), null);
-    assert.match(f.host.textContent, /正在按工程还原音频/);
-  } finally { await f.close(); }
-});
-
-test("an audio rendition that is already playable never touches the project path", async () => {
-  const f = await mount("audio/mpeg");
-  try {
-    assert.deepEqual([...new Set(f.calls())], [false]);
-    assert.ok(f.host.querySelector("audio"));
-  } finally { await f.close(); }
-});
 
 test("video item whose selected rendition is image/png never mounts <video>", async () => {
   const f = await mount("image/png", { kind: "video" });

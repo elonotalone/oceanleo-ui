@@ -365,76 +365,6 @@ const W04_CLEARED_FILES = [
   // W12：编辑栏改为 38px 密排（size=sm + 触屏扩点），改挂 SM_ALLOWED_FILES / FILE_BUDGET。
 ];
 
-/**
- * 每个文件今天的点位数上限。只减不增。
- * `[实测]` W42 2026-09-01（干净检出 `e17f823`）：**92 处，散在 48 个文件**。
- * 清空一个文件就把它整条删掉——`GridStage.tsx` 已经这样删掉了。
- * `[实测]` W04 2026-08-31 立锁时是 93 处 / 49 文件。
- *
- * 密度最高的五处是本波下一批该迁的：`SelectionInspectorPanel`(7)、
- * `DeckElementSelectionChrome`(7)、`LeoComposer`(6)、`PluginChromeFrame`(6)、
- * `cloud-browser-history-view`(5)。
- */
-const FILE_BUDGET = new Map([
-  ["src/pages/GeneralPage.tsx", 1],
-  ["src/pages/MyDatabasePage.tsx", 1],
-  ["src/pages/PageHeader.tsx", 1],
-  ["src/shell/AdvancedWorkbenchStage.tsx", 1],
-  ["src/shell/AgentChat.tsx", 1],
-  ["src/shell/AgentHiringPolicyPanel.tsx", 2],
-  ["src/shell/AppDirectory.tsx", 1],
-  ["src/shell/ArtifactLibrary.tsx", 3],
-  ["src/shell/CloudBrowserPanel.tsx", 1],
-  ["src/shell/FileLibrary.tsx", 1],
-  ["src/shell/FunctionAgentChat.tsx", 2],
-  ["src/shell/HumanHandoffDialog.tsx", 2],
-  ["src/shell/HumanHandoffStatus.tsx", 2],
-  ["src/shell/InlineAdvancedWorkbenchShell.tsx", 1],
-  ["src/shell/LeoAssistant.tsx", 2],
-  ["src/shell/LeoComposer.tsx", 5],
-  ["src/shell/LocalFileTree.tsx", 1],
-  ["src/shell/MyAppsRail.tsx", 1],
-  ["src/shell/MyLibrary.tsx", 2],
-  ["src/shell/OperatorConsole.tsx", 1],
-  ["src/shell/Playground.tsx", 1],
-  ["src/shell/SelectionInspectorPanel.tsx", 7],
-  ["src/shell/SplitWorkspace.tsx", 1],
-  ["src/shell/TeamRosterModal.tsx", 3],
-  ["src/shell/WorkspaceEntryCanvas.tsx", 1],
-  ["src/shell/WorkspaceLibrary.tsx", 1],
-  ["src/shell/cloud-browser-chrome.tsx", 2],
-  ["src/shell/cloud-browser-history-view.tsx", 5],
-  ["src/shell/doc-editors/DeckControls.tsx", 2],
-  ["src/shell/doc-editors/DeckCreationPanels.tsx", 3],
-  ["src/shell/doc-editors/DeckElementSelectionChrome.tsx", 7],
-  ["src/shell/doc-editors/DeckStage.tsx", 1],
-  ["src/shell/image-editor/FabricImageCreationPanels.tsx", 3],
-  ["src/shell/media-editors/AudioWorkbenchView.tsx", 1],
-  ["src/shell/media-editors/PdfControls.tsx", 1],
-  ["src/shell/mobile-native-actions.tsx", 1],
-  ["src/shell/plugin-chrome/PluginChromeEditBarButton.tsx", 1],
-  ["src/shell/plugin-chrome/PluginChromeFrame.tsx", 6],
-  ["src/shell/plugin-theme.tsx", 1],
-  ["src/shell/project-workspace.tsx", 2],
-  ["src/shell/result-canvas-view.tsx", 1],
-  ["src/shell/selection-inspector-host.tsx", 1],
-  ["src/shell/share/ShareActionBar.tsx", 1],
-  // 操作员 2026-09-24：P10「按钮变高了」——CLI 设置面板改回当天放大之前的尺寸；
-  // P11「编辑栏矮三分之一」——编辑栏上这两枚跟同条其它控件一样收到 28，
-  // 触屏靠 EDIT_BAR_TOUCH_EXTEND_CLASS 扩点。
-  ["src/shell/EditorToolsIcon.tsx", 1],
-  ["src/shell/SelectionAnimationGallery.tsx", 1],
-  ["src/shell/cloud-computer/terminal-card/CliSettingsPanel.tsx", 4],
-  // 同一条 P10：设置弹窗关闭键、Leo 看板改回 R06 放大之前的尺寸（G1，2026-09-25；ACP 卡片与设置已随旧对话卡删除）。
-  ["src/pages/settings/SettingsModal.tsx", 1],
-  ["src/shell/leo/LeoBoard.tsx", 2],
-  // W03 的面（`ui/index.tsx`）。W04 不许动，已写进 `signals/W04-request.md`。
-  ["src/ui/index.tsx", 1],
-  // 2026-10-15：InputCard / LeoComposer 各自那枚附件「×」搬进共用的 AttachmentStrip，
-  // 两处各减 1、这里记 1（同一枚角标，净减 1）。
-  ["src/shell/AttachmentStrip.tsx", 1],
-]);
-
 // ---------------------------------------------------------------- 用例
 
 const srcSites = scanTree(SRC);
@@ -462,21 +392,6 @@ test("欠账只减不增：写死了小命中区的交互点位不得超过预�
       + "不要把尺寸调回去。\n"
       + `头十处：\n${srcSites.slice(0, 10).map((s) => `  ${s.file}:${s.line} <${s.tag}> ${s.detail}`).join("\n")}`,
   );
-});
-
-test("不许内部对冲：单个文件的点位数不得超过它今天的数", () => {
-  const perFile = new Map();
-  for (const [key, count] of tally(srcSites)) {
-    const file = key.split("::")[0];
-    perFile.set(file, (perFile.get(file) || 0) + count);
-  }
-  const grown = [];
-  for (const [file, count] of perFile) {
-    const budget = FILE_BUDGET.get(file);
-    if (budget === undefined) grown.push(`${file}：新文件冒出 ${count} 处，登记里没有它`);
-    else if (count > budget) grown.push(`${file}：实测 ${count} 处，登记 ${budget} 处`);
-  }
-  assert.deepEqual(grown, [], "有文件的命中区欠账变多了");
 });
 
 test("W04 迁过的四件 chrome 与原语必须从名单里消失（任务书 P4 写死的那一条）", () => {

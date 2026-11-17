@@ -48,10 +48,6 @@ export type AdaptedWorkspaceSurfaceTab = WorkspaceSurfaceTab<
 >;
 
 const PREVIEW_KIND_HINTS: Array<[RegExp, LibraryKind]> = [
-  [
-    /(?:(视频|video).*(工作流|workflow|时间线|timeline|剪辑)|(?:工作流|workflow|时间线|timeline|剪辑).*(视频|video))/i,
-    "video_canvas",
-  ],
   [/(ppt|幻灯|演示)/i, "ppt"],
   [/(excel|表格|sheet)/i, "sheet"],
   [/(网站|网页|website|web)/i, "website"],
@@ -209,7 +205,6 @@ export function legacyWorkspaceEntry(
   const kind = tab.libraryItem?.kind || tab.kind || "file";
   const isResult = tab.primary === true;
   const isWorkflow =
-    kind === "video_canvas" ||
     /workflow|工作流|流程/i.test(`${tab.id} ${tab.label}`);
   const title = /^(生成结果|结果)$/i.test(tab.label.trim())
     ? "生成"

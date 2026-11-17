@@ -174,7 +174,7 @@ test("chatFileMatches filters by query (name / conversation / sender) and by MyL
   assert.equal(client.chatFileCategory(pdf), "pdf_editing", "a PDF lands in 「PDF」 like an uploaded PDF");
   assert.equal(client.chatFileCategory(png), "image_editing");
   assert.equal(client.chatFileCategory(docx), "document_editing");
-  assert.equal(client.chatFileCategory(voice), "audio_editing");
+  assert.equal(client.chatFileCategory(voice), "audio");
   assert.equal(client.chatFileMatches(pdf, { query: "", category: "pdf_editing" }), true);
   assert.equal(client.chatFileMatches(png, { query: "", category: "pdf_editing" }), false);
   assert.equal(client.chatFileMatches(png, { query: "", category: "images" }), true, "filter ids are normalized");

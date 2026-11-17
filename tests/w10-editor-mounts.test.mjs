@@ -9,7 +9,6 @@ import {
 
 test("mount table lists only native workbench routes (no hosted-frame mounts)", () => {
   assert.deepEqual([...W10_EDITOR_IDS], [
-    "video-canvas",
     "video-timeline",
   ]);
   for (const id of W10_EDITOR_IDS) {

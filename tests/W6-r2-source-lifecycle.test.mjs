@@ -18,12 +18,6 @@ import {
 } from "../src/shell/design-canvas/design-canvas-source.ts";
 import { parseDesignDocumentProject } from "../src/shell/image-editor/design-document-schema.ts";
 import {
-  hydrateWorkflowGraph,
-  planWorkflowGraphFromItem,
-} from "../src/shell/workflow-carrier/workflow-graph-source.ts";
-import { addVideoCanvasNode } from "../src/shell/workflow-carrier/video-canvas-local-session.ts";
-import { flushVideoCanvasGraph } from "../src/shell/workflow-carrier/video-canvas-leave.ts";
-import {
   createFabricImageProject,
   parseFabricImageProject,
 } from "../src/shell/image-editor/editor-persistence.ts";
@@ -83,60 +77,6 @@ test("design: valid remote design-document loads, title edit serializes, reopen 
     meta: { designDocument: { not: "oceanleo.design-document.v1" } },
   });
   assert.equal(invalid.kind, "fail");
-});
-
-test("workflow: stored graph loads, add-node mutates, flush stub reopens the same nodes", async () => {
-  const graph = {
-    nodes: [
-      {
-        id: "src",
-        kind: "source",
-        label: "素材",
-        x: 0,
-        y: 0,
-        ports: { outputs: [{ name: "out", dataType: "video" }] },
-      },
-    ],
-    edges: [],
-  };
-  const item = {
-    key: "local:wf",
-    id: "wf-1",
-    title: "流程图",
-    kind: "video_canvas",
-    meta: { graph },
-  };
-  const plan = planWorkflowGraphFromItem(item);
-  assert.equal(plan.kind, "ready");
-  const loaded = await hydrateWorkflowGraph(plan, async () => {
-    throw new Error("inline graph must not fetch");
-  });
-  assert.equal(loaded.ok, true);
-  const edited = addVideoCanvasNode(loaded.graph, "filter", "fx1", "滤镜");
-  assert.equal(edited.nodes.length, 2);
-  const flushed = flushVideoCanvasGraph(item, edited, { sourceReady: true });
-  assert.equal(flushed.ok, true);
-  const reopened = planWorkflowGraphFromItem(flushed.item);
-  assert.equal(reopened.kind, "ready");
-  assert.equal(reopened.graph.nodes.at(-1).id, "fx1");
-
-  const durableMissing = planWorkflowGraphFromItem({
-    key: "artifact:wf",
-    source: "artifact",
-    id: "wf-2",
-    title: "库里的流程",
-    artifactId: "wf-art",
-    revisionId: "wf-rev",
-    artifactType: "workflow",
-    meta: {},
-    artifact: { artifactId: "wf-art", revisionId: "wf-rev", renditions: {} },
-  });
-  assert.equal(durableMissing.kind, "fail");
-  const refused = flushVideoCanvasGraph(item, { nodes: [], edges: [] }, {
-    sourceReady: false,
-    error: "工作流源未成功载入，未改用空白图画覆盖原件。",
-  });
-  assert.equal(refused.ok, false);
 });
 
 test("image: save refuses blank overwrite until sourceReady; snapshot edit reopens", () => {

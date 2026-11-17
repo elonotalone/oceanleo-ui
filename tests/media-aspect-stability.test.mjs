@@ -68,7 +68,6 @@ const LIBRARY_KINDS = [
   "document",
   "image",
   "video",
-  "video_canvas",
   "audio",
   "xhs",
   "threed",
@@ -146,7 +145,7 @@ function assertUsableFrameStyle(style, label) {
 }
 
 test("每个 artifactType 与每个 LibraryKind 都拿得到正比例", () => {
-  assert.equal(MATERIAL_CATALOG_TYPES.length, 16);
+  assert.equal(MATERIAL_CATALOG_TYPES.length, 15);
   for (const artifactType of MATERIAL_CATALOG_TYPES) {
     const geometry = artifactMediaGeometry({ artifactType });
     assertUsableGeometry(geometry, `artifactType=${artifactType}`);
@@ -708,7 +707,7 @@ async function bootstrapThumbnailDom() {
           image: "图片", video: "视频", document: "文档", website: "网站",
           canvas: "画布", threed: "3D", file: "文件", ppt: "演示",
           sheet: "表格", geo_map: "地图", interactive_doc: "交互文档",
-          game: "游戏", audio: "音频", xhs: "笔记", video_canvas: "视频画布"
+          game: "游戏", audio: "音频", xhs: "笔记"
         };
       `),
     },

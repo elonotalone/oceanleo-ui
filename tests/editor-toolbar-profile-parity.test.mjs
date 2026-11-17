@@ -55,9 +55,6 @@ const fabricMutationPolicy = await compileModule("src/shell/image-editor/image-m
 const fabricCore = await compileModule("src/shell/image-editor/fabric-controller-core.ts", { ...baseStubs, "./image-mutation-policy": fabricMutationPolicy });
 const { FabricEditorController } = await import(await compileModule("src/shell/image-editor/fabric-controller.ts", { ...baseStubs, "./fabric-controller-core": fabricCore }));
 const { buildSelectedSnapshot } = await load("src/shell/image-editor/editor-objects.ts");
-const { canvasSelectionContext } = await load("src/shell/video-canvas/engine/canvas-selection-adapter.ts");
-const { createVideoProject, addProjectNode, registerAsset, updateProjectNode, projectHead } = await load("src/shell/video-canvas/engine/project-model.ts");
-const { commandAvailability } = await load("src/shell/video-canvas/engine/command-registry.ts");
 
 let stageWidth = 1500;
 const viewport = new window.EventTarget();
@@ -147,26 +144,7 @@ function PdfAnnotationToolbar({ type = 13 }) {
 function PdfStampToolbar() { return h(PdfAnnotationToolbar, { type: 13 }); }
 function PdfFreeTextOpacityToolbar() { return h(PdfAnnotationToolbar, { type: 3 }); }
 const pictureHarnesses = { Deck: DeckPictureToolbar, Fabric: FabricPictureToolbar, PDF: PdfStampToolbar };
-function canvasPictureContext() {
-  const added = addProjectNode(createVideoProject("Picture profile"), "image", { x: 10, y: 20 });
-  const registered = registerAsset(added.project, { kind: "image", origin: "upload", title: "Canvas image", url: "https://files.example/canvas.png" });
-  const project = updateProjectNode(registered.project, added.nodeId, "fixture", { assetId: registered.asset.assetId, params: { opacity: 0.64 } });
-  const node = projectHead(project).graph.nodes[0];
-  const environment = { getProject: () => project, getSelectedNodeId: () => node.nodeId, getSelectionEpoch: () => 1, getImageMode: () => "retouch", getLibraryArtifactId: () => "11111111-1111-4111-8111-111111111111" };
-  return selectionAdapterContext(canvasSelectionContext({ project, node, asset: project.assets[node.assetId], selectionEpoch: 1, imageMode: "retouch", tt,
-    availability: (id, args) => commandAvailability(id, environment, args) }));
-}
 
-function canvasTextContext() {
-  const added = addProjectNode(createVideoProject("Text profile"), "text", { x: 10, y: 20 }, {
-    text: "Canvas text", params: { includeInVideo: true, textStyle: { font_size: 30, bold: true, color: "#abcdef", align: "left" } },
-  });
-  const project = added.project;
-  const node = projectHead(project).graph.nodes[0];
-  const environment = { getProject: () => project, getSelectedNodeId: () => node.nodeId, getSelectionEpoch: () => 1, getImageMode: () => "retouch" };
-  return selectionAdapterContext(canvasSelectionContext({ project, node, selectionEpoch: 1, imageMode: "retouch", tt,
-    availability: (id, args) => commandAvailability(id, environment, args) }));
-}
 
 async function nativeProfiles() {
   const richEditor = new Editor({ extensions: [StarterKit, TextStyle, FontSize, FontFamily, Color, Highlight.configure({ multicolor: true }), RichDocTypography], content: '<p style="line-height:1.6"><span style="font-size:21px;font-family:Georgia;color:#123456"><strong>Document text</strong></span></p>', editorProps: { handleScrollToSelection: () => true } });
@@ -192,7 +170,6 @@ async function nativeProfiles() {
       assert.ok(contexts.get(name), `${name} must supply a native text selection`);
     }
     contexts.set("Grid", selectionAdapterContext(gridUniverSelectionContext({ sheetId: "sheet", revision: 1, style: { fontSize: 19, fontFamily: "Arial", bold: true }, tt })));
-    contexts.set("Canvas", canvasTextContext());
     return { contexts, async close() { for (const mounted of mounts.reverse()) await mounted.close(); richEditor.destroy(); } };
   } catch (error) { for (const mounted of mounts.reverse()) await mounted.close(); richEditor.destroy(); throw error; }
 }
@@ -226,12 +203,12 @@ async function assertNativeSizeWidget(name, context, expected) {
   } finally { await mounted.close(); }
 }
 
-test("seven native text selections resolve to the same canon shapes, px values and menu profiles with explicit engine limits", async () => {
+test("six native text selections resolve to the same canon shapes, px values and menu profiles with explicit engine limits", async () => {
   const native = await nativeProfiles();
   try {
     const projected = new Map();
     const sameId = new Map();
-    const limits = { RichDoc: [21, 1, 1000], Deck: [27, 4, 300], Fabric: [32, 6, 320], PDF: [16, 6, 96], Grid: [19, 6, 96], Timeline: [44, 8, 300], Canvas: [30, 8, 300] };
+    const limits = { RichDoc: [21, 1, 1000], Deck: [27, 4, 300], Fabric: [32, 6, 320], PDF: [16, 6, 96], Grid: [19, 6, 96], Timeline: [44, 8, 300] };
     for (const [name, context] of native.contexts) {
       for (const input of context.controls.filter(control => control.domain !== "specific")) {
         for (const field of ["kind", "label", "icon", "iconOnly"]) assert.equal(field in input, false, `${name}:${input.id} must leave ${field} to the shell`);
@@ -256,7 +233,7 @@ test("seven native text selections resolve to the same canon shapes, px values a
         else sameId.set(control.canonId, { name, profile: canonicalProfile(control) });
       }
     }
-    for (const id of ["font-size", "bold", "text-color", "align"]) assert.equal([...projected.values()].filter(profile => profile.controls.some(control => control.canonId === id)).length, 7, `${id} must compare all seven engines`);
+    for (const id of ["font-size", "bold", "text-color", "align"]) assert.equal([...projected.values()].filter(profile => profile.controls.some(control => control.canonId === id)).length, 6, `${id} must compare all six engines`);
     const metrics = (name, id) => projected.get(name).controls.find(control => control.canonId === id);
     assert.deepEqual([metrics("RichDoc", "line-height").value, metrics("Deck", "line-height").value, metrics("Fabric", "line-height").value], [33.6, 37.8, 40]);
     assert.deepEqual([metrics("Deck", "letter-spacing").value, metrics("Fabric", "letter-spacing").value], [3, 6.4]);
@@ -268,13 +245,12 @@ test("seven native text selections resolve to the same canon shapes, px values a
     const gridCompact = partitionSelectionInspectorControls(projected.get("Grid").controls).compact;
     for (const id of ["list", "line-height", "link", "case", "vertical-text", "indent-increase", "indent-decrease"]) assert.ok(gridCompact.some(control => control.canonId === id || control.id === id), `Grid supports ${id}`);
     assert.equal(metrics("Grid", "highlight").engineScope, "cell-background");
-    for (const name of ["Timeline", "Canvas"]) {
+    for (const name of ["Timeline"]) {
       for (const id of ["font-family", "italic", "underline", "strike", "line-height", "letter-spacing", "vertical-text"]) assert.ok(metrics(name, id), `${name} supports the rendered ${id} field`);
       assert.ok(metrics(name, "align").options.some(option => option.value === "justify"), `${name} supports rendered justification`);
       assert.equal(Boolean(metrics(name, "link")), false, `${name} has no interactive link in rendered video`);
     }
     for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Timeline", id), `Timeline exposes the implemented ${id} command`);
-    for (const id of ["list", "case", "clear-format"]) assert.ok(metrics("Canvas", id), `Canvas exposes the implemented ${id} command`);
   } finally { await native.close(); }
 });
 
@@ -286,7 +262,6 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
       mounted.push(await mount(h(Harness)));
       contexts.set(name, pictureStates.get(name).adapter.context);
     }
-    contexts.set("Canvas", canvasPictureContext());
     const profiles = new Map();
     const sameId = new Map();
     for (const [name, context] of contexts) {
@@ -326,16 +301,15 @@ test("native Deck, Fabric, PDF stamp and canvas pictures share supported canon p
       }
     }
     for (const [id, names, kind] of [
-      ["border", ["Deck", "Fabric", "Canvas"], "panel"],
-      ["position", ["Deck", "Fabric", "Canvas"], "panel"],
-      ["rotate", ["Deck", "Fabric", "Canvas", "PDF"], "action"],
+      ["border", ["Deck", "Fabric"], "panel"],
+      ["position", ["Deck", "Fabric"], "panel"],
+      ["rotate", ["Deck", "Fabric", "PDF"], "action"],
     ]) for (const name of names) {
       const control = profiles.get(name).find(control => control.canonId === id);
       assert.ok(control, `${name} genuinely supports ${id}`);
       assert.deepEqual([control.kind, control.slot, control.placement], [kind, "compact", "primary"]);
     }
     assert.deepEqual(profiles.get("PDF").map(control => control.canonId), ["rotate", "delete"], "PDF stamps keep exactly their native supported capabilities");
-    for (const id of ["opacity", "border", "replace", "radius", "image-fit", "alt"]) assert.ok(profiles.get("Canvas").some(control => control.canonId === id), `canvas supports the rendered or persisted ${id} capability`);
   } finally { for (const item of mounted.reverse()) await item.close(); }
 });
 

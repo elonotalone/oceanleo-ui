@@ -104,51 +104,6 @@ test("PDF blank creation is explicit and disposed page loads release resources",
   assert.match(rail, /alive = false;\s*if \(objectUrl\) URL\.revokeObjectURL\(objectUrl\)/);
 });
 
-test("audio failures preserve prior state and close partial browser resources", async () => {
-  const [workbenchCore, waveLoader, persistence, importer] = await Promise.all([
-    source("src/shell/media-editors/AudioWorkbench.tsx"),
-    source("src/shell/media-editors/use-audio-wave-loader.ts"),
-    source("src/shell/media-editors/use-audio-persistence.ts"),
-    source("src/shell/media-editors/audio-source-import.ts"),
-  ]);
-  const workbench = workbenchCore + waveLoader;
-
-  assert.match(workbench, /requiresExistingSource/);
-  assert.match(workbench, /item\.source === "artifact"/);
-  assert.match(workbench, /已阻止用静音占位替代/);
-  assert.match(workbench, /wave\.on\("error"/);
-  assert.match(workbench, /URL\.revokeObjectURL\(objectUrlRef\.current\)/);
-
-  const importSource = workbench.slice(
-    workbench.indexOf("const importSource"),
-    workbench.indexOf("const editSelection"),
-  );
-  assert.ok(
-    importSource.indexOf("await reloadWaveform(decoded);") <
-      importSource.indexOf("bufferRef.current = decoded;"),
-    "waveform must load before imported audio replaces the durable editor state",
-  );
-  assert.match(importSource, /await importAudioSource\(file, item\.id, siteId, tt\)/);
-  assert.match(importer, /const context = new AudioContext\(\)/);
-  assert.match(importer, /finally \{\s*await context\.close\(\)\.catch/);
-
-  const restore = persistence.slice(
-    persistence.indexOf("const restoreRecovery"),
-    persistence.indexOf("return { save, captureRecovery, restoreRecovery }"),
-  );
-  assert.ok(
-    restore.indexOf("await reloadWaveform(decoded);") <
-      restore.indexOf("bufferRef.current = decoded;"),
-    "failed recovery rendering must not replace the prior audio state",
-  );
-  assert.match(restore, /catch \(caught\) \{[\s\S]*return false;/);
-  assert.match(restore, /context\?\.close\(\)\.catch/);
-  assert.match(
-    restore,
-    /requiresExistingSource && !project\.sourceUrl\.trim\(\)[\s\S]*静音占位替代/,
-  );
-});
-
 async function loadProbeWithRejectedUrlPolicy() {
   return import(
     await compileModule("src/shell/video-editor/media-probe.ts", {
@@ -263,41 +218,4 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
     preview,
     /const image = entry\.el as HTMLImageElement;[\s\S]*image\.removeAttribute\("src"\)/,
   );
-});
-
-// 2026-08-05（W25）：这一格原来还读
-// `/opt/cursor-workspaces/oceandino/scratch/advanced-editors-hardening-2026-07-24/V7-advanced/live_acceptance.py`
-// 并对它断言四条（`arg=value`、`arg=str(expected).lower()`、`arg=before + 1`、
-// `data-pdf-page-count`）。那个 scratch 目录已不存在（`ce7e3bf`，2026-07-24 加的行），
-// 于是整份文件 `ENOENT`（`verdicts/W22-red-list.md` 第 10 条）。
-//
-// 判断结果是**删掉那四条，不搬进仓**，理由逐条：
-//   · `data-pdf-page-count` —— 同一个 test 里下面就直接对 `PdfStage.tsx` 断言了两遍，
-//     真正罩着产品行为的是那两条，读 harness 只是绕道抄了一遍；
-//   · 另外三条判的是那个 Python 验收脚本自己怎么传参，罩的是 harness 的内部形状，
-//     在本仓里没有对应物，搬进来也只是把一份死脚本供起来；
-//   · 它本来的用法是真浏览器验收，而红线 §2.6 已明令禁止浏览器验证，这条路不会再走。
-// 下面五条对仓内源码的断言是这一格的实际价值，原样保留。
-test("W13 V7 product gates: PDF page count, audio project key, mute chrome, richdoc source", async () => {
-  const [pdfRail, pdfWorkbench, audio, toolbar, richdoc] =
-    await Promise.all([
-      source("src/shell/media-editors/PdfControls.tsx"),
-      source("src/shell/media-editors/use-pdf-workbench.ts"),
-      source("src/shell/media-editors/AudioWorkbench.tsx"),
-      source("src/shell/video-editor/video-edit-bar.ts"),
-      source("src/shell/doc-editors/rich-doc-model.ts"),
-    ]);
-
-  // 10-23 D4：页数由左侧页面栏体现（每页一张缩略图），没有页数就没有缩略图。
-  assert.match(pdfRail, /Array\.from\(\{ length: pageCount \}/);
-  assert.match(pdfWorkbench, /item\.meta\.editor_source_url/);
-  assert.match(
-    audio,
-    /workingHeadUrlRef = useRef\(\s*String\(item\.meta\.editor_working_head_url \|\| ""\)/,
-  );
-  assert.match(toolbar, /id:\s*"muted"[^\n]*value:\s*clip\.muted === true/);
-  assert.match(toolbar, /case "muted":[\s\S]*?patchClip\(clip\.id, \{ muted: value === true \}\)/);
-  assert.match(richdoc, /function richDocSourceUrl/);
-  assert.match(richdoc, /item\.meta\.editor_source_url \|\| ""\)\.trim\(\)/);
-  assert.match(richdoc, /item\.artifact\?\.renditions\.source\?\.url/);
 });

@@ -236,7 +236,6 @@ function kindFromHint(hint: string): LibraryKind | "" {
   if (value === "canvas") return "canvas";
   if (value === "image") return "image";
   if (value === "video") return "video";
-  if (value === "video_canvas") return "video_canvas";
   if (value === "audio") return "audio";
   if (value === "threed" || value === "3d") return "threed";
   if (value === "game") return "game";

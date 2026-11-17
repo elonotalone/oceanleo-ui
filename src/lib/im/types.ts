@@ -13,7 +13,7 @@ export type ImMessageKind =
   | "artifact" | "replay" | "system" | "leo";
 export type ImEditorKind =
   | "richdoc" | "grid" | "deck" | "image" | "vector" | "chart"
-  | "game" | "model3d" | "audio" | "pdf" | "video" | "workflow";
+  | "game" | "pdf" | "video";
 
 export interface ImProfile {
   user_id: string;

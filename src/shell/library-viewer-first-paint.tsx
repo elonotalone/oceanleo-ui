@@ -27,7 +27,6 @@ const HEAVY_LIBRARY_VIEWER_KINDS: readonly LibraryItem["kind"][] = [
   "sheet",
   "document",
   "file",
-  "video_canvas",
   "threed",
   /**
    * 可玩 bundle 是这张表上最重的一件，此前却漏在闸门外。
@@ -51,7 +50,6 @@ const DEFAULT_ARTIFACT_ASPECT_RATIO: Readonly<Record<string, number>> = {
   deck: 16 / 9,
   chart: 16 / 9,
   video: 16 / 9,
-  workflow: 16 / 9,
   game: 16 / 9,
   website: 16 / 10,
   document: 210 / 297,
@@ -87,13 +85,12 @@ const KIND_TO_ARTIFACT_TYPE: Readonly<
   Record<LibraryItem["kind"], ArtifactType>
 > = {
   website: "website",
-  canvas: "workflow",
+  canvas: "composite_image",
   ppt: "deck",
   sheet: "grid",
   document: "document",
   image: "single_file_image",
   video: "video",
-  video_canvas: "workflow",
   audio: "audio",
   xhs: "document",
   threed: "model_3d",

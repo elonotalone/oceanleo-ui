@@ -178,76 +178,6 @@ function installFetch(raw, issueGrant) {
   return calls;
 }
 
-test("structured projects export a rendered deliverable and never editor state", async () => {
-  const raw = projection({
-    id: "layered-poster",
-    title: "Layered poster",
-    artifactType: "workflow",
-    editorCapability: "video-canvas",
-    sourceFormat: "oceanleo.video.project.v2",
-    sourceMediaType: "application/json",
-    editorManifest: true,
-  });
-  const calls = installFetch(raw, (url) =>
-    jsonResponse(
-      grantFor(url, {
-        filename: "../layered-poster.png",
-        format: "png",
-        media_type: "image/png",
-      }),
-    ),
-  );
-  const item = itemFrom(raw);
-  assert.deepEqual(
-    artifactDownloadPlanFor(item.artifact).map(({ purpose, mode }) => ({
-      purpose,
-      mode,
-    })),
-    [
-      { purpose: "full", mode: "export" },
-      { purpose: "preview", mode: "export" },
-    ],
-  );
-  assert.deepEqual(artifactDownloadEvidence(item), {
-    visible: true,
-    available: true,
-    reason: "",
-    purpose: "full",
-    mode: "export",
-  });
-
-  const result = await getArtifactDownload(item);
-
-  assert.equal(result.ok, true);
-  assert.equal(result.data?.purpose, "full");
-  assert.equal(result.data?.mode, "export");
-  assert.equal(result.data?.filename, "layered-poster.png");
-  assert.equal(result.data?.mediaType, "image/png");
-  assert.match(result.data?.expiresAt || "", /Z$/);
-  assert.deepEqual(
-    calls
-      .filter((url) => url.pathname.includes("/renditions/"))
-      .map((url) => `${url.pathname}?${url.searchParams}`),
-    [
-      "/v1/artifacts/layered-poster/revisions/r1/renditions/full?mode=export",
-    ],
-  );
-
-  const manifestRaw = projection({
-    id: "manifest-only",
-    title: "Manifest only",
-    source: false,
-    editorManifest: true,
-  });
-  installFetch(manifestRaw, (url) => jsonResponse(grantFor(url)));
-  const manifestItem = itemFrom(manifestRaw);
-  assert.deepEqual(artifactDownloadPlanFor(manifestItem.artifact), []);
-  const manifestResult = await getArtifactDownload(manifestItem);
-  assert.equal(manifestResult.ok, false);
-  assert.equal(manifestResult.code, "missing-source");
-  assert.match(manifestResult.error || "", /editor manifest 不是用户下载物/);
-});
-
 test("rendered-only artifacts export full or preview and never touch source", async () => {
   const raw = projection({
     id: "rendered-report",
@@ -427,27 +357,6 @@ test("proprietary rendition MIME never becomes a fabricated extension", async ()
     /不在安全下载白名单|editor JSON|editor manifest|真实交付/,
   );
   assert.doesNotMatch(result.error || "", /OCEANLEODESIGNDO/i);
-});
-
-test("structured project JSON full falls back to a rendered preview", () => {
-  const raw = projection({
-    id: "video-canvas-project",
-    artifactType: "workflow",
-    editorCapability: "video-canvas",
-    sourceFormat: "oceanleo.video.project.v2",
-    sourceMediaType: "application/json",
-    fullFormat: "oceanleo.video.project.v2",
-    fullMediaType: "application/vnd.oceanleo.video-project+json",
-  });
-  const item = itemFrom(raw);
-
-  assert.deepEqual(
-    artifactDownloadPlanFor(item.artifact).map(({ purpose, mode }) => ({
-      purpose,
-      mode,
-    })),
-    [{ purpose: "preview", mode: "export" }],
-  );
 });
 
 test("source-capable artifacts fail closed when source is missing or denied", async () => {

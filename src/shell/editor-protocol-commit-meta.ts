@@ -7,7 +7,6 @@ import {
   recordValue,
   validAssetUrl,
 } from "./editor-protocol-validation.mjs";
-import { privateVideoBlobCommit } from "./editor-private-video-commit";
 
 const DESIGN_SOURCE_FORMAT = "oceanleo.design-document.v1";
 const EDITOR_MESSAGE_SEVERITIES = new Set(["fatal", "warning", "info"]);
@@ -33,7 +32,6 @@ export function validIssueMetadata(record: Record<string, unknown>): boolean {
  */
 const EMBEDDED_TYPED_COMMIT_ARTIFACT_TYPES = new Set([
   "vector_image",
-  "workflow",
   "website",
 ]);
 
@@ -57,7 +55,7 @@ function validCompositeCommitMeta(
 }
 
 /**
- * `vector_image` / `workflow` / `website`：没有 scene 闭包，因此不要求
+ * `vector_image` / `website`：没有 scene 闭包，因此不要求
  * `design_document_*` 那一组字段（W1 A9 第 2 条：这几类的闭包由后端从已验签的
  * `request.source` 推导，客户端不该发 `scene`）。仍然要求一份可校验的 source URL
  * 与非空 `source_format`——具体格式合不合法由提交层按类型判。
@@ -66,7 +64,7 @@ function validEmbeddedTypedCommitMeta(
   meta: Record<string, unknown>,
 ): boolean {
   if (meta.private_blob_commit !== undefined) {
-    return privateVideoBlobCommit(meta) !== null;
+    return false;
   }
   return Boolean(
     EMBEDDED_TYPED_COMMIT_ARTIFACT_TYPES.has(String(meta.artifact_type)) &&

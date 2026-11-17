@@ -2,16 +2,13 @@
  * Mount table for the client `editor.html?type=` runtime.
  *
  * Only native in-page workbench routes are listed. There are no hosted
- * (iframe) editor mounts any more: deck / rich doc / audio / 3D / design canvas
+ * (iframe) editor mounts any more: deck / rich doc / design canvas
  * are mounted through their normal routes (design canvas = image editor).
  */
 import type { AdvancedContentWorkbenchProps } from "./advanced-workbench-types";
 import type { LibraryItem, LibraryKind } from "./library-data";
-import { emptyVideoCanvasGraph } from "./workflow-carrier/video-canvas-local-session";
-import { VIDEO_CANVAS_PROJECT_SCHEMA } from "./workflow-carrier/video-canvas-schema";
 
 export const W10_EDITOR_IDS = Object.freeze([
-  "video-canvas",
   "video-timeline",
 ] as const);
 
@@ -35,22 +32,6 @@ type MountRow = {
 const WORKBENCH_REQUIRED = ["item", "onClose"] as const;
 
 export const W10_EDITOR_MOUNTS: Record<W10EditorId, MountRow> = {
-  "video-canvas": {
-    editorId: "video-canvas",
-    kind: "video_canvas",
-    schema: VIDEO_CANVAS_PROJECT_SCHEMA,
-    exportName: "VideoCanvasRoute",
-    modulePath: "src/shell/advanced-routes/VideoCanvasRoute.tsx",
-    mountKind: "workbench",
-    defaultTitle: "本地视频画布",
-    requiredWorkbench: WORKBENCH_REQUIRED,
-    load: () => import("./advanced-routes/VideoCanvasRoute"),
-    defaultMeta: () => ({
-      editor: "video-canvas",
-      editor_project_schema: VIDEO_CANVAS_PROJECT_SCHEMA,
-      graph: emptyVideoCanvasGraph(),
-    }),
-  },
   "video-timeline": {
     editorId: "video-timeline",
     kind: "video",

@@ -25,9 +25,7 @@ import {
   type ToolbarOwnership,
 } from "./workbench-capability-registry";
 import {
-  AUDIO_EXT,
   IMAGE_EXT,
-  MODEL_EXT,
   NATIVE_DECK_EXT,
   NATIVE_GRID_EXT,
   NATIVE_RICHDOC_EXT,
@@ -95,30 +93,6 @@ function contentTypeFor(item: LibraryItem): string {
     .toLowerCase();
 }
 
-function threeDSubtypeFor(item: LibraryItem): "model" | "hdri" | "texture" | "unknown" {
-  const explicit = [
-    item.descriptor?.subtype,
-    item.meta.subtype,
-    item.meta.category,
-  ].map((value) => String(value || "").trim().toLowerCase());
-  for (const value of explicit) {
-    if (value === "hdri" || value === "environment-map") return "hdri";
-    if (value === "texture" || value === "texture-image") return "texture";
-    if (value === "model" || value === "mesh") return "model";
-  }
-  const values = [
-    ...(Array.isArray(item.meta.scene_tags) ? item.meta.scene_tags : []),
-    ...(Array.isArray(item.meta.tags) ? item.meta.tags : []),
-  ].map((value) => String(value || "").trim().toLowerCase());
-  if (values.includes("hdri") || values.includes("environment-map")) return "hdri";
-  if (values.includes("texture") || values.includes("texture-image")) return "texture";
-  if (values.includes("model") || values.includes("mesh")) return "model";
-  const hint = `${item.url || ""} ${item.meta.format || ""}`.toLowerCase();
-  if (/\.(?:hdr|exr)(?:$|[?#\s])/.test(hint)) return "hdri";
-  if (/\.(?:glb|gltf)(?:$|[?#\s])/.test(hint)) return "model";
-  return "unknown";
-}
-
 function available(
   adapter: Exclude<EditorAdapterId, "none">,
   route: EditorRoute,
@@ -183,10 +157,6 @@ function isWorkItem(item: LibraryItem): boolean {
   return item.kind === "website" || item.kind === "game" || contentTypeFor(item) === "website" || contentTypeFor(item) === "game" ||
     [item.meta.advanced_editor_route, item.meta.editor, item.meta.feature_id, item.meta.capability_id]
       .some((value) => ["work", "website", "game", "website_finetuning", "game_editing"].includes(String(value)));
-}
-
-function videoCanvasEditor(): EditorCapability {
-  return available("video-canvas", { type: "video-canvas" });
 }
 
 function designCanvasEditor(): EditorCapability {
@@ -301,8 +271,6 @@ function durableEditorCapabilityFor(
   switch (adapter) {
     case "video-timeline":
       return available(adapter, { type: "video-timeline" });
-    case "audio":
-      return available(adapter, { type: "audio" });
     case "pdf":
       return available(adapter, { type: "pdf" });
     case "richdoc":
@@ -311,23 +279,20 @@ function durableEditorCapabilityFor(
       return available(adapter, { type: "grid" });
     case "deck":
       return available(adapter, { type: "deck" });
-    case "threed":
-      return available(adapter, { type: "threed" });
     case "work":
       return workCapability();
     case "image":
-      // 存量 workflow 的 design_canvas 能力仍使用视频画布；图片与设计稿共用 image。
-      return artifact.artifactType === "workflow"
-        ? videoCanvasEditor()
-        : designCanvasEditor();
-    case "video-canvas":
-      return videoCanvasEditor();
+      return designCanvasEditor();
   }
   return unavailable("没有匹配的受信任 typed editor adapter。");
 }
 
 /** 素材 → 受信任 editor capability；viewer kind 本身不授予编辑能力。 */
 export function editorCapabilityFor(item: LibraryItem): EditorCapability {
+  const type = item.artifact?.artifactType || item.artifactType;
+  if (type === "audio" || type === "model_3d" || item.kind === "audio" || item.kind === "threed") {
+    return unavailable("此内容没有可安全回写的结构化编辑器。");
+  }
   const durable = durableEditorCapabilityFor(item);
   if (durable) return durable;
   if (isWorkItem(item)) return workCapability();
@@ -355,6 +320,9 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   // began. Re-inferring solely from the preview file extension changed Design
   // canvas sessions into the image editor after refresh.
   const pinnedRoute = item.meta.advanced_editor_route;
+  if (mime.startsWith("audio/") || mime.startsWith("model/") || /^(?:mp3|wav|m4a|aac|ogg|flac|glb|gltf|obj|stl|fbx|usdz)$/.test(ext)) {
+    return unavailable("此内容没有可安全回写的结构化编辑器。");
+  }
   if (pinnedRoute === "richdoc") {
     return available("richdoc", { type: "richdoc" });
   }
@@ -366,16 +334,10 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   }
   if (
     pinnedRoute === "video-timeline" ||
-    pinnedRoute === "audio" ||
     pinnedRoute === "image" ||
     pinnedRoute === "pdf"
   ) {
     return available(pinnedRoute, { type: pinnedRoute });
-  }
-  if (pinnedRoute === "threed") {
-    return threeDSubtypeFor(item) === "model"
-      ? available("threed", { type: "threed" })
-      : unavailable("只有 3D 模型可进入场景/视图工作台。");
   }
   if (pinnedRoute === "none") {
     return unavailable(
@@ -397,12 +359,11 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       "Legacy Office metadata requires a typed document, grid, or deck source.",
     );
   }
-  // 历史会话把网站 / 视频画布 / 设计画布都记成 "embed"。读时别名到本地编辑器，
+  // 历史会话把网站 / 设计画布都记成 "embed"。读时别名到本地编辑器，
   // 不改写存量；新写入用各自的真实路由名。
   if (
     pinnedRoute === "embed" ||
-    pinnedRoute === "website" ||
-    pinnedRoute === "video-canvas"
+    pinnedRoute === "website"
   ) {
     const pinnedEditor = String(item.meta.editor || "").toLowerCase();
     if (
@@ -411,13 +372,6 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
       pinnedEditor === "website"
     ) {
       return workCapability();
-    }
-    if (
-      pinnedRoute === "video-canvas" ||
-      item.kind === "video_canvas" ||
-      pinnedEditor === "video-canvas"
-    ) {
-      return videoCanvasEditor();
     }
     if (
       templateDocumentUrl ||
@@ -432,12 +386,6 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
     return designCanvasEditor();
   }
 
-  if (
-    item.kind === "video_canvas" ||
-    (item.kind === "canvas" && item.meta.editor === "video-canvas")
-  ) {
-    return videoCanvasEditor();
-  }
   // A canvas is an editable project capability in its own right. Blank drafts
   // intentionally have no URL/nodes yet and must work from every hosting site.
   if (item.kind === "canvas") {
@@ -457,32 +405,7 @@ export function editorCapabilityFor(item: LibraryItem): EditorCapability {
   if (VIDEO_EXT.has(ext) || mime.startsWith("video/")) {
     return available("video-timeline", { type: "video-timeline" });
   }
-  if (AUDIO_EXT.has(ext) || mime.startsWith("audio/")) {
-    return available("audio", { type: "audio" });
-  }
 
-  if (item.kind === "threed" || contentType === "3d") {
-    const subtype = threeDSubtypeFor(item);
-    if (subtype === "hdri") {
-      return unavailable(
-        "HDRI 是环境光照素材，不是 3D 模型；当前可预览和下载，但不能送入 model-viewer。",
-      );
-    }
-    if (subtype === "texture") {
-      return unavailable(
-        "纹理是贴图素材，不是 3D 模型；当前可预览和下载，但不能送入 model-viewer。",
-      );
-    }
-    if (
-      subtype === "model" &&
-      (MODEL_EXT.has(ext) ||
-        mime === "model/gltf-binary" ||
-        mime === "model/gltf+json")
-    ) {
-      return available("threed", { type: "threed" });
-    }
-    return unavailable("没有可加载的 GLB 或已整包托管的 glTF 模型。");
-  }
 
   if (ext === "psd" || IMAGE_EXT.has(ext) || mime.startsWith("image/")) {
     return available("image", { type: "image" });
@@ -530,8 +453,6 @@ export function editorToolLabel(route: EditorRoute): string {
   switch (route.type) {
     case "video-timeline":
       return "时间线剪辑";
-    case "audio":
-      return "音频处理";
     case "image":
       return "图片编辑";
     case "pdf":
@@ -542,12 +463,8 @@ export function editorToolLabel(route: EditorRoute): string {
       return "表格编辑";
     case "deck":
       return "幻灯片编辑";
-    case "threed":
-      return "3D 场景与视图";
     case "work":
       return "作品工作台";
-    case "video-canvas":
-      return "节点画布";
     default:
       return "编辑";
   }

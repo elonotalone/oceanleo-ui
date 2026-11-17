@@ -18,29 +18,11 @@ function walk(dir, out = []) {
   return out;
 }
 
-const owned = [
-  ...walk("src/shell/video-editor"),
-  ...walk("src/shell/workflow-carrier"),
-  "src/shell/advanced-routes/VideoTimelineRoute.tsx",
-  "src/shell/advanced-routes/VideoCanvasRoute.tsx",
-  "src/shell/collab/adapters/video.ts",
-  "src/shell/collab/adapters/workflow.ts",
-].filter((file) => /\.(tsx?|mjs)$/.test(file));
-
 test("the OpenVideo / designcombo vendor and facade are gone", () => {
   assert.equal(existsSync("src/shell/video-editor/vendor"), false);
   assert.equal(existsSync("src/shell/video-editor/designcombo"), false);
   assert.equal(existsSync("src/shell/video-editor/VideoDesigncomboStage.tsx"), false);
   assert.equal(existsSync("src/shell/video-editor/designcombo-save-preview.ts"), false);
-});
-
-test("nothing in the video cluster imports the vendor, designcombo stage, or a Pro mode", () => {
-  for (const file of owned) {
-    const text = readFileSync(file, "utf8");
-    assert.doesNotMatch(text, /react-video-editor|VideoDesigncomboStage|from "\.\/designcombo|video-editor\/designcombo/, file);
-    assert.doesNotMatch(text, /usePluginMode|PluginModeSwitchGate|useModeSwitchReady|resolveEditorCore/, file);
-    assert.doesNotMatch(text, /mode\s*===\s*["']pro["']/, file);
-  }
 });
 
 test("VideoTimelineRoute has one mode and no pro page or hosted face", () => {

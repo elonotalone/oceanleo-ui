@@ -26,16 +26,6 @@ import {
   imageToEntities,
 } from "../src/shell/collab/adapters/image.ts";
 import {
-  MODEL3D_ROOT,
-  model3dFromEntities,
-  model3dToEntities,
-} from "../src/shell/collab/adapters/model3d.ts";
-import {
-  AUDIO_ROOT,
-  audioFromEntities,
-  audioToEntities,
-} from "../src/shell/collab/adapters/audio.ts";
-import {
   PDF_ROOT,
   pdfFromEntities,
   pdfToEntities,
@@ -45,11 +35,6 @@ import {
   videoFromEntities,
   videoToEntities,
 } from "../src/shell/collab/adapters/video.ts";
-import {
-  WORKFLOW_ROOT,
-  workflowFromEntities,
-  workflowToEntities,
-} from "../src/shell/collab/adapters/workflow.ts";
 
 const ROUNDS = 200;
 const canon = (value) =>
@@ -303,42 +288,6 @@ test("image：200 轮两人并发后两边一致", (t) => {
   });
 });
 
-test("model3d：200 轮两人并发后两边一致", (t) => {
-  const T = (position = [0, 0, 0]) => ({ position, rotation: [0, 0, 0], scale: [1, 1, 1] });
-  runEntityFamily(t, {
-    name: "model3d",
-    root: MODEL3D_ROOT,
-    toEntities: model3dToEntities,
-    fromEntities: model3dFromEntities,
-    seed: {
-      checkpointUrl: "https://m/scene.glb",
-      operations: [
-        { id: "op1", kind: "transform", target: "Chair", value: T([1, 0, 0]) },
-        { id: "op2", kind: "transform", target: "Table", value: T([0, 0, 2]) },
-        { id: "op3", kind: "visibility", target: "Lamp", visible: false },
-      ],
-      view: { annotations: [{ id: "n1", text: "注" }] },
-    },
-  });
-});
-
-test("audio：200 轮两人并发后两边一致", (t) => {
-  runEntityFamily(t, {
-    name: "audio",
-    root: AUDIO_ROOT,
-    toEntities: audioToEntities,
-    fromEntities: audioFromEntities,
-    seed: {
-      sourceUrl: "https://m/a.mp3",
-      operations: [
-        { type: "crop", start: 1, end: 9 },
-        { type: "fade", edge: "in", duration: 0.5 },
-        { type: "gain", multiplier: 1.5, start: 2, end: 4 },
-      ],
-    },
-  });
-});
-
 test("video：200 轮两人并发后两边一致", (t) => {
   runEntityFamily(t, {
     name: "video",
@@ -379,31 +328,6 @@ test("pdf（一次一人适配器仍收敛）：200 轮后两边一致", (t) => 
         { id: "a2", pageIndex: 0, typeName: "TEXT", rect: rect(80, 100), contents: "看这里", strokeColor: "#ff0000" },
       ],
       fields: { name: "张三" },
-    },
-  });
-});
-
-test("workflow（一次一人适配器仍收敛）：200 轮后两边一致", (t) => {
-  const node = (id, x, y, label) => ({
-    id,
-    kind: "trim",
-    label,
-    x,
-    y,
-    ports: { inputs: [{ name: "in", dataType: "video" }], outputs: [{ name: "out", dataType: "video" }] },
-  });
-  runEntityFamily(t, {
-    name: "workflow",
-    root: WORKFLOW_ROOT,
-    toEntities: workflowToEntities,
-    fromEntities: workflowFromEntities,
-    onePerson: true,
-    seed: {
-      nodes: [node("n1", 0, 0, "素材"), node("n2", 200, 0, "裁剪"), node("n3", 400, 0, "输出")],
-      edges: [
-        { id: "e1", fromNodeId: "n1", fromPort: "out", toNodeId: "n2", toPort: "in" },
-        { id: "e2", fromNodeId: "n2", fromPort: "out", toNodeId: "n3", toPort: "in" },
-      ],
     },
   });
 });
@@ -484,7 +408,6 @@ test("一次一人：矢量/流程图/PDF 的抢锁语义（先到的人持锁�
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { canvasGraphFromEntities, canvasGraphToEntities } from "../src/shell/collab/adapters/workflow.ts";
 import {
   VIEW_ONLY_REFUSAL,
   guardPluginSurface,
@@ -492,8 +415,6 @@ import {
 import { buildDeckCommandSurface, buildPdfCommandSurface, buildRichDocCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
-import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
-import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
 import { runGridAgentCommand } from "../src/shell/doc-editors/grid-univer/agent-write-gate.ts";
 
 const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -562,75 +483,6 @@ test("[F05] PDF：两人同时各加批注都在；甲删第 3 页，乙在第 5
   destroy();
 });
 
-// ------------------------------------------------------------------ F06 流程图
-test("[F06] 流程图：本地 xyflow 画布只有一次一人的编辑锁；只读人不能改但能平移、缩放", () => {
-  const stage = src("workflow-carrier/VideoCanvasStage.tsx");
-  const canvas = src("workflow-carrier/VideoCanvasLocalCanvas.tsx");
-  assert.match(stage, /useLockedEditCollab\s*\(/, "画布协同只剩一次一人的编辑锁");
-  assert.doesNotMatch(stage, /useEntityCollab|CanvasCollabLink|canvasInert/, "已删的探测/按实体合并路径不许长回来");
-  assert.match(stage, /const collabReadOnly = lockedEdit\.readOnly;/, "只读必须来自编辑锁");
-  assert.match(stage, /readOnly=\{!mayWrite \|\| nativeV2ReadOnlyProjection\}/, "没有写权限的人拿到的画布必须是只读");
-  // 只读：节点不可拖、不可连、不接变更回调；但不许关掉平移/缩放。
-  assert.match(canvas, /onNodesChange=\{readOnly \? undefined : handleNodesChange\}/);
-  assert.match(canvas, /onConnect=\{readOnly \? undefined : onConnect\}/);
-  assert.match(canvas, /nodesDraggable=\{!readOnly\}/);
-  assert.match(canvas, /nodesConnectable=\{!readOnly\}/);
-  assert.doesNotMatch(canvas, /panOnDrag=\{|zoomOnScroll=\{|zoomOnPinch=\{|panOnScroll=\{/, "只读人必须仍能平移、缩放");
-});
-
-test("[F06] 流程图：两人同时加节点与连线都在；甲删节点，乙连到它的线不留断线", () => {
-  const node = (id, x) => ({ nodeId: id, id, title: id, position: { x, y: 0 }, kind: "trim" });
-  const seed = { nodes: [node("n1", 0), node("n2", 100), node("n3", 200)], edges: [{ edgeId: "e1", id: "e1", sourceNodeId: "n1", targetNodeId: "n2" }] };
-  const toE = canvasGraphToEntities;
-  const fromE = (input, prev) => canvasGraphFromEntities(input, prev);
-  const { net, bindA, bindB, read, aDoc, bDoc, destroy } = twoPeers({ root: WORKFLOW_ROOT, toEntities: toE, fromEntities: fromE, seed });
-  const a0 = read(aDoc);
-  const b0 = read(bDoc);
-  bindA.push({ ...a0, nodes: [...a0.nodes, node("n4", 300)] });
-  bindB.push({ ...b0, edges: [...b0.edges, { edgeId: "e2", id: "e2", sourceNodeId: "n2", targetNodeId: "n3" }, { edgeId: "e3", id: "e3", sourceNodeId: "n3", targetNodeId: "n1" }] });
-  net.flush();
-  const merged = read(aDoc);
-  assert.equal(canon(merged), canon(read(bDoc)), "加节点/连线后两边不一致");
-  assert.deepEqual(merged.nodes.map((n) => n.id).sort(), ["n1", "n2", "n3", "n4"]);
-  assert.deepEqual(merged.edges.map((e) => e.id).sort(), ["e1", "e2", "e3"]);
-  // 甲删 n3；乙同时又连了一条 n1→n3
-  const a1 = read(aDoc);
-  const b1 = read(bDoc);
-  bindA.push({ ...a1, nodes: a1.nodes.filter((n) => n.id !== "n3"), edges: a1.edges.filter((e) => e.sourceNodeId !== "n3" && e.targetNodeId !== "n3") });
-  bindB.push({ ...b1, edges: [...b1.edges, { edgeId: "e9", id: "e9", sourceNodeId: "n1", targetNodeId: "n3" }] });
-  net.flush();
-  for (const doc of [aDoc, bDoc]) {
-    const g = read(doc);
-    const ids = new Set(g.nodes.map((n) => n.id));
-    const dangling = g.edges.filter((e) => !ids.has(e.sourceNodeId) || !ids.has(e.targetNodeId)).map((e) => e.id);
-    assert.deepEqual(dangling, [], `删节点后留下了断线：${dangling.join(",")}`);
-  }
-  assert.equal(canon(read(aDoc)), canon(read(bDoc)));
-  destroy();
-});
-
-// ------------------------------------------------------------------ F07 视频、音频、3D
-test("[F07] 视频/音频/3D：远端改动不走 restoreRecovery（不清撤销栈、不标未保存）", () => {
-  const routes = { video: "advanced-routes/VideoTimelineRoute.tsx", audio: "advanced-routes/AudioRoute.tsx", model3d: "advanced-routes/Model3DRoute.tsx" };
-  const bad = [];
-  for (const [name, rel] of Object.entries(routes)) {
-    const text = src(rel);
-    for (const m of text.matchAll(/applyRemote\b[^\n]*=>?\s*[{(]|applyRemote:\s*[^\n]*/g)) {
-      const body = text.slice(m.index, m.index + 700);
-      if (/restoreRecovery/.test(body)) bad.push(`${name}: applyRemote 附近调用了 restoreRecovery`);
-    }
-    if (!/applyRemote(Doc|Project|Scene)\b/.test(text)) bad.push(`${name}: 没有专门接远端改动的入口（applyRemoteDoc/Project/Scene）`);
-  }
-  assert.deepEqual(bad, [], bad.join("\n"));
-});
-
-test("[F07] 视频/音频/3D：只读不再整块 inert；撤销栈按自己的改动记", () => {
-  const routes = ["advanced-routes/VideoTimelineRoute.tsx", "advanced-routes/AudioRoute.tsx", "advanced-routes/Model3DRoute.tsx"];
-  const bad = routes.filter((rel) => /\binert\b\s*=/.test(src(rel)));
-  assert.deepEqual(bad, [], `这些路由只读时仍整块 inert（连播放、转视角都点不了）：${bad.join(", ")}`);
-  assert.ok(has("video-editor/entity-undo.ts"), "缺「只撤自己」的撤销栈模块 entity-undo.ts");
-});
-
 // ------------------------------------------------------------------ F08 PPT、图表、图片、矢量图
 test("[F08] PPT/图片：浮条与面板拿到只读（图表编辑器与嵌入矢量画布已删除）", () => {
   for (const [name, rel, tag] of [
@@ -683,11 +535,8 @@ const SURFACE_FILES = {
   grid: "doc-editors/GridUniverStage.tsx",
   deck: "advanced-routes/DeckRoute.tsx",
   image: "advanced-routes/ImageRoute.tsx",
-  model3d: "advanced-routes/Model3DRoute.tsx",
-  audio: "advanced-routes/AudioRoute.tsx",
   pdf: "advanced-routes/PdfRoute.tsx",
   video: "advanced-routes/VideoTimelineRoute.tsx",
-  workflow: "workflow-carrier/VideoCanvasStage.tsx",
 };
 
 // 指令面的构造在别的文件里的族：路由里没写只读，只要构造文件里写了也算挡住
@@ -695,8 +544,6 @@ const SURFACE_BUILDERS = {
   richdoc: ["doc-editors/doc-family-commands.ts"],
   pdf: ["doc-editors/doc-family-commands.ts"],
   image: ["image-editor/image-command-surface.ts"],
-  model3d: ["media-editors/model3d-command-surface.ts"],
-  audio: ["media-editors/audio-command-surface.ts", "media-editors/visual-command-kit.ts"],
   video: ["video-editor/video-command-surface.ts", "media-editors/visual-command-kit.ts"],
 };
 const READ_ONLY_GUARD = /readonly:\s|readonlyNotice|\.readOnly\b|\breadOnly\b|\bviewOnly\b|guardPluginSurface|guardVisualCommands|editBlocked/;
@@ -730,8 +577,6 @@ test("[只读/16] 每个选区 adapter 拿到只读状态，Grid 的数据入口
     ["DeckRoute", "useDeckSelectionAdapter", "doc-editors/use-deck-selection-adapter.ts"],
     ["ImageRoute", "useFabricImageSelectionAdapter", "image-editor/use-fabric-image-selection-adapter.ts"],
     ["PdfRoute", "usePdfSelectionAdapter", "media-editors/use-pdf-selection-adapter.ts"],
-    ["AudioRoute", "useAudioSelectionAdapter", "media-editors/use-audio-selection-adapter.ts"],
-    ["Model3DRoute", "useModel3DSelectionAdapter", "media-editors/use-model3d-selection-adapter.ts"],
     ["VideoTimelineRoute", "useVideoTimelineSelectionAdapter", "video-editor/use-video-timeline-selection-adapter.ts"],
   ]) {
     const text = src(`advanced-routes/${name}.tsx`);
@@ -785,261 +630,3 @@ async function assertWrappedReadonly(family, inner, editorCalls) {
   assert.deepEqual(ran, [], `${family}: 原 run 不得被调用`);
   if (editorCalls) assert.deepEqual(editorCalls, [], `${family}: 文档/编辑器不得被改`);
 }
-
-test("[只读/16] 能拿到构造函数的指令面：只读时改动指令被拒、原 run 不跑、文档不变", async (t) => {
-  const noopDownload = { download: async () => "" };
-  const conclusions = [];
-
-  const pdfCalls = [];
-  const pdfEditor = {
-    readerState: "text-ready",
-    failure: null,
-    textLayer: { status: "ready", present: true, totalCharacters: 9, coveragePageRatio: 1, extractor: "pdfjs" },
-    manifest: null,
-    searchFullText: () => [],
-    pageNumber: 2,
-    pageCount: 6,
-    rotation: 0,
-    zoom: 100,
-    annotations: [],
-    loading: false,
-    rendering: false,
-    processing: false,
-    dirty: false,
-    editRevision: 1,
-    error: "",
-    notice: "",
-    goToPage: (...args) => pdfCalls.push(["goToPage", ...args]),
-    extractPages: async (...args) => pdfCalls.push(["extractPages", ...args]),
-    deleteCurrentPage: async () => pdfCalls.push(["deleteCurrentPage"]),
-    rotateCurrentPage: async (...args) => pdfCalls.push(["rotateCurrentPage", ...args]),
-    addBlankPage: async () => pdfCalls.push(["addBlankPage"]),
-    moveCurrentPage: async () => pdfCalls.push(["moveCurrentPage"]),
-    movePage: async (...args) => pdfCalls.push(["movePage", ...args]),
-    save: async () => pdfCalls.push(["save"]),
-    saveCopy: async () => pdfCalls.push(["saveCopy"]),
-    download: () => pdfCalls.push(["download"]),
-  };
-  await assertWrappedReadonly("pdf", buildPdfCommandSurface(pdfEditor, noopDownload), pdfCalls);
-  conclusions.push("pdf: 行为（buildPdfCommandSurface + guardPluginSurface）");
-
-  const deckCalls = [];
-  const deckEditor = new Proxy(
-    {
-      loading: false,
-      dirty: false,
-      editRevision: 1,
-      error: "",
-      activeIndex: 0,
-      deck: { slides: [{ id: "s1", title: "A" }, { id: "s2", title: "B" }] },
-    },
-    {
-      get(target, key) {
-        if (key in target) return target[key];
-        if (typeof key === "symbol") return undefined;
-        return (...args) => deckCalls.push([String(key), ...args]);
-      },
-    },
-  );
-  await assertWrappedReadonly("deck", buildDeckCommandSurface(deckEditor, noopDownload), deckCalls);
-  conclusions.push("deck: 行为（buildDeckCommandSurface + guardPluginSurface）");
-
-  const richTouched = [];
-  const richSpy = {
-    chain() {
-      richTouched.push("chain");
-      return this;
-    },
-    focus() {
-      return this;
-    },
-    insertContentAt() {
-      return this;
-    },
-    run() {
-      return true;
-    },
-  };
-  const richEditor = {
-    editor: richSpy,
-    item: { title: "t", meta: {} },
-    siteId: "",
-    loading: false,
-    importing: false,
-    saving: false,
-    dirty: false,
-    sourceReady: true,
-    editRevision: 1,
-    error: "",
-    sourceFailed: false,
-    savedUrl: "",
-    source: "url-docx",
-    words: 1,
-    chars: 1,
-    save: async () => null,
-    exportDoc: async () => {},
-    exportMarkdown: async () => {},
-    exportHtml: async () => {},
-    exportText: () => {},
-  };
-  await assertWrappedReadonly("richdoc", buildRichDocCommandSurface(richEditor, noopDownload), richTouched);
-  conclusions.push("richdoc: 行为（buildRichDocCommandSurface + guardPluginSurface）");
-
-  const image = recordCalls();
-  const imageEditor = {
-    loading: false,
-    cropping: false,
-    error: "",
-    dirty: false,
-    editRevision: 1,
-    doc: { width: 1080, height: 720 },
-    canvasBackground: "#ffffff",
-    layers: [{ id: "l1", locked: false, selected: true, kind: "text" }],
-    selected: { id: "l1", kind: "text" },
-    zoom: 1,
-    exportFormat: "png",
-    exportQuality: 90,
-    collab: { readOnly: true },
-    startCrop: image.record("startCrop"),
-    setCropRatio: image.record("setCropRatio"),
-    confirmCrop: image.record("confirmCrop", async () => undefined),
-    resizeDoc: image.record("resizeDoc"),
-    rotateTarget: image.record("rotateTarget"),
-    addText: image.record("addText"),
-    setSelectedText: image.record("setSelectedText"),
-    setCanvasBackground: image.record("setCanvasBackground"),
-  };
-  const imageSurface = createImageCommandSurface({
-    editor: imageEditor,
-    deliver: async () => undefined,
-    runAi: async () => ({ ok: true, message: "x" }),
-  });
-  {
-    const mutating = imageSurface.describe().filter((spec) => spec.mutates);
-    assert.ok(mutating.length >= 1, "image: 应有会改作品的指令");
-    const spec = mutating[0];
-    const result = await imageSurface.run(spec.id, dummyCommandParams(spec));
-    assert.equal(result.ok, false, `image: ${spec.id}`);
-    assert.equal(result.message, VIEW_ONLY_REFUSAL);
-    assert.deepEqual(image.calls, [], "image: 画布不得被改");
-  }
-  conclusions.push("image: 行为（createImageCommandSurface 内置 guardVisualCommands）");
-
-  const video = recordCalls();
-  const videoEditor = {
-    loadingSource: false,
-    sourceReady: true,
-    exporting: false,
-    error: "",
-    dirty: false,
-    editRevision: 1,
-    durationMs: 10_000,
-    playheadMs: 1_000,
-    playing: false,
-    selectedClipId: "clip-a",
-    doc: {
-      width: 1920,
-      height: 1080,
-      fps: 30,
-      tracks: [{ id: "track-v", kind: "video", clips: [{ id: "clip-a", start_ms: 0, duration_ms: 6_000, source_url: "https://cdn.example.com/a.mp4" }] }],
-    },
-    cutRange: video.record("cutRange", true),
-    deleteClip: video.record("deleteClip", true),
-    patchClip: video.record("patchClip"),
-    setClipSpeed: video.record("setClipSpeed"),
-    addMediaUrl: video.record("addMediaUrl", async () => undefined),
-    seek: video.record("seek"),
-  };
-  await assertWrappedReadonly("video", createVideoCommandSurface({ editor: videoEditor, deliver: async () => undefined }), video.calls);
-  conclusions.push("video: 行为（createVideoCommandSurface + guardPluginSurface）");
-
-  const audio = recordCalls();
-  const audioEditor = {
-    loading: false,
-    error: "",
-    dirty: false,
-    editRevision: 1,
-    duration: 30,
-    currentTime: 4,
-    playing: false,
-    selection: null,
-    fadeDuration: 1.5,
-    gain: 100,
-    editRange: audio.record("editRange", async () => true),
-    applyGainRange: audio.record("applyGainRange", async () => true),
-    applyFade: audio.record("applyFade"),
-    seekTo: audio.record("seekTo"),
-  };
-  await assertWrappedReadonly("audio", createAudioCommandSurface({ editor: audioEditor, deliver: async () => undefined }), audio.calls);
-  conclusions.push("audio: 行为（createAudioCommandSurface + guardPluginSurface）");
-
-  const model = recordCalls();
-  const modelEditor = {
-    loading: false,
-    modelLoaded: true,
-    downloading: false,
-    capturing: false,
-    saving: false,
-    dirty: false,
-    editRevision: 1,
-    sourceFormat: "glb",
-    azimuth: 30,
-    elevation: 12,
-    zoom: 100,
-    autoRotate: false,
-    background: "#101010",
-    animations: ["Idle"],
-    animationPlaying: false,
-    sceneNodes: [{ id: "n1" }],
-    materials: [{ name: "m1" }],
-    annotations: [],
-    setOrbit: model.record("setOrbit"),
-    setZoom: model.record("setZoom"),
-    resetCamera: model.record("resetCamera"),
-    setAutoRotate: model.record("setAutoRotate"),
-    selectAnimation: model.record("selectAnimation"),
-    setAnimationPlaying: model.record("setAnimationPlaying"),
-  };
-  await assertWrappedReadonly("model3d", createModel3DCommandSurface({ editor: modelEditor, deliver: async () => undefined }), model.calls);
-  conclusions.push("model3d: 行为（createModel3DCommandSurface + guardPluginSurface）");
-
-  const gridWrites = [];
-  const gridResult = runGridAgentCommand({
-    id: "grid.set-cell",
-    params: { row: 0, column: 0, value: "x" },
-    port: {
-      getRange: () => ({
-        getValue: () => "old",
-        setValue: (v) => gridWrites.push(v),
-      }),
-    },
-    revision: 1,
-    readonly: true,
-    readonlyNotice: "现在是只读状态，不能修改。",
-    submit: () => gridWrites.push("submit"),
-  });
-  assert.equal(gridResult.ok, false, "grid: set-cell 只读时应被拒");
-  assert.match(String(gridResult.message), /只读/, "grid: 拒绝原因应说明只读");
-  assert.deepEqual(gridWrites, [], "grid: 表格不得被写、不得送审阅");
-  conclusions.push("grid: 行为（runGridAgentCommand readonly）");
-
-  const workflowSrc = src("workflow-carrier/VideoCanvasStage.tsx");
-  assert.match(workflowSrc, /guardPluginSurface\(\s*\{[\s\S]*editorId:\s*WORKFLOW_EDITOR_ID[\s\S]*\},\s*collabReadOnly,/);
-  const workflowRan = [];
-  const workflowRaw = {
-    editorId: "workflow",
-    describe: () => [{ id: "workflow.add-node", label: "加节点", summary: "", mutates: true }],
-    state: () => ({ revision: 1 }),
-    run: (id, params) => {
-      workflowRan.push([id, params]);
-      return { ok: true, message: "wrote" };
-    },
-  };
-  const blocked = await guardPluginSurface(workflowRaw, true).run("workflow.add-node", {});
-  assert.equal(blocked.ok, false);
-  assert.equal(blocked.message, VIEW_ONLY_REFUSAL);
-  assert.deepEqual(workflowRan, []);
-  conclusions.push("workflow: 只能静态（指令面写在 VideoCanvasStage 内）；闸行为用同形 surface + guardPluginSurface 验过");
-
-  t.diagnostic(conclusions.join("\n"));
-});

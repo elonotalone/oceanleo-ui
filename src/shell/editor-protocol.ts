@@ -19,7 +19,6 @@ import {
   validTypedCompositeCommitMeta,
 } from "./editor-protocol-commit-meta";
 import { canLoadFamilyEmbedBase } from "./family-embed-origin";
-import { privateVideoBlobCommit } from "./editor-private-video-commit";
 import {
   boundedRecord,
   boundedString,
@@ -176,7 +175,7 @@ export function asEditorToHostMessage(
       (record.revision !== undefined && !validRevision(record.revision)) ||
       (record.meta !== undefined && !boundedRecord(record.meta, 20_000)) ||
       (typedCommit &&
-        ((!privateVideoBlobCommit(meta) && !boundedString(record.previewUrl, 2_000, true)) ||
+        (!boundedString(record.previewUrl, 2_000, true) ||
           !boundedString(record.saveId, 128, true) ||
           !validTypedCompositeCommitMeta(record.meta, record.revision)))
     ) {

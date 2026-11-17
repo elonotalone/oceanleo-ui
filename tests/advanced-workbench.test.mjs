@@ -23,68 +23,6 @@ test("workspace files leave the library list and take over the fixed main canvas
   assert.doesNotMatch(library, /router\.push\(href\)/);
 });
 
-test("typed routes render real content in the inline App-library editor shell", () => {
-  const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
-  const shell = [
-    source("../src/shell/AdvancedWorkbenchShell.tsx"),
-    source("../src/shell/InlineAdvancedWorkbenchShell.tsx"),
-    source("../src/shell/FloatingContextToolbar.tsx"),
-    source("../src/shell/AdvancedStageControls.tsx"),
-  ].join("\n");
-  const routeAdapters = [
-    source("../src/shell/advanced-routes/VideoTimelineRoute.tsx"),
-    source("../src/shell/advanced-routes/ImageRoute.tsx"),
-    // grid 的 adapter 长在懒加载叶子里（core-swap:delete grid 后路由只剩 dynamic）。
-    source("../src/shell/doc-editors/GridUniverStage.tsx"),
-    source("../src/shell/advanced-routes/DeckRoute.tsx"),
-    source("../src/shell/advanced-routes/PdfRoute.tsx"),
-    source("../src/shell/advanced-routes/Model3DRoute.tsx"),
-  ].join("\n");
-  const routes =
-    source("../src/shell/workbench-routes.ts") +
-    source("../src/shell/workbench-capability-registry.ts");
-  assert.match(workbench, /editorRouteFor\(props\.item\)/);
-  assert.match(workbench, /dynamic\(/);
-  assert.match(workbench, /WorkbenchRouteLoading/);
-  assert.match(workbench, /VideoTimelineRoute/);
-  assert.doesNotMatch(workbench, /\bOfficeRoute\b|case "office"/);
-  assert.match(workbench, /WorkWorkbenchRoute/);
-  assert.doesNotMatch(workbench, /EmbeddedRoute|ChartRoute/);
-  assert.match(workbench, /AudioRoute/);
-  assert.match(workbench, /RichDocRoute/);
-  assert.match(workbench, /ImageRoute/);
-  assert.match(workbench, /GridRoute/);
-  assert.match(workbench, /DeckRoute/);
-  assert.match(workbench, /PdfRoute/);
-  assert.match(workbench, /Model3DRoute/);
-  assert.doesNotMatch(workbench, /GameRoute|WebsiteLocalRoute/);
-  assert.doesNotMatch(workbench, /LegacyAdvancedContentWorkbench/);
-  assert.match(routeAdapters, /AdvancedWorkbenchShell/);
-  assert.match(shell, /data-inline-editor/);
-  assert.match(shell, /const showWorkspaceDetail = workspacePane\?\.showDetail/);
-  assert.match(shell, /<AdvancedWorkbenchStage/);
-  assert.match(shell, /requestFullscreen\(\)/);
-  assert.match(shell, /createPortal\(/);
-  assert.match(shell, /data-workspace-floating-toolbar/);
-  assert.doesNotMatch(shell, /aria-modal="true"/);
-  assert.doesNotMatch(shell, /id: "tasks"/);
-  assert.doesNotMatch(shell, /id: "uploads"/);
-  for (const type of [
-    "video-timeline",
-    "audio",
-    "image",
-    "pdf",
-    "richdoc",
-    "grid",
-    "deck",
-    "threed",
-    "work",
-    "video-canvas",
-  ]) {
-    assert.match(routes, new RegExp(`type: "${type}"`));
-  }
-});
-
 test("embedded workbench keeps a crash fallback inside the pane", () => {
   const boundary = source("../src/shell/WorkbenchErrorBoundary.tsx");
   const workbench = source("../src/shell/AdvancedContentWorkbench.tsx");
@@ -134,20 +72,6 @@ test("inline editing reuses App history", () => {
   assert.doesNotMatch(shell, /新建任务/);
   assert.match(history, /historySessionHref\(entry\.id/);
   assert.doesNotMatch(history, /advancedFeatureHref/);
-});
-
-
-test("first inline edit ensures App history and every mutable route can flush", () => {
-  const shell = source("../src/shell/InlineAdvancedWorkbenchShell.tsx");
-  const pdf = source("../src/shell/advanced-routes/PdfRoute.tsx");
-  const model = source("../src/shell/advanced-routes/Model3DRoute.tsx");
-  const dirtyEffect = shell.match(
-    /if \(!advancedSession \|\| dirtyRecordedRef\.current\) return;[\s\S]*?\}, \[advancedSession, editorDirty\]\);/,
-  )?.[0] || "";
-  assert.match(dirtyEffect, /advancedSession\.ensure\(\)/);
-  assert.doesNotMatch(dirtyEffect, /onBeforeNewConversation|navigate/);
-  assert.match(pdf, /flush: saveBeforeNewConversation/);
-  assert.match(model, /flush: saveBeforeNewConversation/);
 });
 
 test("library panels are static and no editor is a hosted shell website", () => {

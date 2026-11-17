@@ -24,7 +24,7 @@ export function WorkReplayHost() {
   const [replayId, setReplayId] = useState<string | null>(null);
   const [consents, setConsents] = useState<PendingConsent[]>([]);
   const tt = useUI();
-  // 「从这一步接手」：存成查看者自己库里的新作品（只有 video / audio 两族能存，见 fork-artifact.ts）。
+  // 「从这一步接手」：存成查看者自己库里的新作品（只有 video 能存，见 fork-artifact.ts）。
   const createArtifact = useCallback((input: ForkArtifactInput) => createReplayArtifact(input, { tt }), [tt]);
 
   useEffect(() => {

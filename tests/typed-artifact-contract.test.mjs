@@ -922,7 +922,7 @@ test("video timeline and workflow canvas keep distinct typed editor routes", () 
     artifactProjectionToLibraryItem(workflow, { forEdit: true }),
   ).route;
   // 节点图（workflow）按 artifactType 落到本地视频画布，不再是嵌入的设计子站。
-  assert.equal(flowRoute.type, "video-canvas");
+  assert.equal(flowRoute.type, "none");
   assert.equal("mediaType" in flowRoute, false);
 });
 

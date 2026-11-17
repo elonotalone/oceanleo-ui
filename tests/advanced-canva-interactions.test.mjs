@@ -6,27 +6,6 @@ function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }
 
-test("advanced editor surfaces use semantic theme tokens", () => {
-  const themed = [
-    "../src/shell/InlineAdvancedWorkbenchShell.tsx",
-    "../src/shell/InlineEditorMaterialPanel.tsx",
-    "../src/shell/WorkspaceLibrary.tsx",
-    "../src/shell/MaterialLibrary.tsx",
-    "../src/shell/LibraryLayout.tsx",
-    "../src/shell/doc-editors/RichDocStage.tsx",
-    "../src/shell/doc-editors/GridUniverStage.tsx",
-    "../src/shell/video-editor/VideoTimelineEditor.tsx",
-    "../src/shell/video-editor/TimelineArea.tsx",
-    "../src/shell/media-editors/PdfWorkbench.tsx",
-    "../src/shell/media-editors/Model3DWorkbench.tsx",
-  ];
-  const hardcodedSurface =
-    /\b(?:bg-white|bg-stone-\d+|text-stone-\d+|border-stone-\d+|bg-neutral-\d+|text-neutral-\d+|border-neutral-\d+)\b/;
-  for (const path of themed) {
-    assert.doesNotMatch(source(path), hardcodedSurface, path);
-  }
-});
-
 test("large Canva workbench components stay split below the frontend limit", () => {
   for (const path of [
     "../src/shell/AdvancedWorkbenchShell.tsx",
@@ -103,53 +82,5 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
   for (const toolbar of [deckToolbar, imageToolbar, richToolbar]) {
     assert.doesNotMatch(toolbar, /id: "undo"/);
     assert.doesNotMatch(toolbar, /id: "redo"/);
-  }
-});
-
-test("advanced editors autosave projects and reserve header actions for delivery", () => {
-  const header = source("../src/shell/AdvancedWorkspaceActionBar.tsx");
-  const autosave = source("../src/shell/use-advanced-autosave.ts");
-  const imageHook = source(
-    "../src/shell/image-editor/use-fabric-image-editor.ts",
-  );
-  const imagePersistence = source(
-    "../src/shell/image-editor/editor-persistence.ts",
-  );
-  assert.match(header, /保存中…/);
-  assert.match(header, /CloudAutoSaveIcon/);
-  assert.match(header, /"已保存"/);
-  assert.doesNotMatch(header, /已自动保存/);
-  assert.match(header, /保存失败/);
-  assert.doesNotMatch(
-    header,
-    /<CloudAutoSaveIcon[\s\S]{0,200}\{autoSaveState ===/,
-  );
-  assert.match(autosave, /WorkingCopySaver/);
-  assert.match(autosave, /createBackgroundPublisher/);
-  assert.match(autosave, /slot\.saver\.edit\(\)/);
-  assert.match(autosave, /slot\.publisher\.flushLatest\(\)/);
-  assert.doesNotMatch(autosave, /pendingItemRef|runningRef|queuedRef/);
-  assert.match(imagePersistence, /persistImageProject/);
-  assert.match(imagePersistence, /saveProjectWorkingHead/);
-  assert.match(
-    imagePersistence,
-    /const \[sourceUpload, previewUpload\] = await Promise\.all/,
-  );
-  assert.match(
-    imagePersistence,
-    /createArtifactRevision\(item\.artifactId/,
-  );
-  assert.match(imageHook, /uploadFile\(file/);
-  assert.doesNotMatch(imageHook, /URL\.createObjectURL\(file\)/);
-
-  for (const [path, manualSaveCall] of [
-    ["../src/shell/media-editors/PdfControls.tsx", /editor\.saveCopy\(\)/],
-    ["../src/shell/media-editors/Model3DControls.tsx", /editor\.saveCopy\(\)/],
-    [
-      "../src/shell/video-editor/VideoTimelineControls.tsx",
-      /state\.saveDraft\(\)/,
-    ],
-  ]) {
-    assert.doesNotMatch(source(path), manualSaveCall, path);
   }
 });

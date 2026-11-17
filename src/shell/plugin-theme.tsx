@@ -37,13 +37,11 @@ export type PluginThemeId =
   | "deck"
   | "image"
   | "pdf"
-  | "audio"
   | "video-timeline"
-  | "threed"
   // 2026-08-30：三件 extracted 插件并入同一套主题。此前它们走站点主题别名，
   // 于是同一个陈列馆里并存三套 token（--awb-* / --wb-* / 站点语义变量），
   // 切插件会跳色。统一外壳要求 13 件同源，所以补进本表。
-  | "video-canvas";
+;
 
 export interface PluginThemeSpec {
   /** accent 身份色，两档各一个值（dark 档亮一档以保证近黑底对比度）。 */
@@ -60,10 +58,7 @@ export const PLUGIN_THEME_SPECS: Record<PluginThemeId, PluginThemeSpec> = {
   deck: { accent: { light: "#ea580c", dark: "#fb923c" } },
   image: { accent: { light: "#9333ea", dark: "#c084fc" } },
   pdf: { accent: { light: "#dc2626", dark: "#f87171" } },
-  audio: { accent: { light: "#db2777", dark: "#f472b6" } },
   "video-timeline": { accent: { light: "#0891b2", dark: "#22d3ee" } },
-  threed: { accent: { light: "#ea580c", dark: "#fdba74" } },
-  "video-canvas": { accent: { light: "#0d9488", dark: "#2dd4bf" } },
 };
 
 /**

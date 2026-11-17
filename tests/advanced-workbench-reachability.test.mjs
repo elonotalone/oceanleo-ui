@@ -228,13 +228,11 @@ const workbenchStubs = {
     "about:blank",
   ),
   "./advanced-routes/AudioRoute": namedRouteStub(
-    "AudioRoute",
     "audio",
     "音频处理",
     "about:blank",
   ),
   "./advanced-routes/Model3DRoute": namedRouteStub(
-    "Model3DRoute",
     "threed",
     "3D 场景与视图",
     "about:blank",
@@ -252,8 +250,6 @@ const workbenchStubs = {
     }
   `),
   "./advanced-routes/VideoCanvasRoute": namedRouteStub(
-    "VideoCanvasRoute",
-    "video-canvas",
     "节点画布",
     "about:blank",
   ),
@@ -347,30 +343,6 @@ const CASES = [
     }),
   },
   {
-    id: "audio",
-    userName: "音频",
-    adapter: "audio",
-    editorId: "audio",
-    item: libraryItem({
-      id: "wb-audio",
-      kind: "audio",
-      url: "https://asset.oceanleo.com/audio/gate.mp3",
-      meta: { advanced_editor_route: "audio", mime: "audio/mpeg" },
-    }),
-  },
-  {
-    id: "threed",
-    userName: "3D",
-    adapter: "threed",
-    editorId: "threed",
-    item: libraryItem({
-      id: "wb-threed",
-      kind: "threed",
-      url: "https://asset.oceanleo.com/model/gate.glb",
-      meta: { advanced_editor_route: "threed", subtype: "model" },
-    }),
-  },
-  {
     id: "video",
     userName: "视频",
     adapter: "video-timeline",
@@ -393,22 +365,12 @@ const CASES = [
       kind: "canvas",
     }),
   },
-  {
-    id: "workflow",
-    userName: "流程图",
-    adapter: "video-canvas",
-    editorId: "video-canvas",
-    item: libraryItem({
-      id: "wb-flow",
-      kind: "video_canvas",
-    }),
-  },
 ];
 
-test("清单自检：CASES 覆盖九件编辑器和设计画布插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
+test("清单自检：CASES 覆盖六件编辑器和设计画布插件——表变空或漏件时下面那批表驱动用例会静默不注册", () => {
   // `table-driven-registration-guard` 判据 2：按命名表 for-of 注册的用例必须配长度正对照。
   // 12 = ADVANCED_PLUGIN_FEATURE_IDS 的件数（图表编辑器 2026-10-22 已删）（advanced-plugin-open.test.mjs 钉的同一个数）。
-  assert.equal(CASES.length, 10, `CASES 夹具应覆盖九件编辑器和设计画布插件，实测 ${CASES.length} 件`);
+  assert.equal(CASES.length, 7, `CASES 夹具应覆盖六件编辑器和设计画布插件，实测 ${CASES.length} 件`);
   const editorIds = CASES.map((spec) => spec.editorId);
   // design 夹具与 image 夹具落在同一个编辑器（ImageRoute），editorId 允许重复一次。
   assert.equal(new Set(editorIds).size, editorIds.length - 1, `CASES 里有重复的 editorId：${editorIds}`);

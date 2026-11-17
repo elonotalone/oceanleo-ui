@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { bayPost } from "../../lib/bay/http";
+import { editorCapabilityFor } from "../workbench-routes";
 import type { LibraryItem } from "../library-data";
 import type { WorkspaceLibraryEntry } from "../workspace-library-model";
 import type { AssetActionContext, AssetRef, ResolvedAssetDetail, ResolveAssetDetail } from "./types";
@@ -24,7 +25,7 @@ export interface AssetActionServices {
 }
 
 /** Denied/refunded commerce overrides old cached permissions. Missing price is never free. */
-export function assetToolbarItems(context: AssetActionContext): AssetToolbarItem[] {
+export function assetToolbarItems(context: AssetActionContext, item?: LibraryItem): AssetToolbarItem[] {
   const commerce = context.commerce;
   if (commerce?.purchaseState === "pending") return [{ id: "refresh", label: "刷新购买状态", disabled: false }];
   const owned = context.owned && commerce?.purchaseState !== "refunded";
@@ -47,7 +48,7 @@ export function assetToolbarItems(context: AssetActionContext): AssetToolbarItem
     ...(rights.canAddToLibrary ? [{ id: "add" as const, label: "加入我的库", disabled: false }] : []),
     ...(rights.canUseInTask ? [{ id: "use" as const, label: "用于任务", disabled: false }] : []),
     ...(rights.canDownload ? [{ id: "download" as const, label: "下载", disabled: false }] : []),
-    ...(rights.canEdit ? [{ id: "edit" as const, label: "编辑", disabled: false }] : []),
+    ...(rights.canEdit && (!item || editorCapabilityFor(item).available) ? [{ id: "edit" as const, label: "编辑", disabled: false }] : []),
   ];
 }
 
@@ -176,7 +177,7 @@ export function useAssetActions(options: UseAssetActionsOptions) {
     if (active.current?.key === key && active.current.epoch === generation) return;
     const context = current.current.actionContext;
     const restartingCheckout = checkoutStarted && id === "buy";
-    if (restartingCheckout || (id !== "refresh" && !assetToolbarItems(context).some((item) => item.id === id))) return;
+    if (restartingCheckout || (id !== "refresh" && !assetToolbarItems(context, current.current.entry.libraryItem).some((item) => item.id === id))) return;
     const operation = { key, epoch: generation };
     active.current = operation;
     setPending(id);
@@ -262,7 +263,7 @@ export function useAssetActions(options: UseAssetActionsOptions) {
     };
   }, [checkoutStarted, detail.actionContext.commerce?.purchaseState]);
 
-  let items = assetToolbarItems(detail.actionContext);
+  let items = assetToolbarItems(detail.actionContext, detail.entry.libraryItem);
   if (checkoutStarted && items.some((item) => item.id === "buy")) items = [{ id: "refresh", label: "刷新购买状态", disabled: false }];
   // A failed claim may need to resolve even while the original state still says Get.
   if (failure && retryAction === "refresh" && !items.some((item) => item.id === "refresh")) items = [...items, { id: "refresh", label: "刷新素材状态", disabled: false }];

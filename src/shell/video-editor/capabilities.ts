@@ -1,3 +1,4 @@
+export { deterministicDigest as videoTimelineDigest } from "./timeline-digest";
 export {
   createGatewayTimelineRenderAdapter,
   renderTimeline,

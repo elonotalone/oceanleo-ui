@@ -21,7 +21,6 @@ import {
   planGridSameDocumentOpen,
 } from "../src/shell/doc-editors/grid-univer/same-document.ts";
 import { loadGridSheets } from "../src/shell/doc-editors/grid-model.ts";
-import { audioCommandDefinitions } from "../src/shell/media-editors/audio-command-surface.ts";
 
 function persistFromAdmission(admitted, item) {
   return admitted.ok
@@ -203,12 +202,4 @@ test("image / pdf / audio / 3d persistence admission refuses load failure", () =
     model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: true }).ok,
     true,
   );
-});
-
-test("audio command surface lists no mutate commands until source is ready", () => {
-  const audio = audioCommandDefinitions({
-    editor: { loading: false, duration: 0, editRevision: 0 },
-    deliver: async () => undefined,
-  });
-  assert.equal(audio.length, 0);
 });

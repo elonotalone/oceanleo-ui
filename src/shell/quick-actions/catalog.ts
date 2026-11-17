@@ -23,12 +23,9 @@ export type ChipEditorId =
   | "richdoc"
   | "deck"
   | "video"
-  | "audio"
-  | "model3d"
   | "chart"
   | "website"
   | "game"
-  | "workflow"
   | "wechat";
 
 function chip(
@@ -73,24 +70,6 @@ const FALLBACK: Record<string, EditorAgentChip[]> = {
     chip("video.chip.cover", "生成封面", "generate", "生成封面：{document}"),
     chip("video.chip.export", "导出预设", "export", "按预设导出：{document}"),
   ],
-  audio: [
-    chip("audio.chip.transcribe", "转写", "extract", "转写这段音频：{document}"),
-    chip("audio.chip.cut", "按文字删段", "cleanup", "按文字删段：{selection}"),
-    chip("audio.chip.denoise", "降噪", "cleanup", "降噪：{document}"),
-    chip("audio.chip.lufs", "匀响度", "cleanup", "匀到 -14 LUFS：{document}"),
-    chip("audio.chip.um", "去口头语", "cleanup", "去口头语：{document}"),
-    chip("audio.chip.bgm", "加 BGM", "generate", "加背景音乐：{document}"),
-    chip("audio.chip.chapters", "分章节", "layout", "按内容分章节：{document}"),
-    chip("audio.chip.export", "导出预设", "export", "按预设导出：{document}"),
-  ],
-  model3d: [
-    chip("model3d.chip.env", "换环境光", "restyle", "换环境光：{document}"),
-    chip("model3d.chip.render", "出图", "export", "出四视角图：{document}"),
-    chip("model3d.chip.glb", "转 GLB", "export", "导出 GLB：{document}"),
-    chip("model3d.chip.mat", "生成材质", "generate", "生成材质：{selection}"),
-    chip("model3d.chip.shadow", "加地面阴影", "layout", "加地面阴影：{document}"),
-    chip("model3d.chip.spin", "自转预览", "analyze", "打开自转预览：{document}"),
-  ],
   chart: [
     chip("chart.chip.advise", "推荐图型", "analyze", "为这些数据推荐图型：{selection}"),
     chip("chart.chip.title", "改标题与注释", "rewrite", "改标题与注释：{selection}"),
@@ -117,14 +96,6 @@ const FALLBACK: Record<string, EditorAgentChip[]> = {
     chip("game.chip.sfx", "加音效", "generate", "加音效：{document}"),
     chip("game.chip.export", "导出 HTML", "export", "导出 HTML：{document}"),
   ],
-  workflow: [
-    chip("workflow.chip.gen", "生成流程", "generate", "生成流程：{document}"),
-    chip("workflow.chip.explain", "解释流程", "summarize", "解释这个流程：{document}"),
-    chip("workflow.chip.prompt", "优化提示词", "rewrite", "优化提示词：{selection}"),
-    chip("workflow.chip.errors", "加错误处理", "layout", "加错误处理：{document}"),
-    chip("workflow.chip.cron", "转为定时任务", "layout", "转为定时任务：{document}"),
-    chip("workflow.chip.export", "导出 JSON", "export", "导出 JSON：{document}"),
-  ],
   wechat: [
     chip("wechat.chip.layout", "一键排版", "layout", "一键排版：{document}"),
     chip("wechat.chip.summary", "生成摘要", "summarize", "生成摘要：{document}"),
@@ -140,7 +111,6 @@ function normalizeEditorId(editorId: string | null | undefined): string {
   if (raw === "design" || raw === "design-canvas" || raw === "photo") return "image";
   if (raw === "doc" || raw === "document") return "richdoc";
   if (raw === "ppt" || raw === "slides") return "deck";
-  if (raw === "flow") return "workflow";
   return raw;
 }
 

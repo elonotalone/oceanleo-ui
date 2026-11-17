@@ -11,20 +11,17 @@ import type { EditorCapabilityName, EditorManifestV1 } from "./library-data";
 
 export type EditorRoute =
   | { type: "video-timeline" }
-  | { type: "audio" }
   | { type: "image" }
   | { type: "pdf" }
   | { type: "richdoc" }
   | { type: "grid" }
   | { type: "deck" }
-  | { type: "threed" }
   | { type: "work" }
   // `advanced-session.ts` remains outside this task and still deserializes these
   // historical route labels. No adapter or workbench route is registered here.
   | { type: "geo-map" }
   | { type: "interactive-doc" }
   // 作品有独立工作台；设计画布并入图片编辑器。
-  | { type: "video-canvas" }
   | { type: "none" };
 
 export type EditorAdapterId = AdvancedEditorAdapterId | "none";
@@ -99,14 +96,6 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     toolbarOwnership: "shared",
     persistence: "project",
   },
-  audio: {
-    routeType: "audio",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.audio-project.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
   image: {
     routeType: "image",
     roundTrip: ROUND_TRIP,
@@ -147,22 +136,6 @@ const EDITOR_ADAPTER_RUNTIME: Readonly<
     toolbarOwnership: "shared",
     persistence: "project",
   },
-  threed: {
-    routeType: "threed",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.model-view@1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
-  "video-canvas": {
-    routeType: "video-canvas",
-    roundTrip: ROUND_TRIP,
-    projectSchema: "oceanleo.video-canvas.v1",
-    viewportOwnership: "content",
-    toolbarOwnership: "shared",
-    persistence: "project",
-  },
 };
 
 function artifactCapabilitiesForAdapter(
@@ -193,7 +166,7 @@ const ROUTABLE_EDITOR_REGISTRY = Object.freeze(
   ),
 ) as Readonly<Record<Exclude<EditorAdapterId, "none">, RegistryEntry>>;
 
-/** Exactly nine full editors. Historical Office metadata is rejected separately. */
+/** Six full editors. Historical Office metadata is rejected separately. */
 export const TRUSTED_EDITOR_REGISTRY = ROUTABLE_EDITOR_REGISTRY;
 
 const TRUSTED_ADAPTER_IDS = new Set<string>(
@@ -221,9 +194,12 @@ for (const capability of ADVANCED_CAPABILITY_MATRIX) {
 /**
  * 没有本地编辑器的存量 artifact 类型（矢量图 2026-10-22 起由图片编辑器打开，不在此列）：只读打开，原因写在 `workbench-routes.ts`。
  * - chart：图表编辑器已删除（2026-10-22）。
+ * - audio / model_3d：保留音频播放与 3D 查看，不提供文件编辑器。
  * 单一来源——路由层与「有没有编辑器」的类型判据都读这里。
  */
 export const READ_ONLY_ARTIFACT_TYPES: ReadonlySet<string> = new Set([
+  "audio",
+  "model_3d",
   "chart",
 ]);
 
@@ -303,7 +279,7 @@ export function editorRouteHintForArtifactCapability(
  * 「用户能不能编辑这件东西」是另一件事，答案在这里：适配器注册表里
  * `routable` 为真、且承接了这一类声明的某个编辑能力。
  *
- * 网站和游戏走作品工作台，不属于编辑器。视频画布仍是本地编辑器。
+ * 网站和游戏走作品工作台，不属于编辑器。音频与 3D 使用详情查看器。
  * 图表已无编辑器：合同矩阵与注册表都没有图表行，所以不算。
  *
  * 判据是推导出来的，不是又一份手抄清单：新增一个可路由适配器，这里自动跟上。

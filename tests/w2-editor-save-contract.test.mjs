@@ -44,7 +44,6 @@ test("native-cover types match matrix §3.2 exactly", () => {
     "document",
     "grid",
     "website",
-    "workflow",
   ]);
 });
 
@@ -232,7 +231,6 @@ test("matrix §3.2 'preview 或 full' is satisfied by either one alone", () => {
     "audio",
     "model_3d",
     "website",
-    "workflow",
   ]) {
     const coverOnly = planArtifactSaveRenditions(artifactType, {
       previewBitmap: BITMAP,
@@ -490,23 +488,6 @@ test("doc-io publishes the contract renditions and verifies them on the way back
   assert.match(result.previewWarning, /封面/);
 });
 
-test("A9-1: the five reachable types now declare a typed revision", () => {
-  for (const [path, artifactType] of [
-    // The Library write moved out of use-pdf-workbench.ts into its own module (W06 split).
-    ["../src/shell/media-editors/pdf-library-save.ts", "pdf"],
-    ["../src/shell/media-editors/model3d-project.ts", "model_3d"],
-    ["../src/shell/media-editors/use-audio-persistence.ts", "audio"],
-    ["../src/shell/video-editor/persistence.ts", "video"],
-    ["../src/shell/image-editor/editor-persistence.ts", "single_file_image"],
-  ]) {
-    assert.match(
-      source(path),
-      new RegExp(`artifactType: "${artifactType}"`),
-      path,
-    );
-  }
-});
-
 test("A9-1: autosave input can carry a typed revision at the type level", () => {
   // SaveProjectWorkingHeadInput used to Omit artifactRevision outright, which is
   // why audio/video/image could not commit a revision even in principle.
@@ -551,9 +532,9 @@ test("a project-only editor publishes the project JSON as its source", async () 
         id: "audio-artifact",
         artifactId: "audio-artifact",
         revisionId: "r1",
-        artifactType: "audio",
+        artifactType: "video",
         title: "Track",
-        kind: "audio",
+        kind: "video",
         siteId: "audio",
         url: "https://cdn.test/original.mp3",
         favorite: false,
@@ -567,20 +548,20 @@ test("a project-only editor publishes the project JSON as its source", async () 
       fallbackSite: "audio",
       projectOnly: true,
       title: "Track",
-      mediaType: "audio",
-      kind: "audio",
+      mediaType: "video",
+      kind: "video",
       idempotencyKey: "audio:contract:r1",
       meta: {},
       project: {
-        schema: "oceanleo.audio-project.v1",
+        schema: "oceanleo.timeline.v1",
         data: { sourceUrl: "https://cdn.test/original.mp3", operations: [] },
       },
       editorManifest: {
-        id: "audio-editor",
-        format: "oceanleo.audio-project.v1",
+        id: "video-timeline",
+        format: "oceanleo.timeline.v1",
       },
       createPreview: async () => new Blob([new Uint8Array([7, 7, 7])]),
-      artifactRevision: { artifactType: "audio", editor: "audio-v3" },
+      artifactRevision: { artifactType: "video", editor: "audio-v3" },
     },
     {
       now: () => new Date("2026-07-28T00:00:00.000Z"),
@@ -620,9 +601,9 @@ test("a project-only editor publishes the project JSON as its source", async () 
             id: artifactId,
             artifactId,
             revisionId: "r2",
-            artifactType: "audio",
+            artifactType: "video",
             title: "Track",
-            kind: "audio",
+            kind: "video",
             siteId: "audio",
             url: "https://signed.test/audio-r2.json",
             favorite: false,
@@ -630,8 +611,8 @@ test("a project-only editor publishes the project JSON as its source", async () 
             artifact: {
               artifactId,
               revisionId: "r2",
-              artifactType: "audio",
-              sourceFormat: "oceanleo.audio-project.v1",
+              artifactType: "video",
+              sourceFormat: "oceanleo.timeline.v1",
               integrity: { ok: true, code: "ok", reason: "" },
               renditions: Object.fromEntries([
                 [
@@ -641,7 +622,7 @@ test("a project-only editor publishes the project JSON as its source", async () 
                     commit.source.digest,
                     "https://signed.test/audio-r2.json",
                     "application/json",
-                    "oceanleo.audio-project.v1",
+                    "oceanleo.timeline.v1",
                   ),
                 ],
                 ...commit.renditions.map((entry) => [
@@ -655,7 +636,7 @@ test("a project-only editor publishes the project JSON as its source", async () 
                       : "application/json",
                     entry.purpose === "preview"
                       ? "png"
-                      : "oceanleo.audio-project.v1",
+                      : "oceanleo.timeline.v1",
                   ),
                 ]),
               ]),
@@ -669,7 +650,7 @@ test("a project-only editor publishes the project JSON as its source", async () 
   assert.equal(result.error, "");
   assert.equal(result.ok, true);
   assert.equal(result.revisionId, "r2");
-  assert.equal(committed.source.format, "oceanleo.audio-project.v1");
+  assert.equal(committed.source.format, "oceanleo.timeline.v1");
   assert.equal(committed.source.url, "https://cdn.test/audio.project.json");
   // The waveform cover is what satisfies "preview 或 full" for this type.
   assert.deepEqual(
@@ -803,7 +784,7 @@ test("A12: the host refuses a design document posing as vector/workflow source",
 
   // composite keeps its own path; the three new types get the fail-closed one.
   assert.equal(isEmbeddedTypedCommitType("composite_image"), false);
-  for (const artifactType of ["vector_image", "workflow", "website"]) {
+  for (const artifactType of ["vector_image", "website"]) {
     assert.equal(isEmbeddedTypedCommitType(artifactType), true, artifactType);
     // V1 reproduced this exact 422: "source format is incompatible with
     // artifact type". Refusing locally is the whole point of A12 route (b).
@@ -820,7 +801,7 @@ test("A12: the host refuses a design document posing as vector/workflow source",
   assert.equal(embeddedTypedCommitAccepts("vector_image", "svg+xml"), true);
   assert.equal(
     embeddedTypedCommitAccepts("workflow", "oceanleo.workflow.v1"),
-    true,
+    false,
   );
   // A12-W: the backend does accept bare `json` for workflow, but relabelling a
   // design document as `json` is the same type-into-tag degradation the ruling

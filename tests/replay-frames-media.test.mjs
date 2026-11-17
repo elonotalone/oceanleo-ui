@@ -11,7 +11,7 @@ const useUIStub = dataModule(`export function useUI(){ return (zh, vars) => vars
 const stubs = { "../../../../i18n/ui/useUI": useUIStub };
 const load = async (name) => (await import(await compileModule(`src/shell/replay/work/frames/${name}.tsx`, stubs))).default;
 const R = {};
-for (const name of ["model3d", "audio", "pdf", "video", "workflow"]) R[name] = await load(name);
+for (const name of ["pdf", "video"]) R[name] = await load(name);
 
 const html = (renderer, snapshot, prev, extra = {}) =>
   renderToStaticMarkup(createElement(renderer.Frame, { snapshot, prev, width: 360, height: 200, authorColor: "#ff00aa", ...extra }));
@@ -46,10 +46,7 @@ function seededPair(root, shape) {
   return [a, b];
 }
 import { videoToEntities, VIDEO_ROOT } from "../src/shell/collab/adapters/video.ts";
-import { model3dToEntities, MODEL3D_ROOT } from "../src/shell/collab/adapters/model3d.ts";
-import { audioToEntities, AUDIO_ROOT } from "../src/shell/collab/adapters/audio.ts";
 import { pdfToEntities, PDF_ROOT } from "../src/shell/collab/adapters/pdf.ts";
-import { workflowToEntities, WORKFLOW_ROOT } from "../src/shell/collab/adapters/workflow.ts";
 
 test("六个画法的 kind 与四个函数齐全", () => {
   for (const [name, renderer] of Object.entries(R)) {
@@ -70,56 +67,8 @@ const scene = () => ({
   view: { sourceUrl: "https://m/a.glb", azimuth: 35, elevation: 65, zoom: 110, autoRotate: false, annotations: [{ id: "n1", label: "x" }] },
 });
 
-test("model3d：场景节点树 + 缩略图（只认 https）+ 动过的节点用作者颜色标出", () => {
-  const prev = R.model3d.fromRevision(scene());
-  const nextJson = scene(); nextJson.operations[0].value.position = [9, 0, 0];
-  const next = R.model3d.fromRevision(nextJson);
-  const markup = html(R.model3d, next, prev);
-  assertSafe(markup);
-  assert.ok(markup.includes("Chair") && markup.includes("Lamp") && markup.includes("已隐藏"));
-  assert.ok(markup.includes('<img') && markup.includes("https://m/poster.png"));
-  assert.equal((markup.match(/data-changed="true"/g) || []).length, 1);
-  assert.ok(markup.includes("1 条批注"));
-  const bad = R.model3d.fromRevision({ ...scene(), posterUrl: "javascript:alert(1)" });
-  assert.ok(!html(R.model3d, bad).includes("<img"));
-  assert.ok(html(R.model3d, R.model3d.fromRevision({ checkpointUrl: "", operations: [], view: {} })).includes("场景里还没有改动"));
-});
-
-test("model3d：fromY 与 fromRevision 等价；describeChange；toArtifactJson 往返", () => {
-  const x = R.model3d.fromRevision(scene());
-  const doc = sync(MODEL3D_ROOT, model3dToEntities(x));
-  const fromY = R.model3d.fromY(doc);
-  // 视口是每个人自己的，不进协同文档；比较时取同一份默认视口
-  for (const key of ["azimuth", "elevation", "zoom", "autoRotate"]) x.view[key] = fromY.view[key];
-  delete x.posterUrl; // 缩略图不在协同文档里，只在版本里
-  assert.deepEqual(fromY, x);
-  const changed = scene(); changed.operations[0].value.position = [5, 5, 5];
-  assert.match(R.model3d.describeChange(x, R.model3d.fromRevision(changed)), /动了 1 个场景节点/);
-  assert.deepEqual(R.model3d.fromRevision(R.model3d.toArtifactJson(x)).operations, x.operations);
-});
-
 // ── 音频 ────────────────────────────────────────────────────────────────
 const audioJson = () => ({ sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 1, end: 6 }, { type: "fade", edge: "in", duration: 1 }] });
-
-test("audio：轨道与片段示意；新增的片段用作者颜色描边", () => {
-  const prev = R.audio.fromRevision(audioJson());
-  const nextJson = audioJson(); nextJson.operations.push({ type: "delete", start: 2, end: 3 });
-  const markup = html(R.audio, R.audio.fromRevision(nextJson), prev);
-  assertSafe(markup);
-  assert.equal((markup.match(/data-segment-id/g) || []).length, 3);
-  assert.equal((markup.match(/data-changed="true"/g) || []).length, 1);
-  assert.ok(markup.includes("裁剪") && markup.includes("淡入淡出") && markup.includes("删除"));
-  assert.ok(html(R.audio, R.audio.fromRevision({ sourceUrl: "", operations: [] })).includes("还没有剪辑操作"));
-});
-
-test("audio：fromY 与 fromRevision 等价；describeChange；toArtifactJson 往返", () => {
-  const x = R.audio.fromRevision(audioJson());
-  const doc = sync(AUDIO_ROOT, audioToEntities(x));
-  assert.deepEqual(R.audio.fromY(doc), x);
-  const y = audioJson(); y.operations.push({ type: "gain", multiplier: 2 });
-  assert.match(R.audio.describeChange(x, R.audio.fromRevision(y)), /加了 1 个剪辑操作/);
-  assert.deepEqual(R.audio.fromRevision(R.audio.toArtifactJson(x)), x);
-});
 
 // ── PDF ─────────────────────────────────────────────────────────────────
 const rect = (x, y, w, h) => ({ origin: { x, y }, size: { width: w, height: h } });
@@ -197,30 +146,6 @@ const flow = () => ({
   edges: [{ id: "e1", fromNodeId: "n1", fromPort: "out", toNodeId: "n2", toPort: "in" }, { id: "e2", fromNodeId: "n2", fromPort: "out", toNodeId: "n3", toPort: "in" }],
 });
 
-test("workflow：节点与连线示意（SVG 元素）；新增/改过的节点与连线描边；标签当纯文本", () => {
-  const prev = R.workflow.fromRevision(flow());
-  const nextJson = flow(); nextJson.nodes[0].x = 20;
-  nextJson.nodes.push({ id: "n4", kind: "text", label: "字幕", x: 220, y: 120, ports: {} });
-  nextJson.edges.push({ id: "e3", fromNodeId: "n4", fromPort: "out", toNodeId: "n3", toPort: "in" });
-  const markup = html(R.workflow, R.workflow.fromRevision(nextJson), prev);
-  assertSafe(markup);
-  assert.ok(markup.startsWith("<svg"));
-  assert.equal((markup.match(/data-node-id/g) || []).length, 4);
-  assert.equal((markup.match(/data-edge-id/g) || []).length, 3);
-  assert.equal((markup.match(/data-changed="true"/g) || []).length, 3); // n1、n4、e3
-  assert.ok(markup.includes("&lt;b&gt;裁剪&lt;/b&gt;"));
-  assert.ok(html(R.workflow, R.workflow.fromRevision({ nodes: [], edges: [] })).includes("流程图是空的"));
-});
-
-test("workflow：fromY 与 fromRevision 等价；describeChange；toArtifactJson 往返", () => {
-  const x = R.workflow.fromRevision(flow());
-  const doc = sync(WORKFLOW_ROOT, workflowToEntities(x));
-  assert.deepEqual(R.workflow.fromY(doc), x);
-  const y = flow(); y.edges.pop();
-  assert.match(R.workflow.describeChange(x, R.workflow.fromRevision(y)), /断了 1 条线/);
-  assert.deepEqual(R.workflow.fromRevision(R.workflow.toArtifactJson(x)), x);
-});
-
 // ── 文案 ────────────────────────────────────────────────────────────────
 import { readFileSync, readdirSync } from "node:fs";
 test("六个画法里出现的中文字面量，要么在 W14 分表里（17 种语言写全），要么已在基础词典里", async () => {
@@ -240,7 +165,7 @@ test("六个画法里出现的中文字面量，要么在 W14 分表里（17 种
   const dir = new URL("../src/i18n/ui/messages/", import.meta.url);
   const others = readdirSync(dir).filter((file) => file.endsWith(".ts") && file !== "collab-media-copy.ts").map((file) => readFileSync(new URL(file, dir), "utf8")).join("\n");
   for (const key of keys) assert.ok(!others.includes(`"${key}":`), `「${key}」别的词典里已有，不要重复定义`);
-  for (const name of ["model3d", "audio", "pdf", "video", "workflow"]) {
+  for (const name of ["pdf", "video"]) {
     const source = readFileSync(new URL(`../src/shell/replay/work/frames/${name}.tsx`, import.meta.url), "utf8");
     const literals = source.split("\n").filter((line) => !/^\s*(\/\/|\*)/.test(line)).join("\n").match(/"[^"\n]*[\u4e00-\u9fff][^"\n]*"/g) ?? [];
     for (const literal of literals) {

@@ -145,12 +145,6 @@ const { normalizeForEditor } = await import(
   })
 );
 
-const { submitBailianAsr } = await import(
-  await compileModule("src/shell/media-editors/audio-transcript.ts", {
-    "../../lib/payer": payerStub,
-  })
-);
-
 const {
   aiEditImage,
   createOceanLeoImageAiProvider,
@@ -390,43 +384,6 @@ test("normalizeForEditor 走 convert Form 时带 org_id", async () => {
     () => normalizeForEditor(file, "image", plan),
     { target: "jpg", quality: "90" },
   );
-});
-
-test("submitBailianAsr JSON 带 org_id，其余字段不变", async () => {
-  const expected = {
-    site_id: "music",
-    file_urls: ["https://cdn.test/a.wav"],
-    key_mode: "platform",
-  };
-  await withOrg("", async () => {
-    const calls = [];
-    await submitBailianAsr(
-      {
-        postJson: async (path, body) => {
-          calls.push({ path, body });
-          return { task_id: "t-1" };
-        },
-      },
-      { siteId: "music", fileUrls: ["https://cdn.test/a.wav"] },
-    );
-    assert.equal(calls[0].path, "/v1/audio/asr");
-    assert.equal(calls[0].body.org_id, "");
-    assert.deepEqual(restWithoutOrg(calls[0].body), expected);
-  });
-  await withOrg("org-acme", async () => {
-    const calls = [];
-    await submitBailianAsr(
-      {
-        postJson: async (_path, body) => {
-          calls.push(body);
-          return { task_id: "t-1" };
-        },
-      },
-      { siteId: "music", fileUrls: ["https://cdn.test/a.wav"] },
-    );
-    assert.equal(calls[0].org_id, "org-acme");
-    assert.deepEqual(restWithoutOrg(calls[0]), expected);
-  });
 });
 
 test("aiEditImage 与 OceanLeo image provider 发出的网关 JSON 带 org_id", async () => {

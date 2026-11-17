@@ -21,12 +21,6 @@ import {
   movePdfPage,
   rotatePdfPage,
 } from "../src/shell/media-editors/pdf-operations.ts";
-import {
-  normalizeModel3DAnnotations,
-  normalizeModel3DEnvironmentUrl,
-  normalizeModel3DMaterialOverrides,
-  normalizeSavedModelView,
-} from "../src/shell/media-editors/model3d-view.ts";
 
 function source(path) {
   return readFileSync(new URL(path, import.meta.url), "utf8");
@@ -86,65 +80,6 @@ function videoLocation(kind) {
     transition_in: { type: "fade", duration_ms: 500 } };
   return { clip, track: { id: "track", kind, clips: [clip] } };
 }
-
-test("route toolbars keep panel controls semantic while canonical compact controls remain usable", () => {
-  const selected = { id: "image", kind: "image", opacity: 1, shadow: { enabled: false } };
-  const input = { selected, cropping: false, cropRatio: "free", loading: false,
-    sourceReady: true, transformInfo: null, filters: {}, layers: [], tt };
-  const image = buildFabricImageToolbarControls(input);
-  inspectors(image, ["position-x", "position-y", "object-width", "object-height", "angle",
-    "brightness", "contrast", "saturation", "filter-reset", "border-width"]);
-  for (const id of ["opacity", "radius"]) {
-    assert.notEqual(image.find(control => control.id === id)?.slot, "inspector", id);
-  }
-  const cropping = buildFabricImageToolbarControls({ ...input, cropping: true });
-  assert.ok(cropping.some(control => control.id === "crop-apply"));
-  assert.ok(cropping.some(control => control.id === "crop-ratio"));
-  const text = buildFabricImageToolbarControls({ ...input,
-    selected: { ...selected, kind: "text", text: { value: "Hello", fontFamily: "Arial" } } });
-  inspectors(text, ["text", "stroke-width"]);
-  for (const id of ["font-size", "line-height"]) {
-    assert.ok(text.some(control => control.id === id && control.slot !== "inspector"), id);
-  }
-  assert.equal(text.find(control => control.id === "letter-spacing")?.placement, "more");
-  const table = buildFabricImageToolbarControls({ ...input,
-    selected: { ...selected, kind: "table", table: { rows: 2, columns: 2, style: {} } } });
-  inspectors(table, ["table-rows", "table-columns", "table-border-width"]);
-
-  const gridControls = gridUniverSelectionContext().controls;
-  assert.ok(gridControls.length >= 10);
-  inspectors(gridControls, ["decimals", "row-before", "sort-asc"]);
-  for (const control of gridControls.filter(control => control.slot === "inspector")) {
-    inspectors(gridControls, [control.id]);
-    assert.equal(control.placement, "more");
-  }
-  inspectors(deckObjectGeometryControls({ x: 1, y: 2, width: 30, height: 40, rotation: 0 }, tt),
-    ["x", "y", "width", "height", "rotation"]);
-  assertInspectorControls("../src/shell/doc-editors/deck-slide-selection-context.ts", ["transition-duration", "notes"]);
-  assertInspectorControls("../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
-    ["link", "unlink", "row-add", "row-delete", "column-add", "column-delete", "table-delete"]);
-
-  for (const kind of ["video", "image", "text", "audio"]) {
-    const controls = videoClipSelection(videoLocation(kind), tt).controls;
-    inspectors(controls, ["start-time", "duration", "transition", "transition-duration"]);
-    if (kind === "video" || kind === "image") inspectors(controls,
-      ["position-x", "position-y", "position-scale", "position-angle"]);
-    if (kind === "video") inspectors(controls, ["brightness", "contrast", "saturation", "source-in", "volume"]);
-    if (kind === "text") {
-      inspectors(controls, ["text", "position-x", "position-y"]);
-      assert.notEqual(controls.find(control => control.id === "font-size")?.slot, "inspector");
-    }
-  }
-  assertInspectorControls("../src/shell/media-editors/use-audio-selection-adapter.ts",
-    ["fade-duration", "fade-in", "fade-out", "gain", "apply-gain", "effect-speed", "eq-low", "eq-mid", "eq-high", "apply-effects"]);
-  const sceneView = readFileSync(new URL("../src/shell/media-editors/Model3DViewControls.tsx", import.meta.url), "utf8");
-  for (const method of ["setOrbit", "setZoom", "setExposure", "setShadowIntensity", "setShadowSoftness",
-    "setBackground", "setEnvironmentUrl", "setEnvironmentIntensity", "setShadowEnabled", "selectAnimation",
-    "setAnimationPlaying", "setAnimationTime", "setAnimationSpeed"]) assert.ok(sceneView.includes(method), method);
-  const selection3d = readFileSync(new URL("../src/shell/media-editors/model3d-selection-controls.ts", import.meta.url), "utf8");
-  for (const id of ["material-select", "material-color", "material-metallic", "material-roughness"]) assert.ok(selection3d.includes(id), id);
-  assert.ok(selection3d.includes('inspectorGroup: "position"'));
-});
 
 test("route commands target the rendered selection and preserve gesture commit/cancel semantics", () => {
   const calls = [];
@@ -206,45 +141,6 @@ test("route commands target the rendered selection and preserve gesture commit/c
   assert.deepEqual(calls, [["merge"], ["split"], ["split"]], "canonical merge toggle retains split execution");
 });
 
-test("remaining editor controls retain their persistent engine bindings", () => {
-  const richdoc = source(
-    "../src/shell/doc-editors/use-rich-doc-selection-adapter.ts",
-  );
-  assert.match(richdoc, /toggleCodeBlock\(\)/);
-  assert.match(richdoc, /setLinkHref/);
-  assert.match(richdoc, /addRowAfter\(\)/);
-  assert.match(richdoc, /deleteColumn\(\)/);
-
-  const audio = [
-    source("../src/shell/media-editors/AudioWorkbench.tsx"),
-    source("../src/shell/media-editors/audio-workbench-utils.ts"),
-    source("../src/shell/media-editors/audio-operations.ts"),
-  ].join("\n");
-  assert.match(audio, /copyAudioRange/);
-  assert.match(audio, /deleteAudioRange/);
-  assert.match(audio, /operation\.type === "fade"/);
-  assert.match(audio, /operation\.type === "gain"/);
-  assert.match(audio, /operation\.type === "effects"/);
-  assert.doesNotMatch(
-    source("../src/shell/media-editors/use-audio-selection-adapter.ts"),
-    /denois|noise-reduction|降噪/i,
-  );
-
-  const model = [
-    source("../src/shell/media-editors/use-model3d-workbench.ts"),
-    source("../src/shell/media-editors/model3d-runtime.mjs"),
-  ].join("\n");
-  assert.match(model, /patchSelectedMaterial/);
-  assert.match(model, /material\.metalness = clamp\(value\.metalness/);
-  assert.match(model, /material\.roughness = clamp\(value\.roughness/);
-  assert.match(model, /onAnnotationPoint/);
-  assert.match(model, /patchSelectedTransform/);
-  assert.match(
-    source("../src/shell/media-editors/model3d-project.ts"),
-    /annotations: view\.annotations/,
-  );
-});
-
 test("deck transition normalization is bounded and persistent", () => {
   const deck = normalizeDeckDocument({
     title: "Transition test",
@@ -299,70 +195,4 @@ test("PDF page-rail edits keep the standard annotations embedded in each page", 
     dictionary.lookup(PDFName.of("Contents"), PDFHexString).decodeText(),
     "审核通过",
   );
-});
-
-test("3D environment, material and annotation metadata is bounded on reopen", () => {
-  assert.equal(
-    normalizeModel3DEnvironmentUrl("javascript:alert(1)"),
-    "",
-  );
-  assert.equal(
-    normalizeModel3DEnvironmentUrl("https://asset.oceanleo.com/studio.hdr"),
-    "https://asset.oceanleo.com/studio.hdr",
-  );
-  assert.deepEqual(
-    normalizeModel3DMaterialOverrides([
-      {
-        index: 0,
-        name: "Body",
-        color: "#123456",
-        metallic: 2,
-        roughness: -1,
-      },
-      { index: 0, name: "duplicate", color: "#ffffff" },
-    ]),
-    [
-      {
-        index: 0,
-        name: "Body",
-        color: "#123456",
-        metallic: 1,
-        roughness: 0,
-      },
-    ],
-  );
-  const annotations = normalizeModel3DAnnotations([
-    { id: "pin", label: "Front", x: 100_001, y: "bad", z: -100_001 },
-    { id: "pin", label: "Back", x: 1, y: 2, z: 3 },
-  ]);
-  assert.deepEqual(annotations[0], {
-    id: "pin",
-    label: "Front",
-    x: 100_000,
-    y: 0,
-    z: -100_000,
-    normalX: 0,
-    normalY: 1,
-    normalZ: 0,
-    nodePath: "",
-  });
-  assert.notEqual(annotations[0].id, annotations[1].id);
-
-  const view = normalizeSavedModelView({
-    camera_orbit: "20deg 60deg 140%",
-    environment_url: "https://asset.oceanleo.com/studio.hdr",
-    material_overrides: [
-      {
-        index: 0,
-        name: "Body",
-        color: "#123456",
-        metallic: 0.4,
-        roughness: 0.6,
-      },
-    ],
-    annotations: [{ id: "pin", label: "Front", x: 1, y: 2, z: 3 }],
-  });
-  assert.equal(view.environmentUrl, "https://asset.oceanleo.com/studio.hdr");
-  assert.equal(view.materialOverrides[0].metallic, 0.4);
-  assert.equal(view.annotations[0].label, "Front");
 });

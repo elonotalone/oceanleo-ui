@@ -20,7 +20,7 @@ const {
   pluginWorkbenchStyle,
 } = await import(await compileModule("src/shell/plugin-theme.tsx"));
 
-// 11 件插件全在这里（图表已删，设计画布并入图片）。少一个就意味着那件插件的顶栏、编辑栏与左侧面板
+// 六件插件全在这里（图表已删，设计画布并入图片）。少一个就意味着那件插件的顶栏、编辑栏与左侧面板
 // 会退到默认配色，跟其余各件不是一套——统一外壳的前提当场破掉。
 const EXPECTED_PLUGIN_IDS = [
   "richdoc",
@@ -28,13 +28,10 @@ const EXPECTED_PLUGIN_IDS = [
   "deck",
   "image",
   "pdf",
-  "audio",
   "video-timeline",
-  "threed",
-  "video-canvas",
 ];
 
-test("11 件插件的主题档一个都不许漏登记", () => {
+test("六件插件的主题档一个都不许漏登记", () => {
   assert.deepEqual(
     Object.keys(PLUGIN_THEME_SPECS).sort(),
     [...EXPECTED_PLUGIN_IDS].sort(),
@@ -67,7 +64,7 @@ test("adapter id 归一化只认登记过的，其余走站点主题别名", () 
   assert.equal(pluginThemeIdForAdapter("design-canvas"), "image");
   assert.equal(pluginThemeIdForAdapter("image@1"), "image");
   assert.equal(pluginThemeIdForAdapter("website"), null);
-  assert.equal(pluginThemeIdForAdapter("video-canvas"), "video-canvas");
+  assert.equal(pluginThemeIdForAdapter("video-canvas"), null);
   // 没登记的返回 null（而不是瞎猜一个），调用方据此走原站点别名。
   assert.equal(pluginThemeIdForAdapter("office-legacy"), null);
   assert.equal(pluginThemeIdForAdapter(""), null);

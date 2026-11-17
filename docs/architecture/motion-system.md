@@ -240,7 +240,6 @@ export function createPointerVelocityTracker(): {
 | 10 | `R5 design/packages/gallery-editor/src/editor/canvas/useCanvasPointerInteractions.ts` | 画布拖拽 + 吸附回弹 |
 
 **明确排除**：`OrgCanvas.tsx` / `OrgWorkflowBoard.tsx`（平移缩放归 `@xyflow/react` 自己）、
-`model3d-runtime.mjs`（归 three 的 `OrbitControls`）、
 `cloud-browser-interaction.ts`（远端指针注入，不是本地动效）。
 
 ## 规范三 · 进出场（第 ② 类）

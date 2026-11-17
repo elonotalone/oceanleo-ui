@@ -348,7 +348,6 @@ export type { GamePreviewHost, GamePreviewHostProps } from "./game-preview-host"
 // Shared timeline/director capability engines. Re-export only through the
 // owner-maintained public barrels so implementation modules remain private.
 export * from "./video-editor/capabilities";
-export * from "./media-editors/model3d-capabilities";
 export { SelectionToolbar, type SelectionToolbarProps } from "./SelectionToolbar";
 export { SelectionInspectorPanel } from "./SelectionInspectorPanel";
 export {

@@ -61,7 +61,6 @@ export const WORKSPACE_KIND_LABELS: Partial<Record<LibraryKind, string>> = {
   document: "文档",
   image: "图片",
   video: "视频",
-  video_canvas: "视频工作流",
   audio: "音频",
   xhs: "小红书",
   threed: "3D",

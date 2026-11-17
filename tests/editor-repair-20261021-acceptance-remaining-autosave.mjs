@@ -240,55 +240,6 @@ test("video timeline: person commit records; load hydrate does not", async () =>
   assertDoesNotRecord("video-timeline", callPair, fn, item, ["hydrate", "load"]);
 });
 
-test("video canvas: person command records; hydrate does not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/workflow-carrier/VideoCanvasStage.tsx",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "VideoCanvasStage.tsx", [
-    "applyVideoCanvasUserEditSession",
-    "applyVideoUserEditSession",
-  ]);
-  const item = itemFor("video-canvas");
-  assertRecords("video-canvas", callPair, fn, item, "person-command");
-  assertDoesNotRecord("video-canvas", callPair, fn, item, ["hydrate", "load"]);
-  if (typeof mod.applyVideoCanvasPersonCommand === "function") {
-    resetUserEditSession();
-    const applied = mod.applyVideoCanvasPersonCommand(
-      item,
-      { nodes: [], edges: [] },
-      "workflow.add-node",
-      { kind: "filter", label: "自动化测试节点" },
-      0,
-    );
-    assert.equal(applied.ok, true, "live person command must apply");
-    assert.equal(generationOf(item), 1, "live person command must record");
-    const again = mod.applyVideoCanvasPersonCommand(
-      item,
-      { nodes: [], edges: [] },
-      "workflow.not-a-command",
-      {},
-      0,
-    );
-    assert.equal(again.ok, false);
-    assert.equal(generationOf(item), 1, "unknown command must not record");
-  }
-});
-
-test("audio: local mutation records; remote apply does not", async () => {
-  const mutations = await loadOwnerModule(
-    "src/shell/media-editors/use-audio-mutations.ts",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mutations, "use-audio-mutations.ts", [
-    "applyAudioUserEditSession",
-    "applyAudioMutationUserEditSession",
-  ]);
-  const item = itemFor("audio");
-  assertRecords("audio", callPair, fn, item, "local-mutation");
-  assertDoesNotRecord("audio", callPair, fn, item, ["remote-apply"]);
-});
-
 test("pdf: local edit records; silent source replace / collab do not", async () => {
   // 10-23 D4：旧核 use-pdf-edit-engine 已删，单实例 hook 自己出这个 helper。
   const workbench = await loadOwnerModule(
@@ -301,19 +252,5 @@ test("pdf: local edit records; silent source replace / collab do not", async () 
   const item = itemFor("pdf");
   assertRecords("pdf", callPair, fn, item, "local-annotation");
   assertDoesNotRecord("pdf", callPair, fn, item, ["silent-replace", "collab"]);
-});
-
-test("3d: local markDirty records; bootstrap does not", async () => {
-  const mod = await loadOwnerModule(
-    "src/shell/media-editors/use-model3d-workbench.ts",
-    lightStubs(),
-  );
-  const { fn } = requireLiveHelper(mod, "use-model3d-workbench.ts", [
-    "applyModel3dUserEditSession",
-    "applyModel3DUserEditSession",
-  ]);
-  const item = itemFor("model3d");
-  assertRecords("3d", callPair, fn, item, "local-dirty");
-  assertDoesNotRecord("3d", callPair, fn, item, ["bootstrap"]);
 });
 

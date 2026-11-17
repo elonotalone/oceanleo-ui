@@ -188,7 +188,6 @@ test("UC-3 W8/1 子站嵌入白名单已清空：workbench-routes.ts 不再有�
   const expected = [
     [item("website", { draft: true }), "work"],
     [item("canvas", { blank: true }), "image"],
-    [item("video_canvas", {}), "video-canvas"],
   ];
   for (const [value, type] of expected) {
     const capability = editorCapabilityFor(value);
@@ -497,12 +496,10 @@ test("C5 境内家族：内嵌编辑器白名单为空，整条嵌入路径 fail
 
 // UC-3 §8.3（docs/architecture/oceanleo-untrusted-content-isolation.md）
 // 违反后果：本地再写一遍 hostname.endsWith(".oceanleo.com") 就会把预览与 UGC 主机重新判成可信交互来源。
-test("W8/2 library-viewers 的 trustedInteractive 只由共享判定授予", () => {
+test("W8/2 removed canvas viewers never grant an interactive same-origin frame", () => {
   const viewers = source("../src/shell/library-viewers.tsx");
-  assert.ok(
-    viewers.includes("isTrustedInteractiveViewerUrl(item.url)"),
-    "trustedInteractive 必须走共享的第一方判定",
-  );
+  assert.match(viewers, /trustedInteractive = false/);
+  assert.doesNotMatch(viewers, /trustedInteractive=\{/);
   assert.equal(
     /endsWith\(["'`]\.oceanleo\.com/.test(viewers),
     false,

@@ -17,7 +17,6 @@ import { gridToArtifactJson, gridToEntities, gridFromEntities } from "../src/she
 import { deckToArtifactJson, deckToEntities, deckFromEntities } from "../src/shell/collab/adapters/deck.ts";
 import { vectorFromRevision, vectorToArtifactJson } from "../src/shell/collab/adapters/vector.ts";
 import { videoToArtifactJson, videoToEntities, videoFromEntities } from "../src/shell/collab/adapters/video.ts";
-import { workflowToArtifactJson, workflowToEntities, workflowFromEntities } from "../src/shell/collab/adapters/workflow.ts";
 import * as Y from "yjs";
 
 const model = await import(await compileModule("src/shell/replay/work/replay-work-model.ts"));
@@ -170,64 +169,6 @@ test("公开页：w_ 前缀走工作回放；旧对话回放码仍走原页", ()
   assert.match(oldHtml, /data-replay-root/);
 });
 
-test("接手：toArtifactJson 与 fromEntities 往返，内容与那一步一致", () => {
-  const grid = {
-    id: "wb",
-    name: "表",
-    sheetOrder: ["s1"],
-    sheets: {
-      s1: {
-        id: "s1",
-        name: "收入",
-        rowCount: 10,
-        columnCount: 4,
-        cellData: { 0: { 0: { v: "项目", t: 1 }, 1: { v: 9, t: 2 } } },
-      },
-    },
-  };
-  // gridToArtifactJson 返回 {schema, data}，快照在 .data 里。
-  const gridJson = gridToArtifactJson(gridFromEntities(gridToEntities(grid), null));
-  assert.equal(gridJson.data.sheets.s1.cellData[0][1].v, 9);
-  assert.equal(gridJson.data.sheets.s1.cellData[0][0].v, "项目");
-  assert.equal(gridFromEntities(gridToEntities(gridJson.data), null).sheets.s1.cellData[0][1].v, 9);
-
-  const deckSeed = {
-    title: "验收",
-    aspect: "16:9",
-    theme: "paper",
-    slides: [{ id: "slide-1", title: "封面", body: "hello", bullets: [], notes: "", layout: "title-body", background: "", elements: [] }],
-  };
-  const deckBack = deckFromEntities(deckToEntities(deckSeed), null);
-  assert.equal(deckToArtifactJson(deckBack).slides[0].title, "封面");
-
-  const video = {
-    width: 1280,
-    height: 720,
-    fps: 30,
-    tracks: [{ id: "track_v", kind: "video", clips: [{ id: "clip_1", start_ms: 0, duration_ms: 1000 }] }],
-  };
-  assert.equal(videoToArtifactJson(videoFromEntities(videoToEntities(video), null)).tracks[0].id, "track_v");
-
-  const graph = {
-    nodes: [{ id: "n1", kind: "source", label: "素材", x: 0, y: 0, ports: { inputs: [], outputs: [] } }],
-    edges: [],
-  };
-  assert.equal(workflowToArtifactJson(workflowFromEntities(workflowToEntities(graph), null)).nodes[0].id, "n1");
-
-  const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='1' height='1'/></svg>";
-  const snap = vectorFromRevision(svg);
-  const out = vectorToArtifactJson(snap);
-  assert.ok(out.svg || out.format === "svg");
-
-  const doc = new Y.Doc();
-  const text = new Y.XmlText();
-  text.insert(0, "接手这一步");
-  doc.getXmlFragment(RICHDOC_COLLAB_FIELD).insert(0, [text]);
-  const rich = richDocFromY(doc);
-  const json = richDocToArtifactJson(rich);
-  assert.ok(json.type === "doc" || json.content);
-});
-
 // =============================================================================
 // 第二轮（V12，F04）：接手真的能存成作品；英文/日文下回放的每一句话都不是中文
 // =============================================================================
@@ -312,14 +253,6 @@ test("[F04] 英文界面：12 个编辑器族的回放说明全部走 tt，输�
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
     ],
     vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
-    model3d: [
-      { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: true }], view: { annotations: [] } },
-      { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: false }, { id: "o2", kind: "visibility", target: "Chair", visible: false }], view: { annotations: [{ id: "n1", text: "note" }] } },
-    ],
-    audio: [
-      { sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 1, end: 9 }] },
-      { sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 2, end: 8 }, { type: "fade", edge: "in", duration: 0.5 }] },
-    ],
     video: [
       { width: 1280, height: 720, fps: 30, tracks: [{ id: "tv", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 1000 }] }] },
       { width: 1280, height: 720, fps: 30, tracks: [{ id: "tv", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 2000 }, { id: "c2", start_ms: 2000, duration_ms: 500 }] }] },
@@ -327,10 +260,6 @@ test("[F04] 英文界面：12 个编辑器族的回放说明全部走 tt，输�
     pdf: [
       { pages: [{ index: 0, widthPt: 612, heightPt: 792 }], annotations: [{ id: "a1", pageIndex: 0, typeName: "HIGHLIGHT", rect: rect(5, 6), contents: "x" }], fields: {} },
       { pages: [{ index: 0, widthPt: 612, heightPt: 792 }], annotations: [{ id: "a1", pageIndex: 0, typeName: "HIGHLIGHT", rect: rect(5, 6), contents: "y" }, { id: "a2", pageIndex: 0, typeName: "TEXT", rect: rect(9, 9), contents: "z" }], fields: { name: "v" } },
-    ],
-    workflow: [
-      { nodes: [{ id: "n1", kind: "trim", label: "A", x: 0, y: 0, ports: { inputs: [], outputs: [] } }], edges: [] },
-      { nodes: [{ id: "n1", kind: "trim", label: "B", x: 5, y: 0, ports: { inputs: [], outputs: [] } }, { id: "n2", kind: "trim", label: "C", x: 9, y: 0, ports: { inputs: [], outputs: [] } }], edges: [{ id: "e1", fromNodeId: "n1", fromPort: "o", toNodeId: "n2", toPort: "i" }] },
     ],
   };
   const leaks = [];
@@ -403,14 +332,6 @@ test("[F04] en/ja：逐族回放说明、章节标题、专业模式进出不是
       { json: { version: "6.0.0", objects: [{ type: "Rect", oceanleoId: "a", left: 3, top: 0, width: 5, height: 5, fill: "#f00" }, { type: "Circle", oceanleoId: "b", left: 1, top: 1, radius: 2, fill: "#000" }] }, doc: { width: 10, height: 10 }, canvasBackground: "#fff" },
     ],
     vector: [vectorFromRevision(vecSvg(1)), vectorFromRevision(vecSvg(3))],
-    model3d: [
-      { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: true }], view: { annotations: [] } },
-      { checkpointUrl: "https://m/s.glb", operations: [{ id: "o1", kind: "visibility", target: "Lamp", visible: false }, { id: "o2", kind: "visibility", target: "Chair", visible: false }], view: { annotations: [{ id: "n1", text: "note" }] } },
-    ],
-    audio: [
-      { sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 1, end: 9 }] },
-      { sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 2, end: 8 }, { type: "fade", edge: "in", duration: 0.5 }] },
-    ],
     video: [
       { width: 1280, height: 720, fps: 30, tracks: [{ id: "tv", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 1000 }] }] },
       { width: 1280, height: 720, fps: 30, tracks: [{ id: "tv", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 2000 }, { id: "c2", start_ms: 2000, duration_ms: 500 }] }] },
@@ -418,10 +339,6 @@ test("[F04] en/ja：逐族回放说明、章节标题、专业模式进出不是
     pdf: [
       { pages: [{ index: 0, widthPt: 612, heightPt: 792 }], annotations: [{ id: "a1", pageIndex: 0, typeName: "HIGHLIGHT", rect: rect(5, 6), contents: "x" }], fields: {} },
       { pages: [{ index: 0, widthPt: 612, heightPt: 792 }], annotations: [{ id: "a1", pageIndex: 0, typeName: "HIGHLIGHT", rect: rect(5, 6), contents: "y" }, { id: "a2", pageIndex: 0, typeName: "TEXT", rect: rect(9, 9), contents: "z" }], fields: { name: "v" } },
-    ],
-    workflow: [
-      { nodes: [{ id: "n1", kind: "trim", label: "A", x: 0, y: 0, ports: { inputs: [], outputs: [] } }], edges: [] },
-      { nodes: [{ id: "n1", kind: "trim", label: "B", x: 5, y: 0, ports: { inputs: [], outputs: [] } }, { id: "n2", kind: "trim", label: "C", x: 9, y: 0, ports: { inputs: [], outputs: [] } }], edges: [{ id: "e1", fromNodeId: "n1", fromPort: "o", toNodeId: "n2", toPort: "i" }] },
     ],
   };
   const leaks = [];
@@ -501,8 +418,8 @@ test("[F04] 17 种语言：回放说明模板与章节/锁事件词条，en 无�
   }
   const scanned = new Set();
   const files = [
-    ...["image", "vector", "deck", "richdoc", "grid", "audio", "video", "model3d", "pdf", "workflow"].map((k) => `src/shell/collab/adapters/${k}.ts`),
-    ...["audio", "deck", "grid", "image", "model3d", "pdf", "richdoc", "vector", "video", "workflow", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
+    ...["image", "vector", "deck", "richdoc", "grid", "video", "pdf"].map((k) => `src/shell/collab/adapters/${k}.ts`),
+    ...["deck", "grid", "image", "pdf", "richdoc", "vector", "video", "notes"].map((k) => `src/shell/replay/work/frames/${k}.${k === "notes" ? "ts" : "tsx"}`),
   ];
   for (const rel of files) {
     for (const key of scanReplayNoteTemplates(readSrc(rel))) scanned.add(key);

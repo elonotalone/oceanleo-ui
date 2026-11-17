@@ -35,7 +35,6 @@
     "./shell/nav-source/route-transition.css": "./src/shell/nav-source/route-transition.css",
     "./shell/nav-source/route-boundary": "./src/shell/nav-source/route-boundary.tsx",
     "./shell/selection-context": "./src/shell/selection-context.ts",
-    "./shell/video-canvas": "./src/shell/video-canvas/index.ts",
     "./shell/AdvancedContentWorkbench": "./src/shell/AdvancedContentWorkbench.tsx",
     "./shell/FloatingContextToolbar": "./src/shell/FloatingContextToolbar.tsx",
     "./shell/plugin-command": "./src/shell/plugin-command/index.ts",
@@ -109,7 +108,6 @@
     "@types/node": "20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@types/three": "0.183.1",
     "@xyflow/react": "^12.11.1",
     "next-intl": "^4.13.0",
     "playwright-core": "1.61.0",
@@ -206,7 +204,6 @@
     "tslib": "^2.7.0",
     "turndown": "^7.2.4",
     "uuid": "^10.0.0",
-    "wavesurfer.js": "^7.12.10",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.33"
   }

@@ -1,5 +1,5 @@
 /**
- * 视觉影音家族（图片 / 视频 / 音频 / 图表 / 3D）的交付格式与上传归一化规则。
+ * 视觉影音家族（图片 / 视频）的交付格式与上传归一化规则。
  *
  * 纯数据 + 纯函数：不碰 DOM、不发请求、不引 React，所以可以被 node --test 直接读。
  * 传输在 `visual-convert-client.ts`，落地在各自路由。
@@ -9,15 +9,11 @@ import { uploadUnavailableReason } from "../workbench-route-formats";
 
 export type VisualEditorId =
   | "image"
-  | "video-timeline"
-  | "audio"
-  | "threed";
+  | "video-timeline";
 
 export const VISUAL_EDITOR_IDS: readonly VisualEditorId[] = [
   "image",
   "video-timeline",
-  "audio",
-  "threed",
 ];
 
 /** 有损格式的默认质量。菜单里不许悄悄按 100 出。 */
@@ -86,57 +82,9 @@ const VIDEO_DOWNLOADS: readonly VisualDownloadFormat[] = [
   },
 ];
 
-const AUDIO_DOWNLOADS: readonly VisualDownloadFormat[] = [
-  {
-    id: "audio-download-wav",
-    format: "wav",
-    label: "WAV 音频 (.wav)",
-    lossy: false,
-    via: "local",
-    hint: "无损，体积最大，适合继续做后期。",
-  },
-  {
-    id: "audio-download-mp3",
-    format: "mp3",
-    label: "MP3 音频 (.mp3)",
-    lossy: true,
-    via: "backend",
-    hint: "最通用，体积小，什么设备都能放。",
-  },
-  {
-    id: "audio-download-m4a",
-    format: "m4a",
-    label: "M4A 音频 (.m4a)",
-    lossy: true,
-    via: "backend",
-    hint: "苹果设备原生格式，同体积下比 MP3 清楚一点。",
-  },
-];
-
-const THREED_DOWNLOADS: readonly VisualDownloadFormat[] = [
-  {
-    id: "model3d-download-glb",
-    format: "glb",
-    label: "GLB 模型 (.glb)",
-    lossy: false,
-    via: "local",
-    hint: "改完的模型本体，带材质与动画。",
-  },
-  {
-    id: "model3d-download-png",
-    format: "png",
-    label: "PNG 截图 (.png)",
-    lossy: false,
-    via: "local",
-    hint: "当前视角的一张静态图。",
-  },
-];
-
 const DOWNLOADS: Record<VisualEditorId, readonly VisualDownloadFormat[]> = {
   image: IMAGE_DOWNLOADS,
   "video-timeline": VIDEO_DOWNLOADS,
-  audio: AUDIO_DOWNLOADS,
-  threed: THREED_DOWNLOADS,
 };
 
 /** 某一类编辑器下载菜单该有的全部条目（含第一条 directDownload）。 */
@@ -216,8 +164,6 @@ const NATIVE: Record<VisualEditorId, readonly string[]> = {
     "webp",
     "gif",
   ],
-  audio: ["mp3", "wav", "m4a", "aac"],
-  threed: ["glb", "gltf"],
 };
 
 const RULES: Record<VisualEditorId, readonly VisualImportRule[]> = {
@@ -249,21 +195,6 @@ const RULES: Record<VisualEditorId, readonly VisualImportRule[]> = {
       failure: "这张图转成 PNG 时失败了，可以先另存为 PNG 再传。",
     },
   ],
-  audio: [
-    {
-      from: ["flac", "ogg", "oga", "opus", "wma", "amr", "aiff", "aif"],
-      to: "mp3",
-      via: "convert-media",
-      failure: "这段声音转成 MP3 时失败了，可以先导出 MP3 或 WAV 再传。",
-    },
-    {
-      from: ["mp4", "mov", "m4v", "webm", "mkv"],
-      to: "mp3",
-      via: "convert-media",
-      failure: "从这个视频里抽声音失败了，可以先单独导出音轨再传。",
-    },
-  ],
-  threed: [],
 };
 
 /**
@@ -296,21 +227,6 @@ const REJECTIONS: Record<VisualEditorId, Record<string, string>> = {
     RAW_PHOTO_EXT.map((extension) => [extension, rawPhotoRejection(extension)]),
   ),
   "video-timeline": {},
-  audio: {},
-  threed: {
-    obj:
-      "3D 编辑器这个入口只直接打开 GLB 和 glTF；OBJ 请从工作台的上传入口拖进来，" +
-      "那条路会自动转成 GLB（只搬形状，贴图和材质不带过来）。",
-    stl:
-      "3D 编辑器这个入口只直接打开 GLB 和 glTF；STL 请从工作台的上传入口拖进来，" +
-      "那条路会自动转成 GLB（只搬形状，贴图和材质不带过来）。",
-    fbx: "现在只能打开 GLB 和 glTF 模型；FBX 还没有可用的转换通道。",
-    dae: "现在只能打开 GLB 和 glTF 模型；DAE 还没有可用的转换通道。",
-    ply: "现在只能打开 GLB 和 glTF 模型；PLY 还没有可用的转换通道。",
-    "3ds": "现在只能打开 GLB 和 glTF 模型；3DS 还没有可用的转换通道。",
-    usdz: "现在只能打开 GLB 和 glTF 模型；USDZ 还没有可用的转换通道。",
-    blend: "现在只能打开 GLB 和 glTF 模型；请在 Blender 里导出 GLB 再传。",
-  },
 };
 
 /**
@@ -324,15 +240,11 @@ const REJECTIONS: Record<VisualEditorId, Record<string, string>> = {
 const PICKABLE_BUT_REFUSED: Record<VisualEditorId, readonly string[]> = {
   image: ["heic", "heif", ...RAW_PHOTO_EXT],
   "video-timeline": ["heic", "heif"],
-  audio: [],
-  threed: [],
 };
 
 const FAMILY_NAME: Record<VisualEditorId, string> = {
   image: "图片",
   "video-timeline": "视频",
-  audio: "音频",
-  threed: "3D 模型",
 };
 
 export function visualImportRules(

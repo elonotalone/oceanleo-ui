@@ -161,7 +161,6 @@ const TYPE_TO_KIND: Record<string, LibraryKind> = {
   sheet: "sheet",
   chart: "image",
   website: "website",
-  video_workflow: "video_canvas",
   video: "video",
   audio: "audio",
   music: "audio",
@@ -179,7 +178,6 @@ const KIND_CATEGORY: Partial<Record<LibraryKind, string>> = {
   document: "文档",
   image: "图片",
   video: "视频",
-  video_canvas: "视频工作流",
   audio: "音频",
   threed: "3D",
   xhs: "小红书",
@@ -201,7 +199,6 @@ export const MATERIAL_TAXONOMY_LABEL: Record<ArtifactType, string> = {
   video: "视频",
   audio: "音频",
   model_3d: "3D",
-  workflow: "工作流",
   // 第 14 个 artifact type，由 W9 加进 `ARTIFACT_TYPES`（D7）。
   game: "游戏",
   // 第 15 / 16 个 artifact type（`geo-map.md` §1.1、`interactive-doc.md` §1.1）。
@@ -456,7 +453,6 @@ export function normalizedMaterialTaxonomy(
       video: "video",
       audio: "audio",
       "3d": "model_3d",
-      video_workflow: "workflow",
       // 搜索与深链里的旧写法别名；权威 token 仍是下划线的枚举值本身
       // （`geo-map.md` §1.1.1「进数据库的一律下划线」）。
       map: "geo_map",

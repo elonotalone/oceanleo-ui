@@ -40,14 +40,11 @@ test("advanced editor routing covers every durable material family", () => {
   assert.deepEqual(
     Object.keys(TRUSTED_EDITOR_REGISTRY).sort(),
     [
-      "audio",
       "deck",
       "grid",
       "image",
       "pdf",
       "richdoc",
-      "threed",
-      "video-canvas",
       "video-timeline",
     ],
   );
@@ -142,19 +139,4 @@ test("opaque URLs and blob uploads still identify every PPTX as a native deck", 
     meta: {},
   });
   assert.deepEqual(byFilename.route, { type: "deck" });
-});
-
-test("video canvas opens the local node canvas (no sub-site embed)", () => {
-  // Legacy items pinned "embed" are aliased at read time, never rewritten.
-  for (const meta of [{ advanced_editor_route: "embed" }, {}]) {
-    const capability = editorCapabilityFor({
-      id: "vc",
-      title: "vc",
-      kind: "video_canvas",
-      meta,
-    });
-    assert.equal(capability.available, true);
-    assert.equal(capability.adapter, "video-canvas");
-    assert.deepEqual(capability.route, { type: "video-canvas" });
-  }
 });

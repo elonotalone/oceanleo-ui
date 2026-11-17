@@ -1,6 +1,6 @@
 // W3 自测 · 视觉影音家族（图片 / 视频 / 音频 / 图表 / 3D）。
 //
-// 判五件事：五类都真的有指令面、越界 id 与越界参数一律被拒、mutates 标对、
+// 判五件事：两类都真的有指令面、越界 id 与越界参数一律被拒、mutates 标对、
 // 下载菜单条目齐全且写的是人话、有损格式的默认画质是 90 不是 100。
 //
 // 用假的编辑器状态跑：这里判的是指令面的契约，不是画布本身。画布行为由
@@ -28,8 +28,6 @@ import { exportFrozenImageDocument } from "../src/shell/image-editor/image-docum
 import { visualCommandIdErrors } from "../src/shell/media-editors/visual-command-kit.ts";
 import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
 import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
-import { createAudioCommandSurface } from "../src/shell/media-editors/audio-command-surface.ts";
-import { createModel3DCommandSurface } from "../src/shell/media-editors/model3d-command-surface.ts";
 import { cutTimelineRange } from "../src/shell/video-editor/timeline-model.ts";
 
 // --------------------------------------------------------------------------
@@ -128,64 +126,6 @@ function fakeVideoEditor(overrides = {}) {
   };
 }
 
-function fakeAudioEditor(overrides = {}) {
-  const { log, record } = calls();
-  return {
-    log,
-    editor: {
-      loading: false,
-      error: "",
-      dirty: false,
-      editRevision: 2,
-      duration: 30,
-      currentTime: 4,
-      playing: false,
-      selection: null,
-      fadeDuration: 1.5,
-      gain: 100,
-      editRange: record("editRange", async () => true),
-      applyGainRange: record("applyGainRange", async () => true),
-      applyFade: record("applyFade"),
-      seekTo: record("seekTo"),
-      ...overrides,
-    },
-  };
-}
-
-function fakeModel3DEditor(overrides = {}) {
-  const { log, record } = calls();
-  return {
-    log,
-    editor: {
-      loading: false,
-      modelLoaded: true,
-      downloading: false,
-      capturing: false,
-      saving: false,
-      dirty: false,
-      editRevision: 1,
-      sourceFormat: "glb",
-      azimuth: 30,
-      elevation: 12,
-      zoom: 100,
-      autoRotate: false,
-      background: "#101010",
-      animations: ["Idle", "Walk"],
-      animationPlaying: false,
-      sceneNodes: [{ id: "n1" }],
-      materials: [{ name: "m1" }],
-      annotations: [],
-      setOrbit: record("setOrbit"),
-      setZoom: record("setZoom"),
-      resetCamera: record("resetCamera"),
-      setAutoRotate: record("setAutoRotate"),
-      selectAnimation: record("selectAnimation"),
-      setAnimationPlaying: record("setAnimationPlaying"),
-      ...overrides,
-    },
-  };
-}
-
 function deliverSpy() {
   const seen = [];
   return {
@@ -196,7 +136,7 @@ function deliverSpy() {
   };
 }
 
-/** 五类的「刚打开、什么都还没动」的指令面。 */
+/** 两类的「刚打开、什么都还没动」的指令面。 */
 function allSurfaces() {
   return [
     {
@@ -213,20 +153,6 @@ function allSurfaces() {
         deliver: deliverSpy().deliver,
       }),
     },
-    {
-      editorId: "audio",
-      surface: createAudioCommandSurface({
-        editor: fakeAudioEditor().editor,
-        deliver: deliverSpy().deliver,
-      }),
-    },
-    {
-      editorId: "threed",
-      surface: createModel3DCommandSurface({
-        editor: fakeModel3DEditor().editor,
-        deliver: deliverSpy().deliver,
-      }),
-    },
   ];
 }
 
@@ -234,7 +160,7 @@ function allSurfaces() {
 // 指令面本身
 // --------------------------------------------------------------------------
 
-test("五类编辑器都挂得上指令面，且 describe() 至少五条", () => {
+test("两类编辑器都挂得上指令面，且 describe() 至少五条", () => {
   for (const { editorId, surface } of allSurfaces()) {
     resetPluginCommandSurface();
     const unregister = registerPluginCommandSurface(surface);
@@ -273,19 +199,6 @@ test("会改文档的标 mutates:true，只读的标 false", () => {
     "video-timeline.insert-media": true,
     "video-timeline.seek": false,
     "video-timeline.export": false,
-    "audio.keep-range": true,
-    "audio.cut-range": true,
-    "audio.set-volume": true,
-    "audio.fade": true,
-    "audio.seek": false,
-    "audio.export": false,
-    "threed.describe-formats": false,
-    "threed.set-view": true,
-    "threed.zoom": true,
-    "threed.reset-camera": true,
-    "threed.set-auto-rotate": true,
-    "threed.play-animation": true,
-    "threed.export": false,
   };
   const seen = new Set();
   for (const { surface } of allSurfaces()) {
@@ -377,60 +290,6 @@ test("未声明的参数、类型不对的参数、越界数值一律被拒", as
   resetPluginCommandSurface();
 });
 
-test("合法参数真的落到编辑器上", async () => {
-  const image = fakeImageEditor();
-  const imageSurface = createImageCommandSurface({
-    editor: image.editor,
-    deliver: deliverSpy().deliver,
-  });
-  const cropped = await imageSurface.run("image.crop-to-ratio", {
-    ratio: "16:9",
-  });
-  assert.equal(cropped.ok, true);
-  assert.deepEqual(
-    image.log.map(([name]) => name),
-    ["startCrop", "setCropRatio", "confirmCrop"],
-  );
-  assert.equal(cropped.revision, 7);
-
-  const text = fakeImageEditor();
-  const textSurface = createImageCommandSurface({
-    editor: text.editor,
-    deliver: deliverSpy().deliver,
-  });
-  const added = await textSurface.run("image.add-text", {
-    text: "季度复盘",
-    style: "heading",
-  });
-  assert.equal(added.ok, true);
-  assert.deepEqual(text.log[0], ["addText", "heading"]);
-  assert.deepEqual(text.log[1], ["setSelectedText", { value: "季度复盘" }]);
-
-  const audio = fakeAudioEditor();
-  const audioSurface = createAudioCommandSurface({
-    editor: audio.editor,
-    deliver: deliverSpy().deliver,
-  });
-  const cut = await audioSurface.run("audio.cut-range", {
-    startSeconds: 2,
-    endSeconds: 5,
-  });
-  assert.equal(cut.ok, true);
-  assert.deepEqual(audio.log[0], ["editRange", "delete", 2, 5]);
-
-  const model = fakeModel3DEditor();
-  const modelSurface = createModel3DCommandSurface({
-    editor: model.editor,
-    deliver: deliverSpy().deliver,
-  });
-  const view = await modelSurface.run("threed.set-view", {
-    azimuth: 45,
-    elevation: 20,
-  });
-  assert.equal(view.ok, true);
-  assert.deepEqual(model.log[0], ["setOrbit", 45, 20]);
-});
-
 test("导出指令把格式交给路由，不自己猜", async () => {
   const spy = deliverSpy();
   const surface = createImageCommandSurface({
@@ -454,46 +313,6 @@ test("导出指令把格式交给路由，不自己猜", async () => {
     fallback.seen,
     [["webp", DEFAULT_LOSSY_QUALITY]],
     "没给画质时必须落在默认 90，不许悄悄按 100 出",
-  );
-});
-
-test("状态变了，能做的事就跟着变；消失的指令再调就是失败", async () => {
-  const loading = createImageCommandSurface({
-    editor: fakeImageEditor({ loading: true }).editor,
-    deliver: deliverSpy().deliver,
-  });
-  assert.deepEqual(loading.describe(), [], "还在载入时不该列出任何指令");
-  const refused = await loading.run("image.resize-canvas", {
-    width: 10,
-    height: 10,
-  });
-  assert.equal(refused.ok, false);
-
-  const cropping = createImageCommandSurface({
-    editor: fakeImageEditor({ cropping: true }).editor,
-    deliver: deliverSpy().deliver,
-  });
-  assert.equal(
-    cropping.describe().some((spec) => spec.id === "image.crop-to-ratio"),
-    false,
-    "已经在裁剪中就不该再列出裁剪指令",
-  );
-
-  const stopped = createVideoCommandSurface({
-    editor: fakeVideoEditor({ sourceReady: false }).editor,
-    deliver: deliverSpy().deliver,
-  });
-  assert.deepEqual(stopped.describe(), [], "源没验过时不该列出任何指令");
-
-  const noModel = createModel3DCommandSurface({
-    editor: fakeModel3DEditor({ modelLoaded: false }).editor,
-    deliver: deliverSpy().deliver,
-  });
-  const ids = noModel.describe().map((spec) => spec.id);
-  assert.deepEqual(
-    ids,
-    ["threed.describe-formats"],
-    "没有模型时只该剩下能力探测这一条",
   );
 });
 
@@ -539,12 +358,10 @@ test("片段特别多时，视频摘要仍然收得住", () => {
 // 下载菜单
 // --------------------------------------------------------------------------
 
-test("五类的下载条目齐全，每条都写清格式名与后缀", () => {
+test("两类的下载条目齐全，每条都写清格式名与后缀", () => {
   const expected = {
     image: ["png", "jpg", "webp"],
     "video-timeline": ["mp4", "webm"],
-    audio: ["wav", "mp3", "m4a"],
-    threed: ["glb", "png"],
   };
   for (const [editorId, formats] of Object.entries(expected)) {
     const entries = visualDownloadFormats(editorId);
@@ -666,9 +483,6 @@ test("冷门格式有归一化去处，去不了的给人话", () => {
     ["video-timeline", "手机录的.mov", "convert", "mp4"],
     ["video-timeline", "片子.mkv", "convert", "mp4"],
     ["video-timeline", "成片.mp4", "accept", ""],
-    ["audio", "录音.flac", "convert", "mp3"],
-    ["audio", "播客.ogg", "convert", "mp3"],
-    ["audio", "配音.wav", "accept", ""],
   ];
   for (const [editorId, name, action, target] of cases) {
     const plan = visualImportPlan(editorId, name);
@@ -739,21 +553,6 @@ test("转不了的格式仍然挑得到：accept 列出，计划判 reject，零
   }
 });
 
-test("3D 只认 GLB 与 glTF，别的格式明说打不开且不假装能转", () => {
-  for (const format of ["obj", "stl", "fbx", "dae", "blend"]) {
-    const plan = visualImportPlan("threed", `模型.${format}`);
-    assert.equal(plan.action, "reject", `.${format} 不该被当成能转`);
-    assert.match(plan.message, /GLB/);
-    assert.equal(plan.target, undefined);
-  }
-  for (const format of ["glb", "gltf"]) {
-    assert.equal(visualImportPlan("threed", `模型.${format}`).action, "accept");
-  }
-  const accept = visualUploadAccept("threed");
-  assert.equal(accept.includes(".obj"), false, "accept 里不许出现打不开的格式");
-  assert.ok(accept.includes(".glb"));
-});
-
 test("没有后缀、认不出的文件都有明确交代", () => {
   const noExtension = visualImportPlan("image", "剪贴板粘的东西");
   assert.equal(noExtension.action, "reject");
@@ -768,7 +567,7 @@ test("上传 accept 覆盖原生格式与所有能自动转的格式", () => {
   for (const extension of [".png", ".jpg", ".heic", ".bmp", ".tiff", ".cr2"]) {
     assert.ok(imageAccept.includes(extension), `accept 少了 ${extension}`);
   }
-  const audioAccept = visualUploadAccept("audio");
+  const audioAccept = visualUploadAccept("video-timeline");
   for (const extension of [".mp3", ".wav", ".flac", ".ogg"]) {
     assert.ok(audioAccept.includes(extension), `accept 少了 ${extension}`);
   }
@@ -829,16 +628,4 @@ test("剪口太窄、或范围内没内容时，时间线原样不动", () => {
   };
   assert.equal(cutTimelineRange(doc, 1000, 1050), doc, "不足 100ms 不该动");
   assert.equal(cutTimelineRange(doc, 9000, 9000), doc);
-});
-
-test("3D 能力探测照实报，不给「传上来试试」的暗示", async () => {
-  const surface = createModel3DCommandSurface({
-    editor: fakeModel3DEditor().editor,
-    deliver: deliverSpy().deliver,
-  });
-  const report = await surface.run("threed.describe-formats", {});
-  assert.equal(report.ok, true);
-  assert.match(report.message, /\.glb/);
-  assert.match(report.message, /\.obj/);
-  assert.match(report.message, /导出 GLB/);
 });

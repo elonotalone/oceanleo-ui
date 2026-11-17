@@ -23,20 +23,13 @@ const fork = await import(forkUrl);
 const videoDoc = () => ({ width: 1280, height: 720, fps: 30, tracks: [{ id: "t1", kind: "video", clips: [{ id: "c1", start_ms: 0, duration_ms: 1000 }] }] });
 const audioDoc = () => ({ sourceUrl: "https://m/a.mp3", operations: [{ type: "crop", start: 1, end: 6 }] });
 
-test("接手：video / audio 能存，别的族不能（按钮据此显示）", () => {
+test("接手：video 能存，别的族不能（按钮据此显示）", () => {
   assert.equal(fork.canForkKind("video"), true);
-  assert.equal(fork.canForkKind("audio"), true);
+  assert.equal(fork.canForkKind("audio"), false);
   for (const kind of ["richdoc", "grid", "deck", "image", "vector", "chart", "game", "model3d", "pdf", "workflow", null, undefined]) {
     assert.equal(fork.canForkKind(kind), false, String(kind));
   }
-  assert.deepEqual([...fork.FORKABLE_EDITOR_KINDS].sort(), ["audio", "video"]);
-});
-
-test("接手：工程 schema 与两个编辑器自己的常量同值", () => {
-  const timeline = readFileSync(new URL("../src/shell/video-editor/timeline-carrier.ts", import.meta.url), "utf8");
-  const audio = readFileSync(new URL("../src/shell/media-editors/audio-project-carrier.ts", import.meta.url), "utf8");
-  assert.ok(timeline.includes(`TIMELINE_PROJECT_SCHEMA_ID = "${fork.FORK_TIMELINE_SCHEMA}"`));
-  assert.ok(audio.includes(`AUDIO_PROJECT_SCHEMA_ID = "${fork.FORK_AUDIO_SCHEMA}"`));
+  assert.deepEqual([...fork.FORKABLE_EDITOR_KINDS].sort(), ["video"]);
 });
 
 test("接手：成功 → 走保存链新建（没有既有 artifact 身份）并返回 openPath", async () => {
@@ -65,20 +58,6 @@ test("接手：成功 → 走保存链新建（没有既有 artifact 身份）�
   assert.equal(call.item.revisionId, undefined);
   assert.equal(call.artifactRevision, undefined);
   assert.equal(call.meta.source_kind, "work_replay_fork");
-});
-
-test("接手：audio 带上编辑器认的元数据", async () => {
-  let seen = null;
-  const result = await fork.createReplayArtifact(
-    { editorKind: "audio", title: "录音（接手）", json: audioDoc() },
-    { save: async (input) => ((seen = input), { ok: true }) },
-  );
-  assert.equal(result.ok, true);
-  assert.equal(seen.project.schema, "oceanleo.audio-project.v1");
-  assert.equal(seen.mediaType, "audio");
-  assert.equal(seen.meta.audio_source_url, "https://m/a.mp3");
-  assert.equal(seen.meta.audio_operation_count, 1);
-  assert.equal(seen.editorManifest.id, "audio-editor");
 });
 
 test("接手：保存链失败 → 把它给的人话原样带回；抛错 → 通用提示", async () => {

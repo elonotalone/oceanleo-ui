@@ -9,7 +9,7 @@ import type { LibraryItem } from "./library-data";
  * 设计画布并进图片（10-22 的决定）。这里只改**读与展示**：`design_canvas` 仍是
  * 能力矩阵里的一行、存量行一个字不改写，库层面把它归到 `image_editing`。
  */
-export type LibraryCategoryId = Exclude<AdvancedFeatureId, "design_canvas">;
+export type LibraryCategoryId = Exclude<AdvancedFeatureId, "design_canvas"> | "audio" | "threed";
 
 const FOLDED_FEATURES: Partial<Record<AdvancedFeatureId, LibraryCategoryId>> = {
   design_canvas: "image_editing",
@@ -24,9 +24,8 @@ const PRESENTATION: Record<LibraryCategoryId, readonly [string, string]> = {
   spreadsheet_editing: ["表格", "spreadsheets"],
   image_editing: ["图片", "images"],
   pdf_editing: ["PDF", "pdf"],
-  audio_editing: ["音频", "audio"],
-  video_canvas: ["视频画布", "video-canvas"],
-  model_3d: ["3D 模型", "threed"],
+  audio: ["音频", "audio"],
+  threed: ["3D 模型", "threed"],
   game_editing: ["游戏", "game"],
 };
 
@@ -50,9 +49,7 @@ const LEGACY_ALIASES: Record<string, LibraryCategoryId> = {
   表格编辑: "spreadsheet_editing",
   图片编辑: "image_editing",
   "PDF 编辑": "pdf_editing",
-  音频编辑: "audio_editing",
-  视频工作流: "video_canvas",
-  "3D": "model_3d",
+  "3D": "threed",
   游戏创作: "game_editing",
 };
 
@@ -89,7 +86,7 @@ export function isLibraryFolderCategory(value: string | null | undefined): boole
 }
 
 /**
- * 菜单顺序跟能力矩阵走：视频、网站、演示文稿、文档、表格、图片、PDF、音频、视频画布、3D 模型、游戏，
+ * 菜单顺序跟能力矩阵走：视频、网站、演示文稿、文档、表格、图片、PDF、游戏、音频、3D 模型，
  * 最后是不属于编辑器的「文件包」。
  */
 export const LIBRARY_EDITOR_CATEGORIES: readonly {
@@ -105,14 +102,15 @@ export const LIBRARY_EDITOR_CATEGORIES: readonly {
       const [typeLabel, filter] = PRESENTATION[value];
       return { value, label: typeLabel, typeLabel, filter };
     }),
+  { value: "audio", label: "音频", typeLabel: "音频", filter: "audio" },
+  { value: "threed", label: "3D 模型", typeLabel: "3D 模型", filter: "threed" },
   LIBRARY_FOLDER_CATEGORY,
 ];
 
 const KIND_FEATURE: Partial<Record<LibraryItem["kind"], AdvancedFeatureId>> = {
   website: "website_finetuning", canvas: "design_canvas", ppt: "presentation_editing",
   document: "document_editing", sheet: "spreadsheet_editing", image: "image_editing",
-  audio: "audio_editing", video_canvas: "video_canvas", video: "video_editing",
-  threed: "model_3d", game: "game_editing",
+  video: "video_editing", game: "game_editing",
 };
 const OTHER_LABELS: Record<string, string> = {
   file: "文件", xhs: "小红书", geo_map: "地图", interactive_doc: "交互文档",
@@ -138,6 +136,8 @@ export function libraryEditorFeatureId(item: LibraryItem): AdvancedFeatureId | n
 }
 
 export function libraryEditorLabel(item: LibraryItem): string {
+  if (item.kind === "audio") return "音频";
+  if (item.kind === "threed") return "3D 模型";
   const feature = libraryEditorFeatureId(item);
   if (feature) return PRESENTATION[libraryCategoryForFeature(feature)][0];
   // 图表编辑器已删除；存量图表仍按「图表」归类（只读）。
@@ -146,6 +146,8 @@ export function libraryEditorLabel(item: LibraryItem): string {
 }
 
 export function libraryEditorCategory(item: LibraryItem): string {
+  if (item.kind === "audio") return "audio";
+  if (item.kind === "threed") return "threed";
   const feature = libraryEditorFeatureId(item);
   return feature ? libraryCategoryForFeature(feature) : libraryEditorLabel(item);
 }

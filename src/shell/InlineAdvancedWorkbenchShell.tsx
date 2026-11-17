@@ -88,7 +88,7 @@ export function InlineAdvancedWorkbenchShell({
 }: InlineAdvancedWorkbenchShellProps) {
   const tt = useUI();
   // 插件内主题（10 件高级编辑器）：与站点 html.dark 完全解耦。非 10 件的
-  // adapter（website / design-canvas / video-canvas）pluginThemeId 为 null，
+  // adapter（website / design-canvas）pluginThemeId 为 null，
   // 保持原站点主题别名路径不变。
   const pluginThemeId = pluginThemeIdForAdapter(adapter.id);
   const pagePluginId = (pluginThemeId ??

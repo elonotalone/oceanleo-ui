@@ -20,8 +20,6 @@ const boundary = {
 };
 const image = await import(await compileModule("src/shell/image-editor/editor-persistence.ts",boundary));
 const admission = await import(await compileModule("src/shell/advanced-routes/non-richdoc-source-gate.ts",boundary));
-const { useAudioMutations } = await import(await compileModule("src/shell/media-editors/use-audio-mutations.ts",boundary));
-const { useAudioPersistence } = await import(await compileModule("src/shell/media-editors/use-audio-persistence.ts",boundary));
 const saverBoundary = {
   "../lib/auth/client": dataModule('export const accessToken=async()=>{globalThis.__mediaRepairAuthCalls=(globalThis.__mediaRepairAuthCalls||0)+1;if(globalThis.__mediaRepairAuthDelay)await new Promise(r=>setTimeout(r,globalThis.__mediaRepairAuthDelay));return "synthetic-test-auth";};export const cachedAccessToken=()=>"synthetic-test-auth";'),
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.test";'),
@@ -33,10 +31,6 @@ const sharedPath=path=>process.env.S3B_SHARED_SAVE_ROOT ? process.env.S3B_SHARED
 const { useAdvancedAutoSave } = await import(await compileModule(sharedPath("src/shell/use-advanced-autosave.ts"),saverBoundary));
 const { WorkingCopySaver } = await import(await compileModule(sharedPath("src/shell/editor-working-copy.ts"),saverBoundary));
 const { resetBackgroundSaverForTests } = await import(await compileModule(sharedPath("src/shell/advanced-background-saver.ts"),saverBoundary));
-const { DEFAULT_MODEL3D_VIEW, EMPTY_MODEL3D_RUNTIME } = await import("../src/shell/media-editors/model3d-workbench-defaults.ts");
-const { captureModel3DRouteSnapshot } = await import("../src/shell/media-editors/Model3DRouteHistory.ts");
-globalThis.__repairModelDefaults = DEFAULT_MODEL3D_VIEW;
-globalThis.__repairRuntimeDefaults = EMPTY_MODEL3D_RUNTIME;
 class ImagePixels {
   constructor(_fabric,_canvas,_container,callbacks) {
     this.callbacks=callbacks;
@@ -80,16 +74,6 @@ function modelBootstrap({loadedSourceRef,applyView,setSourceUrl,setSourceProvena
     setSourceLoading(false);
   },[]);
 }
-const { useModel3DWorkbench } = await import(await compileModule("src/shell/media-editors/use-model3d-workbench.ts",{
-  ...boundary,
-  "./use-model3d-runtime": dataModule("export const useModel3DRuntime="+runtimeHook.toString()+";"),
-  "./use-model3d-project-bootstrap": dataModule("export const useModel3DProjectBootstrap="+modelBootstrap.toString()+";"),
-  "./use-model3d-source-loader": dataModule("export const useModel3DSourceLoader=()=>{};"),
-  "./use-model3d-source-actions": dataModule("export const useModel3DSourceActions=()=>({});"),
-  "./use-model3d-director": dataModule("export const useModel3DDirector=()=>({});"),
-  "./use-model3d-save": dataModule("export const useModel3DSave=()=>({saving:false});"),
-  "./use-model3d-media-actions": dataModule("export const useModel3DMediaActions=()=>({});"),
-}));
 const { FabricEditorCore } = await import(await compileModule("src/shell/image-editor/fabric-controller-core.ts",{
   ...boundary,"./local-save-pixels":dataModule("export const collectPixelSources=()=>[];"),
 }));
@@ -244,100 +228,6 @@ test("VS5 unreadable working copies report saved modifications without the retir
     }finally{saver.dispose();}
   }
 });
-
-test("VS6 a pending waveform reload does not replace the saver or conflict with the next gain edit",async()=>cleanRender(async()=>{
-  const gateway=fakeGateway();
-  let editor,finishWave;
-  function Harness(){
-    const bufferRef=React.useRef(new AudioBufferFake()),sourceUrlRef=React.useRef("https://media.test/source.wav");
-    const operationsRef=React.useRef([]),revisionRef=React.useRef(0);
-    const [loading,setLoading]=React.useState(false),[dirty,setDirty]=React.useState(false);
-    const options={item:ITEM,siteId:"audio",bufferRef,sourceUrlRef,operationsRef,revisionRef,
-      undoOperationsRef:React.useRef([]),redoOperationsRef:React.useRef([]),undoRef:React.useRef([]),redoRef:React.useRef([]),
-      workingHeadUrlRef:React.useRef(""),savingRef:React.useRef(false),setLoading,setDirty,
-      setError:noop,setSavedUrl:noop,setSaving:noop,setCanUndo:noop,setCanRedo:noop,tt:s=>s,
-      requiresExistingSource:true,reloadWaveform:()=>new Promise(resolve=>finishWave=resolve)};
-    const persistence=useAudioPersistence(options),mutate=useAudioMutations(options);
-    const admitted=admission.audioSourcePersistenceAdmitted({loading,capture:persistence.captureRecovery()});
-    const save=useAdvancedAutoSave({key:ITEM.key,item:ITEM,editorId:"audio",session:null,dirty,revision:revisionRef.current,
-      recovery:{draftSchema:"oceanleo.audio.edit.v1",key:ITEM.key,ready:admitted.ok,capture:persistence.captureRecovery,restore:persistence.restoreRecovery}});
-    editor={mutate,save,loading};
-    return h("span",{"data-save":save.state},save.errorMessage);
-  }
-  const mounted=await mount(h(Harness));
-  try{
-    await act(async()=>sleep(5));
-    for(let i=0;i<2;i++){
-      let pending;
-      await act(async()=>{pending=editor.mutate({type:"gain",start:0,end:0.1,multiplier:0.8});await sleep(5);});
-      assert.equal(editor.loading,true);
-      assert.equal(gateway.state.puts.length,i+1,"PUT must not wait for waveform rebuilding");
-      await act(async()=>{finishWave();await pending;await sleep(5);});
-      assert.equal(editor.save.state,"saved",editor.save.errorMessage);
-    }
-    assert.equal(gateway.state.gets,1,"local edit processing must keep the original saver");
-    assert.equal(gateway.state.copy.doc.operations.length,2);
-  }finally{await mounted.unmount();gateway.restore();}
-}));
-
-test("VS7 current 3D exposure is captured before React commits, then agrees with Saved and restore",async()=>cleanRender(async()=>{
-  const gateway=fakeGateway();globalThis.__repairModelRuntimeCalls=[];
-  let editor,save,insideInput;
-  function Harness(){
-    editor=useModel3DWorkbench({...ITEM,kind:"model3d"},"threed");
-    const capture=editor.captureRecovery||(()=>captureModel3DRouteSnapshot(editor));
-    save=useAdvancedAutoSave({key:ITEM.key,item:ITEM,editorId:"threed",session:null,dirty:editor.dirty,revision:editor.editRevision,
-      recovery:{draftSchema:"oceanleo.threed.edit.v1",key:ITEM.key,ready:editor.modelLoaded&&!editor.loading,capture,restore:editor.restoreRecovery}});
-    return h("button",{onClick:()=>{
-      editor.setExposure(1.1);editor.setExposure(1.25);
-      insideInput=capture();
-    }},"Exposure");
-  }
-  const mounted=await mount(h(Harness));
-  try{
-    await act(async()=>sleep(5));
-    await act(async()=>{mounted.container.querySelector("button").click();await sleep(5);});
-    assert.equal(insideInput.view.exposure,1.25,"capture read the preceding render");
-    assert.equal(editor.exposure,1.25);
-    assert.equal(save.state,"saved",save.errorMessage);
-    assert.equal(gateway.state.copy.doc.view.exposure,1.25,"Saved must acknowledge the current exposure");
-    await act(async()=>editor.restoreRecovery(gateway.state.copy.doc));
-    assert.equal(editor.exposure,1.25);
-  }finally{await mounted.unmount();gateway.restore();}
-}));
-
-test("VS1 an exposure-only runtime update does not rebuild orbit, shadows or a complete scene snapshot",async()=>{
-  const {Model3DSceneRuntime}=await import("../src/shell/media-editors/model3d-runtime.mjs");
-  const calls={orbit:0,shadows:0,snapshot:0};
-  const runtime=Object.assign(Object.create(Model3DSceneRuntime.prototype),{
-    view:{...DEFAULT_MODEL3D_VIEW},renderer:{toneMappingExposure:1},renderScene:{},orbit:{},
-    applyOrbit:()=>calls.orbit++,applyShadows:()=>calls.shadows++,emitSnapshot:()=>calls.snapshot++,
-  });
-  runtime.setView({exposure:1.25},{emit:false});
-  assert.equal(runtime.renderer.toneMappingExposure,1.25);
-  assert.deepEqual(calls,{orbit:0,shadows:0,snapshot:0});
-});
-
-function useAudioMatrix(item) {
-  const bufferRef=React.useRef(new AudioBufferFake()),sourceUrlRef=React.useRef("https://media.test/source.wav");
-  const operationsRef=React.useRef([]),revisionRef=React.useRef(0);
-  const [loading,setLoading]=React.useState(false),[dirty,setDirty]=React.useState(false);
-  const options={item,siteId:"audio",bufferRef,sourceUrlRef,operationsRef,revisionRef,
-    undoOperationsRef:React.useRef([]),redoOperationsRef:React.useRef([]),undoRef:React.useRef([]),redoRef:React.useRef([]),
-    workingHeadUrlRef:React.useRef(""),savingRef:React.useRef(false),setLoading,setDirty,
-    setError:noop,setSavedUrl:noop,setSaving:noop,setCanUndo:noop,setCanRedo:noop,tt:s=>s,
-    requiresExistingSource:true,reloadWaveform:async()=>{}};
-  const persistence=useAudioPersistence(options),mutate=useAudioMutations(options);
-  return {capture:persistence.captureRecovery,restore:persistence.restoreRecovery,dirty,revision:revisionRef.current,
-    ready:admission.audioSourcePersistenceAdmitted({loading,capture:persistence.captureRecovery()}).ok,
-    edit:()=>mutate({type:"gain",start:0,end:0.1,multiplier:0.95})};
-}
-function useModelMatrix(item) {
-  const editor=useModel3DWorkbench(item,"threed");
-  const count=React.useRef(0);
-  return {capture:editor.captureRecovery,restore:editor.restoreRecovery,dirty:editor.dirty,revision:editor.editRevision,
-    ready:editor.modelLoaded&&!editor.loading,edit:()=>editor.setExposure(1.1+0.01*++count.current)};
-}
 const VIDEO_ITEM={...ITEM,kind:"video",meta:{timeline_doc:{width:1280,height:720,fps:30,
   tracks:[{id:"text",kind:"text",clips:[{id:"caption",text:"Initial",start_ms:0,duration_ms:6000}]}]}}};
 function useVideoMatrix() {
@@ -372,7 +262,7 @@ async function savedWhen(predicate) {
     await act(async()=>sleep(4));
   }
 }
-for(const [kind,hook] of [["image",useFabricMatrix],["design",useFabricMatrix],["audio",useAudioMatrix],["video",useVideoMatrix],["model3d",useModelMatrix]]) {
+for(const [kind,hook] of [["image",useFabricMatrix],["design",useFabricMatrix],["video",useVideoMatrix]]) {
   test("VS1 jsdom "+kind+": 20 isolated edits + 3 ten-edit bursts in native and 150ms RTT",async(t)=>cleanRender(async()=>{
     const isolated=[],bursts=[],beforePut=[];
     let totalEdits=0;
@@ -490,38 +380,6 @@ test("R3 image comparison still distinguishes authored edits and unidentified bi
   assert.equal(sameImageContent(first,next),false,"unidentified image URLs remain content");
 });
 
-test("R3 initialized existing audio copy keeps seq86 and recovers its next edit after reconnect",async()=>cleanRender(async()=>{
-  const {encodeWav}=await import("../src/shell/media-editors/audio-workbench-utils.ts");
-  const oldContext=globalThis.AudioContext;
-  globalThis.AudioContext=class {async decodeAudioData(){return new AudioBufferFake();}async close(){}};
-  globalThis.__mediaRepairBlob=encodeWav(new AudioBufferFake());
-  const gateway=fakeGateway();
-  gateway.state.copy={schema:"oceanleo.audio.edit.v1",seq:86,published_seq:0,base_revision_id:null,
-    saved_at:new Date().toISOString(),doc:{sourceUrl:"https://media.test/source.wav",operations:[{type:"gain",start:0,end:0.1,multiplier:0.8}]}};
-  let editor,save;
-  function Harness(){
-    editor=useAudioMatrix(ITEM);
-    save=useAdvancedAutoSave({key:ITEM.key,item:ITEM,editorId:"audio",session:null,dirty:editor.dirty,revision:editor.revision,
-      recovery:{draftSchema:"oceanleo.audio.edit.v1",key:ITEM.key,ready:editor.ready,capture:editor.capture,restore:editor.restore}});
-    return h("button",{onClick:()=>{void editor.edit();}},"Gain");
-  }
-  const mounted=await mount(h(Harness));
-  try {
-    await savedWhen(()=>save.state==="saved");
-    assert.equal(editor.capture().operations.length,1);
-    gateway.state.offline=true;
-    await act(async()=>{mounted.container.querySelector("button").click();await sleep(10);});
-    assert.equal(save.state,"error");
-    gateway.state.offline=false;
-    await act(async()=>window.dispatchEvent(new window.Event("online")));
-    await savedWhen(()=>save.state==="saved");
-    assert.equal(gateway.state.copy.seq,87);
-    assert.equal(gateway.state.copy.doc.operations.length,2);
-    assert.deepEqual(gateway.state.ifSeqs,[86]);
-    assert.equal(gateway.state.gets,1,"recovery retains its initialized sequence");
-  }finally{await mounted.unmount();resetBackgroundSaverForTests();gateway.restore();globalThis.AudioContext=oldContext;delete globalThis.__mediaRepairBlob;}
-}));
-
 test("R3 real image hook opens seq86 through room hydration without conflict, then edits with that seq",async()=>cleanRender(async()=>{
   const snapshot=expiredImage(),object=snapshot.json.objects[0];
   object.src=object.oceanleoDependency.url="https://media.test/current.png";
@@ -553,33 +411,4 @@ test("R3 real image hook opens seq86 through room hydration without conflict, th
     assert.deepEqual(gateway.state.ifSeqs,[86]);
     assert.equal(gateway.state.copy.doc.snapshot.json.objects[0].flipX,false);
   }finally{release();await mounted.unmount();resetBackgroundSaverForTests();gateway.restore();room.doc.destroy();delete globalThis.__imageRepairSeedSnapshot;}
-}));
-
-test("R3 real 3D burst uses warm authentication and acknowledges both flights within 500ms",async(t)=>cleanRender(async()=>{
-  globalThis.__mediaRepairAuthDelay=110;
-  globalThis.__mediaRepairAuthCalls=0;
-  globalThis.__repairModelRuntimeCalls=[];
-  const gateway=fakeGateway(180),item={...ITEM,kind:"model3d"};
-  let editor,save;
-  function Harness(){
-    editor=useModelMatrix(item);
-    save=useAdvancedAutoSave({key:item.key,item,editorId:"threed",session:null,dirty:editor.dirty,revision:editor.revision,
-      recovery:{key:item.key,draftSchema:"oceanleo.threed.edit.v1",ready:editor.ready,capture:editor.capture,restore:editor.restore}});
-    return h("button",{onClick:()=>editor.edit()},"Exposure");
-  }
-  const mounted=await mount(h(Harness));
-  try {
-    await savedWhen(()=>editor.ready&&save.state==="saved");
-    globalThis.__mediaRepairAuthCalls=0;
-    await act(async()=>mounted.container.querySelector("button").click());
-    await act(async()=>sleep(20));
-    const at=performance.now();
-    await act(async()=>mounted.container.querySelector("button").click());
-    await savedWhen(()=>save.state==="saved"&&gateway.state.puts.length===2);
-    const elapsed=performance.now()-at;
-    assert.equal(globalThis.__mediaRepairAuthCalls,0,"a warm session must avoid per-PUT SDK auth preparation");
-    assert.ok(elapsed<=500,"two flights plus repeated auth work exceeded the burst budget");
-    assert.equal(gateway.state.copy.doc.view.exposure,editor.capture().view.exposure);
-    t.diagnostic("3D second-input ack "+elapsed.toFixed(2)+"ms; SDK auth calls "+globalThis.__mediaRepairAuthCalls);
-  }finally{await mounted.unmount();resetBackgroundSaverForTests();gateway.restore();delete globalThis.__mediaRepairAuthDelay;delete globalThis.__mediaRepairAuthCalls;}
 }));

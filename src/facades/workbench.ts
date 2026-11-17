@@ -17,7 +17,6 @@ export type {
 export { AdvancedContentWorkbench } from "../shell/AdvancedContentWorkbench";
 export type { AdvancedContentWorkbenchProps } from "../shell/AdvancedContentWorkbench";
 export * from "../shell/video-editor/capabilities";
-export * from "../shell/media-editors/model3d-capabilities";
 export {
   WORKBENCH_MATERIAL_MIME,
   WorkbenchMaterialProvider,

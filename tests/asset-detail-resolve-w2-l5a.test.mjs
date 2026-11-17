@@ -59,7 +59,7 @@ test('seller cover never becomes document/video content or fabricated durable id
 });
 
 test('supported catalog types retain viewer semantics', () => {
-  const expected = { single_file_image: 'image', vector_image: 'image', composite_image: 'image', deck: 'ppt', model_3d: 'threed', grid: 'sheet', pdf: 'document', video_workflow: 'video_canvas', interactive_doc: 'interactive_doc' };
+  const expected = { single_file_image: 'image', vector_image: 'image', composite_image: 'image', deck: 'ppt', model_3d: 'threed', grid: 'sheet', pdf: 'document', interactive_doc: 'interactive_doc' };
   for (const [type, kind] of Object.entries(expected)) assert.equal(bayAssetToLibraryEntry({ ...e11, type }).kind, kind);
 });
 

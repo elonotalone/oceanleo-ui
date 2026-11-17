@@ -17,6 +17,7 @@ const client = dataModule(`
   export async function setArtifactFavorite(){return {ok:false};}
 `);
 const stubs = {
+  "../workbench-routes": dataModule('export function editorCapabilityFor(){return {available:true};}'),
   "../../i18n/ui/useUI": dataModule(`export function useUI(){const dict=${JSON.stringify(dictionary)};return (key,vars)=>{let text=dict[key]||key;for(const [k,v] of Object.entries(vars||{}))text=text.replaceAll('{'+k+'}',String(v));return text;};}`),
   "../i18n/ui/useUI": dataModule(`export function useUI(){const dict=${JSON.stringify(dictionary)};return key=>dict[key]||key;}`),
   "next-intl": dataModule('export function useLocale(){return "en";}'),

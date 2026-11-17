@@ -31,12 +31,6 @@ function lightStubs(extra = {}) {
 const timeline = await import(
   await compileModule("src/shell/video-editor/use-video-timeline.ts", lightStubs())
 );
-const canvas = await import(
-  await compileModule(
-    "src/shell/workflow-carrier/VideoCanvasStage.tsx",
-    lightStubs(),
-  )
-);
 
 function videoItem(id) {
   return { key: `artifact:${id}:r1`, id };
@@ -82,27 +76,4 @@ test("video timeline load, hydrate, and equal documents do not record", () => {
   timeline.applyVideoTimelineUserEditSession(item, "person-commit");
   assert.equal(timeline.applyVideoTimelineUserEditSession(item, "load"), 1);
   assert.equal(timeline.applyVideoTimelineUserEditSession(item, "hydrate"), 1);
-});
-
-test("video canvas person-command and add-node record; hydrate does not", () => {
-  resetUserEditSession();
-  const item = videoItem("video-canvas-w6");
-  const empty = { nodes: [], edges: [] };
-  assert.equal(canvas.applyVideoCanvasUserEditSession(item, "hydrate"), 0);
-  assert.equal(canvas.applyVideoCanvasUserEditSession(item, "load"), 0);
-  const applied = canvas.applyVideoCanvasPersonCommand(
-    item,
-    empty,
-    "workflow.add-node",
-    { kind: "filter", label: "新节点" },
-    0,
-  );
-  assert.equal(applied.ok, true);
-  assert.equal(applied.graph.nodes.length, 1);
-  assert.equal(generationOf(item), 1);
-  assert.equal(
-    canvas.applyVideoCanvasUserEditSession(item, "person-command"),
-    2,
-  );
-  assert.equal(canvas.applyVideoCanvasUserEditSession(item, "hydrate"), 2);
 });

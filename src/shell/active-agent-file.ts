@@ -5,6 +5,7 @@ import type {
   PluginAgentContext,
   PluginCommandTarget,
 } from "./plugin-command/types";
+import { ADVANCED_EDITOR_ADAPTER_IDS } from "./artifact-contract";
 import type { LibraryItem } from "./library-data";
 import { boundedAgentContent } from "./plugin-command/bounded-agent-content";
 
@@ -72,12 +73,8 @@ export function pluginEditorIdForLibraryItem(
   item: LibraryItem,
   adapterId: string,
 ): string | null {
-  const artifactType = String(
-    item.artifactType || item.artifact?.artifactType || item.kind || "",
-  ).trim().toLowerCase();
   const normalized = String(adapterId || "").trim();
-  if (artifactType === "workflow" && normalized === "video-canvas") return "workflow";
-  return !normalized || normalized === "none" ? null : normalized;
+  return (ADVANCED_EDITOR_ADAPTER_IDS as readonly string[]).includes(normalized) ? normalized : null;
 }
 
 function normalizeIdentity(identity: ActiveAgentFileIdentity): ActiveAgentFileIdentity {

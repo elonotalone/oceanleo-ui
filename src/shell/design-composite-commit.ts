@@ -11,7 +11,6 @@ import {
   unwrapMediaProxyUrl,
 } from "../lib/media-proxy";
 import { uploadFile } from "../lib/database";
-import { privateVideoBlobCommit } from "./editor-private-video-commit";
 import {
   isDurableLibraryItem,
   type LibraryItem,
@@ -1570,7 +1569,7 @@ const DEFAULT_COMMIT_DEPENDENCIES: DesignCompositeCommitDependencies = {
 // ===========================================================================
 // 嵌入式编辑器的 typed commit —— composite_image 之外的三类
 // ---------------------------------------------------------------------------
-// `vector_image` / `workflow` / `website` 也由嵌入式画布编辑，但它们过去一次
+// `vector_image` / `website` 也由嵌入式画布编辑，但它们过去一次
 // revision 都提交不了：宿主这一侧的 typed commit 从协议校验到发布逐层写死
 // `composite_image`。
 //
@@ -1592,24 +1591,6 @@ const EMBEDDED_TYPED_COMMIT_SOURCE_FORMATS: Readonly<
   Partial<Record<ArtifactType, readonly string[]>>
 > = Object.freeze({
   vector_image: ["svg", "svg+xml"],
-  /**
-   * A12-W 裁决：`workflow` 就产出 `oceanleo.workflow.v1`，**不许改标成 `json`**。
-   *
-   * 后端的 accepted 列表里确实有 `json`（W1 探针实测 `workflow + json + design-canvas`
-   * 能过），但那条通路正是「把标签从 `artifact_type` 挪到 `source_format`」的退化口子：
-   * 一份设计文档改个 `json` 标签就能混进 workflow。宿主这一侧刻意**比后端更严**，
-   * 只收带语义的那几个 schema，把这个口子焊死。
-   *
-   * 生产库现状（2026-07-28 实测）：`workflow` 共 211 条 revision，
-   * `oceanleo.workflow.v1` 73 条（capability `design-canvas`）、
-   * `oceanleo.video-canvas.v1` 73 条、`oceanleo.video.project.v2` 63 条，
-   * 没有任何一条用 `json`。收严不影响任何存量。
-   */
-  workflow: [
-    "oceanleo.workflow.v1",
-    "oceanleo.video-canvas.v1",
-    "oceanleo.video.project.v2",
-  ],
   website: [
     "website-source@1",
     "html",
@@ -1623,9 +1604,6 @@ const EMBEDDED_TYPED_COMMIT_MEDIA_TYPES: Readonly<Record<string, string>> =
     svg: "image/svg+xml",
     "svg+xml": "image/svg+xml",
     json: "application/json",
-    "oceanleo.workflow.v1": "application/json",
-    "oceanleo.video-canvas.v1": "application/json",
-    "oceanleo.video.project.v2": "application/json",
     "website-source@1": "application/json",
     "oceanleo.website-project.v1": "application/json",
     html: "text/html",
@@ -1689,7 +1667,6 @@ export async function persistEmbeddedTypedCommit(
   const declaredType = text(meta.artifact_type, 60);
   const sourceFormat = text(meta.source_format, 120);
   const expectedRevisionId = text(meta.expected_artifact_revision_id, 300);
-  const privateCommit = privateVideoBlobCommit(meta);
 
   if (
     !isDurableLibraryItem(item) ||
@@ -1698,12 +1675,12 @@ export async function persistEmbeddedTypedCommit(
     declaredType !== item.artifactType ||
     text(meta.artifact_id, 300) !== item.artifactId ||
     expectedRevisionId !== item.revisionId ||
-    (meta.private_blob_commit !== undefined && !privateCommit) ||
-    (!privateCommit && (
+    meta.private_blob_commit !== undefined ||
+    (
       !sourceUrl || !previewUrl ||
       !isFirstPartyHttpsMediaUrl(sourceUrl) ||
       !isFirstPartyHttpsMediaUrl(previewUrl)
-    ))
+    )
   ) {
     throw new DesignCompositeCommitError(
       "嵌入式保存缺少受控 source/preview URL、精确 base identity 或 typed commit 声明。",
@@ -1729,9 +1706,7 @@ export async function persistEmbeddedTypedCommit(
   // Private staging already holds the exact immutable uploaded bytes. Never
   // fetch/rehost the envelope's old compatibility URL; the revision adapter
   // independently resolves owner + private bucket and re-hashes both blobs.
-  const [sourceDigest, previewDigest] = privateCommit
-    ? [privateCommit.source.digest, privateCommit.preview.digest]
-    : await Promise.all([
+  const [sourceDigest, previewDigest] = await Promise.all([
         dependencies.fetchBlob(sourceUrl, { maxBytes: 20_000_000 }).then(sha256Blob),
         dependencies.fetchBlob(previewUrl, { maxBytes: 32_000_000 }).then(sha256Blob),
       ]);
@@ -1764,12 +1739,8 @@ export async function persistEmbeddedTypedCommit(
   }
 
   const plan = planArtifactSaveRenditions(target.artifactType, {
-    delivery: privateCommit
-      ? { url: "", blobId: privateCommit.source.blobId, digest: sourceDigest }
-      : { url: sourceUrl, digest: sourceDigest },
-    previewBitmap: privateCommit
-      ? { url: "", blobId: privateCommit.preview.blobId, digest: previewDigest }
-      : { url: previewUrl, digest: previewDigest },
+    delivery: { url: sourceUrl, digest: sourceDigest },
+    previewBitmap: { url: previewUrl, digest: previewDigest },
   });
   if (!plan.ok) {
     throw new DesignCompositeCommitError(
@@ -1785,7 +1756,7 @@ export async function persistEmbeddedTypedCommit(
     artifactType: target.artifactType,
     source: {
       format: sourceFormat,
-      ...(privateCommit ? { blobId: privateCommit.source.blobId } : { url: sourceUrl }),
+      url: sourceUrl,
       digest: sourceDigest,
     },
     renditions: plan.renditions,

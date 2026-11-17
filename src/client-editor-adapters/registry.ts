@@ -61,28 +61,4 @@ export const CLIENT_EDITOR_ADAPTERS: readonly ClientEditorAdapterRecord[] =
       status: "GREEN",
       reason: "Local Tiptap Editor proven offline; hosted Umo face is deleted",
     },
-    {
-      editorId: "audio",
-      schema: "oceanleo.audio-project.v1",
-      core: "wavesurfer.js",
-      license: "BSD-3-Clause",
-      status: "GREEN",
-      reason: "Local wavesurfer + Web Audio; hosted AudioMass face is deleted",
-    },
-    {
-      editorId: "threed",
-      schema: "oceanleo.model-view@1",
-      core: "three@0.183.2",
-      license: "MIT",
-      status: "GREEN",
-      reason: "Local three.js view proven; hosted three.js editor face is deleted",
-    },
-    {
-      editorId: "video-canvas",
-      schema: "oceanleo.video-canvas.v1",
-      core: "VideoCanvasRoute local xyflow (W10)",
-      license: "MIT",
-      status: "AMBER",
-      reason: "mountEditor loads VideoCanvasRoute. Offline proof stays W10.",
-    },
   ]);

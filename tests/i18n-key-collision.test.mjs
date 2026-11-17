@@ -127,7 +127,6 @@ const WORK_CHAT_FRAGMENTS = [
   ["collab-media-copy", "COLLAB_MEDIA_MESSAGES"],
   ["work-replay-copy", "WORK_REPLAY_MESSAGES"],
   ["collab-pdf-copy", "COLLAB_PDF_MESSAGES"],
-  ["collab-workflow-copy", "COLLAB_WORKFLOW_MESSAGES"],
   ["collab-grid-copy", "COLLAB_GRID_MESSAGES"],
   ["call-copy", "CALL_MESSAGES"],
 ];

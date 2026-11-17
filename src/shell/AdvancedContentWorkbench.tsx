@@ -106,7 +106,7 @@ function reportSaveFailure(stage: string, willRetry: boolean): void {
  * 在此之前每条都是裸的
  * `dynamic(() => import(…), { ssr: false, loading: WorkbenchRouteLoading })`，
  * chunk 一挂**没有任何处理**——全仓搜 `ChunkLoadError` 零命中。后果就是操作员
- * 贴出来的那一片：`Model3DRoute_tsx_….js` 撞上
+ * 贴出来的那一片：`DeckRoute_tsx_….js` 撞上
  * `ERR_SSL_VERSION_OR_CIPHER_MISMATCH` 之后，编辑器永远转圈。
  *
  * 现在夹了两层（都在 `lib/lazy-with-retry.tsx`）：
@@ -145,17 +145,11 @@ const VideoTimelineRoute = lazyRoute("video-timeline", () =>
     (module) => module.VideoTimelineRoute,
   ),
 );
-const AudioRoute = lazyRoute("audio", () =>
-  import("./advanced-routes/AudioRoute").then((module) => module.AudioRoute),
-);
 const ImageRoute = lazyRoute("image", () =>
   import("./advanced-routes/ImageRoute").then((module) => module.ImageRoute),
 );
 const PdfRoute = lazyRoute("pdf", () =>
   import("./advanced-routes/PdfRoute").then((module) => module.PdfRoute),
-);
-const Model3DRoute = lazyRoute("threed", () =>
-  import("./advanced-routes/Model3DRoute").then((module) => module.Model3DRoute),
 );
 const RichDocRoute = lazyRoute("richdoc", () =>
   import("./advanced-routes/RichDocRoute").then((module) => module.RichDocRoute),
@@ -168,11 +162,6 @@ const DeckRoute = lazyRoute("deck", () =>
 );
 const WorkWorkbenchRoute = lazyRoute("work", () =>
   import("./works-workbench/WorkWorkbenchRoute").then((module) => module.WorkWorkbenchRoute),
-);
-const VideoCanvasRoute = lazyRoute("video-canvas", () =>
-  import("./advanced-routes/VideoCanvasRoute").then(
-    (module) => module.VideoCanvasRoute,
-  ),
 );
 /**
  * 空件挂载（合同 §3.2）用的入参形态：`item` 可以先不给。
@@ -805,17 +794,11 @@ function AdvancedContentWorkbenchRuntime(
     case "video-timeline":
       editor = <VideoTimelineRoute {...activeProps} />;
       break;
-    case "audio":
-      editor = <AudioRoute {...activeProps} />;
-      break;
     case "image":
       editor = <ImageRoute {...activeProps} />;
       break;
     case "pdf":
       editor = <PdfRoute {...activeProps} />;
-      break;
-    case "threed":
-      editor = <Model3DRoute {...activeProps} />;
       break;
     case "richdoc":
       editor = <RichDocRoute {...activeProps} />;
@@ -828,9 +811,6 @@ function AdvancedContentWorkbenchRuntime(
       break;
     case "work":
       editor = <WorkWorkbenchRoute {...activeProps} />;
-      break;
-    case "video-canvas":
-      editor = <VideoCanvasRoute {...activeProps} />;
       break;
     case "none":
     default:

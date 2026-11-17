@@ -18,11 +18,11 @@ import {
 test("viewer kind prefers explicit metadata and recognizes real Office files", () => {
   assert.equal(
     inferLibraryKind({
-      meta: { library_kind: "video_canvas" },
+      meta: { library_kind: "video" },
       mediaType: "video",
       url: "https://cdn.test/output.mp4",
     }),
-    "video_canvas",
+    "video",
   );
   assert.equal(
     inferLibraryKind({ kind: "file", url: "https://cdn.test/board.xlsx?x=1" }),
@@ -235,19 +235,4 @@ test("function agents forward only verified persisted UI actions", () => {
   assert.match(source, /message\.kind !== "ui_action"/);
   assert.match(source, /message\.meta\?\.verified !== true/);
   assert.match(source, /dispatchWorkspaceAction\(\{/);
-});
-
-test("only first-party curated video workflows keep an interactive iframe origin", () => {
-  const source = readFileSync(
-    new URL("../src/shell/library-viewers.tsx", import.meta.url),
-    "utf8",
-  );
-  assert.match(source, /item\.meta\.asset_type === "video_workflow"/);
-  // 域名后缀不再构成信任依据：可信判定与 sandbox 组合都收敛到共享策略，
-  // 预览/UGC 域（oceanleo.app 等）因此拿不到 allow-same-origin。
-  assert.ok(source.includes("isTrustedInteractiveViewerUrl(item.url)"));
-  assert.ok(
-    source.includes("sandbox={webViewerFrameSandbox(trustedInteractive)}"),
-  );
-  assert.equal(source.includes('hostname.endsWith(".oceanleo.com")'), false);
 });

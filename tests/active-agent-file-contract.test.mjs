@@ -13,11 +13,6 @@ import {
   resetPluginCommandSurface,
 } from "../src/shell/plugin-command/registry.ts";
 
-test("workflow routing uses native command owner without misclassifying design-canvas workflows", () => {
-  assert.equal(pluginEditorIdForLibraryItem({ artifactType: "workflow" }, "video-canvas"), "workflow");
-  assert.equal(pluginEditorIdForLibraryItem({ artifactType: "workflow" }, "design-canvas"), "design-canvas");
-  assert.equal(pluginEditorIdForLibraryItem({ artifactType: "video_canvas" }, "video-canvas"), "video-canvas");
-});
 
 test("active file context requires matching mounted scope, artifact, revision, and surface instance", () => {
   resetPluginCommandSurface();

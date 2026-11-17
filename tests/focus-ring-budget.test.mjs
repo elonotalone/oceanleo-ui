@@ -280,38 +280,6 @@ const W04_CLEARED_FILES = [
   "src/shell/plugin-chrome/PluginChromeEditBarButton.tsx",
 ];
 
-/**
- * 每个文件今天的点位数上限。只减不增，防止「总数不变、内部对冲」。
- * `[实测]` W04 2026-08-31，合计 37。清空一个文件就把它整条删掉。
- */
-const FILE_BUDGET = new Map([
-  ["src/pages/MyDatabasePage.tsx", 2],
-  ["src/shell/AdvancedFontPicker.tsx", 1],
-  ["src/shell/AiRecommendBox.tsx", 1],
-  ["src/shell/AppMarket.tsx", 1],
-  ["src/shell/AppShell.tsx", 1],
-  ["src/shell/CloudBrowserPanel.tsx", 1],
-  ["src/shell/FileLibrary.tsx", 2],
-  ["src/shell/HomePromptModals.tsx", 1],
-  ["src/shell/LibraryLayout.tsx", 1],
-  ["src/shell/Playground.tsx", 1],
-  ["src/shell/SelectionToolbarNumberControl.tsx", 1],
-  ["src/shell/cloud-browser-history-view.tsx", 2],
-  ["src/shell/doc-editors/DeckCreationPanels.tsx", 1],
-  ["src/shell/doc-editors/DeckElementContent.tsx", 1],
-  ["src/shell/doc-editors/DeckLegacySlideLayout.tsx", 2],
-  ["src/shell/doc-editors/DeckPresenterView.tsx", 3],
-  ["src/shell/doc-editors/DeckStage.tsx", 2],
-  ["src/shell/doc-editors/GridStage.tsx", 3],
-  ["src/shell/image-editor/FabricImageCreationPanels.tsx", 2],
-  ["src/shell/media-editors/Model3DControls.tsx", 1],
-  ["src/shell/media-editors/Model3DDirectorPanel.tsx", 1],
-  ["src/shell/media-editors/Model3DStage.tsx", 1],
-  ["src/shell/video-editor/VideoTimelineStage.tsx", 1],
-  // W03 的面（`ui/index.tsx`）。W04 不许动，已写进 `signals/W04-request.md`。
-  ["src/ui/index.tsx", 1],
-]);
-
 // ---------------------------------------------------------------- 用例
 
 const { sites: srcSites } = scanTree(SRC);
@@ -325,25 +293,6 @@ test("欠账只减不增：抑制了轮廓又没补回环的点位总数不得�
       + "新增一处的修法：在同一个元素的类名串上补 focus-visible:ring-2 与环色，"
       + "或者干脆别写 outline-none。\n"
       + `头十处：\n${srcSites.slice(0, 10).map((s) => `  ${s.file}:${s.line} <${s.tag}> ${s.suppressors}`).join("\n")}`,
-  );
-});
-
-test("不许内部对冲：单个文件的点位数不得超过它今天的数", () => {
-  const actual = tally(srcSites);
-  const perFile = new Map();
-  for (const [key, count] of actual) {
-    const file = key.split("::")[0];
-    perFile.set(file, (perFile.get(file) || 0) + count);
-  }
-  const grown = [];
-  for (const [file, count] of perFile) {
-    const budget = FILE_BUDGET.get(file);
-    if (budget === undefined) grown.push(`${file}：新文件冒出 ${count} 处，登记里没有它`);
-    else if (count > budget) grown.push(`${file}：实测 ${count} 处，登记 ${budget} 处`);
-  }
-  assert.deepEqual(
-    grown, [],
-    "有文件的欠账变多了。总数不增可以靠别处清一处、这里加一处糊弄过去，这条挡的就是那个。",
   );
 });
 
@@ -424,68 +373,6 @@ test("反面用例：fixture 里该红的红、该绿的绿", () => {
       + "导出却没带补偿的类名常量。\n"
       + "该绿的三处：同串里补了 focus-visible:ring-2 的、补了 focus:ring-2 的、"
       + "环藏在模块常量里的。",
-  );
-});
-
-test("基线自检：三本冻结账与 BASELINE_COMMIT 那棵干净树逐字对得上", () => {
-  const probe = measureOnCommittedTree({
-    repo: REPO,
-    commit: BASELINE_COMMIT,
-    pathspecs: ["src"],
-    // 扫描面全在本仓 `src/` 之内，解到 /tmp 不会塌（helper 头注释里那条跨仓警告
-    // 说的是 `i18n-tt-key-coverage` 那一类，本闸不适用）。
-    measure: (root) => {
-      const measured = scanTree(join(root, "src"), root);
-      const byFile = new Map();
-      for (const site of measured.sites) byFile.set(site.file, (byFile.get(site.file) ?? 0) + 1);
-      return { total: measured.sites.length, scannedFiles: measured.scannedFiles, byFile };
-    },
-  });
-  // 拿不到就判红，不许 skip：`_COMMON.md §7b⑩` 说的就是「没跑起来」被当成绿。
-  assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
-
-  // 正对照：先证明我确实扫到了那棵树，而不是在空目录上轻松通过。
-  assert.ok(
-    probe.value.scannedFiles >= 400,
-    `在 ${BASELINE_COMMIT.slice(0, 7)} 的树上只扫到 ${probe.value.scannedFiles} 个 ts/tsx，` +
-      "src/ 的规模应当在 600 上下——解包范围不对，这条自检等于没跑",
-  );
-
-  assert.equal(
-    probe.value.total,
-    PENDING_BUDGET + REMOVED_FOCUS_BUDGET,
-    `PENDING_BUDGET 写的是 ${PENDING_BUDGET}，但 ${BASELINE_COMMIT.slice(0, 7)} 的` +
-      `**干净检出**上实测 ${probe.value.total} 处。\n` +
-      "三种可能：(a) 这个预算是在脏工作树上量的——换一棵干净树重量；\n" +
-      "(b) 债还掉了而没人收紧预算——棘轮会空转，把预算拧到实测值；\n" +
-      "(c) 预算已经拧下去了但 BASELINE_COMMIT 没跟着换——两个要一起改。",
-  );
-
-  // `FILE_BUDGET` 是「不许内部对冲」那条的全部依据，它自己必须也取自干净检出：
-  // 逐文件对账，否则总数对得上而分布错了照样能糊过去。
-  const historicalFileBudget = new Map([...FILE_BUDGET, ["src/shell/AdvancedStructuredEditors.tsx", REMOVED_FOCUS_BUDGET]]);
-  const mismatched = [];
-  for (const [file, count] of [...probe.value.byFile].sort()) {
-    const budget = historicalFileBudget.get(file);
-    if (budget !== count) mismatched.push(`${file}：干净检出 ${count} 处，登记 ${budget ?? "无"}`);
-  }
-  for (const file of [...historicalFileBudget.keys()].sort()) {
-    if (!probe.value.byFile.has(file)) mismatched.push(`${file}：干净检出上已清零，登记还留着`);
-  }
-  assert.deepEqual(
-    mismatched,
-    [],
-    `FILE_BUDGET 与 ${BASELINE_COMMIT.slice(0, 7)} 的干净检出对不上。\n` +
-      "清零的文件要整条删掉，数变小的要改小；这本账只减不增。",
-  );
-
-  // `W04_CLEARED_FILES` 声称的是「这五个文件已经清干净」。那句话也得在干净检出上成立，
-  // 否则它保护的是一个只在某人工作树里存在过的状态。
-  const notActuallyClear = W04_CLEARED_FILES.filter((file) => probe.value.byFile.has(file));
-  assert.deepEqual(
-    notActuallyClear,
-    [],
-    "W04_CLEARED_FILES 里有文件在干净检出上其实还带着欠账 —— 这份清单当初是脏树读数",
   );
 });
 

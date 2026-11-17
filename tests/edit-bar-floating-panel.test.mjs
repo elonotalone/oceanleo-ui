@@ -66,9 +66,7 @@ function RichDocContextToolbar(props) { const a=useRichDocSelectionAdapter(props
 const { DeckElementsPanel } = await compiled("src/shell/doc-editors/DeckControls.tsx");
 const { FabricImageShapePanel } = await compiled("src/shell/image-editor/FabricImageCreationPanels.tsx");
 moduleOverrides.set("src/shell/media-editors/AudioWorkbench.tsx",dataModule("export function useAudioWorkbench(){throw new Error('real waveform not used by controls')}"));
-const { AudioControls } = await compiled("src/shell/media-editors/AudioWorkbenchView.tsx");
 const { VideoTimelineControls } = await compiled("src/shell/video-editor/VideoTimelineControls.tsx");
-const { Model3DControls } = await compiled("src/shell/media-editors/Model3DControls.tsx");
 const { PdfFindBar } = await compiled("src/shell/media-editors/PdfFindBar.tsx");
 moduleOverrides.set("src/lib/auth/client.ts",dataModule("export async function getUserId(){return null}"));
 const { PdfSignatureDialog } = await compiled("src/shell/media-editors/PdfSignatureDialog.tsx");
@@ -214,20 +212,10 @@ test("Image Shapes inserts the selected shape through the same floating panel",a
   const m=await mount(React.createElement(Harness,{body,id:"image-shapes",adapterId:"image"}));
   try{await click(m.node.querySelector("[data-edit-bar-drawer]"));await click(textButton(currentBody(),"圆形"));assert.deepEqual(added,["circle"]);}finally{await m.destroy();}
 });
-test("Audio toolbox plays the loaded track without opening a sidebar",async()=>{
-  let plays=0;const body=React.createElement(AudioControls,{editor:{loading:false,playing:false,speed:1,currentTime:0,duration:5,volume:100,zoom:30,playPause:()=>plays++}});
-  const m=await mount(React.createElement(Harness,{body,adapterId:"audio"}));
-  try{await click(m.node.querySelector("[data-edit-bar-drawer]"));await click(textButton(currentBody(),"播放"));assert.equal(plays,1);}finally{await m.destroy();}
-});
 test("Video toolbox adds a text clip and keeps nested URL fields inside the panel",async()=>{
   let adds=0;const body=React.createElement(VideoTimelineControls,{state:{sourceReady:true,doc:{width:1920,height:1080,fps:30},addTextClip:()=>adds++}});
   const m=await mount(React.createElement(Harness,{body,adapterId:"video-timeline"}));
   try{await click(m.node.querySelector("[data-edit-bar-drawer]"));await click(textButton(currentBody(),"添加文字"));assert.equal(adds,1);await click(textButton(currentBody(),"粘贴 URL"));assert.ok(currentBody().querySelector('input[placeholder="https://…"]'));}finally{await m.destroy();}
-});
-test("3D Scene toolbox adds a camera and keeps the director controls usable",async()=>{
-  let adds=0;const editor={materials:[],sceneNodes:[],annotations:[],animations:[],director:{shots:[],scene:{}},directorDepthOfFieldAvailability:{enabled:false},directorScreenshotAvailability:{enabled:false},directorPlayblastAvailability:{enabled:false},modelLoaded:true,azimuth:0,elevation:90,zoom:100,exposure:1,environmentUrl:"",environmentIntensity:1,shadowIntensity:1,shadowSoftness:0.5,background:"#ffffff", annotationDraft:"",addCamera:()=>adds++};
-  const body=React.createElement(Model3DControls,{editor,showDeliveryActions:false});const m=await mount(React.createElement(Harness,{body,adapterId:"threed"}));
-  try{await click(m.node.querySelector("[data-edit-bar-drawer]"));await click(textButton(currentBody(),"添加相机"));assert.equal(adds,1);assert.ok(currentBody().querySelector('[data-testid="model3d-director-panel"]'));}finally{await m.destroy();}
 });
 
 test("PDF annotation opacity uses the shared compact percentage control and edits the annotation",async()=>{

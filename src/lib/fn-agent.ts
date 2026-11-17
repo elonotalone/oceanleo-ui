@@ -216,7 +216,6 @@ const EDITOR_LABELS: Record<string, string> = {
   pdf: "PDF",
   image: "图片",
   video: "视频",
-  "video-canvas": "视频",
   audio: "音频",
   chart: "图表",
   model3d: "3D 模型",

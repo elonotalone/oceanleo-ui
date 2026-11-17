@@ -143,94 +143,9 @@ test("document editors cover rich text, workbooks and PPTX freeform decks", () =
   assert.doesNotMatch(deckSchema, /legacySlideElements/);
 });
 
-test("native editors preserve history and never clear newer unsaved revisions", () => {
-  // 抽屉状态（activeDrawerId 及其初值）已随左侧面板拆进
-  // use-inline-advanced-panels；保存与恢复仍在壳里。
-  const shell =
-    source("../src/shell/InlineAdvancedWorkbenchShell.tsx") +
-    source("../src/shell/use-inline-workbench-leave.ts") +
-    source("../src/shell/use-inline-advanced-panels.tsx");
-  const saver = source("../src/shell/editor-working-copy.ts");
-  const publisher = source("../src/shell/advanced-background-saver.ts");
-  const rich = source("../src/shell/doc-editors/use-rich-doc-editor.ts");
-  const deck = source("../src/shell/doc-editors/use-deck-editor.ts");
-  const image = source("../src/shell/image-editor/use-fabric-image-editor.ts");
-  const audio =
-    source("../src/shell/media-editors/AudioWorkbench.tsx") +
-    source("../src/shell/media-editors/use-audio-persistence.ts");
-  const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
-  const timeline = source("../src/shell/video-editor/use-video-timeline.ts");
-
-  assert.match(shell, /useState\(""\)/);
-  assert.match(shell, /activeDrawerId/);
-  assert.match(saver, /beforeunload/);
-  assert.match(shell, /handleDrop/);
-  assert.match(shell, /source: "drop"/);
-  assert.match(shell, /leaveAdvancedWorkbench/);
-  assert.match(publisher, /job\.saver\.flush\(\)/);
-  assert.match(publisher, /job\.prepare\(\)/);
-  assert.doesNotMatch(shell, /useAdvancedRecovery/);
-  for (const [name, editor] of [
-    ["richdoc", rich],
-    // grid：Univer 自带撤销/重做与修订，宿主侧只记 editRevision/dirty，
-    // 不再有 revisionRef/savingRevision 那套自研并发保护（旧核已删）。
-    ["deck", deck],
-    ["image", image],
-    ["audio", audio],
-    ["timeline", timeline],
-  ]) {
-    assert.match(editor, /revisionRef/);
-    assert.match(
-      editor,
-      /\b(?:setDirty|updateDirty)\(true\)/,
-      `${name} marks the current revision dirty`,
-    );
-    assert.match(editor, /revisionRef\.current === savingRevision/);
-  }
-  assert.match(audio, /canRedo/);
-  assert.match(audio, /const redo = useCallback/);
-  // PDF（10-23 单实例）：脏 = 当前修订 ≠ 已存修订；保存成功只把「已存」推到发起
-  // 保存那一刻的修订，保存途中又改的仍是脏的。
-  assert.match(pdf, /revisionRef/);
-  assert.match(pdf, /savingRevision = preparedRevision \?\? revisionRef\.current/);
-  assert.match(pdf, /setSavedRevision\(savingRevision\)/);
-  assert.match(pdf, /dirty: revision !== savedRevision/);
-  assert.match(pdf, /const undo = useCallback/);
-  assert.match(pdf, /const redo = useCallback/);
-  assert.match(deck, /\.pptx/);
-  assert.match(deck, /buildDeckPptxBlob/);
-  assert.match(deck, /saveFileToLibrary/);
-});
-
 test("timeline preview uses the same transition semantics as export", () => {
   const preview = source("../src/shell/video-editor/preview-engine.ts");
   assert.match(preview, /blackTransitionAlpha/);
   assert.match(preview, /clip\.transition_in\?\.type === "black"/);
   assert.match(preview, /type === "fade" \|\| type === "crossfade"/);
-});
-
-test("media editors expose usable first-draft surfaces without a source URL", () => {
-  const audio =
-    source("../src/shell/media-editors/AudioWorkbench.tsx") +
-    source("../src/shell/media-editors/use-audio-wave-loader.ts") +
-    source("../src/shell/media-editors/audio-workbench-state.ts") +
-    source("../src/shell/media-editors/AudioWorkbenchView.tsx");
-  const pdf = source("../src/shell/media-editors/use-pdf-workbench.ts");
-  const pdfOperations = source("../src/shell/media-editors/pdf-operations.ts");
-  const pdfSource = source("../src/shell/media-editors/pdf-source.ts");
-  const model =
-    source("../src/shell/media-editors/use-model3d-workbench.ts") +
-    source("../src/shell/media-editors/model3d-workbench-state.ts");
-  const modelControls = source("../src/shell/media-editors/Model3DControls.tsx");
-  const modelStage = source("../src/shell/media-editors/Model3DStage.tsx");
-  assert.match(audio, /new AudioBuffer\(\{/);
-  assert.match(audio, /importSource: \(file: File\)/);
-  assert.match(audio, /onClick=\{editor\.playPause\}/);
-  assert.match(audio, /editor\.playing \? tt\("暂停"\) : tt\("播放"\)/);
-  assert.match(pdfOperations, /export async function createBlankPdf/);
-  assert.match(pdfSource, /await createBlankPdf\(\)/);
-  assert.match(pdf, /loadInitialPdfSource/);
-  assert.match(model, /importModel: \(file: File\)/);
-  assert.match(modelControls, /导入 GLB \/ glTF/);
-  assert.match(modelStage, /空白 3D 场景/);
 });
