@@ -32,20 +32,11 @@ import {
   renderTemplate,
 } from "../lib/manifest";
 import { runCapability as defaultRunCapability } from "../lib/capabilities";
-import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
+import type { EditorContextReader } from "../lib/fn-agent";
 import type { CapabilityResult } from "../lib/capabilities";
 import type { Capability } from "../lib/manifest";
 import { useUI } from "../i18n/ui/useUI";
-import { currentPluginCommandSurface } from "./plugin-command";
-import {
-  AgentReviewHostProvided,
-  AgentReviewPanel,
-  createReviewGatedReader,
-  hostReviewSession,
-  installAgentReviewGate,
-  installSelectionBridge,
-  useHostReviewActions,
-} from "./agent-review";
+import { installSelectionBridge } from "./agent-review";
 import { QuickActionChips } from "./quick-actions";
 
 // 能力执行器签名。宗旨 v10：操作台**直接生成**——主行动按钮点了就经此 SDK 出结果填
@@ -81,9 +72,9 @@ export interface AgentConsoleProps {
   /**
    * 「左边说话、右边动手」：agent 读右栏编辑器的指令面并下指令（改动前由用户确认）。
    * 默认开；没有编辑器挂在指令面上时全程空转。传 false 关掉。 */
-  enableEditorCommands?: boolean;
+  enableEditorContext?: boolean;
   /** 指令面读取器；不传则读模块级注册的那个（合同 §3.1）。 */
-  editorCommandSurface?: EditorCommandSurfaceReader | null;
+  editorContextSurface?: EditorContextReader | null;
 }
 
 // 顶部功能区按键条占用的竖向高度（px），与 OperatorConsole 一致，供 Studio 扣除。
@@ -99,8 +90,8 @@ export function AgentConsole({
   hideTabs = false,
   headerHeight = 56,
   runCapability,
-  enableEditorCommands = true,
-  editorCommandSurface,
+  enableEditorContext = true,
+  editorContextSurface,
 }: AgentConsoleProps) {
   const tt = useUI();
   const list = useMemo(
@@ -170,8 +161,8 @@ export function AgentConsole({
         accent={active.console.accent || accent}
         headerHeight={studioHeaderHeight}
         runCapability={runCapability}
-        enableEditorCommands={enableEditorCommands}
-        editorCommandSurface={editorCommandSurface}
+        enableEditorContext={enableEditorContext}
+        editorContextSurface={editorContextSurface}
       />
     </div>
   );
@@ -186,16 +177,16 @@ function ManifestPane({
   accent,
   headerHeight = 56,
   runCapability,
-  enableEditorCommands,
-  editorCommandSurface,
+  enableEditorContext,
+  editorContextSurface,
 }: {
   m: AgentManifest;
   siteId: string;
   accent: string;
   headerHeight?: number;
   runCapability?: RunCapabilityFn;
-  enableEditorCommands?: boolean;
-  editorCommandSurface?: EditorCommandSurfaceReader | null;
+  enableEditorContext?: boolean;
+  editorContextSurface?: EditorContextReader | null;
 }) {
   const tt = useUI();
   const runCap = runCapability ?? defaultRunCapability;
@@ -212,21 +203,7 @@ function ManifestPane({
 
   const schema = useMemo(() => manifestToOpsSchema(m.agent_id, con), [m.agent_id, con]);
   // 右栏编辑器的指令面。宿主这一层先包一次闸（取面处还会兜一次，包闸是幂等的）。
-  const gatedSurfaceReader = useMemo(
-    () =>
-      createReviewGatedReader(
-        editorCommandSurface,
-        currentPluginCommandSurface,
-      ),
-    [editorCommandSurface],
-  );
-  useEffect(() => {
-    installAgentReviewGate();
-    installSelectionBridge();
-  }, []);
-  // 接受 / 拒绝 / 回滚只有一份实现（`agent-review/dock.tsx`）：接受与回滚经
-  // `applyParkedReview()` 带 apply token 写穿闸，agent 自己的 run() 永远拿不到它。
-  const review = useHostReviewActions();
+  useEffect(() => { installSelectionBridge(); }, []);
   // 操作台「生成」：required 校验 → 经能力 SDK 出结果 → 写进结果字段（右栏显示）。
   const runGenerate = useCallback(async () => {
     if (!hasOpsForm) return;
@@ -346,7 +323,7 @@ function ManifestPane({
   const ops = (
     // 本宿主自己在左栏顶部挂了审阅面板，圈住整棵子树让 FunctionAgentChat 里的 dock
     // 让位 —— 同一屏永远只有一份审阅面板。
-    <AgentReviewHostProvided>
+    <>
       <div className="flex h-full min-h-0 flex-col">
         <div className="shrink-0 space-y-2 px-3 pt-3">
           <QuickActionChips
@@ -356,13 +333,7 @@ function ManifestPane({
               );
             }}
           />
-          <AgentReviewPanel
-            session={hostReviewSession}
-            busy={review.busy}
-            onAccept={() => void review.accept()}
-            onReject={review.reject}
-            onRollback={() => void review.rollback()}
-          />
+
         </div>
         <div className="flex min-h-0 flex-1 flex-col">
           <FunctionAgentChat
@@ -375,12 +346,12 @@ function ManifestPane({
             onArtifact={applyArtifact}
             appLabel={m.name}
             appIcon={m.icon}
-            enableEditorCommands={enableEditorCommands}
-            editorCommandSurface={gatedSurfaceReader}
+            enableEditorContext={enableEditorContext}
+            editorContextSurface={editorContextSurface}
           />
         </div>
       </div>
-    </AgentReviewHostProvided>
+    </>
   );
 
   return (

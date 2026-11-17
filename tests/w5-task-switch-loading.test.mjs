@@ -182,7 +182,7 @@ const OVERRIDES = {
   // 「左边说话、右边动手」的指令桥与审阅闸：与顶栏无关，全部空转。
   "./FunctionAgentChat": dataModule(`
     export function EditorCommandNotes(){ return null; }
-    export function useEditorCommandBridge(){
+    export function useEditorContextBridge(){
       return {
         contextFor: () => "",
         captureContext: () => ({context:"",filePin:null}),
@@ -209,7 +209,7 @@ const OVERRIDES = {
     export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
   `),
   "./plugin-command": dataModule(
-    "export function currentPluginCommandSurface(){ return null; }",
+    "export function currentEditorContext(){ return null; }",
   ),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";

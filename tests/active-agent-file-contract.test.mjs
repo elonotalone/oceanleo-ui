@@ -9,13 +9,13 @@ import {
   registerActiveAgentFile,
 } from "../src/shell/active-agent-file.ts";
 import {
-  registerPluginCommandSurface,
-  resetPluginCommandSurface,
+  registerEditorContext,
+  resetEditorContext,
 } from "../src/shell/plugin-command/registry.ts";
 
 
 test("active file context requires matching mounted scope, artifact, revision, and surface instance", () => {
-  resetPluginCommandSurface();
+  resetEditorContext();
   const identity = {
     artifactId: "file-a",
     revisionId: "rev-a",
@@ -38,7 +38,7 @@ test("active file context requires matching mounted scope, artifact, revision, a
     snapshot: (taskId) => ({ taskId: taskId || null, artifactId: "file-a" }),
     persist: async () => true,
   });
-  const unregisterSurface = registerPluginCommandSurface({
+  const unregisterSurface = registerEditorContext({
     editorId: "richdoc",
     workspaceScopeId: "scope-a",
     describe: () => [],
@@ -61,7 +61,7 @@ test("active file context requires matching mounted scope, artifact, revision, a
   } finally {
     unregisterSurface();
     unregisterFile();
-    resetPluginCommandSurface();
+    resetEditorContext();
   }
 });
 

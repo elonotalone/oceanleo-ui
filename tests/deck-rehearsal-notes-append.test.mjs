@@ -162,7 +162,7 @@ const STUBS = {
   "../doc-editors/use-deck-selection-adapter": emptyPanelStubUrl,
   "../doc-editors/DeckStage": emptyPanelStubUrl,
   "../doc-editors/doc-family-commands": dataModule(
-    "export function buildDeckCommandSurface(){ return { commands: [] }; }",
+    "export function buildDeckContext(){ return { commands: [] }; }",
   ),
   "../doc-editors/doc-family-download": dataModule(
     "export async function downloadConvertedCopy(){ return ''; }",
@@ -170,7 +170,7 @@ const STUBS = {
   "../doc-editors/doc-family-import": dataModule(
     "export async function importDocFamilyFile(){ return { ok: false, message: '' }; }",
   ),
-  "../plugin-command": dataModule("export function usePluginCommandSurface(){}"),
+  "../plugin-command": dataModule("export function useEditorContext(){}"),
   "../workbench-material-provider": dataModule(
     "export function useWorkbenchMaterialAdapter(){}",
   ),

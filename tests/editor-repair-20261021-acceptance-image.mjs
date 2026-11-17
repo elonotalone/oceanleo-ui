@@ -19,9 +19,7 @@ import {
 } from "../src/shell/image-editor/design-mode/ai-capability-entries.ts";
 import { CANVAS_VIEW_LABELS, canvasViewChoices } from "../src/shell/image-editor/design-mode/canvas-view-switch.ts";
 import { IMAGE_DESIGN_L4_CHIPS } from "../src/shell/image-editor/design-mode/l4-chips.ts";
-import { imageAiCommandDefinitions } from "../src/shell/image-editor/design-mode/image-ai-commands.ts";
 import { IMAGE_AI_PANEL_CAPABILITIES } from "../src/shell/image-editor/image-capability-engine.ts";
-import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
 
 const require = createRequire(import.meta.url);
 const jsxUrl = pathToFileURL(require.resolve("react/jsx-runtime")).href;
@@ -105,6 +103,7 @@ function fakeImageEditor(patch = {}) {
     sceneDiagnostic: null,
     dirty: false,
     editRevision: 1,
+    openIdentity: "fixture-image",
     cropping: false,
     cropRatio: "free",
     zoom: 1,
@@ -245,41 +244,6 @@ const useUiStub = dataModule(`
   }
 `);
 
-test("image AI capability lists used by the editor no longer offer the deleted tools", () => {
-  assertBannedAiAbsent("IMAGE_AI_PANEL_CAPABILITIES", IMAGE_AI_PANEL_CAPABILITIES);
-  assertBannedAiAbsent("AI_CAPABILITY_ENTRIES", AI_CAPABILITY_ENTRIES);
-  assertBannedAiAbsent(
-    "applicableAiEntries",
-    applicableAiEntries({ hasSelection: true, selectedType: "image" }),
-  );
-  assertBannedAiAbsent(
-    "editBarAiEntries",
-    editBarAiEntries({ hasSelection: true, selectedType: "image" }),
-  );
-  assertBannedAiAbsent(
-    "panelAiEntries",
-    panelAiEntries({ hasSelection: false }, "ai"),
-  );
-  assertBannedAiAbsent("IMAGE_DESIGN_L4_CHIPS", IMAGE_DESIGN_L4_CHIPS);
-
-  const commands = imageAiCommandDefinitions({
-    doc: { width: 800, height: 600 },
-    selected: selectedImage(),
-    aiAvailable: true,
-    busy: false,
-    revision: () => 1,
-    run: async () => ({ ok: true, message: "x" }),
-  });
-  assertBannedAiAbsent("imageAiCommandDefinitions", commands);
-
-  const surface = createImageCommandSurface({
-    editor: fakeImageEditor(),
-    deliver: async () => {},
-    runAi: async () => ({ ok: true, message: "x" }),
-  });
-  assertBannedAiAbsent("createImageCommandSurface", surface.describe());
-});
-
 test("image toolbar builder has no primary position-x / position-y", async () => {
   const { buildFabricImageToolbarControls } = await import(
     await compileModule("src/shell/image-editor/fabric-image-toolbar-controls.ts")
@@ -383,8 +347,8 @@ test("ImageRoute does not mount ImageCanvasViewSwitch or 结构/皮肤", async (
     export function readPeerSelections() { return []; }
   `);
   const pluginStub = dataModule(`
-    export function usePluginCommandSurface() {}
-    export function createImageCommandSurface() { return { editorId: "image", describe() { return []; }, run() {}, state() { return {}; } }; }
+    export function useEditorContext() {}
+    export function createImageContext() { return { editorId: "image", describe() { return []; }, run() {}, state() { return {}; } }; }
   `);
   const materialStub = dataModule(`
     export function useWorkbenchMaterialAdapter() {}
@@ -424,6 +388,8 @@ test("ImageRoute does not mount ImageCanvasViewSwitch or 结构/皮肤", async (
   globalThis.__V1_IMAGE_EDITOR = editor;
   const { ImageRoute } = await import(
     await compileModule("src/shell/advanced-routes/ImageRoute.tsx", {
+  "../plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
+  "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
       "../AdvancedWorkbenchShell": workbenchStub,
       "../image-editor/use-fabric-image-editor": editorHookStub,
       "../collab/adapters/use-entity-collab": collabStub,

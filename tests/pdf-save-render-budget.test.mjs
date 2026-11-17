@@ -98,6 +98,7 @@ probe.openEngine = async (input) => {
 };
 const noop = (...names) => dataModule(names.map((name) => `export function ${name}(){return null;}`).join("\n"));
 const auth = {
+  "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
   "../lib/auth/client": dataModule('export async function accessToken(){return "test";}'),
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid";'),
   "./user-edit-session": realModule("src/shell/user-edit-session.ts"),
@@ -106,13 +107,15 @@ const hook = await compileModule("src/shell/use-advanced-autosave.ts", auth);
 const host = await inlineSaveHost(hook, auth, (p) => p);
 const { resetBackgroundSaverForTests } = await import(await compileModule("src/shell/advanced-background-saver.ts", auth));
 const stubs = {
+  "../plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
+  "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
   ...auth,
   "../../i18n/ui/useUI": dataModule('const tt=x=>x;export function useUI(){return tt;}'),
   "../AdvancedWorkbenchShell": dataModule(`import {createElement} from ${JSON.stringify(react)};import {InlineAdvancedWorkbenchShell} from ${JSON.stringify(host)};export function AdvancedWorkbenchShell(p){globalThis.__pdfBudget.adapter=p.adapter;return createElement(InlineAdvancedWorkbenchShell,p);}`),
   "../advanced-session-context": dataModule('export function useAdvancedSession(){return null;}'),
   "../collab/adapters/use-pdf-collab": dataModule('export function usePdfCollab(){return {readOnly:false,mayWrite:true};}'),
   "../plugin-theme": dataModule('export function usePluginTheme(){return {theme:"light"};}'),
-  "../plugin-command": noop("usePluginCommandSurface"),
+  "../plugin-command": noop("useEditorContext"),
   "../workbench-material-provider": noop("useWorkbenchMaterialAdapter"),
   "../media-editors/PdfToolPalette": noop("PdfToolPalette"),
   "../media-editors/use-pdf-selection-adapter": dataModule('export function usePdfSelectionAdapter(){return {context:null,dispatch(){}};}'),

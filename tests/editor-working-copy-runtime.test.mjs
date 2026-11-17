@@ -44,6 +44,8 @@ const model=dataModule(`export * from ${JSON.stringify(editorModelUrl)};export a
 const noComponent=dataModule('export const RichDocControls=()=>null,RichDocFindReplace=()=>null,RichDocImageCropControls=()=>null,RichDocCommentRail=()=>null,useRichDocSelectionAdapter=()=>({context:null,dispatch(){}});');
 const pmStubs=Object.fromEntries(['state','model','view','transform'].map(name=>{const key='@tiptap/pm/'+name;const entry=require.resolve(key);const keys=Object.keys(require(key));return [key,dataModule(`import pkg from ${JSON.stringify(pathToFileURL(entry).href)};${keys.filter(k=>/^[a-zA-Z_$][\w$]*$/.test(k)&&k!=='default').map(k=>`export const ${k}=pkg.${k};`).join('')}`)];}));
 const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',{
+  "../plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
+  "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
  ...pmStubs,
  ...Object.fromEntries(['@tiptap/starter-kit','@tiptap/extension-collaboration','@tiptap/extension-collaboration-caret'].map(key=>[key,dataModule(`import pkg from ${JSON.stringify(pathToFileURL(require.resolve(key)).href)};export default pkg.default;`)])),
  '../AdvancedWorkbenchShell':host,'../../i18n/ui/useUI':translation,
@@ -58,7 +60,7 @@ const routeUrl=await compileModule('src/shell/advanced-routes/RichDocRoute.tsx',
  '../../lib/im/client':dataModule('export const imEnabledHere=()=>false;'),
  '../useAdvancedSession':dataModule('export const useAdvancedSession=()=>null;'),
  '../workbench-material-provider':dataModule('export const useWorkbenchMaterialAdapter=()=>{};'),
- '../plugin-command':dataModule('export const usePluginCommandSurface=()=>{};'),
+ '../plugin-command':dataModule('export const useEditorContext=()=>{};'),
  '../../lib/auth/client':auth,'../../lib/auth/config':config,
 });
 const {RichDocRoute}=await import(routeUrl);

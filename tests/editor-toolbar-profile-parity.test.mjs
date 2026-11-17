@@ -416,7 +416,7 @@ const { PdfRoute } = await import(await compileModule("src/shell/advanced-routes
   "../AdvancedWorkbenchShell": dataModule("export function AdvancedWorkbenchShell(props){return globalThis.__edB2PdfParity.renderShell(props);}"),
   "../media-editors/use-pdf-workbench": dataModule("export function usePdfWorkbench(){return globalThis.__edB2PdfParity.editor;}"),
   "../collab/adapters/use-pdf-collab": dataModule("export function usePdfCollab(){return {readOnly:false,mayWrite:true};}"),
-  "../plugin-command": noop("usePluginCommandSurface"),
+  "../plugin-command": noop("useEditorContext"),
   "../workbench-material-provider": noop("useWorkbenchMaterialAdapter"),
   "../advanced-session-context": noop("useAdvancedSession"),
   "../media-editors/PdfToolPalette": noop("PdfToolPalette"),

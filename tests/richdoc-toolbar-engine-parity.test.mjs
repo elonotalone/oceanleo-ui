@@ -18,7 +18,6 @@ import { RichDocImageStyle } from "../src/shell/doc-editors/rich-doc-image-style
 import { tiptapJsonToDocxBlob } from "../src/shell/doc-editors/rich-doc-docx.ts";
 import { richDocReviewExtensions } from "../src/shell/doc-editors/richdoc-review/review-marks.ts";
 import { clearRichDocFormatting, richDocTrackChangesExtension, listChanges, rejectAllChanges, acceptAllChanges } from "../src/shell/doc-editors/richdoc-review/track-changes.ts";
-import { buildRichDocCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
 import { canonicalSelectionControls } from "../src/shell/edit-bar-canon-projection.ts";
 import { partitionSelectionInspectorControls } from "../src/shell/selection-inspector-groups.ts";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
@@ -117,14 +116,13 @@ test("caret font/size is storedMarks for subsequent typing; range font changes o
   } finally { await host.close(); editor.destroy(); }
 });
 
-test("toolbar, keyboard and agent inline formatting all become rejectable trackedFormat with reopen/undo", async () => {
-  for (const source of ["toolbar", "keyboard", "agent"]) {
+test("toolbar and keyboard inline formatting all become rejectable trackedFormat with reopen/undo", async () => {
+  for (const source of ["toolbar", "keyboard"]) {
     const editor = engine("<p>hello</p>", true); editor.commands.setTextSelection({ from: 1, to: 6 });
     const host = await adapterHost(editor);
     try {
       if (source === "toolbar") await host.send("font-family", "Georgia");
       if (source === "keyboard") await act(async () => editor.commands.keyboardShortcut("Mod-b"));
-      if (source === "agent") { const surface = buildRichDocCommandSurface({ editor, sourceReady: true, loading: false, editRevision: 1, item: { id: "test" } }, { download: async () => "" }); await act(async () => assert.equal((await surface.run("richdoc.set-font-size", { size: 24 })).ok, true)); }
       const changes = listChanges(editor.state.doc); assert.equal(changes.length, 1, source); assert.equal(changes[0].kind, "format", source);
       const next = reopen(editor); assert.equal(listChanges(next.state.doc).length, 1); const tr = next.state.tr; rejectAllChanges(tr); next.view.dispatch(tr);
       assert.equal(next.getJSON().content[0].content[0].marks, undefined, `${source} rejection restores original marks`); next.destroy();

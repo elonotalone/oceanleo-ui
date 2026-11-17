@@ -241,7 +241,7 @@ const agentChatUrl = await compileModule(
     `),
     "./FunctionAgentChat": dataModule(`
       export function EditorCommandNotes(){ return null; }
-      export function useEditorCommandBridge(){
+      export function useEditorContextBridge(){
         return { contextFor: () => "", captureContext: () => ({context:"",filePin:null}), pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
       }
     `),
@@ -257,7 +257,7 @@ const agentChatUrl = await compileModule(
       export function refreshAgentSelectionFromDom(){}
       export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
     `),
-    "./plugin-command": dataModule("export function currentPluginCommandSurface(){ return null; }"),
+    "./plugin-command": dataModule("export function currentEditorContext(){ return null; }"),
     "./PromptHighlightArea": dataModule(`
       import { createElement, forwardRef } from "${reactUrl}";
       export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){
@@ -598,7 +598,7 @@ function functionChat(taskId = "t1") {
     opsContent: React.createElement("div", null, "ops"),
     showOps: true,
     defaultTab: "agent",
-    enableEditorCommands: false,
+    enableEditorContext: false,
     manageSessionSnapshot: false,
     appLabel: "PPT",
     taskId,

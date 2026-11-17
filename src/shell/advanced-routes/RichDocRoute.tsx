@@ -1,9 +1,11 @@
 "use client";
+import { useLibraryEditReadOnly } from "../plugin-command/use-library-edit";
+import { richDocEditable } from "../collab/adapters/richdoc";
 
 import { useExportDownloads } from "../doc-editors/use-export-downloads";
 
-import { afterAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { afterAdvancedDraftExport } from "../advanced-draft-gates";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import { useAdvancedSession } from "../advanced-session-context";
@@ -24,12 +26,12 @@ import { richDocProjectUrl } from "../doc-editors/rich-doc-model";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
 import type { AdvancedContextToolbarHost } from "../advanced-editor-adapter";
 import { useRichDocFindShortcut } from "../doc-editors/use-rich-doc-find-shortcut";
-import { buildRichDocCommandSurface } from "../doc-editors/doc-family-commands";
+import { buildRichDocContext } from "../doc-editors/doc-family-commands";
 import {
   docFamilyAcceptAttribute,
 } from "../doc-editors/doc-family-formats";
 import { importDocFamilyFile } from "../doc-editors/doc-family-import";
-import { usePluginCommandSurface } from "../plugin-command";
+import { useEditorContext } from "../plugin-command";
 import {
   richDocSavedItemForHandoff,
   useRichDocEditor,
@@ -39,7 +41,6 @@ import {
 import { isDurableLibraryItem } from "../library-data";
 import { useOfficeArtifactSource } from "../office-editor";
 import { imEnabledHere } from "../../lib/im/client";
-import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { useCollabRoom } from "../collab";
 import { workingCopyRoot, workingCopyTransport } from "../editor-working-copy";
 import { getCurrentArtifactItem } from "../artifact-client";
@@ -68,6 +69,7 @@ export function RichDocRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const aiReadOnly = useLibraryEditReadOnly(item);
   const advancedSession = useAdvancedSession();
   const tt = useUI();
   // A successful commit updates `item` to the new pinned revision. Keep the
@@ -96,6 +98,9 @@ export function RichDocRoute({
       : undefined,
     { room: collabRoom },
   );
+  useEffect(() => {
+    editor.editor?.setEditable(!aiReadOnly && richDocEditable(editor.collabPhase, editor.collabReadOnly), false);
+  }, [aiReadOnly, editor.editor, editor.collabReadOnly, editor.collabPhase]);
   const exportDownloads = useExportDownloads({ editor: "richdoc", item, disabled: editor.loading || !editor.sourceReady || !editor.editor, generate: editor.exportFile });
   const panelHostRef = useRef<AdvancedContextToolbarHost | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
@@ -297,34 +302,9 @@ export function RichDocRoute({
     );
     if (result.warnings.length > 0) setExportError(result.warnings[0]);
   }, [editor.editor, item.title]);
-  const downloadAs = useCallback(async (extension: string): Promise<string> => {
-    try {
-      const action = exportDownloads.find(action => action.id === `richdoc-export-${extension}`);
-      if (!action) throw new Error(tt("导出失败，请重试"));
-      await action.onTrigger(); return "";
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : tt("导出失败，请重试");
-      setExportError(message); return message;
-    }
-  }, [exportDownloads, tt]);
   // 只读（viewer、专业模式锁在别人手里）时，Leo 的帮改入口不能绕过灰掉的按钮：
   // 会改正文的指令在这里直接拒绝，describe / state 照旧让 agent 看得到现状。
-  usePluginCommandSurface(
-    useMemo(
-      () =>
-        guardPluginSurface(
-          buildRichDocCommandSurface(editor, {
-            download: downloadAs,
-            formats: exportDownloads.map(({ target, label }) => ({ target, label })),
-            // Use the SAME flush + recordSavedItem ledger as the workbench.
-            // editor.save() alone commits bytes but leaves Task History on r1.
-            save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush),
-          }),
-          editor.collabReadOnly,
-        ),
-      [editor, downloadAs, exportDownloads, item, advancedSession?.flush],
-    ),
-  );
+  useEditorContext(buildRichDocContext(editor));
   const downloadDisabled =
     !editor.editor || editor.loading || !editor.sourceReady;
   return (

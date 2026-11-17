@@ -9,7 +9,7 @@ import {
   subscribeEditorChips,
 } from "../agent-review/inbox";
 import { refreshAgentSelectionFromDom } from "../agent-review/selection-live";
-import { currentPluginCommandSurface } from "../plugin-command";
+import { currentEditorContext } from "../plugin-command";
 import { chipsForEditor, promptForChip } from "./catalog";
 
 export function QuickActionChipsView({
@@ -66,7 +66,7 @@ export function QuickActionChips({
       b();
     };
   }, []);
-  const surface = currentPluginCommandSurface();
+  const surface = currentEditorContext();
   const resolved = editorId || surface?.editorId || "";
   const selection = readAgentSelection();
   const chips = chipsForEditor(resolved, selection?.kind ?? null);

@@ -31,7 +31,7 @@ const stubs = {
   "../office-editor": dataModule('export function useOfficeArtifactSource(item){return {item, loading:false,error:"",resourceFailed(){},retry(){}};}'),
   "../collab/adapters/use-entity-collab": dataModule('export function useEntityCollab(options){globalThis.__s3a.remote=options.applyRemote;return {readOnly:false,saveGate:true,markSaved(){},room:null,collab:null};}'),
   "../collab/adapters/visual-selection": dataModule('export function useCollabSelections(){return [];}'),
-  "../plugin-command": dataModule('export function usePluginCommandSurface(){}'),
+  "../plugin-command": dataModule('export function useEditorContext(){}'),
   "../doc-editors/use-deck-material-adapter": empty("useDeckMaterialAdapter"),
   "../doc-editors/DeckStage": dataModule(`import {createElement} from ${JSON.stringify(reactUrl)}; export function DeckStage({editor}) {globalThis.__s3a.deck=editor;return createElement("button",{"data-edit":"deck",onClick:()=>editor.setTitle("Edited slides")},"Edit slides");}`),
   "../doc-editors/use-deck-selection-adapter": dataModule('export function useDeckSelectionAdapter(){return {context:null,dispatch(){}};}'),

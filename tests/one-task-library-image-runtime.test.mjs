@@ -182,8 +182,8 @@ const stubs = {
   // remote persistence/collaboration boundary.
   "../image-editor/image-save-receipt": dataModule(`export function imageSaveReceiptItem(base, saved, meta){ return { ...base, ...(saved || {}), meta }; }`),
   "../advanced-features": dataModule(`export function advancedEditorSourceFor(item){ return { url: item.url || "", structured: false }; }`),
-  "../plugin-command": dataModule(`export function usePluginCommandSurface(){} export function createImageCommandSurface(){ return {}; }`),
-  "../image-editor/image-command-surface": dataModule(`export function createImageCommandSurface(){ return {}; }`),
+  "../plugin-command": dataModule(`export function useEditorContext(){} export function createImageContext(){ return {}; }`),
+  "../image-editor/image-command-surface": dataModule(`export function createImageContext(){ return {}; }`),
   "../image-editor/psd-composite": dataModule(`export function isPsdSource(){ return false; }`),
   "../media-editors/visual-import-normalize": dataModule(`export async function normalizeVisualUploads(){ return { files: [], notes: [] }; }`),
   "../media-editors/visual-formats": dataModule(`export const DEFAULT_LOSSY_QUALITY=90; export function imageCanvasFormat(value){ return value; } export function visualDownloadFormats(){ return [{label:"PNG", format:"png"}]; } export function visualUploadAccept(){ return "image/*"; }`),

@@ -117,19 +117,12 @@ import { PROGRAM_LABEL } from "./cloud-computer/agent-dialog/types";
 // 「左边说话、右边动手」的指令桥与确认卡只有一份实现，落在 FunctionAgentChat 里
 // （它比本文件轻，不会把分栏骨架/云端浏览器拖进每个功能区左栏）。这里复用它。
 import {
-  EditorCommandNotes,
-  useEditorCommandBridge,
+  useEditorContextBridge,
 } from "./FunctionAgentChat";
-import type { EditorCommandSurfaceReader } from "../lib/fn-agent";
-import { currentPluginCommandSurface } from "./plugin-command";
-import {
-  AgentReviewPanel,
-  createReviewGatedReader,
-  hostReviewSession,
-  installAgentReviewGate,
-  installSelectionBridge,
-  useHostReviewActions,
-} from "./agent-review";
+import type { EditorContextReader } from "../lib/fn-agent";
+import { installSelectionBridge } from "./agent-review";
+import { currentLibraryEdit } from "./plugin-command/library-edit-runtime";
+import { ActiveLibraryEditStatus } from "./plugin-command/LibraryEditEntry";
 import {
   activeAgentFilePin,
   persistActiveAgentFile,
@@ -531,15 +524,9 @@ export interface AgentChatProps {
    * 云端浏览器均由共享 ResultCanvas 统一装配。
    */
   libraryTabs?: AgentLibraryTabs;
-  /**
-   * 「左边说话、右边动手」：agent 可以读右栏编辑器的指令面并下指令（改动前必须由用户
-   * 确认）。**默认开**——没有编辑器挂在指令面上时给模型的上下文为空串、也没有指令可解析，
-   * 行为与接线之前逐字一致。 */
-  enableEditorCommands?: boolean;
-  /**
-   * 指令面读取器（合同 §3.1 的 `currentPluginCommandSurface`）。不传则读
-   * `registerEditorCommandSurfaceReader()` 注册的那个模块级单例。 */
-  editorCommandSurface?: EditorCommandSurfaceReader | null;
+  /** Include read-only editor selection; file changes use background Library revisions. */
+  enableEditorContext?: boolean;
+  editorContextSurface?: EditorContextReader | null;
   /**
    * agent 任务的**流式正文端点**（SSE）。给了它 → 正文走流，首字节到达即渲染；
    * 流开不起来或中途判坏 → **自动回落到轮询，并在对话底部说明这件事**。
@@ -745,8 +732,8 @@ function AgentChatInner({
   renderOrgPanel,
   startFreshSession = false,
   launchOnceRef,
-  enableEditorCommands = true,
-  editorCommandSurface,
+  enableEditorContext = true,
+  editorContextSurface,
   agentStreamEndpoint,
   initialWorkspace,
 }: AgentChatInnerProps) {
@@ -943,42 +930,9 @@ function AgentChatInner({
   const atts = useAttachments(siteId, setUploadError, resolveUploadError);
   // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
   // mutates 的 run() 必须进审阅闸：allowAlways / 确认卡都不能直接写文档。
-  const gatedSurfaceReader = useMemo(
-    () =>
-      createReviewGatedReader(
-        editorCommandSurface,
-        currentPluginCommandSurface,
-      ),
-    [editorCommandSurface],
-  );
-  useEffect(() => {
-    installAgentReviewGate();
-    installSelectionBridge();
-  }, []);
-  const editorCommands = useEditorCommandBridge({
-    enabled: enableEditorCommands,
-    surfaceReader: gatedSurfaceReader,
-    taskId,
-    readOnly,
-    activeFileScopeId: workspace?.activeFileScopeId,
-  });
-  const captureEditorTurn = editorCommands.captureContext;
-  const confirmHostRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!editorCommands.pending || editorCommands.busy) return;
-    const button = confirmHostRef.current?.querySelector(
-      "[data-editor-command-action='confirm']",
-    );
-    if (button instanceof HTMLButtonElement && !button.disabled) {
-      button.click();
-    }
-  }, [editorCommands.pending, editorCommands.busy]);
-  // 接受 / 拒绝 / 回滚只有一份实现（`agent-review/dock.tsx`），本文件与 AgentConsole
-  // 原来各抄了一遍。接受与回滚经 `applyParkedReview()` 带 apply token 写穿闸。
-  const review = useHostReviewActions();
-  const noteUserTurn = editorCommands.noteUserTurn;
-  const noteOwnEditorTask = editorCommands.noteOwnTask;
-  const ingestEditorCommands = editorCommands.ingest;
+  useEffect(() => { installSelectionBridge(); }, []);
+  const editorContext = useEditorContextBridge({ enabled: enableEditorContext, surfaceReader: editorContextSurface, activeFileScopeId: workspace?.activeFileScopeId });
+  const captureEditorTurn = editorContext.captureContext;
   // 与 HomeIntro 同名同义的开关（见 AgentChatProps.enableInputTools）。默认 true，
   // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
   const toolsOn = enableInputTools;
@@ -1911,12 +1865,6 @@ function AgentChatInner({
     resumeFollowing();
   }, [resumeFollowing, updateTaskStop]);
 
-  // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
-  // 手上的消息还属于上一段对话时先不看，免得把新对话的历史当成刚说的话。
-  useEffect(() => {
-    if (readOnly || messagesTaskId !== (taskId || "")) return;
-    ingestEditorCommands(messages, taskId || "");
-  }, [messages, messagesTaskId, taskId, ingestEditorCommands, readOnly]);
 
   // 「我的任务」何时出现这条会话由服务端决定：task 出生时已绑在会话上，第一条 AI
   // 回答落地时服务端盖 `first_output_at`。不再"看到 assistant 消息就建档"：恢复一段
@@ -1934,13 +1882,20 @@ function AgentChatInner({
         setError(tt("这段对话只能查看。"));
         return false;
       }
+      const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+      if (edit) {
+        setBusy(true);
+        const created = await edit.flow.start(prompt, edit.binding, { attachments: uploaded, orgId, executionTarget });
+        setBusy(false);
+        if (created) setLocalTaskId(created);
+        return Boolean(created);
+      }
       // Freeze both the model-visible file contents and exact target before the
       // first await. A file switch while a new session is being prepared must not
       // silently change which file this user turn refers to.
       const turn = capturedTurn || captureEditorTurn(prompt);
       setBusy(true);
       setError(null);
-      noteUserTurn(turn.filePin);
       beginUserTurn();
       setMessages([
         {
@@ -2064,7 +2019,6 @@ function AgentChatInner({
         setError(unconfirmed.text);
       }
       // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
-      noteOwnEditorTask(createdTaskId);
       actionHistoryRef.current = ownTaskActionMark(createdTaskId);
       loadedTaskRef.current = createdTaskId;
       setLocalTaskId(createdTaskId);
@@ -2094,8 +2048,6 @@ function AgentChatInner({
       beginUserTurn,
       captureEditorTurn,
       mode,
-      noteOwnEditorTask,
-      noteUserTurn,
       onTaskCreated,
       promptOverride,
       projectId,
@@ -2141,9 +2093,16 @@ function AgentChatInner({
         return;
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
+      const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+      if (edit) {
+        setBusy(true);
+        const created = await edit.flow.start(effectivePrompt, edit.binding, { attachments: uploaded });
+        setBusy(false);
+        if (created) setLocalTaskId(created);
+        return;
+      }
       const optimisticMessageId = Date.now();
       const turn = captureEditorTurn(effectivePrompt);
-      noteUserTurn(turn.filePin);
       beginUserTurn();
       setBusy(true);
       setError(null);
@@ -2211,7 +2170,6 @@ function AgentChatInner({
       kickAfterFollowUp,
       messages,
       noteOutgoingTurn,
-      noteUserTurn,
       onTaskCreated,
       readOnly,
       canManageTask,
@@ -2459,6 +2417,14 @@ function AgentChatInner({
       setError(tt("这段对话只能查看。"));
       return false;
     }
+    const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+    if (edit) {
+      setBusy(true);
+      const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
+      setBusy(false);
+      if (created) { if (!fromConnector) { setInput(""); atts.clear(); } setLocalTaskId(created); }
+      return Boolean(created);
+    }
     const submittedInput = input;
     const submittedAttachments = toolsOn ? atts.attachments : [];
     const restoreSubmission = () => {
@@ -2472,7 +2438,6 @@ function AgentChatInner({
     }
     const effectivePrompt = prompt || tt("请分析我上传的文件。");
     const turn = captureEditorTurn(effectivePrompt);
-    noteUserTurn(turn.filePin);
     beginUserTurn();
     if (!taskId) {
       const started = await start(effectivePrompt, uploaded, orgId, turn, executionTarget);
@@ -2774,8 +2739,15 @@ function AgentChatInner({
   const sendSuggestion = useCallback(
     async (text: string) => {
       if (!taskId || busy || readOnly) return;
+      const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+      if (edit) {
+        setBusy(true);
+        const created = await edit.flow.start(text, edit.binding);
+        setBusy(false);
+        if (created) setLocalTaskId(created);
+        return;
+      }
       const turn = captureEditorTurn(text);
-      noteUserTurn(turn.filePin);
       beginUserTurn();
       setBusy(true);
       setMessages((m) => [
@@ -2824,7 +2796,6 @@ function AgentChatInner({
       unboundCopy,
       tt,
       captureEditorTurn,
-      noteUserTurn,
       workspace,
     ],
   );
@@ -3536,7 +3507,7 @@ function AgentChatInner({
     tail: (
       <>
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
-          <EditorCommandNotes notes={editorCommands.notes} />
+          <ActiveLibraryEditStatus />
           {/* 卡住了叫真人：求助状态就地长在对话流里，人接住了这里会出现系统气泡。 */}
           <HumanHandoffStatus originRef={taskId || ""} accent={accent} />
           {/* 流式回落的告知。正文仍会到齐（轮询始终是真源），所以这是一句说明、
@@ -3560,17 +3531,6 @@ function AgentChatInner({
             <>
           {composerHeader}
           <QuickActionChips onFire={(prompt) => void fireAgentText(prompt)} />
-          <AgentReviewPanel
-            session={hostReviewSession}
-            busy={review.busy}
-            onAccept={() => void review.accept()}
-            onReject={review.reject}
-            onRollback={() => void review.rollback()}
-          />
-          {/* 旧确认卡仍要挂上才能点「就这么改」把 mutates 送进闸；对用户隐藏。 */}
-          <div ref={confirmHostRef} data-agent-review-host className="sr-only">
-            {editorCommands.card}
-          </div>
           {branchFromMessageId && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
               <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>

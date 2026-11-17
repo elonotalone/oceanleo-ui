@@ -218,7 +218,7 @@ test("FunctionAgentChat agent tab fills height and keeps the composer last/shrin
         opsContent: null,
         showOps: false,
         defaultTab: "agent",
-        enableEditorCommands: false,
+        enableEditorContext: false,
       }),
     );
   });
@@ -262,9 +262,9 @@ test("PluginAgentPanel + chrome aside form a min-h-0 flex column around the comp
       "../../i18n/ui/useUI": dataModule(
         "export function useUI(){ return (value) => value; }",
       ),
-      "../FunctionAgentChat": dataModule(`
+      "../plugin-command/LibraryEditEntry": dataModule(`
         import { jsx, jsxs } from ${JSON.stringify(jsxUrl)};
-        export function FunctionAgentChat() {
+        export function EditorLibraryEditEntry() {
           return jsxs("div", {
             "data-fn-agent-tab": "agent",
             className: "flex h-full min-h-0 flex-col",

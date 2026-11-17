@@ -320,7 +320,7 @@ const OVERRIDES = {
   `),
   "./FunctionAgentChat": dataModule(`
     export function EditorCommandNotes(){ return null; }
-    export function useEditorCommandBridge(){
+    export function useEditorContextBridge(){
       return { contextFor: () => "", captureContext: () => ({context:"",filePin:null}), pending: null, busy: false, notes: [], card: null, noteUserTurn(){}, noteOwnTask(){}, ingest(){} };
     }
   `),
@@ -336,7 +336,7 @@ const OVERRIDES = {
     export function refreshAgentSelectionFromDom(){}
     export function useHostReviewActions(){ return { busy: false, accept(){}, reject(){}, rollback(){} }; }
   `),
-  "./plugin-command": dataModule("export function currentPluginCommandSurface(){ return null; }"),
+  "./plugin-command": dataModule("export function currentEditorContext(){ return null; }"),
   "./PromptHighlightArea": dataModule(`
     import { createElement, forwardRef } from "${reactUrl}";
     export const PromptHighlightArea = forwardRef(function PromptHighlightArea(props, _ref){

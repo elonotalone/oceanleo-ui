@@ -1,4 +1,5 @@
 "use client";
+import { useLibraryEditReadOnly } from "../plugin-command/use-library-edit";
 
 import { useExportDownloads } from "../doc-editors/use-export-downloads";
 
@@ -8,8 +9,8 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import { imageSaveReceiptItem } from "../image-editor/image-save-receipt";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { advancedEditorSourceFor } from "../advanced-features";
-import { usePluginCommandSurface } from "../plugin-command";
-import { createImageCommandSurface } from "../image-editor/image-command-surface";
+import { useEditorContext } from "../plugin-command";
+import { createImageContext } from "../image-editor/image-command-surface";
 import { isPsdSource } from "../image-editor/psd-composite";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
@@ -34,7 +35,6 @@ import { useEntityCollab } from "../collab/adapters/use-entity-collab";
 import { useCollabSelections } from "../collab/adapters/visual-selection";
 import {
   VIEW_ONLY_REFUSAL,
-  guardPluginSurface,
   viewOnlyUploadHandler,
 } from "../collab/adapters/visual-readonly";
 import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
@@ -68,6 +68,7 @@ export function ImageRoute({
   localProject,
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const aiReadOnly = useLibraryEditReadOnly(item);
   const tt = useUI();
   const [activeItem, setActiveItem] = useState(item);
   useEffect(() => {
@@ -84,7 +85,7 @@ export function ImageRoute({
   onLocalChangeRef.current = onLocalChange;
   const collabOptions = useMemo(
     () => ({
-      readOnly: collabReadOnly,
+      readOnly: collabReadOnly || aiReadOnly,
       onLocalChange: () => {
         onLocalChangeRef.current?.();
         const handle = editorCollabRef.current;
@@ -94,7 +95,7 @@ export function ImageRoute({
       },
       onSavedRevision: (revisionId: string) => collabSavedRef.current(revisionId),
     }),
-    [collabReadOnly],
+    [collabReadOnly, aiReadOnly],
   );
   const editor = useFabricImageEditor(activeItem, siteId, {
     collab: collabOptions,
@@ -358,21 +359,7 @@ export function ImageRoute({
     [editor.addImageFromFile],
   );
 
-  usePluginCommandSurface(
-    useMemo(
-      () =>
-        guardPluginSurface(
-          createImageCommandSurface({
-            editor,
-            deliver,
-            item: activeItem,
-            visionSourceUrls: [advancedEditorSourceFor(activeItem)?.url],
-          }),
-          viewOnly,
-        ),
-      [activeItem, deliver, editor, viewOnly],
-    ),
-  );
+  useEditorContext(createImageContext({ editor, item: activeItem }));
 
   return (
     <AdvancedWorkbenchShell

@@ -223,7 +223,7 @@ let restored;
 let consoleSnapshot;
 const chatProps = {
   agentId: 'ppt.generate', siteId: 'ppt', schema: { title: 'PPT', fields: [] },
-  opsContent: h('div', null, 'console'), enableEditorCommands: false,
+  opsContent: h('div', null, 'console'), enableEditorContext: false,
   sessionSchemaVersion: 2,
   getSessionSnapshot: () => consoleSnapshot,
   onRestoreSessionSnapshot: snapshot => { restored.push(snapshot); consoleSnapshot = snapshot; },

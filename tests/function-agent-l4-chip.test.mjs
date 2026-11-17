@@ -117,7 +117,7 @@ function ChatBed() {
     opsContent: React.createElement("div", { "data-ops": "1" }, "ops"),
     showOps: true,
     defaultTab: "ops",
-    enableEditorCommands: false,
+    enableEditorContext: false,
   });
 }
 

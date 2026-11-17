@@ -321,27 +321,8 @@ export {
   type EditorImportResult,
   type EditorImportRule,
 } from "./import-normalize";
-// 编辑器指令面（合同 §3.1）：右栏编辑器第一次有一个机器可调用的面，左栏 agent 用它问
-// 「现在能做什么」、下指令；校验强制在注册表里，绕不过去。这几个类型的**唯一出处**是
-// `./plugin-command/types.ts` —— 抄第二份就是 TS2308「名字有歧义」，整个包编不过。
-export {
-  PLUGIN_COMMAND_PARAM_MAX_BYTES,
-  PLUGIN_COMMAND_STATE_MAX_BYTES,
-  currentPluginCommandSurface,
-  describePluginCommands,
-  readPluginCommandState,
-  registerPluginCommandSurface,
-  resetPluginCommandSurface,
-  runPluginCommand,
-  subscribePluginCommandSurface,
-  usePluginCommandSurface,
-  type PluginCommandParam,
-  type PluginCommandResult,
-  type PluginCommandSpec,
-  type PluginCommandStateSnapshot,
-  type PluginCommandSurface,
-  type PluginCommandSurfaceInput,
-} from "./plugin-command";
+// Read-only editor identity, selection and bounded source context.
+export { currentEditorContext, registerEditorContext, resetEditorContext, subscribeEditorContext, useEditorContext, type EditorContextSurface, type EditorContextSurfaceInput, type EditorSelection, type EditorTarget } from "./plugin-command";
 // Read-only game play hosts remain available to Library, feeds and marketplaces.
 export { registerGamePreviewHost } from "./game-preview-host";
 export type { GamePreviewHost, GamePreviewHostProps } from "./game-preview-host";
@@ -564,13 +545,9 @@ export type { AgentAttachment } from "../lib/agent";
 // 宗旨 v10（2026-06-28）：功能区左栏「操作台 | agent」同栏双形态（操作台默认且可生成，
 // agent 独立带工具，结果共用右栏）。
 export { FunctionAgentChat, useFnAgentBridge, type FunctionAgentChatProps } from "./FunctionAgentChat";
-// 左栏 agent ↔ 右栏编辑器的指令桥（W4 交付 §5.2）。站点侧自写左栏时用这三个接上：
-// hook 返回的 `card` 是「要我改吗」确认卡，`notes` 是执行结果那几行。
-// 会改内容的指令**必须**经确认卡，不许绕过去自己调 `run()`。
+// Shared read-only editor context capture for custom chat hosts.
 export {
-  EditorCommandCard,
-  EditorCommandNotes,
-  useEditorCommandBridge,
+  useEditorContextBridge,
 } from "./FunctionAgentChat";
 // session-first 操作台自动恢复/保存；旧后端与未登录状态兼容本地草稿。
 export { useConsoleDraft, type UseConsoleDraftArgs, type UseConsoleDraftReturn } from "./useConsoleDraft";

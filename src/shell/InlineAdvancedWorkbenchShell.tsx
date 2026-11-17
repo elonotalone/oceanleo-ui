@@ -11,6 +11,8 @@ import {
   useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
+import { useLibraryEditorBinding, useLibraryEditState, LibraryEditStatus } from "./plugin-command/use-library-edit";
+import { editIsLocked } from "./plugin-command/library-edit-flow";
 import { useUI } from "../i18n/ui/useUI";
 import type { AdvancedEditorAdapter } from "./advanced-editor-adapter";
 import { AdvancedLayoutContext } from "./advanced-layout-context";
@@ -318,6 +320,24 @@ export function InlineAdvancedWorkbenchShell({
   // confirmation 只影响显式重试。Hosted iframe 的 mounted-flush 关闭闸单独声明；
   // 其余编辑器仍同步交给后台保存器，不因云朵状态阻塞离开。
   const flushForExplicitSave = autoSave.flushLatest;
+  const editState = useLibraryEditorBinding(item, flushForExplicitSave, hostAutoSaveEnabled && adapter.persistence?.destination !== "local-device" && Boolean(item.artifact?.access.canEdit), siteId);
+  const [editFlow] = useLibraryEditState(item, siteId);
+  const aiLocked = editIsLocked(editState.phase);
+  useEffect(() => {
+    if (!aiLocked || typeof document === "undefined") return;
+    const root = stageRef.current?.closest("[data-inline-editor]");
+    if (root?.contains(document.activeElement)) (document.activeElement as HTMLElement)?.blur?.();
+    const fence = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest("[data-library-ai-entry], [data-library-ai-phase]")) return;
+      const inPanel = floatingPanels.active && target.closest("[data-edit-bar-floating-panel]")?.id === floatingPanels.active.id && target.closest("[data-edit-bar-panel-current]");
+      if (root?.contains(target) || inPanel) { event.preventDefault(); event.stopImmediatePropagation(); }
+    };
+    const events = ["pointerdown", "click", "keydown", "beforeinput", "paste", "drop"];
+    events.forEach(name => document.addEventListener(name, fence, true));
+    return () => events.forEach(name => document.removeEventListener(name, fence, true));
+  }, [aiLocked, floatingPanels.active]);
+
   useEffect(() => {
     if (!advancedSession) return;
     advancedSession.registerFlush(flushForExplicitSave);
@@ -364,11 +384,11 @@ export function InlineAdvancedWorkbenchShell({
     }
     // Engine revisions may advance inside one gesture; its adapter owns the
     // transaction-aware revision gate and must still receive commit/cancel.
-    adapter.selection?.dispatch(message);
-  }, [toolbarContext, creationTools, adapter.selection]);
+    if (!aiLocked) adapter.selection?.dispatch(message);
+  }, [toolbarContext, creationTools, adapter.selection, aiLocked]);
   const actionBar = useMemo(
     () => (
-      <InlineAdvancedWorkbenchHeader
+      <div inert={aiLocked || undefined}><InlineAdvancedWorkbenchHeader
         adapter={adapter}
         item={item}
         autoSaveState={autoSaveState}
@@ -388,9 +408,10 @@ export function InlineAdvancedWorkbenchShell({
         onOpenLibrary={openLibraryPanel}
         onRetrySave={() => void retrySave()}
         onUploadFiles={(files) => void performUpload(files)}
-      />
+      /></div>
     ),
     [
+      aiLocked,
       activeLibraryPanelId,
       adapter,
       item,
@@ -451,7 +472,7 @@ export function InlineAdvancedWorkbenchShell({
           // 创建工具与选区共用 SelectionToolbar，AI 助手由容器最右段统一画。
           emptyHint="在画面里选中元素后，可在此编辑"
         >
-          {toolbarContext && <SelectionToolbar context={toolbarContext} onCommand={dispatchToolbarCommand} accent={effectiveAccent} />}
+          {!aiLocked && toolbarContext && <SelectionToolbar context={toolbarContext} onCommand={dispatchToolbarCommand} accent={effectiveAccent} />}
         </FloatingContextToolbar>
       )}
       <div
@@ -468,7 +489,7 @@ export function InlineAdvancedWorkbenchShell({
         <HiddenUploadInput
           inputRef={uploadInputRef}
           upload={adapter.upload}
-          onFiles={(files) => void performUpload(files)}
+          onFiles={(files) => { if (!aiLocked) void performUpload(files); }}
         />
         <FallbackDetailAside fallbackDetail={fallbackDetail} onClose={closeDetail} />
         <EditBarFloatingPanel controller={floatingPanels} containerRef={stageRef} editBarRef={editBarLayerRef} pluginThemeId={pluginThemeId} />
@@ -492,10 +513,11 @@ export function InlineAdvancedWorkbenchShell({
               )}
             </>
           )}
+          <LibraryEditStatus flow={editFlow} state={editState} />
           <div
             ref={stageRef}
-            inert={leavingMountedEditor || undefined}
-            aria-busy={leavingMountedEditor || undefined}
+            inert={leavingMountedEditor || aiLocked || undefined}
+            aria-busy={leavingMountedEditor || aiLocked || undefined}
             data-editor-leave-pending={leavingMountedEditor || undefined}
             className="relative min-h-0 min-w-0 flex-1 overflow-hidden"
           >
@@ -511,7 +533,7 @@ export function InlineAdvancedWorkbenchShell({
                 draggedTitle={draggedTitle}
                 acceptLocalFiles={Boolean(adapter.upload)}
                 dropMessage={dropMessage}
-                onMaterialDrop={(event) => void handleDrop(event)}
+                onMaterialDrop={(event) => { if (!aiLocked) void handleDrop(event); }}
               />
               {/* 规范 v2 §1：提示是画布左下角的小胶囊，不是顶部通栏；与右下角缩放控件同高。 */}
               <StageNoticeCorner notices={adapter.notices} />

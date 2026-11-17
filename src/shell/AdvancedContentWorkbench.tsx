@@ -1,4 +1,5 @@
 "use client";
+import { useLibraryEditReload } from "./plugin-command/use-library-edit";
 
 import { SessionSnapshotQueue } from "./user-edit-session";
 import type { AdvancedEditRevision } from "./advanced-persistence-controller";
@@ -778,6 +779,12 @@ function AdvancedContentWorkbenchRuntime(
     ],
   );
 
+  const aiReloadEpoch = useLibraryEditReload(routeItem, (next) => {
+    editorHost.onSavedItem?.(next);
+    materialRef.current = next;
+    setItem(next);
+    void recordSavedItem(next).catch(() => { /* The new revision stays loaded even when session history needs a retry. */ });
+  });
   const activeProps: AdvancedContentWorkbenchProps = {
     ...props,
     item: routeItem,
@@ -788,7 +795,7 @@ function AdvancedContentWorkbenchRuntime(
   // Persist / signed preview URL / revision must not remount the editor.
   // URL in this key was the autosave overlay + undo wipe: save minted a new
   // preview, React tore down ImageRoute, Fabric reloaded from scratch.
-  const routeKey = `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}`;
+  const routeKey = `${capability.adapter}:${routeItem.kind}:${advancedRootItemId(routeItem)}:${aiReloadEpoch}`;
   let editor: ReactNode;
   switch (route.type) {
     case "video-timeline":

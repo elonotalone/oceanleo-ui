@@ -1,4 +1,5 @@
 "use client";
+import { useLibraryEditReadOnly } from "../plugin-command/use-library-edit";
 
 import { useExportDownloads } from "../doc-editors/use-export-downloads";
 
@@ -14,7 +15,6 @@ import { useExportDownloads } from "../doc-editors/use-export-downloads";
  */
 import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
-import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { useAdvancedSession } from "../advanced-session-context";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
 import type { AdvancedEditorCreationTool } from "../advanced-editor-adapter";
@@ -27,8 +27,7 @@ import { fetchMediaBlob } from "../../lib/media-proxy";
 import { editorToolLabel } from "../workbench-routes";
 import { useUI } from "../../i18n/ui/useUI";
 import { usePdfCollab } from "../collab/adapters/use-pdf-collab";
-import { guardPluginSurface } from "../collab/adapters/visual-readonly";
-import { usePluginCommandSurface } from "../plugin-command";
+import { useEditorContext } from "../plugin-command";
 import { usePluginTheme } from "../plugin-theme";
 import type { LibraryItem } from "../library-data";
 import {
@@ -43,7 +42,7 @@ import { pdfSelectionBarVisible } from "../media-editors/pdf-selection-controls"
 import { usePdfSelectionAdapter } from "../media-editors/use-pdf-selection-adapter";
 import { PdfSignatureDialog } from "../media-editors/PdfSignatureDialog";
 import { usePdfWorkbench } from "../media-editors/use-pdf-workbench";
-import { buildPdfCommandSurface } from "../media-editors/pdf-command-surface";
+import { buildPdfContext } from "../media-editors/pdf-command-surface";
 import { PDF_MARK_TOOL_IDS } from "../media-editors/pdf-mark-tools";
 import { pdfDataUrlBytes } from "../media-editors/pdf-signature-store";
 import { PDF_MAX_ZOOM, PDF_MIN_ZOOM } from "../media-editors/pdf-workbench-utils";
@@ -90,11 +89,12 @@ export function PdfRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const aiReadOnly = useLibraryEditReadOnly(item);
   const tt = useUI();
   const advancedSession = useAdvancedSession();
   const [externalItem, setExternalItem] = useState<LibraryItem | null>(null);
   const collab = usePdfCollab({ item, onExternalItem: setExternalItem });
-  const readOnly = collab.readOnly;
+  const readOnly = collab.readOnly || aiReadOnly;
   const editor = usePdfWorkbench(externalItem ?? item, siteId, { readOnly });
   const exportDownloads = useExportDownloads({ editor: "pdf", item, disabled: !editor.bridge, generate: editor.exportFile });
   const dark = usePluginTheme("pdf").theme === "dark";
@@ -209,20 +209,7 @@ export function PdfRoute({
     return { ok: true as const, item: next };
   }, [collab.markSaved, collab.mayWrite, editor.save, item]);
 
-  usePluginCommandSurface(
-    useMemo(
-      () =>
-        guardPluginSurface(
-          buildPdfCommandSurface(editor, {
-            download: editor.download,
-            item,
-            save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush),
-          }),
-          readOnly,
-        ),
-      [advancedSession?.flush, editor, item, readOnly],
-    ),
-  );
+  useEditorContext(buildPdfContext(editor, item));
 
   const placeSignature = useCallback(
     async (signature: { dataUrl: string }) => {

@@ -1,4 +1,5 @@
 "use client";
+import { useLibraryEditReadOnly } from "../plugin-command/use-library-edit";
 
 import { useExportDownloads } from "../doc-editors/use-export-downloads";
 
@@ -13,7 +14,6 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import { useAdvancedSession } from "../advanced-session-context";
 import { useAdvancedEditorHost } from "../advanced-editor-host-context";
 import { canOpenDeckPresenterWindow } from "../doc-editors/deck-presenter-host";
-import { saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { DECK_WORKING_COPY_SCHEMA } from "../doc-editors/deck-working-copy";
 import { uploadEditorMedia } from "../doc-editors/editor-insert-media";
 import { advancedSavedItem } from "../advanced-session";
@@ -60,30 +60,17 @@ import {
 import { useEntityCollab } from "../collab/adapters/use-entity-collab";
 import { useCollabSelections } from "../collab/adapters/visual-selection";
 import {
-  guardPluginSurface,
   viewOnlyUploadHandler,
 } from "../collab/adapters/visual-readonly";
 import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
 import { editorToolLabel } from "../workbench-routes";
-import { buildDeckCommandSurface as buildRawDeckCommandSurface } from "../doc-editors/doc-family-commands";
+import { buildDeckContext } from "../doc-editors/doc-family-commands";
 import {
   docFamilyAcceptAttribute,
 } from "../doc-editors/doc-family-formats";
 import { importDocFamilyFile } from "../doc-editors/doc-family-import";
-import { usePluginCommandSurface } from "../plugin-command";
+import { useEditorContext } from "../plugin-command";
 import { useDeckMaterialAdapter } from "../doc-editors/use-deck-material-adapter";
-
-/**
- * PPT 的指令面（Leo 的「帮我改」从这里进来）。只能查看时，会改文稿的指令在这一层直接拒绝，
- * 导出等查看类指令照常；指令表本身在 doc-family-commands.ts，不在这里动。
- */
-function buildDeckCommandSurface(
-  editor: Parameters<typeof buildRawDeckCommandSurface>[0],
-  deps: Parameters<typeof buildRawDeckCommandSurface>[1],
-  readOnly: boolean,
-) {
-  return guardPluginSurface(buildRawDeckCommandSurface(editor, deps), readOnly);
-}
 
 /** 演示文稿编辑器：只有原生 DeckStage 一种模式。 */
 export function DeckRoute({
@@ -95,6 +82,7 @@ export function DeckRoute({
   accent = "#4f46e5",
   onClose,
 }: AdvancedContentWorkbenchProps) {
+  const aiReadOnly = useLibraryEditReadOnly(item);
   const advancedSession = useAdvancedSession();
   const officeSource = useOfficeArtifactSource(item);
   // 多人同改：编辑器先于房间创建（房间要读编辑器的文稿），所以「只读」「存成功」两件事走 state / ref 回填。
@@ -102,10 +90,10 @@ export function DeckRoute({
   const collabSavedRef = useRef<(revisionId: string) => void>(() => undefined);
   const collabOptions = useMemo(
     () => ({
-      readOnly: collabReadOnly,
+      readOnly: collabReadOnly || aiReadOnly,
       onSaved: (revisionId: string) => collabSavedRef.current(revisionId),
     }),
-    [collabReadOnly],
+    [collabReadOnly, aiReadOnly],
   );
   const editor = useDeckEditor(
     officeSource.item,
@@ -304,17 +292,8 @@ export function DeckRoute({
   const exportDownloads = useExportDownloads({ editor: "deck", item, disabled: editor.loading || editor.exporting || editor.sourceFailed,
     generate: async () => { await editor.flushBeforeExport(); return { blob: await buildDeckPptxBlob(editor.deck), filename: "presentation.pptx" }; },
   });
-  const downloadAs = useCallback(async (extension: string): Promise<string> => {
-    try {
-      const action = exportDownloads.find(action => action.id === `deck-export-${extension}`);
-      if (!action) throw new Error(tt("导出失败，请重试"));
-      await action.onTrigger(); return "";
-    } catch (caught) { return caught instanceof Error ? caught.message : tt("导出失败，请重试"); }
-  }, [exportDownloads, tt]);
   // 只能查看：Leo 的「帮我改」从指令面进来，会改作品的指令在这一层直接拒绝
-  usePluginCommandSurface(
-    buildDeckCommandSurface(editor, { download: downloadAs, formats: exportDownloads.map(({ target, label }) => ({ target, label })), save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush) }, viewOnly),
-  );
+  useEditorContext(buildDeckContext(editor));
   return (
     <AdvancedWorkbenchShell
       item={item}

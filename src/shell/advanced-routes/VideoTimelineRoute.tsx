@@ -1,4 +1,5 @@
 "use client";
+import { useLibraryEditReadOnly } from "../plugin-command/use-library-edit";
 
 import { useExportDownloads } from "../doc-editors/use-export-downloads";
 
@@ -17,10 +18,9 @@ import { EditorSourceFailurePanel } from "../doc-editors/EditorSourceFailurePane
 import { advancedRootItemId, advancedSavedItem } from "../advanced-session";
 import { withEditorHistoryCommand } from "../workbench-material-command";
 import { editorRouteFor, editorToolLabel } from "../workbench-routes";
-import { usePluginCommandSurface } from "../plugin-command";
+import { useEditorContext } from "../plugin-command";
 import { pluginTargetForLibraryItem } from "../active-agent-file";
-import { guardPluginSurface } from "../collab/adapters/visual-readonly";
-import { createVideoCommandSurface } from "../video-editor/video-command-surface";
+import { createVideoContext } from "../video-editor/video-command-surface";
 import {
   fetchDeliverableBlob,
 } from "../media-editors/visual-convert-client";
@@ -202,6 +202,7 @@ function VideoTimelineBody({
   storedNotice?: string;
   onConvertStored?: () => void;
 }) {
+  const aiReadOnly = useLibraryEditReadOnly(item);
   const editor = useVideoTimeline(item, siteId);
   const tt = useUI();
   const editorRef = useRef(editor);
@@ -240,7 +241,7 @@ function VideoTimelineBody({
     canRestoreEntity,
     loadRevision,
   });
-  const collabReadOnly = collab.readOnly || storedReadOnly;
+  const collabReadOnly = collab.readOnly || storedReadOnly || aiReadOnly;
   // 房间里撤销 / 重做只撤我自己的改动：舞台、工具栏、快捷键、指令面都拿这份覆盖了历史入口的编辑器视图。
   const view: VideoTimelineState = collab.history.active
     ? {
@@ -332,19 +333,7 @@ function VideoTimelineBody({
       [materialAdapter, materialBaseRevision, materialDocumentId],
     ),
   );
-  usePluginCommandSurface(
-    useMemo(
-      () =>
-        guardPluginSurface(
-          {
-            ...createVideoCommandSurface({ editor: view, deliver }),
-            target: () => pluginTargetForLibraryItem(item, "video-timeline", view.editRevision),
-          },
-          collabReadOnly,
-        ),
-      [collabReadOnly, deliver, item, view],
-    ),
-  );
+  useEditorContext({ ...createVideoContext({ editor: view }), target: () => pluginTargetForLibraryItem(item, "video-timeline", view.editRevision) });
   const saveBeforeNewConversation = useCallback(async (publish = editor.saveDraft) => {
     if (storedReadOnly) return { ok: true as const, item };
     // 协同房间里只有存档人落库；其余端的改动已在房间里，保存交给存档人。

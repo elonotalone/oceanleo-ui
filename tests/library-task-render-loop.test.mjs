@@ -132,8 +132,8 @@ const agentNoop = dataModule(`
  export function ShareCardPreview(){return null;}
  export function useShareMode(){return {active:false,selectable:[],selectedIds:new Set(),enter(){},preview:null,closePreview(){}};}
  export function EditorCommandNotes(){return null;}
- export function useEditorCommandBridge(){return {contextFor(){return '';},captureContext(){return {context:'',filePin:null};},pending:null,busy:false,notes:[],card:null,noteUserTurn(){},noteOwnTask(){},ingest(){}};}
- export function currentPluginCommandSurface(){return null;}
+ export function useEditorContextBridge(){return {contextFor(){return '';},captureContext(){return {context:'',filePin:null};},pending:null,busy:false,notes:[],card:null,noteUserTurn(){},noteOwnTask(){},ingest(){}};}
+ export function currentEditorContext(){return null;}
  export function AgentReviewPanel(){return null;}
  export function assembleAgentEditorContext(){return '';}
  export function createReviewGatedReader(){return null;}

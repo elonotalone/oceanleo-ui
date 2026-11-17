@@ -46,7 +46,7 @@ test("画布内结构/皮肤入口已从 ImageRoute 卸下，不占 L0", () => {
 });
 
 test("retired AI capabilities are not wired into ImageRoute", () => {
-  assert.match(route, /createImageCommandSurface\(\{[^}]*editor,[^}]*deliver/);
+  assert.match(route, /createImageContext\(\{[^}]*editor,[^}]*item: activeItem/);
   assert.doesNotMatch(route, /const runAi = useMemo<AiCommandRunner>/);
   assert.doesNotMatch(route, /removeBgExecutor/);
   assert.doesNotMatch(route, /\/v1\/images\/remove-bg/);

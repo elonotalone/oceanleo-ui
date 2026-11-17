@@ -16,7 +16,7 @@ const { QuickActionChips } = await import(await compileModule(
   "src/shell/quick-actions/QuickActionChips.tsx",
   {
     "../../i18n/ui/useUI": dataModule("export function useUI(){return value=>value;}"),
-    "../plugin-command": dataModule("export function currentPluginCommandSurface(){return null;}"),
+    "../plugin-command": dataModule("export function currentEditorContext(){return null;}"),
   },
 ));
 

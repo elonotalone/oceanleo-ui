@@ -71,40 +71,24 @@ import {
   branchTask,
   followUp,
   getTask,
-  reportEditorCommandResult,
   stopTask,
   type AgentMessage,
   type ArtifactMeta,
 } from "../lib/agent";
 import { localAgentFailure, localAgentRefusalText } from "../lib/local-agent-task";
 import type { ExecutionTarget } from "../lib/execution-target";
-import {
-  buildEditorCommandContext,
-  createEditorCommandIntake,
-  createEditorCommandSession,
-  takeFreshCommandMessages,
-  type EditorCommandPending,
-  type EditorCommandSurfaceReader,
-  type OpsPatch,
-  type OpsSchema,
-} from "../lib/fn-agent";
-// 只读 W1 的指令面（合同 §3.1）。这一面不实现指令、不注册指令，只调用。
-// 取面一律走 `readAgentCommandSurface`：它要么给一份包过审阅闸的面，要么给 null。
-// 直接读 W1 注册表交出来的那份面只包了参数校验，agent 拿到它就能当场写文档
-// （`PARENT-red-1`：那条回落是失败即开放）——所以这份文件不再引它。
-import { readAgentCommandSurface } from "./agent-review/surface";
-import { AgentReviewDock } from "./agent-review/dock";
-export { AgentReviewDock };
+import type { EditorContextReader, OpsPatch, OpsSchema } from "../lib/fn-agent";
 import { assembleAgentEditorContext } from "./agent-review/selection-bridge";
 import { readAgentSelection, readMentionCatalog } from "./agent-review/inbox";
 import { refreshAgentSelectionFromDom } from "./agent-review/selection-live";
+import { currentLibraryEdit } from "./plugin-command/library-edit-runtime";
+import { ActiveLibraryEditStatus } from "./plugin-command/LibraryEditEntry";
 import {
   activeAgentFilePin,
   formatActiveAgentFileContext,
   readActiveAgentFileContext,
 } from "./active-agent-file";
 import {
-  installAgentReviewGate,
   installSelectionBridge,
 } from "./agent-review/install";
 import { useUI } from "../i18n/ui/useUI";
@@ -153,345 +137,16 @@ export function useFnAgentBridge(): FnAgentBridge | null {
   return useContext(FnAgentBridgeCtx);
 }
 
-// ── 左边说话、右边动手：agent 调用右栏编辑器的指令面 ─────────────────────────
-// 用户在左边说「把这张图裁成 16:9 再存成 jpg」，模型不再只能回一段话：
-//   ① 发消息时，把「右边现在开着哪个编辑器、它现在能做什么」作为只给模型看的上下文带上；
-//   ② 模型在回答里附一条指令；
-//   ③ 会改内容的指令**先弹确认卡**，用户点了才执行，一次只执行一条；
-//   ④ 执行结果用人话回写进对话，并告诉 agent，让它接着走下一步。
-// 这不推翻「agent 不读写左边操作台 state」的教条——动的是右栏编辑器的指令面。
-// 同一套 hook 与确认卡被 AgentChat 复用（它 import 这两个导出），全家桶只有一份实现。
-
-export interface EditorCommandNote {
-  id: number;
-  text: string;
-  ok: boolean;
-}
-
-export interface EditorCommandBridge {
-  /** 发消息时塞进 hiddenContext 的那段「右边现在开着什么、能做什么」；没开编辑器时为空串。 */
-  contextFor: (prompt: string) => string;
-  /** Freeze the exact per-turn payload and active-file target before any async task/session work. */
-  captureContext: (prompt: string) => { context: string; filePin: string | null };
-  /** 每次轮询拿到消息后调一次；同一条消息只会被处理一次，历史消息不会被重放。 */
-  ingest: (messages: AgentMessage[], taskKey: string) => void;
-  /** 用户刚发出一句话 → 解除「上一条被拒就停」，拒绝回喂计数归零。 */
-  noteUserTurn: (filePin?: string | null) => void;
-  /**
-   * 刚替用户新建了一段对话（`createTask` 回来的那个 id）。
-   * 这段对话里不可能躺着历史，所以它的第一份消息里如果已经带了指令，也照样算数。 */
-  noteOwnTask: (taskKey: string) => void;
-  pending: EditorCommandPending | null;
-  notes: EditorCommandNote[];
-  busy: boolean;
-  /** 待确认时的确认卡（没有待确认的事就是 null）。 */
-  card: ReactNode;
-}
-
-/** agent 侧的指令执行器 + 确认卡。宿主只要把 `card` 渲染出来、发消息时带上 `contextFor()`。 */
-export function useEditorCommandBridge(opts: {
-  /** 关掉就完全不看右边、也不解析指令（默认开）。 */
-  enabled?: boolean;
-  /**
-   * 指令面读取器。不传就读 W1 的模块级指令面注册表；
-   * `registerEditorCommandSurfaceReader()` 注册过的会更优先（测试/特殊宿主用）。
-   * 两条路都经 `readAgentCommandSurface()` 就地包审阅闸，读不到就是右边没开编辑器。 */
-  surfaceReader?: EditorCommandSurfaceReader | null;
-  /** 当前会话 id：执行结果会回报给它，好让 agent 接着走下一步。 */
-  taskId?: string | null;
-  /** 只读会话不执行任何改动。 */
-  readOnly?: boolean;
-  /** Per WorkspaceSession scope that owns the right-hand Library editor. */
-  activeFileScopeId?: string | null;
-}): EditorCommandBridge {
-  const {
-    enabled = true,
-    surfaceReader,
-    taskId,
-    readOnly = false,
-    activeFileScopeId,
-  } = opts;
-  const sessionRef = useRef(createEditorCommandSession());
-  const [pending, setPending] = useState<EditorCommandPending | null>(null);
-  const [notes, setNotes] = useState<EditorCommandNote[]>([]);
-  const [busy, setBusy] = useState(false);
-  const noteSeqRef = useRef(0);
-  // 「哪些消息已经看过」的账本（接手一段对话时先把在场消息全记下，绝不重放历史里的指令）。
-  const intakeRef = useRef(createEditorCommandIntake());
-  // 刚由本组件替用户建起来的那段对话：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
-  const ownTaskKeyRef = useRef("");
-  // 连着被拒几次就不再把拒绝理由喂回给模型：每喂一次都是一轮真实花费，
-  // 不能让「模型乱下 id → 我告诉它不行 → 它再乱下」自己转起来。
-  const rejectReportsRef = useRef(0);
-  const liveRef = useRef({ enabled, surfaceReader, taskId, readOnly, activeFileScopeId });
-  useEffect(() => {
-    liveRef.current = { enabled, surfaceReader, taskId, readOnly, activeFileScopeId };
-  });
-  const activeTurnPinRef = useRef<string | null>(null);
-
-  const pushNote = useCallback((text: string, ok: boolean) => {
-    noteSeqRef.current += 1;
-    const id = noteSeqRef.current;
-    setNotes((current) => [...current.slice(-5), { id, text, ok }]);
+/** Captures read-only context; file mutations are exclusively background Library revisions. */
+export function useEditorContextBridge(opts: { enabled?: boolean; surfaceReader?: EditorContextReader | null; activeFileScopeId?: string | null }) {
+  const live = useRef(opts); live.current = opts;
+  const captureContext = useCallback((prompt: string) => {
+    if (live.current.enabled === false) return { context: "", filePin: null };
+    refreshAgentSelectionFromDom();
+    const context = readActiveAgentFileContext(live.current.activeFileScopeId);
+    return { context: assembleAgentEditorContext("", prompt, readAgentSelection(), readMentionCatalog(), formatActiveAgentFileContext(context, 7400)), filePin: activeAgentFilePin(context) };
   }, []);
-
-  const report = useCallback(
-    (note: string, detail: Record<string, unknown>) => {
-      const { taskId: liveTaskId, readOnly: liveReadOnly } = liveRef.current;
-      if (!liveTaskId || liveReadOnly) return;
-      void reportEditorCommandResult(liveTaskId, note, detail);
-    },
-    [],
-  );
-
-  const handleMessage = useCallback(
-    async (messageId: number, content: string) => {
-      const session = sessionRef.current;
-      const fileContext = readActiveAgentFileContext(liveRef.current.activeFileScopeId);
-      const livePin = activeAgentFilePin(fileContext);
-      if (activeTurnPinRef.current !== livePin) {
-        const note = "右侧 Library 文件在你发出这轮消息后已切换；这条旧回复不会作用于新文件。请针对当前文件重新发送指令。";
-        pushNote(note, false);
-        if (rejectReportsRef.current < 2) {
-          rejectReportsRef.current += 1;
-          report(note, { ok: false, rejected: true, staleTarget: true });
-        }
-        return;
-      }
-      if (fileContext && !fileContext.ready) {
-        const note = `右侧 Library 文件当前不可读取（${fileContext.reason}）；为了避免基于猜测修改，指令已拒绝。`;
-        pushNote(note, false);
-        if (rejectReportsRef.current < 2) {
-          rejectReportsRef.current += 1;
-          report(note, { ok: false, rejected: true, sourceUnavailable: true });
-        }
-        return;
-      }
-      // 拿不到面就是拿不到（`offer` 会告诉用户右边没开编辑器）；绝不回落到没包闸的原始面。
-      const surface = readAgentCommandSurface(liveRef.current.surfaceReader);
-      const offer = await session.offer({ messageId, content, surface });
-      if (offer.kind === "none") return;
-      if (offer.kind === "reject") {
-        pushNote(offer.note, false);
-        // 把「为什么不行 + 它现在能做什么」告诉模型，让它改口而不是重复同一个错。
-        if (rejectReportsRef.current < 2) {
-          rejectReportsRef.current += 1;
-          report(offer.note, { ok: false, rejected: true });
-        }
-        return;
-      }
-      if (offer.kind === "confirm") {
-        if (offer.note) pushNote(offer.note, true);
-        setPending(offer.pending);
-        return;
-      }
-      rejectReportsRef.current = 0;
-      pushNote(offer.outcome.note, offer.outcome.result.ok);
-      report(offer.outcome.note, {
-        id: offer.outcome.spec.id,
-        ok: offer.outcome.result.ok,
-        ...(offer.outcome.result.revision !== undefined
-          ? { revision: offer.outcome.result.revision }
-          : {}),
-      });
-    },
-    [pushNote, report],
-  );
-
-  const ingest = useCallback(
-    (messages: AgentMessage[], taskKey: string) => {
-      if (!liveRef.current.enabled || liveRef.current.readOnly) return;
-      const ownTask = !!taskKey && ownTaskKeyRef.current === taskKey;
-      if (ownTask) ownTaskKeyRef.current = "";
-      const { fresh, switched } = takeFreshCommandMessages(
-        intakeRef.current,
-        messages,
-        taskKey,
-        { ownTask },
-      );
-      if (switched) setNotes([]);
-      for (const message of fresh) {
-        void handleMessage(message.id, message.content || "");
-      }
-    },
-    [handleMessage],
-  );
-
-  const confirm = useCallback(
-    async (always: boolean) => {
-      const session = sessionRef.current;
-      const fileContext = readActiveAgentFileContext(liveRef.current.activeFileScopeId);
-      if (
-        activeTurnPinRef.current !== activeAgentFilePin(fileContext) ||
-        (fileContext && !fileContext.ready)
-      ) {
-        session.decline();
-        setPending(null);
-        pushNote(
-          "右侧 Library 文件在确认前已切换或不可读取；这条待确认指令已拒绝，没有改动文件。",
-          false,
-        );
-        return;
-      }
-      if (always) session.allowAlways();
-      setBusy(true);
-      const outcome = await session.confirm();
-      setBusy(false);
-      setPending(null);
-      if (!outcome) return;
-      rejectReportsRef.current = 0;
-      pushNote(outcome.note, outcome.result.ok);
-      report(outcome.note, {
-        id: outcome.spec.id,
-        ok: outcome.result.ok,
-        ...(outcome.result.revision !== undefined
-          ? { revision: outcome.result.revision }
-          : {}),
-      });
-    },
-    [pushNote, report],
-  );
-
-  const decline = useCallback(() => {
-    const declined = sessionRef.current.decline();
-    setPending(null);
-    if (declined) pushNote(declined.note, false);
-  }, [pushNote]);
-
-  const captureContext = useCallback(
-    (prompt: string) => {
-      if (!liveRef.current.enabled) {
-        activeTurnPinRef.current = null;
-        return { context: "", filePin: null };
-      }
-      refreshAgentSelectionFromDom();
-      const fileContext = readActiveAgentFileContext(liveRef.current.activeFileScopeId);
-      const filePin = activeAgentFilePin(fileContext);
-      activeTurnPinRef.current = filePin;
-      const commandCtx = buildEditorCommandContext(
-        readAgentCommandSurface(liveRef.current.surfaceReader),
-        { query: prompt, limit: 8, includeState: false },
-      );
-      const selectionAndCommands = assembleAgentEditorContext(
-        commandCtx,
-        prompt,
-        readAgentSelection(),
-        readMentionCatalog(),
-      );
-      const activeFile = formatActiveAgentFileContext(fileContext, 7_400);
-      return {
-        context: assembleAgentEditorContext(
-          selectionAndCommands,
-          "",
-          null,
-          [],
-          activeFile,
-          11_500,
-        ),
-        filePin,
-      };
-    },
-    [],
-  );
-
-  const contextFor = useCallback(
-    (prompt: string) => captureContext(prompt).context,
-    [captureContext],
-  );
-
-  const noteUserTurn = useCallback((filePin?: string | null) => {
-    if (filePin !== undefined) activeTurnPinRef.current = filePin;
-    sessionRef.current.resume();
-    rejectReportsRef.current = 0;
-  }, []);
-
-  const noteOwnTask = useCallback((taskKey: string) => {
-    ownTaskKeyRef.current = taskKey || "";
-  }, []);
-
-  const card = pending ? (
-    <EditorCommandCard
-      pending={pending}
-      busy={busy}
-      onConfirm={(always) => void confirm(always)}
-      onDecline={decline}
-    />
-  ) : null;
-
-  return { contextFor, captureContext, ingest, noteUserTurn, noteOwnTask, pending, notes, busy, card };
-}
-
-/** 改动前的确认卡：人话写清要做什么、改哪里、填了什么。不显示 id，也不显示 JSON。 */
-export function EditorCommandCard({
-  pending,
-  busy,
-  onConfirm,
-  onDecline,
-}: {
-  pending: EditorCommandPending;
-  busy: boolean;
-  onConfirm: (always: boolean) => void;
-  onDecline: () => void;
-}) {
-  const tt = useUI();
-  const [always, setAlways] = useState(false);
-  return (
-    <div
-      data-editor-command-confirm
-      className="rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2.5 text-[13px] text-stone-700"
-    >
-      <p className="font-medium text-amber-900">{tt("要我改吗？")}</p>
-      <p className="mt-1 leading-relaxed">{pending.prompt}</p>
-      <label className="mt-2 flex items-center gap-1.5 text-[12px] text-stone-500">
-        <input
-          type="checkbox"
-          checked={always}
-          onChange={(e) => setAlways(e.target.checked)}
-        />
-        {tt("以后这类不用问我（只在这次会话里有效，刷新就恢复询问）")}
-      </label>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="button"
-          data-editor-command-action="confirm"
-          disabled={busy}
-          onClick={() => onConfirm(always)}
-          className="rounded-lg bg-amber-600 px-3 py-1.5 text-[13px] font-medium text-white transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-amber-700 disabled:opacity-60"
-        >
-          {busy ? tt("正在改…") : tt("就这么改")}
-        </button>
-        <button
-          type="button"
-          data-editor-command-action="decline"
-          disabled={busy}
-          onClick={onDecline}
-          className="rounded-lg border border-stone-300 px-3 py-1.5 text-[13px] text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-white disabled:opacity-60"
-        >
-          {tt("先别改")}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-/** 指令执行结果在对话里的那几行人话。 */
-export function EditorCommandNotes({ notes }: { notes: EditorCommandNote[] }) {
-  if (!notes.length) return null;
-  return (
-    <div data-editor-command-notes className="space-y-1">
-      {notes.map((note) => (
-        <p
-          key={note.id}
-          data-ok={note.ok ? "true" : "false"}
-          className={`rounded-lg px-2.5 py-1.5 text-[13px] leading-relaxed ${
-            note.ok ? "bg-stone-100 text-stone-600" : "bg-rose-50 text-rose-700"
-          }`}
-        >
-          {note.text}
-        </p>
-      ))}
-    </div>
-  );
+  return { captureContext, contextFor: (prompt: string) => captureContext(prompt).context };
 }
 
 export interface FunctionAgentChatProps {
@@ -607,16 +262,10 @@ export interface FunctionAgentChatProps {
    * 43873e9b）。不给则操作台无恒定按钮（主按钮仍可内联写在 opsContent 里，旧行为）。
    */
   stickyAction?: React.ReactNode;
-  /**
-   * 「左边说话、右边动手」：agent 可以读右栏编辑器的指令面并下指令（改动前必须由用户
-   * 确认）。**默认开**——没有编辑器挂在指令面上时，给模型的上下文为空串、没有任何指令
-   * 可解析，行为与接线之前逐字一致。传 `false` 彻底关掉这条通道。 */
-  enableEditorCommands?: boolean;
-  /**
-   * 指令面读取器（合同 §3.1）。不传则读 `registerEditorCommandSurfaceReader()` 注册的
-   * 那个模块级单例，再退到 W1 的指令面注册表 —— 无论走哪一条，交到 agent 手上的都是
-   * 包过审阅闸的面。 */
-  editorCommandSurface?: EditorCommandSurfaceReader | null;
+  /** Include read-only editor context; active Library edits use the background revision flow. */
+  enableEditorContext?: boolean;
+  /** Optional read-only context provider for a custom host. */
+  editorContextSurface?: EditorContextReader | null;
 }
 
 // 左栏双形态：操作台（表单 + 生成）/ agent（有能力、带工具，独立于操作台）。
@@ -649,8 +298,8 @@ export function FunctionAgentChat({
   onGuideExample,
   getWorkflowDraft,
   stickyAction,
-  enableEditorCommands = true,
-  editorCommandSurface,
+  enableEditorContext = true,
+  editorContextSurface,
 }: FunctionAgentChatProps) {
   void _onRunAction;
   const tt = useUI();
@@ -713,18 +362,15 @@ export function FunctionAgentChat({
   const actionHistoryRef = useRef<ActionHistoryMark | null>(null);
   const loadedTaskRef = useRef("");
   const atts = useAttachments(siteId, setError);
-  // 右栏编辑器的指令面（左边说话、右边动手）。没有编辑器挂上来时全程空转。
-  const editorCommands = useEditorCommandBridge({
-    enabled: enableEditorCommands,
-    surfaceReader: editorCommandSurface,
-    taskId,
-    readOnly: sessionReadOnly,
+  // Read-only selection context for ordinary conversations. Library edits dispatch above the generic send path.
+  const editorContextBridge = useEditorContextBridge({
+    enabled: enableEditorContext,
+    surfaceReader: editorContextSurface,
+    activeFileScopeId: workspace?.activeFileScopeId,
   });
   useEffect(() => {
-    installAgentReviewGate();
     installSelectionBridge();
   }, []);
-  const ingestEditorCommands = editorCommands.ingest;
   // 与 HomeIntro / AgentChat 同名同义的开关（见 FunctionAgentChatProps）。默认 true，
   // 所以下面每一处 `toolsOn ? X : undefined` 对 35 个站都恒等于改动前的 `X`。
   const toolsOn = enableInputTools;
@@ -1406,11 +1052,6 @@ export function FunctionAgentChat({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, tab]);
 
-  // 模型在回答里下的编辑器指令：逐条处理，会改内容的先弹确认卡。
-  useEffect(() => {
-    if (messagesTaskId !== (taskId || "")) return;
-    ingestEditorCommands(messages, taskId || "");
-  }, [messages, messagesTaskId, taskId, ingestEditorCommands]);
 
   // 「我的任务」何时出现这条会话，由服务端决定：task 出生时已绑在会话上，第一条
   // AI 回答落地时服务端盖 `first_output_at`。这里不再"看到 assistant 消息就建档"——
@@ -1479,6 +1120,14 @@ export function FunctionAgentChat({
       setError(tt("当前工作会话不可编辑。"));
       return;
     }
+    const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+    if (edit) {
+      setBusy(true);
+      const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
+      setBusy(false);
+      if (created) { if (!override) { setInput(""); atts.clear(); } setLocalTaskId(created); onTaskIdChange?.(created); setStatus("running"); void refresh(created); }
+      return;
+    }
     const submittedInput = override ? "" : input;
     const submittedAttachments = override || !toolsOn ? [] : atts.attachments;
     const restoreSubmission = () => {
@@ -1497,8 +1146,7 @@ export function FunctionAgentChat({
     );
     // 让模型看见右边现在开着什么、能做什么（只给模型看，不进用户可见对话）。
     // 右边没开编辑器时这段是空串。
-    editorCommands.noteUserTurn();
-    const editorContext = editorCommands.contextFor(effectivePrompt);
+    const editorContext = editorContextBridge.contextFor(effectivePrompt);
     const meta = uploaded.length ? { attachments: uploaded } : undefined;
     if (taskId && branchFromMessageId) {
       setBusy(true);
@@ -1602,7 +1250,6 @@ export function FunctionAgentChat({
       }
       const createdTaskId = failure?.kind === "unconfirmed" ? failure.taskId : r.data!.task_id;
       // 这段对话是刚建起来的：模型的回答哪怕跟第一份消息一起到，也不能被当成历史吞掉。
-      editorCommands.noteOwnTask(createdTaskId);
       actionHistoryRef.current = ownTaskActionMark(createdTaskId);
       setLocalTaskId(createdTaskId);
       onTaskIdChange?.(createdTaskId);
@@ -1856,7 +1503,7 @@ export function FunctionAgentChat({
             </div>
           )}
           {/* 编辑器指令的执行结果（人话，含失败原因）。 */}
-          <EditorCommandNotes notes={editorCommands.notes} />
+          <ActiveLibraryEditStatus />
           {error && <p className="text-[14px] text-rose-500">{tt(localAgentRefusalText(error) ?? error)}</p>}
         </div>
       </div>
@@ -1870,9 +1517,9 @@ export function FunctionAgentChat({
         >
           {/* 停在闸里的改动：diff / 变更清单 + 逐条接受或拒绝 + 回滚。
               宿主自己挂了面板（AgentConsole）时它自动让位，屏幕上只有一份。 */}
-          <AgentReviewDock />
+
           {/* 会改内容的指令：先问用户一句「要我改吗」。 */}
-          {editorCommands.card}
+
           {branchFromMessageId && (
             <div className="flex items-center justify-between gap-3 rounded-xl bg-indigo-50 px-3 py-2 text-[12px] text-indigo-700">
               <span>{tt("将从所选消息之前创建新分支；原对话保持不变。")}</span>

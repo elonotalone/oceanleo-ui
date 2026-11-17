@@ -16,7 +16,6 @@ import {
   imageStageShowsSourceLoadOverlay,
   isNewImageSourceSession,
 } from "../src/shell/image-editor/image-source-ready.ts";
-import { imageCommandDefinitions } from "../src/shell/image-editor/image-command-surface.ts";
 import { IMAGE_AI_PANEL_CAPABILITIES } from "../src/shell/image-editor/image-capability-engine.ts";
 
 const tt = (zh) => zh;
@@ -101,49 +100,6 @@ test("retired image AI ids and labels are not offered in the live UI lists", () 
   assert.equal(imageRouteChrome.aiDrawer, false);
   assert.equal(imageRouteChrome.cutoutAction, false);
   assert.equal(imageRouteChrome.canvasViewSwitch, false);
-});
-
-test("ImageRoute command surface without a runner registers no retired AI commands", () => {
-  const ids = imageCommandDefinitions({
-    editor: {
-      loading: false,
-      sourceReady: true,
-      cropping: false,
-      editRevision: 1,
-      doc: { width: 800, height: 600 },
-      selected: null,
-      aiAvailable: true,
-      aiBusy: false,
-      canvasBackground: "#ffffff",
-      layers: [],
-      zoom: 1,
-      exportFormat: "png",
-      exportQuality: 90,
-      dirty: false,
-      error: "",
-      startCrop() {},
-      setCropRatio() {},
-      async confirmCrop() {},
-      resizeDoc() {},
-      rotateTarget() {},
-      addText() {},
-      setSelectedText() {},
-      setCanvasBackground() {},
-    },
-    deliver: async () => {},
-  }).map((definition) => definition.spec.id);
-  for (const id of [
-    "image.ai.remove-bg",
-    "image.ai.upscale",
-    "image.ai.outpaint",
-    "image.ai.relight",
-    "image.ai.portrait-quality",
-    "image.ai.panorama",
-  ]) {
-    assert.equal(ids.includes(id), false, `${id} must not register`);
-  }
-  assert.ok(ids.includes("image.crop-to-ratio"));
-  assert.ok(ids.includes("image.export"));
 });
 
 test("stage overlay is the first source load, not persist or save", () => {

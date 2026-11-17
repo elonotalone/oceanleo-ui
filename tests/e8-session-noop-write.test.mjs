@@ -261,7 +261,7 @@ function Draft({ schemaVersion = 2 }) {
 }
 const chatProps = {
   agentId: "ppt.generate", siteId: "ppt", schema: { title: "PPT", fields: [] },
-  opsContent: h("div", null, "console"), enableEditorCommands: false,
+  opsContent: h("div", null, "console"), enableEditorContext: false,
   sessionSchemaVersion: 2,
   getSessionSnapshot: () => consoleSnapshot,
   onRestoreSessionSnapshot: snapshot => {

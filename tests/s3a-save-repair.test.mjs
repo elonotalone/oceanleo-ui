@@ -36,6 +36,7 @@ const empty = (...names) => dataModule(names.map((name) => `export function ${na
 // Read S2's exact shared sources for integration verification without editing its files.
 const sharedPath=(path)=>resolve(process.env.S3A_SHARED_REPAIR_DIR||".",path);
 const authStubs = {
+  "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
   "../lib/auth/client": dataModule('export async function accessToken(){return "test";}'),
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid";'),
   "./user-edit-session": realModule("src/shell/user-edit-session.ts"),
@@ -65,13 +66,15 @@ async function fromBaseline(path, overrides) {
   temporaryFiles.push(file);return compileModule(file, overrides);
 }
 const stubs = {
+  "../plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
+  "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
   "../../i18n/ui/useUI": dataModule('const tt=(s)=>s; export function useUI(){return tt;}'),
   "../AdvancedWorkbenchShell": dataModule(`import {createElement,useContext} from ${JSON.stringify(reactUrl)};import {TabContext} from ${JSON.stringify(tabContextUrl)};import {useAdvancedAutoSave} from ${JSON.stringify(hookUrl)};import {InlineAdvancedWorkbenchShell} from ${JSON.stringify(inlineUrl)};function Bench({adapter,item}) {const p=adapter.persistence;const save=useAdvancedAutoSave({item,editorId:adapter.id,dirty:p.dirty,revision:p.editRevision,flush:p.flush,preparePublish:p.preparePublish,recovery:p.recovery,session:null});globalThis.__s3a.save=save;return createElement("div",{"data-save-state":save.state},adapter.stage);}export function AdvancedWorkbenchShell(props){const tab=useContext(TabContext);if(tab)tab.adapter=props.adapter;globalThis.__s3a.adapter=props.adapter;return createElement(globalThis.__s3a.inline?InlineAdvancedWorkbenchShell:Bench,props);}`),
   "../advanced-session-context": dataModule('export function useAdvancedSession(){return null;}'),
   "../office-editor": dataModule('export function useOfficeArtifactSource(item){return {item, loading:false,error:"",resourceFailed(){},retry(){}};}'),
   "../collab/adapters/use-entity-collab": dataModule(`import {useEntityCollab as useReal} from ${JSON.stringify(entityCollabUrl)};export function useEntityCollab(options){globalThis.__s3a.remote=options.applyRemote;return useReal(options);}`),
   "../collab/adapters/visual-selection": dataModule('export function useCollabSelections(){return [];}'),
-  "../plugin-command": dataModule('export function usePluginCommandSurface(){}'),
+  "../plugin-command": dataModule('export function useEditorContext(){}'),
   "../doc-editors/use-deck-material-adapter": empty("useDeckMaterialAdapter"),
   "../doc-editors/DeckStage": dataModule(`import {createElement,useContext} from ${JSON.stringify(reactUrl)};import {TabContext} from ${JSON.stringify(tabContextUrl)}; export function DeckStage({editor}) {const tab=useContext(TabContext);if(tab)tab.editor=editor;globalThis.__s3a.deck=editor;return createElement("button",{"data-edit":"deck",onClick:()=>editor.setTitle("Edited slides")},"Edit slides");}`),
   "../doc-editors/use-deck-selection-adapter": dataModule('export function useDeckSelectionAdapter(){return {context:null,dispatch(){}};}'),

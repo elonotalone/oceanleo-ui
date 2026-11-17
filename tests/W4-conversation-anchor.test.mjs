@@ -204,9 +204,9 @@ const pluginPanelUrl = await compileModule(
   "src/shell/plugin-chrome/PluginAgentPanel.tsx",
   {
     "../../i18n/ui/useUI": uiStubUrl,
-    "../FunctionAgentChat": dataModule(`
+    "../plugin-command/LibraryEditEntry": dataModule(`
       import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
-      export function FunctionAgentChat({ schema }) {
+      export function EditorLibraryEditEntry({ editorId }) {
         return jsx("div", {
           "data-fn-agent-tab": "agent",
           "data-agent-conversation": "",
@@ -216,7 +216,7 @@ const pluginPanelUrl = await compileModule(
               key: "scroll",
               "data-agent-conversation-scroll": "",
               className: ${JSON.stringify(AGENT_CONVERSATION_SCROLL_CLASS)},
-              children: schema.title,
+              children: editorId,
             }),
             jsx("div", {
               key: "dock",
@@ -346,7 +346,7 @@ test("W4 empty assistant: conversation fills and composer docks last", async () 
       opsContent: null,
       showOps: false,
       defaultTab: "agent",
-      enableEditorCommands: false,
+      enableEditorContext: false,
     }),
   );
   try {

@@ -408,14 +408,7 @@ test("一次一人：矢量/流程图/PDF 的抢锁语义（先到的人持锁�
 import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  VIEW_ONLY_REFUSAL,
-  guardPluginSurface,
-} from "../src/shell/collab/adapters/visual-readonly.ts";
-import { buildDeckCommandSurface, buildPdfCommandSurface, buildRichDocCommandSurface } from "../src/shell/doc-editors/doc-family-commands.ts";
-import { createImageCommandSurface } from "../src/shell/image-editor/image-command-surface.ts";
-import { createVideoCommandSurface } from "../src/shell/video-editor/video-command-surface.ts";
-import { runGridAgentCommand } from "../src/shell/doc-editors/grid-univer/agent-write-gate.ts";
+import { VIEW_ONLY_REFUSAL } from "../src/shell/collab/adapters/visual-readonly.ts";
 
 const UI_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const src = (rel) => readFileSync(join(UI_ROOT, "src/shell", rel), "utf8");
@@ -539,35 +532,13 @@ const SURFACE_FILES = {
   video: "advanced-routes/VideoTimelineRoute.tsx",
 };
 
-// 指令面的构造在别的文件里的族：路由里没写只读，只要构造文件里写了也算挡住
-const SURFACE_BUILDERS = {
-  richdoc: ["doc-editors/doc-family-commands.ts"],
-  pdf: ["doc-editors/doc-family-commands.ts"],
-  image: ["image-editor/image-command-surface.ts"],
-  video: ["video-editor/video-command-surface.ts", "media-editors/visual-command-kit.ts"],
-};
-const READ_ONLY_GUARD = /readonly:\s|readonlyNotice|\.readOnly\b|\breadOnly\b|\bviewOnly\b|guardPluginSurface|guardVisualCommands|editBlocked/;
-
 for (const [family, rel] of Object.entries(SURFACE_FILES)) {
-  test(`[只读/16] ${family}：Leo「帮我改」的指令入口在只读时被挡住`, () => {
+  test(`[只读/16] ${family}：AI uses read-only context and the background workbench write gate`, () => {
     const text = src(rel);
-    const calls = [...text.matchAll(/usePluginCommandSurface\s*\(/g)];
-    assert.ok(calls.length > 0, `${rel} 没有注册 Leo 指令入口`);
-    const builders = (SURFACE_BUILDERS[family] ?? []).filter(has).map(src).join("\n");
-    for (const call of calls) {
-      // 只看调用本身的实参（到下一个 `);` 为止）与这一族的指令面构造文件，不看周围别处的 readOnly
-      // 调用本身到它自己的收尾 `\n  });`（组件体内缩进两格）为止；长调用里前面的
-      // `currentSnapshot();` 之类不能提前把实参截断。找不到收尾才退回到第一个 `);`。
-      const rest = text.slice(call.index);
-      const closing = rest.search(/\n {2}\}\);/);
-      const around = closing >= 0
-        ? rest.slice(0, closing + 5)
-        : rest.slice(0, Math.max(1, rest.indexOf(");") + 2));
-      assert.ok(
-        READ_ONLY_GUARD.test(around) || READ_ONLY_GUARD.test(builders),
-        `${family}（${rel}）：Leo 指令入口没有只读判断（路由与指令面构造文件都没有），只读用户让 Leo 改会直接改动作品`,
-      );
-    }
+    assert.match(text, /useEditorContext\s*\(/);
+    assert.match(text, /useLibraryEditReadOnly\(item\)/);
+    assert.match(src("InlineAdvancedWorkbenchShell.tsx"), /useLibraryEditorBinding\(item, flushForExplicitSave, hostAutoSaveEnabled/);
+    assert.match(src("plugin-command/library-edit-flow.ts"), /if \(!binding.writable\(\)\)/);
   });
 }
 
@@ -609,24 +580,4 @@ function recordCalls() {
       return typeof result === "function" ? result(...args) : result;
     };
   return { calls, record };
-}
-
-async function assertWrappedReadonly(family, inner, editorCalls) {
-  const ran = [];
-  const instrumented = {
-    ...inner,
-    run(id, params) {
-      ran.push(id);
-      return inner.run(id, params);
-    },
-  };
-  const surface = guardPluginSurface(instrumented, true);
-  const mutating = surface.describe().filter((spec) => spec.mutates);
-  assert.ok(mutating.length >= 1, `${family}: 应有会改作品的指令`);
-  const spec = mutating[0];
-  const result = await surface.run(spec.id, dummyCommandParams(spec));
-  assert.equal(result.ok, false, `${family}: ${spec.id} 只读时应被拒`);
-  assert.equal(result.message, VIEW_ONLY_REFUSAL, family);
-  assert.deepEqual(ran, [], `${family}: 原 run 不得被调用`);
-  if (editorCalls) assert.deepEqual(editorCalls, [], `${family}: 文档/编辑器不得被改`);
 }
