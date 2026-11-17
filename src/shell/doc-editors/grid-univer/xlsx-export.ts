@@ -157,10 +157,10 @@ function resolveStyle(ref: unknown, catalog: unknown): Json | null {
 
 function excelFont(style: Json): Partial<import("exceljs").Font> {
   const font: Partial<import("exceljs").Font> = {};
-  if (style.bl) font.bold = true;
-  if (style.it) font.italic = true;
-  if (isObject(style.ul) && style.ul.s) font.underline = true;
-  if (isObject(style.st) && style.st.s) font.strike = true;
+  if (style.bl !== undefined && style.bl !== null) font.bold = Boolean(style.bl);
+  if (style.it !== undefined && style.it !== null) font.italic = Boolean(style.it);
+  if (isObject(style.ul) && style.ul.s !== undefined) font.underline = style.ul.s ? style.ul.t === 10 ? "double" : true : false;
+  if (isObject(style.st) && style.st.s !== undefined) font.strike = Boolean(style.st.s);
   const size = num(style.fs);
   if (size) font.size = size;
   if (typeof style.ff === "string" && style.ff) font.name = style.ff;
@@ -170,7 +170,7 @@ function excelFont(style: Json): Partial<import("exceljs").Font> {
 }
 
 function applyStyle(
-  cell: import("exceljs").Cell,
+  cell: Partial<Pick<import("exceljs").Cell, "font" | "fill" | "alignment" | "border" | "numFmt">>,
   style: Json | null,
   textColorOverride = true,
 ): void {
@@ -187,11 +187,14 @@ function applyStyle(
   else if (ht === 2) alignment.horizontal = "center";
   else if (ht === 3) alignment.horizontal = "right";
   else if (ht === 4 || ht === 5) alignment.horizontal = "justify";
+  else if (ht === 6) alignment.horizontal = "distributed";
   const vt = num(style.vt);
   if (vt === 1) alignment.vertical = "top";
   else if (vt === 2) alignment.vertical = "middle";
   else if (vt === 3) alignment.vertical = "bottom";
   if (num(style.tb) === 3) alignment.wrapText = true;
+  else if (num(style.tb) === 1) alignment.wrapText = false;
+  if (num(style.td)) alignment.readingOrder = style.td === 2 ? "rtl" : "ltr";
   if (isObject(style.tr) && style.tr.v === 1) {
     alignment.textRotation = "vertical";
   } else if (isObject(style.tr) && num(style.tr.a)) {
@@ -215,6 +218,12 @@ function applyStyle(
         style: kind as import("exceljs").BorderStyle,
         ...(color ? { color: { argb: color } } : {}),
       };
+    }
+    const down = isObject(style.bd.tl_br) ? style.bd.tl_br : undefined;
+    const up = isObject(style.bd.bl_tr) ? style.bd.bl_tr : undefined;
+    const diagonal = down ?? up;
+    if (diagonal && BORDER_STYLE[num(diagonal.s) ?? 0]) {
+      border.diagonal = { down: !!down, up: !!up, style: BORDER_STYLE[num(diagonal.s)!] as import("exceljs").BorderStyle, ...(argb(diagonal.cl) ? { color: { argb: argb(diagonal.cl)! } } : {}) };
     }
     if (Object.keys(border).length > 0) cell.border = border;
   }
@@ -878,9 +887,16 @@ function finishXlsx(
   bytes: Uint8Array,
   patches: Map<number, ConditionalXmlPatch>,
   options: GridXlsxExportOptions,
+  definedNames: string = "",
 ): Uint8Array<ArrayBuffer> {
-  if (!patches.size && !options.attribution && !options.createdAt) return new Uint8Array(bytes);
+  if (!patches.size && !options.attribution && !options.createdAt && !definedNames) return new Uint8Array(bytes);
   const files = unzipSync(bytes);
+  if (definedNames) {
+    // ExcelJS's name model only handles ranges and loses formula/constant/local names.
+    let xml = strFromU8(files["xl/workbook.xml"]);
+    xml = xml.replace(/<definedNames>[\s\S]*?<\/definedNames>/, "");
+    files["xl/workbook.xml"] = strToU8(xml.replace(/(?=<calcPr\b|<extLst\b|<\/workbook>)/, `<definedNames>${definedNames}</definedNames>`));
+  }
   for (const [id, patch] of patches) {
     const path = `xl/worksheets/sheet${id}.xml`;
     let xml = strFromU8(files[path]).replace(/<cfRule\b[^>]*>/g, (tag) => {
@@ -1058,8 +1074,12 @@ export async function buildGridXlsxFromUniverSnapshot(
       if (!Number.isInteger(index) || index < 0 || !isObject(raw)) continue;
       const width = num(raw.w);
       const hidden = num(raw.hd) === 1;
-      if (width === undefined && !hidden) continue;
+      const style = resolveStyle(raw.s, snapshot.styles);
+      if (width === undefined && !hidden && !style) continue;
       const column = worksheet.getColumn(index + 1);
+      const columnStyle: Partial<import("exceljs").Style> = {};
+      applyStyle(columnStyle, style);
+      column.style = columnStyle;
       if (width !== undefined) column.width = Math.max(0.5, Math.round(((width - 5) / 7) * 100) / 100);
       if (hidden) column.hidden = true;
     }
@@ -1068,8 +1088,12 @@ export async function buildGridXlsxFromUniverSnapshot(
       if (!Number.isInteger(index) || index < 0 || !isObject(raw)) continue;
       const height = num(raw.h);
       const hidden = num(raw.hd) === 1;
-      if (height === undefined && !hidden) continue;
+      const style = resolveStyle(raw.s, snapshot.styles);
+      if (height === undefined && !hidden && !style) continue;
       const row = worksheet.getRow(index + 1);
+      const rowStyle: Partial<import("exceljs").Style> = {};
+      applyStyle(rowStyle, style);
+      (row as import("exceljs").Row & { style: Partial<import("exceljs").Style> }).style = rowStyle;
       if (height !== undefined) row.height = Math.round(height * 0.75 * 100) / 100;
       if (hidden) row.hidden = true;
       // exceljs 不写没有任何单元格的行，隐藏/行高会随之消失；触一下首格让这一行落盘。
@@ -1197,8 +1221,10 @@ export async function buildGridXlsxFromUniverSnapshot(
       }
       const imageId = workbook.addImage({ base64: source, extension });
       worksheet.addImage(imageId, {
-        tl: { col: (num(from.column) ?? 0) + (num(from.columnOffset) ?? 0) / 64, row: (num(from.row) ?? 0) + (num(from.rowOffset) ?? 0) / 20 },
-        br: { col: (num(to.column) ?? 0) + (num(to.columnOffset) ?? 0) / 64, row: (num(to.row) ?? 0) + (num(to.rowOffset) ?? 0) / 20 },
+        // Native EMU offsets avoid ExcelJS's fixed-cell fractional-coordinate approximation.
+        tl: { nativeCol: num(from.column) ?? 0, nativeRow: num(from.row) ?? 0, nativeColOff: Math.round((num(from.columnOffset) ?? 0) * 9525), nativeRowOff: Math.round((num(from.rowOffset) ?? 0) * 9525) },
+        br: { nativeCol: num(to.column) ?? 0, nativeRow: num(to.row) ?? 0, nativeColOff: Math.round((num(to.columnOffset) ?? 0) * 9525), nativeRowOff: Math.round((num(to.rowOffset) ?? 0) * 9525) },
+        ...(raw.anchorType !== undefined ? { editAs: String(raw.anchorType) === "2" ? "absolute" : String(raw.anchorType) === "0" ? "oneCell" : "twoCell" } : {}),
       } as unknown as import("exceljs").ImageRange);
     }
 
@@ -1218,15 +1244,13 @@ export async function buildGridXlsxFromUniverSnapshot(
   const nameEntries = isObject(names)
     ? Object.values(names).flatMap((value) => (isObject(value) && typeof value.name === "string" ? [value] : isObject(value) ? Object.values(value).filter(isObject) : []))
     : [];
+  const definedNameXml: string[] = [];
   for (const entry of nameEntries) {
     const name = typeof entry.name === "string" ? entry.name : "";
     const ref = stripEq(entry.formulaOrRefString);
     if (!name || !ref) continue;
-    try {
-      workbook.definedNames.add(ref, name);
-    } catch {
-      dropped.add(`定义名称「${name}」`);
-    }
+    const scope = typeof entry.localSheetId === "string" ? order.indexOf(entry.localSheetId) : -1;
+    definedNameXml.push(`<definedName name="${xmlText(name)}"${scope >= 0 ? ` localSheetId="${scope}"` : ""}${entry.hidden ? ' hidden="1"' : ""}${typeof entry.comment === "string" ? ` comment="${xmlText(entry.comment)}"` : ""}>${xmlText(ref)}</definedName>`);
   }
 
   if (options.attribution) {
@@ -1241,7 +1265,7 @@ export async function buildGridXlsxFromUniverSnapshot(
   }
   const bytes = await workbook.xlsx.writeBuffer();
   return {
-    blob: new Blob([finishXlsx(new Uint8Array(bytes as ArrayBuffer), conditionalPatches, options)], { type: GRID_XLSX_MIME }),
+    blob: new Blob([finishXlsx(new Uint8Array(bytes as ArrayBuffer), conditionalPatches, options, definedNameXml.join(""))], { type: GRID_XLSX_MIME }),
     dropped: [...dropped],
   };
 }

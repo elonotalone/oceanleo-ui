@@ -1,15 +1,6 @@
-/**
- * 上传的 xlsx 打开时，把**字体与填充**补回来。
- *
- * 读表用的是 SheetJS 社区版：它的 `cellStyles` 只给填充（而且放在 `cell.s.fgColor`
- * 上，不在 `cell.s.fill` 里），粗体、字色一概不给。结果是用户 Excel 里的深蓝白字表头、
- * 黄色高亮在编辑器里全变成了白底黑字——打开就丢了用户的格式。
- *
- * 这里用仓里已经在用的 exceljs（导出也是它）再读一遍同一份字节，只取样式：
- * 粗体、字色、实心填充。值与公式仍以 SheetJS 那一遍为准，这一层只往 `formats` 里补。
- * 主题色（`theme` 索引，没有 argb）不猜，保持原样。
- */
+/** XLSX legacy display projection plus the native payload consumed by snapshot.ts. */
 import type { GridCellFormat } from "../grid-model";
+import { importXlsxSheet, xlsxArchive, type GridXlsxImport } from "./xlsx-import";
 
 export interface GridStyleOverlayTarget {
   /** 原文件里的工作表名（SheetJS 的 `SheetNames[i]`，不是去重后的显示名）。 */
@@ -17,6 +8,7 @@ export interface GridStyleOverlayTarget {
   originRow: number;
   originCol: number;
   formats: Record<string, GridCellFormat>;
+  native?: GridXlsxImport;
 }
 
 type ArgbColor = { argb?: string } | undefined;
@@ -50,18 +42,8 @@ export async function overlayXlsxStyles(
   targets: readonly GridStyleOverlayTarget[],
 ): Promise<void> {
   if (targets.length === 0) return;
-  let workbook: {
-    getWorksheet(name: string):
-      | {
-          eachRow(
-            cb: (
-              row: { eachCell(cb: (cell: Parameters<typeof gridFormatFromExcelStyle>[0], col: number) => void): void },
-              rowNumber: number,
-            ) => void,
-          ): void;
-        }
-      | undefined;
-  };
+  let workbook: import("exceljs").Workbook;
+  let files: Record<string, Uint8Array>;
   try {
     const imported = (await import("exceljs")) as typeof import("exceljs") & {
       default?: typeof import("exceljs");
@@ -69,7 +51,8 @@ export async function overlayXlsxStyles(
     const ExcelJS = imported.Workbook ? imported : (imported.default ?? imported);
     const book = new ExcelJS.Workbook();
     await book.xlsx.load(source);
-    workbook = book as unknown as typeof workbook;
+    workbook = book;
+    files = xlsxArchive(source);
   } catch {
     // 不是 OOXML（csv / xls / ods）或 exceljs 读不动：保留 SheetJS 那一遍的结果。
     return;
@@ -77,6 +60,7 @@ export async function overlayXlsxStyles(
   for (const target of targets) {
     const sheet = workbook.getWorksheet(target.sourceName);
     if (!sheet) continue;
+    target.native = importXlsxSheet(workbook, sheet, files);
     sheet.eachRow((row, rowNumber) => {
       row.eachCell((cell, colNumber) => {
         const patch = gridFormatFromExcelStyle(cell);

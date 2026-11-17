@@ -88,6 +88,7 @@ test("grid downloads translate format names and do not duplicate the opening ext
   }
   assert.match(leaf, /useExportDownloads\(\{ editor: "grid"/);
   assert.match(leaf, /directDownload: exportDownloads\[0\]/);
+  assert.match(leaf, /activeSheetCsv\(currentSnapshot\(\), id\)/);
 });
 
 test("会话交接已随旧核一起删：没有 handoff / flush 登记，路由不再 flush", () => {

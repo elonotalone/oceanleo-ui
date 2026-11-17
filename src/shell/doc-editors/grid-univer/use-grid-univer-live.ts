@@ -37,6 +37,7 @@ import {
   type GridSelectionStyleApi,
   type GridSelectionStyleRead,
 } from "./selection-style";
+import { loadGridSnapshotFonts } from "./import-fonts";
 import { setGridProbe } from "./acceptance-probe";
 
 export const GRID_UNIVER_THEME_ATTR = "data-grid-univer-theme";
@@ -135,6 +136,20 @@ export function useGridUniverLive(options: {
       fontFills.add(installGridDarkFontFill(ext("DefaultFontExtension") as GridFontExtensionLike, isDark));
     };
     ensureFontFill();
+    let fontsFor = "";
+    let disposed = false;
+    const ensureImportedFonts = () => {
+      const workbook = (handle.api as { getActiveWorkbook?: () => { getId?: () => string; save?: () => import("@univerjs/presets").IWorkbookData; getSnapshot?: () => import("@univerjs/presets").IWorkbookData; getSheets?: () => { refreshCanvas?: () => unknown }[] } | null }).getActiveWorkbook?.();
+      const id = workbook?.getId?.();
+      if (!workbook || !id || id === fontsFor) return;
+      fontsFor = id;
+      const snapshot = workbook.getSnapshot?.() ?? workbook.save?.();
+      if (!snapshot) return;
+      void loadGridSnapshotFonts(snapshot).then(() => {
+        if (!disposed) workbook.getSheets?.().forEach((sheet) => sheet.refreshCanvas?.());
+      }).catch(() => { if (!disposed) fontsFor = ""; });
+    };
+    ensureImportedFonts();
     let frame = 0;
     let lastKey = "";
     const refresh = () => {
@@ -158,6 +173,7 @@ export function useGridUniverLive(options: {
       onHistory: (status) => { setHistory(status); setGridProbe("publishedHistory", status); },
       onAnyCommand: () => {
         ensureFontFill();
+        ensureImportedFonts();
         refresh();
         queueMicrotask(() => setGridProbe("actualHistory", {
           canUndo: Boolean(undo?.pitchTopUndoElement()),
@@ -169,6 +185,7 @@ export function useGridUniverLive(options: {
     watchRef.current = watch;
     refresh();
     return () => {
+      disposed = true;
       watch.dispose();
       if (watchRef.current === watch) watchRef.current = null;
       uninstall();

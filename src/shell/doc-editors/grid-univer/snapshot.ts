@@ -487,8 +487,50 @@ export function gridSheetsToUniverSnapshot(
   const sheetOrder: string[] = [];
   const out: Record<string, Partial<IWorksheetData>> = {};
   let conditionalRules = 0;
+  const importedResources = new Map<string, Record<string, unknown>>();
+  const workbookId = options.id || `grid-${sheets[0]?.id || "empty"}`;
+  const importedNames: Record<string, unknown> = {};
 
   for (const sheet of sheets) {
+    if (sheet.xlsxImport) {
+      const imported = structuredClone(sheet.xlsxImport);
+      out[sheet.id] = { ...imported.worksheet, id: sheet.id, name: sheet.name };
+      sheetOrder.push(sheet.id);
+      report.sheets += 1;
+      report.merges += imported.worksheet.mergeData?.length ?? 0;
+      for (const line of Object.values((imported.worksheet.cellData ?? {}) as Record<number, Record<number, ICellData>>)) {
+        for (const cell of Object.values(line)) {
+          if (cell.v !== undefined || cell.p) report.cells += 1;
+          if (cell.f) report.formulas += 1;
+          if (cell.s) report.styledCells += 1;
+          for (const range of cell.p?.body?.customRanges ?? []) {
+            const url = range.properties?.url;
+            if (typeof url !== "string") continue;
+            const internal = /^#(?:'((?:[^']|'')+)'|([^!]+))!(.+)$/.exec(url);
+            const target = internal && sheets.find((candidate) => candidate.name === (internal[1]?.replace(/''/g, "'") ?? internal[2]));
+            if (internal && target) range.properties!.url = `#gid=${encodeURIComponent(target.id)}&range=${encodeURIComponent(internal[3])}`;
+          }
+        }
+      }
+      for (const [plugin, value] of Object.entries(imported.resources)) {
+        const grouped = importedResources.get(plugin) ?? {};
+        if (plugin === "SHEET_DRAWING_PLUGIN") {
+          const drawings = value as { data: Record<string, Record<string, unknown>> };
+          for (const drawing of Object.values(drawings.data)) {
+            drawing.unitId = workbookId;
+            drawing.subUnitId = sheet.id;
+          }
+        }
+        grouped[sheet.id] = value;
+        importedResources.set(plugin, grouped);
+      }
+      for (const [id, raw] of Object.entries(imported.names)) {
+        const entry = raw as { localSheetId?: string };
+        if (entry.localSheetId !== undefined) entry.localSheetId = sheets[Number(entry.localSheetId)]?.id;
+        importedNames[id] = entry;
+      }
+      continue;
+    }
     const rows = sheet.rows || [];
     const cellData: Record<number, Record<number, ICellData>> = {};
     let maxCol = 0;
@@ -553,12 +595,18 @@ export function gridSheetsToUniverSnapshot(
 
   return {
     data: {
-      id: options.id || `grid-${sheets[0]?.id || "empty"}`,
+      id: workbookId,
       name: options.name || "工作簿",
       appVersion: GRID_UNIVER_APP_VERSION,
       sheetOrder,
       sheets: out,
       styles: {},
+      ...(importedResources.size || Object.keys(importedNames).length ? {
+        resources: [
+          ...[...importedResources].map(([name, value]) => ({ name, data: JSON.stringify(value) })),
+          ...(Object.keys(importedNames).length ? [{ name: "SHEET_DEFINED_NAME_PLUGIN", data: JSON.stringify(importedNames) }] : []),
+        ],
+      } : {}),
     },
     report,
   };

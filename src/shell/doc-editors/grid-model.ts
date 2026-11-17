@@ -34,6 +34,8 @@ export interface GridSheet {
   formats: Record<string, GridCellFormat>;
   merges: GridMerge[];
   conditionalFormats: GridConditionalFormat[];
+  /** Native OOXML import. The legacy rows/formats are only a display projection. */
+  xlsxImport?: import("./grid-format/xlsx-import").GridXlsxImport;
 }
 
 export interface NormalizedGridProjectSheetState {
@@ -618,6 +620,9 @@ async function readWorkbook(
   // 字体（粗体 / 字色）社区版 SheetJS 读不到：xlsx 字节再交给 exceljs 补一层样式。
   if (mode === "array" && typeof input !== "string") {
     await overlayXlsxStyles(input, styleTargets);
+    sheets.forEach((sheet, index) => {
+      if (styleTargets[index]?.native) (sheet as GridSheet).xlsxImport = styleTargets[index].native;
+    });
   }
   return bindGridWorkbook(sheets);
 }
