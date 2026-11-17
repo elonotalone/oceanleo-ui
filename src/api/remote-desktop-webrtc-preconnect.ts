@@ -9,10 +9,12 @@ type CreatedSocket = { socket: WebSocket; controller: string; messages: string[]
 const created = new Map<string, CreatedSocket>();
 
 /** Preparing signalling creates no remote session, consent request or billing. */
-export function prepareRemoteWebRtcSocket(deviceId: string): () => void {
+export function prepareRemoteWebRtcSocket(deviceId: string, options?: { ready?(capabilities: string[]): void; unavailable?(): void }): () => void {
   let cancelled = false, entry: Prepared | undefined;
   const close = () => {
+    if (cancelled) return;
     cancelled = true;
+    options?.unavailable?.();
     if (!entry || entry.claimed) return;
     if (prepared.get(deviceId) === entry) prepared.delete(deviceId);
     clearInterval(entry.timer);
@@ -21,9 +23,9 @@ export function prepareRemoteWebRtcSocket(deviceId: string): () => void {
   };
   void (async () => {
     try {
-      if (prepared.has(deviceId) || prepared.size >= 4 || typeof window === "undefined") return;
+      if (prepared.has(deviceId) || prepared.size >= 4 || typeof window === "undefined") { options?.unavailable?.(); return; }
       const token = await accessToken();
-      if (!token || cancelled || prepared.has(deviceId)) return;
+      if (!token || cancelled || prepared.has(deviceId)) { options?.unavailable?.(); return; }
       const controller = controllerHeaders()["X-OceanLeo-Controller"];
       if (!controller) return;
       const url = new URL(`${GATEWAY_BASE}/v1/devices/${encodeURIComponent(deviceId)}/remote-desktop/viewer-stream`, window.location.href);
@@ -36,7 +38,7 @@ export function prepareRemoteWebRtcSocket(deviceId: string): () => void {
       socket.onopen = () => send({ type: "auth", token, controller });
       socket.onmessage = event => {
         if (typeof event.data !== "string" || event.data.length > 1024) { close(); return; }
-        try { const data = JSON.parse(event.data); if (data.type === "ready" && data.transport === "webrtc-v1") current.ready = true; } catch { close(); }
+        try { const data = JSON.parse(event.data); if (data.type === "ready" && data.transport === "webrtc-v1") { current.ready = true; options?.ready?.(Array.isArray(data.capabilities) ? data.capabilities.filter((value: unknown): value is string => typeof value === "string") : []); } } catch { close(); }
       };
       socket.onerror = socket.onclose = close;
       current.timer = setInterval(() => {

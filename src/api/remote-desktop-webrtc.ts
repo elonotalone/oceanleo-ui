@@ -8,6 +8,7 @@ export type { WebRtcPath, WebRtcPresentation, WebRtcQualityReport, WebRtcViewerS
 
 export interface RemoteWebRtcDescriptor {
   transport: "webrtc-v1"; role: "viewer" | "host"; session_id: string; display_id: string | null;
+  standby?: boolean; standby_expires_at?: string;
   ice_servers: (RTCIceServer & { region?: string })[]; ice_expires_at: string; server_now: number; lease_expires_at: string;
 }
 export type WebRtcSignal =
@@ -30,6 +31,8 @@ export interface WebRtcViewerOptions {
   deviceId?: string; now?: () => number; wallNow?: () => number;
   createPeer?: (configuration: RTCConfiguration) => RTCPeerConnection;
   initialPeer?: PreparedWebRtcPeer;
+  createVideo?: () => HTMLVideoElement;
+  onStandbyState?(state: "connecting" | "ready" | "starting" | "active", at: number): void;
 }
 type Label = InputLabel | "rd-ctl";
 type FrameMetadata = VideoFrameCallbackMetadata & { captureTime?: number; receiveTime?: number };
@@ -85,8 +88,16 @@ export class WebRtcRemoteDesktopViewer {
     } catch { if (pc) swallow(() => pc!.close()); return undefined; }
     finally { clearTimeout(timer); }
   }
-  gen = 0;
-  pc: RTCPeerConnection | null = null;
+  private generation = 0;
+  private connection: RTCPeerConnection | null = null;
+  private replacement?: WebRtcRemoteDesktopViewer;
+  private pending?: { viewer: WebRtcRemoteDesktopViewer; video: HTMLVideoElement; route?: PathRoute; started: number };
+  private pendingReady?: () => void;
+  private staging = false;
+  private offeredGeneration = 0;
+  private activation?: { requestId: string; sent: boolean; clickedAt: number };
+  get gen(): number { return this.replacement?.gen ?? this.pending?.viewer.gen ?? this.generation; }
+  get pc(): RTCPeerConnection | null { return this.replacement?.pc ?? this.pending?.viewer.pc ?? this.connection; }
   private options: WebRtcViewerOptions;
   private descriptor: RemoteWebRtcDescriptor;
   private now: () => number;
@@ -142,7 +153,7 @@ export class WebRtcRemoteDesktopViewer {
     // This stores no auth, descriptor, action or credential; host authority is unchanged.
     try {
       const saved = Number(sessionStorage.getItem(`oceanleo.rd.generation.${this.descriptor.session_id}`));
-      if (Number.isSafeInteger(saved) && saved > 0 && saved < Number.MAX_SAFE_INTEGER) this.gen = saved;
+      if (Number.isSafeInteger(saved) && saved > 0 && saved < Number.MAX_SAFE_INTEGER) this.generation = saved;
     } catch { /* Restricted storage keeps the normal initial negotiation. */ }
     this.now = options.now ?? (() => performance.now()); this.wallNow = options.wallNow ?? Date.now;
     this.pathSelector = new WebRtcPathSelector(pathRoutes(this.descriptor.ice_servers));
@@ -164,19 +175,21 @@ export class WebRtcRemoteDesktopViewer {
     return Number.isFinite(expires) && Number.isFinite(descriptor.server_now)
       ? receivedAt + Math.max(0, expires - descriptor.server_now * 1000) : receivedAt;
   }
-  async start(): Promise<void> {
+  async start(route?: PathRoute): Promise<void> {
+    if (this.replacement) return this.replacement.start(route);
     if (this.ended || this.started) return;
     if (this.descriptor.role !== "viewer") throw new Error("webrtc_viewer_descriptor_required");
     this.started = true; this.emitState("connecting");
     this.timer = setInterval(() => this.tick(), 100);
     if (this.now() >= this.leaseDeadline) { this.close("lease_expired"); return; }
-    await this.createConnection();
+    await this.createConnection(route);
   }
   private async createConnection(route?: PathRoute): Promise<void> {
     if (this.ended) return;
+    if (this.hasFrame && this.connection && !this.staging) return this.stageConnection(route);
     if (this.creating) return this.creating;
     this.creating = (async () => {
-      const old = this.pc;
+      const old = this.connection;
       this.pathProbe.reset();
       if (!route) { this.pathSelector.reset(pathRoutes(this.descriptor.ice_servers)); this.pathSwitch = undefined; }
       this.activeRoute = route?.kind === "relay" ? route.key : undefined;
@@ -184,7 +197,7 @@ export class WebRtcRemoteDesktopViewer {
       this.detachPeer();
       if (old) { this.pictureRebuilding = true; this.telemetry.reconnects++; this.input.recover("picture_reconnecting"); }
       this.captureTimes.clear(); this.presentedTimes.clear(); this.captureMappingAvailable = false;
-      this.gen++; const gen = this.gen;
+      this.generation++; const gen = this.generation;
       try { sessionStorage.setItem(`oceanleo.rd.generation.${this.descriptor.session_id}`, String(gen)); } catch { /* optional continuity */ }
       this.hostRelayRegion = undefined; this.telemetry.path = undefined;
       this.candidates = []; this.pendingSignals = []; this.recovery.clear(); this.answerDue = undefined;
@@ -200,30 +213,30 @@ export class WebRtcRemoteDesktopViewer {
         if (prepared) pc.setConfiguration(configuration);
       }
       catch { if (prepared) swallow(() => prepared.pc.close()); this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); return; }
-      this.pc = pc;
+      this.connection = pc;
       const transceiver = prepared?.transceiver ?? pc.addTransceiver("video", { direction: "recvonly" });
       WebRtcRemoteDesktopViewer.lowDelay(transceiver.receiver);
       WebRtcRemoteDesktopViewer.receiveExtensions(transceiver);
       if (!WebRtcRemoteDesktopViewer.preferCodecs(transceiver)) { this.close("unsupported_h264_profile"); return; }
       pc.onicecandidate = event => {
-        if (this.pc !== pc || this.ended || !event.candidate) return;
+        if (this.connection !== pc || this.ended || !event.candidate) return;
         this.transmit({ k: "candidate", candidate: event.candidate.candidate, sdpMid: event.candidate.sdpMid, sdpMLineIndex: event.candidate.sdpMLineIndex, gen });
       };
       pc.ontrack = event => {
-        if (this.pc !== pc || this.ended || event.track.kind !== "video") return;
+        if (this.connection !== pc || this.ended || event.track.kind !== "video") return;
         WebRtcRemoteDesktopViewer.lowDelay(event.receiver);
         this.trackGeneration = gen;
         this.mediaStream = event.streams[0] ?? new MediaStream([event.track]);
         if (this.video) this.attachVideo(this.video);
       };
       pc.onconnectionstatechange = () => {
-        if (this.pc !== pc || this.ended) return;
+        if (this.connection !== pc || this.ended) return;
         if (pc.connectionState === "failed" || pc.connectionState === "closed") {
           this.emitState("picture_reconnecting"); this.peerRetryDue = this.now() + 200;
         } else if (pc.connectionState === "connected") this.connected();
       };
       pc.oniceconnectionstatechange = () => {
-        if (this.pc !== pc || this.ended) return;
+        if (this.connection !== pc || this.ended) return;
         if (pc.iceConnectionState === "disconnected") {
           this.disconnectedAt ??= this.now(); this.restartDue ??= this.disconnectedAt + 2000;
           this.emitState("picture_reconnecting");
@@ -236,7 +249,7 @@ export class WebRtcRemoteDesktopViewer {
         // The create envelope already carried this offer. Configure ICE first,
         // then install exactly that SDP; no duplicate offer or second peer.
         await pc.setLocalDescription(prepared.offer);
-        if (this.pc === pc && !this.ended) {
+        if (this.connection === pc && !this.ended) {
           this.telemetry.step("offer_sent_ms", prepared.offeredAt);
           this.armConnectingOffer({ k: "offer", sdp: prepared.offer.sdp ?? "", gen });
         }
@@ -245,6 +258,59 @@ export class WebRtcRemoteDesktopViewer {
       if (!this.ended) { this.peerRetryDue = this.now() + 1000; this.emitState("picture_reconnecting"); }
     }).finally(() => { this.creating = undefined; });
     return this.creating;
+  }
+  private async stageConnection(route?: PathRoute): Promise<void> {
+    if (this.pending) return;
+    let video: HTMLVideoElement;
+    try { video = this.options.createVideo?.() ?? document.createElement("video"); }
+    catch { this.peerRetryDue = this.now() + 1000; return; }
+    this.pathProbe.stop();
+    const next = new WebRtcRemoteDesktopViewer({ ...this.options, initialPeer: undefined,
+      sequenceFloor: this.lastSequence(),
+      onState: () => {}, onFrame: () => {}, onPresentation: undefined,
+      onReport: () => {}, onTerminal: reason => {
+        if (terminalByeReasons.has(reason)) this.close(reason);
+        else if (this.pending?.viewer === next) this.cancelPending();
+      },
+    });
+    next.generation = Math.max(this.generation, this.offeredGeneration);
+    next.staging = true;
+    next.pendingReady = () => {
+      if (this.ended || this.pending?.viewer !== next) return;
+      // Host retirement is authorized only by a decoded frame on the new peer.
+      if (!next.sendControl({ t: "rd.presented", gen: next.generation })) return;
+      const visible = this.video;
+      next.pendingReady = undefined; next.staging = false;
+      next.telemetry = this.telemetry; next.telemetry.reconnects++;
+      next.pathSelector = this.pathSelector; next.pathSelector.attempted(this.now());
+      next.sessionFrameCount = this.sessionFrameCount;
+      next.lastPresentedAt = this.lastPresentedAt;
+      next.options = this.options;
+      next.input.sequenceFloor(this.lastSequence());
+      this.pending = undefined;
+      this.retire();
+      this.replacement = next;
+      next.attachVideo(visible);
+    };
+    this.pending = { viewer: next, video, route, started: this.now() };
+    next.attachVideo(video);
+    await next.start(route);
+    this.offeredGeneration = Math.max(this.offeredGeneration, next.gen);
+  }
+  private cancelPending(): void {
+    const pending = this.pending; if (!pending) return;
+    this.pending = undefined;
+    this.offeredGeneration = Math.max(this.offeredGeneration, pending.viewer.gen);
+    if (pending.route) this.pathSelector.failed(pending.route.key, this.now());
+    pending.viewer.retire();
+    this.pathSwitch = undefined;
+    this.peerRetryDue = this.connection && ["failed", "closed"].includes(this.connection.connectionState) ? this.now() + 1000 : undefined;
+    this.updateState();
+  }
+  private retire(): void {
+    this.ended = true;
+    if (this.timer) clearInterval(this.timer); this.timer = undefined;
+    this.pathProbe.reset(); this.input.close(); this.attachVideo(null); this.detachPeer();
   }
   private static lowDelay(receiver: RTCRtpReceiver): void {
     const low = receiver as RTCRtpReceiver & { jitterBufferTarget?: number; playoutDelayHint?: number };
@@ -296,17 +362,17 @@ export class WebRtcRemoteDesktopViewer {
     this.telemetry.step("ice_connected_ms"); this.updateState();
   }
   private async offer(pc: RTCPeerConnection, restart: boolean): Promise<void> {
-    if (this.negotiatingPeer === pc || this.ended || this.pc !== pc) return;
+    if (this.negotiatingPeer === pc || this.ended || this.connection !== pc) return;
     this.negotiatingPeer = pc;
     let offered = false;
     try {
       const offer = await pc.createOffer(restart ? { iceRestart: true } : undefined);
-      if (this.ended || this.pc !== pc) return;
+      if (this.ended || this.connection !== pc) return;
       await pc.setLocalDescription(offer);
-      if (this.ended || this.pc !== pc) return;
-      this.transmit({ k: "offer", sdp: pc.localDescription?.sdp ?? offer.sdp ?? "", gen: this.gen });
+      if (this.ended || this.connection !== pc) return;
+      this.transmit({ k: "offer", sdp: pc.localDescription?.sdp ?? offer.sdp ?? "", gen: this.generation });
       offered = true;
-    } catch { if (!this.ended && this.pc === pc) this.restartDue = this.now() + this.restartBackoff; }
+    } catch { if (!this.ended && this.connection === pc) this.restartDue = this.now() + this.restartBackoff; }
     finally {
       if (this.negotiatingPeer === pc) {
         this.negotiatingPeer = null;
@@ -320,7 +386,7 @@ export class WebRtcRemoteDesktopViewer {
     // ICE can fire while setLocalDescription is pending. Keep those candidates
     // behind their offer so a host staging a new offer does not discard them.
     let sent = false;
-    if (data.k !== "candidate" || this.negotiatingPeer !== this.pc) {
+    if (data.k !== "candidate" || this.negotiatingPeer !== this.connection) {
       try { sent = this.options.sendSignal(data); } catch { /* the direct peer remains alive */ }
     }
     if (sent) { if (data.k === "offer") this.offerAccepted(data); return; }
@@ -332,7 +398,7 @@ export class WebRtcRemoteDesktopViewer {
     if (candidates.length > 64) this.pendingSignals.splice(this.pendingSignals.indexOf(candidates[0]), 1);
   }
   private armConnectingOffer(data: WebRtcSignal): void {
-    const pc = this.pc;
+    const pc = this.connection;
     if (data.k !== "offer" || !pc || pc.remoteDescription || pc.connectionState === "connected") return;
     if (this.connectingOffer?.pc === pc && this.connectingOffer.gen === data.gen) return;
     this.connectingOffer = { pc, gen: data.gen, started: this.now() };
@@ -341,9 +407,11 @@ export class WebRtcRemoteDesktopViewer {
     this.telemetry.step("offer_sent_ms");
     this.armConnectingOffer(data);
     // Repeated ICE offers must not keep postponing recovery of a lost host.
-    if (this.hasFrame && !this.pathSwitch && this.pc?.connectionState !== "connected") this.answerDue ??= this.now() + 5000;
+    if (this.hasFrame && !this.pathSwitch && this.connection?.connectionState !== "connected") this.answerDue ??= this.now() + 5000;
   }
   flushSignals(): void {
+    if (this.replacement) return this.replacement.flushSignals();
+    this.pending?.viewer.flushSignals();
     if (this.ended || this.negotiatingPeer) return;
     while (this.pendingSignals.length) {
       let sent = false; try { sent = this.options.sendSignal(this.pendingSignals[0]); } catch { /* retry on next tick */ }
@@ -353,36 +421,38 @@ export class WebRtcRemoteDesktopViewer {
     }
   }
   async signal(value: unknown): Promise<void> {
+    if (this.replacement) return this.replacement.signal(value);
+    if (this.pending && value && typeof value === "object" && (value as WebRtcSignal).gen === this.pending.viewer.gen) return this.pending.viewer.signal(value);
     // A create+offer answer can arrive before initial setLocalDescription ends.
     if (this.creating) await this.creating;
     if (this.ended || !value || typeof value !== "object") return;
     const data = value as WebRtcSignal;
-    if (data.gen !== undefined && (!Number.isSafeInteger(data.gen) || data.gen < this.gen)) return;
+    if (data.gen !== undefined && (!Number.isSafeInteger(data.gen) || data.gen < this.generation)) return;
     if (data.k === "bye") {
-      if (data.gen !== undefined && data.gen !== this.gen) return;
+      if (data.gen !== undefined && data.gen !== this.generation) return;
       const reason = typeof data.reason === "string" ? data.reason : "";
       if (isWebRtcInputFault(reason)) this.channelFault("rd-input", reason);
-      else if (reason === "peer_failed" && this.pc) {
+      else if (reason === "peer_failed" && this.connection) {
         this.peerRetryDue ??= this.now() + 200;
         this.emitState("picture_reconnecting");
-      } else if (reason === "ice_restart_required" && this.pc) {
+      } else if (reason === "ice_restart_required" && this.connection) {
         this.disconnectedAt ??= this.now();
         this.restartDue ??= this.now();
         this.emitState("picture_reconnecting");
       } else if (terminalByeReasons.has(reason)) this.close(reason);
       return;
     }
-    if (data.gen !== this.gen || !this.pc) return;
-    const pc = this.pc;
+    if (data.gen !== this.generation || !this.connection) return;
+    const pc = this.connection;
     try {
       if (data.k === "answer" && typeof data.sdp === "string") {
         await pc.setRemoteDescription({ type: "answer", sdp: data.sdp });
-        if (this.pc !== pc || this.ended) return;
+        if (this.connection !== pc || this.ended) return;
         this.answerDue = undefined;
         if (this.connectingOffer?.pc === pc && this.connectingOffer.gen === data.gen) this.connectingOffer.answeredAt ??= this.now();
         if (this.pathSwitch) this.pathSwitch.answered = true;
         this.telemetry.step("answer_received_ms");
-        for (const candidate of this.candidates.splice(0)) { if (this.pc === pc && !this.ended) await pc.addIceCandidate(candidate); }
+        for (const candidate of this.candidates.splice(0)) { if (this.connection === pc && !this.ended) await pc.addIceCandidate(candidate); }
       } else if (data.k === "candidate" && typeof data.candidate === "string") {
         const candidate = { candidate: data.candidate, sdpMid: data.sdpMid, sdpMLineIndex: data.sdpMLineIndex };
         if (pc.remoteDescription) await pc.addIceCandidate(candidate);
@@ -391,6 +461,8 @@ export class WebRtcRemoteDesktopViewer {
     } catch { /* malformed or racing signalling never tears down the direct media path */ }
   }
   updateDescriptor(descriptor: RemoteWebRtcDescriptor): void {
+    if (this.replacement) return this.replacement.updateDescriptor(descriptor);
+    this.pending?.viewer.updateDescriptor(descriptor);
     if (this.ended || descriptor.transport !== "webrtc-v1" || descriptor.session_id !== this.descriptor.session_id || descriptor.role !== "viewer") return;
     // A delayed pre-renewal snapshot must not replace current credentials or grant a fresh relative lease.
     if (Date.parse(descriptor.lease_expires_at) < Date.parse(this.descriptor.lease_expires_at) || descriptor.server_now < this.descriptor.server_now) return;
@@ -400,12 +472,12 @@ export class WebRtcRemoteDesktopViewer {
     this.descriptor = descriptor;
     const routes = pathRoutes(descriptor.ice_servers); this.pathSelector.updateRoutes(routes);
     const relay = routes.find(route => route.key === this.activeRoute);
-    try { this.pc?.setConfiguration({ ...this.pc.getConfiguration(), iceServers: relay?.servers ?? this.iceServers() }); } catch { /* use fresh credentials on next restart */ }
-    if (this.activeRoute && !relay) { this.pathProbe.stop(); this.pathSwitch = undefined; this.fallbackPath(); if (this.pc) void this.offer(this.pc, true); }
+    try { this.connection?.setConfiguration({ ...this.connection.getConfiguration(), iceServers: relay?.servers ?? this.iceServers() }); } catch { /* use fresh credentials on next restart */ }
+    if (this.activeRoute && !relay) { this.pathProbe.stop(); this.pathSwitch = undefined; this.fallbackPath(); if (this.connection) void this.offer(this.connection, true); }
     this.flushSignals();
   }
   private createChannel(label: Label, prepared?: RTCDataChannel): void {
-    const pc = this.pc; if (!pc || this.ended) return;
+    const pc = this.connection; if (!pc || this.ended) return;
     let channel: RTCDataChannel;
     try { channel = prepared ?? pc.createDataChannel(label, label === "rd-fast" ? { ordered: false, maxRetransmits: 0 } : { ordered: true }); }
     catch { this.channelFault(label, "input_channel_create_failed"); return; }
@@ -413,11 +485,11 @@ export class WebRtcRemoteDesktopViewer {
     if (previous) { previous.onopen = previous.onclose = previous.onerror = previous.onmessage = previous.onbufferedamountlow = null; swallow(() => previous.close()); }
     this.channels.set(label, channel); channel.bufferedAmountLowThreshold = label === "rd-fast" ? 0 : 128 * 1024;
     if (label !== "rd-ctl") this.input.setLane(label, channel);
-    const current = () => !this.ended && this.pc === pc && this.channels.get(label) === channel;
+    const current = () => !this.ended && this.connection === pc && this.channels.get(label) === channel;
     channel.onopen = () => {
       if (!current()) return;
       this.recovery.delete(label); if (label !== "rd-ctl") this.input.setLane(label, channel);
-      if (label === "rd-ctl") { this.input.setReceiptsAvailable(true); this.ping(); }
+      if (label === "rd-ctl") { this.input.setReceiptsAvailable(true); this.ping(); this.startStandby(); if (this.descriptor.standby) this.options.onStandbyState?.("ready", this.now()); }
       this.updateState();
     };
     channel.onbufferedamountlow = () => { if (current()) this.input.flush(); };
@@ -441,20 +513,24 @@ export class WebRtcRemoteDesktopViewer {
     if (typeof raw !== "string" || new TextEncoder().encode(raw).length > WEBRTC_MESSAGE_BYTES) return;
     let data: Record<string, unknown>; try { data = JSON.parse(raw); } catch { return; }
     if (!data || data.v !== 1 || data.sid !== this.descriptor.session_id) return;
-    if (data.t === "rd.input_receipt") this.input.receipt(data);
+    if (data.t === "rd.started" && this.activation && data.request_id === this.activation.requestId) {
+      this.descriptor = { ...this.descriptor, standby: false };
+      this.options.onStandbyState?.("active", this.now());
+    }
+    else if (data.t === "rd.input_receipt") this.input.receipt(data);
     else if (data.t === "rd.path_probe_ready" && data.version === 1 && this.pathEnabled) this.pathProbe.enable();
-    else if (data.t === "rd.path_probe" && this.pathEnabled) void this.pathProbe.receive(data, this.gen);
+    else if (data.t === "rd.path_probe" && this.pathEnabled) void this.pathProbe.receive(data, this.generation);
     else if (data.t === "rd.pong" && typeof data.t_v === "number" && this.pingTimes.has(data.t_v)) {
       const ping = this.pingTimes.get(data.t_v)!;
       this.pingTimes.delete(data.t_v);
       const selected = this.selectedPath, rtt = boundedRtt(this.now() - ping.at);
       if (this.pathEnabled && selected && ping.key === selected.key && ping.pairId === selected.pairId && this.now() - selected.at <= 1500 && rtt !== undefined && rtt <= 3000) {
-        this.pathSelector.observe(selected.key, rtt, this.now(), "ctl", `${this.gen}:${selected.pairId}`);
+        this.pathSelector.observe(selected.key, rtt, this.now(), "ctl", `${this.generation}:${selected.pairId}`);
       }
       const received = data.host_receive_ms ?? data.t_h_recv ?? data.device_wall_ms;
       const sent = data.host_send_ms ?? data.t_h_send ?? data.device_wall_ms;
       if (typeof received === "number" && typeof sent === "number") this.telemetry.clock.sample(data.t_v, received, sent, this.wallNow(), this.now());
-    } else if (data.t === "rd.frame_time" && data.gen === this.gen && Array.isArray(data.frames) && data.frames.length <= 128) {
+    } else if (data.t === "rd.frame_time" && data.gen === this.generation && Array.isArray(data.frames) && data.frames.length <= 128) {
       this.captureMappingAvailable = true;
       for (const pair of data.frames) {
         if (!Array.isArray(pair) || pair.length !== 2) continue;
@@ -479,6 +555,7 @@ export class WebRtcRemoteDesktopViewer {
     this.lastPing = this.now();
   }
   sendControl(report: object): boolean {
+    if (this.replacement) return this.replacement.sendControl(report);
     if (this.ended) return false;
     const channel = this.channels.get("rd-ctl");
     if (!channel || channel.readyState !== "open" || channel.bufferedAmount > 256 * 1024) return false;
@@ -486,18 +563,32 @@ export class WebRtcRemoteDesktopViewer {
     if (new TextEncoder().encode(payload).length > WEBRTC_MESSAGE_BYTES) return false;
     try { channel.send(payload); return true; } catch { this.channelFault("rd-ctl", "control_send_failed"); return false; }
   }
-  send(action: RemoteDesktopAction): boolean { return !this.ended && this.input.send(action); }
-  releaseForHandoff(): Promise<void> { return this.input.releaseForHandoff(); }
-  finishHandoff(): void { this.input.finishHandoff(); }
-  lastSequence(): number { return this.input.lastSequence; }
+  activateStandby(requestId: string, clickedAt = this.now()): void {
+    if (this.replacement) return this.replacement.activateStandby(requestId, clickedAt);
+    if (!this.descriptor.standby || this.activation || !/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) return;
+    this.activation = { requestId, clickedAt, sent: false };
+    this.telemetry.rebaseClick(clickedAt);
+    this.options.onStandbyState?.("starting", this.now());
+    this.startStandby();
+  }
+  private startStandby(): void {
+    if (!this.activation || this.activation.sent) return;
+    this.activation.sent = this.sendControl({ t: "rd.start", seq: this.lastSequence() + 1, request_id: this.activation.requestId });
+    if (this.activation.sent) this.input.sequenceFloor(this.lastSequence() + 1);
+  }
+  send(action: RemoteDesktopAction): boolean { return this.replacement ? this.replacement.send(action) : !this.ended && !this.descriptor.standby && this.input.send(action); }
+  releaseForHandoff(): Promise<void> { return this.replacement ? this.replacement.releaseForHandoff() : this.input.releaseForHandoff(); }
+  finishHandoff(): void { if (this.replacement) this.replacement.finishHandoff(); else this.input.finishHandoff(); }
+  lastSequence(): number { return this.replacement?.lastSequence() ?? this.input.lastSequence; }
   attachVideo(video: HTMLVideoElement | null): void {
+    if (this.replacement) return this.replacement.attachVideo(video);
     const attachment = ++this.videoAttachment;
     if (this.video && this.frameCallback !== undefined) this.video.cancelVideoFrameCallback?.(this.frameCallback);
     if (this.video) { this.video.onloadeddata = null; this.video.ontimeupdate = null; if (this.video !== video) this.video.srcObject = null; }
     this.frameCallback = undefined; this.video = video; this.lastFrameCount = undefined;
     if (!video || this.ended) return;
     video.autoplay = true; video.muted = true; video.playsInline = true;
-    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) this.telemetry.step("first_frame_decoded_ms"); };
+    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { if (this.pendingReady) this.pendingReady(); else this.telemetry.step("first_frame_decoded_ms"); } };
     if (typeof video.requestVideoFrameCallback === "function") {
       const frame: VideoFrameRequestCallback = (_now, raw) => {
         if (this.ended || this.video !== video || this.videoAttachment !== attachment) return;
@@ -524,9 +615,10 @@ export class WebRtcRemoteDesktopViewer {
   private play(): void { try { const playing = this.video?.play(); playing?.catch(() => {}); } catch { /* attach before autoplay is permitted */ } }
   private frame(video: HTMLVideoElement, at: number, metadata: Partial<FrameMetadata>): void {
     if (this.ended || !video.videoWidth || !video.videoHeight) return;
-    if (this.pictureRebuilding && this.trackGeneration !== this.gen) return;
+    if (this.pendingReady) { this.pendingReady(); return; }
+    if (this.pictureRebuilding && this.trackGeneration !== this.generation) return;
     this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, this.captureMappingAvailable ? { ...metadata, captureTime: undefined } : metadata);
-    const sample: WebRtcPresentation = { session_frame_count: ++this.sessionFrameCount, peer_generation: this.gen, presented_at_ms: at };
+    const sample: WebRtcPresentation = { session_frame_count: ++this.sessionFrameCount, peer_generation: this.generation, presented_at_ms: at };
     if (this.lastPresentedAt !== undefined && at >= this.lastPresentedAt) sample.gap_ms = at - this.lastPresentedAt;
     this.lastPresentedAt = at;
     for (const key of ["expectedDisplayTime", "presentationTime", "captureTime", "receiveTime", "processingDuration", "presentedFrames", "rtpTimestamp"] as const) {
@@ -544,22 +636,23 @@ export class WebRtcRemoteDesktopViewer {
     swallow(() => this.options.onFrame(video.videoWidth, video.videoHeight));
   }
   private updateState(): void {
-    const pictureFault = this.pictureRebuilding || this.disconnectedAt !== undefined || this.peerRetryDue !== undefined;
+    const pictureFault = this.pictureRebuilding || this.disconnectedAt !== undefined || this.peerRetryDue !== undefined || Boolean(this.connection && ["failed", "closed"].includes(this.connection.connectionState));
     this.emitState(pictureFault ? "picture_reconnecting" : this.recovery.size ? "input_reconnecting" : this.hasFrame ? "playing" : "connecting");
   }
   private emitState(state: WebRtcViewerState): void { this.state = state; swallow(() => this.options.onState(state, this.telemetry.path)); }
   private tick(): void {
     if (this.ended) return;
     const now = this.now();
+    if (this.pending && (now - this.pending.started >= 30_000 || ["failed", "closed"].includes(this.pending.viewer.pc?.connectionState ?? ""))) this.cancelPending();
     if (now >= this.leaseDeadline) { this.close("lease_expired"); return; }
     // Decoder recovery uses the browser's RTCP PLI/FIR. A freeze is telemetry only;
     // there is no application keyframe timer or periodic-keyframe wait.
-    this.flushSignals(); this.input.tick(); this.telemetry.tick();
+    this.flushSignals(); this.startStandby(); this.input.tick(); this.telemetry.tick();
     const connecting = this.connectingOffer;
     if (connecting && !this.creating && !this.negotiatingPeer && !this.pathSwitch) {
       // A frame from a retired peer is not proof that this peer connected.
-      if (this.pc !== connecting.pc || connecting.gen !== this.gen || connecting.pc.connectionState === "connected") this.connectingOffer = undefined;
-      else if (now >= (connecting.answeredAt === undefined ? connecting.started + 2500 : connecting.answeredAt + 5000)) {
+      if (this.connection !== connecting.pc || connecting.gen !== this.generation || connecting.pc.connectionState === "connected") this.connectingOffer = undefined;
+      else if (now >= (connecting.answeredAt === undefined ? connecting.started + 12_000 : connecting.answeredAt + 10_000)) {
         // Same-gen duplicate SDP re-enters native answer negotiation, so never replay it.
         // Bound both missing answers and answers stuck checking on the same authorized
         // session; input sequences are not replayed and the session lease still bounds retries.
@@ -570,13 +663,13 @@ export class WebRtcRemoteDesktopViewer {
       // Give DCEP time to open. Retiring a connecting replacement every 200ms can starve a slow path.
       retry.due = now + Math.max(2000, retry.backoff); retry.backoff = Math.min(2000, retry.backoff * 2); this.createChannel(label);
     }
-    if (this.answerDue !== undefined && now >= this.answerDue && !this.creating && !this.negotiatingPeer && this.pc?.connectionState !== "connected") {
+    if (this.answerDue !== undefined && now >= this.answerDue && !this.creating && !this.negotiatingPeer && this.connection?.connectionState !== "connected") {
       this.answerDue = undefined; this.peerRetryDue = now;
     }
     if (this.peerRetryDue !== undefined && now >= this.peerRetryDue) { this.peerRetryDue = undefined; void this.createConnection(); }
-    else if (this.restartDue !== undefined && now >= this.restartDue && this.pc) {
+    else if (this.restartDue !== undefined && now >= this.restartDue && this.connection) {
       if (this.activeRoute) { this.pathSwitch = undefined; this.fallbackPath(); }
-      this.restartDue = now + this.restartBackoff; this.restartBackoff = Math.min(8000, this.restartBackoff * 2); void this.offer(this.pc, true);
+      this.restartDue = now + this.restartBackoff; this.restartBackoff = Math.min(8000, this.restartBackoff * 2); void this.offer(this.connection, true);
     }
     this.pathTick();
     if (now - this.lastPing >= 1000) this.ping();
@@ -584,11 +677,11 @@ export class WebRtcRemoteDesktopViewer {
     if (now - this.lastReport >= 10_000) { this.lastReport = now; const report = this.telemetry.report(false); swallow(() => this.options.onReport(report, false)); }
   }
   private async stats(): Promise<void> {
-    const pc = this.pc; if (!pc || this.statsPending) return;
+    const pc = this.connection; if (!pc || this.statsPending) return;
     this.statsPending = true;
     try {
       const stats = await pc.getStats();
-      if (this.pc !== pc || this.ended) return;
+      if (this.connection !== pc || this.ended) return;
       const all: Record<string, unknown>[] = []; stats.forEach(value => all.push(value));
       const byId = new Map(all.map(value => [value.id, value]));
       const transport = all.find(value => value.type === "transport" && value.selectedCandidatePairId);
@@ -631,13 +724,13 @@ export class WebRtcRemoteDesktopViewer {
     finally { this.statsPending = false; }
   }
   private fallbackPath(): void {
-    if (!this.pc || !this.activeRoute) return;
+    if (!this.connection || !this.activeRoute) return;
     this.pathSelector.failed(this.activeRoute, this.now()); this.activeRoute = undefined;
-    try { this.pc.setConfiguration({ ...this.pc.getConfiguration(), iceTransportPolicy: this.icePolicy, iceServers: this.iceServers() }); } catch { /* peer recovery uses all routes */ }
+    try { this.connection.setConfiguration({ ...this.connection.getConfiguration(), iceTransportPolicy: this.icePolicy, iceServers: this.iceServers() }); } catch { /* peer recovery uses all routes */ }
   }
   private pathTick(): void {
-    if (!this.pathEnabled || !this.pc) return;
-    const now = this.now(), pc = this.pc, routes = pathRoutes(this.descriptor.ice_servers);
+    if (!this.pathEnabled || !this.connection || this.pending || this.staging) return;
+    const now = this.now(), pc = this.connection, routes = pathRoutes(this.descriptor.ice_servers);
     if (this.telemetry.path) {
       const path = this.telemetry.path;
       delete path.direct_rtt_ms; delete path.relay_rtt_ms; delete path.best_relay_region; delete path.comparison_source;
@@ -652,7 +745,7 @@ export class WebRtcRemoteDesktopViewer {
       void this.createConnection(previous ?? routes.find(route => route.kind === "direct")); return;
     }
     const allowed = this.hasFrame && !this.pathSwitch && !this.creating && !this.negotiatingPeer && !this.pendingSignals.length && this.disconnectedAt === undefined && this.peerRetryDue === undefined && pc.connectionState === "connected" && (!pc.signalingState || pc.signalingState === "stable") && this.channels.get("rd-ctl")?.readyState === "open";
-    this.pathProbe.tick(routes, this.selectedPath?.key, this.gen, allowed);
+    this.pathProbe.tick(routes, this.selectedPath?.key, this.generation, allowed);
     if (!allowed || !this.selectedPath || now - this.selectedPath.at > 1500) return;
     const route = this.pathSelector.choose(this.selectedPath.key, now);
     if (!route) return;
@@ -667,18 +760,20 @@ export class WebRtcRemoteDesktopViewer {
     this.input.setReceiptsAvailable(false);
     for (const channel of this.channels.values()) { channel.onopen = channel.onclose = channel.onerror = channel.onmessage = channel.onbufferedamountlow = null; swallow(() => channel.close()); }
     this.channels.clear(); this.input.setLane("rd-input", null); this.input.setLane("rd-fast", null);
-    if (this.pc) {
-      const pc = this.pc; this.pc = null;
+    if (this.connection) {
+      const pc = this.connection; this.connection = null;
       pc.onicecandidate = pc.ontrack = pc.onconnectionstatechange = pc.oniceconnectionstatechange = null;
       swallow(() => pc.close());
     }
   }
   close(reason = "viewer_left"): void {
+    if (this.replacement) return this.replacement.close(reason);
+    if (this.pending) { this.pending.viewer.retire(); this.pending = undefined; }
     if (this.ended) return;
     if (this.options.initialPeer) { swallow(() => this.options.initialPeer!.pc.close()); this.options.initialPeer = undefined; }
     this.pathProbe.reset();
     this.input.close();
-    if (reason === "viewer_left") { try { this.options.sendSignal({ k: "bye", reason, gen: this.gen }); } catch { /* best effort */ } }
+    if (reason === "viewer_left") { try { this.options.sendSignal({ k: "bye", reason, gen: this.generation }); } catch { /* best effort */ } }
     this.ended = true;
     if (this.timer) clearInterval(this.timer); this.timer = undefined;
     this.attachVideo(null); this.detachPeer(); this.recovery.clear(); this.pendingSignals = []; this.candidates = []; this.pingTimes.clear();

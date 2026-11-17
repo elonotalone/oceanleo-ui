@@ -223,7 +223,7 @@ export function useRemoteDesktopSession(context: RemoteDesktopPanelContext, prop
       let result: Awaited<ReturnType<typeof sessionClient.createSession>>;
       let capabilityAttempt = 0;
       for (;;) {
-        result = await sessionClient.createSession(deviceId, { signal: abort.signal, requestId, ownerDirect: !agentRequest });
+        result = await sessionClient.createSession(deviceId, { signal: abort.signal, requestId, clickedAt, ownerDirect: !agentRequest });
         if (result.ok || result.error !== "media_capabilities_stale" || capabilityAttempt >= 2 || abort.signal.aborted) break;
         capabilityAttempt++;
         setMessage(`等待电脑上报画面能力…（${capabilityAttempt}/3）`);

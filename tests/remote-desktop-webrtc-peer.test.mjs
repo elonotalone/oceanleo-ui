@@ -99,11 +99,14 @@ test('late async answer/candidate exceptions and observer throws do not stop dir
   const h=await harness(t,{onState(){throw Error('observer');},onFrame(){throw Error('observer');}});await h.viewer.start();h.open();const pc=h.viewer.pc;
   pc.rejectCandidate=true;await h.viewer.signal({k:'answer',gen:1,sdp:'answer'});await h.viewer.signal({k:'candidate',gen:1,candidate:'bad'});await settle();assert.equal(pc.closed,0);
 });
-test('replacement peer stays picture_reconnecting until its track presents a frame',async t=>{
-  const h=await harness(t);await h.viewer.start();h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,captureTime:90});
-  h.viewer.pc.state('failed');await h.advance(200);h.open();assert.equal(h.states.at(-1).state,'picture_reconnecting');
-  video.frame({expectedDisplayTime:320,captureTime:300});assert.equal(h.states.at(-1).state,'picture_reconnecting');
-  h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'new-track'}]});video.frame({expectedDisplayTime:350,captureTime:330});assert.equal(h.states.at(-1).state,'playing');
+test('replacement keeps the old picture attached until a new track decodes',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const old=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,captureTime:90});
+  old.state('failed');await h.advance(200);h.open();assert.equal(h.states.at(-1).state,'picture_reconnecting');
+  const pending=h.viewer.pending;assert.ok(pending);assert.equal(old.closed,0);
+  h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'new-track'}]});
+  assert.equal(video.srcObject,null,'the current old source remains attached while pending decodes');
+  pending.video.onloadeddata();assert.equal(old.closed,1);assert.equal(video.srcObject.id,'new-track');
+  video.frame({expectedDisplayTime:350,captureTime:330});assert.equal(h.states.at(-1).state,'playing');
 });
 test('a producing track is observed before attachment and its single first frame makes the viewer ready',async t=>{
   const presentations=[];const h=await harness(t,{onPresentation:sample=>presentations.push(sample)});await h.viewer.start();h.open();
@@ -118,16 +121,25 @@ test('a producing track is observed before attachment and its single first frame
   assert.deepEqual(presentations,[{session_frame_count:1,peer_generation:1,presented_at_ms:112,presentationTime:105,expectedDisplayTime:112,presentedFrames:1,rtpTimestamp:9000}]);
   assert.equal(video.callbacks.size,1,'the next frame is observed but is not required for readiness');
 });
-test('presentation count and actual picture gap survive peer replacement while browser counters reset',async t=>{
+test('presentation count includes working old frames and ignores retired callbacks after promotion',async t=>{
   const samples=[];const h=await harness(t,{onPresentation:sample=>samples.push(sample)});await h.viewer.start();h.open();
   const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,presentedFrames:96});
-  const retiredCallback=[...video.callbacks.values()][0];
   h.viewer.pc.state('failed');await h.advance(200);h.open();
-  video.frame({expectedDisplayTime:320,presentedFrames:97});assert.equal(samples.length,1,'retired track does not advance the session count');
+  video.frame({expectedDisplayTime:320,presentedFrames:97});assert.equal(samples.length,2,'active old frames still count while pending negotiates');
+  const retiredCallback=[...video.callbacks.values()][0];const pending=h.viewer.pending;
   h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'replacement'}]});
-  retiredCallback(400,{expectedDisplayTime:400,presentedFrames:98});assert.equal(samples.length,1,'an already-queued old-track callback stays retired after the new track arrives');
+  pending.video.onloadeddata();
+  retiredCallback(400,{expectedDisplayTime:400,presentedFrames:98});assert.equal(samples.length,2,'queued retired callback cannot count as a new-gen frame');
   video.frame({expectedDisplayTime:450,presentedFrames:1});video.frame({expectedDisplayTime:480,presentedFrames:2});
-  assert.deepEqual(samples.map(s=>[s.session_frame_count,s.peer_generation,s.presentedFrames,s.gap_ms]),[[1,1,96,undefined],[2,2,1,340],[3,2,2,30]]);
+  assert.deepEqual(samples.map(s=>[s.session_frame_count,s.peer_generation,s.presentedFrames,s.gap_ms]),[[1,1,96,undefined],[2,1,97,210],[3,2,1,130],[4,2,2,30]]);
+});
+test('failed pending peer never closes working active peer, and next attempt uses a fresh generation',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const old=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
+  await h.viewer.createConnection();const pending=h.viewer.pc;assert.equal(h.viewer.gen,2);assert.equal(old.closed,0);
+  pending.state('failed');await h.advance(100);assert.equal(old.closed,0);assert.equal(h.viewer.pc,old);
+  assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);old.channel('rd-ctl').message({t:'rd.input_receipt',seq:h.viewer.lastSequence(),status:'executed',executed_at_ms:h.wall()});
+  video.frame({expectedDisplayTime:250});assert.equal(h.states.at(-1).state,'playing');assert.deepEqual(h.terminals,[]);
+  await h.viewer.createConnection();assert.equal(h.viewer.gen,3);assert.equal(old.closed,0);
 });
 test('presentation observer exceptions cannot prevent first picture, input or next-frame observation',async t=>{
   const h=await harness(t,{onPresentation(){throw Error('diagnostic observer');}});await h.viewer.start();h.open();
@@ -277,7 +289,7 @@ test('page reload advances the same session peer generation without storing cred
 test('lost recovery answer retries a fresh generation while preserving session and input sequence',async t=>{
  const h=await harness(t);await h.viewer.start();h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
  h.viewer.send({kind:'keypress',key:'A'});const seq=h.viewer.lastSequence();h.viewer.pc.state('failed');await h.advance(200);const waiting=h.viewer.pc,gen=h.viewer.gen;
- await h.advance(2400);assert.equal(h.viewer.pc,waiting);await h.advance(100);
+ await h.advance(11_900);assert.equal(h.viewer.pc,waiting);await h.advance(100);
  assert.notEqual(h.viewer.pc,waiting);assert.equal(h.viewer.gen,gen+1);assert.equal(h.viewer.lastSequence(),seq);assert.deepEqual(h.terminals,[]);
  await h.viewer.signal({k:'answer',gen,sdp:'late'});assert.equal(h.viewer.pc.remoteDescription,undefined);
  await h.viewer.signal({k:'answer',gen:h.viewer.gen,sdp:'current'});const answered=h.viewer.pc;h.open();await h.advance(6000);assert.equal(h.viewer.pc,answered);
@@ -286,7 +298,7 @@ test('a retained old frame cannot disable the replacement peer ICE checking dead
  const h=await harness(t);await h.viewer.start();h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
  h.viewer.send({kind:'keypress',key:'A'});const seq=h.viewer.lastSequence();h.viewer.pc.state('failed');await h.advance(200);const waiting=h.viewer.pc,gen=h.viewer.gen;
  await h.viewer.signal({k:'answer',gen,sdp:'answer-without-connection'});
- await h.advance(4900);assert.equal(h.viewer.pc,waiting);assert.equal(h.frames.length,1);
+ await h.advance(9900);assert.equal(h.viewer.pc,waiting);assert.equal(h.frames.length,1);
  await h.advance(100);assert.notEqual(h.viewer.pc,waiting);assert.equal(h.viewer.gen,gen+1);
  assert.equal(h.viewer.lastSequence(),seq);assert.deepEqual(h.terminals,[]);
  await h.viewer.signal({k:'answer',gen,sdp:'retired-answer'});assert.equal(h.viewer.pc.remoteDescription,undefined);
@@ -305,7 +317,7 @@ test('cold unanswered offer is never replayed before replacing only its peer; co
  const h=await harness(t);await h.viewer.start();const cold=h.viewer.pc,first={...h.signals[0]};
  await h.advance(1200);assert.equal(h.viewer.pc,cold);assert.equal(h.viewer.gen,1);assert.equal(cold.offers.length,1);
  assert.deepEqual(h.signals.filter(s=>s.k==='offer'),[first]);
- await h.advance(1300);assert.notEqual(h.viewer.pc,cold);assert.equal(h.viewer.gen,2);assert.equal(h.peers.length,2);assert.deepEqual(h.terminals,[]);
+ await h.advance(10_800);assert.notEqual(h.viewer.pc,cold);assert.equal(h.viewer.gen,2);assert.equal(h.peers.length,2);assert.deepEqual(h.terminals,[]);
  const healthy=h.viewer.pc;
  healthy.ontrack({track:{kind:'video'},receiver:{},streams:[{}]});
  h.open();const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,receiveTime:100});
@@ -316,7 +328,7 @@ test('cold answer gets a bounded ICE checking window then recovers only the peer
  await h.advance(300);assert.equal(h.signals.filter(s=>s.k==='offer').length,1);
  await h.viewer.signal({k:'answer',gen:1,sdp:'answer'});await h.advance(3000);
  assert.equal(h.viewer.pc,pc);assert.equal(h.signals.filter(s=>s.k==='offer').length,1);
- await h.advance(2000);assert.notEqual(h.viewer.pc,pc);assert.equal(h.viewer.gen,2);assert.equal(h.peers.length,2);assert.deepEqual(h.terminals,[]);
+ await h.advance(7000);assert.notEqual(h.viewer.pc,pc);assert.equal(h.viewer.gen,2);assert.equal(h.peers.length,2);assert.deepEqual(h.terminals,[]);
  assert.equal(pc.channels.flatMap(c=>c.sent).some(v=>v.a),false);
  h.viewer.close();const count=h.signals.length;await h.advance(3000);assert.equal(h.signals.length,count);
 });
@@ -371,4 +383,20 @@ test('failed local SDP discards candidates that have no transmitted offer', asyn
   await h.viewer.start(); h.viewer.flushSignals();
   assert.deepEqual(h.signals, []);
   assert.equal(h.viewer.pendingSignals.length, 0);
+});
+test('standby waits for an open control channel and matching fresh-start approval before input',async t=>{
+  const standby=[];const h=await harness(t,{descriptor:descriptor({standby:true}),onStandbyState:(...args)=>standby.push(args)});await h.viewer.start();
+  h.viewer.activateStandby('fresh_start_request',50);assert.equal(h.viewer.send({kind:'keypress',key:'A'}),false);
+  assert.equal(h.viewer.pc.channel('rd-ctl').sent.length,0);h.open();
+  const starts=h.viewer.pc.channel('rd-ctl').sent.filter(v=>v.t==='rd.start');assert.equal(starts.length,1);
+  assert.deepEqual(starts[0],{t:'rd.start',v:1,sid:'sid',seq:1,request_id:'fresh_start_request'});
+  h.viewer.pc.channel('rd-ctl').message({t:'rd.started',request_id:'wrong'});assert.equal(h.viewer.send({kind:'keypress',key:'A'}),false);
+  h.viewer.pc.channel('rd-ctl').message({t:'rd.started',request_id:'fresh_start_request'});assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);
+  assert.ok(h.viewer.lastSequence()>1);assert.ok(standby.some(([state])=>state==='active'));await h.advance(1000);
+  assert.equal(h.viewer.pc.channel('rd-ctl').sent.filter(v=>v.t==='rd.start').length,1);
+});
+test('pending authority revocation closes both generations, whereas pending network failure preserves active',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const old=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
+  await h.viewer.createConnection();const pending=h.viewer.pc;await h.viewer.signal({k:'bye',gen:2,reason:'consent_revoked'});
+  assert.equal(old.closed,1);assert.equal(pending.closed,1);assert.deepEqual(h.terminals,['consent_revoked']);
 });

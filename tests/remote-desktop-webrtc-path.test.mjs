@@ -110,11 +110,12 @@ test('measured relay migration creates a relay-only gen+1 on the same authorized
   const h = await connected(t), old = h.pc;
   h.viewer.send({ kind: 'keypress', key: 'A' }); const seq = h.viewer.lastSequence(); h.receipt(seq);
   await iceWindow(h); const next = h.viewer.pc;
-  assert.notEqual(next, old); assert.equal(h.viewer.gen, 2); assert.equal(old.closed, 1);
+  assert.notEqual(next, old); assert.equal(h.viewer.gen, 2); assert.equal(old.closed, 0);
   assert.equal(next.configuration.iceTransportPolicy, 'relay'); assert.deepEqual(next.configuration.iceServers, relayA.servers);
   assert.deepEqual(next.offers, [undefined]); assert.equal(h.peers.length, 2);
   assert.equal(h.signals.filter(s => s.k === 'offer').at(-1).gen, 2);
   h.open(); await h.viewer.signal({ k: 'answer', gen: 2, sdp: 'relay-answer' });
+  h.viewer.pending.video.onloadeddata(); assert.equal(old.closed, 1);
   next.statsEntries = stats({ selected: 'a', responses: 20 }); await h.advance(1000);
   assert.equal(h.viewer.send({ kind: 'keypress', key: 'B' }), true); assert.ok(h.viewer.lastSequence() > seq);
   assert.deepEqual(h.terminals, []); assert.equal(h.states.at(-1).path.relay_region, 'guangzhou');
@@ -126,9 +127,9 @@ test('relay disconnection retains existing grace and recovers on the migrated pe
   pc.ice('disconnected'); await h.advance(2000);
   assert.equal(pc.configuration.iceTransportPolicy, 'all'); assert.equal(pc.closed, 0); assert.equal(h.viewer.gen, 2); assert.deepEqual(h.terminals, []);
 });
-test('unconfirmed migration rolls back using another fresh peer and cools the failed relay', async t => {
-  const h = await connected(t); await iceWindow(h); const failed = h.viewer.pc; await h.advance(10_000);
-  assert.notEqual(h.viewer.pc, failed); assert.equal(failed.closed, 1); assert.equal(h.viewer.gen, 3);
+test('unconfirmed migration discards pending and keeps the already working peer', async t => {
+  const h = await connected(t); await iceWindow(h); const failed = h.viewer.pc; await h.advance(30_000);
+  assert.notEqual(h.viewer.pc, failed); assert.equal(failed.closed, 1); assert.equal(h.viewer.pc, h.pc); assert.equal(h.viewer.gen, 1); assert.equal(h.pc.closed, 0);
   assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'all'); assert.deepEqual(h.terminals, []);
 });
 test('getStats rejection does not restart or end the session', async t => {
@@ -138,6 +139,7 @@ test('getStats rejection does not restart or end the session', async t => {
 test('confirmed relay returns to direct with another generation after the minimum dwell', async t => {
   const h = await connected(t); await iceWindow(h); const relay = h.viewer.pc;
   h.open(); await h.viewer.signal({ k: 'answer', gen: 2, sdp: 'relay-answer' });
+  h.viewer.pending.video.onloadeddata(); h.video.frame({expectedDisplayTime:h.now()});
   relay.statsEntries = stats({ selected: 'a', responses: 20 }); await h.advance(1000);
   for (let i = 0; i < 59; i++) {
     relay.statsEntries = stats({ selected: 'a', directRtt: 20, relayRtt: 100, otherRtt: 110, responses: 100 + i }); await h.advance(1000);
@@ -145,13 +147,13 @@ test('confirmed relay returns to direct with another generation after the minimu
   assert.equal(h.viewer.pc, relay);
   relay.statsEntries = stats({ selected: 'a', directRtt: 20, relayRtt: 100, otherRtt: 110, responses: 200 }); await h.advance(1500);
   assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'all'); assert.equal(h.viewer.gen, 3);
-  assert.equal(relay.closed, 1); assert.equal(h.peers.length, 3);
+  assert.equal(relay.closed, 0); assert.equal(h.peers.length, 3);
 });
 test('unconfirmed migration rolls back with renewed credentials when stats fail', async t => {
   const h = await connected(t); await iceWindow(h);
   const renewed = servers.map(server => ({ ...server, credential: 'renewed' }));
   h.viewer.updateDescriptor(descriptor({ ice_servers: renewed, server_now: WALL / 1000 + 1, lease_expires_at: new Date(WALL + 180000).toISOString() }));
-  h.viewer.pc.getStats = async () => { throw Error('unavailable'); }; await h.advance(11_000);
+  h.viewer.pc.getStats = async () => { throw Error('unavailable'); }; await h.advance(30_000);
   assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'all');
   assert.ok(h.viewer.pc.configuration.iceServers.every(server => server.credential === 'renewed'));
   h.viewer.close(); const path = h.reports.at(-1).report.path;
@@ -259,6 +261,6 @@ test('capability-gated pong survey actually switches the live media peer with fr
   }
   await h.advance(100);
   assert.equal(h.viewer.pc.configuration.iceTransportPolicy, 'relay'); assert.notEqual(h.viewer.pc, h.pc);
-  assert.equal(h.viewer.gen, 2); assert.equal(h.pc.closed, 1); assert.equal(h.viewer.pc.offers.length, 1);
+  assert.equal(h.viewer.gen, 2); assert.equal(h.pc.closed, 0); assert.equal(h.viewer.pc.offers.length, 1);
   assert.deepEqual(h.terminals, []);
 });

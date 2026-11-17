@@ -46,7 +46,7 @@ export async function openRemoteWebRtcStream(
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   let socket: WebSocket | null = null, peer: WebRtcRemoteDesktopViewer | null = null;
   let ended = false, ending = false, settled = false, authenticated = false, authFrameSent = false, inputAllowed = true;
-  const clickedAt = Number.isFinite(options.clickedAt) ? options.clickedAt! : monotonic();
+  let clickedAt = Number.isFinite(options.clickedAt) ? options.clickedAt! : monotonic();
   let state: RemoteDesktopSessionState = "pending_consent";
   let video: HTMLVideoElement | null = null, descriptor: RemoteWebRtcDescriptor | null = null;
   let leaseDeadline = Infinity, renewalAt = Infinity, leaseIdentity = -Infinity;
@@ -178,7 +178,7 @@ export async function openRemoteWebRtcStream(
     // Repeated snapshots of one lease must not turn a stale timestamp into extra time.
     leaseDeadline = expiresAt === leaseIdentity ? Math.min(leaseDeadline, deadline) : deadline;
     leaseIdentity = expiresAt;
-    renewalAt = leaseDeadline - 60_000;
+    renewalAt = value.standby ? Infinity : leaseDeadline - 60_000;
     descriptor = value;
     if (leaseDeadline <= monotonic()) { finish("lease_expired"); return false; }
     if (peer) { peer.updateDescriptor(value); return true; }
@@ -188,6 +188,7 @@ export async function openRemoteWebRtcStream(
       initialPeer,
       sendSignal: enqueueSignal,
       onState: (next, path) => { if (!ended) handlers.webrtcState?.(next, path); },
+      onStandbyState: (state, at) => handlers.standbyState?.(state, at),
       onPresentation: sample => { if (!ended) handlers.webrtcPresentation?.(sample); },
       onFrame: (width, height) => {
         if (ended) return;
@@ -227,6 +228,8 @@ export async function openRemoteWebRtcStream(
     })();
   };
   const stream: RemoteDesktopStream = {
+    activateStandby: (requestId, at) => { clickedAt = at; peer?.activateStandby(requestId, at); },
+    renewStandby: () => write({ type: "standby.renew" }),
     transport: "webrtc-v1", attachVideo: value => { video = value; peer?.attachVideo(value); },
     send: action => !ended && Boolean(peer) && (inputAllowed || action.kind === "release_all") && peer!.send(action),
     sendViewerReport: value => !ended && Boolean(peer?.sendControl(value)),

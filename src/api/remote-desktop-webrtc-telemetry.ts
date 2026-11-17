@@ -71,6 +71,11 @@ export class WebRtcTelemetry {
   private freezeActive = false; private freezeAccounted = 0;
   private options: { sessionId: string; deviceId?: string; clickedAt: number; now(): number; wallNow(): number };
   constructor(options: WebRtcTelemetry["options"]) { this.options = options; this.windowStart = options.wallNow(); }
+  rebaseClick(at: number): void {
+    const shift = at - this.options.clickedAt;
+    for (const key of Object.keys(this.steps) as (keyof WebRtcQualityReport["steps"])[]) this.steps[key] = Math.max(0, this.steps[key]! - shift);
+    this.options.clickedAt = at;
+  }
   step(name: keyof WebRtcQualityReport["steps"], at = this.options.now()): void { if (this.steps[name] === undefined) this.steps[name] = integer(at - this.options.clickedAt, 600_000); }
   written(): void { this.total.writes++; this.window.writes++; }
   receipt(write: WebRtcInputWrite, receipt: WebRtcInputReceipt): void {

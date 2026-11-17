@@ -57,7 +57,7 @@ export async function harness(t, options={}) {
   const peers=[],signals=[],states=[],frames=[],terminals=[],reports=[];
   let signalAvailable=true;
   const viewer=new WebRtcRemoteDesktopViewer({descriptor:descriptor(),deviceId:'device',clickedAt:0,
-    now:()=>now,wallNow:()=>wall,createPeer:configuration=>{const pc=new FakePeer(configuration);peers.push(pc);return pc;},
+    now:()=>now,wallNow:()=>wall,createVideo:()=>new FakeVideo(),createPeer:configuration=>{const pc=new FakePeer(configuration);peers.push(pc);return pc;},
     sendSignal:data=>{if(!signalAvailable)return false;signals.push(data);return true;},onState:(state,path)=>states.push({state,path}),
     onFrame:(...args)=>frames.push(args),onTerminal:reason=>terminals.push(reason),onReport:(report,final)=>reports.push({report,final}),...viewerOptions});
   t.after(()=>viewer.close());

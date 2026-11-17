@@ -1,3 +1,4 @@
+import { claimRemoteDesktopStandbySession, claimRemoteDesktopStandbyStream } from "./remote-desktop-webrtc-standby";
 "use client";
 
 /**
@@ -101,6 +102,8 @@ export function parseRemoteDesktopActivity(value: unknown): RemoteDesktopActivit
 }
 
 export interface RemoteDesktopStatus {
+  standby_allowed?: boolean;
+  capabilities?: string[];
   supported: boolean;
   enabled: boolean;
   online: boolean;
@@ -120,6 +123,7 @@ export type RemoteDesktopStatusReason = "remote_desktop_device_reconnecting" | "
 const STATUS_REASONS: readonly RemoteDesktopStatusReason[] = ["remote_desktop_device_reconnecting", "remote_desktop_unavailable", "signed_out"];
 
 export interface RemoteDesktopSession {
+  standby?: boolean; standby_expires_at?: string;
   session_id: string;
   state: "pending_consent" | "connecting";
   expires_at: string;
@@ -185,6 +189,8 @@ export interface RemoteDesktopRequestOptions {
   requestId?: string;
   /** The authenticated owner opened this from 我的设备; agent takeover stays consent-gated. */
   ownerDirect?: boolean;
+  /** Internal visible-owner prewarm; never captures until a fresh rd.start approval. */
+  standby?: boolean;
   /** openStream on re-attach: continue input numbering above this (the previous socket's last seq). */
   sequenceFloor?: number;
   transport?: "artc-v1" | "webrtc-v1";
@@ -249,6 +255,8 @@ export function dataChannelMessage(sessionId: string, seq: number, action: Remot
 }
 
 export interface RemoteDesktopStream {
+  activateStandby?(requestId: string, clickedAt: number): void;
+  renewStandby?(): boolean;
   transport?: "artc-v1" | "webrtc-v1";
   attachVideo?(video: HTMLVideoElement | null): void;
   /** Shared actual-write history; measurement never owns another seq/timestamp map. */
@@ -272,6 +280,7 @@ export interface RemoteDesktopStream {
 }
 
 export interface RemoteDesktopStreamHandlers {
+  standbyState?(state: "connecting" | "ready" | "starting" | "active", at: number): void;
   webrtcState?(state: RemoteWebRtcViewerState, path?: RemoteWebRtcPath): void;
   webrtcFrame?(width: number, height: number): void;
   webrtcPresentation?(sample: WebRtcPresentation): void;
@@ -321,6 +330,10 @@ export function parseRemoteBilling(data: unknown): RemoteDesktopBilling | null {
 
 /** Authenticated session control and telemetry. Media and input use ARTC exclusively. */
 async function openStream(deviceId: string, sessionId: string, handlers: RemoteDesktopStreamHandlers, options?: RemoteDesktopRequestOptions): Promise<RemoteDesktopApiResult<RemoteDesktopStream>> {
+  if (!options?.standby) {
+    const standby = claimRemoteDesktopStandbyStream(deviceId, sessionId, handlers, options);
+    if (standby) return standby;
+  }
   if (options?.transport === "webrtc-v1") return openRemoteWebRtcStream(deviceId, sessionId, handlers, { ...webRtcSessionTimes.get(sessionId), ...options }, remoteDesktopClient, {
     descriptor: parseRemoteWebRtcDescriptor, mediaStatus: parseRemoteMediaStatus,
     access: parseRemoteAccess, billing: parseRemoteBilling, activity: parseRemoteDesktopActivity,
@@ -639,6 +652,8 @@ export function parseRemoteWebRtcDescriptor(data: unknown, sessionId?: string): 
     iceServers.push({ urls: [...urls], ...(typeof server.username === "string" ? { username: server.username } : {}), ...(typeof server.credential === "string" ? { credential: server.credential } : {}), ...(typeof server.region === "string" ? { region: server.region } : {}) });
   }
   return { transport: "webrtc-v1", role: "viewer", session_id: data.session_id, display_id: data.display_id as string | null,
+    ...(typeof data.standby === "boolean" ? { standby: data.standby } : {}),
+    ...(typeof data.standby_expires_at === "string" ? { standby_expires_at: data.standby_expires_at } : {}),
     ice_servers: iceServers, ice_expires_at: data.ice_expires_at as string, server_now: data.server_now, lease_expires_at: data.lease_expires_at as string };
 }
 
@@ -679,6 +694,8 @@ function parseStatus(data: unknown): RemoteDesktopStatus | null {
   }
   const sessionId = typeof data.session_id === "string" ? data.session_id : null;
   return {
+    ...(typeof data.standby_allowed === "boolean" ? { standby_allowed: data.standby_allowed } : {}),
+    ...(Array.isArray(data.capabilities) ? { capabilities: data.capabilities.filter((v): v is string => typeof v === "string") } : {}),
     supported: data.supported,
     enabled: data.enabled,
     online: data.online,
@@ -717,12 +734,16 @@ export const remoteDesktopClient: RemoteDesktopClient = {
   },
 
   async createSession(deviceId, options) {
+    if (!options?.standby && options?.ownerDirect) {
+      const standby = claimRemoteDesktopStandbySession(deviceId, options);
+      if (standby) { const result = await standby; if (result.ok) return result; }
+    }
     const registered = await registerController(options?.signal);
     if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
     // One request id for every attempt: the gateway hands a retry the session the first
     // attempt created (its reply lost on the way) instead of a second consent request.
     const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"],
-      ...(options?.ownerDirect === true ? { owner_direct: true } : {}) });
+      ...(options?.ownerDirect === true ? { owner_direct: true } : {}), ...(options?.standby ? { standby: true } : {}) });
     const started = Date.now();
     let result: RemoteDesktopApiResult<unknown>;
     const prepared = await createPreparedRemoteWebRtcSession(deviceId, JSON.parse(body), options?.signal);
@@ -756,6 +777,7 @@ export const remoteDesktopClient: RemoteDesktopClient = {
       ok: true,
       data: {
         session_id: data.session_id,
+        ...(data.standby === true ? { standby: true, standby_expires_at: typeof data.standby_expires_at === "string" ? data.standby_expires_at : "" } : {}),
         state: data.state,
         expires_at: typeof data.expires_at === "string" ? data.expires_at : "",
         transport,

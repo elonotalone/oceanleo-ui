@@ -1,6 +1,6 @@
 "use client";
 
-import { prepareRemoteWebRtcSocket } from "../api/remote-desktop-webrtc-preconnect";
+import { prepareRemoteDesktopStandby } from "../api/remote-desktop-webrtc-standby";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { deviceErrorCopy } from "../api/device-error-copy";
@@ -142,13 +142,32 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
       legacyImportErrorProp !== undefined ? legacyImportErrorProp : legacyImportErrorFromLocation(),
     );
   }, [legacyImportErrorProp]);
-  const warmDeviceIds = devices.filter(device => isComputer(device) && deviceAvailability(device) === "online")
-    .slice(0, 4).map(device => device.device_id).join(",");
+  const standbyDeviceIds = devices.filter(device => isComputer(device) && device.device_id !== localDeviceId
+    && deviceAvailability(device, remoteStatus[device.device_id]) === "online"
+    && remoteStatus[device.device_id]?.standby_allowed === true
+    && remoteStatus[device.device_id]?.capabilities?.includes("remote-desktop-standby-v1"))
+    .map(device => device.device_id).join(",");
   useEffect(() => {
-    if (loginRequired || remoteDesktopClient !== defaultRemoteDesktopClient) return;
-    const releases = warmDeviceIds.split(",").filter(Boolean).map(prepareRemoteWebRtcSocket);
-    return () => releases.forEach(release => release());
-  }, [warmDeviceIds, loginRequired, remoteDesktopClient, authRevision]);
+    if (loginRequired || remoteDesktopClient !== defaultRemoteDesktopClient || typeof IntersectionObserver === "undefined") return;
+    const eligible = standbyDeviceIds.split(",").filter(Boolean), intersecting = new Set<string>();
+    let current: string | undefined, release: (() => void) | undefined;
+    const update = () => {
+      const next = document.visibilityState === "visible" ? eligible.find(id => intersecting.has(id)) : undefined;
+      if (next === current) return;
+      release?.(); release = undefined; current = next;
+      if (next) release = prepareRemoteDesktopStandby(next, remoteDesktopClient);
+    };
+    const observer = new IntersectionObserver(changes => {
+      for (const change of changes) {
+        const id = (change.target as HTMLElement).dataset.deviceCard;
+        if (id) { if (change.isIntersecting && change.intersectionRatio > 0) intersecting.add(id); else intersecting.delete(id); }
+      }
+      update();
+    }, { threshold: [0, 0.1] });
+    for (const card of document.querySelectorAll<HTMLElement>("[data-device-card]")) if (eligible.includes(card.dataset.deviceCard ?? "")) observer.observe(card);
+    document.addEventListener("visibilitychange", update);
+    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", update); release?.(); };
+  }, [standbyDeviceIds, loginRequired, remoteDesktopClient, authRevision]);
   const generation = useRef(0);
   const order = useRef<string[]>([]);
   /** Apply a fresh list in the page's stable card order. */

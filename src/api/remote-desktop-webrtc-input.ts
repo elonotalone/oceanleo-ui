@@ -39,6 +39,7 @@ export class WebRtcInputScheduler {
     if (Number.isSafeInteger(options.sequenceFloor) && options.sequenceFloor! >= 0) this.sequence = options.sequenceFloor!;
   }
   get lastSequence(): number { return this.sequence; }
+  sequenceFloor(value: number): void { if (Number.isSafeInteger(value) && value >= this.sequence) this.sequence = value; }
   get queuedCount(): number { return this.queue.length; }
   get heldCount(): number { return this.held.size; }
   setReceiptsAvailable(available: boolean): void {
