@@ -50,6 +50,7 @@ export async function openRemoteWebRtcStream(
   let state: RemoteDesktopSessionState = "pending_consent";
   let video: HTMLVideoElement | null = null, descriptor: RemoteWebRtcDescriptor | null = null;
   let leaseDeadline = Infinity, renewalAt = Infinity, leaseIdentity = -Infinity;
+  let standbyIdentity: string | undefined;
   let reconnectWindow = 180_000, disconnectedAt = monotonic(), retryDelay = 200;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let socketTimeout: ReturnType<typeof setTimeout> | undefined;
@@ -174,9 +175,11 @@ export async function openRemoteWebRtcStream(
     if (ended) return false;
     const expiresAt = Date.parse(value.lease_expires_at);
     if (descriptor && (expiresAt < leaseIdentity || value.server_now < descriptor.server_now)) return false;
-    const deadline = receivedAt + Math.max(0, expiresAt - value.server_now * 1000);
+    const validUntil = value.standby ? Math.min(expiresAt, Date.parse(value.standby_expires_at ?? "")) : expiresAt;
+    const deadline = receivedAt + Math.max(0, validUntil - value.server_now * 1000);
     // Repeated snapshots of one lease must not turn a stale timestamp into extra time.
-    leaseDeadline = expiresAt === leaseIdentity ? Math.min(leaseDeadline, deadline) : deadline;
+    leaseDeadline = expiresAt === leaseIdentity && value.standby_expires_at === standbyIdentity && value.standby === descriptor?.standby ? Math.min(leaseDeadline, deadline) : deadline;
+    standbyIdentity = value.standby_expires_at;
     leaseIdentity = expiresAt;
     renewalAt = value.standby ? Infinity : leaseDeadline - 60_000;
     descriptor = value;

@@ -14,6 +14,7 @@ const warmApi = await import(await compileModule("src/api/remote-desktop.ts", {
   "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.test";'),
   "./device-settings": dataModule('export function controllerHeaders(){return {"X-OceanLeo-Controller":"controller"}};export async function registerController(){return {ok:true}}'),
   "./remote-desktop-webrtc-preconnect": dataModule(`
+    export function prepareRemoteWebRtcSocket(){return ()=>{};}
     export async function createPreparedRemoteWebRtcSession(){return null;}
     export function takePreparedRemoteWebRtcSocket(){return null;}
     export function takeCreatedRemoteWebRtcSocket(){const item=globalThis.__webrtcCreated;globalThis.__webrtcCreated=null;return item??null;}

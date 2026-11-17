@@ -385,11 +385,12 @@ test('failed local SDP discards candidates that have no transmitted offer', asyn
   assert.equal(h.viewer.pendingSignals.length, 0);
 });
 test('standby waits for an open control channel and matching fresh-start approval before input',async t=>{
-  const standby=[];const h=await harness(t,{descriptor:descriptor({standby:true}),onStandbyState:(...args)=>standby.push(args)});await h.viewer.start();
+  const standby=[];const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()}),onStandbyState:(...args)=>standby.push(args)});await h.viewer.start();
   h.viewer.activateStandby('fresh_start_request',50);assert.equal(h.viewer.send({kind:'keypress',key:'A'}),false);
   assert.equal(h.viewer.pc.channel('rd-ctl').sent.length,0);h.open();
   const starts=h.viewer.pc.channel('rd-ctl').sent.filter(v=>v.t==='rd.start');assert.equal(starts.length,1);
   assert.deepEqual(starts[0],{t:'rd.start',v:1,sid:'sid',seq:1,request_id:'fresh_start_request'});
+  h.viewer.updateDescriptor(descriptor({standby:false}));assert.equal(h.viewer.send({kind:'keypress',key:'A'}),false,'gateway approval alone still awaits matching native ack');
   h.viewer.pc.channel('rd-ctl').message({t:'rd.started',request_id:'wrong'});assert.equal(h.viewer.send({kind:'keypress',key:'A'}),false);
   h.viewer.pc.channel('rd-ctl').message({t:'rd.started',request_id:'fresh_start_request'});assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);
   assert.ok(h.viewer.lastSequence()>1);assert.ok(standby.some(([state])=>state==='active'));await h.advance(1000);
@@ -399,4 +400,31 @@ test('pending authority revocation closes both generations, whereas pending netw
   const h=await harness(t);await h.viewer.start();h.open();const old=h.viewer.pc;const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
   await h.viewer.createConnection();const pending=h.viewer.pc;await h.viewer.signal({k:'bye',gen:2,reason:'consent_revoked'});
   assert.equal(old.closed,1);assert.equal(pending.closed,1);assert.deepEqual(h.terminals,['consent_revoked']);
+});
+test('standby local lease expires at30s and extends only with a fresh authenticated descriptor',async t=>{
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});await h.viewer.start();h.open();
+  await h.advance(20_000);h.viewer.updateDescriptor(descriptor({standby:true,server_now:(WALL+20_000)/1000,standby_expires_at:new Date(WALL+50_000).toISOString()}));
+  await h.advance(20_000);assert.deepEqual(h.terminals,[]);
+  h.viewer.updateDescriptor(descriptor({standby:true,server_now:(WALL+40_000)/1000,standby_expires_at:new Date(WALL+50_000).toISOString()}));
+  await h.advance(10_000);assert.deepEqual(h.terminals,['lease_expired']);
+});
+test('gateway activation replaces standby deadline with the normal session lease',async t=>{
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});await h.viewer.start();h.open();
+  await h.advance(20_000);h.viewer.updateDescriptor(descriptor({standby:false,server_now:(WALL+20_000)/1000}));
+  await h.advance(20_000);assert.deepEqual(h.terminals,[]);assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);
+});
+
+test('an idle pending first decode waits for control-open then promotes without requiring another frame',async t=>{
+  const h=await harness(t);await h.viewer.start();h.open();const old=h.viewer.pc,video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
+  await h.viewer.createConnection();const pending=h.viewer.pending,next=h.viewer.pc;
+  next.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'one-frame'}]});pending.video.onloadeddata();assert.equal(old.closed,0);
+  next.open();assert.equal(old.closed,1);assert.equal(video.srcObject.id,'one-frame');
+  assert.equal(next.channel('rd-ctl').sent.filter(v=>v.t==='rd.presented').length,1);
+});
+test('matching native start refusal ends only the claimed standby without a new session or retry',async t=>{
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});await h.viewer.start();h.open();
+  h.viewer.activateStandby('start_refused_request',50);const pc=h.viewer.pc;
+  pc.channel('rd-ctl').message({t:'rd.start_failed',request_id:'other',error:'start_not_authorized'});assert.deepEqual(h.terminals,[]);
+  pc.channel('rd-ctl').message({t:'rd.start_failed',request_id:'start_refused_request',error:'start_not_authorized'});
+  assert.deepEqual(h.terminals,['start_not_authorized']);assert.equal(pc.closed,1);await h.advance(5000);assert.equal(h.peers.length,1);
 });

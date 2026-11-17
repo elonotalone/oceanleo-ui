@@ -93,9 +93,10 @@ export class WebRtcRemoteDesktopViewer {
   private replacement?: WebRtcRemoteDesktopViewer;
   private pending?: { viewer: WebRtcRemoteDesktopViewer; video: HTMLVideoElement; route?: PathRoute; started: number };
   private pendingReady?: () => void;
+  private pendingDecoded = false;
   private staging = false;
   private offeredGeneration = 0;
-  private activation?: { requestId: string; sent: boolean; clickedAt: number };
+  private activation?: { requestId: string; sent: boolean; clickedAt: number; approved?: boolean };
   get gen(): number { return this.replacement?.gen ?? this.pending?.viewer.gen ?? this.generation; }
   get pc(): RTCPeerConnection | null { return this.replacement?.pc ?? this.pending?.viewer.pc ?? this.connection; }
   private options: WebRtcViewerOptions;
@@ -171,7 +172,8 @@ export class WebRtcRemoteDesktopViewer {
       receipt: (write, receipt) => this.telemetry.receipt(write, receipt) });
   }
   private deadline(descriptor: RemoteWebRtcDescriptor, receivedAt = this.now()): number {
-    const expires = Date.parse(descriptor.lease_expires_at);
+    const leaseExpires = Date.parse(descriptor.lease_expires_at);
+    const expires = descriptor.standby ? Math.min(leaseExpires, Date.parse(descriptor.standby_expires_at ?? "")) : leaseExpires;
     return Number.isFinite(expires) && Number.isFinite(descriptor.server_now)
       ? receivedAt + Math.max(0, expires - descriptor.server_now * 1000) : receivedAt;
   }
@@ -311,6 +313,7 @@ export class WebRtcRemoteDesktopViewer {
     this.ended = true;
     if (this.timer) clearInterval(this.timer); this.timer = undefined;
     this.pathProbe.reset(); this.input.close(); this.attachVideo(null); this.detachPeer();
+    this.mediaStream = null; this.captureTimes.clear(); this.presentedTimes.clear(); this.pendingSignals = []; this.candidates = []; this.pingTimes.clear();
   }
   private static lowDelay(receiver: RTCRtpReceiver): void {
     const low = receiver as RTCRtpReceiver & { jitterBufferTarget?: number; playoutDelayHint?: number };
@@ -466,7 +469,7 @@ export class WebRtcRemoteDesktopViewer {
     if (this.ended || descriptor.transport !== "webrtc-v1" || descriptor.session_id !== this.descriptor.session_id || descriptor.role !== "viewer") return;
     // A delayed pre-renewal snapshot must not replace current credentials or grant a fresh relative lease.
     if (Date.parse(descriptor.lease_expires_at) < Date.parse(this.descriptor.lease_expires_at) || descriptor.server_now < this.descriptor.server_now) return;
-    const sameExpiry = descriptor.lease_expires_at === this.descriptor.lease_expires_at;
+    const sameExpiry = descriptor.lease_expires_at === this.descriptor.lease_expires_at && descriptor.standby === this.descriptor.standby && descriptor.standby_expires_at === this.descriptor.standby_expires_at;
     const deadline = this.deadline(descriptor);
     this.leaseDeadline = sameExpiry ? Math.min(this.leaseDeadline, deadline) : deadline;
     this.descriptor = descriptor;
@@ -489,7 +492,7 @@ export class WebRtcRemoteDesktopViewer {
     channel.onopen = () => {
       if (!current()) return;
       this.recovery.delete(label); if (label !== "rd-ctl") this.input.setLane(label, channel);
-      if (label === "rd-ctl") { this.input.setReceiptsAvailable(true); this.ping(); this.startStandby(); if (this.descriptor.standby) this.options.onStandbyState?.("ready", this.now()); }
+      if (label === "rd-ctl") { this.input.setReceiptsAvailable(true); this.ping(); if (this.descriptor.standby && !this.activation) this.options.onStandbyState?.("ready", this.now()); this.startStandby(); if (this.pendingDecoded) this.pendingReady?.(); }
       this.updateState();
     };
     channel.onbufferedamountlow = () => { if (current()) this.input.flush(); };
@@ -513,7 +516,9 @@ export class WebRtcRemoteDesktopViewer {
     if (typeof raw !== "string" || new TextEncoder().encode(raw).length > WEBRTC_MESSAGE_BYTES) return;
     let data: Record<string, unknown>; try { data = JSON.parse(raw); } catch { return; }
     if (!data || data.v !== 1 || data.sid !== this.descriptor.session_id) return;
+    if (data.t === "rd.start_failed" && this.activation && data.request_id === this.activation.requestId) { this.close("start_not_authorized"); return; }
     if (data.t === "rd.started" && this.activation && data.request_id === this.activation.requestId) {
+      this.activation.approved = true;
       this.descriptor = { ...this.descriptor, standby: false };
       this.options.onStandbyState?.("active", this.now());
     }
@@ -576,7 +581,7 @@ export class WebRtcRemoteDesktopViewer {
     this.activation.sent = this.sendControl({ t: "rd.start", seq: this.lastSequence() + 1, request_id: this.activation.requestId });
     if (this.activation.sent) this.input.sequenceFloor(this.lastSequence() + 1);
   }
-  send(action: RemoteDesktopAction): boolean { return this.replacement ? this.replacement.send(action) : !this.ended && !this.descriptor.standby && this.input.send(action); }
+  send(action: RemoteDesktopAction): boolean { return this.replacement ? this.replacement.send(action) : !this.ended && !this.descriptor.standby && (!this.activation || this.activation.approved === true) && this.input.send(action); }
   releaseForHandoff(): Promise<void> { return this.replacement ? this.replacement.releaseForHandoff() : this.input.releaseForHandoff(); }
   finishHandoff(): void { if (this.replacement) this.replacement.finishHandoff(); else this.input.finishHandoff(); }
   lastSequence(): number { return this.replacement?.lastSequence() ?? this.input.lastSequence; }
@@ -588,7 +593,7 @@ export class WebRtcRemoteDesktopViewer {
     this.frameCallback = undefined; this.video = video; this.lastFrameCount = undefined;
     if (!video || this.ended) return;
     video.autoplay = true; video.muted = true; video.playsInline = true;
-    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { if (this.pendingReady) this.pendingReady(); else this.telemetry.step("first_frame_decoded_ms"); } };
+    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); } else this.telemetry.step("first_frame_decoded_ms"); } };
     if (typeof video.requestVideoFrameCallback === "function") {
       const frame: VideoFrameRequestCallback = (_now, raw) => {
         if (this.ended || this.video !== video || this.videoAttachment !== attachment) return;
@@ -615,7 +620,7 @@ export class WebRtcRemoteDesktopViewer {
   private play(): void { try { const playing = this.video?.play(); playing?.catch(() => {}); } catch { /* attach before autoplay is permitted */ } }
   private frame(video: HTMLVideoElement, at: number, metadata: Partial<FrameMetadata>): void {
     if (this.ended || !video.videoWidth || !video.videoHeight) return;
-    if (this.pendingReady) { this.pendingReady(); return; }
+    if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); return; }
     if (this.pictureRebuilding && this.trackGeneration !== this.generation) return;
     this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, this.captureMappingAvailable ? { ...metadata, captureTime: undefined } : metadata);
     const sample: WebRtcPresentation = { session_frame_count: ++this.sessionFrameCount, peer_generation: this.generation, presented_at_ms: at };

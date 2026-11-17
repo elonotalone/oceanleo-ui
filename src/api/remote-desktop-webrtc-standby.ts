@@ -40,7 +40,7 @@ export function prepareRemoteDesktopStandby(deviceId: string, client: RemoteDesk
     }
     const listener = entry.handlers?.[key as keyof RemoteDesktopStreamHandlers];
     if (listener) (listener as (...values: unknown[]) => void)(...args);
-    if (key === "state" && args[0] === "closed" && !entry.claimed) dispose(entry);
+    if (key === "state" && args[0] === "closed") dispose(entry);
   } });
   let resolveSession!: (result: RemoteDesktopApiResult<RemoteDesktopSession>) => void;
   let begun = false;
@@ -81,21 +81,20 @@ export function prepareRemoteDesktopStandby(deviceId: string, client: RemoteDesk
     },
   });
   entry.renew = setInterval(() => {
-    if (entry.claimed || entry.disposed) return;
+    if (entry.state === "active" || entry.disposed) return;
     if (!visible()) { dispose(entry); return; }
     entry.live?.renewStandby?.();
   }, 10_000);
   const readyTimeout = setTimeout(() => { if (!begun) { entry.fail?.(); dispose(entry); } }, 10_000);
   void entry.session.finally(() => clearTimeout(readyTimeout));
-  const hide = () => { if (!visible() && !entry.claimed) dispose(entry); };
+  const hide = () => { if (!visible() && entry.state !== "active") dispose(entry); };
   ownerDocument.addEventListener("visibilitychange", hide);
-  return () => { ownerDocument.removeEventListener("visibilitychange", hide); if (!entry.claimed) dispose(entry); };
+  return () => { ownerDocument.removeEventListener("visibilitychange", hide); if (entry.state !== "active") dispose(entry); };
 }
 export function claimRemoteDesktopStandbySession(deviceId: string, options?: RemoteDesktopRequestOptions): Result<RemoteDesktopSession> | null {
   const entry = entries.get(deviceId);
   if (!entry?.session || entry.claimed || entry.disposed || !visible() || options?.signal?.aborted) return null;
   entry.claimed = true; entry.requestId = options?.requestId ?? newRequestId(); entry.clickedAt = options?.clickedAt ?? now();
-  clearInterval(entry.renew);
   options?.signal?.addEventListener("abort", () => dispose(entry), { once: true });
   return entry.session;
 }

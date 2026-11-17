@@ -637,6 +637,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function parseRemoteWebRtcDescriptor(data: unknown, sessionId?: string): RemoteWebRtcDescriptor | null {
   if (!isRecord(data) || data.transport !== "webrtc-v1" || data.role !== "viewer" || typeof data.session_id !== "string" || !data.session_id || (sessionId !== undefined && data.session_id !== sessionId)) return null;
+  if (data.standby !== undefined && typeof data.standby !== "boolean") return null;
+  if (data.standby === true && (typeof data.standby_expires_at !== "string" || !Number.isFinite(Date.parse(data.standby_expires_at)))) return null;
   if (data.display_id !== null && (typeof data.display_id !== "string" || !data.display_id)) return null;
   if (typeof data.server_now !== "number" || !Number.isFinite(data.server_now) || data.server_now <= 0) return null;
   for (const key of ["ice_expires_at", "lease_expires_at"]) if (typeof data[key] !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(data[key] as string) || !Number.isFinite(Date.parse(data[key] as string))) return null;

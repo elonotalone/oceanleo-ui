@@ -24,7 +24,7 @@ test('immediate click joins the preconnecting promise and adopts exactly one ses
   setup(t);const {c,accept}=client();const release=api.prepareRemoteDesktopStandby('instant',c);t.after(release);
   assert.equal(c.log.creates.length,0);const promise=api.claimRemoteDesktopStandbySession('instant',{requestId:'click_request',clickedAt:100});assert.ok(promise);
   preparation.at(-1).options.ready(['remote-desktop-standby-v1']);assert.equal(c.log.creates.length,1);assert.equal(c.log.creates[0].options.standby,true);
-  release();assert.equal(c.log.closed.length,0,'page effect cleanup cannot cancel a claimed in-flight promise');
+  assert.equal(c.log.closed.length,0,'claim does not create or close another session');
   accept();const session=await promise;assert.equal(session.data.session_id,'standby-session');await settle();
   const states=[];const opened=await api.claimRemoteDesktopStandbyStream('instant','standby-session',{state:s=>states.push(s)},{});
   assert.equal(c.log.opens.length,1);assert.deepEqual(states,['connecting']);assert.deepEqual(c.log.activated,[['click_request',100]]);
@@ -58,4 +58,16 @@ test('hidden documents never open a socket and stalled preconnection expires loc
   const doc=setup(t);const {c}=client();doc.visibilityState='hidden';const n=preparation.length;api.prepareRemoteDesktopStandby('hidden',c);assert.equal(preparation.length,n);
   doc.visibilityState='visible';const release=api.prepareRemoteDesktopStandby('stalled',c);t.after(release);const promise=api.claimRemoteDesktopStandbySession('stalled',{requestId:'stall_click'});
   t.mock.timers.tick(10_000);assert.equal((await promise).ok,false);assert.equal(c.log.creates.length,0);
+});
+
+test('claimed but not approved standby closes when hidden or its visible owner unmounts',async t=>{
+  const doc=setup(t);
+  for(const reason of ['hidden','unmount']){
+    doc.visibilityState='visible';const {c,accept}=client();const release=api.prepareRemoteDesktopStandby(reason,c);t.after(release);
+    const pending=api.claimRemoteDesktopStandbySession(reason,{requestId:'pending_click'});
+    preparation.at(-1).options.ready(['remote-desktop-standby-v1']);
+    if(reason==='hidden'){doc.visibilityState='hidden';doc.dispatchEvent(new Event('visibilitychange'));}else release();
+    assert.equal((await pending).ok,false);assert.equal(c.log.creates[0].options.signal.aborted,true);
+    accept();await settle();assert.deepEqual(c.log.closed,['standby-session']);assert.equal(c.log.activated.length,0);
+  }
 });

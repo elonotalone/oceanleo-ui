@@ -15,7 +15,10 @@ import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 const require = createRequire(import.meta.url);
 const reactUrl = pathToFileURL(require.resolve("react")).href;
 
+globalThis.__rdDefaultClient = {};
+globalThis.__rdStandbyLog = [];
 const stubs = {
+  "../api/remote-desktop-webrtc-standby": dataModule(`export function prepareRemoteDesktopStandby(id) { globalThis.__rdStandbyLog.push(["prepare", id]); return () => globalThis.__rdStandbyLog.push(["close", id]); }`),
   "../facades/devices": dataModule(`export const devicesFacade = globalThis.__rdDevicesClient;`),
   "../api/remote-desktop": dataModule(`export const remoteDesktopClient = globalThis.__rdDefaultClient;`),
   "../i18n/ui/useUI": dataModule(`
@@ -323,4 +326,34 @@ test("reference cards expose Settings/Tasks, not permission switches or old expl
 test("device page never copies local switch APIs, device secrets or pair-code issuance", async () => {
   const source = await readFile(resolve("src/pages/DevicesPage.tsx"), "utf8");
   for (const forbidden of ["device_secret", "local_exec_enabled: true", "remote_desktop_enabled", "enableRemote"]) assert.ok(!source.includes(forbidden));
+});
+
+test("standby observes real cards and prepares only one visible online owner-approved computer", async t => {
+  const errors=[]; t.mock.method(console,"error",(...args)=>errors.push(args));
+  const observers=[];
+  class Observer {
+    targets=[]; constructor(callback){this.callback=callback;observers.push(this);}
+    observe(node){this.targets.push(node);} disconnect(){this.disconnected=true;}
+    emit(id,visible=true){const target=this.targets.find(node=>node.dataset.deviceCard===id);assert.ok(target);this.callback([{target,isIntersecting:visible,intersectionRatio:visible?1:0}]);}
+  }
+  const previous=Object.getOwnPropertyDescriptor(globalThis,"IntersectionObserver");Object.defineProperty(globalThis,"IntersectionObserver",{configurable:true,value:Observer});
+  const oldVisibility=Object.getOwnPropertyDescriptor(document,"visibilityState");let visibility="visible";Object.defineProperty(document,"visibilityState",{configurable:true,get:()=>visibility});
+  t.after(()=>{if(previous)Object.defineProperty(globalThis,"IntersectionObserver",previous);else delete globalThis.IntersectionObserver;if(oldVisibility)Object.defineProperty(document,"visibilityState",oldVisibility);else delete document.visibilityState;});
+  const eligible={...READY,availability:"online",standby_allowed:true,capabilities:["remote-desktop-standby-v1"]};
+  const statuses={"pc-1":eligible,"pc-2":{...eligible},"ask-pc":{...eligible,standby_allowed:false}};
+  const remote=globalThis.__rdDefaultClient;Object.assign(remote,rdClient(statuses));globalThis.__rdStandbyLog=[];
+  const view=await render([device(),device({device_id:"pc-2"}),device({device_id:"ask-pc"})],remote);
+  try {
+    const observer=observers.at(-1);assert.deepEqual(observer.targets.map(node=>node.dataset.deviceCard).sort(),["pc-1","pc-2"]);
+    assert.deepEqual(globalThis.__rdStandbyLog,[],"cards outside viewport do not prepare");
+    await act(async()=>observer.emit("pc-1"));assert.deepEqual(globalThis.__rdStandbyLog,[["prepare","pc-1"]]);
+    await act(async()=>observer.emit("pc-2"));assert.equal(globalThis.__rdStandbyLog.length,1,"second visible card cannot accumulate another peer");
+    visibility="hidden";await act(async()=>document.dispatchEvent(new Event("visibilitychange")));assert.deepEqual(globalThis.__rdStandbyLog.at(-1),["close","pc-1"]);
+    visibility="visible";await act(async()=>document.dispatchEvent(new Event("visibilitychange")));assert.deepEqual(globalThis.__rdStandbyLog.at(-1),["prepare","pc-1"]);
+    await act(async()=>observer.emit("pc-1",false));assert.deepEqual(globalThis.__rdStandbyLog.slice(-2),[["close","pc-1"],["prepare","pc-2"]]);
+    statuses["pc-1"]={...eligible,standby_allowed:false};statuses["pc-2"]={...eligible,standby_allowed:false};await view.tick();
+    assert.deepEqual(globalThis.__rdStandbyLog.at(-1),["close","pc-2"]);
+    await view.click(view.host.querySelector('[data-remote-device-icon="pc-1"]'));assert.ok(document.querySelector("[data-oceanleo-remote-desktop]"));assert.deepEqual(remote.log.create,["pc-1"]);
+  } finally {await view.unmount();}
+  assert.deepEqual(errors,[],"real page loading, permission updates and desktop click must not emit React errors");
 });
