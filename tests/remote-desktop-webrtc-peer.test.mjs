@@ -121,9 +121,11 @@ test('a producing track is observed before attachment and its single first frame
 test('presentation count and actual picture gap survive peer replacement while browser counters reset',async t=>{
   const samples=[];const h=await harness(t,{onPresentation:sample=>samples.push(sample)});await h.viewer.start();h.open();
   const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,presentedFrames:96});
+  const retiredCallback=[...video.callbacks.values()][0];
   h.viewer.pc.state('failed');await h.advance(200);h.open();
   video.frame({expectedDisplayTime:320,presentedFrames:97});assert.equal(samples.length,1,'retired track does not advance the session count');
   h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'replacement'}]});
+  retiredCallback(400,{expectedDisplayTime:400,presentedFrames:98});assert.equal(samples.length,1,'an already-queued old-track callback stays retired after the new track arrives');
   video.frame({expectedDisplayTime:450,presentedFrames:1});video.frame({expectedDisplayTime:480,presentedFrames:2});
   assert.deepEqual(samples.map(s=>[s.session_frame_count,s.peer_generation,s.presentedFrames,s.gap_ms]),[[1,1,96,undefined],[2,2,1,340],[3,2,2,30]]);
 });

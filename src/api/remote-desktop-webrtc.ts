@@ -100,6 +100,7 @@ export class WebRtcRemoteDesktopViewer {
   private video: HTMLVideoElement | null = null;
   private mediaStream: MediaStream | null = null;
   private frameCallback: number | undefined;
+  private videoAttachment = 0;
   private captureTimes = new Map<number, number>();
   private presentedTimes = new Map<number, number>();
   private captureMappingAvailable = false;
@@ -213,7 +214,7 @@ export class WebRtcRemoteDesktopViewer {
         WebRtcRemoteDesktopViewer.lowDelay(event.receiver);
         this.trackGeneration = gen;
         this.mediaStream = event.streams[0] ?? new MediaStream([event.track]);
-        if (this.video) { this.video.srcObject = this.mediaStream; this.play(); }
+        if (this.video) this.attachVideo(this.video);
       };
       pc.onconnectionstatechange = () => {
         if (this.pc !== pc || this.ended) return;
@@ -490,23 +491,25 @@ export class WebRtcRemoteDesktopViewer {
   finishHandoff(): void { this.input.finishHandoff(); }
   lastSequence(): number { return this.input.lastSequence; }
   attachVideo(video: HTMLVideoElement | null): void {
+    const attachment = ++this.videoAttachment;
     if (this.video && this.frameCallback !== undefined) this.video.cancelVideoFrameCallback?.(this.frameCallback);
     if (this.video) { this.video.onloadeddata = null; this.video.ontimeupdate = null; if (this.video !== video) this.video.srcObject = null; }
     this.frameCallback = undefined; this.video = video; this.lastFrameCount = undefined;
     if (!video || this.ended) return;
     video.autoplay = true; video.muted = true; video.playsInline = true;
-    video.onloadeddata = () => { if (!this.ended && video.videoWidth && video.videoHeight) this.telemetry.step("first_frame_decoded_ms"); };
+    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) this.telemetry.step("first_frame_decoded_ms"); };
     if (typeof video.requestVideoFrameCallback === "function") {
       const frame: VideoFrameRequestCallback = (_now, raw) => {
-        if (this.ended || this.video !== video) return;
+        if (this.ended || this.video !== video || this.videoAttachment !== attachment) return;
         const metadata = raw as FrameMetadata;
         const presented = Number.isFinite(metadata.expectedDisplayTime) ? metadata.expectedDisplayTime : Number.isFinite(metadata.presentationTime) ? metadata.presentationTime : this.now();
         this.frame(video, presented, metadata);
-        if (!this.ended && this.video === video) this.frameCallback = video.requestVideoFrameCallback(frame);
+        if (!this.ended && this.video === video && this.videoAttachment === attachment) this.frameCallback = video.requestVideoFrameCallback(frame);
       };
       this.frameCallback = video.requestVideoFrameCallback(frame);
     } else {
       const frame = () => {
+        if (this.ended || this.video !== video || this.videoAttachment !== attachment) return;
         const count = video.getVideoPlaybackQuality?.().totalVideoFrames;
         if (count !== undefined && count === this.lastFrameCount) return;
         this.lastFrameCount = count; this.frame(video, this.now(), {});
