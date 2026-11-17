@@ -32,6 +32,22 @@ const stream = { response: "stream" as const, ...live };
 const scoped = { scope: "artifact" as const };
 
 export const EDITOR_GATEWAY_ROUTES: readonly EditorGatewayRoute[] = [
+  read("/v1/materials", "official-materials", live),
+  read("/v1/materials/taxonomy", "material-taxonomy", live),
+  read("/v1/folders/{folder_id}/file", "library-folder-file", live),
+  read("/v1/folders/{folder_id}/download", "library-folder-download", stream),
+  read("/v1/games/{artifact_id}/play", "library-game-play", live),
+  read("/v1/bay/assets/resolve", "bay-material-preview", live),
+  read("/v1/bay/assets/{asset_id}/preview-image", "bay-folder-preview-image", stream),
+  post("/v1/agent/tasks", "editor-task-create", {retry: "never-blind"}),
+  post("/v1/agent/tasks/{task_id}/messages", "editor-task-followup", {retry: "never-blind"}),
+  read("/v1/assets/search", "live-material-search", live),
+  post("/v1/assets/use", "live-material-use", {retry: "never-blind"}),
+  read("/v1/assets/connections", "material-connections", live),
+  post("/v1/assets/connections/sketchfab/start", "material-connect"),
+  route("DELETE", "/v1/assets/connections/sketchfab", "material-disconnect"),
+  read("/v1/assets/connections/sketchfab/callback", "material-callback", live),
+  post("/v1/library/items/{artifact_id}/convert", "library-convert", {...scoped, retry: "never-blind"}),
   read("/v1/library/items/{artifact_id}", "item"),
   post("/v1/library/items/{artifact_id}/renditions/{purpose}/url", "resign"),
   read("/v1/artifacts/{artifact_id}/revisions/{revision_id}/renditions/{purpose}", "rendition", live),
