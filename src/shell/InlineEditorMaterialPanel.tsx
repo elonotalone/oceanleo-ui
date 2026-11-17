@@ -72,7 +72,6 @@ function curatedTypeFor(item: LibraryItem): string {
     document: "document",
     image: "image",
     video: "video",
-    video_canvas: "video_workflow",
     audio: "audio",
     xhs: "image",
     threed: "3d",

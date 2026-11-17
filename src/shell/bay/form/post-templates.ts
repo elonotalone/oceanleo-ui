@@ -237,16 +237,6 @@ const PRESETS: BayPostSnapshot[] = [
     license: "commercial",
     categoryLabel: "文档与表格",
   }),
-  digitalPreset({
-    kind: "workflow",
-    title: "视频工作流",
-    description: "分镜和择优流程，按这个跑就能出片。",
-    cover: "assets/image/tpl-material/video-canvas-flow-1.webp",
-    artifactId: "99604479-d42e-497c-bf96-3f12b6f332c7",
-    priceFen: 15900,
-    license: "personal",
-    categoryLabel: "视频与动画",
-  }),
   {
     id: "preset:service:logo",
     kind: "service",

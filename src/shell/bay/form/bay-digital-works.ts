@@ -51,7 +51,7 @@ export function mediaKindForWork(
   libraryKind?: string,
 ): BayServiceMediaKind {
   if (libraryKind === "image") return "image";
-  if (libraryKind === "video" || libraryKind === "video_canvas") return "video";
+  if (libraryKind === "video") return "video";
   if (libraryKind === "audio") return "audio";
   const fromUrl = kindFromUrl(work.url || work.title || "");
   if (fromUrl === "image" || fromUrl === "video" || fromUrl === "audio") return fromUrl;
