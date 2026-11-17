@@ -50,7 +50,6 @@
     "./shell/plugin-theme": "./src/shell/plugin-theme.tsx",
     "./shell/replay": "./src/shell/replay/index.ts",
     "./shell/selection-context": "./src/shell/selection-context.ts",
-    "./shell/video-canvas": "./src/shell/video-canvas/index.ts",
     "./tailwind-preset": "./src/theme/tailwind-preset.ts",
     "./theme": "./src/theme/index.ts",
     "./theme/globals.css": "./src/theme/globals.css",
@@ -1961,6 +1960,12 @@
         },
         {
           "kind": "named",
+          "name": "disconnectSketchfab",
+          "importedName": "disconnectSketchfab",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
           "name": "getCatalog",
           "importedName": "getCatalog",
           "source": "./acp-frames-api"
@@ -1970,6 +1975,42 @@
           "name": "getFrames",
           "importedName": "getFrames",
           "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "LIVE_MATERIAL_LABELS",
+          "importedName": "LIVE_MATERIAL_LABELS",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "LIVE_MATERIAL_TYPES",
+          "importedName": "LIVE_MATERIAL_TYPES",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "LiveMaterial",
+          "importedName": "LiveMaterial",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "LiveMaterialPage",
+          "importedName": "LiveMaterialPage",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "LiveMaterialType",
+          "importedName": "LiveMaterialType",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "liveTypesForEditor",
+          "importedName": "liveTypesForEditor",
+          "source": "./live-materials"
         },
         {
           "kind": "named",
@@ -1991,6 +2032,24 @@
         },
         {
           "kind": "named",
+          "name": "MaterialConnection",
+          "importedName": "MaterialConnection",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "materialConnections",
+          "importedName": "materialConnections",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
+          "name": "materialHttpUrl",
+          "importedName": "materialHttpUrl",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
           "name": "openFrames",
           "importedName": "openFrames",
           "source": "./acp-frames-api"
@@ -2003,9 +2062,21 @@
         },
         {
           "kind": "named",
+          "name": "searchLiveMaterials",
+          "importedName": "searchLiveMaterials",
+          "source": "./live-materials"
+        },
+        {
+          "kind": "named",
           "name": "send",
           "importedName": "send",
           "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "startSketchfabConnection",
+          "importedName": "startSketchfabConnection",
+          "source": "./live-materials"
         },
         {
           "kind": "named",
@@ -2018,6 +2089,12 @@
           "name": "stopAcpTask",
           "importedName": "stopTask",
           "source": "./acp-frames-api"
+        },
+        {
+          "kind": "named",
+          "name": "useLiveMaterial",
+          "importedName": "useLiveMaterial",
+          "source": "./live-materials"
         },
         {
           "kind": "star",
@@ -5315,8 +5392,8 @@
         },
         {
           "kind": "named",
-          "name": "currentPluginCommandSurface",
-          "importedName": "currentPluginCommandSurface",
+          "name": "currentEditorContext",
+          "importedName": "currentEditorContext",
           "source": "./plugin-command"
         },
         {
@@ -5333,12 +5410,6 @@
         },
         {
           "kind": "named",
-          "name": "describePluginCommands",
-          "importedName": "describePluginCommands",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "named",
           "name": "dispatchWorkspaceAction",
           "importedName": "dispatchWorkspaceAction",
           "source": "./workspace-actions"
@@ -5348,18 +5419,6 @@
           "name": "downloadTemplateMaterial",
           "importedName": "downloadTemplateMaterial",
           "source": "./template-download"
-        },
-        {
-          "kind": "named",
-          "name": "EditorCommandCard",
-          "importedName": "EditorCommandCard",
-          "source": "./FunctionAgentChat"
-        },
-        {
-          "kind": "named",
-          "name": "EditorCommandNotes",
-          "importedName": "EditorCommandNotes",
-          "source": "./FunctionAgentChat"
         },
         {
           "kind": "named",
@@ -6023,6 +6082,12 @@
         },
         {
           "kind": "named",
+          "name": "LiveMaterialSearch",
+          "importedName": "LiveMaterialSearch",
+          "source": "./bay/asset/LiveMaterialSearch"
+        },
+        {
+          "kind": "named",
           "name": "loadAllCustomPromptCards",
           "importedName": "loadAllCustomPromptCards",
           "source": "./home-cards"
@@ -6449,18 +6514,6 @@
         },
         {
           "kind": "named",
-          "name": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
-          "importedName": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "named",
-          "name": "PLUGIN_COMMAND_STATE_MAX_BYTES",
-          "importedName": "PLUGIN_COMMAND_STATE_MAX_BYTES",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "named",
           "name": "PluginHost",
           "importedName": "PluginHost",
           "source": "./plugin-module"
@@ -6677,12 +6730,6 @@
         },
         {
           "kind": "named",
-          "name": "readPluginCommandState",
-          "importedName": "readPluginCommandState",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "named",
           "name": "readSiteAppDirectory",
           "importedName": "readSiteAppDirectory",
           "source": "./material-scene-axis"
@@ -6701,6 +6748,12 @@
         },
         {
           "kind": "named",
+          "name": "registerEditorContext",
+          "importedName": "registerEditorContext",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
           "name": "registerEditorImportPlan",
           "importedName": "registerEditorImportPlan",
           "source": "./import-normalize"
@@ -6710,12 +6763,6 @@
           "name": "registerGamePreviewHost",
           "importedName": "registerGamePreviewHost",
           "source": "./game-preview-host"
-        },
-        {
-          "kind": "named",
-          "name": "registerPluginCommandSurface",
-          "importedName": "registerPluginCommandSurface",
-          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -6755,8 +6802,8 @@
         },
         {
           "kind": "named",
-          "name": "resetPluginCommandSurface",
-          "importedName": "resetPluginCommandSurface",
+          "name": "resetEditorContext",
+          "importedName": "resetEditorContext",
           "source": "./plugin-command"
         },
         {
@@ -6800,12 +6847,6 @@
           "name": "runLeoQuickSuggest",
           "importedName": "runLeoQuickSuggest",
           "source": "./LeoAssistant"
-        },
-        {
-          "kind": "named",
-          "name": "runPluginCommand",
-          "importedName": "runPluginCommand",
-          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -7121,8 +7162,8 @@
         },
         {
           "kind": "named",
-          "name": "subscribePluginCommandSurface",
-          "importedName": "subscribePluginCommandSurface",
+          "name": "subscribeEditorContext",
+          "importedName": "subscribeEditorContext",
           "source": "./plugin-command"
         },
         {
@@ -7343,8 +7384,14 @@
         },
         {
           "kind": "named",
-          "name": "useEditorCommandBridge",
-          "importedName": "useEditorCommandBridge",
+          "name": "useEditorContext",
+          "importedName": "useEditorContext",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "named",
+          "name": "useEditorContextBridge",
+          "importedName": "useEditorContextBridge",
           "source": "./FunctionAgentChat"
         },
         {
@@ -7406,12 +7453,6 @@
           "name": "usePending",
           "importedName": "usePending",
           "source": "./acp-task"
-        },
-        {
-          "kind": "named",
-          "name": "usePluginCommandSurface",
-          "importedName": "usePluginCommandSurface",
-          "source": "./plugin-command"
         },
         {
           "kind": "named",
@@ -7791,10 +7832,6 @@
         },
         {
           "kind": "star",
-          "source": "./media-editors/model3d-capabilities"
-        },
-        {
-          "kind": "star",
           "source": "./public-exports"
         },
         {
@@ -7915,6 +7952,18 @@
         },
         {
           "kind": "type",
+          "name": "EditorContextSurface",
+          "importedName": "EditorContextSurface",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "type",
+          "name": "EditorContextSurfaceInput",
+          "importedName": "EditorContextSurfaceInput",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "type",
           "name": "EditorConvertEndpoint",
           "importedName": "EditorConvertEndpoint",
           "source": "./import-normalize"
@@ -7936,6 +7985,18 @@
           "name": "EditorImportRule",
           "importedName": "EditorImportRule",
           "source": "./import-normalize"
+        },
+        {
+          "kind": "type",
+          "name": "EditorSelection",
+          "importedName": "EditorSelection",
+          "source": "./plugin-command"
+        },
+        {
+          "kind": "type",
+          "name": "EditorTarget",
+          "importedName": "EditorTarget",
+          "source": "./plugin-command"
         },
         {
           "kind": "type",
@@ -8074,42 +8135,6 @@
           "name": "PendingSettle",
           "importedName": "PendingSettle",
           "source": "./acp-task"
-        },
-        {
-          "kind": "type",
-          "name": "PluginCommandParam",
-          "importedName": "PluginCommandParam",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "type",
-          "name": "PluginCommandResult",
-          "importedName": "PluginCommandResult",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "type",
-          "name": "PluginCommandSpec",
-          "importedName": "PluginCommandSpec",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "type",
-          "name": "PluginCommandStateSnapshot",
-          "importedName": "PluginCommandStateSnapshot",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "type",
-          "name": "PluginCommandSurface",
-          "importedName": "PluginCommandSurface",
-          "source": "./plugin-command"
-        },
-        {
-          "kind": "type",
-          "name": "PluginCommandSurfaceInput",
-          "importedName": "PluginCommandSurfaceInput",
-          "source": "./plugin-command"
         },
         {
           "kind": "type",
@@ -9345,110 +9370,16 @@
       "declarations": [
         {
           "kind": "named",
-          "name": "currentPluginCommandSurface",
-          "importedName": "currentPluginCommandSurface",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "describePluginCommands",
-          "importedName": "describePluginCommands",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
-          "importedName": "PLUGIN_COMMAND_PARAM_MAX_BYTES",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PLUGIN_COMMAND_STATE_MAX_BYTES",
-          "importedName": "PLUGIN_COMMAND_STATE_MAX_BYTES",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginAgentContext",
-          "importedName": "PluginAgentContext",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandParam",
-          "importedName": "PluginCommandParam",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandResult",
-          "importedName": "PluginCommandResult",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandSpec",
-          "importedName": "PluginCommandSpec",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandStateSnapshot",
-          "importedName": "PluginCommandStateSnapshot",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandSurface",
-          "importedName": "PluginCommandSurface",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandSurfaceInput",
-          "importedName": "PluginCommandSurfaceInput",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "PluginCommandTarget",
-          "importedName": "PluginCommandTarget",
-          "source": "./types"
-        },
-        {
-          "kind": "named",
-          "name": "readPluginCommandState",
-          "importedName": "readPluginCommandState",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "registerPluginCommandSurface",
-          "importedName": "registerPluginCommandSurface",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "resetPluginCommandSurface",
-          "importedName": "resetPluginCommandSurface",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "runPluginCommand",
-          "importedName": "runPluginCommand",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "subscribePluginCommandSurface",
-          "importedName": "subscribePluginCommandSurface",
-          "source": "./registry"
-        },
-        {
-          "kind": "named",
-          "name": "usePluginCommandSurface",
+          "name": "useEditorContext",
           "source": ""
+        },
+        {
+          "kind": "star",
+          "source": "./registry"
+        },
+        {
+          "kind": "star",
+          "source": "./types"
         }
       ]
     },
@@ -10089,23 +10020,6 @@
         }
       ]
     },
-    "./shell/video-canvas": {
-      "target": "./src/shell/video-canvas/index.ts",
-      "declarations": [
-        {
-          "kind": "named",
-          "name": "videoCanvasDigest",
-          "importedName": "deterministicDigest",
-          "source": "./engine/project-model"
-        },
-        {
-          "kind": "named",
-          "name": "VideoCanvasLibraryEntry",
-          "importedName": "VideoCanvasLibraryEntry",
-          "source": "./VideoCanvasLibraryEntry"
-        }
-      ]
-    },
     "./tailwind-preset": {
       "target": "./src/theme/tailwind-preset.ts",
       "declarations": [
@@ -10738,10 +10652,6 @@
           "name": "WorkbenchMaterialRuntimeValue",
           "importedName": "WorkbenchMaterialRuntimeValue",
           "source": "../shell/workbench-material-provider"
-        },
-        {
-          "kind": "star",
-          "source": "../shell/media-editors/model3d-capabilities"
         },
         {
           "kind": "star",
