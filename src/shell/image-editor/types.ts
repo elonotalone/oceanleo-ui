@@ -418,6 +418,7 @@ export interface FabricImageEditorState {
   /** 按指定格式与画质交付一次，不改导出面板里的设置。 */
   downloadAs: (format: ExportFormat, quality?: number) => Promise<void>;
   downloadDefaultPng: () => Promise<void>;
+  exportFile: (target: string, quality?: number) => Promise<{ blob: Blob; filename: string }>;
   save: () => Promise<FabricImageSaveResult | null>;
   prepareSave: () => () => Promise<FabricImageSaveResult | null>;
   // ---- AI 编辑 ----

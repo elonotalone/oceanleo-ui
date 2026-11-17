@@ -505,3 +505,24 @@ test("公式补算按用户表名查找；另一张表的内部 ID 不覆盖同�
   assert.equal(workbook.getWorksheet("Data").getCell("B1").value.result, 8);
   assert.deepEqual(dropped, []);
 });
+
+test("in-cell pictures and selected dropdown colours survive XLSX round-trip", async () => {
+  const source = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j4YQAAAAASUVORK5CYII=';
+  const { workbook, dropped } = await roundTrip(snapshot({ cellData: { 0: {
+    0: {v:'Approved',t:1},
+    1: {p:{body:{dataStream:'\b\r\n',customBlocks:[{startIndex:0,blockId:'img'}]},drawingsOrder:['img'],drawings:{img:{source,drawingType:0}}}},
+  } } }, [res('SHEET_DATA_VALIDATION_PLUGIN',{s1:[{uid:'status',type:'list',formula1:'Approved,Declined',formula2:'#00ff00,#ff0000',renderMode:0,ranges:[{startRow:0,endRow:0,startColumn:0,endColumn:0}]}]})]));
+  const sheet = workbook.worksheets[0];
+  assert.equal(sheet.getImages().length, 1);
+  assert.equal(sheet.getImages()[0].range.tl.nativeRow,0);
+  assert.equal(sheet.getImages()[0].range.tl.nativeCol,1);
+  assert.equal(sheet.getCell('A1').fill.fgColor.argb,'FF00FF00');
+  assert.equal(sheet.getCell('A1').font.color.argb,'FF111827');
+  assert.equal(sheet.getCell('A1').dataValidation.type,'list');
+  assert.ok(!dropped.some(message=>message.includes('图片')));
+});
+
+test("unsupported in-cell pictures are reported instead of silently discarded", async () => {
+  const { dropped }=await roundTrip(snapshot({cellData:{0:{0:{p:{drawings:{bad:{source:'data:image/svg+xml;base64,PHN2Zz4='}}}}}}}));
+  assert.ok(dropped.some(message=>message.includes('单元格图片')));
+});

@@ -1,5 +1,7 @@
 "use client";
 
+import { useExportDownloads } from "../doc-editors/use-export-downloads";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
@@ -11,17 +13,12 @@ import { createImageCommandSurface } from "../image-editor/image-command-surface
 import { isPsdSource } from "../image-editor/psd-composite";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
-  DEFAULT_LOSSY_QUALITY,
-  imageCanvasFormat,
-  visualDownloadFormats,
   visualUploadAccept,
 } from "../media-editors/visual-formats";
-import type { ExportFormat } from "../image-editor/types";
 import { useFabricImageSelectionAdapter } from "../image-editor/use-fabric-image-selection-adapter";
 import { FabricImageControls } from "../image-editor/FabricImageControls";
 import {
   FabricImageBrushPanel,
-  FabricImageExportPanel,
   FabricImageLinePanel,
   FabricImageNotePanel,
   FabricImageShapePanel,
@@ -155,17 +152,14 @@ export function ImageRoute({
     loading: editor.loading,
     sourceReady: editor.sourceReady,
   });
-  // 菜单里的 jpg 与画布导出器的 "jpeg" 是同一件事；对用户只说 JPG。
-  const deliver = useCallback(
-    async (format: string, quality: number = editor.exportQuality) => {
-      const canvasFormat: ExportFormat = imageCanvasFormat(format);
-      await editor.downloadAs(
-        canvasFormat,
-        canvasFormat === "png" ? 100 : quality,
-      );
-    },
-    [editor.downloadAs, editor.exportQuality],
-  );
+  const exportDownloads = useExportDownloads({ editor: (activeItem.artifactType || activeItem.artifact?.artifactType) === "vector_image" ? "vector_image" : "image", item: activeItem,
+    disabled: editor.loading || !editor.sourceReady, generate: (target, options) => editor.exportFile(target, options?.quality) });
+  const deliver = useCallback(async (format: string, quality?: number) => {
+    const target = format === "jpeg" ? "jpg" : format;
+    const action = exportDownloads.find(action => action.id.endsWith(`-export-${target}`));
+    if (!action) throw new Error(tt("导出失败，请重试"));
+    await action.onTrigger({ quality });
+  }, [exportDownloads, tt]);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "fabric-image-materials@3",
@@ -470,13 +464,7 @@ export function ImageRoute({
               </VisualViewOnlyPanel>
             ),
           },
-          {
-            id: "image-export",
-            label: "导出图片",
-            icon: "download",
-            hiddenFromRail: true,
-            content: <FabricImageExportPanel editor={editor} />,
-          },
+
         ],
         selection,
         history: {
@@ -493,36 +481,10 @@ export function ImageRoute({
           setValue: (value) => editor.setZoom(value / 100),
           fit: editor.zoomFit,
         },
-        directDownload: {
-          id: "image-download-png",
-          label: visualDownloadFormats("image")[0].label,
-          icon: "download",
-          disabled: editor.loading,
-          onTrigger: editor.downloadDefaultPng,
-        },
+        directDownload: exportDownloads[0],
         actions: [
-          ...visualDownloadFormats("image")
-            .slice(1)
-            .map((entry) => ({
-              id: entry.id,
-              label: entry.label,
-              icon: "download" as const,
-              group: "download" as const,
-              disabled: editor.loading,
-              onTrigger: () =>
-                deliver(
-                  entry.format,
-                  entry.lossy ? editor.exportQuality : DEFAULT_LOSSY_QUALITY,
-                ),
-            })),
-          {
-            id: "image-export",
-            label: "更多导出设置（画质、倍数）",
-            icon: "download",
-            group: "download",
-            panelId: "image-export",
-            disabled: editor.loading,
-          },
+          ...exportDownloads.slice(1),
+
         ],
         upload: {
           accept: `${visualUploadAccept("image")},.psd,image/vnd.adobe.photoshop`,

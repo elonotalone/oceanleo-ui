@@ -1,6 +1,7 @@
 "use client";
 
-import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { useExportDownloads } from "../doc-editors/use-export-downloads";
+
 import { useUI } from "../../i18n/ui/useUI";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchMediaBlob } from "../../lib/media-proxy";
@@ -21,15 +22,11 @@ import { pluginTargetForLibraryItem } from "../active-agent-file";
 import { guardPluginSurface } from "../collab/adapters/visual-readonly";
 import { createVideoCommandSurface } from "../video-editor/video-command-surface";
 import {
-  downloadConvertedFromUrl,
-  downloadVisualBlob,
   fetchDeliverableBlob,
-  withExtension,
 } from "../media-editors/visual-convert-client";
 import { timelineTitleStem, timelineDocForStorage } from "../video-editor/video-timeline-source";
 import { normalizeVisualUploads } from "../media-editors/visual-import-normalize";
 import {
-  visualDownloadFormats,
   visualUploadAccept,
 } from "../media-editors/visual-formats";
 import { useVideoTimelineSelectionAdapter } from "../video-editor/use-video-timeline-selection-adapter";
@@ -257,45 +254,19 @@ function VideoTimelineBody({
   const sourceStopped = !editor.loadingSource && !editor.sourceReady;
   const sourcePending = editor.loadingSource && !editor.sourceReady;
   const [deliverNotice, setDeliverNotice] = useState("");
-  const [convertingWebm, setConvertingWebm] = useState(false);
-  const busy = editor.exporting || convertingWebm;
-  /**
-   * mp4 = 既有的渲染路径，产物同时进我的库。
-   * webm = 同一份渲染结果再转一道容器，转完直接下载到本机（后端不留副本）。
-   */
-  const deliver = useCallback(
-    async (format: string) => {
-      if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
-      setDeliverNotice("");
-      const rendered = editor.exportedUrl || (await editor.exportVideo());
-      if (format === "mp4") {
-        if (!rendered) throw new Error(editor.error || "渲染没有成功。");
-        return;
-      }
-      if (!rendered) throw new Error(editor.error || "渲染没有成功，无法转格式。");
-      setConvertingWebm(true);
-      setDeliverNotice(tt("正在转成 WebM…"));
-      try {
-        await downloadConvertedFromUrl({
-          url: rendered,
-          title: timelineTitleStem(item.title) || "video",
-          target: format,
-          kind: "media",
-        });
-        setDeliverNotice("");
-      } catch (caught) {
-        const message =
-          caught instanceof Error && caught.message.trim()
-            ? caught.message.trim()
-            : `转成 ${format.toUpperCase()} 失败。`;
-        setDeliverNotice(message);
-        throw new Error(message);
-      } finally {
-        setConvertingWebm(false);
-      }
+  const busy = editor.exporting;
+  const exportDownloads = useExportDownloads({ editor: "video-timeline", item, disabled: busy || !editor.sourceReady || editor.loadingSource,
+    generate: async () => {
+      const url = await editor.exportVideo();
+      if (!url) throw new Error(editor.error || tt("渲染没有成功。"));
+      return { blob: await fetchDeliverableBlob(url), filename: "video.mp4" };
     },
-    [editor.error, editor.exportVideo, editor.exportedUrl, item.title],
-  );
+  });
+  const deliver = useCallback(async (format: string) => {
+    const action = exportDownloads.find(action => action.id === `video-timeline-export-${format}`);
+    if (!action) throw new Error(tt("导出失败，请重试"));
+    await action.onTrigger();
+  }, [exportDownloads, tt]);
   const materialAdapter = useMemo<WorkbenchMaterialAdapter>(
     () => ({
       id: "video-timeline-materials@2",
@@ -442,37 +413,9 @@ function VideoTimelineBody({
           ? [{ id: "video-stored-readonly", text: storedNotice, severity: "info" as const }]
           : [],
         pages: {},
-        directDownload: {
-          id: "video-download-mp4",
-          label: tt(visualDownloadFormats("video-timeline")[0].label),
-          icon: "download",
-          busyLabel: tt("渲染中…"),
-          busy: editor.exporting,
-          disabled:
-            busy || editor.loadingSource || !editor.sourceReady,
-          onTrigger: async () => {
-            if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
-            // 渲染（成品同时进我的库），再把 mp4 真的下载到本机：下载菜单里的项不许只有通知。
-            const rendered = await editor.exportVideo();
-            if (!rendered) return;
-            const blob = await fetchDeliverableBlob(rendered);
-            downloadVisualBlob(blob, withExtension(timelineTitleStem(item.title) || "video", "mp4"));
-          },
-        },
+        directDownload: exportDownloads[0],
         actions: [
-          ...visualDownloadFormats("video-timeline")
-            .slice(1)
-            .map((entry) => ({
-              id: entry.id,
-              label: tt(entry.label),
-              icon: "download" as const,
-              group: "download" as const,
-              busy,
-              busyLabel: editor.exporting ? tt("渲染中…") : tt("转换中…"),
-              disabled:
-                busy || editor.loadingSource || !editor.sourceReady,
-              onTrigger: () => deliver(entry.format).catch(() => undefined),
-            })),
+          ...exportDownloads.slice(1),
           ...(storedReadOnly && onConvertStored
             ? [
                 {

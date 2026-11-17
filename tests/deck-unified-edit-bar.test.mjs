@@ -323,7 +323,7 @@ test("download labels are translatable and file names do not double the extensio
   const hook = readFileSync(new URL("../src/shell/doc-editors/use-deck-editor.ts", import.meta.url), "utf8");
   // W01 实测：模板串拼好的「直接下载 PowerPoint 演示文稿 (.pptx)」查不到键，英文界面露中文。
   assert.doesNotMatch(route, /label: `(?:直接)?下载 \$\{/);
-  assert.match(route, /tt\("直接下载 \{fmt\}", \{ fmt: tt\(DOC_FAMILY_DOWNLOAD_FORMATS\.deck\[0\]\.label\) \}\)/);
-  assert.match(route, /tt\("下载 \{fmt\}", \{ fmt: tt\(format\.label\) \}\)/);
+  // Target rendering and both actions are covered by leobay-export-menu.test.mjs.
+  assert.doesNotMatch(route, /DOC_FAMILY_DOWNLOAD_FORMATS/);
   assert.match(hook, /\.replace\(\/\\\.\(\?:pptx\?\|odp\|key\)\$\/i, ""\)\}\.pptx`/);
 });

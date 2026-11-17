@@ -1,5 +1,7 @@
 "use client";
 
+import { useExportDownloads } from "../doc-editors/use-export-downloads";
+
 /**
  * PDF 编辑器（2026-10-23 操作员裁定 D4）。
  *
@@ -94,6 +96,7 @@ export function PdfRoute({
   const collab = usePdfCollab({ item, onExternalItem: setExternalItem });
   const readOnly = collab.readOnly;
   const editor = usePdfWorkbench(externalItem ?? item, siteId, { readOnly });
+  const exportDownloads = useExportDownloads({ editor: "pdf", item, disabled: !editor.bridge, generate: editor.exportFile });
   const dark = usePluginTheme("pdf").theme === "dark";
   const [mode, setMode] = useState<EditorMode>(DEFAULT_EDITOR_MODE);
   const chrome = mode === "pro" ? "pro" : "basic";
@@ -274,16 +277,8 @@ export function PdfRoute({
           setValue: editor.setZoom,
           fit: editor.fit,
         },
-        directDownload: {
-          id: "pdf-download",
-          label: "直接下载 PDF",
-          icon: "download",
-          disabled: !bridge,
-          onTrigger: async () => {
-            const failure = await editor.download();
-            if (failure) editor.setError(failure);
-          },
-        },
+        directDownload: exportDownloads[0],
+        actions: exportDownloads.slice(1),
         upload: readOnly
           ? undefined
           : {

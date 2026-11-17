@@ -583,6 +583,11 @@ export function usePdfWorkbench(
     setZoom: (percent: number) => handle?.bridge.setZoomPercent(percent),
     fit: () => handle?.bridge.fitPage(),
     save,
+    exportFile: async () => {
+      const bridge = handleRef.current?.bridge;
+      if (!bridge) throw new Error(tt("PDF 还没有载入。"));
+      return { filename: `${pdfFileStem(item.title)}.pdf`, blob: new Blob([Uint8Array.from(await exportPdf(bridge))], { type: "application/pdf" }) };
+    },
     download,
     workingCopyReady,
     prepareSave,

@@ -1,3 +1,4 @@
+import { CLIENT_EXPORT_TARGETS } from "./export-targets";
 /**
  * 文档家族（文档 / 表格 / 演示 / PDF）的**入口后缀与下载格式声明表**。
  *
@@ -39,30 +40,11 @@ export interface DocFamilyDownloadFormat {
  * 每条路由的下载格式。顺序就是菜单顺序，第一条是各自的主交付物
  * （由适配器的 `directDownload` 呈现，因此不重复出现在 `actions` 里）。
  */
-export const DOC_FAMILY_DOWNLOAD_FORMATS: Readonly<
-  Record<DocFamilyEditorId, readonly DocFamilyDownloadFormat[]>
-> = {
-  richdoc: [
-    { id: "richdoc.download.docx", label: "Word 文档 (.docx)", extension: "docx", via: "local" },
-    { id: "richdoc.download.md", label: "Markdown 文本 (.md)", extension: "md", via: "local" },
-    { id: "richdoc.download.html", label: "网页 (.html)", extension: "html", via: "local" },
-    { id: "richdoc.download.pdf", label: "PDF 文件 (.pdf)", extension: "pdf", via: "convert" },
-    { id: "richdoc.download.txt", label: "纯文本 (.txt)", extension: "txt", via: "local" },
-    { id: "richdoc.download.json", label: "可继续编辑的工程文件 (.json)", extension: "json", via: "local" },
-  ],
-  grid: [
-    { id: "grid.download.xlsx", label: "Excel 工作簿 (.xlsx)", extension: "xlsx", via: "local" },
-    { id: "grid.download.csv", label: "当前工作表逗号分隔 (.csv)", extension: "csv", via: "local" },
-    { id: "grid.download.pdf", label: "PDF 文件 (.pdf)", extension: "pdf", via: "convert" },
-  ],
-  deck: [
-    { id: "deck.download.pptx", label: "PowerPoint 演示文稿 (.pptx)", extension: "pptx", via: "local" },
-    { id: "deck.download.pdf", label: "PDF 文件 (.pdf)", extension: "pdf", via: "convert" },
-  ],
-  pdf: [
-    { id: "pdf.download.pdf", label: "PDF 文件 (.pdf)", extension: "pdf", via: "local" },
-  ],
-};
+export const DOC_FAMILY_DOWNLOAD_FORMATS = Object.fromEntries(
+  DOC_FAMILY_EDITOR_IDS.map(editor => [editor, CLIENT_EXPORT_TARGETS[editor].map(format => ({
+    id: `${editor}.download.${format.target}`, label: format.label, extension: format.target, via: "local" as const,
+  }))]),
+) as unknown as Readonly<Record<DocFamilyEditorId, readonly DocFamilyDownloadFormat[]>>;
 
 /**
  * 路由原生就能打开的后缀（不用转，一律不经过后端）。

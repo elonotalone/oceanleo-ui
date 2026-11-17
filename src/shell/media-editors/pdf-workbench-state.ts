@@ -232,6 +232,7 @@ export interface PdfWorkbenchState {
   undo: () => void;
   redo: () => void;
   download: () => void;
+  exportFile: () => Promise<{ blob: Blob; filename: string }>;
   saveCopy: () => Promise<PersistedEditorVersion | null>;
   captureRecovery: () => Blob | null;
   restoreRecovery: (payload: unknown) => Promise<boolean>;

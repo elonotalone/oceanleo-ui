@@ -145,6 +145,7 @@ export interface RichDocEditorState {
    */
   exportDoc: (choice?: RevisionExportChoice) => Promise<void>;
   exportText: () => void;
+  exportFile: (target: string) => Promise<{ blob: Blob; filename: string }>;
   /** 审阅层：批注线程、修订列表与开关。工具栏与侧栏都从这里取。 */
   review: RichDocReviewApi;
   /** Replace the active document with a local DOC/DOCX/HTML/Markdown/text file. */
@@ -824,6 +825,24 @@ export function useRichDocEditor(
     [editor, baseTitle, requireSourceReady, reviewSidecar, tt],
   );
 
+  const exportFile = useCallback(async (target: string) => {
+    if (!editor || !requireSourceReady()) throw new Error(tt("导出失败，请重试"));
+    if (target === "docx" || target === "pdf") {
+      const summary = summarizeReviewForExport(editor.state.doc, reviewSidecar, { docxCommentsWired: true });
+      const blocked = reviewExportBlockMessage(summary, undefined);
+      if (blocked) throw new Error(tt(blocked));
+      return { filename: `${baseTitle}.docx`, generated: generatedRef.current, blob: await tiptapJsonToDocxBlob(baseTitle, editor.getJSON(), {
+        generated: generatedRef.current, comments: buildDocxCommentPayload(editor.state.doc, reviewSidecar).entries,
+      }) };
+    }
+    const value = target === "json" ? JSON.stringify(editor.getJSON(), null, 2)
+      : target === "html" ? fullHtmlDocument(baseTitle, richDocLabeledHtml(editor.getHTML(), generatedRef.current))
+      : richDocLabeledText(target === "md" ? await htmlToMarkdown(editor.getHTML()) : editor.getText(), generatedRef.current);
+    const mime = ({ json: "application/json", html: "text/html", md: "text/markdown", txt: "text/plain" } as Record<string, string>)[target];
+    if (!mime) throw new Error(tt("导出失败，请重试"));
+    return { filename: `${baseTitle}.${target}`, blob: new Blob([value], { type: `${mime};charset=utf-8` }) };
+  }, [editor, baseTitle, requireSourceReady, reviewSidecar, tt]);
+
   const exportText = useCallback(() => {
     if (!editor || !requireSourceReady()) return;
     downloadText(`${baseTitle}.txt`, richDocLabeledText(editor.getText(), generatedRef.current), "text/plain;charset=utf-8");
@@ -1223,6 +1242,7 @@ export function useRichDocEditor(
     save: saveInRoom,
     lastSaveError,
     isGenerated,
+    exportFile,
     exportMarkdown,
     exportHtml,
     exportDoc,

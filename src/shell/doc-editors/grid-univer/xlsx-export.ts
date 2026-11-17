@@ -1,3 +1,4 @@
+import { selectedChipColors } from "./chip-colors";
 /**
  * Univer 快照 → XLSX，直接走 exceljs，不经过 `GridSheet`。
  *
@@ -1017,6 +1018,23 @@ export async function buildGridXlsxFromUniverSnapshot(
           }
         }
         applyParagraphExport(cell, body, dropped);
+        // Univer stores in-cell pictures in the rich document, separately from floating drawings.
+        const embedded = isObject(raw.p) && isObject(raw.p.drawings) ? raw.p.drawings : {};
+        for (const image of Object.values(embedded)) {
+          if (!isObject(image)) continue;
+          let source = typeof image.source === "string" ? image.source : "";
+          try {
+            if (/^https?:/i.test(source)) source = await gridImageDataUrlFromBlob(await fetchMediaBlob(source));
+            const extension = imageExtension(source);
+            if (!extension) { dropped.add("单元格图片无法导出"); continue; }
+            const imageId = workbook.addImage({ base64: source, extension });
+            worksheet.addImage(imageId, { tl: { col, row }, br: { col: col + 1, row: row + 1 }, editAs: "oneCell" } as unknown as import("exceljs").ImageRange);
+            hasContent = true;
+          } catch {
+            // Missing pictures must never be silently omitted from a delivery file.
+            throw new Error("导出失败，请重试");
+          }
+        }
         if (hasContent || style) {
           maxRow = Math.max(maxRow, row);
           maxCol = Math.max(maxCol, col);
@@ -1098,7 +1116,13 @@ export async function buildGridXlsxFromUniverSnapshot(
               r = rect.endRow + 1;
               break;
             }
-            worksheet.getCell(r + 1, c + 1).dataValidation = validation;
+            const cell = worksheet.getCell(r + 1, c + 1);
+            cell.dataValidation = validation;
+            const chip = selectedChipColors(raw, cell.text);
+            if (chip) {
+              cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: argb(chip.background)! } };
+              cell.font = { ...cell.font, color: { argb: argb(chip.color)! } };
+            }
             dvCells += 1;
           }
         }

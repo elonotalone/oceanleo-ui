@@ -1,5 +1,7 @@
 "use client";
 
+import { useExportDownloads } from "../doc-editors/use-export-downloads";
+
 import {
   useCallback,
   useEffect,
@@ -64,9 +66,7 @@ import {
 import { VisualViewOnlyPanel } from "../collab/adapters/VisualViewOnlyPanel";
 import { editorToolLabel } from "../workbench-routes";
 import { buildDeckCommandSurface as buildRawDeckCommandSurface } from "../doc-editors/doc-family-commands";
-import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
 import {
-  DOC_FAMILY_DOWNLOAD_FORMATS,
   docFamilyAcceptAttribute,
 } from "../doc-editors/doc-family-formats";
 import { importDocFamilyFile } from "../doc-editors/doc-family-import";
@@ -301,43 +301,19 @@ export function DeckRoute({
     },
     [editor.importSource, editor.insertImageElement, siteId],
   );
-  /** PPTX 本地出；PDF 交给后端转一次，内容与下载的 PPTX 同源。 */
-  const downloadAs = useCallback(
-    async (extension: string): Promise<string> => {
-      setImportError("");
-      try {
-        if (extension === "pptx") {
-          await editor.exportPptx();
-          return editor.error || "";
-        }
-        if (extension === "pdf") {
-          await editor.flushBeforeExport();
-          const title = (editor.deck.title || item.title || "presentation").replace(/\.(?:pptx?|odp|key)$/i, "");
-          return await downloadConvertedCopy({
-            source: await buildDeckPptxBlob(editor.deck),
-            sourceName: `${title}.pptx`,
-            target: "pdf",
-            baseName: title,
-          });
-        }
-        return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
-      } catch (caught) {
-        return caught instanceof Error && caught.message
-          ? caught.message
-          : `导出 ${extension.toUpperCase()} 失败。`;
-      }
-    },
-    [
-      editor.deck,
-      editor.error,
-      editor.exportPptx,
-      editor.flushBeforeExport,
-      item.title,
-    ],
-  );
+  const exportDownloads = useExportDownloads({ editor: "deck", item, disabled: editor.loading || editor.exporting || editor.sourceFailed,
+    generate: async () => { await editor.flushBeforeExport(); return { blob: await buildDeckPptxBlob(editor.deck), filename: "presentation.pptx" }; },
+  });
+  const downloadAs = useCallback(async (extension: string): Promise<string> => {
+    try {
+      const action = exportDownloads.find(action => action.id === `deck-export-${extension}`);
+      if (!action) throw new Error(tt("导出失败，请重试"));
+      await action.onTrigger(); return "";
+    } catch (caught) { return caught instanceof Error ? caught.message : tt("导出失败，请重试"); }
+  }, [exportDownloads, tt]);
   // 只能查看：Leo 的「帮我改」从指令面进来，会改作品的指令在这一层直接拒绝
   usePluginCommandSurface(
-    buildDeckCommandSurface(editor, { download: downloadAs, save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush) }, viewOnly),
+    buildDeckCommandSurface(editor, { download: downloadAs, formats: exportDownloads.map(({ target, label }) => ({ target, label })), save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush) }, viewOnly),
   );
   return (
     <AdvancedWorkbenchShell
@@ -413,14 +389,7 @@ export function DeckRoute({
           setValue: setZoom,
           fit: () => setZoom(DECK_PREVIEW_FIT_ZOOM_PERCENT),
         },
-        directDownload: {
-          id: "deck-export-pptx",
-          label: tt("直接下载 {fmt}", { fmt: tt(DOC_FAMILY_DOWNLOAD_FORMATS.deck[0].label) }),
-          icon: "download",
-          busyLabel: "导出 PPTX…",
-          busy: editor.exporting,
-          onTrigger: editor.exportPptx,
-        },
+        directDownload: exportDownloads[0],
         actions: [
           {
             id: "deck-present",
@@ -453,15 +422,7 @@ export function DeckRoute({
                 },
               ]
             : []),
-          ...DOC_FAMILY_DOWNLOAD_FORMATS.deck.slice(1).map((format) => ({
-            id: `deck-export-${format.extension}`,
-            label: tt("下载 {fmt}", { fmt: tt(format.label) }),
-            group: "download" as const,
-            disabled: editor.loading || editor.exporting,
-            onTrigger: () => {
-              void downloadAs(format.extension);
-            },
-          })),
+          ...exportDownloads.slice(1),
         ],
         upload: {
           accept: docFamilyAcceptAttribute("deck"),

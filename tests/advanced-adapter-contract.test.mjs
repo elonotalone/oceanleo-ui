@@ -132,51 +132,12 @@ test("fixed workspace row owns download only; semantic actions live in the edit 
   assert.doesNotMatch(header, /absolute left-2 right-2 top-2/);
 });
 
-// 2026-08-19（W2）：下载菜单从 `DOC_FAMILY_DOWNLOAD_FORMATS` 一张表派生，条目 id 统一成
-// `richdoc-export-<落地后缀>`，源码里不再有逐字的 id 文本（Markdown 那条因此从
-// `richdoc-export-markdown` 变成 `richdoc-export-md`，与其余三条路由同一套命名）。
-// 判据随之从「在源码里逐字找三个 id」换成「从同一张表算出全部六条 id 并逐条钉死」。
-// 这是换判据不是松判据：条目丢失照样红（旧判据只盯 3 条，新判据盯全部 6 条，
-// 顺序、后缀、条数任一变动都红），另外还多钉了两条旧判据管不到的事——
-// 路由必须真的按这张表派生（而不是另抄一份），且除主交付物外不许再手写任何导出 id。
-test("RichDoc groups DOCX Markdown HTML and JSON behind one download contract", () => {
-  const route = source("../src/shell/advanced-routes/RichDocRoute.tsx");
-  assert.deepEqual(
-    DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.map(
-      (format) => `richdoc-export-${format.extension}`,
-    ),
-    [
-      "richdoc-export-docx",
-      "richdoc-export-md",
-      "richdoc-export-html",
-      "richdoc-export-pdf",
-      "richdoc-export-txt",
-      "richdoc-export-json",
-    ],
-  );
-  assert.match(
-    route,
-    /directDownload:\s*\{[\s\S]*?id:\s*"richdoc-export-docx"/,
-  );
-  assert.match(
-    route,
-    /DOC_FAMILY_DOWNLOAD_FORMATS\.richdoc\.slice\(1\)\.map\(\(format\) => \(\{[\s\S]{0,160}?id: `richdoc-export-\$\{format\.extension\}`[\s\S]{0,160}?group: "download" as const/,
-  );
-  // 派生链里插一道筛子就能把某个格式从菜单里悄悄拿掉，而上面那条只看首尾——
-  // V1 第 3 轮的探针（`V1-probe-11-w2r3-strictness.mjs` 变异 6）把这个洞钉在盘上。
-  // 这里正面堵死：`.slice(1)` 之后只准直接 `.map`，不准夹任何筛选。
-  assert.doesNotMatch(route, /\.slice\(1\)\s*\.filter/);
-  assert.deepEqual(
-    [...route.matchAll(/id: "(richdoc-export-[a-z0-9]+)"/g)].map(
-      (match) => match[1],
-    ),
-    ["richdoc-export-docx"],
-  );
-  const retry = route.match(
-    /id: "richdoc-refresh-office-source"[\s\S]*?\}/,
-  )?.[0];
-  assert.ok(retry);
-  assert.doesNotMatch(retry, /group:\s*"download"/);
+// Per-editor download/save rendering is exercised in leobay-export-menu.test.mjs.
+// This contract only checks the offline generators; server formats come from capabilities.
+test("RichDoc local targets are unique and source formats remain editable", () => {
+  const targets=DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.map(format=>format.extension);
+  assert.deepEqual(targets,["docx","md","html","txt","json"]);
+  assert.equal(new Set(targets).size,targets.length);
 });
 
 test("mutable native editors capture server working copies without a local recovery layer", () => {

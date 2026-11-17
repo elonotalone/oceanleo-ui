@@ -16,7 +16,9 @@
  * 提交之外（见挂载 effect 的 cleanup 注释）。
  */
 
-import { ensureAdvancedDraftExport } from "../advanced-draft-gates";
+import { useExportDownloads } from "./use-export-downloads";
+import { activeSheetCsv } from "./grid-univer/csv-export";
+import { renderStyledGridPreview } from "./grid-univer/styled-preview";
 import {
   useCallback,
   useEffect,
@@ -72,17 +74,13 @@ import { useGridMaterialAdapter } from "./grid-univer/use-grid-material";
 import { GRID_WORKING_COPY_SCHEMA, gridWorkingCopy } from "./grid-univer/working-copy";
 import { uploadEditorMedia } from "./editor-insert-media";
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
-import { downloadBlob, loadEditorProject, saveFileToLibrary } from "./doc-io";
-import { renderGridPreviewPng } from "./editor-preview-raster";
+import { loadEditorProject, saveFileToLibrary } from "./doc-io";
 import {
   buildGridXlsxFromUniverSnapshot,
   gridXlsxDroppedWarning,
-  univerSnapshotToPreviewSheets,
 } from "./grid-univer/xlsx-export";
 import { emptyGridSheet, loadGridFile, loadGridSheets } from "./grid-model";
-import { downloadConvertedCopy } from "./doc-family-download";
 import {
-  DOC_FAMILY_DOWNLOAD_FORMATS,
   docFamilyAcceptAttribute,
 } from "./doc-family-formats";
 import { importDocFamilyFile } from "./doc-family-import";
@@ -166,7 +164,6 @@ import {
   type GridUniverLiveApi,
 } from "./grid-univer/stage-plan";
 import { gridStageTopInset } from "./grid-univer/chrome";
-import { gridDownloadBaseName, gridDownloadFileName, gridDownloadFormatLabel } from "./grid-univer/download";
 import { noteGridProbe, setGridProbe } from "./grid-univer/acceptance-probe";
 import { gridRecoveryReady } from "./grid-univer/open-settle";
 import {
@@ -301,9 +298,7 @@ export function GridUniverStage({
   const sourceReadyRef = useRef(false);
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(true);
-  const [xlsxExporting, setXlsxExporting] = useState(false);
   const [toolbarEpoch, setToolbarEpoch] = useState(0);
-  const xlsxExportBusyRef = useRef(false);
   const readonly =
     conversion === "readonly" ||
     conversion === "converting" ||
@@ -922,62 +917,19 @@ export function GridUniverStage({
     [currentSnapshot, item.title],
   );
 
-  const exportXlsx = useCallback(async () => {
-    if (!await ensureAdvancedDraftExport(item.key || item.id)) return;
-    if (xlsxExportBusyRef.current) return;
-    xlsxExportBusyRef.current = true;
-    setXlsxExporting(true);
-    try {
-      const { blob, warning } = await workbookBlob();
-      downloadBlob(gridDownloadFileName(item.title || "workbook", "xlsx"), blob);
-      setStatus(warning);
-    } catch (caught) {
-      setStatus(caught instanceof Error ? caught.message : tt("导出 XLSX 失败"));
-    } finally {
-      xlsxExportBusyRef.current = false;
-      setXlsxExporting(false);
-    }
-  }, [item.title, tt, workbookBlob]);
-
-  const downloadAs = useCallback(
-    async (extension: string): Promise<string> => {
-      if (!await ensureAdvancedDraftExport(item.key || item.id)) return "";
-      try {
-        if (extension === "xlsx") {
-          await exportXlsx();
-          return "";
-        }
-        if (extension === "csv") {
-          const sheets = univerSnapshotToGridSheets(currentSnapshot());
-          const first = sheets[0];
-          if (!first) return tt("没有可导出的工作表。");
-          const rows = first.rows.map((row) => row.join(",")).join("\n");
-          downloadBlob(
-            gridDownloadFileName(item.title || "workbook", "csv"),
-            new Blob([`\uFEFF${rows}`], { type: "text/csv;charset=utf-8" }),
-          );
-          return "";
-        }
-        if (extension === "pdf") {
-          const title = gridDownloadBaseName(item.title || "workbook");
-          const { blob, warning } = await workbookBlob();
-          const error =
-            (await downloadConvertedCopy({
-              source: blob,
-              sourceName: `${title}.xlsx`,
-              target: "pdf",
-              baseName: title,
-            })) || "";
-          if (!error && warning) setStatus(warning);
-          return error;
-        }
-        return tt("这里没有 {ext} 这个下载格式。", { ext: extension.toUpperCase() });
-      } catch (caught) {
-        return caught instanceof Error ? caught.message : tt("导出失败。");
+  const exportDownloads = useExportDownloads({ editor: "grid", item, disabled: loading || readonly,
+    generate: async (target) => {
+      if (target === "csv") {
+        const workbook = handleRef.current?.api.getActiveWorkbook?.() as { getActiveSheet?: () => { getSheetId?: () => string } | null } | undefined;
+        const id = workbook?.getActiveSheet?.()?.getSheetId?.();
+        if (!id) throw new Error(tt("没有可导出的工作表。"));
+        return { filename: "workbook.csv", blob: new Blob([activeSheetCsv(currentSnapshot(), id)], { type: "text/csv;charset=utf-8" }) };
       }
+      const { blob, warning } = await workbookBlob();
+      if (warning) setStatus(warning);
+      return { filename: "workbook.xlsx", blob };
     },
-    [currentSnapshot, exportXlsx, item.title, tt, workbookBlob],
-  );
+  });
 
   const save = useCallback(async (prepared?: Partial<IWorkbookData>, preparedRevision?: number) => {
     if (sourceFailedRef.current || !sourceReadyRef.current || (!prepared && !handleRef.current)) {
@@ -1022,10 +974,7 @@ export function GridUniverStage({
             type: GRID_SOURCE_MEDIA_TYPE,
           });
         },
-        createPreview: () =>
-          renderGridPreviewPng(univerSnapshotToPreviewSheets(snapshot), {
-            headerRow: true,
-          }),
+        createPreview: () => renderStyledGridPreview(snapshot),
         sourceFormat: GRID_SOURCE_FORMAT,
         sourceMediaType: GRID_SOURCE_MEDIA_TYPE,
         title,
@@ -1341,15 +1290,7 @@ export function GridUniverStage({
           },
         },
         pages: { proLabel: GRID_PRO_LABEL },
-        directDownload: {
-          id: "grid-export-xlsx",
-          label: tt("直接下载 {fmt}", { fmt: gridDownloadFormatLabel("xlsx", tt) }),
-          icon: "download",
-          busyLabel: tt("导出中…"),
-          busy: xlsxExporting,
-          disabled: loading || xlsxExporting || readonly,
-          onTrigger: exportXlsx,
-        },
+        directDownload: exportDownloads[0],
         actions: [
           // 文档段：「重新计算」在最前（规范 v2 §6 grid 行），其后是失败时的重载/重试。
           ...documentActions,
@@ -1363,15 +1304,7 @@ export function GridUniverStage({
                 },
               ]
             : []),
-          ...DOC_FAMILY_DOWNLOAD_FORMATS.grid.slice(1).map((format) => ({
-            id: `grid-export-${format.extension}`,
-            label: tt("下载 {fmt}", { fmt: gridDownloadFormatLabel(format.extension, tt) }),
-            group: "download" as const,
-            disabled: loading || xlsxExporting || readonly,
-            onTrigger: () => {
-              void downloadAs(format.extension);
-            },
-          })),
+          ...exportDownloads.slice(1),
         ],
         upload: {
           accept: docFamilyAcceptAttribute("grid"),

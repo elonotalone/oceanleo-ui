@@ -56,8 +56,4 @@ test("Insert drawer copy has every non-Chinese locale", () => {
   assert.equal(EDITOR_OVERHAUL_W08_COPY.en["插入表格"], "Insert table");
 });
 
-test("··· download labels are translated with placeholder keys, not concatenated Chinese", () => {
-  assert.match(route, /label: tt\("直接下载 \{fmt\}", \{ fmt: DOC_FAMILY_DOWNLOAD_FORMATS\.richdoc\[0\]\.label \}\)/);
-  assert.match(route, /label: tt\("下载 \{fmt\}", \{ fmt: format\.label \}\)/);
-  assert.doesNotMatch(route, /label: `(直接)?下载 \$\{/);
-});
+// Download target labels and save actions are covered by leobay-export-menu.test.mjs.

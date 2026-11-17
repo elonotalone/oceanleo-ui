@@ -23,10 +23,8 @@ import {
   isTemplateMaterialDetailItem,
   type LibraryItem,
 } from "./library-data";
-import {
-  LIBRARY_DOCUMENT_DOWNLOAD_FORMATS,
-  libraryItemOffersDocumentFormats,
-} from "./library-document-export";
+import { exportEditorForItem } from "./doc-editors/export-targets";
+import { LibraryExportMenu } from "./plugin-chrome/LibraryExportMenu";
 import { editorCapabilityFor } from "./workbench-routes";
 import type { AssetActionContext } from "./asset-detail/types";
 
@@ -632,7 +630,7 @@ export function ArtifactActionButtons({
       favoriteVisible ||
       matrix.edit.visible ||
       matrix.preview.visible);
-  const documentFormats = libraryItemOffersDocumentFormats(item);
+  const documentFormats = Boolean(exportEditorForItem(item));
   const runShare = async () => {
     if (!shareUrl || isBusy("share")) return;
     beginBusy("share");
@@ -683,27 +681,6 @@ export function ArtifactActionButtons({
       document.body.append(link);
       link.click();
       link.remove();
-      report("下载已开始。");
-    } catch (error) {
-      fail(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
-    } finally {
-      endBusy("download");
-    }
-  };
-  const runFormatDownload = async (extension: "md" | "docx" | "pdf") => {
-    if (!downloadAvailable || isBusy("download")) {
-      if (!downloadAvailable) report(downloadReason);
-      return;
-    }
-    setDownloadMenuOpen(false);
-    beginBusy("download");
-    report(`正在准备 ${extension.toUpperCase()}…`);
-    try {
-      const { downloadLibraryDocument } = await import(
-        "./library-document-export"
-      );
-      const failureMessage = await downloadLibraryDocument(item, extension);
-      if (failureMessage) throw new Error(failureMessage);
       report("下载已开始。");
     } catch (error) {
       fail(humanErrorMessage(error, "下载没能开始，请稍后重试。"));
@@ -914,15 +891,9 @@ export function ArtifactActionButtons({
                 align="end"
                 preferredPlacement="below"
                 ariaLabel={tt("下载")}
-                width={176}
+                width={320}
               >
-                {LIBRARY_DOCUMENT_DOWNLOAD_FORMATS.map((format) => (
-                  <FloatingMenuItem
-                    key={format.id}
-                    label={tt(format.label)}
-                    onSelect={() => void runFormatDownload(format.extension)}
-                  />
-                ))}
+                <LibraryExportMenu item={item} disabled={!downloadAvailable || isBusy("download")} onClose={() => setDownloadMenuOpen(false)} />
               </FloatingMenu>
             )}
           </div>

@@ -774,13 +774,13 @@ test("四条路由源码真的把指令面挂上去了", () => {
 // ---------------------------------------------------------------------------
 
 const REQUIRED_DOWNLOADS = {
-  richdoc: ["docx", "md", "html", "pdf", "txt"],
+  richdoc: ["docx", "md", "html", "txt"],
   grid: ["xlsx", "csv"],
-  deck: ["pptx", "pdf"],
+  deck: ["pptx"],
   pdf: ["pdf"],
 };
 
-test("每条路由的下载格式覆盖任务书要求的那几种", () => {
+test("离线可用的原生格式只列真实客户端生成器", () => {
   for (const [editorId, required] of Object.entries(REQUIRED_DOWNLOADS)) {
     const have = DOC_FAMILY_DOWNLOAD_FORMATS[editorId].map((format) => format.extension);
     for (const extension of required) {
@@ -832,7 +832,7 @@ test("导出失败时把原因带回给 agent，不许报成功", async () => {
   const surface = buildRichDocCommandSurface(richDocDouble().editor, {
     download: async () => "转换服务暂时连不上，请过一会儿再试。",
   });
-  const result = await surface.run("richdoc.export", { format: "pdf" });
+  const result = await surface.run("richdoc.export", { format: "docx" });
   assert.equal(result.ok, false);
   assert.match(result.message, /连不上/);
 });
@@ -1007,4 +1007,13 @@ test("四条声明表一次给全，转换一律走后端 office 端点", () => 
       assert.ok(rule.from.length > 0);
     }
   }
+});
+
+// Server formats are supplied by the same resolved capability rows as the live menu.
+test("export commands accept advertised server targets and refuse unavailable ones", async () => {
+  const called=[];
+  const surface=buildRichDocCommandSurface(richDocDouble().editor, {download:async target=>{called.push(target);return "";}, formats:[{target:"docx",label:"DOCX"},{target:"pdf",label:"PDF"}]});
+  assert.equal((await surface.run("richdoc.export",{format:"pdf"})).ok,true);
+  assert.deepEqual(called,["pdf"]);
+  assert.equal((await surface.run("richdoc.export",{format:"unsupported"})).ok,false);
 });

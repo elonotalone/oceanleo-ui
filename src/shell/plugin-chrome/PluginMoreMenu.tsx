@@ -17,6 +17,7 @@
 // 不让「点了没反应」发生。有 toast 时它退回读屏专用，不重复显示。
 // ============================================================================
 
+import { ExportResultToast } from "./ExportResultToast";
 import { useId, useRef, useState, type KeyboardEvent, type RefObject } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { hasToastHost } from "../../lib/toast-bridge";
@@ -35,6 +36,7 @@ export interface PluginMoreMenuDownload {
   icon?: WorkbenchIconName;
   disabled?: boolean;
   busy?: boolean;
+  onSave?: () => Promise<string | undefined>;
 }
 
 export interface PluginMoreMenuProps<A extends PluginMoreMenuDownload> {
@@ -114,6 +116,19 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
   const [open, setOpen] = useState(false);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const social = useEditorItemSocial(item);
+  const [exportHref, setExportHref] = useState("");
+  const [exportError, setExportError] = useState("");
+  const [exportBusy, setExportBusy] = useState(false);
+  async function runExport(action: A, save: boolean) {
+    if (exportBusy) return;
+    closeAll(true);
+    setExportBusy(true); setExportError(""); setExportHref("");
+    try {
+      if (save && action.onSave) setExportHref(await action.onSave() || "");
+      else await onDownload(action);
+    } catch (caught) { setExportError(caught instanceof Error ? caught.message : "导出失败，请重试"); }
+    finally { setExportBusy(false); }
+  }
   const idBase = useId().replace(/:/g, "");
   const menuId = `plugin-more-menu-${idBase}`;
   const submenuId = `plugin-more-download-${idBase}`;
@@ -159,6 +174,7 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
       data-revision-id={social.revisionId || undefined}
       className="flex items-center"
     >
+      <ExportResultToast href={exportHref} error={exportError} onClose={() => { setExportHref(""); setExportError(""); }} />
       <IconButton
         ref={triggerRef}
         variant="ghost"
@@ -296,8 +312,8 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
                 const label =
                   action.busy && action.busyLabel ? action.busyLabel : action.label;
                 return (
+                  <div key={action.id} role="group" aria-label={tt(label)} style={{ display: "flex", alignItems: "center" }}>
                   <Button
-                    key={action.id}
                     variant="ghost"
                     block
                     align="start"
@@ -305,12 +321,11 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
                     tabIndex={-1}
                     data-workspace-export-action-id={action.id}
                     data-workspace-export-action-kind={isDefault ? "default" : "secondary"}
-                    disabled={action.disabled || action.busy}
+                    disabled={action.disabled || action.busy || exportBusy}
                     aria-busy={action.busy || undefined}
                     onKeyDown={onSubmenuKeyDown}
                     onClick={() => {
-                      closeAll(true);
-                      void onDownload(action);
+                      void runExport(action, false);
                     }}
                   >
                     <AdvancedEditorIcon
@@ -324,6 +339,11 @@ export function PluginMoreMenu<A extends PluginMoreMenuDownload>({
                       </span>
                     ) : null}
                   </Button>
+                  {action.onSave ? <Button variant="ghost" role="menuitem" tabIndex={-1}
+                    data-workspace-save-export-action-id={action.id} disabled={action.disabled || action.busy || exportBusy}
+                    aria-label={tt("存到我的库：{fmt}", { fmt: tt(label) })} onKeyDown={onSubmenuKeyDown}
+                    onClick={() => { void runExport(action, true); }}>{tt("存到我的库")}</Button> : null}
+                  </div>
                 );
               })}
             </AnchoredPopover>

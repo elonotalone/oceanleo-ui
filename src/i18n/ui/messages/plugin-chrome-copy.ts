@@ -1,3 +1,4 @@
+import { EXPORT_MESSAGES } from "./export-copy";
 import type { Locale } from "../../config";
 import {
   assemblePluginChromeCopy,
@@ -19,3 +20,5 @@ export const PLUGIN_CHROME_MESSAGES: Record<Locale, Record<string, string>> =
     ...PLUGIN_CHROME_COPY_WESTERN,
     ...PLUGIN_CHROME_COPY_EASTERN,
   });
+
+for (const locale of Object.keys(EXPORT_MESSAGES) as Locale[]) Object.assign(PLUGIN_CHROME_MESSAGES[locale], EXPORT_MESSAGES[locale]);

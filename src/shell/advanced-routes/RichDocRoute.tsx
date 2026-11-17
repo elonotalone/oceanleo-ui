@@ -1,6 +1,8 @@
 "use client";
 
-import { afterAdvancedDraftExport, ensureAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
+import { useExportDownloads } from "../doc-editors/use-export-downloads";
+
+import { afterAdvancedDraftExport, saveAdvancedEditorFromAgent } from "../advanced-draft-gates";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types";
@@ -20,13 +22,10 @@ import { RichDocStage } from "../doc-editors/RichDocStage";
 import { downloadText, loadEditorProject } from "../doc-editors/doc-io";
 import { richDocProjectUrl } from "../doc-editors/rich-doc-model";
 import { artifactSaveStepMessage } from "../doc-editors/artifact-save-contract";
-import { tiptapJsonToDocxBlob } from "../doc-editors/rich-doc-docx";
 import type { AdvancedContextToolbarHost } from "../advanced-editor-adapter";
 import { useRichDocFindShortcut } from "../doc-editors/use-rich-doc-find-shortcut";
 import { buildRichDocCommandSurface } from "../doc-editors/doc-family-commands";
-import { downloadConvertedCopy } from "../doc-editors/doc-family-download";
 import {
-  DOC_FAMILY_DOWNLOAD_FORMATS,
   docFamilyAcceptAttribute,
 } from "../doc-editors/doc-family-formats";
 import { importDocFamilyFile } from "../doc-editors/doc-family-import";
@@ -97,6 +96,7 @@ export function RichDocRoute({
       : undefined,
     { room: collabRoom },
   );
+  const exportDownloads = useExportDownloads({ editor: "richdoc", item, disabled: editor.loading || !editor.sourceReady || !editor.editor, generate: editor.exportFile });
   const panelHostRef = useRef<AdvancedContextToolbarHost | null>(null);
   const [cropOpen, setCropOpen] = useState(false);
   const openImageCrop = useCallback(() => setCropOpen((open) => !open), []);
@@ -277,24 +277,6 @@ export function RichDocRoute({
     },
     [editor.importSource, editor.uploadImage],
   );
-  const exportStructuredJson = useCallback(() => {
-    setExportError("");
-    if (!editor.editor) {
-      setExportError("文档尚未载入，不能导出可编辑 JSON。");
-      return;
-    }
-    try {
-      downloadText(
-        `${item.title || "document"}.richdoc.json`,
-        JSON.stringify(editor.editor.getJSON(), null, 2),
-        "application/json;charset=utf-8",
-      );
-    } catch (caught) {
-      setExportError(
-        caught instanceof Error ? caught.message : "文档 JSON 导出失败",
-      );
-    }
-  }, [editor.editor, item.title]);
   const exportWechat = useCallback(() => {
     setExportError("");
     if (!editor.editor) {
@@ -315,76 +297,16 @@ export function RichDocRoute({
     );
     if (result.warnings.length > 0) setExportError(result.warnings[0]);
   }, [editor.editor, item.title]);
-  /**
-   * PDF 浏览器本地出不来，交给后端 `/v1/convert/office`：先用编辑器已有的 DOCX
-   * 写入器出一份字节，再转一次。这样下载的 PDF 与下载的 DOCX 是同一份内容。
-   */
-  const exportPdf = useCallback(async (): Promise<string> => {
-    if (!editor.editor) return "文档尚未载入，不能导出 PDF。";
-    const title = item.title || "document";
+  const downloadAs = useCallback(async (extension: string): Promise<string> => {
     try {
-      const docx = await tiptapJsonToDocxBlob(title, editor.editor.getJSON(), { generated: editor.isGenerated() });
-      return await downloadConvertedCopy({
-        source: docx,
-        sourceName: `${title}.docx`,
-        target: "pdf",
-        generated: editor.isGenerated(),
-        baseName: title,
-      });
+      const action = exportDownloads.find(action => action.id === `richdoc-export-${extension}`);
+      if (!action) throw new Error(tt("导出失败，请重试"));
+      await action.onTrigger(); return "";
     } catch (caught) {
-      return caught instanceof Error && caught.message
-        ? caught.message
-        : "导出 PDF 失败。";
+      const message = caught instanceof Error ? caught.message : tt("导出失败，请重试");
+      setExportError(message); return message;
     }
-  }, [editor.editor, item.title]);
-  /** 一个后缀 → 一次下载。返回空串表示成功，非空是要显示的原因。 */
-  const downloadAs = useCallback(
-    async (extension: string): Promise<string> => {
-      if (!await ensureAdvancedDraftExport(item.key || item.id)) return "";
-      setExportError("");
-      try {
-        switch (extension) {
-          case "docx":
-            await editor.exportDoc();
-            return "";
-          case "md":
-            await editor.exportMarkdown();
-            return "";
-          case "html":
-            await editor.exportHtml();
-            return "";
-          case "txt":
-            editor.exportText();
-            return "";
-          case "json":
-            exportStructuredJson();
-            return "";
-          case "pdf": {
-            const failure = await exportPdf();
-            if (failure) setExportError(failure);
-            return failure;
-          }
-          default:
-            return `这里没有 ${extension.toUpperCase()} 这个下载格式。`;
-        }
-      } catch (caught) {
-        const message =
-          caught instanceof Error && caught.message
-            ? caught.message
-            : `导出 ${extension.toUpperCase()} 失败。`;
-        setExportError(message);
-        return message;
-      }
-    },
-    [
-      editor.exportDoc,
-      editor.exportHtml,
-      editor.exportMarkdown,
-      editor.exportText,
-      exportPdf,
-      exportStructuredJson,
-    ],
-  );
+  }, [exportDownloads, tt]);
   // 只读（viewer、专业模式锁在别人手里）时，Leo 的帮改入口不能绕过灰掉的按钮：
   // 会改正文的指令在这里直接拒绝，describe / state 照旧让 agent 看得到现状。
   usePluginCommandSurface(
@@ -393,13 +315,14 @@ export function RichDocRoute({
         guardPluginSurface(
           buildRichDocCommandSurface(editor, {
             download: downloadAs,
+            formats: exportDownloads.map(({ target, label }) => ({ target, label })),
             // Use the SAME flush + recordSavedItem ledger as the workbench.
             // editor.save() alone commits bytes but leaves Task History on r1.
             save: () => saveAdvancedEditorFromAgent(item, advancedSession?.flush),
           }),
           editor.collabReadOnly,
         ),
-      [editor, downloadAs, item, advancedSession?.flush],
+      [editor, downloadAs, exportDownloads, item, advancedSession?.flush],
     ),
   );
   const downloadDisabled =
@@ -480,14 +403,7 @@ export function RichDocRoute({
             editor.editor?.chain().focus().redo().run();
           },
         },
-        directDownload: {
-          id: "richdoc-export-docx",
-          // `···` 菜单再 tt(label) 一次查不到键：这里先按带占位符的键译好（同 GridUniverStage）。
-          label: tt("直接下载 {fmt}", { fmt: DOC_FAMILY_DOWNLOAD_FORMATS.richdoc[0].label }),
-          icon: "download",
-          disabled: downloadDisabled,
-          onTrigger: () => afterAdvancedDraftExport(item.key || item.id, editor.exportDoc),
-        },
+        directDownload: exportDownloads[0],
         // 第一条格式是主交付物，已经由 directDownload 呈现；其余每个格式一条菜单项。
         actions: [
           ...(officeSource.error && !editor.dirty
@@ -499,15 +415,7 @@ export function RichDocRoute({
                 },
               ]
             : []),
-          ...DOC_FAMILY_DOWNLOAD_FORMATS.richdoc.slice(1).map((format) => ({
-            id: `richdoc-export-${format.extension}`,
-            label: tt("下载 {fmt}", { fmt: format.label }),
-            group: "download" as const,
-            disabled: downloadDisabled,
-            onTrigger: () => {
-              void downloadAs(format.extension);
-            },
-          })),
+          ...exportDownloads.slice(1),
           {
             id: "richdoc-wechat-layout",
             label: "转公众号排版",

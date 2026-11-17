@@ -10,14 +10,7 @@ import { getArtifactDownload } from "./artifact-client";
 import { isDurableLibraryItem, type LibraryItem } from "./library-data";
 import { officePackageKindForItem } from "./doc-editors/office-file";
 
-export const LIBRARY_DOCUMENT_DOWNLOAD_FORMATS = [
-  { id: "md", label: "Markdown", extension: "md" },
-  { id: "docx", label: "Word", extension: "docx" },
-  { id: "pdf", label: "PDF", extension: "pdf" },
-] as const;
-
-export type LibraryDocumentDownloadFormat =
-  (typeof LIBRARY_DOCUMENT_DOWNLOAD_FORMATS)[number]["extension"];
+export type LibraryDocumentDownloadFormat = string;
 
 const TEXT_EXTENSIONS = new Set(["md", "markdown", "txt", "html", "htm"]);
 const OFFICE_SOURCE_EXTENSIONS = new Set([
@@ -134,7 +127,7 @@ function triggerDownload(name: string, blob: Blob): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-async function sourceBlob(item: LibraryItem): Promise<{
+export async function libraryExportSource(item: LibraryItem): Promise<{
   blob: Blob;
   filename: string;
   mediaType: string;
@@ -142,6 +135,7 @@ async function sourceBlob(item: LibraryItem): Promise<{
   if (isDurableLibraryItem(item)) {
     const result = await getArtifactDownload(item);
     if (result.ok && result.data) {
+      if (result.data.artifactId !== item.artifactId || result.data.revisionId !== item.revisionId) throw new Error("导出失败，请重试");
       const response = await fetch(result.data.url, {
         referrerPolicy: "no-referrer",
       });
@@ -255,7 +249,14 @@ export async function downloadLibraryDocument(
   try {
     const kind = sourceKind(item);
     const stem = fileStem(item);
-    const source = await sourceBlob(item);
+    const source = await libraryExportSource(item);
+    // PDF bytes must never pass through text decoding or a Markdown/DOCX writer.
+    if (kind === "pdf") {
+      const { convertOfficeBlob } = await import("./doc-editors/office-convert-client");
+      const blob = format === "pdf" ? source.blob : await convertOfficeBlob(source.blob, `${stem}.pdf`, format as import("./doc-editors/office-convert-client").OfficeConvertTarget);
+      triggerDownload(`${stem}.${format}`, blob);
+      return "";
+    }
     if (format === "md") {
       if (kind === "docx") {
         const html = await docxToHtml(await source.blob.arrayBuffer());
@@ -289,10 +290,6 @@ export async function downloadLibraryDocument(
           ? await htmlToMarkdown(text)
           : text;
       triggerDownload(`${stem}.docx`, await markdownToDocxBlob(stem, markdown));
-      return "";
-    }
-    if (kind === "pdf") {
-      triggerDownload(`${stem}.pdf`, source.blob);
       return "";
     }
     const officeSource =

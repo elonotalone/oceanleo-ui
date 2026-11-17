@@ -1961,6 +1961,26 @@ export function useFabricImageEditor(
     download,
     downloadAs,
     downloadDefaultPng,
+    exportFile: async (target: string, quality?: number): Promise<{blob: Blob; filename: string}> => {
+      const controller = controllerRef.current;
+      if (!controller || !sourceReadyRef.current) throw new Error(tt("图片画布尚未就绪"));
+      if (viewRef.current.cropping) throw new Error(tt("请先确认或取消当前裁剪"));
+      if (target === "svg") {
+        const { exportVectorSvg } = await import("./vector-svg-scene");
+        const { canvas, doc } = controller.getDocument();
+        return { filename: `${item.title || "image"}.svg`, blob: new Blob([exportVectorSvg(canvas, doc)], { type: "image/svg+xml" }) };
+      }
+      const format = target === "jpg" ? "jpeg" : target === "webp" ? "webp" : "png";
+      if (!["png", "jpeg", "webp"].includes(format)) throw new Error(tt("导出失败，请重试"));
+      const blob = await makeExportBlob(format as ExportFormat, format === "png" ? 100 : quality ?? exportQuality, exportScale);
+      if (target !== "pdf") return { blob, filename: `${item.title || "image"}.${format === "jpeg" ? "jpg" : format}` };
+      const { PDFDocument } = await import("pdf-lib");
+      const pdf = await PDFDocument.create();
+      const image = await pdf.embedPng(await blob.arrayBuffer());
+      const page = pdf.addPage([image.width * 0.75, image.height * 0.75]);
+      page.drawImage(image, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() });
+      return { filename: `${item.title || "image"}.pdf`, blob: new Blob([Uint8Array.from(await pdf.save())], { type: "application/pdf" }) };
+    },
     save: saveSerialized,
     prepareSave,
     aiAvailable: true,

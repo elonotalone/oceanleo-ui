@@ -46,6 +46,8 @@ export interface DocFamilyCommandDeps {
    * 返回空串表示成功，返回非空就是要显示给用户的那句原因。
    */
   download: (extension: string) => Promise<string>;
+  /** Live exports use the same resolved capability rows as the download menu. */
+  formats?: readonly { target: string; label: string }[];
   /** Host persistence includes its Task snapshot receipt, not just native bytes. */
   save?: () => Promise<PluginCommandResult>;
   /** Present for Library surfaces that need an exact artifact/revision pin. */
@@ -254,6 +256,12 @@ function boundedTextContext(
     note,
   );
   return bounded.ready ? { ...bounded, kind: "text" } : bounded;
+}
+
+function withDownloads(specs: readonly PluginCommandSpec[], deps: DocFamilyCommandDeps): readonly PluginCommandSpec[] {
+  if (!deps.formats) return specs;
+  return specs.map(spec => spec.id.endsWith(".export") ? { ...spec, params: spec.params?.map(param => param.key === "format"
+    ? { ...param, enumValues: deps.formats!.map(format => ({ value: format.target, label: format.label })) } : param) } : spec);
 }
 
 function downloadParam(editorId: DocFamilyEditorId): PluginCommandParam {
@@ -585,7 +593,7 @@ export function buildRichDocCommandSurface(
   };
   return surfaceOf(
     "richdoc",
-    RICHDOC_SPECS,
+    withDownloads(RICHDOC_SPECS, deps),
     handlers,
     () => ({
       title: clip(editor.item.title || "", 60),
@@ -843,7 +851,7 @@ export function buildGridCommandSurface(
   };
   return surfaceOf(
     "grid",
-    GRID_SPECS,
+    withDownloads(GRID_SPECS, deps),
     handlers,
     () => ({
       title: clip(editor.item.title || "", 60),
@@ -1035,7 +1043,7 @@ export function buildDeckCommandSurface(
   };
   return surfaceOf(
     "deck",
-    DECK_SPECS,
+    withDownloads(DECK_SPECS, deps),
     handlers,
     () => ({
       title: clip(editor.deck?.title || "", 60),
@@ -1310,7 +1318,7 @@ export function buildPdfCommandSurface(
   };
   return surfaceOf(
     "pdf",
-    PDF_SPECS,
+    withDownloads(PDF_SPECS, deps),
     handlers,
     () => ({
       page: editor.pageNumber,

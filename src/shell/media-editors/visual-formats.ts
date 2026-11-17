@@ -1,3 +1,4 @@
+import { CLIENT_EXPORT_TARGETS } from "../doc-editors/export-targets";
 /**
  * 视觉影音家族（图片 / 视频）的交付格式与上传归一化规则。
  *
@@ -36,72 +37,15 @@ export interface VisualDownloadFormat {
   hint: string;
 }
 
-const IMAGE_DOWNLOADS: readonly VisualDownloadFormat[] = [
-  {
-    id: "image-download-png",
-    format: "png",
-    label: "PNG 图片 (.png)",
-    lossy: false,
-    via: "local",
-    hint: "无损，体积最大，适合再编辑。",
-  },
-  {
-    id: "image-download-jpg",
-    format: "jpg",
-    label: "JPEG 图片 (.jpg)",
-    lossy: true,
-    via: "local",
-    hint: "有损压缩，体积小，适合发给别人。",
-  },
-  {
-    id: "image-download-webp",
-    format: "webp",
-    label: "WebP 图片 (.webp)",
-    lossy: true,
-    via: "local",
-    hint: "同等清晰度下比 JPEG 更小，适合放网页。",
-  },
-];
-
-const VIDEO_DOWNLOADS: readonly VisualDownloadFormat[] = [
-  {
-    id: "video-download-mp4",
-    format: "mp4",
-    label: "MP4 视频 (.mp4)",
-    lossy: true,
-    via: "backend",
-    hint: "最通用，渲染完成后同时存进我的库。",
-  },
-  {
-    id: "video-download-webm",
-    format: "webm",
-    label: "WebM 视频 (.webm)",
-    lossy: true,
-    via: "backend",
-    hint: "网页内嵌播放更省流量，渲染完再转一次。",
-  },
-];
-
-const DOWNLOADS: Record<VisualEditorId, readonly VisualDownloadFormat[]> = {
-  image: IMAGE_DOWNLOADS,
-  "video-timeline": VIDEO_DOWNLOADS,
-};
-
-/** 某一类编辑器下载菜单该有的全部条目（含第一条 directDownload）。 */
-export function visualDownloadFormats(
-  editorId: VisualEditorId,
-): readonly VisualDownloadFormat[] {
-  return DOWNLOADS[editorId];
+/** Static command descriptions expose only actual local generators; live menus merge server rows. */
+export function visualDownloadFormats(editorId: VisualEditorId): readonly VisualDownloadFormat[] {
+  const targets = CLIENT_EXPORT_TARGETS[editorId];
+  return targets.map(entry => ({ id: `${editorId}-download-${entry.target}`, format: entry.target,
+    label: entry.label, lossy: ["jpg", "webp", "mp4", "mp3", "m4a"].includes(entry.target),
+    via: "local" as const, hint: "" }));
 }
-
-export function visualDownloadFormat(
-  editorId: VisualEditorId,
-  format: string,
-): VisualDownloadFormat | null {
-  const wanted = format.trim().toLowerCase();
-  return (
-    DOWNLOADS[editorId].find((entry) => entry.format === wanted) || null
-  );
+export function visualDownloadFormat(editorId: VisualEditorId, format: string): VisualDownloadFormat | null {
+  return visualDownloadFormats(editorId).find(entry => entry.format === format.trim().toLowerCase()) || null;
 }
 
 /**
