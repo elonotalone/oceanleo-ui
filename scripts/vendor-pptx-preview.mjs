@@ -7,8 +7,7 @@
 // `@oceanleo/ui` 是被依赖的包，36 个消费站一个都吃不到（各站 node_modules 里有自己的
 // `pptx-preview@1.0.7` + `echarts@5.6.0`）。所以只能把改过的产物随本包一起发出去。
 //
-// 这个脚本做且只做一件事：把上游产物逐字节复制一份，**只**把那一行 echarts 导入换成
-// `./chart-engine.js`（延迟取引擎，见该文件顶部），其余一个字节不动。
+// 此脚本替换图表引擎导入，并修复缺省文字样式与母版异步加载。每个补丁都校验唯一接缝。
 //
 //   node scripts/vendor-pptx-preview.mjs           # 生成
 //   node scripts/vendor-pptx-preview.mjs --check   # 校验已提交的产物与上游一致
@@ -35,7 +34,7 @@ const PATCHED_IMPORT = 'import*as h from"./chart-engine.js";';
 // 精确原文落在同目录的 upstream.json 里。
 const BANNER = `// 由 scripts/vendor-pptx-preview.mjs 生成，不要手改。
 // 上游 = pptx-preview@<version> 的 dist/pptx-preview.es.js，逐字节复制，
-// 唯一改动：把它那条图表引擎的命名空间导入改指到 ./chart-engine.js（延迟取引擎）。
+// 补丁：延迟图表引擎；默认文字样式可缺省；等待母版加载并传播错误。
 // 精确的改动原文见 ./upstream.json，理由与读数见 ./chart-engine.js 顶部。
 // 重新生成：node scripts/vendor-pptx-preview.mjs
 `;
@@ -64,7 +63,18 @@ export function buildVendoredBundle() {
     );
   }
 
-  const patched = upstream.replace(UPSTREAM_IMPORT, PATCHED_IMPORT);
+  let patched = upstream.replace(UPSTREAM_IMPORT, PATCHED_IMPORT);
+  const fixes = [
+    ['this.defaultTextStyleSource=c(e,["p:presentation","p:defaultTextStyle"])', 'this.defaultTextStyleSource=c(e,["p:presentation","p:defaultTextStyle"])||{}'],
+    ['this.name=t,this.source=e,this.pptx=a,this.load()', 'this.name=t,this.source=e,this.pptx=a'],
+    ['case 9:g=u.apply(void 0,[r.sent()]),this.slideMaster.push(new W(m,g,this)),r.label=10;case 10:return b++,[3,8]', 'case 9:return g=u.apply(void 0,[r.sent()]),this.slideMaster.push(new W(m,g,this)),[4,this.slideMaster[this.slideMaster.length-1].load()];case 10:return r.sent(),b++,[3,8]'],
+    ['case 22:return r.sent(),[3,23];case 23:return[2]', 'case 22:throw r.sent();case 23:return[2]'],
+    ['this._parseDefaultTextStyle(),this._loadNodes(),[2]', 'this._parseDefaultTextStyle(),[4,this._loadNodes()];case 2:return t.sent(),[2]'],
+  ];
+  for (const [from, to] of fixes) {
+    if (patched.split(from).length !== 2) throw new Error(`PPT loading patch seam changed: ${from}`);
+    patched = patched.replace(from, to);
+  }
   const contents =
     BANNER.replace("<version>", upstreamPackage.version) + patched;
   return {
@@ -83,6 +93,7 @@ function main() {
     upstreamFile: "dist/pptx-preview.es.js",
     upstreamSha256: built.upstreamSha256,
     patch: { from: UPSTREAM_IMPORT, to: PATCHED_IMPORT },
+    loadingFixes: ["defaultTextStyleSource defaults to {}", "await slide master and its nodes", "propagate master load failure"],
   };
   if (check) {
     const current = readFileSync(outputPath, "utf8");

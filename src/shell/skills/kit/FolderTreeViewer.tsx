@@ -41,6 +41,7 @@ export interface FolderTreeViewerProps {
   initialPath?: string;
   downloadUrl?: string;
   rootLabel?: string;
+  onDownloadFile?: (path: string) => void;
 }
 
 /** 只放行栅格图片的 base64 data URL；svg 网关当代码返回，这里也不当图片显示。 */
@@ -252,9 +253,9 @@ function DownloadAction({ url, label }: { url: string; label: string }) {
   );
 }
 
-function FileBody({ file, downloadUrl }: { file: FileContent; downloadUrl?: string }) {
+function FileBody({ file, downloadUrl, onDownloadFile }: { file: FileContent; downloadUrl?: string; onDownloadFile?: (path: string) => void }) {
   const tt = useUI();
-  const [lineNumbers, setLineNumbers] = useState(false);
+  const [lineNumbers, setLineNumbers] = useState(true);
   const truncatedNote = file.truncated ? (
     <div className="mb-3 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-200">
       <KitIconAlert className="h-4 w-4 shrink-0" />
@@ -313,12 +314,12 @@ function FileBody({ file, downloadUrl }: { file: FileContent; downloadUrl?: stri
       <div className="text-[13px] text-neutral-500 dark:text-neutral-400">
         {tt("这个文件无法预览")} · {formatBytes(file.size)}
       </div>
-      {downloadUrl ? <DownloadAction url={downloadUrl} label={tt("下载整个文件包")} /> : null}
+      {onDownloadFile ? <button type="button" onClick={() => onDownloadFile(file.path)}>{tt("下载")}</button> : downloadUrl ? <DownloadAction url={downloadUrl} label={tt("下载整个文件包")} /> : null}
     </div>
   );
 }
 
-export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, rootLabel }: FolderTreeViewerProps) {
+export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, rootLabel, onDownloadFile }: FolderTreeViewerProps) {
   const tt = useUI();
   const nodes = useMemo(() => buildFolderTree(tree), [tree]);
   const firstPick = useMemo(() => pickInitialFile(nodes, initialPath), [nodes, initialPath]);
@@ -448,7 +449,7 @@ export function FolderTreeViewer({ tree, loadFile, initialPath, downloadUrl, roo
               </button>
             </div>
           ) : state.status === "ready" ? (
-            <FileBody key={state.path} file={state.file} downloadUrl={downloadUrl} />
+            <FileBody key={state.path} file={state.file} downloadUrl={downloadUrl} onDownloadFile={onDownloadFile} />
           ) : (
             <p className="text-[13px] text-neutral-500">{tt("选择左侧的文件查看内容")}</p>
           )}

@@ -952,17 +952,10 @@ test("thumbnail lifecycle reports loading, real-media success, failure and refre
     await act(async () =>
       firstImage.dispatchEvent(new window.Event("error", { bubbles: true })),
     );
-    assert.equal(globalThis.__coverResourceFailures, 1);
-    assert.equal(
-      container.querySelector("[data-cover-state]")?.getAttribute(
-        "data-cover-state",
-      ),
-      "error",
-    );
-    assert.match(
-      container.querySelector('[role="alert"]')?.textContent || "",
-      /封面不可用/,
-    );
+    assert.equal(globalThis.__coverResourceFailures, 0);
+    assert.equal(container.querySelector("img"), firstImage, "transient error retains the pending image");
+    assert.equal(container.querySelector('[role="alert"]'), null);
+    assert.equal(container.querySelector('[data-cover-state]').getAttribute('data-cover-state'), 'loading');
 
     setRendition(1, "https://signed.test/cover-v2.png");
     await act(async () => root.render(React.createElement(WorkspaceThumbnail, props)));

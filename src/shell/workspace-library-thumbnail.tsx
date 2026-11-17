@@ -133,6 +133,9 @@ export function WorkspaceThumbnail({
   const [generationError, setGenerationError] = useState(false);
   const [visible, setVisible] = useState(false);
   const [timedOut, setTimedOut] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [retryCycle, setRetryCycle] = useState(0);
+  const wasVisible = useRef(false);
   const hostRef = useRef<HTMLDivElement>(null);
   const lastFailedUrlRef = useRef("");
   const solidRejectedKeysRef = useRef(new Set<string>());
@@ -145,9 +148,7 @@ export function WorkspaceThumbnail({
     }
     const observer = new IntersectionObserver(
       (entries) => {
-        if (!entries.some((entry) => entry.isIntersecting)) return;
-        setVisible(true);
-        observer.disconnect();
+        setVisible(entries.some((entry) => entry.isIntersecting));
       },
       { rootMargin: "300px" },
     );
@@ -269,13 +270,36 @@ export function WorkspaceThumbnail({
     textDocumentCard ||
     (Boolean(item) &&
       itemUsesDocumentShelfCover(item, kind) &&
-      (noDisplayableCover || generationError || failed || timedOut));
+      (noDisplayableCover || generationError || solidRejected));
+  // Every viewport entry gets a fresh bounded retry budget. The failed image
+  // remains mounted, so a late load can still recover without a second request.
+  useEffect(() => {
+    if (visible && !wasVisible.current) {
+      setRetryCount(0);
+      if (failed || timedOut) {
+        setRetryCycle(value => value + 1);
+        setFailed(false); setTimedOut(false);
+        artifactRendition.retry();
+      }
+    }
+    wasVisible.current = visible;
+  }, [visible]);
+  useEffect(() => {
+    if (!visible || ready || solidRejected || !(failed || timedOut) || retryCount >= 3) return;
+    const timer = setTimeout(() => {
+      setRetryCount(value => value + 1);
+      setRetryCycle(value => value + 1);
+      setFailed(false); setTimedOut(false);
+    }, 1000 * 2 ** retryCount);
+    return () => clearTimeout(timer);
+  }, [failed, timedOut, visible, ready, solidRejected, retryCount]);
+  const smallUrl = item?.thumbUrl || url;
   const displayUrl =
     noDisplayableCover || solidRejected
       ? ""
       : typedArtifact
         ? artifactRendition.url
-        : generatedUrl || (requiresGeneratedThumbnail ? "" : url);
+        : generatedUrl || (requiresGeneratedThumbnail ? "" : smallUrl);
   const plan = workspaceCoverPlan({
     item,
     kind,
@@ -283,22 +307,24 @@ export function WorkspaceThumbnail({
     rendition: typedArtifact ? artifactRendition.rendition : null,
     assumeImage: Boolean(
       generatedUrl ||
-        (!typedArtifact && displayUrl && displayUrl === url),
+        (!typedArtifact && displayUrl && displayUrl === smallUrl),
     ),
   });
   const resourceKey = [
     plan.renderer,
     plan.url,
     artifactRendition.version,
+    retryCycle,
   ].join(":");
   useEffect(() => {
     setReady(false);
+    setFailed(false);
     setTimedOut(false);
   }, [resourceKey]);
   // A network request or embedded PDF viewer may never fire load/error.
   // Bound the visible loading state and keep the material itself openable.
   useEffect(() => {
-    if (!visible || ready || documentShelfCover) return;
+    if (!visible || ready || documentShelfCover || plan.renderer === "unavailable") return;
     const timer = setTimeout(() => setTimedOut(true), 15_000);
     return () => clearTimeout(timer);
   }, [visible, ready, documentShelfCover, resourceKey]);
@@ -317,10 +343,8 @@ export function WorkspaceThumbnail({
       rendition && coverEvidenceOf(rendition) === "proven-placeholder",
   );
   const failureMessage =
-    documentShelfCover
+    documentShelfCover || ready
       ? ""
-      : timedOut
-        ? "预览加载超时，打开查看素材"
       : artifactRendition.loading || awaitingGeneratedThumbnail
         ? ""
       : noDisplayableCover
@@ -331,9 +355,7 @@ export function WorkspaceThumbnail({
           : artifactRendition.error ||
             (generationError
               ? "未能生成可显示的真实封面。"
-              : failed
-                ? "封面资源加载失败。"
-                : plan.failureReason);
+              : plan.failureReason);
   // 三态呈现（合同 §3.2）。只有**证实**是占位图才允许说「占位图」：wire 判据证实的、
   // 解码后像素证实是纯色的、以及候选 rendition 里确有占位图且没有任何一份能显示的。
   // 加载失败、缺 revision 这类「没证据」的情况仍旧只是封面不可用，不许改口。
@@ -432,7 +454,7 @@ export function WorkspaceThumbnail({
             setReady(true);
           }}
         />
-      ) : !failureMessage && plan.renderer !== "unavailable" ? (
+      ) : !solidRejected && plan.renderer !== "unavailable" ? (
         <WorkspaceCoverResource
           plan={plan}
           alt={alt}
@@ -440,6 +462,7 @@ export function WorkspaceThumbnail({
           resourceKey={resourceKey}
           onReady={() => {
             setFailed(false);
+            setTimedOut(false);
             setSolidRejected(false);
             setReady(true);
           }}
@@ -451,7 +474,7 @@ export function WorkspaceThumbnail({
               setFailed(true);
               return;
             }
-            if (lastFailedUrlRef.current !== resourceKey) {
+            if (retryCount >= 3 && lastFailedUrlRef.current !== resourceKey) {
               lastFailedUrlRef.current = resourceKey;
               artifactRendition.resourceFailed();
             }
@@ -480,6 +503,10 @@ export function WorkspaceThumbnail({
             opacity: 0.75,
           }}
         />
+      )}
+      {(loading || failed || timedOut) && !ready && !solidRejected && !failureMessage && (
+        <button type="button" onClick={() => { setRetryCount(0); setRetryCycle(value => value + 1); setFailed(false); setTimedOut(false); artifactRendition.retry(); }}
+          className="absolute bottom-1 right-1 z-10 rounded bg-white px-2 py-1 text-xs" aria-label={tt("重试")}>{tt("重试")}</button>
       )}
       {loading && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--surface,#f5f5f4)]/80">

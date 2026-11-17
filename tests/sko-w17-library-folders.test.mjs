@@ -338,3 +338,19 @@ test("real folder detail loads, downloads and toggles skills without a project-c
   assert.deepEqual(errors,[],'no console.error, including hook errors');
  }
 });
+
+// UPREV: unsupported single files use the same download-only card, never a bundle tree.
+test("fileItem fallback opens a download-only file card and downloads the original filename", async () => {
+  const { createRoot } = await import("react-dom/client");
+  const single = folder({ fileItem: true, title: "Design.indd", filename: "Design.indd", format: "indd", size: 2048, total_bytes: 2048, file_count: 1 });
+  globalThis.__wdFolderLoad = { ok: true, data: { folder: single, tree: [{ path: "Design.indd", type: "file", size: 2048 }] } };
+  globalThis.__wdFolderCalls = [];
+  const host = document.createElement("div"), root = createRoot(host);
+  await act(async () => root.render(React.createElement(mod.LibraryFolderDetail, { folderId: single.id, initial: single, onClose() {}, onChanged() {}, onDeleted() {} })));
+  assert.ok(host.querySelector("[data-download-only]"));
+  assert.equal(host.querySelector('[data-stub="tree"]'), null);
+  assert.match(host.textContent, /INDD · 2.0 KB/);
+  await act(async () => host.querySelector('[data-download-only] button').click());
+  assert.deepEqual(globalThis.__wdFolderCalls[0], { url: `${GATEWAY}/v1/folders/f1/download`, name: "Design.indd" });
+  await act(async () => root.unmount());
+});

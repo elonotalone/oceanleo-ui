@@ -13,8 +13,8 @@ import {
 } from "react";
 import DOMPurify from "dompurify";
 import { Markdown } from "./Markdown";
+import { SpreadsheetViewer } from "./library-spreadsheet-preview";
 import { LibraryMediaPreview } from "./LibraryMediaPreview";
-import { useAudioProjectPlayback } from "./media-editors/use-audio-project-playback";
 import { useUI } from "../i18n/ui/useUI";
 import {
   isDurableLibraryItem,
@@ -22,14 +22,11 @@ import {
   type LibraryItem,
 } from "./library-data";
 import {
+  getArtifactItem,
   prepareArtifactForAction,
   refreshArtifactRendition,
 } from "./artifact-client";
 import { isArtifactSourceTreeUrl } from "./artifact-contract";
-import {
-  isTrustedInteractiveViewerUrl,
-  webViewerFrameSandbox,
-} from "./editor-sandbox-origin";
 import {
   ArtifactRenditionFailure,
   useArtifactRendition,
@@ -37,7 +34,6 @@ import {
 } from "./ArtifactRendition";
 import {
   fetchValidatedOfficePackage,
-  fetchValidatedSpreadsheetSource,
   officePackageKindForItem,
   officeViewerRenditionPurposes,
 } from "./doc-editors/office-file";
@@ -49,7 +45,6 @@ import {
   paintDeckPptxPreviewImages,
 } from "./doc-editors/DeckPptxVisuals";
 import {
-  absoluteMediaUrl,
   fetchMediaBlobRefreshing,
   signedMediaRefreshPurpose,
 } from "../lib/media-proxy";
@@ -87,16 +82,7 @@ import {
   MaterialDetailUnavailable,
   useMaterialDetailTarget,
 } from "./material-detail-slot";
-import { AttachmentFileViewer, isAttachmentFilePreview } from "./attachment-file-viewer";
-import {
-  isVideoCanvasV2Item,
-  loadVideoCanvasSourcePreview,
-  videoCanvasBitmapPreview,
-  videoCanvasDurationLabel,
-  type VideoCanvasPreviewShot,
-  type VideoCanvasSourcePreview,
-} from "./video-canvas/library-preview";
-
+import { AttachmentFileViewer, DownloadOnlyFileCard, isAttachmentFilePreview } from "./attachment-file-viewer";
 // PDFium is a wasm engine: only load it when a PDF is actually previewed.
 const LibraryPdfReader = lazy(() => import("./LibraryPdfReader"));
 
@@ -270,28 +256,6 @@ function ErrorView({
           )}
         </div>
       </Center>
-    </div>
-  );
-}
-
-function SandboxedWebViewer({
-  url,
-  title,
-  trustedInteractive = false,
-}: {
-  url: string;
-  title: string;
-  trustedInteractive?: boolean;
-}) {
-  return (
-    <div className="flex h-full min-h-[520px] flex-col bg-stone-100">
-      <iframe
-        src={url}
-        title={title}
-        className="min-h-0 flex-1 border-0 bg-white"
-        sandbox={webViewerFrameSandbox(trustedInteractive)}
-        referrerPolicy="no-referrer"
-      />
     </div>
   );
 }
@@ -1010,160 +974,6 @@ function PptViewer({
   );
 }
 
-function SpreadsheetViewer({
-  item,
-  onResourceError,
-}: {
-  item: LibraryItem;
-  onResourceError?: () => void;
-}) {
-  const tt = useUI();
-  const [sheets, setSheets] = useState<
-    Array<{ name: string; rows: unknown[][] }>
-  >([]);
-  const [active, setActive] = useState(0);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(Boolean(item.url));
-  const [attempt, setAttempt] = useState(0);
-
-  const sourceRef = useRef({ item, onResourceError });
-  sourceRef.current = { item, onResourceError };
-  const failedSourceRef = useRef({ url: "", retry: 0 });
-  if (failedSourceRef.current.url && failedSourceRef.current.url !== item.url) {
-    failedSourceRef.current.url = "";
-    failedSourceRef.current.retry++;
-  }
-  const accessRetry = failedSourceRef.current.retry;
-  const sourceIdentity = officeSourceCacheKey(
-    item.url || "",
-    item.revisionId || item.artifact?.revisionId || "",
-    item,
-  );
-
-  useEffect(() => {
-    const { item } = sourceRef.current;
-    const onResourceError = () => {
-      failedSourceRef.current.url = item.url || "";
-      sourceRef.current.onResourceError?.();
-    };
-    if (!item.url) {
-      const rows = Array.isArray(item.meta.rows)
-        ? (item.meta.rows as unknown[][])
-        : [];
-      setSheets(rows.length ? [{ name: "Sheet1", rows }] : []);
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
-    const abort = new AbortController();
-    setLoading(true);
-    setError("");
-    void (async () => {
-      try {
-        const data = await fetchValidatedSpreadsheetSource(item.url!, item, {
-          signal: abort.signal,
-          maxBytes: 64 * 1024 * 1024,
-          onAccessDenied: onResourceError,
-        });
-        if (cancelled) return;
-        const XLSX = await import("xlsx");
-        if (cancelled) return;
-        const workbook = XLSX.read(data, { dense: true });
-        const parsed = workbook.SheetNames.map((name) => ({
-          name,
-          rows: XLSX.utils.sheet_to_json(workbook.Sheets[name], {
-            header: 1,
-            raw: false,
-            defval: "",
-          }) as unknown[][],
-        }));
-        if (!cancelled) {
-          setSheets(parsed);
-          setActive(0);
-        }
-      } catch (reason) {
-        if (!cancelled)
-          setError(reason instanceof Error ? reason.message : String(reason));
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      abort.abort();
-    };
-  }, [attempt, accessRetry, sourceIdentity]);
-
-  if (loading) return <LoadingView label={tt("正在读取工作簿…")} />;
-  if (error || sheets.length === 0)
-    return (
-      <ErrorView
-        message={`${tt("未能读取表格内容。")}${error ? `（${error}）` : ""}`}
-        url={item.url}
-        onRetry={() => {
-          onResourceError?.();
-          setAttempt((value) => value + 1);
-        }}
-      />
-    );
-
-  const rows = sheets[active]?.rows ?? [];
-  const columnCount = Math.min(
-    60,
-    rows.reduce((max, row) => Math.max(max, row.length), 0),
-  );
-  return (
-    <div className="flex h-full min-h-[520px] flex-col bg-white">
-      <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-stone-200 px-3 py-2">
-        {sheets.map((sheet, index) => (
-          <button
-            key={sheet.name}
-            type="button"
-            onClick={() => setActive(index)}
-            className={`rounded-md px-3 py-1 text-[12px] ${
-              active === index
-                ? "bg-stone-800 text-white"
-                : "bg-stone-100 text-stone-600 hover:bg-stone-200"
-            }`}
-          >
-            {sheet.name}
-          </button>
-        ))}
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto">
-        <table className="min-w-full border-separate border-spacing-0 text-[12px]">
-          <tbody>
-            {rows.slice(0, 300).map((row, rowIndex) => (
-              <tr key={rowIndex}>
-                <th className="sticky left-0 z-10 border-b border-r border-stone-200 bg-stone-50 px-2 py-1.5 text-right font-normal text-stone-400">
-                  {rowIndex + 1}
-                </th>
-                {Array.from({ length: columnCount }).map((_, columnIndex) => (
-                  <td
-                    key={columnIndex}
-                    className={`min-w-24 max-w-72 border-b border-r border-stone-100 px-2.5 py-1.5 align-top ${
-                      rowIndex === 0
-                        ? "bg-stone-50 font-medium text-stone-700"
-                        : "text-stone-600"
-                    }`}
-                  >
-                    {String(row[columnIndex] ?? "")}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {(rows.length > 300 || columnCount >= 60) && (
-        <p className="shrink-0 border-t border-stone-100 px-3 py-2 text-[11px] text-stone-400">
-          {tt("预览显示前 300 行、60 列；下载原文件可查看全部内容。")}
-        </p>
-      )}
-    </div>
-  );
-}
-
 function documentSourceUrl(item: LibraryItem): string {
   return item.url || item.previewUrl || "";
 }
@@ -1428,7 +1238,7 @@ function DocumentViewer({
   );
 }
 
-function ThreeDViewer({
+export function ThreeDViewer({
   item,
   onResourceError,
 }: {
@@ -1453,7 +1263,10 @@ function ThreeDViewer({
       Boolean(window.customElements?.get("model-viewer")),
   );
   const [loadError, setLoadError] = useState("");
-  const viewerRef = useRef<HTMLElement | null>(null);
+  const viewerRef = useRef<(HTMLElement & { availableAnimations?: string[]; animationName?: string; play?: () => void; pause?: () => void }) | null>(null);
+  const [clips, setClips] = useState<string[]>([]);
+  const [clip, setClip] = useState("");
+  const [playing, setPlaying] = useState(false);
   useEffect(() => {
     if (subtype !== "model" || !modelFormat || ready || typeof window === "undefined") {
       return;
@@ -1487,7 +1300,14 @@ function ThreeDViewer({
       );
       onResourceError?.();
     };
-    const loaded = () => setLoadError("");
+    const loaded = () => {
+      setLoadError("");
+      const names = viewer.availableAnimations || [];
+      setClips([...names]); setClip(names[0] || ""); setPlaying(false);
+      viewer.pause?.();
+      if (names[0]) viewer.animationName = names[0];
+    };
+    setClips([]); setClip(""); setPlaying(false);
     viewer.addEventListener("error", failed);
     viewer.addEventListener("load", loaded);
     return () => {
@@ -1561,19 +1381,11 @@ function ThreeDViewer({
             style={FRAMED_MEDIA_STYLE}
           />
         </div>
-        <p className="text-sm text-stone-500">
-          {tt("当前展示已验证的模型预览；编辑时会加载固定 revision 的完整模型。")}
-        </p>
       </Center>
     );
   }
   if (subtype !== "model" || !modelFormat) {
-    return (
-      <ErrorView
-        message={tt("这个 3D 条目不是可加载的 GLB/已整包托管 glTF 模型。")}
-        url={item.url}
-      />
-    );
+    return <DownloadOnlyFileCard item={item} />;
   }
   if (!modelUrl) return <ErrorView message={tt("没有 3D 模型文件。")} />;
   if (loadError)
@@ -1586,6 +1398,16 @@ function ThreeDViewer({
   if (!ready) return <LoadingView label={tt("正在加载 3D 查看器…")} />;
   return (
     <div className="h-full min-h-[520px] bg-[radial-gradient(circle_at_50%_0%,#e0f2fe,transparent_60%)]">
+      {clips.length > 0 && <div className="flex items-center gap-2 p-3" data-model-animation-controls="">
+        <label>{tt("动画")} <select aria-label={tt("动画")} value={clip} onChange={event => {
+          setClip(event.target.value);
+          if (viewerRef.current) { viewerRef.current.animationName = event.target.value; if (playing) viewerRef.current.play?.(); }
+        }}>{clips.map(name => <option key={name} value={name}>{name}</option>)}</select></label>
+        <button type="button" aria-pressed={playing} onClick={() => {
+          const next = !playing; setPlaying(next);
+          if (next) viewerRef.current?.play?.(); else viewerRef.current?.pause?.();
+        }}>{tt(playing ? "暂停" : "播放")}</button>
+      </div>}
       {createElement("model-viewer", {
         ref: (node: HTMLElement | null) => {
           viewerRef.current = node;
@@ -1638,77 +1460,6 @@ function XiaohongshuViewer({ item }: { item: LibraryItem }) {
         </div>
       </article>
     </div>
-  );
-}
-
-function VideoCanvasViewer({ item }: { item: LibraryItem }) {
-  const previewUrl = videoCanvasBitmapPreview(item);
-  const [previewFailed, setPreviewFailed] = useState(false);
-  const [previewReady, setPreviewReady] = useState(false);
-  const [loaded, setLoaded] = useState<VideoCanvasSourcePreview | null>(null);
-  const [error, setError] = useState("");
-  const [nonce, setNonce] = useState(0);
-  const showPreview = Boolean(previewUrl) && !previewFailed;
-  useEffect(() => {
-    if (showPreview) return;
-    let cancelled = false;
-    const controller = new AbortController();
-    setLoaded(null);
-    setError("");
-    void loadVideoCanvasSourcePreview(item, async url =>
-      (await fetchItemSourceBlob(item, url, controller.signal, () => undefined)).text(),
-    ).then(result => {
-      if (!cancelled) setLoaded(result);
-    }).catch(() => {
-      if (!cancelled) setError("这份视频画布的工程源暂时无法显示，请重试或通过编辑入口打开。");
-    });
-    return () => { cancelled = true; controller.abort(); };
-  }, [item, showPreview, nonce]);
-  if (showPreview) return (
-    <Center>
-      {/* The browser decodes the bitmap; a failed decode falls back to the stored project. */}
-      {!previewReady && <p role="status" className="text-sm text-stone-500">正在载入视频画布预览…</p>}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={previewUrl} alt={item.title} className="max-h-[640px] max-w-full rounded-lg object-contain"
-        hidden={!previewReady} onLoad={() => setPreviewReady(true)}
-        onError={() => setPreviewFailed(true)} />
-    </Center>
-  );
-  if (error) return (
-    <div className="grid min-h-64 place-content-center gap-3 p-6 text-center">
-      <p role="alert" className="text-sm text-stone-600">{error}</p>
-      <button type="button" className="mx-auto rounded-lg border border-stone-200 px-4 py-2 text-sm"
-        onClick={() => { setPreviewFailed(false); setPreviewReady(false); setNonce(value => value + 1); }}>重试</button>
-    </div>
-  );
-  if (!loaded) return <div role="status" className="p-6 text-sm text-stone-500">正在读取视频画布工程…</div>;
-  if (loaded.kind === "web") {
-    const trustedInteractive = item.siteId === "asset" && item.meta.asset_type === "video_workflow" &&
-      typeof item.url === "string" && isTrustedInteractiveViewerUrl(item.url);
-    return <SandboxedWebViewer url={loaded.url} title={item.title} trustedInteractive={trustedInteractive} />;
-  }
-  const { summary } = loaded;
-  const shotList = (shots: VideoCanvasPreviewShot[]) => <ol className="mt-2 space-y-2">
-    {shots.map(shot => <li key={shot.id} className="flex justify-between gap-4 text-sm text-stone-600">
-      <span>{shot.title}</span><span className="shrink-0">{videoCanvasDurationLabel(shot.durationSeconds)}</span>
-    </li>)}
-  </ol>;
-  return (
-    <article className="min-h-64 space-y-5 bg-stone-50 p-6" aria-label="视频画布工程摘要">
-      <header>
-        <h2 className="text-lg font-semibold text-stone-900">{summary.title}</h2>
-        <p className="mt-2 text-sm text-stone-500">{summary.scenes.length} 个场景 · {summary.shotCount} 个镜头 · {videoCanvasDurationLabel(summary.durationSeconds)}</p>
-        <p className="mt-1 text-xs text-stone-500">{summary.nodeCount} 个节点 · {summary.edgeCount} 条连线</p>
-      </header>
-      {summary.scenes.map(scene => <section key={scene.id} className="rounded-xl border border-stone-200 bg-white p-4">
-        <h3 className="font-medium text-stone-800">{scene.title}</h3>
-        {scene.shots.length ? shotList(scene.shots) : <p className="mt-2 text-sm text-stone-500">尚未添加镜头</p>}
-      </section>)}
-      {summary.ungroupedShots.length > 0 && <section className="rounded-xl border border-stone-200 bg-white p-4">
-        <h3 className="font-medium text-stone-800">未分组镜头</h3>{shotList(summary.ungroupedShots)}
-      </section>}
-      {!summary.scenes.length && !summary.shotCount && <p className="text-sm text-stone-500">工程尚未添加场景或镜头，可通过编辑入口继续制作。</p>}
-    </article>
   );
 }
 
@@ -1860,7 +1611,63 @@ function NoPlayableMediaView({
   );
 }
 
-function LibraryItemViewerBody({
+/** Preview semantics come from the saved rendition, never the original extension. */
+export function LibraryItemViewerBody({ item, accent }: { item: LibraryItem; accent?: string }) {
+  const tt = useUI();
+  const [current, setCurrent] = useState(item);
+  const [attempt, setAttempt] = useState(0);
+  const refreshes = useRef(0);
+  useEffect(() => { setCurrent(item); refreshes.current = 0; }, [item]);
+  useEffect(() => {
+    if (!attempt || !current.artifactId || !current.revisionId || current.preview?.state !== "ready") return;
+    const controller = new AbortController();
+    void getArtifactItem(current.artifactId, current.revisionId, controller.signal).then(result => {
+      if (!controller.signal.aborted && result.ok && result.data) setCurrent(result.data);
+    }).catch(() => undefined);
+    return () => controller.abort();
+  }, [attempt]);
+  useEffect(() => {
+    if (current.preview?.state !== "pending" || !current.artifactId || !current.revisionId) return;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout>;
+    let polls = 0;
+    const poll = async () => {
+      try {
+        const result = await getArtifactItem(current.artifactId!, current.revisionId!, controller.signal);
+        if (controller.signal.aborted) return;
+        if (result.ok && result.data?.preview && result.data.preview.state !== "pending") { setCurrent(result.data); return; }
+      } catch { /* Keep the stored file available during a temporary refresh failure. */ }
+      if (!controller.signal.aborted) timer = setTimeout(poll, Math.min(15000, 2000 * 2 ** Math.min(++polls, 3)));
+    };
+    timer = setTimeout(poll, 2000);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [current.artifactId, current.revisionId, current.preview?.state, attempt]);
+  const preview = current.preview;
+  if (!preview || preview.state === "ready" && preview.kind === "native") return <NativeLibraryItemViewerBody item={current} accent={accent} />;
+  if (preview.state === "unavailable") return <DownloadOnlyFileCard item={current} />;
+  if (preview.state === "pending") return <div role="status" className="flex min-h-[420px] flex-col items-center justify-center gap-3">
+    <span className="v-spinner h-5 w-5" /><p>{tt("正在准备文件预览…")}</p>
+    <DownloadOnlyFileCard item={current} message="预览准备期间仍可下载原文件" />
+  </div>;
+  const url = preview.url || "";
+  if (!url) return <DownloadOnlyFileCard item={current} />;
+  const previewItem: LibraryItem = { ...current, url, previewUrl: url, meta: { ...current.meta,
+    viewer_media_type: preview.kind === "model" ? "model/gltf-binary" : `${preview.kind}/` } };
+  const retry = () => { if (refreshes.current++ < 2) setAttempt(value => value + 1); };
+  switch (preview.kind) {
+    case "pdf": return <Suspense fallback={<LoadingView label={tt("正在读取文件…")} />}>
+      <LibraryPdfReader key={`${current.key}:${url}:${attempt}`} title={current.title}
+        loadBlob={signal => fetchItemSourceBlob(current, url, signal, retry)} onRetry={retry} />
+    </Suspense>;
+    case "image": return <Center><ProgressiveArtifactImage key={url} thumbUrl={current.thumbUrl || ""} fullUrl={url} alt={current.title} onError={retry} geometry={libraryMediaGeometry(current, url)} /></Center>;
+    case "video": case "audio": return <Center><LibraryMediaPreview key={`${current.key}:${url}`} kind={preview.kind} src={url} onError={retry} className="max-h-[70vh] max-w-full" /></Center>;
+    case "model": return <ThreeDViewer item={previewItem} onResourceError={retry} />;
+    case "tree": case "text": return <AttachmentFileViewer key={`${current.key}:${url}`} item={current} url={url} mode={preview.kind} />;
+    default: return <DownloadOnlyFileCard item={current} />;
+  }
+}
+
+function NativeLibraryItemViewerBody({
   item,
 }: {
   item: LibraryItem;
@@ -1889,11 +1696,10 @@ function LibraryItemViewerBody({
   const url =
     rendition.url || resolvedItem.previewUrl || resolvedItem.url;
   const selectedMediaType = rendition.rendition?.mediaType;
-  const audioNeedsProject =
+  const audioHasNoPlayableRendition =
     resolvedItem.kind === "audio" &&
     Boolean(url) &&
     !renditionIsPlayableMedia(selectedMediaType);
-  const audioProject = useAudioProjectPlayback(viewerItem, audioNeedsProject);
   if (preparedOffice.loading) {
     return (
       <ArtifactRenditionFailure
@@ -1941,13 +1747,10 @@ function LibraryItemViewerBody({
     // `["full","preview"]` 取 rendition（W3；接入约定见 tasks/W1-viewer-slot.md §4.3）。
     return <WebsiteArtifactViewer item={resolvedItem} />;
   }
-  if (resolvedItem.kind === "video_canvas" || isVideoCanvasV2Item(resolvedItem))
-    return <VideoCanvasViewer item={resolvedItem}
-      key={`${resolvedItem.artifactId || resolvedItem.key}:${resolvedItem.revisionId || ""}:${resolvedItem.url || ""}:${resolvedItem.previewUrl || ""}`} />;
   if (resolvedItem.kind === "canvas") {
     /**
      * 设计画布已并入图片类型（2026-10-22）：库里按图片看，只显示渲出的位图，
-     * 绝不把画布的 HTML / JSON 工程信封塞进 `SandboxedWebViewer`。没有位图时走
+     * 不把 HTML / JSON 工程信封作为页面执行。没有位图时走
      * 结构化快照，读不出快照时由它自己落到空状态。
      */
     const renditionIsImage = String(rendition.rendition?.mediaType || "")
@@ -2015,40 +1818,6 @@ function LibraryItemViewerBody({
         onResourceError={rendition.resourceFailed}
       />
     );
-  /**
-   * 两个新载体的查看器：只看渲出的 `preview` 位图。
-   *
-   * 它们的 `full` rendition 是 JSON 工程信封，**MUST NOT** 送进
-   * `SandboxedWebViewer` 当 HTML 打开（ADR-04：热 HTML 不得冒充素材），也
-   * **MUST NOT** 落到下面 `DocumentViewer` 那条把 JSON 当富文本渲染。可交互的
-   * 图面与重算联动由 `GeoMapRoute` / `InteractiveDocRoute` 承担，不在查看器里。
-   */
-  if (
-    resolvedItem.kind === "geo_map" ||
-    resolvedItem.kind === "interactive_doc"
-  ) {
-    const poster = resolvedItem.previewUrl || resolvedItem.thumbUrl || "";
-    return poster ? (
-      <Center>
-        <ProgressiveArtifactImage
-          thumbUrl={resolvedItem.thumbUrl || ""}
-          fullUrl={poster}
-          alt={resolvedItem.title}
-          onError={rendition.resourceFailed}
-          geometry={libraryMediaGeometry(resolvedItem, poster)}
-        />
-      </Center>
-    ) : (
-      <ErrorView
-        message={
-          resolvedItem.kind === "geo_map"
-            ? "这张地图还没有渲出预览图；打开地图编辑器可从工程源重新渲染。"
-            : "这份交互文档还没有渲出预览图；打开交互文档编辑器可从工程源重新渲染。"
-        }
-        url={resolvedItem.url}
-      />
-    );
-  }
   if (resolvedItem.kind === "image" && url) {
     return (
       <Center>
@@ -2092,38 +1861,7 @@ function LibraryItemViewerBody({
       </Center>
     );
   }
-  if (audioNeedsProject) {
-    /**
-     * 音频编辑器保存出的 revision 只带「工程源 + 位图预览」，没有 `full` 音频
-     * rendition；查看器顺位落到 `preview`（image/png）。把一张 PNG 喂给 `<audio>` 必然
-     * 解码失败，旧路径于是走完「重签→再失败」后报「资源本身取不到」，把一个
-     * 「这一版没有可播放音频」的事实说成了网络故障。
-     *
-     * 先按工程引用的基础音频把它还原出来播放；还原不了才如实说明并摆出预览图。
-     */
-    if (audioProject.status === "loading") {
-      return <LoadingView label="正在按工程还原音频…" />;
-    }
-    if (audioProject.status === "ready") {
-      return (
-        <AudioPlayerPanel
-          itemKey={resolvedItem.key}
-          title={resolvedItem.title}
-          src={audioProject.src}
-          onError={() => undefined}
-        />
-      );
-    }
-    return (
-      <NoPlayableMediaView
-        item={resolvedItem}
-        url={url}
-        mediaType={selectedMediaType}
-        message="这一版是编辑器保存的音频工程，没有可直接播放的音频文件，工程引用的原始音频这次也没能取回；上面是保存时的预览图。打开编辑器即可试听和继续编辑。"
-        marker="data-audio-no-playable-rendition"
-      />
-    );
-  }
+  if (audioHasNoPlayableRendition) return <DownloadOnlyFileCard item={resolvedItem} />;
   if (resolvedItem.kind === "audio" && url) {
     return (
       <AudioPlayerPanel
@@ -2134,16 +1872,13 @@ function LibraryItemViewerBody({
       />
     );
   }
-  return (
-    <ErrorView
-      message="这个内容还没有可用的查看器数据。"
-      url={resolvedItem.url}
-    />
-  );
+  const poster = resolvedItem.posterUrl || resolvedItem.thumbUrl;
+  return poster ? <Center><ProgressiveArtifactImage thumbUrl={poster} fullUrl={poster} alt={resolvedItem.title} geometry={libraryMediaGeometry(resolvedItem, poster)} /></Center>
+    : <DownloadOnlyFileCard item={resolvedItem} />;
 }
 
 export function libraryKindLabel(kind: LibraryItem["kind"]): string {
-  return {
+  return ({
     website: "网站",
     canvas: "图片",
     ppt: "PPT",
@@ -2151,7 +1886,6 @@ export function libraryKindLabel(kind: LibraryItem["kind"]): string {
     document: "文档",
     image: "图片",
     video: "视频",
-    video_canvas: "视频工作流",
     audio: "音频",
     xhs: "小红书",
     threed: "3D",
@@ -2159,7 +1893,7 @@ export function libraryKindLabel(kind: LibraryItem["kind"]): string {
     geo_map: "地图",
     interactive_doc: "交互文档",
     file: "文件",
-  }[kind];
+  } as Record<string, string>)[kind] || "文件";
 }
 
 export function LibraryKindIcon({
@@ -2179,7 +1913,6 @@ export function LibraryKindIcon({
         document: "M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6",
         image: "M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4M8 9h.01",
         video: "M4 6h12v12H4zM16 10l4-2v8l-4-2z",
-        video_canvas: "M3 5h18v11H3zM7 20v-4M17 20v-4M5 20h14M8 9l3 2-3 2zM13 9h5",
         audio: "M9 18V6l11-2v12M9 8l11-2M6 21a3 3 0 100-6 3 3 0 000 6zM17 19a3 3 0 100-6 3 3 0 000 6z",
         xhs: "M6 3h12v18H6zM9 8h6M9 12h6M9 16h4",
         threed: "M12 2l9 5v10l-9 5-9-5V7zM12 12l9-5M12 12v10M12 12L3 7",
@@ -2191,7 +1924,7 @@ export function LibraryKindIcon({
         // 与 `document` 的纯横线纸区分（`interactive-doc.md` §1.3 的分工）。
         interactive_doc: "M6 3h9l3 3v15H6zM15 3v4h3M9 11h6M9 15h2M12 15h.01M14 15a2 2 0 104 0 2 2 0 00-4 0M9 19h9",
         file: "M6 3h8l4 4v14H6zM14 3v5h5",
-      })[kind],
+      } as Record<string, string>)[kind],
     [kind],
   );
   return (

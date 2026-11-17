@@ -2,6 +2,7 @@
 // key = 简体中文原文（规范来源见 zh.ts）；每种语言一张平表 { 中文原文: 译文 }。
 // useUI() 按当前 locale 选表，未命中回退中文原文（见 ../useUI.ts）。
 
+import { LIBRARY_PREVIEW_MESSAGES } from "./library-preview-copy";
 import type { Locale } from "../../config";
 import zh from "./zh";
 import en from "./en";
@@ -531,6 +532,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...COMPUTER_TASK_WORKSPACE_MESSAGES[language],
       ...NATIVE_ATTACHMENTS_MESSAGES[language],
       ...TASK_PAGE_PACK_MESSAGES[language],
+      ...LIBRARY_PREVIEW_MESSAGES[language],
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

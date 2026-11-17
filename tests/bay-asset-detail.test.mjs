@@ -289,30 +289,18 @@ test("看图器按宽度铺开，高度随比例，不给 img 加 max-height", (
   assert.match(PREVIEW, /ctrlKey/);
 });
 
-test("详情页图片、文档预览、PPT 页都走看图器", () => {
-  const DETAIL = source("src/shell/bay/asset/BayAssetDetail.tsx");
-  assert.doesNotMatch(DETAIL, /function ZoomImage/);
-  assert.match(DETAIL, /<BayZoomablePreview/);
-  assert.match(DETAIL, /function DocumentPreview/);
-  assert.match(DETAIL, /function PptPager/);
-  assert.match(DETAIL, /preview = asset\.preview_url \|\| asset\.thumb_url/);
-  assert.match(DETAIL, /<BayZoomablePreview[\s\S]*full=\{preview\}/);
-  assert.match(DETAIL, /pages\[idx\]/);
-  assert.doesNotMatch(DETAIL, /max-h-\[50vh\] w-full object-contain/);
-  assert.doesNotMatch(DETAIL, /mx-auto max-h-40 object-contain/);
+test("origin and typed material details use the same Library viewers", () => {
+  const detail = source("src/shell/bay/asset/BayAssetDetail.tsx");
+  assert.match(detail, /<LibraryItemViewer item=\{bayOriginViewerItem\(full\)\}/);
+  assert.doesNotMatch(detail, /function (?:DocumentPreview|PptPager|ChartFrame)/);
+  const model = source("src/shell/bay/asset/BayModelViewer.tsx");
+  assert.match(model, /<ThreeDViewer/);
+  assert.doesNotMatch(model, /unpkg|createElement\("script"/);
 });
 
-test("UC-3 图表 iframe 不得拿到同源能力", () => {
-  const assetDetailSrc = source("src/shell/bay/asset/BayAssetDetail.tsx");
-  const chartFrame = assetDetailSrc.slice(
-    assetDetailSrc.indexOf("function ChartFrame"),
-    assetDetailSrc.indexOf("function CopyButton"),
-  );
-  assert.ok(chartFrame.includes("<iframe"), "ChartFrame 应当仍在渲染 iframe");
-  assert.match(chartFrame, /sandbox="allow-scripts"/);
-  assert.doesNotMatch(chartFrame, /allow-same-origin/);
-  assert.doesNotMatch(chartFrame, /allow-top-navigation/);
-  assert.doesNotMatch(chartFrame, /allow-popups-to-escape-sandbox/);
+test("UC-3 obsolete chart HTML iframe is removed entirely", () => {
+  const detail = source("src/shell/bay/asset/BayAssetDetail.tsx");
+  assert.doesNotMatch(detail, /ChartFrame|<iframe\b/);
 });
 
 test("UC-3 详情里任何 iframe 都不得同时给脚本与同源", () => {

@@ -893,8 +893,43 @@ export function popularityMetricsFromWire(
   return Object.keys(metrics).length > 0 ? metrics : null;
 }
 
+export interface LibraryPreview {
+  state: "ready" | "pending" | "unavailable";
+  kind: "pdf" | "image" | "video" | "audio" | "model" | "tree" | "text" | "native";
+  url?: string;
+}
+
+export interface LibraryFacts {
+  durationSeconds?: number;
+  width?: number;
+  height?: number;
+  pages?: number;
+}
+
+export function normalizeLibraryPreview(value: unknown): LibraryPreview | undefined {
+  const raw = record(value);
+  if (!raw || !["ready", "pending", "unavailable"].includes(String(raw.state)) ||
+      !["pdf", "image", "video", "audio", "model", "tree", "text", "native"].includes(String(raw.kind))) return undefined;
+  const url = trustedRenditionUrl(raw.url);
+  return { state: raw.state as LibraryPreview["state"], kind: raw.kind as LibraryPreview["kind"],
+    ...(url && !isArtifactSourceTreeUrl(url) ? { url } : {}) };
+}
+
+export function normalizeLibraryFacts(value: unknown): LibraryFacts | undefined {
+  const raw = record(value);
+  if (!raw) return undefined;
+  const facts: LibraryFacts = {};
+  for (const key of ["durationSeconds", "width", "height", "pages"] as const) {
+    const value = raw[key];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) facts[key] = value;
+  }
+  return facts;
+}
+
 export interface ArtifactProjection extends ArtifactIdentity {
   schema: "oceanleo.artifact.v1";
+  preview?: LibraryPreview;
+  facts?: LibraryFacts;
   artifactType: ArtifactType;
   roles: string[];
   owner: ArtifactOwner;
@@ -1932,6 +1967,8 @@ export function normalizeArtifactProjection(
       raw.bindings ?? raw.context_bindings,
     ),
     integrity: effectiveIntegrity,
+    preview: normalizeLibraryPreview(raw.preview),
+    facts: normalizeLibraryFacts(raw.facts),
     createdAt: text(raw.createdAt, raw.created_at) || null,
     textExcerpt: text(raw.textExcerpt, raw.text_excerpt).slice(0, 600) || null,
     // 热度不参与完整性判定：读不到只影响排序，不影响这个 artifact 能不能预览/编辑。

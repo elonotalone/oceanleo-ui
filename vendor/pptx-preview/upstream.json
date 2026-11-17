@@ -6,5 +6,10 @@
   "patch": {
     "from": "import*as h from\"echarts\";",
     "to": "import*as h from\"./chart-engine.js\";"
-  }
+  },
+  "loadingFixes": [
+    "defaultTextStyleSource defaults to {}",
+    "await slide master and its nodes",
+    "propagate master load failure"
+  ]
 }

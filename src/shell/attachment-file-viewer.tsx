@@ -1,188 +1,132 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import type { LibraryItem } from "./library-data";
+import { CodeBlock, FolderTreeViewer } from "./skills/kit/FolderTreeViewer";
+import type { FileContent, TreeEntry } from "./skills/kit/types";
+import { fetchMediaBlobRefreshing } from "../lib/media-proxy";
 
 function extension(value: string): string {
-  const match = /\.([a-z0-9]+)(?:$|[?#])/i.exec(value);
-  return match?.[1]?.toLowerCase() || "";
+  return /\.([a-z0-9]+)(?:$|[?#])/i.exec(value)?.[1]?.toLowerCase() || "";
 }
-
-function mediaType(item: LibraryItem): string {
-  return String(
-    item.artifact?.renditions.source?.mediaType ||
-      item.meta.mime ||
-      item.meta.content_type ||
-      "",
-  ).toLowerCase().split(";", 1)[0];
-}
-
 function fileName(item: LibraryItem): string {
-  return String(item.meta.filename || item.title || "附件");
+  return String(item.meta.filename || item.title || "");
 }
-
-function sourceBytes(item: LibraryItem): number | null {
-  const values = [
-    item.meta.source_bytes,
-    item.meta.bytes,
-    item.meta.size,
-    item.artifact?.renditions.source?.byteSize,
-  ];
-  for (const value of values) {
-    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
-  }
-  return null;
-}
-
-function formatBytes(value: number | null): string {
-  if (value === null) return "";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 * 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-const TEXT_EXTENSIONS = new Set([
+export const TEXT_EXTENSIONS = new Set([
   "txt", "md", "markdown", "json", "jsonl", "csv", "tsv", "log", "xml", "yaml", "yml",
   "js", "jsx", "ts", "tsx", "css", "scss", "less", "py", "rb", "go", "rs", "java", "kt",
   "swift", "c", "h", "cpp", "hpp", "sh", "bash", "sql", "toml", "ini", "conf", "html", "htm",
-  "svg",
+  "svg", "srt", "vtt", "ass", "ssa", "lrc", "tex", "ipynb", "r", "vue", "svelte", "graphql",
 ]);
-
-function isTextAttachment(item: LibraryItem): boolean {
-  const type = mediaType(item);
-  return type.startsWith("text/") || type === "application/json" || type.endsWith("+json") ||
-    type === "application/xml" || type === "text/csv" || TEXT_EXTENSIONS.has(extension(fileName(item)));
+export function isTextAttachment(item: LibraryItem): boolean {
+  const type = String(item.artifact?.renditions.source?.mediaType || item.meta.mime || item.meta.content_type || "");
+  return type.startsWith("text/") || /(?:json|xml)(?:;|$)/.test(type) || TEXT_EXTENSIONS.has(extension(fileName(item)));
 }
-
-function isZipAttachment(item: LibraryItem): boolean {
-  const type = mediaType(item);
-  return type === "application/zip" || type === "application/x-zip-compressed" || extension(fileName(item)) === "zip";
-}
-
-function isOfficeOrPdf(item: LibraryItem): boolean {
-  const ext = extension(fileName(item));
-  const type = mediaType(item);
-  return type === "application/pdf" || ext === "pdf" ||
-    ["doc", "docx", "xls", "xlsx", "ppt", "pptx", "ods", "odp"].includes(ext) ||
-    /wordprocessing|spreadsheet|presentation|msword|ms-excel|powerpoint/.test(type);
-}
-
-/** Whether the generic attachment viewer should take a document/file item. */
 export function isAttachmentFilePreview(item: LibraryItem): boolean {
-  if (item.meta.attachment_preview !== true) return false;
-  if (isOfficeOrPdf(item)) return false;
-  const type = mediaType(item);
-  if (type.startsWith("image/") || type.startsWith("video/") || type.startsWith("audio/")) return false;
-  return item.kind === "document" || item.kind === "file";
+  return item.meta.attachment_preview === true && ["document", "file"].includes(item.kind) &&
+    !/^(?:image|audio|video)\//.test(String(item.meta.mime || "")) &&
+    !/\.(?:docx?|xlsx?|pptx?|ods|odp|pdf)$/i.test(fileName(item));
 }
-
 function DownloadLink({ item, url }: { item: LibraryItem; url: string }) {
   const tt = useUI();
-  if (!url) return null;
-  return (
-    <a
-      href={url}
-      download={fileName(item)}
-      target="_blank"
-      rel="noreferrer"
-      className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50"
-    >
-      {tt("下载")}
-    </a>
-  );
+  return url ? <a href={url} download={fileName(item)} target="_blank" rel="noreferrer"
+    className="rounded-lg border border-stone-200 px-3 py-1.5 text-[12px] font-medium text-stone-600">{tt("下载")}</a> : null;
 }
-
-function FileCard({ item, url, message }: { item: LibraryItem; url: string; message?: string }) {
+export function DownloadOnlyFileCard({ item, url, message, onDownload }: { item: LibraryItem; url?: string; message?: string; onDownload?: () => void }) {
   const tt = useUI();
-  const size = formatBytes(sourceBytes(item));
-  return (
-    <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 p-6 text-center" data-attachment-file-card="">
-      <div className="grid h-16 w-16 place-items-center rounded-2xl bg-stone-100 text-stone-400" aria-hidden="true">📄</div>
-      <p className="max-w-md break-words text-[14px] font-medium text-stone-700">{fileName(item)}</p>
-      {size && <p className="text-[12px] text-stone-400">{size}</p>}
-      {message && <p className="max-w-md text-[13px] leading-relaxed text-stone-500">{message}</p>}
-      <DownloadLink item={item} url={url} />
-      {!message && <p className="text-[12px] text-stone-400">{tt("此文件没有可直接显示的预览")}</p>}
-    </div>
-  );
+  const bytes = item.artifact?.renditions.source?.byteSize ?? item.meta.source_bytes ?? item.meta.bytes ?? item.meta.size;
+  const size = typeof bytes === "number" ? bytes < 1024 ? `${bytes} B` : bytes < 1048576 ? `${(bytes / 1024).toFixed(1)} KB` : `${(bytes / 1048576).toFixed(1)} MB` : "";
+  const format = item.artifact?.sourceFormat || item.meta.format || extension(fileName(item));
+  return <div className="flex min-h-[420px] flex-col items-center justify-center gap-3 p-6 text-center" data-download-only="">
+    <span className="text-4xl" aria-hidden="true">📄</span>
+    <p className="max-w-md break-words text-sm font-medium">{fileName(item)}</p>
+    <p className="text-xs text-stone-500">{[String(format || "").toUpperCase(), size].filter(Boolean).join(" · ")}</p>
+    <p className="max-w-md text-sm text-stone-500">{tt(message || "此文件没有可直接显示的预览")}</p>
+    {onDownload ? <button type="button" className="rounded-lg border px-3 py-1.5 text-xs" onClick={onDownload}>{tt("下载")}</button> : <DownloadLink item={item} url={url || item.url || ""} />}
+  </div>;
 }
 
-export function AttachmentFileViewer({ item, url }: { item: LibraryItem; url?: string }) {
+/** Notebook cells are read as text; outputs and HTML are never executed. */
+export function previewText(value: string, name: string): string {
+  if (extension(name) !== "ipynb") return value;
+  try {
+    const notebook = JSON.parse(value);
+    if (!Array.isArray(notebook.cells)) return value;
+    return notebook.cells.map((cell: { cell_type?: unknown; source?: unknown }, i: number) =>
+      `# ${i + 1} [${String(cell.cell_type || "")}]\n${Array.isArray(cell.source) ? cell.source.join("") : String(cell.source || "")}`).join("\n\n");
+  } catch { return value; }
+}
+
+export function AttachmentFileViewer({ item, url, mode }: { item: LibraryItem; url?: string; mode?: "text" | "tree" }) {
   const tt = useUI();
   const sourceUrl = url || item.url || item.previewUrl || "";
-  const text = isTextAttachment(item);
-  const zip = isZipAttachment(item);
+  const text = mode === "text" || (!mode && isTextAttachment(item));
+  const zip = mode === "tree" || extension(fileName(item)) === "zip";
   const [body, setBody] = useState("");
-  const [entries, setEntries] = useState<string[] | null>(null);
-  const [error, setError] = useState("");
+  const [files, setFiles] = useState<Record<string, Uint8Array> | null>(null);
+  const [tree, setTree] = useState<TreeEntry[]>([]);
   const [loading, setLoading] = useState(text || zip);
-  const identity = useMemo(() => `${sourceUrl}|${fileName(item)}|${text ? "text" : zip ? "zip" : "file"}`, [item, sourceUrl, text, zip]);
-
+  const [error, setError] = useState(false);
   useEffect(() => {
-    if (!text && !zip) {
-      setLoading(false);
-      return;
-    }
-    if (!sourceUrl) {
-      setLoading(false);
-      setError("没有可读取的文件地址");
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    setError("");
-    setBody("");
-    setEntries(null);
-    void fetch(sourceUrl, { credentials: "omit", referrerPolicy: "no-referrer" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("文件读取失败");
-        if (zip) {
-          const { unzipSync } = await import("fflate");
-          const files = unzipSync(new Uint8Array(await response.arrayBuffer()));
-          if (!cancelled) setEntries(Object.keys(files).sort());
-        } else {
-          const value = await response.text();
-          if (!cancelled) setBody(value);
+    if (!text && !zip) return;
+    const controller = new AbortController();
+    let alive = true;
+    setLoading(true); setError(false); setBody(""); setFiles(null); setTree([]);
+    void (async () => {
+      // Bounded reads prevent source-code and archive previews from exhausting memory.
+      const blob = await fetchMediaBlobRefreshing(sourceUrl, { signal: controller.signal, maxBytes: zip ? 64 * 1024 * 1024 : 8 * 1024 * 1024 });
+      if (zip) {
+        const { unzipSync } = await import("fflate");
+        let total = 0, count = 0;
+        let source = blob;
+        const prefix = await blob.slice(0, 1).text();
+        if (prefix === "{") {
+          const manifest = JSON.parse(await blob.text());
+          const entries: TreeEntry[] = (Array.isArray(manifest.entries) ? manifest.entries : []).slice(0, 5000)
+            .filter((e: { name?: unknown }) => typeof e.name === "string" && !e.name.startsWith("/") && !e.name.includes("\\") && !e.name.split("/").includes(".."))
+            .map((e: { name: string; size?: number; directory?: boolean }) => ({ path: e.name, size: e.size, type: e.directory ? "dir" : "file" }));
+          if (alive) { setTree(entries); setFiles({}); }
+          const original = item.url || "";
+          if (!original || original === sourceUrl) return;
+          try { source = await fetchMediaBlobRefreshing(original, { signal: controller.signal, maxBytes: 64 * 1024 * 1024 }); }
+          catch { return; } // Keep the useful directory index even if original bytes cannot be read.
         }
-      })
-      .catch((reason) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "文件读取失败");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [identity, sourceUrl, text, zip]);
-
-  if (!text && !zip) return <FileCard item={item} url={sourceUrl} />;
-  if (loading) {
-    return <div className="flex min-h-[420px] items-center justify-center text-[13px] text-stone-400">{tt("正在读取文件…")}</div>;
-  }
-  if (error) return <FileCard item={item} url={sourceUrl} message={tt(error)} />;
-  if (zip) {
-    return (
-      <div className="min-h-[420px] p-4" data-attachment-zip-preview="">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <h4 className="text-[13px] font-semibold text-stone-700">{tt("文件列表")}</h4>
-          <DownloadLink item={item} url={sourceUrl} />
-        </div>
-        <ul className="divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white text-[12px] text-stone-600">
-          {(entries || []).map((entry) => <li key={entry} className="break-all px-3 py-2">{entry}</li>)}
-        </ul>
-      </div>
-    );
-  }
-  return (
-    <div className="min-h-[420px] p-3" data-attachment-text-preview="">
-      <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="min-w-0 truncate text-[12px] font-medium text-stone-600">{fileName(item)}</span>
-        <DownloadLink item={item} url={sourceUrl} />
-      </div>
-      <pre className="max-h-[calc(100vh-180px)] overflow-auto whitespace-pre-wrap break-words rounded-lg bg-stone-950 p-4 text-[12px] leading-relaxed text-stone-100" tabIndex={0}>{body}</pre>
-    </div>
-  );
+        const contents = unzipSync(new Uint8Array(await source.arrayBuffer()), { filter: (entry) => {
+          total += entry.originalSize; count++;
+          if (total > 64 * 1024 * 1024 || count > 5000) throw new Error("archive preview limit");
+          return !entry.name.startsWith("/") && !entry.name.includes("\\") && !entry.name.split("/").some(p => p === ".." || p === ".");
+        } });
+        if (!alive) return;
+        setFiles(contents);
+        setTree(Object.entries(contents).map(([path, data]) => ({ path, type: path.endsWith("/") ? "dir" : "file", size: data.length })));
+      } else {
+        const value = await blob.text();
+        if (alive) setBody(previewText(value, fileName(item)));
+      }
+    })().catch(() => { if (alive) setError(true); }).finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; controller.abort(); };
+  }, [sourceUrl, text, zip, item.key]);
+  if (!text && !zip || error) return <DownloadOnlyFileCard item={item} url={sourceUrl} />;
+  if (loading) return <div className="flex min-h-[420px] items-center justify-center text-sm" role="status">{tt("正在读取文件…")}</div>;
+  if (zip && files) return <FolderTreeViewer tree={tree} rootLabel={fileName(item)} downloadUrl={sourceUrl} onDownloadFile={path => {
+    const bytes = files[path]; if (!bytes) { if (item.url) { const link = document.createElement("a"); link.href = item.url; link.download = fileName(item); link.click(); } return; }
+    const href = URL.createObjectURL(new Blob([new Uint8Array(bytes)]));
+    const link = document.createElement("a"); link.href = href; link.download = path.split("/").pop() || path;
+    link.click(); setTimeout(() => URL.revokeObjectURL(href), 1000);
+  }} loadFile={async path => {
+    const data = files[path]; if (!data) return { path, size: tree.find(e => e.path === path)?.size || 0, kind: "binary" };
+    const ext = extension(path);
+    const base: FileContent = { path, size: data.length, kind: "binary" };
+    if (/^(png|jpe?g|gif|webp|bmp|avif)$/.test(ext) && data.length <= 4 * 1024 * 1024) {
+      const base64 = (bytes: Uint8Array) => { let value = ""; for (let i = 0; i < bytes.length; i += 8192) value += String.fromCharCode(...bytes.subarray(i, i + 8192)); return btoa(value); };
+      return { ...base, kind: "image", data_url: `data:image/${ext === "jpg" ? "jpeg" : ext};base64,${base64(data)}` };
+    }
+    if (TEXT_EXTENSIONS.has(ext) && data.length <= 8 * 1024 * 1024) return { ...base, kind: "code", text: previewText(new TextDecoder().decode(data), path) };
+    return base;
+  }} />;
+  return <div className="min-h-[420px] p-3" data-attachment-text-preview="">
+    <div className="mb-2 flex items-center justify-between gap-3"><span className="truncate text-xs">{fileName(item)}</span><DownloadLink item={item} url={sourceUrl} /></div>
+    <CodeBlock text={body} label={extension(fileName(item)) || "text"} lineNumbers />
+  </div>;
 }

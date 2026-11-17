@@ -81,6 +81,8 @@ export interface LibraryContentDescriptor {
 }
 
 export interface LibraryItem {
+  preview?: import("./artifact-contract").LibraryPreview;
+  facts?: import("./artifact-contract").LibraryFacts;
   key: string;
   source: "creation" | "artifact";
   id: string;
@@ -567,6 +569,8 @@ export function artifactProjectionToLibraryItem(
     revisionId: artifact.revisionId,
     artifactType: artifact.artifactType,
     artifact,
+    preview: artifact.preview,
+    facts: artifact.facts,
     title: artifact.title,
     kind,
     siteId: artifact.owner.originSiteKey || "",

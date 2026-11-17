@@ -16,6 +16,8 @@
 // `skipHtml` 的共享组件）。
 // ============================================================================
 
+import { formatBytes } from "./skills/kit/tree-model";
+import { DownloadOnlyFileCard } from "./attachment-file-viewer";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { LibraryImportDialog, LibraryUploadQueue, LibraryPurchasedUpdates, type LibraryImportMode } from "./library-import";
 import { useUI } from "../i18n/ui/useUI";
@@ -116,7 +118,8 @@ export function folderSourceLabel(folder: Pick<Folder, "source">): string {
   }
 }
 
-export function folderFileCountLabel(tt: TT, folder: Pick<Folder, "file_count">): string {
+export function folderFileCountLabel(tt: TT, folder: Pick<Folder, "file_count"> & Partial<Pick<Folder, "fileItem" | "format" | "total_bytes">>): string {
+  if (folder.fileItem) return [folder.format?.toUpperCase(), formatBytes(folder.total_bytes)].filter(Boolean).join(" · ");
   return tt("文件包 · {n} 个文件", { n: Math.max(0, Number(folder.file_count) || 0) });
 }
 
@@ -231,7 +234,7 @@ export function LibraryFolderCover({ folder }: { folder: Folder }) {
       data-library-folder-cover="icon"
     >
       <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white text-neutral-500 shadow-sm ring-1 ring-neutral-200/70">
-        <FolderGlyph />
+        {folder.fileItem ? <span aria-hidden="true">📄</span> : <FolderGlyph />}
       </span>
     </div>
   );
@@ -256,7 +259,7 @@ export function LibraryFolderCard({
       title={folder.title || tt("未命名文件包")}
       metadata={folderFileCountLabel(tt, folder)}
       onOpen={onOpen}
-      openLabel={tt("打开文件包「{title}」", { title: folder.title })}
+      openLabel={folder.fileItem ? `${tt("打开")} ${folder.title}` : tt("打开文件包「{title}」", { title: folder.title })}
       containerProps={{
         "data-library-folder-card": folder.id,
         "data-library-folder-skill": skill ? "true" : "false",
@@ -353,7 +356,7 @@ export function LibraryFolderDetail({
     setBusy("download");
     const result = await folderApi.downloadFromGateway(
       folderApi.folderDownloadUrl(folder.id),
-      `${folder.title || "folder"}.zip`,
+      folder.fileItem ? folder.filename || folder.title : `${folder.title || "folder"}.zip`,
     );
     setBusy("");
     if (!result.ok) setNotice({ text: result.error, error: true });
@@ -430,7 +433,7 @@ export function LibraryFolderDetail({
         data-library-folder-action="download"
       >
         <DownloadGlyph />
-        {tt("下载 zip")}
+        {tt(folder?.fileItem ? "下载" : "下载 zip")}
       </button>
       {folder.can_edit ? (
         <button
@@ -473,6 +476,9 @@ export function LibraryFolderDetail({
           <p role="alert" className="py-16 text-center text-[13px] text-rose-600">
             {tt(loadError)}
           </p>
+        ) : folder?.fileItem ? (
+          <DownloadOnlyFileCard item={{ key: folder.id, id: folder.id, source: "artifact", title: folder.filename || folder.title, kind: "file", siteId: "", favorite: false,
+            meta: { filename: folder.filename || folder.title, format: folder.format, source_bytes: folder.size ?? folder.total_bytes } }} onDownload={() => void download()} />
         ) : tree === null ? (
           <div className="grid gap-3 py-6">
             <SkeletonCard className="h-10" />
@@ -485,6 +491,7 @@ export function LibraryFolderDetail({
             loadFile={loadFile}
             initialPath={initialPath}
             rootLabel={title}
+            downloadUrl={folderApi.folderDownloadUrl(folderId)}
           />
         )}
       </ConfigDialogShell>

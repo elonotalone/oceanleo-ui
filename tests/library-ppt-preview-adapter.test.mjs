@@ -324,6 +324,7 @@ async function renderPptAdapter({ slideCount, meta }) {
     export function officeViewerRenditionPurposes() { return ["full"]; }
   `);
   const artifactClientStubUrl = dataModule(`
+    export async function getArtifactItem() { return { ok: false }; }
     export async function prepareArtifactForAction() {
       return { ok: true, data: null };
     }

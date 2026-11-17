@@ -57,6 +57,10 @@ export interface FolderSkillInfo {
 }
 
 export interface Folder {
+  fileItem?: boolean;
+  filename?: string;
+  format?: string;
+  size?: number;
   id: string;
   title: string;
   source: FolderSource;

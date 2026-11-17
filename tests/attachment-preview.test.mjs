@@ -24,7 +24,7 @@ test("generic attachment viewer selects safe text, zip, and unknown previews", (
 
 test("viewer source is rendered as a preformatted text surface, never injected HTML", () => {
   return readFile(new URL("../src/shell/attachment-file-viewer.tsx", import.meta.url), "utf8").then((source) => {
-    assert.match(source, /<pre[\s\S]*\{body\}/);
+    assert.match(source, /<CodeBlock text=\{body\}[\s\S]*lineNumbers/);
     assert.doesNotMatch(source, /dangerouslySetInnerHTML/);
   });
 });

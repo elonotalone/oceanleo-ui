@@ -247,7 +247,7 @@ test("重型 viewer 等容器可见才挂载，首屏只画一张 thumb 海报",
   // 重型分支的 hook（office 取包 / rendition 刷新）在 body 里，闸门没放行就不会跑。
   assert.match(
     viewersSource,
-    /function LibraryItemViewerBody\([\s\S]{0,140}usePreparedOfficeLibraryItem\(item\)/,
+    /function NativeLibraryItemViewerBody\([\s\S]{0,140}usePreparedOfficeLibraryItem\(item\)/,
   );
 });
 
@@ -263,11 +263,9 @@ test("图片预览先出 .thumb.webp，全尺寸后台预载完成再换", () =>
 });
 
 test("预览页没有动 iframe sandbox / postMessage 目标源", () => {
-  // 沙箱属性仍由 editor-sandbox-origin 单点决定，本轮一个字都没加。
-  assert.match(
-    viewersSource,
-    /sandbox=\{webViewerFrameSandbox\(trustedInteractive\)\}/,
-  );
+  // The canvas-only frame is removed. Websites keep their independently tested host.
+  assert.doesNotMatch(viewersSource, /<iframe\b/);
+  assert.match(viewersSource, /<WebsiteArtifactViewer item=\{resolvedItem\}/);
   assert.doesNotMatch(viewersSource, /allow-same-origin allow-scripts/);
 });
 

@@ -12,156 +12,35 @@ import {
 } from "./asset-file-meta";
 import { BayAssetProvenance, safeHttpUrl } from "./BayAssetProvenance";
 import { BayLicenseFlags } from "./BayLicenseBadge";
-import { BayModelViewer } from "./BayModelViewer";
-import { BayZoomablePreview } from "./BayZoomablePreview";
+import { LibraryItemViewer } from "../../library-viewers";
 import {
   asBayAssetFull,
   assetDetail,
   downloadHref,
-  pptPageUrls,
   type BayAssetFull,
 } from "./detail-client";
 import { bayAssetDownloadHref, type BayAsset } from "./library-client";
 
 const subscribeToHydration = () => () => {};
 
-function is3dModel(asset: BayAssetFull): boolean {
-  if (asset.type !== "3d") return false;
-  const u = (asset.full_url || "").toLowerCase();
-  return u.endsWith(".gltf") || u.endsWith(".glb");
-}
-
-function isChartAsset(asset: BayAssetFull): boolean {
-  return asset.type === "chart" && !!asset.full_url;
-}
-
-function PptPager({ asset }: { asset: BayAssetFull }) {
-  const tt = useUI();
-  const pages = pptPageUrls(asset);
-  const [idx, setIdx] = useState(0);
-  if (pages.length === 0) {
-    return (
-      <BayZoomablePreview
-        thumb={asset.thumb_url}
-        full={asset.preview_url}
-        alt={asset.title}
-      />
-    );
-  }
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="relative w-full overflow-hidden rounded-lg border border-stone-200 bg-white">
-        <BayZoomablePreview
-          thumb={pages[idx]}
-          full={pages[idx]}
-          alt={tt("{title} 第 {n} 页", { title: asset.title, n: idx + 1 })}
-        />
-        <span className="pointer-events-none absolute right-3 top-3 rounded bg-black/55 px-2 py-0.5 text-[11px] text-white">
-          {idx + 1} / {pages.length}
-        </span>
-      </div>
-      <div className="flex gap-1.5 overflow-x-auto pb-1">
-        {pages.map((u, i) => (
-          <button
-            key={u}
-            type="button"
-            onClick={() => setIdx(i)}
-            className={`shrink-0 overflow-hidden rounded border-2 transition ${
-              i === idx ? "border-sky-500" : "border-transparent opacity-70 hover:opacity-100"
-            }`}
-          >
-            <img src={u} alt="" loading="lazy" className="aspect-video w-20 object-cover" />
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// UC-3：图表 iframe 只给 allow-scripts，不给同源，避免读到非 httpOnly 的登录 cookie。
-function ChartFrame({ asset }: { asset: BayAssetFull }) {
-  const tt = useUI();
-  const [loaded, setLoaded] = useState(false);
-  const cover = asset.preview_url || asset.thumb_url;
-  const frameSrc = safeHttpUrl(asset.full_url);
-  if (!frameSrc) {
-    return <BayZoomablePreview thumb={asset.thumb_url} full={cover} alt={asset.title} />;
-  }
-  return (
-    <div className="relative w-full bg-white">
-      {cover && !loaded ? (
-        <img
-          src={cover}
-          alt=""
-          aria-hidden
-          className="absolute inset-0 h-full w-full object-contain"
-        />
-      ) : null}
-      <iframe
-        src={frameSrc}
-        title={asset.title}
-        loading="lazy"
-        onLoad={() => setLoaded(true)}
-        sandbox="allow-scripts"
-        className={`h-[600px] w-full border-0 transition-opacity duration-[var(--leo-dur-3)] ${
-          loaded ? "opacity-100" : "opacity-0"
-        }`}
-      />
-      {cover && !loaded ? (
-        <span className="absolute bottom-2 right-2 rounded bg-black/55 px-2 py-0.5 text-[11px] text-white">
-          {tt("图表加载中…")}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function DocGlyph() {
-  return (
-    <svg className="mx-auto h-16 w-16 text-stone-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <path d="M7 3h8l5 5v13H7zM15 3v5h5M9 12h6M9 16h4" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function DocumentPreview({ asset }: { asset: BayAssetFull }) {
-  const tt = useUI();
-  const name = assetFileName(asset);
-  const format = assetFormat(asset);
-  const size = formatByteSize(asset.file_size);
-  const nos = officialDocNumbers(asset.tags);
-  const preview = asset.preview_url || asset.thumb_url;
-  return (
-    <div className="flex flex-col gap-4">
-      {preview ? (
-        <BayZoomablePreview thumb={asset.thumb_url} full={preview} alt={asset.title} />
-      ) : (
-        <div className="px-6 pt-6">
-          <DocGlyph />
-        </div>
-      )}
-      <dl className="grid gap-2 px-6 pb-6 text-sm">
-        <div className="flex gap-3">
-          <dt className="w-14 shrink-0 text-xs uppercase tracking-wide text-stone-400">{tt("文件名")}</dt>
-          <dd className="min-w-0 break-all text-stone-800">{name}</dd>
-        </div>
-        <div className="flex gap-3">
-          <dt className="w-14 shrink-0 text-xs uppercase tracking-wide text-stone-400">{tt("格式")}</dt>
-          <dd className="text-stone-800">{format ? format.toUpperCase() : tt("未标注")}</dd>
-        </div>
-        <div className="flex gap-3">
-          <dt className="w-14 shrink-0 text-xs uppercase tracking-wide text-stone-400">{tt("大小")}</dt>
-          <dd className="text-stone-800">{size || tt("未标注")}</dd>
-        </div>
-        {nos.length > 0 ? (
-          <div className="flex gap-3">
-            <dt className="w-14 shrink-0 text-xs uppercase tracking-wide text-stone-400">{tt("编号")}</dt>
-            <dd className="font-medium text-stone-900">{nos.join(" · ")}</dd>
-          </div>
-        ) : null}
-      </dl>
-    </div>
-  );
+/** Both origin materials and typed items use the Library's read-only viewers. */
+export function bayOriginViewerItem(asset: BayAssetFull): import("../../library-data").LibraryItem {
+  const kinds: Record<string, import("../../library-data").LibraryKind> = {
+    ppt: "ppt", deck: "ppt", grid: "sheet", sheet: "sheet", document: "document", pdf: "document",
+    "3d": "threed", audio: "audio", music: "audio", video: "video", image: "image", vector: "image", poster: "image",
+  };
+  const url = safeHttpUrl(asset.full_url) || safeHttpUrl(asset.download_url || "") || "";
+  const poster = safeHttpUrl(asset.preview_url) || safeHttpUrl(asset.thumb_url) || "";
+  const kind = kinds[asset.type] || "file";
+  const format = assetFormat(asset).toLowerCase();
+  const preview = /\.pdf(?:$|[?#])/i.test(poster) ? { state: "ready" as const, kind: "pdf" as const, url: poster }
+    : kind === "file" ? { state: poster ? "ready" as const : "unavailable" as const, kind: "image" as const, url: poster }
+    : undefined;
+  return { key: `bay-origin:${asset.id}`, source: "artifact", id: asset.id, title: asset.title, kind,
+    siteId: "", url: url || (/^(audio|video)$/.test(kind) ? poster : undefined), previewUrl: poster,
+    thumbUrl: safeHttpUrl(asset.thumb_url) || undefined, favorite: false, preview,
+    meta: { filename: assetFileName(asset), format, source_bytes: asset.file_size,
+      ...(format === "pdf" ? { mime: "application/pdf", viewer_media_type: "application/pdf" } : {}) } };
 }
 
 function CopyButton({ text, label }: { text: string; label?: string }) {
@@ -216,19 +95,7 @@ export function BayAssetDetail({
     };
   }, [onClose]);
 
-  const isAudio = full.type === "audio" || full.type === "music";
-  const isVideo = full.type === "video";
-  const is3d = is3dModel(full);
-  const isChart = isChartAsset(full);
-  const isPpt = full.type === "ppt" && full.id.startsWith("library:");
-  const isDocument = full.type === "document";
   const dims = dimensionLabel(full.width, full.height);
-  const pptHtmlUrl =
-    isPpt && full.source_url.endsWith(".html") ? safeHttpUrl(full.source_url) : "";
-  const chartPageUrl = isChart ? safeHttpUrl(full.source_url || full.full_url) : "";
-  const modelSrc = is3d ? safeHttpUrl(full.full_url) : "";
-  const audioSrc = isAudio ? safeHttpUrl(full.preview_url) : "";
-  const videoSrc = isVideo ? safeHttpUrl(full.preview_url) : "";
   const licenseUrl = safeHttpUrl(full.license.url);
   const dlHref = safeHttpUrl(downloadHref(full)) || bayAssetDownloadHref(full.id);
 
@@ -260,52 +127,20 @@ export function BayAssetDetail({
 
         <div className="flex-1 overflow-y-auto p-5">
           <div className="overflow-hidden rounded-xl bg-stone-100">
-            {isChart ? (
-              <ChartFrame asset={full} />
-            ) : isPpt ? (
-              <PptPager asset={full} />
-            ) : isDocument ? (
-              <DocumentPreview asset={full} />
-            ) : is3d && modelSrc ? (
-              <BayModelViewer src={modelSrc} poster={full.thumb_url} alt={full.title} />
-            ) : isAudio ? (
-              <div className="flex flex-col">
-                {full.thumb_url ? (
-                  <BayZoomablePreview thumb={full.thumb_url} full={full.thumb_url} alt={full.title} />
-                ) : null}
-                <div className="px-4 py-3">
-                  {audioSrc ? <audio controls src={audioSrc} className="w-full" /> : null}
-                </div>
-              </div>
-            ) : isVideo ? (
-              <video
-                controls
-                poster={full.thumb_url}
-                src={videoSrc || undefined}
-                className="max-h-[72vh] w-full bg-black"
-              />
-            ) : (
-              <BayZoomablePreview
-                thumb={full.thumb_url}
-                full={full.preview_url || full.thumb_url}
-                alt={full.title}
-              />
-            )}
+            <LibraryItemViewer item={bayOriginViewerItem(full)} />
+            {full.type === "document" && <dl className="grid gap-2 p-4 text-sm">
+              <div><dt className="text-xs text-stone-400">{tt("文件名")}</dt><dd>{assetFileName(full)}</dd></div>
+              <div><dt className="text-xs text-stone-400">{tt("格式")}</dt><dd>{assetFormat(full).toUpperCase() || tt("未标注")}</dd></div>
+              <div><dt className="text-xs text-stone-400">{tt("大小")}</dt><dd>{formatByteSize(full.file_size) || tt("未标注")}</dd></div>
+              {officialDocNumbers(full.tags).length > 0 && <div><dt className="text-xs text-stone-400">{tt("编号")}</dt><dd>{officialDocNumbers(full.tags).join(" · ")}</dd></div>}
+            </dl>}
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-xs uppercase tracking-wide text-stone-400">{tt("作者 / 来源")}</p>
               <p className="mt-1 text-sm text-stone-800">{full.author}</p>
-              {pptHtmlUrl ? (
-                <a href={pptHtmlUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline">
-                  {tt("打开网页版（HTML）")} ↗
-                </a>
-              ) : chartPageUrl ? (
-                <a href={chartPageUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-sky-600 hover:underline">
-                  {tt("打开网页版（HTML）")} ↗
-                </a>
-              ) : null}
+
             </div>
             <div>
               <p className="text-xs uppercase tracking-wide text-stone-400">{tt("授权")}</p>
@@ -384,28 +219,8 @@ export function BayAssetDetail({
             download
             className="rounded-lg bg-sky-500 px-4 py-2 text-sm font-medium text-white hover:bg-sky-600"
           >
-            {isPpt ? tt("下载 .pptx") : isChart ? tt("下载 HTML") : isDocument ? tt("下载文件") : tt("下载")}
+            {tt("下载")}
           </a>
-          {chartPageUrl ? (
-            <a
-              href={chartPageUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-50"
-            >
-              {tt("在新窗口打开")} ↗
-            </a>
-          ) : null}
-          {pptHtmlUrl ? (
-            <a
-              href={pptHtmlUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-700 hover:bg-sky-50"
-            >
-              {tt("网页版预览（HTML）")}
-            </a>
-          ) : null}
           <span className="text-xs text-stone-500">
             {tt("下载后请按授权说明使用。")}
           </span>
