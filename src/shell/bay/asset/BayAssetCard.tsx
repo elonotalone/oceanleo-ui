@@ -25,7 +25,11 @@ export function BayAssetCard({ asset, onOpen, view = "grid" }: BayAssetCardProps
     priceFen, currency: asset.currency === "USD" ? "USD" as const : "CNY" as const, free: priceFen === 0, purchaseState: "none" as const,
   } : undefined);
   const price = assetPriceText({ commerce }, locale, tt);
-  const entry = (asset as Partial<BayOfficialAsset>).entry || bayAssetToLibraryEntry(asset);
+  const base = (asset as Partial<BayOfficialAsset>).entry || bayAssetToLibraryEntry(asset);
+  // 官方货架上的素材不是买家的「我的创作」；卡片来源写品牌名，买到之后的副本才归入自己的库。
+  const entry = asset.shelfKind === "official" && base.libraryItem
+    ? { ...base, libraryItem: { ...base.libraryItem, meta: { ...base.libraryItem.meta, library_source_label: "OceanLeo" } } }
+    : base;
   return <div data-bay-asset-card={asset.id} data-shelf-kind={asset.shelfKind || "origin"}>
     {view === "list"
       ? <WorkspaceListRow entry={entry} onOpen={() => onOpen(asset)} />
