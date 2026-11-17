@@ -62,14 +62,16 @@ test("document covers render fetched text, honest errors and bounded pending req
     await act(async () => expireRead());
     assert.match(node.textContent, /暂无内容预览，打开查看素材/);
 
-    globalThis.__documentCoverRendition = { loading: true, url: "", version: 0, error: "", resourceFailed() {} };
+    globalThis.__documentCoverRendition = { loading: true, url: "https://example.test/preview.png", rendition: { purpose: "preview", mediaType: "image/png", url: "https://example.test/preview.png" }, version: 0, error: "", resourceFailed() {} };
     await act(async () => root.render(React.createElement(WorkspaceThumbnail, {
       item: { ...item("image"), kind: "image", artifactType: "single_file_image" },
-      kind: "image", alt: "Photo", accent: "#123456", imageClassName: "",
+      url: "https://example.test/preview.png", kind: "image", alt: "Photo", accent: "#123456", imageClassName: "",
     })));
     assert.equal(node.querySelector('[data-cover-state="loading"]') !== null, true);
     await act(async () => expireCover());
-    assert.equal(node.querySelector('[data-cover-state="error"]') !== null, true);
+    assert.equal(node.querySelector('[data-cover-state="error"]'), null, 'timeout does not claim the cover is unavailable');
+    assert.ok(node.querySelector('[data-cover-timeout]'));
+    assert.ok(node.querySelector('img'), 'late image loads can still recover');
     assert.match(node.textContent, /预览加载超时/);
     assert.equal(node.querySelector('[role="status"]'), null);
   } finally {

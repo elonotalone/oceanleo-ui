@@ -43,9 +43,9 @@ const request = (env, commandId, args = {}) => ({ commandId, args, requestId: cr
 
 import { PW_VA_MESSAGES, PW_VA_SOURCE } from "../src/i18n/ui/messages/pw-va-copy.ts";
 import { LOCALES } from "../src/i18n/config.ts";
-test("new generation and node-error copy is complete in all 17 locales", () => {
+test("retained generation copy is complete in all 17 locales", () => {
   for (const locale of LOCALES) {
-    assert.equal(Object.keys(PW_VA_MESSAGES[locale]).length, PW_VA_SOURCE.length + 3, locale);
+    assert.equal(Object.keys(PW_VA_MESSAGES[locale]).length, PW_VA_SOURCE.length, locale);
     assert.ok(Object.values(PW_VA_MESSAGES[locale]).every((value) => typeof value === "string" && value.length > 0), locale);
   }
 });

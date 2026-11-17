@@ -229,7 +229,7 @@ test("preview and native Office routes consume only refreshable source/full inpu
     /useArtifactRendition\(\s*(?:item|viewerItem),\s*officeViewerRenditionPurposes\(\s*(?:item|viewerItem)\s*\)/,
   );
   assert.match(viewer, /fetchValidatedOfficePackage/);
-  assert.match(viewer, /fetchValidatedSpreadsheetSource/);
+  assert.match(source("../src/shell/library-spreadsheet-preview.tsx"), /fetchValidatedSpreadsheetSource/);
   assert.match(officeSource, /officeRenditionPurposes\(item\)/);
   assert.match(officeSource, /rendition\.purpose === "source"/);
   assert.match(officeSource, /rendition\.purpose === "full"/);

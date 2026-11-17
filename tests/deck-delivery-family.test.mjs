@@ -61,6 +61,7 @@ const UI = dataModule("export function useUI(){ return (zh) => zh; }");
 const SHELL_OVERRIDES = {
   "../i18n/ui/useUI": UI,
   "./artifact-client": ARTIFACT_CLIENT,
+  "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
   "./AdvancedContentWorkbench": dataModule(
     "export function AdvancedContentWorkbench(){ return null; }",
   ),

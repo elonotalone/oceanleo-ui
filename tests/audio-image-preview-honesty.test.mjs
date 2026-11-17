@@ -23,7 +23,7 @@ const mod = await import(await compileModule("src/shell/library-viewers.tsx", {
   "../i18n/ui/useUI": dataModule("export function useUI(){ return value => value; }"),
   "./Markdown": dataModule("export function Markdown(){ return null; }"),
   "./WebsiteArtifactViewer": dataModule("export function WebsiteArtifactViewer(){ return null; }"),
-  "./artifact-client": dataModule("export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }"),
+  "./artifact-client": dataModule("export async function getArtifactItem(){return {ok:false};} export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }"),
   "./material-detail-slot": dataModule('export function useMaterialDetailTarget(item){ return {status:"passthrough",item}; } export function MaterialDetailUnavailable(){return null;} export function GamePlayDetail(){return null;} export function gamePlayEmbedHref(){return "";}'),
   "./ArtifactRendition": dataModule(`
     export function useArtifactRendition(item){
@@ -84,10 +84,11 @@ test("audio item whose selected rendition is image/png never mounts <audio>", as
   const f = await mount("image/png");
   try {
     assert.equal(f.host.querySelector("audio"), null, "PNG 不能喂给 <audio>");
-    const note = f.host.querySelector("[data-audio-no-playable-rendition]");
-    assert.ok(note, "必须说明这一版没有可播放音频");
-    assert.match(note.textContent, /没有可用的查看器数据/);
+    const note = f.host.querySelector("[data-download-only]");
+    assert.ok(note, "没有可播放音频时仍须提供下载卡片");
+    assert.match(note.textContent, /此文件没有可直接显示的预览/);
     assert.doesNotMatch(note.textContent, /取不到|打不开/);
+    assert.ok(note.querySelector("a[download]"), "原文件仍可下载");
     assert.equal(globalThis.__mediaErrors, 0);
   } finally { await f.close(); }
 });
@@ -96,7 +97,7 @@ test("audio item with an audio/mpeg rendition still gets the player", async () =
   const f = await mount("audio/mpeg");
   try {
     assert.ok(f.host.querySelector("audio"));
-    assert.equal(f.host.querySelector("[data-audio-no-playable-rendition]"), null);
+    assert.equal(f.host.querySelector("[data-download-only]"), null);
   } finally { await f.close(); }
 });
 

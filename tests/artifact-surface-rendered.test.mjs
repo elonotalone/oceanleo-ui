@@ -652,6 +652,7 @@ const actionModuleUrl = await compileModule(
     "./artifact-client": actionClientStubUrl,
     "./library-data": libraryDataUrl,
     "./library-document-export": documentExportStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./workbench-routes": routesStubUrl,
   },
 );
@@ -857,7 +858,7 @@ const TEST_SOURCE_FORMAT = {
   interactive_doc: "oceanleo.interactive-doc.v1",
 };
 
-const READ_ONLY_ARTIFACT_TYPES = new Set(["chart"]);
+const READ_ONLY_ARTIFACT_TYPES = new Set(["audio", "model_3d", "chart"]);
 
 const EXPECTED_EDITOR_ROUTE = {
   single_file_image: ["image", "image"],

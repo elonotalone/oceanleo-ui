@@ -1,5 +1,5 @@
 /**
- * Gateway surface of the nine editors and the works workbench. This is also the
+ * Gateway surface of the six editors and the works workbench. This is also the
  * input to oceanleo-app/scripts/generate-editor-gateway-routes.mjs. Add a route
  * here with its transport/offline policy before using it in an editor.
  * Signed storage URLs stay outside the authenticated gateway bridge.
@@ -68,6 +68,8 @@ export const EDITOR_GATEWAY_ROUTES: readonly EditorGatewayRoute[] = [
   read("/v1/tasks/{task_id}/artifacts/{artifact_id}", "task-artifact", { ...live, fresh: true }),
   read("/v1/tasks/{task_id}/messages/{message_id}/attachments/{artifact_id}", "task-message-attachment", { ...live, response: "binary", fresh: true }),
   read("/v1/tasks/{task_id}/frames/{row_id}/attachments/{artifact_id}", "task-frame-attachment", { ...live, response: "binary", fresh: true }),
+  read("/v1/convert/capabilities", "convert-capabilities"),
+  post("/v1/convert/save", "convert-save", { ...live, body: "multipart", maxRequestBytes: 48 * MiB }),
   ...["office", "image", "media"].map(kind => post(`/v1/convert/${kind}`, `convert-${kind}`, { ...stream, body: "multipart", maxRequestBytes: 48 * MiB })),
   post("/v1/images/generate", "canvas-image-generate"),
   post("/v1/chat", "canvas-text"),

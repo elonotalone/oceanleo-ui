@@ -10,7 +10,7 @@ import { ADVANCED_FEATURES, advancedFeatureForItem } from "../src/shell/advanced
 import { CLIENT_EDITOR_ADAPTERS } from "../src/client-editor-adapters/registry.ts";
 import { collabEditorKindForAdapter } from "../src/shell/collab/collab-editor-kinds.ts";
 
-const editorIds = ["audio", "deck", "grid", "image", "pdf", "richdoc", "threed", "video-canvas", "video-timeline"];
+const editorIds = ["deck", "grid", "image", "pdf", "richdoc", "video-timeline"];
 const item = (type, patch = {}) => ({
   key: type, id: type, title: type, kind: type, siteId: "oceanleo", source: "artifact", meta: {}, ...patch,
 });
@@ -23,11 +23,11 @@ function durable(type, patch = {}) {
   });
 }
 
-test("nine full editors share the registry, adapter IDs, picker and client inventory", () => {
+test("six full editors share the registry, adapter IDs, picker and client inventory", () => {
   assert.deepEqual(Object.keys(TRUSTED_EDITOR_REGISTRY).sort(), editorIds);
   assert.deepEqual([...ADVANCED_EDITOR_ADAPTER_IDS].sort(), editorIds);
   assert.deepEqual(CLIENT_EDITOR_ADAPTERS.map(({ editorId }) => editorId).sort(), editorIds);
-  assert.equal(ADVANCED_FEATURES.length, 9);
+  assert.equal(ADVANCED_FEATURES.length, 6);
   assert.ok(ADVANCED_FEATURES.every(({ capability }) => capability.adapter !== "work"));
 });
 
@@ -46,13 +46,13 @@ for (const [type, storedId] of [["website", "website_finetuning"], ["game", "gam
   });
 }
 
-test("workflow artifacts still use the video canvas after merging image/design adapters", () => {
+test("removed workflow artifacts have no editor route", () => {
   const flow = durable("workflow", {
     access: { canRead: true, canEdit: true }, editability: "native",
     sourceFormat: "oceanleo.design-document.v1", editorCapability: "design-canvas",
     renditions: { source: { revisionId: "revision", url: "https://files.test/workflow.json", digest: "digest" } },
   });
-  assert.deepEqual(editorRouteFor(flow), { type: "video-canvas" });
+  assert.deepEqual(editorRouteFor(flow), { type: "none" });
 });
 
 test("source modules never import the removed game editor", () => {

@@ -219,11 +219,11 @@ test("W8/1 iframe 渲染面不得内联 sandbox 字面量，必须取自共享�
   // 每个渲染面的 iframe 数量、sandbox 表达式与豁免数量全部锁死：任何新增
   // iframe 或改动 sandbox 表达式都会让本用例变红，必须重新评审。
   const expected = {
-    // PDF 不再有 frame（自家 EmbedPDF 阅读器），只剩 SandboxedWebViewer 一个。
+    // PDF uses EmbedPDF; the removed canvas viewer leaves no frame in this dispatcher.
     "library-viewers.tsx": {
-      iframes: 1,
+      iframes: 0,
       exemptions: 0,
-      sandbox: ["{webViewerFrameSandbox(trustedInteractive)}"],
+      sandbox: [],
     },
     // 网站素材的就地预览承载（W3）：只允许最严的那一档，`false` 是写死的，
     // 因此它永远拿不到 TRUSTED_INTERACTIVE_VIEWER_SANDBOX 那条 same-origin 分支。
@@ -498,8 +498,10 @@ test("C5 境内家族：内嵌编辑器白名单为空，整条嵌入路径 fail
 // 违反后果：本地再写一遍 hostname.endsWith(".oceanleo.com") 就会把预览与 UGC 主机重新判成可信交互来源。
 test("W8/2 removed canvas viewers never grant an interactive same-origin frame", () => {
   const viewers = source("../src/shell/library-viewers.tsx");
-  assert.match(viewers, /trustedInteractive = false/);
-  assert.doesNotMatch(viewers, /trustedInteractive=\{/);
+  // Enforce complete removal, including indirect frame constructors and trust switches.
+  assert.doesNotMatch(viewers, /<iframe|["']iframe["']|SandboxedWebViewer|trustedInteractive|webViewerFrameSandbox/);
+  const website = source("../src/shell/WebsiteArtifactViewer.tsx");
+  assert.match(website, /sandbox=\{webViewerFrameSandbox\(false\)\}/);
   assert.equal(
     /endsWith\(["'`]\.oceanleo\.com/.test(viewers),
     false,

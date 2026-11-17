@@ -318,8 +318,6 @@ const V1_GAP_COPY = {
   // 「调用点还活着」每次全量都红了 8 天（`verdicts/W22-red-list.md` 第 9 条）。
   // 调用点是活的（`material-library-toolbar.tsx:131` 的 `tt("素材分区")`），只是搬了家。
   "素材分区": "src/shell/material-library-toolbar.tsx",
-  "搜索本站素材": "src/shell/material-library-presentation.ts",
-  "本站暂无可编辑素材": "src/shell/material-library-presentation.ts",
   "正在准备预览…": "src/shell/library-viewer-first-paint.tsx",
   "这份素材缺少 source 授权，暂时无法创建你自己的副本；官方原件不会被改动。":
     "src/shell/artifact-client.ts",
@@ -328,17 +326,12 @@ const V1_GAP_COPY = {
   // 2026-08-05（W27）：`PENDING_I18N` 那一格补完译文后归队。`2ce8a49` 改了这句
   // 提示的后半句（「更多素材」按 D1 下线），17 份词典当时一份都没跟上，16 个非中文
   // locale 静默露中文；译文已逐语补齐，旧串一并从词典清掉。
-  "这里只显示本站已登记的素材；可换一个分区或关键词。":
-    "src/shell/material-library-presentation.ts",
 };
 
 // 6bc474ee (LeoBay assets in the shared library, 2026-11-01) replaced these
 // exact callers. Keep their 17 compatibility translations in V1_GAP_COPY; current
 // caller and replacement-translation assertions below remain separate and mandatory.
-const V1_REPLACED_CALLERS = {
-  "搜索本站素材": "搜索本站精选",
-  "本站暂无可编辑素材": "本站暂时没有精选素材",
-};
+
 
 /**
  * 欠着译文的词条登记表。**这张表只减不增**：下面的预算锁住它，补完译文就把那一格
@@ -451,7 +444,7 @@ test("已废除的两个旧按钮名：17 份词典里一条都不剩", () => {
   }
 });
 
-test("V1 判据 21/10 剩余 7 条词条：17 语逐格齐备（119 格）", () => {
+test("V1 判据 21/10 剩余 4 条词条：17 语逐格齐备（68 格）", () => {
   const placeholder = /\bTODO\b|\bTBD\b|\bFIXME\b|\bXXX\b|\?\?\?|机翻|待翻译|[Uu]ntranslated/;
   const cjkOk = new Set(["zh", "zh-TW", "ja", "ko"]);
   const zh = uiDictionaries.get("zh");
@@ -478,8 +471,8 @@ test("V1 判据 21/10 剩余 7 条词条：17 语逐格齐备（119 格）", () 
     );
   }
   // Family merge removed the obsolete home heading from this table.
-  assert.equal(Object.keys(V1_GAP_COPY).length, 7);
-  assert.equal(cells, 7 * 17, "应当覆盖 119 格");
+  assert.equal(Object.keys(V1_GAP_COPY).length, 4);
+  assert.equal(cells, 4 * 17, "应当覆盖 68 格");
 });
 
 /**
@@ -488,16 +481,11 @@ test("V1 判据 21/10 剩余 7 条词条：17 语逐格齐备（119 格）", () 
  * 失败消息里直接把源串今天在 `src/` 的实际落点报出来，搬了家的下次是一行改完的事，
  * 不用再从头查一遍 git 历史。
  */
-test("七条词条对应当前调用点或 6bc474ee 明确替换的兼容词条", async () => {
+test("四条词条对应当前调用点", async () => {
   const broken = [];
   for (const [key, file] of Object.entries(V1_GAP_COPY)) {
     const source = await readFile(resolve(file), "utf8");
-    const replacement = V1_REPLACED_CALLERS[key];
-    if (replacement) {
-      assert.equal(file, "src/shell/material-library-presentation.ts");
-      assert.deepEqual(await locateCopy(key), [], `${key}: replaced caller must stay retired`);
-      if (source.includes(replacement)) continue;
-    } else if (source.includes(key)) continue;
+    if (source.includes(key)) continue;
     broken.push(`${file} 里找不到源串 "${key.slice(0, 24)}…"，实际落点：${
       (await locateCopy(key)).join(" / ") || "src/ 里已经完全没有这个串（文案被改写或下线）"
     }`);
@@ -505,29 +493,7 @@ test("七条词条对应当前调用点或 6bc474ee 明确替换的兼容词条"
   assert.deepEqual(broken, [], "词条与调用点已经对不上");
 });
 
-test("当前素材搜索与空态文案在 17 语词典中都有真实译文", () => {
-  const problems = [];
-  const placeholders = (text) => [...text.matchAll(/\{[^{}]+\}/g)].map((match) => match[0]).sort();
-  for (const key of Object.values(V1_REPLACED_CALLERS)) {
-    for (const locale of LOCALES) {
-      const value = UI_MESSAGES[locale][key];
-      if (typeof value !== "string" || !value.trim()) {
-        problems.push(`${locale} 缺当前调用词条：${key}`);
-        continue;
-      }
-      assert.deepEqual(placeholders(value), placeholders(key), `${locale}:${key}`);
-      if (locale === "zh") assert.equal(value, key);
-      if (!["zh", "zh-TW", "en"].includes(locale)) {
-        assert.notEqual(value, UI_MESSAGES.en[key], `${locale}: copied English: ${key}`);
-      }
-      if (!["zh", "zh-TW", "ja", "ko"].includes(locale)) {
-        assert.doesNotMatch(value, /[\u3400-\u9fff]/, `${locale}:${key}`);
-        assert.notEqual(value, key, `${locale}:${key}`);
-      }
-    }
-  }
-  assert.deepEqual(problems, [], "current replacement copy must not silently fall back to Chinese");
-});
+
 
 test("欠着的 i18n 缺口：只减不增，且每一条都还真的欠着", async () => {
   assert.equal(

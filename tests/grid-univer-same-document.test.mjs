@@ -86,8 +86,8 @@ test("grid downloads translate format names and do not duplicate the opening ext
   for (const [extension, expected] of [['xlsx', 'Excel workbook (.xlsx)'], ['csv', 'Current sheet (.csv)'], ['pdf', 'PDF file (.pdf)']]) {
     assert.equal(gridDownloadFormatLabel(extension, key => translated.get(key)), expected);
   }
-  assert.match(leaf, /gridDownloadFormatLabel\("xlsx", tt\)/);
-  assert.match(leaf, /gridDownloadFormatLabel\(format\.extension, tt\)/);
+  assert.match(leaf, /useExportDownloads\(\{ editor: "grid"/);
+  assert.match(leaf, /directDownload: exportDownloads\[0\]/);
 });
 
 test("会话交接已随旧核一起删：没有 handoff / flush 登记，路由不再 flush", () => {

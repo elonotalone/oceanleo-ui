@@ -186,7 +186,7 @@ export const COVER_FRAME_SANDBOX = "allow-scripts";
 export const TRUSTED_EMBED_EDITOR_SANDBOX =
   "allow-same-origin allow-scripts allow-forms allow-popups allow-downloads allow-modals";
 
-/** 第一方交互式产物（video_workflow HTML）。 */
+/** 仅供经过审核的第一方交互式预览使用；普通作品预览不授予此策略。 */
 export const TRUSTED_INTERACTIVE_VIEWER_SANDBOX =
   "allow-scripts allow-forms allow-popups allow-downloads allow-same-origin";
 

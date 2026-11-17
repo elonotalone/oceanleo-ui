@@ -217,12 +217,12 @@ test('text attachment fetches once across translator changes and keeps signed st
   const oldFetch=globalThis.fetch;const requests=[];
   globalThis.fetch=async(url,init)=>{requests.push({url,init});if(requests.length>8) throw Error('fixture request limit');return new Response('Saved file body');};
   try {await mounted(AttachmentFileViewer,{item:attachment},async view=>{
-    assert.equal(view.host.querySelector('pre').textContent,'Saved file body');
+    assert.equal(view.host.querySelector('pre').textContent.replace(/^1/, '').trimEnd(),'Saved file body');
     await churn(view);
     assert.equal(requests.length,1);
     assert.equal(requests[0].init.credentials,'omit');
     assert.equal(requests[0].init.referrerPolicy,'no-referrer');
-    assert.equal(view.host.querySelector('pre').textContent,'Saved file body');
+    assert.equal(view.host.querySelector('pre').textContent.replace(/^1/, '').trimEnd(),'Saved file body');
   });} finally {globalThis.fetch=oldFetch;}
 });
 
@@ -230,10 +230,10 @@ test('attachment fallback error changes language without fetching again',async()
   const oldFetch=globalThis.fetch;let reads=0;
   globalThis.fetch=async()=>{reads++;return new Response(null,{status:404});};
   try {await mounted(AttachmentFileViewer,{item:attachment},async view=>{
-    assert.match(view.host.textContent,/en:文件读取失败/);
+    assert.match(view.host.textContent,/en:此文件没有可直接显示的预览/);
     await churn(view);
     assert.equal(reads,1);
-    assert.match(view.host.textContent,/fr:文件读取失败/);
+    assert.match(view.host.textContent,/fr:此文件没有可直接显示的预览/);
     assert.doesNotMatch(view.host.textContent,/fr:en:/);
   });} finally {globalThis.fetch=oldFetch;}
 });

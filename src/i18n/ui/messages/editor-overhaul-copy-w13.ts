@@ -1,4 +1,4 @@
-// W13 3D selection and Scene drawer copy; authored scene labels remain content.
+// Shared labels retained after removing the 3D editor.
 import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 
 const KEYS = [
@@ -10,7 +10,7 @@ const ROWS = {
   "de": ["Verschieben","Anmerkungen","Abfall"],
   "en": ["Move","Annotations","Decay"],
   "es": ["Mover","Anotaciones","Decaimiento"],
-  "es-419": ["Herramienta de transformación","Mover","Transformación del objeto","Mostrar nodo","Material PBR","Color base","Metalicidad","Rugosidad","Cámara del modelo","Luz del modelo","Color de luz","Anotaciones","Texto de anotación","Eliminar anotación","Cámara del editor","Órbita horizontal","Órbita vertical","Distancia de cámara","Rotación automática","Restablecer cámara","Entorno y sombras","Exposición","URL del entorno HDR","Intensidad del entorno","Activar sombras","Intensidad de sombra","Suavidad de sombra","Clip de animación","Pose de reposo","Reproducir animación","Tiempo de reproducción","Velocidad de animación","Campo de visión","Zoom ortográfico","Plano de corte cercano","Plano de corte lejano","Intensidad de luz","Alcance de luz","Decaimiento","Ángulo del cono","Penumbra","Escalar objeto"],
+  "es-419": ["Mover","Anotaciones","Decaimiento"],
   "fr": ["Déplacer","Annotations","Atténuation"],
   "it": ["Sposta","Annotazioni","Decadimento"],
   "pt-BR": ["Mover","Anotações","Decaimento"],

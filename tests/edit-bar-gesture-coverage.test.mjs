@@ -62,7 +62,7 @@ const TOOLBAR_HEIGHT =
  * 两表差集在 HEAD 上变成空集，而 `a498867` 那棵树上差集仍是三件
  * ⇒ 清单清空必须与这个 commit 同一笔改，否则末尾那条自检当场红。
  */
-const BASELINE_COMMIT = "0cdd3cf7";
+const BASELINE_COMMIT = "d1a330b2";
 // Works integration: nine full editors; design canvas shares image; works have no edit bar.
 // 2026-11-15 works integration: website/game leave the editor inventory, and
 // design-canvas aliases image. Both tables now contain the same nine editors.
@@ -211,11 +211,11 @@ const TABLE_PATHS = [
   `${SHELL}/workbench-capability-registry.ts`,
 ];
 
-test("清单本身：9 件，全部走共享外壳，没有任何一件还走 chrome 那条路径", () => {
+test("清单本身：6 件，全部走共享外壳，没有任何一件还走 chrome 那条路径", () => {
   assert.equal(
     PLUGIN_IDS.length,
-    9,
-    `插件数从 9 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
+    6,
+    `插件数从 6 变成了 ${PLUGIN_IDS.length}。新插件也要能拖、能收成圆、能拖圆；` +
       "改这个数字之前先确认新那件落在下面两条路径的哪一条",
   );
   assert.equal(
@@ -229,8 +229,8 @@ test("清单本身：9 件，全部走共享外壳，没有任何一件还走 ch
   assert.deepEqual(native, [], "不应再有走 chrome 的插件");
   assert.equal(
     PLUGIN_IDS.filter((id) => OWNERSHIP.get(id) === "shared").length,
-    9,
-    "走共享外壳的必须是这九件",
+    6,
+    "走共享外壳的必须是这六件",
   );
 });
 
@@ -262,13 +262,13 @@ test("两表对齐：主题表不许出现适配器表没有的插件，缺的�
   // 所以先证明「我确实读到了两张有内容的表」，再谈差集。
   assert.equal(
     pluginIds.length,
-    9,
-    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 9）。` +
+    6,
+    `HEAD 上适配器表读出来 ${pluginIds.length} 件（期望 6）。` +
       "读不出内容时下面的差集判据会空转全绿，这条正对照就是为了让它当场露出来",
   );
   assert.ok(
-    themeIds.length === 9,
-    `HEAD 上主题表只读出来 ${themeIds.length} 件（期望 9）。理由同上`,
+    themeIds.length === 6,
+    `HEAD 上主题表只读出来 ${themeIds.length} 件（期望 6）。理由同上`,
   );
 
   // 方向一（硬红）：主题表里冒出来一个适配器表没有的 id，说明它问不出归哪条外壳路径
@@ -1148,7 +1148,7 @@ test("整名匹配器本身：改名必须判成没了，同前缀的别名不�
  * 脏工作树上量出来的数字过不了这一关，因为那棵树 git 里没有。
  * ========================================================================= */
 
-test("基线自检：9 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
+test("基线自检：6 件与两表差集，都与 BASELINE_COMMIT 那棵干净树对得上", () => {
   const probe = measureOnCommittedTree({
     repo: REPO,
     commit: BASELINE_COMMIT,
@@ -1159,11 +1159,11 @@ test("基线自检：9 件与两表差集，都与 BASELINE_COMMIT 那棵干净�
   assert.ok(probe.ok, `基线自检跑不起来 ⇒ 没人在守「基线取自干净检出」这件事。${probe.reason}`);
 
   const short = BASELINE_COMMIT.slice(0, 7);
-  // 冻的是「9 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
+  // 冻的是「6 件」这个数，所以自检也判这个数——判在**一棵 git 里真的存在的树**上。
   assert.equal(
     probe.value.pluginIds.length,
-    9,
-    `「9 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
+    6,
+    `「6 件」这个数在 ${short} 的干净检出上量出来是 ${probe.value.pluginIds.length}` +
       `（${probe.value.pluginIds.join(", ")}）。\n` +
       "`W31` 原先的 13 取自主题表、且量在脏工作树上，干净检出只有 10 ⇒ 闸必红。\n" +
       "改冻结数字要连 BASELINE_COMMIT 一起改，两个是一组。",

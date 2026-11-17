@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { LibraryItem } from "./library-data";
 import { useUI } from "../i18n/ui/useUI";
 import { fetchValidatedSpreadsheetSource } from "./doc-editors/office-file";
 import { fetchMediaBlob } from "../lib/media-proxy";
+import { officeSourceCacheKey } from "./office-editor/office-source-identity";
 
 type Json = Record<string, unknown>;
 const object = (v: unknown): Json => v && typeof v === "object" && !Array.isArray(v) ? v as Json : {};
@@ -256,7 +257,15 @@ export function SpreadsheetViewer({ item, onResourceError }: { item: LibraryItem
   const [page, setPage] = useState({ row: 0, col: 0 });
   const [loading, setLoading] = useState(true), [failed, setFailed] = useState(false), [retry, setRetry] = useState(0);
   const projectUrl = String(item.meta.editor_project_url || item.artifact?.renditions.editor_manifest?.url || item.meta.editor_manifest_url || "");
+  const sourceRef = useRef({ item, onResourceError, projectUrl });
+  sourceRef.current = { item, onResourceError, projectUrl };
+  const revision = item.revisionId || item.artifact?.revisionId || "";
+  const sourceIdentity = JSON.stringify([
+    officeSourceCacheKey(item.url || "", revision, item),
+    projectUrl ? officeSourceCacheKey(projectUrl, revision, item) : "",
+  ]);
   useEffect(() => {
+    const { item, onResourceError, projectUrl } = sourceRef.current;
     let alive = true; const controller = new AbortController();
     setLoading(true); setFailed(false); setActive(0); setPage({ row: 0, col: 0 });
     void (async () => {
@@ -278,7 +287,7 @@ export function SpreadsheetViewer({ item, onResourceError }: { item: LibraryItem
       if (alive) { setSheets(parsed); setFailed(!parsed.length); }
     })().catch(() => { if (alive) setFailed(true); }).finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; controller.abort(); };
-  }, [item.key, item.url, projectUrl, retry]);
+  }, [item.key, sourceIdentity, retry]);
   if (loading) return <div role="status" className="p-6">{tt("正在读取工作簿…")}</div>;
   if (failed || !sheets[active]) return <div className="p-6"><p>{tt("未能读取表格内容。")}</p><button onClick={() => setRetry(v => v + 1)}>{tt("重试")}</button></div>;
   const sheet = sheets[active], rEnd = Math.min(sheet.rows, page.row + 300), cEnd = Math.min(sheet.columns, page.col + 60);

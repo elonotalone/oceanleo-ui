@@ -223,7 +223,6 @@ test("重型 viewer 等容器可见才挂载，首屏只画一张 thumb 海报",
     "ppt",
     "sheet",
     "document",
-    "video_canvas",
     "threed",
   ]) {
     assert.ok(

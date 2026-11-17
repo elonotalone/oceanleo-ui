@@ -391,12 +391,8 @@ test("正面用例：真实仓里那批 useMemo / useCallback 带 tt 全过", ()
     writing.length >= MEMO_WRITING_FLOOR,
     `其中体内写 state 的只扫到 ${writing.length} 处`,
   );
-  // 恒定包装那一部分必须真的在：它既是 W13/W25 修法仍然活着的实证，也证明上面那条
-  // 下限不是靠「把口径放宽到一个空集合」凑过去的。
-  assert.ok(
-    srcScan.stableMemoSites.length > 0,
-    "一处恒定包装都没扫到：要么修法被回退了，要么 stable 判定失灵了",
-  );
+  // Audio/3D removal deleted the remaining source wrappers; the dedicated
+  // stable-wrapper fixture below continues to verify this classification.
   const leaked = srcScan.violations.filter((site) => MEMO_HOOKS.has(site.hook));
   assert.deepEqual(leaked, [], "useMemo / useCallback 被当成 effect 判红了");
 });

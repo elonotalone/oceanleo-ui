@@ -18,7 +18,7 @@ const placeholders = (text) => [...String(text).matchAll(/\{(\w+)\}/g)].map((m) 
 
 // ---- ① 源码里的模板都已登记 ---------------------------------------------------
 const ADAPTERS = ["image", "vector", "deck", "richdoc", "grid", "pdf"].map((n) => `src/shell/collab/adapters/${n}.ts`);
-const FRAMES = ["video", "audio", "model3d", "pdf", "workflow"].map((n) => `src/shell/replay/work/frames/${n}.tsx`);
+const FRAMES = ["video", "pdf"].map((n) => `src/shell/replay/work/frames/${n}.tsx`);
 
 function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
@@ -92,7 +92,7 @@ const useUIStub = dataModule(`export function useUI(){ return (zh, vars) => zh; 
 const stubs = { "../../../../i18n/ui/useUI": useUIStub };
 const frame = async (name) => (await import(await compileModule(`src/shell/replay/work/frames/${name}.tsx`, stubs))).default;
 const R = {};
-for (const name of ["image", "vector", "deck", "richdoc", "grid", "video", "audio", "model3d", "pdf", "workflow"]) R[name] = await frame(name);
+for (const name of ["image", "vector", "deck", "richdoc", "grid", "video", "pdf"]) R[name] = await frame(name);
 
 function assertTranslated(label, produce) {
   const zh = produce(makeTt("zh"));
@@ -137,27 +137,7 @@ test("画法说明：video", () => {
   assert.equal(R.video.describeChange(a, oneClip, (zh, v) => `[${zh}|${JSON.stringify(v ?? {})}]`), '[新增了 {n} 段|{"n":1}]');
 });
 
-test("画法说明：audio", () => {
-  const op = (id, start) => ({ id, type: "crop", start, end: start + 2 });
-  const a = R.audio.fromRevision({ sourceUrl: "https://m/a.mp3", operations: [op("o1", 0)] });
-  const more = R.audio.fromRevision({ sourceUrl: "https://m/a.mp3", operations: [op("o1", 0), op("o2", 3)] });
-  const fewer = R.audio.fromRevision({ sourceUrl: "https://m/a.mp3", operations: [] });
-  assertTranslated("audio 加操作", (tt) => R.audio.describeChange(a, more, tt));
-  assertTranslated("audio 撤操作", (tt) => R.audio.describeChange(a, fewer, tt));
-});
-
-test("画法说明：model3d / pdf / workflow", () => {
-  // The standalone game editor and its source-code replay frame were removed.
-
-  const scene = () => ({
-    checkpointUrl: "https://m/a.glb",
-    operations: [{ id: "o1", kind: "transform", target: "Chair", value: { position: [1, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] } }],
-    view: { sourceUrl: "https://m/a.glb", azimuth: 35, elevation: 65, zoom: 110, autoRotate: false },
-  });
-  const moved = scene();
-  moved.operations[0].value.position = [5, 5, 5];
-  assertTranslated("model3d 动节点", (tt) => R.model3d.describeChange(R.model3d.fromRevision(scene()), R.model3d.fromRevision(moved), tt));
-
+test("画法说明：pdf", () => {
   const rect = (x, y, w, h) => ({ origin: { x, y }, size: { width: w, height: h } });
   const pdfJson = () => ({
     schema: "pdf-annotations@2",
@@ -169,19 +149,7 @@ test("画法说明：model3d / pdf / workflow", () => {
   pdfNext.annotations.push({ id: "a9", pageIndex: 1, typeName: "TEXT", rect: rect(1, 1, 5, 5), contents: "" });
   assertTranslated("pdf 批注", (tt) => R.pdf.describeChange(R.pdf.fromRevision(pdfJson()), R.pdf.fromRevision(pdfNext), tt));
 
-  const flow = () => ({
-    nodes: [
-      { id: "n1", kind: "source", label: "素材", x: 0, y: 0, ports: {} },
-      { id: "n2", kind: "trim", label: "裁剪", x: 220, y: 0, ports: {} },
-    ],
-    edges: [{ id: "e1", fromNodeId: "n1", fromPort: "out", toNodeId: "n2", toPort: "in" }],
-  });
-  const cut = flow();
-  cut.edges.pop();
-  assertTranslated("workflow 断线", (tt) => R.workflow.describeChange(R.workflow.fromRevision(flow()), R.workflow.fromRevision(cut), tt));
-  const grown = flow();
-  grown.nodes.push({ id: "n3", kind: "output", label: "输出", x: 440, y: 0, ports: {} });
-  assertTranslated("workflow 加节点", (tt) => R.workflow.describeChange(R.workflow.fromRevision(flow()), R.workflow.fromRevision(grown), tt));
+
 });
 
 test("画法说明：image / vector / deck（*ChangeNote 家族走 tt(note.zh, note.vars)）", () => {
@@ -213,12 +181,4 @@ test("画法说明：image / vector / deck（*ChangeNote 家族走 tt(note.zh, n
   assertTranslated("image 新增文字图层", (tt) => R.image.describeChange(i1, image([{ type: "Textbox", oceanleoId: "t1", text: "hi" }]), tt));
   assertTranslated("image 新增多个图层", (tt) => R.image.describeChange(i1, image([{ type: "Textbox", oceanleoId: "t1" }, { type: "Circle", oceanleoId: "t2" }]), tt));
   assertTranslated("image 创建", (tt) => R.image.describeChange(null, i1, tt));
-});
-
-test("画法说明：不带 tt 时仍是原来的中文（向后兼容）", () => {
-  const a = R.audio.fromRevision({ sourceUrl: "https://m/a.mp3", operations: [] });
-  const b = R.audio.fromRevision({ sourceUrl: "https://m/a.mp3", operations: [{ id: "o1", type: "crop", start: 0, end: 2 }] });
-  assert.equal(R.audio.describeChange(a, b), "加了 1 个剪辑操作");
-  assert.equal(R.audio.describeChange(a, a), null);
-  assert.equal(R.audio.describeChange(null, null), null);
 });

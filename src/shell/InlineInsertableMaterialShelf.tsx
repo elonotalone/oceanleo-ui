@@ -12,7 +12,7 @@ import type { WorkbenchMaterialAction } from "./workbench-material-provider";
 const TYPE_ALIASES: Record<string, readonly string[]> = {
   image: ["single_file_image", "composite_image", "vector_image"], video: ["video"], audio: ["audio"],
   document: ["document"], ppt: ["deck"], sheet: ["grid"], pdf: ["pdf"],
-  "3d": ["model_3d"], video_workflow: ["workflow"],
+  "3d": ["model_3d"],
 };
 
 export function insertableArtifactTypes(declared: readonly string[]): ArtifactType[] {

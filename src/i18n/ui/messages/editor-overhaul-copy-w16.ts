@@ -5,7 +5,6 @@ import type { EditorOverhaulCopy } from "./editor-overhaul-copy-types";
 export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   de: {
     "{count} 个节点": "{count} Knoten",
-    "加节点": "Knoten hinzufügen",
     "已锁定": "Gesperrt",
     "时长（秒）": "Dauer (s)",
     "节点参数": "Knoteneinstellungen",
@@ -35,7 +34,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   en: {
     "{count} 个节点": "{count} nodes",
-    "加节点": "Add node",
     "已锁定": "Locked",
     "时长（秒）": "Duration (s)",
     "节点参数": "Node settings",
@@ -65,7 +63,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   es: {
     "{count} 个节点": "{count} nodos",
-    "加节点": "Añadir nodo",
     "已锁定": "Bloqueado",
     "时长（秒）": "Duración (s)",
     "节点参数": "Ajustes del nodo",
@@ -95,7 +92,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   "es-419": {
     "{count} 个节点": "{count} nodos",
-    "加节点": "Agregar nodo",
     "已锁定": "Bloqueado",
     "时长（秒）": "Duración (s)",
     "节点参数": "Ajustes del nodo",
@@ -125,7 +121,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   fr: {
     "{count} 个节点": "{count} nœuds",
-    "加节点": "Ajouter un nœud",
     "已锁定": "Verrouillé",
     "时长（秒）": "Durée (s)",
     "节点参数": "Réglages du nœud",
@@ -155,7 +150,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   it: {
     "{count} 个节点": "{count} nodi",
-    "加节点": "Aggiungi nodo",
     "已锁定": "Bloccato",
     "时长（秒）": "Durata (s)",
     "节点参数": "Impostazioni nodo",
@@ -185,7 +179,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   "pt-BR": {
     "{count} 个节点": "{count} nós",
-    "加节点": "Adicionar nó",
     "已锁定": "Bloqueado",
     "时长（秒）": "Duração (s)",
     "节点参数": "Configurações do nó",
@@ -215,7 +208,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   "pt-PT": {
     "{count} 个节点": "{count} nós",
-    "加节点": "Adicionar nó",
     "已锁定": "Bloqueado",
     "时长（秒）": "Duração (s)",
     "节点参数": "Definições do nó",
@@ -245,7 +237,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   vi: {
     "{count} 个节点": "{count} nút",
-    "加节点": "Thêm nút",
     "已锁定": "Đã khóa",
     "时长（秒）": "Thời lượng (giây)",
     "节点参数": "Thiết lập nút",
@@ -275,7 +266,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   tr: {
     "{count} 个节点": "{count} düğüm",
-    "加节点": "Düğüm ekle",
     "已锁定": "Kilitli",
     "时长（秒）": "Süre (sn)",
     "节点参数": "Düğüm ayarları",
@@ -305,7 +295,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   "zh-TW": {
     "{count} 个节点": "{count} 個節點",
-    "加节点": "加節點",
     "已锁定": "已鎖定",
     "时长（秒）": "時長（秒）",
     "节点参数": "節點參數",
@@ -335,7 +324,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   ja: {
     "{count} 个节点": "{count} 個のノード",
-    "加节点": "ノードを追加",
     "已锁定": "ロック中",
     "时长（秒）": "長さ（秒）",
     "节点参数": "ノード設定",
@@ -365,7 +353,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   ko: {
     "{count} 个节点": "노드 {count}개",
-    "加节点": "노드 추가",
     "已锁定": "잠김",
     "时长（秒）": "길이(초)",
     "节点参数": "노드 설정",
@@ -395,7 +382,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   ar: {
     "{count} 个节点": "{count} عقد",
-    "加节点": "إضافة عقدة",
     "已锁定": "مقفل",
     "时长（秒）": "المدة (ث)",
     "节点参数": "إعدادات العقدة",
@@ -425,7 +411,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   th: {
     "{count} 个节点": "{count} โหนด",
-    "加节点": "เพิ่มโหนด",
     "已锁定": "ล็อกแล้ว",
     "时长（秒）": "ความยาว (วินาที)",
     "节点参数": "ตั้งค่าโหนด",
@@ -455,7 +440,6 @@ export const EDITOR_OVERHAUL_W16_COPY: EditorOverhaulCopy = {
   },
   hi: {
     "{count} 个节点": "{count} नोड",
-    "加节点": "नोड जोड़ें",
     "已锁定": "लॉक है",
     "时长（秒）": "अवधि (सेकंड)",
     "节点参数": "नोड सेटिंग",

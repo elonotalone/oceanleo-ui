@@ -122,6 +122,8 @@ test("editor_capability 非空会解析适配器，退役 game bundle 与未发�
       } else if (VIEW_ONLY_TYPES.has(triple.artifactType)) {
         unshippedEditor.push(label);
         if (entry) wrongPresent.push(`${label}（浏览侧类型却解析出了编辑器）`);
+      } else if (["audio", "model_3d", "workflow"].includes(triple.artifactType)) {
+        if (entry) wrongPresent.push(`${label}（已删除的编辑器仍可路由）`);
       } else if (!entry) {
         wrongPresent.push(label);
       }

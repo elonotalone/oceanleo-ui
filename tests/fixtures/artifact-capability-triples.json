@@ -15,30 +15,21 @@
       "sourceFormat": "mp3",
       "editorCapability": "audio-editor",
       "liveRows": 448,
-      "expect": {
-        "featureId": "audio_editing",
-        "adapter": "audio"
-      }
+      "expect": null
     },
     {
       "artifactType": "audio",
       "sourceFormat": "oceanleo.audio-project.v1",
       "editorCapability": "audio-editor",
       "liveRows": 73,
-      "expect": {
-        "featureId": "audio_editing",
-        "adapter": "audio"
-      }
+      "expect": null
     },
     {
       "artifactType": "audio",
       "sourceFormat": "ogg",
       "editorCapability": "audio-editor",
       "liveRows": 812,
-      "expect": {
-        "featureId": "audio_editing",
-        "adapter": "audio"
-      }
+      "expect": null
     },
     {
       "artifactType": "chart",
@@ -182,10 +173,7 @@
       "sourceFormat": "glb",
       "editorCapability": "model-3d-editor",
       "liveRows": 73,
-      "expect": {
-        "featureId": "model_3d",
-        "adapter": "threed"
-      }
+      "expect": null
     },
     {
       "artifactType": "model_3d",
@@ -199,10 +187,7 @@
       "sourceFormat": "gltf",
       "editorCapability": "model-3d-editor",
       "liveRows": 170,
-      "expect": {
-        "featureId": "model_3d",
-        "adapter": "threed"
-      }
+      "expect": null
     },
     {
       "artifactType": "model_3d",
@@ -345,30 +330,21 @@
       "sourceFormat": "oceanleo.video-canvas.v1",
       "editorCapability": "video-canvas",
       "liveRows": 73,
-      "expect": {
-        "featureId": "video_canvas",
-        "adapter": "video-canvas"
-      }
+      "expect": null
     },
     {
       "artifactType": "workflow",
       "sourceFormat": "oceanleo.video.project.v2",
       "editorCapability": "video-canvas",
       "liveRows": 63,
-      "expect": {
-        "featureId": "video_canvas",
-        "adapter": "video-canvas"
-      }
+      "expect": null
     },
     {
       "artifactType": "workflow",
       "sourceFormat": "oceanleo.workflow.v1",
       "editorCapability": "design-canvas",
       "liveRows": 73,
-      "expect": {
-        "featureId": "design_canvas",
-        "adapter": "image"
-      }
+      "expect": null
     },
     {
       "artifactType": "workflow",

@@ -80,6 +80,7 @@ const view = dataModule(`import React from ${JSON.stringify(reactUrl)};
   export function WorkspaceLibraryEntryViewer({ entry }) { return React.createElement('div', { 'data-preview': entry.libraryItem.artifactId }, entry.title); }
 `);
 const stubs = {
+  "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
   '../i18n/ui/useUI': ui,
   './artifact-client': client,
   './library-import': dataModule(`

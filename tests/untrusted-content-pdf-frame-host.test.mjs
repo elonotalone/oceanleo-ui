@@ -101,7 +101,7 @@ test("W19/2 源码里不再有免沙箱 PDF frame 的豁免、白名单与判定
   assert.match(cover, /sandbox="allow-scripts"/);
   assert.equal(/pdfFirstPageUrl|#page=1/.test(cover), false);
   const viewers = source("../src/shell/library-viewers.tsx");
-  assert.equal((viewers.match(/<iframe/g) || []).length, 1, "只剩 SandboxedWebViewer 那一个 frame");
+  assert.equal((viewers.match(/<iframe/g) || []).length, 0, "已移除画布 frame，查看器分发层没有 iframe");
   assert.match(viewers, /<LibraryPdfReader/);
   for (const file of ["WorkspacePdfCover.tsx", "LibraryPdfReader.tsx"]) {
     assert.equal(/<iframe|<embed|<object/.test(code(source(`../src/shell/${file}`))), false, file);

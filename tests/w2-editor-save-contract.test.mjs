@@ -324,7 +324,7 @@ test("grid save submits a typed artifact revision instead of a creation", () => 
   assert.match(save, /artifactRevision: \{\s*artifactType: "grid"/);
   assert.match(save, /editorManifest: \{\s*id: GRID_EDITOR_CAPABILITY,\s*format: GRID_UNIVER_PROJECT_SCHEMA/);
   assert.match(save, /editor_capability: GRID_EDITOR_CAPABILITY/);
-  assert.match(save, /createPreview: \(\) =>\s*renderGridPreviewPng/);
+  assert.match(save, /createPreview: \(\) =>\s*renderStyledGridPreview\(snapshot\)/);
 });
 
 test("RichDocRoute no longer hand-builds a docx-as-full rendition", () => {

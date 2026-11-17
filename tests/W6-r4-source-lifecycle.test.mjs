@@ -10,8 +10,6 @@ import { readFileSync } from "node:fs";
 import { PDFDocument } from "pdf-lib";
 
 import {
-  audioSourcePersistenceAdmitted,
-  model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
 import { buildPdfCommandSurface } from "../src/shell/media-editors/pdf-command-surface.ts";

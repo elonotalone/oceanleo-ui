@@ -44,6 +44,7 @@ const ARTIFACT_CLIENT = dataModule(`
 const SHELL_OVERRIDES = {
   "../i18n/ui/useUI": dataModule("export function useUI(){ return (zh) => zh; }"),
   "./artifact-client": ARTIFACT_CLIENT,
+  "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
   "./AdvancedContentWorkbench": dataModule(
     "export function AdvancedContentWorkbench(){ return null; }",
   ),

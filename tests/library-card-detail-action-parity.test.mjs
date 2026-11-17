@@ -211,6 +211,7 @@ const actionModuleUrl = await compileModule(
     "../ui/menu/FloatingMenu": floatingMenuStubUrl,
     "./artifact-contract": contractStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./library-document-export": documentExportStubUrl,
     "./workbench-routes": routesStubUrl,
@@ -311,6 +312,7 @@ const detailAppActionsUrl = await compileModule(
   {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./material-library-scope": materialScopeStubUrl,
     "./site-catalog-controller": catalogControllerStubUrl,
@@ -322,6 +324,7 @@ const WorkspaceLibrary = (
     await compileModule("src/shell/WorkspaceLibrary.tsx", {
       "../i18n/ui/useUI": uiStubUrl,
       "./artifact-client": clientStubUrl,
+      "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
       "./library-data": libraryDataStubUrl,
       "./LibraryLayout": layoutStubUrl,
       "./ArtifactActions": actionModuleUrl,

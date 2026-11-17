@@ -9,10 +9,8 @@ import test from "node:test";
 
 import { blankDesignDocument } from "../src/shell/design-canvas/blank-design-document.ts";
 import {
-  audioSourcePersistenceAdmitted,
   designCanvasLocalSourceAdmission,
   imageSourcePersistenceAdmitted,
-  model3dSourcePersistenceAdmitted,
   pdfSourcePersistenceAdmitted,
 } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
 import {
@@ -129,7 +127,7 @@ test("design canvas local: parse failure and durable missing source refuse blank
   assert.match(missing.error, /未改用空白画布覆盖原件/);
 });
 
-test("image / pdf / audio / 3d persistence admission refuses load failure", () => {
+test("image / pdf persistence admission refuses load failure", () => {
   assert.equal(
     imageSourcePersistenceAdmitted({ loading: true, sceneDiagnostic: null }).ok,
     false,
@@ -181,25 +179,5 @@ test("image / pdf / audio / 3d persistence admission refuses load failure", () =
     true,
   );
 
-  assert.equal(
-    audioSourcePersistenceAdmitted({ loading: false, capture: null }).ok,
-    false,
-  );
-  assert.equal(
-    audioSourcePersistenceAdmitted({
-      loading: false,
-      capture: { sourceUrl: "https://cdn.test/a.wav", operations: [] },
-    }).ok,
-    true,
-  );
 
-  assert.equal(
-    model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: false })
-      .ok,
-    false,
-  );
-  assert.equal(
-    model3dSourcePersistenceAdmitted({ loading: false, modelLoaded: true }).ok,
-    true,
-  );
 });

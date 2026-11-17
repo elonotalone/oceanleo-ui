@@ -88,18 +88,6 @@ const PLUGINS = [
     },
   },
   {
-    adapter: "audio",
-    themeId: "audio",
-    artifactType: "audio",
-    capability: "audio-editor",
-    item: {
-      kind: "audio",
-      title: "track.mp3",
-      url: "https://files.test/track.mp3",
-      meta: { mime: "audio/mpeg", filename: "track.mp3" },
-    },
-  },
-  {
     adapter: "video-timeline",
     themeId: "video-timeline",
     artifactType: "video",
@@ -109,30 +97,6 @@ const PLUGINS = [
       title: "clip.mp4",
       url: "https://files.test/clip.mp4",
       meta: { mime: "video/mp4", filename: "clip.mp4" },
-    },
-  },
-  {
-    adapter: "threed",
-    themeId: "threed",
-    artifactType: "model_3d",
-    capability: "model3d-editor",
-    item: {
-      kind: "threed",
-      title: "model.glb",
-      url: "https://files.test/model.glb",
-      meta: { mime: "model/gltf-binary", filename: "model.glb" },
-    },
-  },
-  {
-    adapter: "video-canvas",
-    themeId: "video-canvas",
-    artifactType: "video",
-    capability: "video-canvas-editor",
-    item: {
-      kind: "video_canvas",
-      title: "timeline",
-      url: "https://files.test/timeline.json",
-      meta: { advanced_editor_route: "embed", editor: "video-canvas" },
     },
   },
 ];
@@ -150,8 +114,8 @@ function libraryItem(plugin, extra = {}) {
   };
 }
 
-test("nine editor adapters have static theme, registry roundTrip labels, and save contracts", () => {
-  assert.equal(PLUGINS.length, 9);
+test("six editor adapters have static theme, registry roundTrip labels, and save contracts", () => {
+  assert.equal(PLUGINS.length, 6);
   assert.deepEqual(PLUGINS.map(({ adapter }) => adapter).sort(), Object.keys(TRUSTED_EDITOR_REGISTRY).sort());
   assert.deepEqual(Object.keys(PLUGIN_THEME_SPECS).sort(), [
     ...new Set(PLUGINS.map((plugin) => plugin.themeId)),

@@ -75,7 +75,7 @@ export function AttachmentFileViewer({ item, url, mode }: { item: LibraryItem; u
     setLoading(true); setError(false); setBody(""); setFiles(null); setTree([]);
     void (async () => {
       // Bounded reads prevent source-code and archive previews from exhausting memory.
-      const blob = await fetchMediaBlobRefreshing(sourceUrl, { signal: controller.signal, maxBytes: zip ? 64 * 1024 * 1024 : 8 * 1024 * 1024 });
+      const blob = await fetchMediaBlobRefreshing(sourceUrl, { signal: controller.signal, credentials: "omit", referrerPolicy: "no-referrer", maxBytes: zip ? 64 * 1024 * 1024 : 8 * 1024 * 1024 });
       if (zip) {
         const { unzipSync } = await import("fflate");
         let total = 0, count = 0;
@@ -89,7 +89,7 @@ export function AttachmentFileViewer({ item, url, mode }: { item: LibraryItem; u
           if (alive) { setTree(entries); setFiles({}); }
           const original = item.url || "";
           if (!original || original === sourceUrl) return;
-          try { source = await fetchMediaBlobRefreshing(original, { signal: controller.signal, maxBytes: 64 * 1024 * 1024 }); }
+          try { source = await fetchMediaBlobRefreshing(original, { signal: controller.signal, credentials: "omit", referrerPolicy: "no-referrer", maxBytes: 64 * 1024 * 1024 }); }
           catch { return; } // Keep the useful directory index even if original bytes cannot be read.
         }
         const contents = unzipSync(new Uint8Array(await source.arrayBuffer()), { filter: (entry) => {

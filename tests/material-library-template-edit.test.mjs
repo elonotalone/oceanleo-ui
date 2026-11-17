@@ -106,6 +106,7 @@ const { artifactActionMatrix } = await import(
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-contract": contractStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./workbench-routes": routesStubUrl,
   })

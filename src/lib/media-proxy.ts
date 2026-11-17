@@ -163,6 +163,8 @@ type FetchMediaBlobOptions = {
   maxBytes?: number;
   signal?: AbortSignal;
   cache?: RequestCache;
+  credentials?: "omit";
+  referrerPolicy?: "no-referrer";
 };
 
 /** fetch 一个素材为 Blob（走代理），供波形解码 / PDF / ffmpeg 抽帧等用。 */
@@ -179,6 +181,8 @@ export async function fetchMediaBlob(
   const response = await fetch(canvasSafeUrl(url), {
     cache: options.cache ?? "force-cache",
     signal: options.signal,
+    ...(options.credentials ? { credentials: options.credentials } : {}),
+    ...(options.referrerPolicy ? { referrerPolicy: options.referrerPolicy } : {}),
   });
   if (!response.ok) throw new Error(`媒体加载失败 HTTP ${response.status}`);
   const declared = Number(response.headers.get("content-length") || 0);

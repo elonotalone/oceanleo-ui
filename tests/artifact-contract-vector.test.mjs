@@ -182,14 +182,15 @@ test("已有编辑器仍有路由能力，未知类型无需先登记 matrix", (
     "deck",
     "grid",
     "video",
-    "audio",
     "pdf",
-    "model_3d",
   ]) {
     assert.ok(
       ARTIFACT_EDITOR_CAPABILITIES[artifactType]?.size > 0,
       artifactType,
     );
+  }
+  for (const type of ["audio", "model_3d", "workflow"]) {
+    assert.equal(ARTIFACT_EDITOR_CAPABILITIES[type], undefined, `${type} has no editor`);
   }
   // 图表编辑器已删除：合同矩阵里没有图表行，存量图表只读。
   assert.equal(ARTIFACT_EDITOR_CAPABILITIES.chart, undefined);

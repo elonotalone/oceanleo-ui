@@ -123,6 +123,7 @@ const { artifactActionMatrix } = await import(
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-contract": contractStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./workbench-routes": routesStubUrl,
     "./DeckHtmlAction": deckActionStubUrl,
@@ -133,6 +134,7 @@ const { useMaterialDetailAppPlan, MaterialOwningAppEdit } = await import(
   await compileModule("src/shell/library-detail-app-actions.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./material-library-scope": materialScopeStubUrl,
     "./site-catalog-controller": catalogControllerStubUrl,

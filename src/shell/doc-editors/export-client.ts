@@ -9,7 +9,7 @@ let cached: { at: number; value: ExportCapabilities } | undefined;
 let inflight: Promise<ExportCapabilities> | undefined;
 export function loadExportCapabilities(): Promise<ExportCapabilities> {
   if (cached && Date.now() - cached.at < 300_000) return Promise.resolve(cached.value);
-  return inflight ??= fetch(`${GATEWAY_BASE}/v1/convert/capabilities`, { credentials: "omit" })
+  return inflight ??= fetch(`${GATEWAY_BASE}/v1/convert/capabilities`, { credentials: "include" })
     .then(async response => {
       if (!response.ok) throw new Error("格式列表暂时无法载入");
       const data = await response.json();

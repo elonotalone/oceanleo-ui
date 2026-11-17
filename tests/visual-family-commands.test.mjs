@@ -360,8 +360,9 @@ test("片段特别多时，视频摘要仍然收得住", () => {
 
 test("两类的下载条目齐全，每条都写清格式名与后缀", () => {
   const expected = {
-    image: ["png", "jpg", "webp"],
-    "video-timeline": ["mp4", "webm"],
+    image: ["png", "jpg", "webp", "pdf"],
+    // WebM appears only when the server capability table advertises it.
+    "video-timeline": ["mp4"],
   };
   for (const [editorId, formats] of Object.entries(expected)) {
     const entries = visualDownloadFormats(editorId);
@@ -376,7 +377,6 @@ test("两类的下载条目齐全，每条都写清格式名与后缀", () => {
         new RegExp(`\\(\\.${entry.format}\\)$`),
         `「${entry.label}」没把后缀写清楚`,
       );
-      assert.ok(entry.hint.trim(), `${entry.id} 没有一句话说明`);
       assert.equal(entry.label.includes("插件"), false);
     }
     const ids = entries.map((entry) => entry.id);

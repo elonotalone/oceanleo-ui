@@ -156,7 +156,7 @@ function normalizedItem(artifactType) {
   return artifactProjectionToLibraryItem(artifact);
 }
 
-test("all sixteen normalized catalog types retain real cover metadata and type-correct fit", () => {
+test("all fifteen surviving normalized catalog types retain real cover metadata and type-correct fit", () => {
   const preserveWhole = new Set([
     "composite_image",
     "vector_image",
@@ -167,21 +167,14 @@ test("all sixteen normalized catalog types retain real cover metadata and type-c
     "pdf",
     "website",
     "model_3d",
-    "workflow",
     // 游戏封面是整幅关键美术，裁掉边缘等于把真实 rendition 换成假封面。
     "game",
     // 地图的图例与归属条、交互文档的参数区都贴在画面边缘，裁掉就等于换了张假封面。
     "geo_map",
     "interactive_doc",
   ]);
-  // 目录呈现 16 类，但这一组原来循环的是 `ARTIFACT_TYPES`，那份名单只有 14 条 ——
-  // 地图与交互文档只有浏览侧（`7bee5da` 提交了两个工作台的契约，实现从未落地），
-  // 至今没有进入那份「有编辑/上传链路的 typed artifact」名单。于是这一组的
-  // `SOURCE_FORMATS` / `EXPECTED_KINDS` / `preserveWhole` 里替这两类写好的三行
-  // 从来没被跑到，而**封面恰恰是浏览侧的能力**：这两类在货架上照样要出真封面。
-  // 改判据循环 `MATERIAL_CATALOG_TYPES`（14 + 2），16 这个数留在原处，覆盖面反而
-  // 从 14 类补回 16 类。编辑器落地后两类并进 `ARTIFACT_TYPES`，这里逐字不动。
-  assert.equal(MATERIAL_CATALOG_TYPES.length, 16);
+  // Workflow was removed; keep full cover coverage for every surviving catalog type.
+  assert.equal(MATERIAL_CATALOG_TYPES.length, 15);
   for (const artifactType of MATERIAL_CATALOG_TYPES) {
     const item = normalizedItem(artifactType);
     assert.equal(item.kind, EXPECTED_KINDS[artifactType], artifactType);

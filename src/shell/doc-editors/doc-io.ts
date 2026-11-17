@@ -246,7 +246,7 @@ export type PersistedEditorVersion = Pick<
  *
  * `artifactRevision` / `editorManifest` / `createPreview` stay in: a
  * project-only save can still publish a typed revision, because for
- * `audio` / `video` / `workflow` the project schema is itself an accepted
+ * `video` the project schema is itself an accepted
  * `source.format` (matrix §3.2 rows 10/11/13). Omitting them here is what made
  * those types structurally incapable of ever producing a revision.
  */
@@ -981,9 +981,8 @@ export async function saveFileToLibraryWithDependencies(
      *
      * 两种形态，都在矩阵 §3.2 的接受范围内：
      *   - 有独立交付物（docx/xlsx/pptx/pdf/glb/png…）→ source 就是它；
-     *   - 只有工程 JSON（`projectOnly` 的 audio / video / workflow）→ 工程 schema
-     *     本身就是该类型 accepted 的 `source.format`（`oceanleo.audio-project.v1`、
-     *     `oceanleo.timeline.v1`、`oceanleo.workflow.v1`…），source 就是它。
+     *   - 只有工程 JSON（`projectOnly` 的 video）→ 工程 schema
+     *     本身就是该类型 accepted 的 `source.format`（`oceanleo.timeline.v1`），source 就是它。
      *
      * 原来这里硬要求「交付摘要 + 工程摘要 + editorManifest 三者同时在场」，
      * 于是没有工程 sidecar 的 `pdf` 和没有独立交付物的 `audio`/`video` 在类型层面

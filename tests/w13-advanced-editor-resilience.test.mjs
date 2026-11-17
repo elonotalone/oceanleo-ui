@@ -196,7 +196,7 @@ test("timeline rejects unavailable sources without unhandled probes or leaked me
   );
   assert.match(
     route,
-    /disabled:[\s\S]*editor\.loadingSource \|\| !editor\.sourceReady/,
+    /useExportDownloads\(\{[\s\S]*disabled: busy \|\| !editor\.sourceReady \|\| editor\.loadingSource/,
   );
   assert.match(
     route,

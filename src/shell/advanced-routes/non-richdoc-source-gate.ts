@@ -93,42 +93,6 @@ export function pdfSourcePersistenceAdmitted(input: {
   return { ok: true };
 }
 
-export function audioSourcePersistenceAdmitted(input: {
-  loading: boolean;
-  capture: unknown;
-}): NonRichdocSourceAdmission {
-  // Waveform rebuilding temporarily sets loading even though the complete
-  // editable source and operation list remain available. Keep that saver alive.
-  if (input.capture == null) {
-    return {
-      ok: false,
-      error: input.loading
-        ? "音频源尚未载入完成，未把静音占位当作可保存稿。"
-        : "音频源未成功载入，未把静音占位当作可保存稿。",
-    };
-  }
-  return { ok: true };
-}
-
-export function model3dSourcePersistenceAdmitted(input: {
-  loading: boolean;
-  modelLoaded: boolean;
-}): NonRichdocSourceAdmission {
-  if (input.loading) {
-    return {
-      ok: false,
-      error: "3D 模型尚未载入完成，未把空场景当作可保存稿。",
-    };
-  }
-  if (!input.modelLoaded) {
-    return {
-      ok: false,
-      error: "3D 模型未成功载入，未把空场景当作可保存稿。",
-    };
-  }
-  return { ok: true };
-}
-
 export function designCanvasLocalSourceAdmission(item: {
   title?: string;
   artifactId?: string;

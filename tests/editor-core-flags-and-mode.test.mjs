@@ -412,9 +412,9 @@ test("共用顶栏一行：只有 grid / pdf 有专业编辑页签；不再挂�
   const { InlineAdvancedWorkbenchHeader } = await loadHeader();
   const pluginIds = await loadPluginThemeIds();
   assert.ok(
-    pluginIds.length === 9,
-    `插件清单只剩 ${pluginIds.length} 件。十件 Advanced 编辑器共用这一条顶栏，` +
-      "清单缩到 10 以下说明取表取错了（这条判据会因此空转）。",
+    pluginIds.length === 6,
+    `插件清单只剩 ${pluginIds.length} 件。六件 Advanced 编辑器共用这一条顶栏，` +
+      "清单数量不是 6说明取表取错了（这条判据会因此空转）。",
   );
 
   await withDom(async ({ render, find }) => {
@@ -588,7 +588,7 @@ test("不是插件的适配器：顶栏不出这个开关", async () => {
   });
 });
 
-// ─── 判据 3c：闸必须走到十件壳的真实接线（V1-red-3 / A-48） ────────────────
+// ─── 判据 3c：闸必须走到六件壳的真实接线（V1-red-3 / A-48） ────────────────
 //
 // 上面第 9–13 例编译的是 Header、测试自己把 pluginThemeId 塞进去。那锁得住
 // 「Header 里的 Toggle 被撤掉」，锁不住「壳根本不把 id 传下来」。
@@ -692,7 +692,7 @@ function assertShellChromeVisible(find, adapterId, expectedThemeId) {
   const header = find("[data-advanced-workbench-header]");
   assert.ok(
     header,
-    `${adapterId}：十件壳没把共用顶栏渲染出来（壳里那条 actionBar 被短路了）`,
+    `${adapterId}：六件壳没把共用顶栏渲染出来（壳里那条 actionBar 被短路了）`,
   );
   // D7（2026-10-23）：主题键删除，编辑器跟随站点。证据换成壳根上的插件主题档：
   // 非空 pluginThemeId → 根上有 data-plugin-theme（JSDOM 的 <html> 无 dark 类 → light）。
@@ -718,11 +718,11 @@ function assertShellChromeVisible(find, adapterId, expectedThemeId) {
   assert.ok(header.contains(pro), `${adapterId}：页签渲染了，但不在共用顶栏里`);
 }
 
-test("十件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏", async () => {
+test("六件壳把 pluginThemeIdForAdapter 的非空结果交给顶栏", async () => {
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   const { pluginThemeIdForAdapter } = await loadThemeMod();
   const pluginIds = await loadPluginThemeIds();
-  assert.ok(pluginIds.length === 9, "主题表缩到 10 以下，这条会空转");
+  assert.ok(pluginIds.length === 6, "主题表数量不是 6，这条会空转");
 
   // 带版本后缀的 adapter id 必须归一化（生产函数的契约），不许只测裸名；
   // 旧的 design-canvas adapter id 读时别名到 image。
@@ -777,7 +777,7 @@ test("壳遇到生产函数判为非插件的适配器：顶栏不出这个开�
   });
 });
 
-test("从十件壳点专业编辑页：内核当场收到 setMode（不经 Header 夹具）", async () => {
+test("从六件壳点专业编辑页：内核当场收到 setMode（不经 Header 夹具）", async () => {
   const { InlineAdvancedWorkbenchShell } = await loadShell();
   await withDom(async ({ render, find, click }) => {
     const { currentPluginMode, resetPluginModeCache } = await import(

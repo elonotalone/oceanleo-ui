@@ -51,7 +51,7 @@ function websiteRow() {
 
 // ── 目录源：只有网站这一类换落点 ─────────────────────────────────────────────
 
-test("W04/1 目录源认的类型里只有网站改了落点，其余十三类逐字不变", () => {
+test("W04/1 目录源认的类型里只有网站改了落点，其余十二类逐字不变", () => {
   const kinds = new Map();
   for (const artifactType of ARTIFACT_TYPES) {
     const listing = normalizeTemplateMaterial(catalogRow(artifactType));
@@ -70,7 +70,7 @@ test("W04/1 目录源认的类型里只有网站改了落点，其余十三类�
   }
   assert.equal(kinds.get("website"), "website");
   const others = [...kinds].filter(([type]) => type !== "website");
-  assert.equal(others.length, 13, "目录源认 14 类 typed artifact");
+  assert.equal(others.length, 12, "目录源保留 13 类 typed artifact");
   for (const [type, kind] of others) {
     assert.equal(
       kind,

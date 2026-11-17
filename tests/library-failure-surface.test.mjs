@@ -554,6 +554,7 @@ const actionModuleUrl = await compileModule("src/shell/ArtifactActions.tsx", {
   "../ui/menu/FloatingMenu": floatingMenuStubUrl,
   "./artifact-contract": contractStubUrl,
   "./artifact-client": clientStubUrl,
+  "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
   "./library-data": libraryDataStubUrl,
   "./library-document-export": documentExportStubUrl,
   "./workbench-routes": routesStubUrl,
@@ -563,6 +564,7 @@ const detailAppActionsUrl = await compileModule(
   {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./material-library-scope": materialScopeStubUrl,
     "./site-catalog-controller": catalogControllerStubUrl,
@@ -573,6 +575,7 @@ const { WorkspaceLibrary } = await import(
   await compileModule("src/shell/WorkspaceLibrary.tsx", {
     "../i18n/ui/useUI": uiStubUrl,
     "./artifact-client": clientStubUrl,
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     "./library-data": libraryDataStubUrl,
     "./LibraryLayout": layoutStubUrl,
     "./ArtifactActions": actionModuleUrl,
@@ -796,7 +799,7 @@ test("下载在跑的时候收藏仍然按得动：两个入口各自独立", as
   globalThis.__identityResolutions = {};
   globalThis.__holdDownload = true;
   globalThis.__releaseDownload = null;
-  const item = durableItem("Independent");
+  const item = durableItem("Independent", { kind: "file", meta: { filename: "original.bin" } });
   const mounted = await createMounted({
     entries: [entryFor(item)],
     onOpenItem: () => {},
@@ -835,7 +838,7 @@ test("下载没能开始时，按钮下面写出原因；再点一次就清掉",
   globalThis.__identityReads = [];
   globalThis.__identityResolutions = {};
   globalThis.__downloadError = "这份文件暂时下载不了，请稍后重试。";
-  const item = durableItem("Download fails");
+  const item = durableItem("Download fails", { kind: "file", meta: { filename: "original.bin" } });
   const mounted = await createMounted({
     entries: [entryFor(item)],
     onOpenItem: () => {},

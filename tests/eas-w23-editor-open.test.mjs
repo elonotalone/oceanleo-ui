@@ -312,7 +312,7 @@ test("计时对象五段齐全", () => {
   );
 });
 
-for (const [kind, extension] of [["video", "mp4"], ["audio", "mp3"]]) {
+for (const [kind, extension] of [["video", "mp4"]]) {
   test(`${kind} 只预加载路由，不取 Office 字节且不虚报 sourceReady`, async () => {
     resetEditorPreloadForTests();
     resetOfficeSourceCacheForTests();

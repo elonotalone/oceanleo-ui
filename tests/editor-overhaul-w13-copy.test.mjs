@@ -4,9 +4,9 @@ import { EDITOR_OVERHAUL_W13_COPY } from "../src/i18n/ui/messages/editor-overhau
 import { UI_MESSAGES } from "../src/i18n/ui/messages/index.ts";
 import { LOCALES } from "../src/i18n/config.ts";
 
-test("3D bar and scene labels have complete local copy in all sixteen non-Chinese locales", () => {
+test("retained shared labels have complete local copy in all sixteen non-Chinese locales", () => {
   const keys = Object.keys(EDITOR_OVERHAUL_W13_COPY.en).sort();
-  assert.equal(keys.length, 45);
+  assert.equal(keys.length, 3);
   for (const locale of LOCALES.filter((value) => value !== "zh")) {
     const dictionary = EDITOR_OVERHAUL_W13_COPY[locale];
     assert.deepEqual(Object.keys(dictionary).sort(), keys, locale);
@@ -17,7 +17,8 @@ test("3D bar and scene labels have complete local copy in all sixteen non-Chines
       assert.equal(UI_MESSAGES[locale][key], dictionary[key], `${locale}:${key} not registered`);
     }
   }
-  assert.equal(UI_MESSAGES.en["基础色"], "Base color");
-  assert.equal(UI_MESSAGES.en["缩放对象"], "Scale object");
+  assert.equal(UI_MESSAGES["es-419"]["移动"], "Mover");
+  assert.equal(UI_MESSAGES["es-419"]["标注"], "Anotaciones");
+  assert.equal(UI_MESSAGES["es-419"]["衰减"], "Decaimiento");
   assert.ok(!keys.includes("材质") && !keys.includes("动画"), "existing shared translations must not be overridden");
 });

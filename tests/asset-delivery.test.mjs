@@ -114,7 +114,7 @@ for (const [flag, module] of [[false, disabledModule], [true, enabledModule]]) {
       assert.equal(thumbs.assetPreviewUrl("cap-app/demo", family), `${origin}/assets/image/cap-app/demo.webp`);
       assert.equal(design.designAssetUrl("assets/icon/图 标.svg", family), `${origin}/assets/icon/${encodeURIComponent("图 标.svg")}`);
       const presets = bay.builtinTemplates("digital", family);
-      assert.equal(presets.length, bay.DIGITAL_MATERIAL_KINDS.length);
+      assert.equal(presets.length, bay.DIGITAL_MATERIAL_KINDS.filter(kind => kind !== "workflow").length);
       for (const preset of presets) {
         assert.ok(preset.coverUrl.startsWith(`${origin}/assets/`));
         assert.deepEqual(preset.coverUrls, [preset.coverUrl]);

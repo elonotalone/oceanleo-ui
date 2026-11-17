@@ -3,7 +3,7 @@
 // ----------------------------------------------------------------------------
 // 四组判据，各自锁一件事：
 //
-//   ① 选档：图片族 + chart/website/workflow/game 取 `["preview","full"]`，其余取
+//   ① 选档：图片族 + chart/website/game 取 `["preview","full"]`，其余取
 //     `["full","preview"]`。**任何 artifactType 都拿不到
 //     `thumbnail` / `source` / `editor_manifest`**——五档里那三档从不进查看器阶梯
 //     （`thumbnail` 只服务卡片，`source` 只服务下载，`editor_manifest` 只服务编辑器
@@ -58,7 +58,6 @@ const PREVIEW_FIRST_TYPES = [
   "vector_image",
   "chart",
   "website",
-  "workflow",
   "game",
 ];
 
@@ -280,7 +279,7 @@ async function mountRendition(item, purposes) {
 // ---------------------------------------------------------------------------
 
 test("查看器阶梯只在 preview / full 两档之间选，且顺序按类型分族", () => {
-  assert.equal(MATERIAL_CATALOG_TYPES.length, 16);
+  assert.equal(MATERIAL_CATALOG_TYPES.length, 15);
   // 先验这张名单本身：写错一个名字会让下面的分族断言整条落空。
   for (const artifactType of PREVIEW_FIRST_TYPES) {
     assert.ok(
@@ -564,7 +563,6 @@ test("五种重型 kind 加上 game 都在延迟挂载闸内，轻量 kind 不�
     "file",
     "website",
     "canvas",
-    "video_canvas",
   ]) {
     assert.ok(
       libraryViewerIsHeavy({ kind }),

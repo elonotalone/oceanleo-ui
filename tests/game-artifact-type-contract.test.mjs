@@ -40,10 +40,10 @@ const previewHostSource = readFileSync(
 );
 
 test("game retains its artifact identity and opens the shared work route", () => {
-  assert.equal(ARTIFACT_TYPES.indexOf("game"), 13);
+  assert.equal(ARTIFACT_TYPES.indexOf("game"), 12);
   assert.equal(
     ADVANCED_EDITOR_ADAPTER_IDS.length,
-    9,
+    6,
   );
   assert.equal(ADVANCED_EDITOR_ADAPTER_IDS.includes("game"), false);
 

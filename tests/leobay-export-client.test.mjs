@@ -14,7 +14,7 @@ test.after(()=>{globalThis.fetch=originalFetch;});
 
 test('capabilities coalesce concurrent requests and cache successful responses',async()=>{
   let requests=0;
-  globalThis.fetch=async(url,options)=>{requests++;assert.ok(url.endsWith('/v1/convert/capabilities'));assert.equal(options.credentials,'omit');return Response.json({sources:{pdf:[{target:'docx',where:'server',label:'DOCX'}]}});};
+  globalThis.fetch=async(url,options)=>{requests++;assert.ok(url.endsWith('/v1/convert/capabilities'));assert.equal(options.credentials,'include');return Response.json({sources:{pdf:[{target:'docx',where:'server',label:'DOCX'}]}});};
   const [first,second]=await Promise.all([api.loadExportCapabilities(),api.loadExportCapabilities()]);
   assert.equal(requests,1);assert.equal(first,second);assert.equal(await api.loadExportCapabilities(),first);assert.equal(requests,1);
 });

@@ -54,7 +54,7 @@ const viewerStubs = {
   "./Markdown": dataModule("export function Markdown(){ return null; }"),
   "./WebsiteArtifactViewer": dataModule("export function WebsiteArtifactViewer(){ return null; }"),
   "./artifact-client": dataModule(
-    "export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }",
+    "export async function getArtifactItem(){return {ok:false};} export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }",
   ),
   "./material-detail-slot": dataModule(
     'export function useMaterialDetailTarget(item){ return {status:"passthrough",item}; } export function MaterialDetailUnavailable(){return null;} export function GamePlayDetail(){return null;} export function gamePlayEmbedHref(){return "";}',
@@ -155,8 +155,9 @@ test("canvas items preview as an image and never enter SandboxedWebViewer", asyn
   const end = source.indexOf('resolvedItem.kind === "ppt"');
   assert.ok(start > 0 && end > start);
   assert.equal(stripComments(source.slice(start, end)).includes("SandboxedWebViewer"), false);
-  // Real UGC frames keep their sandboxed viewer.
-  assert.match(source, /<SandboxedWebViewer/);
+  // All canvas frames were removed; websites retain their isolated viewer.
+  assert.doesNotMatch(source, /SandboxedWebViewer|<iframe/);
+  assert.match(read("src/shell/WebsiteArtifactViewer.tsx"), /sandbox=\{webViewerFrameSandbox\(false\)\}/);
 });
 
 test("the PDFium engine opens, renders and reads text; a blank page reads as empty (not garbage)", async () => {

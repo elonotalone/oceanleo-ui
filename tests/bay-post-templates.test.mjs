@@ -69,9 +69,9 @@ test("每种发布都有预制模板，保存和删除只动本机列表", () =>
 test("数字商品：每种素材类型一套模板，封面是 https 图，不把官方成品当成要卖的作品", () => {
   const { builtinTemplates } = store;
   const rows = builtinTemplates("digital");
-  assert.equal(rows.length, DIGITAL_MATERIAL_KINDS.length);
+  assert.equal(rows.length, DIGITAL_MATERIAL_KINDS.filter(kind => kind !== "workflow").length);
   const seen = new Set();
-  for (const kind of DIGITAL_MATERIAL_KINDS) {
+  for (const kind of DIGITAL_MATERIAL_KINDS.filter(kind => kind !== "workflow")) {
     const row = rows.find((item) => item.id === `preset:digital:${kind}`);
     assert.ok(row, `${kind} 缺模板`);
     assert.equal(row.materialKind, kind);
@@ -174,7 +174,7 @@ test("数字商品模板抽屉：每种素材都有卡片和封面图", async ()
   });
   try {
   await act(async () => document.querySelector('[data-bay-rail="templates"]').click());
-  for (const kind of DIGITAL_MATERIAL_KINDS) {
+  for (const kind of DIGITAL_MATERIAL_KINDS.filter(kind => kind !== "workflow")) {
     const card = document.querySelector(`[data-bay-template-kind="${kind}"]`);
     assert.ok(card, `${kind} 卡片没有出来`);
     assert.match(card.textContent, new RegExp(DIGITAL_MATERIAL_LABEL[kind]));

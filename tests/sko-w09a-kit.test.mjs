@@ -754,14 +754,17 @@ test("FolderTreeViewer：默认选中 SKILL.md；YAML 头成代码块；Markdown
   await click(host.querySelector('[data-tree-path="scripts/score.py"]'));
   const code = host.querySelector('[data-code-block="python"]');
   assert.ok(code);
-  assert.equal(code.querySelector("pre").textContent, "def f():\n    return 1\n");
+  const codeBody = code.querySelector("pre").cloneNode(true);
+  for (const gutter of codeBody.querySelectorAll('[aria-hidden="true"]')) gutter.remove();
+  assert.equal(codeBody.textContent, "def f():\n    return 1\n");
   await click(code.querySelector("[data-copy-button]"));
   assert.equal(globalThis.__w09aCopied, "def f():\n    return 1\n");
   assert.match(code.querySelector("[data-copy-button]").textContent, /已复制/);
   const lineBtn = [...code.querySelectorAll("button")].find((b) => b.textContent === "行号");
+  assert.equal(lineBtn.getAttribute("aria-pressed"), "true", "代码预览默认显示行号");
   await click(lineBtn);
-  assert.equal(lineBtn.getAttribute("aria-pressed"), "true");
-  assert.match(host.querySelector('[data-code-block="python"] pre').textContent, /^1def f\(\):\n2    return 1\n$/);
+  assert.equal(lineBtn.getAttribute("aria-pressed"), "false");
+  assert.equal(host.querySelector('[data-code-block="python"] pre').textContent, "def f():\n    return 1\n");
 
   // 图片：栅格 data URL 预览；svg data URL 不当图片
   await click(host.querySelector('[data-tree-path="assets/chart.png"]'));

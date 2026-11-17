@@ -6,9 +6,10 @@ import * as cache from '../src/shell/office-editor/office-source-cache.ts';
 
 // Execute the actual component's hook setup through its loading effect. We record
 // React's dependency equality rule without running a DOM or a network parser.
-const source = readFileSync(new URL('../src/shell/library-viewers.tsx', import.meta.url), 'utf8');
-const ast = ts.createSourceFile('viewers.tsx', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+const viewerSource = readFileSync(new URL('../src/shell/library-viewers.tsx', import.meta.url), 'utf8');
+const sheetSource = readFileSync(new URL('../src/shell/library-spreadsheet-preview.tsx', import.meta.url), 'utf8');
 for (const component of ['PptViewer', 'DocumentViewer', 'SpreadsheetViewer']) test(`${component}: callback, labels and re-signed URL do not schedule another load; revision does`, () => {
+  const ast = ts.createSourceFile('viewers.tsx', component === 'SpreadsheetViewer' ? sheetSource : viewerSource, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
   const fn = ast.statements.find(n => ts.isFunctionDeclaration(n) && n.name?.text === component);
   const effectIndex = fn.body.statements.findIndex(n => ts.isExpressionStatement(n) && ts.isCallExpression(n.expression) && n.expression.expression.getText(ast) === 'useEffect');
   assert.ok(effectIndex >= 0);

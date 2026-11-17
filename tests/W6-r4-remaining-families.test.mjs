@@ -8,7 +8,7 @@ import test from "node:test";
 import { PDFDocument } from "pdf-lib";
 
 import { inspectPdf, rotatePdfPage } from "../src/shell/media-editors/pdf-operations.ts";
-import { audioSourcePersistenceAdmitted, pdfSourcePersistenceAdmitted } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
+import { pdfSourcePersistenceAdmitted } from "../src/shell/advanced-routes/non-richdoc-source-gate.ts";
 import { parseVideoProjectEnvelope } from "../src/shell/media-editors/source-integrity.mjs";
 import {
   addClipToTrack,

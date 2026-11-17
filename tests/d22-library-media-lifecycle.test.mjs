@@ -17,7 +17,7 @@ const { LibraryItemViewer } = await import(await compileModule("src/shell/librar
   "../i18n/ui/useUI": dataModule('export function useUI(){ return value => value; }'),
   "./Markdown": dataModule('export function Markdown(){ return null; }'),
   "./WebsiteArtifactViewer": dataModule('export function WebsiteArtifactViewer(){ return null; }'),
-  "./artifact-client": dataModule('export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }'),
+  "./artifact-client": dataModule('export async function getArtifactItem(){return {ok:false};} export async function prepareArtifactForAction(){ return {ok:true,data:null}; } export async function refreshArtifactRendition(){ return {ok:true,data:null}; }'),
   "./material-detail-slot": dataModule('export function useMaterialDetailTarget(item){ return {status:"passthrough",item}; } export function MaterialDetailUnavailable(){return null;} export function GamePlayDetail(){return null;} export function gamePlayEmbedHref(){return "";}'),
   "./ArtifactRendition": dataModule(`
     export function useArtifactRendition(item){ return {url:item.url,loading:false,error:"",resourceFailed(){globalThis.__d22MediaErrors++;}}; }

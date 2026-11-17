@@ -26,6 +26,7 @@ import { pdfPageWorkingCopy } from "./pdf-page-working-copy";
 import { downloadPdfBytes, pdfErrorMessage, pdfFileStem } from "./pdf-workbench-utils";
 import { PDF_SUBTYPE, type PdfAnnotationLike, type PdfViewerBridge } from "./pdf-viewer-bridge";
 import type { PdfStageHandle } from "./PdfStage";
+import { exportPdf } from "./pdf-export";
 import { sourceFormatForBlob } from "./source-integrity.mjs";
 import { recordUserMutation, userEditItemKey, userMutationGeneration } from "../user-edit-session";
 
@@ -56,17 +57,6 @@ export function applyPdfWorkbenchUserEditSession(
   const key = userEditItemKey(item);
   if (reason === "silent-replace" || reason === "collab") return userMutationGeneration(key);
   return recordUserMutation(key);
-}
-
-/**
- * 查看器导出的整份字节；有中日韩「加文字」时补上标准外观流（PDFium 自己生成的是空的，
- * 重开后文字会整个不见，`pdf-cjk-appearance.ts`）。没有就原样，不多走一遍 pdf-lib。
- */
-async function exportPdf(bridge: PdfViewerBridge): Promise<Uint8Array> {
-  const bytes = await bridge.exportBytes();
-  if (!bridge.hasWideFreeText()) return bytes;
-  const { fixPdfCjkFreeTextAppearances } = await import("./pdf-cjk-appearance");
-  return (await fixPdfCjkFreeTextAppearances(bytes)).bytes;
 }
 
 /**

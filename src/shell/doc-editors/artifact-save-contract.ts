@@ -314,7 +314,7 @@ const ARTIFACT_SAVE_CONTRACT: Readonly<
     requiredAnyOf: ["preview", "full"],
     optional: ["editor_manifest"],
   },
-  // ---- 矩阵 §3.2 的「允许原生 cover」五类 ----
+  // ---- 矩阵 §3.2 的「允许原生 cover」四类 ----
   //
   // Document/Grid reopen their editor JSON. Deck reopens native PPTX, so its
   // source/full delivery is complete; the backend rejects Deck editor manifests.
@@ -338,13 +338,6 @@ const ARTIFACT_SAVE_CONTRACT: Readonly<
     required: ["full"],
     requiredAnyOf: [],
     optional: ["preview"],
-  },
-  workflow: {
-    displayablePrimary: "native",
-    fullSource: "delivery",
-    required: [],
-    requiredAnyOf: ["preview", "full"],
-    optional: ["editor_manifest"],
   },
   website: {
     displayablePrimary: "native",

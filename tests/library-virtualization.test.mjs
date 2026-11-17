@@ -363,6 +363,7 @@ const { WorkspaceLibrary } = await import(
   await compileModule("src/shell/WorkspaceLibrary.tsx", {
     ...SHELL_OVERRIDES,
     "./artifact-client": dataModule(ARTIFACT_CLIENT_SOURCE),
+    "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
   })
 );
 
@@ -520,6 +521,7 @@ test("我的库 400 件：走的就是货架那张虚拟化网格，视口内卡
     await compileModule("src/shell/MyLibrary.tsx", {
       ...SHELL_OVERRIDES,
       "./artifact-client": artifactClientWithMine(400),
+      "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
     })
   );
   const view = await mountAsync(
@@ -559,6 +561,7 @@ test("素材库 legacy：一次只拉一页 60 行（不再是 500），网格�
     await compileModule("src/shell/ArtifactLibrary.tsx", {
       ...SHELL_OVERRIDES,
       "./artifact-client": dataModule(ARTIFACT_CLIENT_SOURCE),
+      "./plugin-chrome/LibraryExportMenu": dataModule("export function LibraryExportMenu(){return null;}"),
       "../lib/auth/client": dataModule(`
         export const AUTH_STATE_EVENT = "oceanleo:auth-state";
         const ROWS = Array.from({ length: 400 }, (_, index) => ({

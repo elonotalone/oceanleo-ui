@@ -75,10 +75,8 @@ test("creation drawers stay in fixed tools while object bars stay contextual", (
   assert.doesNotMatch(shell, /<PluginPageRow/);
   assert.doesNotMatch(deckToolbar, /deckQuickTools|applyDeckQuickTool/);
 
-  assert.match(
-    image,
-    /id: "image-export"[\s\S]*?panelId: "image-export"/,
-  );
+  assert.doesNotMatch(image, /id: "image-export"|panelId: "image-export"/);
+  assert.match(image, /directDownload: exportDownloads\[0\]/);
   for (const toolbar of [deckToolbar, imageToolbar, richToolbar]) {
     assert.doesNotMatch(toolbar, /id: "undo"/);
     assert.doesNotMatch(toolbar, /id: "redo"/);

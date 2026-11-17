@@ -311,7 +311,7 @@ test("PPT 指令面：只读时（经 DeckRoute 的闸）mutates 指令全部拒
 
 test("DeckRoute 接线：指令面经只读闸、工具条 / 面板 / 上传 / 撤销都吃同一个 viewOnly", () => {
   const src = readFileSync(new URL("../src/shell/advanced-routes/DeckRoute.tsx", import.meta.url), "utf8");
-  assert.match(src, /usePluginCommandSurface\(\s*buildDeckCommandSurface\(editor, \{ download: downloadAs, save: \(\) => saveAdvancedEditorFromAgent\(item, advancedSession\?\.flush\) \}, viewOnly\)/);
+  assert.match(src, /usePluginCommandSurface\(\s*buildDeckCommandSurface\(editor, \{ download: downloadAs, formats: exportDownloads\.map\([\s\S]*?\), save: \(\) => saveAdvancedEditorFromAgent\(item, advancedSession\?\.flush\) \}, viewOnly\)/);
   assert.match(src, /guardPluginSurface\(buildRawDeckCommandSurface\(editor, deps\), readOnly\)/);
   assert.match(src, /useDeckSelectionAdapter\(\{\s*editor,\s*readOnly:\s*viewOnly\s*\}\)/);
   assert.match(src, /viewOnlyUploadHandler\(viewOnly, addLocalFiles\)/);

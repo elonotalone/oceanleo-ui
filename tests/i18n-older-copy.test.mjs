@@ -11,7 +11,6 @@ const removedOverrides = [
   ["bay-form-gap-copy", "BAY_FORM_GAP_MESSAGES", ["游戏"]],
   ["im-shell-copy", "IM_SHELL_MESSAGES", ["消息免打扰"]],
   ["im-people-copy", "IM_PEOPLE_MESSAGES", ["备注", "置顶", "已选 {n} 人"]],
-  ["collab-media-copy", "COLLAB_MEDIA_MESSAGES", ["淡入淡出"]],
   ["server-page-copy", "SERVER_PAGE_MESSAGES", ["AI 对话"]],
 ];
 

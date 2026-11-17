@@ -33,8 +33,6 @@ export interface VisualDownloadFormat {
   lossy: boolean;
   /** local = 浏览器本地出；backend = 走后端转换端点。 */
   via: "local" | "backend";
-  /** 一句话说清这条会拿到什么。 */
-  hint: string;
 }
 
 /** Static command descriptions expose only actual local generators; live menus merge server rows. */
@@ -42,7 +40,7 @@ export function visualDownloadFormats(editorId: VisualEditorId): readonly Visual
   const targets = CLIENT_EXPORT_TARGETS[editorId];
   return targets.map(entry => ({ id: `${editorId}-download-${entry.target}`, format: entry.target,
     label: entry.label, lossy: ["jpg", "webp", "mp4", "mp3", "m4a"].includes(entry.target),
-    via: "local" as const, hint: "" }));
+    via: "local" as const }));
 }
 export function visualDownloadFormat(editorId: VisualEditorId, format: string): VisualDownloadFormat | null {
   return visualDownloadFormats(editorId).find(entry => entry.format === format.trim().toLowerCase()) || null;

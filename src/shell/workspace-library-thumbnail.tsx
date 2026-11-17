@@ -373,6 +373,7 @@ export function WorkspaceThumbnail({
     coverEvidence === "unknown-metadata" &&
     Boolean(plan.evidenceReason);
   const loading =
+    !timedOut &&
     !failureMessage &&
     !noDisplayableCover &&
     !documentShelfCover &&
@@ -381,7 +382,7 @@ export function WorkspaceThumbnail({
       (plan.renderer !== "unavailable" && !ready));
   const coverState = failureMessage
     ? "error"
-    : loading
+    : loading || timedOut
       ? "loading"
       : ready || documentShelfCover
         ? "ready"
@@ -506,8 +507,9 @@ export function WorkspaceThumbnail({
       )}
       {(loading || failed || timedOut) && !ready && !solidRejected && !failureMessage && (
         <button type="button" onClick={() => { setRetryCount(0); setRetryCycle(value => value + 1); setFailed(false); setTimedOut(false); artifactRendition.retry(); }}
-          className="absolute bottom-1 right-1 z-10 rounded bg-white px-2 py-1 text-xs" aria-label={tt("重试")}>{tt("重试")}</button>
+          className="absolute bottom-1 right-1 z-10 rounded bg-[var(--card,#fff)] px-2 py-1 text-xs" aria-label={tt("重试")}>{tt("重试")}</button>
       )}
+      {timedOut && !ready && !failureMessage && <p data-cover-timeout="" className="absolute bottom-8 left-1 right-1 rounded bg-[var(--card,#fff)] px-2 py-1 text-xs text-[var(--fg-2)]">{tt("预览加载超时，打开查看素材")}</p>}
       {loading && (
         <div className="absolute inset-0 grid place-items-center bg-[var(--surface,#f5f5f4)]/80">
           <span

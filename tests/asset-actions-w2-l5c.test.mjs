@@ -29,6 +29,7 @@ const stubs = {
   "../artifact-client": client,
   "./artifact-client": client,
   "./library-data": dataModule('export function isDurableLibraryItem(item){return !!item.artifact;} export function isTemplateMaterialDetailItem(){return false;}'),
+  "./plugin-chrome/LibraryExportMenu": dataModule('export function LibraryExportMenu(){return null;}'),
   "./artifact-contract": dataModule('export function isEnsureableTransient(item){return !!item?.receipt;}'),
   "./workbench-routes": dataModule('export function editorCapabilityFor(){return {available:true};}'),
   "./deck-delivery-family": dataModule('export function deckHtmlOpenPlan(){return {family:"other",edit:{visible:false},view:{visible:false}};}'),

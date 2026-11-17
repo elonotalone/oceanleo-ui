@@ -199,7 +199,7 @@ test("catalog projections preserve preview Content-Type and 3D dispatch metadata
   assert.equal(item.url, "https://api.oceanleo.com/full");
   assert.equal(item.meta.viewer_media_type, "image/png");
   assert.equal(item.meta.source_media_type, "model/gltf+json");
-  assert.equal(item.meta.advanced_editor_route, "threed");
+  assert.equal(item.meta.advanced_editor_route, undefined, "3D viewing does not register an editor");
   assert.equal(threeDSubtypeFor(item), "model");
   assert.equal(editing.url, "https://api.oceanleo.com/source");
   assert.equal(editing.meta.viewer_media_type, "model/gltf+json");
