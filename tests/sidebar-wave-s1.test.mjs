@@ -10,7 +10,8 @@ const cards = readFileSync(new URL("src/shell/workspace-library-view.tsx", root)
 test("unified Library has no section chips and omits source scoping", () => {
   assert.doesNotMatch(mine, /<LibrarySectionTabs/);
   assert.doesNotMatch(mine, /data-library-sections/);
-  assert.match(mine, /listMyArtifacts\(\{\s*artifactType: "document"/);
+  // 运营方 2026-11-17：对话里上传的文件进「任务附件」专区；默认列表仍不带 source，只有专区才显式传 task。
+  assert.match(mine, /listMyArtifacts\(\{\s*(?:\.\.\.\(requestedSection === "task" \? \{ source: "task" as const \} : \{\}\),\s*)?artifactType: "document"/);
   assert.doesNotMatch(mine, /listMyArtifacts\(\{\s*source:/);
 });
 

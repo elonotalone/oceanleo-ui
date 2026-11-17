@@ -23,7 +23,7 @@ const { FabricEditorController } = await import(await compileModule('src/shell/i
 installFabricTextLayout(fabric);
 function scene(text) {
   text.oceanleoId = 'text';
-  const context = { fabric, canvas: { getActiveObject: () => text }, textCaseRestore: new Map(), mutateSelected: mutate => mutate(text) };
+  const context = { fabric, canvas: { getActiveObject: () => text }, textCaseRestore: new Map(), mutateSelected: mutate => mutate(text), refreshTextFonts() {} };
   for (const name of ['setSelectedText', 'setSelectedTextList', 'toggleSelectedTextList', 'clearSelectedTextFormat']) context[name] = (...args) => FabricEditorController.prototype[name].apply(context, args);
   return context;
 }
@@ -93,7 +93,7 @@ test('clear-format follows ED-B2 while preserving structured paragraphs and obje
   controller.setSelectedText({ list: 'bullet', indent: 24, verticalText: true });
   controller.clearSelectedTextFormat();
   const copy = await reopen(text);
-  assert.equal(copy.text, 'Keep content'); assert.equal(copy.fontSize, 16); assert.equal(copy.fontFamily, 'sans-serif');
+  assert.equal(copy.text, 'Keep content'); assert.equal(copy.fontSize, 16); assert.match(copy.fontFamily, /^Noto Sans, Noto Sans SC, .*sans-serif$/); // 运营方 2026-11-17：默认字体为全语言 Noto 家族
   assert.equal(copy.fill, '#1c1917'); assert.deepEqual(copy.styles, {}); assert.equal(copy.textBackgroundColor, '');
   assert.deepEqual([copy.left, copy.top], [31, 52]);
   assert.deepEqual([copy.oceanleoList, copy.oceanleoIndent, copy.oceanleoVerticalText], ['bullet', 24, true]);

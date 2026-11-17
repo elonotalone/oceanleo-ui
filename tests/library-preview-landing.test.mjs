@@ -193,7 +193,7 @@ test("预览落点只走 GET，绝不在挂载时 fork", () => {
   assert.match(editIntentSource, /latest\.current\.onPreviewItem\?\.\(item\)/);
   // 宿主把它挂进 entries（安静预览详情），而不是挂进 AdvancedContentWorkbench。
   assert.match(myLibrarySource, /onPreviewItem: rememberPreviewIntent/);
-  assert.match(myLibrarySource, /previewIntentItem \? \[toEntry\(previewIntentItem\)\] : \[\]/);
+  assert.match(myLibrarySource, /previewIntentItem \? \[toEntry\(previewIntentItem(?:, undefined, tt)?\)\] : \[\]/);
 });
 
 test("深链指名的是 artifact id，右栏必须按 artifactId 匹配才能选中", () => {

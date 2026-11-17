@@ -115,7 +115,8 @@ test('first preview paint waits for actual aliased fonts', async () => {
     const b = await bench({ hold: true });
     try {
         await b.mount();
-        await until(() => b.fonts.requests.some(r => r.family === 'Noto Serif'));
+        // 合并后的字体加载器按文字实际覆盖选分片：纯中文标题只请求 Noto Serif SC。
+        await until(() => b.fonts.requests.some(r => r.family === 'Noto Serif SC'));
         assert.equal(b.renders.length, 0);
         b.fonts.release();
         await until(() => title(b.container));

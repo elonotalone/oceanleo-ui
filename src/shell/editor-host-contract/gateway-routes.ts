@@ -91,6 +91,7 @@ export const EDITOR_GATEWAY_ROUTES: readonly EditorGatewayRoute[] = [
   read("/v1/im/conversations", "collab-conversations", live),
   read("/v1/library/primary", "library-primary"),
   read("/v1/library/search", "library-search"),
+  read("/v1/library/task-attachments/context", "library-task-attachments"),
   read("/v1/library/editable-shelf", "library-shelf"),
   read("/v1/library/mine", "library-mine"),
   read("/v1/library/favorites", "library-favorites"),

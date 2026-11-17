@@ -779,7 +779,9 @@ export function applyDeckPptxPreviewVisuals(
             const style = shape.paragraphs[paragraphIndex]?.[runIndex]?.style;
             const effective = { ...defaults, ...previewRecord(run.props) };
             if (style?.fontSize !== undefined) effective.size = style.fontSize;
-            if (style?.color) effective.color = { type: "solidFill", color: style.color };
+            // The vendored renderer prints `rgba(r,g,b,${alpha})`; without an alpha the
+            // declaration is invalid CSS and the run silently falls back to the page colour.
+            if (style?.color) effective.color = { type: "solidFill", color: style.color, alpha: 1 };
             if (style?.bold !== undefined) effective.bold = style.bold;
             if (style?.italic !== undefined) effective.italic = style.italic;
             if (style?.underline !== undefined) effective.underline = style.underline ? "sng" : "none";
