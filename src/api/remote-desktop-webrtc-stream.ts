@@ -188,6 +188,7 @@ export async function openRemoteWebRtcStream(
       initialPeer,
       sendSignal: enqueueSignal,
       onState: (next, path) => { if (!ended) handlers.webrtcState?.(next, path); },
+      onPresentation: sample => { if (!ended) handlers.webrtcPresentation?.(sample); },
       onFrame: (width, height) => {
         if (ended) return;
         handlers.webrtcFrame?.(width, height);

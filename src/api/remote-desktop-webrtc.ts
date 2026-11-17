@@ -1,10 +1,10 @@
 import type { RemoteDesktopAction } from "./remote-desktop";
 import { isWebRtcInputFault } from "./remote-desktop-webrtc-errors";
 import { WebRtcInputScheduler, WEBRTC_MESSAGE_BYTES, type InputLabel } from "./remote-desktop-webrtc-input";
-import { WebRtcTelemetry, type WebRtcPath, type WebRtcQualityReport, type WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
+import { WebRtcTelemetry, type WebRtcPath, type WebRtcPresentation, type WebRtcQualityReport, type WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
 import { boundedRtt, pathRoutes, readPathStats, WebRtcPathSelector, type PathRoute } from "./remote-desktop-webrtc-path";
 import { WebRtcPathProbe } from "./remote-desktop-webrtc-path-probe";
-export type { WebRtcPath, WebRtcQualityReport, WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
+export type { WebRtcPath, WebRtcPresentation, WebRtcQualityReport, WebRtcViewerState } from "./remote-desktop-webrtc-telemetry";
 
 export interface RemoteWebRtcDescriptor {
   transport: "webrtc-v1"; role: "viewer" | "host"; session_id: string; display_id: string | null;
@@ -23,6 +23,7 @@ export interface WebRtcViewerOptions {
   sendSignal(data: WebRtcSignal): boolean;
   onState(state: WebRtcViewerState, path?: WebRtcPath): void;
   onFrame(width: number, height: number): void;
+  onPresentation?(sample: WebRtcPresentation): void;
   onTerminal(reason: string): void;
   onReport(report: WebRtcQualityReport, final: boolean): void;
   clickedAt?: number; sessionCreatedAt?: number; descriptorReceivedAt?: number; sequenceFloor?: number;
@@ -103,6 +104,8 @@ export class WebRtcRemoteDesktopViewer {
   private presentedTimes = new Map<number, number>();
   private captureMappingAvailable = false;
   private lastFrameCount: number | undefined;
+  private sessionFrameCount = 0;
+  private lastPresentedAt: number | undefined;
   private hasFrame = false;
   private pictureRebuilding = false;
   private trackGeneration = 0;
@@ -491,7 +494,7 @@ export class WebRtcRemoteDesktopViewer {
     if (this.video) { this.video.onloadeddata = null; this.video.ontimeupdate = null; if (this.video !== video) this.video.srcObject = null; }
     this.frameCallback = undefined; this.video = video; this.lastFrameCount = undefined;
     if (!video || this.ended) return;
-    video.autoplay = true; video.muted = true; video.playsInline = true; video.srcObject = this.mediaStream;
+    video.autoplay = true; video.muted = true; video.playsInline = true;
     video.onloadeddata = () => { if (!this.ended && video.videoWidth && video.videoHeight) this.telemetry.step("first_frame_decoded_ms"); };
     if (typeof video.requestVideoFrameCallback === "function") {
       const frame: VideoFrameRequestCallback = (_now, raw) => {
@@ -510,13 +513,24 @@ export class WebRtcRemoteDesktopViewer {
       };
       video.onloadeddata = frame; video.ontimeupdate = frame;
     }
+    // Observe before attaching an already-producing track: the first decoded image
+    // must not pass the observer while waiting for a second image on an idle screen.
+    video.srcObject = this.mediaStream;
     this.play();
   }
   private play(): void { try { const playing = this.video?.play(); playing?.catch(() => {}); } catch { /* attach before autoplay is permitted */ } }
-  private frame(video: HTMLVideoElement, at: number, metadata: { captureTime?: number; receiveTime?: number; presentationTime?: number; rtpTimestamp?: number }): void {
+  private frame(video: HTMLVideoElement, at: number, metadata: Partial<FrameMetadata>): void {
     if (this.ended || !video.videoWidth || !video.videoHeight) return;
     if (this.pictureRebuilding && this.trackGeneration !== this.gen) return;
     this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, this.captureMappingAvailable ? { ...metadata, captureTime: undefined } : metadata);
+    const sample: WebRtcPresentation = { session_frame_count: ++this.sessionFrameCount, peer_generation: this.gen, presented_at_ms: at };
+    if (this.lastPresentedAt !== undefined && at >= this.lastPresentedAt) sample.gap_ms = at - this.lastPresentedAt;
+    this.lastPresentedAt = at;
+    for (const key of ["expectedDisplayTime", "presentationTime", "captureTime", "receiveTime", "processingDuration", "presentedFrames", "rtpTimestamp"] as const) {
+      const value = metadata[key]; if (typeof value === "number" && Number.isFinite(value)) sample[key] = value;
+    }
+    // Diagnostics are optional, numeric-only, and never drive media or input lifetime.
+    if (this.options.onPresentation) swallow(() => this.options.onPresentation!(sample));
     if (Number.isInteger(metadata.rtpTimestamp)) {
       const rtp = metadata.rtpTimestamp!; const captured = this.captureTimes.get(rtp);
       if (captured !== undefined) { this.telemetry.captureFrameTime(at, captured); this.captureTimes.delete(rtp); }

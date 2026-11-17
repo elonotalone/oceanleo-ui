@@ -105,6 +105,34 @@ test('replacement peer stays picture_reconnecting until its track presents a fra
   video.frame({expectedDisplayTime:320,captureTime:300});assert.equal(h.states.at(-1).state,'picture_reconnecting');
   h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'new-track'}]});video.frame({expectedDisplayTime:350,captureTime:330});assert.equal(h.states.at(-1).state,'playing');
 });
+test('a producing track is observed before attachment and its single first frame makes the viewer ready',async t=>{
+  const presentations=[];const h=await harness(t,{onPresentation:sample=>presentations.push(sample)});await h.viewer.start();h.open();
+  h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'already-producing'}]});
+  const video=new FakeVideo();let source;
+  Object.defineProperty(video,'srcObject',{get:()=>source,set(value){source=value;if(value){
+    assert.equal(video.callbacks.size,1,'register the observer before attaching a producing source');
+    video.frame({presentationTime:105,expectedDisplayTime:112,presentedFrames:1,rtpTimestamp:9000});
+  }}});
+  h.viewer.attachVideo(video);
+  assert.deepEqual(h.frames,[[1280,720]]);assert.equal(h.states.at(-1).state,'playing');
+  assert.deepEqual(presentations,[{session_frame_count:1,peer_generation:1,presented_at_ms:112,presentationTime:105,expectedDisplayTime:112,presentedFrames:1,rtpTimestamp:9000}]);
+  assert.equal(video.callbacks.size,1,'the next frame is observed but is not required for readiness');
+});
+test('presentation count and actual picture gap survive peer replacement while browser counters reset',async t=>{
+  const samples=[];const h=await harness(t,{onPresentation:sample=>samples.push(sample)});await h.viewer.start();h.open();
+  const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110,presentedFrames:96});
+  h.viewer.pc.state('failed');await h.advance(200);h.open();
+  video.frame({expectedDisplayTime:320,presentedFrames:97});assert.equal(samples.length,1,'retired track does not advance the session count');
+  h.viewer.pc.ontrack({track:{kind:'video'},receiver:{},streams:[{id:'replacement'}]});
+  video.frame({expectedDisplayTime:450,presentedFrames:1});video.frame({expectedDisplayTime:480,presentedFrames:2});
+  assert.deepEqual(samples.map(s=>[s.session_frame_count,s.peer_generation,s.presentedFrames,s.gap_ms]),[[1,1,96,undefined],[2,2,1,340],[3,2,2,30]]);
+});
+test('presentation observer exceptions cannot prevent first picture, input or next-frame observation',async t=>{
+  const h=await harness(t,{onPresentation(){throw Error('diagnostic observer');}});await h.viewer.start();h.open();
+  const video=new FakeVideo();h.viewer.attachVideo(video);video.frame({expectedDisplayTime:110});
+  assert.deepEqual(h.frames,[[1280,720]]);assert.equal(h.states.at(-1).state,'playing');assert.equal(video.callbacks.size,1);
+  assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);assert.deepEqual(h.terminals,[]);
+});
 const codec=(name,fmtp)=>({mimeType:`video/${name}`,clockRate:90000,...(fmtp?{sdpFmtpLine:fmtp}:{})});
 // Representative getCapabilities shapes: mixed profiles, fmtp ordering/case and optional repair codecs.
 const codecFixtures={

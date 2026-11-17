@@ -22,7 +22,7 @@ import { RemoteControlTimings, type RemoteControlTiming } from "./remote-desktop
 import type { RemoteDesktopQualityReport, RemoteDesktopViewerReport, RemoteDesktopQualityWindow, RemoteMediaQualitySink } from "./remote-desktop-quality";
 import { RemoteTransportDiagnostics, parseRemoteInputDiagnostics, type RemoteInputDiagnostics, type RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
 import { openRemoteWebRtcStream } from "./remote-desktop-webrtc-stream";
-import type { RemoteWebRtcDescriptor, WebRtcPath } from "./remote-desktop-webrtc";
+import type { RemoteWebRtcDescriptor, WebRtcPath, WebRtcPresentation } from "./remote-desktop-webrtc";
 export type { RemoteWebRtcDescriptor } from "./remote-desktop-webrtc";
 export { parseRemoteInputDiagnostics } from "./remote-desktop-diagnostics";
 export type { RemoteInputDiagnostics, RemoteDesktopTransportDiagnostics } from "./remote-desktop-diagnostics";
@@ -274,6 +274,7 @@ export interface RemoteDesktopStream {
 export interface RemoteDesktopStreamHandlers {
   webrtcState?(state: RemoteWebRtcViewerState, path?: RemoteWebRtcPath): void;
   webrtcFrame?(width: number, height: number): void;
+  webrtcPresentation?(sample: WebRtcPresentation): void;
   activity?(activity: RemoteDesktopActivity | null): void;
   /** Numeric diagnostics only; completion watermark is not proof of successful OS input. */
   controlTiming?(sample: RemoteControlTiming): void;

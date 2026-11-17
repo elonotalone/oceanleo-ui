@@ -10,6 +10,12 @@ export interface WebRtcPath {
   comparison_source?: "ice" | "ctl"; selection_state?: "measuring" | "stable" | "switching" | "unavailable";
 }
 export interface WebRtcPercentiles { n: number; p50?: number; p95?: number; max?: number }
+/** Observed compositor callbacks, not decoded frames or the browser's resettable presentedFrames. */
+export interface WebRtcPresentation {
+  session_frame_count: number; peer_generation: number; presented_at_ms: number; gap_ms?: number;
+  expectedDisplayTime?: number; presentationTime?: number; captureTime?: number; receiveTime?: number;
+  processingDuration?: number; presentedFrames?: number; rtpTimestamp?: number;
+}
 export type WebRtcPictureAgeSource = "captureTime" | "receiveTime" | "unknown";
 export interface WebRtcQualityReport {
   v: 1; transport: "webrtc-v1"; media: "webrtc"; device_id: string; session_id: string;

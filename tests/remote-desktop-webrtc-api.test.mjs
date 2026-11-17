@@ -70,10 +70,11 @@ function setup(t, reply = () => ({ stored: true })) {
   return { calls, streams, async tick(ms) { now += ms; t.mock.timers.tick(ms); await drain(); } };
 }
 async function open(h, options = {}, firstState = {}) {
-  const states = [], errors = [], peerStates = [], frames = [];
+  const states = [], errors = [], peerStates = [], frames = [], presentations = [];
   const promise = api.remoteDesktopClient.openStream("device/1", "sid", {
     state: (...value) => states.push(value), error: value => errors.push(value), frame() {},
     webrtcState: value => peerStates.push(value), webrtcFrame: (...value) => frames.push(value),
+    webrtcPresentation: value => presentations.push(value),
   }, { transport: "webrtc-v1", descriptor: descriptor(), clickedAt: 900, ...options });
   await drain();
   const socket = Socket.all.at(-1); socket?.onopen?.();
@@ -81,7 +82,7 @@ async function open(h, options = {}, firstState = {}) {
   const result = await promise;
   if (result.data) h.streams.push(result.data);
   await drain();
-  return { result, stream: result.data, socket, states, errors, peerStates, frames };
+  return { result, stream: result.data, socket, states, errors, peerStates, frames, presentations };
 }
 
 test("create negotiates WebRTC beside ARTC and parses inline descriptor with strict session binding", async t => {
@@ -159,6 +160,7 @@ test("first decoded frame drives video acknowledgement and nested final telemetr
   const h = setup(t); const v = await open(h); let frame;
   const video = { videoWidth: 1280, videoHeight: 720, play: () => Promise.resolve(), requestVideoFrameCallback(fn) { frame = fn; return 1; }, cancelVideoFrameCallback() {} };
   v.stream.attachVideo(video); frame(1000, { expectedDisplayTime: 1000, captureTime: 980 });
+  assert.deepEqual(v.presentations,[{session_frame_count:1,peer_generation:1,presented_at_ms:1000,expectedDisplayTime:1000,captureTime:980}]);
   assert.deepEqual(v.frames, [[1280, 720]]); assert.ok(v.socket.sent.some(item => item.type === "media_ready"));
   await h.tick(10_000);
   const window = h.calls.find(call => call.url.endsWith("/quality/windows")); assert.ok(window);
