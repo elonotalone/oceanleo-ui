@@ -18,6 +18,7 @@ const reactUrl = pathToFileURL(require.resolve("react")).href;
 globalThis.__rdDefaultClient = {};
 globalThis.__rdStandbyLog = [];
 const stubs = {
+  "../api/remote-desktop-webrtc-preconnect": dataModule(`export function prepareRemoteWebRtcSocket(){ return ()=>{}; }`),
   "../api/remote-desktop-webrtc-standby": dataModule(`export function prepareRemoteDesktopStandby(id) { globalThis.__rdStandbyLog.push(["prepare", id]); return () => globalThis.__rdStandbyLog.push(["close", id]); }`),
   "../facades/devices": dataModule(`export const devicesFacade = globalThis.__rdDevicesClient;`),
   "../api/remote-desktop": dataModule(`export const remoteDesktopClient = globalThis.__rdDefaultClient;`),

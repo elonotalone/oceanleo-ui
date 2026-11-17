@@ -89,3 +89,13 @@ test('unclaimed create disposes its prepared peer after the adoption deadline',a
   ws.onmessage({data:JSON.stringify({type:'created',session:{session_id:'unclaimed-session',transport:'webrtc-v1'}})});await promise;
   t.mock.timers.tick(10000);assert.equal(ws.readyState,3);assert.equal(InitialPeer.all[0].closed,1);
 });
+test('standby subscribes to a socket warmed during list-status fetch and shares an in-flight handshake',async t=>{
+  setup(t);const warm=api.prepareRemoteWebRtcSocket('status-overlap');t.after(warm);await drain();const ws=Socket.all[0];const events=[];
+  const standby=api.prepareRemoteWebRtcSocket('status-overlap',{ready:c=>events.push(c)});t.after(standby);await drain();assert.equal(Socket.all.length,1);
+  warm();assert.equal(ws.readyState,0,'standby subscription retains the same connecting socket');ws.open();ws.onmessage({data:JSON.stringify({type:'ready',transport:'webrtc-v1',capabilities:['remote-desktop-standby-v1']})});
+  assert.deepEqual(events,[['remote-desktop-standby-v1']]);assert.equal(api.takePreparedRemoteWebRtcSocket('status-overlap','controller'),ws);standby();assert.equal(ws.readyState,1);ws.close();
+});
+test('already-ready signalling can be subscribed without another socket or session create',async t=>{
+  setup(t);const warm=api.prepareRemoteWebRtcSocket('already-warm');t.after(warm);await drain();const ws=Socket.all[0];ws.open();ws.ready();let count=0;
+  const standby=api.prepareRemoteWebRtcSocket('already-warm',{ready:()=>count++});t.after(standby);await drain();assert.equal(count,1);assert.equal(Socket.all.length,1);assert.ok(ws.sent.every(v=>v.type!=='create'));
+});

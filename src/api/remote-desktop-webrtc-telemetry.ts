@@ -12,6 +12,7 @@ export interface WebRtcPath {
 export interface WebRtcPercentiles { n: number; p50?: number; p95?: number; max?: number }
 /** Observed compositor callbacks, not decoded frames or the browser's resettable presentedFrames. */
 export interface WebRtcPresentation {
+  host_capture_wall_ms?: number;
   session_frame_count: number; peer_generation: number; presented_at_ms: number; gap_ms?: number;
   expectedDisplayTime?: number; presentationTime?: number; captureTime?: number; receiveTime?: number;
   processingDuration?: number; presentedFrames?: number; rtpTimestamp?: number;

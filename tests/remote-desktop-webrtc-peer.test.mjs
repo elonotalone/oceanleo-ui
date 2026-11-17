@@ -436,3 +436,24 @@ test('promotion seeds above the final old release sequence and never reuses its 
   pending.video.onloadeddata();const last=old.channel('rd-input').sent.at(-1);assert.equal(last.a.kind,'release_all');
   h.viewer.send({kind:'key_up',key:'Shift'});assert.ok(next.channel('rd-input').sent.at(-1).seq>last.seq);
 });
+test('standby synthetic RTP, loadeddata and decoder counters cannot reveal or count a first screen',async t=>{
+  const samples=[];const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()}),onPresentation:s=>samples.push(s)});await h.viewer.start();h.open();
+  const video=new FakeVideo();video.style={visibility:'visible'};h.viewer.attachVideo(video);const ctl=h.viewer.pc.channel('rd-ctl');
+  video.onloadeddata();video.frame({expectedDisplayTime:110,rtpTimestamp:100});h.viewer.pc.statsEntries=[{id:'v',type:'inbound-rtp',kind:'video',framesDecoded:31,bytesReceived:65000}];await h.advance(100);
+  assert.equal(video.style.visibility,'hidden');assert.deepEqual(h.frames,[]);assert.deepEqual(samples,[]);assert.equal(h.viewer.telemetry.steps.first_frame_decoded_ms,undefined);
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[100,WALL+100]]});h.viewer.activateStandby('actual_screen_request',200);ctl.message({t:'rd.started',request_id:'actual_screen_request'});
+  video.frame({expectedDisplayTime:220,rtpTimestamp:100});assert.deepEqual(samples,[],'pre-approval timing cannot authorize a buffered synthetic frame');
+  ctl.message({t:'rd.frame_time',gen:2,frames:[[100,WALL+210]]});assert.deepEqual(samples,[],'wrong generation timing cannot prove capture');
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[101,WALL+215]]});assert.deepEqual(samples,[],'unmatched RTP cannot prove capture');
+  video.frame({expectedDisplayTime:240,rtpTimestamp:102});ctl.message({t:'rd.frame_time',gen:1,frames:[[102,WALL+230]]});
+  assert.deepEqual(samples,[],'a hidden callback is not backdated as visible presentation');assert.equal(video.style.visibility,'visible');
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[103,WALL+250]]});video.frame({expectedDisplayTime:260,rtpTimestamp:103});
+  assert.equal(samples.length,1);assert.equal(samples[0].rtpTimestamp,103);assert.equal(samples[0].host_capture_wall_ms,WALL+250);assert.equal(samples[0].presented_at_ms,260);
+  assert.deepEqual(h.frames,[[1280,720],[1280,720]]);
+});
+test('fresh matching capture timing before the approved callback admits exactly its real first frame',async t=>{
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});await h.viewer.start();h.open();
+  const ctl=h.viewer.pc.channel('rd-ctl'),video=new FakeVideo();h.viewer.attachVideo(video);h.viewer.activateStandby('fresh_first_capture',100);ctl.message({t:'rd.started',request_id:'fresh_first_capture'});
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[77,WALL+110]]});video.frame({expectedDisplayTime:130,rtpTimestamp:77});assert.equal(h.frames.length,1);assert.equal(h.viewer.telemetry.steps.first_frame_presented_ms,undefined);
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[78,WALL+130]]});video.frame({expectedDisplayTime:150,rtpTimestamp:78});assert.equal(h.viewer.telemetry.steps.first_frame_presented_ms,50);
+});

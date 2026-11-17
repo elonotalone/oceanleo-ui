@@ -94,6 +94,12 @@ export class WebRtcRemoteDesktopViewer {
   private pending?: { viewer: WebRtcRemoteDesktopViewer; video: HTMLVideoElement; route?: PathRoute; started: number };
   private pendingReady?: () => void;
   private pendingDecoded = false;
+  private requireStartCapture = false;
+  private firstCaptureVerified = false;
+  private captureSourceVerified = false;
+  private captureRevealedAt = Infinity;
+  private guardedVideo?: { video: HTMLVideoElement; visibility: string };
+  private unverifiedFrames = new Map<number, { video: HTMLVideoElement; at: number; metadata: Partial<FrameMetadata>; attachment: number }>();
   private staging = false;
   private offeredGeneration = 0;
   private activation?: { requestId: string; sent: boolean; clickedAt: number; approved?: boolean };
@@ -150,6 +156,7 @@ export class WebRtcRemoteDesktopViewer {
   private pathSwitch: { route: PathRoute; previousRoute?: string; started: number; answered: boolean } | undefined;
   constructor(options: WebRtcViewerOptions) {
     this.options = options; this.descriptor = options.descriptor;
+    this.requireStartCapture = options.descriptor.standby === true;
     // A reload re-attaches to the same authorized session with a NEW peer generation.
     // This stores no auth, descriptor, action or credential; host authority is unchanged.
     try {
@@ -267,7 +274,7 @@ export class WebRtcRemoteDesktopViewer {
     try { video = this.options.createVideo?.() ?? document.createElement("video"); }
     catch { this.peerRetryDue = this.now() + 1000; return; }
     this.pathProbe.stop();
-    const next = new WebRtcRemoteDesktopViewer({ ...this.options, initialPeer: undefined,
+    const next = new WebRtcRemoteDesktopViewer({ ...this.options, descriptor: this.descriptor, initialPeer: undefined,
       sequenceFloor: this.lastSequence(),
       onState: () => {}, onFrame: () => {}, onPresentation: undefined,
       onReport: () => {}, onTerminal: reason => {
@@ -519,6 +526,7 @@ export class WebRtcRemoteDesktopViewer {
     if (data.t === "rd.start_failed" && this.activation && data.request_id === this.activation.requestId) { this.close("start_not_authorized"); return; }
     if (data.t === "rd.started" && this.activation && data.request_id === this.activation.requestId) {
       this.activation.approved = true;
+      this.captureTimes.clear(); this.presentedTimes.clear(); this.unverifiedFrames.clear();
       this.descriptor = { ...this.descriptor, standby: false };
       this.options.onStandbyState?.("active", this.now());
     }
@@ -544,6 +552,12 @@ export class WebRtcRemoteDesktopViewer {
         const presented = this.presentedTimes.get(rtp);
         if (presented !== undefined) { this.telemetry.captureFrameTime(presented, capture); this.presentedTimes.delete(rtp); }
         else this.captureTimes.set(rtp, capture);
+      }
+      for (const [rtp, waiting] of this.unverifiedFrames) {
+        if (waiting.attachment === this.videoAttachment && waiting.video === this.video && this.captureTimes.has(rtp)) {
+          this.unverifiedFrames.delete(rtp); this.frame(waiting.video, waiting.at, waiting.metadata);
+          if (this.firstCaptureVerified || !this.unverifiedFrames.size) break;
+        }
       }
       while (this.captureTimes.size > 512) this.captureTimes.delete(this.captureTimes.keys().next().value!);
     } else if (data.t === "rd.publisher_stats" && data.metrics && typeof data.metrics === "object") {
@@ -587,13 +601,15 @@ export class WebRtcRemoteDesktopViewer {
   lastSequence(): number { return this.replacement?.lastSequence() ?? this.input.lastSequence; }
   attachVideo(video: HTMLVideoElement | null): void {
     if (this.replacement) return this.replacement.attachVideo(video);
-    const attachment = ++this.videoAttachment;
+    const attachment = ++this.videoAttachment; this.unverifiedFrames.clear();
+    if (this.guardedVideo) { this.guardedVideo.video.style.visibility = this.guardedVideo.visibility; this.guardedVideo = undefined; }
     if (this.video && this.frameCallback !== undefined) this.video.cancelVideoFrameCallback?.(this.frameCallback);
     if (this.video) { this.video.onloadeddata = null; this.video.ontimeupdate = null; if (this.video !== video) this.video.srcObject = null; }
     this.frameCallback = undefined; this.video = video; this.lastFrameCount = undefined;
     if (!video || this.ended) return;
+    if (this.requireStartCapture && !this.firstCaptureVerified && video.style) { this.guardedVideo = { video, visibility: video.style.visibility }; video.style.visibility = "hidden"; }
     video.autoplay = true; video.muted = true; video.playsInline = true;
-    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); } else this.telemetry.step("first_frame_decoded_ms"); } };
+    video.onloadeddata = () => { if (!this.ended && this.videoAttachment === attachment && video.videoWidth && video.videoHeight) { if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); } else if (!this.requireStartCapture || this.firstCaptureVerified) this.telemetry.step("first_frame_decoded_ms"); } };
     if (typeof video.requestVideoFrameCallback === "function") {
       const frame: VideoFrameRequestCallback = (_now, raw) => {
         if (this.ended || this.video !== video || this.videoAttachment !== attachment) return;
@@ -620,10 +636,33 @@ export class WebRtcRemoteDesktopViewer {
   private play(): void { try { const playing = this.video?.play(); playing?.catch(() => {}); } catch { /* attach before autoplay is permitted */ } }
   private frame(video: HTMLVideoElement, at: number, metadata: Partial<FrameMetadata>): void {
     if (this.ended || !video.videoWidth || !video.videoHeight) return;
+    if (this.requireStartCapture && !this.firstCaptureVerified) {
+      if (!this.activation?.approved) return;
+      const rtp = metadata.rtpTimestamp;
+      if (!Number.isInteger(rtp) || !this.captureTimes.has(rtp!)) {
+        if (Number.isInteger(rtp)) {
+          this.unverifiedFrames.set(rtp!, { video, at, metadata: { ...metadata }, attachment: this.videoAttachment });
+          while (this.unverifiedFrames.size > 64) this.unverifiedFrames.delete(this.unverifiedFrames.keys().next().value!);
+        }
+        return;
+      }
+      if (!this.captureSourceVerified) {
+        this.captureSourceVerified = true; this.captureRevealedAt = this.now(); this.unverifiedFrames.clear();
+        if (this.guardedVideo) this.guardedVideo.video.style.visibility = "visible";
+        // A genuine decoded screen is available. It has not yet been observed
+        // presenting while visible, so do not backdate its hidden callback.
+        this.hasFrame = true; this.updateState();
+        swallow(() => this.options.onFrame(video.videoWidth, video.videoHeight));
+        return;
+      }
+      if (at < this.captureRevealedAt) return;
+      this.firstCaptureVerified = true; this.guardedVideo = undefined;
+    }
     if (this.pendingReady) { this.pendingDecoded = true; this.pendingReady(); return; }
     if (this.pictureRebuilding && this.trackGeneration !== this.generation) return;
     this.hasFrame = true; this.pictureRebuilding = false; this.telemetry.frame(at, this.captureMappingAvailable ? { ...metadata, captureTime: undefined } : metadata);
-    const sample: WebRtcPresentation = { session_frame_count: ++this.sessionFrameCount, peer_generation: this.generation, presented_at_ms: at };
+    const captured = Number.isInteger(metadata.rtpTimestamp) ? this.captureTimes.get(metadata.rtpTimestamp!) : undefined;
+    const sample: WebRtcPresentation = { ...(captured !== undefined ? { host_capture_wall_ms: captured } : {}), session_frame_count: ++this.sessionFrameCount, peer_generation: this.generation, presented_at_ms: at };
     if (this.lastPresentedAt !== undefined && at >= this.lastPresentedAt) sample.gap_ms = at - this.lastPresentedAt;
     this.lastPresentedAt = at;
     for (const key of ["expectedDisplayTime", "presentationTime", "captureTime", "receiveTime", "processingDuration", "presentedFrames", "rtpTimestamp"] as const) {
@@ -693,8 +732,8 @@ export class WebRtcRemoteDesktopViewer {
       const pair = (transport && byId.get(transport.selectedCandidatePairId)) ?? all.find(value => value.type === "candidate-pair" && (value.selected || value.nominated && value.state === "succeeded"));
       const local = pair && byId.get(pair.localCandidateId); const remote = pair && byId.get(pair.remoteCandidateId);
       const inbound = all.find(value => value.type === "inbound-rtp" && (value.kind === "video" || value.mediaType === "video"));
-      if (typeof inbound?.framesDecoded === "number" && inbound.framesDecoded > 0) this.telemetry.step("first_frame_decoded_ms");
-      if (inbound) this.telemetry.hostSample(typeof inbound.bytesReceived === "number" ? inbound.bytesReceived : undefined, typeof inbound.framesReceived === "number" ? inbound.framesReceived : undefined);
+      if ((!this.requireStartCapture || this.firstCaptureVerified) && typeof inbound?.framesDecoded === "number" && inbound.framesDecoded > 0) this.telemetry.step("first_frame_decoded_ms");
+      if (inbound && (!this.requireStartCapture || this.firstCaptureVerified)) this.telemetry.hostSample(typeof inbound.bytesReceived === "number" ? inbound.bytesReceived : undefined, typeof inbound.framesReceived === "number" ? inbound.framesReceived : undefined);
       if (!pair) return;
       const readings = readPathStats(all, pathRoutes(this.descriptor.ice_servers));
       if (this.pathEnabled && readings.selected && pair.state === "succeeded") {

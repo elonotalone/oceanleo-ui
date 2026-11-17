@@ -3,54 +3,78 @@ import { GATEWAY_BASE } from "../lib/auth/config";
 import { controllerHeaders } from "./device-settings";
 import { WebRtcRemoteDesktopViewer, type PreparedWebRtcPeer } from "./remote-desktop-webrtc";
 
-type Prepared = { socket: WebSocket; controller: string; ready: boolean; claimed: boolean; timer?: ReturnType<typeof setInterval> };
+type PreparationOptions = { ready?(capabilities: string[]): void; unavailable?(): void };
+type Prepared = { socket: WebSocket; controller: string; ready: boolean; claimed: boolean; capabilities: string[]; owners: Set<PreparationOptions>; timer?: ReturnType<typeof setInterval> };
 const prepared = new Map<string, Prepared>();
 type CreatedSocket = { socket: WebSocket; controller: string; messages: string[]; timer: ReturnType<typeof setTimeout>; initialPeer?: PreparedWebRtcPeer };
 const created = new Map<string, CreatedSocket>();
 
 /** Preparing signalling creates no remote session, consent request or billing. */
-export function prepareRemoteWebRtcSocket(deviceId: string, options?: { ready?(capabilities: string[]): void; unavailable?(): void }): () => void {
+export function prepareRemoteWebRtcSocket(deviceId: string, options: PreparationOptions = {}): () => void {
   let cancelled = false, entry: Prepared | undefined;
-  const close = () => {
+  const subscribe = (current: Prepared) => {
+    if (cancelled || current.claimed) return false;
+    entry = current; current.owners.add(options);
+    if (current.ready) queueMicrotask(() => { if (!cancelled && !current.claimed) options.ready?.(current.capabilities); });
+    return true;
+  };
+  const release = () => {
     if (cancelled) return;
     cancelled = true;
-    options?.unavailable?.();
-    if (!entry || entry.claimed) return;
+    if (!entry) return;
+    entry.owners.delete(options);
+    if (entry.claimed || entry.owners.size) return;
     if (prepared.get(deviceId) === entry) prepared.delete(deviceId);
     clearInterval(entry.timer);
     entry.socket.onopen = entry.socket.onmessage = entry.socket.onerror = entry.socket.onclose = null;
-    try { entry.socket.close(); } catch { /* Cold connect remains available. */ }
+    try { entry.socket.close(); } catch { /* ordinary create remains available */ }
   };
   void (async () => {
     try {
-      if (prepared.has(deviceId) || prepared.size >= 4 || typeof window === "undefined") { options?.unavailable?.(); return; }
+      if (typeof window === "undefined") { options.unavailable?.(); return; }
+      const existing = prepared.get(deviceId);
+      if (existing && subscribe(existing)) return;
+      if (prepared.size >= 4) { options.unavailable?.(); return; }
       const token = await accessToken();
-      if (!token || cancelled || prepared.has(deviceId)) { options?.unavailable?.(); return; }
+      if (!token || cancelled) { options.unavailable?.(); return; }
       const controller = controllerHeaders()["X-OceanLeo-Controller"];
-      if (!controller) return;
+      if (!controller) { options.unavailable?.(); return; }
+      const racing = prepared.get(deviceId);
+      if (racing) { if (racing.controller === controller && subscribe(racing)) return; options.unavailable?.(); return; }
       const url = new URL(`${GATEWAY_BASE}/v1/devices/${encodeURIComponent(deviceId)}/remote-desktop/viewer-stream`, window.location.href);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       const socket = new WebSocket(url.toString());
-      entry = { socket, controller, ready: false, claimed: false };
-      const current = entry;
-      prepared.set(deviceId, current);
+      const current: Prepared = { socket, controller, ready: false, claimed: false, capabilities: [], owners: new Set() };
+      prepared.set(deviceId, current); subscribe(current);
+      const close = () => {
+        if (current.claimed) return;
+        if (prepared.get(deviceId) === current) prepared.delete(deviceId);
+        clearInterval(current.timer);
+        socket.onopen = socket.onmessage = socket.onerror = socket.onclose = null;
+        for (const owner of current.owners) owner.unavailable?.();
+        current.owners.clear();
+        try { socket.close(); } catch { /* ordinary create remains available */ }
+      };
       const send = (value: object) => { if (!current.claimed && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(value)); };
       socket.onopen = () => send({ type: "auth", token, controller });
       socket.onmessage = event => {
         if (typeof event.data !== "string" || event.data.length > 1024) { close(); return; }
-        try { const data = JSON.parse(event.data); if (data.type === "ready" && data.transport === "webrtc-v1") { current.ready = true; options?.ready?.(Array.isArray(data.capabilities) ? data.capabilities.filter((value: unknown): value is string => typeof value === "string") : []); } } catch { close(); }
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "ready" && data.transport === "webrtc-v1") {
+            current.ready = true; current.capabilities = Array.isArray(data.capabilities) ? data.capabilities.filter((value: unknown): value is string => typeof value === "string") : [];
+            for (const owner of [...current.owners]) owner.ready?.(current.capabilities);
+          }
+        } catch { close(); }
       };
       socket.onerror = socket.onclose = close;
       current.timer = setInterval(() => {
         if (current.claimed) return;
-        void accessToken().then(fresh => {
-          if (!fresh) { close(); return; }
-          send({ type: "auth.refresh", token: fresh }); send({ type: "ping" });
-        }).catch(close);
+        void accessToken().then(fresh => { if (!fresh) { close(); return; } send({ type: "auth.refresh", token: fresh }); send({ type: "ping" }); }).catch(close);
       }, 20_000);
-    } catch { close(); /* Old gateways and unavailable credentials use legacy connect. */ }
+    } catch { options.unavailable?.(); release(); }
   })();
-  return close;
+  return release;
 }
 
 export function takePreparedRemoteWebRtcSocket(deviceId: string, controller: string): WebSocket | null {

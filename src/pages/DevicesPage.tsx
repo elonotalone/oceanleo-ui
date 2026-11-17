@@ -1,5 +1,7 @@
 "use client";
 
+import { prepareRemoteWebRtcSocket } from "../api/remote-desktop-webrtc-preconnect";
+
 import { prepareRemoteDesktopStandby } from "../api/remote-desktop-webrtc-standby";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
@@ -142,6 +144,18 @@ export function DevicesPage({ legacyImportError: legacyImportErrorProp, client =
       legacyImportErrorProp !== undefined ? legacyImportErrorProp : legacyImportErrorFromLocation(),
     );
   }, [legacyImportErrorProp]);
+  const signalWarmIds = devices.filter(device => isComputer(device) && device.device_id !== localDeviceId)
+    .slice(0, 4).map(device => device.device_id).join(",");
+  useEffect(() => {
+    if (loginRequired || remoteDesktopClient !== defaultRemoteDesktopClient) return;
+    let releases: (() => void)[] = [];
+    const update = () => {
+      releases.forEach(release => release()); releases = [];
+      if (document.visibilityState === "visible") releases = signalWarmIds.split(",").filter(Boolean).map(id => prepareRemoteWebRtcSocket(id));
+    };
+    update(); document.addEventListener("visibilitychange", update);
+    return () => { document.removeEventListener("visibilitychange", update); releases.forEach(release => release()); };
+  }, [signalWarmIds, loginRequired, remoteDesktopClient, authRevision]);
   const standbyDeviceIds = devices.filter(device => isComputer(device) && device.device_id !== localDeviceId
     && deviceAvailability(device, remoteStatus[device.device_id]) === "online"
     && remoteStatus[device.device_id]?.standby_allowed === true
