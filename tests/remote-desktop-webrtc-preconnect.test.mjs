@@ -99,3 +99,37 @@ test('already-ready signalling can be subscribed without another socket or sessi
   setup(t);const warm=api.prepareRemoteWebRtcSocket('already-warm');t.after(warm);await drain();const ws=Socket.all[0];ws.open();ws.ready();let count=0;
   const standby=api.prepareRemoteWebRtcSocket('already-warm',{ready:()=>count++});t.after(standby);await drain();assert.equal(count,1);assert.equal(Socket.all.length,1);assert.ok(ws.sent.every(v=>v.type!=='create'));
 });
+
+test('click while SDP preparation is pending travels in the same create, and late click uses the same socket',async t=>{
+  setup(t);preparedPeer(t);let releaseOffer;const original=InitialPeer.prototype.createOffer;
+  t.mock.method(InitialPeer.prototype,'createOffer',async function(){await new Promise(resolve=>{releaseOffer=resolve;});return original.call(this);});
+  const release=api.prepareRemoteWebRtcSocket('intent-offer');t.after(release);await drain();const ws=Socket.all[0];ws.open();
+  ws.onmessage({data:JSON.stringify({type:'ready',transport:'webrtc-v1',capabilities:['remote-desktop-standby-v1','remote-desktop-start-intent-v1']})});
+  const promise=api.createPreparedRemoteWebRtcSession('intent-offer',{request_id:'standby-create',standby:true});await drain();
+  assert.equal(api.queuePreparedRemoteWebRtcStart('intent-offer','click_before_create'),true);releaseOffer();await drain();
+  assert.equal(ws.sent.at(-1).type,'create');assert.equal(ws.sent.at(-1).body.activation_request_id,'click_before_create');
+  ws.onmessage({data:JSON.stringify({type:'created',session:{session_id:'intent-offer-sid',transport:'webrtc-v1'}})});await promise;
+  assert.equal(api.queuePreparedRemoteWebRtcStart('intent-offer','other_click_key'),false);
+  api.takeCreatedRemoteWebRtcSocket('intent-offer-sid','controller');ws.close();
+});
+test('click after create is sent is pipelined before created and is never sent to a legacy gateway',async t=>{
+  setup(t);for(const supported of [true,false]){
+    const id=`intent-sent-${supported}`,release=api.prepareRemoteWebRtcSocket(id);t.after(release);await drain();const ws=Socket.all.at(-1);ws.open();
+    ws.onmessage({data:JSON.stringify({type:'ready',transport:'webrtc-v1',capabilities:supported?['remote-desktop-start-intent-v1']:[]})});
+    const promise=api.createPreparedRemoteWebRtcSession(id,{request_id:'standby-key',standby:true});await drain();
+    assert.equal(api.queuePreparedRemoteWebRtcStart(id,'click_after_create'),supported);
+    assert.equal(ws.sent.some(value=>value.type==='standby.start'),supported);
+    if(supported)assert.deepEqual(ws.sent.at(-1),{type:'standby.start',request_id:'click_after_create'});
+    ws.onmessage({data:JSON.stringify({type:'created',session:{session_id:id,transport:'webrtc-v1'}})});await promise;
+    api.takeCreatedRemoteWebRtcSocket(id,'controller');ws.close();
+  }
+});
+test('click after created but before stream adoption uses the held socket with no new create',async t=>{
+  setup(t);const release=api.prepareRemoteWebRtcSocket('intent-created');t.after(release);await drain();const ws=Socket.all[0];ws.open();
+  ws.onmessage({data:JSON.stringify({type:'ready',transport:'webrtc-v1',capabilities:['remote-desktop-start-intent-v1']})});
+  const promise=api.createPreparedRemoteWebRtcSession('intent-created',{request_id:'created-key',standby:true});await drain();
+  ws.onmessage({data:JSON.stringify({type:'created',session:{session_id:'created-intent-sid',transport:'webrtc-v1'}})});await promise;
+  assert.equal(api.queuePreparedRemoteWebRtcStart('intent-created','click_after_created'),true);
+  assert.deepEqual(ws.sent.at(-1),{type:'standby.start',request_id:'click_after_created'});
+  assert.equal(ws.sent.filter(value=>value.type==='create').length,1);api.takeCreatedRemoteWebRtcSocket('created-intent-sid','controller');ws.close();
+});

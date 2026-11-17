@@ -15,6 +15,7 @@ const warmApi = await import(await compileModule("src/api/remote-desktop.ts", {
   "./device-settings": dataModule('export function controllerHeaders(){return {"X-OceanLeo-Controller":"controller"}};export async function registerController(){return {ok:true}}'),
   "./remote-desktop-webrtc-preconnect": dataModule(`
     export function prepareRemoteWebRtcSocket(){return ()=>{};}
+    export function queuePreparedRemoteWebRtcStart(){return false;}
     export async function createPreparedRemoteWebRtcSession(){return null;}
     export function takePreparedRemoteWebRtcSocket(){return null;}
     export function takeCreatedRemoteWebRtcSocket(){const item=globalThis.__webrtcCreated;globalThis.__webrtcCreated=null;return item??null;}
@@ -334,4 +335,39 @@ test('offer queues behind auth before the first state acknowledgement',async t=>
  await drain();const socket=Socket.all.at(-1);assert.equal(socket.sent.length,0);socket.onopen();await drain();
  assert.equal(socket.sent[0].type,'auth');assert.ok(socket.sent.slice(1).some(x=>x.type==='signal'&&x.data.k==='offer'));
  socket.message({type:'state',state:'active',transport:'webrtc-v1'});const result=await pending;assert.equal(result.ok,true);h.streams.push(result.data);
+});
+
+test('validated inline standby exposes its handle before WS state and sends intent behind auth alongside exact DC start',async t=>{
+  const h=setup(t);const promise=api.remoteDesktopClient.openStream('device','sid',{state(){},frame(){}},
+    {transport:'webrtc-v1',standby:true,standbyStartIntent:true,activationRequestId:'early_stream_click',clickedAt:900,
+      descriptor:descriptor({standby:true,standby_expires_at:new Date(epoch+30_000).toISOString()})});
+  await drain();const result=await promise;assert.equal(result.ok,true);h.streams.push(result.data);
+  const ws=Socket.all.at(-1);assert.equal(ws.sent.length,0,'no intent before authentication envelope');
+  ws.onopen();assert.deepEqual(ws.sent.slice(0,2),[{type:'auth',token:'viewer-token',controller:'controller'},{type:'standby.start',request_id:'early_stream_click'}]);
+  const ctl=Peer.all.at(-1).channels.find(c=>c.label==='rd-ctl');assert.equal(ctl.sent.filter(value=>value.t==='rd.start').length,1);
+  assert.equal(ctl.sent.find(value=>value.t==='rd.start').request_id,'early_stream_click');
+  ws.message({type:'state',state:'connecting',transport:'webrtc-v1'});assert.equal(ws.sent.filter(value=>value.type==='standby.start').length,1);
+  assert.equal(result.data.send({kind:'keypress',key:'A'}),false);
+});
+test('legacy standby still uses exact DC start and emits no unsupported WS intent',async t=>{
+  const h=setup(t);const promise=api.remoteDesktopClient.openStream('device','sid',{state(){},frame(){}},
+    {transport:'webrtc-v1',standby:true,activationRequestId:'legacy_stream_click',clickedAt:900,
+      descriptor:descriptor({standby:true,standby_expires_at:new Date(epoch+30_000).toISOString()})});
+  await drain();const result=await promise;h.streams.push(result.data);const ws=Socket.all.at(-1);ws.onopen();
+  assert.equal(ws.sent.some(value=>value.type==='standby.start'),false);
+  assert.equal(Peer.all.at(-1).channels.find(c=>c.label==='rd-ctl').sent.find(value=>value.t==='rd.start').request_id,'legacy_stream_click');
+});
+test('a refused claimed standby never creates another session while unsupported preparation may fall back',async t=>{
+  const claimed=await import(await compileModule('src/api/remote-desktop.ts',{
+    '../lib/auth/client':dataModule('export async function accessToken(){return "viewer-token";}'),
+    '../lib/auth/config':dataModule('export const GATEWAY_BASE="https://gateway.test";'),
+    './device-settings':dataModule('export function controllerHeaders(){return {"X-OceanLeo-Controller":"controller"}};export async function registerController(){return {ok:true}}'),
+    './remote-desktop-webrtc-standby':dataModule('export function claimRemoteDesktopStandbySession(){return Promise.resolve(globalThis.__r9Claim);}export function claimRemoteDesktopStandbyStream(){return null;}'),
+  }));
+  const h=setup(t,()=>({session_id:'legacy-fallback',state:'connecting',transport:'artc-v1'}));t.after(()=>delete globalThis.__r9Claim);
+  for(const error of ['signed_out','controller_revoked','standby_expired','network_error','aborted']){
+    globalThis.__r9Claim={ok:false,error};assert.equal((await claimed.remoteDesktopClient.createSession('device',{ownerDirect:true})).error,error);
+  }
+  assert.equal(h.calls.length,0);globalThis.__r9Claim={ok:false,error:'standby_unavailable'};
+  assert.equal((await claimed.remoteDesktopClient.createSession('device',{ownerDirect:true})).data.session_id,'legacy-fallback');assert.equal(h.calls.length,1);
 });

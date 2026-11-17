@@ -144,6 +144,7 @@ export class WebRtcRemoteDesktopViewer {
   private lastReport: number;
   private statsPending = false;
   private leaseDeadline: number;
+  private activeLeaseDeadline: number;
   private state: WebRtcViewerState = "connecting";
   private hostRelayRegion: string | undefined;
   private pingTimes = new Map<number, { at: number; key?: string; pairId?: string }>();
@@ -174,6 +175,7 @@ export class WebRtcRemoteDesktopViewer {
     if (options.sessionCreatedAt !== undefined) this.telemetry.step("session_created_ms", options.sessionCreatedAt);
     this.telemetry.step("descriptor_received_ms", options.descriptorReceivedAt);
     this.leaseDeadline = this.deadline(this.descriptor, options.descriptorReceivedAt);
+    this.activeLeaseDeadline = this.deadline({ ...this.descriptor, standby: false }, options.descriptorReceivedAt);
     this.input = new WebRtcInputScheduler({ sid: this.descriptor.session_id, sequenceFloor: options.sequenceFloor, now: this.now, wallNow: this.wallNow,
       fault: (label, reason) => this.channelFault(label, reason), written: () => this.telemetry.written(),
       receipt: (write, receipt) => this.telemetry.receipt(write, receipt) });
@@ -189,9 +191,13 @@ export class WebRtcRemoteDesktopViewer {
     if (this.ended || this.started) return;
     if (this.descriptor.role !== "viewer") throw new Error("webrtc_viewer_descriptor_required");
     this.started = true; this.emitState("connecting");
-    this.timer = setInterval(() => this.tick(), 100);
+    this.scheduleTick();
     if (this.now() >= this.leaseDeadline) { this.close("lease_expired"); return; }
     await this.createConnection(route);
+  }
+  private scheduleTick(): void {
+    clearInterval(this.timer);
+    this.timer = setInterval(() => this.tick(), this.requireStartCapture && !this.activation ? 1000 : 100);
   }
   private async createConnection(route?: PathRoute): Promise<void> {
     if (this.ended) return;
@@ -476,8 +482,11 @@ export class WebRtcRemoteDesktopViewer {
     if (this.ended || descriptor.transport !== "webrtc-v1" || descriptor.session_id !== this.descriptor.session_id || descriptor.role !== "viewer") return;
     // A delayed pre-renewal snapshot must not replace current credentials or grant a fresh relative lease.
     if (Date.parse(descriptor.lease_expires_at) < Date.parse(this.descriptor.lease_expires_at) || descriptor.server_now < this.descriptor.server_now) return;
+    if (this.activation?.approved && descriptor.standby) return;
     const sameExpiry = descriptor.lease_expires_at === this.descriptor.lease_expires_at && descriptor.standby === this.descriptor.standby && descriptor.standby_expires_at === this.descriptor.standby_expires_at;
     const deadline = this.deadline(descriptor);
+    const activeDeadline = this.deadline({ ...descriptor, standby: false });
+    this.activeLeaseDeadline = descriptor.lease_expires_at === this.descriptor.lease_expires_at ? Math.min(this.activeLeaseDeadline, activeDeadline) : activeDeadline;
     this.leaseDeadline = sameExpiry ? Math.min(this.leaseDeadline, deadline) : deadline;
     this.descriptor = descriptor;
     const routes = pathRoutes(descriptor.ice_servers); this.pathSelector.updateRoutes(routes);
@@ -525,9 +534,11 @@ export class WebRtcRemoteDesktopViewer {
     if (!data || data.v !== 1 || data.sid !== this.descriptor.session_id) return;
     if (data.t === "rd.start_failed" && this.activation && data.request_id === this.activation.requestId) { this.close("start_not_authorized"); return; }
     if (data.t === "rd.started" && this.activation && data.request_id === this.activation.requestId) {
+      if (this.activation.approved) return;
       this.activation.approved = true;
       this.captureTimes.clear(); this.presentedTimes.clear(); this.unverifiedFrames.clear();
       this.descriptor = { ...this.descriptor, standby: false };
+      this.leaseDeadline = this.activeLeaseDeadline;
       this.options.onStandbyState?.("active", this.now());
     }
     else if (data.t === "rd.input_receipt") this.input.receipt(data);
@@ -584,8 +595,9 @@ export class WebRtcRemoteDesktopViewer {
   }
   activateStandby(requestId: string, clickedAt = this.now()): void {
     if (this.replacement) return this.replacement.activateStandby(requestId, clickedAt);
-    if (!this.descriptor.standby || this.activation || !/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) return;
+    if (!this.requireStartCapture || this.activation || !/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) return;
     this.activation = { requestId, clickedAt, sent: false };
+    this.scheduleTick();
     this.telemetry.rebaseClick(clickedAt);
     this.options.onStandbyState?.("starting", this.now());
     this.startStandby();
@@ -595,7 +607,7 @@ export class WebRtcRemoteDesktopViewer {
     this.activation.sent = this.sendControl({ t: "rd.start", seq: this.lastSequence() + 1, request_id: this.activation.requestId });
     if (this.activation.sent) this.input.sequenceFloor(this.lastSequence() + 1);
   }
-  send(action: RemoteDesktopAction): boolean { return this.replacement ? this.replacement.send(action) : !this.ended && !this.descriptor.standby && (!this.activation || this.activation.approved === true) && this.input.send(action); }
+  send(action: RemoteDesktopAction): boolean { return this.replacement ? this.replacement.send(action) : !this.ended && !this.descriptor.standby && (!this.requireStartCapture || this.activation?.approved === true) && this.input.send(action); }
   releaseForHandoff(): Promise<void> { return this.replacement ? this.replacement.releaseForHandoff() : this.input.releaseForHandoff(); }
   finishHandoff(): void { if (this.replacement) this.replacement.finishHandoff(); else this.input.finishHandoff(); }
   lastSequence(): number { return this.replacement?.lastSequence() ?? this.input.lastSequence; }
@@ -715,9 +727,10 @@ export class WebRtcRemoteDesktopViewer {
       if (this.activeRoute) { this.pathSwitch = undefined; this.fallbackPath(); }
       this.restartDue = now + this.restartBackoff; this.restartBackoff = Math.min(8000, this.restartBackoff * 2); void this.offer(this.connection, true);
     }
-    this.pathTick();
+    const unusedStandby = this.requireStartCapture && !this.activation;
+    if (!unusedStandby) this.pathTick();
     if (now - this.lastPing >= 1000) this.ping();
-    if (now - this.lastStats >= 1000) { this.lastStats = now; void this.stats(); }
+    if (!unusedStandby && now - this.lastStats >= 1000) { this.lastStats = now; void this.stats(); }
     if (now - this.lastReport >= 10_000) { this.lastReport = now; const report = this.telemetry.report(false); swallow(() => this.options.onReport(report, false)); }
   }
   private async stats(): Promise<void> {

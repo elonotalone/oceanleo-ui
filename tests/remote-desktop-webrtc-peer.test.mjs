@@ -411,7 +411,10 @@ test('standby local lease expires at30s and extends only with a fresh authentica
 test('gateway activation replaces standby deadline with the normal session lease',async t=>{
   const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});await h.viewer.start();h.open();
   await h.advance(20_000);h.viewer.updateDescriptor(descriptor({standby:false,server_now:(WALL+20_000)/1000}));
-  await h.advance(20_000);assert.deepEqual(h.terminals,[]);assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);
+  await h.advance(20_000);assert.deepEqual(h.terminals,[]);assert.equal(h.viewer.send({kind:'keypress',key:'A'}),false);
+  h.viewer.activateStandby('click_after_snapshot',h.now());
+  h.viewer.pc.channel('rd-ctl').message({t:'rd.started',request_id:'click_after_snapshot'});
+  assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);
 });
 
 test('an idle pending first decode waits for control-open then promotes without requiring another frame',async t=>{
@@ -456,4 +459,22 @@ test('fresh matching capture timing before the approved callback admits exactly 
   const ctl=h.viewer.pc.channel('rd-ctl'),video=new FakeVideo();h.viewer.attachVideo(video);h.viewer.activateStandby('fresh_first_capture',100);ctl.message({t:'rd.started',request_id:'fresh_first_capture'});
   ctl.message({t:'rd.frame_time',gen:1,frames:[[77,WALL+110]]});video.frame({expectedDisplayTime:130,rtpTimestamp:77});assert.equal(h.frames.length,1);assert.equal(h.viewer.telemetry.steps.first_frame_presented_ms,undefined);
   ctl.message({t:'rd.frame_time',gen:1,frames:[[78,WALL+130]]});video.frame({expectedDisplayTime:150,rtpTimestamp:78});assert.equal(h.viewer.telemetry.steps.first_frame_presented_ms,50);
+});
+
+test('unused standby has only a1Hz viewer timer and does not poll stats or probe alternate paths',async t=>{
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});
+  const cadence=[];const schedule=globalThis.setInterval;t.mock.method(globalThis,'setInterval',(fn,ms)=>{cadence.push(ms);return schedule(fn,ms);});
+  await h.viewer.start();h.open();let stats=0;h.viewer.pc.getStats=async()=>{stats++;return new Map();};
+  h.viewer.pc.channel('rd-ctl').message({t:'rd.path_probe_ready',version:1});
+  await h.advance(5000);assert.deepEqual(cadence,[1000]);assert.equal(stats,0);assert.equal(h.peers.length,1);
+  h.viewer.activateStandby('idle_clicked_request',h.now());assert.deepEqual(cadence,[1000,100]);await h.advance(1000);assert.ok(stats>0);
+});
+test('stale standby snapshots and duplicate started acknowledgments cannot reblock or erase an active first-picture mapping',async t=>{
+  const h=await harness(t,{descriptor:descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()})});await h.viewer.start();h.open();
+  h.viewer.activateStandby('stable_authority_key',100);const ctl=h.viewer.pc.channel('rd-ctl');
+  ctl.message({t:'rd.started',request_id:'stable_authority_key'});
+  ctl.message({t:'rd.frame_time',gen:1,frames:[[123,WALL+110]]});
+  ctl.message({t:'rd.started',request_id:'stable_authority_key'});assert.equal(h.viewer.captureTimes.get(123),WALL+110);
+  h.viewer.updateDescriptor(descriptor({standby:true,standby_expires_at:new Date(WALL+30_000).toISOString()}));
+  assert.equal(h.viewer.send({kind:'keypress',key:'A'}),true);await h.advance(30_000);assert.deepEqual(h.terminals,[]);
 });

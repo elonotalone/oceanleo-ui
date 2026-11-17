@@ -3,8 +3,10 @@ import test from 'node:test';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
 const preparation=[];
 globalThis.__r8Prepare=(id,options)=>{const row={id,options,closed:0};preparation.push(row);return()=>row.closed++;};
+const intents=[];
+globalThis.__r9Intent=(...args)=>{intents.push(args);return true;};
 const api=await import(await compileModule('src/api/remote-desktop-webrtc-standby.ts',{
-  './remote-desktop-webrtc-preconnect':dataModule('export function prepareRemoteWebRtcSocket(...args){return globalThis.__r8Prepare(...args);}'),
+  './remote-desktop-webrtc-preconnect':dataModule('export function prepareRemoteWebRtcSocket(...args){return globalThis.__r8Prepare(...args);} export function queuePreparedRemoteWebRtcStart(...args){return globalThis.__r9Intent(...args);}'),
 }));
 const settle=async()=>{for(let i=0;i<12;i++)await Promise.resolve();};
 function setup(t){
@@ -69,5 +71,27 @@ test('claimed but not approved standby closes when hidden or its visible owner u
     if(reason==='hidden'){doc.visibilityState='hidden';doc.dispatchEvent(new Event('visibilitychange'));}else release();
     assert.equal((await pending).ok,false);assert.equal(c.log.creates[0].options.signal.aborted,true);
     accept();await settle();assert.deepEqual(c.log.closed,['standby-session']);assert.equal(c.log.activated.length,0);
+  }
+});
+
+test('click intent reaches an in-flight create immediately and keeps the same key in stream/DC adoption',async t=>{
+  setup(t);const {c,accept}=client();const release=api.prepareRemoteDesktopStandby('intent-inflight',c);t.after(release);
+  preparation.at(-1).options.ready(['remote-desktop-standby-v1','remote-desktop-start-intent-v1']);
+  const pending=api.claimRemoteDesktopStandbySession('intent-inflight',{requestId:'inflight_click_key',clickedAt:123});
+  assert.deepEqual(intents.at(-1),['intent-inflight','inflight_click_key']);
+  assert.equal(c.log.creates[0].options.activationRequestId,'inflight_click_key','late click remains readable while controller registration is in flight');
+  accept();await pending;await settle();
+  assert.equal(c.log.opens[0].options.activationRequestId,'inflight_click_key');
+  assert.equal(c.log.opens[0].options.standbyStartIntent,true);
+  const opened=await api.claimRemoteDesktopStandbyStream('intent-inflight','standby-session',{state(){}},{});
+  assert.deepEqual(c.log.activated,[['inflight_click_key',123]]);opened.data.close();
+});
+test('a pre-create click is attached to the eventual create only after capability negotiation',async t=>{
+  setup(t);for(const supported of [true,false]){
+    const {c,accept}=client();const id=`before-create-${supported}`,release=api.prepareRemoteDesktopStandby(id,c);t.after(release);
+    const pending=api.claimRemoteDesktopStandbySession(id,{requestId:'precreate_click_key'});
+    preparation.at(-1).options.ready(['remote-desktop-standby-v1',...(supported?['remote-desktop-start-intent-v1']:[])]);
+    assert.equal(c.log.creates[0].options.activationRequestId,'precreate_click_key');
+    assert.equal(c.log.creates[0].options.standbyStartIntent,supported);accept();await pending;await settle();release();
   }
 });

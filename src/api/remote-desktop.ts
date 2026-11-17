@@ -191,6 +191,9 @@ export interface RemoteDesktopRequestOptions {
   ownerDirect?: boolean;
   /** Internal visible-owner prewarm; never captures until a fresh rd.start approval. */
   standby?: boolean;
+  /** Exact user click, capability-gated; this intent never authorizes host media. */
+  activationRequestId?: string;
+  standbyStartIntent?: boolean;
   /** openStream on re-attach: continue input numbering above this (the previous socket's last seq). */
   sequenceFloor?: number;
   transport?: "artc-v1" | "webrtc-v1";
@@ -738,14 +741,15 @@ export const remoteDesktopClient: RemoteDesktopClient = {
   async createSession(deviceId, options) {
     if (!options?.standby && options?.ownerDirect) {
       const standby = claimRemoteDesktopStandbySession(deviceId, options);
-      if (standby) { const result = await standby; if (result.ok) return result; }
+      if (standby) { const result = await standby; if (result.ok || result.error !== "standby_unavailable") return result; }
     }
     const registered = await registerController(options?.signal);
     if (!registered.ok) return { ok: false, error: registered.error, status: registered.status };
     // One request id for every attempt: the gateway hands a retry the session the first
     // attempt created (its reply lost on the way) instead of a second consent request.
     const body = JSON.stringify({ request_id: options?.requestId ?? newRequestId(), transports: ["webrtc-v1", "artc-v1"], media: ["artc-v1"],
-      ...(options?.ownerDirect === true ? { owner_direct: true } : {}), ...(options?.standby ? { standby: true } : {}) });
+      ...(options?.ownerDirect === true ? { owner_direct: true } : {}), ...(options?.standby ? { standby: true,
+        ...(options.standbyStartIntent && options.activationRequestId ? { activation_request_id: options.activationRequestId } : {}) } : {}) });
     const started = Date.now();
     let result: RemoteDesktopApiResult<unknown>;
     const prepared = await createPreparedRemoteWebRtcSession(deviceId, JSON.parse(body), options?.signal);

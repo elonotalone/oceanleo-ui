@@ -6,8 +6,23 @@ import { WebRtcRemoteDesktopViewer, type PreparedWebRtcPeer } from "./remote-des
 type PreparationOptions = { ready?(capabilities: string[]): void; unavailable?(): void };
 type Prepared = { socket: WebSocket; controller: string; ready: boolean; claimed: boolean; capabilities: string[]; owners: Set<PreparationOptions>; timer?: ReturnType<typeof setInterval> };
 const prepared = new Map<string, Prepared>();
-type CreatedSocket = { socket: WebSocket; controller: string; messages: string[]; timer: ReturnType<typeof setTimeout>; initialPeer?: PreparedWebRtcPeer };
+type ClickSocket = { socket: WebSocket; deviceId: string; startIntent: boolean; requestId?: string; createSent: boolean };
+type CreatedSocket = ClickSocket & { controller: string; messages: string[]; timer: ReturnType<typeof setTimeout>; initialPeer?: PreparedWebRtcPeer };
 const created = new Map<string, CreatedSocket>();
+const creating = new Map<string, ClickSocket>();
+
+/** A click may overtake session creation; the same authenticated socket orders both. */
+export function queuePreparedRemoteWebRtcStart(deviceId: string, requestId: string): boolean {
+  const item = creating.get(deviceId) ?? [...created.values()].find(value => value.deviceId === deviceId);
+  if (!item?.startIntent || !/^[A-Za-z0-9_-]{8,80}$/.test(requestId) || item.socket.readyState !== WebSocket.OPEN) return false;
+  if (item.requestId) return item.requestId === requestId;
+  item.requestId = requestId;
+  if (item.createSent) {
+    try { item.socket.send(JSON.stringify({ type: "standby.start", request_id: requestId })); }
+    catch { return false; }
+  }
+  return true;
+}
 
 /** Preparing signalling creates no remote session, consent request or billing. */
 export function prepareRemoteWebRtcSocket(deviceId: string, options: PreparationOptions = {}): () => void {
@@ -90,17 +105,23 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
   if (signal?.aborted) return null;
   let controller: string;
   try { controller = controllerHeaders()["X-OceanLeo-Controller"]; } catch { return null; }
+  const startIntent = prepared.get(deviceId)?.capabilities.includes("remote-desktop-start-intent-v1") === true
+    && (body as { standby?: boolean }).standby === true;
   const socket = takePreparedRemoteWebRtcSocket(deviceId, controller);
   if (!socket) return null;
+  const click: ClickSocket = { socket, deviceId, startIntent, createSent: false,
+    requestId: startIntent ? (body as { activation_request_id?: string }).activation_request_id : undefined };
+  creating.set(deviceId, click);
+  const stopCreating = () => { if (creating.get(deviceId) === click) creating.delete(deviceId); };
   const initialPeer = await WebRtcRemoteDesktopViewer.prepareInitialPeer();
   if (signal?.aborted || socket.readyState !== WebSocket.OPEN) {
-    initialPeer?.pc.close(); socket.close(); return null;
+    stopCreating(); initialPeer?.pc.close(); socket.close(); return null;
   }
   return new Promise(resolve => {
     let settled = false;
     const fail = () => {
       if (settled) return;
-      settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", fail);
+      settled = true; stopCreating(); clearTimeout(timeout); signal?.removeEventListener("abort", fail);
       socket.onmessage = socket.onerror = socket.onclose = null;
       initialPeer?.pc.close();
       try { socket.close(); } catch { /* HTTP retries the SAME request id. */ }
@@ -115,7 +136,7 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
       try { data = JSON.parse(event.data); } catch { fail(); return; }
       if (data.type === "pong" || data.type === "ready") return;
       if (data.type !== "created" || !data.session || typeof data.session.session_id !== "string") { fail(); return; }
-      settled = true; clearTimeout(timeout); signal?.removeEventListener("abort", fail);
+      settled = true; stopCreating(); clearTimeout(timeout); signal?.removeEventListener("abort", fail);
       const sessionId = data.session.session_id as string;
       const acceptedPeer = data.session.transport === "webrtc-v1" ? initialPeer : undefined;
       if (initialPeer && !acceptedPeer) initialPeer.pc.close();
@@ -123,7 +144,7 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
       let disposed = false;
       const dispose = () => { if (disposed) return; disposed = true; clearTimeout(timer); created.delete(sessionId); acceptedPeer?.pc.close(); };
       const timer = setTimeout(() => { if (created.get(sessionId)?.socket === socket) { dispose(); socket.close(); } }, 10_000);
-      const item = { socket, controller, messages, timer, initialPeer: acceptedPeer };
+      const item = { ...click, controller, messages, timer, initialPeer: acceptedPeer };
       created.set(sessionId, item);
       socket.onmessage = next => {
         if (typeof next.data !== "string" || next.data.length > 65_536 || messages.length >= 64) { dispose(); socket.close(); return; }
@@ -134,7 +155,8 @@ export async function createPreparedRemoteWebRtcSession(deviceId: string, body: 
     };
     try {
       if (initialPeer) initialPeer.offeredAt = performance.now();
-      socket.send(JSON.stringify({ type: "create", body, ...(initialPeer ? { offer: { k: "offer", gen: 1, sdp: initialPeer.offer.sdp } } : {}) }));
+      socket.send(JSON.stringify({ type: "create", body: { ...body, ...(click.requestId ? { activation_request_id: click.requestId } : {}) }, ...(initialPeer ? { offer: { k: "offer", gen: 1, sdp: initialPeer.offer.sdp } } : {}) }));
+      click.createSent = true;
     } catch { fail(); }
   });
 }

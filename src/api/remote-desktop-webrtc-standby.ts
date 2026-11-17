@@ -1,5 +1,5 @@
 import type { RemoteDesktopApiResult, RemoteDesktopClient, RemoteDesktopRequestOptions, RemoteDesktopSession, RemoteDesktopStream, RemoteDesktopStreamHandlers } from "./remote-desktop";
-import { prepareRemoteWebRtcSocket } from "./remote-desktop-webrtc-preconnect";
+import { prepareRemoteWebRtcSocket, queuePreparedRemoteWebRtcStart } from "./remote-desktop-webrtc-preconnect";
 import { newRequestId } from "./remote-desktop-retry";
 
 type Result<T> = Promise<RemoteDesktopApiResult<T>>;
@@ -10,6 +10,7 @@ type Entry = {
   handlers?: RemoteDesktopStreamHandlers; snapshots: Map<PropertyKey, unknown[]>;
   value?: RemoteDesktopSession; live?: RemoteDesktopStream; releaseSocket?: () => void;
   fail?(): void; renew?: ReturnType<typeof setInterval>; requestId?: string; clickedAt?: number; firstPresentedMs?: number;
+  startIntent?: boolean;
 };
 // One visible owner card, one socket/peer. Never build a hidden pool.
 const entries = new Map<string, Entry>();
@@ -54,6 +55,7 @@ export function prepareRemoteDesktopStandby(deviceId: string, client: RemoteDesk
     }
     const opened = await client.openStream(deviceId, result.data.session_id, handlers, {
       standby: true, transport: "webrtc-v1", descriptor: result.data.media?.media?.transport === "webrtc-v1" ? result.data.media.media : undefined,
+      standbyStartIntent: entry.startIntent, activationRequestId: entry.requestId, clickedAt: entry.clickedAt,
       signal: entry.abort.signal,
     });
     if (entry.disposed) { opened.data?.close(); return { ok: false, error: "aborted" }; }
@@ -68,7 +70,10 @@ export function prepareRemoteDesktopStandby(deviceId: string, client: RemoteDesk
       if (entry.disposed || begun) return;
       if (!capabilities.includes("remote-desktop-standby-v1") || !visible()) { entry.fail?.(); return; }
       begun = true; entry.state = "connecting";
-      void client.createSession(deviceId, { standby: true, ownerDirect: true, requestId: newRequestId(), signal: entry.abort.signal }).then(result => {
+      entry.startIntent = capabilities.includes("remote-desktop-start-intent-v1");
+      void client.createSession(deviceId, { standby: true, ownerDirect: true, requestId: newRequestId(), signal: entry.abort.signal,
+        standbyStartIntent: entry.startIntent, get activationRequestId() { return entry.requestId; },
+      }).then(result => {
         if (result.ok && result.data) {
           if (entry.disposed) { void client.closeSession(deviceId, result.data.session_id).catch(() => {}); resolveSession({ ok: false, error: "aborted" }); return; }
           entry.value = result.data;
@@ -95,6 +100,9 @@ export function claimRemoteDesktopStandbySession(deviceId: string, options?: Rem
   const entry = entries.get(deviceId);
   if (!entry?.session || entry.claimed || entry.disposed || !visible() || options?.signal?.aborted) return null;
   entry.claimed = true; entry.requestId = options?.requestId ?? newRequestId(); entry.clickedAt = options?.clickedAt ?? now();
+  entry.state = "starting";
+  if (entry.startIntent) queuePreparedRemoteWebRtcStart(deviceId, entry.requestId);
+  entry.live?.activateStandby?.(entry.requestId, entry.clickedAt);
   options?.signal?.addEventListener("abort", () => dispose(entry), { once: true });
   return entry.session;
 }

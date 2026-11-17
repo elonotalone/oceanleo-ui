@@ -50,6 +50,7 @@ export async function openRemoteWebRtcStream(
   let state: RemoteDesktopSessionState = "pending_consent";
   let video: HTMLVideoElement | null = null, descriptor: RemoteWebRtcDescriptor | null = null;
   let leaseDeadline = Infinity, renewalAt = Infinity, leaseIdentity = -Infinity;
+  let activeLeaseDeadline = Infinity;
   let standbyIdentity: string | undefined;
   let reconnectWindow = 180_000, disconnectedAt = monotonic(), retryDelay = 200;
   let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
@@ -57,6 +58,8 @@ export async function openRemoteWebRtcStream(
   let negotiation: Promise<void> | null = null, nextNegotiation = 0, negotiationBackoff = 1000;
   let pingId = 0, lastPongAt = monotonic(), lastRefreshAt = monotonic();
   let mediaReady = false, mediaReadySent = false;
+  let activation: { requestId: string; at: number } | undefined;
+  let startIntentSent = false, activated = false;
   let incomingSignals: Record<string, unknown>[] = [], outgoingSignals: Record<string, unknown>[] = [];
   let signalTimes: number[] = [];
   let firstOfferSentAt = initialPeer?.offeredAt;
@@ -117,6 +120,10 @@ export async function openRemoteWebRtcStream(
       outgoingSignals.shift(); signalTimes.push(now);
     }
   };
+  const flushStartIntent = () => {
+    if (!options.standbyStartIntent || !activation || startIntentSent || (!authenticated && !authFrameSent)) return;
+    startIntentSent = write({ type: "standby.start", request_id: activation.requestId }, authFrameSent);
+  };
   const enqueueSignal = (data: Record<string, unknown>): boolean => {
     if (ended || new TextEncoder().encode(JSON.stringify({ type: "signal", data })).byteLength > MAX_SIGNAL_BYTES) return false;
     // Bound a detached socket to the current offer and latest 64 trickled candidates.
@@ -173,10 +180,13 @@ export async function openRemoteWebRtcStream(
   };
   const applyDescriptor = (value: RemoteWebRtcDescriptor, receivedAt = monotonic()): boolean => {
     if (ended) return false;
+    if (activated && value.standby) return false;
     const expiresAt = Date.parse(value.lease_expires_at);
     if (descriptor && (expiresAt < leaseIdentity || value.server_now < descriptor.server_now)) return false;
     const validUntil = value.standby ? Math.min(expiresAt, Date.parse(value.standby_expires_at ?? "")) : expiresAt;
     const deadline = receivedAt + Math.max(0, validUntil - value.server_now * 1000);
+    const activeDeadline = receivedAt + Math.max(0, expiresAt - value.server_now * 1000);
+    activeLeaseDeadline = expiresAt === leaseIdentity ? Math.min(activeLeaseDeadline, activeDeadline) : activeDeadline;
     // Repeated snapshots of one lease must not turn a stale timestamp into extra time.
     leaseDeadline = expiresAt === leaseIdentity && value.standby_expires_at === standbyIdentity && value.standby === descriptor?.standby ? Math.min(leaseDeadline, deadline) : deadline;
     standbyIdentity = value.standby_expires_at;
@@ -191,7 +201,18 @@ export async function openRemoteWebRtcStream(
       initialPeer,
       sendSignal: enqueueSignal,
       onState: (next, path) => { if (!ended) handlers.webrtcState?.(next, path); },
-      onStandbyState: (state, at) => handlers.standbyState?.(state, at),
+      onStandbyState: (state, at) => {
+        if (state === "active") {
+          activated = true;
+          if (descriptor) {
+            descriptor = { ...descriptor, standby: false };
+            standbyIdentity = undefined;
+            leaseDeadline = activeLeaseDeadline;
+            renewalAt = activeLeaseDeadline - 60_000;
+          }
+        }
+        handlers.standbyState?.(state, at);
+      },
       onPresentation: sample => { if (!ended) handlers.webrtcPresentation?.(sample); },
       onFrame: (width, height) => {
         if (ended) return;
@@ -201,6 +222,7 @@ export async function openRemoteWebRtcStream(
       },
       onTerminal: reason => finish(reason), onReport: report,
     });
+    if (activation) peer.activateStandby(activation.requestId, activation.at);
     initialPeer = undefined;
     peer.attachVideo(video);
     const pending = incomingSignals; incomingSignals = [];
@@ -231,7 +253,11 @@ export async function openRemoteWebRtcStream(
     })();
   };
   const stream: RemoteDesktopStream = {
-    activateStandby: (requestId, at) => { clickedAt = at; peer?.activateStandby(requestId, at); },
+    activateStandby: (requestId, at) => {
+      if (ended || activation || !/^[A-Za-z0-9_-]{8,80}$/.test(requestId)) return;
+      activation = { requestId, at }; clickedAt = at;
+      flushStartIntent(); peer?.activateStandby(requestId, at);
+    },
     renewStandby: () => write({ type: "standby.renew" }),
     transport: "webrtc-v1", attachVideo: value => { video = value; peer?.attachVideo(value); },
     send: action => !ended && Boolean(peer) && (inputAllowed || action.kind === "release_all") && peer!.send(action),
@@ -248,7 +274,7 @@ export async function openRemoteWebRtcStream(
   const reconnect = () => {
     if (ended) return;
     if (authenticated) disconnectedAt = monotonic();
-    closeSocket(); mediaReadySent = false;
+    closeSocket(); mediaReadySent = false; startIntentSent = false;
     if (reconnectTimer) return;
     reconnectTimer = setTimeout(() => { reconnectTimer = undefined; void connect(); }, retryDelay);
     retryDelay = Math.min(8000, retryDelay * 2);
@@ -266,7 +292,7 @@ export async function openRemoteWebRtcStream(
     try { active = prepared ?? new WebSocket(url.toString()); } catch { reconnect(); return; }
     socket = active;
     socketTimeout = setTimeout(() => { if (socket === active) reconnect(); }, 10_000);
-    active.onopen = () => { if (socket === active) { authFrameSent = write({ type: "auth", token: fresh, controller }, true); if (authFrameSent) flushSignals(); } };
+    active.onopen = () => { if (socket === active) { authFrameSent = write({ type: "auth", token: fresh, controller }, true); if (authFrameSent) { flushStartIntent(); flushSignals(); } } };
     active.onmessage = event => {
       if (ended || socket !== active) return;
       if (typeof event.data !== "string" || new TextEncoder().encode(event.data).byteLength > MAX_SIGNAL_BYTES) { reconnect(); return; }
@@ -319,6 +345,7 @@ export async function openRemoteWebRtcStream(
       if (ended) return;
       handlers.state(state, typeof data.error === "string" ? data.error : undefined);
       settle({ ok: true, data: stream });
+      flushStartIntent();
       peer?.flushSignals();
       flushSignals();
       if (mediaReady && !mediaReadySent) mediaReadySent = write({ type: "media_ready" });
@@ -331,7 +358,7 @@ export async function openRemoteWebRtcStream(
       authFrameSent = write({ type: "auth.refresh", token: fresh }, true)
         && (Boolean(created) || write({ type: "attach", session_id: sessionId }, true));
       if (created) for (const data of created.messages) active.onmessage?.({ data } as MessageEvent);
-      if (authFrameSent) flushSignals(); else reconnect();
+      if (authFrameSent) { flushStartIntent(); flushSignals(); } else reconnect();
     }
   };
   const heartbeat = setInterval(() => {
@@ -341,7 +368,7 @@ export async function openRemoteWebRtcStream(
     if (!authenticated && now - disconnectedAt >= reconnectWindow) { finish("viewer_reconnect_timeout"); return; }
     if (authenticated && now - lastPongAt >= 10_000) { reconnect(); return; }
     if (authenticated) {
-      write({ type: "ping", id: ++pingId }); flushSignals();
+      write({ type: "ping", id: ++pingId }); flushStartIntent(); flushSignals();
       if (now - lastRefreshAt >= 20_000) {
         lastRefreshAt = now;
         void accessToken().then(token => { if (!ended) { if (token) write({ type: "auth.refresh", token }); else finish("unauthorized"); } }).catch(() => { if (!ended) reconnect(); });
@@ -351,6 +378,10 @@ export async function openRemoteWebRtcStream(
   }, 1000);
   options.signal?.addEventListener("abort", abort, { once: true });
   if (initialDescriptor) applyDescriptor(initialDescriptor, options.descriptorReceivedAt ?? monotonic());
+  if (options.activationRequestId) stream.activateStandby?.(options.activationRequestId, clickedAt);
+  // Standby readiness is the data-channel event, not this API promise. Expose the
+  // validated peer now so a click cannot wait for an additional WS state roundtrip.
+  if (!ended && options.standby && initialDescriptor) settle({ ok: true, data: stream });
   if (!ended) void connect(initialToken);
   return connected;
 }
