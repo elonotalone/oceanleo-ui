@@ -1,5 +1,6 @@
 "use client";
 
+import { followRichDocFonts } from "./rich-doc-fonts";
 import { richDocIsGenerated, richDocLabeledText, richDocLabeledHtml } from "./rich-doc-provenance";
 
 // ============================================================================
@@ -480,6 +481,10 @@ export function useRichDocEditor(
     },
     [collabRoom],
   );
+
+  useEffect(() => {
+    if (editor) return followRichDocFonts(editor);
+  }, [editor]);
 
   const review = useRichDocReview({
     editor,

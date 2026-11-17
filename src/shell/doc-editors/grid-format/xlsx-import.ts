@@ -2,7 +2,7 @@
 import type { ICellData, IStyleData, IWorksheetData } from "@univerjs/presets";
 import type * as Excel from "exceljs";
 import { strFromU8, unzipSync } from "fflate";
-import { EDITOR_FONT_MANIFEST } from "../../image-editor/editor-font-manifest";
+import { DELIVERED_EDITOR_FONT_FAMILIES } from "../../image-editor/editor-font-registry";
 import { bytesToDataUrl } from "../grid-univer/material-image";
 
 type Json = Record<string, any>;
@@ -59,7 +59,7 @@ export function xlsxColor(color: XlsxColor | undefined, theme = DEFAULT_THEME): 
 
 export function xlsxFontFamily(name: string | undefined): string | undefined {
   if (!name) return undefined;
-  const fonts = EDITOR_FONT_MANIFEST.fonts.map((font) => font.family);
+  const fonts = DELIVERED_EDITOR_FONT_FAMILIES;
   const known = fonts.find((font) => font.toLowerCase() === name.toLowerCase());
   if (known) return known;
   const serif = /serif|times|cambria|georgia|宋|明朝|ming|simsun|batang|source\s*han\s*serif/i.test(name) && !/sans/i.test(name);

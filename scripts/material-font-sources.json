@@ -1,0 +1,196 @@
+[
+  {
+    "family": "Space Grotesk",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/spacegrotesk/OFL.txt",
+    "sourceSha256": "564ce565c371c5e5bbf286006565a7c9aa55a9f56e7ca58d56e05d649dd61a72",
+    "cachePath": "space-grotesk/OFL.txt"
+  },
+  {
+    "family": "Space Grotesk",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/spacegrotesk/SpaceGrotesk%5Bwght%5D.ttf",
+    "sourceSha256": "acad6de1fc93436f5c0f1f4137751ef04f1aea3063e7036535970ffcfbd79f72",
+    "cachePath": "space-grotesk/SpaceGrotesk[wght].ttf"
+  },
+  {
+    "family": "Playfair Display",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/playfairdisplay/OFL.txt",
+    "sourceSha256": "566be814f8e96e93dfa16101331557eb6b5467e9e03f627c0910fe93ca12300e",
+    "cachePath": "playfair-display/OFL.txt"
+  },
+  {
+    "family": "Playfair Display",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/playfairdisplay/PlayfairDisplay-Italic%5Bwght%5D.ttf",
+    "sourceSha256": "a5e26dc5e2e77fb2803a0bf02fd4f81ee136ec8dea863ccdb0c59a263b21378b",
+    "cachePath": "playfair-display/PlayfairDisplay-Italic[wght].ttf"
+  },
+  {
+    "family": "Playfair Display",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/playfairdisplay/PlayfairDisplay%5Bwght%5D.ttf",
+    "sourceSha256": "c40f2293766a503bc70cce9e512ef844a4ccb7cbcde792fe2ea31d191917d8d6",
+    "cachePath": "playfair-display/PlayfairDisplay[wght].ttf"
+  },
+  {
+    "family": "ZCOOL QingKe HuangYou",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/zcoolqingkehuangyou/OFL.txt",
+    "sourceSha256": "f1bce31b817dee01c1e4ef8bc45d8ecb95f01f4abbf0a985007cb3cd0fd8123d",
+    "cachePath": "zcool-qingke-huangyou/OFL.txt"
+  },
+  {
+    "family": "ZCOOL QingKe HuangYou",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/zcoolqingkehuangyou/ZCOOLQingKeHuangYou-Regular.ttf",
+    "sourceSha256": "54f0c0df4308cd74cd0f2fd3494ae054dbc4a1fd6fa7d71f4807eb4cdd8b4136",
+    "cachePath": "zcool-qingke-huangyou/ZCOOLQingKeHuangYou-Regular.ttf"
+  },
+  {
+    "family": "JetBrains Mono",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/jetbrainsmono/JetBrainsMono-Italic%5Bwght%5D.ttf",
+    "sourceSha256": "85ae2a5cd3f56baf1ce1c21a851322c58e3d8fbe8e8ad4a4d090a820dd7fe558",
+    "cachePath": "jetbrains-mono/JetBrainsMono-Italic[wght].ttf"
+  },
+  {
+    "family": "JetBrains Mono",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/jetbrainsmono/JetBrainsMono%5Bwght%5D.ttf",
+    "sourceSha256": "48715a42ec242c21e9f02692891e147d022299a52e48d5e413e1a942193ffeda",
+    "cachePath": "jetbrains-mono/JetBrainsMono[wght].ttf"
+  },
+  {
+    "family": "JetBrains Mono",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/jetbrainsmono/OFL.txt",
+    "sourceSha256": "b2fe5e8987594e9ffd1d2ca52a2f5d73eb8335243893c5d6254b5ad69269591d",
+    "cachePath": "jetbrains-mono/OFL.txt"
+  },
+  {
+    "family": "Bebas Neue",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/bebasneue/BebasNeue-Regular.ttf",
+    "sourceSha256": "08e4623805102d819f58601e46e345648846075e363b2ceb23313c2d1c83ec73",
+    "cachePath": "bebas-neue/BebasNeue-Regular.ttf"
+  },
+  {
+    "family": "Bebas Neue",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/bebasneue/OFL.txt",
+    "sourceSha256": "72082f6cb4d04be2ecf7cc7d9e1e7d73787f0af8a5a278a47cade70c16b78341",
+    "cachePath": "bebas-neue/OFL.txt"
+  },
+  {
+    "family": "EB Garamond",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/ebgaramond/EBGaramond-Italic%5Bwght%5D.ttf",
+    "sourceSha256": "bba2c4499c93c9612b90b9825d32b07da52fce2fe57562a1eb6b833553f93c4e",
+    "cachePath": "eb-garamond/EBGaramond-Italic[wght].ttf"
+  },
+  {
+    "family": "EB Garamond",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/ebgaramond/EBGaramond%5Bwght%5D.ttf",
+    "sourceSha256": "ef9512f92f6d579e5dc75af59a5a4b1b8b47d2eda89e00b954d44520e5369027",
+    "cachePath": "eb-garamond/EBGaramond[wght].ttf"
+  },
+  {
+    "family": "EB Garamond",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/ebgaramond/OFL.txt",
+    "sourceSha256": "0985066662eb755ed3683ae5482a81a9195b49ce3f7e165cc2388b3dbece7dd7",
+    "cachePath": "eb-garamond/OFL.txt"
+  },
+  {
+    "family": "Caveat",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/caveat/Caveat%5Bwght%5D.ttf",
+    "sourceSha256": "0bdb6b660482d31531b3945849fba5916b3ef8695da7024a9e6b9ee3c4157988",
+    "cachePath": "caveat/Caveat[wght].ttf"
+  },
+  {
+    "family": "Caveat",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/caveat/OFL.txt",
+    "sourceSha256": "1f9d81d094273d82f3898a1ee8b598a717d050ecbf5ff7bede105b704880157b",
+    "cachePath": "caveat/OFL.txt"
+  },
+  {
+    "family": "LXGW WenKai",
+    "source": "https://raw.githubusercontent.com/lxgw/LxgwWenKai/4becfb4d5cf0c92cfdb60a6e9b504bda43315325/fonts/TTF/LXGWWenKai-Light.ttf",
+    "sourceSha256": "9a50e3f0f51fad60d68152d5191bce1a495bfc4b9ceb1cee24833835511d1dca",
+    "cachePath": "lxgw-wenkai/LXGWWenKai-Light.ttf"
+  },
+  {
+    "family": "LXGW WenKai",
+    "source": "https://raw.githubusercontent.com/lxgw/LxgwWenKai/4becfb4d5cf0c92cfdb60a6e9b504bda43315325/fonts/TTF/LXGWWenKai-Regular.ttf",
+    "sourceSha256": "2d73eea94ad808999d90c0000c239a84a33b09d4bc6ab6c5b8bbf1eda8a7fc8b",
+    "cachePath": "lxgw-wenkai/LXGWWenKai-Regular.ttf"
+  },
+  {
+    "family": "LXGW WenKai",
+    "source": "https://raw.githubusercontent.com/lxgw/LxgwWenKai/4becfb4d5cf0c92cfdb60a6e9b504bda43315325/fonts/TTF/LXGWWenKai-Medium.ttf",
+    "sourceSha256": "f4b8a34d1f838fe411540cb7c97b1c384ac9738a876c4104500bc42508b2312a",
+    "cachePath": "lxgw-wenkai/LXGWWenKai-Medium.ttf"
+  },
+  {
+    "family": "LXGW WenKai",
+    "source": "https://raw.githubusercontent.com/lxgw/LxgwWenKai/4becfb4d5cf0c92cfdb60a6e9b504bda43315325/OFL.txt",
+    "sourceSha256": "1a25e35da1031c6c3436fde545bb9cb5aca954e9873afe510c834b8b79bd21a0",
+    "cachePath": "lxgw-wenkai/OFL.txt"
+  },
+  {
+    "family": "Archivo",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/archivo/Archivo-Italic%5Bwdth%2Cwght%5D.ttf",
+    "sourceSha256": "305d13b4eb80e62f7d517f78d7c045250d977552a420f2dbed906f314e761305",
+    "cachePath": "archivo/Archivo-Italic[wdth,wght].ttf"
+  },
+  {
+    "family": "Archivo",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/archivo/Archivo%5Bwdth%2Cwght%5D.ttf",
+    "sourceSha256": "0e094a7d3c7c4c25cf1310c4b30014f1dae9332220b1c2c88f4fa996f0b05053",
+    "cachePath": "archivo/Archivo[wdth,wght].ttf"
+  },
+  {
+    "family": "Archivo",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/archivo/OFL.txt",
+    "sourceSha256": "108b4e57c9c796d3d38d0428ca7ee39de47ad93187302718d9b2d8864b9b716b",
+    "cachePath": "archivo/OFL.txt"
+  },
+  {
+    "family": "ZCOOL KuaiLe",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/zcoolkuaile/OFL.txt",
+    "sourceSha256": "538078469839b4a2e7ad22bef4ebe41681a4e53749bb2a072144024f1d6d703d",
+    "cachePath": "zcool-kuaile/OFL.txt"
+  },
+  {
+    "family": "ZCOOL KuaiLe",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/zcoolkuaile/ZCOOLKuaiLe-Regular.ttf",
+    "sourceSha256": "812a6fc1fe54b6d73a419245c32dfeba8aa33104d5be90d1cf6af082007cb71d",
+    "cachePath": "zcool-kuaile/ZCOOLKuaiLe-Regular.ttf"
+  },
+  {
+    "family": "Orbitron",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/orbitron/OFL.txt",
+    "sourceSha256": "ab609b0e110d622435ff337cdf233288556e011bbf9bd0550be98846c0630819",
+    "cachePath": "orbitron/OFL.txt"
+  },
+  {
+    "family": "Orbitron",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/orbitron/Orbitron%5Bwght%5D.ttf",
+    "sourceSha256": "f42db2dd16e642258e35782916eceb1dcdbea06fb958d77ad71dc5963587e8fd",
+    "cachePath": "orbitron/Orbitron[wght].ttf"
+  },
+  {
+    "family": "Ma Shan Zheng",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/mashanzheng/MaShanZheng-Regular.ttf",
+    "sourceSha256": "6d2546bb189c732a8ca29af9e22457b152387d158aa459e4ac2ce1e51788b7fb",
+    "cachePath": "ma-shan-zheng/MaShanZheng-Regular.ttf"
+  },
+  {
+    "family": "Ma Shan Zheng",
+    "source": "https://raw.githubusercontent.com/google/fonts/7af0d90b4d532ffa4b041937b560c6df4e7b1e95/ofl/mashanzheng/OFL.txt",
+    "sourceSha256": "d7bdb1cee215b689e23c2f95672a6084c790542170648267a55114103d756a08",
+    "cachePath": "ma-shan-zheng/OFL.txt"
+  },
+  {
+    "family": "Smiley Sans",
+    "source": "https://github.com/atelier-anchor/smiley-sans/releases/download/v2.0.1/smiley-sans-v2.0.1.zip",
+    "archiveMember": "SmileySans-Oblique.ttf",
+    "archiveSha256": "299c0be6c960ae37361762eca76f7d0cd516615435bb96c0d4b98a1e70178a07",
+    "sourceSha256": "b447d7e781f08bc95c4c9f23ba71ed2b8ebb639aa7184485c71c4ca5afcd25c4",
+    "cachePath": "smiley-sans/SmileySans-Oblique.ttf"
+  },
+  {
+    "family": "Smiley Sans",
+    "source": "https://raw.githubusercontent.com/atelier-anchor/smiley-sans/67e3821f4b06cbd7155fa6fa69daff4b6f311b76/LICENSE",
+    "sourceSha256": "9401f4050f1b66c26b6ccdc8b0e14a3c1cc37aac122eda84386f25854a9bec72",
+    "cachePath": "smiley-sans/OFL.txt"
+  }
+]

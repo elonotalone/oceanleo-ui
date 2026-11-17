@@ -189,23 +189,26 @@ async function docxToHtml(
     convertToHtml?: (input: {
       arrayBuffer?: ArrayBuffer;
       buffer?: Uint8Array;
-    }) => Promise<{ value: string }>;
+    }, options?: unknown) => Promise<{ value: string }>;
     default?: {
       convertToHtml: (input: {
         arrayBuffer?: ArrayBuffer;
         buffer?: Uint8Array;
-      }) => Promise<{ value: string }>;
+      }, options?: unknown) => Promise<{ value: string }>;
     };
   };
   const convertToHtml =
     mammothModule.convertToHtml ?? mammothModule.default?.convertToHtml;
   if (!convertToHtml) throw new Error("mammoth 模块加载失败");
   const bytes = officeBytesToArrayBuffer(arrayBuffer);
+  const { docxFontImport } = await import("./rich-doc-import-fonts");
+  const fonts = await docxFontImport(bytes);
   const { value } = await convertToHtml({
     arrayBuffer: bytes,
     buffer: new Uint8Array(bytes),
-  });
-  return sanitizeHtml(value, deps);
+  }, { styleMap: fonts.styleMap, transformDocument: fonts.transformDocument });
+  // Only registered family names are added; the existing sanitizer still owns admission.
+  return sanitizeHtml(fonts.apply(value), deps);
 }
 
 export async function markdownToHtml(

@@ -1,5 +1,6 @@
 "use client";
 
+import { NOTO_SANS_STACK } from "../image-editor/editor-fonts";
 import { useEffect } from "react";
 import { EditorContent } from "@tiptap/react";
 import { useUI } from "../../i18n/ui/useUI";
@@ -74,6 +75,7 @@ export function RichDocStage({
             editor={editor.editor}
             aria-label={tt("文档编辑区")}
             className="min-h-[720px]"
+            style={{ fontFamily: NOTO_SANS_STACK }}
           />
         </div>
       </div>

@@ -1,4 +1,6 @@
 /** Noto OFL families, from the same pinned TTFs as material-text-layers. */
+import { editorFontFamily } from "./editor-font-family";
+import { editorFontSpec, type EditorFontSpec } from "./editor-font-registry";
 import { EDITOR_FONT_MANIFEST } from "./editor-font-manifest";
 import { resolvePublicFontAsset } from "../../lib/asset-delivery";
 export { EDITOR_FONT_MANIFEST };
@@ -35,7 +37,8 @@ const supports = (subset: Subset, point: number) => {
 
 /** Additional script families for generic/legacy stacks. Explicit regional order wins. */
 export function editorFontFamilies(text: string, family: string): string[] {
-  const serif = /Serif|(?:^|,)\s*serif(?:,|$)/i.test(family) && !/sans-serif/i.test(family);
+  const first = editorFontFamily(family).split(",")[0];
+  const serif = /serif/i.test(first) && !/sans/i.test(first);
   const prefix = serif ? "Noto Serif" : "Noto Sans";
   const families = new Set([prefix]);
   if (/[\u3040-\u30ff]/u.test(text)) families.add(`${prefix} JP`);
@@ -84,22 +87,26 @@ export async function loadEditorTextFonts(nodes: readonly EditorFontText[], envi
   const cache = installed.get(env.fonts) ?? new Map<string, Promise<void>>();
   installed.set(env.fonts, cache);
   let cancelled = false;
-  const requests = new Map<string, { family: string; text: string; weight: string; subsets: Map<string, Subset> }>();
+  const requests = new Map<string, { family: string; text: string; weight: string; style: string; spec: EditorFontSpec; subsets: Map<string, Subset> }>();
   for (const node of texts) {
     const text = node.text!;
     const family = node.fontFamily || NOTO_SANS_STACK;
     const weight = node.fontWeight === "bold" ? "700" : node.fontWeight === "normal" ? "400" : String(node.fontWeight || 400);
+    const style = node.fontStyle === "italic" || node.fontStyle === "oblique" ? "italic" : "normal";
     const names = [...new Set([...family.split(",").map(n => n.trim().replace(/["']/g, "")), ...editorFontFamilies(text, family)])];
-    const specs = names.map(name => EDITOR_FONT_MANIFEST.fonts.find(font => font.family === name)).filter(spec => spec != null);
+    const specs = names.flatMap(name => {
+      const spec = editorFontSpec(name, Number(weight), style);
+      return spec ? [{ ...spec, family: name }] : [];
+    });
     // Follow CSS fallback order, including Latin glyphs in SC/TC/JP/KR-first documents.
     for (const character of text) {
       const point = character.codePointAt(0)!;
       for (const spec of specs) {
         const subset = spec.subsets.find(s => supports(s, point));
         if (!subset) continue;
-        const key = `${spec.family}:${weight}`;
+        const key = `${spec.family}:${weight}:${style}`;
         let request = requests.get(key);
-        if (!request) { request = { family: spec.family, weight, text, subsets: new Map() }; requests.set(key, request); }
+        if (!request) { request = { family: spec.family, weight, text, style, spec, subsets: new Map() }; requests.set(key, request); }
         request.subsets.set(subset.path, subset);
         break;
       }
@@ -110,18 +117,18 @@ export async function loadEditorTextFonts(nodes: readonly EditorFontText[], envi
       await Promise.all([...request.subsets.values()].map(async subset => {
         const url = env.baseUrl
           ? env.baseUrl.replace(/\/?$/, "/") + subset.path
-          : resolvePublicFontAsset(`${EDITOR_FONT_MANIFEST.prefix}/${subset.path}`);
+          : resolvePublicFontAsset(`${request.spec.prefix}/${subset.path}`);
         const key = `${request.family}:${url}`;
         let promise = cache.get(key);
         if (!promise) {
           promise = (async () => {
-            const spec = EDITOR_FONT_MANIFEST.fonts.find(font => font.family === request.family)!;
+            const spec = request.spec;
             // The global mirror is populated separately. Fall back to the owned
             // source until a version is mirrored, and during CDN outages.
-            const sources = env.baseUrl ? [url] : [...new Set([url, resolvePublicFontAsset(`${EDITOR_FONT_MANIFEST.prefix}/${subset.path}`, "cn")])];
+            const sources = env.baseUrl ? [url] : [...new Set([url, resolvePublicFontAsset(`${request.spec.prefix}/${subset.path}`, "cn")])];
             const face = new env.FontFace(request.family, sources.map(source => `url("${source}") format("woff2")`).join(", "), {
-              weight: `${spec.axes.wght[0]} ${spec.axes.wght[2]}`, unicodeRange: subset.unicodeRange,
-              style: "normal", display: "swap",
+              weight: spec.weightRange, unicodeRange: subset.unicodeRange,
+              style: spec.style, display: "swap",
             });
             // A timed-out download must not install a late face with stale Fabric metrics.
             const loadedFace = await bounded(face.load(), timeout);
@@ -133,7 +140,7 @@ export async function loadEditorTextFonts(nodes: readonly EditorFontText[], envi
         }
         await promise;
       }));
-      const loaded = await env.fonts.load(`${request.weight} 16px "${request.family}"`, request.text);
+      const loaded = await env.fonts.load(`${request.style === "normal" ? "" : request.style + " "}${request.weight} 16px "${request.family}"`, request.text);
       if (!loaded.length) throw new Error(EDITOR_FONT_LOAD_ERROR);
     })), timeout);
   } catch (cause) {
