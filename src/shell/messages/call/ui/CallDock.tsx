@@ -207,7 +207,7 @@ export function CallDock({ narrow, onExpand, onDismiss, focusToggleOnMount = fal
             aria-label={tt("关闭通话窗口")}
             title={tt("关闭通话窗口")}
             onClick={() => onDismiss()}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-white/10"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:text-neutral-400 dark:hover:bg-white/10"
           >
             <IconClose size={16} />
           </button>
@@ -234,7 +234,7 @@ export function CallDock({ narrow, onExpand, onDismiss, focusToggleOnMount = fal
                 aria-label={tt("还有 {count} 人，放大查看", { count: overflow })}
                 title={tt("还有 {count} 人，放大查看", { count: overflow })}
                 onClick={() => onExpand()}
-                className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-neutral-100 px-2 text-[13px] font-semibold text-neutral-700 hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:bg-white/10 dark:text-neutral-200 dark:hover:bg-white/15"
+                className="flex h-10 min-w-10 items-center justify-center rounded-xl bg-neutral-100 px-2 text-[13px] font-semibold text-neutral-700 hover:bg-neutral-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:bg-white/10 dark:text-neutral-200 dark:hover:bg-white/15"
               >
                 {tt("+{count}", { count: overflow })}
               </button>

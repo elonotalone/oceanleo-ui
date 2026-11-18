@@ -400,7 +400,7 @@ function IncomingCallCard({
             type="button"
             data-ring-unlock=""
             onClick={onUnlockSound}
-            className="mt-2 w-full rounded-lg bg-amber-50 px-3 py-1.5 text-left text-[12px] text-amber-800 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300"
+            className="mt-2 w-full rounded-lg bg-neutral-50 px-3 py-1.5 text-left text-[12px] text-neutral-800 hover:bg-neutral-100 dark:bg-neutral-900/10 dark:text-neutral-300"
           >
             {tt("浏览器拦住了铃声，点这里开启声音")}
           </button>
@@ -411,7 +411,7 @@ function IncomingCallCard({
             data-incoming-action="decline"
             disabled={acting}
             onClick={() => void decline()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-red-500 px-3 py-2 text-[13px] font-medium text-white hover:bg-red-600 disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-900 disabled:opacity-60"
           >
             <HandsetIcon size={16} hangup />
             {tt("拒接")}
@@ -421,7 +421,7 @@ function IncomingCallCard({
             data-incoming-action="accept"
             disabled={acting}
             onClick={() => void accept()}
-            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-emerald-500 px-3 py-2 text-[13px] font-medium text-white hover:bg-emerald-600 disabled:opacity-60"
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white hover:bg-neutral-900 disabled:opacity-60"
           >
             <HandsetIcon size={16} />
             {tt("接听")}

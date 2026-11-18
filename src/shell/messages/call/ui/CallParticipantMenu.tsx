@@ -70,7 +70,6 @@ export function CallParticipantMenu({ participantId, open, onClose, anchorRef }:
         <CallMenuSeparator />
         <CallMenuItem
           label={tt("举报")}
-          danger
           onSelect={() => setReportTarget({ userId: participant.userId, name, conversationId: call.conversationId })}
         />
       </CallMenu>

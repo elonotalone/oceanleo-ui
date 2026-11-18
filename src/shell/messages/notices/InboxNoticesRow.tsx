@@ -44,7 +44,7 @@ export function InboxNoticesRow({ active, onOpen }: InboxNoticesRowProps): React
               data-im-unread=""
               data-im-unread-count={badge}
               aria-label={tt("未读 {count} 条", { count: badge })}
-              className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-medium leading-none text-white"
+              className="absolute -right-1 -top-1 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-neutral-900 px-1 text-[10px] font-medium leading-none text-white"
             >
               {badge}
             </span>

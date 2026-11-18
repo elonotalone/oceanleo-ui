@@ -46,12 +46,12 @@ export function isCurrentDevice(device: MediaDeviceLite, current: string | null,
   return Boolean(fallback) && fallback.deviceId === device.deviceId;
 }
 
-const FOCUS_RING = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500";
+const FOCUS_RING = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-500";
 const ROUND = `inline-flex shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS_RING}`;
 const TONE_NEUTRAL = "bg-neutral-100 text-neutral-800 hover:bg-neutral-200 dark:bg-white/10 dark:text-neutral-100 dark:hover:bg-white/15";
-const TONE_OFF = "bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-red-950/40 dark:text-red-300 dark:hover:bg-red-950/40";
-const TONE_ON = "bg-emerald-600 text-white hover:opacity-90";
-const TONE_LEAVE = "bg-red-600 text-white hover:bg-red-700";
+const TONE_OFF = "bg-neutral-50 text-neutral-600 hover:bg-neutral-100 dark:bg-neutral-900/40 dark:text-neutral-300 dark:hover:bg-white/10";
+const TONE_ON = "bg-neutral-900 text-white hover:opacity-90";
+const TONE_LEAVE = "bg-neutral-900 text-white hover:bg-neutral-800";
 const CARET = `inline-flex shrink-0 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-white/10 ${FOCUS_RING}`;
 
 export interface CallControlsProps {

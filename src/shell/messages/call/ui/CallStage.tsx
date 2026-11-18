@@ -58,7 +58,7 @@ function ShareView({ sharer, audioOnly }: { sharer: CallParticipantView; audioOn
           <button
             type="button"
             onClick={() => runCallAction(() => callActions.setAudioOnly(false))}
-            className="rounded-lg bg-white/15 px-3 py-1.5 font-medium text-white hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500"
+            className="rounded-lg bg-white/15 px-3 py-1.5 font-medium text-white hover:bg-white/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500"
           >
             {tt("接收画面")}
           </button>
@@ -200,7 +200,7 @@ export function CallStage({ narrow, onCollapse, focusTick }: CallStageProps) {
           aria-label={tt("回到小窗")}
           title={tt("回到小窗（Esc）")}
           onClick={() => onCollapse()}
-          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-neutral-700 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-200 dark:hover:bg-white/10"
+          className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-[13px] text-neutral-700 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:text-neutral-200 dark:hover:bg-white/10"
         >
           <IconCollapse size={16} />
           {narrow ? null : <span aria-hidden="true">{tt("回到小窗")}</span>}

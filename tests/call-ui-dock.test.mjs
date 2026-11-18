@@ -320,7 +320,7 @@ test("五个按钮：恰好五个（麦克风、摄像头、共享屏幕、放�
     assert.deepEqual($$("[data-call-caret]", group).map((button) => button.getAttribute("data-call-caret")), ["mic", "camera"]);
     for (const caret of $$("[data-call-caret]", group)) assert.equal(caret.getAttribute("aria-haspopup"), "menu");
     assert.equal($('[data-call-control="leave"]').getAttribute("aria-label"), "离开通话");
-    assert.match($('[data-call-control="leave"]').className, /bg-red-600/, "离开是红的");
+    assert.match($('[data-call-control="leave"]').className, /bg-neutral-900/, "离开使用中性主按钮");
     assert.equal($('[data-call-control="expand"]').getAttribute("aria-label"), "放大通话窗口", "不用「放大」二字：别的分表里那是「放大面板」");
     for (const button of $$("button", $("[data-call-dock]"))) assert.ok(accessibleName(button), `按钮要有可读名：${button.outerHTML.slice(0, 80)}`);
   } finally {

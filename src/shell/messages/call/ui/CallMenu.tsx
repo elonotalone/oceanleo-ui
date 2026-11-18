@@ -22,8 +22,6 @@ const ITEM_CLASS =
   "flex min-h-8 w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13px] leading-5 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] disabled:cursor-not-allowed disabled:opacity-50";
 const ITEM_TONE =
   "text-neutral-800 hover:bg-neutral-100 focus-visible:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-white/10 dark:focus-visible:bg-white/10";
-const ITEM_DANGER =
-  "text-rose-600 hover:bg-rose-50 focus-visible:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-500/10 dark:focus-visible:bg-rose-500/10";
 
 export interface CallMenuProps {
   open: boolean;
@@ -86,13 +84,11 @@ export function CallMenuItem({
   label,
   onSelect,
   disabled = false,
-  danger = false,
   icon,
 }: {
   label: string;
   onSelect(): void;
   disabled?: boolean;
-  danger?: boolean;
   icon?: ReactNode;
 }) {
   return (
@@ -101,7 +97,7 @@ export function CallMenuItem({
       role="menuitem"
       disabled={disabled}
       aria-disabled={disabled || undefined}
-      className={`${ITEM_CLASS} ${danger ? ITEM_DANGER : ITEM_TONE}`}
+      className={`${ITEM_CLASS} ${ITEM_TONE}`}
       onClick={() => onSelect()}
     >
       {icon ? <span aria-hidden="true" className="flex size-4 shrink-0 items-center justify-center">{icon}</span> : null}

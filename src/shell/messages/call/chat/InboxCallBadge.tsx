@@ -80,8 +80,8 @@ export function InboxCallBadge({ conversationId, activeCall }: InboxCallBadgePro
         className={
           "inline-flex h-5 items-center gap-0.5 rounded-full px-1.5 text-[11px] font-semibold leading-none transition-colors disabled:opacity-60 " +
           (mine
-            ? "bg-emerald-500 text-white hover:bg-emerald-600"
-            : "bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/20 dark:text-emerald-300")
+            ? "bg-neutral-900 text-white hover:bg-neutral-900"
+            : "bg-neutral-900/10 text-neutral-700 hover:bg-neutral-900/20 dark:text-neutral-300")
         }
       >
         <HeadphonesIcon size={12} />

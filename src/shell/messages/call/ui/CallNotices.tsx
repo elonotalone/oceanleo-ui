@@ -115,7 +115,7 @@ export function ShareNotice({ name, onView }: { name: string; onView(): void }) 
       <button
         type="button"
         onClick={() => onView()}
-        className="shrink-0 rounded-md px-1.5 py-0.5 font-medium text-sky-700 hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-sky-300 dark:hover:bg-white/10"
+        className="shrink-0 rounded-md px-1.5 py-0.5 font-medium text-neutral-700 hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:text-neutral-300 dark:hover:bg-white/10"
       >
         {tt("查看")}
       </button>
@@ -133,7 +133,7 @@ export function SelfShareNotice() {
       <button
         type="button"
         onClick={() => runCallAction(() => callActions.setScreenShare(false))}
-        className="shrink-0 rounded-md px-1.5 py-0.5 font-medium hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:hover:bg-white/10"
+        className="shrink-0 rounded-md px-1.5 py-0.5 font-medium hover:bg-black/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:hover:bg-white/10"
       >
         {tt("停止共享")}
       </button>
@@ -162,7 +162,7 @@ export function AloneCountdown({ deadline, now }: { deadline: number | null; now
           type="button"
           data-call-alone-cancel
           onClick={() => callActions.cancelAloneTimer()}
-          className="shrink-0 rounded-md bg-white px-2 py-1 font-medium text-amber-900 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:bg-white/10 dark:text-amber-200 dark:hover:bg-white/15"
+          className="shrink-0 rounded-md bg-white px-2 py-1 font-medium text-neutral-900 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-neutral-500 dark:bg-white/10 dark:text-neutral-200 dark:hover:bg-white/15"
         >
           {tt("继续通话")}
         </button>

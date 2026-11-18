@@ -131,7 +131,7 @@ export function ImEmojiIcon() {
   );
 }
 
-/** LeoChat 的标志：一块渐变圆角方块里的对话气泡。顶栏、放大后的空白处用。 */
+/** LeoChat 的标志：一块中性圆角方块里的对话气泡。顶栏、放大后的空白处用。 */
 export function LeoChatMark({ large = false }: { large?: boolean }) {
   return (
     <span data-leochat-mark={large ? "large" : "small"} aria-hidden="true">
@@ -145,10 +145,8 @@ export function LeoChatMark({ large = false }: { large?: boolean }) {
 
 export const MESSAGES_SURFACE_CSS = `
 :root {
-  --im-accent: #5b5bf6;
-  --im-accent-2: #3b82f6;
-  --im-accent-soft: rgba(91, 91, 246, 0.10);
-  --im-gradient: linear-gradient(135deg, #7c5cff 0%, #5b5bf6 45%, #3b82f6 100%);
+  --im-accent: #262626;
+  --im-accent-soft: rgba(38, 38, 38, 0.10);
 }
 [data-leochat-mark] {
   display: inline-flex;
@@ -157,20 +155,20 @@ export const MESSAGES_SURFACE_CSS = `
   width: 26px;
   height: 26px;
   border-radius: 9px;
-  background: var(--im-gradient);
+  background: var(--im-accent);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(91, 91, 246, 0.35);
+  box-shadow: 0 4px 12px rgba(23, 23, 23, 0.12);
 }
 [data-leochat-mark] svg { width: 16px; height: 16px; }
 [data-leochat-mark="large"] {
   width: 64px;
   height: 64px;
   border-radius: 22px;
-  box-shadow: 0 14px 32px rgba(91, 91, 246, 0.35);
+  box-shadow: 0 14px 32px rgba(23, 23, 23, 0.12);
 }
 [data-leochat-mark="large"] svg { width: 34px; height: 34px; }
 [data-leochat-badge] {
-  background: var(--im-gradient);
+  background: var(--im-accent);
   box-shadow: 0 0 0 2px #fff;
 }
 html.dark [data-leochat-badge] { box-shadow: 0 0 0 2px var(--leo-d-bg); }
@@ -183,9 +181,9 @@ html.dark [data-leochat-badge] { box-shadow: 0 0 0 2px var(--leo-d-bg); }
   background: #fff;
   color: #171717;
   box-shadow:
-    0 32px 80px rgba(30, 27, 75, 0.22),
-    0 8px 24px rgba(30, 27, 75, 0.10),
-    0 0 0 1px rgba(30, 27, 75, 0.06);
+    0 32px 80px rgba(23, 23, 23, 0.22),
+    0 8px 24px rgba(23, 23, 23, 0.10),
+    0 0 0 1px rgba(23, 23, 23, 0.06);
   transform-origin: 0% 100%;
   transition:
     opacity var(--leo-dur-4) var(--leo-ease-decelerate),
@@ -214,8 +212,8 @@ html.dark [data-testid="messages-overlay"] {
 
 [data-testid="messages-overlay"] [data-im-drag-handle] {
   height: 52px;
-  border-bottom-color: rgba(30, 27, 75, 0.07);
-  background: linear-gradient(180deg, rgba(91, 91, 246, 0.06) 0%, rgba(91, 91, 246, 0) 100%);
+  border-bottom-color: rgba(23, 23, 23, 0.07);
+  background: #fafafa;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -243,7 +241,7 @@ html.dark [data-im-chrome-btn]:hover { background: var(--leo-d-card-2); color: v
   gap: 2px;
   padding: 3px;
   border-radius: 999px;
-  background: rgba(30, 27, 75, 0.06);
+  background: rgba(23, 23, 23, 0.06);
 }
 [data-im-tabs] [role="tab"] {
   padding: 5px 14px;
@@ -260,13 +258,13 @@ html.dark [data-im-chrome-btn]:hover { background: var(--leo-d-card-2); color: v
 [data-im-tabs] [role="tab"][aria-selected="true"] {
   background: #fff;
   color: var(--im-accent);
-  box-shadow: 0 1px 4px rgba(30, 27, 75, 0.14);
+  box-shadow: 0 1px 4px rgba(23, 23, 23, 0.14);
 }
 [data-im-tab-badge] {
   min-width: 16px;
   padding: 0 5px;
   border-radius: 999px;
-  background: var(--im-gradient);
+  background: var(--im-accent);
   color: #fff;
   font-size: 10px;
   font-weight: 700;
@@ -277,12 +275,12 @@ html.dark [data-im-tabs] { background: var(--leo-d-card-2); }
 html.dark [data-im-tabs] [role="tab"] { color: var(--leo-d-muted); }
 html.dark [data-im-tabs] [role="tab"][aria-selected="true"] {
   background: var(--leo-d-card);
-  color: #a5b4fc;
+  color: #e5e5e5;
 }
 
 [data-im-side] {
-  background: #fafaff;
-  border-right-color: rgba(30, 27, 75, 0.07);
+  background: #fafafa;
+  border-right-color: rgba(23, 23, 23, 0.07);
 }
 html.dark [data-im-side] { background: transparent; }
 [data-im-empty] { color: #171717; }
@@ -290,17 +288,17 @@ html.dark [data-im-empty] { color: var(--leo-d-fg); }
 
 [data-testid="messages-overlay"] [data-leochat-search] {
   border-radius: 999px;
-  background: rgba(30, 27, 75, 0.05);
+  background: rgba(23, 23, 23, 0.05);
   padding-left: 14px;
 }
 [data-testid="messages-overlay"] [data-leochat-toolbar] { padding: 10px 10px 2px; gap: 8px; }
-[data-testid="messages-overlay"] [data-leochat-plus] {
+[data-leochat-plus] {
   border-radius: 999px;
-  background: var(--im-gradient);
+  background: var(--im-accent);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(91, 91, 246, 0.30);
+  box-shadow: 0 4px 12px rgba(23, 23, 23, 0.10);
 }
-[data-testid="messages-overlay"] [data-leochat-plus]:hover { filter: brightness(1.06); }
+[data-leochat-plus]:hover { filter: brightness(1.06); }
 
 [data-im-view-body] {
   animation: im-view-in var(--leo-dur-3) var(--leo-ease-decelerate) both;
@@ -367,7 +365,7 @@ html.dark [data-im-filter-row] [role="tab"][aria-selected="true"] {
   border-radius: 14px;
   transition: background var(--leo-dur-2) var(--leo-ease-standard);
 }
-[data-testid="inbox-row"]:hover { background: rgba(30, 27, 75, 0.045); }
+[data-testid="inbox-row"]:hover { background: rgba(23, 23, 23, 0.045); }
 [data-testid="inbox-row"][aria-current="true"] {
   background: var(--im-accent-soft);
   box-shadow: inset 3px 0 0 var(--im-accent);
@@ -382,7 +380,7 @@ html.dark [data-testid="inbox-row"][aria-current="true"] {
   border-radius: 14px;
   transition: background var(--leo-dur-2) var(--leo-ease-standard);
 }
-[data-inbox-notices-row]:hover { background: rgba(30, 27, 75, 0.045); }
+[data-inbox-notices-row]:hover { background: rgba(23, 23, 23, 0.045); }
 [data-inbox-notices-row][aria-current="true"] {
   background: var(--im-accent-soft);
   box-shadow: inset 3px 0 0 var(--im-accent);
@@ -393,12 +391,12 @@ html.dark [data-inbox-notices-row][aria-current="true"] {
 [data-notice-row] {
   transition: background var(--leo-dur-2) var(--leo-ease-standard);
 }
-[data-notice-row]:hover { background: rgba(30, 27, 75, 0.045); }
+[data-notice-row]:hover { background: rgba(23, 23, 23, 0.045); }
 [data-im-unread] {
   min-width: 8px;
   height: 8px;
   padding: 0;
-  background: var(--im-gradient);
+  background: var(--im-accent);
   color: transparent;
   font-size: 0;
   line-height: 0;
@@ -421,7 +419,7 @@ html.dark [data-im-unread][data-im-unread-count] { color: #fff; }
 }
 [data-im-composer] textarea {
   border: none;
-  background: rgba(30, 27, 75, 0.05);
+  background: rgba(23, 23, 23, 0.05);
   border-radius: 18px;
   box-shadow: none;
   transition: box-shadow var(--leo-dur-2) var(--leo-ease-standard), background var(--leo-dur-2) var(--leo-ease-standard);
@@ -443,9 +441,9 @@ html.dark [data-im-composer] textarea {
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  background: var(--im-gradient);
+  background: var(--im-accent);
   color: #fff;
-  box-shadow: 0 4px 12px rgba(91, 91, 246, 0.30);
+  box-shadow: 0 4px 12px rgba(23, 23, 23, 0.10);
 }
 [data-im-send]:disabled {
   opacity: 0.18;
@@ -498,7 +496,7 @@ html.dark [data-im-privacy-banner] {
   width: 6px;
   height: 6px;
   border-radius: 99px;
-  background: #dc2626;
+  background: #262626;
   animation: im-record-pulse var(--leo-loop-pulse-dot) ease-in-out infinite;
 }
 @keyframes im-record-pulse {

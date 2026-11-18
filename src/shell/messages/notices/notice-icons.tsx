@@ -35,13 +35,13 @@ export function NoticeChevronIcon({ className = "h-3.5 w-3.5" }: { className?: s
   );
 }
 
-/** 通知的头像：暖色渐变圆里一只铃铛（会话行的头像是彩色字母块 / 拼图，这个一眼能分出来）。 */
+/** 通知的头像：中性圆里一只铃铛（会话行的头像是彩色字母块 / 拼图，这个一眼能分出来）。 */
 export function NoticeAvatar({ size = 40 }: { size?: number }): ReactElement {
   return (
     <span
       data-notices-avatar=""
       style={{ width: size, height: size }}
-      className="inline-flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white"
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-neutral-900 text-white"
       aria-hidden="true"
     >
       <NoticeBellIcon className={size >= 40 ? "h-5 w-5" : "h-[18px] w-[18px]"} />

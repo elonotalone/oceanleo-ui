@@ -66,7 +66,7 @@ export function MessageActions({
       }}
       className={
         "block w-full whitespace-nowrap px-3 py-1.5 text-left text-[12.5px] hover:bg-neutral-50 " +
-        (danger ? "text-red-600" : "text-neutral-700")
+        (danger ? "text-neutral-600" : "text-neutral-700")
       }
     >
       {label}

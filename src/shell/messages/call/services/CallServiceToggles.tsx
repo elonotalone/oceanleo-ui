@@ -11,13 +11,6 @@ import { useRecordingState, useTranscriptionState } from "./hooks";
 import { CaptionsIcon, RecordIcon, SpinnerIcon, StopIcon } from "./icons";
 import type { CallServiceToggleProps } from "./types";
 
-type Tone = "info" | "danger";
-
-const PRESSED_TONE: Record<Tone, string> = {
-  info: "text-sky-700 dark:text-sky-300",
-  danger: "text-red-600 dark:text-red-400",
-};
-
 /** 提示气泡：底色 ui.css 没有这一档，行内样式；层级 ≥1160（W07：小窗 1050、放大视图 1100、通话菜单 1150、举报框 1200）。 */
 const BUBBLE_STYLE = {
   zIndex: 1160,
@@ -37,7 +30,6 @@ interface ToggleViewProps {
   pressed: boolean;
   busy: boolean;
   disabled: boolean;
-  tone: Tone;
   icon: ReactNode;
   /** 一直带着的说明（如「录制存储尚未开通」）。 */
   note: string | null;
@@ -48,11 +40,11 @@ interface ToggleViewProps {
 
 function ToggleView(props: ToggleViewProps) {
   const messageId = useId();
-  const { kind, mode, variant, className, label, hint, pressed, busy, disabled, tone, icon, note, error, onToggle } = props;
+  const { kind, mode, variant, className, label, hint, pressed, busy, disabled, icon, note, error, onToggle } = props;
   const message = error ?? note;
   const describedBy = message ? messageId : undefined;
   const iconNode = busy ? <SpinnerIcon className="h-4 w-4 shrink-0 animate-spin" /> : icon;
-  const toneClass = pressed ? PRESSED_TONE[tone] : "";
+  const toneClass = pressed ? "text-neutral-900 dark:text-neutral-100" : "";
 
   if (variant === "menuitem") {
     return (
@@ -141,7 +133,6 @@ export function CallTranscriptionToggle({ mode = "stage", variant = "button", cl
       pressed={transcription.enabled}
       busy={transcription.busy}
       disabled={transcription.busy}
-      tone="info"
       icon={<CaptionsIcon className="h-4 w-4 shrink-0" />}
       note={null}
       error={transcription.error ? tt(transcription.error.message) : null}
@@ -166,7 +157,6 @@ export function CallRecordingToggle({ mode = "stage", variant = "button", classN
       pressed={recording.active}
       busy={recording.busy}
       disabled={recording.busy || recording.stopping}
-      tone="danger"
       icon={recording.active ? <StopIcon className="h-4 w-4 shrink-0" /> : <RecordIcon className="h-4 w-4 shrink-0" />}
       note={recording.storageUnavailable ? tt("录制存储尚未开通") : null}
       error={recording.error ? tt(recording.error.message) : null}

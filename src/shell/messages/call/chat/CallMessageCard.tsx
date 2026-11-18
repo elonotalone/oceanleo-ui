@@ -156,8 +156,8 @@ function CallStartedCard({ message, meta }: { message: ImMessage; meta: CallCard
               className={
                 "shrink-0 rounded-lg px-3 py-1.5 text-[12.5px] font-medium transition-colors disabled:opacity-60 " +
                 (inThis
-                  ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/15 dark:text-emerald-300"
-                  : "bg-emerald-500 text-white hover:bg-emerald-600")
+                  ? "bg-neutral-50 text-neutral-700 hover:bg-neutral-100 dark:bg-neutral-900/15 dark:text-neutral-300"
+                  : "bg-neutral-900 text-white hover:bg-neutral-900")
               }
             >
               {inThis ? tt("通话中") : tt("加入通话")}
@@ -492,7 +492,7 @@ function CallMinutesCard({ message, meta }: { message: ImMessage; meta: CallCard
   return (
     <CardFrame message={message} kind="call_minutes">
       <div className="flex items-center gap-2">
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-neutral-300">
           <TranscriptIcon size={14} />
         </span>
         <div className="min-w-0 flex-1">
@@ -511,7 +511,7 @@ function CallMinutesCard({ message, meta }: { message: ImMessage; meta: CallCard
         aria-expanded={transcript.kind === "open"}
         disabled={transcript.kind === "loading"}
         onClick={() => void toggle()}
-        className="mt-2 text-[12.5px] font-medium text-violet-600 hover:underline disabled:opacity-60 dark:text-violet-300"
+        className="mt-2 text-[12.5px] font-medium text-neutral-600 hover:underline disabled:opacity-60 dark:text-neutral-300"
       >
         {transcript.kind === "open"
           ? tt("收起转写全文")

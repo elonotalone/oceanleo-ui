@@ -46,7 +46,7 @@ export const buttonStyle: CSSProperties = {
 export const dangerButtonStyle: CSSProperties = {
   ...buttonStyle,
   border: "1px solid transparent",
-  background: CONTROL_ACCENT,
+  background: "#171717",
   color: "#ffffff",
 };
 

@@ -127,7 +127,7 @@ export function CallTile({ participant, variant, audioOnly, narrow = false }: Ca
             aria-haspopup="menu"
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((open) => !open)}
-            className="absolute bottom-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/55 text-white hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500"
+            className="absolute bottom-1.5 right-1.5 flex size-7 items-center justify-center rounded-md bg-black/55 text-white hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-500"
           >
             <IconMore size={16} />
           </button>
