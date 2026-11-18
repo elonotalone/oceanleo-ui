@@ -115,6 +115,7 @@ const fixtures=[
  ['cases/MessagesContentCases','MessagesContentCases',{onBack(){}}],
  ['call/diagnostics/CallTestPanel','CallTestPanel',{open:true,onClose(){}}],
 ];
+test('fixtures inventory stays complete',()=>assert.equal(fixtures.length,18));
 for(const [rel,name,props] of fixtures) test(`${name} uses its assigned frame and size`,async()=>{
  const Component=await surface(`src/shell/messages/${rel}.tsx`,name), view=await mount(Component,props);
  try {

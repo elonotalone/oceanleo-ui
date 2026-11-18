@@ -92,6 +92,7 @@ const surfaces = [
  ['report',ReportDialog,{target:{kind:'user',id:'peer',label:'Peer'}}],
  ['diagnostics',DiagDialog,{labelledBy:'diagnostic-heading',children:h(React.Fragment,null,h('h2',{id:'diagnostic-heading'},'Diagnostics'),h('button',null,'First'),h('button',null,'Last'),h('button',{disabled:true},'Disabled'))}],
 ];
+test('surfaces inventory stays complete',()=>assert.equal(surfaces.length,3));
 for(const mode of ['Escape','Close','backdrop']) test(`lightbox real Modal traps focus, locks scroll and restores its trigger after ${mode}`,async()=>{
  const view=await mount(h(AttachmentView,{attachment:{kind:'image',url:'https://oceanleo.app/image.png',name:'Image'}}));
  try{
