@@ -3,6 +3,8 @@ import type { Locale } from "../../config";
 /** Taxonomy chrome and professional Library type names in all 17 locales. */
 export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> = {
   "zh": {
+    "向左滚动": "向左滚动",
+    "向右滚动": "向右滚动",
     "网站与应用": "网站与应用",
     "网站 & App": "网站 & App",
     "电子表格": "电子表格",
@@ -23,6 +25,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "格式"
   },
   "en": {
+    "向左滚动": "Scroll left",
+    "向右滚动": "Scroll right",
     "网站与应用": "Websites & apps",
     "网站 & App": "Websites & apps",
     "电子表格": "Spreadsheet",
@@ -43,6 +47,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Format"
   },
   "de": {
+    "向左滚动": "Nach links scrollen",
+    "向右滚动": "Nach rechts scrollen",
     "网站与应用": "Websites und Apps",
     "网站 & App": "Websites und Apps",
     "电子表格": "Tabellenkalkulation",
@@ -63,6 +69,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Format"
   },
   "es": {
+    "向左滚动": "Desplazar a la izquierda",
+    "向右滚动": "Desplazar a la derecha",
     "网站与应用": "Sitios web y aplicaciones",
     "网站 & App": "Sitios web y aplicaciones",
     "电子表格": "Hoja de cálculo",
@@ -83,6 +91,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Formato"
   },
   "es-419": {
+    "向左滚动": "Desplazar a la izquierda",
+    "向右滚动": "Desplazar a la derecha",
     "网站与应用": "Sitios web y aplicaciones",
     "网站 & App": "Sitios web y aplicaciones",
     "电子表格": "Hoja de cálculo",
@@ -103,6 +113,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Formato"
   },
   "fr": {
+    "向左滚动": "Défiler vers la gauche",
+    "向右滚动": "Défiler vers la droite",
     "网站与应用": "Sites web et applications",
     "网站 & App": "Sites web et applications",
     "电子表格": "Feuille de calcul",
@@ -123,6 +135,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Format"
   },
   "it": {
+    "向左滚动": "Scorri a sinistra",
+    "向右滚动": "Scorri a destra",
     "网站与应用": "Siti web e applicazioni",
     "网站 & App": "Siti web e applicazioni",
     "电子表格": "Foglio di calcolo",
@@ -143,6 +157,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Formato"
   },
   "pt-BR": {
+    "向左滚动": "Rolar para a esquerda",
+    "向右滚动": "Rolar para a direita",
     "网站与应用": "Sites e aplicativos",
     "网站 & App": "Sites e aplicativos",
     "电子表格": "Planilha",
@@ -163,6 +179,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Formato"
   },
   "pt-PT": {
+    "向左滚动": "Deslocar para a esquerda",
+    "向右滚动": "Deslocar para a direita",
     "网站与应用": "Sites e aplicações",
     "网站 & App": "Sites e aplicações",
     "电子表格": "Folha de cálculo",
@@ -183,6 +201,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Formato"
   },
   "vi": {
+    "向左滚动": "Cuộn sang trái",
+    "向右滚动": "Cuộn sang phải",
     "网站与应用": "Trang web và ứng dụng",
     "网站 & App": "Trang web và ứng dụng",
     "电子表格": "Bảng tính",
@@ -203,6 +223,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Định dạng"
   },
   "tr": {
+    "向左滚动": "Sola kaydır",
+    "向右滚动": "Sağa kaydır",
     "网站与应用": "Web siteleri ve uygulamalar",
     "网站 & App": "Web siteleri ve uygulamalar",
     "电子表格": "Elektronik tablo",
@@ -223,6 +245,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "Biçim"
   },
   "zh-TW": {
+    "向左滚动": "向左捲動",
+    "向右滚动": "向右捲動",
     "网站与应用": "網站與應用程式",
     "网站 & App": "網站與 App",
     "电子表格": "試算表",
@@ -243,6 +267,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "格式"
   },
   "ja": {
+    "向左滚动": "左にスクロール",
+    "向右滚动": "右にスクロール",
     "网站与应用": "ウェブサイトとアプリ",
     "网站 & App": "ウェブサイトとアプリ",
     "电子表格": "スプレッドシート",
@@ -263,6 +289,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "形式"
   },
   "ko": {
+    "向左滚动": "왼쪽으로 스크롤",
+    "向右滚动": "오른쪽으로 스크롤",
     "网站与应用": "웹사이트 및 앱",
     "网站 & App": "웹사이트 및 앱",
     "电子表格": "스프레드시트",
@@ -283,6 +311,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "형식"
   },
   "ar": {
+    "向左滚动": "التمرير إلى اليسار",
+    "向右滚动": "التمرير إلى اليمين",
     "网站与应用": "مواقع الويب والتطبيقات",
     "网站 & App": "مواقع الويب والتطبيقات",
     "电子表格": "جدول بيانات",
@@ -303,6 +333,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "الصيغة"
   },
   "th": {
+    "向左滚动": "เลื่อนไปทางซ้าย",
+    "向右滚动": "เลื่อนไปทางขวา",
     "网站与应用": "เว็บไซต์และแอป",
     "网站 & App": "เว็บไซต์และแอป",
     "电子表格": "สเปรดชีต",
@@ -323,6 +355,8 @@ export const MATERIAL_TAXONOMY_MESSAGES: Record<Locale, Record<string, string>> 
     "格式": "รูปแบบ"
   },
   "hi": {
+    "向左滚动": "बाएँ स्क्रॉल करें",
+    "向右滚动": "दाएँ स्क्रॉल करें",
     "网站与应用": "वेबसाइट और ऐप",
     "网站 & App": "वेबसाइट और ऐप",
     "电子表格": "स्प्रेडशीट",

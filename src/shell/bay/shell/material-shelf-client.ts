@@ -7,6 +7,9 @@ import { parseMaterialTaxonomy, type MaterialFilters, type MaterialTaxonomy } fr
 export interface MaterialPage {
   items: BayAsset[];
   categoryCounts: Record<string, number>;
+  categoryCovers: Record<string, BayAsset>;
+  categoryFacets: Record<string, Record<string, string[]>>;
+  contentTypePreviews: Record<string, BayAsset[]>;
   nextOfficial: number | null;
   nextSeller: string | null;
   unavailable: boolean;
@@ -89,13 +92,13 @@ function sellerAsset(raw: unknown): BayAsset | null {
 export async function fetchMaterialShelf(request: ShelfRequest, options: {
   signal: AbortSignal; sellers: boolean; officialOffset?: number | null; sellerCursor?: string | null;
 }): Promise<MaterialPage> {
-  const jobs: Promise<{ items?: unknown[]; categoryCounts?: unknown; nextOffset?: number | null; next_cursor?: string | null } | null>[] = [
+  const jobs: Promise<{ items?: unknown[]; categoryCounts?: unknown; categoryCovers?: Record<string, unknown>; categoryFacets?: Record<string, Record<string, string[]>>; contentTypePreviews?: Record<string, unknown[]>; nextOffset?: number | null; next_cursor?: string | null } | null>[] = [
     options.officialOffset === null ? Promise.resolve(null) : bayGet(materialShelfPath(request, "official", options.officialOffset), { anonymous: true, signal: options.signal }),
     !options.sellers || options.sellerCursor === null ? Promise.resolve(null) : bayGet(materialShelfPath(request, "seller", options.sellerCursor), { anonymous: true, signal: options.signal }),
   ];
   const results = await Promise.allSettled(jobs);
   options.signal.throwIfAborted();
-  const page: MaterialPage = { items: [], categoryCounts: {}, nextOfficial: null, nextSeller: null, unavailable: false };
+  const page: MaterialPage = { items: [], categoryCounts: {}, categoryCovers: {}, categoryFacets: {}, contentTypePreviews: {}, nextOfficial: null, nextSeller: null, unavailable: false };
   for (const [index, result] of results.entries()) {
     if (result.status === "rejected") { page.unavailable = true; continue; }
     const raw = result.value;
@@ -103,6 +106,20 @@ export async function fetchMaterialShelf(request: ShelfRequest, options: {
     if (!Array.isArray(raw.items)) { page.unavailable = true; continue; }
     page.items.push(...raw.items.map(index === 0 ? officialAsset : sellerAsset).filter((item): item is BayAsset => Boolean(item)));
     for (const [key, count] of Object.entries(counts(raw.categoryCounts))) page.categoryCounts[key] = (page.categoryCounts[key] || 0) + count;
+    const project = index === 0 ? officialAsset : sellerAsset;
+    for (const [key, value] of Object.entries(raw.categoryCovers || {})) {
+      const asset = project(value);
+      if (asset) page.categoryCovers[key] ||= asset;
+    }
+    for (const [category, dimensions] of Object.entries(raw.categoryFacets || {})) {
+      const facets = page.categoryFacets[category] ||= {};
+      for (const [key, values] of Object.entries(dimensions)) if (Array.isArray(values)) {
+        facets[key] = [...new Set([...(facets[key] || []), ...values.filter((value): value is string => typeof value === "string")])];
+      }
+    }
+    for (const [key, values] of Object.entries(raw.contentTypePreviews || {})) {
+      if (Array.isArray(values)) (page.contentTypePreviews[key] ||= []).push(...values.map(project).filter((item): item is BayAsset => Boolean(item)));
+    }
     if (index === 0) page.nextOfficial = typeof raw.nextOffset === "number" ? raw.nextOffset : null;
     else page.nextSeller = typeof raw.next_cursor === "string" && raw.next_cursor ? raw.next_cursor : null;
   }

@@ -124,8 +124,26 @@ test("partial source failure retains successful results and cancellation cannot 
 });
 
 test("all taxonomy chrome keys have actual translations in all 17 locale dictionaries", () => {
-  for (const locale of LOCALES) for (const key of ["内容分类", "内容类型", "全部内容类型", "场合", "全部格式", "其他文档格式", "素材分类未能加载，请重试。", "部分素材未能加载，请重试。", ...Object.values(taxonomy.MATERIAL_TAG_LABELS)]) {
+  for (const locale of LOCALES) for (const key of ["向左滚动", "向右滚动", "内容分类", "内容类型", "全部内容类型", "场合", "全部格式", "其他文档格式", "素材分类未能加载，请重试。", "部分素材未能加载，请重试。", ...Object.values(taxonomy.MATERIAL_TAG_LABELS)]) {
     assert.ok(UI_MESSAGES[locale][key], `${locale}: ${key}`);
     if (!["zh", "zh-TW", "ja"].includes(locale)) assert.doesNotMatch(UI_MESSAGES[locale][key], /[一-鿿]/, `${locale}: ${key}`);
   }
+});
+
+
+test("category covers, facets and content shelves merge both sources independently of the material page", async () => {
+  const official = {id:"doc",templateId:"doc",assetRef:{kind:"template",id:"doc"},artifactType:"document"};
+  const seller = {id:"sale",title:"Seller PDF",cover_url:"https://example.test/seller.png",material:{artifactType:"pdf"}};
+  globalThis.__taxonomyGet = async path => path.startsWith("/v1/materials?") ? {
+    items:[],categoryCounts:{"document-category":1},categoryCovers:{"document-category":official},
+    categoryFacets:{"document-category":{industry:["education"]}},contentTypePreviews:{"document-content":[official]},
+  } : {items:[],categoryCounts:{"document-category":2,"seller-category":1},categoryCovers:{"seller-category":seller},
+    categoryFacets:{"document-category":{industry:["education","finance"]}},contentTypePreviews:{"document-content":[seller]}};
+  const page = await client.fetchMaterialShelf({siteKey:"oceanleo",shelfType:"document",limit:1,filters:taxonomy.emptyMaterialFilters()},{signal:signal(),sellers:true});
+  assert.equal(page.items.length,0);
+  assert.deepEqual(Object.keys(page.categoryCovers),["document-category","seller-category"]);
+  assert.equal(page.categoryCovers["seller-category"].thumb_url,"https://example.test/seller.png");
+  assert.deepEqual(page.categoryFacets["document-category"].industry,["education","finance"]);
+  assert.deepEqual(page.contentTypePreviews["document-content"].map(row=>row.id),["template-material:doc","listing:sale"]);
+  assert.equal(page.categoryCounts["document-category"],3);
 });

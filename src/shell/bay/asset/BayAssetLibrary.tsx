@@ -1,7 +1,7 @@
 "use client";
 
 // LeoBay 成品货架：种类封面卡 → 分栏货架 → 单种类网格。基础素材仍由原有 API 与插入面板提供。
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { bayEnabledHere, type BayFeedFilter } from "../shell/bay-state";
 import { type ArtifactContextRef } from "../../artifact-contract";
 import type { WorkspaceLibraryEntry } from "../../workspace-library-model";
@@ -29,6 +29,11 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
   onCloseLicenses?: () => void;
 }) {
   const [online, setOnline] = useState(() => new URLSearchParams(readSearch()).get("view") === "online");
+  useEffect(() => {
+    const restore = () => setOnline(new URLSearchParams(readSearch()).get("view") === "online");
+    window.addEventListener("popstate", restore);
+    return () => window.removeEventListener("popstate", restore);
+  }, []);
   const rootRef = useRef<HTMLDivElement>(null);
   const route = useBayAssetRoute(rootRef);
   const appId = providedContext?.appId || new URLSearchParams(readSearch()).get("app") || "";
@@ -43,8 +48,8 @@ export function BayAssetLibrary({ filter, siteKey, accent, view = "grid", contex
     window.history.replaceState(window.history.state, "", `${window.location.pathname}${search ? `?${search}` : ""}${window.location.hash}`);
   }
 
-  return <div ref={rootRef} data-bay-asset-library className="mt-4 flex min-h-[32rem] flex-1 flex-col">
-    <div hidden={Boolean(route.target)} className="min-h-0 flex-1" data-bay-asset-browse>
+  return <div ref={rootRef} data-bay-asset-library className="mt-4 flex min-w-0 min-h-[32rem] flex-1 flex-col">
+    <div hidden={Boolean(route.target)} className="min-h-0 min-w-0 flex-1" data-bay-asset-browse>
       <ReadyMaterialCatalog siteKey={siteKey} appId={appId} query={filter.q || ""} view={view} sellers={bayOn}
         online={online} onOnlineChange={chooseSource} onOpen={openAsset}>
         <LiveMaterialSearch initialQuery={filter.q || ""} />

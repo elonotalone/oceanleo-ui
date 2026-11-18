@@ -39,7 +39,32 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
   return result.data as T;
 }
 
+export const BAY_GET_TIMEOUT_MS = 10_000;
+
+/** Bound auth lookup, fetch and body decoding, even if a transport ignores abort. */
 export async function bayGet<T>(path: string, opts?: { anonymous?: boolean; signal?: AbortSignal }): Promise<T> {
+  if (opts?.signal?.aborted) throw abortError();
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let cancel = () => {};
+  const stopped = new Promise<never>((_, reject) => {
+    cancel = () => { controller.abort(); reject(abortError()); };
+    opts?.signal?.addEventListener("abort", cancel, { once: true });
+    if (opts?.signal?.aborted) { cancel(); return; }
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new BayApiError("网络错误，请稍后再试。", 0, "timeout"));
+    }, BAY_GET_TIMEOUT_MS);
+  });
+  try {
+    return await Promise.race([stopped, get<T>(path, { ...opts, signal: controller.signal })]);
+  } finally {
+    clearTimeout(timer);
+    opts?.signal?.removeEventListener("abort", cancel);
+  }
+}
+
+async function get<T>(path: string, opts?: { anonymous?: boolean; signal?: AbortSignal }): Promise<T> {
   if (!opts?.anonymous) return call<T>(path, { signal: opts?.signal });
   const result = await authed<T>(path, { signal: opts.signal });
   if (isAbortError(null, opts.signal)) throw abortError();
