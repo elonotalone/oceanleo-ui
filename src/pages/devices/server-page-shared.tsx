@@ -13,7 +13,7 @@ export function serverErrorText(error: unknown, tt: ReturnType<typeof useUI>): s
   if (failure?.code === "metering_unavailable") return tt("此功能尚未在当前服务端开通");
   if (failure?.status === 404 || failure?.status === 501) return tt("此功能尚未在当前服务端开通");
   if (failure?.code === "not_managed") return tt(OWN_PROVIDER);
-  if (failure?.code === "permission_missing") return [tt("缺少云端权限"), failure.detail?.missing_action, failure.detail?.policy_hint].filter((v) => v != null && v !== "").map((v) => typeof v === "string" ? v : JSON.stringify(v)).join(" · ");
+  if (failure?.code === "permission_missing") return [tt("缺少云端权限"), failure.message && tt(failure.message), failure.detail?.missing_action, failure.detail?.policy_hint].filter((v) => v != null && v !== "").map((v) => typeof v === "string" ? v : JSON.stringify(v)).join(" · ");
   return failure?.message ? tt(failure.message) : tt("操作未完成，请重试。");
 }
 

@@ -49,8 +49,8 @@ export function ServerMonitoring({api, id, managed, online, revision, upgrade}: 
         <ServerCurve title="CPU" unit="%" points={points.map((p) => ({t: p.t, v: p.cpu_percent}))} />
         <ServerCurve title="内存" unit="%" points={points.map((p) => ({t: p.t, v: p.mem_used_bytes != null && p.mem_total_bytes != null && p.mem_total_bytes > 0 ? p.mem_used_bytes / p.mem_total_bytes * 100 : null}))} />
         <ServerCurve title="磁盘（最高占用）" unit="%" points={points.map((p) => {const disks = p.disks.filter((disk) => disk.total_bytes > 0); return {t: p.t, v: disks.length ? Math.max(...disks.map((d) => d.used_bytes / d.total_bytes * 100)) : null};})} />
-        <ServerCurve title="网络接收" unit="B/s" points={points.map((p) => ({t: p.t, v: p.net_rx_bps}))} />
-        <ServerCurve title="网络发送" unit="B/s" points={points.map((p) => ({t: p.t, v: p.net_tx_bps}))} />
+        <ServerCurve title="网络接收" unit="bit/s" points={points.map((p) => ({t: p.t, v: p.net_rx_bps}))} />
+        <ServerCurve title="网络发送" unit="bit/s" points={points.map((p) => ({t: p.t, v: p.net_tx_bps}))} />
       </div>
     </>}</ResourceView>}
   </ServerSection>;

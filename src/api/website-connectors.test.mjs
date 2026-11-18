@@ -11,6 +11,22 @@ const { websiteConnectorsApi, WebsiteTierSampleError } = await import(await comp
 const id = '11111111-1111-4111-8111-111111111111';
 const sample = { project: { project_id: id }, tier_id: 'static' };
 
+test('D11 connector reads and mutations retain not_ready status with real route methods and environments', async () => {
+  const previous = fetch, calls = [];
+  const response = {project_id:id,environment:'production',slots:[{slot:'scheduler',status:'not_ready',status_detail:'Scheduled execution is not enabled'}]};
+  globalThis.fetch = async (url, init) => {calls.push({url,method:init.method??'GET',body:init.body?JSON.parse(init.body):null});return Response.json(response);};
+  try {
+    assert.deepEqual(await websiteConnectorsApi.get(id,'production'),response);
+    assert.deepEqual(await websiteConnectorsApi.select(id,'hosting','ours_fc','production'),response);
+    assert.deepEqual(await websiteConnectorsApi.preset(id,'request_billed','production'),response);
+    assert.deepEqual(calls,[
+      {url:`https://gateway.invalid/v1/website-projects/${id}/connectors?environment=production`,method:'GET',body:null},
+      {url:`https://gateway.invalid/v1/website-projects/${id}/connectors/hosting?environment=production`,method:'PUT',body:{connector_id:'ours_fc'}},
+      {url:`https://gateway.invalid/v1/website-projects/${id}/connectors/preset?environment=production`,method:'POST',body:{preset_id:'request_billed'}},
+    ]);
+  } finally {globalThis.fetch=previous;}
+});
+
 test('tier catalog uses owner project context and sample creation uses the fixed local route', async () => {
   const previous = fetch, calls = [], controller = new AbortController();
   globalThis.fetch = async (url, init) => { calls.push({ url, init }); return Response.json(url.includes('presets/tiers') ? { presets: [{ id: 'request_billed', label: 'FC', selections: {}, available: false, status: 'not_ready', status_detail: 'FC disabled' }] } : sample); };

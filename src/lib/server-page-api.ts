@@ -8,10 +8,10 @@ export type ServerOverview = {
   source: "aliyun" | "byo"; managed: boolean;
   region_id: string | null; zone_id: string | null; instance_type: string | null;
   vcpu: number | null; memory_gb: number | null; public_ip: string | null; private_ip: string | null;
-  os_name: string | null; disks: {disk_id: string; kind: "system" | "data"; size_gb: number; category: string}[] | null;
+  os_name: string | null; disks: {disk_id: string | null; kind: "system" | "data"; size_gb: number | null; category: string | null}[] | null;
   created_at: string | null; expires_at: string | null; billing_mode: string | null;
   cloud_status: string | null; security_group_ids: string[] | null;
-  node: {version: string; os: string; os_version: string; arch: string; hostname: string; kernel: string; cpus: number; mem_bytes: number} | null;
+  node: {version: string | null; os: string | null; os_version: string | null; arch: string | null; hostname: string | null; kernel: string | null; cpus: number | null; mem_bytes: number | null} | null;
 };
 export type MetricPoint = {
   t: string; cpu_percent: number | null; mem_used_bytes: number | null; mem_total_bytes: number | null;
@@ -21,11 +21,11 @@ export type MetricPoint = {
 export type NodeMetrics = {source: "node"; points: MetricPoint[]; latest: MetricPoint | null; needs_node_upgrade: boolean};
 export type CloudMonitoring = {metric: CloudMetric; unit: string; source: "cloud"; points: {t: string; v: number}[]};
 export type CustomInfo = {source: "device"; reported_at: string | null; items: {key: string; label: string; value: string}[]};
-export type ServerNode = {version: string; latest_version: string | null; needs_upgrade: boolean; auto_upgrade: boolean; auto_upgrade_available: boolean; caps: string[]};
+export type ServerNode = {version: string; latest_version: string; needs_upgrade: boolean; auto_upgrade: boolean; auto_upgrade_available: boolean; caps: string[]};
 export type SnapshotPolicy = {enabled: boolean; time_utc: string; retention_days: number};
 export type RescueFailure = {code: string; message: string; missing_action?: string; policy_hint?: unknown};
 export type RescueOperation = {operation_name: string | null; operation_stage: string | null; operation_active: boolean | null; operation_error: string | null};
-export type Snapshot = {id: string; disk_id: string; kind: "auto" | "manual"; size_gb: number | null; created_at: string; status: string; note: string};
+export type Snapshot = {id: string; disk_id: string; kind: "auto" | "manual"; size_gb: number | null; created_at: string | null; status: string; note: string};
 export type Snapshots = {items: Snapshot[]; policy: SnapshotPolicy; monthly_cost: MoneyAmount | null; policy_choice: SnapshotPolicy | null; policy_error: RescueFailure | null; billing_unavailable_reason: string | null; operation: RescueOperation};
 export type ReinstallResult = Computer & {node_status: "awaiting_enrolment"};
 export type SecurityRule = {id: string; direction: "in" | "out"; protocol: string; port_range: string; source: string; policy: "accept" | "drop"; description: string};
@@ -36,7 +36,7 @@ export type Diagnosis = {
   findings: {code: string; text: string}[];
   suggested: {action: string; text: string; needs_confirmation: boolean}[];
 };
-export type SystemEvents = {items: {id: string; type: string; status: string; at: string; text: string}[]};
+export type SystemEvents = {items: {id: string | null; type: string | null; status: string | null; at: string | null; text: string}[]};
 export type UsageLimit = {monthly_limit: MoneyAmount | null; on_reach: "stop" | "notify"; used: MoneyAmount; reached: boolean};
 export type LimitInput = Pick<UsageLimit, "monthly_limit" | "on_reach">;
 

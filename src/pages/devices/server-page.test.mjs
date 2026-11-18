@@ -20,6 +20,7 @@ const {ServerPage} = await import(await compileModule('src/pages/devices/ServerP
 }));
 const {monthUsage,limitMinor} = await import(await compileModule('src/pages/devices/ServerCosts.tsx', {'../../i18n/ui/useUI':tt}));
 const {serverErrorText} = await import(await compileModule('src/pages/devices/server-page-shared.tsx', {'../../i18n/ui/useUI':tt}));
+const {createServerPageApi} = await import(await compileModule('src/lib/server-page-api.ts', {'./cloud-computer-api':cloud}));
 
 const stamp='2026-11-18T01:00:00Z';
 const pc={id:'cc-test',name:'Test server',source:'aliyun',status:'running',edition:'com',node_online:true,enrolled_at:stamp,confirmed_at:stamp,created_at:stamp,updated_at:stamp,billing_mode:'monthly'};
@@ -79,6 +80,49 @@ test('Aliyun server renders all blocks, cloud/node facts, copy, event order and 
   await act(async()=>document.querySelector('[aria-label="复制公网 IP"]').click());assert.deepEqual(copied,['192.0.2.5']);
   assert.match(block('custom-info').textContent,/<b>plain text<\/b>/);assert.equal(block('custom-info').querySelector('b'),null);
   await click('6h',block('monitoring'));assert.ok(calls.some(c=>c[0]==='metrics'&&c[2]==='6h'));
+});
+
+test('D10 node network curves preserve backend bits per second and label both directions',async()=>{
+  const sample={...point,net_rx_bps:8000,net_tx_bps:16000};
+  await mount({api:{getMetrics:async()=>({source:'node',points:[sample],latest:sample,needs_node_upgrade:false})}});
+  for(const [title,value] of [['网络接收',8000],['网络发送',16000]]) {
+    const curve=block('monitoring').querySelector(`[data-server-curve="${title}"]`);
+    assert.equal(curve.querySelector('svg').getAttribute('aria-label'),`${title} (bit/s)`);
+    assert.equal(curve.querySelector('figcaption').lastElementChild.textContent,`${value.toLocaleString(undefined,{maximumFractionDigits:2})} bit/s`);
+  }
+});
+
+test('D11 partial node and cloud facts render unknown values without literal null or invented size',async()=>{
+  await mount({computer:{...pc,source:'byo'},api:{getOverview:async()=>({...overview,source:'byo',managed:false,node:{version:'v1',os:null,os_version:null,arch:null,hostname:null,kernel:null,cpus:null,mem_bytes:null}})}});
+  assert.doesNotMatch(block('facts').textContent,/null|undefined/);
+});
+
+test('D11 missing cloud disk size and category are displayed as unknown',async()=>{
+  await mount({api:{getOverview:async()=>({...overview,disks:[{disk_id:'disk-1',kind:'system',size_gb:null,category:null}]})}});
+  assert.match(block('facts').textContent,/系统盘 · — · — · disk-1/);
+  assert.doesNotMatch(block('facts').textContent,/null|undefined|0 GB|·  GB/);
+});
+
+test('D11 cloud events without optional provider fields follow dated events',async()=>{
+  await mount({api:{getSystemEvents:async()=>({items:[{id:null,type:null,status:null,at:null,text:'Undated cloud event'}]})}});
+  assert.match(block('events').textContent,/Undated cloud event/);
+  assert.doesNotMatch(block('events').textContent,/Invalid Date|null|undefined/);
+  assert.ok(block('events').textContent.indexOf('Local diagnosis')<block('events').textContent.indexOf('Undated cloud event'));
+});
+
+test('D7 snapshot confirmation reaches the actual client transport as confirmed JSON',async()=>{
+  const requests=[];
+  const real=createServerPageApi(async(path,init)=>{
+    const body=JSON.parse(init.body);requests.push({path,method:init.method,body});
+    if(!body.confirmed)throw {code:'needs_confirmation',status:409,detail:{loses:'This snapshot cannot be used for recovery after deletion'}};
+    return {ok:true};
+  });
+  await mount({api:{deleteSnapshot:real.deleteSnapshot}});
+  await click('删除',block('snapshots'));
+  assert.match(document.querySelector('[data-device-dialog=server-confirm]').textContent,/cannot be used for recovery/);
+  await confirm();
+  assert.deepEqual(requests,[false,true].map(confirmed=>({path:'/v1/computers/cc-test/snapshots/snap-1',method:'DELETE',body:{confirmed}})));
+  assert.equal(document.querySelector('[data-device-dialog=server-confirm]'),null);
 });
 
 test('BYO has own-provider explanations, node facts and custom info, with no cloud controls or reads',async()=>{
@@ -241,6 +285,12 @@ test('snapshot errors show saved-vs-observed policy, permission and unavailable 
  assert.match(block('snapshots').textContent,/救援操作未完成：aliyun_error/);
  assert.doesNotMatch(block('snapshots').textContent,/null GB|0 GB/);
  assert.equal(block('snapshots').querySelector('[role=switch]').checked,true,'shows observed policy, not the unapplied saved choice');
+});
+
+test('D12 snapshot policy preserves the specific permission failure even without an action hint',async()=>{
+ await mount({api:{getSnapshots:async()=>({...snapshotsView,policy_error:{code:'permission_missing',message:'RAM role does not allow snapshot policies'},billing_unavailable_reason:'Snapshot storage rate has not been confirmed'})}});
+ assert.match(block('snapshots').textContent,/快照策略尚未应用：.*RAM role does not allow snapshot policies/);
+ assert.match(block('snapshots').textContent,/快照费用暂不可用：Snapshot storage rate has not been confirmed/);
 });
 
 for(const operation of ['rollback','reinstall'])test(`active ${operation} shows stages and polls until complete, retaining the page`,async(t)=>{

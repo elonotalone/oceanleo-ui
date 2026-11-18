@@ -28,12 +28,12 @@ function Facts({overview, computer, managed}: {overview: ServerOverview; compute
     ["状态", tt(COMPUTER_STATUS_LABEL[overview.cloud_status?.toLowerCase() ?? ""] ?? overview.cloud_status ?? "—")], ["地区", overview.region_id], ["可用区", overview.zone_id], ["公网 IP", overview.public_ip, true], ["私网 IP", overview.private_ip, true],
     ["规格", overview.instance_type], ["CPU 核数", overview.vcpu], ["内存", overview.memory_gb == null ? null : `${overview.memory_gb} GiB`], ["系统", overview.os_name],
     ["创建时间", formatDeviceTime(overview.created_at)], ["到期时间", overview.expires_at ? formatDeviceTime(overview.expires_at) : tt("无固定到期时间")], ["计费方式", tt(BILLING_LABEL[overview.billing_mode ?? ""] ?? overview.billing_mode ?? "—")],
-  ] : [["系统", node ? `${node.os} ${node.os_version}` : computer.node_os], ["CPU 核数", node?.cpus ?? computer.node_cpus], ["内存", bytes(node?.mem_bytes ?? computer.node_mem_bytes)], ["主机名", node?.hostname ?? computer.node_hostname], ["节点版本", node?.version ?? computer.node_version], ["架构", node?.arch ?? computer.node_arch], ["内核", node?.kernel ?? computer.node_kernel]];
+  ] : [["系统", [node?.os ?? computer.node_os, node?.os_version].filter(Boolean).join(" ") || null], ["CPU 核数", node?.cpus ?? computer.node_cpus], ["内存", bytes(node?.mem_bytes ?? computer.node_mem_bytes)], ["主机名", node?.hostname ?? computer.node_hostname], ["节点版本", node?.version ?? computer.node_version], ["架构", node?.arch ?? computer.node_arch], ["内核", node?.kernel ?? computer.node_kernel]];
   return <>
     {action.feedback}
     {!managed && <p className="mb-4 text-sm text-neutral-500">{tt(OWN_PROVIDER)}</p>}
     <dl className="grid gap-4 sm:grid-cols-2">{facts.map(([label, value, copy]) => <div key={label} className="min-w-0"><dt className="text-xs text-neutral-500">{tt(label)}</dt><dd className="mt-1 break-all text-sm">{value ?? "—"} {copy && !!value && <button type="button" className="ml-2 underline" aria-label={tt("复制{label}", {label: tt(label)})} onClick={() => action.run(async () => {if (!navigator.clipboard) throw new Error(tt("无法复制，请手动选择地址。")); await navigator.clipboard.writeText(String(value));})}>{tt("复制")}</button>}</dd></div>)}</dl>
-    {managed && <div className="mt-4 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-sm font-medium">{tt("磁盘")}</h4>{overview.disks?.length ? <ul className="space-y-1 text-sm">{overview.disks.map((disk) => <li key={disk.disk_id} className="break-all">{tt(disk.kind === "system" ? "系统盘" : "数据盘")} · {disk.size_gb} GB · {disk.category} · {disk.disk_id}</li>)}</ul> : <p className="text-sm text-neutral-500">{tt("暂无数据")}</p>}</div>}
+    {managed && <div className="mt-4 border-t border-neutral-200 pt-3"><h4 className="mb-2 text-sm font-medium">{tt("磁盘")}</h4>{overview.disks?.length ? <ul className="space-y-1 text-sm">{overview.disks.map((disk, index) => <li key={disk.disk_id ?? index} className="break-all">{tt(disk.kind === "system" ? "系统盘" : "数据盘")} · {disk.size_gb == null ? "—" : `${disk.size_gb} GB`} · {disk.category ?? "—"} · {disk.disk_id ?? "—"}</li>)}</ul> : <p className="text-sm text-neutral-500">{tt("暂无数据")}</p>}</div>}
   </>;
 }
 
@@ -64,7 +64,7 @@ function Events({client, api, id, managed, revision}: {client: CloudComputerClie
   const local = useServerResource(load);
   const loadCloud = useCallback(() => managed ? api.getSystemEvents(id) : Promise.resolve({items: []}), [api, id, managed, revision]);
   const cloud = useServerResource(loadCloud);
-  const merged = [...(local.data?.items ?? []).map((event) => ({id: `local:${event.id}`, at: event.created_at, text: EVENT_LABEL[event.kind] ? tt(EVENT_LABEL[event.kind]) : serverEventCopy(event, tt), detail: typeof event.detail.text === "string" ? event.detail.text : typeof event.detail.message === "string" ? event.detail.message : ""})), ...(cloud.data?.items ?? []).map((event) => ({id: `cloud:${event.id}`, at: event.at, text: event.text || event.type, detail: event.status}))].sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
+  const merged = [...(local.data?.items ?? []).map((event) => ({id: `local:${event.id}`, at: event.created_at, text: EVENT_LABEL[event.kind] ? tt(EVENT_LABEL[event.kind]) : serverEventCopy(event, tt), detail: typeof event.detail.text === "string" ? event.detail.text : typeof event.detail.message === "string" ? event.detail.message : ""})), ...(cloud.data?.items ?? []).map((event, index) => ({id: `cloud:${event.id ?? index}`, at: event.at, text: event.text || event.type, detail: event.status}))].sort((a, b) => (b.at ? Date.parse(b.at) : 0) - (a.at ? Date.parse(a.at) : 0));
   return <ServerSection title="事件" id="events">
     {!managed && <p className="mb-3 text-sm text-neutral-500">{tt(OWN_PROVIDER)}</p>}
     <ResourceView resource={local}>{() => null}</ResourceView>
