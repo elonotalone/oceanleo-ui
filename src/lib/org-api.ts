@@ -606,8 +606,19 @@ export async function leaveOrg(orgId: string): Promise<void> {
 export async function transferOrgOwnership(orgId: string, userId: string): Promise<void> {
   await must(orgPath(orgId, ":transfer-ownership"), { method: "POST", body: JSON.stringify({ toUserId: userId }) });
 }
-export async function dissolveOrg(orgId: string, confirmName: string): Promise<void> {
-  await must(orgPath(orgId, ":dissolve"), { method: "POST", body: JSON.stringify({ confirm_name: confirmName }) });
+export async function dissolveOrg(orgId: string, confirmName: string): Promise<{ libraryTransferred: boolean }> {
+  const data = await must<{ library_transfer?: { status?: string } }>(orgPath(orgId, ":dissolve"), { method: "POST", body: JSON.stringify({ confirm_name: confirmName }) });
+  return { libraryTransferred: data.library_transfer?.status === "moved" };
+}
+
+export interface InheritedOrgAsset {
+  id: string; assetKind: string; assetRef: string; title: string;
+  summary: string; publishedBy: string; createdAt: string;
+}
+export async function listInheritedOrgAssets(offset = 0, signal?: AbortSignal): Promise<{
+  available: boolean; ownerUserId: string; assets: InheritedOrgAsset[]; hasMore: boolean;
+}> {
+  return must(`/v1/orgs/me/inherited-assets?offset=${offset}`, { signal });
 }
 export type OrgTransferDirection = "personal_to_team" | "team_to_personal" | "team_to_team";
 export interface OrgTransferBody {

@@ -368,7 +368,7 @@ test("team settings refresh both management and membership after dissolve, leave
       if (c.path === "/v1/orgs") return json({ orgs: currentOrgs });
       if (c.init.method === "POST") {
         currentOrgs = kind === "transfer" ? [{ ...org, role: "admin", can_view_org_page: true }] : [];
-        return json({});
+        return json(kind === "dissolve" ? { library_transfer: { status: "moved", entry_count: 0 } } : {});
       }
     }, async () => {
       await render(React.createElement(OrgSection), async v => {

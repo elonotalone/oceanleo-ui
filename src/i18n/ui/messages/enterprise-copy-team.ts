@@ -2,6 +2,7 @@
 import type { Locale } from "../../config";
 
 export const TEAM_COPY_SOURCE = {
+  "libraryTransferUnavailable": "团队已解散，但团队库条目尚未转入你的个人库。",
   "totalWindow": "累计",
   "dayWindow": "近 1 天",
   "fiveDayWindow": "近 5 天",
@@ -48,6 +49,7 @@ export const TEAM_COPY_SOURCE = {
 type TeamCopy = Record<keyof typeof TEAM_COPY_SOURCE, string>;
 export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
   "en": {
+      "libraryTransferUnavailable": "The team is dissolved, but its Library entries have not moved to your personal Library.",
       "totalWindow": "All time",
       "dayWindow": "Last 1 day",
       "fiveDayWindow": "Last 5 days",
@@ -91,6 +93,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "You can move at most {amount} (credit you paid for). Enter a smaller amount."
   },
   "de": {
+      "libraryTransferUnavailable": "Das Team ist aufgelöst, aber seine Bibliothekseinträge wurden noch nicht in deine persönliche Bibliothek übertragen.",
       "totalWindow": "Insgesamt",
       "dayWindow": "Letzter Tag",
       "fiveDayWindow": "Letzte 5 Tage",
@@ -134,6 +137,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Du kannst höchstens {amount} verschieben (selbst aufgeladenes Guthaben). Gib einen kleineren Betrag ein."
   },
   "es": {
+      "libraryTransferUnavailable": "El equipo se ha disuelto, pero sus entradas de Biblioteca aún no se han transferido a tu Biblioteca personal.",
       "totalWindow": "Total acumulado",
       "dayWindow": "Último día",
       "fiveDayWindow": "Últimos 5 días",
@@ -177,6 +181,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Como máximo puedes transferir {amount} (saldo recargado). Reduce el importe."
   },
   "fr": {
+      "libraryTransferUnavailable": "L’équipe est dissoute, mais ses éléments de bibliothèque n’ont pas encore été transférés dans votre bibliothèque personnelle.",
       "totalWindow": "Total cumulé",
       "dayWindow": "Dernier jour",
       "fiveDayWindow": "5 derniers jours",
@@ -220,6 +225,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Vous pouvez transférer au maximum {amount} (crédit payé). Réduisez le montant."
   },
   "it": {
+      "libraryTransferUnavailable": "Il team è stato sciolto, ma le sue voci della Libreria non sono ancora state trasferite nella tua Libreria personale.",
       "totalWindow": "Totale",
       "dayWindow": "Ultimo giorno",
       "fiveDayWindow": "Ultimi 5 giorni",
@@ -263,6 +269,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Puoi trasferire al massimo {amount} (credito ricaricato). Riduci l’importo."
   },
   "pt-BR": {
+      "libraryTransferUnavailable": "A equipe foi dissolvida, mas os itens da Biblioteca ainda não foram transferidos para sua Biblioteca pessoal.",
       "totalWindow": "Total acumulado",
       "dayWindow": "Último dia",
       "fiveDayWindow": "Últimos 5 dias",
@@ -306,6 +313,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Você pode transferir no máximo {amount} (crédito recarregado). Reduza o valor."
   },
   "pt-PT": {
+      "libraryTransferUnavailable": "A equipa foi dissolvida, mas os itens da Biblioteca ainda não foram transferidos para a tua Biblioteca pessoal.",
       "totalWindow": "Total acumulado",
       "dayWindow": "Último dia",
       "fiveDayWindow": "Últimos 5 dias",
@@ -349,6 +357,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Pode transferir no máximo {amount} (crédito carregado). Reduza o valor."
   },
   "tr": {
+      "libraryTransferUnavailable": "Ekip dağıtıldı, ancak Kitaplık öğeleri henüz kişisel Kitaplığınıza taşınmadı.",
       "totalWindow": "Toplam",
       "dayWindow": "Son 1 gün",
       "fiveDayWindow": "Son 5 gün",
@@ -392,6 +401,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "En fazla {amount} aktarabilirsiniz (yüklediğiniz bakiye). Tutarı azaltın."
   },
   "vi": {
+      "libraryTransferUnavailable": "Nhóm đã giải tán, nhưng các mục Thư viện nhóm chưa được chuyển vào Thư viện cá nhân của bạn.",
       "totalWindow": "Tổng cộng",
       "dayWindow": "1 ngày qua",
       "fiveDayWindow": "5 ngày qua",
@@ -435,6 +445,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "Bạn chỉ có thể chuyển tối đa {amount} (số tiền đã nạp). Hãy giảm số tiền."
   },
   "ja": {
+      "libraryTransferUnavailable": "チームは解散しましたが、チームのライブラリ項目はまだ個人ライブラリに移動されていません。",
       "totalWindow": "累計",
       "dayWindow": "直近1日",
       "fiveDayWindow": "直近5日",
@@ -478,6 +489,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "移せるのは最大 {amount}（チャージした分）です。金額を減らしてください。"
   },
   "ko": {
+      "libraryTransferUnavailable": "팀이 해산되었지만 팀 라이브러리 항목은 아직 개인 라이브러리로 이동되지 않았습니다.",
       "totalWindow": "누적",
       "dayWindow": "최근 1일",
       "fiveDayWindow": "최근 5일",
@@ -521,6 +533,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "최대 {amount}(충전한 금액)까지만 옮길 수 있습니다. 금액을 줄이세요."
   },
   "zh-TW": {
+      "libraryTransferUnavailable": "團隊已解散，但團隊庫條目尚未轉入你的個人庫。",
       "totalWindow": "累計",
       "dayWindow": "最近 1 天",
       "fiveDayWindow": "最近 5 天",
@@ -564,6 +577,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "最多只能轉入 {amount}（儲值來的錢），請減少金額。"
   },
   "ar": {
+      "libraryTransferUnavailable": "تم حل الفريق، لكن عناصر مكتبته لم تُنقل بعد إلى مكتبتك الشخصية.",
       "totalWindow": "الإجمالي",
       "dayWindow": "آخر يوم",
       "fiveDayWindow": "آخر 5 أيام",
@@ -607,6 +621,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "يمكنك نقل {amount} كحد أقصى (الرصيد الذي شحنته). قلّل المبلغ."
   },
   "th": {
+      "libraryTransferUnavailable": "ยุบทีมแล้ว แต่รายการในคลังของทีมยังไม่ได้ย้ายไปยังคลังส่วนตัวของคุณ",
       "totalWindow": "สะสมทั้งหมด",
       "dayWindow": "1 วันที่ผ่านมา",
       "fiveDayWindow": "5 วันที่ผ่านมา",
@@ -650,6 +665,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "โอนได้สูงสุด {amount} (เงินที่เติมเอง) โปรดลดจำนวน"
   },
   "hi": {
+      "libraryTransferUnavailable": "टीम भंग हो गई है, लेकिन उसकी लाइब्रेरी की प्रविष्टियाँ अभी आपकी निजी लाइब्रेरी में नहीं आई हैं।",
       "totalWindow": "कुल",
       "dayWindow": "पिछला 1 दिन",
       "fiveDayWindow": "पिछले 5 दिन",
@@ -693,6 +709,7 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "overTransferable": "आप अधिकतम {amount} (टॉप-अप किया गया क्रेडिट) ही स्थानांतरित कर सकते हैं। राशि कम करें।"
   },
   "es-419": {
+      "libraryTransferUnavailable": "El equipo se disolvió, pero sus entradas de Biblioteca aún no se han transferido a tu Biblioteca personal.",
       "totalWindow": "Total acumulado",
       "dayWindow": "Último día",
       "fiveDayWindow": "Últimos 5 días",

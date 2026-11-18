@@ -139,12 +139,18 @@ test("「成员离开与团队解散时，数据归谁」只写代码真正做�
   for (const bit of [
     "退出或被移出", "仍是他自己的", "团队本来就看不到", "仍留在团队库里", "个人库里，不会被删除", "仍记在团队的账单和花费统计里",
     "输入团队名", "全部余额退回负责人的个人钱包", "所有成员（包括负责人）都被移出", "邀请链接", "加入申请作废", "充值单取消",
-    "生成任务没结束时不能解散", "最多约 2 小时", "币种不同", "账单和充值记录保留", "谁都不能再从团队打开",
+    "生成任务没结束时不能解散", "最多约 2 小时", "币种不同", "账单和充值记录保留", "条目转入负责人的个人库", "署名不变", "成员个人库里的副本不受影响",
   ]) {
     assert.ok(section.body.includes(bit), `缺：${bit}`);
   }
   // Retired claims: team-paid tasks belonged to the team; on closing the team wallet was archived or deleted.
-  for (const retired of ["用团队钱包完成的任务与已发布到团队库的成果仍留在团队里", "归档或删除", "团队任务", "停用"]) {
+  for (const retired of ["用团队钱包完成的任务与已发布到团队库的成果仍留在团队里", "归档或删除", "团队任务", "停用", "条目留在已解散的团队里"]) {
     assert.ok(!`${section.title}${section.body}`.includes(retired), `仍含旧说法：${retired}`);
   }
+});
+
+
+test("争议与终止保持操作员尚未批准修改的原文", () => {
+  assert.equal(ENTERPRISE_AGREEMENT_SECTIONS.find((item) => item.id === "dispute-and-termination").body,
+    "对某笔扣费有疑问，团队负责人可以在账单与用量里核对，并在合理期限内提出复核。任何一方可以终止企业服务：你这边停用团队或不再续费即可；我们这边若发现滥用、违法或长期欠费，也可以暂停或关闭该团队。终止后，未用完的团队余额按当时公示的退款规则处理，已消耗的模型调用不退。");
 });

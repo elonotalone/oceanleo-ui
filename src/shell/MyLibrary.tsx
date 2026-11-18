@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { InheritedTeamLibrary } from "./InheritedTeamLibrary";
 import { StorageCapacityStrip } from "./StorageCapacityStrip";
 import { LibraryImportDialog, LibraryUploadQueue, LibraryPurchasedUpdates, type LibraryImportMode } from "./library-import";
 import { useUI } from "../i18n/ui/useUI";
@@ -2209,6 +2210,8 @@ export function MyLibrary({
           {uploadError && <StorageCapacityStrip accent={accent} />}
           <LibraryUploadQueue onCompleted={load} />
           <LibraryPurchasedUpdates items={shownSectionItems} onUpdated={load} />
+          {!attachmentSection && !favoritesOnly && activeCategory === "all" && ownerPrincipalId && <InheritedTeamLibrary
+            key={ownerPrincipalId} ownerUserId={ownerPrincipalId} query={libraryQuery} /> }
           {typeof supplementalSection === "function"
             ? supplementalSection({ query: libraryQuery, favoritesOnly, section: activeSection })
             : supplementalSection}

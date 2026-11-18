@@ -13,6 +13,7 @@ export function OrgLifecycle({ orgId, name, role, members = [], onChanged }: {
   const [confirmName, setConfirmName] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [libraryNotice, setLibraryNotice] = useState(false);
   const button = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]";
   function open(next: Action) { setAction(next); setConfirmName(""); setError(""); }
   async function submit() {
@@ -22,7 +23,14 @@ export function OrgLifecycle({ orgId, name, role, members = [], onChanged }: {
       if (action.kind === "remove") await removeOrgMember(orgId, action.member.userId);
       else if (action.kind === "transfer") await transferOrgOwnership(orgId, action.member.userId);
       else if (action.kind === "leave") await leaveOrg(orgId);
-      else await dissolveOrg(orgId, confirmName);
+      else {
+        const result = await dissolveOrg(orgId, confirmName);
+        if (!result.libraryTransferred) {
+          setLibraryNotice(true);
+          setAction(null);
+          return;
+        }
+      }
       setAction(null);
       await onChanged();
     } catch (e) {
@@ -34,13 +42,17 @@ export function OrgLifecycle({ orgId, name, role, members = [], onChanged }: {
     finally { setBusy(false); }
   }
   return <div className="mt-3 space-y-2" data-org-lifecycle={orgId}>
-    {role !== "owner" && <button className={button} type="button" data-org-leave="1" onClick={() => open({ kind: "leave" })}>{tt("退出团队")}</button>}
-    {(role === "owner" || role === "admin") && members.filter((m) => m.role !== "owner").map((member) => <div className="flex flex-wrap items-center gap-2 text-[12px]" key={member.userId}>
+    {libraryNotice && <div role="status" className="rounded-xl border border-neutral-200 bg-white p-4 text-[12px]">
+      <p>{tt("团队已解散，但团队库条目尚未转入你的个人库。")}</p>
+      <button type="button" className={button} onClick={() => { void onChanged(); }}>{tt("确认操作")}</button>
+    </div>}
+    {!libraryNotice && role !== "owner" && <button className={button} type="button" data-org-leave="1" onClick={() => open({ kind: "leave" })}>{tt("退出团队")}</button>}
+    {!libraryNotice && (role === "owner" || role === "admin") && members.filter((m) => m.role !== "owner").map((member) => <div className="flex flex-wrap items-center gap-2 text-[12px]" key={member.userId}>
       <span>{member.email || member.userId}</span>
       <button type="button" className={button} data-org-remove={member.userId} onClick={() => open({ kind: "remove", member })}>{tt("移除成员")}</button>
       {role === "owner" && <button type="button" className={button} data-org-transfer-owner={member.userId} onClick={() => open({ kind: "transfer", member })}>{tt("转让负责人")}</button>}
     </div>)}
-    {role === "owner" && <button type="button" className={button} data-org-dissolve="1" onClick={() => open({ kind: "dissolve" })}>{tt("解散团队")}</button>}
+    {!libraryNotice && role === "owner" && <button type="button" className={button} data-org-dissolve="1" onClick={() => open({ kind: "dissolve" })}>{tt("解散团队")}</button>}
     {action && <form role="dialog" aria-label={tt("确认操作")} className="space-y-3 rounded-xl border border-neutral-200 bg-white p-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
       <p className="text-[13px]">{action.kind === "dissolve" ? tt("解散后，全部余额退回你的个人钱包，所有成员会被移除，邀请链接不再有效。请输入团队名「{name}」确认。", { name })
         : action.kind === "leave" ? tt("确认退出「{name}」？", { name })
