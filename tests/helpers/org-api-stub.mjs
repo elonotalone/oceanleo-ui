@@ -19,7 +19,7 @@ export async function updateOrg() { return {}; }
 export async function setMemberPermission() {}
 export async function listMemberLimits() { return []; }
 export async function setMemberLimits() {}
-export async function listOrgTransfers() { return []; }
+export async function listOrgTransfers() { return { transfers: [], personalTransferableMinor: null }; }
 export async function transferOrgCredit() {}
 export async function topupOrg() {}
 export async function leaveOrg() {}

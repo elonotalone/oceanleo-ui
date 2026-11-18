@@ -23,6 +23,7 @@ export function OrgWallet({ org, orgs, onChanged, topupOpen = false, onTopupClos
   const [amount, setAmount] = useState("");
   const [toOrgId, setToOrgId] = useState("");
   const [history, setHistory] = useState<OrgTransfer[] | null>(null);
+  const [transferable, setTransferable] = useState<number | null>(null);
   const [historyError, setHistoryError] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -39,14 +40,17 @@ export function OrgWallet({ org, orgs, onChanged, topupOpen = false, onTopupClos
   const input = "rounded-lg border border-neutral-200 px-3 py-2 text-[13px]";
   const button = "rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] disabled:opacity-50";
   async function loadHistory() {
-    try { setHistory(await listOrgTransfers(org.id)); setHistoryError(""); }
+    try { const list = await listOrgTransfers(org.id); setHistory(list.transfers); setTransferable(list.personalTransferableMinor); setHistoryError(""); }
     catch (e) { setHistoryError(orgErrorCopy(orgApiCode(e), tt)); }
   }
   useEffect(() => {
     let cancelled = false;
-    void listOrgTransfers(org.id).then((rows) => { if (!cancelled) setHistory(rows); }, (e) => { if (!cancelled) setHistoryError(orgErrorCopy(orgApiCode(e), tt)); });
+    void listOrgTransfers(org.id).then((list) => { if (!cancelled) { setHistory(list.transfers); setTransferable(list.personalTransferableMinor); } }, (e) => { if (!cancelled) setHistoryError(orgErrorCopy(orgApiCode(e), tt)); });
     return () => { cancelled = true; };
   }, [org.id]);
+  function overTransferable(minor: number) {
+    return tt("最多只能转入 {amount}（充值来的钱），请减少金额。", { amount: formatMinor(minor, org.currency) });
+  }
   async function move() {
     if (sending.current) return;
     setError(""); setSuccess("");
@@ -56,6 +60,7 @@ export function OrgWallet({ org, orgs, onChanged, topupOpen = false, onTopupClos
       if (amountMinor === undefined) { setError(tt("请输入大于零的金额，最多两位小数。")); return; }
       if (direction !== "personal_to_team" && !org.overviewAvailable) { setError(orgErrorCopy("not_available", tt)); return; }
       if (direction !== "personal_to_team" && amountMinor > org.balanceMinor) { setError(tt("余额不足，请减少金额。")); return; }
+      if (direction === "personal_to_team" && transferable !== null && amountMinor > transferable) { setError(overTransferable(transferable)); return; }
       if (direction === "team_to_team" && !teams.some((team) => team.id === toOrgId)) { setError(tt("请选择你负责的另一个团队。")); return; }
       body = { direction, amount_minor: amountMinor, request_id: crypto.randomUUID(), ...(direction === "team_to_team" ? { to_org_id: toOrgId } : {}) };
       attempt.current = body;
@@ -69,7 +74,9 @@ export function OrgWallet({ org, orgs, onChanged, topupOpen = false, onTopupClos
     } catch (e) {
       const refused = e instanceof OrgApiError && e.status >= 400 && e.status < 500;
       if (refused) attempt.current = null;
-      setRetry(!refused); setError(orgErrorCopy(orgApiCode(e), tt));
+      const cap = e instanceof OrgApiError && e.code === "only_paid_credit_transferable" ? e.facts.transferable_minor : undefined;
+      if (cap !== undefined) setTransferable(cap);
+      setRetry(!refused); setError(cap !== undefined ? overTransferable(cap) : orgErrorCopy(orgApiCode(e), tt));
     }
     finally { sending.current = false; setBusy(false); }
   }
@@ -109,6 +116,10 @@ export function OrgWallet({ org, orgs, onChanged, topupOpen = false, onTopupClos
       <label className="text-[12px]">{tt("金额")} ({org.currency}) <input className={input} inputMode="decimal" aria-label={tt("转移金额")} data-org-transfer-amount="1" value={amount} disabled={busy || retry} onChange={(e) => setAmount(e.target.value)} /></label>
       <button type="submit" className={button} disabled={busy} data-org-transfer-submit="1">{retry ? tt("重试") : tt("转移余额")}</button>
     </form>
+    {direction === "personal_to_team" && <p className="text-[12px] text-neutral-500" data-org-transferable="1">
+      {transferable !== null && <>{tt("最多可转入 {amount}。", { amount: formatMinor(transferable, org.currency) })} </>}
+      {tt("赠送的额度会留在个人钱包里，不能转出；只能转出充值来的钱。")}
+    </p>}
     {error && <p role="status" className="text-[12px] text-rose-700">{error}</p>}
     {success && <p role="status" className="text-[12px]">{success}</p>}
     <h3 className="text-[13px] font-medium">{tt("转移记录")}</h3>

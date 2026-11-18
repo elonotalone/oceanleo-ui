@@ -37,7 +37,12 @@ export const TEAM_COPY_SOURCE = {
   "payerNote": "汇款备注",
   "goPay": "前往付款",
   "currencyMismatch": "币种不同，无法转移余额；请使用相同币种的钱包。",
-  "nameMismatch": "团队名不一致，请重新输入。"
+  "nameMismatch": "团队名不一致，请重新输入。",
+  "pendingChargesCount": "还有 {count} 个用团队钱包付费的生成任务没结束。等它们结束（最多约 2 小时），就可以解散团队。",
+  "pendingCharges": "还有用团队钱包付费的生成任务没结束。等它们结束（最多约 2 小时），就可以解散团队。",
+  "paidCreditOnly": "赠送的额度会留在个人钱包里，不能转出；只能转出充值来的钱。",
+  "transferableUpTo": "最多可转入 {amount}。",
+  "overTransferable": "最多只能转入 {amount}（充值来的钱），请减少金额。"
 } as const;
 
 type TeamCopy = Record<keyof typeof TEAM_COPY_SOURCE, string>;
@@ -78,7 +83,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Transfer note",
       "goPay": "Continue to payment",
       "currencyMismatch": "The currencies differ. Use wallets with the same currency.",
-      "nameMismatch": "The team name does not match. Enter it again."
+      "nameMismatch": "The team name does not match. Enter it again.",
+      "pendingChargesCount": "{count} generations paid by the team wallet are still running. Once they finish (about 2 hours at most), you can dissolve the team.",
+      "pendingCharges": "Some generations paid by the team wallet are still running. Once they finish (about 2 hours at most), you can dissolve the team.",
+      "paidCreditOnly": "Gifted credit stays in your personal wallet and can’t be moved; only credit you paid for can be moved.",
+      "transferableUpTo": "You can move up to {amount}.",
+      "overTransferable": "You can move at most {amount} (credit you paid for). Enter a smaller amount."
   },
   "de": {
       "totalWindow": "Insgesamt",
@@ -116,7 +126,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Verwendungszweck",
       "goPay": "Weiter zur Zahlung",
       "currencyMismatch": "Die Währungen unterscheiden sich. Verwenden Sie Wallets mit gleicher Währung.",
-      "nameMismatch": "Der Teamname stimmt nicht. Erneut eingeben."
+      "nameMismatch": "Der Teamname stimmt nicht. Erneut eingeben.",
+      "pendingChargesCount": "{count} Generierungen, die über das Team-Guthaben bezahlt werden, laufen noch. Sobald sie fertig sind (höchstens etwa 2 Stunden), kannst du das Team auflösen.",
+      "pendingCharges": "Einige Generierungen, die über das Team-Guthaben bezahlt werden, laufen noch. Sobald sie fertig sind (höchstens etwa 2 Stunden), kannst du das Team auflösen.",
+      "paidCreditOnly": "Geschenktes Guthaben bleibt in deinem persönlichen Wallet und kann nicht verschoben werden; nur selbst aufgeladenes Guthaben lässt sich verschieben.",
+      "transferableUpTo": "Du kannst bis zu {amount} verschieben.",
+      "overTransferable": "Du kannst höchstens {amount} verschieben (selbst aufgeladenes Guthaben). Gib einen kleineren Betrag ein."
   },
   "es": {
       "totalWindow": "Total acumulado",
@@ -154,7 +169,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Concepto de transferencia",
       "goPay": "Ir al pago",
       "currencyMismatch": "Las monedas son distintas. Usa monederos con la misma moneda.",
-      "nameMismatch": "El nombre del equipo no coincide. Introdúcelo de nuevo."
+      "nameMismatch": "El nombre del equipo no coincide. Introdúcelo de nuevo.",
+      "pendingChargesCount": "Aún hay {count} generaciones pagadas con el monedero del equipo en curso. Cuando terminen (unas 2 horas como máximo), podrás disolver el equipo.",
+      "pendingCharges": "Aún hay generaciones pagadas con el monedero del equipo en curso. Cuando terminen (unas 2 horas como máximo), podrás disolver el equipo.",
+      "paidCreditOnly": "El saldo regalado se queda en tu monedero personal y no se puede transferir; solo se transfiere el saldo que has recargado.",
+      "transferableUpTo": "Puedes transferir hasta {amount}.",
+      "overTransferable": "Como máximo puedes transferir {amount} (saldo recargado). Reduce el importe."
   },
   "fr": {
       "totalWindow": "Total cumulé",
@@ -192,7 +212,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Libellé du virement",
       "goPay": "Passer au paiement",
       "currencyMismatch": "Les devises diffèrent. Utilisez des portefeuilles dans la même devise.",
-      "nameMismatch": "Le nom de l’équipe ne correspond pas. Saisissez-le à nouveau."
+      "nameMismatch": "Le nom de l’équipe ne correspond pas. Saisissez-le à nouveau.",
+      "pendingChargesCount": "{count} générations payées par le portefeuille de l’équipe sont encore en cours. Une fois terminées (environ 2 heures au maximum), vous pourrez dissoudre l’équipe.",
+      "pendingCharges": "Des générations payées par le portefeuille de l’équipe sont encore en cours. Une fois terminées (environ 2 heures au maximum), vous pourrez dissoudre l’équipe.",
+      "paidCreditOnly": "Le crédit offert reste dans votre portefeuille personnel et ne peut pas être transféré ; seul le crédit que vous avez payé peut l’être.",
+      "transferableUpTo": "Vous pouvez transférer jusqu’à {amount}.",
+      "overTransferable": "Vous pouvez transférer au maximum {amount} (crédit payé). Réduisez le montant."
   },
   "it": {
       "totalWindow": "Totale",
@@ -230,7 +255,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Causale bonifico",
       "goPay": "Vai al pagamento",
       "currencyMismatch": "Le valute sono diverse. Usa portafogli con la stessa valuta.",
-      "nameMismatch": "Il nome del team non corrisponde. Inseriscilo di nuovo."
+      "nameMismatch": "Il nome del team non corrisponde. Inseriscilo di nuovo.",
+      "pendingChargesCount": "Ci sono ancora {count} generazioni pagate con il portafoglio del team in corso. Quando finiscono (al massimo circa 2 ore), potrai sciogliere il team.",
+      "pendingCharges": "Ci sono ancora generazioni pagate con il portafoglio del team in corso. Quando finiscono (al massimo circa 2 ore), potrai sciogliere il team.",
+      "paidCreditOnly": "Il credito regalato resta nel tuo portafoglio personale e non si può trasferire; si può trasferire solo il credito che hai ricaricato.",
+      "transferableUpTo": "Puoi trasferire fino a {amount}.",
+      "overTransferable": "Puoi trasferire al massimo {amount} (credito ricaricato). Riduci l’importo."
   },
   "pt-BR": {
       "totalWindow": "Total acumulado",
@@ -268,7 +298,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Descrição da transferência",
       "goPay": "Ir para pagamento",
       "currencyMismatch": "As moedas são diferentes. Use carteiras com a mesma moeda.",
-      "nameMismatch": "O nome da equipe não confere. Digite novamente."
+      "nameMismatch": "O nome da equipe não confere. Digite novamente.",
+      "pendingChargesCount": "Ainda há {count} gerações pagas pela carteira da equipe em andamento. Quando terminarem (no máximo cerca de 2 horas), você poderá dissolver a equipe.",
+      "pendingCharges": "Ainda há gerações pagas pela carteira da equipe em andamento. Quando terminarem (no máximo cerca de 2 horas), você poderá dissolver a equipe.",
+      "paidCreditOnly": "O crédito de presente fica na sua carteira pessoal e não pode ser transferido; só o crédito que você recarregou pode ser transferido.",
+      "transferableUpTo": "Você pode transferir até {amount}.",
+      "overTransferable": "Você pode transferir no máximo {amount} (crédito recarregado). Reduza o valor."
   },
   "pt-PT": {
       "totalWindow": "Total acumulado",
@@ -306,7 +341,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Descrição da transferência",
       "goPay": "Ir para pagamento",
       "currencyMismatch": "As moedas são diferentes. Use carteiras com a mesma moeda.",
-      "nameMismatch": "O nome da equipa não corresponde. Introduza novamente."
+      "nameMismatch": "O nome da equipa não corresponde. Introduza novamente.",
+      "pendingChargesCount": "Ainda há {count} gerações pagas pela carteira da equipa em curso. Quando terminarem (no máximo cerca de 2 horas), pode dissolver a equipa.",
+      "pendingCharges": "Ainda há gerações pagas pela carteira da equipa em curso. Quando terminarem (no máximo cerca de 2 horas), pode dissolver a equipa.",
+      "paidCreditOnly": "O crédito oferecido fica na sua carteira pessoal e não pode ser transferido; só o crédito que carregou pode ser transferido.",
+      "transferableUpTo": "Pode transferir até {amount}.",
+      "overTransferable": "Pode transferir no máximo {amount} (crédito carregado). Reduza o valor."
   },
   "tr": {
       "totalWindow": "Toplam",
@@ -344,7 +384,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Havale açıklaması",
       "goPay": "Ödemeye geç",
       "currencyMismatch": "Para birimleri farklı. Aynı para birimindeki cüzdanları kullanın.",
-      "nameMismatch": "Ekip adı eşleşmiyor. Yeniden girin."
+      "nameMismatch": "Ekip adı eşleşmiyor. Yeniden girin.",
+      "pendingChargesCount": "Takım cüzdanıyla ödenen {count} üretim hâlâ sürüyor. Bittiklerinde (en fazla yaklaşık 2 saat) takımı dağıtabilirsiniz.",
+      "pendingCharges": "Takım cüzdanıyla ödenen bazı üretimler hâlâ sürüyor. Bittiklerinde (en fazla yaklaşık 2 saat) takımı dağıtabilirsiniz.",
+      "paidCreditOnly": "Hediye edilen bakiye kişisel cüzdanınızda kalır ve aktarılamaz; yalnızca yüklediğiniz bakiye aktarılabilir.",
+      "transferableUpTo": "En fazla {amount} aktarabilirsiniz.",
+      "overTransferable": "En fazla {amount} aktarabilirsiniz (yüklediğiniz bakiye). Tutarı azaltın."
   },
   "vi": {
       "totalWindow": "Tổng cộng",
@@ -382,7 +427,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Nội dung chuyển khoản",
       "goPay": "Đến trang thanh toán",
       "currencyMismatch": "Khác loại tiền. Hãy dùng các ví cùng loại tiền.",
-      "nameMismatch": "Tên nhóm không khớp. Hãy nhập lại."
+      "nameMismatch": "Tên nhóm không khớp. Hãy nhập lại.",
+      "pendingChargesCount": "Vẫn còn {count} lượt tạo được trả bằng ví nhóm đang chạy. Khi chúng xong (tối đa khoảng 2 giờ), bạn có thể giải tán nhóm.",
+      "pendingCharges": "Vẫn còn lượt tạo được trả bằng ví nhóm đang chạy. Khi chúng xong (tối đa khoảng 2 giờ), bạn có thể giải tán nhóm.",
+      "paidCreditOnly": "Số dư được tặng ở lại ví cá nhân và không thể chuyển đi; chỉ số tiền bạn đã nạp mới chuyển được.",
+      "transferableUpTo": "Bạn có thể chuyển tối đa {amount}.",
+      "overTransferable": "Bạn chỉ có thể chuyển tối đa {amount} (số tiền đã nạp). Hãy giảm số tiền."
   },
   "ja": {
       "totalWindow": "累計",
@@ -420,7 +470,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "振込メモ",
       "goPay": "支払いへ進む",
       "currencyMismatch": "通貨が異なります。同じ通貨のウォレットを使用してください。",
-      "nameMismatch": "チーム名が一致しません。再入力してください。"
+      "nameMismatch": "チーム名が一致しません。再入力してください。",
+      "pendingChargesCount": "チームのウォレットで支払う生成がまだ {count} 件実行中です。終わったら（長くても約 2 時間）チームを解散できます。",
+      "pendingCharges": "チームのウォレットで支払う生成がまだ実行中です。終わったら（長くても約 2 時間）チームを解散できます。",
+      "paidCreditOnly": "プレゼントされたクレジットは個人ウォレットに残り、移せません。移せるのはチャージした分だけです。",
+      "transferableUpTo": "最大 {amount} まで移せます。",
+      "overTransferable": "移せるのは最大 {amount}（チャージした分）です。金額を減らしてください。"
   },
   "ko": {
       "totalWindow": "누적",
@@ -458,7 +513,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "송금 메모",
       "goPay": "결제하러 가기",
       "currencyMismatch": "통화가 다릅니다. 통화가 같은 지갑을 사용하세요.",
-      "nameMismatch": "팀 이름이 일치하지 않습니다. 다시 입력하세요."
+      "nameMismatch": "팀 이름이 일치하지 않습니다. 다시 입력하세요.",
+      "pendingChargesCount": "팀 지갑으로 결제한 생성 작업이 아직 {count}개 진행 중입니다. 끝나면(길어도 약 2시간) 팀을 해산할 수 있습니다.",
+      "pendingCharges": "팀 지갑으로 결제한 생성 작업이 아직 진행 중입니다. 끝나면(길어도 약 2시간) 팀을 해산할 수 있습니다.",
+      "paidCreditOnly": "선물받은 크레딧은 개인 지갑에 남으며 옮길 수 없습니다. 충전한 금액만 옮길 수 있습니다.",
+      "transferableUpTo": "최대 {amount}까지 옮길 수 있습니다.",
+      "overTransferable": "최대 {amount}(충전한 금액)까지만 옮길 수 있습니다. 금액을 줄이세요."
   },
   "zh-TW": {
       "totalWindow": "累計",
@@ -496,7 +556,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "匯款備註",
       "goPay": "前往付款",
       "currencyMismatch": "幣別不同，無法轉移餘額；請使用相同幣別的錢包。",
-      "nameMismatch": "團隊名不一致，請重新輸入。"
+      "nameMismatch": "團隊名不一致，請重新輸入。",
+      "pendingChargesCount": "還有 {count} 個用團隊錢包付費的生成任務沒結束。等它們結束（最多約 2 小時），就可以解散團隊。",
+      "pendingCharges": "還有用團隊錢包付費的生成任務沒結束。等它們結束（最多約 2 小時），就可以解散團隊。",
+      "paidCreditOnly": "贈送的額度會留在個人錢包裡，不能轉出；只能轉出儲值來的錢。",
+      "transferableUpTo": "最多可轉入 {amount}。",
+      "overTransferable": "最多只能轉入 {amount}（儲值來的錢），請減少金額。"
   },
   "ar": {
       "totalWindow": "الإجمالي",
@@ -534,7 +599,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "ملاحظة التحويل",
       "goPay": "المتابعة للدفع",
       "currencyMismatch": "العملتان مختلفتان. استخدم محافظ بنفس العملة.",
-      "nameMismatch": "اسم الفريق غير مطابق. أدخله مجددًا."
+      "nameMismatch": "اسم الفريق غير مطابق. أدخله مجددًا.",
+      "pendingChargesCount": "لا تزال {count} عمليات توليد مدفوعة من محفظة الفريق قيد التشغيل. بعد انتهائها (نحو ساعتين على الأكثر) يمكنك حل الفريق.",
+      "pendingCharges": "لا تزال بعض عمليات التوليد المدفوعة من محفظة الفريق قيد التشغيل. بعد انتهائها (نحو ساعتين على الأكثر) يمكنك حل الفريق.",
+      "paidCreditOnly": "يبقى الرصيد المُهدى في محفظتك الشخصية ولا يمكن نقله؛ يمكن نقل الرصيد الذي شحنته فقط.",
+      "transferableUpTo": "يمكنك نقل ما يصل إلى {amount}.",
+      "overTransferable": "يمكنك نقل {amount} كحد أقصى (الرصيد الذي شحنته). قلّل المبلغ."
   },
   "th": {
       "totalWindow": "สะสมทั้งหมด",
@@ -572,7 +642,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "หมายเหตุการโอน",
       "goPay": "ไปชำระเงิน",
       "currencyMismatch": "สกุลเงินต่างกัน โปรดใช้กระเป๋าที่มีสกุลเงินเดียวกัน",
-      "nameMismatch": "ชื่อทีมไม่ตรง โปรดกรอกใหม่"
+      "nameMismatch": "ชื่อทีมไม่ตรง โปรดกรอกใหม่",
+      "pendingChargesCount": "ยังมีงานสร้าง {count} รายการที่จ่ายด้วยกระเป๋าเงินทีมกำลังทำงานอยู่ เมื่อเสร็จแล้ว (ไม่เกินประมาณ 2 ชั่วโมง) คุณจะยุบทีมได้",
+      "pendingCharges": "ยังมีงานสร้างที่จ่ายด้วยกระเป๋าเงินทีมกำลังทำงานอยู่ เมื่อเสร็จแล้ว (ไม่เกินประมาณ 2 ชั่วโมง) คุณจะยุบทีมได้",
+      "paidCreditOnly": "เครดิตที่ได้รับฟรีจะอยู่ในกระเป๋าเงินส่วนตัวและโอนออกไม่ได้ โอนได้เฉพาะเงินที่คุณเติมเอง",
+      "transferableUpTo": "โอนได้สูงสุด {amount}",
+      "overTransferable": "โอนได้สูงสุด {amount} (เงินที่เติมเอง) โปรดลดจำนวน"
   },
   "hi": {
       "totalWindow": "कुल",
@@ -610,7 +685,12 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "स्थानांतरण विवरण",
       "goPay": "भुगतान पर जाएँ",
       "currencyMismatch": "मुद्राएँ अलग हैं। समान मुद्रा वाली वॉलेट इस्तेमाल करें।",
-      "nameMismatch": "टीम का नाम मेल नहीं खाता। फिर दर्ज करें।"
+      "nameMismatch": "टीम का नाम मेल नहीं खाता। फिर दर्ज करें।",
+      "pendingChargesCount": "टीम वॉलेट से भुगतान वाले {count} जनरेशन अभी चल रहे हैं। उनके पूरा होने पर (ज़्यादा से ज़्यादा लगभग 2 घंटे) आप टीम भंग कर सकते हैं।",
+      "pendingCharges": "टीम वॉलेट से भुगतान वाले कुछ जनरेशन अभी चल रहे हैं। उनके पूरा होने पर (ज़्यादा से ज़्यादा लगभग 2 घंटे) आप टीम भंग कर सकते हैं।",
+      "paidCreditOnly": "उपहार में मिला क्रेडिट आपकी निजी वॉलेट में रहता है और स्थानांतरित नहीं हो सकता; केवल आपके द्वारा टॉप-अप किया गया क्रेडिट ही स्थानांतरित हो सकता है।",
+      "transferableUpTo": "आप अधिकतम {amount} स्थानांतरित कर सकते हैं।",
+      "overTransferable": "आप अधिकतम {amount} (टॉप-अप किया गया क्रेडिट) ही स्थानांतरित कर सकते हैं। राशि कम करें।"
   },
   "es-419": {
       "totalWindow": "Total acumulado",
@@ -648,6 +728,11 @@ export const TEAM_COPY_LOCALES: Record<Exclude<Locale, "zh">, TeamCopy> = {
       "payerNote": "Concepto de transferencia",
       "goPay": "Ir al pago",
       "currencyMismatch": "Las monedas son distintas. Usa monederos con la misma moneda.",
-      "nameMismatch": "El nombre del equipo no coincide. Introdúcelo de nuevo."
+      "nameMismatch": "El nombre del equipo no coincide. Introdúcelo de nuevo.",
+      "pendingChargesCount": "Todavía hay {count} generaciones pagadas con la billetera del equipo en curso. Cuando terminen (unas 2 horas como máximo), podrás disolver el equipo.",
+      "pendingCharges": "Todavía hay generaciones pagadas con la billetera del equipo en curso. Cuando terminen (unas 2 horas como máximo), podrás disolver el equipo.",
+      "paidCreditOnly": "El saldo de regalo se queda en tu billetera personal y no se puede transferir; solo se transfiere el saldo que recargaste.",
+      "transferableUpTo": "Puedes transferir hasta {amount}.",
+      "overTransferable": "Puedes transferir como máximo {amount} (saldo recargado). Reduce el importe."
   },
 };

@@ -49,7 +49,7 @@ const orgApiStub = dataModule(`
     return ["u-owner", "u-staff"].map(userId => ({userId, limits: {total_minor:null,day_minor:null,five_day_minor:null,month_minor:null}, spent:{total_minor:0,day_minor:0,five_day_minor:0,month_minor:0}}));
   }
   export async function setMemberLimits() {}
-  export async function listOrgTransfers() { return []; }
+  export async function listOrgTransfers() { return { transfers: [], personalTransferableMinor: null }; }
   export async function transferOrgCredit() {}
   export async function topupOrg() {}
   export async function leaveOrg() {}

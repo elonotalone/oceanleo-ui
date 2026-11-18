@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { dissolveOrg, leaveOrg, removeOrgMember, transferOrgOwnership, orgApiCode, orgErrorCopy, type OrgMemberRow, type OrgRole } from "../../lib/org-api";
+import { OrgApiError, dissolveOrg, leaveOrg, removeOrgMember, transferOrgOwnership, orgApiCode, orgErrorCopy, type OrgMemberRow, type OrgRole } from "../../lib/org-api";
 import { useUI } from "../../i18n/ui/useUI";
 
 type Action = { kind: "remove"; member: OrgMemberRow } | { kind: "transfer"; member: OrgMemberRow } | { kind: "leave" } | { kind: "dissolve" };
@@ -25,7 +25,12 @@ export function OrgLifecycle({ orgId, name, role, members = [], onChanged }: {
       else await dissolveOrg(orgId, confirmName);
       setAction(null);
       await onChanged();
-    } catch (e) { setError(orgErrorCopy(orgApiCode(e), tt)); }
+    } catch (e) {
+      const pending = e instanceof OrgApiError && e.code === "charges_pending" ? e.facts.pending_count : undefined;
+      setError(pending !== undefined
+        ? tt("还有 {count} 个用团队钱包付费的生成任务没结束。等它们结束（最多约 2 小时），就可以解散团队。", { count: pending })
+        : orgErrorCopy(orgApiCode(e), tt));
+    }
     finally { setBusy(false); }
   }
   return <div className="mt-3 space-y-2" data-org-lifecycle={orgId}>

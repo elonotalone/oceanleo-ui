@@ -394,3 +394,78 @@ test("top-up minimum comes from its route when overview omits it; incoming trans
     });
   });
 });
+
+test("FX3: client keeps pending_count, transferable_minor and personal_transferable_minor", async () => {
+  await withFetch(() => json({ detail: { code: "charges_pending", pending_count: 3, message: "server" } }, 409), async () => {
+    await assert.rejects(api.dissolveOrg("team", "Our team"), e => e.code === "charges_pending" && e.status === 409 && e.facts.pending_count === 3);
+  });
+  await withFetch(() => json({ detail: { code: "only_paid_credit_transferable", transferable_minor: 250, message: "server" } }, 409), async () => {
+    await assert.rejects(api.transferOrgCredit("team", { direction: "personal_to_team", amount_minor: 900, request_id: "r" }), e => e.code === "only_paid_credit_transferable" && e.facts.transferable_minor === 250);
+  });
+  for (const [value, expected] of [[500, 500], [0, 0], [null, null], [undefined, null], ["500", null], [-1, null]]) {
+    await withFetch(c => c.path.includes("/wallet/transfers?") ? json({ transfers: [], personal_transferable_minor: value }) : undefined, async () => {
+      assert.deepEqual(await api.listOrgTransfers("team"), { transfers: [], personalTransferableMinor: expected });
+    });
+  }
+});
+
+test("FX3: dissolve with team-paid generations still running shows the count and keeps the dialog open", async () => {
+  let changed = 0;
+  await withFetch(c => c.path.endsWith(":dissolve") ? json({ detail: { code: "charges_pending", pending_count: 3, message: "server" } }, 409) : undefined, async () => {
+    await render(React.createElement(OrgLifecycle, { orgId: "team", name: org.name, role: "owner", members: [member], onChanged: () => changed++ }), async v => {
+      await v.click(v.q("[data-org-dissolve]")); await v.change(v.q("[data-org-confirm-name]"), org.name);
+      await v.click(v.q("[data-org-action-confirm]"));
+      assert.match(v.text(), /还有 3 个用团队钱包付费的生成任务没结束/); assert.match(v.text(), /就可以解散团队/);
+      assert.equal(changed, 0); assert.ok(v.q('[role="dialog"]')); assert.equal(v.q("[data-org-confirm-name]").value, org.name);
+      assert.equal(v.q("[data-org-action-confirm]").disabled, false);
+    });
+  });
+  await withFetch(c => c.path.endsWith(":dissolve") ? error("charges_pending", 409) : undefined, async () => {
+    await render(React.createElement(OrgLifecycle, { orgId: "team", name: org.name, role: "owner", onChanged: () => changed++ }), async v => {
+      await v.click(v.q("[data-org-dissolve]")); await v.change(v.q("[data-org-confirm-name]"), org.name);
+      await v.click(v.q("[data-org-action-confirm]"));
+      assert.match(v.text(), /还有用团队钱包付费的生成任务没结束/); assert.ok(v.q('[role="dialog"]')); assert.equal(changed, 0);
+    });
+  });
+});
+
+test("FX3: personal → team shows the paid-only cap and blocks a larger amount before sending", async () => {
+  await withFetch(c => c.path.includes("/wallet/transfers?") ? json({ transfers: [], personal_transferable_minor: 500 }) : undefined, async calls => {
+    await render(React.createElement(OrgWallet, { org, orgs, onChanged() {} }), async v => {
+      const hint = v.q("[data-org-transferable]");
+      assert.match(hint.textContent, /最多可转入 \$?5\.00/); assert.match(hint.textContent, /赠送的额度会留在个人钱包里/);
+      await v.change(v.q("[data-org-transfer-amount]"), "6"); await v.submit(v.q("[data-org-transfer-form]"));
+      assert.match(v.text(), /最多只能转入 \$?5\.00（充值来的钱）/);
+      assert.equal(calls.filter(c => c.init.method === "POST").length, 0);
+      await v.change(v.q("[data-org-transfer-amount]"), "5"); await v.submit(v.q("[data-org-transfer-form]"));
+      const sent = calls.filter(c => c.init.method === "POST"); assert.equal(sent.length, 1); assert.equal(sent[0].body.amount_minor, 500);
+      await v.change(v.q("[data-org-transfer-direction]"), "team_to_personal");
+      assert.equal(v.q("[data-org-transferable]"), null);
+    });
+  });
+});
+
+test("FX3: unknown transferable amount shows no cap and does not block; server refusal shows its amount", async () => {
+  let posts = 0;
+  await withFetch(c => c.path.includes("/wallet/transfers?") ? json({ transfers: [], personal_transferable_minor: null })
+    : c.init.method === "POST" && ++posts === 1 ? json({ detail: { code: "only_paid_credit_transferable", transferable_minor: 200, message: "server" } }, 409) : undefined, async calls => {
+    await render(React.createElement(OrgWallet, { org, orgs, onChanged() {} }), async v => {
+      const hint = v.q("[data-org-transferable]");
+      assert.doesNotMatch(hint.textContent, /最多可转入/); assert.match(hint.textContent, /赠送的额度会留在个人钱包里/);
+      await v.change(v.q("[data-org-transfer-amount]"), "50"); await v.submit(v.q("[data-org-transfer-form]"));
+      assert.equal(calls.filter(c => c.init.method === "POST")[0].body.amount_minor, 5000);
+      assert.match(v.text(), /最多只能转入 \$?2\.00（充值来的钱）/); assert.doesNotMatch(v.text(), /余额已转移/);
+      assert.equal(v.q("[data-org-transfer-amount]").disabled, false);
+      assert.match(v.q("[data-org-transferable]").textContent, /最多可转入 \$?2\.00/);
+      await v.submit(v.q("[data-org-transfer-form]"));
+      assert.equal(calls.filter(c => c.init.method === "POST").length, 1, "the learned cap blocks a resend of the same amount");
+    });
+  });
+});
+
+test("FX3: new dissolve and paid-only copy exists in all 17 locales", () => {
+  for (const key of ["还有 {count} 个用团队钱包付费的生成任务没结束。等它们结束（最多约 2 小时），就可以解散团队。", "最多可转入 {amount}。",
+    "最多只能转入 {amount}（充值来的钱），请减少金额。", "赠送的额度会留在个人钱包里，不能转出；只能转出充值来的钱。"]) {
+    for (const [locale, dictionary] of Object.entries(ENTERPRISE_COPY_MESSAGES)) assert.ok(dictionary[key], `${locale}: ${key}`);
+  }
+});

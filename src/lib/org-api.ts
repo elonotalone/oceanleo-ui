@@ -70,6 +70,8 @@ export type OrgApiCode =
   | "insufficient_funds"
   | "invalid_amount"
   | "name_mismatch"
+  | "charges_pending"
+  | "only_paid_credit_transferable"
   | "agreement_required"
   | "unknown";
 
@@ -79,13 +81,16 @@ export class OrgApiError extends Error {
   readonly status: number;
   /** 网关 body 里的原因（`detail` 等）；没有就空串，界面再退到 `orgErrorCopy(code)`。 */
   readonly detail: string;
+  /** 网关 `detail` 里的整数字段（`pending_count`、`transferable_minor` 等）；没有就空对象。 */
+  readonly facts: Readonly<Record<string, number>>;
 
-  constructor(code: OrgApiCode, status = 0, detail = "") {
+  constructor(code: OrgApiCode, status = 0, detail = "", facts: Record<string, number> = {}) {
     super(`org-api: ${code} (HTTP ${status})`);
     this.name = "OrgApiError";
     this.code = code;
     this.status = status;
     this.detail = detail;
+    this.facts = facts;
   }
 }
 
@@ -101,6 +106,10 @@ export function orgErrorCopy(
   tt: (zh: string) => string = (zh) => zh,
 ): string {
   switch (code) {
+    case "charges_pending":
+      return tt("还有用团队钱包付费的生成任务没结束。等它们结束（最多约 2 小时），就可以解散团队。");
+    case "only_paid_credit_transferable":
+      return tt("赠送的额度会留在个人钱包里，不能转出；只能转出充值来的钱。");
     case "currency_mismatch":
       return tt("币种不同，无法转移余额；请使用相同币种的钱包。");
     case "insufficient_funds":
@@ -260,8 +269,20 @@ async function call<T>(
 
 function responseCode(body: unknown): OrgApiCode | undefined {
   const code = str(record(record(body).detail).code);
-  if (["not_available", "currency_mismatch", "insufficient_funds", "invalid_amount", "name_mismatch"].includes(code)) return code as OrgApiCode;
+  if ([
+    "not_available", "currency_mismatch", "insufficient_funds", "invalid_amount", "name_mismatch",
+    "charges_pending", "only_paid_credit_transferable",
+  ].includes(code)) return code as OrgApiCode;
   return undefined;
+}
+
+/** `detail` 对象里的非负整数字段，界面拿来拼「还有 N 个」「最多 X」。 */
+function failureFacts(data: unknown): Record<string, number> {
+  const facts: Record<string, number> = {};
+  for (const [key, value] of Object.entries(record(record(data).detail))) {
+    if (typeof value === "number" && Number.isSafeInteger(value) && value >= 0) facts[key] = value;
+  }
+  return facts;
 }
 
 function failureDetail(data: unknown): string {
@@ -298,7 +319,7 @@ async function must<T>(
 ): Promise<T> {
   const res = await call<T>(path, init, notFoundMeans);
   if (!res.ok || res.data === undefined) {
-    throw new OrgApiError(res.code || "unknown", res.status, failureDetail(res.data));
+    throw new OrgApiError(res.code || "unknown", res.status, failureDetail(res.data), failureFacts(res.data));
   }
   return res.data;
 }
@@ -599,8 +620,15 @@ export interface OrgTransfer {
 export async function transferOrgCredit(orgId: string, body: OrgTransferBody): Promise<void> {
   await must(orgPath(orgId, "/wallet/transfers"), { method: "POST", body: JSON.stringify(body) });
 }
-export async function listOrgTransfers(orgId: string): Promise<OrgTransfer[]> {
-  return rowsOf(await must(orgPath(orgId, "/wallet/transfers?limit=50")), "transfers").map((raw) => {
+export interface OrgTransferList {
+  transfers: OrgTransfer[];
+  /** 个人钱包里能转进团队的钱（只算充值来的，赠送的不算）。`null` = 网关读不到，界面不提示也不拦。 */
+  personalTransferableMinor: number | null;
+}
+export async function listOrgTransfers(orgId: string): Promise<OrgTransferList> {
+  const data = await must(orgPath(orgId, "/wallet/transfers?limit=50"));
+  const cap = record(data).personal_transferable_minor;
+  const transfers = rowsOf(data, "transfers").map((raw): OrgTransfer => {
     const row = record(raw), counterparty = record(row.counterparty);
     return {
       transfer_id: str(row.transfer_id), direction: str(row.direction) as OrgTransferDirection,
@@ -608,6 +636,10 @@ export async function listOrgTransfers(orgId: string): Promise<OrgTransfer[]> {
       counterparty: { kind: counterparty.kind === "team" ? "team" : "personal", name: str(counterparty.name) },
     };
   });
+  return {
+    transfers,
+    personalTransferableMinor: typeof cap === "number" && Number.isSafeInteger(cap) && cap >= 0 ? cap : null,
+  };
 }
 export async function topupOrg(orgId: string, channel: "stripe" | "bank-transfer", body: {
   amountMinor: number; legalName: string; taxId: string; payerNote?: string;
