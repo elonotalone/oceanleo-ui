@@ -250,7 +250,9 @@ for(const failure of [false,true]) test(`forward target ${failure?'error':'list'
     await churn(view);
     assert.equal(request.count,1,'locale and render changes must not refetch forward targets');
     if(failure) assert.match(view.host.querySelector('[role=dialog]').textContent,/fr:暂时无法加载会话列表。/);
-    assert.match(view.host.querySelector('[role=dialog] h3').textContent,/^fr:/);
+    const heading=view.host.querySelector('[role=dialog] [data-message-settings-header] h2');
+    assert.ok(heading,'forward dialog uses the shared Settings title row');
+    assert.match(heading.textContent,/^fr:/);
   });
 });
 
