@@ -256,3 +256,11 @@ test('conversation remark editor is a compact one-field prompt',async()=>{
   await act(async()=>prompt.querySelector('[data-action=close-panel]').click());assert.equal(view.host.querySelector('[data-message-prompt]'),null);
  }finally{await view.close();}
 });
+
+test('group invite link keeps the full Settings height while add contacts follows content',async()=>{
+ const Component=await surface('src/shell/messages/people/InviteLinkDialog.tsx','InviteLinkDialog');
+ for(const group of [false,true]){
+  const view=await mount(Component,{onClose(){},conversationId:group?'group1':null});
+  try{const panel=view.host.querySelector('[data-message-settings-frame]');assert.equal(panel.parentElement.classList.contains(frame.MESSAGE_SETTINGS_HEIGHT),group);assert.ok(panel.querySelector('[data-message-settings-content]').classList.contains('max-w-[800px]'));}finally{await view.close();}
+ }
+});
