@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+import { PRIMARY, QUIET, MessagePromptDialog as Modal } from "../MessageSettingsFrame";
 
 // 把群升级成 Team（owner）：起一个 Team 名字，其余成员收到 Team 邀请；没加入 Team 的人之后显示「外部」。
 // 成员邀请此后沿用 Team 现有的流程，不在这里另起一套。

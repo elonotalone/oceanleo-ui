@@ -1,6 +1,6 @@
 "use client";
 
-import { MESSAGE_SETTINGS_WIDTH } from "../../MessageSettingsFrame";
+import { MESSAGE_SETTINGS_WIDTH, MESSAGE_SETTINGS_HEIGHT } from "../../MessageSettingsFrame";
 
 // 诊断浮层的层级与「通话检测」对话框外壳。
 // 通话小窗/放大视图/通话菜单/举报框的层级（W07 ui/layout.ts）是 1050/1100/1150/1200，共享 `Modal` 只有 z-[1000]，
@@ -81,7 +81,7 @@ export function DiagDialog({
         aria-labelledby={labelledBy}
         tabIndex={-1}
         data-leo-overlay-state="open"
-        className={`leo-overlay-panel flex max-h-[92vh] ${MESSAGE_SETTINGS_WIDTH} flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl outline-none dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-100 ${className}`}
+        className={`leo-overlay-panel flex ${MESSAGE_SETTINGS_HEIGHT} ${MESSAGE_SETTINGS_WIDTH} flex-col overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl outline-none dark:border-white/10 dark:bg-neutral-900 dark:text-neutral-100 ${className}`}
       >
         {children}
       </div>

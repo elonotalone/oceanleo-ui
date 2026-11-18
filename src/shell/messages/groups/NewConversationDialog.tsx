@@ -198,7 +198,7 @@ export function NewConversationDialog({
   const canComplete = picked.length >= 1 && !busy;
 
   return (
-    <Modal onClose={onClose} title={tt("发起群聊")} labelledBy="im-new-title">
+    <Modal contentHeight onClose={onClose} title={tt("发起群聊")} labelledBy="im-new-title">
       <div className="flex min-h-0 flex-col" data-new-conversation>
         {done ? (
           <div className="flex-1" data-create-result>

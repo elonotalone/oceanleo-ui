@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+import { PRIMARY, QUIET, MessagePromptDialog as Modal } from "../MessageSettingsFrame";
 
 // 打开邀请链接后的确认：谁邀请你、进哪个群、群里多少人；接受后成为联系人 / 进群 / 申请入群。
 // 没登录：先引导登录，登录后停在同一个地址（URL 里的 ?im_invite= 不变）。

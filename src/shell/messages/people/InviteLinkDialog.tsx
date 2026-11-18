@@ -82,7 +82,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
   }
 
   return (
-    <Modal onClose={onClose} title={kind === "group" ? tt("群邀请链接") : tt("添加联系人")} labelledBy="im-invite-title">
+    <Modal contentHeight onClose={onClose} title={kind === "group" ? tt("群邀请链接") : tt("添加联系人")} labelledBy="im-invite-title">
       <div data-invite-link-dialog data-kind={kind}>
 
         {kind === "group" && <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("拿到链接的人点开、登录后就能进群。")}</p>}

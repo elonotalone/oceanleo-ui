@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSettingsDialog } from "../MessageSettingsFrame";
+import { QUIET } from "../MessageSettingsFrame";
 
 // 附件：图片 / 视频 / 音频只用 <img> <video> <audio> 指向上传得到的存储地址；
 // 其他文件只给下载链接，不内联预览 HTML/SVG（契约 §10）。
@@ -35,11 +35,29 @@ export function formatDuration(ms: number | undefined): string {
 }
 
 function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
+  const tt = useUI();
   return (
-    <MessageSettingsDialog title={alt} onClose={onClose}>
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt}
+      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4"
+      onClick={onClose}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") onClose();
+      }}
+    >
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="mx-auto max-h-[64vh] max-w-full rounded-lg object-contain" />
-    </MessageSettingsDialog>
+      <img src={src} alt={alt} className="max-h-full max-w-full rounded-lg object-contain" onClick={(event) => event.stopPropagation()} />
+      <button
+        type="button"
+        onClick={onClose}
+        className={`${QUIET} absolute right-4 top-4 bg-white/90`}
+        autoFocus
+      >
+        {tt("关闭")}
+      </button>
+    </div>
   );
 }
 

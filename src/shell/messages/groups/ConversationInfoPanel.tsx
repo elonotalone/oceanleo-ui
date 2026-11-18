@@ -1,6 +1,6 @@
 "use client";
 
-import { QUIET, PRIMARY, MessageSettingsDialog as Modal, MessageSettingsFrame, CARD, CARD_TITLE, MESSAGE_SETTINGS_ROW, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
+import { QUIET, PRIMARY, MessagePromptDialog as Modal, MessageSettingsFrame, CARD, CARD_TITLE, MESSAGE_SETTINGS_ROW, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
 
 // 会话信息：群资料、成员与角色、加人、入群申请、邀请链接、我的通知设置、退出 / 解散 / 升级成 Team / 举报。
 // 哪些按钮出现由 conversationCaps（契约 §9.3 / §9.4）按我的角色决定；后端拒绝时显示后端给的原因。

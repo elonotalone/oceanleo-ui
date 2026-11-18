@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH } from "../MessageSettingsFrame";
+import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH, MESSAGE_SETTINGS_HEIGHT } from "../MessageSettingsFrame";
 
 // 举报消息 / 人 / 群（可同时拉黑）。契约 §4.7、§9.11。
 // 平台只看被举报的内容和举报人自己看得到的前后几条消息；没被举报的聊天平台看不到。
@@ -260,8 +260,8 @@ export function ReportDialog(props: ReportDialogProps) {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div ref={panelRef} className={`${MESSAGE_SETTINGS_WIDTH} max-h-full overflow-hidden rounded-2xl bg-white text-black shadow-2xl`}>
-        <MessageSettingsFrame title={titleOf(tt, props.target.kind)} onClose={onClose} className="max-h-[88vh]">
+      <div ref={panelRef} className={`${MESSAGE_SETTINGS_WIDTH} ${MESSAGE_SETTINGS_HEIGHT} overflow-hidden rounded-2xl bg-white text-black shadow-2xl`}>
+        <MessageSettingsFrame title={titleOf(tt, props.target.kind)} onClose={onClose} className="h-full">
           <ReportForm {...props} hideTitle />
         </MessageSettingsFrame>
       </div>

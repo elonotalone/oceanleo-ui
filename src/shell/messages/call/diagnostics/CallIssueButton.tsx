@@ -1,6 +1,6 @@
 "use client";
 
-import { MessageSettingsFrame, QUIET, MESSAGE_SETTINGS_ROW } from "../../MessageSettingsFrame";
+import { QUIET } from "../../MessageSettingsFrame";
 
 // 小窗里的警告图标（A14）：自己网络或设备有问题（`useCall().issues` 非空，或网络持续变差）时出现；
 // 点开逐条一句话说明问题 + 一个办法按钮（换设备 / 仅语音 / 检查网络 / 正在重连 …），参照 Slack 通话中的排障面板。
@@ -90,11 +90,10 @@ export function CallIssueButton({ className = "" }: { className?: string } = {})
         ariaLabel={tt("通话问题")}
         align="start"
         preferredPlacement="above"
-        className="overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl"
-        style={{ width: "min(1040px,94vw)", zIndex: DIAG_POPOVER_Z }}
+        className="overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-3 text-neutral-900 shadow-[0_8px_32px_rgba(0,0,0,0.18)] dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100"
+        style={{ width: 320, zIndex: DIAG_POPOVER_Z }}
         attributes={{ "data-call-issue-panel": "" }}
       >
-        <MessageSettingsFrame title={tt("通话问题")} onClose={() => setOpen(false)} className="max-h-[88vh]">
         <IssueList
           items={items}
           onDismiss={(id) => setDismissed((previous) => new Set(previous).add(id))}
@@ -103,7 +102,6 @@ export function CallIssueButton({ className = "" }: { className?: string } = {})
             openCallTest();
           }}
         />
-        </MessageSettingsFrame>
       </AnchoredPopover>
     </>
   );
@@ -196,7 +194,7 @@ function IssueRow({ item, onDismiss }: { item: IssueDescriptor; onDismiss(id: st
   return (
     <li
       data-issue={item.kind}
-      className={`${MESSAGE_SETTINGS_ROW} flex-wrap text-[13px] text-neutral-800`}
+      className="rounded-lg bg-neutral-50 px-2.5 py-2 text-[12.5px] leading-[18px] text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
     >
       <p>{tt(item.text, item.vars)}</p>
       <button

@@ -322,7 +322,7 @@ function CallTestDialog({ onClose }: { onClose(): void }) {
 
   return (
     <DiagDialog onClose={onClose} labelledBy={titleId}>
-      <MessageSettingsFrame title={tt("通话检测")} titleId={titleId} onClose={onClose} card={false} className="max-h-[88vh]">
+      <MessageSettingsFrame title={tt("通话检测")} titleId={titleId} onClose={onClose} card={false} className="h-full">
         <div className="space-y-5" data-call-test-sections="">
           <p className={CARD_DESC}>{tt("检查麦克风、扬声器、摄像头和网络连接。")}</p>
           <Section icon={<IconMic size={16} />} title={tt("麦克风")} name="mic">

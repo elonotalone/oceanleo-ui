@@ -1,6 +1,6 @@
 "use client";
 
-import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
+import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH, MESSAGE_SETTINGS_HEIGHT, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
 
 // 点头像弹出的资料卡：他是谁、和我什么关系、在线状态；私聊 / 加联系人 / 拉黑 / 举报。
 
@@ -193,8 +193,8 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }} className={`${MESSAGE_SETTINGS_WIDTH} max-h-[88vh] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl outline-none`} data-profile-card>
-        <MessageSettingsFrame title={tt("联系人")} titleId="im-profile-title" onClose={onClose} className="max-h-[88vh]">
+      }} className={`${MESSAGE_SETTINGS_WIDTH} ${MESSAGE_SETTINGS_HEIGHT} overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl outline-none`} data-profile-card>
+        <MessageSettingsFrame title={tt("联系人")} titleId="im-profile-title" onClose={onClose} className="h-full">
         {profile.loading && !p ? (
           <p className="py-8 text-center text-[13px] text-neutral-400">{tt("加载中…")}</p>
         ) : !p ? (
