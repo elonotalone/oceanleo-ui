@@ -21,7 +21,7 @@ export const LocaleContext = createContext('en');
 export function useUI(){const locale=useContext(LocaleContext);return source=>locale+':'+source;}
 `);
 const {LocaleContext} = await import(ui);
-const parts = dataModule('export const CARD="", CARD_TITLE="", CARD_DESC="", QUIET="";');
+const parts = dataModule('export const CARD="", CARD_TITLE="", CARD_DESC="", FIELD="", QUIET="";');
 const controls = dataModule(`import {createElement as h} from ${JSON.stringify(reactUrl)};
 export function Modal(p){return h('div',{role:'dialog'},p.children);}
 export function ConfirmDialog(){return null;}

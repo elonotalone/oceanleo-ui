@@ -5,7 +5,7 @@ import { deviceSettingsClient as defaultSettingsClient, type DeviceControllerGra
 import { devicesFacade, type Device, type DevicesFacade } from "../../facades/devices";
 import { portalHref } from "../../contracts/domain-family";
 import { Switch, ConfirmDialog } from "../../ui";
-import { CARD, CARD_DESC, CARD_TITLE, PRIMARY, QUIET } from "./personalization/parts";
+import { CARD, CARD_DESC, CARD_TITLE, FIELD, PRIMARY, QUIET } from "./personalization/parts";
 import { useUI } from "../../i18n/ui/useUI";
 import { DeviceIcon, DeviceStatus, isComputer, type DeviceAvailability } from "../devices/DeviceCard";
 import { DeviceFolderPicker, FolderIcon } from "../devices/DeviceFolderPicker";
@@ -14,8 +14,11 @@ import { deviceRevocationNotice, deviceSettingsErrorCopy, runDeviceRequest, runD
 import { readDeviceUser, readLocalDeviceId } from "../devices/local-device";
 import { cloudComputerApi, type CloudComputerClient, type Computer } from "../../lib/cloud-computer-api";
 import { computerDisplayState } from "../../shell/cloud-computer/computer-state";
+import { CollectionFilterSelect } from "../../shell/collection-chrome";
 import { ServerBudgetPanel } from "./ServerBudgetPanel";
 import { ServerSettingsPanel } from "./ServerSettingsPanel";
+
+const SETTINGS_ROW = "flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5";
 
 export function DeviceSettingsPanel({ device, availability, client, isLocalDevice = false, onControl, onRename, onRevoke }: {
   device: Device;
@@ -157,6 +160,7 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
   // Own access, input and Ask come only from the device's live snapshot; while it is stale the
   // values are defaults, so they are not editable. Agent consent is the durable server policy.
   const deviceStateReady = effectiveAvailability === "online" && settings?.preferences_available === true;
+  const availabilityNotice = !loading && settings && !deviceStateReady ? effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…" : null;
   const controlsBusy = busy || revokingAgent;
   // OFF revokes durable server consent, even offline or during a preference update.
   // ON still requires an online device and no competing settings operation.
@@ -167,67 +171,65 @@ export function DeviceSettingsPanel({ device, availability, client, isLocalDevic
       <div className="flex min-w-0 items-center gap-4"><span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-neutral-200/70 text-neutral-700"><DeviceIcon phone={!isComputer(device)} className="h-8 w-8" /></span>
         <div className="min-w-0">
           {editing ? <form className="flex flex-wrap items-center gap-2" onSubmit={(event) => { event.preventDefault(); void saveName(); }}>
-            <input aria-label={tt("设备名称")} autoFocus maxLength={80} value={name} onInput={(event) => setName(event.currentTarget.value)} className="w-48 rounded-lg border border-neutral-300 bg-white px-2 py-1.5 text-sm outline-none focus:border-neutral-500" />
+            <input aria-label={tt("设备名称")} autoFocus maxLength={80} value={name} onInput={(event) => setName(event.currentTarget.value)} className={`${FIELD} max-w-48`} />
             <button type="submit" disabled={controlsBusy || !name.trim()} className={PRIMARY}>{tt("保存")}</button><button type="button" onClick={() => setEditing(false)} className={QUIET}>{tt("取消")}</button>
           </form> : <button type="button" onClick={() => { setName(device.device_name); setEditing(true); }} className="flex max-w-full items-center gap-2 text-left text-lg font-semibold" aria-label={tt("修改设备名称")}><span className="truncate">{device.device_name}</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4 shrink-0 text-neutral-400" aria-hidden="true"><path d="m15 4 5 5-11 11H4v-5zM13 6l5 5" /></svg></button>}
           <div className="mt-1"><DeviceStatus availability={effectiveAvailability} /></div>
         </div>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2">{isComputer(device) && !isLocalDevice && <button type="button" className={QUIET} onClick={onControl}>{tt("进入桌面")}</button>}
-        <button type="button" className={`${QUIET} text-red-600`} onClick={onRevoke}>{tt("撤销设备")}</button>
+        <button type="button" className={QUIET} onClick={onRevoke}>{tt("撤销设备")}</button>
       </div>
     </section>
 
+    {availabilityNotice && availabilityNotice !== error && <p role="status" className="text-[12px] text-neutral-500">{tt(availabilityNotice)}</p>}
     {error && <div role="alert" className="mb-5 flex items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-600">{tt(error)}<button type="button" className={QUIET} disabled={controlsBusy} onClick={() => void refresh(lifetime.current!.signal)}>{tt("重试")}</button></div>}
     {notice && <p role="status" className="rounded-lg bg-neutral-50 px-3 py-2 text-[13px] text-neutral-600">{tt(notice)}</p>}
 
     {isComputer(device) && <section className={CARD} data-device-access-settings>
       <h3 className={CARD_TITLE}>{tt("访问与控制")}</h3>
-      <p className={CARD_DESC}>{tt("自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。")}</p>
-      {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 divide-y divide-neutral-100">
-        <div className="flex items-start justify-between gap-4 py-3">
-          <div><p className="text-[13px] font-medium">{tt("允许远程访问")}</p><p className={CARD_DESC}>{tt("自己的账号可以连接；其他人仍需这台电脑确认。")}</p></div>
+      {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings && <div className="mt-3 space-y-3">
+        <div className={SETTINGS_ROW}>
+          <div className="min-w-0"><p className="text-[14px] font-medium text-neutral-900">{tt("允许远程访问")}</p><p className={CARD_DESC}>{tt("自己的账号可以连接；其他人仍需这台电脑确认。")}</p></div>
           <Switch label={tt("允许远程访问")} checked={remoteAccess.enabled} disabled={controlsBusy || !deviceStateReady} onChange={(enabled) => void saveRemoteAccess({ kind: "remote_access.preferences.update", enabled })} />
         </div>
-        <div className="flex items-start justify-between gap-4 py-3">
-          <p className="text-[13px] font-medium">{tt("允许操作屏幕（查看、点击、输入）")}</p>
+        <div className={SETTINGS_ROW}>
+          <p className="text-[14px] font-medium text-neutral-900">{tt("允许操作屏幕（查看、点击、输入）")}</p>
           <Switch label={tt("允许操作屏幕（查看、点击、输入）")} checked={remoteAccess.input_allowed} disabled={controlsBusy || !deviceStateReady || !remoteAccess.enabled} onChange={(input_allowed) => void saveRemoteAccess({ kind: "remote_access.preferences.update", input_allowed })} />
         </div>
-        <div className="flex items-start justify-between gap-4 py-3">
-          <div><p className="text-[13px] font-medium">{tt("允许远程 Agent 控制")}</p><p className={CARD_DESC}>{tt("开启即表示同意，直到你关闭。关闭后撤销权限，离线设备会在重新连接后同步。")}</p></div>
+        <div className={SETTINGS_ROW}>
+          <p className="text-[14px] font-medium text-neutral-900">{tt("允许远程 Agent 控制")}</p>
           <Switch label={tt("允许远程 Agent 控制")} checked={remoteAccess.agent_control_allowed} disabled={agentControlDisabled} onChange={(agent_control_allowed) => void saveRemoteAccess({ kind: "remote_access.update", agent_control_allowed })} />
         </div>
-        <div className="flex items-start justify-between gap-4 py-3">
-          <div><p className="text-[13px] font-medium">{tt("每次询问")}</p><p className={CARD_DESC}>{tt("开启后，Agent 每次申请都会在这台电脑上等待确认。")}</p></div>
+        <div className={SETTINGS_ROW}>
+          <p className="text-[14px] font-medium text-neutral-900">{tt("每次询问")}</p>
           <Switch label={tt("每次询问")} checked={remoteAccess.agent_always_ask} disabled={controlsBusy || !deviceStateReady} onChange={(agent_always_ask) => void saveRemoteAccess({ kind: "remote_access.preferences.update", agent_always_ask })} />
         </div>
-        {!deviceStateReady && <p className="pt-3 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
       </div>}
     </section>}
 
     <section className={CARD}>
-      <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("允许远程访问的设备")}</h3>{isComputer(device) && !isLocalDevice && <button type="button" className={QUIET} onClick={onControl}><span aria-hidden="true">＋</span>{tt("添加当前设备")}</button>}</div>
-      {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings?.controllers.length ? <div className="space-y-2">{settings.controllers.map((grant) => <div key={grant.grant_id} className="flex items-center justify-between gap-3 rounded-2xl border border-neutral-200 px-4 py-4" data-controller-grant={grant.grant_id}>
-        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{grant.label}</span>{grant.is_current && <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] text-sky-600">{tt("当前设备")}</span>}</div>
+      <div className="mb-4 flex items-center justify-between gap-3"><h3 className={CARD_TITLE}>{tt("允许远程访问的设备")}</h3>{isComputer(device) && !isLocalDevice && <button type="button" className={QUIET} onClick={onControl}><span aria-hidden="true">＋</span>{tt("添加当前设备")}</button>}</div>
+      {loading ? <p className="py-3 text-sm text-neutral-400" role="status">{tt("正在加载…")}</p> : settings?.controllers.length ? <div className="space-y-2">{settings.controllers.map((grant) => <div key={grant.grant_id} className={SETTINGS_ROW} data-controller-grant={grant.grant_id}>
+        <div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><span className="truncate text-sm font-medium">{grant.label}</span>{grant.is_current && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] text-neutral-600">{tt("当前设备")}</span>}</div>
           <p className="mt-1 text-xs text-neutral-500">{tt("最近使用：{time}", { time: formatDeviceTime(grant.last_used_at) })}<span className="mx-2" aria-hidden="true">·</span>{grant.expires_at ? tt("有效期至 {time}", { time: formatDeviceTime(grant.expires_at) }) : tt("永不过期")}</p>
         </div>
-        <button type="button" className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-red-600 hover:bg-red-50" disabled={controlsBusy} onClick={() => void revokeController(grant)}>{tt("撤销")}</button>
+        <button type="button" className={`${QUIET} shrink-0`} disabled={controlsBusy} onClick={() => void revokeController(grant)}>{tt("撤销")}</button>
       </div>)}</div> : settings && <p className="rounded-2xl border border-dashed border-neutral-200 p-5 text-sm text-neutral-400">{tt("暂无已授权设备")}</p>}
     </section>
 
     <section className={CARD}>
-      <h3 className="mb-4 text-sm font-semibold">{tt("默认任务文件夹")}</h3>
-      <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-neutral-200 p-4"><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"><FolderIcon /></span>
+      <h3 className={`${CARD_TITLE} mb-4`}>{tt("默认任务文件夹")}</h3>
+      <div className={`${SETTINGS_ROW} flex-wrap`}><span className="flex h-11 w-11 items-center justify-center rounded-xl bg-neutral-100 text-neutral-600"><FolderIcon /></span>
         <p className="min-w-0 flex-1 break-all text-sm text-neutral-600" data-device-default-folder>{loading ? tt("正在加载…") : !settings?.preferences_available ? "—" : preferences?.default_task_directory ?? tt("默认位置")}</p>
         <button type="button" className={QUIET} disabled={controlsBusy || !folderReady || !preferences?.default_task_directory} onClick={() => { if (preferences) void savePreferences({ ...preferences, default_task_directory: null }); }}>{tt("恢复默认")}</button>
         <button type="button" className={QUIET} disabled={controlsBusy || !folderReady} onClick={() => setPicker("default")}>{tt("修改")}</button>
       </div>
-      {!loading && settings && !folderReady && <p className="mt-2 text-xs text-neutral-400">{tt(effectiveAvailability === "signed_out" ? "这台电脑尚未登录。" : effectiveAvailability === "offline" ? "这台电脑不在线。" : "等待设备同步…")}</p>}
     </section>
 
     <section className={CARD}>
-      <div className="mb-4 flex items-center justify-between gap-3"><h3 className="text-sm font-semibold">{tt("任务文件夹")}</h3><button type="button" className={QUIET} disabled={controlsBusy || !folderReady} onClick={() => setPicker("shortcut")}><span aria-hidden="true">＋</span>{tt("添加文件夹")}</button></div>
-      <div className="space-y-2">{preferences?.task_folders.map((path) => <div key={path} className="flex items-center gap-3 rounded-2xl border border-neutral-200 px-4 py-3"><FolderIcon /><span className="min-w-0 flex-1 break-all text-sm text-neutral-600">{path}</span><button type="button" className="shrink-0 rounded-lg px-2 py-1.5 text-xs text-neutral-500 hover:bg-neutral-100" disabled={controlsBusy || !folderReady} onClick={() => void savePreferences({ ...preferences, task_folders: preferences.task_folders.filter((item) => item !== path) })}>{tt("移除")}</button></div>)}</div>
+      <div className="mb-4 flex items-center justify-between gap-3"><h3 className={CARD_TITLE}>{tt("任务文件夹")}</h3><button type="button" className={QUIET} disabled={controlsBusy || !folderReady} onClick={() => setPicker("shortcut")}><span aria-hidden="true">＋</span>{tt("添加文件夹")}</button></div>
+      <div className="space-y-2">{preferences?.task_folders.map((path) => <div key={path} className={SETTINGS_ROW}><FolderIcon /><span className="min-w-0 flex-1 break-all text-sm text-neutral-600">{path}</span><button type="button" className={`${QUIET} shrink-0`} disabled={controlsBusy || !folderReady} onClick={() => void savePreferences({ ...preferences, task_folders: preferences.task_folders.filter((item) => item !== path) })}>{tt("移除")}</button></div>)}</div>
       {settings && !preferences?.task_folders.length && <p className="py-2 text-sm text-neutral-400">{tt("暂无文件夹")}</p>}
     </section>
 
@@ -358,13 +360,18 @@ export function DeviceSettingsSection({ client = devicesFacade, settingsClient =
   }
 
   return <div className="space-y-5" data-settings-pane="device-settings">
-    <p className="text-[13px] text-neutral-500">{tt("管理每台设备的访问权限、Agent 控制和任务文件夹。")}</p>
     <ServerBudgetPanel key={`budget-${accountRevision}`} client={serverClient} onPurchased={() => setRevision((value) => value + 1)} />
     {error && <div role="alert" className="flex items-center justify-between gap-3 rounded-lg bg-red-50 px-3 py-2 text-[13px] text-red-700">{tt(error)}<button type="button" className={QUIET} onClick={() => setRevision((value) => value + 1)}>{tt("重试")}</button></div>}
     {loading ? <p role="status" className="py-4 text-[13px] text-neutral-400">{tt("正在加载设备")}</p> : devices.length + servers.length > 0 ? <>
-      <label className="block text-[13px] font-medium">{tt("选择设备")}<select aria-label={tt("选择设备")} className="mt-2 block w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[14px]" value={selectedServer?.id ?? selected?.device_id ?? ""} onChange={(event) => selectDevice(event.currentTarget.value)}>
-        {!selected && !selectedServer && <option value="" disabled>{tt("选择设备")}</option>}{devices.map((device) => <option key={device.device_id} value={device.device_id}>{device.device_name}</option>)}{servers.length > 0 && <optgroup label={tt("云电脑")}>{servers.map((server) => <option key={server.id} value={server.id}>{server.name}</option>)}</optgroup>}
-      </select></label>
+      <div className={SETTINGS_ROW}>
+        <h3 className={CARD_TITLE}>{tt("选择设备")}</h3>
+        <div className="min-w-0 flex-1 text-right [&>button]:max-w-full">
+          <CollectionFilterSelect label={tt("选择设备")} name="device-settings-device" value={selectedServer?.id ?? selected?.device_id ?? ""} searchable onChange={selectDevice} options={[
+            ...devices.map((device) => ({ value: device.device_id, label: device.device_name })),
+            ...servers.map((server) => ({ value: server.id, label: `${tt("云电脑")} · ${server.name}` })),
+          ]} />
+        </div>
+      </div>
       {selectedServer ? <ServerSettingsPanel key={`${accountRevision}-${selectedServer.id}`} computer={selectedServer} client={serverClient} onUpdated={() => setRevision((value) => value + 1)} onRemoved={() => { setServers((current) => current.filter((item) => item.id !== selectedServer.id)); setSelectedId(null); }} /> : selected ? <DeviceSettingsPanel key={`${accountRevision}-${selected.device_id}`} device={selected} availability={selected.availability ?? "unknown"} isLocalDevice={selected.device_id === localDeviceId} client={settingsClient} onControl={() => { window.location.href = portalHref(`/devices?desktop=${encodeURIComponent(selected.device_id)}`); }} onRename={(name) => rename(selected, name)} onRevoke={() => setConfirmRevoke(selected)} /> : <p role="status" className="text-[13px] text-neutral-500">{tt("当前账号找不到这台电脑。")}</p>}
     </> : <p role="status" className="py-4 text-[13px] text-neutral-500">{tt("还没有连接设备。")}</p>}
     {confirmRevoke && <ConfirmDialog title={tt("撤销「{name}」？", { name: confirmRevoke.device_name })} body={tt("撤销后这台电脑立刻不再接收任何任务，需要重新配对。")} confirmLabel={tt("确认撤销")} danger onConfirm={() => revokeDevice(confirmRevoke)} onCancel={() => setConfirmRevoke(null)} />}

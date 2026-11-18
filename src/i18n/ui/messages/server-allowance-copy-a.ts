@@ -3,8 +3,7 @@ import type { Locale } from '../../config';
 export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   "zh": {
     "Agent 服务器预算": "Agent 服务器预算",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。",
+    "仅你能授权预算，释放服务器仍需你确认。": "仅你能授权预算，释放服务器仍需你确认。",
     "授权 Agent 使用服务器预算": "授权 Agent 使用服务器预算",
     "每月上限": "每月上限",
     "单台每小时上限（可选）": "单台每小时上限（可选）",
@@ -33,8 +32,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "zh-TW": {
     "Agent 服务器预算": "Agent 伺服器預算",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "只有你能授權預算。Agent 可在額度內購買、開關機與續費；釋放伺服器仍須由你確認。",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "按量與搶佔式伺服器每月最多按 744 小時預留，包含固定 1 Mbps 頻寬。停機後仍保留磁碟預算；包月方案一次預留完整期間的費用。關閉授權後，不再允許新的購買與續費，既有費用承諾仍會保留。",
+    "仅你能授权预算，释放服务器仍需你确认。": "僅你能授權預算，釋放伺服器仍需你確認。",
     "授权 Agent 使用服务器预算": "授權 Agent 使用此伺服器預算",
     "每月上限": "每月上限",
     "单台每小时上限（可选）": "單台每小時上限（選填）",
@@ -63,8 +61,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "en": {
     "Agent 服务器预算": "Agent server allowance",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Only you can authorize the allowance. Agents can buy, start, stop, and renew within it; releasing a server still requires your confirmation.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Hourly and preemptible servers reserve up to 744 hours each month including fixed 1 Mbps bandwidth. Stopped disks retain their reservation; monthly terms reserve the full price upfront. Disabling authorization prevents new purchases and renewals; existing commitments remain.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Only you can authorize the allowance; releasing a server still needs your confirmation.",
     "授权 Agent 使用服务器预算": "Authorize agents to use this server allowance",
     "每月上限": "Monthly limit",
     "单台每小时上限（可选）": "Hourly limit per server (optional)",
@@ -93,8 +90,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "ja": {
     "Agent 服务器预算": "エージェントのサーバー予算枠",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "予算枠を承認できるのはあなただけです。エージェントは枠内で購入、起動、停止、更新を行えます。サーバーの解放には引き続きあなたの確認が必要です。",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "時間従量制とプリエンプティブルのサーバーは、固定 1 Mbps の帯域幅を含め、毎月最大 744 時間分の予算を確保します。停止後もディスク分の予算は確保されたままです。月額契約では契約期間全体の料金を一括で確保します。承認を無効にすると新規購入と更新はできなくなりますが、既存の確保済み予算は維持されます。",
+    "仅你能授权预算，释放服务器仍需你确认。": "予算枠を承認できるのはあなただけで、サーバーの解放にもあなたの確認が必要です。",
     "授权 Agent 使用服务器预算": "エージェントによるこのサーバー予算枠の使用を承認",
     "每月上限": "月額上限",
     "单台每小时上限（可选）": "サーバーごとの時間単価上限（任意）",
@@ -123,8 +119,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "ko": {
     "Agent 服务器预算": "에이전트 서버 예산 한도",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "예산 한도는 본인만 승인할 수 있습니다. 에이전트는 한도 내에서 구매, 시작, 중지 및 갱신을 할 수 있지만 서버 해제에는 여전히 본인의 확인이 필요합니다.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "시간제 및 선점형 서버는 고정 1 Mbps 대역폭을 포함해 매월 최대 744시간분의 예산을 예약합니다. 서버를 중지해도 디스크 예산은 예약된 상태로 유지됩니다. 월정액 계약은 전체 계약 기간의 요금을 한 번에 예약합니다. 승인을 해제하면 신규 구매와 갱신은 차단되지만 기존에 약정된 금액은 유지됩니다.",
+    "仅你能授权预算，释放服务器仍需你确认。": "예산은 본인만 승인할 수 있으며 서버 해제도 본인의 확인이 필요합니다.",
     "授权 Agent 使用服务器预算": "에이전트의 이 서버 예산 사용 승인",
     "每月上限": "월별 상한",
     "单台每小时上限（可选）": "서버당 시간당 상한(선택 사항)",
@@ -153,8 +148,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "fr": {
     "Agent 服务器预算": "Budget serveur des agents",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Vous seul pouvez autoriser ce budget. Les agents peuvent acheter, démarrer, arrêter et renouveler des serveurs dans cette limite ; la libération d’un serveur exige toujours votre confirmation.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Les serveurs facturés à l’heure et préemptibles réservent chaque mois jusqu’à 744 heures de budget, avec une bande passante fixe de 1 Mbps. À l’arrêt, la réservation pour les disques est maintenue ; les contrats mensuels réservent d’avance le prix de toute la période. Désactiver l’autorisation bloque les nouveaux achats et renouvellements ; les engagements existants restent en place.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Vous seul pouvez autoriser le budget ; la libération d’un serveur exige aussi votre confirmation.",
     "授权 Agent 使用服务器预算": "Autoriser les agents à utiliser ce budget serveur",
     "每月上限": "Plafond mensuel",
     "单台每小时上限（可选）": "Plafond horaire par serveur (facultatif)",
@@ -183,8 +177,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "de": {
     "Agent 服务器预算": "Serverbudget für Agenten",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Nur du kannst das Budget freigeben. Agenten dürfen innerhalb dieses Rahmens Server kaufen, starten, stoppen und verlängern. Das Freigeben eines Servers erfordert weiterhin deine Bestätigung.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Für stundenweise abgerechnete und präemptible Server wird jeden Monat Budget für bis zu 744 Stunden einschließlich einer festen Bandbreite von 1 Mbps reserviert. Nach dem Stoppen bleibt das Budget für die Datenträger reserviert. Bei Monatsverträgen wird der Gesamtpreis der gesamten Laufzeit vorab reserviert. Das Deaktivieren der Berechtigung verhindert neue Käufe und Verlängerungen; bestehende Verpflichtungen bleiben erhalten.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Nur Sie können das Budget genehmigen; die Freigabe eines Servers erfordert ebenfalls Ihre Bestätigung.",
     "授权 Agent 使用服务器预算": "Agenten zur Nutzung dieses Serverbudgets berechtigen",
     "每月上限": "Monatliches Limit",
     "单台每小时上限（可选）": "Stündliches Limit je Server (optional)",
@@ -213,8 +206,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "it": {
     "Agent 服务器预算": "Budget server per gli agenti",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Solo tu puoi autorizzare il budget. Gli agenti possono acquistare, avviare, arrestare e rinnovare i server entro questo limite; il rilascio di un server richiede comunque la tua conferma.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Per i server con tariffazione oraria e prerilasciabili viene riservato ogni mese il budget per un massimo di 744 ore, inclusa una banda fissa di 1 Mbps. Dopo l’arresto resta riservato il budget per i dischi; i contratti mensili riservano in anticipo il prezzo dell’intero periodo. Disattivare l’autorizzazione impedisce nuovi acquisti e rinnovi; gli impegni esistenti restano validi.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Solo tu puoi autorizzare il budget; anche il rilascio di un server richiede la tua conferma.",
     "授权 Agent 使用服务器预算": "Autorizza gli agenti a usare questo budget server",
     "每月上限": "Limite mensile",
     "单台每小时上限（可选）": "Limite orario per server (facoltativo)",
@@ -243,8 +235,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "es": {
     "Agent 服务器预算": "Presupuesto de servidores para agentes",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Solo tú puedes autorizar este presupuesto. Los agentes pueden comprar, iniciar, detener y renovar servidores dentro del límite; liberar un servidor sigue requiriendo tu confirmación.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Los servidores por horas y de tipo interrumpible reservan presupuesto para un máximo de 744 horas al mes, incluida una conexión de ancho de banda fijo de 1 Mbps. Al detenerlos, se mantiene la reserva para los discos; los contratos mensuales reservan por adelantado el precio de todo el periodo. Desactivar la autorización impide nuevas compras y renovaciones; los compromisos existentes se mantienen.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Solo tú puedes autorizar el presupuesto; liberar un servidor también requiere tu confirmación.",
     "授权 Agent 使用服务器预算": "Autorizar a los agentes a usar este presupuesto de servidores",
     "每月上限": "Límite mensual",
     "单台每小时上限（可选）": "Límite por hora y servidor (opcional)",
@@ -273,8 +264,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "es-419": {
     "Agent 服务器预算": "Presupuesto de servidores para agentes",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Solo tú puedes autorizar este presupuesto. Los agentes pueden comprar, iniciar, detener y renovar servidores dentro del límite; liberar un servidor sigue requiriendo tu confirmación.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Los servidores por hora y de tipo interrumpible reservan presupuesto para un máximo de 744 horas al mes, incluido un ancho de banda fijo de 1 Mbps. Al detenerlos, se mantiene la reserva para los discos; los contratos mensuales reservan por adelantado el precio de todo el período. Desactivar la autorización impide nuevas compras y renovaciones; los compromisos existentes se mantienen.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Solo tú puedes autorizar el presupuesto; liberar un servidor también requiere tu confirmación.",
     "授权 Agent 使用服务器预算": "Autorizar a los agentes a usar este presupuesto de servidores",
     "每月上限": "Límite mensual",
     "单台每小时上限（可选）": "Límite por hora y servidor (opcional)",
@@ -303,8 +293,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "pt-BR": {
     "Agent 服务器预算": "Orçamento de servidores para agentes",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Só você pode autorizar este orçamento. Os agentes podem comprar, iniciar, parar e renovar servidores dentro do limite; a liberação de um servidor ainda exige sua confirmação.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Servidores cobrados por hora e preemptivos reservam orçamento para até 744 horas por mês, incluindo largura de banda fixa de 1 Mbps. Ao parar um servidor, a reserva dos discos é mantida; contratos mensais reservam antecipadamente o preço de todo o período. Desativar a autorização impede novas compras e renovações; os compromissos existentes são mantidos.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Só você pode autorizar o orçamento; liberar um servidor também exige sua confirmação.",
     "授权 Agent 使用服务器预算": "Autorizar agentes a usar este orçamento de servidores",
     "每月上限": "Limite mensal",
     "单台每小时上限（可选）": "Limite por hora por servidor (opcional)",
@@ -333,8 +322,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "pt-PT": {
     "Agent 服务器预算": "Orçamento de servidores para agentes",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Só você pode autorizar este orçamento. Os agentes podem comprar, iniciar, parar e renovar servidores dentro do limite; a libertação de um servidor continua a exigir a sua confirmação.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Os servidores faturados à hora e preemptivos reservam orçamento para até 744 horas por mês, incluindo largura de banda fixa de 1 Mbps. Ao parar um servidor, a reserva dos discos é mantida; os contratos mensais reservam antecipadamente o preço de todo o período. Desativar a autorização impede novas compras e renovações; os compromissos existentes mantêm-se.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Apenas o proprietário pode autorizar o orçamento; libertar um servidor também exige a sua confirmação.",
     "授权 Agent 使用服务器预算": "Autorizar os agentes a utilizar este orçamento de servidores",
     "每月上限": "Limite mensal",
     "单台每小时上限（可选）": "Limite por hora por servidor (opcional)",
@@ -363,8 +351,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "vi": {
     "Agent 服务器预算": "Hạn mức ngân sách máy chủ cho tác nhân",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Chỉ bạn mới có thể cấp quyền sử dụng ngân sách. Tác nhân có thể mua, khởi động, dừng và gia hạn máy chủ trong hạn mức; việc giải phóng máy chủ vẫn cần bạn xác nhận.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Máy chủ tính phí theo giờ và máy chủ có thể bị thu hồi sẽ giữ trước ngân sách cho tối đa 744 giờ mỗi tháng, bao gồm băng thông cố định 1 Mbps. Khi dừng máy chủ, phần ngân sách dành cho ổ đĩa vẫn được giữ lại; gói theo tháng giữ trước toàn bộ giá của cả kỳ hạn. Tắt quyền sử dụng sẽ chặn giao dịch mua mới và gia hạn; các khoản đã cam kết vẫn được giữ nguyên.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Chỉ bạn có thể duyệt ngân sách; giải phóng máy chủ vẫn cần bạn xác nhận.",
     "授权 Agent 使用服务器预算": "Cho phép tác nhân sử dụng ngân sách máy chủ này",
     "每月上限": "Giới hạn hằng tháng",
     "单台每小时上限（可选）": "Giới hạn mỗi giờ cho từng máy chủ (tùy chọn)",
@@ -393,8 +380,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "tr": {
     "Agent 服务器预算": "Ajanların sunucu bütçesi",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Bütçeyi yalnızca siz yetkilendirebilirsiniz. Ajanlar bu sınır içinde sunucu satın alabilir, başlatabilir, durdurabilir ve yenileyebilir; sunucuyu serbest bırakmak için yine sizin onayınız gerekir.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Saatlik ve sağlayıcı tarafından geri alınabilen sunucular için, sabit 1 Mbps bant genişliği dahil her ay en fazla 744 saatlik bütçe ayrılır. Sunucu durdurulduğunda diskler için ayrılan bütçe korunur; aylık sözleşmelerde tüm dönemin ücreti önceden ayrılır. Yetkiyi kapatmak yeni satın alımları ve yenilemeleri engeller; mevcut taahhütler korunur.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Bütçeyi yalnızca siz yetkilendirebilirsiniz; sunucuyu serbest bırakmak da onayınızı gerektirir.",
     "授权 Agent 使用服务器预算": "Ajanların bu sunucu bütçesini kullanmasına izin ver",
     "每月上限": "Aylık üst sınır",
     "单台每小时上限（可选）": "Sunucu başına saatlik üst sınır (isteğe bağlı)",
@@ -423,8 +409,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "ar": {
     "Agent 服务器预算": "ميزانية الخوادم للوكلاء",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "أنت وحدك من يمكنه تفويض استخدام الميزانية. يستطيع الوكلاء شراء الخوادم وتشغيلها وإيقافها وتجديدها ضمن هذا الحد؛ أما تحرير أي خادم فما زال يتطلب تأكيدك.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "تُحجز للخوادم المحتسبة بالساعة والخوادم القابلة للاستباق ميزانية تصل إلى 744 ساعة كل شهر، بما يشمل عرض نطاق ثابتًا قدره 1 Mbps. عند إيقاف الخادم، يبقى المبلغ المخصص للأقراص محجوزًا؛ أما العقود الشهرية فيُحجز سعر مدتها كاملة مقدمًا. يؤدي تعطيل التفويض إلى منع عمليات الشراء والتجديد الجديدة؛ وتظل الالتزامات الحالية قائمة.",
+    "仅你能授权预算，释放服务器仍需你确认。": "أنت وحدك من يمكنه تفويض الميزانية؛ ولا يزال تحرير الخادم يتطلب تأكيدك.",
     "授权 Agent 使用服务器预算": "تفويض الوكلاء باستخدام ميزانية الخوادم هذه",
     "每月上限": "الحد الشهري",
     "单台每小时上限（可选）": "الحد لكل خادم في الساعة (اختياري)",
@@ -453,8 +438,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "th": {
     "Agent 服务器预算": "งบประมาณเซิร์ฟเวอร์สำหรับเอเจนต์",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "คุณเท่านั้นที่อนุญาตให้ใช้งบประมาณนี้ได้ เอเจนต์สามารถซื้อ เริ่ม หยุด และต่ออายุเซิร์ฟเวอร์ภายในวงเงินนี้ แต่การปล่อยคืนเซิร์ฟเวอร์ยังต้องได้รับการยืนยันจากคุณ",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "เซิร์ฟเวอร์แบบคิดค่าบริการรายชั่วโมงและแบบเรียกคืนได้จะกันงบไว้สูงสุด 744 ชั่วโมงต่อเดือน รวมแบนด์วิดท์คงที่ 1 Mbps เมื่อหยุดเซิร์ฟเวอร์ ยังคงกันงบสำหรับดิสก์ไว้ ส่วนสัญญารายเดือนจะกันงบเต็มราคาของทั้งระยะเวลาไว้ล่วงหน้า การปิดการอนุญาตจะป้องกันการซื้อใหม่และการต่ออายุ แต่ภาระผูกพันที่มีอยู่ยังคงเดิม",
+    "仅你能授权预算，释放服务器仍需你确认。": "มีเพียงคุณที่อนุมัติงบประมาณได้ และการปล่อยเซิร์ฟเวอร์ยังต้องให้คุณยืนยัน",
     "授权 Agent 使用服务器预算": "อนุญาตให้เอเจนต์ใช้งบประมาณเซิร์ฟเวอร์นี้",
     "每月上限": "วงเงินสูงสุดต่อเดือน",
     "单台每小时上限（可选）": "วงเงินสูงสุดต่อชั่วโมงต่อเซิร์ฟเวอร์ (ไม่บังคับ)",
@@ -483,8 +467,7 @@ export const SERVER_ALLOWANCE_COPY_A: Record<Locale, Record<string, string>> = {
   },
   "hi": {
     "Agent 服务器预算": "एजेंट के लिए सर्वर बजट",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "केवल आप ही इस बजट के इस्तेमाल की अनुमति दे सकते हैं। एजेंट इस सीमा के भीतर सर्वर खरीद सकते हैं, शुरू कर सकते हैं, रोक सकते हैं और नवीनीकरण कर सकते हैं; सर्वर को छोड़ने के लिए अब भी आपकी पुष्टि ज़रूरी है।",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "प्रति घंटे शुल्क वाले और वापस लिए जा सकने वाले सर्वर के लिए हर महीने अधिकतम 744 घंटों का बजट आरक्षित किया जाता है, जिसमें निश्चित 1 Mbps बैंडविड्थ शामिल है। सर्वर रोकने पर भी डिस्क के लिए आरक्षित बजट बना रहता है; मासिक अनुबंधों के लिए पूरी अवधि की कुल कीमत पहले से आरक्षित की जाती है। अनुमति बंद करने से नई खरीद और नवीनीकरण रुक जाते हैं; मौजूदा प्रतिबद्धताएँ बनी रहती हैं।",
+    "仅你能授权预算，释放服务器仍需你确认。": "केवल आप बजट अधिकृत कर सकते हैं; सर्वर रिलीज़ करने के लिए भी आपकी पुष्टि ज़रूरी है।",
     "授权 Agent 使用服务器预算": "एजेंट को इस सर्वर बजट का इस्तेमाल करने की अनुमति दें",
     "每月上限": "मासिक सीमा",
     "单台每小时上限（可选）": "प्रति सर्वर प्रति घंटे की सीमा (वैकल्पिक)",

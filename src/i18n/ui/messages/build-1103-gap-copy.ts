@@ -12,8 +12,6 @@ const SOURCE = [
   "允许操作屏幕（查看、点击、输入）",
   "允许时长",
   "关闭后，Agent 申请仍会显示，但不会自动获得远程控制。",
-  "开启后，Agent 每次申请都会在这台电脑上等待确认。",
-  "自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。",
   "访问与控制",
   "关闭搜索",
   "没有匹配的任务。",
@@ -107,8 +105,6 @@ Permitir que o assistente na nuvem utilize este computador
 Permitir o controlo do ecrã (ver, clicar, escrever)
 Duração da permissão
 Quando desativado, os pedidos de Agent continuam a aparecer, mas o controlo remoto não é concedido automaticamente.
-Quando ativado, cada pedido de Agent aguarda confirmação neste computador.
-A sua própria conta liga-se diretamente a este dispositivo. Defina aqui as permissões de acesso remoto e do assistente na nuvem.
 Acesso e controlo
 Fechar pesquisa
 Nenhuma tarefa correspondente.
@@ -197,8 +193,6 @@ Novo site
 السماح بالتحكم في الشاشة (العرض والنقر والكتابة)
 مدة الإذن
 عند إيقاف الخيار، تظل طلبات Agent ظاهرة، لكن لا يُمنح التحكم عن بُعد تلقائياً.
-عند تفعيل الخيار، ينتظر كل طلب من Agent التأكيد على هذا الكمبيوتر.
-يتصل حسابك مباشرة بهذا الجهاز. اضبط هنا أذونات الوصول عن بُعد والمساعد السحابي.
 الوصول والتحكم
 إغلاق البحث
 لا توجد مهام مطابقة.
@@ -287,8 +281,6 @@ Novo site
 อนุญาตให้ควบคุมหน้าจอ (ดู คลิก พิมพ์)
 ระยะเวลาที่อนุญาต
 เมื่อปิด คำขอของ Agent จะยังแสดงอยู่ แต่จะไม่ได้รับสิทธิ์ควบคุมระยะไกลโดยอัตโนมัติ
-เมื่อเปิด คำขอของ Agent แต่ละครั้งจะรอการยืนยันบนคอมพิวเตอร์เครื่องนี้
-บัญชีของคุณเองจะเชื่อมต่อกับอุปกรณ์นี้โดยตรง ตั้งค่าสิทธิ์การเข้าถึงระยะไกลและผู้ช่วยบนคลาวด์ได้ที่นี่
 การเข้าถึงและการควบคุม
 ปิดการค้นหา
 ไม่พบงานที่ตรงกัน
@@ -377,8 +369,6 @@ Agent को इस डिवाइस का नियंत्रण करन
 स्क्रीन नियंत्रण की अनुमति दें (देखना, क्लिक करना, लिखना)
 अनुमति की अवधि
 बंद होने पर Agent के अनुरोध दिखते रहेंगे, लेकिन रिमोट नियंत्रण की अनुमति अपने आप नहीं मिलेगी।
-चालू होने पर Agent का हर अनुरोध इस कंप्यूटर पर पुष्टि का इंतज़ार करेगा।
-आपका अपना खाता इस डिवाइस से सीधे जुड़ता है। रिमोट ऐक्सेस और क्लाउड सहायक की अनुमतियाँ यहाँ सेट करें।
 ऐक्सेस और नियंत्रण
 खोज बंद करें
 कोई मेल खाता कार्य नहीं है।
@@ -467,8 +457,6 @@ Cho phép trợ lý đám mây sử dụng máy tính này
 Cho phép điều khiển màn hình (xem, nhấp, nhập)
 Thời hạn cho phép
 Khi tắt, yêu cầu của Agent vẫn hiển thị nhưng quyền điều khiển từ xa không được tự động cấp.
-Khi bật, mỗi yêu cầu của Agent sẽ chờ xác nhận trên máy tính này.
-Tài khoản của bạn kết nối trực tiếp với thiết bị này. Thiết lập quyền truy cập từ xa và trợ lý đám mây tại đây.
 Truy cập và điều khiển
 Đóng tìm kiếm
 Không có tác vụ phù hợp.
@@ -557,8 +545,6 @@ Bulut asistanının bu bilgisayarı kullanmasına izin ver
 Ekran kontrolüne izin ver (görüntüleme, tıklama, yazma)
 İzin süresi
 Kapalıyken Agent istekleri görünmeye devam eder, ancak uzaktan kontrol izni otomatik verilmez.
-Açıkken her Agent isteği bu bilgisayarda onay bekler.
-Kendi hesabınız bu cihaza doğrudan bağlanır. Uzaktan erişim ve bulut asistanı izinlerini burada ayarlayın.
 Erişim ve kontrol
 Aramayı kapat
 Eşleşen görev yok.
@@ -647,8 +633,6 @@ Agent にこのデバイスの操作を許可
 画面の操作を許可（表示、クリック、入力）
 許可する時間
 無効にしても Agent のリクエストは表示されますが、リモート操作は自動では許可されません。
-有効にすると、Agent のリクエストごとにこのパソコンでの確認を待ちます。
-自分のアカウントからはこのデバイスに直接接続できます。リモートアクセスとクラウドアシスタントの権限をここで設定します。
 アクセスと操作
 検索を閉じる
 一致するタスクはありません。
@@ -737,8 +721,6 @@ Agent가 이 기기를 제어하도록 허용
 화면 제어 허용(보기, 클릭, 입력)
 허용 시간
 끄면 Agent 요청은 계속 표시되지만 원격 제어 권한은 자동으로 부여되지 않습니다.
-켜면 Agent가 요청할 때마다 이 컴퓨터에서 확인을 기다립니다.
-본인 계정으로는 이 기기에 바로 연결됩니다. 여기에서 원격 액세스와 클라우드 도우미 권한을 설정하세요.
 액세스 및 제어
 검색 닫기
 일치하는 작업이 없습니다.
@@ -827,8 +809,6 @@ Permitir que el asistente en la nube use este ordenador
 Permitir el control de pantalla (ver, hacer clic, escribir)
 Duración del permiso
 Si está desactivado, las solicitudes de Agent seguirán apareciendo, pero no se concederá el control remoto automáticamente.
-Si está activado, cada solicitud de Agent esperará confirmación en este ordenador.
-Tu propia cuenta se conecta directamente a este dispositivo. Configura aquí los permisos de acceso remoto y del asistente en la nube.
 Acceso y control
 Cerrar búsqueda
 No hay tareas coincidentes.
@@ -917,8 +897,6 @@ Consenti all'assistente cloud di usare questo computer
 Consenti il controllo dello schermo (visualizzare, fare clic, digitare)
 Durata del permesso
 Se disattivato, le richieste di Agent restano visibili, ma il controllo remoto non viene concesso automaticamente.
-Se attivato, ogni richiesta di Agent attende conferma su questo computer.
-Il tuo account si collega direttamente a questo dispositivo. Imposta qui i permessi di accesso remoto e dell'assistente cloud.
 Accesso e controllo
 Chiudi ricerca
 Nessuna attività corrispondente.
@@ -1007,8 +985,6 @@ Permitir que o assistente na nuvem use este computador
 Permitir controle da tela (visualizar, clicar, digitar)
 Duração da permissão
 Quando desativado, as solicitações de Agent continuam aparecendo, mas o controle remoto não é concedido automaticamente.
-Quando ativado, cada solicitação de Agent aguarda confirmação neste computador.
-Sua própria conta se conecta diretamente a este dispositivo. Defina aqui as permissões de acesso remoto e do assistente na nuvem.
 Acesso e controle
 Fechar busca
 Nenhuma tarefa correspondente.
@@ -1097,8 +1073,6 @@ Allow the cloud assistant to use this computer
 Allow screen control (view, click, type)
 Permission duration
 When off, Agent requests still appear, but remote control is not granted automatically.
-When on, every Agent request waits for approval on this computer.
-Your own account connects directly to this device. Set remote access and cloud assistant permissions here.
 Access and control
 Close search
 No matching tasks.
@@ -1187,8 +1161,6 @@ Agent 每次控制都要同意
 允許操作螢幕（檢視、點擊、輸入）
 允許時長
 關閉後，Agent 申請仍會顯示，但不會自動取得遠端控制權。
-開啟後，Agent 每次申請都會在這台電腦上等待確認。
-自己的帳號存取這台裝置會直接連線。遠端存取和雲端助理的權限在這裡設定。
 存取與控制
 關閉搜尋
 沒有符合的任務。
@@ -1277,8 +1249,6 @@ Cloud-Assistent darf diesen Computer verwenden
 Bildschirmsteuerung erlauben (ansehen, klicken, tippen)
 Dauer der Berechtigung
 Wenn deaktiviert, werden Anfragen von Agent weiterhin angezeigt, aber die Fernsteuerung wird nicht automatisch erlaubt.
-Wenn aktiviert, wartet jede Anfrage von Agent auf eine Bestätigung an diesem Computer.
-Dein eigenes Konto verbindet sich direkt mit diesem Gerät. Hier legst du die Berechtigungen für Fernzugriff und Cloud-Assistent fest.
 Zugriff und Steuerung
 Suche schließen
 Keine passenden Aufgaben.
@@ -1367,8 +1337,6 @@ Autoriser l'assistant cloud à utiliser cet ordinateur
 Autoriser le contrôle de l'écran (voir, cliquer, saisir)
 Durée de l'autorisation
 Si cette option est désactivée, les demandes d'Agent restent visibles, mais le contrôle à distance n'est pas accordé automatiquement.
-Si cette option est activée, chaque demande d'Agent attend une confirmation sur cet ordinateur.
-Votre propre compte se connecte directement à cet appareil. Réglez ici les autorisations d'accès à distance et de l'assistant cloud.
 Accès et contrôle
 Fermer la recherche
 Aucune tâche correspondante.

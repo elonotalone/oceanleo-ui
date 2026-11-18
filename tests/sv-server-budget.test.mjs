@@ -6,7 +6,7 @@ import {createRoot} from 'react-dom/client';
 import {compileModule, dataModule} from './helpers/module-bench.mjs';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const ui = dataModule('const tt=(s)=>s; export function useUI(){return tt;}');
-const parts = dataModule('export const CARD="",CARD_TITLE="",CARD_DESC="",QUIET="";');
+const parts = dataModule('export const CARD="",CARD_TITLE="",CARD_DESC="",FIELD="",QUIET="";');
 const {ServerBudgetPanel} = await import(await compileModule('src/pages/settings/ServerBudgetPanel.tsx', {
   '../../i18n/ui/useUI':ui, './personalization/parts':parts,
 }));

@@ -4,7 +4,7 @@ import type { CloudComputerClient, ServerAllowance } from "../../lib/cloud-compu
 import { formatMinor } from "../../lib/money";
 import { Switch } from "../../ui";
 import { useUI } from "../../i18n/ui/useUI";
-import { CARD, CARD_DESC, CARD_TITLE, QUIET } from "./personalization/parts";
+import { CARD, CARD_DESC, CARD_TITLE, FIELD, QUIET } from "./personalization/parts";
 import { BudgetServerPurchase } from "./BudgetServerPurchase";
 
 export function ServerBudgetPanel({ client, onPurchased }: {client: CloudComputerClient; onPurchased: () => void}) {
@@ -53,16 +53,21 @@ export function ServerBudgetPanel({ client, onPurchased }: {client: CloudCompute
   if (!client.getServerAllowance) return null;
   return <section className={CARD} data-server-budget>
     <h3 className={CARD_TITLE}>{tt("Agent 服务器预算")}</h3>
-    <p className={CARD_DESC}>{tt("只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。")}</p>
-    <p className={CARD_DESC}>{tt("按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。")}</p>
+    <p className={CARD_DESC}>{tt("仅你能授权预算，释放服务器仍需你确认。")}</p>
     {error && <p role="alert" className="mt-3 text-sm text-red-700">{tt(error)}</p>}
     {!value ? <p role="status">{tt("正在读取预算…")}</p> : <form className="mt-4 space-y-3 text-sm" onSubmit={(event) => { event.preventDefault(); void save(); }}>
-      <div className="flex items-center justify-between gap-3"><span>{tt("授权 Agent 使用服务器预算")}</span><Switch label={tt("授权 Agent 使用服务器预算")} checked={enabled} disabled={busy} onChange={(next) => { setEnabled(next); setSaved(false); }} /></div>
-      <div className="grid gap-3 sm:grid-cols-3">{[["每月上限", cap, setCap], ["单台每小时上限（可选）", hourly, setHourly], ["最多服务器数量（可选）", count, setCount]].map(([label, text, setter], i) => <label key={String(label)} className="block">{tt(String(label))} {i < 2 ? value.currency : ""}<input className="mt-1 block w-full rounded-lg border p-2" aria-label={tt(String(label))} type="number" min={i === 2 ? 1 : 0} step={i === 2 ? 1 : 0.01} value={text as string} disabled={busy} onInput={(e) => { (setter as (v: string) => void)(e.currentTarget.value); setSaved(false); }} /></label>)}</div>
-      <p>{tt("已承诺")} {formatMinor(value.committed_minor, value.currency)} · {tt("剩余额度")} {formatMinor(value.remaining_minor, value.currency)}</p>
-      <button className={QUIET} type="submit" disabled={busy}>{tt(busy ? "保存中…" : "保存授权")}</button>
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5"><span className="text-[14px] font-medium text-neutral-900">{tt("授权 Agent 使用服务器预算")}</span><Switch label={tt("授权 Agent 使用服务器预算")} checked={enabled} disabled={busy} onChange={(next) => { setEnabled(next); setSaved(false); }} /></div>
+      {[["每月上限", cap, setCap], ["单台每小时上限（可选）", hourly, setHourly], ["最多服务器数量（可选）", count, setCount]].map(([label, text, setter], i) => <label key={String(label)} className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5">
+        <span className="min-w-0 text-[14px] font-medium text-neutral-900">{tt(String(label))} {i < 2 ? value.currency : ""}</span>
+        <input className={`${FIELD} max-w-40 shrink-0`} aria-label={tt(String(label))} type="number" min={i === 2 ? 1 : 0} step={i === 2 ? 1 : 0.01} value={text as string} disabled={busy} onInput={(e) => { (setter as (v: string) => void)(e.currentTarget.value); setSaved(false); }} />
+      </label>)}
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5"><span>{tt("已承诺")}</span>{" "}<span>{formatMinor(value.committed_minor, value.currency)}</span></div>
+      <div className="flex items-center justify-between gap-4 rounded-xl border border-neutral-200 bg-white px-4 py-3.5"><span>{tt("剩余额度")}</span>{" "}<span>{formatMinor(value.remaining_minor, value.currency)}</span></div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button className={QUIET} type="submit" disabled={busy}>{tt(busy ? "保存中…" : "保存授权")}</button>
+        {value.enabled && client.getServerOffers && client.buyBudgetServer && <button className={QUIET} type="button" onClick={() => setPurchase(!purchase)}>{tt("按预算购买服务器")}</button>}
+      </div>
       {saved && <p role="status">{tt("预算授权已保存")}</p>}
-      {value.enabled && client.getServerOffers && client.buyBudgetServer && <button className={`${QUIET} ml-2`} type="button" onClick={() => setPurchase(!purchase)}>{tt("按预算购买服务器")}</button>}
     </form>}
     {purchase && value?.enabled && <BudgetServerPurchase client={client} allowance={value} onPurchased={() => { setPurchase(false); setSaved(false); onPurchased(); void client.getServerAllowance?.().then((row) => setResult({client, value: row}), () => {}); }} />}
   </section>;

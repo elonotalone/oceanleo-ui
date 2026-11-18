@@ -19,8 +19,6 @@ const REQUESTED_KEYS = [
   "允许操作屏幕（查看、点击、输入）",
   "允许时长",
   "关闭后，Agent 申请仍会显示，但不会自动获得远程控制。",
-  "开启后，Agent 每次申请都会在这台电脑上等待确认。",
-  "自己的账号访问这台设备会直接连接。远程访问和云端助手的权限在这里设置。",
   "访问与控制",
   "关闭搜索",
   "没有匹配的任务。",
@@ -105,7 +103,7 @@ const REQUESTED_KEYS = [
 // 6fa2162b moved device settings and replaced the owner lease/consent controls.
 // 9b1116ac replaced the website toolbar/panel picker with dashboard/configuration views.
 // 2026-11-15-works removed the seven-tab website wrapper and changed the surviving UI to work-neutral copy.
-// All 88 keys remain mandatory in the translation assertions below for compatibility.
+// The remaining 86 keys remain mandatory in the translation assertions below for compatibility.
 const COMPATIBILITY_ONLY_COPY = {
   "4 小时": "6fa2162b: owner lease duration selector removed when controls moved into Settings",
   "Agent 每次控制都要同意": "6fa2162b: label replaced by 每次询问 in DeviceSettingsSection",
@@ -168,8 +166,8 @@ const dictionaries = Object.fromEntries(LOCALES.map((locale) => [locale,
 ]));
 const merged = (locale) => dictionaries[locale];
 
-test("all 88 requested gaps retain live callers or documented compatibility translations", () => {
-  assert.equal(new Set(REQUESTED_KEYS).size, 88);
+test("all 86 remaining requested gaps retain live callers or documented compatibility translations", () => {
+  assert.equal(new Set(REQUESTED_KEYS).size, 86);
   const literals = new Set();
   for (const relative of SOURCE_PATHS) {
     const source = readFileSync(new URL(`../src/${relative}`, import.meta.url), "utf8");
