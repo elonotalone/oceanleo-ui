@@ -1,18 +1,7 @@
 // OrgMembership / AccountPage 组织区判据（W13，企业版成员侧）。
 //
-// 判的是员工这一侧看到什么、点了之后被说成什么：
-//   ① 三段都在：我的团队 / 加入团队 / 谁看过我（`data-org-section`）；
-//   ② 合规告知两句**逐字**在「加入团队」段里（任务书 P1 ②，不许省）；
-//   ③ 五种入组状态各有明确文案：已通过 / 申请中 / 被驳回（后端 `rejected` 或 HTTP 403）/
-//      链接过期或被撤销（HTTP 404 / 410）/ 你已经在这个组织里了（HTTP 409）；
-//   ④ A2：`loadMyUsage` 不注入时走 `org-api` 的 `getMyOrgUsage`，行上显示本月花费 / 上限；
-//   ⑤ A13：`loadInvitePreview` 不注入时走 `org-api` 的 `getInvitePreview`，申请前显示组织名；
-//      替身里没有这个导出时静默不预览、申请照常能点（W11 落地前后都不炸）；
-//   ⑥ 无组织无邀请码 + `hideWhenEmpty` → 渲染 null，`onVisibilityChange(false)`；
-//   ⑦ `AccountPage` 无组织时不出现「我的团队」菜单项，也没有团队面板（无组织用户零差异）。
-//
-// `org-api` 全部打替身（形状照 `03-arbitration.md` A2/A13 与 `_COMMON §3.8`）：判的是面板怎么用它，
-// 不是它自己。`globalThis.fetch` 一次都不许被碰——判据 5「/v1/orgs 只有一个出口」。
+// Checks joining, personal spend and account entry points without member-content disclosure or view history.
+// The real team-action and wallet clients are exercised in org-team-settings.test.mjs.
 //
 // 跑法（**必须带 loader**）：
 //   node --import ./tests/helpers/assert-dom-guard.mjs --experimental-strip-types \
@@ -105,7 +94,6 @@ const orgApiStub = (withPreview) =>
   }
   export const ENTERPRISE_AGREEMENT_VERSION = "2026-09-20";
   export async function listMyOrgs() { count("listMyOrgs"); return g().listMyOrgs(); }
-  export async function listViewsOfMe() { count("listViewsOfMe"); return g().listViewsOfMe(); }
   export async function requestJoin(code) { count("requestJoin:" + code); return g().requestJoin(code); }
   export async function getMyOrgUsage(orgId) { count("getMyOrgUsage:" + orgId); return g().getMyOrgUsage(orgId); }
   export async function createOrg(body) { count("createOrg:" + (body && body.name || "") + ":" + (body && body.agreementVersion || "")); return g().createOrg(body); }
@@ -116,7 +104,17 @@ const orgApiStub = (withPreview) =>
   export async function listJoinRequests() { return []; }
   export async function listMembers() { return []; }
   export function normalizeOrgUsage(raw) { return raw || { windowDays: 7, points: [], byModel: [] }; }
-  export async function setMemberCap() {}
+  export async function listMemberLimits() {
+    return ["u-owner", "u-staff"].map(userId => ({userId, limits: {total_minor:null,day_minor:null,five_day_minor:null,month_minor:null}, spent:{total_minor:0,day_minor:0,five_day_minor:0,month_minor:0}}));
+  }
+  export async function setMemberLimits() {}
+  export async function listOrgTransfers() { return []; }
+  export async function transferOrgCredit() {}
+  export async function topupOrg() {}
+  export async function leaveOrg() {}
+  export async function dissolveOrg() {}
+  export async function removeOrgMember() {}
+  export async function transferOrgOwnership() {}
   export async function setMemberPermission() {}
   export async function updateOrg() {}
   ${withPreview ? `export async function getInvitePreview(code) { count("getInvitePreview:" + code); return g().getInvitePreview(code); }` : "export const getInvitePreview = undefined;"}
@@ -131,7 +129,7 @@ const membershipModule = await import(
     "../i18n/ui/useUI": uiStubUrl,
   })
 );
-const { OrgMembership, ORG_JOIN_DISCLOSURE, joinOutcomeOf } = membershipModule;
+const { OrgMembership, joinOutcomeOf } = membershipModule;
 
 const { OrgMembership: OrgMembershipNoPreview } = await import(
   await compileModule("src/pages/OrgMembership.tsx", {
@@ -147,7 +145,6 @@ function scenario(overrides = {}) {
   return {
     calls: [],
     listMyOrgs: async () => [],
-    listViewsOfMe: async () => [],
     requestJoin: async () => ({ status: "pending", orgName: "海狮设计" }),
     getMyOrgUsage: async () => ({ monthlyMinor: 0, capMinor: null }),
     getInvitePreview: async () => ({ orgName: "海狮设计", requireApproval: true }),
@@ -197,48 +194,15 @@ async function render(element, s) {
 
 /* ---------- ① 三段都在 ---------- */
 
-test("面板三段齐全：我的团队 / 加入团队 / 谁看过我；空列表说「还没有人看过」", async () => {
+test("membership shows teams and joining without disclosure or views", async () => {
   const s = scenario({ listMyOrgs: async () => [ORG_A] });
   const view = await render(React.createElement(OrgMembership), s);
-  assert.ok(view.q('[data-org-section="orgs"]'), "缺「我的团队」段");
-  assert.ok(view.q('[data-org-section="join"]'), "缺「加入团队」段");
-  assert.ok(view.q('[data-org-section="views"]'), "缺「谁看过我」段");
+  assert.ok(view.q('[data-org-section="orgs"]'));
+  assert.ok(view.q('[data-org-section="join"]'));
   assert.ok(view.q('[data-org-row="org-a"]'));
-  assert.ok(view.text().includes("海狮设计"));
-  assert.ok(view.text().includes("成员"), "角色要说成人话");
-  assert.ok(view.q('[data-org-views-empty="1"]'));
-  assert.ok(view.text().includes("还没有人看过"));
-  assert.equal(fetchCalls, 0, unexpectedFetchUrls.join(", "));
-  view.cleanup();
-});
-
-test("「谁看过我」列出查看者邮箱与所属组织名", async () => {
-  const s = scenario({
-    listMyOrgs: async () => [ORG_A],
-    listViewsOfMe: async () => [{ orgId: "org-a", viewerEmail: "boss@hailion.cn", viewedAt: "2026-09-19T08:00:00Z" }],
-  });
-  const view = await render(React.createElement(OrgMembership), s);
-  const rows = view.qa('[data-org-view-row="1"]');
-  assert.equal(rows.length, 1);
-  assert.ok(rows[0].textContent.includes("boss@hailion.cn"));
-  assert.ok(rows[0].textContent.includes("海狮设计"));
-  assert.ok(!view.q('[data-org-views-empty="1"]'));
-  view.cleanup();
-});
-
-/* ---------- ② 合规告知逐字 ---------- */
-
-test("合规告知两句逐字出现在「加入团队」段里", async () => {
-  const view = await render(React.createElement(OrgMembership), scenario());
-  const note = view.q('[data-org-disclosure="1"]');
-  assert.ok(note, "缺告知块");
-  assert.equal(note.closest('[data-org-section="join"]') !== null, true, "告知必须在「加入团队」段里");
-  const text = note.textContent || "";
-  assert.ok(
-    text.includes("用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。"),
-  );
-  assert.ok(text.includes("每次查看都会留下记录，你可以在下面看到谁看过。"));
-  for (const sentence of ORG_JOIN_DISCLOSURE) assert.ok(text.includes(sentence));
+  assert.equal(view.q('[data-org-section="views"]'), null);
+  assert.equal(view.q('[data-org-disclosure]'), null);
+  assert.equal(s.calls.includes("listViewsOfMe"), false);
   view.cleanup();
 });
 
@@ -465,9 +429,7 @@ test("hideWhenEmpty：网关已上线但还没有组织 → 露出建团队表�
       listMyOrgs: async () => {
         throw new OrgApiError("not_available", 404);
       },
-      listViewsOfMe: async () => {
-        throw new OrgApiError("not_available", 404);
-      },
+
     }),
   );
   assert.equal(down.host.innerHTML, "", "路由未上线时账户页仍为零差异");
@@ -649,9 +611,7 @@ test("AccountPage：org-api 整条路 404（路由未上线）时团队栏安静
     listMyOrgs: async () => {
       throw new OrgApiError("not_available", 404);
     },
-    listViewsOfMe: async () => {
-      throw new OrgApiError("not_available", 404);
-    },
+
   });
   const view = await render(React.createElement(AccountPage), down);
   assert.equal(view.q('[data-org-membership="1"]'), null);

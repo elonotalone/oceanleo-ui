@@ -41,13 +41,10 @@ const CONTRACT_EXPORTS = [
   "getOrg",
   "listMembers",
   "setMemberPermission",
-  "setMemberCap",
   "listJoinRequests",
   "decideJoinRequest",
   "createInvite",
   "requestJoin",
-  "listOrgTasks",
-  "listViewsOfMe",
   "listOrgAssets",
   "getOrgUsage",
   // A2
@@ -205,7 +202,17 @@ const orgApiStub = dataModule(`
   export async function listJoinRequests(id) { count("listJoinRequests", id); return g().listJoinRequests(id); }
   export async function getOrgUsage(id, days) { count("getOrgUsage", id, days); return g().getOrgUsage(id, days); }
   export async function setMemberPermission(...a) { count("setMemberPermission", ...a); }
-  export async function setMemberCap(...a) { count("setMemberCap", ...a); }
+  export async function listMemberLimits() {
+    return ["u-owner", "u-staff"].map(userId => ({userId, limits: {total_minor:null,day_minor:null,five_day_minor:null,month_minor:null}, spent:{total_minor:0,day_minor:0,five_day_minor:0,month_minor:0}}));
+  }
+  export async function setMemberLimits() {}
+  export async function listOrgTransfers() { return []; }
+  export async function transferOrgCredit() {}
+  export async function topupOrg() {}
+  export async function leaveOrg() {}
+  export async function dissolveOrg() {}
+  export async function removeOrgMember() {}
+  export async function transferOrgOwnership() {}
   export async function decideJoinRequest(...a) { count("decideJoinRequest", ...a); }
   export async function createInvite(id) { count("createInvite", id); return { url: "https://x.test/join?code=abc", code: "abc", expiresAt: "" }; }
   export async function updateOrg(...a) { count("updateOrg", ...a); return {}; }
@@ -233,7 +240,6 @@ const {
   canManageMembers,
   canManageWallet,
   pickOrg,
-  parseCapInput,
   trendHeights,
 } = await import(await compileModule("src/pages/OrgPage.tsx", OVERRIDES));
 
@@ -425,12 +431,6 @@ test("纯函数：?org= 读写、权限判定、pickOrg、上限输入、趋势�
   assert.equal(pickOrg([a, b, c], "").id, "b", "没点名选第一家能进的");
   assert.equal(pickOrg([a], "zzz").id, "a", "点名不存在 → 退回列表");
 
-  assert.equal(parseCapInput(""), null);
-  assert.equal(parseCapInput("  "), null);
-  assert.equal(parseCapInput("-5"), null);
-  assert.equal(parseCapInput("abc"), null);
-  assert.equal(parseCapInput("12.34"), 1234);
-  assert.equal(parseCapInput("1,000"), 100000);
 
   assert.deepEqual(trendHeights([]), []);
   assert.deepEqual(trendHeights([{ minor: 0 }, { minor: 0 }]), [0, 0]);
@@ -479,18 +479,17 @@ test("owner：四块齐；权限勾 / 上限输入 / 审批区都在；通过申
       assert.equal(find("[data-org-name]").textContent, "海狮科技");
       assert.match(find("[data-org-legal]").textContent, /海狮科技有限公司/);
       assert.ok(find("[data-org-balance]").textContent.length > 0);
-      assert.equal(find("[data-org-topup]").dataset.orgTopup, "unavailable", "没接 onTopup → 充值还没上线");
-      assert.ok(find("[data-org-topup]").disabled);
+      assert.equal(find("[data-org-topup]").dataset.orgTopup, "ready");
+      assert.equal(find("[data-org-topup]").disabled, false);
 
       // 成员表：两行、七列 + 权限列
       const rows = findAll("[data-org-member]");
       assert.equal(rows.length, 2);
-      assert.equal(findAll("thead th").length >= 8, true);
+      assert.equal(findAll("thead th").length >= 4, true);
       assert.equal(findAll('[data-org-perm="view_org_page"]').length, 2);
-      assert.equal(findAll('[data-org-perm="view_all_tasks"]').length, 2);
-      assert.equal(findAll("[data-org-cap-input]").length, 2, "owner 有上限输入");
+      assert.equal(findAll('[data-org-perm="view_all_tasks"]').length, 0);
+      assert.equal(findAll("[data-org-limit-input]").length, 8, "owner 有上限输入");
       assert.ok(find('[data-org-member="u-owner"] [data-org-perm="view_org_page"]').disabled, "owner 的勾不可改");
-      assert.ok(find('[data-org-member="u-staff"]').textContent.includes("已达上限"));
 
       // 审批区
       assert.equal(findAll("[data-org-request]").length, 1);

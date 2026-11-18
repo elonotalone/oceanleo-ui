@@ -1,33 +1,6 @@
 "use client";
 
-// ============================================================================
-// @oceanleo/ui — 企业版「团队页」（负责人看板，W11）
-// ----------------------------------------------------------------------------
-// 负责人打开一页看完：团队余额与充值入口、每个成员一行（用量 / 任务数 / 成果数 /
-// 最后活跃 / 每月上限）、待审批的入组申请、近 1/7/30 天用量趋势与按模型分布、
-// 邀请链接生成。四块从上到下：① 顶部 ② 成员表 ③ 审批与邀请 ④ 用量。
-//
-// **这一页不是只有 owner 能进。** 被授予 `view_org_page` 的任何成员都能进（操作员要求；
-// `_COMMON §3.3`：owner 恒真，其余看 `ent_org_members.can_view_org_page`）。没这个权限的人
-// 看到的是一句「你没有查看这个团队的权限」——**不渲染空表**，也不发成员表的请求。
-//
-// 多团队：一个人可能同时是 A 的 owner、B 的普通成员。顶部用和团队设置标签同一套
-//  pill 切换（`listMyOrgs()`），当前团队写进 URL 的 `?org=<id>`，刷新后保持；URL 没带
-// 时选第一个能进的团队。团队共用的连接器只在这一页出现、也只在这一页设置。
-//
-// 取数只走 `../lib/org-api`（全波唯一的团队 API 出口，`_COMMON §3.8`；本文件里不许出现
-// 网关路径字面量，测试按此断言）。「从我的库导入」在 `org/OrgLibraryImport.tsx`：
-// 个人库走 artifact-client，挂牌仍走 publishOrgAsset。每一块各自
-// 加载、各自失败：W05 的 overview 没上线时余额那一块说「还没上线」，成员表照常；
-// W09 的充值路由本波没落，充值按钮在没人接 `onTopup` 时显示「充值还没上线」。
-// 失败只显示 `orgErrorCopy(code)` 的人话，不把英文 error 甩到页面上。
-//
-// 谁能改什么（权限判在网关，这里只决定画不画控件，画错了网关会 403）：
-//   · 抬头 / 税号 / 团队名：owner；
-//   · 成员的两个权限勾：owner / admin（`manage_members`）；
-//   · 每月上限：owner（`manage_wallet`）；
-//   · 通过 / 驳回申请、生成邀请：owner / admin。
-// ============================================================================
+// Team settings show spend and limits; member content stays private.
 
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
@@ -42,7 +15,6 @@ import {
   orgApiCode,
   orgErrorCopy,
   OrgApiError,
-  setMemberCap,
   setMemberPermission,
   updateOrg,
   type OrgApiCode,
@@ -56,6 +28,9 @@ import {
 import { formatMinor } from "../lib/money";
 import { useUI } from "../i18n/ui/useUI";
 import { PageHeader } from "./PageHeader";
+import { OrgLimits } from "./org/OrgLimits";
+import { OrgLifecycle } from "./org/OrgLifecycle";
+import { OrgWallet } from "./org/OrgWallet";
 import { OrgMcpSection } from "./org/OrgMcpSection";
 
 // ---------------------------------------------------------------------------
@@ -118,15 +93,6 @@ export function pickOrg(orgs: readonly OrgSummary[], requestedId: string): OrgSu
     if (hit) return hit;
   }
   return orgs.find(canViewOrgPage) || orgs[0];
-}
-
-/** 上限输入框的文本 → minor。空串 = 不限（null）；非法 / 负数 = null。整分。 */
-export function parseCapInput(text: string): number | null {
-  const trimmed = String(text ?? "").trim();
-  if (!trimmed) return null;
-  const major = Number(trimmed.replace(/[,\s]/g, ""));
-  if (!Number.isFinite(major) || major < 0) return null;
-  return Math.round(major * 100);
 }
 
 /** 趋势条的相对高度（0–100）。全为 0 时全 0，不除零。 */
@@ -226,8 +192,9 @@ type Loaded<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "
 export interface OrgPageProps {
   /** 点名要看的团队（优先级低于 URL 的 `?org=`）。 */
   orgId?: string;
-  /** 充值按钮的去处。不传时按钮显示「充值还没上线」并禁用（W09 的充值路由本波未落）。 */
+  /** Optional callback when opening the built-in team top-up form. */
   onTopup?: (org: OrgDetail) => void;
+  onMembershipChanged?: () => void;
   /** 页头返回行为（i18n 站用自己的 router）。 */
   onBack?: () => void;
   /** 不带页头（嵌进别的页时）。 */
@@ -251,7 +218,7 @@ function currentHref(): string {
   return typeof window === "undefined" ? "" : window.location.href;
 }
 
-export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = false, className = "" }: OrgPageProps) {
+export function OrgPage({ orgId: orgIdProp = "", onTopup, onMembershipChanged, onBack, embedded = false, className = "" }: OrgPageProps) {
   const tt = useUI();
 
   const [orgs, setOrgs] = useState<Loaded<OrgSummary[]>>({ status: "loading" });
@@ -281,7 +248,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ name: "", legalName: "", taxId: "" });
-  const [capDraft, setCapDraft] = useState<Record<string, string>>({});
+  const [topupOpen, setTopupOpen] = useState(false);
   const [busy, setBusy] = useState<string>("");
 
   // ① 我的团队
@@ -334,9 +301,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
     try {
       const rows = await listMembers(id);
       setMembers({ status: "ok", data: rows });
-      setCapDraft(
-        Object.fromEntries(rows.map((row) => [row.userId, row.capMinor === null ? "" : String(row.capMinor / 100)])),
-      );
+
     } catch (error) {
       setMembers({ status: "error", code: orgApiCode(error) });
     }
@@ -376,6 +341,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
     setInvite(null);
     setNotice(null);
     setEditing(false);
+    setTopupOpen(false);
     void reloadDetail(currentId);
     void reloadMembers(currentId);
     void reloadLibrary(currentId);
@@ -436,21 +402,11 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
       tt("已保存"),
     );
 
-  const togglePermission = (row: OrgMemberRow, permission: "view_org_page" | "view_all_tasks", value: boolean) =>
+  const togglePermission = (row: OrgMemberRow, permission: "view_org_page", value: boolean) =>
     run(`perm:${row.userId}:${permission}`, async () => {
       await setMemberPermission(currentId, row.userId, permission, value);
       await reloadMembers(currentId);
     });
-
-  const saveCap = (row: OrgMemberRow) =>
-    run(
-      `cap:${row.userId}`,
-      async () => {
-        await setMemberCap(currentId, row.userId, parseCapInput(capDraft[row.userId] ?? ""));
-        await reloadMembers(currentId);
-      },
-      tt("上限已更新"),
-    );
 
   const decide = (row: OrgJoinRequestRow, approve: boolean) =>
     run(
@@ -638,12 +594,10 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                     <button
                       type="button"
                       className={`mt-2 ${primaryClass}`}
-                      disabled={!onTopup}
-                      title={onTopup ? undefined : tt("充值还没上线")}
-                      onClick={() => detail.status === "ok" && onTopup?.(detail.data)}
-                      data-org-topup={onTopup ? "ready" : "unavailable"}
+                      onClick={() => { if (detail.status === "ok" && onTopup) onTopup(detail.data); else setTopupOpen(true); }}
+                      data-org-topup="ready"
                     >
-                      {onTopup ? tt("充值") : tt("充值还没上线")}
+                      {tt("充值")}
                     </button>
                   )}
                   {manageWallet && detail.data.minTopupMinor > 0 && (
@@ -719,16 +673,11 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                       <th className="py-1.5 pr-3 font-medium">{tt("成员")}</th>
                       <th className="py-1.5 pr-3 font-medium">{tt("角色")}</th>
                       <th className="py-1.5 pr-3 font-medium">{tt("本月花费")}</th>
-                      <th className="py-1.5 pr-3 font-medium">{tt("任务")}</th>
-                      <th className="py-1.5 pr-3 font-medium">{tt("成果")}</th>
-                      <th className="py-1.5 pr-3 font-medium">{tt("最后活跃")}</th>
-                      <th className="py-1.5 pr-3 font-medium">{tt("每月上限")}</th>
                       {manageMembers && <th className="py-1.5 pr-3 font-medium">{tt("权限")}</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-neutral-100 text-neutral-900">
                     {members.data.map((row) => {
-                      const capped = row.capMinor !== null && row.monthlyMinor >= row.capMinor;
                       return (
                         <tr key={row.userId} data-org-member={row.userId}>
                           <td className="py-2 pr-3">
@@ -738,37 +687,6 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                           <td className="py-2 pr-3">{tt(roleCopy(row.role))}</td>
                           <td className="py-2 pr-3 tabular-nums" data-org-member-spend="1">
                             {money(row.monthlyMinor)}
-                            {capped && <span className="ml-1 text-rose-700">{tt("已达上限")}</span>}
-                          </td>
-                          <td className="py-2 pr-3 tabular-nums">{row.taskCount}</td>
-                          <td className="py-2 pr-3 tabular-nums">{row.assetCount}</td>
-                          <td className="py-2 pr-3 tabular-nums">{whenCopy(row.lastActiveAt)}</td>
-                          <td className="py-2 pr-3 tabular-nums">
-                            {manageWallet ? (
-                              <span className="flex items-center gap-1">
-                                <input
-                                  className={`w-24 ${inputClass}`}
-                                  inputMode="decimal"
-                                  placeholder={tt("不限")}
-                                  aria-label={tt("每月上限")}
-                                  value={capDraft[row.userId] ?? ""}
-                                  onChange={(e) => setCapDraft({ ...capDraft, [row.userId]: e.target.value })}
-                                  data-org-cap-input={row.userId}
-                                />
-                                <button
-                                  type="button"
-                                  className={buttonClass}
-                                  disabled={busy === `cap:${row.userId}`}
-                                  onClick={() => void saveCap(row)}
-                                >
-                                  {tt("保存")}
-                                </button>
-                              </span>
-                            ) : row.capMinor === null ? (
-                              tt("不限")
-                            ) : (
-                              money(row.capMinor)
-                            )}
                           </td>
                           {manageMembers && (
                             <td className="py-2 pr-3">
@@ -782,16 +700,6 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                                 />
                                 {tt("看团队页")}
                               </label>
-                              <label className="inline-flex items-center gap-1">
-                                <input
-                                  type="checkbox"
-                                  checked={row.role === "owner" || row.canViewAllTasks === true}
-                                  disabled={row.role === "owner" || busy.startsWith(`perm:${row.userId}:`)}
-                                  onChange={(e) => void togglePermission(row, "view_all_tasks", e.target.checked)}
-                                  data-org-perm="view_all_tasks"
-                                />
-                                {tt("看全部任务")}
-                              </label>
                             </td>
                           )}
                         </tr>
@@ -802,6 +710,19 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
               </div>
             )}
           </div>
+
+          {members.status === "ok" && (manageMembers || manageWallet) && <OrgLimits key={`limits:${currentId}`} orgId={currentId} members={members.data} editable={manageWallet} currency={current?.currency || "USD"} />}
+          {manageMembers && <OrgLifecycle key={`lifecycle:${currentId}`} orgId={currentId} name={detail.status === "ok" ? detail.data.name : current?.name || ""} role={role}
+            members={members.status === "ok" ? members.data : []} onChanged={async () => {
+              try {
+                const rows = await listMyOrgs();
+                setOrgs({ status: "ok", data: rows });
+                if (rows.some((row) => row.id === currentId)) await Promise.all([reloadMembers(currentId), reloadDetail(currentId)]);
+              } catch (error) { setOrgs({ status: "error", code: orgApiCode(error) }); }
+              onMembershipChanged?.();
+            }} />}
+          {manageWallet && detail.status === "ok" && <OrgWallet key={`wallet:${currentId}`} org={detail.data} orgs={orgRows}
+            topupOpen={topupOpen} onTopupClose={() => setTopupOpen(false)} onChanged={() => reloadDetail(currentId)} />}
 
           {/* 团队库：成员从我的库导入。发布者或负责人可撤；负责人可授权给成员。 */}
           <div className={sectionClass} data-org-section="library">
@@ -843,9 +764,7 @@ export function OrgPage({ orgId: orgIdProp = "", onTopup, onBack, embedded = fal
                 <table className="w-full text-left text-[12px]" data-org-library-table="1">
                   <thead className="text-neutral-500">
                     <tr>
-                      <th className="py-1.5 pr-3 font-medium">{tt("成果")}</th>
                       <th className="py-1.5 pr-3 font-medium">{tt("成员")}</th>
-                      <th className="py-1.5 pr-3 font-medium">{tt("最后活跃")}</th>
                       <th className="py-1.5 pr-3 font-medium">{tt("权限")}</th>
                     </tr>
                   </thead>

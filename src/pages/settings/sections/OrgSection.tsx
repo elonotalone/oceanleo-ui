@@ -22,6 +22,8 @@ export function OrgSection({
 }) {
   void _orgHref;
   const tt = useUI();
+  const [revision, setRevision] = useState(0);
+  const refresh = () => setRevision((value) => value + 1);
   const [pane, setPane] = useState<OrgPane>(initialPane);
   useEffect(() => {
     setPane(initialPane);
@@ -55,10 +57,10 @@ export function OrgSection({
       {pane === "mine" ? (
         <section data-org-settings-block="mine" className="space-y-3">
           <p className="text-[12px] text-neutral-500">
-            {tt("你所在的团队、本月在每个团队花了多少、谁看过你的任务")}
+            {tt("你所在的团队、花费和上限")}
           </p>
-          <OrgPage embedded />
-          <OrgMembership embedded hideWhenEmpty only="views" />
+          <OrgPage key={`page:${revision}`} embedded onMembershipChanged={refresh} />
+          <OrgMembership key={`membership:${revision}`} embedded hideWhenEmpty only="orgs" onMembershipChanged={refresh} />
         </section>
       ) : null}
       {pane === "create" ? (

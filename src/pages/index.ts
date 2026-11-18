@@ -72,7 +72,6 @@ export { OrgPage } from "./OrgPage";
 export type { OrgPageProps } from "./OrgPage";
 export {
   OrgMembership,
-  ORG_JOIN_DISCLOSURE,
   JOIN_STATE_COPY,
   joinOutcomeOf,
   inviteCodeFromHref,

@@ -1,30 +1,8 @@
 "use client";
 
-// ============================================================================
-// @oceanleo/ui — 企业版「成员侧」面板（W13）
-// ----------------------------------------------------------------------------
-// 员工这一侧的全部体验，一个可独立使用的面板，三段：
-//   ① 我的团队：每行团队名、我的角色、本月花费 / 上限、状态；
-//   ② 加入团队：输入邀请码或从链接自动带入，申请前**必须**看到「加入后这个团队能看到
-//      什么」的告知（合规前提，文案见 ORG_JOIN_DISCLOSURE，不许省）；
-//   ③ 谁看过我：管理员每次读我的任务详情都留一条记录，这里全列出来。
-//
-// 三个挂载点：`/join?code=<code>`（主站落地页，W13 的 oceanleo/app/join/page.tsx）、
-// 账户页的 extraSections（`AccountPage.tsx`，无团队且无邀请码时**渲染为 null**，
-// 让无团队用户的账户页与今天逐字节一致）、以及团队页（W11 的 OrgPage 可直接嵌）。
-//
-// 取数只走 `../lib/org-api`（W11，全波唯一的 /v1/orgs 出口，`_COMMON §3.8`）。
-// 两处契约与本文件并行落地，所以做成**可注入**，默认实现都指向 `org-api.ts`：
-//   · `loadMyUsage`       —— 默认调 `getMyOrgUsage(orgId)`（裁定 A2，已在 org-api.ts）。
-//   · `loadInvitePreview` —— 默认调 `getInvitePreview(code)`（裁定 A13，W11 r3 在加）；
-//     还没落地时不预览，申请成功后用 `requestJoin` 回的 `orgName` 补上。
-// 这两个口子只是让「谁先落地」不阻塞谁；测试也靠它们注入替身。
-//
-// 失败只显示 `orgErrorCopy(code)` 的人话；`not_available`（路由还没 include 进来）
-// 显示「还没上线」而不是「你没权限」（`org-api.ts` 纪律 2）。
-// ============================================================================
+// Membership, personal spend limits, and joining a team.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import * as orgApi from "../lib/org-api";
 import {
   OrgApiError,
@@ -33,8 +11,11 @@ import {
   type OrgApiCode,
   type OrgRole,
   type OrgSummary,
-  type OrgViewRow,
+  type OrgLimits,
+  type OrgSpent,
 } from "../lib/org-api";
+import { LimitReadout } from "./org/OrgLimits";
+import { OrgLifecycle } from "./org/OrgLifecycle";
 import { formatMinor } from "../lib/money";
 import { useUI } from "../i18n/ui/useUI";
 
@@ -47,6 +28,8 @@ export interface MyOrgUsage {
   monthlyMinor: number;
   /** null = 不限（与「0 = 一分都不许花」是两件事）。 */
   capMinor: number | null;
+  limits?: OrgLimits;
+  spent?: OrgSpent;
 }
 
 /** 邀请码公开预览（W02 的 `GET /v1/orgs/invites/{code}`：只回团队名与是否需审批）。 */
@@ -68,15 +51,6 @@ export type JoinState =
   | "expired" // 链接过期 / 被撤销
   | "already_member" // 你已经在这个团队里了
   | "error";
-
-/**
- * 合规告知（任务书 P1 ②，逐字）。加入前必须完整展示；测试按句断言。
- * 三句拆开只是为了词典 key 短一点，渲染时连成一段。
- */
-export const ORG_JOIN_DISCLOSURE: readonly string[] = [
-  "用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。",
-  "每次查看都会留下记录，你可以在下面看到谁看过。",
-];
 
 /** 五种状态的文案（中文原文即词典 key）。`{org}` 由渲染处替换。 */
 export const JOIN_STATE_COPY: Record<Exclude<JoinState, "idle" | "submitting" | "error">, string> = {
@@ -227,6 +201,8 @@ async function defaultLoadMyUsage(orgId: string): Promise<MyOrgUsage> {
   const monthly = Number(raw?.monthlyMinor);
   const cap = raw?.capMinor;
   return {
+    limits: raw?.limits,
+    spent: raw?.spent,
     monthlyMinor: Number.isFinite(monthly) ? Math.max(0, Math.floor(monthly)) : 0,
     capMinor:
       cap === null || cap === undefined || !Number.isFinite(Number(cap))
@@ -280,6 +256,7 @@ export interface OrgMembershipProps {
   onVisibilityChange?: (visible: boolean) => void;
   /** 申请通过（直接入组）后的回调，带团队名。 */
   onJoined?: (orgName: string) => void;
+  onMembershipChanged?: () => void;
   /** 成员自查用量。默认 `getMyOrgUsage(orgId)`（A2）。 */
   loadMyUsage?: (orgId: string) => Promise<MyOrgUsage>;
   /** 邀请码公开预览。默认 `getInvitePreview(code)`（A13）；申请前显示团队名与是否需审批。 */
@@ -287,7 +264,7 @@ export interface OrgMembershipProps {
   /** 嵌在别的页里时不带整页的大标题。 */
   embedded?: boolean;
   /** 只渲染这一段。设置里的团队栏用三个页签分别渲染我的团队 / 创建 / 加入。 */
-  only?: "orgs" | "join" | "views" | "create" | "join-create";
+  only?: "orgs" | "join" | "create" | "join-create";
   className?: string;
 }
 
@@ -312,16 +289,13 @@ export function joinLandingCopy(tt: CopyFn) {
   };
 }
 
-function whenCopy(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
-}
 
 export function OrgMembership({
   inviteCode = "",
   hideWhenEmpty = false,
   onVisibilityChange,
   onJoined,
+  onMembershipChanged,
   loadMyUsage = defaultLoadMyUsage,
   loadInvitePreview = defaultLoadInvitePreview,
   embedded = false,
@@ -332,7 +306,6 @@ export function OrgMembership({
 
   const [orgs, setOrgs] = useState<Loaded<OrgSummary[]>>({ status: "loading" });
   const [usage, setUsage] = useState<Record<string, Loaded<MyOrgUsage>>>({});
-  const [views, setViews] = useState<Loaded<OrgViewRow[]>>({ status: "loading" });
 
   const [code, setCode] = useState(() => inviteCode || recallInviteCode());
   const [preview, setPreview] = useState<Loaded<InvitePreview> | null>(null);
@@ -388,21 +361,6 @@ export function OrgMembership({
     };
   }, [reloadOrgs, loadMyUsage]);
 
-  useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const rows = await orgApi.listViewsOfMe();
-        if (!cancelled) setViews({ status: "ok", data: rows });
-      } catch (error) {
-        if (!cancelled) setViews({ status: "error", code: orgApiCode(error) });
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // 邀请码预览（有注入才做）。
   useEffect(() => {
     if (!loadInvitePreview || !code.trim()) {
@@ -434,12 +392,6 @@ export function OrgMembership({
   useEffect(() => {
     onVisibilityChange?.(visible);
   }, [visible, onVisibilityChange]);
-
-  const orgNameById = useMemo(() => {
-    const map = new Map<string, string>();
-    for (const org of orgRows) map.set(org.id, org.name);
-    return map;
-  }, [orgRows]);
 
   async function submitJoin() {
     const trimmed = code.trim();
@@ -489,11 +441,10 @@ export function OrgMembership({
   const showCreateInOrgs = !only || only === "orgs";
   const showCreateAlone = only === "create" || only === "join-create";
   const showJoin = !only || only === "join" || only === "join-create";
-  const showViews = !only || only === "views";
-  const show = (section: "orgs" | "join" | "views") => {
+  const show = (section: "orgs" | "join") => {
     if (section === "orgs") return showList;
     if (section === "join") return showJoin;
-    return showViews;
+    return false;
   };
   const sectionClass = "mt-6 rounded-xl border border-neutral-200 p-4";
   const titleClass = "text-[13px] font-semibold text-neutral-900";
@@ -528,8 +479,9 @@ export function OrgMembership({
                       ? tt("不限")
                       : formatMinor(u.data.capMinor, org.currency || undefined)
                     : "—";
-                const reached =
-                  u?.status === "ok" && u.data.capMinor !== null && u.data.monthlyMinor >= u.data.capMinor;
+                const reached = u?.status === "ok" && (u.data.limits && u.data.spent
+                  ? (Object.keys(u.data.limits) as (keyof OrgLimits)[]).some((key) => u.data.limits![key] !== null && u.data.spent![key] >= u.data.limits![key]!)
+                  : u.data.capMinor !== null && u.data.monthlyMinor >= u.data.capMinor);
                 return (
                   <li
                     key={org.id}
@@ -545,13 +497,15 @@ export function OrgMembership({
                         {spent} / {cap}
                       </p>
                       <p className={subtleClass}>
-                        {tt("本月花费 / 上限")}
+                        {u?.status === "ok" && u.data.limits ? tt("近 30 天") : tt("本月花费 / 上限")}
                         {" · "}
-                        <span data-org-status={reached ? "capped" : "active"}>
+                        {u?.status === "ok" && <span data-org-status={reached ? "capped" : "active"}>
                           {reached ? tt("已达上限") : tt("正常")}
-                        </span>
+                        </span>}
                         {u?.status === "error" && <> · {orgErrorCopy(u.code, tt)}</>}
                       </p>
+                      {u?.status === "ok" && u.data.limits && u.data.spent && <LimitReadout row={{ userId: "", limits: u.data.limits, spent: u.data.spent }} currency={org.currency} />}
+                      {org.role !== "owner" && <OrgLifecycle key={org.id} orgId={org.id} name={org.name} role="member" onChanged={async () => { await reloadOrgs(); onMembershipChanged?.(); }} />}
                     </div>
                   </li>
                 );
@@ -654,18 +608,6 @@ export function OrgMembership({
             </p>
           )}
 
-          <div
-            className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[12px] leading-relaxed text-amber-900"
-            role="note"
-            data-org-disclosure="1"
-          >
-            <p className="font-medium">{tt("加入后这个团队能看到什么")}</p>
-            <p className="mt-1">
-              {tt("用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。")}
-              {tt("每次查看都会留下记录，你可以在下面看到谁看过。")}
-            </p>
-          </div>
-
           {join.state !== "idle" && join.state !== "submitting" && (
             <p
               className={`mt-3 text-[13px] ${
@@ -743,37 +685,6 @@ export function OrgMembership({
         </div>
       )}
 
-      {/* ③ 谁看过我 */}
-      {show("views") && (
-        <div className={sectionClass} data-org-section="views">
-          <p className={titleClass}>{tt("谁看过我")}</p>
-          <p className={`mt-1 ${subtleClass}`}>
-            {tt("团队管理员每次打开你用团队钱包做的任务，都会在这里留一条记录。")}
-          </p>
-          {views.status === "loading" && <p className={`mt-2 ${subtleClass}`}>…</p>}
-          {views.status === "error" && (
-            <p className={`mt-2 ${subtleClass}`}>{orgErrorCopy(views.code, tt)}</p>
-          )}
-          {views.status === "ok" && views.data.length === 0 && (
-            <p className={`mt-2 ${subtleClass}`} data-org-views-empty="1">
-              {tt("还没有人看过")}
-            </p>
-          )}
-          {views.status === "ok" && views.data.length > 0 && (
-            <ul className="mt-2 divide-y divide-neutral-100">
-              {views.data.map((row, i) => (
-                <li key={`${row.orgId}-${row.viewedAt}-${i}`} className="flex items-center justify-between gap-2 py-2" data-org-view-row="1">
-                  <div className="min-w-0">
-                    <p className="truncate text-[13px] text-neutral-900">{row.viewerEmail || tt("管理员")}</p>
-                    <p className={subtleClass}>{orgNameById.get(row.orgId) || row.orgId}</p>
-                  </div>
-                  <p className={`shrink-0 tabular-nums ${subtleClass}`}>{row.viewedAt ? whenCopy(row.viewedAt) : "—"}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
     </section>
   );
 }

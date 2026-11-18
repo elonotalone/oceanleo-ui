@@ -211,14 +211,6 @@ export function decideWorkReplayConsent(
   return authed(`${BASE}/consents/${encodeURIComponent(id)}/${decision}`, json("POST"));
 }
 
-export function createOrgMemberReplay(
-  orgId: string,
-  memberId: string,
-  range: { range_from?: string; range_to?: string } = {},
-): Promise<AgentApiResult<WorkReplay>> {
-  return authed(`${BASE}/org/${encodeURIComponent(orgId)}/members/${encodeURIComponent(memberId)}`, json("POST", range));
-}
-
 /** 把回放变成会话里的卡片（ReplayPickerDialog 选中后回调给输入框）。 */
 export function replayCard(summary: Pick<WorkReplaySummary, "id" | "title" | "sources">): ImCard {
   const first = summary.sources.find((source) => source.editor_kind);

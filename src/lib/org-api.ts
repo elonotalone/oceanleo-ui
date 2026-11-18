@@ -40,20 +40,15 @@ export const ORG_ROLES: readonly OrgRole[] = ["owner", "admin", "member"];
 /** `_COMMON §3.3` 的 PERMISSIONS。`setMemberPermission` 的第三个参数取自这里。 */
 export const ORG_PERMISSIONS = [
   "view_org_page",
-  "view_all_tasks",
   "manage_members",
   "manage_wallet",
 ] as const;
 
 export type OrgPermission = (typeof ORG_PERMISSIONS)[number];
 
-/**
- * 成员行上那两个布尔列（`_COMMON §3.2`）。勾选权限时 PATCH 的就是这两个列名 ——
- * 列名是契约，不是本模块能改的东西（红线 4）。
- */
+/** Only team-page access can be delegated; member content stays private. */
 const PERMISSION_COLUMN: Partial<Record<string, string>> = {
   view_org_page: "can_view_org_page",
-  view_all_tasks: "can_view_all_tasks",
 };
 
 /** 邀请链接的落地路由（W13 的 `oceanleo/app/join/page.tsx`，取码方式 `?code=`）。 */
@@ -71,6 +66,10 @@ export type OrgApiCode =
   | "offline"
   | "rate_limited"
   | "server_error"
+  | "currency_mismatch"
+  | "insufficient_funds"
+  | "invalid_amount"
+  | "name_mismatch"
   | "agreement_required"
   | "unknown";
 
@@ -102,6 +101,14 @@ export function orgErrorCopy(
   tt: (zh: string) => string = (zh) => zh,
 ): string {
   switch (code) {
+    case "currency_mismatch":
+      return tt("币种不同，无法转移余额；请使用相同币种的钱包。");
+    case "insufficient_funds":
+      return tt("余额不足，请减少金额。");
+    case "invalid_amount":
+      return tt("请输入大于零的金额，最多两位小数。");
+    case "name_mismatch":
+      return tt("团队名不一致，请重新输入。");
     case "signed_out":
       return tt("登录状态失效了，请重新登录。");
     case "forbidden":
@@ -245,10 +252,16 @@ async function call<T>(
   if (res.ok) return { ok: true, data: (body ?? {}) as T, status: res.status };
   return {
     ok: false,
-    code: codeForStatus(res.status, notFoundMeans),
+    code: responseCode(body) || codeForStatus(res.status, notFoundMeans),
     status: res.status,
     data: (body ?? undefined) as T | undefined,
   };
+}
+
+function responseCode(body: unknown): OrgApiCode | undefined {
+  const code = str(record(record(body).detail).code);
+  if (["not_available", "currency_mismatch", "insufficient_funds", "invalid_amount", "name_mismatch"].includes(code)) return code as OrgApiCode;
+  return undefined;
 }
 
 function failureDetail(data: unknown): string {
@@ -257,6 +270,7 @@ function failureDetail(data: unknown): string {
   const rec = data as Record<string, unknown>;
   const detail = rec.detail;
   if (typeof detail === "string" && detail.trim()) return detail.trim();
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) return str(record(detail).message);
   if (Array.isArray(detail)) {
     const parts = detail
       .map((item) => {
@@ -318,7 +332,6 @@ export interface OrgSummary {
   name: string;
   role: OrgRole;
   canViewOrgPage: boolean;
-  canViewAllTasks: boolean;
   currency: string;
 }
 
@@ -329,10 +342,9 @@ function normalizeSummary(raw: unknown): OrgSummary {
     id: str(firstPresent(row.id, row.org_id)),
     name: str(row.name),
     role,
-    // owner 恒真（`_COMMON §3.3`）。网关漏给这两个布尔列时，owner 也必须进得去
+    // owner 恒真（`_COMMON §3.3`）。网关漏给权限列时，owner 也必须进得去
     // 自己的团队页 —— 否则建团队的人第一次打开就看到「你没有权限」。
     canViewOrgPage: role === "owner" || bool(firstPresent(row.can_view_org_page, row.canViewOrgPage)),
-    canViewAllTasks: role === "owner" || bool(firstPresent(row.can_view_all_tasks, row.canViewAllTasks)),
     currency: str(row.currency).trim().toUpperCase(),
   };
 }
@@ -356,9 +368,10 @@ export function listMyOrgs(): Promise<OrgSummary[]> {
  */
 export async function getOrg(orgId: string): Promise<OrgDetail> {
   if (!orgId) throw new OrgApiError("not_found", 404);
-  const [base, overview] = await Promise.all([
+  const [base, overview, topups] = await Promise.all([
     must<unknown>(orgPath(orgId), undefined, "not_found"),
     call<unknown>(orgPath(orgId, "/overview"), undefined, "not_available"),
+    call<unknown>(orgPath(orgId, "/topups?limit=1"), undefined, "not_available"),
   ]);
   const summary = normalizeSummary(base);
   const baseRow = record(base);
@@ -379,6 +392,7 @@ export async function getOrg(orgId: string): Promise<OrgDetail> {
     // 0 = 网关没说门槛，界面就不摆那句起充提示（而不是印一个「最低 ¥0.00」）。
     minTopupMinor: num(
       firstPresent(
+        record(topups.ok ? topups.data : {}).minTopupMinor,
         overviewRow.minTopupMinor,
         overviewRow.min_topup_minor,
         baseRow.minTopupMinor,
@@ -448,57 +462,32 @@ export interface OrgMemberRow {
   role: OrgRole;
   status: string;
   monthlyMinor: number;
-  taskCount: number;
-  assetCount: number;
-  lastActiveAt: string | null;
-  capMinor: number | null;
-  /**
-   * 成员行上的两个权限布尔（`_COMMON §3.2` 的列；W01 `GET /members` 与 W05
-   * `/members/usage` 都回）。团队页的权限勾就画它们。契约里的七列一个不少，这两个
-   * 是**只加**的可选项：网关没回时是 `undefined`，不是 `false`（勾就不乱画）。
-   */
+  /** Delegated access to the team page. */
   canViewOrgPage?: boolean;
-  canViewAllTasks?: boolean;
 }
 
 function normalizeMemberRow(raw: unknown): OrgMemberRow {
   const row = record(raw);
   const viewPage = firstPresent(row.canViewOrgPage, row.can_view_org_page);
-  const viewTasks = firstPresent(row.canViewAllTasks, row.can_view_all_tasks);
   return {
     userId: str(firstPresent(row.user_id, row.userId, row.id)),
     email: str(firstPresent(row.email, row.user_email)),
     role: roleOf(row.role),
     status: str(row.status) || "active",
     ...(viewPage === undefined ? {} : { canViewOrgPage: bool(viewPage) }),
-    ...(viewTasks === undefined ? {} : { canViewAllTasks: bool(viewTasks) }),
     monthlyMinor: num(firstPresent(row.monthly_minor, row.monthlyMinor, row.month_minor), 0),
-    taskCount: num(firstPresent(row.task_count, row.taskCount), 0),
-    assetCount: num(firstPresent(row.asset_count, row.assetCount), 0),
-    lastActiveAt: isoOrNull(firstPresent(row.last_active_at, row.lastActiveAt)),
-    capMinor: minorOrNull(
-      firstPresent(row.cap_minor, row.capMinor, row.monthly_cap_minor),
-    ),
   };
 }
 
-/**
- * 成员表（七列 + 上限）。三条来源合并，**谁挂了都不让整张表消失**：
- *   · `GET /members`（W01）——身份：角色、状态、email；
- *   · `GET /members/usage`（W05）——用量：本月花费、任务数、成果数、最后活跃；
- *   · `GET /caps`（W04）——每月上限（只有 `manage_wallet` 读得到，admin 看这一列
- *     会 403，那不该把整页判成无权限，所以它也是补充请求）。
- * 三条并发发出（常数次往返，不是每个成员一次），三条全挂才抛。
- */
+/** Identity and spend load together. Limits load independently in OrgLimits. */
 export async function listMembers(orgId: string): Promise<OrgMemberRow[]> {
   if (!orgId) throw new OrgApiError("not_found", 404);
-  const [members, usage, caps] = await Promise.all([
+  const [members, usage] = await Promise.all([
     call<unknown>(orgPath(orgId, "/members"), undefined, "not_available"),
     call<unknown>(orgPath(orgId, "/members/usage"), undefined, "not_available"),
-    call<unknown>(orgPath(orgId, "/caps"), undefined, "not_available"),
   ]);
   // 没登录 / 没权限是整页的结论，不是某一块的结论：三条里只要有一条这么说就抛。
-  for (const res of [members, usage, caps]) {
+  for (const res of [members, usage]) {
     if (res.code === "signed_out" || res.code === "forbidden") {
       throw new OrgApiError(res.code, res.status);
     }
@@ -523,36 +512,20 @@ export async function listMembers(orgId: string): Promise<OrgMemberRow[]> {
     into.status = from.status;
     if (from.email) into.email = from.email;
     if (from.canViewOrgPage !== undefined) into.canViewOrgPage = from.canViewOrgPage;
-    if (from.canViewAllTasks !== undefined) into.canViewAllTasks = from.canViewAllTasks;
   });
   absorb(rowsOf(usage.ok ? usage.data : [], "members", "usage"), (into, from) => {
     into.monthlyMinor = from.monthlyMinor;
-    into.taskCount = from.taskCount;
-    into.assetCount = from.assetCount;
-    into.lastActiveAt = from.lastActiveAt;
-    if (from.capMinor !== null) into.capMinor = from.capMinor;
     if (from.email && !into.email) into.email = from.email;
     if (into.canViewOrgPage === undefined && from.canViewOrgPage !== undefined) {
       into.canViewOrgPage = from.canViewOrgPage;
     }
-    if (into.canViewAllTasks === undefined && from.canViewAllTasks !== undefined) {
-      into.canViewAllTasks = from.canViewAllTasks;
-    }
-  });
-  absorb(rowsOf(caps.ok ? caps.data : [], "caps"), (into, from) => {
-    into.capMinor = from.capMinor;
   });
 
   // 已移除的成员不该占着表格（`ent_org_members.status` 有 removed 这一档）。
   return [...merged.values()].filter((row) => row.status !== "removed");
 }
 
-/**
- * 勾一个成员的权限（`PATCH /v1/orgs/{org}/members/{user}`）。
- *
- * body 用的是 `ent_org_members` 上的列名（`can_view_org_page` / `can_view_all_tasks`，
- * `_COMMON §3.2`）—— 列名是契约里钉死的那一份，不是这里发明的。
- */
+/** Delegate team-page access; no member content permissions exist. */
 export async function setMemberPermission(
   orgId: string,
   userId: string,
@@ -560,31 +533,89 @@ export async function setMemberPermission(
   value: boolean,
 ): Promise<void> {
   if (!orgId || !userId) throw new OrgApiError("not_found", 404);
-  const column = PERMISSION_COLUMN[permission] || permission;
-  // W01 盘上的 `PatchMemberBody` 收的是 camelCase（`canViewOrgPage`），契约 §3.2 写的是
-  // 列名。两种都发：pydantic 默认忽略多余键，而只发其中一种、猜错了就是「勾了没反应」。
+  const column = PERMISSION_COLUMN[permission];
+  if (!column) throw new OrgApiError("forbidden", 403);
+  // The member route accepts camelCase fields and rejects extra keys.
   const camel = column.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
   await must<unknown>(
     orgPath(orgId, `/members/${encodeURIComponent(userId)}`),
-    { method: "PATCH", body: JSON.stringify({ [column]: value, [camel]: value }) },
+    { method: "PATCH", body: JSON.stringify({ [camel]: value }) },
     "not_found",
   );
 }
 
-/** 每月上限（`PUT /v1/orgs/{org}/caps/{user}`）。`null` = 不限，`0` = 一分不许花。 */
-export async function setMemberCap(
-  orgId: string,
-  userId: string,
-  capMinor: number | null,
-): Promise<void> {
-  if (!orgId || !userId) throw new OrgApiError("not_found", 404);
-  const value = capMinor === null ? null : Math.max(0, Math.floor(num(capMinor, 0)));
-  await must<unknown>(
-    orgPath(orgId, `/caps/${encodeURIComponent(userId)}`),
-    // W04 盘上的 `PutCapBody` 键是 `capMinor`；列名 `monthly_cap_minor` 一并发（同上）。
-    { method: "PUT", body: JSON.stringify({ capMinor: value, monthly_cap_minor: value }) },
-    "not_available",
-  );
+export type OrgLimitWindow = "total_minor" | "day_minor" | "five_day_minor" | "month_minor";
+export type OrgLimits = Record<OrgLimitWindow, number | null>;
+export type OrgSpent = Record<OrgLimitWindow, number>;
+export interface OrgMemberLimits { userId: string; limits: OrgLimits; spent: OrgSpent }
+
+export function normalizeMemberLimits(raw: unknown): OrgMemberLimits {
+  const row = record(raw), limits = record(row.limits), spent = record(row.spent);
+  const windows = ["total_minor", "day_minor", "five_day_minor", "month_minor"];
+  if (windows.some((key) => !(key in limits) || !(key in spent))) throw new OrgApiError("not_available", 503);
+  return {
+    userId: str(row.user_id ?? row.userId),
+    limits: {
+      total_minor: minorOrNull(limits.total_minor), day_minor: minorOrNull(limits.day_minor),
+      five_day_minor: minorOrNull(limits.five_day_minor),
+      month_minor: minorOrNull(limits.month_minor === undefined ? row.monthly_cap_minor : limits.month_minor),
+    },
+    spent: { total_minor: num(spent.total_minor), day_minor: num(spent.day_minor),
+      five_day_minor: num(spent.five_day_minor), month_minor: num(spent.month_minor ?? row.monthly_minor) },
+  };
+}
+export async function listMemberLimits(orgId: string): Promise<OrgMemberLimits[]> {
+  const data = record(await must<unknown>(orgPath(orgId, "/caps")));
+  if (!Array.isArray(data.members)) throw new OrgApiError("not_available", 503);
+  return data.members.map(normalizeMemberLimits);
+}
+export async function setMemberLimits(orgId: string, userId: string, limits: Partial<OrgLimits>): Promise<OrgMemberLimits> {
+  return normalizeMemberLimits(await must<unknown>(orgPath(orgId, `/caps/${encodeURIComponent(userId)}`),
+    { method: "PUT", body: JSON.stringify(limits) }));
+}
+export async function getMyOrgLimits(orgId: string): Promise<OrgMemberLimits> {
+  return normalizeMemberLimits(await must<unknown>(orgPath(orgId, "/caps/me")));
+}
+export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
+  await must(orgPath(orgId, `/members/${encodeURIComponent(userId)}`), { method: "DELETE" });
+}
+export async function leaveOrg(orgId: string): Promise<void> {
+  await must(orgPath(orgId, ":leave"), { method: "POST" });
+}
+export async function transferOrgOwnership(orgId: string, userId: string): Promise<void> {
+  await must(orgPath(orgId, ":transfer-ownership"), { method: "POST", body: JSON.stringify({ toUserId: userId }) });
+}
+export async function dissolveOrg(orgId: string, confirmName: string): Promise<void> {
+  await must(orgPath(orgId, ":dissolve"), { method: "POST", body: JSON.stringify({ confirm_name: confirmName }) });
+}
+export type OrgTransferDirection = "personal_to_team" | "team_to_personal" | "team_to_team";
+export interface OrgTransferBody {
+  direction: OrgTransferDirection; amount_minor: number; to_org_id?: string; request_id: string;
+}
+export interface OrgTransfer {
+  transfer_id: string; direction: OrgTransferDirection; amount_minor: number; currency: string;
+  counterparty: { kind: "personal" | "team"; name: string }; created_at: string; incoming?: boolean;
+}
+export async function transferOrgCredit(orgId: string, body: OrgTransferBody): Promise<void> {
+  await must(orgPath(orgId, "/wallet/transfers"), { method: "POST", body: JSON.stringify(body) });
+}
+export async function listOrgTransfers(orgId: string): Promise<OrgTransfer[]> {
+  return rowsOf(await must(orgPath(orgId, "/wallet/transfers?limit=50")), "transfers").map((raw) => {
+    const row = record(raw), counterparty = record(row.counterparty);
+    return {
+      transfer_id: str(row.transfer_id), direction: str(row.direction) as OrgTransferDirection,
+      amount_minor: num(row.amount_minor), currency: str(row.currency), created_at: str(row.created_at), incoming: row.incoming === true,
+      counterparty: { kind: counterparty.kind === "team" ? "team" : "personal", name: str(counterparty.name) },
+    };
+  });
+}
+export async function topupOrg(orgId: string, channel: "stripe" | "bank-transfer", body: {
+  amountMinor: number; legalName: string; taxId: string; payerNote?: string;
+}): Promise<{ topup: { id: string }; payment?: { url?: string }; next_step?: string }> {
+  const returnOrigin = channel === "stripe" ? runtimePageOrigin() : "";
+  return must(orgPath(orgId, `/topups/${channel}`), {
+    method: "POST", body: JSON.stringify({ ...body, ...(returnOrigin ? { returnOrigin } : {}) }),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -735,75 +766,6 @@ export async function requestJoin(
 // 3 团队任务、查看审计、成果（W06 / W07）
 // ---------------------------------------------------------------------------
 
-export interface OrgTaskRow {
-  ref: string;
-  userId: string;
-  email: string;
-  title: string;
-  siteId: string;
-  costMinor: number;
-  createdAt: string;
-}
-
-/** `listOrgTasks()` 的签名按契约是 `unknown[]`；要类型的调用方过这个归一化（幂等）。 */
-export function normalizeOrgTaskRows(value: unknown): OrgTaskRow[] {
-  return rowsOf(value, "tasks").map((raw) => {
-    const row = record(raw);
-    return {
-      ref: str(firstPresent(row.task_ref, row.taskRef, row.ref, row.id)),
-      userId: str(firstPresent(row.user_id, row.userId)),
-      email: str(firstPresent(row.email, row.user_email)),
-      title: str(firstPresent(row.title, row.prompt, row.summary)),
-      siteId: str(firstPresent(row.site_id, row.siteId)),
-      costMinor: num(firstPresent(row.cost_minor, row.costMinor, row.amount), 0),
-      createdAt: str(firstPresent(row.created_at, row.createdAt)),
-    };
-  });
-}
-
-/**
- * 团队范围内的任务（`GET /v1/orgs/{org}/tasks`）。
- *
- * **只有扣费事件带 `meta.org_id` 的工作才会出现在这里**（`_COMMON §3.6`，W06 的
- * 判据）。个人钱包付费的东西永远不进这个列表 —— 那是对外承诺，不是过滤条件，
- * 所以前端不加也不减，后端给什么就显示什么。
- */
-export async function listOrgTasks(
-  orgId: string,
-  params: { userId?: string; days?: number } = {},
-): Promise<unknown[]> {
-  if (!orgId) throw new OrgApiError("not_found", 404);
-  const query = new URLSearchParams();
-  if (params.userId) query.set("user_id", params.userId);
-  if (typeof params.days === "number" && params.days > 0) {
-    query.set("days", String(Math.floor(params.days)));
-  }
-  const suffix = query.size ? `/tasks?${query.toString()}` : "/tasks";
-  return normalizeOrgTaskRows(await must<unknown>(orgPath(orgId, suffix)));
-}
-
-export interface OrgViewRow {
-  orgId: string;
-  viewerEmail: string;
-  viewedAt: string;
-}
-
-/**
- * 「谁看过我」（`GET /v1/orgs/me/views`）。任何登录用户都读得到自己的这份记录，
- * 不需要任何团队权限 —— 这是我们敢做全量可见的前提，所以它不能被权限挡住。
- */
-export async function listViewsOfMe(): Promise<OrgViewRow[]> {
-  const data = await must<unknown>("/v1/orgs/me/views");
-  return rowsOf(data, "views", "audit").map((raw) => {
-    const row = record(raw);
-    return {
-      orgId: str(firstPresent(row.org_id, row.orgId)),
-      viewerEmail: str(firstPresent(row.viewer_email, row.viewerEmail, row.viewer)),
-      viewedAt: str(firstPresent(row.viewed_at, row.viewedAt, row.created_at)),
-    };
-  });
-}
-
 export interface OrgAssetRow {
   id: string;
   kind: string;
@@ -938,18 +900,11 @@ export async function getOrgUsage(orgId: string, days: number): Promise<unknown>
  * 成员自己的。W13 的 `OrgMembership` 默认 `loadMyUsage` 就是它。
  * `capMinor === null` = 没设上限（不是 0）。
  */
-export async function getMyOrgUsage(
-  orgId: string,
-): Promise<{ monthlyMinor: number; capMinor: number | null }> {
-  if (!orgId) throw new OrgApiError("not_found", 404);
-  const row = record(await must<unknown>(orgPath(orgId, "/caps/me")));
-  return {
-    monthlyMinor: num(
-      firstPresent(row.monthly_minor, row.monthlyMinor, row.spent_minor, row.month_minor, row.spent),
-      0,
-    ),
-    capMinor: minorOrNull(firstPresent(row.cap_minor, row.capMinor, row.monthly_cap_minor, row.cap)),
-  };
+export async function getMyOrgUsage(orgId: string): Promise<{
+  monthlyMinor: number; capMinor: number | null; limits: OrgLimits; spent: OrgSpent;
+}> {
+  const row = await getMyOrgLimits(orgId);
+  return { monthlyMinor: row.spent.month_minor, capMinor: row.limits.month_minor, limits: row.limits, spent: row.spent };
 }
 
 // ---------------------------------------------------------------------------

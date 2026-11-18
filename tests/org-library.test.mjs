@@ -45,7 +45,17 @@ const orgApiStub = dataModule(`
   export async function listJoinRequests(id) { count("listJoinRequests", id); return g().listJoinRequests(id); }
   export async function getOrgUsage(id, days) { count("getOrgUsage", id, days); return g().getOrgUsage(id, days); }
   export async function setMemberPermission(...a) { count("setMemberPermission", ...a); }
-  export async function setMemberCap(...a) { count("setMemberCap", ...a); }
+  export async function listMemberLimits() {
+    return ["u-owner", "u-staff"].map(userId => ({userId, limits: {total_minor:null,day_minor:null,five_day_minor:null,month_minor:null}, spent:{total_minor:0,day_minor:0,five_day_minor:0,month_minor:0}}));
+  }
+  export async function setMemberLimits() {}
+  export async function listOrgTransfers() { return []; }
+  export async function transferOrgCredit() {}
+  export async function topupOrg() {}
+  export async function leaveOrg() {}
+  export async function dissolveOrg() {}
+  export async function removeOrgMember() {}
+  export async function transferOrgOwnership() {}
   export async function decideJoinRequest(...a) { count("decideJoinRequest", ...a); }
   export async function createInvite(id) { count("createInvite", id); return { url: "https://x.test/join?code=abc", code: "abc", expiresAt: "" }; }
   export async function updateOrg(...a) { count("updateOrg", ...a); return {}; }
