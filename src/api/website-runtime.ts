@@ -20,6 +20,7 @@ const REQUEST_ERROR_CODES = [
   "connector_change_settlement_unconfirmed", "connector_change_preparation_failed", "connector_task_creation_failed",
   "agent_task_creation_failed", "agent_task_dispatch_unconfirmed", "connector_response_unavailable",
   "connector_task_link_unconfirmed", "connector_action_unconfirmed", "connector_action_link_unconfirmed",
+  "tier_unavailable", "tier_not_found",
 ] as const;
 export type WebsiteRequestErrorCode = typeof REQUEST_ERROR_CODES[number];
 const SAFE_REQUEST_CODES = new Set<string>(REQUEST_ERROR_CODES);

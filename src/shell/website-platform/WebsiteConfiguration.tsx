@@ -55,6 +55,8 @@ const TASK_ERRORS: Record<string, string> = {
   connector_owner_mismatch: "你没有修改此作品配置的权限。",
   connector_persistence_unavailable: "配置存储暂不可用，请先刷新状态，勿重复提交。",
   connector_project_read_unavailable: "暂时无法读取此作品的配置，请稍后重试。",
+  tier_unavailable: "此层级暂不可用。",
+  tier_not_found: "此层级暂不可用。",
 };
 const hasTaskError = (code: string) => Object.prototype.hasOwnProperty.call(TASK_ERRORS, code);
 const taskStateLabel = (state: string) => Object.prototype.hasOwnProperty.call(TASK_STATES, state) ? TASK_STATES[state] : "状态暂不可用";
@@ -65,6 +67,7 @@ const FIXED_ENVIRONMENTS: Partial<Record<string, WebsiteConnectorEnvironment>> =
 const NO_WRITE_CODES = new Set([
   "invalid_connector_request", "connector_environment_mismatch", "unknown_connector_slot", "selected_connector_unavailable", "connector_not_available_for_slot",
   "adapter_module_unavailable", "connector_migration_required", "connector_rate_or_quota_exceeded", "connector_owner_mismatch",
+  "tier_unavailable", "tier_not_found",
 ]);
 const UNCONFIRMED_CODES = new Set([
   "agent_task_dispatch_unconfirmed", "connector_response_unavailable", "connector_task_link_unconfirmed",

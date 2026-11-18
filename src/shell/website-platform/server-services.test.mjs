@@ -14,9 +14,12 @@ const usageModule = await compileModule('src/shell/website-platform/WorkUsagePan
 const { WorkUsagePanel, monthlyLimitMinor } = await import(usageModule);
 const tierModule = await compileModule('src/shell/website-platform/WebsiteTierPresets.tsx', { './website-preview-i18n': i18n, './WorkUsagePanel': usageModule });
 const { WebsiteTierPresets } = await import(tierModule);
+const runtimeModule = await compileModule('src/api/website-runtime.ts');
+const { WebsiteRequestError } = await import(runtimeModule);
 const { WebsiteConfiguration } = await import(await compileModule('src/shell/website-platform/WebsiteConfiguration.tsx', {
   './website-preview-i18n': i18n, './WorkUsagePanel': usageModule, './WebsiteTierPresets': tierModule,
   '../../api/website-connectors': dataModule('export const websiteConnectorsApi={};'),
+  '../../api/website-runtime': runtimeModule,
   './SiteVaultPanel': dataModule('export function SiteVaultPanel(){return null;}'),
   '../works-workbench/WorkWorkbench': dataModule('const React=globalThis.__ucReact; export function WorkWorkbench({workId}){return React.createElement("div",{"data-open-work":workId},workId);}'),
 }));
@@ -236,4 +239,16 @@ test('the real configuration translation hook resolves every locale without Chin
   const m = await mount(CopyProbe, {});
   try { for (const locale of Object.keys(copy)) { globalThis.__ucLocale = locale; await m.render({ locale }); assert.equal(m.host.textContent, copy[locale]['本月已用：{amount}'].replace('{amount}', 'USD 1.23')); } }
   finally { await m.destroy(); }
+});
+
+test('a known tier availability rejection reports its reason without locking all future configuration', async () => {
+  let calls = 0;
+  const data = snapshot(); const service = { get: async () => data, tiers: async () => [tier()], preset: async () => { calls++; throw new WebsiteRequestError(409, { detail: { code: 'tier_unavailable' } }); } };
+  const m = await mount(WebsiteConfiguration, { projectId: id, api: service, usageApi: api(), onTaskCreated() {} });
+  try {
+    await click(button(m.host, '使用此层级')); assert.match(m.host.textContent, /此层级暂不可用/);
+    assert.equal(m.host.querySelector('[data-testid="website-connector-unconfirmed"]'), null);
+    assert.equal(button(m.host, '使用此层级').disabled, false);
+    await click(button(m.host, '使用此层级')); assert.equal(calls, 2);
+  } finally { await m.destroy(); }
 });
