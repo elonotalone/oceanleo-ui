@@ -25,7 +25,11 @@ test("HTTP error parser preserves request_limit retry_at without account operati
 });
 
 test("approved-friends copy exists for every locale and preserves placeholders", () => {
-  const keys = ["好友", "群组", "来自我的团队", "全选团队", "添加 {n} 人", "已添加 {n} 人，跳过 {skipped} 位已有好友。", "暂无可添加的团队成员。", "最多选择 100 人。", "7 天内最多向同一个人发送 3 次请求。可在 {time} 后重试。", "好友请求留言（选填）", "发送好友请求", "再发一次请求", "已发送", "把链接或二维码发给对方。对方发送好友请求后，需要你同意。", "添加好友需要对方同意。可以留一句话介绍自己。", "还没有加入任何群组。", "同意"];
+  // Contract §1.3 removes the Add-contacts explanation (ic13) in every locale.
+  const keys = ["好友", "群组", "来自我的团队", "全选团队", "添加 {n} 人", "已添加 {n} 人，跳过 {skipped} 位已有好友。", "暂无可添加的团队成员。", "最多选择 100 人。", "7 天内最多向同一个人发送 3 次请求。可在 {time} 后重试。", "好友请求留言（选填）", "发送好友请求", "再发一次请求", "已发送", "添加好友需要对方同意。可以留一句话介绍自己。", "还没有加入任何群组。", "同意"];
+  for (const locale of LOCALES) {
+    assert.equal(Object.hasOwn(IM_PEOPLE_MESSAGES[locale], "把链接或二维码发给对方。对方发送好友请求后，需要你同意。"), false);
+  }
   for (const locale of LOCALES) for (const key of keys) {
     const value = IM_PEOPLE_MESSAGES[locale][key];
     assert.equal(typeof value, "string", `${locale}: ${key}`);

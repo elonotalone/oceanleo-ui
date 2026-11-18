@@ -21,9 +21,16 @@ function check(locale, key, canonicalEnglish, value) {
   if (locale !== "zh" && key.length > 4) assert.notEqual(value, key, `${locale} leaked Chinese fallback: ${key}`);
 }
 
+// Contract §1.4 replaced the two allowance paragraphs with this one short hint.
+test("server allowance fixture covers the hint the settings panel actually renders", () => {
+  const hint = "仅你能授权预算，释放服务器仍需你确认。";
+  const source = readFileSync(new URL("../src/pages/settings/ServerBudgetPanel.tsx", import.meta.url), "utf8");
+  assert.ok(source.includes(`tt(${JSON.stringify(hint)})`));
+  assert.equal(fields.budget[hint], "Only you can authorize the allowance; releasing a server still needs your confirmation.");
+});
 test("wave server allowance strings are really translated in all17 locales; numbers and financial source keys stay exact", () => {
   assert.equal(LOCALES.length, 17);
-  assert.equal(Object.keys(fields.budget).length, 56);
+  assert.equal(Object.keys(fields.budget).length, 55);
   for (const locale of LOCALES) for (const [key, en] of Object.entries(fields.budget)) check(locale, key, en, purchaseCopy(locale)[key]);
 });
 test("wave local-browser disclosure and setup use real locale text", () => {

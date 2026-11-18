@@ -1,8 +1,7 @@
 {
   "budget": {
     "Agent 服务器预算": "Agent server allowance",
-    "只有你能授权预算。Agent 可在额度内购买、开停机和续费；释放仍由你确认。": "Only you can authorize the allowance. Agents can buy, start, stop, and renew within it; releasing a server still requires your confirmation.",
-    "按量和抢占式按每月最多 744 小时预留，包含固定 1 Mbps 带宽。停机仍保留磁盘预算；包月按完整期限一次预留。关闭授权后不再允许新的购买和续费，已有费用继续保留。": "Hourly and preemptible servers reserve up to 744 hours each month including fixed 1 Mbps bandwidth. Stopped disks retain their reservation; monthly terms reserve the full price upfront. Disabling authorization prevents new purchases and renewals; existing commitments remain.",
+    "仅你能授权预算，释放服务器仍需你确认。": "Only you can authorize the allowance; releasing a server still needs your confirmation.",
     "授权 Agent 使用服务器预算": "Authorize agents to use this server allowance",
     "每月上限": "Monthly limit",
     "单台每小时上限（可选）": "Hourly limit per server (optional)",
