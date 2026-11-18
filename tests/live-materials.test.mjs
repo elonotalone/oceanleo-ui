@@ -120,7 +120,7 @@ test('failed insert retries the saved copy without duplicating a Library item; v
   try {
     await act(async()=>{const select=view.host.querySelector('select');select.value='png';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
     await click(button(view.host,'存到我的库')); assert.match(view.host.textContent,/素材未能使用/);
-    await click(button(view.host,'存到我的库'));
+    await click(view.host.querySelector('[data-live-material] button'));
     assert.equal(count,2); assert.equal(calls.filter(call=>call.path==='/v1/assets/use').length,1);
     assert.equal(calls.find(call=>call.path==='/v1/assets/use').body.variant,'png'); assert.match(view.host.textContent,/已使用素材/);
   } finally {await view.close();}
@@ -239,3 +239,88 @@ test('agent-requested type initializes the live picker instead of silently searc
  try {assert.equal(new URL(calls[0].path,'https://test.invalid').searchParams.get('type'),'3d');assert.equal(button(view.host,'3D 模型').getAttribute('aria-pressed'),'true');}
  finally{await view.close();}
 });
+
+async function fastPoll(run) {
+  const original = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms, ...args) => original(fn, Math.min(ms, 2), ...args);
+  try { await run(); } finally { globalThis.setTimeout = original; }
+}
+const flush = () => new Promise(resolve => setTimeout(resolve, 5));
+const pending = {acquisitionId:'acquisition-1',state:'pending',materialId:'pexels:image/77'};
+
+test('background acquisition polls with progress and only yields the durable completed copy', async()=>fastPoll(async()=>{
+  reset();let polls=0;const states=[];
+  request=async(method,path)=> {
+    if(path==='/v1/assets/use')return pending;
+    assert.equal(path,'/v1/assets/acquisitions/acquisition-1');
+    if(++polls===1)throw new Error('temporary connection loss');
+    return polls===2 ? pending : {...pending,state:'done',item:projection()};
+  };
+  const result=await client.useLiveMaterial({id:'pexels:image/77'},{onProgress:s=>states.push(s.state)});
+  assert.equal(result.artifactId,'private-copy'); assert.equal(polls,3);
+  assert.equal(states.at(-1),'done');assert.equal(states[0],'pending');
+  assert.equal(calls.filter(c=>c.method==='POST').length,1);
+}));
+
+test('background picker keeps other cards usable and inserts only after completion',async()=>fastPoll(async()=>{
+  reset([asset(),asset({id:'pexels:image/88',title:'Other photo'})]);let complete;
+  request=async(method,path)=> {
+    if(path.startsWith('/v1/assets/search?'))return {items:[asset(),asset({id:'pexels:image/88',title:'Other photo'})]};
+    if(path==='/v1/assets/use')return pending;
+    if(path.includes('/acquisitions/'))return await new Promise(resolve=>{complete=resolve;});
+    throw Error(path);
+  };
+  const inserted=[];const view=await mount(h(LiveMaterialSearch,{types:['image'],onUse:item=>inserted.push(item)}));
+  try{
+    const cards=view.host.querySelectorAll('[data-live-material]');
+    await click(cards[0].querySelector('button'));
+    await act(flush);
+    assert.match(cards[0].textContent,/正在存入我的库/);
+    assert.equal(cards[0].querySelector('button').disabled,true);
+    assert.equal(cards[1].querySelector('button').disabled,false);
+    assert.equal(inserted.length,0);
+    await act(async()=>{complete({...pending,state:'done',item:projection()});await flush();});
+    assert.equal(inserted.length,1); assert.equal(inserted[0].artifactId,'private-copy');
+    assert.match(cards[0].textContent,/已存到我的库/);
+  }finally{await view.close();}
+}));
+
+test('failed background acquisition shows a per-card retry that really retries the save',async()=>fastPoll(async()=>{
+  reset();let posts=0;
+  request=async(method,path)=> {
+    if(path.startsWith('/v1/assets/search?'))return {items:[asset()]};
+    if(path==='/v1/assets/use')return ++posts===1 ? pending : projection();
+    return {...pending,state:'failed',error:{code:'material_storage_unavailable',message:'素材未能存入我的库，请重试'}};
+  };
+  const view=await mount(h(LiveMaterialSearch,{types:['image']}));
+  try{
+    await click(button(view.host,'存到我的库'));await act(flush);
+    const card=view.host.querySelector('[data-live-material]');assert.match(card.textContent,/素材未能存入我的库/);
+    await click(card.querySelector('button'));assert.equal(posts,2);assert.match(card.textContent,/已存到我的库/);
+  }finally{await view.close();}
+}));
+
+test('leaving the picker stops insertion while the acquisition remains server-owned',async()=>fastPoll(async()=>{
+  reset();let complete;
+  request=async(method,path)=> {
+    if(path.startsWith('/v1/assets/search?'))return {items:[asset()]};
+    if(path==='/v1/assets/use')return pending;
+    return await new Promise(resolve=>{complete=resolve;});
+  };
+  const inserted=[];const view=await mount(h(LiveMaterialSearch,{types:['image'],onUse:item=>inserted.push(item)}));
+  await click(button(view.host,'存到我的库'));await act(flush);await view.close();
+  await act(async()=>{complete({...pending,state:'done',item:projection()});await flush();});
+  assert.equal(inserted.length,0);
+}));
+
+test('saving progress is translated in every interface locale',()=>{
+  for(const locale of LOCALES)assert.ok(LIVE_MATERIAL_MESSAGES[locale]['正在存入我的库…'],locale);
+});
+
+test('background failure reasons are translated for all locales and shown on the affected card',async()=>fastPoll(async()=>{
+  for(const locale of LOCALES)for(const key of ['保存已中断，请重试','库空间不足，请清理后重试','存储服务暂不可用，请重试','素材来源暂不可用，请重试'])assert.ok(LIVE_MATERIAL_MESSAGES[locale][key],`${locale}: ${key}`);
+  reset();request=async(method,path)=>path.startsWith('/v1/assets/search?')?{items:[asset()]}:path==='/v1/assets/use'?pending:{...pending,state:'failed',error:{code:'storage-quota-exceeded',message:'库空间不足，请清理后重试'}};
+  const view=await mount(h(LiveMaterialSearch,{types:['image']}));
+  try {await click(button(view.host,'存到我的库'));await act(flush);assert.match(view.host.querySelector('[data-live-material]').textContent,/库空间不足/);}
+  finally {await view.close();}
+}));

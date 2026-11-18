@@ -81,8 +81,59 @@ function acquiredMaterial(item: LibraryItem): LibraryItem {
 }
 
 /** Only durable, readable typed copies can enter an editor's command/history path. */
-export async function useLiveMaterial(input: { id: string; variant?: string; title?: string }): Promise<LibraryItem> {
-  const result = await bayPost<unknown>("/v1/assets/use", input);
+export interface MaterialAcquisition {
+  acquisitionId: string;
+  materialId: string;
+  state: "pending" | "done" | "failed";
+  item?: unknown;
+  error?: { code: string; message: string };
+}
+export function materialAcquisitionStatus(id: string, signal?: AbortSignal): Promise<MaterialAcquisition> {
+  return bayGet(`/v1/assets/acquisitions/${encodeURIComponent(id)}`, { signal });
+}
+export async function recentMaterialAcquisitions(signal?: AbortSignal): Promise<MaterialAcquisition[]> {
+  return (await bayGet<{ items: MaterialAcquisition[] }>("/v1/assets/acquisitions", { signal })).items;
+}
+function pause(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(signal.reason); return; }
+    const done = () => { signal?.removeEventListener("abort", abort); resolve(); };
+    const timer = setTimeout(done, ms);
+    const abort = () => { clearTimeout(timer); signal?.removeEventListener("abort", abort); reject(signal?.reason); };
+    signal?.addEventListener("abort", abort, { once: true });
+  });
+}
+
+export async function useLiveMaterial(input: { id: string; variant?: string; title?: string }, options: {
+  signal?: AbortSignal; onProgress?: (state: MaterialAcquisition) => void;
+} = {}): Promise<LibraryItem> {
+  let result = await bayPost<unknown>("/v1/assets/use", input);
+  let attempt = 0;
+  const deadline = Date.now() + 15 * 60 * 1000;
+  while ((result as MaterialAcquisition)?.state === "pending") {
+    const pending = result as MaterialAcquisition;
+    if (!pending.acquisitionId) throw new Error("素材未能存入我的库，请重试");
+    options.onProgress?.(pending);
+    if (Date.now() >= deadline) throw new Error("素材未能存入我的库，请重试");
+    await pause(Math.min(1000 * 1.5 ** attempt++, 10000), options.signal);
+    try { result = await materialAcquisitionStatus(pending.acquisitionId, options.signal); }
+    catch (error) {
+      if (options.signal?.aborted || Date.now() >= deadline ||
+          (error && typeof error === "object" && "status" in error && [401,403,404].includes(Number(error.status)))) throw error;
+      // Temporary transport failures do not start another acquisition.
+    }
+  }
+  const acquisition = result as MaterialAcquisition;
+  if (acquisition?.state === "failed") {
+    options.onProgress?.(acquisition);
+    throw Object.assign(new Error(acquisition.error?.message || "素材未能存入我的库，请重试"), { code: acquisition.error?.code });
+  }
+  if (acquisition?.state === "done") { options.onProgress?.(acquisition); result = acquisition.item; }
+  if (options.signal?.aborted) throw options.signal.reason;
+  return normalizeAcquiredMaterial(result);
+}
+
+function normalizeAcquiredMaterial(result: unknown): LibraryItem {
   const folderResult = result as { kind?: string; folderId?: string; title?: string; visibility?: string;
     folder?: { id?: string }; provenance?: Record<string, unknown> } | null;
   if (folderResult?.kind === "folder" && folderResult.folderId && folderResult.folder?.id === folderResult.folderId &&

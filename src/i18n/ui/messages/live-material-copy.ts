@@ -3,6 +3,11 @@ import type { Locale } from "../../config";
 /** Live provider search, private copies and per-user OAuth. */
 export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
   "en": {
+    "保存已中断，请重试": "Saving was interrupted. Please retry.",
+    "库空间不足，请清理后重试": "Your Library is full. Free up space and retry.",
+    "存储服务暂不可用，请重试": "Storage is temporarily unavailable. Please retry.",
+    "素材来源暂不可用，请重试": "The material source is temporarily unavailable. Please retry.",
+    "正在存入我的库…": "Saving to your Library…",
     "在线素材": "Online materials",
     "素材来源": "Material sources",
     "搜索在线素材": "Search online materials",
@@ -29,6 +34,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licence"
   },
   "de": {
+    "保存已中断，请重试": "Speichern wurde unterbrochen. Bitte erneut versuchen.",
+    "库空间不足，请清理后重试": "Deine Bibliothek ist voll. Schaffe Platz und versuche es erneut.",
+    "存储服务暂不可用，请重试": "Der Speicher ist vorübergehend nicht verfügbar. Bitte erneut versuchen.",
+    "素材来源暂不可用，请重试": "Die Materialquelle ist vorübergehend nicht verfügbar. Bitte erneut versuchen.",
+    "正在存入我的库…": "Wird in deiner Bibliothek gespeichert…",
     "在线素材": "Online-Materialien",
     "素材来源": "Materialquellen",
     "搜索在线素材": "Online-Materialien suchen",
@@ -55,6 +65,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Lizenz"
   },
   "es": {
+    "保存已中断，请重试": "Se interrumpió el guardado. Inténtalo de nuevo.",
+    "库空间不足，请清理后重试": "Tu biblioteca está llena. Libera espacio e inténtalo de nuevo.",
+    "存储服务暂不可用，请重试": "El almacenamiento no está disponible temporalmente. Inténtalo de nuevo.",
+    "素材来源暂不可用，请重试": "La fuente del material no está disponible temporalmente. Inténtalo de nuevo.",
+    "正在存入我的库…": "Guardando en tu biblioteca…",
     "在线素材": "Materiales en línea",
     "素材来源": "Fuentes de materiales",
     "搜索在线素材": "Buscar materiales en línea",
@@ -81,6 +96,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licencia"
   },
   "es-419": {
+    "保存已中断，请重试": "Se interrumpió el guardado. Vuelve a intentarlo.",
+    "库空间不足，请清理后重试": "Tu biblioteca está llena. Libera espacio y vuelve a intentarlo.",
+    "存储服务暂不可用，请重试": "El almacenamiento no está disponible por el momento. Vuelve a intentarlo.",
+    "素材来源暂不可用，请重试": "La fuente del material no está disponible por el momento. Vuelve a intentarlo.",
+    "正在存入我的库…": "Guardando en tu biblioteca…",
     "在线素材": "Materiales en línea",
     "素材来源": "Fuentes de materiales",
     "搜索在线素材": "Buscar materiales en línea",
@@ -107,6 +127,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licencia"
   },
   "fr": {
+    "保存已中断，请重试": "Enregistrement interrompu. Réessayez.",
+    "库空间不足，请清理后重试": "Votre bibliothèque est pleine. Libérez de l’espace et réessayez.",
+    "存储服务暂不可用，请重试": "Le stockage est temporairement indisponible. Réessayez.",
+    "素材来源暂不可用，请重试": "La source du contenu est temporairement indisponible. Réessayez.",
+    "正在存入我的库…": "Enregistrement dans votre bibliothèque…",
     "在线素材": "Ressources en ligne",
     "素材来源": "Sources de ressources",
     "搜索在线素材": "Rechercher des ressources en ligne",
@@ -133,6 +158,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licence"
   },
   "it": {
+    "保存已中断，请重试": "Salvataggio interrotto. Riprova.",
+    "库空间不足，请清理后重试": "La libreria è piena. Libera spazio e riprova.",
+    "存储服务暂不可用，请重试": "Archiviazione temporaneamente non disponibile. Riprova.",
+    "素材来源暂不可用，请重试": "Fonte del materiale temporaneamente non disponibile. Riprova.",
+    "正在存入我的库…": "Salvataggio nella tua libreria…",
     "在线素材": "Materiali online",
     "素材来源": "Fonti dei materiali",
     "搜索在线素材": "Cerca materiali online",
@@ -159,6 +189,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licenza"
   },
   "pt-BR": {
+    "保存已中断，请重试": "O salvamento foi interrompido. Tente novamente.",
+    "库空间不足，请清理后重试": "Sua biblioteca está cheia. Libere espaço e tente novamente.",
+    "存储服务暂不可用，请重试": "O armazenamento está temporariamente indisponível. Tente novamente.",
+    "素材来源暂不可用，请重试": "A fonte do material está temporariamente indisponível. Tente novamente.",
+    "正在存入我的库…": "Salvando na sua biblioteca…",
     "在线素材": "Materiais online",
     "素材来源": "Fontes de materiais",
     "搜索在线素材": "Buscar materiais online",
@@ -185,6 +220,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licença"
   },
   "pt-PT": {
+    "保存已中断，请重试": "A gravação foi interrompida. Tente novamente.",
+    "库空间不足，请清理后重试": "A sua biblioteca está cheia. Liberte espaço e tente novamente.",
+    "存储服务暂不可用，请重试": "O armazenamento está temporariamente indisponível. Tente novamente.",
+    "素材来源暂不可用，请重试": "A fonte do material está temporariamente indisponível. Tente novamente.",
+    "正在存入我的库…": "A guardar na sua biblioteca…",
     "在线素材": "Materiais online",
     "素材来源": "Fontes de materiais",
     "搜索在线素材": "Pesquisar materiais online",
@@ -211,6 +251,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Licença"
   },
   "vi": {
+    "保存已中断，请重试": "Đã gián đoạn việc lưu. Vui lòng thử lại.",
+    "库空间不足，请清理后重试": "Thư viện đã đầy. Hãy giải phóng dung lượng rồi thử lại.",
+    "存储服务暂不可用，请重试": "Bộ nhớ tạm thời không khả dụng. Vui lòng thử lại.",
+    "素材来源暂不可用，请重试": "Nguồn tư liệu tạm thời không khả dụng. Vui lòng thử lại.",
+    "正在存入我的库…": "Đang lưu vào thư viện của bạn…",
     "在线素材": "Tài nguyên trực tuyến",
     "素材来源": "Nguồn tài nguyên",
     "搜索在线素材": "Tìm tài nguyên trực tuyến",
@@ -237,6 +282,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Giấy phép"
   },
   "tr": {
+    "保存已中断，请重试": "Kaydetme kesintiye uğradı. Yeniden deneyin.",
+    "库空间不足，请清理后重试": "Kitaplığınız dolu. Yer açıp yeniden deneyin.",
+    "存储服务暂不可用，请重试": "Depolama geçici olarak kullanılamıyor. Yeniden deneyin.",
+    "素材来源暂不可用，请重试": "Materyal kaynağı geçici olarak kullanılamıyor. Yeniden deneyin.",
+    "正在存入我的库…": "Kitaplığınıza kaydediliyor…",
     "在线素材": "Çevrimiçi materyaller",
     "素材来源": "Materyal kaynakları",
     "搜索在线素材": "Çevrimiçi materyal ara",
@@ -263,6 +313,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "Lisans"
   },
   "zh-TW": {
+    "保存已中断，请重试": "儲存已中斷，請重試",
+    "库空间不足，请清理后重试": "資料庫空間不足，請清理後重試",
+    "存储服务暂不可用，请重试": "儲存服務暫不可用，請重試",
+    "素材来源暂不可用，请重试": "素材來源暫不可用，請重試",
+    "正在存入我的库…": "正在存入我的資料庫…",
     "在线素材": "線上素材",
     "素材来源": "素材來源",
     "搜索在线素材": "搜尋線上素材",
@@ -289,6 +344,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "授權"
   },
   "ja": {
+    "保存已中断，请重试": "保存が中断されました。再試行してください。",
+    "库空间不足，请清理后重试": "ライブラリがいっぱいです。空き容量を増やして再試行してください。",
+    "存储服务暂不可用，请重试": "ストレージを一時的に利用できません。再試行してください。",
+    "素材来源暂不可用，请重试": "素材の配信元を一時的に利用できません。再試行してください。",
+    "正在存入我的库…": "ライブラリに保存中…",
     "在线素材": "オンライン素材",
     "素材来源": "素材の提供元",
     "搜索在线素材": "オンライン素材を検索",
@@ -315,6 +375,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "ライセンス"
   },
   "ko": {
+    "保存已中断，请重试": "저장이 중단되었습니다. 다시 시도하세요.",
+    "库空间不足，请清理后重试": "라이브러리가 가득 찼습니다. 공간을 확보하고 다시 시도하세요.",
+    "存储服务暂不可用，请重试": "저장소를 일시적으로 사용할 수 없습니다. 다시 시도하세요.",
+    "素材来源暂不可用，请重试": "소재 제공처를 일시적으로 사용할 수 없습니다. 다시 시도하세요.",
+    "正在存入我的库…": "내 라이브러리에 저장 중…",
     "在线素材": "온라인 소재",
     "素材来源": "소재 출처",
     "搜索在线素材": "온라인 소재 검색",
@@ -341,6 +406,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "라이선스"
   },
   "ar": {
+    "保存已中断，请重试": "انقطع الحفظ. أعد المحاولة.",
+    "库空间不足，请清理后重试": "مكتبتك ممتلئة. أفرغ مساحة ثم أعد المحاولة.",
+    "存储服务暂不可用，请重试": "التخزين غير متاح مؤقتًا. أعد المحاولة.",
+    "素材来源暂不可用，请重试": "مصدر المادة غير متاح مؤقتًا. أعد المحاولة.",
+    "正在存入我的库…": "جارٍ الحفظ في مكتبتك…",
     "在线素材": "مواد عبر الإنترنت",
     "素材来源": "مصادر المواد",
     "搜索在线素材": "البحث عن مواد عبر الإنترنت",
@@ -367,6 +437,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "الترخيص"
   },
   "th": {
+    "保存已中断，请重试": "การบันทึกถูกขัดจังหวะ โปรดลองอีกครั้ง",
+    "库空间不足，请清理后重试": "คลังของคุณเต็มแล้ว โปรดเพิ่มพื้นที่ว่างแล้วลองอีกครั้ง",
+    "存储服务暂不可用，请重试": "พื้นที่จัดเก็บไม่พร้อมใช้งานชั่วคราว โปรดลองอีกครั้ง",
+    "素材来源暂不可用，请重试": "แหล่งสื่อไม่พร้อมใช้งานชั่วคราว โปรดลองอีกครั้ง",
+    "正在存入我的库…": "กำลังบันทึกลงคลังของคุณ…",
     "在线素材": "สื่อออนไลน์",
     "素材来源": "แหล่งที่มาของสื่อ",
     "搜索在线素材": "ค้นหาสื่อออนไลน์",
@@ -393,6 +468,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "ใบอนุญาต"
   },
   "hi": {
+    "保存已中断，请重试": "सहेजना बाधित हुआ। फिर कोशिश करें।",
+    "库空间不足，请清理后重试": "आपकी लाइब्रेरी भर गई है। जगह खाली करके फिर कोशिश करें।",
+    "存储服务暂不可用，请重试": "स्टोरेज अभी उपलब्ध नहीं है। फिर कोशिश करें।",
+    "素材来源暂不可用，请重试": "सामग्री का स्रोत अभी उपलब्ध नहीं है। फिर कोशिश करें।",
+    "正在存入我的库…": "आपकी लाइब्रेरी में सहेजा जा रहा है…",
     "在线素材": "ऑनलाइन सामग्री",
     "素材来源": "सामग्री के स्रोत",
     "搜索在线素材": "ऑनलाइन सामग्री खोजें",
@@ -419,6 +499,11 @@ export const LIVE_MATERIAL_MESSAGES: Record<Locale, Record<string, string>> = {
     "许可": "लाइसेंस"
   },
   "zh": {
+    "保存已中断，请重试": "保存已中断，请重试",
+    "库空间不足，请清理后重试": "库空间不足，请清理后重试",
+    "存储服务暂不可用，请重试": "存储服务暂不可用，请重试",
+    "素材来源暂不可用，请重试": "素材来源暂不可用，请重试",
+    "正在存入我的库…": "正在存入我的库…",
     "在线素材": "在线素材",
     "素材来源": "素材来源",
     "搜索在线素材": "搜索在线素材",

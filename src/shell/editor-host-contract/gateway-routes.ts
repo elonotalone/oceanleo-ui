@@ -43,6 +43,8 @@ export const EDITOR_GATEWAY_ROUTES: readonly EditorGatewayRoute[] = [
   post("/v1/agent/tasks/{task_id}/messages", "editor-task-followup", {retry: "never-blind"}),
   read("/v1/assets/search", "live-material-search", live),
   post("/v1/assets/use", "live-material-use", {retry: "never-blind"}),
+  read("/v1/assets/acquisitions", "material-acquisitions", live),
+  read("/v1/assets/acquisitions/{acquisition_id}", "material-acquisition-status", live),
   read("/v1/assets/connections", "material-connections", live),
   post("/v1/assets/connections/sketchfab/start", "material-connect"),
   route("DELETE", "/v1/assets/connections/sketchfab", "material-disconnect"),

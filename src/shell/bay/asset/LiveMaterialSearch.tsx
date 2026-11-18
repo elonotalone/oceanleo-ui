@@ -26,14 +26,20 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
   const [partial, setPartial] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [pending, setPending] = useState("");
+  const [saving, setSaving] = useState<Record<string, "pending" | "done" | "failed">>({});
+  const [failures, setFailures] = useState<Record<string, string>>({});
   const [retry, setRetry] = useState(0);
   const [connectionNeeded, setConnectionNeeded] = useState("");
   const [sketchfabReady, setSketchfabReady] = useState(false);
   const [variants, setVariants] = useState<Record<string, string>>({});
   // Cache only copies the user actually selected, including across failed insert attempts.
   const copies = useRef(new Map<string, LibraryItem>());
-  const busy = useRef(false);
+  const busy = useRef(new Set<string>());
+  const lifecycle = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController(); lifecycle.current = controller;
+    return () => controller.abort();
+  }, []);
   const generation = useRef(0);
   useEffect(() => { setDraft(initialQuery); setQuery(initialQuery); }, [initialQuery]);
   useEffect(() => { setPage(1); setItems([]); setHasMore(false); setError(""); setMessage(""); setVariants({}); }, [type, query, typeKey]);
@@ -53,15 +59,20 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
   }, [type, query, page, retry, typeKey]);
 
   async function choose(asset: LiveMaterial) {
-    if (busy.current) return;
-    busy.current = true; setPending(asset.id); setMessage(""); setError("");
     const key = `${asset.id}\u0000${variants[asset.id] || ""}`;
+    if (busy.current.has(key)) return;
+    busy.current.add(key); setSaving(previous => ({ ...previous, [key]: "pending" })); setMessage(""); setError("");
     try {
       let copy = copies.current.get(key);
       if (!copy) {
-        copy = await useLiveMaterial({ id: asset.id, ...(variants[asset.id] ? { variant: variants[asset.id] } : {}) });
+        copy = await useLiveMaterial({ id: asset.id, ...(variants[asset.id] ? { variant: variants[asset.id] } : {}) }, {
+          signal: lifecycle.current?.signal,
+          onProgress: state => { if (!lifecycle.current?.signal.aborted) setSaving(previous => ({ ...previous, [key]: state.state })); },
+        });
         copies.current.set(key, copy);
       }
+      if (lifecycle.current?.signal.aborted) return;
+      setSaving(previous => ({ ...previous, [key]: "done" }));
       if (copy.meta.library_folder_id) {
         setMessage("已存到我的库");
         return;
@@ -69,10 +80,14 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
       await onUse?.(copy);
       setMessage(onUse ? "已使用素材" : "已存到我的库");
     } catch (caught) {
+      if (lifecycle.current?.signal.aborted) return;
+      setSaving(previous => ({ ...previous, [key]: "failed" }));
+      const reason = caught instanceof Error && ["保存已中断，请重试", "库空间不足，请清理后重试", "存储服务暂不可用，请重试", "素材来源暂不可用，请重试"].includes(caught.message) ? caught.message : "素材未能存入我的库，请重试";
+      setFailures(previous => ({ ...previous, [key]: reason }));
       const code = caught && typeof caught === "object" && "code" in caught ? String(caught.code) : "";
       if (asset.provider === "sketchfab" && /connect|auth|oauth|unconfigured/i.test(code)) { setSketchfabReady(false); setConnectionNeeded(asset.id); }
       setError("素材未能使用，请重试");
-    } finally { busy.current = false; setPending(""); }
+    } finally { busy.current.delete(key); }
   }
 
   return <section data-live-material-search className="flex min-h-0 flex-col gap-3 p-3">
@@ -88,8 +103,10 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
     {error ? <p role="alert">{tt(error)} <button type="button" className={buttonClass} onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></p> : null}
     {partial ? <p role="status" className="text-xs text-[var(--fg-2)]">{tt("部分来源暂不可用，可重试获取更多素材")}</p> : null}
     {message ? <p role="status">{tt(message)}</p> : null}
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy={loading || Boolean(pending)}>
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-busy={loading}>
       {items.map(asset => {
+        const key = `${asset.id}\u0000${variants[asset.id] || ""}`;
+        const state = saving[key];
         const source = materialHttpUrl(asset.source_url);
         const licence = materialHttpUrl(asset.license.url);
         const preview = materialHttpUrl(asset.preview_url);
@@ -110,8 +127,9 @@ export function LiveMaterialSearch({ types = LIVE_MATERIAL_TYPES, initialQuery =
             onChange={event => setVariants(previous => ({ ...previous, [asset.id]: event.target.value }))}>
             <option value="">{tt("默认")}</option>{asset.formats.map(format => <option key={format} value={format}>{format}</option>)}
           </select></label> : null}
+          {state ? <p role={state === "failed" ? "alert" : "status"} className="text-xs">{tt(state === "pending" ? "正在存入我的库…" : state === "done" ? "已存到我的库" : failures[key] || "素材未能存入我的库，请重试")}</p> : null}
           {((asset.needs_connection === "sketchfab" && !sketchfabReady) || connectionNeeded === asset.id) ? <SketchfabConnection compact onConnected={() => { setSketchfabReady(true); setConnectionNeeded(""); }} />
-            : <button type="button" disabled={Boolean(pending)} className={buttonClass} onClick={() => void choose(asset)}>{tt(pending === asset.id ? "处理中…" : ["texture", "hdri", "font"].includes(asset.type) ? "存到我的库" : actionLabel)}</button>}
+            : <button type="button" disabled={state === "pending"} className={buttonClass} onClick={() => void choose(asset)}>{tt(state === "pending" ? "正在存入我的库…" : state === "failed" ? "重试" : ["texture", "hdri", "font"].includes(asset.type) ? "存到我的库" : actionLabel)}</button>}
         </article>;
       })}
     </div>
