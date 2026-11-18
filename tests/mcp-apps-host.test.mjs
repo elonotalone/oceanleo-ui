@@ -772,6 +772,8 @@ test("A6 LeoComposer：有带界面的工具 → 左组出「应用」键，点�
   });
 });
 
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Plain-text result concatenation and JSON fallback format strings only; this case creates no HTML or iframe surface.
 test("plainTextOfToolResult：content 文本块拼接；没有就 JSON；空→空串", () => {
   assert.equal(plainTextOfToolResult({ content: [{ type: "text", text: "a" }, { type: "image" }, { type: "text", text: "b" }] }), "a\nb");
   assert.equal(plainTextOfToolResult("s"), "s");

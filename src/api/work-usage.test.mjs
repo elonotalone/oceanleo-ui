@@ -12,6 +12,8 @@ const limit = { monthly_limit: money(1000), used: money(), reached: false, on_re
 const usage = { total: money(), lines: ['metered', 'lower_bound', 'not_attributed'].map(basis => ({ kind: 'fc_requests', quantity: 2, unit: 'request', amount: money(basis === 'not_attributed' ? 0 : 123), basis })) };
 function mockFetch(fn) { const previous = globalThis.fetch; globalThis.fetch = fn; return () => { globalThis.fetch = previous; }; }
 
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Exact money, request paths, auth headers and cancellation use fake replies; no real quota or row authorization is tested.
 test('usage and limit calls preserve gateway paths, exact money, auth and cancellation', async () => {
   const calls = [], controller = new AbortController();
   const restore = mockFetch(async (url, init) => { calls.push({ url, init }); return Response.json(url.includes('/usage?') ? usage : limit); });

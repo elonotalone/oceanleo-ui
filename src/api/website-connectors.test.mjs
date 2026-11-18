@@ -27,6 +27,8 @@ test('D11 connector reads and mutations retain not_ready status with real route 
   } finally {globalThis.fetch=previous;}
 });
 
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Tier catalog/sample request paths, credentials and cancellation are mocked API transport contracts, not resource authorization proofs.
 test('tier catalog uses owner project context and sample creation uses the fixed local route', async () => {
   const previous = fetch, calls = [], controller = new AbortController();
   globalThis.fetch = async (url, init) => { calls.push({ url, init }); return Response.json(url.includes('presets/tiers') ? { presets: [{ id: 'request_billed', label: 'FC', selections: {}, available: false, status: 'not_ready', status_detail: 'FC disabled' }] } : sample); };

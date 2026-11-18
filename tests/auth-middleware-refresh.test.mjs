@@ -95,6 +95,8 @@ for (const [oldPadding, newPadding, label] of [
   [2500, 0, "chunks shrink to base cookie"],
   [0, 2500, "base cookie grows into chunks"],
 ]) {
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Session chunk identity across refresh is token-lifecycle behavior; this case does not assert the cookie-domain boundary.
   test(`middleware refresh preserves cookie identity: ${label}`, async (t) => {
     const old = session(oldPadding, true);
     const renewed = session(newPadding, false, "new");
@@ -175,6 +177,8 @@ for (const padding of [0, 2500]) {
     });
   }
 
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Invalid-grant session removal tests token lifecycle using fake auth responses, not cookie-domain expansion.
   test(`${padding ? "chunked" : "small"} invalid_grant still signs the browser out`, async (t) => {
     const jar = sessionJar(session(padding, true));
     stubAuth(t, 400);

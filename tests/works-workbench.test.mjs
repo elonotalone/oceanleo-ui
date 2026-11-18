@@ -62,14 +62,14 @@ test("work kind preview defaults cover all five kinds", () => {
   assert.equal(cases.length, 5);
   assert.deepEqual(cases.map(([kind]) => kind), ["website", "game", "app", "miniprogram", "other"]);
 });
-for(const [id,frame,orientation,width,height] of cases) test(`kind ${id} gets only the catalog frame and defaults`,async()=>{
+for(const [id,frame,orientation,width,height] of cases) test(`kind ${id} gets its catalog frame and boards without a default tier`,async()=>{
   const config={kind:id,label:`Label ${id}`,label_zh:`Label ${id}`,preview:{frame,orientation},default_preset:"small_app",default_boards:["users","storage"]};
   const api=apiFor(work({kind:id}),config);const m=await mount(api);
   try {
     const iframe=m.host.querySelector("iframe");assert.equal(iframe.width,String(width));assert.equal(iframe.height,String(height));assert.match(m.host.textContent,new RegExp(`Label ${id}`));
     assert.equal(!!m.host.querySelector('[aria-label="预览路径"]'),frame!=="game");
     if(frame==="game") {assert.ok(button(m.host,"全屏"));const first=iframe;await act(async()=>button(m.host,"重新开始").click());assert.notEqual(m.host.querySelector("iframe"),first);}
-    await act(async()=>m.host.querySelector('[data-testid="website-view-configuration"]').click());assert.equal(globalThis.__uwConfiguration.defaultPreset,"small_app");
+    await act(async()=>m.host.querySelector('[data-testid="website-view-configuration"]').click());assert.equal(globalThis.__uwConfiguration.defaultPreset,undefined,"a legacy catalog default never preselects a hosting tier");
     await act(async()=>m.host.querySelector('[data-testid="website-view-dashboard"]').click());assert.deepEqual(globalThis.__uwDashboard.defaultBoards,["users","storage"]);
   } finally {await m.close();}
 });
@@ -93,10 +93,14 @@ test("server work has optional dashboard/configuration and uses existing preview
     await act(async()=>button(m.host,"停止").click());assert.equal(m.host.querySelector("iframe"),null);assert.deepEqual(api.calls.filter(call=>["start","stop"].includes(call[0])),[["start",item.id],["stop",item.id]]);
   }finally{await m.close();}
 });
+// UC-1/UC-3: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// A public viewer uses only its supplied isolated preview and cannot create an authenticated owner session.
 test("view access shows only the supplied public preview and never creates owner sessions",async()=>{
   const item=work({access:"view",play_url:"https://play.ws.oceanleo.app/game/index.html?level=1"});const api=apiFor(item);const m=await mount(api,{initialWork:item,readOnly:true});
   try{assert.equal(m.host.querySelector('[role="tablist"]'),null);assert.equal(m.host.querySelector('[aria-label="预览来源"]'),null);assert.match(m.host.querySelector("iframe").src,/\/game\/index.html\?level=1$/);assert.deepEqual(api.calls,[]);}finally{await m.close();}
 });
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Reference serialization strips URL credentials and sensitive query keys; it does not change cookie scope or render executable content.
 test("C6 references share work/source/coordinates/DOM shape and strip URL credentials",()=>{
   const ref={workId:"cloud:w",source:"url",url:"https://user:password@p.ws.oceanleo.app/a?__oceanleo_owner=hidden&token=hidden2&tab=x",x:14.3,y:22.8,width:1440,height:900};
   const text=previewReferenceText(ref);assert.match(text,/^\[Preview reference\]\n/);const value=JSON.parse(text.split("\n").slice(1).join("\n"));
@@ -104,6 +108,8 @@ test("C6 references share work/source/coordinates/DOM shape and strip URL creden
   const screen=JSON.parse(previewReferenceText({...ref,source:"screen"}).split("\n").slice(1).join("\n"));assert.equal(screen.source,"screen");assert.equal("url" in screen,false);
   const dom=JSON.parse(previewReferenceText({...ref,tag:"button",text:"Go",className:"cta",selector:"#go"}).split("\n").slice(1).join("\n"));assert.deepEqual(dom.dom,{tag:"button",text:"Go",class:"cta",selector:"#go"});
 });
+// UC-3: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Alongside catalog normalization, the existing source assertion pins a script-only sandbox and rejects same-origin/message/HTML sinks.
 test("miniprogram survives normalization; work kind names never choose implementation outside catalog",()=>{
   assert.equal(normalizeWork(work({kind:"miniprogram"})).kind,"miniprogram");
   const dirs=["src/shell/works","src/shell/works-workbench","src/shell/website-platform"];

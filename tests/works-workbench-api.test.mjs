@@ -9,6 +9,8 @@ const {worksApi}=await import(await compileModule("src/lib/works-api.ts",{
 }));
 const work={id:"cloud:p",kind:"miniprogram",title:"A work",access:"owner",home:{type:"cloud",project_id:"p"},preview:{available:true}};
 const kind={kind:"miniprogram",label:"Mini program",label_zh:"小程序",preview:{frame:"phone",orientation:"portrait"},default_preset:"small_app",default_boards:["users"]};
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Encoded paths, methods, cached kind catalog and fake bearer headers are client transport behavior, not authorization proofs.
 test("C1/C2/C7 preserve methods, encoded work ids, access and cached catalog",async()=>{
  const previous=globalThis.fetch;const calls=[];
  globalThis.fetch=async(url,init)=>{calls.push({url:String(url),init});const body=String(url).endsWith("/kinds")?{kinds:[kind]}:String(url).includes("preview-source")?{preview_source:{type:"none"},resolved:{type:"none",state:"not_wired",detail:""}}:{work};return new Response(JSON.stringify(body),{status:200});};

@@ -8,10 +8,12 @@ const {createWorkFromDescription}=await import(await compileModule("src/shell/we
  "../../lib/auth/config":dataModule('export const GATEWAY_BASE="https://gateway.invalid";'),
  "../artifact-client":dataModule('export async function getArtifactItem(id,revision){return {ok:true,data:{artifactId:id,revisionId:revision}};}'),
 }));
+// UC-NONE: docs/architecture/oceanleo-untrusted-content-isolation.md.
+// Shared creation request and durable identity are mocked transport contracts; backend authorization is not exercised.
 test("all kinds use the same create-flow request and durable Library identity",async()=>{
  const previous=globalThis.fetch;const calls=[];globalThis.fetch=async(url,init)=>{calls.push({url,init});return new Response(JSON.stringify({project_id:"p",artifact_id:"a",artifact_revision_id:"r",task_id:"agent-task"}),{status:200});};
- try{for(const kind of ["website","game","app","miniprogram","other"]){const created=await createWorkFromDescription("Make my work",kind);assert.equal(created.item.artifactId,"a");}
+ try{for(const kind of ["website","game","app","miniprogram","other"]){const created=await createWorkFromDescription("Make my work","request_billed",kind);assert.equal(created.item.artifactId,"a");}
   assert.deepEqual(calls.map(call=>JSON.parse(call.init.body).kind),["website","game","app","miniprogram","other"]);
-  for(const call of calls){assert.equal(call.url,"https://gateway.invalid/v1/website-projects/create-flow");assert.equal(call.init.method,"POST");assert.equal(call.init.headers.Authorization,"Bearer fixture-owner");assert.equal(JSON.parse(call.init.body).request,"Make my work");}
+  for(const call of calls){assert.equal(call.url,"https://gateway.invalid/v1/website-projects/create-flow");assert.equal(call.init.method,"POST");assert.equal(call.init.headers.Authorization,"Bearer fixture-owner");assert.equal(JSON.parse(call.init.body).request,"Make my work");assert.equal(JSON.parse(call.init.body).tier,"request_billed");}
  }finally{globalThis.fetch=previous;}
 });
