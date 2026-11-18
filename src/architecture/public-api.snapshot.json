@@ -4182,12 +4182,6 @@
         },
         {
           "kind": "named",
-          "name": "ORG_JOIN_DISCLOSURE",
-          "importedName": "ORG_JOIN_DISCLOSURE",
-          "source": "./OrgMembership"
-        },
-        {
-          "kind": "named",
           "name": "OrgAgreement",
           "importedName": "OrgAgreement",
           "source": "./OrgAgreement"
