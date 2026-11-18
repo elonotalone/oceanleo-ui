@@ -5,7 +5,8 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
-import { workSendPolicy, WORK_LINK_RE, WORK_REPLY_NOTICE } from '../src/shell/messages/conversation/work-policy.ts';
+import { readFileSync } from 'node:fs';
+import { workSendPolicy, WORK_LINK_PATTERN, WORK_LINK_RE, WORK_REPLY_NOTICE } from '../src/shell/messages/conversation/work-policy.ts';
 import { IM_WORK_CONVERSATION_MESSAGES } from '../src/i18n/ui/messages/im-work-conversation-copy.ts';
 import { LOCALES } from '../src/i18n/config.ts';
 const useUI = dataModule('export function useUI(){return (s)=>s}');
@@ -58,9 +59,12 @@ test('only user messages count; reply unlocks immediately and pending sends rese
   assert.equal(workSendPolicy(conversation,[message('other',2)],'me').awaiting_reply,false);
   assert.equal(workSendPolicy(conversation,[message('me',0,{status:'failed'})],'me').remaining_messages,3);
 });
-test('link test catches schemes, www and common bare domains',()=>{
-  for(const text of ['HTTPS://x.test','www.x.test','hello.com','hello.cn/a','[a](x.app)','a@x.org']) assert.ok(WORK_LINK_RE.test(text),text);
-  for(const text of ['Hello there','price is 3.50','你好']) assert.ok(!WORK_LINK_RE.test(text),text);
+test('link test uses the shared pattern and cases of the gateway and migration 0574',()=>{
+  // Same file as oceanleo backend/tests/fixtures/work_link_cases.json.
+  const cases=JSON.parse(readFileSync(new URL('./fixtures/work-link-cases.json',import.meta.url),'utf8'));
+  assert.equal(WORK_LINK_PATTERN,cases.pattern); assert.equal(WORK_LINK_RE.flags,cases.flags);
+  for(const text of ['HTTPS://x.test','www.x.test','hello.com','hello.cn/a','[a](x.app)','a@x.org',...cases.links]) assert.ok(WORK_LINK_RE.test(text),text);
+  for(const text of ['Hello there','price is 3.50','你好',...cases.prose]) assert.ok(!WORK_LINK_RE.test(text),text);
 });
 test('every configured locale has the work-conversation copy',()=>{
   for(const locale of LOCALES) for(const source of [WORK_REPLY_NOTICE,'添加好友','请求已发送','你们之间有拉黑关系，不能发送消息','联系买家']) assert.ok(IM_WORK_CONVERSATION_MESSAGES[locale][source],`${locale}: ${source}`);
