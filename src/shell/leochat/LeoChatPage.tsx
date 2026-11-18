@@ -7,7 +7,8 @@ import { useEffect, useSyncExternalStore, type ReactElement } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { accessToken } from "../../lib/auth/client";
 import { useImEnabled } from "../../lib/im/client";
-import { APP_PAGE_FRAME_CLASS, APP_PAGE_HEADER_ROW_CLASS, APP_PAGE_TITLE_CLASS } from "../AppPageHeader";
+import { IconRightPanelToggle } from "../SplitWorkspace";
+import { TaskWorkspaceShell, useTaskWorkspaceState } from "../TaskWorkspaceShell";
 import { BaySignInPrompt } from "../bay/shell/BayMine";
 import { setBaySiteKey } from "../bay/shell/bay-state";
 import { hostState, tabOfView, useMessagesHost } from "../messages/host-state";
@@ -58,7 +59,7 @@ function useWide(): boolean {
   return useSyncExternalStore(subscribeWide, () => window.matchMedia("(min-width: 768px)").matches, () => true);
 }
 
-const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`;
+const NO_CHAT_TABS = ["leochat"] as const;
 
 export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
   const tt = useUI();
@@ -66,7 +67,9 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
   const authReady = useAuthSettled();
   const unread = useLeoChatUnread(imOn);
   const state = useMessagesHost();
-  const wide = useWide();
+  const viewportWide = useWide();
+  const workspace = useTaskWorkspaceState({ siteKey });
+  const wide = viewportWide && !workspace.rightOpen;
 
   useEffect(() => {
     setBaySiteKey(siteKey);
@@ -85,29 +88,46 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
     if (pageState === "ready") consumeCallDeepLink();
   }, [pageState]);
 
+  const listHeader = (
+    <div data-leochat-list-header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-stone-200 px-3 py-2">
+      <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
+      <div className="flex items-center gap-1">
+        <LeoChatTabs
+          active={tabOfView(state.view)}
+          onSelect={(view) => hostState().setView(view)}
+          badges={{ inbox: unread.total, people: unread.requests }}
+        />
+        <button type="button" onClick={() => workspace.setRightOpen((open) => !open)}
+          aria-label={tt(workspace.rightOpen ? "收起" : "展开")}
+          title={tt(workspace.rightOpen ? "收起" : "展开")}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100">
+          <IconRightPanelToggle className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className={FRAME_CLASS} data-leochat-page={pageState}>
-      <header className={APP_PAGE_HEADER_ROW_CLASS}>
-        <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2">
-          <h1 className={APP_PAGE_TITLE_CLASS}>LeoChat</h1>
-          {pageState === "ready" ? (
-            <LeoChatTabs
-              active={tabOfView(state.view)}
-              onSelect={(view) => hostState().setView(view)}
-              badges={{ inbox: unread.total, people: unread.requests }}
-            />
-          ) : null}
-        </div>
-      </header>
-      {/* Opening (sign-in not settled yet): the page-level skeleton every OceanLeo page
-          opens with (the `/projects` look; 2026-10-31 W5), not a blank frame. */}
-      {pageState === "pending" ? <RoutePageSkeleton variant="list" label={tt("正在加载…")} /> : null}
-      {pageState === "signin" ? <BaySignInPrompt text={tt("登录后查看聊天和联系人")} /> : null}
-      {pageState === "ready" ? (
-        <div className="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-stone-200 bg-white">
-          <LeoChatBody wide={wide} />
-        </div>
-      ) : null}
+    <div className="h-[calc(100dvh-1px)] w-full min-w-0" data-leochat-page={pageState}>
+      <TaskWorkspaceShell
+        state={workspace}
+        tabs={[]}
+        canvas={{ siteId: siteKey, showTemplate: siteKey !== "oceanleo", showLeoChat: false }}
+        ignoredWorkspaceTabs={NO_CHAT_TABS}
+        fillParent
+        soloMaxWidth={null}
+        defaultRatio={0.5}
+        storageKey="oceanleo_leochat_split"
+        library={{ open: workspace.rightOpen, onOpenChange: workspace.setRightOpen, hideToggle: true }}
+        left={pageState === "ready" ? (
+          <LeoChatBody wide={wide} listHeader={listHeader} />
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <h1 className="px-3 py-2 text-[15px] font-semibold text-stone-900">LeoChat</h1>
+            {pageState === "pending" ? <RoutePageSkeleton variant="list" label={tt("正在加载…")} /> : <BaySignInPrompt text={tt("登录后查看聊天和联系人")} />}
+          </div>
+        )}
+      />
     </div>
   );
 }

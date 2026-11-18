@@ -195,6 +195,12 @@ const bodyAliases = {
 const { LeoChatBody } = await import(await compileModule("src/shell/leochat/leochat-body.tsx", bodyAliases));
 const { LeoChatPage } = await import(
   await compileModule("src/shell/leochat/LeoChatPage.tsx", {
+    "../TaskWorkspaceShell": dataModule(`
+      import React from ${JSON.stringify(reactUrl)};
+      export function useTaskWorkspaceState(){const [rightOpen,setRightOpen]=React.useState(false);return {rightOpen,setRightOpen};}
+      export function TaskWorkspaceShell({left}){return left;}
+    `),
+    "../SplitWorkspace": dataModule('export function IconRightPanelToggle(){return null;}'),
     "../../i18n/ui/useUI": uiStub,
     "../../lib/auth/client": dataModule(`export async function accessToken(){ return "t"; }`),
     "../../lib/im/client": imStub,

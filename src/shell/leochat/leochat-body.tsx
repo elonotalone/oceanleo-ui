@@ -17,9 +17,11 @@ import { PeopleView } from "../messages/people/PeopleView";
 export interface LeoChatBodyProps {
   /** wide：左列表（340px）右会话，两边同时在；窄：一次只显示一边，有会话时显示会话。 */
   wide: boolean;
+  /** Page title and tabs live inside the list, immediately above its search. */
+  listHeader?: ReactNode;
 }
 
-export function LeoChatBody({ wide }: LeoChatBodyProps): ReactElement {
+export function LeoChatBody({ wide, listHeader }: LeoChatBodyProps): ReactElement {
   const tt = useUI();
   const state = useMessagesHost();
   const host = hostState();
@@ -133,6 +135,7 @@ export function LeoChatBody({ wide }: LeoChatBodyProps): ReactElement {
     return (
       <div data-leochat-body="wide" className="flex min-h-0 flex-1">
         <div data-leochat-list className="flex min-h-0 w-[340px] shrink-0 flex-col border-r border-stone-200">
+          {listHeader}
           {list}
         </div>
         <div data-leochat-thread className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -156,6 +159,7 @@ export function LeoChatBody({ wide }: LeoChatBodyProps): ReactElement {
         </div>
       ) : (
         <div data-leochat-list className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {listHeader}
           {list}
         </div>
       )}
