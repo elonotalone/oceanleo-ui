@@ -2,21 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
-  COMPUTER_EVENT_KIND_LABEL,
   CloudComputerError,
   cloudComputerApi,
   type CloudComputerClient,
   type Computer,
-  type ComputerEvent,
-  type UsageResponse,
 } from "../lib/cloud-computer-api";
-import { currentDomainFamily } from "../contracts/domain-family";
 import { formatMinor } from "../lib/money";
+import { currentDomainFamily } from "../contracts/domain-family";
 import { useUI } from "../i18n/ui/useUI";
 import { ConfirmDialog } from "../ui";
 import { PageHeader } from "./PageHeader";
 import { ConnectServerDialog } from "../shell/cloud-computer/ConnectServerDialog";
 import { CreateComputerDialog } from "../shell/cloud-computer/CreateComputerDialog";
+import { ServerPage } from "./devices/ServerPage";
 import { CloudDeviceGrid } from "./devices/CloudDeviceGrid";
 import {
   computerDisplayState,
@@ -66,10 +64,6 @@ function formatMemBytes(bytes: number | null | undefined): string {
   return `${Math.round(bytes)} B`;
 }
 
-function eventKindLabel(kind: string): string {
-  return COMPUTER_EVENT_KIND_LABEL[kind] || kind;
-}
-
 function chipClass(state: ComputerDisplayState): string {
   if (state === "ready") return "bg-emerald-50 text-emerald-700";
   if (state === "unpaid" || state === "error") return "bg-rose-50 text-rose-700";
@@ -97,11 +91,10 @@ function LegacyCloudComputersSection({
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [events, setEvents] = useState<ComputerEvent[]>([]);
-  const [usage, setUsage] = useState<UsageResponse | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [connectResume, setConnectResume] = useState<Computer | null>(null);
+  const [confirmStop, setConfirmStop] = useState<Computer | null>(null);
   const [confirmRelease, setConfirmRelease] = useState<Computer | null>(null);
   const [renameId, setRenameId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -149,31 +142,6 @@ function LegacyCloudComputersSection({
     };
   }, [api]);
 
-  useEffect(() => {
-    if (!selected) {
-      setEvents([]);
-      setUsage(null);
-      return;
-    }
-    let alive = true;
-    Promise.all([
-      api.listComputerEvents(selected.id),
-      api.getUsage(selected.id).catch(() => null),
-    ])
-      .then(([eventPayload, usagePayload]) => {
-        if (!alive) return;
-        setEvents(eventPayload.items || []);
-        setUsage(usagePayload);
-      })
-      .catch(() => {
-        if (!alive) return;
-        setEvents([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [api, selected]);
-
   async function saveRename(computer: Computer) {
     const next = renameValue.trim();
     if (!next) return;
@@ -188,6 +156,7 @@ function LegacyCloudComputersSection({
       if (op === "stop") await api.stopComputer(computer.id);
       if (op === "delete") await api.deleteComputer(computer.id);
       setConfirmRelease(null);
+      setConfirmStop(null);
       const items = await refresh();
       if (op === "delete") {
         const still = items.filter(isConnectedComputer);
@@ -218,6 +187,7 @@ function LegacyCloudComputersSection({
       data-oceanleo-cc-page=""
       data-oceanleo-cc-edition={currentDomainFamily()}
     >
+      {confirmStop && <ConfirmDialog title={tt("确认停机")} body={tt("停机会中断正在运行的程序和连接；磁盘会保留并继续计费。")} confirmLabel={tt("确认")} onConfirm={() => act(confirmStop, "stop")} onCancel={() => setConfirmStop(null)} />}
       {confirmRelease && (
         <ConfirmDialog
           title={tt(`释放「${confirmRelease.name}」？`)}
@@ -517,7 +487,7 @@ function LegacyCloudComputersSection({
                             <button
                               type="button"
                               className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px]"
-                              onClick={() => void act(computer, "stop")}
+                              onClick={() => setConfirmStop(computer)}
                             >
                               {tt("停机")}
                             </button>
@@ -581,52 +551,7 @@ function LegacyCloudComputersSection({
         </>
       )}
 
-      {selected && (
-        <section
-          className="rounded-2xl border border-neutral-200 bg-white p-5"
-          data-oceanleo-cc-detail
-        >
-          <h3 className="text-[15px] font-semibold">{selected.name}</h3>
-          {selected.node_fingerprint && (
-            <p className="mt-3 break-all font-mono text-[13px] text-neutral-800">
-              {tt("指纹")} {selected.node_fingerprint}
-            </p>
-          )}
-          {selected.node_run_as && (
-            <p className="mt-1 text-[12px] text-neutral-600">
-              {tt("运行身份")} {selected.node_run_as}
-              {selected.node_cpus != null || selected.node_mem_bytes
-                ? ` · ${selected.node_cpus ?? "—"} / ${formatMemBytes(selected.node_mem_bytes)}`
-                : ""}
-            </p>
-          )}
-          {usage && (
-            <div className="mt-4 text-[12px] text-neutral-600">
-              {tt("用量")}{" "}
-              {formatMinor(usage.total.amount_minor, usage.total.currency)}
-              {" · "}
-              {tt("当前每小时")}{" "}
-              {formatMinor(
-                usage.hourly_now.amount_minor,
-                usage.hourly_now.currency,
-              )}
-            </div>
-          )}
-          <ol className="mt-4 space-y-2" data-oceanleo-cc-events>
-            {events.map((event) => (
-              <li key={event.id} className="text-[12px] text-neutral-500">
-                <span className="text-neutral-400">{event.created_at}</span>{" "}
-                {tt(eventKindLabel(event.kind))}
-              </li>
-            ))}
-            {events.length === 0 && (
-              <li className="text-[12px] text-neutral-400">
-                {tt("还没有事件")}
-              </li>
-            )}
-          </ol>
-        </section>
-      )}
+      {selected && <ServerPage key={selected.id} computer={selected} client={api} onUpdated={() => {void refresh();}} onClose={() => setSelectedId(null)} />}
     </section>
   );
 }

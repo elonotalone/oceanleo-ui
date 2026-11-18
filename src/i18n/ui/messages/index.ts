@@ -1,3 +1,4 @@
+import { SERVER_PAGE_MESSAGES } from "./server-services-copy";
 import { SHEET_NAMING_MESSAGES } from "./sheet-naming-copy";
 import { MATERIAL_TAXONOMY_MESSAGES } from "./material-taxonomy-copy";
 import { LIVE_MATERIAL_MESSAGES } from "./live-material-copy";
@@ -539,6 +540,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...LIVE_MATERIAL_MESSAGES[language],
       ...MATERIAL_TAXONOMY_MESSAGES[language],
       ...SHEET_NAMING_MESSAGES[language],
+      ...SERVER_PAGE_MESSAGES[language],
     }];
   }),
 ) as Record<Locale, Record<string, string>>;

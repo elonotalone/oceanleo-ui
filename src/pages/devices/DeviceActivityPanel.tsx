@@ -55,7 +55,8 @@ function runningFor(startedAt: string | null, now: number): string | null {
  * as the gateway's own refusal reports it). Re-read on open, after each action and every
  * `refreshMs` while open.
  */
-export function DeviceActivityPanel({ computerId, name, client = computerActivityApi, initial = null, refreshMs = 10_000, now = Date.now, onActivity, onClose }: {
+export function DeviceActivityPanel({ computerId, name, client = computerActivityApi, initial = null, refreshMs = 10_000, now = Date.now, onActivity, onClose, embedded = false }: {
+  embedded?: boolean;
   computerId: string;
   name: string;
   client?: ComputerActivityClient;
@@ -150,8 +151,8 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
   const unreachable = activity?.online === true && activity.reachable === false;
   const at = now();
 
-  return <DeviceDialog title={name} onClose={onClose} testId="activity">
-    {error && <p role="alert" className="mb-4 break-words rounded-xl bg-red-50 p-3 text-sm text-red-600" data-device-activity-error>{error}</p>}
+  const content = <>
+    {error && <div role="alert" className="mb-4 break-words rounded-xl bg-red-50 p-3 text-sm text-red-600"><p data-device-activity-error>{error}</p><button type="button" className="underline" onClick={() => void act("refresh", () => client.getActivity(computerId))}>{tt("重试")}</button></div>}
     {!activity ? (!error && <p role="status" className="py-8 text-center text-sm text-neutral-500">{tt("正在加载…")}</p>) : <>
       <section className="flex flex-wrap items-start justify-between gap-4 pb-6" data-device-activity-machine>
         <div className="min-w-0 text-sm text-neutral-700">
@@ -213,5 +214,6 @@ export function DeviceActivityPanel({ computerId, name, client = computerActivit
         <button type="button" className={DEVICE_PRIMARY_BUTTON} disabled={Boolean(busy)} onClick={() => void upgrade(true)} data-device-upgrade-confirm>{tt("结束并升级")}</button>
       </div>
     </DeviceDialog>}
-  </DeviceDialog>;
+  </>;
+  return embedded ? <div data-device-activity-embedded>{content}</div> : <DeviceDialog title={name} onClose={onClose} testId="activity">{content}</DeviceDialog>;
 }

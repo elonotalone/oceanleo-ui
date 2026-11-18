@@ -10,6 +10,7 @@ import { DeviceIcon } from "./DeviceCard";
 import { DeviceActivityPanel, activityLine } from "./DeviceActivityPanel";
 import { computerActivityApi, type ComputerActivity, type ComputerActivityClient } from "../../lib/computer-activity-api";
 import { WallpaperSurface } from "./DeviceCover";
+import { ServerPage } from "./ServerPage";
 import { AuthDialog } from "../AuthDialog";
 import { openSettingsModal } from "../settings/settings-tabs";
 
@@ -25,6 +26,7 @@ export function CloudDeviceGrid({ client = cloudComputerApi, activityClient = co
   const [resume, setResume] = useState<Computer | null>(null);
   // What runs on each connected computer, read with the list (the card line) and by the open panel.
   const [activity, setActivity] = useState<Record<string, ComputerActivity>>({});
+  const [serverId, setServerId] = useState<string | null>(null);
   const [activityId, setActivityId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const firstCard = useRef<HTMLElement | null>(null);
@@ -60,7 +62,7 @@ export function CloudDeviceGrid({ client = cloudComputerApi, activityClient = co
         if (!alive) return;
         const failure = cause as {status?: number; code?: string} | null;
         if (failure?.status === 401 || (!failure?.status && failure?.code === "client_unauthorized")) {
-          setComputers([]); setResume(null); setError(null); setLoginRequired(true); setActivity({}); setActivityId(null);
+          setComputers([]); setResume(null); setError(null); setLoginRequired(true); setActivity({}); setActivityId(null); setServerId(null);
           unauthorized.current?.();
         } else setError("云电脑暂时无法加载。");
       }
@@ -69,6 +71,7 @@ export function CloudDeviceGrid({ client = cloudComputerApi, activityClient = co
     void refresh();
     return () => { alive = false; clearTimeout(timer); };
   }, [client, activityClient, revision]);
+  const serverComputer = computers.find((item) => item.id === serverId);
   const activityComputer = computers.find((item) => item.id === activityId);
   function updated() { setRevision((value) => value + 1); }
   return <>
@@ -82,12 +85,13 @@ export function CloudDeviceGrid({ client = cloudComputerApi, activityClient = co
           {(state === "pending_install" || state === "pending_confirm") ? <button type="button" onClick={() => setResume(computer)} className="absolute bottom-4 left-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-neutral-800 shadow-sm hover:bg-neutral-50">{tt(state === "pending_confirm" ? "核对并确认" : "继续连接")}</button> : null}
         </WallpaperSurface>
         <div className="flex items-start justify-between gap-3 px-5 pb-3 pt-4">
-          <div className="flex min-w-0 items-start gap-3"><DeviceIcon className="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-neutral-900">{computer.name}</h3><p className="mt-1 text-xs text-neutral-500">{tt("云电脑")}{computer.node_os ? ` · ${computer.node_os}` : ""}</p>{live && <div className="mt-1.5 flex flex-wrap items-center gap-2"><button type="button" onClick={() => setActivityId(computer.id)} className="text-left text-xs text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline" data-device-activity-open={computer.id}>{activityLine(tt, live)}</button>{live.update_available && <button type="button" onClick={() => setActivityId(computer.id)} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 hover:bg-sky-100" data-device-update-badge={computer.id}>{tt("有更新")}</button>}</div>}</div></div>
+          <div className="flex min-w-0 items-start gap-3"><DeviceIcon className="mt-0.5 h-5 w-5 shrink-0 text-neutral-500" /><div className="min-w-0"><h3 className="truncate text-sm font-semibold text-neutral-900"><button type="button" className="max-w-full truncate text-left hover:underline" onClick={() => setServerId(computer.id)} data-server-page-open={computer.id}>{computer.name}</button></h3><p className="mt-1 text-xs text-neutral-500">{tt("云电脑")}{computer.node_os ? ` · ${computer.node_os}` : ""}</p>{(computer.region_id || computer.public_ip || computer.node_public_ip) && <p className="mt-1 truncate text-xs text-neutral-500" data-server-card-address>{[computer.region_id, computer.public_ip || computer.node_public_ip].filter(Boolean).join(" · ")}</p>}{live && <div className="mt-1.5 flex flex-wrap items-center gap-2"><button type="button" onClick={() => setActivityId(computer.id)} className="text-left text-xs text-neutral-600 underline-offset-2 hover:text-neutral-900 hover:underline" data-device-activity-open={computer.id}>{activityLine(tt, live)}</button>{live.update_available && <button type="button" onClick={() => setActivityId(computer.id)} className="rounded-full bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700 hover:bg-sky-100" data-device-update-badge={computer.id}>{tt("有更新")}</button>}</div>}</div></div>
           <span className="flex shrink-0 items-center gap-1.5 text-sm text-neutral-500"><span className={`h-2 w-2 rounded-full ${state === "ready" ? "bg-emerald-500" : state === "error" || state === "unpaid" ? "bg-red-400" : "bg-neutral-400"}`} />{tt(STATE_LABEL[state])}</span>
         </div>
-        <div className={`grid ${isConnectedComputer(computer) ? "grid-cols-2" : "grid-cols-1"} border-t border-neutral-100 py-1.5`}><button type="button" data-device-server-settings={computer.id} onClick={() => openSettingsModal("device-settings", { deviceId: computer.id })} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("设置")}</button>{isConnectedComputer(computer) && <button type="button" data-device-dashboard-open={computer.id} onClick={() => setActivityId(computer.id)} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("看板")}</button>}</div>
+        <div className={`grid ${isConnectedComputer(computer) ? "grid-cols-2" : "grid-cols-1"} border-t border-neutral-100 py-1.5`}><button type="button" data-device-server-settings={computer.id} onClick={() => openSettingsModal("device-settings", { deviceId: computer.id })} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("设置")}</button>{isConnectedComputer(computer) && <button type="button" data-device-dashboard-open={computer.id} onClick={() => setServerId(computer.id)} className="px-3 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50">{tt("看板")}</button>}</div>
       </article>;
     })}
+    {serverComputer && <ServerPage key={serverComputer.id} computer={serverComputer} client={client} activityClient={activityClient} initialActivity={activity[serverComputer.id] ?? null} onUpdated={updated} onActivity={(next) => setActivity((current) => ({ ...current, [serverComputer.id]: next }))} onClose={() => setServerId(null)} />}
     {activityComputer && <DeviceActivityPanel key={activityComputer.id} computerId={activityComputer.id} name={activityComputer.name} client={activityClient} initial={activity[activityComputer.id] ?? null} onActivity={(next) => setActivity((current) => ({ ...current, [activityComputer.id]: next }))} onClose={() => setActivityId(null)} />}
     {resume && <ConnectServerDialog key={resume.id} client={client} resumeComputer={resume} onClose={() => setResume(null)} onCreated={() => { setResume(null); updated(); }} />}
     {showAuth && <AuthDialog onClose={() => setShowAuth(false)} onSuccess={() => { setShowAuth(false); updated(); }} />}
