@@ -9,6 +9,7 @@ import { formatBayParam } from "../shell/bay-links";
 import {
   bayBack,
   closeBayDetails,
+  openBayWorkspaceHref,
   registerBayPanel,
   setBayFilter,
   useBayState,
@@ -59,6 +60,11 @@ export function BayPanel({ siteKey, active, request, onBackChange, onOpenConvers
     if (!enabled) return;
     const nonce = request?.nonce;
     if (!nonce) return;
+    if (request.href) {
+      setMode("browse");
+      openBayWorkspaceHref(request.href);
+      return;
+    }
     if (related) {
       setMode("related");
     } else {

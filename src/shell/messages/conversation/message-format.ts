@@ -3,7 +3,9 @@
 // 自动识别 http(s) 链接、@提及（按 mentions 里的 id 画成名字胶囊）。
 // 解析规则宁可「不识别就当文字」：未闭合的标记、javascript: 之类的地址一律原样显示为文字。
 
-import { createElement, Fragment, type ReactNode } from "react";
+import { createElement, Fragment, type ReactNode, type MouseEvent } from "react";
+import { openWorkspaceHref, workspaceActionForHref } from "../../workspace-actions";
+import { runtimePageOrigin } from "../../../contracts/domain-family";
 
 export interface MentionRef {
   /** 用户 id；`all` / `leo` 是两个特殊项。 */
@@ -300,18 +302,24 @@ function renderInline(nodes: InlineNode[], options: RenderOptions, keyPrefix: st
         return createElement("em", { key }, ...renderInline(node.children, options, key));
       case "strike":
         return createElement("del", { key, className: "text-neutral-500" }, ...renderInline(node.children, options, key));
-      case "link":
+      case "link": {
+        const origin = runtimePageOrigin();
+        const internal = origin ? workspaceActionForHref(node.href, origin) : null;
         return createElement(
           "a",
           {
             key,
             href: node.href,
-            target: "_blank",
+            target: internal ? undefined : "_blank",
+            onClick: (event: MouseEvent<HTMLAnchorElement>) => {
+              if (openWorkspaceHref(node.href)) event.preventDefault();
+            },
             rel: "noopener noreferrer",
             className: "break-all text-neutral-800 underline underline-offset-2 hover:text-neutral-900",
           },
           node.text,
         );
+      }
       case "mention": {
         const { mention } = node;
         const self = mention.kind === "all" || mention.id === options.viewerId;

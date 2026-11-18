@@ -15,6 +15,7 @@ import {
   normalizeWorkspaceAction,
   isLegacyMaterialsId,
   type WorkspaceActionEnvelope,
+  type WorkspaceActionTab,
   type WorkspaceManagedPanelId,
   type WorkspacePanelId,
   type WorkspaceSlotId,
@@ -22,6 +23,7 @@ import {
 import type { RuntimeHydrationValue } from "./workspace-runtime-hydration";
 
 export interface WorkspaceSlotStateInput {
+  ignoredTabs?: readonly WorkspaceActionTab[];
   active?: string;
   showTemplate: boolean;
   focusNonce?: number;
@@ -62,6 +64,7 @@ export interface WorkspaceSlotState {
 
 export function useWorkspaceSlotState({
   active,
+  ignoredTabs,
   showTemplate,
   focusNonce,
   externalAction,
@@ -289,7 +292,7 @@ export function useWorkspaceSlotState({
     const receive = (event: Event) => {
       const detail = (event as CustomEvent<WorkspaceActionEnvelope>).detail;
       const action = normalizeWorkspaceAction(detail?.action);
-      if (!action) return;
+      if (!action || ignoredTabs?.includes(action.tab)) return;
       const envelope = {
         nonce: String(detail?.nonce || Date.now()),
         action,
@@ -324,7 +327,7 @@ export function useWorkspaceSlotState({
   useEffect(() => {
     if (!externalAction) return;
     const action = normalizeWorkspaceAction(externalAction.action);
-    if (!action) return;
+    if (!action || ignoredTabs?.includes(action.tab)) return;
     if (action.tab === "bay") {
       if (action.view === "materials") pinExplicitSlot("materials");
       setPanelAction({ nonce: externalAction.nonce, action });
@@ -344,7 +347,7 @@ export function useWorkspaceSlotState({
     pinExplicitSlot(action.tab);
     applySelection(action.tab);
     setLayer("slot");
-  }, [externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [ignoredTabs, externalAction?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const actionFor = useCallback(
     (slot: WorkspaceSlotId) => {

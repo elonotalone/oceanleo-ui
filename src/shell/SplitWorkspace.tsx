@@ -37,7 +37,7 @@ import { IconLibrary } from "./icons";
 import { AdvancedEditorIcon } from "./AdvancedEditorIcon";
 import { AGENT_CONVERSATION_HOST_STRETCH_CLASS } from "./agent-conversation-layout";
 import { useUI } from "../i18n/ui/useUI";
-import { WORKSPACE_ACTION_EVENT } from "./workspace-actions";
+import { WORKSPACE_ACTION_EVENT, type WorkspaceActionEnvelope, type WorkspaceActionTab } from "./workspace-actions";
 import { useWorkbenchOpenClaim } from "./workbench-open-store";
 import {
   EditBarDockHost,
@@ -194,6 +194,8 @@ export function useWorkspacePane(): WorkspacePaneController | null {
 }
 
 export interface SplitWorkspaceProps {
+  /** A host may reserve a panel for its own main content. */
+  ignoredWorkspaceTabs?: readonly WorkspaceActionTab[];
   /** Keep the conversation mounted while a Library editor initially fills the workspace. */
   leftHidden?: boolean;
   /** Focus the existing conversation instead of creating a second editor assistant. */
@@ -303,6 +305,7 @@ export function SplitWorkspace({
   soloMaxWidth = "48rem",
   library,
   leftHidden = false,
+  ignoredWorkspaceTabs,
   onAgentFocus,
   onAgentClose,
 }: SplitWorkspaceProps) {
@@ -712,14 +715,19 @@ export function SplitWorkspace({
   // navigates to its real library location instead of becoming a plain link.
   useEffect(() => {
     if (!library) return;
-    const openForWorkspaceAction = () => setLibraryOpen(true);
+    const openForWorkspaceAction = (event: Event) => {
+      const detail = (event as CustomEvent<WorkspaceActionEnvelope>).detail;
+      if (ignoredWorkspaceTabs?.includes(detail?.action?.tab)) return;
+      event.preventDefault(); // A message link can tell that this workspace received it.
+      setLibraryOpen(true);
+    };
     window.addEventListener(WORKSPACE_ACTION_EVENT, openForWorkspaceAction);
     return () =>
       window.removeEventListener(
         WORKSPACE_ACTION_EVENT,
         openForWorkspaceAction,
       );
-  }, [library, setLibraryOpen]);
+  }, [library, setLibraryOpen, ignoredWorkspaceTabs]);
 
   const persist = useCallback(
     (v: number) => {

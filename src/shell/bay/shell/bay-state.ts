@@ -497,6 +497,16 @@ function applyPageFilter(search: string): void {
   commit({ filter: next });
 }
 
+/** A workspace message opens this exact Bay destination without navigating or writing page history. */
+export function openBayWorkspaceHref(href: string): void {
+  let url: URL;
+  try { url = new URL(href); } catch { return; }
+  applyPageFilter(url.search);
+  const params = url.searchParams;
+  setBayFilter({ ...store.filter, q: params.get("q") || undefined, category: params.get("category") || undefined });
+  navigate(parseBayDeepLink(url.search) || { kind: "feed" });
+}
+
 export function bayStateSnapshot(): { current: BayTarget; canGoBack: boolean } {
   return view;
 }

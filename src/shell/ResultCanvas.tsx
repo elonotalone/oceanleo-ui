@@ -47,6 +47,7 @@ import { useWorkspaceViewState } from "./result-canvas-view-state";
 import { useBayEnabled } from "./bay/shell/bay-state";
 import { useImEnabled } from "../lib/im/client";
 import { BayPanel } from "./bay/panel";
+import { hostState } from "./messages/host-state";
 import { LeoChatPanel } from "./leochat/LeoChatPanel";
 import {
   LEOCHAT_PANEL_REQUEST_EVENT,
@@ -136,7 +137,11 @@ export interface TaskWorkspaceOpenState {
   actionContext?: AssetActionContext;
 }
 
+const NO_LEOCHAT_ACTIONS = ["leochat"] as const;
+
 export interface ResultCanvasProps {
+  /** The LeoChat page already owns chat and must not offer it again. */
+  showLeoChat?: boolean;
   /**
    * Compatibility input. Existing pages can keep declaring their domain tabs;
    * legacy material tabs open the LeoBay material view.
@@ -247,6 +252,7 @@ export function ResultCanvas({
   className = "",
   action: externalAction,
   showTemplate = true,
+  showLeoChat = true,
   taskId,
   siteId = "",
   leoChatRequestNonce = null,
@@ -556,6 +562,7 @@ export function ResultCanvas({
     showTemplate,
     focusNonce,
     externalAction: externalAction || legacyLocationAction,
+    ignoredTabs: showLeoChat ? undefined : NO_LEOCHAT_ACTIONS,
     runtimeHydration,
     slotForId,
     callerIdForSlot,
@@ -563,13 +570,16 @@ export function ResultCanvas({
   });
   const bayOn = useBayEnabled();
   const imOn = useImEnabled();
-  const panels = useMemo(() => ({ bay: bayOn, leochat: imOn, devices: true, projects: true, settings: true }), [bayOn, imOn]);
+  const panels = useMemo(() => ({ bay: bayOn, leochat: imOn && showLeoChat, devices: true, projects: true, settings: true }), [bayOn, imOn, showLeoChat]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat } = useWorkspaceViewState({
     selected, layer, setLayer, panelAction, select, panels,
     onHome: () => onChangeRef.current?.("home"),
   });
+  const bayPanelRequest = useMemo(() => bayRequest
+    ? { ...bayRequest, href: panelAction?.action.url }
+    : null, [bayRequest, panelAction?.action.url]);
   // Park the Library after its first open/intent so reopening paints the same
   // list. Merely mounting a task must not start its private Library readers.
   const [libraryWarmed, setLibraryWarmed] = useState(false);
@@ -593,6 +603,7 @@ export function ResultCanvas({
       const detail = (event as CustomEvent<LeoChatPanelRequestDetail>).detail;
       if (!detail || detail.handled) return;
       detail.handled = true;
+      if (!showLeoChat) return;
       if (view === "leochat" && workspaceOpen !== false) {
         if (rightSlot?.closeRightPane) rightSlot.closeRightPane();
         else goHome();
@@ -602,11 +613,11 @@ export function ResultCanvas({
     };
     window.addEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
     return () => window.removeEventListener(LEOCHAT_PANEL_REQUEST_EVENT, receive);
-  }, [goHome, imOn, openPanel, rightSlot, view, workspaceOpen]);
+  }, [goHome, imOn, openPanel, rightSlot, view, workspaceOpen, showLeoChat]);
   useEffect(() => {
-    if (!imOn || !leoChatRequestNonce || view === "leochat") return;
+    if (!showLeoChat || !imOn || !leoChatRequestNonce || view === "leochat") return;
     openPanel("leochat");
-  }, [imOn, leoChatRequestNonce, openPanel, view]);
+  }, [imOn, leoChatRequestNonce, openPanel, view, showLeoChat]);
   // Navigation hides a foreground editor instead of destroying its mounted session.
   currentViewRef.current = view;
   const previousNavigation = useRef({ view, nonce: externalAction?.nonce, focusNonce, active });
@@ -994,8 +1005,8 @@ export function ResultCanvas({
                 : <LiveMaterialSearch key={bayRequest.nonce} initialQuery={bayRequest.query} initialType={LIVE_MATERIAL_TYPES.find(type => type === bayRequest.category)} actionLabel="使用" onUse={async item => {
                   await onUseWorkspaceEntry?.(workspaceEntryFromLibraryItem(item));
                 }} />}
-            </div> : <BayPanel siteKey={effectiveSiteId || "oceanleo"} active={!foregroundVisible && view === "bay"} request={bayRequest}
-                      onBackChange={(back) => { bayBackRef.current = back; }} onOpenConversation={openChat} />}
+            </div> : <BayPanel siteKey={effectiveSiteId || "oceanleo"} active={!foregroundVisible && view === "bay"} request={bayPanelRequest}
+                      onBackChange={(back) => { bayBackRef.current = back; }} onOpenConversation={showLeoChat ? openChat : (id) => hostState().showConversation(id)} />}
           </div>
         ) : null}
         {panels.leochat && chatVisited ? (

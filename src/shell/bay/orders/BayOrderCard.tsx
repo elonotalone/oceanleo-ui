@@ -14,6 +14,7 @@ import {
   orderStatusLabel,
   type BayOrder,
 } from "../../../lib/bay/orders";
+import { openWorkspaceHref } from "../../workspace-actions";
 import { openBay } from "../shell/bay-state";
 import { useBayOrder, useBayPaymentsGate } from "./order-store";
 
@@ -47,7 +48,9 @@ export function BayOrderCard({ contractId, compact = false }: BayOrderCardProps)
   const open = (event?: MouseEvent) => {
     event?.stopPropagation();
     if (!canOpen) return;
-    openBay({ kind: "order", id: contractId });
+    if (!openWorkspaceHref(`/bay?bay=order:${encodeURIComponent(contractId)}`)) {
+      openBay({ kind: "order", id: contractId });
+    }
   };
 
   const title = order?.title?.trim() || tt("订单");

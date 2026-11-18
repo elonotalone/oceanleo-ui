@@ -2,7 +2,7 @@
 
 // 作品卡：缩略图、标题、编辑器类型、「打开」。
 // 「打开」的地址是发送方分享时用 `advancedFeatureHrefForItem` 算好放进 `card.open_path` 的；
-// 同站直接走，别的站（OceanLeo 家族）跳过去，家族之外的地址一律不跳。
+// 工作区内打开自己的内容；家族之外的地址一律不跳。
 // 没权限：打开后服务端返回 no_access 时由目标页提示；卡上「没有权限」来自 W04 presence 接口 403。
 import { useEffect, useState } from "react";
 import { familyForHost, runtimePageOrigin } from "../../../contracts/domain-family";
@@ -10,6 +10,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { ImApiError } from "../../../lib/im/client";
 import { messagesApi } from "../../../lib/im/messages-api";
 import type { ImCard, ImEditorKind } from "../../../lib/im/types";
+import { openWorkspaceHref, workspaceActionForHref } from "../../workspace-actions";
 import { safeMediaUrl } from "./AttachmentView";
 
 export const EDITOR_KIND_LABEL: Record<ImEditorKind, string> = {
@@ -72,6 +73,7 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
   // 服务端渲染时没有 window，也就没有「当前站」可解析：不猜一个本机地址兜底，卡片不给可点的「打开」。
   const origin = runtimePageOrigin() || null;
   const target = origin ? resolveCardTarget(card.open_path, origin) : null;
+  const inWorkspace = Boolean(origin && target && workspaceActionForHref(target.href, origin));
   const thumb = safeMediaUrl(card.thumb_url);
   const kindLabel = card.editor_kind ? tt(EDITOR_KIND_LABEL[card.editor_kind]) : tt("作品");
 
@@ -106,7 +108,8 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
         ) : (
           <a
             href={target.href}
-            {...(target.sameOrigin ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+            onClick={(event) => { if (openWorkspaceHref(target.href)) event.preventDefault(); }}
+            {...(target.sameOrigin || inWorkspace ? {} : { target: "_blank", rel: "noopener noreferrer" })}
             className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] text-white hover:bg-neutral-700"
           >
             {tt("打开")}

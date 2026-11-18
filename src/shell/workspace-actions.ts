@@ -38,6 +38,7 @@ export type WorkspaceActionTab = WorkspaceSlotId | "bay" | WorkspaceManagedPanel
 export type WorkspaceActionIntent = "open" | "edit";
 
 import type { AssetRef } from "./asset-detail/types";
+import { familyForHost, runtimePageOrigin } from "../contracts/domain-family";
 
 const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
   "open",
@@ -93,6 +94,8 @@ export interface WorkspaceActionEnvelope {
 
 /** agent 让右侧栏里的 LeoBay 找相关服务。`nonce` 变了才算一条新请求。 */
 export interface WorkspaceBayRequest {
+  /** Exact first-party Bay destination from a message. */
+  href?: string;
   nonce: string;
   /** 关键词，空格分隔；可以是空串（只按类目找）。 */
   query: string;
@@ -286,13 +289,52 @@ export function workspaceMaterialsActionFromSearch(search: string): WorkspaceAct
   });
 }
 
-export function dispatchWorkspaceAction(envelope: WorkspaceActionEnvelope) {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent<WorkspaceActionEnvelope>(WORKSPACE_ACTION_EVENT, {
+export function dispatchWorkspaceAction(envelope: WorkspaceActionEnvelope): boolean {
+  if (typeof window === "undefined") return false;
+  return !window.dispatchEvent(
+    new window.CustomEvent<WorkspaceActionEnvelope>(WORKSPACE_ACTION_EVENT, {
       detail: envelope,
+      cancelable: true,
     }),
   );
+}
+
+/** Resolve only product pages the workspace can actually display. No content host is trusted. */
+export function workspaceActionForHref(href: string, origin: string): WorkspaceAction | null {
+  let url: URL;
+  try { url = new URL(href, origin); } catch { return null; }
+  if (!["https:", "http:"].includes(url.protocol)) return null;
+  if (url.origin !== origin && (url.protocol !== "https:" || !familyForHost(url.hostname))) return null;
+  const path = url.pathname.replace(/^\/s\/[^/]+(?=\/)/, "").replace(/\/+$/, "") || "/";
+  const params = url.searchParams;
+  const itemId = params.get("item") || params.get("artifactId") || undefined;
+  const revisionId = params.get("revisionId") || params.get("revision") || undefined;
+  if (path === "/bay") {
+    const material = params.get("asset") || itemId || (params.get("listingId") ? `listing:${params.get("listingId")}` : undefined);
+    return { version: 1, tab: "bay", url: url.href,
+      ...(material ? { view: "materials", itemId: material, revisionId } : {}),
+      ...(params.get("q") ? { query: params.get("q")! } : {}) };
+  }
+  if (path === "/library" || path === "/history" || (params.get("tab") === "library" && itemId)) {
+    return { version: 1, tab: "mine", itemId, revisionId };
+  }
+  const project = path.match(/^\/projects(?:\/([^/]+))?$/);
+  if (project) return { version: 2, tab: "projects", projectId: project[1] || params.get("projectId") || undefined };
+  const managed = path.match(/^\/(settings|devices)(?:\/([^/]+))?$/);
+  if (managed) return { version: 2, tab: managed[1] as "settings" | "devices", section: managed[2] || params.get("section") || undefined, deviceId: params.get("deviceId") || undefined };
+  if (path === "/browser") return { version: 2, tab: "devices", section: "cloud-browser" };
+  return null;
+}
+
+let messageLinkSequence = 0;
+
+/** True only when a mounted workspace accepted the click, so other hosts keep their normal link behavior. */
+export function openWorkspaceHref(href: string): boolean {
+  const origin = runtimePageOrigin();
+  if (!origin) return false;
+  const action = workspaceActionForHref(href, origin);
+  if (!action) return false;
+  return dispatchWorkspaceAction({ nonce: `message-link:${++messageLinkSequence}`, action });
 }
 
 const CONSUMED_NONCE_CAP = 64;

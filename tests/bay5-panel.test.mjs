@@ -490,3 +490,23 @@ test("境内版也渲染完整 LeoBay 侧栏，不因旧交易开关而消失", 
     await view?.unmount();
   }
 });
+
+test("message destination: a newly opened panel keeps the exact order/service URL without navigation, and consumes it once", async () => {
+  resetRelated({ items: [], match: "none", q: "", site: null });
+  const navigated = [];
+  bayState.setBayNavigator((href) => navigated.push(href));
+  const before = window.location.href;
+  const request = { nonce: "message-order-1", query: "", href: "https://oceanbizs.com/bay?bay=order:order-1" };
+  const view = await mount(panelEl({ active: true, request }));
+  assert.deepEqual(bayState.bayStateSnapshot().current, { kind: "order", id: "order-1" });
+  assert.equal(view.host.querySelector("[data-bay-panel-target]")?.dataset.bayPanelTarget, "order");
+  assert.equal(globalThis.__bay5.detailLast.target.id, "order-1");
+  await view.render(panelEl({ active: true, request }));
+  assert.deepEqual(bayState.bayStateSnapshot().current, { kind: "order", id: "order-1" });
+  await view.render(panelEl({ active: true, request: { nonce: "message-service-2", query: "", href: "https://music.oceanleo.com/bay?bay=service:service-2" } }));
+  assert.deepEqual(bayState.bayStateSnapshot().current, { kind: "service", id: "service-2" });
+  assert.deepEqual(navigated, []);
+  assert.equal(window.location.href, before);
+  await view.unmount();
+  bayState.setBayNavigator(null);
+});
