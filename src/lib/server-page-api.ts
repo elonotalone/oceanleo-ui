@@ -21,12 +21,16 @@ export type MetricPoint = {
 export type NodeMetrics = {source: "node"; points: MetricPoint[]; latest: MetricPoint | null; needs_node_upgrade: boolean};
 export type CloudMonitoring = {metric: CloudMetric; unit: string; source: "cloud"; points: {t: string; v: number}[]};
 export type CustomInfo = {source: "device"; reported_at: string | null; items: {key: string; label: string; value: string}[]};
-export type ServerNode = {version: string; latest_version: string | null; needs_upgrade: boolean; auto_upgrade: boolean; caps: string[]};
+export type ServerNode = {version: string; latest_version: string | null; needs_upgrade: boolean; auto_upgrade: boolean; auto_upgrade_available: boolean; caps: string[]};
 export type SnapshotPolicy = {enabled: boolean; time_utc: string; retention_days: number};
-export type Snapshot = {id: string; disk_id: string; kind: "auto" | "manual"; size_gb: number; created_at: string; status: string; note: string};
-export type Snapshots = {items: Snapshot[]; policy: SnapshotPolicy; monthly_cost: MoneyAmount | null};
+export type RescueFailure = {code: string; message: string; missing_action?: string; policy_hint?: unknown};
+export type RescueOperation = {operation_name: string | null; operation_stage: string | null; operation_active: boolean | null; operation_error: string | null};
+export type Snapshot = {id: string; disk_id: string; kind: "auto" | "manual"; size_gb: number | null; created_at: string; status: string; note: string};
+export type Snapshots = {items: Snapshot[]; policy: SnapshotPolicy; monthly_cost: MoneyAmount | null; policy_choice: SnapshotPolicy | null; policy_error: RescueFailure | null; billing_unavailable_reason: string | null; operation: RescueOperation};
+export type ReinstallResult = Computer & {node_status: "awaiting_enrolment"};
 export type SecurityRule = {id: string; direction: "in" | "out"; protocol: string; port_range: string; source: string; policy: "accept" | "drop"; description: string};
-export type RuleInput = Omit<SecurityRule, "id"> & {confirmed?: boolean};
+export type SecurityRules = {rules: SecurityRule[]; shared: boolean};
+export type RuleInput = Omit<SecurityRule, "id"> & {confirmed?: boolean; dedicated_group_confirmed?: boolean};
 export type Diagnosis = {
   state: "ok" | "node_offline" | "os_down" | "stopped" | "unpaid" | "expired" | "network_blocked" | "disk_full" | "unknown";
   findings: {code: string; text: string}[];
@@ -52,15 +56,15 @@ export function createServerPageApi(request: typeof cloudComputerRequest = cloud
     setAutoUpgrade: (id: string, enabled: boolean) => send<ServerNode>(id, "/node/auto-upgrade", "PUT", {enabled}),
     reboot: (id: string, force: boolean) => send<Computer>(id, "/reboot", "POST", {force}),
     getSnapshots: (id: string) => request<Snapshots>(path(id, "/snapshots")),
-    createSnapshot: (id: string, note: string) => send<Snapshot>(id, "/snapshots", "POST", {note}),
-    deleteSnapshot: (id: string, snapshotId: string) => send<unknown>(id, `/snapshots/${encodeURIComponent(snapshotId)}`, "DELETE"),
-    setSnapshotPolicy: (id: string, policy: SnapshotPolicy) => send<SnapshotPolicy>(id, "/snapshots/policy", "PUT", policy),
-    rollback: (id: string, snapshotId: string, confirmed: boolean) => send<unknown>(id, `/snapshots/${encodeURIComponent(snapshotId)}/rollback`, "POST", {confirmed}),
-    reinstall: (id: string, confirmed: boolean) => send<unknown>(id, "/reinstall", "POST", {confirmed, keep_data_disks: true}),
+    createSnapshot: (id: string, note: string) => send<{items: {id: string; disk_id: string}[]}>(id, "/snapshots", "POST", {note}),
+    deleteSnapshot: (id: string, snapshotId: string, confirmed = false) => send<{ok: true}>(id, `/snapshots/${encodeURIComponent(snapshotId)}`, "DELETE", {confirmed}),
+    setSnapshotPolicy: (id: string, policy: SnapshotPolicy) => send<Snapshots>(id, "/snapshots/policy", "PUT", policy),
+    rollback: (id: string, snapshotId: string, confirmed: boolean) => send<Computer>(id, `/snapshots/${encodeURIComponent(snapshotId)}/rollback`, "POST", {confirmed}),
+    reinstall: (id: string, confirmed: boolean) => send<ReinstallResult>(id, "/reinstall", "POST", {confirmed, keep_data_disks: true}),
     diagnose: (id: string) => send<Diagnosis>(id, "/rescue/diagnose", "POST"),
-    getRules: (id: string) => request<{rules: SecurityRule[]}>(path(id, "/security-group")),
-    addRule: (id: string, rule: RuleInput) => send<SecurityRule>(id, "/security-group/rules", "POST", rule),
-    deleteRule: (id: string, ruleId: string, confirmed = false) => send<unknown>(id, `/security-group/rules/${encodeURIComponent(ruleId)}`, "DELETE", {confirmed}),
+    getRules: (id: string) => request<SecurityRules>(path(id, "/security-group")),
+    addRule: (id: string, rule: RuleInput) => send<SecurityRules>(id, "/security-group/rules", "POST", rule),
+    deleteRule: (id: string, ruleId: string, confirmed = false, dedicatedGroupConfirmed = false) => send<SecurityRules>(id, `/security-group/rules/${encodeURIComponent(ruleId)}`, "DELETE", {confirmed, dedicated_group_confirmed: dedicatedGroupConfirmed}),
     getUsageLimit: (id: string) => request<UsageLimit>(path(id, "/usage-limit")),
     setUsageLimit: (id: string, limit: LimitInput) => send<UsageLimit>(id, "/usage-limit", "PUT", limit),
   };
