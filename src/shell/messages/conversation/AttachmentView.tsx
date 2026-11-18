@@ -4,7 +4,8 @@ import { QUIET } from "../MessageSettingsFrame";
 
 // 附件：图片 / 视频 / 音频只用 <img> <video> <audio> 指向上传得到的存储地址；
 // 其他文件只给下载链接，不内联预览 HTML/SVG（契约 §10）。
-import { useState } from "react";
+import { useId, useState } from "react";
+import { Modal } from "../../../ui";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { ImAttachment } from "../../../lib/im/types";
 
@@ -36,28 +37,18 @@ export function formatDuration(ms: number | undefined): string {
 
 function Lightbox({ src, alt, onClose }: { src: string; alt: string; onClose: () => void }) {
   const tt = useUI();
+  const titleId = useId();
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={alt}
-      className="fixed inset-0 z-[80] flex items-center justify-center bg-black/80 p-4"
-      onClick={onClose}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="max-h-full max-w-full rounded-lg object-contain" onClick={(event) => event.stopPropagation()} />
-      <button
-        type="button"
-        onClick={onClose}
-        className={`${QUIET} absolute right-4 top-4 bg-white/90`}
-        autoFocus
-      >
-        {tt("关闭")}
-      </button>
-    </div>
+    <Modal onClose={onClose} labelledBy={titleId} className="relative !h-[calc(100dvh-2rem)] !w-[calc(100dvw-2rem)] max-w-none !border-0 !bg-transparent !shadow-none">
+      <div className="relative flex h-full w-full items-center justify-center">
+        <h2 id={titleId} className="sr-only">{alt}</h2>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} className="max-h-full max-w-full rounded-lg object-contain" />
+        <button type="button" onClick={onClose} className={`${QUIET} absolute right-0 top-0 bg-white/90`}>
+          {tt("关闭")}
+        </button>
+      </div>
+    </Modal>
   );
 }
 

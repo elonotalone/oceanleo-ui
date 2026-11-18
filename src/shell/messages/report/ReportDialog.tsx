@@ -8,6 +8,7 @@ import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH, MESSAGE_S
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { lockBodyScroll, trapTabWithin } from "../../anchored-popover";
 import { useUI } from "../../../i18n/ui/useUI";
 import type { UITranslate } from "../../../i18n/ui/useUI";
 import {
@@ -226,6 +227,8 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
 export function ReportDialog(props: ReportDialogProps) {
   const tt = useUI();
   const { onClose } = props;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -236,17 +239,25 @@ export function ReportDialog(props: ReportDialogProps) {
     const previous = document.activeElement as HTMLElement | null;
     panelRef.current?.querySelector<HTMLElement>("input, textarea, button")?.focus();
     function onKey(event: KeyboardEvent) {
+      if (event.defaultPrevented) return;
       if (event.key === "Escape" && !event.isComposing) {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key === "Tab") {
+        trapTabWithin(panelRef.current, event);
+        event.stopPropagation();
       }
     }
     document.addEventListener("keydown", onKey, true);
+    const unlock = lockBodyScroll();
     return () => {
       document.removeEventListener("keydown", onKey, true);
+      unlock();
       previous?.focus?.();
     };
-  }, [mounted, onClose]);
+  }, [mounted]);
 
   if (!mounted) return null;
   return createPortal(

@@ -5,6 +5,7 @@ import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH, MESSAGE_S
 // 点头像弹出的资料卡：他是谁、和我什么关系、在线状态；私聊 / 加联系人 / 拉黑 / 举报。
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { lockBodyScroll, trapTabWithin } from "../../anchored-popover";
 import { useUI } from "../../../i18n/ui/useUI";
 import { getConversationDetail } from "../../../lib/im/groups-api";
 import {
@@ -137,9 +138,11 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
   }, []);
 
   useEffect(() => {
-    if (!mounted) return;
-    dialogRef.current?.querySelector<HTMLElement>("button, input")?.focus();
-  }, [mounted]);
+    if (!mounted || reporting || deleting) return;
+    const panel = dialogRef.current;
+    (panel?.querySelector<HTMLElement>("button:not(:disabled), input:not(:disabled)") ?? panel)?.focus();
+    return lockBodyScroll();
+  }, [mounted, reporting, deleting]);
 
   useEffect(() => {
     setRemark(p?.remark ?? "");
@@ -185,14 +188,12 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="im-profile-title" tabIndex={-1} onKeyDown={(event) => {
-        if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
-        if (event.key !== "Tab") return;
-        const focusable = [...(dialogRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]') ?? [])];
-        if (!focusable.length) { event.preventDefault(); return; }
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+        if (event.defaultPrevented) return;
+        if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.stopPropagation(); onClose(); return; }
+        if (event.key === "Tab") {
+          trapTabWithin(dialogRef.current, event);
+          event.stopPropagation();
+        }
       }} className={`${MESSAGE_SETTINGS_WIDTH} ${MESSAGE_SETTINGS_HEIGHT} overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl outline-none`} data-profile-card>
         <MessageSettingsFrame title={tt("联系人")} titleId="im-profile-title" onClose={onClose} className="h-full">
         {profile.loading && !p ? (

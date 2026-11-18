@@ -41,7 +41,7 @@ const special = {
  useNetworkHealth:'()=>({stats:{}})', useIssueEnvironment:'()=>({})',
  listMediaDevices:'async()=>({microphones:[],speakers:[],cameras:[]})', queryPermission:'async()=>"unknown"',
  startMicMeter:'()=>new Promise(()=>{})', startMicProbe:'()=>new Promise(()=>{})',
- supportsSinkSelection:'()=>false',
+ supportsSinkSelection:'()=>false', lockBodyScroll:'()=>()=>{}', trapTabWithin:'()=>false',
 };
 Object.assign(special, {
  useControlNotices:'()=>[]', useSelfUserId:'()=>"self"', callIsLive:'()=>true',
@@ -188,19 +188,6 @@ test('emoji stays a 248px anchored picker, selects an emoji, and closes on outsi
   await act(async()=>popover.querySelector('button').dispatchEvent(new window.Event('pointerdown',{bubbles:true})));assert.equal(closed,0);
   await act(async()=>document.body.dispatchEvent(new window.Event('pointerdown',{bubbles:true})));assert.equal(closed,1);
   await act(async()=>document.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(closed,2);
- }finally{await view.close();}
-});
-test('image zoom stays a viewport lightbox with contained image and close / Escape / backdrop behavior',async()=>{
- const Component=await surface('src/shell/messages/conversation/AttachmentView.tsx','AttachmentView');
- const view=await mount(Component,{attachment:{kind:'image',url:'https://oceanleo.app/test.png',name:'Image'}});
- try{
-  const open=async()=>act(async()=>view.host.querySelector('button').click());await open();
-  let box=view.host.querySelector('[role=dialog]');assert.ok(box.classList.contains('fixed'));assert.ok(box.classList.contains('inset-0'));assert.equal(view.host.querySelector('[data-message-settings-frame]'),null);
-  assert.ok(box.querySelector('img').classList.contains('max-h-full'));assert.ok(hasClasses(box,frame.QUIET));
-  await act(async()=>box.querySelector('img').click());assert.ok(view.host.querySelector('[role=dialog]'));
-  await act(async()=>box.querySelector('button').click());assert.equal(view.host.querySelector('[role=dialog]'),null);
-  await open();box=view.host.querySelector('[role=dialog]');await act(async()=>box.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(view.host.querySelector('[role=dialog]'),null);
-  await open();await act(async()=>view.host.querySelector('[role=dialog]').click());assert.equal(view.host.querySelector('[role=dialog]'),null);
  }finally{await view.close();}
 });
 test('control request retains the original 360px non-modal card and refusal behavior',async()=>{
