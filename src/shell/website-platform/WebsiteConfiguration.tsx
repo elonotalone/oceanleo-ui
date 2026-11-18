@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   websiteConnectorsApi, type WebsiteConnectorChange, type WebsiteConnectorDetails,
   type WebsiteConnectorMutation, type WebsiteConnectorOption, type WebsiteConnectorSlot,
@@ -14,9 +14,14 @@ import {
 import { WorkNotWired } from "../works-workbench/WorkNotWired";
 import { SiteVaultPanel } from "./SiteVaultPanel";
 import { useWebsiteLanguage, useWebsiteUI } from "./website-preview-i18n";
+import { WorkUsagePanel } from "./WorkUsagePanel";
+import type { WorkUsageApi } from "../../api/work-usage";
+import { WebsiteTierPresets } from "./WebsiteTierPresets";
+
+const SampleWorkbench = lazy(() => import("../works-workbench/WorkWorkbench").then(module => ({ default: module.WorkWorkbench })));
 
 const PROVIDERS = { ours: "OceanLeo 提供", on_behalf: "代你购买", own_account: "你自己的账户" } as const;
-const CONNECTION_STATES = { not_connected: "未连接", connected: "已连接", error: "连接错误" } as const;
+const CONNECTION_STATES = { not_connected: "未接入", not_ready: "暂不可用", connected: "已连接", error: "连接错误" } as const;
 const TASK_STATES: Record<string, string> = {
   pending: "等待处理", queued: "已排队", running: "执行中", completed: "已完成", failed: "失败",
   cancelled: "已取消", review: "等待审核", awaiting_approval: "等待批准", needs_approval: "等待批准",
@@ -133,16 +138,23 @@ function ConnectorRow({ slot, catalog, pending, available, retryable, onSelect }
           {text(option.label, option.label_zh)} · {tt(PROVIDERS[option.provider_kind])}{option.available === false ? " · " + tt("暂不可用") : ""}
         </option>)}
       </select>
-      <button type="button" disabled={pending || !available || !draftOption || draftOption.available === false || (draft === slot.connector_id && slot.selection_source === "saved" && !retryable)}
+      <button type="button" disabled={pending || !available || !draftOption || draftOption.available === false || (draft === slot.connector_id && (slot.status === "not_ready" || (slot.selection_source === "saved" && !retryable)))}
         className="shrink-0 rounded border px-3 py-2 text-xs disabled:opacity-50" onClick={() => onSelect(slot.slot, draft)}>{tt(retryable && draft === slot.connector_id ? "重试" : "应用")}</button>
     </div>
     <ConnectorFacts connector={slot} />
+    {slot.slot === "hosting" && slot.connector_id === "ours_fc" && slot.status === "connected" && <div className="mt-3 space-y-2 text-xs" data-testid="request-billed-hosting-facts">
+      {slot.state_lines?.map((line, index) => <p className="break-words" key={index}>{text(line.label, line.label_zh)}: {text(line.value, line.value_zh)}</p>)}
+      {slot.last_publish_at && <p>{tt("最近发布")}: <time>{slot.last_publish_at}</time></p>}
+      {slot.schedules && <div><p>{tt("run.json 定时任务")}</p>{slot.schedules.length
+        ? <ul>{slot.schedules.map((schedule, index) => <li className="break-words" key={index}><code>{schedule.cron}</code> · <code>{schedule.path}</code></li>)}</ul>
+        : <p>{tt("运行说明中没有定时任务。")}</p>}</div>}
+    </div>}
     {slot.task_id && <p className="mt-3 text-xs"><a className="underline" href={"/tasks/" + encodeURIComponent(slot.task_id)}>{tt("打开 agent 任务")}</a></p>}
     <details className="mt-3 border-t border-[var(--awb-border)] pt-2 text-xs">
       <summary className="cursor-pointer">{tt("可用连接器（{count}）", { count: options.length })}</summary>
       <div className="mt-3 space-y-4">{options.map(option => <div key={option.connector_id}>
         <h4 className="mb-2 font-semibold">{text(option.label, option.label_zh)}</h4>
-        {option.available === false && <p className="mb-2 text-red-600" data-availability-code={option.availability_code}>{tt("此连接器暂不可用，请选择其他服务。")}</p>}
+        {option.available === false && <p className="mb-2 text-red-600" data-availability-code={option.availability_code}>{text(option.availability_reason || "此连接器暂不可用，请选择其他服务。", option.availability_reason_zh)}</p>}
         <ConnectorFacts connector={option} />
       </div>)}</div>
     </details>
@@ -165,14 +177,14 @@ function ConnectorChange({ change, catalog }: { change: WebsiteConnectorChange; 
 }
 
 type WebsiteConfigurationProps = {
-  projectId: string; defaultPreset?: string; api?: WebsiteConnectorsApi; exportsApi?: WebsiteExportsApi; onTaskCreated: (taskId: string) => void;
+  projectId: string; defaultPreset?: string; api?: WebsiteConnectorsApi; exportsApi?: WebsiteExportsApi; usageApi?: WorkUsageApi; onTaskCreated: (taskId: string) => void;
 };
 
 export function WebsiteConfiguration(props: WebsiteConfigurationProps) {
   return <ProjectConfiguration key={props.projectId} {...props} />;
 }
 
-function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConnectorsApi, exportsApi = websiteExportsApi, onTaskCreated }: WebsiteConfigurationProps) {
+function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConnectorsApi, exportsApi = websiteExportsApi, usageApi, onTaskCreated }: WebsiteConfigurationProps) {
   const tt = useWebsiteUI();
   const text = useConnectorText();
   const [environment, setEnvironment] = useState<WebsiteConnectorEnvironment>("preview");
@@ -184,6 +196,7 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
   const [pending, setPending] = useState(false);
   const [preset, setPreset] = useState(defaultPreset);
   const [refresh, setRefresh] = useState(0);
+  const [sampleProject, setSampleProject] = useState("");
   const [uncertain, setUncertain] = useState(false);
   const [receipt, setReceipt] = useState<OutcomeReceipt | null>(null);
   const [exportPending, setExportPending] = useState<WebsiteExportKind | null>(null);
@@ -302,6 +315,7 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
   }
 
   useEffect(() => {
+    if (sampleProject) return;
     const epoch = ++generation.current;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -322,7 +336,7 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
     };
     void poll();
     return () => { controller.abort(); clearTimeout(timer); if (generation.current === epoch) generation.current++; };
-  }, [projectId, api, environment, refresh]);
+  }, [projectId, api, environment, refresh, sampleProject]);
 
   function changeEnvironment(next: string) {
     if ((next !== "preview" && next !== "production") || next === scope.current) return;
@@ -373,7 +387,14 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
     }
   }
 
-  if (notWired) return <WorkNotWired page="configuration" />;
+  if (sampleProject) return <section className="flex h-full min-h-0 flex-col" data-testid="website-tier-sample-work">
+    <button type="button" className="shrink-0 border-b p-2 text-left text-xs underline" onClick={() => setSampleProject("")}>{tt("返回原作品配置")}</button>
+    <div className="min-h-0 flex-1"><Suspense fallback={<p role="status">{tt("加载中…")}</p>}><SampleWorkbench workId={"cloud:" + sampleProject} /></Suspense></div>
+  </section>;
+  if (notWired) return <section className="h-full overflow-auto p-3">
+    <p role="status">{tt("此功能尚未在当前服务端开通")} <button type="button" className="underline" onClick={() => setRefresh(value => value + 1)}>{tt("重试")}</button></p>
+    <WorkNotWired page="configuration" /><WorkUsagePanel projectId={projectId} api={usageApi} />
+  </section>;
 
   const selectedPreset = snapshot?.presets.find(item => item.id === preset);
   const available = snapshot?.persistence.available === true;
@@ -407,6 +428,24 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
     {receipt?.task_id && <p className="mt-3 text-xs" data-testid="website-connector-receipt" data-change-id={receipt.change_id}>
       {tt("任务已创建")} · <a className="underline" href={"/tasks/" + encodeURIComponent(receipt.task_id)}>{tt("打开 agent 任务")}</a>
     </p>}
+    <WorkUsagePanel projectId={projectId} api={usageApi} />
+    <WebsiteTierPresets projectId={projectId} api={api} presets={snapshot?.presets || []} blocked={blocked} available={available}
+      onApply={id => void apply(selected => api.preset(projectId, id, selected))} onOpen={setSampleProject} legacy={snapshot && <div className="my-4 rounded border border-[var(--awb-border)] p-3">
+      <h3 className="mb-2 font-semibold">{tt("场景方案")}</h3>
+      <p className="mb-3 text-xs opacity-65">{tt("方案会填写各项服务，之后仍可逐项更改。")}</p>
+      <div className="flex items-center gap-2">
+        <select aria-label={tt("场景方案")} value={preset} onChange={event => setPreset(event.target.value)}
+          className="min-w-0 flex-1 rounded border bg-[var(--awb-chrome-bg)] p-2 text-xs">
+          <option value="">{tt("选择场景方案")}</option>
+          {snapshot.presets.map(item => <option key={item.id} value={item.id}>{text(item.label, item.label_zh)}</option>)}
+        </select>
+        <button type="button" disabled={blocked || !available || !selectedPreset || presetUnavailable} className="shrink-0 rounded border px-3 py-2 text-xs disabled:opacity-50"
+          onClick={() => void apply(selected => api.preset(projectId, preset, selected))}>{tt("应用方案")}</button>
+      </div>
+      {presetUnavailable && <p role="status" className="mt-2 text-xs text-red-600">{tt("该方案包含暂不可用的服务，可逐项选择其他连接器。")}</p>}
+      {selectedPreset && <p className="mt-2 break-words text-xs opacity-65">{Object.entries(selectedPreset.selections).map(([slot, connector]) =>
+        `${tt(SLOT_LABELS[slot] || slot)}: ${text(snapshot.catalog.find(item => item.connector_id === connector)?.label || connector, snapshot.catalog.find(item => item.connector_id === connector)?.label_zh)}`).join(" · ")}</p>}
+    </div>} />
     {snapshot && <>
       <section className="my-4 rounded border border-[var(--awb-border)] p-3">
         <h3 className="font-semibold">{tt("下载作品文件")}</h3>
@@ -420,22 +459,6 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
         {!databaseExportSupported && <p className="mt-2 text-xs opacity-65">{tt("当前数据库连接器暂不支持下载。")}</p>}
       </section>
       {!available && <p role="status" className="mt-3 rounded border p-3 text-xs">{tt("配置存储尚未就绪，当前显示默认选择，暂时无法保存。")}</p>}
-      <div className="my-4 rounded border border-[var(--awb-border)] p-3">
-        <h3 className="mb-2 font-semibold">{tt("场景方案")}</h3>
-        <p className="mb-3 text-xs opacity-65">{tt("方案会填写各项服务，之后仍可逐项更改。")}</p>
-        <div className="flex items-center gap-2">
-          <select aria-label={tt("场景方案")} value={preset} onChange={event => setPreset(event.target.value)}
-            className="min-w-0 flex-1 rounded border bg-[var(--awb-chrome-bg)] p-2 text-xs">
-            <option value="">{tt("选择场景方案")}</option>
-            {snapshot.presets.map(item => <option key={item.id} value={item.id}>{text(item.label, item.label_zh)}</option>)}
-          </select>
-          <button type="button" disabled={blocked || !available || !selectedPreset || presetUnavailable} className="shrink-0 rounded border px-3 py-2 text-xs disabled:opacity-50"
-            onClick={() => void apply(selected => api.preset(projectId, preset, selected))}>{tt("应用方案")}</button>
-        </div>
-        {presetUnavailable && <p role="status" className="mt-2 text-xs text-red-600">{tt("该方案包含暂不可用的服务，可逐项选择其他连接器。")}</p>}
-        {selectedPreset && <p className="mt-2 break-words text-xs opacity-65">{Object.entries(selectedPreset.selections).map(([slot, connector]) =>
-          `${tt(SLOT_LABELS[slot] || slot)}: ${text(snapshot.catalog.find(item => item.connector_id === connector)?.label || connector, snapshot.catalog.find(item => item.connector_id === connector)?.label_zh)}`).join(" · ")}</p>}
-      </div>
       <div className="space-y-3">{snapshot.slots.map(slot => <ConnectorRow key={environment + ":" + slot.slot} slot={slot} catalog={snapshot.catalog} pending={blocked} available={available}
         retryable={snapshot.changes.some(change => change.id === slot.change_id && change.status === "failed" && !isUnconfirmed(change))}
         onSelect={(name, connectorId) => void apply(selected => api.select(projectId, name, connectorId, selected))} />)}</div>

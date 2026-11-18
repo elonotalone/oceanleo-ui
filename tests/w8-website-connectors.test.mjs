@@ -25,6 +25,8 @@ const { WebsiteConfiguration } = await import(await compileModule("src/shell/web
   "../../api/website-runtime": runtimeModule,
   "../../api/website-exports": exportsModule,
   "./SiteVaultPanel": dataModule("export function SiteVaultPanel({projectId}){globalThis.__w8VaultProject=projectId;return null;}"),
+  "./WorkUsagePanel": dataModule("export function WorkUsagePanel(){return null;} export const missingWorkFeature=e=>[404,501].includes(Number(e?.status));"),
+  "./WebsiteTierPresets": dataModule("export function WebsiteTierPresets({legacy}){return legacy;}"),
 }));
 const { createRoot } = await import("react-dom/client");
 const slotIds = ["dev_runtime", "code", "database", "auth", "storage", "hosting", "domain", "analytics", "scheduler"];
@@ -108,7 +110,7 @@ test("Configuration exposes every slot and preset from first use with provider, 
     for (const id of slotIds) {
       const row = m.host.querySelector(`[data-testid="website-connector-${id}"]`);
       assert.ok(row); assert.equal(row.querySelector("select").disabled, false); assert.equal(row.querySelector("button").disabled, false);
-      assert.match(row.textContent, /未连接/); assert.match(row.textContent, /按实际使用成本，不加价/);
+      assert.match(row.textContent, /未接入/); assert.match(row.textContent, /按实际使用成本，不加价/);
       assert.match(row.textContent, /服务商账单/); assert.match(row.textContent, /受用量限制/);
       assert.match(row.textContent, /标准接口/);
     }
