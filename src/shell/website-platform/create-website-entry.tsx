@@ -5,6 +5,8 @@ import { useWebsiteUI } from "./website-preview-i18n";
 import { DEFAULT_WORK_KIND, type WorkKind } from "../works/kinds";
 import { COLLECTION_ACTION_BTN_PRIMARY } from "../collection-chrome";
 import type { LibraryItem } from "../library-data";
+import { HostingTierChoice } from "./HostingTierChoice";
+import type { HostingTier } from "./hosting-tier";
 import { createWebsiteFromDescription } from "./create-website";
 
 export function CreateWebsiteEntry({
@@ -19,18 +21,20 @@ export function CreateWebsiteEntry({
   const tt = useWebsiteUI();
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState("");
+  const [tier, setTier] = useState<HostingTier | "">("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (pending || disabled || !description.trim()) return;
+    if (pending || disabled || !description.trim() || !tier) return;
     setPending(true);
     setError("");
     try {
-      const created = await createWebsiteFromDescription(description, kind);
+      const created = await createWebsiteFromDescription(description, tier, kind);
       setOpen(false);
       setDescription("");
+      setTier("");
       onCreated(created.item);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "作品创建失败，请重试。");
@@ -48,6 +52,7 @@ export function CreateWebsiteEntry({
         disabled={disabled}
         onClick={() => {
           setError("");
+          setTier("");
           setOpen(true);
         }}
       >
@@ -66,7 +71,7 @@ export function CreateWebsiteEntry({
         >
           <form
             onSubmit={(event) => void submit(event)}
-            className="w-full max-w-lg rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-5 shadow-xl"
+            className="max-h-[90vh] overflow-y-auto w-full max-w-lg rounded-2xl border border-[var(--border,#e7e5e4)] bg-[var(--card,#fff)] p-5 shadow-xl"
           >
             <h2 className="text-base font-semibold">{tt("新建作品")}</h2>
             <label className="mt-4 block text-sm text-[var(--fg-2,#57534e)]">
@@ -81,6 +86,7 @@ export function CreateWebsiteEntry({
                 disabled={pending}
               />
             </label>
+            <HostingTierChoice value={tier} onChange={setTier} disabled={pending} />
             {error ? (
               <p role="alert" className="mt-2 text-xs text-rose-600">
                 {tt(error)}
@@ -98,7 +104,7 @@ export function CreateWebsiteEntry({
               <button
                 type="submit"
                 className={COLLECTION_ACTION_BTN_PRIMARY}
-                disabled={pending || !description.trim()}
+                disabled={pending || !description.trim() || !tier}
               >
                 {tt(pending ? "创建中…" : "创建作品")}
               </button>

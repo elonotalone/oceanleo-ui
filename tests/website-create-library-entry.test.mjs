@@ -41,8 +41,13 @@ for (const [name, value] of Object.entries({
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 globalThis.__createdWebsiteDescription = "";
+const tierPicker = await compileModule("src/shell/website-platform/HostingTierChoice.tsx", {
+  "./website-preview-i18n": dataModule('export const useWebsiteUI=()=>s=>s;export const useWebsiteLanguage=()=>"zh";'),
+  "../../api/website-connectors": dataModule('export const websiteConnectorsApi={tiers:async()=>["static","request_billed","server","heavy","own_accounts"].map(id=>({id,label:id,audience:id,available:true}))};'),
+});
 const { CreateWebsiteEntry } = await import(
   await compileModule("src/shell/website-platform/create-website-entry.tsx", {
+    "./HostingTierChoice": tierPicker,
     "../../i18n/ui/useUI": dataModule(`export function useUI() { return (value) => value; }`),
     "../collection-chrome": dataModule(`export const COLLECTION_ACTION_BTN_PRIMARY = "primary";`),
     "../library-data": dataModule(``),
@@ -78,6 +83,9 @@ test("task website creation still accepts a description and returns the created 
     setValue.call(input, "一个展示作品集的简洁网站");
     input.dispatchEvent(new window.Event("input", { bubbles: true }));
   });
+  assert.equal(dialog.querySelectorAll("input:checked").length, 0);
+  assert.equal(dialog.querySelector('[type="submit"]').disabled, true);
+  await act(async () => { dialog.querySelector('input[value="static"]').click(); });
   await act(async () => {
     dialog.querySelector("form").dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));

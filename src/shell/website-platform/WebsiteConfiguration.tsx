@@ -180,14 +180,14 @@ function ConnectorChange({ change, catalog }: { change: WebsiteConnectorChange; 
 }
 
 type WebsiteConfigurationProps = {
-  projectId: string; defaultPreset?: string; api?: WebsiteConnectorsApi; exportsApi?: WebsiteExportsApi; usageApi?: WorkUsageApi; onTaskCreated: (taskId: string) => void;
+  projectId: string; api?: WebsiteConnectorsApi; exportsApi?: WebsiteExportsApi; usageApi?: WorkUsageApi; onTaskCreated: (taskId: string) => void;
 };
 
 export function WebsiteConfiguration(props: WebsiteConfigurationProps) {
   return <ProjectConfiguration key={props.projectId} {...props} />;
 }
 
-function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConnectorsApi, exportsApi = websiteExportsApi, usageApi, onTaskCreated }: WebsiteConfigurationProps) {
+function ProjectConfiguration({ projectId, api = websiteConnectorsApi, exportsApi = websiteExportsApi, usageApi, onTaskCreated }: WebsiteConfigurationProps) {
   const tt = useWebsiteUI();
   const text = useConnectorText();
   const [environment, setEnvironment] = useState<WebsiteConnectorEnvironment>("preview");
@@ -197,7 +197,7 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
   const [pending, setPending] = useState(false);
-  const [preset, setPreset] = useState(defaultPreset);
+  const [preset, setPreset] = useState("");
   const [refresh, setRefresh] = useState(0);
   const [sampleProject, setSampleProject] = useState("");
   const [uncertain, setUncertain] = useState(false);
@@ -324,7 +324,7 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
     let timer: ReturnType<typeof setTimeout>;
     scope.current = environment;
     currentSnapshot.current = null;
-    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset(defaultPreset);
+    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset("");
     const poll = async () => {
       try {
         await readSnapshot(environment, epoch, controller.signal);
@@ -348,7 +348,7 @@ function ProjectConfiguration({ projectId, defaultPreset = "", api = websiteConn
     generation.current++; mutation.current++;
     reconciliation.current?.abort();
     currentSnapshot.current = null;
-    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset(defaultPreset);
+    setSnapshot(null); setLoading(true); setError(""); showActionError(""); setPreset("");
     setEnvironment(next);
   }
 

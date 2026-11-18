@@ -199,7 +199,7 @@ test('configuration sample success opens the ordinary workbench with the returne
 });
 
 test('all 17 locale dictionaries cover the same messages and preserve interpolation variables', () => {
-  const keys = Object.keys(copy.zh); assert.equal(Object.keys(copy).length, 17); assert.equal(keys.length, 44);
+  const keys = Object.keys(copy.zh); assert.equal(Object.keys(copy).length, 17); assert.equal(keys.length, 46);
   for (const [locale, dictionary] of Object.entries(copy)) {
     assert.deepEqual(Object.keys(dictionary), keys, locale);
     for (const key of keys) { assert.ok(dictionary[key].length, `${locale}: ${key}`); assert.deepEqual(dictionary[key].match(/\{\w+\}/g), key.match(/\{\w+\}/g), `${locale}: ${key}`); }

@@ -13,7 +13,7 @@ export const FALLBACK_WORK_KIND: WorkKind = "other";
 export const WORK_KINDS: readonly WorkKind[] = ["website", "game", "app", "miniprogram", "other"];
 export const DEFAULT_KIND_DEFINITION: WorkKindDefinition = {
   kind: DEFAULT_WORK_KIND, label: "Website", label_zh: "网站",
-  preview: { frame: "browser", orientation: "any" }, default_preset: "landing_page", default_boards: ["domain", "runtime_cost", "visits", "errors"],
+  preview: { frame: "browser", orientation: "any" }, default_preset: "", default_boards: ["domain", "runtime_cost", "visits", "errors"],
 };
 export function normalizeWorkKind(value: unknown): WorkKind {
   return WORK_KINDS.includes(value as WorkKind) ? value as WorkKind : FALLBACK_WORK_KIND;

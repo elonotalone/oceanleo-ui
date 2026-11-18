@@ -5,6 +5,8 @@ import type { AdvancedContentWorkbenchProps } from "../advanced-workbench-types"
 import { AdvancedWorkbenchShell } from "../AdvancedWorkbenchShell";
 import { forkArtifact, getArtifactWebsitePreview } from "../artifact-client";
 import { isDurableLibraryItem, type LibraryItem } from "../library-data";
+import { HostingTierChoice } from "../website-platform/HostingTierChoice";
+import type { HostingTier } from "../website-platform/hosting-tier";
 import { worksApi } from "../../lib/works-api";
 import type { Work } from "../works/model";
 import { WorkWorkbench } from "./WorkWorkbench";
@@ -22,7 +24,10 @@ export function WorkWorkbenchRoute({ item, taskId, siteId = "", accent, onClose,
   const active = useRef(true);
   const currentIdentity = useRef(identity); currentIdentity.current = identity;
   useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
-  const [result, setResult] = useState<{ identity: string; work?: Work; error?: string } | null>(null);
+  const [result, setResult] = useState<{ identity: string; work?: Work; error?: string; needsTier?: boolean } | null>(null);
+  const [tier, setTier] = useState<HostingTier | "">("");
+  const [choice, setChoice] = useState<{ identity: string; tier: HostingTier } | null>(null);
+  useEffect(() => { setTier(""); }, [identity]);
   const [retry, setRetry] = useState(0);
   const [forking, setForking] = useState(false);
   const [forkError, setForkError] = useState("");
@@ -43,15 +48,15 @@ export function WorkWorkbenchRoute({ item, taskId, siteId = "", accent, onClose,
       setResult({ identity, work: { ...work, play_url: next.data.url } });
       if (next.data.expiresAt) timer = setTimeout(() => void publicPreview(work).catch(failed), Math.max(1000, Date.parse(next.data.expiresAt) - Date.now() - 5000));
     };
-    const failed = () => { if (!abort.signal.aborted) setResult({ identity, error: "暂时无法打开作品，请重试。" }); };
+    const failed = (error?: unknown) => { if (!abort.signal.aborted) setResult({ identity, ...(error && typeof error === "object" && "code" in error && error.code === "tier_required" ? { needsTier: true } : { error: "暂时无法打开作品，请重试。" }) }); };
     if (!artifactId) setResult({ identity, error: "这个条目没有可打开的作品。" });
-    else void worksApi.open(artifactId, revisionId, abort.signal).then(async work => {
+    else void worksApi.open(artifactId, revisionId, abort.signal, choice?.identity === identity ? choice.tier : undefined).then(async work => {
       if (abort.signal.aborted) return;
       if (work.access === "view" && !work.play_url && !work.preview?.url) await publicPreview(work);
       else setResult({ identity, work });
     }).catch(failed);
     return () => { abort.abort(); clearTimeout(timer); };
-  }, [artifactId, revisionId, identity, retry]);
+  }, [artifactId, revisionId, identity, retry, choice]);
   const current = result?.identity === identity ? result : null;
   const work = current?.work;
   const canFork = isDurableLibraryItem(currentItem) && currentItem.artifact.access.canFork;
@@ -67,7 +72,11 @@ export function WorkWorkbenchRoute({ item, taskId, siteId = "", accent, onClose,
     finally { if (active.current && currentIdentity.current === identity) setForking(false); }
   };
   const stage = <div className="flex h-full min-h-0 flex-col" data-testid="work-workbench-route">
-    {current?.error ? <p role="alert" className="p-4">{tt(current.error)} <button type="button" onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></p>
+    {current?.needsTier ? <form className="mx-auto w-full max-w-lg overflow-y-auto p-4" onSubmit={event => {
+      event.preventDefault(); if (tier) setChoice({ identity, tier });
+    }}><HostingTierChoice value={tier} onChange={setTier} />
+      <button type="submit" disabled={!tier} className="mt-4 rounded-lg bg-stone-800 px-4 py-2 text-sm text-white disabled:opacity-50">{tt("创建作品")}</button>
+    </form> : current?.error ? <p role="alert" className="p-4">{tt(current.error)} <button type="button" onClick={() => setRetry(value => value + 1)}>{tt("重试")}</button></p>
       : !work ? <p role="status" className="p-4">{tt("加载中…")}</p>
       : <>
         {work.access === "view" && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b p-2 text-xs" data-testid="work-view-access">

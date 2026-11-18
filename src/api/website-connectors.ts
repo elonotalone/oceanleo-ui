@@ -132,8 +132,8 @@ export type WebsiteConnectorMutation = WebsiteConnectorsSnapshot & {
 };
 
 export const websiteConnectorsApi = {
-  tiers: async (id: string, signal?: AbortSignal) => {
-    const body = await tierRequest("/presets/tiers?" + new URLSearchParams({ project_id: id }), { signal }) as { presets?: WebsiteConnectorPreset[] } | null;
+  tiers: async (id?: string, signal?: AbortSignal) => {
+    const body = await tierRequest("/presets/tiers" + (id ? "?" + new URLSearchParams({ project_id: id }) : ""), { signal }) as { presets?: WebsiteConnectorPreset[] } | null;
     return checkedPresets(body?.presets);
   },
   createSample: async (tierId: string, locale: "en" | "zh", signal?: AbortSignal): Promise<WebsiteTierSample> => {

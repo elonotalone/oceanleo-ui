@@ -100,7 +100,7 @@ export interface WorksApi {
   list(signal?: AbortSignal): Promise<Work[]>;
   get(id: string, signal?: AbortSignal): Promise<Work>;
   kinds(): Promise<WorkKindDefinition[]>;
-  open(artifactId: string, revisionId?: string, signal?: AbortSignal): Promise<Work>;
+  open(artifactId: string, revisionId?: string, signal?: AbortSignal, tier?: import("../shell/website-platform/hosting-tier").HostingTier): Promise<Work>;
   previewSource(id: string, signal?: AbortSignal): Promise<WorkPreviewSourceResult>;
   setPreviewSource(id: string, source: WorkPreviewSource, signal?: AbortSignal): Promise<WorkPreviewSourceResult>;
   createLink(input: CreateLinkWorkInput, signal?: AbortSignal): Promise<Work>;
@@ -129,9 +129,9 @@ export const worksApi: WorksApi = {
       return kinds;
     }).catch(() => { kindsPromise = undefined; return [DEFAULT_KIND_DEFINITION]; });
   },
-  async open(artifactId, revisionId, signal) {
+  async open(artifactId, revisionId, signal, tier) {
     const body = await request<WorkEnvelope>("/v1/works/open", {
-      method: "POST", body: JSON.stringify({ artifact_id: artifactId, ...(revisionId ? { revision_id: revisionId } : {}) }), signal,
+      method: "POST", body: JSON.stringify({ artifact_id: artifactId, ...(revisionId ? { revision_id: revisionId } : {}), ...(tier ? { tier } : {}) }), signal,
     });
     const work = requireWork(body.work);
     if (!work.access) throw new WorksApiError(502, "response_malformed");

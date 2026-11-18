@@ -294,7 +294,7 @@ export function WebsitePreviewWorkbench({ projectId, runtimeApi = websiteRuntime
     </div>}
     {taskHost && taskNotice ? createPortal(taskNotice, taskHost) : taskNotice}
     <div role="tabpanel" id={`website-view-${view}`} className="relative flex min-h-0 flex-1 flex-col">
-      {view === "configuration" ? !projectId ? <WorkNotWired page="configuration" /> : <WebsiteConfiguration key={projectId} projectId={projectId} api={connectorsApi} defaultPreset={kind.default_preset} onTaskCreated={taskCreated} />
+      {view === "configuration" ? !projectId ? <WorkNotWired page="configuration" /> : <WebsiteConfiguration key={projectId} projectId={projectId} api={connectorsApi} onTaskCreated={taskCreated} />
         : view === "dashboard" ? !projectId ? <WorkNotWired page="dashboard" /> : <WebsiteDashboard key={projectId} projectId={projectId} runtime={runtime} runtimeError={error} api={panelsApi} defaultBoards={kind.default_boards} pending={pending}
           onWire={panelId => void run(() => panelsApi.wire(projectId, panelId), true)} onLogs={() => setLogsOpen(true)}
           onAction={action => void run(() => runtimeApi.action(projectId, action))} onFix={fix} />

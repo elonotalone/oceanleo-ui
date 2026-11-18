@@ -3,6 +3,9 @@ import type { Locale } from "../../config";
 /** Configuration copy; server tier descriptions retain their supplied zh/en text. */
 export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> = {
   "zh": {
+    "请先选择服务层级。": "请先选择服务层级。",
+    "样板作品：{name}": "样板作品：{name}",
+
     "本月用量": "本月用量",
     "合计：{amount}": "合计：{amount}",
     "暂时无法读取本月用量。": "暂时无法读取本月用量。",
@@ -49,6 +52,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "用量记录存储尚未就绪。"
   },
   "en": {
+    "请先选择服务层级。": "Choose a hosting tier first.",
+    "样板作品：{name}": "Sample work: {name}",
+
     "本月用量": "This month’s usage",
     "合计：{amount}": "Total: {amount}",
     "暂时无法读取本月用量。": "This month’s usage is unavailable.",
@@ -95,6 +101,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "Usage record storage is not ready."
   },
   "zh-TW": {
+    "请先选择服务层级。": "請先選擇服務層級。",
+    "样板作品：{name}": "範例作品：{name}",
+
     "本月用量": "本月用量",
     "合计：{amount}": "合計：{amount}",
     "暂时无法读取本月用量。": "暫時無法讀取本月用量。",
@@ -141,6 +150,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "用量記錄儲存尚未就緒。"
   },
   "de": {
+    "请先选择服务层级。": "Wähle zuerst eine Hosting-Stufe.",
+    "样板作品：{name}": "Beispielprojekt: {name}",
+
     "本月用量": "Nutzung in diesem Monat",
     "合计：{amount}": "Gesamt: {amount}",
     "暂时无法读取本月用量。": "Die Nutzung dieses Monats ist nicht verfügbar.",
@@ -187,6 +199,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "Der Speicher für Nutzungsdaten ist noch nicht bereit."
   },
   "es": {
+    "请先选择服务层级。": "Elige primero un nivel de alojamiento.",
+    "样板作品：{name}": "Proyecto de ejemplo: {name}",
+
     "本月用量": "Uso de este mes",
     "合计：{amount}": "Total: {amount}",
     "暂时无法读取本月用量。": "El uso de este mes no está disponible.",
@@ -233,6 +248,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "El almacenamiento de registros de uso aún no está listo."
   },
   "fr": {
+    "请先选择服务层级。": "Choisissez d’abord un niveau d’hébergement.",
+    "样板作品：{name}": "Projet exemple : {name}",
+
     "本月用量": "Utilisation ce mois-ci",
     "合计：{amount}": "Total : {amount}",
     "暂时无法读取本月用量。": "L’utilisation de ce mois est indisponible.",
@@ -279,6 +297,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "Le stockage des données d’utilisation n’est pas prêt."
   },
   "it": {
+    "请先选择服务层级。": "Scegli prima un livello di hosting.",
+    "样板作品：{name}": "Progetto di esempio: {name}",
+
     "本月用量": "Utilizzo di questo mese",
     "合计：{amount}": "Totale: {amount}",
     "暂时无法读取本月用量。": "L’utilizzo di questo mese non è disponibile.",
@@ -325,6 +346,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "L’archivio dei dati di utilizzo non è pronto."
   },
   "pt-BR": {
+    "请先选择服务层级。": "Escolha primeiro um nível de hospedagem.",
+    "样板作品：{name}": "Obra de exemplo: {name}",
+
     "本月用量": "Uso deste mês",
     "合计：{amount}": "Total: {amount}",
     "暂时无法读取本月用量。": "O uso deste mês está indisponível.",
@@ -371,6 +395,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "O armazenamento dos registros de uso ainda não está pronto."
   },
   "pt-PT": {
+    "请先选择服务层级。": "Escolha primeiro um nível de alojamento.",
+    "样板作品：{name}": "Obra de exemplo: {name}",
+
     "本月用量": "Utilização deste mês",
     "合计：{amount}": "Total: {amount}",
     "暂时无法读取本月用量。": "A utilização deste mês está indisponível.",
@@ -417,6 +444,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "O armazenamento dos registos de utilização ainda não está pronto."
   },
   "vi": {
+    "请先选择服务层级。": "Hãy chọn cấp lưu trữ trước.",
+    "样板作品：{name}": "Tác phẩm mẫu: {name}",
+
     "本月用量": "Mức sử dụng tháng này",
     "合计：{amount}": "Tổng: {amount}",
     "暂时无法读取本月用量。": "Chưa thể đọc mức sử dụng tháng này.",
@@ -463,6 +493,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "Kho lưu trữ bản ghi sử dụng chưa sẵn sàng."
   },
   "tr": {
+    "请先选择服务层级。": "Önce bir barındırma düzeyi seçin.",
+    "样板作品：{name}": "Örnek çalışma: {name}",
+
     "本月用量": "Bu ayki kullanım",
     "合计：{amount}": "Toplam: {amount}",
     "暂时无法读取本月用量。": "Bu ayki kullanım okunamıyor.",
@@ -509,6 +542,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "Kullanım kaydı depolaması henüz hazır değil."
   },
   "ja": {
+    "请先选择服务层级。": "先にホスティングの階層を選んでください。",
+    "样板作品：{name}": "サンプル作品：{name}",
+
     "本月用量": "今月の使用量",
     "合计：{amount}": "合計：{amount}",
     "暂时无法读取本月用量。": "今月の使用量を読み込めません。",
@@ -555,6 +591,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "使用記録の保存先はまだ準備できていません。"
   },
   "ko": {
+    "请先选择服务层级。": "먼저 호스팅 등급을 선택하세요.",
+    "样板作品：{name}": "샘플 작품: {name}",
+
     "本月用量": "이번 달 사용량",
     "合计：{amount}": "합계: {amount}",
     "暂时无法读取本月用量。": "이번 달 사용량을 읽을 수 없습니다.",
@@ -601,6 +640,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "사용 기록 저장소가 아직 준비되지 않았습니다."
   },
   "ar": {
+    "请先选择服务层级。": "اختر مستوى الاستضافة أولاً.",
+    "样板作品：{name}": "عمل نموذجي: {name}",
+
     "本月用量": "استخدام هذا الشهر",
     "合计：{amount}": "الإجمالي: {amount}",
     "暂时无法读取本月用量。": "تعذّر قراءة استخدام هذا الشهر.",
@@ -647,6 +689,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "مخزن سجلات الاستخدام غير جاهز بعد."
   },
   "th": {
+    "请先选择服务层级。": "เลือกระดับโฮสติ้งก่อน",
+    "样板作品：{name}": "ผลงานตัวอย่าง: {name}",
+
     "本月用量": "การใช้งานเดือนนี้",
     "合计：{amount}": "รวม: {amount}",
     "暂时无法读取本月用量。": "ไม่สามารถอ่านการใช้งานเดือนนี้ได้",
@@ -693,6 +738,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "พื้นที่จัดเก็บบันทึกการใช้งานยังไม่พร้อม"
   },
   "hi": {
+    "请先选择服务层级。": "पहले होस्टिंग स्तर चुनें।",
+    "样板作品：{name}": "नमूना कार्य: {name}",
+
     "本月用量": "इस महीने का उपयोग",
     "合计：{amount}": "कुल: {amount}",
     "暂时无法读取本月用量。": "इस महीने का उपयोग नहीं पढ़ा जा सका।",
@@ -739,6 +787,9 @@ export const WEBSITE_SERVICE_TIERS_COPY: Record<Locale, Record<string, string>> 
     "用量记录存储尚未就绪。": "उपयोग रिकॉर्ड का संग्रहण अभी तैयार नहीं है।"
   },
   "es-419": {
+    "请先选择服务层级。": "Elige primero un nivel de alojamiento.",
+    "样板作品：{name}": "Proyecto de ejemplo: {name}",
+
     "本月用量": "Uso de este mes",
     "合计：{amount}": "Total: {amount}",
     "暂时无法读取本月用量。": "El uso de este mes no está disponible.",

@@ -4,6 +4,7 @@ import { accessToken } from "../../lib/auth/client";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { getArtifactItem } from "../artifact-client";
 import { DEFAULT_WORK_KIND, type WorkKind } from "../works/kinds";
+import { isHostingTier, type HostingTier } from "./hosting-tier";
 import type { LibraryItem } from "../library-data";
 
 export interface CreatedWebsite {
@@ -17,11 +18,13 @@ export interface CreatedWebsite {
 /** Create a website from the one description the Library asks the user for. */
 export async function createWebsiteFromDescription(
   description: string,
+  tier: HostingTier,
   kindOrSignal: WorkKind | AbortSignal = DEFAULT_WORK_KIND,
   signal?: AbortSignal,
 ): Promise<CreatedWebsite> {
   const kind = typeof kindOrSignal === "string" ? kindOrSignal : DEFAULT_WORK_KIND;
   signal = typeof kindOrSignal === "string" ? signal : kindOrSignal;
+  if (!isHostingTier(tier)) throw new Error("请先选择服务层级。");
   const request = String(description || "").trim();
   if (!request) throw new Error("先描述你想做的作品，再开始创建。");
   const token = await accessToken().catch(() => null);
@@ -35,7 +38,7 @@ export async function createWebsiteFromDescription(
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ request, kind }),
+    body: JSON.stringify({ request, kind, tier }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {

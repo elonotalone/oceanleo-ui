@@ -63,3 +63,11 @@ test('missing tier routes and malformed creation/catalog responses fail honestly
     }
   } finally { globalThis.fetch = previous; }
 });
+
+test('tier catalog before creation omits the project UUID query', async () => {
+  const previous = fetch, calls=[];
+  globalThis.fetch=async(url)=>{calls.push(url);return Response.json({presets:[]});};
+  try {await websiteConnectorsApi.tiers();await websiteConnectorsApi.tiers('');assert.deepEqual(calls,[
+    'https://gateway.invalid/v1/website-projects/presets/tiers','https://gateway.invalid/v1/website-projects/presets/tiers',
+  ]);} finally {globalThis.fetch=previous;}
+});

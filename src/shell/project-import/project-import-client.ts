@@ -8,6 +8,7 @@
  * files the answer named.
  */
 
+import { isHostingTier } from "../website-platform/hosting-tier";
 import { GATEWAY_BASE } from "../../lib/auth/config";
 import { accessToken } from "../../lib/auth/client";
 
@@ -133,6 +134,7 @@ export interface ImportProgress {
 }
 
 interface UploadOptions {
+  tier?: import("../website-platform/hosting-tier").HostingTier;
   displayName?: string;
   slug?: string;
   onProgress?: (progress: ImportProgress) => void;
@@ -220,11 +222,13 @@ export async function importProjectFolder(
   plan: ImportPlan,
   options: UploadOptions = {},
 ): Promise<ImportResult<{ project: ImportedProject; import: ImportPlan }>> {
+  if (!isHostingTier(options.tier)) return { ok: false, error: "请先选择服务层级。" };
   const token = await bearer();
   if (!token) return { ok: false, error: "未登录" };
   const keep = new Set(plan.files);
   const prefix = plan.root_stripped ? `${plan.root_stripped}/` : "";
   const form = new FormData();
+  form.append("tier", options.tier);
   let attached = 0;
   for (const entry of entries) {
     const relative = prefix && entry.path.startsWith(prefix)
@@ -259,9 +263,11 @@ export async function importProjectArchive(
   archive: File,
   options: UploadOptions = {},
 ): Promise<ImportResult<{ project: ImportedProject; import: ImportPlan }>> {
+  if (!isHostingTier(options.tier)) return { ok: false, error: "请先选择服务层级。" };
   const token = await bearer();
   if (!token) return { ok: false, error: "未登录" };
   const form = new FormData();
+  form.append("tier", options.tier);
   form.append("archive", archive, archive.name);
   if (options.displayName) form.append("display_name", options.displayName);
   if (options.slug) form.append("slug", options.slug);

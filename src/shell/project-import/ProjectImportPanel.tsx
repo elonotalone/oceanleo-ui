@@ -11,6 +11,8 @@
  * answer, and only uploads once the user has seen it.
  */
 
+import { HostingTierChoice } from "../website-platform/HostingTierChoice";
+import type { HostingTier } from "../website-platform/hosting-tier";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   collectPickedFolder,
@@ -49,6 +51,7 @@ export function ProjectImportPanel({
   defaultName = "",
   className = "",
 }: ProjectImportPanelProps) {
+  const [tier, setTier] = useState<HostingTier | "">("");
   const [stage, setStage] = useState<Stage>("idle");
   const [picked, setPicked] = useState<LocalProjectFile[]>([]);
   const [archive, setArchive] = useState<File | null>(null);
@@ -76,6 +79,7 @@ export function ProjectImportPanel({
     abort.current?.abort();
     abort.current = null;
     setStage("idle");
+    setTier("");
     setPicked([]);
     setArchive(null);
     setPlan(null);
@@ -121,6 +125,7 @@ export function ProjectImportPanel({
   }, [name]);
 
   const runImport = useCallback(async () => {
+    if (!tier || stage !== "ready") return;
     const controller = new AbortController();
     abort.current = controller;
     setStage("uploading");
@@ -128,6 +133,7 @@ export function ProjectImportPanel({
     setProgress({ sent: 0, total: 0, percent: 0 });
     const options = {
       displayName: name.trim(),
+      tier,
       onProgress: setProgress,
       signal: controller.signal,
     };
@@ -144,7 +150,7 @@ export function ProjectImportPanel({
     }
     setPlan(result.value.import);
     onImported(result.value.project, result.value.import);
-  }, [archive, name, onImported, picked, plan]);
+  }, [archive, name, onImported, picked, plan, tier, stage]);
 
   const onDrop = useCallback(
     async (event: React.DragEvent<HTMLDivElement>) => {
@@ -194,7 +200,7 @@ export function ProjectImportPanel({
   );
 
   const busy = stage === "planning" || stage === "uploading";
-  const canImport = stage === "ready" && (archive !== null || plan !== null);
+  const canImport = !!tier && stage === "ready" && (archive !== null || plan !== null);
 
   return (
     <div
@@ -360,12 +366,14 @@ export function ProjectImportPanel({
         </p>
       )}
 
+      {(plan || archive) && <HostingTierChoice value={tier} onChange={setTier} disabled={busy} />}
+
       <footer className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           disabled={!canImport}
           onClick={() => void runImport()}
-          className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="rounded-lg bg-stone-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
         >
           开始导入
         </button>
