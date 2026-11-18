@@ -2,6 +2,8 @@
 import { useCallback } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../i18n/ui/useUI";
+import { normalizeLocale } from "../../i18n/config";
+import { WEBSITE_SERVICE_TIERS_COPY } from "../../i18n/ui/messages/website-service-tiers-copy";
 
 // Local additions stay in the work owner's boundary; shared dictionaries take precedence.
 export const WEBSITE_PREVIEW_EN: Record<string, string> = {
@@ -208,7 +210,7 @@ export function useWebsiteUI() {
   const locale = useWebsiteLanguage();
   return useCallback((text: string, vars?: Record<string, string | number>) => {
     const translated = tt(text, vars);
-    const fallback = !locale.startsWith("zh") && WEBSITE_PREVIEW_EN[text];
+    const fallback = WEBSITE_SERVICE_TIERS_COPY[normalizeLocale(locale)][text] || (!locale.startsWith("zh") && WEBSITE_PREVIEW_EN[text]);
     return fallback && tt(text) === text
       ? fallback.replace(/\{(\w+)\}/g, (match, key) => String(vars?.[key] ?? match))
       : translated;
