@@ -162,6 +162,9 @@ const PRESENCE = { "c-zed": "online", "c-ann": "online", "c-amy": "away" };
 function baseRoutes(extra = {}) {
   return {
     "GET /v1/im/contacts": { items: CONTACTS },
+    "GET /v1/im/contacts/groups": { items: [] },
+    "GET /v1/im/contacts/teams": { items: [] },
+    "GET /v1/im/invite-links": { items: [] },
     "GET /v1/im/directory": { items: [person("t-lee", "Lee", "teammate"), person("c-bob", "Bob", "contact")] },
     "GET /v1/im/contact-requests": ({ path }) => ({ items: path.includes("box=in") ? [] : [] }),
     "GET /v1/im/group-invites": { items: [] },
@@ -180,7 +183,7 @@ test("排序：在线 → 离开 → 离线，同状态按名字；按名字或�
   assert.deepEqual(sortContacts(remarked, {}, "同学").map((c) => c.user_id), ["c-bob"]);
 });
 
-test("联系人页：按在线状态排好，Team 同事单独一组，搜索能过滤", async () => {
+test("联系人页：新朋友在最上面，好友和群组分开，同事和工作联系人不混进好友", async () => {
   const im = { fetch: router(baseRoutes()), presence: PRESENCE };
   const view = await mount(React.createElement(PeopleView, { onOpenConversation() {} }), im);
   try {
@@ -188,7 +191,9 @@ test("联系人页：按在线状态排好，Team 同事单独一组，搜索能
     assert.deepEqual(names, ["c-ann", "c-zed", "c-amy", "c-bob"]);
     assert.equal(view.q('[data-contact="c-ann"]').getAttribute("data-presence"), "online");
     const others = view.qa("[data-contacts-others] [data-contact]").map((li) => li.getAttribute("data-contact"));
-    assert.deepEqual(others, ["t-lee"], "同 Team 的人在单独分组，已是联系人的不重复出现");
+    assert.deepEqual(others, [], "没有加好友的同事不进入好友列表");
+    assert.deepEqual(view.qa("[data-contact-list] h4").map((h) => h.textContent), ["好友", "群组"]);
+    assert.ok(view.q("[data-new-friends-entry]").compareDocumentPosition(view.q("[data-contact-list]")) & window.Node.DOCUMENT_POSITION_FOLLOWING);
 
     await view.type(view.q('input[type="search"]'), "am");
     assert.deepEqual(view.qa("[data-contacts] [data-contact]").map((li) => li.getAttribute("data-contact")), ["c-amy"]);
@@ -375,7 +380,7 @@ test("通讯录：按备注搜得到人；已保存的群单独一组", async ()
     fetch: router(baseRoutes({
       "GET /v1/im/contacts": { items: contacts },
       "GET /v1/im/directory": { items: [] },
-      "GET /v1/im/conversations": { items: saved, next_cursor: null },
+      "GET /v1/im/contacts/groups": { items: saved },
     })),
   };
   const view = await mount(React.createElement(PeopleView, { onOpenConversation() {} }), im);
@@ -388,7 +393,7 @@ test("通讯录：按备注搜得到人；已保存的群单独一组", async ()
   }
 });
 
-test("非联系人资料只显示添加到通讯录；可直接请求时发送请求，否则提示邀请链接", async () => {
+test("非联系人和陌生人可以发出带留言的好友请求", async () => {
   const opened = [];
   const routesFor = (relation) => baseRoutes({
     "GET /v1/im/me": { profile: person("me", "我") },
@@ -403,7 +408,7 @@ test("非联系人资料只显示添加到通讯录；可直接请求时发送�
       assert.match(view.text(), /路人 X/);
       assert.equal(view.q("[data-profile-relation]"), null, "关系不作为资料卡可见信息");
       assert.equal(view.q("[data-profile-original]"), null, "原名行不显示");
-      assert.equal(view.q("[data-profile-presence]").getAttribute("data-profile-presence"), "online");
+      assert.equal(view.q("[data-profile-presence]"), null, "work contacts do not expose online status");
       assert.equal(view.q('[data-action="dm"]'), null);
       await view.click(view.q('[data-action="add-contact"]'));
       const req = im.fetch.calls.find((c) => c.path === "/v1/im/contact-requests");
@@ -419,9 +424,10 @@ test("非联系人资料只显示添加到通讯录；可直接请求时发送�
     const view = await mount(React.createElement(ProfileCard, { userId: "u-x", onClose() {}, onOpenConversation() {} }), im);
     try {
       assert.ok(view.q('[data-action="add-contact"]'), "陌生人显示添加到通讯录入口");
+      await view.type(view.q("[data-request-message]"), "I am X");
       await view.click(view.q('[data-action="add-contact"]'));
-      assert.ok(view.q('[data-need-contact]'));
-      assert.ok(!im.fetch.calls.some((c) => c.method === "POST"));
+      assert.deepEqual(im.fetch.calls.find((c) => c.path === "/v1/im/contact-requests").json, { to_user_id: "u-x", message: "I am X" });
+      assert.match(view.text(), /已发出联系人请求/);
     } finally {
       view.cleanup();
     }
@@ -489,4 +495,107 @@ test("资料卡：能私聊时直接打开会话；联系人不再显示「加�
   } finally {
     view.cleanup();
   }
+});
+
+test("从团队批量添加：各队全选，重复的人只数一次，结果显示新增和跳过", async () => {
+  const teams = [
+    { org_id: "design", name: "Design", members: [person("b", "Bob"), person("c", "Carol")] },
+    { org_id: "build", name: "Build", members: [person("c", "Carol"), person("d", "Dana")] },
+  ];
+  const im = { fetch: router(baseRoutes({
+    "GET /v1/im/contacts/teams": { items: teams },
+    "POST /v1/im/contacts/teams": ({ json }) => ({ added: json.user_ids.filter((id) => id !== "c").map((user_id) => ({ user_id, org_id: "design", team_name: "Design" })), skipped: ["c"] }),
+  })) };
+  const view = await mount(React.createElement(PeopleView, { onOpenConversation() {} }), im);
+  try {
+    await view.click(view.q('[data-leochat-plus]'));
+    await view.click(view.q('[data-leochat-action="add-contact"]'));
+    assert.match(view.q("[data-team-contacts]").textContent, /来自我的团队/);
+    assert.equal(view.q('[data-action="add-team-contacts"]').disabled, true);
+    await view.click(view.q('[data-select-team="design"]'));
+    await view.click(view.q('[data-select-team="build"]'));
+    assert.equal(view.q('[data-action="add-team-contacts"]').textContent, "添加 3 人");
+    await view.click(view.q('[data-team-member="d"]'));
+    assert.equal(view.q('[data-action="add-team-contacts"]').textContent, "添加 2 人");
+    await view.click(view.q('[data-action="add-team-contacts"]'));
+    const post = im.fetch.calls.find((c) => c.method === "POST" && c.path === "/v1/im/contacts/teams");
+    assert.deepEqual(post.json, { user_ids: ["b", "c"] });
+    assert.match(view.q("[data-team-contacts]").textContent, /已添加 1 人，跳过 1 位已有好友/);
+  } finally { view.cleanup(); }
+});
+
+test("第四次好友请求显示本地时间，已发送后仍可更正留言再次请求", async () => {
+  let count = 0;
+  const retryAt = "2026-11-25T12:34:56Z";
+  const im = { fetch: router(baseRoutes({
+    "GET /v1/im/me": { profile: person("me", "Me") },
+    "GET /v1/im/profiles": { items: [person("x", "X", "member")] },
+    "POST /v1/im/contact-requests": () => {
+      if (++count === 4) throw Object.assign(apiError(429, "request_limit", "server fallback"), { retry_at: retryAt });
+      return {};
+    },
+  })) };
+  const view = await mount(React.createElement(ProfileCard, { userId: "x", onClose() {}, onOpenConversation() {} }), im);
+  try {
+    for (let i = 0; i < 4; i++) {
+      await view.type(view.q("[data-request-message]"), "note " + i);
+      await view.click(view.q('[data-action="add-contact"]'));
+    }
+    assert.equal(view.q("[data-profile-note]").textContent, `7 天内最多向同一个人发送 3 次请求。可在 ${new Date(retryAt).toLocaleString()} 后重试。`);
+    assert.equal(view.q("[data-request-message]").value, "note 3");
+  } finally { view.cleanup(); }
+});
+
+test("新朋友只数未答复的好友申请，发出的拒绝仍显示已发送", async () => {
+  const incoming = ["pending", "accepted", "declined"].map((status, i) => ({ id: "in" + i, from: person("other" + i, "Other"), to: person("me", "Me"), status, message: "note" }));
+  const outgoing = [{ id: "out", from: person("me", "Me"), to: person("sent", "Sent"), status: "declined", message: "hello" }];
+  const im = { fetch: router(baseRoutes({
+    "GET /v1/im/contact-requests": ({ path }) => ({ items: path.includes("box=in") ? incoming : outgoing }),
+    "GET /v1/im/group-invites": { items: [{ id: "g", conversation: { id: "g", title: "G", member_count: 3 }, inviter: person("i", "I") }] },
+  })) };
+  const view = await mount(React.createElement(PeopleView, { onOpenConversation() {} }), im);
+  try {
+    assert.equal(view.q("[data-new-friends-entry]").querySelector("span.rounded-full").textContent, "1");
+    await view.click(view.q("[data-new-friends-entry]"));
+    assert.match(view.q('[data-section="incoming"]').textContent, /同意/);
+    assert.match(view.q('[data-section="incoming"]').textContent, /note/);
+    assert.match(view.q('[data-section="outgoing"]').textContent, /已发送/);
+    assert.doesNotMatch(view.q('[data-section="outgoing"]').textContent, /已拒绝/);
+  } finally { view.cleanup(); }
+});
+
+test("团队添加失败保留选择并显示原因，群组点击打开会话", async () => {
+  const opened = [];
+  const im = { fetch: router(baseRoutes({
+    "GET /v1/im/contacts/groups": { items: [{ id: "unsaved", kind: "group", title: "Unsaved", member_count: 2 }] },
+    "GET /v1/im/contacts/teams": { items: [{ org_id: "t", name: "T", members: [person("b", "Bob")] }] },
+    "POST /v1/im/contacts/teams": () => { throw apiError(503, "not_available", "Please try again later"); },
+  })) };
+  const view = await mount(React.createElement(PeopleView, { onOpenConversation: (id) => opened.push(id) }), im);
+  try {
+    await view.click(view.q('[data-saved-group="unsaved"] button'));
+    assert.deepEqual(opened, ["unsaved"]);
+    await view.click(view.q('[data-leochat-plus]'));
+    await view.click(view.q('[data-leochat-action="add-contact"]'));
+    await view.click(view.q('[data-team-member="b"]'));
+    await view.click(view.q('[data-action="add-team-contacts"]'));
+    assert.match(view.q("[data-team-contacts]").textContent, /Please try again later/);
+    assert.equal(view.q('[data-team-member="b"]').checked, true);
+  } finally { view.cleanup(); }
+});
+
+test("工作联系人看不到完整资料时，仍可发好友请求且不显示在线状态", async () => {
+  const im = { fetch: router(baseRoutes({
+    "GET /v1/im/me": { profile: person("me", "Me") },
+    "GET /v1/im/profiles": { items: [] },
+    "POST /v1/im/contact-requests": {},
+  })) };
+  const view = await mount(React.createElement(ProfileCard, { userId: "work-person", onClose() {}, onOpenConversation() {} }), im);
+  try {
+    assert.equal(view.q('[data-profile-presence]'), null);
+    await view.type(view.q('[data-request-message]'), "From the order");
+    await view.click(view.q('[data-action="add-contact"]'));
+    assert.deepEqual(im.fetch.calls.find((c) => c.path === "/v1/im/contact-requests").json, { to_user_id: "work-person", message: "From the order" });
+    assert.match(view.q('[data-profile-note]').textContent, /等对方同意/);
+  } finally { view.cleanup(); }
 });

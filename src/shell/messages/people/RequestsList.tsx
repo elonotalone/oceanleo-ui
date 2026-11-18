@@ -94,7 +94,7 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
   const hit = (name: string) => !needle || name.toLocaleLowerCase().includes(needle);
   const pendingIn = (incoming.data ?? []).filter((r) => hit(r.from.display_name));
   const pendingOut = (outgoing.data ?? []).filter((r) => hit(r.to.display_name));
-  const statusCopy = { pending: "等对方同意", accepted: "已添加", declined: "已拒绝", cancelled: "已撤回", expired: "已过期" } as const;
+  const statusCopy = { pending: "已发送", accepted: "已添加", declined: "已拒绝", cancelled: "已撤回", expired: "已过期" } as const;
   const groupInvites = (invites.data ?? []).filter((g) => hit(g.conversation.title));
   const empty = pendingIn.length + pendingOut.length + groupInvites.length === 0;
 
@@ -128,7 +128,7 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
                   </span>
                 </button>
                 {r.status !== "pending" ? <span className="text-[12px] text-neutral-400">{tt(statusCopy[r.status])}</span> : <><button type="button" disabled={busyId === r.id} data-action="accept" className={btnPrimary} onClick={() => act(r.id, () => respondContactRequest(r.id, "accept"))}>
-                  {tt("接受")}
+                  {tt("同意")}
                 </button>
                 <button type="button" disabled={busyId === r.id} data-action="decline" className={btn} onClick={() => act(r.id, () => respondContactRequest(r.id, "decline"))}>
                   {tt("拒绝")}
@@ -185,8 +185,9 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
                 <PersonAvatar name={r.to.display_name} src={r.to.avatar_url} seed={r.to.user_id} size={36} />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[14px] text-neutral-900">{r.to.display_name}</span>
-                  <span className="block text-[12px] text-neutral-500">{tt(statusCopy[r.status])}</span>
+                  <span className="block text-[12px] text-neutral-500">{tt(statusCopy[r.status === "declined" ? "pending" : r.status])}</span>
                 </span>
+                {r.status === "pending" && onOpenProfile && <button type="button" data-action="resend" className={btn} onClick={() => onOpenProfile(r.to.user_id)}>{tt("再发一次请求")}</button>}
                 {r.status === "pending" && <button type="button" disabled={busyId === r.id} data-action="cancel" className={btn} onClick={() => act(r.id, () => respondContactRequest(r.id, "cancel"))}>
                   {tt("撤回")}
                 </button>}

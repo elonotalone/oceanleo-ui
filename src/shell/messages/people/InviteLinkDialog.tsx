@@ -17,6 +17,7 @@ import {
   useLoader,
 } from "../../../lib/im/people-api";
 import type { ImInviteLink } from "../../../lib/im/types";
+import { TeamContactsSection } from "./TeamContactsSection";
 import { InviteQrCode } from "./InviteQrCode";
 
 export interface InviteLinkDialogProps {
@@ -48,7 +49,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
       const link = await createInviteLink({
         kind,
         conversation_id: conversationId,
-        requires_approval: kind === "group" ? needApproval : false,
+        requires_approval: kind === "group" ? needApproval : true,
         max_uses: INVITE_USES_CHOICES[usesIdx]?.uses ?? null,
         expires_in_hours: INVITE_EXPIRY_CHOICES[expiryIdx]?.hours ?? null,
       });
@@ -87,8 +88,10 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
         <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
           {kind === "group"
             ? tt("拿到链接的人点开、登录后就能进群。")
-            : tt("把链接或二维码发给对方（微信、邮件都行）。对方打开并登录后，你们就成为联系人。")}
+            : tt("把链接或二维码发给对方。对方发送好友请求后，需要你同意。")}
         </p>
+
+        {kind === "contact" && <TeamContactsSection />}
 
         <div className="mt-4 grid grid-cols-2 gap-3 text-[12px] text-neutral-600">
           <label className="flex flex-col gap-1">

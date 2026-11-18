@@ -147,6 +147,14 @@ export function reasonOf(error: unknown, fallback: string): string {
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
+export function contactRequestReason(error: unknown, tt: (key: string, vars?: Record<string, string | number>) => string): string {
+  const e = error as { code?: string; retry_at?: string } | null;
+  if (e?.code === "request_limit" && e.retry_at && Number.isFinite(Date.parse(e.retry_at))) {
+    return tt("7 天内最多向同一个人发送 3 次请求。可在 {time} 后重试。", { time: new Date(e.retry_at).toLocaleString() });
+  }
+  return reasonOf(error, tt("没成功，请稍后再试。"));
+}
+
 export function errorCodeOf(error: unknown): string {
   const code = (error as { code?: unknown } | null | undefined)?.code;
   return typeof code === "string" ? code : "";
@@ -220,6 +228,29 @@ export async function searchDirectory(q: string): Promise<ImProfile[]> {
 
 export async function listContacts(): Promise<ImContact[]> {
   return itemsOf(await imFetch<Items<ImContact>>("/v1/im/contacts"));
+}
+
+export interface ImContactTeam {
+  org_id: string;
+  name: string;
+  members: ImProfile[];
+}
+
+export interface ImTeamContactsResult {
+  added: { user_id: string; org_id: string; team_name: string }[];
+  skipped: string[];
+}
+
+export async function listContactTeams(): Promise<ImContactTeam[]> {
+  return itemsOf(await imFetch<Items<ImContactTeam>>("/v1/im/contacts/teams"));
+}
+
+export async function addTeamContacts(userIds: string[]): Promise<ImTeamContactsResult> {
+  return imFetch<ImTeamContactsResult>("/v1/im/contacts/teams", { method: "POST", json: { user_ids: userIds } });
+}
+
+export async function listContactGroups(): Promise<ImConversationSummary[]> {
+  return itemsOf(await imFetch<Items<ImConversationSummary>>("/v1/im/contacts/groups"));
 }
 
 export async function removeContact(userId: string): Promise<void> {

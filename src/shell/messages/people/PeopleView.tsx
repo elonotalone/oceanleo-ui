@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { listContactRequests, listGroupInvites, useLoader } from "../../../lib/im/people-api";
+import { listContactRequests, useLoader } from "../../../lib/im/people-api";
 import { PanelToolbar } from "../../leochat/PanelToolbar";
 import { useImEvent } from "../realtime/hooks";
 import { ContactList } from "./ContactList";
@@ -27,16 +27,14 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
   const [profileId, setProfileId] = useState<string | null>(null);
   const [showBlocked, setShowBlocked] = useState(false);
 
-  // 「请求」页签上的待处理数：收到的联系人请求 + 拉群邀请
+  // New friends counts only unanswered incoming friend requests.
   const incoming = useLoader(() => listContactRequests("in"), []);
-  const invites = useLoader(listGroupInvites, []);
   const refreshCounts = () => {
     incoming.reload();
-    invites.reload();
   };
   useImEvent("contact.request", refreshCounts);
-  useImEvent("group.invite", refreshCounts);
-  const pending = (incoming.data ?? []).filter((r) => r.status === "pending").length + (invites.data?.length ?? 0);
+  useImEvent("contact.changed", refreshCounts);
+  const pending = (incoming.data ?? []).filter((r) => r.status === "pending").length;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-people-view>

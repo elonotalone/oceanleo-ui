@@ -12,7 +12,7 @@ import {
   acceptInvite,
   getInvitePreview,
   inviteOutcomeOf,
-  reasonOf,
+  contactRequestReason,
   type InviteOutcome,
 } from "../../../lib/im/people-api";
 import type { ImInvitePreview } from "../../../lib/im/types";
@@ -28,7 +28,7 @@ type Stage =
   | { name: "loading" }
   | { name: "login" }
   | { name: "preview"; preview: ImInvitePreview }
-  | { name: "result"; outcome: InviteOutcome; conversationId: string | null };
+  | { name: "result"; outcome: InviteOutcome; conversationId: string | null; contact?: boolean };
 
 function statusOf(e: unknown): number {
   return (e as { status?: number } | null)?.status ?? 0;
@@ -81,12 +81,12 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
       const conversationId = result.conversation_id ?? preview.conversation?.id ?? null;
       if (outcome === "joined") onDone({ conversationId });
       else if (outcome === "contact") onDone({ conversationId: null });
-      else setStage({ name: "result", outcome, conversationId });
+      else setStage({ name: "result", outcome, conversationId, contact: preview.kind === "contact" });
     } catch (e) {
       const outcome = inviteOutcomeOf({ error: e });
-      if (outcome === "pending") setStage({ name: "result", outcome, conversationId: null });
+      if (outcome === "pending") setStage({ name: "result", outcome, conversationId: null, contact: preview.kind === "contact" });
       else if ((e as { code?: string })?.code === "gone" || statusOf(e) === 410) setStage({ name: "result", outcome: "gone", conversationId: null });
-      else setNote(reasonOf(e, tt("没成功，请稍后再试。")));
+      else setNote(contactRequestReason(e, tt));
     } finally {
       setBusy(false);
     }
@@ -120,7 +120,7 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
             <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
               {stage.outcome === "gone"
                 ? tt("这个邀请链接已经过期、被撤销，或者群已解散。请让对方重新发一个。")
-                : tt("已申请，等群管理员同意。同意后你会收到通知。")}
+                : stage.contact ? tt("已发出联系人请求，等对方同意。") : tt("已申请，等群管理员同意。同意后你会收到通知。")}
             </p>
             <div className="mt-5 flex justify-end">
               <button type="button" onClick={onClose} data-action="close" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
@@ -178,16 +178,16 @@ function PreviewBody({
 
       {already === "contact" && <p className="mt-3 text-[13px] text-neutral-600" data-already="contact">{tt("你们已经是联系人了。")}</p>}
       {already === "member" && <p className="mt-3 text-[13px] text-neutral-600" data-already="member">{tt("你已经在这个群里了。")}</p>}
-      {already === "pending" && <p className="mt-3 text-[13px] text-neutral-600" data-already="pending">{tt("已申请，等群管理员同意。")}</p>}
-      {!already && preview.requires_approval && (
+      {already === "pending" && <p className="mt-3 text-[13px] text-neutral-600" data-already="pending">{isGroup ? tt("已申请，等群管理员同意。") : tt("已发出联系人请求，等对方同意。")}</p>}
+      {(!already || (already === "pending" && !isGroup)) && (preview.requires_approval || !isGroup) && (
         <>
-          <p className="mt-3 text-[12px] text-neutral-500">{tt("进群需要管理员同意。可以留一句话告诉管理员你是谁。")}</p>
+          <p className="mt-3 text-[12px] text-neutral-500">{isGroup ? tt("进群需要管理员同意。可以留一句话告诉管理员你是谁。") : tt("添加好友需要对方同意。可以留一句话介绍自己。")}</p>
           <input
             value={message}
             maxLength={200}
             onChange={(e) => setMessage(e.target.value)}
-            aria-label={tt("给管理员留言")}
-            placeholder={tt("给管理员留言（选填）")}
+            aria-label={isGroup ? tt("给管理员留言") : tt("好友请求留言（选填）")}
+            placeholder={isGroup ? tt("给管理员留言（选填）") : tt("好友请求留言（选填）")}
             className="mt-2 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
           />
         </>
@@ -202,13 +202,13 @@ function PreviewBody({
           <button type="button" onClick={onOpenGroup} data-action="open-group" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
             {tt("打开群聊")}
           </button>
-        ) : already ? (
+        ) : already && !(already === "pending" && !isGroup) ? (
           <button type="button" onClick={onClose} data-action="close" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
             {tt("好")}
           </button>
         ) : (
           <button type="button" disabled={busy} onClick={onAccept} data-action="accept" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50">
-            {isGroup ? (preview.requires_approval ? tt("申请加入") : tt("加入群聊")) : tt("接受邀请")}
+            {isGroup ? (preview.requires_approval ? tt("申请加入") : tt("加入群聊")) : already === "pending" ? tt("再发一次请求") : tt("发送好友请求")}
           </button>
         )}
       </div>

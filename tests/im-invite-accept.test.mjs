@@ -322,3 +322,28 @@ test("预览回 401（令牌过期）：也引导登录，而不是显示失效"
     view.cleanup();
   }
 });
+
+test("好友邀请需要同意，留言随请求发出，等待文案指向对方", async () => {
+  const { view, im, done } = await open({ [PREVIEW]: contactPreview({ requires_approval: true }), [ACCEPT]: { status: "pending" } });
+  try {
+    assert.equal(view.q('[data-action="accept"]').textContent, "发送好友请求");
+    await view.type(view.q('input'), "We met at work");
+    await view.click(view.q('[data-action="accept"]'));
+    assert.deepEqual(done, []);
+    assert.match(view.text(), /等对方同意/);
+    assert.doesNotMatch(view.text(), /群管理员/);
+    assert.deepEqual(im.fetch.calls.find((c) => c.path.endsWith("/accept")).json, { message: "We met at work" });
+  } finally { view.cleanup(); }
+});
+
+test("已有好友申请的邀请链接仍可更正留言再发一次，拒绝不会改变这个界面", async () => {
+  const { view, im, done } = await open({ [PREVIEW]: contactPreview({ requires_approval: true, already: "pending" }), [ACCEPT]: { status: "pending" } });
+  try {
+    assert.equal(view.q('[data-action="accept"]').textContent, "再发一次请求");
+    await view.type(view.q("input"), "Corrected note");
+    await view.click(view.q('[data-action="accept"]'));
+    assert.deepEqual(done, []);
+    assert.deepEqual(im.fetch.calls.find((c) => c.path.endsWith("/accept")).json, { message: "Corrected note" });
+    assert.match(view.text(), /等对方同意/);
+  } finally { view.cleanup(); }
+});

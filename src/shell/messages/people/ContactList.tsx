@@ -1,17 +1,15 @@
 "use client";
 
-// 联系人：在线 → 离开 → 离线，按名字搜；下面是不用加就能私聊的同 Team / 同项目的人。
+// Friends are explicit contacts; groups include every live group membership.
 
 import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   conversationDisplayTitle,
   listContacts,
-  listSavedGroups,
-  nameQueryHit,
+  listContactGroups,
   openDm,
   reasonOf,
-  searchDirectory,
   sortContacts,
   useLoader,
   visiblePersonName,
@@ -32,30 +30,20 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
   const tt = useUI();
   const [note, setNote] = useState<string | null>(null);
   const contacts = useLoader(listContacts, []);
-  const directory = useLoader(() => searchDirectory(""), []);
-  const savedGroups = useLoader(listSavedGroups, []);
+  const groups = useLoader(listContactGroups, []);
   useImEvent("contact.changed", () => {
     contacts.reload();
-    directory.reload();
   });
-  useImEvent("conversation.updated", () => {
-    savedGroups.reload();
-  });
+  useImEvent("conversation.updated", groups.reload);
+  useImEvent("conversation.removed", groups.reload);
 
   const contactIds = useMemo(() => (contacts.data ?? []).map((c) => c.user_id), [contacts.data]);
-  const others = useMemo(() => {
-    const have = new Set(contactIds);
-    return (directory.data ?? []).filter(
-      (p) => !have.has(p.user_id) && (p.relation === "teammate" || p.relation === "project"),
-    );
-  }, [directory.data, contactIds]);
-  const presenceIds = useMemo(() => [...contactIds, ...others.map((p) => p.user_id)], [contactIds, others]);
+  const presenceIds = contactIds;
   const presence = usePresence(presenceIds);
 
   const sorted = useMemo(() => sortContacts(contacts.data ?? [], presence, query), [contacts.data, presence, query]);
   const needle = query.trim().toLocaleLowerCase();
-  const shownOthers = others.filter((p) => nameQueryHit(p, query));
-  const shownGroups = (savedGroups.data ?? []).filter((g) => {
+  const shownGroups = (groups.data ?? []).filter((g) => {
     if (!needle) return true;
     return conversationDisplayTitle(g).toLocaleLowerCase().includes(needle);
   });
@@ -98,8 +86,9 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
           {note}
         </p>
       )}
+      {(contacts.error || groups.error) ? <p role="alert" className="px-3 py-2 text-[12px] text-red-600">{reasonOf(contacts.error || groups.error, tt("没成功，请稍后再试。"))}</p> : null}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <h4 className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">{tt("联系人")}</h4>
+        <h4 className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">{tt("好友")}</h4>
         {sorted.length === 0 ? (
           <p className="px-3 py-6 text-center text-[12px] text-neutral-400" data-contacts-empty>
             {contacts.loading
@@ -111,28 +100,17 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
         ) : (
           <ul data-contacts>{sorted.map((c) => row({ ...c.profile, user_id: c.user_id }, ""))}</ul>
         )}
-        {shownGroups.length > 0 && (
-          <>
-            <h4 className="mt-3 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              {tt("保存的群聊")}
+        <section data-contact-groups>
+          <h4 className="mt-3 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
+              {tt("群组")}
             </h4>
             <ul data-saved-groups>
               {shownGroups.map((g) => (
                 <SavedGroupRow key={g.id} item={g} onOpen={onOpenConversation} />
               ))}
             </ul>
-          </>
-        )}
-        {shownOthers.length > 0 && (
-          <>
-            <h4 className="mt-3 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
-              {tt("Team 与项目")}
-            </h4>
-            <ul data-contacts-others>
-              {shownOthers.map((p) => row(p, p.relation === "teammate" ? tt("同 Team") : tt("同项目")))}
-            </ul>
-          </>
-        )}
+          {shownGroups.length === 0 && <p className="px-3 py-6 text-center text-[12px] text-neutral-400">{groups.loading ? tt("加载中…") : query.trim() ? tt("没有找到。") : tt("还没有加入任何群组。")}</p>}
+        </section>
       </div>
     </div>
   );

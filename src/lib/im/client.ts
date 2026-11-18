@@ -10,11 +10,13 @@ import type { ImErrorBody } from "./types";
 export class ImApiError extends Error {
   status: number;
   code: string;
-  constructor(status: number, code: string, message: string) {
+  retry_at?: string;
+  constructor(status: number, code: string, message: string, retryAt?: string) {
     super(message);
     this.name = "ImApiError";
     this.status = status;
     this.code = code;
+    this.retry_at = retryAt;
   }
 }
 
@@ -105,7 +107,8 @@ async function readError(response: Response): Promise<ImApiError> {
   } else if (typeof detail === "string") {
     message = detail;
   }
-  return new ImApiError(response.status, code, message);
+  const retryAt = (detail as { retry_at?: unknown } | null)?.retry_at;
+  return new ImApiError(response.status, code, message, typeof retryAt === "string" ? retryAt : undefined);
 }
 
 /**

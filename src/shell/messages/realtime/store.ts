@@ -248,6 +248,8 @@ export function applyUnreadEvent(unread: ImUnread | null, event: ImEvent, ctx: U
       };
     }
     case "contact.request":
+      // A repeated request replaces the same row. The server supplies the new count.
+      return unread;
     case "group.invite":
       return { ...unread, requests: unread.requests + 1 };
     default:
@@ -411,6 +413,7 @@ export function createImStore(deps: StoreDeps): ImStore {
     inbox = nextInbox;
     emit();
     dispatch(event);
+    if (event.type === "contact.request" || event.type === "contact.changed") void refreshUnread();
     if (inbox.needsRefresh && !inbox.loading) void refreshInbox();
   }
 

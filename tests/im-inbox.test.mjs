@@ -186,7 +186,7 @@ test("侧栏未读：事件增量、静音不计红点、已读扣减、unread.c
   const authoritative = { total: 7, mentions: 2, requests: 1, by_conversation: {} };
   assert.equal(applyUnreadEvent(u, { type: "unread.changed", unread: authoritative }, uctx), authoritative);
   const withReq = applyUnreadEvent(u, { type: "contact.request", request: {} }, uctx);
-  assert.equal(withReq.requests, 1);
+  assert.equal(withReq.requests, u.requests, "renewed friend requests do not add a second unread request");
   assert.equal(applyUnreadEvent(null, created(msg("a", 1)), uctx), null, "还没取到未读之前不凭空造数字");
 });
 
@@ -363,4 +363,21 @@ test("角标数字与列表接口路径", () => {
   assert.equal(formatBadge(100), "99+");
   assert.equal(conversationsPath("mentions"), "/v1/im/conversations?filter=mentions&limit=30");
   assert.equal(conversationsPath("../x", "cur"), "/v1/im/conversations?filter=all&cursor=cur&limit=30");
+});
+
+
+test("friend-request events and contact changes refresh the authoritative count", async () => {
+  const t = makeStore();
+  t.store.start();
+  t.setUnread({ total: 0, mentions: 0, requests: 1, by_conversation: {} });
+  t.socket.emit({ kind: "event", event: { type: "contact.request", request: { id: "same" } } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  t.socket.emit({ kind: "event", event: { type: "contact.request", request: { id: "same" } } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(t.store.unread().requests, 1);
+  t.setUnread({ total: 0, mentions: 0, requests: 0, by_conversation: {} });
+  t.socket.emit({ kind: "event", event: { type: "contact.changed", user_id: "other" } });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(t.store.unread().requests, 0);
+  t.store.stop();
 });

@@ -8,12 +8,13 @@ import { ConfirmDialog } from "../../../ui";
 import { getConversationDetail } from "../../../lib/im/groups-api";
 import {
   blockUser,
+  addTeamContacts,
+  contactRequestReason,
   errorCodeOf,
   getMe,
   getProfile,
   listBlocks,
   openDm,
-  reasonOf,
   removeContact,
   starContact,
   sendContactRequest,
@@ -45,12 +46,14 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
     () => (conversationId ? getConversationDetail(conversationId) : Promise.resolve(null)),
     [conversationId],
   );
-  const presenceIds = useMemo(() => [userId], [userId]);
+  const maySeePresence = ["self", "contact", "teammate", "project"].includes(profile.data?.relation ?? "none");
+  const presenceIds = useMemo(() => maySeePresence ? [userId] : [], [userId, maySeePresence]);
   const presence = usePresence(presenceIds)[userId] ?? "offline";
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const [needContact, setNeedContact] = useState(false);
   const [requested, setRequested] = useState(false);
+  const [requestMessage, setRequestMessage] = useState("");
   const [reporting, setReporting] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [remark, setRemark] = useState("");
@@ -66,7 +69,6 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
   const relation: ImRelation = isSelf ? "self" : (p?.relation ?? "none");
   const member = detail.data?.members.find((m) => m.user_id === userId) ?? null;
   const blocked = !!blocks.data?.some((b) => b.user_id === userId);
-  const canRequestDirectly = relation === "member" || relation === "teammate" || relation === "project" || !!conversationId;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -74,7 +76,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
     try {
       await action();
     } catch (e) {
-      setNote(reasonOf(e, tt("没成功，请稍后再试。")));
+      setNote(contactRequestReason(e, tt));
     } finally {
       setBusy(false);
     }
@@ -100,9 +102,15 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
 
   function addContact() {
     return run(async () => {
-      await sendContactRequest(userId);
-      setRequested(true);
-      setNote(tt("已发出联系人请求，等对方同意。"));
+      if (relation === "teammate") {
+        await addTeamContacts([userId]);
+        profile.reload();
+        setNote(tt("已添加"));
+      } else {
+        await sendContactRequest(userId, requestMessage);
+        setRequested(true);
+        setNote(tt("已发出联系人请求，等对方同意。"));
+      }
     });
   }
 
@@ -113,6 +121,13 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
       blocks.reload();
     });
   }
+
+  useEffect(() => {
+    setRequestMessage("");
+    setRequested(false);
+    setNote(null);
+    setNeedContact(false);
+  }, [userId]);
 
   useEffect(() => {
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
@@ -181,7 +196,17 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
         {profile.loading && !p ? (
           <p className="py-8 text-center text-[13px] text-neutral-400">{tt("加载中…")}</p>
         ) : !p ? (
-          <p className="py-8 text-center text-[13px] text-neutral-500">{tt("找不到这个人，或者你看不到他的资料。")}</p>
+          <div className="py-4 text-[13px] text-neutral-500">
+            <p>{tt("找不到这个人，或者你看不到他的资料。")}</p>
+            {!isSelf && <>
+              <label className="mt-3 block text-[12px]">
+                {tt("好友请求留言（选填）")}
+                <input data-request-message value={requestMessage} maxLength={200} onChange={(e) => setRequestMessage(e.target.value)} className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-neutral-900" />
+              </label>
+              <button type="button" disabled={busy} data-action="add-contact" onClick={addContact} className="mt-3 rounded-lg bg-neutral-900 px-3 py-2 text-white disabled:opacity-50">{requested ? tt("再发一次请求") : tt("发送好友请求")}</button>
+            </>}
+            {note && <p role="status" data-profile-note className="mt-2">{note}</p>}
+          </div>
         ) : (
           <>
             <div className="flex items-start gap-3">
@@ -192,10 +217,10 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                   {p.contact_starred && <span data-friend-star className="ml-2 text-amber-500" aria-label={tt("星标朋友")}>★</span>}
                 </h3>
                 <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-neutral-500">
-                  <span className="inline-flex items-center gap-1" data-profile-presence={presence}>
+                  {maySeePresence && <span className="inline-flex items-center gap-1" data-profile-presence={presence}>
                     <PresenceDot presence={presence} />
                     {tt(PRESENCE_COPY[presence])}
-                  </span>
+                  </span>}
                   {member?.external && (
                     <span data-external-badge className="text-[11px] text-neutral-400">
                       {tt("外部")}
@@ -251,22 +276,17 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
               {p.contact_created_at && <div className="flex gap-3 py-1"><dt className="w-12 shrink-0">{tt("添加时间")}</dt><dd className="text-neutral-800">{new Date(p.contact_created_at).toLocaleDateString()}</dd></div>}
             </dl>}
 
+            {!isSelf && !isContact && relation !== "teammate" && <label className="mt-3 block text-[12px] text-neutral-500">
+              {tt("好友请求留言（选填）")}
+              <input data-request-message value={requestMessage} maxLength={200} onChange={(e) => setRequestMessage(e.target.value)} className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] text-neutral-900" />
+            </label>}
+
             {needContact && !isSelf && (
               <div className="mt-3 rounded-lg bg-neutral-50 p-3 text-[12px] text-neutral-600" data-need-contact>
                 <p>{tt("先加联系人，才能私聊。")}</p>
-                {canRequestDirectly ? (
-                  <button
-                    type="button"
-                    disabled={busy || requested}
-                    onClick={addContact}
-                    data-action="send-request"
-                    className="mt-2 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50"
-                  >
-                    {requested ? tt("已发出请求") : tt("发联系人请求")}
-                  </button>
-                ) : (
-                  <p className="mt-1 text-neutral-500">{tt("你们还没有共同的群。请让对方把联系人邀请链接发给你。")}</p>
-                )}
+                <button type="button" disabled={busy} onClick={addContact} data-action="send-request" className="mt-2 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50">
+                  {requested ? tt("再发一次请求") : tt("发送好友请求")}
+                </button>
               </div>
             )}
 
@@ -286,24 +306,20 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                   className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:opacity-85 disabled:opacity-50"
                 >
                   {tt("私聊")}
-                </button> : !requested && (
+                </button> : (
                   <button
                     type="button"
                     disabled={busy}
-                    onClick={() => { if (canRequestDirectly) void addContact(); else setNeedContact(true); }}
+                    onClick={addContact}
                     data-action="add-contact"
                     className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:opacity-85 disabled:opacity-50"
                   >
-                    {tt("添加到通讯录")}
+                    {requested ? tt("再发一次请求") : tt("添加到通讯录")}
                   </button>
                 )}
               </div>
             )}
-            {!isSelf && !isContact && !canRequestDirectly && !needContact && (
-              <p className="mt-3 text-[11px] text-neutral-400" data-invite-hint>
-                {tt("想加他为联系人？请让他把联系人邀请链接发给你。")}
-              </p>
-            )}
+
           </>
         )}
       </div>
