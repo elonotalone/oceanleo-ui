@@ -1,3 +1,4 @@
+import { TEAM_COPY_LOCALES } from "./enterprise-copy-team";
 import type { EnterpriseCopyMessages } from "./enterprise-copy-base";
 
 export const ENTERPRISE_COPY_WESTERN: Record<
@@ -5,6 +6,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
   EnterpriseCopyMessages
 > = {
   en: {
+    ...TEAM_COPY_LOCALES["en"],
     daysN: "{n} days",
     capUpdated: "Cap updated",
     tasks: "Tasks",
@@ -30,7 +32,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Monthly cap",
     noPendingRequests: "No pending requests",
     createInviteLink: "Create invite link",
-    viewAllTasks: "View all tasks",
+
     viewOrgPage: "View team page",
     orgBalance: "Team balance",
     orgName: "Team name",
@@ -61,7 +63,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Connect and verify",
     youWillJoinOrg: "You’ll request to join “{org}”",
     notInAnyOrgApplyBelow: "You’re not in any team yet. After you get an invite link from an owner, apply below.",
-    whatOrgCanSee: "What this team can see after you join",
+
     joinOrg: "Join a team",
     capReached: "Cap reached",
     pasteInviteCode: "Paste the invite code the owner sent you. Opening an invite link fills this in automatically.",
@@ -70,9 +72,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Applying…",
     requestToJoin: "Request to join",
     admin: "Admin",
-    orgAdminViewAudit: "Each time a team admin opens a task you paid for with the team wallet, a record is added here.",
-    whoViewedMe: "Who viewed my work",
-    noOneViewedYet: "No one has viewed your work yet",
+
     thisOrg: "this team",
     inviteCode: "Invite code",
     joinsImmediately: "(you’ll join right away)",
@@ -85,12 +85,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "The team you chose is suspended, or you’re no longer in it.",
     switchedToPersonal: "Switched back to personal wallet",
     whoPaysThisTime: "Who pays this time",
-    myOrgsMenuDesc: "Teams you belong to, what you spent this month in each, and who viewed your tasks",
+    myOrgsMenuDesc: "Your teams, spend and limits",
     myOrgs: "My teams",
     orgGone: "This team is gone.",
     agreeRequired: "Please read and check the OceanLeo Enterprise Service Agreement first.",
-    joinDisclosurePaid: "For tasks paid with the team wallet, team admins can see everything. Tasks paid with your personal wallet are never visible to the team.",
-    joinDisclosureAudit: "Every view is recorded. You can see who looked below.",
+
     joinPending: "Your request was submitted. Wait for an owner to approve. After that, this team will appear here, and you’ll get an in-app notice.",
     joinJoined: "You joined “{org}”. You can now choose this team’s wallet when you send a task.",
     joinRejected: "Your request wasn’t approved. An owner declined it, or this team paused joining. Contact the owner if you have questions.",
@@ -119,6 +118,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Teams you’ve applied to or already joined appear under “My teams” on the account page.",
 },
   de: {
+    ...TEAM_COPY_LOCALES["de"],
     daysN: "{n} Tage",
     capUpdated: "Limit aktualisiert",
     tasks: "Aufgaben",
@@ -144,7 +144,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Monatslimit",
     noPendingRequests: "Keine offenen Anträge",
     createInviteLink: "Einladungslink erstellen",
-    viewAllTasks: "Alle Aufgaben ansehen",
+
     viewOrgPage: "Teamseite ansehen",
     orgBalance: "Teamguthaben",
     orgName: "Teamname",
@@ -175,7 +175,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Verbinden und prüfen",
     youWillJoinOrg: "Sie beantragen den Beitritt zu „{org}“",
     notInAnyOrgApplyBelow: "Sie gehören noch keinem Team an. Sobald Sie einen Einladungslink von einer verantwortlichen Person haben, beantragen Sie den Beitritt unten.",
-    whatOrgCanSee: "Was dieses Team nach dem Beitritt sehen kann",
+
     joinOrg: "Einer Team beitreten",
     capReached: "Limit erreicht",
     pasteInviteCode: "Fügen Sie den Einladungscode ein, den die verantwortliche Person Ihnen geschickt hat. Ein Einladungslink füllt das Feld automatisch.",
@@ -184,9 +184,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Wird beantragt…",
     requestToJoin: "Beitritt beantragen",
     admin: "Admin",
-    orgAdminViewAudit: "Jedes Mal, wenn ein Team-Admin eine Aufgabe öffnet, die Sie mit der Team-Börse bezahlt haben, erscheint hier ein Eintrag.",
-    whoViewedMe: "Wer meine Arbeit angesehen hat",
-    noOneViewedYet: "Noch hat niemand Ihre Arbeit angesehen",
+
     thisOrg: "dieses Team",
     inviteCode: "Einladungscode",
     joinsImmediately: "(Sie treten sofort bei)",
@@ -199,12 +197,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "Die gewählte Team ist ausgesetzt, oder Sie gehören ihr nicht mehr an.",
     switchedToPersonal: "Zurück zur persönlichen Börse gewechselt",
     whoPaysThisTime: "Wer diesmal zahlt",
-    myOrgsMenuDesc: "Ihre Teams, was Sie diesen Monat in jeder ausgegeben haben, und wer Ihre Aufgaben angesehen hat",
+    myOrgsMenuDesc: "Ihre Teams, Ausgaben und Limits",
     myOrgs: "Meine Teams",
     orgGone: "Dieses Team gibt es nicht mehr.",
     agreeRequired: "Bitte lesen Sie zuerst die OceanLeo-Unternehmensdienstvereinbarung und setzen Sie das Häkchen.",
-    joinDisclosurePaid: "Aufgaben, die mit der Team-Börse bezahlt werden, können Admins vollständig einsehen. Aufgaben, die Sie mit Ihrer persönlichen Börse bezahlen, sieht das Team nie.",
-    joinDisclosureAudit: "Jeder Aufruf wird protokolliert. Unten sehen Sie, wer geschaut hat.",
+
     joinPending: "Antrag gesendet. Warten Sie auf die Zustimmung einer verantwortlichen Person. Danach erscheint dieses Team hier, und Sie erhalten eine Mitteilung in der App.",
     joinJoined: "Sie sind „{org}“ beigetreten. Beim Senden einer Aufgabe können Sie jetzt die Börse dieses Teams wählen.",
     joinRejected: "Ihr Antrag wurde nicht angenommen. Eine verantwortliche Person hat abgelehnt, oder das Team hat Beitritte pausiert. Bei Fragen wenden Sie sich direkt an sie.",
@@ -233,6 +230,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Teams, die Sie beantragt oder schon beigetreten sind, sehen Sie unter „Meine Teams“ auf der Kontoseite.",
 },
   es: {
+    ...TEAM_COPY_LOCALES["es"],
     daysN: "{n} días",
     capUpdated: "Límite actualizado",
     tasks: "Tareas",
@@ -258,7 +256,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Límite mensual",
     noPendingRequests: "No hay solicitudes pendientes",
     createInviteLink: "Crear enlace de invitación",
-    viewAllTasks: "Ver todas las tareas",
+
     viewOrgPage: "Ver página del equipo",
     orgBalance: "Saldo del equipo",
     orgName: "Nombre del equipo",
@@ -289,7 +287,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Conectar y comprobar",
     youWillJoinOrg: "Vas a solicitar unirte a «{org}»",
     notInAnyOrgApplyBelow: "Aún no perteneces a ningun equipo. Cuando tengas un enlace de invitación de un responsable, solicita unirte abajo.",
-    whatOrgCanSee: "Qué puede ver este equipo cuando te unas",
+
     joinOrg: "Unirse a un equipo",
     capReached: "Límite alcanzado",
     pasteInviteCode: "Pega aquí el código de invitación que te envió el responsable. Si abres un enlace de invitación, se rellena solo.",
@@ -298,9 +296,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Solicitando…",
     requestToJoin: "Solicitar unirse",
     admin: "Administrador",
-    orgAdminViewAudit: "Cada vez que un administrador del equipo abre una tarea que pagaste con la cartera del equipo, queda un registro aquí.",
-    whoViewedMe: "Quién ha visto mi trabajo",
-    noOneViewedYet: "Todavía nadie ha visto tu trabajo",
+
     thisOrg: "este equipo",
     inviteCode: "Código de invitación",
     joinsImmediately: "(te unirás al momento)",
@@ -313,12 +309,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "El equipo que elegiste está suspendida, o ya no formas parte de ella.",
     switchedToPersonal: "Vuelto a la cartera personal",
     whoPaysThisTime: "Quién paga esta vez",
-    myOrgsMenuDesc: "Los equipos a las que perteneces, cuánto has gastado este mes en cada una y quién ha visto tus tareas",
+    myOrgsMenuDesc: "Tus equipos, gastos y límites",
     myOrgs: "Mis equipos",
     orgGone: "Este equipo ya no existe.",
     agreeRequired: "Lee y marca primero el Acuerdo de servicio empresarial de OceanLeo.",
-    joinDisclosurePaid: "En las tareas pagadas con la cartera del equipo, los administradores pueden verlo todo. Las pagadas con tu cartera personal nunca las ve el equipo.",
-    joinDisclosureAudit: "Cada visualización queda registrada. Abajo puedes ver quién ha mirado.",
+
     joinPending: "Solicitud enviada. Espera a que un responsable la apruebe. Después, este equipo aparecerá aquí y recibirás un aviso en la app.",
     joinJoined: "Te has unido a «{org}». Ahora puedes elegir la cartera de este equipo al enviar una tarea.",
     joinRejected: "Tu solicitud no se ha aprobado. Un responsable la ha rechazado, o el equipo ha pausado las altas. Si tienes dudas, habla con el responsable.",
@@ -347,6 +342,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Los equipos a los que has solicitado unirte o ya perteneces aparecen en «Mis equipos» de la página de la cuenta.",
 },
   "es-419": {
+    ...TEAM_COPY_LOCALES["es-419"],
     daysN: "{n} días",
     capUpdated: "Tope actualizado",
     tasks: "Tareas",
@@ -372,7 +368,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Tope mensual",
     noPendingRequests: "No hay solicitudes pendientes",
     createInviteLink: "Crear enlace de invitación",
-    viewAllTasks: "Ver todas las tareas",
+
     viewOrgPage: "Ver página del equipo",
     orgBalance: "Saldo del equipo",
     orgName: "Nombre del equipo",
@@ -403,7 +399,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Conectar y verificar",
     youWillJoinOrg: "Vas a pedir unirte a «{org}»",
     notInAnyOrgApplyBelow: "Todavía no pertenecés a ningun equipo. Cuando tengas un enlace de invitación de un responsable, pedí unirte abajo.",
-    whatOrgCanSee: "Qué puede ver este equipo cuando te unas",
+
     joinOrg: "Unirse a un equipo",
     capReached: "Tope alcanzado",
     pasteInviteCode: "Pegá el código de invitación que te mandó el responsable. Si abrís un enlace de invitación, se completa solo.",
@@ -412,9 +408,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Solicitando…",
     requestToJoin: "Pedir unirse",
     admin: "Administrador",
-    orgAdminViewAudit: "Cada vez que un admin del equipo abre una tarea que pagaste con la billetera del equipo, queda un registro acá.",
-    whoViewedMe: "Quién vio mi trabajo",
-    noOneViewedYet: "Todavía nadie vio tu trabajo",
+
     thisOrg: "este equipo",
     inviteCode: "Código de invitación",
     joinsImmediately: "(te unís al toque)",
@@ -427,12 +421,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "El equipo que elegiste está suspendida, o ya no formás parte de ella.",
     switchedToPersonal: "Volviste a la billetera personal",
     whoPaysThisTime: "Quién paga esta vez",
-    myOrgsMenuDesc: "Los equipos a las que pertenecés, cuánto gastaste este mes en cada una y quién vio tus tareas",
+    myOrgsMenuDesc: "Tus equipos, gastos y límites",
     myOrgs: "Mis equipos",
     orgGone: "Este equipo ya no existe.",
     agreeRequired: "Leé y marcá primero el Acuerdo de servicio empresarial de OceanLeo.",
-    joinDisclosurePaid: "En las tareas pagadas con la billetera del equipo, los admins pueden verlo todo. Las que pagás con tu billetera personal el equipo nunca las ve.",
-    joinDisclosureAudit: "Cada visualización queda registrada. Abajo ves quién miró.",
+
     joinPending: "Solicitud enviada. Esperá a que un responsable la apruebe. Después este equipo va a aparecer acá y vas a recibir un aviso en la app.",
     joinJoined: "Te uniste a «{org}». Ahora podés elegir la billetera de este equipo al enviar una tarea.",
     joinRejected: "Tu solicitud no se aprobó. Un responsable la rechazó, o el equipo pausó las altas. Si tenés dudas, hablá con el responsable.",
@@ -461,6 +454,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Los equipos a los que pediste unirte o ya pertenecés aparecen en «Mis equipos» de la página de la cuenta.",
 },
   fr: {
+    ...TEAM_COPY_LOCALES["fr"],
     daysN: "{n} jours",
     capUpdated: "Plafond mis à jour",
     tasks: "Tâches",
@@ -486,7 +480,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Plafond mensuel",
     noPendingRequests: "Aucune demande en attente",
     createInviteLink: "Créer un lien d’invitation",
-    viewAllTasks: "Voir toutes les tâches",
+
     viewOrgPage: "Voir la page de l’équipe",
     orgBalance: "Solde de l’équipe",
     orgName: "Nom de l’équipe",
@@ -517,7 +511,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Connecter et vérifier",
     youWillJoinOrg: "Vous allez demander à rejoindre « {org} »",
     notInAnyOrgApplyBelow: "Vous n’appartenez encore à aucune équipe. Une fois le lien d’invitation d’un responsable reçu, demandez à rejoindre ci-dessous.",
-    whatOrgCanSee: "Ce que cette équipe pourra voir après votre adhésion",
+
     joinOrg: "Rejoindre une équipe",
     capReached: "Plafond atteint",
     pasteInviteCode: "Collez le code d’invitation envoyé par le responsable. Un lien d’invitation le remplit automatiquement.",
@@ -526,9 +520,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Demande en cours…",
     requestToJoin: "Demander à rejoindre",
     admin: "Administrateur",
-    orgAdminViewAudit: "Chaque fois qu’un administrateur de l’équipe ouvre une tâche payée avec le portefeuille de l’équipe, une entrée est ajoutée ici.",
-    whoViewedMe: "Qui a consulté mon travail",
-    noOneViewedYet: "Personne n’a encore consulté votre travail",
+
     thisOrg: "cette équipe",
     inviteCode: "Code d’invitation",
     joinsImmediately: "(vous rejoindrez tout de suite)",
@@ -541,12 +533,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "L’équipe choisie est suspendue, ou vous n’en faites plus partie.",
     switchedToPersonal: "Retour au portefeuille personnel",
     whoPaysThisTime: "Qui paie cette fois",
-    myOrgsMenuDesc: "Les équipes auxquelles vous appartenez, ce que vous avez dépensé ce mois-ci dans chacune, et qui a consulté vos tâches",
+    myOrgsMenuDesc: "Vos équipes, dépenses et plafonds",
     myOrgs: "Mes équipes",
     orgGone: "Cette équipe n’existe plus.",
     agreeRequired: "Veuillez d’abord lire et cocher les Conditions de service entreprise OceanLeo.",
-    joinDisclosurePaid: "Pour les tâches payées avec le portefeuille de l’équipe, les administrateurs peuvent tout voir. Celles payées avec votre portefeuille personnel restent invisibles pour l’équipe.",
-    joinDisclosureAudit: "Chaque consultation est enregistrée. Vous voyez ci-dessous qui a regardé.",
+
     joinPending: "Demande envoyée. Attendez l’accord d’un responsable. Ensuite, cette équipe apparaîtra ici et vous recevrez une notification dans l’app.",
     joinJoined: "Vous avez rejoint « {org} ». Vous pouvez maintenant choisir le portefeuille de cette équipe à l’envoi d’une tâche.",
     joinRejected: "Votre demande n’a pas été acceptée. Un responsable l’a refusée, ou l’équipe a suspendu les adhésions. En cas de doute, contactez le responsable.",
@@ -575,6 +566,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Les équipes que vous avez demandées ou déjà rejointes apparaissent sous « Mes équipes » sur la page Compte.",
 },
   it: {
+    ...TEAM_COPY_LOCALES["it"],
     daysN: "{n} giorni",
     capUpdated: "Limite aggiornato",
     tasks: "Attività",
@@ -600,7 +592,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Limite mensile",
     noPendingRequests: "Nessuna richiesta in attesa",
     createInviteLink: "Crea link di invito",
-    viewAllTasks: "Vedi tutte le attività",
+
     viewOrgPage: "Vedi la pagina del team",
     orgBalance: "Saldo del team",
     orgName: "Nome del team",
@@ -631,7 +623,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Collega e verifica",
     youWillJoinOrg: "Stai per chiedere di unirti a «{org}»",
     notInAnyOrgApplyBelow: "Non fai ancora parte di nessuna team. Quando ricevi un link di invito da un responsabile, chiedi di unirti qui sotto.",
-    whatOrgCanSee: "Cosa può vedere questo team dopo che ti unisci",
+
     joinOrg: "Unisciti a un team",
     capReached: "Limite raggiunto",
     pasteInviteCode: "Incolla il codice di invito inviato dal responsabile. Aprendo un link di invito viene compilato automaticamente.",
@@ -640,9 +632,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Richiesta in corso…",
     requestToJoin: "Chiedi di unirti",
     admin: "Amministratore",
-    orgAdminViewAudit: "Ogni volta che un admin del team apre un’attività pagata con il portafoglio del team, qui resta una registrazione.",
-    whoViewedMe: "Chi ha visto il mio lavoro",
-    noOneViewedYet: "Ancora nessuno ha visto il tuo lavoro",
+
     thisOrg: "questo team",
     inviteCode: "Codice di invito",
     joinsImmediately: "(entrerai subito)",
@@ -655,12 +645,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "Il team scelta è sospesa, oppure non ne fai più parte.",
     switchedToPersonal: "Tornato al portafoglio personale",
     whoPaysThisTime: "Chi paga questa volta",
-    myOrgsMenuDesc: "I team di cui fai parte, quanto hai speso questo mese in ciascuna e chi ha visto le tue attività",
+    myOrgsMenuDesc: "I tuoi team, spese e limiti",
     myOrgs: "Le mie team",
     orgGone: "Questo team non c’è più.",
     agreeRequired: "Leggi e seleziona prima l’Accordo sul servizio enterprise di OceanLeo.",
-    joinDisclosurePaid: "Per le attività pagate con il portafoglio del team, gli admin possono vedere tutto. Quelle pagate con il tuo portafoglio personale il team non le vede mai.",
-    joinDisclosureAudit: "Ogni visualizzazione viene registrata. Qui sotto vedi chi ha guardato.",
+
     joinPending: "Richiesta inviata. Attendi l’approvazione di un responsabile. Poi questo team comparirà qui e riceverai un avviso nell’app.",
     joinJoined: "Ti sei unito a «{org}». Ora puoi scegliere il portafoglio di questo team quando invii un’attività.",
     joinRejected: "La richiesta non è stata accettata. Un responsabile l’ha rifiutata, oppure il team ha sospeso le adesioni. Per dubbi, contatta il responsabile.",
@@ -689,6 +678,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "I team a cui hai chiesto di unirti o di cui fai già parte compaiono in «I miei team» nella pagina Account.",
 },
   "pt-BR": {
+    ...TEAM_COPY_LOCALES["pt-BR"],
     daysN: "{n} dias",
     capUpdated: "Limite atualizado",
     tasks: "Tarefas",
@@ -714,7 +704,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Limite mensal",
     noPendingRequests: "Nenhum pedido pendente",
     createInviteLink: "Criar link de convite",
-    viewAllTasks: "Ver todas as tarefas",
+
     viewOrgPage: "Ver página da equipe",
     orgBalance: "Saldo da equipe",
     orgName: "Nome da equipe",
@@ -745,7 +735,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Conectar e verificar",
     youWillJoinOrg: "Você vai pedir para entrar em “{org}”",
     notInAnyOrgApplyBelow: "Você ainda não faz parte de nenhuma equipe. Quando receber um link de convite de um responsável, peça para entrar abaixo.",
-    whatOrgCanSee: "O que esta equipe poderá ver depois que você entrar",
+
     joinOrg: "Entrar em uma equipe",
     capReached: "Limite atingido",
     pasteInviteCode: "Cole o código de convite que o responsável enviou. Abrir um link de convite preenche automaticamente.",
@@ -754,9 +744,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Enviando pedido…",
     requestToJoin: "Pedir para entrar",
     admin: "Administrador",
-    orgAdminViewAudit: "Cada vez que um admin da equipe abre uma tarefa paga com a carteira da equipe, fica um registro aqui.",
-    whoViewedMe: "Quem viu meu trabalho",
-    noOneViewedYet: "Ninguém viu seu trabalho ainda",
+
     thisOrg: "esta equipe",
     inviteCode: "Código de convite",
     joinsImmediately: "(você entra na hora)",
@@ -769,12 +757,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "A equipe escolhida está suspensa, ou você não faz mais parte dela.",
     switchedToPersonal: "Voltou para a carteira pessoal",
     whoPaysThisTime: "Quem paga desta vez",
-    myOrgsMenuDesc: "As equipes de que você faz parte, o quanto gastou neste mês em cada uma e quem viu suas tarefas",
+    myOrgsMenuDesc: "Suas equipes, gastos e limites",
     myOrgs: "Minhas equipes",
     orgGone: "Esta equipe não existe mais.",
     agreeRequired: "Leia e marque primeiro o Contrato de serviço empresarial da OceanLeo.",
-    joinDisclosurePaid: "Nas tarefas pagas com a carteira da equipe, os admins podem ver tudo. As pagas com sua carteira pessoal a equipe nunca vê.",
-    joinDisclosureAudit: "Cada visualização fica registrada. Abaixo você vê quem olhou.",
+
     joinPending: "Pedido enviado. Espere um responsável aprovar. Depois esta equipe aparece aqui e você recebe um aviso no app.",
     joinJoined: "Você entrou em «{org}». Agora pode escolher a carteira desta equipe ao enviar uma tarefa.",
     joinRejected: "Seu pedido não foi aprovado. Um responsável recusou, ou a equipe pausou as entradas. Em caso de dúvida, fale com o responsável.",
@@ -803,6 +790,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Os times que você pediu para entrar ou já faz parte aparecem em “Meus times” na página da conta.",
 },
   "pt-PT": {
+    ...TEAM_COPY_LOCALES["pt-PT"],
     daysN: "{n} dias",
     capUpdated: "Limite atualizado",
     tasks: "Tarefas",
@@ -828,7 +816,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Limite mensal",
     noPendingRequests: "Não há pedidos pendentes",
     createInviteLink: "Criar link de convite",
-    viewAllTasks: "Ver todas as tarefas",
+
     viewOrgPage: "Ver página da equipa",
     orgBalance: "Saldo da equipa",
     orgName: "Nome da equipa",
@@ -859,7 +847,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Ligar e verificar",
     youWillJoinOrg: "Vai pedir para aderir a «{org}»",
     notInAnyOrgApplyBelow: "Ainda não pertence a nenhuma equipa. Quando tiver um link de convite de um responsável, peça para aderir abaixo.",
-    whatOrgCanSee: "O que esta equipa poderá ver depois de aderir",
+
     joinOrg: "Aderir a uma equipa",
     capReached: "Limite atingido",
     pasteInviteCode: "Cole o código de convite enviado pelo responsável. Abrir um link de convite preenche automaticamente.",
@@ -868,9 +856,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "A pedir…",
     requestToJoin: "Pedir para aderir",
     admin: "Administrador",
-    orgAdminViewAudit: "Cada vez que um administrador da equipa abre uma tarefa paga com a carteira da equipa, fica um registo aqui.",
-    whoViewedMe: "Quem viu o meu trabalho",
-    noOneViewedYet: "Ainda ninguém viu o seu trabalho",
+
     thisOrg: "esta equipa",
     inviteCode: "Código de convite",
     joinsImmediately: "(adere de imediato)",
@@ -883,12 +869,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "A equipa escolhida está suspensa, ou já não faz parte dela.",
     switchedToPersonal: "Voltou à carteira pessoal",
     whoPaysThisTime: "Quem paga desta vez",
-    myOrgsMenuDesc: "As equipas a que pertence, quanto gastou este mês em cada uma e quem viu as suas tarefas",
+    myOrgsMenuDesc: "As suas equipas, gastos e limites",
     myOrgs: "As minhas equipas",
     orgGone: "Esta equipa já não existe.",
     agreeRequired: "Leia e assinale primeiro o Contrato de serviço empresarial da OceanLeo.",
-    joinDisclosurePaid: "Nas tarefas pagas com a carteira da equipa, os admins podem ver tudo. As pagas com a sua carteira pessoal a equipa nunca as vê.",
-    joinDisclosureAudit: "Cada visualização fica registada. Abaixo vê quem olhou.",
+
     joinPending: "Pedido enviado. Aguarde a aprovação de um responsável. Depois esta equipa aparece aqui e recebe um aviso na app.",
     joinJoined: "Entrou em «{org}». Agora pode escolher a carteira desta equipa ao enviar uma tarefa.",
     joinRejected: "O pedido não foi aprovado. Um responsável recusou, ou a equipa pausou as adesões. Em caso de dúvida, fale com o responsável.",
@@ -917,6 +902,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "As equipas a que pediu para aderir ou já pertence aparecem em «As minhas equipas» na página da conta.",
 },
   tr: {
+    ...TEAM_COPY_LOCALES["tr"],
     daysN: "{n} gün",
     capUpdated: "Limit güncellendi",
     tasks: "Görevler",
@@ -942,7 +928,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Aylık limit",
     noPendingRequests: "Bekleyen istek yok",
     createInviteLink: "Davet bağlantısı oluştur",
-    viewAllTasks: "Tüm görevleri gör",
+
     viewOrgPage: "Ekip sayfasını gör",
     orgBalance: "Ekip bakiyesi",
     orgName: "Ekip adı",
@@ -973,7 +959,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Bağla ve doğrula",
     youWillJoinOrg: "“{org}” ekibina katılma isteği göndereceksiniz",
     notInAnyOrgApplyBelow: "Henüz hiçbir ekibe üye değilsiniz. Bir sorumludan davet bağlantısı alınca aşağıdan katılma isteği gönderin.",
-    whatOrgCanSee: "Katıldıktan sonra bu ekibin neleri görebileceği",
+
     joinOrg: "Bir ekibe katıl",
     capReached: "Limit doldu",
     pasteInviteCode: "Sorumlunun gönderdiği davet kodunu yapıştırın. Davet bağlantısını açınca otomatik dolar.",
@@ -982,9 +968,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "İstek gönderiliyor…",
     requestToJoin: "Katılma isteği gönder",
     admin: "Yönetici",
-    orgAdminViewAudit: "Bir ekip yöneticisi, ekip cüzdanıyla ödediğiniz bir görevi her açtığında burada bir kayıt oluşur.",
-    whoViewedMe: "İşime kim baktı",
-    noOneViewedYet: "Henüz kimse işinize bakmadı",
+
     thisOrg: "bu ekip",
     inviteCode: "Davet kodu",
     joinsImmediately: "(hemen katılırsınız)",
@@ -997,12 +981,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "Seçtiğiniz ekip askıya alındı veya artık o ekipte değilsiniz.",
     switchedToPersonal: "Kişisel cüzdana dönüldü",
     whoPaysThisTime: "Bu sefer kim öder",
-    myOrgsMenuDesc: "Üye olduğunuz ekipler, bu ay her birinde ne kadar harcadığınız ve görevlerinize kimlerin baktığı",
+    myOrgsMenuDesc: "Ekipleriniz, harcamalar ve sınırlar",
     myOrgs: "Ekiplerim",
     orgGone: "Bu ekip artık yok.",
     agreeRequired: "Lütfen önce OceanLeo Kurumsal Hizmet Sözleşmesi’ni okuyup işaretleyin.",
-    joinDisclosurePaid: "Ekip cüzdanıyla ödenen görevleri yöneticiler bütünüyle görebilir. Kişisel cüzdanınızla ödenenleri ekip asla göremez.",
-    joinDisclosureAudit: "Her görüntüleme kayda geçer. Aşağıda kimin baktığını görürsünüz.",
+
     joinPending: "Başvuru gönderildi. Bir sorumlunın onayını bekleyin. Sonra bu ekip burada görünür ve uygulamada bir bildirim alırsınız.",
     joinJoined: "«{org}» ekibina katıldınız. Görev gönderirken artık bu ekibin cüzdanını seçebilirsiniz.",
     joinRejected: "Başvurunuz kabul edilmedi. Bir sorumlu reddetti veya ekip katılımları durdurdu. Sorunuz varsa doğrudan sorumluya yazın.",
@@ -1031,6 +1014,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     pendingOrgsInAccount: "Başvurduğunuz veya zaten katıldığınız ekipler hesap sayfasındaki “Ekiplerim” altında görünür.",
 },
   vi: {
+    ...TEAM_COPY_LOCALES["vi"],
     daysN: "{n} ngày",
     capUpdated: "Đã cập nhật hạn mức",
     tasks: "Tác vụ",
@@ -1056,7 +1040,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     monthlyCap: "Hạn mức tháng",
     noPendingRequests: "Không có yêu cầu đang chờ",
     createInviteLink: "Tạo liên kết mời",
-    viewAllTasks: "Xem mọi tác vụ",
+
     viewOrgPage: "Xem trang nhóm",
     orgBalance: "Số dư nhóm",
     orgName: "Tên nhóm",
@@ -1087,7 +1071,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     connectAndVerify: "Kết nối và kiểm tra",
     youWillJoinOrg: "Bạn sẽ xin tham gia «{org}»",
     notInAnyOrgApplyBelow: "Bạn chưa thuộc nhóm nào. Khi có liên kết mời từ người phụ trách, hãy xin tham gia bên dưới.",
-    whatOrgCanSee: "Nhóm này sẽ thấy gì sau khi bạn tham gia",
+
     joinOrg: "Tham gia nhóm",
     capReached: "Đã đạt hạn mức",
     pasteInviteCode: "Dán mã mời người phụ trách gửi cho bạn. Mở liên kết mời sẽ tự điền.",
@@ -1096,9 +1080,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     applying: "Đang gửi…",
     requestToJoin: "Xin tham gia",
     admin: "Quản trị viên",
-    orgAdminViewAudit: "Mỗi lần quản trị viên nhóm mở tác vụ bạn đã trả bằng ví nhóm, sẽ có một bản ghi ở đây.",
-    whoViewedMe: "Ai đã xem việc của tôi",
-    noOneViewedYet: "Chưa ai xem việc của bạn",
+
     thisOrg: "nhóm này",
     inviteCode: "Mã mời",
     joinsImmediately: "(tham gia ngay)",
@@ -1111,12 +1093,11 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     orgGoneFallback: "Nhóm bạn chọn đã tạm dừng, hoặc bạn không còn trong nhóm đó.",
     switchedToPersonal: "Đã chuyển về ví cá nhân",
     whoPaysThisTime: "Lần này ai trả",
-    myOrgsMenuDesc: "Các nhóm bạn thuộc về, tháng này bạn tiêu bao nhiêu ở mỗi nhóm, và ai đã xem tác vụ của bạn",
+    myOrgsMenuDesc: "Các nhóm, chi tiêu và hạn mức của bạn",
     myOrgs: "Nhóm của tôi",
     orgGone: "Nhóm này không còn nữa.",
     agreeRequired: "Hãy đọc và đánh dấu Thỏa thuận dịch vụ doanh nghiệp OceanLeo trước.",
-    joinDisclosurePaid: "Tác vụ trả bằng ví nhóm thì quản trị viên xem được toàn bộ. Tác vụ trả bằng ví cá nhân thì nhóm không bao giờ thấy.",
-    joinDisclosureAudit: "Mỗi lần xem đều được ghi lại. Bên dưới bạn thấy ai đã xem.",
+
     joinPending: "Đã gửi đơn. Chờ người phụ trách duyệt. Sau đó nhóm này sẽ hiện ở đây và bạn nhận thông báo trong ứng dụng.",
     joinJoined: "Bạn đã tham gia «{org}». Giờ có thể chọn ví của nhóm này khi gửi tác vụ.",
     joinRejected: "Đơn không được duyệt. Người phụ trách từ chối, hoặc nhóm tạm dừng nhận thành viên. Có thắc mắc hãy hỏi người phụ trách.",

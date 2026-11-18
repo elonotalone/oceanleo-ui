@@ -4,7 +4,10 @@
 
 import { LOCALES, type Locale } from "../../config";
 
+import { TEAM_COPY_SOURCE } from "./enterprise-copy-team";
+
 export const ENTERPRISE_COPY_SOURCE = {
+  ...TEAM_COPY_SOURCE,
   // --- OrgPage ---
   daysN: "{n} 天",
   capUpdated: "上限已更新",
@@ -32,7 +35,7 @@ export const ENTERPRISE_COPY_SOURCE = {
   monthlyCap: "每月上限",
   noPendingRequests: "没有待审批的申请",
   createInviteLink: "生成邀请链接",
-  viewAllTasks: "看全部任务",
+
   viewOrgPage: "看团队页",
   orgBalance: "团队余额",
   orgName: "团队名",
@@ -69,7 +72,7 @@ export const ENTERPRISE_COPY_SOURCE = {
   youWillJoinOrg: "你将申请加入「{org}」",
   notInAnyOrgApplyBelow:
     "你还不属于任何团队。拿到负责人发的邀请链接后，在下面申请加入。",
-  whatOrgCanSee: "加入后这个团队能看到什么",
+
   joinOrg: "加入团队",
   capReached: "已达上限",
   pasteInviteCode:
@@ -79,10 +82,7 @@ export const ENTERPRISE_COPY_SOURCE = {
   applying: "申请中…",
   requestToJoin: "申请加入",
   admin: "管理员",
-  orgAdminViewAudit:
-    "团队管理员每次打开你用团队钱包做的任务，都会在这里留一条记录。",
-  whoViewedMe: "谁看过我",
-  noOneViewedYet: "还没有人看过",
+
   thisOrg: "这个团队",
   inviteCode: "邀请码",
   joinsImmediately: "（申请后立即加入）",
@@ -101,15 +101,13 @@ export const ENTERPRISE_COPY_SOURCE = {
   whoPaysThisTime: "这次谁付钱",
 
   // --- AccountPage ---
-  myOrgsMenuDesc: "你所在的团队、本月在每个团队花了多少、谁看过你的任务",
+  myOrgsMenuDesc: "你所在的团队、花费和上限",
   myOrgs: "我的团队",
 
   // --- W24 OrgMembership / org-api ---
   orgGone: "这个团队已经不在了。",
   agreeRequired: "请先阅读并勾选《OceanLeo 企业服务协议》。",
-  joinDisclosurePaid:
-    "用团队钱包付费的任务，团队管理员可以查看全部内容；用你个人钱包付费的任务，团队永远看不到。",
-  joinDisclosureAudit: "每次查看都会留下记录，你可以在下面看到谁看过。",
+
   joinPending:
     "申请已提交，等负责人通过。通过后这里会出现这个团队，你也会收到一条站内通知。",
   joinJoined: "已加入「{org}」。现在可以在发任务时选择用这个团队的钱包付费。",

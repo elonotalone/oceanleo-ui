@@ -1,3 +1,4 @@
+import { TEAM_COPY_LOCALES } from "./enterprise-copy-team";
 import type { EnterpriseCopyMessages } from "./enterprise-copy-base";
 
 export const ENTERPRISE_COPY_EASTERN: Record<
@@ -5,6 +6,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
   EnterpriseCopyMessages
 > = {
   ja: {
+    ...TEAM_COPY_LOCALES["ja"],
     daysN: "{n} 日",
     capUpdated: "上限を更新しました",
     tasks: "タスク",
@@ -30,7 +32,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     monthlyCap: "月次上限",
     noPendingRequests: "承認待ちの申請はありません",
     createInviteLink: "招待リンクを作成",
-    viewAllTasks: "すべてのタスクを見る",
+
     viewOrgPage: "チームページを見る",
     orgBalance: "チームの残高",
     orgName: "チーム名",
@@ -61,7 +63,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     connectAndVerify: "接続して確認",
     youWillJoinOrg: "「{org}」への参加を申請します",
     notInAnyOrgApplyBelow: "まだどのチームにも入っていません。担当者から招待リンクをもらったら、下から参加を申請してください。",
-    whatOrgCanSee: "参加後、このチームが見られるもの",
+
     joinOrg: "チームに参加",
     capReached: "上限に達しました",
     pasteInviteCode: "担当者から届いた招待コードを貼ってください。招待リンクから開くと自動で入ります。",
@@ -70,9 +72,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     applying: "申請中…",
     requestToJoin: "参加を申請",
     admin: "管理者",
-    orgAdminViewAudit: "チームの管理者が、チームウォレットで支払ったタスクを開くたびに、ここに記録が残ります。",
-    whoViewedMe: "誰が自分の作業を見たか",
-    noOneViewedYet: "まだ誰も見ていません",
+
     thisOrg: "このチーム",
     inviteCode: "招待コード",
     joinsImmediately: "（申請後すぐ参加）",
@@ -85,12 +85,11 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     orgGoneFallback: "選んでいたチームは停止中か、すでに所属していません。",
     switchedToPersonal: "個人ウォレットに戻しました",
     whoPaysThisTime: "今回だれが払うか",
-    myOrgsMenuDesc: "所属しているチーム、今月それぞれの利用額、タスクを見た人",
+    myOrgsMenuDesc: "所属チーム、利用額と上限",
     myOrgs: "自分のチーム",
     orgGone: "このチームはもうありません。",
     agreeRequired: "先に OceanLeo 企業サービス規約を読んでチェックしてください。",
-    joinDisclosurePaid: "チームウォレットで支払ったタスクは、チームの管理者は内容をすべて見られます。個人ウォレットで支払ったタスクは、チームからは見えません。",
-    joinDisclosureAudit: "閲覧のたびに記録が残ります。下で誰が見たかを確認できます。",
+
     joinPending: "申請を送りました。担当者の承認を待ってください。通るとここにこのチームが現れ、アプリ内通知も届きます。",
     joinJoined: "「{org}」に参加しました。タスクを送るとき、このチームのウォレットを選べます。",
     joinRejected: "申請は通りませんでした。担当者が却下したか、このチームが参加を停止しています。不明点は担当者に直接聞いてください。",
@@ -119,6 +118,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     pendingOrgsInAccount: "申請中または参加済みのチームは、アカウントページの「自分のチーム」に表示されます。",
 },
   ko: {
+    ...TEAM_COPY_LOCALES["ko"],
     daysN: "{n}일",
     capUpdated: "한도를 업데이트했습니다",
     tasks: "작업",
@@ -144,7 +144,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     monthlyCap: "월 한도",
     noPendingRequests: "대기 중인 신청이 없습니다",
     createInviteLink: "초대 링크 만들기",
-    viewAllTasks: "모든 작업 보기",
+
     viewOrgPage: "팀 페이지 보기",
     orgBalance: "팀 잔액",
     orgName: "팀 이름",
@@ -175,7 +175,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     connectAndVerify: "연결하고 확인",
     youWillJoinOrg: "“{org}” 가입을 신청합니다",
     notInAnyOrgApplyBelow: "아직 어떤 팀에도 속해 있지 않습니다. 담당자에게 받은 초대 링크로 아래에서 가입을 신청하세요.",
-    whatOrgCanSee: "가입한 뒤 이 팀이 볼 수 있는 것",
+
     joinOrg: "팀 가입",
     capReached: "한도 도달",
     pasteInviteCode: "담당자가 보낸 초대 코드를 붙여넣으세요. 초대 링크를 열면 자동으로 채워집니다.",
@@ -184,9 +184,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     applying: "신청 중…",
     requestToJoin: "가입 신청",
     admin: "관리자",
-    orgAdminViewAudit: "팀 관리자가 팀 지갑으로 결제한 작업을 열 때마다 여기에 기록이 남습니다.",
-    whoViewedMe: "내 작업을 본 사람",
-    noOneViewedYet: "아직 본 사람이 없습니다",
+
     thisOrg: "이 팀",
     inviteCode: "초대 코드",
     joinsImmediately: "(신청 후 바로 가입)",
@@ -199,12 +197,11 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     orgGoneFallback: "선택한 팀이 정지되었거나, 더 이상 그 팀에 속해 있지 않습니다.",
     switchedToPersonal: "개인 지갑으로 되돌렸습니다",
     whoPaysThisTime: "이번엔 누가 내나요",
-    myOrgsMenuDesc: "속한 팀, 이번 달 각 팀에서 쓴 금액, 내 작업을 본 사람",
+    myOrgsMenuDesc: "내 팀, 지출과 한도",
     myOrgs: "내 팀",
     orgGone: "이 팀은 더 이상 없습니다.",
     agreeRequired: "먼저 OceanLeo 기업 서비스 약관을 읽고 체크하세요.",
-    joinDisclosurePaid: "팀 지갑으로 결제한 작업은 팀 관리자가 내용을 모두 볼 수 있습니다. 개인 지갑으로 결제한 작업은 팀이 절대 볼 수 없습니다.",
-    joinDisclosureAudit: "볼 때마다 기록이 남습니다. 아래에서 누가 봤는지 확인할 수 있습니다.",
+
     joinPending: "신청을 보냈습니다. 담당자 승인을 기다리세요. 통과하면 여기에 이 팀이 나타나고 앱 알림도 옵니다.",
     joinJoined: "「{org}」에 가입했습니다. 이제 작업을 보낼 때 이 팀 지갑을 고를 수 있습니다.",
     joinRejected: "신청이 통과되지 않았습니다. 담당자가 거절했거나 이 팀이 가입을 멈췄습니다. 궁금하면 담당자에게 직접 문의하세요.",
@@ -233,6 +230,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     pendingOrgsInAccount: "신청했거나 이미 속한 팀은 계정 페이지의 «내 팀»에 나타납니다.",
 },
   "zh-TW": {
+    ...TEAM_COPY_LOCALES["zh-TW"],
     daysN: "{n} 日",
     capUpdated: "額度上限已更新",
     tasks: "任務",
@@ -258,7 +256,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     monthlyCap: "每月額度上限",
     noPendingRequests: "沒有待審核的申請",
     createInviteLink: "產生邀請連結",
-    viewAllTasks: "看全部任務",
+
     viewOrgPage: "看團隊頁",
     orgBalance: "團隊餘額",
     orgName: "團隊名稱",
@@ -289,7 +287,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     connectAndVerify: "連接並驗證",
     youWillJoinOrg: "你將申請加入「{org}」",
     notInAnyOrgApplyBelow: "你還不屬於任何團隊。拿到負責人發的邀請連結後，在下面申請加入。",
-    whatOrgCanSee: "加入後這個團隊能看到什麼",
+
     joinOrg: "加入團隊",
     capReached: "已達上限",
     pasteInviteCode: "把負責人發給你的邀請碼貼在這裡；從邀請連結開啟時會自動帶入。",
@@ -298,9 +296,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     applying: "申請中…",
     requestToJoin: "申請加入",
     admin: "管理員",
-    orgAdminViewAudit: "團隊管理員每次打開你用團隊錢包做的任務，都會在這裡留一條紀錄。",
-    whoViewedMe: "誰看過我",
-    noOneViewedYet: "還沒有人看過",
+
     thisOrg: "這個團隊",
     inviteCode: "邀請碼",
     joinsImmediately: "（申請後立即加入）",
@@ -313,12 +309,11 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     orgGoneFallback: "先前選的團隊已停用，或你已不在該團隊裡。",
     switchedToPersonal: "已切回個人錢包",
     whoPaysThisTime: "這次誰付錢",
-    myOrgsMenuDesc: "你所在的團隊、本月在每個團隊花了多少、誰看過你的任務",
+    myOrgsMenuDesc: "你所在的團隊、花費和上限",
     myOrgs: "我的團隊",
     orgGone: "這個團隊已經不在了。",
     agreeRequired: "請先閱讀並勾選《OceanLeo 企業服務協議》。",
-    joinDisclosurePaid: "用團隊錢包付費的任務，團隊管理員可以查看全部內容；用你個人錢包付費的任務，團隊永遠看不到。",
-    joinDisclosureAudit: "每次查看都會留下紀錄，你可以在下面看到誰看過。",
+
     joinPending: "申請已送出，等負責人通過。通過後這裡會出現這個團隊，你也會收到一則站內通知。",
     joinJoined: "已加入「{org}」。現在可以在發任務時選擇用這個團隊的錢包付費。",
     joinRejected: "申請沒有通過。負責人駁回了你的申請，或這個團隊暫停了加入；有疑問請直接聯絡負責人。",
@@ -347,6 +342,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     pendingOrgsInAccount: "申請中或已通過的團隊，都能在帳戶頁的「我的團隊」裡看到。",
 },
   ar: {
+    ...TEAM_COPY_LOCALES["ar"],
     daysN: "{n} يومًا",
     capUpdated: "تم تحديث الحد",
     tasks: "المهام",
@@ -372,7 +368,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     monthlyCap: "الحد الشهري",
     noPendingRequests: "لا طلبات معلّقة",
     createInviteLink: "إنشاء رابط دعوة",
-    viewAllTasks: "عرض كل المهام",
+
     viewOrgPage: "عرض صفحة الفريق",
     orgBalance: "رصيد الفريق",
     orgName: "اسم الفريق",
@@ -403,7 +399,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     connectAndVerify: "ربط والتحقق",
     youWillJoinOrg: "ستطلب الانضمام إلى «{org}»",
     notInAnyOrgApplyBelow: "لست عضوًا في أي فريق بعد. بعد أن يصلك رابط دعوة من المسؤول، قدّم الطلب أدناه.",
-    whatOrgCanSee: "ما الذي يمكن لهذه الفريق رؤيته بعد انضمامك",
+
     joinOrg: "الانضمام إلى فريق",
     capReached: "تم بلوغ الحد",
     pasteInviteCode: "الصق رمز الدعوة الذي أرسله المسؤول. فتح رابط الدعوة يملأ الحقل تلقائيًا.",
@@ -412,9 +408,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     applying: "جارٍ التقديم…",
     requestToJoin: "طلب الانضمام",
     admin: "مسؤول",
-    orgAdminViewAudit: "في كل مرة يفتح فيها مسؤول الفريق مهمة دفعتها من محفظة الفريق، تُضاف سجلّة هنا.",
-    whoViewedMe: "من اطّلع على عملي",
-    noOneViewedYet: "لم يطّلع أحد على عملك بعد",
+
     thisOrg: "هذه الفريق",
     inviteCode: "رمز الدعوة",
     joinsImmediately: "(ستنضم فورًا)",
@@ -427,12 +421,11 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     orgGoneFallback: "الفريق التي اخترتها معلّقة، أو لم تعد عضوًا فيها.",
     switchedToPersonal: "تمت العودة إلى المحفظة الشخصية",
     whoPaysThisTime: "من يدفع هذه المرة",
-    myOrgsMenuDesc: "الفرق التي تنتمي إليها، وما أنفقته هذا الشهر في كل منها، ومن اطّلع على مهامك",
+    myOrgsMenuDesc: "فرقك وإنفاقك وحدودك",
     myOrgs: "منظماتي",
     orgGone: "هذه الفريق لم تعد موجودة.",
     agreeRequired: "يرجى قراءة اتفاقية خدمة المؤسسات من OceanLeo ووضع علامة عليها أولاً.",
-    joinDisclosurePaid: "المهام المدفوعة من محفظة الفريق يمكن للمسؤولين رؤيتها بالكامل. المهام المدفوعة من محفظتك الشخصية لا تراها الفريق أبدًا.",
-    joinDisclosureAudit: "كل مشاهدة تُسجَّل. يمكنك أدناه معرفة من اطّلع.",
+
     joinPending: "أُرسل الطلب. انتظر موافقة مسؤول. بعد ذلك ستظهر هذه الفريق هنا وستصلك إشعار داخل التطبيق.",
     joinJoined: "انضممت إلى «{org}». يمكنك الآن اختيار محفظة هذه الفريق عند إرسال مهمة.",
     joinRejected: "لم يُقبل طلبك. رفضه مسؤول، أو أوقفت الفريق الانضمام. إن كان لديك سؤال فخاطب المسؤول مباشرة.",
@@ -461,6 +454,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     pendingOrgsInAccount: "الفرق التي طلبت الانضمام إليها أو انضممت إليها تظهر تحت «فرقي» في صفحة الحساب.",
 },
   th: {
+    ...TEAM_COPY_LOCALES["th"],
     daysN: "{n} วัน",
     capUpdated: "อัปเดตเพดานแล้ว",
     tasks: "งาน",
@@ -486,7 +480,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     monthlyCap: "เพดานรายเดือน",
     noPendingRequests: "ไม่มีคำขอที่รออยู่",
     createInviteLink: "สร้างลิงก์เชิญ",
-    viewAllTasks: "ดูงานทั้งหมด",
+
     viewOrgPage: "ดูหน้าทีม",
     orgBalance: "ยอดทีม",
     orgName: "ชื่อทีม",
@@ -517,7 +511,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     connectAndVerify: "เชื่อมและตรวจสอบ",
     youWillJoinOrg: "คุณจะขอเข้าร่วม «{org}»",
     notInAnyOrgApplyBelow: "คุณยังไม่ได้อยู่ในทีมใด เมื่อได้ลิงก์เชิญจากผู้รับผิดชอบ ให้สมัครด้านล่าง",
-    whatOrgCanSee: "ทีมนี้จะเห็นอะไรหลังจากคุณเข้าร่วม",
+
     joinOrg: "เข้าร่วมทีม",
     capReached: "ถึงเพดานแล้ว",
     pasteInviteCode: "วางรหัสเชิญที่ผู้รับผิดชอบส่งมา เปิดลิงก์เชิญแล้วจะกรอกให้อัตโนมัติ",
@@ -526,9 +520,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     applying: "กำลังสมัคร…",
     requestToJoin: "ขอเข้าร่วม",
     admin: "ผู้ดูแลระบบ",
-    orgAdminViewAudit: "ทุกครั้งที่ผู้ดูแลทีมเปิดงานที่คุณจ่ายด้วยกระเป๋าเงินทีม จะมีบันทึกที่นี่",
-    whoViewedMe: "ใครดูงานของฉัน",
-    noOneViewedYet: "ยังไม่มีใครดูงานของคุณ",
+
     thisOrg: "ทีมนี้",
     inviteCode: "รหัสเชิญ",
     joinsImmediately: "(เข้าร่วมทันที)",
@@ -541,12 +533,11 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     orgGoneFallback: "ทีมที่เลือกถูกระงับ หรือคุณไม่อยู่ในทีมนั้นแล้ว",
     switchedToPersonal: "สลับกลับไปกระเป๋าเงินส่วนตัวแล้ว",
     whoPaysThisTime: "ครั้งนี้ใครจ่าย",
-    myOrgsMenuDesc: "ทีมที่คุณอยู่ เดือนนี้ใช้ไปเท่าไรในแต่ละแห่ง และใครดูงานของคุณ",
+    myOrgsMenuDesc: "ทีม ค่าใช้จ่าย และวงเงินของคุณ",
     myOrgs: "ทีมของฉัน",
     orgGone: "ทีมนี้ไม่มีแล้ว",
     agreeRequired: "โปรดอ่านและทำเครื่องหมายข้อตกลงบริการทีม OceanLeo ก่อน",
-    joinDisclosurePaid: "งานที่จ่ายด้วยกระเป๋าทีม ผู้ดูแลดูเนื้อหาได้ทั้งหมด งานที่จ่ายด้วยกระเป๋าส่วนตัว ทีมจะมองไม่เห็นเลย",
-    joinDisclosureAudit: "ทุกครั้งที่เปิดดูจะมีบันทึก ด้านล่างคุณเห็นว่าใครดู",
+
     joinPending: "ส่งคำขอแล้ว รอผู้รับผิดชอบอนุมัติ ผ่านแล้วทีมนี้จะปรากฏที่นี่ และคุณจะได้รับการแจ้งในแอป",
     joinJoined: "เข้าร่วม «{org}» แล้ว ตอนส่งงานเลือกกระเป๋าของทีมนี้ได้",
     joinRejected: "คำขอไม่ผ่าน ผู้รับผิดชอบปฏิเสธ หรือทีมหยุดรับสมาชิก หากสงสัยติดต่อผู้รับผิดชอบโดยตรง",
@@ -575,6 +566,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     pendingOrgsInAccount: "ทีมที่คุณสมัครหรือเข้าร่วมแล้วจะอยู่ใน «ทีมของฉัน» ที่หน้าบัญชี",
 },
   hi: {
+    ...TEAM_COPY_LOCALES["hi"],
     daysN: "{n} दिन",
     capUpdated: "सीमा अपडेट हो गई",
     tasks: "कार्य",
@@ -600,7 +592,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     monthlyCap: "मासिक सीमा",
     noPendingRequests: "कोई लंबित अनुरोध नहीं",
     createInviteLink: "आमंत्रण लिंक बनाएँ",
-    viewAllTasks: "सभी कार्य देखें",
+
     viewOrgPage: "टीम पृष्ठ देखें",
     orgBalance: "टीम शेष",
     orgName: "टीम का नाम",
@@ -631,7 +623,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     connectAndVerify: "जोड़ें और जाँचें",
     youWillJoinOrg: "आप “{org}” में शामिल होने का अनुरोध करेंगे",
     notInAnyOrgApplyBelow: "आप अभी किसी टीम में नहीं हैं। जिम्मेदार व्यक्ति का आमंत्रण लिंक मिलने पर नीचे अनुरोध करें।",
-    whatOrgCanSee: "शामिल होने के बाद यह टीम क्या देख सकता है",
+
     joinOrg: "टीम में शामिल हों",
     capReached: "सीमा पूरी",
     pasteInviteCode: "जिम्मेदार व्यक्ति द्वारा भेजा आमंत्रण कोड चिपकाएँ। आमंत्रण लिंक खोलने पर अपने आप भर जाता है।",
@@ -640,9 +632,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     applying: "अनुरोध भेज रहे हैं…",
     requestToJoin: "शामिल होने का अनुरोध",
     admin: "व्यवस्थापक",
-    orgAdminViewAudit: "जब भी टीम एडमिन कोई ऐसा कार्य खोलता है जिसे आपने टीम वॉलेट से चुकाया, यहाँ एक रिकॉर्ड जुड़ता है।",
-    whoViewedMe: "मेरा काम किसने देखा",
-    noOneViewedYet: "अभी किसी ने आपका काम नहीं देखा",
+
     thisOrg: "यह टीम",
     inviteCode: "आमंत्रण कोड",
     joinsImmediately: "(आप तुरंत शामिल होंगे)",
@@ -655,12 +645,11 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     orgGoneFallback: "चुना टीम निलंबित है, या आप अब उसमें नहीं हैं।",
     switchedToPersonal: "व्यक्तिगत वॉलेट पर वापस आए",
     whoPaysThisTime: "इस बार कौन चुकाए",
-    myOrgsMenuDesc: "जिन टीमों में आप हैं, इस महीने प्रत्येक में कितना खर्च हुआ, और आपके कार्यों को किसने देखा",
+    myOrgsMenuDesc: "आपकी टीमें, खर्च और सीमाएँ",
     myOrgs: "मेरे टीम",
     orgGone: "यह टीम अब नहीं रहा।",
     agreeRequired: "पहले OceanLeo एंटरप्राइज़ सेवा समझौता पढ़ें और टिक करें।",
-    joinDisclosurePaid: "टीम वॉलेट से चुकाए गए कार्यों को एडमिन पूरा देख सकते हैं। अपने निजी वॉलेट से चुकाए गए कार्य टीम कभी नहीं देखता।",
-    joinDisclosureAudit: "हर बार देखने का रिकॉर्ड रहता है। नीचे आप देख सकते हैं किसने देखा।",
+
     joinPending: "आवेदन भेज दिया। किसी ज़िम्मेदार की मंज़ूरी का इंतज़ार करें। पास होने पर यह टीम यहाँ दिखेगा और ऐप में सूचना मिलेगी।",
     joinJoined: "आप «{org}» में शामिल हो गए। अब कार्य भेजते समय इस टीम का वॉलेट चुन सकते हैं।",
     joinRejected: "आवेदन पास नहीं हुआ। किसी ज़िम्मेदार ने अस्वीकार किया, या टीम ने शामिल होना रोक दिया। सवाल हो तो सीधे उनसे पूछें।",
