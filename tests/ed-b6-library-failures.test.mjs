@@ -24,9 +24,13 @@ const hImport = `import {createElement as h} from ${JSON.stringify(reactUrl)};`;
 const { MyLibrary } = await import(await compileModule("src/shell/MyLibrary.tsx", {
   "./StorageCapacityStrip": dataModule("export const StorageCapacityStrip=()=>null;"),
   "./library-import": dataModule("export const LibraryImportDialog=()=>null; export const LibraryUploadQueue=()=>null; export const LibraryPurchasedUpdates=()=>null;"),
-  "../i18n/ui/useUI": dataModule("export const useUI=()=>text=>text;"),
+  "../i18n/ui/useUI": dataModule("const tt=text=>text; export const useUI=()=>tt;"),
   "../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT="oceanleo:auth-state";
+    export async function accessToken(){return null;}
+    export function cachedAccessToken(){return null;}
+    export function browserClient(){return null;}
+    export async function getUserId(){return globalThis.__edB6.user;}
     export async function getUserIdSnapshot(){return {available:true,userId:globalThis.__edB6.user};}
   `),
   "./AppPageHeader": dataModule('export const APP_PAGE_TITLE_CLASS="";'),

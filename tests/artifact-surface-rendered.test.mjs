@@ -150,10 +150,10 @@ const artifactRenditionUrl = await compileModule(
   },
 );
 const { useArtifactRendition } = await import(artifactRenditionUrl);
+// Production useUI memoizes its translator; effect dependencies must see the same identity.
 const uiStubUrl = dataModule(`
-  export function useUI() {
-    return (value) => value;
-  }
+  const tt = (value) => value;
+  export function useUI() { return tt; }
 `);
 const sessionStubUrl = dataModule(`
   export function WorkspaceSessionProvider({children}) { return children; }
@@ -3004,6 +3004,9 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
   globalThis.fetch = async (input) => {
     const url = new URL(String(input));
     calls.push(url);
+    if (url.pathname === "/v1/orgs/me/inherited-assets") {
+      return jsonResponse({ available: true, ownerUserId: "owner-a", assets: [], hasMore: false });
+    }
     if (url.pathname === "/v1/library/project-memberships") {
       return jsonResponse({ items: [] });
     }
@@ -3053,6 +3056,7 @@ test("rendered My Library is owner-scoped and dedupes cross-site durable identit
         ["/v1/library/mine", "pdf"],
         ["/v1/library/mine", null],
         ["/v1/library/favorites", null],
+        ["/v1/orgs/me/inherited-assets", null],
       ],
     );
     assert.equal(

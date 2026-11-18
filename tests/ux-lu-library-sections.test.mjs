@@ -80,7 +80,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
     export function LibraryUploadQueue(){ return null; }
     export function LibraryPurchasedUpdates(){ return null; }
   `),
-  "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
+  "../i18n/ui/useUI": dataModule(`const tt = (value) => value; export function useUI(){ return tt; }`),
   "../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT = "oceanleo:auth-state";
     export async function accessToken(){ return null; }
@@ -98,6 +98,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   `),
   "./collection-chrome": dataModule(`
     export const COLLECTION_ACTION_BTN_PRIMARY = "";
+    export const COLLECTION_ACTION_BTN_GHOST = "";
     export function CollectionFilterRow({children}){ return children; }
     export function CollectionFilterSelect(){ return null; }
   `),

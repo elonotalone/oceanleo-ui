@@ -14,8 +14,9 @@ const clientStub = dataModule(`
   export async function imFetch(){ throw new Error("network is stubbed"); }
   export class ImApiError extends Error {}
 `);
+// Keep real pure domain helpers available to the shared frame; override only the family choice.
 const familyStub = dataModule(`
-  export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
+  export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};
   export function currentDomainFamily(){ return "com"; }
   export function currentFamilySubsiteOrigin(){ return undefined; }
 `);
@@ -161,7 +162,7 @@ test("交易会话地址是站内 Bay，境内也保留 id 校验", async () => 
   const cnUrl = await compileModule("src/shell/messages/talent/talent-api.ts", {
     "../../../lib/im/client": clientStub,
     "../../../contracts/domain-family": dataModule(`export function currentDomainFamily(){ return "cn"; }
-      export { domainFamilyFeatures } from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};`),
+      export * from ${JSON.stringify(new URL("../src/contracts/domain-family.ts", import.meta.url).href)};`),
   });
   const cn = await import(cnUrl);
   assert.equal(cn.talentThreadUrl("th1"), "/bay?bay=conversation:th1");

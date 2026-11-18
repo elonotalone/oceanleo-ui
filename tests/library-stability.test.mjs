@@ -234,7 +234,7 @@ test("separate callers hold the same refresh lock one at a time", async () => {
 });
 
 const collectionChromeUrl = await compileModule("src/shell/collection-chrome.tsx", {
-  "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
+  "../i18n/ui/useUI": dataModule(`const tt = (value) => value; export function useUI(){ return tt; }`),
   "./AppPageHeader": dataModule(`export const APP_PAGE_HEADER_ROW_CLASS=""; export const APP_PAGE_TITLE_CLASS="";`),
 });
 const { CollectionViewOptions } = await import(collectionChromeUrl);
@@ -332,7 +332,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
       return h("div", {"data-editor": item?.artifactId || item?.id});
     }
   `),
-  "../i18n/ui/useUI": dataModule(`export function useUI(){ return (value) => value; }`),
+  "../i18n/ui/useUI": dataModule(`const tt = (value) => value; export function useUI(){ return tt; }`),
   "../lib/auth/client": dataModule(`
     export const AUTH_STATE_EVENT = "oceanleo:auth-state";
     export function cachedAccessToken(){ return null; }
@@ -355,6 +355,7 @@ const myLibraryUrl = await compileModule("src/shell/MyLibrary.tsx", {
   `),
   "./collection-chrome": dataModule(`
     export const COLLECTION_ACTION_BTN_PRIMARY = "";
+    export const COLLECTION_ACTION_BTN_GHOST = "";
     export function CollectionFilterRow(){ return null; }
     export function CollectionFilterSelect(){ return null; }
   `),

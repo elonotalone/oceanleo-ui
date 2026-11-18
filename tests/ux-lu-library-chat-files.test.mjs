@@ -50,6 +50,7 @@ const urlStub = dataModule(`
 const uiStub = dataModule(`export function useUI() { return (text, vars) => text.replace(/\\{(\\w+)\\}/g, (match, key) => (vars && key in vars ? String(vars[key]) : match)); }`);
 const uiKitStub = dataModule(`
   import { createElement } from "${reactUrl}";
+  export function Modal({children, title}) { return createElement("div", {role:"dialog"}, title, children); }
   export function SkeletonCard({ className }) { return createElement("div", { "data-skeleton": "", className }); }
   export function timeAgo(iso) { return "T(" + iso + ")"; }
 `);

@@ -20,7 +20,7 @@ const motionStyle = document.createElement('style'); motionStyle.id='leo-overlay
 globalThis.requestAnimationFrame = dom.window.requestAnimationFrame.bind(dom.window);
 globalThis.cancelAnimationFrame = dom.window.cancelAnimationFrame.bind(dom.window);
 const { createRoot } = await import('react-dom/client');
-const ui = dataModule('export function useUI(){return x=>x;}');
+const ui = dataModule('const tt=x=>x; export function useUI(){return tt;}');
 globalThis.__linkCalls = [];
 globalThis.__libraryWorks = [{id:"link-1",source_type:"link",title:"Dashboard",updated_at:"2026-11-10T08:00:00Z",link_work:{id:"link-1",links:[{label:"Link",url:"https://example.com/"}],note:"counts"}}];
 globalThis.__embeddable = true;

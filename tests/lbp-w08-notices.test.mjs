@@ -1452,7 +1452,7 @@ const useLeoChatUnreadStub = dataModule(`
 `);
 const bodyStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
-  export function LeoChatBody({ wide }){ return React.createElement("div", { "data-leochat-body": wide ? "wide" : "narrow" }); }
+  export function LeoChatBody({ wide, listHeader }){ return React.createElement("div", { "data-leochat-body": wide ? "wide" : "narrow" }, listHeader); }
 `);
 
 const { LeoChatPanel } = await import(
@@ -1511,6 +1511,12 @@ const { LeoChatPage } = await import(
   await compileModule("src/shell/leochat/LeoChatPage.tsx", {
     "../../i18n/ui/useUI": uiStub,
     "../../lib/auth/client": dataModule(`export async function accessToken(){ return "t"; }`),
+    "../TaskWorkspaceShell": dataModule(`
+      import React from ${JSON.stringify(reactUrl)};
+      export function useTaskWorkspaceState(){const [rightOpen,setRightOpen]=React.useState(false);return {rightOpen,setRightOpen};}
+      export function TaskWorkspaceShell({left}){return left;}
+    `),
+    "../SplitWorkspace": dataModule(`export function IconRightPanelToggle(){return null;}`),
     "../../lib/im/client": imOnStub,
     "../bay/shell/BayMine": signInStub,
     // 整页不需要知道 LeoBay 在不在本站（只剩 setBaySiteKey）：它要是还引 bayEnabledHere，这里链接就会失败。
@@ -1864,7 +1870,7 @@ const { Inbox } = await import(
     "../../lib/im/groups-api": dataModule(`export async function clearConversationHistory(){} export async function markConversationUnread(){} export async function patchMySettings(){}`),
     "../../lib/im/people-api": dataModule(`export function reasonOf(_e, fallback){ return fallback; }`),
     "../../lib/im/search-api": dataModule(`export function searchQueryReady(){ return globalThis.__w08.searching; }`),
-    "../../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`),
+    "../../ui": dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; } export function Modal({children}){ return children; }`),
     "./InboxRow": nullStub("InboxRow"),
     "./people/InviteLinkDialog": nullStub("InviteLinkDialog"),
     "./search/SearchView": nullStub("SearchView"),

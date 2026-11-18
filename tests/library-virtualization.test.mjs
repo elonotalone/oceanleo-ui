@@ -194,7 +194,7 @@ window.getComputedStyle = function patchedGetComputedStyle(element, pseudo) {
 // 桩
 // ---------------------------------------------------------------------------
 
-const UI = dataModule("export function useUI(){ return (zh) => zh; }");
+const UI = dataModule("const tt = (zh) => zh; export function useUI(){ return tt; }");
 
 /** 卡片替身：只报出自己是第几件，别的什么都不做（理由见文件头）。 */
 const WORKSPACE_LIBRARY_VIEW = dataModule(`
