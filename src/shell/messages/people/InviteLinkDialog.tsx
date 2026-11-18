@@ -1,11 +1,13 @@
 "use client";
 
+import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+
 // 生成邀请链接：联系人邀请（发给任何人，对方点开登录后成为联系人），或某个群的邀请链接（可要求审批）。
 // 可设有效期与次数、复制、撤销已有链接。
 
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { Modal, Switch } from "../../../ui";
+import { Switch } from "../../../ui";
 import {
   INVITE_EXPIRY_CHOICES,
   INVITE_USES_CHOICES,
@@ -80,16 +82,10 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
   }
 
   return (
-    <Modal onClose={onClose} className="max-w-md" labelledBy="im-invite-title">
-      <div className="p-5" data-invite-link-dialog data-kind={kind}>
-        <h3 id="im-invite-title" className="text-[15px] font-semibold text-neutral-900">
-          {kind === "group" ? tt("群邀请链接") : tt("添加联系人")}
-        </h3>
-        <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">
-          {kind === "group"
-            ? tt("拿到链接的人点开、登录后就能进群。")
-            : tt("把链接或二维码发给对方。对方发送好友请求后，需要你同意。")}
-        </p>
+    <Modal onClose={onClose} title={kind === "group" ? tt("群邀请链接") : tt("添加联系人")} labelledBy="im-invite-title">
+      <div data-invite-link-dialog data-kind={kind}>
+
+        {kind === "group" && <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("拿到链接的人点开、登录后就能进群。")}</p>}
 
         {kind === "contact" && <TeamContactsSection />}
 
@@ -127,7 +123,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
           disabled={busy}
           onClick={generate}
           data-action="generate"
-          className="mt-4 w-full rounded-lg bg-neutral-900 px-3 py-2 text-[13px] font-medium text-white disabled:opacity-50"
+          className={`${PRIMARY} mt-4 w-full`}
         >
           {tt("生成并复制链接")}
         </button>
@@ -163,14 +159,14 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
                     onClick={() => setQrFor(qrFor === l.code ? null : l.code)}
                     aria-expanded={qrFor === l.code}
                     data-action="toggle-qr"
-                    className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50"
+                    className={QUIET}
                   >
                     {qrFor === l.code ? tt("隐藏二维码") : tt("显示二维码")}
                   </button>
-                  <button type="button" onClick={() => copy(l.url)} data-action="copy" className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50">
+                  <button type="button" onClick={() => copy(l.url)} data-action="copy" className={QUIET}>
                     {copied === l.url ? tt("已复制") : tt("复制")}
                   </button>
-                  <button type="button" onClick={() => revoke(l)} data-action="revoke" className="rounded-lg px-2 py-1 text-[12px] text-red-600 hover:bg-red-50">
+                  <button type="button" onClick={() => revoke(l)} data-action="revoke" className={QUIET}>
                     {tt("撤销")}
                   </button>
                 </li>
@@ -180,7 +176,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
         )}
 
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-50">
+          <button type="button" onClick={onClose} className={QUIET}>
             {tt("关闭")}
           </button>
         </div>

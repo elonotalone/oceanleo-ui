@@ -1,10 +1,11 @@
 "use client";
 
-// 新建聊天：左边按名字搜通讯录（A–Z）和已有群，右边发起群聊。选 1 人开私聊，选多人建群。
+import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+
+// 新建聊天：已选联系人、搜索、已有群和通讯录在同一列。选 1 人开私聊，选多人建群。
 
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { Modal } from "../../../ui";
 import { fetchConversations } from "../../../lib/im/inbox-api";
 import { createGroup, openProjectConversation, openTeamConversation } from "../../../lib/im/groups-api";
 import {
@@ -197,26 +198,42 @@ export function NewConversationDialog({
   const canComplete = picked.length >= 1 && !busy;
 
   return (
-    <Modal onClose={onClose} className="max-w-3xl" labelledBy="im-new-title">
-      <div className="flex max-h-[min(720px,86vh)] min-h-[480px] overflow-hidden" data-new-conversation>
+    <Modal onClose={onClose} title={tt("发起群聊")} labelledBy="im-new-title">
+      <div className="flex min-h-0 flex-col" data-new-conversation>
         {done ? (
-          <div className="flex-1 p-5" data-create-result>
-            <h3 id="im-new-title" className="text-[15px] font-semibold text-neutral-900">
-              {tt("发起群聊")}
-            </h3>
+          <div className="flex-1" data-create-result>
             <p className="mt-4 text-[14px] text-neutral-800">
               {tt("群已创建。已加入 {n} 人，{m} 人等待同意。", { n: done.added, m: done.pending })}
             </p>
             {done.refused > 0 && <p className="mt-1 text-[12px] text-neutral-500">{tt("有 {n} 人没能加入（可能已拉黑）。", { n: done.refused })}</p>}
             <div className="mt-5 flex justify-end">
-              <button type="button" onClick={() => onCreated(done.id)} data-action="enter" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
+              <button type="button" onClick={() => onCreated(done.id)} data-action="enter" className={PRIMARY}>
                 {tt("进入群聊")}
               </button>
             </div>
           </div>
         ) : (
           <>
-            <aside className="flex w-[46%] min-w-[240px] shrink-0 flex-col border-r border-neutral-100 bg-neutral-50/70">
+            <div className="flex min-h-0 flex-col" data-new-conversation-column>
+              <div className="flex flex-wrap gap-2" data-picker-chips>
+                {picked.map((id) => {
+                  const p = known.get(id);
+                  const name = p ? visiblePersonName(p) : id.slice(0, 6);
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setPicked(picked.filter((x) => x !== id))}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-200"
+                    >
+                      {p ? <PersonAvatar name={name} src={p.avatar_url} seed={p.user_id} size={20} /> : null}
+                      <span>{name}</span>
+                      <span aria-hidden="true">×</span>
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="p-3">
                 <input
                   type="search"
@@ -225,10 +242,10 @@ export function NewConversationDialog({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={tt("按名字搜索")}
                   aria-label={tt("搜索")}
-                  className="w-full rounded-full border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                  className="w-full rounded-lg border border-neutral-200 bg-white px-3 py-2 text-[13px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
                 />
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+              <div className="max-h-[38vh] overflow-y-auto pb-4">
                 <SectionToggle open={openGroups} onToggle={() => setOpenGroups((v) => !v)} label={tt("选择一个已有群")} />
                 {openGroups && (
                   <ul data-existing-groups>
@@ -334,18 +351,10 @@ export function NewConversationDialog({
                   </div>
                 )}
               </div>
-            </aside>
+            </div>
 
             <section className="flex min-w-0 flex-1 flex-col">
-              <div className="border-b border-neutral-100 px-5 py-4">
-                <h3 id="im-new-title" className="text-[16px] font-semibold text-neutral-900">
-                  {tt("发起群聊")}
-                </h3>
-                {picked.length > 0 && (
-                  <p className="mt-1 text-[12px] text-neutral-400">{tt("已选 {n} 人", { n: picked.length })}</p>
-                )}
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <div className="min-h-0 flex-1 py-4">
                 {picked.length > 1 && (
                   <label className="mb-4 flex flex-col gap-1 text-[12px] text-neutral-600">
                     {tt("群名称")}
@@ -359,32 +368,14 @@ export function NewConversationDialog({
                     />
                   </label>
                 )}
-                <div className="flex flex-wrap gap-2" data-picker-chips>
-                  {picked.map((id) => {
-                    const p = known.get(id);
-                    const name = p ? visiblePersonName(p) : id.slice(0, 6);
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => setPicked(picked.filter((x) => x !== id))}
-                        className="inline-flex items-center gap-1.5 rounded-full bg-neutral-100 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-200"
-                      >
-                        {p ? <PersonAvatar name={name} src={p.avatar_url} seed={p.user_id} size={20} /> : null}
-                        <span>{name}</span>
-                        <span aria-hidden="true">×</span>
-                      </button>
-                    );
-                  })}
-                </div>
                 {note && (
                   <p role="alert" className="mt-3 text-[12px] text-red-600" data-new-note>
                     {note}
                   </p>
                 )}
               </div>
-              <div className="flex justify-end gap-2 border-t border-neutral-100 px-5 py-3">
-                <button type="button" onClick={onClose} className="rounded-lg px-3.5 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-50">
+              <div className="flex justify-end gap-2 border-t border-neutral-100 pt-3">
+                <button type="button" onClick={onClose} className={QUIET}>
                   {tt("取消")}
                 </button>
                 <button
@@ -392,7 +383,7 @@ export function NewConversationDialog({
                   disabled={!canComplete}
                   onClick={complete}
                   data-action={picked.length <= 1 ? "start-dm" : "create-group"}
-                  className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50"
+                  className={PRIMARY}
                 >
                   {tt("完成")}
                 </button>
