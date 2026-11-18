@@ -568,10 +568,12 @@ test("左栏宽卡等宽浅灰选中、身份箭头靠右、窄屏仍是横滑�
 
 test("OrgSection 嵌入 OrgPage 与三个页签，不再链到独立 /org", () => {
   const src = readFileSync(new URL("../src/pages/settings/sections/OrgSection.tsx", import.meta.url), "utf8");
-  assert.match(src, /<OrgPage embedded/);
+  assert.match(src, /<OrgPage\b[^>]*\bembedded\b/);
   assert.match(src, /only="create"/);
   assert.match(src, /only="join"/);
-  assert.match(src, /only="views"/);
+  assert.match(src, /only="orgs"/);
+  // 2026-11-18: the 「谁看过我」 pane is retired with the team task view; it must not come back.
+  assert.doesNotMatch(src, /only="views"/);
   assert.match(src, /data-org-settings-tabs/);
   assert.doesNotMatch(src, /href=\{orgHref\}|href="\/org"/);
 });

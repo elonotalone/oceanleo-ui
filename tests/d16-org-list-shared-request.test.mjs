@@ -60,7 +60,8 @@ test("180 simultaneous listMyOrgs callers share auth, fetch, promise and normali
   net.reply(net.calls[0], orgBody);
   const results = await Promise.all(waiting);
   assert.ok(results.every(result => result === results[0]));
-  assert.deepEqual(results[0], [{ id: "a", name: "A", role: "owner", canViewOrgPage: true, canViewAllTasks: true, currency: "USD" }]);
+  // 2026-11-18: the team task-view grant is retired, so the normalized row no longer has canViewAllTasks.
+  assert.deepEqual(results[0], [{ id: "a", name: "A", role: "owner", canViewOrgPage: true, currency: "USD" }]);
   const fresh = api.listMyOrgs();
   await tick();
   assert.equal(net.calls.length, 2);
