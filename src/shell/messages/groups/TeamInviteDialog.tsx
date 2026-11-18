@@ -1,5 +1,7 @@
 "use client";
 
+import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+
 // Team 群里直接邀请同事加入 Team（Team 管理员用）：生成 Team 邀请链接 + 二维码 + 一键复制。
 // 链接用 org-api 的 createInvite；服务端没给完整 https 地址时按门户的 /join 页自己拼
 // （不用 inviteUrlFor：它在子站上会拼出子站自己的地址，而 /join 在门户上）。
@@ -9,7 +11,6 @@ import { currentDomainProfile, portalHref, runtimePageOrigin } from "../../../co
 import { useUI } from "../../../i18n/ui/useUI";
 import { createInvite } from "../../../lib/org-api";
 import { copyText } from "../../../lib/im/people-api";
-import { Modal } from "../../../ui";
 import { InviteQrCode } from "../people/InviteQrCode";
 
 export interface TeamInviteDialogProps {
@@ -71,11 +72,9 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
   const expires = link?.expiresAt && !Number.isNaN(new Date(link.expiresAt).getTime()) ? new Date(link.expiresAt).toLocaleString() : "";
 
   return (
-    <Modal onClose={onClose} className="max-w-md" labelledBy="im-team-invite-title">
-      <div className="p-5" data-team-invite-dialog>
-        <h3 id="im-team-invite-title" className="text-[15px] font-semibold text-neutral-900">
-          {tt("邀请同事加入 Team")}
-        </h3>
+    <Modal onClose={onClose} title={tt("邀请同事加入 Team")} labelledBy="im-team-invite-title">
+      <div data-team-invite-dialog>
+
         {teamName && <p className="mt-0.5 truncate text-[12px] text-neutral-500">{teamName}</p>}
         <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("把链接发给同事。对方点开、登录后就能加入这个 Team。")}</p>
 
@@ -84,7 +83,7 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
           disabled={busy}
           onClick={generate}
           data-action="generate-team-invite"
-          className="mt-4 inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-neutral-900 px-3 text-[13px] font-medium text-white disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+          className={`${PRIMARY} mt-4 inline-flex min-h-11 w-full items-center justify-center`}
         >
           {link ? tt("重新生成链接") : tt("生成并复制链接")}
         </button>
@@ -110,7 +109,7 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
                 type="button"
                 onClick={() => copy(link.url)}
                 data-action="copy-team-invite"
-                className="inline-flex min-h-11 items-center rounded-lg border border-neutral-200 px-3 text-[12px] text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
+                className={`${QUIET} inline-flex min-h-11 items-center`}
               >
                 {copied ? tt("已复制") : tt("复制")}
               </button>
@@ -123,7 +122,7 @@ export function TeamInviteDialog({ orgId, teamName = "", onClose }: TeamInviteDi
         )}
 
         <div className="mt-4 flex justify-end">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-50">
+          <button type="button" onClick={onClose} className={QUIET}>
             {tt("关闭")}
           </button>
         </div>

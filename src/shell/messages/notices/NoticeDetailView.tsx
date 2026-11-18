@@ -1,9 +1,10 @@
 "use client";
 
+import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
+
 import type { ReactElement } from "react";
 import type { NotificationItem } from "../../../api/notifications";
 import { useUI } from "../../../i18n/ui/useUI";
-import { ImBackIcon } from "../messages-surface";
 import { NoticeBellIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
 import { browserNoticeActions, noticeActionable, noticeTargetOf, runNoticeTarget } from "./open-notice";
@@ -34,29 +35,15 @@ function targetLabel(target: ReturnType<typeof noticeTargetOf>, tt: ReturnType<t
   }
 }
 
-function DetailHeader({ onBack, tt }: { onBack: () => void; tt: ReturnType<typeof useUI> }): ReactElement {
-  return (
-    <header className="flex shrink-0 items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
-      <button type="button" data-im-chrome-btn data-notice-detail-back="" onClick={onBack} aria-label={tt("返回")}>
-        <ImBackIcon />
-      </button>
-      <h2 className="min-w-0 flex-1 truncate px-1 text-[13px] font-semibold tracking-tight text-neutral-900 dark:text-white">
-        {tt("通知详情")}
-      </h2>
-    </header>
-  );
-}
-
 export function NoticeDetailView({ noticeId, onBack }: NoticeDetailViewProps): ReactElement {
   const tt = useUI();
   const state = useNoticeState(true);
   const item: NotificationItem | undefined = noticeId ? state.items.find((candidate) => candidate.id === noticeId) : undefined;
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-notice-detail="" data-testid="notice-detail-view">
-      <DetailHeader onBack={onBack} tt={tt} />
+    <MessageSettingsFrame title={tt("通知详情")} onBack={onBack} backButtonProps={{ "data-notice-detail-back": "" } as React.ButtonHTMLAttributes<HTMLButtonElement>} data-notice-detail="" data-testid="notice-detail-view">
       {item ? <NoticeDetailContent item={item} tt={tt} /> : <MissingNotice tt={tt} />}
-    </div>
+    </MessageSettingsFrame>
   );
 }
 
@@ -76,7 +63,7 @@ function NoticeDetailContent({ item, tt }: { item: NotificationItem; tt: ReturnT
   return (
     <article className="min-h-0 flex-1 overflow-y-auto px-4 py-4" data-notice-detail-content="">
       <div className="flex items-start gap-3">
-        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-white/10 dark:text-amber-400">
+        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
           <NoticeBellIcon className="h-[18px] w-[18px]" />
         </span>
         <div className="min-w-0 flex-1">
@@ -97,7 +84,7 @@ function NoticeDetailContent({ item, tt }: { item: NotificationItem; tt: ReturnT
         <button
           type="button"
           data-notice-detail-target=""
-          className="mt-6 rounded-lg bg-[color:var(--im-accent)] px-3 py-2 text-[12px] font-medium text-white hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--im-accent)] focus-visible:ring-offset-2"
+          className={`${QUIET} mt-6`}
           onClick={() => {
             runNoticeTarget(target, browserNoticeActions());
           }}

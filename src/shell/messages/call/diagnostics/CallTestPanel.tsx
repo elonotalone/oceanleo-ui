@@ -1,5 +1,7 @@
 "use client";
 
+import { QUIET, PRIMARY, MessageSettingsFrame, CARD, CARD_TITLE, CARD_DESC } from "../../MessageSettingsFrame";
+
 // 「通话检测」面板（A14）：麦克风音量条（独立 getUserMedia，选中的设备）、扬声器试音（Web Audio 合成，可选输出设备）、
 // 摄像头本地预览、连接测试（test-token → 独立诊断引擎入 diag- 频道 → 发布音频 5 秒 → 好/一般/差 + 原始数字）、
 // 「复制诊断信息」（不含任何 token）。不在通话中也能打开。
@@ -18,7 +20,7 @@ import {
   type ConnectionTestResult,
 } from "./connection-test";
 import { formatStat } from "./health";
-import { IconCamera, IconCheck, IconClose, IconCopy, IconMic, IconNetwork, IconSpeaker, Spinner } from "./icons";
+import { IconCamera, IconCheck, IconCopy, IconMic, IconNetwork, IconSpeaker, Spinner } from "./icons";
 import { describeIssue, type IssueEnvironment } from "./issues";
 import { DiagDialog } from "./layer";
 import {
@@ -320,184 +322,170 @@ function CallTestDialog({ onClose }: { onClose(): void }) {
 
   return (
     <DiagDialog onClose={onClose} labelledBy={titleId}>
-      <div className="flex items-start justify-between gap-3 border-b border-neutral-200 px-5 pb-3 pt-4 dark:border-white/10">
-        <div className="min-w-0">
-          <h2 id={titleId} className="text-[15px] font-semibold">
-            {tt("通话检测")}
-          </h2>
-          <p className="mt-0.5 text-[12px] text-neutral-500 dark:text-neutral-400">{tt("检查麦克风、扬声器、摄像头和网络连接。")}</p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={tt("关闭")}
-          className="flex size-8 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-500 dark:text-neutral-400 dark:hover:bg-white/10"
-        >
-          <IconClose size={16} />
-        </button>
-      </div>
-
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-4" data-call-test-sections="">
-        <Section icon={<IconMic size={16} />} title={tt("麦克风")} name="mic">
-          <DeviceSelect
-            label={tt("选择麦克风")}
-            value={selectValue(micId)}
-            devices={realDevices(devices.microphones)}
-            fallbackName={(n) => tt("麦克风 {n}", { n })}
-            onChange={(value) => pickDevice("mic", value)}
-          />
-          <div
-            role="meter"
-            aria-label={tt("麦克风音量")}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(micLevel * 100)}
-            data-mic-meter=""
-            className="mt-2.5 flex h-2.5 w-full gap-[3px]"
-          >
-            {Array.from({ length: 20 }, (_, index) => (
-              <span
-                key={index}
-                aria-hidden="true"
-                className={`flex-1 rounded-[2px] transition-colors duration-75 ${
-                  micLevel * 20 > index
-                    ? index >= 17
-                      ? "bg-red-500"
-                      : index >= 13
-                        ? "bg-amber-400"
-                        : "bg-emerald-500"
-                    : "bg-neutral-200 dark:bg-white/10"
-                }`}
-              />
-            ))}
-          </div>
-          {micError ? (
-            <MediaProblem
-              text={tt(mediaErrorText("mic", micError))}
-              help={micError === "permission" ? describeIssue({ kind: "mic_permission" }, env).help.map((line) => tt(line)) : []}
-              retryLabel={tt("重试")}
-              onRetry={() => setMicRetry((n) => n + 1)}
+      <MessageSettingsFrame title={tt("通话检测")} titleId={titleId} onClose={onClose} card={false} className="max-h-[88vh]">
+        <div className="space-y-5" data-call-test-sections="">
+          <p className={CARD_DESC}>{tt("检查麦克风、扬声器、摄像头和网络连接。")}</p>
+          <Section icon={<IconMic size={16} />} title={tt("麦克风")} name="mic">
+            <DeviceSelect
+              label={tt("选择麦克风")}
+              value={selectValue(micId)}
+              devices={realDevices(devices.microphones)}
+              fallbackName={(n) => tt("麦克风 {n}", { n })}
+              onChange={(value) => pickDevice("mic", value)}
             />
-          ) : (
-            <p className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">{tt("对着麦克风说话，音量条会跳动。")}</p>
-          )}
-        </Section>
+            <div
+              role="meter"
+              aria-label={tt("麦克风音量")}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(micLevel * 100)}
+              data-mic-meter=""
+              className="mt-2.5 flex h-2.5 w-full gap-[3px]"
+            >
+              {Array.from({ length: 20 }, (_, index) => (
+                <span
+                  key={index}
+                  aria-hidden="true"
+                  className={`flex-1 rounded-[2px] transition-colors duration-75 ${
+                    micLevel * 20 > index
+                      ? index >= 17
+                        ? "bg-red-500"
+                        : index >= 13
+                          ? "bg-amber-400"
+                          : "bg-emerald-500"
+                      : "bg-neutral-200 dark:bg-white/10"
+                  }`}
+                />
+              ))}
+            </div>
+            {micError ? (
+              <MediaProblem
+                text={tt(mediaErrorText("mic", micError))}
+                help={micError === "permission" ? describeIssue({ kind: "mic_permission" }, env).help.map((line) => tt(line)) : []}
+                retryLabel={tt("重试")}
+                onRetry={() => setMicRetry((n) => n + 1)}
+              />
+            ) : (
+              <p className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">{tt("对着麦克风说话，音量条会跳动。")}</p>
+            )}
+          </Section>
 
-        <Section icon={<IconSpeaker size={16} />} title={tt("扬声器")} name="speaker">
-          <div className="flex items-center gap-2">
-            {sinkSelectable && devices.speakers.length ? (
+          <Section icon={<IconSpeaker size={16} />} title={tt("扬声器")} name="speaker">
+            <div className="flex items-center gap-2">
+              {sinkSelectable && devices.speakers.length ? (
+                <div className="min-w-0 flex-1">
+                  <DeviceSelect
+                    label={tt("选择扬声器")}
+                    value={selectValue(speakerId)}
+                    devices={realDevices(devices.speakers)}
+                    fallbackName={(n) => tt("扬声器 {n}", { n })}
+                    onChange={(value) => pickDevice("speaker", value)}
+                  />
+                </div>
+              ) : (
+                <p className="min-w-0 flex-1 text-[12px] text-neutral-500 dark:text-neutral-400">
+                  {tt("这个浏览器不能选择扬声器，会用系统默认的输出设备。")}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => void playSound()}
+                disabled={playing}
+                data-speaker-test=""
+                className={`${QUIET} flex shrink-0 items-center gap-1.5`}
+              >
+                {playing ? <Spinner size={13} /> : null}
+                {playing ? tt("正在播放…") : tt("播放试音")}
+              </button>
+            </div>
+            <p className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400" aria-live="polite">
+              {speakerFailed ? tt("没能播放试音，请检查扬声器或换一个输出设备。") : tt("听到提示音说明扬声器正常。")}
+            </p>
+          </Section>
+
+          <Section icon={<IconCamera size={16} />} title={tt("摄像头")} name="camera">
+            <div className="flex items-center gap-2">
               <div className="min-w-0 flex-1">
                 <DeviceSelect
-                  label={tt("选择扬声器")}
-                  value={selectValue(speakerId)}
-                  devices={realDevices(devices.speakers)}
-                  fallbackName={(n) => tt("扬声器 {n}", { n })}
-                  onChange={(value) => pickDevice("speaker", value)}
+                  label={tt("选择摄像头")}
+                  value={selectValue(cameraId)}
+                  devices={realDevices(devices.cameras)}
+                  fallbackName={(n) => tt("摄像头 {n}", { n })}
+                  onChange={(value) => pickDevice("camera", value)}
                 />
               </div>
-            ) : (
-              <p className="min-w-0 flex-1 text-[12px] text-neutral-500 dark:text-neutral-400">
-                {tt("这个浏览器不能选择扬声器，会用系统默认的输出设备。")}
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => void playSound()}
-              disabled={playing}
-              data-speaker-test=""
-              className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 px-3 text-[13px] font-medium hover:bg-neutral-50 disabled:opacity-60 dark:border-white/15 dark:hover:bg-white/10"
-            >
-              {playing ? <Spinner size={13} /> : null}
-              {playing ? tt("正在播放…") : tt("播放试音")}
-            </button>
-          </div>
-          <p className="mt-1.5 text-[12px] text-neutral-500 dark:text-neutral-400" aria-live="polite">
-            {speakerFailed ? tt("没能播放试音，请检查扬声器或换一个输出设备。") : tt("听到提示音说明扬声器正常。")}
-          </p>
-        </Section>
+              <button
+                type="button"
+                onClick={() => setCameraOn((on) => !on)}
+                aria-pressed={cameraOn}
+                data-camera-preview-toggle=""
+                className={`${QUIET} flex shrink-0 items-center`}
+              >
+                {cameraOn ? tt("关闭预览") : tt("打开预览")}
+              </button>
+            </div>
+            <div className={`relative mt-2.5 aspect-video w-full overflow-hidden rounded-xl bg-neutral-900 ${cameraOn ? "" : "hidden"}`}>
+              <video
+                ref={videoRef}
+                aria-label={tt("摄像头预览")}
+                muted
+                playsInline
+                autoPlay
+                className="h-full w-full -scale-x-100 object-cover"
+              />
+              {cameraOn && !cameraLive ? (
+                <span className="absolute inset-0 flex items-center justify-center text-white/80">
+                  <Spinner size={18} />
+                </span>
+              ) : null}
+            </div>
+            {cameraError ? (
+              <MediaProblem
+                text={tt(mediaErrorText("camera", cameraError))}
+                help={cameraError === "permission" ? describeIssue({ kind: "camera_permission" }, env).help.map((line) => tt(line)) : []}
+                retryLabel={tt("重试")}
+                onRetry={() => setCameraOn(true)}
+              />
+            ) : null}
+          </Section>
 
-        <Section icon={<IconCamera size={16} />} title={tt("摄像头")} name="camera">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
-              <DeviceSelect
-                label={tt("选择摄像头")}
-                value={selectValue(cameraId)}
-                devices={realDevices(devices.cameras)}
-                fallbackName={(n) => tt("摄像头 {n}", { n })}
-                onChange={(value) => pickDevice("camera", value)}
+          <Section icon={<IconNetwork size={16} />} title={tt("连接测试")} name="connection">
+            <ConnectionTestBlock test={test} onStart={() => void startTest()} env={env} />
+          </Section>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 px-5 py-3 dark:border-white/10">
+          <button
+            type="button"
+            onClick={() => void copyReport()}
+            data-copy-diagnostics=""
+            className={`${QUIET} flex items-center gap-1.5`}
+          >
+            {copyState === "copied" ? <IconCheck size={14} /> : <IconCopy size={14} />}
+            {copyState === "copied" ? tt("已复制") : tt("复制诊断信息")}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            data-call-test-close=""
+            className={PRIMARY}
+          >
+            {tt("关闭")}
+          </button>
+          {copyState === "failed" && reportText ? (
+            <div className="w-full">
+              <p className="text-[12px] text-amber-700 dark:text-amber-400">{tt("复制失败，请手动选中下面的文字复制。")}</p>
+              <textarea
+                readOnly
+                value={reportText}
+                aria-label={tt("诊断信息")}
+                onFocus={(event) => event.currentTarget.select()}
+                className="mt-1 h-28 w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-2 font-mono text-[11px] dark:border-white/10 dark:bg-white/5"
               />
             </div>
-            <button
-              type="button"
-              onClick={() => setCameraOn((on) => !on)}
-              aria-pressed={cameraOn}
-              data-camera-preview-toggle=""
-              className="flex h-8 shrink-0 items-center rounded-lg border border-neutral-200 px-3 text-[13px] font-medium hover:bg-neutral-50 dark:border-white/15 dark:hover:bg-white/10"
-            >
-              {cameraOn ? tt("关闭预览") : tt("打开预览")}
-            </button>
-          </div>
-          <div className={`relative mt-2.5 aspect-video w-full overflow-hidden rounded-xl bg-neutral-900 ${cameraOn ? "" : "hidden"}`}>
-            <video
-              ref={videoRef}
-              aria-label={tt("摄像头预览")}
-              muted
-              playsInline
-              autoPlay
-              className="h-full w-full -scale-x-100 object-cover"
-            />
-            {cameraOn && !cameraLive ? (
-              <span className="absolute inset-0 flex items-center justify-center text-white/80">
-                <Spinner size={18} />
-              </span>
-            ) : null}
-          </div>
-          {cameraError ? (
-            <MediaProblem
-              text={tt(mediaErrorText("camera", cameraError))}
-              help={cameraError === "permission" ? describeIssue({ kind: "camera_permission" }, env).help.map((line) => tt(line)) : []}
-              retryLabel={tt("重试")}
-              onRetry={() => setCameraOn(true)}
-            />
           ) : null}
-        </Section>
-
-        <Section icon={<IconNetwork size={16} />} title={tt("连接测试")} name="connection">
-          <ConnectionTestBlock test={test} onStart={() => void startTest()} env={env} />
-        </Section>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-neutral-200 px-5 py-3 dark:border-white/10">
-        <button
-          type="button"
-          onClick={() => void copyReport()}
-          data-copy-diagnostics=""
-          className="flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-[13px] font-medium text-neutral-700 hover:bg-neutral-100 dark:text-neutral-200 dark:hover:bg-white/10"
-        >
-          {copyState === "copied" ? <IconCheck size={14} /> : <IconCopy size={14} />}
-          {copyState === "copied" ? tt("已复制") : tt("复制诊断信息")}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          data-call-test-close=""
-          className="h-8 rounded-lg bg-neutral-900 px-4 text-[13px] font-medium text-white hover:bg-neutral-800 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
-        >
-          {tt("关闭")}
-        </button>
-        {copyState === "failed" && reportText ? (
-          <div className="w-full">
-            <p className="text-[12px] text-amber-700 dark:text-amber-400">{tt("复制失败，请手动选中下面的文字复制。")}</p>
-            <textarea
-              readOnly
-              value={reportText}
-              aria-label={tt("诊断信息")}
-              onFocus={(event) => event.currentTarget.select()}
-              className="mt-1 h-28 w-full resize-none rounded-lg border border-neutral-200 bg-neutral-50 p-2 font-mono text-[11px] dark:border-white/10 dark:bg-white/5"
-            />
-          </div>
-        ) : null}
-      </div>
+        </div>
+      </MessageSettingsFrame>
     </DiagDialog>
   );
 }
@@ -515,8 +503,8 @@ function callSummary(call: CallSnapshot, stats: import("../engine").CallStats | 
 
 function Section({ icon, title, name, children }: { icon: ReactNode; title: string; name: string; children: ReactNode }) {
   return (
-    <section data-call-test-section={name} aria-label={title}>
-      <h3 className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
+    <section data-call-test-section={name} aria-label={title} className={CARD}>
+      <h3 className={`${CARD_TITLE} mb-2 flex items-center gap-2`}>
         <span className="text-neutral-500 dark:text-neutral-400">{icon}</span>
         {title}
       </h3>
@@ -571,7 +559,7 @@ function MediaProblem({ text, help, retryLabel, onRetry }: { text: string; help:
       <button
         type="button"
         onClick={onRetry}
-        className="mt-1.5 rounded-md border border-amber-300 px-2 py-0.5 text-[12px] font-medium hover:bg-amber-100 dark:border-amber-400/40 dark:hover:bg-amber-500/20"
+        className={`${QUIET} mt-1.5`}
       >
         {retryLabel}
       </button>
@@ -613,7 +601,7 @@ export function ConnectionTestBlock({ test, onStart, env }: { test: TestState; o
           onClick={onStart}
           disabled={running}
           data-connection-test-start=""
-          className="flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-neutral-200 px-3 text-[13px] font-medium hover:bg-neutral-50 disabled:opacity-60 dark:border-white/15 dark:hover:bg-white/10"
+          className={`${QUIET} flex shrink-0 items-center gap-1.5`}
         >
           {running ? <Spinner size={13} /> : null}
           {running ? tt("正在测试…") : result ? tt("再测一次") : tt("开始测试")}

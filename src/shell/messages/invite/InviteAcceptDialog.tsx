@@ -1,11 +1,12 @@
 "use client";
 
+import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+
 // 打开邀请链接后的确认：谁邀请你、进哪个群、群里多少人；接受后成为联系人 / 进群 / 申请入群。
 // 没登录：先引导登录，登录后停在同一个地址（URL 里的 ?im_invite= 不变）。
 
 import { useEffect, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { Modal } from "../../../ui";
 import { AuthDialog } from "../../../pages/AuthDialog";
 import { accessToken } from "../../../lib/auth/client";
 import {
@@ -96,9 +97,13 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
     return <AuthDialog onClose={onClose} onSuccess={() => setAttempt((n) => n + 1)} />;
   }
 
+  const dialogTitle = stage.name === "preview"
+    ? stage.preview.kind === "group" ? stage.preview.conversation!.title : stage.preview.inviter.display_name
+    : stage.name === "result" ? stage.outcome === "gone" ? tt("链接已失效") : tt("已申请") : tt("邀请链接");
+
   return (
-    <Modal onClose={onClose} className="max-w-sm" labelledBy="im-invite-accept-title">
-      <div className="p-5" data-invite-accept data-stage={stage.name}>
+    <Modal onClose={onClose} title={dialogTitle} labelledBy="im-invite-accept-title">
+      <div data-invite-accept data-stage={stage.name}>
         {stage.name === "loading" && <p className="py-8 text-center text-[13px] text-neutral-400">{tt("加载中…")}</p>}
 
         {stage.name === "preview" && <PreviewBody
@@ -114,16 +119,14 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
 
         {stage.name === "result" && (
           <div data-invite-result={stage.outcome}>
-            <h3 id="im-invite-accept-title" className="text-[15px] font-semibold text-neutral-900">
-              {stage.outcome === "gone" ? tt("链接已失效") : tt("已申请")}
-            </h3>
+
             <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
               {stage.outcome === "gone"
                 ? tt("这个邀请链接已经过期、被撤销，或者群已解散。请让对方重新发一个。")
                 : stage.contact ? tt("已发出联系人请求，等对方同意。") : tt("已申请，等群管理员同意。同意后你会收到通知。")}
             </p>
             <div className="mt-5 flex justify-end">
-              <button type="button" onClick={onClose} data-action="close" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
+              <button type="button" onClick={onClose} data-action="close" className={PRIMARY}>
                 {tt("好")}
               </button>
             </div>
@@ -165,9 +168,7 @@ function PreviewBody({
           <PersonAvatar name={preview.inviter.display_name} src={preview.inviter.avatar_url} seed={preview.inviter.user_id} size={48} />
         )}
         <div className="min-w-0">
-          <h3 id="im-invite-accept-title" className="truncate text-[15px] font-semibold text-neutral-900">
-            {isGroup ? preview.conversation!.title : preview.inviter.display_name}
-          </h3>
+
           <p className="text-[12px] text-neutral-500">
             {isGroup
               ? tt("{name} 邀请你加入 · {n} 人", { name: preview.inviter.display_name, n: preview.conversation!.member_count })
@@ -195,19 +196,19 @@ function PreviewBody({
       {note && <p role="alert" className="mt-3 text-[12px] text-red-600">{note}</p>}
 
       <div className="mt-5 flex justify-end gap-2">
-        <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-50">
+        <button type="button" onClick={onClose} className={QUIET}>
           {tt("取消")}
         </button>
         {already === "member" ? (
-          <button type="button" onClick={onOpenGroup} data-action="open-group" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
+          <button type="button" onClick={onOpenGroup} data-action="open-group" className={PRIMARY}>
             {tt("打开群聊")}
           </button>
         ) : already && !(already === "pending" && !isGroup) ? (
-          <button type="button" onClick={onClose} data-action="close" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
+          <button type="button" onClick={onClose} data-action="close" className={PRIMARY}>
             {tt("好")}
           </button>
         ) : (
-          <button type="button" disabled={busy} onClick={onAccept} data-action="accept" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50">
+          <button type="button" disabled={busy} onClick={onAccept} data-action="accept" className={PRIMARY}>
             {isGroup ? (preview.requires_approval ? tt("申请加入") : tt("加入群聊")) : already === "pending" ? tt("再发一次请求") : tt("发送好友请求")}
           </button>
         )}

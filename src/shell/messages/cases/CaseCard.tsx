@@ -1,4 +1,5 @@
 "use client";
+import { CARD } from "../MessageSettingsFrame";
 
 // 一件案件：收起时一行（对象种类 · 来源、标题、状态），展开后是详情（状态解释、通知人 / 作品说明 / 涉及地址、原因、
 // 平台说明、已提交的反通知 / 申诉）和能做的那张表单。通知人的联系方式后端根本不给，这里也不会有。
@@ -88,7 +89,7 @@ export function CaseCard({ row, open, onToggle, onDone }: CaseCardProps): ReactE
       data-case-id={row.id}
       data-case-status={row.status}
       data-case-open={open ? "true" : "false"}
-      className="rounded-xl border border-neutral-200 bg-white"
+      className={`${CARD} bg-white`}
     >
       <button
         type="button"

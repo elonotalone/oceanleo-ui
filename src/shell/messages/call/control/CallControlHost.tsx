@@ -1,5 +1,7 @@
 "use client";
 
+import { MessageSettingsFrame, PRIMARY, QUIET } from "../../MessageSettingsFrame";
+
 // 被控方全局宿主（W08 在 MessagesHost 挂一个）：订阅 `call_control_request` / `call_control` / `call` 事件，
 // 维护会话仓，按 host-logic 决定这台机器怎么应对一个控制请求：
 //  - 不在这通通话里 / 已不待批准 → 不管；
@@ -43,7 +45,6 @@ import {
   CONTROL_ACCENT_SOFT,
   buttonStyle,
   cardStyle,
-  dangerButtonStyle,
   mutedStyle,
   rowStyle,
   titleStyle,
@@ -233,13 +234,13 @@ export function CallControlHost() {
             top: 16,
             insetInlineEnd: 16,
             zIndex: 1250, // W07 层级：小窗 1050、放大 1100、菜单 1150、举报 1200；控制请求要压在它们上面
-            width: "min(360px, calc(100vw - 32px))",
+            width: "min(1040px, 94vw)",
             display: "flex",
             flexDirection: "column",
             gap: 10,
           }}
         >
-          <div style={{ ...cardStyle, borderColor: CONTROL_ACCENT_BORDER }}>
+          <MessageSettingsFrame title={tt("控制请求")} onClose={() => dismissCard("user")} className="max-h-[88vh] rounded-2xl border border-neutral-200 shadow-2xl">
             <div style={{ ...rowStyle, alignItems: "flex-start" }}>
               <span style={{ color: CONTROL_ACCENT, display: "inline-flex", flex: "none", marginTop: 1 }}>
                 <ControlIcon width={18} height={18} />
@@ -276,7 +277,7 @@ export function CallControlHost() {
               {showAntiFraud ? (
                 <button
                   type="button"
-                  style={buttonStyle}
+                  className={QUIET}
                   data-call-control-action="ack-anti-fraud"
                   onClick={() => {
                     markAntiFraudSeen(browserStorage());
@@ -286,11 +287,11 @@ export function CallControlHost() {
                   {tt("知道了")}
                 </button>
               ) : null}
-              <button type="button" style={dangerButtonStyle} data-call-control-action="decline" onClick={() => dismissCard("user")}>
+              <button type="button" className={PRIMARY} data-call-control-action="decline" onClick={() => dismissCard("user")}>
                 {tt("拒绝")}
               </button>
             </div>
-          </div>
+          </MessageSettingsFrame>
         </div>
       ) : null}
 

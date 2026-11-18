@@ -102,7 +102,7 @@ test("19 消息目录没有浏览器原生弹窗：window.confirm / alert / prom
 test("19 撤回确认是站内对话框：MessageItem 渲染 ConfirmDialog，onRecall 里没有原生确认", () => {
   const item = codeOf(join(root, "src/shell/messages/conversation/MessageItem.tsx"));
   assert.match(item, /<ConfirmDialog/);
-  assert.match(item, /import\s*\{[^}]*ConfirmDialog[^}]*\}\s*from\s*["']\.\.\/\.\.\/\.\.\/ui["']/);
+  assert.match(item, /import\s*\{[^}]*MessageConfirmDialog as ConfirmDialog[^}]*\}\s*from\s*["']\.\.\/MessageSettingsFrame["']/);
 });
 
 test("19 标签页标题：99+ 封顶、有前缀去重逻辑；提示音有节流常量", () => {

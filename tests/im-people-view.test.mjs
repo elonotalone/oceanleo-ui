@@ -445,10 +445,10 @@ test("朋友资料显示真实来源和共同群，更多菜单可星标和删�
   const view = await mount(React.createElement(ProfileCard, { userId: "u-x", onClose() {}, onOpenConversation() {} }), im);
   try {
     const cardClass = view.q('[data-profile-card]').className;
-    assert.match(cardClass, /right-4/);
-    assert.match(cardClass, /h-fit/);
-    assert.match(cardClass, /bottom-auto/);
-    assert.doesNotMatch(cardClass, /bottom-4/, "desktop card must not stretch between top and bottom offsets");
+    assert.match(cardClass, /max-w-\[min\(1040px,94vw\)\]/);
+    assert.ok(view.q('[data-profile-card] [data-message-settings-frame]'));
+    assert.ok(view.q('[data-profile-card] [data-message-settings-header]'));
+    assert.doesNotMatch(cardClass, /right-4|bottom-4/, "profile uses the centered Settings frame");
     assert.match(view.q('[data-friend-info]').textContent, /共同群聊\s*2/);
     assert.match(view.q('[data-friend-info]').textContent, /联系人请求/);
     assert.equal(view.q('[data-profile-relation]'), null, "朋友资料不显示关系标签");

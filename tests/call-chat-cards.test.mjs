@@ -173,6 +173,7 @@ const uiStub = dataModule(
 const toastStub = dataModule(`export function useToast(){ return { error(t){ (globalThis.__W08C.toasts ??= []).push(t); }, success(){}, info(){} }; }`);
 const confirmStub = dataModule(`
   import React from ${JSON.stringify(reactUrl)};
+  export function Modal({ children }) { return React.createElement("div", { role: "dialog" }, children); }
   export function ConfirmDialog({ title, onConfirm, onCancel }){
     return React.createElement("div", { "data-confirm": title },
       React.createElement("button", { type: "button", "data-confirm-ok": "", onClick: onConfirm }, "ok"),

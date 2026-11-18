@@ -8,7 +8,7 @@ const nil = (names) => dataModule(names.map((name) => `export function ${name}()
 const { MessageItem } = await import(await compileModule("src/shell/messages/conversation/MessageItem.tsx", {
   "next-intl": dataModule('export function useLocale(){return "en"}'),
   "../../../i18n/ui/useUI": dataModule('export function useUI(){return (s)=>s}'),
-  "../../../ui": nil(["ConfirmDialog"]),
+  "../../../ui": nil(["ConfirmDialog", "Modal"]),
   "../../../ui/Toast": dataModule('export function useToast(){return {}}'),
   "../leo/LeoMessageBody": nil(["LeoMessageBody", "LeoNoticeLine"]),
   "./ArtifactCardView": nil(["ArtifactCardView"]),

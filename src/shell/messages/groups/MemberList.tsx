@@ -1,10 +1,11 @@
 "use client";
 
+import { QUIET, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
+
 // 成员列表：角色、「外部」标记、在线状态；按我的角色显示 设管理员 / 转让 / 移出（契约 §9.4）。
 
 import { useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { ConfirmDialog } from "../../../ui";
 import { memberActionsFor, removeMember, setMemberRole } from "../../../lib/im/groups-api";
 import { reasonOf, visiblePersonName } from "../../../lib/im/people-api";
 import type { ImConversationDetail, ImMember, ImRole } from "../../../lib/im/types";
@@ -65,13 +66,13 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
     }
   }
 
-  const small = "rounded px-1.5 py-0.5 text-[11px] hover:bg-neutral-100 disabled:opacity-50";
+  const small = QUIET;
 
   return (
     <div data-member-list>
       {detail.leo_enabled && detail.kind !== "dm" && (
         <div className="flex items-center gap-3 px-3 py-1.5" data-leo-row>
-          <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-[12px] font-semibold text-violet-700">
+          <span aria-hidden="true" className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-neutral-100 text-[12px] font-semibold text-neutral-700">
             L
           </span>
           <span className="text-[13px] text-neutral-700">{tt("leo（AI）")}</span>
@@ -131,7 +132,7 @@ export function MemberList({ detail, myUserId, onOpenProfile, onChanged }: Membe
                 </button>
               )}
               {actions.canRemove && (
-                <button type="button" disabled={busy} data-action="remove" className={`${small} text-red-600`} onClick={() => setPending({ kind: "remove", member: m })}>
+                <button type="button" disabled={busy} data-action="remove" className={`${small} text-neutral-600`} onClick={() => setPending({ kind: "remove", member: m })}>
                   {tt("移出")}
                 </button>
               )}

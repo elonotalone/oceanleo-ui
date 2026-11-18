@@ -1,5 +1,7 @@
 "use client";
 
+import { MessageSettingsFrame, QUIET, MESSAGE_SETTINGS_ROW } from "../../MessageSettingsFrame";
+
 // 小窗里的警告图标（A14）：自己网络或设备有问题（`useCall().issues` 非空，或网络持续变差）时出现；
 // 点开逐条一句话说明问题 + 一个办法按钮（换设备 / 仅语音 / 检查网络 / 正在重连 …），参照 Slack 通话中的排障面板。
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
@@ -65,7 +67,7 @@ export function CallIssueButton({ className = "" }: { className?: string } = {})
         aria-expanded={open}
         data-call-issue-button={top.kind}
         onClick={() => setOpen((value) => !value)}
-        className={`relative flex size-8 shrink-0 items-center justify-center rounded-full text-amber-500 hover:bg-amber-500/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500 ${className}`}
+        className={`relative flex size-8 shrink-0 items-center justify-center rounded-full text-neutral-500 hover:bg-neutral-900/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-neutral-500 ${className}`}
       >
         <IconWarning size={18} />
         {items.length > 1 ? (
@@ -88,10 +90,11 @@ export function CallIssueButton({ className = "" }: { className?: string } = {})
         ariaLabel={tt("通话问题")}
         align="start"
         preferredPlacement="above"
-        className="overflow-y-auto overscroll-contain rounded-xl border border-neutral-200/80 bg-white p-3 text-neutral-900 shadow-[0_8px_32px_rgba(0,0,0,0.18)] dark:border-white/10 dark:bg-neutral-950 dark:text-neutral-100"
-        style={{ width: 320, zIndex: DIAG_POPOVER_Z }}
+        className="overflow-hidden rounded-2xl border border-neutral-200 bg-white text-neutral-900 shadow-2xl"
+        style={{ width: "min(1040px,94vw)", zIndex: DIAG_POPOVER_Z }}
         attributes={{ "data-call-issue-panel": "" }}
       >
+        <MessageSettingsFrame title={tt("通话问题")} onClose={() => setOpen(false)} className="max-h-[88vh]">
         <IssueList
           items={items}
           onDismiss={(id) => setDismissed((previous) => new Set(previous).add(id))}
@@ -100,6 +103,7 @@ export function CallIssueButton({ className = "" }: { className?: string } = {})
             openCallTest();
           }}
         />
+        </MessageSettingsFrame>
       </AnchoredPopover>
     </>
   );
@@ -128,7 +132,7 @@ export function IssueList({
         type="button"
         onClick={onOpenTest}
         data-open-call-test=""
-        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] font-medium text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-white/10"
+        className={`${QUIET} mt-3 flex w-full items-center justify-center gap-1.5`}
       >
         <IconCallCheck size={14} />
         {tt("打开通话检测")}
@@ -192,7 +196,7 @@ function IssueRow({ item, onDismiss }: { item: IssueDescriptor; onDismiss(id: st
   return (
     <li
       data-issue={item.kind}
-      className="rounded-lg bg-amber-50 px-2.5 py-2 text-[12.5px] leading-[18px] text-neutral-800 dark:bg-amber-500/10 dark:text-neutral-100"
+      className={`${MESSAGE_SETTINGS_ROW} flex-wrap text-[13px] text-neutral-800`}
     >
       <p>{tt(item.text, item.vars)}</p>
       <button
@@ -203,7 +207,7 @@ function IssueRow({ item, onDismiss }: { item: IssueDescriptor; onDismiss(id: st
         aria-expanded={expandable ? expanded : menuOpen ? true : undefined}
         aria-haspopup={item.action.kind === "switch_mic" || item.action.kind === "switch_device" ? "menu" : undefined}
         onClick={onAction}
-        className="mt-1.5 inline-flex items-center gap-1.5 rounded-md bg-white px-2.5 py-1 text-[12px] font-medium text-neutral-900 shadow-sm ring-1 ring-neutral-200 hover:bg-neutral-50 disabled:cursor-default disabled:opacity-70 dark:bg-neutral-800 dark:text-neutral-100 dark:ring-white/10 dark:hover:bg-neutral-700"
+        className={`${QUIET} inline-flex items-center gap-1.5`}
       >
         {busy || reconnecting ? <Spinner size={12} /> : null}
         {tt(item.action.label)}
@@ -221,7 +225,7 @@ function IssueRow({ item, onDismiss }: { item: IssueDescriptor; onDismiss(id: st
               onClick={retry}
               disabled={busy}
               data-issue-retry={item.retry}
-              className="mt-1.5 rounded-md px-2 py-0.5 text-[12px] font-medium text-sky-700 hover:bg-sky-50 disabled:opacity-60 dark:text-sky-300 dark:hover:bg-sky-500/10"
+              className={`${QUIET} mt-1.5`}
             >
               {tt("重试")}
             </button>

@@ -1,5 +1,7 @@
 "use client";
 
+import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
+
 // 拉黑名单：看到谁被我拉黑了，一键取消拉黑。
 
 import { useState } from "react";
@@ -7,7 +9,7 @@ import { useUI } from "../../../i18n/ui/useUI";
 import { listBlocks, reasonOf, unblockUser, useLoader } from "../../../lib/im/people-api";
 import { PersonAvatar } from "../groups/GroupAvatar";
 
-export function BlockedList({ query }: { query?: string }) {
+export function BlockedList({ query, onBack }: { query?: string; onBack?: () => void }) {
   const tt = useUI();
   const blocks = useLoader(listBlocks, []);
   const [busy, setBusy] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function BlockedList({ query }: { query?: string }) {
   }
 
   return (
-    <div className="min-h-0 overflow-y-auto" data-blocked-list>
+    <MessageSettingsFrame onBack={onBack} title={tt("拉黑名单")} data-blocked-list>
       {note && (
         <p role="status" className="px-3 pb-2 text-[12px] text-red-600">
           {note}
@@ -52,7 +54,7 @@ export function BlockedList({ query }: { query?: string }) {
                   disabled={busy === p.user_id}
                   data-action="unblock"
                   onClick={() => unblock(p.user_id)}
-                  className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-white disabled:opacity-50"
+                  className={QUIET}
                 >
                   {tt("取消拉黑")}
                 </button>
@@ -61,6 +63,6 @@ export function BlockedList({ query }: { query?: string }) {
           </ul>
         </>
       )}
-    </div>
+    </MessageSettingsFrame>
   );
 }

@@ -5,7 +5,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
 import { useUI } from "../../../i18n/ui/useUI";
-import { ConfirmDialog } from "../../../ui";
+import { MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
 import { useToast } from "../../../ui/Toast";
 import type { ImConversationDetail, ImMessage, ImProfile } from "../../../lib/im/types";
 import { imFetch } from "../../../lib/im/client";
@@ -313,7 +313,7 @@ export function MessageItem(props: MessageItemProps) {
         <div
           data-message-bubble={mine ? "own" : "incoming"}
           className={"min-w-0 max-w-full rounded-xl px-3 py-2 text-left " +
-            (mine ? "rounded-tr-sm bg-emerald-100 text-neutral-900 dark:bg-emerald-900 dark:text-neutral-100" : "rounded-tl-sm bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100")}
+            (mine ? "rounded-tr-sm bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100" : "rounded-tl-sm bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100")}
           style={{ overflowWrap: "anywhere" }}
         >
           {content}

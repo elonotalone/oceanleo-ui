@@ -1,5 +1,7 @@
 "use client";
 
+import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH } from "../MessageSettingsFrame";
+
 // 举报消息 / 人 / 群（可同时拉黑）。契约 §4.7、§9.11。
 // 平台只看被举报的内容和举报人自己看得到的前后几条消息；没被举报的聊天平台看不到。
 // 对话框自己 portal 到 body 并盖过消息浮层（z-[1100]）：共用的 Modal 是 z-[1000]，会被浮层压在下面。
@@ -70,10 +72,11 @@ export interface ReportFormProps extends ReportDialogProps {
   /** 测试注入；默认走网关。 */
   submit?: (input: ReportInput) => Promise<ReportResult>;
   initialReason?: ReportReason | null;
+  hideTitle?: boolean;
 }
 
 /** 表单本体：不依赖 DOM portal，服务端渲染与单测直接可用。 */
-export function ReportForm({ target, onClose, conversationId, submit = submitReport, initialReason = null }: ReportFormProps) {
+export function ReportForm({ target, onClose, conversationId, submit = submitReport, initialReason = null, hideTitle = false }: ReportFormProps) {
   const tt = useUI();
   const titleId = useId();
   const [reason, setReason] = useState<ReportReason | null>(initialReason);
@@ -133,7 +136,7 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
             type="button"
             data-action="close"
             onClick={onClose}
-            className="rounded-lg bg-neutral-900 px-4 py-1.5 text-[13px] text-white hover:bg-neutral-800"
+            className={PRIMARY}
           >
             {tt("完成")}
           </button>
@@ -143,10 +146,10 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
   }
 
   return (
-    <form onSubmit={onSubmit} data-report-form aria-labelledby={titleId} className="flex flex-col gap-3">
-      <h2 id={titleId} className="text-[16px] font-semibold text-neutral-900">
+    <form onSubmit={onSubmit} data-report-form aria-label={hideTitle ? titleOf(tt, target.kind) : undefined} aria-labelledby={hideTitle ? undefined : titleId} className="flex flex-col gap-3">
+      {!hideTitle && <h2 id={titleId} className="text-[14px] font-medium text-neutral-900">
         {titleOf(tt, target.kind)}
-      </h2>
+      </h2>}
       {target.label ? (
         <p data-report-target className="truncate rounded-lg bg-neutral-50 px-3 py-2 text-[13px] text-neutral-700">
           {target.label}
@@ -203,7 +206,7 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
           type="button"
           data-action="cancel"
           onClick={onClose}
-          className="rounded-lg border border-neutral-200 px-4 py-1.5 text-[13px] text-neutral-700 hover:bg-neutral-50"
+          className={QUIET}
         >
           {tt("取消")}
         </button>
@@ -211,7 +214,7 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
           type="submit"
           data-action="submit"
           disabled={!reason || busy}
-          className="rounded-lg bg-red-600 px-4 py-1.5 text-[13px] text-white hover:bg-red-700 disabled:opacity-50"
+          className={PRIMARY}
         >
           {busy ? tt("提交中…") : tt("提交举报")}
         </button>
@@ -221,6 +224,7 @@ export function ReportForm({ target, onClose, conversationId, submit = submitRep
 }
 
 export function ReportDialog(props: ReportDialogProps) {
+  const tt = useUI();
   const { onClose } = props;
   const [mounted, setMounted] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -250,13 +254,16 @@ export function ReportDialog(props: ReportDialogProps) {
       role="dialog"
       aria-modal="true"
       data-report-dialog
+      aria-label={titleOf(tt, props.target.kind)}
       className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 p-4"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
       }}
     >
-      <div ref={panelRef} className="max-h-full w-full max-w-sm overflow-y-auto rounded-2xl bg-white p-5 text-black shadow-2xl">
-        <ReportForm {...props} />
+      <div ref={panelRef} className={`${MESSAGE_SETTINGS_WIDTH} max-h-full overflow-hidden rounded-2xl bg-white text-black shadow-2xl`}>
+        <MessageSettingsFrame title={titleOf(tt, props.target.kind)} onClose={onClose} className="max-h-[88vh]">
+          <ReportForm {...props} hideTitle />
+        </MessageSettingsFrame>
       </div>
     </div>,
     document.body,

@@ -1,5 +1,7 @@
 "use client";
 
+import { PRIMARY, CARD, CARD_TITLE, CARD_DESC, MESSAGE_SETTINGS_ROW } from "../MessageSettingsFrame";
+
 // 设置中心「消息」栏里的提醒设置（work-chat W03，契约 §8.2；导出名不改）。
 // 六个开关：隐身、邮件提醒、浏览器推送、桌面通知、提示音、回放里显示精确时刻。
 // 推送开关比别的多一步：要在门户域里走「请求权限 → 注册 Service Worker → 订阅」，
@@ -66,10 +68,10 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-3">
+    <div className={MESSAGE_SETTINGS_ROW}>
       <div className="min-w-0">
-        <div className="text-[13px] font-medium text-neutral-900">{title}</div>
-        <p className="mt-0.5 text-[12px] leading-5 text-neutral-500">{hint}</p>
+        <div className={CARD_TITLE}>{title}</div>
+        <p className={CARD_DESC}>{hint}</p>
       </div>
       <div className="shrink-0">{children}</div>
     </div>
@@ -170,12 +172,12 @@ export function NotifySettingsPanel() {
 
   if (loadFailed) {
     return (
-      <section data-im-notify-settings="" className="py-3">
+      <section data-im-notify-settings="" className={CARD}>
         <p className="text-[13px] text-neutral-600">{tt("提醒设置没能加载出来。")}</p>
         <button
           type="button"
           onClick={() => void load()}
-          className="mt-2 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white hover:bg-neutral-800"
+          className={`${PRIMARY} mt-2`}
         >
           {tt("重试")}
         </button>
@@ -184,7 +186,7 @@ export function NotifySettingsPanel() {
   }
   if (!settings) {
     return (
-      <section data-im-notify-settings="" className="py-3 text-[13px] text-neutral-500">
+      <section data-im-notify-settings="" className={`${CARD} text-[13px] text-neutral-500`}>
         {tt("正在加载…")}
       </section>
     );
@@ -194,9 +196,9 @@ export function NotifySettingsPanel() {
   const supported = pushSupported();
 
   return (
-    <section data-im-notify-settings="" aria-label={tt("消息提醒设置")} className="py-2">
-      <h3 className="py-2 text-[14px] font-semibold text-neutral-900">{tt("消息提醒设置")}</h3>
-      <div className="divide-y divide-neutral-200/70">
+    <section data-im-notify-settings="" aria-label={tt("消息提醒设置")} className={CARD}>
+      <h3 className={CARD_TITLE}>{tt("消息提醒设置")}</h3>
+      <div className="mt-4 space-y-3">
         <Row title={tt("隐身模式")} hint={tt("开启后，别人看到你始终是离线。")}>
           <SwitchButton
             label={tt("隐身模式")}

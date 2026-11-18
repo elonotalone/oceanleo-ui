@@ -1,5 +1,7 @@
 "use client";
 
+import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
+
 // 消息搜索：输入 ≥2 字；按会话、发送人、类型、时间筛选；结果高亮；点结果跳到那条；分页。
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "next-intl";
@@ -14,6 +16,7 @@ import { EMPTY_FILTERS, SearchFilters, filtersToParams, type SearchFilterState }
 
 export interface SearchViewProps {
   initialQuery?: string;
+  onBack?: () => void;
   /** 受控查询；传入时内部不再自管输入。 */
   query?: string;
   onQueryChange?: (query: string) => void;
@@ -109,6 +112,7 @@ function previewText(hit: ImSearchHit, fallbacks: { file: string; card: string; 
 
 export function SearchView({
   initialQuery = "",
+  onBack,
   query: queryProp,
   onQueryChange,
   hideInput = false,
@@ -219,7 +223,7 @@ export function SearchView({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2 p-3" data-search-view="">
+    <MessageSettingsFrame onBack={onBack} title={tt("搜索消息")} className="h-full" data-search-view="">
       {hideInput ? null : (
         <input
           type="search"
@@ -281,13 +285,13 @@ export function SearchView({
               type="button"
               disabled={loadingMore}
               onClick={() => void run(cursor)}
-              className="rounded-lg border border-neutral-200 px-4 py-1.5 text-[12.5px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+              className={QUIET}
             >
               {loadingMore ? tt("正在加载…") : tt("加载更多")}
             </button>
           </div>
         ) : null}
       </div>
-    </div>
+    </MessageSettingsFrame>
   );
 }

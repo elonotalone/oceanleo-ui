@@ -1,5 +1,7 @@
 "use client";
 
+import { QUIET, PRIMARY, MESSAGE_SETTINGS_ROW } from "../MessageSettingsFrame";
+
 // 群资料与群规则：名字、简介、头像、入群审批、成员能否拉人、leo 开关。只有 owner / admin 看得到可改的表单。
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -107,7 +109,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
           disabled={busy}
           data-action="upload-avatar"
           onClick={() => fileInput.current?.click()}
-          className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50"
+          className={QUIET}
         >
           {tt("更换头像")}
         </button>
@@ -134,7 +136,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
         />
       </label>
       <div className="flex justify-end">
-        <button type="submit" disabled={busy || !dirty || !title.trim()} data-action="save-profile" className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-40">
+        <button type="submit" disabled={busy || !dirty || !title.trim()} data-action="save-profile" className={PRIMARY}>
           {tt("保存")}
         </button>
       </div>
@@ -163,7 +165,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex items-center justify-between text-[13px] text-neutral-700">
+    <div className={`${MESSAGE_SETTINGS_ROW} text-[14px] text-neutral-700`}>
       <span>{label}</span>
       {children}
     </div>

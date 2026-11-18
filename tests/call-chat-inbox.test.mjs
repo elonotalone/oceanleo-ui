@@ -238,7 +238,7 @@ const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : zh; }",
 );
 const toastStub = dataModule(`export function useToast(){ return { error(){}, success(){}, info(){} }; }`);
-const confirmStub = dataModule(`export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`);
+const confirmStub = dataModule(`export function Modal({children}){ return children; } export function ConfirmDialog(){ return null; } export function SkeletonCard(){ return null; } export function SkeletonLine(){ return null; }`);
 const storeStub = dataModule(`export function formatBadge(n){ return n > 0 ? String(n) : ""; }`);
 
 const IDLE = { phase: "idle", conversationId: null, callId: null, incoming: null, server: null, participants: [] };

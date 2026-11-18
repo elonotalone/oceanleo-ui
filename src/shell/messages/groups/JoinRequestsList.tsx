@@ -1,5 +1,7 @@
 "use client";
 
+import { PRIMARY, QUIET } from "../MessageSettingsFrame";
+
 // 入群申请（owner / admin）：批准或拒绝。
 
 import { useState } from "react";
@@ -51,10 +53,10 @@ export function JoinRequestsList({ conversationId, onChanged }: JoinRequestsList
               <span className="block truncate text-[13px] text-neutral-900">{r.user.display_name}</span>
               {r.message && <span className="block truncate text-[12px] text-neutral-500">{r.message}</span>}
             </span>
-            <button type="button" disabled={busy === r.id} data-action="approve" onClick={() => decide(r.id, "approve")} className="rounded-lg bg-neutral-900 px-2.5 py-1 text-[12px] font-medium text-white disabled:opacity-50">
+            <button type="button" disabled={busy === r.id} data-action="approve" onClick={() => decide(r.id, "approve")} className={PRIMARY}>
               {tt("同意")}
             </button>
-            <button type="button" disabled={busy === r.id} data-action="reject" onClick={() => decide(r.id, "reject")} className="rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">
+            <button type="button" disabled={busy === r.id} data-action="reject" onClick={() => decide(r.id, "reject")} className={QUIET}>
               {tt("拒绝")}
             </button>
           </li>

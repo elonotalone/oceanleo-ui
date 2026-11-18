@@ -372,7 +372,7 @@ const uiStub = dataModule(
   "export function useUI(){ return (zh, vars) => vars ? zh.replace(/\\{(\\w+)\\}/g, (m, k) => (k in vars ? String(vars[k]) : m)) : zh; }",
 );
 const toastStub = dataModule(`export function useToast(){ return { error(t){ (globalThis.__W08I.toasts ??= []).push(t); }, success(){}, info(){} }; }`);
-const confirmStub = dataModule(`export function ConfirmDialog(){ return null; }`);
+const confirmStub = dataModule(`export function Modal({children}){ return children; } export function ConfirmDialog(){ return null; }`);
 
 const IDLE = { phase: "idle", conversationId: null, callId: null, incoming: null, server: null, participants: [] };
 globalThis.__W08I = { snapshot: { ...IDLE }, calls: [] };

@@ -2,13 +2,14 @@
 
 // 会话：消息流、输入框、置顶条、「正在输入」。导出名与 props 不变（契约 §8.2）。
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { ForwardMessagesDialog } from "./ForwardMessagesDialog";
 import { useUI } from "../../../i18n/ui/useUI";
 import { ImApiError } from "../../../lib/im/client";
 import { conversationDisplayTitle, visiblePersonName } from "../../../lib/im/people-api";
 import { messagesApi } from "../../../lib/im/messages-api";
 import { fetchConversations } from "../../../lib/im/inbox-api";
 import type { ImConversationDetail, ImConversationSummary, ImMessage, ImProfile } from "../../../lib/im/types";
-import { ConfirmDialog } from "../../../ui";
+import { MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
 import { RoutePageSkeleton } from "../../nav-source/route-boundary";
 import { Composer } from "../composer/Composer";
 import { openMessages } from "../host-state";
@@ -484,6 +485,7 @@ function ConversationBody(props: ConversationViewProps & {
         />
         {searchOpen ? (
           <SearchView
+            onBack={() => setSearchOpen(false)}
             conversationId={conversationId}
             onOpenResult={(_id, seq) => {
               setSearchOpen(false);
@@ -537,7 +539,7 @@ function ConversationBody(props: ConversationViewProps & {
         <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
           <span className="mr-auto text-sm">{tt("已选择 {n} 条", { n: selectedMessageIds.size })}</span>
           <button type="button" disabled={!selectedMessageIds.size} onClick={() => setForwardMessages(snapshot.messages.filter((message) => selectedMessageIds.has(message.id)))}>{tt("转发")}</button>
-          <button type="button" disabled={!canDeleteSelection} onClick={() => setBulkDeleteOpen(true)} className="text-red-600 disabled:opacity-40">{tt("删除")}</button>
+          <button type="button" disabled={!canDeleteSelection} onClick={() => setBulkDeleteOpen(true)} className="text-neutral-600 disabled:opacity-40">{tt("删除")}</button>
           <button type="button" onClick={() => { setSelectionMode(false); setSelectedMessageIds(new Set()); }}>{tt("完成")}</button>
         </div>
       ) : null}
@@ -556,30 +558,20 @@ function ConversationBody(props: ConversationViewProps & {
         />
       ) : null}
       {forwardMessages ? (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/30 p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setForwardMessages(null); }}>
-          <section role="dialog" aria-modal="true" aria-label={tt("转发到会话")} className="max-h-[80%] w-full max-w-sm overflow-auto rounded-xl bg-white p-4 shadow-xl dark:bg-neutral-900">
-            <h3 className="mb-3 text-sm font-semibold">{tt("转发到会话")}</h3>
-            {forwardError ? <p className="mb-2 text-sm text-red-600">{tt(forwardError)}</p> : null}
-            {!forwardTargets.length && !forwardError ? <p className="py-4 text-center text-sm text-neutral-500">{tt("正在加载会话…")}</p> : null}
-            {forwardTargets.map((target) => (
-              <button key={target.id} type="button" disabled={forwarding} className="block w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-white/10" onClick={() => {
-                setForwarding(true);
-                void Promise.all(forwardMessages.map((message) => messagesApi.sendMessage(target.id, {
-                  client_id: crypto.randomUUID(),
-                  kind: ["text", "file", "image", "video", "audio", "voice", "artifact", "replay"].includes(message.kind) ? message.kind as "text" : "text",
-                  body: message.body,
-                  attachments: message.attachments,
-                  card: message.card,
-                }))).then(() => {
-                  setForwardMessages(null);
-                  setSelectedMessageIds(new Set());
-                  setSelectionMode(false);
-                }).catch(() => setForwardError("转发失败，请稍后重试。")).finally(() => setForwarding(false));
-              }}>{conversationDisplayTitle(target)}</button>
-            ))}
-            <button type="button" className="mt-3 w-full rounded-lg border px-3 py-2 text-sm" onClick={() => setForwardMessages(null)}>{tt("取消")}</button>
-          </section>
-        </div>
+        <ForwardMessagesDialog targets={forwardTargets} error={forwardError} busy={forwarding} onClose={() => setForwardMessages(null)} onForward={(targetId) => {
+          setForwarding(true);
+          void Promise.all(forwardMessages.map((message) => messagesApi.sendMessage(targetId, {
+            client_id: crypto.randomUUID(),
+            kind: ["text", "file", "image", "video", "audio", "voice", "artifact", "replay"].includes(message.kind) ? message.kind as "text" : "text",
+            body: message.body,
+            attachments: message.attachments,
+            card: message.card,
+          }))).then(() => {
+            setForwardMessages(null);
+            setSelectedMessageIds(new Set());
+            setSelectionMode(false);
+          }).catch(() => setForwardError("转发失败，请稍后重试。")).finally(() => setForwarding(false));
+        }} />
       ) : null}
       {reporting ? (
         <ReportDialog

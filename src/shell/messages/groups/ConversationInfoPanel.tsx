@@ -1,13 +1,13 @@
 "use client";
 
+import { QUIET, PRIMARY, MessageSettingsDialog as Modal, MessageSettingsFrame, CARD, CARD_TITLE, MESSAGE_SETTINGS_ROW, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
+
 // 会话信息：群资料、成员与角色、加人、入群申请、邀请链接、我的通知设置、退出 / 解散 / 升级成 Team / 举报。
 // 哪些按钮出现由 conversationCaps（契约 §9.3 / §9.4）按我的角色决定；后端拒绝时显示后端给的原因。
 
 import { useEffect, useMemo, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { portalHref } from "../../../contracts/domain-family";
-import { ConfirmDialog, Modal } from "../../../ui";
-import { ImCloseIcon } from "../messages-surface";
 import { listMyOrgs } from "../../../lib/org-api";
 import {
   NOTIFY_CHOICES,
@@ -40,12 +40,11 @@ export interface ConversationInfoPanelProps {
   onOpenConversation: (conversationId: string) => void;
 }
 
-const sectionTitle = "px-3 pb-1 pt-4 text-[11px] font-medium uppercase tracking-wide text-neutral-400";
-const pillBtn =
-  "inline-flex min-h-11 items-center rounded-lg border border-neutral-200 px-3 text-[12px] text-neutral-700 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
+const sectionTitle = CARD_TITLE;
+const pillBtn = `${PRIMARY} inline-flex min-h-11 items-center`;
 const linkBtn =
   "inline-flex min-h-11 items-center text-[12px] text-neutral-800 underline underline-offset-2 hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400";
-const rowBtn = "w-full px-3 py-2 text-left text-[13px] hover:bg-neutral-50 disabled:opacity-50";
+const rowBtn = `${QUIET} w-full text-left`;
 
 export function ConversationInfoPanel({ conversationId, onClose, onOpenConversation }: ConversationInfoPanelProps) {
   const tt = useUI();
@@ -90,12 +89,11 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
 
   if (!detail || !caps) {
     return (
-      <aside className="flex h-full min-h-0 flex-col" data-info-panel data-state="loading">
-        <PanelHeader title={tt("会话信息")} onClose={onClose} closeLabel={tt("关闭")} />
+      <MessageSettingsFrame title={tt("会话信息")} onClose={onClose} card={false} className="h-full" data-info-panel data-state="loading">
         <p className="px-3 py-8 text-center text-[13px] text-neutral-400">
           {detailLoader.error ? reasonOf(detailLoader.error, tt("加载失败，请稍后再试。")) : tt("加载中…")}
         </p>
-      </aside>
+      </MessageSettingsFrame>
     );
   }
 
@@ -137,10 +135,9 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
   }
 
   return (
-    <aside className="flex h-full min-h-0 flex-col" data-info-panel data-state="ready" data-kind={detail.kind} data-my-role={detail.my_role ?? "none"}>
-      <PanelHeader title={tt("会话信息")} onClose={onClose} closeLabel={tt("关闭")} />
-      <div className="min-h-0 flex-1 overflow-y-auto pb-6">
-        <div className="flex items-center gap-3 px-3 py-3">
+    <MessageSettingsFrame title={tt("会话信息")} onClose={onClose} card={false} className="h-full" data-info-panel data-state="ready" data-kind={detail.kind} data-my-role={detail.my_role ?? "none"}>
+      <div className="space-y-4">
+        <div className={`${CARD} flex items-center gap-3`}>
           <GroupAvatar
             name={title}
             src={isDm ? (peer?.avatar_url ?? null) : detail.avatar_url}
@@ -164,26 +161,26 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
         {caps.isGroupLike && (
           <>
             <h4 className={sectionTitle}>{tt("群资料")}</h4>
-            <GroupSettingsForm detail={detail} canEdit={caps.canEditSettings} onSaved={reload} />
+            <div className={CARD}><GroupSettingsForm detail={detail} canEdit={caps.canEditSettings} onSaved={reload} /></div>
 
             <h4 className={sectionTitle}>{tt("成员")}</h4>
-            <MemberList detail={detail} myUserId={myUserId} onOpenProfile={setProfileId} onChanged={reload} />
+            <div className={CARD}><MemberList detail={detail} myUserId={myUserId} onOpenProfile={setProfileId} onChanged={reload} /></div>
             {caps.canAddMembers && (
               <div className="px-3 pt-2">
                 {adding ? (
                   <div data-add-members>
                     <MemberPicker selected={picked} onChange={setPicked} existingIds={existingIds} />
                     <div className="mt-2 flex items-center justify-end gap-2">
-                      <button type="button" onClick={() => { setAdding(false); setPicked([]); }} className="rounded-lg px-3 py-1.5 text-[12px] text-neutral-500 hover:bg-neutral-50">
+                      <button type="button" onClick={() => { setAdding(false); setPicked([]); }} className={QUIET}>
                         {tt("取消")}
                       </button>
-                      <button type="button" disabled={busy || picked.length === 0} onClick={submitAdd} data-action="confirm-add" className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50">
+                      <button type="button" disabled={busy || picked.length === 0} onClick={submitAdd} data-action="confirm-add" className={PRIMARY}>
                         {tt("拉进群")}
                       </button>
                     </div>
                   </div>
                 ) : (
-                  <button type="button" onClick={() => setAdding(true)} data-action="add-members" className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50">
+                  <button type="button" onClick={() => setAdding(true)} data-action="add-members" className={QUIET}>
                     {tt("加成员")}
                   </button>
                 )}
@@ -235,7 +232,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             {caps.canApproveJoins && (detail.pending_join_requests > 0 || detail.join_approval) && (
               <>
                 <h4 className={sectionTitle}>{tt("入群申请")}</h4>
-                <JoinRequestsList conversationId={detail.id} onChanged={reload} />
+                <div className={CARD}><JoinRequestsList conversationId={detail.id} onChanged={reload} /></div>
               </>
             )}
 
@@ -253,7 +250,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
         {!detail.dissolved && (
           <>
             <h4 className={sectionTitle}>{tt("我的设置")}</h4>
-            <div className="flex flex-col px-1" data-pref>
+            <div className={`${CARD} space-y-3`} data-pref>
               <PrefSwitch
                 label={tt("消息免打扰")}
                 checked={Boolean(detail.muted)}
@@ -287,12 +284,12 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
                 </>
               )}
             </div>
-            <div className="flex flex-col gap-3 px-3 py-2 text-[12px] text-neutral-600">
+            <div className={`${CARD} flex flex-col gap-3 text-[13px] text-neutral-600`}>
               {caps.isGroupLike && <SettingTextRow label={tt("备注")} value={detail.remark ?? ""} placeholder={tt("群聊的备注仅自己可见")} field="remark" onEdit={() => { setRemark(detail.remark ?? ""); setEditing("remark"); }} />}
               {caps.isGroupLike && (
                 <SettingTextRow label={tt("我在本群的昵称")} value={detail.nickname ?? ""} placeholder={me.data?.display_name ?? ""} field="nickname" onEdit={() => { setNickname(detail.nickname ?? ""); setEditing("nickname"); }} />
               )}
-              <label className="flex items-center justify-between gap-3">
+              <label className={MESSAGE_SETTINGS_ROW}>
                 {tt("通知")}
                 <select
                   data-field="notify"
@@ -323,15 +320,15 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
           </>
         )}
 
-        <div className="mt-4 border-t border-neutral-100 pt-2">
-          <button type="button" disabled={busy} onClick={() => setConfirm("clear-history")} data-action="clear-history" className={`${rowBtn} text-red-600`}>{tt("清空聊天记录")}</button>
+        <div className={`${CARD} space-y-2`}>
+          <button type="button" disabled={busy} onClick={() => setConfirm("clear-history")} data-action="clear-history" className={`${rowBtn} text-neutral-600`}>{tt("清空聊天记录")}</button>
           {caps.canUpgradeToTeam && (
             <button type="button" onClick={() => setUpgradeOpen(true)} data-action="upgrade-team" className={`${rowBtn} text-neutral-700`}>
               {tt("升级成 Team")}
             </button>
           )}
           {caps.canReport && (
-            <button type="button" onClick={() => setReportOpen(true)} data-action="report" className={`${rowBtn} text-red-600`}>
+            <button type="button" onClick={() => setReportOpen(true)} data-action="report" className={`${rowBtn} text-neutral-600`}>
               {tt("举报这个群")}
             </button>
           )}
@@ -341,12 +338,12 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             </p>
           )}
           {caps.canLeave && (
-            <button type="button" onClick={() => setConfirm("leave")} data-action="leave" className={`${rowBtn} text-red-600`}>
+            <button type="button" onClick={() => setConfirm("leave")} data-action="leave" className={`${rowBtn} text-neutral-600`}>
               {tt("退出群聊")}
             </button>
           )}
           {caps.canDissolve && (
-            <button type="button" onClick={() => setConfirm("dissolve")} data-action="dissolve" className={`${rowBtn} text-red-600`}>
+            <button type="button" onClick={() => setConfirm("dissolve")} data-action="dissolve" className={`${rowBtn} text-neutral-600`}>
               {tt("解散群聊")}
             </button>
           )}
@@ -416,31 +413,30 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
         />
       )}
       {editing && (
-        <Modal labelledBy="conversation-personal-setting-title" onClose={() => { if (!busy) setEditing(null); }}>
+        <Modal title={editing === "remark" ? tt("备注") : tt("我在本群的昵称")} labelledBy="conversation-personal-setting-title" onClose={() => { if (!busy) setEditing(null); }}>
           <form className="flex flex-col gap-4 p-4" onSubmit={(event) => {
             event.preventDefault();
             void run(() => patchMySettings(detail.id, editing === "remark" ? { remark: remark.trim() } : { nickname: nickname.trim() }), () => { setEditing(null); reload(); });
           }}>
-            <h3 id="conversation-personal-setting-title" className="text-[16px] font-semibold">{editing === "remark" ? tt("备注") : tt("我在本群的昵称")}</h3>
             <label className="flex flex-col gap-2 text-[13px]">
               {editing === "remark" ? tt("备注") : tt("我在本群的昵称")}
               <input autoFocus data-field={editing} maxLength={editing === "remark" ? 80 : 32} value={editing === "remark" ? remark : nickname} disabled={busy} onChange={(event) => editing === "remark" ? setRemark(event.target.value) : setNickname(event.target.value)} className="w-full rounded-lg border border-neutral-200 px-3 py-2 outline-none focus-visible:ring-2 focus-visible:ring-neutral-400" />
             </label>
             {note && <p role="alert" className="text-[12px] text-red-600">{note}</p>}
             <div className="flex justify-end gap-3">
-              <button type="button" disabled={busy} onClick={() => setEditing(null)}>{tt("取消")}</button>
+              <button type="button" disabled={busy} onClick={() => setEditing(null)} className={QUIET}>{tt("取消")}</button>
               <button type="submit" disabled={busy} data-action="save-personal-setting" className={pillBtn}>{tt("保存")}</button>
             </div>
           </form>
         </Modal>
       )}
-    </aside>
+    </MessageSettingsFrame>
   );
 }
 
 function SettingTextRow({ label, value, placeholder, field, onEdit }: { label: string; value: string; placeholder: string; field: string; onEdit: () => void }) {
-  return <button type="button" data-edit-setting={field} onClick={onEdit} className="group flex min-h-14 flex-col items-start justify-center gap-1 rounded-md py-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400">
-    <span className="text-[11px] leading-4 text-neutral-400">{label}</span>
+  return <button type="button" data-edit-setting={field} onClick={onEdit} className={`${MESSAGE_SETTINGS_ROW} group w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400`}>
+    <span className={CARD_TITLE}>{label}</span>
     <span className="flex items-center gap-1.5 text-[13px] leading-5 text-neutral-600 group-hover:text-neutral-900"><span className="whitespace-pre-wrap break-all">{value || placeholder}</span><svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 opacity-60" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z M13 6l5 5" /></svg></span>
   </button>;
 }
@@ -466,26 +462,15 @@ function PrefSwitch({
       data-field={field}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className="flex min-h-11 w-full items-center justify-between gap-3 px-3 py-2 text-left text-[13px] text-neutral-800 disabled:opacity-50"
+      className={`${MESSAGE_SETTINGS_ROW} w-full text-left text-[14px] disabled:opacity-50`}
     >
       <span>{label}</span>
       <span
         aria-hidden="true"
-        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-emerald-500" : "bg-neutral-300"}`}
+        className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${checked ? "bg-neutral-900" : "bg-neutral-300"}`}
       >
         <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${checked ? "left-5" : "left-0.5"}`} />
       </span>
     </button>
-  );
-}
-
-function PanelHeader({ title, onClose, closeLabel }: { title: string; onClose: () => void; closeLabel: string }) {
-  return (
-    <div className="flex items-center gap-2 border-b border-neutral-100 px-3 py-2.5">
-      <h2 className="flex-1 text-[14px] font-semibold text-neutral-900">{title}</h2>
-      <button type="button" onClick={onClose} aria-label={closeLabel} data-action="close-panel" data-im-chrome-btn>
-        <ImCloseIcon />
-      </button>
-    </div>
   );
 }

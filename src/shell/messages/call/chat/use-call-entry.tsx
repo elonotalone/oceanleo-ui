@@ -4,7 +4,7 @@
 // 判状态 → 已在这通就展开小窗 / 在别的通话里先确认 / 否则直接进；失败给一条站内提示。
 import { useCallback, useRef, useState, type ReactNode } from "react";
 import { useUI, type UITranslate } from "../../../../i18n/ui/useUI";
-import { ConfirmDialog } from "../../../../ui";
+import { MessageConfirmDialog as ConfirmDialog } from "../../MessageSettingsFrame";
 import { useToast } from "../../../../ui/Toast";
 import { callActions, callStore, useCall } from "../engine";
 import {

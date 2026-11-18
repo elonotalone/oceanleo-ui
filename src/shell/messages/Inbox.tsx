@@ -7,7 +7,7 @@ import { useUI } from "../../i18n/ui/useUI";
 import { RoutePageSkeleton } from "../nav-source/route-boundary";
 import { fetchDraftConversationIds } from "../../lib/im/inbox-api";
 import { clearConversationHistory, markConversationUnread, patchMySettings } from "../../lib/im/groups-api";
-import { ConfirmDialog } from "../../ui";
+import { MessageConfirmDialog as ConfirmDialog } from "./MessageSettingsFrame";
 import { reasonOf } from "../../lib/im/people-api";
 import type { ImConversationSummary } from "../../lib/im/types";
 import { searchQueryReady } from "../../lib/im/search-api";
@@ -122,6 +122,7 @@ export function Inbox(props: InboxProps) {
       />
       {searching ? (
         <SearchView
+          onBack={() => setSearch("")}
           query={search}
           onQueryChange={setSearch}
           hideInput
@@ -213,7 +214,7 @@ export function Inbox(props: InboxProps) {
         }}>{tt("独立窗口显示")}</button>
         <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="hide" className="min-h-8 w-full rounded-md px-2.5 text-left hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:hover:bg-neutral-800" onClick={() => void updateConversation({ hidden: true })}>{tt("不显示")}</button>
         <div role="separator" className="my-1 border-t border-neutral-100 dark:border-neutral-800" />
-        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="delete" className="min-h-8 w-full rounded-md px-2.5 text-left text-red-600 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300 dark:hover:bg-red-950/40" onClick={() => { setDeleting(menu.item.id); setMenu(null); }}>{tt("删除")}</button>
+        <button role="menuitem" type="button" disabled={menuBusy} data-inbox-action="delete" className="min-h-8 w-full rounded-md px-2.5 text-left text-neutral-600 hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-300 dark:hover:bg-neutral-900/40" onClick={() => { setDeleting(menu.item.id); setMenu(null); }}>{tt("删除")}</button>
         {menuError && <p role="alert" className="px-3 py-2 text-red-600">{menuError}</p>}
       </div>}
       {deleting && <ConfirmDialog title={tt("删除聊天")} body={tt("删除此聊天及你自己的聊天记录，其他成员的记录不受影响。新消息到来时会话会重新显示。")} confirmLabel={tt("删除")} danger onCancel={() => setDeleting(null)} onConfirm={async () => {

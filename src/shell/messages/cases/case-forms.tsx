@@ -1,5 +1,7 @@
 "use client";
 
+import { PRIMARY } from "../MessageSettingsFrame";
+
 // 反通知表单（版权、商标、肖像类）与申诉表单（违法、平台规则类）。
 // 从门户旧面板 `content-cases-panel.tsx` 的 CounterForm / AppealForm 搬来：字段、必填、提交路径不变，
 // 加了：逐项标红、说明文字、提交失败按类别给话、`submit` 可注入（测试不用起网关）。
@@ -26,8 +28,7 @@ const FIELD_CLASS =
   "mt-1 block w-full rounded-lg border bg-white px-2.5 py-1.5 text-[13px] font-normal text-neutral-800";
 const FIELD_OK = "border-neutral-200";
 const FIELD_BAD = "border-red-300";
-const SUBMIT_CLASS =
-  "rounded-lg bg-neutral-900 px-4 py-1.5 text-[13px] font-medium text-white hover:bg-neutral-800 disabled:opacity-40";
+const SUBMIT_CLASS = PRIMARY;
 
 export interface CaseFormProps<Body> {
   caseId: string;

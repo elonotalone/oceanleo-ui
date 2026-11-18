@@ -1,12 +1,13 @@
 "use client";
 
+import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
+
 // 把群升级成 Team（owner）：起一个 Team 名字，其余成员收到 Team 邀请；没加入 Team 的人之后显示「外部」。
 // 成员邀请此后沿用 Team 现有的流程，不在这里另起一套。
 
 import { useState } from "react";
 import { portalHref } from "../../../contracts/domain-family";
 import { useUI } from "../../../i18n/ui/useUI";
-import { Modal } from "../../../ui";
 import { upgradeToTeam } from "../../../lib/im/groups-api";
 import { reasonOf } from "../../../lib/im/people-api";
 
@@ -38,11 +39,9 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
   }
 
   return (
-    <Modal onClose={onClose} className="max-w-sm" labelledBy="im-upgrade-title">
-      <div className="p-5" data-upgrade-team>
-        <h3 id="im-upgrade-title" className="text-[15px] font-semibold text-neutral-900">
-          {tt("升级成 Team")}
-        </h3>
+    <Modal onClose={onClose} title={tt("升级成 Team")} labelledBy="im-upgrade-title">
+      <div data-upgrade-team>
+
         {orgId ? (
           <>
             <p className="mt-2 text-[13px] leading-relaxed text-neutral-600" data-upgrade-result>
@@ -58,7 +57,7 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
               {tt("打开 Team 页面")}
             </a>
             <div className="mt-3 flex justify-end">
-              <button type="button" onClick={() => onDone({ orgId })} data-action="done" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white">
+              <button type="button" onClick={() => onDone({ orgId })} data-action="done" className={PRIMARY}>
                 {tt("好")}
               </button>
             </div>
@@ -83,10 +82,10 @@ export function UpgradeToTeamDialog({ conversationId, defaultName = "", onClose,
               </p>
             )}
             <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-[13px] text-neutral-500 hover:bg-neutral-50">
+              <button type="button" onClick={onClose} className={QUIET}>
                 {tt("取消")}
               </button>
-              <button type="button" disabled={busy || !name.trim()} onClick={submit} data-action="upgrade" className="rounded-lg bg-neutral-900 px-3.5 py-1.5 text-[13px] font-medium text-white disabled:opacity-50">
+              <button type="button" disabled={busy || !name.trim()} onClick={submit} data-action="upgrade" className={PRIMARY}>
                 {tt("升级")}
               </button>
             </div>

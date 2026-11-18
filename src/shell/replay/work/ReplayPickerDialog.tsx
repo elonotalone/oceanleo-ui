@@ -1,5 +1,7 @@
 "use client";
 
+import { MessageSettingsDialog } from "../../messages/MessageSettingsFrame";
+
 // 输入框「+」→ 分享工作回放（W09 挂，契约 §8.2）：列出我的回放 + 新建，选中后把回放卡交给输入框。
 // 传了 `conversationId` 时，选中会先给这个会话授权（`post_card: false`：卡片由输入框自己作为消息发出），
 // 这样会话成员点开卡片才有权限看；没传就只回调，授权要由调用方负责。
@@ -89,20 +91,8 @@ export function ReplayPickerDialog({ open, onClose, onPick, conversationId }: Re
 
   if (!open) return null;
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={tt("分享工作回放")}
-      data-replay-picker
-      className="fixed inset-0 z-[2147483100] flex items-center justify-center bg-black/30 p-4"
-    >
-      <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-[15px] font-medium text-neutral-900">{tt("分享工作回放")}</h3>
-          <button type="button" onClick={onClose} className="text-[12px] text-stone-500 hover:text-neutral-900">
-            {tt("关闭")}
-          </button>
-        </div>
+    <MessageSettingsDialog title={tt("分享工作回放")} onClose={onClose}>
+      <div data-replay-picker>
         <button
           type="button"
           disabled={busy}
@@ -134,6 +124,6 @@ export function ReplayPickerDialog({ open, onClose, onPick, conversationId }: Re
         </ul>
         {error ? <p className="mt-3 text-[12px] text-rose-600">{error}</p> : null}
       </div>
-    </div>
+    </MessageSettingsDialog>
   );
 }

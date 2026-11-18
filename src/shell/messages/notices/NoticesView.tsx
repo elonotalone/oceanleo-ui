@@ -1,11 +1,12 @@
 "use client";
 
+import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
+
 // LeoChat 里的「通知」：平台发给本人的消息（交易订单、任务交付、账单、团队邀请、内容处置……），境内外同一套。
 // 点一条：标为已读，并去它的链接——LeoBay / 会话 / 内容处置在站内打开，其余站内页站内跳，别的站新窗口（open-notice.ts）。
 // 顶上「全部标记已读」。占着 LeoChat 的详情位（小窗 / 窄屏里就是整块内容区），左上角的返回回到聊天。
 import { useEffect, type ReactElement } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { ImBackIcon } from "../messages-surface";
 import { useOwnerCases } from "../cases/use-owner-cases";
 import { NoticeBellIcon, NoticeChevronIcon } from "./notice-icons";
 import { formatNoticeTime } from "./notice-present";
@@ -30,7 +31,7 @@ function CaseRecovery({ onOpen }: { onOpen: () => void }): ReactElement | null {
       type="button"
       data-notices-cases=""
       onClick={onOpen}
-      className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-[color:var(--im-accent)] hover:bg-black/5 dark:hover:bg-white/10"
+      className={`${QUIET} shrink-0`}
     >
       {tt("内容处置")}
     </button>
@@ -58,7 +59,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
         <button
           type="button"
           onClick={() => void store.refresh()}
-          className="mt-2 rounded-md bg-black/5 px-3 py-1 text-xs hover:bg-black/10 dark:bg-white/10"
+          className={`${QUIET} mt-2`}
         >
           {tt("重试")}
         </button>
@@ -113,7 +114,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                   onClick={() => openNoticeDetail(item)}
                   className="flex w-full items-start gap-3 px-3 py-2.5 text-left hover:bg-black/[0.03] dark:hover:bg-white/[0.04]"
                 >
-                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-50 text-amber-600 dark:bg-white/10 dark:text-amber-400">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-600 dark:bg-white/10 dark:text-neutral-300">
                     <NoticeBellIcon className="h-[18px] w-[18px]" />
                   </span>
                   <span className="min-w-0 flex-1">
@@ -123,7 +124,7 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
                           data-notice-dot=""
                           role="img"
                           aria-label={tt("未读")}
-                          className="mb-px h-2 w-2 shrink-0 translate-y-[-1px] rounded-full bg-red-500"
+                          className="mb-px h-2 w-2 shrink-0 translate-y-[-1px] rounded-full bg-neutral-900"
                         />
                       ) : null}
                       <span
@@ -173,27 +174,20 @@ export function NoticesView({ onBack, onCases }: NoticesViewProps): ReactElement
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-notices-view="" data-testid="notices-view">
-      <header className="flex shrink-0 items-center gap-1 border-b border-neutral-200/80 px-2 py-2">
-        <button type="button" data-im-chrome-btn data-notices-back="" onClick={onBack} aria-label={tt("返回")}>
-          <ImBackIcon />
-        </button>
-        <h2 className="min-w-0 flex-1 truncate px-1 text-[13px] font-semibold tracking-tight text-neutral-900 dark:text-white">
-          {tt("通知")}
-        </h2>
+    <MessageSettingsFrame title={tt("通知")} onBack={onBack} backButtonProps={{ "data-notices-back": "" } as React.ButtonHTMLAttributes<HTMLButtonElement>} headerActions={<>
         {onCases ? <CaseRecovery onOpen={onCases} /> : null}
         {state.unread > 0 ? (
           <button
             type="button"
             data-notices-read-all=""
             onClick={() => void store.markAllRead()}
-            className="shrink-0 rounded-lg px-2 py-1 text-[12px] font-medium text-[color:var(--im-accent)] hover:bg-black/5 dark:hover:bg-white/10"
+            className={`${QUIET} shrink-0`}
           >
             {tt("全部标记已读")}
           </button>
         ) : null}
-      </header>
-      <div className="min-h-0 flex-1 overflow-y-auto">{body}</div>
-    </div>
+      </>} data-notices-view="" data-testid="notices-view">
+      {body}
+    </MessageSettingsFrame>
   );
 }

@@ -1,5 +1,7 @@
 "use client";
 
+import { QUIET, PRIMARY, MessageSettingsFrame } from "../MessageSettingsFrame";
+
 // 请求：收到的联系人请求（接受 / 拒绝）、发出的（撤回）、别人拉我进群的邀请（接受 / 拒绝）。
 
 import { useEffect, useRef, useState } from "react";
@@ -18,16 +20,14 @@ import { useImEvent } from "../realtime/hooks";
 
 export interface RequestsListProps {
   query?: string;
+  onBack?: () => void;
   onOpenProfile?: (userId: string) => void;
   onOpenConversation?: (conversationId: string) => void;
   /** 处理完一条后通知上层（刷新角标） */
   onChanged?: () => void;
 }
 
-const btn = "rounded-lg border border-neutral-200 px-2.5 py-1 text-[12px] text-neutral-700 hover:bg-white disabled:opacity-50";
-const btnPrimary = "rounded-lg bg-neutral-900 px-2.5 py-1 text-[12px] font-medium text-white disabled:opacity-50";
-
-export function RequestsList({ query, onOpenProfile, onOpenConversation, onChanged }: RequestsListProps) {
+export function RequestsList({ query, onBack, onOpenProfile, onOpenConversation, onChanged }: RequestsListProps) {
   const tt = useUI();
   const incoming = useLoader(() => listContactRequests("in"), []);
   const outgoing = useLoader(() => listContactRequests("out"), []);
@@ -99,9 +99,9 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
   const empty = pendingIn.length + pendingOut.length + groupInvites.length === 0;
 
   return (
-    <div className="min-h-0 overflow-y-auto" data-requests-list>
+    <MessageSettingsFrame onBack={onBack} title={tt("新的朋友")} data-requests-list>
       {menu && <div role="menu" aria-label={tt("更多")} className="fixed z-50 rounded-lg border border-neutral-200 bg-white p-1 shadow-lg" style={{ left: menu.x, top: menu.y }}>
-        <button type="button" role="menuitem" autoFocus className="rounded-md px-5 py-2 text-left text-[13px] text-red-600 hover:bg-red-50" onClick={() => { const id = menu.id; closeMenu(); void act(id, () => deleteContactRequestHistory(id)); }}>{tt("删除")}</button>
+        <button type="button" role="menuitem" autoFocus className={`${QUIET} text-left`} onClick={() => { const id = menu.id; closeMenu(); void act(id, () => deleteContactRequestHistory(id)); }}>{tt("删除")}</button>
       </div>}
       {note && (
         <p role="status" className="px-3 pb-2 text-[12px] text-red-600">
@@ -127,10 +127,10 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
                     {r.message && <span className="block truncate text-[12px] text-neutral-500">{r.message}</span>}
                   </span>
                 </button>
-                {r.status !== "pending" ? <span className="text-[12px] text-neutral-400">{tt(statusCopy[r.status])}</span> : <><button type="button" disabled={busyId === r.id} data-action="accept" className={btnPrimary} onClick={() => act(r.id, () => respondContactRequest(r.id, "accept"))}>
+                {r.status !== "pending" ? <span className="text-[12px] text-neutral-400">{tt(statusCopy[r.status])}</span> : <><button type="button" disabled={busyId === r.id} data-action="accept" className={PRIMARY} onClick={() => act(r.id, () => respondContactRequest(r.id, "accept"))}>
                   {tt("同意")}
                 </button>
-                <button type="button" disabled={busyId === r.id} data-action="decline" className={btn} onClick={() => act(r.id, () => respondContactRequest(r.id, "decline"))}>
+                <button type="button" disabled={busyId === r.id} data-action="decline" className={QUIET} onClick={() => act(r.id, () => respondContactRequest(r.id, "decline"))}>
                   {tt("拒绝")}
                 </button></>}
               </li>
@@ -156,7 +156,7 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
                   type="button"
                   disabled={busyId === g.id}
                   data-action="accept-group"
-                  className={btnPrimary}
+                  className={PRIMARY}
                   onClick={() =>
                     act(g.id, async () => {
                       const r = await respondGroupInvite(g.id, "accept");
@@ -167,7 +167,7 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
                 >
                   {tt("加入")}
                 </button>
-                <button type="button" disabled={busyId === g.id} data-action="decline-group" className={btn} onClick={() => act(g.id, async () => void (await respondGroupInvite(g.id, "decline")))}>
+                <button type="button" disabled={busyId === g.id} data-action="decline-group" className={QUIET} onClick={() => act(g.id, async () => void (await respondGroupInvite(g.id, "decline")))}>
                   {tt("拒绝")}
                 </button>
               </li>
@@ -187,8 +187,8 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
                   <span className="block truncate text-[14px] text-neutral-900">{r.to.display_name}</span>
                   <span className="block text-[12px] text-neutral-500">{tt(statusCopy[r.status === "declined" ? "pending" : r.status])}</span>
                 </span>
-                {r.status === "pending" && onOpenProfile && <button type="button" data-action="resend" className={btn} onClick={() => onOpenProfile(r.to.user_id)}>{tt("再发一次请求")}</button>}
-                {r.status === "pending" && <button type="button" disabled={busyId === r.id} data-action="cancel" className={btn} onClick={() => act(r.id, () => respondContactRequest(r.id, "cancel"))}>
+                {r.status === "pending" && onOpenProfile && <button type="button" data-action="resend" className={QUIET} onClick={() => onOpenProfile(r.to.user_id)}>{tt("再发一次请求")}</button>}
+                {r.status === "pending" && <button type="button" disabled={busyId === r.id} data-action="cancel" className={QUIET} onClick={() => act(r.id, () => respondContactRequest(r.id, "cancel"))}>
                   {tt("撤回")}
                 </button>}
               </li>
@@ -196,6 +196,6 @@ export function RequestsList({ query, onOpenProfile, onOpenConversation, onChang
           </ul>
         </section>
       )}
-    </div>
+    </MessageSettingsFrame>
   );
 }

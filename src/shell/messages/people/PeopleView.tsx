@@ -47,11 +47,11 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
       />
       <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} className="flex w-full items-center gap-3 border-b border-neutral-100 px-3 py-4 text-left text-[14px]">
         <span aria-hidden>{tab === "requests" ? "⌄" : "›"}</span>{tt("新的朋友")}
-        {pending > 0 && <span className="rounded-full bg-red-500 px-1.5 text-[11px] text-white">{pending}</span>}
+        {pending > 0 && <span className="rounded-full bg-neutral-900 px-1.5 text-[11px] text-white">{pending}</span>}
       </button>
       <div className="min-h-0 flex-1">
-        {showBlocked ? <><button type="button" className="px-3 py-2 text-[12px]" onClick={() => setShowBlocked(false)}>{tt("返回")}</button><BlockedList query={query} /></> : tab === "contacts" ? <ContactList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} /> : (
-          <RequestsList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} onChanged={refreshCounts} />
+        {showBlocked ? <BlockedList query={query} onBack={() => setShowBlocked(false)} /> : tab === "contacts" ? <ContactList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} /> : (
+          <RequestsList onBack={() => setTab("contacts")} query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} onChanged={refreshCounts} />
         )}
       </div>
       {inviting && <InviteLinkDialog onClose={() => setInviting(false)} />}

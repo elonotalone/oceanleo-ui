@@ -1,5 +1,7 @@
 "use client";
 
+import { QUIET, PRIMARY, MessageSettingsDialog } from "../MessageSettingsFrame";
+
 // 「+」→ 分享作品：搜我的作品 → 选一个 → 可勾「让这个会话的人一起改」→ 发出作品卡（card.type="artifact"）。
 // 勾了「一起改」就先走 W11 `grantCoeditToConversation` 把整个会话授为 editor，再发卡。
 import { useEffect, useMemo, useState } from "react";
@@ -13,7 +15,6 @@ import { grantCoeditToConversation } from "../../collab/grants-api";
 import type { LibraryItem } from "../../library-data";
 import { editorCapabilityFor } from "../../workbench-routes";
 import { safeMediaUrl } from "../conversation/AttachmentView";
-import { ImCloseIcon } from "../messages-surface";
 
 /** 作品 → 契约里的编辑器族；这个作品不在 12 族里（如网站）就是 null，不能一起改。 */
 export function editorKindOfItem(item: LibraryItem): ImEditorKind | null {
@@ -109,28 +110,12 @@ export function ArtifactPickerDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={tt("分享作品")}
-      className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 p-4"
-      onClick={onClose}
-      onKeyDown={(event) => {
-        if (event.key === "Escape") onClose();
-      }}
-    >
-      <div className="flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl bg-white p-4 shadow-xl" onClick={(event) => event.stopPropagation()}>
-        <div className="mb-2 flex items-center justify-between">
-          <h2 className="text-[15px] font-semibold text-neutral-900">{tt("分享作品")}</h2>
-          <button type="button" onClick={onClose} data-im-chrome-btn aria-label={tt("关闭")}>
-            <ImCloseIcon />
-          </button>
-        </div>
-        <input
+    <MessageSettingsDialog title={tt("分享作品")} onClose={onClose}>
+      <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           placeholder={tt("搜索我的作品")}
-        className="mb-2 rounded-lg bg-neutral-100/80 px-3 py-2 text-[13px] focus:outline-none"
+        className="mb-2 w-full rounded-lg bg-neutral-100/80 px-3 py-2 text-[13px] focus:outline-none"
           autoFocus
         />
         <div className="min-h-[160px] flex-1 overflow-y-auto">
@@ -182,19 +167,18 @@ export function ArtifactPickerDialog({
         ) : null}
         {grantFailed ? <p className="mt-2 text-[12.5px] text-red-600">{tt("没能授权一起改，请重试，或取消勾选后只分享。")}</p> : null}
         <div className="mt-3 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="rounded-lg px-3 py-1.5 text-[13px] text-neutral-600 hover:bg-neutral-100">
+          <button type="button" onClick={onClose} className={QUIET}>
             {tt("取消")}
           </button>
           <button
             type="button"
             disabled={!selected || busy}
             onClick={() => void send()}
-            className="rounded-lg bg-neutral-900 px-4 py-1.5 text-[13px] text-white disabled:opacity-40"
+            className={PRIMARY}
           >
             {busy ? tt("发送中") : tt("发送")}
           </button>
         </div>
-      </div>
-    </div>
+    </MessageSettingsDialog>
   );
 }

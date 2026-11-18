@@ -1,10 +1,11 @@
 "use client";
 
+import { PRIMARY, QUIET, MessageSettingsFrame, MESSAGE_SETTINGS_WIDTH, MessageConfirmDialog as ConfirmDialog } from "../MessageSettingsFrame";
+
 // 点头像弹出的资料卡：他是谁、和我什么关系、在线状态；私聊 / 加联系人 / 拉黑 / 举报。
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { ConfirmDialog } from "../../../ui";
 import { getConversationDetail } from "../../../lib/im/groups-api";
 import {
   blockUser,
@@ -182,7 +183,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
   if (!mounted) return null;
 
   return (
-    <div className="fixed inset-0 z-[1000] bg-black/25" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/25 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
       <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="im-profile-title" tabIndex={-1} onKeyDown={(event) => {
         if (event.key === "Escape") { event.stopPropagation(); onClose(); return; }
         if (event.key !== "Tab") return;
@@ -192,7 +193,8 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
         const last = focusable[focusable.length - 1];
         if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }} className="fixed right-4 top-4 bottom-auto h-fit max-h-[calc(100dvh-2rem)] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-neutral-200 bg-white p-4 shadow-2xl outline-none max-sm:bottom-0 max-sm:right-0 max-sm:top-auto max-sm:h-fit max-sm:max-h-[85dvh] max-sm:w-full max-sm:rounded-b-none" data-profile-card>
+      }} className={`${MESSAGE_SETTINGS_WIDTH} max-h-[88vh] overflow-hidden rounded-2xl border border-neutral-200 bg-white shadow-2xl outline-none`} data-profile-card>
+        <MessageSettingsFrame title={tt("联系人")} titleId="im-profile-title" onClose={onClose} className="max-h-[88vh]">
         {profile.loading && !p ? (
           <p className="py-8 text-center text-[13px] text-neutral-400">{tt("加载中…")}</p>
         ) : !p ? (
@@ -203,7 +205,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                 {tt("好友请求留言（选填）")}
                 <input data-request-message value={requestMessage} maxLength={200} onChange={(e) => setRequestMessage(e.target.value)} className="mt-1 w-full rounded-lg border border-neutral-200 px-3 py-2 text-neutral-900" />
               </label>
-              <button type="button" disabled={busy} data-action="add-contact" onClick={addContact} className="mt-3 rounded-lg bg-neutral-900 px-3 py-2 text-white disabled:opacity-50">{requested ? tt("再发一次请求") : tt("发送好友请求")}</button>
+              <button type="button" disabled={busy} data-action="add-contact" onClick={addContact} className={`${PRIMARY} mt-3`}>{requested ? tt("再发一次请求") : tt("发送好友请求")}</button>
             </>}
             {note && <p role="status" data-profile-note className="mt-2">{note}</p>}
           </div>
@@ -212,7 +214,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
             <div className="flex items-start gap-3">
               <PersonAvatar name={name} src={p.avatar_url} seed={p.user_id} size={52} />
               <div className="min-w-0 flex-1 pt-0.5">
-                <h3 id="im-profile-title" className="truncate text-[17px] font-semibold leading-6 text-neutral-900">
+                <h3 className="truncate text-[17px] font-semibold leading-6 text-neutral-900">
                   {name}
                   {p.contact_starred && <span data-friend-star className="ml-2 text-amber-500" aria-label={tt("星标朋友")}>★</span>}
                 </h3>
@@ -229,16 +231,15 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                 </div>
               </div>
               {!isSelf && <div className="flex shrink-0 items-center gap-1" ref={menuRef}>
-                <button type="button" aria-label={tt("关闭")} title={tt("关闭")} onClick={onClose} className="rounded-lg p-1.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700">×</button>
                 <div className="relative">
-                  <button type="button" aria-haspopup="menu" aria-expanded={more} aria-label={tt("更多")} onClick={() => setMore(!more)} className="rounded-lg px-2 py-1.5 text-[20px] leading-none text-neutral-500 hover:bg-neutral-100">···</button>
+                  <button type="button" aria-haspopup="menu" aria-expanded={more} aria-label={tt("更多")} onClick={() => setMore(!more)} className={QUIET}>···</button>
                   {more && <div role="menu" aria-label={tt("更多")} className="absolute right-0 top-full z-20 mt-1 flex min-w-[168px] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white p-1 shadow-xl">
                     {isContact && <>
-                      <button type="button" role="menuitem" disabled={busy} data-action="star-contact" onClick={() => { setMore(false); void run(async () => { await starContact(userId, !p.contact_starred); profile.reload(); }); }} className="rounded-lg px-3 py-2 text-left text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">{tt(p.contact_starred ? "取消星标朋友" : "设为星标朋友")}</button>
-                      <button type="button" role="menuitem" disabled={busy} data-action="delete-contact" onClick={() => { setMore(false); setDeleting(true); }} className="rounded-lg px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50 disabled:opacity-50">{tt("删除联系人")}</button>
+                      <button type="button" role="menuitem" disabled={busy} data-action="star-contact" onClick={() => { setMore(false); void run(async () => { await starContact(userId, !p.contact_starred); profile.reload(); }); }} className={`${QUIET} text-left`}>{tt(p.contact_starred ? "取消星标朋友" : "设为星标朋友")}</button>
+                      <button type="button" role="menuitem" disabled={busy} data-action="delete-contact" onClick={() => { setMore(false); setDeleting(true); }} className={`${QUIET} text-left`}>{tt("删除联系人")}</button>
                     </>}
-                    <button type="button" role="menuitem" disabled={busy} onClick={() => { setMore(false); void toggleBlock(); }} data-action="block" className="rounded-lg px-3 py-2 text-left text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-50">{blocked ? tt("取消拉黑") : tt("拉黑")}</button>
-                    <button type="button" role="menuitem" onClick={() => { setMore(false); setReporting(true); }} data-action="report" className="rounded-lg px-3 py-2 text-left text-[13px] text-red-600 hover:bg-red-50">{tt("举报")}</button>
+                    <button type="button" role="menuitem" disabled={busy} onClick={() => { setMore(false); void toggleBlock(); }} data-action="block" className={`${QUIET} text-left`}>{blocked ? tt("取消拉黑") : tt("拉黑")}</button>
+                    <button type="button" role="menuitem" onClick={() => { setMore(false); setReporting(true); }} data-action="report" className={`${QUIET} text-left`}>{tt("举报")}</button>
                   </div>}
                 </div>
               </div>}
@@ -264,7 +265,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                       });
                     }}
                     className="min-w-0 flex-1 rounded-lg border border-neutral-200 px-2 py-1.5 text-[14px] text-neutral-900 outline-none focus-visible:ring-2 focus-visible:ring-neutral-300"
-                  /> : <button type="button" data-action="edit-remark" disabled={busy} onClick={() => setEditingRemark(true)} className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[14px] text-neutral-900 hover:bg-neutral-50">
+                  /> : <button type="button" data-action="edit-remark" disabled={busy} onClick={() => setEditingRemark(true)} className={`${QUIET} flex min-w-0 items-center gap-2 text-left`}>
                     <span className="min-w-0 flex-1 truncate">{remark || "—"}</span><span aria-hidden className="text-neutral-400">✎</span>
                   </button>}
               </div>
@@ -284,7 +285,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
             {needContact && !isSelf && (
               <div className="mt-3 rounded-lg bg-neutral-50 p-3 text-[12px] text-neutral-600" data-need-contact>
                 <p>{tt("先加联系人，才能私聊。")}</p>
-                <button type="button" disabled={busy} onClick={addContact} data-action="send-request" className="mt-2 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12px] font-medium text-white disabled:opacity-50">
+                <button type="button" disabled={busy} onClick={addContact} data-action="send-request" className={`${PRIMARY} mt-2`}>
                   {requested ? tt("再发一次请求") : tt("发送好友请求")}
                 </button>
               </div>
@@ -303,7 +304,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                   disabled={busy}
                   onClick={startDm}
                   data-action="dm"
-                  className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:opacity-85 disabled:opacity-50"
+                  className={PRIMARY}
                 >
                   {tt("私聊")}
                 </button> : (
@@ -312,7 +313,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
                     disabled={busy}
                     onClick={addContact}
                     data-action="add-contact"
-                    className="rounded-lg bg-neutral-900 px-4 py-2 text-[13px] font-medium text-white hover:opacity-85 disabled:opacity-50"
+                    className={PRIMARY}
                   >
                     {requested ? tt("再发一次请求") : tt("添加到通讯录")}
                   </button>
@@ -322,6 +323,7 @@ export function ProfileCard({ userId, conversationId, onClose, onOpenConversatio
 
           </>
         )}
+        </MessageSettingsFrame>
       </div>
     </div>
   );

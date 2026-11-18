@@ -1,5 +1,7 @@
 "use client";
 
+import { PRIMARY } from "../MessageSettingsFrame";
+
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { addTeamContacts, listContactTeams, reasonOf, useLoader } from "../../../lib/im/people-api";
@@ -58,7 +60,7 @@ export function TeamContactsSection() {
         </label>)}
       </fieldset>)}
     </div>
-    <button type="button" disabled={busy || selected.size === 0} data-action="add-team-contacts" onClick={() => void add()} className="mt-2 rounded-lg bg-neutral-900 px-3 py-2 text-[13px] text-white disabled:opacity-50">{tt("添加 {n} 人", { n: selected.size })}</button>
+    <button type="button" disabled={busy || selected.size === 0} data-action="add-team-contacts" onClick={() => void add()} className={`${PRIMARY} mt-2`}>{tt("添加 {n} 人", { n: selected.size })}</button>
     {note && <p role="status" className="mt-2 text-[12px] text-neutral-600">{note}</p>}
   </section>;
 }
