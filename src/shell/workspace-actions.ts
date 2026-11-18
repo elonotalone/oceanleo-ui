@@ -38,7 +38,7 @@ export type WorkspaceActionTab = WorkspaceSlotId | "bay" | WorkspaceManagedPanel
 export type WorkspaceActionIntent = "open" | "edit";
 
 import type { AssetRef } from "./asset-detail/types";
-import { familyForHost, runtimePageOrigin } from "../contracts/domain-family";
+import { DOMAIN_FAMILIES, domainFamilyProfile, familyForHost, runtimePageOrigin } from "../contracts/domain-family";
 
 const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
   "open",
@@ -299,13 +299,52 @@ export function dispatchWorkspaceAction(envelope: WorkspaceActionEnvelope): bool
   );
 }
 
+// COM's profile uses "all" for availability, not as a host allowlist. The
+// explicit family inventories enumerate the functional product hosts; aitools
+// is the documented COM-only host (absent from CN and the twin).
+const PRODUCT_SUBSITES = new Set([
+  ...DOMAIN_FAMILIES.flatMap((family) => {
+    const sites = domainFamilyProfile(family).availableSubsites;
+    return sites === "all" ? [] : sites;
+  }),
+  "aitools",
+]);
+
+function productHost(hostname: string): boolean {
+  const family = familyForHost(hostname);
+  if (!family) return false;
+  const profile = domainFamilyProfile(family);
+  if (hostname === profile.registrableDomain) return true;
+  return [...PRODUCT_SUBSITES].some((site) =>
+    hostname === `${site}.${profile.registrableDomain}` &&
+    (profile.availableSubsites === "all" || profile.availableSubsites.includes(site)));
+}
+
 /** Resolve only product pages the workspace can actually display. No content host is trusted. */
 export function workspaceActionForHref(href: string, origin: string): WorkspaceAction | null {
   let url: URL;
-  try { url = new URL(href, origin); } catch { return null; }
+  let pageOrigin: string;
+  try {
+    const page = new URL(origin);
+    pageOrigin = page.origin;
+    url = new URL(href, page);
+  } catch { return null; }
   if (!["https:", "http:"].includes(url.protocol)) return null;
-  if (url.origin !== origin && (url.protocol !== "https:" || !familyForHost(url.hostname))) return null;
-  const path = url.pathname.replace(/^\/s\/[^/]+(?=\/)/, "").replace(/\/+$/, "") || "/";
+  if (url.port || url.username || url.password || !productHost(url.hostname)) return null;
+  if (url.protocol !== "https:" && url.origin !== pageOrigin) return null;
+  let path = url.pathname.replace(/\/$/, "") || "/";
+  const merged = path.match(/^\/s\/([a-z0-9-]+)(\/.*)$/);
+  if (merged) {
+    // Merged routes use site keys, whose three historical host labels differ.
+    const labels: Record<string, string> = { ppt: "slide", ecommerce: "e-commerce", threed: "3d" };
+    const site = merged[1];
+    const label = labels[site] || site;
+    const family = familyForHost(url.hostname)!;
+    const profile = domainFamilyProfile(family);
+    if (["slide", "e-commerce", "3d"].includes(site) || !PRODUCT_SUBSITES.has(label) ||
+        (profile.availableSubsites !== "all" && !profile.availableSubsites.includes(label))) return null;
+    path = merged[2];
+  }
   const params = url.searchParams;
   const itemId = params.get("item") || params.get("artifactId") || undefined;
   const revisionId = params.get("revisionId") || params.get("revision") || undefined;
@@ -315,12 +354,13 @@ export function workspaceActionForHref(href: string, origin: string): WorkspaceA
       ...(material ? { view: "materials", itemId: material, revisionId } : {}),
       ...(params.get("q") ? { query: params.get("q")! } : {}) };
   }
-  if (path === "/library" || path === "/history" || (params.get("tab") === "library" && itemId)) {
+  if (path === "/library" || path === "/history" ||
+      (/^\/workspace(?:\/[a-z0-9][a-z0-9_-]*)?$/.test(path) && params.get("tab") === "library" && itemId)) {
     return { version: 1, tab: "mine", itemId, revisionId };
   }
-  const project = path.match(/^\/projects(?:\/([^/]+))?$/);
+  const project = path.match(/^\/projects(?:\/([a-zA-Z0-9][a-zA-Z0-9_-]*))?$/);
   if (project) return { version: 2, tab: "projects", projectId: project[1] || params.get("projectId") || undefined };
-  const managed = path.match(/^\/(settings|devices)(?:\/([^/]+))?$/);
+  const managed = path.match(/^\/(settings|devices)(?:\/([a-z0-9][a-z0-9_-]*))?$/);
   if (managed) return { version: 2, tab: managed[1] as "settings" | "devices", section: managed[2] || params.get("section") || undefined, deviceId: params.get("deviceId") || undefined };
   if (path === "/browser") return { version: 2, tab: "devices", section: "cloud-browser" };
   return null;

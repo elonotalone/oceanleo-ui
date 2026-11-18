@@ -290,3 +290,56 @@ test('task hosts keep their LeoChat card and can open message content in that sa
  assert.equal(window.location.href,before);
  await card.close();await page.close();
 });
+
+
+test('F4: only exact product hosts and default ports route into the workspace',()=>{
+ const resolve=(href,origin='https://oceanleo.com')=>workspaceActionForHref(href,origin);
+ for(const href of [
+   'https://oceanleo.com:443/library?item=x', 'https://slide.oceanleo.com/library?item=x',
+   'https://3d.oceanbizs.com/library?item=x','https://e-commerce.oceanleo.cn/library?item=x',
+   'https://aitools.oceanleo.com/library?item=x',
+ ])assert.equal(resolve(href)?.tab,'mine',href);
+ for(const href of [
+   'https://unknown.oceanleo.com/library?item=x','https://api.oceanleo.com/library?item=x',
+   'https://nested.music.oceanleo.com/library?item=x','https://music-oceanleo.com/library?item=x',
+   'https://music.oceanleo.com.evil.org/library?item=x','https://music.oceanleo.com./library?item=x',
+   'https://aitools.oceanleo.cn/library?item=x','https://aitools.oceanbizs.com/library?item=x',
+   'https://oceanleo.com:444/library?item=x','https://music.oceanleo.com:8443/library?item=x',
+   'http://oceanleo.com:8080/library?item=x','http://music.oceanleo.com/library?item=x',
+   'https://oceanleo.app/library?item=x','https://ws.oceanleo.app/library?item=x',
+   'https://preview.oceanleo.app/library?item=x','https://leoapp.cn/library?item=x',
+   'https://person@oceanleo.com/library?item=x',
+ ])assert.equal(resolve(href),null,href);
+ // Being the caller origin never promotes an unknown/content host or custom port.
+ for(const origin of ['https://unknown.oceanleo.com','https://oceanleo.app','https://oceanleo.com:444'])assert.equal(resolve('/library?item=x',origin),null,origin);
+ assert.equal(resolve('/library?item=x','http://oceanleo.com:80')?.tab,'mine');
+});
+
+test('F4: Library compatibility and merged routes match only their exact supported path shapes',()=>{
+ const resolve=(path)=>workspaceActionForHref(path,'https://oceanleo.com');
+ for(const path of ['/library/?item=x','/workspace?tab=library&item=x','/workspace/invitation?tab=library&item=x','/s/ppt/library?item=x','/s/threed/bay?listingId=x'])assert.ok(resolve(path),path);
+ for(const path of [
+   '/unrelated?tab=library&item=x','/?tab=library&item=x','/account/login?tab=library&item=x',
+   '/bay/extra?tab=library&item=x','/workspace/app/extra?tab=library&item=x',
+   '/workspace/%2F?tab=library&item=x','/library//?item=x','/library/extra?item=x',
+   '/history/extra?item=x','/projects/a/extra','/projects/%2F','/projects/a.b',
+   '/settings/privacy/extra','/devices/%2F','/browser/extra',
+   '/s/unknown/library?item=x','/s/image/s/image/library?item=x','/s/slide/library?item=x',
+ ])assert.equal(resolve(path),null,path);
+});
+
+test('F4: rejected hosts, ports and unrelated paths remain new-tab links in messages and artifact cards',async()=>{
+ const urls=[
+   'https://unknown.oceanleo.com/library?item=x',
+   'https://oceanleo.com:8443/library?item=x',
+   'https://oceanleo.app/library?item=x',
+   'https://oceanleo.com/other?tab=library&item=x',
+ ];
+ const messages=await mount(React.createElement('div',null,...renderMessageBody(urls.join(' '))));
+ assert.equal(messages.container.querySelectorAll('a').length,urls.length);
+ for(const link of messages.container.querySelectorAll('a'))assert.equal(link.getAttribute('target'),'_blank');
+ const cards=await mount(React.createElement('div',null,...[urls[0],urls[1],urls[3]].map((open_path,index)=>React.createElement(ArtifactCardView,{key:index,card:{type:'artifact',id:'x',title:'File',open_path}}))));
+ assert.equal(cards.container.querySelectorAll('a').length,3);
+ for(const link of cards.container.querySelectorAll('a'))assert.equal(link.getAttribute('target'),'_blank');
+ await cards.close();await messages.close();
+});

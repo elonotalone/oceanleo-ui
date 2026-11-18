@@ -109,7 +109,7 @@ export function ArtifactCardView({ card }: { card: ImCard }) {
           <a
             href={target.href}
             onClick={(event) => { if (openWorkspaceHref(target.href)) event.preventDefault(); }}
-            {...(target.sameOrigin || inWorkspace ? {} : { target: "_blank", rel: "noopener noreferrer" })}
+            {...(inWorkspace ? {} : { target: "_blank", rel: "noopener noreferrer" })}
             className="rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] text-white hover:bg-neutral-700"
           >
             {tt("打开")}
