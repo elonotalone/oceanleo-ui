@@ -39,6 +39,7 @@ export type WorkspaceActionIntent = "open" | "edit";
 
 import type { AssetRef } from "./asset-detail/types";
 import { DOMAIN_FAMILIES, domainFamilyProfile, familyForHost, runtimePageOrigin } from "../contracts/domain-family";
+import { isLeoDevPreviewHost } from "../lib/auth/config";
 
 const WORKSPACE_ACTION_INTENTS: readonly WorkspaceActionIntent[] = [
   "open",
@@ -330,7 +331,10 @@ export function workspaceActionForHref(href: string, origin: string): WorkspaceA
     url = new URL(href, page);
   } catch { return null; }
   if (!["https:", "http:"].includes(url.protocol)) return null;
-  if (url.port || url.username || url.password || !productHost(url.hostname)) return null;
+  if (url.port || url.username || url.password) return null;
+  // A preview may route its own content, never another preview's content.
+  const ownDevHost = url.origin === pageOrigin && !url.hostname.endsWith(".") && isLeoDevPreviewHost(url.hostname);
+  if (!productHost(url.hostname) && !ownDevHost) return null;
   if (url.protocol !== "https:" && url.origin !== pageOrigin) return null;
   let path = url.pathname.replace(/\/$/, "") || "/";
   const merged = path.match(/^\/s\/([a-z0-9-]+)(\/.*)$/);

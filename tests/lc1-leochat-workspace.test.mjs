@@ -183,7 +183,7 @@ const {LeoChatPage}=await import(await compileModule('src/shell/leochat/LeoChatP
  './leochat-body':bodyUrl,
 }));
 const {hostState}=await import(hostStub);
-const {dispatchWorkspaceAction,workspaceActionForHref,WORKSPACE_ACTION_EVENT}=await import('../src/shell/workspace-actions.ts');
+const {dispatchWorkspaceAction,workspaceActionForHref,openWorkspaceHref,WORKSPACE_ACTION_EVENT}=await import('../src/shell/workspace-actions.ts');
 const {renderMessageBody}=await import('../src/shell/messages/conversation/message-format.ts');
 async function mount(element){
  const container=document.createElement('div');document.body.append(container);const root=createRoot(container);
@@ -342,4 +342,55 @@ test('F4: rejected hosts, ports and unrelated paths remain new-tab links in mess
  assert.equal(cards.container.querySelectorAll('a').length,3);
  for(const link of cards.container.querySelectorAll('a'))assert.equal(link.getAttribute('target'),'_blank');
  await cards.close();await messages.close();
+});
+
+
+test('F5: a validated LeoDev host routes only its own recognized URLs, retaining all F4 restrictions',()=>{
+ const dev='https://p-0123456789abcdef0123456789abcdef.dev.oceanleo.com';
+ const other='https://p-abcdef0123456789abcdef0123456789.dev.oceanleo.com';
+ for(const href of ['/library?item=owned',`${dev}:443/library?item=owned`])assert.equal(workspaceActionForHref(href,dev)?.tab,'mine',href);
+ assert.equal(workspaceActionForHref('/bay?listingId=owned',dev)?.itemId,'listing:owned');
+ assert.equal(workspaceActionForHref('/s/ppt/library?item=owned',dev)?.tab,'mine');
+ assert.equal(workspaceActionForHref(`${other}/library?item=owned`,dev),null);
+ assert.equal(workspaceActionForHref(`${dev}/library?item=owned`,'https://oceanleo.com'),null);
+ for(const origin of [
+   'https://p-0123456789abcdef0123456789abcde.dev.oceanleo.com',
+   'https://p-0123456789abcdef0123456789abcdef0.dev.oceanleo.com',
+   'https://p-g123456789abcdef0123456789abcdef.dev.oceanleo.com',
+   `${dev}.evil.org`,`${dev}.`,`${dev}:8443`,
+   'https://p-0123456789abcdef0123456789abcdef.dev.oceanleo.app',
+   'https://nested.p-0123456789abcdef0123456789abcdef.dev.oceanleo.com',
+ ])assert.equal(workspaceActionForHref('/library?item=owned',origin),null,origin);
+ for(const href of [`${dev}:8443/library?item=owned`,`${dev}/unrelated?tab=library&item=owned`,`${dev}/library/extra?item=owned`])assert.equal(workspaceActionForHref(href,dev),null,href);
+});
+
+test('F5: own Library/artifact and Bay links on LeoDev open its sidebar; another preview does not dispatch',async()=>{
+ const dev='https://p-0123456789abcdef0123456789abcdef.dev.oceanleo.com';
+ const other='https://p-abcdef0123456789abcdef0123456789.dev.oceanleo.com';
+ const descriptor=Object.getOwnPropertyDescriptor(window,'location');
+ Object.defineProperty(window,'location',{configurable:true,value:new URL(`${dev}/leochat`)});
+ let page,messages,card;
+ try {
+   page=await mount(React.createElement(LeoChatPage,{siteKey:'oceanleo'}));
+   const before=window.location.href;
+   messages=await mount(React.createElement('div',null,...renderMessageBody(`${dev}/library?item=dev-owned ${other}/library?item=other-owned`)));
+   const [own,outside]=messages.container.querySelectorAll('a');
+   assert.equal(own.getAttribute('target'),null);assert.equal(outside.getAttribute('target'),'_blank');
+   assert.equal((await click(own)).defaultPrevented,true);
+   assert.equal(page.container.querySelector('[data-workspace-pane="main"]').dataset.workspacePaneState,'open');
+   assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'mine');
+   card=await mount(React.createElement(ArtifactCardView,{card:{type:'artifact',id:'dev-owned',title:'Dev file',open_path:'/library?item=dev-owned'}}));
+   assert.equal(card.container.querySelector('a').getAttribute('target'),null);
+   assert.equal((await click(card.container.querySelector('a'))).defaultPrevented,true);
+   await act(()=>assert.equal(openWorkspaceHref('/bay?listingId=dev-listing'),true));
+   assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'bay');
+   const received=[];const record=(event)=>received.push(event.detail);
+   window.addEventListener(WORKSPACE_ACTION_EVENT,record);
+   try {assert.equal(openWorkspaceHref(`${other}/library?item=other-owned`),false);assert.deepEqual(received,[]);}
+   finally {window.removeEventListener(WORKSPACE_ACTION_EVENT,record);}
+   assert.equal(window.location.href,before);
+ } finally {
+   if(card)await card.close();if(messages)await messages.close();if(page)await page.close();
+   Object.defineProperty(window,'location',descriptor);
+ }
 });
