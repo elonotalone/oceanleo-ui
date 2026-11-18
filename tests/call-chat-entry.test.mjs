@@ -342,15 +342,15 @@ test("引擎进了 error 阶段（小窗自己写原因）时不再重复弹提�
 
 // ── 接线（源码断言）─────────────────────────────────────────────────────────
 
-test("会话顶栏：◉ 会议按钮与 openMeeting 已移除；通话按钮只在非交易、未解散、是成员时渲染", () => {
+test("会话顶栏：◉ 会议按钮与 openMeeting 已移除；通话按钮只在非交易、未解散、是成员、未拉黑时渲染", () => {
   const view = src("shell/messages/conversation/ConversationView.tsx");
   assert.doesNotMatch(view, /openMeeting|meeting-host-state|◉/);
   assert.doesNotMatch(view, /tt\("会议"\)/);
   assert.match(
     view,
-    /const showCallButton = Boolean\(conversation\) && conversation\?\.kind !== "talent" && !dissolved && !notMember;/,
+    /const showCallButton = Boolean\(conversation\) && conversation\?\.kind !== "talent" && !dissolved && !notMember && !blocked;/,
   );
-  assert.match(view, /\{showCallButton && conversation \? \(\s*<CallButton conversationId=\{conversationId\} title=\{title\} kind=\{conversation\.kind\} \/>/);
+  assert.match(view, /\{showCallButton && conversation \? \(\s*<CallButton conversationId=\{conversationId\} title=\{title\} kind=\{conversation\.kind\} disabled=\{policy\?\.awaiting_reply\} \/>/);
 });
 
 test("全局宿主（A20）：没有会议面板与会议邀请处理；可用时挂 CallHost / IncomingCallHost / CallControlHost；不可用时只挂登录框宿主", () => {
@@ -392,6 +392,8 @@ const viewStubs = {
   "../../../lib/im/people-api": dataModule(`
     export function conversationDisplayTitle(c) { return c?.title ?? ""; }
     export function visiblePersonName(p) { return p?.display_name ?? ""; }
+    export async function blockUser() {}
+    export async function sendContactRequest() {}
   `),
   "../../../lib/im/messages-api": dataModule(`
     const V = () => globalThis.__W08V;
@@ -450,7 +452,7 @@ const viewStubs = {
   "./PinnedBar": dataModule(`export function PinnedBar() { return null; }`),
   "./TypingLine": dataModule(`export function TypingLine() { return null; } export function useTypingUsers() { return []; }`),
   "./conversation-store": dataModule(`
-    const SNAP = { messages: [], pins: [], loaded: true, hasMoreAfter: false };
+    const SNAP = { messages: [], pending: [], pins: [], loaded: true, hasMoreAfter: false };
     const store = {
       subscribe() { return () => {}; },
       getSnapshot() { return SNAP; },

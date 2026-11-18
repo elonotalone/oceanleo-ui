@@ -49,7 +49,7 @@ const {AttachmentFileViewer} = await import(await compileModule('src/shell/attac
 const {ConversationView} = await import(await compileModule('src/shell/messages/conversation/ConversationView.tsx', {
   '../../../i18n/ui/useUI':ui, '../../../ui':controls,
   '../../../lib/im/client':dataModule('export class ImApiError extends Error {}'),
-  '../../../lib/im/people-api':dataModule('export function conversationDisplayTitle(c){return c.title;} export function visiblePersonName(p){return p.display_name||"";}'),
+  '../../../lib/im/people-api':dataModule('export function conversationDisplayTitle(c){return c.title;} export function visiblePersonName(p){return p.display_name||"";} export async function blockUser(){} export async function sendContactRequest(){}'),
   '../../../lib/im/messages-api':dataModule(`export const messagesApi={
     async me(){return {profile:{user_id:'viewer'}};},
     async getConversation(){return {id:'current',kind:'group',title:'Conversation',members:[],member_count:1,my_role:'member',unread_count:0};},
@@ -72,7 +72,7 @@ const {ConversationView} = await import(await compileModule('src/shell/messages/
   './PinnedBar':dataModule('export function PinnedBar(){return null;}'),
   './TypingLine':dataModule('export function TypingLine(){return null;} export function useTypingUsers(){return [];}'),
   './conversation-store':dataModule(`
-    const snapshot={messages:[],pins:[],loaded:true,hasMoreAfter:false};
+    const snapshot={messages:[],pending:[],pins:[],loaded:true,hasMoreAfter:false};
     const store={subscribe(){return ()=>{};},getSnapshot(){return snapshot;},loadLatest(){},refreshPins(){},catchUp(){},async loadAround(){},find(){return null;},togglePin(){},recall(){}};
     export function getConversationStore(){return store;} export function unreadBoundary(){return null;}
   `),
