@@ -41,6 +41,40 @@ test("category, content, document format and cross tags round-trip without distu
   for (const key of ["cat", "contentType", "format", "tag.style", "tag.industry"]) assert.equal(new URLSearchParams(cleared).has(key), false);
 });
 
+test("new produced deck and sheet types arrive through the API and keep labels and filters", async () => {
+  const additions = [
+    ["deck-teaching-learning", "knowledge-share", "知识与生活主题分享", "Knowledge & lifestyle talk"],
+    ["deck-research", "research-proposal", "研究开题与提案", "Research proposal"],
+    ["deck-research", "experiment-protocol", "实验方案与技术路线", "Experiment protocol & technical route"],
+    ["deck-company-team", "institution-profile", "机构与实验室介绍", "Institution & lab profile"],
+    ["sheet-invoices-orders", "invoice-tracker", "发票与回款跟踪", "Invoice & receivables tracker"],
+    ["sheet-projects-resources", "resource-plan", "人员与资源排期", "Resource plan"],
+  ];
+  const updated = structuredClone(fixture);
+  for (const [category, suffix, zh, en] of additions) {
+    const shelf = updated.shelves.find((row) => row.id === category.split("-")[0]);
+    let parent = shelf.categories.find((row) => row.id === category);
+    if (!parent) shelf.categories.push(parent = { id: category, labels: { zh: category, en: category }, contentTypes: [] });
+    parent.contentTypes.push({ id: `${category}-${suffix}`, labels: { zh, en } });
+  }
+  globalThis.__taxonomyGet = async (path) => { assert.equal(path, "/v1/materials/taxonomy"); return updated; };
+  const parsed = await client.fetchMaterialTaxonomy(signal());
+  for (const [category, suffix, zh, en] of additions) {
+    const shelf = parsed.shelves.find((row) => row.id === category.split("-")[0]);
+    const term = shelf.categories.find((row) => row.id === category).contentTypes.find((row) => row.id === `${category}-${suffix}`);
+    for (const locale of LOCALES) assert.equal(taxonomy.materialLabel(term, locale), locale.startsWith("zh") ? zh : en);
+    const filters = { ...taxonomy.emptyMaterialFilters(), category, contentType: term.id };
+    const search = taxonomy.materialSearch("?kind=asset", shelf.id, filters);
+    assert.deepEqual(taxonomy.readMaterialFilters(search, shelf, parsed), filters);
+    for (const source of ["official", "seller"]) {
+      const path = client.materialShelfPath({ siteKey: "oceanleo", shelfType: shelf.id, limit: 24, filters }, source);
+      const params = new URL(path, "https://example.test").searchParams;
+      assert.equal(params.get("contentType"), term.id);
+      assert.equal(params.get(source === "official" ? "category" : "materialCategory"), category);
+    }
+  }
+});
+
 test("official and seller queries share taxonomy filters and preserve marketplace category meaning", () => {
   const request = { siteKey: "oceanleo", shelfType: "document", limit: 30, q: "report", filters: {
     category: "document-category", contentType: "document-content", format: "pdf", tags: { industry: ["education"] },
