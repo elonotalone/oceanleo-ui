@@ -80,9 +80,17 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
         // over a cookie that is still on the request. A real refresh still
         // writes a new token (and may clear leftover chunk cookies).
         if (hasSession && wiping && !replacing) return;
+        // Server components create their own client from the forwarded request.
+        // Replace its expired chunks before Next snapshots the cookie header.
+        cookiesToSet.forEach(({ name, value }) => {
+          if (value) request.cookies.set(name, value);
+          else request.cookies.delete(name);
+        });
         response = NextResponse.next({ request });
         cookiesToSet.forEach(({ name, value, options }) => {
-          response.cookies.set(name, value, { ...options, ...opts });
+          // opts.name is the storage key, not this chunk's name. Next lets
+          // options override positional names, so write identity last.
+          response.cookies.set({ ...options, ...opts, name, value });
         });
         // @supabase/ssr 在刷新 token 时会连带下发一组 no-store 头，必须原样落到
         // response 上：带着 Set-Cookie 的响应一旦被 CDN/反代缓存，下一个访客就会

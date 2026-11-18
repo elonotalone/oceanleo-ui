@@ -9,10 +9,13 @@ import {
   isTransientAuthStatus,
 } from "../src/lib/auth/auth-fetch.ts";
 
-test("5xx and Cloudflare 52x are the statuses supabase-js would retry for 30s", () => {
+test("known transient JWKS statuses keep their existing classification", () => {
   for (const status of [500, 502, 503, 504, 520, 522]) {
     assert.equal(isTransientAuthStatus(status), true, String(status));
   }
+  assert.equal(isTransientAuthStatus(499), false);
+  assert.equal(isTransientAuthStatus(599), false);
+  assert.equal(isTransientAuthStatus(600), false);
   assert.equal(isTransientAuthStatus(401), false);
   assert.equal(isTransientAuthStatus(200), false);
 });
@@ -51,6 +54,33 @@ test("503 on token refresh stays 503 so the session cookie is not wiped", async 
   } finally {
     globalThis.fetch = original;
   }
+});
+
+test("every refresh 5xx becomes retryable 503, with JWKS and user handling preserved", async (t) => {
+  let status = 500;
+  t.mock.method(globalThis, "fetch", async () => new Response("upstream unavailable", { status }));
+  for (; status <= 599; status++) {
+    const refresh = await authFetch("https://example.invalid/auth/v1/token?grant_type=refresh_token");
+    assert.equal(refresh.status, 503, String(status));
+    assert.deepEqual(await refresh.json(), { error: "auth_unavailable", msg: "login service unavailable" });
+  }
+  for (status of [500, 504, 520, 524, 599]) {
+    const jwks = await authFetch("https://example.invalid/auth/v1/.well-known/jwks.json");
+    assert.equal(jwks.status, status === 599 ? 599 : 401);
+    for (const path of ["/auth/v1/user", "/other"]) {
+      const response = await authFetch(`https://example.invalid${path}`);
+      assert.equal(response.status, status);
+      assert.equal(await response.text(), "upstream unavailable");
+    }
+  }
+});
+
+test("a real 400 invalid_grant passes through unchanged", async (t) => {
+  const denied = Response.json({ error: "invalid_grant" }, { status: 400 });
+  t.mock.method(globalThis, "fetch", async () => denied);
+  const response = await authFetch("https://example.invalid/auth/v1/token?grant_type=refresh_token");
+  assert.equal(response, denied);
+  assert.deepEqual(await response.json(), { error: "invalid_grant" });
 });
 
 test("401 on a refresh is softened so a cross-subdomain rotation race cannot wipe SSO", async () => {

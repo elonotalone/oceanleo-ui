@@ -4,7 +4,7 @@
  * 只有 JWKS 改写成 401：getClaims 当「这次验不了」处理，不重试、不 overlay。
  *
  * /user 和 token 续期绝对不能走这条路。401 会被当成会话作废，cookie 清空，
- * 人就退出登录。那两条的 5xx / 网络抖动原样返回（或 503）。
+ * 人就退出登录。续期的所有 5xx 都转成可重试的 503；/user 的 5xx 保持原样。
  *
  * 浏览器路径不再套 2500ms 超时：CORS 到 auth.oceanleo.com 慢一拍就会误报 401，
  * 宿主模式早就因此去掉了超时，oceanbizs.com 网页之前漏了。
@@ -62,7 +62,9 @@ function softenTransient(input: RequestInfo | URL, res: Response): Response {
   // Domain=.oceanbizs.com cookie for every subsite.  A real invalid refresh
   // token is returned as 400/invalid_grant, so keep that explicit revocation
   // path intact and soften only this refresh-specific 401.
-  if (isAuthRefreshRequest(input) && res.status === 401) {
+  // auth-js only retries selected 5xx statuses. Any other upstream failure
+  // (notably GoTrue's 500 on a database timeout) would remove the session.
+  if (isAuthRefreshRequest(input) && (res.status === 401 || (res.status >= 500 && res.status <= 599))) {
     return unavailableResponse(503);
   }
   if (!isTransientAuthStatus(res.status)) return res;
