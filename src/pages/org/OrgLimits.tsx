@@ -5,9 +5,15 @@ import { listMemberLimits, setMemberLimits, orgApiCode, orgErrorCopy, type OrgLi
 import { formatMinor } from "../../lib/money";
 import { useUI } from "../../i18n/ui/useUI";
 
-export const LIMIT_WINDOWS: readonly [OrgLimitWindow, string][] = [
-  ["total_minor", "累计"], ["day_minor", "近 1 天"], ["five_day_minor", "近 5 天"], ["month_minor", "近 30 天"],
-];
+export const LIMIT_WINDOWS: readonly OrgLimitWindow[] = ["total_minor", "day_minor", "five_day_minor", "month_minor"];
+
+/** Literal tt() calls so the dictionary scan sees every window name. */
+function windowLabel(key: OrgLimitWindow, tt: (zh: string) => string): string {
+  if (key === "total_minor") return tt("累计");
+  if (key === "day_minor") return tt("近 1 天");
+  if (key === "five_day_minor") return tt("近 5 天");
+  return tt("近 30 天");
+}
 
 /** Decimal money input: blank is unlimited, zero prevents spend, invalid is rejected. */
 export function limitInput(text: string): number | null | undefined {
@@ -21,8 +27,8 @@ export function limitInput(text: string): number | null | undefined {
 export function LimitReadout({ row, currency }: { row: OrgMemberLimits; currency: string }) {
   const tt = useUI();
   return <dl className="grid gap-2 sm:grid-cols-4" data-org-limits-readonly="1">
-    {LIMIT_WINDOWS.map(([key, label]) => <div key={key}>
-      <dt className="text-[12px] text-neutral-500">{tt(label)}</dt>
+    {LIMIT_WINDOWS.map((key) => <div key={key}>
+      <dt className="text-[12px] text-neutral-500">{windowLabel(key, tt)}</dt>
       <dd className="text-[13px] tabular-nums">{formatMinor(row.spent[key], currency)} / {row.limits[key] === null ? tt("不限") : formatMinor(row.limits[key]!, currency)}</dd>
     </div>)}
   </dl>;
@@ -32,11 +38,11 @@ function MemberLimits({ orgId, row, name, editable, currency, onSaved }: {
   orgId: string; row: OrgMemberLimits; name: string; editable: boolean; currency: string; onSaved: (row: OrgMemberLimits) => void;
 }) {
   const tt = useUI();
-  const [draft, setDraft] = useState(() => Object.fromEntries(LIMIT_WINDOWS.map(([key]) => [key, row.limits[key] === null ? "" : String(row.limits[key]! / 100)])) as Record<OrgLimitWindow, string>);
+  const [draft, setDraft] = useState(() => Object.fromEntries(LIMIT_WINDOWS.map((key) => [key, row.limits[key] === null ? "" : String(row.limits[key]! / 100)])) as Record<OrgLimitWindow, string>);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function save() {
-    const limits = Object.fromEntries(LIMIT_WINDOWS.map(([key]) => [key, limitInput(draft[key])])) as Limits;
+    const limits = Object.fromEntries(LIMIT_WINDOWS.map((key) => [key, limitInput(draft[key])])) as Limits;
     if (Object.values(limits).some((value) => value === undefined)) { setError(tt("请输入零或正数，最多两位小数；留空表示不限。")); return; }
     setBusy(true); setError("");
     try { onSaved(await setMemberLimits(orgId, row.userId, limits)); }
@@ -47,9 +53,9 @@ function MemberLimits({ orgId, row, name, editable, currency, onSaved }: {
     onSubmit={(event) => { event.preventDefault(); if (!busy) void save(); }}>
     <p className="text-[13px] font-medium">{name}</p>
     {editable ? <div className="grid gap-2 sm:grid-cols-4">
-      {LIMIT_WINDOWS.map(([key, label]) => <label key={key} className="grid gap-1 text-[12px]">
-        <span>{tt(label)}</span>
-        <input inputMode="decimal" value={draft[key]} placeholder={tt("不限")} aria-label={`${name} ${tt(label)}`}
+      {LIMIT_WINDOWS.map((key) => <label key={key} className="grid gap-1 text-[12px]">
+        <span>{windowLabel(key, tt)}</span>
+        <input inputMode="decimal" value={draft[key]} placeholder={tt("不限")} aria-label={`${name} ${windowLabel(key, tt)}`}
           disabled={busy} data-org-limit-input={key}
           className="w-full rounded-lg border border-neutral-200 px-2 py-1.5"
           onChange={(event) => setDraft({ ...draft, [key]: event.target.value })} />

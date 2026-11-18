@@ -35,6 +35,12 @@ const TT_PAGES = [
   "src/lib/org-api.ts",
   "src/shell/PublishToOrgButton.tsx",
   "src/pages/org/OrgLibraryImport.tsx",
+  // 2026-11-18 团队波次：生命周期、花费上限、钱包拆成 src/pages/org/ 下的三个文件。
+  "src/pages/org/OrgLifecycle.tsx",
+  "src/pages/org/OrgLimits.tsx",
+  "src/pages/org/OrgWallet.tsx",
+  // 「任务」只剩设备卡片在用，译文仍由这册提供。
+  "src/pages/devices/DeviceCard.tsx",
 ];
 
 /** 七个页面里 `tt("…")` 的双引号字面（含换行折行）。 */
