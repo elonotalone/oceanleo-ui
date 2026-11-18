@@ -151,3 +151,18 @@ test("a failed canonical preview retries that preview without rereading the inhe
     });
   });
 });
+
+
+test("publication after dissolve keeps the structured not_found code and existing translated message",async()=>{
+  await withFetch(()=>json({detail:{code:"not_found",message:"团队已解散"}},404),async()=>{
+    await assert.rejects(api.publishOrgAsset("team",{kind:"doc",title:"Late",url:"https://example.test/doc"}),cause=>{
+      assert.equal(cause.code,"not_found");assert.equal(api.orgErrorCopy(cause.code),"这个团队已经不在了。");return true;
+    });
+  });
+});
+
+test("publication before its RPC is installed reports not_available without an invented receipt",async()=>{
+  await withFetch(()=>json({detail:{code:"not_available"}},503),async()=>{
+    await assert.rejects(api.publishOrgAsset("team",{kind:"doc",title:"Doc",url:"https://example.test/doc"}),cause=>cause.code==="not_available");
+  });
+});

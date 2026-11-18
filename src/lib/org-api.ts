@@ -270,7 +270,7 @@ async function call<T>(
 function responseCode(body: unknown): OrgApiCode | undefined {
   const code = str(record(record(body).detail).code);
   if ([
-    "not_available", "currency_mismatch", "insufficient_funds", "invalid_amount", "name_mismatch",
+    "not_found", "not_available", "currency_mismatch", "insufficient_funds", "invalid_amount", "name_mismatch",
     "charges_pending", "only_paid_credit_transferable",
   ].includes(code)) return code as OrgApiCode;
   return undefined;
