@@ -67,7 +67,7 @@ const REQUIRED_TITLE_BITS = [
   "服务范围与付费主体",
   "团队能看到什么",
   "数据不用于训练",
-  "成员离开与团队停用",
+  "成员离开与团队解散",
   "发票与采购",
   "争议与终止",
 ];
@@ -131,4 +131,20 @@ test("「团队能看到什么」只写现行规则：只看花费与上限，�
   }
   act(() => root.unmount());
   host.remove();
+});
+
+test("「成员离开与团队解散时，数据归谁」只写代码真正做的事", () => {
+  const section = ENTERPRISE_AGREEMENT_SECTIONS.find((item) => item.id === "departure-and-offboard");
+  assert.ok(section);
+  for (const bit of [
+    "退出或被移出", "仍是他自己的", "团队本来就看不到", "仍留在团队库里", "个人库里，不会被删除", "仍记在团队的账单和花费统计里",
+    "输入团队名", "全部余额退回负责人的个人钱包", "所有成员（包括负责人）都被移出", "邀请链接", "加入申请作废", "充值单取消",
+    "生成任务没结束时不能解散", "最多约 2 小时", "币种不同", "账单和充值记录保留", "谁都不能再从团队打开",
+  ]) {
+    assert.ok(section.body.includes(bit), `缺：${bit}`);
+  }
+  // Retired claims: team-paid tasks belonged to the team; on closing the team wallet was archived or deleted.
+  for (const retired of ["用团队钱包完成的任务与已发布到团队库的成果仍留在团队里", "归档或删除", "团队任务", "停用"]) {
+    assert.ok(!`${section.title}${section.body}`.includes(retired), `仍含旧说法：${retired}`);
+  }
 });
