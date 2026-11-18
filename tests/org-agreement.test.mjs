@@ -109,3 +109,26 @@ test("页面渲染六节，含版本号与草稿标记", async () => {
   act(() => root.unmount());
   host.remove();
 });
+
+test("「团队能看到什么」只写现行规则：只看花费与上限，不看任务、对话和文件", async () => {
+  const visibility = ENTERPRISE_AGREEMENT_SECTIONS.find((section) => section.id === "visibility");
+  assert.ok(visibility);
+  for (const bit of ["花了多少钱", "按天", "按模型", "上限", "看不到任务标题", "和 AI 的对话", "文件", "项目", "团队库"]) {
+    assert.ok(visibility.body.includes(bit), `缺：${bit}`);
+  }
+  // The agreement page is Chinese only (no tt / dictionary); scan every section and the rendered page.
+  const all = ENTERPRISE_AGREEMENT_SECTIONS.map((section) => `${section.title}\n${section.body}`).join("\n");
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  await act(async () => {
+    root.render(React.createElement(OrgAgreement));
+  });
+  for (const text of [all, host.textContent || ""]) {
+    for (const retired of ["打开全部内容", "被明确授予查看权限", "每一次查看都会留下记录", "谁看过我", "团队的任务列表"]) {
+      assert.ok(!text.includes(retired), `仍含旧规则：${retired}`);
+    }
+  }
+  act(() => root.unmount());
+  host.remove();
+});
