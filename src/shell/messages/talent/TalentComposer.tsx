@@ -6,6 +6,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { TALENT_BODY_LIMIT } from "./talent-api";
+import { WORK_LINK_RE, WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
 
 export interface TalentComposerProps {
   disabled?: boolean;
@@ -13,16 +14,18 @@ export interface TalentComposerProps {
   onSend: (body: string) => Promise<void>;
   openUrl?: string | null;
   error?: string | null;
+  workPolicy?: WorkSendPolicy;
 }
 
-export function TalentComposer({ disabled = false, onSend, openUrl = null, error = null }: TalentComposerProps) {
+export function TalentComposer({ disabled = false, onSend, openUrl = null, error = null, workPolicy }: TalentComposerProps) {
   const tt = useUI();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const refused = Boolean(workPolicy?.text_only && (workPolicy.remaining_messages === 0 || WORK_LINK_RE.test(value)));
 
   async function submit() {
     const text = value.trim();
-    if (!text || busy || disabled) return;
+    if (!text || busy || disabled || refused) return;
     setBusy(true);
     try {
       await onSend(text);
@@ -42,6 +45,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
 
   return (
     <div data-talent-composer className="border-t border-neutral-200/80 px-3 py-2">
+      {workPolicy?.text_only ? <p data-await-reply="" className="pb-1 text-xs text-neutral-500">{tt(WORK_REPLY_NOTICE)}</p> : null}
       {error && (
         <p role="alert" data-composer-error className="pb-1 text-[12px] text-red-600">
           {error}
@@ -62,7 +66,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
         />
         <button
           type="button"
-          disabled={disabled || busy || !value.trim()}
+          disabled={disabled || busy || !value.trim() || refused}
           data-action="send"
           onClick={() => void submit()}
           className="px-2 py-1.5 text-[13px] font-semibold text-neutral-900 disabled:opacity-30"

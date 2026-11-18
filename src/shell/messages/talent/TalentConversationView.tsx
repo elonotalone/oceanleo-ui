@@ -11,6 +11,8 @@ import { useImConnection, useImEvent } from "../realtime/hooks";
 import { ImBackIcon, ImMoreIcon } from "../messages-surface";
 import { ReportDialog } from "../report/ReportDialog";
 import { TalentComposer } from "./TalentComposer";
+import { WorkConversationHeader } from "../conversation/WorkConversationHeader";
+import type { ImConversationSummary } from "../../../lib/im/types";
 import { TalentMessageList } from "./TalentMessageList";
 import {
   TALENT_PAGE_SIZE,
@@ -91,7 +93,7 @@ export function useTalentThread(threadId: string | null) {
         mode === "replace" ? fresh : mode === "merge" ? mergeMessages(prev.messages, fresh) : mergeMessages(fresh, prev.messages);
       const offers = mode === "older" ? prev.offers : page.offers || [];
       return {
-        info: page.thread || prev.info,
+        info: mode === "older" ? prev.info : page.thread || prev.info,
         messages,
         offers,
         contactHint: prev.contactHint || Boolean(page.contact_hint),
@@ -300,6 +302,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
           </div>
         </details>
       </header>
+      {state.info?.work && peerId ? <WorkConversationHeader conversation={{ id: wanted, work: state.info.work, peer: { user_id: peerId, display_name: title } } as ImConversationSummary} onBlocked={() => setSendError(tt("你们之间有拉黑关系，不能发送消息"))} /> : null}
 
       {state.contactHint && (
         <p data-contact-hint className="px-3 py-1.5 text-[12px] text-neutral-500">
@@ -348,7 +351,7 @@ export function TalentConversationView({ conversationId, layout, onBack }: Talen
         />
       )}
 
-      {!state.error && <TalentComposer disabled={state.loading} onSend={send} openUrl={openUrl} error={sendError} />}
+      {!state.error && <TalentComposer disabled={state.loading} onSend={send} openUrl={openUrl} error={sendError} workPolicy={state.info?.send_policy} />}
 
       {report && (
         <ReportDialog

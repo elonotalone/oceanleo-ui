@@ -176,6 +176,12 @@ export function OrderPane({ target }: BayPaneProps) {
       {notice ? <OrderNote kind={notice.kind === "error" ? "error" : "ok"}>{notice.text}</OrderNote> : null}
 
       <header className="space-y-1">
+        <button type="button" className={ORDER_BUTTON_QUIET} disabled={busy === "contact"} data-bay-action="contact" onClick={() => {
+          setBusy("contact");
+          void openTradeThread({ kind: "contract", subjectRef: order.id, userId: role === "buyer" ? order.seller_user_id : order.buyer_user_id })
+            .catch((err) => say(err instanceof Error ? tt(err.message) : tt("会话没打开，请稍后再试。"), "error"))
+            .finally(() => setBusy(null));
+        }}>{tt(role === "buyer" ? "联系卖家" : "联系买家")}</button>
         <div className="flex flex-wrap items-center gap-2">
           <OrderStatusChip status={order.status} />
           <span className="text-[13px] font-semibold text-neutral-900">{order.title || tt("订单")}</span>

@@ -262,7 +262,7 @@ export function ServiceDetailView({ service, viewerId, layout }: ServiceDetailVi
               onClick={() => void talk()}
               className="rounded-full border border-neutral-900 px-3 py-2 text-[13px] text-neutral-700 hover:bg-neutral-50 disabled:opacity-60"
             >
-              {talking ? tt("正在打开…") : tt("先聊聊")}
+              {talking ? tt("正在打开…") : tt("联系卖家")}
             </button>
           </>
         )}

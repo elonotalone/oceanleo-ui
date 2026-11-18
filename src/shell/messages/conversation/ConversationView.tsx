@@ -23,6 +23,8 @@ import { PinnedBar } from "./PinnedBar";
 import { TypingLine, useTypingUsers } from "./TypingLine";
 import { getConversationStore, unreadBoundary, type ConversationStore } from "./conversation-store";
 import { historyEventTargetsConversation, subscribeHistoryCleared } from "./history-events";
+import { WorkConversationHeader } from "./WorkConversationHeader";
+import { workSendPolicy } from "./work-policy";
 import {
   CallButton,
   CallChatProvider,
@@ -97,6 +99,10 @@ function useConversationDetail(conversationId: string, onUnavailable?: () => voi
   useImEvent("member.changed", (event) => {
     if (event.conversation_id === conversationId) load();
   });
+  useImEvent("message.created", (event) => {
+    if (event.message.conversation_id === conversationId) load();
+  });
+  useImEvent("contact.changed", () => load());
   useImEvent("conversation.updated", (event) => {
     if (event.conversation.id === conversationId) load();
   });
@@ -196,6 +202,7 @@ function ConversationBody(props: ConversationViewProps & {
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
   const [reporting, setReporting] = useState<ImMessage | null>(null);
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [scrollTarget, setScrollTarget] = useState<{ id: string; nonce: number } | null>(null);
   const [unreadAfterSeq, setUnreadAfterSeq] = useState<number | null>(null);
@@ -382,9 +389,10 @@ function ConversationBody(props: ConversationViewProps & {
   const title = conversation ? conversationDisplayTitle(conversation) : "";
   const dissolved = Boolean(conversation?.dissolved) || removed === "dissolved";
   const notMember = (conversation !== null && conversation.my_role === null && conversation.kind !== "dm") || removed !== null;
-  const disabledReason = dissolved ? tt("这个群已解散，历史消息只读。") : notMember ? tt("你已不在这个会话里。") : undefined;
+  const policy = workSendPolicy(conversation, [...snapshot.messages, ...snapshot.pending.map((p) => ({ ...p.message, status: p.status }))], viewerId);
+  const disabledReason = blocked ? tt("你们之间有拉黑关系，不能发送消息") : dissolved ? tt("这个群已解散，历史消息只读。") : notMember ? tt("你已不在这个会话里。") : undefined;
   const peerPresence = peerId ? presence[peerId] : undefined;
-  const showCallButton = Boolean(conversation) && conversation?.kind !== "talent" && !dissolved && !notMember;
+  const showCallButton = Boolean(conversation) && conversation?.kind !== "talent" && !dissolved && !notMember && !blocked;
 
   const callChat = useMemo<CallChatContextValue>(
     () => ({
@@ -401,9 +409,9 @@ function ConversationBody(props: ConversationViewProps & {
         });
       },
       endedMetaOf,
-      canJoin: showCallButton,
+      canJoin: showCallButton && !policy?.awaiting_reply,
     }),
-    [viewerId, conversationId, conversation?.kind, conversation?.show_member_nicknames, title, profiles, endedMetaOf, showCallButton],
+    [viewerId, conversationId, conversation?.kind, conversation?.show_member_nicknames, title, profiles, endedMetaOf, showCallButton, policy?.awaiting_reply],
   );
 
   // Keep the conversation in the same page-level loading state until both the
@@ -464,9 +472,10 @@ function ConversationBody(props: ConversationViewProps & {
             </button>
           ) : null}
           {showCallButton && conversation ? (
-            <CallButton conversationId={conversationId} title={title} kind={conversation.kind} />
+            <CallButton conversationId={conversationId} title={title} kind={conversation.kind} disabled={policy?.awaiting_reply} />
           ) : null}
         </header>
+        <WorkConversationHeader conversation={conversation} onBlocked={() => setBlocked(true)} />
         <PinnedBar
           pins={snapshot.pins}
           nameOf={nameOf}
@@ -521,6 +530,7 @@ function ConversationBody(props: ConversationViewProps & {
           onEditLast={lastOwn ? () => setEditing(lastOwn) : undefined}
           disabled={Boolean(disabledReason)}
           disabledReason={disabledReason}
+          workPolicy={policy}
         />
       </div>
       {selectionMode ? (

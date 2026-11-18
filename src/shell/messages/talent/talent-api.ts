@@ -70,6 +70,8 @@ export interface TalentOffer {
 }
 
 export interface TalentThreadInfo {
+  work?: import("../../../lib/im/types").ImConversationSummary["work"];
+  send_policy?: import("../conversation/work-policy").WorkSendPolicy;
   id: string;
   kind: string;
   subject_ref: string | null;

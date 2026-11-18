@@ -118,9 +118,11 @@ export interface ImConversationSummary {
   pinned?: boolean;
   in_contacts?: boolean;
   show_member_nicknames?: boolean;
+  work?: { kind: "team" | "project" | "bay_listing" | "bay_order" | "expert" | "work"; id: string; label: string } | null;
 }
 
 export interface ImConversationDetail extends ImConversationSummary {
+  send_policy?: { awaiting_reply: boolean; text_only: boolean; remaining_messages: number | null };
   description: string;
   owner_id: string | null;
   join_approval: boolean;

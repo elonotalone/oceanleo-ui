@@ -24,6 +24,7 @@ import {
   type MentionCandidate,
 } from "./MentionPicker";
 import { VoiceRecorder } from "./VoiceRecorder";
+import { WORK_LINK_RE, WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
 import { draftBook } from "./drafts";
 import {
   MAX_UPLOAD_BYTES,
@@ -78,6 +79,7 @@ export interface ComposerProps {
   placeholder?: string;
   disabled?: boolean;
   disabledReason?: string;
+  workPolicy?: WorkSendPolicy;
 }
 
 function isCoarsePointer(): boolean {
@@ -121,6 +123,8 @@ export function Composer(props: ComposerProps) {
     disabledReason,
   } = props;
   const tt = useUI();
+  const workPolicy = props.workPolicy ?? conversation?.send_policy;
+  const textOnly = Boolean(workPolicy?.text_only);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [text, setText] = useState("");
@@ -227,6 +231,7 @@ export function Composer(props: ComposerProps) {
   const addFiles = useCallback(
     (files: File[]) => {
       if (files.length === 0) return;
+      if (textOnly) { setVoiceError(tt(WORK_REPLY_NOTICE)); return; }
       const fresh: UploadJob[] = files.map((file) => ({
         id: globalThis.crypto.randomUUID(),
         file,
@@ -238,7 +243,7 @@ export function Composer(props: ComposerProps) {
       setJobs((list) => [...list, ...fresh].slice(0, 10));
       for (const job of fresh) if (job.status === "uploading") runUpload(job);
     },
-    [runUpload],
+    [runUpload, textOnly, tt],
   );
 
   const cancelJob = (id: string) => controllers.current.get(id)?.abort();
@@ -263,6 +268,7 @@ export function Composer(props: ComposerProps) {
   const trimmed = text.trim();
   const canSend =
     !disabled &&
+    (!textOnly || ((editing || workPolicy?.remaining_messages !== 0) && !WORK_LINK_RE.test(text) && readyAttachments.length === 0)) &&
     !sending &&
     !uploading &&
     (editing ? trimmed.length > 0 && trimmed !== editing.body : trimmed.length > 0 || readyAttachments.length > 0) &&
@@ -305,6 +311,7 @@ export function Composer(props: ComposerProps) {
   };
 
   const sendCard = (card: ImCard) => {
+    if (textOnly) return;
     void store.send({
       kind: card.type === "replay" ? "replay" : "artifact",
       body: "",
@@ -316,6 +323,7 @@ export function Composer(props: ComposerProps) {
 
   const sendVoice = useCallback(
     (file: File, durationMs: number) => {
+      if (textOnly) return;
       const controller = new AbortController();
       void uploadAttachment(file, { signal: controller.signal, kind: "voice" })
         .then((attachment) => {
@@ -329,7 +337,7 @@ export function Composer(props: ComposerProps) {
         })
         .catch(() => setVoiceError(tt("语音没能发出去，请重试。")));
     },
-    [store, threadRootId, onSent, tt],
+    [store, threadRootId, onSent, tt, textOnly],
   );
 
   // ── 输入事件 ────────────────────────────────────────────────────────────
@@ -470,6 +478,7 @@ export function Composer(props: ComposerProps) {
       data-composer=""
       data-im-composer=""
     >
+      {textOnly ? <p className="px-3 pt-2 text-xs text-neutral-500" data-await-reply="">{tt(WORK_REPLY_NOTICE)}</p> : null}
       {editing ? (
         <div className="flex items-center justify-between px-3 py-1.5 text-[12px] text-neutral-500">
           <span>{tt("正在编辑消息")}</span>
@@ -527,12 +536,13 @@ export function Composer(props: ComposerProps) {
               aria-haspopup="menu"
               aria-expanded={plusOpen}
               aria-label={tt("发文件或作品")}
+              disabled={textOnly || disabled}
               title={tt("发文件或作品")}
               className="flex h-8 w-8 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-100"
             >
               <PaperclipIcon />
             </button>
-            {plusOpen ? (
+            {plusOpen && !textOnly ? (
               <div role="menu" className="absolute bottom-9 left-0 z-30 min-w-[160px] overflow-hidden rounded-lg border border-neutral-200 bg-white py-1 shadow-lg">
                 {[
                   { label: tt("上传文件"), run: () => fileInputRef.current?.click() },
@@ -589,7 +599,7 @@ export function Composer(props: ComposerProps) {
           </div>
           {!editing ? (
             <VoiceRecorder
-              disabled={disabled}
+              disabled={disabled || textOnly}
               onRecorded={sendVoice}
               onError={(code) => setVoiceError(code === "denied" ? tt("没有麦克风权限") : tt("这个浏览器不支持录音"))}
             />
