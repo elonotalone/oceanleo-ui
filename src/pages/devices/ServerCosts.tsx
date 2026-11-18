@@ -24,17 +24,16 @@ function LimitEditor({data, api, id, changed}: {data: UsageLimit; api: ServerPag
   const tt = useUI();
   const [enabled, setEnabled] = useState(data.monthly_limit !== null);
   const [amount, setAmount] = useState(data.monthly_limit ? (data.monthly_limit.amount_minor / 100).toFixed(2) : "");
-  const [onReach, setOnReach] = useState(data.on_reach);
   const action = useServerAction(changed);
   const currency = data.monthly_limit?.currency ?? data.used.currency;
   const minor = limitMinor(amount);
-  return <form className="mt-4 space-y-3 border-t border-neutral-200 pt-4" onSubmit={(event) => {event.preventDefault(); if (enabled && minor === null) return; action.run(() => api.setUsageLimit(id, {monthly_limit: enabled ? {amount_minor: minor!, currency} : null, on_reach: onReach}));}}>
+  return <form className="mt-4 space-y-3 border-t border-neutral-200 pt-4" onSubmit={(event) => {event.preventDefault(); if (enabled && minor === null) return; action.run(() => api.setUsageLimit(id, {monthly_limit: enabled ? {amount_minor: minor!, currency} : null, on_reach: "notify"}));}}>
     {action.feedback}
     <p className="text-sm">{tt("本月已用")} {formatMinor(data.used.amount_minor, data.used.currency)} · {data.monthly_limit ? formatMinor(data.monthly_limit.amount_minor, data.monthly_limit.currency) : tt("未设置上限")}{data.reached && <> · {tt("已达到上限")}</>}</p>
     <label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />{tt("设置每月费用上限")}</label>
     <div className="flex flex-wrap items-end gap-3">
       {enabled && <label className="grid gap-1 text-sm">{tt("每月上限")} ({currency})<input className={FIELD} type="number" min="0" step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label>}
-      <label className="grid gap-1 text-sm">{tt("达到上限时")}<select className={FIELD} value={onReach} onChange={(event) => setOnReach(event.target.value as "stop" | "notify")}><option value="stop">{tt("停用服务")}</option><option value="notify">{tt("仅通知")}</option></select></label>
+      <p className="text-sm text-neutral-500">{tt("设备用量上限仅提醒，不会关闭设备。")}</p>
       <button type="submit" className={DEVICE_BUTTON} disabled={action.busy || (enabled && minor === null)}>{tt("保存")}</button>
     </div>
   </form>;

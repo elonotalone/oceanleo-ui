@@ -90,11 +90,19 @@ export function ServerPage({computer: initial, client = cloudComputerApi, api = 
   const [computer, setComputer] = useState(initial);
   const [revision, setRevision] = useState(0);
   const [upgradingTo, setUpgradingTo] = useState<string | null>(null);
+  const [awaitingEnrolment, setAwaitingEnrolment] = useState<string | null>(null);
+  const [reinstallPending, setReinstallPending] = useState(false);
   const updated = useRef(onUpdated); updated.current = onUpdated;
   const refresh = useCallback(() => {setRevision((v) => v + 1); updated.current?.();}, []);
   const loadComputer = useCallback(() => client.getComputer(initial.id), [client, initial.id, revision]);
   const current = useServerResource(loadComputer);
   useEffect(() => {if (current.data) setComputer(current.data);}, [current.data]);
+  useEffect(() => {
+    if (awaitingEnrolment === null) return;
+    if (current.data?.node_online && current.data.enrolled_at && current.data.enrolled_at !== awaitingEnrolment) {setAwaitingEnrolment(null); return;}
+    const timer = setInterval(current.refresh, 5_000);
+    return () => clearInterval(timer);
+  }, [awaitingEnrolment, current.data, current.refresh]);
   const loadOverview = useCallback(() => api.getOverview(initial.id), [api, initial.id, revision]);
   const overview = useServerResource(loadOverview);
   const managed = computer.source === "aliyun" && overview.data?.managed !== false;
@@ -124,18 +132,18 @@ export function ServerPage({computer: initial, client = cloudComputerApi, api = 
   }
   return <DeviceDialog title={computer.name} onClose={onClose} testId="server-page">
     <div className="space-y-4" data-server-page={computer.id}>
-      <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm">{tt(COMPUTER_STATUS_LABEL[computer.status] ?? computer.status)} · {tt(computer.node_online ? "在线" : "离线")}</p><button type="button" className={DEVICE_BUTTON} onClick={refresh}>{tt("刷新")}</button></div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm">{awaitingEnrolment !== null ? tt("服务器已重装，正在等待设备程序重新连接。") : <>{tt(COMPUTER_STATUS_LABEL[computer.status] ?? computer.status)} · {tt(computer.node_online ? "在线" : "离线")}</>}</p><button type="button" className={DEVICE_BUTTON} onClick={refresh}>{tt("刷新")}</button></div>
       {current.error != null && <ResourceView resource={current}>{() => null}</ResourceView>}
       <ServerSection title="基本信息" id="facts"><ResourceView resource={overview}>{(data) => <Facts overview={data} computer={computer} managed={managed} />}</ResourceView></ServerSection>
       <ServerSection title="电源与续费" id="power">{managed ? <Power computer={computer} client={client} api={api} changed={refresh} removed={() => {refresh(); onClose();}} /> : <p className="text-sm text-neutral-500">{tt(OWN_PROVIDER)}</p>}</ServerSection>
       <ServerSection title="设备程序" id="node">
         {upgradeAction.feedback}
-        <ResourceView resource={node}>{(data) => <div className="space-y-3 text-sm"><p>{tt("节点版本")} {data.version || "—"}{data.latest_version && ` → ${data.latest_version}`}</p>{data.needs_upgrade && <p className="text-amber-700">{tt("需要升级设备程序")}</p>}{(data.needs_upgrade || upgradingTo) && <button type="button" className={DEVICE_BUTTON} disabled={upgradeAction.busy || !!upgradingTo || !computer.node_online} onClick={upgrade}>{tt(upgradingTo ? "正在升级…" : "升级节点")}</button>}{!managed && <label className="flex items-center gap-2"><input type="checkbox" role="switch" checked={data.auto_upgrade} disabled={upgradeAction.busy} onChange={(event) => {const enabled = event.target.checked; upgradeAction.run(async () => {await api.setAutoUpgrade(computer.id, enabled); node.retry();});}} />{tt("自动升级设备程序")}</label>}</div>}</ResourceView>
+        <ResourceView resource={node}>{(data) => <div className="space-y-3 text-sm"><p>{tt("节点版本")} {data.version || "—"}{data.latest_version && ` → ${data.latest_version}`}</p>{data.needs_upgrade && <p className="text-amber-700">{tt("需要升级设备程序")}</p>}{(data.needs_upgrade || upgradingTo) && <button type="button" className={DEVICE_BUTTON} disabled={upgradeAction.busy || !!upgradingTo || !computer.node_online} onClick={upgrade}>{tt(upgradingTo ? "正在升级…" : "升级节点")}</button>}<label className="flex items-center gap-2"><input type="checkbox" role="switch" checked={data.auto_upgrade} disabled={upgradeAction.busy || data.auto_upgrade_available !== true} onChange={(event) => {const enabled = event.target.checked; upgradeAction.run(async () => {await api.setAutoUpgrade(computer.id, enabled); node.retry();});}} />{tt("自动升级设备程序")}</label>{data.auto_upgrade_available !== true && <p className="text-neutral-500">{tt("自动升级设置尚未在当前服务端开通。")}</p>}</div>}</ResourceView>
       </ServerSection>
       <ServerMonitoring api={api} id={computer.id} managed={managed} online={computer.node_online} revision={revision} upgrade={upgrade} />
       <ServerCosts api={api} client={client} id={computer.id} revision={revision} changed={refresh} />
-      {managed ? <ServerSnapshots api={api} id={computer.id} revision={revision} changed={refresh} /> : <ServerSection title="快照" id="snapshots"><p className="text-sm text-neutral-500">{tt(OWN_PROVIDER)}</p></ServerSection>}
-      <ServerDiagnosis api={api} id={computer.id} managed={managed} changed={refresh} onAgent={agent} />
+      {managed ? <ServerSnapshots api={api} id={computer.id} revision={revision} changed={refresh} pending={reinstallPending} /> : <ServerSection title="快照" id="snapshots"><p className="text-sm text-neutral-500">{tt(OWN_PROVIDER)}</p></ServerSection>}
+      <ServerDiagnosis api={api} id={computer.id} managed={managed} changed={refresh} onAgent={agent} awaitingReconnect={awaitingEnrolment !== null} onReinstalled={(result) => {if (result.node_status === "awaiting_enrolment") setAwaitingEnrolment(computer.enrolled_at ?? "");}} onReinstallPending={setReinstallPending} />
       {managed ? <ServerFirewall api={api} id={computer.id} revision={revision} changed={refresh} /> : <ServerSection title="防火墙" id="firewall"><p className="text-sm text-neutral-500">{tt(OWN_PROVIDER)}</p></ServerSection>}
       <Events api={api} client={client} id={computer.id} managed={managed} revision={revision} />
       <ServerSection title="正在运行的程序" id="programs"><DeviceActivityPanel embedded computerId={computer.id} name={computer.name} client={activityClient} initial={initialActivity} onActivity={onActivity} onClose={onClose} /></ServerSection>

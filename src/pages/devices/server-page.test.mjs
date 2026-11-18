@@ -38,12 +38,12 @@ function setup({computer=pc,api:overrides={},client:clientOverrides={},activity:
     getCloudMonitor:record('cloud-monitor',(_,metric)=>({metric,unit:'%',source:'cloud',points:[{t:stamp,v:25}]})),
     getSystemEvents:record('system-events',{items:[{id:'ev-cloud',type:'maintenance',status:'scheduled',at:'2026-11-18T02:00:00Z',text:'Cloud maintenance'}]}),
     getCustomInfo:record('custom-info',{source:'device',reported_at:stamp,items:[{key:'tag',label:'Location',value:'<b>plain text</b>'}]}),
-    getNode:record('node',{version:'v1',latest_version:'v1',needs_upgrade:false,auto_upgrade:false,caps:['metrics2','custom_info']}),
+    getNode:record('node',{version:'v1',latest_version:'v1',needs_upgrade:false,auto_upgrade:false,auto_upgrade_available:true,caps:['metrics2','custom_info']}),
     getSnapshots:record('snapshots',{items:[snapshot],policy:{enabled:true,time_utc:'03:00',retention_days:7},monthly_cost:{amount_minor:12,currency:'USD'}}),
     getRules:record('rules',{rules:[rule]}),
     getUsageLimit:record('limit',()=>structuredClone(savedLimit)),
     setUsageLimit:record('set-limit',(_,value)=>{savedLimit={...savedLimit,...value};return savedLimit;}), setAutoUpgrade:record('auto-upgrade',{}), setSnapshotPolicy:record('policy',{}),
-    reboot:record('reboot',computer),createSnapshot:record('create-snapshot',snapshot),deleteSnapshot:record('delete-snapshot',{}),
+    reboot:record('reboot',computer),createSnapshot:record('create-snapshot',snapshot),deleteSnapshot:record('delete-snapshot',(_,__,confirmed)=>{if(!confirmed)throw {code:'needs_confirmation',status:409,detail:{loses:'Deleting this snapshot removes its restore point'}};return {ok:true};}),
     rollback:record('rollback',(_,__,confirmed)=>{if(!confirmed)throw {code:'needs_confirmation',status:409,detail:{loses:'Changes after this snapshot will be lost'}};return {};}),
     reinstall:record('reinstall',(_,confirmed)=>{if(!confirmed)throw {code:'needs_confirmation',status:409,detail:{loses:'System disk will be erased'}};return {};}),
     diagnose:record('diagnose',diagnosis),addRule:record('add-rule',rule),deleteRule:record('delete-rule',(_,__,confirmed)=>{if(!confirmed)throw {code:'unsafe_rule',status:409,detail:{loses:'This can interrupt the node connection'}};return {};}),...overrides,
@@ -115,7 +115,7 @@ test('stopped server offers start, monthly renewal quote precedes stable-id paym
 
 test('snapshot create, delete confirmation and policy save send actual fields',async()=>{
   const {calls}=await mount();await click('立即创建',block('snapshots'));assert.ok(calls.some(c=>c[0]==='create-snapshot'&&c[2]===''));
-  await click('删除',block('snapshots'));assert.equal(calls.some(c=>c[0]==='delete-snapshot'),false);await confirm();assert.ok(calls.some(c=>c[0]==='delete-snapshot'&&c[2]==='snap-1'));
+  await click('删除',block('snapshots'));assert.deepEqual(calls.filter(c=>c[0]==='delete-snapshot').map(c=>c[3]),[false]);assert.match(document.querySelector('[data-device-dialog=server-confirm]').textContent,/restore point/);await confirm();assert.deepEqual(calls.filter(c=>c[0]==='delete-snapshot').map(c=>c[3]),[false,true]);
   const policy=block('snapshots').querySelector('form');await change(policy.querySelector('select'),'05:00');await change(policy.querySelector('input[type=number]'),'14');await submit(policy);
   assert.deepEqual(calls.find(c=>c[0]==='policy')[2],{enabled:true,time_utc:'05:00',retention_days:14});
 });
@@ -125,9 +125,9 @@ for(const [label,name,loss] of [['回滚到此快照','rollback','Changes after 
 
 test('firewall unsafe remove and add are confirmed; rule editor sends all fields',async()=>{
   const {calls}=await mount({api:{addRule:async(...args)=>{calls.push(['add-rule',...args]);if(!args[1].confirmed)throw {code:'unsafe_rule',status:409,detail:{loses:'Open to the world'}};return rule;}}});
-  await click('移除',block('firewall'));assert.match(document.querySelector('[data-device-dialog="server-confirm"]').textContent,/node connection/);await confirm();assert.equal(calls.filter(c=>c[0]==='delete-rule').at(-1).at(-1),true);
+  await click('移除',block('firewall'));assert.match(document.querySelector('[data-device-dialog="server-confirm"]').textContent,/node connection/);await confirm();assert.equal(calls.filter(c=>c[0]==='delete-rule').at(-1)[3],true);
   const form=block('firewall').querySelector('form');const inputs=form.querySelectorAll('input');await change(inputs[0],'1/65535');await change(inputs[1],'0.0.0.0/0');await change(inputs[2],'test');await submit(form);
-  assert.match(document.querySelector('[data-device-dialog="server-confirm"]').textContent,/Open to the world/);await confirm();assert.deepEqual(calls.filter(c=>c[0]==='add-rule').at(-1)[2],{direction:'in',protocol:'tcp',port_range:'1/65535',source:'0.0.0.0/0',policy:'accept',description:'test',confirmed:true});
+  assert.match(document.querySelector('[data-device-dialog="server-confirm"]').textContent,/Open to the world/);await confirm();assert.deepEqual(calls.filter(c=>c[0]==='add-rule').at(-1)[2],{direction:'in',protocol:'tcp',port_range:'1/65535',source:'0.0.0.0/0',policy:'accept',description:'test',confirmed:true,dedicated_group_confirmed:false});
 });
 
 test('usage limit accepts exact cents, null clears it; diagnosis passes findings to cloud agent task',async()=>{
@@ -218,4 +218,116 @@ test('device card remains compact, shows region/IP and opens the server page fro
  assert.match(host.querySelector('[data-server-card-address]').textContent,/test-region.*192.0.2.5/);
  await act(async()=>host.querySelector('[data-server-page-open]').click());assert.equal(document.querySelector('[data-open-server]').getAttribute('data-open-server'),'cc-test');
  await click('Close server');await act(async()=>host.querySelector('[data-device-dashboard-open]').click());assert.ok(document.querySelector('[data-open-server]'));
+});
+
+const snapshotsView={items:[snapshot],policy:{enabled:true,time_utc:'03:00',retention_days:7},monthly_cost:null,policy_choice:null,policy_error:null,billing_unavailable_reason:null,operation:{operation_name:null,operation_stage:null,operation_active:false,operation_error:null}};
+function intervals(t){
+ const pending=new Map();let next=1;
+ t.mock.method(globalThis,'setInterval',(fn,delay)=>{const id=next++;pending.set(id,{fn,delay});return id;});
+ t.mock.method(globalThis,'clearInterval',id=>pending.delete(id));
+ return {pending,async tick(delay){await act(async()=>{for(const item of [...pending.values()])if(item.delay===delay)item.fn();});}};
+}
+
+test('snapshot deletion cancellation never sends confirmed=true',async()=>{
+ const {calls}=await mount();await click('删除',block('snapshots'));await click('取消',document.querySelector('[data-device-dialog=server-confirm]'));
+ assert.deepEqual(calls.filter(c=>c[0]==='delete-snapshot').map(c=>c[3]),[false]);
+});
+
+test('snapshot errors show saved-vs-observed policy, permission and unavailable cost without inventing size',async()=>{
+ await mount({api:{getSnapshots:async()=>({...snapshotsView,items:[{...snapshot,size_gb:null}],policy_choice:{enabled:false,time_utc:'05:00',retention_days:14},policy_error:{code:'permission_missing',message:'Cloud permission denied',missing_action:'ecs:ApplyAutoSnapshotPolicy',policy_hint:'Grant snapshot policy access'},billing_unavailable_reason:'Actual snapshot storage has not been reported',operation:{operation_active:false,operation_name:'rollback',operation_stage:'failed:resetting_disk',operation_error:'aliyun_error'}})}});
+ assert.match(block('snapshots').textContent,/快照策略尚未应用.*ecs:ApplyAutoSnapshotPolicy.*Grant snapshot policy access/s);
+ assert.match(block('snapshots').textContent,/已保存的快照设置尚未完全应用/);
+ assert.match(block('snapshots').textContent,/快照费用暂不可用：Actual snapshot storage has not been reported/);
+ assert.match(block('snapshots').textContent,/救援操作未完成：aliyun_error/);
+ assert.doesNotMatch(block('snapshots').textContent,/null GB|0 GB/);
+ assert.equal(block('snapshots').querySelector('[role=switch]').checked,true,'shows observed policy, not the unapplied saved choice');
+});
+
+for(const operation of ['rollback','reinstall'])test(`active ${operation} shows stages and polls until complete, retaining the page`,async(t)=>{
+ const timer=intervals(t);let stage='stopping';let count=0;
+ await mount({api:{getSnapshots:async()=>{count++;return {...snapshotsView,operation:{operation_name:operation,operation_stage:stage,operation_active:stage!=='done',operation_error:null}};}}});
+ assert.match(block('snapshots').querySelector('[data-rescue-operation]').textContent,/正在停止服务器/);
+ assert.equal([...block('snapshots').querySelectorAll('button')].every(b=>b.disabled),true);
+ stage=operation==='rollback'?'resetting_disk':'reinitializing_disk';await timer.tick(3000);
+ assert.match(block('snapshots').textContent,operation==='rollback'?/正在恢复磁盘/:/正在重装系统盘/);assert.equal(count,2);
+ stage='starting';await timer.tick(3000);assert.match(block('snapshots').textContent,/正在启动服务器/);
+ stage='done';await timer.tick(3000);assert.equal(block('snapshots').querySelector('[data-rescue-operation]'),null);
+ await timer.tick(3000);assert.equal(count,4,'completed operation stops polling');
+ assert.match(block('programs').textContent,/Running task/);
+});
+
+test('pending reinstall polls operation stages, reports awaiting enrolment, and clears only on fresh enrolment',async(t)=>{
+ const timer=intervals(t);let finish;let enrolled=false;let active=false;let reads=0;
+ const {calls}=await mount({api:{
+  getSnapshots:async()=>{reads++;return {...snapshotsView,operation:{operation_name:'reinstall',operation_stage:'preparing_enrolment',operation_active:active,operation_error:null}};},
+  reinstall:async(_,confirmed)=>{if(!confirmed)throw {code:'needs_confirmation',status:409,detail:{loses:'System disk will be erased'}};active=true;return new Promise(resolve=>finish=()=>{active=false;resolve({...pc,node_status:'awaiting_enrolment'});});},
+ },client:{getComputer:async()=>({...pc,enrolled_at:enrolled?'2026-11-18T04:00:00Z':stamp})}});
+ await click('重装系统',block('rescue'));await confirm();await timer.tick(3000);
+ assert.match(block('snapshots').textContent,/正在准备重新连接/);assert.ok(reads>=2);
+ await act(async()=>finish());assert.match(block('rescue').textContent,/正在等待设备程序重新连接/);
+ assert.equal([...block('rescue').querySelectorAll('button')].find(b=>b.textContent==='重装系统').disabled,true);
+ await timer.tick(5000);assert.match(block('rescue').textContent,/正在等待设备程序重新连接/,'old online signal does not claim reconnection');
+ enrolled=true;await timer.tick(5000);assert.doesNotMatch(block('rescue').textContent,/正在等待设备程序重新连接/);
+ assert.equal(calls.some(c=>c[0]==='release'),false);
+});
+
+for(const action of ['add','delete'])for(const first of ['dedicated','unsafe'])test(`shared firewall ${action} keeps separate approvals when ${first} is challenged first`,async()=>{
+ const sent=[];
+ const mutate=async(...args)=>{
+  const options=action==='add'?args[1]:{confirmed:args[2],dedicated_group_confirmed:args[3]};sent.push({...options});
+  const challenge=(kind)=>{if(kind==='dedicated'&&!options.dedicated_group_confirmed)throw {code:'needs_dedicated_group',status:409,message:'Give this server its own firewall with the same rules'};if(kind==='unsafe'&&!options.confirmed)throw {code:'unsafe_rule',status:409,detail:{loses:'This rule can disconnect the node'}};};
+  challenge(first);challenge(first==='dedicated'?'unsafe':'dedicated');return {rules:[rule],shared:false};
+ };
+ await mount({api:{getRules:async()=>({rules:[rule],shared:true}),[action==='add'?'addRule':'deleteRule']:mutate}});
+ assert.match(block('firewall').textContent,/共享防火墙/);
+ if(action==='delete')await click('移除',block('firewall'));else{const form=block('firewall').querySelector('form');await change(form.querySelectorAll('input')[0],'22/22');await change(form.querySelectorAll('input')[1],'192.0.2.0/24');await submit(form);}
+ assert.equal(sent.length,1);assert.equal(sent[0].confirmed,false);assert.equal(sent[0].dedicated_group_confirmed,false);
+ const dialog=()=>document.querySelector('[data-device-dialog=server-confirm]');
+ assert.match(dialog().textContent,first==='dedicated'?/独立防火墙.*相同规则.*其他服务器不受影响/:/disconnect the node/);
+ await confirm();assert.equal(sent.length,2);
+ assert.equal(sent[1].confirmed,first==='unsafe');assert.equal(sent[1].dedicated_group_confirmed,first==='dedicated');
+ assert.match(dialog().textContent,first==='unsafe'?/独立防火墙.*相同规则/:/disconnect the node/);
+ await confirm();assert.equal(sent.length,3);assert.equal(sent[2].confirmed,true);assert.equal(sent[2].dedicated_group_confirmed,true);assert.equal(dialog(),null);
+});
+
+test('dedicated-firewall cancellation makes no approved request; not_allowed preserves server text',async()=>{
+ let denied=false;const sent=[];
+ await mount({api:{deleteRule:async(...args)=>{sent.push(args);throw denied?{code:'not_allowed',status:403,message:'The primary interface cannot be changed'}:{code:'needs_dedicated_group',status:409};}}});
+ await click('移除',block('firewall'));await click('取消',document.querySelector('[data-device-dialog=server-confirm]'));assert.equal(sent.length,1);assert.equal(sent[0][3],false);
+ denied=true;await click('移除',block('firewall'));assert.match(block('firewall').textContent,/The primary interface cannot be changed/);
+});
+
+for(const source of ['aliyun','byo'])test(`${source} disables automatic upgrade before preference storage is available`,async()=>{
+ const {calls}=await mount({computer:{...pc,source},api:{getNode:async()=>({version:'v1',latest_version:'v1',needs_upgrade:false,auto_upgrade:true,auto_upgrade_available:false,caps:[]})}});
+ const control=block('node').querySelector('[role=switch]');assert.equal(control.disabled,true);assert.equal(control.checked,true);assert.match(block('node').textContent,/自动升级设置尚未在当前服务端开通/);
+ await act(async()=>control.click());assert.equal(calls.some(c=>c[0]==='auto-upgrade'),false);
+});
+
+test('automatic upgrade write invalid_state shows server reason and keeps saved preference',async()=>{
+ await mount({api:{setAutoUpgrade:async()=>{throw {code:'invalid_state',status:409,message:'Automatic upgrade preferences cannot be saved yet'};}}});
+ await act(async()=>block('node').querySelector('[role=switch]').click());
+ assert.match(block('node').textContent,/Automatic upgrade preferences cannot be saved yet/);assert.equal(block('node').querySelector('[role=switch]').checked,false);
+});
+
+for(const missing of ['usage','limit','save-limit'])test(`missing metering ${missing} is a feature status and retains other server sections`,async()=>{
+ const unavailable={code:'metering_unavailable',status:503,detail:{reason:'usage_storage_unavailable'}};
+ await mount({api:missing==='limit'?{getUsageLimit:async()=>{throw unavailable;}}:missing==='save-limit'?{setUsageLimit:async()=>{throw unavailable;}}:{},client:missing==='usage'?{getUsage:async()=>{throw unavailable;}}:{}});
+ if(missing==='save-limit')await submit(block('costs').querySelector('form'));
+ assert.match(block('costs').textContent,/此功能尚未在当前服务端开通/);assert.equal(block('costs').querySelector('[role=alert]'),null);
+ assert.match(block('programs').textContent,/Running task/);
+});
+
+test('computer spending limits only notify and no VNC link is offered without a client',async()=>{
+ const sent=[];await mount({api:{getUsageLimit:async()=>({monthly_limit:null,on_reach:'stop',used:{amount_minor:0,currency:'USD'},reached:false}),setUsageLimit:async(...args)=>{sent.push(args[1]);return {};}}});
+ const form=block('costs').querySelector('form');assert.equal(form.querySelector('select'),null);assert.match(form.textContent,/仅提醒，不会关闭设备/);
+ await submit(form);assert.equal(sent[0].on_reach,'notify');assert.equal([...document.querySelectorAll('button,a')].some(el=>/打开救援控制台|wss:/.test(el.textContent+el.getAttribute('href'))),false);
+});
+
+test('slow operation polling has one read in flight, retains progress after failure, and cleans up on unmount',async(t)=>{
+ const timer=intervals(t);let reads=0;let reject;let slow=false;
+ await mount({api:{getSnapshots:()=>{reads++;if(slow)return new Promise((_,fail)=>reject=fail);return Promise.resolve({...snapshotsView,operation:{operation_name:'rollback',operation_stage:'resetting_disk',operation_active:true,operation_error:null}});}}});
+ slow=true;await timer.tick(3000);await timer.tick(3000);assert.equal(reads,2,'slow read is not duplicated');
+ await act(async()=>reject({message:'Temporary monitor failure'}));assert.match(block('snapshots').textContent,/Temporary monitor failure/);assert.match(block('snapshots').textContent,/正在恢复磁盘/);
+ slow=false;await timer.tick(3000);assert.equal(reads,3);assert.equal(block('snapshots').querySelector('[role=alert]'),null);
+ await act(async()=>root.unmount());root=null;await timer.tick(3000);assert.equal(reads,3,'unmounted page stops polling');
 });

@@ -1,53 +1,74 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import type { Diagnosis, RuleInput, ServerPageClient, SnapshotPolicy } from "../../lib/server-page-api";
+import { useCallback, useEffect, useState } from "react";
+import type { Diagnosis, ReinstallResult, RuleInput, ServerPageClient, SnapshotPolicy } from "../../lib/server-page-api";
 import { useUI } from "../../i18n/ui/useUI";
 import { formatMinor } from "../../lib/money";
 import { DEVICE_BUTTON } from "./DeviceDialog";
-import { FIELD, OWN_PROVIDER, ResourceView, ServerSection, useServerAction, useServerResource } from "./server-page-shared";
+import { FIELD, OWN_PROVIDER, ResourceView, ServerSection, serverErrorText, useServerAction, useServerResource } from "./server-page-shared";
 import { formatDeviceTime } from "./DeviceTasksDialog";
 
 const SNAPSHOT_STATUS: Record<string, string> = {accomplished: "可用", available: "可用", completed: "可用", normal: "可用", ready: "可用", progressing: "创建中", pending: "创建中", failed: "失败"};
+const OPERATION: Record<string, string> = {rollback: "回滚到此快照", reinstall: "重装系统"};
+const STAGE: Record<string, string> = {stopping: "正在停止服务器", resetting_disk: "正在恢复磁盘", preparing_enrolment: "正在准备重新连接", reinitializing_disk: "正在重装系统盘", starting: "正在启动服务器"};
 
-export function ServerSnapshots({api, id, revision, changed}: {api: ServerPageClient; id: string; revision: number; changed: () => void}) {
+export function ServerSnapshots({api, id, revision, changed, pending = false}: {api: ServerPageClient; id: string; revision: number; changed: () => void; pending?: boolean}) {
   const tt = useUI();
   const load = useCallback(() => api.getSnapshots(id), [api, id, revision]);
   const resource = useServerResource(load);
   const action = useServerAction(changed);
   const [note, setNote] = useState("");
   const [draft, setDraft] = useState<SnapshotPolicy | null>(null);
+  const active = !!resource.data?.operation?.operation_active;
+  useEffect(() => {
+    if (!active && !action.busy && !pending) return;
+    const timer = setInterval(resource.refresh, 3_000);
+    return () => clearInterval(timer);
+  }, [active, action.busy, pending, resource.refresh]);
   return <ServerSection title="快照" id="snapshots">
     {action.feedback}
     <ResourceView resource={resource}>{(data) => {
       const policy = draft ?? data.policy;
+      const operation = data.operation;
+      const unavailable = data.billing_unavailable_reason;
+      const policyPending = data.policy_choice && (Object.keys(data.policy_choice) as (keyof SnapshotPolicy)[]).some((key) => data.policy_choice![key] !== data.policy[key]);
+      const busy = action.busy || active || pending;
       return <>
-        <p className="mb-3 text-sm">{tt("快照每月费用")} {data.monthly_cost ? formatMinor(data.monthly_cost.amount_minor, data.monthly_cost.currency) : tt("暂无费用数据")}</p>
+        {operation?.operation_active && <p role="status" className="mb-3 text-sm" data-rescue-operation>{tt("救援操作：{operation} · {stage}", {operation: tt(OPERATION[operation.operation_name ?? ""] ?? operation.operation_name ?? "救援"), stage: tt(STAGE[operation.operation_stage ?? ""] ?? operation.operation_stage ?? "正在加载…")})}</p>}
+        {operation?.operation_error && <p role="alert" className="mb-3 break-words text-sm text-red-700">{tt("救援操作未完成：{reason}", {reason: operation.operation_error})}</p>}
+        {data.policy_error && <p role="alert" className="mb-3 break-words text-sm text-amber-700">{tt("快照策略尚未应用：{reason}", {reason: serverErrorText({...data.policy_error, detail: data.policy_error}, tt)})}</p>}
+        {policyPending && <p className="mb-3 text-sm text-amber-700">{tt("已保存的快照设置尚未完全应用。")}</p>}
+        <p className="mb-3 text-sm">{unavailable ? tt("快照费用暂不可用：{reason}", {reason: unavailable}) : <>{tt("快照每月费用")} {data.monthly_cost ? formatMinor(data.monthly_cost.amount_minor, data.monthly_cost.currency) : tt("暂无费用数据")}</>}</p>
         <form className="mb-4 flex flex-wrap items-end gap-3" onSubmit={(event) => {event.preventDefault(); action.run(async () => {await api.setSnapshotPolicy(id, policy); setDraft(null);});}}>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" role="switch" checked={policy.enabled} onChange={(event) => setDraft({...policy, enabled: event.target.checked})} />{tt("自动快照")}</label>
           <label className="grid gap-1 text-sm">{tt("时间（UTC）")}<select className={FIELD} value={policy.time_utc} onChange={(event) => setDraft({...policy, time_utc: event.target.value})}>{Array.from({length: 24}, (_, i) => `${String(i).padStart(2, "0")}:00`).map((time) => <option key={time}>{time}</option>)}</select></label>
           <label className="grid gap-1 text-sm">{tt("保留天数")}<input className={`${FIELD} w-24`} type="number" required min={1} max={65536} value={policy.retention_days} onChange={(event) => setDraft({...policy, retention_days: Number(event.target.value)})} /></label>
-          <button type="submit" className={DEVICE_BUTTON} disabled={action.busy}>{tt("保存")}</button>
+          <button type="submit" className={DEVICE_BUTTON} disabled={busy}>{tt("保存")}</button>
         </form>
-        <form className="mb-4 flex flex-wrap gap-2" onSubmit={(event) => {event.preventDefault(); action.run(() => api.createSnapshot(id, note));}}><input className={FIELD} aria-label={tt("快照备注")} maxLength={256} value={note} onChange={(event) => setNote(event.target.value)} /><button type="submit" className={DEVICE_BUTTON} disabled={action.busy}>{tt("立即创建")}</button></form>
+        <form className="mb-4 flex flex-wrap gap-2" onSubmit={(event) => {event.preventDefault(); action.run(() => api.createSnapshot(id, note));}}><input className={FIELD} aria-label={tt("快照备注")} maxLength={256} value={note} onChange={(event) => setNote(event.target.value)} /><button type="submit" className={DEVICE_BUTTON} disabled={busy}>{tt("立即创建")}</button></form>
         {data.items.length === 0 ? <p className="text-sm text-neutral-500">{tt("暂无快照")}</p> : <ul className="divide-y divide-neutral-200">{data.items.map((snapshot) => <li key={snapshot.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-          <div className="min-w-0 break-all text-sm"><p>{snapshot.note || snapshot.id} · {tt(snapshot.kind === "auto" ? "自动快照" : "手动快照")}</p><p className="mt-1 text-xs text-neutral-500">{snapshot.disk_id} · {snapshot.size_gb} GB · {formatDeviceTime(snapshot.created_at)} · {tt(SNAPSHOT_STATUS[snapshot.status.toLowerCase()] ?? snapshot.status)}</p></div>
-          <div className="flex flex-wrap gap-2"><button type="button" className={DEVICE_BUTTON} disabled={action.busy || !["accomplished", "available", "completed", "normal", "ready"].includes(snapshot.status.toLowerCase())} onClick={() => action.run((confirmed) => api.rollback(id, snapshot.id, confirmed))}>{tt("回滚到此快照")}</button><button type="button" className={DEVICE_BUTTON} disabled={action.busy} onClick={() => action.run(() => api.deleteSnapshot(id, snapshot.id), {title: tt("删除快照"), body: tt("删除后无法再用此快照恢复数据。")})}>{tt("删除")}</button></div>
+          <div className="min-w-0 break-all text-sm"><p>{snapshot.note || snapshot.id} · {tt(snapshot.kind === "auto" ? "自动快照" : "手动快照")}</p><p className="mt-1 text-xs text-neutral-500">{snapshot.disk_id} · {snapshot.size_gb == null ? "—" : `${snapshot.size_gb} GB`} · {formatDeviceTime(snapshot.created_at)} · {tt(SNAPSHOT_STATUS[snapshot.status.toLowerCase()] ?? snapshot.status)}</p></div>
+          <div className="flex flex-wrap gap-2"><button type="button" className={DEVICE_BUTTON} disabled={busy || !["accomplished", "available", "completed", "normal", "ready"].includes(snapshot.status.toLowerCase())} onClick={() => action.run((confirmed) => api.rollback(id, snapshot.id, confirmed))}>{tt("回滚到此快照")}</button><button type="button" className={DEVICE_BUTTON} disabled={busy} onClick={() => action.run((confirmed) => api.deleteSnapshot(id, snapshot.id, confirmed))}>{tt("删除")}</button></div>
         </li>)}</ul>}
       </>;
     }}</ResourceView>
   </ServerSection>;
 }
 
-export function ServerDiagnosis({api, id, managed, changed, onAgent}: {api: ServerPageClient; id: string; managed: boolean; changed: () => void; onAgent: (diagnosis: Diagnosis | null) => Promise<void>}) {
+export function ServerDiagnosis({api, id, managed, changed, onAgent, awaitingReconnect, onReinstalled, onReinstallPending}: {api: ServerPageClient; id: string; managed: boolean; changed: () => void; onAgent: (diagnosis: Diagnosis | null) => Promise<void>; awaitingReconnect: boolean; onReinstalled: (result: ReinstallResult) => void; onReinstallPending: (pending: boolean) => void}) {
   const tt = useUI();
   const [diagnosis, setDiagnosis] = useState<Diagnosis | null>(null);
   const action = useServerAction();
   return <ServerSection title="救援" id="rescue">
     {!managed && <p className="mb-3 text-sm text-neutral-500">{tt(OWN_PROVIDER)} {tt("设备仍可连接时，agent 可以协助排查。")}</p>}
     {action.feedback}
+    {awaitingReconnect && <p role="status" className="mb-3 text-sm">{tt("服务器已重装，正在等待设备程序重新连接。")}</p>}
     <div className="mb-3 flex flex-wrap gap-2"><button type="button" className={DEVICE_BUTTON} disabled={action.busy} onClick={() => action.run(async () => {setDiagnosis(await api.diagnose(id)); changed();})}>{tt("诊断")}</button><button type="button" className={DEVICE_BUTTON} disabled={action.busy} onClick={() => action.run(() => onAgent(diagnosis))}>{tt("让 agent 处理")}</button>
-      {managed && <button type="button" className={DEVICE_BUTTON} disabled={action.busy} onClick={() => action.run(async (confirmed) => {await api.reinstall(id, confirmed); changed();})}>{tt("重装系统")}</button>}
+      {managed && <button type="button" className={DEVICE_BUTTON} disabled={action.busy || awaitingReconnect} onClick={() => action.run(async (confirmed) => {
+        if (confirmed) onReinstallPending(true);
+        try {const result = await api.reinstall(id, confirmed); onReinstalled(result); setDiagnosis(null); changed();}
+        finally {if (confirmed) onReinstallPending(false);}
+      })}>{tt("重装系统")}</button>}
     </div>
     {!diagnosis ? <p className="text-sm text-neutral-500">{tt("点击诊断，读取设备状态和建议；不会自动修复。")}</p> : <div className="space-y-2 text-sm" data-server-diagnosis>
       <p>{tt("诊断状态")} · {tt(DIAGNOSIS_LABEL[diagnosis.state])}</p>
@@ -69,8 +90,9 @@ export function ServerFirewall({api, id, revision, changed}: {api: ServerPageCli
   return <ServerSection title="防火墙" id="firewall">
     {action.feedback}
     <ResourceView resource={resource}>{(data) => <>
-      {data.rules.length === 0 ? <p className="mb-3 text-sm text-neutral-500">{tt("暂无防火墙规则")}</p> : <div className="mb-4 max-w-full overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["方向", "协议", "端口范围", "来源或目标", "策略", "说明", "操作"].map((label) => <th key={label} className="whitespace-nowrap p-2 font-medium">{tt(label)}</th>)}</tr></thead><tbody>{data.rules.map((item) => <tr key={item.id} className="border-t border-neutral-200"><td className="p-2">{tt(item.direction === "in" ? "入站" : "出站")}</td><td className="p-2">{item.protocol}</td><td className="p-2">{item.port_range}</td><td className="p-2">{item.source}</td><td className="p-2">{tt(item.policy === "accept" ? "允许" : "拒绝")}</td><td className="p-2">{item.description}</td><td className="p-2"><button type="button" className={DEVICE_BUTTON} disabled={action.busy} onClick={() => action.run((confirmed) => api.deleteRule(id, item.id, confirmed))}>{tt("移除")}</button></td></tr>)}</tbody></table></div>}
-      <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => {event.preventDefault(); const input = {...rule}; action.run((confirmed) => api.addRule(id, {...input, confirmed}));}}>
+      {data.shared && <p className="mb-3 text-sm text-neutral-500">{tt("此服务器正在使用共享防火墙。首次修改时，需要为它建立独立防火墙并保留相同规则。")}</p>}
+      {data.rules.length === 0 ? <p className="mb-3 text-sm text-neutral-500">{tt("暂无防火墙规则")}</p> : <div className="mb-4 max-w-full overflow-x-auto"><table className="w-full text-left text-sm"><thead><tr>{["方向", "协议", "端口范围", "来源或目标", "策略", "说明", "操作"].map((label) => <th key={label} className="whitespace-nowrap p-2 font-medium">{tt(label)}</th>)}</tr></thead><tbody>{data.rules.map((item) => <tr key={item.id} className="border-t border-neutral-200"><td className="p-2">{tt(item.direction === "in" ? "入站" : "出站")}</td><td className="p-2">{item.protocol}</td><td className="p-2">{item.port_range}</td><td className="p-2">{item.source}</td><td className="p-2">{tt(item.policy === "accept" ? "允许" : "拒绝")}</td><td className="p-2">{item.description}</td><td className="p-2"><button type="button" className={DEVICE_BUTTON} disabled={action.busy} onClick={() => action.run((confirmed, dedicatedGroupConfirmed) => api.deleteRule(id, item.id, confirmed, dedicatedGroupConfirmed))}>{tt("移除")}</button></td></tr>)}</tbody></table></div>}
+      <form className="grid gap-3 sm:grid-cols-2" onSubmit={(event) => {event.preventDefault(); const input = {...rule}; action.run((confirmed, dedicatedGroupConfirmed) => api.addRule(id, {...input, confirmed, dedicated_group_confirmed: dedicatedGroupConfirmed}));}}>
         <label className="grid gap-1 text-sm">{tt("方向")}<select className={FIELD} value={rule.direction} onChange={(event) => setRule({...rule, direction: event.target.value as "in" | "out"})}><option value="in">{tt("入站")}</option><option value="out">{tt("出站")}</option></select></label>
         <label className="grid gap-1 text-sm">{tt("协议")}<select className={FIELD} value={rule.protocol} onChange={(event) => setRule({...rule, protocol: event.target.value})}>{["tcp", "udp", "icmp", "gre", "all"].map((p) => <option key={p}>{p}</option>)}</select></label>
         <label className="grid gap-1 text-sm">{tt("端口范围")}<input required className={FIELD} value={rule.port_range} onChange={(event) => setRule({...rule, port_range: event.target.value})} /></label>

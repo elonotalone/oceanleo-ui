@@ -9,7 +9,7 @@ test('server services copy covers every source key and interpolation in every lo
  const files=['ServerPage.tsx','ServerCosts.tsx','ServerMonitoring.tsx','ServerRescue.tsx','server-page-shared.tsx'];
  const keys=[...new Set(files.flatMap(file=>[...fs.readFileSync(new URL(file,import.meta.url),'utf8').matchAll(/"([^"\n]*[\u3400-\u9fff][^"\n]*)"/g)].map(m=>m[1])))];
  for(const locale of LOCALES){
-  const dict=SERVER_PAGE_MESSAGES[locale];assert.equal(Object.keys(dict).length,97,locale);
+  const dict=SERVER_PAGE_MESSAGES[locale];assert.deepEqual(Object.keys(dict).sort(),Object.keys(SERVER_PAGE_MESSAGES.zh).sort(),locale);
   const runtime=await loadUiMessages(locale);
   for(const [key,value] of Object.entries(dict)){
    assert.ok(value,`${locale}: ${key}`);assert.deepEqual(value.match(/\{\w+\}/g)?.sort()??[],key.match(/\{\w+\}/g)?.sort()??[],`${locale}: interpolation ${key}`);
