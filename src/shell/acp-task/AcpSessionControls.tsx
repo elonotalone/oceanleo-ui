@@ -17,9 +17,11 @@ export function AcpSessionControls({ commands, usage, input, onChange, error, di
   const tt = useUI();
   const matches = matchingCommands(commands, input);
   const percent = usage ? contextPercent(usage.used, usage.size) : null;
-  return <div className="space-y-1" data-acp-session-controls="">
+  // Reserve the context line even before it is available. Suggestions float
+  // above it so neither a failed read nor a slash menu resizes the footer.
+  return <div style={{ position: "relative", height: 18, flexShrink: 0 }} data-acp-session-controls="">
     {error && <StreamNotice><p role="alert" data-acp-controls-error="" className="text-[12px] text-rose-500">{tt("会话选项未能加载：{message}", { message: error })}</p></StreamNotice>}
-    {!error && !disabled && matches.length > 0 && <div role="menu" aria-label={tt("可用命令")} className="max-h-48 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-sm">
+    {!error && !disabled && matches.length > 0 && <div role="menu" aria-label={tt("可用命令")} style={{ position: "absolute", bottom: "100%", left: 0, right: 0, zIndex: 10 }} className="max-h-48 overflow-y-auto rounded-xl border border-stone-200 bg-white p-1 shadow-sm">
       {matches.map((command) => <button type="button" role="menuitem" key={command.name}
         onMouseDown={(event) => event.preventDefault()}
         onClick={() => onChange(`/${command.name} `)}
@@ -28,7 +30,7 @@ export function AcpSessionControls({ commands, usage, input, onChange, error, di
         <span className="truncate text-stone-500">{command.description}</span>
       </button>)}
     </div>}
-    {!error && usage && percent !== null && <div className="flex items-center justify-end gap-2 px-2 text-[12px] text-stone-500" data-acp-context="">
+    {!error && usage && percent !== null && <div style={{ height: "100%", lineHeight: "18px" }} className="flex items-center justify-end gap-2 px-2 text-[12px] text-stone-500" data-acp-context="">
       <span>{tt("上下文已用 {percent}%", { percent })}</span>
       <meter min={0} max={usage.size} value={Math.min(usage.used, usage.size)} aria-label={tt("上下文用量")} className="h-1.5 w-16" />
     </div>}
