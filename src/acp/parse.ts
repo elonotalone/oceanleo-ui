@@ -5,6 +5,7 @@
 // `oceanleo_acp` key. Client rows are the JSON-RPC object the gateway wrote. Nothing is repaired or guessed: a row
 // this page cannot read becomes `unknown` and keeps its raw line.
 
+import { locateFrameFiles } from "./frame-attachments";
 import {
   KNOWN_SESSION_UPDATES,
   type AcpEvent,
@@ -46,6 +47,7 @@ function contentBlocks(value: unknown): ContentBlock[] {
 
 /** A JSON-RPC message (request, notification or response) from `direction`. */
 function message(row: AcpFrameRow, msg: Json): AcpEvent {
+  locateFrameFiles(msg, row.id);
   const from = row.direction;
   const method = typeof msg.method === "string" ? msg.method : "";
   const hasId = isId(msg.id);

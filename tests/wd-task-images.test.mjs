@@ -25,10 +25,9 @@ const reply = (id, text) => row(id, "agent", { method: "session/update", params:
 } } });
 
 for (const program of ["claude", "codex", "cursor", "hermes"]) {
-  test(`${program}: expanded images stay in their user turn; chips open the sidebar callback through later output`, async () => {
+  test(`${program}: inline images stay in their user turn and open exact blocks through later output`, async () => {
     const uri = "oceanleo-attachment://550e8400-e29b-41d4-a716-446655440000/550e8400-e29b-41d4-a716-446655440001/screenshot.png";
     const short = prompt(1, "first screenshot", [image("", uri), image("")], { truncated: { bytes: 70000 } });
-    const full = prompt(1, "first screenshot", [image("aGVsbG8=", uri), image("aGVsbG8=")]);
     const initial = [short, reply(2, "assistant after attachment")];
     const opened = [], errors = [];
     const previous = console.error;
@@ -38,8 +37,7 @@ for (const program of ["claude", "codex", "cursor", "hermes"]) {
       const [rows, setRows] = useState(initial);
       append = () => setRows((current) => [...current, row(3, "agent", { id: 1, result: { stopReason: "end_turn" } }),
         prompt(4, "next user message", [image("d29ybGQ=")]), reply(5, "last assistant reply")]);
-      return React.createElement(AcpTranscript, { program, rows, onOpenAttachment: (attachment) => { opened.push(attachment); },
-        onExpandRow: async () => setRows((current) => current.map((entry) => entry.id === 1 ? full : entry)),
+      return React.createElement(AcpTranscript, { program, rows, taskId: "11111111-1111-4111-8111-111111111111", onOpenAttachment: (attachment) => { opened.push(attachment); },
       });
     }
     const host = document.createElement("div"); document.body.append(host);
@@ -47,17 +45,16 @@ for (const program of ["claude", "codex", "cursor", "hermes"]) {
     try {
       await act(async () => root.render(React.createElement(Harness)));
       const first = () => host.querySelector('[data-testid="task-user-bubble"]');
-      assert.equal(first().querySelectorAll("img").length, 1, "private thumbnail is usable before expansion");
+      assert.equal(first().querySelectorAll("img").length, 2, "both private and binary thumbnails load directly");
       await act(async () => first().querySelector("button").click());
       assert.equal(opened[0].artifact_id, "550e8400-e29b-41d4-a716-446655440000");
-      await act(async () => host.querySelector("[data-acp-truncated-row] button").click());
       assert.equal(host.querySelectorAll("[data-acp-truncated-row]").length, 0);
       assert.equal(first().querySelectorAll("img").length, 2);
-      const inline = [...first().querySelectorAll("img")].find((img) => img.getAttribute("src")?.startsWith("data:"));
+      const inline = [...first().querySelectorAll("img")].find((img) => img.getAttribute("src")?.endsWith("/blocks/2"));
       assert.ok(inline);
       assert.equal(inline.closest("button").style.width, "64px");
       await act(async () => inline.closest("button").click());
-      assert.equal(opened.at(-1).url, "data:image/png;base64,aGVsbG8=");
+      assert.equal(opened.at(-1).url, "/v1/tasks/11111111-1111-4111-8111-111111111111/frames/1/blocks/2");
       await act(async () => append());
       assert.equal(host.querySelectorAll("img").length, 3);
       for (const img of host.querySelectorAll("img")) assert.ok(img.closest('[data-testid="task-user-bubble"]'));

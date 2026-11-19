@@ -13,7 +13,7 @@
 // 组件（AttachmentStrip / AgentTranscriptBubble / 右侧工作区）只调这里，不自己拼 URL。
 // ============================================================================
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AgentAttachment } from "./agent";
 import { accessToken } from "./auth/client";
 import { GATEWAY_BASE } from "./auth/config";
@@ -159,7 +159,8 @@ export async function resolveAttachmentDisplayUrl(
   if (hasTaskAttachmentPath(att)) {
     const path = taskAttachmentPath(att);
     if (!path) return undefined;
-    return loadTaskAttachmentBlobUrl(path, att?.mime, {
+    const displayPath = purpose === "thumbnail" && /\/frames\/\d+\/blocks\/\d+$/.test(path) ? `${path}?thumbnail=true` : path;
+    return loadTaskAttachmentBlobUrl(displayPath, att?.mime, {
       ...(purpose === "thumbnail" ? { maxBytes: TASK_IMAGE_MAX_BYTES } : {}),
     }).catch(() => undefined);
   }
@@ -183,7 +184,10 @@ export async function resolveAttachmentDisplayUrl(
 export function useAttachmentDisplayUrl(
   att: AttachmentLike | null | undefined,
   purpose: AttachmentRenditionPurpose = "thumbnail",
+  onUnavailable?: () => void,
 ): string | undefined {
+  const unavailableRef = useRef(onUnavailable);
+  unavailableRef.current = onUnavailable;
   const direct = attachmentDisplayUrl(att);
   const ref = attachmentRef(att);
   const scopedPath = taskAttachmentPath(att);
@@ -198,7 +202,10 @@ export function useAttachmentDisplayUrl(
         ownedUrl = url;
         if (!alive) { URL.revokeObjectURL(url); return; }
       }
-      if (alive) setResolved({ key: `${refKey}:${purpose}`, url });
+      if (alive) {
+        setResolved({ key: `${refKey}:${purpose}`, url });
+        if (!url) unavailableRef.current?.();
+      }
     });
     return () => {
       alive = false;

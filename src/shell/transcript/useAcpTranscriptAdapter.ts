@@ -1,7 +1,7 @@
 "use client";
 import { useMemo } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { taskAttachmentRoute } from "../../lib/task-content-path";
+import { scopeFrameFiles } from "../../acp/frame-attachments";
 import { viewBlocks, type AcpLabels, type AcpBlock } from "../../acp/messages";
 import type { AcpView } from "../../acp/types";
 import type { TranscriptItem } from "./TranscriptStream";
@@ -29,14 +29,7 @@ export function useAcpTranscriptAdapter(view: AcpView, taskId?: string, provided
     }),
     [tt],
   );
-  const blocks = useMemo(() => provided ? [] : viewBlocks(view, labels).map(block => {
-    if (!taskId || block.type !== "bubble" || !block.message.meta?.attachments?.length) return block;
-    const attachments = block.message.meta.attachments.map(attachment => {
-      const url = taskAttachmentRoute({ taskId, kind: "frames", rowId: block.message.id,
-        artifactId: attachment.artifact_id || "", revisionId: attachment.revision_id });
-      return url ? { ...attachment, url } : attachment;
-    });
-    return { ...block, message: { ...block.message, meta: { ...block.message.meta, attachments } } };
-  }), [view, labels, taskId, provided]);
+  // Library refs, frame-block images and tool cards/locations are scoped to this task's content routes.
+  const blocks = useMemo(() => provided ? [] : viewBlocks(view, labels).map(block => taskId ? scopeFrameFiles(block, taskId) : block), [view, labels, taskId, provided]);
   return useMemo(() => provided ?? acpTranscriptItems(blocks), [blocks, provided]);
 }

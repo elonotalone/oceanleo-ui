@@ -4,6 +4,7 @@
 
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
 import type { AcpItem, AcpPermission, AcpToolCall, AcpTurn, AcpView, ContentBlock, JsonRpcError, ToolCallStatus } from "./types";
+import { frameFileLocator, frameLocationRow } from "./frame-attachments";
 
 type Json = Record<string, unknown>;
 
@@ -56,10 +57,8 @@ function toolCard(tool: AcpToolCall, children: AcpToolCall[]): Json {
     if (part.type === "diff") return [{ type: "diff", path: part.path, old_text: part.oldText ?? "", new_text: part.newText }];
     if (part.type === "content" && isRecord(part.content)) {
       const block = part.content as ContentBlock;
-      if (block.type === "image") return attachments([block]).map((attachment) => ({ type: "image", attachment }));
       if (block.type === "text") return [{ type: "text", text: block.text }];
-      if (block.type === "resource" && typeof block.resource?.text === "string") return [{ type: "text", text: block.resource.text }];
-      if (block.type === "resource_link") return [{ type: "text", text: block.uri }];
+      return attachments([block]).map((attachment) => ({ type: (attachment.mime || "").startsWith("image/") ? "image" : "attachment", attachment }));
     }
     return [];
   });
@@ -69,7 +68,7 @@ function toolCard(tool: AcpToolCall, children: AcpToolCall[]): Json {
     title: tool.title,
     status: tool.status,
     content,
-    locations: tool.locations.map((loc) => (typeof loc.line === "number" ? { path: loc.path, line: loc.line } : { path: loc.path })),
+    locations: tool.locations.map((loc) => ({ ...loc, __oceanleoFrameRow: frameLocationRow(loc) })),
     ...(tool.rawInput !== undefined ? { rawInput: tool.rawInput } : {}),
     ...(tool.rawOutput !== undefined ? { rawOutput: tool.rawOutput } : {}),
     ...(children.length ? { children: children.map((child) => toolCard(child, [])) } : {}),
@@ -110,22 +109,24 @@ export function libraryRefFromUri(uri: string | null | undefined): { artifact_id
   return match ? { artifact_id: match[1].toLowerCase(), revision_id: match[2].toLowerCase() } : null;
 }
 
-function attachments(blocks: readonly ContentBlock[]): AgentAttachment[] {
+export function attachments(blocks: readonly ContentBlock[]): AgentAttachment[] {
   return blocks.flatMap((block): AgentAttachment[] => {
-    if (block.type === "resource_link") return [{ url: "", name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}), ...libraryRefFromUri(block.uri) }];
+    const locator = frameFileLocator(block);
+    if (block.type === "resource_link") return [{ url: locator || (/^https?:\/\//i.test(block.uri) ? block.uri : ""), name: block.title || block.name, ...(block.mimeType ? { mime: block.mimeType } : {}), ...libraryRefFromUri(block.uri) }];
     // Other paths and links belong to the user's side and are never fetched; a Library reference is.
     if (block.type === "image") {
       const ref = libraryRefFromUri(block.uri);
-      if (!ref && !block.data) return []; // shortened legacy bytes have a row-level load button
+      if (!ref && !block.data && !locator) return [];
       // Library images retain their private identity. Legacy inline bytes, once
       // expanded, belong to this message's same small attachment tile.
-      const url = !ref && block.data && /^image\/(png|jpeg|gif|webp|avif)$/.test(block.mimeType)
-        ? `data:${block.mimeType};base64,${block.data}` : "";
+      const url = locator || (!ref && block.data && /^image\/(png|jpeg|gif|webp|avif)$/.test(block.mimeType)
+        ? `data:${block.mimeType};base64,${block.data}` : "");
       let name = block.uri?.split("/").pop() || block.mimeType;
       try { name = decodeURIComponent(name); } catch { /* legacy names may contain a literal percent */ }
       return [{ url, name, mime: block.mimeType, media_type: "image", ...ref }];
     }
-    if (block.type === "resource") return [{ url: "", name: block.resource.uri.split("/").pop() || block.resource.uri, ...libraryRefFromUri(block.resource.uri) }];
+    if (block.type === "resource") return [{ url: locator || "", name: block.resource.uri.split("/").pop() || block.resource.uri,
+      ...(block.resource.mimeType ? { mime: block.resource.mimeType } : {}), ...libraryRefFromUri(block.resource.uri) }];
     return [];
   });
 }
@@ -279,8 +280,9 @@ export function itemBlocks(items: readonly AcpItem[], live: boolean, labels: Acp
             key: item.key,
             message: { id: item.rowIds[0] ?? 0, role: "user", kind: "text", content: item.text, ...(files.length ? { meta: { attachments: files } } : {}) },
           });
-        } else if (item.text) {
-          blocks.push(bubble(item.key, item.rowIds[0] ?? 0, "text", item.text, { native: true }));
+        } else {
+          const files = attachments(item.blocks);
+          if (item.text || files.length) blocks.push(bubble(item.key, item.rowIds[0] ?? 0, "text", item.text, { native: true, ...(files.length ? { attachments: files } : {}) }));
         }
         break;
       case "request":

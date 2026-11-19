@@ -201,20 +201,14 @@ function QueuedLine({ turn, onStopAndSend }: { turn: AcpTurn; onStopAndSend?: (p
 function shortenedContent(row: AcpFrameRow) {
   let text = row.truncated?.text ?? false;
   let binary = row.truncated?.binary ?? false;
-  let image = false;
-  let attachment = false;
   const visit = (value: unknown) => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) { value.forEach(visit); return; }
     const item = value as Record<string, unknown>;
     if ((item.type === "image" || item.type === "audio") && !item.data) {
       binary = true;
-      if (!libraryRefFromUri(typeof item.uri === "string" ? item.uri : undefined)) {
-        if (item.type === "image") image = true;
-        else attachment = true;
-      }
     }
-    if (item.blob === "") { binary = true; attachment ||= !libraryRefFromUri(typeof item.uri === "string" ? item.uri : undefined); }
+    if (item.blob === "") binary = true;
     for (const [key, child] of Object.entries(item)) {
       if (row.truncated?.text === undefined && key !== "uri" && typeof child === "string" && child.endsWith("…") &&
           new TextEncoder().encode(child).length >= 8192) text = true;
@@ -222,7 +216,7 @@ function shortenedContent(row: AcpFrameRow) {
     }
   };
   try { visit(JSON.parse(row.raw)); } catch { text = true; }
-  return { text: text || !binary, image, attachment };
+  return { text: text || !binary };
 }
 
 function TruncatedRow({ row, onExpand }: { row: AcpFrameRow; onExpand?: AcpTranscriptProps["onExpandRow"] }) {
@@ -236,19 +230,15 @@ function TruncatedRow({ row, onExpand }: { row: AcpFrameRow; onExpand?: AcpTrans
     try { await onExpand(row.id); }
     catch (caught) {
       const reason = caught instanceof Error ? caught.message : String(caught);
-      setError(content.image ? tt("图片加载失败：{reason}", { reason }) : reason);
+      setError(reason);
     }
     finally { setBusy(false); }
   };
-  if (!content.text && !content.image && !content.attachment) return null;
-  if (!row.truncated) return content.image ? <p className="px-1 text-[12px] text-stone-500" data-acp-image-unavailable={row.id}>{tt("图片已不可用")}</p> : null;
+  if (!content.text) return null;
+  if (!row.truncated) return null;
   return <div className="flex flex-wrap gap-2 px-1 text-[12px] text-stone-500" data-acp-truncated-row={row.id}>
     {content.text && <button type="button" disabled={!onExpand || busy} onClick={() => void expand()} aria-busy={busy}>
       {tt("内容较长，已省略 {size} KB · 展开", { size: Math.ceil((row.truncated?.bytes || 0) / 1024) })}
-    </button>}
-    {(content.image || content.attachment) && <button type="button" className="inline-flex items-center gap-2 rounded-lg border border-stone-200 bg-stone-50 px-3 py-2 text-stone-600 hover:bg-stone-100 disabled:opacity-50" data-acp-load-attachment={row.id} disabled={!onExpand || busy} onClick={() => void expand()} aria-busy={busy}>
-      <svg aria-hidden="true" className="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6}><rect x="3" y="3" width="18" height="18" rx="3" /><circle cx="8" cy="8" r="1.5" /><path d="m3 17 5-5 4 4 3-3 6 6" /></svg>
-      {content.image ? tt("图片（点击加载）") : tt("附件（点击加载）")}
     </button>}
     {error && <p role="alert">{error}</p>}
   </div>;
@@ -273,7 +263,7 @@ export function AcpTranscript({ items: providedItems, rows, taskId, program, vie
   const shortened = useMemo(() => {
     const assigned = new Map<string, AcpFrameRow[]>();
     for (const row of rows) {
-      if (!row.truncated && (!/"type"\s*:\s*"image"/.test(row.raw) || !shortenedContent(row).image)) continue;
+      if (!row.truncated) continue;
       const block = blocks.findLast((item) => blockRowId(item) <= row.id);
       const key = block?.key ?? "";
       assigned.set(key, [...(assigned.get(key) ?? []), row]);

@@ -18,7 +18,8 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { AgentAttachment, AgentMessage } from "../lib/agent";
-import { useAttachmentDisplayUrl } from "../lib/attachment-url";
+import { TranscriptAttachment } from "./AgentTranscriptBubble";
+import { FrameFileLocation, type FrameFileLocationValue } from "./FrameFileLocation";
 import {
   buildProcessEntries,
   normalizeProcessText,
@@ -36,7 +37,8 @@ import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { useStepsFoldBlock } from "./steps-fold-preference";
 import { TranscriptApp, transcriptAppCall } from "./mcp-apps/TranscriptApp";
 
-type ToolEntry = Omit<Extract<ProcessEntry, { type: "tool" }>, "children"> & {
+type ToolEntry = Omit<Extract<ProcessEntry, { type: "tool" }>, "children" | "locations"> & {
+  locations: FrameFileLocationValue[];
   images?: AgentAttachment[];
   children?: ToolEntry[];
 };
@@ -51,9 +53,10 @@ function progressEntries(messages: AgentMessage[]): ProcessEntry[] {
     if (!value || typeof value !== "object") return entry;
     const card = value as Record<string, unknown>;
     const images = (Array.isArray(card.content) ? card.content : []).flatMap((part): AgentAttachment[] =>
-      part?.type === "image" && part.attachment && typeof part.attachment === "object" ? [part.attachment] : []);
+      (part?.type === "image" || part?.type === "attachment") && part.attachment && typeof part.attachment === "object" ? [part.attachment] : []);
     const children = Array.isArray(card.children) ? card.children : [];
-    return { ...entry, images, children: entry.children?.map((child, index) => withImages(child, children[index])) };
+    const locations = Array.isArray(card.locations) ? card.locations : [];
+    return { ...entry, images, locations: entry.locations.map((loc, index) => ({ ...loc, taskId: locations[index]?.taskId, __oceanleoFrameRow: locations[index]?.__oceanleoFrameRow })), children: entry.children?.map((child, index) => withImages(child, children[index])) };
   };
   let step = 0;
   return buildProcessEntries(messages).map((entry) => entry.type === "tool" ? withImages(entry, cards[step++]) : entry);
@@ -363,32 +366,6 @@ function prettyPreview(value: string): string {
   }
 }
 
-function ToolImage({ attachment, onOpenAttachment }: {
-  attachment: AgentAttachment;
-  onOpenAttachment?: AgentProgressProps["onOpenAttachment"];
-}) {
-  const tt = useUI();
-  const displayUrl = useAttachmentDisplayUrl(attachment, "thumbnail");
-  const [error, setError] = useState("");
-  useEffect(() => setError(""), [displayUrl]);
-  const open = async () => {
-    if (!onOpenAttachment) return;
-    setError("");
-    try {
-      if (await onOpenAttachment(attachment) === false) setError(tt("图片已不可用"));
-    } catch (caught) {
-      setError(tt("图片加载失败：{reason}", { reason: caught instanceof Error ? caught.message : String(caught) }));
-    }
-  };
-  return <div data-agent-process-image="">
-    {displayUrl && !error ? <button type="button" onClick={() => void open()} disabled={!onOpenAttachment}
-      aria-label={tt("打开图片")} className="block h-16 w-16 overflow-hidden rounded-lg border border-stone-200 hover:border-stone-400 disabled:cursor-default">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={displayUrl} alt={attachment.name || tt("图片")} className="h-full w-full object-cover"
-        onError={() => setError(tt("图片加载失败：{reason}", { reason: tt("图片数据无法解码") }))} />
-    </button> : <p role={error ? "alert" : undefined} className="text-[12px] text-stone-500">{error || tt("图片已不可用")}</p>}
-  </div>;
-}
 
 function ToolView({
   entry,
@@ -468,7 +445,7 @@ function ToolView({
           <p className={`whitespace-pre-wrap text-stone-600 ${WRAP}`}>{title}</p>
           <ToolRawFolds tool={entry} />
           {Boolean(entry.images?.length) && <div className="flex flex-wrap gap-2" onClick={(event) => event.stopPropagation()}>
-            {entry.images?.map((attachment, index) => <ToolImage key={index} attachment={attachment} onOpenAttachment={onOpenAttachment} />)}
+            {entry.images?.map((attachment, index) => <div key={index} data-agent-process-image={(attachment.mime || "").startsWith("image/") ? "" : undefined} data-agent-process-attachment=""><TranscriptAttachment attachment={attachment} onOpen={onOpenAttachment} /></div>)}
           </div>}
           {entry.content.map((part, index) => {
             if (part.type === "diff") {
@@ -513,7 +490,7 @@ function ToolView({
             <ul data-agent-process-locations="" className="space-y-0.5 font-mono text-[11px] text-stone-400">
               {entry.locations.map((loc, index) => (
                 <li key={`${loc.path}:${loc.line ?? ""}:${index}`} className="break-all">
-                  {typeof loc.line === "number" ? `${loc.path}:${loc.line}` : loc.path}
+                  <FrameFileLocation location={loc} onOpenAttachment={onOpenAttachment} />
                 </li>
               ))}
             </ul>

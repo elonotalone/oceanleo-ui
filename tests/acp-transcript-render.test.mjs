@@ -98,6 +98,7 @@ function occurrences(text, needle) {
   return text.split(needle).length - 1;
 }
 
+const TASK = "11111111-1111-4111-8111-111111111111";
 const privateImageUri = "oceanleo-attachment://aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb/photo.png";
 const imagePrompt = (image) => client({ id: 800, method: "session/prompt", params: { sessionId: "s1", prompt: [
   { type: "text", text: "看看截图…" }, { type: "image", mimeType: "image/png", ...image },
@@ -116,14 +117,13 @@ test("a reference-only picture shows a clickable thumbnail inside its user bubbl
   assert.doesNotMatch(historical.textContent, /内容较长|点击加载/);
 });
 
-test("a legacy binary-only frame offers image loading, including old bytes-only metadata", () => {
+test("a compacted binary image uses an inline thumbnail without a load-row action", () => {
   for (const truncated of [{ bytes: 2164000 }, { bytes: 2164000, text: false, binary: true }]) {
     const row = { ...imagePrompt({ data: "" }), truncated };
-    const body = render([row], { onExpandRow: async () => {} });
-    const load = body.querySelector('[data-acp-load-attachment]');
-    assert.equal(load.textContent, '图片（点击加载）');
-    assert.equal(load.hasAttribute('disabled'), false);
-    assert.doesNotMatch(body.textContent, /内容较长|2164|image\/png/);
+    const body = render([row], { taskId: TASK, onOpenAttachment: () => {} });
+    assert.equal(body.querySelector('[data-acp-load-attachment]'), null);
+    assert.ok(body.querySelector('[data-upload-kind="image"] img'));
+    assert.doesNotMatch(body.textContent, /内容较长|点击加载/);
   }
 });
 
@@ -139,52 +139,21 @@ test("true long text keeps expansion, even when the same row also has a missing 
   message.params.prompt[0].text = '长文…';
   const both = render([{ ...mixed, raw: JSON.stringify(message), truncated: { bytes: 50000, text: true, binary: true } }]);
   assert.match(both.textContent, /内容较长/);
-  assert.match(both.textContent, /图片（点击加载）/);
+  assert.doesNotMatch(both.textContent, /点击加载/);
 });
 
-test("loading legacy bytes replaces that row and opens its small thumbnail through the attachment callback", async () => {
-  const dom = new JSDOM('<!doctype html><div id="root"></div>');
-  const saved = Object.fromEntries(['window', 'document', 'IS_REACT_ACT_ENVIRONMENT'].map((key) => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
-  Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
-  const root = createRoot(dom.window.document.getElementById('root'));
-  const compact = { ...imagePrompt({ data: '' }), truncated: { bytes: 50000, text: false, binary: true } };
-  const full = { ...compact, raw: imagePrompt({ data: 'aGVsbG8=' }).raw, truncated: undefined };
-  const expanded = [], opened = [];
-  let current = compact;
-  const props = () => ({ rows: [current], program: 'claude', onOpenAttachment: (attachment) => opened.push(attachment), onExpandRow: async (id) => {
-    expanded.push(id); current = full; root.render(React.createElement(AcpTranscript, props()));
-  } });
-  try {
-    await act(async () => root.render(React.createElement(AcpTranscript, props())));
-    await act(async () => dom.window.document.querySelector('[data-acp-load-attachment]').click());
-    assert.deepEqual(expanded, [compact.id]);
-    assert.equal(dom.window.document.querySelector('[data-acp-truncated-row]'), null);
-    const bubble = dom.window.document.querySelector('[data-testid="task-user-bubble"]');
-    assert.equal(bubble.querySelector('img').getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
-    await act(async () => bubble.querySelector('[data-upload-kind="image"] button').click());
-    assert.equal(opened.length, 1);
-    assert.equal(opened[0].url, 'data:image/png;base64,aGVsbG8=');
-    assert.equal(dom.window.document.querySelectorAll('img').length, 1);
-    current = imagePrompt({ uri: privateImageUri });
-    await act(async () => root.render(React.createElement(AcpTranscript, props())));
-    await act(async () => dom.window.document.querySelector('[data-upload-kind="image"] button').click());
-    assert.equal(opened[1].artifact_id, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
-    assert.equal(opened[1].revision_id, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
-  } finally {
-    await act(async () => root.unmount());
-    dom.window.close();
-    for (const [key, descriptor] of Object.entries(saved)) {
-      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
-      else delete globalThis[key];
-    }
-  }
-});
+test("an image thumbnail opens its exact task block through the existing attachment callback", () => toolImageDom(async (root, doc) => {
+  const row = { ...imagePrompt({ data: "" }), truncated: { bytes: 50000, text: false, binary: true } };
+  const opened = [];
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [row], taskId: TASK, program: 'generic', onOpenAttachment: attachment => opened.push(attachment) })));
+  assert.equal(doc.querySelector('[data-acp-load-attachment]'), null);
+  await act(async () => doc.querySelector('[data-upload-kind="image"] button').click());
+  assert.equal(opened[0].url, `/v1/tasks/${TASK}/frames/${row.id}/blocks/1`);
+}));
 
 function renderStrip(tasks, onStopTask) {
   return renderToStaticMarkup(React.createElement(AcpBackgroundTaskStrip, { tasks, onStopTask }));
 }
-
-// ---- tests -----------------------------------------------------------------------
 
 test("no rows renders nothing at all (no empty-state copy)", () => {
   assert.equal(html([]), "");
@@ -346,57 +315,28 @@ const toolImage = image => update({ sessionUpdate: 'tool_call_update', toolCallI
   { type: 'content', content: { type: 'image', mimeType: 'image/png', ...image } },
 ] });
 
-test('TP: loading a tool image renders a thumbnail inside its step and opens the existing attachment callback', () => toolImageDom(async (root, doc) => {
-  let row = { ...toolImage({ data: '' }), truncated: { bytes: 50000, text: false, binary: true } };
-  const opened = [];
-  const renderCurrent = () => root.render(React.createElement(AcpTranscript, { rows: [row], program: 'claude', onOpenAttachment: a => opened.push(a), onExpandRow: async () => {
-    row = { ...row, raw: toolImage({ data: 'aGVsbG8=' }).raw, truncated: undefined };
-    renderCurrent();
-  } }));
-  await act(async () => renderCurrent());
-  const load = doc.querySelector('[data-acp-load-attachment]');
-  assert.ok(load.querySelector('svg'), 'image placeholder has an icon');
-  assert.match(load.className, /border/);
-  await act(async () => load.click());
-  assert.equal(doc.querySelector('[data-acp-truncated-row]'), null);
-  const tile = doc.querySelector('[data-agent-process-tool-body] [data-agent-process-image]');
-  assert.ok(tile, 'loading the placeholder reveals the image inside its step without extra clicks');
-  assert.equal(tile.querySelector('img').getAttribute('src'), 'data:image/png;base64,aGVsbG8=');
-  await act(async () => tile.querySelector('button').click());
-  assert.equal(opened.length, 1);
-  assert.equal(opened[0].url, 'data:image/png;base64,aGVsbG8=');
-  assert.ok(doc.querySelector('[data-agent-process-tool-body]'), 'opening an image does not collapse its step');
-  await act(async () => doc.querySelector('[data-agent-process-tool] > button').click());
-  await act(async () => renderCurrent());
-  assert.equal(doc.querySelector('[data-agent-process-tool-body]'), null, 'manual collapse stays closed after the image was revealed');
-  await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
-  assert.equal(doc.querySelector('[data-agent-process-entries]'), null, 'manual process collapse stays closed too');
-}));
-
-test('TP: failed loading keeps the image button and shows the error reason', () => toolImageDom(async (root, doc) => {
+test('TP: compacted tool images show directly and open their exact block', () => toolImageDom(async (root, doc) => {
   const row = { ...toolImage({ data: '' }), truncated: { bytes: 50000, text: false, binary: true } };
-  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [row], program: 'claude', onExpandRow: async () => { throw Error('归档读取失败'); } })));
-  await act(async () => doc.querySelector('[data-acp-load-attachment]').click());
-  assert.match(doc.querySelector('[role="alert"]').textContent, /归档读取失败/);
-  assert.equal(doc.querySelector('[data-acp-load-attachment]').disabled, false);
+  const opened = [];
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [row], taskId: TASK, program: 'generic', onOpenAttachment: file => opened.push(file) })));
+  assert.equal(doc.querySelector('[data-acp-load-attachment]'), null);
+  if (!doc.querySelector('[data-agent-process-image]')) await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
+  const tile = doc.querySelector('[data-agent-process-image]');
+  assert.ok(tile.querySelector('img'));
+  await act(async () => tile.querySelector('button').click());
+  assert.equal(opened[0].url, `/v1/tasks/${TASK}/frames/${row.id}/blocks/1`);
+  assert.ok(doc.querySelector('[data-agent-process-tool-body]'));
+  await act(async () => doc.querySelector('[data-agent-process-tool] > button').click());
+  assert.equal(doc.querySelector('[data-agent-process-tool-body]'), null);
 }));
 
-test('TP: a fetched row still missing image data explicitly says the image is unavailable', () => {
-  const body = render([toolImage({ data: '' })]);
-  assert.match(body.textContent, /图片已不可用/);
-  assert.equal(body.querySelector('[data-acp-load-attachment]'), null);
-});
-
-
-test('TP: a successful fetch with no image bytes replaces the button with an unavailable message', () => toolImageDom(async (root, doc) => {
-  let row = { ...toolImage({}), truncated: { bytes: 50000, text: false, binary: true } };
-  const renderCurrent = () => root.render(React.createElement(AcpTranscript, { rows: [row], program: 'claude', onExpandRow: async () => {
-    row = { ...row, truncated: undefined }; renderCurrent();
-  } }));
-  await act(async () => renderCurrent());
-  await act(async () => doc.querySelector('[data-acp-load-attachment]').click());
-  assert.equal(doc.querySelector('[data-acp-load-attachment]'), null);
-  assert.match(doc.querySelector('[data-acp-image-unavailable]').textContent, /图片已不可用/);
+test('TP: file preview failures are explicit and allow another click', () => toolImageDom(async (root, doc) => {
+  const row = toolImage({ data: '' });
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [row], taskId: TASK, program: 'generic', onOpenAttachment: async () => false })));
+  if (!doc.querySelector('[data-agent-process-image]')) await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
+  await act(async () => doc.querySelector('[data-agent-process-image] button').click());
+  assert.match(doc.querySelector('[role="alert"]').textContent, /无法读取文件/);
+  assert.equal(doc.querySelector('[data-agent-process-image] button').disabled, false);
 }));
 
 test('TP: multiple inline and private images retain their identity; decode failures show a reason', () => toolImageDom(async (root, doc) => {
@@ -404,7 +344,7 @@ test('TP: multiple inline and private images retain their identity; decode failu
   const raw = JSON.parse(row.raw);
   raw.params.update.content.push({ type: 'content', content: { type: 'image', mimeType: 'image/png', uri: privateImageUri } });
   const opened = [];
-  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [{ ...row, raw: JSON.stringify(raw) }], program: 'claude', onOpenAttachment: a => opened.push(a) })));
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows: [{ ...row, raw: JSON.stringify(raw) }], taskId: TASK, program: 'claude', onOpenAttachment: a => opened.push(a) })));
   await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
   const tiles = doc.querySelectorAll('[data-agent-process-image]');
   assert.equal(tiles.length, 2);
@@ -423,12 +363,12 @@ test('TP: child tool screenshots render inside their child step and use the atta
   raw.params.update._meta = { claudeCode: { parentToolUseId: 'parent-task' } };
   rows.push({ ...row, raw: JSON.stringify(raw) });
   const opened = [];
-  await act(async () => root.render(React.createElement(AcpTranscript, { rows, program: 'claude', onOpenAttachment: a => opened.push(a) })));
+  await act(async () => root.render(React.createElement(AcpTranscript, { rows, taskId: TASK, program: 'claude', onOpenAttachment: a => opened.push(a) })));
   await act(async () => doc.querySelector('[data-agent-process-toggle]').click());
   const tile = doc.querySelector('[data-agent-process-substep-list] [data-agent-process-image]');
   assert.ok(tile);
   await act(async () => tile.querySelector('button').click());
-  assert.equal(opened[0].url, 'data:image/png;base64,aGVsbG8=');
+  assert.equal(opened[0].url, `/v1/tasks/${TASK}/frames/${row.id}/blocks/1`);
 }));
 
 test('TP: attachment errors have translations in every UI locale', async () => {

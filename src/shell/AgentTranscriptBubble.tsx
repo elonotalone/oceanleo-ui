@@ -506,6 +506,10 @@ function TranscriptBody({
 
   return (
     <div className="max-w-full px-1 text-neutral-900">
+      {Boolean(message.meta?.attachments?.length) && <div className="mb-2 flex flex-wrap gap-1.5" data-transcript-attachments="">
+        {message.meta?.attachments?.map((attachment, index, all) => <TranscriptAttachment key={`${attachment.url || attachment.name}-${index}`}
+          attachment={attachment} onOpen={onOpenAttachment ? value => onOpenAttachment(attachmentWithGallery(value, all, index)) : undefined} />)}
+      </div>}
       <TypewriterMarkdown
         content={message.content}
         active={streaming}
@@ -997,7 +1001,7 @@ function WorkerReportBubble({
   );
 }
 
-function TranscriptAttachment({
+export function TranscriptAttachment({
   attachment,
   onOpen,
 }: {
@@ -1058,9 +1062,11 @@ function UserUploadTile({
   onOpen,
 }: {
   attachment: AgentAttachment;
-  onOpen?: (attachment: AgentAttachment) => void;
+  onOpen?: (attachment: AgentAttachment) => void | Promise<boolean>;
 }) {
   const tt = useUI();
+  const [error, setError] = useState("");
+  useEffect(() => setError(""), [attachment.url, attachment.artifact_id, attachment.revision_id]);
   const isRef = Boolean(attachmentRef(attachment));
   const isImage =
     (attachment.mime || "").startsWith("image/") ||
@@ -1068,7 +1074,16 @@ function UserUploadTile({
     /\.(png|jpe?g|webp|gif)$/i.test(
       (attachment.url || attachment.name || "").split("?")[0],
     );
-  const displayUrl = useAttachmentDisplayUrl(isImage ? attachment : null, "thumbnail");
+  const displayUrl = useAttachmentDisplayUrl(isImage ? attachment : null, "thumbnail", () => setError(tt("图片已不可用")));
+  const open = async () => {
+    if (!onOpen) return;
+    setError("");
+    try {
+      if (await onOpen({ ...attachment, url: taskAttachmentPath(attachment) || displayUrl || attachment.url || "" }) === false) {
+        setError(tt("无法读取文件，请重试。"));
+      }
+    } catch { setError(tt("无法读取文件，请重试。")); }
+  };
   if (!attachment.url && !isRef) {
     return (
       <span className={ATTACHMENT_CHIP} data-native-attachment="">
@@ -1080,14 +1095,17 @@ function UserUploadTile({
     );
   }
   return (
-    <UploadTile
-      name={attachment.name}
-      mime={attachment.mime || (isImage ? "image/*" : undefined)}
-      previewUrl={isImage ? displayUrl : undefined}
-      size={64}
-      tt={tt}
-      onOpen={onOpen ? () => onOpen({ ...attachment, url: taskAttachmentPath(attachment) || displayUrl || "" }) : undefined}
-    />
+    <div onErrorCapture={() => setError(tt("图片加载失败：{reason}", { reason: tt("图片数据无法解码") }))}>
+      <UploadTile
+        name={attachment.name}
+        mime={attachment.mime || (isImage ? "image/*" : undefined)}
+        previewUrl={isImage ? displayUrl : undefined}
+        size={64}
+        tt={tt}
+        onOpen={onOpen ? () => void open() : undefined}
+      />
+      {error && <p role="alert" className="mt-1 text-[12px] text-rose-600">{error}</p>}
+    </div>
   );
 }
 

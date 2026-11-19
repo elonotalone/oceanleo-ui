@@ -3,6 +3,7 @@ const UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-
 const ATTACHMENT = new RegExp(`^/v1/tasks/(${UUID})/(messages|frames)/([1-9][0-9]*)/attachments/(${UUID})\\?revision_id=([^&#]+)$`);
 const UUID_RE = new RegExp(`^${UUID}$`);
 const REVISION = /^[A-Za-z0-9_-]{1,160}$/;
+const FRAME_BLOCK = new RegExp(`^/v1/tasks/(${UUID})/frames/([1-9][0-9]*)/blocks/(0|[1-9][0-9]*)(\\?thumbnail=true)?$`);
 
 export interface TaskAttachmentScope {
   taskId: string;
@@ -47,6 +48,10 @@ function candidates(value: ScopedAttachmentLike | string | null | undefined): un
 
 export function taskAttachmentPath(value: ScopedAttachmentLike | string | null | undefined): string | null {
   for (const candidate of candidates(value)) {
+    if (typeof candidate === "string") {
+      const block = FRAME_BLOCK.exec(candidate);
+      if (block && Number.isSafeInteger(Number(block[2])) && Number.isSafeInteger(Number(block[3]))) return candidate;
+    }
     const parsed = parseTaskAttachmentPath(candidate);
     if (parsed) return parsed.path;
   }
