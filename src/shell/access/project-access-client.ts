@@ -2,26 +2,38 @@
 
 import { accessToken } from "../../lib/auth/client";
 import { gatewayBase } from "../../lib/auth/config";
-import type { AccessMember, AccessRole } from "./access-types";
+
+export type ProjectAccessRole = "view" | "collaborate" | "admin";
+export interface ProjectAccessMember {
+  id: string;
+  user_id?: string | null;
+  name?: string | null;
+  initial?: string | null;
+  email?: string;
+  status: "accepted" | "invited" | "removed" | "declined";
+  role: ProjectAccessRole | "owner";
+  username?: string;
+  avatar_url?: string;
+}
 
 export interface ProjectAccess {
   state: "owner" | "member" | "invited" | "none";
-  role: "owner" | AccessRole | "none";
-  invite_role: AccessRole | null;
+  role: "owner" | ProjectAccessRole | "none";
+  invite_role: ProjectAccessRole | null;
   project: { id: string; name: string; icon?: string; tagline?: string };
 }
 
 export interface ProjectMembers {
   owner: { name: string; initial: string; email?: string };
-  members: AccessMember[];
+  members: ProjectAccessMember[];
 }
 
 /** Kept injectable so the shared panel and native consumers use the same routes. */
 export interface ProjectAccessClient {
   getAccess(id: string, signal?: AbortSignal): Promise<ProjectAccess>;
   getMembers(id: string, signal?: AbortSignal): Promise<ProjectMembers>;
-  invite(id: string, email: string, role?: AccessRole): Promise<AccessMember>;
-  changeRole(id: string, memberId: string, role: AccessRole): Promise<void>;
+  invite(id: string, email: string, role?: ProjectAccessRole): Promise<ProjectAccessMember>;
+  changeRole(id: string, memberId: string, role: ProjectAccessRole): Promise<void>;
   remove(id: string, memberId: string): Promise<void>;
   accept(id: string): Promise<void>;
   decline(id: string): Promise<void>;
@@ -39,19 +51,21 @@ export class ProjectAccessError extends Error {
 type Json = Record<string, unknown>;
 const record = (value: unknown): Json => value && typeof value === "object" ? value as Json : {};
 const text = (value: unknown): string => typeof value === "string" ? value : "";
-export const projectUiRole = (role: unknown): AccessRole => role === "edit" || role === "collaborate" ? "collaborate" : "view";
+export const projectUiRole = (role: unknown): ProjectAccessRole => role === "admin" ? "admin" : role === "edit" || role === "collaborate" ? "collaborate" : "view";
 
-function memberRow(value: unknown, invited = false): AccessMember {
+function memberRow(value: unknown, invited = false): ProjectAccessMember {
   const raw = record(value);
-  const uid = text(raw.user_id) || text(raw.id);
-  const name = text(raw.name) || text(raw.display_name) || text(raw.label) || text(raw.handle);
-  const email = text(raw.email) || (invited && raw.contact_kind !== "phone" ? text(raw.contact) : "");
+  const uid = text(raw.user_id) || (invited && raw.contact_kind === "user" ? text(raw.contact) : "") || (!invited ? text(raw.id) : "");
+  const name = text(raw.name) || text(raw.display_name) || text(raw.label) || text(raw.username) || text(raw.handle) || (invited ? text(raw.contact) : "");
+  const email = (raw.is_self === true ? text(raw.email) : "") || (invited && raw.contact_kind !== "phone" && raw.contact_kind !== "user" ? text(raw.contact) : "");
   return {
     id: `${invited ? "invite" : "member"}:${invited ? text(raw.id) : uid}`,
     user_id: uid || null,
     name: name || null,
     initial: text(raw.initial) || Array.from(name || email)[0]?.toLocaleUpperCase() || "?",
     ...(email ? { email } : {}),
+    username: text(raw.username) || text(raw.handle),
+    avatar_url: text(raw.avatar_url),
     role: raw.is_owner === true || raw.role === "owner" ? "owner" : projectUiRole(raw.role),
     status: invited ? "invited" : "accepted",
   };
@@ -121,7 +135,7 @@ export function createProjectAccessClient(options: {
       const raw = record(await request(path(id, "/invites"), "POST", { contact: normalized, role }));
       if (text(record(raw.invite).id)) return memberRow(raw.invite, true);
       // The new account-independent create response can omit the row id.
-      // Recover it from the owner-only list before presenting editable controls.
+      // Recover it from the manager-only list before presenting editable controls.
       const rows = projectMembersFromResponse(await request(path(id, "/members")));
       const invited = rows.members.find(member => member.status === "invited" && member.email?.toLocaleLowerCase() === normalized);
       if (!invited) throw new ProjectAccessError(502);

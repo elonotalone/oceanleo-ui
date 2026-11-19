@@ -17,10 +17,10 @@ const { createMockProjectAccessClient: fakeClient, ownerProjectAccess: ownerAcce
 const ui = await import(await compileModule("src/shell/access/ProjectAccessPanel.tsx", {
   "../../i18n/ui/useUI": dataModule("export function useUI(){ return value => value; }"),
   "./project-access-client": clientUrl,
-  "./MemberPanel": dataModule(`import React from ${JSON.stringify(await import.meta.resolve("react"))};
-    export function MemberPanel(props){ globalThis.__projectMemberProps = props;
-      return React.createElement('div', {'data-members':true}, props.owner.name,
-        ...props.members.map(row => React.createElement('span', {key:row.id}, row.name || row.email)));
+  "../menu-select": dataModule(`import React from ${JSON.stringify(await import.meta.resolve("react"))};
+    export function MenuSelect({name,ariaLabel,value,options,onChange,disabled}) {
+      return React.createElement('select', {name,'aria-label':ariaLabel,value,disabled,onChange:event=>onChange(event.target.value)},
+        options.map(option=>React.createElement('option',{key:option.value,value:option.value},option.label)));
     }`),
 }));
 
@@ -109,25 +109,58 @@ async function click(host, label) {
   await act(async () => { button.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
 }
 
-test("project panel uses the shared member component, offers no general access and limits management to the owner", async () => {
-  const client = fakeClient();
-  const view = await mount(ui.ProjectAccessPanel, { projectId: "p", client });
-  try {
-    assert.ok(view.host.querySelector("[data-project-access-panel] [data-members]"));
-    assert.match(view.host.textContent, /Owner.*pending@example.test/);
-    assert.equal(globalThis.__projectMemberProps.canManage, true);
-    assert.equal(view.host.querySelector("select"), null);
-    assert.doesNotMatch(view.host.textContent, /知道链接|常规访问/);
-  } finally { await view.close(); }
-  let membersRead = false;
-  const collaborator = await mount(ui.ProjectAccessPanel, { projectId: "p", client: fakeClient({
-    async getAccess() { return { ...ownerAccess, state: "member", role: "collaborate" }; },
-    async getMembers() { membersRead = true; return {}; },
-  }) });
-  try {
-    assert.equal(collaborator.host.querySelector("[data-members]"), null);
-    assert.equal(membersRead, false);
-  } finally { await collaborator.close(); }
+test("owner/admin manage project roles including admin; work roles cannot read the full member list", async () => {
+  for (const role of ["owner", "admin", "collaborate", "view"]) {
+    let membersRead = 0;
+    const calls=[];
+    const client = fakeClient({
+      async getAccess() { return { ...ownerAccess, state:role==="owner"?"owner":"member", role }; },
+      async getMembers() { membersRead+=1; return { owner:{name:"Unique owner",initial:"U"},members:[{id:"member:admin",name:"Admin name",role:"admin",status:"accepted"}] }; },
+      async changeRole(id,memberId,nextRole) {calls.push({id,memberId,role:nextRole});},
+      async remove(id,memberId) {calls.push({id,memberId,remove:true});},
+    });
+    const view = await mount(ui.ProjectAccessPanel, { projectId: "p", client });
+    try {
+      const manager=role==="owner"||role==="admin";
+      assert.equal(!!view.host.querySelector('[data-project-access-panel]'),manager);
+      assert.equal(membersRead,manager?1:0);
+      assert.doesNotMatch(view.host.textContent,/知道链接|常规访问/);
+      if(manager) {
+        assert.match(view.host.textContent,/Unique owner.*Admin name/);
+        const owner=view.host.querySelector('[data-member-owner]');
+        assert.equal(owner.querySelector('button,select'),null);
+        const select=view.host.querySelector('select[name="project-role-member:admin"]');
+        assert.deepEqual([...select.options].map(option=>option.value),['admin','collaborate','view']);
+        await act(async()=>{select.value='collaborate';select.dispatchEvent(new window.Event('change',{bubbles:true}));});
+        assert.deepEqual(calls,[{id:'p',memberId:'member:admin',role:'collaborate'}]);
+        assert.ok(membersRead>=2);
+        await act(async()=>view.host.querySelector('[data-member-id] button').click());
+        assert.deepEqual(calls[1],{id:'p',memberId:'member:admin',remove:true});
+      }
+    } finally { await view.close(); }
+  }
+});
+
+test("shared project normalisation and API keep admin separate from member", async () => {
+  const rows=projectMembersFromResponse({members:[{user_id:'a',role:'admin',name:'Admin',email:'private@example.test',username:'admin-handle'}],invites:[{id:'i',role:'admin',status:'pending',user_id:'b'}]});
+  assert.equal(rows.members[0].role,'admin'); assert.equal(rows.members[0].username,'admin-handle');
+  assert.equal(rows.members[0].email,undefined); assert.equal(rows.members[1].role,'admin');
+  const calls=[];
+  const client=createProjectAccessClient({tokenImpl:async()=>"test-only",fetchImpl:async(url,init)=>{
+    calls.push({url,body:init.body?JSON.parse(init.body):null});
+    return Response.json(init.method==='GET'?{state:'member',role:'admin',invite_role:'admin'}:{invite:{id:'new',role:'admin',contact:'invite@example.test'}});
+  }});
+  const access=await client.getAccess('p'); assert.equal(access.role,'admin');assert.equal(access.invite_role,'admin');
+  assert.equal((await client.invite('p','invite@example.test','admin')).role,'admin');
+  await client.changeRole('p','member:a','admin'); assert.deepEqual(calls[2].body,{role:'admin'});
+});
+
+test("new project role copy exists in every locale", async () => {
+  const { swPfCopy }=await import(await compileModule('src/i18n/ui/messages/sw-pf-copy.ts'));
+  for(const locale of ['de','en','es','es-419','fr','it','pt-BR','pt-PT','vi','tr','zh','zh-TW','ja','ko','ar','th','hi']) {
+    assert.deepEqual(Object.keys(swPfCopy(locale)),['项目管理员','项目成员','项目查看者']);
+    assert.ok(Object.values(swPfCopy(locale)).every(value=>value.trim()));
+  }
 });
 
 test("project invite actions accept and decline with pending and retryable error states", async () => {

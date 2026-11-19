@@ -2,14 +2,18 @@
 
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../i18n/ui/useUI";
-import { MemberPanel } from "./MemberPanel";
+import { MenuSelect } from "../menu-select";
+import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
 import {
   projectAccessClient,
   ProjectAccessError,
   type ProjectAccess,
   type ProjectAccessClient,
   type ProjectMembers,
+  type ProjectAccessRole,
 } from "./project-access-client";
+
+const managesProject = (access: ProjectAccess) => access.state === "owner" || (access.state === "member" && access.role === "admin");
 
 export interface ProjectAccessPanelProps {
   projectId: string;
@@ -17,7 +21,7 @@ export interface ProjectAccessPanelProps {
   onAccessChange?: (access: ProjectAccess) => void;
 }
 
-/** The same member body as Task Share, deliberately without public access. */
+/** Project management roles are independent of task collaboration access. */
 export function ProjectAccessPanel({ projectId, client = projectAccessClient, onAccessChange }: ProjectAccessPanelProps) {
   const tt = useUI();
   const [state, setState] = useState<{ access: ProjectAccess; members: ProjectMembers } | null>(null);
@@ -34,8 +38,8 @@ export function ProjectAccessPanel({ projectId, client = projectAccessClient, on
         const access = await client.getAccess(projectId, controller.signal);
         if (controller.signal.aborted) return;
         onAccessRef.current?.(access);
-        // Only owners manage/invite; accepted collaborators cannot invite.
-        if (access.state !== "owner") { setState({ access, members: { owner: { name: "", initial: "?" }, members: [] } }); return; }
+        // Members keep work access; owner/admin manage membership.
+        if (!managesProject(access)) { setState({ access, members: { owner: { name: "", initial: "?" }, members: [] } }); return; }
         const members = await client.getMembers(projectId, controller.signal);
         if (!controller.signal.aborted) setState({ access, members });
       } catch {
@@ -50,17 +54,64 @@ export function ProjectAccessPanel({ projectId, client = projectAccessClient, on
     <button type="button" className="mt-2 underline" onClick={() => setVersion(value => value + 1)}>{tt("重试")}</button>
   </div>;
   if (!state) return <div role="status" aria-busy="true" className="p-4"><span className="v-spinner" aria-hidden="true" /><span className="sr-only">{tt("分享")}</span></div>;
-  if (state.access.state !== "owner") return <p className="p-4 text-sm text-[var(--muted)]">{tt("仅查看")}</p>;
-  return <div data-project-access-panel>
-    <MemberPanel
-      owner={state.members.owner}
-      members={state.members.members}
-      canManage
-      onInvite={(email, role) => client.invite(projectId, email, role)}
-      onChangeRole={(id, role) => client.changeRole(projectId, id, role)}
-      onRemove={id => client.remove(projectId, id)}
-    />
-  </div>;
+  if (!managesProject(state.access)) return <p className="p-4 text-sm text-[var(--muted)]">{tt("仅查看")}</p>;
+  return <ProjectMemberControls key={`${projectId}:${version}`} projectId={projectId} members={state.members} client={client} onSaved={() => setVersion(value => value + 1)} />;
+}
+
+function ProjectMemberControls({ projectId, members, client, onSaved }: {
+  projectId: string; members: ProjectMembers; client: ProjectAccessClient; onSaved: () => void;
+}) {
+  const tt = useUI();
+  const [contact, setContact] = useState("");
+  const [role, setRole] = useState<ProjectAccessRole>("collaborate");
+  const [saving, setSaving] = useState(false);
+  const busy = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const roleLabel = (value: ProjectAccessRole) => tt(value === "admin" ? "项目管理员" : value === "collaborate" ? "项目成员" : "项目查看者");
+  const options = (["admin", "collaborate", "view"] as const).map(value => ({ value, label: roleLabel(value) }));
+  const mutate = async (action: () => Promise<unknown>) => {
+    if (busy.current) return;
+    busy.current = true; setSaving(true); setFailed(false);
+    try { await action(); onSaved(); }
+    catch { setFailed(true); }
+    finally { busy.current = false; setSaving(false); }
+  };
+  return <section data-project-access-panel className="min-w-0 p-4" aria-busy={saving}>
+    <form className="mb-3 flex flex-wrap gap-2" onSubmit={(event) => {
+      event.preventDefault();
+      if (contact.trim()) void mutate(() => client.invite(projectId, contact.trim(), role));
+    }}>
+      <input value={contact} onChange={(event) => setContact(event.target.value)} disabled={saving} required
+        aria-label={tt(copy.email)} placeholder={tt(copy.email)} type="email"
+        className="min-h-10 min-w-0 flex-1 rounded-lg border border-neutral-200/80 bg-transparent px-3 text-sm" />
+      <MenuSelect name="project-invite-role" ariaLabel={tt("权限")} value={role} options={options} disabled={saving}
+        onChange={(value) => setRole(value as ProjectAccessRole)} />
+      <button type="submit" disabled={saving || !contact.trim()} className="min-h-10 rounded-lg bg-[var(--fg)] px-4 text-sm text-[var(--bg)] disabled:opacity-50">{tt(copy.invite)}</button>
+    </form>
+    {failed && <p role="alert" className="mb-2 text-sm text-rose-600">{tt(copy.saveFailed)}</p>}
+    <ul className="space-y-2">
+      <li data-member-owner className="flex min-w-0 items-center gap-3">
+        <span className="min-w-0 flex-1 truncate">{members.owner.name}</span><span className="text-xs text-[var(--muted)]">{tt(copy.owner)}</span>
+      </li>
+      {members.members.filter(member => member.role !== "owner").map(member => {
+        const name = member.name || member.email || tt(copy.sender);
+        return <li key={member.id} data-member-id={member.id} className="flex min-w-0 flex-wrap items-center gap-2">
+          {member.avatar_url ? <img src={member.avatar_url} alt="" className="h-8 w-8 rounded-full object-cover" />
+            : <span aria-hidden="true" className="grid size-8 shrink-0 place-items-center rounded-full bg-neutral-100 text-sm">{member.initial || "?"}</span>}
+          <span className="min-w-0 flex-1"><span className="block truncate text-sm">{name}</span>
+            {member.username && <span className="block truncate text-xs text-[var(--muted)]">@{member.username}</span>}
+            {member.status === "invited" && <span className="block text-xs text-[var(--muted)]">{tt(copy.invited)}</span>}
+          </span>
+          <MenuSelect name={`project-role-${member.id}`} ariaLabel={tt(copy.memberRole, { name })}
+            value={member.role} options={options} disabled={saving}
+            onChange={(value) => void mutate(() => client.changeRole(projectId, member.id, value as ProjectAccessRole))} />
+          <button type="button" disabled={saving} aria-label={tt(copy.removeMember, { name })}
+            className="min-h-10 rounded-lg px-2 text-sm text-[var(--muted)] disabled:opacity-50"
+            onClick={() => void mutate(() => client.remove(projectId, member.id))}>{tt(copy.remove)}</button>
+        </li>;
+      })}
+    </ul>
+  </section>;
 }
 
 export interface ProjectInvitationActionsProps {
@@ -188,7 +239,7 @@ export function ProjectAccessBoundary({
   if (access.state !== "invited") return <p className="p-4 text-[var(--fg)]">{tt("无法打开项目")}</p>;
   return <section data-project-invitation className="mx-auto w-full max-w-md space-y-4 p-6 text-[var(--fg)]">
     <h1 className="text-lg font-semibold">{access.project.name}</h1>
-    <p className="text-sm text-[var(--muted)]">{tt(access.invite_role === "collaborate" ? "协作权限" : "仅查看")}</p>
+    <p className="text-sm text-[var(--muted)]">{tt(access.invite_role === "admin" ? "项目管理员" : access.invite_role === "collaborate" ? "项目成员" : "项目查看者")}</p>
     <ProjectInvitationActions
       projectId={projectId} signedIn={signedIn} onSignIn={onSignIn} client={client}
       onAccepted={() => { callbacks.current.onMembershipChange?.(); setVersion(value => value + 1); }}
