@@ -38,7 +38,7 @@ const sharedPath=(path)=>resolve(process.env.S3A_SHARED_REPAIR_DIR||".",path);
 const authStubs = {
   "./plugin-command/use-library-edit": dataModule(`export function useLibraryEditReadOnly(){return false;}export function useLibraryEditReload(){return 0;}export function useLibraryEditorBinding(item){return {phase:'idle',item,reload:0};}export function useLibraryEditState(item){return [null,{phase:'idle',item,reload:0}];}export function LibraryEditStatus(){return null;}`),
   "../lib/auth/client": dataModule('export async function accessToken(){return "test";}'),
-  "../lib/auth/config": dataModule('export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid";'),
+  "../lib/auth/config": dataModule('export function isLeoDevPreviewHost(){return false;} export const GATEWAY_BASE="https://gateway.invalid",SUPABASE_URL="https://database.invalid";'),
   "./user-edit-session": realModule("src/shell/user-edit-session.ts"),
 };
 const hookUrl = await compileModule(sharedPath("src/shell/use-advanced-autosave.ts"), authStubs);

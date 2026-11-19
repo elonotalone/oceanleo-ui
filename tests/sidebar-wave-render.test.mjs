@@ -17,7 +17,8 @@ virtualConsole.on('jsdomError', error => { if (error.type !== 'css parsing') thr
 const dom = new JSDOM("<!doctype html><html><body></body></html>", { pretendToBeVisual: true, url: "https://example.test/library", virtualConsole });
 for (const name of ["window", "document", "navigator", "HTMLElement", "Element", "Node", "Event", "MouseEvent"]) Object.defineProperty(globalThis, name, { configurable: true, writable: true, value: dom.window[name] || dom.window });
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-const ui = dataModule(`export function useUI(){return (value, vars) => String(value).replace(/\\{(\\w+)\\}/g, (_, k) => vars?.[k] ?? k);}`);
+dom.window.scrollTo = () => {};
+const ui = dataModule(`const translate=(value, vars) => String(value).replace(/\\{(\\w+)\\}/g, (_, k) => vars?.[k] ?? k);export function useUI(){return translate;}`);
 const view = await compileModule("src/shell/workspace-library-view.tsx", {
   "../i18n/ui/useUI": ui,
   "./collection-items": dataModule(`export function CollectionItemCard(){return null;} export function CollectionItemRow(){return null;}`),
@@ -60,7 +61,7 @@ const client = dataModule(`
 const myLibraryUrl = await compileModule('src/shell/MyLibrary.tsx', {
  '../i18n/ui/useUI': ui,
  '../lib/auth/client': auth,
- '../lib/auth/config': dataModule(`export const GATEWAY_BASE=''; export function gatewayBase(){return '';}`),
+ '../lib/auth/config': dataModule(`export function isLeoDevPreviewHost(){return false;} export const GATEWAY_BASE=''; export function gatewayBase(){return '';}`),
  './artifact-client': client,
  '../lib/database': dataModule(`export function humanLibraryUploadError(v){return v;} export async function normalizeUploadIdempotencyKey(){return '';} export async function uploadFile(){return {ok:false};} export async function getStorageUsage(){return {ok:false};} export async function changeStoragePacks(){throw new Error('unexpected storage purchase');}`),
  './library-standalone-editor-host': dataModule(`export function MaterialStandaloneEditor(){return null;}`),
@@ -145,3 +146,6 @@ test('real Library cards retain opening and have no project-add menu', async () 
   assert.deepEqual(errors,[], 'no console.error, including hook errors');
  }
 });
+
+// Register after all top-level async compilation has finished and tests are queued.
+test.after(() => dom.window.close());

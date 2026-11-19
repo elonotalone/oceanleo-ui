@@ -4,7 +4,7 @@ import "./helpers/w1-jsdom-window.mjs";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 
 const auth = dataModule('export async function accessToken(){return globalThis.__w8ExportToken;}');
-const config = dataModule('export const GATEWAY_BASE="https://unused.invalid"; export function gatewayBase(){return globalThis.__w8ExportGateway;}');
+const config = dataModule('export function isLeoDevPreviewHost(){return false;} export const GATEWAY_BASE="https://unused.invalid"; export function gatewayBase(){return globalThis.__w8ExportGateway;}');
 const runtime = await compileModule("src/api/website-runtime.ts", { "../lib/auth/client": auth, "../lib/auth/config": config });
 const filenames = await compileModule("src/shell/template-download.ts", { "../lib/auth/client": auth, "../lib/auth/config": config });
 const { websiteExportsApi, websiteDatabaseExportConnection, saveWebsiteExport, WebsiteExportError } = await import(await compileModule("src/api/website-exports.ts", {
