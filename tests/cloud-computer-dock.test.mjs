@@ -620,3 +620,38 @@ test("C7-U5: after an account switch, the previous account's availability never 
     assert.match(view.host.querySelector("[data-oceanleo-cc-dock-trigger]").getAttribute("title"), /允许云端助手的时间已到/);
   } finally { view.cleanup(); }
 });
+
+test("bound computer chip loads its display name before opening the menu and uses a computer icon", async () => {
+  let reads = 0;
+  const client = {...makeClient([]), async getComputer(id) { reads++; return pc({id, name:"Personal laptop"}); }};
+  const view = await render(undefined, client, {boundTarget:{kind:"computer", id:"cc_hidden", name:"cc_hidden"}});
+  try {
+    assert.equal(reads,1);
+    const trigger = view.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+    assert.match(trigger.textContent,/Personal laptop/);
+    assert.doesNotMatch(trigger.textContent,/cc_hidden/);
+    assert.ok(trigger.querySelector("svg rect"),"computer glyph, including a hosted computer");
+  } finally { view.cleanup(); }
+});
+
+test("unknown bound computer shows a neutral computer label instead of a raw binding id", async () => {
+  const client = {...makeClient([]), async getComputer() { throw new Error("offline"); }};
+  const view = await render(undefined, client, {boundTarget:{kind:"computer",id:"cc_hidden",name:"cc_hidden"}});
+  try {
+    const trigger = view.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+    assert.match(trigger.textContent,/电脑/);
+    assert.doesNotMatch(trigger.textContent,/cc_hidden/);
+  } finally { view.cleanup(); }
+});
+
+test("native conversation chip resolves the bound computer name without exposing its id", async () => {
+  const client = {...makeClient([]), async getComputer(id) { return pc({id,name:"My workstation"}); }};
+  const view = await render(undefined,client,{boundTarget:{kind:"computer",id:"cc_hidden",name:"cc_hidden"},
+    conversation:{kind:"native",computerId:"cc_hidden",computerName:"cc_hidden",program:"claude",view:"chat"}});
+  try {
+    const trigger=view.host.querySelector("[data-oceanleo-cc-dock-trigger]");
+    assert.match(trigger.textContent,/My workstation/);
+    assert.doesNotMatch(trigger.textContent,/cc_hidden/);
+    assert.ok(trigger.querySelector("svg rect"));
+  } finally {view.cleanup();}
+});

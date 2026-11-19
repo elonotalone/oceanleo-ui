@@ -11,7 +11,7 @@ import { listCloudAgentAvailability, type CloudAgentAvailabilityResult } from ".
 import { getUserId } from "../../lib/auth/client";
 import { portalHref } from "../../contracts/domain-family";
 import { useUI } from "../../i18n/ui/useUI";
-import { EXECUTION_TARGET_EVENT, computerRunMode, readExecutionTarget, withRunMode, writeExecutionTarget, type CloudAgentAvailability, type ExecutionTarget } from "../../lib/execution-target";
+import { EXECUTION_TARGET_EVENT, executionTargetDisplayName, computerRunMode, readExecutionTarget, withRunMode, writeExecutionTarget, type CloudAgentAvailability, type ExecutionTarget } from "../../lib/execution-target";
 import { CLOUD_AGENT_COPY, LOCAL_AGENT_COPY, formatClock } from "../../lib/local-agent-task";
 import { AnchoredPopover } from "../anchored-popover";
 import { computerDisplayState, isConnectedComputer } from "./computer-state";
@@ -137,6 +137,16 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   // No memory of its own: a native / terminal label exists only while the host says so.
   const current: ConversationTarget | null = conversation ?? (oceanTarget ? { kind: "oceanleo", target: oceanTarget } : null);
   const selectedDeviceId = !bound && target.kind === "device" ? target.id : "";
+  const boundComputerId = boundTarget?.kind === "computer" ? boundTarget.id : "";
+  const [boundComputer, setBoundComputer] = useState<Computer | null>(null);
+  useEffect(() => {
+    if (!boundComputerId || !client.getComputer) return;
+    let alive = true;
+    void client.getComputer(boundComputerId).then((computer) => {
+      if (alive) setBoundComputer(computer);
+    }).catch(() => { /* Keep the reported binding name while the network is unavailable. */ });
+    return () => { alive = false; };
+  }, [boundComputerId, client]);
   // A draft shows the account's last 「电脑 · 程序」 pick instead of 云端 (C-3, 2026-10-31).
   // Only computer + program are restored, never a session; the host decides what a pick does.
   const pickedRef = useRef(false);
@@ -447,8 +457,11 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
   // Trigger: the conversation shown now.
   const native = current && current.kind !== "oceanleo" ? current : null;
   const shown = native
-    ? [native.computerName, native.kind === "terminal" ? tt("终端") : PROGRAM_LABEL[native.program], native.kind === "native" && native.view === "cli" ? tt("命令行") : null].filter(Boolean).join(" · ")
-    : oceanTarget ? (oceanTarget.kind === "cloud" ? tt("云端") : oceanTarget.name) : tt("正在加载…");
+    ? [executionTargetDisplayName({kind: "computer", id: native.computerId, name: native.computerName},
+      supplied?.find((row) => row.id === native.computerId)?.name || (boundComputer?.id === native.computerId ? boundComputer.name : null), tt("电脑")), native.kind === "terminal" ? tt("终端") : PROGRAM_LABEL[native.program], native.kind === "native" && native.view === "cli" ? tt("命令行") : null].filter(Boolean).join(" · ")
+    : oceanTarget ? (oceanTarget.kind === "cloud" ? tt("云端") : executionTargetDisplayName(oceanTarget,
+      oceanTarget.kind === "computer" ? (supplied?.find((row) => row.id === oceanTarget.id)?.name || (boundComputer?.id === oceanTarget.id ? boundComputer.name : null))
+        : devices.find((row) => row.device_id === oceanTarget.id)?.device_name, tt("电脑"))) : tt("正在加载…");
   const triggerNote = native ? "" : [selectedLocalOff ? localOffLabel : selectedModeLabel, scopeLabel].filter(Boolean).join(" · ");
   const triggerTitle = native ? tt("切换对话")
     : bound ? `${scopeLabel ? `${scopeLabel} · ` : ""}${tt(CLOUD_AGENT_COPY.scopeNewTask)}`
@@ -515,7 +528,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
       aria-label={native ? `${tt("切换对话")} · ${shown}` : triggerNote ? `${tt("任务执行位置")} · ${triggerNote}` : tt("任务执行位置")} aria-haspopup="dialog" aria-expanded={open} data-oceanleo-cc-dock-trigger
       data-task-bound-target={bound && !native ? "" : undefined} title={triggerTitle}
       className={`flex h-7 ${triggerNote || native ? "max-w-[280px]" : "max-w-[180px]"} items-center gap-1.5 rounded-lg px-2 text-[12px] text-neutral-600 hover:bg-neutral-100`}>
-      <TargetGlyph cloud={!native && oceanTarget?.kind !== "device"} /><span className="truncate">{shown}</span>
+      <TargetGlyph cloud={!native && oceanTarget?.kind === "cloud"} /><span className="truncate">{shown}</span>
       {selectedLocalOff && <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" data-local-exec-off>{localOffLabel}</span>}
       {!native && scopeLabel && <span className="min-w-0 max-w-[140px] truncate" title={scopeLabel} data-task-gui-scope>{scopeLabel}</span>}
       {!selectedLocalOff && selectedModeLabel && !native && <span data-cloud-agent={selectedMode ?? undefined}

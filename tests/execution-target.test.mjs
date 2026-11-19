@@ -103,13 +103,13 @@ test("cloud-device scope is explicit and strict, and remembered drafts never inh
 test("loaded task binding preserves actual scope independently of new-draft defaults", () => {
   for (const gui of [false, true]) {
     assert.deepEqual(target.taskExecutionTarget({plan: {execution_target: {kind: "device", id: "pc", driver: "cloud", gui}}}),
-      {kind: "device", id: "pc", name: "pc", driver: "cloud", gui});
+      {kind: "device", id: "pc", name: "", driver: "cloud", gui});
   }
   const legacy = target.taskExecutionTarget({plan: {execution_target: {kind: "device", id: "pc", driver: "cloud"}}});
   assert.equal(legacy.gui, undefined, "unknown legacy scope is never called file-only");
   assert.equal(target.taskExecutionTarget({plan: {execution_target: {kind: "device", id: "pc", driver: "cloud", gui: "false"}}}), null);
   assert.deepEqual(target.taskExecutionTarget({computer_id: "desktop:old-pc", plan: {local_run: {driver: "cloud"}}}),
-    {kind: "device", id: "old-pc", name: "old-pc", driver: "cloud"});
+    {kind: "device", id: "old-pc", name: "", driver: "cloud"});
 });
 
 test("bound target renders actual immutable scope and never exposes the draft selector", async () => {
@@ -137,4 +137,12 @@ test("bound target renders actual immutable scope and never exposes the draft se
   assert.doesNotMatch(loading, /仅文件/);
   const legacy = renderToStaticMarkup(React.createElement(ComputerDock, {boundTarget: {kind: "device", id: "pc", name: "PC", driver: "cloud"}}));
   assert.doesNotMatch(legacy, /仅文件|允许截图/);
+});
+
+test("a computer binding never uses its raw id as a display name", () => {
+  const binding = target.taskExecutionTarget({computer_id: "cc_123"});
+  assert.equal(binding.name, "");
+  assert.equal(target.executionTargetDisplayName(binding, null, "Computer"), "Computer");
+  assert.equal(target.executionTargetDisplayName({...binding, name: "cc_123"}, null, "Computer"), "Computer");
+  assert.equal(target.executionTargetDisplayName(binding, "My laptop", "Computer"), "My laptop");
 });

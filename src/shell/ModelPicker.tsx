@@ -187,7 +187,8 @@ function ModelGroupPickerBody({
         className={className}
         groups={groups}
         activeKey={activeKey}
-        summary={loading ? "…" : active?.name || "Pro"}
+        summary={payload ? active?.name || tt("模型") : tt("模型")}
+        loading={loading && !payload}
         busy={!payload || Boolean(saving)}
         error={error ? tt(error) : !payload && !loading ? tt("登录后可切换并使用自定义模型组合。") : ""}
         apiHref={apiHref}
@@ -227,7 +228,7 @@ function ModelGroupPickerBody({
         </svg>
         <span className="shrink-0 text-neutral-500">{tt("模型组合")}</span>
         <span className="truncate text-neutral-900">
-          {loading ? "…" : active?.name || "Pro"}
+          {payload ? active?.name || tt("模型") : loading ? <span data-model-label-skeleton="" aria-label={tt("模型")} className="inline-block h-3 w-12 rounded bg-neutral-200" /> : tt("模型")}
         </span>
         <span
           className={`shrink-0 text-neutral-400 transition-transform duration-[var(--leo-dur-3)] ease-[var(--leo-ease-standard)] ${
@@ -405,11 +406,12 @@ export function leoSettingRows({ groups, activeKey, busy, fast, onActivate, onFa
   ];
 }
 
-function LeoComposerSettings({ className, groups, activeKey, summary, busy, error, apiHref, computerId, onActivate }: {
+function LeoComposerSettings({ className, groups, activeKey, summary, loading, busy, error, apiHref, computerId, onActivate }: {
   className: string;
   groups: ModelGroup[];
   activeKey: string;
   summary: string;
+  loading: boolean;
   busy: boolean;
   error: string;
   apiHref: string;
@@ -431,6 +433,7 @@ function LeoComposerSettings({ className, groups, activeKey, summary, busy, erro
     <ComposerSettingsMenu
       className={className}
       summary={summary}
+      loading={loading}
       rows={rows}
       ariaLabel={tt("全站模型组合")}
       rootAttrs={{ "data-leo-settings": "" }}

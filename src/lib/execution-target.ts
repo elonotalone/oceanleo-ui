@@ -183,12 +183,18 @@ export function taskExecutionTarget(task: {mode?: unknown; plan?: unknown; compu
   const planned = record(plan.execution_target);
   if (planned.kind === "cloud") return {kind: "cloud"};
   if (planned.kind === "device" || planned.kind === "computer") {
-    return normalizeExecutionTarget({...planned, name: typeof planned.name === "string" ? planned.name : planned.id});
+    return normalizeExecutionTarget({...planned, name: typeof planned.name === "string" ? planned.name : ""});
   }
   const id = task.computer_id || "";
   if (id.startsWith("desktop:")) {
-    return normalizeExecutionTarget({kind: "device", id: id.slice(8), name: id.slice(8),
+    return normalizeExecutionTarget({kind: "device", id: id.slice(8), name: "",
       ...(record(plan.local_run).driver === "cloud" ? {driver: "cloud"} : {})});
   }
-  return id ? normalizeExecutionTarget({kind: "computer", id, name: id}) : {kind: "cloud"};
+  return id ? normalizeExecutionTarget({kind: "computer", id, name: ""}) : {kind: "cloud"};
+}
+
+/** A binding id identifies the computer; only a reported name labels it. */
+export function executionTargetDisplayName(target: Exclude<ExecutionTarget, {kind: "cloud"}>, reportedName: string | null | undefined, unknownLabel: string): string {
+  const name = (reportedName || target.name).trim();
+  return name && name !== target.id && !/^cc_[A-Za-z0-9_-]+$/.test(name) ? name : unknownLabel;
 }

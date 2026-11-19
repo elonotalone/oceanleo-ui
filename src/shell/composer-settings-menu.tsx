@@ -217,9 +217,9 @@ export function ComposerSettingsMenu({
   if (loading) {
     return (
       <div className={className} {...rootAttrs} data-composer-settings="" data-composer-settings-loading="">
-        <button type="button" disabled className={`${SETTINGS_TRIGGER} ${TRIGGER_IDLE}`} {...triggerAttrs}>
+        <button type="button" disabled aria-busy="true" aria-label={ariaLabel} className={`${SETTINGS_TRIGGER} ${TRIGGER_IDLE}`} {...triggerAttrs}>
           <SettingsGlyph />
-          <span className="max-w-[140px] truncate">{loadingLabel}</span>
+          <span className="max-w-[140px] truncate">{loadingLabel || <span data-model-label-skeleton="" className="inline-block h-3 w-12 rounded bg-neutral-200" />}</span>
         </button>
       </div>
     );

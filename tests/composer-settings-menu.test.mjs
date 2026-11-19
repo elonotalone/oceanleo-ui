@@ -251,3 +251,13 @@ test("Leo fast mode rides on owner send paths while shared follow-ups keep task 
   const follow = src.slice(start, src.indexOf("export const followupTask"));
   assert.match(follow, /options\?\.preserveTaskSettings \? \{\} : leoRunRequestFields\(\)/);
 });
+
+test("loading model pill shows a neutral skeleton without an ellipsis or invented selection", async () => {
+  const view = await mount(React.createElement(ComposerSettingsMenu, {summary:"", rows:[], ariaLabel:"模型", loading:true}));
+  try {
+    const trigger = view.q("[data-composer-settings] > button");
+    assert.ok(trigger.querySelector("[data-model-label-skeleton]"));
+    assert.equal(trigger.getAttribute("aria-busy"),"true");
+    assert.doesNotMatch(trigger.textContent,/…|Pro/);
+  } finally { await view.unmount(); }
+});
