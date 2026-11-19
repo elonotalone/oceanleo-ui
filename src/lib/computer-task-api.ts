@@ -14,12 +14,14 @@ export type ComputerTaskSession = {
 };
 export type CreateComputerTaskSessionInput = Pick<ComputerTaskSession, "kind"> & {
   program?: ComputerTaskSession["program"]; task_id?: string; native_session_id?: string;
-  title?: string; request_id: string; project_id?: string;
+  title?: string; initial_input?: string; request_id: string; project_id?: string;
 };
 type Options = { signal?: AbortSignal };
 export async function createComputerTaskSession(computerId: string, input: CreateComputerTaskSessionInput, options: Options = {}) {
+  const pending = pendingForMessage(input.request_id);
+  const body = { ...input, ...(pending?.text ? { initial_input: pending.text } : {}) };
   const result = await reliableRequest(`create:${computerId}`, input.request_id,
-    (signal) => cloudComputerRequest<{task_id: string; session: ComputerTaskSession}>(`/v1/computers/${encodeURIComponent(computerId)}/task-sessions`, {method:"POST", body:JSON.stringify(input), signal}),
+    (signal) => cloudComputerRequest<{task_id: string; session: ComputerTaskSession}>(`/v1/computers/${encodeURIComponent(computerId)}/task-sessions`, {method:"POST", body:JSON.stringify(body), signal}),
     { timeoutMs: ACP_CREATE_DEADLINE_MS, signal: options.signal });
   const entry = pendingForMessage(input.request_id);
   if (entry) settlePending(entry.id, { taskId: result.task_id, session: result.session });

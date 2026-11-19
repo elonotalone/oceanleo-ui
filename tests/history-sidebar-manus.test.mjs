@@ -63,8 +63,9 @@ function session(id, title, extra = {}) {
   };
 }
 
-globalThis.__manusSessions = [session("s-long", LONG_TITLE), session("s-short", "Greeting")];
+globalThis.__manusSessions = [session("s-long", LONG_TITLE), session("s-short", "Greeting"), session("draft", "Unsent home draft")];
 globalThis.__manusTasks = [
+  ...["s-long", "s-short"].map((session_id) => ({id:`bound-${session_id}`,session_id,title:"bound",mode:"agent",status:"done"})),
   { id: "t-cost", title: "云端任务", status: "done", mode: "agent", site_id: "oceanleo", created_at: "2026-10-19T00:00:00Z", nano_spent: 5 },
 ];
 
@@ -144,6 +145,7 @@ test("行只有一行任务名：无时间、无 home-agent 来源、无花费",
   try {
     const text = view.container.textContent;
     assert.match(text, /Greeting/);
+    assert.doesNotMatch(text, /Unsent home draft/);
     assert.doesNotMatch(text, /\d{2}\/\d{2}/, "no 10/31 16:24 style time line");
     assert.doesNotMatch(text, /home-agent/);
     assert.doesNotMatch(text, /1\.23|¥|\$/);

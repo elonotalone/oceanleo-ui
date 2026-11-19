@@ -393,6 +393,8 @@ export interface AgentTask {
   last_activity_at?: string | null;
   /** 列表附带：用户最近一次发言，用于对话活动协调。 */
   last_user_message_at?: string | null;
+  /** Latest composer input, including unsent typing (migration 0592). */
+  last_input_at?: string | null;
 }
 
 /**

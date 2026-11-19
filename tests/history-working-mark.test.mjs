@@ -194,11 +194,12 @@ test("C-7: 只有在干活的行显示工作中动效；完成/失败/停止都�
   }
 });
 
-test("working rows stay above pinned idle rows in the rendered sidebar", async () => {
+test("rendered sidebar follows input/activity order without working or pin priority", async () => {
   const previousSessions = globalThis.__workingSessions;
   const previousTasks = globalThis.__workingTasks;
   globalThis.__workingSessions = [session("pinned-idle", "置顶旧任务", { pinned: true, last_activity_at: "2026-11-04T12:00:00Z" })];
   globalThis.__workingTasks = [
+    task("bound-pinned", "bound", {session_id:"pinned-idle",last_input_at:"2026-11-04T12:00:00Z"}),
     task("working", "执行中", { mode: "computer", open_turn: true, working: true, last_activity_at: "2026-11-04T11:00:00Z" }),
     task("pinned-working", "置顶执行中", { mode: "computer", open_turn: true, working: true, pinned: true, last_activity_at: "2026-11-04T10:00:00Z" }),
     task("newest-idle", "刚结束", { last_activity_at: "2026-11-04T13:00:00Z" }),
@@ -212,7 +213,7 @@ test("working rows stay above pinned idle rows in the rendered sidebar", async (
     await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "working-pin-priority" })); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     assert.deepEqual([...container.querySelectorAll("[data-history-row]")].map((node) => node.getAttribute("data-history-row")),
-      ["pinned-working", "newest-working", "working", "pinned-idle", "newest-idle"]);
+      ["pinned-idle", "newest-idle", "newest-working", "working", "pinned-working"]);
   } finally {
     await act(async () => { root.unmount(); });
     container.remove();
@@ -250,7 +251,7 @@ test("explicit failed state has no stuck marker and preserves the true hover tim
     });
     assert.equal(row(container, "failed-session").querySelector("[data-history-stuck]"), null);
     assert.deepEqual(workingIds(container), ["actually-working"]);
-    assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "actually-working");
+    assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "failed-session");
     const frame = row(container, "failed-session").closest("[data-history-row-frame]");
     await act(async () => frame.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
@@ -271,7 +272,7 @@ test("explicit failed state has no stuck marker and preserves the true hover tim
   }
 });
 
-test("a failed session read cannot keep an unbound cached session working now", async () => {
+test("an unbound session without a created task stays absent on successful and failed reads", async () => {
   const previousSessions = globalThis.__workingSessions;
   const previousTasks = globalThis.__workingTasks;
   globalThis.__workingSessions = [session("unbound-working", "独立会话", { activity_state: "working" })];
@@ -283,13 +284,13 @@ test("a failed session read cannot keep an unbound cached session working now", 
   try {
     await act(async () => { root.render(React.createElement(HistoryInlineList, { siteId: "unbound-session-state" })); });
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
-    assert.deepEqual(workingIds(container), ["unbound-working"]);
+    assert.deepEqual(workingIds(container), []);
     globalThis.__workingSessionError = "session state unavailable";
     await act(async () => {
       window.dispatchEvent(new window.Event("oceanleo:history-changed"));
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
-    assert.ok(row(container, "unbound-working"));
+    assert.equal(row(container, "unbound-working"), null);
     assert.deepEqual(workingIds(container), []);
     assert.doesNotMatch(container.textContent, /session state unavailable/);
   } finally {
@@ -323,7 +324,7 @@ test("finishing shows confirmation instead of now, preserves time and can resume
     assert.equal(row(container, "finishing-session").querySelector("[data-history-finishing]")?.textContent, "正在确认结束");
     assert.equal(row(container, "still-failed").querySelector("[data-history-stuck]"), null);
     assert.deepEqual(workingIds(container), ["active-work"]);
-    assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "active-work");
+    assert.equal(container.querySelector("[data-history-row]")?.getAttribute("data-history-row"), "finishing-session");
     const frame = row(container, "finishing-session").closest("[data-history-row-frame]");
     await act(async () => frame.dispatchEvent(new window.MouseEvent("mouseover", { bubbles: true, relatedTarget: document.body })));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });

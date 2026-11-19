@@ -162,7 +162,7 @@ test("session 与未迁移旧 task 按同一活动时间轴排序", () => {
   );
 });
 
-test("session API 可用时绝不把已绑定 task 误装成可删除旧记录", () => {
+test("input-backed task stays visible before its session reaches the list without enabling task-only deletion", () => {
   const entries = mergeHistoryEntries([], [
     {
       id: "bound-run-outside-session-page",
@@ -176,8 +176,9 @@ test("session API 可用时绝不把已绑定 task 误装成可删除旧记录",
       mode: "agent",
     },
   ]);
-  assert.deepEqual(entries.map((entry) => entry.id), ["real-legacy-task"]);
-  assert.equal(canDeleteHistoryEntry(entries[0]), true);
+  assert.equal(entries.length, 2);
+  assert.equal(canDeleteHistoryEntry(entries.find((entry) => entry.id === "bound-run-outside-session-page")), false);
+  assert.equal(canDeleteHistoryEntry(entries.find((entry) => entry.id === "real-legacy-task")), true);
 });
 
 test("旧后端可回放 session-bound task；聚合 session 使用独立永久删除", () => {

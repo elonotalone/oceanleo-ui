@@ -276,3 +276,29 @@ test("unchanged polls queue no list updates: an idle sidebar does not retain eve
     await panel.unmount();
   }
 });
+
+
+test("unsent typing raises an idle task immediately and survives stale lists and agent output", async () => {
+  const rows = before().map((row) => ({...row, last_input_at: row.updated_at}));
+  globalThis.__tasksRead = async () => ({ok:true, data:{items:rows}});
+  const panel = await mount();
+  try {
+    await settle(10);
+    assert.equal(panel.order().at(-1), "task-x");
+    await act(async () => window.dispatchEvent(new CustomEvent("oceanleo:history-activity", {
+      detail:{taskId:"task-x", user:true, at:"2026-11-19T10:00:00Z"},
+    })));
+    assert.equal(panel.order()[0], "task-x");
+    assert.equal(panel.working("task-x"), false);
+    // A response created before the activity write must not undo local input.
+    await act(async () => window.dispatchEvent(new Event(HISTORY_CHANGED_EVENT)));
+    await settle(10);
+    assert.equal(panel.order()[0], "task-x");
+    await act(async () => window.dispatchEvent(new CustomEvent("oceanleo:history-activity", {
+      detail:{taskId:"task-a", at:"2026-11-19T11:00:00Z"},
+    })));
+    assert.equal(panel.order()[0], "task-x");
+  } finally {
+    await panel.unmount();
+  }
+});

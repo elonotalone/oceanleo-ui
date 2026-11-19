@@ -18,7 +18,8 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { listTasks, deleteTask, type AgentTask } from "../lib/agent";
 import { historyActionFailureText, historyInitialRetryDelayMs, readHistoryListSource } from "../lib/history-list-api";
-import { historySharedByName, isTaskWorking } from "./history-model";
+import { bumpHistoryEntries, compareHistoryEntries, historySharedByName, isTaskWorking } from "./history-model";
+import { HISTORY_ACTIVITY_EVENT, type HistoryActivityDetail } from "../lib/history-events";
 import { ConfirmDialog } from "../ui";
 import { useUI, type UITranslate } from "../i18n/ui/useUI";
 import { AppPageHeader, APP_PAGE_FRAME_CLASS } from "./AppPageHeader";
@@ -106,7 +107,11 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
       setError(null);
       setLoading(false);
       // 旧后端可能忽略项目范围；普通历史仍须在 UI 侧 fail closed。
-      setItems(r.data.items.filter((task) => task.project_id == null));
+      setItems((previous) => r.data!.items.filter((task) => task.project_id == null).map((task) => {
+        const local = previous.find((item) => item.id === task.id)?.last_input_at;
+        return local && (!task.last_input_at || Date.parse(local) > Date.parse(task.last_input_at))
+          ? { ...task, last_input_at: local } : task;
+      }));
     };
     void refresh();
     window.addEventListener("focus", refresh);
@@ -119,6 +124,18 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
       window.removeEventListener("online", refresh);
     };
   }, [siteId]);
+
+  useEffect(() => {
+    const activity = (event: Event) => {
+      const detail = (event as CustomEvent<HistoryActivityDetail>).detail;
+      if (!detail?.taskId || !detail.at) return;
+      setItems((previous) => bumpHistoryEntries(previous.map((task) => ({ kind: "task" as const, id: task.id, task })), detail)
+        .map((entry) => entry.kind === "task" ? { ...entry.task, ...(entry.activity_at ? { last_activity_at: entry.activity_at } : {}), ...(entry.input_at ? { last_input_at: entry.input_at } : {}) } : null)
+        .filter((task): task is AgentTask => task !== null));
+    };
+    window.addEventListener(HISTORY_ACTIVITY_EVENT, activity);
+    return () => window.removeEventListener(HISTORY_ACTIVITY_EVENT, activity);
+  }, []);
 
   async function confirmDelete() {
     const task = pendingDelete;
@@ -139,8 +156,10 @@ export function HistoryPage({ accent = "#4f46e5", title, siteId, onOpen }: Histo
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return items;
-    return items.filter((task) =>
+    const ordered = [...items].sort((a, b) => compareHistoryEntries(
+      { kind: "task", id: a.id, task: a }, { kind: "task", id: b.id, task: b }));
+    if (!needle) return ordered;
+    return ordered.filter((task) =>
       `${task.title || ""} ${task.site_id || ""} ${task.mode || ""}`
         .toLowerCase()
         .includes(needle),

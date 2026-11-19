@@ -114,7 +114,8 @@ const historyUrl = await compileModule("src/shell/HistoryMasterDetail.tsx", {
   "../lib/agent": dataModule(`
     export async function listTasks(...args){
       if (globalThis.__historyTasksRead) return globalThis.__historyTasksRead(...args);
-      return { ok: true, data: { items: globalThis.__legacyItems || [] } };
+      if (globalThis.__historyGate.release) await globalThis.__historyGate.release;
+      return { ok: true, data: { items: [...(globalThis.__legacyItems || []), ...(globalThis.__historyItems || []).map((session) => ({id:'bound-'+session.id,session_id:session.id,title:session.title,mode:'agent',status:'done',created_at:session.created_at,updated_at:session.updated_at}))] } };
     }
     export async function deleteTask(){ return { ok: true }; }
     export async function getTask(){ globalThis.__cloudDetailCalls = (globalThis.__cloudDetailCalls || 0) + 1; return { ok: false, status: 404 }; }
@@ -335,6 +336,9 @@ test("卸载重挂直接沿用上次列表，不回到「加载…」", async ()
 });
 
 test("one stalled native task list cannot hide sessions that already loaded", async () => {
+  const seeded = await mount("partial-stall");
+  await settle(20);
+  await seeded.unmount();
   let signal;
   globalThis.__historyTasksRead = (...args) => {
     signal = args[5]?.signal;
@@ -361,7 +365,7 @@ test("partial failure retains cached sessions, shows available task rows without
     globalThis.__historyTasksRead = async () => ({ ok: true, data: { items: [{
       id: "partial-task", title: "仍能读取的电脑任务", status: "completed", mode: "computer",
       session_id: "session-not-returned", created_at: "2026-11-03T00:00:00Z",
-    }] } });
+    }, ...globalThis.__historyItems.map((session) => ({id:'bound-'+session.id,session_id:session.id,title:session.title,mode:'agent',status:'done'}))] } });
     await act(async () => { window.dispatchEvent(new window.Event(HISTORY_CHANGED_EVENT)); });
     await settle(30);
     assert.match(panel.text(), /第一条任务/);

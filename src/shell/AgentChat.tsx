@@ -1634,6 +1634,8 @@ function AgentChatInner({
       if (taskId) showSession(null);
       return;
     }
+    // Home choices are drafts. A task is persisted only with the first input.
+    if (!taskId && next.kind !== "terminal") { setDraftConversation(next); return; }
     if (conversationBusy) return;
     const requestTask = taskId;
     setConversationBusy(true);
@@ -2161,6 +2163,7 @@ function AgentChatInner({
         const initialProjectId = retry?.projectId ?? pendingShown?.projectId ?? projectId;
         const result = await createComputerTaskSession(retry?.computerId || acpComputerId!, {
           kind: "acp", program: (retry?.program || acpProgram!) as ComputerTaskSession["program"], request_id: clientMessageId,
+          initial_input: text,
           ...(initialProjectId ? { project_id: initialProjectId } : {}),
         });
         created = { taskId: result.task_id, session: result.session };

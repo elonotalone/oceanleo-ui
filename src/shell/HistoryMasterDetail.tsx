@@ -302,6 +302,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
     if (isHistoryEntryWorking(x) !== isHistoryEntryWorking(y)) return false;
     if ((x.activity_state ?? null) !== (y.activity_state ?? null)) return false;
     if (
+      (x.input_at ?? null) !== (y.input_at ?? null) ||
       (x.activity_at ?? null) !== (y.activity_at ?? null) ||
       (x.user_activity_at ?? null) !== (y.user_activity_at ?? null)
     ) {
@@ -333,6 +334,7 @@ function sameHistory(a: HistoryListEntry[], b: HistoryListEntry[]): boolean {
       if (
         x.task.status !== y.task.status ||
         (x.task.computer_run_status ?? null) !== (y.task.computer_run_status ?? null) ||
+        (x.task.last_input_at ?? null) !== (y.task.last_input_at ?? null) ||
         (x.task.last_activity_at ?? null) !== (y.task.last_activity_at ?? null) ||
         x.task.title !== y.task.title ||
         (x.task.created_by ?? null) !== (y.task.created_by ?? null) ||
@@ -398,7 +400,7 @@ function historyCacheKey(siteId?: string, pending = false): string {
   return `${siteId || ""}|${pending ? "pending" : "all"}`;
 }
 
-function useHistory(siteId?: string, pending = false, authMsg?: string) {
+export function useMyTasksHistory(siteId?: string, pending = false, authMsg?: string) {
   const tt = useUI();
   const authMessage = authMsg ?? tt("登录后即可查看我的任务。");
   const cacheKey = historyCacheKey(siteId, pending);
@@ -503,7 +505,9 @@ function useHistory(siteId?: string, pending = false, authMsg?: string) {
       for (const task of tasks) {
         if (task.session_id) historyTaskSession.set(task.id, task.session_id);
       }
-      const next = mergeHistoryEntries(sessions, tasks, {
+      const createdSessions = sessions.filter((session) => tasks.some((task) =>
+        task.session_id === session.id || task.id === session.task_id));
+      const next = mergeHistoryEntries(createdSessions, tasks, {
         sessionApiUnavailable: unavailable,
         sessionApiFailed: sessionsResult?.ok !== true,
         localActivity: liveLocalActivity(),
@@ -885,7 +889,7 @@ function useHoverPrefetch() {
 // ----------------------------------------------------------------------------
 export function HistorySubNav({ siteId, accent = "#0ea5e9" }: { siteId?: string; accent?: string }) {
   const tt = useUI();
-  const { items, loading, error, notice, remove, mutate } = useHistory(siteId);
+  const { items, loading, error, notice, remove, mutate } = useMyTasksHistory(siteId);
   const local = useLocalTasks(true);
   const cloudTaskIds = new Set(items.filter((entry) => entry.kind === "task").map((entry) => entry.id));
   // Once a finished local record is synced, keep the ordinary task's title,

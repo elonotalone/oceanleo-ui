@@ -7,6 +7,8 @@ type HistoryEntryTimes = {
   shared_by?: AgentTask["shared_by"];
   /** Latest conversation activity the row stands for; the list sorts by it. */
   activity_at?: string;
+  /** Composer input (sent or draft), independent of agent output. */
+  input_at?: string;
   /** Latest user message, retained for activity reconciliation. */
   user_activity_at?: string;
 };
@@ -206,23 +208,15 @@ function newestFirst(a?: string | null, b?: string | null): number {
   return bTime - aTime;
 }
 
-/**
- * 「我的任务」的顺序（2026-10-31）：在干活的行永远在最上面，其余按最近活动时间倒序。
- * - 活动时间：task.last_activity_at（网关的对话活动）‖ created_at；元数据更新时间不算。
- *   session 取自身 last_activity_at 与它挂着的 task 的活动时间中较新的；本页刚看到的
- *   活动（`localActivity`）只会把行往上提。
- * - 同一工作状态内置顶优先，其余按真实最后活动倒序，包含 agent 自主回合。
- * - 置顶的闲置任务不能越过正在工作的任务。
- */
+/** Latest composer input wins; recent activity breaks ties. */
 export function compareHistoryEntries(a: HistoryListEntry, b: HistoryListEntry): number {
-  const aWorking = isHistoryEntryWorking(a);
-  const bWorking = isHistoryEntryWorking(b);
-  if (aWorking !== bWorking) return aWorking ? -1 : 1;
-  const aPinned = a.kind === "session" ? Boolean(a.session.pinned) : Boolean(a.task.pinned);
-  const bPinned = b.kind === "session" ? Boolean(b.session.pinned) : Boolean(b.task.pinned);
-  if (aPinned !== bPinned) return aPinned ? -1 : 1;
-  const byTime = newestFirst(historyEntryTimestamp(a), historyEntryTimestamp(b));
-  if (byTime) return byTime;
+  const inputTime = (entry: HistoryListEntry) => entry.input_at ||
+    (entry.kind === "task" ? entry.task.last_input_at || entry.task.updated_at || entry.task.created_at : entry.session.updated_at || entry.session.created_at) ||
+    historyEntryTimestamp(entry);
+  const byInput = newestFirst(inputTime(a), inputTime(b));
+  if (byInput) return byInput;
+  const byActivity = newestFirst(historyEntryTimestamp(a), historyEntryTimestamp(b));
+  if (byActivity) return byActivity;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
 
@@ -252,6 +246,7 @@ export function mergeHistoryEntries(
     return {
       activity_at: latestTime(task.last_activity_at, seen?.at),
       user_activity_at: latestTime(task.last_user_message_at, seen?.userAt),
+      input_at: latestTime(task.last_input_at, seen?.userAt),
     };
   };
   const taskConversation = new Map<string, HistoryEntryTimes>();
@@ -273,6 +268,7 @@ export function mergeHistoryEntries(
       boundConversation.set(task.session_id, {
         activity_at: latestTime(prev?.activity_at, own.activity_at),
         user_activity_at: latestTime(prev?.user_activity_at, own.user_activity_at),
+        input_at: latestTime(prev?.input_at, own.input_at),
       });
     }
   }
@@ -283,6 +279,7 @@ export function mergeHistoryEntries(
       local?.get(task.id)?.at,
     ),
     user_activity_at: taskConversation.get(task.id)?.user_activity_at,
+    input_at: taskConversation.get(task.id)?.input_at,
   });
   const sessionTimes = (session: AppSession): HistoryEntryTimes => {
     const bound = boundConversation.get(session.id);
@@ -297,13 +294,13 @@ export function mergeHistoryEntries(
         seen?.at,
       ),
       user_activity_at: latestTime(bound?.user_activity_at, linked?.user_activity_at, seen?.userAt),
+      input_at: latestTime(bound?.input_at, linked?.input_at, seen?.userAt),
     };
   };
   const legacyTasks = tasks
     .filter((task) => !isShellTask(task))
     .filter((task) => options.sessionApiUnavailable || !task.session_id ||
-      (Boolean(task.shared_by) && !sessions.some((session) => session.id === task.session_id || session.task_id === task.id)) ||
-      (options.sessionApiFailed && !sessions.some((session) => session.id === task.session_id)));
+      !sessions.some((session) => session.id === task.session_id || session.task_id === task.id));
   // A session row is opened from /tasks/<task id>; the list API does not compute
   // `task_id`, so link each session to its latest task here (2026-11-02: the
   // sidebar never showed the open task as selected).
@@ -368,6 +365,7 @@ export function mergeHistoryEntries(
 function definedTimes(times: HistoryEntryTimes): HistoryEntryTimes {
   return {
     ...(times.activity_at ? { activity_at: times.activity_at } : {}),
+    ...(times.input_at ? { input_at: times.input_at } : {}),
     ...(times.user_activity_at ? { user_activity_at: times.user_activity_at } : {}),
   };
 }
@@ -393,9 +391,10 @@ export function bumpHistoryEntries(
     const user_activity_at = activity.user
       ? latestTime(entry.user_activity_at, activity.at)
       : entry.user_activity_at;
-    if (activity_at === entry.activity_at && user_activity_at === entry.user_activity_at) return entry;
+    const input_at = activity.user ? latestTime(entry.input_at, activity.at) : entry.input_at;
+    if (activity_at === entry.activity_at && user_activity_at === entry.user_activity_at && input_at === entry.input_at) return entry;
     changed = true;
-    return { ...entry, ...definedTimes({ activity_at, user_activity_at }) };
+    return { ...entry, ...definedTimes({ activity_at, user_activity_at, input_at }) };
   });
   return changed ? next.sort(compareHistoryEntries) : entries;
 }

@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useComposerInputActivity } from "./use-composer-input-activity";
 import { type LeoContext } from "./LeoAssistant";
 import { LeoEntryButton } from "./LeoEntryButton";
 import {
@@ -454,6 +455,7 @@ export function LeoComposer({
   // 选择 / 拖拽 / 粘贴 / 手机拍照——四条来路进同一个 `emit`（W08 P3+P4）。
   // 它顺带做两件本组件自己做不到的事：图片压缩，以及从进度总线上把「业务正在传
   // 我刚交出去的那几个文件」的真读数捞回来（本组件按契约不负责上传）。
+  const onInputChange = useComposerInputActivity(leoContext?.taskId, value, onChange);
   const draft = useComposerDraft({ draftKey, value, onChange, attachments, onAddAttachments, onRemoveAttachment, onAttachFiles });
   const intake = useAttachmentIntake(onAttachFiles ? draft.attachFiles : undefined, {
     deliverAsReady: true,
@@ -682,7 +684,7 @@ export function LeoComposer({
       <TemplateFillArea
         ref={highlightRef}
         value={value}
-        onChange={onChange}
+        onChange={onInputChange}
         template={effectiveHighlightTemplate}
         fillNonce={effectiveFillNonce}
         restoreEpoch={runtimeHydration?.snapshotRestoreEpoch}
@@ -804,7 +806,7 @@ export function LeoComposer({
           {showAppsBar && (
             <ComposerAppsBar
               host={appsHost}
-              onInsertText={(text) => onChange(value ? `${value}\n${text}` : text)}
+              onInsertText={(text) => onInputChange(value ? `${value}\n${text}` : text)}
             />
           )}
         </div>

@@ -39,27 +39,14 @@ const session = (id, fields = {}) => ({
   ...fields,
 });
 
-test("我的任务：工作中的永远在最上面，其余按最近活动倒序（不是创建时间）", () => {
-  const entries = mergeHistoryEntries(
-    [session("s-recent", { last_activity_at: "2026-10-31T09:00:00Z" })],
-    [
-      // Old task, still streaming: its frames moved last_activity_at, not updated_at.
-      task("old-running", { status: "running", open_turn: true, working: true, last_activity_at: "2026-10-31T08:00:00Z" }),
-      task("native-running", { open_turn: true, working: true, computer_run_status: "running", last_activity_at: "2026-10-30T00:00:00Z" }),
-      task("newest-created", { created_at: "2026-10-30T12:00:00Z", updated_at: "2026-10-30T12:00:00Z", last_activity_at: "2026-10-30T12:00:00Z" }),
-      task("resumed", { last_activity_at: "2026-10-31T10:00:00+00:00" }),
-      // Metadata updates are not conversation activity, including on old gateways.
-      task("legacy", { updated_at: "2026-10-31T09:30:00Z" }),
-    ],
-  );
-  assert.deepEqual(
-    entries.map((entry) => entry.id),
-    ["old-running", "native-running", "resumed", "s-recent", "newest-created", "legacy"],
-  );
-  assert.equal(entries[0].working, true);
-  assert.equal(entries[2].activity_at, "2026-10-31T10:00:00+00:00");
-  // The hover time follows the order: last activity, not creation.
-  assert.equal(historyEntryTimestamp(entries[2]), "2026-10-31T10:00:00+00:00");
+test("latest input wins over agent activity, working status and pins", () => {
+  const entries = mergeHistoryEntries([], [
+    task("streaming", { working: true, pinned: true, last_input_at: "2026-11-18T09:00:00Z", last_activity_at: "2026-11-19T12:00:00Z" }),
+    task("typed", { last_input_at: "2026-11-19T10:00:00Z", last_activity_at: "2026-11-18T12:00:00Z" }),
+    task("fallback", { updated_at: "2026-11-19T09:00:00Z" }),
+  ]);
+  assert.deepEqual(entries.map((entry) => entry.id), ["typed", "fallback", "streaming"]);
+  assert.equal(historyEntryTimestamp(entries[0]), "2026-11-18T12:00:00Z");
 });
 
 test("工作组内按真实最后活动排，自主回合和输出也会改变顺序", () => {
@@ -110,18 +97,19 @@ test("本页刚看到的活动只把行往上提，刷新后仍保留（localAct
   assert.deepEqual(refreshed.map((entry) => entry.id), ["quiet", "newer"]);
 });
 
-test("confirmed work stays ahead of pinned idle rows, with pins preferred inside each group", () => {
-  const entries = mergeHistoryEntries(
-    [session("pinned-idle", { pinned: true, last_activity_at: "2026-11-04T12:00:00Z" })],
-    [
-      task("working", { open_turn: true, working: true, last_activity_at: "2026-11-04T11:00:00Z" }),
-      task("pinned-working", { open_turn: true, working: true, pinned: true, last_activity_at: "2026-11-04T10:00:00Z" }),
-      task("newest-idle", { last_activity_at: "2026-11-04T13:00:00Z" }),
-      task("newest-working", { open_turn: true, working: true, last_activity_at: "2026-11-04T11:05:00Z" }),
-    ],
-  );
-  assert.deepEqual(entries.map((entry) => entry.id),
-    ["pinned-working", "newest-working", "working", "pinned-idle", "newest-idle"]);
+test("typing raises an idle row immediately and agent output cannot overtake it", () => {
+  const entries = mergeHistoryEntries([], [
+    task("streaming", { working: true, last_input_at: "2026-11-19T10:00:00Z" }),
+    task("draft", { last_input_at: "2026-11-18T10:00:00Z" }),
+  ]);
+  const typed = bumpHistoryEntries(entries, { taskId: "draft", user: true, at: "2026-11-19T11:00:00Z" });
+  assert.deepEqual(typed.map((entry) => entry.id), ["draft", "streaming"]);
+  const streamed = bumpHistoryEntries(typed, { taskId: "streaming", at: "2026-11-19T12:00:00Z" });
+  assert.deepEqual(streamed.map((entry) => entry.id), ["draft", "streaming"]);
+  const refreshed = mergeHistoryEntries([], [task("streaming"), task("draft")], {
+    localActivity: new Map([["draft", { userAt: "2026-11-19T11:00:00Z", at: "2026-11-19T11:00:00Z" }]]),
+  });
+  assert.equal(refreshed[0].id, "draft");
 });
 
 test("侧栏接线：活动事件就地重排、比较含活动时间、聊天流派发真实活动", () => {

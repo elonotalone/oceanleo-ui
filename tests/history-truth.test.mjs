@@ -51,13 +51,13 @@ test("only confirmed execution is working; waiting and failed are never now", ()
   assert.equal(isTaskWorking({ status: "completed", mode: "computer", working: true }), true);
 });
 
-test("working rows use true last activity, including autonomous turns", () => {
+test("equal input clocks use activity without working-state priority", () => {
   const entries = mergeHistoryEntries([], [
     task("latest-output", { open_turn: true, working: true, last_activity_at: "2026-11-04T08:00:00Z", last_user_message_at: "2026-11-01T08:00:00Z" }),
     task("latest-user", { open_turn: true, working: true, last_activity_at: "2026-11-04T07:00:00Z", last_user_message_at: "2026-11-04T07:00:00Z" }),
     task("finished", { last_activity_at: "2026-11-04T09:00:00Z" }),
   ]);
-  assert.deepEqual(entries.map((entry) => entry.id), ["latest-output", "latest-user", "finished"]);
+  assert.deepEqual(entries.map((entry) => entry.id), ["finished", "latest-output", "latest-user"]);
 });
 
 test("hover says now only while working and otherwise uses exactly the recorded time", () => {
@@ -68,13 +68,13 @@ test("hover says now only while working and otherwise uses exactly the recorded 
   assert.equal(formatHistoryActivityTime(at, false, today, "en"), formatHistoryTime(at, today, "en"));
 });
 
-test("metadata updates never replace missing conversation activity", () => {
+test("without an input clock the list falls back to updated_at", () => {
   const entries = mergeHistoryEntries([], [
     task("renamed-old-task", { updated_at: "2026-11-04T08:00:00Z" }),
     task("recent-conversation", { last_activity_at: "2026-11-03T08:00:00Z" }),
   ]);
-  assert.deepEqual(entries.map((entry) => entry.id), ["recent-conversation", "renamed-old-task"]);
-  assert.equal(historyEntryTimestamp(entries[1]), "2026-10-01T00:00:00Z");
+  assert.deepEqual(entries.map((entry) => entry.id), ["renamed-old-task", "recent-conversation"]);
+  assert.equal(historyEntryTimestamp(entries[0]), "2026-10-01T00:00:00Z");
 });
 
 test("a failed session list keeps its task-backed conversations visible without enabling deletion", async () => {
@@ -130,8 +130,8 @@ test("finishing retains an open turn without working or moving its activity time
     task("finishing-task", { status: "running", open_turn: true, working: true, computer_run_status: "finishing", last_activity_at: at }),
     task("working-task", { working: true, activity_state: "working", last_activity_at: "2026-10-14T06:30:00Z" }),
   ]);
-  assert.deepEqual(entries.map((entry) => entry.id), ["working-task", "finishing-task"]);
-  const finishing = entries[1];
+  assert.deepEqual(entries.map((entry) => entry.id), ["finishing-task", "working-task"]);
+  const finishing = entries[0];
   assert.equal(finishing.activity_state, "finishing");
   assert.equal(finishing.working, undefined);
   assert.equal(finishing.task.open_turn, true);

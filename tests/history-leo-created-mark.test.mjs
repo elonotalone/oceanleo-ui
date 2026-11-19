@@ -95,6 +95,7 @@ globalThis.__leoCreatedSessions = [
   session("s-linked", "挂在会话上"),
 ];
 globalThis.__leoCreatedTasks = [
+  ...["s-leo", "s-plain", "s-empty"].map((id) => task(`bound-${id}`, "bound conversation", {session_id:id})),
   task("t-leo", "leo 的旧任务", { created_by: "leo" }),
   task("t-plain", "旧对话"),
   task("t-other", "别人建的", { created_by: "user" }),
