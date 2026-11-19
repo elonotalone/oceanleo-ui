@@ -372,24 +372,36 @@ test("W4 a denied Edit opens preview, and denied View shows a reason without exp
   } finally { await m.unmount(); }
 });
 
-test("W4 failed reference open explains missing data, retries, and closes once without replay", async () => {
-  const detail = { entry: commerceEntry(), actionContext: commerceContext() };
-  let calls = 0;
-  globalThis.__w4Resolve = async () => { calls += 1; if (calls === 1) throw Object.assign(new Error('internal-secret-receipt'), { status: 404 }); return detail; };
-  const request = { nonce: "ref-retry", ref: { kind: "platform", id: "p1" }, surface: "home", mode: "preview" };
-  const el = () => React.createElement(ResultCanvas, { tabs: [], active: "home", openEntry: request });
-  const m = await mount(el());
+test("W4 missing reference shows a sentence and closes without retrying or replay", async () => {
+  let calls=0;
+  globalThis.__w4Resolve=async()=>{calls++;throw Object.assign(new Error('internal-secret-receipt'),{status:404});};
+  const request={nonce:"ref-missing",ref:{kind:"platform",id:"p1"},surface:"home",mode:"preview"};
+  const el=()=>React.createElement(ResultCanvas,{tabs:[],active:"home",openEntry:request});
+  const m=await mount(el());
   try {
-    assert.match(m.container.textContent, /已下架或不存在/);
-    assert.doesNotMatch(m.container.textContent, /internal-secret-receipt/);
-    await act(async () => [...m.container.querySelectorAll('button')].find(b=>b.textContent === '重试').click());
-    assert.equal(calls, 2);
-    assert.equal(globalThis.__w4Detail.entry, detail.entry);
-    await act(async () => m.container.querySelector('[data-shared-back]').click());
-    await m.render(el());
-    assert.equal(m.container.querySelector('[data-shared-detail]'), null);
-    assert.equal(calls, 2);
-  } finally { await m.unmount(); delete globalThis.__w4Resolve; }
+    assert.match(m.container.textContent,/已下架或不存在/);
+    assert.doesNotMatch(m.container.textContent,/internal-secret-receipt/);
+    assert.equal([...m.container.querySelectorAll('button')].some(b=>b.textContent==='重试'),false);
+    await act(async()=>window.dispatchEvent(new window.Event('online')));assert.equal(calls,1);
+    await act(async()=>[...m.container.querySelectorAll('[data-workspace-entry-open] button')].find(b=>b.textContent==='返回').click());
+    await m.render(el());assert.equal(m.container.querySelector('[data-workspace-entry-open]'),null);assert.equal(calls,1);
+  } finally {await m.unmount();delete globalThis.__w4Resolve;}
+});
+
+test("W4 temporary reference failure stays loading, recovers online, then closes without replay", async () => {
+  const detail={entry:commerceEntry(),actionContext:commerceContext()};let calls=0;
+  globalThis.__w4Resolve=async()=>{calls++;if(calls===1)throw Object.assign(new Error('internal-secret-receipt'),{status:503});return detail;};
+  const request={nonce:"ref-recover",ref:{kind:"platform",id:"p1"},surface:"home",mode:"preview"};
+  const el=()=>React.createElement(ResultCanvas,{tabs:[],active:"home",openEntry:request});
+  const m=await mount(el());
+  try {
+    assert.ok(m.container.querySelector('[data-workspace-entry-open="loading"] [data-workspace-pane-loading]'));
+    assert.doesNotMatch(m.container.textContent,/internal-secret-receipt/);
+    await act(async()=>window.dispatchEvent(new window.Event('online')));assert.equal(calls,2);
+    assert.equal(globalThis.__w4Detail.entry,detail.entry);
+    await act(async()=>m.container.querySelector('[data-shared-back]').click());
+    await m.render(el());assert.equal(m.container.querySelector('[data-shared-detail]'),null);assert.equal(calls,2);
+  } finally {await m.unmount();delete globalThis.__w4Resolve;}
 });
 
 test("W4 dismissing a failed request restores the existing view without replay", async () => {

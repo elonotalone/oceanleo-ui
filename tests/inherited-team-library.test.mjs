@@ -41,7 +41,7 @@ async function render(element, run) {
   }
   const {createRoot}=await import("react-dom/client");
   const host=document.querySelector("main"),root=createRoot(host);
-  const settle=async()=>{for(let i=0;i<6;i++)await act(async()=>{});};
+  const settle=async()=>{for(let i=0;i<6;i++)await act(async()=>{await new Promise(resolve=>setImmediate(resolve));});};
   const v={ q:s=>host.querySelector(s),text:()=>host.textContent,
     async click(node){assert.ok(node);await act(async()=>node.click());await settle();},
     async rerender(next){await act(async()=>root.render(next));await settle();},
@@ -145,8 +145,8 @@ test("a failed canonical preview retries that preview without rereading the inhe
   await withFetch(()=>json(result("owner",[asset])),async calls=>{
     globalThis.__bdArtifact=async()=>++reads===1?{ok:false}:{ok:true,data:{title:"Retried content"}};
     await render(React.createElement(InheritedTeamLibrary,{ownerUserId:"owner"}),async v=>{
-      await v.click(v.q("li button"));assert.match(v.text(),/暂时无法预览/);
-      await v.click(v.q('[role="status"] button'));
+      await v.click(v.q("li button"));assert.ok(v.q('[data-auto-recovery="temporary"]'));
+      await act(async()=>window.dispatchEvent(new window.Event("online")));
       assert.equal(reads,2);assert.equal(calls.length,1);assert.equal(v.q("[data-reference-preview]").textContent,"Retried content");
     });
   });
@@ -160,13 +160,13 @@ test("locale changes translate list and preview errors without restarting either
         globalThis.__bdArtifact = async () => { previewReads++; return { ok: false }; };
         await render(React.createElement(InheritedTeamLibrary, { ownerUserId: "owner" }), async v => {
           if (preview) await v.click(v.q("li button"));
-          const before = v.q('[role="status"] p')?.textContent;
+          const before = v.q('[data-auto-recovery]')?.textContent;
           assert.ok(before, "a real read failure is visible");
           assert.equal(calls.length, 1);
           assert.equal(previewReads, preview ? 1 : 0);
           globalThis.__uf1Translate = text => `translated:${text}`;
           await v.rerender(React.createElement(InheritedTeamLibrary, { ownerUserId: "owner" }));
-          assert.equal(v.q('[role="status"] p')?.textContent, `translated:${before}`);
+          assert.equal(v.q('[data-auto-recovery]')?.textContent, `translated:${before}`);
           assert.equal(calls.length, 1, "changing locale does not reload the inherited list");
           assert.equal(previewReads, preview ? 1 : 0, "changing locale does not reopen the preview");
         });

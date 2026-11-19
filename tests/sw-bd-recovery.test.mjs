@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { bayRecoverySources, forbiddenRecoveryControls } from './helpers/bay-recovery-scan.mjs';
 import ts from 'typescript';
 import React, { act } from 'react';
 import './helpers/w1-jsdom-window.mjs';
@@ -16,25 +15,14 @@ const { BayRecovery } = await import(await compileModule('src/shell/bay/shell/Ba
 function host() { const el=document.createElement('div');document.body.append(el);return {el,root:createRoot(el)}; }
 const flush=async()=>{await act(async()=>{await Promise.resolve();await Promise.resolve();});};
 
-test('Bay controls scan rejects manual retry labels in every Bay TSX source', () => {
-  const walk=dir=>readdirSync(dir,{withFileTypes:true}).flatMap(entry=>entry.isDirectory()?walk(join(dir,entry.name)):[join(dir,entry.name)]);
-  const files=walk('src/shell/bay').filter(file=>/\.tsx?$/.test(file));
-  if(process.env.SW_BD_SCAN_PROBE) files.push('<deliberate-retry-fixture>');
-  const failures=[];
-  for(const file of files){
-    const text=file.startsWith('<')?'<button>{tt("重试")}</button>':readFileSync(file,'utf8');
-    const source=ts.createSourceFile(file,text,99,true,ts.ScriptKind.TSX);
-    const scan=node=>{
-      if(ts.isJsxElement(node)&&/^(button|a)$/.test(node.openingElement.tagName.getText(source))){
-        for(const child of node.children){
-          const labels=n=>{ if((ts.isStringLiteral(n)||ts.isJsxText(n))&&/^(重试|重新加载|再试一次|Retry|Reload|Try again)$/i.test(n.text.trim()))failures.push(file);ts.forEachChild(n,labels); };
-          labels(child);
-        }
-      }
-      ts.forEachChild(node,scan);
-    };scan(source);
-  }
-  assert.deepEqual(failures,[]);
+test('Bay and all ResultCanvas hosts reject manual read-recovery controls', () => {
+  const sources = bayRecoverySources();
+  assert.ok(sources.has('src/shell/ResultCanvas.tsx'));
+  assert.ok(sources.has('src/shell/workspace-panels/MyTasksWorkspacePanel.tsx'));
+  assert.ok(sources.has('src/shell/WorkspacePaneErrorBoundary.tsx'));
+  assert.ok(sources.has('src/shell/MyLibrary.tsx'));
+  if (process.env.SW_BD_SCAN_PROBE) sources.set('<deliberate-retry-fixture>', ts.createSourceFile('<deliberate-retry-fixture>', '<button>{tt("重试")}</button>', 99, true, ts.ScriptKind.TSX));
+  assert.deepEqual(forbiddenRecoveryControls(sources), []);
 });
 
 test('hook backs off, pauses hidden/offline, wakes once, and cleans up', async t=>{
@@ -204,16 +192,16 @@ test('BD copy has every key in all 17 neighbouring locales',async()=>{
   assert.equal(swBdCopy('en')['关注动态'],'Following');assert.equal(swBdCopy('zh')['关注动态'],'关注动态');
 });
 
-test('Following client uses the contracted feed/search/follow endpoints and encodes identifiers',async()=>{
+test('Following client uses the contracted feed/exact-person/follow endpoints and encodes identifiers',async()=>{
   globalThis.__bdApiCalls=[];
-  const http=dataModule(`const call=async(method,path,body)=>{globalThis.__bdApiCalls.push({method,path,body});return {people:[{user_id:'u/1',following:true}]};};export const bayGet=(p)=>call('GET',p);export const bayPost=(p,b)=>call('POST',p,b);export const bayDelete=(p)=>call('DELETE',p);`);
+  const http=dataModule(`const call=async(method,path,body)=>{globalThis.__bdApiCalls.push({method,path,body});return path.startsWith('/v1/im/users/')?{user_id:'u/1',following:true}:{items:[],next_cursor:null};};export const bayGet=(p)=>call('GET',p);export const bayPost=(p,b)=>call('POST',p,b);export const bayDelete=(p)=>call('DELETE',p);`);
   const api=await import(await compileModule('src/lib/bay/following.ts',{'./http':http}));
   await api.getBayFollowing('next cursor');
-  assert.equal((await api.getBayFollowPerson('u/1','mira')).following,true);
+  assert.equal((await api.getBayFollowPerson('u/1')).following,true);
   await api.setBayFollowing('u/1',true);await api.setBayFollowing('u/1',false);
-  const [feed,search,follow,unfollow]=globalThis.__bdApiCalls;
+  const [feed,exact,follow,unfollow]=globalThis.__bdApiCalls;
   assert.equal(feed.path,'/v1/bay/following?limit=20&cursor=next+cursor');
-  assert.equal(search.path,'/v1/im/users/search?q=mira&limit=20');
+  assert.equal(exact.path,'/v1/im/users/u%2F1');
   assert.deepEqual(follow,{method:'POST',path:'/v1/im/follows',body:{user_id:'u/1'}});
   assert.equal(unfollow.method,'DELETE');assert.equal(unfollow.path,'/v1/im/follows/u%2F1');
 });

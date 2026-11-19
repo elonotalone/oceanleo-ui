@@ -88,13 +88,17 @@ test("snapshot switch creates, copies and revokes only the snapshot; existing sh
   } finally {await view.close();}
 });
 
-test("a failed snapshot read disables creation and copying and exposes a labelled error", async () => {
+test("a failed snapshot read keeps loading and recovers automatically without publishing", async () => {
   const client = new TaskAccessMock();
-  const share = {...shareState(), async loadSnapshot(){throw Error("offline");}};
+  let reads=0;
+  const share = {...shareState(), async loadSnapshot(){reads++;throw Error("offline");}};
   const view = await mount(TaskSharePanel,{taskId:"t",taskUrl:"/tasks/t",access:client.access,share,client});
   try {
     await click(view.host.querySelector('[data-share-entry]')); await click(button("分享链接"));
-    assert.ok(document.querySelector('[role="alert"]'));
+    assert.ok(document.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+    assert.equal(button("重试"),undefined);
+    await act(async()=>window.dispatchEvent(new window.Event("online")));
+    assert.equal(reads,2);
     assert.equal(document.querySelector('[role="switch"]').disabled,true);
     assert.equal(button("复制链接").disabled,true);
     assert.equal(client.calls.length,0);

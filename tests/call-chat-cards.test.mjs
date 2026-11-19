@@ -444,7 +444,8 @@ test("录像卡片：非 https 地址不放进播放器；音频格式用 <audio
   const bad = await mountCard(sys({ kind: "call_recording_ready", call_id: "c", recording_id: "rec-2", format: "mp4" }));
   await bad.click("[data-recording-play]");
   assert.equal(bad.q("video"), null);
-  assert.match(bad.text(), /录像暂时无法播放，请稍后再试/);
+  assert.ok(bad.q('[data-auto-recovery="temporary"][aria-busy="true"]'));
+  assert.equal(bad.q("[data-recording-play]"), null);
   await bad.unmount();
 
   reset();

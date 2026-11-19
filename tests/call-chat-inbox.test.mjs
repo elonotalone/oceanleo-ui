@@ -599,7 +599,7 @@ test("D1 列表：空且还没加载（刚被实时层清空）→ 显示「正�
   await view.unmount();
 });
 
-test("D1 列表：正在加载也显示「正在加载…」；加载完是空的才写「还没有会话」；出错显示重试、不显示加载中", async () => {
+test("D1 列表：正在加载也显示「正在加载…」；加载完是空的才写「还没有会话」；出错保持加载并自动恢复", async () => {
   const loading = await mountInbox({ ...EMPTY, loading: true });
   assert.ok(loading.host.querySelector("[data-inbox-loading]"));
   assert.deepEqual(globalThis.__W08D1.loads, [], "已经在加载就不重复发请求");
@@ -613,8 +613,12 @@ test("D1 列表：正在加载也显示「正在加载…」；加载完是空�
 
   const failed = await mountInbox({ ...EMPTY, error: "load_failed" });
   assert.equal(failed.host.querySelector("[data-inbox-loading]"), null);
-  assert.match(failed.text(), /会话列表暂时打不开/);
+  assert.match(failed.text(), /正在加载/);
+  assert.ok(failed.host.querySelector('[data-auto-recovery="temporary"][aria-busy="true"]'));
+  assert.equal([...failed.host.querySelectorAll("button")].some(button => /^(重试|Retry)$/.test(button.textContent)), false);
   assert.deepEqual(globalThis.__W08D1.loads, ["all"], "挂载时照旧重试一次；空闲补拉不在出错时反复打");
+  await act(async () => window.dispatchEvent(new window.Event("online")));
+  assert.deepEqual(globalThis.__W08D1.loads, ["all", "all"], "恢复连接自动读取，无需按钮");
   await failed.unmount();
 });
 
