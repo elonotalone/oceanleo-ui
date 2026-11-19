@@ -23,23 +23,24 @@ const { AcpTranscript } = await import(await compileModule("src/acp/AcpTranscrip
   "next/link": dataModule(`export default function Link(p){return globalThis.React.createElement("a",p,p.children);}`),
 }));
 const author = { user_id: "viewer-id", name: "Alex", initial: "A" };
-const owner = { name: "River", initial: "R" };
+const owner = { user_id: "owner-id", name: "River", initial: "R" };
 const message = { id: 11, role: "user", kind: "text", content: "Continue this task", author };
-const markup = (props) => renderToStaticMarkup(React.createElement(AgentTranscriptBubble, { message, ...props }));
+const markup = (props) => renderToStaticMarkup(React.createElement(AgentTranscriptBubble, { message, viewerUserId: "owner-id", ...props }));
 const prompt = (id, displayAuthor) => ({ id, direction: "client", node_seq: null, received_at: "2026-11-16T10:00:00Z", author: displayAuthor,
   raw: JSON.stringify({jsonrpc:"2.0",id,method:"session/prompt",params:{sessionId:"s1",prompt:[{type:"text",text:"Continue"}]}}) });
 const labels = { gap: String, oversize: String, exit: String, stopReason: String, cancelled: "Stopped", permissionPrompt: "Confirm" };
 
-test("single-participant bubbles stay unlabelled; shared user messages show sending account name and initial", () => {
+test("bubbles show only other senders, independent of participant counts", () => {
   assert.doesNotMatch(markup({}), /data-message-author/);
   const shared = markup({ showAuthors: true });
   assert.match(shared, /data-message-author/);
   assert.match(shared, />A<.*>Alex</);
+  assert.doesNotMatch(markup({ showAuthors: true, viewerUserId: author.user_id }), /data-message-author/);
   assert.doesNotMatch(markup({ showAuthors: true, message: { ...message, role: "assistant" } }), /data-message-author/);
 });
 
-test("legacy shared user messages use owner identity, while known sender IDs without names do not impersonate owner", () => {
-  assert.match(markup({ showAuthors: true, ownerAuthor: owner, message: { ...message, author: undefined } }), /River/);
+test("messages without a sender have no label, and unknown senders never impersonate the owner", () => {
+  assert.doesNotMatch(markup({ showAuthors: true, ownerAuthor: owner, message: { ...message, author: undefined } }), /data-message-author/);
   const unnamed = markup({ showAuthors: true, ownerAuthor: owner, message: { ...message, author: {user_id:"other"} } });
   assert.match(unnamed, /参与者/);
   assert.doesNotMatch(unnamed, /River/);
@@ -52,7 +53,7 @@ test("ACP prompt rows retain authors through reducer and transcript view model",
   assert.deepEqual(view.turns[1].author, author);
   const users = viewBlocks(view, labels).filter(block => block.type === "bubble" && block.message.role === "user");
   assert.deepEqual(users.map(block => block.message.author), [owner, author]);
-  const html = renderToStaticMarkup(React.createElement(AcpTranscript, {rows, program:"claude",showAuthors:true,ownerAuthor:owner}));
+  const html = renderToStaticMarkup(React.createElement(AcpTranscript, {rows, program:"claude",showAuthors:true,viewerUserId:"third-id",ownerAuthor:owner}));
   assert.equal((html.match(/data-message-author=/g) || []).length, 2);
   assert.match(html, /River/);
   assert.match(html, /Alex/);
@@ -75,9 +76,9 @@ test("ACP memoized bubbles update when a task becomes shared and when author dis
   try {
     await act(async()=>root.render(React.createElement(AcpTranscript,{rows:[prompt(1,author)],program:"claude"})));
     assert.equal(host.querySelector("[data-message-author]"),null);
-    await act(async()=>root.render(React.createElement(AcpTranscript,{rows:[prompt(1,author)],program:"claude",showAuthors:true})));
+    await act(async()=>root.render(React.createElement(AcpTranscript,{rows:[prompt(1,author)],program:"claude",showAuthors:true,viewerUserId:"owner-id"})));
     assert.match(host.querySelector("[data-message-author]").textContent,/Alex/);
-    await act(async()=>root.render(React.createElement(AcpTranscript,{rows:[prompt(1,{...author,name:"Alexandra"})],program:"claude",showAuthors:true})));
+    await act(async()=>root.render(React.createElement(AcpTranscript,{rows:[prompt(1,{...author,name:"Alexandra"})],program:"claude",showAuthors:true,viewerUserId:"owner-id"})));
     assert.match(host.querySelector("[data-message-author]").textContent,/Alexandra/);
   } finally { await act(async()=>root.unmount()); host.remove(); }
 });
@@ -142,4 +143,12 @@ test("task rows display shared-by name and hide owner-only deletion",async()=>{
     assert.equal(host.querySelector("[data-task-shared-by]").textContent,"由 River 分享");
     assert.equal(host.querySelectorAll('button[aria-label="删除"]').length,1);
   }finally{await act(async()=>root.unmount());host.remove();}
+});
+
+test("an owner alone sees no own label; collaborator sees owner but not self; snapshot stays unlabelled", () => {
+  const ownerMessage = {...message, author:owner};
+  assert.doesNotMatch(markup({message:ownerMessage,showAuthors:true,viewerUserId:"owner-id"}), /data-message-author/);
+  assert.match(markup({message:ownerMessage,showAuthors:true,viewerUserId:"viewer-id"}), /River/);
+  assert.doesNotMatch(markup({showAuthors:true,viewerUserId:"viewer-id"}), /data-message-author/);
+  assert.doesNotMatch(markup({message:ownerMessage,viewerUserId:"viewer-id"}), /data-message-author/);
 });

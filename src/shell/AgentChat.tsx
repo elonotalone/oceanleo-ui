@@ -1,5 +1,7 @@
 "use client";
 
+import { getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
+
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
 import { TranscriptPane, TranscriptStream, StreamLatestButton, StreamWaitingLine, useMeasuredFooter, CLOUD_TRANSCRIPT_CAPABILITIES } from "./transcript/TranscriptStream";
 import { cloudTranscriptItems } from "./transcript/adapters";
@@ -815,14 +817,23 @@ function AgentChatInner({
   const readOnly = hostReadOnly || !accessRights.canSend;
   // A shared task has an explicit placeholder until its first access decision.
   const replaceComposer = Boolean(taskId && !accessRights.canSend);
-  const [knownParticipants, setKnownParticipants] = useState({ taskId: "", count: 1 });
+  const [viewerUserId, setViewerUserId] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    let revision = 0;
+    const refresh = () => {
+      const current = ++revision;
+      setViewerUserId(null);
+      void getUserId().then(id => { if (live && current === revision) setViewerUserId(id); })
+        .catch(() => { if (live && current === revision) setViewerUserId(null); });
+    };
+    refresh();
+    window.addEventListener(AUTH_STATE_EVENT, refresh);
+    return () => { live = false; window.removeEventListener(AUTH_STATE_EVENT, refresh); };
+  }, []);
   const [continuedCopy, setContinuedCopy] = useState({ taskId: "", unbound: false });
   const unboundCopy = canManageTask && continuedCopy.taskId === taskId && continuedCopy.unbound;
-  const showAuthors = (accessState.access?.participant_count ?? 1) > 1 ||
-    knownParticipants.taskId === taskId && knownParticipants.count > 1 ||
-    ["member", "invited", "public", "removed"].includes(accessState.access?.state ?? "") ||
-    (initialTask?.task.id === taskId && (initialTask.task.participant_count ?? 1) > 1);
-  const ownerAuthor = accessState.access?.owner;
+  const showAuthors = true;
   const acpPendingSends = useTaskPending(taskId, pendingId, acpPendingIds);
   // The route is enough to read our stored conversation. Start this before the
   // task-detail effect; a session or returned frame can identify a native task.
@@ -1034,7 +1045,6 @@ function AgentChatInner({
     if (data.task?.site_id) setTaskSiteId(data.task.site_id);
     // 后端首轮收尾生成的会话总结（task.title）——拿到就更新（顶栏「返回」右侧显示）。
     if (data.task?.title) setTaskTitle(data.task.title);
-    if (data.task?.participant_count) setKnownParticipants({taskId: id, count: data.task.participant_count});
     const plan = data.task?.plan as { continued_copy?: boolean; _fork_bound?: boolean } | null;
     const unbound = Boolean(data.task?.forked_from_task_id && plan?.continued_copy && !plan?._fork_bound);
     setContinuedCopy(current => current.taskId === id && current.unbound === unbound ? current : { taskId: id, unbound });
@@ -2704,7 +2714,6 @@ function AgentChatInner({
     acpRowIds: acpSharePane ? acpShare.rowIds : undefined,
     taskId,
     title: taskTitle,
-    taskUrl: taskId ? taskQuoteHref(taskId) : undefined,
     siteLabel: shareSiteLabel,
     assistantLabel: acpSharePane ? PROGRAM_LABEL[acpRowsProgram as keyof typeof PROGRAM_LABEL] || acpRowsProgram || undefined : undefined,
   });
@@ -2961,9 +2970,11 @@ function AgentChatInner({
     <div
       data-agent-chat-search
       role="search"
-      className="flex shrink-0 items-center gap-0.5"
+      className="flex min-w-0 items-center gap-0.5"
+      style={{ order: 1, flexBasis: "100%", flexWrap: "wrap" }}
     >
-      <span className="relative inline-flex items-center">
+      <span className="relative inline-flex items-center" style={{ display: "inline-grid", maxWidth: "100%", minWidth: 0 }}>
+        <span data-search-placeholder-size aria-hidden="true" className="invisible border py-1 pl-6 pr-1.5 text-[12px]" style={{ gridArea: "1 / 1", whiteSpace: "pre" }}>{tt("搜索对话")}</span>
         <IconSearch className="pointer-events-none absolute left-1.5 h-3.5 w-3.5 text-stone-400" />
         <input
           ref={searchInputRef}
@@ -2987,7 +2998,8 @@ function AgentChatInner({
           }}
           placeholder={tt("搜索对话")}
           aria-label={tt("搜索对话")}
-          className="w-32 min-w-0 rounded-lg border border-stone-200 bg-white py-1 pl-6 pr-1.5 text-[12px] text-stone-700 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-stone-400 focus:border-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300/70"
+          style={{ gridArea: "1 / 1", width: "100%", minWidth: 0 }}
+          className="min-w-0 rounded-lg border border-stone-200 bg-white py-1 pl-6 pr-1.5 text-[12px] text-stone-700 outline-none transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] placeholder:text-stone-400 focus:border-stone-400 focus-visible:ring-2 focus-visible:ring-stone-300/70"
         />
       </span>
       <span
@@ -3046,6 +3058,7 @@ function AgentChatInner({
   const headerNode = (
     <div
       data-agent-chat-header
+      style={searchOpen ? { flexWrap: "wrap" } : undefined}
       className="flex w-full min-w-0 flex-nowrap items-center gap-1 overflow-hidden"
     >
       {onBack && (
@@ -3072,8 +3085,7 @@ function AgentChatInner({
       {searchControl}
       {taskId && accessState.access && accessRights.canView && sharePaneShown && (
         <TaskSharePanel key={taskId} taskId={taskId} taskUrl={taskQuoteHref(taskId)}
-          access={{...accessState.access, can_manage: canManageTask}} share={share}
-          onParticipants={count => setKnownParticipants({taskId, count})} />
+          access={{...accessState.access, can_manage: canManageTask}} share={share} />
       )}
       {taskId && (
         <TaskActionsMenu
@@ -3276,7 +3288,7 @@ function AgentChatInner({
                 <AgentTranscriptBubble
                   message={messageForBubble(item)}
                   showAuthors={showAuthors}
-                  ownerAuthor={ownerAuthor}
+        viewerUserId={viewerUserId}
                   timeAbove={timeSeparators.get(item.index)}
                   streaming={running && item.index === lastAssistantIdx &&
                     item.index > lastUserIdx && item.message.meta?.done !== true &&
@@ -3425,7 +3437,7 @@ function AgentChatInner({
         items={acpStreamItems}
         taskId={taskId || undefined}
         showAuthors={showAuthors}
-        ownerAuthor={ownerAuthor}
+        viewerUserId={viewerUserId}
         onExpandRow={frames.expandRow}
         program={acpRowsProgram}
         view={acpView}

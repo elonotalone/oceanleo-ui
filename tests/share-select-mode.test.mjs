@@ -80,6 +80,8 @@ const clientStub = dataModule(`
     constructor(message, status) { super(message); this.status = status; }
   }
   globalThis.__shareCalls = [];
+  export async function getTaskShareLink(){return null;}
+  export async function revokeTaskShareLinks(id){globalThis.__revokedShare=id;}
   export async function createShareLink(input) {
     globalThis.__shareCalls.push(input);
     return { shareId: "abc123", url: "https://leoimage.oceanleo.com/share/abc123" };
@@ -474,7 +476,7 @@ test("一轮一排：turnCopyText 为 null 的回答没有操作；最后一段�
   streaming.unmount();
 });
 
-test("identity-bound task exports use the task URL and create no snapshot share", async () => {
+test("task exports use a snapshot URL even when a live task URL is supplied", async () => {
   globalThis.__shareCalls = [];
   globalThis.__clipboard = [];
   const url = "https://oceanleo.test/tasks/task-acp";
@@ -482,12 +484,29 @@ test("identity-bound task exports use the task URL and create no snapshot share"
   try {
     act(() => view.get().enter("all"));
     await act(async () => { await view.get().copyLink(); });
-    assert.equal(globalThis.__clipboard.at(-1), url);
-    assert.equal(globalThis.__shareCalls.length,0);
+    assert.equal(globalThis.__clipboard.at(-1), "https://leoimage.oceanleo.com/share/abc123");
+    assert.equal(globalThis.__shareCalls.length,1);
     await act(async () => { await view.get().generateImage(); });
-    assert.equal(globalThis.__shareCalls.length,0,"image QR uses the same task URL");
-    assert.equal(globalThis.__imageCalls.at(-1).link,url);
+    assert.equal(globalThis.__shareCalls.length,1,"image QR reuses the snapshot");
+    assert.equal(globalThis.__imageCalls.at(-1).link,"https://leoimage.oceanleo.com/share/abc123");
     await act(async () => { await view.get().generateDocument(); });
-    assert.equal(globalThis.__docxCalls.at(-2).linkText,url);
+    assert.equal(globalThis.__docxCalls.at(-2).linkText,"https://leoimage.oceanleo.com/share/abc123");
   } finally { view.unmount(); }
+});
+
+test("snapshot lifecycle loads without creating, enables selected messages and revokes before clearing", async () => {
+  globalThis.__shareCalls=[];
+  const view=mountShare({messages:acpMessages,acpRowIds,taskId:"task-acp"});
+  try {
+    await act(async()=>view.get().loadSnapshot());
+    assert.equal(globalThis.__shareCalls.length,0);
+    act(()=>view.get().enter("all"));
+    await act(async()=>view.get().setSnapshotEnabled(true));
+    assert.equal(view.get().snapshotLink.shareId,"abc123");
+    await act(async()=>view.get().setSnapshotEnabled(false));
+    assert.equal(globalThis.__revokedShare,"task-acp");
+    assert.equal(view.get().snapshotLink,null);
+    await act(async()=>view.get().setSnapshotEnabled(true));
+    assert.equal(globalThis.__shareCalls.length,2,"revoked cache must never return a dead link");
+  } finally {view.unmount();}
 });

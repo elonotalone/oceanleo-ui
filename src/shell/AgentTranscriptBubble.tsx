@@ -38,10 +38,9 @@ export function agentArtifactLabels(
 
 export interface AgentTranscriptBubbleProps {
   message: AgentMessage;
-  /** Show each sending account once this task has multiple participants. */
+  /** Show other senders on task messages; snapshot pages omit this. */
   showAuthors?: boolean;
-  /** Earlier messages without author metadata belong to the task owner. */
-  ownerAuthor?: MessageAuthor;
+  viewerUserId?: string | null;
   /** Optional render diagnostic; omitted by production callers. */
   onBlockRender?: (kind: "bubble" | "process", id: number) => void;
   /**
@@ -65,7 +64,7 @@ export interface AgentTranscriptBubbleProps {
   taskRunning?: boolean;
   /** 任务已停时，确认成功后发一条后续消息让 agent 接着做。 */
   onContinue?: () => void;
-  /** 选段模式：每条消息左侧长出圆形勾选框，整行可点。 */
+  /** Selection mode: only the message checkbox toggles selection. */
   selectMode?: boolean;
   selected?: boolean;
   onSelectToggle?: () => void;
@@ -134,14 +133,16 @@ export const AgentTranscriptBubble = memo(function AgentTranscriptBubble(props: 
 });
 
 /** Read only display fields; agent-to-agent sender metadata has its own existing label. */
-function messageAuthor(message: AgentMessage, owner?: MessageAuthor): MessageAuthor | null {
+function messageAuthor(message: AgentMessage, viewerUserId?: string | null): MessageAuthor | null {
   const metaSender = message.meta?.sender;
   if (metaSender && typeof metaSender === "object" && (metaSender as {kind?: unknown}).kind === "agent") return null;
   const candidate = message.author ?? message.sender ?? message.meta?.author ?? metaSender;
   const record = candidate && typeof candidate === "object" ? candidate as MessageAuthor : null;
-  const displayName = typeof record?.name === "string" ? record.name : message.sender_name || (!record && !message.sender_user_id ? owner?.name : "") || "";
+  const senderId = record?.user_id || message.sender_user_id;
+  if (!senderId || !viewerUserId || senderId === viewerUserId) return null;
+  const displayName = typeof record?.name === "string" ? record.name : message.sender_name || "";
   const name = displayName.includes("@") ? "" : displayName;
-  const initial = typeof record?.initial === "string" && record.initial ? record.initial : message.sender_initial || (name ? [...name.trim()][0] : !record && !message.sender_user_id ? owner?.initial : "") || "?";
+  const initial = typeof record?.initial === "string" && record.initial ? record.initial : message.sender_initial || (name ? [...name.trim()][0] : "") || "?";
   return { name, initial };
 }
 
@@ -155,7 +156,7 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
     streaming = false,
     turnCopyText,
   } = props;
-  const author = props.showAuthors && message.role === "user" ? messageAuthor(message, props.ownerAuthor) : null;
+  const author = props.showAuthors && message.role === "user" ? messageAuthor(message, props.viewerUserId) : null;
   const model = message.meta?.model;
   const modelLabel = message.role === "assistant" && ["text", "artifact"].includes(message.kind || "text") &&
     message.meta?.show_model !== false && model && typeof model === "object" &&
@@ -193,7 +194,6 @@ function renderTranscriptBubble(props: AgentTranscriptBubbleProps, tt: ReturnTyp
  ? "cursor-pointer rounded-xl px-1.5 py-1 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-50"
  : ""
  } ${selected ? "bg-stone-100/70" : ""}`}
-      onClick={selectMode ? onSelectToggle : undefined}
     >
       {selectMode && (
         <ShareCheckbox

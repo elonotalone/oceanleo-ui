@@ -75,6 +75,7 @@ const lazyStub = dataModule(
 // Stubs
 // ---------------------------------------------------------------------------
 
+const realAuthClientUrl = await compileModule("src/lib/auth/client.ts", {}, { missingPackageStub: lazyStub });
 const realAgentLibUrl = await compileModule("src/lib/agent.ts", {}, { missingPackageStub: lazyStub });
 const agentLibStub = dataModule(`
   export * from ${JSON.stringify(realAgentLibUrl)};
@@ -175,6 +176,7 @@ const OVERRIDES = {
     import { createMcpAppsHost as createHost } from ${JSON.stringify(mcpHostUrl)};
     export function createMcpAppsHost(options){return createHost({...options,transport:globalThis.__mcpTransport});}
   `),
+  "../lib/auth/client": dataModule(`export * from ${JSON.stringify(realAuthClientUrl)}; export async function getUserId(){return globalThis.__taskViewerId ?? "send-test-user";} export async function accessToken(){return "tok";} export function cachedAccessToken(){return "tok";} export const AUTH_STATE_EVENT="oceanleo:auth-state";`),
   "../i18n/ui/useUI": uiStub,
   "./SplitWorkspace": splitWorkspaceUrl,
   "next/navigation": dataModule(

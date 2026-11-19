@@ -7,6 +7,7 @@ import "./helpers/w1-jsdom-window.mjs";
 import { TaskAccessMock, ownerAccess } from "./helpers/task-access-mock.ts";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+window.scrollTo = () => {};
 for (const key of ["HTMLButtonElement", "HTMLInputElement", "KeyboardEvent", "CustomEvent", "Event"]) globalThis[key] = window[key];
 const clientUrl = await compileModule("src/shell/access/task-access-client.ts", {
   "../../lib/auth/client": dataModule("export async function accessToken(){return 't';}"),
@@ -34,51 +35,103 @@ async function mount(component, props) {
 async function click(node) { assert.ok(node, "button exists"); await act(async () => { node.click(); await new Promise(resolve => setTimeout(resolve, 0)); }); }
 const button = text => [...document.querySelectorAll("[data-access-popover] button")].find(node => node.textContent === text) ?? [...document.querySelectorAll("button:not([data-share-entry])")].find(node => node.textContent === text);
 const shareState = () => ({ active: false, selectable: [{ id: 1 }], selectedCount: 1, selectedIds: new Set([1]), allSelected: true, busy: null, notice: null,
-  enter() {}, exit() {}, toggleAll() {}, copyText() {}, generateImage() {}, generateDocument() {} });
+  enter() {}, exit() {}, toggleAll() {}, snapshotLink: null, async loadSnapshot() {}, async setSnapshotEnabled() {}, copyText() {}, generateImage() {}, generateDocument() {} });
 
-test("actions menu publishes only on Members and permissions, copies the task URL, and has a back page", async () => {
+test("two menu entries open separate pages without publishing the live task", async () => {
   const client = new TaskAccessMock();
   const copied = [];
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(value) { copied.push(value); } } });
   const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "https://oceanleo.test/tasks/t", access: client.access, share: shareState(), client });
   try {
     await click(view.host.querySelector("[data-share-entry]"));
-    assert.deepEqual([...document.querySelectorAll("[data-task-share-actions] > button")].map(node => node.textContent), ["成员与权限", "复制链接", "复制文本", "生成长图", "生成文档", "取消全选"]);
-    assert.equal(client.calls.length, 0, "opening the actions panel leaves task private");
-    await click(button("复制链接"));
-    assert.equal(copied.at(-1), "https://oceanleo.test/tasks/t");
-    assert.equal(client.calls.length, 0, "copying the task URL does not publish or change access");
-    await click(button("成员与权限"));
-    assert.equal(client.calls.filter(call => call.action === "setAccess").length, 1);
-    assert.equal(client.access.general_access, "public_view");
-    assert.ok(document.querySelector("[data-task-share-members]"));
+    assert.deepEqual([...document.querySelectorAll("[data-task-share-actions] > button")].map(node => node.textContent), ["分享链接", "共同协作", "复制文本", "生成长图", "生成文档", "取消全选"]);
+    assert.equal(client.calls.length, 0);
+    await click(button("共同协作"));
+    assert.deepEqual(client.calls.map(c => c.action), ["members"]);
+    assert.equal(document.querySelector('[data-access-popover]').style.width, "288px");
+    assert.ok(document.querySelector('input[type="email"]'));
+    assert.match(document.querySelector('[data-task-share-page]').textContent, /有权访问的人/);
+    assert.equal(document.querySelector("select"), null);
+    assert.equal(document.querySelector('[aria-haspopup="menu"][aria-label*="权限"]'), null);
+    await click(document.querySelector('button[aria-label="协作规则"]'));
+    assert.match(document.querySelector('[data-task-collaboration-rules]').textContent, /费用由所有者承担/);
+    await click(button("复制任务链接"));
+    assert.deepEqual(copied, ["https://oceanleo.test/tasks/t"]);
     await click(button("返回"));
-    await click(button("复制链接"));
-    assert.equal(copied.at(-1), "https://oceanleo.test/tasks/t");
-    await click(button("成员与权限"));
-    assert.equal(client.calls.filter(call => call.action === "setAccess").length, 1, "returning to members never republishes");
+    await click(button("分享链接"));
+    assert.equal(document.querySelector('[role="switch"]').checked, false);
+    assert.equal(button("复制链接").disabled, true);
+    assert.equal(client.access.general_access, "private");
   } finally { await view.close(); }
 });
 
-test("failed first-publication stays private, exposes retry, and rolls back general access on errors", async () => {
-  const client = new TaskAccessMock(); client.fail = "setAccess";
-  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: client.access, share: shareState(), client });
+test("snapshot switch creates, copies and revokes only the snapshot; existing shares load without writes", async () => {
+  const client = new TaskAccessMock(), calls = [], copied = [];
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText(value) { copied.push(value); } } });
+  function SnapshotPanel() {
+    const [snapshotLink, setLink] = React.useState(null);
+    return React.createElement(TaskSharePanel, {taskId:"t", taskUrl:"/tasks/t", access:client.access, client, share:{...shareState(), snapshotLink,
+      async loadSnapshot(){calls.push("GET");}, async setSnapshotEnabled(enabled){calls.push(enabled ? "POST" : "DELETE"); setLink(enabled ? {shareId:"abc123",url:"https://oceanleo.test/share/abc123"} : null);}}});
+  }
+  const view = await mount(SnapshotPanel, {});
   try {
-    await click(view.host.querySelector("[data-share-entry]")); await click(button("成员与权限"));
-    assert.equal(client.access.general_access, "private"); assert.ok(document.querySelector('[role="alert"]'));
-    client.fail = null; await click(button("重试"));
-    const select = document.querySelector("[data-task-share-members] select");
-    assert.equal(select.value, "public_view"); client.fail = "setAccess";
-    await act(async () => { select.value = "restricted"; select.dispatchEvent(new Event("change", { bubbles: true })); });
-    assert.equal(select.value, "public_view");
-  } finally { await view.close(); }
+    await click(view.host.querySelector('[data-share-entry]')); await click(button("分享链接"));
+    assert.deepEqual(calls,["GET"]);
+    await click(document.querySelector('[role="switch"]'));
+    assert.equal(button("复制链接").disabled,false);
+    await click(button("复制链接"));
+    assert.deepEqual(copied,["https://oceanleo.test/share/abc123"]);
+    await click(document.querySelector('[role="switch"]'));
+    assert.equal(button("复制链接").disabled,true);
+    assert.deepEqual(calls,["GET","POST","DELETE"]);
+    assert.equal(client.calls.length,0);
+  } finally {await view.close();}
 });
 
-test("read-only visitor never receives Share management entry", async () => {
+test("a failed snapshot read disables creation and copying and exposes a labelled error", async () => {
   const client = new TaskAccessMock();
-  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: { ...client.access, state: "public", role: "view", can_manage: false }, share: shareState(), client });
-  try { await click(view.host.querySelector("[data-share-entry]")); assert.equal(button("成员与权限"), undefined); assert.equal(client.calls.length, 0); }
-  finally { await view.close(); }
+  const share = {...shareState(), async loadSnapshot(){throw Error("offline");}};
+  const view = await mount(TaskSharePanel,{taskId:"t",taskUrl:"/tasks/t",access:client.access,share,client});
+  try {
+    await click(view.host.querySelector('[data-share-entry]')); await click(button("分享链接"));
+    assert.ok(document.querySelector('[role="alert"]'));
+    assert.equal(document.querySelector('[role="switch"]').disabled,true);
+    assert.equal(button("复制链接").disabled,true);
+    assert.equal(client.calls.length,0);
+  } finally {await view.close();}
+});
+
+test("only a message select control is exempt from outside dismissal; blank transcript exits selection", async () => {
+  const client = new TaskAccessMock(); let exits=0, toggles=0;
+  const stream = document.createElement("div"); stream.setAttribute("data-agent-stream","");
+  const select = document.createElement("button"); select.setAttribute("data-share-select-control",""); select.onclick=()=>toggles++;
+  const blank = document.createElement("div"); stream.append(select,blank); document.body.append(stream);
+  const view = await mount(TaskSharePanel,{taskId:"t",taskUrl:"/tasks/t",access:client.access,share:{...shareState(),exit(){exits++;}},client});
+  const pointer = async node => act(async()=>node.dispatchEvent(new Event("pointerdown",{bubbles:true})));
+  try {
+    await click(view.host.querySelector('[data-share-entry]'));
+    await pointer(select); await click(select);
+    assert.equal(toggles,1); assert.equal(exits,0); assert.ok(document.querySelector('[data-access-popover]'));
+    await pointer(blank);
+    assert.equal(exits,1);
+    assert.equal(view.host.querySelector('[data-share-entry]').getAttribute("aria-expanded"),"false");
+    assert.equal(document.querySelector('[data-access-popover]').hidden,true);
+  } finally {await view.close();stream.remove();}
+});
+
+test("collaborators can read participant names and rules but have no management or snapshot controls", async () => {
+  const client = new TaskAccessMock();
+  client.rows=[{id:"other",name:"Other",role:"collaborate",status:"accepted"}];
+  const view = await mount(TaskSharePanel,{taskId:"t",taskUrl:"/tasks/t",access:{...client.access,role:"collaborate",state:"member",can_manage:false},share:shareState(),client});
+  try {
+    await click(view.host.querySelector('[data-share-entry]'));
+    assert.equal(button("分享链接"),undefined);
+    await click(button("共同协作"));
+    assert.match(document.querySelector('[data-member-panel]').textContent,/Other/);
+    assert.equal(document.querySelector('input[type="email"]'),null);
+    assert.equal(document.querySelector('button[aria-label="移除 Other"]'),null);
+    assert.ok(document.querySelector('button[aria-label="协作规则"]'));
+  } finally {await view.close();}
 });
 
 test("view-only, removed and anonymous public visitors can continue; anonymous action requests sign-in", async () => {
@@ -170,7 +223,7 @@ test("Share and task actions use identical container, row, icon and separator cl
     for (const separator of panel.querySelectorAll('[role="separator"]')) assert.equal(separator.className, expected.separator);
     assert.match(panel.textContent, /已选 1 条/);
     assert.doesNotMatch(panel.textContent, /清除选择/);
-    await click(button("成员与权限"));
+    await click(button("共同协作"));
     const memberPage = document.querySelector('[data-access-popover]');
     assert.equal(memberPage.className, expected.container);
     assert.equal(memberPage.id, panel.id, "members open inside the same popover");
@@ -180,18 +233,13 @@ test("Share and task actions use identical container, row, icon and separator cl
   } finally { await view.close(); }
 });
 
-test("empty selections disable exports; Copy link remains available to viewers and reports failure", async () => {
+test("empty selections disable exports while collaborators can copy their task link", async () => {
   const client = new TaskAccessMock();
-  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { async writeText() { throw Error("denied"); } } });
-  const share = { ...shareState(), selectedCount: 0, allSelected: false };
-  const view = await mount(TaskSharePanel, { taskId: "t", taskUrl: "/tasks/t", access: { ...client.access, state: "public", role: "view", can_manage: false }, share, client });
+  const view = await mount(TaskSharePanel,{taskId:"t",taskUrl:"/tasks/t",access:{...client.access,role:"collaborate",state:"member",can_manage:false},share:{...shareState(),selectedCount:0},client});
   try {
     await click(view.host.querySelector('[data-share-entry]'));
-    for (const text of ["复制文本", "生成长图", "生成文档"]) assert.equal(button(text).disabled, true);
-    assert.equal(button("复制链接").disabled, false);
-    assert.ok(button("全选"));
-    await click(button("复制链接"));
-    assert.match(document.querySelector('[role="status"]').textContent, /复制失败/);
-    assert.equal(client.calls.length, 0);
-  } finally { await view.close(); }
+    for (const text of ["复制文本","生成长图","生成文档"]) assert.equal(button(text).disabled,true);
+    await click(button("共同协作"));
+    assert.equal(button("复制任务链接").disabled,false);
+  } finally {await view.close();}
 });

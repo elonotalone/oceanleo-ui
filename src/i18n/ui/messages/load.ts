@@ -23,6 +23,7 @@ import { CLOUD_BROWSER_MESSAGES } from "./cloud-browser-copy";
 import { localBrowserCopy } from "./local-browser-copy";
 import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
+import { swTsCopy } from "./sw-ts-copy";
 import { taskLiveCopy } from "./task-live-copy";
 import { taskStateCopy } from "./task-state-copy";
 import { websitePreviewProgressCopy } from "./website-preview-progress-copy";
@@ -194,5 +195,6 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...UF1_MISSING_COPY_C[locale],
     ...STEP_UP_MESSAGES[locale],
     ...swBdCopy(locale),
+    ...swTsCopy(locale),
   };
 };

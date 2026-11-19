@@ -150,3 +150,30 @@ export async function createShareLink(
   }
   return { shareId, url: shareUrlFor(shareId, input.origin) };
 }
+
+async function snapshotRequest(path: string, method: "GET" | "DELETE"): Promise<{ share_id?: unknown }> {
+  const token = await accessToken();
+  if (!token) throw new ShareLinkError(shareFailureMessage(401, ""), 401);
+  let response: Response;
+  try {
+    response = await fetch(`${GATEWAY_BASE}/v1/share/${path}`, {
+      method, cache: "no-store", credentials: "include",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  } catch {
+    throw new ShareLinkError(shareFailureMessage(0, ""), 0);
+  }
+  if (!response.ok) throw new ShareLinkError(shareFailureMessage(response.status, ""), response.status);
+  return await response.json();
+}
+
+export async function getTaskShareLink(taskId: string): Promise<ShareLink | null> {
+  const payload = await snapshotRequest(`task/${encodeURIComponent(taskId)}`, "GET");
+  if (payload.share_id === null) return null;
+  if (!isValidShareId(payload.share_id)) throw new ShareLinkError("分享服务没有返回可用的链接。", 502);
+  return { shareId: payload.share_id, url: shareUrlFor(payload.share_id) };
+}
+
+export async function revokeTaskShareLinks(taskId: string): Promise<void> {
+  await snapshotRequest(`task/${encodeURIComponent(taskId)}`, "DELETE");
+}

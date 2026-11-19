@@ -20,7 +20,7 @@ export interface TaskAccess {
 
 export interface TaskAccessClient {
   getAccess(id: string, signal?: AbortSignal): Promise<TaskAccess>;
-  setAccess(id: string, value: Exclude<GeneralAccess, "private">): Promise<unknown>;
+  setAccess(id: string, value: "restricted"): Promise<unknown>;
   members(id: string): Promise<AccessMember[]>;
   invite(id: string, email: string, role: AccessRole): Promise<AccessMember>;
   changeRole(id: string, memberId: string, role: AccessRole): Promise<void>;

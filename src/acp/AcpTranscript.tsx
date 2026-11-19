@@ -6,7 +6,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentProgress } from "../shell/AgentProgress";
 import { AgentTranscriptBubble } from "../shell/AgentTranscriptBubble";
-import type { AgentAttachment, MessageAuthor } from "../lib/agent";
+import type { AgentAttachment } from "../lib/agent";
 import { TranscriptStream, StreamWaitingLine, ACP_TRANSCRIPT_CAPABILITIES, type TranscriptItem } from "../shell/transcript/TranscriptStream";
 import { useAcpTranscriptAdapter } from "../shell/transcript/useAcpTranscriptAdapter";
 import { ChatTimeSeparator } from "../shell/ChatTimeSeparator";
@@ -23,7 +23,7 @@ export type AcpTranscriptProps = {
   /** Scopes referenced files to this visible prompt, rather than the viewer's Library. */
   taskId?: string;
   showAuthors?: boolean;
-  ownerAuthor?: MessageAuthor;
+  viewerUserId?: string | null;
   /** Fetch a shortened row in full; the owner replaces it in the stored window. */
   onExpandRow?: (rowId: number) => Promise<void>;
   /** Optional render diagnostic; omitted by production callers. */
@@ -250,7 +250,7 @@ function blockRowId(block: AcpBlock): number {
       : Math.min(...block.messages.map((message) => message.id));
 }
 
-export function AcpTranscript({ items: providedItems, rows, taskId, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, ownerAuthor }: AcpTranscriptProps) {
+export function AcpTranscript({ items: providedItems, rows, taskId, program, view: providedView, onAnswer, onStopTask, highlightQuery, onStopAndSend, select, onOpenAttachment, onBlockRender, onExpandRow, showAuthors, viewerUserId }: AcpTranscriptProps) {
   const tt = useUI();
   const view = useMemo(() => providedView ?? reduceRows(rows, program), [providedView, rows, program]);
   const items = useAcpTranscriptAdapter(view, taskId, providedItems);
@@ -281,7 +281,7 @@ export function AcpTranscript({ items: providedItems, rows, taskId, program, vie
             block={block}
             turnCopyText={turnCopies.get(block.key) ?? null}
             showAuthors={showAuthors}
-            ownerAuthor={ownerAuthor}
+            viewerUserId={viewerUserId}
             highlightQuery={highlightQuery}
             onAnswer={block.type === "bubble" && block.request ? onAnswer : undefined}
             onStopAndSend={block.type === "bubble" && block.queued ? onStopAndSend : undefined}
@@ -301,7 +301,7 @@ export function AcpTranscript({ items: providedItems, rows, taskId, program, vie
 }
 
 type TranscriptBlockProps = Pick<AcpTranscriptProps,
-  "onAnswer" | "onStopAndSend" | "onOpenAttachment" | "highlightQuery" | "onBlockRender" | "showAuthors" | "ownerAuthor"> & {
+  "onAnswer" | "onStopAndSend" | "onOpenAttachment" | "highlightQuery" | "onBlockRender" | "showAuthors" | "viewerUserId"> & {
   block: AcpBlock;
   turnCopyText: string | null;
   selectMode: boolean;
@@ -329,7 +329,7 @@ function sameBlockData(a: unknown, b: unknown): boolean {
 
 const TranscriptBlock = memo(function TranscriptBlock({
   block, turnCopyText, onAnswer, onStopAndSend, onOpenAttachment, highlightQuery,
-  selectMode, selected, onToggle, onBlockRender, showAuthors, ownerAuthor,
+  selectMode, selected, onToggle, onBlockRender, showAuthors, viewerUserId,
 }: TranscriptBlockProps) {
   const request = block.type === "bubble" ? block.request : undefined;
   const id = block.type === "bubble" ? block.message.id : null;
@@ -348,7 +348,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
       message={block.message}
       turnCopyText={turnCopyText}
       showAuthors={showAuthors}
-      ownerAuthor={ownerAuthor}
+      viewerUserId={viewerUserId}
       streaming={block.streaming}
       stopped={block.stopped}
       highlightQuery={highlightQuery}
@@ -364,7 +364,7 @@ const TranscriptBlock = memo(function TranscriptBlock({
 }, (previous, next) =>
   previous.turnCopyText === next.turnCopyText &&
   previous.showAuthors === next.showAuthors &&
-  sameBlockData(previous.ownerAuthor, next.ownerAuthor) &&
+  previous.viewerUserId === next.viewerUserId &&
   previous.highlightQuery === next.highlightQuery &&
   previous.onAnswer === next.onAnswer &&
   previous.onStopAndSend === next.onStopAndSend &&

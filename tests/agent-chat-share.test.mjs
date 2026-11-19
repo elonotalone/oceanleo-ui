@@ -126,17 +126,6 @@ test("invitation composer accepts Collaborate, hides owner settings, and becomes
   } finally { await view.unmount(); }
 });
 
-test("declining an invitation keeps a public task readable without enabling sends", async () => {
-  const access = new TaskAccessMock();
-  access.access = { ...ownerAccess(), role: "view", state: "invited", invite_role: "view", can_send: false, can_manage: false, general_access: "public_view" };
-  const view = await mount({ taskId: "t1" }, { task: cloudTask(), taskAccess: access });
-  try {
-    await click([...view.host.querySelectorAll("[data-task-access-composer] button")].find(node => node.textContent === "拒绝"));
-    assert.equal(view.composer("cloud"), null);
-    assert.equal(view.host.querySelector("[data-task-access-composer]").dataset.taskAccessComposer, "public");
-    assert.ok(view.host.textContent.includes("同比增长 12%"));
-  } finally { await view.unmount(); }
-});
 
 test("a collaborator uses the public program descriptor and sends without owner-only settings or computer ids", async () => {
   const access = new TaskAccessMock();
@@ -195,12 +184,13 @@ test("an explicit task view keeps its historical initialPrompt behavior while ac
  } finally {await view.unmount();}
 });
 
-test("public task viewers see each participant's authorship",async()=>{
- const access=new TaskAccessMock();access.access={...ownerAccess(),role:"view",state:"public",general_access:"public_view",can_send:false,can_manage:false};
+test("collaborators see the owner name and never their own",async()=>{
+ const access=new TaskAccessMock();access.access={...ownerAccess(),role:"collaborate",state:"member",general_access:"restricted",can_send:true,can_manage:false};
+ globalThis.__taskViewerId="teammate";
  const task=cloudTask();task.messages[0].sender={user_id:"owner",name:"Owner",initial:"O"};task.messages.push({id:3,role:"user",kind:"text",content:"A teammate prompt",sender:{user_id:"teammate",name:"Teammate",initial:"T"}});
  const view=await mount({taskId:"t1"},{task,taskAccess:access});
- try {const labels=[...view.host.querySelectorAll('[data-message-author]')].map(node=>node.textContent);assert.equal(labels.length,2);assert.ok(labels.some(label=>label.includes("Teammate")));}
- finally {await view.unmount();}
+ try {const labels=[...view.host.querySelectorAll('[data-message-author]')].map(node=>node.textContent);assert.equal(labels.length,1);assert.ok(labels[0].includes("Owner"));assert.ok(!labels[0].includes("Teammate"));}
+ finally {await view.unmount();delete globalThis.__taskViewerId;}
 });
 
 
@@ -231,4 +221,25 @@ for (const pane of ["cloud", "acp"]) test(`${pane} Share selects all on every op
       assert.ok(view.composer(pane), "composer stays mounted");
     }
   } finally { await view.unmount(); }
+});
+
+
+test("conversation search sizes from its full placeholder and retains Enter/Escape behavior", async () => {
+  const view=await mount({taskId:"t1"},{task:cloudTask()});
+  try {
+    await click(view.host.querySelector('button[aria-label="搜索"]'));
+    const search=view.host.querySelector('[data-agent-chat-search]');
+    const input=search.querySelector('input');
+    assert.equal(search.querySelector('[data-search-placeholder-size]').textContent,input.placeholder);
+    assert.equal(input.style.width,"100%");
+    assert.equal(search.style.flexBasis,"100%");
+    assert.equal(view.host.querySelector('[data-agent-chat-header]').style.flexWrap,"wrap");
+    const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,"value").set;
+    await act(async()=>{setter.call(input,"同比");input.dispatchEvent(new window.Event("input",{bubbles:true}));await new Promise(resolve=>setTimeout(resolve,50));});
+    assert.match(search.querySelector('[data-agent-chat-search-count]').textContent,/1\/[1-9]/);
+    await act(async()=>input.dispatchEvent(new window.KeyboardEvent("keydown",{key:"Enter",bubbles:true})));
+    assert.ok(view.host.querySelector('[data-leo-search-hit]'));
+    await act(async()=>input.dispatchEvent(new window.KeyboardEvent("keydown",{key:"Escape",bubbles:true})));
+    assert.equal(view.host.querySelector('[data-agent-chat-search]'),null);
+  } finally {await view.unmount();}
 });

@@ -50,21 +50,8 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     let latest: Snapshot = { ...empty(taskId), access: isTaskAccess(seed.current) ? seed.current : null };
     const publish = (next: Snapshot) => { if (live) { latest = next; setSnapshot(next); } };
     publish(latest);
-    let membersReadAt = -Infinity;
-    let participantCount = 1;
     const adopt = (access: TaskAccess) => {
-      const sharedOwner = access.role === "owner" && access.general_access !== "private";
-      publish({ ...latest, access: sharedOwner && access.participant_count === undefined
-        ? { ...access, participant_count: participantCount } : access, failures: 0 });
-      // Attribution is optional and never delays the access decision.
-      if (!sharedOwner || access.participant_count !== undefined || Date.now() - membersReadAt < TASK_ACCESS_POLL_MS) return;
-      membersReadAt = Date.now();
-      const decision = epoch;
-      void client.members(taskId).then(members => {
-        if (!live || decision !== epoch || latest.access?.role !== "owner") return;
-        participantCount = 1 + members.filter(row => row.role !== "owner" && row.status !== "declined" && row.status !== "removed").length;
-        publish({ ...latest, access: { ...latest.access, participant_count: participantCount } });
-      }).catch(() => { /* Authorship metadata cannot override access. */ });
+      publish({ ...latest, access, failures: 0 });
     };
     // A token refresh/sign-in probe must never fail an otherwise valid access read.
     const readIdentity = async () => {
@@ -138,7 +125,6 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
         publish(empty(taskId));
         void readIdentity();
       } else if (isTaskAccess(detail?.access)) {
-        membersReadAt = -Infinity;
         adopt(detail.access);
         return;
       }

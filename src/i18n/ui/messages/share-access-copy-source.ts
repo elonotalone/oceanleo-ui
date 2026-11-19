@@ -32,8 +32,6 @@ export const SHARE_ACCESS_COPY_SOURCE = {
   forkNote: "新任务只带上可见的对话，不会连接对方的电脑、文件或会话。",
   noAccess: "无法打开此任务。",
   signInContinue: "请先登录，再继续此任务。",
-  viewDescription: "可以阅读对话并作为自己的任务继续。",
-  collaborateDescription: "可以让你的智能体执行操作；任务在你的电脑运行时会操作你的电脑，费用由你承担。",
   removalDescription: "移除 {name} 后，对方不能再协作或看到新内容。",
   removeMember: "移除 {name}",
   memberRole: "{name} 的权限",

@@ -159,6 +159,7 @@ export function ShareCheckbox({
 }) {
   return (
     <button
+      data-share-select-control=""
       type="button"
       role="checkbox"
       aria-checked={checked}

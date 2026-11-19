@@ -13,7 +13,7 @@ export interface RolePickerProps {
   onChange: (role: AccessRole) => void;
 }
 
-/** One compact role control for tasks and Projects. The execution warning stays fully readable. */
+/** One compact role control for Projects. */
 export function RolePicker({ value, memberName, disabled, onChange }: RolePickerProps) {
   const tt = useUI();
   const [open, setOpen] = useState(false);
@@ -42,8 +42,7 @@ export function RolePicker({ value, memberName, disabled, onChange }: RolePicker
       <div id={menuId}>
         {roles.map((role) => <FloatingMenuItem key={role} role="menuitemradio" selected={value === role}
           onKeyDown={navigate} onSelect={() => { setOpen(false); anchorRef.current?.focus(); if (role !== value) onChange(role); }}
-          label={tt(role === "collaborate" ? copy.collaborate : copy.view)} wrapDescription
-          description={tt(role === "collaborate" ? copy.collaborateDescription : copy.viewDescription)} />)}
+          label={tt(role === "collaborate" ? copy.collaborate : copy.view)} />)}
       </div>
     </FloatingMenu>
   </>;

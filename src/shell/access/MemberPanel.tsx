@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
+import { SW_TS_COPY as taskCopy } from "../../i18n/ui/messages/sw-ts-copy";
 import { AnchoredPopover } from "../anchored-popover";
 import { RolePicker } from "./RolePicker";
 import type { AccessMember, AccessOwner, AccessRole } from "./access-types";
@@ -10,12 +11,13 @@ import type { AccessMember, AccessOwner, AccessRole } from "./access-types";
 export type { AccessMember, AccessOwner, AccessRole } from "./access-types";
 
 export interface MemberPanelProps {
+  taskCollaboration?: boolean;
   owner: AccessOwner;
   members: AccessMember[];
   canManage: boolean;
   busy?: boolean;
   onInvite: (email: string, role: AccessRole) => Promise<AccessMember | void>;
-  onChangeRole: (id: string, role: AccessRole) => Promise<void>;
+  onChangeRole?: (id: string, role: AccessRole) => Promise<void>;
   onRemove: (id: string) => Promise<void>;
 }
 
@@ -24,7 +26,7 @@ function Avatar({ name, initial }: { name: string; initial?: string | null }) {
 }
 
 /** Invitations never send a notification. All mutations render immediately and restore the row on failure. */
-export function MemberPanel({ owner, members, canManage, busy = false, onInvite, onChangeRole, onRemove }: MemberPanelProps) {
+export function MemberPanel({ taskCollaboration = false, owner, members, canManage, busy = false, onInvite, onChangeRole, onRemove }: MemberPanelProps) {
   const tt = useUI();
   const [items, setItems] = useState(members);
   const [email, setEmail] = useState("");
@@ -53,11 +55,11 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
     if (!begin()) return;
     const previous = items;
     const existing = items.find((member) => member.email?.toLowerCase() === normalized && ["invited", "accepted"].includes(member.status));
-    const optimistic: AccessMember = existing ?? { id: `pending:${normalized}`, email: normalized, role: "view", status: "invited" };
+    const optimistic: AccessMember = existing ?? { id: `pending:${normalized}`, email: normalized, role: taskCollaboration ? "collaborate" : "view", status: "invited" };
     setItems(existing ? items : [...items, optimistic]);
     setEmail("");
     try {
-      const saved = await onInvite(normalized, "view");
+      const saved = await onInvite(normalized, taskCollaboration ? "collaborate" : "view");
       if (saved) setItems((current) => current.map((member) => member.id === optimistic.id ? saved : member));
     } catch {
       setItems(previous); setEmail(normalized); setError(tt(copy.saveFailed));
@@ -67,7 +69,7 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
     if (!begin()) return;
     const previous = items;
     setItems(items.map((member) => member.id === id ? { ...member, role } : member));
-    try { await onChangeRole(id, role); } catch { setItems(previous); setError(tt(copy.saveFailed)); } finally { end(); }
+    try { await onChangeRole?.(id, role); } catch { setItems(previous); setError(tt(copy.saveFailed)); } finally { end(); }
   };
   const closeRemoval = () => { setRemoving(null); removalAnchorRef.current?.focus(); };
   const remove = async () => {
@@ -87,23 +89,24 @@ export function MemberPanel({ owner, members, canManage, busy = false, onInvite,
       <button type="submit" disabled={disabled || !email.trim()} className="min-h-8 shrink-0 rounded-lg bg-neutral-900 dark:bg-neutral-100 px-4 text-sm font-medium text-white dark:text-neutral-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-neutral-400 disabled:opacity-50">{tt(copy.invite)}</button>
     </form>}
     {error && <p id={errorId} role="alert" className="mb-2 text-[13px] text-rose-600 dark:text-rose-400">{error}</p>}
-    <ul className="space-y-2" aria-label={tt(copy.share)}>
+    {taskCollaboration && <p className="mb-2 text-xs text-neutral-500 dark:text-neutral-400">{tt(taskCopy.people)}</p>}
+    <ul className="space-y-2" aria-label={tt(taskCollaboration ? taskCopy.people : copy.share)}>
       <li data-member-owner="" className="flex min-w-0 items-center gap-3">
         <Avatar name={owner.name} initial={owner.initial} />
         <span className="min-w-0 flex-1"><span className="block truncate text-[13px]">{owner.name}</span>{owner.email && canManage && <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{owner.email}</span>}</span>
         <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{tt(copy.owner)}</span>
       </li>
-      {items.filter((member) => member.role !== "owner" && ["invited", "accepted"].includes(member.status)).map((member) => {
+      {items.filter((member) => member.role !== "owner" && ["invited", "accepted"].includes(member.status) && (!taskCollaboration || member.role === "collaborate")).map((member) => {
         const name = member.name || member.email || tt(copy.sender);
         return <li key={member.id} data-member-id={member.id} className="flex min-w-0 items-center gap-2">
           <Avatar name={name} initial={member.initial} />
           <span className="min-w-0 flex-1"><span className="block truncate text-[13px]">{name}</span>{member.name && member.email && <span className="block truncate text-xs text-neutral-500 dark:text-neutral-400">{member.email}</span>}
             {member.status === "invited" && <span className="block text-xs text-neutral-500 dark:text-neutral-400">{tt(copy.invited)}</span>}</span>
-          {canManage ? <><RolePicker value={member.role === "collaborate" ? "collaborate" : "view"} memberName={name} disabled={disabled || member.id.startsWith("pending:")} onChange={(role) => void changeRole(member.id, role)} />
+          {canManage ? <>{taskCollaboration ? <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{tt(taskCopy.collaborator)}</span> : <RolePicker value={member.role === "collaborate" ? "collaborate" : "view"} memberName={name} disabled={disabled || member.id.startsWith("pending:")} onChange={(role) => void changeRole(member.id, role)} />}
             <button type="button" disabled={disabled || member.id.startsWith("pending:")} aria-label={tt(copy.removeMember, { name })} onClick={(event) => { removalAnchorRef.current = event.currentTarget; setRemoving(member); }}
               className="grid size-9 shrink-0 place-items-center rounded-lg text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-white/10 hover:text-neutral-800 dark:hover:text-neutral-100 focus-visible:outline-2 focus-visible:outline-neutral-400 disabled:opacity-50">
               <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="none" stroke="currentColor" strokeWidth="1.6"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7" /></svg>
-            </button></> : <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{tt(member.role === "collaborate" ? copy.collaborate : copy.view)}</span>}
+            </button></> : <span className="shrink-0 text-xs text-neutral-500 dark:text-neutral-400">{tt(taskCollaboration ? taskCopy.collaborator : member.role === "collaborate" ? copy.collaborate : copy.view)}</span>}
         </li>;
       })}
     </ul>

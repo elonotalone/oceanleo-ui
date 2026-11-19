@@ -39,8 +39,8 @@ test("every access string is translated in all 17 locales and retains interpolat
     const translated=SHARE_ACCESS_MESSAGES[locale][source]; assert.ok(translated?.trim(),`${locale}: ${source}`);
     assert.deepEqual(interpolation(translated),interpolation(source),`${locale}: ${source}`);
   }
-  assert.match(SHARE_ACCESS_MESSAGES.en[SHARE_ACCESS_COPY_SOURCE.collaborateDescription],/your own computer/);
-  assert.match(SHARE_ACCESS_MESSAGES.en[SHARE_ACCESS_COPY_SOURCE.collaborateDescription],/You pay/);
+  assert.equal(SHARE_ACCESS_COPY_SOURCE.collaborateDescription, undefined);
+  assert.equal(SHARE_ACCESS_COPY_SOURCE.viewDescription, undefined);
 });
 
 test("owner is first, invitation is labelled, removed rows and owner controls stay absent",async()=>{
@@ -82,13 +82,13 @@ test("accepted invitation result replaces temporary identity and duplicate email
   }finally{await view.close();}
 });
 
-test("role menu exposes checked options, full computer and billing warning, keyboard movement and rollback",async()=>{
+test("project role menu exposes checked options without old task warnings, keyboard movement and rollback",async()=>{
   const pending=defer();let changed;const view=await render({onChangeRole:(...args)=>{changed=args;return pending.promise;}});
   try{
     const trigger=row(view).querySelector('[aria-haspopup="menu"]');await click(trigger);
     assert.equal(trigger.getAttribute("aria-expanded"),"true");
     const options=[...view.host.querySelectorAll('[role="menuitemradio"]')];assert.equal(options.length,2);
-    assert.equal(options[0].getAttribute("aria-checked"),"true");assert.match(options[1].textContent,/你的电脑/);assert.match(options[1].textContent,/费用由你承担/);
+    assert.equal(options[0].getAttribute("aria-checked"),"true");assert.equal(options[1].textContent,"协作权限");
     await act(async()=>{options[0].focus();options[0].dispatchEvent(new window.KeyboardEvent("keydown",{key:"ArrowDown",bubbles:true,cancelable:true}));});
     assert.equal(document.activeElement,options[1]);await click(options[1]);
     assert.deepEqual(changed,["m1","collaborate"]);assert.match(row(view).textContent,/协作/);assert.equal(document.activeElement,trigger);
@@ -153,4 +153,17 @@ test("real nested confirmation keeps the Share panel open, traps focus and resto
     assert.equal(outer.hidden,false);assert.equal(document.activeElement,removeTrigger);
     assert.equal([...document.querySelectorAll('[role="dialog"]')].filter(dialog=>dialog.getAttribute("aria-modal")==="true").length,0);
   }finally{await act(async()=>root.unmount());host.remove();window.scrollTo=originalScrollTo;if(!existingMotion)motion.remove();}
+});
+
+
+test("task invitations always collaborate and expose no role control", async () => {
+  const calls=[];
+  const view=await render({taskCollaboration:true,members:[],async onInvite(email,role){calls.push({email,role});return {...member,id:"task-member",email,role};}});
+  try {
+    await email(view,"New@Example.test"); await submit(view);
+    assert.deepEqual(calls,[{email:"new@example.test",role:"collaborate"}]);
+    assert.match(row(view,"task-member").textContent,/协作者/);
+    assert.equal(row(view,"task-member").querySelector('[aria-haspopup="menu"]'),null);
+    assert.ok(row(view,"task-member").querySelector('button[aria-label^="移除"]'));
+  } finally {await view.close();}
 });
