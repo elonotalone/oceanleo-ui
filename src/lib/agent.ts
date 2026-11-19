@@ -407,6 +407,8 @@ export function taskCostYuan(t: { nano_spent?: number; credits_spent?: number })
 }
 
 export interface TaskDetail {
+  /** Server access decision; narrowed at the task-access boundary. */
+  access?: unknown;
   task: AgentTask;
   messages: AgentMessage[];
   artifacts: AgentArtifact[];

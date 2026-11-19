@@ -64,7 +64,8 @@ export function createTaskAccessClient(options: {
     const token = await tokenImpl();
     if (method !== "GET" && !token) throw new TaskAccessError(401);
     const response = await (options.fetchImpl ?? fetch)(`${options.base ?? GATEWAY_BASE}/v1/tasks/${encodeURIComponent(id)}${suffix}`, {
-      method, signal, cache: "no-store", credentials: "include",
+      // Revalidate the decision without bypassing the browser's CORS preflight cache.
+      method, signal, cache: method === "GET" ? "no-cache" : "no-store", credentials: "include",
       headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });

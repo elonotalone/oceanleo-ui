@@ -26,7 +26,7 @@ test("task client uses contract paths and bodies; anonymous reads omit credentia
     ["POST", "/v1/tasks/task%2F1/members/accept"], ["POST", "/v1/tasks/task%2F1/members/decline"], ["POST", "/v1/tasks/task%2F1/fork"],
   ]);
   assert.deepEqual(JSON.parse(calls[3].body), { email: "a@example.com", role: "view" });
-  assert.ok(calls.every(call => call.cache === "no-store" && call.credentials === "include"));
+  assert.ok(calls.every(call => call.cache === (call.method === "GET" ? "no-cache" : "no-store") && call.credentials === "include"));
   const guest = createTaskAccessClient({ tokenImpl: async () => null, fetchImpl });
   await guest.getAccess("public"); assert.equal(calls.at(-1).headers.Authorization, undefined);
   await assert.rejects(guest.accept("public"), failure => failure instanceof TaskAccessError && failure.status === 401);

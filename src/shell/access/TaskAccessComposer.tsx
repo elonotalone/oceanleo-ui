@@ -7,6 +7,18 @@ import { notifyHistoryChanged } from "../../lib/history-events";
 import { notifyTaskAccessChanged } from "./useTaskAccess";
 import { TaskAccessError, taskAccessClient, type TaskAccess, type TaskAccessClient } from "./task-access-client";
 
+/** Small stream status; a network failure never takes the conversation's place. */
+export function TaskAccessStatus({ loading, error, unstable, onRefresh }: {
+  loading?: boolean; error?: boolean; unstable?: boolean; onRefresh: () => Promise<void>;
+}) {
+  const tt = useUI();
+  return <p data-task-access-status={unstable ? "unstable" : loading ? "loading" : "unavailable"}
+    role={error && !unstable ? "alert" : "status"} className="py-2 text-sm text-stone-500 dark:text-stone-400">
+    {tt(unstable ? "网络不稳定，正在重试。" : loading ? "正在读取访问权限…" : error ? copy.loadFailed : copy.noAccess)}
+    {!loading && !unstable && <> <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></>}
+  </p>;
+}
+
 const TaskSignInDialog = lazy(() => import("../../pages/AuthDialog").then(module => ({ default: module.AuthDialog })));
 
 /** Replaces the whole composer for invitation, viewer and retained-history states. */
@@ -43,14 +55,14 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
   };
   const buttonClass = "rounded-xl border border-neutral-200/80 dark:border-white/10 bg-white dark:bg-neutral-950 px-4 py-2 text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
   return <div data-task-access-composer={loading ? "loading" : access?.state ?? "unavailable"} className="space-y-2 py-2 text-neutral-800 dark:text-neutral-100" aria-busy={busy || loading}>
-    {loading ? <span role="status" className="v-spinner" /> : error || !access || access.state === "none" ? <p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p> : <>
+    {loading ? <TaskAccessStatus loading onRefresh={onRefresh} /> : !access || access.state === "none" ? <p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p> : <>
       <p className="text-sm text-[var(--muted-foreground)]">{tt(access.state === "removed" ? copy.removed : copy.readOnly)}</p>
       {access.state === "invited" ? <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("accept")}>{tt(copy.accept)}</button>
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("decline")}>{tt(copy.decline)}</button>
       </div> : (access.can_fork || !signedIn && access.state === "public") && <>
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("fork")}>{tt(copy.continueOwn)}</button>
-        <p className="text-xs text-[var(--muted-foreground)]">{tt(copy.forkNote)}</p>
+        <p className="text-xs text-stone-500 dark:text-stone-400">{tt(copy.forkNote)}</p>
       </>}
     </>}
     {failure && <p role="alert" className="text-sm">{failure}</p>}

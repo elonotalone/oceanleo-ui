@@ -99,7 +99,7 @@ import {
 import { TaskSharePanel } from "./share/TaskSharePanel";
 import { useTaskAccess } from "./access/useTaskAccess";
 import { taskAccessRights } from "./access/task-access-client";
-import { TaskAccessComposer } from "./access/TaskAccessComposer";
+import { TaskAccessComposer, TaskAccessStatus } from "./access/TaskAccessComposer";
 import { TaskContentPanel } from "./access/TaskContentPanel";
 import { TaskActionsMenu, type TaskActionCallbacks, taskQuoteHref } from "./TaskActionsMenu";
 import { ShareCardPreview } from "./share/ShareCard";
@@ -795,13 +795,14 @@ function AgentChatInner({
     (explicitTaskId !== undefined
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
-  const accessState = useTaskAccess(taskId);
+  const accessState = useTaskAccess(taskId, undefined, initialTask?.task.id === taskId ? initialTask.access : undefined);
+  const receiveTaskAccess = accessState.receiveDetail;
+  const captureTaskAccess = accessState.captureDetail;
   const accessRights = taskAccessRights(accessState.access, taskId);
   const canManageTask = accessRights.canManage && !hostReadOnly;
   const readOnly = hostReadOnly || !accessRights.canSend;
-  // Keep a newly created task's composer mounted while identity is checked.
-  // Its input/send controls remain locked until the server grants access.
-  const replaceComposer = Boolean(taskId && !accessRights.canSend && !accessState.loading);
+  // A shared task has an explicit placeholder until its first access decision.
+  const replaceComposer = Boolean(taskId && !accessRights.canSend);
   const [knownParticipants, setKnownParticipants] = useState({ taskId: "", count: 1 });
   const [continuedCopy, setContinuedCopy] = useState({ taskId: "", unbound: false });
   const unboundCopy = canManageTask && continuedCopy.taskId === taskId && continuedCopy.unbound;
@@ -952,7 +953,7 @@ function AgentChatInner({
    * 返回 `status` 与 `changed`（这一轮有没有拿到新消息）——
    * `changed` 是轮询节奏的输入：还在出字就跟紧，没动静就退避。
    */
-  const applyTask = useCallback((id: string, pull: AgentThreadPull, data: TaskDetail): TaskPollResult => {
+  const applyTask = useCallback((id: string, pull: AgentThreadPull, data: TaskDetail, receiveAccess = receiveTaskAccess): TaskPollResult => {
     const marker = retainedAccessRef.current;
     if (marker) data = { ...data, messages: data.messages.filter(message => message.id <= marker.message_id) };
     const settled = threadSyncRef.current.settle(
@@ -961,6 +962,7 @@ function AgentChatInner({
       data,
     );
     if (settled === null) return IDLE_POLL_RESULT;
+    receiveAccess(id, data.access);
     const changed = settled !== serverMessagesRef.current;
     // A running task that produced output moves up in My Tasks (throttled).
     if (changed && data.task?.status === "running") notifyHistoryActivity({ taskId: id, at: data.task?.last_activity_at });
@@ -1027,16 +1029,17 @@ function AgentChatInner({
     return { status, changed, streaming: status === "running" && settled.some(
       (message) => message.role === "assistant" && message.meta?.streaming === true,
     ) };
-  }, []);
+  }, [receiveTaskAccess]);
   const refresh = useCallback(async (id: string): Promise<TaskPollResult> => {
     const pull = threadSyncRef.current.begin(id);
+    const receiveAccess = captureTaskAccess();
     const r = await getTask(id, pull.options);
     if (loadedTaskRef.current !== id) return IDLE_POLL_RESULT;
-    if (r.ok && r.data) return applyTask(id, pull, r.data);
+    if (r.ok && r.data) return applyTask(id, pull, r.data, receiveAccess);
     // A task that cannot be read is not "loading" forever (W5 loading gate).
     setReadFailedTaskId(id);
     return IDLE_POLL_RESULT;
-  }, [applyTask]);
+  }, [applyTask, captureTaskAccess]);
 
   const noteOutgoingTurn = useCallback((id: string, turn: number) => {
     markSend(id, turn);
@@ -1163,10 +1166,11 @@ function AgentChatInner({
       return;
     }
     const pull = threadSyncRef.current.begin(taskId);
+    const receiveAccess = captureTaskAccess();
     void prefetched.then((result) => {
       if (loadedTaskRef.current !== taskId) return;
       if (result.ok && result.data) {
-        applyTask(taskId, pull, result.data);
+        applyTask(taskId, pull, result.data, receiveAccess);
         if (!isPartialTaskSeed(result.data)) return;
         threadSyncRef.current.invalidate();
       }
@@ -1174,7 +1178,7 @@ function AgentChatInner({
     }, () => {
       if (loadedTaskRef.current === taskId) void refresh(taskId);
     });
-  }, [hasOrgPanel, taskId, refresh, applyTask]);
+  }, [hasOrgPanel, taskId, refresh, applyTask, captureTaskAccess]);
 
   // Provider 算出的 task_id 只在**有值**时接管本地 task。
   // 操作员 2026-09-07 图 f2dde413（LeoSheet 首页）：发完 hi、回答已出现，几秒后整块对话
@@ -3395,6 +3399,8 @@ function AgentChatInner({
             Never a horizontal scrollbar: long paths / URLs / commands wrap here. */}
         <div className={`mx-auto w-full min-w-0 ${AGENT_CONVERSATION_MAX_WIDTH_CLASS} space-y-3 break-words [overflow-wrap:anywhere]`} data-agent-stream-column="">
           {pane.empty}
+          {taskId && !accessRights.canView && <TaskAccessStatus loading={accessState.loading} error={accessState.error} onRefresh={accessState.refresh} />}
+          {accessState.unstable && <TaskAccessStatus unstable onRefresh={accessState.refresh} />}
           {(!taskId || accessRights.canView) && pane.items}
           {(!taskId || accessRights.canView) && pane.tail}
         </div>
