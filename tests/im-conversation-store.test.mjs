@@ -6,7 +6,6 @@ import test from "node:test";
 import * as conversationStoreModule from "../src/shell/messages/conversation/conversation-store.ts";
 const {
   ConversationStore,
-  applyReactionLocal,
   clearConversationStores,
   getConversationStore,
   mergeMessages,
@@ -318,27 +317,14 @@ test("其他会话的事件不影响本会话", async () => {
   assert.deepEqual(seqs(store), [1, 2, 3]);
 });
 
-test("表情：事件覆盖摘要并重算「我」；本地点击先改后发请求，失败回滚", async () => {
-  const all = range(1, 2);
-  const { store } = makeStore(all);
+test("retired reaction events do not mutate the conversation or dispatch API calls", async () => {
+  const { store, api } = makeStore(range(1, 2));
   await store.loadLatest();
-  store.applyEvent({
-    type: "reaction.changed",
-    conversation_id: CONV,
-    message_id: "m1",
-    reactions: [{ emoji: "👍", count: 2, mine: false, user_ids: [PEER, ME] }],
-  });
-  assert.equal(store.find("m1").reactions[0].mine, true);
-  await store.toggleReaction("m1", "👍");
-  assert.equal(store.find("m1").reactions[0].count, 1);
-  assert.equal(store.find("m1").reactions[0].mine, false);
-
-  const bad = makeStore(range(1, 2), { failReaction: true });
-  await bad.store.loadLatest();
-  await bad.store.toggleReaction("m1", "🎉");
-  assert.equal(bad.store.find("m1").reactions.length, 0);
-
-  assert.deepEqual(applyReactionLocal([], "❤️", ME, true)[0].count, 1);
+  const before = store.getSnapshot();
+  store.applyEvent({ type: "reaction.changed", conversation_id: CONV, message_id: "m1", reactions: [{ emoji: "👍", count: 2 }] });
+  assert.deepEqual(store.getSnapshot().messages, before.messages);
+  assert.equal(typeof store.toggleReaction, "undefined");
+  assert.equal(typeof conversationStoreModule.applyReactionLocal, "undefined");
 });
 
 test("leo.delta 累加成 streaming，最终 message.updated 后清掉", async () => {
@@ -394,38 +380,24 @@ test("已读：私聊推进对方已读 seq；群里被 @ 的人读了就在我�
   assert.equal(store.getSnapshot().peerLastReadSeq, 2);
 });
 
-test("线程回帖不进主线；根消息的回复摘要会刷新", async () => {
-  const root = msg(1, { thread: { reply_count: 0, last_reply_at: null, participant_ids: [] } });
-  const reply = msg(2, { thread_root_id: "m1", id: "r1" });
-  const all = [root, reply];
-  const { api, store } = makeStore(all);
-  await store.loadLatest();
-  assert.deepEqual(seqs(store), [1]);
-  const refreshed = { ...root, thread: { reply_count: 1, last_reply_at: "x", participant_ids: [PEER] } };
-  api.getThread = async () => ({ root: refreshed, items: [reply] });
-  store.applyEvent({ type: "message.created", conversation_id: CONV, message: reply });
-  await new Promise((resolve) => setTimeout(resolve, 10));
-  assert.deepEqual(seqs(store), [1]);
-  assert.equal(store.find("m1").thread.reply_count, 1);
-});
-
-test("线程 store：只装该根消息下的回帖，发送自带 thread_root_id", async () => {
+test("legacy thread-tagged messages stay in the single conversation stream", async () => {
   const root = msg(1);
   const reply = msg(2, { thread_root_id: "m1", id: "r1" });
-  const all = [root, reply];
-  const api = fakeApi(all);
-  const store = new ConversationStore({
-    api,
-    conversationId: CONV,
-    viewerId: ME,
-    threadRootId: "m1",
-    newId: () => "t-1",
-  });
+  const { store } = makeStore([root]);
   await store.loadLatest();
-  assert.equal(store.getSnapshot().root.id, "m1");
-  assert.deepEqual(seqs(store), [2]);
-  await store.send({ kind: "text", body: "回一句" });
-  assert.equal(api.sent[0].thread_root_id, "m1");
+  store.applyEvent({ type: "message.created", conversation_id: CONV, message: reply });
+  assert.deepEqual(seqs(store), [1, 2]);
+  assert.equal(store.find("r1").body, reply.body);
+  assert.equal("root" in store.getSnapshot(), false);
+});
+
+test("sending is always to the conversation even with a legacy thread option", async () => {
+  const api = fakeApi([msg(1)]);
+  const store = new ConversationStore({ api, conversationId: CONV, viewerId: ME, threadRootId: "m1", newId: () => "t-1" });
+  await store.loadLatest();
+  await store.send({ kind: "text", body: "回一句", thread_root_id: "m1" });
+  assert.equal(api.sent[0].thread_root_id, null);
+  assert.deepEqual(seqs(store), [1, 2]);
 });
 
 test("缓存：同会话取到同一个 store，退出重进不丢消息", async () => {
