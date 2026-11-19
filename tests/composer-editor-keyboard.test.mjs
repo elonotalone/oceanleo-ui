@@ -15,6 +15,7 @@ for (const [name, value] of Object.entries({
 for (const name of ["innerHeight", "innerWidth", "scrollX", "scrollY", "pageXOffset", "pageYOffset"])
   Object.defineProperty(globalThis, name, { configurable: true, get: () => window[name] });
 document.elementFromPoint = () => null;
+window.scrollTo = () => {};
 window.Range.prototype.getBoundingClientRect = () => ({ top: 0, left: 0, right: 0, bottom: 0, width: 0, height: 0 });
 window.Range.prototype.getClientRects = () => ({ length: 0, item: () => null, [Symbol.iterator]: function* () {} });
 
@@ -22,7 +23,20 @@ const noop = (name) => dataModule(`export function ${name}(){return null;}${name
 // Use the actual TemplateFillArea, Tiptap and ProseMirror keymaps, all from ESM.
 const tiptap = ["@tiptap/react", "@tiptap/core", "@tiptap/pm/state", "@tiptap/extension-document",
   "@tiptap/extension-paragraph", "@tiptap/extension-text", "@tiptap/extension-placeholder", "@tiptap/extension-history"];
-const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.tsx", {
+const dockModuleUrl = await compileModule("src/shell/cloud-computer/ComputerDock.tsx", {
+  "../../lib/auth/client":dataModule("export async function getUserId(){return 'owner';}"),
+  "../../i18n/ui/useUI":dataModule("export function useUI(){return text=>text;}"),
+  "../../lib/cloud-computer-api":dataModule(`
+    const computer={id:"cc-home",name:"Laptop",status:"active",node_online:true,source:"byo",enrolled_at:"now",confirmed_at:"now"};
+    export const cloudComputerApi={async listComputers(){return {items:[computer]};},async getComputer(){return computer;},async listCliPrograms(){return {programs:[{id:"claude",installed:true,logged_in:true,version:"1"}]};}};
+    export function writeMountedComputerId(){}export function writeMountedComputerName(){}
+  `),
+  "../../api/devices":dataModule("export async function listDevices(){return {ok:true,data:[]};}"),
+  "../../lib/cloud-agent-api":dataModule("export async function listCloudAgentAvailability(){return {kind:'absent'};}"),
+  "next/navigation":dataModule("export function useRouter(){return {push(){}};}"),
+});
+const composerModuleUrl = await compileModule("src/shell/LeoComposer.tsx", {
+  "./cloud-computer/ComputerDock":dockModuleUrl,
   ...Object.fromEntries(tiptap.map((name) => [name, import.meta.resolve(name)])),
   "../lib/attachment-url": dataModule("export const PRIVATE_ATTACHMENT_MAX_BYTES=20*1024*1024;"),
   "../i18n/ui/useUI": dataModule("export function useUI(){return text=>text;}"),
@@ -35,9 +49,10 @@ const { LeoComposer } = await import(await compileModule("src/shell/LeoComposer.
   "./composer-skill-slash": dataModule("export function composerSlashAdapter(){return {};}export function useComposerSkillSlash(){return {onKeyDown(){return false;},popover:null};}"),
   ...Object.fromEntries([["./LeoEntryButton","LeoEntryButton"],["./AttachmentStrip","AttachmentStrip"],
     ["./ModelPicker","ModelGroupPicker"],["./PluginsPopover","PluginsPopover"],["./PayerSelector","PayerSelector"],
-    ["./mcp-apps","ComposerAppsBar"],["./cloud-computer/ComputerDock","ComputerDock"],["./ComposerLibraryPicker","ComposerLibraryPicker"]]
+    ["./mcp-apps","ComposerAppsBar"],["./ComposerLibraryPicker","ComposerLibraryPicker"]]
     .map(([path,name]) => [path,noop(name)])),
-}));
+});
+const { LeoComposer } = await import(composerModuleUrl);
 
 async function mount({ value = "", ...config } = {}) {
   const container = document.createElement("div");document.body.append(container);const root = createRoot(container);
@@ -46,6 +61,7 @@ async function mount({ value = "", ...config } = {}) {
     const [draft,setDraft] = React.useState(value);currentValue = draft;
     return React.createElement(LeoComposer, { loading: true, showComputerDock: false, showModelPicker: false,
       showPayerSelector: false, showPlugins: false, showAppsBar: false, ...options,
+      modelPickerSlot: options.Picker ? React.createElement(options.Picker) : undefined,
       value: draft, onChange: setDraft, onStop() {actions.stopped++;}, onSubmit(text) {actions.sent.push(text);setDraft("");} });
   }
   const render = async () => act(async () => root.render(React.createElement(Host,{options:config})));
@@ -101,4 +117,90 @@ test("real contenteditable physical Shift+Enter does not submit",async()=>{
   const view=await mount({value:"first line"});try {
     await view.key("Enter",{shiftKey:true});assert.deepEqual(view.actions.sent,[]);
   }finally{await view.close();}
+});
+
+test("home native conversation keeps a controlled real editor stable while typing", async () => {
+  const view = await mount({ loading: false, conversation: {kind: "native", computerId: "cc-test", computerName: "Laptop", program: "claude", view: "chat"} });
+  try {
+    for (const char of "Repro home-back") {
+      await act(async () => view.box.editor.commands.insertContent(char));
+    }
+    assert.equal(view.value, "Repro home-back");
+    assert.equal(document.activeElement, view.box);
+  } finally { await view.close(); }
+});
+
+const catalogModuleUrl = await compileModule("src/shell/acp-task/useAcpCatalogPicker.tsx", {
+  "../../i18n/ui/useUI": dataModule("export function useUI(){return text=>text;}"),
+  "../../lib/acp-frames-api": dataModule(`
+    export * from ${JSON.stringify(new URL("../src/lib/acp-frames-api.ts", import.meta.url).href)};
+    export function acpErrorText(error){return String(error);}
+    export async function getCatalog(){return {models:{currentModelId:"selected", availableModels:[{modelId:"selected",name:"Selected model"}]}};}
+  `),
+  "../../lib/program-choice-api": dataModule("export function programChoiceFrom(){return {};}export async function getProgramChoice(){return {};}export async function putProgramChoice(){return {};}"),
+  "../cloud-computer/native-surface/useProgramAccess": dataModule(`
+    export function useProgramAccess(){return {programs:[],install:{},login:{},logout:{},setLoginCodeDraft(){},retryConnect(){}};}
+  `),
+});
+const { useAcpCatalogPicker } = await import(catalogModuleUrl);
+function HomeModelPicker(){ return useAcpCatalogPicker({computerId:"cc-home",program:"claude"}).picker; }
+
+test("home native model pill and real controlled editor remain stable through typing and re-renders", async () => {
+  const view = await mount({ loading:false, showModelPicker:true, Picker:HomeModelPicker,
+    conversation:{kind:"native", computerId:"cc-home",computerName:"Laptop",program:"claude",view:"chat"} });
+  try {
+    for (const char of "Typing after computer selection") await act(async () => view.box.editor.commands.insertContent(char));
+    assert.equal(view.value,"Typing after computer selection");
+    assert.match(view.container.querySelector("[data-native-model-trigger]")?.textContent || "",/Selected model/);
+  } finally { await view.close(); }
+});
+
+// Exercise the portal's real home hook too: its typing callbacks re-render the
+// whole host, unlike a standalone editor. Keep network boundaries local.
+const { pairedRepoUrl } = await import("./helpers/paired-repo-url.mjs");
+const { fileURLToPath } = await import("node:url");
+const { useTaskComposer } = await import(await compileModule(fileURLToPath(pairedRepoUrl("oceanleo", "app/_components/task-composer.tsx")), {
+  "next/navigation":dataModule("export function usePathname(){return '/';}export function useRouter(){return {push(){}};}"),
+  "@/lib/oceanleo-ai":dataModule("export async function getUserId(){return 'owner';}export async function isSignedIn(){return true;}export async function createAgentTask(){throw Error('unexpected create');}export async function transcribeAudioUrl(){throw Error('unexpected audio');}"),
+  "@oceanleo/ui/shell":dataModule(`
+    import React from ${JSON.stringify(import.meta.resolve("react"))};
+    import {LeoComposer as RealComposer} from ${JSON.stringify(composerModuleUrl)};
+    export {useAcpCatalogPicker} from ${JSON.stringify(catalogModuleUrl)};
+    export {useTaskPending,putPending,settlePending} from ${JSON.stringify(new URL("../src/shell/acp-task/pending-send.ts",import.meta.url).href)};
+    export function LeoComposer(props){globalThis.__homeComposerProps=props;return React.createElement(RealComposer,{...props,showAppsBar:false,showPlugins:false});}
+    export function originalForPreparedFile(){} export function dimensionsForPreparedFile(){} export async function uploadComposerFile(){throw Error("unexpected upload");}
+  `),
+  "@oceanleo/ui/lib":dataModule(`
+    export function parseTaskLink(){return null;}export function attachmentRef(){return null;}
+    export const PRIVATE_ATTACHMENT_MAX_BYTES=20*1024*1024,PRIVATE_ATTACHMENT_TOO_LARGE="Too large";
+    export function acpErrorText(e){return String(e);}export async function uploadFile(){throw Error("unexpected upload");}
+    export async function createComputerTaskSession(){throw Error("unexpected create");}export async function send(){throw Error("unexpected send");}
+    export function knownComputer(id){return id?{id,name:"Laptop",node_online:true}:null;}export const lastKnownComputer=knownComputer;
+    export async function loadComputer(id){return knownComputer(id);}export function watchComputer(){return ()=>{};}
+  `),
+  "@oceanleo/ui/i18n":dataModule("const tr=text=>text;export function useT(){return tr;}export function useUI(){return tr;}"),
+  "./auth-modal":dataModule("export function AuthModal(){return null;}"),
+  "./pending-task-conversation":dataModule("export function PendingTaskConversation(){return null;}"),
+  "sonner":dataModule("export const toast={error(){}};"),
+}));
+
+test("real home hook: picking computer chat then typing never triggers maximum update depth",async()=>{
+  const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
+  function Home(){return useTaskComposer({siteId:"oceanleo",openAttachment(){}}).composer;}
+  try {
+    await act(async()=>root.render(React.createElement(Home)));
+    async function click(selector){
+      for(let i=0;i<50&&!document.querySelector(selector);i++) await act(async()=>new Promise(resolve=>setTimeout(resolve,10)));
+      const node=document.querySelector(selector);assert.ok(node,selector);
+      await act(async()=>node.click());
+    }
+    await click("[data-oceanleo-cc-dock-trigger]");
+    await click('[data-oceanleo-cc-switch-item="cc-home"]');
+    await click('[data-dock-program-row="claude"]');
+    await click('[data-dock-view="chat"]');
+    for(let i=0;i<50&&!container.querySelector('[role="textbox"]')?.editor;i++) await act(async()=>new Promise(resolve=>setTimeout(resolve,10)));
+    const box=container.querySelector('[role="textbox"]');assert.ok(box?.editor);
+    for(const char of "Repro home-back: reply with the single word OK. Do not use any tools.") await act(async()=>box.editor.commands.insertContent(char));
+    assert.equal(globalThis.__homeComposerProps.value,"Repro home-back: reply with the single word OK. Do not use any tools.");
+  } finally {await act(async()=>root.unmount());container.remove();delete globalThis.__homeComposerProps;}
 });
