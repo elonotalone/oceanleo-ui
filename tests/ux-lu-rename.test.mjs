@@ -81,15 +81,16 @@ const COPIES = await Promise.all(
   })),
 );
 
-test("the Library category is called 文件包; its id, filter and URL value stay folders", () => {
+test("legacy folder navigation is labelled 文件 and remains separate from generic files", () => {
   assert.equal(taxonomy.LIBRARY_FOLDER_CATEGORY_ID, "folders");
   assert.deepEqual(
     { ...taxonomy.LIBRARY_FOLDER_CATEGORY },
-    { value: "folders", label: "文件包", typeLabel: "文件包", filter: "folders" },
+    { value: "folders", label: "文件", typeLabel: "文件", filter: "folders" },
   );
-  assert.deepEqual(taxonomy.LIBRARY_EDITOR_CATEGORIES.at(-1), taxonomy.LIBRARY_FOLDER_CATEGORY);
+  assert.equal(taxonomy.LIBRARY_EDITOR_CATEGORIES.some((row) => row.value === "folders"), false);
+  assert.ok(taxonomy.LIBRARY_EDITOR_CATEGORIES.some((row) => row.value === "files" && row.label === "文件"));
   assert.equal(taxonomy.LIBRARY_EDITOR_CATEGORIES.some((row) => row.label === "文件夹" || row.typeLabel === "文件夹"), false);
-  assert.equal(taxonomy.libraryCategoryLabel("folders"), "文件包");
+  assert.equal(taxonomy.libraryCategoryLabel("folders"), "文件");
 });
 
 test("normalizeLibraryCategory takes the new name and the old one", () => {
@@ -97,7 +98,7 @@ test("normalizeLibraryCategory takes the new name and the old one", () => {
     assert.equal(taxonomy.normalizeLibraryCategory(alias), "folders", alias);
     assert.equal(taxonomy.isLibraryFolderCategory(alias), true, alias);
   }
-  assert.equal(taxonomy.libraryCategoryLabel("文件夹"), "文件包");
+  assert.equal(taxonomy.libraryCategoryLabel("文件夹"), "文件");
 });
 
 test("every renamed copy key has all 16 locales and none still uses that locale's word for folder", () => {

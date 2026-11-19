@@ -109,7 +109,9 @@ const KIND_FEATURE: Partial<Record<LibraryItem["kind"], AdvancedFeatureId>> = {
  * 这件素材实际绑定的编辑能力（design_canvas 照实返回）。库的类别另由
  * `libraryEditorCategory` 折叠；不依赖源文件可用性、revision 状态或编辑权限。
  */
-export function libraryEditorFeatureId(item: LibraryItem): AdvancedFeatureId | null {
+type LibraryCategoryItem = Pick<LibraryItem, "kind" | "artifact" | "artifactType" | "meta">;
+
+export function libraryEditorFeatureId(item: LibraryCategoryItem): AdvancedFeatureId | null {
   const type = item.artifact?.artifactType || item.artifactType;
   if (type) {
     const candidates = ADVANCED_CAPABILITY_MATRIX.filter((row) =>
@@ -124,7 +126,7 @@ export function libraryEditorFeatureId(item: LibraryItem): AdvancedFeatureId | n
   return KIND_FEATURE[item.kind] || null;
 }
 
-export function libraryEditorLabel(item: LibraryItem): string {
+export function libraryEditorLabel(item: LibraryCategoryItem): string {
   if (isLibraryLink(item)) return "链接";
   if (item.kind === "audio") return "音频";
   if (item.kind === "threed") return "3D 模型";
@@ -149,7 +151,9 @@ export function normalizeLibraryCategory(value: string): string {
 }
 
 export function libraryCategoryLabel(value: string): string {
-  return LIBRARY_EDITOR_CATEGORIES.find((row) => row.value === normalizeLibraryCategory(value))?.typeLabel || value;
+  const category = normalizeLibraryCategory(value);
+  if (category === LIBRARY_FOLDER_CATEGORY_ID) return LIBRARY_FOLDER_CATEGORY.typeLabel;
+  return LIBRARY_EDITOR_CATEGORIES.find((row) => row.value === category)?.typeLabel || value;
 }
 
 /** Context keys keep material type names independent of in-document tools. */
@@ -168,7 +172,7 @@ export function translateLibraryTypeLabel(
   return translated && translated !== key ? translated : label;
 }
 
-function isLibraryLink(item: LibraryItem): boolean {
+function isLibraryLink(item: LibraryCategoryItem): boolean {
   return Boolean(item.meta?.link_work);
 }
 

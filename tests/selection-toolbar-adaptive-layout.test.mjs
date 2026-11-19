@@ -381,13 +381,13 @@ test("grid inspectors use named, distinct More launchers instead of repeated tab
 test("live capability labels map grid and sibling kinds for More discoverability", () => {
   assert.deepEqual(selectionLiveCapability("grid-cell"), {
     id: "grid",
-    label: "表格",
+    label: "Sheet",
   });
   assert.deepEqual(selectionLiveCapability("grid-range"), {
     id: "grid",
-    label: "表格",
+    label: "Sheet",
   });
-  assert.equal(selectionMoreDialogLabel("grid-column"), "更多属性 · 表格");
+  assert.equal(selectionMoreDialogLabel("grid-column"), "更多属性 · Sheet");
   assert.equal(selectionMoreDialogLabel("design-text"), "更多属性 · 设计");
   assert.equal(selectionMoreDialogLabel("unknown-kind"), "更多属性");
   assert.equal(selectionLiveCapability(""), null);
@@ -414,6 +414,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "https://excel.oceanleo.com/",
 });
 const { window } = dom;
+window.scrollTo = () => {};
 const { document } = window;
 for (const [name, value] of Object.entries({
   window,
@@ -743,7 +744,7 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     );
     assert.equal(toolbar.getAttribute("data-selection-overflow-controls"), "");
     assert.equal(
-      mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
+      mounted.host.querySelector('button[aria-label="更多属性 · Sheet"]'),
       null,
     );
 
@@ -765,14 +766,14 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     );
 
     const more = mounted.host.querySelector(
-      'button[aria-label="更多属性 · 表格"]',
+      'button[aria-label="更多属性 · Sheet"]',
     );
     assert.ok(more);
     assert.equal(more.getAttribute("aria-haspopup"), "dialog");
     assert.equal(more.getAttribute("aria-expanded"), "false");
     await click(more);
     const dialog = document.querySelector(
-      '[role="dialog"][aria-label="更多属性 · 表格"]',
+      '[role="dialog"][aria-label="更多属性 · Sheet"]',
     );
     assert.ok(dialog);
     assert.equal(dialog.parentElement, document.body);
@@ -785,7 +786,7 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     assert.equal(
       dialog.querySelector("[data-selection-overflow-capability-label]")
         ?.textContent,
-      "表格",
+      "Sheet",
     );
     assert.deepEqual(
       [...dialog.querySelectorAll("[data-selection-overflow-group]")].map(
@@ -826,7 +827,7 @@ test("ResizeObserver moves measured CJK overflow into accessible More without os
     );
     assert.equal(toolbar.getAttribute("data-selection-overflow-controls"), "");
     assert.equal(
-      mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
+      mounted.host.querySelector('button[aria-label="更多属性 · Sheet"]'),
       null,
     );
     assert.equal(document.activeElement?.getAttribute("aria-label"), "删除对象");
@@ -1027,7 +1028,7 @@ test("realistic grid live controls overflow into More under docked real width", 
     );
 
     const more = mounted.host.querySelector(
-      'button[aria-label="更多属性 · 表格"]',
+      'button[aria-label="更多属性 · Sheet"]',
     );
     assert.ok(more);
     await click(more);
@@ -1035,11 +1036,11 @@ test("realistic grid live controls overflow into More under docked real width", 
       '[role="dialog"][data-selection-overflow-live-capability="grid"]',
     );
     assert.ok(dialog);
-    assert.match(dialog.getAttribute("aria-label") || "", /表格/);
+    assert.match(dialog.getAttribute("aria-label") || "", /Sheet/);
     assert.equal(
       dialog.querySelector("[data-selection-overflow-capability-label]")
         ?.textContent,
-      "表格",
+      "Sheet",
     );
     const overflowLabels = [
       ...dialog.querySelectorAll("[data-selection-control-id]"),
@@ -1354,7 +1355,7 @@ test("floating capacity is the boundary width, never the strip left of the bar's
       "cjk ordinary danger",
     );
     assert.ok(
-      mounted.host.querySelector('button[aria-label="更多属性 · 表格"]'),
+      mounted.host.querySelector('button[aria-label="更多属性 · Sheet"]'),
       "narrow-boundary overflow must keep More reachable",
     );
     assert.equal(toolbar.style.maxInlineSize, "184px");

@@ -81,7 +81,7 @@ test('real client retains all 48 links and each supported link marker',async()=>
   },{rows:[row]});
  }
 });
-for(const fullPage of [true,false]) test(`real MyLibrary ${fullPage?'page':'sidebar'} loads link in All and Website then opens standard detail`,async()=>{
+for(const fullPage of [true,false]) test(`real MyLibrary ${fullPage?'page':'sidebar'} loads link in All and Links then opens standard detail`,async()=>{
  dom.window.localStorage.clear(); dom.window.sessionStorage.clear();
  const gate=deferred(); const errors=[]; const oldError=console.error;
  console.error=(...args)=>errors.push(args.map(String).join(' '));
@@ -95,13 +95,14 @@ for(const fullPage of [true,false]) test(`real MyLibrary ${fullPage?'page':'side
   if(fullPage){
    const type=host.querySelector('[data-collection-filter="type"]');assert.ok(type,'page type filter');
    await act(async()=>type.click());
-   const website=[...document.querySelectorAll('[role="option"]')].find(option=>option.textContent==='网站');assert.ok(website,'page website option');
+   const website=[...document.querySelectorAll('[role="option"]')].find(option=>option.textContent==='链接');assert.ok(website,'page website option');
    await act(async()=>{website.click();await pause();});
   }else{
-   const website=[...host.querySelectorAll('button')].find(button=>button.textContent==='网站');assert.ok(website,'sidebar website filter');
+   const website=[...host.querySelectorAll('button')].find(button=>button.textContent==='链接');assert.ok(website,'sidebar website filter');
    await act(async()=>{website.click();await pause();});
   }
-  assert.ok(host.textContent.includes(title),'link visible in Website');
+  assert.ok(host.textContent.includes(title),'link visible in Links');
+  assert.equal(host.textContent.includes('Server website'),false,'server works remain in Websites and Apps');
   const card=[...host.querySelectorAll('[role="button"],button')].find(node=>node.textContent.includes(title)&&!node.querySelector('[role="button"],button'));
   assert.ok(card,'link card');await act(async()=>{card.click();await pause();});
   const detail=host.querySelector('[data-asset-detail]');assert.ok(detail,'standard Library detail');

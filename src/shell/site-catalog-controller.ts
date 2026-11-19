@@ -8,6 +8,7 @@ import {
   type TemplateMaterial,
 } from "./app-catalog";
 import { libraryKindForArtifactType, type LibraryKind } from "./library-data";
+import { libraryEditorLabel } from "./library-editor-category";
 import {
   CATALOG_APP_QUERY_KEY,
   LIBRARY_ITEM_QUERY_KEY,
@@ -672,25 +673,13 @@ export function catalogPresetFill(
 // 就退化为打开「我的库」并给可见提示——绝不静默无反应，也绝不猜一个错编辑器。
 
 /**
- * 与 `MyLibrary.tsx` 的 `KIND_CATEGORY` 必须逐字一致（那里是我的库分类的产出端，
- * 这里是深链的消费端）。`tests/workspace-fill-deeplink.test.mjs` 直接比对两处源码。
+ * Deep links and Library filters use the same category names. Derive these
+ * labels from the shared classifier so renamed or folded categories stay aligned.
  */
-export const CATALOG_LIBRARY_KIND_CATEGORY: Record<LibraryKind, string> = {
-  website: "网站",
-  canvas: "图片",
-  ppt: "演示文稿",
-  sheet: "Sheet",
-  document: "文档",
-  image: "图片",
-  video: "视频",
-  audio: "音频",
-  xhs: "小红书",
-  threed: "3D 模型",
-  game: "游戏",
-  geo_map: "地图",
-  interactive_doc: "交互文档",
-  file: "文件",
-};
+export const CATALOG_LIBRARY_KIND_CATEGORY: Record<LibraryKind, string> = Object.fromEntries(
+  (["website", "canvas", "ppt", "sheet", "document", "image", "video", "audio", "xhs", "threed", "game", "geo_map", "interactive_doc", "file"] as const)
+    .map((kind) => [kind, libraryEditorLabel({ kind, meta: {} })]),
+) as Record<LibraryKind, string>;
 
 const LIBRARY_KIND_ALIASES: Record<string, LibraryKind> = {
   website: "website",
