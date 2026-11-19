@@ -8,7 +8,7 @@ import {
   getClientHostConfig,
   type ClientHostLoginProgress,
 } from "../../contracts/client-host-config";
-import { runtimePageOrigin } from "../../contracts/domain-family";
+import { currentDomainFamily, runtimePageOrigin } from "../../contracts/domain-family";
 import { authFetch } from "./auth-fetch";
 import { browserAuthLock } from "./refresh-lock";
 import {
@@ -113,6 +113,7 @@ function hostBrowserClient(): SupabaseClient | null {
   const client = createClient(url, anonKey, {
     global: { fetch: authFetch },
     auth: {
+      experimental: { passkey: true },
       persistSession: true,
       autoRefreshToken: !native,
       detectSessionInUrl: hostCfg.platform !== "desktop",
@@ -199,6 +200,7 @@ export function browserClient(): SupabaseClient | null {
       return authFetch(input, /grant_type=pkce/.test(url) ? { ...init, signal: callbackTransport.signal } : init, true);
     } : authFetch },
     auth: {
+      experimental: { passkey: true },
       // Always refresh. Preview still must not persist the result onto
       // Domain=.oceanleo.com — a failed refresh used to sign the operator
       // out of every family site. SDK initialization owns PKCE before old
@@ -804,7 +806,6 @@ export interface MfaFactor {
   /** `verified` 才是真正生效的因子；`unverified` 是注册到一半的残留。 */
   status: "verified" | "unverified";
   createdAt?: string;
-  factorType?: "totp" | "webauthn";
 }
 
 /** 已登记的 TOTP 因子。取不到时回空数组而不是抛——账号页不许因此白屏。 */
@@ -819,12 +820,11 @@ export async function listMfaFactors(): Promise<{ factors: MfaFactor[]; error?: 
   for (const f of raw) {
     const id = String((f as { id?: string })?.id || "");
     if (!id || seen.has(id)) continue;
-    if (f.factor_type !== "totp" && f.factor_type !== "webauthn") continue;
+    if (f.factor_type !== "totp") continue;
     seen.add(id);
     const status = (f as { status?: string }).status === "verified" ? "verified" : "unverified";
     factors.push({
       id,
-      factorType: f.factor_type,
       friendlyName: (f as { friendly_name?: string }).friendly_name || undefined,
       status,
       createdAt: (f as { created_at?: string }).created_at || undefined,
@@ -833,33 +833,72 @@ export async function listMfaFactors(): Promise<{ factors: MfaFactor[]; error?: 
   return { factors };
 }
 
-/** SDK/browser detection; server may explicitly reject disabled WebAuthn MFA. */
-export function supportsMfaPasskeys(): boolean {
-  return typeof window !== "undefined" && window.isSecureContext === true &&
-    typeof window.PublicKeyCredential !== "undefined" &&
-    Boolean(browserClient()?.auth.mfa.webauthn?.register);
+/** The configured RP ID is oceanleo.com. Other origins cannot use its passkeys. */
+export function supportsPasskeys(): boolean {
+  if (typeof window === "undefined" || !window.isSecureContext ||
+      !window.PublicKeyCredential || currentDomainFamily() === "cn") return false;
+  const host = window.location.hostname.toLowerCase();
+  return window.location.protocol === "https:" && (host === "oceanleo.com" || host.endsWith(".oceanleo.com"));
 }
 
-export async function enrollMfaPasskey(): Promise<{ error?: string; unsupported?: boolean }> {
+export interface AccountPasskey {
+  id: string;
+  friendlyName?: string;
+  createdAt: string;
+}
+
+export async function listPasskeys(): Promise<{ passkeys: AccountPasskey[]; error?: string }> {
+  if (!supportsPasskeys()) return { passkeys: [] };
   const c = browserClient();
-  if (!c || !supportsMfaPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。", unsupported: true };
+  if (!c) return { passkeys: [], error: "登录服务尚未配置" };
   try {
-    const { error } = await c.auth.mfa.webauthn.register({ friendlyName: "OceanLeo", webauthn: {} });
-    if (error) return { error: error.message, unsupported: /mfa.*(disabled|not_enabled)|unsupported|not supported/i.test(String(error.code) + " " + error.message) };
-    await accessToken();
-    return {};
+    const { data, error } = await c.auth.passkey.list();
+    return error ? { passkeys: [], error: error.message } : { passkeys: (data || []).map((key) => ({
+      id: key.id, friendlyName: key.friendly_name, createdAt: key.created_at,
+    })) };
+  } catch (error) { return { passkeys: [], error: error instanceof Error ? error.message : "这一步没有完成，请稍后重试。" }; }
+}
+
+export async function registerPasskey(): Promise<{ error?: string }> {
+  const c = browserClient();
+  if (!c || !supportsPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。" };
+  try {
+    const { error } = await c.auth.registerPasskey();
+    return { error: error?.message };
   } catch (error) { return { error: error instanceof Error ? error.message : "这一步没有完成，请稍后重试。" }; }
 }
 
-export async function verifyMfaPasskey(factorId: string): Promise<{ error?: string }> {
+export async function removePasskey(passkeyId: string): Promise<{ error?: string }> {
   const c = browserClient();
-  if (!c || !supportsMfaPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。" };
+  if (!c || !supportsPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。" };
+  const { error } = await c.auth.passkey.delete({ passkeyId });
+  return { error: error?.message };
+}
+
+/** Authenticate in isolation: another user's passkey must never replace this account. */
+export async function verifyPasskeyForUser(expectedUserId: string): Promise<{ error?: string }> {
+  const c = browserClient();
+  if (!c || !supportsPasskeys()) return { error: "此处暂不支持通行密钥，请使用验证器。" };
+  if (!expectedUserId || await getUserId() !== expectedUserId) return { error: "通行密钥不属于当前账号，请使用此账号的验证方式。" };
+  const isolated = createClient(currentIdentityUrl(), currentIdentityAnonKey(), {
+    global: { fetch: authFetch },
+    auth: { experimental: { passkey: true }, persistSession: false, autoRefreshToken: false,
+      storageKey: `oceanleo-passkey-step-up-${crypto.randomUUID()}`,
+      detectSessionInUrl: false, storage: createMemoryAuthStorage() },
+  });
   try {
-    const { error } = await c.auth.mfa.webauthn.authenticate({ factorId, webauthn: {} });
+    const captcha = await captchaOptions();
+    const { data, error } = await isolated.auth.signInWithPasskey({ options: captcha });
     if (error) return { error: error.message };
-    await accessToken();
-    return {};
+    if (data?.user?.id !== expectedUserId || data.session?.user.id !== expectedUserId || await getUserId() !== expectedUserId) {
+      return { error: "通行密钥不属于当前账号，请使用此账号的验证方式。" };
+    }
+    const adopted = await c.auth.setSession({ access_token: data.session.access_token, refresh_token: data.session.refresh_token });
+    if (adopted.error) return { error: adopted.error.message };
+    _accessToken = adopted.data.session?.access_token ?? null;
+    return _accessToken ? {} : { error: "这一步没有完成，请稍后重试。" };
   } catch (error) { return { error: error instanceof Error ? error.message : "这一步没有完成，请稍后重试。" }; }
+  finally { await isolated.auth.stopAutoRefresh(); }
 }
 
 /** Only the current account's own verified address can receive a step-up code. */

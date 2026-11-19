@@ -25,9 +25,11 @@ import {
   cnPhoneIsBound,
   currentAal,
   enrollTotp,
-  enrollMfaPasskey,
-  supportsMfaPasskeys,
-  verifyMfaPasskey,
+  registerPasskey,
+  supportsPasskeys,
+  listPasskeys,
+  removePasskey,
+  type AccountPasskey,
   getAuthPhoneUser,
   listMfaFactors,
   maskCnPhone,
@@ -38,6 +40,7 @@ import {
   type MfaFactor,
   type TotpEnrollment,
 } from "../lib/auth/client";
+import { StepUpDialog } from "../shell/auth/StepUpDialog";
 import { currentDomainFamily } from "../contracts/domain-family";
 import { PhoneBindForm } from "./PhoneBindGate";
 import {
@@ -454,15 +457,19 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
   const [removing, setRemoving] = useState<MfaFactor | null>(null);
   const [removeCode, setRemoveCode] = useState("");
   const [passkeysSupported, setPasskeysSupported] = useState(false);
+  const [passkeys, setPasskeys] = useState<AccountPasskey[]>([]);
+  const [removingPasskey, setRemovingPasskey] = useState<AccountPasskey | null>(null);
 
   const reload = useCallback(async () => {
-    const { factors: list } = await listMfaFactors();
-    setFactors(list);
+    const [mfa, keys] = await Promise.all([listMfaFactors(), listPasskeys()]);
+    setFactors(mfa.factors);
+    setPasskeys(keys.passkeys);
+    if (mfa.error || keys.error) setError(mfa.error || keys.error || "");
     setLoaded(true);
   }, []);
 
   useEffect(() => {
-    setPasskeysSupported(supportsMfaPasskeys());
+    setPasskeysSupported(supportsPasskeys());
     void reload();
   }, [reload]);
 
@@ -471,10 +478,9 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
   async function startPasskeyEnroll() {
     setError(""); setOk(""); setBusy(true);
     try {
-      const result = await enrollMfaPasskey();
-      if (result.unsupported) setPasskeysSupported(false);
-      if (result.error) { setError(tt(result.unsupported ? "此处暂不支持通行密钥，请使用验证器。" : result.error)); return; }
-      setOk(tt("两步验证已开启。"));
+      const result = await registerPasskey();
+      if (result.error) { setError(tt(result.error)); return; }
+      setOk(tt("通行密钥已添加。"));
       await reload();
     } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
     finally { setBusy(false); }
@@ -517,9 +523,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
     setOk("");
     setBusy(true);
     // 先验一次再移除：光有会话就能一键关掉 2FA 的话，这道锁等于没上。
-    const check = removing.factorType === "webauthn"
-      ? await verifyMfaPasskey(removing.id)
-      : await challengeAndVerify(removing.id, removeCode);
+    const check = await challengeAndVerify(removing.id, removeCode);
     if (check.error) {
       setBusy(false);
       setError(tt(check.error));
@@ -550,8 +554,8 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
   return (
     <Section
       slot="two-step"
-      title={tt("两步验证")}
-      desc={verified.length > 0 ? tt("已开启。可使用通行密钥或验证器确认身份。") : tt("还没开启。开启之后，别人光有你的密码也登不进来。")}
+      title={tt("验证身份")}
+      desc={tt("使用通行密钥、验证器或邮箱验证码确认身份。")}
     >
       {removing && (
         <ConfirmDialog
@@ -569,13 +573,29 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
 
       {!loaded && <p className="text-[13px] text-neutral-500">{tt("加载中…")}</p>}
 
+      {removingPasskey && <StepUpDialog onClose={() => setRemovingPasskey(null)} onSuccess={() => {
+        const key = removingPasskey;
+        setRemovingPasskey(null);
+        setBusy(true); setError(""); setOk("");
+        void removePasskey(key.id).then(async (result) => {
+          if (result.error) setError(tt(result.error));
+          else { setOk(tt("通行密钥已移除。")); await reload(); }
+        }).catch((cause) => setError(cause instanceof Error ? cause.message : String(cause))).finally(() => setBusy(false));
+      }} />}
+      {loaded && passkeys.length > 0 && <ul className="mb-4 divide-y divide-neutral-100" data-security-passkeys>
+        {passkeys.map((key) => <li key={key.id} className="flex items-center justify-between py-2.5">
+          <div className="min-w-0"><p className="truncate text-[13px] text-neutral-900">{key.friendlyName || tt("通行密钥")}</p><p className="text-[12px] text-neutral-500">{tt("添加于 {date}", { date: formatTime(key.createdAt) })}</p></div>
+          <button type="button" disabled={busy} data-security-remove-passkey={key.id} className={`${QUIET} shrink-0 text-red-600 hover:bg-red-50`} onClick={() => setRemovingPasskey(key)}>{tt("移除")}</button>
+        </li>)}
+      </ul>}
+
       {loaded && verified.length > 0 && (
         <ul className="mb-4 divide-y divide-neutral-100" data-security-factors>
           {verified.map((f) => (
             <li key={f.id} className="flex items-center justify-between py-2.5">
               <div className="min-w-0">
                 <p className="truncate text-[13px] text-neutral-900">
-                  {f.friendlyName || tt(f.factorType === "webauthn" ? "通行密钥" : "未命名的验证器")}
+                  {f.friendlyName || tt("未命名的验证器")}
                 </p>
                 {f.createdAt && (
                   <p className="text-[12px] text-neutral-500">
@@ -599,7 +619,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
         </ul>
       )}
 
-      {removing && removing.factorType !== "webauthn" && (
+      {removing && (
         <div className="mb-4">
           <label className="mb-1 block text-[12px] text-neutral-600" htmlFor="sec-remove-code">
             {tt("移除前先输一次验证器上的 6 位码。")}
@@ -657,7 +677,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
               placeholder={tt("6 位数字")}
             />
           </div>
-          {error && <Note kind="error" text={error} />}
+          {error && <Note kind="error" text={tt(error)} />}
           <div className="flex gap-2">
             <button type="submit" disabled={busy} data-security-submit="enroll" className={PRIMARY}>
               {busy ? <ButtonSpinner label={tt("处理中...")} /> : tt("确认并开启")}
@@ -676,7 +696,7 @@ export function TwoStepBlock({ tt }: { tt: UITranslate }) {
         </form>
       ) : (
         <>
-          {error && <Note kind="error" text={error} />}
+          {error && <Note kind="error" text={tt(error)} />}
           {!error && ok && <Note kind="ok" text={ok} />}
           {passkeysSupported && <button type="button" disabled={busy || !loaded} className={`${PRIMARY} mt-2 mr-2`} onClick={() => void startPasskeyEnroll()}>{tt("添加通行密钥")}</button>}
           <button

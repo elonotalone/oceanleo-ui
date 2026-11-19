@@ -8,8 +8,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Add a passkey",
     "通行密钥": "Passkey",
     "此处暂不支持通行密钥，请使用验证器。": "Passkeys are unavailable here. Use an authenticator.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Enabled. Use a passkey or authenticator to verify your identity.",
-    "此账号没有邮箱，请先在账号设置中添加。": "This account has no email address. Add one in account settings first."
+    "此账号没有邮箱，请先在账号设置中添加。": "This account has no email address. Add one in account settings first.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "This passkey belongs to another account. Use a verification method for this account.",
+    "通行密钥已添加。": "Passkey added.",
+    "通行密钥已移除。": "Passkey removed.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Verify your identity with a passkey, authenticator or email code."
   },
   "zh": {
     "验证身份": "验证身份",
@@ -18,8 +21,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "添加通行密钥",
     "通行密钥": "通行密钥",
     "此处暂不支持通行密钥，请使用验证器。": "此处暂不支持通行密钥，请使用验证器。",
-    "已开启。可使用通行密钥或验证器确认身份。": "已开启。可使用通行密钥或验证器确认身份。",
-    "此账号没有邮箱，请先在账号设置中添加。": "此账号没有邮箱，请先在账号设置中添加。"
+    "此账号没有邮箱，请先在账号设置中添加。": "此账号没有邮箱，请先在账号设置中添加。",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "通行密钥不属于当前账号，请使用此账号的验证方式。",
+    "通行密钥已添加。": "通行密钥已添加。",
+    "通行密钥已移除。": "通行密钥已移除。",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "使用通行密钥、验证器或邮箱验证码确认身份。"
   },
   "zh-TW": {
     "验证身份": "驗證身分",
@@ -28,8 +34,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "新增通行密鑰",
     "通行密钥": "通行密鑰",
     "此处暂不支持通行密钥，请使用验证器。": "此處暫不支援通行密鑰，請使用驗證器。",
-    "已开启。可使用通行密钥或验证器确认身份。": "已啟用。可使用通行密鑰或驗證器確認身分。",
-    "此账号没有邮箱，请先在账号设置中添加。": "此帳號沒有信箱，請先在帳號設定中新增。"
+    "此账号没有邮箱，请先在账号设置中添加。": "此帳號沒有信箱，請先在帳號設定中新增。",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "此通行密鑰不屬於目前帳號，請使用此帳號的驗證方式。",
+    "通行密钥已添加。": "通行密鑰已新增。",
+    "通行密钥已移除。": "通行密鑰已移除。",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "使用通行密鑰、驗證器或信箱驗證碼確認身分。"
   },
   "ja": {
     "验证身份": "本人確認",
@@ -38,8 +47,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "パスキーを追加",
     "通行密钥": "パスキー",
     "此处暂不支持通行密钥，请使用验证器。": "ここではパスキーを利用できません。認証アプリを使用してください。",
-    "已开启。可使用通行密钥或验证器确认身份。": "有効です。パスキーまたは認証アプリで本人確認できます。",
-    "此账号没有邮箱，请先在账号设置中添加。": "このアカウントにメールアドレスがありません。アカウント設定で追加してください。"
+    "此账号没有邮箱，请先在账号设置中添加。": "このアカウントにメールアドレスがありません。アカウント設定で追加してください。",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "このパスキーは別のアカウントのものです。このアカウントの認証方法を使用してください。",
+    "通行密钥已添加。": "パスキーを追加しました。",
+    "通行密钥已移除。": "パスキーを削除しました。",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "パスキー、認証アプリ、メールのコードで本人確認します。"
   },
   "ko": {
     "验证身份": "본인 확인",
@@ -48,8 +60,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "패스키 추가",
     "通行密钥": "패스키",
     "此处暂不支持通行密钥，请使用验证器。": "여기서는 패스키를 사용할 수 없습니다. 인증 앱을 사용하세요.",
-    "已开启。可使用通行密钥或验证器确认身份。": "활성화됨. 패스키 또는 인증 앱으로 본인을 확인하세요.",
-    "此账号没有邮箱，请先在账号设置中添加。": "이 계정에 이메일 주소가 없습니다. 계정 설정에서 먼저 추가하세요."
+    "此账号没有邮箱，请先在账号设置中添加。": "이 계정에 이메일 주소가 없습니다. 계정 설정에서 먼저 추가하세요.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "다른 계정의 패스키입니다. 현재 계정의 인증 수단을 사용하세요.",
+    "通行密钥已添加。": "패스키를 추가했습니다.",
+    "通行密钥已移除。": "패스키를 삭제했습니다.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "패스키, 인증 앱 또는 이메일 코드로 본인을 확인하세요."
   },
   "fr": {
     "验证身份": "Vérifier votre identité",
@@ -58,8 +73,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Ajouter une clé d’accès",
     "通行密钥": "Clé d’accès",
     "此处暂不支持通行密钥，请使用验证器。": "Les clés d’accès ne sont pas disponibles ici. Utilisez une application d’authentification.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Activé. Vérifiez votre identité avec une clé d’accès ou une application d’authentification.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Ce compte n’a pas d’adresse e-mail. Ajoutez-en une dans les paramètres du compte."
+    "此账号没有邮箱，请先在账号设置中添加。": "Ce compte n’a pas d’adresse e-mail. Ajoutez-en une dans les paramètres du compte.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Cette clé d’accès appartient à un autre compte. Utilisez une méthode de vérification de ce compte.",
+    "通行密钥已添加。": "Clé d’accès ajoutée.",
+    "通行密钥已移除。": "Clé d’accès supprimée.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Vérifiez votre identité avec une clé d’accès, une application d’authentification ou un code par e-mail."
   },
   "de": {
     "验证身份": "Identität bestätigen",
@@ -68,8 +86,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Passkey hinzufügen",
     "通行密钥": "Passkey",
     "此处暂不支持通行密钥，请使用验证器。": "Passkeys sind hier nicht verfügbar. Verwenden Sie eine Authentifizierungs-App.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Aktiviert. Bestätigen Sie Ihre Identität mit einem Passkey oder einer Authentifizierungs-App.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Dieses Konto hat keine E-Mail-Adresse. Fügen Sie zuerst eine in den Kontoeinstellungen hinzu."
+    "此账号没有邮箱，请先在账号设置中添加。": "Dieses Konto hat keine E-Mail-Adresse. Fügen Sie zuerst eine in den Kontoeinstellungen hinzu.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Dieser Passkey gehört zu einem anderen Konto. Verwenden Sie eine Bestätigungsmethode dieses Kontos.",
+    "通行密钥已添加。": "Passkey hinzugefügt.",
+    "通行密钥已移除。": "Passkey entfernt.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Bestätigen Sie Ihre Identität mit einem Passkey, einer Authentifizierungs-App oder einem E-Mail-Code."
   },
   "es": {
     "验证身份": "Verificar tu identidad",
@@ -78,8 +99,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Añadir una clave de acceso",
     "通行密钥": "Clave de acceso",
     "此处暂不支持通行密钥，请使用验证器。": "Las claves de acceso no están disponibles aquí. Usa una aplicación de autenticación.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Activado. Verifica tu identidad con una clave de acceso o una aplicación de autenticación.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Esta cuenta no tiene correo electrónico. Añade uno en los ajustes de la cuenta."
+    "此账号没有邮箱，请先在账号设置中添加。": "Esta cuenta no tiene correo electrónico. Añade uno en los ajustes de la cuenta.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Esta clave de acceso pertenece a otra cuenta. Usa un método de verificación de esta cuenta.",
+    "通行密钥已添加。": "Clave de acceso añadida.",
+    "通行密钥已移除。": "Clave de acceso eliminada.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Verifica tu identidad con una clave de acceso, una aplicación de autenticación o un código por correo."
   },
   "pt-PT": {
     "验证身份": "Verificar a identidade",
@@ -88,8 +112,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Adicionar chave de acesso",
     "通行密钥": "Chave de acesso",
     "此处暂不支持通行密钥，请使用验证器。": "As chaves de acesso não estão disponíveis aqui. Use uma aplicação de autenticação.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Ativado. Verifique a identidade com uma chave de acesso ou uma aplicação de autenticação.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Esta conta não tem endereço de e-mail. Adicione um nas definições da conta."
+    "此账号没有邮箱，请先在账号设置中添加。": "Esta conta não tem endereço de e-mail. Adicione um nas definições da conta.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Esta chave de acesso pertence a outra conta. Use um método de verificação desta conta.",
+    "通行密钥已添加。": "Chave de acesso adicionada.",
+    "通行密钥已移除。": "Chave de acesso removida.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Verifique a identidade com uma chave de acesso, aplicação de autenticação ou código por e-mail."
   },
   "pt-BR": {
     "验证身份": "Verificar sua identidade",
@@ -98,8 +125,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Adicionar chave de acesso",
     "通行密钥": "Chave de acesso",
     "此处暂不支持通行密钥，请使用验证器。": "As chaves de acesso não estão disponíveis aqui. Use um aplicativo autenticador.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Ativado. Verifique sua identidade com uma chave de acesso ou um aplicativo autenticador.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Esta conta não tem endereço de e-mail. Adicione um nas configurações da conta."
+    "此账号没有邮箱，请先在账号设置中添加。": "Esta conta não tem endereço de e-mail. Adicione um nas configurações da conta.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Esta chave de acesso pertence a outra conta. Use um método de verificação desta conta.",
+    "通行密钥已添加。": "Chave de acesso adicionada.",
+    "通行密钥已移除。": "Chave de acesso removida.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Verifique sua identidade com uma chave de acesso, aplicativo autenticador ou código por e-mail."
   },
   "vi": {
     "验证身份": "Xác minh danh tính",
@@ -108,8 +138,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Thêm khóa truy cập",
     "通行密钥": "Khóa truy cập",
     "此处暂不支持通行密钥，请使用验证器。": "Khóa truy cập chưa được hỗ trợ ở đây. Hãy dùng ứng dụng xác thực.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Đã bật. Dùng khóa truy cập hoặc ứng dụng xác thực để xác minh danh tính.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Tài khoản này chưa có email. Hãy thêm email trong phần cài đặt tài khoản."
+    "此账号没有邮箱，请先在账号设置中添加。": "Tài khoản này chưa có email. Hãy thêm email trong phần cài đặt tài khoản.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Khóa truy cập này thuộc tài khoản khác. Hãy dùng phương thức xác minh của tài khoản này.",
+    "通行密钥已添加。": "Đã thêm khóa truy cập.",
+    "通行密钥已移除。": "Đã xóa khóa truy cập.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Xác minh danh tính bằng khóa truy cập, ứng dụng xác thực hoặc mã email."
   },
   "it": {
     "验证身份": "Verifica la tua identità",
@@ -118,8 +151,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Aggiungi una passkey",
     "通行密钥": "Passkey",
     "此处暂不支持通行密钥，请使用验证器。": "Le passkey non sono disponibili qui. Usa un’app di autenticazione.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Attivata. Verifica la tua identità con una passkey o un’app di autenticazione.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Questo account non ha un indirizzo e-mail. Aggiungine uno nelle impostazioni dell’account."
+    "此账号没有邮箱，请先在账号设置中添加。": "Questo account non ha un indirizzo e-mail. Aggiungine uno nelle impostazioni dell’account.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Questa passkey appartiene a un altro account. Usa un metodo di verifica di questo account.",
+    "通行密钥已添加。": "Passkey aggiunta.",
+    "通行密钥已移除。": "Passkey rimossa.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Verifica la tua identità con una passkey, un’app di autenticazione o un codice e-mail."
   },
   "tr": {
     "验证身份": "Kimliğinizi doğrulayın",
@@ -128,8 +164,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Geçiş anahtarı ekle",
     "通行密钥": "Geçiş anahtarı",
     "此处暂不支持通行密钥，请使用验证器。": "Geçiş anahtarları burada kullanılamıyor. Kimlik doğrulama uygulaması kullanın.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Etkin. Kimliğinizi geçiş anahtarı veya kimlik doğrulama uygulamasıyla doğrulayın.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Bu hesabın e-posta adresi yok. Önce hesap ayarlarından ekleyin."
+    "此账号没有邮箱，请先在账号设置中添加。": "Bu hesabın e-posta adresi yok. Önce hesap ayarlarından ekleyin.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Bu geçiş anahtarı başka bir hesaba ait. Bu hesabın doğrulama yöntemini kullanın.",
+    "通行密钥已添加。": "Geçiş anahtarı eklendi.",
+    "通行密钥已移除。": "Geçiş anahtarı kaldırıldı.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Kimliğinizi geçiş anahtarı, kimlik doğrulama uygulaması veya e-posta koduyla doğrulayın."
   },
   "ar": {
     "验证身份": "تحقق من هويتك",
@@ -138,8 +177,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "إضافة مفتاح مرور",
     "通行密钥": "مفتاح مرور",
     "此处暂不支持通行密钥，请使用验证器。": "مفاتيح المرور غير متاحة هنا. استخدم تطبيق المصادقة.",
-    "已开启。可使用通行密钥或验证器确认身份。": "مفعّل. تحقق من هويتك باستخدام مفتاح مرور أو تطبيق المصادقة.",
-    "此账号没有邮箱，请先在账号设置中添加。": "لا يوجد عنوان بريد إلكتروني لهذا الحساب. أضفه أولاً في إعدادات الحساب."
+    "此账号没有邮箱，请先在账号设置中添加。": "لا يوجد عنوان بريد إلكتروني لهذا الحساب. أضفه أولاً في إعدادات الحساب.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "مفتاح المرور هذا يخص حساباً آخر. استخدم وسيلة تحقق لهذا الحساب.",
+    "通行密钥已添加。": "تمت إضافة مفتاح المرور.",
+    "通行密钥已移除。": "تمت إزالة مفتاح المرور.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "تحقق من هويتك بمفتاح مرور أو تطبيق مصادقة أو رمز بريد إلكتروني."
   },
   "hi": {
     "验证身份": "अपनी पहचान सत्यापित करें",
@@ -148,8 +190,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "पासकी जोड़ें",
     "通行密钥": "पासकी",
     "此处暂不支持通行密钥，请使用验证器。": "यहाँ पासकी उपलब्ध नहीं है। प्रमाणक ऐप का उपयोग करें।",
-    "已开启。可使用通行密钥或验证器确认身份。": "सक्रिय है। पासकी या प्रमाणक ऐप से अपनी पहचान सत्यापित करें।",
-    "此账号没有邮箱，请先在账号设置中添加。": "इस खाते में ईमेल पता नहीं है। पहले खाता सेटिंग में जोड़ें।"
+    "此账号没有邮箱，请先在账号设置中添加。": "इस खाते में ईमेल पता नहीं है। पहले खाता सेटिंग में जोड़ें।",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "यह पासकी किसी दूसरे खाते की है। इस खाते की सत्यापन विधि का उपयोग करें।",
+    "通行密钥已添加。": "पासकी जोड़ दी गई।",
+    "通行密钥已移除。": "पासकी हटा दी गई।",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "पासकी, प्रमाणक ऐप या ईमेल कोड से अपनी पहचान सत्यापित करें।"
   },
   "es-419": {
     "验证身份": "Verificar tu identidad",
@@ -158,8 +203,11 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "Agregar una clave de acceso",
     "通行密钥": "Clave de acceso",
     "此处暂不支持通行密钥，请使用验证器。": "Las claves de acceso no están disponibles aquí. Usa una aplicación de autenticación.",
-    "已开启。可使用通行密钥或验证器确认身份。": "Activado. Verifica tu identidad con una clave de acceso o una aplicación de autenticación.",
-    "此账号没有邮箱，请先在账号设置中添加。": "Esta cuenta no tiene correo electrónico. Agrega uno en la configuración de la cuenta."
+    "此账号没有邮箱，请先在账号设置中添加。": "Esta cuenta no tiene correo electrónico. Agrega uno en la configuración de la cuenta.",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "Esta clave de acceso pertenece a otra cuenta. Usa un método de verificación de esta cuenta.",
+    "通行密钥已添加。": "Clave de acceso agregada.",
+    "通行密钥已移除。": "Clave de acceso eliminada.",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "Verifica tu identidad con una clave de acceso, una aplicación de autenticación o un código por correo."
   },
   "th": {
     "验证身份": "ยืนยันตัวตน",
@@ -168,7 +216,10 @@ export const STEP_UP_MESSAGES: Record<Locale, Record<string, string>> = {
     "添加通行密钥": "เพิ่มพาสคีย์",
     "通行密钥": "พาสคีย์",
     "此处暂不支持通行密钥，请使用验证器。": "ยังใช้พาสคีย์ที่นี่ไม่ได้ โปรดใช้แอปยืนยันตัวตน",
-    "已开启。可使用通行密钥或验证器确认身份。": "เปิดใช้งานแล้ว ใช้พาสคีย์หรือแอปยืนยันตัวตนเพื่อยืนยันตัวตน",
-    "此账号没有邮箱，请先在账号设置中添加。": "บัญชีนี้ยังไม่มีอีเมล โปรดเพิ่มอีเมลในการตั้งค่าบัญชีก่อน"
+    "此账号没有邮箱，请先在账号设置中添加。": "บัญชีนี้ยังไม่มีอีเมล โปรดเพิ่มอีเมลในการตั้งค่าบัญชีก่อน",
+    "通行密钥不属于当前账号，请使用此账号的验证方式。": "พาสคีย์นี้เป็นของบัญชีอื่น โปรดใช้วิธียืนยันของบัญชีนี้",
+    "通行密钥已添加。": "เพิ่มพาสคีย์แล้ว",
+    "通行密钥已移除。": "ลบพาสคีย์แล้ว",
+    "使用通行密钥、验证器或邮箱验证码确认身份。": "ยืนยันตัวตนด้วยพาสคีย์ แอปยืนยันตัวตน หรือรหัสอีเมล"
   }
 };
