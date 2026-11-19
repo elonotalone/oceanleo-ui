@@ -66,6 +66,7 @@ globalThis.__historyGate = { listCalls: 0, release: null, ttSeq: 0 };
 function session(id, title) {
   return {
     id,
+    task_id: `${id}-task`,
     site_id: "image",
     app_id: "poster",
     surface: "app",
