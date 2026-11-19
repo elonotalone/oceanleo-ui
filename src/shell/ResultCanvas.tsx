@@ -1091,7 +1091,7 @@ export function ResultCanvas({
         {entryRequest.status === "loading"
           ? <WorkspacePaneSkeleton action={<button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button>} />
           : <CanvasEmpty title="无法打开这份素材" description={entryRequest.reason}
-              action={<><button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button><button type="button" onClick={entryRequest.retry}>{tt("重试")}</button></>} />}
+              action={<button type="button" onClick={() => { entryRequest.dismiss(); returnToTask(); }}>{tt("返回")}</button>} />}
       </div>}
       {foregroundContent && (
         <div
