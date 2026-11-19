@@ -212,6 +212,7 @@ const OVERRIDES = {
   "./LeoComposer": dataModule(`
     import React from ${reactUrl};
     export function LeoComposer(props) {
+      if (globalThis.__taskPageComposer) return React.createElement(globalThis.__taskPageComposer, props);
       const kind = "modelPickerSlot" in props ? "acp" : "cloud";
       return React.createElement("div", { "data-leo-composer": kind, tabIndex: 0,
         onKeyDown: (event) => { if (event.key === "Escape" && props.loading) props.onStop?.(); },
@@ -317,7 +318,8 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse, taskAccess, strictMode = false } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse, taskAccess, strictMode = false, Composer, Sidebar } = {}) {
+  globalThis.__taskPageComposer = Composer;
   globalThis.__taskAccessMock = taskAccess ?? new TaskAccessMock();
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
@@ -344,10 +346,13 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  await act(async () => {
-    const chat = React.createElement(AgentChat, { siteId: "oceanleo", ...props });
-    root.render(strictMode ? React.createElement(React.StrictMode, null, chat) : chat);
-  });
+  const render = (next) => {
+    const tree = React.createElement(React.Fragment, null,
+      Sidebar ? React.createElement(Sidebar, { siteId: "oceanleo" }) : null,
+      React.createElement(AgentChat, { siteId: "oceanleo", ...next }));
+    return strictMode ? React.createElement(React.StrictMode, null, tree) : tree;
+  };
+  await act(async () => { root.render(render(props)); });
   if (settleMount) {
     await settle();
     await settle();
@@ -355,7 +360,7 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   return {
     host,
     composer: (kind) => host.querySelector(`[data-leo-composer="${kind}"]`),
-    rerender(next) { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...next })); },
+    rerender(next) { root.render(render(next)); },
     async unmount() { await act(async () => root.unmount()); host.remove(); globalThis.__task = null; clearUserScopedCaches(); },
   };
 }
@@ -374,7 +379,7 @@ async function changeConversation(view, kind, next) {
   await settle();
 }
 globalThis.__agentChatHarness = { mount, settle, visible, session, computerTask, cloudTask, rows, socket, connect, deliver, posts, type, submit,
-  acpFrames: await import(acpFramesUrl) };
+  acpFrames: await import(acpFramesUrl), acpFramesUrl, uiStub };
 const codexSessions = [session("cts_codex", "acp", "codex", "2026-10-30T11:00:00Z")];
 
 // ---------------------------------------------------------------------------

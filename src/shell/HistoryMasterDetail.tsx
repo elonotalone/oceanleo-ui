@@ -363,8 +363,10 @@ const historySourceCache = new Map<string, HistorySources>();
 /**
  * Conversation activity this page saw before the gateway list caught up
  * (`HISTORY_ACTIVITY_EVENT`, keyed by task id and session id). Applied on every
- * merge so a refresh cannot drop a just-bumped row back down; entries expire
- * once the gateway's own `last_activity_at` (≤15s throttle) has had time to land.
+ * merge so a refresh cannot drop a just-bumped row back down. Streamed activity
+ * expires once the gateway's `last_activity_at` has had time to land. User input
+ * lasts for this page session: the last_input_at column may not be available
+ * yet, so an unsent draft has no server timestamp to take over from it.
  */
 const LOCAL_ACTIVITY_TTL_MS = 120_000;
 const localHistoryActivity = new Map<string, HistoryEntryActivity & { seen: number }>();
@@ -380,7 +382,13 @@ onUserScopedClear(() => {
 function liveLocalActivity(): ReadonlyMap<string, HistoryEntryActivity> {
   const cutoff = Date.now() - LOCAL_ACTIVITY_TTL_MS;
   for (const [key, value] of localHistoryActivity) {
-    if (value.seen < cutoff) localHistoryActivity.delete(key);
+    if (value.seen >= cutoff) continue;
+    if (value.userAt) {
+      // Keep the input clock, but let any later streamed output expire.
+      localHistoryActivity.set(key, { at: value.userAt, userAt: value.userAt, seen: value.seen });
+    } else {
+      localHistoryActivity.delete(key);
+    }
   }
   return localHistoryActivity;
 }
