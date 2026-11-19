@@ -101,11 +101,14 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
       return { key, catalog: { ...base, byModel: { ...base.byModel, [model]: { configOptions: live.configOptions, modes: live.modes } } } };
     });
   }, [key, live]);
-  const chosen = useMemo(() => mergeChoice(current.stored, current.picked), [current.stored, current.picked]);
+  // Stored defaults belong to a new session only. An existing task's current
+  // choices come from its own server snapshot, even before its socket attaches.
+  const defaults = taskId ? NO_MEMORY.stored : current.stored;
+  const chosen = useMemo(() => mergeChoice(defaults, current.picked), [defaults, current.picked]);
   const baseLists = useMemo(() => settingsLists(catalog, settingsModel(latest) || settingsModel(catalog), latest), [catalog, latest]);
   const knownModels = baseLists.models.length || baseLists.configOptions.some((option) => option.id === "model" || option.category === "model");
   const rememberedModel = !knownModels ? chosen.model : offeredChoices({ model: chosen.model }, baseLists).model;
-  const selectedModel = current.picked.model || settingsModel(latest) || rememberedModel || settingsModel(catalog);
+  const selectedModel = current.picked.model || settingsModel(latest) || (!taskId ? rememberedModel || settingsModel(catalog) : "");
   const lists = useMemo(() => settingsLists(catalog, selectedModel, latest), [catalog, selectedModel, latest]);
   const liveModel = settingsModel(latest);
   const liveChoices = useMemo(() => reportedChoices(latest), [latest]);
@@ -116,23 +119,25 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
       const picked = { ...before.picked };
       if (picked.model === liveChoices.model) delete picked.model;
       if (picked.mode === liveChoices.mode) delete picked.mode;
+      const config = Object.fromEntries(Object.entries(picked.config ?? {}).filter(([id, value]) => liveChoices.config?.[id] !== value));
       const pending = Object.fromEntries(Object.entries(before.pending[liveModel] ?? {}).filter(([id, value]) => liveChoices.config?.[id] !== value));
       if (picked.model === before.picked.model && picked.mode === before.picked.mode
+        && Object.keys(config).length === Object.keys(before.picked.config ?? {}).length
         && Object.keys(pending).length === Object.keys(before.pending[liveModel] ?? {}).length) return before;
+      picked.config = config;
       return { ...before, picked, pending: { ...before.pending, [liveModel]: pending } };
     });
   }, [scope, liveModel, liveChoices]);
   const choice = useMemo(() => offeredChoices({
-    ...chosen,
-    model: current.picked.model || (effectiveLive ? liveChoices.model : chosen.model),
-    mode: current.picked.mode || (effectiveLive ? liveChoices.mode : chosen.mode),
+    model: current.picked.model || liveChoices.model || (!taskId ? chosen.model : undefined),
+    mode: current.picked.mode || liveChoices.mode || (!taskId ? chosen.mode : undefined),
     config: {
-      ...(!current.stored.model || current.stored.model === selectedModel ? current.stored.config : {}),
+      ...(!defaults.model || defaults.model === selectedModel ? defaults.config : {}),
       ...current.values[selectedModel],
-      ...(effectiveLive && liveModel === selectedModel ? liveChoices.config : {}),
+      ...(liveModel === selectedModel ? liveChoices.config : {}),
       ...current.pending[selectedModel], ...current.optimistic.config,
     },
-  }, lists), [chosen, selectedModel, current.picked, current.optimistic, current.values, current.pending, current.stored, liveModel, liveChoices, lists, effectiveLive]);
+  }, lists), [chosen, selectedModel, current.picked, current.optimistic, current.values, current.pending, defaults, taskId, liveModel, liveChoices, lists]);
   const empty = !lists.models.length && !lists.configOptions.length && !lists.mode?.options.length;
   const onOpen = useCallback(() => { if (empty && key) setOpenedEmpty(key); }, [empty, key]);
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -211,6 +216,7 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
       try {
         const stored = await putProgramChoice(computerId, program, patch);
         cached.set(key, { ...cached.get(key), stored });
+        if (activeScope.current === scope) setMemory((before) => before.key === scope ? { ...before, stored } : before);
       } catch (error) {
         if (activeScope.current === scope) setMemory((before) => before.key === scope ? { ...before, error: acpErrorText(error) } : before);
       }
@@ -219,10 +225,13 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
   const setModel = useCallback((value: string) => pick({ kind: "model", value }), [pick]);
   const setMode = useCallback((value: string) => pick({ kind: "mode", value }), [pick]);
   const setConfig = useCallback((id: string, value: string | boolean) => pick({ kind: "config", id, value }), [pick]);
-  const forSend = useCallback((next: AcpSessionChoices = choice) => {
+  const forSend = useCallback((next: AcpSessionChoices = taskId ? {
+    ...current.picked,
+    config: { ...current.pending[selectedModel], ...current.picked.config },
+  } : choice) => {
     const offered = offeredChoices(next, settingsLists(catalog, next.model || selectedModel, latest));
-    return changedChoices(offered, effectiveLive ? liveChoices : null);
-  }, [choice, catalog, selectedModel, latest, effectiveLive, liveChoices]);
+    return changedChoices(offered, taskId ? liveChoices : null);
+  }, [taskId, current.picked, current.pending, choice, catalog, selectedModel, latest, liveChoices]);
 
   let picker: ReactNode = null;
   if (key && program && computerId) {
@@ -232,11 +241,11 @@ export function useAcpCatalogPicker({ computerId, program, disabled = false, rel
     });
     const dialog: NativePickerDialog = {
       ...access, models: lists.models, configOptions,
-      selectedModel, setSelectedModel: setModel,
-      mode: lists.mode, selectedMode: choice.mode || lists.mode?.current || "", setMode, setConfig,
+      selectedModel: selectedModel || (taskId ? tt("未知") : ""), setSelectedModel: setModel,
+      mode: lists.mode, selectedMode: choice.mode || (!taskId ? lists.mode?.current : "") || "", setMode, setConfig,
     };
     picker = nativeModelPickerFor({ program, computerId, dialog, waiting: false, disabled, notice: current.error, onOpen })
-      ?? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} disabled fallbackSummary={selectedModel || program} />;
+      ?? <NativeModelPicker models={[]} selected="" onSelect={() => undefined} disabled fallbackSummary={selectedModel || (taskId ? tt("未知") : program)} />;
   }
   return { picker, choice, forSend };
 }

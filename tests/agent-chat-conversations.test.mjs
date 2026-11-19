@@ -704,13 +704,13 @@ test("a draft that picked a program: send creates the task's chat session, posts
   } finally { await draft.unmount(); }
 });
 
-test("the catalog pill: empty catalog → shows the program at once (no 「选择程序后加载」), disabled until the program reports lists; a listed model the user picked goes out with the next message only", async () => {
+test("the catalog pill: unknown session model is labelled unknown, disabled until the program reports lists; a listed model the user picked goes out with the next message only", async () => {
   const empty = await mount({ taskId: "t1" }, { task: computerTask(), sessions: codexSessions });
   try {
     await connect();
     const pill = empty.host.querySelector("[data-picker]");
     assert.equal(pill.getAttribute("data-picker"), "empty");
-    assert.equal(pill.getAttribute("data-picker-summary"), "codex", "no 「Loading…」 / 「选择程序后加载」 while the program's lists are unknown");
+    assert.equal(pill.getAttribute("data-picker-summary"), "未知", "unknown session state must not imply a catalog or stored current model");
     assert.equal(pill.getAttribute("data-picker-disabled"), "true", "nothing to pick until the program reports its lists");
     assert.ok(globalThis.__acpCalls.some((call) => call.path === "/v1/computers/cc_elon/programs/codex/catalog"));
   } finally { await empty.unmount(); }

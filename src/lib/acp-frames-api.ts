@@ -123,6 +123,8 @@ export function getFrame(taskId: string, rowId: number): Promise<AcpFrameRow> {
 
 /** Cursor based history window (C9). Older gateways may return 404; callers fall back to frames. */
 export type AcpHistoryWindow = {
+  link?: AcpLinkState;
+  config_state?: AcpCatalog;
   rows: AcpFrameRow[];
   turns: { start_id: number; end_id: number }[];
   oldest_id: number | null;
@@ -225,7 +227,8 @@ export function getCatalog(computerId: string, program: string, options: { signa
 export type AcpFramesEvent =
   | { type: "rows"; rows: AcpFrameRow[] }
   | { type: "state"; state: AcpFramesState }
-  | { type: "link"; link: AcpLinkState };
+  | { type: "link"; link: AcpLinkState }
+  | { type: "config"; configState: AcpCatalog };
 
 export interface AcpFrames {
   readonly state: AcpFramesState;
@@ -313,6 +316,8 @@ export function openFrames(taskId: string, after = 0): AcpFrames {
         return;
       }
       if (typeof message.link === "string") emit({ type: "link", link: message.link as AcpLinkState });
+      const configState = record(message.config_state);
+      if (configState) emit({ type: "config", configState: configState as AcpCatalog });
     };
     next.onerror = () => { if (current === generation && !closed) next.close(); };
     next.onclose = () => dropped(current);

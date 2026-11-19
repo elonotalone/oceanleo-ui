@@ -1474,11 +1474,7 @@ function AgentChatInner({
     reloadKey: frames.link,
     taskId,
     sessionLive: frames.link === "attached",
-    live: useMemo(() => ({
-      configOptions: acpView.configOptions,
-      models: { currentModelId: acpView.modelId, availableModels: acpView.models },
-      modes: { currentModeId: acpView.modeId, availableModes: acpView.modes },
-    }), [acpView.configOptions, acpView.modelId, acpView.models, acpView.modeId, acpView.modes]),
+    live: frames.configState,
   });
   const [acpBusy, setAcpBusy] = useState(false);
   /** The gateway's own words for the last refused action (409 from send, a failed stop / close / answer). */

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { getFrame, getHistoryWindow, openFrames, type AcpFrameRow, type AcpFramesState, type AcpLinkState } from "../../lib/acp-frames-api";
+import { getFrame, getHistoryWindow, openFrames, type AcpCatalog, type AcpFrameRow, type AcpFramesState, type AcpLinkState } from "../../lib/acp-frames-api";
 import { readTaskConversationAnchor } from "../task-open-cache";
 
 export type AcpFramesView = {
   rows: AcpFrameRow[];
   state: AcpFramesState | "idle";
   link: AcpLinkState | null;
+  configState: AcpCatalog | null;
   hasMore: boolean;
   loadingEarlier: boolean;
   capped: boolean;
@@ -18,7 +19,7 @@ export type AcpFramesView = {
   jumpToLatest: () => Promise<void>;
 };
 const noop = async () => undefined;
-const IDLE: AcpFramesView = { rows: [], state: "idle", link: null, hasMore: false, loadingEarlier: false, capped: false, loadEarlier: noop, hasMoreAfter: false, jumpingLatest: false, jumpToLatest: noop, expandRow: noop };
+const IDLE: AcpFramesView = { rows: [], state: "idle", link: null, configState: null, hasMore: false, loadingEarlier: false, capped: false, loadEarlier: noop, hasMoreAfter: false, jumpingLatest: false, jumpToLatest: noop, expandRow: noop };
 const FLUSH_MS = 16;
 
 /** Read stored history from the route id; the live connection is an independent effect. */
@@ -86,7 +87,7 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     const attachWindow = (page: Awaited<ReturnType<typeof getHistoryWindow>>, rows: AcpFrameRow[]) => {
       before = page.next_before;
       windowVersion += 1;
-      setView({ taskId, value: { rows, state: "connecting", link: null, hasMore: page.has_more, loadingEarlier: false, capped: page.capped, loadEarlier, expandRow, hasMoreAfter: Boolean(page.has_more_after), jumpingLatest: false, jumpToLatest } });
+      setView({ taskId, value: { rows, state: "connecting", link: page.link ?? null, configState: page.config_state ?? null, hasMore: page.has_more, loadingEarlier: false, capped: page.capped, loadEarlier, expandRow, hasMoreAfter: Boolean(page.has_more_after), jumpingLatest: false, jumpToLatest } });
       setTail({ taskId, after: page.tail_id });
     };
     const fillForward = async (page: Awaited<ReturnType<typeof getHistoryWindow>>) => {
@@ -166,7 +167,9 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
       }
       if (timer !== null) { clearTimeout(timer); flush(); }
       setView((current) => current.taskId !== taskId ? current : {
-        taskId, value: event.type === "state" ? { ...current.value, state: event.state } : { ...current.value, link: event.link },
+        taskId, value: event.type === "state" ? { ...current.value, state: event.state }
+          : event.type === "config" ? { ...current.value, configState: event.configState }
+            : { ...current.value, link: event.link },
       });
     });
     return () => { unsubscribe(); if (timer !== null) clearTimeout(timer); socket.close(); };

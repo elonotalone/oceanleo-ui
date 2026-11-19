@@ -284,3 +284,49 @@ test("recorded Fable reply 122789: no fast, exact effort choices, select ultraco
     model: "claude-fable-5-2", config: { effort: "max", ultracode: "off" },
   });
 });
+
+test("an existing task reopened after model confirmation never falls back to stored Opus, even before attach", async () => {
+  const view = await mount({ props: { taskId: "reopened", sessionLive: false, live: fable() }, stored: { model: "opus", mode: "auto", config: { fast: true, effort: "max" } } });
+  try {
+    assert.match(view.host.textContent, /fable-5.2/);
+    assert.deepEqual(hook.forSend(), {}, "stored defaults must never be sent to an existing task");
+    await view.render({ sessionLive: true });
+    assert.deepEqual(hook.forSend(), {});
+    await view.render({ sessionLive: false });
+    assert.deepEqual(hook.forSend(), {}, "disconnect must not replay defaults either");
+  } finally { await view.close(); }
+});
+
+test("unknown existing-session state displays unknown and never the catalog or remembered current model", async () => {
+  const view = await mount({ props: { taskId: "unknown", sessionLive: false }, stored: { model: "opus" } });
+  try {
+    assert.match(view.host.querySelector("[data-native-model-trigger]").textContent, /未知/);
+    assert.deepEqual(hook.forSend(), {});
+  } finally { await view.close(); }
+});
+
+test("an offline explicit config pick stops being pending after confirmation and follows later server changes", async () => {
+  const view = await mount({ props: { taskId: "confirmed", sessionLive: false, live: opus() }, stored: { model: "fable-5.2" } });
+  try {
+    await view.pick("fast", "false");
+    assert.deepEqual(hook.forSend(), { config: { fast: false } });
+    const confirmed = opus(); confirmed.configOptions.find((option) => option.id === "fast").currentValue = false;
+    await view.render({ live: confirmed });
+    assert.deepEqual(hook.forSend(), {});
+    await view.render({ live: opus() });
+    assert.deepEqual(hook.forSend(), {}, "later program changes must not resurrect a confirmed page pick");
+    assert.equal(hook.choice.config.fast, true);
+  } finally { await view.close(); }
+});
+
+test("a successful defaults PUT updates the same mounted draft's stored snapshot", async () => {
+  const view = await mount({ stored: { model: "opus", mode: "auto" } });
+  try {
+    await view.pick("model", "fable-5.2");
+    assert.deepEqual(globalThis.__am.saved.at(-1), { model: "fable-5.2" });
+    // The PUT stub returns the persisted snapshot without the old mode. The
+    // mounted draft must reflect that return value, not its mount-time copy.
+    assert.equal(hook.choice.mode, undefined);
+    assert.equal(hook.forSend().model, "fable-5.2");
+  } finally { await view.close(); }
+});
