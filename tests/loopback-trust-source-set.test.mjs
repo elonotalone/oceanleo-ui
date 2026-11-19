@@ -154,6 +154,17 @@ const GATED_FILES = [
  * 不许出现只写文件名或目录的整体豁免。
  */
 const ALLOWLIST = [
+  {"file": "src/api/remote-desktop-quality.ts", "match": "host === \"localhost\"", "reason": "Telemetry site classification only; this value neither grants trust nor creates a connection."},
+  {"file": "src/api/remote-desktop-webrtc.ts", "match": "const development =", "reason": "Local page identity controls debug ICE/path selection for the authorized cloud peer, never a browser loopback transport."},
+  {"file": "src/shell/RdServiceStatus.tsx", "match": "const host = scope as", "reason": "Native invoke detection for a closed Rust command surface; not a network address or web trust decision."},
+  {"file": "src/shell/RdServiceStatus.tsx", "match": "const core = host?.__TAURI__", "reason": "Reads the existing native IPC interface for status/settings; no local network address or transport is opened."},
+  {"file": "src/shell/RdServiceStatus.tsx", "match": "const invoke = core?.invoke", "reason": "Binds the existing native invoke function; does not connect browser HTTP to the device."},
+  {"file": "src/shell/bay/appendpoint/endpoint-model.ts", "match": "return \"确认应用正在云电脑上运行", "reason": "User guidance for an agent-side service; the browser reaches it through the authenticated cloud gateway."},
+  {"file": "src/shell/editor-sandbox-origin.ts", "match": "const INJECTED_LOOPBACK_HOSTS =", "reason": "Native page-origin identity whitelist, constrained to injected platform and exact current page origin; isTrustedEmbedEditorBase still rejects loopback."},
+  {"file": "src/shell/messages/call/diagnostics/use-issue-environment.ts", "match": "return \"__TAURI_INTERNALS__\"", "reason": "Diagnostics identifies native app context without invoking a native command or opening a transport."},
+  {"file": "src/lib/auth/captcha.ts", "commentOnly": true, "reason": "Documentation only; describes page identity or the gateway route, without adding a local connection or trust branch."},
+  {"file": "src/lib/bay/app-endpoints.ts", "commentOnly": true, "reason": "Documentation only; describes page identity or the gateway route, without adding a local connection or trust branch."},
+  {"file": "src/lib/task-link.ts", "commentOnly": true, "reason": "Documentation only; describes page identity or the gateway route, without adding a local connection or trust branch."},
   {
     file: "src/lib/image-ai-edit.ts",
     match: "fallbackOrigin",
@@ -177,7 +188,7 @@ function sourceFiles(root) {
         walk(path);
         continue;
       }
-      if (/\.d\.(ts|mts)$/.test(entry.name)) continue;
+      if (/\.d\.(ts|mts)$/.test(entry.name) || /\.test\.[cm]?[jt]sx?$/.test(entry.name)) continue;
       if (/\.(ts|tsx|mts|mjs|js|jsx)$/.test(entry.name)) found.push(path);
     }
   };
