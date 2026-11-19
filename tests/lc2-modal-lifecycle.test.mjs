@@ -36,6 +36,7 @@ const client = dataModule(`
   if (path.startsWith('/v1/im/profiles')) return {items:[{user_id:'peer',display_name:'Peer',relation:'contact',avatar_url:null}]};
   if (path === '/v1/im/me') return {profile:{user_id:'self',display_name:'Self'}};
   if (path === '/v1/im/blocks') return {items:[]};
+  if (path.startsWith('/v1/im/follows')) return {people:[],next_cursor:null};
   throw new Error('Unexpected fake request: '+path);
  }
 `);
@@ -119,7 +120,7 @@ for(const [name,Surface,props] of surfaces) test(`${name} custom modal uses real
   const dialog=document.querySelector('[role=dialog][aria-modal=true]');assert.ok(dialog);assert.ok(dialog.contains(document.activeElement));assert.equal(document.body.style.overflow,'hidden');
   await trap(dialog);
   await act(async()=>keys(document.activeElement,'Escape'));
-  assert.equal(document.querySelector('[role=dialog][aria-modal=true]'),null);assert.equal(document.activeElement,trigger);assert.equal(document.body.style.overflow,'auto');
+  await until(()=>!document.querySelector('[role=dialog][aria-modal=true]'));assert.equal(document.activeElement,trigger);assert.equal(document.body.style.overflow,'auto');
  }finally{await view.close();}
 });
 function NestedHarness({Inner,props}) {
@@ -131,9 +132,9 @@ for(const [name,Inner,props] of surfaces.slice(0,2)) test(`${name} nested under 
  try{
   const outerTrigger=view.host.querySelector('[data-outer-trigger]');outerTrigger.focus();await act(async()=>outerTrigger.click());
   const innerTrigger=document.querySelector('[data-inner-trigger]');innerTrigger.focus();await act(async()=>innerTrigger.click());
-  const inner=name==='report'?document.querySelector('[data-report-dialog]'):document.querySelector('[data-profile-card]');assert.ok(inner);await trap(inner);
+  const inner=name==='report'?document.querySelector('[data-report-dialog]'):document.querySelector('[data-profile-card]');assert.ok(inner);await trap(inner.closest('[role=dialog]'));
   // The child handles Escape; the real parent Modal must stay mounted.
-  await act(async()=>keys(document.activeElement,'Escape'));assert.equal(document.querySelector(name==='report'?'[data-report-dialog]':'[data-profile-card]'),null);
+  await act(async()=>keys(document.activeElement,'Escape'));await until(()=>!document.querySelector(name==='report'?'[data-report-dialog]':'[data-profile-card]'));
   assert.ok(document.querySelector('[data-inner-trigger]'));assert.equal(document.body.style.overflow,'hidden');assert.equal(document.activeElement,innerTrigger);
   await act(async()=>keys(innerTrigger,'Escape'));await until(()=>!document.querySelector('[role=dialog]'));assert.equal(document.body.style.overflow,'auto');assert.equal(document.activeElement,outerTrigger);
  }finally{await view.close();}
@@ -144,12 +145,11 @@ test('profile-to-report transition preserves the modal lock and returns to the o
  try{
   const trigger=view.host.querySelector('[data-trigger]');trigger.focus();await act(async()=>trigger.click());
   let profile=document.querySelector('[data-profile-card]');assert.ok(profile);
-  await act(async()=>profile.querySelector('[aria-haspopup=menu]').click());
   await act(async()=>profile.querySelector('[data-action=report]').click());
   const report=document.querySelector('[data-report-dialog]');assert.ok(report);assert.equal(document.querySelector('[data-profile-card]'),null);assert.equal(document.body.style.overflow,'hidden');await trap(report);
   await act(async()=>keys(document.activeElement,'Escape'));
-  profile=document.querySelector('[data-profile-card]');assert.ok(profile);assert.equal(document.querySelector('[data-report-dialog]'),null);assert.equal(document.body.style.overflow,'hidden');assert.ok(profile.contains(document.activeElement));
+  profile=document.querySelector('[data-profile-card]');assert.ok(profile);assert.equal(document.querySelector('[data-report-dialog]'),null);assert.equal(document.body.style.overflow,'hidden');await until(()=>profile.closest('[role=dialog]').contains(document.activeElement));
   await act(async()=>keys(document.activeElement,'Escape'));
-  assert.equal(document.querySelector('[data-profile-card]'),null);assert.equal(document.body.style.overflow,'auto');assert.equal(document.activeElement,trigger);
+  await until(()=>!document.querySelector('[data-profile-card]'));assert.equal(document.body.style.overflow,'auto');assert.equal(document.activeElement,trigger);
  }finally{await view.close();}
 });

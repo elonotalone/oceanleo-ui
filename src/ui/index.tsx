@@ -99,6 +99,9 @@ export function Modal({
     }
 
     function onKey(e: KeyboardEvent) {
+      // A nested dialog is portalled outside this panel. Only the dialog that
+      // owns focus handles its keys; otherwise Escape closes both layers.
+      if (panel && !panel.contains(document.activeElement)) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         requestClose();
