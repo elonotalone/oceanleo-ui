@@ -505,8 +505,10 @@ export function useMyTasksHistory(siteId?: string, pending = false, authMsg?: st
       for (const task of tasks) {
         if (task.session_id) historyTaskSession.set(task.id, task.session_id);
       }
-      const createdSessions = sessions.filter((session) => tasks.some((task) =>
-        task.session_id === session.id || task.id === session.task_id));
+      // Output proves this session has user work even when its task is outside
+      // the separately paged task list (notably project tasks).
+      const createdSessions = sessions.filter((session) => Boolean(session.first_output_at) || tasks.some((task) =>
+        task.session_id === session.id));
       const next = mergeHistoryEntries(createdSessions, tasks, {
         sessionApiUnavailable: unavailable,
         sessionApiFailed: sessionsResult?.ok !== true,

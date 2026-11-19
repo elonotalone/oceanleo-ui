@@ -111,6 +111,11 @@ globalThis.__w11Sessions.push({
   project_id: "p3",
   project: { id: "other", name: "别的项目", icon: "x" },
 });
+// Legacy eager-created sessions without user work must not become My Tasks rows.
+globalThis.__w11Sessions.push({
+  ...globalThis.__w11Sessions[1], id: "s-empty", task_id: "t-empty",
+  title: "Empty draft", first_output_at: null,
+});
 globalThis.__w11Tasks = [
   {
     id: "t-legacy-proj",
@@ -235,6 +240,7 @@ test("侧栏显式传 project_scope=all，项目任务成行并带项目标注",
     assert.equal(globalThis.__w11.sessionsCalls[0].projectScope, "all");
     assert.equal(globalThis.__w11.tasksCalls[0][4], "all", "listTasks 第 5 个参数必须是 all");
 
+    assert.equal(view.container.querySelector('[data-history-row="s-empty"]'), null, "an empty draft is not a task");
     const projRow = row(view.container, "s-proj");
     const tag = projRow.querySelector('[data-history-project-tag="p1"]');
     assert.ok(tag, "项目会话要有项目标签");
@@ -268,11 +274,11 @@ test("侧栏显式传 project_scope=all，项目任务成行并带项目标注",
     assert.ok(mismatchTag);
     assert.doesNotMatch(mismatchTag.textContent, /别的项目/);
 
-    // 菜单知道条目已在项目里（顺序按时间：s-proj, s-plain, t-legacy-proj, s-mismatch）。
-    const menus = [...view.container.querySelectorAll("[data-w11-menu]")].map((m) =>
-      m.getAttribute("data-w11-menu"),
-    );
-    assert.deepEqual(menus, ["in-project", "no-project", "in-project", "in-project"]);
+    // Each row's project controls stay correct regardless of input/activity ordering.
+    for (const [id, expected] of [["s-proj", "in-project"], ["s-plain", "no-project"],
+      ["t-legacy-proj", "in-project"], ["s-mismatch", "in-project"]]) {
+      assert.equal(row(view.container, id).parentElement.querySelector("[data-w11-menu]").getAttribute("data-w11-menu"), expected);
+    }
   } finally {
     await view.unmount();
   }
