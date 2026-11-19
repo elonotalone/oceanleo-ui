@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { SessionRunningIcon } from "../cloud-computer/agent-dialog/SessionRunningIcon";
 import { StreamNoticeTarget } from "./StreamNotice";
 import { useUI } from "../../i18n/ui/useUI";
 import { AGENT_CONVERSATION_MAX_WIDTH_CLASS } from "../agent-conversation-layout";
@@ -25,9 +26,11 @@ export function TranscriptStream<T>({ items, capabilities, renderItem }: {
   </div>;
 }
 
-export function StreamWaitingLine({ label, retrying = false }: { label: string; retrying?: boolean }) {
+export function StreamWaitingLine({ label, retrying = false }: { label?: string; retrying?: boolean }) {
+  const tt = useUI();
+  const text = retrying ? label : tt("智能体正在工作");
   return <div data-stream-waiting="" role="status" className={`flex items-center gap-2 text-[14px] ${retrying ? "text-amber-700" : "text-stone-400"}`}>
-    {!retrying && <span className="v-spinner" aria-hidden="true" />}{label}
+    {!retrying && <SessionRunningIcon label={text || ""} toneClassName="text-emerald-600" />}{text}
   </div>;
 }
 

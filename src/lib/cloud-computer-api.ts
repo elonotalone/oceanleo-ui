@@ -114,6 +114,8 @@ export type Computer = {
   node_arch?: string | null;
   node_hostname?: string | null;
   node_online: boolean;
+  /** Availability of the node on the gateway serving this list. */
+  node_unavailable_reason?: string | null;
   node_last_seen_at?: string | null;
   node_fingerprint?: string | null;
   node_kernel?: string | null;

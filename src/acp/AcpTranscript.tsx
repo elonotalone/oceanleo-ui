@@ -95,9 +95,7 @@ function ModelWaitingNotice({ view, rows, tt }: { view: ReturnType<typeof reduce
   const silent = now - Math.max(last, promptAt);
   const spoken = open.items.some((item) => item.type === "message" && item.role === "agent" && !item.scope && item.text.trim());
   if (spoken && silent < 60_000) return null;
-  const seconds = Math.max(0, Math.floor(silent / 1000));
-  const elapsed = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
-  return <div data-acp-model-waiting=""><StreamWaitingLine label={tt("等待模型回应 · {elapsed}", { elapsed })} /></div>;
+  return <div data-acp-model-waiting=""><StreamWaitingLine /></div>;
 }
 
 /** Live AIR tasks sit above the composer; terminal states render on their tool row. */

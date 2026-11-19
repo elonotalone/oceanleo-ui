@@ -392,12 +392,14 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     emit({ kind: "oceanleo", target: picked });
   }
   function chooseNative(computer: Drill, program: NativeProgram, view: "chat" | "cli") {
+    if (drillReady !== true) return;
     const reuse = existingSession(sessions, computer.id, view === "chat" ? "acp" : "cli", program);
     pickedRef.current = true;
     if (!bound && view === "chat") writeRememberedConversation(owner, { kind: "native", computerId: computer.id, computerName: computer.name, program, view });
     emit({ kind: "native", computerId: computer.id, computerName: computer.name, program, view, ...(reuse ? { sessionId: reuse.id } : {}) });
   }
   function chooseTerminal(computer: Drill) {
+    if (drillReady !== true) return;
     const reuse = existingSession(sessions, computer.id, "terminal", null);
     pickedRef.current = true;
     emit({ kind: "terminal", computerId: computer.id, computerName: computer.name, ...(reuse ? { sessionId: reuse.id } : {}) });
@@ -419,8 +421,13 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
     return tt(reason === "ai_busy" ? CLOUD_AGENT_COPY.aiBusy : reason === "cleanup_required" ? CLOUD_AGENT_COPY.healthCleanup
       : reason === "envelope_expired" ? CLOUD_AGENT_COPY.healthEnvelope : CLOUD_AGENT_COPY.needsYouHint);
   }
+  function unavailableReason(computer: Computer | null): string {
+    return tt(computer?.node_unavailable_reason === "computer_on_other_gateway"
+      ? "已连接到另一个网关，当前无法使用"
+      : computer?.node_unavailable_reason === "computer_reconnecting" ? "正在重新连接" : "离线");
+  }
   function programNote(program: NativeProgram): string | null {
-    if (drillReady === false) return tt("离线");
+    if (drillReady === false) return unavailableReason(drillComputer);
     const row = programs?.id === drillId ? programs.rows.find((item) => item.id === program) : undefined;
     if (!row) return null;
     if (!row.installed) return tt("未安装");
@@ -476,7 +483,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
 
   function renderDrill(computer: Drill) {
     const ready = drillReady;
-    const offline = ready === false ? <span className="shrink-0 text-[11px] text-neutral-400">{tt("离线")}</span> : null;
+    const offline = ready === false ? <span className="shrink-0 text-[11px] text-neutral-400">{unavailableReason(drillComputer)}</span> : null;
     const dot = (ok: boolean) => <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ok ? "bg-emerald-500" : "bg-neutral-300"}`} />;
     if (computer.program) {
       const program = computer.program;
@@ -488,7 +495,7 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
         {views.map(([view, label, hint]) => {
           const isCurrent = current?.kind === "native" && current.computerId === computer.id && current.program === program && current.view === view;
           const exists = Boolean(existingSession(sessions, computer.id, view === "chat" ? "acp" : "cli", program));
-          return <button key={view} type="button" className={`${row} items-start`} aria-pressed={isCurrent} data-dock-view={view} onClick={() => chooseNative(computer, program, view)}>
+          return <button key={view} type="button" className={`${row} items-start`} aria-pressed={isCurrent} data-dock-view={view} disabled={ready !== true} onClick={() => chooseNative(computer, program, view)}>
             <span className="min-w-0 flex-1"><span className="block">{label}</span>{hint && <span className="mt-0.5 block text-[11px] leading-snug text-neutral-500">{hint}</span>}</span>
             {offline}{isCurrent ? selectedMark : exists ? existsMark : null}
           </button>;
@@ -511,12 +518,12 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
         const note = programNote(program);
         const isCurrent = current?.kind === "native" && current.computerId === computer.id && current.program === program;
         const exists = sessions.some((item) => item.computer_id === computer.id && item.program === program && (item.kind === "acp" || item.kind === "cli"));
-        return <button key={program} type="button" className={row} aria-pressed={isCurrent} data-dock-program-row={program} onClick={() => setDrill({ ...computer, program })}>
+        return <button key={program} type="button" className={row} aria-pressed={isCurrent} data-dock-program-row={program} disabled={ready !== true} onClick={() => setDrill({ ...computer, program })}>
           {dot(ready === true && !note && programs?.id === computer.id)}<span className="min-w-0 flex-1 truncate">{PROGRAM_LABEL[program]}</span>
           {note && <span className="shrink-0 text-[11px] text-neutral-400">{note}</span>}{isCurrent ? selectedMark : exists ? existsMark : null}<span aria-hidden="true">›</span>
         </button>;
       })}
-      <button type="button" className={row} aria-pressed={terminalCurrent} data-dock-program-row="terminal" onClick={() => chooseTerminal(computer)}>
+      <button type="button" className={row} aria-pressed={terminalCurrent} data-dock-program-row="terminal" disabled={ready !== true} onClick={() => chooseTerminal(computer)}>
         {dot(ready === true)}<span className="min-w-0 flex-1 truncate">{tt("终端")}</span>{offline}
         {terminalCurrent ? selectedMark : existingSession(sessions, computer.id, "terminal", null) ? existsMark : null}
       </button>
@@ -568,12 +575,12 @@ export function ComputerDock({ client = cloudComputerApi, computers: supplied, o
                 if (drillable) {
                   const here = onComputer(item.id) || (onOcean && sameTarget(oceanTarget, asTarget));
                   return <button key={item.id} type="button" className={row} aria-pressed={here} data-oceanleo-cc-switch-item={item.id} onClick={() => setDrill({ id: item.id, name: item.name })}>
-                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt("离线")}</span>}{here && selectedMark}<span aria-hidden>›</span>
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{unavailableReason(item)}</span>}{here && selectedMark}<span aria-hidden>›</span>
                   </button>;
                 }
                 const locked = oceanLocked(asTarget);
                 return <button key={item.id} type="button" disabled={oceanBlocked || bound ? locked : !ready} title={locked ? lockedHint : undefined} className={`${row} disabled:opacity-50`} aria-pressed={onOcean && sameTarget(oceanTarget, asTarget)} data-oceanleo-cc-switch-item={item.id} onClick={() => choose(asTarget)}>
-                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{tt("离线")}</span>}{oceanMark(asTarget)}
+                  <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${ready ? "bg-emerald-500" : "bg-neutral-300"}`} /><span className="min-w-0 flex-1 truncate">{item.name}</span>{!ready && <span className="text-[11px] text-neutral-400">{unavailableReason(item)}</span>}{oceanMark(asTarget)}
                 </button>;
               })}
             </>)}

@@ -379,3 +379,14 @@ test('TP: attachment errors have translations in every UI locale', async () => {
     if (key.includes('{reason}')) assert.ok(UT_COPY_A[locale][key].includes('{reason}'));
   }
 });
+
+
+test("a silent open turn shows the My Tasks working figure without a spinner or timer", () => {
+  const body = render([prompt(901, "Please work")]);
+  const line = body.querySelector("[data-acp-model-waiting] [data-stream-waiting]");
+  assert.ok(line);
+  assert.match(line.textContent, /智能体正在工作/);
+  assert.ok(line.querySelector("[data-oceanleo-acp-pixel-run]"));
+  assert.equal(line.querySelector(".v-spinner"), null);
+  assert.doesNotMatch(line.textContent, /等待模型回应|\d+:\d{2}/);
+});

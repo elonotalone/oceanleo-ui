@@ -64,6 +64,7 @@ import { deviceExperienceCopy } from "./device-experience-copy";
 import { swBrCopy } from "./sw-br-copy";
 import { swTsCopy } from "./sw-ts-copy";
 import { taskLiveCopy } from "./task-live-copy";
+import { swTwCopy } from "./sw-tw-copy";
 import { taskStateCopy } from "./task-state-copy";
 import { websitePreviewProgressCopy } from "./website-preview-progress-copy";
 import { gatewayRoutingCopy } from "./gateway-routing-copy";
@@ -532,6 +533,7 @@ export const UI_MESSAGES = Object.fromEntries(
       ...deviceExperienceCopy(language),
       ...taskLiveCopy(language),
       ...swBrCopy(language),
+      ...swTwCopy(language),
       ...taskStateCopy(language),
       ...websitePreviewProgressCopy(language),
       ...gatewayRoutingCopy(language),

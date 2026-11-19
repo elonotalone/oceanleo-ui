@@ -190,9 +190,9 @@ import {
 import { mergeAgentMessages } from "./agent-thread/merge";
 import { threadPresentation, resolveTaskStatus } from "./agent-thread/rules";
 import { createAgentThreadSync, type AgentThreadPull } from "./agent-thread/sync";
-import { thinkingLabel, useThinkingSeconds } from "./agent-thread/thinking-label";
-import { markSend, noteFirstVisibleReply, sentAtFor } from "./agent-thread/ttfv";
-import { latestTurn, userTurnCount } from "./agent-thread/turn";
+import { sendFailureText } from "./acp-task/send-failure";
+import { markSend, noteFirstVisibleReply } from "./agent-thread/ttfv";
+import { userTurnCount } from "./agent-thread/turn";
 import { useAgentThreadPolling, type TaskPollResult } from "./agent-thread/useAgentThreadPolling";
 // W5 (2026-10-31): one loading look per task switch, per-conversation scroll memory.
 import { useTaskLoadingReport } from "./task-loading-gate";
@@ -1597,7 +1597,7 @@ function AgentChatInner({
     : item.type === "notice" ? [{ rowId: item.rowId, text: [item.title, item.description].join("\n") }] : []), [acpView]);
   const pendingErrorText = pendingShown && pendingShown.error != null && pendingRetried !== pendingShown.id
     // The program's own refusal is its row in the stream (under this bubble): said once, there.
-    && !refusedByAgent(pendingShown.error) ? acpErrorText(pendingShown.error) : "";
+    && !refusedByAgent(pendingShown.error) ? sendFailureText(pendingShown.error, tt) : "";
   const acpPendingShown = acpPendingSends.filter((entry) => !acpPromptRowVisible(entry, frames.rows));
   useEffect(() => {
     const settled = acpPendingSends.filter((entry) => acpPromptRowVisible(entry, frames.rows)).map((entry) => entry.id);
@@ -2616,15 +2616,6 @@ function AgentChatInner({
   const presentation = threadPresentation(messages, status, {
     busy: busy || taskStopping, taskId: taskId || "", stoppedTaskId, activeProgress: Boolean(activeProgressKey),
   });
-  const turnState = latestTurn(messages);
-  const sentAt = taskId ? sentAtFor(taskId, turnState.turn) : null;
-  const showThinkingTicker = Boolean(
-    presentation.thinking && !turnState.visible && sentAt !== null,
-  );
-  const thinkingSeconds = useThinkingSeconds(showThinkingTicker, sentAt);
-  // Before the ticker starts only the spinner shows (no 「正在理解问题…」 guess).
-  const thinkingText = showThinkingTicker ? thinkingLabel(tt, thinkingSeconds, turnState.thinkingChars) : "";
-
   const sendSuggestion = useCallback(
     async (text: string) => {
       if (!taskId || busy || readOnly) return;
@@ -3341,7 +3332,7 @@ function AgentChatInner({
               </>
             )} />
           {presentation.thinking && (
-            <StreamWaitingLine label={thinkingText} />
+            <StreamWaitingLine />
           )}
       </McpAppConversationProvider>
     ),
@@ -3452,7 +3443,7 @@ function AgentChatInner({
         <PendingSendBubble
           key={entry.id}
           pending={entry}
-          errorText={entry.error != null && !refusedByAgent(entry.error) ? acpErrorText(entry.error) : ""}
+          errorText={entry.error != null && !refusedByAgent(entry.error) ? sendFailureText(entry.error, tt) : ""}
           onStopAndSend={entry.status === "held" && acpView.open && acpConnected && !readOnly && !acpStopping && !acpCancelWait ? stopAndSendAcp : undefined}
           onRetry={() => void sendAcpMessage(entry)}
           onOpenAttachment={openTaskAttachment}

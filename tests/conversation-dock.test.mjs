@@ -622,3 +622,22 @@ test("ConversationBar: composer bottom-bar row with the same Device control and,
     assert.equal(m.container.querySelector("[data-conversation-settings-pill]"), null);
   } finally { await m.unmount(); }
 });
+
+test("computer on another gateway stays visible with a reason and cannot start a program or terminal", async () => {
+  const view = await renderDock({ computers: [computer({ node_online: false, node_unavailable_reason: "computer_on_other_gateway" })] });
+  try {
+    await view.open();
+    const entry = view.q('[data-oceanleo-cc-switch-item="cc_1"]');
+    assert.ok(entry, "unavailable computer is not hidden");
+    assert.match(entry.textContent, /已连接到另一个网关，当前无法使用/);
+    await view.click(entry);
+    for (const name of ["codex", "claude", "cursor", "hermes", "terminal", "oceanleo"]) {
+      const button = view.q(`[data-dock-program-row="${name}"]`);
+      assert.equal(button.disabled, true, name);
+      await view.click(button);
+    }
+    assert.equal(view.picks.length, 0);
+    assert.equal(globalThis.__cdProgramReads, 0);
+    assert.match(view.host.textContent, /已连接到另一个网关，当前无法使用/);
+  } finally { await view.cleanup(); }
+});

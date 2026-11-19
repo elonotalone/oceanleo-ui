@@ -102,7 +102,7 @@ test("both chats wire shared working and thinking and retain stopped history", a
     assert.match(source, /const liveProgressKey = liveAgentProgressKey\(renderItems, messages\)/);
     if (path === "AgentChat.tsx") assert.match(source, /const running = status === "running" \|\| busy \|\| taskStopping/);
     assert.match(source, path === "AgentChat.tsx"
-      ? /\{presentation\.thinking && \(\s*<StreamWaitingLine label=\{thinkingText\}/
+      ? /\{presentation\.thinking && \(\s*<StreamWaitingLine\s*\/>/
       : /\{presentation\.thinking && \(\s*<div/);
     const stoppedProp = source.match(/stopped=\{([\s\S]*?)\}\s*onArtifactOpen=/)?.[1] || "";
     assert.ok(/item\.message\.meta\?\.stopped === true\s*\|\|/.test(stoppedProp), `${path}: durable stop should stand alone`);
