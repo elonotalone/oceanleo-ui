@@ -106,7 +106,7 @@ import {
 // 选段与导出（Copy Text / Copy Link / Generate Image / Generate Document）。
 import { TaskSharePanel } from "./share/TaskSharePanel";
 import { useTaskAccess } from "./access/useTaskAccess";
-import { taskAccessRights } from "./access/task-access-client";
+import { taskAccessRights, type TaskAccess } from "./access/task-access-client";
 import { TaskAccessComposer, TaskAccessStatus } from "./access/TaskAccessComposer";
 import { TaskContentPanel } from "./access/TaskContentPanel";
 import { TaskActionsMenu, type TaskActionCallbacks, taskQuoteHref } from "./TaskActionsMenu";
@@ -791,13 +791,23 @@ function AgentChatInner({
   const [localTaskId, setLocalTaskId] = useState<string | null>(
     explicitTaskId ?? null,
   );
+  // A successful create proves ownership before the first detail/access read.
+  const createdTaskIds = useRef(new Set<string>());
+  const adoptOwnedTask = useCallback((id: string) => {
+    createdTaskIds.current.add(id);
+    setLocalTaskId(id);
+  }, []);
   const [branchTaskId, setBranchTaskId] = useState<string | null>(null);
   const taskId =
     branchTaskId ||
     (explicitTaskId !== undefined
       ? explicitTaskId
       : workspace?.taskId || localTaskId);
-  const accessState = useTaskAccess(taskId, undefined, initialTask?.task.id === taskId ? initialTask.access : undefined);
+  const createdAccess: TaskAccess | undefined = taskId && createdTaskIds.current.has(taskId) ? {
+    role: "owner", state: "owner", general_access: "private", can_send: true, can_manage: true,
+    can_fork: true, owner: { name: "", initial: "" },
+  } : undefined;
+  const accessState = useTaskAccess(taskId, undefined, initialTask?.task.id === taskId && initialTask.access ? initialTask.access : createdAccess);
   const receiveTaskAccess = accessState.receiveDetail;
   const captureTaskAccess = accessState.captureDetail;
   const accessRights = taskAccessRights(accessState.access, taskId);
@@ -1547,6 +1557,7 @@ function AgentChatInner({
     setTaskSessions({taskId: task, items: [session], loaded: true, failed: false});
     setSelectedSession({taskId: task, id: session.id, resolved: true});
     setPickedChat(null);
+    createdTaskIds.current.add(task);
     if (explicitTaskId === undefined) setLocalTaskId(task);
     let workspaceSessionId = "";
     if (workspace) {
@@ -1778,7 +1789,7 @@ function AgentChatInner({
         setBusy(true);
         const created = await edit.flow.start(prompt, edit.binding, { attachments: uploaded, orgId, executionTarget });
         setBusy(false);
-        if (created) setLocalTaskId(created);
+        if (created) adoptOwnedTask(created);
         return Boolean(created);
       }
       // Freeze both the model-visible file contents and exact target before the
@@ -1912,7 +1923,7 @@ function AgentChatInner({
       // 这段对话是刚建起来的：它的第一份消息里没有历史，模型的回答不能被当历史吞掉。
       actionHistoryRef.current = ownTaskActionMark(createdTaskId);
       loadedTaskRef.current = createdTaskId;
-      setLocalTaskId(createdTaskId);
+      adoptOwnedTask(createdTaskId);
       setStatus("running");
       let createdSessionId = linkedSessionId;
       if (workspace) {
@@ -1989,7 +2000,7 @@ function AgentChatInner({
         setBusy(true);
         const created = await edit.flow.start(effectivePrompt, edit.binding, { attachments: uploaded });
         setBusy(false);
-        if (created) setLocalTaskId(created);
+        if (created) adoptOwnedTask(created);
         return;
       }
       const optimisticMessageId = Date.now();
@@ -2152,6 +2163,7 @@ function AgentChatInner({
       setInput("");
       atts.clear();
     }
+    void acpScroll.resumeFollowing();
     if (held) { holdPending(optimisticId); acpMessageIdRef.current = null; return; }
     if (retry?.status === "held") retryPending(retry.id);
     setAcpBusy(true);
@@ -2293,7 +2305,7 @@ function AgentChatInner({
       setBusy(true);
       const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
       setBusy(false);
-      if (created) { if (!fromConnector) { setInput(""); atts.clear(); } setLocalTaskId(created); }
+      if (created) { if (!fromConnector) { setInput(""); atts.clear(); } adoptOwnedTask(created); }
       return Boolean(created);
     }
     const submittedInput = input;
@@ -2356,7 +2368,7 @@ function AgentChatInner({
       const createdSessionId = String(result.data.session_id || "");
       setBranchFromMessageId(null);
       loadedTaskRef.current = createdTaskId;
-      setLocalTaskId(createdTaskId);
+      adoptOwnedTask(createdTaskId);
       setBranchTaskId(createdTaskId);
       if (workspace && createdSessionId) {
         const adopted = await workspace.adoptSession(createdSessionId);
@@ -2615,7 +2627,7 @@ function AgentChatInner({
         setBusy(true);
         const created = await edit.flow.start(text, edit.binding);
         setBusy(false);
-        if (created) setLocalTaskId(created);
+        if (created) adoptOwnedTask(created);
         return;
       }
       const turn = captureEditorTurn(text);

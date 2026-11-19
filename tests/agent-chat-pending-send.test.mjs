@@ -93,6 +93,8 @@ test("the task id is adopted in place (no remount, no list read); the message's 
     assert.equal(view.composer("acp").__props.sendBlocked, false, "the composer works once the message is accepted");
     await type(view, "acp", "再看看测试");
     await submit(view, "acp");
+    assert.equal(posts("/v1/tasks/t1/send").length, 0, "the follow-up waits locally for the first turn");
+    await deliver(row("agent", { id: 2, result: { stopReason: "end_turn" } }));
     const sent = posts("/v1/tasks/t1/send");
     assert.equal(sent.length, 1);
     assert.equal("model" in sent[0].body, false, "the first message's choices are not sent again");
