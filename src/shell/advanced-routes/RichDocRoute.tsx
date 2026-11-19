@@ -302,9 +302,9 @@ export function RichDocRoute({
     );
     if (result.warnings.length > 0) setExportError(result.warnings[0]);
   }, [editor.editor, item.title]);
-  // 只读（viewer、专业模式锁在别人手里）时，Leo 的帮改入口不能绕过灰掉的按钮：
-  // 会改正文的指令在这里直接拒绝，describe / state 照旧让 agent 看得到现状。
-  useEditorContext(buildRichDocContext(editor));
+  // Keep the loaded bytes across saves, but pin agent context to the current
+  // durable revision so it still matches the workbench after a save receipt.
+  useEditorContext(buildRichDocContext({ ...editor, item }));
   const downloadDisabled =
     !editor.editor || editor.loading || !editor.sourceReady;
   return (

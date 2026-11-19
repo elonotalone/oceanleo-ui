@@ -1995,14 +1995,6 @@ function AgentChatInner({
         return;
       }
       const effectivePrompt = prompt || tt("请分析我上传的文件。");
-      const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
-      if (edit) {
-        setBusy(true);
-        const created = await edit.flow.start(effectivePrompt, edit.binding, { attachments: uploaded });
-        setBusy(false);
-        if (created) adoptOwnedTask(created);
-        return;
-      }
       const optimisticMessageId = Date.now();
       const turn = captureEditorTurn(effectivePrompt);
       beginUserTurn();
@@ -2300,7 +2292,7 @@ function AgentChatInner({
       setError(tt("这段对话只能查看。"));
       return false;
     }
-    const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+    const edit = !taskId && enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
     if (edit) {
       setBusy(true);
       const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
@@ -2622,14 +2614,6 @@ function AgentChatInner({
   const sendSuggestion = useCallback(
     async (text: string) => {
       if (!taskId || busy || readOnly) return;
-      const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
-      if (edit) {
-        setBusy(true);
-        const created = await edit.flow.start(text, edit.binding);
-        setBusy(false);
-        if (created) adoptOwnedTask(created);
-        return;
-      }
       const turn = captureEditorTurn(text);
       beginUserTurn();
       setBusy(true);

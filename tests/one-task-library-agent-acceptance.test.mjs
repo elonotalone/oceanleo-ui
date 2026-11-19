@@ -384,7 +384,7 @@ function existingTaskDetail() {
     task: {
       id: "one-task-library-existing-task",
       task_id: "one-task-library-existing-task",
-      status: "completed",
+      status: "done",
       mode: "agent",
       site_id: "oceanleo",
       title: "Existing Library Task",
@@ -502,7 +502,7 @@ async function libraryFetch(input, init = {}) {
     }));
   }
   if (url.pathname === "/v1/library/favorites") {
-    return Promise.resolve(jsonResponse(emptyMineEnvelope()));
+    return Promise.resolve(jsonResponse({ ...emptyMineEnvelope(), scope: "favorites" }));
   }
   const libraryItem = [activeProjection, secondDocumentProjection]
     .map((item) => artifactRevisionHeads.get(item.artifact_id) || item)
@@ -567,7 +567,7 @@ async function libraryFetch(input, init = {}) {
       task: {
         id: "one-task-library-created-task",
         task_id: "one-task-library-created-task",
-        status: "completed",
+        status: "done",
         site_id: "oceanleo",
         title: "Library acceptance task",
       },
@@ -794,7 +794,7 @@ test("real Library→MyLibrary→MaterialStandaloneEditor composition renders wi
   }
 });
 
-test("real Library Edit keeps Task chat closed until the edit-bar agent action and sends live file context exactly once", { timeout: 35000 }, async () => {
+test("real Library Edit keeps chat closed, sends background Library context, and saves native user edits on the same Task", { timeout: 35000 }, async () => {
   assert.ok(actualArtifactLibraryComponent, "first composition test imports the production Library graph");
   selectActiveProjection(activeDocumentProjection);
   resetSecondDocumentProjection();
@@ -873,7 +873,7 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
       `opening and hydrating the typed editor without a user edit must not publish an artifact revision; editSession=${JSON.stringify(editSessionState)}; commits=${JSON.stringify(artifactRevisionCommits.map(({ artifactId, commit, revisionId }) => ({ artifactId, expected: commit.expected_revision_id, revisionId, project: editorProjectForCommit({ commit })?.url, hasMarker: editorProjectForCommit({ commit })?.content.includes("Agent accepted marker") })))}; posts=${JSON.stringify(trackedRequests.filter((request) => request.path.includes("/revisions")))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
     );
     assert.equal(uploadedLibraryFiles.length, 0, "hydration alone must not upload a replacement project or delivery file");
-    const composer = await waitFor(
+    let composer = await waitFor(
       mounted,
       '[data-workspace-pane="left"] [contenteditable="true"].oc-slot-editor',
       "real AgentChat composer",
@@ -903,32 +903,45 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     assert.equal(createdTaskRequests.length, 1, `first Library chat creates exactly one new Task; visible text=${(mounted.container.textContent || "").slice(0, 700)}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 200)}` : ""}`))}`);
     const taskRequest = createdTaskRequests[0];
     assert.equal(taskRequest.prompt, prompt);
-    assert.match(taskRequest.hidden_context || "", /〔右侧 Library 文件：以下是当前编辑器中的实时内容/);
-    assert.match(taskRequest.hidden_context || "", /artifactId=one-task-library-document/);
-    assert.match(taskRequest.hidden_context || "", /revisionId=one-task-library-document-r1/);
-    assert.match(taskRequest.hidden_context || "", /type=document/);
+    assert.match(taskRequest.hidden_context || "", /Edit this exact Library item with the background Library tools/);
+    assert.match(taskRequest.hidden_context || "", /"artifactId":"one-task-library-document"/);
+    assert.match(taskRequest.hidden_context || "", /"revisionId":"one-task-library-document-r1"/);
+    assert.match(taskRequest.hidden_context || "", /"artifactType":"document"/);
     assert.match(taskRequest.hidden_context || "", /Initial real content/);
     assert.equal(mounted.container.querySelector('[data-library-editor-host="agent-workspace"]'), editorHost, "creating the Task does not remount the Library editor host");
     assert.equal(mounted.container.querySelector('[data-workspace-pane="main"] [aria-label="文档编辑区"] .ProseMirror'), documentEditor, "Task creation retains the exact same live editor node");
     assert.match(documentEditor.textContent || "", /Initial real content/);
     assert.equal(window.location.pathname, "/library", "creating the Task stays on the Library route");
     assert.equal(window.location.search, "?item=one-task-library-document");
-    const reviewAccept = await waitFor(
-      mounted,
-      '[data-agent-review-action="accept"]',
-      "real agent command routed into the native review gate",
-      12000,
-    );
-    assert.doesNotMatch(documentEditor.textContent || "", /Agent accepted marker/, "mutating agent command is not applied before review acceptance");
-    await click(reviewAccept);
-    const acceptedDeadline = Date.now() + 12000;
-    while (!(documentEditor.textContent || "").includes("Agent accepted marker") && Date.now() < acceptedDeadline) {
+    // Conversation text is no longer an executable browser-command channel.
+    await waitFor(mounted, '[data-agent-chat-header]', "created Task remains mounted");
+    const responseDeadline = Date.now() + 7000;
+    while (!(mounted.container.textContent || "").includes("我会在文档末尾添加你要求的验收标记。") && Date.now() < responseDeadline) {
       await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 40)));
     }
-    assert.match(documentEditor.textContent || "", /Agent accepted marker/, "accepting the real review applies the native Tiptap command to the same open Library file");
+    assert.match(mounted.container.textContent || "", /我会在文档末尾添加你要求的验收标记。/, "the legacy command response actually reached the conversation");
+    assert.equal(mounted.container.querySelector('[data-agent-review-action]'), null);
+    assert.doesNotMatch(documentEditor.textContent || "", /Agent accepted marker/,
+      "a legacy command in assistant text never mutates the native editor");
+    assert.match(taskRequest.hidden_context, /library_open\(artifact_id, revision_id\)/);
+    assert.match(taskRequest.hidden_context, /library_save_revision/);
+    assert.match(taskRequest.hidden_context, /revision_conflict/);
+    // A real user edit still travels through native persistence and the Task snapshot.
+    const view = documentEditor.editor?.view;
+    assert.ok(view?.state?.tr);
+    await act(async () => {
+      view.dispatch(view.state.tr.insertText("Agent accepted marker", view.state.doc.content.size - 1));
+    });
+    assert.match(documentEditor.textContent || "", /Agent accepted marker/);
     assert.equal(mounted.container.querySelector('[data-library-editor-host="agent-workspace"]'), editorHost);
     assert.equal(mounted.container.querySelector('[data-workspace-pane="main"] [aria-label="文档编辑区"] .ProseMirror'), documentEditor);
 
+    const { flushAdvancedDraftGate } = await import(pathToFileURL(resolve(projectRoot, "src/shell/advanced-draft-gates.ts")).href);
+    await act(async () => {
+      const result = await flushAdvancedDraftGate("one-task-library-document");
+      assert.ok(result?.ok, result?.error || "native editor has a registered explicit save gate");
+    });
+    composer = await waitFor(mounted, '[data-workspace-pane="left"] [contenteditable="true"].oc-slot-editor', "Task composer after first task creation");
     const followUp = "请把这份修改保存成原文件的新版本。";
     await act(async () => {
       composer.focus();
@@ -949,17 +962,10 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     while (followUpTaskRequests.length === 0 && Date.now() < followUpDeadline) {
       await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 40)));
     }
-    assert.equal(followUpTaskRequests.length, 1, `the existing Task receives the next user turn through its follow-up endpoint; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 160)}` : ""}`))}; composer=${composer.textContent}; sendDisabled=${followUpSend.disabled}`);
+    assert.equal(followUpTaskRequests.length, 1, `the existing Task receives the next user turn through its follow-up endpoint; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 160)}` : ""}`))}; composer=${composer.textContent}; sendDisabled=${followUpSend.disabled}; UI=${(mounted.container.textContent || "").slice(-1600)}`);
     assert.equal(createdTaskRequests.length, 1, "an existing Library Task is never duplicated by a follow-up turn");
     assert.equal(followUpTaskRequests[0].prompt, followUp);
     assert.match(followUpTaskRequests[0].hidden_context || "", /Agent accepted marker/, "the follow-up pins the currently edited file contents");
-    const saveAccept = await waitFor(
-      mounted,
-      '[data-agent-review-action="accept"]',
-      "real review gate for the Library revision-save command",
-      12000,
-    );
-    await click(saveAccept);
     const commitDeadline = Date.now() + 10000;
     let stableCommitCount = -1;
     let stableSince = 0;
@@ -992,12 +998,12 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     );
     assert.ok(
       documentCommits.length > 0,
-      `accepted agent content is committed through the existing typed artifact revision producer; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content }) => ({ filename, content: content.slice(0, 220) })))}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 180)}` : ""}`))}; ui=${(mounted.container.textContent || "").slice(-600)}`,
+      `native user content is committed through the existing typed artifact revision producer; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, content }) => ({ filename, content: content.slice(0, 220) })))}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 180)}` : ""}`))}; ui=${(mounted.container.textContent || "").slice(-600)}`,
     );
     assert.equal(
       documentCommits.length,
       1,
-      `the single accepted marker mutation and explicit save must settle as one distinct artifact revision; commits=${JSON.stringify(documentCommits.map(({ commit, revisionId }) => ({ expected: commit.expected_revision_id, revisionId, hasMarker: editorProjectForCommit({ commit })?.content.includes("Agent accepted marker") })))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
+      `the single native user mutation and explicit save must settle as one distinct artifact revision; commits=${JSON.stringify(documentCommits.map(({ commit, revisionId }) => ({ expected: commit.expected_revision_id, revisionId, hasMarker: editorProjectForCommit({ commit })?.content.includes("Agent accepted marker") })))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasMarker: content.includes("Agent accepted marker") })))}`,
     );
     assert.equal(documentCommits[0].commit.expected_revision_id, "one-task-library-document-r1", "the first accepted receipt uses the exact opened Library revision as its CAS base");
     for (let index = 1; index < documentCommits.length; index += 1) {
@@ -1037,7 +1043,7 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     assert.equal(
       persistedHead?.item?.revisionId,
       acceptedDocumentRevisionId,
-      `the Task snapshot advances to the revision returned by the accepted save command; snapshot=${JSON.stringify(sessionSnapshot)}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 320)}` : ""}`))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; UI=${(mounted.container.textContent || "").slice(-1200)}`,
+      `the Task snapshot advances to the native explicit save receipt; snapshot=${JSON.stringify(sessionSnapshot)}; requests=${JSON.stringify(trackedRequests.map(({ method, path, body }) => `${method} ${path}${body ? ` ${body.slice(0, 320)}` : ""}`))}; uploads=${JSON.stringify(uploadedLibraryFiles.map(({ filename, url, content }) => ({ filename, url, hasAcceptedMarker: content.includes("Agent accepted marker") })))}; UI=${(mounted.container.textContent || "").slice(-1200)}`,
     );
     assert.equal(persistedHead?.item?.meta?.editor_project_url, projectRendition.url);
     assert.deepEqual(renderErrors, [], renderErrors.map((error) => error.stack || error.message).join("\n"));
@@ -1049,7 +1055,6 @@ test("real Library Edit keeps Task chat closed until the edit-bar agent action a
     const reviewInbox = await import(pathToFileURL(resolve(projectRoot, "src/shell/agent-review/inbox.ts")).href);
     await act(async () => {
       saver.resetBackgroundSaverForTests();
-      reviewInstall.uninstallAgentReviewGate();
       reviewInstall.uninstallSelectionBridge();
       reviewInbox.resetAgentReviewInbox();
     });
@@ -1220,7 +1225,6 @@ test("real Task history reopens the saved Library revision and follows up on tha
     const reviewInbox = await import(pathToFileURL(resolve(projectRoot, "src/shell/agent-review/inbox.ts")).href);
     await act(async () => {
       saver.resetBackgroundSaverForTests();
-      reviewInstall.uninstallAgentReviewGate();
       reviewInstall.uninstallSelectionBridge();
       reviewInbox.resetAgentReviewInbox();
     });
@@ -1328,7 +1332,6 @@ test("an existing Task keeps its original chat when ResultCanvas My Library open
     const reviewInbox = await import(pathToFileURL(resolve(projectRoot, "src/shell/agent-review/inbox.ts")).href);
     await act(async () => {
       saver.resetBackgroundSaverForTests();
-      reviewInstall.uninstallAgentReviewGate();
       reviewInstall.uninstallSelectionBridge();
       reviewInbox.resetAgentReviewInbox();
     });
@@ -1442,20 +1445,17 @@ test("MaterialStandaloneEditor existingPane retains the Task chat and rejects a 
     existingTaskCommandResponseReady = true;
     await act(async () => pendingExistingTaskFollowup?.());
 
-    const staleText = "右侧 Library 文件在你发出这轮消息后已切换；这条旧回复不会作用于新文件。";
-    const staleDeadline = Date.now() + 12000;
-    while (!(mounted.container.querySelector("[data-editor-command-notes]")?.textContent || "").includes(staleText) && Date.now() < staleDeadline) {
+    const replyDeadline = Date.now() + 12000;
+    while (!(mounted.container.textContent || "").includes("STALE RESPONSE MUST NOT APPLY") && Date.now() < replyDeadline) {
       await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 40)));
     }
-    assert.match(mounted.container.querySelector("[data-editor-command-notes]")?.textContent || "", new RegExp(staleText));
-    assert.match(editor.textContent || "", /Operator changed while response pending/);
-    assert.doesNotMatch(editor.textContent || "", /STALE RESPONSE MUST NOT APPLY/, "a command from the old turn cannot mutate the file after the native edit changes its pin");
-    assert.equal(mounted.container.querySelector('[data-agent-review-action="accept"]'), null, "a stale command is rejected before opening the review/confirm gate");
-    const staleReceipt = trackedRequests
-      .filter((request) => request.method === "POST" && request.path === "/v1/agent/tasks/one-task-library-existing-task/messages")
-      .map((request) => { try { return JSON.parse(request.body); } catch { return null; } })
-      .find((request) => request?.prompt?.startsWith("〔编辑器〕") && request?.hidden_context?.includes('"staleTarget":true'));
-    assert.ok(staleReceipt, "the real editor-command bridge reports stale-target rejection against the existing Task");
+    assert.match(mounted.container.textContent || "", /STALE RESPONSE MUST NOT APPLY/, "the delayed response reaches the existing conversation");
+    assert.match(editor.textContent || "", /Operator changed while response pending/, "the user's in-flight native edit is retained after the reply");
+    assert.doesNotMatch(editor.textContent || "", /STALE RESPONSE MUST NOT APPLY/, "assistant text cannot mutate the currently open file");
+    assert.equal(mounted.container.querySelector('[data-agent-review-action]'), null);
+    const syntheticReceipts = trackedRequests.filter(request => request.method === "POST" && request.path === "/v1/agent/tasks/one-task-library-existing-task/messages")
+      .map(request => JSON.parse(request.body)).filter(request => request.prompt?.startsWith("〔编辑器〕"));
+    assert.deepEqual(syntheticReceipts, [], "no retired browser-command receipt is fabricated");
     assert.equal(createdTaskRequests.length, 0, "neither follow-up nor stale response creates a replacement Task");
     assert.deepEqual(renderErrors, [], renderErrors.map((error) => error.stack || error.message).join("\n"));
   } finally {
@@ -1468,7 +1468,6 @@ test("MaterialStandaloneEditor existingPane retains the Task chat and rejects a 
     const reviewInbox = await import(pathToFileURL(resolve(projectRoot, "src/shell/agent-review/inbox.ts")).href);
     await act(async () => {
       saver.resetBackgroundSaverForTests();
-      reviewInstall.uninstallAgentReviewGate();
       reviewInstall.uninstallSelectionBridge();
       reviewInbox.resetAgentReviewInbox();
     });
@@ -1583,19 +1582,16 @@ test("switching an existing Task's native workbench to another Library root reje
     const commitCountBeforeStaleReply = artifactRevisionCommits.length;
     existingTaskCommandResponseReady = true;
     await act(async () => pendingExistingTaskFollowup?.());
-    const staleText = "右侧 Library 文件在你发出这轮消息后已切换；这条旧回复不会作用于新文件。";
-    const staleDeadline = Date.now() + 12000;
-    while (!(mounted.container.querySelector("[data-editor-command-notes]")?.textContent || "").includes(staleText) && Date.now() < staleDeadline) {
+    const replyDeadline = Date.now() + 12000;
+    while (!(mounted.container.textContent || "").includes("STALE RESPONSE MUST NOT APPLY") && Date.now() < replyDeadline) {
       await act(async () => new Promise((resolveWait) => setTimeout(resolveWait, 40)));
     }
-    assert.match(mounted.container.querySelector("[data-editor-command-notes]")?.textContent || "", new RegExp(staleText));
-    assert.doesNotMatch(nextEditor.textContent || "", /STALE RESPONSE MUST NOT APPLY/);
-    assert.equal(mounted.container.querySelector("[data-agent-review-action]") , null, "a response pinned to the first file is rejected before review on the second file");
-    const staleReceipt = trackedRequests
-      .filter((request) => request.method === "POST" && request.path === "/v1/agent/tasks/one-task-library-existing-task/messages")
-      .map((request) => { try { return JSON.parse(request.body); } catch { return null; } })
-      .find((request) => request?.prompt?.startsWith("〔编辑器〕") && request?.hidden_context?.includes('"staleTarget":true'));
-    assert.ok(staleReceipt, "the native editor-command bridge reports the root switch as a stale target");
+    assert.match(mounted.container.textContent || "", /STALE RESPONSE MUST NOT APPLY/, "the delayed response reaches the existing conversation");
+    assert.doesNotMatch(nextEditor.textContent || "", /STALE RESPONSE MUST NOT APPLY/, "assistant text cannot mutate the currently open file");
+    assert.equal(mounted.container.querySelector('[data-agent-review-action]'), null);
+    const syntheticReceipts = trackedRequests.filter(request => request.method === "POST" && request.path === "/v1/agent/tasks/one-task-library-existing-task/messages")
+      .map(request => JSON.parse(request.body)).filter(request => request.prompt?.startsWith("〔编辑器〕"));
+    assert.deepEqual(syntheticReceipts, [], "no retired browser-command receipt is fabricated");
     assert.equal(createdTaskRequests.length, 0, "switching roots and rejecting the old reply never creates a replacement Task");
     assert.equal(uploadedLibraryFiles.length, uploadCountBeforeStaleReply, "the rejected reply causes no upload for either file");
     assert.equal(artifactRevisionCommits.length, commitCountBeforeStaleReply, "the rejected reply creates no artifact revision");
@@ -1611,7 +1607,6 @@ test("switching an existing Task's native workbench to another Library root reje
     const reviewInbox = await import(pathToFileURL(resolve(projectRoot, "src/shell/agent-review/inbox.ts")).href);
     await act(async () => {
       saver.resetBackgroundSaverForTests();
-      reviewInstall.uninstallAgentReviewGate();
       reviewInstall.uninstallSelectionBridge();
       reviewInbox.resetAgentReviewInbox();
     });

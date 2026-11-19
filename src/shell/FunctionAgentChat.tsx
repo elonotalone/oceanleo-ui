@@ -1120,7 +1120,7 @@ export function FunctionAgentChat({
       setError(tt("当前工作会话不可编辑。"));
       return;
     }
-    const edit = enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
+    const edit = !taskId && enableEditorContext ? currentLibraryEdit(workspace?.activeFileScopeId) : null;
     if (edit) {
       setBusy(true);
       const created = await edit.flow.start(prompt || tt("请分析我上传的文件。"), edit.binding, { attachments: uploaded, orgId, executionTarget });
