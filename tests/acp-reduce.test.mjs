@@ -243,7 +243,7 @@ test("a response answers the latest earlier request with its id (ids restart aft
   assert.deepEqual(view.turns.map((turn) => turn.stopReason), ["end_turn", "cancelled"]);
 });
 
-test("Claude Code / Codex queue a prompt sent during a turn: output goes to the oldest open turn", () => {
+test("historical concurrent prompts: output goes to the oldest open turn", () => {
   const r = rows();
   r.prompt(1, "first");
   r.prompt(2, "second");
@@ -256,50 +256,40 @@ test("Claude Code / Codex queue a prompt sent during a turn: output goes to the 
   assert.equal(view.turns[1].items[0].text, "for second");
 });
 
-test("Cursor replaces the running prompt: output after the new prompt goes to the newest open turn", () => {
+test("message identity survives interleaved sub-agent tools and chunks", () => {
   const r = rows();
-  r.prompt(1, "first");
-  r.say("old");
-  r.prompt(2, "instead");
-  r.say("new");
-  r.done(1, "cancelled");
-  r.say(" more");
-  const view = reduceRows(r.list, "cursor");
-  assert.equal(view.turns[0].items[0].text, "old");
-  assert.equal(view.turns[0].stopReason, "cancelled");
-  assert.equal(view.turns[1].items[0].text, "new more");
-  assert.equal(view.turns[1].open, true);
-});
-
-test("Hermes: its redirect/queue acknowledgement is a notice on the newest prompt, not reply text", () => {
-  const r = rows();
-  r.prompt(1, "first");
-  r.say("working on it");
-  r.prompt(2, "correction");
-  r.say("Redirected the active turn with your correction.");
-  r.done(2);
-  r.prompt(3, "later");
-  r.say("Queued for the next turn. (1 queued)");
-  const view = reduceRows(r.list, "hermes");
-  assert.deepEqual(kinds(view.turns[0].items), ["message"]);
-  assert.equal(view.turns[0].items[0].text, "working on it");
-  assert.deepEqual(kinds(view.turns[1].items), ["notice"]);
-  assert.equal(view.turns[1].items[0].title, "Redirected the active turn with your correction.");
-  assert.equal(view.turns[2].items[0].title, "Queued for the next turn. (1 queued)");
-  // Other programs: the same words are just words.
-  assert.equal(reduceRows(r.list, "claude").turns[0].items.some((item) => item.type === "notice"), false);
-});
-
-test("Codex: thread status from session_info_update._meta.codex is the view's activity", () => {
-  const r = rows();
-  r.prompt(1, "goal");
+  r.prompt(1, "go");
+  r.say("main ", { messageId: "m" });
+  r.update({ sessionUpdate: "tool_call", toolCallId: "child", title: "Read", _meta: { claudeCode: { parentToolUseId: "parent" } } });
+  r.say("child", { messageId: "m", _meta: { claudeCode: { parentToolUseId: "parent" } } });
+  r.say("continued", { messageId: "m" });
   r.done(1);
-  r.update({ sessionUpdate: "session_info_update", _meta: { codex: { threadStatus: { type: "active", activeFlags: [] } } } });
-  assert.equal(reduceRows(r.list, "codex").activity, "active");
-  r.update({ sessionUpdate: "session_info_update", title: "Fix bug", _meta: { codex: { threadStatus: { type: "idle" } } } });
-  const view = reduceRows(r.list, "codex");
-  assert.equal(view.activity, "idle");
-  assert.equal(view.title, "Fix bug");
+  const items = reduceRows(r.list).turns[0].items;
+  assert.deepEqual(kinds(items), ["message", "tool", "message"]);
+  assert.equal(items[0].text, "main continued");
+  assert.deepEqual(items[0].rowIds, [2, 5]);
+  assert.equal(items[2].text, "child");
+  r.prompt(2, "again");
+  r.say("new turn", { messageId: "m" });
+  assert.equal(reduceRows(r.list).turns[1].items[0].text, "new turn");
+});
+
+test("initialize and session results advertise capabilities without a program switch", () => {
+  const r = rows();
+  r.request(1, "initialize", {});
+  r.result(1, { agentCapabilities: { sessionCapabilities: { fork: {} } } });
+  assert.deepEqual(reduceRows(r.list).sessionCapabilities, { fork: {} });
+  r.request(2, "session/new", {});
+  r.result(2, { sessionId: "s1", sessionCapabilities: { fork: {} } });
+  r.prompt(3, "hello");
+  r.say("Queued for the next turn. (1 queued)");
+  r.done(3);
+  r.update({ sessionUpdate: "session_info_update", title: "Hello", _meta: { codex: { threadStatus: { type: "active" } } } });
+  const view = reduceRows(r.list);
+  assert.equal(view.open, false);
+  assert.equal(view.activity, null);
+  assert.equal(view.turns[0].items[0].type, "message");
+  assert.equal(view.title, "Hello");
 });
 
 test("Stop: a client session/cancel row marks the open turn; the turn stays open until the agent answers", () => {

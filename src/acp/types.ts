@@ -275,15 +275,16 @@ export type AcpView = {
   modelId: string | null;
   models: SessionModelInfo[];
   configOptions: SessionConfigOption[] | null;
+  sessionCapabilities: Record<string, unknown>;
   usage: UsageUpdate | null;
   commands: AvailableCommand[];
   title: string | null;
   /** The latest `plan` update's entries (ACP sends the whole plan each time). */
   plan: PlanEntry[] | null;
   backgroundTasks: AcpBackgroundTask[];
-  /** Codex: `session_info_update._meta.codex.threadStatus.type` (Codex keeps working after a prompt for goals). */
+  /** Activity projected from the task activity endpoint, when available. */
   activity: "active" | "idle" | null;
   exited: { code: number | null; signal: string | null } | null;
-  /** Codex adapter is retrying its model stream. */
+  /** A notice reports a retry in progress. */
   retrying: boolean;
 };

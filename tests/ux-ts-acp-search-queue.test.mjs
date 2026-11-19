@@ -127,11 +127,11 @@ test("a prompt sent during an open turn of the same session is queued until its 
   assert.equal(view.turns[1].queued, false, "its first output starts it");
 });
 
-test("not queued: a prompt with no open turn, one in another session, and Cursor / Hermes prompts", () => {
+test("queue state follows open session requests for every program", () => {
   assert.equal(reduceRows([prompt(1, "a"), done(1), prompt(2, "b")], "claude").turns[1].queued, false);
   assert.equal(reduceRows([prompt(1, "a", "s1"), prompt(2, "b", "s2")], "claude").turns[1].queued, false);
-  assert.equal(reduceRows([prompt(1, "a"), prompt(2, "b")], "cursor").turns[1].queued, false, "Cursor replaces the running prompt");
-  assert.equal(reduceRows([prompt(1, "a"), prompt(2, "b")], "hermes").turns[1].queued, false, "Hermes says itself");
+  assert.equal(reduceRows([prompt(1, "a"), prompt(2, "b")], "cursor").turns[1].queued, true);
+  assert.equal(reduceRows([prompt(1, "a"), prompt(2, "b")], "hermes").turns[1].queued, true);
   assert.equal(reduceRows([prompt(1, "a"), prompt(2, "b")], "codex").turns[1].queued, true);
 });
 

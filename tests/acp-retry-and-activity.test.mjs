@@ -23,21 +23,11 @@ function frames(updates) {
 const info = (meta) => ({ sessionUpdate: "session_info_update", _meta: meta });
 const chunk = (text) => ({ sessionUpdate: "agent_message_chunk", content: { type: "text", text } });
 
-test("older codex-acp clients: _meta.codex.error.willRetry marks retrying until output resumes", () => {
-  const retrying = reduceRows(frames([info({ codex: { error: { message: "stream disconnected", willRetry: true } } })]), "codex");
-  assert.equal(retrying.retrying, true);
-  const resumed = reduceRows(frames([info({ codex: { error: { message: "x", willRetry: true } } }), chunk("back")]), "codex");
-  assert.equal(resumed.retrying, false);
-  const gaveUp = reduceRows(frames([info({ codex: { error: { message: "x", willRetry: false } } })]), "codex");
-  assert.equal(gaveUp.retrying, false);
-});
-
-test("typed AIR clients: sessionFailure warning = retrying; error or null clears it", () => {
-  const air = (sessionFailure) => info({ jetbrains: { air: { version: 1, sessionFailure } } });
-  assert.equal(reduceRows(frames([air({ id: "f1", severity: "warning", title: "Reconnecting" })]), "codex").retrying, true);
-  assert.equal(reduceRows(frames([air({ id: "f1", severity: "warning" }), air(null)]), "codex").retrying, false);
-  assert.equal(reduceRows(frames([air({ id: "f1", severity: "warning" }), air({ id: "f2", severity: "error" })]), "codex").retrying, false);
-  assert.equal(reduceRows(frames([info({ jetbrains: { air: { version: 1 } } })]), "codex").retrying, false);
+test("a notice reports retrying and resumed output clears it, without vendor metadata", () => {
+  const notice = { sessionUpdate: "notice", severity: "warning", title: "Reconnecting", description: "Retrying the stream" };
+  assert.equal(reduceRows(frames([notice])).retrying, true);
+  assert.equal(reduceRows(frames([notice, chunk("back")])).retrying, false);
+  assert.equal(reduceRows(frames([info({ codex: { error: { willRetry: true } } })])).retrying, false);
 });
 
 test("the projection marks tasks it knows ended; others stay as the frames say", () => {

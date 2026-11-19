@@ -100,12 +100,9 @@ function permissionOptions(params: unknown): PermissionOption[] {
   });
 }
 
-/** Hermes acknowledges a prompt sent during a running turn with one of these two fixed lines (hermes-acp). */
-const HERMES_FOLLOWUP = /^(Redirected the active turn with your correction\.|Queued for the next turn\. \([0-9]+ queued\))$/;
-
 type PendingClient = { method: string; params: unknown; turn: AcpTurn | null };
 
-export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView {
+export function reduceRows(rows: readonly AcpFrameRow[], _program = ""): AcpView {
   const view: AcpView = {
     preamble: [],
     turns: [],
@@ -116,6 +113,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     modelId: null,
     models: [],
     configOptions: null,
+    sessionCapabilities: {},
     usage: null,
     commands: [],
     title: null,
@@ -133,24 +131,13 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
 
   const openTurns = () => view.turns.filter((turn) => turn.open);
   const replaying = () => [...clientRequests.values()].some((request) => request.method === "session/load");
-  /**
-   * Where new output goes: the oldest open turn (Claude Code and Codex queue a prompt sent during a turn and answer
-   * them in order), else the newest turn, else the preamble.
-   */
+  // The client serializes prompts for every adapter. For historical overlapping requests,
+  // output belongs to the oldest unanswered prompt, independent of the program name.
   const target = (): AcpItem[] => {
-    const open = openTurns();
-    // Cursor: a prompt sent during a turn REPLACES it — Cursor answers the replaced prompt and the output that
-    // follows belongs to the newer one.
-    const turn = program === "cursor" ? open[open.length - 1] : open[0];
-    // Its first output: a queued prompt's turn has started.
+    const turn = openTurns()[0];
     if (turn) turn.queued = false;
     return (turn ?? view.turns[view.turns.length - 1])?.items ?? view.preamble;
   };
-  /**
-   * Programs that hold a prompt sent during a turn until that turn ends. Not Cursor (the new prompt replaces the
-   * running one) and not Hermes (it says itself what it did with the prompt, see HERMES_FOLLOWUP).
-   */
-  const queues = program !== "cursor" && program !== "hermes";
   const push = (item: AcpItem) => target().push(item);
 
   /** Scope of a chunk: "" for the main conversation, else the sub-agent that produced it. */
@@ -179,16 +166,20 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     }
     const role = update.sessionUpdate === "user_message_chunk" ? "user" : "agent";
     const messageId = str(update.messageId);
+    // A sub-agent can emit tools or text between two chunks of the same main
+    // message. Identity includes scope and role; never merge across turns.
+    const known = messageId ? items.find((item) => item.type === "message" &&
+      item.messageId === messageId && item.scope === scope && item.role === role) : last;
     if (
-      last?.type === "message" &&
-      last.role === role &&
-      last.scope === scope &&
-      (!messageId || !last.messageId || last.messageId === messageId)
+      known?.type === "message" &&
+      known.role === role &&
+      known.scope === scope &&
+      (!messageId || !known.messageId || known.messageId === messageId)
     ) {
-      last.text += text;
-      last.blocks.push(block);
-      last.rowIds.push(row.id);
-      if (messageId) last.messageId = messageId;
+      known.text += text;
+      known.blocks.push(block);
+      known.rowIds.push(row.id);
+      if (messageId) known.messageId = messageId;
       return;
     }
     items.push({ type: "message", key: `message-${row.id}`, role, text, blocks: [block], scope, messageId, rowIds: [row.id] });
@@ -245,17 +236,6 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     switch (update.sessionUpdate) {
       case "agent_message_chunk":
         view.retrying = false;
-        if (program === "hermes" && isRecord(update.content) && update.content.type === "text") {
-          const text = update.content.text.trim();
-          if (HERMES_FOLLOWUP.test(text)) {
-            // Hermes: this line answers the NEWEST prompt (it was redirected into, or queued behind, the running
-            // turn); it is not part of the running turn's reply.
-            const open = openTurns();
-            const items = (open[open.length - 1] ?? view.turns[view.turns.length - 1])?.items ?? view.preamble;
-            items.push({ type: "notice", key: `notice-${row.id}`, severity: "info", title: text, description: "", rowId: row.id });
-            return;
-          }
-        }
         chunk(row, sessionId, update);
         return;
       case "agent_thought_chunk":
@@ -288,22 +268,6 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         return;
       case "session_info_update": {
         if (typeof update.title === "string") view.title = update.title;
-        // Codex: codex-acp reports its thread's own activity here (`thread/status/changed`); with a goal Codex keeps
-        // working after it answered the prompt, so the prompt response alone does not say it went idle.
-        const codex = isRecord(update._meta) && isRecord(update._meta.codex) ? update._meta.codex : null;
-        const status = codex && isRecord(codex.threadStatus) ? str(codex.threadStatus.type) : "";
-        if (status === "active" || status === "idle") view.activity = status;
-        // Codex retrying its model stream (works-wave C10, codex-acp 2.5.0): older clients get
-        // `_meta.codex.error.willRetry`; typed clients `_meta.jetbrains.air.sessionFailure` (severity "warning" while
-        // retrying, "error" when it gave up, null once the turn recovered).
-        const codexError = codex && isRecord(codex.error) ? codex.error : null;
-        if (codexError) view.retrying = codexError.willRetry === true;
-        const jetbrains = isRecord(update._meta) && isRecord(update._meta.jetbrains) ? update._meta.jetbrains : null;
-        const air = jetbrains && isRecord(jetbrains.air) ? jetbrains.air : null;
-        if (air && "sessionFailure" in air) {
-          const failure = isRecord(air.sessionFailure) ? air.sessionFailure : null;
-          view.retrying = failure ? str(failure.severity) === "warning" : false;
-        }
         return;
       }
       case "usage_update":
@@ -349,6 +313,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         view.models = models.availableModels.filter((model): model is SessionModelInfo => isRecord(model) && typeof model.modelId === "string");
       }
     }
+    if (isRecord(result.sessionCapabilities)) view.sessionCapabilities = result.sessionCapabilities;
     if (Array.isArray(result.configOptions)) view.configOptions = result.configOptions as SessionConfigOption[];
   };
 
@@ -372,6 +337,11 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
     }
     const params = isRecord(request.params) ? request.params : {};
     switch (request.method) {
+      case "initialize": {
+        const caps = isRecord(result) && isRecord(result.agentCapabilities) ? result.agentCapabilities : null;
+        view.sessionCapabilities = caps && isRecord(caps.sessionCapabilities) ? caps.sessionCapabilities : {};
+        return;
+      }
       case "session/new":
       case "session/load":
       case "session/resume":
@@ -429,7 +399,7 @@ export function reduceRows(rows: readonly AcpFrameRow[], program = ""): AcpView 
         if (parsed.sessionId) mainSessions.add(parsed.sessionId);
         // A prompt after an exit went to a process the gateway started again.
         view.exited = null;
-        const queued = queues && openTurns().some((turn) => turn.sessionId === parsed.sessionId);
+        const queued = openTurns().some((turn) => turn.sessionId === parsed.sessionId);
         const turn: AcpTurn = {
           key: `turn-${row.id}`,
           rowId: row.id,
