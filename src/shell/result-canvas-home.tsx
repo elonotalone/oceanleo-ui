@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../ui/BackButton";
 import { lazy, Suspense, useState, type ReactElement, type ReactNode } from "react";
 import { useUI } from "../i18n/ui/useUI";
 import { useImEnabled } from "../lib/im/client";
@@ -173,7 +174,7 @@ export function WorkspaceHome(props: WorkspaceHomeProps): ReactElement {
     ? ["template" as const, ...props.slots] : props.slots;
   if (inspirationOpen) return <section data-workspace-inspirations className="flex min-h-0 flex-1 flex-col">
     <header className="flex items-center gap-3 border-b border-stone-100 px-3 py-2">
-      <button type="button" onClick={() => setInspirationView({ scope: scopeKey, open: false })} className="text-sm">{tt("返回")}</button>
+      <BackButton onClick={() => setInspirationView({ scope: scopeKey, open: false })} label={tt("返回")} />
       <h2 className="text-sm font-semibold">{tt("灵感")}</h2>
     </header>
     <div className="min-h-0 flex-1 overflow-y-auto">
@@ -257,28 +258,7 @@ export function WorkspaceViewHeader(
       data-workspace-view-header
       className="flex w-full min-w-0 items-center gap-1"
     >
-      <button
-        type="button"
-        data-workspace-back
-        onClick={props.onBack}
-        aria-label={tt("回到卡片")}
-        title={tt("返回")}
-        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-[12px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-stone-300"
-      >
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-3.5 w-3.5"
-          aria-hidden
-        >
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-        {tt("返回")}
-      </button>
+      <BackButton data-workspace-back onClick={props.onBack} label={tt("回到卡片")} />
       <span
         data-workspace-view-title
         className="min-w-0 truncate text-[12px] font-semibold text-stone-700"

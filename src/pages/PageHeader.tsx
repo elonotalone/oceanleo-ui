@@ -7,6 +7,7 @@
 // 「左 = 返回键，中 = 页标题」。返回默认 history.back()，无历史时回 /settings。
 // ============================================================================
 
+import { BackButton } from "../ui/BackButton";
 import { useUI } from "../i18n/ui/useUI";
 
 export function PageHeader({
@@ -35,17 +36,7 @@ export function PageHeader({
 
   return (
     <div className="relative flex items-center justify-center py-1">
-      <button
-        type="button"
-        onClick={goBack}
-        aria-label={tt("返回")}
-        title={tt("返回")}
-        className="absolute left-0 flex h-9 w-9 items-center justify-center rounded-full text-neutral-500 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-neutral-100 hover:text-neutral-900 active:scale-95"
-      >
-        <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
+      <BackButton onClick={goBack} className="absolute left-0" label={tt("返回")} />
       <h1 className="text-[22px] font-semibold tracking-tight text-neutral-900">{tt(title)}</h1>
     </div>
   );

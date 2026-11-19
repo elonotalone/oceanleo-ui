@@ -9,5 +9,7 @@
 export * from "./shell";
 export * from "./pages";
 export * from "./ui";
+// Preserve the existing root export; the required-label primitive is under /ui.
+export { BackButton } from "./shell";
 export * from "./lib";
 export { AcpTranscript, reduceRows, parseRow, type AcpTranscriptProps, type AcpFrameRow, type AcpEvent, type AcpView, type AcpTurn, type AcpItem, type AcpPermission, type AcpToolCall, type AcpBackgroundTask } from "./acp";

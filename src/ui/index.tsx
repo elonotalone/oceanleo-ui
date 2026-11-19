@@ -47,6 +47,8 @@ export {
   type ToastInput,
 } from "./Toast";
 
+export { BackButton, type BackButtonProps } from "./BackButton";
+
 /* ---------- Modal: scale+fade in, Escape + backdrop close, focus trap ---------- */
 
 export function Modal({

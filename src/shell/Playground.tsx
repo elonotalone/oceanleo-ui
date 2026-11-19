@@ -17,6 +17,7 @@
 //     并入这里，成为第一个 tab。站点清单由消费端经 renderSites 注入，/all-sites 路由删除。
 // ============================================================================
 
+import { BackButton as LibraryBackButton } from "../ui/BackButton";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { AppDirectory, type DirectoryItem } from "./AppDirectory";
 import { CollectionItemCard, CollectionItemRow, CollectionItemList } from "./collection-items";
@@ -911,16 +912,6 @@ function PromptZone({
 export function BackButton({ onClick, label }: { onClick: () => void; label?: string }) {
   const tt = useUI();
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-stone-200 bg-white px-2.5 py-1.5 text-[13px] font-medium text-stone-600 transition duration-[var(--leo-dur-2)] ease-[var(--leo-ease-standard)] active:duration-[var(--leo-dur-1)] hover:bg-stone-50 active:scale-95"
-      title={tt("返回选择页")}
-    >
-      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-      {label ?? tt("返回")}
-    </button>
+    <LibraryBackButton onClick={onClick} label={label ?? tt("返回选择页")} />
   );
 }

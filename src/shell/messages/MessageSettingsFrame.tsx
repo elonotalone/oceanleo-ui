@@ -1,5 +1,6 @@
 "use client";
 
+import { BackButton } from "../../ui/BackButton";
 import { useId, useState, type HTMLAttributes, type ReactNode, type Ref, type ButtonHTMLAttributes } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { Modal } from "../../ui";
@@ -23,7 +24,7 @@ export function MessageSettingsHeader({ title, titleId, onClose, onBack, backBut
   const tt = useUI();
   return <header data-message-settings-header className="shrink-0 border-b border-neutral-200 px-5 py-4">
     <div className="mx-auto flex w-full max-w-[800px] items-center gap-3">
-      {onBack && <button {...backButtonProps} type="button" data-action="back" onClick={onBack} aria-label={tt("返回")} className={QUIET}>‹</button>}
+      {onBack && <BackButton {...backButtonProps} data-action="back" onClick={onBack} label={tt("返回")} />}
       <h2 id={titleId} className={`min-w-0 flex-1 truncate ${CARD_TITLE}`}>{title}</h2>
       {children}
       {onClose && <button type="button" onClick={onClose} aria-label={tt("关闭")} data-action="close-panel" className={QUIET}>×</button>}
