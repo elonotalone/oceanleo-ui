@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 // 聊天列表：搜索、全部会话（按最近活动倒序，事件实时更新）、新建聊天。
 // 通话（calls-v2 W08）：每行读 `active_call`，实时 `call` 事件更新人数；标记组件 InboxCallDecor 注入给 InboxRow。
 import { useEffect, useMemo, useState } from "react";
@@ -174,16 +175,7 @@ export function Inbox(props: InboxProps) {
           </div>
         ) : null}
         {inbox.error && rows.length === 0 && !inbox.loading ? (
-          <div className="px-4 py-6 text-center text-sm text-black/55 dark:text-white/55">
-            <div>{tt("会话列表暂时打不开")}</div>
-            <button
-              type="button"
-              onClick={() => void imStore().loadInbox(filter)}
-              className="mt-2 rounded-md bg-black/5 px-3 py-1 text-xs hover:bg-black/10 dark:bg-white/10"
-            >
-              {tt("重试")}
-            </button>
-          </div>
+          <AutoRecovery identity="src/shell/messages/Inbox.tsx:0" error={inbox.error} recover={() => imStore().loadInbox(filter)} />
         ) : null}
         {inbox.nextCursor ? (
           <button

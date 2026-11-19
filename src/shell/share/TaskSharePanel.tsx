@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
+import { AutoRecovery } from "../AutoRecovery";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
 import { SW_TS_COPY as text } from "../../i18n/ui/messages/sw-ts-copy";
 import { AccessPopover } from "../access/AccessPopover";
@@ -30,6 +31,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [readError, setReadError] = useState<unknown>(null);
   const [notice, setNotice] = useState("");
   const [help, setHelp] = useState(false);
   const anchorRef = useRef<HTMLButtonElement>(null);
@@ -40,7 +42,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
   const canParticipate = access.role === "owner" || access.role === "collaborate" || access.state === "invited" && access.invite_role === "collaborate";
   useEffect(() => {
     ++generation.current;
-    setOpen(false); setPage("actions"); setLoaded(false); setMembers([]); setError(""); setNotice(""); setHelp(false);
+    setOpen(false); setPage("actions"); setLoaded(false); setMembers([]); setError(""); setReadError(null); setNotice(""); setHelp(false);
     return () => { ++generation.current; };
   }, [taskId]);
 
@@ -48,7 +50,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
     if (operation.current || next === "snapshot" && !canManage) return;
     operation.current = true;
     const current = generation.current;
-    setPage(next); setError(""); setNotice(""); setLoaded(false); setBusy(true); setHelp(false);
+    setPage(next); setError(""); setReadError(null); setNotice(""); setLoaded(false); setBusy(true); setHelp(false);
     try {
       if (next === "snapshot") await share.loadSnapshot();
       else {
@@ -57,7 +59,7 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
         setMembers(rows);
       }
       if (current === generation.current) setLoaded(true);
-    } catch { if (current === generation.current) setError(tt(copy.loadFailed)); }
+    } catch (failure) { if (current === generation.current) setReadError(failure || new Error("share_read_unavailable")); }
     finally { operation.current = false; if (current === generation.current) setBusy(false); }
   };
   const setSnapshot = async (enabled: boolean) => {
@@ -128,7 +130,8 @@ export function TaskSharePanel({ taskId, taskUrl, access, share, client = taskAc
             <button type="button" onClick={() => void copyLink(taskUrl)} className="min-h-8 w-full rounded-lg border border-neutral-200/80 px-3 dark:border-white/10">{tt(text.copyTask)}</button>
           </div>
         </>}
-        {error && <div role="alert" className="px-2.5 py-1.5 text-[13px] text-rose-600 dark:text-rose-400">{error} <button type="button" onClick={() => void openPage(page)} className="underline">{tt(copy.retry)}</button></div>}
+        {Boolean(readError) && <AutoRecovery identity={`task-share:${taskId}:${page}`} error={readError} recover={() => openPage(page)} />}
+        {error && <div role="alert" className="px-2.5 py-1.5 text-[13px] text-rose-600 dark:text-rose-400">{error}</div>}
         {busy && <span role="status" aria-label={tt("正在加载…")} className="v-spinner" />}
         {notice && <p role="status" className="px-2.5 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">{notice}</p>}
       </div>}

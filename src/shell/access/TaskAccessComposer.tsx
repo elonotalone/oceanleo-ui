@@ -3,6 +3,7 @@
 import { lazy, Suspense, useState } from "react";
 import { StreamNotice } from "../transcript/StreamNotice";
 import { useUI } from "../../i18n/ui/useUI";
+import { AutoRecovery } from "../AutoRecovery";
 import { SHARE_ACCESS_COPY_SOURCE as copy } from "../../i18n/ui/messages/share-access-copy-source";
 import { notifyHistoryChanged } from "../../lib/history-events";
 import { notifyTaskAccessChanged } from "./useTaskAccess";
@@ -13,10 +14,10 @@ export function TaskAccessStatus({ loading, error, unstable, onRefresh }: {
   loading?: boolean; error?: boolean; unstable?: boolean; onRefresh: () => Promise<void>;
 }) {
   const tt = useUI();
+  if (error || unstable) return <AutoRecovery identity="task-access-status" recover={onRefresh} />;
   return <p data-task-access-status={unstable ? "unstable" : loading ? "loading" : "unavailable"}
     role={error && !unstable ? "alert" : "status"} className="py-2 text-sm text-stone-500 dark:text-stone-400">
     {tt(unstable ? "网络不稳定，正在重试。" : loading ? "正在读取访问权限…" : error ? copy.loadFailed : copy.noAccess)}
-    {!loading && !unstable && <> <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></>}
   </p>;
 }
 
@@ -56,7 +57,7 @@ export function TaskAccessComposer({ taskId, access, signedIn, loading, error, o
   };
   const buttonClass = "rounded-xl border border-neutral-200/80 dark:border-white/10 bg-white dark:bg-neutral-950 px-4 py-2 text-sm hover:bg-[var(--surface)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--ring)] disabled:opacity-50";
   return <div data-task-access-composer={loading ? "loading" : access?.state ?? "unavailable"} className="space-y-2 py-2 text-neutral-800 dark:text-neutral-100" aria-busy={busy || loading}>
-    {loading ? <StreamNotice><TaskAccessStatus loading onRefresh={onRefresh} /></StreamNotice> : !access || access.state === "none" ? <StreamNotice><p role="alert" className="text-sm">{tt(error ? copy.loadFailed : copy.noAccess)} <button type="button" className="underline" onClick={() => void onRefresh()}>{tt(copy.retry)}</button></p></StreamNotice> : <>
+    {loading ? <StreamNotice><TaskAccessStatus loading onRefresh={onRefresh} /></StreamNotice> : !access || access.state === "none" ? <StreamNotice>{error ? <AutoRecovery identity={`task-access:${taskId}`} recover={onRefresh} /> : <p role="status" className="text-sm">{tt(copy.noAccess)}</p>}</StreamNotice> : <>
       <StreamNotice><p role="status" className="text-[12px] text-stone-500">{tt(access.state === "removed" ? copy.removed : copy.readOnly)}</p></StreamNotice>
       {access.state === "invited" ? <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass} disabled={busy} onClick={() => void action("accept")}>{tt(copy.accept)}</button>

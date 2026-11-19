@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
 // ============================================================================
 // @oceanleo/ui — 手机原生上传口（拍照 / 相册 / 文件）+ 任务完成通知
 // ----------------------------------------------------------------------------
@@ -422,18 +423,7 @@ export function useNativeHandoffEntry(): NativeHandoffEntry {
         )}
 
         {state.status === "error" && (
-          <div>
-            <p className="text-[13px] text-red-700" role="alert">
-              {handoffFailureCopy(state.reason, tt)}
-            </p>
-            <button
-              type="button"
-              onClick={() => setReloads((value) => value + 1)}
-              className="mt-2 inline-flex items-center rounded-lg border border-neutral-300 px-3 text-[13px] text-neutral-700"
-            >
-              {tt("重试")}
-            </button>
-          </div>
+          <AutoRecovery identity="src/shell/mobile-native-actions.tsx:0" error={{code:state.reason}} recover={() => setReloads((value) => value + 1)} />
         )}
 
         {state.status === "ready" && devices.length === 0 && (

@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoRecovery } from "../../../AutoRecovery";
+
 // 聊天里的通话卡片（任务书 P6；合同 §1 A2/A3/A12/A13、§3.4）。SystemLine 认出 `meta.kind` 是通话类就交给这里。
 //   call_started   开始卡片：进行中（实时人数、头像叠、「加入通话」）/ 已结束（时长、参与者）——状态以 `call` 事件与
 //                  `GET …/call` 为准，不靠改消息；
@@ -373,7 +375,7 @@ function CallRecordingCard({ message, meta }: { message: ImMessage; meta: CallCa
             {failed ? tt("录像生成失败") : !recordingId ? tt("录像暂不可用") : details}
           </div>
         </div>
-        {!failed && recordingId && play.kind !== "ready" ? (
+        {!failed && recordingId && play.kind !== "ready" && play.kind !== "error" ? (
           <button
             type="button"
             data-recording-play=""
@@ -381,14 +383,12 @@ function CallRecordingCard({ message, meta }: { message: ImMessage; meta: CallCa
             onClick={() => void fetchUrl(false)}
             className="shrink-0 rounded-lg bg-neutral-900 px-3 py-1.5 text-[12.5px] font-medium text-white hover:bg-neutral-700 disabled:opacity-60 dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
-            {play.kind === "loading" ? tt("正在打开…") : play.kind === "error" ? tt("重试") : tt("播放")}
+            {play.kind === "loading" ? tt("正在打开…") : tt("播放")}
           </button>
         ) : null}
       </div>
       {play.kind === "error" ? (
-        <p className="mt-2 text-[12px] text-red-600 dark:text-red-400" role="alert">
-          {tt("录像暂时无法播放，请稍后再试")}
-        </p>
+        <AutoRecovery identity={`recording:${recordingId}`} recover={() => fetchUrl(false)} />
       ) : null}
       {play.kind === "ready" ? (
         audioOnly ? (

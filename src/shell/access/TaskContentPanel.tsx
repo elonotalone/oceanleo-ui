@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 import { useEffect, useState } from "react";
 import { useUI } from "../../i18n/ui/useUI";
 import { taskContentClient, type TaskContentClient, type TaskInlineArtifact } from "./task-content-client";
@@ -37,10 +38,7 @@ export function TaskContentPanel({ taskId, accessKey = "", client = taskContentC
     const timer = setInterval(() => void refresh(), 3000);
     return () => { controller.abort(); clearInterval(timer); };
   }, [taskId, accessKey, key, client, version]);
-  if (failedKey === key) return <div role="alert" className="space-y-2 p-3 text-sm text-[var(--fg)]">
-    <p>{tt("无法读取文件，请重试。")}</p>
-    <button type="button" onClick={() => setVersion(value => value + 1)} className="underline">{tt("重试")}</button>
-  </div>;
+  if (failedKey === key) return <AutoRecovery identity="src/shell/access/TaskContentPanel.tsx:0" recover={() => setVersion(value => value + 1)} />;
   if (snapshot?.key !== key || !snapshot.items.length) return null;
   return <section data-task-content-panel className="min-w-0 space-y-2 p-3 text-[var(--fg)]" aria-label={tt("产出")}>
     {snapshot.items.map(item => <details key={item.id} className="rounded-lg border border-neutral-200/80 dark:border-white/10 bg-[var(--card)] p-3">

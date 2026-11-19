@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../../AutoRecovery";
 import { QUIET, PRIMARY, MessageSettingsFrame } from "../MessageSettingsFrame";
 
 // LeoChat 里的「内容处置」：针对本人内容的案件，能提交反通知（版权、商标、肖像类）或申诉（违法、平台规则类）。
@@ -11,7 +12,6 @@ import { useUI } from "../../../i18n/ui/useUI";
 import type { OwnerCase } from "../../../lib/moderation/case-model";
 import { openSettingsModal } from "../../../pages/settings/settings-tabs";
 import { CaseCard } from "./CaseCard";
-import { failureMessage } from "./case-labels";
 import { useOwnerCases } from "./use-owner-cases";
 
 export interface MessagesContentCasesProps {
@@ -119,19 +119,7 @@ export function MessagesContentCases({ caseId = null, onBack }: MessagesContentC
             </div>
           ) : null}
           {phase === "error" ? (
-            <div data-cases-error className="py-10 text-center">
-              <p role="alert" className="text-[13px] text-red-600">
-                {failureMessage(tt, failure ?? "other", "list")}
-              </p>
-              <button
-                type="button"
-                data-action="retry"
-                onClick={() => void reload()}
-                className={`${QUIET} mt-3`}
-              >
-                {tt("重试")}
-              </button>
-            </div>
+            <AutoRecovery identity="src/shell/messages/cases/MessagesContentCases.tsx:0" error={{code:failure}} recover={() => reload()} />
           ) : null}
           {phase === "ready" && unknownCase ? (
             <p

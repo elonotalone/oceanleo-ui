@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
 import { useEffect, useState, type RefObject } from "react";
 import { getUserEmail } from "../lib/auth";
 import { useUI } from "../i18n/ui/useUI";
@@ -126,19 +127,7 @@ export function PluginsPopover({
               …
             </p>
           ) : catalog.error ? (
-            <div
-              data-plugins-error
-              className="flex items-center justify-between gap-3 px-2 py-3"
-            >
-              <p className="text-[12px] text-rose-600">{tt("连接器加载失败")}</p>
-              <button
-                type="button"
-                onClick={() => catalog.reload()}
-                className="rounded-lg border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-700 hover:bg-neutral-50"
-              >
-                {tt("重试")}
-              </button>
-            </div>
+            <AutoRecovery identity="src/shell/PluginsPopover.tsx:0" error={catalog.error} recover={() => catalog.reload()} />
           ) : connectors.length === 0 ? (
             <p
               data-plugins-empty

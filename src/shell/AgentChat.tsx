@@ -1,5 +1,7 @@
 "use client";
 
+import { AutoRecovery } from "./AutoRecovery";
+
 import { getUserId, AUTH_STATE_EVENT } from "../lib/auth/client";
 
 import { isComputerWorkspaceTask, taskExecutionTarget } from "../lib/execution-target";
@@ -1696,15 +1698,9 @@ function AgentChatInner({
   const onConversationChange = useCallback((next: ConversationTarget) => { void changeConversation(next); }, [changeConversation]);
 
 
-  // One plain line (with retry) while this task's computer conversations cannot be read.
+  // Keep loading while this task's computer conversations recover.
   const sessionsNotice = sessionsFailed ? (
-    <p className="flex items-center gap-2 text-[13px] text-stone-500" data-computer-sessions-failed>
-      <span>{tt("暂时没读到这个任务在电脑上的对话。")}</span>
-      <button type="button" onClick={retrySessions}
-        className="rounded-lg border border-stone-200 px-2 py-0.5 text-[12px] font-medium text-stone-600 hover:bg-stone-50">
-        {tt("重试")}
-      </button>
-    </p>
+    <AutoRecovery identity={`task-sessions:${taskId}`} recover={retrySessions} />
   ) : null;
   const conversationNotice = conversationError || sessionsNotice ? (
     <>
@@ -3685,10 +3681,7 @@ function AgentChatInner({
       renderRight={(right) => (
         <WorkspacePaneErrorBoundary
           recoveryKey={`${taskId || ""}:${libTab}:${workspaceAction?.nonce || ""}:${workspaceOpen ?? rightOpen}`}
-          title={tt("右侧工作区暂时无法显示，对话仍可继续。")}
-          retryLabel={tt("重试")}
           closeLabel={tt("关闭")}
-          detailsLabel={tt("技术详情")}
           onClose={() => (onWorkspaceOpenChange || setRightOpen)(false)}
         >
           {workspaceContent ? (

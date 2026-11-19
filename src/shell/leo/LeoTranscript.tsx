@@ -1,5 +1,6 @@
 "use client";
 
+import { AutoRecovery } from "../AutoRecovery";
 // ============================================================================
 // @oceanleo/ui — leo 对话记录（合同 §2.1：面板主体就是记录，紧凑态也显示）
 // ----------------------------------------------------------------------------
@@ -231,12 +232,7 @@ export function LeoTranscript({ state }: { state: LeoTranscriptState }) {
           </p>
         )}
         {state.status === "error" && count === 0 && (
-          <p className="rounded-xl bg-rose-50 px-3 py-2 text-center text-xs leading-relaxed text-rose-600">
-            {tt("记录暂时不可用，稍后再试。")}{" "}
-            <button type="button" onClick={state.reload} className="underline">
-              {tt("重试")}
-            </button>
-          </p>
+          <AutoRecovery identity="src/shell/leo/LeoTranscript.tsx:0" recover={state.reload} />
         )}
         {state.status === "ready" && count === 0 && (
           <p className="py-6 text-center text-xs text-slate-400">

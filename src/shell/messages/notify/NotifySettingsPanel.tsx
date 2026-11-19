@@ -1,6 +1,7 @@
 "use client";
 
-import { PRIMARY, CARD, CARD_TITLE, CARD_DESC, MESSAGE_SETTINGS_ROW } from "../MessageSettingsFrame";
+import { AutoRecovery } from "../../AutoRecovery";
+import { CARD, CARD_TITLE, CARD_DESC, MESSAGE_SETTINGS_ROW } from "../MessageSettingsFrame";
 
 // 设置中心「消息」栏里的提醒设置（work-chat W03，契约 §8.2；导出名不改）。
 // 六个开关：隐身、邮件提醒、浏览器推送、桌面通知、提示音、回放里显示精确时刻。
@@ -172,16 +173,7 @@ export function NotifySettingsPanel() {
 
   if (loadFailed) {
     return (
-      <section data-im-notify-settings="" className={CARD}>
-        <p className="text-[13px] text-neutral-600">{tt("提醒设置没能加载出来。")}</p>
-        <button
-          type="button"
-          onClick={() => void load()}
-          className={`${PRIMARY} mt-2`}
-        >
-          {tt("重试")}
-        </button>
-      </section>
+      <AutoRecovery identity="src/shell/messages/notify/NotifySettingsPanel.tsx:0" recover={() => load()} />
     );
   }
   if (!settings) {
