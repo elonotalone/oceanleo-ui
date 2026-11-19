@@ -317,7 +317,7 @@ async function settle(ms = 40) {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)); });
 }
 
-async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse, taskAccess } = {}) {
+async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails = 0, createFails = false, computerMode, listHang = false, settleMount = true, catalog, taskRead, acpRoute, mcpTransport, followUpResponse, taskAccess, strictMode = false } = {}) {
   globalThis.__taskAccessMock = taskAccess ?? new TaskAccessMock();
   window.history.replaceState(null, "", url);
   globalThis.__listFails = listFails;
@@ -344,7 +344,10 @@ async function mount(props, { task, sessions = [], url = "/tasks/t1", listFails 
   const host = document.createElement("div");
   document.body.appendChild(host);
   const root = createRoot(host);
-  await act(async () => { root.render(React.createElement(AgentChat, { siteId: "oceanleo", ...props })); });
+  await act(async () => {
+    const chat = React.createElement(AgentChat, { siteId: "oceanleo", ...props });
+    root.render(strictMode ? React.createElement(React.StrictMode, null, chat) : chat);
+  });
   if (settleMount) {
     await settle();
     await settle();

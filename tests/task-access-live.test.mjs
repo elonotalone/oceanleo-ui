@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { compileModule, dataModule } from "./helpers/module-bench.mjs";
 import "./helpers/w1-jsdom-window.mjs";
 import { TaskAccessMock, ownerAccess } from "./helpers/task-access-mock.ts";
+import { setCacheUser } from "../src/lib/user-scoped-cache.ts";
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.CustomEvent = window.CustomEvent;
@@ -25,6 +26,43 @@ async function mount(client, initialAccess, taskId = "t1") {
   return { host, get state() { return latest; }, async switchTo(id, seed) { await act(async () => root.render(React.createElement(Harness, { id, seed }))); }, async close() { await act(async () => root.unmount()); host.remove(); } };
 }
 const event = (type, detail) => act(async () => window.dispatchEvent(new CustomEvent(type, { detail })));
+
+test("initial session and same-user refresh preserve the pending owner detail decision", async () => {
+  setCacheUser(null);
+  const client = new TaskAccessMock();
+  client.getAccess = async () => { throw new TypeError("access endpoint unavailable"); };
+  const view = await mount(client);
+  try {
+    const receive = view.state.captureDetail();
+    await event("oceanleo:auth-state", { event: "INITIAL_SESSION", userId: "owner-a" });
+    await act(async () => receive("t1", ownerAccess()));
+    assert.equal(view.state.access?.role, "owner");
+    await event("oceanleo:auth-state", { event: "TOKEN_REFRESHED", userId: "owner-a" });
+    await event("oceanleo:auth-state", { event: "SIGNED_IN", userId: "owner-a" });
+    assert.equal(view.state.access?.can_manage, true);
+    assert.equal(view.state.error, false);
+  } finally { await view.close(); setCacheUser(null); }
+});
+
+test("account switches and sign-out still invalidate captured detail and cached rights", async () => {
+  setCacheUser("owner-a");
+  const client = new TaskAccessMock();
+  client.getAccess = async () => new Promise(() => {});
+  const view = await mount(client, ownerAccess());
+  try {
+    const beforeSwitch = view.state.captureDetail();
+    await event("oceanleo:auth-state", { event: "SIGNED_IN", userId: "owner-b" });
+    await act(async () => beforeSwitch("t1", ownerAccess()));
+    assert.equal(view.state.access, null);
+    await act(async () => view.state.receiveDetail("t1", viewerAccess()));
+    const beforeSignOut = view.state.captureDetail();
+    client.authenticated = false;
+    await event("oceanleo:auth-state", { event: "SIGNED_OUT", userId: null });
+    await act(async () => beforeSignOut("t1", ownerAccess()));
+    assert.equal(view.state.access, null);
+    assert.equal(view.state.signedIn, false);
+  } finally { await view.close(); setCacheUser(null); }
+});
 
 test("revocation wins over in-flight stale access; failed revalidation retains the explicit removed decision", async () => {
   const client = new TaskAccessMock(); const pending = deferred();

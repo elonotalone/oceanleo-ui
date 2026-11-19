@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { cacheUser } from "../../lib/user-scoped-cache";
 import { isTaskAccess, TaskAccessError, taskAccessClient, type TaskAccess, type TaskAccessClient } from "./task-access-client";
 
 export const TASK_ACCESS_CHANGED = "oceanleo:task-access-changed";
@@ -39,6 +40,7 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     let pending = false;
     let epoch = 0;
     let identityEpoch = 0;
+    let userId: string | null | undefined = cacheUser() || undefined;
     let cancelRead = () => {};
     let latest: Snapshot = { ...empty(taskId), access: isTaskAccess(seed.current) ? seed.current : null };
     const publish = (next: Snapshot) => { if (live) { latest = next; setSnapshot(next); } };
@@ -109,8 +111,21 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     };
     const timer = setInterval(revalidate, TASK_ACCESS_POLL_MS);
     const changed = (event: Event) => {
-      const detail = (event as CustomEvent<{ taskId?: string; access?: unknown }>).detail;
+      const detail = (event as CustomEvent<{ taskId?: string; access?: unknown; event?: string; userId?: string | null }>).detail;
       if (detail?.taskId && detail.taskId !== taskId) return;
+      if (event.type === "oceanleo:auth-state") {
+        const nextUserId = detail?.userId || null;
+        // Session hydration/renewal is not an account change. Invalidating the
+        // captured detail here would leave a hard load waiting on /access alone.
+        const sameUser = nextUserId && (nextUserId === userId || userId === undefined &&
+          (detail?.event === "INITIAL_SESSION" || detail?.event === "TOKEN_REFRESHED"));
+        userId = nextUserId;
+        if (sameUser) {
+          void readIdentity();
+          if (latest.access?.role !== "owner") void read();
+          return;
+        }
+      }
       ++epoch;
       ++revision.current;
       if (event.type === "oceanleo:auth-state") {
