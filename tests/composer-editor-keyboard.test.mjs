@@ -38,15 +38,10 @@ const dockModuleUrl = await compileModule("src/shell/cloud-computer/ComputerDock
 const composerModuleUrl = await compileModule("src/shell/LeoComposer.tsx", {
   "./cloud-computer/ComputerDock":dockModuleUrl,
   ...Object.fromEntries(tiptap.map((name) => [name, import.meta.resolve(name)])),
-  "../lib/attachment-url": dataModule("export const PRIVATE_ATTACHMENT_MAX_BYTES=20*1024*1024;"),
   "../i18n/ui/useUI": dataModule("export function useUI(){return text=>text;}"),
-  "./guide-context": dataModule("export function useFillNonce(){return 0;}export function useFillTemplate(){return null;}"),
   "./mobile-native-actions": dataModule("export function useNativeAttachActions(){return [];}export function useNativeHandoffEntry(){return {action:null,panel:null};}export function useNativeTaskNotifications(){}export function requestTaskNotificationsOnce(){}"),
   "../lib/upload/use-attachment-intake": dataModule("export function useAttachmentIntake(){return {compressing:false,pending:[],inFlight:[],emit(){},handlePaste(){}};}"),
-  "./workspace-runtime-hydration": dataModule("export function useWorkspaceRuntimeHydration(){return null;}"),
-  "./composer-draft": dataModule("export function useComposerDraft(){return {markSubmitted(){}};}"),
   "./composer-max-height": dataModule("export function useComposerMaxHeight(){return 280;}"),
-  "./composer-skill-slash": dataModule("export function composerSlashAdapter(){return {};}export function useComposerSkillSlash(){return {onKeyDown(){return false;},popover:null};}"),
   ...Object.fromEntries([["./LeoEntryButton","LeoEntryButton"],["./AttachmentStrip","AttachmentStrip"],
     ["./ModelPicker","ModelGroupPicker"],["./PluginsPopover","PluginsPopover"],["./PayerSelector","PayerSelector"],
     ["./mcp-apps","ComposerAppsBar"],["./ComposerLibraryPicker","ComposerLibraryPicker"]]
@@ -135,7 +130,7 @@ const catalogModuleUrl = await compileModule("src/shell/acp-task/useAcpCatalogPi
   "../../lib/acp-frames-api": dataModule(`
     export * from ${JSON.stringify(new URL("../src/lib/acp-frames-api.ts", import.meta.url).href)};
     export function acpErrorText(error){return String(error);}
-    export async function getCatalog(){return {models:{currentModelId:"selected", availableModels:[{modelId:"selected",name:"Selected model"}]}};}
+    export async function getCatalog(){await globalThis.__homeCatalogGate;return {models:{currentModelId:"selected", availableModels:[{modelId:"selected",name:"Selected model"}]}};}
   `),
   "../../lib/program-choice-api": dataModule("export function programChoiceFrom(){return {};}export async function getProgramChoice(){return {};}export async function putProgramChoice(){return {};}"),
   "../cloud-computer/native-surface/useProgramAccess": dataModule(`
@@ -184,9 +179,20 @@ const { useTaskComposer } = await import(await compileModule(fileURLToPath(paire
   "sonner":dataModule("export const toast={error(){}};"),
 }));
 
-test("real home hook: picking computer chat then typing never triggers maximum update depth",async()=>{
+test("real home hook: native DOM typing and a late catalog preserve the editor and draft",async()=>{
   const container=document.createElement("div");document.body.append(container);const root=createRoot(container);
   function Home(){return useTaskComposer({siteId:"oceanleo",openAttachment(){}}).composer;}
+  const originalError=console.error;
+  const depthErrors=[];
+  console.error=(...args)=>{
+    const message=args.map(String).join(" ");
+    if(/Maximum update depth|Minified React error #185/.test(message)) depthErrors.push(message);
+    originalError(...args);
+  };
+  let releaseCatalog;
+  globalThis.__homeCatalogGate=new Promise(resolve=>{releaseCatalog=resolve;});
+  const {readComposerDraft,clearComposerDraft}=await import(await compileModule("src/shell/composer-draft.ts"));
+  clearComposerDraft("home");
   try {
     await act(async()=>root.render(React.createElement(Home)));
     async function click(selector){
@@ -200,7 +206,23 @@ test("real home hook: picking computer chat then typing never triggers maximum u
     await click('[data-dock-view="chat"]');
     for(let i=0;i<50&&!container.querySelector('[role="textbox"]')?.editor;i++) await act(async()=>new Promise(resolve=>setTimeout(resolve,10)));
     const box=container.querySelector('[role="textbox"]');assert.ok(box?.editor);
-    for(const char of "Repro home-back: reply with the single word OK. Do not use any tools.") await act(async()=>box.editor.commands.insertContent(char));
-    assert.equal(globalThis.__homeComposerProps.value,"Repro home-back: reply with the single word OK. Do not use any tools.");
-  } finally {await act(async()=>root.unmount());container.remove();delete globalThis.__homeComposerProps;}
+    // Native typing changes the DOM before ProseMirror reads it. Editor commands
+    // alone miss the browser's MutationObserver / selection / controlled-value path.
+    const text="Repro home-back: reply with the single word OK. Do not use any tools.";
+    await act(async()=>{box.editor.commands.focus("end");await new Promise(resolve=>setTimeout(resolve,30));});
+    for(const [index,char] of [...text].entries()) await act(async()=>{
+      if(index===10) releaseCatalog();
+      const paragraph=box.querySelector("p");
+      paragraph.textContent=(paragraph.textContent || "")+char;
+      document.getSelection().collapse(paragraph.firstChild,paragraph.textContent.length);
+      box.dispatchEvent(new window.InputEvent("input",{bubbles:true,inputType:"insertText",data:char}));
+      await new Promise(resolve=>setTimeout(resolve,0));
+    });
+    assert.equal(globalThis.__homeComposerProps.value,text);
+    assert.equal(box.editor.getText(),text);
+    assert.equal(document.activeElement,box);
+    assert.match(container.querySelector("[data-native-model-trigger]")?.textContent || "",/Selected model/);
+    assert.equal(readComposerDraft("home")?.text,text,"the real home draft follows native DOM input");
+    assert.deepEqual(depthErrors,[],"React must not recover from an update-depth loop while typing");
+  } finally {releaseCatalog();delete globalThis.__homeCatalogGate;await act(async()=>root.unmount());container.remove();clearComposerDraft("home");delete globalThis.__homeComposerProps;console.error=originalError;}
 });
