@@ -21,7 +21,7 @@ import {
 } from "../src/client-ui/host-config.ts";
 
 const portalShell = readFileSync(
-  "/root/projects/oceanleo/app/_components/clone-shell.tsx",
+  siblingRepoUrl("oceanleo", "app/_components/clone-shell.tsx"),
   "utf8",
 );
 const authDialog = readFileSync(
@@ -135,24 +135,24 @@ test("native SDK stale JS snapshot cannot remove native background or unsaved ro
       await f.client.auth.getUser();
       assert.equal(f.state.current.accessToken, next.accessToken);
       assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, durable ? next.accessToken : f.initial.accessToken);
-      assert.equal(f.state.invalidations, 1);
+      assert.equal(f.state.invalidations, 0, "a /user rejection is not a native renewal verdict");
     });
   }
 });
 
-test("native SDK current revocation clears once without an unconditional null publication", async (t) => {
+test("native SDK current /user rejection preserves the remembered session pending native renewal", async (t) => {
   const f = await nativeFixture(t, async () => rejectedSession());
   const before = f.state.presences.length;
   await Promise.all([f.client.auth.getUser(), f.client.auth.getUser()]);
-  assert.equal(await f.host.getIdentity(), null);
-  assert.equal(f.keys.has(SESSION_STORAGE_KEY), false);
-  assert.equal(f.state.invalidations, 1);
-  assert.equal(f.state.presences.length, before, "native conditional IPC already fenced; no later unconditional null");
+  assert.equal((await f.host.getIdentity()).accessToken, f.initial.accessToken);
+  assert.equal(f.keys.has(SESSION_STORAGE_KEY), true);
+  assert.equal(f.state.invalidations, 0);
+  assert.equal(f.state.presences.length, before);
 });
 
-test("native current revocation retries a failed durable clear conditionally and preserves later login", async (t) => {
+test("native conditional revocation retries a failed durable clear and preserves later login", async (t) => {
   const f = await nativeFixture(t, async () => rejectedSession()); f.state.failClear = true;
-  await f.client.auth.getUser();
+  await f.host.auth.invalidateIfCurrent(f.initial.accessToken);
   assert.equal(await f.host.getIdentity(), null);
   assert.deepEqual(f.host.auth.persistence(), { durable: false, pending: "remove" });
   const next = nativeAccount("external-login"); f.state.current = next;
@@ -203,9 +203,9 @@ test("native SDK rejection after explicit logout and login C leaves C intact", a
   assert.equal(JSON.parse(f.keys.get(SESSION_STORAGE_KEY)).accessToken, next.accessToken);
 });
 
-test("native current revocation retries a refused clear without reviving the rejected snapshot", async (t) => {
+test("native conditional revocation retries a refused clear without reviving the rejected snapshot", async (t) => {
   const f = await nativeFixture(t, async () => rejectedSession()); f.state.failClear = true;
-  await f.client.auth.getUser();
+  await f.host.auth.invalidateIfCurrent(f.initial.accessToken);
   assert.equal(await f.host.getIdentity(), null);
   f.state.failClear = false; f.state.clock += 5001;
   assert.equal(await f.host.getIdentity(), null);
@@ -215,7 +215,7 @@ test("native current revocation retries a refused clear without reviving the rej
 
 test("native lost clear acknowledgement ends only the rejected JS snapshot and keeps retry conditional", async (t) => {
   const f = await nativeFixture(t, async () => rejectedSession()); f.state.loseClearReply = true;
-  await f.client.auth.getUser();
+  await f.host.auth.invalidateIfCurrent(f.initial.accessToken);
   assert.equal(await f.host.getIdentity(), null);
   const next = nativeAccount("after-lost-clear"); f.state.current = next;
   f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(next)); f.state.clock += 5001;
@@ -230,7 +230,7 @@ test("native mismatch reply B stays a reader snapshot after external logout or a
       const b = nativeAccount("native-b"); f.state.current = b;
       f.keys.set(SESSION_STORAGE_KEY, JSON.stringify(b));
       f.state.beforeReply = () => { seen.resolve(); return release.promise; };
-      const pending = f.client.auth.getUser(); await seen.promise;
+      const pending = f.host.auth.invalidateIfCurrent(f.initial.accessToken); await seen.promise;
       const before = f.state.presences.length;
       const c = action === "account-c" ? nativeAccount("native-c", "owner-c") : null;
       f.state.current = c; f.keys.clear();
@@ -439,7 +439,7 @@ test("host-mode authFetch falls back to __OCEANLEO_CLIENT_WEB__.fetch", async ()
 
 test("clone-shell names host nav from ariaLabel or label on real links/buttons", () => {
   assert.match(portalShell, /ariaLabel \|\| item\.label/);
-  assert.match(portalShell, /accessibleName = item\.ariaLabel \|\| item\.label/);
+  assert.match(portalShell, /accessibleName = `\$\{item\.ariaLabel \|\| item\.label\}\$\{badgeCount/);
   assert.match(portalShell, /<Link[\s\S]*aria-label=\{accessibleName\}/);
   assert.match(portalShell, /<button[\s\S]*aria-label=\{accessibleName\}/);
   assert.doesNotMatch(portalShell, /__OCEANLEO_ACCEPT_DRIVE__/);
