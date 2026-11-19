@@ -64,6 +64,22 @@ const SCRATCH = /(^|\/)scratch\//;
  * 是 → 可以登记；只是「我这台机器上现在有」→ 不许登记，搬进 `tests/fixtures/`。
  */
 const REGISTERED = {
+  "/root/.cache/oceanleo-asset-mirror/manifest.json": "Manual asset delivery command uses the explicitly documented local mirror manifest; this is infrastructure input, not an automatically run unit fixture. The command requires the mirror to be provisioned.",
+  "/root/projects/oceanleo/app/_components/clone-shell.tsx": "Versioned portal host shell is checked across repositories; copying it into fixtures would miss real host contract drift.",
+  "/root/projects/oceanleo": "Versioned paired portal source root for host coupling checks; intentionally checks the real consumer.",
+  "/root/projects/oceanleo/public/pdfium-fonts": "Versioned portal PDFium font assets validate the shipped CJK font contract across repositories.",
+  "/root/projects/oceanleo/node_modules/.pnpm": "Manual lint dependency resolver uses the paired portal installation; installed tool infrastructure, not input fixture data.",
+  "/root/projects/oceanleo-app/client-web/node_modules/esbuild/lib/main.js": "Browser touch harness compiler comes from the paired client installation; tool infrastructure, not sample data.",
+  "/root/projects/oceanleo/backend/.venv/bin/python": "Existing backend Python interpreter is used to parse generated office packages; tool infrastructure, never production database access.",
+  "/root/projects/oceanleo-ui": "Versioned UI repository is inspected by the cross-repository license boundary guard.",
+  "/root/projects/oceanleo-app": "Versioned native client repository is inspected by the same cross-repository license boundary guard.",
+  "/root/projects/oceanleo-app/editor-runtime/protocol/editor-session-v1.mjs": "Versioned native editor session protocol is the real host contract for the offline design harness.",
+  "/root/projects/oceanleo/package.json": "Versioned paired portal manifest resolves lint tooling and dependencies; not a copied or generated fixture.",
+  "/root/projects/oceanleo-app/editor-runtime/isolation/trusted-context.mjs": "Versioned native runtime trust implementation is checked directly by the shared offline harness.",
+  "/root/projects/oceanleo-app/editor-runtime": "Versioned native runtime is served by the isolated legacy harness to test the real paired consumer.",
+  "/root/projects/oceanleo-app/editor-runtime/": "The slash-suffixed native runtime base resolves versioned files in that same isolated harness.",
+  "/root/projects/oceanleo/node_modules/eslint-config-next/package.json": "Paired portal lint configuration is installed infrastructure for manual focused lint checks.",
+  "/root/projects/oceanleo/node_modules/.pnpm/": "Paired portal installed package store is used only to resolve manual lint tooling.",
   "/root/projects/oceanleo/backend/app/routers/template_materials_router.py":
     "后端仓的模板素材路由，深链契约要跟它对账；同上，跨仓对账不能抄副本",
   "/root/projects/oceanleo/backend/app/artifact_cover_gate.py":
@@ -112,6 +128,27 @@ const REGISTERED = {
  * 口径与 `REGISTERED` 一致：**按值逐条**登记、理由 ≥10 字、不许留死条目。
  */
 const NOT_A_FIXTURE = {
+  "/usr/bin/claude": "Fake advertised program executable in a mocked ACP catalog; never executed or read by this test.",
+  "/tmp/x": "ACP tool location sample supplied as protocol data; the UI test never opens this path.",
+  "/root/oceanleo-inbox/20261016T040412Z-big.bin": "Mock inbox API path; bytes are served by the fetch stub, no local file access.",
+  "/root/oceanleo-inbox/20261016T040412Z-image.png": "Mock inbox image path returned by the fake gateway; no local read.",
+  "/root/oceanleo-inbox/note.txt": "Mock inbox text locator for copy and preview actions; file access is intercepted.",
+  "/srv/project": "Environment working-directory setting is request data; test does not access that directory.",
+  "/tmp/report.pdf": "Mock frame attachment location; bytes route is mocked and this file is never read.",
+  "/tmp/report.pdf:3": "Mock tool location includes a line suffix; only protocol parsing and preview requests are tested.",
+  "/tmp/a": "Synthetic tool file location; preview callback is a test spy, not a filesystem read.",
+  "/private/native.json": "Mock native grid file handle path, whose content is injected by the device port.",
+  "/srv/site": "Server-work fixture metadata; list and card tests do not access the remote working directory.",
+  "/tmp/local-browser-ui-evidence": "Manual browser acceptance output directory created by the script; never an input fixture.",
+  "/root/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome": "Manual browser acceptance executable configuration; optional installed tool, not a test data fixture.",
+  "/tmp/local.txt": "Mock agent local-file attachment; no filesystem read in the thread gate test.",
+  "/opt/tools/bin/codex-acp": "Fake advertised ACP binary path in API fixtures; no executable is invoked.",
+  "/home/user": "Tool UI current-directory metadata is literal protocol data, never read locally.",
+  "/root/oceanleo-inbox/a.png": "Mock inbox attachment path; fetch interceptor supplies the bytes.",
+  "/home/inbox/private.png": "Mock upload handoff path; device request port is replaced and no local file is read.",
+  "/home/inbox/late.png": "Late mock handoff response path; tests exercise lifecycle cleanup without filesystem access.",
+  "/root/projects/oceanleo-app/docs/react-client-rebuild/evidence/W10/design-canvas": "Legacy harness output directory; all evidence files are generated by the test, not used as input fixtures.",
+  "/root/projects/oceanleo-app/docs/react-client-rebuild/evidence/W10/video-timeline": "Legacy timeline output evidence is created by tests, never a prerequisite input fixture.",
   "/etc/passwd": "越权反例，喂给浏览器侧纯字符串函数 isInsideLocalRoot 判 false，本进程从不打开它",
   "/srv/app": "终端历史里的工作目录只是 API 题材数据，测试不会按它打开文件",
   "/srv/inbox": "配对设备上的收件目录，只作为交接协议报文里的一个字段出现在对端，观看端不碰文件系统",
