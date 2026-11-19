@@ -2767,6 +2767,11 @@
         },
         {
           "kind": "named",
+          "name": "listPasskeys",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "maskCnPhone",
           "source": ""
         },
@@ -2808,6 +2813,16 @@
         },
         {
           "kind": "named",
+          "name": "registerPasskey",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "removePasskey",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "requestPhoneChange",
           "source": ""
         },
@@ -2819,6 +2834,11 @@
         {
           "kind": "named",
           "name": "sendPhoneOtp",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "sendStepUpEmail",
           "source": ""
         },
         {
@@ -2848,12 +2868,22 @@
         },
         {
           "kind": "named",
+          "name": "supportsPasskeys",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "unenrollFactor",
           "source": ""
         },
         {
           "kind": "named",
           "name": "updatePassword",
+          "source": ""
+        },
+        {
+          "kind": "named",
+          "name": "verifyPasskeyForUser",
           "source": ""
         },
         {
@@ -2868,12 +2898,22 @@
         },
         {
           "kind": "named",
+          "name": "verifyStepUpEmail",
+          "source": ""
+        },
+        {
+          "kind": "named",
           "name": "wechatLoginUrl",
           "source": ""
         },
         {
           "kind": "type",
           "name": "AalState",
+          "source": ""
+        },
+        {
+          "kind": "type",
+          "name": "AccountPasskey",
           "source": ""
         },
         {
@@ -9730,12 +9770,6 @@
           "name": "REPLAY_RESULT_PREVIEW_LIMIT",
           "importedName": "REPLAY_RESULT_PREVIEW_LIMIT",
           "source": "./replay-model"
-        },
-        {
-          "kind": "named",
-          "name": "REPLAY_SAMPLE",
-          "importedName": "REPLAY_SAMPLE",
-          "source": "./replay-sample"
         },
         {
           "kind": "named",
