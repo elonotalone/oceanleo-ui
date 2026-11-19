@@ -2225,9 +2225,9 @@ function AgentChatInner({
   // the text; the user's own row, and the program's error row, arrive on the socket.
   async function sendAcpMessage(retry?: (typeof acpPendingSends)[number], providedText?: string) {
     const text = retry ? retry.text : (providedText ?? input).trim();
-    const uploaded = retry ? retry.attachments : toolsOn ? atts.ready() : [];
+    const uploaded = retry ? retry.attachments : providedText !== undefined ? [] : toolsOn ? atts.ready() : [];
     if ((!text && uploaded.length === 0) || acpBusy || (pendingInFlight && !retry?.restored) || acpComposerDisabled || (!taskId && !retry && (!acpProgram || !acpComputerId))) return;
-    if (toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
+    if (providedText === undefined && toolsOn && (atts.uploading || atts.attachments.some((item) => item.failed))) return;
     const choice = canManageTask ? retry?.choice ?? acpPicker.forSend() : {};
     const key = acpMessageKey(text, uploaded);
     if (retry) acpMessageIdRef.current = refusedByAgent(retry.error) ? null : { key, id: retry.clientMessageId };
@@ -2254,7 +2254,7 @@ function AgentChatInner({
     });
     if (!reuseHomePending && !retryingTaskPending) setAcpPendingIds((current) => [...current, optimisticId]);
     // The bubble is committed in this render; the network request never owns the composer.
-    if (!retry || input.trim() === text) {
+    if (providedText === undefined && (!retry || input.trim() === text)) {
       setInput("");
       atts.clear();
     }
