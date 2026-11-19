@@ -31,5 +31,5 @@ export function useAcpTranscriptAdapter(view: AcpView, taskId?: string, provided
   );
   // Library refs, frame-block images and tool cards/locations are scoped to this task's content routes.
   const blocks = useMemo(() => provided ? [] : viewBlocks(view, labels).map(block => taskId ? scopeFrameFiles(block, taskId) : block), [view, labels, taskId, provided]);
-  return useMemo(() => provided ?? acpTranscriptItems(blocks), [blocks, provided]);
+  return useMemo(() => provided ?? acpTranscriptItems(blocks, view), [blocks, provided, view]);
 }

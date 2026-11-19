@@ -9,7 +9,7 @@ import { OlderHistoryTop, type OlderHistoryState } from "../history/older-histor
 export type TranscriptCapabilities = { branch: boolean; regenerate: boolean };
 export const CLOUD_TRANSCRIPT_CAPABILITIES: TranscriptCapabilities = { branch: true, regenerate: true };
 export const ACP_TRANSCRIPT_CAPABILITIES: TranscriptCapabilities = { branch: false, regenerate: false };
-export type TranscriptItem<T> = { key: string; messageId: string; rowId?: number; value: T };
+export type TranscriptItem<T> = { key: string; messageId: string; rowId?: number; rowIds?: readonly number[]; value: T };
 
 /** One ordered stream for the cloud and ACP adapters. Stable ids also identify reading anchors. */
 export function TranscriptStream<T>({ items, capabilities, renderItem }: {
@@ -19,7 +19,7 @@ export function TranscriptStream<T>({ items, capabilities, renderItem }: {
 }) {
   return <div data-transcript-stream="" data-stream-branch={capabilities.branch} data-stream-regenerate={capabilities.regenerate} className="space-y-3">
     {items.map((item) => <div key={item.key} data-history-item="" data-history-key={item.key}
-      data-stream-message-id={item.messageId} data-stream-row-id={item.rowId}>
+      data-stream-message-id={item.messageId} data-stream-row-id={item.rowId} data-stream-row-ids={item.rowIds?.join(" ")}>
       {renderItem(item.value, capabilities)}
     </div>)}
   </div>;

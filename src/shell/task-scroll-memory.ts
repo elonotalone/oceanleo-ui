@@ -1,3 +1,5 @@
+import { captureTextAnchor, textAnchorTop, type TextAnchor } from "./transcript/text-anchor";
+
 /** A reading position is a visible message and its viewport offset, never a scroll ratio/pixel position. */
 export type ConversationAnchor = {
   messageId: string;
@@ -7,6 +9,8 @@ export type ConversationAnchor = {
   rowId?: number;
   /** Used only to count messages received since the reader left. */
   latestId?: string;
+  /** ACP history can prepend chunks inside this message and change its first-row key. */
+  textAnchor?: TextAnchor;
 };
 const STORAGE_KEY = "oceanleo:conversation-anchors:v2";
 const MAX_ENTRIES = 200;
@@ -25,7 +29,8 @@ export function rememberConversationAnchor(key: string, anchor: ConversationAnch
     const all = store();
     const previous = all[key];
     if (previous && previous.messageId === anchor.messageId && previous.offset === anchor.offset
-      && previous.atBottom === anchor.atBottom && previous.rowId === anchor.rowId && previous.latestId === anchor.latestId) return;
+      && previous.atBottom === anchor.atBottom && previous.rowId === anchor.rowId && previous.latestId === anchor.latestId
+      && JSON.stringify(previous.textAnchor) === JSON.stringify(anchor.textAnchor)) return;
     delete all[key];
     all[key] = anchor;
     const entries = Object.entries(all).slice(-MAX_ENTRIES);
@@ -61,17 +66,32 @@ export function captureConversationAnchor(el: HTMLElement, atBottom: boolean, la
   }) ?? (atBottom ? items.at(-1) : undefined);
   if (!item?.dataset.streamMessageId) return null;
   const rowId = Number(item.dataset.streamRowId);
+  const textAnchor = !atBottom && item.dataset.streamRowIds ? captureTextAnchor(item, top, bottom) : undefined;
   return {
     messageId: item.dataset.streamMessageId,
     offset: item.getBoundingClientRect().top - top,
     atBottom,
     ...(Number.isSafeInteger(rowId) && rowId > 0 ? { rowId } : {}),
     ...(latestId ? { latestId } : {}),
+    ...(textAnchor ? { textAnchor } : {}),
   };
 }
 export function restoreConversationAnchor(el: HTMLElement, anchor: ConversationAnchor | null): boolean {
-  const item = anchor && !anchor.atBottom ? streamMessageElement(el, anchor.messageId) : undefined;
+  const exact = anchor && !anchor.atBottom ? streamMessageElement(el, anchor.messageId) : undefined;
+  // A capped history page may start halfway through a merged ACP message. Its
+  // earlier chunks change the reducer key, but the original frame is still part
+  // of that message (including when other scopes interleave their frame ids).
+  const item = exact ?? (anchor && !anchor.atBottom && anchor.rowId
+    ? Array.from(el.querySelectorAll<HTMLElement>(STREAM_ITEM_SELECTOR))
+      .find((candidate) => candidate.dataset.streamRowIds?.split(" ").includes(String(anchor.rowId))) : undefined);
   if (!item) { el.scrollTop = el.scrollHeight; return true; }
+  if (!exact && anchor?.textAnchor) {
+    const top = textAnchorTop(item, anchor.textAnchor);
+    if (top !== undefined) {
+      el.scrollTop += top - el.getBoundingClientRect().top - anchor.textAnchor.offset;
+      return false;
+    }
+  }
   el.scrollTop += item.getBoundingClientRect().top - el.getBoundingClientRect().top - anchor!.offset;
   return false;
 }
