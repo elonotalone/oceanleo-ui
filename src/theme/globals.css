@@ -61,6 +61,13 @@
   --header-bg: #ffffff;
   --chrome: #faf8f5;
   --card: #ffffff;
+  /* shadcn 风格令牌的浅色默认值（2026-11-19）：此前只在 html.dark 里定义，浅色下 var() 无值 →
+     分享面板透明、勾选圈看不见。取「…」菜单同一套 stone/白底。深色段同名变量覆盖这里。 */
+  --background: #ffffff;
+  --foreground: #1c1917;
+  --muted-foreground: #78716c;
+  --border: #e7e5e4;
+  --ring: #a8a29e;
 }
 
 /* ============================================================================
