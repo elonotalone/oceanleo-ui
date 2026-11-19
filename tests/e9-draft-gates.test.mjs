@@ -1,41 +1,42 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { compileModule, dataModule } from './helpers/module-bench.mjs';
-import { afterAdvancedDraftExport, bindAdvancedDraftGate, saveAdvancedEditorFromAgent } from '../src/shell/advanced-draft-gates.ts';
+import { afterAdvancedDraftExport, bindAdvancedDraftGate, flushAdvancedDraftGate } from '../src/shell/advanced-draft-gates.ts';
 
 const handoff = await import(await compileModule('src/shell/advanced-routes/editor-handoff.ts', {
   '../office-editor/useOfficeArtifactSource': dataModule('export function useOfficeArtifactSource() { return {}; }'),
 }));
 
-test('agent save waits for the stable artifact gate and fails closed without a Task receipt', async () => {
-  const item = { artifactId: 'agent-gate-root', id: 'legacy-version', key: 'artifact:agent-gate-root:r1' };
-  assert.equal((await saveAdvancedEditorFromAgent(item)).ok, false);
+test('the export gate waits for a durable revision and preserves a failed receipt', async () => {
+  assert.equal(flushAdvancedDraftGate('missing', 'export'), null);
   let release;
-  const unbind = bindAdvancedDraftGate(item.artifactId, reason => {
+  const unbind = bindAdvancedDraftGate('agent-gate-root', reason => {
     assert.equal(reason, 'export');
     return new Promise(resolve => { release = resolve; });
   });
   try {
     let done = false;
-    const saving = saveAdvancedEditorFromAgent(item).then(result => { done = true; return result; });
+    const saving = flushAdvancedDraftGate('agent-gate-root', 'export').then(result => { done = true; return result; });
     await Promise.resolve();
     assert.equal(done, false);
     release({ ok: false, error: 'Task snapshot rejected' });
-    assert.deepEqual(await saving, { ok: false, message: 'Task snapshot rejected' });
-    const retry = saveAdvancedEditorFromAgent(item);
-    release({ ok: true, item: { ...item, revisionId: 'r2' } });
-    assert.equal((await retry).ok, true);
+    assert.deepEqual(await saving, { ok: false, error: 'Task snapshot rejected' });
+    const retry = flushAdvancedDraftGate('agent-gate-root', 'export');
+    release({ ok: true, item: { artifactId: 'agent-gate-root', revisionId: 'r2' } });
+    assert.equal((await retry).item.revisionId, 'r2');
   } finally { unbind(); }
 });
 
-test('agent save uses its local workbench even when another workspace owns the same artifact gate', async () => {
-  let wrongWorkspaceCalls = 0;
-  const unbind = bindAdvancedDraftGate('same-root', async () => { wrongWorkspaceCalls++; return { ok: true }; });
+test('a stale gate cleanup cannot unregister a newer workbench for the same artifact', async () => {
+  let oldCalls = 0;
+  const old = bindAdvancedDraftGate('same-root', async () => { oldCalls++; return { ok: true }; });
+  const current = bindAdvancedDraftGate('same-root', async () => ({ ok: false, error: 'local snapshot failed' }));
   try {
-    const result = await saveAdvancedEditorFromAgent({ artifactId: 'same-root' }, async () => ({ ok: false, error: 'local snapshot failed' }));
-    assert.equal(wrongWorkspaceCalls, 0);
-    assert.deepEqual(result, { ok: false, message: 'local snapshot failed' });
-  } finally { unbind(); }
+    old();
+    assert.deepEqual(await flushAdvancedDraftGate('same-root', 'export'), { ok: false, error: 'local snapshot failed' });
+    assert.equal(oldCalls, 0);
+  } finally { current(); old(); }
+  assert.equal(flushAdvancedDraftGate('same-root'), null);
 });
 
 test('mode entry awaits version/session gate and does not bypass it through legacy background save', async () => {

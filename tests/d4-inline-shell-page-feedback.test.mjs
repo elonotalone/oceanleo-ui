@@ -125,7 +125,7 @@ test('host-reported Pro page switches settle in the workspace header slot (grid 
   }
 });
 
-test('inline fallback tool panel expands and contracts without blanking its content', async () => {
+test('editor tools open above the canvas and close without unmounting the stage', async () => {
   const dom = new JSDOM('<!doctype html><html><body></body></html>', {pretendToBeVisual: true, url: 'https://test.dev.oceanleo.com/'});
   const {window} = dom;
   const restore = [];
@@ -150,23 +150,17 @@ test('inline fallback tool panel expands and contracts without blanking its cont
     const open = container.querySelector('[data-workspace-action-id="tools-open"]');
     assert.ok(open);
     await act(async()=>open.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
-    const aside = container.querySelector('[data-left-panel="tool-detail"]');
-    const content = aside?.querySelector('[data-inline-panel-content]');
-    assert.ok(aside && content);
-    assert.equal(aside.style.width,'320px');
-    assert.ok(aside.className.includes('transition-[width,flex-basis,opacity]'));
-    await act(async()=>aside.querySelector('button').dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
-    assert.equal(container.querySelector('[data-left-panel="tool-detail"]'),null);
-    assert.equal(aside.getAttribute('aria-hidden'),'true');
-    assert.equal(aside.style.width,'0px');
-    assert.equal(aside.querySelector('span')?.textContent,'额外功能',
-      'the exiting header label remains available until the pane finishes closing');
-    assert.equal(aside.querySelector('[data-inline-panel-content]'),content,
-      'the same content node remains mounted during the exit transition');
-    assert.ok(container.querySelector('[data-inline-stage]'), 'the editor stage stays mounted as the pane contracts');
-    await act(async()=>{await new Promise(resolve=>setTimeout(resolve,350));});
-    assert.equal(aside.querySelector('[data-inline-panel-content]'),null,
-      'content is released after the exit transition, not on the first close render');
+    const panel = document.querySelector('[data-edit-bar-floating-panel="tools"]');
+    assert.ok(panel?.querySelector('[data-inline-panel-content]'));
+    assert.equal(container.querySelector('[data-left-panel="tool-detail"]'), null);
+    const stage = container.querySelector('[data-inline-stage]');
+    assert.ok(stage);
+    const close = panel.querySelector('button[aria-label="关闭"]');
+    assert.ok(close);
+    await act(async()=>close.dispatchEvent(new window.MouseEvent('click',{bubbles:true})));
+    assert.equal(document.querySelector('[data-edit-bar-floating-panel="tools"]'), null);
+    assert.equal(container.querySelector('[data-inline-stage]'), stage,
+      'closing an editor tool preserves the same canvas instance');
   } finally {
     await act(async()=>root.unmount());
     dom.window.close();

@@ -415,6 +415,9 @@ test("standalone workbench 我的库 still opens the mine panel when SplitWorksp
         'export function editBarOwnershipForItem() { return "host"; }',
       ),
       "./artifact-client": dataModule(`
+        export async function getArtifactItem() { throw new Error("Unexpected artifact read in chrome test"); }
+        export async function getCurrentArtifactItem() { throw new Error("Unexpected current artifact read in chrome test"); }
+        export async function createArtifactRevision() { throw new Error("Unexpected revision write in chrome test"); }
         export async function listMyArtifacts() {
           return { ok: true, data: { items: [] } };
         }

@@ -102,6 +102,7 @@ const popoverStubUrl = dataModule(`
 `);
 const themeStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function PluginThemeScope({children}) { return children; }
   export function PluginThemeToggle() { return null; }
   export function usePluginTheme() {
     return { theme: "light", accent: "#4f46e5" };

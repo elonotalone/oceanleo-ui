@@ -72,14 +72,16 @@ test("判据 2：旧核用户按得到的每一个控件，Univer 下都有一�
   );
 });
 
-test("判据 2：agent 面那批 grid.* 命令 id 换核后同名同义", () => {
+test("agent context is read-only; legacy grid commands remain executable only through the local facade", () => {
   const source = headSource(AGENT_SURFACE);
-  const agentIds = [
-    ...new Set([...source.matchAll(/"(grid\.[a-z-]+)"/g)].map((m) => m[1])),
-  ];
-  assert.ok(agentIds.length >= 9, `只扫到 ${agentIds.length} 条 grid.* 命令`);
-  const missing = agentIds.filter((id) => !gridUniverCommand(id));
-  assert.deepEqual(missing, [], `agent 调不到：${missing.join(", ")}`);
+  assert.doesNotMatch(source, /"grid\.[a-z-]+"/);
+  const gridContext = headSource("src/shell/doc-editors/grid-univer/grid-command-surface.ts");
+  assert.match(gridContext, /editorId: "grid"/);
+  assert.match(gridContext, /agentContext: \(\) =>/);
+  assert.match(gridContext, /return boundedAgentContent\(/);
+  assert.doesNotMatch(gridContext, /commands:|dispatch:|runGridAgentCommand/);
+  const ids = ["grid.set-cell", "grid.read-cell", "grid.select-cell", "grid.insert-row", "grid.insert-column", "grid.sort-column", "grid.add-sheet", "grid.export", "grid.save"];
+  assert.deepEqual(ids.filter(id => !gridUniverCommand(id)), []);
 });
 
 test("每条命令要么有执行器，要么写明它去哪儿了——没有第三种", () => {

@@ -99,6 +99,7 @@ const popoverStubUrl = dataModule(`
 `);
 const themeStubUrl = dataModule(`
   import { jsx } from ${JSON.stringify(jsxRuntimeUrl)};
+  export function PluginThemeScope({children}) { return children; }
   export function PluginThemeToggle() { return null; }
   export function usePluginTheme() {
     return { theme: "light", accent: "#4f46e5" };
@@ -228,6 +229,7 @@ const { InlineAdvancedWorkbenchShell } = await import(await compileModule("src/s
       "./use-inline-advanced-panels": dataModule(`
         export function useInlineAdvancedPanels() {
           return {
+            floatingPanels: { active: null, subscribe() { return () => {}; }, snapshot() { return null; }, close() {} },
             drawers: [],
             activeDrawerId: "",
             isPanelOpen() { return false; },

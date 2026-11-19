@@ -85,6 +85,7 @@ const sessionStubUrl = dataModule(`
   export function useOptionalWorkspaceSession() { return null; }
 `);
 const libraryDataStubUrl = dataModule(`
+  export function isDurableLibraryItem(item) { return Boolean(item?.artifactId); }
   export function libraryItemIdentityKey(item) { return item ? String(item.id || "") : ""; }
 `);
 const artifactStubUrl = dataModule(`

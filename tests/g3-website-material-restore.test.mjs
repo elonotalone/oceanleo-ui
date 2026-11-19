@@ -60,10 +60,16 @@ const shell = dataModule(`import React from ${JSON.stringify(reactUrl)};
 `);
 // The family program replaced website/front's BuilderContext and canvases.
 // Mount its actual site entry with real shared selection, intent and hydration hooks.
-const { default: WebsiteWorkspace } = await import(await compileModule(fileURLToPath(siblingRepoUrl('oceanleo', 'sites/website/WebsiteWorkspace.tsx')), {
+const entryStubs = {
+  '@oceanleo/ui/i18n': dataModule('export function useUI(){return x=>x;}'),
   '@oceanleo/ui/shell': shell,
+  './clone-shell': dataModule(`export function CloneShell({ children }) { return children; }`),
   '@/app/_components/clone-shell': dataModule(`export function CloneShell({ children }) { return children; }`),
   'next/navigation': dataModule(`export function useSearchParams() { return new URLSearchParams(window.location.search); }`),
+};
+const workAgent = await compileModule(fileURLToPath(siblingRepoUrl('oceanleo', 'app/_components/work-agent-workspace.tsx')), entryStubs);
+const { default: WebsiteWorkspace } = await import(await compileModule(fileURLToPath(siblingRepoUrl('oceanleo', 'sites/website/WebsiteWorkspace.tsx')), {
+  ...entryStubs, '@/app/_components/work-agent-workspace': workAgent,
 }));
 const APP = { id: 'corp-site', name: '企业官网' };
 function Sender({ search, activeAppId = APP.id }) {
