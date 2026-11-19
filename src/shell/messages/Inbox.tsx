@@ -15,7 +15,7 @@ import { PanelToolbar } from "../leochat/PanelToolbar";
 import { InboxRow } from "./InboxRow";
 import { InboxCallDecor } from "./call/chat/InboxCallBadge";
 import { InboxNoticesRow } from "./notices/InboxNoticesRow";
-import { InviteLinkDialog } from "./people/InviteLinkDialog";
+import { NewConversationDialog } from "./groups/NewConversationDialog";
 import { imStore, useImConnection, useImInbox, useImResync } from "./realtime/hooks";
 import { SearchView } from "./search/SearchView";
 
@@ -35,7 +35,7 @@ export function Inbox(props: InboxProps) {
   const connection = useImConnection();
   const [drafts, setDrafts] = useState<Set<string>>(() => new Set());
   const [search, setSearch] = useState("");
-  const [inviting, setInviting] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [menu, setMenu] = useState<{ item: ImConversationSummary; x: number; y: number } | null>(null);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [menuBusy, setMenuBusy] = useState(false);
@@ -108,16 +108,17 @@ export function Inbox(props: InboxProps) {
     }
   }
 
+  if (creating) return <NewConversationDialog open onClose={() => setCreating(false)} onCreated={(id) => { setCreating(false); props.onOpenConversation(id); }} />;
+
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="messages-inbox">
       <PanelToolbar
         search={search}
         onSearch={setSearch}
         placeholder={tt("搜索消息")}
-        plusLabel={tt("新建")}
+        plusLabel={tt("新建聊天")}
         actions={[
-          { id: "new-chat", label: tt("新建聊天"), onSelect: props.onNew },
-          { id: "add-contact", label: tt("添加联系人"), onSelect: () => setInviting(true) },
+          { id: "new-chat", label: tt("新建聊天"), onSelect: () => setCreating(true) },
         ]}
       />
       {searching ? (
@@ -196,7 +197,6 @@ export function Inbox(props: InboxProps) {
       </div>
       </>
       )}
-      {inviting ? <InviteLinkDialog onClose={() => setInviting(false)} /> : null}
       {menu && <div role="menu" aria-label={tt("会话设置")} data-inbox-context-menu className="fixed z-[100] max-h-[min(20rem,calc(100vh-1rem))] w-[min(11rem,calc(100vw-1rem))] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-1 text-[12px] text-neutral-800 shadow-xl ring-1 ring-black/5 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => {
         if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
         event.preventDefault();

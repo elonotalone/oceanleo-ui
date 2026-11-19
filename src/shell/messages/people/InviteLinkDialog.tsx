@@ -2,7 +2,7 @@
 
 import { PRIMARY, QUIET, MessageSettingsDialog as Modal } from "../MessageSettingsFrame";
 
-// 生成邀请链接：联系人邀请（发给任何人，对方点开登录后成为联系人），或某个群的邀请链接（可要求审批）。
+// 群邀请链接保留审批；个人入口使用找人页。
 // 可设有效期与次数、复制、撤销已有链接。
 
 import { useState } from "react";
@@ -19,20 +19,25 @@ import {
   useLoader,
 } from "../../../lib/im/people-api";
 import type { ImInviteLink } from "../../../lib/im/types";
-import { TeamContactsSection } from "./TeamContactsSection";
+import { FindPeople } from "./PeopleDiscovery";
+import { hostState } from "../host-state";
 import { InviteQrCode } from "./InviteQrCode";
 
 export interface InviteLinkDialogProps {
   onClose: () => void;
-  /** 给了就是「群邀请链接」，否则是「联系人邀请链接」 */
+  /** 群组使用邀请链接；个人入口打开找人页。 */
   conversationId?: string | null;
 }
 
 const field = "rounded-lg border border-neutral-200 bg-white px-2.5 py-1.5 text-[13px] text-neutral-800";
 
 export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkDialogProps) {
+  return conversationId ? <GroupInviteLink onClose={onClose} conversationId={conversationId} /> : <FindPeople onBack={onClose} onOpenConversation={(id) => { hostState().showConversation(id); onClose(); }} />;
+}
+
+function GroupInviteLink({ onClose, conversationId }: { onClose: () => void; conversationId: string }) {
   const tt = useUI();
-  const kind: "contact" | "group" = conversationId ? "group" : "contact";
+  const kind = "group" as const;
   const links = useLoader(() => listInviteLinks(conversationId), [conversationId]);
   const [expiryIdx, setExpiryIdx] = useState(2);
   const [usesIdx, setUsesIdx] = useState(3);
@@ -51,7 +56,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
       const link = await createInviteLink({
         kind,
         conversation_id: conversationId,
-        requires_approval: kind === "group" ? needApproval : true,
+        requires_approval: needApproval,
         max_uses: INVITE_USES_CHOICES[usesIdx]?.uses ?? null,
         expires_in_hours: INVITE_EXPIRY_CHOICES[expiryIdx]?.hours ?? null,
       });
@@ -82,12 +87,11 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
   }
 
   return (
-    <Modal contentHeight={kind === "contact"} onClose={onClose} title={kind === "group" ? tt("群邀请链接") : tt("添加联系人")} labelledBy="im-invite-title">
+    <Modal contentHeight onClose={onClose} title={tt("群邀请链接")} labelledBy="im-invite-title">
       <div data-invite-link-dialog data-kind={kind}>
 
         {kind === "group" && <p className="mt-1 text-[12px] leading-relaxed text-neutral-500">{tt("拿到链接的人点开、登录后就能进群。")}</p>}
 
-        {kind === "contact" && <TeamContactsSection />}
 
         <div className="mt-4 grid grid-cols-2 gap-3 text-[12px] text-neutral-600">
           <label className="flex flex-col gap-1">
@@ -150,7 +154,7 @@ export function InviteLinkDialog({ onClose, conversationId = null }: InviteLinkD
                     <p className="mt-0.5 text-[11px] text-neutral-400">{describe(l, tt)}</p>
                     {qrFor === l.code && (
                       <div className="mt-2" data-invite-qr-slot={l.code}>
-                        <InviteQrCode url={l.url} fileLabel={kind === "group" ? tt("邀请二维码-加入群聊") : tt("邀请二维码-加联系人")} />
+                        <InviteQrCode url={l.url} fileLabel={tt("邀请二维码-加入群聊")} />
                       </div>
                     )}
                   </div>

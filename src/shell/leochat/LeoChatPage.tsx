@@ -83,6 +83,12 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
 
   const pageState = imOn ? "ready" : authReady ? "signin" : "pending";
 
+  useEffect(() => {
+    if (pageState !== "ready" || new URLSearchParams(window.location.search).get("find") !== "1") return;
+    hostState().showConversation(null);
+    hostState().open({ view: "people" });
+  }, [pageState]);
+
   // 通话推送深链 `/leochat?c=<会话>&call=<通话>`（calls-v2 §3.3）：打开该会话，通话仍在进行就弹接听卡片。
   useEffect(() => {
     if (pageState === "ready") consumeCallDeepLink();

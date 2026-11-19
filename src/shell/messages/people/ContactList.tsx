@@ -1,12 +1,14 @@
 "use client";
 
-// Friends are explicit contacts; groups include every live group membership.
+// Following and groups; old contacts remain readable while the people API is unavailable.
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   conversationDisplayTitle,
+  errorCodeOf,
   listContacts,
+  listUserRemarks,
   listContactGroups,
   openDm,
   reasonOf,
@@ -14,7 +16,8 @@ import {
   useLoader,
   visiblePersonName,
 } from "../../../lib/im/people-api";
-import type { ImConversationSummary, ImPresence, ImProfile } from "../../../lib/im/types";
+import type { ImContact, ImConversationSummary, ImPresence, ImProfile } from "../../../lib/im/types";
+import { PeopleFailure, useFollowing } from "./PeopleDiscovery";
 import { GroupAvatar, PersonAvatar, PresenceDot } from "../groups/GroupAvatar";
 import { useImEvent, usePresence } from "../realtime/hooks";
 
@@ -30,6 +33,13 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
   const tt = useUI();
   const [note, setNote] = useState<string | null>(null);
   const contacts = useLoader(listContacts, []);
+  const following = useFollowing();
+  const remarks = useLoader(listUserRemarks, []);
+  const unavailable = errorCodeOf(following.error) === "people_unavailable" || (following.error as { status?: number } | null)?.status === 404;
+  const shownContacts: Pick<ImContact, "user_id" | "profile">[] = unavailable ? contacts.data ?? [] : following.people.map(person => ({
+    user_id: person.user_id,
+    profile: { ...contacts.data?.find(c => c.user_id === person.user_id)?.profile, user_id: person.user_id, display_name: person.name, avatar_url: person.avatar_url, remark: remarks.data?.find(r => r.user_id === person.user_id)?.remark ?? contacts.data?.find(c => c.user_id === person.user_id)?.profile.remark },
+  }));
   const groups = useLoader(listContactGroups, []);
   useImEvent("contact.changed", () => {
     contacts.reload();
@@ -37,11 +47,11 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
   useImEvent("conversation.updated", groups.reload);
   useImEvent("conversation.removed", groups.reload);
 
-  const contactIds = useMemo(() => (contacts.data ?? []).map((c) => c.user_id), [contacts.data]);
+  const contactIds = shownContacts.map(c => c.user_id);
   const presenceIds = contactIds;
   const presence = usePresence(presenceIds);
 
-  const sorted = useMemo(() => sortContacts(contacts.data ?? [], presence, query), [contacts.data, presence, query]);
+  const sorted = sortContacts(shownContacts, presence, query);
   const needle = query.trim().toLocaleLowerCase();
   const shownGroups = (groups.data ?? []).filter((g) => {
     if (!needle) return true;
@@ -80,26 +90,30 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
   }
 
   return (
-    <div className="flex min-h-0 flex-col" data-contact-list>
+    <div className="flex h-full min-h-0 flex-col" data-contact-list>
       {note && (
         <p role="status" className="px-3 pb-2 text-[12px] text-red-600">
           {note}
         </p>
       )}
-      {(contacts.error || groups.error) ? <p role="alert" className="px-3 py-2 text-[12px] text-red-600">{reasonOf(contacts.error || groups.error, tt("没成功，请稍后再试。"))}</p> : null}
+      {following.error != null && <PeopleFailure error={following.error} />}
+      {remarks.error != null && <PeopleFailure error={remarks.error} />}
+      {contacts.error != null && unavailable && <PeopleFailure error={contacts.error} />}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <h4 className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">{tt("好友")}</h4>
-        {sorted.length === 0 ? (
+        <h4 className="px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">{tt("正在关注")}</h4>
+        {(following.error && !unavailable) || (unavailable && contacts.error) ? null : sorted.length === 0 ? (
           <p className="px-3 py-6 text-center text-[12px] text-neutral-400" data-contacts-empty>
-            {contacts.loading
+            {(unavailable ? contacts.loading : following.loading)
               ? tt("加载中…")
               : query.trim()
                 ? tt("没有找到。")
-                : tt("还没有联系人。点右上角的 + 添加。")}
+                : tt("还没有关注任何人。")}
           </p>
         ) : (
-          <ul data-contacts>{sorted.map((c) => row({ ...c.profile, user_id: c.user_id }, ""))}</ul>
+          <ul data-contacts>{sorted.map((c) => row({ ...c.profile, user_id: c.user_id }, unavailable || following.people.find(p => p.user_id === c.user_id)?.follows_me ? tt("互相关注") : ""))}</ul>
         )}
+        {following.moreError != null && <PeopleFailure error={following.moreError} />}
+        {!unavailable && following.cursor && <button type="button" disabled={following.busy} onClick={() => void following.more()}>{tt("加载更多")}</button>}
         <section data-contact-groups>
           <h4 className="mt-3 px-3 py-1 text-[11px] font-medium uppercase tracking-wide text-neutral-400">
               {tt("群组")}
@@ -109,7 +123,8 @@ export function ContactList({ query, onOpenConversation, onOpenProfile }: Contac
                 <SavedGroupRow key={g.id} item={g} onOpen={onOpenConversation} />
               ))}
             </ul>
-          {shownGroups.length === 0 && <p className="px-3 py-6 text-center text-[12px] text-neutral-400">{groups.loading ? tt("加载中…") : query.trim() ? tt("没有找到。") : tt("还没有加入任何群组。")}</p>}
+          {groups.error != null && <PeopleFailure error={groups.error} />}
+          {!groups.error && shownGroups.length === 0 && <p className="px-3 py-6 text-center text-[12px] text-neutral-400">{groups.loading ? tt("加载中…") : query.trim() ? tt("没有找到。") : tt("还没有加入任何群组。")}</p>}
         </section>
       </div>
     </div>

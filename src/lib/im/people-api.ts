@@ -3,11 +3,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { imFetch } from "./client";
+import { currentDomainProfile } from "../../contracts/domain-family";
 import type {
   ImContact,
-  ImContactRequest,
   ImConversationSummary,
-  ImGroupInvite,
   ImInviteLink,
   ImInvitePreview,
   ImPage,
@@ -24,11 +23,11 @@ export function presenceRank(presence: ImPresence | undefined): number {
 }
 
 /** 联系人排序：在线 → 离开 → 离线；同状态按名字；`query` 按名字或备注包含过滤（不分大小写）。 */
-export function sortContacts(
-  contacts: readonly ImContact[],
+export function sortContacts<T extends Pick<ImContact, "user_id" | "profile">>(
+  contacts: readonly T[],
   presence: Readonly<Record<string, ImPresence>>,
   query = "",
-): ImContact[] {
+): T[] {
   return contacts
     .filter((c) => nameQueryHit(c.profile, query))
     .slice()
@@ -82,32 +81,6 @@ export function nameQueryHit(
   return hay.includes(needle);
 }
 
-/** A–Z；拉丁字母按首字母，其余进 #。 */
-export function sectionLetter(name: string): string {
-  const ch = Array.from(name.trim())[0] ?? "";
-  if (!ch) return "#";
-  if (/[A-Za-z]/.test(ch)) return ch.toUpperCase();
-  return "#";
-}
-
-/**
- * 选人时一个人的状态：
- * direct 可以直接加；consent 要等对方同意；blocked 已拉黑不可选；existing 已经在群里。
- * 联系人 / 同 Team / 同项目 = 直接；其余（同群成员等）= 需要同意（契约 §9.3）。
- */
-export type CandidateStatus = "direct" | "consent" | "blocked" | "existing";
-
-export function classifyCandidate(
-  profile: Pick<ImProfile, "user_id" | "relation">,
-  ctx: { blockedIds?: ReadonlySet<string>; existingIds?: ReadonlySet<string> } = {},
-): CandidateStatus {
-  if (ctx.existingIds?.has(profile.user_id)) return "existing";
-  if (ctx.blockedIds?.has(profile.user_id)) return "blocked";
-  const r = profile.relation;
-  if (r === "contact" || r === "teammate" || r === "project") return "direct";
-  return "consent";
-}
-
 /** 邀请链接有效期（小时）。null = 永不过期。 */
 export const INVITE_EXPIRY_CHOICES: ReadonlyArray<{ hours: number | null; label: string }> = [
   { hours: 1, label: "1 小时" },
@@ -147,11 +120,13 @@ export function reasonOf(error: unknown, fallback: string): string {
   return typeof message === "string" && message.trim() ? message : fallback;
 }
 
-export function contactRequestReason(error: unknown, tt: (key: string, vars?: Record<string, string | number>) => string): string {
-  const e = error as { code?: string; retry_at?: string } | null;
-  if (e?.code === "request_limit" && e.retry_at && Number.isFinite(Date.parse(e.retry_at))) {
-    return tt("7 天内最多向同一个人发送 3 次请求。可在 {time} 后重试。", { time: new Date(e.retry_at).toLocaleString() });
-  }
+/** Share this formatter with the composer so reply limits have one plain explanation. */
+export function peopleMessageError(error: unknown, tt: (key: string, vars?: Record<string, string | number>) => string): string {
+  const code = errorCodeOf(error);
+  if (code === "reply_limit") return tt("对方回复前，每周最多发送 3 条消息。");
+  if (code === "people_unavailable" || (error as { status?: number } | null)?.status === 404) return tt("找人功能暂不可用。");
+  if (code === "username_taken") return tt("这个用户名已被使用。");
+  if (code === "username_invalid") return tt("用户名需为 3–32 位小写字母、数字、下划线或连字符，并以字母或数字开头。");
   return reasonOf(error, tt("没成功，请稍后再试。"));
 }
 
@@ -181,7 +156,7 @@ export function useLoader<T>(fn: () => Promise<T>, deps: ReadonlyArray<unknown>)
   fnRef.current = fn;
   const run = useCallback(() => {
     const mine = ++ticket.current;
-    setState((s) => ({ ...s, loading: true }));
+    setState({ data: null, loading: true, error: null });
     fnRef.current().then(
       (data) => {
         if (mine === ticket.current) setState({ data, loading: false, error: null });
@@ -192,7 +167,7 @@ export function useLoader<T>(fn: () => Promise<T>, deps: ReadonlyArray<unknown>)
     );
   }, []);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(run, deps);
+  useEffect(() => { run(); return () => { ++ticket.current; }; }, deps);
   return { ...state, reload: run };
 }
 
@@ -230,43 +205,8 @@ export async function listContacts(): Promise<ImContact[]> {
   return itemsOf(await imFetch<Items<ImContact>>("/v1/im/contacts"));
 }
 
-export interface ImContactTeam {
-  org_id: string;
-  name: string;
-  members: ImProfile[];
-}
-
-export interface ImTeamContactsResult {
-  added: { user_id: string; org_id: string; team_name: string }[];
-  skipped: string[];
-}
-
-export async function listContactTeams(): Promise<ImContactTeam[]> {
-  return itemsOf(await imFetch<Items<ImContactTeam>>("/v1/im/contacts/teams"));
-}
-
-export async function addTeamContacts(userIds: string[]): Promise<ImTeamContactsResult> {
-  return imFetch<ImTeamContactsResult>("/v1/im/contacts/teams", { method: "POST", json: { user_ids: userIds } });
-}
-
 export async function listContactGroups(): Promise<ImConversationSummary[]> {
   return itemsOf(await imFetch<Items<ImConversationSummary>>("/v1/im/contacts/groups"));
-}
-
-export async function removeContact(userId: string): Promise<void> {
-  await imFetch(`/v1/im/contacts/${encodeURIComponent(userId)}`, { method: "DELETE" });
-}
-
-export async function starContact(userId: string, starred: boolean): Promise<void> {
-  await imFetch(`/v1/im/contacts/${encodeURIComponent(userId)}/star`, { method: "PUT", body: JSON.stringify({ starred }) });
-}
-
-export async function deleteContactRequestHistory(id: string): Promise<void> {
-  await imFetch(`/v1/im/contact-requests/${encodeURIComponent(id)}`, { method: "DELETE" });
-}
-
-export async function listContactRequests(box: "in" | "out"): Promise<ImContactRequest[]> {
-  return itemsOf(await imFetch<Items<ImContactRequest>>(`/v1/im/contact-requests?box=${box}`));
 }
 
 export async function sendContactRequest(toUserId: string, message = ""): Promise<void> {
@@ -274,22 +214,6 @@ export async function sendContactRequest(toUserId: string, message = ""): Promis
     method: "POST",
     json: { to_user_id: toUserId, ...(message.trim() ? { message: message.trim() } : {}) },
   });
-}
-
-export async function respondContactRequest(id: string, action: "accept" | "decline" | "cancel"): Promise<void> {
-  await imFetch(`/v1/im/contact-requests/${encodeURIComponent(id)}/${action}`, { method: "POST" });
-}
-
-export async function listGroupInvites(): Promise<ImGroupInvite[]> {
-  return itemsOf(await imFetch<Items<ImGroupInvite>>("/v1/im/group-invites"));
-}
-
-export async function respondGroupInvite(id: string, action: "accept" | "decline"): Promise<{ conversation_id?: string }> {
-  const r = await imFetch<{ conversation_id?: string } | undefined>(
-    `/v1/im/group-invites/${encodeURIComponent(id)}/${action}`,
-    { method: "POST" },
-  );
-  return r ?? {};
 }
 
 export async function createInviteLink(input: {
@@ -371,4 +295,69 @@ export async function copyText(text: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/* ---------- Public people model (social wave) ---------- */
+export interface PersonCard {
+  user_id: string;
+  username: string | null;
+  name: string;
+  avatar_url: string | null;
+  following: boolean;
+  follows_me: boolean;
+  blocked: boolean;
+}
+export interface PeoplePage { people: PersonCard[]; next_cursor: string | null }
+export interface FollowSuggestionGroup { key: "team" | "project" | "bay"; title_key: string; people: PersonCard[] }
+export interface UsernameState { username: string | null; suggested: string }
+
+export function getUsername(): Promise<UsernameState> { return imFetch("/v1/im/username"); }
+export function setUsername(username: string): Promise<{ username: string }> {
+  return imFetch("/v1/im/username", { method: "PUT", json: { username } });
+}
+export function usernameValid(username: string): boolean { return /^[a-z0-9][a-z0-9_-]{2,31}$/.test(username); }
+export function usernameAvailability(username: string): Promise<{ available: boolean }> {
+  return imFetch(`/v1/im/username/availability?username=${encodeURIComponent(username)}`);
+}
+export async function searchPeople(query: string): Promise<PersonCard[]> {
+  const page = await imFetch<{ people: PersonCard[] }>(`/v1/im/users/search?q=${encodeURIComponent(query.trim())}&limit=20`);
+  return page.people;
+}
+export function listFollows(box: "following" | "followers" = "following", cursor?: string | null): Promise<PeoplePage> {
+  return imFetch(`/v1/im/follows?box=${box}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+}
+export async function followSuggestions(): Promise<FollowSuggestionGroup[]> {
+  const page = await imFetch<{ groups: FollowSuggestionGroup[] }>("/v1/im/follow-suggestions");
+  return page.groups;
+}
+export function followPerson(userId: string): Promise<{ following: true; mutual: boolean }> {
+  return imFetch("/v1/im/follows", { method: "POST", json: { user_id: userId } });
+}
+export function unfollowPerson(userId: string): Promise<{ following: false }> {
+  return imFetch(`/v1/im/follows/${encodeURIComponent(userId)}`, { method: "DELETE" });
+}
+export function listMessageRequests(cursor?: string | null): Promise<ImPage<ImConversationSummary>> {
+  return imFetch(`/v1/im/conversations?box=requests&limit=30${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
+}
+export function profileLink(username: string): string {
+  return `${currentDomainProfile().portalOrigin}/leochat?find=1&username=${encodeURIComponent(username)}`;
+}
+
+/** Profile actions need the actual follow state even when the person is beyond page one. */
+export async function findFollowing(userId: string): Promise<PersonCard | null> {
+  let cursor: string | null = null;
+  const seen = new Set<string>();
+  do {
+    const page = await listFollows("following", cursor);
+    const person = page.people.find(p => p.user_id === userId);
+    if (person) return person;
+    cursor = page.next_cursor;
+    if (cursor && seen.has(cursor)) throw new Error("Repeated following cursor");
+    if (cursor) seen.add(cursor);
+  } while (cursor);
+  return null;
+}
+
+export async function listUserRemarks(): Promise<{ user_id: string; remark: string }[]> {
+  return itemsOf(await imFetch<Items<{ user_id: string; remark: string }>>("/v1/im/remarks"));
 }

@@ -2,7 +2,7 @@
 
 import { PRIMARY, QUIET, MessagePromptDialog as Modal } from "../MessageSettingsFrame";
 
-// 打开邀请链接后的确认：谁邀请你、进哪个群、群里多少人；接受后成为联系人 / 进群 / 申请入群。
+// 群邀请保留加入/审批；个人链接打开可关注与发消息的资料卡。
 // 没登录：先引导登录，登录后停在同一个地址（URL 里的 ?im_invite= 不变）。
 
 import { useEffect, useState } from "react";
@@ -13,11 +13,12 @@ import {
   acceptInvite,
   getInvitePreview,
   inviteOutcomeOf,
-  contactRequestReason,
+  peopleMessageError,
   type InviteOutcome,
 } from "../../../lib/im/people-api";
 import type { ImInvitePreview } from "../../../lib/im/types";
-import { GroupAvatar, PersonAvatar } from "../groups/GroupAvatar";
+import { ProfileCard } from "../people/ProfileCard";
+import { GroupAvatar } from "../groups/GroupAvatar";
 
 export interface InviteAcceptDialogProps {
   code: string;
@@ -29,7 +30,7 @@ type Stage =
   | { name: "loading" }
   | { name: "login" }
   | { name: "preview"; preview: ImInvitePreview }
-  | { name: "result"; outcome: InviteOutcome; conversationId: string | null; contact?: boolean };
+  | { name: "result"; outcome: InviteOutcome; conversationId: string | null };
 
 function statusOf(e: unknown): number {
   return (e as { status?: number } | null)?.status ?? 0;
@@ -81,13 +82,12 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
       const outcome = inviteOutcomeOf({ result });
       const conversationId = result.conversation_id ?? preview.conversation?.id ?? null;
       if (outcome === "joined") onDone({ conversationId });
-      else if (outcome === "contact") onDone({ conversationId: null });
-      else setStage({ name: "result", outcome, conversationId, contact: preview.kind === "contact" });
+      else setStage({ name: "result", outcome, conversationId });
     } catch (e) {
       const outcome = inviteOutcomeOf({ error: e });
-      if (outcome === "pending") setStage({ name: "result", outcome, conversationId: null, contact: preview.kind === "contact" });
+      if (outcome === "pending") setStage({ name: "result", outcome, conversationId: null });
       else if ((e as { code?: string })?.code === "gone" || statusOf(e) === 410) setStage({ name: "result", outcome: "gone", conversationId: null });
-      else setNote(contactRequestReason(e, tt));
+      else setNote(peopleMessageError(e, tt));
     } finally {
       setBusy(false);
     }
@@ -95,6 +95,10 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
 
   if (stage.name === "login") {
     return <AuthDialog onClose={onClose} onSuccess={() => setAttempt((n) => n + 1)} />;
+  }
+
+  if (stage.name === "preview" && stage.preview.kind === "contact") {
+    return <ProfileCard userId={stage.preview.inviter.user_id} onClose={onClose} onOpenConversation={(id) => onDone({ conversationId: id })} />;
   }
 
   const dialogTitle = stage.name === "preview"
@@ -123,7 +127,7 @@ export function InviteAcceptDialog({ code, onClose, onDone }: InviteAcceptDialog
             <p className="mt-2 text-[13px] leading-relaxed text-neutral-600">
               {stage.outcome === "gone"
                 ? tt("这个邀请链接已经过期、被撤销，或者群已解散。请让对方重新发一个。")
-                : stage.contact ? tt("已发出联系人请求，等对方同意。") : tt("已申请，等群管理员同意。同意后你会收到通知。")}
+                : tt("已申请，等群管理员同意。同意后你会收到通知。")}
             </p>
             <div className="mt-5 flex justify-end">
               <button type="button" onClick={onClose} data-action="close" className={PRIMARY}>
@@ -157,38 +161,30 @@ function PreviewBody({
   onOpenGroup: () => void;
 }) {
   const tt = useUI();
-  const isGroup = preview.kind === "group" && preview.conversation;
   const already = preview.already;
   return (
     <div>
       <div className="flex items-center gap-3">
-        {isGroup ? (
-          <GroupAvatar name={preview.conversation!.title} src={preview.conversation!.avatar_url} seed={preview.conversation!.id} size={48} />
-        ) : (
-          <PersonAvatar name={preview.inviter.display_name} src={preview.inviter.avatar_url} seed={preview.inviter.user_id} size={48} />
-        )}
+        <GroupAvatar name={preview.conversation!.title} src={preview.conversation!.avatar_url} seed={preview.conversation!.id} size={48} />
         <div className="min-w-0">
 
           <p className="text-[12px] text-neutral-500">
-            {isGroup
-              ? tt("{name} 邀请你加入 · {n} 人", { name: preview.inviter.display_name, n: preview.conversation!.member_count })
-              : tt("邀请你成为联系人")}
+            {tt("{name} 邀请你加入 · {n} 人", { name: preview.inviter.display_name, n: preview.conversation!.member_count })}
           </p>
         </div>
       </div>
 
-      {already === "contact" && <p className="mt-3 text-[13px] text-neutral-600" data-already="contact">{tt("你们已经是联系人了。")}</p>}
       {already === "member" && <p className="mt-3 text-[13px] text-neutral-600" data-already="member">{tt("你已经在这个群里了。")}</p>}
-      {already === "pending" && <p className="mt-3 text-[13px] text-neutral-600" data-already="pending">{isGroup ? tt("已申请，等群管理员同意。") : tt("已发出联系人请求，等对方同意。")}</p>}
-      {(!already || (already === "pending" && !isGroup)) && (preview.requires_approval || !isGroup) && (
+      {already === "pending" && <p className="mt-3 text-[13px] text-neutral-600" data-already="pending">{tt("已申请，等群管理员同意。")}</p>}
+      {!already && preview.requires_approval && (
         <>
-          <p className="mt-3 text-[12px] text-neutral-500">{isGroup ? tt("进群需要管理员同意。可以留一句话告诉管理员你是谁。") : tt("添加好友需要对方同意。可以留一句话介绍自己。")}</p>
+          <p className="mt-3 text-[12px] text-neutral-500">{tt("进群需要管理员同意。可以留一句话告诉管理员你是谁。")}</p>
           <input
             value={message}
             maxLength={200}
             onChange={(e) => setMessage(e.target.value)}
-            aria-label={isGroup ? tt("给管理员留言") : tt("好友请求留言（选填）")}
-            placeholder={isGroup ? tt("给管理员留言（选填）") : tt("好友请求留言（选填）")}
+            aria-label={tt("给管理员留言")}
+            placeholder={tt("给管理员留言（选填）")}
             className="mt-2 w-full rounded-lg border border-neutral-200 px-3 py-2 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
           />
         </>
@@ -203,13 +199,13 @@ function PreviewBody({
           <button type="button" onClick={onOpenGroup} data-action="open-group" className={PRIMARY}>
             {tt("打开群聊")}
           </button>
-        ) : already && !(already === "pending" && !isGroup) ? (
+        ) : already ? (
           <button type="button" onClick={onClose} data-action="close" className={PRIMARY}>
             {tt("好")}
           </button>
         ) : (
           <button type="button" disabled={busy} onClick={onAccept} data-action="accept" className={PRIMARY}>
-            {isGroup ? (preview.requires_approval ? tt("申请加入") : tt("加入群聊")) : already === "pending" ? tt("再发一次请求") : tt("发送好友请求")}
+            {preview.requires_approval ? tt("申请加入") : tt("加入群聊")}
           </button>
         )}
       </div>

@@ -7,6 +7,7 @@ import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { listBlocks, reasonOf, unblockUser, useLoader } from "../../../lib/im/people-api";
+import { PeopleFailure } from "./PeopleDiscovery";
 import { PersonAvatar } from "../groups/GroupAvatar";
 
 export function BlockedList({ query, onBack }: { query?: string; onBack?: () => void }) {
@@ -37,13 +38,13 @@ export function BlockedList({ query, onBack }: { query?: string; onBack?: () => 
           {note}
         </p>
       )}
-      {items.length === 0 ? (
+      {blocks.error ? <PeopleFailure error={blocks.error} /> : items.length === 0 ? (
         <p className="px-3 py-8 text-center text-[12px] text-neutral-400" data-blocked-empty>
           {blocks.loading ? tt("加载中…") : tt("你没有拉黑任何人。")}
         </p>
       ) : (
         <>
-          <p className="px-3 pb-2 text-[12px] text-neutral-500">{tt("被拉黑的人不能私聊你、不能把你拉进群，也不能给你发联系人请求。")}</p>
+          <p className="px-3 pb-2 text-[12px] text-neutral-500">{tt("被拉黑的人不能给你发消息或邀请你进群。")}</p>
           <ul>
             {items.map((p) => (
               <li key={p.user_id} data-blocked={p.user_id} className="flex items-center gap-3 px-3 py-2">

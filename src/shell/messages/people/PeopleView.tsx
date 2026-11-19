@@ -4,12 +4,10 @@
 
 import { useState } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
-import { listContactRequests, useLoader } from "../../../lib/im/people-api";
 import { PanelToolbar } from "../../leochat/PanelToolbar";
-import { useImEvent } from "../realtime/hooks";
 import { ContactList } from "./ContactList";
 import { BlockedList } from "./BlockedList";
-import { InviteLinkDialog } from "./InviteLinkDialog";
+import { FindPeople } from "./PeopleDiscovery";
 import { ProfileCard } from "./ProfileCard";
 import { RequestsList } from "./RequestsList";
 
@@ -23,18 +21,11 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
   const tt = useUI();
   const [tab, setTab] = useState<Tab>("contacts");
   const [query, setQuery] = useState("");
-  const [inviting, setInviting] = useState(false);
+  const [inviting, setInviting] = useState(() => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("find") === "1");
   const [profileId, setProfileId] = useState<string | null>(null);
   const [showBlocked, setShowBlocked] = useState(false);
 
-  // New friends counts only unanswered incoming friend requests.
-  const incoming = useLoader(() => listContactRequests("in"), []);
-  const refreshCounts = () => {
-    incoming.reload();
-  };
-  useImEvent("contact.request", refreshCounts);
-  useImEvent("contact.changed", refreshCounts);
-  const pending = (incoming.data ?? []).filter((r) => r.status === "pending").length;
+  if (inviting) return <FindPeople onBack={() => setInviting(false)} onOpenConversation={onOpenConversation} />;
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-people-view>
@@ -42,19 +33,17 @@ export function PeopleView({ onOpenConversation }: PeopleViewProps) {
         search={query}
         onSearch={setQuery}
         placeholder={tt("按名字或备注搜索")}
-        plusLabel={tt("添加联系人")}
-        actions={[{ id: "add-contact", label: tt("添加联系人"), onSelect: () => setInviting(true) }, { id: "blocked", label: tt("已拉黑"), onSelect: () => setShowBlocked(!showBlocked) }]}
+        plusLabel={tt("找人")}
+        actions={[{ id: "find-people", label: tt("找人"), onSelect: () => setInviting(true) }]}
       />
-      <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} className="flex w-full items-center gap-3 border-b border-neutral-100 px-3 py-4 text-left text-[14px]">
+      <button type="button" data-new-friends-entry onClick={() => setTab(tab === "requests" ? "contacts" : "requests")} aria-expanded={tab === "requests"} className="flex w-full items-center gap-3 border-b border-neutral-100 px-3 py-4 text-left text-[14px]">
         <span aria-hidden>{tab === "requests" ? "⌄" : "›"}</span>{tt("新的朋友")}
-        {pending > 0 && <span className="rounded-full bg-neutral-900 px-1.5 text-[11px] text-white">{pending}</span>}
       </button>
+      <button type="button" data-blocked-entry aria-expanded={showBlocked} onClick={() => setShowBlocked(!showBlocked)} className="flex w-full items-center gap-3 border-b border-neutral-100 px-3 py-2 text-left text-[14px]">{tt("已拉黑")}</button>
+      {tab === "requests" && !showBlocked && <RequestsList query={query} onOpenConversation={onOpenConversation} />}
       <div className="min-h-0 flex-1">
-        {showBlocked ? <BlockedList query={query} onBack={() => setShowBlocked(false)} /> : tab === "contacts" ? <ContactList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} /> : (
-          <RequestsList onBack={() => setTab("contacts")} query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} onChanged={refreshCounts} />
-        )}
+        {showBlocked ? <BlockedList query={query} onBack={() => setShowBlocked(false)} /> : <ContactList query={query} onOpenProfile={setProfileId} onOpenConversation={onOpenConversation} />}
       </div>
-      {inviting && <InviteLinkDialog onClose={() => setInviting(false)} />}
       {profileId && (
         <ProfileCard
           userId={profileId}
