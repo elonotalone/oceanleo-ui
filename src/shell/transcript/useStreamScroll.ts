@@ -2,7 +2,7 @@
 
 import { useCallback, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useOlderHistory } from "../history/older-history";
-import { captureConversationAnchor, recallConversationAnchor, rememberConversationAnchor, restoreConversationAnchor, type ConversationAnchor } from "../task-scroll-memory";
+import { captureConversationAnchor, recallConversationAnchor, rememberConversationAnchor, restoreConversationAnchor, type ConversationAnchor, STREAM_ITEM_SELECTOR } from "../task-scroll-memory";
 
 export type StreamScrollOptions = {
   taskKey: string;
@@ -79,8 +79,10 @@ export function useStreamScroll(options: StreamScrollOptions) {
   const placeStream = useCallback(() => {
     const options = latest.current;
     const el = options.scrollRef.current;
-    if (!el || !options.active || !options.ready || !options.messageIds.length || !el.clientHeight || el.closest("[hidden]")) {
-      // A cached page can survive navigation with its stream temporarily empty.
+    if (!el || !options.active || !options.ready || !options.messageIds.length || !el.clientHeight || el.closest("[hidden]")
+      || !el.querySelector(STREAM_ITEM_SELECTOR)) {
+      // Cached message ids can be ready while the access gate still omits their
+      // DOM. Wait for a rendered message before deciding the anchor is missing.
       // Its next populated layout must restore again before following or saving.
       placed.current = null;
       aligned.current = null;

@@ -29,15 +29,15 @@ const { TranscriptPane, TranscriptStream, StreamLatestButton, CLOUD_TRANSCRIPT_C
   '../../i18n/ui/useUI': dataModule('export const useUI = () => (text, vars) => text.replace("{count}", String(vars?.count));'),
 }));
 
-async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'], ready = true, active = true, hasMoreAfter = false, viewport = 200, clamp = false, caps = CLOUD_TRANSCRIPT_CAPABILITIES } = {}) {
+async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'], ready = true, active = true, hasMoreAfter = false, viewport = 200, clamp = false, rendered = true, caps = CLOUD_TRANSCRIPT_CAPABILITIES } = {}) {
   resizes = []; const errors = []; const oldError = console.error;
   console.error = (...args) => errors.push(args.map(String).join(' '));
   const host = document.createElement('div'); document.body.append(host);
   let patch, scroll, scroller, shift = 0, currentIds = ids, currentViewport = viewport;
   function Harness() {
     const ref = useRef(null);
-    const [value, set] = useState({ key, ids, ready, active, hasMoreAfter, viewport, revision: 0 });
-    currentIds = value.ids; currentViewport = value.viewport;
+    const [value, set] = useState({ key, ids, ready, active, hasMoreAfter, viewport, rendered, revision: 0 });
+    currentIds = value.rendered ? value.ids : []; currentViewport = value.viewport;
     patch = (next) => set((current) => ({ ...current, ...next }));
     scroll = useStreamScroll({ taskKey: value.key, scrollRef: ref, messageIds: value.ids, revision: value.revision,
       ready: value.ready, active: value.active, hasMoreAfter: value.hasMoreAfter, hasMore: false, loadEarlier: async () => {} });
@@ -59,7 +59,7 @@ async function mountStream({ key = 'task:test', ids = ['1', '2', '3', '4', '5'],
     hasMore: false, history: scroll.history,
     footer: React.createElement('textarea', { 'aria-label': 'message' }),
     overlay: scroll.showLatest ? React.createElement(StreamLatestButton, { unread: scroll.unread, onClick: scroll.resumeFollowing }) : null,
-    items: React.createElement(TranscriptStream, { items: value.ids.map((id) => ({ key: id, messageId: id, rowId: Number(id), value: id })), capabilities: caps,
+    items: React.createElement(TranscriptStream, { items: (value.rendered ? value.ids : []).map((id) => ({ key: id, messageId: id, rowId: Number(id), value: id })), capabilities: caps,
       renderItem: (id) => React.createElement('div', { ref: (node) => {
         if (!node) return;
         node.parentElement.getBoundingClientRect = () => {
@@ -335,3 +335,27 @@ test('forward-filling an anchored window counts only messages newer than the pre
     assert.equal(view.scroller.scrollTop, 210);
   } finally { await view.close(); }
 });
+
+for (const [name, caps] of [['cloud', CLOUD_TRANSCRIPT_CAPABILITIES], ['ACP', ACP_TRANSCRIPT_CAPABILITIES]]) {
+  test(`${name}: cached ids wait for access-gated message DOM before deciding an anchor is missing`, async () => {
+    memory.forgetConversationScrolls();
+    const saved = { messageId: '3', offset: -25, atBottom: false, latestId: '5', rowId: 3 };
+    memory.rememberConversationAnchor('task:test', saved);
+    const view = await mountStream({ caps, clamp: true, rendered: false });
+    try {
+      assert.equal(view.scroller.scrollTop, 0);
+      await view.scrollEvent();
+      window.dispatchEvent(new window.Event('pagehide'));
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+      // Cached ids, ready and revision all stay the same when the access gate
+      // opens. The column's real ResizeObserver is what retries placement.
+      await view.patch({ rendered: true });
+      await view.resize(0);
+      await view.scrollEvent();
+      assert.equal(view.scroller.scrollTop, 425);
+      assert.equal(view.state.following, false, 'access loading must not switch restoration into follow-latest');
+      assert.deepEqual(memory.captureConversationAnchor(view.scroller, false, '5'), saved);
+      assert.deepEqual(memory.recallConversationAnchor('task:test'), saved);
+    } finally { await view.close(); }
+  });
+}

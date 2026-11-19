@@ -144,3 +144,49 @@ test('anchored history opens its live subscription before forward fill finishes 
     assert.equal(globalThis.__sockets.length, 1, 'history completion does not reopen the live socket');
   } finally { pending.resolve(json(page([], false, null))); await view.close(); }
 });
+
+test('a capped long turn recovers the saved chunk before rendering or falling back to latest', async () => {
+  const pending = wait();
+  // The live failure: /history?anchor=3832 yielded only the final 2000 rows
+  // (4658..6657), so the first chunk/key of the visible message was missing.
+  const newest = [
+    ...Array.from({ length: 1999 }, (_, index) => ({ ...rows.chunk('x'), id: 4658 + index })),
+    { ...rows.done(840), id: 6657 },
+  ];
+  const view = await historyMount((query) => {
+    if (query.get('before') === '4658') return pending.promise;
+    return json({ ...page(newest, true, 4658), oldest_id: 4658, newest_id: 6657, tail_id: 6657, capped: true });
+  }, { anchor: { messageId: 'message-3832', rowId: 3832, offset: -18, atBottom: false } });
+  try {
+    assert.equal(view.requests[0].get('anchor'), '3832');
+    assert.equal(view.requests[1].get('before'), '4658', 'a capped missing row is searched through the earlier cursor');
+    assert.equal(view.host.querySelector('[data-stream-message-id="message-4658"]'), null, 'do not place a truncated replacement message');
+    await act(async () => pending.resolve(json({
+      ...page([{ ...rows.prompt(840, 'Long turn'), id: 840 }, { ...rows.chunk('Start of saved response '), id: 3832 }], false, null),
+      oldest_id: 840, newest_id: 3832, tail_id: 6657,
+    })));
+    await settle();
+    const saved = view.host.querySelector('[data-stream-message-id="message-3832"]');
+    assert.ok(saved, 'the reconstructed message keeps its original chunk id');
+    assert.equal(saved.getBoundingClientRect().top, -18, 'saved offset restores before follow-latest');
+    assert.equal(view.requests.length, 2, 'no unanchored fallback or extra paging after the oldest page');
+    assert.equal(view.host.querySelector('[data-stream-message-id="message-4658"]'), null);
+    assert.match(view.host.textContent, /Start of saved response x{1999}/, 'both recovered and newest chunks are retained');
+  } finally { pending.resolve(json(page([], false, null))); await view.close(); }
+});
+
+test('an anchor genuinely missing after crossing its row cursor still falls back to latest', async () => {
+  const recent = [{ ...rows.prompt(110, 'Latest turn'), id: 110 }, { ...rows.done(110), id: 111 }];
+  const view = await historyMount((query) => {
+    if (query.has('before')) return json(page(initialRows().filter(row => row.id < 102), true, 100));
+    return json({ ...page(recent, query.has('anchor'), query.has('anchor') ? 110 : null), tail_id: 111, capped: query.has('anchor') });
+  }, { anchor: { messageId: 'turn-102', rowId: 102, offset: -18, atBottom: false } });
+  try {
+    assert.deepEqual(view.requests.map(query => Object.fromEntries(query)), [
+      { anchor: '102', turns: '8' }, { before: '110', turns: '8' }, { turns: '8' },
+    ]);
+    assert.match(view.host.textContent, /Latest turn/);
+    assert.equal(view.host.querySelector('[data-stream-message-id="turn-102"]'), null);
+    assert.equal(view.scroller.scrollTop, 4000, 'unknown saved message opens at latest');
+  } finally { await view.close(); }
+});

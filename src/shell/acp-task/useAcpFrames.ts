@@ -115,9 +115,24 @@ export function useAcpFrames(taskId: string | null, nativeHint = true): AcpFrame
     };
     setView({ taskId, value: { ...IDLE, state: "connecting", loadEarlier, expandRow, jumpToLatest } });
     setTail(null);
-    getHistoryWindow(taskId, { anchor, turns: 8, signal: controller.signal }).then((page) => {
+    getHistoryWindow(taskId, { anchor, turns: 8, signal: controller.signal }).then(async (page) => {
       if (closed) return;
       if (!page || !Array.isArray(page.rows) || typeof page.tail_id !== "number") { fallback(); return; }
+      // A long turn can exceed the server's row cap: even an anchored window
+      // then contains only its newest chunks. Recover the earlier pages before
+      // deciding the saved message is gone or rendering a different chunk id.
+      while (anchor != null && !page.rows.some((row) => row.id === anchor)
+        && page.has_more && page.next_before != null && page.next_before > anchor) {
+        const before = page.next_before;
+        const older = await getHistoryWindow(taskId, { before, turns: 8, signal: controller.signal });
+        if (closed) return;
+        if (!Array.isArray(older.rows) || !older.rows.length
+          || older.next_before != null && older.next_before >= before) break;
+        const known = new Set(page.rows.map((row) => row.id));
+        page = { ...page, rows: [...older.rows.filter((row) => !known.has(row.id)), ...page.rows],
+          oldest_id: older.oldest_id, next_before: older.next_before, has_more: older.has_more,
+          capped: page.capped || older.capped };
+      }
       if (anchor != null && !page.rows.some((row) => row.id === anchor)) {
         void jumpToLatest().catch(fallback);
         return;
