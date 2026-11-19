@@ -27,22 +27,26 @@ async function mount(client, initialAccess, taskId = "t1") {
 }
 const event = (type, detail) => act(async () => window.dispatchEvent(new CustomEvent(type, { detail })));
 
-test("initial session and same-user refresh preserve the pending owner detail decision", async () => {
-  setCacheUser(null);
-  const client = new TaskAccessMock();
-  client.getAccess = async () => { throw new TypeError("access endpoint unavailable"); };
-  const view = await mount(client);
-  try {
-    const receive = view.state.captureDetail();
-    await event("oceanleo:auth-state", { event: "INITIAL_SESSION", userId: "owner-a" });
-    await act(async () => receive("t1", ownerAccess()));
-    assert.equal(view.state.access?.role, "owner");
-    await event("oceanleo:auth-state", { event: "TOKEN_REFRESHED", userId: "owner-a" });
-    await event("oceanleo:auth-state", { event: "SIGNED_IN", userId: "owner-a" });
-    assert.equal(view.state.access?.can_manage, true);
-    assert.equal(view.state.error, false);
-  } finally { await view.close(); setCacheUser(null); }
-});
+for (const initialEvent of ["INITIAL_SESSION", "SIGNED_IN"]) {
+  test(`${initialEvent} bootstrap and same-user refresh preserve the pending owner detail decision`, async () => {
+    setCacheUser(null);
+    const client = new TaskAccessMock();
+    client.getAccess = async () => { throw new TypeError("access endpoint unavailable"); };
+    const view = await mount(client);
+    try {
+      const receive = view.state.captureDetail();
+      await event("oceanleo:auth-state", { event: initialEvent, userId: "owner-a" });
+      // Real browser recovery can publish SIGNED_IN before INITIAL_SESSION.
+      await event("oceanleo:auth-state", { event: "INITIAL_SESSION", userId: "owner-a" });
+      await act(async () => receive("t1", ownerAccess()));
+      assert.equal(view.state.access?.role, "owner");
+      await event("oceanleo:auth-state", { event: "TOKEN_REFRESHED", userId: "owner-a" });
+      await event("oceanleo:auth-state", { event: "SIGNED_IN", userId: "owner-a" });
+      assert.equal(view.state.access?.can_manage, true);
+      assert.equal(view.state.error, false);
+    } finally { await view.close(); setCacheUser(null); }
+  });
+}
 
 test("account switches and sign-out still invalidate captured detail and cached rights", async () => {
   setCacheUser("owner-a");

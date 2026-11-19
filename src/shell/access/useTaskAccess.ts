@@ -22,6 +22,7 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     ...empty(taskId ?? ""), access: isTaskAccess(initialAccess) ? initialAccess : null,
   }));
   const revision = useRef(0);
+  const scope = useRef({ taskId, client });
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   const detailRef = useRef<(id: string, access: unknown) => void>(() => {});
   const refresh = useCallback(() => refreshRef.current(), []);
@@ -33,7 +34,11 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     };
   }, []);
   useEffect(() => {
-    ++revision.current;
+    // Effect replay keeps the pending detail; a different task/client cannot.
+    if (scope.current.taskId !== taskId || scope.current.client !== client) {
+      ++revision.current;
+      scope.current = { taskId, client };
+    }
     if (!taskId) { setSnapshot(empty("")); return; }
     let live = true;
     let active = false;
@@ -117,8 +122,9 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
         const nextUserId = detail?.userId || null;
         // Session hydration/renewal is not an account change. Invalidating the
         // captured detail here would leave a hard load waiting on /access alone.
+        // Supabase can emit SIGNED_IN before INITIAL_SESSION during recovery.
         const sameUser = nextUserId && (nextUserId === userId || userId === undefined &&
-          (detail?.event === "INITIAL_SESSION" || detail?.event === "TOKEN_REFRESHED"));
+          (detail?.event === "SIGNED_IN" || detail?.event === "INITIAL_SESSION" || detail?.event === "TOKEN_REFRESHED"));
         userId = nextUserId;
         if (sameUser) {
           void readIdentity();
@@ -145,7 +151,6 @@ export function useTaskAccess(taskId: string | null | undefined, client: TaskAcc
     document.addEventListener("visibilitychange", revalidate);
     return () => {
       live = false;
-      ++revision.current;
       cancelRead(); clearInterval(timer);
       refreshRef.current = async () => {};
       detailRef.current = () => {};

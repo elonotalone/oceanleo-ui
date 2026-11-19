@@ -12,7 +12,7 @@ const changed = () => act(async () => {
 
 for (const pane of ["cloud", "acp"]) {
   for (const strictMode of [false, true]) {
-    test(`${pane}: hard-load detail survives session hydration with every access request failing (StrictMode ${strictMode})`, async () => {
+    test(`${pane}: hard-load detail survives SIGNED_IN before INITIAL_SESSION with every access request failing (StrictMode ${strictMode})`, async () => {
       setCacheUser(null);
       const client = new TaskAccessMock();
       client.getAccess = async () => { throw new TypeError("access endpoint unavailable"); };
@@ -26,6 +26,7 @@ for (const pane of ["cloud", "acp"]) {
       });
       try {
         await act(async () => {
+          window.dispatchEvent(new CustomEvent("oceanleo:auth-state", { detail: { event: "SIGNED_IN", userId: "owner-a" } }));
           window.dispatchEvent(new CustomEvent("oceanleo:auth-state", { detail: { event: "INITIAL_SESSION", userId: "owner-a" } }));
         });
         await act(async () => complete({ ok: true, data: detail }));
