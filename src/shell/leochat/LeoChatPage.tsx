@@ -59,7 +59,7 @@ function useWide(): boolean {
   return useSyncExternalStore(subscribeWide, () => window.matchMedia("(min-width: 768px)").matches, () => true);
 }
 
-const NO_CHAT_TABS = ["leochat"] as const;
+const NO_CHAT_TABS = ["bay", "leochat"] as const;
 
 export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
   const tt = useUI();
@@ -88,6 +88,16 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
     if (pageState === "ready") consumeCallDeepLink();
   }, [pageState]);
 
+  const sidebarToggle = (
+    <button type="button" onClick={() => workspace.setRightOpen((open) => !open)}
+      aria-label={tt(workspace.rightOpen ? "收起" : "展开")}
+      aria-expanded={workspace.rightOpen}
+      title={tt(workspace.rightOpen ? "收起" : "展开")}
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100">
+      <IconRightPanelToggle className="h-4 w-4" />
+    </button>
+  );
+
   const listHeader = (
     <div data-leochat-list-header className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-stone-200 px-3 py-2">
       <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
@@ -97,12 +107,7 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
           onSelect={(view) => hostState().setView(view)}
           badges={{ inbox: unread.total, people: unread.requests }}
         />
-        <button type="button" onClick={() => workspace.setRightOpen((open) => !open)}
-          aria-label={tt(workspace.rightOpen ? "收起" : "展开")}
-          title={tt(workspace.rightOpen ? "收起" : "展开")}
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100">
-          <IconRightPanelToggle className="h-4 w-4" />
-        </button>
+        {sidebarToggle}
       </div>
     </div>
   );
@@ -112,7 +117,7 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
       <TaskWorkspaceShell
         state={workspace}
         tabs={[]}
-        canvas={{ siteId: siteKey, showTemplate: siteKey !== "oceanleo", showLeoChat: false }}
+        canvas={{ siteId: siteKey, showTemplate: siteKey !== "oceanleo", showLeoChat: false, showBay: false, showMyTasks: true }}
         ignoredWorkspaceTabs={NO_CHAT_TABS}
         fillParent
         soloMaxWidth={null}
@@ -123,7 +128,10 @@ export function LeoChatPage({ siteKey }: LeoChatPageProps): ReactElement {
           <LeoChatBody wide={wide} listHeader={listHeader} />
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
-            <h1 className="px-3 py-2 text-[15px] font-semibold text-stone-900">LeoChat</h1>
+            <div className="flex items-center justify-between px-3 py-2">
+              <h1 className="text-[15px] font-semibold text-stone-900">LeoChat</h1>
+              {sidebarToggle}
+            </div>
             {pageState === "pending" ? <RoutePageSkeleton variant="list" label={tt("正在加载…")} /> : <BaySignInPrompt text={tt("登录后查看聊天和联系人")} />}
           </div>
         )}

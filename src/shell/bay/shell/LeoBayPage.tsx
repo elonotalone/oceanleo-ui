@@ -2,7 +2,7 @@
 
 // LeoBay：各站 `/bay` 这一张页。页头标题 + 「我的」「发布」，下面按种类逛（人工服务 / 现成文件 / 网站与软件服务 / 课程 / 其他，出售与求购两边）。
 // LeoChat 不在这张页上：和卖家说话时打开的是左下角那个小窗。
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactElement, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import {
   COLLECTION_ACTION_BTN_GHOST,
@@ -37,6 +37,8 @@ import {
   type BayTarget,
 } from "./bay-state";
 import { BayDetailPane, bayDetailTitleKey } from "./BayDetail";
+import { IconRightPanelToggle } from "../../SplitWorkspace";
+import { TaskWorkspaceShell, useTaskWorkspaceState } from "../../TaskWorkspaceShell";
 
 import {
   BayFeed,
@@ -73,9 +75,9 @@ function useAvailability(): Availability {
   return useSyncExternalStore(subscribeNever, (): Availability => (bayEnabledHere() ? "on" : "off"), (): Availability => "pending");
 }
 
-const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-[calc(100dvh-1px)]`;
+const FRAME_CLASS = `${APP_PAGE_FRAME_CLASS} h-full`;
 /** 有白板的详情：左右露出页底渐变，上下贴齐，不再垫 pt-3 / pb-5。页框、滚动区、返回行都不铺白，圆角白板才看得见。 */
-const PAPER_FRAME_CLASS = "mx-auto flex h-[calc(100dvh-1px)] min-h-0 w-full max-w-6xl flex-col px-4";
+const PAPER_FRAME_CLASS = "mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col px-4";
 const PAPER_HEADER_CLASS = "sticky top-0 z-0 flex min-h-14 shrink-0 items-center justify-between gap-3";
 const BTN_GHOST = COLLECTION_ACTION_BTN_GHOST;
 /** 详情页「返回」：无描边，左缘不留键内边距，贴着页框左边。 */
@@ -92,6 +94,7 @@ function Hero({
   favoritesOnly,
   onFavoritesOnly,
   onLicenses,
+  sidebarToggle,
 }: {
   filter: BayFeedFilter;
   search: { text: string; change: (value: string) => void; commit: (value: string) => void };
@@ -100,6 +103,7 @@ function Hero({
   favoritesOnly: boolean;
   onFavoritesOnly: (value: boolean) => void;
   onLicenses?: () => void;
+  sidebarToggle: ReactNode;
 }) {
   const tt = useUI();
   const viewOptions: CollectionViewOption[] = [
@@ -139,6 +143,7 @@ function Hero({
               {tt("发布")}
             </button>
           </div>
+          {sidebarToggle}
         </div>
       </header>
     </section>
@@ -146,7 +151,7 @@ function Hero({
 }
 
 /** 浏览目录始终挂载，详情打开时卸下页头两行，返回时恢复原滚动位置。 */
-function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string }) {
+function Browse({ filter, accent, visible, siteKey, sidebarToggle }: { filter: BayFeedFilter; accent: string; visible: boolean; siteKey: string; sidebarToggle: ReactNode }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const savedTop = useRef(0);
   const visibleRef = useRef(visible);
@@ -202,6 +207,7 @@ function Browse({ filter, accent, visible, siteKey }: { filter: BayFeedFilter; a
           data-bay-listing-view={view}
         >
           {visible ? <Hero
+            sidebarToggle={sidebarToggle}
             filter={filter}
             search={search}
             view={view}
@@ -286,7 +292,7 @@ const PAPER_DETAILS: ReadonlySet<BayTarget["kind"]> = new Set<BayTarget["kind"]>
 ]);
 
 /** 点开的那一条：一行「返回 + 标题」。编辑画布跟页一起滚，各个输入卡片不再包在整页白板里。 */
-function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed" }>; siteKey: string }) {
+function Detail({ target, siteKey, sidebarToggle }: { target: Exclude<BayTarget, { kind: "feed" }>; siteKey: string; sidebarToggle: ReactNode }) {
   const tt = useUI();
   const title = bayDetailTitleKey(target);
   const form = FORM_DETAILS.has(target.kind);
@@ -312,6 +318,7 @@ function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed"
         </button>
         <h2 className={`min-w-0 truncate ${APP_PAGE_TITLE_CLASS}`}>{title ? tt(title) : null}</h2>
       </div>
+      {sidebarToggle}
     </header>
   );
   if (paper) {
@@ -334,7 +341,40 @@ function Detail({ target, siteKey }: { target: Exclude<BayTarget, { kind: "feed"
   );
 }
 
+const NO_BAY_TABS = ["bay"] as const;
+
 export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): ReactElement {
+  const tt = useUI();
+  const workspace = useTaskWorkspaceState({ siteKey });
+  const sidebarToggle = (
+    <button type="button" data-bay-sidebar-toggle onClick={() => workspace.setRightOpen((open) => !open)}
+      aria-label={tt(workspace.rightOpen ? "收起" : "展开")}
+      aria-expanded={workspace.rightOpen}
+      title={tt(workspace.rightOpen ? "收起" : "展开")}
+      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-stone-500 hover:bg-stone-100">
+      <IconRightPanelToggle className="h-4 w-4" />
+    </button>
+  );
+  return (
+    <div className="h-[calc(100dvh-1px)] w-full min-w-0" data-bay-workspace>
+      <TaskWorkspaceShell
+        state={workspace}
+        tabs={[]}
+        canvas={{ siteId: siteKey, accent, showTemplate: siteKey !== "oceanleo", showBay: false, showMyTasks: true }}
+        ignoredWorkspaceTabs={NO_BAY_TABS}
+        fillParent
+        soloMaxWidth={null}
+        defaultRatio={0.6}
+        storageKey="oceanleo_bay_split"
+        library={{ open: workspace.rightOpen, onOpenChange: workspace.setRightOpen, hideToggle: true }}
+        lazyRight
+        left={<LeoBayPageBody siteKey={siteKey} accent={accent} sidebarToggle={sidebarToggle} />}
+      />
+    </div>
+  );
+}
+
+function LeoBayPageBody({ siteKey, accent, sidebarToggle }: { siteKey: string; accent: string; sidebarToggle: ReactNode }): ReactElement {
   const availability = useAvailability();
   const filter = useBayFilter();
   const { current } = useBayState();
@@ -355,6 +395,7 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   if (availability === "pending") {
     return (
       <div className={FRAME_CLASS} data-bay-page="pending">
+        <header className={APP_PAGE_HEADER_ROW_CLASS}><h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1>{sidebarToggle}</header>
         <RoutePageSkeleton variant="grid" />
       </div>
     );
@@ -363,6 +404,7 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   if (availability === "off") {
     return (
       <div className={FRAME_CLASS} data-bay-page="materials-only">
+        <header className={APP_PAGE_HEADER_ROW_CLASS}><h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1>{sidebarToggle}</header>
         <div className={assetRoute.target ? "hidden" : "flex min-h-0 flex-1 flex-col overflow-y-auto"}>
           <BayAssetLibrary filter={filter} siteKey={storeSiteKey || siteKey} accent={accent} detailInPage />
         </div>
@@ -374,9 +416,10 @@ export function LeoBayPage({ siteKey, accent = "#0ea5e9" }: LeoBayPageProps): Re
   return (
     <div className={paperPage ? PAPER_FRAME_CLASS : FRAME_CLASS} data-bay-page={browsing ? "browse" : "detail"}>
       <div className={browsing ? "flex min-h-0 flex-1 flex-col" : "hidden"} data-bay-page-browse>
-        <Browse filter={filter} accent={accent} visible={browsing} siteKey={storeSiteKey || siteKey} />
+        <Browse filter={filter} accent={accent} visible={browsing} siteKey={storeSiteKey || siteKey} sidebarToggle={sidebarToggle} />
       </div>
-      {current.kind === "feed" ? (assetRoute.target ? <BayArtifactDeepLink target={assetRoute.target} onBack={assetRoute.close} accent={accent} siteKey={storeSiteKey || siteKey} /> : null) : <Detail target={current} siteKey={storeSiteKey || siteKey} />}
+      {assetRoute.target && current.kind === "feed" ? <header className={APP_PAGE_HEADER_ROW_CLASS}><h1 className={APP_PAGE_TITLE_CLASS}>LeoBay</h1>{sidebarToggle}</header> : null}
+      {current.kind === "feed" ? (assetRoute.target ? <BayArtifactDeepLink target={assetRoute.target} onBack={assetRoute.close} accent={accent} siteKey={storeSiteKey || siteKey} /> : null) : <Detail target={current} siteKey={storeSiteKey || siteKey} sidebarToggle={sidebarToggle} />}
       <LibraryWorkPickerHost />
       <BayAuthHost />
     </div>

@@ -16,14 +16,14 @@ export type WorkspaceSlotId =
 export type WorkspacePanelId = "bay" | "leochat";
 
 /** 右侧栏此刻显示的是什么：卡片首页、某个槽位，或上面那两块之一。 */
-export type WorkspaceManagedPanelId = "devices" | "projects" | "settings";
+export type WorkspaceManagedPanelId = "devices" | "projects" | "settings" | "tasks";
 export type WorkspaceViewId = "home" | WorkspaceSlotId | WorkspacePanelId | WorkspaceManagedPanelId;
 
 /**
  * 一条 action 能指向哪里：可见槽位及 materials 兼容输入，加上 `bay`（agent 的「找真人」工具让右侧栏显示相关服务）。
  * LeoChat 没有 agent 入口，所以不在这里。
  */
-export type WorkspaceActionTab = WorkspaceSlotId | "bay" | WorkspaceManagedPanelId | "leochat";
+export type WorkspaceActionTab = WorkspaceSlotId | "bay" | Exclude<WorkspaceManagedPanelId, "tasks"> | "leochat";
 
 /**
  * What the receiver should do with `itemId` once it resolves it.

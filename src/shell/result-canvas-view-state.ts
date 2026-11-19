@@ -34,7 +34,7 @@ export interface WorkspaceViewStateInput {
   panelAction: WorkspaceActionEnvelope | null;
   select: (slot: WorkspaceSlotId) => void;
   /** Product availability; both China and overseas support LeoBay and LeoChat. */
-  panels: { bay: boolean; leochat: boolean; devices?: boolean; projects?: boolean; settings?: boolean };
+  panels: { bay: boolean; leochat: boolean; devices?: boolean; projects?: boolean; settings?: boolean; tasks?: boolean };
   /** 回到卡片时调：宿主把自己的受控值改成 `"home"`，之后它再切栏位才算一次变化。 */
   onHome?: () => void;
 }
@@ -91,10 +91,10 @@ export function useWorkspaceViewState(
 
   // 停在某一块上时它变得不可用了（功能不可用）：回到卡片。
   useEffect(() => {
-    if ((layer === "bay" && !bayOn) || (layer === "leochat" && !chatOn)) {
+    if ((layer === "bay" && !bayOn) || (layer === "leochat" && !chatOn) || (layer === "tasks" && !panels.tasks)) {
       setLayer("home");
     }
-  }, [bayOn, chatOn, layer, setLayer]);
+  }, [bayOn, chatOn, layer, panels.tasks, setLayer]);
 
   // `select` 自己会把层换成槽位。
   const openSlot = useCallback(
@@ -106,7 +106,7 @@ export function useWorkspaceViewState(
 
   const openPanel = useCallback(
     (panel: WorkspacePanelId | WorkspaceManagedPanelId) => {
-      const enabled = panel === "bay" ? bayOn : panel === "leochat" ? chatOn : panels[panel] !== false;
+      const enabled = panel === "bay" ? bayOn : panel === "leochat" ? chatOn : panel === "tasks" ? panels.tasks === true : panels[panel] !== false;
       if (!enabled) return;
       if (panel === "bay") setBayRequest(null);
       setLayer(panel);

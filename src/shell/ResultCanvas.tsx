@@ -110,6 +110,7 @@ export { CanvasEmpty, CanvasSubTabs } from "./result-canvas-view";
 
 // Keep the cards light: Devices/Settings pull substantial account and browser
 // code, so load those panels only after the user opens the page.
+const MyTasksWorkspacePanel = lazy(() => import("./workspace-panels/MyTasksWorkspacePanel").then((module) => ({ default: module.MyTasksWorkspacePanel })));
 const DevicesWorkspacePanel = lazy(() => import("./workspace-panels/DevicesWorkspacePanel").then((module) => ({ default: module.DevicesWorkspacePanel })));
 const ProjectsWorkspacePanel = lazy(() => import("./workspace-panels/ProjectsWorkspacePanel").then((module) => ({ default: module.ProjectsWorkspacePanel })));
 const SettingsWorkspacePanel = lazy(() => import("./workspace-panels/SettingsWorkspacePanel").then((module) => ({ default: module.SettingsWorkspacePanel })));
@@ -137,11 +138,15 @@ export interface TaskWorkspaceOpenState {
   actionContext?: AssetActionContext;
 }
 
-const NO_LEOCHAT_ACTIONS = ["leochat"] as const;
+const NO_PAGE_ACTIONS = { bay: ["bay"], leochat: ["leochat"], both: ["bay", "leochat"] } as const;
 
 export interface ResultCanvasProps {
   /** The LeoChat page already owns chat and must not offer it again. */
   showLeoChat?: boolean;
+  /** Page hosts can omit their own destination from the sidebar. */
+  showBay?: boolean;
+  /** Browse existing tasks and start at the home composer without creating a row. */
+  showMyTasks?: boolean;
   /**
    * Compatibility input. Existing pages can keep declaring their domain tabs;
    * legacy material tabs open the LeoBay material view.
@@ -253,6 +258,8 @@ export function ResultCanvas({
   action: externalAction,
   showTemplate = true,
   showLeoChat = true,
+  showBay = true,
+  showMyTasks = false,
   taskId,
   siteId = "",
   leoChatRequestNonce = null,
@@ -562,7 +569,7 @@ export function ResultCanvas({
     showTemplate,
     focusNonce,
     externalAction: externalAction || legacyLocationAction,
-    ignoredTabs: showLeoChat ? undefined : NO_LEOCHAT_ACTIONS,
+    ignoredTabs: !showBay && !showLeoChat ? NO_PAGE_ACTIONS.both : !showBay ? NO_PAGE_ACTIONS.bay : !showLeoChat ? NO_PAGE_ACTIONS.leochat : undefined,
     runtimeHydration,
     slotForId,
     callerIdForSlot,
@@ -570,7 +577,7 @@ export function ResultCanvas({
   });
   const bayOn = useBayEnabled();
   const imOn = useImEnabled();
-  const panels = useMemo(() => ({ bay: bayOn, leochat: imOn && showLeoChat, devices: true, projects: true, settings: true }), [bayOn, imOn, showLeoChat]);
+  const panels = useMemo(() => ({ bay: bayOn && showBay, leochat: imOn && showLeoChat, tasks: showMyTasks, devices: true, projects: true, settings: true }), [bayOn, imOn, showBay, showLeoChat, showMyTasks]);
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const { view, openSlot, openPanel, goHome, bayRequest, chatRequest, openChat } = useWorkspaceViewState({
@@ -695,7 +702,7 @@ export function ResultCanvas({
   useEffect(() => { if (view === "bay") setBayVisited(true); }, [view]);
   useEffect(() => { if (view === "leochat") setChatVisited(true); }, [view]);
   useEffect(() => { if (view === "projects") setProjectsVisited(true); }, [view]);
-  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : tt(WORKSPACE_SLOT_LABELS[view]);
+  const viewTitle = view === "home" ? "" : view === "bay" ? "LeoBay" : view === "leochat" ? "LeoChat" : view === "devices" ? tt("Devices") : view === "projects" ? tt("项目配置") : view === "settings" ? tt("Settings") : view === "tasks" ? tt("我的任务") : tt(WORKSPACE_SLOT_LABELS[view]);
 
   const selectedTemplateTab = workspaceSurfacePrimaryTab(
     surfaceModel,
@@ -726,7 +733,8 @@ export function ResultCanvas({
   );
   const managedPageAction = pageAction?.action && "version" in pageAction.action && pageAction.action.version === 2 ? pageAction.action : null;
   const RegisteredProjectsPanel = getWorkspacePanel("projects");
-  const managedContent: Record<"devices" | "projects" | "settings", ReactNode> = {
+  const managedContent: Record<"devices" | "projects" | "settings" | "tasks", ReactNode> = {
+    tasks: <MyTasksWorkspacePanel />,
     devices: <DevicesWorkspacePanel section={managedPageAction?.tab === "devices" ? managedPageAction.section : undefined} deviceId={managedPageAction?.deviceId} taskId={effectiveTaskId} />,
     projects: RegisteredProjectsPanel ? <RegisteredProjectsPanel taskId={effectiveTaskId}
       projectId={projectRequest?.action.projectId} requestNonce={projectRequest?.nonce}
@@ -1022,7 +1030,7 @@ export function ResultCanvas({
             {managedContent.projects}
           </div>
         ) : null}
-        {(view === "devices" || view === "settings") ? (
+        {(view === "devices" || view === "settings" || view === "tasks") ? (
           <div data-workspace-managed-panel={view} className="h-full min-h-0 overflow-auto">
             {managedContent[view]}
           </div>
