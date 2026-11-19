@@ -76,9 +76,9 @@ export class WebsiteTierSampleError extends Error {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(detail.project_id)) this.project_id = detail.project_id;
   }
 }
-async function tierRequest(suffix: string, init: RequestInit = {}, sample = false): Promise<unknown> {
+async function tierRequest(path: string, init: RequestInit = {}, sample = false): Promise<unknown> {
   const token = await accessToken();
-  const response = await fetch(gatewayBase() + "/v1/website-projects" + suffix, {
+  const response = await fetch(gatewayBase() + path, {
     ...init, credentials: "include", cache: "no-store",
     headers: { Accept: "application/json", ...(init.body ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: "Bearer " + token } : {}) },
@@ -133,11 +133,11 @@ export type WebsiteConnectorMutation = WebsiteConnectorsSnapshot & {
 
 export const websiteConnectorsApi = {
   tiers: async (id?: string, signal?: AbortSignal) => {
-    const body = await tierRequest("/presets/tiers" + (id ? "?" + new URLSearchParams({ project_id: id }) : ""), { signal }) as { presets?: WebsiteConnectorPreset[] } | null;
+    const body = await tierRequest("/v1/website-projects/presets/tiers" + (id ? "?" + new URLSearchParams({ project_id: id }) : ""), { signal }) as { presets?: WebsiteConnectorPreset[] } | null;
     return checkedPresets(body?.presets);
   },
   createSample: async (tierId: string, locale: "en" | "zh", signal?: AbortSignal): Promise<WebsiteTierSample> => {
-    const body = await tierRequest("/from-tier/" + encodeURIComponent(tierId), { method: "POST", body: JSON.stringify({ locale }), signal }, true) as WebsiteTierSample | null;
+    const body = await tierRequest("/v1/website-projects/from-tier/" + encodeURIComponent(tierId), { method: "POST", body: JSON.stringify({ locale }), signal }, true) as WebsiteTierSample | null;
     if (!body || typeof body.project?.project_id !== "string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.project.project_id)) throw new WebsiteTierSampleError(502);
     return body;
   },

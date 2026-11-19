@@ -152,6 +152,8 @@ export const EDITOR_GATEWAY_ROUTES: readonly EditorGatewayRoute[] = [
   read("/v1/bay/assets/{asset_id}/open", "material-open", live),
   // Works use the same base-service panels as the website. Enumerate each verb;
   // a prefix allowlist here would also grant unrelated device/account actions.
+  read("/v1/website-projects/presets/tiers", "work-tier-catalog", live),
+  post("/v1/website-projects/from-tier/{tier_id}", "work-tier-sample", { retry: "never-blind" }),
   ...["", "/capabilities", "/access", "/create-flow/history", "/source/files", "/source/file",
     "/database/usage", "/database/schema", "/deployments", "/storage/binding", "/storage/buckets",
     "/storage/objects", "/domains", "/settings/secrets", "/settings/usage", "/analytics/summary",

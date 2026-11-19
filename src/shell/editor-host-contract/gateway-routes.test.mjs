@@ -32,6 +32,17 @@ test('editor helpers, dynamic editor imports and shared providers only use decla
   assert.ok(!requests.some(r => /not-a-request/.test(r.path)), 'comments and ordinary strings are not requests');
   const actual = requests.filter(r => !r.file.endsWith('__scan_fixture__.tsx'));
   assert.ok(actual.length > 30);
+  for (const [method, path, observed, retry] of [
+    ['GET', '/v1/website-projects/presets/tiers', '/v1/website-projects/presets/tiers', 'safe'],
+    ['POST', '/v1/website-projects/from-tier/{tier_id}', '/v1/website-projects/from-tier/*', 'never-blind'],
+  ]) {
+    assert.ok(actual.some(r => r.method === method && r.path === observed), `scan the concrete tier request: ${method} ${observed}`);
+    const route = EDITOR_GATEWAY_ROUTES.find(r => r.method === method && r.path === path);
+    assert.ok(route, `register the exact tier route: ${method} ${path}`);
+    assert.equal(route.offline, 'online-only');
+    assert.equal(route.retry, retry);
+    assert.equal(EDITOR_GATEWAY_ROUTES.some(r => r.path === path && r.method !== method), false, 'tier routes grant only their declared verb');
+  }
   const missing = actual.filter(r => !matches(r));
   assert.equal(missing.length, 0, `Unlisted editor requests (${missing.length}):\n${missing.slice(0, 65).map(r => `${r.method} ${r.path} (${r.file}:${r.line})`).join('\n')}`);
   // Removing an actual route from the contract must turn coverage red.

@@ -222,7 +222,7 @@ const DEVICES_PAGE_SNAPSHOT = String.raw`<div class="mx-auto flex min-h-full w-f
 <h1 class="text-2xl font-semibold tracking-tight text-neutral-900">Devices</h1>
 <p class="mt-2 text-sm text-neutral-500">你的电脑与云电脑</p>
 </div>
-<button type="button" class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 transition hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45">
+<button type="button" class="inline-flex items-center justify-center gap-2 rounded-xl border border-neutral-200 bg-white px-3.5 py-2 text-sm font-medium text-neutral-800 transition duration-[var(--leo-dur-2)] hover:bg-neutral-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-45">
 <span aria-hidden="true">＋</span>添加设备</button>
 </header>
 <div class="mt-7 grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-3" data-device-grid="true" data-all-offline="true">

@@ -202,7 +202,7 @@ test("命中模板时 envelope 指名 artifact id 并带 intent=edit", () => {
     version: 1,
     tab: "mine",
     query: undefined,
-    category: "图片",
+    category: "图像",
     itemId: "art_0001",
     url: undefined,
     browserSessionId: undefined,
@@ -254,7 +254,7 @@ test("同一个 app 下多份模板各自指向自己的 artifact", () => {
   );
   const second = catalogTemplateOpenPlan(app, "tpl-2");
   assert.equal(second.action.itemId, "art_0002");
-  assert.equal(second.action.category, "网站");
+  assert.equal(second.action.category, "网站与应用");
 });
 
 // ── 未知 / 脏数据：可见退化，不白屏不抛错 ───────────────────────────────────

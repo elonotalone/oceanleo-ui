@@ -60,7 +60,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     notInAnyOrgApplyBelow: "You’re not in any team yet. After you get an invite link from an owner, apply below.",
 
     joinOrg: "Join a team",
-    capReached: "Cap reached",
+    capReached: "Limit reached",
     pasteInviteCode: "Paste the invite code the owner sent you. Opening an invite link fills this in automatically.",
     monthSpendOverCap: "This month / cap",
     statusOk: "OK",
@@ -381,7 +381,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     notInAnyOrgApplyBelow: "Todavía no pertenecés a ningun equipo. Cuando tengas un enlace de invitación de un responsable, pedí unirte abajo.",
 
     joinOrg: "Unirse a un equipo",
-    capReached: "Tope alcanzado",
+    capReached: "Límite alcanzado",
     pasteInviteCode: "Pegá el código de invitación que te mandó el responsable. Si abrís un enlace de invitación, se completa solo.",
     monthSpendOverCap: "Este mes / tope",
     statusOk: "OK",
@@ -916,7 +916,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     notInAnyOrgApplyBelow: "Henüz hiçbir ekibe üye değilsiniz. Bir sorumludan davet bağlantısı alınca aşağıdan katılma isteği gönderin.",
 
     joinOrg: "Bir ekibe katıl",
-    capReached: "Limit doldu",
+    capReached: "Sınıra ulaşıldı",
     pasteInviteCode: "Sorumlunun gönderdiği davet kodunu yapıştırın. Davet bağlantısını açınca otomatik dolar.",
     monthSpendOverCap: "Bu ay / limit",
     statusOk: "Normal",
@@ -1023,7 +1023,7 @@ export const ENTERPRISE_COPY_WESTERN: Record<
     notInAnyOrgApplyBelow: "Bạn chưa thuộc nhóm nào. Khi có liên kết mời từ người phụ trách, hãy xin tham gia bên dưới.",
 
     joinOrg: "Tham gia nhóm",
-    capReached: "Đã đạt hạn mức",
+    capReached: "Đã đạt giới hạn",
     pasteInviteCode: "Dán mã mời người phụ trách gửi cho bạn. Mở liên kết mời sẽ tự điền.",
     monthSpendOverCap: "Tháng này / hạn mức",
     statusOk: "Bình thường",

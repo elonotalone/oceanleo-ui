@@ -488,7 +488,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     notInAnyOrgApplyBelow: "คุณยังไม่ได้อยู่ในทีมใด เมื่อได้ลิงก์เชิญจากผู้รับผิดชอบ ให้สมัครด้านล่าง",
 
     joinOrg: "เข้าร่วมทีม",
-    capReached: "ถึงเพดานแล้ว",
+    capReached: "ถึงวงเงินแล้ว",
     pasteInviteCode: "วางรหัสเชิญที่ผู้รับผิดชอบส่งมา เปิดลิงก์เชิญแล้วจะกรอกให้อัตโนมัติ",
     monthSpendOverCap: "เดือนนี้ / เพดาน",
     statusOk: "ปกติ",
@@ -595,7 +595,7 @@ export const ENTERPRISE_COPY_EASTERN: Record<
     notInAnyOrgApplyBelow: "आप अभी किसी टीम में नहीं हैं। जिम्मेदार व्यक्ति का आमंत्रण लिंक मिलने पर नीचे अनुरोध करें।",
 
     joinOrg: "टीम में शामिल हों",
-    capReached: "सीमा पूरी",
+    capReached: "सीमा पूरी हो गई",
     pasteInviteCode: "जिम्मेदार व्यक्ति द्वारा भेजा आमंत्रण कोड चिपकाएँ। आमंत्रण लिंक खोलने पर अपने आप भर जाता है।",
     monthSpendOverCap: "इस महीने / सीमा",
     statusOk: "ठीक",
