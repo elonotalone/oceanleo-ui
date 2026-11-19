@@ -470,6 +470,8 @@ globalThis.__w4Page = pageState;
 const pageStateStub = dataModule(`
   const s = () => globalThis.__w4Page;
   export function bayBack(){}
+  export function requireBayLogin(){return true;}
+  export function useBaySignedIn(){return true;}
   export function bayEnabledHere(){ return s().enabled; }
   export function registerBayPage(){ return () => {}; }
   export function setBaySiteKey(){}

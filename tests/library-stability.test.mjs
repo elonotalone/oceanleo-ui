@@ -712,7 +712,7 @@ test("same-user 401 during token refresh keeps the loaded editor", async () => {
 test("category fallback alone cannot become a usable Library snapshot", async () => {
   await withLibrary(async (container) => {
     assert.equal(container.querySelectorAll("[data-library-item]").length, 0);
-    assert.match(container.querySelector("[data-empty-title]")?.textContent || "", /暂时|登录/);
+    assert.match(container.querySelector("[data-empty-title]")?.textContent || "", /正在加载|登录/);
   }, { failMine: true });
 });
 

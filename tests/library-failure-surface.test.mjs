@@ -748,7 +748,7 @@ async function openDetail(mounted, item) {
   assert.ok(heading, `详情不是「${item.title}」，货架上也没有这张卡`);
 }
 
-test("取当前版本失败时下载与收藏留在原地并说清原因，重试一次就回来", async () => {
+test("取当前版本失败时下载与收藏留在原地，自动恢复后可用", async () => {
   globalThis.__identityReads = [];
   globalThis.__identityResolutions = {};
   const durable = durableItem("Resolvable");
@@ -778,10 +778,9 @@ test("取当前版本失败时下载与收藏留在原地并说清原因，重�
     assert.match(banner, /连不上素材服务/);
 
     // 重试就地可用，不必刷新整页。
-    const retry = action(mounted.container, "重试");
-    assert.ok(retry, "失败时必须给一个就地重试的出口");
+    assert.equal(action(mounted.container, "重试"), undefined);
     globalThis.__identityResolutions[durable.artifactId] = durable;
-    await click(retry);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     await settle();
     assert.deepEqual(globalThis.__identityReads, [
       durable.artifactId,
@@ -966,7 +965,8 @@ test("只剩一张垫底封面时全屏也不许亮：那不是这份素材本�
 
     // 取回当前版本之后，屏幕上是这份素材本身了，全屏照常回来。
     globalThis.__identityResolutions[durable.artifactId] = durable;
-    await click(action(mounted.container, "重试"));
+    assert.equal(action(mounted.container, "重试"), undefined);
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     await settle();
     assert.ok(
       action(mounted.container, "全屏"),

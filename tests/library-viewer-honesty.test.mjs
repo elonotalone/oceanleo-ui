@@ -438,7 +438,8 @@ test("W3/4 脚本引导型走说明态：静态封面 + 产物性质 + 出口，
     const cover = mounted.container.querySelector("img");
     assert.ok(cover, "有静态封面就要用上");
     assert.equal(cover.getAttribute("src"), COVER_URL);
-    assert.match(text, /脚本/, "要说清这一件的性质");
+    assert.match(text, /正在打开网站页面/);
+    assert.equal(mounted.container.querySelector("button"), null);
     assert.match(text, /下载|编辑/, "要给出用户现在能做什么");
     // 说明是关于产物性质的，不是替产品的缺陷道歉。
     assert.doesNotMatch(text, /暂时|抱歉|制作得较早|敬请谅解/);
@@ -490,12 +491,9 @@ test("W3/5 拿不到可显示物走空状态：打包字节连取都不取，更
   });
   try {
     assert.equal(empty.container.querySelector("iframe"), null);
-    assert.match(empty.container.textContent, /没有可打开的文件/);
+    assert.match(empty.container.textContent, /正在打开网站页面/);
     assert.match(empty.container.textContent, /下载|编辑/);
-    assert.ok(
-      empty.container.querySelector("button"),
-      "空状态也要留一个重试入口",
-    );
+    assert.equal(empty.container.querySelector("button"), null);
     assertNoRawBytes(empty.container, "无本体");
   } finally {
     await empty.unmount();
@@ -590,7 +588,7 @@ test("W3/8 老条目判读失败时走空状态，不把未知字节塞进 frame
         `${label}：该取的字节还是要取，取不回来才落到空状态`,
       );
       const text = mounted.container.textContent;
-      assert.match(text, /没有登记文件类型|没能读回来核对/, `${label}：要说清是哪种情况`);
+      assert.match(text, /正在打开网站页面/, `${label}：未知字节仍处于加载恢复态`);
       assert.match(text, /下载|编辑/, `${label}：要给出用户现在能做什么`);
       assert.doesNotMatch(text, /暂时|抱歉|制作得较早|敬请谅解/);
       assertNoRawBytes(mounted.container, label);
@@ -617,7 +615,7 @@ test("W3/8 老条目判读失败时走空状态，不把未知字节塞进 frame
   }
 });
 
-test("W3/9 空状态那颗「重试」对老条目也真的重跑判读", async () => {
+test("W3/9 老条目自动重跑判读，恢复后才挂载真实页面", async () => {
   /**
    * 非 durable 条目拿到的 `rendition.retry` 是空动作（`ArtifactRendition.tsx:276`），
    * 而判读失败最常见的来路正是取字节这一步。查看器不自己重跑一次判读的话，
@@ -630,16 +628,15 @@ test("W3/9 空状态那颗「重试」对老条目也真的重跑判读", async 
   });
   try {
     assert.deepEqual(globalThis.__probeUrls, [PAGE_URL]);
-    const button = mounted.container.querySelector("button");
-    assert.ok(button, "空状态要留一个重试入口");
-    await act(async () => {
-      button.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
+    assert.equal(mounted.container.querySelector("button"), null);
+    globalThis.__probeBody = SELF_PAINTING_HTML;
+    await act(async () => window.dispatchEvent(new window.Event("online")));
     assert.deepEqual(
       globalThis.__probeUrls,
       [PAGE_URL, PAGE_URL],
-      "重试没有重新取字节：这颗按钮对老条目是空的",
+      "自动恢复必须重新取同一份来源字节",
     );
+    assert.equal(mounted.container.querySelector("iframe").getAttribute("src"), PAGE_URL);
   } finally {
     await mounted.unmount();
   }

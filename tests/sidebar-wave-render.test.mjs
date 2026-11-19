@@ -60,6 +60,7 @@ const client = dataModule(`
 `);
 const myLibraryUrl = await compileModule('src/shell/MyLibrary.tsx', {
  '../i18n/ui/useUI': ui,
+ '../lib/org-api': dataModule(`export * from ${JSON.stringify(new URL('../src/lib/org-api.ts',import.meta.url).href)};export async function listInheritedOrgAssets(){return {available:true,ownerUserId:'test-owner',assets:[],hasMore:false};}`),
  '../lib/auth/client': auth,
  '../lib/auth/config': dataModule(`export function isLeoDevPreviewHost(){return false;} export const GATEWAY_BASE=''; export function gatewayBase(){return '';}`),
  './artifact-client': client,

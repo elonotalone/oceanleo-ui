@@ -928,7 +928,7 @@ test("撤回失败：留在确认面板里说明，这一行不消失，可以�
   await view.unmount();
 });
 
-test("空态一句话说明；读取失败给重试；未登录（401）说登录后查看", async () => {
+test("空态一句话说明；读取失败自动恢复；未登录（401）说登录后查看", async () => {
   resetGrants([]);
   let view = await mount(h(ConnectedAppsPage));
   const empty = view.host.querySelector("[data-bay-login-grants-empty]");
@@ -945,12 +945,13 @@ test("空态一句话说明；读取失败给重试；未登录（401）说登�
     return { items: grantsState.items.map((item) => ({ ...item })) };
   };
   view = await mount(h(ConnectedAppsPage));
-  const error = view.host.querySelector("[data-bay-login-grants-error]");
+  const error = view.host.querySelector('[data-bay-recovery="temporary"][aria-busy="true"]');
   assert.ok(error);
-  assert.match(error.textContent, /授权列表没读出来，请稍后点「重试」。/);
+  assert.equal(error.querySelector("button"), null);
   assert.equal(error.textContent.includes("boom"), false, "不把服务端原文丢给用户");
   failing = false;
-  await view.click(error.querySelector("button"));
+  Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+  await act(async () => window.dispatchEvent(new window.Event("online")));
   assert.equal(view.host.querySelectorAll("[data-bay-login-grant]").length, 2, "重试后读到列表");
   await view.unmount();
 
@@ -959,7 +960,8 @@ test("空态一句话说明；读取失败给重试；未登录（401）说登�
     throw Object.assign(new Error("unauthorized"), { status: 401 });
   };
   view = await mount(h(ConnectedAppsPage));
-  assert.match(view.host.textContent, /登录后查看你授权过的应用/);
+  assert.match(view.host.textContent, /你没有权限查看这项内容/);
+  assert.equal(view.host.querySelector('[data-bay-recovery="denied"], [data-auto-recovery="denied"]').getAttribute("aria-busy"), "false");
   await view.unmount();
 });
 
