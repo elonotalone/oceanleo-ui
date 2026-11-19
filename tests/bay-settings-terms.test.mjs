@@ -283,7 +283,7 @@ test("非中文页面：弹窗自己按 <html lang> 加载词典", async () => {
   await settleClosed();
 });
 
-test("条款取不到：弹窗给「重试」，没有「同意」按钮", async () => {
+test("条款取不到：弹窗自动恢复，没有「同意」按钮", async () => {
   bench({
     "GET /v1/talent/terms/status": { current: null, acceptance: null, accepted: false },
     "GET /v1/talent/terms/current": { __status: 503, message: "条款服务暂时不可用" },
@@ -291,8 +291,8 @@ test("条款取不到：弹窗给「重试」，没有「同意」按钮", async
   const pending = flow.ensureBayTerms("buyer");
   await until(dialogOf, "弹窗出现");
   assert.equal(document.querySelector("[data-bay-terms-accept]"), null);
-  assert.ok(document.querySelector("[data-bay-terms-reload]"));
-  assert.match(document.body.textContent, /条款服务暂时不可用/);
+  assert.equal(document.querySelector("[data-bay-terms-reload]"), null);
+  assert.ok(document.querySelector('[data-bay-recovery="temporary"]'));
   await click("[data-bay-terms-cancel]");
   assert.equal(await pending, false);
   await settleClosed();

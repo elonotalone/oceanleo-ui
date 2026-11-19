@@ -25,6 +25,7 @@ const httpStub = dataModule(`
 const stateStub = dataModule(`
   export function openBay(){}
   export function requireBayLogin(){ return true; }
+  export function useBaySignedIn(){ return false; }
   export function bayBack(){}
 `);
 const authStub = dataModule(`export async function getUserId(){ return null; } export async function accessToken(){ return null; } export function cachedAccessToken(){ return null; } export const AUTH_STATE_EVENT = "oceanleo:auth-state";`);

@@ -375,14 +375,14 @@ test("我已报过价：显示我的报价与状态；等回复时能撤回；�
   await closed.unmount();
 });
 
-test("需求不存在：说一句，不报错；读失败：给重试", async () => {
+test("需求不存在：说一句，不报错；读失败：自动恢复", async () => {
   reset();
   globalThis.__bayHttpRespond = (method, path) => {
     if (path === "/v1/talent/categories") return CATEGORIES;
     throw new http.BayApiError("需求不存在或已下架", 404);
   };
   const view = await mount(React.createElement(DemandPane, paneProps("design")));
-  assert.match(view.host.textContent, /这条需求不存在或已下架/);
+  assert.match(view.host.textContent, /这项内容不存在或已下架/);
   assert.equal(view.host.querySelector("[data-bay-demand-summary]"), null);
   await view.unmount();
 
@@ -392,8 +392,8 @@ test("需求不存在：说一句，不报错；读失败：给重试", async ()
     throw new Error("网关暂时不可用");
   };
   const failed = await mount(React.createElement(DemandPane, paneProps("design")));
-  assert.match(failed.host.textContent, /网关暂时不可用/);
-  assert.match(failed.host.textContent, /重试/);
+  assert.ok(failed.host.querySelector('[data-bay-recovery="temporary"]'));
+  assert.doesNotMatch(failed.host.textContent, /重试/);
   await failed.unmount();
 });
 
