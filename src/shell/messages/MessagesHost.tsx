@@ -256,20 +256,19 @@ function MessagesOverlay() {
         conversationId={state.conversationId}
         layout={state.layout}
         onBack={() => host.showConversation(null)}
+        active={!infoOpen}
         onOpenInfo={() => setInfoOpen(true)}
         highlightSeq={state.highlightSeq}
         onUnavailable={() => host.showConversation(null)}
       />
     );
-    detail =
-      infoOpen && !talent ? (
-        <div className="flex min-h-0 flex-1">
-          {state.layout === "full" ? <div className="flex min-w-0 flex-1 flex-col">{conversation}</div> : null}
-          <div
-            className={`flex min-h-0 flex-col ${
-              state.layout === "full" ? "w-[320px] shrink-0 border-l border-black/10 dark:border-white/10" : "flex-1"
-            }`}
-          >
+    detail = (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div data-conversation-thread hidden={infoOpen && !talent} style={{ display: infoOpen && !talent ? "none" : "flex" }} className="min-h-0 min-w-0 flex-1 flex-col">
+          {conversation}
+        </div>
+        {infoOpen && !talent ? (
+          <div data-conversation-info className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ConversationInfoPanel
               conversationId={state.conversationId}
               onClose={() => setInfoOpen(false)}
@@ -279,10 +278,9 @@ function MessagesOverlay() {
               }}
             />
           </div>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">{conversation}</div>
-      );
+        ) : null}
+      </div>
+    );
   }
 
   return (

@@ -1,6 +1,6 @@
 "use client";
 
-import { QUIET, MessageSettingsFrame } from "../MessageSettingsFrame";
+import { QUIET, MessageSettingsHeader } from "../MessageSettingsFrame";
 
 // 消息搜索：输入 ≥2 字；按会话、发送人、类型、时间筛选；结果高亮；点结果跳到那条；分页。
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -223,7 +223,9 @@ export function SearchView({
   };
 
   return (
-    <MessageSettingsFrame onBack={onBack} title={tt("搜索消息")} className="h-full" data-search-view="">
+    <section className="flex min-h-0 min-w-0 flex-1 flex-col" data-search-view="">
+      <MessageSettingsHeader onBack={onBack} title={tt("搜索消息")} />
+      <div className="shrink-0 space-y-2 border-b border-neutral-200/80 px-3 py-3" data-search-controls>
       {hideInput ? null : (
         <input
           type="search"
@@ -232,7 +234,7 @@ export function SearchView({
           onChange={(event) => setQuery(event.target.value)}
           placeholder={tt("搜索消息")}
           aria-label={tt("搜索消息")}
-          className="rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none"
+          className="block w-full rounded-xl border-0 bg-neutral-100/80 px-3 py-2 text-[14px] focus:outline-none"
         />
       )}
       <SearchFilters
@@ -242,7 +244,8 @@ export function SearchView({
         senders={senders}
         conversationLocked={Boolean(conversationId)}
       />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto" data-search-results>
         {!ready ? <p className="py-10 text-center text-[12.5px] text-neutral-400">{tt("至少输入 2 个字")}</p> : null}
         {ready && state === "loading" ? <p className="py-10 text-center text-[12.5px] text-neutral-400">{tt("正在搜索…")}</p> : null}
         {ready && state === "error" ? <p className="py-10 text-center text-[12.5px] text-red-600">{tt("搜索失败，请稍后重试。")}</p> : null}
@@ -292,6 +295,6 @@ export function SearchView({
           </div>
         ) : null}
       </div>
-    </MessageSettingsFrame>
+    </section>
   );
 }

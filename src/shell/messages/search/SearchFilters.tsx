@@ -95,7 +95,7 @@ export function SearchFilters({
   const tt = useUI();
   const set = (patch: Partial<SearchFilterState>) => onChange({ ...value, ...patch });
   return (
-    <div className="flex flex-wrap items-center gap-2" data-search-filters="">
+    <div className="flex items-center gap-2 overflow-x-auto" data-search-filters="">
       {conversationLocked ? null : (
         <select
           aria-label={tt("会话")}

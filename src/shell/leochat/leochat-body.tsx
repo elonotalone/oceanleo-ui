@@ -79,20 +79,19 @@ export function LeoChatBody({ wide, listHeader }: LeoChatBodyProps): ReactElemen
         conversationId={state.conversationId}
         layout={layout}
         onBack={closeConversation}
+        active={!infoOpen}
         onOpenInfo={() => setInfoOpen(true)}
         highlightSeq={state.highlightSeq}
         onUnavailable={closeConversation}
       />
     );
-    thread =
-      infoOpen && !talent ? (
-        <div className="flex min-h-0 flex-1">
-          {wide ? <div className="flex min-w-0 flex-1 flex-col">{conversation}</div> : null}
-          <div
-            className={`flex min-h-0 flex-col ${
-              wide ? "w-[320px] shrink-0 border-l border-stone-200" : "flex-1"
-            }`}
-          >
+    thread = (
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div data-conversation-thread hidden={infoOpen && !talent} style={{ display: infoOpen && !talent ? "none" : "flex" }} className="min-h-0 min-w-0 flex-1 flex-col">
+          {conversation}
+        </div>
+        {infoOpen && !talent ? (
+          <div data-conversation-info className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ConversationInfoPanel
               conversationId={state.conversationId}
               onClose={() => setInfoOpen(false)}
@@ -102,10 +101,9 @@ export function LeoChatBody({ wide, listHeader }: LeoChatBodyProps): ReactElemen
               }}
             />
           </div>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1 flex-col">{conversation}</div>
-      );
+        ) : null}
+      </div>
+    );
   }
 
   const dialogs = (

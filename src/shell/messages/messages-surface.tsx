@@ -414,26 +414,29 @@ html.dark [data-im-unread] { color: transparent; }
 html.dark [data-im-unread][data-im-unread-count] { color: #fff; }
 
 [data-im-composer] {
-  border-top-color: rgba(15, 15, 15, 0.06);
-  background: transparent;
+  border: 1px solid rgba(15, 15, 15, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
-[data-im-composer] textarea {
-  border: none;
-  background: rgba(23, 23, 23, 0.05);
-  border-radius: 18px;
-  box-shadow: none;
-  transition: box-shadow var(--leo-dur-2) var(--leo-ease-standard), background var(--leo-dur-2) var(--leo-ease-standard);
+[data-im-composer]:focus-within {
+  border-color: rgba(15, 15, 15, 0.22);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
 }
+[data-im-composer] textarea,
 [data-im-composer] textarea:focus {
+  display: block;
   border: none;
   outline: none;
-  background: #fff;
-  box-shadow: 0 0 0 2px var(--im-accent-soft), 0 0 0 1px var(--im-accent);
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
 }
-html.dark [data-im-composer] textarea {
+html.dark [data-im-composer] {
   background: var(--leo-d-card-2);
-  color: var(--leo-d-fg);
+  border-color: var(--leo-d-border);
 }
+html.dark [data-im-composer] textarea { color: var(--leo-d-fg); }
 [data-im-send] {
   display: inline-flex;
   align-items: center;

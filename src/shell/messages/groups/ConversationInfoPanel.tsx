@@ -151,7 +151,7 @@ export function ConversationInfoPanel({ conversationId, onClose, onOpenConversat
             </h3>
             {!isDm && (
               <p className="text-[12px] text-neutral-500" data-info-count>
-                {tt("{n} 位成员", { n: detail.member_count })}
+                {tt(detail.member_count === 1 ? "1 位成员" : "{n} 位成员", { n: detail.member_count })}
               </p>
             )}
             {detail.dissolved && <p className="text-[12px] text-red-600">{tt("群已解散")}</p>}

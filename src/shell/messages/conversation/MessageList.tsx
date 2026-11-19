@@ -20,6 +20,7 @@ const FLASH_MS = 1800;
 
 export interface MessageListProps {
   store: ConversationStore;
+  active?: boolean;
   snapshot: ConversationSnapshot;
   profiles: Record<string, ImProfile | undefined>;
   conversation: ImConversationDetail | null;
@@ -40,6 +41,7 @@ export interface MessageListProps {
 export function MessageList(props: MessageListProps) {
   const {
     store,
+    active = true,
     snapshot,
     profiles,
     conversation,
@@ -96,6 +98,7 @@ export function MessageList(props: MessageListProps) {
 
   // 内容变化后的滚动策略：首次到底（或到高亮）；上方加载进来保持位置；底部新增则贴底或计数。
   useIsoLayoutEffect(() => {
+    if (!active) return;
     const el = containerRef.current;
     if (!el) return;
     const prev = prevRef.current;
@@ -129,7 +132,7 @@ export function MessageList(props: MessageListProps) {
       count: messages.length,
       pending: snapshot.pending.length,
     };
-  }, [snapshot.messages, snapshot.pending, snapshot.loaded, highlightSeq, scrollToSeq, scrollToBottom, viewerId]);
+  }, [active, snapshot.messages, snapshot.pending, snapshot.loaded, highlightSeq, scrollToSeq, scrollToBottom, viewerId]);
 
   const loadOlder = useCallback(() => store.loadBefore(), [store]);
   const history = useOlderHistory({
@@ -138,7 +141,7 @@ export function MessageList(props: MessageListProps) {
     loadOlder,
     firstKey: snapshot.messages[0]?.id ?? null,
     itemSelector: "[data-history-key]",
-    disabled: !snapshot.loaded || snapshot.messages.length === 0,
+    disabled: !active || !snapshot.loaded || snapshot.messages.length === 0,
   });
 
   // highlightSeq：滚过去并闪一下（每个 seq 只闪一次）
@@ -185,9 +188,9 @@ export function MessageList(props: MessageListProps) {
 
   // 首屏就在底部时也要报一次已读
   useEffect(() => {
-    if (!snapshot.loaded || !atBottomRef.current || snapshot.hasMoreAfter) return;
+    if (!active || !snapshot.loaded || !atBottomRef.current || snapshot.hasMoreAfter) return;
     if (snapshot.lastSeq > 0) onReachBottom?.(snapshot.lastSeq);
-  }, [snapshot.loaded, snapshot.lastSeq, snapshot.hasMoreAfter, onReachBottom]);
+  }, [active, snapshot.loaded, snapshot.lastSeq, snapshot.hasMoreAfter, onReachBottom]);
 
   const isDm = conversation?.kind === "dm";
 

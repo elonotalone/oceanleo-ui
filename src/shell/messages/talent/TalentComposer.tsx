@@ -6,7 +6,7 @@
 import { useState, type KeyboardEvent } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { TALENT_BODY_LIMIT } from "./talent-api";
-import { WORK_LINK_RE, WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
+import { WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
 
 export interface TalentComposerProps {
   disabled?: boolean;
@@ -21,7 +21,7 @@ export function TalentComposer({ disabled = false, onSend, openUrl = null, error
   const tt = useUI();
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
-  const refused = Boolean(workPolicy?.text_only && (workPolicy.remaining_messages === 0 || WORK_LINK_RE.test(value)));
+  const refused = Boolean(workPolicy?.text_only && workPolicy.remaining_messages === 0);
 
   async function submit() {
     const text = value.trim();

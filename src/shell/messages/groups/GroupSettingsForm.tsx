@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useUI } from "../../../i18n/ui/useUI";
 import { Switch } from "../../../ui";
 import { patchConversation } from "../../../lib/im/groups-api";
-import { reasonOf } from "../../../lib/im/people-api";
+import { conversationDisplayTitle, reasonOf } from "../../../lib/im/people-api";
 import type { ImConversationDetail } from "../../../lib/im/types";
 import { UploadError, uploadAttachment } from "../composer/upload";
 import { GroupAvatar } from "./GroupAvatar";
@@ -95,7 +95,7 @@ export function GroupSettingsForm({ detail, canEdit, onSaved }: GroupSettingsFor
       }}
     >
       <div className="flex items-center gap-3">
-        <GroupAvatar name={detail.title} src={detail.avatar_url} seed={detail.id} size={48} />
+        <GroupAvatar name={conversationDisplayTitle(detail)} src={detail.avatar_url} members={detail.avatar_members} seed={detail.id} size={48} />
         <input
           ref={fileInput}
           type="file"

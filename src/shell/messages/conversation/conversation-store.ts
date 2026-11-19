@@ -102,6 +102,55 @@ export class ConversationStore {
   private state: ConversationSnapshot;
   /** 见过的最大 seq，判断跳号用。 */
   private seenSeq = 0;
+  private loadVersion = 0;
+  private loadingWindow: { key: number | null; promise: Promise<void> } | null = null;
+  private recoveryTarget: { seq: number | null } | null = null;
+  private recoveryTimer: ReturnType<typeof setTimeout> | null = null;
+  private firstFailureAt: number | null = null;
+  private failureCount = 0;
+
+  private canRecover(): boolean {
+    return typeof window !== "undefined" && document.visibilityState !== "hidden" && navigator.onLine !== false;
+  }
+
+  private clearRecoveryTimer(): void {
+    if (this.recoveryTimer !== null) clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = null;
+  }
+
+  private scheduleRecovery(): void {
+    this.clearRecoveryTimer();
+    if (!this.recoveryTarget || !this.listeners.size || !this.canRecover()) return;
+    const delay = Math.min(30_000, 1000 * 2 ** Math.min(this.failureCount - 1, 5));
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = null;
+      this.recoverFirstLoad();
+    }, delay);
+  }
+
+  private recoverFirstLoad = (): void => {
+    this.clearRecoveryTimer();
+    if (!this.recoveryTarget || !this.listeners.size || !this.canRecover() || this.loadingWindow) return;
+    void this.loadWindow(this.recoveryTarget.seq);
+  };
+
+  private watchRecovery(): void {
+    if (typeof window === "undefined") return;
+    window.addEventListener("online", this.recoverFirstLoad);
+    window.addEventListener("offline", this.recoverFirstLoad);
+    window.addEventListener("focus", this.recoverFirstLoad);
+    document.addEventListener("visibilitychange", this.recoverFirstLoad);
+    this.scheduleRecovery();
+  }
+
+  private unwatchRecovery(): void {
+    this.clearRecoveryTimer();
+    if (typeof window === "undefined") return;
+    window.removeEventListener("online", this.recoverFirstLoad);
+    window.removeEventListener("offline", this.recoverFirstLoad);
+    window.removeEventListener("focus", this.recoverFirstLoad);
+    document.removeEventListener("visibilitychange", this.recoverFirstLoad);
+  }
 
   constructor(options: ConversationStoreOptions) {
     this.conversationId = options.conversationId;
@@ -130,8 +179,10 @@ export class ConversationStore {
   // ── 订阅 ───────────────────────────────────────────────────────────────
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
+    if (this.listeners.size === 1) this.watchRecovery();
     return () => {
       this.listeners.delete(listener);
+      if (!this.listeners.size) this.unwatchRecovery();
     };
   };
 
@@ -164,38 +215,53 @@ export class ConversationStore {
     return items;
   }
 
+  /** First loads keep the loading surface and recover while an observed page is online and visible. */
+  private loadWindow(seq: number | null): Promise<void> {
+    if (this.loadingWindow?.key === seq) return this.loadingWindow.promise;
+    this.clearRecoveryTimer();
+    const version = ++this.loadVersion;
+    const promise = (async () => {
+      try {
+        const page = await this.fetchPage({ ...(seq === null ? {} : { around_seq: seq }), limit: PAGE_SIZE });
+        if (version !== this.loadVersion) return;
+        this.recoveryTarget = null;
+        this.firstFailureAt = null;
+        this.failureCount = 0;
+        this.set({
+          messages: mergeMessages([], this.ownMain(page.items)),
+          hasMoreBefore: page.has_more_before,
+          hasMoreAfter: page.has_more_after,
+          peerLastReadSeq: page.peer_last_read_seq ?? this.state.peerLastReadSeq,
+          loaded: true,
+          error: null,
+        });
+      } catch (error) {
+        if (version !== this.loadVersion) return;
+        if (this.state.loaded) {
+          this.set({ error: errorMessage(error) || errorCode(error) || "load_failed" });
+        } else {
+          this.firstFailureAt ??= Date.now();
+          this.failureCount += 1;
+          this.recoveryTarget = { seq };
+          this.set({ error: Date.now() - this.firstFailureAt >= 15_000 ? "load_retrying" : null });
+          this.scheduleRecovery();
+        }
+      } finally {
+        if (version === this.loadVersion) this.loadingWindow = null;
+      }
+    })();
+    this.loadingWindow = { key: seq, promise };
+    return promise;
+  }
+
   /** 打开会话：取最新一页（替换当前窗口）。 */
-  async loadLatest(): Promise<void> {
-    try {
-      const page = await this.fetchPage({ limit: PAGE_SIZE });
-      this.set({
-        messages: mergeMessages([], this.ownMain(page.items)),
-        hasMoreBefore: page.has_more_before,
-        hasMoreAfter: page.has_more_after,
-        peerLastReadSeq: page.peer_last_read_seq ?? this.state.peerLastReadSeq,
-        loaded: true,
-        error: null,
-      });
-    } catch (error) {
-      this.set({ loaded: true, error: errorMessage(error) || errorCode(error) || "load_failed" });
-    }
+  loadLatest(): Promise<void> {
+    return this.loadWindow(null);
   }
 
   /** 定位到某条（搜索结果 / 深链）：取它前后各一屏，窗口被替换。 */
-  async loadAround(seq: number): Promise<void> {
-    try {
-      const page = await this.fetchPage({ around_seq: seq, limit: PAGE_SIZE });
-      this.set({
-        messages: mergeMessages([], this.ownMain(page.items)),
-        hasMoreBefore: page.has_more_before,
-        hasMoreAfter: page.has_more_after,
-        peerLastReadSeq: page.peer_last_read_seq ?? this.state.peerLastReadSeq,
-        loaded: true,
-        error: null,
-      });
-    } catch (error) {
-      this.set({ loaded: true, error: errorMessage(error) || errorCode(error) || "load_failed" });
-    }
+  loadAround(seq: number): Promise<void> {
+    return this.loadWindow(seq);
   }
 
   /** 往上滚：加载更早的。 */
@@ -343,7 +409,7 @@ export class ConversationStore {
       this.set({
         pending: this.state.pending.map((p) =>
           p.clientId === clientId
-            ? { ...p, status: "failed", error: errorMessage(error) || errorCode(error) || "send_failed" }
+            ? { ...p, status: "failed", error: errorCode(error) === "reply_limit" ? "reply_limit" : errorMessage(error) || errorCode(error) || "send_failed" }
             : p,
         ),
       });

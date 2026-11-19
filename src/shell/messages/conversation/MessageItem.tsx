@@ -180,7 +180,7 @@ export function MessageItem(props: MessageItemProps) {
 
   const timeLabel = formatClock(message.created_at, locale);
   const fullTime = formatFullTime(message.created_at, locale);
-  const showHeader = !grouped;
+  const showHeader = !grouped || message.meta?.via_agent === true;
 
   let content: React.ReactNode;
   if (recalled) {
@@ -308,6 +308,7 @@ export function MessageItem(props: MessageItemProps) {
             <time dateTime={message.created_at} title={fullTime} className="text-[12px] text-neutral-400">
               {timeLabel}
             </time>
+            {message.meta?.via_agent === true ? <span data-sent-by-agent className="text-[11px] text-neutral-400">{tt("由智能体发送")}</span> : null}
           </div>
         ) : null}
         <div

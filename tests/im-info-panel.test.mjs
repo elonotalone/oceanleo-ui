@@ -525,3 +525,14 @@ test("聊天列表右键：置顶、未读、免打扰、隐藏分别调用对�
     assert.ok(im.fetch.calls.some((call) => call.path.endsWith("/history?hide=true") && call.method === "DELETE"));
   } finally { view.cleanup(); delete globalThis.__INBOX_ITEMS; }
 });
+
+test("one-member group uses the same member avatar in the summary and edit form", async () => {
+  const { view } = await open("owner", { member_count: 1, avatar_members: [{ user_id: "u-owner", display_name: "Elon", avatar_url: null }] });
+  try {
+    assert.equal(view.q('[data-info-count]').textContent.trim(), "1 位成员");
+    const mosaics = view.qa('[data-avatar-mosaic]');
+    assert.equal(mosaics.length, 2, "summary and edit form use member mosaics");
+    assert.equal(mosaics[0].textContent, mosaics[1].textContent);
+    assert.equal(mosaics[0].textContent, "E");
+  } finally { view.cleanup(); }
+});

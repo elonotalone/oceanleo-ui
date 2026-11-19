@@ -24,7 +24,7 @@ import {
   type MentionCandidate,
 } from "./MentionPicker";
 import { VoiceRecorder } from "./VoiceRecorder";
-import { WORK_LINK_RE, WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
+import { WORK_REPLY_NOTICE, type WorkSendPolicy } from "../conversation/work-policy";
 import { draftBook } from "./drafts";
 import {
   MAX_UPLOAD_BYTES,
@@ -268,7 +268,7 @@ export function Composer(props: ComposerProps) {
   const trimmed = text.trim();
   const canSend =
     !disabled &&
-    (!textOnly || ((editing || workPolicy?.remaining_messages !== 0) && !WORK_LINK_RE.test(text) && readyAttachments.length === 0)) &&
+    (!textOnly || ((editing || workPolicy?.remaining_messages !== 0) && readyAttachments.length === 0)) &&
     !sending &&
     !uploading &&
     (editing ? trimmed.length > 0 && trimmed !== editing.body : trimmed.length > 0 || readyAttachments.length > 0) &&
@@ -459,7 +459,7 @@ export function Composer(props: ComposerProps) {
   const quoteName = quoteLabel ?? "";
   return (
     <div
-      className={"relative border-t border-neutral-200/80 " + (dragging ? "ring-2 ring-inset ring-neutral-300" : "")}
+      className={"relative mx-3 mb-3 mt-2 shrink-0 rounded-2xl border border-neutral-200 bg-white shadow-sm focus-within:border-neutral-300 focus-within:shadow-md " + (dragging ? "ring-2 ring-inset ring-neutral-300" : "")}
       onDragOver={(event) => {
         if (event.dataTransfer?.types?.includes("Files")) {
           event.preventDefault();
@@ -509,7 +509,6 @@ export function Composer(props: ComposerProps) {
           onHover={setActiveIndex}
           hintFor={hintFor}
         />
-        <div className="rounded-[14px] bg-black/[0.04] dark:bg-white/[0.06]">
         <textarea
           ref={textareaRef}
           value={text}
@@ -525,10 +524,9 @@ export function Composer(props: ComposerProps) {
           onSelect={(event) => setCaret(event.currentTarget.selectionStart ?? 0)}
           onKeyDown={onKeyDown}
           onPaste={onPaste}
-          className="max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3 py-2 text-[14px] leading-[22px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
+          className="block max-h-44 min-h-[40px] w-full resize-none bg-transparent px-3 py-2 text-[14px] leading-[22px] text-neutral-900 placeholder:text-neutral-400 focus:outline-none"
         />
-        </div>
-        <div className="mt-1.5 flex items-center gap-1">
+        <div className="mt-1.5 flex items-center gap-1" data-im-composer-actions>
           <div className="relative">
             <button
               type="button"

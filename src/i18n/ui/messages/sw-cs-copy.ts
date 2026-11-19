@@ -1,0 +1,146 @@
+import { assembleCopy } from "./shell-overhaul-copy-shared";
+import type { Locale } from "../../config";
+
+const SOURCE = {
+  voiceCall: "语音通话",
+  videoCall: "视频通话",
+  sentByAgent: "由智能体发送",
+  replyLimit: "对方回复前，每周最多发送 3 条消息",
+  loadRetrying: "消息暂时无法加载，正在自动重试…",
+  oneMember: "1 位成员",
+} as const;
+
+const MESSAGES = assembleCopy(SOURCE, {
+  "en": {
+    voiceCall: "Voice call",
+    videoCall: "Video call",
+    sentByAgent: "sent by agent",
+    replyLimit: "You can send 3 messages a week until they reply",
+    loadRetrying: "Messages could not load. Retrying automatically…",
+    oneMember: "1 member",
+  },
+  "de": {
+    voiceCall: "Sprachanruf",
+    videoCall: "Videoanruf",
+    sentByAgent: "vom Agenten gesendet",
+    replyLimit: "Bis zur Antwort kannst du 3 Nachrichten pro Woche senden",
+    loadRetrying: "Nachrichten konnten nicht geladen werden. Neuer Versuch läuft automatisch…",
+    oneMember: "1 Mitglied",
+  },
+  "es": {
+    voiceCall: "Llamada de voz",
+    videoCall: "Videollamada",
+    sentByAgent: "enviado por el agente",
+    replyLimit: "Puedes enviar 3 mensajes por semana hasta que te respondan",
+    loadRetrying: "No se pudieron cargar los mensajes. Reintentando automáticamente…",
+    oneMember: "1 miembro",
+  },
+  "es-419": {
+    voiceCall: "Llamada de voz",
+    videoCall: "Videollamada",
+    sentByAgent: "enviado por el agente",
+    replyLimit: "Puedes enviar 3 mensajes por semana hasta que te respondan",
+    loadRetrying: "No se pudieron cargar los mensajes. Reintentando automáticamente…",
+    oneMember: "1 miembro",
+  },
+  "fr": {
+    voiceCall: "Appel vocal",
+    videoCall: "Appel vidéo",
+    sentByAgent: "envoyé par l’agent",
+    replyLimit: "Vous pouvez envoyer 3 messages par semaine jusqu’à sa réponse",
+    loadRetrying: "Impossible de charger les messages. Nouvelle tentative automatique…",
+    oneMember: "1 membre",
+  },
+  "it": {
+    voiceCall: "Chiamata vocale",
+    videoCall: "Videochiamata",
+    sentByAgent: "inviato dall’agente",
+    replyLimit: "Puoi inviare 3 messaggi a settimana finché non ricevi una risposta",
+    loadRetrying: "Impossibile caricare i messaggi. Nuovo tentativo automatico…",
+    oneMember: "1 membro",
+  },
+  "pt-BR": {
+    voiceCall: "Chamada de voz",
+    videoCall: "Chamada de vídeo",
+    sentByAgent: "enviado pelo agente",
+    replyLimit: "Você pode enviar 3 mensagens por semana até receber uma resposta",
+    loadRetrying: "Não foi possível carregar as mensagens. Tentando novamente automaticamente…",
+    oneMember: "1 membro",
+  },
+  "pt-PT": {
+    voiceCall: "Chamada de voz",
+    videoCall: "Videochamada",
+    sentByAgent: "enviado pelo agente",
+    replyLimit: "Podes enviar 3 mensagens por semana até receberes uma resposta",
+    loadRetrying: "Não foi possível carregar as mensagens. A tentar novamente automaticamente…",
+    oneMember: "1 membro",
+  },
+  "vi": {
+    voiceCall: "Cuộc gọi thoại",
+    videoCall: "Cuộc gọi video",
+    sentByAgent: "do tác nhân gửi",
+    replyLimit: "Bạn có thể gửi 3 tin nhắn mỗi tuần cho đến khi họ trả lời",
+    loadRetrying: "Không tải được tin nhắn. Đang tự động thử lại…",
+    oneMember: "1 thành viên",
+  },
+  "tr": {
+    voiceCall: "Sesli arama",
+    videoCall: "Görüntülü arama",
+    sentByAgent: "aracı tarafından gönderildi",
+    replyLimit: "Yanıt verene kadar haftada 3 mesaj gönderebilirsin",
+    loadRetrying: "Mesajlar yüklenemedi. Otomatik olarak yeniden deneniyor…",
+    oneMember: "1 üye",
+  },
+  "zh-TW": {
+    voiceCall: "語音通話",
+    videoCall: "視訊通話",
+    sentByAgent: "由智慧體傳送",
+    replyLimit: "對方回覆前，每週最多傳送 3 則訊息",
+    loadRetrying: "訊息暫時無法載入，正在自動重試…",
+    oneMember: "1 位成員",
+  },
+  "ja": {
+    voiceCall: "音声通話",
+    videoCall: "ビデオ通話",
+    sentByAgent: "エージェントが送信",
+    replyLimit: "相手が返信するまで、週に3件のメッセージを送信できます",
+    loadRetrying: "メッセージを読み込めませんでした。自動で再試行しています…",
+    oneMember: "メンバー1人",
+  },
+  "ko": {
+    voiceCall: "음성 통화",
+    videoCall: "영상 통화",
+    sentByAgent: "에이전트가 보냄",
+    replyLimit: "상대방이 답장할 때까지 일주일에 메시지를 3개 보낼 수 있습니다",
+    loadRetrying: "메시지를 불러올 수 없습니다. 자동으로 다시 시도하는 중…",
+    oneMember: "멤버 1명",
+  },
+  "ar": {
+    voiceCall: "مكالمة صوتية",
+    videoCall: "مكالمة فيديو",
+    sentByAgent: "أرسله الوكيل",
+    replyLimit: "يمكنك إرسال 3 رسائل أسبوعيًا حتى يرد الطرف الآخر",
+    loadRetrying: "تعذر تحميل الرسائل. تجري إعادة المحاولة تلقائيًا…",
+    oneMember: "عضو واحد",
+  },
+  "th": {
+    voiceCall: "โทรด้วยเสียง",
+    videoCall: "วิดีโอคอล",
+    sentByAgent: "ส่งโดยเอเจนต์",
+    replyLimit: "คุณส่งข้อความได้ 3 ข้อความต่อสัปดาห์จนกว่าอีกฝ่ายจะตอบ",
+    loadRetrying: "โหลดข้อความไม่ได้ กำลังลองใหม่โดยอัตโนมัติ…",
+    oneMember: "สมาชิก 1 คน",
+  },
+  "hi": {
+    voiceCall: "वॉइस कॉल",
+    videoCall: "वीडियो कॉल",
+    sentByAgent: "एजेंट द्वारा भेजा गया",
+    replyLimit: "उनके जवाब देने तक आप हर हफ़्ते 3 संदेश भेज सकते हैं",
+    loadRetrying: "संदेश लोड नहीं हो सके। अपने आप फिर कोशिश हो रही है…",
+    oneMember: "1 सदस्य",
+  },
+});
+
+export function swCsCopy(locale: Locale): Record<string, string> {
+  return MESSAGES[locale];
+}

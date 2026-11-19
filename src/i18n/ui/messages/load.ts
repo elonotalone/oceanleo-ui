@@ -29,6 +29,7 @@ import { swTwCopy } from "./sw-tw-copy";
 import { swSTCopy } from "./sw-st-copy";
 import { swPfCopy } from "./sw-pf-copy";
 import { swHuCopy } from "./sw-hu-copy";
+import { swCsCopy } from "./sw-cs-copy";
 import { taskStateCopy } from "./task-state-copy";
 import { websitePreviewProgressCopy } from "./website-preview-progress-copy";
 import { gatewayRoutingCopy } from "./gateway-routing-copy";
@@ -154,6 +155,7 @@ export const loadUiMessages: UIMessageLoader = async (rawLocale) => {
     ...swSTCopy(locale),
     ...swPfCopy(locale),
     ...swHuCopy(locale),
+    ...swCsCopy(locale),
     ...taskStateCopy(locale),
     ...websitePreviewProgressCopy(locale),
     ...gatewayRoutingCopy(locale),

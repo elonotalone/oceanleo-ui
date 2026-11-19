@@ -39,6 +39,7 @@ import {
 
 export interface ConversationViewProps {
   conversationId: string;
+  active?: boolean;
   layout: "docked" | "full" | "mobile";
   onBack?: () => void;
   onOpenInfo?: () => void;
@@ -153,7 +154,7 @@ function useProfileMap(
   return useMemo(() => ({ ...extra, ...base }), [extra, base]);
 }
 
-export function ConversationView({ conversationId, layout, onBack, onOpenInfo, highlightSeq = null, onUnavailable }: ConversationViewProps) {
+export function ConversationView({ conversationId, active = true, layout, onBack, onOpenInfo, highlightSeq = null, onUnavailable }: ConversationViewProps) {
   const tt = useUI();
   const viewerId = useViewerId();
   const conversation = useConversationDetail(conversationId, onUnavailable);
@@ -174,6 +175,7 @@ export function ConversationView({ conversationId, layout, onBack, onOpenInfo, h
       key={`${conversationId}:${viewerId}`}
       conversationId={conversationId}
       layout={layout}
+      active={active}
       onBack={onBack}
       onOpenInfo={onOpenInfo}
       highlightSeq={highlightSeq}
@@ -189,7 +191,7 @@ function ConversationBody(props: ConversationViewProps & {
   conversation: ImConversationDetail | null;
   store: ConversationStore;
 }) {
-  const { conversationId, layout, onBack, onOpenInfo, highlightSeq = null, viewerId, conversation, store } = props;
+  const { conversationId, active = true, layout, onBack, onOpenInfo, highlightSeq = null, viewerId, conversation, store } = props;
   const tt = useUI();
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const [quote, setQuote] = useState<ImMessage | null>(null);
@@ -282,6 +284,7 @@ function ConversationBody(props: ConversationViewProps & {
   // 看到底部就 POST /read（节流 1 秒）
   const reportRead = useCallback(
     (seq: number) => {
+      if (!active || searchOpen) return;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       const state = readState.current;
       if (seq <= state.last) return;
@@ -299,8 +302,14 @@ function ConversationBody(props: ConversationViewProps & {
         });
       }, wait);
     },
-    [conversationId],
+    [conversationId, active, searchOpen],
   );
+  useEffect(() => {
+    if (active && !searchOpen) return;
+    const state = readState.current;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+  }, [active, searchOpen]);
   useEffect(
     () => () => {
       const state = readState.current;
@@ -422,8 +431,9 @@ function ConversationBody(props: ConversationViewProps & {
   // loading surface for the whole conversation instead.
   if (!conversation || !snapshot.loaded) {
     return (
-      <div className="h-full" data-conversation-loading="">
+      <div className="relative h-full" data-conversation-loading="">
         <RoutePageSkeleton variant="list" label={tt("正在加载…")} />
+        {snapshot.error ? <p role="status" data-load-retrying className="absolute inset-x-0 bottom-3 px-3 text-center text-[12px] text-neutral-500">{tt("消息暂时无法加载，正在自动重试…")}</p> : null}
       </div>
     );
   }
@@ -454,7 +464,7 @@ function ConversationBody(props: ConversationViewProps & {
               ) : null}
             </div>
             {conversation && conversation.kind !== "dm" ? (
-              <div className="text-[12px] text-neutral-400">{tt("{n} 位成员", { n: conversation.member_count })}</div>
+              <div className="text-[12px] text-neutral-400">{tt(conversation.member_count === 1 ? "1 位成员" : "{n} 位成员", { n: conversation.member_count })}</div>
             ) : null}
           </div>
           <button
@@ -496,6 +506,7 @@ function ConversationBody(props: ConversationViewProps & {
           <CallChatProvider value={callChat}>
             <MessageList
               store={store}
+              active={active && !searchOpen}
               snapshot={snapshot}
               profiles={profiles}
               conversation={conversation}
@@ -518,22 +529,27 @@ function ConversationBody(props: ConversationViewProps & {
             <TypingLine names={typing.map((id) => nameOf(id))} />
           </CallChatProvider>
         )}
-        <Composer
-          store={store}
-          conversationId={conversationId}
-          conversation={conversation}
-          viewerId={viewerId}
-          layout={layout}
-          quote={quote}
-          quoteLabel={quote ? nameOf(quote.sender_id) : undefined}
-          onClearQuote={() => setQuote(null)}
-          editing={editing}
-          onCancelEdit={() => setEditing(null)}
-          onEditLast={lastOwn ? () => setEditing(lastOwn) : undefined}
-          disabled={Boolean(disabledReason)}
-          disabledReason={disabledReason}
-          workPolicy={policy}
-        />
+        <div className="shrink-0" hidden={searchOpen} style={{ display: searchOpen ? "none" : undefined }} data-conversation-composer>
+          {snapshot.pending.some((item) => item.status === "failed" && item.error === "reply_limit") ? (
+            <p role="status" data-reply-limit className="px-3 pt-2 text-[12px] text-neutral-500">{tt("对方回复前，每周最多发送 3 条消息")}</p>
+          ) : null}
+          <Composer
+            store={store}
+            conversationId={conversationId}
+            conversation={conversation}
+            viewerId={viewerId}
+            layout={layout}
+            quote={quote}
+            quoteLabel={quote ? nameOf(quote.sender_id) : undefined}
+            onClearQuote={() => setQuote(null)}
+            editing={editing}
+            onCancelEdit={() => setEditing(null)}
+            onEditLast={lastOwn ? () => setEditing(lastOwn) : undefined}
+            disabled={Boolean(disabledReason)}
+            disabledReason={disabledReason}
+            workPolicy={policy}
+          />
+        </div>
       </div>
       {selectionMode ? (
         <div className="absolute inset-x-0 bottom-0 z-20 flex items-center gap-2 border-t border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900" data-message-selection-toolbar="">
