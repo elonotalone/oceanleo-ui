@@ -67,6 +67,7 @@ const { LeoChatButton } = await import(
           surface: globalThis.__w5Button.panelOpen ? "panel" : "window",
         };
       }
+      export function openMessages(target){ globalThis.__w5Button.noticeOpens = (globalThis.__w5Button.noticeOpens || 0) + 1; globalThis.__w5Button.view = target.view; }
       export function hostState(){
         return { toggleWindow(){ globalThis.__w5Button.windowToggles += 1; } };
       }
@@ -112,6 +113,8 @@ function resetState() {
     windowToggles: 0,
     panelOpens: 0,
     panelCloses: 0,
+    noticeOpens: 0,
+    view: "inbox",
   });
 }
 
@@ -131,7 +134,7 @@ function installPanelCanvas() {
   return () => window.removeEventListener("oceanleo:leochat-panel-request", receive);
 }
 
-test("按钮请求 leochat 面板；第二次关闭；从不打开浮窗", async () => {
+test("通知按钮请求 leochat 面板，重复点击保持通知页，不打开浮窗", async () => {
   resetState();
   const removeCanvas = installPanelCanvas();
   let view = await mount(React.createElement(LeoChatButton));
@@ -145,8 +148,10 @@ test("按钮请求 leochat 面板；第二次关闭；从不打开浮窗", async
   assert.equal(view.host.querySelector("[data-leochat-open]")?.getAttribute("aria-pressed"), "true");
   assert.equal(view.host.querySelector("[data-leochat-open]")?.getAttribute("data-leochat-surface"), "panel");
   await view.click();
-  assert.equal(globalThis.__w5Button.panelCloses, 1);
-  assert.equal(globalThis.__w5Button.panelOpen, false);
+  assert.equal(globalThis.__w5Button.panelCloses, 0);
+  assert.equal(globalThis.__w5Button.panelOpen, true);
+  assert.equal(globalThis.__w5Button.noticeOpens, 2);
+  assert.equal(globalThis.__w5Button.view, "notices");
   assert.equal(globalThis.__w5Button.windowToggles, 0);
   await view.unmount();
   removeCanvas();

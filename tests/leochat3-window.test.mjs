@@ -75,7 +75,7 @@ const { LeoChatButton } = await import(
           },
         };
       }
-      export function openMessages(){ globalThis.__leoChat3.open = true; globalThis.__leoChat3.toggles += 1; }
+      export function openMessages(target){ globalThis.__leoChat3.open = true; globalThis.__leoChat3.view = target.view; }
       export function closeMessages(){ globalThis.__leoChat3.open = false; globalThis.__leoChat3.toggles += 1; }
     `),
     "../workspace-actions": dataModule(`
@@ -197,7 +197,7 @@ test("layout=mobile 没有放大键", async () => {
   await view.unmount();
 });
 
-test("栏目只有聊天、联系人", () => {
+test("栏目只有消息、联系人", () => {
   const html = renderToStaticMarkup(
     React.createElement(LeoChatTabs, {
       active: "inbox",
@@ -205,7 +205,7 @@ test("栏目只有聊天、联系人", () => {
       badges: { inbox: 3, people: 0, bay: 100 },
     }),
   );
-  assert.match(html, /聊天/);
+  assert.match(html, /消息/);
   assert.match(html, /联系人/);
   assert.doesNotMatch(html, /LeoBay/);
   assert.equal((html.match(/role="tab"/g) || []).length, 2);
@@ -217,7 +217,7 @@ test("栏目只有聊天、联系人", () => {
   assert.doesNotMatch(tabs, /id: "bay"/);
 });
 
-test("LeoChatButton：未登录不渲染；按钮请求右侧栏，不打开浮窗", async () => {
+test("LeoChatButton：未登录不渲染；按钮请求右侧栏并打开通知页", async () => {
   globalThis.__leoChat3.imOn = false;
   globalThis.__leoChat3.open = false;
   globalThis.__leoChat3.toggles = 0;
@@ -231,7 +231,8 @@ test("LeoChatButton：未登录不渲染；按钮请求右侧栏，不打开浮�
   const view = await mount(React.createElement(LeoChatButton));
   assert.ok(view.host.querySelector("[data-leochat-button]"));
   await view.click("[data-leochat-open]");
-  assert.equal(globalThis.__leoChat3.open, false);
+  assert.equal(globalThis.__leoChat3.open, true);
+  assert.equal(globalThis.__leoChat3.view, "notices");
   assert.equal(globalThis.__leoChat3.toggles, 0);
   assert.equal(globalThis.__leoChat3.workspaceRequests, 1);
   await view.unmount();

@@ -235,7 +235,7 @@ async function mount(element) {
 const html = (node) => renderToStaticMarkup(node);
 const count = (text, pattern) => (text.match(pattern) || []).length;
 
-test("页头只有「我的」和「发布」两个键", async () => {
+test("页头有关注、我的和发布三个键", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   assert.equal(view.host.querySelector("[data-bay-inspirations]"), null);
@@ -244,8 +244,8 @@ test("页头只有「我的」和「发布」两个键", async () => {
   const actions = view.host.querySelector("[data-bay-page-actions]");
   assert.ok(actions);
   const actionKeys = [...actions.querySelectorAll("[data-bay-action]")].map((node) => node.getAttribute("data-bay-action"));
-  assert.deepEqual(actionKeys, ["mine", "publish"]);
-  assert.equal(count(actions.outerHTML, /data-bay-action="/g), 2);
+  assert.deepEqual(actionKeys, ["following", "mine", "publish"]);
+  assert.equal(count(actions.outerHTML, /data-bay-action="/g), 3);
   assert.match(actions.textContent, /我的/);
   assert.match(actions.textContent, /发布/);
   assert.doesNotMatch(actions.textContent, /我的主页/);
@@ -362,13 +362,13 @@ function feedItems() {
   ];
 }
 
-test("信息流：首屏骨架、出错给重试、滑到底接下页", () => {
+test("信息流：首屏骨架、出错自动恢复、滑到底接下页", () => {
   reset({ feed: feedOf({ loading: true, loaded: false }) });
   assert.match(html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" })), /data-bay-feed-loading/);
   reset({ feed: feedOf({ error: "加载失败，请稍后再试。" }) });
   const failed = html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null }));
-  assert.match(failed, /data-bay-feed-error/);
-  assert.match(failed, />重试</);
+  assert.match(failed, /data-bay-recovery="temporary" aria-busy="true"/);
+  assert.doesNotMatch(failed, /<button|>重试</);
   reset({ feed: feedOf({ items: feedItems(), hasMore: true }) });
   const more = html(React.createElement(BayFeed, { filter: pageState.filter, activeKey: null, variant: "grid" }));
   assert.match(more, /data-collection-infinite-sentinel/);

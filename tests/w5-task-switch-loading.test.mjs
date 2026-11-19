@@ -404,7 +404,7 @@ test("first open lands at the bottom without a smooth scroll; a scrolled-up spot
   }
 });
 
-test("header Share keeps the composer, exits selection on close, and copies the task URL from its actions page", async () => {
+test("header Share keeps the composer, exits selection on close, and copies only the collaborate task URL", async () => {
   globalThis.__task = taskData("t-share");
   const copied = [];
   const clipboard = Object.getOwnPropertyDescriptor(window.navigator, "clipboard");
@@ -423,7 +423,7 @@ test("header Share keeps the composer, exits selection on close, and copies the 
     const actions = document.querySelector("[data-task-share-actions]");
     assert.ok(actions, "the actions live in the top panel");
     assert.match(actions.textContent, /已选 2 条/);
-    assert.deepEqual([...actions.querySelectorAll("button")].slice(0, 5).map(button => button.textContent), ["成员与权限", "复制链接", "复制文本", "生成长图", "生成文档"]);
+    assert.deepEqual([...actions.querySelectorAll("button")].slice(0, 5).map(button => button.textContent), ["分享链接", "共同协作", "复制文本", "生成长图", "生成文档"]);
     const ticks = () => [...view.host.querySelectorAll('[role="checkbox"]')];
     assert.equal(ticks().length, 2);
     assert.ok(ticks().every(box => box.getAttribute("aria-checked") === "true"));
@@ -434,16 +434,18 @@ test("header Share keeps the composer, exits selection on close, and copies the 
     assert.equal(closedPanel.getAttribute("aria-hidden"), "true", "the retained overlay is hidden from assistive technology");
     assert.equal(ticks().length, 0, "closing the popup leaves selection mode");
     await click(entry());
-    await click(document.querySelector("[data-task-share-actions] button"));
+    await click([...document.querySelectorAll("[data-task-share-actions] button")].find(button => button.textContent === "共同协作"));
     await settle(20);
-    const members = document.querySelector("[data-task-share-members]");
-    assert.ok(members, "Share opens the member subpage");
-    await click([...members.querySelectorAll("button")].find(button => button.textContent === "返回"));
-    const copyLink = [...document.querySelectorAll("[data-task-share-actions] button")].find(button => button.textContent === "复制链接");
+    const members = document.querySelector('[data-task-share-page="collaborate"]');
+    assert.ok(members, "Collaborate opens its invitation-only member page");
+    assert.equal(members.querySelector('select, [role="combobox"]'), null, "all task invitees collaborate");
+    const copyLink = [...members.querySelectorAll("button")].find(button => button.textContent === "复制任务链接");
     assert.ok(copyLink);
     assert.equal(copyLink.disabled, false);
     await click(copyLink);
-    assert.equal(new URL(copied.at(-1)).pathname, "/tasks/t-share", "Copy link uses this task, not a snapshot");
+    assert.equal(new URL(copied.at(-1)).pathname, "/tasks/t-share", "the collaborate link opens this live task");
+    await click(members.querySelector('button[aria-label="返回"]'));
+    assert.ok(document.querySelector("[data-task-share-actions]"));
     await click(entry());
     assert.equal(ticks().length, 0, "closing Share leaves select mode");
     assert.equal(entry().getAttribute("aria-expanded"), "false");

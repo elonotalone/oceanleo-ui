@@ -27,7 +27,7 @@ const { AgentTranscriptBubble } = await import(await compileModule("src/shell/Ag
   "./share/share-clipboard": dataModule("export async function writeClipboardText() { return true; }"),
 }));
 
-test("message checkbox and its SVG toggle once while the message row remains selectable", async () => {
+test("message checkbox and its SVG toggle once while outside message clicks leave selection unchanged", async () => {
   const dom = new JSDOM("<!doctype html><body><main></main></body>", { pretendToBeVisual: true });
   const previous = new Map();
   for (const [name, value] of Object.entries({
@@ -69,7 +69,10 @@ test("message checkbox and its SVG toggle once while the message row remains sel
     assert.equal(toggles, 2, "clicking the checkmark must also toggle exactly once");
     assert.equal(checkbox.getAttribute("aria-checked"), "false");
     await click(checkbox.parentElement);
-    assert.equal(toggles, 3, "the rest of the message row still selects the message");
+    assert.equal(toggles, 2, "outside clicks may dismiss sharing and must not re-toggle the row afterward");
+    assert.equal(checkbox.getAttribute("aria-checked"), "false");
+    await click(checkbox);
+    assert.equal(toggles, 3, "the explicit checkbox still selects the message");
     assert.equal(checkbox.getAttribute("aria-checked"), "true");
   } finally {
     await act(async () => root.unmount());

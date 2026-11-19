@@ -508,7 +508,8 @@ test("LeoChatButton：点一下请求右侧栏；整页认领着时 pressed 且 
   const view = await mount(React.createElement(LeoChatButton));
   assert.equal(view.host.querySelector("[data-leochat-open]")?.getAttribute("data-leochat-surface"), "none");
   await view.click("[data-leochat-open]");
-  assert.equal(host.getSnapshot().open, false);
+  assert.equal(host.getSnapshot().open, true);
+  assert.equal(host.getSnapshot().view, "notices");
   assert.equal(host.getSnapshot().surface, "window");
   await view.unmount();
 

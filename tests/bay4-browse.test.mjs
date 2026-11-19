@@ -188,13 +188,13 @@ async function mount(element) {
   };
 }
 
-test("页头只有两个 data-bay-action：mine 和 publish；没有 data-bay-kinds", async () => {
+test("页头有 following、mine、publish；没有 data-bay-kinds", async () => {
   reset();
   const view = await mount(React.createElement(LeoBayPage, { siteKey: "oceanleo" }));
   const actions = [...view.host.querySelectorAll("[data-bay-page-actions] [data-bay-action]")].map((node) =>
     node.getAttribute("data-bay-action"),
   );
-  assert.deepEqual(actions, ["mine", "publish"]);
+  assert.deepEqual(actions, ["following", "mine", "publish"]);
   assert.equal(view.host.querySelector("[data-bay-kinds]"), null);
   await view.unmount();
 });

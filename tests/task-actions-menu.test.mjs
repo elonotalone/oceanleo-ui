@@ -33,7 +33,7 @@ async function render(props) {
 test("cloud and computer task headers expose the same action labels", async () => {
   const chatSource = fs.readFileSync(path.resolve("src/shell/AgentChat.tsx"), "utf8");
   const taskPage = fs.readFileSync(siblingRepoUrl("oceanleo", "app/tasks/[id]/page.tsx"), "utf8");
-  assert.match(chatSource, /taskId && \(\s*<TaskActionsMenu/);
+  assert.match(chatSource, /taskId && !sidebarHost && \(\s*<TaskActionsMenu/);
   assert.match(taskPage, /taskActions=\{taskActions\}/);
   assert.match(taskPage, /function RenameTaskDialog/);
   assert.match(taskPage, /event\.key === "Escape"/);

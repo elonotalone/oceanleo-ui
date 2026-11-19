@@ -274,7 +274,7 @@ test("selecting a ready cloud computer changes actual persisted target, not loca
   } finally { view.cleanup(); }
 });
 
-test("offline cloud computers are not execution choices; with conversations they stay inspectable without changing the target", async () => {
+test("offline cloud computers stay inspectable but their programs cannot become execution choices", async () => {
   const offline = pc({ node_online: false });
   assert.equal(newShellEnabled(offline), false);
   const plain = await render([offline]);
@@ -292,7 +292,7 @@ test("offline cloud computers are not execution choices; with conversations they
     assert.equal(row.disabled, false);
     await view.click(row);
     assert.equal(view.host.querySelector('[data-dock-program-row="oceanleo"]').disabled, true, "an offline computer cannot run the OceanLeo task");
-    assert.equal(view.host.querySelector('[data-dock-program-row="codex"]').disabled, false, "saved history stays reachable");
+    assert.equal(view.host.querySelector('[data-dock-program-row="codex"]').disabled, true, "the picker cannot select a program on an unreachable computer");
     assert.match(view.host.querySelector('[data-dock-program-row="codex"]').textContent, /离线/);
     assert.deepEqual(readExecutionTarget("account-a"), { kind: "cloud" });
     assert.deepEqual(picks, []);

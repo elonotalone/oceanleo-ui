@@ -78,7 +78,7 @@ test("MessagesNavIcon：不用 SVG url(#id) 渐变，View Transition 复制 DOM 
   assert.doesNotMatch(icon, /id="lgi-messages"/);
 });
 
-test("MessagesHost：切页关掉浮层；栏目顺序是聊天、联系人；聊天页才有新建和搜索", () => {
+test("MessagesHost：切页关掉浮层；栏目顺序是消息、联系人；聊天页才有新建和搜索", () => {
   const host = src("shell/messages/MessagesHost.tsx");
   assert.match(host, /usePathname/);
   assert.match(host, /if \(hostState\(\)\.getSnapshot\(\)\.open\) closeMessages\(\)/);
@@ -94,7 +94,7 @@ test("MessagesHost：切页关掉浮层；栏目顺序是聊天、联系人；�
   assert.doesNotMatch(host, /id: "search"/);
   const tabs = src("shell/leochat/LeoChatTabs.tsx");
   assert.match(tabs, /id: "inbox"[\s\S]*id: "people"/);
-  assert.match(tabs, /label: "聊天"/);
+  assert.match(tabs, /label: "消息"/);
   assert.match(tabs, /label: "联系人"/);
   assert.doesNotMatch(tabs, /label: "LeoBay"/);
   assert.doesNotMatch(tabs, /id: "bay"/);

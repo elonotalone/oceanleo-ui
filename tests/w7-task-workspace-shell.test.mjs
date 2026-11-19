@@ -383,7 +383,7 @@ test("W4 missing reference shows a sentence and closes without retrying or repla
     assert.doesNotMatch(m.container.textContent,/internal-secret-receipt/);
     assert.equal([...m.container.querySelectorAll('button')].some(b=>b.textContent==='重试'),false);
     await act(async()=>window.dispatchEvent(new window.Event('online')));assert.equal(calls,1);
-    await act(async()=>[...m.container.querySelectorAll('[data-workspace-entry-open] button')].find(b=>b.textContent==='返回').click());
+    await act(async()=>m.container.querySelector('[data-workspace-entry-open] button[aria-label="返回"]').click());
     await m.render(el());assert.equal(m.container.querySelector('[data-workspace-entry-open]'),null);assert.equal(calls,1);
   } finally {await m.unmount();delete globalThis.__w4Resolve;}
 });

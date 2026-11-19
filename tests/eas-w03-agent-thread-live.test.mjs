@@ -207,6 +207,12 @@ const agentChatUrl = await compileModule(
     import { TaskAccessMock } from ${JSON.stringify(new URL("./helpers/task-access-mock.ts", import.meta.url).href)};
     export const taskAccessClient = new TaskAccessMock();
   `),
+    // This cloud-thread fixture has no paired-computer conversations. A failed
+    // unrelated list read would now correctly retry and re-render the header.
+    "../lib/computer-task-api": dataModule(`
+      export * from ${JSON.stringify(await compileModule("src/lib/computer-task-api.ts"))};
+      export async function listComputerTaskSessions() { return { sessions: [] }; }
+    `),
     "../i18n/ui/useUI": interpolatingUseUI,
     "next/navigation": dataModule(
       "export function useRouter(){ return { push(){}, replace(){}, refresh(){}, back(){} }; }\n" +
@@ -779,8 +785,29 @@ async function assertThinkingTicker(view, gateway, send) {
   assert.doesNotMatch(view.host.textContent, /正在思考/, "出字之后读秒必须消失");
 }
 
+async function assertAgentWorkingLine(view, gateway, send) {
+  await advance(500);
+  await send("讲个笑话");
+  await advance(50);
+  const line = () => view.host.querySelector("[data-stream-waiting]");
+  assert.ok(line());
+  assert.match(line().textContent, /智能体正在工作/);
+  assert.ok(line().querySelector("svg"));
+  assert.doesNotMatch(line().className + line().innerHTML, /animate-spin|正在思考|\d+ 秒/);
+  const reply = emptyReply(gateway);
+  await advance(3000);
+  assert.match(line().textContent, /智能体正在工作/);
+  reply.meta.thinking_chars = 1234;
+  await advance(1000);
+  assert.match(line().textContent, /智能体正在工作/);
+  assert.doesNotMatch(line().textContent, /1234|秒/);
+  reply.content = "有一天，一只企鹅……";
+  await untilVisible(view.host, "有一天，一只企鹅……");
+  assert.equal(line(), null);
+}
+
 test(
-  "AgentChat：还没出字时显示会走的「正在思考 · N 秒」，有 thinking_chars 时带上字数，出字就消失",
+  "AgentChat：出字前显示工作图标和智能体正在工作，没有读秒和思考字数",
   withClock(async () => {
     const gateway = makeGateway({ status: "done", messages: FINISHED_THREAD });
     globalThis.__w03Gateway = gateway;
@@ -788,7 +815,7 @@ test(
       React.createElement(AgentChat, { taskId: "t-tick", siteId: "ppt", mode: "agent" }),
     );
     try {
-      await assertThinkingTicker(view, gateway, submitViaComposer);
+      await assertAgentWorkingLine(view, gateway, submitViaComposer);
     } finally {
       await view.unmount();
     }

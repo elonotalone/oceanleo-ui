@@ -59,6 +59,7 @@ const settingsStub = dataModule(`
 const stateStub = dataModule(`
   globalThis.__bayOpened ??= [];
   export function openBay(target){ globalThis.__bayOpened.push(target); }
+  export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function requireBayLogin(){ return globalThis.__baySignedIn !== false; }
   export function bayBack(){}
 `);

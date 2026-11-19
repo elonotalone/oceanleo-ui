@@ -123,6 +123,7 @@ const hostStub = dataModule(`
    clearInvite(){}
  };
  export function hostState(){return host;}
+ export function openMessages(target){host.setView(target.view);}
  export function useMessagesHost(){return React.useSyncExternalStore(fn=>{listeners.add(fn);return ()=>listeners.delete(fn)},()=>state,()=>state);}
  export function isSubView(v){return ['notices','notice-detail','cases'].includes(v);}
  export function tabOfView(v){return v==='people'?'people':'inbox';}
@@ -139,14 +140,14 @@ export function InviteAcceptDialog(){return null;}
 `);
 const aliases={...OVERRIDES,
  './HistoryMasterDetail':dataModule(`import React from ${JSON.stringify(reactUrl)}; export function HistoryInlineList(){ return React.createElement('div',{'data-shared-task-list':true},'Shared tasks'); }`),
- 'next/navigation':dataModule(`export function useRouter(){ return {push(href){(globalThis.__taskRoutes ||= []).push(href);}}; }`),
+ 'next/navigation':dataModule(`export function useRouter(){ return {push(href){(globalThis.__taskRoutes ||= []).push(href);}}; } export function useSearchParams(){return new URLSearchParams(window.location.search);}`),
  './workspace-panels/registry':dataModule('export function getWorkspacePanel(){return function Panel(){return null;};}'),
  './messages/host-state':hostStub,
  './SplitWorkspace': undefined,
  '../lib/auth/client':dataModule('export async function accessToken(){return null;}'),
  '../lib/im/client':dataModule('export function useImEnabled(){return true;} export class ImApiError extends Error{}'),
  './messages/messages-surface':dataModule('export function ensureMessagesSurfaceStyles(){}'),
- './messages/notices/use-notices':dataModule('export function useLeoChatUnread(){return {total:85,requests:0};}'),
+ './messages/notices/use-notices':dataModule('export function useLeoChatUnread(){return {chat:85,notices:0,requests:0,total:85};}'),
  './messages/call/incoming/deep-link':dataModule('export function consumeCallDeepLink(){}'),
  './messages/Inbox':leaf, './messages/people/PeopleView':leaf,
  './messages/conversation/ConversationView':leaf,'./bay/deal':leaf,
@@ -156,8 +157,18 @@ const aliases={...OVERRIDES,
  './EditBarDockHost':dataModule('export function EditBarDockHost(){return null;}'),
 };
 delete aliases['./SplitWorkspace'];
+aliases['../HistoryMasterDetail']=aliases['./HistoryMasterDetail'];
 const splitUrl=await compileModule('src/shell/SplitWorkspace.tsx',aliases);
 aliases['./SplitWorkspace']=splitUrl;
+// Compile the new lazy task host with the same external list boundary. Its
+// transcript is covered by sidebar-task-workspace; this test owns navigation.
+aliases['./workspace-panels/MyTasksWorkspacePanel']=await compileModule('src/shell/workspace-panels/MyTasksWorkspacePanel.tsx',{
+ ...aliases,
+ '../../i18n/ui/useUI':uiStub,
+ '../AgentChat':dataModule(`import React from ${JSON.stringify(reactUrl)};
+ export function AgentChat(props){globalThis.__sidebarTaskProps=props;return React.createElement('button',{'data-sidebar-agent-back':true,onClick:props.onBack},'Back');}`),
+ '../HistoryMasterDetail':aliases['./HistoryMasterDetail'],
+});
 const canvasUrl=await compileModule('src/shell/ResultCanvas.tsx',aliases);
 aliases['./ResultCanvas']=canvasUrl;
 const bodyUrl=await compileModule('src/shell/leochat/leochat-body.tsx',{
@@ -400,7 +411,7 @@ test('F5: own Library/artifact links open the sidebar; omitted Bay and another p
 });
 
 
-test('LS: LeoChat sidebar offers the shared My Tasks list, home creation and return, with no Bay panel',async()=>{
+test('LS: LeoChat sidebar offers the shared My Tasks list, inline task creation and return, with no Bay panel',async()=>{
  globalThis.__taskRoutes=[];
  const page=await mount(React.createElement(LeoChatPage,{siteKey:'oceanleo'}));
  try {
@@ -413,12 +424,20 @@ test('LS: LeoChat sidebar offers the shared My Tasks list, home creation and ret
    assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'tasks');
    assert.ok(page.container.querySelector('[data-my-tasks-workspace-panel] [data-shared-task-list]'));
    await click(page.container.querySelector('[data-my-tasks-new]'));
-   assert.deepEqual(globalThis.__taskRoutes,['/']);
+   assert.deepEqual(globalThis.__taskRoutes,[]);
+   assert.ok(page.container.querySelector('[data-sidebar-task="draft"]'));
+   assert.equal(globalThis.__sidebarTaskProps.siteId,'oceanleo');
+   assert.equal(globalThis.__sidebarTaskProps.navigateToSessionOnCreate,false);
+   assert.ok(globalThis.__sidebarTaskProps.sidebarHost);
+   await click(page.container.querySelector('[data-sidebar-agent-back]'));
    const locationDescriptor=Object.getOwnPropertyDescriptor(window,'location');
    try {
      Object.defineProperty(window,'location',{configurable:true,value:new URL('https://oceanleo.com/s/image/bay')});
      await click(page.container.querySelector('[data-my-tasks-new]'));
-     assert.deepEqual(globalThis.__taskRoutes,['/','/s/image']);
+     assert.deepEqual(globalThis.__taskRoutes,[]);
+     assert.ok(page.container.querySelector('[data-sidebar-task="draft"]'));
+     assert.equal(window.location.pathname,'/s/image/bay');
+     await click(page.container.querySelector('[data-sidebar-agent-back]'));
    } finally {Object.defineProperty(window,'location',locationDescriptor);}
    await click(page.container.querySelector('[data-workspace-back]'));
    assert.equal(page.container.querySelector('[data-workspace-view]').dataset.workspaceView,'home');
@@ -430,7 +449,7 @@ const {LeoBayPage}=await import(await compileModule('src/shell/bay/shell/LeoBayP
  '../../i18n/ui/useUI':uiStub,
  '../../TaskWorkspaceShell':shellUrl,
  '../../SplitWorkspace':splitUrl,
- './bay-state':dataModule(`export function bayEnabledHere(){return true;} export function useBayFilter(){return {kind:'service'};} export function useBaySiteKey(){return 'oceanleo';} export function useBayState(){return {current:{kind:'feed'}};} export function setBaySiteKey(){} export function registerBayPage(){return ()=>{};} export function bayBack(){}`),
+ './bay-state':dataModule(`export function bayEnabledHere(){return true;} export function useBayFilter(){return {kind:'service'};} export function useBaySiteKey(){return 'oceanleo';} export function useBayState(){return {current:{kind:'feed'}};} export function setBaySiteKey(){} export function registerBayPage(){return ()=>{};} export function bayBack(){} export function requireBayLogin(){return true;} export function useBaySignedIn(){return true;}`),
  './BayDetail':dataModule('export function BayDetailPane(){return null;} export function bayDetailTitleKey(){return "";}'),
  './BayList':dataModule(`import React from ${JSON.stringify(reactUrl)}; export const BayListingChromeContext=React.createContext({}); export function useBaySearchText(){return {text:'',change(){},commit(){}};} export function openMine(){} export function startPublish(){} export function BayViewSwitch(){return null;} export function BayFeed(){return React.createElement('div',{'data-bay-feed-kept':true});}`),
  '../asset/BayAssetLibrary':dataModule('export function BayAssetLibrary(){return null;}'),

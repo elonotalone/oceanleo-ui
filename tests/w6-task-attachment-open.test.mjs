@@ -162,7 +162,8 @@ test("opener: an immediate file shows at once; an unopenable earlier click repor
 
 test("AgentChat: task bubbles and composers open files through one opener", () => {
   const src = readFileSync(new URL("../src/shell/AgentChat.tsx", import.meta.url), "utf8");
-  assert.match(src, /const openTaskAttachment = useTaskAttachmentOpener\(/);
+  assert.match(src, /const openTaskAttachmentPreview = useTaskAttachmentOpener\(/);
+  assert.match(src, /const openTaskAttachment = useCallback\([\s\S]*?openTaskAttachmentPreview\(attachment\)/);
   const composers = src.match(/<LeoComposer\b[\s\S]*?\/>/g) || [];
   assert.ok(composers.length >= 2);
   for (const composer of composers) {

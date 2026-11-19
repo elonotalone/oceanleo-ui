@@ -40,6 +40,7 @@ const httpStub = dataModule(`
 `);
 const stateStub = dataModule(`
   export function openBay(){}
+  export function useBaySignedIn(){ return globalThis.__baySignedIn !== false; }
   export function requireBayLogin(){ return true; }
   export function bayBack(){}
 `);
