@@ -21,6 +21,10 @@ export function useCloudHistory(taskKey: string, messages: readonly AgentMessage
   latest.current = { taskKey, messages, start };
   const loadEarlier = useCallback(async () => {
     const current = latest.current;
+    // Let the shared loader paint its pending state before expanding this
+    // already-fetched page. A synchronous resolution batches it out of the DOM.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    if (latest.current.taskKey !== current.taskKey) return;
     setWindow({ key: current.taskKey, firstId: current.messages[Math.max(0, current.start - PAGE_SIZE)]?.id ?? null });
   }, []);
   return { visible: messages.slice(start), hasMore: start > 0, loadEarlier };

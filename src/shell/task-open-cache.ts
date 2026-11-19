@@ -64,15 +64,10 @@ const partialSeeds = new WeakSet<object>();
 export function isPartialTaskSeed(seed: object | null | undefined): boolean {
   if (!seed) return false;
   if (partialSeeds.has(seed)) return true;
-  // The history page may pass the detail through a cache/serialization boundary,
-  // so the identity-only marker is not sufficient.  The gateway's explicit
-  // cursor flag is authoritative; an exact first-page-sized response is the
-  // compatibility fallback for older gateways that ignored message_limit.
-  const detail = seed as Partial<TaskDetail>;
-  if (detail.has_more === true) return true;
-  return detail.has_more === undefined
-    && Array.isArray(detail.messages)
-    && detail.messages.length >= TASK_FIRST_PAGE_MESSAGES;
+  // A full detail read omits has_more even for long conversations. Only the
+  // gateway cursor or a marker from a known cut/limited read denotes a partial
+  // seed; message count alone cannot distinguish it from a complete thread.
+  return (seed as Partial<TaskDetail>).has_more === true;
 }
 
 /** Mark a snapshot built from a cut copy (it is cut too until a whole read lands). */
@@ -145,7 +140,7 @@ export function prefetchTask(taskId: string): Promise<TaskResult> {
         // unflagged, so a full first page may be cut.
         const more = result.data.has_more;
         if (more === true || (more === undefined && Array.isArray(result.data.messages)
-          && result.data.messages.length >= TASK_FIRST_PAGE_MESSAGES)) {
+          && result.data.messages.length === TASK_FIRST_PAGE_MESSAGES)) {
           partialSeeds.add(result.data);
         }
         rememberTaskDetail(result.data);

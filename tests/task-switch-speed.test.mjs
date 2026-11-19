@@ -118,6 +118,27 @@ test("a partial marker survives a history/cache boundary", () => {
   assert.equal(openCache.isPartialTaskSeed({ task: { id: "t-short" }, messages: messages.slice(0, 2), artifacts: [] }), false);
 });
 
+test("unbounded cloud details remain complete at and beyond the first-page size", () => {
+  // The real full-detail response omits has_more. Calling it partial keeps
+  // AgentChat's saved-middle-anchor readiness false forever on long threads.
+  for (const count of [60, 70, 190]) {
+    const detail = { task: { id: `long-${count}` }, messages: Array.from({ length: count }, (_, i) => ({ id: i + 1, role: "user", content: String(i) })), artifacts: [] };
+    assert.equal(openCache.isPartialTaskSeed(detail), false, `${count} unbounded rows are complete`);
+    openCache.markPartialTaskSeed(detail);
+    assert.equal(openCache.isPartialTaskSeed(detail), true, "a known cut cache still requires the full read");
+  }
+});
+
+test("a legacy prefetch returning more than the limit is already a complete thread", async () => {
+  userCache.setCacheUser("user-a");
+  globalThis.__openReplies = {};
+  const pending = openCache.prefetchTask("t-unbounded-legacy");
+  const detail = { task: { id: "t-unbounded-legacy" }, messages: Array.from({ length: 190 }, (_, i) => ({ id: i + 1, role: "user", content: String(i) })), artifacts: [] };
+  globalThis.__openReplies.task[0]({ ok: true, data: detail });
+  const result = await pending;
+  assert.equal(openCache.isPartialTaskSeed(result.data), false, "ignored message_limit must not block reading restoration");
+});
+
 test("a session row reads its app_session and linked task together; a short thread is not partial", async () => {
   calls.length = 0;
   globalThis.__openReplies = {};
