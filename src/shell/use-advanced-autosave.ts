@@ -175,19 +175,31 @@ export function useAdvancedAutoSave(input: Input) {
       return slot.publisher.flushLatest();
     }
     const captured = rendered.current;
-    const result = await (captured.flush?.() ?? { ok: false as const, error: "保存失败，请重试" });
+    setView((previous) => ({ ...previous, state: "saving", error: "" }));
+    let result: AdvancedFlushResult;
+    try {
+      result = await (captured.flush?.() ?? { ok: false as const, error: "保存失败，请重试" });
+    } catch (error) {
+      result = { ok: false, error: error instanceof Error ? error.message : String(error) };
+    }
     // Mounted serializers may adopt their own receipt in the flush callback.
     // Let that render commit before deciding whether it is safe to close.
     await Promise.resolve();
     await Promise.resolve();
     const current = rendered.current;
-    if (!result.ok || current === captured) return result;
+    const finish = (receipt: AdvancedFlushResult): AdvancedFlushResult => {
+      if (current.key === captured.key && current.item?.id === captured.item?.id) {
+        setView((previous) => ({ ...previous, state: receipt.ok ? "saved" : "error", error: receipt.ok ? "" : receipt.errorMessage || receipt.error || "保存失败，请重试" }));
+      }
+      return receipt;
+    };
+    if (!result.ok || current === captured) return finish(result);
     const rootOf = (value: Input) => value.item ? workingCopyRoot(value.item) : value.key;
-    if (current.key !== captured.key || rootOf(current) !== rootOf(captured)) return { ok: false, error: "编辑文档已切换，请重试保存" };
+    if (current.key !== captured.key || rootOf(current) !== rootOf(captured)) return finish({ ok: false, error: "编辑文档已切换，请重试保存" });
     if (current.revision !== captured.revision || current.item?.revisionId !== captured.item?.revisionId) {
-      if (current.dirty || !result.item || workingCopyRoot(result.item) !== rootOf(current) || result.item.revisionId !== current.item?.revisionId) return { ok: false, error: "编辑文档已切换，请重试保存" };
+      if (current.dirty || !result.item || workingCopyRoot(result.item) !== rootOf(current) || result.item.revisionId !== current.item?.revisionId) return finish({ ok: false, error: "编辑文档已切换，请重试保存" });
     }
-    return result;
+    return finish(result);
   }, [latest]);
   const retry = useCallback(async (): Promise<AdvancedFlushResult> => {
     const saver = active.current?.saver;

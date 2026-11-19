@@ -190,6 +190,7 @@ test("flush 失败时云朵进入 error，切模式返回值仍是 true", async 
   };
   bed.flush = async () => {
     bed.flushCalls += 1;
+    if (bed.reject) throw new Error("serializer-offline");
     return { ok: false, error: "p3-flush-failed", status: 503 };
   };
   function Probe() {
@@ -225,12 +226,18 @@ test("flush 失败时云朵进入 error，切模式返回值仍是 true", async 
     });
     assert.equal(bed.hook.state, "error");
     assert.ok(bed.flushCalls >= 1);
+    bed.reject = true;
+    await act(async () => {
+      assert.deepEqual(await bed.hook.retry(), { ok: false, error: "serializer-offline" });
+    });
+    assert.equal(bed.hook.state, "error");
+    assert.equal(bed.hook.errorMessage, "serializer-offline");
   } finally {
     await tree.unmount();
   }
 });
 
-test("壳：默认后台离开，只有 mounted iframe 等待 flush；confirmation 只接重试", () => {
+test("壳：默认后台离开，mounted iframe 等待 flush；重试使用同一条发布管线", () => {
   const shell = readFileSync(SHELL_SRC, "utf8");
   const leave = readFileSync(new URL("../src/shell/use-inline-workbench-leave.ts", import.meta.url), "utf8");
   assert.match(shell, /useInlineWorkbenchLeave\(/);
@@ -248,10 +255,7 @@ test("壳：默认后台离开，只有 mounted iframe 等待 flush；confirmati
   assert.match(closeFn, /flushMounted: autoSave\.flushLatest/);
   assert.match(
     shell,
-    /onRetrySave=\{\(\) => void \(adapter\.persistence\?\.confirmation \? flushForExplicitSave\(\) : autoSave\.retry\(\)\)\}/,
+    /onRetrySave=\{\(\) => void retrySave\(\)\}/,
   );
-  assert.match(
-    shell,
-    /confirmation 只影响显式重试/,
-  );
+  assert.match(shell, /const retrySave = autoSave\.retry/);
 });
