@@ -30,8 +30,8 @@ async function mount({ hasMore = true, disabled = false, scrollTop = 600, load }
   let patch; let scroller; let state;
   function Harness() {
     const ref = useRef(null);
-    const [value, set] = useState({ ids: [10, 11, 12, 13, 14], hasMore, disabled }); patch = (next) => set((current) => ({ ...current, ...next }));
-    state = useOlderHistory({ scrollRef: ref, firstKey: value.ids[0], hasMore: value.hasMore, disabled: value.disabled, loadOlder: load ?? (() => new Promise(() => {})) });
+    const [value, set] = useState({ ids: [10, 11, 12, 13, 14], hasMore, disabled, scopeKey: "task:first" }); patch = (next) => set((current) => ({ ...current, ...next }));
+    state = useOlderHistory({ scopeKey: value.scopeKey, scrollRef: ref, firstKey: value.ids[0], hasMore: value.hasMore, disabled: value.disabled, loadOlder: load ?? (() => new Promise(() => {})) });
     return React.createElement('div', { ref: (node) => {
       ref.current = node; if (!node || scroller === node) return; scroller = node; node.scrollTop = scrollTop;
       Object.defineProperty(node, 'clientHeight', { configurable: true, value: 400 });
@@ -136,4 +136,17 @@ test('a newly opened history prefetches even if the previous conversation reques
     await act(async () => first.resolve()); await view.scroll(100); await tick();
     assert.equal(calls, 2, 'completion from old conversation never releases new request guard');
   } finally { await view.close(); await act(async () => second.resolve()); }
+});
+
+
+test('switching tasks releases an in-flight history request on the reused scroller', async () => {
+  let calls = 0;
+  const pending = deferred();
+  const view = await mount({ load: () => { calls++; return pending.promise; } });
+  try {
+    await tick(); assert.equal(calls, 1);
+    await view.patch({ scopeKey: 'task:second', ids: [100, 101, 102] });
+    await tick(); assert.equal(calls, 2, 'new task does not wait for old network read');
+    pending.resolve(); await tick();
+  } finally { await view.close(); }
 });

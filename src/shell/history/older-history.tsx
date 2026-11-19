@@ -4,6 +4,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type JSX, ty
 
 export type OlderHistoryOptions = {
   scrollRef: RefObject<HTMLElement | null>;
+  /** A shared scroller must release the previous task's pending history request on navigation. */
+  scopeKey?: string;
   hasMore: boolean;
   loadOlder: () => Promise<void>;
   firstKey: string | number | null;
@@ -21,6 +23,7 @@ type Anchor = { element: HTMLElement; key: string | null; offset: number; firstK
 /** One shared, buffered history loader. Position is tied to a message, never total scroll height. */
 export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState {
   const latest = useRef(options);
+  const scope = useRef(options.scopeKey);
   const anchor = useRef<Anchor | null>(null);
   const flight = useRef<symbol | null>(null);
   const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
@@ -31,6 +34,11 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
 
   useLayoutEffect(() => {
     latest.current = options;
+    if (scope.current !== options.scopeKey) {
+      scope.current = options.scopeKey;
+      flight.current = null;
+      anchor.current = null;
+    }
     // A closed/exhausted conversation must not hold up the next conversation on this scroller.
     if (!options.hasMore) flight.current = null;
     const saved = anchor.current;
@@ -144,7 +152,7 @@ export function useOlderHistory(options: OlderHistoryOptions): OlderHistoryState
       if (frame != null) cancelAnimationFrame(frame);
       if (retry != null) clearTimeout(retry);
     };
-  }, [sentinel, options.scrollRef, options.disabled]);
+  }, [sentinel, options.scrollRef, options.disabled, options.scopeKey]);
 
   const activeLoading = loading && options.hasMore && !options.disabled;
   return { sentinelRef, loading: activeLoading, spinnerVisible: activeLoading && atTop };
