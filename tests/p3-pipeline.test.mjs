@@ -217,7 +217,9 @@ test("flush 失败时云朵进入 error，切模式返回值仍是 true", async 
     assert.ok(bed.hook.errorMessage, "云朵必须带失败人话");
     const unbind = bindAdvancedDraftGate(ITEM.key, () => bed.hook.flushLatest());
     try {
-      assert.equal(await handoff.saveBeforeLeavePro(ITEM.key), true);
+      await act(async () => {
+        assert.equal(await handoff.saveBeforeLeavePro(ITEM.key), true);
+      });
     } finally {
       unbind();
     }
